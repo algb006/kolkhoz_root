@@ -24,6 +24,7 @@
 #include "core_common/state_table_ops.h"
 #include "core_common/work_seam.h"
 #include "district_plan.h"
+#include "herd_cold.h"
 #include "herd_life.h"
 #include "livestock_homes.h"
 #include "night_pasture.h"
@@ -271,16 +272,29 @@ std::vector<float> RoofRoom(const WorldState& world, const ProductionConfig& con
 /// let a herd earlier in the rows fill a yard whose own herd comes later.
 /// The herd stays one row at its own unit; the heads another yard shelters
 /// are housed, not moved.
-std::vector<std::uint16_t> BilletHerds(const WorldState& world, std::vector<float> room) {
+std::vector<std::uint16_t> BilletHerds(const WorldState& world,
+                                       const ProductionConfig& config,
+                                       std::vector<float> room) {
   const auto herds = static_cast<std::uint32_t>(world.herds.rows.size());
   std::vector<std::uint16_t> billeted(herds, 0);
   std::vector<float> left(herds, 0.0F);
+  std::vector<float> kept_warm(herds, 0.0F);
   std::vector<std::uint32_t> unit_rows(herds, kNoRow);
   const auto take = [&room, &left](std::uint32_t herd_row, std::uint32_t unit_row) {
     const float housed = left[herd_row] < room[unit_row] ? left[herd_row] : room[unit_row];
     room[unit_row] -= housed;
     left[herd_row] -= housed;
   };
+  // THE BILLET KEEPS ITS PLACES IN A FROST MONTH (Livestock design: «в
+  // месяцы "мёрзнет" стадо остаётся на постое, пока в хлевах дворов есть
+  // места; замерзает только то, чему постоя не хватило»; 0.37.62). The
+  // places are the design's ceiling, `billet_heads_per_yard` a family — the
+  // district limit's own count (district_limit.cpp, PlacesForStock) — less
+  // what stands billeted anyway, a herd with no roof of its own. Outside a
+  // frost month the billet is what the roofs leave, uncounted, as before.
+  float billet_places =
+      static_cast<float>(world.families.rows.size()) * config.farming.billet_heads_per_yard;
+  const auto month = world.calendar.date.month;
   for (std::uint32_t row = 0; row < herds; ++row) {
     const HerdRow& herd = world.herds.rows[row];
     if (herd.household_owned != 0) {
@@ -293,7 +307,30 @@ std::vector<std::uint16_t> BilletHerds(const WorldState& world, std::vector<floa
     // billeted whole. That is the start canon, not a failure state.
     if (unit_row != kNoRow && unit_row < room.size()) {
       unit_rows[row] = unit_row;
-      take(row, unit_row);
+    }
+    // A herd whose own roof is not standing — none, or a site — is on the
+    // billet whole, and takes its places first (herd_cold.cpp counts the
+    // autumn's yellow the same way).
+    if (unit_rows[row] == kNoRow || world.units.rows[unit_rows[row]].level == 0) {
+      billet_places -= left[row];
+    }
+  }
+  for (std::uint32_t row = 0; row < herds; ++row) {
+    const std::uint32_t own = unit_rows[row];
+    const HerdRow& herd = world.herds.rows[row];
+    if (own == kNoRow || world.units.rows[own].level == 0 ||
+        herd.kind.value >= config.livestock.size() || !(billet_places > 0.0F) ||
+        UnitIsWarmPlace(config, world.units.rows[own]) ||
+        !FrostMonthOf(config, config.livestock[herd.kind.value], month)) {
+      continue;
+    }
+    kept_warm[row] = std::min(left[row], billet_places);
+    billet_places -= kept_warm[row];
+    left[row] -= kept_warm[row];
+  }
+  for (std::uint32_t row = 0; row < herds; ++row) {
+    if (unit_rows[row] != kNoRow) {
+      take(row, unit_rows[row]);
     }
   }
   for (std::uint32_t row = 0; row < herds; ++row) {
@@ -309,7 +346,10 @@ std::vector<std::uint16_t> BilletHerds(const WorldState& world, std::vector<floa
         take(row, unit_row);
       }
     }
-    billeted[row] = AsHeads(left[row]);
+    // What neither the billet's places nor a roof held stays billeted all
+    // the same, over the places: there is no fourth place, and the design's
+    // «не под нож» holds (boss-core-start-no-yards [18], reading 1).
+    billeted[row] = AsHeads(left[row] + kept_warm[row]);
   }
   return billeted;
 }
@@ -622,9 +662,10 @@ void WatchTheTeam(const ProductionConfig& config,
   watch.week_horse_backed[slot] = horse_backed_days;
 }
 
-/// What the day's produce is multiplied by. Two leaks, both of them the
-/// design's: a hungry herd gives less at once, and a billeted head gives
-/// less because part of what it makes settles in the yard it stands in.
+/// What the day's produce is multiplied by. Three leaks, all of them the
+/// design's: a hungry herd gives less at once, a billeted head gives less
+/// because part of what it makes settles in the yard it stands in, and a
+/// freezing head gives less (the cold ladder).
 float YieldFactor(const ProductionConfig& config, const HerdRow& herd) {
   // THE SHARE OF THE RATION, floored at the hungry factor (boss seq 171 А):
   // a herd fed a third gives a third, never less than a starving one. Until
@@ -636,6 +677,12 @@ float YieldFactor(const ProductionConfig& config, const HerdRow& herd) {
   if (total > 0.0F && herd.billeted_count > 0) {
     const float billeted_share = static_cast<float>(herd.billeted_count) / total;
     factor *= 1.0F - (billeted_share * (1.0F - config.farming.billet_yield_factor));
+  }
+  // AND THE THIRD, THE COLD (herd_cold.h; 0.37.62): «мёрзнет» takes the
+  // kind's share off the heads under a cold roof — the billet's heads are
+  // warm and pay the billet's leak alone.
+  if (herd.kind.value < config.livestock.size()) {
+    factor *= ColdProduceFactor(config.livestock[herd.kind.value], herd);
   }
   return factor;
 }
@@ -934,7 +981,7 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
   const auto month = static_cast<std::uint8_t>(current.calendar.date.month);
   // The day's billet, every herd at once, before any herd's day moves a head
   // (BilletHerds: its own yard first, then the others of its type).
-  const std::vector<std::uint16_t> billet = BilletHerds(current, RoofRoom(current, config));
+  const std::vector<std::uint16_t> billet = BilletHerds(current, config, RoofRoom(current, config));
   float horse_backed_days = 0.0F;
   float harnessed_days = 0.0F;
   const float working_share = WorkingShare(current, config, &horse_backed_days, &harnessed_days);
@@ -999,6 +1046,9 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
     place.feed_allowance = &feed_allowance;
     place.peoples_foods = &peoples_foods;
     herd.billeted_count = row < billet.size() ? billet[row] : 0;
+    // THE COLD NIGHT, once a day, off the day's billet (herd_cold.h): the
+    // count the produce below and the deaths after the hunger's read.
+    CountColdNight(config, kind, herd, current);
     // The yard's hens, ducks and pig feed themselves (question Q1): range,
     // scraps and the garden, and the winter handful of grain out of the
     // family's own ration, which the meal already counts. They are FED, not
@@ -1043,6 +1093,7 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
               current.ledger.current);
     RunAgeDeaths(kind, herd, herd_id, current);
     RunHungerDeaths(config, kind, herd, herd_id, current, current.ledger.current);
+    RunFrostDeaths(config, kind, herd, herd_id, current, current.ledger.current);
     RunAutumnSlaughter(config, kind, herd.kind, place, herd, herd_id, current, current.calendar);
   }
   // THE TRACTION RATION of the day (world_state.h): how much of what the

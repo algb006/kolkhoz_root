@@ -20,6 +20,7 @@
 #include "core_common/work_seam.h"
 #include "core_common/world_state.h"
 #include "field_haul.h"
+#include "herd_cold.h"
 #include "production_config.h"
 #include "stock_ops.h"
 
@@ -747,7 +748,7 @@ float PhaseWorkDays(const ProductionConfig& config,
   // THIRD way of saying "a horse is in this", and until all three are one
   // question this can open again.
   if (horse_pulled) {
-    const float factor = TractionFactor(config, current.traction_ration);
+    const float factor = HorsePullFactor(config, current);
     norm = factor > 0.0F ? norm / factor : norm;
   }
   // AND THE REAPED CROP CARRIED TO THE FIELD'S HEAP (0.36.20): part of the
@@ -771,15 +772,17 @@ float TractionFactor(const ProductionConfig& config, float traction_ration) {
   return hungry + ((1.0F - hungry) * traction_ration);
 }
 
+float HorsePullFactor(const ProductionConfig& config, const WorldState& world) {
+  return TractionFactor(config, world.traction_ration) * ColdDraughtFactor(config, world);
+}
+
 void RescaleHorseWorkForRation(const ProductionConfig& config,
                                float traction_ration_was,
+                               float cold_draught_was,
                                WorldState& current) {
-  if (traction_ration_was == current.traction_ration) {
-    return;
-  }
-  const float was = TractionFactor(config, traction_ration_was);
-  const float now = TractionFactor(config, current.traction_ration);
-  if (!(was > 0.0F) || !(now > 0.0F)) {
+  const float was = TractionFactor(config, traction_ration_was) * cold_draught_was;
+  const float now = HorsePullFactor(config, current);
+  if (was == now || !(was > 0.0F) || !(now > 0.0F)) {
     return;
   }
   // Days go as one over the pull: priced at `was`, worked at `now`.

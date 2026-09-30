@@ -266,7 +266,7 @@ bool ParseWeightRows(const ITable& table, LifeConfig& config, std::string& error
 /// deliberate rather than shared: each is the single source for ITS module's
 /// read, so the day one of them stops reading a key, its list shrinks with
 /// its code instead of waiting for someone to notice.
-constexpr std::array<std::string_view, 32> kLifeWorldParamKeys = {
+constexpr std::array<std::string_view, 30> kLifeWorldParamKeys = {
     "body_height_male_m",
     "body_height_female_m",
     "body_height_sigma_frac",
@@ -291,10 +291,10 @@ constexpr std::array<std::string_view, 32> kLifeWorldParamKeys = {
     // read the one row.
     "teacher_pupils_per_teacher",
     "limit_delivery_days",
-    // Personal cleanliness (health design §3, 2026-09-17). The band it starts
-    // in, what takes it away and the one thing that gives it back.
-    "hygiene_start_min",
-    "hygiene_start_max",
+    // Personal cleanliness (health design §3, 2026-09-17): what takes it away
+    // and the one thing that gives it back. The band it starts in is
+    // genesis's alone (core_world/genesis.cpp); it stood here too, a second
+    // home nobody read, until 0.37.62.
     "hygiene_fall_per_day",
     "hygiene_fall_dirty_work_factor",
     "hygiene_fall_heat_extra",
@@ -420,51 +420,45 @@ bool ParseBodyKnobs(const ITable& world, LifeConfig& config, std::string& error)
       // start band or a threshold outside it would name a state a resident
       // can never be in.
       ScalarKnob{.key = kLifeWorldParamKeys[15],
-                 .value = &config.hygiene_start_min,
-                 .range = Range{.low = 0.0F, .high = 100.0F}},
-      ScalarKnob{.key = kLifeWorldParamKeys[16],
-                 .value = &config.hygiene_start_max,
-                 .range = Range{.low = 0.0F, .high = 100.0F}},
-      ScalarKnob{.key = kLifeWorldParamKeys[17],
                  .value = &config.hygiene_fall_per_day,
                  .range = Range{.low = 0.0F, .high = 100.0F}},
-      ScalarKnob{.key = kLifeWorldParamKeys[18],
+      ScalarKnob{.key = kLifeWorldParamKeys[16],
                  .value = &config.hygiene_fall_dirty_work_factor,
                  .range = Range{.low = 1.0F, .high = 10.0F}},
-      ScalarKnob{.key = kLifeWorldParamKeys[19],
+      ScalarKnob{.key = kLifeWorldParamKeys[17],
                  .value = &config.hygiene_fall_heat_extra,
                  .range = Range{.low = 0.0F, .high = 100.0F}},
-      ScalarKnob{.key = kLifeWorldParamKeys[20],
+      ScalarKnob{.key = kLifeWorldParamKeys[18],
                  .value = &config.hygiene_rise_bath_per_day,
                  .range = Range{.low = 0.0F, .high = 100.0F}},
-      ScalarKnob{.key = kLifeWorldParamKeys[21],
+      ScalarKnob{.key = kLifeWorldParamKeys[19],
                  .value = &config.hygiene_disease_threshold,
                  .range = Range{.low = 0.0F, .high = 100.0F}},
       // The same range core_production reads it in: the mud slows, never stops.
-      ScalarKnob{.key = kLifeWorldParamKeys[22],
+      ScalarKnob{.key = kLifeWorldParamKeys[20],
                  .value = &config.specialist_mud_speed_factor,
                  .range = Range{.low = 0.05F, .high = 1.0F}},
-      ScalarKnob{.key = kLifeWorldParamKeys[23],
+      ScalarKnob{.key = kLifeWorldParamKeys[21],
                  .value = &config.old_house_near_collapse_wear,
                  .range = Range{.low = 0.0F, .high = 1.0F}},
-      ScalarKnob{.key = kLifeWorldParamKeys[24], .value = &tent_from, .range = months},
-      ScalarKnob{.key = kLifeWorldParamKeys[25], .value = &tent_to, .range = months},
-      ScalarKnob{.key = kLifeWorldParamKeys[26],
+      ScalarKnob{.key = kLifeWorldParamKeys[22], .value = &tent_from, .range = months},
+      ScalarKnob{.key = kLifeWorldParamKeys[23], .value = &tent_to, .range = months},
+      ScalarKnob{.key = kLifeWorldParamKeys[24],
                  .value = &config.leave_request_answer_days,
                  .range = Range{.low = 0.0F, .high = 48.0F}},
-      ScalarKnob{.key = kLifeWorldParamKeys[27],
+      ScalarKnob{.key = kLifeWorldParamKeys[25],
                  .value = &config.lodging_satisfaction_penalty,
                  .range = Range{.low = 0.0F, .high = 100.0F}},
-      ScalarKnob{.key = kLifeWorldParamKeys[28],
+      ScalarKnob{.key = kLifeWorldParamKeys[26],
                  .value = &config.hunger_alarm_clear_margin,
                  .range = Range{.low = 0.0F, .high = 100.0F}},
-      ScalarKnob{.key = kLifeWorldParamKeys[29],
+      ScalarKnob{.key = kLifeWorldParamKeys[27],
                  .value = &config.twins_share,
                  .range = Range{.low = 0.0F, .high = 1.0F}},
-      ScalarKnob{.key = kLifeWorldParamKeys[30],
+      ScalarKnob{.key = kLifeWorldParamKeys[28],
                  .value = &config.identical_twins_share,
                  .range = Range{.low = 0.0F, .high = 1.0F}},
-      ScalarKnob{.key = kLifeWorldParamKeys[31],
+      ScalarKnob{.key = kLifeWorldParamKeys[29],
                  .value = &elder_spared,
                  .range = Range{.low = 0.0F, .high = 100.0F}}};
   if (!ReadKnobs(world, "world_params", rows, error)) {

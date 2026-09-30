@@ -459,6 +459,67 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
   return true;
 }
 
+/// One threshold of the cold ladder: an empty cell (or no column) is «does
+/// not freeze there» — the flag stays 0 — and a number outside a climate's
+/// range refuses the load.
+bool ReadColdThreshold(const ITable& table,
+                       std::uint32_t row,
+                       std::string_view column_name,
+                       float& value,
+                       std::uint8_t& freezes,
+                       std::string& error) {
+  constexpr float kColdestC = -60.0F;
+  constexpr float kWarmestC = 30.0F;
+  const std::uint32_t column = table.FindColumn(column_name);
+  freezes = 0;
+  if (column == kNoTableColumn || table.CellText(row, column).empty()) {
+    return true;
+  }
+  const std::optional<float> cell = table.CellReal(row, column);
+  if (!cell || *cell < kColdestC || *cell > kWarmestC) {
+    error = "row " + std::to_string(row) + " " + std::string(column_name) +
+            " is not a temperature in [-60, 30] °C";
+    return false;
+  }
+  value = *cell;
+  freezes = 1;
+  return true;
+}
+
+/// THE COLD LADDER'S FOUR COLUMNS of a kind (livestock.csv, boss's 6f187c67;
+/// Livestock design «Числа лестницы — Эпоха I»). An empty factor is 1: the
+/// kind gives no less when it freezes.
+bool ParseKindCold(const ITable& table, std::uint32_t row, LivestockDef& kind, std::string& error) {
+  if (!ReadColdThreshold(table,
+                         row,
+                         "cold_night_cold_place_c",
+                         kind.cold_night_cold_place_c,
+                         kind.freezes_in_cold_place,
+                         error) ||
+      !ReadColdThreshold(table,
+                         row,
+                         "cold_night_warm_place_c",
+                         kind.cold_night_warm_place_c,
+                         kind.freezes_in_warm_place,
+                         error)) {
+    return false;
+  }
+  return CellOrDefault(table,
+                       row,
+                       table.FindColumn("freezing_produce_factor"),
+                       Range{.low = 0, .high = 1},
+                       1,
+                       kind.freezing_produce_factor,
+                       error) &&
+         CellOrDefault(table,
+                       row,
+                       table.FindColumn("freezing_draught_factor"),
+                       Range{.low = 0, .high = 1},
+                       1,
+                       kind.freezing_draught_factor,
+                       error);
+}
+
 bool ParseLivestock(const ITable& table, std::vector<LivestockDef>& livestock, std::string& error) {
   struct Column {
     const char* name;
@@ -560,6 +621,10 @@ bool ParseLivestock(const ITable& table, std::vector<LivestockDef>& livestock, s
     const std::string_view group =
         group_col == kNoTableColumn ? std::string_view{} : table.CellText(row, group_col);
     kind.household_group = group == "stock" ? 1U : (group == "bird" ? 2U : 0U);
+    if (!ParseKindCold(table, row, kind, error)) {
+      error = "livestock: " + error;
+      return false;
+    }
     // A band that is empty or inverted would make the age hazard nonsense.
     if (kind.life_game_years_max < kind.life_game_years_min) {
       kind.life_game_years_max = kind.life_game_years_min;
@@ -745,6 +810,7 @@ bool ParseUnitLevels(const ITable& levels,
   const std::uint32_t level_col = levels.FindColumn("level");
   const std::uint32_t tonnes_col = levels.FindColumn("storage_capacity_t");
   const std::uint32_t heads_col = levels.FindColumn("livestock_capacity_head");
+  const std::uint32_t warm_col = levels.FindColumn("warm_place");
   if (unit_col == kNoTableColumn || level_col == kNoTableColumn) {
     error = "unit_levels: no 'unit' or 'level' column — capacities have nowhere to come from";
     return false;
@@ -757,9 +823,11 @@ bool ParseUnitLevels(const ITable& levels,
     float level = 0.0F;
     float tonnes = 0.0F;
     float heads = 0.0F;
+    float warm = 0.0F;
     if (!CellOrDefault(levels, row, level_col, Range{.low = 0, .high = 255}, 0, level, error) ||
         !CellOrDefault(levels, row, tonnes_col, Range{.low = 0, .high = 1e6F}, 0, tonnes, error) ||
-        !CellOrDefault(levels, row, heads_col, Range{.low = 0, .high = 1e6F}, 0, heads, error)) {
+        !CellOrDefault(levels, row, heads_col, Range{.low = 0, .high = 1e6F}, 0, heads, error) ||
+        !CellOrDefault(levels, row, warm_col, Range{.low = 0, .high = 1}, 0, warm, error)) {
       error = "unit_levels: " + error;
       return false;
     }
@@ -771,9 +839,11 @@ bool ParseUnitLevels(const ITable& levels,
     if (type.level_storage_capacity_kg.size() <= index) {
       type.level_storage_capacity_kg.resize(index + 1, 0.0F);
       type.level_livestock_capacity_head.resize(index + 1, 0.0F);
+      type.level_warm_place.resize(index + 1, 0U);
     }
     type.level_storage_capacity_kg[index] = tonnes * 1000.0F;
     type.level_livestock_capacity_head[index] = heads;
+    type.level_warm_place[index] = warm > 0.0F ? 1U : 0U;
   }
   return CheckCapacityLadders(unit_types, types, error);
 }
@@ -972,7 +1042,7 @@ bool ParseMeadowKinds(const ITable& table, FarmingConfig& farming, std::string& 
 /// AT ALL: until 2026-09-16 this module took every number off its own
 /// hand-written tables, and the two halves of billeting are what brought it
 /// here. The next world constant lands in the same place.
-constexpr std::array<std::string_view, 21> kProductionWorldParamKeys = {
+constexpr std::array<std::string_view, 26> kProductionWorldParamKeys = {
     "billet_heads_per_yard",
     "billet_yield_factor",
     "school_year_start_month",
@@ -993,7 +1063,12 @@ constexpr std::array<std::string_view, 21> kProductionWorldParamKeys = {
     "weather_year_snow_share",
     "goods_loan_markup",
     "road_access_m",
-    "district_center_km"};
+    "district_center_km",
+    "livestock_cold_step_night",
+    "livestock_cold_step_still_frost",
+    "livestock_cold_step_warm_night",
+    "livestock_freezing_counter",
+    "livestock_freezing_loss_share_day"};
 
 /// THE SCHOOL YEAR IS READ HERE AS WELL AS BY THE SCHOOL, and that is a
 /// second READER, not a second home: the months live in world_params.csv and
@@ -1098,7 +1173,26 @@ bool ParseProductionWorldParams(const ITable& world,
       // boss-core-epoch1-resume [33]: 25, assigned — the design had none).
       ScalarKnob{.key = kProductionWorldParamKeys[20],
                  .value = &district_center_km,
-                 .range = Range{.low = 1.0F, .high = 500.0F}}};
+                 .range = Range{.low = 1.0F, .high = 500.0F}},
+      // THE COLD LADDER (Livestock design, «Числа лестницы — Эпоха I»; boss's
+      // 6f187c67, 8e54383d; 0.37.62): the counter's three steps, the count
+      // «замерзает» starts at, and the share of the adults it takes a day.
+      // The warm night's step is NEGATIVE — it is the counter going down.
+      ScalarKnob{.key = kProductionWorldParamKeys[21],
+                 .value = &farming.cold_step_night,
+                 .range = Range{.low = 0.0F, .high = 10.0F}},
+      ScalarKnob{.key = kProductionWorldParamKeys[22],
+                 .value = &farming.cold_step_still_frost,
+                 .range = Range{.low = 0.0F, .high = 10.0F}},
+      ScalarKnob{.key = kProductionWorldParamKeys[23],
+                 .value = &farming.cold_step_warm_night,
+                 .range = Range{.low = -10.0F, .high = 0.0F}},
+      ScalarKnob{.key = kProductionWorldParamKeys[24],
+                 .value = &farming.freezing_counter,
+                 .range = Range{.low = 1.0F, .high = 255.0F}},
+      ScalarKnob{.key = kProductionWorldParamKeys[25],
+                 .value = &farming.freezing_loss_share_day,
+                 .range = Range{.low = 0.0F, .high = 1.0F}}};
   if (!ReadKnobs(world, "world_params", knobs, error)) {
     return false;
   }
@@ -1121,6 +1215,26 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
                                     config.road_access_m,
                                     config.district_center_km,
                                     error)) {
+      return false;
+    }
+  }
+  if (const ITable* const weather = tables.FindTable("weather_params")) {
+    if (!OptionalValue(*weather,
+                       "still_frost_c",
+                       Range{.low = -60.0F, .high = 0.0F},
+                       config.farming.still_frost_c,
+                       error)) {
+      error = "weather_params: " + error;
+      return false;
+    }
+  }
+  if (const ITable* const construction = tables.FindTable("construction")) {
+    if (!OptionalValue(*construction,
+                       "insulation_livestock_straw_t",
+                       Range{.low = 0.0F, .high = 1e3F},
+                       config.farming.insulation_livestock_straw_t,
+                       error)) {
+      error = "construction: " + error;
       return false;
     }
   }

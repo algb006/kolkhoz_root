@@ -237,6 +237,7 @@ timber_planting_max_ha,5,core
 player_entry_day,12,both
 player_entry_hour,8,both
 weather_year_snow_share,0.5,core
+alarm_red_within_days,8,both
 goods_loan_markup,0.2,core
 life_speedup,4,core
 months_per_year,12,core

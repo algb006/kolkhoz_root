@@ -156,9 +156,19 @@ float TractionFactor(const ProductionConfig& config, float traction_ration);
 /// a part-turned autumn furrow owes over the winter, idle, is plough work too
 /// and rescaled with it (option «г», 0.37.18).
 /// @param traction_ration_was The ration before today's herd day wrote it.
+/// @param cold_draught_was The cold's draught factor before today's herd day
+///        counted the night (herd_cold.h, ColdDraughtFactor): a herd that
+///        starts or stops freezing moves the pull as the ration does, and
+///        prices the same way (0.37.62).
 void RescaleHorseWorkForRation(const ProductionConfig& config,
                                float traction_ration_was,
+                               float cold_draught_was,
                                WorldState& current);
+
+/// @brief The pull the horse work is priced at: the ration's (TractionFactor)
+/// times the cold's (ColdDraughtFactor, «тяга × 0,85 назавтра»; 0.37.62). One
+/// home, for the opening and for the rescale alike.
+float HorsePullFactor(const ProductionConfig& config, const WorldState& world);
 
 /// @brief The fertility the yield reads: the row's, at most 100. The row may
 /// stand above 100 while a paid manure dose is on it (FieldRow::manure_booked):

@@ -28,6 +28,7 @@
 #include "core_catalog/processing_catalog.h"
 #include "core_catalog/timber_catalog.h"
 #include "core_common/calendar.h"
+#include "core_common/climate_nights.h"
 #include "core_common/ids.h"
 #include "core_common/quantities.h"
 #include "core_common/rain_stops_work.h"
@@ -203,6 +204,27 @@ struct LivestockDef {
   float pelt_pieces_per_head = 0.0F;
 
   float down_kg_per_head = 0.0F;
+
+  /// THE COLD LADDER BY KIND (Livestock design, «Числа лестницы — Эпоха I»;
+  /// livestock.csv, boss's 6f187c67). A night below the threshold of the
+  /// herd's place is a cold night. An EMPTY cell is «does not freeze there»
+  /// (the bird anywhere, the horse and the sheep in a warm place), read as
+  /// the flag beside the number and never as 0 °C.
+  float cold_night_cold_place_c = 0.0F;
+
+  std::uint8_t freezes_in_cold_place = 0;
+
+  float cold_night_warm_place_c = 0.0F;
+
+  std::uint8_t freezes_in_warm_place = 0;
+
+  /// «Мёрзнет»: the produce × this from the first cold night (the cow 0.75);
+  /// 1 for a kind the column leaves empty.
+  float freezing_produce_factor = 1.0F;
+
+  /// «Мёрзнет»: the draught × this the day after a cold night (the horse
+  /// 0.85); 1 for a kind the column leaves empty.
+  float freezing_draught_factor = 1.0F;
 };
 
 /// @brief One feeding-order row (tables/feed_links.csv, question 133):
@@ -266,8 +288,15 @@ struct UnitTypeDef {
 
   /// Livestock places per LEVEL, in heads, index = level - 1
   /// (unit_levels.csv livestock_capacity_head). The same ladder rule: a
-  /// cattle yard holds 24 head at level 1, 72 at level 2, 144 at level 3.
+  /// cattle yard holds 24 head at level 1 (the open pen), 48 at level 2 (the
+  /// warm barn), 72 and 144 at the brick barns.
   std::vector<float> level_livestock_capacity_head;
+
+  /// 0/1 per LEVEL, index = level - 1 (unit_levels.csv `warm_place`, boss's
+  /// 8e54383d): the rung is a WARM place for the cold ladder (Livestock
+  /// design, «Тёплое место — утеплённый юнит или капитальная ступень»).
+  /// Insulation with straw (UnitRow::insulated) makes any rung warm besides.
+  std::vector<std::uint8_t> level_warm_place;
 
   /// 0/1: the capacity is the outline the PLAYER draws, so there is no
   /// number to read (manure heap, silage trench, hay stack, the log, stone
@@ -305,6 +334,13 @@ struct UnitTypeDef {
     return level >= 1 && index < level_livestock_capacity_head.size()
                ? level_livestock_capacity_head[index]
                : 0.0F;
+  }
+
+  /// @brief Whether the rung a unit stands at is a warm place by the table.
+  ///        A site (level 0) and a rung the ladder does not name are cold.
+  bool WarmPlaceAt(std::uint8_t level) const {
+    const std::size_t index = static_cast<std::size_t>(level) - 1;
+    return level >= 1 && index < level_warm_place.size() && level_warm_place[index] != 0;
   }
 };
 
@@ -552,6 +588,36 @@ struct FarmingConfig {
   /// core's number.
   float calving_fed_share_floor = 0.75F;
 
+  // -- the cold ladder (Livestock design, «Числа лестницы — Эпоха I»; ------
+  // world_params.csv `livestock_cold_*`, boss's 6f187c67; 0.37.62) -------
+  /// The herd's cold nights' counter (HerdRow::cold_nights) moves by these:
+  /// a night below the kind's threshold for its place, one below
+  /// weather_params `still_frost_c`, and any other night (negative).
+  float cold_step_night = 1.0F;
+
+  float cold_step_still_frost = 2.0F;
+
+  float cold_step_warm_night = -2.0F;
+
+  /// weather_params.csv `still_frost_c` (−12): a night below it takes the
+  /// still frost's step. A second READER of the weather's number, not a
+  /// second home — core_production does not depend on core_time, and the
+  /// value lives in the one table both read.
+  float still_frost_c = -12.0F;
+
+  /// construction.csv `insulation_livestock_straw_t` (6): the straw of one
+  /// insulation of a livestock unit. kHerdFreezing names kInsulateStraw only
+  /// while the stores hold it (boss, 2026-10-01). A second READER, for the
+  /// still frost's reason: the construction module owns the insulation.
+  float insulation_livestock_straw_t = 6.0F;
+
+  /// «Замерзает» from this count.
+  float freezing_counter = 6.0F;
+
+  /// At «замерзает», the share of the herd's ADULTS the frost takes a day,
+  /// fractional through HerdRow::frost_progress.
+  float freezing_loss_share_day = 0.03F;
+
   /// HOW MANY HEAD OF KOLKHOZ STOCK ONE YARD CAN BILLET (world_params.csv
   /// `billet_heads_per_yard`, source `measurement`). Until 2026-09-16 there
   /// was no ceiling at all, and a village of twenty-one households could
@@ -751,6 +817,12 @@ struct ProductionConfig {
   /// terms: derived, not parsed, and all zeros by default — rain stopping
   /// nothing ahead of the clock, the alarm as it was.
   RainDayShares rain_day_shares{};
+
+  /// The climate's mean night per day of the year, handed in by the
+  /// assembly from ITimeSystem::ClimateNightCelsius on the season edge's
+  /// terms: derived, not parsed; all zeros by default — no frost month, no
+  /// cold night ahead for a kind that freezes below nought (0.37.62).
+  ClimateNights climate_nights{};
 
   std::vector<CropDef> crops;  ///< Indexed by CropId row.
 

@@ -57,6 +57,7 @@
 #include <vector>
 
 #include "core_common/calendar.h"
+#include "core_common/climate_nights.h"
 #include "core_common/office_views.h"
 #include "core_common/quantities.h"
 #include "core_common/rain_stops_work.h"
@@ -303,11 +304,19 @@ class IProductionSystem {
 ///        alarm discounts the days to the snow: rain stops the reaping
 ///        (core_common/rain_stops_work.h). Passed in for the season edge's
 ///        reason. The default, all zeros, is the alarm as it was.
+/// @param climate_nights The climate's mean night of each day of the year
+///        (ITimeSystem::ClimateNightCelsius), by which the cold ladder knows
+///        its frost months and its autumn forecast counts the days to the
+///        first cold night (core_common/climate_nights.h; 0.37.62). Passed in
+///        for the same reason. The default, all zeros, is a climate with no
+///        night below freezing: no frost month and no cold night ahead for any
+///        kind the table makes freeze below nought — a unit fixture's world.
 std::unique_ptr<IProductionSystem> CreateProductionSystem(
     const ITableSet& tables,
     StubTables stubs,
     std::uint32_t growing_season_last_day = kDaysPerYear - 1U,
-    const RainDayShares& rain_day_shares = RainDayShares{});
+    const RainDayShares& rain_day_shares = RainDayShares{},
+    const ClimateNights& climate_nights = ClimateNights{});
 
 /// @brief The world_params.csv keys this module reads, for the assembly's
 /// declared-readers check (core_world/world.cpp).

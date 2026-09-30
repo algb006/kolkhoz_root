@@ -27,6 +27,7 @@
 #include <array>
 #include <cstdint>
 #include <iostream>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -64,6 +65,9 @@ class FixturePolicy {
   explicit FixturePolicy(const core::ITableSet& tables) {
     granary_ = TypeByKey(tables, "granary");
     cattle_ = TypeByKey(tables, "cattle_yard");
+    pen_suggestion_ = SuggestedPoint(tables, "cattle_yard", has_pen_suggestion_);
+    ReadCattleRoof(tables);
+    ReadEntryDay(tables);
     granary_yard_ = ParentTypeOf(tables, "granary");
     food_store_ = TypeByKey(tables, "food_store");
     clamp_ = TypeByKey(tables, "clamp");
@@ -90,9 +94,22 @@ class FixturePolicy {
     if (marked_type_.value != core::kInvalidDefIdValue) {
       if (Rows(world, marked_type_) <= rows_before_mark_) {
         ++(marked_type_.value == cattle_.value ? cattle_refused_ : other_refused_);
+        // The elder's point refused once is refused for good: the next pen
+        // goes to the nearest free place, as every other roof does.
+        pen_suggestion_refused_ = pen_suggestion_refused_ || marked_on_suggestion_;
       }
       marked_type_ = core::UnitTypeId{};
+      marked_on_suggestion_ = false;
     }
+    // THE WARM BARN, THE DAY ITS RECIPE IS IN THE VILLAGE (Livestock design,
+    // the cattle yard's ladder: rung 1 is the open pen, a COLD place; rung 2
+    // the wattle-and-clay barn, a warm one — «к зиме утеплить»). The core
+    // refuses a step whose materials are short (MaterialsShortFor), so the
+    // chairman asks it first rather than spending an order a day on a no.
+    const std::uint32_t pen = PenToWarm(world);
+    warm_barn_in_hand_ =
+        pen != core::kNoRow && simulation.MaterialsShortFor(world.units.row_ids[pen]).empty() &&
+        GateOpen(start_gate_, world, cattle_, static_cast<std::uint8_t>(kWarmBarnLevel));
     core::OrderRow order;
     if (!NextOrder(world, order)) {
       return;
@@ -101,6 +118,7 @@ class FixturePolicy {
       marked_type_ = order.unit_type;
       rows_before_mark_ = Rows(world, order.unit_type);
     }
+    warms_ordered_ += order.kind == core::OrderKind::kUpgradeUnit ? 1U : 0U;
     simulation.StageOrders(std::span<const core::OrderRow>(&order, 1), {});
     cooldown_ = kCooldownDays;
   }
@@ -171,6 +189,11 @@ class FixturePolicy {
               << Built(world, granary_yard_) << " food yards (" << yards_ordered_
               << " yard orders); marks refused: cattle yards " << cattle_refused_
               << ", granaries and yards " << other_refused_ << "\n";
+    std::cout << "thirty_years: the pen on the elder's point: "
+              << (has_pen_suggestion_ ? "" : "NO suggest row for cattle_yard, ")
+              << pens_on_suggestion_ << " mark(s) there"
+              << (pen_suggestion_refused_ ? ", REFUSED" : "") << "; warm-barn upgrades ordered "
+              << warms_ordered_ << "\n";
     std::cout << "thirty_years: " << Built(world, clamp_) << " clamp(s) stand, the first up on day "
               << (clamp_days_.empty() ? std::string("never") : std::to_string(clamp_days_.front()))
               << "\n";
@@ -238,21 +261,172 @@ class FixturePolicy {
     return built;
   }
 
-  /// @brief Whether the kolkhoz animals have a roof over all of them. The
-  /// billeted count is the herd system's own answer to that question, so the
-  /// fixture asks it rather than guessing at capacities.
-  static bool RoofWasShort(const core::WorldState& world) {
+  /// @brief Whether some kolkhoz animals stand without a roof — on billet.
+  /// The billeted count is the herd system's own answer to that question, so
+  /// the fixture asks it rather than guessing at capacities.
+  ///
+  /// IT READ THE OTHER WAY ROUND FROM 23cf783 (2026-09-04) TO 0.37.62: «short»
+  /// was `heads > billeted_count`, true for every herd with ONE head under a
+  /// roof and false for a herd wholly on billet — the question upside down.
+  /// With the start's cattle yard standing it was true every day, so the
+  /// chairman raised cattle yards to kMaxOfEach whatever the herd needed (the
+  /// second yard by year 2 on 27 seeds of 27, herd_system.cpp BilletHerds);
+  /// with the start's yard gone it would have been false for the one herd
+  /// that had no roof at all. Found reading it for the pen of 0.37.62.
+  ///
+  /// AND NOT «ANY HEAD ON BILLET» EITHER, the first repair's form: the
+  /// horses stand billeted until their own yard — no cattle yard answers
+  /// them — and since 0.37.62 a frost month keeps cows on the billet's places
+  /// while the pen has room. Either would have raised cattle yards to
+  /// kMaxOfEach again. The question is the cattle yard's own: more heads
+  /// whose home it is than places in every cattle yard standing.
+  bool RoofWasShort(const core::WorldState& world) const {
+    float heads = 0.0F;
     for (const core::HerdRow& herd : world.herds.rows) {
-      if (herd.household_owned != 0) {
+      if (herd.household_owned == 0 && herd.kind.value < cattle_home_.size() &&
+          cattle_home_[herd.kind.value] != 0) {
+        heads += static_cast<float>(herd.newborn_count + herd.juvenile_count + herd.adult_count);
+      }
+    }
+    float places = 0.0F;
+    for (const core::UnitRow& unit : world.units.rows) {
+      const std::size_t index = static_cast<std::size_t>(unit.level) - 1U;
+      if (unit.type.value == cattle_.value && unit.level > 0 && index < cattle_places_.size()) {
+        places += cattle_places_[index];
+      }
+    }
+    return heads > places;
+  }
+
+  /// world_params `player_entry_day` (12, 1 April), the day the pen may be
+  /// marked from.
+  void ReadEntryDay(const core::ITableSet& tables) {
+    const core::ITable* params = tables.FindTable("world_params");
+    const std::uint32_t row =
+        params == nullptr ? core::kNoTableRow : params->FindRowByKey("player_entry_day");
+    const std::uint32_t column =
+        params == nullptr ? core::kNoTableColumn : params->FindColumn("value");
+    if (row == core::kNoTableRow || column == core::kNoTableColumn) {
+      return;
+    }
+    const std::optional<float> day = params->CellReal(row, column);
+    entry_day_ = day && *day >= 0.0F ? static_cast<core::SimDay>(*day) : entry_day_;
+  }
+
+  /// livestock.csv's kinds whose `home_unit` is the cattle yard, and the
+  /// cattle yard's places by level (unit_levels.csv livestock_capacity_head).
+  void ReadCattleRoof(const core::ITableSet& tables) {
+    const core::ITable* livestock = tables.FindTable("livestock");
+    const std::uint32_t home =
+        livestock == nullptr ? core::kNoTableColumn : livestock->FindColumn("home_unit");
+    for (std::uint32_t row = 0; home != core::kNoTableColumn && row < livestock->RowCount();
+         ++row) {
+      cattle_home_.push_back(livestock->CellText(row, home) == "cattle_yard" ? 1U : 0U);
+    }
+    const core::ITable* levels = tables.FindTable("unit_levels");
+    if (levels == nullptr) {
+      return;
+    }
+    const std::uint32_t unit_column = levels->FindColumn("unit");
+    const std::uint32_t level_column = levels->FindColumn("level");
+    const std::uint32_t heads_column = levels->FindColumn("livestock_capacity_head");
+    for (std::uint32_t row = 0; row < levels->RowCount(); ++row) {
+      if (unit_column == core::kNoTableColumn ||
+          levels->CellText(row, unit_column) != "cattle_yard") {
         continue;
       }
-      const std::uint32_t heads =
-          static_cast<std::uint32_t>(herd.adult_count) + herd.juvenile_count + herd.newborn_count;
-      if (heads > herd.billeted_count) {
+      const std::optional<float> level = levels->CellReal(row, level_column);
+      const std::optional<float> heads = levels->CellReal(row, heads_column);
+      if (!level || !(*level >= 1.0F)) {
+        continue;
+      }
+      const auto index = static_cast<std::size_t>(*level) - 1U;
+      if (cattle_places_.size() <= index) {
+        cattle_places_.resize(index + 1U, 0.0F);
+      }
+      cattle_places_[index] = heads ? *heads : 0.0F;
+    }
+  }
+
+  /// @brief Whether any kolkhoz herd has heads on billet today.
+  static bool KolkhozHeadsBilleted(const core::WorldState& world) {
+    for (const core::HerdRow& herd : world.herds.rows) {
+      if (herd.household_owned == 0 && herd.billeted_count > 0) {
         return true;
       }
     }
     return false;
+  }
+
+  /// @brief The cattle yard standing at the open pen's rung with nothing
+  /// going on it, while no cattle yard stands warm — its row, or kNoRow. A
+  /// pen insulated with straw is warm already and asks for nothing.
+  std::uint32_t PenToWarm(const core::WorldState& world) const {
+    if (cattle_.value == core::kInvalidDefIdValue) {
+      return core::kNoRow;
+    }
+    std::uint32_t pen = core::kNoRow;
+    for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+      const core::UnitRow& unit = world.units.rows[row];
+      if (unit.type.value != cattle_.value) {
+        continue;
+      }
+      if (unit.level >= kWarmBarnLevel || unit.insulated != 0) {
+        return core::kNoRow;
+      }
+      if (pen == core::kNoRow && unit.level == kWarmBarnLevel - 1 &&
+          unit.construction.phase == core::ConstructionPhase::kNone) {
+        pen = row;
+      }
+    }
+    return pen;
+  }
+
+  /// @brief Marks the first cattle yard: on the elder's point while it has
+  /// not been refused, else at the nearest free place (Mark).
+  bool MarkPen(const core::WorldState& world, core::OrderRow& order) {
+    if (!has_pen_suggestion_ || pen_suggestion_refused_) {
+      return Mark(world, cattle_, order);
+    }
+    order.kind = core::OrderKind::kBuildUnit;
+    order.unit_type = cattle_;
+    order.position = pen_suggestion_;
+    marked_on_suggestion_ = true;
+    ++pens_on_suggestion_;
+    ++ordered_;
+    return true;
+  }
+
+  /// @brief suggestions.csv's point for `unit_type`, the first row that names
+  /// it (map-db kind suggestion: metres from the map's south-west corner, the
+  /// frame of start_layout.csv and of the units' positions).
+  static core::Vec2 SuggestedPoint(const core::ITableSet& tables,
+                                   std::string_view unit_type,
+                                   bool& found) {
+    found = false;
+    const core::ITable* table = tables.FindTable("suggestions");
+    if (table == nullptr) {
+      return core::Vec2{};
+    }
+    const std::uint32_t type_column = table->FindColumn("unit_type");
+    const std::uint32_t x_column = table->FindColumn("x_m");
+    const std::uint32_t y_column = table->FindColumn("y_m");
+    if (type_column == core::kNoTableColumn || x_column == core::kNoTableColumn ||
+        y_column == core::kNoTableColumn) {
+      return core::Vec2{};
+    }
+    for (std::uint32_t row = 0; row < table->RowCount(); ++row) {
+      if (table->CellText(row, type_column) != unit_type) {
+        continue;
+      }
+      const std::optional<float> x = table->CellReal(row, x_column);
+      const std::optional<float> y = table->CellReal(row, y_column);
+      if (x && y) {
+        found = true;
+        return core::Vec2{.x = *x, .y = *y};
+      }
+    }
+    return core::Vec2{};
   }
 
   /// @brief Whether the village is short of somewhere to put its harvest.
@@ -333,9 +507,37 @@ class FixturePolicy {
       order.unit = world.units.row_ids[row];
       return true;
     }
+    // THE PEN IN THE FIRST DAYS, ON THE ELDER'S POINT (the human's word of
+    // 2026-09-30 through boss-core-start-no-yards: the start has no cattle
+    // yard; «a level-1 cattle yard is a cheap open pen», marked in the first
+    // days on suggest_cattle_yard). Until 0.37.62 the first cattle yard waited
+    // behind the clamp and the food stores and went to the nearest free place:
+    // the start had one, so nobody had asked when the first one comes.
+    //
+    // THE FIRST DAYS ARE THE PLAYER'S, from the entry morning (start
+    // conditions §9: the campaign opens on 1 January, the chairman arrives on
+    // `player_entry_day`). A pen marked in January would stand the herd in the
+    // cold through the winter no chairman was there for — the frost's toll of
+    // a canon, not of a game.
+    if (cattle_.value != core::kInvalidDefIdValue && Rows(world, cattle_) == 0 &&
+        world.calendar.day >= entry_day_ && KolkhozHeadsBilleted(world)) {
+      last_ordered_cattle_ = true;
+      return MarkPen(world, order);
+    }
+    if (warm_barn_in_hand_) {
+      const std::uint32_t pen = PenToWarm(world);
+      if (pen != core::kNoRow) {
+        order.kind = core::OrderKind::kUpgradeUnit;
+        order.unit = world.units.row_ids[pen];
+        return true;
+      }
+    }
     const bool wants_granary =
         Wants(world, granary_, Built(world, granary_) == 0 || RoomWasShort(world));
+    // From the entry morning, as the pen above: before it no cattle yard is
+    // the chairman's, the first one's place included.
     const bool wants_cattle =
+        world.calendar.day >= entry_day_ &&
         Wants(world, cattle_, Built(world, cattle_) == 0 || RoofWasShort(world));
     // A ROOF FOR THIS YEAR'S POTATOES AND VEGETABLES (boss, parcels 401 and
     // 408). Since the stores take only their homes, these two go into the
@@ -647,6 +849,33 @@ class FixturePolicy {
   std::uint32_t ordered_ = 0;
 
   bool last_ordered_cattle_ = false;
+
+  /// The cattle yard's rung that is warm (Livestock design: rung 2, the
+  /// wattle-and-clay barn; rung 1 the open pen).
+  static constexpr std::uint8_t kWarmBarnLevel = 2;
+
+  /// suggestions.csv's point for the cattle yard, and whether there is one.
+  core::Vec2 pen_suggestion_{};
+
+  bool has_pen_suggestion_ = false;
+
+  bool pen_suggestion_refused_ = false;
+
+  bool marked_on_suggestion_ = false;
+
+  bool warm_barn_in_hand_ = false;
+
+  std::uint32_t pens_on_suggestion_ = 0;
+
+  core::SimDay entry_day_ = 12;
+
+  /// By LivestockKindId: 1 when the kind's home is the cattle yard.
+  std::vector<std::uint8_t> cattle_home_;
+
+  /// The cattle yard's places by level, index level - 1.
+  std::vector<float> cattle_places_;
+
+  std::uint32_t warms_ordered_ = 0;
 
   /// The days the food stores stood up, in order, and the day the horses
   /// were first stabled: when the harvest's room came against when the

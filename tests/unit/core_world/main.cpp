@@ -3525,9 +3525,11 @@ int main() {
     // of delivery 7b read them the same day (core_world/road_tools.h). The
     // list stays empty for the next table in that position.
     // suggestions.csv came with boss's export of 01.10 (the start without two
-    // yards; boss-core-start-no-yards [9]) a delivery ahead of its reader, the
-    // canon's bot (fixture_policy.h) that marks the cattle yard's pen on
-    // suggest_cattle_yard. Out of this list with that delivery.
+    // yards; boss-core-start-no-yards [9]). Since 0.37.62 the canon's bot
+    // reads it (fixture_policy.h marks the cattle yard's pen on
+    // suggest_cattle_yard) — a run's reader, not the core's. The core's is the
+    // start quest's facts, «стоит ли юнит на подсказке» (queue item 6); out of
+    // this list with that door.
     const std::array<std::string_view, 1> not_read_yet = {"suggestions"};
     const fs::path doctored = fs::temp_directory_path() / "unit_core_world_missing_table";
     for (const fs::directory_entry& file : fs::directory_iterator(fs::path(KOLKHOZ_TABLES_DIR))) {

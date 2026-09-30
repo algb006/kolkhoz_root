@@ -152,7 +152,9 @@ struct HerdRow {
   float adult_younger_to_game_years = 0.0F;
   std::uint16_t adult_older_count = 0;
 
-  /// Adult heads with no room under the roof, BILLETED at private yards
+  /// Heads of every rung with no room under the roof (herd_system.cpp,
+  /// BilletHerds counts the herd whole; «adult» stood here until 0.37.62 and
+  /// was never so), BILLETED at private yards
   /// (livestock design §6, boss answer 2026-08-30). They are not slaughtered
   /// and they stay kolkhoz property — the milk is the farm's, not the
   /// family's. One number, not an allocation per household: who took the

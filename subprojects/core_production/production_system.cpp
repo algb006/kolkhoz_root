@@ -54,6 +54,7 @@
 #include "field_removal.h"
 #include "field_work.h"
 #include "goods_loan.h"
+#include "herd_cold.h"
 #include "herd_system.h"
 #include "milk_cart.h"
 #include "night_pasture.h"
@@ -376,9 +377,12 @@ class ProductionSystem final : public IProductionSystem {
     // RescaleHorseWorkForRation): a ploughing opened this morning was priced
     // on whatever ration the team last had, and the herd day is what writes
     // today's.
+    // And on the cold the herd day counts (herd_cold.h, «тяга × 0,85
+    // назавтра»): the pull before the night, the pull after it.
     const float traction_ration_was = current.traction_ration;
+    const float cold_draught_was = ColdDraughtFactor(config_, current);
     RunHerdDay(config_, current);
-    RescaleHorseWorkForRation(config_, traction_ration_was, current);
+    RescaleHorseWorkForRation(config_, traction_ration_was, cold_draught_was, current);
     ShipMilkShare(config_, current);
     // After the herd day: its slaughter and cull are in the stores, and the
     // smokehouse asks for them this morning (processing_shops.h).
@@ -895,7 +899,8 @@ class ProductionSystem final : public IProductionSystem {
 std::unique_ptr<IProductionSystem> CreateProductionSystem(const ITableSet& tables,
                                                           StubTables stubs,
                                                           std::uint32_t growing_season_last_day,
-                                                          const RainDayShares& rain_day_shares) {
+                                                          const RainDayShares& rain_day_shares,
+                                                          const ClimateNights& climate_nights) {
   // THE DEFAULTS ARE LEGITIMATE AND THEIR SILENCE WAS NOT
   // (core_tables/stub_tables.h). A caller that has not said it wants
   // this module's documented defaults is refused by name, so that a
@@ -935,7 +940,11 @@ std::unique_ptr<IProductionSystem> CreateProductionSystem(const ITableSet& table
                       // Save 82: the planting reads the species and the plot
                       // rule's map (timber_planting.h).
                       "tree_species",
-                      "map"},
+                      "map",
+                      // The cold ladder's still frost and the livestock
+                      // insulation's straw, second readers (0.37.62).
+                      "weather_params",
+                      "construction"},
                      nullptr)) {
     return nullptr;
   }
@@ -948,6 +957,7 @@ std::unique_ptr<IProductionSystem> CreateProductionSystem(const ITableSet& table
   }
   config.growing_season_last_day = growing_season_last_day;
   config.rain_day_shares = rain_day_shares;
+  config.climate_nights = climate_nights;
   return std::make_unique<ProductionSystem>(config);
 }
 

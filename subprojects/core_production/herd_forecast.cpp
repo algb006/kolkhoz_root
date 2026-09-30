@@ -54,16 +54,19 @@ std::uint16_t RoundHeads(float heads) {
   return rounded <= 0.0F ? 0U : static_cast<std::uint16_t>(rounded > 65535.0F ? 65535.0F : rounded);
 }
 
-/// THE BIRTHS' GATES, as RunBirths reads them (herd_life.cpp): a billeted
-/// herd, a hungry herd, a kind that keeps sires with none, a horse with no
-/// stable — any shut gate, no offspring. The daily rate a female inside the
-/// band as RunBirths draws it (its rate is females × this).
+/// THE BIRTHS' GATES, as RunBirths reads them (herd_life.cpp): a hungry
+/// herd, a kind that keeps sires with none, a horse with no stable — any
+/// shut gate, no offspring; and the billet as a SHARE, CalvingRoofShare, the
+/// same home RunBirths reads (0.37.62). The share is today's, held over the
+/// whole horizon: the forecast does not guess when the chairman will raise
+/// the barn. The daily rate a female inside the band as RunBirths draws it
+/// (its rate is females × this).
 float BirthsPerFemaleBandDay(const ProductionConfig& config,
                              const LivestockDef& kind,
                              LivestockKindId kind_id,
                              const HerdRow& herd,
                              bool stable_built) {
-  if (herd.billeted_count > 0 || herd.fed_share < config.farming.calving_fed_share_floor) {
+  if (herd.fed_share < config.farming.calving_fed_share_floor) {
     return 0.0F;
   }
   if (kind.sexed != 0 && kind.males_share > 0.0F && herd.adult_male_count == 0) {
@@ -77,7 +80,9 @@ float BirthsPerFemaleBandDay(const ProductionConfig& config,
   }
   const auto band_days = static_cast<float>(
       (config.farming.birth_to_month - config.farming.birth_from_month + 1U) * kDaysPerMonth);
-  return band_days > 0.0F ? kind.births_per_game_year * kind.litter_heads / band_days : 0.0F;
+  return band_days > 0.0F
+             ? CalvingRoofShare(herd) * kind.births_per_game_year * kind.litter_heads / band_days
+             : 0.0F;
 }
 
 /// The heads' day of growing up, as RunMaturation flows them: newborns into

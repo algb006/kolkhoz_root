@@ -22,9 +22,11 @@
 
 #include <cstdint>
 #include <iostream>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "core_catalog/definitions.h"
 #include "core_common/calendar.h"
@@ -50,12 +52,25 @@ class InsulationPolicy {
     }
     std::string error;
     core::LoadDefinitions(tables, core::StubTables::kAllowed, definitions_, error);
+    ReadWarmRungs(tables);
+    const core::ITable* construction = tables.FindTable("construction");
+    const std::uint32_t price_row =
+        construction == nullptr ? core::kNoTableRow
+                                : construction->FindRowByKey("insulation_livestock_straw_t");
+    const std::uint32_t value_column =
+        construction == nullptr ? core::kNoTableColumn : construction->FindColumn("value");
+    if (price_row != core::kNoTableRow && value_column != core::kNoTableColumn) {
+      const std::optional<float> tonnes = construction->CellReal(price_row, value_column);
+      herd_straw_ =
+          tonnes ? static_cast<core::Grams>(*tonnes * static_cast<float>(core::kGramsPerTonne))
+                 : herd_straw_;
+    }
   }
 
   /// @brief One day of the chairman's attention. Call once a day.
   void RunDay(core::ISimulation& simulation) {
     const core::WorldState& world = simulation.CompletedState();
-    if (straw_.value == core::kInvalidDefIdValue || world.chairman.horses_stabled == 0) {
+    if (straw_.value == core::kInvalidDefIdValue) {
       return;
     }
     const auto month = static_cast<std::uint32_t>(world.calendar.date.month);
@@ -63,7 +78,8 @@ class InsulationPolicy {
       return;
     }
     core::Grams straw = 0;
-    std::uint32_t target = core::kNoRow;
+    std::uint32_t house = core::kNoRow;
+    std::uint32_t byre = core::kNoRow;
     for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
       const core::UnitRow& unit = world.units.rows[row];
       if (unit.construction.phase == core::ConstructionPhase::kInsulating) {
@@ -72,15 +88,35 @@ class InsulationPolicy {
       if (unit.level > 0) {
         straw += core::UnreservedOf(unit, straw_);
       }
-      if (target == core::kNoRow && unit.level > 0 && unit.insulated == 0 &&
-          unit.construction.phase == core::ConstructionPhase::kNone &&
-          unit.household.value != core::kInvalidEntityIdValue && IsHousing(unit)) {
-        target = row;
+      const bool free = unit.level > 0 && unit.insulated == 0 &&
+                        unit.construction.phase == core::ConstructionPhase::kNone;
+      if (house == core::kNoRow && free && unit.household.value != core::kInvalidEntityIdValue &&
+          IsHousing(unit)) {
+        house = row;
+      }
+      if (byre == core::kNoRow && free && !WarmRung(unit) &&
+          HerdUnderItsRoof(
+              world, world.units.rows.size() > row ? world.units.row_ids[row] : core::UnitId{})) {
+        byre = row;
       }
     }
-    if (target == core::kNoRow || straw < kHouseStraw + kHerdReserve) {
+    // THE HERDS' ROOF FIRST (0.37.62; Livestock design, «Числа лестницы —
+    // Эпоха I»): a cold place freezes a herd, and a cold house freezes
+    // nobody to death — «человек от холода не умирает, скот умирает». Not
+    // behind the stable either: the cows' pen stands long before the horses'.
+    std::uint32_t target = core::kNoRow;
+    core::Grams price = 0;
+    if (byre != core::kNoRow) {
+      target = byre;
+      price = herd_straw_;
+    } else if (house != core::kNoRow && world.chairman.horses_stabled != 0) {
+      target = house;
+      price = kHouseStraw;
+    }
+    if (target == core::kNoRow || straw < price + kHerdReserve) {
       return;
     }
+    byres_ += target == byre ? 1U : 0U;
     core::OrderRow order;
     order.kind = core::OrderKind::kInsulateUnit;
     order.unit = world.units.row_ids[target];
@@ -94,10 +130,11 @@ class InsulationPolicy {
   /// @brief The fixture difference, in words, BEFORE the run measures.
   static void Declare(std::string_view run_name) {
     std::cout << run_name
-              << ": FIXTURE DIFFERS FROM THE START CANON — once the chairman's yard stands, the "
-                 "run's chairman insulates the lived-in houses with straw, one at a time, "
-                 "in October and November after the harvest, while 20 t of straw stay for the "
-                 "herds (boss, parcel 364)\n";
+              << ": FIXTURE DIFFERS FROM THE START CANON — the run's chairman insulates with "
+                 "straw, one at a time, in October and November after the harvest, while 20 t "
+                 "of straw stay for the herds (boss, parcel 364): first a livestock unit whose "
+                 "kolkhoz herd stands under a cold roof (0.37.62, the cold ladder), then, once "
+                 "the chairman's yard stands, the lived-in houses\n";
   }
 
   /// @brief What the fixture did, for the run to print at the end.
@@ -112,8 +149,8 @@ class InsulationPolicy {
       }
     }
     std::cout << run_name << ": insulation — " << ordered_ << " orders (first on day "
-              << first_order_day_ << "); " << warm << " of " << lived_in
-              << " lived-in houses warm at the end\n";
+              << first_order_day_ << "), " << byres_ << " of them livestock units; " << warm
+              << " of " << lived_in << " lived-in houses warm at the end\n";
   }
 
  private:
@@ -133,6 +170,64 @@ class InsulationPolicy {
     return unit.type.value < definitions_.units.is_housing.size() &&
            definitions_.units.is_housing[unit.type.value] != 0;
   }
+
+  /// unit_levels.csv `warm_place` by type and level (index level - 1).
+  void ReadWarmRungs(const core::ITableSet& tables) {
+    const core::ITable* levels = tables.FindTable("unit_levels");
+    const core::ITable* types = tables.FindTable("unit_types");
+    if (levels == nullptr || types == nullptr) {
+      return;
+    }
+    const std::uint32_t unit_column = levels->FindColumn("unit");
+    const std::uint32_t level_column = levels->FindColumn("level");
+    const std::uint32_t warm_column = levels->FindColumn("warm_place");
+    if (unit_column == core::kNoTableColumn || level_column == core::kNoTableColumn ||
+        warm_column == core::kNoTableColumn) {
+      return;
+    }
+    warm_.resize(types->RowCount());
+    for (std::uint32_t row = 0; row < levels->RowCount(); ++row) {
+      const std::uint32_t type = types->FindRowByKey(levels->CellText(row, unit_column));
+      const std::optional<float> level = levels->CellReal(row, level_column);
+      const std::optional<float> warm = levels->CellReal(row, warm_column);
+      if (type == core::kNoTableRow || !level || !(*level >= 1.0F)) {
+        continue;
+      }
+      const auto index = static_cast<std::size_t>(*level) - 1U;
+      if (warm_[type].size() <= index) {
+        warm_[type].resize(index + 1U, 0U);
+      }
+      warm_[type][index] = warm && *warm > 0.0F ? 1U : 0U;
+    }
+  }
+
+  /// Whether the unit's rung is warm by the table (the straw is a separate
+  /// question, asked before this).
+  bool WarmRung(const core::UnitRow& unit) const {
+    const std::size_t index = static_cast<std::size_t>(unit.level) - 1U;
+    return unit.level > 0 && unit.type.value < warm_.size() &&
+           index < warm_[unit.type.value].size() && warm_[unit.type.value][index] != 0;
+  }
+
+  /// Whether a kolkhoz herd stands at this unit with heads under its roof.
+  static bool HerdUnderItsRoof(const core::WorldState& world, core::UnitId unit) {
+    for (const core::HerdRow& herd : world.herds.rows) {
+      const std::uint32_t heads =
+          static_cast<std::uint32_t>(herd.newborn_count) + herd.juvenile_count + herd.adult_count;
+      if (herd.household_owned == 0 && herd.unit.value == unit.value &&
+          heads > herd.billeted_count) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  std::vector<std::vector<std::uint8_t>> warm_;
+
+  /// One livestock unit's straw (construction.csv insulation_livestock_straw_t).
+  core::Grams herd_straw_ = 6 * core::kGramsPerTonne;
+
+  std::uint32_t byres_ = 0;
 
   core::ResourceId straw_;
 

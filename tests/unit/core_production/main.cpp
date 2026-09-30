@@ -47,6 +47,7 @@
 #include "field_haul.h"
 #include "field_work.h"
 #include "goods_loan.h"
+#include "herd_cold.h"
 #include "herd_forecast.h"
 #include "herd_life.h"
 #include "herd_system.h"
@@ -720,7 +721,24 @@ int CheckBilletingAndProduce() {
     // Ten females at 10 l, with half the herd billeted at 0.6 of yield:
     // 100 x (1 - 0.5 x 0.4) = 80.
     failures += Expect(StoreOf(world, 1) == 80 * kKilo, "billeting is paid for in leakage");
-    failures += Expect(herd.birth_progress == 0.0F, "and a full roof stops the offspring");
+    // HALF ON BILLET, HALF THE CALVES (Livestock design, «Телята — по доле
+    // стада под крышей»; 0.37.62): the ten females of this herd, half of it
+    // billeted, calve as the five females of the ten-head herd that fits —
+    // the same progress to the last bit. Until 0.37.62 a full roof stopped
+    // the offspring whole: this line read birth_progress == 0.
+    core::WorldState fits = MakeHerdWorld(1000.0F);
+    AddHerd(fits, 0, 10, 5, true);
+    core::RunHerdDay(config, fits);
+    const float fits_progress = fits.herds.rows[0].birth_progress;
+    failures += Expect(fits_progress > 0.0F && herd.birth_progress == fits_progress,
+                       "half the herd on billet calves as the half under the roof");
+    // AND THE WHOLE HERD ON BILLET CALVES NOT AT ALL: no unit for it.
+    core::WorldState yards = MakeHerdWorld(1000.0F);
+    AddHerd(yards, 0, 20, 10, false);
+    core::RunHerdDay(config, yards);
+    failures += Expect(
+        yards.herds.rows[0].billeted_count == 20 && yards.herds.rows[0].birth_progress == 0.0F,
+        "a herd wholly on billet has no calves");
   }
 
   // A SECOND BARN OF THE TYPE SHELTERS THE REST (0.37.30; boss-core-herd-
@@ -3066,6 +3084,204 @@ int CheckFeedLightLeavesThePloughsOats() {
                          with_seed.days_of_stock == static_cast<std::int32_t>(door[1] / kKilo),
                      "feed light: next spring's oat seed is not winter fodder — the light's days "
                      "are the feeding's allowance, kilo for day");
+  return failures;
+}
+
+/// THE COLD LADDER AT WORK (0.37.62; Livestock design «Числа лестницы —
+/// Эпоха I»): ten cows in an open pen, no calves in the way. A night of −9
+/// counts one and a night of −15 (below still frost) two; the first cold
+/// night takes a quarter of the milk; from six the frost takes 3 % of the
+/// adults a day, fractional — the first cow on the ninth day. Straw on the
+/// walls resets the count the morning after («переезд в тепло»), and a warm
+/// night then takes two off, not all. In a frost month the billet keeps its
+/// places before the pen; the red names straw only while it is held; the
+/// autumn's yellow counts the days to the first cold night and names the
+/// warm barn when the next rung is warm. The draught falls by the share of
+/// the team freezing.
+int CheckTheColdLadder() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  core::LivestockDef& cow = config.livestock[0];
+  cow.births_per_game_year = 0.0F;
+  cow.freezes_in_cold_place = 1;
+  cow.cold_night_cold_place_c = -5.0F;
+  cow.freezes_in_warm_place = 1;
+  cow.cold_night_warm_place_c = -15.0F;
+  cow.freezing_produce_factor = 0.75F;
+  const auto nights = [](core::WorldState& world, float night_celsius) {
+    world.weather.temperature_swing_celsius = 6.0F;
+    world.weather.air_temperature_celsius = night_celsius + 6.0F;
+  };
+  // The count and the milk.
+  core::WorldState world = MakeHerdWorld(100000.0F);
+  AddHerd(world, 0, 10, 5, true);
+  nights(world, -9.0F);
+  core::RunHerdDay(config, world);
+  const core::HerdRow& herd = world.herds.rows[0];
+  failures += Expect(herd.cold_nights == 1 && herd.cold_place_yesterday == 1 &&
+                         core::HerdFreezing(herd) && StoreOf(world, 1) == 37500,
+                     "cold ladder: a night of -9 in the pen counts one, and the milk is 0.75");
+  nights(world, -15.0F);
+  core::RunHerdDay(config, world);
+  failures += Expect(herd.cold_nights == 3, "cold ladder: a night below still frost counts two");
+  nights(world, 0.0F);
+  core::RunHerdDay(config, world);
+  failures += Expect(herd.cold_nights == 1, "cold ladder: a warm night takes two off");
+  // To six, and the frost's toll: 0.3 a day, the first cow on the fourth day
+  // at six and over.
+  nights(world, -9.0F);
+  RunHerdDays(config, world, 5);
+  failures += Expect(
+      herd.cold_nights == 6 && herd.adult_count == 10 && core::HerdFreezingToDeath(config, herd),
+      "cold ladder: at six the herd «замерзает», nobody dead yet");
+  RunHerdDays(config, world, 3);
+  failures += Expect(herd.adult_count == 9 && world.ledger.current.herd_frozen.size() > 0 &&
+                         world.ledger.current.herd_frozen[0] == 1,
+                     "cold ladder: 3 % of ten a day takes the first cow on the fourth day, booked");
+  // The move into the warm: straw on the walls; the next morning's count is
+  // nought, not 7 - 2.
+  world.units.rows[0].insulated = 1;
+  core::RunHerdDay(config, world);
+  failures += Expect(herd.cold_nights == 0 && herd.cold_place_yesterday == 0,
+                     "cold ladder: the move into a warm place resets the count");
+  nights(world, -21.0F);
+  RunHerdDays(config, world, 2);
+  nights(world, -9.0F);
+  core::RunHerdDay(config, world);
+  failures += Expect(herd.cold_nights == 2,
+                     "cold ladder: in the warm, -21 counts two a night and -9 takes two off");
+  // The billet first in a frost month: three families, six places.
+  {
+    core::ProductionConfig frost = config;
+    frost.climate_nights.fill(-10.0F);
+    core::WorldState yards = MakeHerdWorld(100000.0F);
+    for (int family = 0; family < 3; ++family) {
+      AppendRow(yards.families, core::FamilyRow{});
+    }
+    AddHerd(yards, 0, 10, 5, true);
+    nights(yards, -9.0F);
+    core::RunHerdDay(frost, yards);
+    failures += Expect(
+        yards.herds.rows[0].billeted_count == 6 && core::HeadsUnderRoof(yards.herds.rows[0]) == 4,
+        "cold ladder: in a frost month six billet places keep six cows off the pen");
+    yards.units.rows[0].insulated = 1;
+    core::RunHerdDay(frost, yards);
+    failures += Expect(yards.herds.rows[0].billeted_count == 0,
+                       "cold ladder: a warm roof takes them all back");
+  }
+  // The red's move and the autumn's yellow.
+  {
+    core::WorldState cold = MakeHerdWorld(100000.0F);
+    AddHerd(cold, 0, 10, 5, true);
+    nights(cold, -9.0F);
+    core::RunHerdDay(config, cold);
+    std::vector<core::Alarm> alarms;
+    core::CollectHerdColdAlarms(config, cold, alarms);
+    const bool bare = alarms.size() == 1 && alarms[0].kind == core::AlarmKind::kHerdFreezing &&
+                      alarms[0].amount == 10 && alarms[0].advice == core::AlarmAdvice::kNone;
+    core::ProductionConfig straw = config;
+    straw.straw_resource = core::ResourceId{2};
+    cold.units.rows[0].stock[2] = 6000 * core::kGramsPerKilogram;
+    alarms.clear();
+    core::CollectHerdColdAlarms(straw, cold, alarms);
+    failures +=
+        Expect(bare && alarms.size() == 1 && alarms[0].advice == core::AlarmAdvice::kInsulateStraw,
+               "cold ladder: the red names straw only while six tonnes are held");
+    core::ProductionConfig autumn = config;
+    autumn.farming.pasture_to_month = 8;
+    for (std::uint32_t day = 40; day < core::kDaysPerYear; ++day) {
+      autumn.climate_nights[day] = -10.0F;
+    }
+    core::WorldState october = MakeHerdWorld(100000.0F);
+    october.calendar.tick = 36U * core::kTicksPerDay;
+    core::RefreshCalendarCaches(october.calendar);
+    AddHerd(october, 0, 10, 5, true);
+    alarms.clear();
+    core::CollectHerdColdAlarms(autumn, october, alarms);
+    const bool straw_ahead = alarms.size() == 1 &&
+                             alarms[0].kind == core::AlarmKind::kHerdColdAhead &&
+                             alarms[0].amount == 10 && alarms[0].days_ahead == 4 &&
+                             alarms[0].advice == core::AlarmAdvice::kInsulateStraw;
+    autumn.unit_types[0].level_warm_place = {0, 1, 1, 1};
+    alarms.clear();
+    core::CollectHerdColdAlarms(autumn, october, alarms);
+    failures += Expect(
+        straw_ahead && alarms.size() == 1 && alarms[0].advice == core::AlarmAdvice::kWarmYard,
+        "cold ladder: the autumn's yellow, four days ahead, the barn when rung "
+        "2 is warm");
+  }
+  // The draught.
+  {
+    core::ProductionConfig team = config;
+    team.horse_kind = core::LivestockKindId{0};
+    team.livestock[0].freezing_draught_factor = 0.85F;
+    core::WorldState horses = MakeHerdWorld(100000.0F);
+    AddHerd(horses, 0, 10, 5, true);
+    horses.herds.rows[0].cold_nights = 1;
+    const float all = core::ColdDraughtFactor(team, horses);
+    horses.herds.rows[0].billeted_count = 5;
+    const float half = core::ColdDraughtFactor(team, horses);
+    horses.herds.rows[0].cold_nights = 0;
+    failures += Expect(all == 0.85F && std::fabs(half - 0.925F) < 1e-6F &&
+                           core::ColdDraughtFactor(team, horses) == 1.0F,
+                       "cold ladder: the draught 0.85 all freezing, 0.925 half, 1 none");
+  }
+  return failures;
+}
+
+/// THE COLD LADDER'S DATA AS THE SHIPPED TABLES CARRY IT (0.37.62; boss's
+/// export 6f187c67, 8e54383d): the cow freezes below −5 in a cold place and
+/// −15 in a warm one at 0.75 of her milk; the horse below −8 in a cold place
+/// and never in a warm one; the hen nowhere — an EMPTY cell read as «does not
+/// freeze», never as 0 °C. The cattle yard's open pen is cold and its barn
+/// warm; the horse yard's second rung is cold (boss [17]). And the five
+/// world knobs.
+int CheckTheColdLadderParses() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  core::ProductionConfig config;
+  if (Expect(tables != nullptr && core::ParseProductionConfig(*tables, config, error),
+             "cold ladder: the shipped tables parse") != 0) {
+    return 1;
+  }
+  const auto kind = [&](std::string_view key) -> const core::LivestockDef* {
+    const std::uint32_t row = tables->FindTable("livestock")->FindRowByKey(key);
+    return row < config.livestock.size() ? &config.livestock[row] : nullptr;
+  };
+  const auto type = [&](std::string_view key) -> const core::UnitTypeDef* {
+    const std::uint32_t row = tables->FindTable("unit_types")->FindRowByKey(key);
+    return row < config.unit_types.size() ? &config.unit_types[row] : nullptr;
+  };
+  const core::LivestockDef* cow = kind("cow");
+  const core::LivestockDef* horse = kind("horse");
+  const core::LivestockDef* hen = kind("chicken");
+  failures +=
+      Expect(cow != nullptr && cow->freezes_in_cold_place != 0 &&
+                 cow->cold_night_cold_place_c == -5.0F && cow->freezes_in_warm_place != 0 &&
+                 cow->cold_night_warm_place_c == -15.0F && cow->freezing_produce_factor == 0.75F,
+             "cold ladder: the cow, -5 cold, -15 warm, milk 0.75");
+  failures +=
+      Expect(horse != nullptr && horse->freezes_in_cold_place != 0 &&
+                 horse->cold_night_cold_place_c == -8.0F && horse->freezes_in_warm_place == 0 &&
+                 horse->freezing_draught_factor == 0.85F,
+             "cold ladder: the horse, -8 cold, never warm, draught 0.85");
+  failures += Expect(hen != nullptr && hen->freezes_in_cold_place == 0 &&
+                         hen->freezes_in_warm_place == 0 && hen->freezing_produce_factor == 1.0F,
+                     "cold ladder: the hen freezes nowhere, and an empty factor is 1");
+  const core::UnitTypeDef* cattle = type("cattle_yard");
+  const core::UnitTypeDef* horses = type("horse_yard");
+  failures += Expect(cattle != nullptr && !cattle->WarmPlaceAt(0) && !cattle->WarmPlaceAt(1) &&
+                         cattle->WarmPlaceAt(2) && horses != nullptr && !horses->WarmPlaceAt(2) &&
+                         horses->WarmPlaceAt(3),
+                     "cold ladder: the pen cold, the barn warm; the horse yard warm from rung 3");
+  const core::FarmingConfig& farming = config.farming;
+  failures +=
+      Expect(farming.cold_step_night == 1.0F && farming.cold_step_still_frost == 2.0F &&
+                 farming.cold_step_warm_night == -2.0F && farming.freezing_counter == 6.0F &&
+                 farming.freezing_loss_share_day == 0.03F && farming.still_frost_c == -12.0F,
+             "cold ladder: the counter's steps 1, 2, -2, from 6, 3 % a day, still "
+             "frost -12");
   return failures;
 }
 
@@ -8150,7 +8366,7 @@ int CheckTheFarmRulesZyab() {
     ration.fields.rows[1].autumn_furrowing = 0;
     ration.fields.rows[1].work_days_remaining = half;
     ration.traction_ration = 0.5F;
-    core::RescaleHorseWorkForRation(parsed, 1.0F, ration);
+    core::RescaleHorseWorkForRation(parsed, 1.0F, 1.0F, ration);
     const float scale = core::TractionFactor(parsed, 1.0F) / core::TractionFactor(parsed, 0.5F);
     failures += Expect(scale != 1.0F && ration.fields.rows[0].work_days_remaining == half * scale &&
                            ration.fields.rows[1].work_days_remaining == half,
@@ -12371,10 +12587,10 @@ int CheckTheRationRepricesTheHorseWork() {
   };
   failures += Expect(ManDaysNear(owed(0), 10.0F / 0.7F) && ManDaysNear(owed(1), 5.0F / 0.7F),
                      "ration: a ploughing opened on a hungry ration is priced at 1.43 times");
-  core::RescaleHorseWorkForRation(config, 0.0F, world);  // the ration did not move
+  core::RescaleHorseWorkForRation(config, 0.0F, 1.0F, world);  // the ration did not move
   failures += Expect(ManDaysNear(owed(0), 10.0F / 0.7F), "ration: no move, no re-pricing");
   world.traction_ration = 1.0F;  // today's herd day: the team is fed
-  core::RescaleHorseWorkForRation(config, 0.0F, world);
+  core::RescaleHorseWorkForRation(config, 0.0F, 1.0F, world);
   failures += Expect(ManDaysNear(owed(0), 10.0F) && ManDaysNear(owed(1), 5.0F),
                      "ration: fed today, the ploughing and harrowing owed are a fed team's");
   failures += Expect(ManDaysNear(owed(2), 2.5F) && ManDaysNear(owed(3), 20.0F),
@@ -12383,7 +12599,7 @@ int CheckTheRationRepricesTheHorseWork() {
   // again tomorrow, 4 / 0.7 owed.
   world.fields.rows[0].work_days_remaining = 4.0F;
   world.traction_ration = 0.0F;
-  core::RescaleHorseWorkForRation(config, 1.0F, world);
+  core::RescaleHorseWorkForRation(config, 1.0F, 1.0F, world);
   failures +=
       Expect(ManDaysNear(owed(0), 4.0F / 0.7F),
              "ration: hungry again, what is left is priced hungry — the done part stays done");
@@ -13533,6 +13749,8 @@ int main() {
   failures += CheckTheChairmanCanUnsealAFund();
   failures += CheckThePencilRingsInTheAfternoon();
   failures += CheckAHeapOnTheFieldRots();
+  failures += CheckTheColdLadderParses();
+  failures += CheckTheColdLadder();
 
   if (failures == 0) {
     std::cout << "unit_core_production: all checks passed\n";

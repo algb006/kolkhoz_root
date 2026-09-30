@@ -8,6 +8,7 @@
 
 #include "herd_life.h"
 
+#include <algorithm>
 #include <cstdint>
 
 #include "core_common/calendar.h"
@@ -22,17 +23,13 @@
 #include "stock_ops.h"
 
 namespace core {
-namespace {
 
-/// @brief Moves `count` whole heads out of a rung, never below zero.
 std::uint16_t TakeHeads(std::uint16_t& rung, std::uint16_t count) {
   const std::uint16_t taken = count < rung ? count : rung;
   rung = static_cast<std::uint16_t>(rung - taken);
   return taken;
 }
 
-/// @brief One fractional stream with a carry: adds `rate` heads a day to the
-/// accumulator and returns the whole heads that came due.
 std::uint16_t DrawFlow(float& accumulator, float rate) {
   accumulator += rate;
   if (!(accumulator >= 1.0F)) {
@@ -42,6 +39,8 @@ std::uint16_t DrawFlow(float& accumulator, float rate) {
   accumulator -= whole;
   return AsHeads(whole);
 }
+
+namespace {
 
 /// @brief The herd's yearly death hazard, averaged over the ages IN it.
 ///
@@ -163,6 +162,15 @@ std::uint16_t MalesAfterLoss(std::uint16_t males, std::uint16_t adults_before, s
 
 std::uint16_t TotalHeads(const HerdRow& herd) {
   return static_cast<std::uint16_t>(herd.newborn_count + herd.juvenile_count + herd.adult_count);
+}
+
+float CalvingRoofShare(const HerdRow& herd) {
+  const auto total = static_cast<float>(TotalHeads(herd));
+  if (!(total > 0.0F) || herd.billeted_count == 0) {
+    return 1.0F;
+  }
+  const float billeted = std::min(static_cast<float>(herd.billeted_count), total);
+  return 1.0F - (billeted / total);
 }
 
 void DeliverProduce(WorldState& world,
@@ -288,9 +296,10 @@ void RunMaturation(const ProductionConfig& config,
   }
 }
 
-/// Offspring. Four gates, and every one of them is canon: an adult male for
+/// Offspring. Three gates, and every one of them is canon: an adult male for
 /// a sexed kind, a roof (horses need a stable, which phase 1 does not have),
-/// ROOM under that roof, and the calving season.
+/// and the calving season; ROOM under the roof is a share, not a gate — the
+/// heads on billet do not calve and the rest do (CalvingRoofShare; 0.37.62).
 /// @param book The year's ledger. Passed rather than the whole world: this
 /// function has no business reaching anywhere else in the state, and the
 /// narrow parameter says so.
@@ -328,8 +337,6 @@ void RunBirths(const ProductionConfig& config,
     if (!(kind.household_cap_heads > 0.0F)) {
       return;
     }
-  } else if (herd.billeted_count > 0) {
-    return;  // no room: they breed under a roof and only when there is space
   } else if (herd.fed_share < config.farming.calving_fed_share_floor) {
     // A HUNGRY HERD DOES NOT CALVE (boss, boss-core-epoch1-2 seq 19, B): the
     // natural brake. The billet gate above was the only one, so a herd given
@@ -373,7 +380,15 @@ void RunBirths(const ProductionConfig& config,
   // total for the year is what the balance eats, and the season is canon.
   const auto band_days = static_cast<float>(
       (config.farming.birth_to_month - config.farming.birth_from_month + 1U) * kDaysPerMonth);
-  const float rate = females * kind.births_per_game_year * kind.litter_heads / band_days;
+  // THE HEADS ON BILLET DO NOT CALVE, AND THE REST DO (Livestock design,
+  // «Телята — по доле стада под крышей»; boss's decision of 2026-10-01 on
+  // econ's complexity review). Until 0.37.62 one billeted head stopped the
+  // whole herd — «no room: they breed under a roof and only when there is
+  // space» — and with the start's cattle yard gone (0.37.58) every newcomer's
+  // herd stood wholly billeted with no calves until the yard's barn held
+  // all of it: the 24-place pen under 39 cows gave none at all.
+  const float rate =
+      CalvingRoofShare(herd) * females * kind.births_per_game_year * kind.litter_heads / band_days;
   const std::uint16_t born = DrawFlow(herd.birth_progress, rate);
   if (born == 0) {
     return;

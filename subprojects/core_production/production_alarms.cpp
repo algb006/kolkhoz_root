@@ -23,6 +23,7 @@
 #include "core_common/work_seam.h"
 #include "district_plan.h"
 #include "field_work.h"
+#include "herd_cold.h"
 #include "herd_forecast.h"
 #include "herd_life.h"
 #include "herd_system.h"
@@ -950,6 +951,8 @@ void CollectHerdAlarms(const ProductionConfig& config,
   CollectTeamAlarms(config, world, alarms);
   // The herds' yellow stage (herd_forecast.h; 0.37.57).
   CollectHerdForecastAlarms(config, world, alarms);
+  // The cold's red and its autumn yellow (herd_cold.h; 0.37.62).
+  CollectHerdColdAlarms(config, world, alarms);
 }
 
 void CollectWinterCropUnsowableAlarms(const ProductionConfig& config,

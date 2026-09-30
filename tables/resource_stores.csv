@@ -11,6 +11,7 @@ barrel,food_yard,food_store
 bicycle,selpo,selpo
 bicycle,utility_yard,goods_store
 board,build_yard,build_yard
+board,church_store,church_store
 board,utility_yard,goods_store
 bottled_gas,utility_yard,goods_store
 brick,build_yard,build_yard
@@ -68,6 +69,7 @@ fur_coat,utility_yard,goods_store
 furniture_set,selpo,selpo
 furniture_set,utility_yard,goods_store
 glass,build_yard,build_yard
+glass,church_store,church_store
 gravel,build_yard,build_yard
 groats,church_store,church_store
 groats,food_yard,granary
@@ -116,6 +118,7 @@ roofing,build_yard,build_yard
 rye,church_store,church_store
 rye,elevator,elevator
 rye,food_yard,granary
+salt,church_store,church_store
 salt,food_yard,food_store
 salted_fish,food_yard,food_store
 salted_meat,food_yard,food_store
@@ -134,15 +137,19 @@ silage,silage_tower,silo_tower
 silage,silage_trench,trench
 smoked_fish,food_yard,food_store
 smoked_meat,food_yard,food_store
+spare_part,church_store,church_store
 spare_part,mts,mts_parts
 spare_part,utility_yard,goods_store
 steel,build_yard,build_yard
+steel,church_store,church_store
 steel,utility_yard,goods_store
 stone,stone_pile,stone_pile
 straw,hay_stack,stack
+sugar,church_store,church_store
 sugar,food_yard,food_store
 television,selpo,selpo
 television,utility_yard,goods_store
+tool,church_store,church_store
 tool,utility_yard,goods_store
 vegetables,church_store,church_store
 vegetables,clamp,clamp

@@ -137,13 +137,10 @@ struct LifeConfig {
   float specialist_mud_speed_factor = 0.5F;
 
   // -- personal cleanliness (health design §3; world_params.csv) ------------
-
-  /// The band a resident's hygiene is drawn from at the founding. A BAND and
-  /// not one figure: a village coming out of ruin is not uniform, and a
-  /// single number would make the first filth disease arrive for everybody on
-  /// the same morning.
-  float hygiene_start_min = 50.0F;
-  float hygiene_start_max = 70.0F;
+  //
+  // The band a resident's hygiene is drawn from at the founding is
+  // genesis's (core_world/genesis.cpp, `hygiene_start_min`/`_max`). It stood
+  // here as well until 0.37.62 — read from the table and read by nobody.
 
   /// What plain time takes off in a day, before anything else.
   float hygiene_fall_per_day = 0.4F;

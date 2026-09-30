@@ -800,8 +800,11 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
   // labor's last days before the snow discount the days ahead by it — one
   // count, handed to both (core_common/rain_stops_work.h).
   const RainDayShares rain_days = time == nullptr ? RainDayShares{} : time->ClimateRainDayShares();
-  auto production =
-      CreateProductionSystem(*config.tables, config.stub_tables, season_last_day, rain_days);
+  // And the climate's nights, for the cold ladder's months and its autumn
+  // forecast (core_common/climate_nights.h; 0.37.62).
+  const ClimateNights nights = time == nullptr ? ClimateNights{} : time->ClimateNightCelsius();
+  auto production = CreateProductionSystem(
+      *config.tables, config.stub_tables, season_last_day, rain_days, nights);
   // THE GRAMS OF A STANDING CROP ARE PRODUCTION'S to count, and labor's last
   // days before the snow order the reaping by them (boss seq 95): labor is
   // handed the one estimate, not a copy of its formula. The world owns both
@@ -957,20 +960,15 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       //   this hour together. Declared before its export arrives, so the
       //   export does not stop the assembly.
       known.emplace_back("player_entry_hour");
-      //   The cold ladder's five (boss's 6f187c67, 8e54383d; boss-core-start-
-      //   no-yards [15]-[17]; Livestock design «Числа лестницы — Эпоха I»):
-      //   the counter's steps for a cold night, a night below still_frost_c
-      //   and any other night; the counter «замерзает» starts at; the share
-      //   of adults it takes a day. Their reader is the herd day's cold
-      //   ladder, 0.37.61; the contract (HerdRow::cold_nights, save 120)
-      //   comes a delivery ahead of it, with the export.
-      for (const std::string_view key : {"livestock_cold_step_night",
-                                         "livestock_cold_step_still_frost",
-                                         "livestock_cold_step_warm_night",
-                                         "livestock_freezing_counter",
-                                         "livestock_freezing_loss_share_day"}) {
-        known.emplace_back(key);
-      }
+      //   `alarm_red_within_days` (2026-10-01, boss's e8bdde41, 53d14520;
+      //   the office design §13 «Цвет — по сроку потери», the human's «Да») —
+      //   a loss further than this many days is a yellow lamp, a nearer one a
+      //   red. Its reader is the lamp colour's delivery (boss-core-lamp-
+      //   colour); declared with the export that carried it.
+      known.emplace_back("alarm_red_within_days");
+      //   (The cold ladder's five `livestock_cold_*` stood here in 0.37.60,
+      //   the contract a delivery ahead of its reader; core_production
+      //   declares them since 0.37.62, when the herd day's ladder read them.)
       std::string trouble;
       if (!CheckDeclaredReaders(*world_params, "world_params", known, trouble)) {
         LogError(trouble);

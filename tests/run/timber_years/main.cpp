@@ -29,6 +29,7 @@
 #include <string>
 #include <vector>
 
+#include "../common/extraction_policy.h"
 #include "../common/felling_policy.h"
 #include "../common/fixture_policy.h"
 #include "../common/limit_policy.h"
@@ -224,6 +225,14 @@ int main(int argc, char** argv) {
   run::SawmillPolicy sawmill(*started.tables);
   run::LimitPolicy limit(*started.tables);
   run::SowingPolicy chairman(kRipenDays, kSeasonLastDay, false, started.tables.get());
+  // THE CLAY THE CANON DIGS (0.37.62): the canon's chairman raises the
+  // cattle yard's warm barn, 20 t of the start's 40 t of clay, and a granary
+  // then waited for ever for its 3 t (clay held 2 t, measured) — this run
+  // had no digging, the canon and thirty_years do (building_chairman.h), and
+  // a fixture frozen on its one waiting site marked nothing, so nothing was
+  // built and nothing felled from year 4.
+  run::ExtractionPolicy digging(*started.tables);
+  run::ExtractionPolicy::Declare("timber_years");
   run::FellingPolicy::Declare("timber_years");
   run::PlantingPolicy::Declare("timber_years");
   run::SawmillPolicy::Declare("timber_years");
@@ -320,6 +329,7 @@ int main(int argc, char** argv) {
       yard.RunDay(*started.simulation);
       fixture.RunDay(*started.simulation);
       felling.RunDay(*started.simulation);
+      digging.RunDay(*started.simulation);
       planting.RunDay(*started.simulation);
       sawmill.RunDay(*started.simulation);
       limit.RunDay(*started.simulation);

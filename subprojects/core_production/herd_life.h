@@ -115,12 +115,30 @@ struct HerdPlace {
 /// 16-bit rung.
 std::uint16_t AsHeads(float value);
 
+/// @brief Moves `count` whole heads out of a rung, never below zero.
+/// @return The heads actually taken.
+std::uint16_t TakeHeads(std::uint16_t& rung, std::uint16_t count);
+
+/// @brief One fractional stream with a carry: adds `rate` heads a day to the
+/// accumulator and returns the whole heads that came due. The one form of
+/// every herd flow — births, maturing, the hunger's and the frost's deaths
+/// (herd_cold.h) — so a herd under twenty loses a head to 3 % a day at all.
+std::uint16_t DrawFlow(float& accumulator, float rate);
+
 /// @brief How many sires a herd of this many adults keeps. A function of the
 /// herd, not a thing the herd remembers.
 std::uint16_t TargetMales(const LivestockDef& kind, std::uint16_t adults);
 
 /// @brief Every rung added up: newborn, juvenile and adult.
 std::uint16_t TotalHeads(const HerdRow& herd);
+
+/// @brief The share of a kolkhoz herd that calves: the heads under the
+/// herd's own roof over all its heads, 1 − billeted / total (Livestock
+/// design, «Телята — по доле стада под крышей», boss's decision of
+/// 2026-10-01, 29aacd9d). 1 for a herd with no heads or none billeted; 0 for
+/// a herd wholly billeted. ONE HOME for RunBirths and the herd forecast.
+/// @return In [0, 1].
+float CalvingRoofShare(const HerdRow& herd);
 
 /// @brief Puts `amount` of `resource` where this herd's produce belongs —
 /// the family pantry for a yard herd, the shared store otherwise — and
