@@ -496,6 +496,17 @@ enum class AlarmKind : std::uint8_t {
   /// `herd`, the first row of the kolkhoz's horses, INVALID when not a head
   /// is left (the case it exists for; a row of foals alone still names it); `amount` the harnessed
   /// assignments without a horse on a mean working day of the week, rounded — the teams short.
+  ///
+  /// AND IT SEES THE HAY (0.37.48; boss-core-epoch1-resume-2026-09-30 [49]
+  /// p. 1; econ's novice-0.37.42 audit): the advice «buy a horse» was taken
+  /// at its word — 22 -> 34 -> 49 horses by year 3 against a hay ceiling of
+  /// 44-46, and the herds starved in year 4. When the farm's hay would not
+  /// feed one more horse through a year — last year's cut or what lies now,
+  /// the larger, against the kolkhoz herds' stall-season need with the new
+  /// head — the advice turns: `resource` = the hay, `lamp` = 0, the line
+  /// «сена на ещё одну лошадь не хватит — сначала луг и покос» (rpg's key,
+  /// through boss). With hay enough: `resource` invalid and the lamp lit, as
+  /// before. The subject is the herd in both.
   kTooFewHorses,
 
   /// «ТРАВА НА КОРНЮ — НЕ ЗИМНИЙ ЗАПАС» — THE ELDER'S ADVICE, NOT A LAMP
