@@ -4712,6 +4712,80 @@ int CheckTheRoomIsByResource() {
   return failures;
 }
 
+/// THE RESOURCE IS THE CAUSE (0.37.50; boss [64]): a 50 t rye field with
+/// straw at 1.5 into a 60 t granary that takes the rye and not the straw,
+/// whose home is a stack. No stack: the rye fits and the 75 t of straw do
+/// not — the lamp names the straw. A stack built: nothing over.
+int CheckTheStrawIsTheCause() {
+  int failures = 0;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_production_straw_cause";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "resources.csv") << "key,feed_value\nrye,1.15\nstraw,0.2\n";
+  std::ofstream(root / "crops.csv")
+      << "key,resource,is_winter,is_perennial,sow_from_month,sow_to_month,sow_min_temp_c,"
+         "growth_min_temp_c,harvest_from_month,harvest_to_month,harvest_min_temp_c,"
+         "yield_kg_per_ha,sowing_norm_kg_per_ha,fertility_delta,drought_sensitivity,"
+         "wet_sensitivity,sow_days_per_ha,harvest_days_per_ha,straw_ratio\n"
+         "rye,rye,0,0,4,5,5,5,8,8,2,1000,0,-1,0,0,3,8,1.5\n";
+  std::ofstream(root / "farming.csv")
+      << "key,value\nfertility_neutral,50\nmanure_norm_kg_per_ha,20000\n"
+         "manure_fertility_bonus,10\nfallow_recovery,6\nrepeat_penalty_per_year,3\n"
+         "drought_temp_c,25\nstress_per_day,0.02\nstress_cap,0.3\n"
+         "weather_state_days,5\n";
+  std::ofstream(root / "unit_types.csv") << "key,capacity_by_plot\ngranary,0\nstack,1\n";
+  std::ofstream(root / "unit_levels.csv")
+      << "unit,level,storage_capacity_t\ngranary,1,60\nstack,1,\n";
+  std::ofstream(root / "resource_stores.csv")
+      << "resource,unit,storage\nrye,granary,granary\nstraw,stack,stack\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto system = tables == nullptr
+                          ? nullptr
+                          : core::CreateProductionSystem(*tables, core::StubTables::kAllowed);
+  if (Expect(system != nullptr, "the straw-cause table set builds a production system") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  core::WorldState world;
+  core::RefreshCalendarCaches(world.calendar);
+  core::UnitRow granary;
+  granary.type = core::UnitTypeId{0};
+  granary.level = 1;
+  core::AppendRow(world.units, granary);
+  core::FieldRow field;
+  field.kind = core::LandKind::kArable;
+  field.area_ga = 50.0F;
+  field.fertility = 50.0F;
+  field.phase = core::FieldPhase::kGrowing;
+  field.crop = core::CropId{0};
+  core::AppendRow(world.fields, field);
+  const auto warning = [&system](const core::WorldState& state) {
+    std::vector<core::Alarm> alarms;
+    system->CollectAlarms(state, alarms);
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kHarvestWillNotFit) {
+        return std::optional<core::Alarm>(alarm);
+      }
+    }
+    return std::optional<core::Alarm>();
+  };
+  const std::optional<core::Alarm> straw_only = warning(world);
+  failures += Expect(straw_only.has_value() && straw_only->resource.value == 1 &&
+                         straw_only->amount == 75'000 * kKilo,
+                     "the cause: the rye fits, its 75 t of straw have no stack - the lamp names "
+                     "the straw");
+  core::UnitRow stack;
+  stack.type = core::UnitTypeId{1};
+  stack.level = 1;
+  core::AppendRow(world.units, stack);
+  failures += Expect(!warning(world).has_value(), "the cause: a stack built - nothing over");
+  std::filesystem::remove_all(root);
+  return failures;
+}
+
 /// The alarm burns until the harvest is RESOLVED — stored or lost — and not
 /// until the field changes phase.
 ///
@@ -11862,6 +11936,28 @@ int CheckTheGoodsLoan() {
   core::CollectGoodsLoanAlarms(config, poor, alarms);
   failures += Expect(alarms.size() == 1 && alarms[0].amount == 8'400'000 && alarms[0].lamp == 0,
                      "repay: last year's loan carried over one turn stands as a line, no lamp");
+  // THE HARVEST THAT REPAYS IT (0.37.50; boss [66]): the coming turn's, this
+  // campaign year's.
+  failures +=
+      Expect(alarms[0].repay_harvest_year == poor.calendar.date.year && poor.calendar.date.year > 0,
+             "repay: the line names this year's harvest as the one that repays it");
+  // And on the turn's own day before the turn has run (year 2's first day,
+  // the books still year 0's): the closing year's harvest, 1 — the turn
+  // repays from it within the hour. Once the books turn, year 2's.
+  core::WorldState turn_day = poor;
+  turn_day.calendar.tick = static_cast<core::Tick>(core::kDaysPerYear) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(turn_day.calendar);
+  turn_day.ledger.closed.year = 0;
+  alarms.clear();
+  core::CollectGoodsLoanAlarms(config, turn_day, alarms);
+  const bool before_turn = alarms.size() == 1 && alarms[0].repay_harvest_year == 1;
+  turn_day.ledger.closed.year = 1;
+  alarms.clear();
+  core::CollectGoodsLoanAlarms(config, turn_day, alarms);
+  failures += Expect(turn_day.calendar.date.year == 2 && before_turn && alarms.size() == 1 &&
+                         alarms[0].repay_harvest_year == 2,
+                     "repay: on the turn's day before the turn the closing year's harvest, 1; "
+                     "after it the new year's, 2");
   // No loan last year: the 8.4 t are older, next year's harvest did not pay
   // them either — the lamp.
   poor.ledger.closed.goods_loan_taken = {};
@@ -13192,6 +13288,7 @@ int main() {
   failures += CheckAReapedFieldStillSpendsTheRoom();
   failures += CheckTheWarningBurnsUntilTheHarvestIsResolved();
   failures += CheckTheRoomIsByResource();
+  failures += CheckTheStrawIsTheCause();
   failures += CheckTheStrawClaimsRoomToo();
   failures += CheckTheLayPricesOnlyTheRoomLeft();
   failures += CheckCapacityWithoutALadderIsRefused();

@@ -213,6 +213,13 @@ void CollectGoodsLoanAlarms(const ProductionConfig& config,
     const Grams last_years = WithMarkup(
         config, WithMarkup(config, AmountOf(world.ledger.closed.goods_loan_taken, alarm.resource)));
     alarm.lamp = owed > this_years + last_years + kGramsPerKilogram ? 1U : 0U;
+    // THE HARVEST THAT REPAYS IT (0.37.50; boss [66]): the coming turn's —
+    // this campaign year's, or on the turn's own day before the turn has run,
+    // the closing year's (DaysToPlanTurn), whose harvest the turn repays from
+    // within the hour.
+    const std::uint16_t year = world.calendar.date.year;
+    alarm.repay_harvest_year =
+        DaysToPlanTurn(world) == 0 && year > 1 ? static_cast<std::uint16_t>(year - 1) : year;
     alarms.push_back(alarm);
   }
 }

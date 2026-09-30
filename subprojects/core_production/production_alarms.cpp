@@ -855,9 +855,10 @@ void CollectFieldAlarms(const ProductionConfig& config,
     // built; with none, it fits nowhere and the lamp stands for it, and the
     // move is a stack, which the lamp's advice does not name (0.37.46, named
     // to boss for rpg's line).
-    const Grams over = SpendRoom(config, world, claim.heap_resource, claim.heap, room) +
-                       SpendRoom(config, world, claim.grain_resource, claim.grain, room) +
-                       SpendRoom(config, world, config.straw_resource, claim.straw, room);
+    const Grams crop_over = SpendRoom(config, world, claim.heap_resource, claim.heap, room) +
+                            SpendRoom(config, world, claim.grain_resource, claim.grain, room);
+    const Grams straw_over = SpendRoom(config, world, config.straw_resource, claim.straw, room);
+    const Grams over = crop_over + straw_over;
     // THE ALARM BURNS UNTIL THE HARVEST IS RESOLVED, and "resolved" means
     // stored or lost — not "the field changed phase".
     //
@@ -898,6 +899,12 @@ void CollectFieldAlarms(const ProductionConfig& config,
       alarm.resource = standing && field.crop.value < config.crops.size()
                            ? config.crops[field.crop.value].resource
                            : field.reaped_resource;
+      // THE CAUSE, NOT THE CROP, WHEN ONLY THE STRAW WILL NOT FIT (0.37.50;
+      // boss [64]): the crop fits its stores and the straw has no stack — the
+      // layer's advice is the stack, and it chooses by this resource.
+      if (crop_over <= 0 && straw_over > 0) {
+        alarm.resource = config.straw_resource;
+      }
       alarm.amount = over;
       alarms.push_back(alarm);
     }
