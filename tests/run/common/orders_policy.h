@@ -165,25 +165,44 @@ class OrdersPolicy {
     return "nothing";
   }
 
-  /// @brief The first standing unit that is actually wearing out. Wear
-  /// above zero is the readable form of "this type has wear at all": the
-  /// has_wear column lives in the build config, which a run does not see.
-  static core::UnitId WearingUnit(const core::WorldState& world) {
-    for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
-      const core::UnitRow& unit = world.units.rows[row];
-      if (unit.level != 0 && unit.paused == 0 && unit.wear > 0.0F) {
-        return world.units.row_ids[row];
-      }
+  /// @brief The unit `herd` stands at, when it stands and is wearing out —
+  /// the unit the pause is tried on. Wear above zero is the readable form of
+  /// "this type has wear at all": the has_wear column lives in the build
+  /// config, which a run does not see.
+  ///
+  /// THE HERD'S OWN ROOF AND NOT THE FIRST UNIT IN THE ROWS (0.37.64): until
+  /// the start lost its cattle yard (0.37.58) the first wearing unit WAS the
+  /// cattle yard, a livestock unit the pause is licensed on (units rules §5).
+  /// Since then it was a house or the church, which no pause stops, and the
+  /// test failed on the start's row order rather than on the order. The
+  /// herd's own unit is a livestock unit by construction, and the question
+  /// needs no table this policy does not have.
+  static core::UnitId WearingUnitOf(const core::WorldState& world, core::HerdId herd) {
+    const std::uint32_t herd_row = core::FindRow(world.herds, herd);
+    if (herd_row == core::kNoRow) {
+      return core::UnitId{};
     }
-    return core::UnitId{};
+    const std::uint32_t row = core::FindRow(world.units, world.herds.rows[herd_row].unit);
+    if (row == core::kNoRow) {
+      return core::UnitId{};
+    }
+    const core::UnitRow& unit = world.units.rows[row];
+    return unit.level != 0 && unit.paused == 0 && unit.wear > 0.0F ? world.units.row_ids[row]
+                                                                   : core::UnitId{};
   }
 
-  /// @brief The first kolkhoz herd standing anywhere. Its own household's
-  /// cow is not the chairman's to staff (livestock design §5), so the
-  /// order would be a chairman's order in name only.
+  /// @brief The first kolkhoz herd with heads under its own roof. Its own
+  /// household's cow is not the chairman's to staff (livestock design §5),
+  /// and a herd wholly on billet has no barn to staff: herd care is work at a
+  /// unit-standing herd (labor_state.h). Until 0.37.64 «the first kolkhoz
+  /// herd» — on the start without a cattle yard, a herd wholly on billet.
   static core::HerdId KolkhozHerd(const core::WorldState& world) {
     for (std::uint32_t row = 0; row < world.herds.rows.size(); ++row) {
-      if (world.herds.rows[row].household_owned == 0) {
+      const core::HerdRow& herd = world.herds.rows[row];
+      const std::uint32_t heads =
+          static_cast<std::uint32_t>(herd.adult_count) + herd.juvenile_count + herd.newborn_count;
+      if (herd.household_owned == 0 && herd.unit.value != core::kInvalidEntityIdValue &&
+          heads > herd.billeted_count) {
         return world.herds.row_ids[row];
       }
     }
@@ -222,8 +241,8 @@ class OrdersPolicy {
   }
 
   void Look(const core::WorldState& world, core::ISimulation& simulation) {
-    const core::UnitId unit = WearingUnit(world);
     const core::HerdId herd = KolkhozHerd(world);
+    const core::UnitId unit = WearingUnitOf(world, herd);
     const core::ResidentId worker = PlacedElsewhere(world);
     if (unit.value == core::kInvalidEntityIdValue || herd.value == core::kInvalidEntityIdValue ||
         worker.value == core::kInvalidEntityIdValue) {

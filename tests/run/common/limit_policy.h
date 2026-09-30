@@ -55,13 +55,14 @@
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
+#include "hay_answer.h"
 #include "rise_watch.h"
 
 namespace run {
 
 class LimitPolicy {
  public:
-  explicit LimitPolicy(const core::ITableSet& tables) {
+  explicit LimitPolicy(const core::ITableSet& tables) : hay_(tables) {
     std::string error;
     ready_ = core::ParseLimitCatalog(tables, catalog_, error) && !catalog_.lots.empty();
     ReadCosts(tables);
@@ -114,6 +115,10 @@ class LimitPolicy {
     const core::WorldState& world = simulation.CompletedState();
     Book(world);
     CountWaits(world);
+    // THE HAY'S YELLOW, ANSWERED (hay_answer.h; 0.37.64): the rush on the cut,
+    // or cows handed to the district. Its own order and cooldown, before the
+    // lots': a herd short of hay is not waiting for a lot of boards.
+    hay_.RunDay(simulation);
     // The loan needs no catalogue and no points: before the lots' gate.
     StageSeedLoans(simulation, world);
     if (!ready_) {
@@ -136,6 +141,7 @@ class LimitPolicy {
   void Report(const char* run) const {
     std::cout << run << ": the run's chairman bought " << bought_ << " limit lots and asked for "
               << loans_ << " seed loans (a refused ask is asked again the next day)\n";
+    hay_.Report(run);
     for (const Year& year : years_) {
       std::cout << run << ":   limit year " << year.year << " — granted " << year.granted
                 << ", spent " << year.spent << ", burnt " << year.burned << "\n";
@@ -588,6 +594,9 @@ class LimitPolicy {
   std::uint32_t horse_lot_ = core::kNoTableRow;
   bool ready_ = false;
   std::uint32_t cooldown_ = 0;
+
+  /// The answer to the herds' hay yellow (hay_answer.h).
+  HayAnswer hay_;
   std::uint32_t bought_ = 0;
   std::uint16_t last_booked_year_ = 0;
   std::vector<Year> years_;
