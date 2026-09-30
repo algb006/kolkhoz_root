@@ -42,9 +42,6 @@ Grams PlanRungGrams(const WorldState& world,
                     ResourceId carted_daily,
                     Grams held_above,
                     Grams harvest_to_come) {
-  // THE CONTRACT ONLY (0.37.38): the harvest still to come is not read until
-  // 0.37.39, and the rung holds the whole owed as decided 24 September.
-  static_cast<void>(harvest_to_come);
   // THE CART'S POSITION IS NEVER SEALED: its share leaves at the milking
   // (the milk cart; boss seq 113). Under the old rung milk was held by
   // nothing only because no reaping books milk — a rule by accident; under
@@ -90,7 +87,29 @@ Grams PlanRungGrams(const WorldState& world,
     lying += UnreservedOf(unit, resource);
   }
   const Grams below_the_seed = lying > held_above ? lying - held_above : 0;
-  return owed < below_the_seed ? owed : below_the_seed;
+  const Grams held = owed < below_the_seed ? owed : below_the_seed;
+  // AND BEFORE THE HARVEST, ONLY WHAT IT WILL NOT PAY (0.37.39; labor-payment
+  // §7; boss-core-epoch1-resume-2026-09-30 [26], econ's turn-horizon §6). The
+  // whole owed held from the January letter locked the carry-over from the
+  // families for a plan the year's own harvest paid: on 0.37.37 the canon's
+  // potatoes were given out 15.6 -> 6.0 t in year 1 for a plan the carry paid
+  // in 0 of 171 position-years, and year 2's spring went hungry beside the
+  // 800 kg of rye it sealed (27 x 3, 85 -> 117 hungry family-days). The
+  // forecast is production's, the crop's own estimate while it stands, so a
+  // bad year's thin field holds more; as the reaping lays it in, the forecast
+  // falls and the rung rises to the whole owed by the harvest's end — the
+  // rule of 24 September, unchanged after it. The rye of a year with no rye
+  // in the rotation has no forecast and is held whole: the insurance that
+  // paid 54 position-years of 171 stays.
+  //
+  // NOT ON THE TURN'S OWN DAY BEFORE THE TURN (DaysToPlanTurn): the owed is
+  // then the closing year's, shipped in the same tick, and the harvest to
+  // come is the new year's — it pays none of it.
+  if (harvest_to_come <= 0 || DaysToPlanTurn(world) == 0) {
+    return held;
+  }
+  const Grams unpaid = owed > harvest_to_come ? owed - harvest_to_come : 0;
+  return held < unpaid ? held : unpaid;
 }
 
 Grams HeapGrams(const WorldState& world, ResourceId resource) {

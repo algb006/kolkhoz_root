@@ -1255,12 +1255,14 @@ int CheckNextYearsHoldDoesNotCountTheSeedRung() {
   return failures;
 }
 
-/// WHAT THE TURN WILL SEAL IS NEXT YEAR'S PLAN, WHOEVER PAYS IT (0.37.37;
-/// labor-payment §7, «Что делится»): the positions priced off the area next
-/// spring's figure will be, with the rot of the wait to next year's delivery
-/// — and not less where next year's harvest will pay them, for the rung holds
-/// what lies from the January letter on. A crop of 100 kg/ha, a tenth of the
-/// area owed, day 40: the turn in 8 days, next year's delivery in 56.
+/// WHAT THE TURN WILL SEAL IS WHAT NEXT YEAR'S HARVEST WILL NOT PAY OF NEXT
+/// YEAR'S PLAN (0.37.37, the harvest's part since 0.37.39; labor-payment §7):
+/// the positions priced off the area next spring's figure will be, less next
+/// year's chains at a normal yield, with the rot of the wait to next year's
+/// delivery — the rung holds no more than that from the January letter to the
+/// harvest (PlanRungGrams). A crop of 100 kg/ha, a tenth of the area owed, next
+/// year on 0.04 ha (4 kg), day 40: the turn in 8 days, next year's delivery in
+/// 56.
 int CheckTheTurnsSealIsNextYearsPlan() {
   int failures = 0;
   constexpr core::Grams kKilo = core::kGramsPerKilogram;
@@ -1278,39 +1280,65 @@ int CheckTheTurnsSealIsNextYearsPlan() {
   world.calendar.tick = static_cast<core::Tick>(40) * core::kTicksPerDay;
   core::RefreshCalendarCaches(world.calendar);
   world.plan.worked_ha_last_year = 1.0F;
-  core::FieldRow next_year;  // next year's crop on a hectare: 100 kg against 10 owed
+  core::FieldRow next_year;  // next year's crop on 0.04 ha: 4 kg against 10 owed
   next_year.kind = core::LandKind::kArable;
-  next_year.area_ga = 1.0F;
+  next_year.area_ga = 0.04F;
   next_year.rotation_assigned = 1;
   next_year.rotation_year1 = core::CropId{0};
   core::AppendRow(world.fields, next_year);
+  const core::ResourceId produce{0};
 
   const core::ResourceAmounts seal = core::TurnPlanSealOf(config, world);
-  const core::Grams unpaid =
-      core::NextYearUnpaidGrams(config, world, core::ResourceId{0}, world.calendar.day);
-  std::cout << "the turn's seal: " << core::AmountOf(seal, core::ResourceId{0})
-            << " g of the crop, next year's harvest leaves unpaid " << unpaid << " g\n";
-  failures += Expect(seal.size() == 2 && core::AmountOf(seal, core::ResourceId{0}) == 10 * kKilo &&
+  const core::Grams unpaid = core::NextYearUnpaidGrams(config, world, produce, world.calendar.day);
+  std::cout << "the turn's seal: " << core::AmountOf(seal, produce)
+            << " g of the crop, next year's hold " << unpaid << " g\n";
+  failures += Expect(seal.size() == 2 && core::AmountOf(seal, produce) == 6 * kKilo &&
                          core::AmountOf(seal, core::ResourceId{1}) == 0,
-                     "the turn's seal: next year's 10 kg of the crop, none of what no crop "
+                     "the turn's seal: 10 kg owed less next year's 4 kg, none of what no crop "
                      "gives");
-  failures += Expect(unpaid == 0,
-                     "the turn's seal: the world is one where next year's harvest pays them "
-                     "(NextYearUnpaidGrams, the hold, is nought)");
+  failures += Expect(unpaid == 6 * kKilo,
+                     "the turn's seal: next year's hold the same 6 kg with no seed after");
+  // The year after's crop on the field: the hold adds its 2 kg of seed
+  // (50 kg/ha on 0.04 ha), the seal does not — the seal is the hold without
+  // the year after's seed, and never above it (the issue's max never picks it).
+  // A second crop of the same produce, so that next year's sowing takes no
+  // seed of it and the seed rung holds none: NextYearUnpaidGrams leaves out
+  // the year after's seed whenever the row's next sowing of the same produce
+  // is held (by the row, not by the sowing) — named to boss, not asked here.
+  core::ProductionConfig after = config;
+  core::CropDef later = crop;
+  later.sowing_norm_kg_per_ha = 50.0F;
+  after.crops.push_back(later);
+  core::WorldState with_after = world;
+  with_after.fields.rows[0].rotation_year2 = core::CropId{1};
+  std::cout << "the turn's seal with the year after's seed: "
+            << core::AmountOf(core::TurnPlanSealOf(after, with_after), produce) << " g, the hold "
+            << core::NextYearUnpaidGrams(after, with_after, produce, with_after.calendar.day)
+            << " g\n";
+  failures +=
+      Expect(core::AmountOf(core::TurnPlanSealOf(after, with_after), produce) == 6 * kKilo &&
+                 core::NextYearUnpaidGrams(after, with_after, produce, with_after.calendar.day) ==
+                     8 * kKilo,
+             "the turn's seal: 6 kg against next year's hold of 8 - the year after's seed is the "
+             "hold's, not the seal's");
+
+  world.fields.rows[0].area_ga = 1.0F;
+  failures += Expect(core::AmountOf(core::TurnPlanSealOf(config, world), produce) == 0,
+                     "the turn's seal: next year's hectare gives 100 kg against 10 - nothing");
+  world.fields.rows[0].area_ga = 0.04F;
 
   world.plan.worked_ha_this_year = 2.0F;
-  failures +=
-      Expect(core::AmountOf(core::TurnPlanSealOf(config, world), core::ResourceId{0}) == 20 * kKilo,
-             "the turn's seal: priced off next spring's area, this year's 2 ha");
+  failures += Expect(core::AmountOf(core::TurnPlanSealOf(config, world), produce) == 16 * kKilo,
+                     "the turn's seal: priced off next spring's area, this year's 2 ha - 20 kg "
+                     "less 4");
 
   config.spoil_days = {600.0F, 0.0F};
   config.keeping_factor = 1.0F;
-  const core::ResourceId produce{0};
   const core::Grams rotting = core::AmountOf(core::TurnPlanSealOf(config, world), produce);
   std::cout << "the turn's seal with the rot: " << rotting << " g\n";
   failures += Expect(
-      rotting == core::HeldForDeliveryGrams(config, produce, 20 * kKilo, 56) &&
-          rotting > core::HeldForDeliveryGrams(config, produce, 20 * kKilo, 8),
+      rotting == core::HeldForDeliveryGrams(config, produce, 16 * kKilo, 56) &&
+          rotting > core::HeldForDeliveryGrams(config, produce, 16 * kKilo, 8),
       "the turn's seal: with the rot of 56 days to next year's delivery, not of 8 to the turn");
 
   // The turn's own day: before the turn has run (the books not rotated),
@@ -1322,9 +1350,130 @@ int CheckTheTurnsSealIsNextYearsPlan() {
   world.ledger.closed.year = static_cast<std::uint16_t>(world.calendar.date.year - 1);
   const core::Grams run = core::AmountOf(core::TurnPlanSealOf(config, world), produce);
   failures += Expect(
-      pending == core::HeldForDeliveryGrams(config, produce, 20 * kKilo, core::kDaysPerYear) &&
-          run == core::HeldForDeliveryGrams(config, produce, 20 * kKilo, 2 * core::kDaysPerYear),
+      pending == core::HeldForDeliveryGrams(config, produce, 16 * kKilo, core::kDaysPerYear) &&
+          run == core::HeldForDeliveryGrams(config, produce, 16 * kKilo, 2 * core::kDaysPerYear),
       "the turn's seal: on the turn's day the rot of a year before the turn, of two after it");
+  return failures;
+}
+
+/// WHAT THIS YEAR'S HARVEST WILL STILL BRING IN (0.37.39; labor-payment §7,
+/// the plan rung before the harvest): a crop of 100 kg/ha; day 10 of year 2
+/// (March). Per field: the crop in hand that ripens this year, at its own
+/// estimate; a winter crop sown this autumn - next year's, nothing; the heap
+/// lying reaped; the chain's spring crop not yet sown, at a normal yield; its
+/// slot lost, nothing; reaped this year, only its heap.
+int CheckTheHarvestToComeThisYear() {
+  int failures = 0;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  core::ProductionConfig config;
+  config.feed_values.assign(2, 0.0F);
+  core::CropDef rye;
+  rye.resource = core::ResourceId{0};
+  rye.is_winter = true;
+  rye.yield_kg_per_ha = 100.0F;
+  rye.sow_from_month = 7;
+  rye.sow_to_month = 8;
+  rye.harvest_from_month = 6;
+  rye.harvest_to_month = 7;
+  core::CropDef oats;
+  oats.resource = core::ResourceId{1};
+  oats.yield_kg_per_ha = 100.0F;
+  oats.sow_from_month = 3;
+  oats.sow_to_month = 4;
+  oats.harvest_from_month = 7;
+  oats.harvest_to_month = 8;
+  config.crops = {rye, oats};
+  core::WorldState world;
+  world.calendar.tick = static_cast<core::Tick>(core::kDaysPerYear + 10) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  core::FieldRow standing;  // the rye sown last autumn, growing on a hectare
+  standing.kind = core::LandKind::kArable;
+  standing.area_ga = 1.0F;
+  standing.rotation_assigned = 1;
+  standing.rotation_year0 = core::CropId{0};
+  standing.crop = core::CropId{0};
+  standing.phase = core::FieldPhase::kGrowing;
+  standing.sown_day = 33;      // September of year 1
+  standing.sown_share = 0.6F;  // the seed covered 60 %: its estimate, 60 kg, not the norm's 100
+  core::AppendRow(world.fields, standing);
+  const core::Grams standing_yield =
+      core::StandingYieldGrams(config, world.fields.rows[0], config.crops[0]);
+  const core::ResourceAmounts one = core::HarvestToComeThisYearOf(config, world);
+  std::cout << "harvest to come: the standing rye " << core::AmountOf(one, core::ResourceId{0})
+            << " g, its own estimate " << standing_yield << " g\n";
+  failures += Expect(
+      standing_yield == 60 * kKilo && core::AmountOf(one, core::ResourceId{0}) == standing_yield,
+      "harvest to come: the rye standing since last autumn, at its own estimate "
+      "(60 kg), not at the norm's 100");
+
+  core::FieldRow heap = standing;  // reaped this year, 30 kg still at the field's edge
+  heap.crop = core::CropId{};
+  heap.phase = core::FieldPhase::kIdle;
+  heap.reaped_day = core::kDaysPerYear + 5;
+  heap.reaped_resource = core::ResourceId{0};
+  heap.reaped_grams = 30 * kKilo;
+  world.fields.rows[0] = heap;
+  failures += Expect(core::AmountOf(core::HarvestToComeThisYearOf(config, world),
+                                    core::ResourceId{0}) == 30 * kKilo,
+                     "harvest to come: reaped this year - only the heap lying at the field");
+
+  core::FieldRow reaping = standing;  // half laid into a 20 kg heap, half on the stalk
+  reaping.phase = core::FieldPhase::kHarvest;
+  reaping.harvest_laid_share = 0.5F;
+  reaping.reaped_resource = core::ResourceId{0};
+  reaping.reaped_grams = 20 * kKilo;
+  world.fields.rows[0] = reaping;
+  failures += Expect(core::AmountOf(core::HarvestToComeThisYearOf(config, world),
+                                    core::ResourceId{0}) == 50 * kKilo,
+                     "harvest to come: mid-reaping, the heap and what still stands (30 of the 60) "
+                     "- each grain once");
+
+  // LESS THE SEED THIS HARVEST OWES NEXT YEAR (the static review of 0.37.39):
+  // the rye after this rye is sown in September out of July's, and the seed
+  // rung holds none before July — 20 kg/ha on the hectare come off the 60.
+  core::ProductionConfig seeded = config;
+  seeded.crops[0].sowing_norm_kg_per_ha = 20.0F;
+  core::FieldRow chain = standing;
+  chain.rotation_year1 = core::CropId{0};
+  world.fields.rows[0] = chain;
+  failures += Expect(core::AmountOf(core::HarvestToComeThisYearOf(seeded, world),
+                                    core::ResourceId{0}) == 40 * kKilo,
+                     "harvest to come: 60 kg standing less the 20 kg of seed the autumn's rye "
+                     "takes from it - the plan and the seed not paid by one grain");
+
+  core::FieldRow autumn = standing;  // the rye sown THIS autumn: next year's
+  autumn.sown_day = core::kDaysPerYear + 33;
+  core::WorldState october = world;
+  october.fields.rows[0] = autumn;
+  october.fields.rows[0].rotation_year0 = core::CropId{1};
+  october.fields.rows[0].reaped_day = core::kDaysPerYear + 30;
+  october.calendar.tick = static_cast<core::Tick>(core::kDaysPerYear + 36) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(october.calendar);
+  failures += Expect(
+      core::AmountOf(core::HarvestToComeThisYearOf(config, october), core::ResourceId{0}) == 0,
+      "harvest to come: a winter crop sown this autumn ripens next year");
+
+  core::FieldRow spring;  // this year's oats not yet sown, on half a hectare
+  spring.kind = core::LandKind::kArable;
+  spring.area_ga = 0.5F;
+  spring.rotation_assigned = 1;
+  spring.rotation_year0 = core::CropId{1};
+  world.fields.rows[0] = spring;
+  failures += Expect(core::AmountOf(core::HarvestToComeThisYearOf(config, world),
+                                    core::ResourceId{1}) == 50 * kKilo,
+                     "harvest to come: this year's oats still to be sown, at a normal yield");
+  world.fields.rows[0].fertility = 25.0F;  // half the neutral soil
+  failures += Expect(core::AmountOf(core::HarvestToComeThisYearOf(config, world),
+                                    core::ResourceId{1}) == 25 * kKilo,
+                     "harvest to come: on half the neutral soil, half - the sowing does not "
+                     "jump the forecast");
+  world.fields.rows[0].fertility = spring.fertility;
+  core::WorldState late = world;  // July: the oats' window is gone, the slot lost
+  late.calendar.tick = static_cast<core::Tick>(core::kDaysPerYear + 24) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(late.calendar);
+  failures +=
+      Expect(core::AmountOf(core::HarvestToComeThisYearOf(config, late), core::ResourceId{1}) == 0,
+             "harvest to come: a spring slot lost to its window brings nothing");
   return failures;
 }
 
@@ -12757,6 +12906,7 @@ int main() {
   failures += CheckThePloughKeepsItsOats();
   failures += CheckNextYearsHoldDoesNotCountTheSeedRung();
   failures += CheckTheTurnsSealIsNextYearsPlan();
+  failures += CheckTheHarvestToComeThisYear();
   failures += CheckTheReserveLeavesThePeoplesBarley();
   failures += CheckTheHerdsHayAndShortfallByKind();
   failures += CheckTheTeamOnHayAndTooFewHorses();

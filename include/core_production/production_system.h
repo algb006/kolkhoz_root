@@ -261,9 +261,13 @@ class IProductionSystem {
   /// epoch1-resume-2026-09-30 [26], econ's turn-horizon-2026-09-30.md §6): a
   /// standing crop that ripens this year at its own estimate (StandingCropGrams:
   /// fertility, weather, late sowing), what lies reaped in the fields' heaps,
-  /// and a spring crop this year's sowing is still to put in, at a normal
-  /// yield — a lost slot nothing. A winter crop sown this autumn ripens next
-  /// year and is not in it. Dense by ResourceId.
+  /// and a spring crop this year's sowing is still to put in, at the table's
+  /// yield on the field's soil — a lost slot nothing. A winter crop sown this
+  /// autumn ripens next year and is not in it. LESS the seed next year's
+  /// sowings take from this harvest that the seed rung does not hold (0.37.39,
+  /// its static review: the seed rung holds none for a sowing its harvest
+  /// comes before, and the rung counted the same grain twice). Dense by
+  /// ResourceId.
   ///
   /// Exposed for the plan rung (core_common/fund_ladder.h, PlanRungGrams):
   /// before the harvest the rung holds of the carry-over only what this does

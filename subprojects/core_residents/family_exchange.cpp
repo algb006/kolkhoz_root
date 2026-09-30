@@ -159,11 +159,18 @@ std::vector<Grams> IssueReserve(const FoodConfig& config, const WorldState& worl
   // reasons each half is computed the way it is — seed until the SOWING takes
   // it, plan filled by the HARVEST and not by the calendar, one total the
   // releases come off — are written there beside the arithmetic.
+  //
+  // AND THE PLAN RUNG BEFORE THE HARVEST HOLDS ONLY WHAT THE HARVEST TO COME
+  // WILL NOT PAY (0.37.39; labor-payment §7) — the forecast is production's,
+  // handed here by the assembly as next year's hold is.
+  const ResourceAmounts to_come =
+      config.harvest_to_come ? config.harvest_to_come(world) : ResourceAmounts{};
   std::vector<Grams> reserve = HeldAboveFodder(world,
                                                config.seed_norms,
                                                config.resources.size(),
                                                config.distribution.reserve_seed_fund != 0,
-                                               config.carted_daily);
+                                               config.carted_daily,
+                                               to_come);
   // The top two rungs as they stand, before the fodder, and the seed's part
   // of them: what the rot margin below is taken on, each to its own day.
   const std::vector<Grams> seed_and_plan = reserve;
@@ -251,7 +258,8 @@ std::vector<Grams> IssueReserve(const FoodConfig& config, const WorldState& worl
                                                        config.seed_norms,
                                                        config.distribution.reserve_seed_fund != 0,
                                                        config.carted_daily,
-                                                       ahead);
+                                                       ahead,
+                                                       to_come);
     for (std::size_t index = 0; index < reserve.size() && index < next_year.size(); ++index) {
       reserve[index] += next_year[index];
     }

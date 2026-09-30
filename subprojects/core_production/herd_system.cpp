@@ -173,8 +173,15 @@ ResourceAmounts FeedAllowance(const ProductionConfig& config,
                               const WorldState& world,
                               bool ploughing_today) {
   const std::vector<SeedNorm> seed_norms = SeedNormsOf(config);
-  ResourceAmounts allowance =
-      HeldAboveFodder(world, seed_norms, config.feed_values.size(), true, config.milk_resource);
+  // The plan rung before the harvest holds only what the harvest to come will
+  // not pay (0.37.39; fund_ladder.h, PlanRungGrams) — one ladder with the
+  // people's issue.
+  ResourceAmounts allowance = HeldAboveFodder(world,
+                                              seed_norms,
+                                              config.feed_values.size(),
+                                              true,
+                                              config.milk_resource,
+                                              HarvestToComeThisYearOf(config, world));
   // AND WHAT THOSE RUNGS WILL LOSE TO ROT BEFORE THEY ARE USED (0.35.11;
   // core_common/fund_ladder.h, AddRungRotMargins — one home with the people's
   // issue). Held exactly, the herds ate down to the rung and the store's rot

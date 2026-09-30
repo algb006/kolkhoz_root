@@ -74,12 +74,24 @@ Grams NextPlanOwedGrams(const ProductionConfig& config,
 /// @brief What next year's plan reserve will seal at the coming turn
 /// (IProductionSystem::TurnPlanSeal; 0.37.37; labor-payment §7, «Что
 /// делится»): for every produce of a crop, next year's positions of it
-/// (NextPlanOwedGrams) with the rot of their wait to the end of next year,
-/// as NextYearHold holds its grams (HeldForDeliveryGrams). Dense by
-/// ResourceId. Unconditional: whether next year's harvest will pay the
-/// positions is NextYearHold's question, and the rung asks it of nobody —
-/// it holds what lies, the carry-over first, from the January letter on.
+/// (NextPlanOwedGrams) less what next year's chains will give at a normal
+/// yield — since 0.37.39 the rung holds only that before the harvest
+/// (PlanRungGrams) — with the rot of the wait to the end of next year, as
+/// NextYearHold holds its grams (HeldForDeliveryGrams). Dense by ResourceId.
+/// Never above NextYearHold, which adds the year after's seed: under today's
+/// hold the issue's max never picks it (named in the definition).
 ResourceAmounts TurnPlanSealOf(const ProductionConfig& config, const WorldState& world);
+
+/// @brief What this calendar year's harvest will still bring into the stores
+/// (IProductionSystem::HarvestToComeThisYear; 0.37.39; labor-payment §7, the
+/// rung before the harvest): per field, its heap; the crop in hand at its own
+/// estimate (StandingYieldGrams), unless it is a winter crop sown this autumn;
+/// else the chain's crop of this year still to be sown, at the table's yield
+/// on the field's soil, unless its slot is lost. LESS the seed next year's
+/// sowings take from this harvest that the seed rung does not hold, never
+/// below nought — the plan and the seed are not paid by the same grain.
+/// Dense by ResourceId.
+ResourceAmounts HarvestToComeThisYearOf(const ProductionConfig& config, const WorldState& world);
 
 }  // namespace core
 

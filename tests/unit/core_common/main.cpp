@@ -1348,6 +1348,45 @@ int CheckTheTopOfTheLadder() {
     failures += Expect(core::HeldAboveFodder(thin, norms, 3, true)[2] == 300'000,
                        "ladder: and unsealing 100 000 of the plan frees 100 000");
   }
+  // BEFORE THE HARVEST, ONLY WHAT IT WILL NOT PAY (0.37.39; labor-payment §7,
+  // econ's turn-horizon §6): 300 000 owed, 500 000 lie; the harvest to come
+  // pays 200 000 of it, so the carry-over holds 100 000. Nothing to come, the
+  // whole owed; as much to come as owed or more, nothing.
+  {
+    const core::ResourceAmounts to_come = {0, 0, 200'000};
+    failures += Expect(core::HeldAboveFodder(world, norms, 3, false, {}, to_come)[2] == 100'000,
+                       "ladder: 200 000 to come of 300 000 owed - the carry holds 100 000");
+    failures += Expect(core::HeldAboveFodder(world, norms, 3, false, {}, {0, 0, 0})[2] == 300'000,
+                       "ladder: nothing to come (after the harvest, or none this year) - the "
+                       "whole owed");
+    failures += Expect(core::HeldAboveFodder(world, norms, 3, false, {}, {0, 0, 400'000})[2] == 0,
+                       "ladder: more to come than owed - nothing held of the carry-over");
+    core::WorldState lean = world;  // 150 000 lie: the unpaid 200 000 is capped at them
+    lean.units.rows[0].stock = {0, 0, 150'000};
+    failures +=
+        Expect(core::HeldAboveFodder(lean, norms, 3, false, {}, {0, 0, 100'000})[2] == 150'000,
+               "ladder: 200 000 unpaid, 150 000 lie - never more held than lies");
+    // The plan reserve's release opens next year's hold past THIS rung, as
+    // small as it now stands: 150 000 released against 100 000 held frees
+    // 50 000 of a 100 000 hold.
+    core::WorldState opened = world;
+    opened.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kPlanReserve)] = {
+        0, 0, 150'000};
+    failures += Expect(
+        core::NextYearRungLeft(opened, norms, false, {}, {0, 0, 100'000}, to_come)[2] == 50'000,
+        "ladder: the release past the smaller rung comes off next year's hold");
+    // THE TURN'S OWN DAY, BEFORE THE TURN: the owed is the closing year's,
+    // shipped this tick, and the harvest to come is the new year's.
+    core::WorldState turn_day = world;
+    turn_day.calendar.tick = static_cast<core::Tick>(core::kDaysPerYear) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(turn_day.calendar);
+    failures += Expect(core::HeldAboveFodder(turn_day, norms, 3, false, {}, to_come)[2] == 300'000,
+                       "ladder: on the turn's day, before it, the closing year's owed is held "
+                       "whole");
+    turn_day.ledger.closed.year = static_cast<std::uint16_t>(turn_day.calendar.date.year - 1);
+    failures += Expect(core::HeldAboveFodder(turn_day, norms, 3, false, {}, to_come)[2] == 100'000,
+                       "ladder: the turn run (the books rotated), the harvest to come counts");
+  }
 
   // A FIELD REAPED THIS YEAR OWES THIS YEAR NO SEED (boss, parcel 421): idle
   // again and still naming its crop until the turn, it held seed for a crop

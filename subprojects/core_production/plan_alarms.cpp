@@ -416,6 +416,70 @@ std::vector<CoverYears> CoveredPositions(const ProductionConfig& config, const W
   return covered;
 }
 
+/// Grams of `resource` next year's chains will give at a normal yield
+/// (neutral fertility), a slot already lost growing nothing.
+Grams NextYearHarvestGrams(const ProductionConfig& config,
+                           const WorldState& world,
+                           ResourceId resource,
+                           SimDay as_of) {
+  float harvest_kg = 0.0F;
+  for (const FieldRow& field : world.fields.rows) {
+    if (field.kind != LandKind::kArable || !HasRotation(field)) {
+      continue;
+    }
+    const CropId next = CropInYear(config, field, 1, as_of);
+    if (next.value < config.crops.size() &&
+        config.crops[next.value].resource.value == resource.value &&
+        !SlotLost(config, field, 1, as_of)) {
+      harvest_kg += config.crops[next.value].yield_kg_per_ha * field.area_ga;
+    }
+  }
+  return GramsFromKilograms(harvest_kg);
+}
+
+/// What one field will still bring into the stores THIS calendar year, by
+/// resource into `to_come`: its heap; the crop in hand, if it ripens this
+/// year, at its own estimate; the chain's crop of this year not yet sown, at
+/// the table's yield on this field's soil, unless its slot is lost.
+void AddFieldHarvestToCome(const ProductionConfig& config,
+                           const FieldRow& field,
+                           SimDay today,
+                           ResourceAmounts& to_come) {
+  const auto add = [&to_come](ResourceId resource, Grams grams) {
+    if (resource.value < to_come.size() && grams > 0) {
+      to_come[resource.value] += grams;
+    }
+  };
+  // THE HEAP IS STILL TO COME: reaped, not carted. The rung counts only the
+  // stores (PlanRungGrams) as lying, and a heap counted in neither would
+  // leave the forecast before it reached them — the rung would jump up and
+  // hold more of the carry-over for the days the heap lies at the field.
+  add(field.reaped_resource, field.reaped_grams);
+  if (field.crop.value < config.crops.size() && CropInHand(field, field.crop)) {
+    const CropDef& crop = config.crops[field.crop.value];
+    // A winter crop sown this autumn ripens next year: not this year's.
+    if (!(crop.is_winter && SownThisYear(field, field.crop, today))) {
+      add(crop.resource, StandingYieldGrams(config, field, crop));
+    }
+    return;
+  }
+  if (field.kind != LandKind::kArable || !HasRotation(field) || ReapedThisYear(field, today)) {
+    return;
+  }
+  const CropId slot = CropInYear(config, field, 0, today);
+  if (slot.value >= config.crops.size() || SlotLost(config, field, 0, today)) {
+    return;
+  }
+  // ON THIS FIELD'S SOIL (the static review of 0.37.39): at the table's
+  // neutral yield the forecast jumped on the sowing day, when the standing
+  // estimate above takes over, and read high on poor land until then. The
+  // weather and the stand are not known before the sowing; the soil is.
+  const CropDef& crop = config.crops[slot.value];
+  const float neutral = config.farming.fertility_neutral;
+  const float soil = neutral > 0.0F ? SoilFertility(field) / neutral : 1.0F;
+  add(crop.resource, GramsFromKilograms(crop.yield_kg_per_ha * field.area_ga * soil));
+}
+
 }  // namespace
 
 Grams NextYearUnpaidGrams(const ProductionConfig& config,
@@ -438,7 +502,6 @@ Grams NextYearUnpaidGrams(const ProductionConfig& config,
   const std::vector<SeedNorm> seed_norms = SeedNormsOf(config);
   const SeedHold seed_held = SeedHeldByField(world, seed_norms, config.feed_values.size(), as_of);
   float seed_kg = 0.0F;
-  float harvest_kg = 0.0F;
   for (std::size_t row = 0; row < world.fields.rows.size(); ++row) {
     const FieldRow& field = world.fields.rows[row];
     if (field.kind != LandKind::kArable || !HasRotation(field)) {
@@ -452,15 +515,9 @@ Grams NextYearUnpaidGrams(const ProductionConfig& config,
         config.crops[after.value].resource.value == resource.value) {
       seed_kg += config.crops[after.value].sowing_norm_kg_per_ha * field.area_ga;
     }
-    const CropId next = CropInYear(config, field, 1, as_of);
-    if (next.value < config.crops.size() &&
-        config.crops[next.value].resource.value == resource.value &&
-        !SlotLost(config, field, 1, as_of)) {
-      harvest_kg += config.crops[next.value].yield_kg_per_ha * field.area_ga;
-    }
   }
   const Grams needed = owed + GramsFromKilograms(seed_kg);
-  const Grams harvest = GramsFromKilograms(harvest_kg);
+  const Grams harvest = NextYearHarvestGrams(config, world, resource, as_of);
   return needed > harvest ? needed - harvest : 0;
 }
 
@@ -485,16 +542,77 @@ ResourceAmounts TurnPlanSealOf(const ProductionConfig& config, const WorldState&
   // the two, and they must be weighed in the same grams to be compared. On
   // the turn's own day, before it has run, next year begins today
   // (DaysToPlanTurn; NextYearHold still counts two years there).
+  //
+  // WHAT NEXT YEAR'S HARVEST WILL NOT PAY (0.37.39; boss-core-epoch1-resume
+  // [26], econ's turn-horizon §6): from the letter to that harvest the rung
+  // holds of the carry-over only the owed less the harvest to come
+  // (PlanRungGrams), so that is what the turn seals. 0.37.37 sealed the whole
+  // owed: the potatoes, 1.65 times 32 t with the rot, from each autumn, for a
+  // plan the carry paid in 0 of 171 position-years.
+  //
+  // A RULE THAT CANNOT FIRE UNDER TODAY'S HOLD, said out loud (boss [30],
+  // (i)): this is NextYearUnpaidGrams without the year after's seed, so it is
+  // never above NextYearHold, and the issue's max of the two (IssueReserve)
+  // never picks it. Kept as the door names it; taking it out is a contract of
+  // its own, queued after the three-year horizon ((ii)).
   ResourceAmounts seal(config.feed_values.size(), 0);
   const std::uint32_t days_to_next_turn = DaysToPlanTurn(world) + kDaysPerYear;
+  const SimDay today = world.calendar.day;
   for (std::size_t index = 0; index < seal.size(); ++index) {
     const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
-    const Grams owed = NextPlanOwedGrams(config, world, resource, world.calendar.day);
-    if (owed > 0) {
-      seal[index] = HeldForDeliveryGrams(config, resource, owed, days_to_next_turn);
+    const Grams owed = NextPlanOwedGrams(config, world, resource, today);
+    const Grams harvest = NextYearHarvestGrams(config, world, resource, today);
+    if (owed > harvest) {
+      seal[index] = HeldForDeliveryGrams(config, resource, owed - harvest, days_to_next_turn);
     }
   }
   return seal;
+}
+
+ResourceAmounts HarvestToComeThisYearOf(const ProductionConfig& config, const WorldState& world) {
+  const SimDay today = world.calendar.day;
+  ResourceAmounts to_come(config.feed_values.size(), 0);
+  for (const FieldRow& field : world.fields.rows) {
+    AddFieldHarvestToCome(config, field, today, to_come);
+  }
+  // LESS THE SEED THIS HARVEST OWES NEXT YEAR'S SOWINGS (the static review of
+  // 0.37.39): the seed rung holds no seed for a sowing its harvest comes
+  // before (SeedHeldByField) — the autumn's rye is sown out of July's — so a
+  // rung that took the whole harvest off the owed counted the same grain for
+  // the plan and for the seed, and both held nothing until July. The same
+  // sum as NextYearUnpaidGrams one year on, as econ's rule reads (§6): the
+  // plan and next year's seed against the harvest; a sowing the seed rung
+  // already holds is not counted twice.
+  const std::vector<SeedNorm> seed_norms = SeedNormsOf(config);
+  const SeedHold seed_held = SeedHeldByField(world, seed_norms, to_come.size(), today);
+  ResourceAmounts seed(to_come.size(), 0);
+  for (std::size_t row = 0; row < world.fields.rows.size(); ++row) {
+    const FieldRow& field = world.fields.rows[row];
+    if (field.kind != LandKind::kArable || !HasRotation(field)) {
+      continue;
+    }
+    const CropId next = CropInYear(config, field, 1, today);
+    if (next.value >= config.crops.size()) {
+      continue;
+    }
+    const ResourceId resource = config.crops[next.value].resource;
+    const auto held_at = [&resource](const std::vector<Grams>& grams,
+                                     const std::vector<ResourceId>& of,
+                                     std::size_t at) {
+      return at < grams.size() && grams[at] > 0 && at < of.size() && of[at].value == resource.value;
+    };
+    if (held_at(seed_held.by_field_row, seed_held.seed_of_row, row) ||
+        held_at(seed_held.after_by_field_row, seed_held.after_seed_of_row, row) ||
+        resource.value >= seed.size()) {
+      continue;
+    }
+    seed[resource.value] +=
+        GramsFromKilograms(config.crops[next.value].sowing_norm_kg_per_ha * field.area_ga);
+  }
+  for (std::size_t index = 0; index < to_come.size(); ++index) {
+    to_come[index] = to_come[index] > seed[index] ? to_come[index] - seed[index] : 0;
+  }
+  return to_come;
 }
 
 void CollectPlanAlarms(const ProductionConfig& config,
