@@ -305,6 +305,9 @@ struct YearLedger {
   ResourceAmounts herd_males_culled;         ///< Young males over the sire, at maturing.
   ResourceAmounts herd_surplus_slaughtered;  ///< Over a yard's cap, no neighbour to take them.
   ResourceAmounts herd_autumn_slaughtered;   ///< The autumn pig slaughter.
+  /// The frost's toll in the open pen, by kind (kHerdFroze; save 119). Not
+  /// in herd_culled: a death, not a removal.
+  ResourceAmounts herd_frozen;
 
   /// Underfed heads times days: the year's hunger, in one number.
   float herd_hungry_head_days = 0.0F;

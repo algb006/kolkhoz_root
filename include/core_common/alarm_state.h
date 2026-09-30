@@ -584,6 +584,28 @@ enum class AlarmKind : std::uint8_t {
   /// move (AlarmAdvice).
   kHerdHayShortAhead,
 
+  /// «СТАДО МЁРЗНЕТ» — THE COLD'S RED (Livestock design, «Холод по
+  /// ступеням», «Замерзание — метрика скота»; boss-core-start-no-yards-
+  /// 2026-09-30 [7], [8]; alarms.csv `herd_freezing`, rank 33): kolkhoz heads
+  /// stand in a cold unit — the cattle yard's open pen (rung 1) — on a frost
+  /// day (the day's mean at or below the design's −5 °C): milk at the
+  /// billet's share, no gain, no calving; a frost night (at or below −15 °C)
+  /// takes a share of them. The heads the billet could take stay billeted
+  /// (a pen does not put a herd out into the frost), so only what the
+  /// billet could not hold stands here. Subject: `herd`; `amount` the heads
+  /// in the cold. `lamp` 1: a loss the player has a move against — the
+  /// warm barn, rung 2.
+  kHerdFreezing,
+
+  /// «К ЗИМЕ ПЛОЩАДКА НЕ УКРОЕТ N ГОЛОВ — ХЛЕВ ДО МОРОЗОВ» — THE COLD'S
+  /// YELLOW, A FORECAST (the same design and threads; alarms.csv
+  /// `herd_cold_ahead`, rank 34): in the autumn, the kolkhoz heads that
+  /// neither a warm unit nor the families' billet will hold when the frost
+  /// days come — the ones the open pen would leave in the cold. Subject:
+  /// `herd`; `amount` those heads; `days_ahead` the days to the first frost
+  /// day by the climate; `advice` kWarmYard. `lamp` always 0.
+  kHerdColdAhead,
+
   // Appended by later tasks and phases: children out of school, sewage,
   // logistics falling behind. Named so the numbering is planned, not
   // discovered.
@@ -639,6 +661,11 @@ enum class AlarmAdvice : std::uint8_t {
   /// and room, the move is the district's lot of that `resource`, and it
   /// needs no word of its own.
   kGranaryForFeed,
+
+  /// The cattle yard's warm barn (rung 2) before the frosts — «утеплить
+  /// скотный двор» (boss-core-start-no-yards [8]; the dictionary's
+  /// `warm_yard`). Named by kHerdColdAhead.
+  kWarmYard,
 
   /// NOT A MOVE: the count, so a consumer can static_assert its mirror.
   kAlarmAdviceCount,
@@ -707,7 +734,7 @@ struct Alarm {
   /// @note Not in the save, as `lamp`.
   std::uint16_t repay_harvest_year = 0;
 
-  /// The forecast kinds only (kHerdHayShortAhead): whole game days from
+  /// The forecast kinds only (kHerdHayShortAhead, kHerdColdAhead): whole game days from
   /// today to the forecast's first short day — «к весне», counted. 0 for
   /// every other kind (0.37.56).
   /// @note Not in the save, as `lamp`.

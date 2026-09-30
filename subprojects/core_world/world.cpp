@@ -950,6 +950,13 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       //   (start conditions §9). Waits for host's measure of whether the
       //   village ploughs and sows in the days left.
       known.emplace_back("player_entry_day");
+      //   `player_entry_hour` (2026-10-01, boss-core-start-no-yards [11];
+      //   boss's 07aa3820) — the hour of the entry morning, 8. The layer
+      //   fast-forwards the core to TickOfDayHour(player_entry_day, this)
+      //   through AdvanceUntil; the core's entry gate will read the day and
+      //   this hour together. Declared before its export arrives, so the
+      //   export does not stop the assembly.
+      known.emplace_back("player_entry_hour");
       std::string trouble;
       if (!CheckDeclaredReaders(*world_params, "world_params", known, trouble)) {
         LogError(trouble);

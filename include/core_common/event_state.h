@@ -583,6 +583,14 @@ enum class EventKind : std::uint8_t {
   /// `road_demolished`. Raised since 7d (core_construction/road_laying.cpp).
   kRoadDemolished,
 
+  /// herd — heads of a kolkhoz herd died of the frost in the cattle yard's
+  /// open pen, a frost night at or below the design's −15 °C (Livestock
+  /// design, «Холод по ступеням», «Человек от холода не умирает, скот
+  /// умирает»; boss-core-start-no-yards [7], [8]). amount = heads. kNotable:
+  /// «падёж строкой в сводке, без трупа на карте». Booked by kind in
+  /// herd_frozen. Seam key `herd_froze`. Raised since 0.37.60.
+  kHerdFroze,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

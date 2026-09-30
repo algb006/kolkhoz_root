@@ -213,8 +213,10 @@ static_assert(AggregateArity<UnitRow>() == 18,
 // Save 103: the band in two, two floats and a u16 after the band — the u16
 // into the padding beside billeted_count: 84 and twenty-five, predicted
 // before the fields were added.
-static_assert(sizeof(HerdRow) == 84, "HerdRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<HerdRow>() == 25,
+// Save 119 (0.37.59): the frost's carry, a float after hunger_progress — 88
+// and twenty-six, predicted before the field was added.
+static_assert(sizeof(HerdRow) == 88, "HerdRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<HerdRow>() == 26,
               "HerdRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-13: the felling mark — a stand id and a volume — took the order row
 // from 64 to 72 and the assignment's stand from 24 to 28 (and the resident
@@ -1081,6 +1083,7 @@ void WriteHerdRow(SaveSink& sink, const HerdRow& row) {
   out.WriteFloat(row.birth_progress);
   out.WriteFloat(row.cull_progress);
   out.WriteFloat(row.hunger_progress);
+  out.WriteFloat(row.frost_progress);  // save 119
   out.WriteFloat(row.adult_age_game_years_total);
   out.WriteFloat(row.adult_age_min_game_years);     // save 91
   out.WriteFloat(row.adult_age_max_game_years);     // save 91
@@ -1114,6 +1117,7 @@ HerdRow ReadHerdRow(LoadSource& source) {
   row.birth_progress = in.ReadFloat();
   row.cull_progress = in.ReadFloat();
   row.hunger_progress = in.ReadFloat();
+  row.frost_progress = in.ReadFloat();  // save 119
   row.adult_age_game_years_total = in.ReadFloat();
   row.adult_age_min_game_years = in.ReadFloat();
   row.adult_age_max_game_years = in.ReadFloat();

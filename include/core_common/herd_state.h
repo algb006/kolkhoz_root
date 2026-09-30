@@ -114,6 +114,11 @@ struct HerdRow {
   /// have starved for ever at half milk and no deaths at all.
   float hunger_progress = 0.0F;
 
+  /// Accumulated fractional heads owed to the frost in the open pen (the
+  /// cold's deaths, a share a frost night; save 119) — the same carry as
+  /// hunger_progress, for the same reason.
+  float frost_progress = 0.0F;
+
   /// Sum of the adult heads' ages in GAME years — total age, not years since
   /// adulthood, because that is what the lifespan band of livestock.csv
   /// measures. Maintained by the same flows (daily aging, +adult-entry age

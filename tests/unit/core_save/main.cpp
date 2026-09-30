@@ -406,6 +406,7 @@ core::WorldState MakeWorld() {
   herd.adult_older_from_game_years = 5.25F;
   herd.adult_older_count = 9;
   herd.hunger_progress = 0.375F;
+  herd.frost_progress = 0.625F;    // save 119: the frost's carry, not its default 0
   herd.fed_share = 0.625F;         // save 71: a third short of the ration, not its default 1
   herd.autumn_slaughter_done = 1;  // save 76: this October's slaughter done
   core::AppendRow(world.herds, herd);
@@ -685,6 +686,9 @@ core::WorldState MakeWorld() {
   // Save 90: the autumn slaughter of the closed year, by kind — kind 1 of the
   // fixture's livestock; the other two removal columns empty.
   world.ledger.closed.herd_autumn_slaughtered = Amounts({0, 4});
+  // Save 119: the frost's toll of the closed year, by kind — two cows of
+  // kind 0.
+  world.ledger.closed.herd_frozen = Amounts({2});
   // The drink's price in kind (save 60): not empty either.
   world.ledger.closed.samogon_paid = Amounts({3'000, 5'000});
   // The standing crop the snow took (save 61): host's 150 t of potato.
@@ -1434,7 +1438,9 @@ constexpr std::array<RecordedSection, 22> kRecordedPayload = {{
     // Save 71: +4 — fed_share, one herd; predicted before the field, held.
     // Save 91: +8 — the adult age band, two floats, one herd; predicted
     // 71 -> 79 with every other section unmoved before the build.
-    {"herds", 89, 0xa819b69703b188fULL},
+    // Save 119: +4 — the frost's carry, a float, one herd; predicted 89 -> 93
+    // with every other section but the ledger unmoved before the build.
+    {"herds", 93, 0xb56f8c68c0dad4c6ULL},
     // 2026-09-16, save 48: +6 bytes, one for each of the six orders — the
     // bought head's sex. The witness named the section, the delta and the
     // offset without being asked, which is what it was rewritten for this
@@ -1588,7 +1594,9 @@ constexpr std::array<RecordedSection, 22> kRecordedPayload = {{
     // Save 117: +384 — the trudodni by day of the year, 48 i32 a book, two
     // books; predicted 1996 -> 2380 before the build, held. The fixture's
     // books carry days of trudodni since (the reader's sum check).
-    {"ledger", 2380, 0xeeb9b17716263f25ULL},
+    // Save 119: +12 — the frost's toll by kind, the closed book's 2 + 8, the
+    // current's 2; predicted 2380 -> 2392 before the build.
+    {"ledger", 2392, 0x7b2b84c994f19aa8ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -2120,6 +2128,10 @@ int main() {
                      "the goods loan owed and taken come back, and the book's repayment (save 89)");
   failures += Expect(AmountAt(loaded.ledger.closed.herd_autumn_slaughtered, 1) == 4,
                      "the book's autumn slaughter by kind comes back (save 90)");
+  failures +=
+      Expect(AmountAt(loaded.ledger.closed.herd_frozen, 0) == 2 && !loaded.herds.rows.empty() &&
+                 loaded.herds.rows[0].frost_progress == 0.625F,
+             "the frost's toll by kind and the herd's frost carry come back (save 119)");
   failures += Expect(AmountAt(loaded.ledger.closed.herd_hay_eaten, 1) == 9 &&
                          AmountAt(loaded.ledger.closed.herd_feed_short, 0) == 6 &&
                          loaded.ledger.closed.herd_feed_short.size() == 1 &&

@@ -210,6 +210,8 @@ const char* KindName(core::EventKind kind) {
       return "road_work_finished";
     case core::EventKind::kRoadDemolished:
       return "road_demolished";
+    case core::EventKind::kHerdFroze:
+      return "herd_froze";
     case core::EventKind::kEventKindCount:
       return "COUNT";
   }

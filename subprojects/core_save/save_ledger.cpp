@@ -95,9 +95,12 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // trudodni i32 — 93 -> 94 fields, the size 720 + 32 A -> 912 + 32 A (192
 // bytes, 4-aligned among 4-aligned, nothing after it moves its padding),
 // the wire +192 a book; predicted before the build.
-static_assert(sizeof(YearLedger) == 912 + (32 * kAmountsSize),
+// Save 119 (0.37.59): the frost's toll by kind, a vector among vectors after
+// the autumn slaughter — 94 -> 95 fields, 912 + 32 A -> 912 + 33 A, no
+// padding moved; predicted before the build.
+static_assert(sizeof(YearLedger) == 912 + (33 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 94,
+static_assert(AggregateArity<YearLedger>() == 95,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 
 void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
@@ -153,6 +156,7 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   sink.WriteAmounts(DefKind::kLivestock, book.herd_males_culled);
   sink.WriteAmounts(DefKind::kLivestock, book.herd_surplus_slaughtered);
   sink.WriteAmounts(DefKind::kLivestock, book.herd_autumn_slaughtered);
+  sink.WriteAmounts(DefKind::kLivestock, book.herd_frozen);  // save 119
   out.WriteFloat(book.herd_hungry_head_days);
 
   sink.WriteAmounts(DefKind::kResource, book.delivered);
@@ -289,8 +293,11 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.herd_males_culled = source.ReadAmounts(DefKind::kLivestock);         // save 90
   book.herd_surplus_slaughtered = source.ReadAmounts(DefKind::kLivestock);  // save 90
   book.herd_autumn_slaughtered = source.ReadAmounts(DefKind::kLivestock);   // save 90
-  for (const ResourceAmounts* column :
-       {&book.herd_males_culled, &book.herd_surplus_slaughtered, &book.herd_autumn_slaughtered}) {
+  book.herd_frozen = source.ReadAmounts(DefKind::kLivestock);               // save 119
+  for (const ResourceAmounts* column : {&book.herd_males_culled,
+                                        &book.herd_surplus_slaughtered,
+                                        &book.herd_autumn_slaughtered,
+                                        &book.herd_frozen}) {
     for (const Grams heads : *column) {
       if (heads < 0) {
         source.Fail("the book's removals by kind are negative");

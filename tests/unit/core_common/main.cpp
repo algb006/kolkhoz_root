@@ -2683,6 +2683,20 @@ int CheckAlarmSubjectValue() {
   ahead.advice = core::AlarmAdvice::kCutHay;
   failures += Expect(core::AlarmSubjectValue(ahead) == 5,
                      "the herds' yellow stage answers with the herd, not with the feed it names");
+  // THE COLD'S RED AND YELLOW ANSWER WITH THE HERD TOO (0.37.59; alarms.csv
+  // `herd_freezing`, `herd_cold_ahead`), not with the resource or the unit.
+  core::Alarm freezing = ahead;
+  freezing.kind = core::AlarmKind::kHerdFreezing;
+  freezing.herd = core::HerdId{6};
+  freezing.days_ahead = 0;
+  freezing.advice = core::AlarmAdvice::kNone;
+  core::Alarm cold_ahead = ahead;
+  cold_ahead.kind = core::AlarmKind::kHerdColdAhead;
+  cold_ahead.herd = core::HerdId{8};
+  cold_ahead.advice = core::AlarmAdvice::kWarmYard;
+  failures +=
+      Expect(core::AlarmSubjectValue(freezing) == 6 && core::AlarmSubjectValue(cold_ahead) == 8,
+             "the cold's red and yellow answer with the herd, not with the resource");
 
   core::Alarm position;
   position.kind = core::AlarmKind::kPlanPositionUncovered;
