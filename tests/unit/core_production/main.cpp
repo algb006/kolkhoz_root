@@ -11825,20 +11825,37 @@ int CheckTheGoodsLoan() {
   failures += Expect(core::AmountOf(poor.plan.goods_loan_owed, core::ResourceId{0}) == 8'400'000 &&
                          poor.units.rows[0].stock[0] == 10 * kTonne,
                      "repay: 5 t paid, the seed's 10 t stay, the 7 t left owe 8.4 t");
-  // THE LAMP ONCE THE DEBT HAS CROSSED THE TURN (0.37.20): the 8.4 t carried
-  // with the markup again and nothing borrowed this year is the growing debt.
+  // ONE TURN IS THE BOOK'S LINE, TWO ARE THE LAMP (0.37.47; boss [53]-[55],
+  // econ [54]): the 8.4 t carried with the markup again, last year's 10 t
+  // loan in the closed book — the repayment's own order at work, no lamp.
+  poor.ledger.closed.goods_loan_taken = {10 * kTonne};
+  alarms.clear();
+  core::CollectGoodsLoanAlarms(config, poor, alarms);
+  failures += Expect(alarms.size() == 1 && alarms[0].amount == 8'400'000 && alarms[0].lamp == 0,
+                     "repay: last year's loan carried over one turn stands as a line, no lamp");
+  // No loan last year: the 8.4 t are older, next year's harvest did not pay
+  // them either — the lamp.
+  poor.ledger.closed.goods_loan_taken = {};
   alarms.clear();
   core::CollectGoodsLoanAlarms(config, poor, alarms);
   failures += Expect(alarms.size() == 1 && alarms[0].amount == 8'400'000 && alarms[0].lamp == 1,
-                     "repay: the debt carried over the turn lights the lamp");
-  // A new loan this year beside the carried debt keeps it lit: the carried
-  // part stands above this year's loan with its markup (static review).
+                     "repay: a debt past its second turn lights the lamp");
+  // Last year's 5 t with its two markups (7.2 t) under the 8.4 carried: the
+  // 1.2 above it is older — lit.
+  poor.ledger.closed.goods_loan_taken = {5 * kTonne};
+  alarms.clear();
+  core::CollectGoodsLoanAlarms(config, poor, alarms);
+  failures += Expect(alarms.size() == 1 && alarms[0].lamp == 1,
+                     "repay: carried above last year's loans with both markups — older, lit");
+  // A new loan this year beside the old debt keeps it lit: the carried part
+  // stands above this year's loan with its markup (static review).
+  poor.ledger.closed.goods_loan_taken = {};
   poor.plan.goods_loan_taken = {1 * kTonne};
   poor.plan.goods_loan_owed = {8'400'000 + 1'200'000};
   alarms.clear();
   core::CollectGoodsLoanAlarms(config, poor, alarms);
   failures += Expect(alarms.size() == 1 && alarms[0].lamp == 1,
-                     "repay: carried debt and a new loan this year — still lit");
+                     "repay: an old debt and a new loan this year — still lit");
   // A HEAP LYING IN THE FIELD does not pay from the barn (static review of
   // 0.35.0): 10 t in the barn, all of it the sowing's seed, and 5 t lying in
   // a heap. Above the seed stands 5 t, and all of it is the heap's — the

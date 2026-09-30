@@ -198,9 +198,21 @@ void CollectGoodsLoanAlarms(const ProductionConfig& config,
     // covers the rounding of the markup loan by loan. Measured before the
     // lamp (0.37.18, canon KD): 121.6 days a run with the chairman, 22.0 of
     // days 0-30.
+    //
+    // AND ONLY PAST THE SECOND TURN (0.37.47; boss-core-epoch1-resume-2026-
+    // 09-30 [53]-[55], econ [54]). A debt carried over ONE turn is the
+    // repayment's own order at work — the seed and next year's position
+    // first (labor-payment §6.1, 27 September) — and the player has no move
+    // against it: the lamp so lit burned all year 3 in 27 runs of 27, canon
+    // and novice (0.37.45's pair). That is the book's line now. The lamp is
+    // for the debt next year's harvest did not pay either: what stands above
+    // this year's loans AND above last year's with their two markups (booked
+    // at the loan, taken again at the turn) is older than last year.
     const Grams taken = AmountOf(world.plan.goods_loan_taken, alarm.resource);
     const Grams this_years = WithMarkup(config, taken);
-    alarm.lamp = owed > this_years + kGramsPerKilogram ? 1U : 0U;
+    const Grams last_years = WithMarkup(
+        config, WithMarkup(config, AmountOf(world.ledger.closed.goods_loan_taken, alarm.resource)));
+    alarm.lamp = owed > this_years + last_years + kGramsPerKilogram ? 1U : 0U;
     alarms.push_back(alarm);
   }
 }
