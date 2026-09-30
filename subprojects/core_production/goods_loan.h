@@ -28,7 +28,9 @@ namespace core {
 
 /// @brief The most of `resource` the district lends this year: the seed the
 ///        stores must keep for its sowings before its next harvest — the plan
-///        door's rule (SeedHeldToSowing, as of today; 0.36.23), grams. 0 for a
+///        door's rule (SeedHeldToSowing, as of today; 0.36.23) — with what the
+///        stores' rot takes of it by the sowing, the seed lamp's own door
+///        (SeedNeedWithRot; 0.37.42), grams. 0 for a
 ///        resource that is no crop's seed or has no such sowing: other goods
 ///        are a STUB, not this stage (boss seq 15).
 Grams GoodsLoanCeiling(const ProductionConfig& config,

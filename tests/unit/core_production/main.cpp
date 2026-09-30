@@ -3063,6 +3063,21 @@ int CheckSeedHeldFieldByField() {
   // fields short).
   failures += Expect(core::GoodsLoanCeiling(config, world, core::ResourceId{0}) == 25 * kTonne,
                      "seed held, the loan: the ceiling is this spring's 25 t");
+  // AND WITH THE ROT TO THE SOWING, the seed lamp's door (0.37.42; boss [40]):
+  // a potato that rots lends the 25 t and what the stores lose of them by the
+  // sowing — the number the lamp measures the shortfall by.
+  {
+    core::ProductionConfig rotting = config;
+    rotting.spoil_days.assign(rotting.feed_values.size(), 0.0F);
+    rotting.spoil_days[0] = 120.0F;
+    rotting.keeping_factor = 1.0F;
+    const core::Grams ceiling = core::GoodsLoanCeiling(rotting, world, core::ResourceId{0});
+    std::cout << "the loan with the rot: " << ceiling << " g against the bare 25 t\n";
+    failures += Expect(
+        ceiling > 25 * kTonne &&
+            ceiling == core::SeedNeedWithRot(rotting, world, core::ResourceId{0}, 25 * kTonne),
+        "seed held, the loan: with the rot to the sowing, as the lamp counts the need");
+  }
   world.units.rows[0].stock[0] = 40 * kTonne;
   std::vector<core::Alarm> field_alarms;
   core::CollectFieldAlarms(config, world, field_alarms);

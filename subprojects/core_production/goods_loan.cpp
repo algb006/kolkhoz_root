@@ -50,8 +50,17 @@ Grams GoodsLoanCeiling(const ProductionConfig& config,
   // lends the seed today's stores must keep — the sowings before the seed's
   // next harvest — and not next year's, which the harvest gives. As of
   // today: a loan is never taken in the turn's own hour (TakeGoodsLoan).
+  //
+  // AND WITH THE ROT TO THE SOWING — THE LAMP'S OWN DOOR (0.37.42; boss-core-
+  // epoch1-resume-2026-09-30 [40], econ's boss-econ-loan-cap [3]). The seed
+  // lamp (kSeedShort) measures the norm and what the stores' rot takes of it
+  // by the sowing (SeedNeedWithRot); the ceiling lent the bare norm, so a loan
+  // taken at the lamp's word left the rot's share short and the lamp burned
+  // on after the cart came, with no second loan in the year: on host's novice
+  // run, seed 1939's wheat, 2.52 t lent against 2.66 t short, 13 days lit.
   const std::vector<Grams> need = SeedHeldToSowing(config, current, current.calendar.day);
-  return resource.value < need.size() ? need[resource.value] : 0;
+  const Grams bare = resource.value < need.size() ? need[resource.value] : 0;
+  return bare > 0 ? SeedNeedWithRot(config, current, resource, bare) : 0;
 }
 
 OrderRefusal TakeGoodsLoan(const ProductionConfig& config,
