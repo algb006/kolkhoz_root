@@ -611,6 +611,12 @@ struct FarmingConfig {
   /// still frost's reason: the construction module owns the insulation.
   float insulation_livestock_straw_t = 6.0F;
 
+  /// world_params `feed_draught_first` (0/1, boss's d567729b; econ's pair of
+  /// the feeding order, boss-core-start-no-yards [21]-[23]): the herd day
+  /// walks — and so feeds — the kolkhoz's horse herds before the rest. 0,
+  /// the default, is the rows' order. A switch, not a rule of the design.
+  bool feed_draught_first = false;
+
   /// «Замерзает» from this count.
   float freezing_counter = 6.0F;
 

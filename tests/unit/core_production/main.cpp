@@ -3087,6 +3087,38 @@ int CheckFeedLightLeavesThePloughsOats() {
   return failures;
 }
 
+/// THE FEEDING ORDER'S SWITCH (0.37.63; boss-core-start-no-yards [21]-[23],
+/// econ's pair): hay for ten heads a day, ten cows in the first row and ten
+/// horses in the second. The rows' order feeds the cows and leaves the team
+/// short; `feed_draught_first` feeds the team and leaves the cows short.
+int CheckTheFeedingOrderSwitch() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.horse_kind = core::LivestockKindId{1};
+  config.livestock[1].feed_units_per_game_day = 1.0F;
+  config.livestock[1].births_per_game_year = 0.0F;
+  config.livestock[0].births_per_game_year = 0.0F;
+  config.feed_links.push_back(
+      core::FeedLinkDef{.kind = core::LivestockKindId{1}, .resource = core::ResourceId{0}});
+  SetLivestockHead(config.unit_types[0], 100.0F);
+  const auto fed = [&](bool draught_first) {
+    config.farming.feed_draught_first = draught_first;
+    core::WorldState world = MakeHerdWorld(10.0F);
+    AddHerd(world, 0, 10, 5, true);
+    AddHerd(world, 1, 10, 5, true);
+    core::RunHerdDay(config, world);
+    return std::pair<float, float>{world.herds.rows[0].fed_share, world.herds.rows[1].fed_share};
+  };
+  const auto [cows_rows, horses_rows] = fed(false);
+  const auto [cows_first, horses_first] = fed(true);
+  std::cout << "  feeding order: rows — cows " << cows_rows << ", horses " << horses_rows
+            << "; draught first — cows " << cows_first << ", horses " << horses_first << "\n";
+  failures +=
+      Expect(cows_rows == 1.0F && horses_rows < 1.0F && horses_first == 1.0F && cows_first < 1.0F,
+             "feeding order: the rows feed the cows first, the switch the team");
+  return failures;
+}
+
 /// THE COLD LADDER AT WORK (0.37.62; Livestock design «Числа лестницы —
 /// Эпоха I»): ten cows in an open pen, no calves in the way. A night of −9
 /// counts one and a night of −15 (below still frost) two; the first cold
@@ -13751,6 +13783,7 @@ int main() {
   failures += CheckAHeapOnTheFieldRots();
   failures += CheckTheColdLadderParses();
   failures += CheckTheColdLadder();
+  failures += CheckTheFeedingOrderSwitch();
 
   if (failures == 0) {
     std::cout << "unit_core_production: all checks passed\n";
