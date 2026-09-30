@@ -232,6 +232,29 @@ class IProductionSystem {
   /// module's.
   /// @note A pure read; called by residents in the decisions slot (phase 3).
   virtual ResourceAmounts NextYearHold(const WorldState& world) const = 0;
+
+  /// @brief Grams of each resource next year's plan reserve will seal at the
+  /// coming turn (labor-payment §7, «Что делится»; boss, 2026-09-30, on
+  /// econ's turn-horizon-2026-09-30.md, option (2)): next year's plan
+  /// positions of it, priced as the January letter will price them
+  /// (NextPlanAreaHa), with the rot of their wait to next year's delivery.
+  /// Dense by ResourceId.
+  ///
+  /// UNCONDITIONAL, and NextYearHold is not: the rung holds the carry-over
+  /// and this year's reaping alike (24 September), so from the turn to next
+  /// year's harvest what lies is sealed whether that harvest will pay the
+  /// positions or not. Asked by the people's issue only for a position whose
+  /// next harvest comes after the turn — the norm's horizon crosses it, and
+  /// the norm must not promise the families grain the district is already
+  /// promised. 0.37.35 promised it: in a year with no winter rye the rye was
+  /// shared out to year 2's July, and the turn sealed it (`--bare` year 2,
+  /// 880 -> 2115 hungry family-days).
+  ///
+  /// Exposed for the people's issue, as NextYearHold is: the positions, the
+  /// area and the norms are this module's.
+  /// @note A pure read; called by residents in the decisions slot (phase 3)
+  /// and between steps for the ration alarm.
+  virtual ResourceAmounts TurnPlanSeal(const WorldState& world) const = 0;
 };
 
 /// @brief Creates the production subsystem.

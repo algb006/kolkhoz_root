@@ -836,6 +836,12 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       // farming calendar is production's.
       [estimate](const WorldState& world, ResourceId resource) -> std::int32_t {
         return estimate == nullptr ? -1 : estimate->DaysToHarvestOf(world, resource);
+      },
+      // AND WHAT THE TURN WILL SEAL of next year's plan (0.37.36; labor-
+      // payment §7, «Что делится»): a norm whose horizon crosses the turn
+      // does not share out what the district is already promised.
+      [estimate](const WorldState& world) {
+        return estimate == nullptr ? ResourceAmounts{} : estimate->TurnPlanSeal(world);
       });
   // THE ROAD TOOLS (delivery 7b, 7c): the map's obstacles, the road levels'
   // prices, the plot radii — one object, and construction is handed its

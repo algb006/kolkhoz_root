@@ -181,12 +181,21 @@ class IResidentsSystem {
 ///        remainder among the trudodni to that day. Empty: no position has
 ///        a harvest, and every one is issued at the table's grams, as before
 ///        0.37.28.
+/// @param turn_plan_seal What next year's plan reserve will seal at the
+///        coming turn, dense by ResourceId — IProductionSystem::TurnPlanSeal,
+///        bound by the assembly (0.37.36; labor-payment §7, «Что делится»).
+///        The people's issue stays above it, as above next_year_hold and in
+///        its place where it is the larger, for a position whose next harvest
+///        (days_to_harvest_of) comes after the turn; the chairman's release
+///        of the plan reserve opens it as it opens that hold. Empty: nothing
+///        sealed ahead, as before 0.37.37.
 std::unique_ptr<IResidentsSystem> CreateResidentsSystem(
     const ITableSet& tables,
     StubTables stubs,
     std::function<ResourceAmounts(const WorldState&)> fodder_fund = {},
     std::function<ResourceAmounts(const WorldState&)> next_year_hold = {},
-    std::function<std::int32_t(const WorldState&, ResourceId)> days_to_harvest_of = {});
+    std::function<std::int32_t(const WorldState&, ResourceId)> days_to_harvest_of = {},
+    std::function<ResourceAmounts(const WorldState&)> turn_plan_seal = {});
 
 /// @brief The world_params.csv keys this module reads (the spreads of the
 /// figure a newborn is given, and the organizations' and ideology's numbers).

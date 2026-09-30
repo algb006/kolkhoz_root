@@ -468,6 +468,10 @@ class ProductionSystem final : public IProductionSystem {
     return core::NextYearHold(config_, world);
   }
 
+  /// THE CONTRACT ONLY (0.37.36): nothing sealed, and the issue reads the
+  /// free stock as 0.37.35 did, until the implementation.
+  ResourceAmounts TurnPlanSeal(const WorldState& /*world*/) const override { return {}; }
+
   void CollectStockForecast(const WorldState& completed,
                             std::vector<StockForecast>& lights) const override {
     lights.push_back(FeedLight(config_, completed));

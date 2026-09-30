@@ -316,6 +316,14 @@ struct FoodConfig {
   /// Empty: no position has a harvest — every one at the table's grams.
   std::function<std::int32_t(const WorldState&, ResourceId)> days_to_harvest_of;
 
+  /// What next year's plan reserve will seal at the coming turn, by
+  /// ResourceId (IProductionSystem::TurnPlanSeal; 0.37.36; labor-payment §7,
+  /// «Что делится»): held in place of `next_year_hold` where larger, for a
+  /// position whose next harvest comes after the turn. A CALL INTO
+  /// core_production on the same terms as `fodder_fund` above. Empty:
+  /// nothing sealed ahead.
+  std::function<ResourceAmounts(const WorldState&)> turn_plan_seal;
+
   /// THE POSITION THE DISTRICT'S CART TAKES DAILY (district §9; register
   /// 231; boss seq 113): milk, by its resources.csv key. The plan does NOT
   /// seal it from the issue — its share of the day has left at the milking
