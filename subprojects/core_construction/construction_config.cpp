@@ -172,6 +172,7 @@ bool ReadTypes(const ITable& unit_types, ConstructionConfig& config, std::string
   const std::uint32_t era_col = unit_types.FindColumn("era");
   const std::uint32_t by_plot_col = unit_types.FindColumn("capacity_by_plot");
   const std::uint32_t has_wear_col = unit_types.FindColumn("has_wear");
+  const std::uint32_t burns_col = unit_types.FindColumn("burns");
   const std::uint32_t wear_factor_col = unit_types.FindColumn("wear_factor");
   const std::uint32_t stink_col = unit_types.FindColumn("stink");
   const std::uint32_t stink_when_col = unit_types.FindColumn("stink_when");
@@ -262,6 +263,28 @@ bool ReadTypes(const ITable& unit_types, ConstructionConfig& config, std::string
         break;
       case CellState::kBad:
         Fail(error, "unit_types", "has_wear is not 0 or 1 in row " + std::to_string(row));
+        return false;
+    }
+    // WHETHER A FIRE TAKES IT (fire design §1, §4; 0.37.40): its own column,
+    // because the stone church wears and does not burn. Read as has_wear is:
+    // an empty cell in a present column refused; no column, every type
+    // burns — the rule before the column, when the fire asked has_wear alone.
+    switch (ReadCell(unit_types, row, burns_col, Range{.low = 0.0F, .high = 1.0F}, number, error)) {
+      case CellState::kRead:
+        type.burns = static_cast<std::uint8_t>(number);
+        break;
+      case CellState::kEmpty:
+        Fail(error,
+             "unit_types",
+             "burns is empty in row " + std::to_string(row) +
+                 " — a present column must answer for every type");
+        return false;
+      case CellState::kNoColumn:
+      case CellState::kNoRow:
+        type.burns = 1;
+        break;
+      case CellState::kBad:
+        Fail(error, "unit_types", "burns is not 0 or 1 in row " + std::to_string(row));
         return false;
     }
     // An empty cell is 1.0 — the class's own pace — because the column names

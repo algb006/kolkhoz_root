@@ -193,6 +193,14 @@ struct BuildType {
   /// here the flag is READ (boss, 2026-09-07).
   std::uint8_t has_wear = 0;
 
+  /// 0/1 from unit_types.csv `burns` (fire design §1 and §4; boss-core-
+  /// epoch1-resume-2026-09-30 [29]): 0 — no fire takes it, whatever it
+  /// wears. The stone church wears and does not burn, and until 0.37.40
+  /// has_wear alone decided both: the church burned three times in nine
+  /// villages' twenty years. Missing column = 1 for every type, the rule
+  /// before the column; an empty cell in a present column is refused.
+  std::uint8_t burns = 1;
+
   /// How badly this type smells at its core, from unit_types.csv `stink`
   /// (water design §4). kNone for every type the column does not name, and
   /// for every type at all when the column is absent.

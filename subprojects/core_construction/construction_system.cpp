@@ -396,14 +396,17 @@ class ConstructionSystem final : public IConstructionSystem {
   /// design guarantees, which is why the narrow form was refused (boss,
   /// parcel 110).
   ///
-  /// WHAT BURNS IS `has_wear`, which is not a new column but the one that
-  /// already separates a building from a heap: a stack, a pile and a trench
-  /// have no wear and no fire. It gives the design's one exception for free —
-  /// the police post is the only heated building that neither wears nor
-  /// burns, and the table already says has_wear = 0 for it. THE HAY STACK IS
-  /// THE STUB'S OWN EDGE: the design has it burning though it is not a
-  /// building, and it has no wear for a fire to take, so it does not burn
-  /// here. Said out loud rather than left to be discovered.
+  /// WHAT BURNS IS `burns` AND `has_wear` BOTH. `burns` (0.37.40, the design
+  /// db's column; boss [29]) is the design's own answer: a unit with no
+  /// building does not burn (fire design §1), nor the stone church (§4), nor
+  /// the police post. Until it, `has_wear` stood for both, and the church —
+  /// which wears — burned three times in nine villages' twenty years, the
+  /// stadium six, the cemetery three. `has_wear` stays asked because the scar
+  /// is wear: a unit with none has nothing for this fire to take. THE HAY
+  /// STACK IS THE STUB'S OWN EDGE: the design has it burning though it is
+  /// not a building, and it has no wear for a fire to take, so it does not
+  /// burn here. THE OLD HOUSE IS THE SECOND: it burns and is not scarred —
+  /// the reason is at the scar. Said out loud rather than left to be found.
   ///
   /// THE SAME CHANCE FOR EVERY TYPE. `fire_risk` in the registry is prose and
   /// the per-type multiplier is polish, so a granary and a bathhouse burn
@@ -443,6 +446,9 @@ class ConstructionSystem final : public IConstructionSystem {
       if (config_.types[unit.type.value].has_wear == 0) {
         continue;  // a heap, a stack, a trench — and the police post
       }
+      if (config_.types[unit.type.value].burns == 0) {
+        continue;  // stone — the church (fire design §4) — or no building to burn (§1)
+      }
       if (unit.paused != 0) {
         continue;  // nobody stokes a stopped building, as nothing wears it
       }
@@ -461,9 +467,21 @@ class ConstructionSystem final : public IConstructionSystem {
       // fire healed the ruin it was supposed to scar. «100 — a ruin still
       // works and never vanishes» is the field's own contract, and a fire
       // may not walk it back.
-      const float scarred = unit.wear + kFireWearScar;
-      const float ceiling = kWearScale - 1.0F;
-      unit.wear = std::max(unit.wear, std::min(scarred, ceiling));
+      //
+      // AND AN OLD HOUSE TAKES NO SCAR AT ALL (0.37.40; econ's stubs audit
+      // §2 p. 1, boss-core-epoch1-resume-2026-09-30 [19]). It collapses at
+      // the top of the scale from age, and it may not be repaired («they are
+      // to be replaced», housing design §10), so a scar is no damage worth a
+      // repair — it is the house's remaining life, taken: a house at 67 or
+      // more went to 99 and fell within about six days, 13 of 28 old houses
+      // that burned on the canon's 27 x 3. The stub's second edge after the
+      // hay stack, said out loud: the fire is broken and put out, the event
+      // goes out, and the house is as it was.
+      if (!core::TypeIsOldHouse(config_, unit.type)) {
+        const float scarred = unit.wear + kFireWearScar;
+        const float ceiling = kWearScale - 1.0F;
+        unit.wear = std::max(unit.wear, std::min(scarred, ceiling));
+      }
       SimEvent& fire = EmitEvent(current, EventKind::kFireBroke, EventSeverity::kInterrupting);
       fire.unit = current.units.row_ids[row];
     }

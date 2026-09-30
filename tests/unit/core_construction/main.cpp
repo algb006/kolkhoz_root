@@ -79,6 +79,8 @@ class BuildTables final : public core::ITableSet {
   // has_wear and wear_factor are task A5's: the orchard is an outline with
   // nothing to wear, the barn ages half again as fast as its class (damp,
   // animals), and old_house is the one type that collapses.
+  // burns (0.37.40): the store is the stone church's stand-in — it wears and
+  // does not burn (fire design §4).
   test::FakeTable types_{{"key",
                           "era",
                           "player_built",
@@ -86,20 +88,21 @@ class BuildTables final : public core::ITableSet {
                           "has_plot",
                           "plot_radius_m",
                           "has_wear",
+                          "burns",
                           "wear_factor",
                           "footprint_r_m"},
-                         {{"store", "1", "0", "start", "1", "10", "1", "", ""},
-                          {"barn", "1", "1", "era", "1", "20", "1", "1.5", ""},
-                          {"club", "2", "1", "era", "1", "20", "1", "", ""},
-                          {"orchard", "1", "1", "era", "1", "", "0", "", ""},
-                          {"old_house", "1", "0", "start", "1", "10", "1", "", ""},
+                         {{"store", "1", "0", "start", "1", "10", "1", "0", "", ""},
+                          {"barn", "1", "1", "era", "1", "20", "1", "1", "1.5", ""},
+                          {"club", "2", "1", "era", "1", "20", "1", "1", "", ""},
+                          {"orchard", "1", "1", "era", "1", "", "0", "1", "", ""},
+                          {"old_house", "1", "0", "start", "1", "10", "1", "1", "", ""},
                           // A well: no plot, but a body of 1.2 m that
                           // nothing else may stand inside (task of
                           // 2026-09-05). has_plot is 0 and that is now three
                           // different facts, not one.
-                          {"well", "1", "1", "era", "0", "", "0", "", "1.2"},
+                          {"well", "1", "1", "era", "0", "", "0", "0", "", "1.2"},
                           // The MTS column's camp (boss, parcel 449).
-                          {"field_camp", "1", "1", "era", "1", "10", "0", "", ""}}};
+                          {"field_camp", "1", "1", "era", "1", "10", "0", "0", "", ""}}};
 
   // wear_factor is the STEP's pace over its class's term, and it stands on
   // three rows on purpose: the store carries it where the type has none
@@ -1607,6 +1610,56 @@ int TestFire(const core::ITableSet& tables) {
       }
     }
     failures += Expect(named, "and every fire names the building it broke in");
+  }
+
+  // Four hundred units of one type over up to twenty days past the grace
+  // period, until one catches: the fires counted, the world returned.
+  const auto run_type = [&system, &fires](std::uint16_t type, std::uint32_t& caught) {
+    core::WorldState world;
+    for (std::uint32_t made = 0; made < 400; ++made) {
+      core::UnitRow unit;
+      unit.type = core::UnitTypeId{type};
+      unit.level = 1;
+      core::AppendRow(world.units, unit);
+    }
+    caught = 0;
+    for (int day = 0; day < 20 && caught == 0; ++day) {
+      world.calendar.tick = static_cast<core::Tick>(500 + day) * core::kTicksPerDay;
+      core::RefreshCalendarCaches(world.calendar);
+      world.step_events.clear();
+      const core::WorldState previous = world;
+      system->RunConstructionDecisions(previous, world);
+      caught = fires(world);
+    }
+    return world;
+  };
+
+  // -- STONE DOES NOT BURN (0.37.40; fire design §4) ------------------------
+  // The store stands in for the church: it wears (has_wear = 1) and its
+  // `burns` is 0. Twenty days of four hundred barns catch (above); four
+  // hundred of these, none.
+  {
+    std::uint32_t caught = 0;
+    run_type(kStoreType, caught);
+    failures += Expect(caught == 0, "fire: a type whose burns is 0 never catches, though it wears");
+  }
+
+  // -- AN OLD HOUSE BURNS AND TAKES NO SCAR (0.37.40; econ's stubs audit) ---
+  // It cannot be repaired and falls at the top from age, so the scar was its
+  // remaining life: 13 of 28 old houses that burned on the canon fell within
+  // about six days. Twenty days of ageing on the fixture's two-year term add
+  // some 21 to the wear; a scar would add 33 on top.
+  {
+    std::uint32_t caught = 0;
+    const core::WorldState world = run_type(kOldHouseType, caught);
+    float worst = 0.0F;
+    for (const core::UnitRow& unit : world.units.rows) {
+      worst = unit.wear > worst ? unit.wear : worst;
+    }
+    std::cout << "fire on old houses: " << caught << " caught, the most worn " << worst << '\n';
+    failures += Expect(caught > 0, "fire: old houses do catch");
+    failures +=
+        Expect(worst < 30.0F, "fire: and no old house takes a scar - its wear is its age's alone");
   }
 
   // -- A BURNT BUILDING IS NOT BURNT TWICE INTO RUIN ------------------------
