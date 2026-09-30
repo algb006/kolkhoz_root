@@ -264,6 +264,16 @@ std::vector<Grams> IssueReserve(const FoodConfig& config, const WorldState& worl
       reserve[index] += next_year[index];
     }
   }
+  // AND THE GOODS LOAN'S DEBT, WITH ITS MARKUP (0.37.45; labor-payment §7,
+  // «Что делится», 736ab8ce; boss-core-epoch1-resume-2026-09-30 [10] (а)):
+  // the district is owed it at the turn, so it is not free, and the default
+  // issue does not share out what the turn repays. Until 0.37.45 the issue
+  // did not read it (FreeIssueStock), and the loan's lamp burned 48 days of
+  // 48 in year 3 on the canon and the novice alike — the issue kept it lit.
+  // Not opened by a fund's release: it is the district's grain, not a fund.
+  for (std::size_t index = 0; index < reserve.size(); ++index) {
+    reserve[index] += AmountOf(world.plan.goods_loan_owed, DefIdFromIndex<ResourceIdTag>(index));
+  }
   return reserve;
 }
 

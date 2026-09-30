@@ -763,6 +763,21 @@ int CheckLockedRationFood() {
                          core::LockedRationFood(with_seal, turn_day).empty(),
                      "the turn's seal: the books rotated, the turn has run - the harvest comes "
                      "before the next");
+
+  // THE GOODS LOAN'S DEBT IS NOT FREE (0.37.45; labor-payment §7): the 100 kg
+  // owed with the markup are held from the people as a fund is; 40 kg owed
+  // leave 60 to eat; and a release of the plan reserve does not open it.
+  const core::FoodConfig plain = MakeExchangeConfig();
+  core::WorldState owing = MakeExchangeWorld(100.0F, 100.0F, 0, 10.0F);
+  owing.plan.goods_loan_owed = {100 * kKilo};
+  failures += Expect(core::LockedRationFood(plain, owing).size() == 1,
+                     "the loan's debt: 100 kg owed of 100 are held from the people");
+  owing.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kPlanReserve)] = {100 * kKilo};
+  failures += Expect(core::LockedRationFood(plain, owing).size() == 1,
+                     "the loan's debt: the plan reserve's release does not open it");
+  owing.plan.goods_loan_owed = {40 * kKilo};
+  failures += Expect(core::LockedRationFood(plain, owing).empty(),
+                     "the loan's debt: 40 kg owed leave the people 60 to eat");
   sealed = 100 * kKilo;
   hold_ahead = 0;
   core::WorldState released = MakeExchangeWorld(100.0F, 100.0F, 0, 10.0F);
