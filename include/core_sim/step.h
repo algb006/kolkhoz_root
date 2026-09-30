@@ -71,6 +71,7 @@
 #include "core_common/alarm_state.h"
 #include "core_common/deadline.h"
 #include "core_common/delivery_term.h"
+#include "core_common/elder_view.h"
 #include "core_common/ids.h"
 #include "core_common/issue_norm_view.h"
 #include "core_common/labor_state.h"
@@ -321,6 +322,12 @@ class ISimulation {
   /// @note NOT PURE, for ActivityOf's reason. The default answers the empty
   ///       view (nothing scored, the verdict kIndicesNotHeld).
   virtual EraReadinessView EraReadiness() const { return {}; }
+
+  /// @brief The former elder (elder_view.h): his resident and his family's
+  /// house now, read off NamedCharactersState and the families.
+  /// @note NOT PURE, for ActivityOf's reason. The default answers the empty
+  ///       view (both ids invalid).
+  virtual ElderView Elder() const { return {}; }
 
   /// @brief Appends every stock light the wired subsystems own, in the
   /// fan-out order of the decisions slot. Fans out exactly as CollectAlarms

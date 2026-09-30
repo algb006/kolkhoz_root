@@ -791,6 +791,9 @@ core::WorldState MakeWorld() {
   // witness's own value and the round trip would pass on a field it never
   // carried.
   world.era_events.electrification_unlocked = 1;
+  // The former elder (save format 118): a resident no default shares — the
+  // default is the invalid id, which a skipped read would hand back.
+  world.named.elder = core::ResidentId{17};
   // Readiness for the transition (save format 52). Every field given a value
   // NO DEFAULT SHARES, for the same reason as the byte above: a codec that
   // skipped one of them would hand the witness's own number back and the
@@ -1169,6 +1172,7 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"mts_column.field_ha", F32(world.mts_column.field_ha)});
   chunks.push_back(
       {"era_events.electrification_unlocked", U8(world.era_events.electrification_unlocked)});
+  chunks.push_back({"named.elder", U32(world.named.elder.value)});
 
   // Readiness (save format 52). Written out component by component rather
   // than by a loop over the struct, which is the whole point of this list: a
@@ -1365,7 +1369,9 @@ constexpr std::array<RecordedSection, 22> kRecordedPayload = {{
     // predicted 545 -> 560 with the nineteen other sections unmoved, held.
     // Save 109: +66 — the team's two alarms' memory, a u16, an i64 and two
     // weeks of seven floats; predicted 561 -> 627 before the build, held.
-    {"world", 627, 0x3bec46d2237fa220ULL},
+    // Save 118: +4 — the former elder's resident, a u32; predicted 627 -> 631
+    // with the other sections unmoved before the build; held.
+    {"world", 631, 0x4124bcfd9fc54991ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:

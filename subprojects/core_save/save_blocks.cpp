@@ -185,7 +185,13 @@ static_assert(sizeof(TractionWatch) == 72,
 static_assert(AggregateArity<TractionWatch>() == 4,
               "TractionWatch gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(kHarnessWeekDays == 7, "the harness week's length is written — VERSION_SAVE");
-static_assert(AggregateArity<WorldState>() == 39,
+// 2026-09-30, save 118: the named characters (the former elder), 40 —
+// written in the world block after the era events.
+static_assert(sizeof(NamedCharactersState) == 4,
+              "NamedCharactersState changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<NamedCharactersState>() == 1,
+              "NamedCharactersState gained or lost a field — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<WorldState>() == 40,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 
@@ -485,6 +491,10 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   // The era events that have come (epochs design §14, save format 50).
   out.WriteU8(world.era_events.electrification_unlocked);
 
+  // The former elder's resident (save format 118): who Ryabinin is cannot be
+  // found again on load — genesis chose him, and his family may have moved.
+  out.WriteU32(world.named.elder.value);
+
   // Readiness for the transition (epochs design §6, save format 52). The
   // indices could be recomputed from a closed year; the RUNS could not —
   // "three years running" is what the campaign accumulated, and that is the
@@ -663,6 +673,8 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   // neither refuses the file rather than being read as "true, probably".
   world->era_events.electrification_unlocked =
       source.ReadEnumValue(0, 1, "electrification unlocked");
+
+  world->named.elder = ResidentId{in.ReadU32()};
 
   ReadReadiness(source, world->readiness);
 }

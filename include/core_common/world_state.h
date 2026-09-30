@@ -42,6 +42,7 @@
 #include "core_common/land_state.h"
 #include "core_common/ledger_state.h"
 #include "core_common/limit_state.h"
+#include "core_common/named_state.h"
 #include "core_common/night_trade_state.h"
 #include "core_common/order_state.h"
 #include "core_common/quantities.h"
@@ -925,6 +926,10 @@ struct WorldState {
   /// The era events that have already come (epochs design §14); SAVED.
   /// limit_state.h.
   EraEventState era_events;
+
+  /// Which residents the named characters are (the former elder); written
+  /// at genesis; SAVED (save 118). named_state.h.
+  NamedCharactersState named;
 
   /// The teachers and librarians the district is sending and who have not
   /// arrived yet (education design, "Эпоха I числами"); SAVED.

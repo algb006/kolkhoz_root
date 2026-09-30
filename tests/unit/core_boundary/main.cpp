@@ -202,6 +202,11 @@ class ScriptedSimulation final : public core::ISimulation {
 
   core::EraReadinessView EraReadiness() const override { return readiness_; }
 
+  core::ElderView Elder() const override { return elder_; }
+
+  /// What Elder() hands back.
+  core::ElderView elder_;
+
   /// What IssueNorms() and NeedUntilHarvest() hand back.
   std::vector<core::IssueNormLine> norms_;
   std::optional<core::HarvestNeed> need_;
@@ -1188,6 +1193,15 @@ int TestSignals(const core::ITableSet& tables) {
                            view.verdict == core::OrderRefusal::kNoOwnTraction,
                        "era readiness: the session forwards the world's view");
     script->readiness_ = core::EraReadinessView{};
+  }
+
+  // «Кто из жителей — староста» (0.37.52): the world's view, forwarded whole.
+  {
+    script->elder_ = core::ElderView{.resident = core::ResidentId{17}, .house = core::UnitId{4}};
+    const core::ElderView view = session->Elder();
+    failures += Expect(view.resident.value == 17 && view.house.value == 4,
+                       "elder: the session forwards the world's view");
+    script->elder_ = core::ElderView{};
   }
 
   // After dark everyone is home, assignment or not: the STUB whereabouts

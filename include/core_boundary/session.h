@@ -22,7 +22,7 @@
 /// go down, commands come up through a queue, data crosses and objects do
 /// not, the core computes and the presentation reads, and nothing calls
 /// back into the core from the renderer. This header is that shape made
-/// concrete, and it is deliberately small — forty-three methods, counting
+/// concrete, and it is deliberately small — forty-four methods, counting
 /// each overload separately, two codec functions, one factory:
 ///
 ///     time      AdvanceStep, AdvanceUntil
@@ -30,7 +30,7 @@
 ///               WhereaboutsOf, ActivityOf, ActiveAlarms, CanBeOrdered, Workforce,
 ///               StockLights, WeatherForecast, WearDeadline,
 ///               LimitDeliveryTerm, MaterialsShortFor, StinkFullAt,
-///               StinkNowAt, ResidentHeightMeters
+///               StinkNowAt, ResidentHeightMeters, Elder
 ///     office    OfficeWorkbook, OfficePlan, OfficeLimit, IssueNorms,
 ///               NeedUntilHarvest, EraReadiness
 ///     roads     PreviewRoad, SelectRoadPieces, RoadKindsAvailable, Roads,
@@ -51,8 +51,8 @@
 /// ending "= 0;" said 36 and missed two declarations wrapped over two lines);
 /// thirty-nine with a resident's activity, 0.37.19; forty with the map's
 /// junctions, 0.37.26; forty-two with the issue norms and the need until
-/// the harvest, 0.37.28; forty-three with the era's readiness, 0.37.31 —
-/// all additions, which is what the
+/// the harvest, 0.37.28; forty-three with the era's readiness, 0.37.31;
+/// forty-four with the elder, 0.37.52 — all additions, which is what the
 /// contract's minor number is for; 70-boundary.md §6.)
 ///
 /// TWO CONSUMERS OF EVENTS. In the game the presentation creates and holds
@@ -130,6 +130,7 @@
 
 #include "core_common/alarm_state.h"
 #include "core_common/calendar.h"
+#include "core_common/elder_view.h"
 #include "core_common/event_state.h"
 #include "core_common/geometry.h"
 #include "core_common/ids.h"
@@ -724,6 +725,14 @@ class ISession {
   ///        own scoring and the order's own rule.
   /// @note Between steps; the answer describes State().
   virtual EraReadinessView EraReadiness() const = 0;
+
+  /// @brief «Кто из жителей — староста» (elder_view.h; society design §1а):
+  ///        the former elder's resident and his family's house now. The door
+  ///        follows the man, not `yard_21`. Host raises `starosta_met` by it
+  ///        and the layer puts the named face on it.
+  /// @note Between steps; the answer describes State(). Both ids invalid
+  ///       when the world has no elder, or he has died.
+  virtual ElderView Elder() const = 0;
 
   /// @brief What the village lacks to START the works on `unit`, line by line:
   /// the resource, needed, held (construction design §6, "старт проверяет

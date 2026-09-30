@@ -445,6 +445,8 @@ class Session final : public ISession {
 
   EraReadinessView EraReadiness() const override { return simulation_->EraReadiness(); }
 
+  ElderView Elder() const override { return simulation_->Elder(); }
+
   std::vector<MaterialShortfall> MaterialsShortFor(UnitId unit) const override {
     return simulation_->MaterialsShortFor(unit);
   }
