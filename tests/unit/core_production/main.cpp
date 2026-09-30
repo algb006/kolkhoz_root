@@ -47,6 +47,7 @@
 #include "field_haul.h"
 #include "field_work.h"
 #include "goods_loan.h"
+#include "herd_forecast.h"
 #include "herd_life.h"
 #include "herd_system.h"
 #include "livestock_homes.h"
@@ -180,6 +181,217 @@ core::HerdId AddHerd(core::WorldState& world,
 core::Grams StoreOf(const core::WorldState& world, std::uint32_t resource) {
   const core::ResourceAmounts& stock = world.units.rows[0].stock;
   return stock.size() > resource ? stock[resource] : 0;
+}
+
+/// Days on the calendar, the herd day run on each.
+void RunHerdDays(const core::ProductionConfig& config,
+                 core::WorldState& world,
+                 std::uint32_t days) {
+  for (std::uint32_t day = 0; day < days; ++day) {
+    world.calendar.tick += core::kTicksPerDay;
+    core::RefreshCalendarCaches(world.calendar);
+    core::RunHerdDay(config, world);
+  }
+}
+
+/// THE OFFSPRING BY THE SAME RULE (0.37.57; boss-core-epoch1-resume [85] q. 2,
+/// [86] p. 2): the herds' forecast grows a herd by RunBirths's rule and gates
+/// and the kind's months, not by running the herd day; held to one head a
+/// herd against the herd day itself. A cow herd of four (two females) at
+/// twelve calves a female a year, the newborns never growing up in the test's
+/// window: 24 calves a year, one every two days. A herd BILLETED (no roof of
+/// its own) calves not at all by the real rule — and the forecast must say
+/// nought too (boss [86] p. 2: after the start without two yards that is the
+/// common case).
+int CheckTheForecastOffspring() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.livestock[0].births_per_game_year = 12.0F;
+  config.livestock[0].newborn_game_months = 24.0F;  // no maturing in the window
+  config.livestock[0].adult_from_game_months = 48.0F;
+  SetLivestockHead(config.unit_types[0], 1000.0F);  // no billet from the calves
+  constexpr std::uint32_t kDays = 20;
+  const auto total = [](const core::WorldState& world, std::uint32_t row) {
+    const core::HerdRow& herd = world.herds.rows[row];
+    return static_cast<float>(herd.adult_count + herd.juvenile_count + herd.newborn_count);
+  };
+  // Housed: the forecast from the state a day has settled, then the real days.
+  core::WorldState housed = MakeHerdWorld(100000.0F);
+  const core::HerdId housed_id = AddHerd(housed, 0, 4, 2, true);
+  RunHerdDays(config, housed, 1);
+  const float housed_start = total(housed, 0);
+  const float housed_forecast = core::ForecastHerdHeads(config, housed, housed_id, kDays);
+  RunHerdDays(config, housed, kDays);
+  const float housed_real = total(housed, 0);
+  std::cout << "  the forecast's offspring, housed: " << housed_start << " -> forecast "
+            << housed_forecast << ", real " << housed_real << " in " << kDays << " days\n";
+  failures +=
+      Expect(housed_real - housed_start >= 8.0F && std::fabs(housed_forecast - housed_real) <= 1.0F,
+             "forecast offspring: a housed herd's calves by the births' rule, within one "
+             "head of the herd day's own");
+  // Billeted: no unit, the whole herd on the yards — no calves, in both.
+  core::WorldState billeted = MakeHerdWorld(100000.0F);
+  const core::HerdId billeted_id = AddHerd(billeted, 0, 4, 2, false);
+  RunHerdDays(config, billeted, 1);
+  const float billeted_start = total(billeted, 0);
+  const float billeted_forecast = core::ForecastHerdHeads(config, billeted, billeted_id, kDays);
+  RunHerdDays(config, billeted, kDays);
+  failures +=
+      Expect(billeted.herds.rows[0].billeted_count > 0 && total(billeted, 0) == billeted_start &&
+                 billeted_forecast == billeted_start,
+             "forecast offspring: a billeted herd calves in neither the herd day nor the "
+             "forecast");
+  // AND THE YOUNG GROW UP AND CALVE (static review of 0.37.57): an unsexed
+  // kind, newborns for 4 days and juveniles for 4 more, three a year a
+  // female — the calves of day 8 calve themselves, and a forecast that grew
+  // them not at all, or froze the rate at today's females, falls SHORT of the
+  // herd day. NOT WITHIN ONE HEAD, said: the herd day moves whole heads by a
+  // drawn flow (DrawFlow) and a single calf waits its rung's days whole,
+  // while the forecast's fractions mature from the first day — measured 27.7
+  // forecast against 26 real in 40 days. The forecast runs AHEAD, the safe
+  // side (the need the larger, the yellow the earlier), so the band is one
+  // head below and a tenth above.
+  core::ProductionConfig growing = config;
+  growing.livestock[0].births_per_game_year = 3.0F;
+  growing.livestock[0].sexed = 0;
+  growing.livestock[0].newborn_game_months = 1.0F;
+  growing.livestock[0].adult_from_game_months = 2.0F;
+  core::WorldState grows = MakeHerdWorld(100000.0F);
+  const core::HerdId grows_id = AddHerd(grows, 0, 4, 0, true);
+  RunHerdDays(growing, grows, 1);
+  const float grows_start = total(grows, 0);
+  const float grows_forecast = core::ForecastHerdHeads(growing, grows, grows_id, 2 * kDays);
+  RunHerdDays(growing, grows, 2 * kDays);
+  std::cout << "  the forecast's offspring, growing up: " << grows_start << " -> forecast "
+            << grows_forecast << ", real " << total(grows, 0) << " in " << 2 * kDays << " days\n";
+  const float grows_real = total(grows, 0);
+  failures += Expect(grows_real - grows_start >= 8.0F && grows_forecast >= grows_real - 1.0F &&
+                         grows_forecast <= grows_real * 1.1F,
+                     "forecast offspring: the young grow up and calve in the forecast as in the "
+                     "herd day - never a head short of it, at most a tenth ahead");
+  return failures;
+}
+
+/// THE HERDS' YELLOW STAGE (0.37.57; kHerdHayShortAhead): four cows eating a
+/// unit of hay a day, no calves, the cut in July (days 24-27 of a year).
+int CheckTheHerdHayForecast() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.livestock[0].births_per_game_year = 0.0F;
+  config.hay_resource = core::ResourceId{0};
+  config.farming.meadow_cut_month = 6;  // July: days 24-27 of each year
+  // A second feed behind the hay, which no store holds (static review of
+  // 0.37.57: an absent feed read «out on day 0» and was named instead).
+  config.feed_values = {1.0F, 0.0F, 0.0F, 0.5F};
+  config.feed_links.push_back(core::FeedLinkDef{.kind = core::LivestockKindId{0},
+                                                .resource = core::ResourceId{3},
+                                                .reserve = 0,
+                                                .max_share = 0.4F});
+  const auto yellow = [&config](const core::WorldState& world) {
+    std::vector<core::Alarm> alarms;
+    core::CollectHerdForecastAlarms(config, world, alarms);
+    return alarms.empty() ? std::optional<core::Alarm>() : std::optional<core::Alarm>(alarms[0]);
+  };
+  // YEAR 1 LOOKS ONLY TO THE FIRST SCYTHES (boss [88], (б)): day 24. 80 kg
+  // for four heads run out after day 19 - short on day 20; 100 kg reach day
+  // 24 - no yellow, whatever the spring of year 2 holds.
+  core::WorldState lean = MakeHerdWorld(80.0F);
+  const core::HerdId herd = AddHerd(lean, 0, 4, 2, true);
+  const std::optional<core::Alarm> short_ahead = yellow(lean);
+  failures +=
+      Expect(short_ahead.has_value() && short_ahead->kind == core::AlarmKind::kHerdHayShortAhead &&
+                 short_ahead->lamp == 0 && short_ahead->herd.value == herd.value &&
+                 short_ahead->resource.value == 0 && short_ahead->days_ahead == 20 &&
+                 short_ahead->amount == 4 && short_ahead->advice == core::AlarmAdvice::kCutHay,
+             "hay forecast, year 1: 80 kg for four heads - short on day 20 before the first "
+             "scythes, the hay named (not the silage behind it), the cut advised, four heads, "
+             "no lamp");
+  core::WorldState reaches = MakeHerdWorld(100.0F);
+  AddHerd(reaches, 0, 4, 2, true);
+  failures += Expect(!yellow(reaches).has_value(),
+                     "hay forecast, year 1: 100 kg reach the first scythes on day 24 - no yellow, "
+                     "the forecast stops there");
+  // YEAR 2 LOOKS TO NEXT YEAR'S CUT on the book: last year's hay lands over
+  // the mowing's days 24-27. None cut last year: 100 kg short on day 25; a
+  // 50 kg lot landing on day 10 moves it to 37; 150 kg cut last year, 108 kg
+  // lying - it carries to day 63, short on day 64.
+  const auto year_two = [](core::WorldState& world) {
+    world.calendar.tick = static_cast<core::Tick>(core::kDaysPerYear) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(world.calendar);
+    world.ledger.closed.year = 1;
+  };
+  core::WorldState bare = MakeHerdWorld(100.0F);
+  AddHerd(bare, 0, 4, 2, true);
+  year_two(bare);
+  const std::optional<core::Alarm> bare_short = yellow(bare);
+  failures += Expect(bare_short.has_value() && bare_short->days_ahead == 25,
+                     "hay forecast, year 2: nothing cut last year - 100 kg short on day 25");
+  core::WorldState with_lot = bare;
+  core::LimitDeliveryRow cart;
+  cart.goods.assign(3, 0);
+  cart.goods[0] = 50 * core::kGramsPerKilogram;
+  cart.arrive_day = core::kDaysPerYear + 10;
+  AppendRow(with_lot.limit_deliveries, cart);
+  const std::optional<core::Alarm> later = yellow(with_lot);
+  failures += Expect(later.has_value() && later->days_ahead == 37,
+                     "hay forecast, year 2: a lot of 50 kg on the road is a move made - the first "
+                     "short day moves from 25 to 37");
+  core::WorldState with_cut = MakeHerdWorld(108.0F);
+  AddHerd(with_cut, 0, 4, 2, true);
+  year_two(with_cut);
+  with_cut.ledger.closed.harvest = {150 * core::kGramsPerKilogram};
+  const std::optional<core::Alarm> after_cut = yellow(with_cut);
+  failures += Expect(after_cut.has_value() && after_cut->days_ahead == 64,
+                     "hay forecast, year 2: last year's 150 kg land over days 24-27 and carry to "
+                     "day 63 - short on day 64");
+  // TO NEXT YEAR'S FIRST SCYTHES, NOT THE END OF ITS MOWING (0.37.57's check-
+  // run): from day 48 the horizon is 72 days (day 120, year 3's first scythes).
+  // 290 kg carry four heads 72 days - no yellow; a horizon to the mowing's end
+  // (day 123) read short on day 72.
+  core::WorldState to_scythes = MakeHerdWorld(290.0F);
+  AddHerd(to_scythes, 0, 4, 2, true);
+  year_two(to_scythes);
+  failures +=
+      Expect(!yellow(to_scythes).has_value(),
+             "hay forecast, year 2: 290 kg reach next year's first scythes - no yellow; the "
+             "new cut feeds from its first day");
+  return failures;
+}
+
+/// THE FIRST MOVE BY THE FEED THAT RUNS OUT (0.37.57; AlarmAdvice): the hay
+/// - the cut; a feed whose home is a numbered store (a granary) with no such
+/// store standing - «амбар под комбикорм», and nothing once its site is under
+/// way; a feed whose home is an outline (straw's stack) - no move.
+int CheckTheForecastAdvice() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.hay_resource = core::ResourceId{0};
+  config.resource_stores_read = 1;
+  config.feed_values = {1.0F, 0.0F, 0.0F, 1.0F, 0.5F};
+  config.unit_types.resize(3);
+  config.unit_types[0].home_of = {core::ResourceId{0}};  // the store keeps hay
+  SetStorageKg(config.unit_types[1], 150000.0F);         // a granary
+  config.unit_types[1].home_of = {core::ResourceId{3}};  // compound feed
+  config.unit_types[2].capacity_by_plot = 1;             // a stack
+  config.unit_types[2].home_of = {core::ResourceId{4}};  // straw
+  core::WorldState world = MakeHerdWorld(100.0F);
+  failures += Expect(
+      core::AdviceForShortFeed(config, world, core::ResourceId{0}) == core::AlarmAdvice::kCutHay,
+      "forecast advice: the hay - the cut");
+  failures += Expect(core::AdviceForShortFeed(config, world, core::ResourceId{3}) ==
+                         core::AlarmAdvice::kGranaryForFeed,
+                     "forecast advice: compound feed and no granary - «амбар под комбикорм»");
+  failures += Expect(
+      core::AdviceForShortFeed(config, world, core::ResourceId{4}) == core::AlarmAdvice::kNone,
+      "forecast advice: straw lives in a stack - no move named");
+  core::UnitRow site;
+  site.type = core::UnitTypeId{1};
+  site.level = 0;
+  AppendRow(world.units, site);
+  failures += Expect(
+      core::AdviceForShortFeed(config, world, core::ResourceId{3}) == core::AlarmAdvice::kNone,
+      "forecast advice: a granary's site under way is the move made");
+  return failures;
 }
 
 int CheckFeeding() {
@@ -1164,9 +1376,14 @@ int CheckTheTeamOnHayAndTooFewHorses() {
     }
     return std::optional<core::Alarm>();
   };
+  // BOTH IN YEAR 2 (0.37.57): year 1 forecasts only to the first scythes
+  // (boss [88], (б)), and the fixture's day 22 stands in the mowing's window.
+  short_week.calendar.tick += static_cast<core::Tick>(core::kDaysPerYear) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(short_week.calendar);
   const std::optional<core::Alarm> meadow = advice(short_week);
   failures += Expect(meadow.has_value() && meadow->lamp == 0 && meadow->resource.value == 0,
                      "too few horses, no hay for one more: the advice names the hay, no lamp");
+  // A CUT LAST YEAR: the closed book of year 2 (0.37.57).
   short_week.ledger.closed.harvest = {1000 * kKilo};
   const std::optional<core::Alarm> buy = advice(short_week);
   failures +=
@@ -13232,6 +13449,9 @@ int main() {
              "stubs leave the world unchanged");
 
   failures += CheckFeeding();
+  failures += CheckTheForecastOffspring();
+  failures += CheckTheHerdHayForecast();
+  failures += CheckTheForecastAdvice();
   failures += CheckTheHerdsMilkGoesToItsHome();
   failures += CheckTheHerdDoesNotEatThePlan();
   failures += CheckTheHerdDoesNotEatNextYear();

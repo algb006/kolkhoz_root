@@ -12,6 +12,7 @@
 #include "core_common/land_state.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table_ops.h"
+#include "herd_forecast.h"
 #include "herd_system.h"
 #include "stock_ops.h"
 
@@ -200,12 +201,7 @@ StockForecast FeedLight(const ProductionConfig& config, const WorldState& world)
   // share of the whole settlement — which is to say, into nothing. Found by
   // the delivery cycle, and the first tests could not see it because each
   // used a single kind with a single feed.
-  struct HerdNeed {
-    LivestockKindId kind;
-    float units_per_day = 0.0F;
-  };
-
-  std::vector<HerdNeed> needs;
+  std::vector<FeedDayNeed> needs;
   if (HasStallSeason(config)) {
     const std::uint8_t winter = WinterMonth(config);
     for (const HerdRow& herd : world.herds.rows) {
@@ -218,7 +214,7 @@ StockForecast FeedLight(const ProductionConfig& config, const WorldState& world)
       const float need =
           FeedNeedUnits(config, config.livestock[herd.kind.value], herd, winter, false);
       if (need > 0.0F) {
-        needs.push_back(HerdNeed{.kind = herd.kind, .units_per_day = need});
+        needs.push_back(FeedDayNeed{.kind = herd.kind, .units = need});
       }
     }
   }
@@ -240,78 +236,26 @@ StockForecast FeedLight(const ProductionConfig& config, const WorldState& world)
   // them. Until 0.37.14 the light read the whole stores, and 0.37.14 took
   // off the plough's oats alone, the one exclusion the row names, while the
   // feeding kept all four: the light measured a neighbour of the feeding.
-  const ResourceAmounts allowance = HerdFeedAllowance(config, world);
-  // AND THE FEEDING'S REFUSAL PER LINK: a reserve feed takes none of the
-  // people's food (herd_system.cpp, PeoplesFoods; 0.37.5). Without it the
-  // light offered the pigs' reserve wheat and rye the feeding refuses (static
-  // review of 0.37.15).
-  const std::vector<std::uint8_t> peoples_foods = PeoplesFoods(config, world);
-  std::vector<float> held_kg(config.feed_values.size(), 0.0F);
-  for (std::uint32_t resource = 0; resource < held_kg.size(); ++resource) {
-    if (!(config.feed_values[resource] > 0.0F) || resource >= allowance.size()) {
-      continue;
-    }
-    held_kg[resource] =
-        static_cast<float>(allowance[resource]) / static_cast<float>(kGramsPerKilogram);
-  }
   // AND THE HAY LYING REAPED ON THE FIELDS (boss-core-epoch1-queue [96],
-  // [97]; resources design §6, «убранное сено»; 0.37.11): the snow takes no
-  // heap, so a grass crop's hay at a field's edge is fodder a cart away, less
-  // what the district takes from it first (HeapAbovePlanDebt, 0.37.15). HAY
-  // ONLY: a heap of grain or potato is the people's before the pigs'. Straw
-  // lies in no heap — the reaping sends it to the stores — and a meadow lays
-  // its hay straight in.
-  if (config.hay_resource.value < held_kg.size()) {
-    held_kg[config.hay_resource.value] +=
-        static_cast<float>(HeapAbovePlanDebt(world, config.hay_resource)) /
-        static_cast<float>(kGramsPerKilogram);
-  }
+  // [97]; 0.37.11) above the district's take (HeapAbovePlanDebt, 0.37.15).
+  // One reading with the herds' forecast since 0.37.57 (herd_forecast.h,
+  // HerdFeedHeldKg).
+  std::vector<float> held_kg = HerdFeedHeldKg(config, world);
+  // AND THE FEEDING'S REFUSAL PER LINK: a reserve feed takes none of the
+  // people's food (herd_system.cpp, PeoplesFoods; 0.37.5).
+  const std::vector<std::uint8_t> peoples_foods = PeoplesFoods(config, world);
 
+  // THE DAY'S DRAIN IS THE FORECAST'S (DrainFeedDay, 0.37.57): the order,
+  // the ceilings, the work-only feeds carrying nothing — one function, so
+  // the light and the yellow stage cannot part.
+  std::vector<float> covered;
   std::int32_t days = 0;
   bool starving_today = false;
   while (days < kStockForecastHorizonDays) {
+    DrainFeedDay(config, peoples_foods, needs, held_kg, covered);
     bool all_fed = true;
-    for (const HerdNeed& herd : needs) {
-      float covered = 0.0F;
-      for (const FeedLinkDef& link : config.feed_links) {
-        if (covered >= herd.units_per_day) {
-          break;
-        }
-        // The kind filter is the whole point: a feeding order belongs to the
-        // kind it names, and a cow is never offered the pigs' barley.
-        if (link.kind.value != herd.kind.value || link.resource.value >= held_kg.size()) {
-          continue;
-        }
-        // Work-only feeds are the horse's WAGE, not its keep (boss, Q2): in a
-        // wintering forecast nobody is in the traces, so they carry nothing.
-        // Leaving them in would let the oats forecast the hay.
-        if (link.work_only != 0) {
-          continue;
-        }
-        if (link.reserve != 0 && link.resource.value < peoples_foods.size() &&
-            peoples_foods[link.resource.value] != 0) {
-          continue;  // the people's food: the feeding refuses it to a reserve link
-        }
-        const float value = config.feed_values[link.resource.value] *
-                            (link.reserve != 0 ? config.farming.reserve_feed_factor : 1.0F);
-        if (!(value > 0.0F)) {
-          continue;
-        }
-        const float ceiling = herd.units_per_day * link.max_share;
-        float take_units = herd.units_per_day - covered;
-        take_units = take_units < ceiling ? take_units : ceiling;
-        const float available_units = held_kg[link.resource.value] * value;
-        take_units = take_units < available_units ? take_units : available_units;
-        if (!(take_units > 0.0F)) {
-          continue;
-        }
-        held_kg[link.resource.value] -= take_units / value;
-        covered += take_units;
-      }
-      if (covered + 0.001F < herd.units_per_day) {
-        all_fed = false;
-        break;
-      }
+    for (std::size_t index = 0; index < needs.size(); ++index) {
+      all_fed = all_fed && covered[index] + 0.001F >= needs[index].units;
     }
     if (!all_fed) {
       if (days == 0) {

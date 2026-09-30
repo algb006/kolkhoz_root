@@ -88,11 +88,13 @@ bool DrawCampPlace(WorldState& current, Vec2& place) {
 /// that found this predicted two reddened checks and got one: the gate had
 /// been switched off in the order and was still standing in the night, which
 /// is exactly what a second house looks like from outside.
-bool ConditionsHold(const ProductionConfig& config, const WorldState& world) {
+/// The three conditions for a night in `month`, the yard and the children as
+/// they stand in `world` today.
+bool ConditionsHoldIn(const ProductionConfig& config, const WorldState& world, std::uint8_t month) {
   if (world.chairman.horses_stabled == 0) {
     return false;  // «пока лошади стоят по личным дворам, уводить некого и некому»
   }
-  if (!SchoolIsOut(config, static_cast<std::uint8_t>(world.calendar.date.month))) {
+  if (!SchoolIsOut(config, month)) {
     return false;  // school is in; the children are at their desks
   }
   if (ChildrenOfTheBand(config, world) == 0) {
@@ -101,10 +103,18 @@ bool ConditionsHold(const ProductionConfig& config, const WorldState& world) {
   return true;
 }
 
+bool ConditionsHold(const ProductionConfig& config, const WorldState& world) {
+  return ConditionsHoldIn(config, world, static_cast<std::uint8_t>(world.calendar.date.month));
+}
+
 }  // namespace
 
 bool TeamOutTonight(const ProductionConfig& config, const WorldState& world) {
   return world.chairman.night_pasture_ordered != 0 && ConditionsHold(config, world);
+}
+
+bool TeamOutInMonth(const ProductionConfig& config, const WorldState& world, std::uint8_t month) {
+  return world.chairman.night_pasture_ordered != 0 && ConditionsHoldIn(config, world, month);
 }
 
 OrderRefusal OrderNightPasture(const ProductionConfig& config, WorldState& current) {

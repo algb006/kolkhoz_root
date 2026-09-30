@@ -39,6 +39,13 @@ namespace core {
 /// three, and the two were never the same question.
 bool TeamOutTonight(const ProductionConfig& config, const WorldState& world);
 
+/// @brief Whether the team would be out on a night of `month` (0-based) by
+///        the same three conditions and the standing order, the yard and the
+///        children as they stand today — the herds' forecast asks it of the
+///        months ahead (herd_forecast.h; 0.37.57). TeamOutTonight is this of
+///        today's month.
+bool TeamOutInMonth(const ProductionConfig& config, const WorldState& world, std::uint8_t month);
+
 /// @brief Reads a kGrazeAtNight order: checks the three conditions, sets the
 ///        standing order and draws the camp's place on a floodplain meadow
 ///        from the world's own generator.
