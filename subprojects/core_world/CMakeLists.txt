@@ -11,6 +11,7 @@ kolkhoz_add_module(core_world
     era_readiness.cpp
     genesis.cpp
     road_tools.cpp
+    start_elder.cpp
     start_layout.cpp
     start_literacy.cpp
     start_roads.cpp

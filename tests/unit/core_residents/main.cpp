@@ -3898,6 +3898,48 @@ int CheckOldAgeTakesTheOld(core::IResidentsSystem& system) {
   return failures;
 }
 
+/// THE FORMER ELDER IS NOT TAKEN BY AGE THROUGH YEAR 3 (0.37.53; boss-core-
+/// start-quest-facts-2026-09-30 [8] p. 1), and is after it. One village is a
+/// coin — a man of 74 outlives three game years at 20 % a year with (1 -
+/// 0.2/48)^143 ≈ 0.55 — so twenty villages, each an elder of 74 and a man of
+/// 74 beside him: without the rule all twenty elders live with ≈ 0.55^20,
+/// some six in a million. The men beside them are counted and printed: none
+/// dead would mean the age death never ran, and the elders' twenty would
+/// prove nothing.
+int CheckTheElderIsSparedByAge(core::IResidentsSystem& system) {
+  constexpr std::uint32_t kVillages = 20;
+  // Days 1..143: the last is the last of year 3 (day 144 opens year 4).
+  constexpr std::uint32_t kThroughYearThree = (3 * core::kDaysPerYear) - 1;
+  std::uint32_t elders_alive = 0;
+  std::uint32_t others_dead = 0;
+  std::uint32_t elders_dead_later = 0;
+  for (std::uint32_t village = 0; village < kVillages; ++village) {
+    core::WorldState world;
+    world.world_seed = 500 + village;
+    world.rng = core::SeedRngState(world.world_seed, 0);
+    const core::FamilyId elder_yard = AppendRow(world.families, core::FamilyRow{});
+    const core::ResidentId elder = AddAdult(world, elder_yard, core::Sex::kMale, 74.0F);
+    AddHouse(world, elder_yard, core::Vec2{.x = 0.0F, .y = 0.0F});
+    const core::FamilyId other_yard = AppendRow(world.families, core::FamilyRow{});
+    const core::ResidentId other = AddAdult(world, other_yard, core::Sex::kMale, 74.0F);
+    AddHouse(world, other_yard, core::Vec2{.x = 100.0F, .y = 0.0F});
+    world.named.elder = elder;
+    RunDays(system, world, kThroughYearThree);
+    elders_alive += FindRow(world.residents, elder) != core::kNoRow ? 1U : 0U;
+    others_dead += FindRow(world.residents, other) == core::kNoRow ? 1U : 0U;
+    RunDays(system, world, 27 * core::kDaysPerYear);
+    elders_dead_later += FindRow(world.residents, elder) == core::kNoRow ? 1U : 0U;
+  }
+  std::cout << "  the elder by age, " << kVillages << " villages: alive at the end of year 3 "
+            << elders_alive << ", the man beside him dead by then " << others_dead
+            << ", the elder dead by year 30 " << elders_dead_later << "\n";
+  int failures = 0;
+  failures += Expect(elders_alive == kVillages && others_dead > 0,
+                     "the elder is not taken by age through year 3, while the man beside him is");
+  failures += Expect(elders_dead_later > 0, "and after year 3 age takes the elder too");
+  return failures;
+}
+
 /// The biology factor's requirement moved with its home (2026-09-25): a set
 /// carrying the life table still needs it, now from world_params or life.
 int CheckLifeSpeedupHomes() {
@@ -4122,6 +4164,7 @@ int main() {
   failures += CheckTakeNightTrader();
   if (system != nullptr) {
     failures += CheckOldAgeTakesTheOld(*system);
+    failures += CheckTheElderIsSparedByAge(*system);
   }
 
   if (failures == 0) {

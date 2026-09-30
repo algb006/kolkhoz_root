@@ -241,7 +241,9 @@ void RunDeaths(const LifeConfig& config, WorldState& current, SimDay day) {
       percent_per_year = config.mortality_mid_percent_per_year;
     }
     const float daily_chance = percent_per_year / 100.0F / static_cast<float>(kDaysPerYear);
-    if (NextRandomUnitFloat(current.rng) < daily_chance) {
+    const bool spared = current.residents.row_ids[row] == current.named.elder &&
+                        current.calendar.date.year <= config.elder_spared_through_year;
+    if (NextRandomUnitFloat(current.rng) < daily_chance && !spared) {
       dead.push_back(current.residents.row_ids[row]);
     }
   }

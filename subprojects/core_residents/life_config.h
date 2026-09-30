@@ -250,6 +250,13 @@ struct LifeConfig {
   /// Twins are identical with this chance (world_params
   /// `identical_twins_share`, 1/3, STUB — econ's).
   float identical_twins_share = 1.0F / 3.0F;
+
+  /// The former elder (NamedCharactersState::elder) is not taken by the age
+  /// mortality through this campaign year, inclusive (world_params
+  /// `elder_spared_through_year`, 3, STUB — boss-core-start-quest-facts-
+  /// 2026-09-30 [8] p. 1: the early build's horizon). His draw is still taken,
+  /// so the rest of the village dies exactly as without the rule.
+  std::uint16_t elder_spared_through_year = 3;
   ProfessionId teacher_post;
   ProfessionId librarian_post;
 

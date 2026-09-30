@@ -1209,6 +1209,104 @@ int CheckTheEraReadinessDoor() {
   return failures;
 }
 
+/// THE ELDER'S DOOR ON THE SHIPPED TABLES (0.37.53; society design §1а;
+/// boss-core-start-quest-facts-2026-09-30 [7], [8]): on each of the canon's
+/// nine seeds the door names a man of 45..60 whose family lives in yard_21
+/// (the layout's row at 9186.4, 9286.7). The seeds whose yard_21 family had
+/// no such man are counted and printed — none of them would leave the swap
+/// untried. Then the door follows the man to another house, and answers
+/// nothing once he is gone.
+int CheckTheElderDoor() {
+  const auto shipped = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
+  if (Expect(shipped != nullptr, "elder: the shipped tables load") != 0) {
+    return 1;
+  }
+  constexpr core::Vec2 kYard21{.x = 9186.4F, .y = 9286.7F};
+  constexpr float kLifeSpeedup = 4.0F;
+  int failures = 0;
+  std::uint32_t seated = 0;
+  std::uint32_t moved_in = 0;
+  std::uint32_t houses_astray = 0;
+  std::unique_ptr<core::ISimulation> last;
+  for (std::uint64_t seed = 1931; seed <= 1939; ++seed) {
+    core::StandardSimulationConfig config;
+    config.tables = shipped.get();
+    config.world_seed = seed;
+    config.worker_count = 1;
+    std::unique_ptr<core::ISimulation> simulation = core::CreateStandardSimulation(config);
+    if (Expect(simulation != nullptr, "elder: the shipped set assembles") != 0) {
+      return failures + 1;
+    }
+    const core::WorldState& world = simulation->CompletedState();
+    const core::ElderView view = simulation->Elder();
+    const std::uint32_t row = FindRow(world.residents, view.resident);
+    const std::uint32_t house_row = FindRow(world.units, view.house);
+    if (row == core::kNoRow || house_row == core::kNoRow) {
+      continue;
+    }
+    const core::ResidentRow& elder = world.residents.rows[row];
+    const float age = core::BiologicalAgeYears(kLifeSpeedup, elder.birth_day, world.calendar.day);
+    const core::UnitRow& house = world.units.rows[house_row];
+    const bool in_yard_21 = std::abs(house.position.x - kYard21.x) < 1.0F &&
+                            std::abs(house.position.y - kYard21.y) < 1.0F;
+    if (elder.sex == core::Sex::kMale && age >= 45.0F && age <= 60.0F && in_yard_21 &&
+        house.household.value == elder.family.value) {
+      ++seated;
+    }
+    // Families take the yards in row order and yard_21 is the twenty-first:
+    // a family of another row there came by the swap.
+    const std::uint32_t family_row = FindRow(world.families, elder.family);
+    moved_in += family_row != world.families.rows.size() - 1 ? 1U : 0U;
+    // AND BOTH SIDES OF THE SWAP: every family's house names that family
+    // back, and no two families share a house — a swap that moved only the
+    // elder's side would leave the other yard pointing at him.
+    for (std::uint32_t family = 0; family < world.families.rows.size(); ++family) {
+      const std::uint32_t own = FindRow(world.units, world.families.rows[family].house);
+      if (own == core::kNoRow ||
+          world.units.rows[own].household.value != world.families.row_ids[family].value) {
+        ++houses_astray;
+      }
+    }
+    last = std::move(simulation);
+  }
+  std::cout << "  the elder: seated in yard_21 on " << seated << " of 9 seeds, " << moved_in
+            << " of them by the swap, families whose house does not name them back "
+            << houses_astray << "\n";
+  failures += Expect(seated == 9, "elder: a man of 45..60 in yard_21 on every canon seed");
+  failures += Expect(moved_in > 0 && houses_astray == 0,
+                     "elder: the swap ran on some seed, and left every family in a house that "
+                     "names it back");
+  if (last == nullptr) {
+    return failures + 1;
+  }
+  // The door follows the man: his family changes houses with another.
+  core::WorldState moved = last->CompletedState();
+  const core::ResidentId elder = moved.named.elder;
+  const std::uint32_t elder_row = FindRow(moved.residents, elder);
+  if (Expect(elder_row != core::kNoRow, "elder: the last seed's world has an elder") != 0) {
+    return failures + 1;
+  }
+  const std::uint32_t elder_family_row =
+      FindRow(moved.families, moved.residents.rows[elder_row].family);
+  const std::uint32_t other_row = elder_family_row == 0 ? 1 : 0;
+  const core::UnitId other_house = moved.families.rows[other_row].house;
+  moved.families.rows[other_row].house = moved.families.rows[elder_family_row].house;
+  moved.families.rows[elder_family_row].house = other_house;
+  last->ResetWorld(moved);
+  const core::ElderView after_move = last->Elder();
+  failures += Expect(after_move.resident == elder && after_move.house == other_house,
+                     "elder: the door follows the man to his family's new house");
+  // And answers nothing once he is gone.
+  core::WorldState gone = last->CompletedState();
+  RemoveRow(gone.residents, elder);
+  last->ResetWorld(gone);
+  const core::ElderView after_death = last->Elder();
+  failures += Expect(after_death.resident.value == core::kInvalidEntityIdValue &&
+                         after_death.house.value == core::kInvalidEntityIdValue,
+                     "elder: no elder among the living — both ids invalid");
+  return failures;
+}
+
 /// THE JUNCTIONS DOOR ON THE SHIPPED MAP (0.37.27; layers §15а, register
 /// 300): before the first tick the world answers every row of
 /// world_junctions.csv, each on a vertex of its own road that lies on the
@@ -2378,6 +2476,7 @@ int main() {
   failures += CheckRoadsDoor();
   failures += CheckJunctionsDoor();
   failures += CheckTheEraReadinessDoor();
+  failures += CheckTheElderDoor();
   failures += CheckStartLiteracyGuarantees();
   failures += CheckStartLiteracyOrder();
   failures += CheckTheIssueNormDoors();

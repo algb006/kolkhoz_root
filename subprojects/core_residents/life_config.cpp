@@ -266,7 +266,7 @@ bool ParseWeightRows(const ITable& table, LifeConfig& config, std::string& error
 /// deliberate rather than shared: each is the single source for ITS module's
 /// read, so the day one of them stops reading a key, its list shrinks with
 /// its code instead of waiting for someone to notice.
-constexpr std::array<std::string_view, 31> kLifeWorldParamKeys = {
+constexpr std::array<std::string_view, 32> kLifeWorldParamKeys = {
     "body_height_male_m",
     "body_height_female_m",
     "body_height_sigma_frac",
@@ -316,7 +316,10 @@ constexpr std::array<std::string_view, 31> kLifeWorldParamKeys = {
     "hunger_alarm_clear_margin",
     // Twins (life cycle §4; register 245).
     "twins_share",
-    "identical_twins_share"};
+    "identical_twins_share",
+    // The former elder is not taken by age through the early build's years
+    // (boss-core-start-quest-facts-2026-09-30 [8] p. 1).
+    "elder_spared_through_year"};
 
 /// The barrack's places (housing §9; boss seq 197): unit_levels.csv
 /// `residents_capacity`, by type and level. A table without the column leaves
@@ -364,6 +367,7 @@ bool ParseBodyKnobs(const ITable& world, LifeConfig& config, std::string& error)
   // Human months 1..12 in the table, 0-based in the config.
   float tent_from = static_cast<float>(config.tent_from_month) + 1.0F;
   float tent_to = static_cast<float>(config.tent_to_month) + 1.0F;
+  auto elder_spared = static_cast<float>(config.elder_spared_through_year);
   const Range months{.low = 1.0F, .high = 12.0F};
   const std::array<ScalarKnob, kLifeWorldParamKeys.size()> rows = {
       ScalarKnob{.key = kLifeWorldParamKeys[0],
@@ -459,12 +463,16 @@ bool ParseBodyKnobs(const ITable& world, LifeConfig& config, std::string& error)
                  .range = Range{.low = 0.0F, .high = 1.0F}},
       ScalarKnob{.key = kLifeWorldParamKeys[30],
                  .value = &config.identical_twins_share,
-                 .range = Range{.low = 0.0F, .high = 1.0F}}};
+                 .range = Range{.low = 0.0F, .high = 1.0F}},
+      ScalarKnob{.key = kLifeWorldParamKeys[31],
+                 .value = &elder_spared,
+                 .range = Range{.low = 0.0F, .high = 100.0F}}};
   if (!ReadKnobs(world, "world_params", rows, error)) {
     return false;
   }
   config.tent_from_month = static_cast<std::uint8_t>(tent_from - 1.0F);
   config.tent_to_month = static_cast<std::uint8_t>(tent_to - 1.0F);
+  config.elder_spared_through_year = static_cast<std::uint16_t>(elder_spared + 0.5F);
   return true;
 }
 

@@ -34,6 +34,7 @@
 #include "core_residents/residents_system.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
+#include "start_elder.h"
 #include "start_layout.h"
 #include "start_literacy.h"
 #include "start_roads.h"
@@ -1145,6 +1146,10 @@ void PlaceStartStock(WorldState& world,
   }
 }
 
+/// The yard the former elder lives in, in every game (society design §1а:
+/// «постоянный двор во всех партиях»).
+constexpr std::string_view kElderYardKey = "yard_21";
+
 /// @brief The start economy of the canon (start.md §10-§11): the surviving
 /// units with the stores in the church, 160 ha of arable land with the
 /// suggested first-year plan of the reference run (70 ha sown: 62% grain,
@@ -1161,6 +1166,8 @@ bool BuildStartEconomy(WorldState& world,
                        const ITableSet& tables,
                        StubTables stubs,
                        const IConstructionSystem* capacities,
+                       const StartElder& elder_band,
+                       float life_speedup,
                        std::string* error) {
   const ITable* unit_types = tables.FindTable("unit_types");
   const ITable* resources = tables.FindTable("resources");
@@ -1272,6 +1279,10 @@ bool BuildStartEconomy(WorldState& world,
     world.families.rows[family_row].house = entry.second;
     ++family_row;
   }
+  // The former elder lives in yard_21 in every game (society design §1а) —
+  // before anything is placed by a house, since the family may change houses
+  // for it (start_elder.h).
+  SeatStartElder(elder_band, life_speedup, unit_by_key(kElderYardKey), world);
 
   // THE OLD HOUSES START PART WORN (start design §4), and not all at the
   // same number: a spread puts their collapses years apart instead of
@@ -1647,7 +1658,7 @@ WorldState CreateStartWorld(const ITableSet& tables,
       *error = night_trouble;
     }
   }
-  BuildStartEconomy(world, tables, stubs, capacities, error);
+  BuildStartEconomy(world, tables, stubs, capacities, ReadStartElder(tables), life_speedup, error);
   // THE DISTRICT ASKS IN THE VERY FIRST SPRING, and it can only do that if
   // the world starts with a year behind it. The norm is computed off the
   // arable worked LAST year (world_state.h, PlanState::worked_ha_last_year),

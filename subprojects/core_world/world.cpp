@@ -46,6 +46,7 @@
 #include "core_time/time_system.h"
 #include "core_world/era_readiness.h"
 #include "core_world/road_tools.h"
+#include "start_elder.h"
 #include "start_literacy.h"
 
 namespace core {
@@ -585,6 +586,8 @@ class StandardSimulation final : public ISimulation {
     return BuildEraReadinessView(events_slot_.Readiness(), engine_->CompletedState());
   }
 
+  ElderView Elder() const override { return ElderViewOf(engine_->CompletedState()); }
+
   std::vector<MaterialShortfall> MaterialsShortFor(UnitId unit) const override {
     return construction_->MaterialsShortFor(engine_->CompletedState(), unit);
   }
@@ -924,6 +927,9 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       // The founders' schooling (start_literacy.h; register 301).
       const std::span<const std::string_view> from_literacy = StartLiteracyWorldParamKeys();
       known.insert(known.end(), from_literacy.begin(), from_literacy.end());
+      // The former elder's age band (start_elder.h).
+      const std::span<const std::string_view> from_elder = StartElderWorldParamKeys();
+      known.insert(known.end(), from_elder.begin(), from_elder.end());
       // The ice's two fulls: read by the month's ice door (month_ice.h), not
       // by the simulation — the door is the core's all the same.
       const std::span<const std::string_view> from_ice = IceWorldParamKeys();
