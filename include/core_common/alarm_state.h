@@ -97,6 +97,13 @@ enum class AlarmKind : std::uint8_t {
   /// something honest to burn on. Two questions that `phase == kGrowing`
   /// used to answer with one word: can this be estimated, and should this
   /// go on warning.
+  ///
+  /// THE RESOURCE IS THE CAUSE (0.37.50; boss-core-epoch1-resume-2026-09-30
+  /// [64]): the crop, unless the crop fits its stores and only its straw
+  /// does not — then `resource` is the straw, and the layer's advice is the
+  /// stack (`alarm.harvest_will_not_fit.straw_tip`), not the granary or the
+  /// clamp (`...tip`). Room by resource since 0.37.46: the straw's home is
+  /// the stack.
   kHarvestWillNotFit,
 
   /// A field is holding produce already reaped and not yet carted
@@ -632,6 +639,17 @@ struct Alarm {
   /// short for the work is a loss the player has a move against.
   /// @note Not in the save: the list is collected afresh every step.
   std::uint8_t lamp = 1;
+
+  /// kGoodsLoanOwed only: the campaign year (counted from 1, as
+  /// CalendarState::date.year) whose harvest the debt is repaid from at the
+  /// coming turn — the book's line «погашение с наценкой — из урожая {year}
+  /// года» (rpg's `book.goods_loan_carried`; boss-core-epoch1-resume-2026-09-30
+  /// [66]). The core's and not the layer's: a loan on the turn's own day, or
+  /// a repayment the order of §6.1 puts off, part from «this year + 1», and a
+  /// layer that counted it would be the rule's second home. 0 for every
+  /// other kind (0.37.50).
+  /// @note Not in the save, as `lamp`.
+  std::uint16_t repay_harvest_year = 0;
 };
 
 /// @brief The subject id of an alarm as one number, for ordering: the id
