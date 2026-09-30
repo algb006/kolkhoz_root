@@ -1,0 +1,6 @@
+# generated from db/map.db — do not edit by hand
+# LOCAL WEAR (roads.md §4): stretches whose wear overrides the road's
+# own start wear, in metres along the drawn axis of roads.csv,
+# measured from its first row.
+road,from_m,to_m,wear_pct
+road_village_street,1291.0,1309.0,90

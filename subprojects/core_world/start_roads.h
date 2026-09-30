@@ -25,9 +25,13 @@ struct WorldState;
 
 /// @brief Lays every road of tables/roads.csv into `world.roads`: a dirt
 ///        road or a path, the map's origin, its axis, its stretches; wear
-///        and traffic word from the start layout's road row of the same key.
-/// @return false, with the reason in `error`, when roads.csv is malformed or
-///         a road row of the layout names no road of the map. A map road
+///        and traffic word from the start layout's road row of the same key,
+///        and over that wear the local pieces of tables/road_wear.csv (every
+///        stretch a piece touches takes its wear; 0.37.55).
+/// @return false, with the reason in `error`, when roads.csv is malformed, a
+///         road row of the layout names no road of the map, or a road_wear
+///         row does not parse, names no road of the map or a path, or runs
+///         past the road's axis. A map road
 ///         with no layout row starts at wear 0 and "regular" — the table
 ///         says nothing about it, so nothing is inherited.
 bool PlaceMapRoads(const ITableSet& tables,

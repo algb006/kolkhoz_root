@@ -778,6 +778,7 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
                       "map_places",
                       "resources",
                       "roads",
+                      "road_wear",
                       "start_layout",
                       "start_stock",
                       "unit_types",

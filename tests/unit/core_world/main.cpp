@@ -725,20 +725,35 @@ int CheckStartRoads() {
   bool worn_as_laid = true;
   std::uint32_t paths = 0;
   std::uint32_t stretches = 0;
+  // THE PIT BY THE CHURCH STORE (0.37.55; tables/road_wear.csv): the street's
+  // 1291-1309 m at 90 — stretches 51 and 52 of 25 m, each touched by an edge
+  // — over the layout's 65; every other stretch of every road as laid.
+  constexpr std::size_t kPitFirst = 51;
+  constexpr std::size_t kPitLast = 52;
+  std::uint32_t pit_stretches = 0;
   for (std::size_t index = 0; index < start.roads.rows.size() && read; ++index) {
     const core::RoadRow& road = start.roads.rows[index];
     stretches += static_cast<std::uint32_t>(road.stretches.size());
     const bool is_path = road.kind == core::RoadKind::kPath;
+    const bool is_street = map_roads[index].key == "road_village_street";
     paths += is_path ? 1U : 0U;
     worn_as_laid =
         worn_as_laid && road.origin == core::RoadOrigin::kMap &&
         road.surface == (is_path ? core::RoadSurface::kNone : core::RoadSurface::kDirt) &&
         road.stretches.size() == core::StretchCountForLength(core::RoadAxisLength(road.axis));
-    for (const core::RoadStretch& stretch : road.stretches) {
-      worn_as_laid = worn_as_laid && (!is_path || stretch.wear_pct == 0.0F) &&
-                     stretch.wear_pct == road.stretches.front().wear_pct;
+    for (std::size_t stretch = 0; stretch < road.stretches.size(); ++stretch) {
+      const float wear = road.stretches[stretch].wear_pct;
+      if (is_street && stretch >= kPitFirst && stretch <= kPitLast) {
+        pit_stretches += wear == 90.0F ? 1U : 0U;
+        continue;
+      }
+      worn_as_laid =
+          worn_as_laid && (!is_path || wear == 0.0F) && wear == road.stretches.front().wear_pct;
     }
   }
+  failures += Expect(pit_stretches == 2,
+                     "start roads: the pit by the church store — the street's stretches 51 and 52 "
+                     "at 90, road_wear.csv over the layout's 65");
   // The street and the trunk carry the design's numbers (roads design §4).
   const auto wear_of = [&](std::string_view key) {
     for (std::size_t index = 0; index < map_roads.size(); ++index) {
