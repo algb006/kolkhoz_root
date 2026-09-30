@@ -346,6 +346,34 @@ int CheckTheHerdDoesNotEatThePlan() {
     failures += Expect(StoreOf(world, 0) == 96 * kKilo,
                        "50 kg owed of 100 carried over: the herd eats its 4 kg in full");
   }
+  // THE HERDS STAND UNDER THE WHOLE RUNG, whatever the harvest to come
+  // (0.37.40; boss-core-epoch1-resume [35], (в)): a hectare of the crop stands
+  // this year and will bring 100 kg — for the people's issue the carry-over
+  // then holds nothing (PlanRungGrams) — and the herd still eats only the two
+  // above the 98 owed.
+  {
+    core::ProductionConfig with_crop = MakeHerdConfig();
+    core::CropDef crop;
+    crop.resource = core::ResourceId{0};
+    crop.yield_kg_per_ha = 100.0F;
+    with_crop.crops = {crop};
+    core::WorldState world = MakeHerdWorld(100.0F);
+    world.plan.due.assign(1, 98 * kKilo);
+    core::FieldRow standing;
+    standing.kind = core::LandKind::kArable;
+    standing.area_ga = 1.0F;
+    standing.crop = core::CropId{0};
+    standing.phase = core::FieldPhase::kGrowing;
+    standing.sown_day = 0;
+    core::AppendRow(world.fields, standing);
+    const core::Grams to_come =
+        core::AmountOf(core::HarvestToComeThisYearOf(with_crop, world), core::ResourceId{0});
+    AddHerd(world, 0, 4, 2, true);
+    core::RunHerdDay(with_crop, world);
+    failures += Expect(to_come >= 98 * kKilo && StoreOf(world, 0) == 98 * kKilo,
+                       "a harvest to come that pays the plan frees the carry to the people, not "
+                       "to the herd: it eats the two above the 98 owed");
+  }
   return failures;
 }
 

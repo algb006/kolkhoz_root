@@ -173,15 +173,17 @@ ResourceAmounts FeedAllowance(const ProductionConfig& config,
                               const WorldState& world,
                               bool ploughing_today) {
   const std::vector<SeedNorm> seed_norms = SeedNormsOf(config);
-  // The plan rung before the harvest holds only what the harvest to come will
-  // not pay (0.37.39; fund_ladder.h, PlanRungGrams) — one ladder with the
-  // people's issue.
-  ResourceAmounts allowance = HeldAboveFodder(world,
-                                              seed_norms,
-                                              config.feed_values.size(),
-                                              true,
-                                              config.milk_resource,
-                                              HarvestToComeThisYearOf(config, world));
+  // THE HERDS STAND UNDER THE WHOLE PLAN RUNG — the harvest to come is not
+  // handed to them (0.37.40; boss-core-epoch1-resume-2026-09-30 [35], (в);
+  // labor-payment §7). The rule «before the harvest only what it will not
+  // pay» (PlanRungGrams) was written against the families' hunger, and the
+  // herds have none it cures: on 0.37.39 the people were issued no oats at
+  // all, the relief on the oats went to the herds alone, and the thick year
+  // 4 they ate the carry the thin year 5 needed — 1934's feed 10.9 -> 16.2
+  // t, and the oats failed in 8 seed-years of 180 against none. The one
+  // ladder with the people (0.35.1) is parted here on purpose.
+  ResourceAmounts allowance =
+      HeldAboveFodder(world, seed_norms, config.feed_values.size(), true, config.milk_resource);
   // AND WHAT THOSE RUNGS WILL LOSE TO ROT BEFORE THEY ARE USED (0.35.11;
   // core_common/fund_ladder.h, AddRungRotMargins — one home with the people's
   // issue). Held exactly, the herds ate down to the rung and the store's rot
