@@ -113,6 +113,10 @@ constexpr double kSeedShortLampShare = 0.05;
 /// (boss-core-epoch1-queue-2026-09-29 [36]).
 constexpr std::int64_t kSeedShortLampLeadDays = static_cast<std::int64_t>(kDaysPerSeason);
 
+/// Square metres in a hectare: the unit kSowingWillNotFit's and
+/// kSeedAreaShort's amounts are in.
+constexpr double kSquareMetresPerHectare = 10000.0;
+
 /// The window of a field's NEXT sowing on the calendar: its crop, the first
 /// day of the window and the first day after it (sow_to_month's end), as
 /// absolute days. The slot names the year the crop is REAPED: a spring crop
@@ -188,6 +192,41 @@ bool SeedShortLamp(const ProductionConfig& config,
   const SowingWindow window = NextSowingWindow(config, world.fields.rows[row], world.calendar.day);
   return window.crop.value < config.crops.size() &&
          window.opens - static_cast<std::int64_t>(world.calendar.day) <= kSeedShortLampLeadDays;
+}
+
+/// This year's goods loan of `seed` is taken (PlanState::goods_loan_taken —
+/// the year's mark, cleared at the turn; one a resource a year).
+bool LoanTakenThisYear(const WorldState& world, ResourceId seed) {
+  return AmountOf(world.plan.goods_loan_taken, seed) > 0;
+}
+
+/// A cart of the district's loan (a delivery with no lot) still carries some
+/// of `seed`: on the road, or at the gate with a part not yet stored.
+bool LoanOnTheRoad(const WorldState& world, ResourceId seed) {
+  return std::ranges::any_of(world.limit_deliveries.rows, [seed](const LimitDeliveryRow& cart) {
+    return cart.lot.value == kInvalidDefIdValue && AmountOf(cart.goods, seed) > 0;
+  });
+}
+
+/// Adds to `area_short` the square metres field `row`'s next sowing leaves
+/// unsown for `short_of` grams of `seed` missing, at its crop's sowing norm.
+void AddSeedAreaShort(const ProductionConfig& config,
+                      const WorldState& world,
+                      std::uint32_t row,
+                      ResourceId seed,
+                      Grams short_of,
+                      std::vector<double>& area_short) {
+  const SowingWindow window = NextSowingWindow(config, world.fields.rows[row], world.calendar.day);
+  if (window.crop.value >= config.crops.size() || seed.value >= area_short.size()) {
+    return;
+  }
+  const float norm_kg_per_ha = config.crops[window.crop.value].sowing_norm_kg_per_ha;
+  if (!(norm_kg_per_ha > 0.0F)) {
+    return;
+  }
+  const double hectares =
+      static_cast<double>(short_of) / (static_cast<double>(norm_kg_per_ha) * kGramsPerKilogram);
+  area_short[seed.value] += hectares * kSquareMetresPerHectare;
 }
 
 /// @brief What this field will still put into a store this season, in
@@ -631,7 +670,8 @@ void LightStoreFullLamps(const ProductionConfig& config,
 
 /// kHarvestWaitingOnField, kHarvestWillNotFit and kSeedShort — the three
 /// conditions of a field, in kind order so that the caller's sort has
-/// less to do (it still sorts: row order is not id order).
+/// less to do (it still sorts: row order is not id order) — and after them
+/// kSeedAreaShort, a seed's line and not a field's (0.37.44).
 void CollectFieldAlarms(const ProductionConfig& config,
                         const WorldState& world,
                         std::vector<Alarm>& alarms) {
@@ -671,6 +711,8 @@ void CollectFieldAlarms(const ProductionConfig& config,
   // The plan door's own rule, as of today: alarms are read off a completed
   // step, the turn's rotation already turned.
   const SeedHold seed_hold = SeedHeldByField(config, world, world.calendar.day);
+  // Square metres each seed leaves unsown on the fields its lamp lights.
+  std::vector<double> area_short(config.feed_values.size(), 0.0);
   for (const std::uint32_t row : FieldsInHarvestOrder(config, world)) {
     const FieldRow& field = world.fields.rows[row];
     const Grams claim = RoomClaimOf(config, field);
@@ -742,11 +784,39 @@ void CollectFieldAlarms(const ProductionConfig& config,
         alarm.field = world.fields.row_ids[row];
         alarm.resource = seed;
         alarm.amount = short_of;
-        alarm.lamp = SeedShortLamp(config, world, seed_hold, row, after, short_of) ? 1U : 0U;
+        const bool lit = SeedShortLamp(config, world, seed_hold, row, after, short_of);
+        // THE LOAN WAS THE LAMP'S MOVE (0.37.43; boss-core-epoch1-resume [39]):
+        // the district lends a seed once a year, so once this year's loan of
+        // it is taken the lamp has no advice left to give — it went on burning
+        // 13 days after the cart on host's novice run. The condition stays in
+        // the list whole (the lamp dims, the list's readers see it); what is
+        // still short after the cart is the book's line below.
+        alarm.lamp = lit && !LoanTakenThisYear(world, seed) ? 1U : 0U;
         alarms.push_back(alarm);
+        if (lit) {
+          AddSeedAreaShort(config, world, row, seed, short_of, area_short);
+        }
         break;
       }
     }
+  }
+  // «НЕ ХВАТИТ НА N ГА — ЗАСЕЕМ МЕНЬШЕ» (kSeedAreaShort; 0.37.43): one line a
+  // seed, once its year's loan is taken and in — the outcome, with no move.
+  // BY THE SEED, NOT BY THE SOWING: the spring and the winter wheat share
+  // one seed, so a March loan of it darkens the autumn's lamp too and its
+  // shortfall is this line — the district lends a seed once a year, and a
+  // second loan for the autumn is not there to advise (the static review).
+  for (std::size_t index = 0; index < area_short.size(); ++index) {
+    const ResourceId seed = DefIdFromIndex<ResourceIdTag>(index);
+    if (area_short[index] <= 0.0 || !LoanTakenThisYear(world, seed) || LoanOnTheRoad(world, seed)) {
+      continue;
+    }
+    Alarm alarm;
+    alarm.kind = AlarmKind::kSeedAreaShort;
+    alarm.resource = seed;
+    alarm.amount = std::max<std::int64_t>(1, std::llround(area_short[index]));
+    alarm.lamp = 0;
+    alarms.push_back(alarm);
   }
 }
 
@@ -823,9 +893,6 @@ void CollectWinterCropUnsowableAlarms(const ProductionConfig& config,
 }
 
 namespace {
-
-/// Square metres in a hectare: the unit kSowingWillNotFit's amount is in.
-constexpr double kSquareMetresPerHectare = 10000.0;
 
 /// One spring field in the plough, as the sowing alarm wants it.
 struct SowingClaim {

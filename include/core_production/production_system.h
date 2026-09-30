@@ -98,7 +98,9 @@ class IProductionSystem {
   /// that will still arrive from it, straw included — exceeds what is LEFT
   /// of the free room after the fields that will be HARVESTED EARLIER have
   /// spent theirs; kSeedShort for every field whose next sowing's seed the
-  /// stores cannot cover, summed with every other field of that seed;
+  /// stores cannot cover, summed with every other field of that seed (its
+  /// lamp dark once this year's loan of the seed is taken); kSeedAreaShort,
+  /// one line a seed, the square metres still short once that loan is in;
   /// kSowingWillNotFit for every spring field in
   /// the plough whose harnessed work the horses cannot finish by the last
   /// day its crop can be sown and still ripen before the snow, the days

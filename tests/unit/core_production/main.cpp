@@ -3262,6 +3262,82 @@ int CheckSeedHeldFieldByField() {
                        "seed short, the lamp: a sowing 20 days away stands unlit — the layout's");
     failures += Expect(potato_lamp(8) == 1, "seed short, the lamp: 12 days away, a season: lit");
   }
+  // THE LOAN WAS THE LAMP'S MOVE, AND WHAT IT LEAVES SHORT IS THE BOOK'S LINE
+  // (0.37.43; boss [39]): the same 10 % short — 2.5 t of the potato's 25 t,
+  // one hectare of the ten at 2.5 t a hectare. This year's loan of the potato
+  // taken and in: the lamp is out, the condition stays, and one
+  // kSeedAreaShort says 10 000 m² stay unsown. The cart still on the road:
+  // the lamp out and no line yet. No loan: the lamp, and no line.
+  {
+    const auto count_of = [](const std::vector<core::Alarm>& alarms, core::AlarmKind kind) {
+      return std::ranges::count_if(alarms, [kind](const core::Alarm& alarm) {
+        return alarm.kind == kind && alarm.resource.value == 0;
+      });
+    };
+    const auto lamp_in = [](const std::vector<core::Alarm>& alarms) {
+      for (const core::Alarm& alarm : alarms) {
+        if (alarm.kind == core::AlarmKind::kSeedShort && alarm.resource.value == 0) {
+          return static_cast<int>(alarm.lamp);
+        }
+      }
+      return -1;
+    };
+    core::WorldState lent = spring_then_rye;  // 10 % short, day 0: the lamp lit
+    lent.plan.goods_loan_taken.assign(2, 0);
+    lent.plan.goods_loan_taken[0] = 5 * kTonne;
+    std::vector<core::Alarm> in;
+    core::CollectFieldAlarms(config, lent, in);
+    std::int64_t area = 0;
+    int line_lamp = -1;
+    for (const core::Alarm& alarm : in) {
+      if (alarm.kind == core::AlarmKind::kSeedAreaShort) {
+        area = alarm.amount;
+        line_lamp = static_cast<int>(alarm.lamp);
+      }
+    }
+    failures += Expect(line_lamp == 0, "seed short, the book's line is never a lamp");
+    std::cout << "seed short after the loan: the book's line " << area << " m2\n";
+    failures += Expect(lamp_in(in) == 0 && count_of(in, core::AlarmKind::kSeedShort) == 1,
+                       "seed short, the loan taken: the lamp is out, the condition stays");
+    failures +=
+        Expect(count_of(in, core::AlarmKind::kSeedAreaShort) == 1 && area >= 9990 && area <= 10010,
+               "seed short, the loan in: one book line, a hectare unsown (10 000 m2)");
+    core::WorldState on_road = lent;
+    core::LimitDeliveryRow cart;
+    cart.goods.assign(2, 0);
+    cart.goods[0] = 5 * kTonne;
+    core::AppendRow(on_road.limit_deliveries, cart);
+    std::vector<core::Alarm> road;
+    core::CollectFieldAlarms(config, on_road, road);
+    failures += Expect(lamp_in(road) == 0 && count_of(road, core::AlarmKind::kSeedAreaShort) == 0,
+                       "seed short, the loan's cart on the road: the lamp out and no line yet");
+    std::vector<core::Alarm> none;
+    core::CollectFieldAlarms(config, spring_then_rye, none);
+    failures += Expect(lamp_in(none) == 1 && count_of(none, core::AlarmKind::kSeedAreaShort) == 0,
+                       "seed short, no loan: the lamp, and no line");
+    // A PURCHASE ON THE LIMIT is no loan's cart: a lot carrying the potato
+    // does not hold the line back.
+    core::WorldState bought = lent;
+    core::LimitDeliveryRow lot_cart;
+    lot_cart.lot = core::LimitLotId{0};
+    lot_cart.goods.assign(2, 0);
+    lot_cart.goods[0] = 5 * kTonne;
+    core::AppendRow(bought.limit_deliveries, lot_cart);
+    std::vector<core::Alarm> purchase;
+    core::CollectFieldAlarms(config, bought, purchase);
+    failures += Expect(count_of(purchase, core::AlarmKind::kSeedAreaShort) == 1,
+                       "seed short, a lot bought on the limit on the road: the line stands");
+    // ONLY WHAT WOULD LIGHT THE LAMP COUNTS: 2 % short is the rot's
+    // arithmetic, no lamp, and after the loan no line either.
+    core::WorldState thin = lent;
+    thin.units.rows[0].stock[0] = need_with_rot - (25 * kTonne * 2 / 100);
+    std::vector<core::Alarm> slight;
+    core::CollectFieldAlarms(config, thin, slight);
+    failures += Expect(count_of(slight, core::AlarmKind::kSeedShort) == 1 &&
+                           count_of(slight, core::AlarmKind::kSeedAreaShort) == 0,
+                       "seed short, 2 % after the loan: the condition, and no line - its lamp "
+                       "would not have been lit");
+  }
   spring_then_rye.units.rows[0].stock[0] = 0;
   // AT THE TURN (static review of 0.37.13): as of the closing year's last
   // day the layout is still the old one — the potato reaped this year in

@@ -77,7 +77,9 @@ void LightStoreFullLamps(const ProductionConfig& config,
                          std::vector<Alarm>& alarms);
 
 /// @brief Appends the field alarms standing in `world`: no room for the
-/// harvest ahead, and no seed for the sowing just assigned.
+/// harvest ahead, and no seed for the sowing just assigned — and, a seed at a
+/// time, the book's kSeedAreaShort once the year's loan of it is taken and in
+/// (0.37.44), with kSeedShort's lamp dark while that loan stands.
 /// @param alarms Appended to; never cleared.
 void CollectFieldAlarms(const ProductionConfig& config,
                         const WorldState& world,
