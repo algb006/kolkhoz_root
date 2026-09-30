@@ -1143,6 +1143,35 @@ int CheckTheTeamOnHayAndTooFewHorses() {
   const std::optional<core::Alarm> none_left = lit(week, core::AlarmKind::kTooFewHorses);
   failures += Expect(none_left.has_value() && none_left->herd.value == core::kInvalidEntityIdValue,
                      "too few horses: with no horse left it still burns, its subject invalid");
+
+  // AND IT SEES THE HAY (0.37.49; boss [49] p. 1): the four horses and one
+  // more eat 5 kg of hay a stall day, seven stall months of four days - some
+  // 140 kg; 100 kg lie and nothing was cut last year: the advice turns to
+  // the meadow - the hay named, no lamp. A cut of a tonne last year feeds
+  // the new head: the lamp and no resource, as before.
+  core::ProductionConfig with_hay = config;
+  with_hay.hay_resource = core::ResourceId{0};
+  core::WorldState short_week = week;
+  short_week.herds.rows[0].adult_count = 4;
+  short_week.herds.rows[0].adult_male_count = 2;
+  const auto advice = [&with_hay](const core::WorldState& state) {
+    std::vector<core::Alarm> alarms;
+    core::CollectHerdAlarms(with_hay, state, alarms);
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kTooFewHorses) {
+        return std::optional<core::Alarm>(alarm);
+      }
+    }
+    return std::optional<core::Alarm>();
+  };
+  const std::optional<core::Alarm> meadow = advice(short_week);
+  failures += Expect(meadow.has_value() && meadow->lamp == 0 && meadow->resource.value == 0,
+                     "too few horses, no hay for one more: the advice names the hay, no lamp");
+  short_week.ledger.closed.harvest = {1000 * kKilo};
+  const std::optional<core::Alarm> buy = advice(short_week);
+  failures +=
+      Expect(buy.has_value() && buy->lamp == 1 && buy->resource.value == core::kInvalidDefIdValue,
+             "too few horses, a tonne cut last year: the lamp, no resource, as before");
   return failures;
 }
 

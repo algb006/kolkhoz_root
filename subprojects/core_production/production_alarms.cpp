@@ -543,6 +543,70 @@ std::uint32_t FirstTeamRow(const ProductionConfig& config, const WorldState& wor
   return kNoRow;
 }
 
+/// Kilograms of hay the kolkhoz herds eat through one stall season (the
+/// months outside the pasture band), with one more adult horse in the team's
+/// row when `extra_horse`. Each herd's winter need (FeedNeedUnits, a
+/// forecast: no night pasture) and of it the share its kind's hay link may
+/// take (max_share) — the most the hay may have to carry, the other feeds
+/// aside: the advice errs toward the meadow, not toward the horse.
+double HayStallNeedKg(const ProductionConfig& config,
+                      const WorldState& world,
+                      std::uint32_t team_row,
+                      bool extra_horse) {
+  const ResourceId hay = config.hay_resource;
+  if (hay.value >= config.feed_values.size() || !(config.feed_values[hay.value] > 0.0F)) {
+    return 0.0;
+  }
+  const std::uint8_t winter =
+      static_cast<std::uint8_t>((config.farming.pasture_to_month + 1U) % kMonthsPerYear);
+  std::uint32_t stall_months = 0;
+  for (std::uint8_t month = 0; month < kMonthsPerYear; ++month) {
+    const bool grazing =
+        month >= config.farming.pasture_from_month && month <= config.farming.pasture_to_month;
+    stall_months += grazing ? 0U : 1U;
+  }
+  double units_per_day = 0.0;
+  for (std::uint32_t row = 0; row < world.herds.rows.size(); ++row) {
+    HerdRow herd = world.herds.rows[row];
+    if (herd.household_owned != 0 || herd.kind.value >= config.livestock.size()) {
+      continue;
+    }
+    if (extra_horse && row == team_row) {
+      ++herd.adult_count;
+    }
+    const float need =
+        FeedNeedUnits(config, config.livestock[herd.kind.value], herd, winter, false);
+    for (const FeedLinkDef& link : config.feed_links) {
+      if (link.kind.value == herd.kind.value && link.resource.value == hay.value &&
+          link.work_only == 0 && link.reserve == 0) {
+        units_per_day +=
+            static_cast<double>(need * (link.max_share < 1.0F ? link.max_share : 1.0F));
+        break;
+      }
+    }
+  }
+  return units_per_day / static_cast<double>(config.feed_values[hay.value]) *
+         static_cast<double>(stall_months * kDaysPerMonth);
+}
+
+/// The farm's hay would not feed one more horse through a year (kTooFewHorses's
+/// turn to the meadow, 0.37.49; boss [49] p. 1): last year's cut or what lies
+/// now in the stores and the heaps, the larger, against the stall-season need
+/// with the new head.
+bool HayShortForOneMoreHorse(const ProductionConfig& config,
+                             const WorldState& world,
+                             std::uint32_t team_row) {
+  const ResourceId hay = config.hay_resource;
+  if (hay.value == kInvalidDefIdValue) {
+    return false;
+  }
+  const Grams cut = AmountOf(world.ledger.closed.harvest, hay);
+  const Grams lying = HeldEverywhere(world, hay) + HeapGrams(world, hay);
+  const double supply_kg =
+      static_cast<double>(cut > lying ? cut : lying) / static_cast<double>(kGramsPerKilogram);
+  return supply_kg < HayStallNeedKg(config, world, team_row, true);
+}
+
 /// kTeamOnHay and kTooFewHorses (alarm_state.h), read off the memory the
 /// herd day keeps (herd_state.h, TractionWatch). Both are about the kolkhoz's
 /// team, so a world with no horse kind in its tables raises neither.
@@ -603,6 +667,16 @@ void CollectTeamAlarms(const ProductionConfig& config,
     }
     too_few.amount =
         static_cast<std::int64_t>(std::lround(without / static_cast<float>(working_days)));
+    // AND IT SEES THE HAY (0.37.49; boss-core-epoch1-resume [49] p. 1): the
+    // novice bought at this advice 22 -> 34 -> 49 horses against a hay
+    // ceiling of 44-46, and the herds starved in year 4, 10 horses and 7
+    // cows lost (econ, novice-0.37.42). With no hay for one more head the
+    // advice turns to the meadow: the hay named, no lamp — a horse bought
+    // now is a horse that starves.
+    if (team != kNoRow && HayShortForOneMoreHorse(config, world, team)) {
+      too_few.resource = config.hay_resource;
+      too_few.lamp = 0;
+    }
     alarms.push_back(too_few);
   }
 }
