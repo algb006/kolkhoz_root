@@ -218,6 +218,18 @@ class TimeSystem final : public ITimeSystem {
 
   RainDayShares ClimateRainDayShares() const override { return rain_day_shares_; }
 
+  ClimateNights ClimateNightCelsius() const override {
+    ClimateNights nights{};
+    for (std::uint32_t day = 0; day < kDaysPerYear; ++day) {
+      // The month climate door's arithmetic, per day rather than per month's
+      // second day (MonthClimateOfTables): the seasonal mean, less the
+      // season's half-swing.
+      nights[day] = SeasonalMeanTemperature(seasons_, day) -
+                    SeasonOfDayOfYear(seasons_, day).temperature_amplitude_celsius;
+    }
+    return nights;
+  }
+
  private:
   SeasonTable seasons_;
   RainDayShares rain_day_shares_;

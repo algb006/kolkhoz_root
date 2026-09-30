@@ -510,6 +510,27 @@ int main() {
                        "rain days: the same tables give the same shares");
     std::cout << "rain days: winter day 1 " << shares[1] << ", summer day 24 " << shares[24]
               << ", autumn day 36 " << shares[36] << '\n';
+    // THE CLIMATE'S NIGHTS (ITimeSystem::ClimateNightCelsius; 0.37.61): ONE
+    // ARITHMETIC with the month climate door — on each month's second day
+    // the two must agree to the bit, or the cold ladder and the viewing
+    // mode's thermometer read two climates. And the winter's night is
+    // colder than the summer's.
+    const core::ClimateNights nights = time_system->ClimateNightCelsius();
+    std::uint32_t agreed = 0;
+    for (std::uint32_t month = 0; month < core::kMonthsPerYear; ++month) {
+      core::MonthClimate climate;
+      std::string why;
+      const bool read =
+          core::MonthClimateOfTables(*tables, static_cast<core::Month>(month), climate, why);
+      const std::uint32_t second_day = (month * core::kDaysPerMonth) + 1U;
+      agreed += read && nights[second_day] == climate.night_celsius ? 1U : 0U;
+    }
+    failures += Expect(agreed == core::kMonthsPerYear,
+                       "climate nights: the month climate door's night on every month's "
+                       "second day, to the bit");
+    failures += Expect(nights[1] < nights[25], "climate nights: January's is below July's");
+    std::cout << "climate nights: agree on " << agreed << " months of " << core::kMonthsPerYear
+              << "; day 1 " << nights[1] << ", day 25 " << nights[25] << '\n';
   }
   {
     // A season that swings past the scale is refused: +30 is the hottest

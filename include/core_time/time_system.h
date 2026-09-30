@@ -24,6 +24,7 @@
 #include <span>
 #include <string_view>
 
+#include "core_common/climate_nights.h"
 #include "core_common/rain_stops_work.h"
 #include "core_common/world_state.h"
 #include "core_sim/step.h"
@@ -104,6 +105,16 @@ class ITimeSystem {
   /// what a rain day is.
   /// @return 0..1 per day of the year; all zeros from a system with no rain.
   virtual RainDayShares ClimateRainDayShares() const = 0;
+
+  /// @brief The climate's mean night of each day of the year, °C — the
+  /// seasonal mean minus the season's half-swing (core_common/climate_nights.h).
+  ///
+  /// DERIVED, NOT COUNTED, unlike the rain days: the mean and the swing are
+  /// the season table's own numbers and their interpolation is plain
+  /// arithmetic (SeasonalMeanTemperature), the same the month climate door
+  /// reads (core_time/month_climate.h). Read by the cold ladder's months and
+  /// its autumn forecast (0.37.61).
+  virtual ClimateNights ClimateNightCelsius() const = 0;
 };
 
 /// @brief Creates the time subsystem.
