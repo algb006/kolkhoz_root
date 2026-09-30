@@ -540,7 +540,9 @@ std::unique_ptr<IResidentsSystem> CreateResidentsSystem(
                       "unit_types",
                       "professions",
                       "world_params",
-                      "night_fishing_spots"},
+                      "night_fishing_spots",
+                      "livestock",
+                      "feed_links"},
                      nullptr)) {
     return nullptr;
   }

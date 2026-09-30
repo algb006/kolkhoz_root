@@ -1042,6 +1042,25 @@ int main(int argc, char** argv) {
       "Epoch II is reached on the way in " + std::to_string(kEraOpenedAtLeast) + " villages of " +
       std::to_string(walks.size()) + " or more (" + std::to_string(opened_years.size()) + ")";
   failures += run::Expect(opened_years.size() >= kEraOpenedAtLeast, era_claim.c_str());
+  // RED SINCE 0.37.53, AND WHY (boss-core-start-quest-facts-2026-09-30 [16]-
+  // [18]): the elder's family changes houses with yard_21's at genesis on 8
+  // seeds of 9, a new sample of the same villages — 5 of these 9 open. The
+  // decision rule written before the reading: 108 villages (--seed-offset
+  // 0..99), a sign test on the villages that flip — 52 on 0.37.52 7076ee8,
+  // 46 on 0.37.53 222b172, lost 21, gained 15, p = 0.405: noise, the rules
+  // untouched. The floor is NOT lowered; it stays red until the work on the
+  // villages that never open (past the three-year horizon) raises the count.
+  // Printed beside the red, so the red does not become the background. A
+  // count above the floor again means the note is stale — said as well.
+  if (opened_years.size() < kEraOpenedAtLeast) {
+    std::cout << "population_curve: THE RED ABOVE IS KNOWN — since 0.37.53 the elder's swap is a "
+                 "new sample of villages; on 108 villages 52 (0.37.52) against 46 (0.37.53), "
+                 "sign test p = 0.405, noise by the rule written before the reading; the floor "
+                 "stays, the work on villages that never open Epoch II will raise it\n";
+  } else {
+    std::cout << "population_curve: the note on the red of 0.37.53 is STALE — the floor holds "
+                 "again; take the note out of main.cpp\n";
+  }
   failures += run::KnownGap(walks.front().epoch == core::Epoch::kThree,
                             "Epoch III has come by year 33",
                             "epoch " + std::to_string(static_cast<int>(walks.front().epoch)));

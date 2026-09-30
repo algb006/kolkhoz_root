@@ -23,6 +23,7 @@ namespace {
 struct YardToday {
   float away_hours_total = 0.0F;
   std::uint32_t members = 0;
+  std::uint32_t adults = 0;  ///< Past school age: who can take a scythe.
   std::uint32_t workers = 0;
   std::uint32_t schoolchildren = 0;
   bool has_elder = false;
@@ -48,6 +49,9 @@ YardToday SurveyYard(const PlotConfig& plot,
     }
     if (age >= plot.elder_from_bio_years) {
       yard.has_elder = true;
+    }
+    if (age >= plot.schoolchild_to_bio_years) {
+      ++yard.adults;
     }
     if (age >= plot.schoolchild_from_bio_years && age < plot.schoolchild_to_bio_years) {
       ++yard.schoolchildren;
@@ -110,11 +114,30 @@ float SeasonRatio(const FamilyRow& family) {
              : 0.0F;
 }
 
-/// The yard's own haymaking. It is carried in a month before the garden and
-/// does NOT reset the season's accumulators — the garden closes the season,
-/// the scythe only interrupts it.
-void MowHay(const FoodConfig& config, FamilyRow& family) {
-  AddToPantry(family, config.hay_resource, config.plot.hay_kg_per_yard_year * SeasonRatio(family));
+/// The yard's own haymaking, by the heads it keeps that eat hay (0.37.54;
+/// PlotConfig::yard_hay_kg_per_head): a few days with a scythe, within an
+/// old man's strength, and not the garden's daily hours — so neither the
+/// season's attention nor the kolkhoz's hours scale it. A yard with nobody of
+/// adult age mows nothing. It is carried in a month before the garden and
+/// does NOT reset the season's accumulators.
+void MowHay(const FoodConfig& config,
+            const WorldState& current,
+            FamilyId id,
+            const YardToday& yard,
+            FamilyRow& family) {
+  if (yard.adults == 0) {
+    return;
+  }
+  std::uint32_t heads = 0;
+  for (const HerdRow& herd : current.herds.rows) {
+    if (herd.household_owned != 0 && herd.household.value == id.value &&
+        herd.kind.value < config.hay_eating_kinds.size() &&
+        config.hay_eating_kinds[herd.kind.value] != 0) {
+      heads += static_cast<std::uint32_t>(herd.adult_count) + herd.juvenile_count;
+    }
+  }
+  AddToPantry(
+      family, config.hay_resource, config.plot.yard_hay_kg_per_head * static_cast<float>(heads));
 }
 
 /// The garden pays out on the last day of its month, so that the whole month
@@ -169,7 +192,7 @@ void RunHouseholdPlot(const FoodConfig& config,
     return;
   }
   if (month == plot.hay_harvest_month) {
-    MowHay(config, family);
+    MowHay(config, current, id, yard, family);
   }
   if (month == plot.garden_harvest_month) {
     HarvestGarden(config, family);

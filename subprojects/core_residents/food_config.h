@@ -253,17 +253,19 @@ struct PlotConfig {
 
   std::uint8_t garden_harvest_month = 8;  ///< September.
 
-  /// Hay the yard mows for ITSELF, kilograms a year at full attention, and
-  /// the month it is carried in. This is the one fodder a household does not
-  /// get from the kolkhoz (household design §2, boss answer 2026-08-31):
+  /// Hay the yard mows for ITSELF, kilograms a head of its hay-eating stock
+  /// (adults and young; FoodConfig::hay_eating_kinds), carried in at the end
+  /// of `hay_harvest_month` by a yard with anyone of adult age (food.csv
+  /// `yard_hay_kg_per_head`, 1080, STUB — two goats winter on 2163 kg, the
+  /// count the table's comment keeps). This is the one fodder a household
+  /// does not get from the kolkhoz (household design §2, question 163):
   /// mowing is not kolkhoz work, so a yard with nobody on the farm's books
-  /// still keeps its goats — while its hens, which eat grain the yard does
-  /// not grow, still depend on the issue. A coarse asymmetry and the right
-  /// one: the goat survives without the kolkhoz, the hen does not.
-  ///
-  /// Two goats winter on about two tonnes, which is a hectare at 8 real
-  /// man-days and a few days with a scythe.
-  float hay_kg_per_yard_year = 2000.0F;
+  /// still keeps its goats. NOT SCALED BY THE GARDEN'S ATTENTION since
+  /// 0.37.54: the season's attention stood at 0.35-0.43 in Epoch I, the
+  /// kolkhoz holding the hours, and the goats starved in spring year 2 on
+  /// 27 seeds of 27 — the design's mowing is «несколько дней с косой,
+  /// посильных и старику», not the garden's daily hours (boss, 30.09.2026).
+  float yard_hay_kg_per_head = 1080.0F;
 
   std::uint8_t hay_harvest_month = 7;  ///< August, 0-based: the mowing is done.
 
@@ -371,6 +373,11 @@ struct FoodConfig {
   ResourceId fish_resource;  ///< resources.csv "fish": the nets.
 
   ResourceId hay_resource;  ///< resources.csv "hay": what the yard mows itself.
+
+  /// 0/1 by livestock.csv row: the kind has a hay row in feed_links.csv, so
+  /// the yard mows for its heads (PlotConfig::yard_hay_kg_per_head). Empty in
+  /// a set without the two tables: no yard mows.
+  std::vector<std::uint8_t> hay_eating_kinds;
 };
 
 /// @brief Parses tables/food.csv against the resource roster.

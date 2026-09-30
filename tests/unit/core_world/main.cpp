@@ -1276,7 +1276,9 @@ int CheckTheElderDoor() {
   failures += Expect(moved_in > 0 && houses_astray == 0,
                      "elder: the swap ran on some seed, and left every family in a house that "
                      "names it back");
-  if (last == nullptr) {
+  // NOT A SILENT RED (the fault «never seated» of 0.37.53 found it): with no
+  // elder on any seed no simulation is kept, and the return said nothing.
+  if (Expect(last != nullptr, "elder: some seed's door named an elder and a house") != 0) {
     return failures + 1;
   }
   // The door follows the man: his family changes houses with another.

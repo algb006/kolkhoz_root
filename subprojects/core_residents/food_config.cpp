@@ -254,6 +254,9 @@ bool ParsePlot(const ITable& table, FoodConfig& config, std::string& error) {
       {.key = "plot_schoolchild_to_bio_years",
        .value = &plot.schoolchild_to_bio_years,
        .range = {.low = 0.0F, .high = 30.0F}},
+      {.key = "yard_hay_kg_per_head",
+       .value = &plot.yard_hay_kg_per_head,
+       .range = {.low = 0.0F, .high = 1.0e5F}},
   });
   return ReadKnobs(table, "food", tail, error) &&
          ReadMonth(table, "plot_summer_from_month", plot.summer_from_month, error) &&
@@ -427,6 +430,37 @@ FoodConfig ParseFoodConfig(const ITableSet& tables, std::string* error) {
   config.vegetables_resource = ResourceByKey(resources, "vegetables");
   config.fish_resource = ResourceByKey(resources, "fish");
   config.hay_resource = ResourceByKey(resources, "hay");
+  // WHO THE YARD MOWS FOR (0.37.54): the kinds with a hay row in
+  // feed_links.csv, by livestock.csv row — HerdRow::kind's index. A feed row
+  // naming a kind livestock.csv lacks is refused: the two exports disagree.
+  const ITable* const livestock = tables.FindTable("livestock");
+  const ITable* const feed_links = tables.FindTable("feed_links");
+  if (livestock != nullptr && feed_links != nullptr) {
+    config.hay_eating_kinds.assign(livestock->RowCount(), 0);
+    const std::uint32_t kind_column = feed_links->FindColumn("livestock");
+    const std::uint32_t resource_column = feed_links->FindColumn("resource");
+    if (kind_column == kNoTableColumn || resource_column == kNoTableColumn) {
+      if (error != nullptr) {
+        *error = "feed_links: a column of livestock, resource is missing";
+      }
+      return FoodConfig{};
+    }
+    for (std::uint32_t row = 0; row < feed_links->RowCount(); ++row) {
+      if (feed_links->CellText(row, resource_column) != "hay") {
+        continue;
+      }
+      const std::string_view kind = feed_links->CellText(row, kind_column);
+      const std::uint32_t kind_row = livestock->FindRowByKey(kind);
+      if (kind_row == kNoTableRow) {
+        if (error != nullptr) {
+          *error = "feed_links: row " + std::to_string(row) + " names '" + std::string(kind) +
+                   "', which livestock does not have";
+        }
+        return FoodConfig{};
+      }
+      config.hay_eating_kinds[kind_row] = 1;
+    }
+  }
   return config;
 }
 

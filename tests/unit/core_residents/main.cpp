@@ -1272,6 +1272,47 @@ int CheckPlot() {
     failures += Expect(world.families.rows[0].plot_ratio_days == 0,
                        "the season's accumulators reset after the harvest");
   }
+
+  // THE YARD MOWS BY ITS HEADS, NOT BY ITS ATTENTION (0.37.54; boss-core-
+  // epoch1-resume-2026-09-30 [74]): two goats and a kid (kind 1, a hay row),
+  // a pig beside them (kind 0, none), a yard whose one adult spent the whole
+  // season at the kolkhoz — the garden's attention near nothing. The end of
+  // August carries 3 x 1080 kg all the same. A yard of children mows nothing.
+  {
+    core::FoodConfig mowing = config;
+    mowing.hay_resource = core::ResourceId{2};
+    mowing.hay_eating_kinds = {0, 1};
+    const auto run_august = [&mowing](core::WorldState& world) {
+      for (core::SimDay day = 12; day <= 31; ++day) {
+        world.residents.rows[0].work.hours_away_today = 15.0F;
+        SetClock(world, day, kPlotHour);
+        core::RunHouseholdPlot(mowing, 4.0F, world, 0);
+      }
+      const std::uint32_t hay = mowing.hay_resource.value;
+      return world.families.rows[0].pantry.size() > hay ? world.families.rows[0].pantry[hay] : 0;
+    };
+    const auto add_herd =
+        [](core::WorldState& world, std::uint16_t kind, std::uint16_t adults, std::uint16_t young) {
+          core::HerdRow herd;
+          herd.kind = core::LivestockKindId{kind};
+          herd.household_owned = 1;
+          herd.household = world.families.row_ids[0];
+          herd.adult_count = adults;
+          herd.juvenile_count = young;
+          AppendRow(world.herds, herd);
+        };
+    core::WorldState world = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
+    add_herd(world, 1, 2, 1);
+    add_herd(world, 0, 1, 0);
+    failures +=
+        Expect(run_august(world) == static_cast<core::Grams>(3 * 1080) * core::kGramsPerKilogram,
+               "the yard mows 1080 kg a hay-eating head whatever its attention, and "
+               "nothing for the pig");
+    core::WorldState children = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
+    children.residents.rows[0].birth_day = -120;  // 10 biological years
+    add_herd(children, 1, 2, 0);
+    failures += Expect(run_august(children) == 0, "a yard with nobody of adult age mows nothing");
+  }
   return failures;
 }
 
