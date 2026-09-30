@@ -255,6 +255,23 @@ class IProductionSystem {
   /// @note A pure read; called by residents in the decisions slot (phase 3)
   /// and between steps for the ration alarm.
   virtual ResourceAmounts TurnPlanSeal(const WorldState& world) const = 0;
+
+  /// @brief Grams of each resource THIS year's harvest will still bring into
+  /// the stores, by the fields' forecast (labor-payment §7; boss-core-
+  /// epoch1-resume-2026-09-30 [26], econ's turn-horizon-2026-09-30.md §6): a
+  /// standing crop that ripens this year at its own estimate (StandingCropGrams:
+  /// fertility, weather, late sowing), what lies reaped in the fields' heaps,
+  /// and a spring crop this year's sowing is still to put in, at a normal
+  /// yield — a lost slot nothing. A winter crop sown this autumn ripens next
+  /// year and is not in it. Dense by ResourceId.
+  ///
+  /// Exposed for the plan rung (core_common/fund_ladder.h, PlanRungGrams):
+  /// before the harvest the rung holds of the carry-over only what this does
+  /// not pay. The people's issue is handed it through the assembly, as
+  /// NextYearHold; the herds read it here.
+  /// @note A pure read; called by residents in the decisions slot (phase 3)
+  /// and between steps for the ration alarm.
+  virtual ResourceAmounts HarvestToComeThisYear(const WorldState& world) const = 0;
 };
 
 /// @brief Creates the production subsystem.

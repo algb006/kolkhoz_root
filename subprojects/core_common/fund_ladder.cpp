@@ -40,7 +40,11 @@ Grams RungLeft(Grams held, Grams unsealed) {
 Grams PlanRungGrams(const WorldState& world,
                     std::size_t index,
                     ResourceId carted_daily,
-                    Grams held_above) {
+                    Grams held_above,
+                    Grams harvest_to_come) {
+  // THE CONTRACT ONLY (0.37.38): the harvest still to come is not read until
+  // 0.37.39, and the rung holds the whole owed as decided 24 September.
+  static_cast<void>(harvest_to_come);
   // THE CART'S POSITION IS NEVER SEALED: its share leaves at the milking
   // (the milk cart; boss seq 113). Under the old rung milk was held by
   // nothing only because no reaping books milk — a rule by accident; under
@@ -373,14 +377,16 @@ ResourceAmounts HeldAboveFodder(const WorldState& world,
                                 std::span<const SeedNorm> seed_norms_by_crop,
                                 std::size_t resource_count,
                                 bool reserve_seed_fund,
-                                ResourceId carted_daily) {
+                                ResourceId carted_daily,
+                                const ResourceAmounts& harvest_to_come) {
   const ResourceAmounts seed = reserve_seed_fund
                                    ? SeedRungLeft(world, seed_norms_by_crop, resource_count)
                                    : ResourceAmounts(resource_count, 0);
   ResourceAmounts held(resource_count, 0);
   for (std::size_t index = 0; index < resource_count; ++index) {
     const Grams seed_left = seed[index];
-    const Grams plan = PlanRungGrams(world, index, carted_daily, seed_left);
+    const Grams to_come = index < harvest_to_come.size() ? harvest_to_come[index] : 0;
+    const Grams plan = PlanRungGrams(world, index, carted_daily, seed_left, to_come);
     // EACH FUND OPENS ITS OWN RUNG (boss, boss-core-epoch1-resume seq 14,
     // answer 3). Until 0.34.17 every release came off one total of both
     // rungs — "which fund was opened is which risk was taken, not which share
@@ -415,7 +421,8 @@ ResourceAmounts NextYearRungLeft(const WorldState& world,
                                  std::span<const SeedNorm> seed_norms_by_crop,
                                  bool reserve_seed_fund,
                                  ResourceId carted_daily,
-                                 const ResourceAmounts& next_year_hold) {
+                                 const ResourceAmounts& next_year_hold,
+                                 const ResourceAmounts& harvest_to_come) {
   const ResourceAmounts seed = reserve_seed_fund
                                    ? SeedRungLeft(world, seed_norms_by_crop, next_year_hold.size())
                                    : ResourceAmounts(next_year_hold.size(), 0);
@@ -425,7 +432,8 @@ ResourceAmounts NextYearRungLeft(const WorldState& world,
       continue;
     }
     // What the plan reserve's release frees beyond this year's plan rung.
-    const Grams plan = PlanRungGrams(world, index, carted_daily, seed[index]);
+    const Grams to_come = index < harvest_to_come.size() ? harvest_to_come[index] : 0;
+    const Grams plan = PlanRungGrams(world, index, carted_daily, seed[index], to_come);
     const Grams released = Unsealed(world, FundKind::kPlanReserve, index);
     const Grams beyond = released > plan ? released - plan : 0;
     left[index] = RungLeft(next_year_hold[index], beyond);

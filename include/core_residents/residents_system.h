@@ -189,13 +189,21 @@ class IResidentsSystem {
 ///        (days_to_harvest_of) comes after the turn; the chairman's release
 ///        of the plan reserve opens it as it opens that hold. Empty: nothing
 ///        sealed ahead, as before 0.37.37.
+/// @param harvest_to_come What this year's harvest will still bring into the
+///        stores, dense by ResourceId — IProductionSystem::HarvestToComeThisYear,
+///        bound by the assembly (0.37.38; labor-payment §7). The people's issue
+///        stays below a plan rung that, before the harvest, holds of the
+///        carry-over only what this will not pay (core_common/fund_ladder.h,
+///        PlanRungGrams). Empty: the rung holds the whole owed, as before
+///        0.37.39.
 std::unique_ptr<IResidentsSystem> CreateResidentsSystem(
     const ITableSet& tables,
     StubTables stubs,
     std::function<ResourceAmounts(const WorldState&)> fodder_fund = {},
     std::function<ResourceAmounts(const WorldState&)> next_year_hold = {},
     std::function<std::int32_t(const WorldState&, ResourceId)> days_to_harvest_of = {},
-    std::function<ResourceAmounts(const WorldState&)> turn_plan_seal = {});
+    std::function<ResourceAmounts(const WorldState&)> turn_plan_seal = {},
+    std::function<ResourceAmounts(const WorldState&)> harvest_to_come = {});
 
 /// @brief The world_params.csv keys this module reads (the spreads of the
 /// figure a newborn is given, and the organizations' and ideology's numbers).

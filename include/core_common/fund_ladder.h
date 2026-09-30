@@ -171,10 +171,20 @@ NextSowing NextSowingOf(const FieldRow& field, SimDay today, bool year0_is_winte
 /// @param index A ResourceId value; past the plan's end the rung is 0.
 /// @param carted_daily The position the milk cart carries daily: never held,
 ///        its share leaves at the milking. Invalid when there is none.
+/// @param harvest_to_come Grams of the resource this year's harvest will
+///        still bring into the stores (IProductionSystem::HarvestToComeThisYear:
+///        the standing crops that ripen this year, the heaps, the spring
+///        sowings still to come). BEFORE THE HARVEST THE RUNG HOLDS ONLY WHAT
+///        IT WILL NOT PAY (labor-payment §7; boss-core-epoch1-resume-2026-09-30
+///        [26], econ's turn-horizon-2026-09-30.md §6): the owed less this,
+///        never below nought — the carry-over the plan will not need is not
+///        locked from the families. Nought (the default): the whole owed, as
+///        decided 24 September — the rung after the harvest.
 Grams PlanRungGrams(const WorldState& world,
                     std::size_t index,
                     ResourceId carted_daily = ResourceId{},
-                    Grams held_above = 0);
+                    Grams held_above = 0,
+                    Grams harvest_to_come = 0);
 
 /// @brief What of `resource` lies reaped in the fields' heaps beyond what the
 ///        district takes from them first, grams, never below nought: the
@@ -228,12 +238,15 @@ ResourceAmounts SeedRungLeft(const WorldState& world,
 ///
 /// @param seed_norms_by_crop Dense by CropId; a crop past its end needs no seed.
 /// @param resource_count Size of the returned vector.
+/// @param harvest_to_come Dense by ResourceId, as PlanRungGrams takes it per
+///        resource; empty or short — nought for the rest.
 /// @return Dense by ResourceId, sized `resource_count`.
 ResourceAmounts HeldAboveFodder(const WorldState& world,
                                 std::span<const SeedNorm> seed_norms_by_crop,
                                 std::size_t resource_count,
                                 bool reserve_seed_fund,
-                                ResourceId carted_daily = ResourceId{});
+                                ResourceId carted_daily = ResourceId{},
+                                const ResourceAmounts& harvest_to_come = {});
 
 /// @brief Adds to `reserve` what the top two rungs will lose to rot before
 ///        they are used, EACH TO ITS OWN DAY: the plan's part to the year's
@@ -291,9 +304,9 @@ ResourceAmounts FodderRungLeft(const WorldState& world,
 /// next year's hold. Without it the hold was a lock no order opened: the
 /// alarm «the reserve is full and nobody eats» names «unseal a fund» as its
 /// door, and all three funds unsealed left the lean year's rye locked.
-/// @param seed_norms_by_crop, reserve_seed_fund, carted_daily As
-///        HeldAboveFodder is given them — the plan rung is measured by the
-///        same arithmetic.
+/// @param seed_norms_by_crop, reserve_seed_fund, carted_daily,
+///        harvest_to_come As HeldAboveFodder is given them — the plan rung is
+///        measured by the same arithmetic.
 /// @param next_year_hold Dense by ResourceId (IProductionSystem::
 ///        NextYearHold).
 /// @return Dense by ResourceId, sized as `next_year_hold`.
@@ -301,7 +314,8 @@ ResourceAmounts NextYearRungLeft(const WorldState& world,
                                  std::span<const SeedNorm> seed_norms_by_crop,
                                  bool reserve_seed_fund,
                                  ResourceId carted_daily,
-                                 const ResourceAmounts& next_year_hold);
+                                 const ResourceAmounts& next_year_hold,
+                                 const ResourceAmounts& harvest_to_come = {});
 
 /// @brief Whole game days until the plan rung next takes a new year's plan
 ///        (the January letter, production's RunYearStart), as a reader of

@@ -324,6 +324,14 @@ struct FoodConfig {
   /// nothing sealed ahead.
   std::function<ResourceAmounts(const WorldState&)> turn_plan_seal;
 
+  /// What this year's harvest will still bring into the stores, by
+  /// ResourceId (IProductionSystem::HarvestToComeThisYear; 0.37.38; labor-
+  /// payment §7): before the harvest the plan rung holds of the carry-over
+  /// only what this will not pay (fund_ladder.h, PlanRungGrams). A CALL INTO
+  /// core_production on the same terms as `fodder_fund` above. Empty: the
+  /// rung holds the whole owed.
+  std::function<ResourceAmounts(const WorldState&)> harvest_to_come;
+
   /// THE POSITION THE DISTRICT'S CART TAKES DAILY (district §9; register
   /// 231; boss seq 113): milk, by its resources.csv key. The plan does NOT
   /// seal it from the issue — its share of the day has left at the milking

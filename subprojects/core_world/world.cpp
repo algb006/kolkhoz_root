@@ -842,6 +842,12 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       // does not share out what the district is already promised.
       [estimate](const WorldState& world) {
         return estimate == nullptr ? ResourceAmounts{} : estimate->TurnPlanSeal(world);
+      },
+      // AND THE HARVEST STILL TO COME THIS YEAR (0.37.38; labor-payment §7):
+      // before it the plan rung holds of the carry-over only what it will
+      // not pay, and the fields' forecast is production's.
+      [estimate](const WorldState& world) {
+        return estimate == nullptr ? ResourceAmounts{} : estimate->HarvestToComeThisYear(world);
       });
   // THE ROAD TOOLS (delivery 7b, 7c): the map's obstacles, the road levels'
   // prices, the plot radii — one object, and construction is handed its

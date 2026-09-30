@@ -472,6 +472,10 @@ class ProductionSystem final : public IProductionSystem {
     return TurnPlanSealOf(config_, world);
   }
 
+  /// THE CONTRACT ONLY (0.37.38): nothing to come, and the plan rung holds
+  /// the whole owed as it did, until the implementation.
+  ResourceAmounts HarvestToComeThisYear(const WorldState& /*world*/) const override { return {}; }
+
   void CollectStockForecast(const WorldState& completed,
                             std::vector<StockForecast>& lights) const override {
     lights.push_back(FeedLight(config_, completed));
