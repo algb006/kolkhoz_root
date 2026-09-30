@@ -171,10 +171,11 @@ class IResidentsSystem {
 ///        assembly (0.37.2; boss-core-epoch1-queue [60], (г)). The people's
 ///        issue stays above it as the herds do. Empty: nothing held for next
 ///        year, as before 0.37.2.
-/// @param days_to_harvest_of Whole game days to the next opening of the
-///        harvest window of the field crop that gives `resource` — or that
-///        gives what it is made of (sauerkraut: the vegetables) — during the
-///        window, next year's; -1 when no field crop does —
+/// @param days_to_harvest_of Whole game days to the next harvest of
+///        `resource` the fields will give — the window of a crop standing in
+///        a field, or of one after its next sowing — or of what it is made of
+///        (sauerkraut: the vegetables); during a standing crop's window, next
+///        year's; -1 when no field crop does —
 ///        IProductionSystem::DaysToHarvestOf, bound by the assembly (0.37.28;
 ///        labor-payment §7). The default issue norm divides a position's
 ///        remainder among the trudodni to that day. Empty: no position has

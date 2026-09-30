@@ -64,8 +64,10 @@ struct IssueNormLine {
   /// plus the forecast to the harvest. Nought on other bases.
   float trudodni = 0.0F;
 
-  /// Whole game days to the next opening of the position's harvest window
-  /// — during the window, next year's; -1 for a position no harvest gives.
+  /// Whole game days to the position's next harvest the fields will give
+  /// (IProductionSystem::DaysToHarvestOf: a crop standing in a field, or
+  /// the one after its next sowing) — during a standing crop's window, next
+  /// year's; -1 for a position no harvest gives.
   /// Answered on every basis, the chairman's included.
   std::int32_t days_to_harvest = -1;
 

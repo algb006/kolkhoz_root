@@ -154,17 +154,26 @@ class IProductionSystem {
   /// @note Called between steps on the sim thread. A pure read.
   virtual std::int32_t DaysToNextHarvest(const WorldState& completed) const = 0;
 
-  /// @brief Whole game days to the next OPENING of the harvest window of the
-  /// field crop that gives `resource` — or, for a product of processing,
-  /// of the crop that gives its input (sauerkraut: the vegetables); during
-  /// the window, next year's opening, so the answer is never nought.
+  /// @brief Whole game days to the next HARVEST of `resource` that the
+  /// fields will actually give: the next opening of the harvest window of a
+  /// crop that gives it and STANDS in a field (sowing, growing or being
+  /// reaped); for a crop that stands nowhere, the opening that follows its
+  /// next sowing window. A product of processing is asked through the crop
+  /// that gives its input (sauerkraut: the vegetables). During a standing
+  /// crop's window, next year's opening, so the answer is never nought.
+  ///
+  /// WHY THE FIELDS AND NOT THE CALENDAR (0.37.34): until 0.37.33 this was
+  /// the window's calendar alone. The start has no winter rye in the ground,
+  /// so on every seed year 1 reaps no rye — while the door said «six days to
+  /// the rye» in June, the default norm gave out all the rye by day 23, and
+  /// nothing was free until the barley on day 33 (the hungry August of
+  /// boss-core-epoch1-resume-2026-09-30 [12]).
   ///
   /// Exposed for the default issue norm (labor-payment §7; 0.37.28), which
   /// lives in core_residents and divides a position's remainder among the
-  /// trudodni to that day: "until the next harvest" is this module's
-  /// calendar.
+  /// trudodni to that day: "until the next harvest of this position".
   /// @return -1 when no field crop gives the resource or its input (milk).
-  ///         Several crops giving one resource: the nearest opening.
+  ///         Several crops giving one resource: the nearest harvest.
   /// @note A pure read. Called from the decisions slot (the distribution)
   ///       and between steps, as FodderFund.
   virtual std::int32_t DaysToHarvestOf(const WorldState& completed, ResourceId resource) const = 0;
