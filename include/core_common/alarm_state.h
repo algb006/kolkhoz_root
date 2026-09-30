@@ -584,26 +584,35 @@ enum class AlarmKind : std::uint8_t {
   /// move (AlarmAdvice).
   kHerdHayShortAhead,
 
-  /// «СТАДО МЁРЗНЕТ» — THE COLD'S RED (Livestock design, «Холод по
-  /// ступеням», «Замерзание — метрика скота»; boss-core-start-no-yards-
-  /// 2026-09-30 [7], [8]; alarms.csv `herd_freezing`, rank 33): kolkhoz heads
-  /// stand in a cold unit — the cattle yard's open pen (rung 1) — on a frost
-  /// day (the day's mean at or below the design's −5 °C): milk at the
-  /// billet's share, no gain, no calving; a frost night (at or below −15 °C)
-  /// takes a share of them. The heads the billet could take stay billeted
-  /// (a pen does not put a herd out into the frost), so only what the
-  /// billet could not hold stands here. Subject: `herd`; `amount` the heads
-  /// in the cold. `lamp` 1: a loss the player has a move against — the
-  /// warm barn, rung 2.
+  /// «СТАДО МЁРЗНЕТ» — THE COLD'S RED (Livestock design, «Замерзание —
+  /// метрика скота», «Числа лестницы — Эпоха I» — in force by boss-core-
+  /// start-no-yards [15]; alarms.csv `herd_freezing`, rank 33): a kolkhoz
+  /// herd whose cold nights' counter (HerdRow::cold_nights) stands at 1 or
+  /// more — heads in a COLD place (a unit of a rung whose unit_levels.csv
+  /// `warm_place` is 0 and that is not insulated: the cattle yard's open pen,
+  /// the horse yard below insulation) on nights below the kind's threshold.
+  /// «Мёрзнет» from the first such night (milk × the kind's
+  /// `freezing_produce_factor`, draught × `freezing_draught_factor` the day
+  /// after); «замерзает» from `livestock_freezing_counter` (a share of the
+  /// adults a day). The heads on billet stand outside the metric, and in the
+  /// frost months the billet keeps its places before the pen takes a head
+  /// (a pen does not put a herd out into the frost). Subject: `herd`;
+  /// `amount` the heads in the cold. `advice` kInsulateStraw when the stores
+  /// hold the straw of an insulation (construction.csv
+  /// `insulation_livestock_straw_t`), kNone otherwise — the billet and the
+  /// knife are the lamp's text, not a move (boss, 2026-10-01). `lamp` 1: a
+  /// loss the player has a move against.
   kHerdFreezing,
 
   /// «К ЗИМЕ ПЛОЩАДКА НЕ УКРОЕТ N ГОЛОВ — ХЛЕВ ДО МОРОЗОВ» — THE COLD'S
   /// YELLOW, A FORECAST (the same design and threads; alarms.csv
   /// `herd_cold_ahead`, rank 34): in the autumn, the kolkhoz heads that
-  /// neither a warm unit nor the families' billet will hold when the frost
-  /// days come — the ones the open pen would leave in the cold. Subject:
-  /// `herd`; `amount` those heads; `days_ahead` the days to the first frost
-  /// day by the climate; `advice` kWarmYard. `lamp` always 0.
+  /// neither a warm place nor the families' billet will hold when the cold
+  /// nights come — the ones a cold place would leave to the counter.
+  /// Subject: `herd`; `amount` those heads; `days_ahead` the days to the
+  /// first cold night by the climate; `advice` kWarmYard — the cattle yard's
+  /// warm barn, laid before the clay freezes (boss, 2026-10-01). `lamp`
+  /// always 0.
   kHerdColdAhead,
 
   // Appended by later tasks and phases: children out of school, sewage,
@@ -644,7 +653,8 @@ enum class ProcessingStopReason : std::uint8_t {
 /// @brief The first move a forecast alarm names (boss-core-epoch1-resume-
 /// 2026-09-30 [85], [86]) — the seam's vocabulary `alarm_advice`, its words
 /// the enumerators' snake_case; the layer shows the move by the key. Only
-/// the forecast kinds set it (kHerdHayShortAhead); every other alarm keeps
+/// the forecast kinds and the cold's red set it (kHerdHayShortAhead,
+/// kHerdColdAhead, kHerdFreezing); every other alarm keeps
 /// kNone. Appended, never renumbered.
 enum class AlarmAdvice : std::uint8_t {
   /// No move the core can name — shown as such: a feed runs out first that
@@ -666,6 +676,14 @@ enum class AlarmAdvice : std::uint8_t {
   /// скотный двор» (boss-core-start-no-yards [8]; the dictionary's
   /// `warm_yard`). Named by kHerdColdAhead.
   kWarmYard,
+
+  /// Straw on the walls of the cold place the herd stands in — «утеплить
+  /// площадку соломой», kInsulateUnit at the price of construction.csv
+  /// `insulation_livestock_straw_t` and `_labor_days` (boss-core-start-no-
+  /// yards, 2026-10-01; the dictionary's `insulate_straw`). Named by
+  /// kHerdFreezing, and only while the stores hold that straw: the move a
+  /// winter leaves when the clay of the warm barn is frozen.
+  kInsulateStraw,
 
   /// NOT A MOVE: the count, so a consumer can static_assert its mirror.
   kAlarmAdviceCount,
@@ -740,9 +758,10 @@ struct Alarm {
   /// @note Not in the save, as `lamp`.
   std::uint16_t days_ahead = 0;
 
-  /// The forecast kinds only: the first move the core names (AlarmAdvice).
-  /// kNone for every other kind, and for a forecast whose first short feed
-  /// no move brings (0.37.56).
+  /// The forecast kinds and kHerdFreezing: the first move the core names
+  /// (AlarmAdvice). kNone for every other kind, for a forecast whose first
+  /// short feed no move brings (0.37.56), and for a freezing herd when the
+  /// stores hold no straw for an insulation (0.37.60).
   /// @note Not in the save, as `lamp`.
   AlarmAdvice advice = AlarmAdvice::kNone;
 };

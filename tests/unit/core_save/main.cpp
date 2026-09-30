@@ -407,6 +407,8 @@ core::WorldState MakeWorld() {
   herd.adult_older_count = 9;
   herd.hunger_progress = 0.375F;
   herd.frost_progress = 0.625F;    // save 119: the frost's carry, not its default 0
+  herd.cold_nights = 5;            // save 120: the cold nights, not their default 0
+  herd.cold_place_yesterday = 1;   // save 120: yesterday's cold place, not its default 0
   herd.fed_share = 0.625F;         // save 71: a third short of the ration, not its default 1
   herd.autumn_slaughter_done = 1;  // save 76: this October's slaughter done
   core::AppendRow(world.herds, herd);
@@ -1440,7 +1442,10 @@ constexpr std::array<RecordedSection, 22> kRecordedPayload = {{
     // 71 -> 79 with every other section unmoved before the build.
     // Save 119: +4 — the frost's carry, a float, one herd; predicted 89 -> 93
     // with every other section but the ledger unmoved before the build.
-    {"herds", 93, 0xb56f8c68c0dad4c6ULL},
+    // Save 120: +2 — the cold nights' counter and yesterday's cold place, a
+    // byte each, one herd; predicted 93 -> 94 for the counter alone, then 95
+    // with the place, every other section unmoved, before each build.
+    {"herds", 95, 0x1dd6b5bb501ee8a8ULL},
     // 2026-09-16, save 48: +6 bytes, one for each of the six orders — the
     // bought head's sex. The witness named the section, the delta and the
     // offset without being asked, which is what it was rewritten for this
@@ -2132,6 +2137,10 @@ int main() {
       Expect(AmountAt(loaded.ledger.closed.herd_frozen, 0) == 2 && !loaded.herds.rows.empty() &&
                  loaded.herds.rows[0].frost_progress == 0.625F,
              "the frost's toll by kind and the herd's frost carry come back (save 119)");
+  failures += Expect(!loaded.herds.rows.empty() && loaded.herds.rows[0].cold_nights == 5,
+                     "the herd's cold nights' counter comes back (save 120)");
+  failures += Expect(!loaded.herds.rows.empty() && loaded.herds.rows[0].cold_place_yesterday == 1,
+                     "the herd's yesterday's cold place comes back (save 120)");
   failures += Expect(AmountAt(loaded.ledger.closed.herd_hay_eaten, 1) == 9 &&
                          AmountAt(loaded.ledger.closed.herd_feed_short, 0) == 6 &&
                          loaded.ledger.closed.herd_feed_short.size() == 1 &&

@@ -114,9 +114,11 @@ struct HerdRow {
   /// have starved for ever at half milk and no deaths at all.
   float hunger_progress = 0.0F;
 
-  /// Accumulated fractional heads owed to the frost in the open pen (the
-  /// cold's deaths, a share a frost night; save 119) — the same carry as
-  /// hunger_progress, for the same reason.
+  /// Accumulated fractional heads owed to the frost (Livestock design,
+  /// «Числа лестницы — Эпоха I»: at «замерзает» a share of the ADULTS a day,
+  /// world_params `livestock_freezing_loss_share_day`; save 119) — the same
+  /// carry as hunger_progress, for the same reason: 3 % of forty is a head
+  /// and a fifth, and a whole number a day would round the loss away.
   float frost_progress = 0.0F;
 
   /// Sum of the adult heads' ages in GAME years — total age, not years since
@@ -188,6 +190,26 @@ struct HerdRow {
   /// a slaughter asked again the next day would take a third of what it kept,
   /// and the herd would melt day by day through October.
   std::uint8_t autumn_slaughter_done = 0;
+
+  /// THE COLD NIGHTS' COUNTER (Livestock design, «Числа лестницы — Эпоха I»,
+  /// in force by boss-core-start-no-yards [15]; save 120): one per herd, the
+  /// stage read off it as hunger's is off unfed_days. A night below the
+  /// kind's threshold for its place (livestock.csv `cold_night_cold_place_c`
+  /// or `cold_night_warm_place_c`) adds `livestock_cold_step_night`, one
+  /// below weather_params `still_frost_c` adds `livestock_cold_step_still_frost`,
+  /// any other night adds `livestock_cold_step_warm_night` (negative); never
+  /// below 0, and the morning after a move from a cold place to a warm one it
+  /// is 0. «Мёрзнет» from 1, «замерзает» from `livestock_freezing_counter`.
+  /// A herd on billet has none of it: 0.
+  std::uint8_t cold_nights = 0;
+
+  /// 0/1: last night's count was made in a COLD place (save 120). The
+  /// reset «переезд в тёплое место обнуляет счётчик назавтра» needs
+  /// yesterday's place, and nothing else in the state keeps it: a barn
+  /// raised or insulated this morning is warm in the previous step's buffer
+  /// too, an hour back. Written by the ladder each day with the place it
+  /// counted in.
+  std::uint8_t cold_place_yesterday = 0;
 
   /// Game man-days of barn work left today (stage 5). Refilled every morning
   /// by the labor sub-step from the kind's yearly care norm (real man-days

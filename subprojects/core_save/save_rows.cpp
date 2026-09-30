@@ -215,8 +215,11 @@ static_assert(AggregateArity<UnitRow>() == 18,
 // before the fields were added.
 // Save 119 (0.37.59): the frost's carry, a float after hunger_progress — 88
 // and twenty-six, predicted before the field was added.
+// Save 120 (0.37.60): the cold nights' counter and yesterday's cold place,
+// two bytes into the padding after autumn_slaughter_done — 88 still and
+// twenty-eight, predicted before the fields were added.
 static_assert(sizeof(HerdRow) == 88, "HerdRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<HerdRow>() == 26,
+static_assert(AggregateArity<HerdRow>() == 28,
               "HerdRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-13: the felling mark — a stand id and a volume — took the order row
 // from 64 to 72 and the assignment's stand from 24 to 28 (and the resident
@@ -1096,6 +1099,8 @@ void WriteHerdRow(SaveSink& sink, const HerdRow& row) {
   out.WriteFloat(row.fed_share);  // save 71
   out.WriteU8(row.disease_stage);
   out.WriteU8(row.autumn_slaughter_done);  // save 76
+  out.WriteU8(row.cold_nights);            // save 120
+  out.WriteU8(row.cold_place_yesterday);   // save 120
   out.WriteFloat(row.care_days_remaining);
 }
 
@@ -1133,6 +1138,8 @@ HerdRow ReadHerdRow(LoadSource& source) {
   row.fed_share = in.ReadFloat();
   row.disease_stage = in.ReadU8();
   row.autumn_slaughter_done = in.ReadU8();
+  row.cold_nights = in.ReadU8();           // save 120
+  row.cold_place_yesterday = in.ReadU8();  // save 120
   row.care_days_remaining = in.ReadFloat();
   return row;
 }

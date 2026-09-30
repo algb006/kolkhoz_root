@@ -957,6 +957,20 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       //   this hour together. Declared before its export arrives, so the
       //   export does not stop the assembly.
       known.emplace_back("player_entry_hour");
+      //   The cold ladder's five (boss's 6f187c67, 8e54383d; boss-core-start-
+      //   no-yards [15]-[17]; Livestock design «Числа лестницы — Эпоха I»):
+      //   the counter's steps for a cold night, a night below still_frost_c
+      //   and any other night; the counter «замерзает» starts at; the share
+      //   of adults it takes a day. Their reader is the herd day's cold
+      //   ladder, 0.37.61; the contract (HerdRow::cold_nights, save 120)
+      //   comes a delivery ahead of it, with the export.
+      for (const std::string_view key : {"livestock_cold_step_night",
+                                         "livestock_cold_step_still_frost",
+                                         "livestock_cold_step_warm_night",
+                                         "livestock_freezing_counter",
+                                         "livestock_freezing_loss_share_day"}) {
+        known.emplace_back(key);
+      }
       std::string trouble;
       if (!CheckDeclaredReaders(*world_params, "world_params", known, trouble)) {
         LogError(trouble);
