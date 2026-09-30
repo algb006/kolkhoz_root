@@ -31,28 +31,68 @@
 namespace core {
 namespace {
 
-/// Free room of every numbered store together, in grams — what a harvest
-/// has to fit into. Outline-bounded stores are unbounded and are left out
-/// of the sum: counting them would make the answer meaningless.
+/// The free room of each numbered store, by unit row, in grams — what the
+/// harvest's claims are spent against, store by store (0 for a row that is
+/// no numbered store).
 ///
-/// The `continue` that drops them was UNREACHABLE until 2026-09-07 —
-/// StoresGoods read a blank ladder cell as a zero and dropped the outlines
-/// a line earlier — so this function has always been right, and until that
-/// day it was right for the wrong reason. Nothing here changed; the reason
-/// did.
-Grams FreeRoomOfStores(const ProductionConfig& config, const WorldState& world) {
-  Grams room = 0;
-  for (const UnitRow& unit : world.units.rows) {
-    if (!StoresGoods(unit, config)) {
+/// ONE POT FOR EVERY RESOURCE WAS THE DEFECT (0.37.46; boss-core-harvest-
+/// room-per-resource-2026-09-30 [1]; econ's room-door finding, host's novice
+/// 27 x 4 on 0.37.42): the rye spent the vegetable store's 60 t it will
+/// never lie in, and the lamp stood on beside a new vegetable store in 12
+/// runs of 13. Each claim now spends the room of the stores that take its
+/// resource (SpendRoom), and a store shared by several resources is spent
+/// once.
+std::vector<Grams> NumberedRoomByRow(const ProductionConfig& config, const WorldState& world) {
+  std::vector<Grams> room(world.units.rows.size(), 0);
+  for (std::size_t row = 0; row < room.size(); ++row) {
+    const UnitRow& unit = world.units.rows[row];
+    if (!StoresGoods(unit, config) || StorageCapacityGrams(unit, config) < 0) {
       continue;
     }
-    const Grams free_here = FreeRoomGrams(unit, config);
-    if (free_here == std::numeric_limits<Grams>::max()) {
-      continue;
-    }
-    room += free_here;
+    room[row] = FreeRoomGrams(unit, config);
   }
   return room;
+}
+
+/// Some built store with no ceiling is `resource`'s home (HomeOutlineAccepts):
+/// the door's second pass takes it, whatever the load.
+bool SomeHomeOutlineAccepts(const WorldState& world,
+                            const ProductionConfig& config,
+                            ResourceId resource) {
+  return std::ranges::any_of(world.units.rows, [&config, resource](const UnitRow& unit) {
+    return HomeOutlineAccepts(unit, config, resource);
+  });
+}
+
+/// Spends `claim` grams of `resource` against the stores that take it and
+/// returns what does not fit. A store with no ceiling that is the
+/// resource's home — the clamp for the potato, the stack for the hay and
+/// the straw — takes the claim whole (0.37.46; boss [1]: the clamp the lamp
+/// itself advises «амбар или бурт до уборки» used not to put it out — it
+/// was left out of the sum as unbounded, 22 runs of 22 for the vegetables).
+/// Otherwise the numbered stores that take it, in row order, as the door
+/// fills them (DeliverToStores).
+Grams SpendRoom(const ProductionConfig& config,
+                const WorldState& world,
+                ResourceId resource,
+                Grams claim,
+                std::vector<Grams>& room) {
+  if (claim <= 0) {
+    return 0;
+  }
+  if (SomeHomeOutlineAccepts(world, config, resource)) {
+    return 0;
+  }
+  Grams left = claim;
+  for (std::size_t row = 0; row < room.size() && left > 0; ++row) {
+    if (room[row] <= 0 || !NumberedStoreAccepts(world.units.rows[row], config, resource)) {
+      continue;
+    }
+    const Grams taken = left < room[row] ? left : room[row];
+    room[row] -= taken;
+    left -= taken;
+  }
+  return left;
 }
 
 /// Grams of seed the field's next sowing is short of: its SHARE of its
@@ -275,7 +315,21 @@ void AddSeedAreaShort(const ProductionConfig& config,
 /// The standing part is the share the reaping has NOT laid into the heap
 /// (FieldRow::harvest_laid_share, the harvest by parts of 0.34.44) — a share
 /// of the estimate, not a second estimate.
-Grams RoomClaimOf(const ProductionConfig& config, const FieldRow& field) {
+///
+/// BY RESOURCE SINCE 0.37.46: the heap's, the standing grain's and the
+/// standing straw's grams apart, each spent against the stores that take it
+/// (SpendRoom) — the straw's home is the stack, not the granary.
+struct RoomClaim {
+  ResourceId heap_resource;
+  Grams heap = 0;
+  ResourceId grain_resource;
+  Grams grain = 0;
+  Grams straw = 0;
+
+  Grams Total() const { return heap + grain + straw; }
+};
+
+RoomClaim RoomClaimOf(const ProductionConfig& config, const FieldRow& field) {
   // A CLAIM IS ROOM FOR WHAT HAS NOT BEEN DELIVERED. That one sentence
   // settles a fork this code spent a day inside (boss, 2026-09-06): "what
   // is still STANDING" is wrong under a one-shot harvest and "the whole
@@ -287,7 +341,9 @@ Grams RoomClaimOf(const ProductionConfig& config, const FieldRow& field) {
   // The heap on the field is UNDELIVERED, so it adds rather than
   // subtracts — this year's parts already laid (the harvest by parts,
   // 0.34.44) and last year's load alike.
-  Grams claim = field.reaped_grams > 0 ? field.reaped_grams : 0;
+  RoomClaim claim;
+  claim.heap_resource = field.reaped_resource;
+  claim.heap = field.reaped_grams > 0 ? field.reaped_grams : 0;
   if (field.kind != LandKind::kArable || field.crop.value >= config.crops.size()) {
     return claim;
   }
@@ -297,12 +353,13 @@ Grams RoomClaimOf(const ProductionConfig& config, const FieldRow& field) {
     return claim;
   }
   const CropDef& crop = config.crops[field.crop.value];
+  claim.grain_resource = crop.resource;
   const float soil = SoilFertility(field) / config.farming.fertility_neutral;
   // On the sown share, as the harvest itself (FieldYieldGrams, 0.34.50).
   const Grams expected =
       GramsFromKilograms(crop.yield_kg_per_ha * field.area_ga * field.sown_share * soil);
   // Grain and straw travel together, so the standing crop claims both.
-  const float with_straw = 1.0F + (crop.straw_ratio > 0.0F ? crop.straw_ratio : 0.0F);
+  const float straw_ratio = crop.straw_ratio > 0.0F ? crop.straw_ratio : 0.0F;
   // THE STANDING SHARE — AND ONLY NOW IS THAT RIGHT (the harvest by parts,
   // 0.34.44). Each day's cut is laid into the heap that day, so what the
   // reaping has cut is either in the heap (counted above, undelivered) or
@@ -321,10 +378,11 @@ Grams RoomClaimOf(const ProductionConfig& config, const FieldRow& field) {
   // In double and rounded: a float carries grams of 50 t to a few grams
   // only, and the heap beside this share is laid in whole grams.
   const double standing = 1.0 - static_cast<double>(field.harvest_laid_share);
-  const auto standing_claim = static_cast<Grams>(
-      std::llround(static_cast<double>(expected) * static_cast<double>(with_straw) *
-                   (standing > 0.0 ? standing : 0.0)));
-  return claim + standing_claim;
+  const double share = standing > 0.0 ? standing : 0.0;
+  claim.grain = static_cast<Grams>(std::llround(static_cast<double>(expected) * share));
+  claim.straw = static_cast<Grams>(
+      std::llround(static_cast<double>(expected) * static_cast<double>(straw_ratio) * share));
+  return claim;
 }
 
 /// @brief Field rows ordered by when their crop is reaped, then by row.
@@ -707,7 +765,7 @@ void CollectFieldAlarms(const ProductionConfig& config,
   // two days later (host, seed 1930: twenty-seven tonnes of timothy).
   //
   // The alarm may keep silent about a field. The arithmetic may not.
-  Grams room_left = FreeRoomOfStores(config, world);
+  std::vector<Grams> room = NumberedRoomByRow(config, world);
   // The plan door's own rule, as of today: alarms are read off a completed
   // step, the turn's rotation already turned.
   const SeedHold seed_hold = SeedHeldByField(config, world, world.calendar.day);
@@ -715,9 +773,17 @@ void CollectFieldAlarms(const ProductionConfig& config,
   std::vector<double> area_short(config.feed_values.size(), 0.0);
   for (const std::uint32_t row : FieldsInHarvestOrder(config, world)) {
     const FieldRow& field = world.fields.rows[row];
-    const Grams claim = RoomClaimOf(config, field);
-    const Grams over = claim > room_left ? claim - room_left : 0;
-    room_left = claim >= room_left ? 0 : room_left - claim;
+    const RoomClaim claim = RoomClaimOf(config, field);
+    // EACH PART AGAINST THE STORES THAT TAKE IT (0.37.46): the heap, the
+    // standing grain, the standing straw. The straw stays in the lamp — it is
+    // the sharper half, lost at the reaping when it does not fit (above) —
+    // but now against ITS stores: the stack takes it whole where one is
+    // built; with none, it fits nowhere and the lamp stands for it, and the
+    // move is a stack, which the lamp's advice does not name (0.37.46, named
+    // to boss for rpg's line).
+    const Grams over = SpendRoom(config, world, claim.heap_resource, claim.heap, room) +
+                       SpendRoom(config, world, claim.grain_resource, claim.grain, room) +
+                       SpendRoom(config, world, config.straw_resource, claim.straw, room);
     // THE ALARM BURNS UNTIL THE HARVEST IS RESOLVED, and "resolved" means
     // stored or lost — not "the field changed phase".
     //

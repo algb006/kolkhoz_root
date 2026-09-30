@@ -4587,6 +4587,102 @@ int CheckTheStrawClaimsRoomToo() {
   return failures;
 }
 
+/// THE ROOM IS BY RESOURCE (0.37.46; boss-core-harvest-room-per-resource
+/// [1]): a claim spends only the stores that take its resource, and a store
+/// with no ceiling that is its home closes it whole. A granary of 10 t takes
+/// the rye, a vegetable store of 60 t the potatoes, a clamp (an outline) the
+/// potatoes; a 50 t rye field and a 30 t potato field, both reaped in the
+/// same month.
+int CheckTheRoomIsByResource() {
+  int failures = 0;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_production_room_by_resource";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "resources.csv") << "key,feed_value\nrye,1.15\npotato,0.3\n";
+  std::ofstream(root / "crops.csv")
+      << "key,resource,is_winter,is_perennial,sow_from_month,sow_to_month,sow_min_temp_c,"
+         "growth_min_temp_c,harvest_from_month,harvest_to_month,harvest_min_temp_c,"
+         "yield_kg_per_ha,sowing_norm_kg_per_ha,fertility_delta,drought_sensitivity,"
+         "wet_sensitivity,sow_days_per_ha,harvest_days_per_ha,straw_ratio\n"
+         "rye,rye,0,0,4,5,5,5,8,8,2,1000,0,-1,0,0,3,8,0\n"
+         "potato,potato,0,0,4,5,5,5,8,8,2,1000,0,-1,0,0,3,8,0\n";
+  std::ofstream(root / "farming.csv")
+      << "key,value\nfertility_neutral,50\nmanure_norm_kg_per_ha,20000\n"
+         "manure_fertility_bonus,10\nfallow_recovery,6\nrepeat_penalty_per_year,3\n"
+         "drought_temp_c,25\nstress_per_day,0.02\nstress_cap,0.3\n"
+         "weather_state_days,5\n";
+  std::ofstream(root / "unit_types.csv")
+      << "key,capacity_by_plot\ngranary,0\nveg_store,0\nclamp,1\n";
+  std::ofstream(root / "unit_levels.csv")
+      << "unit,level,storage_capacity_t\ngranary,1,10\nveg_store,1,60\nclamp,1,\n";
+  std::ofstream(root / "resource_stores.csv")
+      << "resource,unit,storage\nrye,granary,granary\npotato,veg_store,veg_store\n"
+         "potato,clamp,clamp\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto system = tables == nullptr
+                          ? nullptr
+                          : core::CreateProductionSystem(*tables, core::StubTables::kAllowed);
+  if (Expect(system != nullptr, "the room-by-resource table set builds a production system") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  const auto store = [](std::uint16_t type) {
+    core::UnitRow unit;
+    unit.type = core::UnitTypeId{type};
+    unit.level = 1;
+    return unit;
+  };
+  const auto field_of = [](std::uint16_t crop, float hectares) {
+    core::FieldRow field;
+    field.kind = core::LandKind::kArable;
+    field.area_ga = hectares;
+    field.fertility = 50.0F;
+    field.phase = core::FieldPhase::kGrowing;
+    field.crop = core::CropId{crop};
+    return field;
+  };
+  const auto over_of = [&system](const core::WorldState& world, std::uint16_t resource) {
+    std::vector<core::Alarm> alarms;
+    system->CollectAlarms(world, alarms);
+    core::Grams total = 0;
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kHarvestWillNotFit && alarm.resource.value == resource) {
+        total += alarm.amount;
+      }
+    }
+    return total;
+  };
+  core::WorldState world;
+  core::RefreshCalendarCaches(world.calendar);
+  core::AppendRow(world.units, store(0));  // the granary, 10 t
+  core::AppendRow(world.units, store(1));  // the vegetable store, 60 t
+  core::AppendRow(world.fields, field_of(0, 50.0F));
+  core::AppendRow(world.fields, field_of(1, 30.0F));
+  const core::Grams rye_over = over_of(world, 0);
+  const core::Grams potato_over = over_of(world, 1);
+  std::cout << "room by resource: the rye " << rye_over / kKilo << " kg over, the potatoes "
+            << potato_over / kKilo << " kg over\n";
+  failures += Expect(rye_over == 40'000 * kKilo && potato_over == 0,
+                     "room by resource: the rye does not spend the vegetable store's 60 t - 40 t "
+                     "over its granary; the potatoes fit theirs");
+  // A CLAMP CLOSES THE POTATOES' CLAIM WHOLE: no vegetable store, a clamp.
+  core::WorldState clamp_world;
+  core::RefreshCalendarCaches(clamp_world.calendar);
+  core::AppendRow(clamp_world.units, store(0));
+  core::AppendRow(clamp_world.fields, field_of(1, 30.0F));
+  failures += Expect(over_of(clamp_world, 1) == 30'000 * kKilo,
+                     "room by resource: no store takes the potatoes - all 30 t over");
+  core::AppendRow(clamp_world.units, store(2));  // the clamp
+  failures += Expect(over_of(clamp_world, 1) == 0,
+                     "room by resource: a clamp, the potatoes' home with no ceiling, takes them "
+                     "whole");
+  std::filesystem::remove_all(root);
+  return failures;
+}
+
 /// The alarm burns until the harvest is RESOLVED — stored or lost — and not
 /// until the field changes phase.
 ///
@@ -13049,6 +13145,7 @@ int main() {
   failures += CheckTheSnowBooksWhatItTakes();
   failures += CheckAReapedFieldStillSpendsTheRoom();
   failures += CheckTheWarningBurnsUntilTheHarvestIsResolved();
+  failures += CheckTheRoomIsByResource();
   failures += CheckTheStrawClaimsRoomToo();
   failures += CheckTheLayPricesOnlyTheRoomLeft();
   failures += CheckCapacityWithoutALadderIsRefused();
