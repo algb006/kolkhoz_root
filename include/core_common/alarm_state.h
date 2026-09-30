@@ -523,6 +523,18 @@ enum class AlarmKind : std::uint8_t {
   /// speaks of a field whose preparation is under way and will not finish.
   kSowingWindowClosing,
 
+  /// «НЕ ХВАТИТ НА N ГА — ЗАСЕЕМ МЕНЬШЕ» — A LINE OF THE BOOK, NOT A LAMP
+  /// (boss-core-epoch1-resume-2026-09-30 [39], [40], [46]; alarms.csv
+  /// `seed_area_short`, rank 31; rpg's `book.seed_area_short` (crop,
+  /// hectares)): the seed of a crop is short for its sowing, this year's
+  /// goods loan of it is taken and its cart has come — the district lends no
+  /// second one, and the part of the field the seed does not cover stays
+  /// unsown. The outcome, with no move left: while this stands kSeedShort's
+  /// lamp is 0 (the loan was the lamp's move). Always `lamp = 0`. Subject:
+  /// `resource` = the seed; `amount` = the SQUARE METRES its shortfall leaves
+  /// unsown at the crop's sowing norm, not grams (as kSowingWillNotFit).
+  kSeedAreaShort,
+
   // Appended by later tasks and phases: children out of school, sewage,
   // logistics falling behind. Named so the numbering is planned, not
   // discovered.

@@ -50,6 +50,9 @@ std::uint32_t AlarmSubjectValue(const Alarm& alarm) {
     // (alarms.csv; 0.37.21 — 0.37.19 answered 0, «the farm», a word the
     // registry does not have).
     case AlarmKind::kMeadowUncutBeforeSnow:
+    // The book's «засеем меньше»: the registry's subject is the seed
+    // (alarms.csv `seed_area_short`; 0.37.43).
+    case AlarmKind::kSeedAreaShort:
       return alarm.resource.value;
     case AlarmKind::kFamilyGoingHungry:
       return alarm.family.value;

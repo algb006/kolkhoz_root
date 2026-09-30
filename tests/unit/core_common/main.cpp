@@ -2666,6 +2666,13 @@ int CheckAlarmSubjectValue() {
   advice.lamp = 0;
   failures += Expect(core::AlarmSubjectValue(advice) == 7,
                      "the meadow advice answers with the hay, whatever other ids it carries");
+  // THE BOOK'S «ЗАСЕЕМ МЕНЬШЕ» ANSWERS WITH THE SEED (0.37.43; alarms.csv
+  // `seed_area_short`), not with a field as kSeedShort does.
+  core::Alarm book_line = advice;
+  book_line.kind = core::AlarmKind::kSeedAreaShort;
+  book_line.resource = core::ResourceId{9};
+  failures += Expect(core::AlarmSubjectValue(book_line) == 9,
+                     "the seed-area line answers with the seed, whatever other ids it carries");
 
   core::Alarm position;
   position.kind = core::AlarmKind::kPlanPositionUncovered;
