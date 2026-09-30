@@ -3,6 +3,7 @@
 #include "stock_lights.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -92,30 +93,65 @@ std::int32_t DaysToHarvest(const ProductionConfig& config, const WorldState& wor
 
 namespace {
 
-/// Days from today to the next opening of the harvest window of a crop that
-/// gives `resource` itself, -1 when none does. To the DAY, not the month:
-/// the norm divides by the trudodni of those days, and a month is four of
-/// them.
+/// Is the crop in the ground anywhere: a field being sown with it, growing
+/// it or being reaped of it (land_state.h FieldRow::crop).
+bool CropStands(const WorldState& world, std::size_t crop_index) {
+  return std::ranges::any_of(world.fields.rows, [crop_index](const FieldRow& field) {
+    return field.crop.value == crop_index &&
+           (field.phase == FieldPhase::kSowing || field.phase == FieldPhase::kGrowing ||
+            field.phase == FieldPhase::kHarvest);
+  });
+}
+
+/// Days from today to the next harvest of a crop that gives `resource`
+/// itself, -1 when none does. To the DAY, not the month: the norm divides by
+/// the trudodni of those days, and a month is four of them.
+///
+/// THE FIELDS, NOT THE CALENDAR (0.37.34; production_system.h): a crop that
+/// stands in a field is reaped at its window's next opening; one that stands
+/// nowhere is reaped at the opening that follows its next sowing — the
+/// start's winter rye, not sown the autumn before, in year 2's July. Until
+/// 0.37.33 every crop was read as standing, and the norm gave out year 1's
+/// rye by day 23 to a July that reaped none.
 std::int32_t DaysToOwnHarvest(const ProductionConfig& config,
                               const WorldState& world,
                               ResourceId resource) {
   const auto day_of_year = static_cast<std::int32_t>(world.calendar.day % kDaysPerYear);
   const auto today = static_cast<std::uint8_t>(world.calendar.date.month);
   const auto year = static_cast<std::int32_t>(kDaysPerYear);
+  const auto month = static_cast<std::int32_t>(kDaysPerMonth);
+  // Days from today forward to a day of the year, 0 for today itself.
+  const auto ahead_to = [day_of_year](std::int32_t day) {
+    return ((day - day_of_year) % year + year) % year;
+  };
   std::int32_t best = -1;
-  for (const CropDef& crop : config.crops) {
+  for (std::size_t index = 0; index < config.crops.size(); ++index) {
+    const CropDef& crop = config.crops[index];
     if (crop.resource.value != resource.value || crop.harvest_from_month >= kMonthsPerYear) {
       continue;
     }
-    const std::int32_t opening = static_cast<std::int32_t>(crop.harvest_from_month) *
-                                 static_cast<std::int32_t>(kDaysPerMonth);
-    // Inside the window the next harvest is next year's: the one reaping
-    // now is what the stores are filling with, not a date to share it to.
-    // The band does not wrap the year (calendar.h, MonthInRange), so an
-    // open window opened this year, at or before today.
-    const bool open_now = MonthInRange(today, crop.harvest_from_month, crop.harvest_to_month);
-    const std::int32_t days =
-        open_now ? opening + year - day_of_year : ((opening - day_of_year) % year + year) % year;
+    const std::int32_t opening = static_cast<std::int32_t>(crop.harvest_from_month) * month;
+    std::int32_t days = 0;
+    if (CropStands(world, index)) {
+      // Inside the window the next harvest is next year's: the one reaping
+      // now is what the stores are filling with, not a date to share it to.
+      // The band does not wrap the year (calendar.h, MonthInRange), so an
+      // open window opened this year, at or before today.
+      const bool open_now = MonthInRange(today, crop.harvest_from_month, crop.harvest_to_month);
+      days = open_now ? opening + year - day_of_year : ahead_to(opening);
+    } else {
+      // Standing nowhere: its next sowing (today, if the window is open),
+      // then the opening that follows it — the next July for a winter crop.
+      if (crop.sow_from_month >= kMonthsPerYear) {
+        continue;  // never sown: no harvest to wait for
+      }
+      const bool sowing_now = MonthInRange(today, crop.sow_from_month, crop.sow_to_month);
+      const std::int32_t sowing_day =
+          sowing_now ? day_of_year : static_cast<std::int32_t>(crop.sow_from_month) * month;
+      const std::int32_t to_sowing = sowing_now ? 0 : ahead_to(sowing_day);
+      const std::int32_t sowing_to_harvest = ((opening - sowing_day) % year + year) % year;
+      days = to_sowing + (sowing_to_harvest > 0 ? sowing_to_harvest : year);
+    }
     best = best < 0 || days < best ? days : best;
   }
   return best;

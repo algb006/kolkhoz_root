@@ -31,9 +31,12 @@ namespace core {
 /// an assembly point is for.
 std::int32_t DaysToHarvest(const ProductionConfig& config, const WorldState& world);
 
-/// @brief Whole game days from today to the next OPENING of the harvest
-/// window of a crop that gives `resource` — during that window, next year's
-/// opening, so never nought (IProductionSystem::DaysToHarvestOf, 0.37.29).
+/// @brief Whole game days from today to the next harvest of `resource` the
+/// fields will give: the window's opening of a crop that gives it and stands
+/// in a field (sowing, growing, reaped) — during that window, next year's
+/// opening, so never nought — or, for a crop standing nowhere, the opening
+/// after its next sowing (IProductionSystem::DaysToHarvestOf, 0.37.29; the
+/// fields since 0.37.34).
 /// A resource no crop gives is asked through what it is made of: the inputs
 /// of every recipe that outputs it (sauerkraut: the vegetables).
 /// @return -1 when no crop gives the resource or any input of it (milk).

@@ -12512,38 +12512,87 @@ int CheckTheChairmanRemovesAField() {
 }
 
 /// THE DAYS TO A POSITION'S HARVEST (0.37.29; labor-payment §7, the default
-/// issue norm): to the opening day of the window of the crop that gives it;
-/// inside the window, next year's opening; a product through what it is
-/// made of; nothing for what no field gives.
+/// issue norm): to the opening day of the window of the crop that gives it
+/// and stands in a field; inside the window, next year's opening; a product
+/// through what it is made of; nothing for what no field gives. A crop that
+/// stands nowhere (0.37.34): the opening after its next sowing — the start's
+/// winter rye, never sown the autumn before, in next year's July.
 int CheckTheDaysToAPositionsHarvest() {
   int failures = 0;
   core::ProductionConfig config;
-  config.crops.resize(1);
-  config.crops[0].resource = core::ResourceId{1};  // potato, reaped months 7-8
+  config.crops.resize(3);
+  config.crops[0].resource = core::ResourceId{1};  // potato: sown months 4-4, reaped 7-8
+  config.crops[0].sow_from_month = 4;
+  config.crops[0].sow_to_month = 4;
   config.crops[0].harvest_from_month = 7;
   config.crops[0].harvest_to_month = 8;
+  config.crops[1].resource = core::ResourceId{3};  // winter rye: sown 7-8, reaped 6-6
+  config.crops[1].is_winter = true;
+  config.crops[1].sow_from_month = 7;
+  config.crops[1].sow_to_month = 8;
+  config.crops[1].harvest_from_month = 6;
+  config.crops[1].harvest_to_month = 6;
+  config.crops[2].resource = core::ResourceId{5};  // barley: sown 3-3, reaped 7-7
+  config.crops[2].sow_from_month = 3;
+  config.crops[2].sow_to_month = 3;
+  config.crops[2].harvest_from_month = 7;
+  config.crops[2].harvest_to_month = 7;
   core::ProcessingRecipe pickling;
   pickling.inputs.push_back(core::ProcessingAmount{.resource = core::ResourceId{1}, .grams = 1});
   pickling.outputs.push_back(core::ProcessingAmount{.resource = core::ResourceId{4}, .grams = 1});
   config.processing.recipes.push_back(pickling);
-  const auto days_on = [&config](core::SimDay day, std::uint16_t resource) {
+  // A field of `crop` in `phase`, or none when `crop` is negative.
+  const auto days_on = [&config](core::SimDay day,
+                                 std::uint16_t resource,
+                                 std::int32_t crop,
+                                 core::FieldPhase phase = core::FieldPhase::kGrowing) {
     core::WorldState world;
     world.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
     core::RefreshCalendarCaches(world.calendar);
+    if (crop >= 0) {
+      core::FieldRow field;
+      field.crop = core::CropId{static_cast<std::uint16_t>(crop)};
+      field.phase = phase;
+      core::AppendRow(world.fields, field);
+    }
     return core::DaysToHarvestOf(config, world, core::ResourceId{resource});
   };
-  // The window opens on day 28 of the year (month 7 x 4).
-  failures += Expect(days_on(10, 1) == 18, "harvest days: 18 from day 10 to day 28");
-  failures += Expect(days_on(28, 1) == 48,
+  // The potato stands. Its window opens on day 28 of the year (month 7 x 4).
+  failures += Expect(days_on(10, 1, 0) == 18, "harvest days: 18 from day 10 to day 28");
+  failures += Expect(days_on(28, 1, 0, core::FieldPhase::kHarvest) == 48,
                      "harvest days: on the opening day itself, next year's - never nought");
-  failures += Expect(days_on(30, 1) == 46,
+  failures += Expect(days_on(30, 1, 0, core::FieldPhase::kHarvest) == 46,
                      "harvest days: inside the window, next year's opening (48 + 28 - 30)");
-  failures += Expect(days_on(40, 1) == 36,
+  failures += Expect(days_on(40, 1, 0) == 36,
                      "harvest days: after the window, next year's opening (48 + 28 - 40)");
-  failures += Expect(days_on(48 + 10, 1) == 18, "harvest days: the same in the second year");
-  failures += Expect(days_on(10, 4) == 18,
+  failures += Expect(days_on(48 + 10, 1, 0) == 18, "harvest days: the same in the second year");
+  failures += Expect(days_on(10, 4, 0) == 18,
                      "harvest days: the product of a recipe, through its input's harvest");
-  failures += Expect(days_on(10, 2) == -1, "harvest days: nothing for what no field gives");
+  failures += Expect(days_on(10, 2, 0) == -1, "harvest days: nothing for what no field gives");
+  // The winter rye stands nowhere, as at the start: sown from day 28, reaped
+  // from next year's day 24 — not this year's day 24, which reaps nothing.
+  failures += Expect(days_on(10, 3, -1) == 62,
+                     "harvest days: a winter crop in no field, the July after its sowing "
+                     "(18 to day 28, then 44 to next year's day 24), not this year's 14");
+  failures += Expect(days_on(10, 3, 0) == 62,
+                     "harvest days: another crop's field does not stand for the rye");
+  failures += Expect(days_on(10, 3, 1) == 14,
+                     "harvest days: the winter rye in the ground, this year's July, 14");
+  failures += Expect(days_on(30, 3, -1) == 42,
+                     "harvest days: inside its sowing window, the July after today's sowing, 42");
+  failures += Expect(days_on(10, 3, 1, core::FieldPhase::kIdle) == 62,
+                     "harvest days: a field idle with the rye's name on it does not stand");
+  failures += Expect(days_on(10, 3, 1, core::FieldPhase::kSowing) == 14,
+                     "harvest days: a field being sown with the rye stands, 14");
+  // A crop being reaped is not asked apart: its next harvest is next year's
+  // window whether it stands or not, for every crop the tables sow before
+  // they reap within the year.
+  // The barley stands nowhere before its spring sowing: day 12, reaped from
+  // day 28 — 18 days, the calendar's answer, because it will be sown.
+  failures += Expect(days_on(10, 5, -1) == 18,
+                     "harvest days: a spring crop before its sowing, this year's window, 18");
+  failures += Expect(days_on(40, 5, -1) == 36,
+                     "harvest days: a spring crop after its window, next year's, 36");
   return failures;
 }
 

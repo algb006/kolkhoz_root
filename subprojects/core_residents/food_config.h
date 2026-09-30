@@ -307,9 +307,11 @@ struct FoodConfig {
   /// slot and between steps only. Empty: nothing held.
   std::function<ResourceAmounts(const WorldState&)> next_year_hold;
 
-  /// Whole game days to the next opening of the harvest window that gives a
-  /// resource, -1 when none (IProductionSystem::DaysToHarvestOf; 0.37.28,
-  /// labor-payment §7): the default issue norm's "until the next harvest".
+  /// Whole game days to the next harvest of a resource the fields will give
+  /// (a crop standing in a field, or the one after its next sowing), -1 when
+  /// none (IProductionSystem::DaysToHarvestOf; 0.37.28, the fields since
+  /// 0.37.34; labor-payment §7): the default issue norm's "until the next
+  /// harvest of this position".
   /// A CALL INTO core_production on the same terms as `fodder_fund` above.
   /// Empty: no position has a harvest — every one at the table's grams.
   std::function<std::int32_t(const WorldState&, ResourceId)> days_to_harvest_of;
