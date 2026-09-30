@@ -2673,6 +2673,16 @@ int CheckAlarmSubjectValue() {
   book_line.resource = core::ResourceId{9};
   failures += Expect(core::AlarmSubjectValue(book_line) == 9,
                      "the seed-area line answers with the seed, whatever other ids it carries");
+  // THE HERDS' YELLOW STAGE ANSWERS WITH THE HERD (0.37.56; alarms.csv
+  // `herd_hay_short_ahead`), not with the feed it names.
+  core::Alarm ahead = advice;
+  ahead.kind = core::AlarmKind::kHerdHayShortAhead;
+  ahead.herd = core::HerdId{5};
+  ahead.resource = core::ResourceId{9};
+  ahead.days_ahead = 40;
+  ahead.advice = core::AlarmAdvice::kCutHay;
+  failures += Expect(core::AlarmSubjectValue(ahead) == 5,
+                     "the herds' yellow stage answers with the herd, not with the feed it names");
 
   core::Alarm position;
   position.kind = core::AlarmKind::kPlanPositionUncovered;

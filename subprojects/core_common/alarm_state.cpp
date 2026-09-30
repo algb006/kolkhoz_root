@@ -40,6 +40,9 @@ std::uint32_t AlarmSubjectValue(const Alarm& alarm) {
     case AlarmKind::kSlaughterWaitsForRoom:
     case AlarmKind::kTeamOnHay:
     case AlarmKind::kTooFewHorses:
+    // The herds' yellow stage: the registry's subject is the herd the
+    // forecast underfeeds first (alarms.csv `herd_hay_short_ahead`; 0.37.56).
+    case AlarmKind::kHerdHayShortAhead:
       return alarm.herd.value;
     case AlarmKind::kReserveFullNothingToEat:
     case AlarmKind::kPlanPositionShort:

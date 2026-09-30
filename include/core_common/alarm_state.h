@@ -514,6 +514,14 @@ enum class AlarmKind : std::uint8_t {
   /// «сена на ещё одну лошадь не хватит — сначала луг и покос» (rpg's key,
   /// through boss). With hay enough: `resource` invalid and the lamp lit, as
   /// before. The subject is the herd in both.
+  /// THE FORECAST'S SECOND READER SINCE 0.37.57 (boss [72] p. 2, [85], [86]):
+  /// «the hay would not feed one more horse» is asked of kHerdHayShortAhead's
+  /// own forecast with one adult more in the team — every kolkhoz herd, their
+  /// offspring, to the cut of the next year — and not of a stall season's
+  /// need at today's heads: that one saw no calves, and the novice's cows
+  /// starved 31 -> 164 beside the horses it bought (host [13]). Short with
+  /// the head: the advice turns as above; `resource` is the feed that runs
+  /// out first.
   kTooFewHorses,
 
   /// «ТРАВА НА КОРНЮ — НЕ ЗИМНИЙ ЗАПАС» — THE ELDER'S ADVICE, NOT A LAMP
@@ -553,6 +561,29 @@ enum class AlarmKind : std::uint8_t {
   /// unsown at the crop's sowing norm, not grams (as kSowingWillNotFit).
   kSeedAreaShort,
 
+  /// «К УКОСУ СЕНА НЕ ХВАТИТ» — THE HERDS' YELLOW STAGE, A FORECAST AND NOT A
+  /// FACT (boss-core-epoch1-resume-2026-09-30 [49] p. 2, [68], [70], [85],
+  /// [86]; econ horse-spring-starvation §4, §4а; alarms.csv
+  /// `herd_hay_short_ahead`, rank 32). The kolkhoz herds' fodder, drained
+  /// day by day by the herd feeding's own order and ceilings, runs short
+  /// before the cut of the NEXT year: the stores the herds may eat, the hay
+  /// in the fields' heaps, the expected cut on its day (last year's, or in
+  /// year 1 the meadows' ceiling × the mown share), the moves already made
+  /// (feed lots on the road, a granary under construction, the night pasture
+  /// ordered), and the need growing with the spring's offspring by the
+  /// births' own rule (a billeted or hungry herd has none). Lights in spring
+  /// as soon as the offspring are in the forecast; goes out as soon as the
+  /// forecast is short no more — nothing is remembered.
+  /// NOT kHerdStarving's lamp 0: kHerdStarving is the herd underfed NOW, a
+  /// loss with the lamp lit; this is the window before it, and its `lamp`
+  /// is always 0 — two positions, two kinds (boss [86] p. 1).
+  /// Subject: `herd`, the first kolkhoz herd the forecast underfeeds;
+  /// `resource` the feed that runs out FIRST (usually the hay — boss [86]
+  /// p. 3); `amount` the HEADS the forecast cannot feed on its worst day;
+  /// `days_ahead` the whole days to its first short day; `advice` the first
+  /// move (AlarmAdvice).
+  kHerdHayShortAhead,
+
   // Appended by later tasks and phases: children out of school, sewage,
   // logistics falling behind. Named so the numbering is planned, not
   // discovered.
@@ -586,6 +617,31 @@ enum class ProcessingStopReason : std::uint8_t {
 
   /// NOT A REASON: the count, so a consumer can static_assert its mirror.
   kProcessingStopReasonCount,
+};
+
+/// @brief The first move a forecast alarm names (boss-core-epoch1-resume-
+/// 2026-09-30 [85], [86]) — the seam's vocabulary `alarm_advice`, its words
+/// the enumerators' snake_case; the layer shows the move by the key. Only
+/// the forecast kinds set it (kHerdHayShortAhead); every other alarm keeps
+/// kNone. Appended, never renumbered.
+enum class AlarmAdvice : std::uint8_t {
+  /// No move the core can name — shown as such: a feed runs out first that
+  /// no move of the player's brings (straw, silage).
+  kNone = 0,
+
+  /// The hay runs out first: the cut — more mowers, a meadow mown.
+  kCutHay,
+
+  /// Grain or compound feed runs out first, and the farm has no granary or
+  /// no room left in one for feed: compound feed lies only in a granary, and
+  /// a lot bought without one is refused at the door (kNowhereToStore; boss-
+  /// host-horses-hay-03749 [10]) — «амбар под комбикорм». With a granary
+  /// and room, the move is the district's lot of that `resource`, and it
+  /// needs no word of its own.
+  kGranaryForFeed,
+
+  /// NOT A MOVE: the count, so a consumer can static_assert its mirror.
+  kAlarmAdviceCount,
 };
 
 /// @brief One standing condition. Which fields are meaningful is fixed by
@@ -650,6 +706,18 @@ struct Alarm {
   /// other kind (0.37.50).
   /// @note Not in the save, as `lamp`.
   std::uint16_t repay_harvest_year = 0;
+
+  /// The forecast kinds only (kHerdHayShortAhead): whole game days from
+  /// today to the forecast's first short day — «к весне», counted. 0 for
+  /// every other kind (0.37.56).
+  /// @note Not in the save, as `lamp`.
+  std::uint16_t days_ahead = 0;
+
+  /// The forecast kinds only: the first move the core names (AlarmAdvice).
+  /// kNone for every other kind, and for a forecast whose first short feed
+  /// no move brings (0.37.56).
+  /// @note Not in the save, as `lamp`.
+  AlarmAdvice advice = AlarmAdvice::kNone;
 };
 
 /// @brief The subject id of an alarm as one number, for ordering: the id
