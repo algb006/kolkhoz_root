@@ -599,8 +599,7 @@ enum class EventKind : std::uint8_t {
   /// the quest «поставить место обмена» on it, after `quest_e1_32` is closed
   /// (needs design §6; boss-all-barter-counter-go [3], [7]). amount = the
   /// day's dry equivalent, grams. kNotable. Seam key `barter_worth_starting`.
-  /// Declared in 0.37.66, a delivery ahead of the dry count that raises it.
-  /// @no_emit contract 0.37.66: raised by the dry count's delivery, the next
+  /// Raised since 0.37.67 (core_residents/barter.cpp, RunBarterDryCount).
   kBarterWorthStarting,
 
   /// unit — the yards exchanged at a barter counter this evening: ONE event

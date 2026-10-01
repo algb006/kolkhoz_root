@@ -26,6 +26,7 @@
 #include "../../common/fake_tables.h"
 #include "alcoholism.h"
 #include "appearance_memory.h"
+#include "barter_checks.h"
 #include "core_common/calendar.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table_ops.h"
@@ -4184,6 +4185,7 @@ int main() {
   failures += CheckTheDefaultShareOfTheRemainder();
   failures += CheckLockedRationFood();
   failures += CheckSamogonPurchase();
+  failures += CheckBarter();
   failures += CheckVitals();
   failures += CheckSettleHouse();
   failures += CheckWeddingQueueOrder();

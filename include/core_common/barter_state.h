@@ -94,10 +94,15 @@ struct BarterWatch {
   /// included; 0 on a day it did not.
   std::uint16_t dry_days_in_row = 0;
 
-  /// The last dry count's three counters: yards that would hand something
-  /// over, yards that would take something, and the grams of the grain
-  /// equivalent that would change hands. Kept so a run can print the day
-  /// the fact rose, or which threshold holds it back.
+  /// The last dry count's three counters: yards that have something to
+  /// offer by the exchange's rule, yards that would take something of what
+  /// the others offer, and the grams of the grain equivalent that would
+  /// change hands, each gram once, on the giving side. The first two count
+  /// what the yards BRING; the third what the settlement finds a pair for —
+  /// a yard carries off as much as it hands over, so whoever exchanges is
+  /// on both sides, and the volume may be nought while both counts stand.
+  /// Kept so a run can print the day the fact rose, or which threshold
+  /// holds it back.
   std::uint16_t dry_givers = 0;
   std::uint16_t dry_takers = 0;
   Grams dry_equivalent = 0;

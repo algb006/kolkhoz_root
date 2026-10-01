@@ -457,6 +457,10 @@ class ResidentsSystem final : public IResidentsSystem {
     RunDemographyDay(config_, current);
     RunSpecialistArrivals(config_, current);
     RunFamilyExchange(food_, config_.life_speedup, current);
+    // The exchange's dry count, over the pantries the distribution has just
+    // filled and the day's rot has just thinned: what the yards would
+    // exchange today, and the fact «жителям есть что менять» (barter.h).
+    RunBarterDryCount(config_.barter, food_, config_.life_speedup, current);
     AccumulateVitals(config_, food_.satiety.health_loss_satiety_threshold, current);
     // The year's book, after the exchange has moved the food and before the
     // turn below can close it: the satisfaction sampled is yesterday's

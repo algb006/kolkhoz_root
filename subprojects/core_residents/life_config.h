@@ -31,6 +31,7 @@
 #include <vector>
 
 #include "alcoholism.h"
+#include "barter.h"
 #include "core_catalog/definitions.h"
 #include "core_common/body.h"
 #include "core_common/calendar.h"
@@ -272,6 +273,9 @@ struct LifeConfig {
 
   /// The night trades (night_trade.h; boss, parcel 346).
   NightTradeConfig night_trade;
+
+  /// The yards' exchange at the barter counter (barter.h).
+  BarterConfig barter;
 
   /// The school's pupils (schooling.h; boss, parcel 354).
   SchoolingConfig schooling;

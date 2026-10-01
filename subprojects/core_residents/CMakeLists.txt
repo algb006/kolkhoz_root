@@ -20,6 +20,7 @@ kolkhoz_add_module(core_residents
     alcoholism.cpp
     sport.cpp
     night_trade.cpp
+    barter.cpp
     schooling.cpp
     vitals.cpp
     year_metrics.cpp

@@ -91,5 +91,5 @@ kRoadWorkStarted,1,
 kRoadWorkFinished,1,
 kRoadDemolished,1,
 kHerdFroze,1,
-kBarterWorthStarting,0,"contract 0.37.66: raised by the dry count's delivery, the next"
+kBarterWorthStarting,1,
 kBarterDay,0,"contract 0.37.66: raised by the exchange's delivery, the third"

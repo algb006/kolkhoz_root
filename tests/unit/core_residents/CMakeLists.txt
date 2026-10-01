@@ -1,4 +1,4 @@
-kolkhoz_add_unit_test(core_residents main.cpp)
+kolkhoz_add_unit_test(core_residents main.cpp barter_checks.cpp)
 
 # The exchange, the food configuration and the vitals window are internal
 # seams of the module (family_exchange.h, food_config.h, vitals.h); their
