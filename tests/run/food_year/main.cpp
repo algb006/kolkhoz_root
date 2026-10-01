@@ -1379,20 +1379,40 @@ int main(int argc, char** argv) {
   //        (median), 70.21, 70.57, 70.60, 75.59.
   // The median +26.7: the shipped arm's leanest day rose 30 -> 97 on seed
   // 1931. Re-recorded on 0.37.29 (b21a333).
+  //
+  // AND WITH BOSS'S EXPORT OF 01.10 (0.37.70: the pen for the whole herd, the
+  // cheap warm rungs, the yards' caps of 3 goats and 12 hens), the red on
+  // seed 1931: 56.75 under 56.86. THE BAND HAD GONE STALE BEFORE IT, unseen
+  // again and for the same reason — the run binds seed 1931 alone. Each tree
+  // its own binary and its own tables on the Xeon (job 1001-115818), the
+  // nine seeds one at a time:
+  //   0.37.69 (7b27476): 19.50 (seed 1938), 59.30, 59.79, 60.52 (seed
+  //        1931), 61.11, 61.70 (median), 61.94, 63.44, 66.05 — seed 1938
+  //        thirty-seven points under the old band, and nothing said so;
+  //   0.37.70 (the export):  31.59 (seed 1938), 54.47, 56.62, 56.75 (seed
+  //        1931), 57.10 (median), 58.03, 58.37, 58.48, 59.41.
+  // The eight fell by 2.7..7.2, the median −4.6; what in the export takes
+  // the gap down is NOT TRACED (the yards' own milk and eggs under the
+  // higher caps feed the arm with nothing issued — a reading, unmeasured).
+  // SEED 1938 STANDS APART AND IS NOT IN THE BAND: a band stretched to hold
+  // it (31.59..59.41) would say yes to a gap twenty points under every other
+  // village and guard nothing. It is printed beside the band instead, so
+  // that the next re-recording sees whether it came back. Why 1938 stands
+  // there is not traced either. Re-recorded on 0.37.70.
   const float issue_gap = good.leanest_day_satiety - bad.leanest_day_satiety;
   std::cout << "food_year: the gap the issue makes at the lean season — " << issue_gap
-            << " (nine seeds: 56.86-75.60, median 69.59)\n";
-  // The edges are the measured 56.8643 and 75.5909 rounded OUTWARD, so that
-  // the seeds that set them stay inside it (33.9006 and 57.6432 before
+            << " (eight seeds: 54.47-59.41, median of nine 57.10; seed 1938 apart at 31.59)\n";
+  // The edges are the measured 54.4738 and 59.4054 rounded OUTWARD, so that
+  // the seeds that set them stay inside it (56.8643 and 75.5909 before
+  // 0.37.70, nine seeds; 33.9006 and 57.6432 before
   // 0.37.29; 38.7703 and 51.852 before 0.36.36;
   // 40.1956 and 54.5191 before 0.36.14; 46.1034 and 54.8420 before 0.36.9).
   // A KNOWN GAP FROM 0.34.51 TO 0.35.10, RESTORED: with the horses counted
   // once the gap fell from 46.5 (0.34.50) to 40.8, out of the band. The
   // spring's repairs of 0.35.1-0.35.8 and the young start team of 0.35.10
   // brought it back to 48.5, and the gap printed CLOSED.
-  failures +=
-      ExpectBand(issue_gap >= 56.86F && issue_gap <= 75.60F,
-                 "the gap the issue makes at the lean season stays in the nine seeds' band");
+  failures += ExpectBand(issue_gap >= 54.47F && issue_gap <= 59.41F,
+                         "the gap the issue makes at the lean season stays in the seeds' band");
   // NOT "more people go hungry" — that was the claim here, and it is false
   // for a reason worth keeping. THE ISSUE SPREADS SCARCITY: hand the village
   // a thin ration and many are slightly short; hand it nothing and the

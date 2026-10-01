@@ -297,4 +297,15 @@ livestock_cold_step_warm_night,-2,core
 livestock_freezing_counter,6,core
 livestock_freezing_loss_share_day,0.03,core
 feed_draught_first,0,core
-billet_household_milk_share,0.2,core
+barter_perishable_max_keep_days,8,core
+barter_lack_share_of_need,0.333,core
+barter_perishable_share_of_need,0.333,core
+barter_take_days_ahead,4,core
+barter_hungry_days,4,core
+barter_fact_days_in_row,3,core
+barter_fact_yards_each_side,3,core
+barter_fact_share_of_village_need,0.01,core
+barter_hour,19,core
+barter_walk_limit_hours,2,core
+livestock_cold_first_month,12,core
+livestock_cold_last_month,2,core

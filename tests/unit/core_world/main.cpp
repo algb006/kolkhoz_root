@@ -3530,7 +3530,12 @@ int main() {
     // suggest_cattle_yard) — a run's reader, not the core's. The core's is the
     // start quest's facts, «стоит ли юнит на подсказке» (queue item 6); out of
     // this list with that door.
-    const std::array<std::string_view, 1> not_read_yet = {"suggestions"};
+    // start_yard_holdings.csv came with boss's export of 01.10 (0.37.70; the
+    // human's «дворы разные и в прологе должны соответствовать игре»,
+    // boss-all-barter-counter-go [15], [26]): what stands in each start yard.
+    // Its reader is genesis, in the delivery of the yards' holdings — until
+    // then every yard has two goats and eight hens by genesis's own hand.
+    const std::array<std::string_view, 2> not_read_yet = {"suggestions", "start_yard_holdings"};
     const fs::path doctored = fs::temp_directory_path() / "unit_core_world_missing_table";
     for (const fs::directory_entry& file : fs::directory_iterator(fs::path(KOLKHOZ_TABLES_DIR))) {
       if (file.path().extension() != ".csv") {

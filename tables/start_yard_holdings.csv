@@ -1,0 +1,27 @@
+# generated from db/design.db — do not edit by hand
+# what stands in each start yard on the first morning: the yards differ so families have something to barter, and the prologue shows the same yard the game gives
+# yard is a key of start_layout.csv; goats, chickens and pigs are HEADS (a pig yard keeps a sow and a boar), guns are pieces
+# a yard with no row here starts with no livestock and no gun — that is also what a new family's yard gets; a row whose yard is not in the layout is a refusal to build the world, by name
+# rod fishing is not here: every yard has a rod, so the catch cannot tell yards apart
+yard,goats,chickens,pigs,guns
+yard_01,2,12,0,0
+yard_02,2,12,0,0
+yard_03,2,12,0,0
+yard_04,2,12,0,0
+yard_05,2,12,0,0
+yard_06,2,12,0,0
+yard_07,3,12,0,0
+yard_08,3,12,0,0
+yard_09,3,0,0,0
+yard_10,3,0,0,0
+yard_11,3,0,0,0
+yard_12,2,0,0,0
+yard_13,2,0,0,0
+yard_14,2,0,0,0
+yard_15,2,0,0,0
+yard_16,1,12,0,0
+yard_17,1,12,0,0
+yard_18,1,12,0,0
+yard_19,1,12,0,0
+yard_20,0,12,2,0
+yard_21,3,12,0,0

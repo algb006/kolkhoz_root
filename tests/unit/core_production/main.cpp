@@ -3319,8 +3319,8 @@ int CheckTheColdLadder() {
 /// −15 in a warm one at 0.75 of her milk; the horse below −8 in a cold place
 /// and never in a warm one; the hen nowhere — an EMPTY cell read as «does not
 /// freeze», never as 0 °C. The cattle yard's open pen is cold and its barn
-/// warm; the horse yard's second rung is cold (boss [17]). And the five
-/// world knobs.
+/// warm; the horse yard's second rung is warm since 0.37.70 (it was cold,
+/// boss [17]). And the world knobs.
 int CheckTheColdLadderParses() {
   int failures = 0;
   std::string error;
@@ -3356,10 +3356,22 @@ int CheckTheColdLadderParses() {
                      "cold ladder: the hen freezes nowhere, and an empty factor is 1");
   const core::UnitTypeDef* cattle = type("cattle_yard");
   const core::UnitTypeDef* horses = type("horse_yard");
+  // The horse yard's second rung is WARM since boss's export of 01.10
+  // (0.37.70; billet thread [8], «тёплая Конюшня»): until then Epoch I had
+  // no warm rung for the team at all, only straw on the walls.
   failures += Expect(cattle != nullptr && !cattle->WarmPlaceAt(0) && !cattle->WarmPlaceAt(1) &&
-                         cattle->WarmPlaceAt(2) && horses != nullptr && !horses->WarmPlaceAt(2) &&
-                         horses->WarmPlaceAt(3),
-                     "cold ladder: the pen cold, the barn warm; the horse yard warm from rung 3");
+                         cattle->WarmPlaceAt(2) && horses != nullptr && !horses->WarmPlaceAt(1) &&
+                         horses->WarmPlaceAt(2) && horses->WarmPlaceAt(3),
+                     "cold ladder: the pen cold, the barn warm; the horse yard's open rung cold, "
+                     "the stable of rung 2 warm");
+  // And the places the same export gave the first rungs: the start's 41
+  // head of cattle fit the pen, the sixteen horses their yard.
+  failures +=
+      Expect(cattle != nullptr && cattle->LivestockCapacityHeadAt(1) == 48.0F &&
+                 cattle->LivestockCapacityHeadAt(2) == 60.0F && horses != nullptr &&
+                 horses->LivestockCapacityHeadAt(1) == 20.0F &&
+                 horses->LivestockCapacityHeadAt(2) == 60.0F,
+             "yards: the pen holds 48 and the barn 60; the horse yard 20 and the stable 60");
   const core::FarmingConfig& farming = config.farming;
   failures +=
       Expect(farming.cold_step_night == 1.0F && farming.cold_step_still_frost == 2.0F &&

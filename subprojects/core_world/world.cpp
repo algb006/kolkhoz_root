@@ -963,13 +963,11 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       //   red. Its reader is the lamp colour's delivery (boss-core-lamp-
       //   colour); declared with the export that carried it.
       known.emplace_back("alarm_red_within_days");
-      //   `billet_household_milk_share` (2026-10-01, boss-core-billet-milk
-      //   [1], [3]; the human's «По молоку решайте») — of a billeted cow's
-      //   milk this share settled in the yards' pantries by the eaters,
-      //   beside `billet_yield_factor` that goes to the kolkhoz. Its reader
-      //   is the billet milk's delivery; declared with the export that
-      //   carried it (0.37.65).
-      known.emplace_back("billet_household_milk_share");
+      //   (`billet_household_milk_share` stood here from 0.37.65 to 0.37.69,
+      //   declared a delivery ahead of the billet milk's reader. The human
+      //   cancelled the billet's new rules on 2026-10-01 — «Постой отменяем»
+      //   — the reader never came, and the base dropped the key; a key the
+      //   tables no longer carry needs no declaration.)
       //   (The cold ladder's five `livestock_cold_*` stood here in 0.37.60,
       //   the contract a delivery ahead of its reader; core_production
       //   declares them since 0.37.62, when the herd day's ladder read them.)
