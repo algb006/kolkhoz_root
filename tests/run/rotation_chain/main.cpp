@@ -165,22 +165,28 @@ int main() {
   constexpr core::SimDay kAugustYear2 = core::kDaysPerYear + (7U * core::kDaysPerMonth);
   constexpr core::SimDay kEnd = 5U * core::kDaysPerYear;
 
-  // C. THE START'S OWN (timothy, timothy, rye) field (question 278 with boss's
+  // C. THE START'S OWN (…, timothy, rye) field (question 278 with boss's
   // [27]): the stand's last year is cut in June and ended at the cut
   // (field_work.cpp, Harvest), so the rye goes into its own autumn of
   // year 2 and is reaped in year 3 — not a year late. Watched from the start.
+  //
+  // FOUND BY WHAT THE CLAIM IS ABOUT — the grass of year 2 with the rye
+  // after it — and not by the whole rotation. Until 0.37.84 the start's
+  // field_grass was (timothy, timothy, rye) and the search named all three;
+  // boss's export put the first year's wheat there (wheat, timothy, rye) and
+  // the search found nothing, though both claims below hold on it as they
+  // did.
   const core::CropId timothy = crop("timothy");
   Watch grass;
-  grass.label = "C (timothy, timothy, rye), the start's field_grass";
+  grass.label = "C (…, timothy, rye), the start's field_grass";
   for (std::uint32_t row = 0; row < world.State().fields.rows.size(); ++row) {
     const core::FieldRow& field = world.State().fields.rows[row];
-    if (field.rotation_year0.value == timothy.value &&
-        field.rotation_year1.value == timothy.value && field.rotation_year2.value == rye.value) {
+    if (field.rotation_year1.value == timothy.value && field.rotation_year2.value == rye.value) {
       grass.id = world.State().fields.row_ids[row];
     }
   }
   if (run::Expect(grass.id.value != core::kInvalidEntityIdValue,
-                  "the start carries a (timothy, timothy, rye) field") != 0) {
+                  "the start carries a field with timothy in year 2 and the rye after it") != 0) {
     return 1;
   }
   Begin(world.State(), grass);
