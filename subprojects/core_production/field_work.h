@@ -191,17 +191,36 @@ void CapRestedFertility(const ProductionConfig& config, FieldRow& field);
 /// 0.37.12), not at the harvest.
 float ManureBonus(const ProductionConfig& config, const FieldRow& field);
 
-/// @brief Opens the meadow's cut when its month comes round; does nothing
-///        on every other day of the year.
+/// @brief Opens the meadow's cut when its month comes round; a meadow found
+///        still in LAST year's cut on that day is closed first (farming
+///        design §6, the harvest rule 3, part А; 0.37.92).
 ///
 /// The meadow's whole year: it stands, and once a season the scythes go
 /// out. No sowing window, no temperature gate, no snow loss (grass winters
 /// where it grew), no fertility — a meadow is land, not a crop
 /// (land_state.h, LandKind; boss answer Q6).
+/// @post A meadow closed with a share mown keeps `last_mown_day`; one no
+///       scythe touched keeps none — it was not cut.
 void RunMeadow(const ProductionConfig& config,
                WorldState& current,
                FieldRow& field,
                std::uint8_t month);
+
+/// @brief A MEADOW DOES NOT WINTER IN ITS CUT (the harvest rule 3, part А;
+///        boss, econ-boss-hay-term-2026-10-01 [2]; 0.37.92): on the year's
+///        last evening every meadow still being mown is closed — the day's
+///        mown share is laid first, what is mown is in the book, the rest
+///        stands uncut and the meadow is grass again till its month.
+///
+/// WHY AT THE EVENING AND NOT ON THE MORNING AFTER: the day's list is
+/// written before the fields run, so a meadow closed in the morning has its
+/// mowers sent out that morning to stand a day at nought (measured on the
+/// first draft of the rule: five crew-days, eleven hands the median, over
+/// nine villages and three years).
+/// @pre Called at the day's last tick, after the day's labour is booked.
+/// @post A meadow closed with a share mown keeps `last_mown_day`; one no
+///       scythe touched keeps none — it was not cut.
+void CloseMeadowCutsAtSeasonsEnd(const ProductionConfig& config, WorldState& current);
 
 /// @brief Opens the ploughing of NEXT year's winter slot on idle ground when
 ///        the autumn window and the temperature both allow it.

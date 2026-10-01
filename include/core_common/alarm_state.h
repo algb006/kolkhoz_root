@@ -666,7 +666,10 @@ enum class AlarmAdvice : std::uint8_t {
   /// no move of the player's brings (straw, silage).
   kNone = 0,
 
-  /// The hay runs out first: the cut — more mowers, a meadow mown.
+  /// The hay runs out first WHILE A MEADOW STANDS IN ITS CUT: the cut — more
+  /// mowers, a meadow mown. Since 0.37.92 not named once the haymaking is
+  /// over: a meadow marked then gives its hay next summer (kBuyFeed,
+  /// kReduceHerd).
   kCutHay,
 
   /// Grain or compound feed runs out first, and the farm has no granary or
@@ -689,6 +692,19 @@ enum class AlarmAdvice : std::uint8_t {
   /// kHerdFreezing, and only while the stores hold that straw: the move a
   /// winter leaves when the clay of the warm barn is frozen.
   kInsulateStraw,
+
+  /// The hay runs out first and NO MEADOW STANDS IN ITS CUT (the haymaking
+  /// is over, or has not begun): the district's lot of a feed the herds eat
+  /// — «купить корм по лимиту» (boss, econ-boss-hay-term-2026-10-01 [2];
+  /// 0.37.92; the dictionary's `buy_feed`). Named while the limit's
+  /// catalogue sells such a feed and a store would take it today or a site
+  /// of its home is under way; with no such store it is kGranaryForFeed.
+  kBuyFeed,
+
+  /// The hay runs out first, no meadow stands in its cut and the district
+  /// sells no feed the herds eat: fewer heads — «сократить стадо», the last
+  /// move (the same word of boss; the dictionary's `reduce_herd`).
+  kReduceHerd,
 
   /// NOT A MOVE: the count, so a consumer can static_assert its mirror.
   kAlarmAdviceCount,

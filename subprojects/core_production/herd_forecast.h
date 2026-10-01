@@ -133,8 +133,12 @@ float ForecastHerdHeads(const ProductionConfig& config,
                         HerdId herd,
                         std::uint32_t days);
 
-/// @brief The first move for a feed that runs out (AlarmAdvice): the hay —
-///        kCutHay; a feed no store would take today, nor a site under way
+/// @brief The first move for a feed that runs out (AlarmAdvice): the hay
+///        while a meadow stands in its cut — kCutHay; the hay with no meadow
+///        in its cut (0.37.92: the haymaking over, the cut is a move nobody
+///        can make) — the district's feed, kBuyFeed, or kGranaryForFeed when
+///        no store would take it, or kReduceHerd when the district sells no
+///        feed; a feed no store would take today, nor a site under way
 ///        would — kGranaryForFeed («амбар под комбикорм»); anything else,
 ///        straw or silage or a feed a store takes, which a lot of the resource
 ///        answers — kNone.
