@@ -1051,41 +1051,16 @@ int main(int argc, char** argv) {
       "Epoch II is reached on the way in " + std::to_string(kEraOpenedAtLeast) + " villages of " +
       std::to_string(walks.size()) + " or more (" + std::to_string(opened_years.size()) + ")";
   failures += run::Expect(opened_years.size() >= kEraOpenedAtLeast, era_claim.c_str());
-  // RED SINCE 0.37.53, AND WHY (boss-core-start-quest-facts-2026-09-30 [16]-
-  // [18]): the elder's family changes houses with yard_21's at genesis on 8
-  // seeds of 9, a new sample of the same villages — 5 of these 9 open. The
-  // decision rule written before the reading: 108 villages (--seed-offset
-  // 0..99), a sign test on the villages that flip — 52 on 0.37.52 7076ee8,
-  // 46 on 0.37.53 222b172, lost 21, gained 15, p = 0.405: noise, the rules
-  // untouched. The floor is NOT lowered; it stays red until the work on the
-  // villages that never open (past the three-year horizon) raises the count.
-  // Printed beside the red, so the red does not become the background. A
-  // count above the floor again means the note is stale — said as well.
-  if (opened_years.empty()) {
-    // NOT THE NOTE OF 0.37.53 BELOW: that one explains five villages of nine,
-    // and printed over NOUGHT it would be an alibi for another defect. Since
-    // 0.37.78 the start's yards are unlike (start_yard_holdings.csv) and a
-    // yard's offspring replaces instead of adding, so a third of the yards
-    // sit on three counted categories for good; the transition's gate «food
-    // variety» (the worst season's village mean of 4) is met on no seed. The
-    // exchange at the counter is what levels the yards' tables, and the
-    // canon has no counter yet — the red stands until the walk to the
-    // counter is delivered and the bot builds one (boss, core-boss-yards-
-    // holdings-03778-2026-10-01 [2]), no longer.
-    std::cout << "population_curve: THE RED ABOVE IS KNOWN, AND IT IS NOT THE NOTE OF 0.37.53 — "
-                 "Epoch II opens in NO village: since 0.37.78 the yards are unlike, the canon has "
-                 "no barter counter, the yards' food categories are not levelled, and the "
-                 "transition's food variety gate is met on no seed; it stands until the walk to "
-                 "the counter is delivered\n";
-  } else if (opened_years.size() < kEraOpenedAtLeast) {
-    std::cout << "population_curve: THE RED ABOVE IS KNOWN — since 0.37.53 the elder's swap is a "
-                 "new sample of villages; on 108 villages 52 (0.37.52) against 46 (0.37.53), "
-                 "sign test p = 0.405, noise by the rule written before the reading; the floor "
-                 "stays, the work on villages that never open Epoch II will raise it\n";
-  } else {
-    std::cout << "population_curve: the note on the red of 0.37.53 is STALE — the floor holds "
-                 "again; take the note out of main.cpp\n";
-  }
+  // THE CLAIM WAS RED FROM 0.37.53 TO 0.37.80, FOR TWO CAUSES IN TURN, and
+  // both notes that explained it were taken out when it held again (0.37.81,
+  // the suite of k03781b): from 0.37.53 the elder's swap of houses was a new
+  // sample of the same villages, 5 of 9 opening (108 villages, sign test
+  // p = 0.405 — noise by the rule written before the reading; the floor was
+  // not lowered); from 0.37.78 the era opened in NO village — unlike yards
+  // left a third of them on three counted categories and the transition's
+  // food variety gate was met on no seed. 0.37.81 put a little of every
+  // category that keeps on the table and the gate is met. A red here now is
+  // a new finding and has no note to stand behind.
   failures += run::KnownGap(walks.front().epoch == core::Epoch::kThree,
                             "Epoch III has come by year 33",
                             "epoch " + std::to_string(static_cast<int>(walks.front().epoch)));
