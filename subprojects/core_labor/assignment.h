@@ -339,6 +339,34 @@ float SavedPerHandDay(const AssignmentJob& job,
                       const std::vector<AssignmentCandidate>& candidates,
                       const AssignmentParams& params);
 
+/// @brief The last tier of the placement queue: work with no window at all —
+///        a building site, a felling, a dig, a planting, a road, the carting
+///        of a district's lot, a stand's logs or a pit's load, the zyab, a
+///        field's work whose crop gives it no window, the meadow's cut outside
+///        its months.
+inline constexpr int kWindowlessTier = 4;
+
+/// @brief The tier of the placement queue `job` stands in, the first key the
+///        queue is ordered by (AssignmentJob::window): 0 an open window, 1 an
+///        overdue one, 2 the meadow's cut in its window, 3 the preparation of
+///        a fallow for this autumn's winter crop, kWindowlessTier the rest.
+///
+/// WHY IT IS ASKED OUTSIDE THE QUEUE (0.37.100; district_lot's red on 0.37.99,
+/// seed 1931, day 30): production's daily block opens a field's phase in
+/// hour 0 AFTER the morning's placement, and the hour-1 top-up placed on it
+/// only the idle and only the horses the morning left. So what the morning
+/// gave to windowless work stayed there: five horses rode for the district's
+/// lot while the harrowing of the rye's fallow, opened that dawn, stood the
+/// day — «the fetch is windowless, the field's horse work goes first» held in
+/// the morning's list alone. THE RULE THE TOP-UP KEEPS SINCE: when a job
+/// stands with nobody on it at hour 1, the morning's placements on the
+/// windowless tier are let go and placed again in one queue with what stands
+/// uncrewed — the placement the morning would have made had it known. Before
+/// sunrise nobody has worked an hour. Placements on the tiers above stay: the
+/// morning's order among work WITH a window is not asked again.
+/// @return 0..kWindowlessTier.
+int PlacementTier(const AssignmentJob& job);
+
 /// @brief Places the day's workers over the day's jobs.
 /// @param jobs       The openings; order irrelevant (the algorithm orders
 ///                   deterministically by urgency, then kind, then — between
