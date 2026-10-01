@@ -299,6 +299,10 @@ class ProductionSystem final : public IProductionSystem {
       // kept. WRITTEN AND SAVED, AND READ BY NO RULE YET — the door of the
       // day off is connected to it by the harvest rule 5 (day_off.h).
       WriteGatherShortSaid(config_, current);
+      // THE HAYMAKING'S LAST EVENING (the harvest rule 3; 0.37.93): closed
+      // tonight, so that tomorrow's list sends nobody to a meadow that the
+      // morning would close under him (field_work.h).
+      CloseMeadowCutsAtSeasonsEnd(config_, current);
     }
     if (current.calendar.day == previous.calendar.day) {
       return;  // everything below is daily work

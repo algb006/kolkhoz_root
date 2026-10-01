@@ -481,15 +481,14 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
   return forecast;
 }
 
-AlarmAdvice AdviceForShortFeed(const ProductionConfig& config,
-                               const WorldState& world,
-                               ResourceId feed) {
-  if (feed.value == kInvalidDefIdValue) {
-    return AlarmAdvice::kNone;
-  }
-  if (feed.value == config.hay_resource.value) {
-    return AlarmAdvice::kCutHay;
-  }
+namespace {
+
+/// What stands between a feed and a delivery of it: nothing (kNone — a store
+/// takes it today, or a site of its home is under way, or its home is an
+/// outline the player draws), or the granary that is not there.
+AlarmAdvice AdviceForFeedWithNoRoom(const ProductionConfig& config,
+                                    const WorldState& world,
+                                    ResourceId feed) {
   // A store that takes it with room left, or an outline that takes it: the
   // move is the district's lot of it, and the layer names it by `resource`.
   if (StoreHasRoomFor(config, world, feed)) {
@@ -514,6 +513,50 @@ AlarmAdvice AdviceForShortFeed(const ProductionConfig& config,
     }
   }
   return AlarmAdvice::kNone;
+}
+
+}  // namespace
+
+AlarmAdvice AdviceForShortFeed(const ProductionConfig& config,
+                               const WorldState& world,
+                               ResourceId feed) {
+  if (feed.value == kInvalidDefIdValue) {
+    return AlarmAdvice::kNone;
+  }
+  if (feed.value == config.hay_resource.value) {
+    // THE CUT IS A MOVE ONLY WHILE A MEADOW STANDS IN IT (the harvest rule 3,
+    // part А; boss, econ-boss-hay-term-2026-10-01 [2]; 0.37.93). Until then
+    // the hay's advice was the cut on every day of the year, and a meadow
+    // that no longer winters in its cut would have left three villages of
+    // the canon shedding horses under a move nobody can make: a meadow marked
+    // in November gives its hay in June.
+    const bool cut_open = std::ranges::any_of(world.fields.rows, [](const FieldRow& field) {
+      return field.kind != LandKind::kArable && field.phase == FieldPhase::kHarvest &&
+             field.work_days_remaining > 0.0F;
+    });
+    if (cut_open) {
+      return AlarmAdvice::kCutHay;
+    }
+    // THE DISTRICT'S FEED FIRST, THE HERD LAST. Straw and silage are no move
+    // of the player's (the herds eat what the feed links give them), so the
+    // one move left before fewer heads is a lot of a feed.
+    for (const LimitLotDef& lot : config.limit.lots) {
+      if (lot.kind != LimitLotKind::kGoods) {
+        continue;
+      }
+      for (std::uint32_t row = 0; row < lot.goods.size(); ++row) {
+        const bool is_feed = row < config.feed_values.size() && config.feed_values[row] > 0.0F;
+        if (lot.goods[row] <= 0 || !is_feed) {
+          continue;
+        }
+        const AlarmAdvice home =
+            AdviceForFeedWithNoRoom(config, world, ResourceId{static_cast<std::uint16_t>(row)});
+        return home == AlarmAdvice::kNone ? AlarmAdvice::kBuyFeed : home;
+      }
+    }
+    return AlarmAdvice::kReduceHerd;
+  }
+  return AdviceForFeedWithNoRoom(config, world, feed);
 }
 
 void CollectHerdForecastAlarms(const ProductionConfig& config,

@@ -304,10 +304,11 @@ int CheckTheHerdHayForecast() {
       Expect(short_ahead.has_value() && short_ahead->kind == core::AlarmKind::kHerdHayShortAhead &&
                  short_ahead->lamp == 0 && short_ahead->herd.value == herd.value &&
                  short_ahead->resource.value == 0 && short_ahead->days_ahead == 20 &&
-                 short_ahead->amount == 4 && short_ahead->advice == core::AlarmAdvice::kCutHay,
+                 short_ahead->amount == 4 && short_ahead->advice == core::AlarmAdvice::kReduceHerd,
              "hay forecast, year 1: 80 kg for four heads - short on day 20 before the first "
-             "scythes, the hay named (not the silage behind it), the cut advised, four heads, "
-             "no lamp");
+             "scythes, the hay named (not the silage behind it), four heads, no lamp; no meadow "
+             "stands in its cut and the district sells no feed - fewer heads advised, not the "
+             "cut (0.37.93)");
   core::WorldState reaches = MakeHerdWorld(100.0F);
   AddHerd(reaches, 0, 4, 2, true);
   failures += Expect(!yellow(reaches).has_value(),
@@ -377,9 +378,46 @@ int CheckTheForecastAdvice() {
   config.unit_types[2].capacity_by_plot = 1;             // a stack
   config.unit_types[2].home_of = {core::ResourceId{4}};  // straw
   core::WorldState world = MakeHerdWorld(100.0F);
+  // THE HAY'S MOVE HANGS ON A MEADOW STANDING IN ITS CUT (the harvest rule 3,
+  // part А; 0.37.93). No meadow in its cut and a district that sells no
+  // feed: fewer heads. A lot of compound feed in the catalogue and no
+  // granary: «амбар под комбикорм». A meadow in its cut: the cut, whatever
+  // the district sells.
+  const core::ResourceId hay{0};
+  failures += Expect(core::AdviceForShortFeed(config, world, hay) == core::AlarmAdvice::kReduceHerd,
+                     "forecast advice: the hay, no meadow in its cut, the district sells no feed - "
+                     "fewer heads");
+  core::LimitLotDef feed_lot;
+  feed_lot.kind = core::LimitLotKind::kGoods;
+  feed_lot.goods = {0, 0, 0, 10 * core::kGramsPerKilogram};
+  config.limit.lots.push_back(feed_lot);
+  failures +=
+      Expect(core::AdviceForShortFeed(config, world, hay) == core::AlarmAdvice::kGranaryForFeed,
+             "forecast advice: the hay, no meadow in its cut, the district sells compound "
+             "feed and no granary stands - «амбар под комбикорм»");
+  {
+    core::WorldState with_granary = world;
+    core::UnitRow granary_site;
+    granary_site.type = core::UnitTypeId{1};
+    granary_site.level = 0;
+    AppendRow(with_granary.units, granary_site);
+    failures +=
+        Expect(core::AdviceForShortFeed(config, with_granary, hay) == core::AlarmAdvice::kBuyFeed,
+               "forecast advice: the hay, no meadow in its cut, a granary's site under way - the "
+               "district's feed");
+  }
+  core::FieldRow mown_out;
+  mown_out.kind = core::LandKind::kMeadow;
+  mown_out.phase = core::FieldPhase::kHarvest;
+  mown_out.work_days_remaining = 0.0F;
+  core::AppendRow(world.fields, mown_out);
+  failures +=
+      Expect(core::AdviceForShortFeed(config, world, hay) == core::AlarmAdvice::kGranaryForFeed,
+             "forecast advice: a meadow mown through is no cut to rush");
+  world.fields.rows[0].work_days_remaining = 3.0F;
   failures += Expect(
       core::AdviceForShortFeed(config, world, core::ResourceId{0}) == core::AlarmAdvice::kCutHay,
-      "forecast advice: the hay - the cut");
+      "forecast advice: the hay while a meadow stands in its cut - the cut");
   failures += Expect(core::AdviceForShortFeed(config, world, core::ResourceId{3}) ==
                          core::AlarmAdvice::kGranaryForFeed,
                      "forecast advice: compound feed and no granary - «амбар под комбикорм»");
@@ -3535,6 +3573,57 @@ int CheckTheMeadowLaysItsHayAsItIsMown() {
                  world.fields.rows[0].harvest_laid_grams == 0 &&
                  world.fields.rows[0].last_mown_day == world.calendar.day,
              "meadow by parts: the grass stands again, its laid share cleared, its day kept");
+  // A MEADOW DOES NOT WINTER IN ITS CUT (the harvest rule 3, part А;
+  // 0.37.93). On the year's last evening but one a meadow half mown is still
+  // being mown; on the last evening it is closed with its half in the book
+  // and the other half standing — and a meadow no scythe touched is closed
+  // with nothing booked and no day of a cut.
+  {
+    core::WorldState evening;
+    evening.calendar.tick = (core::kDaysPerYear - 2U) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(evening.calendar);
+    core::FieldRow untouched = meadow;
+    untouched.work_days_remaining = total_days;
+    core::AppendRow(evening.fields, meadow);
+    core::AppendRow(evening.fields, untouched);
+    core::CloseMeadowCutsAtSeasonsEnd(config, evening);
+    failures += Expect(
+        evening.fields.rows[0].phase == core::FieldPhase::kHarvest && hay_booked(evening) == 0,
+        "meadow's last evening: on the year's last evening but one the cut is open");
+    evening.calendar.tick = (core::kDaysPerYear - 1U) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(evening.calendar);
+    core::CloseMeadowCutsAtSeasonsEnd(config, evening);
+    failures += Expect(hay_booked(evening) == season / 2 &&
+                           evening.fields.rows[0].phase == core::FieldPhase::kGrowing &&
+                           evening.fields.rows[0].work_days_remaining == 0.0F &&
+                           evening.fields.rows[0].harvest_laid_share == 0.0F &&
+                           evening.fields.rows[0].last_mown_day == evening.calendar.day,
+                       "meadow's last evening: on the year's last evening the half mown is in the "
+                       "book, the other half stands uncut and the meadow is grass again");
+    failures += Expect(evening.fields.rows[1].phase == core::FieldPhase::kGrowing &&
+                           evening.fields.rows[1].last_mown_day == core::FieldRow{}.last_mown_day,
+                       "meadow's last evening: a meadow no scythe touched is closed with nothing "
+                       "booked and no day of a cut");
+    // THE BACKSTOP: a world that woke past that evening with a meadow still
+    // in last year's cut. On the opening day it is closed and opened anew —
+    // the whole season's work ahead, nothing of last year's laid twice.
+    core::WorldState june;
+    june.calendar.tick =
+        (core::kDaysPerYear +
+         static_cast<std::uint32_t>(config.farming.meadow_cut_month) * core::kDaysPerMonth) *
+        core::kTicksPerDay;
+    core::RefreshCalendarCaches(june.calendar);
+    core::FieldRow stale = meadow;
+    core::LayMownShare(config, june, stale);  // last year's half, in last year's book
+    june.ledger.current = core::YearLedger{};
+    core::AppendRow(june.fields, stale);
+    core::RunMeadow(config, june, june.fields.rows[0], config.farming.meadow_cut_month);
+    failures += Expect(june.fields.rows[0].phase == core::FieldPhase::kHarvest &&
+                           june.fields.rows[0].work_days_remaining == total_days &&
+                           june.fields.rows[0].harvest_laid_share == 0.0F && hay_booked(june) == 0,
+                       "meadow's opening: a meadow still in last year's cut is closed and opened "
+                       "anew — the whole season ahead, nothing of last year's booked again");
+  }
   return failures;
 }
 

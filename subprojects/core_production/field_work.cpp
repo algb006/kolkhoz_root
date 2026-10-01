@@ -122,6 +122,23 @@ void MowMeadow(const ProductionConfig& config, WorldState& current, FieldRow& fi
   MoveFieldPhase(current, field, FieldPhase::kGrowing);  // the grass stands again next summer
 }
 
+/// THE HAYMAKING IS OVER FOR THE YEAR (farming design §6, the harvest rule 3,
+/// «Недокошенное остаётся на корню»; 0.37.93): what was mown is in the book
+/// already (LayMownShare lays the share day by day), and the rest is NOT
+/// laid — it stands uncut. The meadow goes back to grass; its day is kept
+/// only if a scythe touched it.
+void CloseMeadowCut(WorldState& current, FieldRow& field) {
+  const bool touched = field.harvest_laid_share > 0.0F;
+  field.work_days_remaining = 0.0F;
+  field.harvest_laid_share = 0.0F;
+  field.harvest_laid_grams = 0;
+  field.harvest_work_days = 0.0F;
+  if (touched) {
+    field.last_mown_day = current.calendar.day;
+  }
+  MoveFieldPhase(current, field, FieldPhase::kGrowing);
+}
+
 /// What a late sowing costs this field: 1.0 sown inside its window, falling by
 /// `late_sowing_yield_loss_per_day` for every day past it, never below the
 /// floor.
@@ -807,11 +824,41 @@ void RunMeadow(const ProductionConfig& config,
                WorldState& current,
                FieldRow& field,
                std::uint8_t month) {
+  const bool opening_day =
+      month == config.farming.meadow_cut_month && current.calendar.date.day_in_month == 0;
+  // A MEADOW STILL IN LAST YEAR'S CUT ON THE OPENING DAY is closed first and
+  // opened anew — the backstop of CloseMeadowCutsAtSeasonsEnd for a world
+  // that woke past that evening (a save of before 0.37.93). Without it the
+  // meadow would be mown out of last year's remainder and miss this year's
+  // opening altogether.
+  if (opening_day && field.phase == FieldPhase::kHarvest) {
+    LayMownShare(config, current, field);
+    CloseMeadowCut(current, field);
+  }
   if (field.phase != FieldPhase::kGrowing) {
     return;  // already being mown, and one cut a year is all there is
   }
-  if (month == config.farming.meadow_cut_month && current.calendar.date.day_in_month == 0) {
+  if (opening_day) {
     OpenPhase(config, current, field, FieldPhase::kHarvest);
+  }
+}
+
+void CloseMeadowCutsAtSeasonsEnd(const ProductionConfig& config, WorldState& current) {
+  // THE YEAR'S LAST EVENING: the grass of a year is that year's hay. Until
+  // 0.37.93 a meadow not mown through stayed in its cut over the winter, and
+  // the village mowed LAST YEAR'S grass in January and February — 1936, year
+  // 2 of the canon: 107 hand-days in January for 13 norm-days, and 463 t
+  // booked in a year whose meadows give 415.
+  const std::uint32_t tomorrow = (current.calendar.day + 1U) % kDaysPerYear;
+  if (tomorrow != 0U) {
+    return;
+  }
+  for (FieldRow& field : current.fields.rows) {
+    if (field.kind == LandKind::kArable || field.phase != FieldPhase::kHarvest) {
+      continue;
+    }
+    LayMownShare(config, current, field);
+    CloseMeadowCut(current, field);
   }
 }
 
