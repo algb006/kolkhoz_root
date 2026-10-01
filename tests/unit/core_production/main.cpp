@@ -271,6 +271,34 @@ int CheckTheForecastOffspring() {
                          grows_forecast <= grows_real * 1.1F,
                      "forecast offspring: the young grow up and calve in the forecast as in the "
                      "herd day - never a head short of it, at most a tenth ahead");
+  // A KOLKHOZ COW HERD OVER A YEAR AND A HALF, the horizon the hay lamp
+  // looked across from 1 January until the lamp's delivery: the shipped
+  // cow's own months (two on the newborn rung, adult from eight, one calf a
+  // female a year in March to May, one bull to twenty-five cows) from 39
+  // adults, 68 days — two calvings and the first one's bull calves grown up
+  // and culled. MEASURED before the lamp was touched, to learn whether the
+  // forecast's herd outgrows the real one.
+  core::ProductionConfig cows = MakeHerdConfig();
+  cows.livestock[0].males_share = 0.04F;
+  cows.livestock[0].newborn_game_months = 2.0F;
+  cows.livestock[0].adult_from_game_months = 8.0F;
+  cows.livestock[0].births_per_game_year = 1.0F;
+  cows.farming.birth_from_month = 2;
+  cows.farming.birth_to_month = 4;
+  SetLivestockHead(cows.unit_types[0], 1000.0F);
+  constexpr std::uint32_t kYearAndAHalf = 68;
+  core::WorldState yard = MakeHerdWorld(1.0e7F);
+  const core::HerdId yard_id = AddHerd(yard, 0, 39, 2, true);
+  RunHerdDays(cows, yard, 1);
+  const float yard_start = total(yard, 0);
+  const float yard_forecast = core::ForecastHerdHeads(cows, yard, yard_id, kYearAndAHalf);
+  RunHerdDays(cows, yard, kYearAndAHalf);
+  const float yard_real = total(yard, 0);
+  std::cout << "  the forecast's cow herd over a year and a half: " << yard_start << " -> forecast "
+            << yard_forecast << ", real " << yard_real << " in " << kYearAndAHalf << " days\n";
+  failures += Expect(yard_forecast >= yard_real - 1.0F && yard_forecast <= yard_real * 1.1F,
+                     "forecast offspring: a cow herd's year and a half - the calves, the grown "
+                     "and the bull calves culled - never a head short, at most a tenth ahead");
   return failures;
 }
 
@@ -358,6 +386,97 @@ int CheckTheHerdHayForecast() {
       Expect(!yellow(to_scythes).has_value(),
              "hay forecast, year 2: 290 kg reach next year's first scythes - no yellow; the "
              "new cut feeds from its first day");
+  return failures;
+}
+
+/// THE SHIPPED FEEDING ORDER PUTS THE SUCCULENT AND THE BOUGHT BEFORE THE HAY
+/// (0.37.94; boss, econ-boss-hay-term-2026-10-01 [9], base b0d549c5). The
+/// feeding walks feed_links.csv in ROW ORDER and stops when the need is
+/// covered, so a regular feed standing behind the hay's ceiling of 1.0 was
+/// never taken while there was hay — the start's 150 t of silage lay
+/// untouched for five years on every village of the canon. With every feed
+/// in the store, a cow's day of 100 units is now silage 40, fodder beet 20,
+/// compound feed 30 and hay the last 10; a sheep's and a goat's, compound
+/// feed 30 and hay 70. Rows of resources.csv and livestock.csv by number —
+/// the check says so when one of them moves.
+int CheckTheShippedFeedingOrder() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  core::ProductionConfig config;
+  if (Expect(tables != nullptr && core::ParseProductionConfig(*tables, config, error),
+             "feeding order: the shipped tables parse") != 0) {
+    return 1;
+  }
+  constexpr std::uint16_t kHay = 9;
+  constexpr std::uint16_t kSilage = 12;
+  constexpr std::uint16_t kBeet = 13;
+  constexpr std::uint16_t kCompound = 31;
+  constexpr std::uint16_t kCow = 0;
+  constexpr std::uint16_t kSheep = 1;
+  if (Expect(config.hay_resource.value == kHay && config.feed_values.size() > kCompound &&
+                 config.feed_values[kSilage] > 0.0F && config.feed_values[kBeet] > 0.0F &&
+                 config.feed_values[kCompound] > 0.0F && config.livestock.size() > kSheep,
+             "feeding order: hay, silage, fodder beet and compound feed stand at the rows the "
+             "check names and each has a feed value") != 0) {
+    return failures + 1;
+  }
+  constexpr float kUnits = 100.0F;
+  constexpr float kPlenty = 1.0e6F;
+  const std::vector<std::uint8_t> nobodys_food(config.feed_values.size(), 0);
+  const auto eaten_units = [&](std::uint16_t kind) {
+    std::vector<float> held(config.feed_values.size(), kPlenty);
+    std::vector<float> covered;
+    const std::array<core::FeedDayNeed, 1> needs = {
+        core::FeedDayNeed{.kind = core::LivestockKindId{kind}, .units = kUnits}};
+    core::DrainFeedDay(config, nobodys_food, needs, held, covered);
+    std::vector<float> units(config.feed_values.size(), 0.0F);
+    for (std::size_t row = 0; row < held.size(); ++row) {
+      units[row] = (kPlenty - held[row]) * config.feed_values[row];
+    }
+    return units;
+  };
+  const auto near = [](float value, float want) { return std::fabs(value - want) < 0.5F; };
+  const std::vector<float> cow = eaten_units(kCow);
+  std::cout << "  the cow's day of 100 units, every feed in the store: silage " << cow[kSilage]
+            << ", fodder beet " << cow[kBeet] << ", compound feed " << cow[kCompound] << ", hay "
+            << cow[kHay] << '\n';
+  failures += Expect(near(cow[kSilage], 40.0F) && near(cow[kBeet], 20.0F) &&
+                         near(cow[kCompound], 30.0F) && near(cow[kHay], 10.0F),
+                     "feeding order: a cow eats silage to 0.4 of the day, fodder beet to 0.2, "
+                     "compound feed to 0.3 and hay the rest");
+  const std::vector<float> sheep = eaten_units(kSheep);
+  failures += Expect(near(sheep[kCompound], 30.0F) && near(sheep[kHay], 70.0F),
+                     "feeding order: a sheep eats compound feed to 0.3 of the day and hay the "
+                     "rest");
+  std::uint16_t goat = 0;
+  bool goat_found = false;
+  for (const core::FeedLinkDef& link : config.feed_links) {
+    // The goat is the kind whose links are compound feed and hay and nothing else.
+    std::uint32_t rows = 0;
+    bool only_two = true;
+    for (const core::FeedLinkDef& other : config.feed_links) {
+      if (other.kind.value == link.kind.value) {
+        ++rows;
+        only_two = only_two && (other.resource.value == kHay || other.resource.value == kCompound);
+      }
+    }
+    if (rows == 2 && only_two) {
+      goat = link.kind.value;
+      goat_found = true;
+      break;
+    }
+  }
+  if (Expect(goat_found,
+             "feeding order: a kind fed on compound feed and hay alone is found - "
+             "the goat") == 0) {
+    const std::vector<float> goats = eaten_units(goat);
+    failures += Expect(near(goats[kCompound], 30.0F) && near(goats[kHay], 70.0F),
+                       "feeding order: a goat eats compound feed to 0.3 of the day and hay the "
+                       "rest");
+  } else {
+    ++failures;
+  }
   return failures;
 }
 
@@ -14009,6 +14128,7 @@ int main() {
   failures += CheckTheForecastOffspring();
   failures += CheckTheHerdHayForecast();
   failures += CheckTheForecastAdvice();
+  failures += CheckTheShippedFeedingOrder();
   failures += CheckTheHerdsMilkGoesToItsHome();
   failures += CheckTheHerdDoesNotEatThePlan();
   failures += CheckTheHerdDoesNotEatNextYear();
