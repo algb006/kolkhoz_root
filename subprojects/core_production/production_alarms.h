@@ -107,14 +107,32 @@ void CollectSowingAlarms(const ProductionConfig& config,
                          std::vector<Alarm>& alarms);
 
 /// @brief Appends kHarvestWillNotBeGathered for every annual the snow gates
-/// that the village cannot reap by the snow at its reaping pace — the
-/// season's best day, or every hand of working age before the season's
-/// first reaping — the days spent in the order the fields ripen; `amount` is
-/// the grams the snow will take (alarm_state.h).
+/// that the village cannot reap by the snow at its reaping pace — the last
+/// day of reaping that ended with reaping still owed, under today's light
+/// (core_common/reaping_pace.h), or every hand of working age before the
+/// season's first such day — the days spent in the order the fields ripen;
+/// `amount` is the grams the snow will take (alarm_state.h).
 /// @param alarms Appended to; never cleared.
+/// @param days_off_kept false — THE LAMP: from today, with the days off the
+///        village will in fact keep (IsDayOffIn). true — THE DAY'S CLOSE
+///        (0.37.91): from tomorrow, today being spent, and with the
+///        CALENDAR'S days off kept (IsCalendarDayOffIn) — «not in time with
+///        the Sundays kept», the word the harvest's days off are to hang on,
+///        which therefore does not ask the door it is to drive.
 void CollectGatherAlarms(const ProductionConfig& config,
                          const WorldState& world,
-                         std::vector<Alarm>& alarms);
+                         std::vector<Alarm>& alarms,
+                         bool days_off_kept = false);
+
+/// @brief The day's close of the gathering count (farming design, the
+/// harvest rule 1 as re-worded; boss, core-boss-potato-crew-trace-2026-10-01
+/// [27], [31]): when the count with the days off kept names a field, writes
+/// today — plus one — into WorldState::gather_short_said; otherwise leaves
+/// it as it stands. AN INSTRUMENT UNTIL THE HARVEST RULE 5: no rule reads
+/// the word yet (world_state.h).
+/// @pre Called once a day, at its last tick, after the day's reaping is on
+///      the fields.
+void WriteGatherShortSaid(const ProductionConfig& config, WorldState& current);
 
 /// @brief Appends the herd alarms standing in `world`, the stable's among
 /// them: fodder running out, a byre over its head count, horses unfed; and

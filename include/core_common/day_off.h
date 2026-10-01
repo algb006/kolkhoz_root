@@ -1,9 +1,9 @@
 /// @file
 /// @brief The one door for «is this day a day off in THIS world»: the
 /// calendar's rest day or holiday, unless the chairman cancelled it
-/// (OrderKind::kCancelDayOff; boss seq 103 and 107) or the harvest will not
-/// be gathered with the days off kept (OrderKind::kHarvestWithoutDaysOff;
-/// farming design, the harvest rule 1). Holidays are never worked (time §9).
+/// (OrderKind::kCancelDayOff; boss seq 103 and 107) or the harvest stands
+/// under his standing order (OrderKind::kHarvestWithoutDaysOff; farming
+/// design, the harvest rule 1). Holidays are never worked (time §9).
 /// @threading PARALLEL_READONLY
 /// A pure read of the world.
 ///
@@ -37,34 +37,37 @@ bool HarvestStands(const WorldState& world);
 /// CANCELLED DAY, the harvest not asked: IsRestDay by the world's calendar
 /// and epoch, and not the day he cancelled (kCancelDayOff).
 ///
-/// THE COUNT THAT DECIDES THE HARVEST'S DAYS OFF ASKS THIS, NOT IsDayOffIn
+/// THE COUNT «NOT IN TIME WITH THE DAYS OFF KEPT» ASKS THIS, NOT IsDayOffIn
 /// (boss, core-boss-potato-crew-trace-2026-10-01 [27] and the answer to
-/// [28]): «the crop will not be gathered WITH THE DAYS OFF KEPT» is the
-/// condition, and a count that asked the door it drives would go round —
-/// the lamp lights, the day off is lifted, the days are enough, the lamp
-/// goes out, the day off comes back.
+/// [28]): a count that asked the door it is to drive would go round — the
+/// lamp lights, the day off is lifted, the days are enough, the lamp goes
+/// out, the day off comes back.
 bool IsCalendarDayOffIn(const WorldState& world, SimDay day);
 
 /// @brief Whether `day` is a day off in `world`: IsCalendarDayOffIn — and,
-/// while ChairmanState::harvest_without_days_off stands, not a week's day
-/// off of today or later in this calendar year when THE GATHERING COUNT SAID
-/// «NOT IN TIME» at the last day's close (WorldState::gather_short_said) and
-/// the harvest still stands (HarvestStands). Never a holiday (time §9).
+/// while ChairmanState::harvest_without_days_off stands and the harvest
+/// stands (HarvestStands), not a week's day off of today or later in this
+/// calendar year. Never a holiday (time §9).
 /// @param day A simulation day; the cancelled day is today or later.
-/// @note FROM 0.37.87 TO 0.37.90 THE CONDITION WAS «A RIPE CROP STANDS» and
-///       nothing more, which is true every autumn: in years 2-3, where almost
-///       nothing went under the snow with or without it, the rule cost 7 and
-///       12 points of the adults' rest (econ's objection to his own rule,
-///       [26]). The lamp «the harvest will not be gathered» and this door
-///       read one count: the lamp is lit — the day off is lifted; the lamp
-///       is silent — the Sunday is a day off.
-/// @note THE ANSWER FOR A DAY AHEAD IS TODAY'S: a day to come is judged by
-///       what the count said last night. A past day, or a day of another
-///       year, is the calendar's.
+/// @note THE RULE'S CONDITION IS TO BECOME «THE GATHERING COUNT SAID NOT IN
+///       TIME» (boss [27]; WorldState::gather_short_said, written since
+///       0.37.91) AND IS NOT THAT YET: the word is written and saved, and
+///       THIS DOOR DOES NOT READ IT. «A ripe crop stands» is true every
+///       autumn and costs 7 and 12 points of the adults' rest in years 2-3,
+///       where nothing was going under the snow (econ [26]) — but hung on
+///       the lamp's count as it stands, the door lost 64 t more in year 1
+///       (the word came after the Sunday on 1938 and 1939) and still lifted
+///       the Sundays of year 2 in nine villages of nine (measured,
+///       0.37.91's message). The delivery of the harvest rule 5 — the count
+///       by fields, light, road and hands — connects the reader.
+/// @note THE ANSWER FOR A DAY AHEAD IS TODAY'S: nobody knows the day the
+///       last field will be reaped, so a day to come is judged by what
+///       stands this morning. A past day, or a day of another year, is the
+///       calendar's.
 /// @note The answer can change within a day: the hour the last field is
-///       reaped a Sunday becomes a day off again. The morning's placement
-///       has been made by then; the evening's rest reads the evening's
-///       answer.
+///       reaped a Sunday becomes a day off again, and the hour a crop
+///       ripens it stops being one. The morning's placement has been made
+///       by then; the evening's rest reads the evening's answer.
 bool IsDayOffIn(const WorldState& world, SimDay day);
 
 }  // namespace core

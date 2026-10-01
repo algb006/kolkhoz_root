@@ -24,6 +24,7 @@
 #include "core_common/away_in_district.h"
 #include "core_common/calendar.h"
 #include "core_common/chairman_away.h"
+#include "core_common/day_off.h"
 #include "core_common/fund_ladder.h"
 #include "core_common/herd_age_band.h"
 #include "core_common/order_state.h"
@@ -5779,6 +5780,54 @@ int CheckTheHarvestWillNotBeGathered() {
                      "said before the potato is ripe — the whole field, which the snow takes");
   world.ledger.current.reaping_last_day = 12.0F;
   failures += Expect(warned() == 0, "gather: at twice the pace both are reaped in time");
+  // THE DAY'S CLOSE COUNTS WITH THE CALENDAR'S DAYS OFF KEPT, AND WRITES ITS
+  // WORD (the harvest rule 1 as re-worded, 0.37.91; production_alarms.h). A
+  // world where the door has lifted the Sunday of day 34 — the order on, a
+  // reaping standing — at 8 norm-days a day. From tomorrow the oat runs from
+  // 31 to 33.5 and the potato needs 6.25 days: with the Sunday WORKED it has
+  // 6.5 and fits; with the Sunday KEPT it has 5.5 and does not. So the
+  // close's count must say the potato though the door says the day is
+  // worked: asked of the door it is to drive, it would find the day it lacks
+  // and go silent. And the lamp, which asks the door, is silent here.
+  {
+    core::WorldState lifted = world;
+    lifted.ledger.current.reaping_last_day = 8.0F;
+    lifted.chairman.harvest_without_days_off = 1;
+    core::FieldRow standing;  // a reaping of nobody's crop: it only makes the harvest stand
+    standing.kind = core::LandKind::kArable;
+    standing.phase = core::FieldPhase::kHarvest;
+    standing.work_days_remaining = 1.0F;
+    core::AppendRow(lifted.fields, standing);
+    failures += Expect(!core::IsDayOffIn(lifted, 34) && core::IsCalendarDayOffIn(lifted, 34),
+                       "gather: the door has lifted the Sunday of day 34 and the calendar keeps "
+                       "it");
+    const auto said = [&config, &lifted, id](bool days_off_kept) {
+      std::vector<core::Alarm> alarms;
+      core::CollectGatherAlarms(config, lifted, alarms, days_off_kept);
+      std::int64_t grams = 0;
+      for (const core::Alarm& alarm : alarms) {
+        grams += alarm.kind == core::AlarmKind::kHarvestWillNotBeGathered &&
+                         alarm.field.value == id.value
+                     ? alarm.amount
+                     : 0;
+      }
+      return grams;
+    };
+    failures += Expect(said(true) == 10'000'000,
+                       "gather: the close's count keeps the calendar's Sunday though the door "
+                       "has lifted it — the potato is said");
+    failures += Expect(said(false) == 0,
+                       "gather: the lamp counts the Sunday the village will work — silent");
+    core::WriteGatherShortSaid(config, lifted);
+    failures += Expect(lifted.gather_short_said == 31,
+                       "gather: the day's close writes the day plus one when its count names a "
+                       "field");
+    lifted.ledger.current.reaping_last_day = 12.0F;
+    lifted.gather_short_said = 17;
+    core::WriteGatherShortSaid(config, lifted);
+    failures += Expect(lifted.gather_short_said == 17,
+                       "gather: and leaves the last word as it stands when the count is silent");
+  }
   // AND THE CARRY IS OWED (0.36.20): a road a kilometre off puts each heap at
   // its field's edge; a person's 20 kg, no horse — the potato's 10 t and the
   // oat's go the 0.47 r beyond the norm in 500 trips each, some 24 norm-days

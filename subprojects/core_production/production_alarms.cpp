@@ -1129,7 +1129,8 @@ std::vector<GatherClaim> AnnualsToGather(const ProductionConfig& config,
 
 void CollectGatherAlarms(const ProductionConfig& config,
                          const WorldState& world,
-                         std::vector<Alarm>& alarms) {
+                         std::vector<Alarm>& alarms,
+                         bool days_off_kept) {
   const std::uint32_t day_of_year = world.calendar.day % kDaysPerYear;
   std::vector<GatherClaim> claims = AnnualsToGather(config, world, day_of_year);
   if (claims.empty()) {
@@ -1140,14 +1141,21 @@ void CollectGatherAlarms(const ProductionConfig& config,
   std::ranges::stable_sort(claims, [](const GatherClaim& left, const GatherClaim& right) {
     return left.open_day < right.open_day;
   });
-  // THE PACE (boss seq 91, option В): once the season has reaped, the best
-  // day it has been seen to manage; before that, every hand at one norm-day
-  // — optimistic on purpose, so that it does not cry before there is a
-  // season to read.
+  // THE PACE (boss seq 91, option В; reaping_pace.h): once the season has
+  // reaped, THE LAST DAY OF REAPING THAT ENDED WITH REAPING STILL OWED;
+  // before that, every hand at one norm-day — optimistic on purpose, so that
+  // it does not cry before there is a season to read. This comment said «the
+  // best day» until 0.37.91, which the pace was until 2026-09-19 and the
+  // report of 1 October repeated to boss twice off the comment. WHAT THAT
+  // PACE DOES, measured on the day's close (0.37.91's message): one field's
+  // yesterday is laid on every field's tomorrow — three hands on the rye in
+  // July make the count cry all summer (year 2, nine villages of nine), and
+  // twenty hands on the near potato in October keep it silent over three far
+  // fields till day 36 (1938). The harvest rule 5 replaces it by fields.
   //
-  // THE BEST DAY UNDER TODAY'S SUN (boss seq 95): a man reaps from sunrise to
-  // sunset less the road, so the best day's norm-days are scaled by today's
-  // daylight over the best day's. Taken of TODAY and not of each day to come:
+  // THAT DAY UNDER TODAY'S SUN (boss seq 95): a man reaps from sunrise to
+  // sunset less the road, so its norm-days are scaled by today's daylight
+  // over its own. Taken of TODAY and not of each day to come:
   // the light keeps falling to the snow, so this still errs on the side of
   // silence, only by less than 15.2 h against 8.4 h did. One home with
   // labor's last days (core_common/reaping_pace.h).
@@ -1166,9 +1174,16 @@ void CollectGatherAlarms(const ProductionConfig& config,
   // does the reaping. Written as "no dry share" so that the one walk
   // (DryDaysBetween, CalendarPointAfterDryDays) skips it. The rest of the
   // year is not asked: nothing past the snow counts.
+  //
+  // THE LAMP ASKS THE DOOR, THE DAY'S CLOSE THE CALENDAR (0.37.91; day_off.h,
+  // IsCalendarDayOffIn). The lamp counts the days the village will in fact
+  // work. The close's count is «not in time WITH THE DAYS OFF KEPT» — the
+  // word the harvest's days off are to hang on — and a count that asked the
+  // door it is to drive would put itself out the morning it lit.
   const SimDay year_start = world.calendar.day - day_of_year;
   for (std::uint32_t day = day_of_year; day < kDaysPerYear; ++day) {
-    if (IsDayOffIn(world, year_start + static_cast<SimDay>(day))) {
+    const SimDay sim_day = year_start + static_cast<SimDay>(day);
+    if (days_off_kept ? IsCalendarDayOffIn(world, sim_day) : IsDayOffIn(world, sim_day)) {
       ahead[day] = 1.0F;
     }
   }
@@ -1186,7 +1201,9 @@ void CollectGatherAlarms(const ProductionConfig& config,
   // SAFE day and is counted as it is.
   const auto snow = std::min(static_cast<double>(config.growing_season_last_day),
                              static_cast<double>(config.farming.gather_alarm_snow_day) - 1.0);
-  double clock = static_cast<double>(day_of_year);
+  // The day's close counts from tomorrow: today is spent, and what it reaped
+  // is off the fields already.
+  double clock = static_cast<double>(day_of_year) + (days_off_kept ? 1.0 : 0.0);
   for (const GatherClaim& claim : claims) {
     const double start = std::max(clock, static_cast<double>(claim.open_day));
     const double available = DryDaysBetween(ahead, start, snow + 1.0);
@@ -1209,6 +1226,14 @@ void CollectGatherAlarms(const ProductionConfig& config,
     // all (boss seq 176).
     alarm.amount = static_cast<std::int64_t>(StandingYieldGrams(config, field, crop));
     alarms.push_back(alarm);
+  }
+}
+
+void WriteGatherShortSaid(const ProductionConfig& config, WorldState& current) {
+  std::vector<Alarm> alarms;
+  CollectGatherAlarms(config, current, alarms, true);
+  if (!alarms.empty()) {
+    current.gather_short_said = current.calendar.day + 1U;
   }
 }
 

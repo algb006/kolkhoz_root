@@ -293,6 +293,12 @@ class ProductionSystem final : public IProductionSystem {
       SpoilStores(config_, current);
       // And the heaps waiting on their fields, faster (field_haul.h).
       SpoilFieldHeaps(config_, current);
+      // THE GATHERING COUNT'S WORD FOR TOMORROW (the harvest rule 1 as
+      // re-worded; 0.37.91; production_alarms.h): with the day's reaping on
+      // the fields, whether the crop will be gathered with the days off
+      // kept. WRITTEN AND SAVED, AND READ BY NO RULE YET — the door of the
+      // day off is connected to it by the harvest rule 5 (day_off.h).
+      WriteGatherShortSaid(config_, current);
     }
     if (current.calendar.day == previous.calendar.day) {
       return;  // everything below is daily work

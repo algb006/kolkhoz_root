@@ -1065,7 +1065,9 @@ int TestBarnRunsOnTheDayOff() {
 
   // THE HARVEST WITHOUT DAYS OFF (the harvest rule 1; save 125): with the
   // chairman's standing order on — as genesis leaves it — the same Sunday is
-  // reaped, and the same May Day is not.
+  // reaped, and the same May Day is not. The gathering count's word (save
+  // 126) is not asked: it has no reader until the harvest rule 5
+  // (harvest_days_off_checks.cpp keeps the check that must turn then).
   DayWorld season(3);
   season.world.chairman.harvest_without_days_off = 1;
   season.AddField(core::FieldPhase::kHarvest, 5.0F, core::Vec2{.x = 100.0F, .y = 0.0F});

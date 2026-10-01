@@ -50,6 +50,30 @@ int TestTheSundayIsWorkedWhileTheHarvestStands() {
   return failures;
 }
 
+/// THE COUNT'S WORD HAS NO READER YET (0.37.91; boss [31]): the door answers
+/// the same whether the gathering count never spoke, spoke last night or
+/// spoke long ago — the harvest rule 5 is to connect it, and the day it does
+/// THIS CHECK IS THE ONE THAT MUST TURN: a silent count will leave the
+/// Sunday a day off.
+int TestTheCountsWordHasNoReaderYet() {
+  int failures = 0;
+  core::WorldState silent = HarvestWorld(6);
+  core::WorldState last_night = HarvestWorld(6);
+  last_night.gather_short_said = 6;  // the close of day 5
+  core::WorldState stale = HarvestWorld(6);
+  stale.gather_short_said = 2;
+  failures += Expect(!core::IsDayOffIn(silent, 6) && !core::IsDayOffIn(last_night, 6) &&
+                         !core::IsDayOffIn(stale, 6),
+                     "days off: the count's word has no reader yet — never said, said last "
+                     "night or long ago, the Sunday is worked while the harvest stands");
+  // The calendar's door does not ask the harvest at all.
+  failures +=
+      Expect(core::IsCalendarDayOffIn(last_night, 6) && !core::IsCalendarDayOffIn(last_night, 5),
+             "days off: the calendar's door answers the calendar, whatever stands and whatever "
+             "the count said");
+  return failures;
+}
+
 int TestWhatIsNotTheHarvest() {
   int failures = 0;
   core::WorldState done = HarvestWorld(6);
@@ -140,6 +164,7 @@ int TestTheChairmanSwitchesIt() {
 int CheckHarvestDaysOff() {
   int failures = 0;
   failures += TestTheSundayIsWorkedWhileTheHarvestStands();
+  failures += TestTheCountsWordHasNoReaderYet();
   failures += TestWhatIsNotTheHarvest();
   failures += TestAHolidayIsNeverWorked();
   failures += TestADayAheadIsJudgedByToday();
