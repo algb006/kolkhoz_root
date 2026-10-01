@@ -14,6 +14,16 @@
 /// за ними смотрят хозяева» — so a herd wholly on billet has no count, and
 /// the heads a herd has under its roof are what the stage speaks of.
 ///
+/// WHEN THE COLD IS: THE CALENDAR'S WINTER, AND NO OTHER MONTH (world_params
+/// `livestock_cold_first_month`..`livestock_cold_last_month`, December to
+/// February; the human's word of 2026-10-01 through boss, billet thread [5],
+/// [8]; 0.37.69). Out of it no night counts and the counter stands at
+/// nought — an open yard in April or October is no cold place. The measure
+/// before it was the weather's lot: of 27 villages a cow in an open yard
+/// from 1 April «мёрзла» on 11 in the spring and on all 27 from October.
+/// The player is given one date to have the yards warm by, the first of
+/// December.
+///
 /// ONE COUNTER, AS HUNGER HAS ONE. A night below the kind's threshold for
 /// its place adds a step, one below still frost two, any other night takes
 /// two off; never below nought. The morning after a move from a cold place
@@ -88,31 +98,25 @@ void RunFrostDeaths(const ProductionConfig& config,
                     WorldState& world,
                     YearLedger& book);
 
-/// @brief Whether `month` is a frost month of the kind: the climate's mean
-///        night of the month's second day below its cold-place threshold
-///        (ProductionConfig::climate_nights; boss-core-start-no-yards [18],
-///        reading 2). In a frost month the billet keeps its places before a
-///        cold roof takes a head.
-bool FrostMonthOf(const ProductionConfig& config, const LivestockDef& kind, Month month);
+/// @brief Whether `month` lies in the cold's season
+///        (FarmingConfig::cold_first_month..cold_last_month, wrapping the
+///        year's turn): the only months a night is counted in.
+bool InColdSeason(const ProductionConfig& config, Month month);
 
-/// @brief The climate's days from `day_of_year` to the first night below
-///        the kind's cold-place threshold, looking a year ahead; 0 when
-///        tonight is one, kDaysPerYear when none comes.
-std::uint32_t DaysToFirstColdNight(const ProductionConfig& config,
-                                   const LivestockDef& kind,
-                                   std::uint32_t day_of_year);
+/// @brief Days from `day_of_year` to the first day of the cold's season; 0
+///        inside it.
+std::uint32_t DaysToColdSeason(const ProductionConfig& config, std::uint32_t day_of_year);
 
 /// @brief The cold's two alarms (alarm_state.h): kHerdFreezing for every
 ///        kolkhoz herd freezing today — `amount` the heads under the cold
 ///        roof, `advice` kInsulateStraw while the stores hold one
 ///        insulation's straw; and kHerdColdAhead in the autumn before the
-///        kind's first cold night by the climate — `amount` the heads the
-///        billet's places will not keep off a cold roof, as BilletHerds
-///        will place them in the first frost month with today's herds;
-///        `days_ahead` to that night; `advice` kWarmYard when the unit's next
+///        cold's season opens — `amount` the heads that will stand under a
+///        cold roof then, the herd up to its roof's room; `days_ahead` to
+///        the season's first day; `advice` kWarmYard when the unit's next
 ///        rung is warm, kInsulateStraw otherwise. The autumn is from the
-///        end of the pasture (FarmingConfig::pasture_to_month) to the cold
-///        night.
+///        end of the pasture (FarmingConfig::pasture_to_month) to the
+///        season.
 void CollectHerdColdAlarms(const ProductionConfig& config,
                            const WorldState& world,
                            std::vector<Alarm>& alarms);

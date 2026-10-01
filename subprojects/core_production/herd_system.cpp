@@ -272,29 +272,23 @@ std::vector<float> RoofRoom(const WorldState& world, const ProductionConfig& con
 /// let a herd earlier in the rows fill a yard whose own herd comes later.
 /// The herd stays one row at its own unit; the heads another yard shelters
 /// are housed, not moved.
-std::vector<std::uint16_t> BilletHerds(const WorldState& world,
-                                       const ProductionConfig& config,
-                                       std::vector<float> room) {
+std::vector<std::uint16_t> BilletHerds(const WorldState& world, std::vector<float> room) {
   const auto herds = static_cast<std::uint32_t>(world.herds.rows.size());
   std::vector<std::uint16_t> billeted(herds, 0);
   std::vector<float> left(herds, 0.0F);
-  std::vector<float> kept_warm(herds, 0.0F);
   std::vector<std::uint32_t> unit_rows(herds, kNoRow);
   const auto take = [&room, &left](std::uint32_t herd_row, std::uint32_t unit_row) {
     const float housed = left[herd_row] < room[unit_row] ? left[herd_row] : room[unit_row];
     room[unit_row] -= housed;
     left[herd_row] -= housed;
   };
-  // THE BILLET KEEPS ITS PLACES IN A FROST MONTH (Livestock design: «в
-  // месяцы "мёрзнет" стадо остаётся на постое, пока в хлевах дворов есть
-  // места; замерзает только то, чему постоя не хватило»; 0.37.62). The
-  // places are the design's ceiling, `billet_heads_per_yard` a family — the
-  // district limit's own count (district_limit.cpp, PlacesForStock) — less
-  // what stands billeted anyway, a herd with no roof of its own. Outside a
-  // frost month the billet is what the roofs leave, uncounted, as before.
-  float billet_places =
-      static_cast<float>(world.families.rows.size()) * config.farming.billet_heads_per_yard;
-  const auto month = world.calendar.date.month;
+  // THE BILLET IS WHAT THE ROOFS LEAVE, in every month. From 0.37.62 to
+  // 0.37.68 it kept its places FIRST in a frost month — «в мороз стадо
+  // остаётся на постое, пока в хлевах дворов есть места» — which was the
+  // start without yards' rule; it went with it (the human's «Постой
+  // отменяем, это сильное усложнение механики игры», 2026-10-01; boss,
+  // billet thread [8], variant A). The billet stays the valve of a head with
+  // no place: an overgrown yard, a lot come before its roof, a yard burnt.
   for (std::uint32_t row = 0; row < herds; ++row) {
     const HerdRow& herd = world.herds.rows[row];
     if (herd.household_owned != 0) {
@@ -308,25 +302,6 @@ std::vector<std::uint16_t> BilletHerds(const WorldState& world,
     if (unit_row != kNoRow && unit_row < room.size()) {
       unit_rows[row] = unit_row;
     }
-    // A herd whose own roof is not standing — none, or a site — is on the
-    // billet whole, and takes its places first (herd_cold.cpp counts the
-    // autumn's yellow the same way).
-    if (unit_rows[row] == kNoRow || world.units.rows[unit_rows[row]].level == 0) {
-      billet_places -= left[row];
-    }
-  }
-  for (std::uint32_t row = 0; row < herds; ++row) {
-    const std::uint32_t own = unit_rows[row];
-    const HerdRow& herd = world.herds.rows[row];
-    if (own == kNoRow || world.units.rows[own].level == 0 ||
-        herd.kind.value >= config.livestock.size() || !(billet_places > 0.0F) ||
-        UnitIsWarmPlace(config, world.units.rows[own]) ||
-        !FrostMonthOf(config, config.livestock[herd.kind.value], month)) {
-      continue;
-    }
-    kept_warm[row] = std::min(left[row], billet_places);
-    billet_places -= kept_warm[row];
-    left[row] -= kept_warm[row];
   }
   for (std::uint32_t row = 0; row < herds; ++row) {
     if (unit_rows[row] != kNoRow) {
@@ -346,10 +321,9 @@ std::vector<std::uint16_t> BilletHerds(const WorldState& world,
         take(row, unit_row);
       }
     }
-    // What neither the billet's places nor a roof held stays billeted all
-    // the same, over the places: there is no fourth place, and the design's
-    // «не под нож» holds (boss-core-start-no-yards [18], reading 1).
-    billeted[row] = AsHeads(left[row] + kept_warm[row]);
+    // What no roof held stands billeted: there is no third place, and the
+    // design's «не под нож» holds (boss-core-start-no-yards [18], reading 1).
+    billeted[row] = AsHeads(left[row]);
   }
   return billeted;
 }
@@ -1005,7 +979,7 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
   const auto month = static_cast<std::uint8_t>(current.calendar.date.month);
   // The day's billet, every herd at once, before any herd's day moves a head
   // (BilletHerds: its own yard first, then the others of its type).
-  const std::vector<std::uint16_t> billet = BilletHerds(current, config, RoofRoom(current, config));
+  const std::vector<std::uint16_t> billet = BilletHerds(current, RoofRoom(current, config));
   float horse_backed_days = 0.0F;
   float harnessed_days = 0.0F;
   const float working_share = WorkingShare(current, config, &horse_backed_days, &harnessed_days);

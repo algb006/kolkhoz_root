@@ -590,13 +590,16 @@ enum class AlarmKind : std::uint8_t {
   /// herd whose cold nights' counter (HerdRow::cold_nights) stands at 1 or
   /// more — heads in a COLD place (a unit of a rung whose unit_levels.csv
   /// `warm_place` is 0 and that is not insulated: the cattle yard's open pen,
-  /// the horse yard below insulation) on nights below the kind's threshold.
+  /// the horse yard below insulation) on nights below the kind's threshold,
+  /// IN THE CALENDAR'S WINTER ONLY (`livestock_cold_first_month`..
+  /// `livestock_cold_last_month`, December to February; 0.37.69): out of it
+  /// no night counts and the lamp cannot light.
   /// «Мёрзнет» from the first such night (milk × the kind's
   /// `freezing_produce_factor`, draught × `freezing_draught_factor` the day
   /// after); «замерзает» from `livestock_freezing_counter` (a share of the
-  /// adults a day). The heads on billet stand outside the metric, and in the
-  /// frost months the billet keeps its places before the pen takes a head
-  /// (a pen does not put a herd out into the frost). Subject: `herd`;
+  /// adults a day). The heads on billet stand outside the metric; the billet
+  /// is what a roof has no room for, in every month (from 0.37.62 to 0.37.68
+  /// it kept its places first in a frost month). Subject: `herd`;
   /// `amount` the heads in the cold. `advice` kInsulateStraw when the stores
   /// hold the straw of an insulation (construction.csv
   /// `insulation_livestock_straw_t`), kNone otherwise — the billet and the
@@ -607,12 +610,14 @@ enum class AlarmKind : std::uint8_t {
   /// «К ЗИМЕ ПЛОЩАДКА НЕ УКРОЕТ N ГОЛОВ — ХЛЕВ ДО МОРОЗОВ» — THE COLD'S
   /// YELLOW, A FORECAST (the same design and threads; alarms.csv
   /// `herd_cold_ahead`, rank 34): in the autumn, the kolkhoz heads that
-  /// neither a warm place nor the families' billet will hold when the cold
-  /// nights come — the ones a cold place would leave to the counter.
+  /// will stand under a COLD roof when the cold's season opens — a herd up
+  /// to its roof's room (what the roof does not hold stands billeted, warm).
   /// Subject: `herd`; `amount` those heads; `days_ahead` the days to the
-  /// first cold night by the climate; `advice` kWarmYard — the cattle yard's
-  /// warm barn, laid before the clay freezes (boss, 2026-10-01). `lamp`
-  /// always 0.
+  /// first day of `livestock_cold_first_month` — one date for the player,
+  /// the first of December (0.37.69; it was the first cold night by the
+  /// climate); `advice` kWarmYard — the cattle yard's warm barn, laid before
+  /// the clay freezes (boss, 2026-10-01) — when the unit's next rung is
+  /// warm, kInsulateStraw otherwise. `lamp` always 0.
   kHerdColdAhead,
 
   // Appended by later tasks and phases: children out of school, sewage,

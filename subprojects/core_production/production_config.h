@@ -28,7 +28,6 @@
 #include "core_catalog/processing_catalog.h"
 #include "core_catalog/timber_catalog.h"
 #include "core_common/calendar.h"
-#include "core_common/climate_nights.h"
 #include "core_common/ids.h"
 #include "core_common/quantities.h"
 #include "core_common/rain_stops_work.h"
@@ -617,6 +616,19 @@ struct FarmingConfig {
   /// the default, is the rows' order. A switch, not a rule of the design.
   bool feed_draught_first = false;
 
+  /// THE COLD COUNTS IN THE CALENDAR'S WINTER ONLY (world_params
+  /// `livestock_cold_first_month`, `livestock_cold_last_month`, 12 and 2,
+  /// boss's 5c4c82d2; the human's «по температуре вносите корректировки как
+  /// надёжнее, чтобы игрок на старте не испытывал проблем», 2026-10-01).
+  /// Months FROM ZERO here, as the pasture's (the table's are 1..12), the
+  /// span wrapping the year's turn: December..February. Outside it an open
+  /// yard is no cold place: the counter stands at nought, whatever the
+  /// night. Until 0.37.69 every night below the threshold counted, and by
+  /// the lot of the weather a cow in an open yard froze in April on 11
+  /// seeds of 27 and from October on all of them.
+  std::uint8_t cold_first_month = 11;
+  std::uint8_t cold_last_month = 1;
+
   /// «Замерзает» from this count.
   float freezing_counter = 6.0F;
 
@@ -824,11 +836,10 @@ struct ProductionConfig {
   /// nothing ahead of the clock, the alarm as it was.
   RainDayShares rain_day_shares{};
 
-  /// The climate's mean night per day of the year, handed in by the
-  /// assembly from ITimeSystem::ClimateNightCelsius on the season edge's
-  /// terms: derived, not parsed; all zeros by default — no frost month, no
-  /// cold night ahead for a kind that freezes below nought (0.37.62).
-  ClimateNights climate_nights{};
+  // The climate's mean nights stood here from 0.37.62 to 0.37.68, for the
+  // cold ladder's frost months and its autumn forecast. Since 0.37.69 the
+  // cold's season is the calendar's (FarmingConfig::cold_first_month), and
+  // a copy of the climate nobody reads would be a second home of it.
 
   std::vector<CropDef> crops;  ///< Indexed by CropId row.
 

@@ -800,11 +800,8 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
   // labor's last days before the snow discount the days ahead by it — one
   // count, handed to both (core_common/rain_stops_work.h).
   const RainDayShares rain_days = time == nullptr ? RainDayShares{} : time->ClimateRainDayShares();
-  // And the climate's nights, for the cold ladder's months and its autumn
-  // forecast (core_common/climate_nights.h; 0.37.62).
-  const ClimateNights nights = time == nullptr ? ClimateNights{} : time->ClimateNightCelsius();
-  auto production = CreateProductionSystem(
-      *config.tables, config.stub_tables, season_last_day, rain_days, nights);
+  auto production =
+      CreateProductionSystem(*config.tables, config.stub_tables, season_last_day, rain_days);
   // THE GRAMS OF A STANDING CROP ARE PRODUCTION'S to count, and labor's last
   // days before the snow order the reaping by them (boss seq 95): labor is
   // handed the one estimate, not a copy of its formula. The world owns both

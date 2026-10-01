@@ -3125,9 +3125,10 @@ int CheckTheFeedingOrderSwitch() {
 /// night takes a quarter of the milk; from six the frost takes 3 % of the
 /// adults a day, fractional — the first cow on the ninth day. Straw on the
 /// walls resets the count the morning after («переезд в тепло»), and a warm
-/// night then takes two off, not all. In a frost month the billet keeps its
-/// places before the pen; the red names straw only while it is held; the
-/// autumn's yellow counts the days to the first cold night and names the
+/// night then takes two off, not all. The billet keeps nobody off a pen with
+/// room (0.37.69: «в мороз постой первым» is gone); the cold counts in the
+/// calendar's winter only; the red names straw only while it is held; the
+/// autumn's yellow counts the days to the first of December and names the
 /// warm barn when the next rung is warm. The draught falls by the share of
 /// the team freezing.
 int CheckTheColdLadder() {
@@ -3140,6 +3141,13 @@ int CheckTheColdLadder() {
   cow.freezes_in_warm_place = 1;
   cow.cold_night_warm_place_c = -15.0F;
   cow.freezing_produce_factor = 0.75F;
+  // THE LADDER'S OWN STEPS ARE COUNTED IN A SEASON THAT LASTS THE YEAR: the
+  // days below run past February, and the season is checked by itself,
+  // further down, on the months the tables ship.
+  const std::uint8_t shipped_first = config.farming.cold_first_month;
+  const std::uint8_t shipped_last = config.farming.cold_last_month;
+  config.farming.cold_first_month = 0;
+  config.farming.cold_last_month = 11;
   const auto nights = [](core::WorldState& world, float night_celsius) {
     world.weather.temperature_swing_celsius = 6.0F;
     world.weather.air_temperature_celsius = night_celsius + 6.0F;
@@ -3182,24 +3190,70 @@ int CheckTheColdLadder() {
   core::RunHerdDay(config, world);
   failures += Expect(herd.cold_nights == 2,
                      "cold ladder: in the warm, -21 counts two a night and -9 takes two off");
-  // The billet first in a frost month: three families, six places.
+  // THE BILLET IS NO LONGER FIRST IN A FROST MONTH (0.37.69): three families,
+  // six places, a January night of -9 — and the ten cows stand in the pen
+  // that has room for them, all ten counted cold.
   {
-    core::ProductionConfig frost = config;
-    frost.climate_nights.fill(-10.0F);
     core::WorldState yards = MakeHerdWorld(100000.0F);
     for (int family = 0; family < 3; ++family) {
       AppendRow(yards.families, core::FamilyRow{});
     }
     AddHerd(yards, 0, 10, 5, true);
     nights(yards, -9.0F);
-    core::RunHerdDay(frost, yards);
+    core::RunHerdDay(config, yards);
+    failures += Expect(yards.herds.rows[0].billeted_count == 0 &&
+                           core::HeadsUnderRoof(yards.herds.rows[0]) == 10 &&
+                           yards.herds.rows[0].cold_nights == 1,
+                       "cold ladder: in a frost month the billet keeps nobody off a pen with room "
+                       "— ten under the cold roof");
+  }
+  // THE CALENDAR'S WINTER ONLY (0.37.69): December..February. A night of -9
+  // in May or October counts nothing; a count carried into March is dropped
+  // on its first day; December's first night counts again.
+  {
+    const auto at_day = [](core::WorldState& moved, std::uint32_t day) {
+      moved.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
+      core::RefreshCalendarCaches(moved.calendar);
+    };
+    core::ProductionConfig winter = config;
+    winter.farming.cold_first_month = shipped_first;
+    winter.farming.cold_last_month = shipped_last;
+    core::WorldState seasons = MakeHerdWorld(100000.0F);
+    AddHerd(seasons, 0, 10, 5, true);
+    const core::HerdRow& cows = seasons.herds.rows[0];
+    nights(seasons, -9.0F);
+    at_day(seasons, 16);  // 1 May
+    core::RunHerdDay(winter, seasons);
+    const bool may =
+        cows.cold_nights == 0 && !core::HerdFreezing(cows) && cows.cold_place_yesterday == 1;
+    at_day(seasons, 36);  // 1 October
+    core::RunHerdDay(winter, seasons);
+    failures += Expect(may && cows.cold_nights == 0,
+                       "cold season: -9 in May and in October counts nothing, the pen is still "
+                       "written as the cold place it is");
+    at_day(seasons, 7);  // the last day of February
+    core::RunHerdDay(winter, seasons);
+    const bool february = cows.cold_nights == 1;
+    at_day(seasons, 8);  // 1 March
+    core::RunHerdDay(winter, seasons);
+    failures += Expect(february && cows.cold_nights == 0,
+                       "cold season: February's count is dropped on the first of March");
+    at_day(seasons, 44);  // 1 December
+    core::RunHerdDay(winter, seasons);
+    failures += Expect(cows.cold_nights == 1 && core::HerdFreezing(cows),
+                       "cold season: the first of December counts again");
     failures += Expect(
-        yards.herds.rows[0].billeted_count == 6 && core::HeadsUnderRoof(yards.herds.rows[0]) == 4,
-        "cold ladder: in a frost month six billet places keep six cows off the pen");
-    yards.units.rows[0].insulated = 1;
-    core::RunHerdDay(frost, yards);
-    failures += Expect(yards.herds.rows[0].billeted_count == 0,
-                       "cold ladder: a warm roof takes them all back");
+        shipped_first == 11 && shipped_last == 1 &&
+            core::InColdSeason(winter, core::Month::kDecember) &&
+            core::InColdSeason(winter, core::Month::kJanuary) &&
+            core::InColdSeason(winter, core::Month::kFebruary) &&
+            !core::InColdSeason(winter, core::Month::kMarch) &&
+            !core::InColdSeason(winter, core::Month::kNovember) &&
+            core::DaysToColdSeason(winter, 36) == 8 && core::DaysToColdSeason(winter, 43) == 1 &&
+            core::DaysToColdSeason(winter, 44) == 0 && core::DaysToColdSeason(winter, 3) == 0 &&
+            core::DaysToColdSeason(winter, 8) == 36,
+        "cold season: December to February, wrapping the year's turn; eight days "
+        "from 1 October, one from the last of November, none inside");
   }
   // The red's move and the autumn's yellow.
   {
@@ -3220,10 +3274,9 @@ int CheckTheColdLadder() {
         Expect(bare && alarms.size() == 1 && alarms[0].advice == core::AlarmAdvice::kInsulateStraw,
                "cold ladder: the red names straw only while six tonnes are held");
     core::ProductionConfig autumn = config;
+    autumn.farming.cold_first_month = shipped_first;
+    autumn.farming.cold_last_month = shipped_last;
     autumn.farming.pasture_to_month = 8;
-    for (std::uint32_t day = 40; day < core::kDaysPerYear; ++day) {
-      autumn.climate_nights[day] = -10.0F;
-    }
     core::WorldState october = MakeHerdWorld(100000.0F);
     october.calendar.tick = 36U * core::kTicksPerDay;
     core::RefreshCalendarCaches(october.calendar);
@@ -3232,15 +3285,15 @@ int CheckTheColdLadder() {
     core::CollectHerdColdAlarms(autumn, october, alarms);
     const bool straw_ahead = alarms.size() == 1 &&
                              alarms[0].kind == core::AlarmKind::kHerdColdAhead &&
-                             alarms[0].amount == 10 && alarms[0].days_ahead == 4 &&
+                             alarms[0].amount == 10 && alarms[0].days_ahead == 8 &&
                              alarms[0].advice == core::AlarmAdvice::kInsulateStraw;
     autumn.unit_types[0].level_warm_place = {0, 1, 1, 1};
     alarms.clear();
     core::CollectHerdColdAlarms(autumn, october, alarms);
     failures += Expect(
         straw_ahead && alarms.size() == 1 && alarms[0].advice == core::AlarmAdvice::kWarmYard,
-        "cold ladder: the autumn's yellow, four days ahead, the barn when rung "
-        "2 is warm");
+        "cold ladder: the autumn's yellow on 1 October, eight days to the first of December, "
+        "the barn when rung 2 is warm");
   }
   // The draught.
   {
@@ -3314,6 +3367,10 @@ int CheckTheColdLadderParses() {
                  farming.freezing_loss_share_day == 0.03F && farming.still_frost_c == -12.0F,
              "cold ladder: the counter's steps 1, 2, -2, from 6, 3 % a day, still "
              "frost -12");
+  // 0.37.69: the season's two months, human 12 and 2 in the table, from
+  // zero here.
+  failures += Expect(farming.cold_first_month == 11 && farming.cold_last_month == 1,
+                     "cold ladder: the cold counts from December to February");
   return failures;
 }
 

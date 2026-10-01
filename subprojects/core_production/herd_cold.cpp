@@ -70,6 +70,14 @@ void CountColdNight(const ProductionConfig& config,
     return;
   }
   const bool warm = UnitIsWarmPlace(config, *unit);
+  if (!InColdSeason(config, world.calendar.date.month)) {
+    // Out of the calendar's winter no night counts and none is carried: «1
+    // марта счётчик обнуляется» (boss, billet thread [8]). Where the herd
+    // stood is still written — it is the place, not the cold.
+    herd.cold_nights = 0;
+    herd.cold_place_yesterday = warm ? 0U : 1U;
+    return;
+  }
   if (warm && herd.cold_place_yesterday != 0) {
     herd.cold_nights = 0;  // «переезд в тёплое место обнуляет счётчик назавтра»
   }
@@ -158,12 +166,22 @@ void RunFrostDeaths(const ProductionConfig& config,
   event.amount = static_cast<std::int64_t>(gone);
 }
 
-bool FrostMonthOf(const ProductionConfig& config, const LivestockDef& kind, Month month) {
-  if (kind.freezes_in_cold_place == 0) {
-    return false;
+bool InColdSeason(const ProductionConfig& config, Month month) {
+  const auto index = static_cast<std::uint8_t>(month);
+  const std::uint8_t first = config.farming.cold_first_month;
+  const std::uint8_t last = config.farming.cold_last_month;
+  // A span that wraps the year's turn (December..February) is the two ends.
+  return first <= last ? index >= first && index <= last : index >= first || index <= last;
+}
+
+std::uint32_t DaysToColdSeason(const ProductionConfig& config, std::uint32_t day_of_year) {
+  const std::uint32_t today = day_of_year % kDaysPerYear;
+  if (InColdSeason(config, static_cast<Month>(today / kDaysPerMonth))) {
+    return 0;
   }
-  const std::uint32_t second_day = (static_cast<std::uint32_t>(month) * kDaysPerMonth) + 1U;
-  return config.climate_nights[second_day % kDaysPerYear] < kind.cold_night_cold_place_c;
+  const std::uint32_t opens =
+      static_cast<std::uint32_t>(config.farming.cold_first_month) * kDaysPerMonth;
+  return (opens + kDaysPerYear - today) % kDaysPerYear;
 }
 
 namespace {
@@ -201,20 +219,15 @@ void CollectHerdColdAlarms(const ProductionConfig& config,
     alarm.advice = StrawIfHeld(config, world);
     alarms.push_back(alarm);
   }
-  // THE YELLOW, in the autumn: the first frost month's billet as BilletHerds
-  // will place it (herd_system.cpp), with today's herds — the places less
-  // the herds with no roof of their own, then the herds whose own roof is
-  // cold, in row order; what the places do not keep stands under the cold
-  // roof up to its room.
+  // THE YELLOW, in the autumn: the heads that will stand under a cold roof
+  // when the calendar's winter opens — the herd, up to its roof's room (what
+  // the roof does not hold stands billeted, warm). Until 0.37.69 the billet
+  // kept its places first in a frost month and the yellow counted what it
+  // would not keep; «в мороз постой первым» went with the billet of the
+  // start (the human's «Постой отменяем», 2026-10-01).
   const auto month = static_cast<std::uint8_t>(world.calendar.date.month);
   const std::uint32_t day_of_year = world.calendar.day % kDaysPerYear;
-  float places =
-      static_cast<float>(world.families.rows.size()) * config.farming.billet_heads_per_yard;
-  for (const HerdRow& herd : world.herds.rows) {
-    if (herd.household_owned == 0 && HerdUnit(world, herd) == nullptr) {
-      places -= static_cast<float>(TotalHeads(herd));
-    }
-  }
+  const std::uint32_t days = DaysToColdSeason(config, day_of_year);
   for (std::uint32_t row = 0; row < world.herds.rows.size(); ++row) {
     const HerdRow& herd = world.herds.rows[row];
     const UnitRow* const unit = HerdUnit(world, herd);
@@ -228,12 +241,9 @@ void CollectHerdColdAlarms(const ProductionConfig& config,
       continue;
     }
     const auto heads = static_cast<float>(TotalHeads(herd));
-    const float kept = std::clamp(places, 0.0F, heads);
-    places -= kept;
     const UnitTypeDef& type = config.unit_types[unit->type.value];
-    const float cold = std::min(heads - kept, type.LivestockCapacityHeadAt(unit->level));
-    const std::uint32_t days = DaysToFirstColdNight(config, kind, day_of_year);
-    const bool autumn = month > config.farming.pasture_to_month && days > 0 && days < kDaysPerYear;
+    const float cold = std::min(heads, type.LivestockCapacityHeadAt(unit->level));
+    const bool autumn = month > config.farming.pasture_to_month && days > 0;
     if (!autumn || !(cold >= 1.0F)) {
       continue;
     }
@@ -248,21 +258,6 @@ void CollectHerdColdAlarms(const ProductionConfig& config,
     alarm.lamp = 0;
     alarms.push_back(alarm);
   }
-}
-
-std::uint32_t DaysToFirstColdNight(const ProductionConfig& config,
-                                   const LivestockDef& kind,
-                                   std::uint32_t day_of_year) {
-  if (kind.freezes_in_cold_place == 0) {
-    return kDaysPerYear;
-  }
-  for (std::uint32_t ahead = 0; ahead < kDaysPerYear; ++ahead) {
-    if (config.climate_nights[(day_of_year + ahead) % kDaysPerYear] <
-        kind.cold_night_cold_place_c) {
-      return ahead;
-    }
-  }
-  return kDaysPerYear;
 }
 
 }  // namespace core

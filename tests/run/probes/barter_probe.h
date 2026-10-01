@@ -51,10 +51,16 @@ inline constexpr std::int64_t kPantryDays = 4;
 
 inline void PrintPantries(const core::WorldState& world, std::int64_t day) {
   std::vector<unsigned> eaters(world.families.rows.size(), 0U);
+  // The yard's night trade, the first found: 0 none, else NightTrade's value
+  // (a distiller's yard is paid in grain for the drink — alcoholism.cpp).
+  std::vector<unsigned> trade(world.families.rows.size(), 0U);
   for (const core::ResidentRow& person : world.residents.rows) {
     const std::uint32_t row = core::FindRow(world.families, person.family);
     if (row != core::kNoRow) {
       ++eaters[row];
+      if (trade[row] == 0U) {
+        trade[row] = static_cast<unsigned>(person.night_trade);
+      }
     }
   }
   for (std::uint32_t row = 0; row < world.families.rows.size(); ++row) {
@@ -65,11 +71,12 @@ inline void PrintPantries(const core::WorldState& world, std::int64_t day) {
         pantry += std::to_string(index) + ":" + std::to_string(held[index]) + ";";
       }
     }
-    std::printf("YP,day=%lld,family=%u,eaters=%u,trudodni=%lld,pantry=%s\n",
+    std::printf("YP,day=%lld,family=%u,eaters=%u,trudodni=%lld,night_trade=%u,pantry=%s\n",
                 static_cast<long long>(day),
                 row,
                 eaters[row],
                 static_cast<long long>(world.families.rows[row].trudodni_account),
+                trade[row],
                 pantry.empty() ? "-" : pantry.c_str());
   }
 }
