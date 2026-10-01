@@ -80,6 +80,47 @@ Grams HaulGrams(float hours, const HaulRate& rate);
 ///         caller may write it straight into a work seam.
 float HaulDaysFor(Grams waiting, const HaulRate& rate, float standard_day_hours);
 
+/// @brief The part of a CART's norm-day of hauling that a carrier ON FOOT
+///        does in a norm-day of his own, on a load whose seam was written in
+///        cart-days: (carry / cart load) x (walking pace / harness pace).
+///
+/// WHY (0.37.105; manual/75-logistics.md §9, the finding of 2 October 2026):
+/// production writes a load's seam ONCE, at the cart's rate whenever the
+/// settlement owns a draught horse, and labour drains it by every carter's
+/// norm-days — the one on a horse and the one the placement left on foot
+/// alike. A walker wrote off a cart's work: on the canon's nine villages,
+/// years 1 to 10, the carters with no horse did 47 % of the arable's hauling
+/// norm-days, 64 % of the stands' and 32 % of the pits', and a log of 200 kg
+/// «rode» on a back at 440-460 kg a man a day. A man carries carry_kg_adult.
+///
+/// PRICED ON THE CART'S WAY, AND SAID SO: the two are taken over one way, the
+/// cart's. A walker's own way is the shorter of the two (he crosses open
+/// ground, the produce cart keeps to the roads), so this never gives him more
+/// than he carries and may give him less, by the ways' ratio — up to 2.3 on
+/// the start layout of 0.37.99. A STUB of exactness, not of direction.
+///
+/// WHEN IT APPLIES: only while the seam is in cart-days, which is while
+/// SettlementHasCarts says so — the one predicate production rates by and
+/// labour drains by. With no horse in the settlement the seam is written at
+/// the walker's own rate, and his norm-day is a whole one.
+///
+/// A LOG IS NOT CARRIED ON FOOT AT ALL: the carting of a stand's logs stops
+/// for want of a horse, as the district's lot does (assignment.h,
+/// StopsWithoutHorse). A settlement that lost every horse moves no log; the
+/// livestock window is its way out.
+/// @param carry_grams What a grown carrier takes in a trip (labor.csv,
+///        carry_kg_adult).
+/// @param cart_grams A cart's load (transport.csv).
+/// @param walk_hours_per_km, harness_hours_per_km Game hours a kilometre, on
+///        foot and in harness.
+/// @return A share in (0, 1]; 1 when any argument is not above nought, so a
+///         table with a number missing changes nothing rather than stopping
+///         every cart.
+float WalkerShareOfCartDay(Grams carry_grams,
+                           Grams cart_grams,
+                           float walk_hours_per_km,
+                           float harness_hours_per_km);
+
 }  // namespace core
 
 #endif  // CORE_COMMON_HAUL_H_

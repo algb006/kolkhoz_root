@@ -125,8 +125,20 @@ struct HarnessCount {
   std::uint32_t in_traces = 0;
 
   /// The harnessed assignments, with a horse and without: the ploughmen and
-  /// harrowers, EVERY carter — on the horse or on foot — and one a meadow
-  /// being mown. `in_traces` never exceeds it.
+  /// harrowers, every carter on a horse, one a meadow being mown — and the
+  /// carters ON FOOT ONLY AS FAR AS THE LOAD WANTED A CART: of the walkers at
+  /// a load, no more than the cart-days its seam holds beyond its riders.
+  /// `in_traces` never exceeds it.
+  ///
+  /// EVERY CARTER ON FOOT UNTIL 0.37.105, and that was right while the queue
+  /// sent a walker only where it wanted a carter. Since 0.37.105 the hands
+  /// left with no work carry too (assignment.h, walker_share_of_cart_day):
+  /// thirty idle on a rain day would read as thirty cart-days pulled by hand,
+  /// light «too few horses» (production_alarms.cpp) — the advice the run's
+  /// chairman buys horses on — and sink the mechanisation share the era's
+  /// readiness reads. In a settlement with no horse the seam is in a
+  /// walker's days and holds every walker the queue sent: they all count, as
+  /// before.
   std::uint32_t harnessed = 0;
 
   /// The part of `in_traces` the morning's release takes off when the herd
@@ -145,6 +157,22 @@ struct HarnessCount {
 /// traction nor in the oats (econ, horse-traction.md), though the placement
 /// takes it out of the pool «exactly as ploughing does».
 HarnessCount CountHarness(const WorldState& world);
+
+/// @brief Whether the settlement owns a grown kolkhoz horse at all — and so a
+///        cart: the start's canon hands out horses and tackle together (boss,
+///        2026-09-03), a draught horse IS a cart of its load.
+///
+/// ONE PREDICATE FOR TWO MODULES (0.37.105): production writes a load's
+/// hauling seam in cart-days while this holds and in a walker's days while
+/// it does not; labour gives a carrier on foot a part of a cart-day
+/// (haul.h, WalkerShareOfCartDay) while it holds and a whole day while it
+/// does not. It lived in core_production alone (field_haul.cpp,
+/// DraughtHorsesFree) while only production asked; a second copy in labour
+/// would be the seam between two right ladders nobody guards.
+/// A household's own horse is not counted, as it never was there.
+/// @param horse_kind The livestock row of the horse; an invalid id answers
+///        false.
+bool SettlementHasCarts(const WorldState& world, LivestockKindId horse_kind);
 
 }  // namespace core
 

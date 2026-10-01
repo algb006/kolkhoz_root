@@ -83,6 +83,14 @@ struct AssignmentJob {
   /// pool, like ploughing.
   bool harnessed = false;
 
+  /// True for a cart load — a field's heap, a pit's dig, a store's transfer —
+  /// whose riders are placed already and which is offered again for carriers
+  /// ON FOOT alone: the hour-1 top-up lets the morning's walkers go with the
+  /// windowless work (they are the last of the queue) and gives the heap back
+  /// to them through this flag, so that it takes no second crew of horses
+  /// (0.37.105; AssignmentParams::walker_share_of_cart_day).
+  bool on_foot_only = false;
+
   /// THE BRIGADE GOES OUT ON ONE CART (farming design §6, «Дорога пешком
   /// съедает световой день»; the human's word of 2026-10-01 on econ's third
   /// proposal; boss-core-fields-daylight-decided-2026-10-01 [1], [4]): set
@@ -281,6 +289,24 @@ struct AssignmentParams {
   /// Adult kolkhoz horses available today. Every worker placed on a horse
   /// work consumes one from this shared pool; the pool caps those crews.
   std::uint32_t draught_horses = 0;
+
+  /// THE CARTER ON FOOT (0.37.105; core_common/haul.h, WalkerShareOfCartDay;
+  /// manual/75-logistics.md §9). 1 while the settlement has no cart: every
+  /// load's seam is written in a walker's days, and carriers go in the
+  /// queue's own place, as they always did. BELOW 1 while it has carts, and
+  /// then:
+  ///  - the carting of a cart load — a field's heap, a pit's dig, a store's
+  ///    transfer — takes HORSES ONLY in its place in the queue: the horses
+  ///    gone, the heap is filled no further and the hands go to the next work
+  ///    (until 0.37.105 it took every free hand on foot «until the expected
+  ///    output covered the work», at a cart's price for a walker's day);
+  ///  - AFTER THE WHOLE QUEUE the hands left with no work at all carry such
+  ///    a load on foot, each counted at this share of a cart's norm-day — on
+  ///    a rain day thirty idle hands bring in a tonne, and nobody is taken
+  ///    off building or felling for it;
+  ///  - a stand's logs and the district's lot are never carried on foot,
+  ///    whatever this is.
+  float walker_share_of_cart_day = 1.0F;
 
   /// Placement quality 0-3 (society design §1): 0 = naive "whoever is
   /// there", 1 = skill and strength, 2 = plus road and fatigue, 3 = master
