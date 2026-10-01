@@ -1002,17 +1002,44 @@ int main(int argc, char** argv) {
   // is 13, the harness printed "KNOWN GAP CLOSED — restore the assertion"
   // (median year-14 435 against 380), and a gap left standing after it
   // closes cannot report the day it reopens.
-  failures += run::Expect(median_year14 >= 380,
-                          "and is past the Epoch II mark by year 14 (median of nine)");
-  // THE YEAR ITSELF, beside the mark (econ's acceptance of 0.37.73, boss
-  // 2026-10-01; 0.37.78): the mark above stands 1.3 % from the median with
-  // the median's own noise at ±4 %, and red it says only «under 380». The
-  // year the median village opens the era says which way the world moved.
-  const std::string year_claim = "and the median village opens Epoch II by year 14 — now year " +
-                                 std::to_string(median_opened_year) + " (0 = no village opens it)" +
-                                 " (median residents at year 14: " + std::to_string(median_year14) +
-                                 ")";
-  failures += run::Expect(median_opened_year >= 1 && median_opened_year <= 14, year_claim.c_str());
+  //
+  // THE TWO GATES ON THE MEDIAN WERE TAKEN DOWN on 0.37.97 (boss, econ-boss-
+  // hay-term-2026-10-01 [15]): «the median of nine is at 380 or more by year
+  // 14» and «the median village opens Epoch II by year 14». THE THRESHOLD SAT
+  // INSIDE THE MEDIAN'S SCATTER BETWEEN TREES. Residents at year 14, the
+  // median of the same nine villages, on four trees in a row: 390 (0.37.91),
+  // 415 (0.37.93), 379 (0.37.94), 386 (0.37.96) — and the year the median
+  // village opens the era 14, 14, 15, 15. A delivery that touched the winter
+  // hay of three villages moved them by +21, +35 and +18 residents at year
+  // 14; the feeding order and the hay lamp moved single villages by 50 to 110
+  // either way. Free houses run out in years 6 to 7 in every one of those
+  // worlds, and in that bottleneck the year the era opens is a draw between
+  // 13 and 20. A gate on the median measured that draw: green on 0.37.93,
+  // red on 0.37.94, half red on 0.37.96, and it named no author.
+  //
+  // WHAT IS ASKED INSTEAD is what the design asks and the scatter does not
+  // reach: every village opens Epoch II, and opens it in years 12 to 20. THE
+  // MEDIANS ARE PRINTED beside a baseline that names its tree, so that a
+  // reader sees which way the world moved without a gate deciding it for him.
+  std::uint32_t earliest_opened = 0;
+  std::uint32_t latest_opened = 0;
+  for (const std::uint32_t year : opened_years) {
+    earliest_opened = earliest_opened == 0 || year < earliest_opened ? year : earliest_opened;
+    latest_opened = year > latest_opened ? year : latest_opened;
+  }
+  std::cout << "population_curve: the year Epoch II opens, " << earliest_opened << ".."
+            << latest_opened << " over " << opened_years.size() << " villages, median "
+            << median_opened_year << "; residents at year 14, median " << median_year14
+            << " | BASELINE, tree 0.37.96 (3baefce): years 13..18, median 15; residents at year "
+               "14, median 386 (0.37.91: 390; 0.37.93: 415; 0.37.94: 379)\n";
+  const std::string all_claim = "and every village opens Epoch II — now " +
+                                std::to_string(opened_years.size()) + " of " +
+                                std::to_string(walks.size());
+  failures += run::Expect(opened_years.size() == walks.size(), all_claim.c_str());
+  const std::string year_claim = "and opens it in years 12 to 20 — now " +
+                                 std::to_string(earliest_opened) + " to " +
+                                 std::to_string(latest_opened) + " (0 = no village opens it)";
+  failures += run::Expect(earliest_opened >= 12 && latest_opened <= 20, year_claim.c_str());
   failures += run::Expect(median_year14 <= 800, "and not exploding by year 14");
   failures += run::KnownGap(median_year33 >= 1150,
                             "and lands in the canon's order of magnitude by year 33",
