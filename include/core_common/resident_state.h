@@ -303,6 +303,17 @@ struct ResidentRow {
   /// a SUPPLIED distiller is in reach, not whether a distiller exists.
   std::uint32_t distiller_supplied_month = 0;
 
+  /// THE SAMOGON A DISTILLER HOLDS, millilitres (crime design §7,
+  /// «Механика»; the human's words of 2026-10-01 — «обязательный компонент
+  /// самогона сахар», «логично платить за литр»; econ-boss-moonshine-sink
+  /// [4]-[7]). Brewed on his night at the stores out of what he carried
+  /// off: a litre takes `samogon_sugar_kg_per_litre` of sugar and
+  /// `samogon_grain_kg_per_litre` of grain or `samogon_potato_kg_per_litre`
+  /// of potato — no sugar, no litre. Sold by the litre at the month's turn
+  /// to the drinkers in his reach; what is not sold is kept. 0 for
+  /// everybody else. Save 122.
+  std::uint32_t samogon_ml = 0;
+
   /// Days of the current calendar month on which he went out to work (hours
   /// away above zero) — counted by the labor day close, read and cleared at
   /// the month's turn by

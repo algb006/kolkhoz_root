@@ -110,6 +110,33 @@ struct NightTradeConfig {
   float buy_kg_drinks = 3.0F;
   float buy_kg_abuses = 8.0F;
 
+  /// THE SAMOGON BY THE LITRE (crime §7, «Механика»; the human's words of
+  /// 2026-10-01; econ-boss-moonshine-sink [4]-[7]; the contract of 0.37.71
+  /// — READ BY THE NEXT DELIVERY, which retires the two numbers above).
+  /// THE RECIPE: a litre takes this much sugar and this much grain, or the
+  /// sugar and this much potato; the sugar is obligatory — with none
+  /// carried off, nothing is brewed. `samogon_sugar_kg_per_litre`,
+  /// `samogon_grain_kg_per_litre`, `samogon_potato_kg_per_litre`. econ's
+  /// numbers, STUB.
+  float sugar_kg_per_litre = 0.5F;
+  float grain_kg_per_litre = 1.5F;
+  float potato_kg_per_litre = 4.0F;
+
+  /// THE PRICE AND THE THIRST: a litre costs the buyer's yard this much
+  /// grain (in the raw material's order, as the month's purchase did), and
+  /// a drinker asks for this many litres a month by his band —
+  /// `samogon_price_grain_kg_per_litre`, `samogon_litres_month_drinks`,
+  /// `samogon_litres_month_abuses`. Short of what is asked, the distiller's
+  /// litres are shared by the asking; who got none paid nothing.
+  float price_grain_kg_per_litre = 2.0F;
+  float litres_month_drinks = 1.0F;
+  float litres_month_abuses = 3.0F;
+
+  /// resources.csv `sugar` and `potato`; invalid in a roster without them
+  /// (then nothing is brewed, or nothing out of potato).
+  ResourceId sugar;
+  ResourceId potato;
+
   /// Lights-out for the evening sale at the gate: a sale lands in a random
   /// hour from sunset up to this one. STUB, 23:00 (register 206).
   /// `samogon_lights_out_hour`.

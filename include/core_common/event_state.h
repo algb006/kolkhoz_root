@@ -612,6 +612,19 @@ enum class EventKind : std::uint8_t {
   /// @no_emit contract 0.37.66: raised by the exchange's delivery, the third
   kBarterDay,
 
+  /// resident, resource — a distiller carried SUGAR off the kolkhoz stores
+  /// on his night (crime design §7, «Механика»: the sugar is the recipe's
+  /// obligatory half; the human's words of 2026-10-01; econ-boss-moonshine-
+  /// sink [4]-[7]). resident = the distiller; resource = sugar; unit = the
+  /// first store he took it from; amount = the night's grams of sugar, all
+  /// stores. One a night for a distiller, and his night is one a month, so
+  /// not more than one a month for each. kStoreLeakComplaint beside it is
+  /// the village's complaint about the month's whole loss, once a campaign,
+  /// and names no resource; this one names what the player's stores are
+  /// short of. kNotable. Seam key `sugar_stolen`.
+  /// @no_emit contract 0.37.71: raised by the samogon's delivery, the next
+  kSugarStolen,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

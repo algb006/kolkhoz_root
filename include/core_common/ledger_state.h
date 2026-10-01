@@ -349,6 +349,15 @@ struct YearLedger {
   /// yards' morning issue had no milk (kMilkAllToDebt).
   Grams milk_debt = 0;
 
+  /// THE YEAR'S SAMOGON, millilitres (crime design §7, «Механика»; save
+  /// 122): what the distillers brewed on their nights out of the sugar and
+  /// the grain or potato they carried off, and what the drinkers bought of
+  /// it by the litre. Brewed less sold is what stands at the distillers'
+  /// (ResidentRow::samogon_ml) plus what a distiller taken or gone took
+  /// with him. One writer each, both in the residents' decisions sub-step.
+  std::int64_t samogon_brewed_ml = 0;
+  std::int64_t samogon_sold_ml = 0;
+
   /// The district's goods loan TAKEN this year, by resource, grams as
   /// borrowed (PlanState::goods_loan_taken; boss, boss-core-epoch1-5 seq 15;
   /// save 89). Booked on the order, not on the cart's arrival.

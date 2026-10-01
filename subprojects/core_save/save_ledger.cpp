@@ -101,9 +101,12 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // Save 121 (0.37.66): what the yards bartered, a vector among vectors after
 // samogon_paid — 95 -> 96 fields, 912 + 33 A -> 912 + 34 A, no padding
 // moved; predicted before the build.
-static_assert(sizeof(YearLedger) == 912 + (34 * kAmountsSize),
+// Save 122 (0.37.71): the year's samogon brewed and sold, two i64 after the
+// milk debt — 96 -> 98 fields, 912 + 34 A -> 928 + 34 A (8-aligned beside
+// an i64, no padding moved); predicted before the build.
+static_assert(sizeof(YearLedger) == 928 + (34 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 96,
+static_assert(AggregateArity<YearLedger>() == 98,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 
 void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
@@ -169,6 +172,8 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   // What went against each position (save 83).
   sink.WriteAmounts(DefKind::kResource, book.plan_delivered);
   out.WriteI64(book.milk_debt);                                   // save 86
+  out.WriteI64(book.samogon_brewed_ml);                           // save 122
+  out.WriteI64(book.samogon_sold_ml);                             // save 122
   sink.WriteAmounts(DefKind::kResource, book.goods_loan_taken);   // save 89
   sink.WriteAmounts(DefKind::kResource, book.goods_loan_repaid);  // save 89
 
@@ -317,6 +322,11 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.milk_debt = in.ReadI64();
   if (book.milk_debt < 0) {
     source.Fail("the book's milk debt is negative");
+  }
+  book.samogon_brewed_ml = in.ReadI64();
+  book.samogon_sold_ml = in.ReadI64();
+  if (book.samogon_brewed_ml < 0 || book.samogon_sold_ml < 0) {
+    source.Fail("the book's samogon is negative");
   }
   book.goods_loan_taken = source.ReadAmounts(DefKind::kResource);   // save 89
   book.goods_loan_repaid = source.ReadAmounts(DefKind::kResource);  // save 89

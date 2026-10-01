@@ -74,14 +74,18 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // read off the build (the byte takes a 4-aligned slot of its own).
 // Save 113: the look's memory, two floats at the row's end — predicted 228 ->
 // 236 before the build (the row aligns to 4).
-static_assert(sizeof(ResidentRow) == 236,
+// Save 122: samogon_ml, a u32 beside the distiller's supplied month —
+// predicted 236 -> 240 before the build (a u32 after a u32, nothing shifts
+// its padding).
+static_assert(sizeof(ResidentRow) == 240,
               "ResidentRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 59: distiller_supplied_month, a distiller's supplied month
 // (crime §7, register 206) — 43 fields; the size is read off the build.
 // Save 69: talk_until_day — 44. Save 78: twin and identical_twin — 46.
 // Save 79: away_until_day, _hour, _walk_hours, _reason — 50. Save 105:
 // idle_reason — 51. Save 113: satiety_year and satiety_childhood — 53.
-static_assert(AggregateArity<ResidentRow>() == 53,
+// Save 122: samogon_ml — 54.
+static_assert(AggregateArity<ResidentRow>() == 54,
               "ResidentRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-14: first_meal_eaten landed in padding beside food_variety_mask; the
 // size stayed 56 + amounts and the field count went to 16. The same day the
@@ -563,6 +567,7 @@ void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
   out.WriteU8(static_cast<std::uint8_t>(row.social_status));
   out.WriteU8(static_cast<std::uint8_t>(row.night_trade));
   out.WriteU32(row.distiller_supplied_month);  // save 59
+  out.WriteU32(row.samogon_ml);                // save 122
   out.WriteU8(row.days_worked_this_month);
   out.WriteFloat(row.alcoholism);
   out.WriteU32(row.talk_until_day);  // save 69
@@ -648,6 +653,7 @@ ResidentRow ReadResidentRow(LoadSource& source) {
       static_cast<SocialStatus>(source.ReadEnumValue(0, kMaxSocialStatus, "social status"));
   row.night_trade = static_cast<NightTrade>(source.ReadEnumValue(0, kMaxNightTrade, "night trade"));
   row.distiller_supplied_month = in.ReadU32();
+  row.samogon_ml = in.ReadU32();
   row.days_worked_this_month = in.ReadU8();
   row.alcoholism = in.ReadFloat();
   row.talk_until_day = in.ReadU32();

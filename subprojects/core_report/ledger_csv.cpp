@@ -432,6 +432,10 @@ void EmitSheet(ColumnWriter& out, const WorldState& state, const ITableSet& tabl
   // What the milk position still owed at the turn (save 86; boss seq 7 of
   // epoch1-5), grams — the milk debt the verdict judged short.
   out.Integer("milk_debt", static_cast<std::uint64_t>(book.milk_debt));
+  // The year's samogon, millilitres (save 122): brewed by the distillers and
+  // bought by the litre.
+  out.Integer("samogon_brewed_ml", static_cast<std::uint64_t>(book.samogon_brewed_ml));
+  out.Integer("samogon_sold_ml", static_cast<std::uint64_t>(book.samogon_sold_ml));
   // The district's goods loan (save 89): taken this year, and paid at the
   // turn. What is still owed is the plan's (PlanState::goods_loan_owed).
   EmitResourceBlock(out, resources, "goods_loan_taken", book.goods_loan_taken);

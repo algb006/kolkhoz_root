@@ -204,6 +204,7 @@ core::WorldState MakeWorld() {
   first.social_status = core::SocialStatus::kKomsomol;
   first.night_trade = core::NightTrade::kHunter;  // the top of the enum, save format 39
   first.distiller_supplied_month = 7;             // save 59: not nought, so a lost read shows
+  first.samogon_ml = 12'500;                      // save 122: twelve and a half litres held
   first.school = core::UnitId{6};                 // a pupil, save format 41
   first.days_worked_this_month = 3;               // the month's work, save format 43
   first.talk_until_day = 140;                     // talked into sport, save 69
@@ -704,6 +705,12 @@ core::WorldState MakeWorld() {
   // that swapped the books could not round-trip them.
   world.ledger.closed.milk_debt = 200'000;
   world.ledger.current.milk_debt = 7'000;
+  // Save 122: the year's samogon brewed and sold, four different values —
+  // a codec that swapped the pair or the books cannot round-trip them.
+  world.ledger.closed.samogon_brewed_ml = 240'000;
+  world.ledger.closed.samogon_sold_ml = 180'500;
+  world.ledger.current.samogon_brewed_ml = 25'000;
+  world.ledger.current.samogon_sold_ml = 9'250;
   // Save 89: a closed year that paid its loan back; the rest stay empty.
   world.ledger.closed.goods_loan_repaid = Amounts({0, 0, 900'000});
   // Save 90: the autumn slaughter of the closed year, by kind — kind 1 of the
@@ -1435,7 +1442,9 @@ constexpr std::array<RecordedSection, 23> kRecordedPayload = {{
     // predicted before the build, held.
     // Save 113: +16 — the look's memory, two floats a resident, two saved;
     // predicted 430 -> 446 before the build, held.
-    {"residents", 446, 0x92d6a61817dbcccfULL},
+    // Save 122: +8 — the samogon a distiller holds, a u32 a resident, two
+    // saved; predicted 446 -> 454 before the build, held.
+    {"residents", 454, 0x91f83bcdaf7979d3ULL},
     // 2026-09-18, save 57: +2 — ration_granted, one byte per family of two.
     // Save 60: +2 — a yard's dry months, one byte per family of two.
     // Save 65: families +8 (overwork_penalty, two yards), fields +6 (the avral's
@@ -1646,7 +1655,9 @@ constexpr std::array<RecordedSection, 23> kRecordedPayload = {{
     // current's 2; predicted 2380 -> 2392 before the build.
     // Save 121: +20 — what the yards bartered, the closed book's 2 + 16, the
     // current's 2; predicted 2392 -> 2412 before the build, held.
-    {"ledger", 2412, 0xc51d4c334c388337ULL},
+    // Save 122: +32 — the year's samogon brewed and sold, two i64 a book,
+    // two books; predicted 2412 -> 2444 before the build, held.
+    {"ledger", 2444, 0xb59b8c06eb337705ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -2409,6 +2420,14 @@ int main() {
                          loaded.residents.rows[0].night_trade == core::NightTrade::kHunter &&
                          loaded.residents.rows[0].distiller_supplied_month == 7,
                      "a resident came back with his night trade");
+  failures +=
+      Expect(!loaded.residents.rows.empty() && loaded.residents.rows[0].samogon_ml == 12'500 &&
+                 loaded.ledger.closed.samogon_brewed_ml == 240'000 &&
+                 loaded.ledger.closed.samogon_sold_ml == 180'500 &&
+                 loaded.ledger.current.samogon_brewed_ml == 25'000 &&
+                 loaded.ledger.current.samogon_sold_ml == 9'250,
+             "the samogon held by a distiller and the year's brewed and sold of each book "
+             "come back, each in its place (save 122)");
   failures += Expect(!loaded.residents.rows.empty() && loaded.residents.rows[0].school.value == 6,
                      "a pupil came back enrolled in his school");
   failures +=

@@ -93,3 +93,4 @@ kRoadDemolished,1,
 kHerdFroze,1,
 kBarterWorthStarting,1,
 kBarterDay,0,"contract 0.37.66: raised by the exchange's delivery, the third"
+kSugarStolen,0,"contract 0.37.71: raised by the samogon's delivery, the next"

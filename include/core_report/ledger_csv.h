@@ -57,6 +57,8 @@
 ///                                     sowing, harvest, herd_care
 ///   trudodni_accrued, trudodni_burned  in trudodni (hundredths / 100)
 ///   walk_offs
+///   samogon_brewed_ml, samogon_sold_ml  the year's samogon, millilitres
+///                                       (save 122; beside milk_debt)
 ///   -- per resource, kilograms; one column per row of resources.csv --
 ///   harvest_<key>_kg, seed_<key>_kg, delivered_<key>_kg (EVERYTHING
 ///   shipped, the winter's milk outside any position included; against the
