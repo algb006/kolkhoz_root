@@ -998,6 +998,17 @@ class LaborSystem final : public ILaborSystem {
         if (config_.standing_crop_grams && InSnowLastDays(current.calendar, field, kind)) {
           job.grams_at_risk = config_.standing_crop_grams(current, field);
         }
+        // WHAT THE SNOW WILL TAKE, IN FOOD, ON EVERY DAY OF THE REAPING (the
+        // harvest rule 2; AssignmentJob::kcal_at_risk; 0.37.83): the queue
+        // orders the reapings by it from the first ripe day, not in the last
+        // three. An annual on the arable only — the meadow has no snow edge
+        // and a winter crop or a perennial keeps its own window.
+        if (config_.standing_crop_grams && kind == WorkKind::kHarvest &&
+            field.kind == LandKind::kArable && field.crop.value < config_.crops.size() &&
+            config_.crops[field.crop.value].ripen_days > 0) {
+          job.kcal_at_risk = static_cast<float>(config_.standing_crop_grams(current, field)) *
+                             config_.crops[field.crop.value].kcal_per_gram;
+        }
         job.prepares_winter_crop = PreparesWinterCrop(field, kind, current.calendar.day);
         job.plan_position = IsHorseWork(kind) && CarriesPlanPosition(current, field, kind);
         // THE ZYAB HAS NO WINDOW OF ITS OWN (register 13; boss-

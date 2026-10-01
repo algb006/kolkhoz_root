@@ -32,6 +32,7 @@
 #include "core_common/world_state.h"
 #include "core_labor/labor_system.h"
 #include "core_tables/tables.h"
+#include "harvest_order_checks.h"
 #include "labor_config.h"
 #include "labor_day.h"
 #include "posts.h"
@@ -4100,6 +4101,7 @@ int main() {
   failures += TestNightShiftStarts();
   failures += CheckStubTablesMustBeDeclared();
   failures += TestSurplusIdles();
+  failures += CheckHarvestOrder();
   failures += TestPlacementDiagnosis();
   failures += TestRoadLimit();
   failures += TestHorsePoolAndLock();

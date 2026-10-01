@@ -495,6 +495,18 @@ bool ParseCropWindows(const ITable& table,
       const std::uint32_t found = resources->FindRowByKey(table.CellText(row, resource_column));
       if (found != kNoTableRow) {
         windows.resource = DefIdFromRow<ResourceIdTag>(found);
+        // What a gram of it feeds (the harvest rule 2; CropWindows::
+        // kcal_per_gram). An empty cell is not food: nought.
+        const Range kcal{.low = 0.0F, .high = 10.0F};
+        if (!OptionalCell(*resources,
+                          found,
+                          resources->FindColumn("kcal_per_gram"),
+                          kcal,
+                          windows.kcal_per_gram,
+                          error)) {
+          PrefixError("resources", "kcal_per_gram", error);
+          return false;
+        }
       }
     }
   }

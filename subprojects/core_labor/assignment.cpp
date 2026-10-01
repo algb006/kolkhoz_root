@@ -166,7 +166,11 @@ float TravelHours(const Vec2& home, const Vec2& place, float hours_per_km) {
 /// meadow cut in its window, then the winter preparation, then the rest), and
 /// only inside a tier the days left, the kind and the target id.
 /// Input position is the last resort only for degenerate duplicate targets.
-std::vector<std::uint32_t> OrderJobs(const std::vector<AssignmentJob>& jobs) {
+///
+/// `saved_band`, per job: the band of the food its reaping saves per hand-day
+/// (SavedBands below), kNoSavedBand for a job with nothing at risk.
+std::vector<std::uint32_t> OrderJobs(const std::vector<AssignmentJob>& jobs,
+                                     const std::vector<std::int32_t>& saved_band) {
   std::vector<std::uint32_t> order;
   order.reserve(jobs.size());
   for (std::uint32_t index = 0; index < jobs.size(); ++index) {
@@ -217,7 +221,7 @@ std::vector<std::uint32_t> OrderJobs(const std::vector<AssignmentJob>& jobs) {
         return 4;
     }
   };
-  std::ranges::sort(order, [&jobs, &tier](std::uint32_t left, std::uint32_t right) {
+  std::ranges::sort(order, [&jobs, &tier, &saved_band](std::uint32_t left, std::uint32_t right) {
     const AssignmentJob& a = jobs[left];
     const AssignmentJob& b = jobs[right];
     if (tier(a) != tier(b)) {
@@ -287,6 +291,17 @@ std::vector<std::uint32_t> OrderJobs(const std::vector<AssignmentJob>& jobs) {
     // days compared by id with each made a cycle possible (UB-001's shape).
     // A job with no grams never carries beyond_the_snow, so it ranks as a
     // finishable one of weight nought — after every weighed reaping.
+    //
+    // AND BEFORE BOTH, THE FOOD SAVED PER HAND-DAY (the harvest rule 2; boss,
+    // core-boss-potato-crew-trace-2026-10-01 [2], [4]; 0.37.83): the higher
+    // band first, and «can still be finished» breaks a tie inside a band
+    // only. As the first key it sent 23 hands to a wheat field 1.4 km out two
+    // days before the snow, where a hand does a fifth of a norm, and left
+    // the potato beside the village nobody. A KEY like the two below: every
+    // job has a band, the one with nothing at risk the lowest.
+    if (saved_band[left] != saved_band[right]) {
+      return saved_band[left] > saved_band[right];
+    }
     if (a.beyond_the_snow != b.beyond_the_snow) {
       return !a.beyond_the_snow;
     }
@@ -419,7 +434,61 @@ std::vector<RankedPick> RankCandidates(const AssignmentJob& job,
   return picks;
 }
 
+/// The band of a job with nothing at risk: below every band a float's
+/// logarithm can give.
+constexpr std::int32_t kNoSavedBand = INT32_MIN;
+
+/// Per job, the band of SavedPerHandDay on the fixed logarithmic grid of
+/// kSavedBandRatio (assignment.h: a grid, because «within 10 % of each
+/// other» orders no three jobs).
+std::vector<std::int32_t> SavedBands(const std::vector<AssignmentJob>& jobs,
+                                     const std::vector<AssignmentCandidate>& candidates,
+                                     const AssignmentParams& params) {
+  std::vector<std::int32_t> bands(jobs.size(), kNoSavedBand);
+  for (std::uint32_t index = 0; index < jobs.size(); ++index) {
+    if (!(jobs[index].kcal_at_risk > 0.0F)) {
+      continue;
+    }
+    const float saved = SavedPerHandDay(jobs[index], index, candidates, params);
+    // Food at risk and nobody to go: above the jobs with nothing at risk,
+    // below every reaping a hand can reach.
+    bands[index] =
+        saved > 0.0F
+            ? static_cast<std::int32_t>(std::floor(std::log(saved) / std::log(kSavedBandRatio)))
+            : kNoSavedBand + 1;
+  }
+  return bands;
+}
+
 }  // namespace
+
+float ExpectedNormPerHand(const AssignmentJob& job,
+                          std::uint32_t job_index,
+                          const std::vector<AssignmentCandidate>& candidates,
+                          const AssignmentParams& params) {
+  float sum = 0.0F;
+  std::uint32_t count = 0;
+  for (std::uint32_t index = 0; index < candidates.size(); ++index) {
+    RankedPick pick;
+    bool by_road = false;
+    if (ConsiderCandidate(job, job_index, candidates[index], index, params, pick, by_road)) {
+      sum += pick.daily_norm;
+      ++count;
+    }
+  }
+  return count > 0 ? sum / static_cast<float>(count) : 0.0F;
+}
+
+float SavedPerHandDay(const AssignmentJob& job,
+                      std::uint32_t job_index,
+                      const std::vector<AssignmentCandidate>& candidates,
+                      const AssignmentParams& params) {
+  if (!(job.kcal_at_risk > 0.0F) || !(job.work_days_remaining > 0.0F)) {
+    return 0.0F;
+  }
+  return job.kcal_at_risk * ExpectedNormPerHand(job, job_index, candidates, params) /
+         job.work_days_remaining;
+}
 
 std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& jobs,
                                               const std::vector<AssignmentCandidate>& candidates,
@@ -437,7 +506,7 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
   }
   std::uint32_t horses_left = params.draught_horses;
 
-  for (const std::uint32_t job_index : OrderJobs(jobs)) {
+  for (const std::uint32_t job_index : OrderJobs(jobs, SavedBands(jobs, candidates, params))) {
     const AssignmentJob& job = jobs[job_index];
     // A harnessed job takes a horse out of the day's pool exactly as
     // ploughing does — which is what assignment.h has promised since the
