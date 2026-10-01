@@ -135,16 +135,24 @@ inline constexpr std::uint32_t kWorkKindCount =
 ///        accountant's plan: a standing order that sends him after it does
 ///        not take him out of the count.
 enum class IdleReason : std::uint8_t {
-  kNoOpenWork = 0,   ///< No job at all this morning (a working day).
-  kDayOff,           ///< A day off: only the barn was offered.
-  kWorkCovered,      ///< Every job had its day covered by others.
-  kNoHorse,          ///< A plough, a harrow or a lot's fetch stood for want of a horse.
-  kCrewCap,          ///< A job he could take was capped by its brigade.
-  kRoad,             ///< The only jobs with room were past his road limit.
-  kHorseLock,        ///< Hosts a kolkhoz horse, and no horse work had room.
-  kNoDayLeft,        ///< The road left him no working day.
-  kResting,          ///< Past the rest limit: stayed home (not on the list).
-  kUnexplained,      ///< Fit, free, wanted — and not placed: must stay nought.
+  kNoOpenWork = 0,  ///< No job at all this morning (a working day).
+  kDayOff,          ///< A day off: only the barn was offered.
+  kWorkCovered,     ///< Every job had its day covered by others.
+  kNoHorse,         ///< A plough, a harrow or a lot's fetch stood for want of a horse.
+  kCrewCap,         ///< A job he could take was capped by its brigade.
+  kRoad,            ///< The only jobs with room were past his road limit.
+  kHorseLock,       ///< Hosts a kolkhoz horse, and no horse work had room.
+  kNoDayLeft,       ///< The road left him no working day.
+  kResting,         ///< Past the rest limit: stayed home (not on the list).
+  kUnexplained,     ///< Fit, free, wanted — and not placed: must stay nought.
+  /// The rain held the field work he would have had: a sowing or a reaping
+  /// with work left was not offered today (RainStopsWork), and the plan found
+  /// him no work, the others covered, or a brigade full. Booked AFTER the
+  /// plan, over those three reasons only (save 123). Until then a rained-out
+  /// harvest day read «work covered» and «crew cap» — the autumn trace of
+  /// seeds 1936 and 1938 (2026-10-01) showed 30-39 adults a day under those
+  /// two words with potato standing in the field.
+  kRain,
   kIdleReasonCount,  ///< NOT A REASON: the count, for mirrors.
 };
 

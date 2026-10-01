@@ -457,8 +457,9 @@ class LaborSystem final : public ILaborSystem {
       current.residents.rows[row].idle_reason = IdleReason::kResting;
     }
     book.candidate_person_days += static_cast<std::uint32_t>(candidates.size());
+    const bool rain_holds = RainHoldsFieldWork(current);
     if (jobs.empty()) {
-      const IdleReason none = day_off_today ? IdleReason::kDayOff : IdleReason::kNoOpenWork;
+      const IdleReason none = BookedIdleReason(IdleReason::kNoOpenWork, day_off_today, rain_holds);
       book.idle_person_days[static_cast<std::size_t>(none)] +=
           static_cast<std::uint32_t>(candidates.size());
       for (const AssignmentCandidate& candidate : candidates) {
@@ -497,10 +498,8 @@ class LaborSystem final : public ILaborSystem {
             // A day off answers for the idle — except a contradiction of the
             // plan, which no day off explains (static review of 0.36.32: the
             // override hid kUnexplained on every day off).
-            const IdleReason planned = *diagnosis.idle[index];
-            const IdleReason reason = day_off_today && planned != IdleReason::kUnexplained
-                                          ? IdleReason::kDayOff
-                                          : planned;
+            const IdleReason reason =
+                BookedIdleReason(*diagnosis.idle[index], day_off_today, rain_holds);
             ++book.idle_person_days[static_cast<std::size_t>(reason)];
             current.residents.rows[candidates[index].resident_row].idle_reason = reason;
           }
@@ -928,6 +927,34 @@ class LaborSystem final : public ILaborSystem {
                                  static_cast<float>(herd.adult_count) /
                                  static_cast<float>(kDaysPerYear);
     }
+  }
+
+  /// Whether the rain is holding field work today: a field with work left in
+  /// a phase the rain stops (CollectJobs below does not offer it). The idle
+  /// of such a day is the weather's (IdleReason::kRain).
+  static bool RainHoldsFieldWork(const WorldState& current) {
+    return std::ranges::any_of(current.fields.rows, [&current](const FieldRow& field) {
+      const WorkKind kind = KindOfPhase(field.phase);
+      return kind != WorkKind::kNone && field.work_days_remaining > 0.0F &&
+             RainStopsWork(current.weather.precipitation, kind);
+    });
+  }
+
+  /// The reason the book and the workbook keep for an idle man of the
+  /// morning's plan: a day off answers for everything but a contradiction of
+  /// the plan (static review of 0.36.32); then the rain, for the three
+  /// reasons that only say «there was no work for him» (0.37.75).
+  static IdleReason BookedIdleReason(IdleReason planned, bool day_off_today, bool rain_holds) {
+    if (planned == IdleReason::kUnexplained) {
+      return planned;
+    }
+    if (day_off_today) {
+      return IdleReason::kDayOff;
+    }
+    const bool no_work_for_him = planned == IdleReason::kNoOpenWork ||
+                                 planned == IdleReason::kWorkCovered ||
+                                 planned == IdleReason::kCrewCap;
+    return rain_holds && no_work_for_him ? IdleReason::kRain : planned;
   }
 
   /// The day's openings: fields in a working phase and barns with care

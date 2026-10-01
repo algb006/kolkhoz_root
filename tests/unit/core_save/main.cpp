@@ -751,6 +751,8 @@ core::WorldState MakeWorld() {
   // last idle reason and the last cell of the last kind among them — a
   // reader one short reads a nought there and fails.
   world.ledger.closed.idle_person_days[static_cast<std::size_t>(core::IdleReason::kNoHorse)] = 7;
+  // Save 123: the last cell, the rain's — a codec one reason short loses it.
+  world.ledger.closed.idle_person_days[static_cast<std::size_t>(core::IdleReason::kRain)] = 5;
   world.ledger.closed.idle_person_days[static_cast<std::size_t>(core::IdleReason::kUnexplained)] =
       1;
   world.ledger.closed.short_job_days[static_cast<std::size_t>(core::WorkKind::kPlowing)]
@@ -1444,7 +1446,10 @@ constexpr std::array<RecordedSection, 23> kRecordedPayload = {{
     // predicted 430 -> 446 before the build, held.
     // Save 122: +8 — the samogon a distiller holds, a u32 a resident, two
     // saved; predicted 446 -> 454 before the build, held.
-    {"residents", 454, 0x91f83bcdaf7979d3ULL},
+    // Save 123: no byte more — the idle reason's «none» is the enum's count,
+    // 10 -> 11 with the rain appended, so the first resident's byte moved;
+    // predicted «the size holds, the hash moves» before the build, held.
+    {"residents", 454, 0x64ac4b23b3098834ULL},
     // 2026-09-18, save 57: +2 — ration_granted, one byte per family of two.
     // Save 60: +2 — a yard's dry months, one byte per family of two.
     // Save 65: families +8 (overwork_penalty, two yards), fields +6 (the avral's
@@ -1657,7 +1662,9 @@ constexpr std::array<RecordedSection, 23> kRecordedPayload = {{
     // current's 2; predicted 2392 -> 2412 before the build, held.
     // Save 122: +32 — the year's samogon brewed and sold, two i64 a book,
     // two books; predicted 2412 -> 2444 before the build, held.
-    {"ledger", 2444, 0xb59b8c06eb337705ULL},
+    // Save 123: +8 — an eleventh idle reason (the rain), a u32 a book, two
+    // books; predicted 2444 -> 2452 before the build, held.
+    {"ledger", 2452, 0x0cb494f813e26d62ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 

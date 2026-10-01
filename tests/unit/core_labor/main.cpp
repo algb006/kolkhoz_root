@@ -690,6 +690,66 @@ int TestReferenceWorkerDeliversOneNorm() {
 /// back beside the placement. Four adults and one field wanting a little
 /// sowing: some placed, the rest free for a covered job; one past his rest
 /// limit, kResting.
+/// THE RAIN IS A REASON OF ITS OWN (0.37.75; the autumn trace of seeds 1936
+/// and 1938): a sowing the rain holds leaves the village idle for the rain —
+/// with no other job, and with a barn that takes a few of them — and a rain
+/// that holds nothing (a ploughing goes on in it) names nobody.
+int TestTheRainIsTheIdlesReason() {
+  int failures = 0;
+  const test::FakeTableSet tables;
+  const auto labor = core::CreateLaborSystem(tables, core::StubTables::kAllowed);
+  if (labor == nullptr) {
+    return Expect(false, "factory yields a system");
+  }
+  const auto rain_idle = [&labor](DayWorld& day) {
+    day.world.weather.precipitation = core::Precipitation::kRain;
+    day.world.calendar.tick = 0;
+    core::RefreshCalendarCaches(day.world.calendar);
+    const core::WorldState before = day.world;
+    labor->RunAssignmentDecisions(before, day.world);
+    std::uint32_t on_residents = 0;
+    for (const core::ResidentRow& resident : day.world.residents.rows) {
+      on_residents += resident.idle_reason == core::IdleReason::kRain ? 1U : 0U;
+    }
+    const std::uint32_t in_book =
+        day.world.ledger.current
+            .idle_person_days[static_cast<std::size_t>(core::IdleReason::kRain)];
+    return std::pair{on_residents, in_book};
+  };
+  {
+    DayWorld day(4);
+    day.AddField(core::FieldPhase::kSowing, 1.0F, core::Vec2{.x = 200.0F, .y = 0.0F});
+    const auto [residents, book] = rain_idle(day);
+    failures +=
+        Expect(residents == 4 && book == 4,
+               "rain: a sowing held by the rain and no other job — all four idle for the rain");
+  }
+  {
+    DayWorld day(4);
+    day.AddField(core::FieldPhase::kSowing, 1.0F, core::Vec2{.x = 200.0F, .y = 0.0F});
+    // A ploughing beside it, and no horse in the village: the plough stood
+    // for want of a horse, and the rain does not hide a reason the chairman
+    // can mend.
+    day.AddField(core::FieldPhase::kPlowing, 1.0F, core::Vec2{.x = 300.0F, .y = 0.0F});
+    const auto [residents, book] = rain_idle(day);
+    std::uint32_t no_horse = 0;
+    for (const core::ResidentRow& resident : day.world.residents.rows) {
+      no_horse += resident.idle_reason == core::IdleReason::kNoHorse ? 1U : 0U;
+    }
+    failures += Expect(no_horse == 4 && residents == 0 && book == 0,
+                       "rain: a plough standing for want of a horse stays «no horse» in the rain");
+  }
+  {
+    DayWorld day(4);
+    day.AddField(core::FieldPhase::kPlowing, 1.0F, core::Vec2{.x = 200.0F, .y = 0.0F});
+    const auto [residents, book] = rain_idle(day);
+    failures +=
+        Expect(residents == 0 && book == 0,
+               "rain: a ploughing goes on in the rain — nobody's idleness is the weather's");
+  }
+  return failures;
+}
+
 int TestTheWorkbookCarriesTheMorningsReason() {
   int failures = 0;
   const test::FakeTableSet tables;
@@ -4056,6 +4116,7 @@ int main() {
   failures += TestReferenceWorkerDeliversOneNorm();
   failures += TestWholeWorkingDay();
   failures += TestTheWorkbookCarriesTheMorningsReason();
+  failures += TestTheRainIsTheIdlesReason();
   failures += TestRoadBlockedIsBooked();
   failures += TestWalkOffPaysAndStops();
   failures += TestASpentManIsNotSent();

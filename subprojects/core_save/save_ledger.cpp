@@ -104,7 +104,10 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // Save 122 (0.37.71): the year's samogon brewed and sold, two i64 after the
 // milk debt — 96 -> 98 fields, 912 + 34 A -> 928 + 34 A (8-aligned beside
 // an i64, no padding moved); predicted before the build.
-static_assert(sizeof(YearLedger) == 928 + (34 * kAmountsSize),
+// Save 123 (0.37.75): an eleventh idle reason, the rain — idle_person_days
+// 10 -> 11 u32, no field more; predicted 928 -> 932 and MISSED by the
+// padding: the odd u32 rounds the struct to its eight, 936.
+static_assert(sizeof(YearLedger) == 936 + (34 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<YearLedger>() == 98,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
