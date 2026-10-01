@@ -133,6 +133,20 @@ std::uint16_t VarietyMaskOf(const FoodConfig& config, const FamilyRow& family) {
 /// Ties in shelf life keep row order: deterministic. (EatFromPantry below;
 /// this is its first half.)
 ///
+/// THE STRICT ORDER IS THE LEAST ROT, AND IT STAYS (econ, core-boss-yards-
+/// holdings-03778-2026-10-01 [14]): spoilage takes a share of the stock a
+/// day, stock / shelf life, so a kilocalorie eaten off the shortest shelf
+/// saves the most. Every bin with ANY shelf life goes here, and
+/// resources.csv gives one to all food but sugar. What the order cost was
+/// the table: the potato (120 days) covered the need to the bottom and the
+/// grain behind it was not touched — the print on 0.37.78, grain in the
+/// pantry of 97 % of the yards and bread counted on the table of 38 %. That
+/// is mended BEFORE this order, by a little of everything
+/// (EatALittleOfEachCategory), and not by loosening it: eaten «in proportion
+/// to the kilocalories stored» (the first draft of 0.37.81, measured and not
+/// pushed) the potato rotted beside the grain — 1 408 t spoiled over the
+/// canon's twenty years against 978 t, hungry family-days up by a third.
+///
 /// The bins that go bad, shortest shelf life first, each eaten out before
 /// the next is touched. Returns the kilocalories.
 float EatPerishableFirst(const FoodConfig& config, FamilyRow& family, float need_kcal) {
@@ -165,8 +179,67 @@ float EatPerishableFirst(const FoodConfig& config, FamilyRow& family, float need
   return eaten_kcal;
 }
 
-/// @brief Puts the meal on the table and takes it out of the pantry: the
-/// perishable first (above), then what keeps in proportion to what is stored.
+/// How many times the count's own line a category is put on the table by
+/// before the order: twice the share of the need that counts it (econ, [14]:
+/// «по 2 × порог зачёта — 4 % суточной нужды», no number of its own). STUB.
+constexpr float kLittleOfEachOverCountLine = 2.0F;
+
+/// A LITTLE OF EVERYTHING BEFORE THE ORDER (econ's rule «понемногу всего,
+/// досыта — тем, что портится», boss [15]; 0.37.81): each counted category
+/// whose bins keep LONGER than `little_of_each_keeps_over_days` — the grain,
+/// the potato, the vegetables — gives twice the count's line of the day's
+/// need, `category_counted_share_of_need` x 2 = 4 %, the shortest shelf life
+/// of the category first; a category holding less gives what it holds. What
+/// keeps a few days (milk, meat, fish, the egg, baked bread) needs no such
+/// place: the order below takes it first. «Sweet» is outside the count and
+/// outside this; a food with no shelf life at all is the proportional part's.
+/// Returns the kilocalories; never more than `need_kcal`.
+float EatALittleOfEachCategory(const FoodConfig& config, FamilyRow& family, float need_kcal) {
+  const float little_kcal =
+      kLittleOfEachOverCountLine * config.satiety.category_counted_share_of_need * need_kcal;
+  if (!(little_kcal > 0.0F)) {
+    return 0.0F;
+  }
+  const std::uint32_t roster = PantryRoster(config, family);
+  float eaten_kcal = 0.0F;
+  for (std::size_t category = 0; category < kFoodVarietyCategories; ++category) {
+    if (category == static_cast<std::size_t>(FoodCategory::kSweet)) {
+      continue;
+    }
+    std::vector<std::uint32_t> bins;
+    for (std::uint32_t index = 0; index < roster; ++index) {
+      if (static_cast<std::size_t>(config.resources[index].category) == category &&
+          config.resources[index].kcal_per_gram > 0.0F && family.pantry[index] > 0 &&
+          SpoilDaysOf(config, index) > config.consumption.little_of_each_keeps_over_days) {
+        bins.push_back(index);
+      }
+    }
+    std::ranges::stable_sort(bins, [&config](std::uint32_t left, std::uint32_t right) {
+      return SpoilDaysOf(config, left) < SpoilDaysOf(config, right);
+    });
+    float given_kcal = 0.0F;
+    for (const std::uint32_t index : bins) {
+      const float room = need_kcal - eaten_kcal;
+      const float left = little_kcal - given_kcal < room ? little_kcal - given_kcal : room;
+      if (!(left > 0.0F)) {
+        break;
+      }
+      const Grams wanted = GramsFromFloat(std::floor(left / config.resources[index].kcal_per_gram));
+      const Grams take = wanted < family.pantry[index] ? wanted : family.pantry[index];
+      if (take > 0) {
+        const float kcal = PutOnTable(config, family, index, take);
+        given_kcal += kcal;
+        eaten_kcal += kcal;
+      }
+    }
+  }
+  return eaten_kcal;
+}
+
+/// @brief Puts the meal on the table and takes it out of the pantry: a little
+/// of every category that keeps (above), then the perishable in the strict
+/// order of the shelf life, then what does not spoil at all in proportion to
+/// what is stored.
 /// @return The kilocalories eaten; never more than `need_kcal`.
 float EatFromPantry(const FoodConfig& config, FamilyRow& family, float need_kcal) {
   const std::uint32_t roster = PantryRoster(config, family);
@@ -176,7 +249,8 @@ float EatFromPantry(const FoodConfig& config, FamilyRow& family, float need_kcal
   const auto edible = [&config, &family](std::uint32_t index) {
     return config.resources[index].kcal_per_gram > 0.0F && family.pantry[index] > 0;
   };
-  float eaten_kcal = EatPerishableFirst(config, family, need_kcal);
+  float eaten_kcal = EatALittleOfEachCategory(config, family, need_kcal);
+  eaten_kcal += EatPerishableFirst(config, family, need_kcal - eaten_kcal);
   // What keeps, in proportion to what is stored, for the rest of the need.
   const float left_kcal = need_kcal - eaten_kcal;
   float available_kcal = 0.0F;

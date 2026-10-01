@@ -1207,6 +1207,56 @@ int CheckMeal() {
                        "keeps");
   }
 
+  // A LITTLE OF EVERYTHING, THEN THE STRICT ORDER (0.37.81; econ's rule):
+  // bin 0 keeps 600 days, bin 1 keeps 120, a hundred kilograms of each. The
+  // day's need is 20 625 kcal and the count's line 2 % of it, so each
+  // category gives twice that first — 825 kcal, 250 g of bin 0 at 3.3 — and
+  // bin 1, the shorter shelf, pays all the rest. Until then bin 0 was not
+  // touched while bin 1 lay.
+  {
+    core::FoodConfig keeping = config;
+    keeping.spoil_days.assign(keeping.resources.size(), 0.0F);
+    keeping.spoil_days[0] = 600.0F;
+    keeping.spoil_days[1] = 120.0F;
+    const float little_kcal = 2.0F * keeping.satiety.category_counted_share_of_need * kNeedKcal;
+    const auto taken = [](const core::FoodConfig& food, core::Grams of_bin_0) {
+      core::WorldState world = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
+      FillPantry(world, 0, 0.0F);
+      FillPantry(world, 1, 100.0F);
+      world.families.rows[0].pantry[0] = of_bin_0;
+      const core::ResourceAmounts before = world.families.rows[0].pantry;
+      SetClock(world, 4, core::kTicksPerDay - 1U);
+      core::RunFamilyMeal(food, 4.0F, world, world, 0);
+      core::ResourceAmounts out = before;
+      for (std::size_t index = 0; index < out.size(); ++index) {
+        out[index] -= world.families.rows[0].pantry[index];
+      }
+      return out;
+    };
+    const float kcal_0 = keeping.resources[0].kcal_per_gram;
+    const float kcal_1 = keeping.resources[1].kcal_per_gram;
+    const core::Grams hundred_kg = 100 * core::kGramsPerKilogram;
+    const core::ResourceAmounts both = taken(keeping, hundred_kg);
+    failures +=
+        Expect(std::fabs((static_cast<float>(both[0]) * kcal_0) - little_kcal) < kcal_0 + 1.0F,
+               "meal order: the category that keeps longest gives its little share of "
+               "the day's need and no more");
+    failures += Expect(std::fabs((static_cast<float>(both[1]) * kcal_1) -
+                                 (kNeedKcal - little_kcal)) < kcal_0 + kcal_1 + 1.0F,
+                       "meal order: the shorter shelf pays all the rest, in the strict order");
+    // A tenth of a kilogram of bin 0: 330 kcal, under its little share.
+    const core::ResourceAmounts scarce = taken(keeping, core::kGramsPerKilogram / 10);
+    failures += Expect(scarce[0] == core::kGramsPerKilogram / 10,
+                       "meal order: a category holding less than its little share gives what it "
+                       "holds");
+    // The sweet is no place at the table and gives no little share.
+    core::FoodConfig sweet = keeping;
+    sweet.resources[0].category = core::FoodCategory::kSweet;
+    failures += Expect(taken(sweet, hundred_kg)[0] == 0,
+                       "meal order: the sweet gives no little share — the shorter shelf feeds "
+                       "the day alone");
+  }
+
   // An empty pantry: satiety falls by the day's drift and, once under the
   // threshold, health follows it down.
   {

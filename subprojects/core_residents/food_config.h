@@ -139,6 +139,16 @@ struct ConsumptionConfig {
   /// is wrong, not the player.
   float food_light_margin_days = 8.0F;
 
+  /// A LITTLE OF EVERYTHING THAT KEEPS (family_meal.cpp,
+  /// EatALittleOfEachCategory; econ's rule, STUB): a category whose food
+  /// keeps LONGER than this many game days gives its small share of the
+  /// day's need before the strict order of the shelf life takes the rest.
+  /// food.csv `little_of_each_keeps_over_days`. Six: the grain (600), the
+  /// potato and the vegetables (120) are over it; milk, meat and fish (2),
+  /// the egg and baked bread (6) are not, and the order takes them first
+  /// anyway.
+  float little_of_each_keeps_over_days = 6.0F;
+
   /// Which WorkKind values count as heavy, as a bitmask by kind index.
   /// Default: plowing (1) and harvest (4) — the decision-107 heavy pair.
   /// A mask, not a labor-config read: the food side must not depend on

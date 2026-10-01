@@ -101,7 +101,10 @@ bool ParseConsumptionAndSatiety(const ITable& table, FoodConfig& config, std::st
   ConsumptionConfig& eat = config.consumption;
   SatietyConfig& satiety = config.satiety;
   auto heavy_mask = static_cast<float>(eat.heavy_kinds_mask);
-  const std::array<ScalarKnob, 20> knobs = {{
+  const std::array<ScalarKnob, 21> knobs = {{
+      {.key = "little_of_each_keeps_over_days",
+       .value = &eat.little_of_each_keeps_over_days,
+       .range = {.low = 0.0F, .high = 100000.0F}},
       {.key = "adult_kg_grain_eq_per_year",
        .value = &eat.adult_kg_grain_eq_per_year,
        .range = {.low = 1.0F, .high = 5000.0F}},
