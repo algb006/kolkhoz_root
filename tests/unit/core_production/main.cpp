@@ -342,50 +342,109 @@ int CheckTheHerdHayForecast() {
   failures += Expect(!yellow(reaches).has_value(),
                      "hay forecast, year 1: 100 kg reach the first scythes on day 24 - no yellow, "
                      "the forecast stops there");
-  // YEAR 2 LOOKS TO NEXT YEAR'S CUT on the book: last year's hay lands over
-  // the mowing's days 24-27. None cut last year: 100 kg short on day 25; a
-  // 50 kg lot landing on day 10 moves it to 37; 150 kg cut last year, 108 kg
-  // lying - it carries to day 63, short on day 64.
-  const auto year_two = [](core::WorldState& world) {
-    world.calendar.tick = static_cast<core::Tick>(core::kDaysPerYear) * core::kTicksPerDay;
+  // THE LONG LOOK (FeedHorizon::kNextYearsScythes — the horse bought to stay,
+  // and the lamp's own horizon until 0.37.96): year 2 looks to NEXT year's
+  // cut on the book, last year's hay landing over the mowing's days 24-27.
+  // None cut last year: 100 kg short on day 25; a 50 kg lot landing on day 10
+  // moves it to 37; 150 kg cut last year, 108 kg lying - it carries to day
+  // 63, short on day 64.
+  const auto year_two = [](core::WorldState& world, core::SimDay day_of_year = 0) {
+    world.calendar.tick =
+        static_cast<core::Tick>(core::kDaysPerYear + day_of_year) * core::kTicksPerDay;
     core::RefreshCalendarCaches(world.calendar);
     world.ledger.closed.year = 1;
+  };
+  const auto far = [&config](const core::WorldState& world) {
+    return core::ForecastHerdFeed(config, world, false, core::FeedHorizon::kNextYearsScythes);
   };
   core::WorldState bare = MakeHerdWorld(100.0F);
   AddHerd(bare, 0, 4, 2, true);
   year_two(bare);
-  const std::optional<core::Alarm> bare_short = yellow(bare);
-  failures += Expect(bare_short.has_value() && bare_short->days_ahead == 25,
-                     "hay forecast, year 2: nothing cut last year - 100 kg short on day 25");
+  failures += Expect(far(bare).short_ahead && far(bare).days_ahead == 25,
+                     "hay forecast, the long look, year 2: nothing cut last year - 100 kg short "
+                     "on day 25");
   core::WorldState with_lot = bare;
   core::LimitDeliveryRow cart;
   cart.goods.assign(3, 0);
   cart.goods[0] = 50 * core::kGramsPerKilogram;
   cart.arrive_day = core::kDaysPerYear + 10;
   AppendRow(with_lot.limit_deliveries, cart);
-  const std::optional<core::Alarm> later = yellow(with_lot);
-  failures += Expect(later.has_value() && later->days_ahead == 37,
-                     "hay forecast, year 2: a lot of 50 kg on the road is a move made - the first "
-                     "short day moves from 25 to 37");
+  failures += Expect(far(with_lot).short_ahead && far(with_lot).days_ahead == 37,
+                     "hay forecast, the long look, year 2: a lot of 50 kg on the road is a move "
+                     "made - the first short day moves from 25 to 37");
   core::WorldState with_cut = MakeHerdWorld(108.0F);
   AddHerd(with_cut, 0, 4, 2, true);
   year_two(with_cut);
   with_cut.ledger.closed.harvest = {150 * core::kGramsPerKilogram};
-  const std::optional<core::Alarm> after_cut = yellow(with_cut);
-  failures += Expect(after_cut.has_value() && after_cut->days_ahead == 64,
-                     "hay forecast, year 2: last year's 150 kg land over days 24-27 and carry to "
-                     "day 63 - short on day 64");
+  failures += Expect(far(with_cut).short_ahead && far(with_cut).days_ahead == 64,
+                     "hay forecast, the long look, year 2: last year's 150 kg land over days "
+                     "24-27 and carry to day 63 - short on day 64");
   // TO NEXT YEAR'S FIRST SCYTHES, NOT THE END OF ITS MOWING (0.37.57's check-
-  // run): from day 48 the horizon is 72 days (day 120, year 3's first scythes).
-  // 290 kg carry four heads 72 days - no yellow; a horizon to the mowing's end
-  // (day 123) read short on day 72.
+  // run): from day 48 the long horizon is 72 days (day 120, year 3's first
+  // scythes). 290 kg carry four heads 72 days - not short; a horizon to the
+  // mowing's end (day 123) read short on day 72.
   core::WorldState to_scythes = MakeHerdWorld(290.0F);
   AddHerd(to_scythes, 0, 4, 2, true);
   year_two(to_scythes);
+  failures += Expect(!far(to_scythes).short_ahead && far(to_scythes).horizon_days == 72,
+                     "hay forecast, the long look, year 2: 290 kg reach next year's first scythes "
+                     "- not short; the new cut feeds from its first day");
+  // THE LAMP LOOKS TO THE NEAREST FIRST SCYTHES (FeedHorizon::kNearestScythes;
+  // boss, econ-boss-hay-term-2026-10-01 [7]; 0.37.96). On 1 January of year
+  // 2 that is day 24: the 100 kg the long look calls short on day 25 reach
+  // the scythes and the lamp is silent — the January to come is two
+  // haymakings away; 80 kg are short on day 20 and it speaks. A lot on the
+  // road that reaches the scythes puts it out.
+  failures += Expect(!yellow(bare).has_value(),
+                     "hay lamp, year 2: 100 kg reach this year's first scythes on day 24 - no "
+                     "yellow, though the long look is short on day 25");
+  core::WorldState lean_two = MakeHerdWorld(80.0F);
+  AddHerd(lean_two, 0, 4, 2, true);
+  year_two(lean_two);
+  const std::optional<core::Alarm> lean_yellow = yellow(lean_two);
   failures +=
-      Expect(!yellow(to_scythes).has_value(),
-             "hay forecast, year 2: 290 kg reach next year's first scythes - no yellow; the "
-             "new cut feeds from its first day");
+      Expect(lean_yellow.has_value() && lean_yellow->days_ahead == 20 && lean_yellow->amount == 4,
+             "hay lamp, year 2: 80 kg are short on day 20 before the scythes - yellow, "
+             "four heads");
+  core::WorldState lean_lot = lean_two;
+  AppendRow(lean_lot.limit_deliveries, cart);
+  failures += Expect(!yellow(lean_lot).has_value(),
+                     "hay lamp, year 2: a lot of 50 kg landing on day 10 reaches the scythes - "
+                     "the yellow is out");
+  // FROM THE MOWING ON, NEXT YEAR'S SCYTHES ARE THE NEAREST: on day 30 of
+  // year 2 (the cut of days 24-27 behind) they are 42 days off. 160 kg feed
+  // four heads forty days - short on day 40; 170 kg reach them.
+  core::WorldState autumn = MakeHerdWorld(160.0F);
+  AddHerd(autumn, 0, 4, 2, true);
+  year_two(autumn, 30);
+  const std::optional<core::Alarm> autumn_yellow = yellow(autumn);
+  failures += Expect(autumn_yellow.has_value() && autumn_yellow->days_ahead == 40,
+                     "hay lamp, year 2 after the mowing: 160 kg are short on day 40 of the 42 to "
+                     "next year's scythes - yellow");
+  core::WorldState autumn_fed = MakeHerdWorld(170.0F);
+  AddHerd(autumn_fed, 0, 4, 2, true);
+  year_two(autumn_fed, 30);
+  failures += Expect(!yellow(autumn_fed).has_value(),
+                     "hay lamp, year 2 after the mowing: 170 kg reach next year's scythes - no "
+                     "yellow");
+  // NEVER MORE HEADS THAN STAND TODAY (0.37.96, (б)): a herd that calves
+  // every month and has no hay at all is short from today, and by the
+  // horizon's end its calves are grown and unfed too — the number told is
+  // the four that stand, not the herd to come.
+  core::ProductionConfig calving = config;
+  calving.livestock[0].births_per_game_year = 12.0F;
+  core::WorldState hungry = MakeHerdWorld(0.0F);
+  AddHerd(hungry, 0, 4, 2, true);
+  year_two(hungry, 30);
+  const core::HerdFeedForecast grown =
+      core::ForecastHerdFeed(calving, hungry, false, core::FeedHorizon::kNearestScythes);
+  const float herd_then = core::ForecastHerdHeads(calving, hungry, hungry.herds.row_ids[0], 41);
+  std::cout << "  the hay lamp's number: 4 heads today, " << herd_then
+            << " by the horizon's end, told short for " << grown.heads_short << '\n';
+  failures += Expect(
+      grown.short_ahead && grown.days_ahead == 0 && grown.heads_short == 4 && herd_then > 8.0F,
+      "hay lamp: the heads short are never more than the heads standing today, "
+      "though the herd doubles by the horizon's end");
   return failures;
 }
 

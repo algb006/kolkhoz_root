@@ -620,7 +620,11 @@ void CollectTeamAlarms(const ProductionConfig& config,
     // boss [72] p. 2): every kolkhoz herd and their offspring to the cut of
     // the next year — the cows 31 -> 164 of host [13] starved beside horses
     // the stall-season check let buy. `resource` the feed that runs out first.
-    const HerdFeedForecast with_one_more = ForecastHerdFeed(config, world, true);
+    // THE LONG LOOK, NAMED (0.37.96): the yellow hay lamp went to the nearest
+    // scythes; this question stays a year's, because the horse is bought to
+    // stay (herd_forecast.h, FeedHorizon — two readers, two horizons).
+    const HerdFeedForecast with_one_more =
+        ForecastHerdFeed(config, world, true, FeedHorizon::kNextYearsScythes);
     if (with_one_more.short_ahead) {
       too_few.resource = with_one_more.first_short;
       too_few.lamp = 0;

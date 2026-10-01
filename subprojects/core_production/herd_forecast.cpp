@@ -275,7 +275,8 @@ void DrainFeedDay(const ProductionConfig& config,
 
 HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
                                   const WorldState& world,
-                                  bool one_more_horse) {
+                                  bool one_more_horse,
+                                  FeedHorizon horizon) {
   HerdFeedForecast forecast;
   if (config.livestock.empty() || config.feed_values.empty()) {
     return forecast;
@@ -303,12 +304,27 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
   // with that cut not in it, counted three months of need against nothing —
   // 173 of 365 short days of year 2's spring yellow lay inside year 3's
   // mowing (the check-run of 0.37.57, core's lamp probe).
+  //
+  // TO THE NEAREST FIRST SCYTHES, IN EVERY YEAR (boss, econ-boss-hay-term-
+  // 2026-10-01 [7]; 0.37.96). Until then only year 1 stopped at its own cut:
+  // from year 2 the horizon ran from 1 January to the first scythes of the
+  // year AFTER, a year and a half and two calvings on, and the lamp of 1
+  // January spoke of the January to come — «short for 111-153 heads» with
+  // 82-93 in the yards — while the canon's bot handed twenty cows over the
+  // same day and the stores never ran dry (hay at May's end 27, 89-99,
+  // 165-191, 166-203 t over years 1-4). Before this year's first scythes the
+  // question is «does what lies reach them»; from the mowing on, next
+  // year's. Past the nearest scythes the lamp is silent.
+  // THE HORSE BOUGHT TO STAY keeps the long look (FeedHorizon::
+  // kNextYearsScythes): this year's cut in the income and the winter after.
   SimDay horizon_end = cut_from + kDaysPerYear;
   if (first_year && today <= this_cut_end) {
     horizon_end = today < cut_from ? cut_from : today;
+  } else if (horizon == FeedHorizon::kNearestScythes && today < cut_from) {
+    horizon_end = cut_from;
   }
-  const auto horizon = static_cast<std::uint32_t>(horizon_end - today);
-  forecast.horizon_days = static_cast<std::uint16_t>(horizon);
+  const auto horizon_days = static_cast<std::uint32_t>(horizon_end - today);
+  forecast.horizon_days = static_cast<std::uint16_t>(horizon_days);
   // THE CUT STILL AHEAD THIS YEAR LANDS DAY BY DAY over the mowing's window,
   // from the first day of the meadows' cut month to the end of the cut, as
   // the mowing lays it (LayMownShare). Landed whole on the cut's last day it
@@ -361,6 +377,11 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
   if (herds.empty()) {
     return forecast;
   }
+  float standing = 0.0F;
+  for (const ProjectedHerd& herd : herds) {
+    standing += HeadsOf(herd);
+  }
+  const auto standing_heads = static_cast<std::int64_t>(std::ceil(standing));
 
   std::vector<float> held_kg = HerdFeedHeldKg(config, world);
   const std::vector<std::uint8_t> peoples_foods = PeoplesFoods(config, world);
@@ -398,7 +419,7 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
   std::vector<std::size_t> needs_of;  // index into `herds` per need
   std::vector<float> covered;
   std::vector<float> held_before;
-  for (std::uint32_t day = 0; day < horizon; ++day) {
+  for (std::uint32_t day = 0; day < horizon_days; ++day) {
     const auto month = static_cast<std::uint8_t>(DateFromDay(today + day).month);
     if (cut_kg_a_day > 0.0F && day >= cut_first_day && day <= cut_last_day &&
         config.hay_resource.value < held_kg.size()) {
@@ -478,6 +499,11 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
     const auto heads = static_cast<std::int64_t>(std::ceil(unfed_heads));
     forecast.heads_short = heads > forecast.heads_short ? heads : forecast.heads_short;
   }
+  // NEVER MORE HEADS THAN STAND TODAY (0.37.96; boss, econ-boss-hay-term
+  // [7] (б)): the calves to come are in the need above, and a chairman told
+  // «short for 127 heads» with 92 in the yards is told a number he cannot
+  // act on. The stock on the road counts: its heads are bought already.
+  forecast.heads_short = std::min(forecast.heads_short, standing_heads);
   return forecast;
 }
 
@@ -562,7 +588,10 @@ AlarmAdvice AdviceForShortFeed(const ProductionConfig& config,
 void CollectHerdForecastAlarms(const ProductionConfig& config,
                                const WorldState& world,
                                std::vector<Alarm>& alarms) {
-  const HerdFeedForecast forecast = ForecastHerdFeed(config, world, false);
+  // TO THE NEAREST FIRST SCYTHES (0.37.96): the yellow speaks of a shortage
+  // this side of the next cut and of none beyond it.
+  const HerdFeedForecast forecast =
+      ForecastHerdFeed(config, world, false, FeedHorizon::kNearestScythes);
   if (!forecast.short_ahead) {
     return;
   }
