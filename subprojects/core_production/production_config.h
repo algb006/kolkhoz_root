@@ -581,6 +581,16 @@ struct FarmingConfig {
   /// share of the herd. ASSUMPTION.
   float billet_yield_factor = 0.6F;
 
+  /// THE SECOND LEVER OF THE CATTLE YARD (livestock design §5; econ-boss-
+  /// complexity-yards-groom [3]-[4]; world_params `herd_without_yard_yield_
+  /// factor`, 0): from the day the player enters, a kolkhoz herd with no
+  /// yard of its own gives the kolkhoz this share of its milk — nought;
+  /// `billet_yield_factor` above stays what it is and acts before the entry,
+  /// so the year's milk plan, named off January's yield, is not named nought.
+  /// STUB: DECLARED AND NOT READ — the key came with boss's export of
+  /// 0.37.73, its reader is the delivery «the free yards and the groom».
+  float herd_without_yard_yield_factor = 0.0F;
+
   /// A HUNGRY HERD DOES NOT CALVE (world_params.csv `calving_fed_share_floor`,
   /// boss seq 19 and 21; livestock design): the share of the day's ration
   /// below which a kolkhoz herd adds no calving progress that day. STUB,

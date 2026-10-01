@@ -1042,7 +1042,7 @@ bool ParseMeadowKinds(const ITable& table, FarmingConfig& farming, std::string& 
 /// AT ALL: until 2026-09-16 this module took every number off its own
 /// hand-written tables, and the two halves of billeting are what brought it
 /// here. The next world constant lands in the same place.
-constexpr std::array<std::string_view, 29> kProductionWorldParamKeys = {
+constexpr std::array<std::string_view, 30> kProductionWorldParamKeys = {
     "billet_heads_per_yard",
     "billet_yield_factor",
     "school_year_start_month",
@@ -1071,7 +1071,8 @@ constexpr std::array<std::string_view, 29> kProductionWorldParamKeys = {
     "livestock_freezing_loss_share_day",
     "feed_draught_first",
     "livestock_cold_first_month",
-    "livestock_cold_last_month"};
+    "livestock_cold_last_month",
+    "herd_without_yard_yield_factor"};
 
 /// THE SCHOOL YEAR IS READ HERE AS WELL AS BY THE SCHOOL, and that is a
 /// second READER, not a second home: the months live in world_params.csv and
@@ -1205,7 +1206,11 @@ bool ParseProductionWorldParams(const ITable& world,
                  .range = Range{.low = 0.0F, .high = 1.0F}},
       // THE COLD'S SEASON (0.37.69): human months in the table, from zero here.
       ScalarKnob{.key = kProductionWorldParamKeys[27], .value = &cold_from, .range = months},
-      ScalarKnob{.key = kProductionWorldParamKeys[28], .value = &cold_to, .range = months}};
+      ScalarKnob{.key = kProductionWorldParamKeys[28], .value = &cold_to, .range = months},
+      // Declared with boss's export of 0.37.73; read by «the free yards».
+      ScalarKnob{.key = kProductionWorldParamKeys[29],
+                 .value = &farming.herd_without_yard_yield_factor,
+                 .range = Range{.low = 0.0F, .high = 1.0F}}};
   if (!ReadKnobs(world, "world_params", knobs, error)) {
     return false;
   }

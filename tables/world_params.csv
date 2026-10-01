@@ -136,6 +136,7 @@ mts_column_autumn_to_month,10,core
 field_camp_field_reach_m,1000,core
 billet_heads_per_yard,2,core
 billet_yield_factor,0.6,core
+herd_without_yard_yield_factor,0,core
 road_access_m,10,core
 livestock_handover_newborn,0.15,core
 livestock_handover_young,0.35,core
@@ -156,8 +157,12 @@ hygiene_disease_threshold,25,core
 night_sober_keeper_max,20,core
 samogon_reach_m,1000,core
 distiller_replace_months,2,core
-samogon_buy_kg_drinks,3,core
-samogon_buy_kg_abuses,8,core
+samogon_litres_month_drinks,1,core
+samogon_potato_kg_per_litre,4,core
+samogon_sugar_kg_per_litre,0.5,core
+samogon_grain_kg_per_litre,1.5,core
+samogon_litres_month_abuses,3,core
+samogon_price_grain_kg_per_litre,2,core
 samogon_lights_out_hour,23,core
 limit_overfulfil_tier1_t,5,core
 limit_overfulfil_tier2_t,20,core
