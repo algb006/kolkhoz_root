@@ -349,8 +349,10 @@ bool ConsiderCandidate(const AssignmentJob& job,
   }
   // One shoulder, two uses (decision 103): the same travel decides whether
   // he may be sent at all and how much of his day is left to work. Felling
-  // rides without being horse work (RidesOut; parcel 308).
-  const bool rides = horse_work || RidesOut(job.kind);
+  // rides without being horse work (RidesOut; parcel 308). And a brigade
+  // whose cart is out rides on it (AssignmentJob::cart_out; the caller has
+  // settled whether there is a cart today).
+  const bool rides = horse_work || RidesOut(job.kind) || job.cart_out;
   const float hours_per_km = rides ? params.harness_hours_per_km : params.walk_hours_per_km;
   // BY THE ROADS WHEN THE CALLER MEASURED THEM (AssignmentParams::road_km;
   // 0.36.2) — the way the labour hour will measure his day by; the straight
@@ -449,7 +451,13 @@ std::vector<std::int32_t> SavedBands(const std::vector<AssignmentJob>& jobs,
     if (!(jobs[index].kcal_at_risk > 0.0F)) {
       continue;
     }
-    const float saved = SavedPerHandDay(jobs[index], index, candidates, params);
+    // THE BRIGADE'S CART IN THE MEASURE (AssignmentJob::brigade_cart): a hand
+    // is expected to ride when the village has a horse this morning. Whether
+    // one is still in the pool when the queue reaches the field is not known
+    // before the queue is ordered — the measure orders it.
+    AssignmentJob judged = jobs[index];
+    judged.cart_out = judged.cart_out || (judged.brigade_cart && params.draught_horses > 0);
+    const float saved = SavedPerHandDay(judged, index, candidates, params);
     // Food at risk and nobody to go: above the jobs with nothing at risk,
     // below every reaping a hand can reach.
     bands[index] =
@@ -505,6 +513,8 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
     road_blocked->assign(jobs.size(), 0U);
   }
   std::uint32_t horses_left = params.draught_horses;
+  // Per job: 1 when its brigade rides a cart today (taken here or out already).
+  std::vector<std::uint8_t> cart_today(jobs.size(), 0U);
 
   for (const std::uint32_t job_index : OrderJobs(jobs, SavedBands(jobs, candidates, params))) {
     const AssignmentJob& job = jobs[job_index];
@@ -545,8 +555,16 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
     float expected_output = 0.0F;
     std::uint32_t placed = 0;
     std::uint32_t road_refused = 0;
+    // THE BRIGADE'S CART (AssignmentJob::brigade_cart; 0.37.89): one horse of
+    // the pool for the field, if one is left when the queue comes to it — and
+    // then everybody is judged by the ride. Taken when the first hand is
+    // placed, so a field nobody goes to holds no horse.
+    const bool takes_cart = job.brigade_cart && !job.cart_out && horses_left > 0;
+    AssignmentJob judged = job;
+    judged.cart_out = job.cart_out || takes_cart;
+    cart_today[job_index] = judged.cart_out ? 1U : 0U;
     const std::vector<RankedPick> picks =
-        RankCandidates(job, job_index, candidates, result, params, road_refused);
+        RankCandidates(judged, job_index, candidates, result, params, road_refused);
     // THE JOB THE ROAD STOPPED (econ, boss-econ-roads-balance [4] item 5б):
     // work left, nobody fit to take it, and free hands turned away by the
     // road rule alone. A job nobody free could take for other reasons —
@@ -612,9 +630,15 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
           daily_norm = walking.daily_norm;
         }
       }
+      // The first hand of a brigade whose cart goes out today drives it: the
+      // horse leaves the pool with him and is written on him alone.
+      const bool drives = takes_cart && placed == 0;
+      if (drives) {
+        --horses_left;
+      }
       result[pick.candidate_index] = job_index;
       if (rides_horse != nullptr) {
-        (*rides_horse)[pick.candidate_index] = took_horse ? 1U : 0U;
+        (*rides_horse)[pick.candidate_index] = took_horse || drives ? 1U : 0U;
       }
       expected_output += daily_norm;
       ++placed;
@@ -662,7 +686,9 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
         if (!shortfall[job_index]) {
           continue;
         }
-        const AssignmentJob& job = jobs[job_index];
+        // As the queue judged it: by the ride where the brigade's cart went.
+        AssignmentJob job = jobs[job_index];
+        job.cart_out = cart_today[job_index] != 0;
         RankedPick pick;
         bool by_road = false;
         IdleReason here = IdleReason::kUnexplained;

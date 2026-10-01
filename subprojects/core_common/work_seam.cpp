@@ -214,6 +214,20 @@ bool HomePositionOf(const WorldState& world, FamilyId family, Vec2& home) {
   return true;
 }
 
+bool RidesTheBrigadesCart(WorkKind kind, LandKind land) {
+  return (kind == WorkKind::kHarvest || kind == WorkKind::kSowing) && land == LandKind::kArable;
+}
+
+bool BrigadeCartIsOut(const WorldState& world, WorkKind kind, FieldId field) {
+  for (const ResidentRow& person : world.residents.rows) {
+    if (person.work.kind == kind && person.work.field.value == field.value &&
+        person.work.rides_horse != 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool WorkRidesOut(const WorldState& world, const WorkAssignment& work) {
   if (RidesOut(work.kind)) {
     return true;
@@ -226,13 +240,25 @@ bool WorkRidesOut(const WorldState& world, const WorkAssignment& work) {
   if (work.kind == WorkKind::kHauling) {
     return work.rides_horse != 0;
   }
-  if (work.kind != WorkKind::kHarvest) {
+  if (work.kind != WorkKind::kHarvest && work.kind != WorkKind::kSowing) {
     return false;
   }
-  // The same test the labour sub-step's CollectJobs sets `harnessed` by.
   const std::uint32_t row = FindRow(world.fields, work.field);
-  return row != kNoRow && (world.fields.rows[row].kind == LandKind::kMeadow ||
-                           world.fields.rows[row].kind == LandKind::kFloodplainMeadow);
+  if (row == kNoRow) {
+    return false;
+  }
+  const LandKind land = world.fields.rows[row].kind;
+  // The same test the labour sub-step's CollectJobs sets `harnessed` by.
+  if (work.kind == WorkKind::kHarvest &&
+      (land == LandKind::kMeadow || land == LandKind::kFloodplainMeadow)) {
+    return true;
+  }
+  // THE BRIGADE RIDES WITH ITS DRIVER (AssignmentJob::brigade_cart; 0.37.89):
+  // the reaping of the arable and the sowing go out on the one cart the
+  // placement took for the field, and the horse is written on the first hand
+  // placed. No driver on the field today — the pool was dry — and they walk.
+  return RidesTheBrigadesCart(work.kind, land) &&
+         (work.rides_horse != 0 || BrigadeCartIsOut(world, work.kind, work.field));
 }
 
 TravelMode WorkTravelMode(const WorldState& world, const WorkAssignment& work) {
@@ -267,9 +293,28 @@ HarnessCount CountHarness(const WorldState& world) {
       ++count.harnessed;
       continue;
     }
-    // The one harvest that rides is a meadow's cut (WorkRidesOut), and its
-    // horse is the brigade's: one a meadow, however many mow it.
-    const bool meadow_cut = work.kind == WorkKind::kHarvest && WorkRidesOut(world, work);
+    if (work.kind != WorkKind::kHarvest && work.kind != WorkKind::kSowing) {
+      continue;
+    }
+    const std::uint32_t row = FindRow(world.fields, work.field);
+    if (row == kNoRow) {
+      continue;
+    }
+    const LandKind land = world.fields.rows[row].kind;
+    // THE BRIGADE'S CART (0.37.89): one horse a field, written on its driver.
+    // The release takes it first — the brigade walks, the work goes on.
+    if (RidesTheBrigadesCart(work.kind, land)) {
+      if (work.rides_horse != 0) {
+        ++count.in_traces;
+        ++count.harnessed;
+        ++count.releasable;
+      }
+      continue;
+    }
+    // A meadow's cut rides (WorkRidesOut), and its horse is the brigade's:
+    // one a meadow, however many mow it.
+    const bool meadow_cut = work.kind == WorkKind::kHarvest &&
+                            (land == LandKind::kMeadow || land == LandKind::kFloodplainMeadow);
     if (meadow_cut && std::ranges::find(meadows_mown, work.field) == meadows_mown.end()) {
       meadows_mown.push_back(work.field);
       ++count.in_traces;

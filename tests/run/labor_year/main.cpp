@@ -36,6 +36,7 @@
 #include "../common/run_harness.h"
 #include "core_common/calendar.h"
 #include "core_common/land_state.h"
+#include "core_common/work_seam.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
@@ -368,6 +369,10 @@ int main(int argc, char** argv) {
   std::unordered_map<std::uint32_t, LastSeen> seen;
   LaborTally tally;
   double care_left = 0.0;
+  // The walkers' way to work, as the labour hour measured it and along the
+  // straight line: the guard of the hour walking by the roads (below).
+  double walked_road_hours = 0.0;
+  double walked_line_hours = 0.0;
   double accounts_before_burn = 0.0;
   double accrued_before_burn = 0.0;
   // The end of each crop's sowing window, by CropId, straight off the table:
@@ -470,6 +475,22 @@ int main(int argc, char** argv) {
         sowing_overran = true;
         const std::uint32_t over = world.calendar.day - (window_end + 1) * core::kDaysPerMonth + 1;
         latest_overrun = over > latest_overrun ? over : latest_overrun;
+      }
+    }
+    // Noon: everyone at work who WALKED there, with the way the hour measured
+    // for him (WorkAssignment::travel_hours) beside the same two points along
+    // the line. Noon and not the evening: a finished job is paid and its way
+    // forgotten the hour it ends.
+    if (core::HourFromTick(world.calendar.tick) == 12) {
+      for (const core::ResidentRow& resident : world.residents.rows) {
+        core::Vec2 home;
+        core::Vec2 place;
+        if (resident.work.travel_hours > 0.0F && !core::WorkRidesOut(world, resident.work) &&
+            core::HomePositionOf(world, resident.family, home) &&
+            core::WorkPlaceOf(world, resident.work, place)) {
+          walked_road_hours += static_cast<double>(resident.work.travel_hours);
+          walked_line_hours += DistanceKm(home, place) * kWalkHoursPerKm;
+        }
       }
     }
     // Hour 22, not 23: the day's close clears the assignments, and with them
@@ -656,6 +677,21 @@ int main(int argc, char** argv) {
   // would not redden on either. Named to boss with this commit.
   failures += ExpectBand(
       care_left, 0.0, 0.0, "no barn at the start: no herd care is left undone, none being owed");
+  // THE GUARD OF THE HOUR WALKING BY THE ROADS, PUT BACK (boss, 2026-10-01;
+  // lost with the barn's band above): over the year, the walkers' way to
+  // work as the labour hour measured it against the same two points along
+  // the straight line. By the way there is it is longer — open ground weighs
+  // 1.2 and a road bends; along the line the ratio is one exactly, and the
+  // floor stands above one on purpose: the hour put back on the line
+  // reddens this band (confirmed by the fault of that name).
+  const double walked_ratio = walked_line_hours > 0.0 ? walked_road_hours / walked_line_hours : 0.0;
+  std::cout << "labor_year: the walkers' way to work by the hour " << walked_road_hours
+            << " game hours, along the straight line " << walked_line_hours << ", ratio "
+            << walked_ratio << "\n";
+  failures += ExpectBand(walked_ratio,
+                         1.05,
+                         1.60,
+                         "the labour hour walks by the way there is, not along the straight line");
 
   // Trudodni are the same quantity seen from the pay side: the rate is 1.0
   // across Epoch-I hand work, so the accounts on the last evening of the year

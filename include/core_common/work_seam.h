@@ -107,7 +107,8 @@ bool WorkRidesOut(const WorldState& world, const WorkAssignment& work);
 ///        0.36.2): on foot unless it rides out (WorkRidesOut); riding, a
 ///        carter with logs off a stand as a log cart, any other carter as a
 ///        cart with produce — roads only (roads design §11) — and the rest
-///        (the plough, the harrow, the mower, the fellers) as a team to its
+///        (the plough, the harrow, the mower, the fellers, and the reaping
+///        or sowing brigade on its one cart — 0.37.89) as a team to its
 ///        field work. ONE ANSWER for the labour hour and the resident's
 ///        activity, as WorkRidesOut is.
 TravelMode WorkTravelMode(const WorldState& world, const WorkAssignment& work);

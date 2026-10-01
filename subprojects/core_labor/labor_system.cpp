@@ -672,6 +672,11 @@ class LaborSystem final : public ILaborSystem {
                           job.limit_delivery.value != kInvalidEntityIdValue;
         ride_mode = logs ? 3 : 2;
       }
+      // THE BRIGADE'S CART RIDES AS A TEAM, the fellers' way and the mowers'
+      // (boss: «образец — вальщики»), not as the cart with produce that
+      // keeps to the roads: measured so first, the potato field 0.68 km out
+      // was 1.40 km by the roads, the ride saved a quarter of an hour of an
+      // hour and a half, and a hand's October day stayed at 0.60 of a norm.
       const NetworkPlace walk_place = index->Locate(TravelMode::kWalk, job.position);
       const NetworkPlace ride_place = index->Locate(kModes[ride_mode], job.position);
       for (std::size_t slot = 0; slot < homes.size(); ++slot) {
@@ -703,6 +708,26 @@ class LaborSystem final : public ILaborSystem {
   void ReleaseHorselessWork(WorldState& current) const {
     const std::uint32_t herd = DraughtHorses(current);
     std::uint32_t in_traces = HorsesInTraces(current);
+    // THE BRIGADES' CARTS FIRST OF ALL (0.37.89): a reaping or a sowing that
+    // loses its cart loses the ride and not the day — the driver keeps his
+    // work, the horse is no longer written on him, and the field's hands walk
+    // (WorkRidesOut finds no driver). Their road is measured again.
+    for (auto row = static_cast<std::uint32_t>(current.residents.rows.size());
+         row > 0 && in_traces > herd;
+         --row) {
+      WorkAssignment& work = current.residents.rows[row - 1].work;
+      if (work.rides_horse == 0 ||
+          (work.kind != WorkKind::kHarvest && work.kind != WorkKind::kSowing)) {
+        continue;
+      }
+      work.rides_horse = 0;
+      for (ResidentRow& person : current.residents.rows) {
+        if (person.work.kind == work.kind && person.work.field.value == work.field.value) {
+          person.work.travel_hours = -1.0F;
+        }
+      }
+      --in_traces;
+    }
     for (const bool timber_pass : {true, false}) {
       for (auto row = static_cast<std::uint32_t>(current.residents.rows.size());
            row > 0 && in_traces > herd;
@@ -1045,6 +1070,13 @@ class LaborSystem final : public ILaborSystem {
         // crop harvest stays hand work — sickles and scythes on the strips.
         job.harnessed =
             field.kind == LandKind::kMeadow || field.kind == LandKind::kFloodplainMeadow;
+        // THE REAPING OF THE ARABLE AND THE SOWING GO OUT ON ONE CART WHEN A
+        // HORSE IS FREE (AssignmentJob::brigade_cart; farming design §6,
+        // «Дорога пешком съедает световой день»; 0.37.89). The cart is out
+        // already when a driver stands on the field from the morning — the
+        // top-up's hands ride with him and take no second horse.
+        job.brigade_cart = RidesTheBrigadesCart(kind, field.kind);
+        job.cart_out = job.brigade_cart && BrigadeCartIsOut(current, kind, job.field);
         jobs.push_back(job);
       }
     }
