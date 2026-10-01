@@ -2,7 +2,8 @@ kolkhoz_add_unit_test(core_labor
     main.cpp
     harvest_order_checks.cpp
     harvest_days_off_checks.cpp
-    brigade_cart_checks.cpp)
+    brigade_cart_checks.cpp
+    top_up_checks.cpp)
 
 # The placement algorithm is an internal seam of the module (assignment.h);
 # its unit tests feed the structs directly, so the module's source dir is on

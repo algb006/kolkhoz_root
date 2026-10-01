@@ -140,6 +140,18 @@ int main() {
   float district_trips_closed = 0.0F;
   core::Grams district_grams_closed = 0;
   std::uint32_t closed_year = with.State().ledger.closed.year;
+  // EACH DAY IS READ AFTER ITS TOP-UP (0.37.101). A day of twenty-four steps
+  // ends on the next day's hour 0 — the morning's plan made, production's
+  // daily block run after it, the hour-1 top-up not yet. Read there, a field
+  // production opened that dawn stands uncrewed whatever the core does about
+  // it, and the first form of this loop read there: on 0.37.99 it reddened on
+  // day 30 (a harrowing opened at dawn, five horses at the lot) and would have
+  // stayed red through the mend, which acts at hour 1. Two steps on, the day's
+  // placement is the one the day is worked by.
+  for (std::uint32_t step = 0; step < 2; ++step) {
+    with->AdvanceStep();
+    without->AdvanceStep();
+  }
   for (std::uint32_t day = 0; day < kMaxDays && emptied_day == 0; ++day) {
     if (day == kOrderDay) {
       core::OrderRow order;

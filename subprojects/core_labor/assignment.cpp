@@ -202,25 +202,9 @@ std::vector<std::uint32_t> OrderJobs(const std::vector<AssignmentJob>& jobs,
   // As open work it took the spring sowing that always runs into June: 11 ha
   // sown of 66. Left overdue after July it outranked the fallow again and the
   // rye was lost for two years.
-  const auto tier = [](const AssignmentJob& job) {
-    if (job.prepares_winter_crop) {
-      return 3;
-    }
-    // The meadow cut is the one harvest that rides out (labor_system.cpp,
-    // CollectJobs sets `harnessed` on a harvest for a meadow and no other).
-    const bool meadow_cut = IsMeadowCut(job);
-    if (meadow_cut) {
-      return job.window.kind == DeadlineKind::kDays ? 2 : 4;
-    }
-    switch (job.window.kind) {
-      case DeadlineKind::kDays:
-        return 0;
-      case DeadlineKind::kOverdue:
-        return 1;
-      default:
-        return 4;
-    }
-  };
+  // The tier has a name since 0.37.101 (PlacementTier): the top-up asks it
+  // too, and two readers of one rule keep one body.
+  const auto tier = [](const AssignmentJob& job) { return PlacementTier(job); };
   std::ranges::sort(order, [&jobs, &tier, &saved_band](std::uint32_t left, std::uint32_t right) {
     const AssignmentJob& a = jobs[left];
     const AssignmentJob& b = jobs[right];
@@ -469,6 +453,27 @@ std::vector<std::int32_t> SavedBands(const std::vector<AssignmentJob>& jobs,
 }
 
 }  // namespace
+
+int PlacementTier(const AssignmentJob& job) {
+  constexpr int kWinterPreparationTier = 3;
+  constexpr int kMeadowCutTier = 2;
+  if (job.prepares_winter_crop) {
+    return kWinterPreparationTier;
+  }
+  // The meadow cut is the one harvest that rides out (labor_system.cpp,
+  // CollectJobs sets `harnessed` on a harvest for a meadow and no other).
+  if (IsMeadowCut(job)) {
+    return job.window.kind == DeadlineKind::kDays ? kMeadowCutTier : kWindowlessTier;
+  }
+  switch (job.window.kind) {
+    case DeadlineKind::kDays:
+      return 0;
+    case DeadlineKind::kOverdue:
+      return 1;
+    default:
+      return kWindowlessTier;
+  }
+}
 
 float ExpectedNormPerHand(const AssignmentJob& job,
                           std::uint32_t job_index,

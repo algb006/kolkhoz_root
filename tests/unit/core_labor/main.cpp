@@ -38,6 +38,7 @@
 #include "labor_config.h"
 #include "labor_day.h"
 #include "posts.h"
+#include "top_up_checks.h"
 #include "work_orders.h"
 
 static_assert(std::is_abstract_v<core::ILaborSystem>, "ILaborSystem is a contract");
@@ -4130,6 +4131,7 @@ int main() {
   failures += CheckHarvestOrder();
   failures += CheckHarvestDaysOff();
   failures += CheckBrigadeCart();
+  failures += CheckTopUpAgainstWindowlessWork();
   failures += TestPlacementDiagnosis();
   failures += TestRoadLimit();
   failures += TestHorsePoolAndLock();

@@ -569,24 +569,65 @@ class LaborSystem final : public ILaborSystem {
   /// up would put surplus hands on it. The morning is not moved, because
   /// production reads the morning's placement in that same hour-0 block (the
   /// team's working share, herd_system.cpp).
+  ///
+  /// AND WHAT THE MORNING GAVE TO WORK WITH NO WINDOW IS ASKED AGAIN (0.37.101;
+  /// assignment.h, PlacementTier; district_lot's red on 0.37.99). Placing only
+  /// the idle, with only the horses the morning left, this kept every horse
+  /// and hand the morning had sent to windowless work: on seed 1931, day 30,
+  /// five horses rode for the district's lot while the harrowing of the rye's
+  /// fallow, opened that dawn, stood the day with no horse. So when a job
+  /// stands with nobody on it, the morning's placements on the windowless tier
+  /// are let go — of the accountant's list only; a post holder keeps his place
+  /// — and placed again in one queue with what stands uncrewed. That is the
+  /// placement the morning would have made had it known: the queue's order
+  /// puts the opened plough before the lot and the opened reaping before the
+  /// planting, and gives the windowless work what is left, as it did at dawn.
+  /// The tiers above are not asked again.
   void TopUpDay(WorldState& current) const {
     ReleaseHorselessWork(current);
-    std::vector<AssignmentJob> jobs = CollectJobs(current);
-    const auto crewed = [&current](const AssignmentJob& job) {
-      return std::ranges::any_of(current.residents.rows, [&job](const ResidentRow& person) {
-        const WorkAssignment& work = person.work;
-        return work.kind == job.kind && work.field.value == job.field.value &&
-               work.herd.value == job.herd.value && work.unit.value == job.unit.value &&
-               work.stand.value == job.stand.value &&
-               work.extraction_site.value == job.extraction_site.value &&
-               work.limit_delivery.value == job.limit_delivery.value;
-      });
+    const std::vector<AssignmentJob> offered = CollectJobs(current);
+    // road_work is not asked, as it never was here: one road crew answers for
+    // every road job of the morning (named in the commit of 0.37.101, not
+    // mended by it — the canon lays no road).
+    const auto stands_on = [](const WorkAssignment& work, const AssignmentJob& job) {
+      return work.kind == job.kind && work.field.value == job.field.value &&
+             work.herd.value == job.herd.value && work.unit.value == job.unit.value &&
+             work.stand.value == job.stand.value &&
+             work.extraction_site.value == job.extraction_site.value &&
+             work.limit_delivery.value == job.limit_delivery.value;
     };
+    const auto crewed = [&current, &stands_on](const AssignmentJob& job) {
+      return std::ranges::any_of(
+          current.residents.rows,
+          [&job, &stands_on](const ResidentRow& person) { return stands_on(person.work, job); });
+    };
+    std::vector<AssignmentJob> jobs = offered;
     std::erase_if(jobs, crewed);
     if (jobs.empty()) {
       return;
     }
     std::vector<AssignmentCandidate> candidates = CollectCandidates(current);
+    // Let go: everyone of the list who stands on a windowless job. Before
+    // sunrise nobody has worked an hour, so the day he is taken off is whole.
+    std::vector<bool> let_go(current.residents.rows.size(), false);
+    bool anybody_let_go = false;
+    for (const AssignmentCandidate& candidate : candidates) {
+      WorkAssignment& work = current.residents.rows[candidate.resident_row].work;
+      if (work.kind == WorkKind::kNone) {
+        continue;
+      }
+      const auto his = std::ranges::find_if(
+          offered, [&work, &stands_on](const AssignmentJob& job) { return stands_on(work, job); });
+      if (his != offered.end() && PlacementTier(*his) == kWindowlessTier) {
+        work = WorkAssignment{};
+        let_go[candidate.resident_row] = true;
+        anybody_let_go = true;
+      }
+    }
+    if (anybody_let_go) {
+      jobs = offered;  // the windowless jobs stand uncrewed now, and join the queue
+      std::erase_if(jobs, crewed);
+    }
     std::erase_if(candidates, [&current](const AssignmentCandidate& candidate) {
       return current.residents.rows[candidate.resident_row].work.kind != WorkKind::kNone;
     });
@@ -604,10 +645,22 @@ class LaborSystem final : public ILaborSystem {
         in_traces < params.draught_horses ? params.draught_horses - in_traces : 0U;
     MeasureRoads(current, jobs, candidates, params);
     std::vector<std::uint8_t> rides_horse;
-    const std::vector<std::uint32_t> plan =
-        PlanDayAssignments(jobs, candidates, params, &rides_horse);
+    PlacementDiagnosis diagnosis;
+    const std::vector<std::uint32_t> plan = PlanDayAssignments(
+        jobs, candidates, params, &rides_horse, nullptr, anybody_let_go ? &diagnosis : nullptr);
+    const bool rain_holds = RainHoldsFieldWork(current);
     for (std::uint32_t index = 0; index < candidates.size(); ++index) {
       if (plan[index] == kNoJobAssigned) {
+        // LET GO AND NOT PLACED AGAIN: idle by this plan, and the book and the
+        // workbook say why — the morning counted him placed, with no reason.
+        // The top-up runs on no day off (CollectJobs offers the barn alone
+        // then, and the barn has a window).
+        const std::uint32_t row = candidates[index].resident_row;
+        if (let_go[row] && diagnosis.idle[index]) {
+          const IdleReason reason = BookedIdleReason(*diagnosis.idle[index], false, rain_holds);
+          ++current.ledger.current.idle_person_days[static_cast<std::size_t>(reason)];
+          current.residents.rows[row].idle_reason = reason;
+        }
         continue;
       }
       const AssignmentJob& job = jobs[plan[index]];
