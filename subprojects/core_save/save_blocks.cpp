@@ -191,7 +191,15 @@ static_assert(sizeof(NamedCharactersState) == 4,
               "NamedCharactersState changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<NamedCharactersState>() == 1,
               "NamedCharactersState gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<WorldState>() == 40,
+// 2026-10-01, save 121: the barter's trips (a table section of its own) and
+// the dry count with the fact's byte, 42 — the watch written at the world
+// block's end, after the readiness. Predicted before the build: BarterWatch
+// 16 bytes and five fields (a byte and a padding byte, three u16, the amount
+// at 8), 15 bytes saved (1 + 2 + 2 + 2 + 8).
+static_assert(sizeof(BarterWatch) == 16, "BarterWatch changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<BarterWatch>() == 5,
+              "BarterWatch gained or lost a field — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<WorldState>() == 42,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 
@@ -500,6 +508,15 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   // "three years running" is what the campaign accumulated, and that is the
   // whole reason this is state rather than a light stood up again on load.
   WriteReadiness(out, world.readiness);
+
+  // The exchange's dry count and the fact «жителям есть что менять» (needs
+  // design §6, save format 121): the fact is raised once a campaign, and a
+  // load after it must not raise it again.
+  out.WriteU8(world.barter.worth_starting_raised);
+  out.WriteU16(world.barter.dry_days_in_row);
+  out.WriteU16(world.barter.dry_givers);
+  out.WriteU16(world.barter.dry_takers);
+  out.WriteU64(static_cast<std::uint64_t>(world.barter.dry_equivalent));
 }
 
 void ReadWorldBlocks(LoadSource& source, WorldState* world) {
@@ -677,6 +694,13 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->named.elder = ResidentId{in.ReadU32()};
 
   ReadReadiness(source, world->readiness);
+
+  world->barter.worth_starting_raised =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "barter fact raised"));
+  world->barter.dry_days_in_row = in.ReadU16();
+  world->barter.dry_givers = in.ReadU16();
+  world->barter.dry_takers = in.ReadU16();
+  world->barter.dry_equivalent = static_cast<Grams>(in.ReadU64());
 }
 
 }  // namespace core

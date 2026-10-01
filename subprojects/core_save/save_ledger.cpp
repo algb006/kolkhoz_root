@@ -98,9 +98,12 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // Save 119 (0.37.59): the frost's toll by kind, a vector among vectors after
 // the autumn slaughter — 94 -> 95 fields, 912 + 32 A -> 912 + 33 A, no
 // padding moved; predicted before the build.
-static_assert(sizeof(YearLedger) == 912 + (33 * kAmountsSize),
+// Save 121 (0.37.66): what the yards bartered, a vector among vectors after
+// samogon_paid — 95 -> 96 fields, 912 + 33 A -> 912 + 34 A, no padding
+// moved; predicted before the build.
+static_assert(sizeof(YearLedger) == 912 + (34 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 95,
+static_assert(AggregateArity<YearLedger>() == 96,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 
 void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
@@ -124,6 +127,7 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   sink.WriteAmounts(DefKind::kResource, book.night_catch);
   sink.WriteAmounts(DefKind::kResource, book.stolen);
   sink.WriteAmounts(DefKind::kResource, book.samogon_paid);  // save 60
+  sink.WriteAmounts(DefKind::kResource, book.bartered);      // save 121
   sink.WriteAmounts(DefKind::kResource, book.yard_produce);
   sink.WriteAmounts(DefKind::kResource, book.plot_harvest);
   sink.WriteAmounts(DefKind::kResource, book.eaten);
@@ -258,6 +262,7 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.night_catch = source.ReadAmounts(DefKind::kResource);
   book.stolen = source.ReadAmounts(DefKind::kResource);
   book.samogon_paid = source.ReadAmounts(DefKind::kResource);
+  book.bartered = source.ReadAmounts(DefKind::kResource);
   book.yard_produce = source.ReadAmounts(DefKind::kResource);
   book.plot_harvest = source.ReadAmounts(DefKind::kResource);
   book.eaten = source.ReadAmounts(DefKind::kResource);

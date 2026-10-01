@@ -32,6 +32,7 @@
 #include <cstdint>
 #include <memory>
 
+#include "core_common/barter_state.h"
 #include "core_common/calendar.h"
 #include "core_common/district_car_state.h"
 #include "core_common/district_visit_state.h"
@@ -973,6 +974,14 @@ struct WorldState {
   /// What the distillers took off the stores this month (crime design §7);
   /// SAVED. night_trade_state.h.
   NightTheftTally night_theft;
+
+  /// The yards' walks to the barter counter this evening (needs design §6);
+  /// SAVED (save 121). barter_state.h.
+  BarterTripTable barter_trips;
+
+  /// The dry count of the exchange and the fact «жителям есть что менять»
+  /// (needs design §6); SAVED (save 121). barter_state.h.
+  BarterWatch barter;
 
   /// The sports field's month (leisure §12, «Погода для уличных занятий»;
   /// register 223; boss seq 127); SAVED (save 68). Counted day by day by

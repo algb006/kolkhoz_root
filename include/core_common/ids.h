@@ -124,6 +124,12 @@ struct NightOutingIdTag {};
 /// (core_common/night_trade_state.h).
 using NightOutingId = EntityId<NightOutingIdTag>;
 
+struct BarterTripIdTag {};
+
+/// @brief One yard's walk to the barter counter this evening
+/// (core_common/barter_state.h).
+using BarterTripId = EntityId<BarterTripIdTag>;
+
 struct DistrictVisitIdTag {};
 
 /// @brief One visit of the district announced or called and not arrived yet

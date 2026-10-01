@@ -181,6 +181,15 @@ struct YearLedger {
   /// beside its table. Save 60.
   ResourceAmounts samogon_paid;
 
+  /// What changed hands between the yards at the barter counter (needs
+  /// design §6, «Эпоха I — место обмена»; barter_state.h): grams by
+  /// resource, each gram counted once, on the giving side. A transfer
+  /// between pantries like samogon_paid above — the village's food does not
+  /// change by it, so it stands in no balance; it is here so the exchange
+  /// can be read by category beside the tables it filled. One writer, the
+  /// residents' decisions sub-step. Save 121.
+  ResourceAmounts bartered;
+
   ResourceAmounts yard_produce;  ///< Household herds' milk and eggs.
 
   ResourceAmounts plot_harvest;  ///< The gardens and the yards' own hay.

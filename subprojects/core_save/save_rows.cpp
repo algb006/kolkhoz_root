@@ -321,6 +321,14 @@ static_assert(AggregateArity<LandStripRow>() == 2,
 static_assert(sizeof(RoadWorkRow) == 32, "RoadWorkRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<RoadWorkRow>() == 9,
               "RoadWorkRow gained or lost a field — update the codec and VERSION_SAVE");
+// Save 121: a yard's walk to the barter counter — 40 and nine fields,
+// predicted before the build (three ids and the day, 16; three hour bytes
+// and five of padding to the first amount, 24; two amounts, 40; 35 bytes
+// saved: 4 + 4 + 4 + 4 + 1 + 1 + 1 + 8 + 8).
+static_assert(sizeof(BarterTripRow) == 40,
+              "BarterTripRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<BarterTripRow>() == 9,
+              "BarterTripRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<RoadStretch>() == 1,
               "RoadStretch gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(DistrictCarRow) == 24,
@@ -1574,6 +1582,44 @@ RoadWorkRow ReadRoadWorkRow(LoadSource& source) {
   row.winter_works = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "road work winter"));
   if (!(row.to_m >= row.from_m) || !(row.labor_days_remaining >= 0.0F)) {
     source.Fail("a road work's piece is reversed or its labour negative");
+  }
+  return row;
+}
+
+// ---------------------------------------------------------------------------
+// BarterTripRow — barter_state.h (2026-10-01, save 121)
+// ---------------------------------------------------------------------------
+
+void WriteBarterTripRow(SaveSink& sink, const BarterTripRow& row) {
+  ByteWriter& out = sink.Out();
+  WriteEntityId(out, row.resident);
+  WriteEntityId(out, row.family);
+  WriteEntityId(out, row.counter);
+  out.WriteU32(row.day);
+  out.WriteU8(row.hour_out);
+  out.WriteU8(row.hour_at);
+  out.WriteU8(row.hour_back);
+  out.WriteU64(static_cast<std::uint64_t>(row.given_equivalent));
+  out.WriteU64(static_cast<std::uint64_t>(row.taken_equivalent));
+}
+
+BarterTripRow ReadBarterTripRow(LoadSource& source) {
+  ByteReader& in = source.In();
+  BarterTripRow row;
+  row.resident = ReadEntityId<ResidentId>(in);
+  row.family = ReadEntityId<FamilyId>(in);
+  row.counter = ReadEntityId<UnitId>(in);
+  row.day = in.ReadU32();
+  row.hour_out = static_cast<std::uint8_t>(source.ReadEnumValue(0, 23, "barter trip hour"));
+  row.hour_at = static_cast<std::uint8_t>(source.ReadEnumValue(0, 23, "barter trip hour"));
+  row.hour_back = static_cast<std::uint8_t>(source.ReadEnumValue(0, 23, "barter trip hour"));
+  row.given_equivalent = static_cast<Grams>(in.ReadU64());
+  row.taken_equivalent = static_cast<Grams>(in.ReadU64());
+  if (row.hour_out > row.hour_at || row.hour_at > row.hour_back) {
+    source.Fail("a barter trip's hours are out of their order");
+  }
+  if (row.given_equivalent < 0 || row.taken_equivalent < 0) {
+    source.Fail("a barter trip's amount is negative");
   }
   return row;
 }

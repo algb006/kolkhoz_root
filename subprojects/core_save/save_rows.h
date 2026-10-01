@@ -17,6 +17,7 @@
 #ifndef CORE_SAVE_SAVE_ROWS_H_
 #define CORE_SAVE_SAVE_ROWS_H_
 
+#include "core_common/barter_state.h"
 #include "core_common/district_car_state.h"
 #include "core_common/district_visit_state.h"
 #include "core_common/extraction_state.h"
@@ -92,6 +93,11 @@ LandStripRow ReadLandStripRow(LoadSource& source);
 
 void WriteRoadWorkRow(SaveSink& sink, const RoadWorkRow& row);
 RoadWorkRow ReadRoadWorkRow(LoadSource& source);
+
+/// The evening's walk to the barter counter (save 121); the three hours are
+/// range-checked and must stand in their order.
+void WriteBarterTripRow(SaveSink& sink, const BarterTripRow& row);
+BarterTripRow ReadBarterTripRow(LoadSource& source);
 
 }  // namespace core
 

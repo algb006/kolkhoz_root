@@ -212,6 +212,10 @@ const char* KindName(core::EventKind kind) {
       return "road_demolished";
     case core::EventKind::kHerdFroze:
       return "herd_froze";
+    case core::EventKind::kBarterWorthStarting:
+      return "barter_worth_starting";
+    case core::EventKind::kBarterDay:
+      return "barter_day";
     case core::EventKind::kEventKindCount:
       return "COUNT";
   }

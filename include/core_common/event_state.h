@@ -592,6 +592,27 @@ enum class EventKind : std::uint8_t {
   /// Raised since 0.37.61.
   kHerdFroze,
 
+  /// (no subject) — «жителям есть что менять»: the yards' dry count of the
+  /// exchange (barter_state.h, BarterWatch) has met its three thresholds for
+  /// `barter_fact_days_in_row` days running. Once a campaign, never lowered;
+  /// BarterWatch::worth_starting_raised keeps it over a save. The host hands
+  /// the quest «поставить место обмена» on it, after `quest_e1_32` is closed
+  /// (needs design §6; boss-all-barter-counter-go [3], [7]). amount = the
+  /// day's dry equivalent, grams. kNotable. Seam key `barter_worth_starting`.
+  /// Declared in 0.37.66, a delivery ahead of the dry count that raises it.
+  /// @no_emit contract 0.37.66: raised by the dry count's delivery, the next
+  kBarterWorthStarting,
+
+  /// unit — the yards exchanged at a barter counter this evening: ONE event
+  /// a day for a counter, in the hour of its settlement, and none on a day
+  /// nothing changed hands (host's condition: not one per deal). unit = the
+  /// counter; amount = grams of the grain equivalent that changed hands. Who
+  /// came and with how much: the evening's BarterTripRow rows; by resource:
+  /// YearLedger::bartered. kRoutine. Seam key `barter_day`.
+  /// Declared in 0.37.66, two deliveries ahead of the exchange that raises it.
+  /// @no_emit contract 0.37.66: raised by the exchange's delivery, the third
+  kBarterDay,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

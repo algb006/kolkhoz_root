@@ -591,6 +591,27 @@ core::WorldState MakeWorld() {
   outing.hour_back = 3;
   core::AppendRow(world.night_outings, outing);
 
+  // A yard's walk to the barter counter this evening (save format 121):
+  // every field off its default, the two amounts apart so a codec that
+  // swapped them is seen.
+  core::BarterTripRow trip;
+  trip.resident = core::ResidentId{6};
+  trip.family = core::FamilyId{2};
+  trip.counter = core::UnitId{9};
+  trip.day = 147;
+  trip.hour_out = 18;
+  trip.hour_at = 19;
+  trip.hour_back = 20;
+  trip.given_equivalent = 4'250;
+  trip.taken_equivalent = 4'249;
+  core::AppendRow(world.barter_trips, trip);
+  // The exchange's dry count and its fact (save format 121).
+  world.barter.worth_starting_raised = 1;
+  world.barter.dry_days_in_row = 3;
+  world.barter.dry_givers = 5;
+  world.barter.dry_takers = 4;
+  world.barter.dry_equivalent = 23'500;
+
   // A couple waiting for a free house (save format 35).
   core::WeddingWaitRow couple;
   couple.bride = core::ResidentId{7};
@@ -693,6 +714,8 @@ core::WorldState MakeWorld() {
   world.ledger.closed.herd_frozen = Amounts({2});
   // The drink's price in kind (save 60): not empty either.
   world.ledger.closed.samogon_paid = Amounts({3'000, 5'000});
+  // What the yards bartered (save 121): two positions, apart from the drink's.
+  world.ledger.closed.bartered = Amounts({7'000, 1'250});
   // The standing crop the snow took (save 61): host's 150 t of potato.
   world.ledger.closed.lost_to_snow = Amounts({0, 150'000'000});
   // What the district seized above the limit (save 62).
@@ -1040,6 +1063,14 @@ core::WorldState MakeWitnessWorld() {
   witness.mts_column.worked_ha = 32.5F;
   witness.mts_column.field = core::FieldId{4};
   witness.mts_column.field_ha = 7.5F;
+
+  // Save 121: the exchange's dry count, every field off its default and no
+  // two alike.
+  witness.barter.worth_starting_raised = 1;
+  witness.barter.dry_days_in_row = 2;
+  witness.barter.dry_givers = 7;
+  witness.barter.dry_takers = 6;
+  witness.barter.dry_equivalent = 31'750;
   return witness;
 }
 
@@ -1218,6 +1249,13 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"readiness.blocks.population", U8(world.readiness.blocks.population)});
   chunks.push_back(
       {"readiness.satisfaction_stub_points", F32(world.readiness.satisfaction_stub_points)});
+  // Save 121: the exchange's dry count, at the block's end.
+  chunks.push_back({"barter.worth_starting_raised", U8(world.barter.worth_starting_raised)});
+  chunks.push_back({"barter.dry_days_in_row", U16(world.barter.dry_days_in_row)});
+  chunks.push_back({"barter.dry_givers", U16(world.barter.dry_givers)});
+  chunks.push_back({"barter.dry_takers", U16(world.barter.dry_takers)});
+  chunks.push_back(
+      {"barter.dry_equivalent", U64(static_cast<std::uint64_t>(world.barter.dry_equivalent))});
   return chunks;
 }
 
@@ -1322,7 +1360,7 @@ struct RecordedSection {
 /// beside it (manual/setup/57-versioning.md). No deliberate change: the codec
 /// has begun writing something else, which is the whole reason these numbers
 /// are here. Either way the number moves WITH ITS REASON, in the same commit.
-constexpr std::array<RecordedSection, 22> kRecordedPayload = {{
+constexpr std::array<RecordedSection, 23> kRecordedPayload = {{
     // Save 82: +15 — the seventh dictionary, tree_species (count 2, «pine»
     // 6, «birch» 7); predicted before the build, held.
     // Save 92: +2 — the map roads' dictionary, empty in this fixture's
@@ -1377,7 +1415,9 @@ constexpr std::array<RecordedSection, 22> kRecordedPayload = {{
     // weeks of seven floats; predicted 561 -> 627 before the build, held.
     // Save 118: +4 — the former elder's resident, a u32; predicted 627 -> 631
     // with the other sections unmoved before the build; held.
-    {"world", 631, 0x4124bcfd9fc54991ULL},
+    // Save 121: +15 — the exchange's dry count, a byte, three u16 and an i64;
+    // predicted 631 -> 646 before the build, held.
+    {"world", 646, 0x101275f8e0fb76f3ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -1527,6 +1567,9 @@ constexpr std::array<RecordedSection, 22> kRecordedPayload = {{
     // Save 104 (7e): one piece of road under work — 8 of table, 4 of id, 28 of
     // row. Predicted 36 before the build: the row's id forgotten, a miss.
     {"road_works", 40, 0x2144bd9d6bf7b0dcULL},
+    // Save 121: one walk to the barter counter — 8 of table, 4 of id, 35 of
+    // row. Predicted 47 before the build, held.
+    {"barter_trips", 47, 0x061d30c0df5d90a5ULL},
     // 2026-09-17, save 52: +56 bytes over the two books — the nine yearly
     // inputs the readiness index asks of a year and the year did not keep
     // (ledger_state.h): satisfaction's sum and count, able-bodied
@@ -1601,7 +1644,9 @@ constexpr std::array<RecordedSection, 22> kRecordedPayload = {{
     // books carry days of trudodni since (the reader's sum check).
     // Save 119: +12 — the frost's toll by kind, the closed book's 2 + 8, the
     // current's 2; predicted 2380 -> 2392 before the build.
-    {"ledger", 2392, 0x7b2b84c994f19aa8ULL},
+    // Save 121: +20 — what the yards bartered, the closed book's 2 + 16, the
+    // current's 2; predicted 2392 -> 2412 before the build, held.
+    {"ledger", 2412, 0xc51d4c334c388337ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -2340,6 +2385,26 @@ int main() {
                          loaded.night_outings.rows[0].hour_out == 23 &&
                          loaded.night_outings.rows[0].hour_back == 3,
                      "a night outing came back with who, what, the night, the place and the hours");
+  // Save 121. The two amounts are one gram apart in the fixture: a codec that
+  // read them in the other order is red here.
+  failures += Expect(
+      loaded.barter_trips.rows.size() == 1 && loaded.barter_trips.rows[0].resident.value == 6 &&
+          loaded.barter_trips.rows[0].family.value == 2 &&
+          loaded.barter_trips.rows[0].counter.value == 9 &&
+          loaded.barter_trips.rows[0].day == 147 && loaded.barter_trips.rows[0].hour_out == 18 &&
+          loaded.barter_trips.rows[0].hour_at == 19 &&
+          loaded.barter_trips.rows[0].hour_back == 20 &&
+          loaded.barter_trips.rows[0].given_equivalent == 4'250 &&
+          loaded.barter_trips.rows[0].taken_equivalent == 4'249,
+      "a walk to the barter counter came back with who, whose, where, the hours "
+      "and the two amounts each in its place (save 121)");
+  failures += Expect(loaded.barter.worth_starting_raised == 1 &&
+                         loaded.barter.dry_days_in_row == 3 && loaded.barter.dry_givers == 5 &&
+                         loaded.barter.dry_takers == 4 && loaded.barter.dry_equivalent == 23'500,
+                     "the exchange's fact and its dry count came back (save 121)");
+  failures += Expect(AmountAt(loaded.ledger.closed.bartered, 0) == 7'000 &&
+                         AmountAt(loaded.ledger.closed.bartered, 1) == 1'250,
+                     "what the yards bartered comes back in the closed book (save 121)");
   failures += Expect(!loaded.residents.rows.empty() &&
                          loaded.residents.rows[0].night_trade == core::NightTrade::kHunter &&
                          loaded.residents.rows[0].distiller_supplied_month == 7,
