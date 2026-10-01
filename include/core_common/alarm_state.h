@@ -566,7 +566,13 @@ enum class AlarmKind : std::uint8_t {
   /// [86]; econ horse-spring-starvation §4, §4а; alarms.csv
   /// `herd_hay_short_ahead`, rank 32). The kolkhoz herds' fodder, drained
   /// day by day by the herd feeding's own order and ceilings, runs short
-  /// before the cut of the NEXT year: the stores the herds may eat, the hay
+  /// before the NEAREST first scythes — this year's until its mowing begins,
+  /// next year's from then on (0.37.95; boss, econ-boss-hay-term-2026-10-01
+  /// [7]). Until then it looked from any day to the cut of the NEXT year: on
+  /// 1 January a year and a half and two calvings on, and the canon's bot
+  /// shed twenty cows a village on a shortage two haymakings away. PAST THE
+  /// NEAREST SCYTHES THE LAMP IS SILENT. What it counts: the stores the herds
+  /// may eat, the hay
   /// in the fields' heaps, the expected cut on its day (last year's, or in
   /// year 1 the meadows' ceiling × the mown share), the moves already made
   /// (feed lots on the road, a granary under construction, the night pasture
@@ -579,7 +585,8 @@ enum class AlarmKind : std::uint8_t {
   /// is always 0 — two positions, two kinds (boss [86] p. 1).
   /// Subject: `herd`, the first kolkhoz herd the forecast underfeeds;
   /// `resource` the feed that runs out FIRST (usually the hay — boss [86]
-  /// p. 3); `amount` the HEADS the forecast cannot feed on its worst day;
+  /// p. 3); `amount` the HEADS the forecast cannot feed on its worst day,
+  /// never more than the heads standing today (0.37.95);
   /// `days_ahead` the whole days to its first short day; `advice` the first
   /// move (AlarmAdvice).
   kHerdHayShortAhead,

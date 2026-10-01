@@ -73,6 +73,24 @@ void DrainFeedDay(const ProductionConfig& config,
                   std::vector<float>& held_kg,
                   std::vector<float>& covered);
 
+/// @brief How far the fodder's forecast looks (0.37.95; boss, econ-boss-hay-
+///        term-2026-10-01 [7]).
+enum class FeedHorizon : std::uint8_t {
+  /// To the NEAREST first scythes: before this year's cut, to its first day;
+  /// from the mowing on, to next year's. The yellow lamp's horizon — a
+  /// shortage past the nearest cut is two haymakings away and no lamp's
+  /// business. In year 1's mowing window there is nothing to forecast yet.
+  kNearestScythes,
+
+  /// To the first scythes of the NEXT year from any day of this one (in year
+  /// 1 before the first cut, to this year's): this year's cut in the income,
+  /// a winter and a spring beyond it. The question of a head bought to stay
+  /// («would the hay feed one more horse», kTooFewHorses), and the lamp's own
+  /// horizon until 0.37.96 — from 1 January a year and a half and two
+  /// calvings on.
+  kNextYearsScythes,
+};
+
 /// @brief The forecast's answer.
 struct HerdFeedForecast {
   /// True when some day before the horizon a kolkhoz herd is not fed in full.
@@ -81,8 +99,7 @@ struct HerdFeedForecast {
   /// Whole game days from today to the first such day (0: today).
   std::uint16_t days_ahead = 0;
 
-  /// The days forecast: to the next year's first scythes (in year 1 before
-  /// the first cut, to this year's).
+  /// The days forecast, by the FeedHorizon asked.
   std::uint16_t horizon_days = 0;
 
   /// The herd underfed first; invalid for a head that has not arrived yet
@@ -93,12 +110,14 @@ struct HerdFeedForecast {
   ResourceId first_short;
 
   /// The most heads unfed on one day: each underfed herd's uncovered units
-  /// over its units a head, summed, rounded up.
+  /// over its units a head, summed, rounded up — and NEVER MORE THAN THE
+  /// HEADS STANDING TODAY (with the stock on the road): the calves to come
+  /// are in the need, not in the number the chairman is told (0.37.95).
   std::int64_t heads_short = 0;
 };
 
-/// @brief The kolkhoz herds' fodder from today to the first scythes of the
-///        next year — the day the new cut starts to feed them.
+/// @brief The kolkhoz herds' fodder from today to the first scythes the
+///        horizon names — the day a new cut starts to feed them.
 ///
 /// Day by day: the day's need of each herd by the day's month (FeedNeedUnits;
 /// the team's summer discount only in a month the night pasture's standing
@@ -117,15 +136,27 @@ struct HerdFeedForecast {
 /// @param one_more_horse One adult more in the kolkhoz's team (kTooFewHorses's
 ///        question; boss [72] p. 2): the first team herd, or a herd of one if
 ///        the farm has none.
+/// @param horizon How far to look. TWO READERS, TWO HORIZONS, ON PURPOSE
+///        (boss, 2026-10-02): the yellow lamp asks kNearestScythes — it warns
+///        of a shortage the chairman can still act on before the next cut;
+///        kTooFewHorses's «would the hay feed one more horse» asks
+///        kNextYearsScythes — a horse is bought to stay, and its question is
+///        honestly a year's. Do not bring them to one.
 /// @return short_ahead false with no kolkhoz herd, no feed roster or no
 ///         horizon.
 HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
                                   const WorldState& world,
-                                  bool one_more_horse);
+                                  bool one_more_horse,
+                                  FeedHorizon horizon = FeedHorizon::kNextYearsScythes);
 
 /// @brief The heads a standing kolkhoz herd will have `days` days from today
 ///        by the forecast's own projection (births by RunBirths's rule and
-///        gates, the maturing by the kind's months; no deaths, no culls) — the
+///        gates, the maturing by the kind's months, the young males the herd
+///        has no room for culled as they grow up; no deaths). THE CULL IS IN
+///        since 0.37.57: this line said «no deaths, no culls» until 0.37.95,
+///        and on 1 October 2026 it was read as the code and sent to boss as
+///        the cause of the lamp's number; the check «a cow herd's year and a
+///        half» holds the forecast to the herd day (110.0 against 110) — the
 ///        door the offspring's test holds against a real run (0.37.57). 0 for
 ///        a herd not in `world`.
 float ForecastHerdHeads(const ProductionConfig& config,
