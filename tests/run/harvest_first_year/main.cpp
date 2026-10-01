@@ -312,9 +312,13 @@ int main() {
   failures +=
       run::Expect(start.fields.rows.size() == 26, "genesis lays out the arable and the meadows");
   failures += run::Expect(start.units.rows.size() >= 29, "genesis places the start units");
-  // 39 cows, 16 billeted horses, and every yard's own goats and hens.
+  // The cows' herd, 16 billeted horses, and what start_yard_holdings.csv
+  // lays out: goats in 20 yards, hens in 14, the pigs in one — 52 herds.
+  // It was 60 while every yard was handed goats and hens alike (until
+  // 0.37.78); the count is pinned so that a table that lost its rows, or a
+  // genesis that stopped reading it, is seen here.
   failures +=
-      run::Expect(start.herds.rows.size() == 60, "genesis places the kolkhoz and yard herds");
+      run::Expect(start.herds.rows.size() == 52, "genesis places the kolkhoz and yard herds");
 
   const std::uint32_t rye = resources->FindRowByKey("rye");
   const std::uint32_t oat = resources->FindRowByKey("oat");

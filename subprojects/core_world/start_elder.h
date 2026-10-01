@@ -41,10 +41,13 @@ StartElder ReadStartElder(const ITableSet& tables);
 
 /// @brief Makes the elder: the oldest man within the band of the family in
 /// `elder_yard`. When that family has none, the housed family whose oldest man
-/// within the band is the oldest of all (the first in row order among equals)
+/// within the band is the oldest (the first in row order among equals)
 /// changes houses with it — the units' `household` and the families' `house`
-/// both — so the elder lives in `elder_yard` all the same. Writes
-/// NamedCharactersState::elder.
+/// both — so the elder lives in `elder_yard` all the same: first among the
+/// families of `like_yards`, the yards the start lays out like his own, and
+/// only when none of them has such a man among the whole village (logged).
+/// Writes NamedCharactersState::elder.
+/// @param like_yards The houses searched first; empty searches the village.
 /// @pre The yards are given out (every family's `house` is set) and nothing
 ///      has been placed by the house yet — a swap afterwards would leave it
 ///      at the other yard.
@@ -54,6 +57,7 @@ StartElder ReadStartElder(const ITableSet& tables);
 void SeatStartElder(const StartElder& band,
                     float life_speedup,
                     UnitId elder_yard,
+                    std::span<const UnitId> like_yards,
                     WorldState& world);
 
 /// @brief The door's answer (elder_view.h): the elder if he is among the

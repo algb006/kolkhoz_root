@@ -95,6 +95,7 @@ StartElder ReadStartElder(const ITableSet& tables) {
 void SeatStartElder(const StartElder& band,
                     float life_speedup,
                     UnitId elder_yard,
+                    std::span<const UnitId> like_yards,
                     WorldState& world) {
   world.named.elder = ResidentId{};
   const std::uint32_t yard_row = FindRow(world.units, elder_yard);
@@ -113,20 +114,40 @@ void SeatStartElder(const StartElder& band,
   // THE YARD'S FAMILY HAS NO MAN OF THE AGE: the family with the oldest one
   // moves in, and the yard's family takes its house — the start's yards are
   // all old houses, so neither family is the poorer for it.
+  //
+  // AMONG THE YARDS LIKE HIS OWN FIRST (boss-all-barter-counter-go [22]-[24],
+  // 0.37.78): the start's yards differ since the holdings' table, and the
+  // elder's yard is a family of four's; a swap with a family of five from
+  // the middle of the street put five eaters on the yard the table laid out
+  // for four, and four on theirs. Until then the oldest man of the whole
+  // village was taken.
   OldestMan best;
   std::uint32_t best_row = kNoRow;
-  for (std::uint32_t row = 0; row < world.families.rows.size(); ++row) {
-    // Only a family under a roof: a swap with a houseless one would leave the
-    // yard's family out of doors (more households than yards).
-    if (FindRow(world.units, world.families.rows[row].house) == kNoRow) {
-      continue;
+  const auto search = [&](bool like_only) {
+    for (std::uint32_t row = 0; row < world.families.rows.size(); ++row) {
+      // Only a family under a roof: a swap with a houseless one would leave
+      // the yard's family out of doors (more households than yards).
+      const UnitId house = world.families.rows[row].house;
+      if (FindRow(world.units, house) == kNoRow ||
+          (like_only && std::ranges::find(like_yards, house) == like_yards.end())) {
+        continue;
+      }
+      const OldestMan candidate =
+          OldestManInBand(band, life_speedup, world, world.families.row_ids[row]);
+      if (candidate.resident.value != kInvalidEntityIdValue &&
+          (best_row == kNoRow || candidate.age_years > best.age_years)) {
+        best = candidate;
+        best_row = row;
+      }
     }
-    const OldestMan candidate =
-        OldestManInBand(band, life_speedup, world, world.families.row_ids[row]);
-    if (candidate.resident.value != kInvalidEntityIdValue &&
-        (best_row == kNoRow || candidate.age_years > best.age_years)) {
-      best = candidate;
-      best_row = row;
+  };
+  search(true);
+  if (best_row == kNoRow) {
+    search(false);
+    if (best_row != kNoRow && !like_yards.empty()) {
+      LogWarning(
+          "genesis: no man of the elder's age in the yards like his — the elder's family "
+          "comes from another part of the village");
     }
   }
   if (best_row == kNoRow) {

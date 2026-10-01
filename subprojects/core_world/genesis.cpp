@@ -731,6 +731,75 @@ void BilletStartHerds(WorldState& world, const ITableSet& tables) {
   }
 }
 
+/// One yard's row of start_yard_holdings.csv: the heads it keeps on the
+/// first morning. `guns` of the table has no reader yet (the human: guns
+/// come with hunting).
+struct YardHolding {
+  UnitId yard;
+  std::uint16_t goats = 0;
+  std::uint16_t chickens = 0;
+  std::uint16_t pigs = 0;
+};
+
+/// The most heads of one kind a row may name: a typo's guard, well above
+/// any yard's cap (livestock.csv `household_cap_heads`).
+constexpr std::int64_t kMostYardHeads = 100;
+
+/// Reads start_yard_holdings.csv against the yards placed. An absent table
+/// (unless the caller allowed the stubs), a row naming a yard the layout
+/// does not have, a missing column or a count that is not a whole number of
+/// 0..kMostYardHeads refuses the world, by name.
+bool ReadYardHoldings(const ITableSet& tables,
+                      StubTables stubs,
+                      std::span<const std::pair<std::string_view, UnitId>> placed,
+                      std::vector<YardHolding>& holdings,
+                      std::string& error) {
+  const ITable* const table = tables.FindTable("start_yard_holdings");
+  if (table == nullptr) {
+    // The layout is there (the caller parsed it) and the yards' table is
+    // not: a village of twenty-one yards with not a goat among them would
+    // be a wrong world built in silence. A caller that allowed the stubs
+    // (a unit test's handful of tables) gets the yards with nothing.
+    if (stubs == StubTables::kRefused) {
+      error = "start_yard_holdings: the table is missing beside start_layout";
+      return false;
+    }
+    return true;
+  }
+  const std::uint32_t yard_col = table->FindColumn("yard");
+  const std::array<std::uint32_t, 3> columns = {
+      table->FindColumn("goats"), table->FindColumn("chickens"), table->FindColumn("pigs")};
+  if (yard_col == kNoTableColumn || std::ranges::find(columns, kNoTableColumn) != columns.end()) {
+    error = "start_yard_holdings: a column of yard, goats, chickens, pigs is missing";
+    return false;
+  }
+  for (std::uint32_t row = 0; row < table->RowCount(); ++row) {
+    const std::string_view key = table->CellText(row, yard_col);
+    YardHolding holding;
+    for (const std::pair<std::string_view, UnitId>& entry : placed) {
+      if (entry.first == key) {
+        holding.yard = entry.second;
+      }
+    }
+    if (holding.yard.value == kInvalidEntityIdValue) {
+      error = "start_yard_holdings: the yard '" + std::string(key) + "' is not in the start layout";
+      return false;
+    }
+    std::array<std::uint16_t*, 3> heads = {&holding.goats, &holding.chickens, &holding.pigs};
+    for (std::size_t index = 0; index < columns.size(); ++index) {
+      const std::optional<std::int64_t> count = table->CellInteger(row, columns[index]);
+      if (!count.has_value() || *count < 0 || *count > kMostYardHeads) {
+        error = "start_yard_holdings: the yard '" + std::string(key) +
+                "' names heads that are not a whole number of 0.." + std::to_string(kMostYardHeads);
+        return false;
+      }
+      *heads[index] = static_cast<std::uint16_t>(*count);
+    }
+    holdings.push_back(holding);
+  }
+  return true;
+}
+
 /// The start's animals (start canon §10-§11 and the household canon of
 /// livestock design §2, boss answer 2026-08-30 to registry question 148).
 ///
@@ -742,7 +811,10 @@ void BilletStartHerds(WorldState& world, const ITableSet& tables) {
 /// ("the cows are handed over, every last one"). The canonical ~1.2 t of
 /// milk a yard is TWO GOATS, which is what made the coverage figure add up
 /// all along.
-void PlaceHerds(WorldState& world, const ITableSet& tables, UnitId stock_yard) {
+void PlaceHerds(WorldState& world,
+                const ITableSet& tables,
+                UnitId stock_yard,
+                std::span<const YardHolding> holdings) {
   const ITable* livestock = tables.FindTable("livestock");
   if (livestock == nullptr) {
     return;
@@ -774,15 +846,30 @@ void PlaceHerds(WorldState& world, const ITableSet& tables, UnitId stock_yard) {
             false,
             kStartTeamYearsShortOfOldAge);
   }
-  for (std::uint32_t yard = 0; yard < yards; ++yard) {
-    const FamilyId home = world.families.row_ids[yard];
-    AddHerd(world, *livestock, rng, "goat", 2, 0, UnitId{}, home, true);
-    AddHerd(world, *livestock, rng, "chicken", 8, 0, UnitId{}, home, true);
-  }
-  // A pig at every twentieth yard: "only the well-off, and no more than a
-  // fifth of the yards" — a sow and a boar, or it is not a herd.
-  for (std::uint32_t yard = 0; yard + 1U < yards; yard += 20U) {
-    AddHerd(world, *livestock, rng, "pig", 2, 1, UnitId{}, world.families.row_ids[yard], true);
+  // WHAT THE YARDS KEEP IS THE TABLE'S (start_yard_holdings.csv; the human's
+  // «дворы разные», 2026-10-01; 0.37.78). Until then every yard was handed
+  // two goats and eight hens and every twentieth a pair of pigs, by literals
+  // here — twenty-one yards alike, with nothing to exchange at the counter
+  // (the exchange's first print: the fact rose on no seed). The yard keeps
+  // its row whoever lives in it: a family that changed houses with the
+  // elder's finds the other yard's animals. A yard with no row, and a world
+  // with no table, keeps nothing.
+  for (const YardHolding& holding : holdings) {
+    const std::uint32_t unit_row = FindRow(world.units, holding.yard);
+    const FamilyId home = unit_row != kNoRow ? world.units.rows[unit_row].household : FamilyId{};
+    if (home.value == kInvalidEntityIdValue) {
+      continue;  // a yard nobody lives in keeps no animals
+    }
+    if (holding.goats > 0) {
+      AddHerd(world, *livestock, rng, "goat", holding.goats, 0, UnitId{}, home, true);
+    }
+    if (holding.chickens > 0) {
+      AddHerd(world, *livestock, rng, "chicken", holding.chickens, 0, UnitId{}, home, true);
+    }
+    if (holding.pigs > 0) {
+      // A sow and a boar, or it is not a herd: one male of any pigs kept.
+      AddHerd(world, *livestock, rng, "pig", holding.pigs, 1, UnitId{}, home, true);
+    }
   }
   BilletStartHerds(world, tables);
 }
@@ -1150,6 +1237,15 @@ void PlaceStartStock(WorldState& world,
 /// «постоянный двор во всех партиях»).
 constexpr std::string_view kElderYardKey = "yard_21";
 
+/// The yards whose families are built like the elder's own — the couples
+/// with two children of the east end (genesis hands the families out in the
+/// layout's order: yards 1-5 the old couples, 6 a single, 7-15 the fives,
+/// 16-21 the fours). A family that changes houses with the elder's yard is
+/// looked for here first, so that the yard's table (start_yard_holdings.csv)
+/// meets the eaters it was laid out for (boss-all-barter-counter-go [24]).
+constexpr std::array<std::string_view, 5> kYardsLikeTheElders = {
+    "yard_16", "yard_17", "yard_18", "yard_19", "yard_20"};
+
 /// @brief The start economy of the canon (start.md §10-§11): the surviving
 /// units with the stores in the church, 160 ha of arable land with the
 /// suggested first-year plan of the reference run (70 ha sown: 62% grain,
@@ -1282,7 +1378,11 @@ bool BuildStartEconomy(WorldState& world,
   // The former elder lives in yard_21 in every game (society design §1а) —
   // before anything is placed by a house, since the family may change houses
   // for it (start_elder.h).
-  SeatStartElder(elder_band, life_speedup, unit_by_key(kElderYardKey), world);
+  std::vector<UnitId> like_yards;
+  for (const std::string_view key : kYardsLikeTheElders) {
+    like_yards.push_back(unit_by_key(key));
+  }
+  SeatStartElder(elder_band, life_speedup, unit_by_key(kElderYardKey), like_yards, world);
 
   // THE OLD HOUSES START PART WORN (start design §4), and not all at the
   // same number: a spread puts their collapses years apart instead of
@@ -1449,7 +1549,16 @@ bool BuildStartEconomy(WorldState& world,
   // year and the winter rye that follows it must follow a stand that HAS
   // been cut.
 
-  PlaceHerds(world, tables, stock_yard);
+  std::vector<YardHolding> holdings;
+  std::string holdings_error;
+  if (!ReadYardHoldings(tables, stubs, placed, holdings, holdings_error)) {
+    LogError("genesis: " + holdings_error);
+    if (error != nullptr) {
+      *error = holdings_error;
+    }
+    return false;
+  }
+  PlaceHerds(world, tables, stock_yard, holdings);
   return true;
 }
 

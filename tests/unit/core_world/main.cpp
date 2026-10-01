@@ -1242,6 +1242,11 @@ int CheckTheElderDoor() {
   std::uint32_t seated = 0;
   std::uint32_t moved_in = 0;
   std::uint32_t houses_astray = 0;
+  // The yards like his own (0.37.78): rows 15..19 are yards 16-20's families
+  // before the swap, row 20 his yard's own.
+  constexpr std::uint32_t kFirstLikeRow = 15;
+  std::uint32_t from_elsewhere = 0;
+  std::uint32_t passed_over = 0;
   std::unique_ptr<core::ISimulation> last;
   for (std::uint64_t seed = 1931; seed <= 1939; ++seed) {
     core::StandardSimulationConfig config;
@@ -1272,6 +1277,21 @@ int CheckTheElderDoor() {
     // a family of another row there came by the swap.
     const std::uint32_t family_row = FindRow(world.families, elder.family);
     moved_in += family_row != world.families.rows.size() - 1 ? 1U : 0U;
+    // AMONG THE YARDS LIKE HIS OWN FIRST: an elder's family from the rest of
+    // the village is right only when no family of rows 15..19 has a man of
+    // the age — one passed over is the rule broken.
+    if (family_row < kFirstLikeRow) {
+      ++from_elsewhere;
+      for (const core::ResidentRow& person : world.residents.rows) {
+        const std::uint32_t his = FindRow(world.families, person.family);
+        const float years =
+            core::BiologicalAgeYears(kLifeSpeedup, person.birth_day, world.calendar.day);
+        if (his >= kFirstLikeRow && his != core::kNoRow && person.sex == core::Sex::kMale &&
+            years >= 45.0F && years <= 60.0F) {
+          ++passed_over;
+        }
+      }
+    }
     // AND BOTH SIDES OF THE SWAP: every family's house names that family
     // back, and no two families share a house — a swap that moved only the
     // elder's side would leave the other yard pointing at him.
@@ -1286,8 +1306,12 @@ int CheckTheElderDoor() {
   }
   std::cout << "  the elder: seated in yard_21 on " << seated << " of 9 seeds, " << moved_in
             << " of them by the swap, families whose house does not name them back "
-            << houses_astray << "\n";
+            << houses_astray << "; his family from outside yards 16-21 on " << from_elsewhere
+            << " seeds, men of the age passed over in yards 16-21 there " << passed_over << "\n";
   failures += Expect(seated == 9, "elder: a man of 45..60 in yard_21 on every canon seed");
+  failures += Expect(from_elsewhere < 9 && passed_over == 0,
+                     "elder: his family comes from yards 16-21 wherever one of them has a man of "
+                     "the age, and from the rest of the village only when none has");
   failures += Expect(moved_in > 0 && houses_astray == 0,
                      "elder: the swap ran on some seed, and left every family in a house that "
                      "names it back");
@@ -1321,6 +1345,104 @@ int CheckTheElderDoor() {
   failures += Expect(after_death.resident.value == core::kInvalidEntityIdValue &&
                          after_death.house.value == core::kInvalidEntityIdValue,
                      "elder: no elder among the living — both ids invalid");
+  return failures;
+}
+
+/// THE YARDS' HOLDINGS ON THE SHIPPED TABLES (0.37.78; the human's «дворы
+/// разные», 2026-10-01): every row of start_yard_holdings.csv is found in
+/// the world as the household herds of the family living in that yard —
+/// goats, hens and pigs by the row, nothing a row does not name — on a seed
+/// where the elder's swap ran, so «the yard keeps its row whoever lives in
+/// it» is asked too. The table is read here by its own columns, not through
+/// genesis: a reader that dropped a column would agree with itself.
+int CheckTheYardsHoldings() {
+  const auto shipped = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
+  if (Expect(shipped != nullptr, "holdings: the shipped tables load") != 0) {
+    return 1;
+  }
+  const core::ITable* const holdings = shipped->FindTable("start_yard_holdings");
+  const core::ITable* const layout = shipped->FindTable("start_layout");
+  const core::ITable* const livestock = shipped->FindTable("livestock");
+  if (Expect(holdings != nullptr && layout != nullptr && livestock != nullptr,
+             "holdings: the set carries the holdings, the layout and the livestock") != 0) {
+    return 1;
+  }
+  core::StandardSimulationConfig config;
+  config.tables = shipped.get();
+  config.world_seed = 1931;
+  config.worker_count = 1;
+  const std::unique_ptr<core::ISimulation> simulation = core::CreateStandardSimulation(config);
+  if (Expect(simulation != nullptr, "holdings: the shipped set assembles") != 0) {
+    return 1;
+  }
+  const core::WorldState& world = simulation->CompletedState();
+  const std::array<std::string_view, 3> kinds = {"goat", "chicken", "pig"};
+  const std::array<std::string_view, 3> columns = {"goats", "chickens", "pigs"};
+  // family row x kind -> household-owned heads.
+  std::vector<std::array<std::int64_t, 3>> kept(world.families.rows.size(),
+                                                std::array<std::int64_t, 3>{});
+  std::int64_t other_kinds = 0;
+  for (const core::HerdRow& herd : world.herds.rows) {
+    if (herd.household_owned == 0) {
+      continue;
+    }
+    const std::uint32_t family = FindRow(world.families, herd.household);
+    bool known = false;
+    for (std::size_t kind = 0; kind < kinds.size(); ++kind) {
+      if (family != core::kNoRow && herd.kind.value == livestock->FindRowByKey(kinds[kind])) {
+        kept[family][kind] += herd.adult_count;
+        known = true;
+      }
+    }
+    other_kinds += known ? 0 : 1;
+  }
+  std::uint32_t rows_right = 0;
+  std::array<std::int64_t, 3> named = {};
+  std::vector<std::uint8_t> family_named(world.families.rows.size(), 0);
+  const std::uint32_t yard_col = holdings->FindColumn("yard");
+  for (std::uint32_t row = 0; row < holdings->RowCount(); ++row) {
+    const std::uint32_t layout_row = layout->FindRowByKey(holdings->CellText(row, yard_col));
+    if (layout_row == core::kNoTableRow) {
+      continue;
+    }
+    const float x = layout->CellReal(layout_row, layout->FindColumn("x_m")).value_or(-1.0F);
+    const float y = layout->CellReal(layout_row, layout->FindColumn("y_m")).value_or(-1.0F);
+    std::uint32_t family = core::kNoRow;
+    for (const core::UnitRow& unit : world.units.rows) {
+      if (std::abs(unit.position.x - x) < 0.5F && std::abs(unit.position.y - y) < 0.5F) {
+        family = FindRow(world.families, unit.household);
+      }
+    }
+    bool right = family != core::kNoRow;
+    for (std::size_t kind = 0; kind < kinds.size(); ++kind) {
+      const std::int64_t heads =
+          holdings->CellInteger(row, holdings->FindColumn(columns[kind])).value_or(-1);
+      named[kind] += heads;
+      right = right && kept[family][kind] == heads;
+    }
+    if (family != core::kNoRow) {
+      family_named[family] = 1;
+    }
+    rows_right += right ? 1U : 0U;
+  }
+  std::int64_t unnamed_heads = 0;
+  for (std::uint32_t family = 0; family < kept.size(); ++family) {
+    if (family_named[family] == 0) {
+      unnamed_heads += kept[family][0] + kept[family][1] + kept[family][2];
+    }
+  }
+  std::cout << "  the holdings: " << rows_right << " of " << holdings->RowCount()
+            << " yards keep their row; the table names " << named[0] << " goats, " << named[1]
+            << " hens, " << named[2] << " pigs; heads in yards with no row " << unnamed_heads
+            << ", household herds of other kinds " << other_kinds << "\n";
+  int failures = 0;
+  failures += Expect(holdings->RowCount() == 21 && rows_right == holdings->RowCount(),
+                     "holdings: each of the 21 yards keeps the goats, hens and pigs of its row");
+  failures +=
+      Expect(named[0] > 0 && named[1] > 0 && named[2] > 0,
+             "holdings: the table names goats, hens and pigs — a yard is not alike another");
+  failures += Expect(unnamed_heads == 0 && other_kinds == 0,
+                     "holdings: a yard keeps nothing its row does not name");
   return failures;
 }
 
@@ -2494,6 +2616,7 @@ int main() {
   failures += CheckJunctionsDoor();
   failures += CheckTheEraReadinessDoor();
   failures += CheckTheElderDoor();
+  failures += CheckTheYardsHoldings();
   failures += CheckStartLiteracyGuarantees();
   failures += CheckStartLiteracyOrder();
   failures += CheckTheIssueNormDoors();
@@ -3530,12 +3653,9 @@ int main() {
     // suggest_cattle_yard) — a run's reader, not the core's. The core's is the
     // start quest's facts, «стоит ли юнит на подсказке» (queue item 6); out of
     // this list with that door.
-    // start_yard_holdings.csv came with boss's export of 01.10 (0.37.70; the
-    // human's «дворы разные и в прологе должны соответствовать игре»,
-    // boss-all-barter-counter-go [15], [26]): what stands in each start yard.
-    // Its reader is genesis, in the delivery of the yards' holdings — until
-    // then every yard has two goats and eight hens by genesis's own hand.
-    const std::array<std::string_view, 2> not_read_yet = {"suggestions", "start_yard_holdings"};
+    // start_yard_holdings.csv stood here from boss's export of 01.10
+    // (0.37.70) until genesis read it (0.37.78).
+    const std::array<std::string_view, 1> not_read_yet = {"suggestions"};
     const fs::path doctored = fs::temp_directory_path() / "unit_core_world_missing_table";
     for (const fs::directory_entry& file : fs::directory_iterator(fs::path(KOLKHOZ_TABLES_DIR))) {
       if (file.path().extension() != ".csv") {

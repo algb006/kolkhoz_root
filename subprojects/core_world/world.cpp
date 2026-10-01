@@ -1008,6 +1008,9 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
   // boss-core-layers-doors-2026-09-29 [4]): genesis draws the components,
   // and the satisfaction they make read the struct's 55 until the first day.
   residents->SettleStartMetrics(start);
+  // AND THE START'S YEAR (0.37.78): the first year's limit points, which the
+  // first step used to bring.
+  production->SettleStartYear(start);
   // THE MAP'S JUNCTIONS (0.37.27; layers design §15а, register 300): refused
   // on the same terms as the layout — the reader names the row.
   std::vector<JunctionView> junctions;

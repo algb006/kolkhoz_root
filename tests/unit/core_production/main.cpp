@@ -2097,6 +2097,108 @@ int CheckElectrification() {
   return failures;
 }
 
+/// THE YARD'S OFFSPRING REPLACES, IT DOES NOT ADD (0.37.78; household design
+/// §2, «Приплод»; econ's acceptance of 0.37.70): a kind a yard may keep
+/// three of, living 2.5 years at the least, so an adult is old from 1.5; no
+/// births in the window — the young are laid in by hand.
+int CheckYardOffspringReplaces() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.livestock.resize(3);
+  core::LivestockDef& goat = config.livestock[2];
+  goat.sexed = 0;
+  goat.newborn_game_months = 1.0F;
+  goat.adult_from_game_months = 2.0F;
+  goat.life_game_years_min = 2.5F;
+  goat.life_game_years_max = 30.0F;  // nobody dies of age in the window
+  goat.births_per_game_year = 0.0F;
+  goat.meat_kg_per_head = 10.0F;
+  goat.household_self_fed = 1;
+  goat.household_cap_heads = 3.0F;
+  goat.household_group = 1;
+  constexpr std::uint32_t kDays = 40;  // 0.83 of a year: the young are grown, the adults a year on
+
+  struct Yard {
+    core::WorldState world;
+    core::HerdId herd;
+  };
+
+  const auto yard_with = [](std::uint16_t adults,
+                            float youngest,
+                            float oldest,
+                            std::uint16_t newborns,
+                            std::uint16_t juveniles) {
+    Yard yard{.world = MakeHerdWorld(0.0F), .herd = {}};
+    core::FamilyRow family;
+    family.pantry.assign(3, 0);
+    core::HerdRow herd;
+    herd.kind = core::LivestockKindId{2};
+    herd.household = AppendRow(yard.world.families, family);
+    herd.household_owned = 1;
+    herd.adult_count = adults;
+    herd.newborn_count = newborns;
+    herd.juvenile_count = juveniles;
+    herd.adult_age_game_years_total = static_cast<float>(adults) * (youngest + oldest) / 2.0F;
+    if (adults > 0) {
+      core::WidenAdultAgeBand(herd, 0, adults, youngest, oldest);
+    }
+    yard.herd = AppendRow(yard.world.herds, herd);
+    return yard;
+  };
+  const auto knifed = [](const core::WorldState& world) {
+    const core::ResourceAmounts& gone = world.ledger.current.herd_surplus_slaughtered;
+    return gone.size() > 2 ? gone[2] : 0;
+  };
+  // Two young adults and a kid: grown, it finds nobody to replace and leaves
+  // — the yard keeps its two, and the kid is the yard's meat.
+  {
+    Yard yard = yard_with(2, 0.2F, 0.2F, 0, 1);
+    RunHerdDays(config, yard.world, kDays);
+    const core::HerdRow& herd = yard.world.herds.rows[0];
+    failures +=
+        Expect(herd.adult_count == 2 && herd.juvenile_count == 0 && knifed(yard.world) == 1 &&
+                   yard.world.families.rows[0].pantry[2] == 10 * core::kGramsPerKilogram,
+               "yard young: with no old adult the grown head leaves and the yard keeps two");
+  }
+  // One of the two is old (1.6 of 2.5): the kid takes her place, the old one
+  // is the meat, and the yard's oldest is the young adult of before.
+  {
+    Yard yard = yard_with(1, 0.2F, 0.2F, 0, 1);
+    {
+      core::HerdRow& both = yard.world.herds.rows[0];
+      core::AddAdultAgeGroup(both, 1, 1, 1.6F, 1.6F);  // a band of her own, a year apart
+      both.adult_count = 2;
+      both.adult_age_game_years_total = 1.8F;
+    }
+    RunHerdDays(config, yard.world, kDays);
+    const core::HerdRow& herd = yard.world.herds.rows[0];
+    failures +=
+        Expect(herd.adult_count == 2 && herd.juvenile_count == 0 && knifed(yard.world) == 1 &&
+                   herd.adult_age_max_game_years < 1.5F,
+               "yard young: the grown head takes the old adult's place, and the old one goes");
+  }
+  // A yard with no adult keeps the first that grows up — and only the first.
+  {
+    Yard yard = yard_with(0, 0.0F, 0.0F, 0, 2);
+    RunHerdDays(config, yard.world, kDays);
+    const core::HerdRow& herd = yard.world.herds.rows[0];
+    failures += Expect(herd.adult_count == 1 && herd.juvenile_count == 0 && knifed(yard.world) == 1,
+                       "yard young: a yard with no adult keeps the first grown head and no more");
+  }
+  // THE YOUNG ARE NOT CUT AT BIRTH: one adult and three new-born stand four
+  // heads in a yard capped at three, and stand there the next day.
+  {
+    Yard yard = yard_with(1, 0.2F, 0.2F, 3, 0);
+    RunHerdDays(config, yard.world, 1);
+    const core::HerdRow& herd = yard.world.herds.rows[0];
+    failures +=
+        Expect(herd.adult_count == 1 && herd.newborn_count + herd.juvenile_count == 3 &&
+                   knifed(yard.world) == 0,
+               "yard young: the new-born over the cap stand in the yard until they are grown");
+  }
+  return failures;
+}
+
 int CheckHandingStockBack() {
   int failures = 0;
   core::ProductionConfig config = MakeHerdConfig();
@@ -13808,6 +13910,7 @@ int main() {
   failures += CheckMangerReach();
   failures += CheckStableGate();
   failures += CheckNightPasture();
+  failures += CheckYardOffspringReplaces();
   failures += CheckHandingStockBack();
   failures += CheckElectrification();
   failures += CheckTheMeadowFlowersAndTheAftermathComesBack();

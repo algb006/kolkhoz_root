@@ -1004,6 +1004,15 @@ int main(int argc, char** argv) {
   // closes cannot report the day it reopens.
   failures += run::Expect(median_year14 >= 380,
                           "and is past the Epoch II mark by year 14 (median of nine)");
+  // THE YEAR ITSELF, beside the mark (econ's acceptance of 0.37.73, boss
+  // 2026-10-01; 0.37.78): the mark above stands 1.3 % from the median with
+  // the median's own noise at ±4 %, and red it says only «under 380». The
+  // year the median village opens the era says which way the world moved.
+  const std::string year_claim = "and the median village opens Epoch II by year 14 — now year " +
+                                 std::to_string(median_opened_year) + " (0 = no village opens it)" +
+                                 " (median residents at year 14: " + std::to_string(median_year14) +
+                                 ")";
+  failures += run::Expect(median_opened_year >= 1 && median_opened_year <= 14, year_claim.c_str());
   failures += run::Expect(median_year14 <= 800, "and not exploding by year 14");
   failures += run::KnownGap(median_year33 >= 1150,
                             "and lands in the canon's order of magnitude by year 33",
@@ -1052,7 +1061,23 @@ int main(int argc, char** argv) {
   // villages that never open (past the three-year horizon) raises the count.
   // Printed beside the red, so the red does not become the background. A
   // count above the floor again means the note is stale — said as well.
-  if (opened_years.size() < kEraOpenedAtLeast) {
+  if (opened_years.empty()) {
+    // NOT THE NOTE OF 0.37.53 BELOW: that one explains five villages of nine,
+    // and printed over NOUGHT it would be an alibi for another defect. Since
+    // 0.37.78 the start's yards are unlike (start_yard_holdings.csv) and a
+    // yard's offspring replaces instead of adding, so a third of the yards
+    // sit on three counted categories for good; the transition's gate «food
+    // variety» (the worst season's village mean of 4) is met on no seed. The
+    // exchange at the counter is what levels the yards' tables, and the
+    // canon has no counter yet — the red stands until the walk to the
+    // counter is delivered and the bot builds one (boss, core-boss-yards-
+    // holdings-03778-2026-10-01 [2]), no longer.
+    std::cout << "population_curve: THE RED ABOVE IS KNOWN, AND IT IS NOT THE NOTE OF 0.37.53 — "
+                 "Epoch II opens in NO village: since 0.37.78 the yards are unlike, the canon has "
+                 "no barter counter, the yards' food categories are not levelled, and the "
+                 "transition's food variety gate is met on no seed; it stands until the walk to "
+                 "the counter is delivered\n";
+  } else if (opened_years.size() < kEraOpenedAtLeast) {
     std::cout << "population_curve: THE RED ABOVE IS KNOWN — since 0.37.53 the elder's swap is a "
                  "new sample of villages; on 108 villages 52 (0.37.52) against 46 (0.37.53), "
                  "sign test p = 0.405, noise by the rule written before the reading; the floor "

@@ -89,6 +89,16 @@ class IProductionSystem {
   /// fields. Runs every tick; daily work gates itself to day boundaries.
   virtual void RunProductionDecisions(const WorldState& previous, WorldState& current) = 0;
 
+  /// @brief The start's year, settled before the first tick: the first
+  /// year's limit points are granted (WorldState::limit, and the open
+  /// book's limit_points_granted). Until 0.37.78 they came in the first
+  /// step, and a world looked at before it — the layer's district window on
+  /// the first morning — answered «not enough points» to every lot (ue's
+  /// question, boss-all-barter-counter-go [21]-[23]).
+  /// @pre Called once, by the assembly, on the world genesis made.
+  /// Thread: any single thread, before the simulation runs.
+  virtual void SettleStartYear(WorldState& start) const = 0;
+
   /// @brief Appends the production alarms standing in `completed`
   /// (core_common/alarm_state.h; manual/72-storage-and-alarms.md §3):
   /// kStoreFull for every numbered store at its level's capacity;

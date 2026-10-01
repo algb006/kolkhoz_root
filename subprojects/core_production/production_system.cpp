@@ -246,9 +246,9 @@ class ProductionSystem final : public IProductionSystem {
       // day zero is no year's turn for the daily bookkeeping below. Without
       // this the inherited 250 t lay untouched through the whole first year.
       PlanManure(current);
-      // And the first year's limit, for the same reason: genesis hands over a
-      // world, and the district's plan stands from the first day.
-      GrantFirstLimitYear(config_, current);
+      // The first year's limit was granted here until 0.37.78; it is the
+      // start's now (SettleStartYear), so the district's window answers on
+      // the first morning, before any step.
       // And the first year's plan: its letter lies in the box from the start
       // (boss seq 213), so it is named on the first morning, beside the limit.
       AnnouncePlan(config_, current);
@@ -422,6 +422,8 @@ class ProductionSystem final : public IProductionSystem {
     }
     return book;
   }
+
+  void SettleStartYear(WorldState& start) const override { GrantFirstLimitYear(config_, start); }
 
   LimitBook OfficeLimit(const WorldState& completed) const override {
     LimitBook book;

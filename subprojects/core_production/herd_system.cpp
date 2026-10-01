@@ -845,13 +845,24 @@ bool GiveToNeighbour(GiftQueues& queues,
   return false;
 }
 
-/// The yard is full and a head has grown into it. The canon's three paths,
-/// in its own order (household design §2): the grown head takes an adult's
-/// place and the adult goes to meat; failing that the surplus goes to a
-/// neighbour who keeps nothing of its group; failing that it is slaughtered.
-/// Here the first and the third are the same act seen from two ends — a head
-/// leaves the yard for the block — so what the code chooses between is the
-/// gift and the knife.
+/// A head has grown up in a yard. THE YARD'S OFFSPRING REPLACES, IT DOES NOT
+/// ADD (household design §2, «Приплод», path 1 the main one; econ's
+/// acceptance of 0.37.70, boss 2026-10-01; 0.37.78): the grown head takes
+/// the place of an adult that would not live to see the next year's young
+/// grown — the old one goes to meat — or stands in a yard that had no adult;
+/// otherwise it is the grown head that leaves, to a neighbour who keeps
+/// nothing of its group or to the block. So a yard keeps the heads it was
+/// given: breeding neither raises it to the kind's cap nor lets it die out.
+/// The cap (livestock.csv `household_cap_heads`) is the ceiling of the
+/// adults whatever brought them — a gift, a purchase.
+///
+/// UNTIL 0.37.78 THE CAP WAS ON ALL HEADS, new-born counted: a yard at its
+/// cap lost every young at birth, so nothing ever replaced an adult that
+/// aged out (the goats' exits trace of 2026-09-30: about eight a village a
+/// year, none replaced), and a yard below it bred up to it — every yard to
+/// three goats and twelve hens in a year or two, the start's unlike yards
+/// alike again. The young stand in the yard now until they are grown.
+/// @param adults_before The yard's adults before today's maturation.
 void PlaceSurplusHead(const ProductionConfig& config,
                       const LivestockDef& kind,
                       const HerdPlace& place,
@@ -859,45 +870,42 @@ void PlaceSurplusHead(const ProductionConfig& config,
                       std::vector<HerdRow>& pending,
                       HerdRow& herd,
                       HerdId herd_id,
+                      std::uint16_t adults_before,
                       WorldState& world) {
   if (!(kind.household_cap_heads > 0.0F)) {
     return;
   }
   const auto cap = static_cast<std::uint16_t>(kind.household_cap_heads);
   const float adult_from_years = kind.adult_from_game_months / static_cast<float>(kMonthsPerYear);
+  // OLD: it would not live through one more round of the young — the least
+  // of the kind's lifespan less a year, and never younger than an adult.
+  const float old_from_years = std::max(adult_from_years, kind.life_game_years_min - 1.0F);
+  // A yard that had no adult keeps the first that grows up; one that had
+  // some keeps as many as it had.
+  const std::uint16_t keeps = std::min(cap, std::max<std::uint16_t>(adults_before, 1));
   std::uint32_t slaughtered = 0;
-  while (TotalHeads(herd) > cap) {
-    bool grown = false;
-    float age = 0.0F;
-    if (herd.adult_count > cap) {
-      // The canon's first path, and its main one: the head that grew up
-      // takes an old one's place, and the OLD one goes — which is also what
-      // keeps a yard's animals young instead of ageing together.
-      grown = true;
-      const auto adults = static_cast<float>(herd.adult_count);
-      const float mean = herd.adult_age_game_years_total / adults;
-      age = kind.life_game_years_max > mean ? kind.life_game_years_max : mean;
-      CutOldestFromAdultAgeBand(herd, herd.adult_count, 1);  // the old one's end of the band
-      herd.adult_count = static_cast<std::uint16_t>(herd.adult_count - 1);
-      herd.adult_age_game_years_total -= age;
-      const float youngest = static_cast<float>(herd.adult_count) * adult_from_years;
-      herd.adult_age_game_years_total =
-          herd.adult_age_game_years_total < youngest ? youngest : herd.adult_age_game_years_total;
-    } else if (herd.newborn_count > 0) {
-      herd.newborn_count = static_cast<std::uint16_t>(herd.newborn_count - 1);
-    } else if (herd.juvenile_count > 0) {
-      herd.juvenile_count = static_cast<std::uint16_t>(herd.juvenile_count - 1);
-    } else {
-      break;  // nothing left to place, and the cap is met by definition
+  while (herd.adult_count > keeps) {
+    float age = adult_from_years;
+    if (herd.adult_count > cap || herd.adult_age_max_game_years >= old_from_years) {
+      // The grown head takes an old one's place, and the OLD one goes —
+      // which is also what keeps a yard's animals young instead of ageing
+      // together.
+      age = CutOldestFromAdultAgeBand(herd, herd.adult_count, 1);  // the old one's end
     }
-    // Paths two and three: a yard that keeps nothing of this group takes it,
-    // free; and if there is no such yard, it is meat.
-    if (!GiveToNeighbour(queues, pending, herd, kind, grown, age)) {
+    // Otherwise the head that has just grown up is the one that leaves, at
+    // the age it grew up at; the band keeps its young end where the head
+    // stood — a band a little wide at the bottom, which no rule reads.
+    herd.adult_count = static_cast<std::uint16_t>(herd.adult_count - 1);
+    herd.adult_age_game_years_total -= age;
+    const float youngest = static_cast<float>(herd.adult_count) * adult_from_years;
+    herd.adult_age_game_years_total =
+        herd.adult_age_game_years_total < youngest ? youngest : herd.adult_age_game_years_total;
+    // A yard that keeps nothing of this group takes it, free; and if there
+    // is no such yard, it is meat.
+    if (!GiveToNeighbour(queues, pending, herd, kind, true, age)) {
       world.ledger.current.herd_culled += 1;
       ++slaughtered;
-      if (grown) {
-        Slaughter(config, kind, place, 1, world);
-      }
+      Slaughter(config, kind, place, 1, world);
     }
   }
   herd.adult_male_count = TargetMales(kind, herd.adult_count);
@@ -1079,9 +1087,10 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
     }
     RunProduce(config, kind, herd, place, current);
     const HerdId herd_id = current.herds.row_ids[row];
+    const std::uint16_t adults_before = herd.adult_count;
     RunMaturation(config, kind, place, herd, herd_id, current);
     if (herd.household_owned != 0) {
-      PlaceSurplusHead(config, kind, place, queues, gifts, herd, herd_id, current);
+      PlaceSurplusHead(config, kind, place, queues, gifts, herd, herd_id, adults_before, current);
     }
     // The calving band is the WALK's to read: it owns the calendar, and
     // herd_life.h owns the animal. Handed down as a bare bool, exactly as
