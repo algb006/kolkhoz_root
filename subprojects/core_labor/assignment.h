@@ -83,6 +83,29 @@ struct AssignmentJob {
   /// pool, like ploughing.
   bool harnessed = false;
 
+  /// THE BRIGADE GOES OUT ON ONE CART (farming design §6, «Дорога пешком
+  /// съедает световой день»; the human's word of 2026-10-01 on econ's third
+  /// proposal; boss-core-fields-daylight-decided-2026-10-01 [1], [4]): set
+  /// for the reaping of the arable and for the sowing. When the queue reaches
+  /// the job and a horse is left in the day's pool, the placement takes ONE
+  /// for it — the cart that carries the brigade out and back — and every hand
+  /// placed rides: the harness pace decides who may go and what his day is
+  /// worth. With the pool dry they walk, as they all did until 0.37.89. The
+  /// first hand placed holds the horse (his rides_horse); the others ride
+  /// with him (work_seam.h, WorkRidesOut). The cart does not haul that day: a
+  /// horse is counted once a day.
+  ///
+  /// THE CARTER'S PATTERN, NOT THE MOWER'S OR THE FELLER'S: a meadow's brigade
+  /// rides whether or not it got its horse, and the fellers ride without
+  /// taking one at all (RidesOut) — two other answers to one question, left
+  /// as they are here and named to boss.
+  bool brigade_cart = false;
+
+  /// The brigade's cart is out already — a driver stands on this field from
+  /// an earlier placement of the day (the morning's, when the top-up asks):
+  /// the hands placed now ride with him and no horse is taken.
+  bool cart_out = false;
+
   /// True for the ploughing and harrowing of a FALLOW whose next crop is a
   /// winter one: the ground is prepared for a sowing this same autumn, so the
   /// job has that sowing's window — but it ranks BELOW every job with a

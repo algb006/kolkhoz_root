@@ -74,11 +74,27 @@ bool WorkPlaceOf(const WorldState& world, const WorkAssignment& work, Vec2& plac
 ///         hand-built world.
 bool HomePositionOf(const WorldState& world, FamilyId family, Vec2& home);
 
+/// @brief Whether a work of this kind on this land goes out on the brigade's
+///        ONE cart when the day's pool has a horse for it: the reaping of the
+///        arable and the sowing (farming design §6, «Дорога пешком съедает
+///        световой день»; AssignmentJob::brigade_cart; 0.37.88).
+bool RidesTheBrigadesCart(WorkKind kind, LandKind land);
+
+/// @brief Whether a brigade's cart is out on `field` today: somebody placed
+///        on this kind of work there holds the horse (WorkAssignment::
+///        rides_horse — the first hand the placement put on the field).
+/// @note A scan of the residents; asked for the hands of a reaping or a
+///       sowing only, once a target for the day's road.
+bool BrigadeCartIsOut(const WorldState& world, WorkKind kind, FieldId field);
+
 /// @brief Whether this assignment's road is measured at harness speed: its
 ///        kind rides out (labor_state.h, RidesOut), or it is the cut of a
 ///        meadow — the one harvest that rides, with a horse mower and hay
 ///        carts (time design §7; farming design §5), or it is carting on
-///        the horse the day's placement gave (WorkAssignment::rides_horse).
+///        the horse the day's placement gave (WorkAssignment::rides_horse),
+///        or it is a reaping of the arable or a sowing whose brigade has its
+///        cart out today (BrigadeCartIsOut) — every hand rides with the
+///        driver, and with no driver they walk.
 ///
 /// THE LABOUR HOUR AND THE RESIDENT'S ACTIVITY ASK THIS, and the assignment
 /// asks the same question of its job (AssignmentJob::harnessed). Until
