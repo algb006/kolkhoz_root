@@ -163,6 +163,7 @@ samogon_sugar_kg_per_litre,0.5,core
 samogon_grain_kg_per_litre,1.5,core
 samogon_litres_month_abuses,3,core
 samogon_price_grain_kg_per_litre,2,core
+samogon_stock_months_of_demand,2,core
 samogon_lights_out_hour,23,core
 limit_overfulfil_tier1_t,5,core
 limit_overfulfil_tier2_t,20,core
