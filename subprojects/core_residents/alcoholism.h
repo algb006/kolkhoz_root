@@ -11,8 +11,8 @@
 /// WHAT DECIDES, in boss's numbers (assigned, not measured), for every MAN of
 /// 16 and older, at the first day of the month, of the month that closed —
 /// a woman has no such metric and stays at 0 (boss, 2026-09-18):
-///   * up +0.65 when a distiller supplied last month stands within reach of
-///     HIS yard (the supply; NearestSuppliedDistiller, register 207);
+///   * up +0.65 when a distiller holding samogon stands within reach of HIS
+///     yard at the turn (the supply; NearestDistiller, register 207);
 ///   * up +0.5 in a winter month (December to February) for one who had not a
 ///     single day of work in it (idleness and winter) — unless an open
 ///     reading hut is within his reach (sport.h);
@@ -29,7 +29,7 @@
 ///     measure is those men and not the mean of men 16+: boys come of age
 ///     near nought and the heavy drinkers die, which moves the mean by
 ///     −7…−13 whatever the numbers (boss seq 144 А);
-///   * down −1 when his yard has turned without a supplied distiller in reach
+///   * down −1 when his yard has turned without a holding distiller in reach
 ///     for the second month running or longer — the human's word, 2026-09-18:
 ///     «Если люди долго не пьют то алкоголизм медленно уменьшается». The
 ///     count is the yard's FamilyRow::dry_months (save 60), kept here at each
@@ -90,8 +90,8 @@ int AlcoholismBand(float alcoholism);
 
 /// @brief The month's turn, for the month that closed:
 ///        - each yard's dry months counted — a yard is dry when no distiller
-///          SUPPLIED that month stands within reach (NearestSuppliedDistiller;
-///          register 207);
+///          HOLDING samogon at the turn stands within reach (NearestDistiller;
+///          register 207; 0.37.74 — it was one who brewed that month);
 ///        - every adult man's alcoholism moved by the rules above, the supply by
 ///          the samogon at HIS yard and the sobriety by his yard's dryness;
 ///          every woman's held at 0; crossings said;
@@ -106,7 +106,8 @@ int AlcoholismBand(float alcoholism);
 ///          paid. The litres leave the distiller and are booked in
 ///          YearLedger::samogon_sold_ml. «Есть самогон» itself — the gain of
 ///          the supply and the sobriety of a dry yard — stays the yard's
-///          property by the distiller's tag, not the litres it got;
+///          property by its distiller holding litres, not the litres its
+///          own man got;
 ///        - the settlement's alcoholism taken, its crossings of 20 and 40
 ///          said;
 ///        - every resident's days_worked_this_month cleared;

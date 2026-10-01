@@ -3045,23 +3045,55 @@ int CheckRawMaterialLeak() {
   // Two more nights in the same month from a refilled open store — the whole
   // load of 50 kg each, 25 litres: 37.5 kg of grain and 12.5 of sugar. Past
   // 100 kg, the complaint, once.
+  // He goes out with empty hands each time: a distiller holding samogon
+  // nobody asks for stays home (the demand's check is below).
+  const auto next_night = [&world, &config] {
+    world.residents.rows[kDistillerRow].samogon_ml = 0;
+    return core::StealRawMaterial(config, {}, world, kDistillerRow);
+  };
   world.units.rows[FindRow(world.units, open_id)].stock = {200 * kKilo, 100 * kKilo};
-  core::StealRawMaterial(config, {}, world, kDistillerRow);
-  core::StealRawMaterial(config, {}, world, kDistillerRow);
+  next_night();
+  next_night();
   failures += Expect(complaints_said() == 1 && world.night_theft.complaint_raised == 1 &&
                          world.night_theft.stolen_this_month == 140 * kKilo &&
                          stock_of(open_id) == 125 * kKilo &&
-                         world.residents.rows[kDistillerRow].samogon_ml == 70000,
+                         world.ledger.current.samogon_brewed_ml == 70000,
                      "leak: past 100 kg in a month the village complains, once");
+
+  // HE BREWS TO THE DEMAND (0.37.74): one buyer in his own yard asking 3
+  // litres a month — holding the two months' 6 litres he still goes out,
+  // holding a millilitre more he stays home and the stores keep their own.
+  {
+    core::WorldState thirsty = world;
+    const core::FamilyId yard = AppendRow(thirsty.families, core::FamilyRow{});
+    thirsty.residents.rows[kDistillerRow].family = yard;
+    core::ResidentRow drinker;
+    drinker.family = yard;
+    drinker.sex = core::Sex::kMale;
+    drinker.alcoholism = 45.0F;
+    AppendRow(thirsty.residents, drinker);
+    core::WorldState sated = thirsty;
+    thirsty.residents.rows[kDistillerRow].samogon_ml = 6000;
+    sated.residents.rows[kDistillerRow].samogon_ml = 6001;
+    failures +=
+        Expect(core::DistillerDemandMl(config, thirsty, kDistillerRow) == 3000.0 &&
+                   core::StealRawMaterial(config, {}, thirsty, kDistillerRow) == 50 * kKilo &&
+                   thirsty.residents.rows[kDistillerRow].samogon_ml == 31000,
+               "demand: holding two months of his buyers' asking he still brews");
+    failures += Expect(core::StealRawMaterial(config, {}, sated, kDistillerRow) == 0 &&
+                           sated.residents.rows[kDistillerRow].samogon_ml == 6001 &&
+                           sated.units.rows[FindRow(sated.units, open_id)].stock[0] == 125 * kKilo,
+                       "demand: holding more than two months of it he stays home");
+  }
 
   // Next month: the tally starts again, and no second complaint ever.
   world.step_events.clear();
   world.calendar.tick = static_cast<core::Tick>(core::kDaysPerMonth) * core::kTicksPerDay;
   core::RefreshCalendarCaches(world.calendar);
   world.units.rows[FindRow(world.units, open_id)].stock = {500 * kKilo, 100 * kKilo};
-  core::StealRawMaterial(config, {}, world, kDistillerRow);
-  core::StealRawMaterial(config, {}, world, kDistillerRow);
-  core::StealRawMaterial(config, {}, world, kDistillerRow);
+  next_night();
+  next_night();
+  next_night();
   failures += Expect(world.night_theft.stolen_this_month == 150 * kKilo && complaints_said() == 0,
                      "leak: a new month counts from zero, and the complaint does not come again");
 
@@ -3129,6 +3161,7 @@ int CheckRawMaterialLeak() {
   {
     const auto night = [&](core::WorldState state, std::vector<core::Grams> sealed) {
       state.residents.rows[1].distiller_supplied_month = 0;
+      state.residents.rows[1].samogon_ml = 0;
       const core::Grams before = state.ledger.current.stolen[0];
       core::StealRawMaterial(config, sealed, state, 1);
       return std::pair{state.ledger.current.stolen[0] - before,
@@ -3496,10 +3529,10 @@ int CheckAlcoholism() {
     return world.residents.rows[FindRow(world.residents, id)];
   };
   row_of(distiller).night_trade = core::NightTrade::kDistiller;
-  // SUPPLIED in December, the month the January turn closes: «есть самогон»
-  // is a supplied distiller within reach, and both yards here stand at the
-  // same spot (neither has a house), so both are in reach.
-  row_of(distiller).distiller_supplied_month = core::SupplyMonthTag(kJanuaryFirst - 1U);
+  // HOLDING SAMOGON at the January turn: «есть самогон» is a distiller with
+  // litres within reach, and both yards here stand at the same spot (neither
+  // has a house), so both are in reach. A hundred litres: more than is drunk.
+  row_of(distiller).samogon_ml = 100000;
   const auto dry_months_of = [&world](core::FamilyId yard) {
     return world.families.rows[FindRow(world.families, yard)].dry_months;
   };
@@ -3600,25 +3633,38 @@ int CheckAlcoholism() {
   failures += Expect(row_of(distiller).alcoholism == 22.0F,
                      "sobriety: an idle winter month and a dry village cancel");
 
-  // April: a distiller again — supplied in March, the month that closes —
-  // and the clock starts from nought.
+  // April: a distiller again, a litre in his hands — and the clock starts
+  // from nought. Five litres are asked of him (3 + 1 + 1), so the litre is
+  // drunk to the drop at this turn.
   constexpr core::SimDay kAprilFirst = kJanuaryFirst + (3U * core::kDaysPerMonth);
   row_of(watchman).night_trade = core::NightTrade::kDistiller;
-  row_of(watchman).distiller_supplied_month = core::SupplyMonthTag(kAprilFirst - 1U);
+  row_of(watchman).samogon_ml = 1000;
   world.calendar.tick = static_cast<core::Tick>(kAprilFirst) * core::kTicksPerDay;
   core::RefreshCalendarCaches(world.calendar);
   core::TurnAlcoholismMonth(config, night, sport, kSpeedup, world);
-  failures += Expect(dry_months_of(happy_yard) == 0,
-                     "sobriety: a supplied distiller in reach at the turn resets the dry months");
+  failures += Expect(dry_months_of(happy_yard) == 0 && row_of(watchman).samogon_ml == 0,
+                     "sobriety: a distiller holding samogon at the turn resets the dry months");
 
-  // A DISTILLER WITHOUT RAW MATERIAL IS NO SUPPLY (register 206): May, the
-  // same man, but nothing carried off in April — the yard counts a dry month.
+  // A DISTILLER HOLDING NOTHING IS NO SAMOGON (0.37.74; it was «nothing
+  // carried off last month»): May, the same man, the litre drunk in April —
+  // the yard counts a dry month.
   constexpr core::SimDay kMayFirst = kAprilFirst + core::kDaysPerMonth;
   world.calendar.tick = static_cast<core::Tick>(kMayFirst) * core::kTicksPerDay;
   core::RefreshCalendarCaches(world.calendar);
   core::TurnAlcoholismMonth(config, night, sport, kSpeedup, world);
   failures += Expect(dry_months_of(happy_yard) == 1,
-                     "sobriety: a distiller with nothing supplied last month is no samogon");
+                     "sobriety: a distiller holding no samogon is no samogon");
+  // THE DREGS ARE NO SAMOGON: a millilitre short of the litre the least
+  // drinker asks for, the same distiller — the yard counts its second dry
+  // month, and nothing is sold of it.
+  row_of(watchman).samogon_ml = 999;
+  world.calendar.tick =
+      static_cast<core::Tick>(kMayFirst + core::kDaysPerMonth) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  core::TurnAlcoholismMonth(config, night, sport, kSpeedup, world);
+  failures += Expect(dry_months_of(happy_yard) == 2 && row_of(watchman).samogon_ml == 999 &&
+                         !core::HoldsSamogon(night, row_of(watchman)),
+                     "sobriety: under a litre in his hands the yard is as dry as with none");
   return failures;
 }
 

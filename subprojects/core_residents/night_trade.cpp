@@ -33,7 +33,7 @@ namespace {
 /// read, until the base drops the row. `samogon_buy_kg_drinks` and
 /// `samogon_buy_kg_abuses` left it on 2026-10-01 (0.37.72: the samogon is
 /// paid by the litre) and stand there with it.
-constexpr std::array<std::string_view, 26> kNightTradeWorldParamKeys = {
+constexpr std::array<std::string_view, 27> kNightTradeWorldParamKeys = {
     "night_distillers_max",
     "night_fisher_age_from_years",
     "night_fisher_age_to_years",
@@ -60,6 +60,7 @@ constexpr std::array<std::string_view, 26> kNightTradeWorldParamKeys = {
     "samogon_grain_kg_per_litre",
     "samogon_potato_kg_per_litre",
     "samogon_price_grain_kg_per_litre",
+    "samogon_stock_months_of_demand",
 };
 
 /// The keys retired: known and not read, until the base drops their rows.
@@ -318,17 +319,58 @@ std::uint32_t SupplyMonthTag(SimDay day) {
          static_cast<std::uint32_t>(date.month) + 1U;
 }
 
-std::uint32_t NearestSuppliedDistiller(const NightTradeConfig& config,
-                                       const WorldState& current,
-                                       Vec2 yard,
-                                       std::uint32_t tag) {
+double SamogonAskedMl(const NightTradeConfig& config, float alcoholism) {
+  // The design's bands read 21–40 and 41–60, so an edge belongs to the lower one.
+  constexpr float kBandWidth = 20.0F;
+  constexpr double kMillilitres = 1000.0;
+  if (alcoholism > 2.0F * kBandWidth) {
+    return static_cast<double>(config.litres_month_abuses) * kMillilitres;
+  }
+  if (alcoholism > kBandWidth) {
+    return static_cast<double>(config.litres_month_drinks) * kMillilitres;
+  }
+  return 0.0;
+}
+
+bool HoldsSamogon(const NightTradeConfig& config, const ResidentRow& person) {
+  constexpr float kMillilitres = 1000.0F;
+  const float least_asking = std::min(config.litres_month_drinks, config.litres_month_abuses);
+  return person.samogon_ml > 0 &&
+         static_cast<float>(person.samogon_ml) >= least_asking * kMillilitres;
+}
+
+double DistillerDemandMl(const NightTradeConfig& config,
+                         const WorldState& current,
+                         std::uint32_t distiller_row) {
+  std::vector<std::uint8_t> his(current.families.rows.size(), 0);
+  for (std::uint32_t family = 0; family < current.families.rows.size(); ++family) {
+    const FamilyRow& yard_row = current.families.rows[family];
+    const std::uint32_t house = FindRow(current.units, yard_row.house);
+    const Vec2 yard =
+        house != kNoRow ? current.units.rows[house].position : yard_row.lost_house_position;
+    his[family] = NearestDistiller(config, current, yard, false) == distiller_row ? 1U : 0U;
+  }
+  double asked = 0.0;
+  for (const ResidentRow& person : current.residents.rows) {
+    const std::uint32_t family = FindRow(current.families, person.family);
+    if (family != kNoRow && his[family] != 0 && person.sex == Sex::kMale) {
+      asked += SamogonAskedMl(config, person.alcoholism);
+    }
+  }
+  return asked;
+}
+
+std::uint32_t NearestDistiller(const NightTradeConfig& config,
+                               const WorldState& current,
+                               Vec2 yard,
+                               bool holding_only) {
   std::uint32_t nearest = kNoRow;
   float best = config.samogon_reach_m;
   for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
     const ResidentRow& person = current.residents.rows[row];
     Vec2 his_yard;
-    if (person.night_trade != NightTrade::kDistiller || person.distiller_supplied_month != tag ||
-        tag == 0 || !YardOf(current, person, his_yard)) {
+    if (person.night_trade != NightTrade::kDistiller ||
+        (holding_only && !HoldsSamogon(config, person)) || !YardOf(current, person, his_yard)) {
       continue;
     }
     const float distance = std::hypot(his_yard.x - yard.x, his_yard.y - yard.y);
@@ -417,6 +459,10 @@ bool ParseNightTradeConfig(const ITableSet& tables, NightTradeConfig& config, st
         {.key = kNightTradeWorldParamKeys[25],
          .value = &config.price_grain_kg_per_litre,
          .range = catch_kg},
+        // He brews to the demand (0.37.74): months of his buyers' asking.
+        {.key = kNightTradeWorldParamKeys[26],
+         .value = &config.stock_months_of_demand,
+         .range = {.low = 0.0F, .high = 120.0F}},
     }};
     if (!ReadKnobs(*world, "world_params", knobs, error)) {
       return false;
@@ -618,6 +664,14 @@ Grams StealRawMaterial(const NightTradeConfig& config,
   // The night's load is `distiller_raw_kg` at most, sugar and all. Until
   // 0.37.72 he took fifty kilograms of whatever lay first in the list and
   // was «supplied» by any of it; nobody counted a litre.
+  // HE BREWS TO THE DEMAND (0.37.74): holding more than
+  // `stock_months_of_demand` months of his buyers' asking, he stays home.
+  if (distiller_row < current.residents.rows.size() &&
+      static_cast<double>(current.residents.rows[distiller_row].samogon_ml) >
+          static_cast<double>(config.stock_months_of_demand) *
+              DistillerDemandMl(config, current, distiller_row)) {
+    return 0;
+  }
   const auto per_litre = [](float kilograms) {
     return static_cast<double>(GramsFromKilograms(kilograms));
   };
@@ -798,13 +852,13 @@ void RunNightOutings(const NightTradeConfig& config, const FoodConfig& food, Wor
   // distiller hands over at his gate once an evening, in an hour drawn from
   // sunset to lights-out. The scene's cue; what is paid moves at the month's
   // turn.
-  const std::uint32_t tag = SupplyMonthTag(current.calendar.day);
   const std::uint32_t sunset = SunsetHour(current.weather.daylight_hours);
   const auto lights_out = static_cast<std::uint32_t>(config.lights_out_hour);
   const std::uint32_t span = lights_out > sunset ? lights_out - sunset : 1U;
   for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
     const ResidentRow& person = current.residents.rows[row];
-    if (person.night_trade != NightTrade::kDistiller || person.distiller_supplied_month != tag) {
+    // Who holds samogon sells it (0.37.74; it was who brewed this month).
+    if (person.night_trade != NightTrade::kDistiller || !HoldsSamogon(config, person)) {
       continue;
     }
     const std::uint32_t id = current.residents.row_ids[row].value;

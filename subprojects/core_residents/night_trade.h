@@ -126,6 +126,14 @@ struct NightTradeConfig {
   float litres_month_drinks = 1.0F;
   float litres_month_abuses = 3.0F;
 
+  /// HE BREWS TO THE DEMAND (econ's acceptance of 0.37.72, boss 2026-10-01;
+  /// `samogon_stock_months_of_demand`, STUB): a distiller holding more than
+  /// this many months of his buyers' asking does not go to the stores that
+  /// night. Until 0.37.74 he brewed a night's load whatever he held — 50
+  /// litres a month against 13 asked — and the start's sugar was gone in
+  /// four nights.
+  float stock_months_of_demand = 2.0F;
+
   /// resources.csv `sugar` and `potato`; invalid in a roster without them
   /// (then nothing is brewed, or nothing out of potato).
   ResourceId sugar;
@@ -215,14 +223,41 @@ bool YardOf(const WorldState& current, const ResidentRow& person, Vec2& yard);
 ///        same tag StealRawMaterial writes.
 std::uint32_t SupplyMonthTag(SimDay day);
 
-/// @brief The row of the NEAREST distiller supplied in the month `tag`
-///        whose yard is within `samogon_reach_m` of `yard` (crime §6,
-///        register 207: «самогонщик достаёт на 1000 м от своего двора»), or
-///        kNoRow. «Есть самогон» is this, asked of a yard.
-std::uint32_t NearestSuppliedDistiller(const NightTradeConfig& config,
-                                       const WorldState& current,
-                                       Vec2 yard,
-                                       std::uint32_t tag);
+/// @brief The row of the NEAREST distiller whose yard is within
+///        `samogon_reach_m` of `yard` (crime §6, register 207: «самогонщик
+///        достаёт на 1000 м от своего двора»), or kNoRow.
+/// @param holding_only True: only a distiller HOLDING samogon
+///        (HoldsSamogon below) — «есть самогон», asked of a yard:
+///        the litres are a thing, and what was brewed is drunk whenever it
+///        was brewed (boss, core-boss-samogon-litres [2]; 0.37.74 — until
+///        then it was a distiller who brewed in the month that closed, and
+///        60-110 litres lay unsold for years). False: any distiller — whose
+///        buyer the yard is, for the demand he brews to.
+std::uint32_t NearestDistiller(const NightTradeConfig& config,
+                               const WorldState& current,
+                               Vec2 yard,
+                               bool holding_only);
+
+/// @brief Whether a distiller HOLDS samogon to sell: at least what the least
+///        drinker asks for a month (a litre). Not «a millilitre»: the shares
+///        of a short month are whole millilitres, and the five or ten left
+///        of the rounding kept every yard «with samogon» for good — the
+///        first print of 0.37.74, 5-12 ml held through years 2 and 3 with
+///        the gain of the supply still booked on them.
+bool HoldsSamogon(const NightTradeConfig& config, const ResidentRow& person);
+
+/// @brief What a man asks of his distiller for a month, millilitres, by the
+///        band of his alcoholism: 21–40 `litres_month_drinks`, 41–60
+///        `litres_month_abuses`, 0–20 nothing; an edge belongs to the lower
+///        band. Women and children stand at 0 and ask for nothing.
+double SamogonAskedMl(const NightTradeConfig& config, float alcoholism);
+
+/// @brief The month's asking of all the buyers of the distiller at
+///        `distiller_row`, millilitres: the men of the yards whose nearest
+///        distiller — holding or not — he is.
+double DistillerDemandMl(const NightTradeConfig& config,
+                         const WorldState& current,
+                         std::uint32_t distiller_row);
 
 /// @brief Is the leak of the store at `unit_row` CLOSED (crime design §7,
 ///        register 206)? A watchman at his post — at the unit or at its

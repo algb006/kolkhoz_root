@@ -195,8 +195,8 @@ struct FamilyRow {
   /// checkbox says (ChairmanState::ration_auto).
   std::uint8_t ration_granted = 0;
 
-  /// Months in a row this yard turned with no supplied distiller within
-  /// reach (NearestSuppliedDistiller), stopping at 255; 0 when one was. From
+  /// Months in a row this yard turned with no distiller holding samogon
+  /// within reach (NearestDistiller), stopping at 255; 0 when one was. From
   /// `sober_months_min` its men drink less (the human's word, 2026-09-18:
   /// «Если люди долго не пьют то алкоголизм медленно уменьшается»). It was
   /// the village's until the same day; the reach made it the yard's

@@ -70,20 +70,6 @@ float SettlementAlcoholism(const AlcoholismConfig& config,
 
 constexpr double kMillilitresPerLitre = 1000.0;
 
-/// What a man asks of his distiller for the month, millilitres, by the band
-/// of his metric: 21–40 «выпивает», 41–60 «злоупотребляет»; 0–20 asks for
-/// nothing. The design's bands read 21–40 and 41–60, so an edge belongs to
-/// the lower one.
-double SamogonAsked(const NightTradeConfig& night, float alcoholism) {
-  if (alcoholism > 2.0F * kBandWidth) {
-    return static_cast<double>(night.litres_month_abuses) * kMillilitresPerLitre;
-  }
-  if (alcoholism > kBandWidth) {
-    return static_cast<double>(night.litres_month_drinks) * kMillilitresPerLitre;
-  }
-  return 0.0;
-}
-
 /// THE PURCHASE BY THE LITRE (crime §7, «Механика»; the human's «логично
 /// платить за литр», 2026-10-01; 0.37.72): the drinker's family pays out of
 /// its own pantry, in the raw material's order, into the distiller's
@@ -101,7 +87,7 @@ void BuySamogon(const NightTradeConfig& night,
                 std::uint32_t distiller_row,
                 float alcoholism,
                 double share) {
-  const double asked = SamogonAsked(night, alcoholism) * share;
+  const double asked = SamogonAskedMl(night, alcoholism) * share;
   const std::uint32_t payer = FindRow(current.families, current.residents.rows[buyer_row].family);
   const std::uint32_t seller =
       FindRow(current.families, current.residents.rows[distiller_row].family);
@@ -154,22 +140,22 @@ void BuySamogon(const NightTradeConfig& night,
   }
 }
 
-/// «ЕСТЬ САМОГОН» IS A YARD'S (register 207): a distiller supplied in the
-/// month that closed (`closed_tag`), within reach of the yard. Asked once per
-/// family, and its answer is the +2, the sobriety and the purchase alike —
-/// three rules that can never disagree about one yard and one month. Moves
-/// every family's dry_months by the answer; returns the supplier's resident
-/// row per family row, kNoRow for a dry yard.
-std::vector<std::uint32_t> TurnYardSuppliers(const NightTradeConfig& night,
-                                             WorldState& current,
-                                             std::uint32_t closed_tag) {
+/// «ЕСТЬ САМОГОН» IS A YARD'S (register 207): a distiller HOLDING samogon at
+/// the month's turn, within reach of the yard (0.37.74; until then one who
+/// brewed in the month that closed, whatever he held). Asked once per
+/// family, before the month's litres are sold, and its answer is the +2,
+/// the sobriety and the purchase alike — three rules that can never
+/// disagree about one yard and one month. Moves every family's dry_months
+/// by the answer; returns the supplier's resident row per family row,
+/// kNoRow for a dry yard.
+std::vector<std::uint32_t> TurnYardSuppliers(const NightTradeConfig& night, WorldState& current) {
   std::vector<std::uint32_t> supplier(current.families.rows.size(), kNoRow);
   for (std::uint32_t family = 0; family < current.families.rows.size(); ++family) {
     FamilyRow& yard_row = current.families.rows[family];
     const std::uint32_t house = FindRow(current.units, yard_row.house);
     const Vec2 yard =
         house != kNoRow ? current.units.rows[house].position : yard_row.lost_house_position;
-    supplier[family] = NearestSuppliedDistiller(night, current, yard, closed_tag);
+    supplier[family] = NearestDistiller(night, current, yard, true);
     if (supplier[family] != kNoRow) {
       yard_row.dry_months = 0;
     } else if (yard_row.dry_months < UINT8_MAX) {
@@ -312,8 +298,7 @@ void TurnAlcoholismMonth(const AlcoholismConfig& config,
   // The month that closed: the one before today's.
   const std::uint32_t month_index = ((day / kDaysPerMonth) + kMonthsPerYear - 1U) % kMonthsPerYear;
   const bool winter = IsWinterMonth(static_cast<Month>(month_index));
-  const std::vector<std::uint32_t> supplier =
-      TurnYardSuppliers(night, current, SupplyMonthTag(day - 1U));
+  const std::vector<std::uint32_t> supplier = TurnYardSuppliers(night, current);
   const bool field_month = SportMonthCounted(sport, current);
   // WHAT IS ASKED OF EACH DISTILLER THIS MONTH, by the men of the yards he
   // supplies, against the litres he holds: short of it they share by the
@@ -326,7 +311,7 @@ void TurnAlcoholismMonth(const AlcoholismConfig& config,
         BiologicalAgeYears(life_speedup, person.birth_day, day) < config.adult_from_years) {
       continue;
     }
-    asked_of[distiller] += SamogonAsked(night, person.alcoholism);
+    asked_of[distiller] += SamogonAskedMl(night, person.alcoholism);
   }
   std::vector<double> share_of(current.residents.rows.size(), 0.0);
   for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
