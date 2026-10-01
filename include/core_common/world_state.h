@@ -995,6 +995,18 @@ struct WorldState {
   /// (needs design §6); SAVED (save 121). barter_state.h.
   BarterWatch barter;
 
+  /// THE GATHERING COUNT SAID «NOT IN TIME» (farming design, the harvest
+  /// rule 1 as boss re-worded it, core-boss-potato-crew-trace-2026-10-01
+  /// [27]; save 126): the day, PLUS ONE, at whose close the count of the
+  /// lamp «the harvest will not be gathered» — taken with the calendar's
+  /// days off KEPT — last named a field; 0 when it never has. Written by
+  /// core_production at the day's last tick; read by IsDayOffIn
+  /// (core_common/day_off.h) and nowhere else: the next day's day off is
+  /// lifted when last night's count said so and the chairman's standing
+  /// order stands. SAVED, not recomputed: a game loaded at noon would live
+  /// to the evening without it, and the run would part from its save.
+  SimDay gather_short_said = 0;
+
   /// The sports field's month (leisure §12, «Погода для уличных занятий»;
   /// register 223; boss seq 127); SAVED (save 68). Counted day by day by
   /// core_residents (sport.h) and read at the month's turn, then cleared.

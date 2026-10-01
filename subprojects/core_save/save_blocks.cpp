@@ -202,7 +202,10 @@ static_assert(AggregateArity<NamedCharactersState>() == 1,
 static_assert(sizeof(BarterWatch) == 16, "BarterWatch changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<BarterWatch>() == 5,
               "BarterWatch gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<WorldState>() == 42,
+// Save 126: gather_short_said, a day plus one — the forty-third member,
+// four bytes at the world block's end, after the barter's watch. Predicted
+// before the build: the section «world» 647 -> 651.
+static_assert(AggregateArity<WorldState>() == 43,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 
@@ -522,6 +525,8 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteU16(world.barter.dry_givers);
   out.WriteU16(world.barter.dry_takers);
   out.WriteU64(static_cast<std::uint64_t>(world.barter.dry_equivalent));
+  // The gathering count's last «not in time» (save 126): the day plus one.
+  out.WriteU32(world.gather_short_said);
 }
 
 void ReadWorldBlocks(LoadSource& source, WorldState* world) {
@@ -708,6 +713,7 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->barter.dry_givers = in.ReadU16();
   world->barter.dry_takers = in.ReadU16();
   world->barter.dry_equivalent = static_cast<Grams>(in.ReadU64());
+  world->gather_short_said = in.ReadU32();
 }
 
 }  // namespace core

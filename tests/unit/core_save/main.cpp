@@ -618,6 +618,8 @@ core::WorldState MakeWorld() {
   world.barter.dry_givers = 5;
   world.barter.dry_takers = 4;
   world.barter.dry_equivalent = 23'500;
+  // The gathering count's last «not in time» (save 126): a day, not nought.
+  world.gather_short_said = 137;
 
   // A couple waiting for a free house (save format 35).
   core::WeddingWaitRow couple;
@@ -1087,6 +1089,7 @@ core::WorldState MakeWitnessWorld() {
   witness.barter.dry_givers = 7;
   witness.barter.dry_takers = 6;
   witness.barter.dry_equivalent = 31'750;
+  witness.gather_short_said = 142;  // save 126
   return witness;
 }
 
@@ -1274,6 +1277,8 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"barter.dry_takers", U16(world.barter.dry_takers)});
   chunks.push_back(
       {"barter.dry_equivalent", U64(static_cast<std::uint64_t>(world.barter.dry_equivalent))});
+  // Save 126: the gathering count's last «not in time».
+  chunks.push_back({"gather_short_said", U32(world.gather_short_said)});
   return chunks;
 }
 
@@ -1438,7 +1443,10 @@ constexpr std::array<RecordedSection, 23> kRecordedPayload = {{
     // Save 125: +1 — the harvest without days off, a byte; predicted 646 ->
     // 647 with the other sections' sizes unmoved and the orders' hash moved
     // (a new top OrderKind) before the build; all three held.
-    {"world", 647, 0xb692ed92a8e88c9dULL},
+    // Save 126: +4 — the gathering count's last «not in time», a day plus
+    // one at the block's end; predicted 647 -> 651 with the other sections
+    // unmoved before the build; held.
+    {"world", 651, 0x80b52bf02aba0754ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2037,6 +2045,8 @@ int main() {
   failures += Expect(loaded.chairman.harvest_without_days_off == 0,
                      "the harvest without days off the chairman switched off comes back off "
                      "(save 125)");
+  failures += Expect(loaded.gather_short_said == 137,
+                     "the day the gathering count last said «not in time» comes back (save 126)");
   failures += Expect(
       loaded.chairman.days_off_cancelled_in_a_row == 2 && loaded.chairman.cancelled_day_off == 55,
       "the cancelled day off and its series come back (save 65)");
