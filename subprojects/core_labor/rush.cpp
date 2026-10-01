@@ -114,6 +114,18 @@ OrderRefusal CancelDayOff(WorldState& current) {
   return OrderRefusal::kRuleForbids;
 }
 
+/// THE HARVEST WITHOUT DAYS OFF, SWITCHED (order_state.h,
+/// kHarvestWithoutDaysOff): the standing order's byte, and a refusal for a
+/// switch that already stands as asked. The range before the narrowing, as
+/// above: a pending row loaded from a save comes past the boundary's shape.
+OrderRefusal SwitchHarvestWithoutDaysOff(WorldState& current, const OrderRow& order) {
+  if (order.enable > 1 || current.chairman.harvest_without_days_off == order.enable) {
+    return OrderRefusal::kRuleForbids;
+  }
+  current.chairman.harvest_without_days_off = order.enable;
+  return OrderRefusal::kNone;
+}
+
 }  // namespace
 
 void ReadRushOrders(WorldState& current) {
@@ -125,6 +137,8 @@ void ReadRushOrders(WorldState& current) {
       Settle(order, DeclareRush(current, order));
     } else if (order.kind == OrderKind::kCancelDayOff) {
       Settle(order, CancelDayOff(current));
+    } else if (order.kind == OrderKind::kHarvestWithoutDaysOff) {
+      Settle(order, SwitchHarvestWithoutDaysOff(current, order));
     }
   }
 }

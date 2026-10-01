@@ -32,6 +32,7 @@
 #include "core_common/world_state.h"
 #include "core_labor/labor_system.h"
 #include "core_tables/tables.h"
+#include "harvest_days_off_checks.h"
 #include "harvest_order_checks.h"
 #include "labor_config.h"
 #include "labor_day.h"
@@ -519,6 +520,11 @@ class DayWorld {
   explicit DayWorld(std::uint32_t adults) {
     world.calendar.day_zero_weekday = core::Weekday::kMonday;
     world.weather.daylight_hours = 12.0F;
+    // THE CALENDAR'S SUNDAY IS WHAT THESE WORLDS TEST: the harvest's standing
+    // order (on at genesis since save 125) would work every Sunday a field
+    // stands in its reaping here. It has its own checks
+    // (harvest_days_off_checks.cpp) and the one day below that switches it on.
+    world.chairman.harvest_without_days_off = 0;
     core::UnitRow house;
     house.position = core::Vec2{.x = 0.0F, .y = 0.0F};
     const core::UnitId house_id = core::AppendRow(world.units, house);
@@ -1055,6 +1061,23 @@ int TestBarnRunsOnTheDayOff() {
   failures += Expect(holiday.world.calendar.weekday != core::Weekday::kSunday &&
                          holiday.world.fields.rows[0].work_days_remaining == 5.0F,
                      "nobody reaps on May Day, a weekday");
+
+  // THE HARVEST WITHOUT DAYS OFF (the harvest rule 1; save 125): with the
+  // chairman's standing order on — as genesis leaves it — the same Sunday is
+  // reaped, and the same May Day is not.
+  DayWorld season(3);
+  season.world.chairman.harvest_without_days_off = 1;
+  season.AddField(core::FieldPhase::kHarvest, 5.0F, core::Vec2{.x = 100.0F, .y = 0.0F});
+  season.RunDay(*labor, 6);
+  failures += Expect(season.world.fields.rows[0].work_days_remaining < 5.0F,
+                     "the harvest without days off: the Sunday is reaped while a ripe field "
+                     "stands");
+  DayWorld season_holiday(3);
+  season_holiday.world.chairman.harvest_without_days_off = 1;
+  season_holiday.AddField(core::FieldPhase::kHarvest, 5.0F, core::Vec2{.x = 100.0F, .y = 0.0F});
+  season_holiday.RunDay(*labor, 16);
+  failures += Expect(season_holiday.world.fields.rows[0].work_days_remaining == 5.0F,
+                     "the harvest without days off: May Day is not reaped all the same");
   return failures;
 }
 
@@ -4102,6 +4125,7 @@ int main() {
   failures += CheckStubTablesMustBeDeclared();
   failures += TestSurplusIdles();
   failures += CheckHarvestOrder();
+  failures += CheckHarvestDaysOff();
   failures += TestPlacementDiagnosis();
   failures += TestRoadLimit();
   failures += TestHorsePoolAndLock();
