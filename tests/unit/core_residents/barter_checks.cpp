@@ -156,6 +156,59 @@ int CheckTheDryCount() {
   }
   failures += Expect(untouched, "dry count: it moves nothing — every pantry is what it was");
 
+  // THE COUNT'S OWN WORKING, BY YARD (0.37.80, BarterDryLines): the same
+  // four yards. A offers 4.667 D of milk and would hand over 28/33 D of it
+  // (to B and to C); B offers 8 D of grain and would hand over 14/33 + 4/3 +
+  // 8/33 = 2 D. Every yard would carry home what it handed over, and what
+  // is handed over in all is the count's volume.
+  {
+    const std::vector<core::BarterYardLine> lines =
+        core::BarterDryLines(config, food, kSpeedup, world);
+    const auto line_of = [&](std::size_t family_row, std::uint32_t resource) {
+      for (const core::BarterYardLine& line : lines) {
+        if (line.family == world.families.row_ids[family_row] && line.resource.value == resource) {
+          return line;
+        }
+      }
+      return core::BarterYardLine{};
+    };
+    const auto near = [need](core::Grams grams, double days) {
+      return std::abs(static_cast<double>(grams) - (days * need)) < 0.001 * need;
+    };
+    failures += Expect(near(line_of(0, 1).offered, 14.0 / 3.0) &&
+                           near(line_of(0, 1).would_give, 28.0 / 33.0) &&
+                           near(line_of(1, 0).offered, 8.0) && near(line_of(1, 0).would_give, 2.0),
+                       "dry lines: A's milk and B's grain — what each offers and what it would "
+                       "hand over");
+    core::Grams given = 0;
+    core::Grams taken = 0;
+    bool each_carries_its_own = true;
+    for (std::size_t row = 0; row < world.families.rows.size(); ++row) {
+      core::Grams gave = 0;
+      core::Grams took = 0;
+      for (const core::BarterYardLine& line : lines) {
+        if (line.family == world.families.row_ids[row]) {
+          gave += line.would_give;
+          took += line.would_take;
+        }
+      }
+      given += gave;
+      taken += took;
+      // A gram of rounding a line: three resources a yard.
+      each_carries_its_own = each_carries_its_own && std::abs(gave - took) <= 3;
+    }
+    failures += Expect(each_carries_its_own && std::abs(given - taken) <= 12 &&
+                           std::abs(static_cast<double>(given) - volume) <= 12.0,
+                       "dry lines: every yard would carry home what it handed over, and the sum "
+                       "is the count's volume");
+    bool still_untouched = world.barter.dry_days_in_row == 1;
+    for (std::size_t row = 0; row < before.size(); ++row) {
+      still_untouched = still_untouched && world.families.rows[row].pantry == before[row].pantry;
+    }
+    failures += Expect(still_untouched,
+                       "dry lines: asking moves no pantry and does not touch the count's run");
+  }
+
   core::RunBarterDryCount(config, food, kSpeedup, world);
   failures += Expect(world.barter.dry_days_in_row == 2 && world.barter.worth_starting_raised == 0,
                      "dry count: two days running are not the fact either");

@@ -69,6 +69,7 @@
 #include <vector>
 
 #include "core_common/alarm_state.h"
+#include "core_common/barter_view.h"
 #include "core_common/deadline.h"
 #include "core_common/delivery_term.h"
 #include "core_common/elder_view.h"
@@ -328,6 +329,16 @@ class ISimulation {
   /// @note NOT PURE, for ActivityOf's reason. The default answers the empty
   ///       view (both ids invalid).
   virtual ElderView Elder() const { return {}; }
+
+  /// @brief The exchange's dry count by yard and resource, counted now off
+  /// the completed state (barter_view.h, BarterYardLine): what each yard
+  /// would bring, ask, hand over and carry home if a counter stood at every
+  /// gate. Fans out to core_residents, which owns the exchange's rules. A
+  /// yard and a resource with nothing on any side has no line.
+  /// @note NOT PURE, for ActivityOf's reason; the bare engine answers none.
+  ///       Called between steps on the sim thread. A pure read: the count
+  ///       the residents' sub-step keeps (BarterWatch) is not touched.
+  virtual std::vector<BarterYardLine> BarterDryLines() const { return {}; }
 
   /// @brief Appends every stock light the wired subsystems own, in the
   /// fan-out order of the decisions slot. Fans out exactly as CollectAlarms

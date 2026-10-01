@@ -77,6 +77,7 @@
 #include <string_view>
 #include <vector>
 
+#include "core_common/barter_view.h"
 #include "core_common/ids.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
@@ -169,6 +170,19 @@ void RunBarterDryCount(const BarterConfig& config,
                        const FoodConfig& food,
                        float life_speedup,
                        WorldState& current);
+
+/// @brief The dry count's own working, by yard and resource
+///        (core_common/barter_view.h): what each yard would bring, ask, hand
+///        over and carry home, counted now off `world` by the very rules
+///        RunBarterDryCount counts by — the same yards, the same settlement,
+///        with the flows kept. A pure read at any hour; BarterWatch and the
+///        events are not touched.
+/// @return Lines in family row order, then resource order; none for a yard
+///         and a resource with nothing on any side.
+std::vector<BarterYardLine> BarterDryLines(const BarterConfig& config,
+                                           const FoodConfig& food,
+                                           float life_speedup,
+                                           const WorldState& world);
 
 /// @brief THE EVENING AT THE COUNTER, called every tick: in the hour the
 ///        walkers leave, yesterday's trips are dropped and today's laid down

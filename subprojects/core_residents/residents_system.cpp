@@ -273,6 +273,10 @@ class ResidentsSystem final : public IResidentsSystem {
 
   /// kFamilyGoingHungry, one per hungry family, in family row order — the
   /// session sorts by id.
+  std::vector<BarterYardLine> BarterDryLines(const WorldState& completed) const override {
+    return core::BarterDryLines(config_.barter, food_, config_.life_speedup, completed);
+  }
+
   void SettleStartMetrics(WorldState& current) const override {
     const SatisfactionWeights& weights = config_.weights[EpochIndex(current.epoch)];
     for (std::uint32_t item = 0; item < current.families.rows.size(); ++item) {

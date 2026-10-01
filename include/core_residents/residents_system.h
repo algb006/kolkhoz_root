@@ -34,6 +34,7 @@
 #include <string_view>
 #include <vector>
 
+#include "core_common/barter_view.h"
 #include "core_common/issue_norm_view.h"
 #include "core_sim/step.h"
 #include "core_tables/stub_tables.h"
@@ -78,6 +79,14 @@ class IResidentsSystem {
   /// memory of the look. Called once, by the assembly, right after genesis.
   /// @param current The start world; only family rows are written.
   virtual void SettleStartMetrics(WorldState& current) const = 0;
+
+  /// @brief The exchange's dry count by yard and resource, counted now off
+  /// `completed` (core_common/barter_view.h): the count's own working — who
+  /// would bring what, ask what, hand over and carry home — in family row
+  /// order, then resource order; no line where every side is nought.
+  /// @note Called between steps on the sim thread. A pure read: BarterWatch
+  ///       is not written, and no event is raised.
+  virtual std::vector<BarterYardLine> BarterDryLines(const WorldState& completed) const = 0;
 
   /// @brief Appends the people alarms standing in `completed`
   /// (core_common/alarm_state.h): kFamilyGoingHungry for every family whose

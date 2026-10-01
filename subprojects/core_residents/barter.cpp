@@ -402,6 +402,31 @@ Settlement Settle(const BarterConfig& config,
   return settled;
 }
 
+/// The yards at the counter today, read off their pantries: every family
+/// with somebody at its table, in family row order. `village_need`, when
+/// given, receives the sum of their daily needs.
+std::vector<Yard> ReadYards(const BarterConfig& config,
+                            const FoodConfig& food,
+                            float life_speedup,
+                            const WorldState& world,
+                            double* village_need) {
+  const std::vector<double> needs = NeedsByFamily(food, life_speedup, world);
+  const std::uint32_t day_of_year = world.calendar.day % kDaysPerYear;
+  std::vector<Yard> yards;
+  double need_sum = 0.0;
+  for (std::uint32_t row = 0; row < world.families.rows.size(); ++row) {
+    if (!(needs[row] > 0.0)) {
+      continue;  // nobody at the table: nothing to give for, nothing to take for
+    }
+    need_sum += needs[row];
+    yards.push_back(ReadYard(config, food, world.families.rows[row], row, needs[row], day_of_year));
+  }
+  if (village_need != nullptr) {
+    *village_need = need_sum;
+  }
+  return yards;
+}
+
 std::uint16_t CountOf(std::size_t count) {
   return static_cast<std::uint16_t>(
       std::min<std::size_t>(count, std::numeric_limits<std::uint16_t>::max()));
@@ -491,18 +516,8 @@ void RunBarterDryCount(const BarterConfig& config,
     return;  // once a day, in the counter's hour: after the day's produce, before the dinner
   }
   BarterWatch& watch = current.barter;
-  const std::vector<double> needs = NeedsByFamily(food, life_speedup, current);
-  const std::uint32_t day_of_year = current.calendar.day % kDaysPerYear;
-  std::vector<Yard> yards;
   double village_need = 0.0;
-  for (std::uint32_t row = 0; row < current.families.rows.size(); ++row) {
-    if (!(needs[row] > 0.0)) {
-      continue;  // nobody at the table: nothing to give for, nothing to take for
-    }
-    village_need += needs[row];
-    yards.push_back(
-        ReadYard(config, food, current.families.rows[row], row, needs[row], day_of_year));
-  }
+  std::vector<Yard> yards = ReadYards(config, food, life_speedup, current, &village_need);
   const Settlement settled = Settle(config, food, yards, false);
   const auto has_any = [](const std::vector<double>& amounts) {
     return std::ranges::any_of(amounts, [](double amount) { return amount > 0.0; });
@@ -525,6 +540,32 @@ void RunBarterDryCount(const BarterConfig& config,
     EmitEvent(current, EventKind::kBarterWorthStarting, EventSeverity::kNotable).amount =
         watch.dry_equivalent;
   }
+}
+
+std::vector<BarterYardLine> BarterDryLines(const BarterConfig& config,
+                                           const FoodConfig& food,
+                                           float life_speedup,
+                                           const WorldState& world) {
+  std::vector<Yard> yards = ReadYards(config, food, life_speedup, world, nullptr);
+  const Settlement settled = Settle(config, food, yards, true);
+  const auto grams = [](double equivalent) { return static_cast<Grams>(std::llround(equivalent)); };
+  std::vector<BarterYardLine> lines;
+  for (std::size_t row = 0; row < yards.size(); ++row) {
+    const Yard& yard = yards[row];
+    for (std::uint32_t index = 0; index < yard.offer.size(); ++index) {
+      BarterYardLine line;
+      line.family = world.families.row_ids[yard.family_row];
+      line.resource = DefIdFromIndex<ResourceIdTag>(index);
+      line.offered = grams(yard.offer[index]);
+      line.claimed = grams(yard.claim[index]);
+      line.would_give = grams(settled.gave[row][index]);
+      line.would_take = grams(settled.took[row][index]);
+      if (line.offered > 0 || line.claimed > 0 || line.would_give > 0 || line.would_take > 0) {
+        lines.push_back(line);
+      }
+    }
+  }
+  return lines;
 }
 
 }  // namespace core

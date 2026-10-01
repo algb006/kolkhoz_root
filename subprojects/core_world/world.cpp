@@ -588,6 +588,10 @@ class StandardSimulation final : public ISimulation {
 
   ElderView Elder() const override { return ElderViewOf(engine_->CompletedState()); }
 
+  std::vector<BarterYardLine> BarterDryLines() const override {
+    return residents_->BarterDryLines(engine_->CompletedState());
+  }
+
   std::vector<MaterialShortfall> MaterialsShortFor(UnitId unit) const override {
     return construction_->MaterialsShortFor(engine_->CompletedState(), unit);
   }
