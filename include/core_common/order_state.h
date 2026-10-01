@@ -829,6 +829,28 @@ enum class OrderKind : std::uint8_t {
   /// none, and the sweep refuses it kNoConsumer.
   kResetIssueNorm,
 
+  /// THE HARVEST WITHOUT DAYS OFF, SWITCHED (farming design, «Страда: что
+  /// пропадёт — убирают первым», rule 1; 0.37.86): `enable` 1 — while a ripe
+  /// crop with work left stands on the arable, the week's day off is a
+  /// working day; `enable` 0 — the days off stand as the calendar gives
+  /// them. A standing order, ON at genesis (ChairmanState::
+  /// harvest_without_days_off): the trace of the first autumn found one to
+  /// three days off inside a window of seven to nine dry days, with potato
+  /// and cabbage going under the snow.
+  ///
+  /// WHAT IT IS NOT: the avral (kDeclareRush — more delivered, at a price in
+  /// rest and satisfaction) and the cancelled day off (kCancelDayOff — one
+  /// named day, with the series' price). This one has no series and no
+  /// satisfaction cost: its price is the rest a day off would have given.
+  /// A holiday is never worked (time §9).
+  ///
+  /// Refusals: kRuleForbids (the switch already stands as asked — a repeat
+  /// means the chairman is looking at something stale). The boundary refuses
+  /// any subject by shape: it names nothing. Seam key proposed:
+  /// `harvest_without_days_off`. Consumer: core_labor (rush.h) FROM 0.37.87;
+  /// until then none, and the sweep refuses it kNoConsumer.
+  kHarvestWithoutDaysOff,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).

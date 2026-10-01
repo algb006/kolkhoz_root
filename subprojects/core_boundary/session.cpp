@@ -269,6 +269,11 @@ bool ShapeIsValid(const OrderRow& order) {
       // the default, is the consumer's.
       return order.resource.value != kInvalidDefIdValue && order.amount == 0 && !has_resident &&
              !has_unit && !has_field && !has_herd && !has_stand && !has_site;
+    case OrderKind::kHarvestWithoutDaysOff:
+      // A switch that is a switch, and nothing else: it names no subject.
+      // Whether it already stands as asked is the consumer's.
+      return order.enable <= 1 && order.amount == 0 && !has_resident && !has_unit && !has_field &&
+             !has_herd && !has_stand && !has_site;
     case OrderKind::kDeliverPlan:
       // One position or all of them (resource invalid); no other subject. A
       // quantity names its position: "this many of everything" means nothing.

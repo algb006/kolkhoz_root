@@ -22,9 +22,14 @@
 
 namespace core {
 
-/// @brief Reads and answers the pending kDeclareRush and kCancelDayOff.
-/// Settled on reading (kDone): the step stands on the field or the site, the
-/// cancelled day on the chairman's block.
+/// @brief Reads and answers the pending kDeclareRush, kCancelDayOff and
+/// kHarvestWithoutDaysOff. Settled on reading (kDone): the step stands on the
+/// field or the site, the cancelled day and the harvest's switch on the
+/// chairman's block.
+///   * kHarvestWithoutDaysOff (from 0.37.87): sets ChairmanState::
+///     harvest_without_days_off to `enable`; refused kRuleForbids when it
+///     already stands so. It has no price of its own to book here — the rest
+///     not recovered is the day's (labor's close of a working day).
 ///   * kDeclareRush on a field: refused kNoSuchSubject for a field that is
 ///     gone, kRuleForbids for one with no work standing (growing, idle, its
 ///     phase's work done). Sets the step and the phase it stands on; 0 lifts.

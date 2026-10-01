@@ -163,7 +163,8 @@ core::WorldState MakeWorld() {
   world.chairman.plan_traded_year = 2;
   world.chairman.summon_cause = static_cast<std::uint8_t>(core::SummonCause::kOnThePencil);
   world.chairman.away_summoned = 1;
-  world.chairman.pencil_pending = 1;  // save 81: the top, not the default
+  world.chairman.pencil_pending = 1;            // save 81: the top, not the default
+  world.chairman.harvest_without_days_off = 0;  // save 125: off, against the default on
   world.plan.due = Amounts({7'000'000, 0, 0, 0, 0, 0});
   world.plan.delivered = Amounts({1'500'000, 0, 0});
   // The accumulation limit (save 62): not empty, or a codec that forgot it
@@ -1022,6 +1023,7 @@ core::WorldState MakeWitnessWorld() {
   witness.chairman.summon_cause = static_cast<std::uint8_t>(core::SummonCause::kOnThePencil);
   witness.chairman.away_summoned = 1;
   witness.chairman.pencil_pending = 1;
+  witness.chairman.harvest_without_days_off = 0;
 
   witness.traction_ration = 0.75F;
   // The team's two alarms' memory (save 109): every slot different, so a
@@ -1155,6 +1157,8 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"chairman.summon_cause", U8(world.chairman.summon_cause)});
   chunks.push_back({"chairman.away_summoned", U8(world.chairman.away_summoned)});
   chunks.push_back({"chairman.pencil_pending", U8(world.chairman.pencil_pending)});
+  chunks.push_back(
+      {"chairman.harvest_without_days_off", U8(world.chairman.harvest_without_days_off)});
 
   chunks.push_back({"traction_ration", F32(world.traction_ration)});
   // The team's two alarms' memory (save 109).
@@ -1431,7 +1435,10 @@ constexpr std::array<RecordedSection, 23> kRecordedPayload = {{
     // with the other sections unmoved before the build; held.
     // Save 121: +15 — the exchange's dry count, a byte, three u16 and an i64;
     // predicted 631 -> 646 before the build, held.
-    {"world", 646, 0x101275f8e0fb76f3ULL},
+    // Save 125: +1 — the harvest without days off, a byte; predicted 646 ->
+    // 647 with the other sections' sizes unmoved and the orders' hash moved
+    // (a new top OrderKind) before the build; all three held.
+    {"world", 647, 0xb692ed92a8e88c9dULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -1559,7 +1566,9 @@ constexpr std::array<RecordedSection, 23> kRecordedPayload = {{
     // Save 116 (0.37.28): kResetIssueNorm became the top OrderKind — same
     // 788 bytes, the hash moved. NOT predicted: this fixture found it, the
     // sixth time the top of the enum has moved here unannounced.
-    {"orders", 788, 0x314ee9eecd402476ULL},
+    // Save 125: kHarvestWithoutDaysOff became the top OrderKind — same 788
+    // bytes, the hash moved; predicted before the build this time.
+    {"orders", 788, 0x33d59a104820d24dULL},
     // Save 82: the fixture's first stand, a birch planting — 8 -> 67 (its id
     // 4, the old fields 41, species 2, hectares 4, two days 8); predicted,
     // held.
@@ -2025,6 +2034,9 @@ int main() {
                      "and the milestone that cannot be undone came back set");
   failures += Expect(loaded.chairman.ration_auto == 0,
                      "the ration's checkbox the chairman switched off comes back off (save 57)");
+  failures += Expect(loaded.chairman.harvest_without_days_off == 0,
+                     "the harvest without days off the chairman switched off comes back off "
+                     "(save 125)");
   failures += Expect(
       loaded.chairman.days_off_cancelled_in_a_row == 2 && loaded.chairman.cancelled_day_off == 55,
       "the cancelled day off and its series come back (save 65)");

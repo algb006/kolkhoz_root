@@ -518,6 +518,18 @@ struct ChairmanState {
   /// it, the mark goes silently. One deferred summons, never a repeat
   /// without a new crossing. Save 81.
   std::uint8_t pencil_pending = 0;
+
+  /// THE HARVEST WITHOUT DAYS OFF (farming design, «Страда: что пропадёт —
+  /// убирают первым», rule 1; the human's «делай» of 2026-10-01; save 125):
+  /// 0/1, the chairman's standing order — while a ripe crop with work left
+  /// stands on the arable the week's day off is worked like any other day.
+  /// ON AT GENESIS (the struct's default is the start value); only
+  /// kHarvestWithoutDaysOff moves it. Its price is the rest not recovered —
+  /// no series, no satisfaction cost, which are the cancelled day off's and
+  /// the avral's. A holiday is not touched (time §9).
+  /// Read through IsDayOffIn (core_common/day_off.h) and nowhere else.
+  /// Last in the struct, beside the other bytes: the size stays 80.
+  std::uint8_t harvest_without_days_off = 1;
 };
 
 /// @brief Why the district calls the chairman «на ковёр» (district-trip.md
