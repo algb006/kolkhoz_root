@@ -606,11 +606,28 @@ int main(int argc, char** argv) {
   // alive: it eats, it calves, it loses heads to age and to a hungry winter,
   // and the year's care follows the heads that actually stood there. The
   // band's floor is therefore the honest one, not the arithmetic one.
-  failures += ExpectBand(care, 150.0, 180.0, "the barn costs the cow herd's yearly norm");
+  //
+  // THE START HAS NO CATTLE YARD SINCE 0.37.58 (b4809e0, «the start had a
+  // cattle yard and a build yard the human took away»): the kolkhoz's cows
+  // stand on billet in the yards and their households keep them — no barn,
+  // no care booked by the kolkhoz's hands. The three bands below stood red
+  // from that export to 0.37.85 (150..180, 600..720 and 3..12.5 against 0,
+  // 541 and 0), and a guard that is always red teaches to step over it. They
+  // are re-recorded on the world as it is; the day a run builds the cattle
+  // yard here, the barn's norm comes back as a band and not as a memory.
+  failures += ExpectBand(care,
+                         0.0,
+                         0.0,
+                         "no barn at the start: the kolkhoz's hands book no herd care — the "
+                         "yards keep the cows on billet");
+  // 540.3 measured on 0.37.85 (ploughing 89.3, harrowing 31.5, sowing 47.6,
+  // harvest 344.0, hauling 27.9; 541.0 on 0.37.84), the band as wide as the
+  // old one was about its own middle: nine per cent either way.
   failures += ExpectBand(total,
-                         600.0,
-                         720.0,
-                         "the year's labor matches the reference run plus what the hands can mow");
+                         492.0,
+                         590.0,
+                         "the year's labor matches the reference run plus what the hands can mow, "
+                         "less the barn the start does not have");
   std::cout << "labor_year: " << care_left << " game man-days of barn care left undone\n";
   // WALKING BY THE ROADS (0.36.2; boss core-boss-epoch1-6 [30], option 1): in
   // the winter's seven days of ~7 h of daylight (days 1-3 and 43-47) the start
@@ -630,7 +647,15 @@ int main(int argc, char** argv) {
   // left: 6.5 -> 10.11 measured, the year's care still inside its band
   // above. The ceiling re-recorded with the same room as before (6.5 -> 8,
   // +23 %): 12.5. The floor keeps its purpose.
-  failures += ExpectBand(care_left, 3.0, 12.5, "the barn is served, day in and day out");
+  // WITH NO BARN THERE IS NO CARE TO LEAVE UNDONE (0.37.58, above): nought,
+  // and nought exactly — a care owed by nobody's herd would be a new defect.
+  // THE FLOOR'S PURPOSE IS LOST WITH IT, and that is said rather than kept
+  // in a comment: this band was the one guard, on the start map, of the
+  // labour hour walking by the roads and not along the straight line. No
+  // run guards that switch now; shop_pace --far prints both ways' hours and
+  // would not redden on either. Named to boss with this commit.
+  failures += ExpectBand(
+      care_left, 0.0, 0.0, "no barn at the start: no herd care is left undone, none being owed");
 
   // Trudodni are the same quantity seen from the pay side: the rate is 1.0
   // across Epoch-I hand work, so the accounts on the last evening of the year

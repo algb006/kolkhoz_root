@@ -201,6 +201,30 @@ core::Vec2 HouseOf(const core::WorldState& world, std::uint32_t resident_row) {
   return world.units.rows[core::FindRow(world.units, family.house)].position;
 }
 
+/// THE FAR PLACE, BY ITS DISTANCE AND NOT BY ITS ROW: the start's unit whose
+/// straight line from the master's house is nearest to `kFarMetres` — the
+/// 1.6 km the far case was recorded on («1.6 km is 3.9 game hours a way»).
+/// Until 0.37.85 «far» was the first unit of the world, which was 1.6 km
+/// from the master's house only while the start layout and the master's
+/// yard stood as they did then; from 0.37.73 it stood 73 m from his door,
+/// the case met no short day, and the suite carried it red for twelve
+/// versions.
+core::Vec2 FarPlace(const core::WorldState& world, std::uint32_t master_row) {
+  constexpr float kFarMetres = 1600.0F;
+  const core::Vec2 house = HouseOf(world, master_row);
+  core::Vec2 best = house;
+  float best_miss = kFarMetres;
+  for (const core::UnitRow& unit : world.units.rows) {
+    const float distance = std::hypot(unit.position.x - house.x, unit.position.y - house.y);
+    const float miss = std::fabs(distance - kFarMetres);
+    if (miss < best_miss) {
+      best_miss = miss;
+      best = unit.position;
+    }
+  }
+  return best;
+}
+
 /// Puts up the yard, its store and its shop, appoints the master; returns
 /// the shop's id.
 core::UnitId BuildShop(core::WorldState& world,
@@ -209,7 +233,7 @@ core::UnitId BuildShop(core::WorldState& world,
                        bool far) {
   core::UnitRow yard;
   yard.type = keys.yard;
-  yard.position = far ? world.units.rows.front().position : HouseOf(world, master_row);
+  yard.position = far ? FarPlace(world, master_row) : HouseOf(world, master_row);
   const core::UnitId yard_id = core::AppendRow(world.units, yard);
   core::UnitRow store;
   store.type = keys.store;
@@ -365,8 +389,10 @@ int main(int argc, char** argv) {
             << kDaysWatched << "; days too far " << too_far_days
             << ", of them the master set out anyway " << walked_too_far << '\n';
   if (far) {
-    // 1.6 km is 3.9 game hours a way: in December's seven-hour days the
-    // road leaves less than min_usable_hours, and he stays home (boss seq 13).
+    // 1.6 km is 3.9 game hours a way on the straight line, and five by the
+    // way there is (1 647 m to the start's unit FarPlace finds; the alarm
+    // says «too_far 5 h»): from October's nine-hour days on the road leaves
+    // less than min_usable_hours, and he stays home (boss seq 13).
     failures += run::Expect(too_far_days > 0 && walked_too_far == 0,
                             "shop_pace --far: when the road eats the short day the master stays "
                             "home and the shop says it is too far");
