@@ -38,6 +38,7 @@
 #include "../common/run_harness.h"
 #include "../common/sawmill_policy.h"
 #include "../common/sowing_policy.h"
+#include "../common/waiting_plough.h"
 #include "../common/yard_policy.h"
 #include "core_catalog/timber_catalog.h"
 #include "core_catalog/world_conventions.h"
@@ -108,63 +109,33 @@ struct YearTally {
 
 /// Carters riding a horse to a load that does not spoil — a stand's logs, a
 /// dig's load, the district's timber lot — on a day a field's plough or
-/// harrow, in that phase since the morning before (`morning`), waits with
+/// harrow, in that phase at the day's hour 0 (`morning`), waits with
 /// nobody of its own kind on it (0.36.19; district_lot's check for the lot,
-/// 0.36.18). A phase opens in production, after the morning's placement, so
-/// a field that opened today had no plough to offer anyone.
+/// 0.36.18). Until 0.37.103 `morning` was the day BEFORE, to leave out a
+/// field production had opened after the morning's placement: it had no
+/// plough to offer anyone then.
 ///
 /// A ZYAB ON A FROSTY MORNING IS NOT A PLOUGH WAITING (0.37.18): the
 /// accountant does not offer the autumn furrow on a day below nought
 /// («успеть до мёрзлой земли»), so its field stands uncrewed by the rule, and
 /// a horse on the logs takes nothing from it. The frost is read off `world`
-/// itself: the loop's "day" runs from hour 1 to the next day's hour 0, so the
-/// placement counted here is the one made in `world`'s own hour 0, in its
-/// weather. (The first reading took the air at the loop's first step — the
-/// day before's hour 1 — and seed 1932 went red on a morning at −7 °C.)
+/// itself, which is the day's own hour 1 since 0.37.103 — the placement the
+/// top-up left, in that day's weather. (Until then `world` was the NEXT day's
+/// hour 0: the loop's "day" runs from hour 1 to the next day's hour 0. The
+/// first reading of all took the air a day apart from the placement, and seed
+/// 1932 went red on a morning at −7 °C.)
 /// Seed 1929, day 285, −4.5 °C: 34 man-days counted before the exemption.
+/// `morning` is the same day's hour 0, after production's daily block: a
+/// phase that block opened counts from its first day, because the top-up now
+/// answers for it (labor_system.cpp, TopUpDay).
 std::uint32_t TimberCartsOverAWaitingPlough(const std::vector<core::FieldRow>& morning,
                                             const std::vector<core::FieldId>& morning_ids,
                                             const core::WorldState& world) {
-  const bool frost_at_placement = world.weather.air_temperature_celsius < 0.0F;
-  bool plough_waits = false;
-  for (std::uint32_t row = 0; row < world.fields.rows.size() && !plough_waits; ++row) {
-    const core::FieldRow& field = world.fields.rows[row];
-    const bool plough = field.phase == core::FieldPhase::kPlowing;
-    const bool harrow = field.phase == core::FieldPhase::kHarrowing;
-    if ((!plough && !harrow) || !(field.work_days_remaining > 0.0F)) {
-      continue;
-    }
-    if (field.autumn_furrowing != 0 && frost_at_placement) {
-      continue;
-    }
-    const bool open_since_morning = row < morning.size() &&
-                                    morning_ids[row].value == world.fields.row_ids[row].value &&
-                                    morning[row].phase == field.phase;
-    if (!open_since_morning) {
-      continue;
-    }
-    const core::WorkKind kind = plough ? core::WorkKind::kPlowing : core::WorkKind::kHarrowing;
-    bool crewed = false;
-    for (const core::ResidentRow& person : world.residents.rows) {
-      crewed = crewed || (person.work.field.value == world.fields.row_ids[row].value &&
-                          person.work.kind == kind);
-    }
-    plough_waits = !crewed;
-  }
-  if (!plough_waits) {
-    return 0;
-  }
-  std::uint32_t carts = 0;
-  for (const core::ResidentRow& person : world.residents.rows) {
-    const bool timber_load = person.work.stand.value != core::kInvalidEntityIdValue ||
-                             person.work.extraction_site.value != core::kInvalidEntityIdValue ||
-                             person.work.limit_delivery.value != core::kInvalidEntityIdValue;
-    carts +=
-        person.work.kind == core::WorkKind::kHauling && person.work.rides_horse != 0 && timber_load
-            ? 1U
-            : 0U;
-  }
-  return carts;
+  // The question's two halves have one home since 0.37.103
+  // (../common/waiting_plough.h), shared with district_lot.
+  return run::HorseFieldsWaiting(morning, morning_ids, world) > 0
+             ? run::RidersOfWindowlessCarts(world)
+             : 0U;
 }
 
 }  // namespace
@@ -311,6 +282,20 @@ int main(int argc, char** argv) {
       const std::vector<core::FieldId> morning_ids = started.State().fields.row_ids;
       for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
         started->AdvanceStep();
+        if (tick == 0) {
+          // READ AFTER THE TOP-UP (0.37.103; manual/75-logistics.md §10). The
+          // loop's day starts on the day's hour 0 already made, so its first
+          // step is hour 1: the top-up has run, and the placement is the one
+          // the day is worked by. Read at the loop's end — the next day's hour
+          // 0 — this saw the morning's plan without the top-up: a plough
+          // production opened at dawn stood uncrewed there whatever the core
+          // did, and the assertion could neither redden on the seam of
+          // 0.37.99 nor go green by its mend.
+          const std::uint32_t carts =
+              TimberCartsOverAWaitingPlough(morning_fields, morning_ids, started.State());
+          timber_carts_over_plough += carts;
+          timber_cart_days_over_plough += carts > 0 ? 1U : 0U;
+        }
         const std::vector<core::TimberStandRow>& stands = started.State().stands.rows;
         for (std::size_t row = 0; row < stands.size() && row < drained.size(); ++row) {
           const float gap = stands[row].haul_days_written - stands[row].haul_days_remaining;
@@ -319,12 +304,6 @@ int main(int argc, char** argv) {
       }
       for (const float drained_today : drained) {
         tally.stand_haul_man_days += drained_today;
-      }
-      {
-        const std::uint32_t carts =
-            TimberCartsOverAWaitingPlough(morning_fields, morning_ids, started.State());
-        timber_carts_over_plough += carts;
-        timber_cart_days_over_plough += carts > 0 ? 1U : 0U;
       }
       yard.RunDay(*started.simulation);
       fixture.RunDay(*started.simulation);

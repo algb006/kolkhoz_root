@@ -23,13 +23,14 @@
 #include <cstdint>
 #include <iostream>
 #include <span>
+#include <vector>
 
 #include "../common/run_harness.h"
+#include "../common/waiting_plough.h"
 #include "core_common/labor_state.h"
 #include "core_common/land_state.h"
 #include "core_common/ledger_state.h"
 #include "core_common/order_state.h"
-#include "core_common/rain_stops_work.h"
 #include "core_common/world_state.h"
 
 namespace {
@@ -72,44 +73,12 @@ std::uint32_t CartingTheLotOnFoot(const core::WorldState& world) {
   return walkers;
 }
 
-/// Fields in a horse work (ploughing, harrowing) with work left and nobody
-/// on them, on a day the rain does not stop that work. IN THAT WORK SINCE THE
-/// DAY BEFORE (`morning`): a phase opens in production, after the morning's
-/// placement, and a field that opened today had no plough to offer anyone
-/// (the first draft of this check counted the two opening days of spring).
-std::uint32_t HorseFieldsWaiting(const core::WorldState& morning, const core::WorldState& world) {
-  std::uint32_t waiting = 0;
-  for (std::uint32_t row = 0; row < world.fields.rows.size(); ++row) {
-    const core::FieldRow& field = world.fields.rows[row];
-    const bool plough = field.phase == core::FieldPhase::kPlowing;
-    const bool harrow = field.phase == core::FieldPhase::kHarrowing;
-    if ((!plough && !harrow) || !(field.work_days_remaining > 0.0F)) {
-      continue;
-    }
-    const bool open_since_morning =
-        row < morning.fields.rows.size() &&
-        morning.fields.row_ids[row].value == world.fields.row_ids[row].value &&
-        morning.fields.rows[row].phase == field.phase;
-    if (!open_since_morning) {
-      continue;
-    }
-    const core::WorkKind kind = plough ? core::WorkKind::kPlowing : core::WorkKind::kHarrowing;
-    if (core::RainStopsWork(world.weather.precipitation, kind)) {
-      continue;
-    }
-    // CREWED BY ITS OWN WORK: a field may be ploughed and carted at once, and
-    // a carter on its load does not plough it (static review of 0.36.18 —
-    // the first draft counted any worker on the field, the very case of the
-    // rye's fallow with the oats still lying on it).
-    bool crewed = false;
-    for (const core::ResidentRow& person : world.residents.rows) {
-      crewed = crewed || (person.work.field.value == world.fields.row_ids[row].value &&
-                          person.work.kind == kind);
-    }
-    waiting += crewed ? 0U : 1U;
-  }
-  return waiting;
-}
+// The fields in a horse work with nobody on them: ../common/waiting_plough.h,
+// one home with timber_years since 0.37.103. The copy that stood here asked
+// «in that work since the DAY BEFORE» to leave out a field production had
+// opened after the morning's placement (its first draft counted the two
+// opening days of spring); the top-up answers for such a field since
+// 0.37.101, and it counts from its first day.
 
 }  // namespace
 
@@ -159,9 +128,17 @@ int main() {
       order.lot = core::LimitLotId{static_cast<std::uint16_t>(lot)};
       with->StageOrders(std::span<const core::OrderRow>(&order, 1), {});
     }
-    const core::WorldState morning = with.State();
-    run::AdvanceDays(*with, 1);
-    run::AdvanceDays(*without, 1);
+    // To the next day's hour 0 — its fields as production's daily block left
+    // them — and one step on, to its hour 1 (0.37.103): the fields a plough
+    // may wait on are those of the SAME day's hour 0.
+    for (std::uint32_t step = 0; step + 1 < core::kTicksPerDay; ++step) {
+      with->AdvanceStep();
+      without->AdvanceStep();
+    }
+    const std::vector<core::FieldRow> fields_at_hour_0 = with.State().fields.rows;
+    const std::vector<core::FieldId> ids_at_hour_0 = with.State().fields.row_ids;
+    with->AdvanceStep();
+    without->AdvanceStep();
     const core::WorldState& a = with.State();
     const core::WorldState& b = without.State();
     if (a.ledger.closed.year != closed_year) {
@@ -179,7 +156,8 @@ int main() {
     }
     const std::uint32_t carters = CartingTheLot(a);
     carter_days += carters > 0 ? 1U : 0U;
-    carter_days_over_a_plough += carters > 0 && HorseFieldsWaiting(morning, a) > 0 ? 1U : 0U;
+    carter_days_over_a_plough +=
+        carters > 0 && run::HorseFieldsWaiting(fields_at_hour_0, ids_at_hour_0, a) > 0 ? 1U : 0U;
     carters_on_foot += CartingTheLotOnFoot(a);
     if (arrive_day != 0 && emptied_day == 0 && a.limit_deliveries.rows.empty()) {
       emptied_day = a.calendar.day;
