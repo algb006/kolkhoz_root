@@ -897,16 +897,22 @@ int CheckStartRoads() {
       }
     }
   }
-  // THE DESIGN'S NINE, BY NAME (roads design §4, «Стартовая карта»). The
+  // THE DESIGN'S TWELVE, BY NAME (roads design §4, «Стартовая карта»). The
   // first definition — a road with one free end — gave ten and not the
   // design's list (the lanes in, road_artel out); named to boss on 0.36.0,
   // and the design's definition was set to the branch (ed0001e6).
+  // NINE UNTIL THE REFERENCE LAYOUT (0.37.102; boss, 2 October 2026:
+  // «двенадцать, верно»): its seven roads end three on the meadows
+  // (road_east_meadows, road_south_lane, road_sw_meadows) and one at the
+  // village's clay (road_hay_branch), and road_new_village, carried on by
+  // them, stopped being a dead end.
   const std::string expected_dead =
-      " road_artel road_cemetery road_east_pond road_hayfield road_lesnoy_spur"
-      " road_new_village road_north_forest road_pond_village road_resort_spur";
-  failures += Expect(dead_ends == 9 && dead_names == expected_dead && borders == 4,
-                     "start roads: the graph finds the design's nine dead-end roads, by name, and "
-                     "four ways out");
+      " road_artel road_cemetery road_east_meadows road_east_pond road_hay_branch road_hayfield"
+      " road_lesnoy_spur road_north_forest road_pond_village road_resort_spur road_south_lane"
+      " road_sw_meadows";
+  failures += Expect(dead_ends == 12 && dead_names == expected_dead && borders == 4,
+                     "start roads: the graph finds the design's twelve dead-end roads, by name, "
+                     "and four ways out");
   // CONNECTIVITY (roads design §17): every ROAD in one network. A path may
   // stand alone — people reach it across open ground — and the backwater
   // shore path does, 1.4 km from the nearest road.

@@ -6,7 +6,7 @@
 # x_m, y_m: the loading point — the site's ground nearest a road, metres from the south-west corner; walk and haul are measured to it
 site,resource,x_m,y_m,area_ha
 clay_pit_bank_north,clay,8511.2,10258.9,0.5
-clay_pit_village,clay,7281.2,8503.9,0.5
+clay_pit_village,clay,7358.8,8536.1,0.5
 sand_pit_bank_bridge,sand,8263.8,10266.1,0.5
 sand_pit_mouth,sand,9023.9,10368.8,0.5
 stone_quarry_manor,stone,9471.2,9443.9,0.5

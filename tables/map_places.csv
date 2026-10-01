@@ -5,7 +5,7 @@
 # meadow — the contour's centroid. The last road to one is not
 # demolished. Units and fields are the core's own and not here.
 place,kind,x_m,y_m
-new_village_zone,village_zone,8750.0,8922.5
+new_village_zone,village_zone,8750.0,8952.5
 village_zone,village_zone,8625.0,9275.0
 village_zone_pond,village_zone,6200.0,3900.0
 artel_zone,industry_zone,9065.0,10520.0

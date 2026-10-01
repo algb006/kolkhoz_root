@@ -12,7 +12,7 @@
 key,kind,unit_type,x_m,y_m,area_ha,rotation_year0,rotation_year1,rotation_year2,is_derelict,meadow_kind,fill_pct,start_wear_pct,start_dead,traffic
 church_store,unit,church_store,9250,9330,,,,,0,,-1,70,0,
 clay_pile,unit,clay_pile,7380,8560,,,,,0,,-1,-1,0,
-field_barley,field,,9251.2,8229.3,7.5,barley,pea,wheat_spring,0,,-1,-1,0,
+field_barley,field,,9248.77,8226.44,7.5,barley,pea,wheat_spring,0,,-1,-1,0,
 field_barley_north,field,,9551.2,8846.8,3.5,barley,cabbage,barley,0,,-1,-1,0,
 field_cabbage,field,,9551.2,8671.8,3.5,onion_garlic,oat,cabbage,0,,-1,-1,0,
 field_derelict_1,field,,8126.2,8509.3,15,,,,1,,-1,-1,0,
@@ -20,12 +20,12 @@ field_derelict_2,field,,8126.2,8209.3,15,,,,1,,-1,-1,0,
 field_derelict_3,field,,8626.2,8509.3,15,,,,1,,-1,-1,0,
 field_derelict_4,field,,8626.2,8209.3,15,,,,1,,-1,-1,0,
 field_derelict_5,field,,9370.2,7923.05,15,,,,1,,-1,-1,0,
-field_derelict_6,field,,8751.2,7959.3,15,,,,1,,-1,-1,0,
+field_derelict_6,field,,8501.2,7959.3,15,,,,1,,-1,-1,0,
 field_fallow,field,,8088.7,8894.3,3.5,,rye_winter,oat,0,,-1,-1,0,
 field_grass,field,,9376.2,9134.3,10.5,wheat_spring,timothy,rye_winter,0,,-1,-1,0,
 field_oat,field,,8626.2,9634.3,10.5,oat,potato,barley,0,,-1,-1,0,
-field_oat_north,field,,9001.2,8239.3,7,oat,barley,oat,0,,-1,-1,0,
-field_potato,field,,9126.2,8519.3,14,potato,wheat_spring,potato,0,,-1,-1,0,
+field_oat_north,field,,9003.77,8224.74,7,oat,barley,oat,0,,-1,-1,0,
+field_potato,field,,9131.2,8516.44,14,potato,wheat_spring,potato,0,,-1,-1,0,
 field_wheat,field,,8800,10475,10,timothy,timothy,timothy,0,,-1,-1,0,
 hay_stack,unit,hay_stack,7760,8880,,,,,0,,-1,-1,0,
 log_pile,unit,log_pile,7400,9060,,,,,0,,-1,-1,0,
@@ -90,3 +90,10 @@ count_lodge,unit,count_lodge,8117,10640,,,,,0,,-1,60,1,
 road_pond_village,road,,6785.5,3898.32,0.3168,,,,0,,0,10,0,none
 road_east_pond,road,,9081.7,1993.65,4.9799,,,,0,,0,10,0,none
 cemetery_chapel,unit,cemetery_chapel,8104,10424,,,,,0,,-1,70,1,
+road_horse_yard_street,road,,8892.07,8934,0.1531,,,,0,,-1,30,0,rare
+road_service_strip,road,,8720.4,8714.67,0.2725,,,,0,,-1,30,0,rare
+road_south_lane,road,,8881.2,8290.43,0,,,,0,,-1,15,0,almost_none
+road_east_meadows,road,,9384.67,8635.67,0.3224,,,,0,,-1,15,0,almost_none
+road_farm_link,road,,8042.5,8857.75,4.1475,,,,0,,-1,30,0,rare
+road_hay_branch,road,,7583.67,8799.33,2.1604,,,,0,,-1,30,0,rare
+road_sw_meadows,road,,7901.72,8388,5.0892,,,,0,,-1,15,0,almost_none
