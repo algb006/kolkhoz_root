@@ -2834,20 +2834,24 @@ int CheckNightTrades() {
     constexpr core::Grams kKilo = core::kGramsPerKilogram;
     core::NightTradeConfig raw_config = config;
     raw_config.raw_material = {core::ResourceId{3}};
+    raw_config.sugar = core::ResourceId{4};
     core::FoodConfig food;
-    food.resources.resize(4);
+    food.resources.resize(5);
     core::WorldState wired = world;
     wired.calendar.tick = (2 * core::kTicksPerDay) + raw_config.hour_out;
     core::RefreshCalendarCaches(wired.calendar);
     core::UnitRow store;
     store.level = 1;
-    store.stock = {0, 0, 0, 100 * kKilo};
+    store.stock = {0, 0, 0, 100 * kKilo, 40 * kKilo};
     AppendRow(wired.units, store);
-    wired.plan.due = {0, 0, 0, 70 * kKilo};
-    wired.ledger.current.harvest = {0, 0, 0, 70 * kKilo};
+    wired.plan.due = {0, 0, 0, 70 * kKilo, 0};
+    wired.ledger.current.harvest = {0, 0, 0, 70 * kKilo, 0};
     core::RunNightOutings(raw_config, food, wired);
+    // 30 kg of grain is 20 litres by the recipe, and 10 kg of sugar with it;
+    // the second distiller finds no grain above the funds and takes no sugar.
     const core::ResourceAmounts& stolen = wired.ledger.current.stolen;
-    failures += Expect(stolen.size() > 3 && stolen[3] == 30 * kKilo,
+    failures += Expect(stolen.size() > 4 && stolen[3] == 30 * kKilo && stolen[4] == 10 * kKilo &&
+                           wired.ledger.current.samogon_brewed_ml == 20000,
                        "night: two distillers carry only the 30 kg above the sealed plan");
   }
 
@@ -2935,8 +2939,11 @@ int CheckNightTrades() {
 int CheckRawMaterialLeak() {
   int failures = 0;
   constexpr core::Grams kKilo = core::kGramsPerKilogram;
-  core::NightTradeConfig config;  // 50 kg, sober at 20 or under, 100 kg
+  // A night's load of 50 kg, sober at 20 or under, the complaint at 100 kg;
+  // a litre is 0.5 kg of sugar and 1.5 kg of grain.
+  core::NightTradeConfig config;
   config.raw_material = {core::ResourceId{0}};
+  config.sugar = core::ResourceId{1};
   // 0 labourer, 1 watchman (night), 2 storekeeper (workday).
   config.post_shift = {
       core::PostShift::kWorkday, core::PostShift::kNight, core::PostShift::kWorkday};
@@ -2945,11 +2952,11 @@ int CheckRawMaterialLeak() {
   core::WorldState world;
   core::UnitRow open_store;
   open_store.level = 1;
-  open_store.stock = {30 * kKilo};
+  open_store.stock = {30 * kKilo, 20 * kKilo};
   const core::UnitId open_id = AppendRow(world.units, open_store);
   core::UnitRow kept_store;
   kept_store.level = 1;
-  kept_store.stock = {100 * kKilo};
+  kept_store.stock = {100 * kKilo, 100 * kKilo};
   const core::UnitId kept_id = AppendRow(world.units, kept_store);
   core::ResidentRow watchman;
   watchman.post = core::PostAssignment{.profession = core::ProfessionId{1}, .unit = kept_id};
@@ -2963,21 +2970,52 @@ int CheckRawMaterialLeak() {
   };
 
   // A SOBER WATCH CLOSES THE STORE (register 206; it was a 60 % cut until
-  // 2026-09-18): 30 kg from the open store, nothing from the kept one.
+  // 2026-09-18): the open store's 30 kg of grain and the 10 kg of sugar its
+  // 20 litres take, nothing from the kept one.
   failures +=
       Expect(core::StoreLeakClosed(config, world, 1) && !core::StoreLeakClosed(config, world, 0),
              "leak: a sober watchman closes his store, an unwatched one is open");
+  const auto complaints_said = [&world] {
+    std::uint32_t said = 0;
+    for (const core::SimEvent& event : world.step_events) {
+      said += event.kind == core::EventKind::kStoreLeakComplaint ? 1U : 0U;
+    }
+    return said;
+  };
+  // NO SUGAR, NO SAMOGON (0.37.72): grain lying open and not a gram of sugar
+  // open to him — he carries nothing, brews nothing and is not supplied.
+  {
+    core::WorldState sugarless = world;
+    sugarless.units.rows[FindRow(sugarless.units, open_id)].stock[1] = 0;
+    failures +=
+        Expect(core::StealRawMaterial(config, {}, sugarless, kDistillerRow) == 0 &&
+                   sugarless.units.rows[FindRow(sugarless.units, open_id)].stock[0] == 30 * kKilo &&
+                   sugarless.residents.rows[kDistillerRow].distiller_supplied_month == 0 &&
+                   sugarless.residents.rows[kDistillerRow].samogon_ml == 0 &&
+                   sugarless.step_events.empty(),
+               "recipe: with no sugar open to him he leaves the grain where it lies");
+  }
   const core::Grams first = core::StealRawMaterial(config, {}, world, kDistillerRow);
   failures += Expect(
-      first == 30 * kKilo && stock_of(open_id) == 0 && stock_of(kept_id) == 100 * kKilo &&
-          world.ledger.current.stolen.size() == 1 && world.ledger.current.stolen[0] == 30 * kKilo,
+      first == 40 * kKilo && stock_of(open_id) == 0 && stock_of(kept_id) == 100 * kKilo &&
+          world.ledger.current.stolen.size() == 2 && world.ledger.current.stolen[0] == 30 * kKilo &&
+          world.ledger.current.stolen[1] == 10 * kKilo,
       "leak: the open store gives all it holds, the watched one nothing, and the book carries "
       "what went");
   failures += Expect(world.residents.rows[kDistillerRow].distiller_supplied_month ==
                          world.night_theft.month_index + 1U,
                      "leak: a night that brought raw material supplies the distiller this month");
-  failures += Expect(world.step_events.empty() && world.night_theft.complaint_raised == 0,
-                     "leak: 30 kg in the month raises no complaint");
+  failures += Expect(world.residents.rows[kDistillerRow].samogon_ml == 20000 &&
+                         world.ledger.current.samogon_brewed_ml == 20000,
+                     "recipe: 30 kg of grain and 10 of sugar are 20 litres, his and the book's");
+  failures += Expect(
+      world.step_events.size() == 1 && world.step_events[0].kind == core::EventKind::kSugarStolen &&
+          world.step_events[0].amount == 10 * kKilo && world.step_events[0].unit == open_id &&
+          world.step_events[0].resident == world.residents.row_ids[kDistillerRow] &&
+          world.step_events[0].resource == config.sugar,
+      "recipe: the sugar carried is said once — who, how much, from which store");
+  failures += Expect(complaints_said() == 0 && world.night_theft.complaint_raised == 0,
+                     "leak: 40 kg in the month raises no complaint");
 
   // A DRINKING WATCHMAN IS AS GOOD AS NONE, and a drinking storekeeper opens a
   // store whatever the watchman: the leak is closed only by a sober pair.
@@ -3004,30 +3042,28 @@ int CheckRawMaterialLeak() {
                        "leak: a night that brought nothing leaves the distiller unsupplied");
   }
 
-  // Two more nights in the same month from a refilled open store — 50 kg each:
-  // past 100 kg, the complaint, once.
-  world.units.rows[FindRow(world.units, open_id)].stock[0] = 200 * kKilo;
+  // Two more nights in the same month from a refilled open store — the whole
+  // load of 50 kg each, 25 litres: 37.5 kg of grain and 12.5 of sugar. Past
+  // 100 kg, the complaint, once.
+  world.units.rows[FindRow(world.units, open_id)].stock = {200 * kKilo, 100 * kKilo};
   core::StealRawMaterial(config, {}, world, kDistillerRow);
   core::StealRawMaterial(config, {}, world, kDistillerRow);
-  std::uint32_t complaints = 0;
-  for (const core::SimEvent& event : world.step_events) {
-    complaints += event.kind == core::EventKind::kStoreLeakComplaint ? 1U : 0U;
-  }
-  failures += Expect(complaints == 1 && world.night_theft.complaint_raised == 1 &&
-                         world.night_theft.stolen_this_month >= 100 * kKilo,
+  failures += Expect(complaints_said() == 1 && world.night_theft.complaint_raised == 1 &&
+                         world.night_theft.stolen_this_month == 140 * kKilo &&
+                         stock_of(open_id) == 125 * kKilo &&
+                         world.residents.rows[kDistillerRow].samogon_ml == 70000,
                      "leak: past 100 kg in a month the village complains, once");
 
   // Next month: the tally starts again, and no second complaint ever.
   world.step_events.clear();
   world.calendar.tick = static_cast<core::Tick>(core::kDaysPerMonth) * core::kTicksPerDay;
   core::RefreshCalendarCaches(world.calendar);
-  world.units.rows[FindRow(world.units, open_id)].stock[0] = 500 * kKilo;
+  world.units.rows[FindRow(world.units, open_id)].stock = {500 * kKilo, 100 * kKilo};
   core::StealRawMaterial(config, {}, world, kDistillerRow);
   core::StealRawMaterial(config, {}, world, kDistillerRow);
   core::StealRawMaterial(config, {}, world, kDistillerRow);
-  failures +=
-      Expect(world.night_theft.stolen_this_month == 150 * kKilo && world.step_events.empty(),
-             "leak: a new month counts from zero, and the complaint does not come again");
+  failures += Expect(world.night_theft.stolen_this_month == 150 * kKilo && complaints_said() == 0,
+                     "leak: a new month counts from zero, and the complaint does not come again");
 
   // A granary is a module of the food yard, and the watchman is posted at the
   // yard: he keeps the granary on its plot. A granary under an unwatched yard
@@ -3047,7 +3083,7 @@ int CheckRawMaterialLeak() {
   core::UnitRow open_granary;
   open_granary.level = 1;
   open_granary.parent = open_yard_id;
-  open_granary.stock = {100 * kKilo};
+  open_granary.stock = {100 * kKilo, 50 * kKilo};
   const core::UnitId open_granary_id = AppendRow(yards.units, open_granary);
   core::ResidentRow yard_watchman;
   yard_watchman.post =
@@ -3055,37 +3091,66 @@ int CheckRawMaterialLeak() {
   AppendRow(yards.residents, yard_watchman);
   AppendRow(yards.residents, distiller);  // row 1
   const core::Grams yard_night = core::StealRawMaterial(config, {}, yards, 1);
-  // The kept granary is closed; the whole 50 kg come out of the open one.
+  // The kept granary is closed; the whole load of 50 kg comes out of the open
+  // one — 37.5 kg of grain and the 12.5 kg of sugar its 25 litres take.
   failures += Expect(
       yard_night == 50 * kKilo &&
           yards.units.rows[FindRow(yards.units, kept_granary_id)].stock[0] == 30 * kKilo &&
-          yards.units.rows[FindRow(yards.units, open_granary_id)].stock[0] == 50 * kKilo,
+          yards.units.rows[FindRow(yards.units, open_granary_id)].stock[0] == 62500 &&
+          yards.units.rows[FindRow(yards.units, open_granary_id)].stock[1] == 37500,
       "leak: the yard's watchman keeps the granary on its plot, and an unwatched yard's does not");
 
+  // GRAIN FIRST, THEN POTATO WITH THE SUGAR THE GRAIN LEFT: 3 kg of grain
+  // are 2 litres and a kilogram of sugar; the 2.5 kg of sugar left are 5
+  // litres out of 20 kg of potato, though 100 kg lie there.
+  {
+    core::NightTradeConfig both = config;
+    both.raw_material = {core::ResourceId{0}, core::ResourceId{2}};
+    both.potato = core::ResourceId{2};
+    core::WorldState cellar;
+    core::UnitRow store;
+    store.level = 1;
+    store.stock = {3 * kKilo, 3500, 100 * kKilo};
+    AppendRow(cellar.units, store);
+    AppendRow(cellar.residents, distiller);
+    const core::Grams carried = core::StealRawMaterial(both, {}, cellar, 0);
+    failures += Expect(carried == 26500 && cellar.units.rows[0].stock[0] == 0 &&
+                           cellar.units.rows[0].stock[1] == 0 &&
+                           cellar.units.rows[0].stock[2] == 80 * kKilo &&
+                           cellar.residents.rows[0].samogon_ml == 7000,
+                       "recipe: grain first, then potato with the sugar the grain left");
+  }
+
   // THE SEALED FUNDS ARE NOT HIS (boss seq 18): the village's unreserved raw
-  // material above them, and no more. Here 50 kg lie open and 30 kg kept —
-  // 80 kg in the village.
+  // material above them, and no more. Here 50 kg of grain lie open and 30 kg
+  // kept — 80 kg in the village; the sugar is not sealed. The grain carried
+  // is what is counted.
+  yards.units.rows[FindRow(yards.units, open_granary_id)].stock[0] = 50 * kKilo;
   {
     const auto night = [&](core::WorldState state, std::vector<core::Grams> sealed) {
       state.residents.rows[1].distiller_supplied_month = 0;
-      const core::Grams taken = core::StealRawMaterial(config, sealed, state, 1);
-      return std::pair{taken, state.residents.rows[1].distiller_supplied_month != 0};
+      const core::Grams before = state.ledger.current.stolen[0];
+      core::StealRawMaterial(config, sealed, state, 1);
+      return std::pair{state.ledger.current.stolen[0] - before,
+                       state.residents.rows[1].distiller_supplied_month != 0};
     };
-    failures += Expect(night(yards, {60 * kKilo}).first == 20 * kKilo,
-                       "sealed: 60 kg of 80 in the funds, the distiller carries the 20 above them");
+    failures += Expect(night(yards, {65 * kKilo}).first == 15 * kKilo,
+                       "sealed: 65 kg of 80 in the funds, the distiller carries the 15 above them");
     const auto [none, supplied] = night(yards, {100 * kKilo});
     failures += Expect(none == 0 && !supplied,
                        "sealed: funds past the stock, he carries nothing and is not supplied");
-    failures += Expect(night(yards, {30 * kKilo}).first == 50 * kKilo,
+    // 50 kg above the funds, and the load's 25 litres take 37.5 of it: were
+    // the kept granary's 30 kg not counted, 20 kg would be all he could take.
+    failures += Expect(night(yards, {30 * kKilo}).first == 37500,
                        "sealed: the funds are the village's — the kept granary's 30 kg count");
     core::WorldState two_open = yards;
     core::UnitRow second_granary;
     second_granary.level = 1;
     second_granary.parent = open_yard_id;
-    second_granary.stock = {40 * kKilo};
+    second_granary.stock = {40 * kKilo, 0};
     AppendRow(two_open.units, second_granary);
-    failures += Expect(night(two_open, {100 * kKilo}).first == 20 * kKilo,
-                       "sealed: 20 kg above the funds is 20 kg across every open store, not each");
+    failures += Expect(night(two_open, {105 * kKilo}).first == 15 * kKilo,
+                       "sealed: 15 kg above the funds is 15 kg across every open store, not each");
   }
   return failures;
 }
@@ -3664,34 +3729,79 @@ int CheckSamogonPurchase() {
     return AppendRow(world.residents, person);
   };
   const core::ResidentId distiller = man(still_yard, 0.0F);
-  man(near_yard, 45.0F);   // abuses: 8 kg
+  man(near_yard, 45.0F);   // abuses: asks 3 litres
   man(far_yard, 30.0F);    // drinks, but beyond reach
-  man(mid_yard, 30.0F);    // drinks: 3 kg
-  man(still_yard, 30.0F);  // drinks at his own family's still: nothing changes hands
-  const auto pantry = [&world](core::FamilyId family, std::size_t resource) {
-    const core::FamilyRow& row = world.families.rows[FindRow(world.families, family)];
-    return row.pantry.size() > resource ? row.pantry[resource] : 0;
+  man(mid_yard, 30.0F);    // drinks: asks 1 litre
+  man(still_yard, 30.0F);  // drinks a litre of his own family's still: nothing changes hands
+  const auto pantry_in =
+      [](const core::WorldState& state, core::FamilyId family, std::size_t resource) {
+        const core::FamilyRow& row = state.families.rows[FindRow(state.families, family)];
+        return row.pantry.size() > resource ? row.pantry[resource] : 0;
+      };
+  const auto pantry = [&](core::FamilyId family, std::size_t resource) {
+    return pantry_in(world, family, resource);
   };
-  world.residents.rows[FindRow(world.residents, distiller)].night_trade =
-      core::NightTrade::kDistiller;
-  world.residents.rows[FindRow(world.residents, distiller)].distiller_supplied_month =
+  const std::uint32_t distiller_row = FindRow(world.residents, distiller);
+  world.residents.rows[distiller_row].night_trade = core::NightTrade::kDistiller;
+  world.residents.rows[distiller_row].distiller_supplied_month =
       core::SupplyMonthTag(kJanuaryFirst - 1U);
+  world.residents.rows[distiller_row].samogon_ml = 10000;
   world.calendar.tick = static_cast<core::Tick>(kJanuaryFirst) * core::kTicksPerDay;
   core::RefreshCalendarCaches(world.calendar);
+
+  // SHORT OF WHAT IS ASKED, THE LITRES ARE SHARED BY THE ASKING: 5 litres
+  // asked, 2.5 held — everybody gets half and pays for half.
+  {
+    core::WorldState short_of = world;
+    short_of.residents.rows[distiller_row].samogon_ml = 2500;
+    core::TurnAlcoholismMonth(config, night, sport, kSpeedup, short_of);
+    failures += Expect(pantry_in(short_of, near_yard, 0) == 0 &&
+                           pantry_in(short_of, near_yard, 1) == 49 * kKilo &&
+                           pantry_in(short_of, mid_yard, 1) == 9 * kKilo &&
+                           short_of.residents.rows[distiller_row].samogon_ml == 0 &&
+                           short_of.ledger.current.samogon_sold_ml == 2500,
+                       "litres: 2.5 held of 5 asked — each gets half his asking and pays for it");
+  }
+  // NO LITRE, NO PAYMENT: a distiller supplied by the tag and holding nothing.
+  {
+    core::WorldState empty = world;
+    empty.residents.rows[distiller_row].samogon_ml = 0;
+    core::TurnAlcoholismMonth(config, night, sport, kSpeedup, empty);
+    failures += Expect(pantry_in(empty, near_yard, 0) == 2 * kKilo &&
+                           pantry_in(empty, near_yard, 1) == 50 * kKilo &&
+                           pantry_in(empty, mid_yard, 1) == 10 * kKilo &&
+                           empty.ledger.current.samogon_paid.empty() &&
+                           empty.ledger.current.samogon_sold_ml == 0,
+                       "litres: a distiller holding none is paid nothing");
+  }
+  // A PANTRY SHORT OF THE PRICE gets what it pays for: a kilogram of potato
+  // is half a litre, and the other half stays with the distiller.
+  {
+    core::WorldState poor = world;
+    poor.families.rows[FindRow(poor.families, mid_yard)].pantry = {0, 1 * kKilo};
+    core::TurnAlcoholismMonth(config, night, sport, kSpeedup, poor);
+    failures += Expect(pantry_in(poor, mid_yard, 1) == 0 &&
+                           poor.residents.rows[distiller_row].samogon_ml == 5500 &&
+                           poor.ledger.current.samogon_sold_ml == 4500,
+                       "litres: a kilogram in the pantry buys half a litre, not the litre asked");
+  }
   core::TurnAlcoholismMonth(config, night, sport, kSpeedup, world);
 
-  failures += Expect(pantry(near_yard, 0) == 0 && pantry(near_yard, 1) == 44 * kKilo,
-                     "purchase: 8 kg — the yard's 2 kg of grain first, then 6 of potato");
-  failures += Expect(pantry(mid_yard, 1) == 7 * kKilo,
-                     "purchase: a man in the 21–40 band pays 3 kg, not the abuser's 8");
-  failures += Expect(pantry(still_yard, 0) == 2 * kKilo && pantry(still_yard, 1) == 9 * kKilo,
+  failures += Expect(pantry(near_yard, 0) == 0 && pantry(near_yard, 1) == 46 * kKilo,
+                     "purchase: 3 litres are 6 kg — the yard's 2 kg of grain, then 4 of potato");
+  failures += Expect(pantry(mid_yard, 1) == 8 * kKilo,
+                     "purchase: a man in the 21–40 band pays for 1 litre, not the abuser's 3");
+  failures += Expect(pantry(still_yard, 0) == 2 * kKilo && pantry(still_yard, 1) == 6 * kKilo,
                      "purchase: the distiller's family receives what was paid, a transfer");
   failures += Expect(pantry(far_yard, 0) == 50 * kKilo,
                      "reach: a yard 1500 m away has no samogon and buys none");
   failures += Expect(world.ledger.current.samogon_paid.size() >= 2 &&
                          world.ledger.current.samogon_paid[0] == 2 * kKilo &&
-                         world.ledger.current.samogon_paid[1] == 9 * kKilo,
+                         world.ledger.current.samogon_paid[1] == 6 * kKilo,
                      "purchase: the book carries only what crossed between families");
+  failures += Expect(world.residents.rows[distiller_row].samogon_ml == 5000 &&
+                         world.ledger.current.samogon_sold_ml == 5000,
+                     "purchase: 5 of his 10 litres are drunk — his own yard's litre with them");
   // December closed, a winter month, and nobody worked or holds a post: +1
   // idle each. Men: 0 +2 +1 = 3 (his own yard), 45 +2 +1 = 48, 30 with no
   // samogon +1 = 31, 30 +2 +1 = 33 twice — mean 148 / 5 = 29.6, over 20.

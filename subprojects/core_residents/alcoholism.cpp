@@ -68,29 +68,72 @@ float SettlementAlcoholism(const AlcoholismConfig& config,
   return men > 0 ? sum / static_cast<float>(men) : 0.0F;
 }
 
-/// THE PURCHASE IN KIND (crime §6, «Самогон стоит семье»; register 205): the
-/// drinker's family pays out of its own pantry, in the raw material's order,
-/// into the distiller's family's pantry — a transfer, not a leak. Kilograms
-/// by the drinker's band of the metric; an empty pantry buys nothing.
+constexpr double kMillilitresPerLitre = 1000.0;
+
+/// What a man asks of his distiller for the month, millilitres, by the band
+/// of his metric: 21–40 «выпивает», 41–60 «злоупотребляет»; 0–20 asks for
+/// nothing. The design's bands read 21–40 and 41–60, so an edge belongs to
+/// the lower one.
+double SamogonAsked(const NightTradeConfig& night, float alcoholism) {
+  if (alcoholism > 2.0F * kBandWidth) {
+    return static_cast<double>(night.litres_month_abuses) * kMillilitresPerLitre;
+  }
+  if (alcoholism > kBandWidth) {
+    return static_cast<double>(night.litres_month_drinks) * kMillilitresPerLitre;
+  }
+  return 0.0;
+}
+
+/// THE PURCHASE BY THE LITRE (crime §7, «Механика»; the human's «логично
+/// платить за литр», 2026-10-01; 0.37.72): the drinker's family pays out of
+/// its own pantry, in the raw material's order, into the distiller's
+/// family's pantry — a transfer, not a leak — `price_grain_kg_per_litre` for
+/// each litre he GOT. `share` is what the distiller's litres cover of all
+/// that was asked of him this month (TurnAlcoholismMonth): short of it every
+/// buyer gets his share, and a pantry that cannot pay for it gets what it
+/// pays for. Who got nothing paid nothing. Until 0.37.72 the family paid 3
+/// or 8 kg a month to any distiller «supplied» that month, whatever he had
+/// brewed, and a distiller's yard gathered a tonne of the village's grain a
+/// year.
 void BuySamogon(const NightTradeConfig& night,
                 WorldState& current,
                 std::uint32_t buyer_row,
                 std::uint32_t distiller_row,
-                float alcoholism) {
-  // The design's bands read 21–40 and 41–60, so an edge belongs to the lower one.
-  float kg = 0.0F;
-  if (alcoholism > 2.0F * kBandWidth) {
-    kg = night.buy_kg_abuses;
-  } else if (alcoholism > kBandWidth) {
-    kg = night.buy_kg_drinks;
-  }
+                float alcoholism,
+                double share) {
+  const double asked = SamogonAsked(night, alcoholism) * share;
   const std::uint32_t payer = FindRow(current.families, current.residents.rows[buyer_row].family);
   const std::uint32_t seller =
       FindRow(current.families, current.residents.rows[distiller_row].family);
-  if (!(kg > 0.0F) || payer == kNoRow || seller == kNoRow || payer == seller) {
+  ResidentRow& distiller = current.residents.rows[distiller_row];
+  if (!(asked > 0.0) || payer == kNoRow || seller == kNoRow) {
     return;
   }
-  Grams owed = GramsFromKilograms(kg);
+  // What the litres asked would cost, and what the pantry can pay of it.
+  const double price_grams =
+      static_cast<double>(GramsFromKilograms(night.price_grain_kg_per_litre)) /
+      kMillilitresPerLitre;
+  double can_pay = 0.0;
+  for (const ResourceId raw : night.raw_material) {
+    const FamilyRow& from = current.families.rows[payer];
+    if (raw.value < from.pantry.size() && from.pantry[raw.value] > 0) {
+      can_pay += static_cast<double>(from.pantry[raw.value]);
+    }
+  }
+  // A distiller's own household drinks its own and pays nobody.
+  const bool pays = payer != seller && price_grams > 0.0;
+  const double covered = pays ? std::min(1.0, can_pay / (asked * price_grams)) : 1.0;
+  const auto got =
+      std::min(static_cast<std::uint32_t>(std::floor(asked * covered)), distiller.samogon_ml);
+  if (got == 0) {
+    return;
+  }
+  distiller.samogon_ml -= got;
+  current.ledger.current.samogon_sold_ml += got;
+  if (!pays) {
+    return;
+  }
+  Grams owed = static_cast<Grams>(std::llround(static_cast<double>(got) * price_grams));
   for (const ResourceId raw : night.raw_material) {
     if (owed <= 0) {
       break;
@@ -272,6 +315,26 @@ void TurnAlcoholismMonth(const AlcoholismConfig& config,
   const std::vector<std::uint32_t> supplier =
       TurnYardSuppliers(night, current, SupplyMonthTag(day - 1U));
   const bool field_month = SportMonthCounted(sport, current);
+  // WHAT IS ASKED OF EACH DISTILLER THIS MONTH, by the men of the yards he
+  // supplies, against the litres he holds: short of it they share by the
+  // asking, and no order of rows decides who drinks.
+  std::vector<double> asked_of(current.residents.rows.size(), 0.0);
+  for (const ResidentRow& person : current.residents.rows) {
+    const std::uint32_t family = FindRow(current.families, person.family);
+    const std::uint32_t distiller = family != kNoRow ? supplier[family] : kNoRow;
+    if (distiller == kNoRow || person.sex != Sex::kMale ||
+        BiologicalAgeYears(life_speedup, person.birth_day, day) < config.adult_from_years) {
+      continue;
+    }
+    asked_of[distiller] += SamogonAsked(night, person.alcoholism);
+  }
+  std::vector<double> share_of(current.residents.rows.size(), 0.0);
+  for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
+    if (asked_of[row] > 0.0) {
+      share_of[row] = std::min(
+          1.0, static_cast<double>(current.residents.rows[row].samogon_ml) / asked_of[row]);
+    }
+  }
   for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
     ResidentRow& person = current.residents.rows[row];
     const float age_years = BiologicalAgeYears(life_speedup, person.birth_day, day);
@@ -303,7 +366,7 @@ void TurnAlcoholismMonth(const AlcoholismConfig& config,
       // THE PURCHASE, by the band of the month that closed — what he drank in
       // it is what his family pays for (register 205).
       if (distiller != kNoRow) {
-        BuySamogon(night, current, row, distiller, before);
+        BuySamogon(night, current, row, distiller, before, share_of[distiller]);
       }
       const float change = MonthChange(config,
                                        current,

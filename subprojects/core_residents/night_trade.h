@@ -103,16 +103,10 @@ struct NightTradeConfig {
   /// the year's turn either (register 206). `distiller_replace_months`.
   float distiller_replace_months = 2.0F;
 
-  /// The month's purchase in kind, kilograms, by the drinker's band of the
-  /// metric (crime §6, «Самогон стоит семье»): 21–40 «выпивает», 41–60
-  /// «злоупотребляет»; 0–20 buys nothing. `samogon_buy_kg_drinks`,
-  /// `samogon_buy_kg_abuses`. Boss's numbers, not measured.
-  float buy_kg_drinks = 3.0F;
-  float buy_kg_abuses = 8.0F;
-
   /// THE SAMOGON BY THE LITRE (crime §7, «Механика»; the human's words of
-  /// 2026-10-01; econ-boss-moonshine-sink [4]-[7]; the contract of 0.37.71
-  /// — READ BY THE NEXT DELIVERY, which retires the two numbers above).
+  /// 2026-10-01; econ-boss-moonshine-sink [4]-[7]; the contract of 0.37.71,
+  /// read since 0.37.72, which retired the month's purchase by the band's
+  /// kilograms, `samogon_buy_kg_drinks` and `samogon_buy_kg_abuses`).
   /// THE RECIPE: a litre takes this much sugar and this much grain, or the
   /// sugar and this much potato; the sugar is obligatory — with none
   /// carried off, nothing is brewed. `samogon_sugar_kg_per_litre`,

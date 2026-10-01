@@ -30,26 +30,57 @@ namespace {
 /// The world_params.csv keys, in the order of the knob list in the parse.
 /// `night_watchman_theft_cut` left it on 2026-09-18 (the leak is closed or
 /// open, not cut) and stands in kNightTradeKnownKeys below, known and not
-/// read, until the base drops the row.
-constexpr std::array<std::string_view, 22> kNightTradeWorldParamKeys = {
-    "night_distillers_max",        "night_fisher_age_from_years", "night_fisher_age_to_years",
-    "night_hunter_age_from_years", "night_hunter_age_to_years",   "night_moon_day_in_month",
-    "night_trade_hour_out",        "night_trade_hour_back",       "night_fishing_min_mean_celsius",
-    "night_hunt_reach_min_m",      "night_hunt_reach_max_m",      "night_fishing_catch_kg",
-    "night_hunt_catch_kg",         "night_hunt_success_chance",   "night_distiller_raw_kg",
-    "store_leak_complaint_kg",     "night_sober_keeper_max",      "samogon_reach_m",
-    "distiller_replace_months",    "samogon_buy_kg_drinks",       "samogon_buy_kg_abuses",
+/// read, until the base drops the row. `samogon_buy_kg_drinks` and
+/// `samogon_buy_kg_abuses` left it on 2026-10-01 (0.37.72: the samogon is
+/// paid by the litre) and stand there with it.
+constexpr std::array<std::string_view, 26> kNightTradeWorldParamKeys = {
+    "night_distillers_max",
+    "night_fisher_age_from_years",
+    "night_fisher_age_to_years",
+    "night_hunter_age_from_years",
+    "night_hunter_age_to_years",
+    "night_moon_day_in_month",
+    "night_trade_hour_out",
+    "night_trade_hour_back",
+    "night_fishing_min_mean_celsius",
+    "night_hunt_reach_min_m",
+    "night_hunt_reach_max_m",
+    "night_fishing_catch_kg",
+    "night_hunt_catch_kg",
+    "night_hunt_success_chance",
+    "night_distiller_raw_kg",
+    "store_leak_complaint_kg",
+    "night_sober_keeper_max",
+    "samogon_reach_m",
+    "distiller_replace_months",
+    "samogon_litres_month_drinks",
+    "samogon_litres_month_abuses",
     "samogon_lights_out_hour",
+    "samogon_sugar_kg_per_litre",
+    "samogon_grain_kg_per_litre",
+    "samogon_potato_kg_per_litre",
+    "samogon_price_grain_kg_per_litre",
 };
 
-/// Every key the night trades answer for: those read, and the one retired.
-constexpr std::array<std::string_view, kNightTradeWorldParamKeys.size() + 1> kNightTradeKnownKeys =
-    [] {
-      std::array<std::string_view, kNightTradeWorldParamKeys.size() + 1> keys{};
+/// The keys retired: known and not read, until the base drops their rows.
+constexpr std::array<std::string_view, 3> kNightTradeRetiredKeys = {
+    "night_watchman_theft_cut",  // 2026-09-18: the leak is closed or open, not cut
+    "samogon_buy_kg_drinks",     // 2026-10-01: paid by the litre
+    "samogon_buy_kg_abuses",
+};
+
+/// Every key the night trades answer for: those read, and those retired.
+constexpr std::array<std::string_view,
+                     kNightTradeWorldParamKeys.size() + kNightTradeRetiredKeys.size()>
+    kNightTradeKnownKeys = [] {
+      std::array<std::string_view, kNightTradeWorldParamKeys.size() + kNightTradeRetiredKeys.size()>
+          keys{};
       for (std::size_t index = 0; index < kNightTradeWorldParamKeys.size(); ++index) {
         keys[index] = kNightTradeWorldParamKeys[index];
       }
-      keys.back() = "night_watchman_theft_cut";  // RETIRED 2026-09-18, known and not read
+      for (std::size_t index = 0; index < kNightTradeRetiredKeys.size(); ++index) {
+        keys[kNightTradeWorldParamKeys.size() + index] = kNightTradeRetiredKeys[index];
+      }
       return keys;
     }();
 
@@ -366,9 +397,26 @@ bool ParseNightTradeConfig(const ITableSet& tables, NightTradeConfig& config, st
         {.key = kNightTradeWorldParamKeys[18],
          .value = &config.distiller_replace_months,
          .range = {.low = 0.0F, .high = 120.0F}},
-        {.key = kNightTradeWorldParamKeys[19], .value = &config.buy_kg_drinks, .range = catch_kg},
-        {.key = kNightTradeWorldParamKeys[20], .value = &config.buy_kg_abuses, .range = catch_kg},
+        {.key = kNightTradeWorldParamKeys[19],
+         .value = &config.litres_month_drinks,
+         .range = catch_kg},
+        {.key = kNightTradeWorldParamKeys[20],
+         .value = &config.litres_month_abuses,
+         .range = catch_kg},
         {.key = kNightTradeWorldParamKeys[21], .value = &config.lights_out_hour, .range = hours},
+        // The recipe and the price (0.37.72): kilograms a litre.
+        {.key = kNightTradeWorldParamKeys[22],
+         .value = &config.sugar_kg_per_litre,
+         .range = catch_kg},
+        {.key = kNightTradeWorldParamKeys[23],
+         .value = &config.grain_kg_per_litre,
+         .range = catch_kg},
+        {.key = kNightTradeWorldParamKeys[24],
+         .value = &config.potato_kg_per_litre,
+         .range = catch_kg},
+        {.key = kNightTradeWorldParamKeys[25],
+         .value = &config.price_grain_kg_per_litre,
+         .range = catch_kg},
     }};
     if (!ReadKnobs(*world, "world_params", knobs, error)) {
       return false;
@@ -396,6 +444,8 @@ bool ParseNightTradeConfig(const ITableSet& tables, NightTradeConfig& config, st
   if (const ITable* const resources = tables.FindTable("resources")) {
     config.fish = DefIdFromRow<ResourceIdTag>(resources->FindRowByKey("fish"));
     config.meat = DefIdFromRow<ResourceIdTag>(resources->FindRowByKey("meat"));
+    config.sugar = DefIdFromRow<ResourceIdTag>(resources->FindRowByKey("sugar"));
+    config.potato = DefIdFromRow<ResourceIdTag>(resources->FindRowByKey("potato"));
     config.raw_material.clear();
     for (const std::string_view key : kRawMaterialKeys) {
       const ResourceId raw = DefIdFromRow<ResourceIdTag>(resources->FindRowByKey(key));
@@ -476,6 +526,80 @@ bool StoreLeakClosed(const NightTradeConfig& config,
   return sober_watch && !drinking_keeper;
 }
 
+namespace {
+
+constexpr double kMillilitresPerLitre = 1000.0;
+
+/// THE SEALED FUNDS ARE NOT HIS (boss seq 18, econ plan-700 §3). Until
+/// 0.34.37 he took from under a construction's reserve and no other: the
+/// plan's rye went into the still on moonlit nights — 1.1-1.2 t a year
+/// against a due of 1.1 t — and the district was delivered less than the
+/// reaping had put aside for it. The funds are the village's, not a
+/// store's, so the cap is the village's unreserved stock above them.
+Grams AboveFunds(std::span<const Grams> sealed, const WorldState& current, ResourceId raw) {
+  Grams village = 0;
+  for (const UnitRow& unit : current.units.rows) {
+    village += UnreservedOf(unit, raw);
+  }
+  const Grams held = raw.value < sealed.size() ? sealed[raw.value] : 0;
+  return village > held ? village - held : 0;
+}
+
+/// What of `raw` a distiller can carry off tonight: unreserved, above the
+/// village's sealed fund of it, in the stores whose leak stands open.
+Grams OpenToHim(const NightTradeConfig& config,
+                std::span<const Grams> sealed,
+                const WorldState& current,
+                ResourceId raw) {
+  if (raw.value == kInvalidDefIdValue) {
+    return 0;
+  }
+  Grams open = 0;
+  for (std::uint32_t unit_row = 0; unit_row < current.units.rows.size(); ++unit_row) {
+    const Grams free = UnreservedOf(current.units.rows[unit_row], raw);
+    if (free > 0 && !StoreLeakClosed(config, current, unit_row)) {
+      open += free;
+    }
+  }
+  return std::min(open, AboveFunds(sealed, current, raw));
+}
+
+/// Carries up to `wanted` of `raw` off those stores, in row order, and books
+/// it stolen. `first_store`, when given, receives the first store anything
+/// came from.
+Grams CarryOff(const NightTradeConfig& config,
+               std::span<const Grams> sealed,
+               WorldState& current,
+               ResourceId raw,
+               Grams wanted,
+               UnitId* first_store) {
+  if (raw.value == kInvalidDefIdValue || wanted <= 0) {
+    return 0;
+  }
+  Grams above_funds = AboveFunds(sealed, current, raw);
+  Grams taken = 0;
+  for (std::uint32_t unit_row = 0;
+       unit_row < current.units.rows.size() && wanted > 0 && above_funds > 0;
+       ++unit_row) {
+    const Grams free = UnreservedOf(current.units.rows[unit_row], raw);
+    if (free <= 0 || StoreLeakClosed(config, current, unit_row)) {
+      continue;  // nothing here, or a sober watch: he goes on to the next store
+    }
+    const Grams carried = std::min({free, wanted, above_funds});
+    wanted -= carried;
+    above_funds -= carried;
+    current.units.rows[unit_row].stock[raw.value] -= carried;
+    taken += carried;
+    AddLedgerAmount(current.ledger.current.stolen, raw, carried);
+    if (first_store != nullptr && first_store->value == kInvalidEntityIdValue) {
+      *first_store = current.units.row_ids[unit_row];
+    }
+  }
+  return taken;
+}
+
+}  // namespace
+
 Grams StealRawMaterial(const NightTradeConfig& config,
                        std::span<const Grams> sealed,
                        WorldState& current,
@@ -487,40 +611,91 @@ Grams StealRawMaterial(const NightTradeConfig& config,
     current.night_theft.month_index = month_index;
     current.night_theft.stolen_this_month = 0;
   }
-  Grams wanted = GramsFromKilograms(config.distiller_raw_kg);
-  Grams taken = 0;
+  // THE RECIPE DECIDES WHAT HE CARRIES (crime §7, «Механика»; 0.37.72): a
+  // litre is `sugar_kg_per_litre` of sugar and `grain_kg_per_litre` of grain,
+  // or the sugar and `potato_kg_per_litre` of potato, and THE SUGAR IS
+  // OBLIGATORY — with none open to him he carries nothing and brews nothing.
+  // The night's load is `distiller_raw_kg` at most, sugar and all. Until
+  // 0.37.72 he took fifty kilograms of whatever lay first in the list and
+  // was «supplied» by any of it; nobody counted a litre.
+  const auto per_litre = [](float kilograms) {
+    return static_cast<double>(GramsFromKilograms(kilograms));
+  };
+  const double sugar_g = per_litre(config.sugar_kg_per_litre);
+  const double grain_g = per_litre(config.grain_kg_per_litre);
+  const double potato_g = per_litre(config.potato_kg_per_litre);
+  const bool is_valid = config.sugar.value != kInvalidDefIdValue && sugar_g > 0.0;
+  double weight_left = static_cast<double>(GramsFromKilograms(config.distiller_raw_kg));
+  double sugar_left =
+      is_valid ? static_cast<double>(OpenToHim(config, sealed, current, config.sugar)) : 0.0;
+  double grain_open = 0.0;
   for (const ResourceId raw : config.raw_material) {
-    // THE SEALED FUNDS ARE NOT HIS (boss seq 18, econ plan-700 §3). Until
-    // 0.34.37 he took from under a construction's reserve and no other: the
-    // plan's rye went into the still on moonlit nights — 1.1-1.2 t a year
-    // against a due of 1.1 t — and the district was delivered less than the
-    // reaping had put aside for it. The funds are the village's, not a
-    // store's, so the cap is the village's unreserved stock above them.
-    Grams village = 0;
-    for (const UnitRow& unit : current.units.rows) {
-      village += UnreservedOf(unit, raw);
-    }
-    const Grams held = raw.value < sealed.size() ? sealed[raw.value] : 0;
-    Grams above_funds = village > held ? village - held : 0;
-    for (std::uint32_t unit_row = 0;
-         unit_row < current.units.rows.size() && wanted > 0 && above_funds > 0;
-         ++unit_row) {
-      const Grams free = UnreservedOf(current.units.rows[unit_row], raw);
-      if (free <= 0 || StoreLeakClosed(config, current, unit_row)) {
-        continue;  // nothing here, or a sober watch: he goes on to the next store
-      }
-      const Grams carried = std::min({free, wanted, above_funds});
-      wanted -= carried;
-      above_funds -= carried;
-      current.units.rows[unit_row].stock[raw.value] -= carried;
-      taken += carried;
-      AddLedgerAmount(current.ledger.current.stolen, raw, carried);
+    if (raw.value != config.sugar.value && raw.value != config.potato.value) {
+      grain_open += static_cast<double>(OpenToHim(config, sealed, current, raw));
     }
   }
-  // SUPPLIED THIS MONTH, and only when anything came: «самогонщик без сырья
-  // этого месяца не продаёт» (register 206).
-  if (taken > 0 && distiller_row < current.residents.rows.size()) {
-    current.residents.rows[distiller_row].distiller_supplied_month = month_index + 1U;
+  const double potato_open =
+      config.potato.value != kInvalidDefIdValue
+          ? static_cast<double>(OpenToHim(config, sealed, current, config.potato))
+          : 0.0;
+  // Grain first, then potato with the sugar the grain left: whole
+  // millilitres, so the grams below are the recipe's and no more.
+  const auto litres_of = [&](double base_open, double base_g) {
+    if (!(sugar_g > 0.0) || !(base_g > 0.0)) {
+      return 0.0;
+    }
+    const double litres =
+        std::min({sugar_left / sugar_g, base_open / base_g, weight_left / (sugar_g + base_g)});
+    const double whole =
+        std::floor(std::max(litres, 0.0) * kMillilitresPerLitre) / kMillilitresPerLitre;
+    sugar_left -= whole * sugar_g;
+    weight_left -= whole * (sugar_g + base_g);
+    return whole;
+  };
+  const double grain_litres = litres_of(grain_open, grain_g);
+  const double potato_litres = litres_of(potato_open, potato_g);
+  const double litres = grain_litres + potato_litres;
+  Grams taken = 0;
+  UnitId first_sugar_store;
+  const Grams sugar_taken = CarryOff(config,
+                                     sealed,
+                                     current,
+                                     config.sugar,
+                                     static_cast<Grams>(std::llround(litres * sugar_g)),
+                                     &first_sugar_store);
+  taken += sugar_taken;
+  Grams grain_wanted = static_cast<Grams>(std::llround(grain_litres * grain_g));
+  for (const ResourceId raw : config.raw_material) {
+    if (raw.value == config.sugar.value || raw.value == config.potato.value) {
+      continue;
+    }
+    const Grams carried = CarryOff(config, sealed, current, raw, grain_wanted, nullptr);
+    grain_wanted -= carried;
+    taken += carried;
+  }
+  taken += CarryOff(config,
+                    sealed,
+                    current,
+                    config.potato,
+                    static_cast<Grams>(std::llround(potato_litres * potato_g)),
+                    nullptr);
+  // SUPPLIED THIS MONTH, and only when he BREWED: «самогонщик без сырья
+  // этого месяца не продаёт» (register 206) — and raw without sugar is none.
+  const auto brewed = static_cast<std::uint32_t>(std::llround(litres * kMillilitresPerLitre));
+  if (brewed > 0 && distiller_row < current.residents.rows.size()) {
+    ResidentRow& distiller = current.residents.rows[distiller_row];
+    distiller.distiller_supplied_month = month_index + 1U;
+    distiller.samogon_ml += brewed;
+    current.ledger.current.samogon_brewed_ml += brewed;
+  }
+  if (sugar_taken > 0) {
+    SimEvent& stolen = EmitEvent(current, EventKind::kSugarStolen, EventSeverity::kNotable);
+    if (distiller_row < current.residents.rows.size()) {
+      stolen.resident = current.residents.row_ids[distiller_row];
+    }
+    stolen.resource = config.sugar;
+    stolen.unit = first_sugar_store;
+    stolen.amount = sugar_taken;
   }
   current.night_theft.stolen_this_month += taken;
   // The village comes to complain once a campaign, when the month's loss

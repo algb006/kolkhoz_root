@@ -622,7 +622,6 @@ enum class EventKind : std::uint8_t {
   /// the village's complaint about the month's whole loss, once a campaign,
   /// and names no resource; this one names what the player's stores are
   /// short of. kNotable. Seam key `sugar_stolen`.
-  /// @no_emit contract 0.37.71: raised by the samogon's delivery, the next
   kSugarStolen,
 
   // Reserved for project phase 3 and appended by it: fire, epoch change,

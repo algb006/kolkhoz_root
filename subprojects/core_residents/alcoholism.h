@@ -95,11 +95,18 @@ int AlcoholismBand(float alcoholism);
 ///        - every adult man's alcoholism moved by the rules above, the supply by
 ///          the samogon at HIS yard and the sobriety by his yard's dryness;
 ///          every woman's held at 0; crossings said;
-///        - THE PURCHASE (crime §6, «Самогон стоит семье»; register 205): a
-///          man in the 21–40 band buys `buy_kg_drinks`, in 41–60
-///          `buy_kg_abuses`, out of his family's pantry — grain, then
-///          potato, then sugar — into the pantry of the nearest supplied
-///          distiller's family; an empty pantry buys nothing;
+///        - THE PURCHASE BY THE LITRE (crime §7, «Механика»; register 205): a
+///          man in the 21–40 band asks his yard's distiller for
+///          `litres_month_drinks`, in 41–60 for `litres_month_abuses`; the
+///          distiller's litres (ResidentRow::samogon_ml), short of all that
+///          is asked of him, are shared by the asking; each litre got costs
+///          `price_grain_kg_per_litre` out of the family's pantry, in the raw
+///          material's order, into the distiller's family's; a pantry short
+///          of the price gets what it pays for, and a litre not got is not
+///          paid. The litres leave the distiller and are booked in
+///          YearLedger::samogon_sold_ml. «Есть самогон» itself — the gain of
+///          the supply and the sobriety of a dry yard — stays the yard's
+///          property by the distiller's tag, not the litres it got;
 ///        - the settlement's alcoholism taken, its crossings of 20 and 40
 ///          said;
 ///        - every resident's days_worked_this_month cleared;
