@@ -138,11 +138,34 @@ struct AssignmentJob {
   /// jobs with the same days left, the heavier goes first.
   Grams grams_at_risk = 0;
 
-  /// Set among those reapings for a field the village cannot finish before
-  /// the snow once the heavier finishable ones have spent their days
-  /// (boss seq 103): it ranks after every reaping that can still be done.
+  /// Kilocalories of the standing crop the snow will take if this reaping is
+  /// not done: set for the reaping of EVERY arable annual with a ripe crop
+  /// (not only in the last days), 0 otherwise. The measure of the harvest
+  /// rule 2 (farming design, «Страда: что пропадёт — убирают первым»; boss,
+  /// core-boss-potato-crew-trace-2026-10-01 [2], [4]): between reapings with
+  /// one edge the queue goes by the food saved per HAND-day —
+  /// SavedPerHandDay below — and kilocalories are the grain equivalent up to
+  /// the one factor every crop shares.
+  float kcal_at_risk = 0.0F;
+
+  /// Set among the reapings of the last days for a field the village cannot
+  /// finish before the snow once the heavier finishable ones have spent their
+  /// days (boss seq 103). Since the harvest rule 2 it is the TIE-BREAK only:
+  /// between two reapings whose food saved per hand-day falls in one band
+  /// (kSavedBandRatio) the one that can still be done goes first. As the
+  /// first key it put wheat with 11.9 man-days left ahead of potato with
+  /// 42.5 two days before the snow, and 23 hands left the potato nobody
+  /// (seed 1936, year 1, day 39).
   bool beyond_the_snow = false;
 };
+
+/// @brief The width of one band of «food saved per hand-day», as a ratio:
+///        two reapings within it count as equal and the tie-break decides
+///        (farming design, the harvest rule 2: «в пределах 10 %»). STUB.
+/// @note Bands are cut on a fixed logarithmic grid, not measured between the
+///       two jobs compared: «within 10 % of each other» is not transitive and
+///       cannot order three jobs (the queue's UB-001).
+inline constexpr float kSavedBandRatio = 1.1F;
 
 /// @brief One available worker, in placement terms.
 struct AssignmentCandidate {
@@ -270,10 +293,35 @@ struct PlacementDiagnosis {
   std::vector<std::optional<IdleReason>> idle;
 };
 
+/// @brief Norm-days ONE hand is expected to deliver on `job` today: the mean,
+///        over the candidates the job may take and the road lets go, of the
+///        daylight left after the round trip, by his efficiency, over the
+///        standard day — the same number the placement fills a crew by.
+/// @param job_index The job's index in the caller's vector (AssignmentParams::
+///                  road_km is indexed by it).
+/// @return 0 when nobody can go. In October a field 1.4 km out leaves a
+///         walker 2.5 hours of a 9.4-hour day: 0.2 of a norm (the print of
+///         0.37.81).
+float ExpectedNormPerHand(const AssignmentJob& job,
+                          std::uint32_t job_index,
+                          const std::vector<AssignmentCandidate>& candidates,
+                          const AssignmentParams& params);
+
+/// @brief The harvest rule 2's measure: kilocalories at risk over the
+///        HAND-days the reaping still needs at today's expected output —
+///        kcal_at_risk x ExpectedNormPerHand / work_days_remaining.
+/// @return 0 for a job with nothing at risk, no work left or nobody to go.
+float SavedPerHandDay(const AssignmentJob& job,
+                      std::uint32_t job_index,
+                      const std::vector<AssignmentCandidate>& candidates,
+                      const AssignmentParams& params);
+
 /// @brief Places the day's workers over the day's jobs.
 /// @param jobs       The openings; order irrelevant (the algorithm orders
-///                   deterministically by urgency, then kind, then target
-///                   id — never by input position).
+///                   deterministically by urgency, then kind, then — between
+///                   reapings with food at risk — by the band of
+///                   SavedPerHandDay, then target id — never by input
+///                   position).
 /// @param candidates The workforce; order irrelevant likewise (ties break
 ///                   by resident_row, the stable identity).
 /// @param params     The day's parameters.

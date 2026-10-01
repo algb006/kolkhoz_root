@@ -91,6 +91,12 @@ struct CropWindows {
   /// (boss, boss-core-epoch1-5 seq 50; transport design §1). Invalid when the
   /// table set has no resources.
   ResourceId resource;
+
+  /// Kilocalories in a gram of that resource (resources.csv `kcal_per_gram`):
+  /// what the harvest rule 2 weighs a standing crop by (AssignmentJob::
+  /// kcal_at_risk). 0 when the table set has no resources or the yield is not
+  /// food — such a reaping carries nothing at risk and keeps its old place.
+  float kcal_per_gram = 0.0F;
 };
 
 /// Shape of the worker-efficiency product (manual/65-labor-model.md §5).
