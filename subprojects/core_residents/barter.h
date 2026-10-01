@@ -28,11 +28,21 @@
 /// them thresholds and none a price). D is the yard's daily need in the
 /// grain equivalent (DailyNeedKilograms over its eaters); a category's stock
 /// is counted in days of D.
-///   * A yard GIVES (a) what goes bad before it can be eaten: a perishable
-///     above D x its shelf life, first — the family meal eats the perishable
-///     first up to the WHOLE need, with no cap on a category's share, so no
-///     factor stands beside D; (b) its largest category, only above
-///     `surplus_keep_days` of D.
+///   * A yard GIVES (a) a PERISHABLE — a food that keeps no longer than
+///     `perishable_max_keep_days` — above `perishable_share_of_need` of D:
+///     what the yard eats of one food TODAY. The milk is a flow, tomorrow
+///     brings its own, so the shelf life does not multiply the share. The
+///     family meal itself has no cap on a category's share (it eats the
+///     perishable first up to the whole need), and until 0.37.68 the whole
+///     of D x the shelf life stood here for that reason: about 64 kg of milk
+///     a grown eater, a stock the first print found in no yard of nine
+///     villages in two years (boss [11], econ [13]);
+///     (b) of a category that has a HARVEST (crops.csv), what is above the
+///     yard's need until the next one — D x the days to the month the
+///     soonest crop of the category is reaped from. The bread a yard lives
+///     on till summer is no surplus: «twelve days of the largest category»,
+///     the measure until 0.37.68, called 29 yards of 32 rich in bread in
+///     December. A category nothing is reaped into has no (b).
 ///   * A yard TAKES a category it holds less than `lack_share_of_need` of D
 ///     of, for `take_days_ahead` days at that share a day, and of a
 ///     perishable no longer than its shelf life.
@@ -65,6 +75,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "core_common/ids.h"
 #include "core_common/world_state.h"
@@ -81,9 +92,16 @@ struct BarterConfig {
   /// then nobody walks.
   UnitTypeId counter_type;
 
-  /// A yard keeps this many days of its need of its largest category and
-  /// gives only above them. `barter_surplus_keep_days`, days of D.
-  float surplus_keep_days = 12.0F;
+  /// A food that keeps no longer than this is a perishable, and rule (a) is
+  /// its rule: milk and fish (2 days), the egg (6).
+  /// `barter_perishable_max_keep_days`, game days (STUB: two months of four).
+  float perishable_max_keep_days = 8.0F;
+
+  /// The month each resource's harvest opens in, 1..12, dense by ResourceId;
+  /// 0 for a resource no crop is reaped into (crops.csv `resource`,
+  /// `harvest_from_month`, the soonest of its crops). Rule (b) reads the
+  /// days to it.
+  std::vector<std::uint8_t> harvest_month_by_resource;
 
   /// A category is lacking when the yard holds less than this share of its
   /// daily need of it. `barter_lack_share_of_need`, 0..1 (a third: the three
@@ -117,6 +135,12 @@ struct BarterConfig {
   /// The longest walk to the counter and back, hours on foot.
   /// `barter_walk_limit_hours`.
   float walk_limit_hours = 2.0F;
+
+  /// What of its daily need a yard eats of ONE perishable food in a day:
+  /// above this share of D the food is offered (rule (a)).
+  /// `barter_perishable_share_of_need`, 0..1 (STUB: a third, as
+  /// `lack_share_of_need`).
+  float perishable_share_of_need = 1.0F / 3.0F;
 };
 
 /// @brief The world_params.csv keys this file reads, for the assembly's
@@ -129,14 +153,18 @@ std::span<const std::string_view> BarterWorldParamKeys();
 ///         walk's limit below nought.
 bool ParseBarterConfig(const ITableSet& tables, BarterConfig& config, std::string& error);
 
-/// @brief THE DRY COUNT, once a day: what the yards would exchange today if a
-///        counter stood at every gate — no walk, no counter, nothing moved.
-///        Writes BarterWatch's three counters and the days in a row they met
-///        their thresholds; on the day that run reaches `fact_days_in_row`
-///        raises kBarterWorthStarting, once a campaign.
+/// @brief THE DRY COUNT, once a day, in `config.hour`: what the yards would
+///        exchange today if a counter stood at every gate — no walk, no
+///        counter, nothing moved. In the counter's hour and not at the day's
+///        turn: after the day's milk and catch have reached the pantries and
+///        BEFORE the dinner, which eats the perishable first — a count after
+///        it finds the surplus eaten (econ [13]). Writes BarterWatch's three
+///        counters and the days in a row they met their thresholds; on the
+///        day that run reaches `fact_days_in_row` raises
+///        kBarterWorthStarting, once a campaign. Does nothing in any other
+///        hour.
 /// @param life_speedup LifeConfig::life_speedup, for the eaters' ages.
-/// @pre Called once a day in the decisions slot, at an hour other than 22
-///      and 23, before RunBarterEvening.
+/// @pre Called every tick of the decisions slot, before RunBarterEvening.
 void RunBarterDryCount(const BarterConfig& config,
                        const FoodConfig& food,
                        float life_speedup,

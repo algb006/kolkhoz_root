@@ -16,7 +16,11 @@
 ///   YF,day=,eq_g=
 /// On days kPantryDays apart, and on the fact's day, a line per yard:
 ///   YP,day=,family=<row>,eaters=<residents of the yard>,
+///      trudodni=<the yard's account this year, hundredths>,
 ///      pantry=<resource index:grams;...  or "-">
+/// The lines are printed at the day's first tick: the dry count is the one
+/// of the evening before (the counter's hour), the pantries are what the
+/// dinner left and the day's turn added.
 /// A run that ends with the fact not risen prints nothing more — the reader
 /// (given the days it saw) says «НЕ ПОДНЯЛСЯ» with the highest counters; a
 /// probe that printed a polite nought would be read as a measure.
@@ -61,10 +65,11 @@ inline void PrintPantries(const core::WorldState& world, std::int64_t day) {
         pantry += std::to_string(index) + ":" + std::to_string(held[index]) + ";";
       }
     }
-    std::printf("YP,day=%lld,family=%u,eaters=%u,pantry=%s\n",
+    std::printf("YP,day=%lld,family=%u,eaters=%u,trudodni=%lld,pantry=%s\n",
                 static_cast<long long>(day),
                 row,
                 eaters[row],
+                static_cast<long long>(world.families.rows[row].trudodni_account),
                 pantry.empty() ? "-" : pantry.c_str());
   }
 }

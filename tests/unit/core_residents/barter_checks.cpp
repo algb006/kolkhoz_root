@@ -31,6 +31,10 @@ int Expect(bool condition, const char* label) {
 constexpr float kSpeedup = 4.0F;
 constexpr std::int32_t kAdultBirth = -192;
 
+/// The fixture's day: 16, the first day of May. Its crops are reaped from
+/// August (month 8, day 28), so a harvest is TWELVE days ahead.
+constexpr core::SimDay kMayFirst = 16;
+
 /// Three foods, chosen so the grain equivalent is a round figure: grain 1,
 /// milk 0.2 (and gone in two days), potato 0.5.
 core::FoodConfig ThreeFoods() {
@@ -42,6 +46,30 @@ core::FoodConfig ThreeFoods() {
   food.resources[2] = {.kcal_per_gram = 1.65F, .category = core::FoodCategory::kPotato};
   food.spoil_days = {0.0F, 2.0F, 120.0F};
   return food;
+}
+
+/// The defaults — a third of the need eaten of one perishable, a third
+/// «lacking», 4 days ahead, 4 days hungry; 3 days, 3 yards, 5 % — with the
+/// grain and the potato reaped from August and the milk from nothing.
+core::BarterConfig Rules() {
+  core::BarterConfig config;
+  config.harvest_month_by_resource = {8, 0, 8};
+  return config;
+}
+
+/// A world standing in the counter's hour of `day`.
+core::WorldState WorldAt(const core::BarterConfig& config, core::SimDay day) {
+  core::WorldState world;
+  world.calendar.tick = (static_cast<core::Tick>(day) * core::kTicksPerDay) + config.hour;
+  core::RefreshCalendarCaches(world.calendar);
+  return world;
+}
+
+/// One adult's daily need, grams of the grain equivalent: D.
+double AdultNeed(const core::FoodConfig& food) {
+  return static_cast<double>(core::DailyNeedKilograms(
+             food.consumption, core::BiologicalAgeYears(kSpeedup, kAdultBirth, kMayFirst), false)) *
+         static_cast<double>(core::kGramsPerKilogram);
 }
 
 /// A yard of one adult with the pantry given in DAYS OF HIS NEED of each
@@ -76,33 +104,34 @@ std::uint32_t EventsOf(const core::WorldState& world, core::EventKind kind) {
 }
 
 /// The header's rule on four yards, every number worked by hand. D is one
-/// adult's daily need.
-///   A: grain 6 D, milk 5 D. Milk keeps two days: 3 D of it goes bad — (a).
-///      Lacks potato: 4 days at a third of D = 1.333 D. What is left of the
-///      3 D, 1.667 D, takes anything that keeps longer: grain.
-///   B: grain 20 D: 8 D above the twelve days — (b). Lacks dairy, of milk no
-///      more than two days' third: 0.667 D; lacks potato: 1.333 D.
+/// adult's daily need; the harvest is twelve days ahead.
+///   A: grain 6 D, milk 5 D. Of milk he eats a third of D today: 4.667 D is
+///      offered — (a). Lacks potato: 4 days at a third of D = 1.333 D. What
+///      is left of the 4.667, 3.333 D, takes anything that keeps longer:
+///      grain.
+///   B: grain 20 D: 8 D above the twelve days to the harvest — (b). Lacks
+///      dairy, of milk no more than two days' third: 0.667 D; lacks potato:
+///      1.333 D.
 ///   C: potato 15 D: 3 D above the twelve. Lacks bread 1.333 D, dairy 0.667 D.
-///   D: grain 0.5 D, milk 3 D — 3.5 days in all, HUNGRY: gives the 1 D of
-///      milk that goes bad and takes the richest on offer, grain, 1 D.
-/// Offered: milk 4 D, grain 8 D, potato 3 D. Claimed: milk 1.333 D, grain
-/// 4 D, potato 2.667 D. The pairs settle at the smaller side:
-///   A-B 0.5 D (A's milk to B 3 x 0.667 / 4; B's grain to A 1.667);
-///   A-C 0.5 D (milk 0.5; potato 1.333);   B-C 1.333 D (grain, potato);
-///   B-D 0.1667 D (grain 1; D's milk 1 x 0.667 / 4);   A-D and C-D nothing.
-/// Each gram once on the giving side: 2 x 2.5 D = 5 D.
+///   D: grain 0.5 D, milk 3 D — 3.5 days in all, HUNGRY: gives the 2.667 D
+///      of milk over his day's share and takes the richest on offer, grain,
+///      to that value.
+/// Offered: milk 7.333 D, grain 8 D, potato 3 D. Claimed: milk 1.333 D,
+/// grain 3.333 + 1.333 + 2.667 = 7.333 D, potato 2.667 D. The pairs settle
+/// at the smaller side:
+///   A-B 14/33 D (A's milk to B 4.667 x 0.667 / 7.333; B's grain to A 3.333);
+///   A-C 14/33 D (milk; potato 1.333);   B-C 4/3 D (grain, potato);
+///   B-D 8/33 D (grain 2.667; D's milk 2.667 x 0.667 / 7.333);
+///   A-D and C-D nothing.
+/// Each gram once on the giving side: 2 x 80/33 D = 160/33 D = 4.848 D.
 int CheckTheDryCount() {
   int failures = 0;
   const core::FoodConfig food = ThreeFoods();
-  const core::BarterConfig config;  // 12 days, a third, 4 ahead, 4 hungry; 3 days, 3 yards, 5 %
-  const double need = static_cast<double>(core::DailyNeedKilograms(
-                          food.consumption,
-                          core::BiologicalAgeYears(kSpeedup, kAdultBirth, core::SimDay{0}),
-                          false)) *
-                      static_cast<double>(core::kGramsPerKilogram);
+  const core::BarterConfig config = Rules();
+  const double need = AdultNeed(food);
   failures += Expect(need > 0.0, "dry count: the fixture's adult eats");
 
-  core::WorldState world;
+  core::WorldState world = WorldAt(config, kMayFirst);
   YardOf(world, food, need, 6.0, 5.0, 0.0);
   YardOf(world, food, need, 20.0, 0.0, 0.0);
   YardOf(world, food, need, 0.0, 0.0, 15.0);
@@ -112,9 +141,10 @@ int CheckTheDryCount() {
   core::RunBarterDryCount(config, food, kSpeedup, world);
   const double volume = static_cast<double>(world.barter.dry_equivalent);
   // A gram's rounding of each pantry moves the figure by a few grams; a
-  // pair settled at the larger side would move it by 1.4 D.
-  failures += Expect(std::abs(volume - (5.0 * need)) < 0.001 * need,
-                     "dry count: the four yards would pass 5 days of one man's need between them");
+  // pair settled at the larger side would move it by several D.
+  failures += Expect(std::abs(volume - (160.0 / 33.0 * need)) < 0.001 * need,
+                     "dry count: the four yards would pass 4.848 days of one man's need between "
+                     "them");
   failures += Expect(world.barter.dry_givers == 4 && world.barter.dry_takers == 4,
                      "dry count: four yards have something to offer, four something to take");
   failures += Expect(world.barter.dry_days_in_row == 1 && world.barter.worth_starting_raised == 0 &&
@@ -147,25 +177,64 @@ int CheckTheDryCount() {
   return failures;
 }
 
+/// What is a surplus: the perishable over the day's share, the reaped over
+/// the need till the harvest — and the hour the count stands in.
+int CheckWhatIsASurplus() {
+  int failures = 0;
+  const core::FoodConfig food = ThreeFoods();
+  const core::BarterConfig config = Rules();
+  const double need = AdultNeed(food);
+  const auto givers = [&](core::SimDay day, double grain, double milk, double potato) {
+    core::WorldState world = WorldAt(config, day);
+    YardOf(world, food, need, grain, milk, potato);
+    core::RunBarterDryCount(config, food, kSpeedup, world);
+    return world.barter.dry_givers;
+  };
+  failures += Expect(givers(kMayFirst, 6.0, 0.3, 0.0) == 0 && givers(kMayFirst, 6.0, 1.0, 0.0) == 1,
+                     "surplus: milk under a third of the day's need is eaten today, a day's need "
+                     "of it is an offer — the shelf life does not multiply the share");
+  failures += Expect(givers(kMayFirst, 6.0, 0.0, 5.0) == 0,
+                     "surplus: the potato keeps 120 days — no perishable, and five days of it "
+                     "twelve days before its harvest is no surplus");
+  // Day 4, the first of February: the harvest is 24 days ahead, not 12.
+  constexpr core::SimDay kFebruaryFirst = 4;
+  failures +=
+      Expect(givers(kMayFirst, 20.0, 0.0, 0.0) == 1 && givers(kFebruaryFirst, 20.0, 0.0, 0.0) == 0,
+             "surplus: twenty days of bread is 8 over the need twelve days before the harvest "
+             "and nothing over it twenty-four days before");
+  // The harvest's own first day: a whole year to the next one.
+  constexpr core::SimDay kAugustFirst = 28;
+  failures +=
+      Expect(givers(kAugustFirst, 40.0, 0.0, 0.0) == 0 && givers(kAugustFirst, 50.0, 0.0, 0.0) == 1,
+             "surplus: on the harvest's first day the next one is 48 days ahead");
+  {
+    // Not the counter's hour: the count does not run, and says nothing.
+    core::WorldState world = WorldAt(config, kMayFirst);
+    world.calendar.tick -= 1;
+    core::RefreshCalendarCaches(world.calendar);
+    YardOf(world, food, need, 20.0, 5.0, 0.0);
+    core::RunBarterDryCount(config, food, kSpeedup, world);
+    failures += Expect(world.barter.dry_givers == 0,
+                       "hour: an hour before the counter's the dry count does not run");
+  }
+  return failures;
+}
+
 /// The thresholds hold the fact back, each by itself.
 int CheckTheFactsThresholds() {
   int failures = 0;
   const core::FoodConfig food = ThreeFoods();
-  const double need = static_cast<double>(core::DailyNeedKilograms(
-                          food.consumption,
-                          core::BiologicalAgeYears(kSpeedup, kAdultBirth, core::SimDay{0}),
-                          false)) *
-                      static_cast<double>(core::kGramsPerKilogram);
+  const double need = AdultNeed(food);
   // Two yards that would exchange — grain above the twelve days against
-  // potato above them — and a third that neither gives nor lacks.
+  // potato above them.
   const auto village = [&](core::WorldState& world) {
     YardOf(world, food, need, 20.0, 0.0, 0.0);
     YardOf(world, food, need, 0.0, 0.0, 15.0);
   };
   {
-    core::WorldState world;
+    const core::BarterConfig config = Rules();  // three yards a side
+    core::WorldState world = WorldAt(config, kMayFirst);
     village(world);
-    const core::BarterConfig config;  // three yards a side
     for (int day = 0; day < 5; ++day) {
       core::RunBarterDryCount(config, food, kSpeedup, world);
     }
@@ -175,11 +244,11 @@ int CheckTheFactsThresholds() {
                "fact: two yards exchanging are fewer than three a side — no day is met");
   }
   {
-    core::WorldState world;
-    village(world);
-    core::BarterConfig config;
+    core::BarterConfig config = Rules();
     config.fact_yards_each_side = 2;
     config.fact_share_of_village_need = 1.0F;  // 2 D: the two pass 2 x 1.333 D, enough
+    core::WorldState world = WorldAt(config, kMayFirst);
+    village(world);
     for (int day = 0; day < 3; ++day) {
       core::RunBarterDryCount(config, food, kSpeedup, world);
     }
@@ -187,11 +256,11 @@ int CheckTheFactsThresholds() {
                        "fact: with two a side asked and the volume above the share, it rises");
   }
   {
-    core::WorldState world;
-    village(world);
-    core::BarterConfig config;
+    core::BarterConfig config = Rules();
     config.fact_yards_each_side = 2;
     config.fact_share_of_village_need = 1.0F;
+    core::WorldState world = WorldAt(config, kMayFirst);
+    village(world);
     core::RunBarterDryCount(config, food, kSpeedup, world);
     core::RunBarterDryCount(config, food, kSpeedup, world);
     // The second yard eats its surplus: nothing to pass on the third day.
@@ -201,11 +270,11 @@ int CheckTheFactsThresholds() {
                        "fact: a day not met breaks the run — days IN A ROW");
   }
   {
-    // A lone yard with milk going bad: it offers, nobody takes, nothing
-    // passes, and the two counts say so apart from the volume.
-    core::WorldState world;
+    // A lone yard with milk over its day's share: it offers, nobody takes,
+    // nothing passes, and the two counts say so apart from the volume.
+    const core::BarterConfig config = Rules();
+    core::WorldState world = WorldAt(config, kMayFirst);
     YardOf(world, food, need, 6.0, 5.0, 0.0);
-    const core::BarterConfig config;
     core::RunBarterDryCount(config, food, kSpeedup, world);
     failures += Expect(world.barter.dry_givers == 1 && world.barter.dry_takers == 0 &&
                            world.barter.dry_equivalent == 0,
@@ -231,18 +300,40 @@ int CheckTheKnobs() {
       Expect(!parse("barter_lack_share_of_need", "1.5", read) &&
                  !parse("barter_fact_share_of_village_need", "-0.1", read) &&
                  !parse("barter_fact_days_in_row", "0", read) &&
-                 !parse("barter_surplus_keep_days", "-1", read),
+                 !parse("barter_perishable_max_keep_days", "-1", read),
              "knobs: a share outside 0..1, no days in a row, days below nought are refused");
   failures += Expect(parse("barter_fact_yards_each_side", "5", read) &&
                          read.fact_yards_each_side == 5 && read.fact_days_in_row == 3,
                      "knobs: a key read lands, a key absent keeps its default");
-  failures += Expect(core::BarterWorldParamKeys().size() == 9,
-                     "knobs: nine keys are declared to the assembly");
+  failures += Expect(core::BarterWorldParamKeys().size() == 10,
+                     "knobs: ten keys are declared to the assembly");
+  failures += Expect(parse("barter_perishable_share_of_need", "0.5", read) &&
+                         read.perishable_share_of_need == 0.5F &&
+                         !parse("barter_perishable_share_of_need", "1.1", read),
+                     "knobs: the perishable's share is read, and above one is refused");
+  {
+    // The harvest's month by resource: the soonest of the crops reaped into
+    // it; a resource no crop is reaped into has none.
+    const test::FakeTable resources({"key"}, {{"grain"}, {"milk"}, {"potato"}});
+    const test::FakeTable crops({"key", "resource", "harvest_from_month"},
+                                {{"rye_winter", "grain", "7"},
+                                 {"wheat_spring", "grain", "8"},
+                                 {"potato", "potato", "9"},
+                                 {"flax", "fibre", "8"}});
+    const test::FakeTableSet set({{"resources", &resources}, {"crops", &crops}});
+    core::BarterConfig months;
+    std::string trouble;
+    const bool parsed = core::ParseBarterConfig(set, months, trouble);
+    failures +=
+        Expect(parsed && months.harvest_month_by_resource == std::vector<std::uint8_t>{7, 0, 9},
+               "knobs: the grain's harvest opens with the rye in July, the potato's in "
+               "September, the milk has none");
+  }
   return failures;
 }
 
 }  // namespace
 
 int CheckBarter() {
-  return CheckTheDryCount() + CheckTheFactsThresholds() + CheckTheKnobs();
+  return CheckTheDryCount() + CheckWhatIsASurplus() + CheckTheFactsThresholds() + CheckTheKnobs();
 }

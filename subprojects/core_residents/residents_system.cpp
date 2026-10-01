@@ -444,6 +444,11 @@ class ResidentsSystem final : public IResidentsSystem {
     // The night trades go out and come back in their own hours, not at the
     // day's turn (night_trade.h).
     RunNightOutings(config_.night_trade, food_, current);
+    // The exchange's dry count in the counter's own hour — after the day's
+    // milk and catch, before the dinner that eats the perishable first: what
+    // the yards would exchange today, and the fact «жителям есть что менять»
+    // (barter.h).
+    RunBarterDryCount(config_.barter, food_, config_.life_speedup, current);
     // Every hour, as the alarm was read every hour before it had a memory:
     // the needs phase of this very step has moved the satiety it reads.
     UpdateHungerAlarms(current);
@@ -457,10 +462,6 @@ class ResidentsSystem final : public IResidentsSystem {
     RunDemographyDay(config_, current);
     RunSpecialistArrivals(config_, current);
     RunFamilyExchange(food_, config_.life_speedup, current);
-    // The exchange's dry count, over the pantries the distribution has just
-    // filled and the day's rot has just thinned: what the yards would
-    // exchange today, and the fact «жителям есть что менять» (barter.h).
-    RunBarterDryCount(config_.barter, food_, config_.life_speedup, current);
     AccumulateVitals(config_, food_.satiety.health_loss_satiety_threshold, current);
     // The year's book, after the exchange has moved the food and before the
     // turn below can close it: the satisfaction sampled is yesterday's

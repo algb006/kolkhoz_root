@@ -7,8 +7,10 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "core_catalog/table_value.h"
@@ -24,8 +26,8 @@
 namespace core {
 namespace {
 
-constexpr std::array<std::string_view, 9> kBarterWorldParamKeys = {
-    "barter_surplus_keep_days",
+constexpr std::array<std::string_view, 10> kBarterWorldParamKeys = {
+    "barter_perishable_max_keep_days",
     "barter_lack_share_of_need",
     "barter_take_days_ahead",
     "barter_hungry_days",
@@ -34,6 +36,7 @@ constexpr std::array<std::string_view, 9> kBarterWorldParamKeys = {
     "barter_fact_share_of_village_need",
     "barter_hour",
     "barter_walk_limit_hours",
+    "barter_perishable_share_of_need",
 };
 
 /// The last hour a settlement may stand in: 22 and 23 are the hours the
@@ -118,11 +121,35 @@ std::vector<double> NeedsByFamily(const FoodConfig& food,
 /// What a yard would give and what it lacks, read off its pantry (the
 /// header's rule). The claims are laid on the resources afterwards, when the
 /// village's offer is known.
+/// Days from `day_of_year` to the soonest harvest among the category's
+/// resources (BarterConfig::harvest_month_by_resource), a whole year on the
+/// harvest's own first day; 0 for a category nothing is reaped into.
+double DaysToHarvest(const BarterConfig& config,
+                     const FoodConfig& food,
+                     std::size_t category,
+                     std::uint32_t day_of_year) {
+  std::uint32_t soonest = 0;
+  const auto roster = static_cast<std::uint32_t>(
+      std::min(config.harvest_month_by_resource.size(), food.resources.size()));
+  for (std::uint32_t index = 0; index < roster; ++index) {
+    const std::uint32_t month = config.harvest_month_by_resource[index];
+    if (month == 0 || CategoryOf(food, index) != category) {
+      continue;
+    }
+    const std::uint32_t first_day = (month - 1U) * kDaysPerMonth;
+    const std::uint32_t ahead =
+        ((first_day + kDaysPerYear - (day_of_year % kDaysPerYear) - 1U) % kDaysPerYear) + 1U;
+    soonest = soonest == 0 ? ahead : std::min(soonest, ahead);
+  }
+  return static_cast<double>(soonest);
+}
+
 Yard ReadYard(const BarterConfig& config,
               const FoodConfig& food,
               const FamilyRow& family,
               std::uint32_t family_row,
-              double need) {
+              double need,
+              std::uint32_t day_of_year) {
   const auto roster =
       static_cast<std::uint32_t>(std::min(family.pantry.size(), food.resources.size()));
   Yard yard;
@@ -142,14 +169,21 @@ Yard ReadYard(const BarterConfig& config,
     total += stock[index];
   }
   yard.hungry = total < static_cast<double>(config.hungry_days) * need;
-  // (a) What goes bad before the yard can eat it: above D x the shelf life.
+  // (a) A perishable above the day's share of it: what the yard eats of ONE
+  // food today. The milk is a flow — tomorrow brings its own — so the
+  // shelf life does not multiply the share (econ, barter thread [13]).
+  // Until 0.37.68 the measure was the whole of D x the shelf life — «the
+  // meal has no cap on a category», true of the meal — about 64 kg of milk
+  // a grown eater: the first print found the rule firing in no yard of nine
+  // villages in two years.
+  const double eaten_a_day = static_cast<double>(config.perishable_share_of_need) * need;
   std::array<double, kCategoryCount> given{};
   for (std::uint32_t index = 0; index < roster; ++index) {
     const double keeps = static_cast<double>(KeepsDays(food, index));
-    if (!(stock[index] > 0.0) || !std::isfinite(keeps)) {
+    if (!(stock[index] > 0.0) || !(keeps <= static_cast<double>(config.perishable_max_keep_days))) {
       continue;
     }
-    const double over = stock[index] - (need * keeps);
+    const double over = stock[index] - eaten_a_day;
     if (over > 0.0) {
       yard.offer[index] = over;
       yard.perishing += over;
@@ -160,24 +194,24 @@ Yard ReadYard(const BarterConfig& config,
   if (yard.hungry) {
     return yard;  // gives (a) only, and takes the richest on offer
   }
-  // (b) The largest category, above the days the yard keeps of it.
-  std::size_t largest = kCategoryCount;
-  double largest_left = 0.0;
+  // (b) A category that has a harvest, above the yard's need until the
+  // NEXT one: the bread a yard lives on till summer is no surplus. Until
+  // 0.37.68 the measure was twelve days of the largest category, and the
+  // first print found 29 yards of 32 «with a surplus» of bread in December,
+  // eight months short of the rye (econ [13], boss [14]).
   for (std::size_t category = 0; category < kCategoryCount; ++category) {
+    const double days = DaysToHarvest(config, food, category, day_of_year);
     const double left = yard.held[category] - given[category];
-    if (left > largest_left) {
-      largest = category;
-      largest_left = left;
+    const double over = left - (days * need);
+    if (!(days > 0.0) || !(left > 0.0) || !(over > 0.0)) {
+      continue;
     }
-  }
-  const double over = largest_left - (static_cast<double>(config.surplus_keep_days) * need);
-  if (largest != kCategoryCount && over > 0.0) {
     for (std::uint32_t index = 0; index < roster; ++index) {
-      if (CategoryOf(food, index) == largest) {
-        yard.offer[index] += over * (stock[index] - yard.offer[index]) / largest_left;
+      if (CategoryOf(food, index) == category) {
+        yard.offer[index] += over * (stock[index] - yard.offer[index]) / left;
       }
     }
-    given[largest] += over;
+    given[category] += over;
   }
   // What it lacks: a category it holds less than a day's share of, and gives
   // nothing of.
@@ -280,7 +314,12 @@ void LayClaims(const BarterConfig& config,
 /// STUB, named: the calculation is two-sided. A ring of three — the first
 /// wants the second's, the second the third's, the third the first's — finds
 /// no pair and does not exchange.
-Settlement Settle(const BarterConfig& config, const FoodConfig& food, std::vector<Yard>& yards) {
+/// @param keep_flows Whether who passed what to whom is wanted (the real
+///        settlement) or the volume alone (the dry count).
+Settlement Settle(const BarterConfig& config,
+                  const FoodConfig& food,
+                  std::vector<Yard>& yards,
+                  bool keep_flows) {
   const auto roster = static_cast<std::uint32_t>(food.resources.size());
   std::vector<double> supply(roster, 0.0);
   for (const Yard& yard : yards) {
@@ -296,32 +335,66 @@ Settlement Settle(const BarterConfig& config, const FoodConfig& food, std::vecto
     }
   }
   Settlement settled;
-  settled.gave.assign(yards.size(), std::vector<double>(roster, 0.0));
-  settled.took.assign(yards.size(), std::vector<double>(roster, 0.0));
-  // What `from` would pass `to` of a resource, before the pair is balanced.
-  const auto pass = [&](const Yard& from, const Yard& to, std::uint32_t index) {
-    const double larger = std::max(supply[index], demand[index]);
-    return larger > 0.0 ? from.offer[index] * to.claim[index] / larger : 0.0;
+  if (keep_flows) {
+    settled.gave.assign(yards.size(), std::vector<double>(roster, 0.0));
+    settled.took.assign(yards.size(), std::vector<double>(roster, 0.0));
+  }
+
+  // ONLY A YARD THAT BOTH OFFERS AND CLAIMS CAN SETTLE WITH ANYBODY — a pair
+  // passes the smaller of its two sides, and a yard with nothing to hand
+  // over or nothing to take has a side of nought with every neighbour. Until
+  // 0.37.68 every pair of the village was walked over the whole roster, twice,
+  // every day: 0.37.67's suite ran plan_trial past 35 minutes and was
+  // cancelled. The walk below is over these yards and over what each offers.
+  struct Party {
+    std::size_t yard = 0;
+    /// The resources it offers, with what one unit claimed of each is worth
+    /// in passing: offer / max(supply, demand).
+    std::vector<std::pair<std::uint32_t, double>> offers;
   };
-  for (std::size_t left = 0; left < yards.size(); ++left) {
-    for (std::size_t right = left + 1; right < yards.size(); ++right) {
-      double there = 0.0;
-      double back = 0.0;
-      for (std::uint32_t index = 0; index < roster; ++index) {
-        there += pass(yards[left], yards[right], index);
-        back += pass(yards[right], yards[left], index);
+
+  std::vector<Party> parties;
+  for (std::size_t row = 0; row < yards.size(); ++row) {
+    const Yard& yard = yards[row];
+    Party party{.yard = row, .offers = {}};
+    bool claims = false;
+    for (std::uint32_t index = 0; index < roster; ++index) {
+      claims = claims || yard.claim[index] > 0.0;
+      const double larger = std::max(supply[index], demand[index]);
+      if (yard.offer[index] > 0.0 && larger > 0.0) {
+        party.offers.emplace_back(index, yard.offer[index] / larger);
       }
+    }
+    if (claims && !party.offers.empty()) {
+      parties.push_back(std::move(party));
+    }
+  }
+  // What `from` would pass `to` in all, before the pair is balanced.
+  const auto passes = [&yards](const Party& from, const Party& to) {
+    double sum = 0.0;
+    for (const std::pair<std::uint32_t, double>& offer : from.offers) {
+      sum += offer.second * yards[to.yard].claim[offer.first];
+    }
+    return sum;
+  };
+  const auto book = [&](const Party& from, const Party& to, double scale) {
+    for (const std::pair<std::uint32_t, double>& offer : from.offers) {
+      const double passed = offer.second * yards[to.yard].claim[offer.first] * scale;
+      settled.gave[from.yard][offer.first] += passed;
+      settled.took[to.yard][offer.first] += passed;
+    }
+  };
+  for (std::size_t left = 0; left < parties.size(); ++left) {
+    for (std::size_t right = left + 1; right < parties.size(); ++right) {
+      const double there = passes(parties[left], parties[right]);
+      const double back = passes(parties[right], parties[left]);
       const double both = std::min(there, back);
       if (!(both > 0.0)) {
         continue;
       }
-      for (std::uint32_t index = 0; index < roster; ++index) {
-        const double out = pass(yards[left], yards[right], index) * both / there;
-        const double in = pass(yards[right], yards[left], index) * both / back;
-        settled.gave[left][index] += out;
-        settled.took[right][index] += out;
-        settled.gave[right][index] += in;
-        settled.took[left][index] += in;
+      if (keep_flows) {
+        book(parties[left], parties[right], both / there);
+        book(parties[right], parties[left], both / back);
       }
       settled.volume += 2.0 * both;
     }
@@ -344,6 +417,31 @@ bool ParseBarterConfig(const ITableSet& tables, BarterConfig& config, std::strin
   if (const ITable* unit_types = tables.FindTable("unit_types")) {
     config.counter_type = DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("barter_place"));
   }
+  // The month each resource's harvest opens in: the soonest among the crops
+  // reaped into it (crops.csv `resource`, `harvest_from_month`).
+  const ITable* const crops = tables.FindTable("crops");
+  const ITable* const resources = tables.FindTable("resources");
+  if (crops != nullptr && resources != nullptr) {
+    const std::uint32_t resource_column = crops->FindColumn("resource");
+    const std::uint32_t month_column = crops->FindColumn("harvest_from_month");
+    config.harvest_month_by_resource.assign(resources->RowCount(), 0);
+    for (std::uint32_t row = 0; resource_column != kNoTableColumn &&
+                                month_column != kNoTableColumn && row < crops->RowCount();
+         ++row) {
+      const std::uint32_t resource = resources->FindRowByKey(crops->CellText(row, resource_column));
+      const std::optional<float> month = crops->CellReal(row, month_column);
+      if (resource == kNoTableRow || !month) {
+        continue;  // a crop reaped into nothing eaten, or with no month: no harvest to wait for
+      }
+      if (!(*month >= 1.0F) || !(*month <= static_cast<float>(kMonthsPerYear))) {
+        error = "crops: harvest_from_month outside 1..12";
+        return false;
+      }
+      const auto opens = static_cast<std::uint8_t>(*month);
+      std::uint8_t& known = config.harvest_month_by_resource[resource];
+      known = known == 0 ? opens : std::min(known, opens);
+    }
+  }
   const ITable* const world = tables.FindTable("world_params");
   if (world == nullptr) {
     return true;
@@ -354,7 +452,7 @@ bool ParseBarterConfig(const ITableSet& tables, BarterConfig& config, std::strin
   auto fact_yards = static_cast<float>(config.fact_yards_each_side);
   auto hour = static_cast<float>(config.hour);
   const std::array<ScalarKnob, kBarterWorldParamKeys.size()> knobs = {{
-      {.key = kBarterWorldParamKeys[0], .value = &config.surplus_keep_days, .range = days},
+      {.key = kBarterWorldParamKeys[0], .value = &config.perishable_max_keep_days, .range = days},
       {.key = kBarterWorldParamKeys[1], .value = &config.lack_share_of_need, .range = share},
       {.key = kBarterWorldParamKeys[2], .value = &config.take_days_ahead, .range = days},
       {.key = kBarterWorldParamKeys[3], .value = &config.hungry_days, .range = days},
@@ -374,6 +472,7 @@ bool ParseBarterConfig(const ITableSet& tables, BarterConfig& config, std::strin
       {.key = kBarterWorldParamKeys[8],
        .value = &config.walk_limit_hours,
        .range = {.low = 0.0F, .high = static_cast<float>(kTicksPerDay)}},
+      {.key = kBarterWorldParamKeys[9], .value = &config.perishable_share_of_need, .range = share},
   }};
   if (!ReadKnobs(*world, "world_params", knobs, error)) {
     return false;
@@ -388,8 +487,12 @@ void RunBarterDryCount(const BarterConfig& config,
                        const FoodConfig& food,
                        float life_speedup,
                        WorldState& current) {
+  if (HourFromTick(current.calendar.tick) != config.hour) {
+    return;  // once a day, in the counter's hour: after the day's produce, before the dinner
+  }
   BarterWatch& watch = current.barter;
   const std::vector<double> needs = NeedsByFamily(food, life_speedup, current);
+  const std::uint32_t day_of_year = current.calendar.day % kDaysPerYear;
   std::vector<Yard> yards;
   double village_need = 0.0;
   for (std::uint32_t row = 0; row < current.families.rows.size(); ++row) {
@@ -397,9 +500,10 @@ void RunBarterDryCount(const BarterConfig& config,
       continue;  // nobody at the table: nothing to give for, nothing to take for
     }
     village_need += needs[row];
-    yards.push_back(ReadYard(config, food, current.families.rows[row], row, needs[row]));
+    yards.push_back(
+        ReadYard(config, food, current.families.rows[row], row, needs[row], day_of_year));
   }
-  const Settlement settled = Settle(config, food, yards);
+  const Settlement settled = Settle(config, food, yards, false);
   const auto has_any = [](const std::vector<double>& amounts) {
     return std::ranges::any_of(amounts, [](double amount) { return amount > 0.0; });
   };
