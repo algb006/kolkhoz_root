@@ -101,6 +101,7 @@ std::string g_tables_dir = "tables";
 /// boss's parcel 314 — the saw keeps boards in hand for a granary and three
 /// houses, and up to n house sites stand at once. Measurement arms; like
 /// --free-materials they take the run out of the canonical configuration.
+/// `--house-sites=0` — as many as are wanted (HousePolicy's arm of 0.37.98).
 bool g_saw_reserve = false;
 std::uint32_t g_house_sites = 3;
 

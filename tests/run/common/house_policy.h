@@ -42,7 +42,8 @@ namespace run {
 
 /// @brief Marks and starts wooden houses while the village has fewer free
 /// houses, finished or going up, than couples waiting and families without a
-/// roof — a few sites at a time, at the nearest free place to the village.
+/// roof — a few sites at a time (or one more a day while more are wanted,
+/// if a run asks for that), at the nearest free place to the village.
 class HousePolicy {
  public:
   explicit HousePolicy(const core::ITableSet& tables) {
@@ -64,7 +65,8 @@ class HousePolicy {
   /// @brief The question asked before every start (start_gate.h).
   void SetStartGate(StartGate gate) { start_gate_ = std::move(gate); }
 
-  /// @brief How many house sites may stand marked or going up at once.
+  /// @brief How many house sites may stand marked or going up at once; 0 —
+  /// as many as are wanted (an arm; the default is three).
   void SetSitesAtOnce(std::uint32_t sites) { sites_at_once_ = sites; }
 
   /// @brief One day of the chairman's attention. Call once a day.
@@ -158,16 +160,23 @@ class HousePolicy {
         static_cast<std::uint32_t>(world.wedding_waits.rows.size()) + roofless + rotting;
     // The houses wanted and not even marked, by why: the three-site cap, the
     // two-day pause between marks, or nothing (marked today).
+    // BY DEMAND (sites_at_once_ 0) there is no cap and no pause: one house is
+    // marked a day while more are wanted than stand free or are going up.
+    const bool by_demand = sites_at_once_ == 0;
+    const bool capped = !by_demand && sites >= sites_at_once_;
+    if (by_demand) {
+      cooldown_ = 0;
+    }
     if (wanted > free_houses + sites) {
       QueueTally& tally = TallyOf(world);
       const std::uint32_t unmarked = wanted - free_houses - sites;
-      if (sites >= sites_at_once_) {
+      if (capped) {
         tally.cap_held += unmarked;
       } else if (cooldown_ > 0) {
         tally.cooldown_held += unmarked;
       }
     }
-    if (wanted > free_houses + sites && sites < sites_at_once_ && cooldown_ == 0) {
+    if (wanted > free_houses + sites && !capped && cooldown_ == 0) {
       core::OrderRow mark;
       mark.kind = core::OrderKind::kBuildUnit;
       mark.unit_type = house_;
@@ -177,7 +186,7 @@ class HousePolicy {
           core::FreePlot(world.units, definitions_.Plots(), VillageCentre(world), radius);
       orders.push_back(mark);
       ++ordered_;
-      cooldown_ = kCooldownDays;
+      cooldown_ = by_demand ? 0U : kCooldownDays;
     } else if (cooldown_ > 0) {
       --cooldown_;
     }
@@ -266,6 +275,19 @@ class HousePolicy {
   /// house building; three sites is a brigade each, and the queue still
   /// shortens while the fields are worked. P2 (boss, parcel 314) measures six,
   /// and only together with the saw's board reserve.
+  ///
+  /// 0 — AS MANY AS ARE WANTED (the couples waiting, the families without a
+  /// roof, the houses about to fall): AN ARM, NOT THE DEFAULT (0.37.98; boss,
+  /// econ-boss-hay-term-2026-10-01 [15] to [26]). It was the default for one
+  /// pair on 2 October 2026 and gave the village no house: from year 6 the
+  /// three sites already stood marked and short of LOGS three days in four,
+  /// and by demand there were up to 78 sites a village, 97-99 % of them
+  /// marked and short of logs — the couples waiting at the close of years
+  /// 7-10 went 45, 74, 164, 225 -> 55, 132, 154, 217. The logs are felled and
+  /// lie uncarted on the stands (the log's chain, the same day). What the
+  /// default by demand did do was take two runs out of their bands
+  /// (population_curve's years, thirty_years_free-materials' cost of a day),
+  /// so three stays and the arm waits for the carting.
   std::uint32_t sites_at_once_ = 3;
 
   static constexpr std::uint32_t kCooldownDays = 2;
