@@ -1143,6 +1143,36 @@ int CheckMeal() {
         Expect(world.families.rows[0].food_variety_mask == 0b11, "both categories reach the mask");
   }
 
+  // A SPOONFUL IS NOT A PLACE AT THE TABLE (0.37.77; metrics §8): a hundred
+  // grams of bin 1 beside ten kilograms of bin 0 — some 48 kcal of it eaten
+  // against the 412 that two per cent of the day's need come to. Not counted
+  // at the table's share; counted with the share at nought, as every gram
+  // was until now; and «sweet» not counted whatever is eaten of it.
+  {
+    const auto mask_after = [](const core::FoodConfig& food, core::Grams of_bin_1) {
+      core::WorldState world = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
+      FillPantry(world, 0, 10.0F);
+      FillPantry(world, 1, 0.0F);
+      world.families.rows[0].pantry[1] = of_bin_1;
+      SetClock(world, 4, core::kTicksPerDay - 1U);
+      core::RunFamilyMeal(food, 4.0F, world, world, 0);
+      return world.families.rows[0].food_variety_mask;
+    };
+    failures += Expect(mask_after(config, 100) == 0b1,
+                       "count: a spoonful under two per cent of the need is no category");
+    core::FoodConfig any_gram = config;
+    any_gram.satiety.category_counted_share_of_need = 0.0F;
+    failures += Expect(mask_after(any_gram, 100) == 0b11,
+                       "count: with the share at nought any gram is a category, as before");
+    core::FoodConfig sweet = config;
+    sweet.resources[1].category = core::FoodCategory::kSweet;
+    failures += Expect(mask_after(sweet, 10 * core::kGramsPerKilogram) == 0b1,
+                       "count: the sweet is outside the count whatever is eaten of it");
+    failures +=
+        Expect(mask_after(config, 10 * core::kGramsPerKilogram) == 0b11,
+               "count: the same ten kilograms of a counted category are a place at the table");
+  }
+
   // THE PERISHABLE FIRST (boss seq 159, option А): bin 1 goes bad in two
   // days, bin 0 keeps. The meal is taken out of bin 1 alone while it lasts,
   // and only what it leaves of the need comes out of bin 0.

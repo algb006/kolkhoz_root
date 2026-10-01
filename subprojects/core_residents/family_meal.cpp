@@ -89,15 +89,35 @@ float SpoilDaysOf(const FoodConfig& config, std::uint32_t index) {
 }
 
 /// Takes `take` grams of bin `index` onto the table: out of the pantry, into
-/// the variety mask. Returns the kilocalories.
+/// the season's count of its category (FamilyRow::season_category_kcal).
+/// Returns the kilocalories.
 float PutOnTable(const FoodConfig& config, FamilyRow& family, std::uint32_t index, Grams take) {
   const FoodResourceDef& def = config.resources[index];
   family.pantry[index] -= take;
+  const float kcal = static_cast<float>(take) * def.kcal_per_gram;
   if (def.category != FoodCategory::kNotFood && def.category != FoodCategory::kCount) {
-    family.food_variety_mask |=
-        static_cast<std::uint16_t>(1U << static_cast<std::uint32_t>(def.category));
+    family.season_category_kcal[static_cast<std::size_t>(def.category)] += kcal;
   }
-  return static_cast<float>(take) * def.kcal_per_gram;
+  return kcal;
+}
+
+/// WHAT IS ON THE SEASON'S TABLE (metrics design §8; 0.37.77): a category is
+/// counted when what was eaten of it this season reaches
+/// `category_counted_share_of_need` of the family's need over the season —
+/// and with the share at nought, when a gram of it was eaten, as every table
+/// was counted until now. «Sweet» is never counted: it has its own complaint
+/// and is no place at the table (boss-all-barter-counter-go [24]).
+std::uint16_t VarietyMaskOf(const FoodConfig& config, const FamilyRow& family) {
+  const float line = config.satiety.category_counted_share_of_need * family.season_need_kcal;
+  std::uint16_t mask = 0;
+  for (std::size_t category = 0; category < family.season_category_kcal.size(); ++category) {
+    const float eaten = family.season_category_kcal[category];
+    if (category != static_cast<std::size_t>(FoodCategory::kSweet) && eaten > 0.0F &&
+        eaten >= line) {
+      mask = static_cast<std::uint16_t>(mask | (1U << category));
+    }
+  }
+  return mask;
 }
 
 /// THE PERISHABLE FIRST (boss seq 159, option А; metrics §8): the bins that
@@ -267,10 +287,14 @@ void RunFamilyMeal(const FoodConfig& config,
   const FamilyId id = current.families.row_ids[family_item];
   FamilyRow& family = current.families.rows[family_item];
   if (IsFirstDayOfSeason(day)) {
-    family.food_variety_mask = 0;  // a new season sets a new table
+    // A new season sets a new table: the count by category and the need.
+    family.season_category_kcal = {};
+    family.season_need_kcal = 0.0F;
   }
   const float need_kcal = FamilyNeedKcal(config, life_speedup, previous, current, id, day);
   const float eaten_kcal = EatFromPantry(config, family, need_kcal);
+  family.season_need_kcal += need_kcal;
+  family.food_variety_mask = VarietyMaskOf(config, family);
   family.first_meal_eaten = 1;  // the variety ceiling applies from now on
   // A household that owes nobody anything — nobody in it old enough to eat
   // from the pantry — is fed by definition rather than starving on zero.
