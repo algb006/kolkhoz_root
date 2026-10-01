@@ -42,6 +42,7 @@
 #include <vector>
 
 #include "core_common/calendar.h"
+#include "core_common/family_state.h"
 #include "core_common/fund_ladder.h"
 #include "core_common/ids.h"
 
@@ -65,6 +66,10 @@ enum class FoodCategory : std::uint8_t {
   kCount,
   kNotFood,  ///< The resource is not eaten (flax, firewood, manure).
 };
+
+static_assert(static_cast<std::size_t>(FoodCategory::kCount) == kFoodVarietyCategories,
+              "FoodCategory's roster moved: FamilyRow::season_category_kcal is sized by it "
+              "(family_state.h, kFoodVarietyCategories) and the save format with it");
 
 /// @brief Per-resource food facts, dense by ResourceId (tables/food.csv,
 /// one row per edible resource; resources absent from the table are
@@ -153,6 +158,17 @@ struct SatietyConfig {
   /// 100 - penalty x max(0, epoch norm - categories eaten this season).
   /// Anchors: bread alone in Epoch I (norm 3) caps at 50.
   float missing_category_penalty = 25.0F;
+
+  /// WHEN A CATEGORY IS ON THE TABLE (metrics design §8; econ §4.2, the
+  /// human's word of 2026-10-01; food.csv `category_counted_share_of_need`,
+  /// STUB): a category is counted for the ceiling when the kilocalories
+  /// eaten of it this season reach this share of the family's need over the
+  /// season (FamilyRow::season_category_kcal, season_need_kcal). Nought
+  /// counts any gram, as every table did until 0.37.77. «Sweet» is outside
+  /// the count whatever is eaten of it: it is the sugar's own complaint,
+  /// not a place at the table. THE CONTRACT OF 0.37.76 — READ BY THE NEXT
+  /// DELIVERY.
+  float category_counted_share_of_need = 0.02F;
 
   std::array<float, 3> categories_norm_by_epoch = {3.0F, 5.0F, 7.0F};
 

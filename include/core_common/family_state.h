@@ -40,6 +40,7 @@
 #ifndef CORE_COMMON_FAMILY_STATE_H_
 #define CORE_COMMON_FAMILY_STATE_H_
 
+#include <array>
 #include <cstdint>
 
 #include "core_common/geometry.h"
@@ -48,6 +49,12 @@
 #include "core_common/state_table.h"
 
 namespace core {
+
+/// The food categories a family's table is counted by — the length of
+/// core_residents/food_config.h's FoodCategory roster (kCount), kept here
+/// because the row is the state's and the roster is the module's; the two
+/// are tied by a static_assert beside the roster.
+inline constexpr std::size_t kFoodVarietyCategories = 9;
 
 /// @brief One household. Plain data.
 struct FamilyRow {
@@ -225,6 +232,22 @@ struct FamilyRow {
   /// from the worse of this and their own satiety_year
   /// (core_residents/appearance_memory.h). Nothing in the simulation reads it.
   Metric satisfaction_year = kNotYetRemembered;
+
+  /// THE SEASON'S TABLE BY CATEGORY (metrics design §8; econ's §4.2 with the
+  /// human's word of 2026-10-01, boss-all-barter-counter-go [18]-[20]; save
+  /// 124): kilocalories this family has eaten of each food category since
+  /// the season's first day, by FoodCategory's index, and the kilocalories
+  /// it needed over the same days. A category is COUNTED for the variety
+  /// ceiling when its share of the season's need reaches food.csv
+  /// `category_counted_share_of_need` — `food_variety_mask` above is that
+  /// count, rewritten at each meal. Until save 124 a gram of anything set
+  /// the bit, so a spoonful of honey was a category and the norm could not
+  /// be raised without every yard reaching it by accident. Cleared with the
+  /// mask on a season's first day; written by the needs phase.
+  std::array<float, kFoodVarietyCategories> season_category_kcal = {};
+
+  /// The family's need over the season so far, kilocalories (see above).
+  float season_need_kcal = 0.0F;
 };
 
 /// @brief The families table type used by WorldState.

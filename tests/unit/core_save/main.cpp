@@ -272,6 +272,11 @@ core::WorldState MakeWorld() {
   rich.trudodni_account = 1234;
   rich.trudodni_redeemed = 567;
   rich.satisfaction_year = 47.75F;  // save 113; `bare` keeps «not yet»
+  // Save 124: the season's table by category — nine unlike numbers, so a
+  // codec that swapped two or dropped the last is seen — and the season's
+  // need; `bare` keeps the noughts.
+  rich.season_category_kcal = {9100.5F, 820.25F, 77.0F, 640.0F, 12.5F, 0.0F, 3.75F, 150.0F, 1.0F};
+  rich.season_need_kcal = 20625.0F;
   core::AppendRow(world.families, rich);
   core::FamilyRow bare;  // empty pantry: the vector must stay empty
   core::AppendRow(world.families, bare);
@@ -1463,7 +1468,9 @@ constexpr std::array<RecordedSection, 23> kRecordedPayload = {{
     // families, +4, each byte predicted before its build.
     // Save 113: +8 — satisfaction_year, a float a family, two; predicted
     // 234 -> 242 before the build, held (the struct's size was the miss).
-    {"families", 242, 0xdf9a3d15c8f4f333ULL},
+    // Save 124: +80 — the season's table by category and the season's need,
+    // ten floats a family, two; predicted 242 -> 322 before the build, held.
+    {"families", 322, 0x9a3bba10dcb7e9aeULL},
     // Save 84: +36 — the harvest by parts' laid share (4) and grams (8), 12
     // a row, three rows; predicted before the build and held. Then the first
     // row given non-zero values: the size held at 305, the hash moved.
@@ -2283,6 +2290,14 @@ int main() {
                          loaded.families.rows[0].satisfaction_year == 47.75F &&
                          loaded.families.rows[1].satisfaction_year == core::kNotYetRemembered,
                      "the look's memory comes back, and «not yet» comes back not yet (save 113)");
+  failures += Expect(
+      loaded.families.rows[0].season_category_kcal == world.families.rows[0].season_category_kcal &&
+          loaded.families.rows[0].season_category_kcal[8] == 1.0F &&
+          loaded.families.rows[0].season_need_kcal == 20625.0F &&
+          loaded.families.rows[1].season_need_kcal == 0.0F &&
+          loaded.families.rows[1].season_category_kcal == std::array<float, 9>{},
+      "a family's season table by category and its season's need come back, each in its place "
+      "(save 124)");
   failures += Expect(
       loaded.fields.rows[1].autumn_furrowing == 1 && loaded.fields.rows[0].autumn_furrowing == 0 &&
           loaded.ledger.closed.zyab_ha_dec1 == 17.5F &&

@@ -101,7 +101,7 @@ bool ParseConsumptionAndSatiety(const ITable& table, FoodConfig& config, std::st
   ConsumptionConfig& eat = config.consumption;
   SatietyConfig& satiety = config.satiety;
   auto heavy_mask = static_cast<float>(eat.heavy_kinds_mask);
-  const std::array<ScalarKnob, 19> knobs = {{
+  const std::array<ScalarKnob, 20> knobs = {{
       {.key = "adult_kg_grain_eq_per_year",
        .value = &eat.adult_kg_grain_eq_per_year,
        .range = {.low = 1.0F, .high = 5000.0F}},
@@ -131,6 +131,9 @@ bool ParseConsumptionAndSatiety(const ITable& table, FoodConfig& config, std::st
       {.key = "missing_category_penalty",
        .value = &satiety.missing_category_penalty,
        .range = {.low = 0.0F, .high = 100.0F}},
+      {.key = "category_counted_share_of_need",
+       .value = &satiety.category_counted_share_of_need,
+       .range = {.low = 0.0F, .high = 1.0F}},
       {.key = "categories_norm_epoch_1",
        .value = satiety.categories_norm_by_epoch.data(),
        .range = {.low = 0.0F, .high = 9.0F}},

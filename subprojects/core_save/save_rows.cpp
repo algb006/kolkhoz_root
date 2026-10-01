@@ -101,7 +101,10 @@ static_assert(AggregateArity<ResidentRow>() == 54,
 // + amounts before the build (the row aligns to 8). A MISS, named: the float
 // took the tail padding after trudodni_redeemed (at 112, the float at 116),
 // and the size stays 96 + amounts — measured by a sizeof/offsetof probe.
-static_assert(sizeof(FamilyRow) == 96 + kAmountsSize,
+// Save 124: the season's table by category, nine floats and the season's
+// need at the row's end — predicted 96 -> 136 + amounts before the build
+// (forty bytes after a float that ends on a word).
+static_assert(sizeof(FamilyRow) == 136 + kAmountsSize,
               "FamilyRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 57: ration_granted, the yard's ration decision — 19 fields;
 // the size is read off the build below, not guessed.
@@ -109,8 +112,9 @@ static_assert(sizeof(FamilyRow) == 96 + kAmountsSize,
 // Save 74: asked_to_leave, asked_day, lodged_in and lodging_penalty — 25
 // fields.
 // Save 75: in_barrack and hunger_alarm_lit — 27 fields. Save 113:
-// satisfaction_year — 28.
-static_assert(AggregateArity<FamilyRow>() == 28,
+// satisfaction_year — 28. Save 124: season_category_kcal and
+// season_need_kcal — 30.
+static_assert(AggregateArity<FamilyRow>() == 30,
               "FamilyRow gained or lost a field — update the codec and VERSION_SAVE");
 // FieldRow took LandKind into a padding byte it already had, so sizeof did
 // NOT move — the one case the tripwire of manual/67-save-format.md §7 cannot
@@ -723,6 +727,11 @@ void WriteFamilyRow(SaveSink& sink, const FamilyRow& row) {
   out.WriteI32(row.trudodni_account);
   out.WriteI32(row.trudodni_redeemed);
   out.WriteFloat(row.satisfaction_year);  // save 113: the look's memory
+  // Save 124: the season's table by category, and the season's need.
+  for (const float kcal : row.season_category_kcal) {
+    out.WriteFloat(kcal);
+  }
+  out.WriteFloat(row.season_need_kcal);
 }
 
 FamilyRow ReadFamilyRow(LoadSource& source) {
@@ -766,6 +775,18 @@ FamilyRow ReadFamilyRow(LoadSource& source) {
   row.satisfaction_year = in.ReadFloat();  // save 113
   if (!RememberedMetricIsSound(row.satisfaction_year)) {
     source.Fail("a family's remembered satisfaction is outside 0..100 and not «not yet»");
+  }
+  // Save 124. Kilocalories eaten and needed are sums of what was: a negative
+  // or a not-a-number one is a file no world wrote.
+  for (float& kcal : row.season_category_kcal) {
+    kcal = in.ReadFloat();
+    if (!(kcal >= 0.0F)) {
+      source.Fail("a family's season table holds a negative or unreadable category");
+    }
+  }
+  row.season_need_kcal = in.ReadFloat();
+  if (!(row.season_need_kcal >= 0.0F)) {
+    source.Fail("a family's need over the season is negative or unreadable");
   }
   return row;
 }
