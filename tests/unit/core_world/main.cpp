@@ -1461,6 +1461,40 @@ int CheckTheYardsHoldings() {
              "holdings: the table names goats, hens and pigs — a yard is not alike another");
   failures += Expect(unnamed_heads == 0 && other_kinds == 0,
                      "holdings: a yard keeps nothing its row does not name");
+  // THE YARD'S START HAY IS BY ITS HEADS (0.37.144; boss, host-boss-pin-0-37-
+  // 133-2026-10-02 [50]): farming.csv `yard_start_hay_kg_per_head` for every
+  // goat the yard keeps. Until then every family got 1300 kg «for two
+  // goats» whatever it kept — six yards of three goats were a third short,
+  // and 13-18 goats a village starved before the yards' first cut in year 1
+  // (nine villages, 0.37.142).
+  const core::ITable* const resources = shipped->FindTable("resources");
+  const core::ITable* const farming = shipped->FindTable("farming");
+  const std::uint32_t hay = resources != nullptr ? resources->FindRowByKey("hay") : 0U;
+  const std::uint32_t per_head_row =
+      farming != nullptr ? farming->FindRowByKey("yard_start_hay_kg_per_head") : core::kNoTableRow;
+  const float per_head_kg =
+      per_head_row != core::kNoTableRow
+          ? farming->CellReal(per_head_row, farming->FindColumn("value")).value_or(0.0F)
+          : 0.0F;
+  std::uint32_t hay_right = 0;
+  std::int64_t most_goats = 0;
+  std::int64_t fewest_goats = 1000;
+  for (std::uint32_t family = 0; family < kept.size(); ++family) {
+    const core::ResourceAmounts& pantry = world.families.rows[family].pantry;
+    const core::Grams held = hay < pantry.size() ? pantry[hay] : 0;
+    const auto owed = static_cast<core::Grams>(per_head_kg * 1000.0F) * kept[family][0];
+    hay_right += held == owed ? 1U : 0U;
+    most_goats = std::max(most_goats, kept[family][0]);
+    fewest_goats = std::min(fewest_goats, kept[family][0]);
+  }
+  std::cout << "  the yards' start hay: " << per_head_kg << " kg a goat; " << hay_right << " of "
+            << kept.size() << " families hold their goats' hay; goats a yard " << fewest_goats
+            << " to " << most_goats << "\n";
+  failures += Expect(per_head_kg > 0.0F && hay_right == kept.size(),
+                     "holdings: every yard starts with the hay of its own goats, by the head");
+  failures += Expect(most_goats == 3 && fewest_goats == 0,
+                     "holdings: the yards differ from no goat to three - the check above has "
+                     "something to tell apart");
   return failures;
 }
 

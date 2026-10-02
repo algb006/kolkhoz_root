@@ -1246,6 +1246,81 @@ constexpr std::string_view kElderYardKey = "yard_21";
 constexpr std::array<std::string_view, 5> kYardsLikeTheElders = {
     "yard_16", "yard_17", "yard_18", "yard_19", "yard_20"};
 
+/// @brief The yards' start hay, BY THE HEAD (0.37.144; boss, host-boss-pin-
+/// 0-37-133-2026-10-02 [50]): every family's pantry gets farming.csv
+/// `yard_start_hay_kg_per_head` for each adult and young head of its OWN
+/// herds whose kind eats hay (feed_links.csv) — the goats of
+/// start_yard_holdings.csv. The kolkhoz's horses billeted in a yard are not
+/// the family's and eat from the farm's stores.
+///
+/// THE RULE OF THE NUMBER is the one that measures the kolkhoz's own fodder:
+/// from the start to the nearest moment the yard replenishes it itself — its
+/// OWN cut in August (food.csv, hay_harvest_month), two months after the
+/// kolkhoz's — FOR THE HEADS OF THE START AND FOR THE SPRING'S YOUNG THEY
+/// BEAR BEFORE IT. A goat eats 2 fodder units a real day: 730 a real year, of
+/// which January to August is a third at the full rate and the four pasture
+/// months a fifth of it — about 292 units, 650 kg of hay at 0.45 units to the
+/// kilogram; econ's count is 597 for the adult and some 220 for a kid from
+/// April to August. The number is 870 (STUB, econ's; host-boss-pin-0-37-133-
+/// 2026-10-02 [59]): MEASURED on nine villages, 650 left 25 young goats dead
+/// in year 1 — every one on the yards' mowing day, the last of August — and
+/// 800 none; 870 is that with the old margin.
+///
+/// UNTIL 0.37.144 EVERY FAMILY GOT 1300 KG «FOR TWO GOATS» WHATEVER IT KEPT
+/// (the literal stood in BuildStartEconomy from the days every yard had two;
+/// the yards differ since 0.37.78): 13-18 goats a village starved before the
+/// yards' first cut (nine villages of 0.37.142, 152 heads), and the yard of
+/// none was given hay for nobody. THE LITERAL'S OWN NOTE said «private herds
+/// do not breed by canon» (69-reconciliation.md §3 D3) — they do since
+/// 0.37.70 (the yard's offspring replaces its old), and the kids were the
+/// eaters the 1300 never counted.
+/// @pre PlaceHerds has run: the yards' herds stand.
+void PutYardsStartHay(WorldState& world, const ITableSet& tables, const ITable* resources) {
+  const ITable* const farming = tables.FindTable("farming");
+  const ITable* const links = tables.FindTable("feed_links");
+  const ITable* const livestock = tables.FindTable("livestock");
+  const ResourceId hay = GenesisResource(resources, "hay");
+  if (farming == nullptr || links == nullptr || livestock == nullptr ||
+      hay.value == kInvalidDefIdValue) {
+    return;
+  }
+  const std::uint32_t key_row = farming->FindRowByKey("yard_start_hay_kg_per_head");
+  const std::uint32_t value_col = farming->FindColumn("value");
+  const float per_head_kg = key_row != kNoTableRow && value_col != kNoTableColumn
+                                ? farming->CellReal(key_row, value_col).value_or(0.0F)
+                                : 0.0F;
+  if (!(per_head_kg > 0.0F)) {
+    return;
+  }
+  // The kinds that eat hay, by livestock row.
+  std::vector<std::uint8_t> eats_hay(livestock->RowCount(), 0);
+  const std::uint32_t kind_col = links->FindColumn("livestock");
+  const std::uint32_t feed_col = links->FindColumn("resource");
+  if (kind_col == kNoTableColumn || feed_col == kNoTableColumn) {
+    return;
+  }
+  for (std::uint32_t row = 0; row < links->RowCount(); ++row) {
+    const std::uint32_t kind = livestock->FindRowByKey(links->CellText(row, kind_col));
+    if (kind != kNoTableRow && links->CellText(row, feed_col) == "hay") {
+      eats_hay[kind] = 1;
+    }
+  }
+  std::vector<std::uint32_t> heads(world.families.rows.size(), 0);
+  for (const HerdRow& herd : world.herds.rows) {
+    const std::uint32_t family = FindRow(world.families, herd.household);
+    if (herd.household_owned == 0 || family == kNoRow || herd.kind.value >= eats_hay.size() ||
+        eats_hay[herd.kind.value] == 0) {
+      continue;
+    }
+    heads[family] += static_cast<std::uint32_t>(herd.adult_count) + herd.juvenile_count;
+  }
+  for (std::uint32_t family = 0; family < heads.size(); ++family) {
+    if (heads[family] > 0) {
+      PutPantry(world.families.rows[family], hay, per_head_kg * static_cast<float>(heads[family]));
+    }
+  }
+}
+
 /// @brief The start economy of the canon (start.md §10-§11): the surviving
 /// units with the stores in the church, 160 ha of arable land with the
 /// suggested first-year plan of the reference run (70 ha sown: 62% grain,
@@ -1488,21 +1563,9 @@ bool BuildStartEconomy(WorldState& world,
     PutPantry(family, GenesisResource(resources, "potato"), 400);
     PutPantry(family, GenesisResource(resources, "oat"), 80);
     PutPantry(family, GenesisResource(resources, "vegetables"), 60);
-    // And hay for the goats, by the same rule that measures the kolkhoz's
-    // own fodder: from the start to the nearest moment the yard replenishes
-    // it itself, which for a yard is its OWN cut in August (food.csv,
-    // hay_harvest_month) — two months after the kolkhoz's.
-    //
-    // Two goats eat 2 fodder units a real day each: 1460 units over a real
-    // year, of which January to August is a third at the full rate and the
-    // four pasture months a fifth of it — about 584 units, and hay carries
-    // 0.45 units to the kilogram. Hence 1.3 t.
-    //
-    // Without it the yards' goats starved from day one and died before the
-    // first cut, and no path in phase 1 brings them back: private herds do
-    // not breed by canon (69-reconciliation.md §3 D3). That made the first
-    // year irreversible, which the design forbids outright.
-    PutPantry(family, GenesisResource(resources, "hay"), 1300);
+    // The yard's hay is put with its animals, by the head (PutYardsStartHay,
+    // after PlaceHerds below): 1300 kg lay here for every family until
+    // 0.37.144, whatever it kept.
   }
   // THE HEAP'S CONTENT CAME FROM HERE UNTIL 2026-09-07, and the trouble was
   // not that the number had no name. tables/start_stock.csv is exactly "what
@@ -1559,6 +1622,7 @@ bool BuildStartEconomy(WorldState& world,
     return false;
   }
   PlaceHerds(world, tables, stock_yard, holdings);
+  PutYardsStartHay(world, tables, resources);
   return true;
 }
 
