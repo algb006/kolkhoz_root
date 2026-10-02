@@ -730,8 +730,14 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
         // left for the next load of the queue, which may lie nearer.
         const float one_way =
             OneWayHours(on_foot, job_index, candidates[pick.candidate_index], params, false);
+        // IN THE STANDARD DAY, NOT IN THE LIGHT (0.37.113): June's sixteen
+        // hours let a pit three hours out pass with 2.8 trips, and the
+        // walkers at the pits still went 2.89 hours one way on the mean. And
+        // never in more than the light: a winter day shorter than the
+        // standard one holds the trips its light holds.
+        const float trip_day = std::min(params.standard_day_hours, params.window_hours);
         if (params.walker_min_trips_per_day > 0.0F && one_way > 0.0F &&
-            params.window_hours / (2.0F * one_way) < params.walker_min_trips_per_day) {
+            trip_day / (2.0F * one_way) < params.walker_min_trips_per_day) {
           continue;
         }
         result[pick.candidate_index] = job_index;

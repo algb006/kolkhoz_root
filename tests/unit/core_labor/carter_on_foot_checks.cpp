@@ -314,9 +314,24 @@ int CheckCarterOnFoot() {
   // AND HE IS PAID BY WHAT HE CARRIED (walker_norm_kg_per_day): two and a
   // half trips of 20 kg against a norm of 80 are 0.625 of a trudoden's
   // norm-day, where his own hours gave 0.72.
+  //
+  // THE TRIPS ARE COUNTED IN THE STANDARD DAY, NOT IN THE LIGHT (0.37.113;
+  // boss, 2 October 2026): in June's sixteen hours the heap a kilometre and
+  // a half out gave 2.2 trips «in the light» and he was sent — the pits three
+  // hours out stayed walked all summer. Ten hours hold 1.4 trips: not sent.
+  // AND WHAT HE CARRIED CARRIES HIS OWN OUTPUT (econ, the same day): a
+  // walker in poor health carries less in the same trips, as his norm-day
+  // always was cut — «по принесённому» had dropped the man out of the sum.
   {
-    const auto walker_day = [&labor](float metres_out, std::uint32_t& walkers) {
+    const auto walker_day = [&labor](float metres_out,
+                                     std::uint32_t& walkers,
+                                     float light_hours = 12.0F,
+                                     float health = 70.0F) {
       core::WorldState world = Village(2, 1);
+      world.weather.daylight_hours = light_hours;
+      for (core::ResidentRow& person : world.residents.rows) {
+        person.health = health;
+      }
       const core::FieldId heap = AddHeap(world, 50.0F, metres_out);
       RunHours(*labor, world, 0);
       walkers = CartersOfField(world, heap).walkers;
@@ -345,6 +360,25 @@ int CheckCarterOnFoot() {
     failures += Expect(near_paid > 0.60F && near_paid < 0.65F,
                        "carter on foot, the pay: two and a half trips of 20 kg against a norm of "
                        "80 are 0.625 of a norm-day");
+    std::uint32_t june_walkers = 0;
+    walker_day(1500.0F, june_walkers, 16.0F);
+    failures += Expect(june_walkers == 0,
+                       "carter on foot, two trips: June's sixteen hours of light do not send him a "
+                       "kilometre and a half out — the trips are counted in the standard day");
+    // AND THE OTHER SIDE: a winter day shorter than the standard one holds
+    // the trips its light holds — eight hours, a kilometre out, 1.67 trips.
+    std::uint32_t winter_walkers = 0;
+    walker_day(1000.0F, winter_walkers, 8.0F);
+    failures += Expect(winter_walkers == 0,
+                       "carter on foot, two trips: a winter day of eight hours does not send him a "
+                       "kilometre out — never more trips than the light holds");
+    std::uint32_t weak_walkers = 0;
+    const float weak_paid = walker_day(1000.0F, weak_walkers, 12.0F, 30.0F);
+    std::cout << "  carter on foot, the pay: in good health " << near_paid << ", in poor health "
+              << weak_paid << '\n';
+    failures += Expect(weak_walkers == 1 && weak_paid > 0.0F && weak_paid < near_paid - 0.03F,
+                       "carter on foot, the pay: a walker in poor health carries less in the same "
+                       "trips and is paid less");
   }
 
   // A LOG IS NEVER CARRIED ON A BACK: with the one horse out, nobody walks to

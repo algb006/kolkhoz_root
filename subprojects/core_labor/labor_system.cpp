@@ -1940,8 +1940,14 @@ class LaborSystem final : public ILaborSystem {
           config_.walker_norm_kg_per_day > 0.0F) {
         const float light = current.weather.daylight_hours;
         const float trips = light / (2.0F * travel);
-        const float day_pay =
-            std::min(1.0F, trips * config_.carry_kg_adult / config_.walker_norm_kg_per_day);
+        // BY HIS OWN OUTPUT (0.37.113; econ, 2 October 2026): what he carried
+        // is the trips by the carry by his efficiency — the multiplier every
+        // other norm-day is cut by, the stub of a carrying capacity the core
+        // does not keep yet (transport design §2). Without it the pay ROSE
+        // with the pair of 0.37.109, 0.56 -> 0.71 norm-days a walker's day:
+        // the man had dropped out of the sum.
+        const float day_pay = std::min(
+            1.0F, trips * config_.carry_kg_adult * efficiency / config_.walker_norm_kg_per_day);
         const float usable = light - (2.0F * travel);
         paid = usable > 0.0F ? day_pay * (worked / usable) * (delivered / could_deliver) : 0.0F;
       }
