@@ -14,6 +14,7 @@
 #include "core_common/quantities.h"
 #include "core_common/state_table_ops.h"
 #include "district_limit.h"
+#include "herd_floors.h"
 #include "herd_life.h"
 #include "herd_system.h"
 #include "night_pasture.h"
@@ -339,7 +340,8 @@ void DrainFeedDay(const ProductionConfig& config,
 
 FeedPurchase MaximalFeedPurchase(const ProductionConfig& config,
                                  const WorldState& world,
-                                 bool* blocked_by_store) {
+                                 bool* blocked_by_store,
+                                 std::uint32_t lots_cap) {
   FeedPurchase purchase;
   purchase.goods_kg.assign(config.feed_values.size(), 0.0F);
   if (blocked_by_store != nullptr) {
@@ -394,12 +396,19 @@ FeedPurchase MaximalFeedPurchase(const ProductionConfig& config,
   std::int32_t points_left = world.limit.points;
   for (const FeedLot& feed : lots) {
     const LimitLotDef& def = config.limit.lots[feed.lot.value];
-    const std::int32_t copies = def.points > 0 ? points_left / def.points : 1;
+    // As many as the points cover — and no more lots in all than `lots_cap`
+    // (the least purchase is found by asking for fewer, AdviseOnShortFodder).
+    const std::uint32_t cap_left = lots_cap - purchase.lots;
+    const std::int32_t by_points = def.points > 0 ? points_left / def.points : 1;
+    const std::int32_t copies = by_points > 0 && static_cast<std::uint32_t>(by_points) > cap_left
+                                    ? static_cast<std::int32_t>(cap_left)
+                                    : by_points;
     if (copies <= 0) {
       continue;
     }
     points_left -= copies * def.points;
     purchase.points += copies * def.points;
+    purchase.lots += static_cast<std::uint32_t>(copies);
     for (std::size_t resource = 0;
          resource < def.goods.size() && resource < purchase.goods_kg.size();
          ++resource) {
@@ -422,11 +431,22 @@ FeedPurchase MaximalFeedPurchase(const ProductionConfig& config,
 
 namespace {
 
-/// Takes `wanted` heads off one cohort of the herds of a class — the horses
-/// or every other kind — herd by herd in row order; the sires of a sexed
-/// kind go in proportion to its adults. Returns the heads still wanted.
+/// The classes of HeadsHandedOver.
+enum class HeadClass : std::uint8_t { kHorses, kCows, kOther };
+
+HeadClass ClassOf(const ProductionConfig& config, LivestockKindId cow, LivestockKindId kind) {
+  if (kind.value == config.horse_kind.value) {
+    return HeadClass::kHorses;
+  }
+  return kind.value == cow.value ? HeadClass::kCows : HeadClass::kOther;
+}
+
+/// Takes `wanted` heads off one cohort of the herds of a class, herd by herd
+/// in row order; the sires of a sexed kind go in proportion to its adults.
+/// Returns the heads still wanted.
 float TakeCohort(const ProductionConfig& config,
-                 bool horses,
+                 LivestockKindId cow,
+                 HeadClass of_class,
                  bool adults,
                  float wanted,
                  std::vector<ProjectedHerd>& herds) {
@@ -434,7 +454,7 @@ float TakeCohort(const ProductionConfig& config,
     if (!(wanted > 0.0F)) {
       break;
     }
-    if ((herd.kind.value == config.horse_kind.value) != horses) {
+    if (ClassOf(config, cow, herd.kind) != of_class) {
       continue;
     }
     float& cohort = adults ? herd.adults : herd.juveniles;
@@ -453,59 +473,22 @@ float TakeCohort(const ProductionConfig& config,
 void TakeHandedOver(const ProductionConfig& config,
                     const HeadsHandedOver& handed,
                     std::vector<ProjectedHerd>& herds) {
-  for (const bool horses : {false, true}) {
-    const auto wanted = static_cast<float>(horses ? handed.horses : handed.stock);
-    TakeCohort(config, horses, false, TakeCohort(config, horses, true, wanted, herds), herds);
-  }
+  const LivestockKindId cow = MilkKind(config);
+  const auto take = [&config, &herds, cow](HeadClass of_class, std::int64_t heads) {
+    const auto wanted = static_cast<float>(heads);
+    TakeCohort(config,
+               cow,
+               of_class,
+               false,
+               TakeCohort(config, cow, of_class, true, wanted, herds),
+               herds);
+  };
+  take(HeadClass::kHorses, handed.horses);
+  take(HeadClass::kCows, handed.cows);
+  take(HeadClass::kOther, handed.other);
 }
 
 }  // namespace
-
-HeadsHandedOver LeastHeadsToHandOver(const ProductionConfig& config,
-                                     const WorldState& world,
-                                     const FeedPurchase* purchase) {
-  HeadsHandedOver standing;
-  for (const HerdRow& herd : world.herds.rows) {
-    if (herd.household_owned != 0 || herd.kind.value >= config.livestock.size()) {
-      continue;
-    }
-    const std::int64_t heads = static_cast<std::int64_t>(herd.adult_count) + herd.juvenile_count;
-    (herd.kind.value == config.horse_kind.value ? standing.horses : standing.stock) += heads;
-  }
-  const auto short_without = [&config, &world, purchase](const HeadsHandedOver& handed) {
-    return ForecastHerdFeed(config, world, false, FeedHorizon::kNearestScythes, purchase, &handed)
-        .short_ahead;
-  };
-  HeadsHandedOver least;
-  if (!short_without(least)) {
-    return least;
-  }
-  // THE LEAST OF A CLASS BY HALVING: with `low` heads gone the forecast is
-  // short, with `high` it is not — fewer heads never eat more.
-  const auto least_of = [&short_without](HeadsHandedOver handed,
-                                         std::int64_t HeadsHandedOver::* count,
-                                         std::int64_t high) {
-    std::int64_t low = 0;
-    while (high - low > 1) {
-      const std::int64_t middle = low + ((high - low) / 2);
-      handed.*count = middle;
-      (short_without(handed) ? low : high) = middle;
-    }
-    return high;
-  };
-  // THE STOCK BEFORE THE DRAUGHT (Livestock design §6): a working horse is in
-  // the number only when every head of the stock gone leaves the rest short.
-  least.stock = standing.stock;
-  if (!short_without(least)) {
-    least.stock = least_of(HeadsHandedOver{}, &HeadsHandedOver::stock, standing.stock);
-    return least;
-  }
-  least.horses = standing.horses;
-  if (!short_without(least)) {
-    least.horses = least_of(least, &HeadsHandedOver::horses, standing.horses);
-  }
-  return least;
-}
 
 HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
                                   const WorldState& world,
@@ -807,61 +790,88 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
     return advice;
   }
   // THE HEADS OF «FEWER HEADS» ARE THE LEAST THAT FEED THE REST (0.37.137;
-  // LeastHeadsToHandOver), the stock before the horses — not the forecast's
-  // heads_short, which counts the heads unfed on the worst day: the whole
-  // herd on the day the hay is out. With that number a chairman following
-  // the advice handed over 111 heads by the median for a tenth of the hay.
-  const auto name_the_heads = [&config, &world, &advice](const FeedPurchase* purchase) {
-    const HeadsHandedOver heads = LeastHeadsToHandOver(config, world, purchase);
-    advice.hand_over_stock = heads.stock;
-    advice.hand_over_horses = heads.horses;
-    return heads.stock + heads.horses;
-  };
-  // 2. THE DISTRICT'S FEED, IF THE DOOR TAKES THE ORDER TODAY AND IT HELPS
-  // (0.37.122). «Helps»: the forecast after it is not short, or is short
-  // later, or of fewer heads — a purchase that moves none of the three feeds
-  // nobody (a feed's share of the ration is capped, and the hole is in
-  // another feed).
-  bool blocked_by_store = false;
-  const FeedPurchase purchase = MaximalFeedPurchase(config, world, &blocked_by_store);
-  if (purchase.any) {
-    const HerdFeedForecast after =
-        ForecastHerdFeed(config, world, false, FeedHorizon::kNearestScythes, &purchase);
-    const bool helps = !after.short_ahead || after.days_ahead > forecast.days_ahead ||
-                       after.heads_short < forecast.heads_short;
-    if (helps) {
-      advice.advice = AlarmAdvice::kBuyFeed;
-      // The feed it brings most of, by feed units: the lamp names one.
-      float most_units = 0.0F;
-      for (std::size_t resource = 0; resource < purchase.goods_kg.size(); ++resource) {
-        const float units = purchase.goods_kg[resource] * config.feed_values[resource];
-        if (units > most_units) {
-          most_units = units;
-          advice.advice_resource = DefIdFromIndex<ResourceIdTag>(resource);
-          advice.advice_amount = GramsFromKilograms(purchase.goods_kg[resource]);
-        }
-      }
-      if (after.short_ahead && after.heads_short > 0) {
-        advice.advice_more = AlarmAdvice::kReduceHerd;
-        advice.amount_more = name_the_heads(&purchase);
-      }
-      return advice;
-    }
+  // LeastHeadsToHandOver) — not the forecast's heads_short, which counts the
+  // heads unfed on the worst day: the whole herd on the day the hay is out.
+  // With that number a chairman following the advice handed over 111 heads
+  // by the median for a tenth of the hay. BY THE FLOORS since 0.37.142
+  // (herd_floors.h): the horses above the ploughing's, the cows above the
+  // milk plan's, and what is below them named apart and in no sum.
+  //
+  // 2. THE HEADS ABOVE THE FLOORS, BEFORE THE DISTRICT'S FEED (0.37.142;
+  // boss, boss-all-carts-carry-people-go-2026-10-02 [138]; Livestock design
+  // §6, «Лестница совета лампы сена — четыре ступени»). Until then the feed
+  // came first, and on nine villages of the canon the lamp of June, year 3,
+  // said «buy 270 t of compound feed — every point of the year — and hand
+  // five horses and nineteen cows besides»: bought feed keeping heads the
+  // farm has no work or plan for. The floors say what the farm needs; what
+  // stands above them goes first, and bought feed is for what is needed.
+  const HandOverAdvice heads = LeastHeadsToHandOver(config, world);
+  advice.hand_over_stock = heads.stock;
+  advice.hand_over_horses = heads.horses;
+  const std::int64_t above = heads.stock + heads.horses;
+  if (heads.below_floor_stock + heads.below_floor_horses == 0) {
+    advice.advice = AlarmAdvice::kReduceHerd;
+    return advice;
   }
-  // 3. THE GRANARY, when a feed lot is refused for want of a store alone —
-  // its site under way or not yet marked: the door refuses either way
+  // 3. THE FLOORS EXHAUSTED: THE DISTRICT'S FEED, IF THE DOOR TAKES THE ORDER
+  // TODAY AND IT CLOSES THE SHORTAGE with every head above the floors gone —
+  // THE LEAST LOTS THAT DO, found by halving (more feed never feeds fewer).
+  // Until 0.37.142 the amount named was every lot the year's points cover:
+  // the defect of «hand over N heads» before 0.37.137 over again. A PURCHASE
+  // AFTER WHICH THE HERDS ARE STILL SHORT IS NOT NAMED AT ALL (boss [138]):
+  // «buy 27 lots and hand over all the same» is advice it harms to follow.
+  const HeadsHandedOver gone{.horses = heads.horses, .cows = heads.stock, .other = 0};
+  const auto short_after = [&config, &world, &gone](const FeedPurchase& bought) {
+    return ForecastHerdFeed(config, world, false, FeedHorizon::kNearestScythes, &bought, &gone)
+        .short_ahead;
+  };
+  bool blocked_by_store = false;
+  FeedPurchase purchase = MaximalFeedPurchase(config, world, &blocked_by_store);
+  if (purchase.any && !short_after(purchase)) {
+    std::uint32_t low = 0;  // short with this many lots: none is the floors exhausted
+    std::uint32_t high = purchase.lots;
+    while (high - low > 1) {
+      const std::uint32_t middle = low + ((high - low) / 2U);
+      (short_after(MaximalFeedPurchase(config, world, nullptr, middle)) ? low : high) = middle;
+    }
+    if (high < purchase.lots) {
+      purchase = MaximalFeedPurchase(config, world, nullptr, high);
+    }
+    advice.advice = AlarmAdvice::kBuyFeed;
+    // The feed it brings most of, by feed units: the lamp names one.
+    float most_units = 0.0F;
+    for (std::size_t resource = 0; resource < purchase.goods_kg.size(); ++resource) {
+      const float units = purchase.goods_kg[resource] * config.feed_values[resource];
+      if (units > most_units) {
+        most_units = units;
+        advice.advice_resource = DefIdFromIndex<ResourceIdTag>(resource);
+        advice.advice_amount = GramsFromKilograms(purchase.goods_kg[resource]);
+      }
+    }
+    // The heads above the floors go all the same — the purchase is counted
+    // with them gone.
+    if (above > 0) {
+      advice.advice_more = AlarmAdvice::kReduceHerd;
+      advice.amount_more = above;
+    }
+    return advice;
+  }
+  // NO PURCHASE CLOSES IT: what would have to go below the floors is named,
+  // apart (Alarm::below_floor_stock, below_floor_horses).
+  advice.below_floor_stock = heads.below_floor_stock;
+  advice.below_floor_horses = heads.below_floor_horses;
+  // THE GRANARY, when a feed lot is refused for want of a store alone — its
+  // site under way or not yet marked: the door refuses either way
   // (kNowhereToStore), and «buy» on such a day was an order refused.
   if (!purchase.any && blocked_by_store) {
     advice.advice = AlarmAdvice::kGranaryForFeed;
     advice.advice_more = AlarmAdvice::kReduceHerd;
-    advice.amount_more = name_the_heads(nullptr);
+    advice.amount_more = above;
     return advice;
   }
-  // 4. FEWER HEADS, and their number beside the move (hand_over_stock,
-  // hand_over_horses): the alarm's own `amount` is the lamp's, not the
-  // advice's.
+  // 4. FEWER HEADS: the heads above the floors, and the remainder below
+  // them beside. The alarm's own `amount` is the lamp's, not the advice's.
   advice.advice = AlarmAdvice::kReduceHerd;
-  name_the_heads(nullptr);
   return advice;
 }
 
@@ -889,6 +899,8 @@ void CollectHerdForecastAlarms(const ProductionConfig& config,
   alarm.amount_more = advice.amount_more;
   alarm.hand_over_stock = advice.hand_over_stock;
   alarm.hand_over_horses = advice.hand_over_horses;
+  alarm.below_floor_stock = advice.below_floor_stock;
+  alarm.below_floor_horses = advice.below_floor_horses;
   alarm.lamp = 0;
   alarms.push_back(alarm);
 }

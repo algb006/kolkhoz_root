@@ -1043,6 +1043,17 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
       continue;
     }
     const LivestockDef& kind = config.livestock[herd.kind.value];
+    // THE YEAR'S ADULT HEAD-DAYS BY KIND (YearLedger::adult_head_days;
+    // 0.37.142): the adults the herd comes into its day with. The divisor of
+    // «a cow's yield of the closed year» — the hay lamp's milk floor
+    // (herd_floors.h); the run's chairman summed it himself until then.
+    if (herd.household_owned == 0 && herd.adult_count > 0) {
+      ResourceAmounts& head_days = current.ledger.current.adult_head_days;
+      if (head_days.size() <= herd.kind.value) {
+        head_days.resize(static_cast<std::size_t>(herd.kind.value) + 1U, 0);
+      }
+      head_days[herd.kind.value] += herd.adult_count;
+    }
     // THE SIRE COUNT IS A THING THE HERD REMEMBERS, and this line used to say
     // the opposite: it re-derived the count from the herd's size every single
     // day. That was true while heads could only be born. Since the district

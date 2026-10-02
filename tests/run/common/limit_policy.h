@@ -154,9 +154,10 @@ class LimitPolicy {
     days_logs_lay_ += OwnLogsLie(world) ? 1U : 0U;
     ++days_watched_;
     // THE HAY'S YELLOW, ANSWERED (hay_answer.h; 0.37.64): the rush on the cut,
-    // or cows handed to the district. Its own order and cooldown, before the
-    // lots': a herd short of hay is not waiting for a lot of boards.
-    hay_.RunDay(simulation);
+    // the heads the lamp names handed to the district, a lot of feed on its
+    // «buy feed» (0.37.142). Its own orders and cooldown, before the lots': a
+    // herd short of hay is not waiting for a lot of boards.
+    hay_.RunDay(simulation, ready_ ? &catalog_ : nullptr);
     WatchTheLampsAdvice(simulation);
     // The loan needs no catalogue and no points: before the lots' gate.
     StageSeedLoans(simulation, world);

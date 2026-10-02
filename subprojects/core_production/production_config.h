@@ -371,6 +371,22 @@ struct FarmingConfig {
 
   float harrow_days_per_ha = 3.0F / kRealDaysPerGameDay;
 
+  /// THE FLOORS OF THE HAY LAMP'S ADVICE (0.37.142; herd_floors.h; Livestock
+  /// design §6). farming.csv `plough_window_days`: the game days the plan's
+  /// base of worked hectares is ploughed in — the teams the ploughing needs
+  /// are its plough-days over this. `plough_floor_margin`: the adult horses
+  /// kept are those teams times this. `milk_floor_margin`: the cows kept are
+  /// the cows the highest milk position needs times this. ALL THREE ARE STUB,
+  /// econ's: the first and the third stood in the run chairman's code
+  /// (hay_answer.h) and moved here as they stood; econ is to name ONE number
+  /// for the window and the margin after the body's canon (boss [131] p. 3 —
+  /// the world ploughs sixteen days, not eight).
+  float plough_window_days = 8.0F;
+
+  float plough_floor_margin = 1.33F;
+
+  float milk_floor_margin = 1.25F;
+
   float manure_norm_kg_per_ha = 20000.0F;
 
   float manure_fertility_bonus = 6.0F;

@@ -494,6 +494,16 @@ void AnnouncePlan(const ProductionConfig& config, WorldState& current) {
                PlanPositionGrams(config, position, current.plan.worked_ha_last_year));
   }
   AnnounceMilkPosition(config, current);
+  // THE HIGHEST POSITION EVER NAMED, by resource (PlanState::highest_due;
+  // 0.37.142): the figure just named beside every earlier one. The hay
+  // lamp's milk floor reads it — this year's position follows the herd down.
+  if (current.plan.highest_due.size() < current.plan.due.size()) {
+    current.plan.highest_due.resize(current.plan.due.size(), 0);
+  }
+  for (std::size_t index = 0; index < current.plan.due.size(); ++index) {
+    current.plan.highest_due[index] =
+        std::max(current.plan.highest_due[index], current.plan.due[index]);
+  }
   NameAccumulationLimit(config, current, first_year);
   // ANNOUNCED EVEN WHEN THE FIGURE IS ZERO, and that is the whole point of
   // the byte: a settlement that worked no land last year is one the

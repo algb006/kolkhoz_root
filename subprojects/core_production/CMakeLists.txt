@@ -10,6 +10,7 @@ kolkhoz_add_module(core_production
     field_haul.cpp
     field_work.cpp
     herd_cold.cpp
+    herd_floors.cpp
     herd_forecast.cpp
     herd_life.cpp
     herd_system.cpp

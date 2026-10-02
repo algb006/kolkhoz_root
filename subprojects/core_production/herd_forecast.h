@@ -102,6 +102,9 @@ struct FeedPurchase {
   /// The year's points it costs, and whether it buys anything at all.
   std::int32_t points = 0;
   bool any = false;
+
+  /// The lots in it, every copy counted.
+  std::uint32_t lots = 0;
 };
 
 /// @brief THE LARGEST PURCHASE OF FEED THE LOT'S DOOR WOULD TAKE THIS MORNING
@@ -115,6 +118,10 @@ struct FeedPurchase {
 /// @param blocked_by_store Written when given: true when NO feed lot is
 ///        buyable and at least one was refused by kNowhereToStore alone —
 ///        the day's move is the granary, not the lot.
+/// @param lots_cap No more lots in all than this, taken in the same order
+///        (0.37.142): the advice names the LEAST purchase that feeds the
+///        herds, found by asking this door for fewer (AdviseOnShortFodder).
+///        The default is no cap — the largest.
 /// @return `any` false with no lot buyable today.
 /// @note STUB of the room: a store's FREE room is not asked — the door does
 ///       not ask it either (SomeStoreAccepts: «full or not»), and what does
@@ -123,17 +130,22 @@ struct FeedPurchase {
 ///       road.
 FeedPurchase MaximalFeedPurchase(const ProductionConfig& config,
                                  const WorldState& world,
-                                 bool* blocked_by_store = nullptr);
+                                 bool* blocked_by_store = nullptr,
+                                 std::uint32_t lots_cap = 0xFFFFFFFFU);
 
 /// @brief Heads the forecast is asked to count as handed over today
-///        (0.37.137), in the design's order (Livestock design §6): `stock` of
-///        the kolkhoz herds that are not horses — every such herd's adults
-///        first, herd by herd in row order, then their juveniles — and
-///        `horses` of the horse herds the same way. Newborns at the dam eat
-///        nothing and are not counted. More than stand takes all that stand.
+///        (0.37.137), BY CLASS since 0.37.142 — the floors of the advice are
+///        the horses' and the cows' apart (herd_floors.h): `horses` of the
+///        horse herds, `cows` of the herds of the milk kind (MilkKind),
+///        `other` of every other kolkhoz herd. Within a class as the
+///        hand-over's door takes them (OrderHandStock): every such herd's
+///        adults first, herd by herd in row order, then their juveniles.
+///        Newborns at the dam eat nothing and are not counted. More than
+///        stand takes all that stand.
 struct HeadsHandedOver {
-  std::int64_t stock = 0;
   std::int64_t horses = 0;
+  std::int64_t cows = 0;
+  std::int64_t other = 0;
 };
 
 /// @brief The forecast's answer.
@@ -203,22 +215,6 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
                                   const FeedPurchase* purchase = nullptr,
                                   const HeadsHandedOver* handed = nullptr);
 
-/// @brief THE LEAST HEADS TO HAND OVER FOR THE REST TO BE FED to the lamp's
-///        horizon (FeedHorizon::kNearestScythes) — the number of the advice
-///        «fewer heads» (0.37.137; boss, boss-all-carts-carry-people-go-2026-
-///        10-02 [84], [85]; Livestock design §6). The stock first: the least
-///        `stock` with which the forecast is not short; the horses only when
-///        the whole of the stock handed over leaves it short, and then the
-///        least of them. Found by halving: fewer heads never eat more.
-/// @param purchase A purchase counted as made today, as in ForecastHerdFeed:
-///        the heads still to hand over AFTER it.
-/// @return Nought and nought for a forecast that is not short; every head
-///         standing when no number of them feeds the rest (a herd underfed in
-///         a feed no head's leaving brings — it cannot be, with none left).
-HeadsHandedOver LeastHeadsToHandOver(const ProductionConfig& config,
-                                     const WorldState& world,
-                                     const FeedPurchase* purchase = nullptr);
-
 /// @brief The heads a standing kolkhoz herd will have `days` days from today
 ///        by the forecast's own projection (births by RunBirths's rule and
 ///        gates, the maturing by the kind's months, the young males the herd
@@ -266,9 +262,13 @@ struct FodderAdvice {
   AlarmAdvice advice_more = AlarmAdvice::kNone;
   std::int64_t amount_more = 0;
   /// With kReduceHerd named, first or second: the least heads to hand over
-  /// (LeastHeadsToHandOver), the stock and the horses apart.
+  /// above the floors (herd_floors.h, LeastHeadsToHandOver), the stock and
+  /// the horses apart — and what would still have to go BELOW the floors,
+  /// named apart and in no sum.
   std::int64_t hand_over_stock = 0;
   std::int64_t hand_over_horses = 0;
+  std::int64_t below_floor_stock = 0;
+  std::int64_t below_floor_horses = 0;
 };
 
 /// @brief THE LADDER OF THE HAY LAMP'S ADVICE (0.37.121; boss, host-boss-pin-
@@ -278,25 +278,36 @@ struct FodderAdvice {
 ///        of these that holds:
 ///   1. kCutHay — a meadow stands in its cut with mowing left (0.37.92) and
 ///      its avral below the last step (CutCanBeHurried; 0.37.123);
-///   2. kBuyFeed — the door would take a feed lot today (MaximalFeedPurchase)
-///      AND the forecast after that purchase is short of fewer heads:
-///      `advice_resource`, `advice_amount` the feed and the grams bought;
-///      the heads still short after it — `advice_more` = kReduceHerd,
-///      `amount_more`;
-///   3. kGranaryForFeed — no feed lot is buyable today and one was refused
-///      for want of a store alone: «finish the granary», whether its site is
-///      under way or not yet marked; `advice_more` = kReduceHerd with
-///      `amount_more` the heads short today;
-///   4. kReduceHerd — nothing else helps: the district sells no feed the
-///      herds eat, the points are spent, or what they buy feeds no head more
-///      (a feed's share of the ration is capped — feed_links.csv max_share —
-///      and the hole is in the hay).
+///   2. kReduceHerd — THE HEADS ABOVE THE FLOORS (herd_floors.h): the least
+///      of them that feed the rest. The farm's surplus goes before the
+///      district's feed is bought for it;
+///   3. kBuyFeed — the floors exhausted, the door would take a feed lot
+///      today, and SOME purchase closes the shortage with every head above
+///      the floors gone: `advice_resource`, `advice_amount` the feed and the
+///      grams of THE LEAST LOTS THAT DO; those heads beside it — `advice_more`
+///      = kReduceHerd, `amount_more`. A purchase after which the herds are
+///      still short is not named;
+///      kGranaryForFeed — in its place, when no feed lot is buyable today and
+///      one was refused for want of a store alone: «finish the granary»,
+///      whether its site is under way or not yet marked;
+///   4. kReduceHerd with the remainder BELOW THE FLOORS named apart
+///      (`below_floor_stock`, `below_floor_horses`) — no purchase closes it:
+///      the district sells no feed the herds eat, the points are spent, or
+///      what they buy leaves the herds short (a feed's share of the ration
+///      is capped — feed_links.csv max_share — and the hole is in the hay).
 ///
-/// THE HEADS OF kReduceHerd, first move or second, are `hand_over_stock` and
-/// `hand_over_horses` since 0.37.137 — LeastHeadsToHandOver, after the
-/// purchase when one is advised — and `amount_more` behind another move is
-/// their sum. Until then they were the forecast's heads_short, the heads
-/// unfed on the worst day: the whole herd on the day the hay is out.
+/// THE ORDER OF 2 AND 3 IS 0.37.142's (boss, boss-all-carts-carry-people-go-
+/// 2026-10-02 [138]; Livestock design §6). Until then the feed came first,
+/// its amount every lot the year's points cover, and the heads were those
+/// still short AFTER it: on nine villages of the canon the lamp of June,
+/// year 3, said «buy 270 t of compound feed and hand five horses and
+/// nineteen cows besides» — 26 lots a village by the median.
+///
+/// THE HEADS, first move or second, are `hand_over_stock` and
+/// `hand_over_horses` since 0.37.137 — LeastHeadsToHandOver — and
+/// `amount_more` behind another move is their sum. Until then they were the
+/// forecast's heads_short, the heads unfed on the worst day: the whole herd
+/// on the day the hay is out.
 ///
 /// WHATEVER FEED RAN OUT FIRST. Until 0.37.121 the ladder was the hay's
 /// alone (AdviceForShortFeed): any other first short feed got «the granary»

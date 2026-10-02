@@ -739,15 +739,18 @@ enum class AlarmAdvice : std::uint8_t {
   /// heads the fodder does not reach, to hand over or slaughter. The chairman
   /// decides it and the game does not do it for him (the human, 2 October
   /// 2026: «игра не должна сама убивать стадо»), so the game owes him the
-  /// number. As `advice` when no purchase helps — the district sells no feed,
-  /// the points are spent, or what the points buy closes nothing (a feed's
-  /// share of the ration is capped, feed_links.csv max_share); as
-  /// `advice_more` behind kBuyFeed or kGranaryForFeed with the heads left
-  /// AFTER that move in `amount_more`.
+  /// number. SINCE 0.37.142 THE RUNG BEFORE THE FEED (Alarm::hand_over_stock):
+  /// as `advice` when the heads above the floors feed the rest, and when no
+  /// purchase closes what is left — the district sells no feed, the points
+  /// are spent, or what they buy leaves the herds short (a feed's share of
+  /// the ration is capped, feed_links.csv max_share); as `advice_more`
+  /// behind kBuyFeed or kGranaryForFeed with the heads above the floors in
+  /// `amount_more`. Until 0.37.142 it stood behind the feed, with the heads
+  /// left AFTER the purchase.
   /// THE NUMBER IS `hand_over_stock` AND `hand_over_horses` SINCE 0.37.137 —
-  /// the least heads whose leaving feeds the rest, the stock before the
-  /// horses — and never the lamp's `amount`, which counts the heads unfed on
-  /// the worst day (Alarm::hand_over_stock).
+  /// the least heads whose leaving feeds the rest, by the floors since
+  /// 0.37.142 — and never the lamp's `amount`, which counts the heads unfed
+  /// on the worst day (Alarm::hand_over_stock).
   ///
   /// UNTIL 0.37.121 IT COULD NOT BE NAMED AT ALL in a world with a feed lot in
   /// the catalogue: it stood behind «the catalogue sells no feed», a
@@ -892,6 +895,13 @@ struct Alarm {
   ///     position ever named (PlanState::highest_due) over a cow's yield of
   ///     the closed year, times farming.csv `milk_floor_margin` — and every
   ///     head of the other productive kinds — in `hand_over_stock`.
+  /// THESE HEADS COME BEFORE THE DISTRICT'S FEED (0.37.142; boss [138]): the
+  /// hay lamp's ladder is the cut — the heads above the floors — the feed —
+  /// the remainder below the floors. `advice` = kBuyFeed is named only with
+  /// the floors exhausted, its `advice_amount` the LEAST purchase that closes
+  /// the shortage with every head above the floors gone (they are in these
+  /// two numbers beside it, `advice_more` = kReduceHerd); a purchase after
+  /// which the herds are still short is not named at all.
   /// TWO STEPS SINCE 0.37.141, three in 0.37.140's contract: its first, «the
   /// horses above the harness peak of the year gone», was withdrawn before
   /// its body — every measure of the horses' occupancy followed the herd up

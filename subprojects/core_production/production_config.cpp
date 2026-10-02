@@ -413,6 +413,9 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
       {"unfed_death_percent_per_day", &farming.unfed_death_percent_per_day, 0.0F, 100.0F},
       {"juvenile_feed_factor", &farming.juvenile_feed_factor, 0.0F, 1.0F},
       {"reserve_feed_factor", &farming.reserve_feed_factor, 0.0F, 1.0F},
+      {"plough_window_days", &farming.plough_window_days, 1.0F, 48.0F},
+      {"plough_floor_margin", &farming.plough_floor_margin, 1.0F, 10.0F},
+      {"milk_floor_margin", &farming.milk_floor_margin, 1.0F, 10.0F},
       // BOTH HALVES OF BILLETING MOVED TO world_params.csv on 2026-09-16 and
       // are read by ParseProductionWorldParams below. They used to be split:
       // the yield factor here, the yard's places there — and the reason the
