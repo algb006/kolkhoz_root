@@ -863,6 +863,47 @@ bool GiveToNeighbour(GiftQueues& queues,
 /// three goats and twelve hens in a year or two, the start's unlike yards
 /// alike again. The young stand in the yard now until they are grown.
 /// @param adults_before The yard's adults before today's maturation.
+/// THE HEAD GIVEN TO A NEIGHBOUR GOES WITH ITS SHARE OF THE YARD'S HAY
+/// (0.37.145; econ, host-boss-pin-0-37-133-2026-10-02 [59]): the giver's
+/// pantry hay over its heads that eat it — those that stay and the one
+/// leaving — moves to the pantry of the family that took the head. The
+/// village's hay is what it was; no number is added.
+///
+/// UNTIL THEN THE HEAD WENT BARE. A yard mows in August for the heads standing
+/// in it that day (household_plot.cpp, MowHay), so the neighbour who took a
+/// head in the autumn had mown for nobody and the giver kept the hay of a
+/// head it no longer fed. On nine villages of 0.37.144 the hunger took 46,
+/// 67, 54 yard goats in years 3-5, and in 31, 41, 40 of those death events
+/// the herd had been founded after the yards' last mowing.
+/// @param herd The giver's herd AFTER the head has left it.
+/// @param to The family that took the head.
+void CarryHayShare(const ProductionConfig& config,
+                   const HerdPlace& place,
+                   const HerdRow& herd,
+                   FamilyId to,
+                   WorldState& world) {
+  const ResourceId hay = config.hay_resource;
+  const std::uint32_t taker = FindRow(world.families, to);
+  if (place.pantry == nullptr || hay.value == kInvalidDefIdValue || taker == kNoRow) {
+    return;
+  }
+  const bool eats_hay = std::ranges::any_of(config.feed_links, [&](const FeedLinkDef& link) {
+    return link.kind.value == herd.kind.value && link.resource.value == hay.value;
+  });
+  const Grams held = AmountOf(*place.pantry, hay);
+  if (!eats_hay || held <= 0) {
+    return;
+  }
+  // Newborns at the dam eat no hay and have no share in it.
+  const Grams heads = static_cast<Grams>(herd.adult_count) + herd.juvenile_count + 1;
+  const Grams share = held / heads;
+  if (share <= 0) {
+    return;
+  }
+  (*place.pantry)[hay.value] -= share;
+  AddToStock(world.families.rows[taker].pantry, hay, share);
+}
+
 void PlaceSurplusHead(const ProductionConfig& config,
                       const LivestockDef& kind,
                       const HerdPlace& place,
@@ -906,6 +947,8 @@ void PlaceSurplusHead(const ProductionConfig& config,
       world.ledger.current.herd_culled += 1;
       ++slaughtered;
       Slaughter(config, kind, place, 1, world);
+    } else {
+      CarryHayShare(config, place, herd, pending.back().household, world);
     }
   }
   herd.adult_male_count = TargetMales(kind, herd.adult_count);

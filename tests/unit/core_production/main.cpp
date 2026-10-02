@@ -2884,6 +2884,39 @@ int CheckYardOffspringReplaces() {
                    knifed(yard.world) == 0,
                "yard young: the new-born over the cap stand in the yard until they are grown");
   }
+  // THE HEAD GIVEN TO A NEIGHBOUR GOES WITH ITS SHARE OF THE YARD'S HAY
+  // (0.37.145; econ, host-boss-pin-0-37-133-2026-10-02 [59]). Two young
+  // adults and a kid, 900 kg of hay in the yard's pantry, and a second
+  // family that keeps no stock: the kid grows up, finds nobody to replace
+  // and goes to the neighbour — with a third of the hay, the giver's store
+  // over its three heads. Until then the head went bare: the neighbour had
+  // mown for nobody, and on nine villages of 0.37.144 the herd that starved
+  // had been founded after the yards' last mowing in 31 death events of 46,
+  // 41 of 67, 40 of 54 (years 3-5).
+  {
+    core::ProductionConfig giving = config;
+    giving.hay_resource = core::ResourceId{0};
+    giving.feed_links.push_back(core::FeedLinkDef{
+        .kind = core::LivestockKindId{2}, .resource = core::ResourceId{0}, .reserve = 0});
+    Yard yard = yard_with(2, 0.2F, 0.2F, 0, 1);
+    constexpr core::Grams kHay = 900 * core::kGramsPerKilogram;
+    yard.world.families.rows[0].pantry[0] = kHay;
+    core::FamilyRow neighbour;
+    neighbour.pantry.assign(3, 0);
+    AppendRow(yard.world.families, neighbour);
+    RunHerdDays(giving, yard.world, kDays);
+    const core::Grams kept = yard.world.families.rows[0].pantry[0];
+    const core::Grams carried = yard.world.families.rows[1].pantry[0];
+    std::cout << "  yard young, the gift: herds " << yard.world.herds.rows.size()
+              << ", the giver keeps " << kept / core::kGramsPerKilogram
+              << " kg of hay, the neighbour got " << carried / core::kGramsPerKilogram << " kg\n";
+    failures += Expect(yard.world.herds.rows.size() == 2 && knifed(yard.world) == 0,
+                       "yard young, the gift: the grown head goes to the neighbour who keeps "
+                       "no stock, not to the knife");
+    failures += Expect(carried == kHay / 3 && kept == kHay - (kHay / 3),
+                       "yard young, the gift: the head goes with its share of the yard's hay - "
+                       "a third of 900 kg - and the village's hay is what it was");
+  }
   return failures;
 }
 
