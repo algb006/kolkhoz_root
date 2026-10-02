@@ -28,10 +28,33 @@
 
 namespace core {
 
+/// THE CART OF THE COMPRESSED YEAR (0.37.125; transport design §1; the human,
+/// 2 October 2026: «Делай K = 2,4»). A cart's load in the core is the table's
+/// tonnes TIMES ITS SCALE — transport.csv, row `cart_loaded`, `load_tonnes` x
+/// `load_scale` — read by labour and by production from the same two cells.
+///
+/// WHY A SCALE AT ALL. The game holds three scales and only one had been
+/// brought to its year: labour (real man-days / 7 = game days). A man's road
+/// to work is twelve times the life's on purpose (real speeds, a clock x12 —
+/// time design §6). CARTING WAS x84 AND NOBODY HAD DECIDED IT: the clock's
+/// twelve, and a real year's tonnage carted in 48 game days for 336. The
+/// world stood because its heaviest load was not carted — the meadows' hay
+/// delivered itself; carted (0.37.119), it took 40 % of a village's
+/// horse-days and the timber's carts with them.
+///
+/// WHAT THE SCALE DOES NOT TOUCH: the cart's speed, a walker's carry
+/// (labor.csv, carry_kg_adult) and — when carts carry people — a rider's
+/// weight. The bounds: below one is not a cart of the compressed year but a
+/// typo; the ceiling is far above any K the design names (2.4; econ's ladder
+/// of return 3, then 4; 7 is labour's own divisor).
+inline constexpr float kCartLoadScaleMin = 1.0F;
+inline constexpr float kCartLoadScaleMax = 20.0F;
+
 /// @brief One carrier's terms: what he takes in a trip and how long the trip
 /// there and back costs him.
 struct HaulRate {
-  /// The load of a single trip. A cart's 750 kg, or what a person carries.
+  /// The load of a single trip: a cart's (transport.csv, load_tonnes x
+  /// load_scale — 750 kg x 2.4 as shipped), or what a person carries.
   Grams load = 0;
 
   /// There AND BACK, in game hours. An empty return leg is still a leg: it
