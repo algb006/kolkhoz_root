@@ -299,15 +299,22 @@ Grams StandingYieldGrams(const ProductionConfig& config,
 void LayReapedShare(const ProductionConfig& config, WorldState& current, FieldRow& field);
 
 /// @brief THE MEADOW'S CUT BY PARTS (0.37.11; boss-core-epoch1-queue-
-///        2026-09-28 [1]): lays into the manger and the stores the share of
-///        the season's hay the mowing's labour has cut since the last lay —
+///        2026-09-28 [1]): lays INTO THE MEADOW'S OWN HEAP (FieldRow::
+///        reaped_grams, named hay) the share of the season's hay the mowing's
+///        labour has cut since the last lay —
 ///        `hay × (1 − work left / phase work − laid share)` — booked as
-///        harvest (and lost_no_room for what finds no room), area_harvested_ha
-///        by the share. No reaped buffer and no carting: the whole cut always
-///        went straight in, now it goes in as it is mown. Does nothing on
-///        arable land, a meadow not being mown, or a share already laid.
-///        Called at the day's turn beside LayReapedShare, and by MowMeadow for
-///        the last of it.
+///        harvest, area_harvested_ha by the share, and the carting's price
+///        grown by the same load, as a field's (LayReapedShare). THE HAY IS
+///        CARTED since 0.37.127 (the stubs' registry A75; written and
+///        measured as 0.37.118-119, taken back by 0.37.120 — it took 40 % of
+///        a village's horse-days — and in force with the cart of the
+///        compressed year, core_common/haul.h): it reaches the manger — or, with no stock yard, the
+///        stores that take hay — by the carters' day (SettleHauling; field_haul.h, HeapMangerRow),
+///        and lies at the meadow until then, rotting as a field's heap rots (SpoilFieldHeaps).
+///        Until then it was in the manger in the hour it was cut, whatever the way, and what found
+///        no room was lost; nothing is lost for want of room now. Does nothing on arable land, a
+///        meadow not being mown, or a share already laid. Called at the day's turn beside
+///        LayReapedShare, and by MowMeadow for the last of it.
 void LayMownShare(const ProductionConfig& config, WorldState& current, FieldRow& field);
 
 /// @brief The snow takes what still STANDS of an unreaped annual (farming
