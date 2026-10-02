@@ -311,10 +311,18 @@ struct AssignmentParams {
   /// THE LEAST TRIPS A DAY A WALKER IS SENT FOR (0.37.109; labor.csv
   /// walker_min_trips_per_day; boss, 2 October 2026: «пешком носят только
   /// туда, откуда за сутки выходит не меньше двух рейсов»): in the last pass
-  /// above a hand goes to a load only if the day's light holds this many
-  /// round trips of his walk to it — window_hours / (2 x his one-way hours).
-  /// The pits of the first pair stood three hours out one way and took
-  /// 13 163 man-days in ten years for 20 kg a trip: walking, not work.
+  /// above a hand goes to a load only if the STANDARD day — or the day's
+  /// light where that is shorter — holds this many round trips of his walk
+  /// to it: min(standard_day_hours, window_hours) / (2 x his one-way
+  /// hours). The pits of the first pair stood three hours out one way and
+  /// took 13 163 man-days in ten years for 20 kg a trip: walking, not work.
+  /// THE DAY IS THE STANDARD ONE, NOT THE DAY'S LIGHT (0.37.112; until then
+  /// it was window_hours, and June's sixteen hours passed the same pits the
+  /// threshold was written against: 58 % of the walkers' days still went to
+  /// them). A summer day gives a walker more trips, it does not move the
+  /// place he is sent to. WHY THE MIN: a winter day of seven hours under a
+  /// standard of ten would OPEN places its light does not hold two trips to
+  /// (boss, 2 October 2026, [31]).
   /// THE TRIP IS PRICED BY HIS WALK FROM HOME, AND SAID SO: the store a load
   /// goes to is production's to know, and here it is taken to stand at the
   /// walker's door. 0: no threshold.
