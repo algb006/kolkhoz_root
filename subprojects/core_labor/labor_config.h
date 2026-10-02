@@ -413,6 +413,20 @@ struct LaborConfig {
   /// What a grown carrier takes in a trip, kg (labor.csv carry_kg_adult).
   float carry_kg_adult = 20.0F;
 
+  /// labor.csv `walker_min_trips_per_day` (0.37.109; boss, 2 October 2026):
+  /// a carrier on foot is sent to a cart load only where the day's light
+  /// holds this many round trips of his walk. STUB, the number is econ's
+  /// (econ/manual/proposals/walker-carry-norm-2026-10-02.md): with the norm
+  /// below it keeps a walker's day at half a trudoden's norm or more.
+  float walker_min_trips_per_day = 2.0F;
+
+  /// labor.csv `walker_norm_kg_per_day` (0.37.109): the carrying norm — a
+  /// walker's day is paid as what he carried over this, never above one.
+  /// Four trips of 20 kg, the full day on a way of half a kilometre. STUB,
+  /// econ's number. Until 0.37.109 he was paid his hours' norm-days whole:
+  /// some 270 trudodni a village a year for some 10 t (the pair of 0.37.105).
+  float walker_norm_kg_per_day = 80.0F;
+
   /// Sleep hours per day, for the family's household_hours arithmetic.
   float sleep_hours = 8.0F;
 

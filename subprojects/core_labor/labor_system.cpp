@@ -1813,6 +1813,7 @@ class LaborSystem final : public ILaborSystem {
     params.draught_horses = DraughtHorses(current);
     params.placement_level = config_.placement_level;
     params.walker_share_of_cart_day = WalkerShareToday(current);
+    params.walker_min_trips_per_day = config_.walker_min_trips_per_day;
     return params;
   }
 
@@ -1909,13 +1910,13 @@ class LaborSystem final : public ILaborSystem {
       // WalkerShareOfCartDay; manual/75-logistics.md §9): the load's seam is
       // in cart-days while the settlement has carts, and his norm-day is a
       // ninetieth of one. Until 0.37.105 it drained a whole cart-day — a log
-      // of 200 kg «rode» on a back. He is paid his own norm-days in full: he
-      // carried what a man carries.
+      // of 200 kg «rode» on a back.
       const bool on_foot_at_a_cart_load =
           kind == WorkKind::kHauling && resident.work.rides_horse == 0 &&
           resident.work.stand.value == kInvalidEntityIdValue &&
           resident.work.limit_delivery.value == kInvalidEntityIdValue;
       const float seam_share = on_foot_at_a_cart_load ? walker_share : 1.0F;
+      const float could_deliver = delivered;
       if (delivered * seam_share > *seam) {
         delivered = *seam / seam_share;
       }
@@ -1926,7 +1927,25 @@ class LaborSystem final : public ILaborSystem {
       if (*seam < 0.0F) {
         *seam = 0.0F;  // the division above may leave a float's last digit
       }
-      resident.work.worked_norm_days_today += delivered;
+      // AND HE IS PAID BY WHAT HE CARRIED, NOT BY HIS HOURS (0.37.109; boss, 2
+      // October 2026; labor.csv walker_norm_kg_per_day): the day's trips —
+      // the light over his round trip — by his carry over the carrying norm,
+      // never above one, spread over the hours he works. Until 0.37.109 his
+      // hours' norm-days were paid whole: some 270 trudodni a village a year
+      // for some 10 t. The trip is his walk from home (assignment.h,
+      // walker_min_trips_per_day — the same approximation, named there). In a
+      // settlement with no cart the seam is a walker's and so is the norm-day.
+      float paid = delivered;
+      if (on_foot_at_a_cart_load && walker_share < 1.0F && travel > 0.0F &&
+          config_.walker_norm_kg_per_day > 0.0F) {
+        const float light = current.weather.daylight_hours;
+        const float trips = light / (2.0F * travel);
+        const float day_pay =
+            std::min(1.0F, trips * config_.carry_kg_adult / config_.walker_norm_kg_per_day);
+        const float usable = light - (2.0F * travel);
+        paid = usable > 0.0F ? day_pay * (worked / usable) * (delivered / could_deliver) : 0.0F;
+      }
+      resident.work.worked_norm_days_today += paid;
       const float drain =
           RestDrain(config_, resident, kind, delivered / (1.0F + boost)) * (1.0F + (2.0F * boost));
       resident.rest = resident.rest > drain ? resident.rest - drain : 0.0F;

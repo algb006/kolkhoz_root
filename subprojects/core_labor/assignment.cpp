@@ -338,6 +338,26 @@ struct RankedPick {
 
 /// The accountant's eye on one worker for one job: nothing (still busy,
 /// barred or out of reach) or a ranked pick.
+/// One way from a candidate's home to a job, game hours: by the roads when
+/// the caller measured them (AssignmentParams::road_km; 0.36.2) — the way the
+/// labour hour will measure his day by — and the straight line otherwise.
+float OneWayHours(const AssignmentJob& job,
+                  std::uint32_t job_index,
+                  const AssignmentCandidate& candidate,
+                  const AssignmentParams& params,
+                  bool rides) {
+  const float hours_per_km = rides ? params.harness_hours_per_km : params.walk_hours_per_km;
+  if (!params.road_km.empty() && candidate.home_slot < params.home_slots) {
+    const std::size_t at =
+        ((((static_cast<std::size_t>(job_index) * params.home_slots) + candidate.home_slot) * 2U) +
+         (rides ? 1U : 0U));
+    if (at < params.road_km.size()) {
+      return params.road_km[at] * hours_per_km;
+    }
+  }
+  return TravelHours(candidate.home, job.position, hours_per_km);
+}
+
 bool ConsiderCandidate(const AssignmentJob& job,
                        std::uint32_t job_index,
                        const AssignmentCandidate& candidate,
@@ -356,20 +376,7 @@ bool ConsiderCandidate(const AssignmentJob& job,
   // whose cart is out rides on it (AssignmentJob::cart_out; the caller has
   // settled whether there is a cart today).
   const bool rides = horse_work || RidesOut(job.kind) || job.cart_out;
-  const float hours_per_km = rides ? params.harness_hours_per_km : params.walk_hours_per_km;
-  // BY THE ROADS WHEN THE CALLER MEASURED THEM (AssignmentParams::road_km;
-  // 0.36.2) — the way the labour hour will measure his day by; the straight
-  // line otherwise.
-  float travel = 0.0F;
-  if (!params.road_km.empty() && candidate.home_slot < params.home_slots) {
-    const std::size_t at =
-        ((((static_cast<std::size_t>(job_index) * params.home_slots) + candidate.home_slot) * 2U) +
-         (rides ? 1U : 0U));
-    travel = at < params.road_km.size() ? params.road_km[at] * hours_per_km
-                                        : TravelHours(candidate.home, job.position, hours_per_km);
-  } else {
-    travel = TravelHours(candidate.home, job.position, hours_per_km);
-  }
+  const float travel = OneWayHours(job, job_index, candidate, params, rides);
   // The road limit is a game rule, not accountant quality.
   if (!RoadLeavesAWorkingDay(
           travel, params.window_hours, params.travel_limit_hours, params.min_usable_hours)) {
@@ -717,6 +724,15 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
            RankCandidates(on_foot, job_index, candidates, result, params, road_refused)) {
         if (covered[job_index] >= job.work_days_remaining) {
           break;
+        }
+        // ONLY WHERE THE DAY GIVES ITS TRIPS (walker_min_trips_per_day;
+        // 0.37.109): three hours out for 20 kg is walking, not work. He is
+        // left for the next load of the queue, which may lie nearer.
+        const float one_way =
+            OneWayHours(on_foot, job_index, candidates[pick.candidate_index], params, false);
+        if (params.walker_min_trips_per_day > 0.0F && one_way > 0.0F &&
+            params.window_hours / (2.0F * one_way) < params.walker_min_trips_per_day) {
+          continue;
         }
         result[pick.candidate_index] = job_index;
         covered[job_index] += pick.daily_norm * params.walker_share_of_cart_day;

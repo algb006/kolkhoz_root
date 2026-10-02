@@ -71,9 +71,9 @@ core::WorldState Village(std::uint32_t adults, std::uint16_t horses) {
 }
 
 /// A field 500 m out with a heap lying on it and `days` of hauling written.
-core::FieldId AddHeap(core::WorldState& world, float days) {
+core::FieldId AddHeap(core::WorldState& world, float days, float metres_out = 500.0F) {
   core::FieldRow field;
-  field.center = core::Vec2{.x = 500.0F, .y = 0.0F};
+  field.center = core::Vec2{.x = metres_out, .y = 0.0F};
   field.area_ga = 10.0F;
   field.phase = core::FieldPhase::kIdle;
   field.reaped_grams = 10'000'000;
@@ -304,6 +304,47 @@ int CheckCarterOnFoot() {
     failures += Expect(wanted_none.in_traces == 1 && wanted_none.harnessed == 1,
                        "carter on foot, the harness: a heap its rider covers counts none of its "
                        "three walkers");
+  }
+
+  // A WALKER GOES ONLY WHERE A DAY GIVES TWO TRIPS (0.37.109; labor.csv
+  // walker_min_trips_per_day): with twelve hours of light a heap a kilometre
+  // out is 2.4 hours one way and two and a half trips — he goes; a heap a
+  // kilometre and a half out is 3.6 hours and one trip and two thirds — he
+  // stays home, where until 0.37.109 the road rule's six hours let him walk.
+  // AND HE IS PAID BY WHAT HE CARRIED (walker_norm_kg_per_day): two and a
+  // half trips of 20 kg against a norm of 80 are 0.625 of a trudoden's
+  // norm-day, where his own hours gave 0.72.
+  {
+    const auto walker_day = [&labor](float metres_out, std::uint32_t& walkers) {
+      core::WorldState world = Village(2, 1);
+      const core::FieldId heap = AddHeap(world, 50.0F, metres_out);
+      RunHours(*labor, world, 0);
+      walkers = CartersOfField(world, heap).walkers;
+      RunHours(*labor, world, core::kTicksPerDay - 3U);  // to hour 21: worked, not yet paid off
+      float paid = 0.0F;
+      for (const core::ResidentRow& person : world.residents.rows) {
+        if (person.work.kind == core::WorkKind::kHauling && person.work.rides_horse == 0) {
+          paid = person.work.worked_norm_days_today;
+        }
+      }
+      return paid;
+    };
+    std::uint32_t near_walkers = 0;
+    std::uint32_t far_walkers = 0;
+    const float near_paid = walker_day(1000.0F, near_walkers);
+    walker_day(1500.0F, far_walkers);
+    std::cout << "  carter on foot, two trips: a heap 1 km out — walkers " << near_walkers
+              << ", his day's norm-days " << near_paid << "; 1.5 km out — walkers " << far_walkers
+              << '\n';
+    failures += Expect(near_walkers == 1,
+                       "carter on foot, two trips: a kilometre out the day gives two and a half "
+                       "trips, and he carries");
+    failures += Expect(far_walkers == 0,
+                       "carter on foot, two trips: a kilometre and a half out the day gives under "
+                       "two trips, and he is not sent");
+    failures += Expect(near_paid > 0.60F && near_paid < 0.65F,
+                       "carter on foot, the pay: two and a half trips of 20 kg against a norm of "
+                       "80 are 0.625 of a norm-day");
   }
 
   // A LOG IS NEVER CARRIED ON A BACK: with the one horse out, nobody walks to

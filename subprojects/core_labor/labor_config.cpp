@@ -36,13 +36,19 @@ namespace {
 bool ParseScalars(const ITable& table, LaborConfig& config, std::string& error) {
   float placement = config.placement_level;
   auto last_days = static_cast<float>(config.harvest_snow_last_days);
-  const std::array<ScalarKnob, 17> knobs = {{
+  const std::array<ScalarKnob, 19> knobs = {{
       {.key = "standard_day_hours",
        .value = &config.standard_day_hours,
        .range = {.low = 1.0F, .high = 24.0F}},
       {.key = "carry_kg_adult",
        .value = &config.carry_kg_adult,
        .range = {.low = 0.1F, .high = 1000.0F}},
+      {.key = "walker_min_trips_per_day",
+       .value = &config.walker_min_trips_per_day,
+       .range = {.low = 0.0F, .high = 100.0F}},
+      {.key = "walker_norm_kg_per_day",
+       .value = &config.walker_norm_kg_per_day,
+       .range = {.low = 1.0F, .high = 10000.0F}},
       {.key = "travel_limit_hours",
        .value = &config.travel_limit_hours,
        .range = {.low = 0.0F, .high = 24.0F}},
