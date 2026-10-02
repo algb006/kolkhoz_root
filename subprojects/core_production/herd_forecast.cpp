@@ -809,7 +809,14 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
   advice.hand_over_stock = heads.stock;
   advice.hand_over_horses = heads.horses;
   const std::int64_t above = heads.stock + heads.horses;
-  if (heads.below_floor_stock + heads.below_floor_horses == 0) {
+  // «HAND OVER» IS NAMED ONLY WITH A HEAD IN IT (0.37.143; host, host-boss-
+  // pin-0-37-133-2026-10-02 [43]). On 0.37.142 a herd at its floors got
+  // kReduceHerd with nought and nought — as the first move here, and as the
+  // second behind the granary: «hand over 0 heads», an order's word with no
+  // order in it, which no guard of «a move the door refuses» could catch —
+  // the door is never asked. With nobody above the floors the ladder goes on
+  // to the feed, and ends at «no move» with the remainder below the floors.
+  if (above > 0 && heads.below_floor_stock + heads.below_floor_horses == 0) {
     advice.advice = AlarmAdvice::kReduceHerd;
     return advice;
   }
@@ -865,13 +872,18 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
   // (kNowhereToStore), and «buy» on such a day was an order refused.
   if (!purchase.any && blocked_by_store) {
     advice.advice = AlarmAdvice::kGranaryForFeed;
-    advice.advice_more = AlarmAdvice::kReduceHerd;
-    advice.amount_more = above;
+    if (above > 0) {
+      advice.advice_more = AlarmAdvice::kReduceHerd;
+      advice.amount_more = above;
+    }
     return advice;
   }
   // 4. FEWER HEADS: the heads above the floors, and the remainder below
   // them beside. The alarm's own `amount` is the lamp's, not the advice's.
-  advice.advice = AlarmAdvice::kReduceHerd;
+  // NOBODY ABOVE THE FLOORS — NO MOVE (kNone): the remainder below them
+  // stands in its own pair, and the chairman is told what the floors cost,
+  // not told to hand over nought.
+  advice.advice = above > 0 ? AlarmAdvice::kReduceHerd : AlarmAdvice::kNone;
   return advice;
 }
 

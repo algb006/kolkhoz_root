@@ -80,6 +80,16 @@ HerdFloors HerdFloorsOf(const ProductionConfig& config, const WorldState& world)
   // follows the herd down, and a floor read off it followed it too.
   const std::size_t milk = config.milk_resource.value;
   const LivestockKindId cow = MilkKind(config);
+  // BEFORE THE DISTRICT HAS SPOKEN AT ALL the floor is NOT KNOWN, and that is
+  // not «no floor»: every cow is kept (0.37.143; host, host-boss-pin-0-37-
+  // 133-2026-10-02 [43]). The highest positions are written at the plan's
+  // first announcement; until then they are empty. On 0.37.142 an empty
+  // vector read as a position of nought, the floor was nought, and the lamp
+  // of the first morning named all 39 cows of a poor start above it.
+  if (world.plan.highest_due.empty() && cow.value != kInvalidDefIdValue) {
+    floors.cows_kept = std::numeric_limits<std::int64_t>::max();
+    return floors;
+  }
   const Grams due = std::max({DenseAt(world.plan.highest_due, milk),
                               DenseAt(world.plan.due, milk),
                               DenseAt(world.ledger.closed.plan_due, milk)});

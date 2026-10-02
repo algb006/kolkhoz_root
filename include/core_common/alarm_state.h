@@ -895,6 +895,11 @@ struct Alarm {
   ///     position ever named (PlanState::highest_due) over a cow's yield of
   ///     the closed year, times farming.csv `milk_floor_margin` — and every
   ///     head of the other productive kinds — in `hand_over_stock`.
+  /// NEVER NOUGHT AND NOUGHT UNDER kReduceHerd (0.37.143): with nobody above
+  /// the floors the move is not named — `advice` is kNone (or the feed's, or
+  /// the granary's, with no `advice_more`), and the remainder stands in
+  /// `below_floor_stock`, `below_floor_horses`. A layer shows «below the
+  /// floors: N» under «no move».
   /// THESE HEADS COME BEFORE THE DISTRICT'S FEED (0.37.142; boss [138]): the
   /// hay lamp's ladder is the cut — the heads above the floors — the feed —
   /// the remainder below the floors. `advice` = kBuyFeed is named only with

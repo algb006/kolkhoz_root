@@ -399,6 +399,10 @@ int CheckTheHerdHayForecast() {
   // for four heads run out after day 19 - short on day 20; 100 kg reach day
   // 24 - no yellow, whatever the spring of year 2 holds.
   core::WorldState lean = MakeHerdWorld(80.0F);
+  // The plan has been named and names no milk: no floor under the cows. A
+  // plan never named keeps every cow and names no head above the floor
+  // (0.37.143; CheckTheForecastAdvice, «the first morning»).
+  lean.plan.highest_due = {0, 0};
   const core::HerdId herd = AddHerd(lean, 0, 4, 2, true);
   const std::optional<core::Alarm> short_ahead = yellow(lean);
   failures +=
@@ -647,6 +651,10 @@ int CheckTheForecastAdvice() {
   const auto village = [](float hay_kg, std::uint8_t granary_level, float compound_kg) {
     core::WorldState world = MakeHerdWorld(hay_kg);
     world.units.rows[0].level = 1;
+    // THE PLAN HAS BEEN NAMED, AND IT NAMES NO MILK (0.37.143): the highest
+    // positions stand written and the milk's is nought — no floor, every cow
+    // above it. A world whose plan was never named keeps every cow (below).
+    world.plan.highest_due = {0, 0};
     AddHerd(world, 0, 4, 2, true);
     if (granary_level != 255) {
       core::UnitRow granary;
@@ -687,6 +695,29 @@ int CheckTheForecastAdvice() {
   failures += Expect(no_hay.advice == core::AlarmAdvice::kReduceHerd && no_hay.hand_over_stock == 4,
                      "forecast advice: an empty store - every head, four: the least number is "
                      "the whole herd only when nothing else feeds one");
+  // THE FIRST MORNING (0.37.143; host, host-boss-pin-0-37-133-2026-10-02
+  // [43]): no plan has been named yet. The milk floor is NOT KNOWN, and that
+  // is not «no floor»: every cow is kept. On 0.37.142 the highest position
+  // read nought, the floor was nought, and the lamp of day 0 named all 39
+  // cows of a poor start «above the floor» — a chairman doing what it said
+  // handed over the whole dairy herd before the district had spoken.
+  {
+    core::WorldState world = village(80.0F, kNoGranary, 0.0F);
+    world.plan.highest_due.clear();
+    const core::Alarm alarm = lamp(world);
+    failures += Expect(alarm.kind == core::AlarmKind::kHerdHayShortAhead &&
+                           alarm.hand_over_stock == 0 && alarm.below_floor_stock == 1,
+                       "forecast advice, the first morning: no plan named yet - no cow is named "
+                       "above the floor; the one that must go is below it");
+    // AND NO MOVE «HAND OVER» WITH NOUGHT HEADS IN IT (0.37.143; the same
+    // parcel): with nobody above the floors the advice is «no move», the
+    // remainder below the floors beside it. On 0.37.142 it was kReduceHerd
+    // with nought and nought — «hand over 0 heads».
+    failures += Expect(alarm.advice == core::AlarmAdvice::kNone &&
+                           alarm.advice_more == core::AlarmAdvice::kNone && alarm.amount_more == 0,
+                       "forecast advice, the first morning: «hand over» is not named with no "
+                       "head in it - no move, and the remainder below the floor apart");
+  }
   core::LimitLotDef feed_lot;
   feed_lot.kind = core::LimitLotKind::kGoods;
   feed_lot.points = 10;
@@ -722,12 +753,13 @@ int CheckTheForecastAdvice() {
     world.limit.points = 10;
     const core::Alarm alarm = lamp(world);
     failures += Expect(alarm.advice == core::AlarmAdvice::kGranaryForFeed &&
-                           alarm.advice_more == core::AlarmAdvice::kReduceHerd &&
+                           alarm.advice_more == core::AlarmAdvice::kNone &&
                            alarm.amount_more == 0 && alarm.hand_over_stock == 0 &&
                            alarm.hand_over_horses == 0 && alarm.below_floor_stock == 1,
                        level == kNoGranary
                            ? "forecast advice: a feed lot and no granary - «амбар под комбикорм», "
-                             "and the one head that must go meanwhile is below the floor"
+                             "no «hand over» behind it with nobody above the floors, and the "
+                             "one head that must go meanwhile below the floor"
                            : "forecast advice: the granary's site under way - still the granary, "
                              "not the lot: the door refuses it");
     failures += Expect(door(world) == core::OrderRefusal::kNowhereToStore,
@@ -768,11 +800,12 @@ int CheckTheForecastAdvice() {
     // The points spent: the lot is no move, and the heads are.
     world.limit.points = 0;
     const core::Alarm broke = lamp(world);
-    failures += Expect(broke.advice == core::AlarmAdvice::kReduceHerd && broke.amount == 4 &&
+    failures += Expect(broke.advice == core::AlarmAdvice::kNone && broke.amount == 4 &&
                            broke.hand_over_stock == 0 && broke.below_floor_stock == 1 &&
                            door(world) == core::OrderRefusal::kLimitShort,
-                       "forecast advice: the year's points spent - fewer heads, the one that "
-                       "must go named below the floor, and the door says the limit is short");
+                       "forecast advice: the year's points spent - no move left above the "
+                       "floors, the one that must go named below the floor, and the door says "
+                       "the limit is short");
   }
   // A PURCHASE AFTER WHICH THE HERDS ARE STILL SHORT IS NOT NAMED (0.37.142;
   // boss [138]). 60 kg of hay: the lot puts the first short day off and the
@@ -789,11 +822,11 @@ int CheckTheForecastAdvice() {
               << alarm.advice_amount / core::kGramsPerKilogram << " kg; below the floor "
               << alarm.below_floor_stock << '\n';
     failures +=
-        Expect(alarm.amount == 4 && alarm.advice == core::AlarmAdvice::kReduceHerd &&
+        Expect(alarm.amount == 4 && alarm.advice == core::AlarmAdvice::kNone &&
                    alarm.advice_amount == 0 && alarm.advice_more == core::AlarmAdvice::kNone &&
                    alarm.hand_over_stock == 0 && alarm.below_floor_stock == 2,
                points == 10 ? "forecast advice: a lot that helps and does not reach the "
-                              "scythes is NOT named - fewer heads, two below the floor"
+                              "scythes is NOT named - no move, two below the floor"
                             : "forecast advice: nor are three lots that do not reach "
                               "them - the largest purchase is no advice either");
   }
@@ -866,9 +899,9 @@ int CheckTheForecastAdvice() {
       AddHerd(world, 1, static_cast<std::uint16_t>(horses), 1, true);
       AddHerd(world, 0, static_cast<std::uint16_t>(cows), 2, true);
       constexpr core::Grams kYieldACow = 1'000'000;
-      if (due_in_cows != 0.0F) {
-        world.plan.highest_due = {0, static_cast<core::Grams>(std::abs(due_in_cows) * 1.0e6F)};
-      }
+      // The plan has been named in every one of these worlds; 0 is «it names
+      // no milk», not «it was never named» (0.37.143).
+      world.plan.highest_due = {0, static_cast<core::Grams>(std::abs(due_in_cows) * 1.0e6F)};
       if (due_in_cows > 0.0F) {
         // Four cows through the whole of the closed year, a tonne each.
         world.ledger.closed.adult_head_days = {4 * core::kDaysPerYear};
@@ -975,10 +1008,15 @@ int CheckTheForecastAdvice() {
     meadow.work_days_remaining = 0.0F;
     core::AppendRow(world.fields, meadow);
     // In July the look is to next year's scythes and one lot does not carry
-    // the herd that far: past the cut the ladder ends at the heads (a lot
-    // that leaves the herds short is not named since 0.37.142).
-    failures += Expect(lamp(world).advice == core::AlarmAdvice::kReduceHerd,
-                       "forecast advice: a meadow mown through is no cut to rush");
+    // the herd that far: past the cut the ladder ends at the remainder below
+    // the floors (a lot that leaves the herds short is not named since
+    // 0.37.142, nor «hand over» with nobody above the floors since 0.37.143).
+    const auto past_the_cut = [&lamp](const core::WorldState& at) {
+      const core::Alarm alarm = lamp(at);
+      return alarm.advice == core::AlarmAdvice::kNone && alarm.below_floor_stock > 0;
+    };
+    failures +=
+        Expect(past_the_cut(world), "forecast advice: a meadow mown through is no cut to rush");
     world.fields.rows[0].work_days_remaining = 3.0F;
     failures += Expect(lamp(world).advice == core::AlarmAdvice::kCutHay,
                        "forecast advice: while a meadow stands in its cut - the cut");
@@ -988,7 +1026,7 @@ int CheckTheForecastAdvice() {
     // 27 villages — and the ladder never went on.
     world.fields.rows[0].rush_step = static_cast<std::uint8_t>(core::kMaxRushStep);
     world.fields.rows[0].rush_phase = core::FieldPhase::kHarvest;
-    failures += Expect(lamp(world).advice == core::AlarmAdvice::kReduceHerd,
+    failures += Expect(past_the_cut(world),
                        "forecast advice: the meadow's avral at its last step - nothing to hurry, "
                        "the ladder goes on past the cut");
     world.fields.rows[0].rush_step = static_cast<std::uint8_t>(core::kMaxRushStep - 1);

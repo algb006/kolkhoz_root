@@ -290,8 +290,12 @@ struct FodderAdvice {
 ///      kGranaryForFeed — in its place, when no feed lot is buyable today and
 ///      one was refused for want of a store alone: «finish the granary»,
 ///      whether its site is under way or not yet marked;
-///   4. kReduceHerd with the remainder BELOW THE FLOORS named apart
-///      (`below_floor_stock`, `below_floor_horses`) — no purchase closes it:
+///   4. the remainder BELOW THE FLOORS named apart (`below_floor_stock`,
+///      `below_floor_horses`), beside kReduceHerd with the heads above the
+///      floors — or beside kNone when nobody stands above them: «hand over»
+///      is never named with no head in it (0.37.143; on 0.37.142 it was, as
+///      the first move and as the second behind the granary) — no purchase
+///      closes it:
 ///      the district sells no feed the herds eat, the points are spent, or
 ///      what they buy leaves the herds short (a feed's share of the ration
 ///      is capped — feed_links.csv max_share — and the hole is in the hay).

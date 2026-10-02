@@ -198,7 +198,10 @@ class LimitPolicy {
               << "; the lamp's heads unfed on the worst day, summed over the same days: "
               << advice_.heads_unfed_worst_day
               << "; DAYS THE ADVICE NAMED EVERY HEAD STANDING: " << advice_.whole_herd_days
-              << "), NO ADVICE " << advice_.none_days << "\n";
+              << "), no move with the remainder below the floors named "
+              << advice_.below_floor_only_days << ", «HAND OVER» WITH NO HEAD IN IT "
+              << advice_.empty_hand_over_days << " (must be nought), NO ADVICE "
+              << advice_.none_days << "\n";
     std::cout << run << ": the hay lamp's yellow days by the day of the year (day:count, days "
               << "with none left out):";
     for (std::uint32_t day = 0; day < yellow_by_day_of_year_.size(); ++day) {
@@ -435,8 +438,12 @@ class LimitPolicy {
     return advice_.buy_refused_days + advice_.cut_refused_days;
   }
 
-  /// @brief The days the hay lamp stood with no advice at all.
+  /// @brief The days the hay lamp stood with no advice at all: no move and
+  /// no remainder below the floors either.
   std::uint32_t YellowWithNoAdvice() const { return advice_.none_days; }
+
+  /// @brief The days the lamp named «hand over» with no head in it.
+  std::uint32_t EmptyHandOverDays() const { return advice_.empty_hand_over_days; }
 
   /// @brief The days the hay lamp stood, by this guard's own daily count.
   std::uint32_t YellowDaysWatched() const { return advice_.yellow_days; }
@@ -495,11 +502,27 @@ class LimitPolicy {
           ++advice_.reduce_days;
           break;
         default:
-          ++advice_.none_days;
+          // «NO MOVE» WITH THE REMAINDER BELOW THE FLOORS NAMED IS AN ANSWER
+          // (0.37.143): the herd stands at its floors, nothing closes the
+          // shortage, and the lamp says what the floors cost. No move AND no
+          // remainder is the lamp with nothing to say — that one must be
+          // nought.
+          if (alarm.below_floor_stock + alarm.below_floor_horses > 0) {
+            ++advice_.below_floor_only_days;
+          } else {
+            ++advice_.none_days;
+          }
           break;
       }
       if (alarm.advice_more == core::AlarmAdvice::kReduceHerd) {
         ++advice_.reduce_more_days;
+      }
+      // «HAND OVER» WITH NO HEAD IN IT (0.37.143; host's seam test on
+      // 0.37.142): a move's word with nought and nought behind it.
+      if ((alarm.advice == core::AlarmAdvice::kReduceHerd ||
+           alarm.advice_more == core::AlarmAdvice::kReduceHerd) &&
+          alarm.hand_over_stock + alarm.hand_over_horses <= 0) {
+        ++advice_.empty_hand_over_days;
       }
       // THE HEADS THE ADVICE NAMES ARE ITS OWN (0.37.137; Alarm::
       // hand_over_stock, hand_over_horses), not the lamp's `amount` — the
@@ -545,6 +568,8 @@ class LimitPolicy {
     std::uint32_t reduce_days = 0;
     std::uint32_t reduce_more_days = 0;
     std::uint32_t none_days = 0;
+    std::uint32_t below_floor_only_days = 0;
+    std::uint32_t empty_hand_over_days = 0;
     std::uint64_t heads_named = 0;
     std::uint64_t horses_named = 0;
     std::uint64_t heads_unfed_worst_day = 0;

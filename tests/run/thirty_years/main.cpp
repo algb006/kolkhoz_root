@@ -1063,6 +1063,8 @@ int main(int argc, char** argv) {
                           "the hay lamp never advises a lot the door would refuse that day");
   failures +=
       run::Expect(limit.YellowWithNoAdvice() == 0, "the hay lamp never stands with no advice");
+  failures += run::Expect(limit.EmptyHandOverDays() == 0,
+                          "the hay lamp never names «hand over» with no head in it");
   sawmill.ReportState("thirty_years", state);
   failures += orders.Report();
   failures += repairs.Report(state);
