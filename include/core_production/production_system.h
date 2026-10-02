@@ -57,6 +57,7 @@
 #include <vector>
 
 #include "core_common/calendar.h"
+#include "core_common/early_snow.h"
 #include "core_common/office_views.h"
 #include "core_common/quantities.h"
 #include "core_common/rain_stops_work.h"
@@ -335,6 +336,12 @@ class IProductionSystem {
 ///        alarm discounts the days to the snow: rain stops the reaping
 ///        (core_common/rain_stops_work.h). Passed in for the season edge's
 ///        reason. The default, all zeros, is the alarm as it was.
+/// @param snow_lain_shares The climate's share of campaigns in which the
+///        autumn's first snow has come by each day
+///        (ITimeSystem::ClimateSnowLainShares): the gathering count's early
+///        edge is read off it by farming.csv `early_snow_share`
+///        (core_common/early_snow.h; the harvest rule 5, 0.37.147). The
+///        default, all zeros, leaves the edge at `growing_season_last_day`.
 /// @note The climate's nights were a fifth parameter from 0.37.62 to 0.37.68
 ///       (the cold ladder's frost months). The cold's season is the
 ///       calendar's since 0.37.69 and the module reads no night of the
@@ -343,7 +350,8 @@ std::unique_ptr<IProductionSystem> CreateProductionSystem(
     const ITableSet& tables,
     StubTables stubs,
     std::uint32_t growing_season_last_day = kDaysPerYear - 1U,
-    const RainDayShares& rain_day_shares = RainDayShares{});
+    const RainDayShares& rain_day_shares = RainDayShares{},
+    const SnowLainShares& snow_lain_shares = SnowLainShares{});
 
 /// @brief The world_params.csv keys this module reads, for the assembly's
 /// declared-readers check (core_world/world.cpp).

@@ -114,9 +114,12 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // and hours, four floats after the daylight pair — 99 -> 103 fields, 936 ->
 // 952 (sixteen bytes on an eight-aligned size); predicted before the build,
 // held.
-static_assert(sizeof(YearLedger) == 952 + (35 * kAmountsSize),
+// Save 130 (0.37.147): the daylight pair of save 64 lost its reader with the
+// count by fields and left — 103 -> 101 fields, 952 -> 944; predicted before
+// the build.
+static_assert(sizeof(YearLedger) == 944 + (35 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 103,
+static_assert(AggregateArity<YearLedger>() == 101,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 
 void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
@@ -225,10 +228,8 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   // day since 2026-09-19 — same place, same width).
   out.WriteFloat(book.reaping_today);
   out.WriteFloat(book.reaping_last_day);
-  // And the daylight they were reaped under (save 64).
-  out.WriteFloat(book.reaping_today_daylight);
-  out.WriteFloat(book.reaping_last_day_daylight);
-  // And the crew of those days, hands and hours (save 129).
+  // And the crew of those days, hands and hours (save 129; the daylight of
+  // save 64 stood before them until save 130).
   out.WriteFloat(book.reaping_today_hands);
   out.WriteFloat(book.reaping_last_day_hands);
   out.WriteFloat(book.reaping_today_hours);
@@ -406,8 +407,6 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.trudodni_burned = in.ReadI32();
   book.reaping_today = in.ReadFloat();
   book.reaping_last_day = in.ReadFloat();
-  book.reaping_today_daylight = in.ReadFloat();
-  book.reaping_last_day_daylight = in.ReadFloat();
   book.reaping_today_hands = in.ReadFloat();  // save 129
   book.reaping_last_day_hands = in.ReadFloat();
   book.reaping_today_hours = in.ReadFloat();

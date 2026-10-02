@@ -266,6 +266,29 @@ struct LaborConfig {
   /// year's last day, changes nothing.
   std::uint32_t growing_season_last_day = kDaysPerYear - 1U;
 
+  /// farming.csv `early_snow_share` and the day read off the climate by it
+  /// (core_common/early_snow.h; the harvest rule 5, 0.37.147): the last days
+  /// before the snow count to THIS day — the gathering alarm's own edge
+  /// (production_config.h, early_snow_last_day), read off the same shares by
+  /// the same key. Until 0.37.147 the queue counted to the mean's edge and
+  /// the alarm to a day of its own: two readers of one question with two
+  /// dates. Derived by the factory; the defaults change nothing.
+  float early_snow_share = 0.10F;
+  std::uint32_t early_snow_last_day = kDaysPerYear - 1U;
+
+  /// farming.csv `reaping_days_per_hand_light_hour` — the count of the
+  /// reaping's rate for a village with no unfinished reaping day in this
+  /// year's book nor in the last (core_common/reaping_pace.h, ReapingCrewOf;
+  /// production_config.h, FarmingConfig — the same key).
+  float reaping_days_per_hand_light_hour = 0.042F;
+
+  /// farming.csv `reaping_in_strength_share` — 0.5: a day of reaping becomes
+  /// the count's measure only if its reapers were at least this share of the
+  /// hands that could reap (labor_system.cpp, StartDay; ledger_state.h,
+  /// `hours`). STUB, core's: a half parts the autumn's days — 21 to 41
+  /// reapers of 35 to 54 hands on the canon — from a July day of three.
+  float reaping_in_strength_share = 0.5F;
+
   /// The climate's share of rain days per day of the year
   /// (ITimeSystem::ClimateRainDayShares, passed in by the assembly as it is
   /// to production): the last days before the snow count a working day by

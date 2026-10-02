@@ -1012,13 +1012,12 @@ struct WorldState {
   /// days off KEPT — last named a field; 0 when it never has. Written by
   /// core_production at the day's last tick (WriteGatherShortSaid).
   ///
-  /// NO RULE READS IT YET — A WORD WITH NO READER, and said so here that
-  /// nobody takes it for a working rule (boss [31]): IsDayOffIn
-  /// (core_common/day_off.h) is to lift the next day's day off by it, and
-  /// does not — on the lamp's count as it stands the word comes too late in
-  /// year 1 and all summer in year 2. The delivery of the harvest rule 5
-  /// (the count by fields, light, road and hands) connects the reader. Until
-  /// then it is an instrument: the runs of the harvest print it day by day.
+  /// READ BY THE DAY-OFF DOOR SINCE 0.37.147 (core_common/day_off.h,
+  /// GatherShortStands, IsDayOffIn): the harvest's day off is lifted only
+  /// while the word stands. From 0.37.91 to 0.37.145 it was a word with no
+  /// reader — an instrument the runs printed day by day — because on the
+  /// count of those days, one pace for every field, it came too late in year
+  /// 1 and stood all summer in year 2; the count is by fields since.
   /// SAVED, not recomputed: a game loaded at noon would live to the evening
   /// without it, and the run would part from its save.
   SimDay gather_short_said = 0;

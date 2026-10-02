@@ -416,6 +416,8 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
       {"plough_window_days", &farming.plough_window_days, 1.0F, 48.0F},
       {"plough_floor_margin", &farming.plough_floor_margin, 1.0F, 10.0F},
       {"milk_floor_margin", &farming.milk_floor_margin, 1.0F, 10.0F},
+      {"early_snow_share", &farming.early_snow_share, 0.0F, 1.0F},
+      {"reaping_days_per_hand_light_hour", &farming.reaping_days_per_hand_light_hour, 0.001F, 1.0F},
       // BOTH HALVES OF BILLETING MOVED TO world_params.csv on 2026-09-16 and
       // are read by ParseProductionWorldParams below. They used to be split:
       // the yield factor here, the yard's places there — and the reason the
@@ -1554,6 +1556,7 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
   }
   config.manure_resource = ResourceByKey(resources, "manure");
   config.hay_resource = ResourceByKey(resources, "hay");
+  config.green_mass_resource = ResourceByKey(resources, "green_mass");
   config.straw_resource = ResourceByKey(resources, "straw");
   config.milk_resource = ResourceByKey(resources, "milk");
   config.egg_resource = ResourceByKey(resources, "egg");

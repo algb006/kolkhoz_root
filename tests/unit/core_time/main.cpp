@@ -510,6 +510,40 @@ int main() {
                        "rain days: the same tables give the same shares");
     std::cout << "rain days: winter day 1 " << shares[1] << ", summer day 24 " << shares[24]
               << ", autumn day 36 " << shares[36] << '\n';
+    // THE CLIMATE'S FIRST SNOW (ITimeSystem::ClimateSnowLainShares; 0.37.147):
+    // nought through the summer, never falling once it has risen, and whole
+    // by the year's end in a climate whose winter is at −10. The early edge
+    // is the day before the first one that reaches the share asked, and
+    // never past the mean's.
+    const core::SnowLainShares lain = time_system->ClimateSnowLainShares();
+    bool rising = true;
+    for (std::uint32_t day = 1; day < core::kDaysPerYear; ++day) {
+      rising = rising && lain[day] >= lain[day - 1U];
+    }
+    failures += Expect(rising, "snow lain: the share never falls within the year");
+    failures += Expect(lain[24] == 0.0F, "snow lain: a summer at +19 has none");
+    failures +=
+        Expect(lain[core::kDaysPerYear - 1U] > 0.5F && lain[core::kDaysPerYear - 1U] <= 1.0F,
+               "snow lain: by the year's end the snow has lain in most campaigns");
+    failures += Expect(again != nullptr && again->ClimateSnowLainShares() == lain,
+                       "snow lain: the same tables give the same shares");
+    const std::uint32_t mean_edge = time_system->GrowingSeasonLastDay();
+    const std::uint32_t tenth = core::EarlySnowLastDay(lain, 0.10F, mean_edge);
+    failures += Expect(tenth <= mean_edge && tenth + 1U < core::kDaysPerYear &&
+                           lain[tenth + 1U] >= 0.10F && lain[tenth] < 0.10F,
+                       "early snow: the edge is the day before the first one the snow has "
+                       "reached in a tenth of the campaigns");
+    failures += Expect(core::EarlySnowLastDay(lain, 2.0F, mean_edge) == mean_edge,
+                       "early snow: a share the snow never reaches leaves the mean's edge");
+    failures +=
+        Expect(core::EarlySnowLastDay(core::SnowLainShares{}, 0.10F, mean_edge) == mean_edge,
+               "early snow: a climate with no snow leaves the mean's edge");
+    std::cout << "snow lain: mean edge " << mean_edge << ", early edge at a tenth " << tenth
+              << "; by day";
+    for (std::uint32_t day = 34; day < core::kDaysPerYear; ++day) {
+      std::cout << ' ' << day << ':' << lain[day];
+    }
+    std::cout << '\n';
     // THE CLIMATE'S NIGHTS (ITimeSystem::ClimateNightCelsius; 0.37.61): ONE
     // ARITHMETIC with the month climate door — on each month's second day
     // the two must agree to the bit, or the cold ladder and the viewing

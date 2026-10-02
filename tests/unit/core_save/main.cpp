@@ -744,10 +744,8 @@ core::WorldState MakeWorld() {
   // The season's reaping pace (save 63).
   world.ledger.closed.reaping_today = 3.25F;
   world.ledger.closed.reaping_last_day = 22.5F;
-  // And the daylight of those two days (save 64).
-  world.ledger.closed.reaping_today_daylight = 8.25F;
-  world.ledger.closed.reaping_last_day_daylight = 15.5F;
-  // And the crew of those two days, hands and hours (save 129): four values
+  // And the crew of those two days, hands and hours (save 129; the daylight
+  // of save 64 stood before them until save 130): four values
   // each unlike the others, so a codec that swapped two would be seen.
   world.ledger.closed.reaping_today_hands = 3.0F;
   world.ledger.closed.reaping_last_day_hands = 21.0F;
@@ -1715,7 +1713,9 @@ constexpr std::array<RecordedSection, 23> kRecordedPayload = {{
     // 2472 is that and the fixture's two kinds, counted before the run.
     // Save 129: +32 — the reaping's crew, four floats a book, two books;
     // predicted 2472 -> 2504 before the build, held.
-    {"ledger", 2504, 0xc815ea3321311a88ULL},
+    // Save 130: -16 — the daylight pair left, two floats a book; predicted
+    // 2504 -> 2488 before the build, held.
+    {"ledger", 2488, 0xe7f95739aec59aecULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -2277,9 +2277,6 @@ int main() {
   failures += Expect(
       loaded.ledger.closed.reaping_today == 3.25F && loaded.ledger.closed.reaping_last_day == 22.5F,
       "the season's reaping pace comes back (save 63)");
-  failures += Expect(loaded.ledger.closed.reaping_today_daylight == 8.25F &&
-                         loaded.ledger.closed.reaping_last_day_daylight == 15.5F,
-                     "and the daylight it was reaped under (save 64)");
   failures += Expect(loaded.ledger.closed.reaping_today_hands == 3.0F &&
                          loaded.ledger.closed.reaping_last_day_hands == 21.0F &&
                          loaded.ledger.closed.reaping_today_hours == 11.5F &&

@@ -51,6 +51,7 @@
 #include "core_common/quantities.h"
 #include "core_common/rain_stops_work.h"
 #include "core_common/reaping_pace.h"
+#include "core_common/reaping_road.h"
 #include "core_common/resident_state.h"
 #include "core_common/state_table.h"
 #include "core_common/state_table_ops.h"
@@ -420,16 +421,37 @@ class LaborSystem final : public ILaborSystem {
     // The reaping pace rolls over: yesterday's whole day of hand reaping on
     // the arable becomes the pace (ledger_state.h, boss seq 161 Б) — IF it
     // ended with reaping still owed. A day that finished the last field is
-    // short of work, not of hands, and would read as a slow village. Its
-    // daylight goes with it (save 64): a day's pace is only readable against
-    // the sun it was reaped under.
+    // short of work, not of hands, and would read as a slow village. THE
+    // HAND-HOURS OF LIGHT THE DAY OFFERED go with it (0.37.147): the hands
+    // that could reap times the day's light — with the norm-days they are the
+    // count by fields' rate (reaping_pace.h, ReapingCrewOf). The day's
+    // daylight alone went here from save 64 to save 129; the count walks each
+    // day under its own light now.
+    //
+    // AND ONLY A DAY REAPED IN STRENGTH (farming.csv
+    // `reaping_in_strength_share`): the reapers' light against the light the
+    // hands that could were offered. Three reapers of fifty on the July rye
+    // are the queue's choice of a day; read as the village's rate they made
+    // the count cry all summer (0.37.91's message, year 2, nine villages of
+    // nine).
     YearLedger& book = current.ledger.current;
-    if (book.reaping_today > 0.0F && ReapingStillOwed(current)) {
+    // The book's «today» is the day that has just ended: its light.
+    const float light =
+        current.calendar.day > 0 ? DaylightHoursOfDay(current.calendar.day - 1U) : 0.0F;
+    const float offered = book.reaping_today_hands * light;
+    if (book.reaping_today > 0.0F && offered > 0.0F && ReapingStillOwed(current) &&
+        book.reaping_today_hours >= config_.reaping_in_strength_share * offered) {
       book.reaping_last_day = book.reaping_today;
-      book.reaping_last_day_daylight = book.reaping_today_daylight;
+      book.reaping_last_day_hours = offered;
+    }
+    // The hands the reaping could have had roll EVERY day (0.37.147): they
+    // are the village's strength of a morning, whatever was reaped.
+    if (book.reaping_today_hands > 0.0F) {
+      book.reaping_last_day_hands = book.reaping_today_hands;
     }
     book.reaping_today = 0.0F;
-    book.reaping_today_daylight = 0.0F;
+    book.reaping_today_hours = 0.0F;
+    book.reaping_today_hands = 0.0F;
     RefillHerdCare(current);
     AssignPostHolders(current);
     // UB-001 fix: the accountant's placement is a BLOCK, not the body of the
@@ -515,11 +537,20 @@ class LaborSystem final : public ILaborSystem {
             ++book.road_blocked_job_days[kind];
           }
         }
+        // THE HANDS THE REAPING CAN HAVE (YearLedger::reaping_today_hands;
+        // 0.37.147): the morning's list less those the plan put on the
+        // herds' care — a standing duty of every day. A post's holder is not
+        // in the list at all. What the count by fields takes for the crew
+        // (core_common/reaping_pace.h): not the hands that reaped — three
+        // reapers in July are the queue's choice of a day.
+        float free_hands = 0.0F;
         for (std::uint32_t index = 0; index < candidates.size(); ++index) {
           if (plan[index] == kNoJobAssigned) {
+            free_hands += 1.0F;
             continue;
           }
           const AssignmentJob& job = jobs[plan[index]];
+          free_hands += job.kind == WorkKind::kHerdCare ? 0.0F : 1.0F;
           WorkAssignment& work = current.residents.rows[candidates[index].resident_row].work;
           work.rides_horse = rides_horse[index];
           work.kind = job.kind;
@@ -532,6 +563,7 @@ class LaborSystem final : public ILaborSystem {
           work.road_work = job.road_work;
           work.travel_hours = -1.0F;  // a new target: its road is measured anew
         }
+        book.reaping_today_hands = free_hands;
       }
     }
     // AND THE CHAIRMAN OVERRULES THE ACCOUNTANT, last and without argument
@@ -1437,15 +1469,20 @@ class LaborSystem final : public ILaborSystem {
   /// spends its days, each that does not is marked `beyond_the_snow` and
   /// ranks after every one that fits (assignment.cpp).
   ///
-  /// THE CAPACITY IS THE ALARM'S PACE (core_common/reaping_pace.h; boss,
-  /// core-host-l1-stage1 seq 28) times the working days to the snow
-  /// inclusive. It was every employable hand at today's daylight over the
-  /// standard day, efficiency one, until 2026-09-19, and host's seed 9 with
-  /// the reaping made three times longer showed what that costs: 46 hands
-  /// reaped 22.7 norm-days a November day against about 39 counted, both
-  /// fields read as finishable, and the first step of the rule could not
-  /// tell them apart. Still an optimist's: the light keeps falling to the
-  /// snow and the pace is today's.
+  /// THE COUNT IS THE ALARM'S, BY FIELDS (core_common/reaping_pace.h, one
+  /// home; the harvest rule 5, 0.37.147): the crew the reaping can have at
+  /// its last norm-days an hour, walked over each field's own road and each
+  /// day's own light and dry share TO THE EARLY EDGE OF THE SNOW
+  /// (LaborConfig::early_snow_last_day) — the heaviest first, the crew
+  /// coming to a field when the one before it is reaped.
+  ///
+  /// UNTIL THEN a capacity: the village's one pace of yesterday times the
+  /// working days to the MEAN edge, the fields subtracted from it. Before
+  /// 2026-09-19 it was every employable hand at today's daylight over the
+  /// standard day, efficiency one, and host's seed 9 with the reaping made
+  /// three times longer showed what that costs: 46 hands reaped 22.7
+  /// norm-days a November day against about 39 counted, both fields read as
+  /// finishable, and the first step of the rule could not tell them apart.
   void MarkTheReapingsTheSnowWillTake(const WorldState& current,
                                       std::vector<AssignmentJob>& jobs) const {
     std::vector<std::uint32_t> reapings;
@@ -1469,29 +1506,35 @@ class LaborSystem final : public ILaborSystem {
     // (core_common/rain_stops_work.h), and the climate's share of rain days
     // is what can be known of the days ahead. TODAY IS NOT AHEAD: its sky is
     // written, and a rained-out today is no working day at all.
-    double working_days = 0.0;
-    for (std::uint32_t day = today; day <= config_.growing_season_last_day; ++day) {
-      const SimDay sim_day = current.calendar.day - today + day;
-      if (IsDayOffIn(current, sim_day)) {
-        continue;
-      }
-      if (day == today) {
-        working_days +=
-            RainStopsWork(current.weather.precipitation, WorkKind::kHarvest) ? 0.0 : 1.0;
-      } else {
-        working_days += DryDaysBetween(
-            config_.rain_day_shares, static_cast<double>(day), static_cast<double>(day) + 1.0);
+    // A day off is no working day, written as «no dry share» so that the one
+    // walk skips it (the alarm builds the same array).
+    RainDayShares ahead = config_.rain_day_shares;
+    ahead[today] = RainStopsWork(current.weather.precipitation, WorkKind::kHarvest) ? 1.0F : 0.0F;
+    for (std::uint32_t day = today; day < kDaysPerYear; ++day) {
+      if (IsDayOffIn(current, current.calendar.day - today + day)) {
+        ahead[day] = 1.0F;
       }
     }
-    double capacity =
-        ReapingPacePerDay(current.ledger.current, current.weather.daylight_hours, hands) *
-        working_days;
+    const ReapingCrew crew = ReapingCrewOf(current.ledger.current,
+                                           current.ledger.closed,
+                                           hands,
+                                           config_.reaping_days_per_hand_light_hour);
+    const bool by_cart = DraughtHorses(current) > 0;
+    double clock = static_cast<double>(today);
     for (const std::uint32_t index : reapings) {
       AssignmentJob& job = jobs[index];
-      if (static_cast<double>(job.work_days_remaining) <= capacity) {
-        capacity -= static_cast<double>(job.work_days_remaining);
+      const float road = ReapingRoadHours(
+          current, job.position, by_cart, config_.walk_speed_kmh, config_.harness_speed_kmh);
+      const ReapingWalk walk = WalkTheReaping(ahead,
+                                              crew,
+                                              road,
+                                              static_cast<double>(job.work_days_remaining),
+                                              clock,
+                                              config_.early_snow_last_day);
+      if (walk.done) {
+        clock = walk.clock;  // the crew goes on to the next field from here
       } else {
-        job.beyond_the_snow = true;
+        job.beyond_the_snow = true;  // and spends none of the days on it
       }
     }
   }
@@ -2100,7 +2143,10 @@ class LaborSystem final : public ILaborSystem {
       const std::uint32_t field_row = FindRow(current.fields, resident.work.field);
       if (field_row != kNoRow && current.fields.rows[field_row].kind == LandKind::kArable) {
         current.ledger.current.reaping_today += resident.work.worked_norm_days_today;
-        current.ledger.current.reaping_today_daylight = current.weather.daylight_hours;
+        // One reaper more under today's light (ledger_state.h, `hours`): how
+        // much of the village the queue put on the reaping. Today's light and
+        // not yesterday's: a man is paid within his day.
+        current.ledger.current.reaping_today_hours += DaylightHoursOfDay(current.calendar.day);
       }
     }
     if (kind_index < config_.rates.size() && resident.work.worked_norm_days_today > 0.0F) {
@@ -2144,7 +2190,8 @@ std::unique_ptr<ILaborSystem> CreateLaborSystem(
     std::uint32_t growing_season_last_day,
     std::function<Grams(const WorldState&, const FieldRow&)> standing_crop_grams,
     const RainDayShares& rain_day_shares,
-    std::function<bool(const WorldState&, std::uint32_t)> stored_hay_short) {
+    std::function<bool(const WorldState&, std::uint32_t)> stored_hay_short,
+    const SnowLainShares& snow_lain_shares) {
   // THE DEFAULTS ARE LEGITIMATE AND THEIR SILENCE WAS NOT
   // (core_tables/stub_tables.h). A caller that has not said it wants
   // this module's documented defaults is refused by name, so that a
@@ -2179,6 +2226,8 @@ std::unique_ptr<ILaborSystem> CreateLaborSystem(
   config.standing_crop_grams = std::move(standing_crop_grams);
   config.rain_day_shares = rain_day_shares;
   config.stored_hay_short = std::move(stored_hay_short);
+  config.early_snow_last_day =
+      EarlySnowLastDay(snow_lain_shares, config.early_snow_share, growing_season_last_day);
   return std::make_unique<LaborSystem>(std::move(config));
 }
 

@@ -259,9 +259,8 @@ struct YearLedger {
   /// so far, and the LAST whole day of reaping that still left reaping owed
   /// at its end: a day the hands, not the work, were short. Written by labor
   /// at the day's pay and roll-over; read by the harvest-will-not-be-gathered
-  /// alarm and labor's last days as "the hands the village puts on the
-  /// reaping now". The book turns with the year, so the pace is this season's.
-  /// Save 63.
+  /// alarm and labor's last days through the crew below. The book turns with
+  /// the year, so the pace is this season's. Save 63.
   ///
   /// IT WAS THE BEST DAY until 2026-09-19 (the same bytes, save 63): a summer
   /// best day, scaled by the light, overstated a November day by a fifth to a
@@ -272,13 +271,11 @@ struct YearLedger {
   float reaping_today = 0.0F;
   float reaping_last_day = 0.0F;
 
-  /// THE DAYLIGHT OF THOSE TWO DAYS, hours (boss seq 95; save 64): a man
-  /// reaps from sunrise to sunset less the road, so a day's pace is read
-  /// against its own sun. The pace scales the last day by today's light over
-  /// the last day's — between neighbouring days a few per cent. Written with
-  /// the reaping at the pay, rolled with it.
-  float reaping_today_daylight = 0.0F;
-  float reaping_last_day_daylight = 0.0F;
+  // THE DAYLIGHT OF THOSE TWO DAYS STOOD HERE from save 64 to save 129: the
+  // pace scaled the last day by today's light over its own. The count walks
+  // each day under its own light since 0.37.147 (core_common/reaping_pace.h)
+  // and reads the day's hand-hours of light instead; the pair had no reader
+  // left and went with save 130.
 
   /// THE CREW THE COUNT BY FIELDS TAKES (0.37.146; save 129;
   /// core_common/reaping_pace.h; the harvest rule 5). With the norm-days
@@ -293,10 +290,19 @@ struct YearLedger {
   ///    the hands that reaped: three reapers in July are the queue's choice
   ///    of a day, not the village's strength. Written at the morning's
   ///    placement and rolled EVERY day;
-  ///  - `hours`: the hours the reapers of the arable reaped — the light less
-  ///    each one's road. With the norm-days above they give a hand's norm-days
-  ///    an hour. Written and rolled with the reaping, on a day that ended
-  ///    with reaping still owed.
+  ///  - `hours`: HAND-HOURS OF LIGHT. Today's: the light of the day, once for
+  ///    every reaper of the arable paid today — how much of the village the
+  ///    queue put on the reaping. The last day's: THE HANDS THAT COULD times
+  ///    that day's light, the whole the day offered; with the norm-days above
+  ///    it gives what the village reaps for a hand that could, an hour of
+  ///    light — the count's rate. Rolled on a day that ended with reaping
+  ///    still owed AND was reaped in strength (labor_config.h,
+  ///    reaping_in_strength_share): a July day of three reapers out of fifty
+  ///    is the queue's choice and no measure of the village.
+  ///    THE FIRST FORM OF 0.37.147, never pushed, kept the reapers' booked
+  ///    hours here and gave every hand the whole light at their rate: booked
+  ///    hours are 5 to 6 a hand in a light of 9 to 15, and the count promised
+  ///    twice what the village did (reaping_pace.h, ReapingCrewOf).
   float reaping_today_hands = 0.0F;
   float reaping_last_day_hands = 0.0F;
   float reaping_today_hours = 0.0F;

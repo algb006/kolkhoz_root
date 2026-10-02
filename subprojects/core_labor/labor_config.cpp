@@ -596,8 +596,17 @@ bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string&
   }
   if (const ITable* farming = tables.FindTable("farming")) {
     float cut_to = static_cast<float>(config.meadow_cut_to_month) + 1.0F;
-    const std::array<ScalarKnob, 1> knobs = {{
+    const std::array<ScalarKnob, 4> knobs = {{
+        {.key = "reaping_in_strength_share",
+         .value = &config.reaping_in_strength_share,
+         .range = {.low = 0.0F, .high = 1.0F}},
         {.key = "meadow_cut_month_end", .value = &cut_to, .range = {.low = 1.0F, .high = 12.0F}},
+        {.key = "early_snow_share",
+         .value = &config.early_snow_share,
+         .range = {.low = 0.0F, .high = 1.0F}},
+        {.key = "reaping_days_per_hand_light_hour",
+         .value = &config.reaping_days_per_hand_light_hour,
+         .range = {.low = 0.001F, .high = 1.0F}},
     }};
     if (!ReadKnobs(*farming, "farming", knobs, error)) {
       return false;

@@ -59,6 +59,7 @@
 
 #include "core_common/alarm_state.h"
 #include "core_common/calendar.h"
+#include "core_common/early_snow.h"
 #include "core_common/labor_state.h"
 #include "core_common/office_views.h"
 #include "core_common/rain_stops_work.h"
@@ -170,13 +171,21 @@ class ILaborSystem {
 ///        labor.csv `hay_cart_need_days`: short, the cart has a field load's
 ///        window; not short, it is the last of the carts with none. Empty:
 ///        never short — a labor built alone carts the hay last.
+/// @param snow_lain_shares The climate's share of campaigns in which the
+///        autumn's first snow has come by each day
+///        (ITimeSystem::ClimateSnowLainShares): the last days before the snow
+///        count to the early edge read off it by farming.csv
+///        `early_snow_share` — the gathering alarm's own edge
+///        (core_common/early_snow.h; 0.37.147). The default, all zeros, leaves
+///        the edge at `growing_season_last_day`.
 std::unique_ptr<ILaborSystem> CreateLaborSystem(
     const ITableSet& tables,
     StubTables stubs,
     std::uint32_t growing_season_last_day = kDaysPerYear - 1U,
     std::function<Grams(const WorldState&, const FieldRow&)> standing_crop_grams = {},
     const RainDayShares& rain_day_shares = RainDayShares{},
-    std::function<bool(const WorldState&, std::uint32_t)> stored_hay_short = {});
+    std::function<bool(const WorldState&, std::uint32_t)> stored_hay_short = {},
+    const SnowLainShares& snow_lain_shares = SnowLainShares{});
 
 }  // namespace core
 

@@ -270,7 +270,8 @@ OrderRefusal UnsealFund(const ProductionConfig& config,
 ///         slot naming a crop this build's table does not carry — two
 ///         cases with two repairs, which is why they are two words since
 ///         2026-09-12; kWrongLand for a meadow, which is mown where it
-///         grew and is never sown at all.
+///         grew and is never sown at all; kRuleForbids for a crop whose
+///         harvest nothing in this build takes (green mass, STUB).
 OrderRefusal SetRotation(const ProductionConfig& config,
                          WorldState& current,
                          const OrderRow& order) {
@@ -296,6 +297,17 @@ OrderRefusal SetRotation(const ProductionConfig& config,
     }
     if (slot.value >= config.crops.size()) {
       return OrderRefusal::kNoSuchCrop;
+    }
+    // A CROP WHOSE HARVEST NOBODY TAKES IS NOT SOWN (0.37.147; boss,
+    // host-boss-pin-0-37-133-2026-10-02 [55]). Maize for silage reaps green
+    // mass; the start's 150 t of silage were eaten by day 41 of year 1 in
+    // all nine canon villages and no work made more. A field given this
+    // crop was ploughed, sown and reaped into a heap that rotted. STUB: the
+    // refusal goes when green mass gets its trench work, and with it this
+    // test's pair (unit_core_production, the rotation order).
+    if (config.green_mass_resource.value != kInvalidDefIdValue &&
+        config.crops[slot.value].resource.value == config.green_mass_resource.value) {
+      return OrderRefusal::kRuleForbids;
     }
     ++named;
   }

@@ -6488,6 +6488,7 @@ int CheckTheHarvestWillNotBeGathered() {
   int failures = 0;
   core::ProductionConfig config;
   config.growing_season_last_day = 40;
+  config.early_snow_last_day = 39;  // the snow lies on day 40 in a tenth of the years
   config.farming.life_speedup = 1.0F;
   config.farming.adult_age_years = 16.0F;
   core::CropDef potato;
@@ -6536,39 +6537,83 @@ int CheckTheHarvestWillNotBeGathered() {
     }
     return grams;
   };
-  // Day 30. THE DAYS THAT COUNT, since 0.34.17: day 34 is a Sunday and no
-  // working day, and the early snow's key of 40 is the day the snow LIES, so
-  // day 39 is the last counted (the mean edge, 40, is later). From day 32
-  // that leaves 32, 33 and 35-39: seven.
+  // Day 30. THE DAYS THAT COUNT: day 34 is a Sunday and no working day, and
+  // the early edge of the snow, 39, is the last day counted (the mean edge,
+  // 40, is later). THE COUNT IS BY FIELDS SINCE 0.37.147
+  // (core_common/reaping_pace.h): the book's crew — ONE hand here — at the
+  // norm-days an hour of the last day of reaping, under EACH DAY'S OWN LIGHT
+  // (core_common/daylight.h: 14.68 h on day 30 falling to 9.39 on day 39;
+  // 107.88 hours of light over days 30-33 and 35-39, 79.10 over 32-39) and on
+  // each field's own road — nought here, the world has no home. Every answer
+  // below was worked out on that walk before the build
+  // (~/claudetmp/core-gather-model.py in the delivery).
   //
-  // At 7.5 norm-days a day the oat, open today, takes 2.67 days and runs to
-  // 32.67; the potato, ripe on 32, starts there with 6.33 days left and needs
-  // 6.67 — the snow takes it, and the alarm names THE WHOLE 10 t (boss seq
-  // 176: the snow takes a field being reaped entire). Reaped in row order it
-  // would start on 32, need 6.67 of the 7 and be said nothing — so the pace
-  // tells the ripening order from the row order. (It was 6 until 0.34.17,
-  // when the Sunday and the snow's own day made 6 warn in both orders, and
-  // the check stopped telling them apart while staying green.)
-  world.ledger.current.reaping_last_day = 7.5F;
+  // At 0.64 norm-days an hour the oat, open today, runs to day 32.17; the
+  // potato, ripe on 32, has 46.4 norm-days of light left to the snow and
+  // needs 50 — the snow takes it, and the alarm names THE WHOLE 10 t (boss
+  // seq 176: the snow takes a field being reaped entire). Reaped in row order
+  // it would start on 32 with 50.6 before it and be said nothing — so the
+  // rate tells the ripening order from the row order.
+  world.ledger.current.reaping_last_day_hands = 1.0F;
+  world.ledger.current.reaping_last_day_hours = 10.0F;
+  world.ledger.current.reaping_last_day = 6.4F;
   failures += Expect(warned() == 10'000'000,
                      "gather: the potato ripening after the oat finds the days it took, and it is "
                      "said before the potato is ripe — the whole field, which the snow takes");
-  world.ledger.current.reaping_last_day = 12.0F;
-  failures += Expect(warned() == 0, "gather: at twice the pace both are reaped in time");
+  // A norm-day an hour: the oat ends on 31.38 and the potato on 37.07.
+  world.ledger.current.reaping_last_day = 10.0F;
+  failures += Expect(warned() == 0, "gather: at a norm-day an hour both are reaped in time");
+  // THE CREW IS THE BOOK'S HANDS (YearLedger::reaping_last_day_hands): two
+  // hands at 0.32 an hour are the one at 0.64, and the potato is lost again.
+  world.ledger.current.reaping_last_day_hands = 2.0F;
+  world.ledger.current.reaping_last_day = 3.2F;
+  failures += Expect(warned() == 10'000'000,
+                     "gather: the crew is the book's hands — two at half the rate reap what one "
+                     "did");
+  world.ledger.current.reaping_last_day_hands = 1.0F;
+  // THE ROAD IS THE FIELD'S OWN (core_common/reaping_road.h): at 1.2 an hour
+  // both are in by 36.32 with the village at the field; half a kilometre off
+  // on foot — under an hour and a half each way — still in time; a kilometre
+  // and a half off — over three and a half hours each way of days of nine to
+  // fourteen — the potato is lost. The same crew, the same fields.
+  {
+    core::WorldState away = world;
+    away.ledger.current.reaping_last_day = 12.0F;
+    core::FamilyRow family;
+    family.in_tent = 1;
+    family.lost_house_position = {.x = 500.0F, .y = 0.0F};
+    core::AppendRow(away.families, family);
+    const auto lost = [&config, &away, id]() {
+      std::vector<core::Alarm> alarms;
+      core::CollectGatherAlarms(config, away, alarms);
+      return std::ranges::any_of(alarms, [id](const core::Alarm& alarm) {
+        return alarm.kind == core::AlarmKind::kHarvestWillNotBeGathered &&
+               alarm.field.value == id.value;
+      });
+    };
+    failures += Expect(!lost(), "gather: half a kilometre from the village the crew is in time");
+    away.families.rows[0].lost_house_position = {.x = 1500.0F, .y = 0.0F};
+    failures += Expect(lost(),
+                       "gather: a kilometre and a half off the road eats the day — the same "
+                       "crew loses the potato");
+  }
+  world.ledger.current.reaping_last_day = 10.0F;
   // THE DAY'S CLOSE COUNTS WITH THE CALENDAR'S DAYS OFF KEPT, AND WRITES ITS
   // WORD (the harvest rule 1 as re-worded, 0.37.91; production_alarms.h). A
   // world where the door has lifted the Sunday of day 34 — the order on, a
-  // reaping standing — at 8 norm-days a day. From tomorrow the oat runs from
-  // 31 to 33.5 and the potato needs 6.25 days: with the Sunday WORKED it has
-  // 6.5 and fits; with the Sunday KEPT it has 5.5 and does not. So the
-  // close's count must say the potato though the door says the day is
-  // worked: asked of the door it is to drive, it would find the day it lacks
-  // and go silent. And the lamp, which asks the door, is silent here.
+  // reaping standing, the count's word said last night (0.37.147) — at 0.7
+  // norm-days an hour. From tomorrow, with the Sunday KEPT, the oat runs to
+  // 33.07 and the potato is lost; from today, with the Sunday WORKED, the
+  // potato is in by 37.94. So the close's count must say the potato though
+  // the door says the day is worked: asked of the door it is to drive, it
+  // would find the day it lacks and go silent. And the lamp, which asks the
+  // door, is silent here.
   {
     core::WorldState lifted = world;
-    lifted.ledger.current.reaping_last_day = 8.0F;
+    lifted.ledger.current.reaping_last_day = 7.0F;
     lifted.chairman.harvest_without_days_off = 1;
-    core::FieldRow standing;  // a reaping of nobody's crop: it only makes the harvest stand
+    lifted.gather_short_said = 30;  // said at the close of day 29: it stands today
+    core::FieldRow standing;        // a reaping of nobody's crop: it only makes the harvest stand
     standing.kind = core::LandKind::kArable;
     standing.phase = core::FieldPhase::kHarvest;
     standing.work_days_remaining = 1.0F;
@@ -6576,6 +6621,21 @@ int CheckTheHarvestWillNotBeGathered() {
     failures += Expect(!core::IsDayOffIn(lifted, 34) && core::IsCalendarDayOffIn(lifted, 34),
                        "gather: the door has lifted the Sunday of day 34 and the calendar keeps "
                        "it");
+    // THE COUNTERWEIGHT (0.37.147): the same world with the word never said,
+    // or said long ago — the Sunday stands, though the order is on and a
+    // ripe field stands. Until then the standing field alone lifted it.
+    {
+      core::WorldState silent = lifted;
+      silent.gather_short_said = 0;
+      const bool never = core::IsDayOffIn(silent, 34);
+      silent.gather_short_said = 25;
+      failures += Expect(never && core::IsDayOffIn(silent, 34),
+                         "gather: with no word from the count the harvest's Sunday is a day "
+                         "off — never said, or said five days ago");
+      silent.gather_short_said = 31;  // said at today's own close: the evening reads the same day
+      failures += Expect(!core::IsDayOffIn(silent, 34),
+                         "gather: a word said at today's close stands for today as well");
+    }
     const auto said = [&config, &lifted, id](bool days_off_kept) {
       std::vector<core::Alarm> alarms;
       core::CollectGatherAlarms(config, lifted, alarms, days_off_kept);
@@ -6597,7 +6657,7 @@ int CheckTheHarvestWillNotBeGathered() {
     failures += Expect(lifted.gather_short_said == 31,
                        "gather: the day's close writes the day plus one when its count names a "
                        "field");
-    lifted.ledger.current.reaping_last_day = 12.0F;
+    lifted.ledger.current.reaping_last_day = 12.0F;  // 1.2 an hour: both in time, Sunday or not
     lifted.gather_short_said = 17;
     core::WriteGatherShortSaid(config, lifted);
     failures += Expect(lifted.gather_short_said == 17,
@@ -6607,7 +6667,8 @@ int CheckTheHarvestWillNotBeGathered() {
   // its field's edge; a person's 20 kg, no horse — the potato's 10 t and the
   // oat's go the 0.47 r beyond the norm in 500 trips each, some 24 norm-days
   // more apiece (CheckTheCarryToTheHeap's answer; the pair is what is tested),
-  // and at the same twelve a day the potato is no longer reaped in time.
+  // and at the same norm-day an hour the potato is no longer reaped in time:
+  // 118 norm-days against the 107.9 the light holds.
   core::RoadRow far_road;
   far_road.axis.push_back(core::RoadPoint{.position = {.x = -2000.0F, .y = 1000.0F}});
   far_road.axis.push_back(core::RoadPoint{.position = {.x = 2000.0F, .y = 1000.0F}});
@@ -6615,74 +6676,90 @@ int CheckTheHarvestWillNotBeGathered() {
   world.road_index = core::BuildRoadIndex(world.roads);
   config.carry_kg_adult = 20.0F;
   failures += Expect(warned() == 10'000'000,
-                     "gather: the reaping owes the carry to the heap as well, and at twelve a "
-                     "day on foot the potato is lost");
+                     "gather: the reaping owes the carry to the heap as well, and at a norm-day "
+                     "an hour on foot the potato is lost");
   config.carry_kg_adult = 1.0e6F;
-  // RAIN STOPS THE REAPING (core_common/rain_stops_work.h): the same twelve,
-  // the days counted as above (no Sunday 34, last day 39). Today (day 30) is
-  // dry and counts whole. Six rain days in ten ahead: the oat's 1.67 days run
-  // to 32.67, and the potato's 4.17 dry days need more than the 2.53 left —
-  // lost. Thirty-five in a hundred: the oat is done by 32.03 and 4.53 dry
-  // days remain — both in time. The pair is what shows the share is read,
-  // and read in the right direction.
+  // RAIN STOPS THE REAPING (core_common/rain_stops_work.h): the same norm-day
+  // an hour, the days counted as above (no Sunday 34, last day 39). Today
+  // (day 30) is dry and counts whole. Six rain days in ten ahead: the oat
+  // runs to 31.94 and the potato is lost. Thirty-five in a hundred: the oat
+  // is done by 31.58 and the potato by 39.77 — both in time. The pair is what
+  // shows the share is read, and read in the right direction.
   config.rain_day_shares.fill(0.6F);
   failures += Expect(warned() == 10'000'000,
                      "gather: six rain days in ten ahead leave the potato to the snow");
   config.rain_day_shares.fill(0.35F);
   failures += Expect(warned() == 0, "gather: 35 in 100 still leave both reaped in time");
-  // And today is not a forecast. At 30 in a hundred ahead a dry today leaves
-  // the potato 4.9 dry days, enough; a rained-out today gives nothing, the
-  // oat runs to day 33.38 and 3.93 are left — lost. Only today's sky differs.
+  // And today is not a forecast. At 30 in a hundred ahead a dry today sees
+  // the potato in by 39.18; a rained-out today gives nothing, the oat runs to
+  // day 33.07 and the potato is lost. Only today's sky differs.
   config.rain_day_shares.fill(0.3F);
   failures += Expect(warned() == 0, "gather: at 30 in 100 with a dry today, both in time");
   world.weather.precipitation = core::Precipitation::kRain;
   failures += Expect(warned() == 10'000'000, "gather: a rained-out today counts no day at all");
   world.weather.precipitation = core::Precipitation::kNone;
   config.rain_day_shares.fill(0.0F);
-  // TO THE EARLY SNOW (gather_alarm_snow_day, the FIRST day the snow lies):
-  // the same twelve, the potato's 4.17 days from day 32 — 32, 33, then 35,
-  // 36 and a sixth of 37, the Sunday skipped. Snow lying on day 38: the
-  // potato is in by 37, and fits. Snow lying on day 37 — the day it would
-  // finish: it does not, and the alarm lights. That is econ's condition
-  // word for word (econ-boss-snow-edge-reading): a field finished ON the
-  // snow's first day is a field lost, and 0.34.16, which counted that day,
-  // said nothing about it. The mean edge, 40, has not moved.
-  config.farming.gather_alarm_snow_day = 38.0F;
+  // TO THE EARLY EDGE OF THE SNOW (ProductionConfig::early_snow_last_day,
+  // the LAST day that counts — the day before the snow lies; read off the
+  // generator since 0.37.147, world_params `gather_alarm_snow_day` until
+  // then): the same norm-day an hour, the potato in by 37.07. The last day
+  // 37 — snow lying on 38: it fits. The last day 36 — snow lying on the very
+  // day the potato would finish: it does not, and the alarm lights. That is
+  // econ's condition word for word (econ-boss-snow-edge-reading): a field
+  // finished ON the snow's first day is a field lost, and 0.34.16, which
+  // counted that day, said nothing about it.
+  config.early_snow_last_day = 37;
   failures += Expect(warned() == 0, "gather: snow lying on day 38 — the potato is in by 37");
-  config.farming.gather_alarm_snow_day = 37.0F;
+  config.early_snow_last_day = 36;
   failures += Expect(warned() == 10'000'000,
                      "gather: snow lying on the very day the potato would finish — it lights");
-  config.farming.gather_alarm_snow_day = 45.0F;
-  config.growing_season_last_day = 35;
+  config.early_snow_last_day = 39;
+  // AND THE EDGE NEVER LIES PAST THE MEAN ONE (core_common/early_snow.h): the
+  // snow lain in a tenth of the campaigns by day 44, the mean edge 35 — 35;
+  // lain by day 30 — the day before, 29; a climate with no snow — the mean.
+  {
+    core::SnowLainShares lain{};
+    for (std::uint32_t day = 44; day < core::kDaysPerYear; ++day) {
+      lain[day] = 0.1F;
+    }
+    const std::uint32_t late = core::EarlySnowLastDay(lain, 0.1F, 35);
+    for (std::uint32_t day = 30; day < core::kDaysPerYear; ++day) {
+      lain[day] = 0.1F;
+    }
+    const std::uint32_t early = core::EarlySnowLastDay(lain, 0.1F, 35);
+    failures += Expect(
+        late == 35 && early == 29 && core::EarlySnowLastDay(core::SnowLainShares{}, 0.1F, 35) == 35,
+        "gather: an early edge past the mean one yields to the mean one, an "
+        "earlier one is the day before the snow, and no snow is the mean");
+  }
+  // THE RATE IS THE LAST DAY'S NORM-DAYS OVER THE HAND-HOURS OF LIGHT IT WAS
+  // OFFERED, and a book with a day's norm-days and no such hours falls back
+  // to the table's number (FarmingConfig::reaping_days_per_hand_light_hour;
+  // a tenth here, the test's own): the one hand at 0.1 an hour of light
+  // loses the potato. Until 0.37.147 the last day's norm-days were scaled by
+  // today's light over its own; the light is each day's own now.
+  config.farming.reaping_days_per_hand_light_hour = 0.1F;
+  world.ledger.current.reaping_last_day_hours = 0.0F;
   failures += Expect(warned() == 10'000'000,
-                     "gather: an early edge past the mean one yields to the mean one");
-  config.growing_season_last_day = 40;
-  config.farming.gather_alarm_snow_day = 40.0F;
-  // THE SAME TWELVE UNDER HALF THE SUN (boss seq 95): reaped on a 15.2-hour
-  // day, read on a 7.6-hour one, they are six — and the potato is lost again.
-  world.ledger.current.reaping_last_day_daylight = 15.2F;
-  world.weather.daylight_hours = 7.6F;
-  failures += Expect(warned() == 10'000'000,
-                     "gather: the last day's pace is scaled by today's daylight over its own");
-  world.ledger.current.reaping_last_day_daylight = 0.0F;
-  failures +=
-      Expect(warned() == 0, "gather: a last day with no daylight booked is read as it stands");
-  world.weather.daylight_hours = 12.0F;
-  // No reaping yet this season: every hand of working age, one norm-day each.
+                     "gather: a last day with no light booked is read at the table's rate");
+  world.ledger.current.reaping_last_day_hours = 10.0F;
+  // No reaping yet this season and no morning read: every hand of working
+  // age, at the table's rate each.
   world.ledger.current.reaping_last_day = 0.0F;
+  world.ledger.current.reaping_last_day_hands = 0.0F;
+  world.ledger.current.reaping_last_day_hours = 0.0F;
   failures += Expect(warned() == 10'000'000,
                      "gather: before the season's first reaping, no hands means the whole crop");
-  // Seven adults and a child in a tent (a home without a house): seven hands
-  // — the oat runs to 32.86, the potato needs 7.14 of the 6.14 days left, and
-  // the whole 10 t is said. Counting the child would make eight, and at 8 a
-  // day both are reaped (6.25 of 6.5): the answer flips, so the count of hands
-  // is what is tested. (Six adults until 0.34.17, when the Sunday and the
-  // snow's own day made seven hands lose the potato too and the child's count
-  // stopped mattering to the verdict.)
+  // Six adults and a child in a tent (a home without a house, at the field):
+  // six hands at a tenth of a norm-day an hour of light — the oat runs to
+  // 32.34 and the potato is lost, the whole 10 t said. Counting the child
+  // would make seven, and seven are in by 39.18: the answer flips, so the
+  // count of hands is what is tested. (Seven adults until 0.37.147, when the
+  // count went by each day's own light and seven began to fit.)
   core::FamilyRow family;
   family.in_tent = 1;
   const core::FamilyId household = core::AppendRow(world.families, family);
-  for (const std::int32_t age_years : {30, 25, 40, 35, 28, 45, 33, 5}) {
+  for (const std::int32_t age_years : {30, 25, 40, 35, 28, 45, 5}) {
     core::ResidentRow person;
     person.family = household;
     person.birth_day = 30 - (age_years * static_cast<std::int32_t>(core::kDaysPerYear));
@@ -6690,6 +6767,14 @@ int CheckTheHarvestWillNotBeGathered() {
   }
   failures += Expect(warned() == 10'000'000,
                      "gather: before the season reaps, the hands of working age are the pace");
+  // LAST YEAR'S LAST DAY STANDS IN while this season has none (reaping_pace.h,
+  // ReapingCrewOf; 0.37.147): two norm-days in ten hand-hours of light are a
+  // fifth an hour — twice the table's — and the same six are in time: the
+  // answer flips on the book read, the table and the hands unmoved.
+  world.ledger.closed.reaping_last_day = 2.0F;
+  world.ledger.closed.reaping_last_day_hours = 10.0F;
+  failures += Expect(warned() == 0,
+                     "gather: with no day in this year's book, last year's last day is the rate");
   return failures;
 }
 
@@ -8451,6 +8536,28 @@ int CheckTheChairmanSetsARotation() {
                        "is not in the field either");
   }
 
+  // -- a crop whose harvest nobody takes is refused (0.37.147) --------------
+  //
+  // Maize for silage reaps green mass, and this build has no trench work that
+  // turns green mass into silage and no head that eats it: the field would be
+  // ploughed, sown and reaped into a heap that rots. The pair is the clover
+  // next to it — a fodder crop whose harvest (hay) the herds do eat.
+  {
+    const core::CropId maize{static_cast<std::uint16_t>(crops->FindRowByKey("maize_silage"))};
+    const core::CropId clover{static_cast<std::uint16_t>(crops->FindRowByKey("clover"))};
+    const core::WorldState refused =
+        order_rotation(core::LandKind::kArable, {oat, maize, core::CropId{}});
+    failures += Expect(refused.orders.rows[0].refusal == core::OrderRefusal::kRuleForbids,
+                       "maize for silage is refused: nothing in this build takes green mass");
+    failures += Expect(!core::HasRotation(refused.fields.rows[0]),
+                       "and nothing of that order is written — the oat before it is not there");
+    const core::WorldState taken =
+        order_rotation(core::LandKind::kArable, {oat, clover, core::CropId{}});
+    failures += Expect(taken.orders.rows[0].status == core::OrderStatus::kDone &&
+                           core::HasRotation(taken.fields.rows[0]),
+                       "while clover, whose hay the herds eat, is taken as before");
+  }
+
   // -- a field that is not there is still kNoSuchSubject --------------------
   //
   // The other half of the split: one code for both was the defect, and a
@@ -9418,6 +9525,9 @@ int CheckTheElderSpeaksOfGrassBeforeTheSnow() {
   int failures = 0;
   core::ProductionConfig config;
   config.hay_resource = core::ResourceId{3};  // the registry's subject: the hay
+  // The snow's own day is 40: the early edge, the last day that counts, 39
+  // (ProductionConfig::early_snow_last_day; the key's 40 until 0.37.147).
+  config.early_snow_last_day = 39;
   const core::SimDay year2 = core::kDaysPerYear;
   const auto world_on = [&](core::SimDay day_of_year, std::uint32_t meadows, std::uint32_t mown) {
     core::WorldState world;

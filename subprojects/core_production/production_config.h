@@ -757,7 +757,32 @@ struct FarmingConfig {
   /// ONLY THE ALARM. The queue's last days before the snow keep the mean's
   /// edge: the alarm is a warning to the chairman, the queue is the
   /// accountant's order of work, and econ asked for the first.
+  ///
+  /// SUPERSEDED SINCE 0.37.147 BY ProductionConfig::early_snow_last_day — the
+  /// same edge read off the generator by `early_snow_share` below. The key is
+  /// still parsed (the base exports it and the assembly's declared-readers
+  /// check names it) and NOTHING READS THE VALUE; it leaves with boss's
+  /// export.
   float gather_alarm_snow_day = 40.0F;
+
+  /// farming.csv `early_snow_share` — 0.10: the share of years in which the
+  /// count of the reaping may promise a day that the snow then takes
+  /// (core_common/early_snow.h; ProductionConfig::early_snow_last_day). One
+  /// key for the gathering alarm and labor's last days. STUB, econ's: 0.10
+  /// is the P10 the old hand-read key was.
+  float early_snow_share = 0.10F;
+
+  /// farming.csv `reaping_days_per_hand_light_hour` — 0.042: norm-days a
+  /// village reaps for each hand that could reap, an hour of the day's light.
+  /// The count of the reaping reads it only while neither this year's book
+  /// nor the last has an unfinished reaping day to read instead
+  /// (core_common/reaping_pace.h, ReapingCrewOf) — year 1 before its first
+  /// such day. STUB, A MEASUREMENT: the median of the 25 unfinished reaping
+  /// days of nine canon villages, years 1-2, on 0.37.147's first form
+  /// (0.0416; lower quartile 0.039). «Every hand at a norm-day a standard
+  /// day» stood here before — 0.1 an hour of light — and on seed 1938 it
+  /// kept the count silent while 61.6 t went under the snow.
+  float reaping_days_per_hand_light_hour = 0.042F;
 
   /// world_params.csv `field_heap_keeping_factor` — 0.33, econ's number
   /// accepted by boss (econ-boss-field-heap-2026-09-19): a reaped heap waiting
@@ -862,6 +887,20 @@ struct ProductionConfig {
   /// nothing ahead of the clock, the alarm as it was.
   RainDayShares rain_day_shares{};
 
+  /// THE EARLY EDGE OF THE FIRST SNOW (0.37.147; core_common/early_snow.h;
+  /// the harvest rule 5): the last day a count of the reaping may still
+  /// promise — read off the climate's own share of campaigns in which the
+  /// snow has lain by each day (ITimeSystem::ClimateSnowLainShares) by
+  /// farming.csv `early_snow_share`, the same key and the same shares labor's
+  /// last days read (labor_config.h). Derived by the factory, never past
+  /// `growing_season_last_day`; the default leaves it there.
+  /// IT REPLACES world_params `gather_alarm_snow_day` in the gathering count
+  /// (FarmingConfig::gather_alarm_snow_day): that number was the same edge
+  /// read by hand off a 2000-year probe and re-read whenever the weather
+  /// table moved, and the alarm counted to it while the queue counted to the
+  /// mean's — two readers of one question with two dates.
+  std::uint32_t early_snow_last_day = kDaysPerYear - 1U;
+
   // The climate's mean nights stood here from 0.37.62 to 0.37.68, for the
   // cold ladder's frost months and its autumn forecast. Since 0.37.69 the
   // cold's season is the calendar's (FarmingConfig::cold_first_month), and
@@ -899,6 +938,13 @@ struct ProductionConfig {
   ResourceId manure_resource;  ///< resources.csv "manure" row.
 
   ResourceId hay_resource;  ///< resources.csv "hay" row.
+
+  /// resources.csv "green_mass" row: what maize for silage reaps. NOTHING
+  /// TAKES IT (0.37.147): no trench work turns it into silage and no feed
+  /// link names it, so a rotation naming a crop that reaps it is refused
+  /// (production_orders.cpp, SetRotation). STUB: the refusal is lifted in the
+  /// same move that gives green mass its processing.
+  ResourceId green_mass_resource;
 
   ResourceId straw_resource;  ///< resources.csv "straw" row: the grain's by-product.
 

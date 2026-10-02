@@ -19,6 +19,7 @@
 #include "core_common/quantities.h"
 #include "core_common/rain_stops_work.h"
 #include "core_common/reaping_pace.h"
+#include "core_common/reaping_road.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/work_seam.h"
 #include "district_plan.h"
@@ -698,8 +699,12 @@ void CollectMeadowAdvice(const ProductionConfig& config,
   // A MONTH BEFORE THE FIRST SNOW BY THE CLIMATE: the day the gather alarm
   // counts to (the P10 of the first snow in the reaping season, a first
   // snow's day and not a steady cover's — named to boss), less a month.
+  // THE DAY AFTER THE EARLY EDGE since 0.37.147 (ProductionConfig::
+  // early_snow_last_day, read off the generator): the edge is the last day
+  // that counts, the snow's own day is the next. Until then world_params
+  // `gather_alarm_snow_day`, the same day read by hand.
   const float day_of_year = static_cast<float>(world.calendar.day % kDaysPerYear);
-  const float snow_day = config.farming.gather_alarm_snow_day;
+  const float snow_day = static_cast<float>(config.early_snow_last_day) + 1.0F;
   if (day_of_year < snow_day - static_cast<float>(kDaysPerMonth) || day_of_year >= snow_day) {
     return;
   }
@@ -1145,26 +1150,33 @@ void CollectGatherAlarms(const ProductionConfig& config,
   std::ranges::stable_sort(claims, [](const GatherClaim& left, const GatherClaim& right) {
     return left.open_day < right.open_day;
   });
-  // THE PACE (boss seq 91, option В; reaping_pace.h): once the season has
-  // reaped, THE LAST DAY OF REAPING THAT ENDED WITH REAPING STILL OWED;
-  // before that, every hand at one norm-day — optimistic on purpose, so that
-  // it does not cry before there is a season to read. This comment said «the
-  // best day» until 0.37.91, which the pace was until 2026-09-19 and the
-  // report of 1 October repeated to boss twice off the comment. WHAT THAT
-  // PACE DOES, measured on the day's close (0.37.91's message): one field's
-  // yesterday is laid on every field's tomorrow — three hands on the rye in
-  // July make the count cry all summer (year 2, nine villages of nine), and
-  // twenty hands on the near potato in October keep it silent over three far
-  // fields till day 36 (1938). The harvest rule 5 replaces it by fields.
+  // THE COUNT IS BY FIELDS SINCE 0.37.147 (the harvest rule 5;
+  // core_common/reaping_pace.h, one home with labor's last days): the crew
+  // the reaping can have — yesterday's hands free of the day's standing
+  // duties — at what the village reaped for a hand that could, an hour of
+  // light, on the last day of reaping that ended with reaping owed, ON EACH
+  // FIELD'S OWN ROAD AND UNDER EACH DAY'S OWN LIGHT to the snow. Before this
+  // season has such a day: last year's; before any has: the table's measured
+  // number (FarmingConfig::reaping_days_per_hand_light_hour). «Every hand at
+  // a norm-day a standard day — optimistic on purpose» stood here in this
+  // commit's first form, and its optimism cost seed 1938 61.6 t.
   //
-  // THAT DAY UNDER TODAY'S SUN (boss seq 95): a man reaps from sunrise to
-  // sunset less the road, so its norm-days are scaled by today's daylight
-  // over its own. Taken of TODAY and not of each day to come:
-  // the light keeps falling to the snow, so this still errs on the side of
-  // silence, only by less than 15.2 h against 8.4 h did. One home with
-  // labor's last days (core_common/reaping_pace.h).
-  const double pace = ReapingPacePerDay(
-      world.ledger.current, world.weather.daylight_hours, HandsOfTheVillage(config, world));
+  // UNTIL THEN ONE NUMBER — the last day of reaping that ended with reaping
+  // owed, scaled by today's light — was laid on every field's tomorrow
+  // (ReapingPacePerDay). Measured: three hands on the rye in July made the
+  // count cry all summer (year 2, nine villages of nine; 0.37.91's message),
+  // and twenty hands on the near potato kept it silent over three far fields
+  // — seed 1938, year 1, the evening of day 33: five fields, 88.3 norm-days
+  // owed, the snow a week off, «in time» said, 19.3 t lost (0.37.142's
+  // print). This comment said «the best day» until 0.37.91, which the pace
+  // was until 2026-09-19.
+  const ReapingCrew crew = ReapingCrewOf(world.ledger.current,
+                                         world.ledger.closed,
+                                         HandsOfTheVillage(config, world),
+                                         config.farming.reaping_days_per_hand_light_hour);
+  // The brigade rides its cart to the field while the kolkhoz has a horse to
+  // give it (assignment.h, brigade_cart; 0.37.89), and walks otherwise.
+  const bool by_cart = DraughtTeam(config, world) > 0;
   //
   // A DAY OF PACE IS A DRY DAY (core_common/rain_stops_work.h): rain stops
   // the reaping, so the days to the snow are counted by the climate's dry
@@ -1203,21 +1215,26 @@ void CollectGatherAlarms(const ProductionConfig& config,
   // day, so the last day that still counts is the one before. 0.34.16
   // counted the snow's own day and was a day late. The mean edge is a last
   // SAFE day and is counted as it is.
-  const auto snow = std::min(static_cast<double>(config.growing_season_last_day),
-                             static_cast<double>(config.farming.gather_alarm_snow_day) - 1.0);
+  // THE EDGE IS THE GENERATOR'S OWN since 0.37.147 (ProductionConfig::
+  // early_snow_last_day; core_common/early_snow.h): the last day that
+  // counts, never past the mean's. Until then the key above, read by hand.
+  const std::uint32_t snow = config.early_snow_last_day;
   // The day's close counts from tomorrow: today is spent, and what it reaped
   // is off the fields already.
   double clock = static_cast<double>(day_of_year) + (days_off_kept ? 1.0 : 0.0);
   for (const GatherClaim& claim : claims) {
+    const FieldRow& field = world.fields.rows[claim.row];
     const double start = std::max(clock, static_cast<double>(claim.open_day));
-    const double available = DryDaysBetween(ahead, start, snow + 1.0);
-    const double needed = pace > 0.0 ? static_cast<double>(claim.owed_days) / pace
-                                     : std::numeric_limits<double>::infinity();
-    clock = CalendarPointAfterDryDays(ahead, start, needed);
-    if (needed <= available) {
+    // The crew comes to this field when the one before it is reaped, and
+    // walks it day by day: this field's road, each day's light and dry share.
+    const float road = ReapingRoadHours(
+        world, field.center, by_cart, config.walk_speed_kmh, config.harness_speed_kmh);
+    const ReapingWalk walk =
+        WalkTheReaping(ahead, crew, road, static_cast<double>(claim.owed_days), start, snow);
+    clock = walk.clock;
+    if (walk.done) {
       continue;
     }
-    const FieldRow& field = world.fields.rows[claim.row];
     const CropDef& crop = config.crops[field.crop.value];
     Alarm alarm;
     alarm.kind = AlarmKind::kHarvestWillNotBeGathered;

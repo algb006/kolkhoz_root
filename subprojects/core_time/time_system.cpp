@@ -185,11 +185,35 @@ RainDayShares CountRainDays(const SeasonTable& seasons) {
   return shares;
 }
 
+/// The generator's own first snow of the autumn, counted over the same
+/// campaigns: the share in which a Precipitation::kSnow day has come between
+/// midsummer and each day (ITimeSystem::ClimateSnowLainShares).
+SnowLainShares CountSnowLain(const SeasonTable& seasons) {
+  SnowLainShares shares{};
+  constexpr auto kMidsummer = static_cast<std::uint32_t>(kSeasonCenterDay[2]);
+  for (std::uint64_t seed = 1; seed <= kClimateSampleSeeds; ++seed) {
+    for (std::uint32_t day = kMidsummer; day < kDaysPerYear; ++day) {
+      if (WeatherOfDay(seasons, seed, day).precipitation != Precipitation::kSnow) {
+        continue;
+      }
+      for (std::uint32_t lain = day; lain < kDaysPerYear; ++lain) {
+        shares[lain] += 1.0F;
+      }
+      break;
+    }
+  }
+  for (float& share : shares) {
+    share /= static_cast<float>(kClimateSampleSeeds);
+  }
+  return shares;
+}
+
 class TimeSystem final : public ITimeSystem {
  public:
   TimeSystem(const SeasonTable& seasons, std::uint8_t leaf_fall_month, const RoadRules& road_rules)
       : seasons_(seasons),
         rain_day_shares_(CountRainDays(seasons)),
+        snow_lain_shares_(CountSnowLain(seasons)),
         phase_(seasons, leaf_fall_month, road_rules) {}
 
   ISequentialPhase& TimeAndWeatherPhase() override { return phase_; }
@@ -218,6 +242,8 @@ class TimeSystem final : public ITimeSystem {
 
   RainDayShares ClimateRainDayShares() const override { return rain_day_shares_; }
 
+  SnowLainShares ClimateSnowLainShares() const override { return snow_lain_shares_; }
+
   ClimateNights ClimateNightCelsius() const override {
     ClimateNights nights{};
     for (std::uint32_t day = 0; day < kDaysPerYear; ++day) {
@@ -233,6 +259,7 @@ class TimeSystem final : public ITimeSystem {
  private:
   SeasonTable seasons_;
   RainDayShares rain_day_shares_;
+  SnowLainShares snow_lain_shares_;
   TimeAndWeatherSlot phase_;
 };
 

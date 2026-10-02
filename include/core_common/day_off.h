@@ -44,22 +44,28 @@ bool HarvestStands(const WorldState& world);
 /// out, the day off comes back.
 bool IsCalendarDayOffIn(const WorldState& world, SimDay day);
 
+/// @brief Whether the gathering count's word «not in time with the days off
+/// kept» STANDS TODAY (WorldState::gather_short_said): said at yesterday's
+/// close, or at today's own — so that the evening reads the day the morning
+/// read. The condition of the harvest without days off since 0.37.147.
+bool GatherShortStands(const WorldState& world);
+
 /// @brief Whether `day` is a day off in `world`: IsCalendarDayOffIn — and,
-/// while ChairmanState::harvest_without_days_off stands and the harvest
-/// stands (HarvestStands), not a week's day off of today or later in this
-/// calendar year. Never a holiday (time §9).
+/// while ChairmanState::harvest_without_days_off stands, the harvest stands
+/// (HarvestStands) AND THE GATHERING COUNT'S WORD STANDS (GatherShortStands),
+/// not a week's day off of today or later in this calendar year. Never a
+/// holiday (time §9).
 /// @param day A simulation day; the cancelled day is today or later.
-/// @note THE RULE'S CONDITION IS TO BECOME «THE GATHERING COUNT SAID NOT IN
-///       TIME» (boss [27]; WorldState::gather_short_said, written since
-///       0.37.91) AND IS NOT THAT YET: the word is written and saved, and
-///       THIS DOOR DOES NOT READ IT. «A ripe crop stands» is true every
-///       autumn and costs 7 and 12 points of the adults' rest in years 2-3,
-///       where nothing was going under the snow (econ [26]) — but hung on
-///       the lamp's count as it stands, the door lost 64 t more in year 1
-///       (the word came after the Sunday on 1938 and 1939) and still lifted
-///       the Sundays of year 2 in nine villages of nine (measured,
-///       0.37.91's message). The delivery of the harvest rule 5 — the count
-///       by fields, light, road and hands — connects the reader.
+/// @note THE WORD IS THE RULE'S CONDITION SINCE 0.37.147 (boss [27]; the
+///       counterweight of the harvest rule 1). Until then «a ripe crop
+///       stands» alone lifted the day off: true every autumn, it cost 7 and
+///       12 points of the adults' rest in years 2-3 where nothing was going
+///       under the snow (econ [26]), and one or two Sundays a year in a
+///       village nobody commands. Hung on the count of 0.37.91 — one pace
+///       for every field — the door lost 64 t more in year 1 (the word came
+///       after the Sunday on 1938 and 1939) and still lifted the Sundays of
+///       year 2 in nine villages of nine; the count is by fields, light,
+///       road and hands since 0.37.147 (core_common/reaping_pace.h).
 /// @note THE ANSWER FOR A DAY AHEAD IS TODAY'S: nobody knows the day the
 ///       last field will be reaped, so a day to come is judged by what
 ///       stands this morning. A past day, or a day of another year, is the

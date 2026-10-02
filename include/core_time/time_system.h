@@ -25,6 +25,7 @@
 #include <string_view>
 
 #include "core_common/climate_nights.h"
+#include "core_common/early_snow.h"
 #include "core_common/rain_stops_work.h"
 #include "core_common/world_state.h"
 #include "core_sim/step.h"
@@ -105,6 +106,20 @@ class ITimeSystem {
   /// what a rain day is.
   /// @return 0..1 per day of the year; all zeros from a system with no rain.
   virtual RainDayShares ClimateRainDayShares() const = 0;
+
+  /// @brief For each day of the year, the share of campaigns in which the
+  /// autumn's first snow day has come on or before it
+  /// (core_common/early_snow.h) — what the early edge of the reaping's count
+  /// is read off (the harvest rule 5; 0.37.147).
+  ///
+  /// THE CLIMATE'S ANSWER AND NOT THE SEED'S, and COUNTED OFF THE GENERATOR,
+  /// for the rain days' own two reasons: the chairman cannot see the seed's
+  /// coin, and whether a wet day is snow hangs on the day's drawn temperature
+  /// against −1. Counted from midsummer over the same campaigns as the rain
+  /// days, so the two stand on one sample.
+  /// @return 0..1 per day, non-decreasing from midsummer to the year's end
+  ///         and nought before it; all zeros from a climate with no snow.
+  virtual SnowLainShares ClimateSnowLainShares() const = 0;
 
   /// @brief The climate's mean night of each day of the year, °C — the
   /// seasonal mean minus the season's half-swing (core_common/climate_nights.h).

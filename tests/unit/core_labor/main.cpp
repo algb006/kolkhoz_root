@@ -31,6 +31,7 @@
 #include "carter_road_checks.h"
 #include "core_common/alarm_state.h"
 #include "core_common/day_off.h"
+#include "core_common/daylight.h"
 #include "core_common/order_state.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
@@ -1083,18 +1084,29 @@ int TestBarnRunsOnTheDayOff() {
 
   // THE HARVEST WITHOUT DAYS OFF (the harvest rule 1; save 125): with the
   // chairman's standing order on — as genesis leaves it — the same Sunday is
-  // reaped, and the same May Day is not. The gathering count's word (save
-  // 126) is not asked: it has no reader until the harvest rule 5
-  // (harvest_days_off_checks.cpp keeps the check that must turn then).
+  // reaped, and the same May Day is not — WHILE THE GATHERING COUNT'S WORD
+  // STANDS (save 126; the rule's condition since 0.37.147, day_off.h): said
+  // at the close of day 5 here. The same village with the count silent keeps
+  // its Sunday, the ripe field and the order notwithstanding — until 0.37.147
+  // the ripe field alone had it reaped.
   DayWorld season(3);
   season.world.chairman.harvest_without_days_off = 1;
+  season.world.gather_short_said = 6;
   season.AddField(core::FieldPhase::kHarvest, 5.0F, core::Vec2{.x = 100.0F, .y = 0.0F});
   season.RunDay(*labor, 6);
   failures += Expect(season.world.fields.rows[0].work_days_remaining < 5.0F,
                      "the harvest without days off: the Sunday is reaped while a ripe field "
-                     "stands");
+                     "stands and the count has said «not in time»");
+  DayWorld in_time(3);
+  in_time.world.chairman.harvest_without_days_off = 1;
+  in_time.AddField(core::FieldPhase::kHarvest, 5.0F, core::Vec2{.x = 100.0F, .y = 0.0F});
+  in_time.RunDay(*labor, 6);
+  failures += Expect(in_time.world.fields.rows[0].work_days_remaining == 5.0F,
+                     "the harvest without days off: with no word from the count nobody reaps on "
+                     "the Sunday, the ripe field and the order notwithstanding");
   DayWorld season_holiday(3);
   season_holiday.world.chairman.harvest_without_days_off = 1;
+  season_holiday.world.gather_short_said = 16;
   season_holiday.AddField(core::FieldPhase::kHarvest, 5.0F, core::Vec2{.x = 100.0F, .y = 0.0F});
   season_holiday.RunDay(*labor, 16);
   failures += Expect(season_holiday.world.fields.rows[0].work_days_remaining == 5.0F,
@@ -2994,34 +3006,42 @@ int TestTheLastDaysGoByTheGrams() {
   }
   // First row the turnip (in its window), second the potato (past it).
   // Norm-days of reaping left on each. At five apiece neither fits what one
-  // hand reaps from day 37 to the snow before the season has a best day
-  // (reaping_pace.h: one norm-day a hand, four working days: 4.0), so both
-  // are beyond it and the grams alone rank.
+  // hand reaps from day 37 to the snow before any book has a day to read
+  // (reaping_pace.h: the table's 0.042 norm-days a hand an hour of light,
+  // under the light of days 37-40 — 10.5, 9.9, 9.4 and 8.9 hours: 1.63
+  // norm-days, a road of twenty metres aside), so both are beyond it and the
+  // grams alone rank.
   float turnip_work = 5.0F;
   float potato_work = 5.0F;
-  // The season's best reaping day and its daylight, when the case books one.
+  // The last day of reaping and the hand-hours of light it was offered, when
+  // the case books one: the crew's rate (YearLedger::reaping_last_day_hours)
+  // — in this year's book, or in the last one's.
   float best_day = 0.0F;
-  float best_daylight = 0.0F;
-  const auto worked_on_by = [&turnip_work, &potato_work, &best_day, &best_daylight](
-                                core::ILaborSystem& system, std::uint32_t game_day) {
-    DayWorld day(1);
-    day.world.ledger.current.reaping_last_day = best_day;
-    day.world.ledger.current.reaping_last_day_daylight = best_daylight;
-    const core::FieldId turnip =
-        day.AddField(core::FieldPhase::kHarvest, turnip_work, core::Vec2{.x = 0.0F, .y = 20.0F});
-    const core::FieldId potato =
-        day.AddField(core::FieldPhase::kHarvest, potato_work, core::Vec2{.x = 0.0F, .y = -20.0F});
-    day.world.fields.rows[core::FindRow(day.world.fields, turnip)].crop = core::CropId{3};
-    day.world.fields.rows[core::FindRow(day.world.fields, potato)].crop = core::CropId{2};
-    for (std::uint32_t hour = 0; hour <= 12; ++hour) {
-      day.world.calendar.tick = (static_cast<core::Tick>(game_day) * core::kTicksPerDay) + hour;
-      core::RefreshCalendarCaches(day.world.calendar);
-      const core::WorldState previous = day.world;
-      system.RunAssignmentDecisions(previous, day.world);
-    }
-    const core::WorkAssignment& work = day.world.residents.rows[0].work;
-    return work.field.value == turnip.value ? 1 : (work.field.value == potato.value ? 2 : 0);
-  };
+  float best_hours = 0.0F;
+  bool in_last_years_book = false;
+  const auto worked_on_by =
+      [&turnip_work, &potato_work, &best_day, &best_hours, &in_last_years_book](
+          core::ILaborSystem& system, std::uint32_t game_day) {
+        DayWorld day(1);
+        core::YearLedger& book =
+            in_last_years_book ? day.world.ledger.closed : day.world.ledger.current;
+        book.reaping_last_day = best_day;
+        book.reaping_last_day_hours = best_hours;
+        const core::FieldId turnip = day.AddField(
+            core::FieldPhase::kHarvest, turnip_work, core::Vec2{.x = 0.0F, .y = 20.0F});
+        const core::FieldId potato = day.AddField(
+            core::FieldPhase::kHarvest, potato_work, core::Vec2{.x = 0.0F, .y = -20.0F});
+        day.world.fields.rows[core::FindRow(day.world.fields, turnip)].crop = core::CropId{3};
+        day.world.fields.rows[core::FindRow(day.world.fields, potato)].crop = core::CropId{2};
+        for (std::uint32_t hour = 0; hour <= 12; ++hour) {
+          day.world.calendar.tick = (static_cast<core::Tick>(game_day) * core::kTicksPerDay) + hour;
+          core::RefreshCalendarCaches(day.world.calendar);
+          const core::WorldState previous = day.world;
+          system.RunAssignmentDecisions(previous, day.world);
+        }
+        const core::WorkAssignment& work = day.world.residents.rows[0].work;
+        return work.field.value == turnip.value ? 1 : (work.field.value == potato.value ? 2 : 0);
+      };
   const auto worked_on = [&labor, &worked_on_by](std::uint32_t game_day) {
     return worked_on_by(*labor, game_day);
   };
@@ -3043,33 +3063,44 @@ int TestTheLastDaysGoByTheGrams() {
   failures += Expect(worked_on(37) == 2,
                      "last days: the heavier potato is reaped first when the grams turn round");
   // WHAT CAN STILL BE DONE, THEN THE HEAVIER (boss seq 103). The turnip
-  // heavier again, but its five norm-days do not fit the 4.0 left, and the
-  // potato's two do: the potato goes first — the turnip would be lost
-  // anyway, and reaping it would lose the potato too.
+  // heavier again, but its five norm-days do not fit the 1.63 left, and the
+  // potato's one and a half do: the potato goes first — the turnip would be
+  // lost anyway, and reaping it would lose the potato too.
   turnip_grams = 9'000'000;
   potato_grams = 2'000'000;
-  potato_work = 2.0F;
+  potato_work = 1.5F;
   failures += Expect(worked_on(37) == 2,
                      "last days: a field that can still be finished before the snow goes before "
                      "a heavier one that cannot");
-  // Both fit (2 + 2 of 4.0): the heavier turnip first again.
-  turnip_work = 2.0F;
+  // Both fit (0.8 + 0.8 of 1.63): the heavier turnip first again.
+  turnip_work = 0.8F;
+  potato_work = 0.8F;
   failures += Expect(worked_on(37) == 1,
                      "last days: among the fields that can be finished, the heavier first");
-  // THE CAPACITY IS THE ALARM'S PACE (reaping_pace.h; core-host seq 28): a
-  // best day of 1 norm-day under 24 h of sun is 0.5 under today's 12 h, 2.0
-  // over the four days. The turnip's 3 no longer fit, the potato's 1.5 do.
-  // Counted by hands and light as it was (4.8), both fit and the heavier
-  // turnip went first — the case host's seed 9 lost 150.7 t on.
+  // THE COUNT IS THE ALARM'S, BY THE VILLAGE'S OWN RATE (reaping_pace.h, one
+  // home; core-host seq 28; by fields since 0.37.147). With no day in either
+  // book the table's 0.042 gives 1.63 over the light of the four days: the
+  // turnip's 3 do not fit, the potato's 1.5 do, and the potato goes first. A
+  // last day of 1 norm-day in 10 hand-hours of light is a tenth an hour —
+  // 3.87: the turnip fits and, the heavier, goes first. And the same day in
+  // LAST year's book, this year's empty, is read the same. The three checks
+  // are a triple: each answer flips on the rate alone.
   turnip_work = 3.0F;
   potato_work = 1.5F;
-  best_day = 1.0F;
-  best_daylight = 24.0F;
   failures += Expect(worked_on(37) == 2,
-                     "last days: the capacity is the season's pace under today's light, not "
-                     "every hand at a norm-day");
+                     "last days: with no reaping day in either book the table's rate counts — "
+                     "the turnip's three do not fit, the potato goes first");
+  best_day = 1.0F;
+  best_hours = 10.0F;
+  failures += Expect(worked_on(37) == 1,
+                     "last days: the count takes the village's own rate of the last day — a "
+                     "tenth an hour of light, the turnip fits and the heavier goes first");
+  in_last_years_book = true;
+  failures += Expect(worked_on(37) == 1,
+                     "last days: and last year's last day while this year's book has none");
+  in_last_years_book = false;
   best_day = 0.0F;
-  best_daylight = 0.0F;
+  best_hours = 0.0F;
   turnip_work = 5.0F;
   potato_work = 5.0F;
   // labor.csv's harvest_snow_last_days 0 switches the rule off: the window
@@ -3315,19 +3346,45 @@ int TestTheReapingPaceIsBookedWithItsDaylight() {
   day.RunDay(*labor, 30);
   const core::YearLedger& book = day.world.ledger.current;
   const float long_day = book.reaping_today;
-  failures += Expect(long_day > 0.0F && book.reaping_today_daylight == 14.0F,
-                     "reaping pace: the pay books the reaping with the day's daylight");
+  const float long_hours = book.reaping_today_hours;
+  // THE CREW OF THE DAY (0.37.147; ledger_state.h): the three hands of the
+  // morning's list — none on the herds' care — and the light of day 30 once
+  // for each of the three reapers paid, 14.68 hours by the table of light
+  // (core_common/daylight.h; the fixture's own weather is not what is read).
+  const float light_30 = core::DaylightHoursOfDay(30);
+  const float light_31 = core::DaylightHoursOfDay(31);
+  std::cout << "  reaping pace: day 30 — " << long_day << " norm-days, " << long_hours
+            << " hand-hours of light, " << book.reaping_today_hands << " hands\n";
+  failures += Expect(long_day > 0.0F && book.reaping_today_hands == 3.0F &&
+                         std::abs(long_hours - (3.0F * light_30)) < 0.01F,
+                     "reaping pace: the pay books the reaping and the day's light once a reaper, "
+                     "and the morning the hands it could have");
   day.world.weather.daylight_hours = 9.0F;
   day.RunDay(*labor, 31);
   const float short_day = book.reaping_today;
-  failures +=
-      Expect(book.reaping_last_day == long_day && book.reaping_last_day_daylight == 14.0F &&
-                 short_day > 0.0F && short_day < long_day && book.reaping_today_daylight == 9.0F,
-             "reaping pace: the morning rolls yesterday over as the pace, with its sun");
+  const float short_hours = book.reaping_today_hours;
+  failures += Expect(book.reaping_last_day == long_day &&
+                         std::abs(book.reaping_last_day_hours - (3.0F * light_30)) < 0.01F &&
+                         book.reaping_last_day_hands == 3.0F && short_day > 0.0F &&
+                         short_day < long_day && short_hours < long_hours,
+                     "reaping pace: the morning rolls yesterday over as the measure — its "
+                     "norm-days, the light its hands were offered, its hands");
+  // A DAY NOT REAPED IN STRENGTH IS NO MEASURE (farming.csv
+  // reaping_in_strength_share, a half): the same morning with yesterday's
+  // book saying one reaper of the three keeps day 30's measure.
+  {
+    DayWorld thin = day;
+    thin.world.ledger.current.reaping_today_hours = light_31;
+    thin.RunDay(*labor, 32);
+    failures += Expect(thin.world.ledger.current.reaping_last_day == long_day,
+                       "reaping pace: a day one reaper of three reaped is the queue's choice, "
+                       "and is not rolled over as the village's rate");
+  }
   day.RunDay(*labor, 32);
-  // THE LAST DAY, NOT THE BEST (boss seq 161 Б): the shorter day is today's
-  // pace, with its own shorter sun — the field still owes reaping.
-  failures += Expect(book.reaping_last_day == short_day && book.reaping_last_day_daylight == 9.0F,
+  // THE LAST DAY, NOT THE BEST (boss seq 161 Б): the shorter day is the
+  // measure now, under its own light — the field still owes reaping.
+  failures += Expect(book.reaping_last_day == short_day &&
+                         std::abs(book.reaping_last_day_hours - (3.0F * light_31)) < 0.01F,
                      "reaping pace: the shorter day becomes the pace — the last day, not the best");
   return failures;
 }

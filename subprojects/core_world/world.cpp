@@ -804,8 +804,13 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
   // labor's last days before the snow discount the days ahead by it — one
   // count, handed to both (core_common/rain_stops_work.h).
   const RainDayShares rain_days = time == nullptr ? RainDayShares{} : time->ClimateRainDayShares();
-  auto production =
-      CreateProductionSystem(*config.tables, config.stub_tables, season_last_day, rain_days);
+  // AND THE FIRST SNOW'S SHARES, for the gathering count's early edge and the
+  // queue's (the harvest rule 5; core_common/early_snow.h): each module reads
+  // the edge off them by the one key, farming.csv `early_snow_share`.
+  const SnowLainShares snow_lain =
+      time == nullptr ? SnowLainShares{} : time->ClimateSnowLainShares();
+  auto production = CreateProductionSystem(
+      *config.tables, config.stub_tables, season_last_day, rain_days, snow_lain);
   // THE GRAMS OF A STANDING CROP ARE PRODUCTION'S to count, and labor's last
   // days before the snow order the reaping by them (boss seq 95): labor is
   // handed the one estimate, not a copy of its formula. The world owns both
@@ -829,7 +834,8 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       // labor's.
       [estimate](const WorldState& world, std::uint32_t days) {
         return estimate != nullptr && estimate->StoredHayShortWithin(world, days);
-      });
+      },
+      snow_lain);
   // THE FODDER FUND IS PRODUCTION'S to size, and the people's issue must stay
   // below rung 3 of the ladder, which holds it (core_common/fund_ladder.h;
   // boss seq 14 and 17): residents is handed the one size by the same road

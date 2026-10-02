@@ -23,11 +23,15 @@ int Expect(bool condition, const char* label) {
 }
 
 /// Day zero is a Monday, so days 6, 13, 55 are Sundays; `today` is the
-/// world's day. One field of the arable in its reaping with five days left.
+/// world's day. One field of the arable in its reaping with five days left,
+/// and THE GATHERING COUNT'S WORD STANDING TODAY — said at today's close
+/// (WorldState::gather_short_said is the day plus one): the rule's condition
+/// since 0.37.147. A check that wants the count silent says so.
 core::WorldState HarvestWorld(core::SimDay today) {
   core::WorldState world;
   world.calendar.day_zero_weekday = core::Weekday::kMonday;
   world.calendar.day = today;
+  world.gather_short_said = today + 1;
   core::FieldRow field;
   field.kind = core::LandKind::kArable;
   field.phase = core::FieldPhase::kHarvest;
@@ -50,22 +54,32 @@ int TestTheSundayIsWorkedWhileTheHarvestStands() {
   return failures;
 }
 
-/// THE COUNT'S WORD HAS NO READER YET (0.37.91; boss [31]): the door answers
-/// the same whether the gathering count never spoke, spoke last night or
-/// spoke long ago — the harvest rule 5 is to connect it, and the day it does
-/// THIS CHECK IS THE ONE THAT MUST TURN: a silent count will leave the
-/// Sunday a day off.
-int TestTheCountsWordHasNoReaderYet() {
+/// THE COUNT'S WORD IS THE RULE'S CONDITION (0.37.147; boss, core-boss-potato-
+/// crew-trace-2026-10-01 [27]; host-boss-pin-0-37-133-2026-10-02 [36]): a
+/// ripe field alone lifts no Sunday — the gathering count must have said
+/// «not in time with the days off kept», last night or at today's own close.
+/// THIS CHECK TURNED WITH THE READER: from 0.37.91 to 0.37.145 it held that
+/// the door answered the same whatever the count said, and said of itself
+/// that it was the one that must turn.
+int TestTheCountsWordIsTheCondition() {
   int failures = 0;
   core::WorldState silent = HarvestWorld(6);
+  silent.gather_short_said = 0;  // never said
   core::WorldState last_night = HarvestWorld(6);
   last_night.gather_short_said = 6;  // the close of day 5
+  core::WorldState this_evening = HarvestWorld(6);
+  this_evening.gather_short_said = 7;  // the close of day 6 itself
   core::WorldState stale = HarvestWorld(6);
   stale.gather_short_said = 2;
-  failures += Expect(!core::IsDayOffIn(silent, 6) && !core::IsDayOffIn(last_night, 6) &&
-                         !core::IsDayOffIn(stale, 6),
-                     "days off: the count's word has no reader yet — never said, said last "
-                     "night or long ago, the Sunday is worked while the harvest stands");
+  failures +=
+      Expect(core::GatherShortStands(last_night) && !core::IsDayOffIn(last_night, 6) &&
+                 core::GatherShortStands(this_evening) && !core::IsDayOffIn(this_evening, 6),
+             "days off: the count said «not in time» last night, or at today's own "
+             "close — the Sunday is worked while the harvest stands");
+  failures += Expect(!core::GatherShortStands(silent) && core::IsDayOffIn(silent, 6) &&
+                         !core::GatherShortStands(stale) && core::IsDayOffIn(stale, 6),
+                     "days off: the count never spoke, or spoke four days ago — the Sunday is a "
+                     "day off though a ripe field stands and the order is on");
   // The calendar's door does not ask the harvest at all.
   failures +=
       Expect(core::IsCalendarDayOffIn(last_night, 6) && !core::IsCalendarDayOffIn(last_night, 5),
@@ -107,8 +121,11 @@ int TestAHolidayIsNeverWorked() {
     return 1;
   }
   world.calendar.day = holiday;
-  failures += Expect(core::HarvestStands(world) && core::IsDayOffIn(world, holiday),
-                     "days off: a holiday is a day off whatever stands in the field");
+  world.gather_short_said = holiday + 1;
+  failures += Expect(core::HarvestStands(world) && core::GatherShortStands(world) &&
+                         core::IsDayOffIn(world, holiday),
+                     "days off: a holiday is a day off whatever stands in the field and whatever "
+                     "the count said");
   return failures;
 }
 
@@ -164,7 +181,7 @@ int TestTheChairmanSwitchesIt() {
 int CheckHarvestDaysOff() {
   int failures = 0;
   failures += TestTheSundayIsWorkedWhileTheHarvestStands();
-  failures += TestTheCountsWordHasNoReaderYet();
+  failures += TestTheCountsWordIsTheCondition();
   failures += TestWhatIsNotTheHarvest();
   failures += TestAHolidayIsNeverWorked();
   failures += TestADayAheadIsJudgedByToday();
