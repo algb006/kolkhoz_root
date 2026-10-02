@@ -40,6 +40,7 @@
 #include "core_common/event_state.h"
 #include "core_common/family_state.h"
 #include "core_common/geometry.h"
+#include "core_common/haul.h"
 #include "core_common/herd_state.h"
 #include "core_common/home_reach.h"
 #include "core_common/ids.h"
@@ -609,8 +610,17 @@ class LaborSystem final : public ILaborSystem {
     std::vector<AssignmentCandidate> candidates = CollectCandidates(current);
     // Let go: everyone of the list who stands on a windowless job. Before
     // sunrise nobody has worked an hour, so the day he is taken off is whole.
+    //
+    // AND THE CARRIERS ON FOOT OF A CART LOAD WITH THEM (0.37.105): they are
+    // the last of the queue whatever the load's window — hands the morning
+    // found no other work for — so a reaping opened at dawn takes them before
+    // any windowless work. The load they stood on is offered again for
+    // walkers alone (AssignmentJob::on_foot_only): its riders keep their
+    // horses and it takes no second crew of them.
     std::vector<bool> let_go(current.residents.rows.size(), false);
+    std::vector<bool> walkers_left(offered.size(), false);
     bool anybody_let_go = false;
+    const bool carts_haul = WalkerShareToday(current) < 1.0F;
     for (const AssignmentCandidate& candidate : candidates) {
       WorkAssignment& work = current.residents.rows[candidate.resident_row].work;
       if (work.kind == WorkKind::kNone) {
@@ -618,15 +628,30 @@ class LaborSystem final : public ILaborSystem {
       }
       const auto his = std::ranges::find_if(
           offered, [&work, &stands_on](const AssignmentJob& job) { return stands_on(work, job); });
-      if (his != offered.end() && PlacementTier(*his) == kWindowlessTier) {
+      if (his == offered.end()) {
+        continue;
+      }
+      const bool walks_to_a_cart_load =
+          carts_haul && work.kind == WorkKind::kHauling && work.rides_horse == 0;
+      if (PlacementTier(*his) == kWindowlessTier || walks_to_a_cart_load) {
+        walkers_left[static_cast<std::size_t>(his - offered.begin())] = walks_to_a_cart_load;
         work = WorkAssignment{};
         let_go[candidate.resident_row] = true;
         anybody_let_go = true;
       }
     }
     if (anybody_let_go) {
-      jobs = offered;  // the windowless jobs stand uncrewed now, and join the queue
-      std::erase_if(jobs, crewed);
+      // The windowless jobs stand uncrewed now, and join the queue; a load
+      // whose walkers went and whose riders stayed joins it for walkers alone.
+      jobs.clear();
+      for (std::size_t index = 0; index < offered.size(); ++index) {
+        if (!crewed(offered[index])) {
+          jobs.push_back(offered[index]);
+        } else if (walkers_left[index]) {
+          jobs.push_back(offered[index]);
+          jobs.back().on_foot_only = true;
+        }
+      }
     }
     std::erase_if(candidates, [&current](const AssignmentCandidate& candidate) {
       return current.residents.rows[candidate.resident_row].work.kind != WorkKind::kNone;
@@ -1787,7 +1812,23 @@ class LaborSystem final : public ILaborSystem {
     params.standard_day_hours = config_.standard_day_hours;
     params.draught_horses = DraughtHorses(current);
     params.placement_level = config_.placement_level;
+    params.walker_share_of_cart_day = WalkerShareToday(current);
     return params;
+  }
+
+  /// @brief The part of a cart-day a carrier on foot does today: below 1
+  ///        while the settlement has carts — production writes the loads'
+  ///        seams in cart-days then, by the same predicate
+  ///        (work_seam.h, SettlementHasCarts) — and a whole day while it
+  ///        has none (core_common/haul.h, WalkerShareOfCartDay).
+  float WalkerShareToday(const WorldState& current) const {
+    if (!SettlementHasCarts(current, config_.horse_kind)) {
+      return 1.0F;
+    }
+    return WalkerShareOfCartDay(GramsFromKilograms(config_.carry_kg_adult),
+                                GramsFromKilograms(config_.cart_load_kg),
+                                HoursPerKm(config_, WorkKind::kHarvest),
+                                HoursPerKm(config_, WorkKind::kPlowing));
   }
 
   // -- the working hour ----------------------------------------------------
@@ -1797,6 +1838,7 @@ class LaborSystem final : public ILaborSystem {
   /// seam must always drain it in the same order.
   void RunHour(WorldState& current, std::uint32_t hour) const {
     const DayWindow window = SolarWindow(current.weather.daylight_hours);
+    const float walker_share = WalkerShareToday(current);
     for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
       const WorkKind kind = current.residents.rows[row].work.kind;
       if (kind == WorkKind::kNone) {
@@ -1863,11 +1905,27 @@ class LaborSystem final : public ILaborSystem {
       // RestDrain already scales with what was delivered.
       const float boost = RushBoost(config_, current, resident.work);
       float delivered = worked * efficiency / config_.standard_day_hours * (1.0F + boost);
-      delivered = delivered > *seam ? *seam : delivered;
+      // A CARRIER ON FOOT WRITES OFF HIS OWN CARRY (0.37.105; haul.h,
+      // WalkerShareOfCartDay; manual/75-logistics.md §9): the load's seam is
+      // in cart-days while the settlement has carts, and his norm-day is a
+      // ninetieth of one. Until 0.37.105 it drained a whole cart-day — a log
+      // of 200 kg «rode» on a back. He is paid his own norm-days in full: he
+      // carried what a man carries.
+      const bool on_foot_at_a_cart_load =
+          kind == WorkKind::kHauling && resident.work.rides_horse == 0 &&
+          resident.work.stand.value == kInvalidEntityIdValue &&
+          resident.work.limit_delivery.value == kInvalidEntityIdValue;
+      const float seam_share = on_foot_at_a_cart_load ? walker_share : 1.0F;
+      if (delivered * seam_share > *seam) {
+        delivered = *seam / seam_share;
+      }
       if (delivered <= 0.0F) {
         continue;  // the job is done for today; he stands about, unpaid
       }
-      *seam -= delivered;
+      *seam -= delivered * seam_share;
+      if (*seam < 0.0F) {
+        *seam = 0.0F;  // the division above may leave a float's last digit
+      }
       resident.work.worked_norm_days_today += delivered;
       const float drain =
           RestDrain(config_, resident, kind, delivered / (1.0F + boost)) * (1.0F + (2.0F * boost));

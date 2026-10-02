@@ -20,6 +20,7 @@
 #include "core_common/spoilage.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/unit_state.h"
+#include "core_common/work_seam.h"
 #include "seed_room.h"
 #include "stock_ops.h"
 
@@ -37,17 +38,13 @@ namespace {
 /// nothing at all. The sixteenth case of the same class, and the first found
 /// by reading a file the delta mechanism had never once looked at
 /// (2026-09-07).
+///
+/// THE PREDICATE ITSELF LIVES IN core_common SINCE 0.37.105 (work_seam.h,
+/// SettlementHasCarts): labour asks the same question to know whether a
+/// carrier on foot drains a seam written in cart-days, and two copies of one
+/// question would be the seam between two right ladders.
 bool DraughtHorsesFree(const ProductionConfig& config, const WorldState& world) {
-  if (config.horse_kind.value == kInvalidDefIdValue) {
-    return false;
-  }
-  for (const HerdRow& herd : world.herds.rows) {
-    if (herd.kind.value == config.horse_kind.value && herd.household_owned == 0 &&
-        herd.adult_count > 0) {
-      return true;
-    }
-  }
-  return false;
+  return SettlementHasCarts(world, config.horse_kind);
 }
 
 }  // namespace

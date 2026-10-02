@@ -396,13 +396,22 @@ struct LaborConfig {
   /// a plowman rides out with his horse instead of walking (decision 103).
   float harness_speed_kmh = 12.0F;
 
-  // What a carrier carries is NOT here. It was, for a while: cart_load_kg,
-  // carry_kg_adult and a fitness bonus sat in this struct, parsed and never
-  // read, because the price of a trip turned out to belong to ONE owner and
-  // that owner is core_production (core_common/haul.h, manual/75-logistics.md
-  // §3). Configuration nobody reads is worse than none: it reads like a knob
-  // and turns nothing, and the next person spends an afternoon on why moving
-  // it changes no number. Removed by the A4 delivery cycle.
+  // WHAT A CARRIER CARRIES IS HERE AGAIN, WITH A READER (0.37.105). It stood
+  // here once before — cart_load_kg, carry_kg_adult and a fitness bonus,
+  // parsed and never read, because the price of a trip belongs to ONE owner,
+  // core_production (core_common/haul.h, manual/75-logistics.md §3) — and was
+  // removed by the A4 delivery cycle as configuration nobody reads. The price
+  // of a trip is still production's. What labour reads these two for is the
+  // one thing production cannot know: which of the carters draining a seam
+  // written in cart-days sits a cart, and which walks (haul.h,
+  // WalkerShareOfCartDay). The same two cells production parses, by the same
+  // keys and ranges.
+
+  /// A cart's load, kg (transport.csv cart_loaded, load_tonnes).
+  float cart_load_kg = 750.0F;
+
+  /// What a grown carrier takes in a trip, kg (labor.csv carry_kg_adult).
+  float carry_kg_adult = 20.0F;
 
   /// Sleep hours per day, for the family's household_hours arithmetic.
   float sleep_hours = 8.0F;

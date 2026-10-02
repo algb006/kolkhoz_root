@@ -26,6 +26,7 @@
 #include "../../common/fake_tables.h"
 #include "assignment.h"
 #include "brigade_cart_checks.h"
+#include "carter_on_foot_checks.h"
 #include "core_common/alarm_state.h"
 #include "core_common/day_off.h"
 #include "core_common/order_state.h"
@@ -4132,6 +4133,7 @@ int main() {
   failures += CheckHarvestDaysOff();
   failures += CheckBrigadeCart();
   failures += CheckTopUpAgainstWindowlessWork();
+  failures += CheckCarterOnFoot();
   failures += TestPlacementDiagnosis();
   failures += TestRoadLimit();
   failures += TestHorsePoolAndLock();

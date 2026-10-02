@@ -6,6 +6,7 @@
 #include "core_common/work_seam.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <vector>
 
@@ -278,6 +279,16 @@ TravelMode WorkTravelMode(const WorldState& world, const WorkAssignment& work) {
 HarnessCount CountHarness(const WorldState& world) {
   HarnessCount count;
   std::vector<FieldId> meadows_mown;
+
+  // The loads being carted, by their seam: riders and walkers apart, so the
+  // walkers count only as far as the load wanted a cart (work_seam.h).
+  struct Load {
+    const float* seam = nullptr;
+    std::uint32_t riders = 0;
+    std::uint32_t walkers = 0;
+  };
+
+  std::vector<Load> loads;
   for (const ResidentRow& person : world.residents.rows) {
     const WorkAssignment& work = person.work;
     if (IsHorseWork(work.kind)) {
@@ -287,10 +298,20 @@ HarnessCount CountHarness(const WorldState& world) {
       continue;
     }
     if (work.kind == WorkKind::kHauling) {
-      const std::uint32_t on_horse = work.rides_horse != 0 ? 1U : 0U;
-      count.in_traces += on_horse;
-      count.releasable += on_horse;
-      ++count.harnessed;
+      const float* const seam = WorkSeamOf(world, work);
+      auto load = std::ranges::find_if(loads, [seam](const Load& one) { return one.seam == seam; });
+      if (load == loads.end()) {
+        loads.push_back(Load{.seam = seam});
+        load = loads.end() - 1;
+      }
+      if (work.rides_horse != 0) {
+        ++count.in_traces;
+        ++count.releasable;
+        ++count.harnessed;
+        ++load->riders;
+      } else {
+        ++load->walkers;
+      }
       continue;
     }
     if (work.kind != WorkKind::kHarvest && work.kind != WorkKind::kSowing) {
@@ -321,7 +342,27 @@ HarnessCount CountHarness(const WorldState& world) {
       ++count.harnessed;
     }
   }
+  // THE WALKERS, AS FAR AS THE LOAD WANTED A CART (0.37.105): the seam's
+  // norm-days beyond one a rider — a cart-day each while the settlement has
+  // carts, a walker's day each while it has none, and then they all count.
+  for (const Load& load : loads) {
+    std::uint32_t wanted = load.walkers;  // a load with no seam left to read: as before
+    if (load.seam != nullptr) {
+      const float beyond = *load.seam - static_cast<float>(load.riders);
+      wanted = beyond > 0.0F ? static_cast<std::uint32_t>(std::ceil(beyond)) : 0U;
+    }
+    count.harnessed += load.walkers < wanted ? load.walkers : wanted;
+  }
   return count;
+}
+
+bool SettlementHasCarts(const WorldState& world, LivestockKindId horse_kind) {
+  if (horse_kind.value == kInvalidDefIdValue) {
+    return false;
+  }
+  return std::ranges::any_of(world.herds.rows, [horse_kind](const HerdRow& herd) {
+    return herd.kind.value == horse_kind.value && herd.household_owned == 0 && herd.adult_count > 0;
+  });
 }
 
 float* WorkSeamOf(WorldState& world, const WorkAssignment& work) {

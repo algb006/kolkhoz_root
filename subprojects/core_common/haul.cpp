@@ -41,6 +41,21 @@ Grams HaulGrams(float hours, const HaulRate& rate) {
   return GramsFromFloat(static_cast<float>(rate.load) * trips);
 }
 
+float WalkerShareOfCartDay(Grams carry_grams,
+                           Grams cart_grams,
+                           float walk_hours_per_km,
+                           float harness_hours_per_km) {
+  if (carry_grams <= 0 || cart_grams <= 0 || !(walk_hours_per_km > 0.0F) ||
+      !(harness_hours_per_km > 0.0F)) {
+    return 1.0F;
+  }
+  // Loads by trips: a trip's length is its way by the pace, and the way is
+  // one for both (the cart's — haul.h), so the trips go as the paces.
+  const float share = (static_cast<float>(carry_grams) / static_cast<float>(cart_grams)) *
+                      (harness_hours_per_km / walk_hours_per_km);
+  return share < 1.0F ? share : 1.0F;
+}
+
 float HaulDaysFor(Grams waiting, const HaulRate& rate, float standard_day_hours) {
   if (waiting <= 0 || rate.load <= 0 || !(rate.round_trip_hours > 0.0F) ||
       !(standard_day_hours > 0.0F)) {

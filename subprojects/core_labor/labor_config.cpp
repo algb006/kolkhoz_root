@@ -36,10 +36,13 @@ namespace {
 bool ParseScalars(const ITable& table, LaborConfig& config, std::string& error) {
   float placement = config.placement_level;
   auto last_days = static_cast<float>(config.harvest_snow_last_days);
-  const std::array<ScalarKnob, 16> knobs = {{
+  const std::array<ScalarKnob, 17> knobs = {{
       {.key = "standard_day_hours",
        .value = &config.standard_day_hours,
        .range = {.low = 1.0F, .high = 24.0F}},
+      {.key = "carry_kg_adult",
+       .value = &config.carry_kg_adult,
+       .range = {.low = 0.1F, .high = 1000.0F}},
       {.key = "travel_limit_hours",
        .value = &config.travel_limit_hours,
        .range = {.low = 0.0F, .high = 24.0F}},
@@ -276,6 +279,19 @@ bool ParseSpeeds(const ITable& table, LaborConfig& config, std::string& error) {
     PrefixError("transport", "speed_kmh", error);
     return false;
   }
+  // The cart's load, in tonnes in the file (0.37.105): the cell production
+  // prices a trip by, read here for the walker's share of a cart-day alone.
+  float tonnes = config.cart_load_kg / 1000.0F;
+  if (!OptionalCell(table,
+                    table.FindRowByKey("cart_loaded"),
+                    table.FindColumn("load_tonnes"),
+                    Range{.low = 0.01F, .high = 100.0F},
+                    tonnes,
+                    error)) {
+    PrefixError("transport", "load_tonnes", error);
+    return false;
+  }
+  config.cart_load_kg = tonnes * 1000.0F;
   return true;
 }
 

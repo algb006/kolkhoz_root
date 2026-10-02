@@ -132,8 +132,27 @@ constexpr bool IsMeadowCut(const AssignmentJob& job) {
   return job.kind == WorkKind::kHarvest && job.harnessed;
 }
 
-constexpr bool StopsWithoutHorse(const AssignmentJob& job) {
-  return IsHorseWork(job.kind) || job.limit_delivery.value != kInvalidEntityIdValue;
+/// A cart load a back may carry: a field's heap, a pit's dig, a store's
+/// transfer — every carting but a stand's logs and the district's lot.
+constexpr bool IsBackLoad(const AssignmentJob& job) {
+  return job.kind == WorkKind::kHauling && job.stand.value == kInvalidEntityIdValue &&
+         job.limit_delivery.value == kInvalidEntityIdValue;
+}
+
+/// AND, SINCE 0.37.105, EVERY CARTING WHILE THE SETTLEMENT HAS CARTS
+/// (AssignmentParams::walker_share_of_cart_day below 1): a log is never
+/// carried on a back, and a heap or a dig takes horses only in its place in
+/// the queue — the hands left with no work carry it afterwards
+/// (PlanDayAssignments, the last pass). With no cart in the settlement a
+/// heap's carriers go in the queue's own place as before; its logs lie.
+constexpr bool StopsWithoutHorse(const AssignmentJob& job, const AssignmentParams& params) {
+  if (IsHorseWork(job.kind) || job.limit_delivery.value != kInvalidEntityIdValue) {
+    return true;
+  }
+  if (job.kind != WorkKind::kHauling) {
+    return false;
+  }
+  return job.stand.value != kInvalidEntityIdValue || params.walker_share_of_cart_day < 1.0F;
 }
 
 /// How much the skill blend lifts a pick: 0.7 at skill 0, 1.0 at 100.
@@ -521,8 +540,15 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
   // Per job: 1 when its brigade rides a cart today (taken here or out already).
   std::vector<std::uint8_t> cart_today(jobs.size(), 0U);
 
-  for (const std::uint32_t job_index : OrderJobs(jobs, SavedBands(jobs, candidates, params))) {
+  const std::vector<std::uint32_t> order = OrderJobs(jobs, SavedBands(jobs, candidates, params));
+  // Per job: the norm-days its crew is expected to deliver, for the last pass.
+  std::vector<float> covered(jobs.size(), 0.0F);
+
+  for (const std::uint32_t job_index : order) {
     const AssignmentJob& job = jobs[job_index];
+    if (job.on_foot_only) {
+      continue;  // its riders stand on it already; the last pass gives it walkers
+    }
     // A harnessed job takes a horse out of the day's pool exactly as
     // ploughing does — which is what assignment.h has promised since the
     // meadow cut was written, and what this line did not do until task A4
@@ -544,7 +570,7 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
     // carts behind it were not offered at all: on seed 1936 the vegetables
     // lay a day with 45 hands idle, and a December potato load went to the
     // snow. A cart with no horse is a back.
-    if (StopsWithoutHorse(job) && horses_left == 0) {
+    if (StopsWithoutHorse(job, params) && horses_left == 0) {
       if (job.work_days_remaining > 0.0F) {
         shortfall[job_index] = JobShortfall::kNoHorse;
       }
@@ -609,9 +635,12 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
         if (horses_left > 0) {
           --horses_left;
           took_horse = true;
-        } else if (StopsWithoutHorse(job)) {
+        } else if (StopsWithoutHorse(job, params)) {
           stopped = JobShortfall::kNoHorse;
-          break;  // no horse, no plough (nor a lot fetched): not done at all today
+          // No horse, no plough (nor a lot fetched, nor a log carted): not
+          // done at all today. A heap's crew stops here too while the
+          // settlement has carts; the last pass below gives it the idle.
+          break;
         } else {
           // A CARTER WITH NO HORSE IS JUDGED ON FOOT (boss, boss-core-topup-
           // horses seq 2): he was ranked by the ride, and until 0.34.51 he
@@ -648,6 +677,7 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
       expected_output += daily_norm;
       ++placed;
     }
+    covered[job_index] = expected_output;
     if (expected_output < job.work_days_remaining) {
       // THE WAY TURNED EVERYONE AWAY: nobody placed, and every free hand
       // asked was refused by the road rule or, a carter with no horse, by
@@ -662,6 +692,34 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
         shortfall[job_index] = JobShortfall::kRoad;
       } else {
         shortfall[job_index] = JobShortfall::kNoHands;
+      }
+    }
+  }
+
+  // THE LAST PASS: THE HANDS LEFT WITH NO WORK CARRY ON THEIR BACKS
+  // (AssignmentParams::walker_share_of_cart_day; 0.37.105). Only while the
+  // settlement has carts — otherwise the carriers went in the queue's own
+  // place above. In the queue's order, so the load that matters most gets
+  // them first; each is judged by the walk and counted at his share of a
+  // cart's day, which never covers a heap — everyone who can walk there and
+  // has nothing else goes. The shortfall the queue wrote for the load stands:
+  // it is still short of horses.
+  if (params.walker_share_of_cart_day < 1.0F) {
+    for (const std::uint32_t job_index : order) {
+      const AssignmentJob& job = jobs[job_index];
+      if (!IsBackLoad(job) || !(job.work_days_remaining > covered[job_index])) {
+        continue;
+      }
+      AssignmentJob on_foot = job;
+      on_foot.harnessed = false;
+      std::uint32_t road_refused = 0;
+      for (const RankedPick& pick :
+           RankCandidates(on_foot, job_index, candidates, result, params, road_refused)) {
+        if (covered[job_index] >= job.work_days_remaining) {
+          break;
+        }
+        result[pick.candidate_index] = job_index;
+        covered[job_index] += pick.daily_norm * params.walker_share_of_cart_day;
       }
     }
   }
