@@ -202,6 +202,18 @@ float ForecastHerdHeads(const ProductionConfig& config,
                         HerdId herd,
                         std::uint32_t days);
 
+/// @brief WHETHER «HURRY THE CUT» IS A MOVE TODAY (0.37.123; boss, host-boss-
+///        pin-0-37-109-2026-10-02 [19] p. 3): some meadow stands in its cut
+///        with mowing left AND its avral (kDeclareRush on that cut) is below
+///        the last step (kMaxRushStep). The lamp's kCutHay asks this. Until
+///        then it asked the first half alone, and on host's 27 villages the
+///        lamp said «the cut» on 287 days of 762 with every meadow rushed to
+///        the limit — a move the door would not take, and a ladder that never
+///        went on to the lot or the heads.
+/// @note Read-only; a field's rush counts only on the phase it was declared
+///       in (FieldRow::rush_phase).
+bool CutCanBeHurried(const WorldState& world);
+
 /// @brief The hay lamp's advice: the two moves and their numbers
 ///        (alarm_state.h — Alarm::advice, advice_resource, advice_amount,
 ///        advice_more, amount_more).
@@ -218,7 +230,8 @@ struct FodderAdvice {
 ///        «игра не должна сама убивать стадо» — the chairman decides, so the
 ///        game owes him the number). For a forecast that is short, the first
 ///        of these that holds:
-///   1. kCutHay — a meadow stands in its cut with mowing left (0.37.92);
+///   1. kCutHay — a meadow stands in its cut with mowing left (0.37.92) and
+///      its avral below the last step (CutCanBeHurried; 0.37.123);
 ///   2. kBuyFeed — the door would take a feed lot today (MaximalFeedPurchase)
 ///      AND the forecast after that purchase is short of fewer heads:
 ///      `advice_resource`, `advice_amount` the feed and the grams bought;
