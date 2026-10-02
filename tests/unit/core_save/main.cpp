@@ -731,6 +731,9 @@ core::WorldState MakeWorld() {
   world.ledger.closed.samogon_paid = Amounts({3'000, 5'000});
   // What the yards bartered (save 121): two positions, apart from the drink's.
   world.ledger.closed.bartered = Amounts({7'000, 1'250});
+  // What the families gathered in the forest (save 131): two positions,
+  // unlike the barter's, so a codec that read one for the other would be seen.
+  world.ledger.closed.forage = Amounts({27'500, 3'667});
   // The standing crop the snow took (save 61): host's 150 t of potato.
   world.ledger.closed.lost_to_snow = Amounts({0, 150'000'000});
   // What the district seized above the limit (save 62).
@@ -1715,7 +1718,9 @@ constexpr std::array<RecordedSection, 23> kRecordedPayload = {{
     // predicted 2472 -> 2504 before the build, held.
     // Save 130: -16 — the daylight pair left, two floats a book; predicted
     // 2504 -> 2488 before the build, held.
-    {"ledger", 2488, 0xe7f95739aec59aecULL},
+    // Save 131: +20 — what the families gathered in the forest, the closed
+    // book's 2 + 16, the current's 2; predicted 2488 -> 2508 before the build.
+    {"ledger", 2508, 0x4ae64bcecc0f38daULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -2494,6 +2499,9 @@ int main() {
   failures += Expect(AmountAt(loaded.ledger.closed.bartered, 0) == 7'000 &&
                          AmountAt(loaded.ledger.closed.bartered, 1) == 1'250,
                      "what the yards bartered comes back in the closed book (save 121)");
+  failures += Expect(AmountAt(loaded.ledger.closed.forage, 0) == 27'500 &&
+                         AmountAt(loaded.ledger.closed.forage, 1) == 3'667,
+                     "and what the families gathered in the forest (save 131)");
   failures += Expect(!loaded.residents.rows.empty() &&
                          loaded.residents.rows[0].night_trade == core::NightTrade::kHunter &&
                          loaded.residents.rows[0].distiller_supplied_month == 7,

@@ -66,6 +66,7 @@
 ///   herd_produce_<key>_kg, feed_<key>_kg,
 ///   issued_<key>_kg, ration_<key>_kg, nets_<key>_kg, night_catch_<key>_kg, stolen_<key>_kg,
 ///   samogon_paid_<key>_kg, bartered_<key>_kg (between pantries, in no balance),
+///   forage_<key>_kg (the families' gathering in the forest: fresh and dried),
 ///   yard_produce_<key>_kg, plot_harvest_<key>_kg, eaten_<key>_kg,
 ///   store_<key>_kg                    sum of every unit's stock now
 ///   pantry_<key>_kg                   sum of every family's pantry now

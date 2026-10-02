@@ -190,6 +190,15 @@ struct YearLedger {
   /// residents' decisions sub-step. Save 121.
   ResourceAmounts bartered;
 
+  /// What the families gathered in the forest (0.37.151; household design
+  /// §2; the human's word of 3 October 2026): grams by resource — the fresh
+  /// mushrooms and berries that went to the pantries as they were, and the
+  /// dried ones made of the rest the same day. Like `nets`: no store, no
+  /// order, straight into the pantry; its own line so that the gathering can
+  /// be read beside the tables it filled. One writer, the residents'
+  /// decisions sub-step (family_exchange.cpp, RunForage). Save 131.
+  ResourceAmounts forage;
+
   ResourceAmounts yard_produce;  ///< Household herds' milk and eggs.
 
   ResourceAmounts plot_harvest;  ///< The gardens and the yards' own hay.

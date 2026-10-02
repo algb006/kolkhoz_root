@@ -117,9 +117,12 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // Save 130 (0.37.147): the daylight pair of save 64 lost its reader with the
 // count by fields and left — 103 -> 101 fields, 952 -> 944; predicted before
 // the build.
-static_assert(sizeof(YearLedger) == 944 + (35 * kAmountsSize),
+// Save 131 (0.37.151): what the families gathered in the forest, a vector
+// among vectors after `bartered` — 101 -> 102 fields, 944 + 35 A -> 944 +
+// 36 A, no padding moved; predicted before the build.
+static_assert(sizeof(YearLedger) == 944 + (36 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 101,
+static_assert(AggregateArity<YearLedger>() == 102,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 
 void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
@@ -144,6 +147,7 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   sink.WriteAmounts(DefKind::kResource, book.stolen);
   sink.WriteAmounts(DefKind::kResource, book.samogon_paid);  // save 60
   sink.WriteAmounts(DefKind::kResource, book.bartered);      // save 121
+  sink.WriteAmounts(DefKind::kResource, book.forage);        // save 131
   sink.WriteAmounts(DefKind::kResource, book.yard_produce);
   sink.WriteAmounts(DefKind::kResource, book.plot_harvest);
   sink.WriteAmounts(DefKind::kResource, book.eaten);
@@ -285,6 +289,7 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.stolen = source.ReadAmounts(DefKind::kResource);
   book.samogon_paid = source.ReadAmounts(DefKind::kResource);
   book.bartered = source.ReadAmounts(DefKind::kResource);
+  book.forage = source.ReadAmounts(DefKind::kResource);  // save 131
   book.yard_produce = source.ReadAmounts(DefKind::kResource);
   book.plot_harvest = source.ReadAmounts(DefKind::kResource);
   book.eaten = source.ReadAmounts(DefKind::kResource);
