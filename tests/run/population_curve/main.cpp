@@ -92,6 +92,7 @@ struct Trajectory {
   std::uint32_t start_population = 0;
   std::uint32_t start_families = 0;
   std::uint32_t year7 = 0;
+  std::uint32_t year10 = 0;
   std::uint32_t year14 = 0;
   std::uint32_t year33 = 0;
   float male_share = 0.0F;
@@ -596,6 +597,9 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
     if (year == 7) {
       out.year7 = population;
     }
+    if (year == 10) {
+      out.year10 = population;
+    }
     if (year == 14) {
       out.year14 = population;
     }
@@ -905,6 +909,7 @@ int main(int argc, char** argv) {
   }
 
   std::vector<std::uint32_t> year7;
+  std::vector<std::uint32_t> year10;
   std::vector<std::uint32_t> year14;
   std::vector<std::uint32_t> year33;
   std::vector<float> male_shares;
@@ -924,12 +929,14 @@ int main(int argc, char** argv) {
     failures += run::Expect(walk.year33 != walk.start_population,
                             "and the village it drew is not the genesis standing still");
     year7.push_back(walk.year7);
+    year10.push_back(walk.year10);
     year14.push_back(walk.year14);
     year33.push_back(walk.year33);
     male_shares.push_back(walk.male_share);
   }
 
   const std::uint32_t median_year7 = Median(year7);
+  const std::uint32_t median_year10 = Median(year10);
   const std::uint32_t median_year14 = Median(year14);
   const std::uint32_t median_year33 = Median(year33);
   const float median_male_share = Median(male_shares);
@@ -1021,6 +1028,22 @@ int main(int argc, char** argv) {
   // reach: every village opens Epoch II, and opens it in years 12 to 20. THE
   // MEDIANS ARE PRINTED beside a baseline that names its tree, so that a
   // reader sees which way the world moved without a gate deciding it for him.
+  //
+  // THE BAND IS 11 TO 20 SINCE 0.37.135, AND IT IS THE BAND OF A NAMED WORLD
+  // (boss, boss-all-carts-carry-people-go-2026-10-02 [63]; econ [62]): «мир
+  // без дров и без наряда от конного двора, дерево c1d4131» (0.37.133). On
+  // the cart of 1.8 t (0.37.126) with the meadow's hay carted by the
+  // manger's need (0.37.132-133) the village builds and grows faster: the
+  // era opens in years 11 to 14, the median 12, where the baseline of
+  // 0.37.96 had 13 to 18 and 15. The design's «about 14» is NOT rewritten:
+  // econ's prediction is that the firewood and the horse job starting at the
+  // horse yard bring the median back to 13-14, and it is checked on those
+  // deliveries, with the condition of return there (the lever is the
+  // arrivals and a house's price, not the horses and not the cart's load).
+  // ECON'S CONDITION OF ACCEPTANCE stands beside the band as its own three
+  // assertions: the earliest village not before year 11, the median village
+  // not before year 12, and the residents at the end of year 10 at 290 to
+  // 360 by the median.
   std::uint32_t earliest_opened = 0;
   std::uint32_t latest_opened = 0;
   for (const std::uint32_t year : opened_years) {
@@ -1029,17 +1052,27 @@ int main(int argc, char** argv) {
   }
   std::cout << "population_curve: the year Epoch II opens, " << earliest_opened << ".."
             << latest_opened << " over " << opened_years.size() << " villages, median "
-            << median_opened_year << "; residents at year 14, median " << median_year14
-            << " | BASELINE, tree 0.37.96 (3baefce): years 13..18, median 15; residents at year "
-               "14, median 386 (0.37.91: 390; 0.37.93: 415; 0.37.94: 379)\n";
+            << median_opened_year << "; residents at year 10, median " << median_year10
+            << "; at year 14, median " << median_year14
+            << " | BASELINE, tree 0.37.133 (c1d4131), the world with no firewood and no horse job "
+               "from the horse yard: years 11..14, median 12; residents at year 14, median 446 "
+               "| the baseline before the cart of 1.8 t, tree 0.37.96 (3baefce): years 13..18, "
+               "median 15; residents at year 14, median 386\n";
   const std::string all_claim = "and every village opens Epoch II — now " +
                                 std::to_string(opened_years.size()) + " of " +
                                 std::to_string(walks.size());
   failures += run::Expect(opened_years.size() == walks.size(), all_claim.c_str());
-  const std::string year_claim = "and opens it in years 12 to 20 — now " +
+  const std::string year_claim = "and opens it in years 11 to 20 — now " +
                                  std::to_string(earliest_opened) + " to " +
                                  std::to_string(latest_opened) + " (0 = no village opens it)";
-  failures += run::Expect(earliest_opened >= 12 && latest_opened <= 20, year_claim.c_str());
+  failures += run::Expect(earliest_opened >= 11 && latest_opened <= 20, year_claim.c_str());
+  const std::string median_claim = "and the median village opens it not before year 12 — now " +
+                                   std::to_string(median_opened_year);
+  failures += run::Expect(median_opened_year >= 12, median_claim.c_str());
+  const std::string year10_claim =
+      "and the residents at the end of year 10 are 290 to 360 by the median — now " +
+      std::to_string(median_year10);
+  failures += run::Expect(median_year10 >= 290 && median_year10 <= 360, year10_claim.c_str());
   failures += run::Expect(median_year14 <= 800, "and not exploding by year 14");
   failures += run::KnownGap(median_year33 >= 1150,
                             "and lands in the canon's order of magnitude by year 33",
