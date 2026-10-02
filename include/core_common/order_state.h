@@ -200,7 +200,13 @@ enum class OrderKind : std::uint8_t {
   /// by the instant-delivery stub, the rest is lost, as the design says)
   /// and then dismantled with labour (construction design §12). Refused
   /// with kNotEmpty while a household lives or a herd stands there.
-  /// Consumer: core_construction.
+  /// A PARENT COMES DOWN WITH ITS MODULES (0.37.114; boss, 2 October 2026:
+  /// «снос вместе, не отказ»): every module standing on `unit` is taken
+  /// down by the same order — a marked one removed, a built one dismantled
+  /// with its own labour and its stock left on its site — and the order is
+  /// refused WHOLE with kNotEmpty when a module holds a household or a herd.
+  /// How many would go: core_common/module_rules.h, ModulesOf — for the
+  /// order's confirmation. Consumer: core_construction.
   kDemolishUnit,
 
   /// START the works on a marked site (`unit`): construction design §6 —

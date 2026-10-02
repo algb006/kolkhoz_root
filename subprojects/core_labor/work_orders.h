@@ -93,10 +93,18 @@ void ReadWorkOrders(const LaborConfig& config, WorldState& current);
 
 /// @brief Overrides this morning's placement with the standing orders.
 /// @pre Called after the accountant has placed the day, from StartDay.
-/// @note A standing order whose target has no work today leaves its man
-///       IDLE rather than returning him to the pool. That is what "outranks
-///       the morning placement" means, and it is the chairman's to notice —
-///       management by exception cuts both ways.
+/// @note A STANDING ORDER WHOSE TARGET HAS NO WORK TODAY LEAVES ITS MAN TO THE
+///       ACCOUNTANT FOR THE DAY (0.37.114; boss, 2 October 2026, on the human's
+///       rule that nothing may stand for ever — architecture §7ж³): the seam
+///       the order's work drains is asked (work_seam.h, WorkSeamOf), and with
+///       none, or none left, the man keeps the morning's placement; the order
+///       stands and takes him the day the work opens. UNTIL THEN THIS NOTE
+///       SAID THE OPPOSITE, ON PURPOSE — «leaves its man IDLE rather than
+///       returning him to the pool… it is the chairman's to notice» — and a
+///       man ordered to a field stood beside it through every phase that was
+///       not his, for as long as the order stood. The decision is reversed,
+///       not a defect found: nothing told the chairman there was anything to
+///       notice.
 /// @param day_off True on a rest day, when only herd care is worked — the
 ///        same line CollectJobs draws, and drawn here from the same rule
 ///        rather than from an empty job list (task A8 delivery cycle).

@@ -50,6 +50,24 @@ inline bool ModuleParentSound(const WorldState& world, const UnitRow& unit) {
   return row != kNoRow && StandsSoundAsParent(world.units.rows[row]);
 }
 
+/// @brief How many modules stand on `parent` — marked, being built or built —
+///        and would come down with it (0.37.114: kDemolishUnit on a parent
+///        takes its modules; the order's confirmation names this number).
+///        Modules already being taken down are not counted: they are going.
+inline std::uint32_t ModulesOf(const WorldState& world, UnitId parent) {
+  std::uint32_t modules = 0;
+  if (parent.value == kInvalidEntityIdValue) {
+    return modules;
+  }
+  for (const UnitRow& unit : world.units.rows) {
+    modules += unit.parent.value == parent.value &&
+                       unit.construction.phase != ConstructionPhase::kDemolishing
+                   ? 1U
+                   : 0U;
+  }
+  return modules;
+}
+
 }  // namespace core
 
 #endif  // CORE_COMMON_MODULE_RULES_H_

@@ -142,6 +142,11 @@ enum class EventKind : std::uint8_t {
   /// A DISMISSAL does not raise this — it already announces itself with
   /// kDismissed, and the same fact twice is the noise the rule above exists
   /// to avoid. This kind means "it emptied by itself".
+  ///
+  /// AND WHEN THE UNIT IS GONE FROM UNDER ITS HOLDER (0.37.114): the post's
+  /// unit taken down or fallen — the holder lives and is free for the
+  /// accountant again; `unit` is the unit it was at, which may no longer be
+  /// in the world (core_labor posts.h, VacatePostsWithNoUnit).
   kPostVacated,
 
   /// unit — the kolkhoz yard: the groom is in place and the horses came

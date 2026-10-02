@@ -99,6 +99,20 @@ bool DismissalIsInTheBook(const WorldState& world, ResidentId resident);
 /// @pre Called once per tick of the decisions slot, on the sim thread.
 void AnnounceNightShifts(const LaborConfig& config, WorldState& current);
 
+/// @brief Takes off every post whose unit is gone — its row removed (taken
+///        down, fallen) or being taken down (ConstructionPhase::kDemolishing)
+///        — and says each once with EventKind::kPostVacated (resident, the
+///        unit it was at, amount = the ProfessionId value): the post that
+///        emptied by itself. Called at the day's close, after the day's post
+///        orders are applied (0.37.114; architecture §7ж³).
+///
+/// UNTIL THEN ONLY kDismiss CLEARED A POST: the holder of a day post at a
+/// unit taken down stayed out of the accountant's candidates for good
+/// (PostHoldsTheDay), with nothing to tell the chairman a dismissal was owed.
+/// A unit standing dead, paused or under works keeps its posts: those are
+/// states it comes back from.
+void VacatePostsWithNoUnit(WorldState& current);
+
 }  // namespace core
 
 #endif  // CORE_LABOR_POSTS_H_

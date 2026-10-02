@@ -33,7 +33,9 @@ OrderRefusal OrderTradePlan(const ProductionConfig& config,
 /// @brief The trip's hour: the summons' letter at its day's first tick, the
 /// summons' own departure booked on its day, the departure at
 /// `depart_hour` (a blizzard cancels his own trip and moves a summons a day),
-/// the return. Call every tick.
+/// the return — AT OR PAST its hour (0.37.114: a world that finds itself past
+/// the return's tick brings him back that step; on the tick's equality alone
+/// it never did). Call every tick.
 void RunDistrictTrip(const ProductionConfig& config, WorldState& current);
 
 /// @brief Calls him «на ковёр» for `cause`: the letter after
