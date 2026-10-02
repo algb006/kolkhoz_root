@@ -55,6 +55,7 @@
 #include "field_work.h"
 #include "goods_loan.h"
 #include "herd_cold.h"
+#include "herd_forecast.h"
 #include "herd_system.h"
 #include "milk_cart.h"
 #include "night_pasture.h"
@@ -472,10 +473,8 @@ class ProductionSystem final : public IProductionSystem {
     return book;
   }
 
-  // STUB of the contract's commit (0.37.131): never short. The body is
-  // 0.37.132's.
-  bool StoredHayShortWithin(const WorldState& /*world*/, std::uint32_t /*days*/) const override {
-    return false;
+  bool StoredHayShortWithin(const WorldState& world, std::uint32_t days) const override {
+    return core::StoredHayShortWithin(config_, world, days);
   }
 
   Grams StandingCropGrams(const WorldState& /*world*/, const FieldRow& field) const override {

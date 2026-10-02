@@ -257,6 +257,27 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
                                  const WorldState& world,
                                  const HerdFeedForecast& forecast);
 
+/// @brief Whether the hay IN THE STORES is below what the kolkhoz herds will
+///        eat of it in the next `days` days (IProductionSystem::
+///        StoredHayShortWithin; 0.37.132): the herds standing today fed day
+///        by day by the forecast's own drain (DrainFeedDay) off the herd
+///        feeding's allowance of the stores alone — the heaps lying at the
+///        meadows are NOT held here, HerdFeedHeldKg's other half — each day's
+///        need by its month, the team at grass by TeamOutInMonth as in the
+///        forecast. Short on the first day the drain leaves no hay AND a herd
+///        that eats hay is not fed in full: stores holding exactly the days
+///        asked are not short, and a herd underfed with hay in store is
+///        another feed's matter.
+/// @param days The days ahead, today the first; 0 answers false.
+/// @return False with no hay resource, no feed roster, no kolkhoz herd whose
+///         kind has a link to hay, or in days such herds want nothing.
+/// @note No offspring, no cut to come, no cart on the road: the need is the
+///       smaller for it and the answer comes later, the safe side for a
+///       threshold that takes the horses from the plough.
+bool StoredHayShortWithin(const ProductionConfig& config,
+                          const WorldState& world,
+                          std::uint32_t days);
+
 /// @brief kHerdHayShortAhead (alarm_state.h) off ForecastHerdFeed: one alarm
 ///        while the forecast is short. Always `lamp = 0`.
 void CollectHerdForecastAlarms(const ProductionConfig& config,

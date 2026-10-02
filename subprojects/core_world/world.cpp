@@ -823,7 +823,13 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       [estimate](const WorldState& world, const FieldRow& field) -> Grams {
         return estimate == nullptr ? 0 : estimate->StandingCropGrams(world, field);
       },
-      rain_days);
+      rain_days,
+      // And whether the stores hold the hay the herds need ahead (0.37.132):
+      // the herds and the feed table are production's, the hay cart's rank
+      // labor's.
+      [estimate](const WorldState& world, std::uint32_t days) {
+        return estimate != nullptr && estimate->StoredHayShortWithin(world, days);
+      });
   // THE FODDER FUND IS PRODUCTION'S to size, and the people's issue must stay
   // below rung 3 of the ladder, which holds it (core_common/fund_ladder.h;
   // boss seq 14 and 17): residents is handed the one size by the same road

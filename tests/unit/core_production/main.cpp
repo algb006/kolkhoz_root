@@ -303,6 +303,77 @@ int CheckTheForecastOffspring() {
   return failures;
 }
 
+/// THE HAY IN THE STORES AGAINST THE DAYS AHEAD (0.37.132; StoredHayShortWithin
+/// — the hay cart's rank by the manger's need): four cows eating a unit of
+/// hay a day, 4 kg; eight days are 32 kg.
+int CheckTheStoredHayAgainstTheDaysAhead() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.livestock[0].births_per_game_year = 0.0F;
+  config.hay_resource = core::ResourceId{0};
+  const auto short_within = [&config](float hay_kg, std::uint32_t days) {
+    core::WorldState world = MakeHerdWorld(hay_kg);
+    AddHerd(world, 0, 4, 2, true);
+    return core::StoredHayShortWithin(config, world, days);
+  };
+  failures += Expect(!short_within(32.0F, 8),
+                     "stored hay: 32 kg are four heads' eight days exactly - not short within "
+                     "eight");
+  failures += Expect(short_within(31.0F, 8),
+                     "stored hay: 31 kg leave the eighth day a kilogram short - short within "
+                     "eight");
+  failures += Expect(!short_within(31.0F, 7),
+                     "stored hay: and the same 31 kg are not short within seven - the days asked "
+                     "are the threshold");
+  failures += Expect(!short_within(0.0F, 0), "stored hay: no days asked - never short");
+  // THE HAY LYING AT A MEADOW IS NOT IN THE STORES: the forecast holds it
+  // (HerdFeedHeldKg), this question does not - it asks whether to bring it.
+  core::WorldState lying = MakeHerdWorld(31.0F);
+  AddHerd(lying, 0, 4, 2, true);
+  core::FieldRow meadow;
+  meadow.kind = core::LandKind::kMeadow;
+  meadow.reaped_resource = core::ResourceId{0};
+  meadow.reaped_grams = 1000 * core::kGramsPerKilogram;
+  AppendRow(lying.fields, meadow);
+  const float held = core::HerdFeedHeldKg(config, lying)[0];
+  std::cout
+      << "  stored hay: 31 kg in the store and 1000 kg lying at a meadow - the forecast holds "
+      << held << " kg, short within eight days by the stores: "
+      << core::StoredHayShortWithin(config, lying, 8) << '\n';
+  failures += Expect(held > 1000.0F && core::StoredHayShortWithin(config, lying, 8),
+                     "stored hay: a tonne lying at the meadow is the forecast's hay and not the "
+                     "stores' - still short within eight");
+  // A FAMILY'S COW eats from its family's pantry: no kolkhoz herd, never short.
+  core::WorldState private_yard = MakeHerdWorld(0.0F);
+  const core::HerdId own = AddHerd(private_yard, 0, 4, 2, true);
+  private_yard.herds.rows[core::FindRow(private_yard.herds, own)].household_owned = 1;
+  failures += Expect(!core::StoredHayShortWithin(config, private_yard, 8),
+                     "stored hay: an empty store and a family's own herd - not short, the farm "
+                     "feeds no such head");
+  // THE NEED IS EACH DAY'S, BY ITS MONTH (econ, the carts thread [52]: «N
+  // суток считать ВПЕРЁД, с сезоном»): the pasture of months 0-1 covers
+  // three quarters of the cows' need - a kilogram a day for the four, eight
+  // days are 8 kg; 9 kg hold them, where the stall's 32 would be asked by
+  // «today's ration times the days» in a month with no grass.
+  core::ProductionConfig grazing = config;
+  grazing.livestock[0].pasture_coverage_summer = 0.75F;
+  grazing.farming.pasture_from_month = 0;
+  grazing.farming.pasture_to_month = 1;
+  core::WorldState at_grass = MakeHerdWorld(9.0F);
+  AddHerd(at_grass, 0, 4, 2, true);
+  failures += Expect(!core::StoredHayShortWithin(grazing, at_grass, 8) &&
+                         core::StoredHayShortWithin(config, at_grass, 8),
+                     "stored hay: 9 kg hold four heads at grass eight days and do not hold them "
+                     "in the stall - the need is the day's own, by its month");
+  // A KIND THAT EATS NO HAY says nothing of it: the pigs' roster has no link.
+  core::WorldState pigs = MakeHerdWorld(0.0F);
+  AddHerd(pigs, 1, 4, 1, true);
+  failures += Expect(!core::StoredHayShortWithin(config, pigs, 8),
+                     "stored hay: an empty store and a herd of a kind with no link to hay - not "
+                     "short");
+  return failures;
+}
+
 /// THE HERDS' YELLOW STAGE (0.37.57; kHerdHayShortAhead): four cows eating a
 /// unit of hay a day, no calves, the cut in July (days 24-27 of a year).
 int CheckTheHerdHayForecast() {
@@ -14351,6 +14422,7 @@ int main() {
 
   failures += CheckFeeding();
   failures += CheckTheForecastOffspring();
+  failures += CheckTheStoredHayAgainstTheDaysAhead();
   failures += CheckTheHerdHayForecast();
   failures += CheckTheForecastAdvice();
   failures += CheckTheShippedFeedingOrder();

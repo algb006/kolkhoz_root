@@ -37,7 +37,11 @@ namespace {
 bool ParseScalars(const ITable& table, LaborConfig& config, std::string& error) {
   float placement = config.placement_level;
   auto last_days = static_cast<float>(config.harvest_snow_last_days);
-  const std::array<ScalarKnob, 19> knobs = {{
+  auto hay_need_days = static_cast<float>(config.hay_cart_need_days);
+  const std::array<ScalarKnob, 20> knobs = {{
+      {.key = "hay_cart_need_days",
+       .value = &hay_need_days,
+       .range = {.low = 0.0F, .high = static_cast<float>(kDaysPerYear)}},
       {.key = "standard_day_hours",
        .value = &config.standard_day_hours,
        .range = {.low = 1.0F, .high = 24.0F}},
@@ -97,6 +101,7 @@ bool ParseScalars(const ITable& table, LaborConfig& config, std::string& error) 
   }
   config.placement_level = static_cast<std::uint8_t>(placement);
   config.harvest_snow_last_days = static_cast<std::uint32_t>(last_days);
+  config.hay_cart_need_days = static_cast<std::uint32_t>(hay_need_days);
   return true;
 }
 

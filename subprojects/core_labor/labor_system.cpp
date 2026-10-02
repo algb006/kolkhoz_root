@@ -1169,6 +1169,9 @@ class LaborSystem final : public ILaborSystem {
     // people, and production converts what was drained back into grain. One
     // owner for the price of a trip, and it is not this module.
     if (!day_off) {
+      // Asked of production once a collection, and only with a meadow's heap
+      // lying (StoredHayShortWithin walks the herds for each day ahead).
+      std::optional<bool> hay_short;
       for (std::uint32_t row = 0; row < current.fields.rows.size(); ++row) {
         const FieldRow& field = current.fields.rows[row];
         // Carrying has a seam of its own (land_state.h), so a field may be
@@ -1197,8 +1200,23 @@ class LaborSystem final : public ILaborSystem {
         // stand's logs had (0.36.19). On 0.37.127 the ploughing moved from
         // August-September to October-November and the rye's plan rows failed
         // 71 times in twenty years on nine villages (6 before).
-        job.window =
-            field.kind == LandKind::kArable ? HaulWindow(current) : DeadlineNotApplicable();
+        //
+        // AND BY THE MANGER'S NEED, since 0.37.132 (LaborConfig::
+        // hay_cart_need_days; boss, boss-all-carts-carry-people-go-2026-10-02
+        // [51]): with the stores short of the days of hay ahead the meadow's
+        // heap has the field load's window after all; with the days in store
+        // it has none and is the last of the carts with none (stacked_hay).
+        // Neither calendar rank held: before the logs the building fell by a
+        // quarter (0.37.128), after them the stores stood empty in the spring
+        // and the horses fell from 40 to 24 (0.37.129).
+        const bool meadow_heap = field.kind != LandKind::kArable;
+        if (meadow_heap && !hay_short.has_value()) {
+          hay_short = config_.hay_cart_need_days > 0 && config_.stored_hay_short &&
+                      config_.stored_hay_short(current, config_.hay_cart_need_days);
+        }
+        const bool waits = meadow_heap && !hay_short.value_or(false);
+        job.window = waits ? DeadlineNotApplicable() : HaulWindow(current);
+        job.stacked_hay = waits;
         jobs.push_back(job);
       }
     }

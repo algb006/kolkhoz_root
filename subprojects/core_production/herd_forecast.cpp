@@ -227,6 +227,69 @@ std::vector<float> HerdFeedHeldKg(const ProductionConfig& config, const WorldSta
   return held_kg;
 }
 
+bool StoredHayShortWithin(const ProductionConfig& config,
+                          const WorldState& world,
+                          std::uint32_t days) {
+  const std::size_t hay = config.hay_resource.value;
+  if (days == 0 || config.livestock.empty() || hay >= config.feed_values.size()) {
+    return false;
+  }
+  // The kinds that eat hay at all: a herd of any other kind wanting feed
+  // says nothing of the hay.
+  std::vector<std::uint8_t> eats_hay(config.livestock.size(), 0);
+  for (const FeedLinkDef& link : config.feed_links) {
+    if (link.resource.value == hay && link.work_only == 0 && link.kind.value < eats_hay.size()) {
+      eats_hay[link.kind.value] = 1;
+    }
+  }
+  // THE STORES ALONE: the allowance the herd feeding draws on, without the
+  // heaps HerdFeedHeldKg adds — the question is whether they must come in.
+  const ResourceAmounts allowance = HerdFeedAllowance(config, world);
+  std::vector<float> held_kg(config.feed_values.size(), 0.0F);
+  for (std::size_t resource = 0; resource < held_kg.size() && resource < allowance.size();
+       ++resource) {
+    if (config.feed_values[resource] > 0.0F) {
+      held_kg[resource] =
+          static_cast<float>(allowance[resource]) / static_cast<float>(kGramsPerKilogram);
+    }
+  }
+  const std::vector<std::uint8_t> peoples_foods = PeoplesFoods(config, world);
+  std::vector<FeedDayNeed> needs;
+  std::vector<float> covered;
+  for (std::uint32_t day = 0; day < days; ++day) {
+    const auto month = static_cast<std::uint8_t>(DateFromDay(world.calendar.day + day).month);
+    const bool team_out = TeamOutInMonth(config, world, month);
+    needs.clear();
+    for (const HerdRow& herd : world.herds.rows) {
+      if (herd.household_owned != 0 || herd.kind.value >= config.livestock.size()) {
+        continue;  // a family herd eats from its family's pantry, as in the forecast
+      }
+      const bool grazing = herd.kind.value != config.horse_kind.value || team_out;
+      const float units =
+          FeedNeedUnits(config, config.livestock[herd.kind.value], herd, month, grazing);
+      if (units > 0.0F) {
+        needs.push_back(FeedDayNeed{.kind = herd.kind, .units = units});
+      }
+    }
+    DrainFeedDay(config, peoples_foods, needs, held_kg, covered);
+    // SHORT: the hay is out AND a herd that eats it is not fed in full. The
+    // hay out alone is not it — the stores holding exactly the days asked
+    // feed the last day whole — and a herd underfed with hay still in store
+    // waits on another feed or on a link's ceiling, which no cart of hay
+    // mends.
+    if (held_kg[hay] >= kOutKg) {
+      continue;
+    }
+    for (std::size_t index = 0; index < needs.size(); ++index) {
+      if (eats_hay[needs[index].kind.value] != 0 &&
+          covered[index] + kFedSlackUnits < needs[index].units) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 void DrainFeedDay(const ProductionConfig& config,
                   const std::vector<std::uint8_t>& peoples_foods,
                   std::span<const FeedDayNeed> needs,
