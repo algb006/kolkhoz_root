@@ -185,13 +185,12 @@ static_assert(AggregateArity<SportMonth>() == 2,
 // road_works; 7e).
 // 2026-09-28, save 109: the team's two alarms' memory, 39 — written in the
 // world block beside the traction ration.
-// Save 127 (0.37.140): the harness peak of the year running and of the year
-// gone, two u16 after the week's arrays — predicted 76 and MISSED by the
-// padding: the i64 of the work grain rounds the struct to its eight, 80; six
-// fields.
-static_assert(sizeof(TractionWatch) == 80,
+// Save 127 (0.37.140) put the harness peak here, two u16 — 80 and six
+// fields; save 128 (0.37.141) took it out unwritten — 72 and four again,
+// predicted before the build.
+static_assert(sizeof(TractionWatch) == 72,
               "TractionWatch changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<TractionWatch>() == 6,
+static_assert(AggregateArity<TractionWatch>() == 4,
               "TractionWatch gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(kHarnessWeekDays == 7, "the harness week's length is written — VERSION_SAVE");
 // 2026-09-30, save 118: the named characters (the former elder), 40 —
@@ -445,9 +444,6 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   for (const float days : world.traction_watch.week_horse_backed) {
     out.WriteFloat(days);
   }
-  // The harness peak of the year running and of the year gone (save 127).
-  out.WriteU16(world.traction_watch.urgent_peak);
-  out.WriteU16(world.traction_watch.urgent_peak_last_year);
   // The chairman's issue norms (save 57, kSetIssueNorm), through the
   // resource dictionary like every amounts vector; empty until his first
   // order, and empty round-trips as empty.
@@ -640,12 +636,10 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
           "the harness's week holds a day that is negative or backs more than it harnessed");
     }
   }
-  world->traction_watch.urgent_peak = in.ReadU16();  // save 127
-  world->traction_watch.urgent_peak_last_year = in.ReadU16();
   world->issue_norms = source.ReadAmounts(DefKind::kResource);
   world->plan.due = source.ReadAmounts(DefKind::kResource);
   world->plan.delivered = source.ReadAmounts(DefKind::kResource);
-  world->plan.highest_due = source.ReadAmounts(DefKind::kResource);
+  world->plan.highest_due = source.ReadAmounts(DefKind::kResource);  // save 127
   world->plan.accumulation_limit = source.ReadAmounts(DefKind::kResource);
   world->plan.milk_daily_share = in.ReadI64();
   world->plan.milk_debt = in.ReadI64();

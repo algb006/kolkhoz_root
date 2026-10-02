@@ -884,16 +884,20 @@ struct Alarm {
   /// the plan failed in twenty villages — a chairman who read the lamp ended
   /// worse than one who did not. The heads are named in this order, each
   /// step only as far as the shortage asks:
-  ///  1. the adult horses above the harness peak of the year gone times
-  ///     farming.csv `harness_peak_margin` (TractionWatch::
-  ///     urgent_peak_last_year) — in `hand_over_horses`; none in year 1;
+  ///  1. the adult horses above the ploughing's floor — the teams that
+  ///     plough the plan's base of worked hectares (PlanState::
+  ///     worked_ha_last_year) in farming.csv `plough_window_days`, times
+  ///     farming.csv `plough_floor_margin` — in `hand_over_horses`;
   ///  2. the adult cows above the milk plan's floor — the highest milk
   ///     position ever named (PlanState::highest_due) over a cow's yield of
   ///     the closed year, times farming.csv `milk_floor_margin` — and every
-  ///     head of the other productive kinds — in `hand_over_stock`;
-  ///  3. the adult horses above the ploughing's floor — the teams that
-  ///     plough the plan's base of worked hectares in farming.csv
-  ///     `plough_window_days` — in `hand_over_horses`, added to step 1's.
+  ///     head of the other productive kinds — in `hand_over_stock`.
+  /// TWO STEPS SINCE 0.37.141, three in 0.37.140's contract: its first, «the
+  /// horses above the harness peak of the year gone», was withdrawn before
+  /// its body — every measure of the horses' occupancy followed the herd up
+  /// (boss [128], [131]; herd_state.h, TractionWatch). The ploughing's floor
+  /// does not: 13 teams, 18 kept, on the plan's 70 ha in every year of nine
+  /// villages — none named of year 1's sixteen, six of year 3's twenty-four.
   /// THE FLOORS EXHAUSTED AND THE FODDER STILL SHORT: what is still to go is
   /// named APART, in `below_floor_stock` and `below_floor_horses` — the
   /// least heads below the floors, cows first — and is NOT in the two

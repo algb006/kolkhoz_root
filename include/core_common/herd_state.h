@@ -260,20 +260,14 @@ struct TractionWatch {
   /// Of them, the horse-backed ones (its numerator).
   std::array<float, kHarnessWeekDays> week_horse_backed = {};
 
-  /// THE HARNESS PEAK (0.37.140; boss, boss-all-carts-carry-people-go-2026-
-  /// 10-02 [121]; econ [120]): the most horses one day held under work that
-  /// cannot wait (WorkAssignment::cannot_wait with a horse under the man) —
-  /// in the year running, and in the year gone. ONE NUMBER A YEAR, taken at
-  /// the day's close and turned with the year. The hay lamp's first floor
-  /// reads the year gone: the adult horses above that peak times
-  /// farming.csv `harness_peak_margin` are the ones the fodder may ask for.
-  /// The windowless carting is NOT in it by design: it takes any horse that
-  /// stands, and a peak with it follows the herd up — the canon's chairman
-  /// read his need off the peak of ALL the harnessed days and handed no
-  /// horse in thirty years while the team bred 16 -> 95 (hay_answer.h).
-  /// 0 in year 1's «year gone»: there is none, and no horse is named.
-  std::uint16_t urgent_peak = 0;
-  std::uint16_t urgent_peak_last_year = 0;
+  // NO HARNESS PEAK HERE (0.37.141). 0.37.140's contract carried one — the
+  // most horses a day held under work that cannot wait, this year's and the
+  // year gone's — for the hay lamp's first floor, and it was withdrawn before
+  // anything wrote it: measured on nine villages, the peak WAS the herd
+  // (16, 18, 24, 28 against 16, 19, 25, 28 adults), and the month's need
+  // followed it a year later. A measure of how busy the horses are says how
+  // many there ARE, not how many are needed (boss-all-carts-carry-people-go-
+  // 2026-10-02 [127], [128]). The horses' floor is the ploughing's.
 };
 
 }  // namespace core

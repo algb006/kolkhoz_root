@@ -262,9 +262,9 @@ static_assert(sizeof(WorkAssignment) == 44,
               "WorkAssignment changed — update the codec and VERSION_SAVE");
 // Save 88: rides_horse, a byte into the padding after `kind` — 32 still, 9
 // fields; predicted before the build.
-// Save 127 (0.37.140): cannot_wait, a second byte into the padding after
-// `kind` — 44 still, thirteen fields; predicted before the build.
-static_assert(AggregateArity<WorkAssignment>() == 13,
+// Save 127 (0.37.140) put a second byte there, cannot_wait — thirteen
+// fields; save 128 (0.37.141) took it out unwritten — 44 still, twelve again.
+static_assert(AggregateArity<WorkAssignment>() == 12,
               "WorkAssignment gained or lost a field — update the codec and VERSION_SAVE");
 // Save 98: own_carts (a byte into the padding after the lot) and the two
 // floats of the carting seam — 8 -> 16 + A and 3 -> 6 fields, predicted before
@@ -528,7 +528,6 @@ void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
 
   out.WriteU8(static_cast<std::uint8_t>(row.work.kind));
   out.WriteU8(row.work.rides_horse);  // save 88: the carter's horse (labor_state.h)
-  out.WriteU8(row.work.cannot_wait);  // save 127: the job has a window (labor_state.h)
   WriteEntityId(out, row.work.field);
   WriteEntityId(out, row.work.herd);
   WriteEntityId(out, row.work.unit);
@@ -615,7 +614,6 @@ ResidentRow ReadResidentRow(LoadSource& source) {
 
   row.work.kind = static_cast<WorkKind>(source.ReadEnumValue(0, kMaxWorkKind, "work kind"));
   row.work.rides_horse = source.ReadEnumValue(0, 1, "the carter's horse mark");
-  row.work.cannot_wait = source.ReadEnumValue(0, 1, "the mark of work that cannot wait");
   row.work.field = ReadEntityId<FieldId>(in);
   row.work.herd = ReadEntityId<HerdId>(in);
   row.work.unit = ReadEntityId<UnitId>(in);

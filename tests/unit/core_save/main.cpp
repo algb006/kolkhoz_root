@@ -243,9 +243,6 @@ core::WorldState MakeWorld() {
   // it means nothing to the world (WorkRidesOut reads it for a carter only);
   // here it is the byte the codec must carry.
   second.work.rides_horse = 1;
-  // And the mark of work that cannot wait (save 127): the placement's own
-  // reading of the morning, a byte the codec must carry beside the horse's.
-  second.work.cannot_wait = 1;
   core::AppendRow(world.residents, second);
   core::ResidentRow third;
   const core::ResidentId third_id = core::AppendRow(world.residents, third);
@@ -783,9 +780,6 @@ core::WorldState MakeWorld() {
   world.traction_watch.work_grain_short = 700;
   world.traction_watch.week_harnessed[2] = 5.0F;
   world.traction_watch.week_horse_backed[2] = 4.0F;
-  // The harness peak of the year running and of the year gone (save 127).
-  world.traction_watch.urgent_peak = 7;
-  world.traction_watch.urgent_peak_last_year = 13;
   // The closed year's adult head-days by livestock kind (save 127): NOT
   // empty, since empty is what a codec that forgot them would read back.
   world.ledger.closed.adult_head_days = Amounts({0, 1'880});
@@ -1045,8 +1039,6 @@ core::WorldState MakeWitnessWorld() {
     witness.traction_watch.week_harnessed[day] = 10.0F + static_cast<float>(day);
     witness.traction_watch.week_horse_backed[day] = 0.5F * static_cast<float>(day);
   }
-  witness.traction_watch.urgent_peak = 0x0102;            // save 127
-  witness.traction_watch.urgent_peak_last_year = 0x0304;  // both bytes of each tell
   // The chairman's issue norms (save 57): NOT empty, since empty is what a
   // codec that forgot them would read back.
   witness.issue_norms = {500, 0, 1'500};
@@ -1187,10 +1179,6 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   for (const float days : world.traction_watch.week_horse_backed) {
     chunks.push_back({"traction_watch.week_horse_backed", F32(days)});
   }
-  // The harness peak of the year running and of the year gone (save 127).
-  chunks.push_back({"traction_watch.urgent_peak", U16(world.traction_watch.urgent_peak)});
-  chunks.push_back(
-      {"traction_watch.urgent_peak_last_year", U16(world.traction_watch.urgent_peak_last_year)});
   AppendAmounts(chunks, "issue_norms", world.issue_norms);
   AppendAmounts(chunks, "plan.due", world.plan.due);
   AppendAmounts(chunks, "plan.delivered", world.plan.delivered);
@@ -1466,7 +1454,9 @@ constexpr std::array<RecordedSection, 23> kRecordedPayload = {{
     // Save 127: +6 — the harness peak of the year running and of the year
     // gone, two u16, and the plan's highest positions, an empty amounts
     // vector (2); predicted 651 -> 657 before the build, held.
-    {"world", 657, 0x64b782fd864a7f6aULL},
+    // Save 128: -4 — the harness peak taken out unwritten; predicted
+    // 657 -> 653 before the build, held.
+    {"world", 653, 0xeacaf3af189dcfecULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -1491,7 +1481,10 @@ constexpr std::array<RecordedSection, 23> kRecordedPayload = {{
     // predicted «the size holds, the hash moves» before the build, held.
     // Save 127: +2 — the mark of work that cannot wait, a byte a resident,
     // two saved; predicted 454 -> 456 before the build, held.
-    {"residents", 456, 0x03b0c4a11e026911ULL},
+    // Save 128: -2 — the mark taken out unwritten; predicted before the
+    // build: 454 again AND save 126's own hash, the bytes being its bytes;
+    // both held.
+    {"residents", 454, 0x64ac4b23b3098834ULL},
     // 2026-09-18, save 57: +2 — ration_granted, one byte per family of two.
     // Save 60: +2 — a yard's dry months, one byte per family of two.
     // Save 65: families +8 (overwork_penalty, two yards), fields +6 (the avral's
@@ -2136,12 +2129,8 @@ int main() {
                      "a birch planting comes back birch, its hectares and both its days");
   failures += Expect(loaded.residents.rows[1].work.kind == core::WorkKind::kExtraction &&
                          loaded.residents.rows[1].work.extraction_site.value == 4 &&
-                         loaded.residents.rows[1].work.rides_horse == 1 &&
-                         loaded.residents.rows[1].work.cannot_wait == 1 &&
-                         loaded.residents.rows[0].work.cannot_wait == 0,
-                     "a digger comes back at her pit, with the placement's horse mark and its "
-                     "mark of work that cannot wait (save 127) — and the other resident with "
-                     "neither");
+                         loaded.residents.rows[1].work.rides_horse == 1,
+                     "a digger comes back at her pit, with the placement's horse mark");
   failures +=
       Expect(loaded.plan.delivered.size() == 3, "a short dense vector was not silently padded");
   failures += Expect(
@@ -2277,10 +2266,6 @@ int main() {
                          loaded.ledger.current.adult_head_days.empty(),
                      "the closed year's adult head-days come back by kind, the open year's "
                      "empty (save 127)");
-  failures += Expect(
-      loaded.traction_watch.urgent_peak == 7 && loaded.traction_watch.urgent_peak_last_year == 13,
-      "the harness peak comes back, the year running and the year gone apart "
-      "(save 127)");
   failures += Expect(
       loaded.ledger.closed.reaping_today == 3.25F && loaded.ledger.closed.reaping_last_day == 22.5F,
       "the season's reaping pace comes back (save 63)");
