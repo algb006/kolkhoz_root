@@ -1190,7 +1190,15 @@ class LaborSystem final : public ILaborSystem {
         // Urgency is the load's own: before the snow it is the most urgent
         // thing in the village, in June it can wait. The window of the crop
         // that is lying there says which.
-        job.window = HaulWindow(current);
+        //
+        // ARABLE LAND ONLY, since 0.37.128: the hay mown at a meadow lies in
+        // its stacks and the snow does not take it; with the year's-end
+        // window its carts outranked the fallow for this autumn's rye, as the
+        // stand's logs had (0.36.19). On 0.37.127 the ploughing moved from
+        // August-September to October-November and the rye's plan rows failed
+        // 71 times in twenty years on nine villages (6 before).
+        job.window =
+            field.kind == LandKind::kArable ? HaulWindow(current) : DeadlineNotApplicable();
         jobs.push_back(job);
       }
     }
@@ -1510,6 +1518,10 @@ class LaborSystem final : public ILaborSystem {
   /// The field's load still does, and knowingly: on seed 1934, year 5, its
   /// carts held 22 and 30 horses on two days of the rye's harrowing — boss
   /// kept it with a window ([40]: «зерно на поле мокнет»).
+  ///
+  /// AN ARABLE FIELD'S LOAD ONLY, since 0.37.128: the hay lying mown at a
+  /// meadow was a field's load too (0.37.127) and took the horses of the
+  /// rye's fallow in August and September; it is windowless, as the logs.
   static Deadline HaulWindow(const WorldState& current) {
     const std::uint32_t day_of_year = current.calendar.day % kDaysPerYear;
     return DeadlineInDays(static_cast<std::int32_t>(kDaysPerYear - day_of_year - 1U));

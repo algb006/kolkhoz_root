@@ -37,6 +37,7 @@
 #include "core_tables/tables.h"
 #include "harvest_days_off_checks.h"
 #include "harvest_order_checks.h"
+#include "hay_cart_rank_checks.h"
 #include "labor_config.h"
 #include "labor_day.h"
 #include "posts.h"
@@ -4165,6 +4166,7 @@ int main() {
   failures += CheckCarterOnFoot();
   failures += CheckStuckStates();
   failures += CheckTheCartOfTheCompressedYear();
+  failures += CheckTheHayCartsRank();
   failures += TestPlacementDiagnosis();
   failures += TestRoadLimit();
   failures += TestHorsePoolAndLock();
