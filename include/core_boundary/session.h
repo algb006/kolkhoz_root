@@ -36,9 +36,10 @@
 ///     roads     PreviewRoad, SelectRoadPieces, RoadKindsAvailable, Roads,
 ///               Junctions
 ///     orders    IssueOrder, CancelOrder
-///     events    Events, AcknowledgeEvents — the default reader;
+///     events    Events, AcknowledgeEvents, EventsLost — the default reader;
 ///               OpenEventReader, Events(reader), AcknowledgeEvents(reader,
-///               count), CloseEventReader — any further reader
+///               count), EventsLost(reader), CloseEventReader — any further
+///               reader
 ///     record    TakeJournal, ReplaceWorld (two forms), StagedBatch
 ///
 /// (Fourteen at first; seventeen after task A2 added the second
@@ -446,6 +447,12 @@ struct EventReaderId {
 // The session
 // ---------------------------------------------------------------------------
 
+/// SessionConfig::unbudgeted_step_limit's default: 366 game days of steps.
+inline constexpr std::uint32_t kUnbudgetedStepLimit = 8'784;
+
+/// SessionConfig::event_log_held_limit's default.
+inline constexpr std::size_t kEventLogHeldLimit = 65'536;
+
 /// @brief Everything CreateSession needs.
 struct SessionConfig {
   /// Balance tables; non-owning — the caller keeps them alive for the
@@ -468,6 +475,25 @@ struct SessionConfig {
   /// silence, which is the same silence that cost a day of measurements on
   /// the weather.
   StubTables stub_tables = StubTables::kRefused;
+
+  /// THE MOST STEPS ONE UNBUDGETED AdvanceUntil RUNS (0.37.116; architecture
+  /// §7ж³): a call with `step_budget` 0 stops here and answers kBudgetSpent,
+  /// as a budgeted one does at its budget. Until then «0 = no budget» was
+  /// `while (true)`: a target that never comes — an event kind nothing emits
+  /// — hung the process. STUB: a game year and a day of steps; a headless
+  /// tool that wants longer calls again, as the game does every frame.
+  /// 0 is refused by CreateSession: a limit that can be switched off is the
+  /// loop again.
+  std::uint32_t unbudgeted_step_limit = kUnbudgetedStepLimit;
+
+  /// THE MOST EVENTS ONE READER'S WINDOW HOLDS (0.37.116; architecture
+  /// §7ж³): after a step, a reader — the default one too — whose window is
+  /// longer is carried forward to this many of the NEWEST events, and the
+  /// count it was carried past is added to its EventsLost. Until then «a
+  /// reader that stops acknowledging holds the whole log» was stated and not
+  /// enforced, and one silent reader held a campaign's events for every
+  /// other. STUB: a year of steps emits a few thousand. 0 is refused.
+  std::size_t event_log_held_limit = kEventLogHeldLimit;
 
   /// The assembled simulation, usually CreateStandardSimulation's; owned by
   /// the session from here on. The session drives it and nothing else
@@ -498,11 +524,12 @@ class ISession {
   /// per step: events accumulate in the log, the state is refreshed once
   /// at return, and the per-step cost is the simulation's alone, which is
   /// how the ≤2 s-per-day norm is kept.
-  /// @param step_budget Maximum steps this call; 0 = no budget (the
-  ///        headless tool). The game passes a per-frame budget and calls
-  ///        again on kBudgetSpent. With no budget a kFirstEventOf target
-  ///        runs until that event comes — which is what the caller asked
-  ///        for, and why the game passes a budget.
+  /// @param step_budget Maximum steps this call; 0 = the session's own limit
+  ///        (SessionConfig::unbudgeted_step_limit — the headless tool). The
+  ///        game passes a per-frame budget and calls again on kBudgetSpent;
+  ///        so does the tool, at the session's limit. Until 0.37.116 «0» was
+  ///        no limit at all, and a kFirstEventOf target for an event nothing
+  ///        emits ran for ever.
   /// @return What stopped it and how many steps ran. steps_run may be 0
   ///         when the target is already met, which only a kTick target in
   ///         the past can be: the other three are all "the next one" and
@@ -890,10 +917,14 @@ class ISession {
   // event that at least one open reader has not yet acknowledged — its
   // front is trimmed to the slowest cursor, and never further. So no reader
   // can lose an event to another reader, and the number of events HELD is
-  // bounded by the slowest reader alone: a reader that stops acknowledging
-  // holds the whole log from that point on. That is the one cost of the
-  // design, stated and not enforced — close a reader that is done, and
-  // drain the default reader if nothing else does (see OpenEventReader).
+  // bounded by the slowest reader — AND BY THE SESSION'S LIMIT since
+  // 0.37.116 (SessionConfig::event_log_held_limit): a reader that stops
+  // acknowledging is carried forward to the newest of the stream, told how
+  // many it lost (EventsLost), and holds nobody else's memory. Until then
+  // the cost was «stated and not enforced». Still: close a reader that is
+  // done, and drain the default reader if nothing else does (see
+  // OpenEventReader) — a reader that loses events has to rebuild what it
+  // knew from the state.
   // The MEMORY the log occupies is bounded more loosely, by the high-water
   // mark of the session: trimming erases from the front and the vector
   // keeps its capacity, which is the right trade for a container refilled
@@ -914,6 +945,15 @@ class ISession {
   /// window. Whether the acknowledged events are freed depends on the
   /// other readers; whether they are gone from THIS window does not.
   virtual void AcknowledgeEvents(std::size_t count) = 0;
+
+  /// @brief How many events of the stream the default reader was carried
+  /// past without having acknowledged them (SessionConfig::
+  /// event_log_held_limit) — the seam's word `events_lost`. Cumulative since
+  /// the session was created or the last ReplaceWorld; a reader that sees
+  /// the number grow has missed that many facts and rebuilds from State().
+  /// 0 for a reader that keeps inside the limit, which is every reader that
+  /// acknowledges.
+  virtual std::uint64_t EventsLost() const = 0;
 
   /// @brief Opens a further reader of the log, with its cursor at the
   /// CURRENT END: it will see what is emitted from now on, and nothing
@@ -947,6 +987,11 @@ class ISession {
   /// @note An id that is not open is a caller error: asserted in Debug,
   ///       ignored otherwise. Nothing is acknowledged on anyone's behalf.
   virtual void AcknowledgeEvents(EventReaderId reader, std::size_t count) = 0;
+
+  /// @brief That reader's EventsLost: the events it was carried past.
+  /// @return 0 for an id that is not open; asserted in Debug as a caller
+  ///         error.
+  virtual std::uint64_t EventsLost(EventReaderId reader) const = 0;
 
   /// @brief Closes a reader: its window is gone, the events only it was
   /// holding may be freed, and its id names nothing from now on — it is
