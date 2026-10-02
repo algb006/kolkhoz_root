@@ -35,6 +35,29 @@ namespace core {
 ///         already holds this resource stands built.
 Grams ReceivableRoom(const ProductionConfig& config, const WorldState& world, ResourceId resource);
 
+/// @brief THE MANGER A MEADOW'S HAY IS CARTED TO (0.37.118): the
+///        settlement's stock yard (stock_ops.h, FindStockYardRow), where the
+///        herd eats and where the mown hay went in the hour it was cut until
+///        0.37.119. It is not a numbered store — its table capacity is in
+///        heads — so the store door does not find it and it has no tonnage to
+///        be full against.
+///
+/// A MEADOW'S HEAP ONLY — any land that is not arable. The hay of sown grass
+/// off an arable field went through the store door before this and goes
+/// through it still: one change a delivery, and where that hay should lie is
+/// not this one's question.
+/// @return The unit's row; kNoRow for an arable field, for a heap that is not
+///         hay, for an unnamed hay resource, and where no stock yard stands —
+///         the heap then goes through the store door like every other.
+std::uint32_t HeapMangerRow(const ProductionConfig& config,
+                            const WorldState& world,
+                            const FieldRow& field);
+
+/// @brief The room a land's heap is priced and carted against: Grams max
+///        where it has a manger (HeapMangerRow), else ReceivableRoom of what
+///        lies on it.
+Grams HeapDoorRoom(const ProductionConfig& config, const WorldState& world, const FieldRow& field);
+
 /// @brief The terms of carting an own-carts limit lot (decision 279,
 ///        0.36.17): a harnessed cart's load, from the district centre —
 ///        `district_center_km` beyond the border — and by the network to the
