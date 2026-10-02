@@ -732,6 +732,89 @@ int TestEventReaders(const core::ITableSet& tables) {
 }
 
 // ---------------------------------------------------------------------------
+// The two limits of the process (architecture §7ж³; session.h)
+// ---------------------------------------------------------------------------
+
+/// A FAST-FORWARD WITH NO BUDGET AND A LOG WITH NO CAP (0.37.117): until then
+/// AdvanceUntil(…, 0) waiting for an event that never came was `while (true)`,
+/// and a reader that never acknowledged held every event of the campaign.
+int TestTheProcessLimits(const core::ITableSet& tables) {
+  int failures = 0;
+  core::WorldState world;
+  world.weather.daylight_hours = 12.0F;
+  auto simulation = std::make_unique<ScriptedSimulation>(world);
+  ScriptedSimulation* const script = simulation.get();
+  core::SessionConfig config;
+  config.stub_tables = core::StubTables::kAllowed;
+  config.tables = &tables;
+  config.simulation = std::move(simulation);
+  config.unbudgeted_step_limit = 5;
+  config.event_log_held_limit = 3;
+  const std::unique_ptr<core::ISession> session = core::CreateSession(std::move(config));
+  if (!session) {
+    std::cout << "FAIL: the scripted session was refused\n";
+    return 1;
+  }
+  // One routine event a tick for eight ticks, each of its own kind.
+  const std::array<core::EventKind, 8> scripted = {core::EventKind::kResidentBorn,
+                                                   core::EventKind::kResidentDied,
+                                                   core::EventKind::kWedding,
+                                                   core::EventKind::kFieldHarvested,
+                                                   core::EventKind::kUnitBuilt,
+                                                   core::EventKind::kUnitDemolished,
+                                                   core::EventKind::kAppointed,
+                                                   core::EventKind::kDismissed};
+  for (std::uint32_t index = 0; index < scripted.size(); ++index) {
+    script->EmitAt(index + 1U, scripted[index], core::EventSeverity::kRoutine);
+  }
+
+  // THE STEPS: an event that never comes, no budget — the session's own
+  // limit stops the run and says so with the budget's word.
+  const core::FastForwardTarget never{.kind = core::FastForwardTargetKind::kFirstEventOf,
+                                      .tick = 0,
+                                      .event_kind = core::EventKind::kPostVacated};
+  const core::FastForwardReport stopped = session->AdvanceUntil(never, 0);
+  std::cout << "  process limits: an unbudgeted run for an event that never comes ran "
+            << stopped.steps_run << " steps, outcome " << static_cast<int>(stopped.outcome) << '\n';
+  failures += Expect(stopped.outcome == core::FastForwardOutcome::kBudgetSpent &&
+                         stopped.steps_run == 5 && session->Stamp().tick == 5,
+                     "process limits: an unbudgeted fast-forward stops at the session's own "
+                     "limit of steps and answers kBudgetSpent");
+  // And the caller's own budget is still the caller's.
+  core::WorldState reloaded;
+  reloaded.weather.daylight_hours = 12.0F;
+  session->ReplaceWorld(reloaded);
+  const core::FastForwardReport sliced = session->AdvanceUntil(never, 2);
+  failures +=
+      Expect(sliced.outcome == core::FastForwardOutcome::kBudgetSpent && sliced.steps_run == 2,
+             "process limits: a budget the caller gave is kept as given");
+
+  // THE LOG: the default reader acknowledges nothing. Two events in, it holds
+  // two and has lost none; a reader opened now starts at the end.
+  failures += Expect(session->Events().size() == 2 && session->EventsLost() == 0,
+                     "process limits: inside the limit a reader holds everything and has lost "
+                     "nothing");
+  const core::EventReaderId keeping_up = session->OpenEventReader();
+  for (std::uint32_t step = 0; step < 6; ++step) {  // ticks 3..8
+    session->AdvanceStep();
+    session->AcknowledgeEvents(keeping_up, session->Events(keeping_up).size());
+  }
+  std::cout << "  process limits: eight events and a limit of three — the silent reader holds "
+            << session->Events().size() << " and has lost " << session->EventsLost()
+            << "; the reader that kept up has lost " << session->EventsLost(keeping_up) << '\n';
+  failures += Expect(session->Events().size() == 3 && session->EventsLost() == 5,
+                     "process limits: a reader that never acknowledges holds the limit and no "
+                     "more, and is told how many it was carried past");
+  failures += Expect(session->Events().front().kind == core::EventKind::kUnitDemolished,
+                     "process limits: what it holds is the NEWEST of the stream — the sixth, "
+                     "seventh and eighth event");
+  failures += Expect(session->EventsLost(keeping_up) == 0 && session->Events(keeping_up).empty(),
+                     "process limits: a reader that kept up lost nothing to the other's silence");
+  session->CloseEventReader(keeping_up);
+  return failures;
+}
+
+// ---------------------------------------------------------------------------
 // Events, the fast-forward and what only a scripted simulation can show
 // ---------------------------------------------------------------------------
 
@@ -1863,6 +1946,7 @@ int main() {
   failures += TestOrdersThroughTheEngine(tables);
   failures += TestEventsAndFastForward(tables);
   failures += TestEventReaders(tables);
+  failures += TestTheProcessLimits(tables);
   failures += TestSignals(tables);
   failures += TestPostShifts();
   failures += TestJournalCodec();

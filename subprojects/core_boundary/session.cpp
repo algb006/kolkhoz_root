@@ -335,8 +335,14 @@ bool ShapeIsValid(const OrderRow& order) {
 /// synchronized, deliberately.
 class Session final : public ISession {
  public:
-  Session(const BoundaryConfig& config, std::unique_ptr<ISimulation> simulation)
-      : config_(config), simulation_(std::move(simulation)) {
+  Session(const BoundaryConfig& config,
+          std::unique_ptr<ISimulation> simulation,
+          std::uint32_t unbudgeted_step_limit,
+          std::size_t event_log_held_limit)
+      : config_(config),
+        simulation_(std::move(simulation)),
+        unbudgeted_step_limit_(unbudgeted_step_limit),
+        event_log_held_limit_(event_log_held_limit) {
     // The alarms describe the state that ActiveAlarms is asked about, so
     // they stand for the starting world too, not only after a step: a
     // session freshly created over a loaded world answers with the
@@ -350,6 +356,7 @@ class Session final : public ISession {
 
   void AdvanceStep() override {
     RunOneStep();
+    HoldTheLogLimit();
     RefreshAlarms();
     RefreshStockLights();
     RefreshForecast();
@@ -363,8 +370,12 @@ class Session final : public ISession {
     if (target.kind == FastForwardTargetKind::kTick && State().calendar.tick >= target.tick) {
       return report;
     }
+    // NO RUN IS WITHOUT A BUDGET (0.37.117; architecture §7ж³): «0» is the
+    // session's own limit. Until then it was `while (true)`, and a target
+    // that never came — an event kind nothing emits — hung the process.
+    const std::uint32_t budget = step_budget != 0 ? step_budget : unbudgeted_step_limit_;
     while (true) {
-      if (step_budget != 0 && report.steps_run >= step_budget) {
+      if (report.steps_run >= budget) {
         report.outcome = FastForwardOutcome::kBudgetSpent;
         break;
       }
@@ -373,11 +384,16 @@ class Session final : public ISession {
       // The target is asked FIRST. A step that both reaches the target and
       // interrupts is finished either way, and answering kInterrupted would
       // send the caller back for a fast-forward it has already completed.
-      if (TargetMet(target, first_new)) {
+      // Both are asked BEFORE the log's limit is held: `first_new` is an
+      // index into the log as the step left it, and holding the limit trims.
+      const bool met = TargetMet(target, first_new);
+      const bool interrupted = !met && HasInterrupting(first_new);
+      HoldTheLogLimit();
+      if (met) {
         report.outcome = FastForwardOutcome::kTargetReached;
         break;
       }
-      if (HasInterrupting(first_new)) {
+      if (interrupted) {
         report.outcome = FastForwardOutcome::kInterrupted;
         break;
       }
@@ -536,6 +552,14 @@ class Session final : public ISession {
     TrimToSlowestReader();
   }
 
+  std::uint64_t EventsLost() const override { return default_lost_; }
+
+  std::uint64_t EventsLost(EventReaderId reader) const override {
+    const Reader* const open = FindReader(reader);
+    assert(open != nullptr);  // an id that is not open: a caller error
+    return open == nullptr ? 0 : open->lost;
+  }
+
   EventReaderId OpenEventReader() override {
     // At the current end: a subscriber sees what happens from now on and
     // does not inherit another reader's unacknowledged backlog (session.h).
@@ -595,8 +619,10 @@ class Session final : public ISession {
     // empty log (session.h, OpenEventReader).
     log_origin_ = 0;
     default_cursor_ = 0;
+    default_lost_ = 0;
     for (Reader& reader : readers_) {
       reader.cursor = 0;
+      reader.lost = 0;
     }
     batch_sequence_ = 0;
     serial_ = 0;
@@ -738,6 +764,9 @@ class Session final : public ISession {
   struct Reader {
     EventReaderId id;
     std::uint64_t cursor = 0;
+
+    /// Events it was carried past unacknowledged (session.h, EventsLost).
+    std::uint64_t lost = 0;
   };
 
   /// @brief Rebuilds the alarm list from the simulation and puts it in the
@@ -852,6 +881,31 @@ class Session final : public ISession {
     log_origin_ = slowest;
   }
 
+  /// @brief NO READER HOLDS MORE THAN THE LIMIT (SessionConfig::
+  /// event_log_held_limit; 0.37.117): a window longer than it is carried
+  /// forward to the newest `limit` events, the count carried past goes on the
+  /// reader's `lost`, and the front is trimmed. Called after a step, once
+  /// nothing reads the log by index any more.
+  void HoldTheLogLimit() {
+    const std::uint64_t end = LogEnd();
+    const auto limit = static_cast<std::uint64_t>(event_log_held_limit_);
+    if (end <= limit) {
+      return;  // the whole stream so far fits: nobody can be over
+    }
+    const std::uint64_t oldest_kept = end - limit;
+    const auto hold = [oldest_kept](std::uint64_t& cursor, std::uint64_t& lost) {
+      if (cursor < oldest_kept) {
+        lost += oldest_kept - cursor;
+        cursor = oldest_kept;
+      }
+    };
+    hold(default_cursor_, default_lost_);
+    for (Reader& open : readers_) {
+      hold(open.cursor, open.lost);
+    }
+    TrimToSlowestReader();
+  }
+
   BoundaryConfig config_;
 
   std::unique_ptr<ISimulation> simulation_;
@@ -876,6 +930,13 @@ class Session final : public ISession {
   /// The default reader — the one behind the unqualified Events() and
   /// AcknowledgeEvents(count). Always open, never closed, has no id.
   std::uint64_t default_cursor_ = 0;
+
+  /// The default reader's EventsLost (session.h).
+  std::uint64_t default_lost_ = 0;
+
+  /// SessionConfig::unbudgeted_step_limit and ::event_log_held_limit.
+  std::uint32_t unbudgeted_step_limit_ = kUnbudgetedStepLimit;
+  std::size_t event_log_held_limit_ = kEventLogHeldLimit;
 
   /// The readers opened by OpenEventReader, in the order they were opened.
   /// Two consumers is the case this exists for (session.h), so a vector
@@ -915,7 +976,15 @@ std::unique_ptr<ISession> CreateSession(SessionConfig config) {
     LogError("boundary: " + error);
     return nullptr;
   }
-  return std::make_unique<Session>(knobs, std::move(config.simulation));
+  // A limit that can be switched off is the loop again (session.h).
+  if (config.unbudgeted_step_limit == 0 || config.event_log_held_limit == 0) {
+    LogError("boundary: unbudgeted_step_limit and event_log_held_limit must be above nought");
+    return nullptr;
+  }
+  return std::make_unique<Session>(knobs,
+                                   std::move(config.simulation),
+                                   config.unbudgeted_step_limit,
+                                   config.event_log_held_limit);
 }
 
 }  // namespace core
