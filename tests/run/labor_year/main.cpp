@@ -644,9 +644,20 @@ int main(int argc, char** argv) {
   // 540.3 measured on 0.37.85 (ploughing 89.3, harrowing 31.5, sowing 47.6,
   // harvest 344.0, hauling 27.9; 541.0 on 0.37.84), the band as wide as the
   // old one was about its own middle: nine per cent either way.
+  //
+  // TAKEN ANEW ON 0.37.133 (c1d4131), by boss's word (boss-all-carts-carry-
+  // people-go-2026-10-02 [51], [61]): 613.1 measured — ploughing 89.3,
+  // harrowing 31.5, sowing 47.6, harvest 336.7, hauling 108.0. The hauling is
+  // the whole of the move: the meadow's hay is carted since 0.37.127 (it was
+  // in the manger in the hour it was cut) on a cart of 1.8 t since 0.37.126,
+  // by the manger's need since 0.37.132. The old band, 492..590, stood red
+  // and named from 0.37.127 until the hay cart's rank settled — a baseline
+  // taken before that would have explained three different worlds in turn
+  // (612.9, 612.9 and 613.1 on 0.37.128, 0.37.132 and 0.37.133). The same
+  // nine per cent either way.
   failures += ExpectBand(total,
-                         492.0,
-                         590.0,
+                         558.0,
+                         668.0,
                          "the year's labor matches the reference run plus what the hands can mow, "
                          "less the barn the start does not have");
   std::cout << "labor_year: " << care_left << " game man-days of barn care left undone\n";
