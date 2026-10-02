@@ -92,7 +92,8 @@ class LimitPolicy {
                  "once, with no wait and no regard for a timber cart on the road, while the "
                  "year's points above the planned buys (other materials' lots, the team's pair) "
                  "cover a timber lot and would otherwise burn (0.36.14), unless a lot of that "
-                 "material still lies at the district for the village's own carts (0.36.18) — "
+                 "material still lies at the district for the village's own carts (0.36.18), "
+                 "and NEVER while his own logs lie felled at a stand (0.37.107) — "
                  "when the year's points cover it and no cart with that material is on the road "
                  "(district design §1; boss, 2026-09-13 and 2026-09-24); and TAKES THE "
                  "DISTRICT'S SEED LOAN for the shortfall seed_short names, seven days before the "
@@ -110,11 +111,18 @@ class LimitPolicy {
   /// there, econ's to read.
   void BuyTimberInEmergency(bool buy) { timber_emergency_ = buy; }
 
+  /// @brief Whether the timber lot is held back while the village's own logs
+  /// lie felled at a stand (0.37.107). ON in every run by default, by the
+  /// rule of diverging run worlds; a run that turns it off says so.
+  void HoldTimberWhileLogsLie(bool hold) { hold_timber_while_logs_lie_ = hold; }
+
   /// @brief One day of the chairman's attention. Call once a day.
   void RunDay(core::ISimulation& simulation) {
     const core::WorldState& world = simulation.CompletedState();
     Book(world);
     CountWaits(world);
+    days_logs_lay_ += OwnLogsLie(world) ? 1U : 0U;
+    ++days_watched_;
     // THE HAY'S YELLOW, ANSWERED (hay_answer.h; 0.37.64): the rush on the cut,
     // or cows handed to the district. Its own order and cooldown, before the
     // lots': a herd short of hay is not waiting for a lot of boards.
@@ -140,7 +148,10 @@ class LimitPolicy {
   /// @brief The points of every closed year, and what the policy bought.
   void Report(const char* run) const {
     std::cout << run << ": the run's chairman bought " << bought_ << " limit lots and asked for "
-              << loans_ << " seed loans (a refused ask is asked again the next day)\n";
+              << loans_ << " seed loans (a refused ask is asked again the next day); his own "
+              << "logs lay felled on " << days_logs_lay_ << " days of " << days_watched_
+              << (hold_timber_while_logs_lie_ ? " — the timber lot was held back on those\n"
+                                              : " — the timber lot was NOT held back on those\n");
     hay_.Report(run);
     for (const Year& year : years_) {
       std::cout << run << ":   limit year " << year.year << " — granted " << year.granted
@@ -351,6 +362,13 @@ class LimitPolicy {
     return false;
   }
 
+  /// Whether the village's own logs lie felled at any stand, waiting for a
+  /// cart (TimberStandRow::load_grams).
+  static bool OwnLogsLie(const core::WorldState& world) {
+    return std::ranges::any_of(
+        world.stands.rows, [](const core::TimberStandRow& stand) { return stand.load_grams > 0; });
+  }
+
   /// Whether a lot carrying `resource` is at, or on its way to, the district
   /// centre for the village's own carts (LimitDeliveryRow::own_carts;
   /// decision 279) — bought and not yet all carted home.
@@ -436,6 +454,17 @@ class LimitPolicy {
         const bool timber = cost.resource == log_ || cost.resource == board_;
         const bool timber_by_surplus = timber && spend_surplus && timber_emergency_ && !emergency;
         if (timber && !emergency && !timber_by_surplus) {
+          continue;
+        }
+        // NOT WHILE HIS OWN LOGS LIE FELLED (0.37.107; boss, 2 October 2026):
+        // the lot is the emergency for a village with no timber, and a village
+        // whose logs lie at the stands is short of CARTING, not of timber. The
+        // district's lot costs 19-20 horse-days a tonne to fetch against 2.3
+        // for his own (the haul print of 0.37.98), and on the canon he bought
+        // it 131 times of 140 while his own logs lay — the horses went to the
+        // district and the logs lay on. Since the carter on foot carries no
+        // log (0.37.105) those horses are what the building waits for.
+        if (timber && hold_timber_while_logs_lie_ && OwnLogsLie(world)) {
           continue;
         }
         const core::Grams on_site =
@@ -597,6 +626,9 @@ class LimitPolicy {
 
   /// The answer to the herds' hay yellow (hay_answer.h).
   HayAnswer hay_;
+  bool hold_timber_while_logs_lie_ = true;
+  std::uint32_t days_logs_lay_ = 0;
+  std::uint32_t days_watched_ = 0;
   std::uint32_t bought_ = 0;
   std::uint16_t last_booked_year_ = 0;
   std::vector<Year> years_;
