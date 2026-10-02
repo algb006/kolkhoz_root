@@ -696,6 +696,18 @@ int CheckTheForecastAdvice() {
     world.fields.rows[0].work_days_remaining = 3.0F;
     failures += Expect(lamp(world).advice == core::AlarmAdvice::kCutHay,
                        "forecast advice: while a meadow stands in its cut - the cut");
+    // THE CUT RUSHED TO ITS LIMIT IS NO MOVE LEFT (0.37.123): the door of
+    // «hurry the cut» is the avral, and it has a last step. Until then the
+    // lamp said «the cut» with nothing to hurry — 287 days of 762 on host's
+    // 27 villages — and the ladder never went on.
+    world.fields.rows[0].rush_step = static_cast<std::uint8_t>(core::kMaxRushStep);
+    world.fields.rows[0].rush_phase = core::FieldPhase::kHarvest;
+    failures += Expect(lamp(world).advice == core::AlarmAdvice::kBuyFeed,
+                       "forecast advice: the meadow's avral at its last step - nothing to hurry, "
+                       "the ladder goes on to the lot");
+    world.fields.rows[0].rush_step = static_cast<std::uint8_t>(core::kMaxRushStep - 1);
+    failures += Expect(lamp(world).advice == core::AlarmAdvice::kCutHay,
+                       "forecast advice: a step below the last - the cut is still the move");
   }
   return failures;
 }

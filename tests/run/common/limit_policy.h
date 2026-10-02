@@ -155,7 +155,9 @@ class LimitPolicy {
                                               : " — the timber lot was NOT held back on those\n");
     hay_.Report(run);
     std::cout << run << ": the hay lamp's advice over " << advice_.yellow_days
-              << " yellow days — the cut " << advice_.cut_days << ", buy " << advice_.buy_days
+              << " yellow days — the cut " << advice_.cut_days
+              << " (WITH NO MEADOW LEFT TO HURRY ON " << advice_.cut_refused_days
+              << " OF THEM — must be nought), buy " << advice_.buy_days
               << " (THE DOOR WOULD REFUSE THE LOT ON " << advice_.buy_refused_days
               << " OF THEM — must be nought), the granary " << advice_.granary_days
               << ", fewer heads first " << advice_.reduce_days << " and behind another move "
@@ -384,7 +386,11 @@ class LimitPolicy {
   /// которому дверь сегодня откажет»): the days the hay lamp said «buy» and
   /// the limit window — the lot door's own answer — took no lot carrying the
   /// feed it named. A run asserts it nought.
-  std::uint32_t AdviceRefusedByTheDoor() const { return advice_.buy_refused_days; }
+  /// AND «THE CUT» WITH NO MEADOW LEFT TO HURRY (0.37.123): the avral at its
+  /// last step on every meadow in its cut.
+  std::uint32_t AdviceRefusedByTheDoor() const {
+    return advice_.buy_refused_days + advice_.cut_refused_days;
+  }
 
   /// @brief The days the hay lamp stood with no advice at all.
   std::uint32_t YellowWithNoAdvice() const { return advice_.none_days; }
@@ -404,9 +410,22 @@ class LimitPolicy {
       }
       ++advice_.yellow_days;
       switch (alarm.advice) {
-        case core::AlarmAdvice::kCutHay:
+        case core::AlarmAdvice::kCutHay: {
           ++advice_.cut_days;
+          // THE CUT'S DOOR IS THE AVRAL (0.37.123): «the cut» is a move only
+          // while some meadow in its cut has a step of the avral left. Read
+          // off the world here, not by the core's own question.
+          const core::WorldState& world = simulation.CompletedState();
+          const bool can_hurry =
+              std::ranges::any_of(world.fields.rows, [](const core::FieldRow& field) {
+                return field.kind != core::LandKind::kArable &&
+                       field.phase == core::FieldPhase::kHarvest &&
+                       field.work_days_remaining > 0.0F &&
+                       (field.rush_phase != field.phase || field.rush_step < core::kMaxRushStep);
+              });
+          advice_.cut_refused_days += can_hurry ? 0U : 1U;
           break;
+        }
         case core::AlarmAdvice::kBuyFeed: {
           ++advice_.buy_days;
           const core::LimitBook book = simulation.OfficeLimit();
@@ -443,6 +462,7 @@ class LimitPolicy {
   struct AdviceCount {
     std::uint32_t yellow_days = 0;
     std::uint32_t cut_days = 0;
+    std::uint32_t cut_refused_days = 0;
     std::uint32_t buy_days = 0;
     std::uint32_t buy_refused_days = 0;
     std::uint32_t granary_days = 0;

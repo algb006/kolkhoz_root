@@ -609,6 +609,19 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
   return forecast;
 }
 
+bool CutCanBeHurried(const WorldState& world) {
+  return std::ranges::any_of(world.fields.rows, [](const FieldRow& field) {
+    if (field.kind == LandKind::kArable || field.phase != FieldPhase::kHarvest ||
+        !(field.work_days_remaining > 0.0F)) {
+      return false;
+    }
+    // The avral on THIS cut (FieldRow::rush_phase), below its last step: the
+    // door of the move (kDeclareRush) takes one step more.
+    const std::int64_t step = field.rush_phase == field.phase ? field.rush_step : 0;
+    return step < kMaxRushStep;
+  });
+}
+
 FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
                                  const WorldState& world,
                                  const HerdFeedForecast& forecast) {
@@ -622,11 +635,10 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
   // no longer winters in its cut would have left three villages of the canon
   // shedding horses under a move nobody can make: a meadow marked in November
   // gives its hay in June.
-  const bool cut_open = std::ranges::any_of(world.fields.rows, [](const FieldRow& field) {
-    return field.kind != LandKind::kArable && field.phase == FieldPhase::kHarvest &&
-           field.work_days_remaining > 0.0F;
-  });
-  if (cut_open) {
+  // AND ONLY WHILE THE CUT CAN STILL BE HURRIED (CutCanBeHurried; 0.37.123):
+  // a meadow in its cut whose avral stands at the last step has no move left
+  // on it, and the ladder goes on.
+  if (CutCanBeHurried(world)) {
     advice.advice = AlarmAdvice::kCutHay;
     return advice;
   }
