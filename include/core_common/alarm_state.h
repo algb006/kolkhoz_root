@@ -875,9 +875,36 @@ struct Alarm {
   /// 0.37.133 a chairman following it handed over the whole herd in every
   /// one — 111 heads by the median for a shortage of a tenth of the hay.
   /// 0 for every other advice and kind.
+  ///
+  /// THE ORDER IS BY FLOORS SINCE 0.37.140, and «the stock before the
+  /// draught» above is WITHDRAWN (Livestock design §6 as boss rewrote it;
+  /// boss-all-carts-carry-people-go-2026-10-02 [114], [121]). On host's 27
+  /// villages of 0.37.138 the team bred 22 -> 60 in four years while the
+  /// advice closed every year's hay with cows: three cows left by the median,
+  /// the plan failed in twenty villages — a chairman who read the lamp ended
+  /// worse than one who did not. The heads are named in this order, each
+  /// step only as far as the shortage asks:
+  ///  1. the adult horses above the harness peak of the year gone times
+  ///     farming.csv `harness_peak_margin` (TractionWatch::
+  ///     urgent_peak_last_year) — in `hand_over_horses`; none in year 1;
+  ///  2. the adult cows above the milk plan's floor — the highest milk
+  ///     position ever named (PlanState::highest_due) over a cow's yield of
+  ///     the closed year, times farming.csv `milk_floor_margin` — and every
+  ///     head of the other productive kinds — in `hand_over_stock`;
+  ///  3. the adult horses above the ploughing's floor — the teams that
+  ///     plough the plan's base of worked hectares in farming.csv
+  ///     `plough_window_days` — in `hand_over_horses`, added to step 1's.
+  /// THE FLOORS EXHAUSTED AND THE FODDER STILL SHORT: what is still to go is
+  /// named APART, in `below_floor_stock` and `below_floor_horses` — the
+  /// least heads below the floors, cows first — and is NOT in the two
+  /// numbers above nor in `amount_more`. A chairman is told what the floors
+  /// cost before he goes under them; the game does not go under them for
+  /// him.
   /// @note Not in the save, as `lamp`.
   std::int64_t hand_over_stock = 0;
   std::int64_t hand_over_horses = 0;
+  std::int64_t below_floor_stock = 0;
+  std::int64_t below_floor_horses = 0;
 };
 
 /// @brief The subject id of an alarm as one number, for ordering: the id

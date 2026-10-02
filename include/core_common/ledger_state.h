@@ -296,6 +296,13 @@ struct YearLedger {
   /// Milk, eggs, wool, manure from the kolkhoz herds into the stores.
   ResourceAmounts herd_produce;
 
+  /// Adult head-days of the kolkhoz herds, by livestock kind (0.37.140): a
+  /// kind's adults standing, summed over the year's days. Dense by
+  /// LivestockKindId. A cow's yield of a closed year is that year's milk over
+  /// its cow-days by the days of the year — the divisor of the hay lamp's
+  /// milk floor; the run's chairman counted it himself until 0.37.140.
+  ResourceAmounts adult_head_days;
+
   ResourceAmounts feed;  ///< What the herds ate out of the stores.
 
   std::uint32_t herd_births = 0;

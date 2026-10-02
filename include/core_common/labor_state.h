@@ -251,6 +251,19 @@ struct WorkAssignment {
   /// afterwards can tell it (boss, boss-core-topup-horses seq 2).
   std::uint8_t rides_horse = 0;
 
+  /// 1 when the job the placement put him on CANNOT WAIT (0.37.140): its
+  /// place in the day's queue is above the work with no window
+  /// (assignment.h, PlacementTier — an open window, an overdue one, the
+  /// meadow cut in its window, the preparation of this autumn's winter
+  /// crop). 0 for the windowless work: the building, the felling, the
+  /// carting of logs, of a dig's load and of the district's lot, and of the
+  /// hay in its stacks while the stores hold the days ahead. STORED for the
+  /// reason `rides_horse` is: the tier is the placement's own reading of
+  /// the morning and no reading of the state afterwards can tell it. Read by
+  /// the harness peak (TractionWatch::urgent_peak): the horses a day's
+  /// URGENT work holds are the horses the farm cannot be without.
+  std::uint8_t cannot_wait = 0;
+
   FieldId field;  ///< Valid for the field kinds; invalid otherwise.
 
   HerdId herd;  ///< Valid for kHerdCare; invalid otherwise.

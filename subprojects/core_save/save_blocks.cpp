@@ -89,9 +89,11 @@ static_assert(AggregateArity<ChairmanState>() == 21,
 // before the build.
 // Save 89: the goods loan owed and taken, two amounts vectors — 6 x amounts
 // + 32 and 14 fields, predicted before the build.
-static_assert(sizeof(PlanState) == (6 * kAmountsSize) + 32,
+// Save 127 (0.37.140): the highest position ever named, a seventh amounts
+// vector — 7 x amounts + 32 and 15 fields, predicted before the build.
+static_assert(sizeof(PlanState) == (7 * kAmountsSize) + 32,
               "PlanState changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<PlanState>() == 14,
+static_assert(AggregateArity<PlanState>() == 15,
               "PlanState gained or lost a field — update the codec and VERSION_SAVE");
 // THE CONTAINER ITSELF, and it was the one thing here without a guard.
 // Seventeen asserts below watch the BLOCKS of a world and not one watched the
@@ -183,9 +185,13 @@ static_assert(AggregateArity<SportMonth>() == 2,
 // road_works; 7e).
 // 2026-09-28, save 109: the team's two alarms' memory, 39 — written in the
 // world block beside the traction ration.
-static_assert(sizeof(TractionWatch) == 72,
+// Save 127 (0.37.140): the harness peak of the year running and of the year
+// gone, two u16 after the week's arrays — predicted 76 and MISSED by the
+// padding: the i64 of the work grain rounds the struct to its eight, 80; six
+// fields.
+static_assert(sizeof(TractionWatch) == 80,
               "TractionWatch changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<TractionWatch>() == 4,
+static_assert(AggregateArity<TractionWatch>() == 6,
               "TractionWatch gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(kHarnessWeekDays == 7, "the harness week's length is written — VERSION_SAVE");
 // 2026-09-30, save 118: the named characters (the former elder), 40 —
@@ -439,12 +445,16 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   for (const float days : world.traction_watch.week_horse_backed) {
     out.WriteFloat(days);
   }
+  // The harness peak of the year running and of the year gone (save 127).
+  out.WriteU16(world.traction_watch.urgent_peak);
+  out.WriteU16(world.traction_watch.urgent_peak_last_year);
   // The chairman's issue norms (save 57, kSetIssueNorm), through the
   // resource dictionary like every amounts vector; empty until his first
   // order, and empty round-trips as empty.
   sink.WriteAmounts(DefKind::kResource, world.issue_norms);
   sink.WriteAmounts(DefKind::kResource, world.plan.due);
   sink.WriteAmounts(DefKind::kResource, world.plan.delivered);
+  sink.WriteAmounts(DefKind::kResource, world.plan.highest_due);         // save 127
   sink.WriteAmounts(DefKind::kResource, world.plan.accumulation_limit);  // save 62
   // The milk cart's daily share and what went with no position (save 66).
   out.WriteI64(world.plan.milk_daily_share);
@@ -630,9 +640,12 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
           "the harness's week holds a day that is negative or backs more than it harnessed");
     }
   }
+  world->traction_watch.urgent_peak = in.ReadU16();  // save 127
+  world->traction_watch.urgent_peak_last_year = in.ReadU16();
   world->issue_norms = source.ReadAmounts(DefKind::kResource);
   world->plan.due = source.ReadAmounts(DefKind::kResource);
   world->plan.delivered = source.ReadAmounts(DefKind::kResource);
+  world->plan.highest_due = source.ReadAmounts(DefKind::kResource);
   world->plan.accumulation_limit = source.ReadAmounts(DefKind::kResource);
   world->plan.milk_daily_share = in.ReadI64();
   world->plan.milk_debt = in.ReadI64();

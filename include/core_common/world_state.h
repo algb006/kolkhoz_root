@@ -655,6 +655,16 @@ struct PlanState {
   /// What has been delivered against `due` so far this year.
   ResourceAmounts delivered;
 
+  /// THE HIGHEST POSITION THE DISTRICT HAS EVER NAMED, by resource (0.37.140):
+  /// the greatest `due` of every year so far, this one included. Dense by
+  /// ResourceId. The hay lamp's second floor reads the milk's — the cows the
+  /// highest milk position needs stay. THE HIGHEST AND NOT THIS YEAR'S: the
+  /// position follows the herd down, and a floor read off this year's
+  /// followed it too — the canon's cows went 53 -> 7 with every verdict
+  /// green (hay_answer.h, where the run's chairman kept this number himself
+  /// until 0.37.140).
+  ResourceAmounts highest_due;
+
   /// THE ACCUMULATION LIMIT (district §9 «Лимиты накопления»; register 234;
   /// boss, 2026-09-18): how much of each plannable produce the kolkhoz may
   /// hold in its stores, named with the plan in the spring. Dense by

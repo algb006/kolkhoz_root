@@ -107,9 +107,12 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // Save 123 (0.37.75): an eleventh idle reason, the rain — idle_person_days
 // 10 -> 11 u32, no field more; predicted 928 -> 932 and MISSED by the
 // padding: the odd u32 rounds the struct to its eight, 936.
-static_assert(sizeof(YearLedger) == 936 + (34 * kAmountsSize),
+// Save 127 (0.37.140): the adult head-days by livestock kind, a vector after
+// herd_produce — 98 -> 99 fields, 936 + 34 A -> 936 + 35 A, no padding moved;
+// predicted before the build.
+static_assert(sizeof(YearLedger) == 936 + (35 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 98,
+static_assert(AggregateArity<YearLedger>() == 99,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 
 void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
@@ -156,6 +159,7 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteI64(book.manure_plowed_in);
 
   sink.WriteAmounts(DefKind::kResource, book.herd_produce);
+  sink.WriteAmounts(DefKind::kLivestock, book.adult_head_days);  // save 127
   sink.WriteAmounts(DefKind::kResource, book.feed);
   out.WriteU32(book.herd_births);
   out.WriteU32(book.herd_deaths_age);
@@ -298,6 +302,7 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.manure_plowed_in = in.ReadI64();
 
   book.herd_produce = source.ReadAmounts(DefKind::kResource);
+  book.adult_head_days = source.ReadAmounts(DefKind::kLivestock);
   book.feed = source.ReadAmounts(DefKind::kResource);
   book.herd_births = in.ReadU32();
   book.herd_deaths_age = in.ReadU32();
