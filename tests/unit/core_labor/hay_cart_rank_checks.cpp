@@ -195,8 +195,8 @@ int CheckTheHayWaitsWhileTheStoresHold() {
   failures += Expect(logs == Sent::kToTheLogs,
                      "hay cart's rank: with the days of hay in store the stand's logs are carted "
                      "before the hay, though the meadow is the nearer");
-  failures += Expect(manger.asked > 0 && manger.asked_days == 8,
-                     "hay cart's rank: production is asked about the default's eight days ahead");
+  failures += Expect(manger.asked > 0 && manger.asked_days == 12,
+                     "hay cart's rank: production is asked about the default's twelve days ahead");
   // AN ARABLE FIELD'S LOAD is not the hay's matter: it keeps its window and
   // production is not asked.
   manger = Manger{};

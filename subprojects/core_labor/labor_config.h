@@ -307,8 +307,9 @@ struct LaborConfig {
 
   /// THE HAY'S CART GOES BY THE MANGER'S NEED (0.37.131; boss, boss-all-
   /// carts-carry-people-go-2026-10-02 [51]): the days of hay the stores must
-  /// hold ahead (labor.csv `hay_cart_need_days`; STUB 8, econ's, [52] — the
-  /// spring's eight days of ploughing) and production's answer whether they
+  /// hold ahead (labor.csv `hay_cart_need_days`; STUB 12, econ's — March,
+  /// April and May: at 8, 0.37.132, the stores stood empty at April's end in
+  /// 3 village-years of 18) and production's answer whether they
   /// do (IProductionSystem::StoredHayShortWithin, through the assembly).
   /// Below it the carting of a meadow's hay has a field load's window; with
   /// the days in store it is the last of the carts with none. Both calendar
@@ -316,7 +317,7 @@ struct LaborConfig {
   /// years 1-3 fell from 390 man-days to 278 (0.37.128), after them the
   /// stores stood empty in the spring and the horses fell from 40 to 24
   /// (0.37.129). 0 days, or the function empty: never short.
-  std::uint32_t hay_cart_need_days = 8;
+  std::uint32_t hay_cart_need_days = 12;
   std::function<bool(const WorldState&, std::uint32_t)> stored_hay_short;
 
   /// The last month of the meadow cut, 0-based (farming.csv
