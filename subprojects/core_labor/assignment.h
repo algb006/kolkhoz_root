@@ -308,6 +308,18 @@ struct AssignmentParams {
   ///    whatever this is.
   float walker_share_of_cart_day = 1.0F;
 
+  /// THE LEAST TRIPS A DAY A WALKER IS SENT FOR (0.37.109; labor.csv
+  /// walker_min_trips_per_day; boss, 2 October 2026: «пешком носят только
+  /// туда, откуда за сутки выходит не меньше двух рейсов»): in the last pass
+  /// above a hand goes to a load only if the day's light holds this many
+  /// round trips of his walk to it — window_hours / (2 x his one-way hours).
+  /// The pits of the first pair stood three hours out one way and took
+  /// 13 163 man-days in ten years for 20 kg a trip: walking, not work.
+  /// THE TRIP IS PRICED BY HIS WALK FROM HOME, AND SAID SO: the store a load
+  /// goes to is production's to know, and here it is taken to stand at the
+  /// walker's door. 0: no threshold.
+  float walker_min_trips_per_day = 0.0F;
+
   /// Placement quality 0-3 (society design §1): 0 = naive "whoever is
   /// there", 1 = skill and strength, 2 = plus road and fatigue, 3 = master
   /// (phase 1: as 2 — pair synergy is a STUB).
