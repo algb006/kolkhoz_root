@@ -114,10 +114,13 @@ struct LimitLotLine {
   /// answer (district_limit.h, LotOrderable: kGateClosed for a later era,
   /// kRuleForbids for no price, no amount, or a kind this build does not
   /// sell here); for the MTS column its own rules (MtsColumnRefusal: one out
-  /// already, too late for its window, no standing field camp); then the
-  /// balance's: kLimitShort when the points left do not reach its price.
-  /// Stores and stock's places are asked at the order, not here: the window
-  /// says whether the district would sell, not whether the village has room.
+  /// already, too late for its window, no standing field camp); for a goods
+  /// or a livestock lot THE DOOR'S OWN ANSWER since 0.37.121 (district_limit.h,
+  /// LimitLotRefusalToday): kNoRoomForStock, kNowhereToStore, then the
+  /// balance's kLimitShort. UNTIL THEN THE WINDOW ASKED THE BALANCE ALONE —
+  /// «the window says whether the district would sell, not whether the
+  /// village has room» — and a lot it showed as buyable was refused at the
+  /// order: the same seam as the hay lamp's «buy» (host, 269 refusals of 497).
   OrderRefusal orderable = OrderRefusal::kRuleForbids;
 };
 

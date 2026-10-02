@@ -589,6 +589,16 @@ enum class AlarmKind : std::uint8_t {
   /// never more than the heads standing today (0.37.95);
   /// `days_ahead` the whole days to its first short day; `advice` the first
   /// move (AlarmAdvice).
+  /// THE LADDER OF ITS ADVICE SINCE 0.37.121 (herd_forecast.h,
+  /// AdviseOnShortFodder), the first that holds: kCutHay while a meadow
+  /// stands in its cut; kBuyFeed with `advice_resource`, `advice_amount` when
+  /// the lot's door would take the order today AND the purchase feeds a head
+  /// more; kGranaryForFeed when a feed lot is refused only for want of a
+  /// store; kReduceHerd. Behind the purchase and the granary `advice_more` =
+  /// kReduceHerd names the heads still short in `amount_more`. FOR WHATEVER
+  /// FEED RUNS OUT FIRST: until then a first short feed that was not the hay
+  /// (straw, silage) had no advice, and the lamp burned 23 days of host's
+  /// year 4 saying «trouble» and no move.
   kHerdHayShortAhead,
 
   /// «СТАДО МЁРЗНЕТ» — THE COLD'S RED (Livestock design, «Замерзание —
@@ -685,6 +695,10 @@ enum class AlarmAdvice : std::uint8_t {
   /// host-horses-hay-03749 [10]) — «амбар под комбикорм». With a granary
   /// and room, the move is the district's lot of that `resource`, and it
   /// needs no word of its own.
+  /// FOR THE HAY'S LAMP SINCE 0.37.121 ALSO WHILE THAT GRANARY IS BEING
+  /// BUILT: the lot's door refuses until it stands (kNowhereToStore), so the
+  /// move of that day is «finish the granary», not «buy»; `advice_more` =
+  /// kReduceHerd with the heads short today in `amount_more`.
   kGranaryForFeed,
 
   /// The cattle yard's warm barn (rung 2) before the frosts — «утеплить
@@ -703,14 +717,36 @@ enum class AlarmAdvice : std::uint8_t {
   /// The hay runs out first and NO MEADOW STANDS IN ITS CUT (the haymaking
   /// is over, or has not begun): the district's lot of a feed the herds eat
   /// — «купить корм по лимиту» (boss, econ-boss-hay-term-2026-10-01 [2];
-  /// 0.37.92; the dictionary's `buy_feed`). Named while the limit's
-  /// catalogue sells such a feed and a store would take it today or a site
-  /// of its home is under way; with no such store it is kGranaryForFeed.
+  /// 0.37.92; the dictionary's `buy_feed`).
+  ///
+  /// NAMED ONLY WHILE THE LOT'S DOOR WOULD TAKE THE ORDER TODAY (0.37.121;
+  /// boss, host-boss-pin-0-37-109-2026-10-02 [11]: «совет не называет ход,
+  /// которому дверь сегодня откажет»): the catalogue sells a feed lot open
+  /// in this epoch, some store accepts every good of it, and the year's
+  /// points cover it — the door's own question (district_limit.h,
+  /// LimitLotRefusalToday). Until then it was named «while a store would
+  /// take it today OR a site of its home is under way», and the door refused
+  /// while that site stood unbuilt: 269 refusals of 497 advices followed on
+  /// host's 27 villages. The alarm's `advice_resource` and `advice_amount`
+  /// say WHAT AND HOW MUCH the year's points buy today (grams of the feed);
+  /// `advice_more` = kReduceHerd with `amount_more` heads when the forecast
+  /// is still short after that purchase.
   kBuyFeed,
 
-  /// The hay runs out first, no meadow stands in its cut and the district
-  /// sells no feed the herds eat: fewer heads — «сократить стадо», the last
-  /// move (the same word of boss; the dictionary's `reduce_herd`).
+  /// FEWER HEADS — «сократить стадо» (the dictionary's `reduce_herd`): the
+  /// heads the fodder does not reach, to hand over or slaughter. The chairman
+  /// decides it and the game does not do it for him (the human, 2 October
+  /// 2026: «игра не должна сама убивать стадо»), so the game owes him the
+  /// number. As `advice` when no purchase helps — the district sells no feed,
+  /// the points are spent, or what the points buy closes nothing (a feed's
+  /// share of the ration is capped, feed_links.csv max_share); as
+  /// `advice_more` behind kBuyFeed or kGranaryForFeed with the heads left
+  /// AFTER that move in `amount_more`.
+  ///
+  /// UNTIL 0.37.121 IT COULD NOT BE NAMED AT ALL in a world with a feed lot in
+  /// the catalogue: it stood behind «the catalogue sells no feed», a
+  /// condition on the table and not on the world, and on host's 27 villages
+  /// it sounded on no day while the herds starved.
   kReduceHerd,
 
   /// NOT A MOVE: the count, so a consumer can static_assert its mirror.
@@ -792,6 +828,28 @@ struct Alarm {
   /// stores hold no straw for an insulation (0.37.60).
   /// @note Not in the save, as `lamp`.
   AlarmAdvice advice = AlarmAdvice::kNone;
+
+  /// kHerdHayShortAhead with `advice` kBuyFeed (0.37.121): the feed the
+  /// year's points buy today and how much of it, in grams — the largest
+  /// purchase the lot's door would take this morning (the feed lots of the
+  /// catalogue open in this epoch that some store accepts, as many as the
+  /// points cover, the best feed units a point first). Invalid and 0 for
+  /// every other advice and kind.
+  /// @note Not in the save, as `lamp`.
+  ResourceId advice_resource;
+  std::int64_t advice_amount = 0;
+
+  /// kHerdHayShortAhead: THE SECOND MOVE, named with the first (0.37.121;
+  /// boss, host-boss-pin-0-37-109-2026-10-02 [12] p. 1: «совет называет оба
+  /// числа разом») — kReduceHerd with `amount_more` the heads the fodder
+  /// still does not reach AFTER the first move (after the purchase of
+  /// `advice_amount` landed on its day; behind kGranaryForFeed, with nothing
+  /// bought). kNone and 0 when the first move closes the hole, when the
+  /// first move is itself kReduceHerd (its heads are `amount`), and for
+  /// every other kind.
+  /// @note Not in the save, as `lamp`.
+  AlarmAdvice advice_more = AlarmAdvice::kNone;
+  std::int64_t amount_more = 0;
 };
 
 /// @brief The subject id of an alarm as one number, for ordering: the id

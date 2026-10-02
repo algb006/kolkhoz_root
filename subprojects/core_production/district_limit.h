@@ -54,6 +54,27 @@ OrderRefusal MtsColumnRefusal(const ProductionConfig& config,
                               LimitLotId lot,
                               std::int32_t points);
 
+/// @brief THE LOT'S DOOR AS A QUESTION (0.37.121): what OrderLimitLot would
+///        answer to an order of a goods or livestock `lot` this morning,
+///        with `points_left` of the year's points — and nothing is spent or
+///        moved. kNone: the order would be taken. Otherwise the door's own
+///        refusal, in the door's own order — LotOrderable's, then
+///        kNoRoomForStock, then kNowhereToStore (some good of the lot no store
+///        of the village accepts; `unstorable`, when given, names it), then
+///        kLimitShort.
+///
+/// ONE HOME FOR THE DOOR AND FOR WHOEVER ADVISES A PURCHASE: OrderLimitLot
+/// asks this before it spends. The hay lamp's advice named «buy» by a
+/// question of its own — «a store would take it OR a site of its home is
+/// under way» — and the door refused 269 of the 497 orders that followed it
+/// (host, 27 villages, 0.37.109): two right rules with a seam between them.
+/// @note A service lot (the MTS column) is not asked here: MtsColumnRefusal.
+OrderRefusal LimitLotRefusalToday(const ProductionConfig& config,
+                                  const WorldState& world,
+                                  LimitLotId lot,
+                                  std::int32_t points_left,
+                                  ResourceId* unstorable = nullptr);
+
 /// @brief The raikom reputation's multiplier on the year's grant (district
 /// design §5): 0–20 ×0.7, 21–40 ×0.85, 41–60 ×1.0, 61–80 ×1.2, 81–100 ×1.4.
 /// @param reputation ChairmanState::raikom_reputation, 0..100; out of range

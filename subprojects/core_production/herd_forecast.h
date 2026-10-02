@@ -91,6 +91,40 @@ enum class FeedHorizon : std::uint8_t {
   kNextYearsScythes,
 };
 
+/// @brief A purchase of feed the forecast is asked to count as made today
+///        (0.37.121): what it brings, by resource in KILOGRAMS (the size of
+///        ProductionConfig::feed_values), and the day it lands, counted from
+///        today.
+struct FeedPurchase {
+  std::vector<float> goods_kg;
+  std::uint32_t land_day = 0;
+
+  /// The year's points it costs, and whether it buys anything at all.
+  std::int32_t points = 0;
+  bool any = false;
+};
+
+/// @brief THE LARGEST PURCHASE OF FEED THE LOT'S DOOR WOULD TAKE THIS MORNING
+///        (0.37.121): of the catalogue's goods lots that carry a feed the
+///        herds eat and that the door would take today (district_limit.h,
+///        LimitLotRefusalToday), as many as the year's points cover — the lot
+///        with the most feed units a point first, then the next, each as
+///        often as the points left allow. It lands on the cart's latest day:
+///        the base term and the whole of the delay (a purchase counted as
+///        landing early names fewer heads than the fodder is short of).
+/// @param blocked_by_store Written when given: true when NO feed lot is
+///        buyable and at least one was refused by kNowhereToStore alone —
+///        the day's move is the granary, not the lot.
+/// @return `any` false with no lot buyable today.
+/// @note STUB of the room: a store's FREE room is not asked — the door does
+///       not ask it either (SomeStoreAccepts: «full or not»), and what does
+///       not fit waits on the cart at the gate. The forecast lands only what
+///       a store has room for (StoreHasRoomFor), as for the carts on the
+///       road.
+FeedPurchase MaximalFeedPurchase(const ProductionConfig& config,
+                                 const WorldState& world,
+                                 bool* blocked_by_store = nullptr);
+
 /// @brief The forecast's answer.
 struct HerdFeedForecast {
   /// True when some day before the horizon a kolkhoz herd is not fed in full.
@@ -142,12 +176,16 @@ struct HerdFeedForecast {
 ///        kTooFewHorses's «would the hay feed one more horse» asks
 ///        kNextYearsScythes — a horse is bought to stay, and its question is
 ///        honestly a year's. Do not bring them to one.
+/// @param purchase A purchase counted as made today (FeedPurchase; 0.37.121),
+///        or nullptr: its goods land on its day beside the carts already on
+///        the road — «what would the forecast say AFTER this lot».
 /// @return short_ahead false with no kolkhoz herd, no feed roster or no
 ///         horizon.
 HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
                                   const WorldState& world,
                                   bool one_more_horse,
-                                  FeedHorizon horizon = FeedHorizon::kNextYearsScythes);
+                                  FeedHorizon horizon = FeedHorizon::kNextYearsScythes,
+                                  const FeedPurchase* purchase = nullptr);
 
 /// @brief The heads a standing kolkhoz herd will have `days` days from today
 ///        by the forecast's own projection (births by RunBirths's rule and
@@ -164,18 +202,47 @@ float ForecastHerdHeads(const ProductionConfig& config,
                         HerdId herd,
                         std::uint32_t days);
 
-/// @brief The first move for a feed that runs out (AlarmAdvice): the hay
-///        while a meadow stands in its cut — kCutHay; the hay with no meadow
-///        in its cut (0.37.92: the haymaking over, the cut is a move nobody
-///        can make) — the district's feed, kBuyFeed, or kGranaryForFeed when
-///        no store would take it, or kReduceHerd when the district sells no
-///        feed; a feed no store would take today, nor a site under way
-///        would — kGranaryForFeed («амбар под комбикорм»); anything else,
-///        straw or silage or a feed a store takes, which a lot of the resource
-///        answers — kNone.
-AlarmAdvice AdviceForShortFeed(const ProductionConfig& config,
-                               const WorldState& world,
-                               ResourceId feed);
+/// @brief The hay lamp's advice: the two moves and their numbers
+///        (alarm_state.h — Alarm::advice, advice_resource, advice_amount,
+///        advice_more, amount_more).
+struct FodderAdvice {
+  AlarmAdvice advice = AlarmAdvice::kNone;
+  ResourceId advice_resource;
+  std::int64_t advice_amount = 0;
+  AlarmAdvice advice_more = AlarmAdvice::kNone;
+  std::int64_t amount_more = 0;
+};
+
+/// @brief THE LADDER OF THE HAY LAMP'S ADVICE (0.37.121; boss, host-boss-pin-
+///        0-37-109-2026-10-02 [11], [12], [15]; the human, 2 October 2026:
+///        «игра не должна сама убивать стадо» — the chairman decides, so the
+///        game owes him the number). For a forecast that is short, the first
+///        of these that holds:
+///   1. kCutHay — a meadow stands in its cut with mowing left (0.37.92);
+///   2. kBuyFeed — the door would take a feed lot today (MaximalFeedPurchase)
+///      AND the forecast after that purchase is short of fewer heads:
+///      `advice_resource`, `advice_amount` the feed and the grams bought;
+///      the heads still short after it — `advice_more` = kReduceHerd,
+///      `amount_more`;
+///   3. kGranaryForFeed — no feed lot is buyable today and one was refused
+///      for want of a store alone: «finish the granary», whether its site is
+///      under way or not yet marked; `advice_more` = kReduceHerd with
+///      `amount_more` the heads short today;
+///   4. kReduceHerd — nothing else helps: the district sells no feed the
+///      herds eat, the points are spent, or what they buy feeds no head more
+///      (a feed's share of the ration is capped — feed_links.csv max_share —
+///      and the hole is in the hay). Its heads are the alarm's `amount`.
+///
+/// WHATEVER FEED RAN OUT FIRST. Until 0.37.121 the ladder was the hay's
+/// alone (AdviceForShortFeed): any other first short feed got «the granary»
+/// or nothing, and kReduceHerd stood behind «the catalogue sells no feed» —
+/// a line no world with a feed lot in its tables could reach.
+/// @param forecast The short forecast the lamp read (its heads_short is the
+///        number before any move).
+/// @return All fields none and nought for a forecast that is not short.
+FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
+                                 const WorldState& world,
+                                 const HerdFeedForecast& forecast);
 
 /// @brief kHerdHayShortAhead (alarm_state.h) off ForecastHerdFeed: one alarm
 ///        while the forecast is short. Always `lamp = 0`.
