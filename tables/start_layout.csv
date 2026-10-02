@@ -97,3 +97,8 @@ road_east_meadows,road,,9354,8631.43,0.4334,,,,0,,-1,15,0,almost_none
 road_farm_link,road,,8042.5,8837.75,4.5675,,,,0,,-1,30,0,rare
 road_hay_branch,road,,7583.67,8799.33,2.1604,,,,0,,-1,30,0,rare
 road_sw_meadows,road,,7904.65,8326,5.1893,,,,0,,-1,15,0,almost_none
+well_derelict_lodge,unit,well,8140,10660,,,,,0,,-1,-1,0,
+well_derelict_mill,unit,well,6700,9720,,,,,0,,-1,-1,0,
+well_derelict_farmstead,unit,well,5900,4380,,,,,0,,-1,-1,0,
+well_derelict_arch,unit,well,11560,7425,,,,,0,,-1,-1,0,
+well_derelict_orchard,unit,well,8420,10770,,,,,0,,-1,-1,0,
