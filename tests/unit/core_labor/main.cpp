@@ -4068,9 +4068,9 @@ int TestLandThatCannotCarryTheWork() {
   // HAULING NAMES A FIELD TOO. The first draft of the rule put it with herd
   // care and building — the kinds that name none — and so left the one work
   // kind whose land it never looked at carrying exactly the defect the rule
-  // is for. A meadow never has a load lying on it to carry: its hay goes
-  // straight through the store door and the overflow is booked to the year's
-  // loss. Not empty today — empty for ever.
+  // is for. A MEADOW IS NOT REFUSED IT since 0.37.119: its hay lies at the
+  // meadow until a cart comes (LayMownShare). Until then the hay went straight
+  // through the store door, «empty for ever», and this order was wrong land.
   const core::OrderId haul_meadow = order(0, core::WorkKind::kHauling, meadow);
 
   const test::FakeTableSet tables;
@@ -4095,9 +4095,9 @@ int TestLandThatCannotCarryTheWork() {
   failures += Expect(verdict(plough_waste) != core::OrderRefusal::kWrongLand,
                      "an OVERGROWN field is refused nothing: the weeds are a look, and raising "
                      "the land is ploughing it at the same norm as any other ground");
-  failures += Expect(verdict(haul_meadow) == core::OrderRefusal::kWrongLand,
-                     "and carrying from a MEADOW is refused too: hauling names a field, and this "
-                     "one never has a load lying on it");
+  failures += Expect(verdict(haul_meadow) != core::OrderRefusal::kWrongLand,
+                     "and carrying from a MEADOW is not wrong land: its hay lies there until a "
+                     "cart comes");
   // And the two that must NOT be refused, or the rule would be reading
   // "field" where it means "the wrong kind of field".
   failures += Expect(verdict(plough_arable) == core::OrderRefusal::kNone,

@@ -27,33 +27,61 @@
 namespace core {
 namespace {
 
-/// @brief Puts a harvested load where it belongs: hay at the manger, the
-/// rest through the store door — none of them above its ceiling (task A3,
-/// manual/72-storage-and-alarms.md §2).
-/// @return What did NOT fit, in grams. The caller decides what that means:
-///         a field keeps it (FieldRow::reaped_grams), a meadow's hay has
-///         nowhere else and is booked to the year's lost_no_room.
-Grams DeliverHarvest(const ProductionConfig& config,
-                     WorldState& current,
-                     ResourceId resource,
-                     Grams amount) {
-  Grams placed = 0;
-  if (resource.value == config.hay_resource.value) {
-    // The manger first, and it is not a numbered store: the stock yard's
-    // table capacity is in HEADS, so the door does not find it and its
-    // fodder buffer has no tonnage to be full against.
-    const std::uint32_t manger = FindStockYardRow(current, config);
-    if (manger != kNoRow) {
-      // What the manger TOOK, not what it was offered. The two used to be
-      // assumed equal and the function answered a flat 0 — "nothing was left
-      // over" — for a cut that had not been stored at all: an unnamed
-      // hay_resource makes the branch above true by two 0xFFFF sentinels
-      // comparing equal, and AddToStock then writes nothing (0.17.79).
-      return amount - AddToStock(current.units.rows[manger].stock, resource, amount);
-    }
+/// @brief Lays `laid` grams of `resource` on the land's own heap — the field
+/// brigade's buffer of the transport design §9 (task A4), emptied by whoever
+/// comes for it with a back or a cart (SettleHauling). One body for a field's
+/// reaped crop and, since 0.37.119, a meadow's hay. The carting is priced by
+/// PriceHeapCarting, which the caller owes for the same load.
+/// @return What lay on the heap before, in grams — PriceHeapCarting's.
+Grams PutOnHeap(WorldState& current, FieldRow& field, ResourceId resource, Grams laid) {
+  // A buffer already holding LAST year's produce of another crop cannot hold
+  // this one too — one number names one resource — so the old load, a full
+  // season old, is written off loudly.
+  if (field.reaped_grams > 0 && field.reaped_resource.value != resource.value) {
+    AddLedgerAmount(current.ledger.current.lost_no_room, field.reaped_resource, field.reaped_grams);
+    field.reaped_grams = 0;
+    field.reaped_resource = ResourceId{};  // the invariant: empty means unnamed
+    // And its carting's price goes with it (static review of 0.34.44): the
+    // old load is gone, and its price standing beside the new one was
+    // demand for a heap that no longer lies there.
+    field.haul_days_remaining = 0.0F;
+    field.haul_days_written = 0.0F;
   }
-  placed = DeliverToStores(current, config, resource, amount);
-  return amount - placed;
+  const Grams heap_before = field.reaped_grams;
+  field.reaped_grams += laid;
+  field.reaped_resource = resource;
+  return heap_before;
+}
+
+/// @brief Grows the carting's price by a load PutOnHeap has just laid.
+/// @param heap_before What lay there before it (PutOnHeap's answer).
+void PriceHeapCarting(const ProductionConfig& config,
+                      const WorldState& current,
+                      FieldRow& field,
+                      Grams heap_before,
+                      Grams laid) {
+  // THE CARTING'S PRICE GROWS BY THE SAME LOAD, in both its numbers. The
+  // evening settlement reads what was carried as written less remaining
+  // (field_haul.cpp, SettleLoad), so a load added to one and not the other
+  // would read as carted, or as a day's work nobody did.
+  //
+  // AND ONLY BY THE ROOM THE OLD HEAP HAS NOT SPOKEN FOR (static review of
+  // 0.34.44). The price standing already is the old heap's, capped at the
+  // room; pricing the new part against the whole room again sent carters for
+  // up to twice what the stores could take, and the evening credited only
+  // the room — half the carting into a closed door, every reaping day.
+  // THE HEAP'S OWN DOOR (HeapDoorRoom): hay's is the manger, which has no
+  // tonnage to be full against.
+  const Grams room = HeapDoorRoom(config, current, field);
+  const Grams spoken_for = heap_before < room ? heap_before : room;
+  const Grams room_left = room - spoken_for;
+  const Grams priced = room_left < laid ? room_left : laid;
+  if (priced > 0) {
+    const float more =
+        HaulDaysFor(priced, FieldHaulRate(config, current, field), config.standard_day_hours);
+    field.haul_days_remaining += more;
+    field.haul_days_written += more;
+  }
 }
 
 }  // namespace
@@ -96,12 +124,16 @@ void LayMownShare(const ProductionConfig& config, WorldState& current, FieldRow&
   if (hay <= 0) {
     return;
   }
-  // STRAIGHT TO THE MANGER AND THE STORES, as the whole cut always went: a
-  // meadow has no reaped buffer of its own, so the share adds no load to the
-  // carting. What finds no room is lost, and either way it is booked.
-  const Grams hay_lost = DeliverHarvest(config, current, config.hay_resource, hay);
+  // THE HAY LIES AT THE MEADOW, as a field's crop lies at the field (0.37.119;
+  // the stubs' registry A75; the human, 2 October 2026, on the horses standing
+  // idle through the haymaking): until then the mown share was in the manger
+  // in the hour it was cut, 6.4 kilometres away or forty metres — some 370 t a
+  // year a village carted by nobody, and the haymaking asked for no horse.
+  // Booked as harvest the day it is mown, as the field's is; nothing is lost
+  // for want of room, the meadow holds it until a cart comes.
+  const Grams heap_before = PutOnHeap(current, field, config.hay_resource, hay);
   AddLedgerAmount(current.ledger.current.harvest, config.hay_resource, hay);
-  AddLedgerAmount(current.ledger.current.lost_no_room, config.hay_resource, hay_lost);
+  PriceHeapCarting(config, current, field, heap_before, hay);
 }
 
 namespace {
@@ -291,24 +323,8 @@ void LayReapedShare(const ProductionConfig& config, WorldState& current, FieldRo
   if (laid <= 0) {
     return;
   }
-  // THE REAPED CROP STAYS ON THE FIELD — the field brigade's buffer of the
-  // transport design §9 (task A4), emptied by whoever comes for it with a
-  // back or a cart (SettleHauling). A buffer already holding LAST year's
-  // produce of another crop cannot hold this one too — one number names one
-  // resource — so the old load, a full season old, is written off loudly.
-  if (field.reaped_grams > 0 && field.reaped_resource.value != crop.resource.value) {
-    AddLedgerAmount(current.ledger.current.lost_no_room, field.reaped_resource, field.reaped_grams);
-    field.reaped_grams = 0;
-    field.reaped_resource = ResourceId{};  // the invariant: empty means unnamed
-    // And its carting's price goes with it (static review of 0.34.44): the
-    // old load is gone, and its price standing beside the new one was
-    // demand for a heap that no longer lies there.
-    field.haul_days_remaining = 0.0F;
-    field.haul_days_written = 0.0F;
-  }
-  const Grams heap_before = field.reaped_grams;
-  field.reaped_grams += laid;
-  field.reaped_resource = crop.resource;
+  // THE REAPED CROP STAYS ON THE FIELD (PutOnHeap).
+  const Grams heap_before = PutOnHeap(current, field, crop.resource, laid);
   // Booked whether or not a store took it in: what the field gave is what
   // the reconciliation compares against the yield tables.
   AddLedgerAmount(current.ledger.current.harvest, crop.resource, laid);
@@ -322,26 +338,8 @@ void LayReapedShare(const ProductionConfig& config, WorldState& current, FieldRo
     AddLedgerAmount(
         current.ledger.current.lost_no_room, config.straw_resource, straw - straw_placed);
   }
-  // THE CARTING'S PRICE GROWS BY THE SAME LOAD, in both its numbers. The
-  // evening settlement reads what was carried as written less remaining
-  // (field_haul.cpp, SettleLoad), so a load added to one and not the other
-  // would read as carted, or as a day's work nobody did.
-  //
-  // AND ONLY BY THE ROOM THE OLD HEAP HAS NOT SPOKEN FOR (static review of
-  // 0.34.44). The price standing already is the old heap's, capped at the
-  // room; pricing the new part against the whole room again sent carters for
-  // up to twice what the stores could take, and the evening credited only
-  // the room — half the carting into a closed door, every reaping day.
-  const Grams room = ReceivableRoom(config, current, field.reaped_resource);
-  const Grams spoken_for = heap_before < room ? heap_before : room;
-  const Grams room_left = room - spoken_for;
-  const Grams priced = room_left < laid ? room_left : laid;
-  if (priced > 0) {
-    const float more =
-        HaulDaysFor(priced, FieldHaulRate(config, current, field), config.standard_day_hours);
-    field.haul_days_remaining += more;
-    field.haul_days_written += more;
-  }
+  // After the straw, which takes room of its own in the same stores.
+  PriceHeapCarting(config, current, field, heap_before, laid);
 }
 
 void LoseFieldToSnow(const ProductionConfig& config,
