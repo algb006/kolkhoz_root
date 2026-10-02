@@ -48,7 +48,8 @@ void CollectStoreAlarms(const ProductionConfig& config,
 /// 2026-09-29 [25]): the elder's advice, lamp 0, while the farm's meadows
 /// have at least kMeadowUncutAdviceShare of their hectares not mown this
 /// calendar year in the month before the first snow's day
-/// (farming.gather_alarm_snow_day). `amount` = the unmown hectares, whole.
+/// (the day after ProductionConfig::early_snow_last_day). `amount` = the
+/// unmown hectares, whole.
 /// @param alarms Appended to; never cleared.
 void CollectMeadowAdvice(const ProductionConfig& config,
                          const WorldState& world,

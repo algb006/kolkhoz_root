@@ -732,38 +732,14 @@ struct FarmingConfig {
   /// every hand the village has — the player can still make it.
   float gather_alarm_horizon_days = 4.0F;
 
-  /// world_params.csv `gather_alarm_snow_day` — STUB 40, a day of the year:
-  /// the harvest-will-not-be-gathered alarm counts the days to THIS snow and
-  /// not to the climate's mean edge (growing_season_last_day), whichever is
-  /// earlier. «Тревога Эпохи I считает до РАННЕГО снега» (econ, no-forecast
-  /// proposal §3; boss, boss-core-epoch1-resume): the real snow is a coin
-  /// against −1, and with no three-day forecast to warn him the chairman
-  /// needs the early edge. THE NUMBER IS A MEASUREMENT: econ's P10 of the
-  /// first snow in the reaping season from host's 2000-year probe — snow
-  /// already down by day 40 in 17.1 % of years, never before day 38; the
-  /// mean's edge, day 41, in 28.4 %. Counting to 40 the alarm is late by at
-  /// most two days in a few per cent of years, instead of crying three days
-  /// early in nearly all of them. WHEN THE STUB COMES OFF: when the climate
-  /// table moves, this is re-read off the same probe, not guessed.
-  ///
-  /// THE FIRST DAY THE SNOW LIES, NOT THE LAST DAY THAT COUNTS (econ,
-  /// econ-boss-snow-edge-reading, adopted by boss): the probe's P10 is of
-  /// the first kSnow day, which takes a standing field on its morning, so
-  /// the alarm counts up to the day BEFORE it — 39 at 40. 0.34.16 read it as
-  /// the last day counted and was a day late; the value stayed, the reading
-  /// moved (0.34.17). Unlike growing_season_last_day, which IS a last safe
-  /// day.
-  ///
-  /// ONLY THE ALARM. The queue's last days before the snow keep the mean's
-  /// edge: the alarm is a warning to the chairman, the queue is the
-  /// accountant's order of work, and econ asked for the first.
-  ///
-  /// SUPERSEDED SINCE 0.37.147 BY ProductionConfig::early_snow_last_day — the
-  /// same edge read off the generator by `early_snow_share` below. The key is
-  /// still parsed (the base exports it and the assembly's declared-readers
-  /// check names it) and NOTHING READS THE VALUE; it leaves with boss's
-  /// export.
-  float gather_alarm_snow_day = 40.0F;
+  // world_params.csv `gather_alarm_snow_day` STOOD HERE until 0.37.149 — the
+  // early snow's day read by hand, 40: econ's P10 of the first snow in the
+  // reaping season from host's 2000-year probe (down by day 40 in 17.1 % of
+  // years, never before day 38). It was the FIRST DAY THE SNOW LIES and the
+  // alarm counted to the day before it. Superseded in 0.37.147 by
+  // ProductionConfig::early_snow_last_day, the same edge read off the
+  // generator by the key below; the key left the base with boss's export of
+  // 3 October 2026 and the field with it.
 
   /// farming.csv `early_snow_share` — 0.10: the share of years in which the
   /// count of the reaping may promise a day that the snow then takes

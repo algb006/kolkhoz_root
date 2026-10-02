@@ -1203,7 +1203,7 @@ void CollectGatherAlarms(const ProductionConfig& config,
       ahead[day] = 1.0F;
     }
   }
-  // TO THE EARLY SNOW (production_config.h, gather_alarm_snow_day): whichever
+  // TO THE EARLY SNOW (production_config.h, early_snow_last_day): whichever
   // comes first of the probe's P10 and the climate's mean edge. Which fields
   // are judged at all still asks the mean edge (AnnualsToGather): a crop that
   // cannot open before it is the sowing's loss, and one that opens between

@@ -534,8 +534,9 @@ enum class AlarmKind : std::uint8_t {
   /// as the condition holds. Subject: `resource`, the hay (the registry's
   /// word — it has none for "the farm"; 0.37.21); `amount` = the unmown
   /// meadow, whole hectares. STUB: the share (30 %) and the date (the first
-  /// snow's day, world_params `gather_alarm_snow_day`, and not a steady
-  /// cover's) — core's numbers, measured by the alarm-days instrument.
+  /// snow's day — the day after the early edge read off the climate by
+  /// farming.csv `early_snow_share` — and not a steady cover's) — core's
+  /// numbers, measured by the alarm-days instrument.
   kMeadowUncutBeforeSnow,
 
   /// «ОКНО СЕВА ЗАКРЫВАЕТСЯ» — THE ELDER'S ADVICE, NOT A LAMP (boss-core-
