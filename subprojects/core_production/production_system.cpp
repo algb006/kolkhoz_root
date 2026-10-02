@@ -472,6 +472,12 @@ class ProductionSystem final : public IProductionSystem {
     return book;
   }
 
+  // STUB of the contract's commit (0.37.131): never short. The body is
+  // 0.37.132's.
+  bool StoredHayShortWithin(const WorldState& /*world*/, std::uint32_t /*days*/) const override {
+    return false;
+  }
+
   Grams StandingCropGrams(const WorldState& /*world*/, const FieldRow& field) const override {
     if (field.crop.value >= config_.crops.size()) {
       return 0;

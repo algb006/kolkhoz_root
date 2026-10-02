@@ -2104,7 +2104,8 @@ std::unique_ptr<ILaborSystem> CreateLaborSystem(
     StubTables stubs,
     std::uint32_t growing_season_last_day,
     std::function<Grams(const WorldState&, const FieldRow&)> standing_crop_grams,
-    const RainDayShares& rain_day_shares) {
+    const RainDayShares& rain_day_shares,
+    std::function<bool(const WorldState&, std::uint32_t)> stored_hay_short) {
   // THE DEFAULTS ARE LEGITIMATE AND THEIR SILENCE WAS NOT
   // (core_tables/stub_tables.h). A caller that has not said it wants
   // this module's documented defaults is refused by name, so that a
@@ -2138,6 +2139,7 @@ std::unique_ptr<ILaborSystem> CreateLaborSystem(
   config.growing_season_last_day = growing_season_last_day;
   config.standing_crop_grams = std::move(standing_crop_grams);
   config.rain_day_shares = rain_day_shares;
+  config.stored_hay_short = std::move(stored_hay_short);
   return std::make_unique<LaborSystem>(std::move(config));
 }
 

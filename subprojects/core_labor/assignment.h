@@ -131,6 +131,16 @@ struct AssignmentJob {
   /// 29 [22]). STUB: the place, not a number of the design's.
   bool autumn_furrow = false;
 
+  /// True for the carting of the hay lying mown at a meadow — a heap on land
+  /// that is not arable — WHILE THE STORES HOLD THE HAY THE HERDS NEED AHEAD
+  /// (0.37.131; LaborConfig::hay_cart_need_days). The job then has no window
+  /// and goes LAST of the carts in that tier: a stand's logs, the district's
+  /// lot and a dig's load are carted before it. A key among jobs of one
+  /// kind, asked after the work kind — the building and the felling keep
+  /// their places. With the stores short the job carries a field load's
+  /// window instead and this is false.
+  bool stacked_hay = false;
+
   /// True for ploughing and harrowing of a field whose crop carries a position
   /// of this year's plan (plan.due above nought for its resource). Inside one
   /// tier and one kind of window such a field is worked before the others,

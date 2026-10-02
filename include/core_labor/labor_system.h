@@ -163,12 +163,20 @@ class ILaborSystem {
 ///        snow count a day by its dry share, because rain stops the reaping
 ///        (core_common/rain_stops_work.h). The default, all zeros, counts
 ///        every working day whole, as before.
+/// @param stored_hay_short Whether the hay in the stores is below what the
+///        kolkhoz herds will eat of it in the days given —
+///        IProductionSystem::StoredHayShortWithin, bound by the assembly
+///        (0.37.131). The carting of the hay lying at a meadow asks it with
+///        labor.csv `hay_cart_need_days`: short, the cart has a field load's
+///        window; not short, it is the last of the carts with none. Empty:
+///        never short — a labor built alone carts the hay last.
 std::unique_ptr<ILaborSystem> CreateLaborSystem(
     const ITableSet& tables,
     StubTables stubs,
     std::uint32_t growing_season_last_day = kDaysPerYear - 1U,
     std::function<Grams(const WorldState&, const FieldRow&)> standing_crop_grams = {},
-    const RainDayShares& rain_day_shares = RainDayShares{});
+    const RainDayShares& rain_day_shares = RainDayShares{},
+    std::function<bool(const WorldState&, std::uint32_t)> stored_hay_short = {});
 
 }  // namespace core
 

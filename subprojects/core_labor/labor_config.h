@@ -305,6 +305,20 @@ struct LaborConfig {
   /// last days fall back to the queue's own order.
   std::function<Grams(const WorldState&, const FieldRow&)> standing_crop_grams;
 
+  /// THE HAY'S CART GOES BY THE MANGER'S NEED (0.37.131; boss, boss-all-
+  /// carts-carry-people-go-2026-10-02 [51]): the days of hay the stores must
+  /// hold ahead (labor.csv `hay_cart_need_days`; STUB 8, econ's, [52] — the
+  /// spring's eight days of ploughing) and production's answer whether they
+  /// do (IProductionSystem::StoredHayShortWithin, through the assembly).
+  /// Below it the carting of a meadow's hay has a field load's window; with
+  /// the days in store it is the last of the carts with none. Both calendar
+  /// ranks were measured and neither held: before the logs the building of
+  /// years 1-3 fell from 390 man-days to 278 (0.37.128), after them the
+  /// stores stood empty in the spring and the horses fell from 40 to 24
+  /// (0.37.129). 0 days, or the function empty: never short.
+  std::uint32_t hay_cart_need_days = 8;
+  std::function<bool(const WorldState&, std::uint32_t)> stored_hay_short;
+
   /// The last month of the meadow cut, 0-based (farming.csv
   /// meadow_cut_month_end, 1-based in the file). A meadow has no crop, so
   /// its cut took no window and ranked with work that has none — below the

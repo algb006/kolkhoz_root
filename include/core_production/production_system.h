@@ -220,6 +220,28 @@ class IProductionSystem {
   /// @note A pure read; called by labor in the decisions slot (phase 3).
   virtual Grams StandingCropGrams(const WorldState& world, const FieldRow& field) const = 0;
 
+  /// @brief Whether the hay IN THE STORES is below what the kolkhoz herds
+  /// will eat of it in the next `days` days (0.37.131; boss, boss-all-carts-
+  /// carry-people-go-2026-10-02 [51]: «ранг по нужде кормушки»).
+  ///
+  /// The days are counted FORWARD by the herd feeding's own rules — each
+  /// day's need by that day's month, the pasture's discount in it, the kinds'
+  /// feeds in their order and under their ceilings (the forecast's drain,
+  /// herd_forecast.h) — on the herds standing today: no offspring, no cut to
+  /// come, no cart on the road. THE HAY LYING AT THE MEADOWS IS NOT IN THE
+  /// STORES HERE, and that is the difference from the fodder lamp's forecast,
+  /// which counts it as held: the question is whether it must be brought in.
+  ///
+  /// Exposed for labor's queue: the carting of a meadow's hay has a field
+  /// load's window while this is true and is the last of the windowless
+  /// carts while it is not. Handed through the assembly, as
+  /// StandingCropGrams is.
+  /// @param days The days ahead, today the first; 0 answers false.
+  /// @return False with no kolkhoz herd that eats hay, and in a month the
+  ///         herds graze their whole need.
+  /// @note A pure read; called by labor in the decisions slot (phase 3).
+  virtual bool StoredHayShortWithin(const WorldState& world, std::uint32_t days) const = 0;
+
   /// @brief The fodder FUND today, grams, dense by ResourceId: the working
   /// stock's ration of each work feed until its next reaping, capped by the
   /// last reaping of it (boss, boss-core-epoch1-resume seq 14). 0 for a
