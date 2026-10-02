@@ -287,6 +287,15 @@ std::vector<std::uint32_t> OrderJobs(const std::vector<AssignmentJob>& jobs,
     if (KindPriority(a.kind) != KindPriority(b.kind)) {
       return KindPriority(a.kind) < KindPriority(b.kind);
     }
+    // THE STACKED HAY IS THE LAST OF ITS KIND (0.37.129; AssignmentJob::
+    // stacked_hay): a KEY for every job, like the zyab's above — only a
+    // windowless carting carries it, so it meets the logs, the lot and the
+    // dig's load here and yields to each. Windowless and unkeyed (0.37.128)
+    // the hay went before them: the logs came in December instead of the
+    // autumn and the building of years 1-3 fell from 368 man-days to 278.
+    if (a.stacked_hay != b.stacked_hay) {
+      return b.stacked_hay;
+    }
     // THE LAST DAYS BEFORE THE SNOW (boss seq 95 and 103): between reapings
     // with one edge, the snow — first those the village can still finish,
     // then the heavier. KEYS AND NOT A PAIRWISE RULE, after the kind: asked
