@@ -110,9 +110,13 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // Save 127 (0.37.140): the adult head-days by livestock kind, a vector after
 // herd_produce — 98 -> 99 fields, 936 + 34 A -> 936 + 35 A, no padding moved;
 // predicted before the build.
-static_assert(sizeof(YearLedger) == 936 + (35 * kAmountsSize),
+// Save 129 (0.37.146): the reaping's crew of today and of the last day, hands
+// and hours, four floats after the daylight pair — 99 -> 103 fields, 936 ->
+// 952 (sixteen bytes on an eight-aligned size); predicted before the build,
+// held.
+static_assert(sizeof(YearLedger) == 952 + (35 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 99,
+static_assert(AggregateArity<YearLedger>() == 103,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 
 void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
@@ -224,6 +228,11 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   // And the daylight they were reaped under (save 64).
   out.WriteFloat(book.reaping_today_daylight);
   out.WriteFloat(book.reaping_last_day_daylight);
+  // And the crew of those days, hands and hours (save 129).
+  out.WriteFloat(book.reaping_today_hands);
+  out.WriteFloat(book.reaping_last_day_hands);
+  out.WriteFloat(book.reaping_today_hours);
+  out.WriteFloat(book.reaping_last_day_hours);
   out.WriteU32(book.walk_offs);
   out.WriteFloat(book.horse_backed_assignment_days);
   out.WriteFloat(book.total_assignment_days);
@@ -399,6 +408,10 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.reaping_last_day = in.ReadFloat();
   book.reaping_today_daylight = in.ReadFloat();
   book.reaping_last_day_daylight = in.ReadFloat();
+  book.reaping_today_hands = in.ReadFloat();  // save 129
+  book.reaping_last_day_hands = in.ReadFloat();
+  book.reaping_today_hours = in.ReadFloat();
+  book.reaping_last_day_hours = in.ReadFloat();
   book.walk_offs = in.ReadU32();
   book.horse_backed_assignment_days = in.ReadFloat();
   book.total_assignment_days = in.ReadFloat();

@@ -747,6 +747,12 @@ core::WorldState MakeWorld() {
   // And the daylight of those two days (save 64).
   world.ledger.closed.reaping_today_daylight = 8.25F;
   world.ledger.closed.reaping_last_day_daylight = 15.5F;
+  // And the crew of those two days, hands and hours (save 129): four values
+  // each unlike the others, so a codec that swapped two would be seen.
+  world.ledger.closed.reaping_today_hands = 3.0F;
+  world.ledger.closed.reaping_last_day_hands = 21.0F;
+  world.ledger.closed.reaping_today_hours = 11.5F;
+  world.ledger.closed.reaping_last_day_hours = 140.25F;
   world.ledger.closed.work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kHarvest)] =
       241.5F;
   // econ's instruments (save 94): what the carts brought in, and the jobs the
@@ -1707,7 +1713,9 @@ constexpr std::array<RecordedSection, 23> kRecordedPayload = {{
     // book: the closed book's two kinds (2 + 16) and the current's empty one
     // (2). With both empty the codec gave 2456, predicted before the build;
     // 2472 is that and the fixture's two kinds, counted before the run.
-    {"ledger", 2472, 0xf2fe55f45e3a4527ULL},
+    // Save 129: +32 — the reaping's crew, four floats a book, two books;
+    // predicted 2472 -> 2504 before the build, held.
+    {"ledger", 2504, 0xc815ea3321311a88ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -2272,6 +2280,12 @@ int main() {
   failures += Expect(loaded.ledger.closed.reaping_today_daylight == 8.25F &&
                          loaded.ledger.closed.reaping_last_day_daylight == 15.5F,
                      "and the daylight it was reaped under (save 64)");
+  failures += Expect(loaded.ledger.closed.reaping_today_hands == 3.0F &&
+                         loaded.ledger.closed.reaping_last_day_hands == 21.0F &&
+                         loaded.ledger.closed.reaping_today_hours == 11.5F &&
+                         loaded.ledger.closed.reaping_last_day_hours == 140.25F,
+                     "and the crew that reaped, hands and hours, each in its own place "
+                     "(save 129)");
   // PlanState carried no tripwire at all until 2026-09-12 — the only
   // serialized block without one — so these three are the first thing that
   // would have noticed a field quietly dropped by the codec.

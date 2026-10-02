@@ -280,6 +280,28 @@ struct YearLedger {
   float reaping_today_daylight = 0.0F;
   float reaping_last_day_daylight = 0.0F;
 
+  /// THE CREW THE COUNT BY FIELDS TAKES (0.37.146; save 129;
+  /// core_common/reaping_pace.h; the harvest rule 5). With the norm-days
+  /// alone one field's yesterday was laid on every field's tomorrow: twenty
+  /// hands on the near potato kept the count silent over three far fields
+  /// (seed 1938, year 1 — 88.3 norm-days owed a week before the snow, «in
+  /// time» said, 19.3 t lost), and three hands on the rye in July made it cry
+  /// all summer. Two pairs, today's and the last day's:
+  ///  - `hands`: THE HANDS THE REAPING CAN HAVE — the morning's list of the
+  ///    accountant less those his plan put on the herds' care, a standing
+  ///    duty of every day (a post's holder is not in the list at all). Not
+  ///    the hands that reaped: three reapers in July are the queue's choice
+  ///    of a day, not the village's strength. Written at the morning's
+  ///    placement and rolled EVERY day;
+  ///  - `hours`: the hours the reapers of the arable reaped — the light less
+  ///    each one's road. With the norm-days above they give a hand's norm-days
+  ///    an hour. Written and rolled with the reaping, on a day that ended
+  ///    with reaping still owed.
+  float reaping_today_hands = 0.0F;
+  float reaping_last_day_hands = 0.0F;
+  float reaping_today_hours = 0.0F;
+  float reaping_last_day_hours = 0.0F;
+
   ResourceAmounts seed;  ///< What sowing took out of the stores.
 
   float area_sown_ha = 0.0F;
