@@ -1919,13 +1919,31 @@ class LaborSystem final : public ILaborSystem {
             HoursPerKm(config_, road_kind);
       }
       const float travel = current.residents.rows[row].work.travel_hours;
-      const float worked = HoursInside(hour, window.sunrise + travel, window.sunset - travel);
+      // A CARTER'S ROAD TO THE LOAD IS HIS FIRST TRIP'S EMPTY HALF (0.37.139;
+      // econ and boss, boss-all-carts-carry-people-go-2026-10-02 [72]-[76]).
+      // A load's seam is priced in round trips load-store-load (haul.h,
+      // HaulDaysFor); the road home-load-home was taken from the carter's
+      // light besides — and his way out IS the empty half of the first
+      // round, his way back the empty half of one he never drives: the last
+      // cart comes into the village, where he lives. A whole trip a rider-day
+      // was counted twice: 0.83 of a cart of hay a rider-day where the light
+      // holds 1.4 (nine villages, 0.37.133). So the hauling's day is the
+      // light. Every other work keeps its road: a field has no trip in its
+      // seam, and the ploughman's way there is a way.
+      // AN APPROXIMATION, NAMED: «home is the store is the horse yard» — the
+      // hundreds of metres inside a village against the kilometres to a
+      // meadow. The delivery of the job starting at the horse yard puts the
+      // walk to the horse here, for the carter and the ploughman alike.
+      // NOT TOUCHED: the road rule (travel_limit_hours) still asks the way
+      // home-load — whether he can get there at all.
+      const float road = kind == WorkKind::kHauling ? 0.0F : travel;
+      const float worked = HoursInside(hour, window.sunrise + road, window.sunset - road);
       if (worked <= 0.0F) {
         continue;
       }
       ResidentRow& resident = current.residents.rows[row];
       if (resident.work.hours_away_today <= 0.0F) {
-        resident.work.hours_away_today = 2.0F * travel;  // the round trip, booked once
+        resident.work.hours_away_today = 2.0F * road;  // the round trip, booked once
       }
       resident.work.hours_away_today += worked;
       const float age = BiologicalAgeYears(config_, resident.birth_day, current.calendar.day);
@@ -1983,7 +2001,10 @@ class LaborSystem final : public ILaborSystem {
         // the man had dropped out of the sum.
         const float day_pay = std::min(
             1.0F, trips * config_.carry_kg_adult * efficiency / config_.walker_norm_kg_per_day);
-        const float usable = light - (2.0F * travel);
+        // Spread over the hours he works — the whole light since 0.37.139
+        // (his walk to the heap is his first trip's, above); until then the
+        // light less the road, which his hours no longer are.
+        const float usable = light - (2.0F * road);
         paid = usable > 0.0F ? day_pay * (worked / usable) * (delivered / could_deliver) : 0.0F;
       }
       resident.work.worked_norm_days_today += paid;
