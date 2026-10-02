@@ -420,11 +420,99 @@ FeedPurchase MaximalFeedPurchase(const ProductionConfig& config,
   return purchase;
 }
 
+namespace {
+
+/// Takes `wanted` heads off one cohort of the herds of a class — the horses
+/// or every other kind — herd by herd in row order; the sires of a sexed
+/// kind go in proportion to its adults. Returns the heads still wanted.
+float TakeCohort(const ProductionConfig& config,
+                 bool horses,
+                 bool adults,
+                 float wanted,
+                 std::vector<ProjectedHerd>& herds) {
+  for (ProjectedHerd& herd : herds) {
+    if (!(wanted > 0.0F)) {
+      break;
+    }
+    if ((herd.kind.value == config.horse_kind.value) != horses) {
+      continue;
+    }
+    float& cohort = adults ? herd.adults : herd.juveniles;
+    const float gone = std::min(cohort, wanted);
+    if (adults && cohort > 0.0F) {
+      herd.males *= (cohort - gone) / cohort;
+    }
+    cohort -= gone;
+    wanted -= gone;
+  }
+  return wanted;
+}
+
+/// HeadsHandedOver off the projected herds, in its own order: the adults of
+/// a class, then its juveniles.
+void TakeHandedOver(const ProductionConfig& config,
+                    const HeadsHandedOver& handed,
+                    std::vector<ProjectedHerd>& herds) {
+  for (const bool horses : {false, true}) {
+    const auto wanted = static_cast<float>(horses ? handed.horses : handed.stock);
+    TakeCohort(config, horses, false, TakeCohort(config, horses, true, wanted, herds), herds);
+  }
+}
+
+}  // namespace
+
+HeadsHandedOver LeastHeadsToHandOver(const ProductionConfig& config,
+                                     const WorldState& world,
+                                     const FeedPurchase* purchase) {
+  HeadsHandedOver standing;
+  for (const HerdRow& herd : world.herds.rows) {
+    if (herd.household_owned != 0 || herd.kind.value >= config.livestock.size()) {
+      continue;
+    }
+    const std::int64_t heads = static_cast<std::int64_t>(herd.adult_count) + herd.juvenile_count;
+    (herd.kind.value == config.horse_kind.value ? standing.horses : standing.stock) += heads;
+  }
+  const auto short_without = [&config, &world, purchase](const HeadsHandedOver& handed) {
+    return ForecastHerdFeed(config, world, false, FeedHorizon::kNearestScythes, purchase, &handed)
+        .short_ahead;
+  };
+  HeadsHandedOver least;
+  if (!short_without(least)) {
+    return least;
+  }
+  // THE LEAST OF A CLASS BY HALVING: with `low` heads gone the forecast is
+  // short, with `high` it is not — fewer heads never eat more.
+  const auto least_of = [&short_without](HeadsHandedOver handed,
+                                         std::int64_t HeadsHandedOver::* count,
+                                         std::int64_t high) {
+    std::int64_t low = 0;
+    while (high - low > 1) {
+      const std::int64_t middle = low + ((high - low) / 2);
+      handed.*count = middle;
+      (short_without(handed) ? low : high) = middle;
+    }
+    return high;
+  };
+  // THE STOCK BEFORE THE DRAUGHT (Livestock design §6): a working horse is in
+  // the number only when every head of the stock gone leaves the rest short.
+  least.stock = standing.stock;
+  if (!short_without(least)) {
+    least.stock = least_of(HeadsHandedOver{}, &HeadsHandedOver::stock, standing.stock);
+    return least;
+  }
+  least.horses = standing.horses;
+  if (!short_without(least)) {
+    least.horses = least_of(least, &HeadsHandedOver::horses, standing.horses);
+  }
+  return least;
+}
+
 HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
                                   const WorldState& world,
                                   bool one_more_horse,
                                   FeedHorizon horizon,
-                                  const FeedPurchase* purchase) {
+                                  const FeedPurchase* purchase,
+                                  const HeadsHandedOver* handed) {
   HerdFeedForecast forecast;
   if (config.livestock.empty() || config.feed_values.empty()) {
     return forecast;
@@ -507,6 +595,12 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
     team.kind = config.horse_kind;
     team.adults = 1.0F;
     herds.push_back(team);
+  }
+  // THE HEADS ASKED ABOUT AS HANDED OVER (HeadsHandedOver; 0.37.137): off the
+  // herds that stand, before the stock on the road is added — a head bought
+  // and not yet come is not the chairman's to hand back.
+  if (handed != nullptr) {
+    TakeHandedOver(config, *handed, herds);
   }
   // THE MOVES ALREADY MADE (econ §4а, boss [70]): stock bought on the limit
   // stands in from its day; its heads eat from the farm's stores.
@@ -672,7 +766,14 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
   return forecast;
 }
 
-bool CutCanBeHurried(const WorldState& world) {
+bool CutCanBeHurried(const ProductionConfig& config, const WorldState& world) {
+  // ONLY IN THE MONTHS OF THE MOWING (0.37.137): the grass nobody mowed
+  // stands in its cut's phase to the year's end, and the avral's door takes
+  // an order on it in January.
+  const auto month = static_cast<std::uint8_t>(world.calendar.date.month);
+  if (month < config.farming.meadow_cut_month || month > HayCutEndMonth(config)) {
+    return false;
+  }
   return std::ranges::any_of(world.fields.rows, [](const FieldRow& field) {
     if (field.kind == LandKind::kArable || field.phase != FieldPhase::kHarvest ||
         !(field.work_days_remaining > 0.0F)) {
@@ -701,10 +802,21 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
   // AND ONLY WHILE THE CUT CAN STILL BE HURRIED (CutCanBeHurried; 0.37.123):
   // a meadow in its cut whose avral stands at the last step has no move left
   // on it, and the ladder goes on.
-  if (CutCanBeHurried(world)) {
+  if (CutCanBeHurried(config, world)) {
     advice.advice = AlarmAdvice::kCutHay;
     return advice;
   }
+  // THE HEADS OF «FEWER HEADS» ARE THE LEAST THAT FEED THE REST (0.37.137;
+  // LeastHeadsToHandOver), the stock before the horses — not the forecast's
+  // heads_short, which counts the heads unfed on the worst day: the whole
+  // herd on the day the hay is out. With that number a chairman following
+  // the advice handed over 111 heads by the median for a tenth of the hay.
+  const auto name_the_heads = [&config, &world, &advice](const FeedPurchase* purchase) {
+    const HeadsHandedOver heads = LeastHeadsToHandOver(config, world, purchase);
+    advice.hand_over_stock = heads.stock;
+    advice.hand_over_horses = heads.horses;
+    return heads.stock + heads.horses;
+  };
   // 2. THE DISTRICT'S FEED, IF THE DOOR TAKES THE ORDER TODAY AND IT HELPS
   // (0.37.122). «Helps»: the forecast after it is not short, or is short
   // later, or of fewer heads — a purchase that moves none of the three feeds
@@ -731,7 +843,7 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
       }
       if (after.short_ahead && after.heads_short > 0) {
         advice.advice_more = AlarmAdvice::kReduceHerd;
-        advice.amount_more = after.heads_short;
+        advice.amount_more = name_the_heads(&purchase);
       }
       return advice;
     }
@@ -742,11 +854,14 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
   if (!purchase.any && blocked_by_store) {
     advice.advice = AlarmAdvice::kGranaryForFeed;
     advice.advice_more = AlarmAdvice::kReduceHerd;
-    advice.amount_more = forecast.heads_short;
+    advice.amount_more = name_the_heads(nullptr);
     return advice;
   }
-  // 4. FEWER HEADS: the alarm's own `amount` is the number.
+  // 4. FEWER HEADS, and their number beside the move (hand_over_stock,
+  // hand_over_horses): the alarm's own `amount` is the lamp's, not the
+  // advice's.
   advice.advice = AlarmAdvice::kReduceHerd;
+  name_the_heads(nullptr);
   return advice;
 }
 
@@ -772,6 +887,8 @@ void CollectHerdForecastAlarms(const ProductionConfig& config,
   alarm.advice_amount = advice.advice_amount;
   alarm.advice_more = advice.advice_more;
   alarm.amount_more = advice.amount_more;
+  alarm.hand_over_stock = advice.hand_over_stock;
+  alarm.hand_over_horses = advice.hand_over_horses;
   alarm.lamp = 0;
   alarms.push_back(alarm);
 }

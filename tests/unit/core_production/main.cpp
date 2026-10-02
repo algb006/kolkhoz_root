@@ -667,13 +667,25 @@ int CheckTheForecastAdvice() {
   };
   constexpr std::uint8_t kNoGranary = 255;
 
-  // 4. NO FEED SOLD: fewer heads, the lamp's own number.
+  // 4. NO FEED SOLD: fewer heads. THE LAMP'S NUMBER AND THE ADVICE'S ARE TWO
+  // (0.37.137): 80 kg against the four heads' 96 to day 24 — on the worst
+  // day all four are unfed, and ONE head handed over feeds the other three
+  // (72 kg). Until 0.37.137 the advice was the four.
   const core::Alarm no_feed = lamp(village(80.0F, kNoGranary, 0.0F));
   failures += Expect(no_feed.kind == core::AlarmKind::kHerdHayShortAhead && no_feed.amount == 4 &&
                          no_feed.advice == core::AlarmAdvice::kReduceHerd &&
                          no_feed.advice_more == core::AlarmAdvice::kNone,
-                     "forecast advice: the district sells no feed - fewer heads, four of them, "
-                     "and no second move");
+                     "forecast advice: the district sells no feed - fewer heads, the lamp's four "
+                     "unfed on the worst day, and no second move");
+  failures += Expect(no_feed.hand_over_stock == 1 && no_feed.hand_over_horses == 0,
+                     "forecast advice: and the heads to hand over are ONE - three heads reach "
+                     "the scythes on the 80 kg - not the four of the worst day");
+  // THE PAIR OF THE REFUSAL: with not a kilogram no head's leaving feeds the
+  // rest - all four.
+  const core::Alarm no_hay = lamp(village(0.0F, kNoGranary, 0.0F));
+  failures += Expect(no_hay.advice == core::AlarmAdvice::kReduceHerd && no_hay.hand_over_stock == 4,
+                     "forecast advice: an empty store - every head, four: the least number is "
+                     "the whole herd only when nothing else feeds one");
   core::LimitLotDef feed_lot;
   feed_lot.kind = core::LimitLotKind::kGoods;
   feed_lot.points = 10;
@@ -689,9 +701,10 @@ int CheckTheForecastAdvice() {
     const core::Alarm alarm = lamp(world);
     failures += Expect(
         alarm.advice == core::AlarmAdvice::kGranaryForFeed &&
-            alarm.advice_more == core::AlarmAdvice::kReduceHerd && alarm.amount_more == 4,
+            alarm.advice_more == core::AlarmAdvice::kReduceHerd && alarm.amount_more == 1 &&
+            alarm.hand_over_stock == 1 && alarm.hand_over_horses == 0,
         level == kNoGranary ? "forecast advice: a feed lot and no granary - «амбар под комбикорм», "
-                              "and four heads to hand over meanwhile"
+                              "and one head to hand over meanwhile"
                             : "forecast advice: the granary's site under way - still the granary, "
                               "not the lot: the door refuses it");
     failures += Expect(door(world) == core::OrderRefusal::kNowhereToStore,
@@ -720,10 +733,11 @@ int CheckTheForecastAdvice() {
     // The points spent: the lot is no move, and the heads are.
     world.limit.points = 0;
     const core::Alarm broke = lamp(world);
-    failures += Expect(broke.advice == core::AlarmAdvice::kReduceHerd && broke.amount == 4 &&
-                           door(world) == core::OrderRefusal::kLimitShort,
-                       "forecast advice: the year's points spent - fewer heads, and the door "
-                       "says the limit is short");
+    failures +=
+        Expect(broke.advice == core::AlarmAdvice::kReduceHerd && broke.amount == 4 &&
+                   broke.hand_over_stock == 1 && door(world) == core::OrderRefusal::kLimitShort,
+               "forecast advice: the year's points spent - fewer heads, one to hand "
+               "over, and the door says the limit is short");
   }
   // 60 kg of hay: the lot puts the first short day off and the herd is still
   // short — both moves and both numbers.
@@ -736,9 +750,11 @@ int CheckTheForecastAdvice() {
               << " for " << alarm.amount_more << " heads\n";
     failures +=
         Expect(alarm.amount == 4 && alarm.advice == core::AlarmAdvice::kBuyFeed &&
-                   alarm.advice_more == core::AlarmAdvice::kReduceHerd && alarm.amount_more == 3,
+                   alarm.advice_more == core::AlarmAdvice::kReduceHerd && alarm.amount_more == 1 &&
+                   alarm.hand_over_stock == 1 && alarm.hand_over_horses == 0,
                "forecast advice: the lot helps and does not reach the scythes - four "
-               "heads short today; buy, AND the three still short after it");
+               "heads short today; buy, AND one head to hand over after it (three were "
+               "unfed on the worst day after the purchase: the lamp's number, not this)");
   }
   // THE PURCHASE THAT FEEDS NO HEAD MORE: the granary full of compound feed,
   // its share of the day taken already — the hole is the hay's.
@@ -747,17 +763,86 @@ int CheckTheForecastAdvice() {
     world.limit.points = 10;
     const core::Alarm alarm = lamp(world);
     std::cout << "  forecast advice, 40 kg of hay and a tonne of compound feed: advice "
-              << static_cast<int>(alarm.advice) << " for " << alarm.amount << " heads\n";
+              << static_cast<int>(alarm.advice) << "; unfed on the worst day " << alarm.amount
+              << " heads, to hand over " << alarm.hand_over_stock << '\n';
+    // A head eats 0.6 kg of hay a day beside its compound feed, 14.4 kg to
+    // day 24: 40 kg feed two heads (28.8) and not three (43.2).
     failures += Expect(alarm.advice == core::AlarmAdvice::kReduceHerd && alarm.amount == 3 &&
                            alarm.advice_more == core::AlarmAdvice::kNone,
                        "forecast advice: a lot of the feed the herd already has its fill of "
-                       "helps nobody - fewer heads, three");
+                       "helps nobody - fewer heads, three unfed on the worst day");
+    failures += Expect(alarm.hand_over_stock == 2 && alarm.hand_over_horses == 0,
+                       "forecast advice: and two to hand over - the 40 kg of hay feed two heads "
+                       "to the scythes beside their compound feed");
+  }
+  // THE STOCK BEFORE THE DRAUGHT (0.37.137; Livestock design §6): kind 1 is
+  // the horse here, a unit of hay a head a day as the cow. Four cows and two
+  // horses, 144 kg to day 24.
+  {
+    core::ProductionConfig team = config;
+    team.limit.lots.clear();
+    team.horse_kind = core::LivestockKindId{1};
+    team.livestock[1].feed_units_per_game_day = 1.0F;
+    team.livestock[1].births_per_game_year = 0.0F;
+    team.feed_links.push_back(core::FeedLinkDef{
+        .kind = core::LivestockKindId{1}, .resource = core::ResourceId{0}, .reserve = 0});
+    const auto heads = [&team](float hay_kg) {
+      core::WorldState world = MakeHerdWorld(hay_kg);
+      world.units.rows[0].level = 1;
+      AddHerd(world, 1, 2, 1, true);  // the horses FIRST in the table: the order is not the rows'
+      AddHerd(world, 0, 4, 2, true);
+      std::vector<core::Alarm> alarms;
+      core::CollectHerdForecastAlarms(team, world, alarms);
+      return alarms.empty() ? core::Alarm{} : alarms[0];
+    };
+    // 100 kg: five heads' 120 do not fit, four heads' 96 do - two cows, no horse.
+    const core::Alarm little = heads(100.0F);
+    // 40 kg: with every cow gone the two horses want 48 - four cows and one horse.
+    const core::Alarm deep = heads(40.0F);
+    std::cout << "  forecast advice, four cows and two horses: 100 kg - hand over "
+              << little.hand_over_stock << " of the stock and " << little.hand_over_horses
+              << " horses; 40 kg - " << deep.hand_over_stock << " and " << deep.hand_over_horses
+              << '\n';
+    failures += Expect(little.advice == core::AlarmAdvice::kReduceHerd &&
+                           little.hand_over_stock == 2 && little.hand_over_horses == 0,
+                       "forecast advice, the order: 100 kg for six heads' 144 - two cows go and "
+                       "no horse, though the horses stand first in the table");
+    failures += Expect(deep.hand_over_stock == 4 && deep.hand_over_horses == 1,
+                       "forecast advice, the order: 40 kg - a horse is named only when every cow "
+                       "gone leaves the team short: four cows and one horse");
+    // THE ADVICE FOLLOWED PUTS THE LAMP OUT, AND ONE HEAD FEWER DOES NOT
+    // (the second half of the guard of the lamp's advice: executable was
+    // asked since 0.37.122, sufficient and least were not). The heads go as
+    // the hand-over's door takes them: adults of the herd named.
+    const auto lit_after = [&team](std::uint16_t cows_gone, std::uint16_t horses_gone) {
+      core::WorldState world = MakeHerdWorld(100.0F);
+      world.units.rows[0].level = 1;
+      AddHerd(world, 1, static_cast<std::uint16_t>(2 - horses_gone), 1, true);
+      AddHerd(world, 0, static_cast<std::uint16_t>(4 - cows_gone), 2, true);
+      std::vector<core::Alarm> alarms;
+      core::CollectHerdForecastAlarms(team, world, alarms);
+      return !alarms.empty();
+    };
+    failures += Expect(!lit_after(2, 0) && lit_after(1, 0),
+                       "forecast advice, followed: the two cows handed over put the lamp out, "
+                       "and one cow does not - the number is enough and the least");
   }
   // 1. THE CUT, while a meadow stands in it — whatever the district sells;
   // and a meadow mown through is no cut to rush.
+  // IN THE MONTHS OF THE MOWING (0.37.137): July of year 2 here, day 72 — in
+  // year 1's own mowing the forecast has nothing to say yet. The same meadow
+  // in the same phase in January is no cut: the grass nobody mowed stands in
+  // that phase to the year's end, the avral's door takes an order on it, and
+  // nobody can mow.
   {
     core::WorldState world = village(80.0F, 1, 0.0F);
     world.limit.points = 10;
+    const auto to_day = [&world](core::SimDay day) {
+      world.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
+      core::RefreshCalendarCaches(world.calendar);
+      world.ledger.closed.year = 1;
+    };
+    to_day(core::kDaysPerYear + 24);
     core::FieldRow meadow;
     meadow.kind = core::LandKind::kMeadow;
     meadow.phase = core::FieldPhase::kHarvest;
@@ -780,6 +865,53 @@ int CheckTheForecastAdvice() {
     world.fields.rows[0].rush_step = static_cast<std::uint8_t>(core::kMaxRushStep - 1);
     failures += Expect(lamp(world).advice == core::AlarmAdvice::kCutHay,
                        "forecast advice: a step below the last - the cut is still the move");
+    world.fields.rows[0].rush_step = 0;
+    world.fields.rows[0].rush_phase = core::FieldPhase::kIdle;
+    to_day(core::kDaysPerYear);  // 1 January of year 2, the meadow still in its cut's phase
+    const core::Alarm winter = lamp(world);
+    failures += Expect(winter.kind == core::AlarmKind::kHerdHayShortAhead &&
+                           winter.advice == core::AlarmAdvice::kBuyFeed,
+                       "forecast advice: the grass left unmown stands in its cut's phase in "
+                       "January - no cut to hurry, the ladder goes on to the lot");
+  }
+  // THE YEAR'S EDGE (boss, boss-all-carts-carry-people-go-2026-10-02 [82],
+  // [84] p. 2): the last day of year 1 and the first of year 2 look to the
+  // same first scythes — day 72 here — whether the year's book is closed yet
+  // or not. Four heads eat 4 kg a day: from day 47 it is 25 days and 100 kg,
+  // from day 48 it is 24 and 96.
+  {
+    const auto at = [&config](core::SimDay day, float hay_kg, std::uint16_t closed_year) {
+      core::WorldState world = MakeHerdWorld(hay_kg);
+      world.units.rows[0].level = 1;
+      AddHerd(world, 0, 4, 2, true);
+      world.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
+      core::RefreshCalendarCaches(world.calendar);
+      world.ledger.closed.year = closed_year;
+      return core::ForecastHerdFeed(config, world, false, core::FeedHorizon::kNearestScythes);
+    };
+    const core::HerdFeedForecast last_day = at(47, 96.0F, 0);
+    const core::HerdFeedForecast first_day = at(48, 92.0F, 1);
+    const core::HerdFeedForecast first_day_open_book = at(48, 92.0F, 0);
+    std::cout << "  forecast, the year's edge: day 47 with 96 kg - horizon "
+              << last_day.horizon_days << " days, short in " << last_day.days_ahead
+              << "; day 48 with 92 kg - horizon " << first_day.horizon_days << ", short in "
+              << first_day.days_ahead << "; the same with the book not closed - "
+              << first_day_open_book.horizon_days << " and " << first_day_open_book.days_ahead
+              << '\n';
+    failures += Expect(last_day.horizon_days == 25 && first_day.horizon_days == 24 &&
+                           first_day_open_book.horizon_days == 24,
+                       "forecast, the year's edge: the horizon is the same first scythes from "
+                       "either side of the turn, the book closed or not");
+    failures +=
+        Expect(last_day.short_ahead && first_day.short_ahead && first_day_open_book.short_ahead &&
+                   last_day.days_ahead == first_day.days_ahead + 1 &&
+                   first_day.days_ahead == first_day_open_book.days_ahead &&
+                   last_day.heads_short == first_day.heads_short,
+               "forecast, the year's edge: a day's hay eaten, the same shortage a day "
+               "nearer - nothing turns with the year");
+    failures += Expect(!at(47, 100.0F, 0).short_ahead && !at(48, 96.0F, 1).short_ahead,
+                       "forecast, the year's edge: and the hay that reaches the scythes reaches "
+                       "them from both days");
   }
   return failures;
 }

@@ -35,6 +35,7 @@
 #define TESTS_RUN_COMMON_LIMIT_POLICY_H_
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <iostream>
 #include <optional>
@@ -80,6 +81,35 @@ class LimitPolicy {
       horse_lot_ = lots->FindRowByKey("horse_head");
     }
     ReadSowingWindows(tables);
+    // The months of the mowing (farming.csv, human 1..12), for the guard of
+    // «the cut»: read off the table here, not asked of the core.
+    if (const core::ITable* const farming = tables.FindTable("farming")) {
+      const std::uint32_t value = farming->FindColumn("value");
+      const auto month = [farming, value](const char* key, std::uint32_t fallback) {
+        const std::uint32_t row = farming->FindRowByKey(key);
+        const std::optional<float> cell =
+            row == core::kNoTableRow ? std::nullopt : farming->CellReal(row, value);
+        return cell && *cell >= 1.0F ? static_cast<std::uint32_t>(*cell) - 1U : fallback;
+      };
+      cut_from_month_ = month("meadow_cut_month", cut_from_month_);
+      cut_to_month_ = cut_from_month_;
+    }
+    // TO THE LAST MONTH A CROP THAT GIVES HAY IS REAPED (clover, timothy):
+    // the hay's year ends there, by the tables. THE SAME TWO CELLS THE CORE
+    // READS, and so this half of the guard holds the core to its tables and
+    // not to the world; what holds it to the world is the unit check «the
+    // advice followed puts the lamp out».
+    const core::ITable* const crops = tables.FindTable("crops");
+    if (crops != nullptr) {
+      const std::uint32_t resource = crops->FindColumn("resource");
+      const std::uint32_t to = crops->FindColumn("harvest_to_month");
+      for (std::uint32_t row = 0; row < crops->RowCount(); ++row) {
+        const std::optional<float> last = crops->CellReal(row, to);
+        if (crops->CellText(row, resource) == "hay" && last && *last >= 1.0F) {
+          cut_to_month_ = std::max(cut_to_month_, static_cast<std::uint32_t>(*last) - 1U);
+        }
+      }
+    }
   }
 
   /// @brief The fixture difference, in words, before anything is measured.
@@ -162,8 +192,20 @@ class LimitPolicy {
               << " OF THEM — must be nought), the granary " << advice_.granary_days
               << ", fewer heads first " << advice_.reduce_days << " and behind another move "
               << advice_.reduce_more_days
-              << " (heads named, summed over the days: " << advice_.heads_named << "), NO ADVICE "
-              << advice_.none_days << "\n";
+              << " (heads to hand over, summed over the days: " << advice_.heads_named
+              << ", of them horses " << advice_.horses_named
+              << "; the lamp's heads unfed on the worst day, summed over the same days: "
+              << advice_.heads_unfed_worst_day
+              << "; DAYS THE ADVICE NAMED EVERY HEAD STANDING: " << advice_.whole_herd_days
+              << "), NO ADVICE " << advice_.none_days << "\n";
+    std::cout << run << ": the hay lamp's yellow days by the day of the year (day:count, days "
+              << "with none left out):";
+    for (std::uint32_t day = 0; day < yellow_by_day_of_year_.size(); ++day) {
+      if (yellow_by_day_of_year_[day] != 0) {
+        std::cout << ' ' << day << ':' << yellow_by_day_of_year_[day];
+      }
+    }
+    std::cout << (advice_.yellow_days == 0 ? " none\n" : "\n");
     for (const Year& year : years_) {
       std::cout << run << ":   limit year " << year.year << " — granted " << year.granted
                 << ", spent " << year.spent << ", burnt " << year.burned << "\n";
@@ -415,9 +457,14 @@ class LimitPolicy {
           // THE CUT'S DOOR IS THE AVRAL (0.37.123): «the cut» is a move only
           // while some meadow in its cut has a step of the avral left. Read
           // off the world here, not by the core's own question.
+          // AND ONLY IN THE MONTHS OF THE MOWING (0.37.137): the grass nobody
+          // mowed stands in its cut's phase to the year's end, the avral's
+          // door takes the order in January, and nobody can mow.
           const core::WorldState& world = simulation.CompletedState();
+          const auto month = static_cast<std::uint32_t>(world.calendar.date.month);
+          const bool mowing = month >= cut_from_month_ && month <= cut_to_month_;
           const bool can_hurry =
-              std::ranges::any_of(world.fields.rows, [](const core::FieldRow& field) {
+              mowing && std::ranges::any_of(world.fields.rows, [](const core::FieldRow& field) {
                 return field.kind != core::LandKind::kArable &&
                        field.phase == core::FieldPhase::kHarvest &&
                        field.work_days_remaining > 0.0F &&
@@ -445,7 +492,6 @@ class LimitPolicy {
           break;
         case core::AlarmAdvice::kReduceHerd:
           ++advice_.reduce_days;
-          advice_.heads_named += static_cast<std::uint64_t>(alarm.amount);
           break;
         default:
           ++advice_.none_days;
@@ -453,11 +499,40 @@ class LimitPolicy {
       }
       if (alarm.advice_more == core::AlarmAdvice::kReduceHerd) {
         ++advice_.reduce_more_days;
-        advice_.heads_named += static_cast<std::uint64_t>(alarm.amount_more);
       }
+      // THE HEADS THE ADVICE NAMES ARE ITS OWN (0.37.137; Alarm::
+      // hand_over_stock, hand_over_horses), not the lamp's `amount` — the
+      // heads unfed on the worst day, the whole herd once the hay is out.
+      // Counted beside the herd that stands: a day the advice names every
+      // head is a day to look at.
+      if (alarm.advice == core::AlarmAdvice::kReduceHerd ||
+          alarm.advice_more == core::AlarmAdvice::kReduceHerd) {
+        const std::int64_t named = alarm.hand_over_stock + alarm.hand_over_horses;
+        std::int64_t standing = 0;
+        for (const core::HerdRow& herd : simulation.CompletedState().herds.rows) {
+          standing += herd.household_owned == 0 ? herd.adult_count + herd.juvenile_count : 0;
+        }
+        advice_.heads_named += static_cast<std::uint64_t>(named);
+        advice_.heads_unfed_worst_day += static_cast<std::uint64_t>(alarm.amount);
+        advice_.horses_named += static_cast<std::uint64_t>(alarm.hand_over_horses);
+        advice_.whole_herd_days += standing > 0 && named >= standing ? 1U : 0U;
+      }
+      const std::uint32_t day_of_year =
+          simulation.CompletedState().calendar.day % core::kDaysPerYear;
+      ++yellow_by_day_of_year_[day_of_year];
       break;  // one yellow a day
     }
   }
+
+  /// The yellow days by the day of the year, over every year of the run: a
+  /// lamp that lights on one day of the calendar shows here (host's novice,
+  /// 0.37.133: a single day of year 2, the first).
+  std::array<std::uint32_t, core::kDaysPerYear> yellow_by_day_of_year_{};
+
+  /// The months of the mowing, 0-based (farming.csv meadow_cut_month and
+  /// meadow_cut_month_end; June and July by the documented defaults).
+  std::uint32_t cut_from_month_ = 5;
+  std::uint32_t cut_to_month_ = 6;
 
   struct AdviceCount {
     std::uint32_t yellow_days = 0;
@@ -470,6 +545,9 @@ class LimitPolicy {
     std::uint32_t reduce_more_days = 0;
     std::uint32_t none_days = 0;
     std::uint64_t heads_named = 0;
+    std::uint64_t horses_named = 0;
+    std::uint64_t heads_unfed_worst_day = 0;
+    std::uint32_t whole_herd_days = 0;
   };
 
   AdviceCount advice_;

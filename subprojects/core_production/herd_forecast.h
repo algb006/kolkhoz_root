@@ -125,6 +125,17 @@ FeedPurchase MaximalFeedPurchase(const ProductionConfig& config,
                                  const WorldState& world,
                                  bool* blocked_by_store = nullptr);
 
+/// @brief Heads the forecast is asked to count as handed over today
+///        (0.37.137), in the design's order (Livestock design §6): `stock` of
+///        the kolkhoz herds that are not horses — every such herd's adults
+///        first, herd by herd in row order, then their juveniles — and
+///        `horses` of the horse herds the same way. Newborns at the dam eat
+///        nothing and are not counted. More than stand takes all that stand.
+struct HeadsHandedOver {
+  std::int64_t stock = 0;
+  std::int64_t horses = 0;
+};
+
 /// @brief The forecast's answer.
 struct HerdFeedForecast {
   /// True when some day before the horizon a kolkhoz herd is not fed in full.
@@ -179,13 +190,34 @@ struct HerdFeedForecast {
 /// @param purchase A purchase counted as made today (FeedPurchase; 0.37.121),
 ///        or nullptr: its goods land on its day beside the carts already on
 ///        the road — «what would the forecast say AFTER this lot».
+/// @param handed Heads counted as handed over today (HeadsHandedOver;
+///        0.37.137), or nullptr: «what would the forecast say WITHOUT these
+///        heads». The sires go in proportion to the adults, as the hand-over's
+///        door takes them.
 /// @return short_ahead false with no kolkhoz herd, no feed roster or no
 ///         horizon.
 HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
                                   const WorldState& world,
                                   bool one_more_horse,
                                   FeedHorizon horizon = FeedHorizon::kNextYearsScythes,
-                                  const FeedPurchase* purchase = nullptr);
+                                  const FeedPurchase* purchase = nullptr,
+                                  const HeadsHandedOver* handed = nullptr);
+
+/// @brief THE LEAST HEADS TO HAND OVER FOR THE REST TO BE FED to the lamp's
+///        horizon (FeedHorizon::kNearestScythes) — the number of the advice
+///        «fewer heads» (0.37.137; boss, boss-all-carts-carry-people-go-2026-
+///        10-02 [84], [85]; Livestock design §6). The stock first: the least
+///        `stock` with which the forecast is not short; the horses only when
+///        the whole of the stock handed over leaves it short, and then the
+///        least of them. Found by halving: fewer heads never eat more.
+/// @param purchase A purchase counted as made today, as in ForecastHerdFeed:
+///        the heads still to hand over AFTER it.
+/// @return Nought and nought for a forecast that is not short; every head
+///         standing when no number of them feeds the rest (a herd underfed in
+///         a feed no head's leaving brings — it cannot be, with none left).
+HeadsHandedOver LeastHeadsToHandOver(const ProductionConfig& config,
+                                     const WorldState& world,
+                                     const FeedPurchase* purchase = nullptr);
 
 /// @brief The heads a standing kolkhoz herd will have `days` days from today
 ///        by the forecast's own projection (births by RunBirths's rule and
@@ -210,19 +242,33 @@ float ForecastHerdHeads(const ProductionConfig& config,
 ///        lamp said «the cut» on 287 days of 762 with every meadow rushed to
 ///        the limit — a move the door would not take, and a ladder that never
 ///        went on to the lot or the heads.
+///
+///        AND ONLY IN THE MONTHS OF THE MOWING (0.37.137): from the meadows'
+///        cut month to the month the cut ends (HayCutEndMonth's — the later
+///        of farming.csv meadow_cut_month_end's reader in labour is the same
+///        month). A meadow left in its cut's phase after them — the grass
+///        nobody mowed stands in that phase to the year's end — kept the
+///        advice alive through the autumn and the winter, and the avral's
+///        door took the order each of those days: a move the door takes and
+///        nobody can make. On host's 27 villages of 0.37.133 «the cut» was
+///        named on 225 days of 430.
 /// @note Read-only; a field's rush counts only on the phase it was declared
 ///       in (FieldRow::rush_phase).
-bool CutCanBeHurried(const WorldState& world);
+bool CutCanBeHurried(const ProductionConfig& config, const WorldState& world);
 
 /// @brief The hay lamp's advice: the two moves and their numbers
 ///        (alarm_state.h — Alarm::advice, advice_resource, advice_amount,
-///        advice_more, amount_more).
+///        advice_more, amount_more, hand_over_stock, hand_over_horses).
 struct FodderAdvice {
   AlarmAdvice advice = AlarmAdvice::kNone;
   ResourceId advice_resource;
   std::int64_t advice_amount = 0;
   AlarmAdvice advice_more = AlarmAdvice::kNone;
   std::int64_t amount_more = 0;
+  /// With kReduceHerd named, first or second: the least heads to hand over
+  /// (LeastHeadsToHandOver), the stock and the horses apart.
+  std::int64_t hand_over_stock = 0;
+  std::int64_t hand_over_horses = 0;
 };
 
 /// @brief THE LADDER OF THE HAY LAMP'S ADVICE (0.37.121; boss, host-boss-pin-
@@ -244,7 +290,13 @@ struct FodderAdvice {
 ///   4. kReduceHerd — nothing else helps: the district sells no feed the
 ///      herds eat, the points are spent, or what they buy feeds no head more
 ///      (a feed's share of the ration is capped — feed_links.csv max_share —
-///      and the hole is in the hay). Its heads are the alarm's `amount`.
+///      and the hole is in the hay).
+///
+/// THE HEADS OF kReduceHerd, first move or second, are `hand_over_stock` and
+/// `hand_over_horses` since 0.37.137 — LeastHeadsToHandOver, after the
+/// purchase when one is advised — and `amount_more` behind another move is
+/// their sum. Until then they were the forecast's heads_short, the heads
+/// unfed on the worst day: the whole herd on the day the hay is out.
 ///
 /// WHATEVER FEED RAN OUT FIRST. Until 0.37.121 the ladder was the hay's
 /// alone (AdviceForShortFeed): any other first short feed got «the granary»
