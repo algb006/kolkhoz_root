@@ -906,13 +906,15 @@ int CheckStartRoads() {
   // (road_east_meadows, road_south_lane, road_sw_meadows) and one at the
   // village's clay (road_hay_branch), and road_new_village, carried on by
   // them, stopped being a dead end.
+  // THIRTEEN WITH THE MANOR'S ALLEY (0.37.136; boss's export of 2 October
+  // 2026): a branch to the ruins, its far end free.
   const std::string expected_dead =
       " road_artel road_cemetery road_east_meadows road_east_pond road_hay_branch road_hayfield"
-      " road_lesnoy_spur road_north_forest road_pond_village road_resort_spur road_south_lane"
-      " road_sw_meadows";
-  failures += Expect(dead_ends == 12 && dead_names == expected_dead && borders == 4,
-                     "start roads: the graph finds the design's twelve dead-end roads, by name, "
-                     "and four ways out");
+      " road_lesnoy_spur road_manor_alley road_north_forest road_pond_village road_resort_spur"
+      " road_south_lane road_sw_meadows";
+  failures += Expect(dead_ends == 13 && dead_names == expected_dead && borders == 4,
+                     "start roads: the graph finds the design's thirteen dead-end roads, by "
+                     "name, and four ways out");
   // CONNECTIVITY (roads design §17): every ROAD in one network. A path may
   // stand alone — people reach it across open ground — and the backwater
   // shore path does, 1.4 km from the nearest road.
@@ -935,6 +937,7 @@ int CheckStartRoads() {
       centre.y += start.units.rows[row].position.y / static_cast<float>(start.units.rows.size());
     }
     std::uint32_t without_road = 0;
+    std::string no_road_places;
     float worst_ratio = 0.0F;
     double ratio_sum = 0.0;
     std::uint32_t measured = 0;
@@ -949,6 +952,14 @@ int CheckStartRoads() {
         const float straight =
             std::hypot(unit.position.x - centre.x, unit.position.y - centre.y) / 1000.0F;
         without_road += way.cart_without_road ? 1U : 0U;
+        if (way.cart_without_road) {
+          // THE PLACE BESIDE THE COUNT (0.37.136): «cart with no road 2» sent
+          // its reader to guess which two — the manor's, as it turned out,
+          // behind an alley drawn 42.5 m short of the network.
+          no_road_places += " type " + std::to_string(unit.type.value) + " at (" +
+                            std::to_string(static_cast<int>(unit.position.x)) + ", " +
+                            std::to_string(static_cast<int>(unit.position.y)) + ");";
+        }
         if (straight > 0.2F) {
           const float ratio = way.effective_km / straight;
           worst_ratio = std::max(worst_ratio, ratio);
@@ -970,7 +981,8 @@ int CheckStartRoads() {
                  "line: mean "
               << (measured > 0 ? ratio_sum / measured : 0.0) << ", worst " << worst_ratio
               << " (units farther than 200 m: " << measured << "); cart with no road "
-              << without_road << " (checksum " << checksum << ")\n";
+              << without_road << (no_road_places.empty() ? "" : " —") << no_road_places
+              << " (checksum " << checksum << ")\n";
     failures += Expect(without_road == 0,
                        "start roads: from every standing unit a cart finds a road to the village");
     // BETWEEN FOUND PLACES (NetworkPlace): the same numbers, found once. The
@@ -1544,11 +1556,13 @@ int CheckRoadTracer() {
                     ? 1U
                     : 0U;
   }
-  std::cout << "tracer: read " << obstacles.areas.size() << " areas (expected 32), of them "
-            << diggings << " diggings (6), " << obstacles.lines.size() << " lines (4), " << fords
+  // 33 AREAS AND 5 LINES SINCE 0.37.136: the count's pond and the count's
+  // brook by the manor, new water of the map's base (32 and 4 until then).
+  std::cout << "tracer: read " << obstacles.areas.size() << " areas (expected 33), of them "
+            << diggings << " diggings (6), " << obstacles.lines.size() << " lines (5), " << fords
             << " fords (4)" << (read ? "" : " — READ FAILED: " + error) << '\n';
-  failures += Expect(read && obstacles.areas.size() == 32 && diggings == 6 &&
-                         obstacles.lines.size() == 4 && fords == 4,
+  failures += Expect(read && obstacles.areas.size() == 33 && diggings == 6 &&
+                         obstacles.lines.size() == 5 && fords == 4,
                      "tracer: the reader takes every area, line and ford of the export");
 
   const auto built_at = std::chrono::steady_clock::now();
