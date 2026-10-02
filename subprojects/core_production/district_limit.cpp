@@ -230,24 +230,21 @@ std::int32_t YearLimitPoints(const LimitCatalog& catalog,
   return static_cast<std::int32_t>(std::min(rounded, kMostPoints));
 }
 
-OrderRefusal OrderLimitLot(const ProductionConfig& config,
-                           WorldState& current,
-                           const OrderRow& order,
-                           ResourceId* unstorable) {
-  const OrderRefusal refusal = LotOrderable(config.limit, order.lot, current.epoch);
+OrderRefusal LimitLotRefusalToday(const ProductionConfig& config,
+                                  const WorldState& world,
+                                  LimitLotId lot,
+                                  std::int32_t points_left,
+                                  ResourceId* unstorable) {
+  const OrderRefusal refusal = LotOrderable(config.limit, lot, world.epoch);
   if (refusal != OrderRefusal::kNone) {
     return refusal;
   }
-  const LimitLotDef& def = config.limit.lots[order.lot.value];
-  if (def.kind == LimitLotKind::kService) {
-    return OrderMtsColumn(config, current, order.lot, def.points);
-  }
+  const LimitLotDef& def = config.limit.lots[lot.value];
   // THE ROOM BEFORE THE POINTS, for the reason the column checks its season
   // first: a refusal must not cost anything. «Некуда поставить — нельзя
   // заказать» (district design §1).
   if (def.kind == LimitLotKind::kLivestock &&
-      static_cast<float>(KolkhozHeads(current) + def.head_count) >
-          PlacesForStock(config, current)) {
+      static_cast<float>(KolkhozHeads(world) + def.head_count) > PlacesForStock(config, world)) {
     return OrderRefusal::kNoRoomForStock;
   }
   // AND THE KIND'S OWN HOUSE (boss, boss-core-epoch1-5 seq 45-48; 0.35.4): a
@@ -256,7 +253,7 @@ OrderRefusal OrderLimitLot(const ProductionConfig& config,
   // ever born. A kind with no house (HomePlacesFree -1) keeps the old rule
   // above alone.
   if (def.kind == LimitLotKind::kLivestock) {
-    const float free = HomePlacesFree(config, current, def.livestock);
+    const float free = HomePlacesFree(config, world, def.livestock);
     if (free >= 0.0F && free < static_cast<float>(def.head_count)) {
       return OrderRefusal::kNoRoomForStock;
     }
@@ -266,7 +263,7 @@ OrderRefusal OrderLimitLot(const ProductionConfig& config,
   if (def.kind != LimitLotKind::kLivestock) {
     for (std::size_t resource = 0; resource < def.goods.size(); ++resource) {
       const ResourceId goods = DefIdFromIndex<ResourceIdTag>(resource);
-      if (def.goods[resource] > 0 && !SomeStoreAccepts(current, config, goods)) {
+      if (def.goods[resource] > 0 && !SomeStoreAccepts(world, config, goods)) {
         if (unstorable != nullptr) {
           *unstorable = goods;
         }
@@ -274,8 +271,28 @@ OrderRefusal OrderLimitLot(const ProductionConfig& config,
       }
     }
   }
-  if (current.limit.points < def.points) {
-    return OrderRefusal::kLimitShort;
+  return points_left < def.points ? OrderRefusal::kLimitShort : OrderRefusal::kNone;
+}
+
+OrderRefusal OrderLimitLot(const ProductionConfig& config,
+                           WorldState& current,
+                           const OrderRow& order,
+                           ResourceId* unstorable) {
+  const OrderRefusal orderable = LotOrderable(config.limit, order.lot, current.epoch);
+  if (orderable != OrderRefusal::kNone) {
+    return orderable;
+  }
+  const LimitLotDef& def = config.limit.lots[order.lot.value];
+  if (def.kind == LimitLotKind::kService) {
+    return OrderMtsColumn(config, current, order.lot, def.points);
+  }
+  // THE DOOR'S QUESTION HAS ONE HOME (LimitLotRefusalToday; 0.37.122): the
+  // room, the kind's house, the store and the points, in that order, asked
+  // here before anything is spent — and by whoever advises a purchase.
+  const OrderRefusal refusal =
+      LimitLotRefusalToday(config, current, order.lot, current.limit.points, unstorable);
+  if (refusal != OrderRefusal::kNone) {
+    return refusal;
   }
   current.limit.points -= def.points;
   current.ledger.current.limit_points_spent += def.points;

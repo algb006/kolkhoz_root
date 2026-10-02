@@ -1050,6 +1050,19 @@ int main(int argc, char** argv) {
   planting.Report("thirty_years", state);
   sawmill.Report("thirty_years");
   limit.Report("thirty_years");
+  // THE LAMP NAMES NO MOVE THE DOOR REFUSES, AND NEVER STANDS SILENT
+  // (0.37.122; limit_policy.h, WatchTheLampsAdvice): every day the hay lamp
+  // said «buy», the limit window took a lot carrying the feed it named; and
+  // on no day did it stand with no advice. A run with no yellow day measured
+  // neither, and says so instead of passing on nought of nought.
+  if (limit.YellowDaysWatched() == 0) {
+    std::cout << "thirty_years: THE HAY LAMP NEVER LIT in this run — the advice and the door were "
+                 "NOT MEASURED here\n";
+  }
+  failures += run::Expect(limit.AdviceRefusedByTheDoor() == 0,
+                          "the hay lamp never advises a lot the door would refuse that day");
+  failures +=
+      run::Expect(limit.YellowWithNoAdvice() == 0, "the hay lamp never stands with no advice");
   sawmill.ReportState("thirty_years", state);
   failures += orders.Report();
   failures += repairs.Report(state);

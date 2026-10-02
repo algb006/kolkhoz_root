@@ -127,6 +127,7 @@ class LimitPolicy {
     // or cows handed to the district. Its own order and cooldown, before the
     // lots': a herd short of hay is not waiting for a lot of boards.
     hay_.RunDay(simulation);
+    WatchTheLampsAdvice(simulation);
     // The loan needs no catalogue and no points: before the lots' gate.
     StageSeedLoans(simulation, world);
     if (!ready_) {
@@ -153,6 +154,14 @@ class LimitPolicy {
               << (hold_timber_while_logs_lie_ ? " — the timber lot was held back on those\n"
                                               : " — the timber lot was NOT held back on those\n");
     hay_.Report(run);
+    std::cout << run << ": the hay lamp's advice over " << advice_.yellow_days
+              << " yellow days — the cut " << advice_.cut_days << ", buy " << advice_.buy_days
+              << " (THE DOOR WOULD REFUSE THE LOT ON " << advice_.buy_refused_days
+              << " OF THEM — must be nought), the granary " << advice_.granary_days
+              << ", fewer heads first " << advice_.reduce_days << " and behind another move "
+              << advice_.reduce_more_days
+              << " (heads named, summed over the days: " << advice_.heads_named << "), NO ADVICE "
+              << advice_.none_days << "\n";
     for (const Year& year : years_) {
       std::cout << run << ":   limit year " << year.year << " — granted " << year.granted
                 << ", spent " << year.spent << ", burnt " << year.burned << "\n";
@@ -368,6 +377,82 @@ class LimitPolicy {
     return std::ranges::any_of(
         world.stands.rows, [](const core::TimberStandRow& stand) { return stand.load_grams > 0; });
   }
+
+ public:
+  /// @brief THE GUARD OF THE SEAM BETWEEN THE LAMP AND THE DOOR (0.37.122;
+  /// boss, host-boss-pin-0-37-109-2026-10-02 [11]: «совет не называет ход,
+  /// которому дверь сегодня откажет»): the days the hay lamp said «buy» and
+  /// the limit window — the lot door's own answer — took no lot carrying the
+  /// feed it named. A run asserts it nought.
+  std::uint32_t AdviceRefusedByTheDoor() const { return advice_.buy_refused_days; }
+
+  /// @brief The days the hay lamp stood with no advice at all.
+  std::uint32_t YellowWithNoAdvice() const { return advice_.none_days; }
+
+  /// @brief The days the hay lamp stood, by this guard's own daily count.
+  std::uint32_t YellowDaysWatched() const { return advice_.yellow_days; }
+
+ private:
+  /// Every day, whatever the chairman does about it: what the lamp advised,
+  /// and whether the door would take the lot it named.
+  void WatchTheLampsAdvice(core::ISimulation& simulation) {
+    std::vector<core::Alarm> alarms;
+    simulation.CollectAlarms(alarms);
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind != core::AlarmKind::kHerdHayShortAhead) {
+        continue;
+      }
+      ++advice_.yellow_days;
+      switch (alarm.advice) {
+        case core::AlarmAdvice::kCutHay:
+          ++advice_.cut_days;
+          break;
+        case core::AlarmAdvice::kBuyFeed: {
+          ++advice_.buy_days;
+          const core::LimitBook book = simulation.OfficeLimit();
+          bool taken = false;
+          const std::uint32_t feed = alarm.advice_resource.value;
+          for (const core::LimitLotLine& line : book.catalogue) {
+            const bool carries = line.lot.value < catalog_.lots.size() &&
+                                 feed < catalog_.lots[line.lot.value].goods.size() &&
+                                 catalog_.lots[line.lot.value].goods[feed] > 0;
+            taken = taken || (carries && line.orderable == core::OrderRefusal::kNone);
+          }
+          advice_.buy_refused_days += taken ? 0U : 1U;
+          break;
+        }
+        case core::AlarmAdvice::kGranaryForFeed:
+          ++advice_.granary_days;
+          break;
+        case core::AlarmAdvice::kReduceHerd:
+          ++advice_.reduce_days;
+          advice_.heads_named += static_cast<std::uint64_t>(alarm.amount);
+          break;
+        default:
+          ++advice_.none_days;
+          break;
+      }
+      if (alarm.advice_more == core::AlarmAdvice::kReduceHerd) {
+        ++advice_.reduce_more_days;
+        advice_.heads_named += static_cast<std::uint64_t>(alarm.amount_more);
+      }
+      break;  // one yellow a day
+    }
+  }
+
+  struct AdviceCount {
+    std::uint32_t yellow_days = 0;
+    std::uint32_t cut_days = 0;
+    std::uint32_t buy_days = 0;
+    std::uint32_t buy_refused_days = 0;
+    std::uint32_t granary_days = 0;
+    std::uint32_t reduce_days = 0;
+    std::uint32_t reduce_more_days = 0;
+    std::uint32_t none_days = 0;
+    std::uint64_t heads_named = 0;
+  };
+
+  AdviceCount advice_;
 
   /// Whether a lot carrying `resource` is at, or on its way to, the district
   /// centre for the village's own carts (LimitDeliveryRow::own_carts;

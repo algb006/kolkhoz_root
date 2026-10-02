@@ -445,9 +445,14 @@ class ProductionSystem final : public IProductionSystem {
       if (answer == OrderRefusal::kNone && def.kind == LimitLotKind::kService) {
         // The MTS column: its own rules and the balance, as the purchase asks.
         answer = MtsColumnRefusal(config_, completed, lot, def.points);
-      } else if (answer == OrderRefusal::kNone && completed.limit.points < def.points) {
-        // The balance after the lot's own answer, as the purchase asks it.
-        answer = OrderRefusal::kLimitShort;
+      } else if (answer == OrderRefusal::kNone) {
+        // THE DOOR'S OWN ANSWER (district_limit.h, LimitLotRefusalToday;
+        // 0.37.122): the stock's places, the store and the balance, as the
+        // purchase asks them. Until then the window asked the balance alone
+        // — «the window says whether the district would sell, not whether
+        // the village has room» — and showed as buyable a lot the door then
+        // refused kNowhereToStore: the hay lamp's seam, in the window.
+        answer = LimitLotRefusalToday(config_, completed, lot, completed.limit.points);
       }
       book.catalogue.push_back(LimitLotLine{.lot = lot, .points = def.points, .orderable = answer});
     }

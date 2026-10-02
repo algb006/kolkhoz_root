@@ -555,60 +555,148 @@ int CheckTheForecastAdvice() {
   config.unit_types[1].home_of = {core::ResourceId{3}};  // compound feed
   config.unit_types[2].capacity_by_plot = 1;             // a stack
   config.unit_types[2].home_of = {core::ResourceId{4}};  // straw
-  core::WorldState world = MakeHerdWorld(100.0F);
-  // THE HAY'S MOVE HANGS ON A MEADOW STANDING IN ITS CUT (the harvest rule 3,
-  // part А; 0.37.93). No meadow in its cut and a district that sells no
-  // feed: fewer heads. A lot of compound feed in the catalogue and no
-  // granary: «амбар под комбикорм». A meadow in its cut: the cut, whatever
-  // the district sells.
-  const core::ResourceId hay{0};
-  failures += Expect(core::AdviceForShortFeed(config, world, hay) == core::AlarmAdvice::kReduceHerd,
-                     "forecast advice: the hay, no meadow in its cut, the district sells no feed - "
-                     "fewer heads");
+  // THE LADDER OF THE HAY LAMP'S ADVICE (0.37.122; herd_forecast.h,
+  // AdviseOnShortFodder). Four cows, a unit a head a day, no calves; the
+  // compound feed first in the cow's order, to 0.4 of the day, the hay the
+  // rest; the cut in July — year 1 looks to day 24. A lot of the district's:
+  // 40 kg of compound feed for 10 points, landing on the cart's latest day,
+  // the fourth.
+  config.livestock[0].births_per_game_year = 0.0F;
+  config.farming.meadow_cut_month = 6;
+  config.feed_links = {
+      core::FeedLinkDef{.kind = core::LivestockKindId{0},
+                        .resource = core::ResourceId{3},
+                        .reserve = 0,
+                        .max_share = 0.4F},
+      core::FeedLinkDef{
+          .kind = core::LivestockKindId{0}, .resource = core::ResourceId{0}, .reserve = 0}};
+  constexpr core::Grams kLotGrams = 40 * core::kGramsPerKilogram;
+  const auto village = [](float hay_kg, std::uint8_t granary_level, float compound_kg) {
+    core::WorldState world = MakeHerdWorld(hay_kg);
+    world.units.rows[0].level = 1;
+    AddHerd(world, 0, 4, 2, true);
+    if (granary_level != 255) {
+      core::UnitRow granary;
+      granary.type = core::UnitTypeId{1};
+      granary.level = granary_level;
+      granary.stock.assign(5, 0);
+      granary.stock[3] = static_cast<core::Grams>(compound_kg) * core::kGramsPerKilogram;
+      AppendRow(world.units, granary);
+    }
+    return world;
+  };
+  const auto lamp = [&config](const core::WorldState& world) {
+    std::vector<core::Alarm> alarms;
+    core::CollectHerdForecastAlarms(config, world, alarms);
+    return alarms.empty() ? core::Alarm{} : alarms[0];
+  };
+  const auto door = [&config](const core::WorldState& world) {
+    return core::LimitLotRefusalToday(config, world, core::LimitLotId{0}, world.limit.points);
+  };
+  constexpr std::uint8_t kNoGranary = 255;
+
+  // 4. NO FEED SOLD: fewer heads, the lamp's own number.
+  const core::Alarm no_feed = lamp(village(80.0F, kNoGranary, 0.0F));
+  failures += Expect(no_feed.kind == core::AlarmKind::kHerdHayShortAhead && no_feed.amount == 4 &&
+                         no_feed.advice == core::AlarmAdvice::kReduceHerd &&
+                         no_feed.advice_more == core::AlarmAdvice::kNone,
+                     "forecast advice: the district sells no feed - fewer heads, four of them, "
+                     "and no second move");
   core::LimitLotDef feed_lot;
   feed_lot.kind = core::LimitLotKind::kGoods;
-  feed_lot.goods = {0, 0, 0, 10 * core::kGramsPerKilogram};
+  feed_lot.points = 10;
+  feed_lot.goods = {0, 0, 0, kLotGrams};
   config.limit.lots.push_back(feed_lot);
-  failures +=
-      Expect(core::AdviceForShortFeed(config, world, hay) == core::AlarmAdvice::kGranaryForFeed,
-             "forecast advice: the hay, no meadow in its cut, the district sells compound "
-             "feed and no granary stands - «амбар под комбикорм»");
-  {
-    core::WorldState with_granary = world;
-    core::UnitRow granary_site;
-    granary_site.type = core::UnitTypeId{1};
-    granary_site.level = 0;
-    AppendRow(with_granary.units, granary_site);
-    failures +=
-        Expect(core::AdviceForShortFeed(config, with_granary, hay) == core::AlarmAdvice::kBuyFeed,
-               "forecast advice: the hay, no meadow in its cut, a granary's site under way - the "
-               "district's feed");
+
+  // 3. THE GRANARY: no store for the lot — and the same while its site is
+  // only under way. Until 0.37.122 the site under way read «buy», and the
+  // door refused the order.
+  for (const std::uint8_t level : {kNoGranary, std::uint8_t{0}}) {
+    core::WorldState world = village(80.0F, level, 0.0F);
+    world.limit.points = 10;
+    const core::Alarm alarm = lamp(world);
+    failures += Expect(
+        alarm.advice == core::AlarmAdvice::kGranaryForFeed &&
+            alarm.advice_more == core::AlarmAdvice::kReduceHerd && alarm.amount_more == 4,
+        level == kNoGranary ? "forecast advice: a feed lot and no granary - «амбар под комбикорм», "
+                              "and four heads to hand over meanwhile"
+                            : "forecast advice: the granary's site under way - still the granary, "
+                              "not the lot: the door refuses it");
+    failures += Expect(door(world) == core::OrderRefusal::kNowhereToStore,
+                       "forecast advice: and the lot's door does refuse it for want of a store");
   }
-  core::FieldRow mown_out;
-  mown_out.kind = core::LandKind::kMeadow;
-  mown_out.phase = core::FieldPhase::kHarvest;
-  mown_out.work_days_remaining = 0.0F;
-  core::AppendRow(world.fields, mown_out);
-  failures +=
-      Expect(core::AdviceForShortFeed(config, world, hay) == core::AlarmAdvice::kGranaryForFeed,
-             "forecast advice: a meadow mown through is no cut to rush");
-  world.fields.rows[0].work_days_remaining = 3.0F;
-  failures += Expect(
-      core::AdviceForShortFeed(config, world, core::ResourceId{0}) == core::AlarmAdvice::kCutHay,
-      "forecast advice: the hay while a meadow stands in its cut - the cut");
-  failures += Expect(core::AdviceForShortFeed(config, world, core::ResourceId{3}) ==
-                         core::AlarmAdvice::kGranaryForFeed,
-                     "forecast advice: compound feed and no granary - «амбар под комбикорм»");
-  failures += Expect(
-      core::AdviceForShortFeed(config, world, core::ResourceId{4}) == core::AlarmAdvice::kNone,
-      "forecast advice: straw lives in a stack - no move named");
-  core::UnitRow site;
-  site.type = core::UnitTypeId{1};
-  site.level = 0;
-  AppendRow(world.units, site);
-  failures += Expect(
-      core::AdviceForShortFeed(config, world, core::ResourceId{3}) == core::AlarmAdvice::kNone,
-      "forecast advice: a granary's site under way is the move made");
+
+  // 2. THE LOT, when the door takes it and it helps. 80 kg of hay: the lot
+  // carries the herd to the scythes, and no head is named.
+  {
+    core::WorldState world = village(80.0F, 1, 0.0F);
+    world.limit.points = 10;
+    const core::Alarm alarm = lamp(world);
+    std::cout << "  forecast advice, 80 kg of hay and a granary: advice "
+              << static_cast<int>(alarm.advice) << ", of resource " << alarm.advice_resource.value
+              << " " << alarm.advice_amount / core::kGramsPerKilogram << " kg; then "
+              << static_cast<int>(alarm.advice_more) << " for " << alarm.amount_more << " heads\n";
+    failures += Expect(alarm.advice == core::AlarmAdvice::kBuyFeed &&
+                           alarm.advice_resource.value == 3 && alarm.advice_amount == kLotGrams,
+                       "forecast advice: a granary stands and the points cover a lot - buy, the "
+                       "compound feed, forty kilograms");
+    failures += Expect(alarm.advice_more == core::AlarmAdvice::kNone && alarm.amount_more == 0,
+                       "forecast advice: the lot carries the herd to the scythes - no head is "
+                       "named behind it");
+    failures += Expect(door(world) == core::OrderRefusal::kNone,
+                       "forecast advice: and the lot's door takes that order today");
+    // The points spent: the lot is no move, and the heads are.
+    world.limit.points = 0;
+    const core::Alarm broke = lamp(world);
+    failures += Expect(broke.advice == core::AlarmAdvice::kReduceHerd && broke.amount == 4 &&
+                           door(world) == core::OrderRefusal::kLimitShort,
+                       "forecast advice: the year's points spent - fewer heads, and the door "
+                       "says the limit is short");
+  }
+  // 60 kg of hay: the lot puts the first short day off and the herd is still
+  // short — both moves and both numbers.
+  {
+    core::WorldState world = village(60.0F, 1, 0.0F);
+    world.limit.points = 10;
+    const core::Alarm alarm = lamp(world);
+    std::cout << "  forecast advice, 60 kg of hay and a granary: advice "
+              << static_cast<int>(alarm.advice) << "; then " << static_cast<int>(alarm.advice_more)
+              << " for " << alarm.amount_more << " heads\n";
+    failures +=
+        Expect(alarm.amount == 4 && alarm.advice == core::AlarmAdvice::kBuyFeed &&
+                   alarm.advice_more == core::AlarmAdvice::kReduceHerd && alarm.amount_more == 3,
+               "forecast advice: the lot helps and does not reach the scythes - four "
+               "heads short today; buy, AND the three still short after it");
+  }
+  // THE PURCHASE THAT FEEDS NO HEAD MORE: the granary full of compound feed,
+  // its share of the day taken already — the hole is the hay's.
+  {
+    core::WorldState world = village(40.0F, 1, 1000.0F);
+    world.limit.points = 10;
+    const core::Alarm alarm = lamp(world);
+    std::cout << "  forecast advice, 40 kg of hay and a tonne of compound feed: advice "
+              << static_cast<int>(alarm.advice) << " for " << alarm.amount << " heads\n";
+    failures += Expect(alarm.advice == core::AlarmAdvice::kReduceHerd && alarm.amount == 3 &&
+                           alarm.advice_more == core::AlarmAdvice::kNone,
+                       "forecast advice: a lot of the feed the herd already has its fill of "
+                       "helps nobody - fewer heads, three");
+  }
+  // 1. THE CUT, while a meadow stands in it — whatever the district sells;
+  // and a meadow mown through is no cut to rush.
+  {
+    core::WorldState world = village(80.0F, 1, 0.0F);
+    world.limit.points = 10;
+    core::FieldRow meadow;
+    meadow.kind = core::LandKind::kMeadow;
+    meadow.phase = core::FieldPhase::kHarvest;
+    meadow.work_days_remaining = 0.0F;
+    core::AppendRow(world.fields, meadow);
+    failures += Expect(lamp(world).advice == core::AlarmAdvice::kBuyFeed,
+                       "forecast advice: a meadow mown through is no cut to rush");
+    world.fields.rows[0].work_days_remaining = 3.0F;
+    failures += Expect(lamp(world).advice == core::AlarmAdvice::kCutHay,
+                       "forecast advice: while a meadow stands in its cut - the cut");
+  }
   return failures;
 }
 

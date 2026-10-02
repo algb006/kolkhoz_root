@@ -2346,6 +2346,20 @@ int CheckTheOfficeDoors() {
                          full.catalogue[kerosene].orderable == core::OrderRefusal::kRuleForbids,
                      "office doors: the whole catalogue — timber priced and sold, short of "
                      "points kLimitShort, the unpriced kerosene kRuleForbids");
+  // THE WINDOW ANSWERS AS THE DOOR WOULD (0.37.122; district_limit.h,
+  // LimitLotRefusalToday): with no store standing to take the logs, the
+  // timber lot is not shown as sold. Until then the window asked the balance
+  // alone and the order was refused kNowhereToStore.
+  core::WorldState no_store = rich;
+  for (core::UnitRow& unit : no_store.units.rows) {
+    unit.level = 0;
+  }
+  simulation->ResetWorld(no_store);
+  const core::LimitBook nowhere = simulation->OfficeLimit();
+  failures += Expect(nowhere.catalogue[timber].orderable == core::OrderRefusal::kNowhereToStore,
+                     "office doors: a lot no store of the village would take is answered as the "
+                     "door answers it — kNowhereToStore, not «sold»");
+  simulation->ResetWorld(rich);
   std::cout << "office doors: on the way " << full.on_the_way.size() << ':';
   for (const core::LimitCartLine& line : full.on_the_way) {
     std::cout << " lot " << line.lot.value << " day " << line.arrive_day

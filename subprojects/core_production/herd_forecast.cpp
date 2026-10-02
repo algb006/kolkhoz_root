@@ -13,6 +13,7 @@
 #include "core_common/ledger_state.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table_ops.h"
+#include "district_limit.h"
 #include "herd_life.h"
 #include "herd_system.h"
 #include "night_pasture.h"
@@ -273,10 +274,94 @@ void DrainFeedDay(const ProductionConfig& config,
   }
 }
 
+FeedPurchase MaximalFeedPurchase(const ProductionConfig& config,
+                                 const WorldState& world,
+                                 bool* blocked_by_store) {
+  FeedPurchase purchase;
+  purchase.goods_kg.assign(config.feed_values.size(), 0.0F);
+  if (blocked_by_store != nullptr) {
+    *blocked_by_store = false;
+  }
+
+  // Every goods lot that carries a feed the herds eat, with its feed units a
+  // point — the order the points are spent in.
+  struct FeedLot {
+    LimitLotId lot;
+    float units_a_point = 0.0F;
+  };
+
+  std::vector<FeedLot> lots;
+  for (std::uint32_t index = 0; index < config.limit.lots.size(); ++index) {
+    const LimitLotDef& def = config.limit.lots[index];
+    if (def.kind != LimitLotKind::kGoods) {
+      continue;
+    }
+    float units = 0.0F;
+    for (std::size_t resource = 0;
+         resource < def.goods.size() && resource < config.feed_values.size();
+         ++resource) {
+      if (def.goods[resource] > 0 && config.feed_values[resource] > 0.0F) {
+        units += static_cast<float>(def.goods[resource]) / static_cast<float>(kGramsPerKilogram) *
+                 config.feed_values[resource];
+      }
+    }
+    if (!(units > 0.0F)) {
+      continue;
+    }
+    const LimitLotId lot{static_cast<std::uint16_t>(index)};
+    // The door's own answer with every point of the year in hand: a lot
+    // refused for the store alone is the granary's day, not the lot's.
+    const OrderRefusal door =
+        LimitLotRefusalToday(config, world, lot, std::numeric_limits<std::int32_t>::max());
+    if (door == OrderRefusal::kNowhereToStore && blocked_by_store != nullptr) {
+      *blocked_by_store = true;
+    }
+    if (door != OrderRefusal::kNone) {
+      continue;
+    }
+    // A free lot (0 points) is priced as one point: it sorts first and is
+    // taken once.
+    const float points = def.points > 0 ? static_cast<float>(def.points) : 1.0F;
+    lots.push_back(FeedLot{.lot = lot, .units_a_point = units / points});
+  }
+  // The most feed units a point first; equal lots in the catalogue's order.
+  std::ranges::stable_sort(lots, [](const FeedLot& left, const FeedLot& right) {
+    return left.units_a_point > right.units_a_point;
+  });
+  std::int32_t points_left = world.limit.points;
+  for (const FeedLot& feed : lots) {
+    const LimitLotDef& def = config.limit.lots[feed.lot.value];
+    const std::int32_t copies = def.points > 0 ? points_left / def.points : 1;
+    if (copies <= 0) {
+      continue;
+    }
+    points_left -= copies * def.points;
+    purchase.points += copies * def.points;
+    for (std::size_t resource = 0;
+         resource < def.goods.size() && resource < purchase.goods_kg.size();
+         ++resource) {
+      if (def.goods[resource] > 0 && config.feed_values[resource] > 0.0F) {
+        purchase.goods_kg[resource] += static_cast<float>(copies) *
+                                       static_cast<float>(def.goods[resource]) /
+                                       static_cast<float>(kGramsPerKilogram);
+        purchase.any = true;
+      }
+    }
+  }
+  if (purchase.any && blocked_by_store != nullptr) {
+    *blocked_by_store = false;  // a lot IS buyable: the day's move is the lot
+  }
+  // THE CART'S LATEST DAY: counted as landing early, the purchase would name
+  // fewer heads than the fodder is short of.
+  purchase.land_day = LimitBaseDeliveryDays(config, world) + config.limit.delivery_delay_days_max;
+  return purchase;
+}
+
 HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
                                   const WorldState& world,
                                   bool one_more_horse,
-                                  FeedHorizon horizon) {
+                                  FeedHorizon horizon,
+                                  const FeedPurchase* purchase) {
   HerdFeedForecast forecast;
   if (config.livestock.empty() || config.feed_values.empty()) {
     return forecast;
@@ -407,6 +492,23 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
                             std::move(goods));
     }
   }
+  // AND THE PURCHASE ASKED ABOUT (FeedPurchase; 0.37.122), by the carts' own
+  // rule: only what a store has room for lands.
+  if (purchase != nullptr && purchase->any) {
+    std::vector<float> goods(held_kg.size(), 0.0F);
+    bool any = false;
+    for (std::size_t resource = 0; resource < purchase->goods_kg.size() && resource < goods.size();
+         ++resource) {
+      if (purchase->goods_kg[resource] > 0.0F &&
+          StoreHasRoomFor(config, world, DefIdFromIndex<ResourceIdTag>(resource))) {
+        goods[resource] = purchase->goods_kg[resource];
+        any = true;
+      }
+    }
+    if (any) {
+      landings.emplace_back(purchase->land_day, std::move(goods));
+    }
+  }
 
   // The night pasture's conditions by month, once: they walk the residents.
   std::vector<std::uint8_t> team_out_in(kMonthsPerYear, 0);
@@ -507,82 +609,70 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
   return forecast;
 }
 
-namespace {
-
-/// What stands between a feed and a delivery of it: nothing (kNone — a store
-/// takes it today, or a site of its home is under way, or its home is an
-/// outline the player draws), or the granary that is not there.
-AlarmAdvice AdviceForFeedWithNoRoom(const ProductionConfig& config,
-                                    const WorldState& world,
-                                    ResourceId feed) {
-  // A store that takes it with room left, or an outline that takes it: the
-  // move is the district's lot of it, and the layer names it by `resource`.
-  if (StoreHasRoomFor(config, world, feed)) {
-    return AlarmAdvice::kNone;
+FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
+                                 const WorldState& world,
+                                 const HerdFeedForecast& forecast) {
+  FodderAdvice advice;
+  if (!forecast.short_ahead) {
+    return advice;
   }
-  // A site of its home under way is the move made (econ §4а).
-  for (const UnitRow& unit : world.units.rows) {
-    if (unit.level == 0 && IsHomeOf(unit, config, feed)) {
-      return AlarmAdvice::kNone;
-    }
+  // 1. THE CUT IS A MOVE ONLY WHILE A MEADOW STANDS IN IT (the harvest rule
+  // 3, part А; boss, econ-boss-hay-term-2026-10-01 [2]; 0.37.93). Until then
+  // the hay's advice was the cut on every day of the year, and a meadow that
+  // no longer winters in its cut would have left three villages of the canon
+  // shedding horses under a move nobody can make: a meadow marked in November
+  // gives its hay in June.
+  const bool cut_open = std::ranges::any_of(world.fields.rows, [](const FieldRow& field) {
+    return field.kind != LandKind::kArable && field.phase == FieldPhase::kHarvest &&
+           field.work_days_remaining > 0.0F;
+  });
+  if (cut_open) {
+    advice.advice = AlarmAdvice::kCutHay;
+    return advice;
   }
-  // «АМБАР ПОД КОМБИКОРМ» only for a feed whose home is a store with a
-  // number (the granary's ladder): straw and silage live in outlines the
-  // player draws, and no granary brings them.
-  for (const UnitTypeDef& type : config.unit_types) {
-    if (type.capacity_by_plot != 0 || type.level_storage_capacity_kg.empty()) {
-      continue;
-    }
-    if (std::ranges::any_of(type.home_of,
-                            [feed](ResourceId home) { return home.value == feed.value; })) {
-      return AlarmAdvice::kGranaryForFeed;
-    }
-  }
-  return AlarmAdvice::kNone;
-}
-
-}  // namespace
-
-AlarmAdvice AdviceForShortFeed(const ProductionConfig& config,
-                               const WorldState& world,
-                               ResourceId feed) {
-  if (feed.value == kInvalidDefIdValue) {
-    return AlarmAdvice::kNone;
-  }
-  if (feed.value == config.hay_resource.value) {
-    // THE CUT IS A MOVE ONLY WHILE A MEADOW STANDS IN IT (the harvest rule 3,
-    // part А; boss, econ-boss-hay-term-2026-10-01 [2]; 0.37.93). Until then
-    // the hay's advice was the cut on every day of the year, and a meadow
-    // that no longer winters in its cut would have left three villages of
-    // the canon shedding horses under a move nobody can make: a meadow marked
-    // in November gives its hay in June.
-    const bool cut_open = std::ranges::any_of(world.fields.rows, [](const FieldRow& field) {
-      return field.kind != LandKind::kArable && field.phase == FieldPhase::kHarvest &&
-             field.work_days_remaining > 0.0F;
-    });
-    if (cut_open) {
-      return AlarmAdvice::kCutHay;
-    }
-    // THE DISTRICT'S FEED FIRST, THE HERD LAST. Straw and silage are no move
-    // of the player's (the herds eat what the feed links give them), so the
-    // one move left before fewer heads is a lot of a feed.
-    for (const LimitLotDef& lot : config.limit.lots) {
-      if (lot.kind != LimitLotKind::kGoods) {
-        continue;
-      }
-      for (std::uint32_t row = 0; row < lot.goods.size(); ++row) {
-        const bool is_feed = row < config.feed_values.size() && config.feed_values[row] > 0.0F;
-        if (lot.goods[row] <= 0 || !is_feed) {
-          continue;
+  // 2. THE DISTRICT'S FEED, IF THE DOOR TAKES THE ORDER TODAY AND IT HELPS
+  // (0.37.122). «Helps»: the forecast after it is not short, or is short
+  // later, or of fewer heads — a purchase that moves none of the three feeds
+  // nobody (a feed's share of the ration is capped, and the hole is in
+  // another feed).
+  bool blocked_by_store = false;
+  const FeedPurchase purchase = MaximalFeedPurchase(config, world, &blocked_by_store);
+  if (purchase.any) {
+    const HerdFeedForecast after =
+        ForecastHerdFeed(config, world, false, FeedHorizon::kNearestScythes, &purchase);
+    const bool helps = !after.short_ahead || after.days_ahead > forecast.days_ahead ||
+                       after.heads_short < forecast.heads_short;
+    if (helps) {
+      advice.advice = AlarmAdvice::kBuyFeed;
+      // The feed it brings most of, by feed units: the lamp names one.
+      float most_units = 0.0F;
+      for (std::size_t resource = 0; resource < purchase.goods_kg.size(); ++resource) {
+        const float units = purchase.goods_kg[resource] * config.feed_values[resource];
+        if (units > most_units) {
+          most_units = units;
+          advice.advice_resource = DefIdFromIndex<ResourceIdTag>(resource);
+          advice.advice_amount = GramsFromKilograms(purchase.goods_kg[resource]);
         }
-        const AlarmAdvice home =
-            AdviceForFeedWithNoRoom(config, world, ResourceId{static_cast<std::uint16_t>(row)});
-        return home == AlarmAdvice::kNone ? AlarmAdvice::kBuyFeed : home;
       }
+      if (after.short_ahead && after.heads_short > 0) {
+        advice.advice_more = AlarmAdvice::kReduceHerd;
+        advice.amount_more = after.heads_short;
+      }
+      return advice;
     }
-    return AlarmAdvice::kReduceHerd;
   }
-  return AdviceForFeedWithNoRoom(config, world, feed);
+  // 3. THE GRANARY, when a feed lot is refused for want of a store alone —
+  // its site under way or not yet marked: the door refuses either way
+  // (kNowhereToStore), and «buy» on such a day was an order refused.
+  if (!purchase.any && blocked_by_store) {
+    advice.advice = AlarmAdvice::kGranaryForFeed;
+    advice.advice_more = AlarmAdvice::kReduceHerd;
+    advice.amount_more = forecast.heads_short;
+    return advice;
+  }
+  // 4. FEWER HEADS: the alarm's own `amount` is the number.
+  advice.advice = AlarmAdvice::kReduceHerd;
+  return advice;
 }
 
 void CollectHerdForecastAlarms(const ProductionConfig& config,
@@ -601,7 +691,12 @@ void CollectHerdForecastAlarms(const ProductionConfig& config,
   alarm.resource = forecast.first_short;
   alarm.amount = forecast.heads_short;
   alarm.days_ahead = forecast.days_ahead;
-  alarm.advice = AdviceForShortFeed(config, world, forecast.first_short);
+  const FodderAdvice advice = AdviseOnShortFodder(config, world, forecast);
+  alarm.advice = advice.advice;
+  alarm.advice_resource = advice.advice_resource;
+  alarm.advice_amount = advice.advice_amount;
+  alarm.advice_more = advice.advice_more;
+  alarm.amount_more = advice.amount_more;
   alarm.lamp = 0;
   alarms.push_back(alarm);
 }
