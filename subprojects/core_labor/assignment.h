@@ -131,17 +131,6 @@ struct AssignmentJob {
   /// 29 [22]). STUB: the place, not a number of the design's.
   bool autumn_furrow = false;
 
-  /// True for the carting of the hay lying mown at a meadow — a heap on land
-  /// that is not arable (0.37.129). It has no window since 0.37.128 and goes
-  /// LAST of the carts in that tier: a stand's logs, the district's lot and
-  /// a dig's load are carted before it (boss, boss-all-carts-carry-people-go-
-  /// 2026-10-02 [49]). The hay in its stacks does not spoil and is carted in
-  /// the winter, when the horses stand; the building wants its logs in the
-  /// autumn. A key among jobs of one kind, not a tier: asked after the work
-  /// kind, so the building and the felling keep their places. STUB: the
-  /// place, not a number of the design's.
-  bool stacked_hay = false;
-
   /// True for ploughing and harrowing of a field whose crop carries a position
   /// of this year's plan (plan.due above nought for its resource). Inside one
   /// tier and one kind of window such a field is worked before the others,

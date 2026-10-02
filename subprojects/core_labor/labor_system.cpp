@@ -1199,9 +1199,6 @@ class LaborSystem final : public ILaborSystem {
         // 71 times in twenty years on nine villages (6 before).
         job.window =
             field.kind == LandKind::kArable ? HaulWindow(current) : DeadlineNotApplicable();
-        // And the last of the windowless carts (0.37.129, stacked_hay): the
-        // logs, the lot and the dig's load go before the hay in its stacks.
-        job.stacked_hay = field.kind != LandKind::kArable;
         jobs.push_back(job);
       }
     }

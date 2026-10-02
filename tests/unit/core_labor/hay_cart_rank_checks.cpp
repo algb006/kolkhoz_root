@@ -14,7 +14,6 @@
 #include "core_common/labor_state.h"
 #include "core_common/land_state.h"
 #include "core_common/state_table_ops.h"
-#include "core_common/timber_state.h"
 #include "core_common/world_state.h"
 #include "core_labor/labor_system.h"
 #include "core_tables/tables.h"
@@ -114,66 +113,6 @@ Sent TheHorseBetweenTheHeapAndTheFallow(core::ILaborSystem& labor, core::LandKin
   return Sent::kNowhere;
 }
 
-/// What the one horse carts at noon: 1 the heap, 2 the stand's logs, 0 neither.
-/// One man, one horse, a day of August; a heap on land of `heap_land` and a
-/// stand's logs, equal work, the heap the NEARER and its field the first row
-/// of its table — every later key of the queue is the heap's.
-int TheHorseBetweenTheHeapAndTheLogs(core::ILaborSystem& labor, core::LandKind heap_land) {
-  core::WorldState world;
-  world.calendar.day_zero_weekday = core::Weekday::kMonday;
-  world.weather.daylight_hours = 12.0F;
-  world.chairman.harvest_without_days_off = 0;
-  core::UnitRow house;
-  const core::UnitId house_id = core::AppendRow(world.units, house);
-  core::FamilyRow household;
-  household.house = house_id;
-  const core::FamilyId family = core::AppendRow(world.families, household);
-  world.units.rows[0].household = family;
-  core::ResidentRow resident;
-  resident.family = family;
-  resident.birth_day = -300;  // ~25 biological years at day 0
-  resident.health = 70.0F;
-  resident.rest = 70.0F;
-  resident.mood = 60.0F;
-  resident.stamina = 50.0F;
-  resident.education_stage = core::EducationStage::kPrimary;
-  core::AppendRow(world.residents, resident);
-  core::HerdRow team;
-  team.kind = core::LivestockKindId{0};
-  team.adult_count = 1;
-  core::AppendRow(world.herds, team);
-
-  core::FieldRow heap;
-  heap.kind = heap_land;
-  heap.center = core::Vec2{.x = 0.0F, .y = 20.0F};
-  heap.area_ga = 10.0F;
-  heap.phase = core::FieldPhase::kIdle;
-  heap.reaped_grams = 10'000'000;
-  heap.haul_days_remaining = 5.0F;
-  const core::FieldId heap_id = core::AppendRow(world.fields, heap);
-  core::TimberStandRow stand;
-  stand.position = core::Vec2{.x = 0.0F, .y = -40.0F};
-  stand.load_grams = 10'000'000;
-  stand.haul_days_remaining = 5.0F;
-  stand.haul_days_written = 5.0F;
-  const core::TimberStandId stand_id = core::AppendRow(world.stands, stand);
-
-  for (std::uint32_t hour = 0; hour <= 12; ++hour) {
-    world.calendar.tick = (static_cast<core::Tick>(kAugustDay) * core::kTicksPerDay) + hour;
-    core::RefreshCalendarCaches(world.calendar);
-    const core::WorldState previous = world;
-    labor.RunAssignmentDecisions(previous, world);
-  }
-  const core::WorkAssignment& work = world.residents.rows[0].work;
-  if (work.kind != core::WorkKind::kHauling) {
-    return 0;
-  }
-  if (work.stand.value == stand_id.value) {
-    return 2;
-  }
-  return work.field.value == heap_id.value ? 1 : 0;
-}
-
 const char* Name(Sent sent) {
   switch (sent) {
     case Sent::kToTheHeap:
@@ -205,18 +144,5 @@ int CheckTheHayCartsRank() {
   failures += Expect(arable == Sent::kToTheHeap,
                      "hay cart's rank: the grain lying on a field is carted ahead of the fallow, "
                      "as before");
-
-  // THE STACKED HAY IS THE LAST OF THE CARTS WITH NO WINDOW (0.37.129).
-  const int hay_or_logs = TheHorseBetweenTheHeapAndTheLogs(*labor, core::LandKind::kMeadow);
-  const int grain_or_logs = TheHorseBetweenTheHeapAndTheLogs(*labor, core::LandKind::kArable);
-  std::cout << "  the hay cart's rank: one horse in August, a heap against a stand's logs "
-            << "(1 the heap, 2 the logs) - the heap at a meadow: " << hay_or_logs
-            << ", the heap on a field: " << grain_or_logs << '\n';
-  failures += Expect(hay_or_logs == 2,
-                     "hay cart's rank: the stand's logs are carted before the hay lying at a "
-                     "meadow, though the meadow is the nearer");
-  failures += Expect(grain_or_logs == 1,
-                     "hay cart's rank: the grain lying on a field is carted before the logs, as "
-                     "before");
   return failures;
 }
