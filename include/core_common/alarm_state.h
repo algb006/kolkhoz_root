@@ -715,7 +715,9 @@ enum class AlarmAdvice : std::uint8_t {
   kInsulateStraw,
 
   /// The hay runs out first and NO MEADOW STANDS IN ITS CUT (the haymaking
-  /// is over, or has not begun): the district's lot of a feed the herds eat
+  /// is over, or has not begun — since 0.37.137 also a meadow left in its
+  /// cut's phase after the mowing's months: kCutHay is named inside them
+  /// only): the district's lot of a feed the herds eat
   /// — «купить корм по лимиту» (boss, econ-boss-hay-term-2026-10-01 [2];
   /// 0.37.92; the dictionary's `buy_feed`).
   ///
@@ -742,6 +744,10 @@ enum class AlarmAdvice : std::uint8_t {
   /// share of the ration is capped, feed_links.csv max_share); as
   /// `advice_more` behind kBuyFeed or kGranaryForFeed with the heads left
   /// AFTER that move in `amount_more`.
+  /// THE NUMBER IS `hand_over_stock` AND `hand_over_horses` SINCE 0.37.137 —
+  /// the least heads whose leaving feeds the rest, the stock before the
+  /// horses — and never the lamp's `amount`, which counts the heads unfed on
+  /// the worst day (Alarm::hand_over_stock).
   ///
   /// UNTIL 0.37.121 IT COULD NOT BE NAMED AT ALL in a world with a feed lot in
   /// the catalogue: it stood behind «the catalogue sells no feed», a
@@ -850,6 +856,28 @@ struct Alarm {
   /// @note Not in the save, as `lamp`.
   AlarmAdvice advice_more = AlarmAdvice::kNone;
   std::int64_t amount_more = 0;
+
+  /// kHerdHayShortAhead with kReduceHerd named — as `advice` or as
+  /// `advice_more`: THE HEADS TO HAND OVER, AND THEY ARE NOT `amount`
+  /// (0.37.137). `amount` is the lamp's own number — the heads the fodder
+  /// does not reach on its WORST day, which on the day the hay is out is the
+  /// whole herd. These are the LEAST heads whose leaving feeds the rest to
+  /// the forecast's horizon, in the design's order (Livestock design §6):
+  /// the productive stock before the draught — a kind's adults, the old end
+  /// first as the hand-over's door takes them (kHandStock), then its young —
+  /// and a working horse only when the whole of the stock does not close the
+  /// shortage. `hand_over_stock` heads of the kinds that are not the horse,
+  /// `hand_over_horses` of the horse; `amount_more`, behind another move, is
+  /// their sum. THE DOOR NAMES A HERD AND TAKES ITS OLDEST: which herds the
+  /// heads come from is the chairman's — these say how many of which.
+  ///
+  /// Until 0.37.137 the advice was `amount` itself: on host's 27 villages of
+  /// 0.37.133 a chairman following it handed over the whole herd in every
+  /// one — 111 heads by the median for a shortage of a tenth of the hay.
+  /// 0 for every other advice and kind.
+  /// @note Not in the save, as `lamp`.
+  std::int64_t hand_over_stock = 0;
+  std::int64_t hand_over_horses = 0;
 };
 
 /// @brief The subject id of an alarm as one number, for ordering: the id
