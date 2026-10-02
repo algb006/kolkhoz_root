@@ -33,6 +33,7 @@
 #include "core_tables/tables.h"
 #include "core_world/world.h"
 #include "start_gate.h"
+#include "village_middle.h"
 
 namespace run {
 
@@ -174,21 +175,10 @@ class YardPolicy {
   }
 
   /// @brief The village's middle: where a chairman would put the yard. The
-  /// mean of what is already standing, which is the settlement wherever the
-  /// map generator decided to put it.
-  static core::Vec2 VillageCentre(const core::WorldState& world) {
-    core::Vec2 sum{.x = 0.0F, .y = 0.0F};
-    std::uint32_t seen = 0;
-    for (const core::UnitRow& unit : world.units.rows) {
-      sum.x += unit.position.x;
-      sum.y += unit.position.y;
-      ++seen;
-    }
-    if (seen == 0) {
-      return core::Vec2{.x = 150.0F, .y = 150.0F};
-    }
-    return core::Vec2{.x = sum.x / static_cast<float>(seen), .y = sum.y / static_cast<float>(seen)};
-  }
+  /// mean of the houses people live in — the settlement wherever the map
+  /// generator decided to put it (village_middle.h, the one home). Of EVERY
+  /// unit standing until 0.37.111: the old wells kilometres out pulled it.
+  static core::Vec2 VillageCentre(const core::WorldState& world) { return VillageMiddle(world); }
 
   std::uint32_t FindYard(const core::WorldState& world) const {
     for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {

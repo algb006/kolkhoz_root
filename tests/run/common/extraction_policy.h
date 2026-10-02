@@ -32,6 +32,7 @@
 #include "core_tables/tables.h"
 #include "core_world/world.h"
 #include "rise_watch.h"
+#include "village_middle.h"
 
 namespace run {
 
@@ -186,16 +187,9 @@ class ExtractionPolicy {
     return held;
   }
 
-  /// The village's centre, as the building chairman reckons it.
-  static core::Vec2 Centre(const core::WorldState& world) {
-    core::Vec2 sum{.x = 0.0F, .y = 0.0F};
-    for (const core::UnitRow& unit : world.units.rows) {
-      sum.x += unit.position.x;
-      sum.y += unit.position.y;
-    }
-    const auto count = static_cast<float>(world.units.rows.size());
-    return count > 0.0F ? core::Vec2{.x = sum.x / count, .y = sum.y / count} : sum;
-  }
+  /// The village's centre, as the building chairman reckons it
+  /// (village_middle.h; the mean of every unit until 0.37.111).
+  static core::Vec2 Centre(const core::WorldState& world) { return VillageMiddle(world); }
 
   bool NearestMark(const core::WorldState& world,
                    core::ResourceId resource,

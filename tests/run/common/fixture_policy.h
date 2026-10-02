@@ -46,6 +46,7 @@
 #include "core_world/world.h"
 #include "start_gate.h"
 #include "store_parent.h"
+#include "village_middle.h"
 
 namespace run {
 
@@ -706,19 +707,13 @@ class FixturePolicy {
     return true;
   }
 
-  static core::Vec2 Centre(const core::WorldState& world) {
-    core::Vec2 sum{.x = 0.0F, .y = 0.0F};
-    std::uint32_t seen = 0;
-    for (const core::UnitRow& unit : world.units.rows) {
-      sum.x += unit.position.x;
-      sum.y += unit.position.y;
-      ++seen;
-    }
-    if (seen == 0) {
-      return core::Vec2{.x = 150.0F, .y = 150.0F};
-    }
-    return core::Vec2{.x = sum.x / static_cast<float>(seen), .y = sum.y / static_cast<float>(seen)};
-  }
+  /// THE VILLAGE'S MIDDLE IS THE MEAN OF THE HOUSES PEOPLE LIVE IN (0.37.111),
+  /// as the house, school, office and social policies took it already
+  /// (village_middle.h, the one home). It was the mean of EVERY unit
+  /// standing, and the five old wells of 0.37.110 — 0.6 to 3 km out, nobody's
+  /// neighbours — moved it: the food yard went 270 m south on all nine
+  /// villages, and Epoch II opened in years 13..24 for 13..18.
+  static core::Vec2 Centre(const core::WorldState& world) { return VillageMiddle(world); }
 
   /// A SAFETY STOP, not a plan: a run that builds without limit stops
   /// measuring a village and starts measuring a warehouse. It is not what
