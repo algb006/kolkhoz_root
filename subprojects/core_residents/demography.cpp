@@ -548,6 +548,60 @@ void PassDowry(WorldState& current, FamilyId from, FamilyId to) {
   }
 }
 
+/// @brief Whether the wedding of `bride` and `groom` would leave a yard with
+/// residents in it and nobody of adult age (life.csv adult_age_years).
+///
+/// A WEDDING LEAVES NO CHILD ALONE IN A HOUSE (life-cycle §5, «Семья
+/// неделима»: «Вдовство — супруг остаётся в семье с детьми»; boss, boss-all-
+/// epoch1-queue-after-0-37-144-2026-10-03 [13]; 0.37.148). Wed moves the two
+/// into a NEW household and until this commit asked nothing of who stays: a
+/// widow — RemoveResident clears the survivor's spouse — or the eldest of a
+/// yard whose parents had died married out, and the children kept house by
+/// themselves. Measured on the canon of 0.37.145 (nine villages, five
+/// years): 0.5 to 1.6 such yards a village from year 2 on, the eldest as
+/// young as 1.8 years; a yard with nobody of adult age mows no hay
+/// (household_plot.cpp, MowHay) and all 57 goats the hunger took in years
+/// 3-5 were theirs.
+///
+/// THE WEDDING WAITS, IT IS NOT REFUSED: the day the yard has another adult —
+/// a child of sixteen — the same two may marry. «The new family forms in his
+/// house» would be a resident entering an EXISTING family, a door this core
+/// does not have (resident_state.h, `family`); not built here.
+///
+/// WHAT IT DOES NOT MEND: the yard both of whose parents DIED. That one waits
+/// for the human's word (boss [13]).
+bool WeddingLeavesChildrenAlone(const LifeConfig& config,
+                                const WorldState& current,
+                                ResidentId bride,
+                                ResidentId groom,
+                                SimDay day) {
+  for (const ResidentId leaving : {bride, groom}) {
+    const std::uint32_t leaving_row = FindRow(current.residents, leaving);
+    if (leaving_row == kNoRow) {
+      continue;
+    }
+    const FamilyId yard = current.residents.rows[leaving_row].family;
+    bool somebody_stays = false;
+    bool an_adult_stays = false;
+    for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
+      const ResidentRow& resident = current.residents.rows[row];
+      const ResidentId id = current.residents.row_ids[row];
+      if (resident.family.value != yard.value || id.value == bride.value ||
+          id.value == groom.value) {
+        continue;
+      }
+      somebody_stays = true;
+      an_adult_stays =
+          an_adult_stays || BiologicalAgeYears(config.life_speedup, resident.birth_day, day) >=
+                                config.adult_age_years;
+    }
+    if (somebody_stays && !an_adult_stays) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /// @brief Whether `resident` is half of a couple waiting for a house.
 bool WaitsForHouse(const WorldState& current, ResidentId resident) {
   for (const WeddingWaitRow& couple : current.wedding_waits.rows) {
@@ -633,6 +687,13 @@ void RunWeddingQueue(const LifeConfig& config, WorldState& current) {
       done.push_back(id);  // one of the two died or left: the couple falls apart
       continue;
     }
+    // A couple whose wedding would leave children alone today is passed over
+    // and keeps its place: the yard's adult died after they joined the queue,
+    // and the eldest child grows up (WeddingLeavesChildrenAlone).
+    if (WeddingLeavesChildrenAlone(
+            config, current, couple.bride, couple.groom, current.calendar.day)) {
+      continue;
+    }
     bool shared = false;
     const UnitId house = HomeForNewcomers(config, current, 2, shared);
     if (house.value == kInvalidEntityIdValue) {
@@ -675,7 +736,8 @@ void RunMarriages(const LifeConfig& config, WorldState& current, SimDay day) {
           BiologicalAgeYears(config.life_speedup, groom.birth_day, day) >=
               config.marriage_age_years &&
           !WaitsForHouse(current, groom_id) &&
-          !AreCloseKin(current.residents.rows[bride_row], bride_id, groom, groom_id);
+          !AreCloseKin(current.residents.rows[bride_row], bride_id, groom, groom_id) &&
+          !WeddingLeavesChildrenAlone(config, current, bride_id, groom_id, day);
       if (!eligible) {
         continue;
       }
