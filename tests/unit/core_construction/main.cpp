@@ -22,6 +22,7 @@
 
 #include "../../common/fake_tables.h"
 #include "core_common/day_off.h"
+#include "core_common/module_rules.h"
 #include "core_common/order_state.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table_ops.h"
@@ -691,6 +692,60 @@ int TestDemolition(const core::ITableSet& tables) {
   Run(*system, world, 2);
   failures += Expect(core::FindRow(world.units, full) == core::kNoRow,
                      "and goes once what it held has gone");
+
+  // A PARENT COMES DOWN WITH ITS MODULES (0.37.115; boss, 2 October 2026:
+  // «снос вместе, не отказ»). Until then the order never asked about them:
+  // the parent's row went, and a module with no sound parent is neither
+  // built nor crewed — it could not even be taken down.
+  Issue(world, BuildOrder(kBarnType, 3000.0F, 3000.0F));
+  Run(*system, world, 0);
+  const core::UnitId parent = world.units.row_ids.back();
+  Issue(world, UnitOrder(core::OrderKind::kStartBuild, parent));
+  Run(*system, world, 0);
+  if (core::FindRow(world.units, parent) == core::kNoRow) {
+    return failures + Expect(false, "the parent barn was not built — the fixture, not the rule");
+  }
+  world.units.rows[core::FindRow(world.units, parent)].construction.labor_days_remaining = 0.0F;
+  Run(*system, world, 1);
+  const auto add_module = [&world, parent](std::uint8_t level, core::ConstructionPhase phase) {
+    core::UnitRow module;
+    module.type = core::UnitTypeId{kBarnType};
+    module.level = level;
+    module.parent = parent;
+    module.position = core::Vec2{.x = 3010.0F, .y = 3000.0F};
+    module.construction.phase = phase;
+    return core::AppendRow(world.units, module);
+  };
+  const core::UnitId standing_module = add_module(1, core::ConstructionPhase::kNone);
+  const core::UnitId marked_module = add_module(0, core::ConstructionPhase::kMarked);
+  failures += Expect(core::ModulesOf(world, parent) == 2,
+                     "the order's confirmation can name the modules that go with a parent: two");
+  // The living is not demolished, a module's neither: the whole order is
+  // refused, and nothing of it has begun.
+  core::HerdRow in_module;
+  in_module.unit = standing_module;
+  core::AppendRow(world.herds, in_module);
+  const core::OrderId refused = Issue(world, UnitOrder(core::OrderKind::kDemolishUnit, parent));
+  Run(*system, world, 0);
+  failures += Expect(RefusalOf(world, refused) == core::OrderRefusal::kNotEmpty &&
+                         world.units.rows[core::FindRow(world.units, parent)].construction.phase !=
+                             core::ConstructionPhase::kDemolishing &&
+                         core::FindRow(world.units, marked_module) != core::kNoRow,
+                     "a parent whose module holds a herd is refused whole — nothing of it or of "
+                     "its modules is touched");
+  world.herds.rows.clear();
+  world.herds.row_ids.clear();
+  core::RebuildLookup(world.herds);
+  const core::OrderId together = Issue(world, UnitOrder(core::OrderKind::kDemolishUnit, parent));
+  Run(*system, world, 0);
+  const std::uint32_t module_row = core::FindRow(world.units, standing_module);
+  failures += Expect(
+      RefusalOf(world, together) == core::OrderRefusal::kNone && module_row != core::kNoRow &&
+          world.units.rows[module_row].level == 0 &&
+          world.units.rows[module_row].construction.phase == core::ConstructionPhase::kDemolishing,
+      "a parent taken down takes its standing module down with it");
+  failures += Expect(core::FindRow(world.units, marked_module) == core::kNoRow,
+                     "and its marked module is simply removed, as any contour");
   return failures;
 }
 

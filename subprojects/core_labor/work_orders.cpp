@@ -10,6 +10,7 @@
 #include "core_common/rain_stops_work.h"
 #include "core_common/resident_state.h"
 #include "core_common/state_table_ops.h"
+#include "core_common/work_seam.h"
 #include "labor_day.h"
 #include "posts.h"
 
@@ -433,6 +434,26 @@ void ApplyStandingWork(const WorldState& world,
     // игрок и не учётчик"; 0.35.11, the accountant's door the same). The
     // order stands for the day he has rested.
     if (current.residents.rows[resident_row].rest <= walkoff_rest) {
+      continue;
+    }
+    // AND A TARGET WITH NO WORK ON IT TODAY (0.37.115; architecture §7ж³):
+    // the ordered field is in another phase, the heap is carted, the site is
+    // waiting for its materials — the man is left where the accountant put
+    // him for the day, and the order stands for the day the work opens. The
+    // seam is the one question (work_seam.h, WorkSeamOf): the hour would find
+    // nothing to drain and send him home. Until then he was taken off the
+    // accountant's plan every morning the order stood and did nothing — the
+    // header above called it «stands for ever with its man beside it».
+    WorkAssignment wanted;
+    wanted.kind = order.work;
+    wanted.field = order.field;
+    wanted.herd = order.herd;
+    wanted.unit = order.unit;
+    wanted.stand = order.stand;
+    wanted.extraction_site = order.extraction_site;
+    wanted.road_work = order.work == WorkKind::kRoadWork ? order.road_work : RoadWorkId{};
+    const float* const seam = WorkSeamOf(world, wanted);
+    if (seam == nullptr || !(*seam > 0.0F)) {
       continue;
     }
     WorkAssignment& work = current.residents.rows[resident_row].work;

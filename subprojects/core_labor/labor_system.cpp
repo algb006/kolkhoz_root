@@ -172,6 +172,7 @@ class LaborSystem final : public ILaborSystem {
     if (hour + 1U >= kTicksPerDay) {
       CloseDay(current);
       ApplyPostOrders(current);
+      VacatePostsWithNoUnit(current);
     }
     // Reading comes LAST, and that is the whole of the "first close of the
     // day AFTER it was accepted" rule (manual/74-posts.md §3): an order that
@@ -1357,8 +1358,12 @@ class LaborSystem final : public ILaborSystem {
         // A PAUSED building or demolition asks for nobody (construction design
         // §6): this morning's crew worked out yesterday, and none is sent
         // today. The share done stays on the seam for the resume.
-        if (unit.construction.labor_days_remaining <= 0.0F || !ModuleParentSound(current, unit) ||
-            unit.paused != 0) {
+        // TAKING A MODULE DOWN ASKS NO PARENT (0.37.115): the rule is the
+        // building's. Until then a module whose parent was gone could not be
+        // demolished either — a site and a plot for ever (architecture §7ж³).
+        const bool taking_down = unit.construction.phase == ConstructionPhase::kDemolishing;
+        if (unit.construction.labor_days_remaining <= 0.0F ||
+            (!taking_down && !ModuleParentSound(current, unit)) || unit.paused != 0) {
           continue;
         }
         // AND A SITE OF A CLASS THAT STANDS IN WINTER asks for nobody in the

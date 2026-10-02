@@ -241,4 +241,27 @@ void AnnounceNightShifts(const LaborConfig& config, WorldState& current) {
   }
 }
 
+void VacatePostsWithNoUnit(WorldState& current) {
+  for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
+    ResidentRow& resident = current.residents.rows[row];
+    if (resident.post.profession.value == kInvalidDefIdValue) {
+      continue;
+    }
+    const std::uint32_t unit_row = FindRow(current.units, resident.post.unit);
+    const bool unit_stands =
+        unit_row != kNoRow &&
+        current.units.rows[unit_row].construction.phase != ConstructionPhase::kDemolishing;
+    if (unit_stands) {
+      continue;
+    }
+    // The post that emptied by itself (event_state.h, kPostVacated): said
+    // once, the day it happens, with the unit it was at.
+    SimEvent& vacated = EmitEvent(current, EventKind::kPostVacated, EventSeverity::kNotable);
+    vacated.resident = current.residents.row_ids[row];
+    vacated.unit = resident.post.unit;
+    vacated.amount = static_cast<std::int64_t>(resident.post.profession.value);
+    resident.post = PostAssignment{};
+  }
+}
+
 }  // namespace core

@@ -219,8 +219,12 @@ void RunDistrictTrip(const ProductionConfig& config, WorldState& current) {
   }
   if (chairman.away_from_tick != 0 && now == chairman.away_from_tick) {
     Depart(config, current);
-  } else if (chairman.away_until_tick != 0 && now == chairman.away_until_tick &&
+  } else if (chairman.away_until_tick != 0 && now >= chairman.away_until_tick &&
              now > chairman.away_from_tick) {
+    // AT OR PAST THE HOUR (0.37.115; architecture §7ж³): the return fired on
+    // the tick's equality, and a world past that tick — a loaded one — kept
+    // its chairman away for ever, with every order to the village refused.
+    // The trip's own clearing (ClearTrip) is the mark that it fired once.
     Return(config, current);
   }
 }

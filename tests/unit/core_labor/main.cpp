@@ -39,6 +39,7 @@
 #include "labor_config.h"
 #include "labor_day.h"
 #include "posts.h"
+#include "stuck_state_checks.h"
 #include "top_up_checks.h"
 #include "work_orders.h"
 
@@ -329,6 +330,13 @@ int TestAnOrderTakesTheCarterOffTheLot() {
   carter.work.rides_horse = 1;
   carter.work.limit_delivery = core::LimitDeliveryId{3};
   const core::ResidentId carter_id = core::AppendRow(world.residents, carter);
+  // The field the order names, with ploughing open on it: since 0.37.115 a
+  // standing order takes its man only where the work is, and a field that
+  // was never in the world is no work.
+  core::FieldRow to_be_ploughed;
+  to_be_ploughed.phase = core::FieldPhase::kPlowing;
+  to_be_ploughed.work_days_remaining = 3.0F;
+  core::AppendRow(world.fields, to_be_ploughed);  // the table's first id is 1
   core::OrderRow to_plough;
   to_plough.kind = core::OrderKind::kAssignWork;
   to_plough.status = core::OrderStatus::kAccepted;
@@ -832,6 +840,11 @@ int TestTheWorkbookCarriesTheMorningsReason() {
   to_field.work = core::WorkKind::kSowing;
   to_field.field = day.world.fields.row_ids[0];
   core::AppendRow(day.world.orders, to_field);
+  // SOWING ENOUGH FOR THE SECOND MORNING (0.37.115): the order is read at the
+  // first day's close and takes its man on the second — only where the work
+  // still is. The field's one day was sown out on the first, and until
+  // 0.37.115 the man was pinned to the finished field and counted as sowing.
+  day.world.fields.rows[0].work_days_remaining = 8.0F;
   // AND A FIELD OPENED AFTER THE MORNING: the hour-1 top-up puts a free man
   // on it (TopUpDay), the other path that placed men with a reason.
   day.AddField(core::FieldPhase::kSowing, 1.0F, core::Vec2{.x = 150.0F, .y = 0.0F});
@@ -2308,14 +2321,29 @@ int TestSecondIterationCorners() {
   to_field.field = field;
   core::AppendRow(day.world.orders, to_field);
 
+  // A BARN WITH CARE TO DO (0.37.115): the fake table set names no livestock,
+  // so its herds ask for no care at all — and until 0.37.115 the ordered man
+  // was pinned to such a herd anyway, which is what this check stood on. A
+  // standing order now takes its man only where the work is; the Sunday's
+  // rule is asked of a herd that has some.
+  std::string barn_error;
+  const auto barn_tables = core::LoadTableSet(WritePostTables().string(), &barn_error);
+  const auto barn_labor = barn_tables == nullptr
+                              ? nullptr
+                              : core::CreateLaborSystem(*barn_tables, core::StubTables::kAllowed);
+  if (Expect(barn_labor != nullptr, "the labour system builds with a livestock table") != 0) {
+    return failures + 1;
+  }
+  day.world.herds.rows[0].kind = core::LivestockKindId{1};  // the cow of WritePostTables
+
   for (std::uint32_t index = 0; index <= 5; ++index) {
-    day.RunDay(*labor, index);
+    day.RunDay(*barn_labor, index);
   }
   for (std::uint32_t hour = 0; hour <= 8; ++hour) {  // the Sunday, mid-day
     day.world.calendar.tick = (6 * core::kTicksPerDay) + hour;
     core::RefreshCalendarCaches(day.world.calendar);
     const core::WorldState previous = day.world;
-    labor->RunAssignmentDecisions(previous, day.world);
+    barn_labor->RunAssignmentDecisions(previous, day.world);
   }
   failures += Expect(day.world.calendar.weekday == core::Weekday::kSunday, "day six is the Sunday");
   failures += Expect(day.world.residents.rows[0].work.kind == core::WorkKind::kHerdCare &&
@@ -4134,6 +4162,7 @@ int main() {
   failures += CheckBrigadeCart();
   failures += CheckTopUpAgainstWindowlessWork();
   failures += CheckCarterOnFoot();
+  failures += CheckStuckStates();
   failures += TestPlacementDiagnosis();
   failures += TestRoadLimit();
   failures += TestHorsePoolAndLock();

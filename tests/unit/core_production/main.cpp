@@ -11287,6 +11287,34 @@ int CheckDistrictTrip() {
   failures += Expect(core::OrderTripToDistrict(config, trip) == core::OrderRefusal::kTripThisMonth,
                      "trip: a second of his own in the same month is refused");
 
+  // -- the return's hour missed (0.37.115; architecture §7ж³): the return
+  // fired on the tick's EQUALITY, so a world past that tick — a loaded one —
+  // kept its chairman away for ever, and every order to the village refused.
+  core::WorldState late;
+  at(late, kMay, 3);
+  failures += Expect(core::OrderTripToDistrict(config, late) == core::OrderRefusal::kNone,
+                     "trip, the missed hour: booked");
+  at(late, kMay, 8);
+  core::RunDistrictTrip(config, late);
+  late.step_events.clear();
+  at(late, kMay, 22);  // two hours past the return, which no step ran
+  core::RunDistrictTrip(config, late);
+  failures += Expect(saw(late, core::EventKind::kTripReturned) &&
+                         late.chairman.away_from_tick == 0 && late.chairman.away_until_tick == 0,
+                     "trip, the missed hour: past the return's hour he is back all the same");
+  // And the other side: before the return's hour he is still away.
+  core::WorldState early;
+  at(early, kMay, 3);
+  core::OrderTripToDistrict(config, early);
+  at(early, kMay, 8);
+  core::RunDistrictTrip(config, early);
+  early.step_events.clear();
+  at(early, kMay, 12);
+  core::RunDistrictTrip(config, early);
+  failures +=
+      Expect(!saw(early, core::EventKind::kTripReturned) && early.chairman.away_until_tick != 0,
+             "trip, the missed hour: before it he is still away");
+
   // -- the blizzard: his own trip cancelled and not counted; a summons moved --
   core::WorldState snow;
   at(snow, 0, 3);

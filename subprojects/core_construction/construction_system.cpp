@@ -818,7 +818,47 @@ class ConstructionSystem final : public IConstructionSystem {
 
   /// A marked contour goes at once and for free; a standing unit is emptied
   /// first and then dismantled (unit rules §14, construction design §12).
+  /// A PARENT COMES DOWN WITH ITS MODULES (0.37.115; boss, 2 October 2026:
+  /// «снос вместе, не отказ»; architecture §7ж³). Until then the order never
+  /// asked about them: the parent's row went, and a module with no sound
+  /// parent is neither built nor crewed — it could not even be taken down.
+  /// REFUSED WHOLE, BEFORE ANYTHING BEGINS, when the parent or one of its
+  /// modules holds the living: half a demolition is the dead end again.
   OrderRefusal Demolish(WorldState& current, UnitId unit) {
+    const std::uint32_t row = FindRow(current.units, unit);
+    if (row == kNoRow) {
+      return OrderRefusal::kNoSuchSubject;
+    }
+    if (current.units.rows[row].construction.phase == ConstructionPhase::kDemolishing) {
+      return OrderRefusal::kRuleForbids;
+    }
+    // Its modules, by id: taking one down may remove a row and move the rest.
+    std::vector<UnitId> modules;
+    for (std::uint32_t other = 0; other < current.units.rows.size(); ++other) {
+      const UnitRow& module = current.units.rows[other];
+      if (other == row || module.parent.value != unit.value ||
+          module.construction.phase == ConstructionPhase::kDemolishing) {
+        continue;
+      }
+      const UnitId module_id = current.units.row_ids[other];
+      if (module.construction.phase != ConstructionPhase::kMarked &&
+          (module.household.value != kInvalidEntityIdValue || HerdStandsAt(current, module_id))) {
+        return OrderRefusal::kNotEmpty;
+      }
+      modules.push_back(module_id);
+    }
+    const OrderRefusal refusal = DemolishOne(current, unit);
+    if (refusal != OrderRefusal::kNone) {
+      return refusal;
+    }
+    for (const UnitId module : modules) {
+      DemolishOne(current, module);  // checked above: none is refused
+    }
+    return OrderRefusal::kNone;
+  }
+
+  /// One unit's demolition, modules aside (Demolish).
+  OrderRefusal DemolishOne(WorldState& current, UnitId unit) {
     const std::uint32_t row = FindRow(current.units, unit);
     if (row == kNoRow) {
       return OrderRefusal::kNoSuchSubject;
