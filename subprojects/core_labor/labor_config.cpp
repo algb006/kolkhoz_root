@@ -25,6 +25,7 @@
 #include "core_catalog/world_conventions.h"
 #include "core_common/calendar.h"
 #include "core_common/crop_calendar.h"
+#include "core_common/haul.h"
 #include "core_tables/tables.h"
 
 namespace core {
@@ -297,7 +298,20 @@ bool ParseSpeeds(const ITable& table, LaborConfig& config, std::string& error) {
     PrefixError("transport", "load_tonnes", error);
     return false;
   }
-  config.cart_load_kg = tonnes * 1000.0F;
+  // THE CART OF THE COMPRESSED YEAR (core_common/haul.h, kCartLoadScaleMin;
+  // 0.37.126): the tonnes times the row's `load_scale`. An empty cell or a
+  // table with no such column is a scale of one.
+  float scale = 1.0F;
+  if (!OptionalCell(table,
+                    table.FindRowByKey("cart_loaded"),
+                    table.FindColumn("load_scale"),
+                    Range{.low = kCartLoadScaleMin, .high = kCartLoadScaleMax},
+                    scale,
+                    error)) {
+    PrefixError("transport", "load_scale", error);
+    return false;
+  }
+  config.cart_load_kg = tonnes * scale * 1000.0F;
   return true;
 }
 

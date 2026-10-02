@@ -1,8 +1,9 @@
-key,speed_kmh,load_tonnes,note
+key,speed_kmh,load_tonnes,load_scale,note
 # real-world speeds (transport design, section 1); the core divides by
 # kClockScale = 12 for effective game-hour speeds. Consumers arrive with
 # the labor and logistics systems.
-pedestrian,5,,
-jog,8.5,,running state: fire and similar events
-horse_trot,12,,
-cart_loaded,9,0.75,horse cart; winter sled hauling uses the same speed
+# load_scale: THE CART OF THE COMPRESSED YEAR (transport design section 1; the human, 2 October 2026: «Делай K = 2,4»). The cart's load in the core is load_tonnes x load_scale. The year's tonnage is a real year's and is carted in 48 game days by a clock twelve times the life's, so carting was 84 times dearer than in life while labour had been brought to the year by its own divisor (real man-days / 7); with the meadows' hay carted too it took 40 % of a village's horse-days (0.37.119). An empty cell is 1. Below 1 is refused. STUB: 2.4 is where the hay returns at the tightness the game had without it; econ's ladder of return is 3, then 4, above that the human's word.
+pedestrian,5,,,
+jog,8.5,,,running state: fire and similar events
+horse_trot,12,,,
+cart_loaded,9,0.75,2.4,horse cart; winter sled hauling uses the same speed

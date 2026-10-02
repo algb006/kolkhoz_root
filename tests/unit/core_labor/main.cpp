@@ -26,6 +26,7 @@
 #include "../../common/fake_tables.h"
 #include "assignment.h"
 #include "brigade_cart_checks.h"
+#include "cart_load_checks.h"
 #include "carter_on_foot_checks.h"
 #include "core_common/alarm_state.h"
 #include "core_common/day_off.h"
@@ -4163,6 +4164,7 @@ int main() {
   failures += CheckTopUpAgainstWindowlessWork();
   failures += CheckCarterOnFoot();
   failures += CheckStuckStates();
+  failures += CheckTheCartOfTheCompressedYear();
   failures += TestPlacementDiagnosis();
   failures += TestRoadLimit();
   failures += TestHorsePoolAndLock();

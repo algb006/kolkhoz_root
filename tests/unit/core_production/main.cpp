@@ -14025,6 +14025,43 @@ int CheckALostSlotIsAnUncoveredPosition() {
 /// kRemoveField (2026-09-14): the start quest's first gesture, and the one
 /// construction design §12 teaches every removal by. Free and at once; refused
 /// only where bread stands; the reserve's mark rides out on the event.
+/// THE CART OF THE COMPRESSED YEAR (0.37.125; core_common/haul.h): the cart's
+/// load production prices a trip by is the SHIPPED table's tonnes times its
+/// scale — the rule is asserted, the number is read off the table and
+/// printed.
+int CheckTheCartOfTheCompressedYear() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  core::ProductionConfig config;
+  if (Expect(tables != nullptr && core::ParseProductionConfig(*tables, config, error),
+             "cart load, production: the shipped tables parse") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  const core::ITable* const transport = tables->FindTable("transport");
+  const std::uint32_t row =
+      transport == nullptr ? core::kNoTableRow : transport->FindRowByKey("cart_loaded");
+  const std::optional<float> tonnes =
+      transport == nullptr ? std::optional<float>{}
+                           : transport->CellReal(row, transport->FindColumn("load_tonnes"));
+  const std::optional<float> scale =
+      transport == nullptr ? std::optional<float>{}
+                           : transport->CellReal(row, transport->FindColumn("load_scale"));
+  std::cout << "  the cart of the compressed year, production: the shipped table says "
+            << tonnes.value_or(0.0F) << " t by " << scale.value_or(0.0F) << ", the cart is "
+            << config.cart_load_kg << " kg\n";
+  failures += Expect(tonnes.has_value() && scale.has_value(),
+                     "cart load, production: the shipped table names the load and its scale");
+  failures += Expect(scale.value_or(0.0F) > 1.0F,
+                     "cart load, production: the shipped scale is above one - the compressed "
+                     "year's cart is in force");
+  failures += Expect(std::fabs(config.cart_load_kg -
+                               (tonnes.value_or(0.0F) * scale.value_or(1.0F) * 1000.0F)) < 0.5F,
+                     "cart load, production: the cart is the table's tonnes times its scale");
+  return failures;
+}
+
 /// THE HEAP ON THE FIELD ROTS (boss seq 165; econ's 0.33): a reaped load
 /// waiting for a cart loses a day's rot at a third of the store's keeping,
 /// booked in `spoiled`; what does not go bad stays whole.
@@ -14401,6 +14438,7 @@ int main() {
   failures += CheckTheColdLadderParses();
   failures += CheckTheColdLadder();
   failures += CheckTheFeedingOrderSwitch();
+  failures += CheckTheCartOfTheCompressedYear();
 
   if (failures == 0) {
     std::cout << "unit_core_production: all checks passed\n";

@@ -37,6 +37,7 @@
 #include "core_catalog/table_value.h"
 #include "core_catalog/world_conventions.h"
 #include "core_common/calendar.h"
+#include "core_common/haul.h"
 #include "core_common/ids.h"
 #include "core_log/log.h"
 #include "core_tables/stub_tables.h"
@@ -1606,7 +1607,23 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
       error = "transport: " + error;
       return false;
     }
-    config.cart_load_kg = tonnes * 1000.0F;
+    // THE CART OF THE COMPRESSED YEAR (core_common/haul.h, kCartLoadScaleMin;
+    // 0.37.126): the tonnes times the row's `load_scale` — labour reads the
+    // same two cells (labor_config.cpp). No column, or an empty cell: one.
+    float scale = 1.0F;
+    const std::uint32_t scale_col = transport->FindColumn("load_scale");
+    if (scale_col != kNoTableColumn &&
+        !CellOrDefault(*transport,
+                       transport->FindRowByKey("cart_loaded"),
+                       scale_col,
+                       Range{.low = kCartLoadScaleMin, .high = kCartLoadScaleMax},
+                       1.0F,
+                       scale,
+                       error)) {
+      error = "transport: " + error;
+      return false;
+    }
+    config.cart_load_kg = tonnes * scale * 1000.0F;
   }
   if (const ITable* labor = tables.FindTable("labor")) {
     const std::uint32_t value_col = labor->FindColumn("value");
