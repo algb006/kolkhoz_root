@@ -121,25 +121,6 @@ Grams ReceivableRoom(const ProductionConfig& config, const WorldState& world, Re
   return room;
 }
 
-std::uint32_t HeapMangerRow(const ProductionConfig& config,
-                            const WorldState& world,
-                            const FieldRow& field) {
-  const ResourceId resource = field.reaped_resource;
-  // An unnamed hay resource compares equal to an unnamed load by two 0xFFFF
-  // sentinels (0.17.79): named, or it is nobody's manger.
-  if (field.kind == LandKind::kArable || resource.value == kInvalidDefIdValue ||
-      resource.value != config.hay_resource.value) {
-    return kNoRow;
-  }
-  return FindStockYardRow(world, config);
-}
-
-Grams HeapDoorRoom(const ProductionConfig& config, const WorldState& world, const FieldRow& field) {
-  return HeapMangerRow(config, world, field) != kNoRow
-             ? std::numeric_limits<Grams>::max()
-             : ReceivableRoom(config, world, field.reaped_resource);
-}
-
 namespace {
 
 /// @param cart_mode How the load goes when a horse is free: a cart with
@@ -231,16 +212,8 @@ void SettleLoad(const ProductionConfig& config,
                 Grams& load,
                 float& haul_days_remaining,
                 float& haul_days_written,
-                const std::vector<Grams>* booked = nullptr,
-                std::uint32_t manger = kNoRow) {
-  // `manger`: A MEADOW'S HAY GOES TO THE MANGER (HeapMangerRow; 0.37.119) —
-  // where the mown share went by itself until then, now by the carters'
-  // share of the day. No seed is booked against a manger, and it has no
-  // tonnage to be full against. kNoRow for every other load.
-  const auto room_now = [&config, &current, resource, booked, manger]() {
-    if (manger != kNoRow) {
-      return std::numeric_limits<Grams>::max();
-    }
+                const std::vector<Grams>* booked = nullptr) {
+  const auto room_now = [&config, &current, resource, booked]() {
     return booked == nullptr ? ReceivableRoom(config, current, resource)
                              : HeapRoom(config, current, resource, *booked);
   };
@@ -254,14 +227,9 @@ void SettleLoad(const ProductionConfig& config,
     const Grams carried =
         GramsFromFloat(static_cast<float>(haulable) * (share > 1.0F ? 1.0F : share));
     const Grams offered = carried < load ? carried : load;
-    Grams moved = 0;
-    if (manger != kNoRow) {
-      // What the manger TOOK, not what it was offered (0.17.79).
-      moved = AddToStock(current.units.rows[manger].stock, resource, offered);
-    } else {
-      moved = booked == nullptr ? DeliverToStores(current, config, resource, offered)
-                                : DeliverHeapToStores(current, config, resource, offered, *booked);
-    }
+    const Grams moved = booked == nullptr
+                            ? DeliverToStores(current, config, resource, offered)
+                            : DeliverHeapToStores(current, config, resource, offered, *booked);
     load -= moved;
     AddLedgerAmount(current.ledger.current.hauled_to_stores, resource, moved);
     BookCartRun(config, current, source, rate, moved);
@@ -356,11 +324,6 @@ HaulRate FieldHaulRate(const ProductionConfig& config,
   }
   if (store_row == kNoRow) {
     store_row = FindStorageRow(world, config);
-  }
-  // Hay: to the manger, wherever a store that would take it stands (0.37.119).
-  const std::uint32_t manger = HeapMangerRow(config, world, field);
-  if (manger != kNoRow) {
-    store_row = manger;
   }
   const Vec2 destination =
       store_row == kNoRow ? field.center : world.units.rows[store_row].position;
@@ -526,8 +489,7 @@ void SettleHauling(const ProductionConfig& config, WorldState& current) {
                field.reaped_grams,
                field.haul_days_remaining,
                field.haul_days_written,
-               &booked,
-               HeapMangerRow(config, current, field));
+               &booked);
     if (field.reaped_grams == 0) {
       field.reaped_resource = ResourceId{};
     }

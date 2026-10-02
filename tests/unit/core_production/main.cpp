@@ -53,7 +53,6 @@
 #include "herd_life.h"
 #include "herd_system.h"
 #include "livestock_homes.h"
-#include "meadow_hay_checks.h"
 #include "milk_cart.h"
 #include "night_pasture.h"
 #include "plan_alarms.h"
@@ -14302,7 +14301,6 @@ int main() {
   failures += CheckTheColdLadderParses();
   failures += CheckTheColdLadder();
   failures += CheckTheFeedingOrderSwitch();
-  failures += CheckMeadowHayLiesAtTheMeadow();
 
   if (failures == 0) {
     std::cout << "unit_core_production: all checks passed\n";

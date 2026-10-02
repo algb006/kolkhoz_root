@@ -195,11 +195,10 @@ OrderRefusal LandCarriesWork(const WorldState& world, const OrderRow& order) {
     // TargetExists eight lines up sends everything but herd care and
     // construction to world.fields, and WorkSeamOf drains
     // FieldRow::haul_days_remaining, which only opens while reaped_grams > 0.
-    // A MEADOW SETS IT TOO since 0.37.119: its hay lies at the meadow until a
-    // cart comes (field_work.cpp, LayMownShare). Until then it went straight
-    // through the store door, this comment said "carry from the meadow" was
-    // «empty for ever», and the land check below refused the order as wrong
-    // land — the refusal went with the reason.
+    // A meadow never sets it — its hay goes straight through the store door
+    // and the overflow is booked to the year's loss, so nothing is ever left
+    // lying there to carry (field_work.cpp, DeliverHarvest). "Carry from the
+    // meadow" is not empty today; it is empty for ever.
     case WorkKind::kHauling:
       if (order.stand.value != kInvalidEntityIdValue ||
           order.extraction_site.value != kInvalidEntityIdValue) {
@@ -229,11 +228,9 @@ OrderRefusal LandCarriesWork(const WorldState& world, const OrderRow& order) {
   // and deliberately not refused here; a draft that refused it reddened four
   // assertions about how orders legitimately stand.
   const LandKind kind = world.fields.rows[field_row].kind;
-  if (kind != LandKind::kArable && order.work != WorkKind::kHarvest &&
-      order.work != WorkKind::kHauling) {
-    // A meadow's "harvest" is the mowing, and that is real work; so is the
-    // carting of its hay (0.37.119). Ploughing, harrowing and sowing on one
-    // are not late — they are impossible.
+  if (kind != LandKind::kArable && order.work != WorkKind::kHarvest) {
+    // A meadow's "harvest" is the mowing, and that is real work. Ploughing,
+    // harrowing and sowing on one are not late — they are impossible.
     return OrderRefusal::kWrongLand;
   }
   return OrderRefusal::kNone;
