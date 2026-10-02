@@ -922,8 +922,14 @@ void PlaceSurplusHead(const ProductionConfig& config,
   // of the kind's lifespan less a year, and never younger than an adult.
   const float old_from_years = std::max(adult_from_years, kind.life_game_years_min - 1.0F);
   // A yard that had no adult keeps the first that grows up; one that had
-  // some keeps as many as it had.
-  const std::uint16_t keeps = std::min(cap, std::max<std::uint16_t>(adults_before, 1));
+  // some keeps as many as it had — AND GROWS BY ITS OWN YOUNG TO THE KIND'S
+  // LIMIT OF GROWTH, where the table names one (LivestockDef::
+  // household_grow_to_heads; 0.37.150). Without the limit a yard given one
+  // hen kept one hen for ever, and the eggs of one hen are half of one
+  // eater's line at the table.
+  const auto grows_to = static_cast<std::uint16_t>(kind.household_grow_to_heads);
+  const std::uint16_t keeps =
+      std::min(cap, std::max<std::uint16_t>({adults_before, grows_to, std::uint16_t{1}}));
   std::uint32_t slaughtered = 0;
   while (herd.adult_count > keeps) {
     float age = adult_from_years;

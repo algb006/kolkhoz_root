@@ -2873,6 +2873,35 @@ int CheckYardOffspringReplaces() {
     failures += Expect(herd.adult_count == 1 && herd.juvenile_count == 0 && knifed(yard.world) == 1,
                        "yard young: a yard with no adult keeps the first grown head and no more");
   }
+  // THE YARD'S FLOCK GROWS BY ITS OWN YOUNG UP TO THE KIND'S LIMIT OF GROWTH
+  // (LivestockDef::household_grow_to_heads; 0.37.150; boss, boss-all-epoch1-
+  // queue-after-counterweight-2026-10-03 [7], [9]). «As many as it had» left
+  // a yard given one hen with one hen for ever: on the canon 52 % of the
+  // families kept one hen at the end of year 1 and 97 % at the end of year
+  // 12, and the families whose hens lay 2 % of their seasonal need fell from
+  // 48 % to 3 %. One adult and two young, grown: with the limit at two the
+  // yard keeps two and one leaves; with no limit named, as before, it keeps
+  // the one it had and both leave. And the limit is a floor of growth, not a
+  // cut: a yard that stood three keeps three under a limit of two.
+  {
+    core::ProductionConfig growing = config;
+    growing.livestock[2].household_grow_to_heads = 2.0F;
+    Yard grows = yard_with(1, 0.2F, 0.2F, 0, 2);
+    RunHerdDays(growing, grows.world, kDays);
+    failures += Expect(grows.world.herds.rows[0].adult_count == 2 && knifed(grows.world) == 1,
+                       "yard young: a yard of one grows by its own young to the kind's limit of "
+                       "growth — two — and the third leaves");
+    Yard as_before = yard_with(1, 0.2F, 0.2F, 0, 2);
+    RunHerdDays(config, as_before.world, kDays);
+    failures +=
+        Expect(as_before.world.herds.rows[0].adult_count == 1 && knifed(as_before.world) == 2,
+               "yard young: with no limit of growth named the yard keeps the one it had");
+    Yard full = yard_with(3, 0.2F, 0.2F, 0, 1);
+    RunHerdDays(growing, full.world, kDays);
+    failures += Expect(full.world.herds.rows[0].adult_count == 3 && knifed(full.world) == 1,
+                       "yard young: a yard that stood three keeps three under a limit of two — "
+                       "the limit is where growth stops, not a cut");
+  }
   // THE YOUNG ARE NOT CUT AT BIRTH: one adult and three new-born stand four
   // heads in a yard capped at three, and stand there the next day.
   {

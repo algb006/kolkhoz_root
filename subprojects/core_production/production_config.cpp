@@ -562,6 +562,7 @@ bool ParseLivestock(const ITable& table, std::vector<LivestockDef>& livestock, s
   const std::uint32_t down_col = table.FindColumn("down_kg_per_head");
   const std::uint32_t self_fed_col = table.FindColumn("household_self_fed");
   const std::uint32_t cap_col = table.FindColumn("household_cap_heads");
+  const std::uint32_t grow_col = table.FindColumn("household_grow_to_heads");
   const std::uint32_t group_col = table.FindColumn("household_group");
   livestock.resize(table.RowCount());
   for (std::uint32_t row = 0; row < table.RowCount(); ++row) {
@@ -620,6 +621,13 @@ bool ParseLivestock(const ITable& table, std::vector<LivestockDef>& livestock, s
                        Range{.low = 0, .high = 1000},
                        0,
                        kind.household_cap_heads,
+                       error) ||
+        !CellOrDefault(table,
+                       row,
+                       grow_col,
+                       Range{.low = 0, .high = 1000},
+                       0,
+                       kind.household_grow_to_heads,
                        error)) {
       error = "livestock: " + error;
       return false;

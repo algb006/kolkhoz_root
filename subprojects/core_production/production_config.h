@@ -156,6 +156,27 @@ struct LivestockDef {
   /// cap, in the wrong place.
   float household_cap_heads = 0.0F;
 
+  /// HOW FAR ONE YARD'S HERD GROWS BY ITS OWN YOUNG (livestock.csv
+  /// `household_grow_to_heads`; 0.37.150; boss, boss-all-epoch1-queue-after-
+  /// counterweight-2026-10-03 [7], [9]): a grown head stays in the yard while
+  /// the yard's adults are under this many, and under the cap above. NOUGHT —
+  /// OR NO SUCH COLUMN — IS THE RULE OF 0.37.78: the yard keeps as many as it
+  /// had, one if it had none.
+  ///
+  /// WHY: under «as many as it had» a yard given one hen kept one hen for
+  /// ever. Canon, nine villages, 0.37.147: families with exactly one hen —
+  /// 52 % at the end of year 1, 97 % at the end of year 12; families whose
+  /// hens lay 2 % of the family's seasonal need, the line a category is
+  /// counted at (food.csv category_counted_share_of_need) — 48 % down to
+  /// 3 %; the hens of nine villages 1200-1370 all twelve years against 628 to
+  /// 2870 eaters. A hen lays the line of 0.53 eaters.
+  ///
+  /// A SECOND NUMBER, NOT THE CAP: the cap is the most a yard may stand (the
+  /// start's twelve hens stand at it and are not cut by this), the limit of
+  /// growth is where breeding stops adding. STUB by the table: 6 for the hen
+  /// (the line of a family of 2.7 eaters asks five), nothing for the rest.
+  float household_grow_to_heads = 0.0F;
+
   /// A yard keeps ONE kind of stock and ONE kind of bird (household design
   /// §2): 0 = neither, 1 = stock (cow, pig, goats), 2 = bird (hens, ducks).
   /// Without the group the cap is leaky — it would allow a cow AND a pig AND
