@@ -14,7 +14,7 @@
    СБОРКА                 core_world — генезис мира, StepPhaseSet, слоты 3 и 7
         │ видит всех
    ПРЕДМЕТНЫЕ             core_time   core_residents   core_production
-                          core_labor   core_construction
+                          core_labor   core_logistics   core_construction
         │ только вниз                 ↑ друг о друге НЕ знают
    ИНФРАСТРУКТУРА         core_common   core_log   core_tables   core_catalog   core_sim
                           core_save   core_report   core_boundary  ← листья: их зовут только исполняемые
@@ -42,6 +42,7 @@
 | **core_residents** | Жители: потребности, питание и ЛПХ, демография, семьи, довольство; **огонь еды** ([`77-stock-lights.md`](77-stock-lights.md)) | Этап 3 (структура данных жителя проектировалась отдельной задачей, до тел) |
 | **core_production** | Земля и производство: поля, плодородие, циклы юнитов, буферы, стада; **огни кормов и семян** ([`77-stock-lights.md`](77-stock-lights.md)) | Этап 4 |
 | **core_labor** | Труд: назначения, учётчик, рабочий день, трудодни, **должности** (А7), **перевозка** (А4), **наряды и рабочие руки** (А8, [`76-work-orders.md`](76-work-orders.md)) | Этап 5 |
+| **core_logistics** | Логистика конюха (ступень Б, Транспорт §11–12): задачи возки с уровнями 0–3 и старением, «само на 0» по угрозам (Б2, 0.37.176); дальше — план подвод на сутки, переплан по событию, двери председателя к задачам, аларм «Логистика не успевает». План — расписание поверх шва груза, тонны по-прежнему сливает час работы и кладёт вечер производства (решение `boss`, тред логистики [9]) | Ступень Б: Б1 (контракт, 0.37.174) → Б2 |
 | **core_construction** | Стройка: разметка, доставка, ступени, снос — площадка как строка юнита, шов труда `labor_days_remaining` ([`71-construction.md`](71-construction.md)); **с А5 — износ и ремонт**: суточное старение по ступени и пятое распоряжение ([`73-wear-and-repair.md`](73-wear-and-repair.md)) | Вторая фаза: А2 (контракт 31.08.2026 → реализация) |
 | **core_world** | Генезис стартового поселения, сборка фаз, составные слоты 3 и 7 | По мере этапов |
 | **core_save** | Формат сохранений: `WorldState` в байты и обратно, перепривязка `DefId` по ключам ([`67-save-format.md`](67-save-format.md)) | Этап 7: Ф1 → O1 |
@@ -98,7 +99,7 @@
 |---|---|
 | 1. Время и погода | `core_time` |
 | 2. Потребности (по семьям) | `core_residents` |
-| **3. Решения** | **`core_world`**: учётчик из labor → демография из residents → номенклатура из production → **стройка из construction** |
+| **3. Решения** | **`core_world`**: учётчик из labor → **задачи конюха из logistics** → демография из residents → номенклатура из production → **стройка из construction** |
 | 4. Производство (по юнитам и полям) | `core_production` |
 | 5. Метрики (по семьям) | `core_residents` |
 | **6. События** | **`core_world`** (заглушка до `core_events`; с этапа 7 здесь же свёртка и ротация ведомости — [`68-run-ledger.md` §3](68-run-ledger.md#3-кто-что-пишет)) |
@@ -126,13 +127,15 @@
 | `core_residents` | `IResidentsSystem`: две фазы + `RunDemographyDecisions` | `include/core_residents/residents_system.h` |
 | `core_production` | `IProductionSystem`: фаза + `RunProductionDecisions` | `include/core_production/production_system.h` |
 | `core_labor` | `ILaborSystem`: `RunAssignmentDecisions`, `CollectAlarms` (А7) | `include/core_labor/labor_system.h` |
+| `core_logistics` | `ILogisticsSystem`: `RunTasks` (Б2), `BuildPlan` (Б3), `Replan` (Б5), `ReadTaskOrders` (Б7), `CollectAlarms` (Б8) — пока не сданы, `STUB` с окончательной сигнатурой | `include/core_logistics/logistics_system.h` |
 | `core_construction` | `IConstructionSystem`: `RunConstructionDecisions` (А2 — контракт) | `include/core_construction/construction_system.h` |
 | `core_world` | Фабрики `CreateStartWorld`, `CreateStandardSimulation` | `include/core_world/world.h` |
 | `core_boundary` | `ISession`, фабрика `CreateSession`, кодек журнала (А1 — контракт, O2 — реализация) | `include/core_boundary/session.h` |
 
 Под-шаги слота решений зовутся каждый тик; суточную работу реализация сама привязывает к
-границе суток. Порядок в слоте 3 закреплён: **назначения → демография → номенклатура →
-стройка** — расстановка людей происходит до того, как на неё посмотрят остальные, а стройка
+границе суток. Порядок в слоте 3 закреплён: **назначения → задачи конюха → демография →
+номенклатура → стройка** — расстановка людей происходит до того, как на неё посмотрят остальные
+(логистика отмечает обслуженные грузы по утренней расстановке, часу 0), а стройка
 идёт последней, чтобы достроенный юнит увидели все со следующего тика, а начатая площадка
 получила бригаду следующим утром ([`71-construction.md` §6](71-construction.md#6-порядок-в-слоте-решений-стройка-последней)).
 

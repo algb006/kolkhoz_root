@@ -43,6 +43,7 @@
 #include "core_common/land_state.h"
 #include "core_common/ledger_state.h"
 #include "core_common/limit_state.h"
+#include "core_common/logistics_state.h"
 #include "core_common/named_state.h"
 #include "core_common/night_trade_state.h"
 #include "core_common/order_state.h"
@@ -1004,6 +1005,10 @@ struct WorldState {
   /// The dry count of the exchange and the fact «жителям есть что менять»
   /// (needs design §6); SAVED (save 121). barter_state.h.
   BarterWatch barter;
+
+  /// The groom's tasks of carting, one a load, with their levels (transport
+  /// design §12; routing stage B, B2); SAVED (save 135). logistics_state.h.
+  LogisticsTaskTable logistics_tasks;
 
   /// THE GATHERING COUNT SAID «NOT IN TIME» (farming design, the harvest
   /// rule 1 as boss re-worded it, core-boss-potato-crew-trace-2026-10-01

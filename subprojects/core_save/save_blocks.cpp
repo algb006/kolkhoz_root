@@ -210,7 +210,9 @@ static_assert(AggregateArity<BarterWatch>() == 5,
 // Save 126: gather_short_said, a day plus one — the forty-third member,
 // four bytes at the world block's end, after the barter's watch. Predicted
 // before the build: the section «world» 647 -> 651.
-static_assert(AggregateArity<WorldState>() == 43,
+// Save 135 (0.37.176): the groom's tasks of carting, the forty-fourth member —
+// a table section of its own (save.cpp, logistics_tasks; routing stage B, B2).
+static_assert(AggregateArity<WorldState>() == 44,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 

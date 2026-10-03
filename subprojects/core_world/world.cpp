@@ -38,6 +38,7 @@
 #include "core_construction/construction_system.h"
 #include "core_labor/labor_system.h"
 #include "core_log/log.h"
+#include "core_logistics/logistics_system.h"
 #include "core_production/production_system.h"
 #include "core_residents/residents_system.h"
 #include "core_tables/required_tables.h"
@@ -60,10 +61,12 @@ namespace {
 class DecisionsSlot final : public ISequentialPhase {
  public:
   DecisionsSlot(ILaborSystem& labor,
+                ILogisticsSystem& logistics,
                 IResidentsSystem& residents,
                 IProductionSystem& production,
                 IConstructionSystem& construction)
       : labor_(&labor),
+        logistics_(&logistics),
         residents_(&residents),
         production_(&production),
         construction_(&construction) {}
@@ -73,6 +76,9 @@ class DecisionsSlot final : public ISequentialPhase {
     // village's orders are answered before any consumer can take one.
     RefuseVillageOrdersWhileAway(current);
     labor_->RunAssignmentDecisions(previous, current);
+    // The groom's tasks (routing stage B, B2), once a day after the morning's
+    // placement: the carters placed today mark their loads served.
+    logistics_->RunTasks(previous, current);
     residents_->RunDemographyDecisions(previous, current);
     production_->RunProductionDecisions(previous, current);
     // Construction last (task A2, manual/71-construction.md §6): a unit
@@ -85,6 +91,8 @@ class DecisionsSlot final : public ISequentialPhase {
 
  private:
   ILaborSystem* labor_;
+
+  ILogisticsSystem* logistics_;
 
   IResidentsSystem* residents_;
 
@@ -473,6 +481,7 @@ class StandardSimulation final : public ISimulation {
                      std::unique_ptr<IProductionSystem> production,
                      std::unique_ptr<ILaborSystem> labor,
                      std::unique_ptr<IConstructionSystem> construction,
+                     std::unique_ptr<ILogisticsSystem> logistics,
                      std::shared_ptr<const RoadTools> road_tools,
                      std::vector<JunctionView> junctions)
       : road_tools_(std::move(road_tools)),
@@ -482,7 +491,8 @@ class StandardSimulation final : public ISimulation {
         production_(std::move(production)),
         labor_(std::move(labor)),
         construction_(std::move(construction)),
-        decisions_slot_(*labor_, *residents_, *production_, *construction_),
+        logistics_(std::move(logistics)),
+        decisions_slot_(*labor_, *logistics_, *residents_, *production_, *construction_),
         events_slot_(FoodValuePerResource(*config.tables),
                      ReadReadinessCatalog(*config.tables, Epoch::kOne),
                      ReadFoodVarietyThreshold(*config.tables, Epoch::kOne),
@@ -670,6 +680,8 @@ class StandardSimulation final : public ISimulation {
   std::unique_ptr<ILaborSystem> labor_;
 
   std::unique_ptr<IConstructionSystem> construction_;
+
+  std::unique_ptr<ILogisticsSystem> logistics_;
 
   DecisionsSlot decisions_slot_;
 
@@ -894,7 +906,10 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
                 return road_tools->Select(world, selection, operation);
               },
       });
-  if (!time || !residents || !production || !labor || !construction) {
+  // The groom's logistics (routing stage B, B2): the tasks of carting and
+  // their levels, run after the labour sub-step.
+  auto logistics = CreateLogisticsSystem(*config.tables, config.stub_tables);
+  if (!time || !residents || !production || !labor || !construction || !logistics) {
     // A factory refused its configuration (it already logged why).
     return nullptr;
   }
@@ -1042,6 +1057,7 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
                                               std::move(production),
                                               std::move(labor),
                                               std::move(construction),
+                                              std::move(logistics),
                                               road_tools,
                                               std::move(junctions));
 }

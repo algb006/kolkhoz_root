@@ -624,6 +624,23 @@ core::WorldState MakeWorld() {
   world.barter.dry_equivalent = 23'500;
   // The gathering count's last «not in time» (save 126): a day, not nought.
   world.gather_short_said = 137;
+  // A task of the groom's logistics (save format 135): every field off its
+  // default, the five ids apart and the two levels apart, so a codec that
+  // swapped a pair is seen.
+  core::LogisticsTaskRow task;
+  task.load_kind = core::LogisticsLoadKind::kStandLogs;
+  task.field = core::FieldId{11};
+  task.stand = core::TimberStandId{12};
+  task.extraction_site = core::ExtractionSiteId{13};
+  task.limit_delivery = core::LimitDeliveryId{14};
+  task.unit = core::UnitId{15};
+  task.level = core::LogisticsLevel::kTerm;
+  task.base_level = core::LogisticsLevel::kBackground;
+  task.origin = core::LogisticsOrigin::kPlayer;
+  task.paused = true;
+  task.aged_from_day = 141;
+  task.urgent_since = 3'333;
+  core::AppendRow(world.logistics_tasks, task);
 
   // A couple waiting for a free house (save format 35).
   core::WeddingWaitRow couple;
@@ -1404,7 +1421,7 @@ struct RecordedSection {
 /// beside it (manual/setup/57-versioning.md). No deliberate change: the codec
 /// has begun writing something else, which is the whole reason these numbers
 /// are here. Either way the number moves WITH ITS REASON, in the same commit.
-constexpr std::array<RecordedSection, 23> kRecordedPayload = {{
+constexpr std::array<RecordedSection, 24> kRecordedPayload = {{
     // Save 82: +15 — the seventh dictionary, tree_species (count 2, «pine»
     // 6, «birch» 7); predicted before the build, held.
     // Save 92: +2 — the map roads' dictionary, empty in this fixture's
@@ -1648,6 +1665,10 @@ constexpr std::array<RecordedSection, 23> kRecordedPayload = {{
     // Save 121: one walk to the barter counter — 8 of table, 4 of id, 35 of
     // row. Predicted 47 before the build, held.
     {"barter_trips", 47, 0x061d30c0df5d90a5ULL},
+    // Save 135 (routing stage B, B2): one task of the groom's logistics — 8
+    // of table, 4 of id, 37 of row. Predicted 49 before the build, held; the
+    // hash read off the build.
+    {"logistics_tasks", 49, 0xab2a0fadbf128564ULL},
     // 2026-09-17, save 52: +56 bytes over the two books — the nine yearly
     // inputs the readiness index asks of a year and the year did not keep
     // (ledger_state.h): satisfaction's sum and count, able-bodied
@@ -2527,6 +2548,23 @@ int main() {
           loaded.barter_trips.rows[0].taken_equivalent == 4'249,
       "a walk to the barter counter came back with who, whose, where, the hours "
       "and the two amounts each in its place (save 121)");
+  // Save 135. The five ids are apart and the two levels too: a codec that
+  // swapped a pair is red here.
+  {
+    const bool one = loaded.logistics_tasks.rows.size() == 1;
+    const core::LogisticsTaskRow& back =
+        one ? loaded.logistics_tasks.rows[0] : core::LogisticsTaskRow{};
+    failures += Expect(
+        one && back.load_kind == core::LogisticsLoadKind::kStandLogs && back.field.value == 11 &&
+            back.stand.value == 12 && back.extraction_site.value == 13 &&
+            back.limit_delivery.value == 14 && back.unit.value == 15 &&
+            back.level == core::LogisticsLevel::kTerm &&
+            back.base_level == core::LogisticsLevel::kBackground &&
+            back.origin == core::LogisticsOrigin::kPlayer && back.paused &&
+            back.aged_from_day == 141 && back.urgent_since == 3'333,
+        "a task of the groom's logistics came back with its load, its two levels, its origin, "
+        "its pause and its two times (save 135)");
+  }
   failures += Expect(loaded.barter.worth_starting_raised == 1 &&
                          loaded.barter.dry_days_in_row == 3 && loaded.barter.dry_givers == 5 &&
                          loaded.barter.dry_takers == 4 && loaded.barter.dry_equivalent == 23'500,

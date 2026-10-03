@@ -25,6 +25,7 @@
 #include "core_common/herd_state.h"
 #include "core_common/land_state.h"
 #include "core_common/limit_state.h"
+#include "core_common/logistics_state.h"
 #include "core_common/night_trade_state.h"
 #include "core_common/order_state.h"
 #include "core_common/resident_state.h"
@@ -98,6 +99,11 @@ RoadWorkRow ReadRoadWorkRow(LoadSource& source);
 /// range-checked and must stand in their order.
 void WriteBarterTripRow(SaveSink& sink, const BarterTripRow& row);
 BarterTripRow ReadBarterTripRow(LoadSource& source);
+
+/// A task of the groom's logistics (save 135; routing stage B, B2); the kind,
+/// the levels and the origin are range-checked.
+void WriteLogisticsTaskRow(SaveSink& sink, const LogisticsTaskRow& row);
+LogisticsTaskRow ReadLogisticsTaskRow(LoadSource& source);
 
 }  // namespace core
 

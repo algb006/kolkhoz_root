@@ -1,0 +1,26 @@
+key,value
+# THE GROOM'S LOGISTICS (routing stage B, B2; transport design §12 «Уровни приоритета»; boss, the
+# logistics thread [5]-[9]). The core's own table (core/CLAUDE.md §12: hand-written, not an export).
+# Levels: 0 urgent, 1 term, 2 ordinary, 3 background — the design's numbers.
+#
+# THE DEFAULT LEVEL OF A LOAD'S TASK, by its kind (boss [9], default 1): a heap on a field and the
+# district's lot by a date (term), logs off a stand and a dig's load by the round (ordinary), the church
+# store's transfer when there is power left (background).
+level_field_heap,1
+level_stand_logs,2
+level_site_dig,2
+level_district_lot,1
+level_store_transfer,3
+#
+# AGEING from the task's last trip (econ [5], STUB econ; econ/manual/proposals/logistics-priorities-numbers-
+# 2026-10-03.md): background -> ordinary after this many days, ordinary -> term after this many; a term never
+# ages into urgent. A paused task does not age.
+age_background_days,6
+age_ordinary_days,4
+#
+# SELF TO LEVEL 0 BY A SPOILING LOAD (econ [5], STUB econ): a heap that loses at least this share of itself,
+# or at least this many tonnes, by tomorrow's spoilage (the same arithmetic as production's heaps:
+# resources.csv spoil_days x world_params field_heap_keeping_factor). econ's «a heap in the open on a day of
+# rain or snow» is not modelled: the core's heap spoils the same in any weather — STUB core.
+urgent_spoil_share,0.10
+urgent_spoil_tonnes,1

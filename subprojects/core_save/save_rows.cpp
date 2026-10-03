@@ -347,6 +347,14 @@ static_assert(sizeof(BarterTripRow) == 40,
               "BarterTripRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<BarterTripRow>() == 9,
               "BarterTripRow gained or lost a field — update the codec and VERSION_SAVE");
+// Save 135 (0.37.176): a task of the groom's logistics — 40 and twelve fields,
+// predicted before the build (the kind's byte and three of padding, five ids
+// to 24, four bytes of level, base, origin and pause to 28, the day to 32,
+// the tick to 40; 37 bytes saved: 1 + 4 x 5 + 1 + 1 + 1 + 1 + 4 + 8).
+static_assert(sizeof(LogisticsTaskRow) == 40,
+              "LogisticsTaskRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<LogisticsTaskRow>() == 12,
+              "LogisticsTaskRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<RoadStretch>() == 1,
               "RoadStretch gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(DistrictCarRow) == 24,
@@ -1592,6 +1600,46 @@ void WriteLandStripRow(SaveSink& sink, const LandStripRow& row) {
   for (const RoadStretch& stretch : row.stretches) {
     out.WriteFloat(stretch.wear_pct);
   }
+}
+
+void WriteLogisticsTaskRow(SaveSink& sink, const LogisticsTaskRow& row) {
+  ByteWriter& out = sink.Out();
+  out.WriteU8(static_cast<std::uint8_t>(row.load_kind));
+  WriteEntityId(out, row.field);
+  WriteEntityId(out, row.stand);
+  WriteEntityId(out, row.extraction_site);
+  WriteEntityId(out, row.limit_delivery);
+  WriteEntityId(out, row.unit);
+  out.WriteU8(static_cast<std::uint8_t>(row.level));
+  out.WriteU8(static_cast<std::uint8_t>(row.base_level));
+  out.WriteU8(static_cast<std::uint8_t>(row.origin));
+  out.WriteU8(row.paused ? 1U : 0U);
+  out.WriteU32(row.aged_from_day);
+  out.WriteU64(row.urgent_since);
+}
+
+LogisticsTaskRow ReadLogisticsTaskRow(LoadSource& source) {
+  ByteReader& in = source.In();
+  LogisticsTaskRow row;
+  row.load_kind = static_cast<LogisticsLoadKind>(source.ReadEnumValue(
+      0,
+      static_cast<std::uint8_t>(LogisticsLoadKind::kLogisticsLoadKindCount) - 1U,
+      "logistics load kind"));
+  row.field = ReadEntityId<FieldId>(in);
+  row.stand = ReadEntityId<TimberStandId>(in);
+  row.extraction_site = ReadEntityId<ExtractionSiteId>(in);
+  row.limit_delivery = ReadEntityId<LimitDeliveryId>(in);
+  row.unit = ReadEntityId<UnitId>(in);
+  const auto top_level = static_cast<std::uint8_t>(kLogisticsLevelCount - 1U);
+  row.level = static_cast<LogisticsLevel>(source.ReadEnumValue(0, top_level, "logistics level"));
+  row.base_level =
+      static_cast<LogisticsLevel>(source.ReadEnumValue(0, top_level, "logistics base level"));
+  row.origin = static_cast<LogisticsOrigin>(source.ReadEnumValue(
+      0, static_cast<std::uint8_t>(LogisticsOrigin::kPlayer), "logistics origin"));
+  row.paused = source.ReadEnumValue(0, 1, "logistics pause") != 0;
+  row.aged_from_day = in.ReadU32();
+  row.urgent_since = in.ReadU64();
+  return row;
 }
 
 void WriteRoadWorkRow(SaveSink& sink, const RoadWorkRow& row) {
