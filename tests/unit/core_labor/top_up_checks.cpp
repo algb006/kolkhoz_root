@@ -184,6 +184,100 @@ Crews LateWorkAgainstThePlanting(core::ILaborSystem& labor, bool a_reaping_opens
   return crews;
 }
 
+/// The labour system of the people's cart: six seats for a walk past two
+/// hours (transport.csv), and a cow beside the horse (livestock.csv row 1).
+std::unique_ptr<core::ILaborSystem> LaborWithThePeoplesCart() {
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_labor_top_up_peoples_cart";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  // Ten cows at 67.2 real care-days a head a year — a real day is a seventh
+  // of a game one — are two norm-days of barn work a day.
+  std::ofstream(root / "livestock.csv") << "key,care_days_per_year\nhorse,0\ncow,67.2\n";
+  std::ofstream(root / "transport.csv") << "key,speed_kmh,seats,min_walk_hours\n"
+                                           "pedestrian,5,,\n"
+                                           "horse_trot,12,,\n"
+                                           "people_cart,,6,2\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  if (tables == nullptr) {
+    std::cout << error << '\n';
+    return nullptr;
+  }
+  return core::CreateLaborSystem(*tables, core::StubTables::kAllowed);
+}
+
+/// What the top-up did to the horses of a people's cart.
+struct LentHorses {
+  std::uint32_t morning_log_riders = 0;
+  std::uint32_t morning_peoples_carts = 0;
+  std::uint32_t log_riders = 0;
+  std::uint32_t peoples_carts = 0;
+  std::uint32_t morning_carers = 0;  ///< On the barn's care after hour 0.
+};
+
+/// THE PEOPLE'S CART IS FROM THE REMAINDER IN THE TOP-UP TOO (0.37.168; boss,
+/// the queue thread [120]-[121]). Two horses: in the morning one carts a
+/// stand's logs 3 km out — windowless — and the other, left over, carries the
+/// three hands of a barn a kilometre out (2.4 hours on foot). At hour 1 a second
+/// stand's logs lie: the top-up lets the carter go and places both loads, and
+/// the barn's cart, held by work with a window of today, lends its horse —
+/// both loads ride, the barn's hands walk. Counted as held, the cart kept its
+/// horse and the second load stood: the canon's goods carts lost 299
+/// horse-days of years 1-3 to the people's carts so.
+LentHorses TheTopUpBorrowsThePeoplesCart(core::ILaborSystem& labor) {
+  core::WorldState world = Village(6);
+  core::HerdRow team;
+  team.kind = core::LivestockKindId{0};
+  team.adult_count = 2;
+  core::AppendRow(world.herds, team);
+  core::UnitRow barn;
+  barn.position = core::Vec2{.x = 1000.0F, .y = 0.0F};
+  core::HerdRow cows;
+  cows.kind = core::LivestockKindId{1};
+  cows.unit = core::AppendRow(world.units, barn);
+  cows.adult_count = 10;
+  cows.care_days_remaining = 2.0F;
+  core::AppendRow(world.herds, cows);
+  const auto stand_at = [&world](float metres, float haul_days) {
+    core::TimberStandRow stand;
+    stand.position = core::Vec2{.x = metres, .y = 0.0F};
+    stand.load_grams = haul_days > 0.0F ? 1'000'000 : 0;
+    stand.haul_days_remaining = haul_days;
+    stand.haul_days_written = haul_days;
+    return core::AppendRow(world.stands, stand);
+  };
+  stand_at(3000.0F, 0.5F);
+  const core::TimberStandId second = stand_at(-3000.0F, 0.0F);
+  const auto count = [&world](LentHorses& into, bool morning) {
+    std::uint32_t log_riders = 0;
+    std::uint32_t carts = 0;
+    std::uint32_t carers = 0;
+    for (const core::ResidentRow& person : world.residents.rows) {
+      carers += person.work.kind == core::WorkKind::kHerdCare ? 1U : 0U;
+      log_riders +=
+          person.work.kind == core::WorkKind::kHauling && person.work.rides_horse != 0 ? 1U : 0U;
+      carts +=
+          person.work.kind == core::WorkKind::kHerdCare && person.work.rides_horse != 0 ? 1U : 0U;
+    }
+    (morning ? into.morning_log_riders : into.log_riders) = log_riders;
+    (morning ? into.morning_peoples_carts : into.peoples_carts) = carts;
+    if (morning) {
+      into.morning_carers = carers;
+    }
+  };
+  LentHorses horses;
+  RunHour(labor, world, 0);
+  count(horses, true);
+  core::TimberStandRow& lying = world.stands.rows[core::FindRow(world.stands, second)];
+  lying.load_grams = 1'000'000;
+  lying.haul_days_remaining = 0.5F;
+  lying.haul_days_written = 0.5F;
+  RunHour(labor, world, 1);
+  count(horses, false);
+  return horses;
+}
+
 }  // namespace
 
 int CheckTopUpAgainstWindowlessWork() {
@@ -222,5 +316,22 @@ int CheckTopUpAgainstWindowlessWork() {
                      "hour 1");
   failures += Expect(no_reaping.planters == 3,
                      "top-up, the hands: with no reaping opened the planters plant on");
+
+  const auto carting = LaborWithThePeoplesCart();
+  if (Expect(carting != nullptr, "top-up, the people's cart: the tables build a labor system") !=
+      0) {
+    return failures + 1;
+  }
+  const LentHorses lent = TheTopUpBorrowsThePeoplesCart(*carting);
+  std::cout << "  top-up, the people's cart: morning log riders " << lent.morning_log_riders
+            << ", barn carts " << lent.morning_peoples_carts << " of " << lent.morning_carers
+            << " carers; after hour 1 log riders " << lent.log_riders << ", barn carts "
+            << lent.peoples_carts << '\n';
+  failures += Expect(lent.morning_log_riders == 1 && lent.morning_peoples_carts == 1,
+                     "top-up, the people's cart: the morning carts one load and gives the other "
+                     "horse, left over, to the barn's far hands");
+  failures += Expect(lent.log_riders == 2 && lent.peoples_carts == 0,
+                     "top-up, the people's cart: a second load at hour 1 takes the cart's horse — "
+                     "both loads ride, the barn's hands walk");
   return failures;
 }

@@ -725,8 +725,17 @@ class LaborSystem final : public ILaborSystem {
     // ploughing opened after the morning took horses already in the traces:
     // host measured spring ploughing and harrowing above the herd in a third
     // of the canon's March and April seed-months.
+    //
+    // EXCEPT THE PEOPLE'S CARTS, WHICH ARE LENT TO THIS QUEUE (0.37.168; boss,
+    // the queue thread [120]-[121]): the morning gave them from what its queue
+    // left, but the top-up lets the windowless carts go and places them again,
+    // while the carts of the herds' care (a window of today) stay out. Counted
+    // as held, they went ahead of the goods carts here: the canon's goods carts
+    // lost 299 horse-days of years 1-3 to them (nine villages, 0.37.168
+    // against 0.37.167), carting 10.7 % below 0.37.157's. Lent, and taken back
+    // first by the release below when the queue used them.
     AssignmentParams params = DayParams(current);
-    const std::uint32_t in_traces = HorsesInTraces(current);
+    const std::uint32_t in_traces = HorsesInTraces(current) - PeoplesCartHorses(current);
     params.draught_horses =
         in_traces < params.draught_horses ? params.draught_horses - in_traces : 0U;
     MeasureRoads(current, jobs, candidates, params);
@@ -775,6 +784,20 @@ class LaborSystem final : public ILaborSystem {
       work.road_work = job.road_work;
       work.travel_hours = -1.0F;  // a new target: its road is measured anew
     }
+    // THE LENT HORSES BACK (above): the people's carts first, their crews walk.
+    ReleaseHorselessWork(current);
+  }
+
+  /// @brief The horses the people's carts hold today (labor_state.h,
+  ///        TakesThePeoplesCart): one a driver — the part of HorsesInTraces
+  ///        (CountHarness counts them by the same test) the top-up lends to its
+  ///        queue.
+  static std::uint32_t PeoplesCartHorses(const WorldState& current) {
+    std::uint32_t horses = 0;
+    for (const ResidentRow& person : current.residents.rows) {
+      horses += TakesThePeoplesCart(person.work.kind) && person.work.rides_horse != 0 ? 1U : 0U;
+    }
+    return horses;
   }
 
   /// @brief Fills AssignmentParams::road_km for these jobs and candidates, and
@@ -884,25 +907,33 @@ class LaborSystem final : public ILaborSystem {
     // FOR A MEADOW'S MOWER AND A PEOPLE'S CART (A3, A4; 0.37.168): the mowers
     // go on with scythes, the crew walks — its seats name the driver
     // (WorkAssignment::rides_cart_of), who holds no horse now.
-    for (auto row = static_cast<std::uint32_t>(current.residents.rows.size());
-         row > 0 && in_traces > herd;
-         --row) {
-      WorkAssignment& work = current.residents.rows[row - 1].work;
-      const bool field_crew = work.kind == WorkKind::kHarvest || work.kind == WorkKind::kSowing;
-      if (work.rides_horse == 0 || !(field_crew || TakesThePeoplesCart(work.kind))) {
-        continue;
-      }
-      work.rides_horse = 0;
-      work.travel_hours = -1.0F;
-      const ResidentId driver = current.residents.row_ids[row - 1];
-      for (ResidentRow& person : current.residents.rows) {
-        const bool same_field = field_crew && person.work.kind == work.kind &&
-                                person.work.field.value == work.field.value;
-        if (same_field || person.work.rides_cart_of.value == driver.value) {
-          person.work.travel_hours = -1.0F;
+    //
+    // THE PEOPLE'S CARTS BEFORE ALL OF THEM (0.37.168): they are given from
+    // what the plough and the goods carts left (assignment.h), and the top-up
+    // lends their horses to its own queue (TopUpDay) — so the release takes
+    // them back first, and the order «plough, carts, people» holds there too.
+    for (const bool peoples_pass : {true, false}) {
+      for (auto row = static_cast<std::uint32_t>(current.residents.rows.size());
+           row > 0 && in_traces > herd;
+           --row) {
+        WorkAssignment& work = current.residents.rows[row - 1].work;
+        const bool field_crew = work.kind == WorkKind::kHarvest || work.kind == WorkKind::kSowing;
+        const bool peoples_cart = TakesThePeoplesCart(work.kind);
+        if (work.rides_horse == 0 || (peoples_pass ? !peoples_cart : !field_crew)) {
+          continue;
         }
+        work.rides_horse = 0;
+        work.travel_hours = -1.0F;
+        const ResidentId driver = current.residents.row_ids[row - 1];
+        for (ResidentRow& person : current.residents.rows) {
+          const bool same_field = field_crew && person.work.kind == work.kind &&
+                                  person.work.field.value == work.field.value;
+          if (same_field || person.work.rides_cart_of.value == driver.value) {
+            person.work.travel_hours = -1.0F;
+          }
+        }
+        --in_traces;
       }
-      --in_traces;
     }
     for (const bool timber_pass : {true, false}) {
       for (auto row = static_cast<std::uint32_t>(current.residents.rows.size());
