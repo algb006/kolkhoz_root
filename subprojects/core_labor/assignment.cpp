@@ -394,13 +394,26 @@ bool ConsiderCandidate(const AssignmentJob& job,
   // settled whether there is a cart today).
   const bool rides = horse_work || RidesOut(job.kind) || job.cart_out;
   const float travel = OneWayHours(job, job_index, candidate, params, rides, horse_work);
+  // A CARTER FROM THE HORSE YARD LOSES ONLY HIS WALK TO THE HORSE (0.37.160):
+  // the labour hour takes nothing else off his light (horse_yard_road.h,
+  // WorkRoadHours), since his ride to the load is the first trip's empty
+  // half. Judged here by walk AND ride twice over (0.37.158), carters were
+  // refused a short winter day they could work and ranked below what they
+  // deliver: the canon's carting of years 1-3 fell 19.6 % where the hour's
+  // own cost was 3.3 % (nine villages, the two measured apart). The whole
+  // way still answers the road limit — whether he can get there at all.
+  const float light_road = job.kind == WorkKind::kHauling && horse_work &&
+                                   candidate.home_slot < params.yard_walk_hours.size()
+                               ? params.yard_walk_hours[candidate.home_slot]
+                               : travel;
   // The road limit is a game rule, not accountant quality.
-  if (!RoadLeavesAWorkingDay(
-          travel, params.window_hours, params.travel_limit_hours, params.min_usable_hours)) {
+  if (travel > params.travel_limit_hours ||
+      !RoadLeavesAWorkingDay(
+          light_road, params.window_hours, params.travel_limit_hours, params.min_usable_hours)) {
     refused_by_road = true;
     return false;
   }
-  const float usable_hours = params.window_hours - (2.0F * travel);
+  const float usable_hours = params.window_hours - (2.0F * light_road);
   const float daily_norm = usable_hours * candidate.efficiency / params.standard_day_hours;
   if (daily_norm <= 0.0F) {
     return false;

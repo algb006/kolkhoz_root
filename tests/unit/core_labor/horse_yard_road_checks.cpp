@@ -60,13 +60,13 @@ struct Team {
   float yard_x = 0.0F;
 };
 
-/// One man at the map's origin, twelve hours of light, one kolkhoz horse;
-/// the job `metres` out with fifty days of work on it. The norm-days his
-/// whole day takes off its seam.
-float DoneInADay(core::ILaborSystem& labor, Job job, float metres, Team team) {
+/// One man at the map's origin, `light` hours of light (twelve unless
+/// said), one kolkhoz horse; the job `metres` out with fifty days of work on
+/// it. The norm-days his whole day takes off its seam.
+float DoneInADay(core::ILaborSystem& labor, Job job, float metres, Team team, float light = 12.0F) {
   core::WorldState world;
   world.calendar.day_zero_weekday = core::Weekday::kMonday;
-  world.weather.daylight_hours = 12.0F;
+  world.weather.daylight_hours = light;
   world.chairman.harvest_without_days_off = 0;
   core::UnitRow house;
   house.level = 1;
@@ -172,5 +172,19 @@ int CheckTheHorseYardRoad() {
   failures += Expect(cart_home > 0.0F && Same(cart_at_house, cart_home),
                      "horse yard: a carter whose yard stands at his house loses nothing of his "
                      "day to the ride two kilometres to the load - it is his first trip");
+  // THE PLACEMENT JUDGES HIS DAY BY THE SAME ROAD (0.37.160): eight hours of
+  // winter light, the yard 500 m behind, a heap 2.5 km out — 1.2 hours' walk
+  // and 3 hours' ride, inside the six-hour limit. By walk and ride twice
+  // over nothing of the day was left and he was refused (0.37.158); by the
+  // walk alone 5.6 of the 8 hours are his, as the labour hour counts them.
+  const float winter_home = DoneInADay(*labor, Job::kCartAHeap, 2500.0F, at_home, 8.0F);
+  const float winter_behind = DoneInADay(*labor, Job::kCartAHeap, 2500.0F, yard_near_behind, 8.0F);
+  std::cout << "  horse yard, a carter at a heap 2.5 km out in eight hours of light: "
+            << winter_home << " (horses at home), " << winter_behind << " (yard 500 m behind)\n";
+  failures += Expect(winter_home > 0.0F && winter_behind > 0.6F * winter_home &&
+                         winter_behind < 0.8F * winter_home,
+                     "horse yard: in eight hours of winter light a carter whose yard stands 500 m "
+                     "behind is sent to a heap 2.5 km out and works 0.7 of the day - the placement "
+                     "takes only his walk off it, as the labour hour does");
   return failures;
 }
