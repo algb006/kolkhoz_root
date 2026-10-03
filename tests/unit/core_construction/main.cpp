@@ -1893,6 +1893,77 @@ int TestNeverDemolished() {
   return failures;
 }
 
+/// A RUNG THAT WAITS FOR ANOTHER UNIT (unit_levels.csv requires_unit; boss,
+/// the logistics thread [22]-[24]; 0.37.178): the priest's house's second
+/// rung opens when the farm office stands. The upgrade is refused kGateClosed
+/// while there is no office, and while the office is a site at level 0; it
+/// starts once the office stands. A new mark whose first rung waits is
+/// refused the same way. A key naming no type refuses the table.
+int TestRungWaitsForAUnit() {
+  int failures = 0;
+  const test::FakeTable no_costs{{"unit", "level", "resource", "amount"}, {}};
+  const test::FakeTable no_resources{{"key", "measure", "kg_per_unit"}, {}};
+  const test::FakeTable knobs{{"key", "value"}, {{"demolition_labor_share", "0.5"}}};
+  const test::FakeTable types{{"key", "era", "player_built", "gate", "has_wear"},
+                              {{"priest", "1", "0", "start", "1"},
+                               {"office", "1", "1", "era", "1"},
+                               {"annex", "1", "1", "era", "1"}}};
+  const auto levels_with = [](const char* annex_needs) {
+    return test::FakeTable{
+        {"unit", "level", "labor_days", "max_crew", "wear_years_idle", "requires_unit"},
+        {{"priest", "1", "70", "5", "40", ""},
+         {"priest", "2", "70", "5", "40", "office"},
+         {"office", "1", "70", "5", "40", ""},
+         {"annex", "1", "70", "5", "40", annex_needs}}};
+  };
+  const test::FakeTable levels = levels_with("office");
+  const test::FakeTableSet tables{{{"unit_types", &types},
+                                   {"unit_levels", &levels},
+                                   {"unit_level_cost", &no_costs},
+                                   {"resources", &no_resources},
+                                   {"construction", &knobs}}};
+  const auto system = core::CreateConstructionSystem(tables, core::StubTables::kAllowed);
+  if (system == nullptr) {
+    return Expect(false, "rung waits: the subsystem refused its tables");
+  }
+  core::WorldState world;
+  core::UnitRow priest;
+  priest.type = core::UnitTypeId{0};
+  priest.level = 1;
+  const core::UnitId house = core::AppendRow(world.units, priest);
+  const core::OrderId early = Issue(world, UnitOrder(core::OrderKind::kUpgradeUnit, house));
+  const core::OrderId annex_early = Issue(world, BuildOrder(2, 500.0F, 500.0F));
+  Run(*system, world, 0);
+  failures += Expect(RefusalOf(world, early) == core::OrderRefusal::kGateClosed,
+                     "rung waits: no office — the dormitory rung is refused, gate closed");
+  failures += Expect(RefusalOf(world, annex_early) == core::OrderRefusal::kGateClosed,
+                     "rung waits: and a mark whose first rung waits for the office is too");
+  core::UnitRow office;
+  office.type = core::UnitTypeId{1};
+  office.level = 0;
+  office.position = core::Vec2{.x = 1000.0F, .y = 1000.0F};
+  core::AppendRow(world.units, office);
+  const core::OrderId site = Issue(world, UnitOrder(core::OrderKind::kUpgradeUnit, house));
+  Run(*system, world, 1);
+  failures += Expect(RefusalOf(world, site) == core::OrderRefusal::kGateClosed,
+                     "rung waits: an office still at level 0 opens nothing");
+  world.units.rows[1].level = 1;
+  const core::OrderId opened = Issue(world, UnitOrder(core::OrderKind::kUpgradeUnit, house));
+  Run(*system, world, 2);
+  failures += Expect(RefusalOf(world, opened) == core::OrderRefusal::kNone,
+                     "rung waits: the office stands — the upgrade starts");
+  const test::FakeTable bad = levels_with("chapel");
+  const test::FakeTableSet bad_tables{{{"unit_types", &types},
+                                       {"unit_levels", &bad},
+                                       {"unit_level_cost", &no_costs},
+                                       {"resources", &no_resources},
+                                       {"construction", &knobs}}};
+  failures +=
+      Expect(core::CreateConstructionSystem(bad_tables, core::StubTables::kAllowed) == nullptr,
+             "rung waits: a requires_unit naming no type refuses the table");
+  return failures;
+}
+
 /// A LADDER WITH A HOLE IS REFUSED, AND THE REFUSAL NAMES THE UNIT AND THE
 /// RUNG.
 ///
@@ -2667,6 +2738,7 @@ int main() {
   failures += TestALadderWithAHoleIsRefused();
   failures += TestAWearTermMayBeUnnamedButNotZero();
   failures += TestNeverDemolished();
+  failures += TestRungWaitsForAUnit();
   failures += TestTheStinkField();
   failures += TestTheStinkZoneGrowsAndGoesOut();
   failures += TestTheShippedStartHasNoHouseInAStinkZone();

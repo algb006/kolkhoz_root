@@ -9,6 +9,7 @@
 
 #include "core_catalog/world_conventions.h"
 #include "core_common/calendar.h"
+#include "core_common/rung_requirement.h"
 #include "core_log/log.h"
 
 namespace core {
@@ -261,21 +262,34 @@ ReadinessCatalog ReadReadinessCatalog(const ITableSet& tables, Epoch era) {
         rungs[index] = static_cast<std::uint8_t>(*opens);
       }
     }
+    // The rungs that wait for another unit, by the catalogue's reader; a
+    // malformed cell is the catalogue's to refuse (LoadDefinitions stops the
+    // assembly first), and here it leaves every rung open.
+    std::string ignored;
+    if (!ReadRungWords(*types, *levels, catalog.rungs, ignored)) {
+      catalog.rungs = UnitTypeDefs{};
+    }
   }
   catalog.office = DefIdFromRow<UnitTypeIdTag>(types->FindRowByKey("farm_office"));
   catalog.repair_base = DefIdFromRow<UnitTypeIdTag>(types->FindRowByKey("workshops"));
   return catalog;
 }
 
-std::uint8_t RequiredUnitLevel(const ReadinessCatalog& catalog, UnitTypeId type, Epoch era) {
+std::uint8_t RequiredUnitLevel(const ReadinessCatalog& catalog,
+                               UnitTypeId type,
+                               Epoch era,
+                               const WorldState& world) {
   if (type.value >= catalog.rung_eras.size()) {
     return 0;
   }
   // Up from the first rung and stopping at the first the era has not opened
-  // — or the table skipped — so a gap is never stepped over.
+  // — or the table skipped, or that waits for a unit the world has not built
+  // (0.37.178) — so a gap is never stepped over.
   std::uint8_t required = 0;
   for (const std::uint8_t rung_era : catalog.rung_eras[type.value]) {
-    if (rung_era == 0 || rung_era > EpochHumanNumber(era)) {
+    const auto rung = static_cast<std::uint8_t>(required + 1U);
+    if (rung_era == 0 || rung_era > EpochHumanNumber(era) ||
+        !RungRequirementMet(world, catalog.rungs.RungRequires(type, rung))) {
       break;
     }
     ++required;
@@ -504,7 +518,7 @@ TransitionBlocks StandingBlocks(const ReadinessCatalog& catalog, const WorldStat
         // stands have their second rung in a LATER era; asking either for a
         // second level locked the era with the design's unfinishedness or
         // with the next era's door (RequiredUnitLevel).
-        if (unit.level >= RequiredUnitLevel(catalog, unit.type, world.epoch)) {
+        if (unit.level >= RequiredUnitLevel(catalog, unit.type, world.epoch, world)) {
           return true;
         }
         return !std::ranges::any_of(catalog.kolkhoz_types, [&unit](UnitTypeId type) {

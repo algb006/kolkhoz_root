@@ -1924,6 +1924,44 @@ int CheckCoupleSkipsHouseOnTheBrink() {
   return failures;
 }
 
+/// HOUSING THAT HOUSES NOBODY (unit_levels.csv no_residents; boss, the
+/// logistics thread [22]): the priest's house on its first rung is the
+/// chairman's office. No wedding, no roofless family and no specialist moves
+/// into it, and no order keeps it for one; on its next rung, where the column
+/// does not say so, it is housing again. The pair: the same house with the
+/// flag off is the free house it was until 0.37.178.
+int CheckTheOfficeRungHousesNobody() {
+  int failures = 0;
+  core::LifeConfig config;
+  config.definitions.units.is_housing = {1};
+  core::WorldState world;
+  core::UnitRow priest;
+  priest.type = core::UnitTypeId{0};
+  priest.level = 1;
+  const core::UnitId house = AppendRow(world.units, priest);
+  failures += Expect(core::FreeHouse(config, world, true).value == house.value,
+                     "office rung: without the flag the priest's house is a free house");
+  config.definitions.units.no_residents = {{1, 0}};
+  failures +=
+      Expect(core::FreeHouse(config, world, true).value == core::kInvalidEntityIdValue &&
+                 core::FreeHouseNotOnTheBrink(config, world).value == core::kInvalidEntityIdValue,
+             "office rung: with it, no family and no couple takes the office");
+  core::OrderRow keep;
+  keep.kind = core::OrderKind::kReserveHouse;
+  keep.status = core::OrderStatus::kPending;
+  keep.unit = house;
+  keep.enable = 1;
+  AppendRow(world.orders, keep);
+  core::ConsumeHousingOrders(config, world);
+  failures += Expect(world.orders.rows[0].refusal == core::OrderRefusal::kNotEligible &&
+                         world.units.rows[0].reserved_for_specialist == 0,
+                     "office rung: and it is kept for no specialist");
+  world.units.rows[0].level = 2;
+  failures += Expect(core::FreeHouse(config, world, true).value == house.value,
+                     "office rung: one rung up, where the column is 0, it is housing again");
+  return failures;
+}
+
 /// A WEDDING LEAVES NO CHILD ALONE IN A HOUSE (life-cycle §5, «Семья
 /// неделима»: «Вдовство — супруг остаётся в семье с детьми»; boss, boss-all-
 /// epoch1-queue-after-0-37-144-2026-10-03 [13]; 0.37.148). The wedding moves
@@ -4757,6 +4795,7 @@ int main() {
   failures += CheckWeddingQueueOrder();
   failures += CheckAWeddingLeavesNoChildAlone();
   failures += CheckCoupleSkipsHouseOnTheBrink();
+  failures += CheckTheOfficeRungHousesNobody();
   failures += CheckTwins();
   failures += CheckRooflessLadder();
   failures += CheckBarrack();

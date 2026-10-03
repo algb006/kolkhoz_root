@@ -31,6 +31,7 @@
 #include "core_common/order_state.h"
 #include "core_common/plot.h"
 #include "core_common/rain_stops_work.h"
+#include "core_common/rung_requirement.h"
 #include "core_common/state_table_ops.h"
 #include "core_log/log.h"
 #include "core_tables/required_tables.h"
@@ -672,7 +673,10 @@ class ConstructionSystem final : public IConstructionSystem {
     if (type.player_built == 0 || type.levels.empty()) {
       return OrderRefusal::kRuleForbids;
     }
-    if (!GateIsOpen(type.gate, type.era, current.epoch)) {
+    if (!GateIsOpen(type.gate, type.era, current.epoch) ||
+        !RungRequirementMet(current,
+                            config_.definitions.units.RungRequires(
+                                DefIdFromRow<UnitTypeIdTag>(type_row), std::uint8_t{1}))) {
       return OrderRefusal::kGateClosed;
     }
     // The edge is data (construction_config.h): zero means the table set
@@ -806,6 +810,15 @@ class ConstructionSystem final : public IConstructionSystem {
       return OrderRefusal::kRuleForbids;  // the top of its ladder
     }
     if (type.levels[next - 1].era > static_cast<std::uint8_t>(current.epoch)) {
+      return OrderRefusal::kGateClosed;
+    }
+    // A RUNG THAT WAITS FOR ANOTHER UNIT (unit_levels.csv requires_unit;
+    // 0.37.178): the priest's house becomes the dormitory once the office has
+    // a farm office to move into. Until then the canon's bot raised it on day
+    // 20 of year 1.
+    if (!RungRequirementMet(
+            current,
+            config_.definitions.units.RungRequires(site.type, static_cast<std::uint8_t>(next)))) {
       return OrderRefusal::kGateClosed;
     }
     if (!ShortfallOf(current, row, static_cast<std::uint8_t>(next)).empty()) {

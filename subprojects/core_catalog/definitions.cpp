@@ -2,8 +2,11 @@
 
 #include "core_catalog/definitions.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "core_catalog/table_value.h"
 #include "core_tables/required_tables.h"
@@ -81,7 +84,69 @@ bool ReadUnitTypes(const ITable& unit_types, UnitTypeDefs& defs, std::string& er
   return true;
 }
 
+/// The highest rung a cell may name: unit_levels' own bound.
+constexpr float kMaxRung = 10.0F;
+
 }  // namespace
+
+// The rungs' words (boss [22]-[24]): `no_residents` — a flag, empty is 0 —
+// and `requires_unit` — a unit_types key, empty is none.
+bool ReadRungWords(const ITable& unit_types,
+                   const ITable& unit_levels,
+                   UnitTypeDefs& defs,
+                   std::string& error) {
+  const std::uint32_t flag_column = unit_levels.FindColumn("no_residents");
+  const std::uint32_t requires_column = unit_levels.FindColumn("requires_unit");
+  if (flag_column == kNoTableColumn && requires_column == kNoTableColumn) {
+    return true;
+  }
+  const std::uint32_t unit_column = unit_levels.FindColumn("unit");
+  const std::uint32_t level_column = unit_levels.FindColumn("level");
+  defs.no_residents.assign(unit_types.RowCount(), {});
+  defs.requires_unit.assign(unit_types.RowCount(), {});
+  for (std::uint32_t row = 0; row < unit_levels.RowCount(); ++row) {
+    const std::uint32_t type_row = unit_types.FindRowByKey(unit_levels.CellText(row, unit_column));
+    float level = 0.0F;
+    float flag = 0.0F;
+    if (!CellOrDefault(unit_levels,
+                       row,
+                       level_column,
+                       Range{.low = 1.0F, .high = kMaxRung},
+                       0.0F,
+                       level,
+                       error) ||
+        (flag_column != kNoTableColumn &&
+         !CellOrDefault(unit_levels, row, flag_column, Range::Unit(), 0.0F, flag, error))) {
+      PrefixError("unit_levels", "no_residents", error);
+      return false;
+    }
+    UnitTypeId required;
+    if (requires_column != kNoTableColumn) {
+      const std::string_view key = unit_levels.CellText(row, requires_column);
+      if (!key.empty()) {
+        const std::uint32_t required_row = unit_types.FindRowByKey(key);
+        if (required_row == kNoTableRow) {
+          error = "unit_levels: requires_unit names no unit type: " + std::string(key);
+          return false;
+        }
+        required = DefIdFromRow<UnitTypeIdTag>(required_row);
+      }
+    }
+    if (type_row == kNoTableRow || type_row >= defs.no_residents.size() || !(level >= 1.0F)) {
+      continue;  // the level table's own check refuses a malformed row
+    }
+    const auto index = static_cast<std::size_t>(level) - 1U;
+    std::vector<std::uint8_t>& flags = defs.no_residents[type_row];
+    std::vector<UnitTypeId>& needs = defs.requires_unit[type_row];
+    if (flags.size() <= index) {
+      flags.resize(index + 1U, 0);
+      needs.resize(index + 1U, UnitTypeId{});
+    }
+    flags[index] = flag > 0.0F ? 1U : 0U;
+    needs[index] = required;
+  }
+  return true;
+}
 
 bool LoadDefinitions(const ITableSet& tables,
                      StubTables stubs,
@@ -97,6 +162,13 @@ bool LoadDefinitions(const ITableSet& tables,
   if (const ITable* const unit_types = tables.FindTable("unit_types")) {
     if (!ReadUnitTypes(*unit_types, definitions.units, error)) {
       return false;
+    }
+    // Not required: a set without the level table has no rung that houses
+    // nobody, and the construction and residents modules require it anyway.
+    if (const ITable* const unit_levels = tables.FindTable("unit_levels")) {
+      if (!ReadRungWords(*unit_types, *unit_levels, definitions.units, error)) {
+        return false;
+      }
     }
   }
   if (const ITable* const map = tables.FindTable("map")) {

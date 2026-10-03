@@ -221,7 +221,10 @@ OrderRefusal ReserveHouse(const LifeConfig& config, WorldState& current, const O
     return OrderRefusal::kNoSuchSubject;
   }
   UnitRow& unit = current.units.rows[row];
-  if (!IsHousing(config, unit.type) || unit.level == 0 || unit.dead != 0) {
+  // A rung nobody lives on is no house to keep for a specialist (unit_levels
+  // .csv no_residents, 0.37.178).
+  if (!IsHousing(config, unit.type) || unit.level == 0 || unit.dead != 0 ||
+      config.definitions.units.HousesNobody(unit.type, unit.level)) {
     return OrderRefusal::kNotEligible;
   }
   if (order.enable != 0 && unit.household.value != kInvalidEntityIdValue) {

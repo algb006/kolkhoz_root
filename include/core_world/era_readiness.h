@@ -22,6 +22,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "core_catalog/definitions.h"
 #include "core_common/ids.h"
 #include "core_common/readiness_view.h"
 #include "core_common/world_state.h"
@@ -106,13 +107,26 @@ struct ReadinessCatalog {
   /// ladder is written the requirement grows by itself — which is right:
   /// more ladders means more that must be put in order.
   std::vector<std::vector<std::uint8_t>> rung_eras;
+
+  /// The rungs that wait for another unit, by the catalogue's own reader
+  /// (core_catalog/definitions.h, ReadRungWords; unit_levels.csv
+  /// requires_unit): a rung the world cannot open yet is not required of it
+  /// (0.37.178; boss, the logistics thread [24], 4). Only `requires_unit` is
+  /// read off it here.
+  UnitTypeDefs rungs;
 };
 
-/// @brief The level the transition requires of `type` in `era`: the highest
-/// rung the era has opened, counting up from the first without a gap
-/// (epochs §6, «требуемый уровень»). 0 for a type with no ladder at all.
+/// @brief The level the transition requires of `type` in `era`, in `world`:
+/// the highest rung the era has opened, counting up from the first without a
+/// gap (epochs §6, «требуемый уровень»), and stopping too at the first rung
+/// that waits for a unit the world has not built (rung_requirement.h) — the
+/// priest's house is not asked to be the dormitory before the farm office
+/// stands. 0 for a type with no ladder at all.
 /// @param type A unit type; one past the catalogue reads as no ladder.
-std::uint8_t RequiredUnitLevel(const ReadinessCatalog& catalog, UnitTypeId type, Epoch era);
+std::uint8_t RequiredUnitLevel(const ReadinessCatalog& catalog,
+                               UnitTypeId type,
+                               Epoch era,
+                               const WorldState& world);
 
 /// @brief The era's food-variety threshold — the top of its own era's norm,
 /// 4 categories for Era I (metrics design §8). Read from the same table row

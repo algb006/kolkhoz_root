@@ -480,7 +480,7 @@ void CountStandingShut(const run::TransitionPolicy& transition,
           catalog.kolkhoz_types,
           [&unit](core::UnitTypeId type) { return type.value == unit.type.value; });
       if (unit.level == 0 || unit.dead != 0 || !kolkhoz ||
-          unit.level >= core::RequiredUnitLevel(catalog, unit.type, today.epoch)) {
+          unit.level >= core::RequiredUnitLevel(catalog, unit.type, today.epoch, today)) {
         continue;
       }
       if (std::ranges::find(below, unit.type.value) == below.end()) {
@@ -739,7 +739,9 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
     // And at the level the era REQUIRES — what the block reads since
     // 2026-09-18 — beside the level-2 count, so the two can be compared.
     out.units_at_required +=
-        unit.level >= core::RequiredUnitLevel(catalog, unit.type, final_state.epoch) ? 1U : 0U;
+        unit.level >= core::RequiredUnitLevel(catalog, unit.type, final_state.epoch, final_state)
+            ? 1U
+            : 0U;
     // WHICH OF THEM CAN GET THERE IN THIS ERA AT ALL: the rung 2 of a type
     // opens in the era unit_levels.csv names, and an order for a later era's
     // rung is refused with kGateClosed however often it is repeated.

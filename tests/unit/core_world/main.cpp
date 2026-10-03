@@ -424,8 +424,9 @@ int CheckRequiredUnitLevel() {
   // 0: rung 2 in Epoch II · 1: rungs 1, 2 in Epoch I, 3 in II · 2: no ladder
   // row at all · 3: rung 2 missing from the table, rung 3 in Epoch I.
   catalog.rung_eras = {{1, 2}, {1, 1, 2}, {}, {1, 0, 1}};
-  const auto required = [&catalog](std::uint16_t type, core::Epoch era) {
-    return core::RequiredUnitLevel(catalog, core::UnitTypeId{type}, era);
+  const core::WorldState bare;
+  const auto required = [&catalog, &bare](std::uint16_t type, core::Epoch era) {
+    return core::RequiredUnitLevel(catalog, core::UnitTypeId{type}, era, bare);
   };
   failures += Expect(required(0, core::Epoch::kOne) == 1 && required(0, core::Epoch::kTwo) == 2,
                      "required level: a second rung of Epoch II is not asked in Epoch I, and is "
@@ -456,6 +457,31 @@ int CheckRequiredUnitLevel() {
   core::ScoreReadiness(catalog, 4.0F, 4.0F, world);
   failures += Expect(world.readiness.blocks.units_at_level == 0,
                      "units block: and one whose second rung this era opens holds it shut");
+
+  // A RUNG THAT WAITS FOR ANOTHER UNIT (unit_levels.csv requires_unit;
+  // 0.37.178): type 4 — the priest's house — opens its second rung, Epoch I,
+  // only when a unit of type 5 — the farm office — stands. Not asked before;
+  // asked once the office is built (level 1), and not for an office that is
+  // still pegs and string (level 0).
+  catalog.rung_eras.resize(6);
+  catalog.rung_eras[4] = {1, 1};
+  catalog.rungs.requires_unit.assign(6, {});
+  catalog.rungs.requires_unit[4] = {core::UnitTypeId{}, core::UnitTypeId{5}};
+  core::WorldState village;
+  failures +=
+      Expect(core::RequiredUnitLevel(catalog, core::UnitTypeId{4}, core::Epoch::kOne, village) == 1,
+             "required level: a rung that waits for the office is not asked before it");
+  core::UnitRow office;
+  office.type = core::UnitTypeId{5};
+  office.level = 0;
+  AppendRow(village.units, office);
+  failures +=
+      Expect(core::RequiredUnitLevel(catalog, core::UnitTypeId{4}, core::Epoch::kOne, village) == 1,
+             "required level: nor while the office is a site at level 0");
+  village.units.rows[0].level = 1;
+  failures +=
+      Expect(core::RequiredUnitLevel(catalog, core::UnitTypeId{4}, core::Epoch::kOne, village) == 2,
+             "required level: and is, once the office stands");
   return failures;
 }
 

@@ -127,7 +127,7 @@ class UpgradePolicy {
       // At the level this era requires, or with no rung left that the era
       // has opened: nothing to ask for, and asking is not free — the refusal
       // ends this day's attention.
-      if (unit.level >= core::RequiredUnitLevel(catalog_, unit.type, world.epoch)) {
+      if (unit.level >= core::RequiredUnitLevel(catalog_, unit.type, world.epoch, world)) {
         continue;
       }
       // A unit that is already a site — being delivered to, repaired,
@@ -210,7 +210,7 @@ class UpgradePolicy {
     for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
       const core::UnitRow& unit = world.units.rows[row];
       if (unit.level != 0 && unit.dead == 0 && Kolkhoz(unit.type) &&
-          unit.level < core::RequiredUnitLevel(catalog_, unit.type, world.epoch) &&
+          unit.level < core::RequiredUnitLevel(catalog_, unit.type, world.epoch, world) &&
           unit.construction.phase == core::ConstructionPhase::kNone) {
         return row;
       }
@@ -386,7 +386,7 @@ class UpgradePolicy {
   bool AnyBelowLevel(const core::WorldState& world) const {
     for (const core::UnitRow& unit : world.units.rows) {
       if (unit.level != 0 && unit.dead == 0 && Kolkhoz(unit.type) &&
-          unit.level < core::RequiredUnitLevel(catalog_, unit.type, world.epoch)) {
+          unit.level < core::RequiredUnitLevel(catalog_, unit.type, world.epoch, world)) {
         return true;
       }
     }

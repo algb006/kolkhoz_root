@@ -73,13 +73,51 @@ struct UnitTypeDefs {
 
   /// 1 for every type of the housing class (unit_types.csv `class`). A unit
   /// of one of these with no household in it is a FREE HOUSE, which is what
-  /// a wedding needs first (life-cycle §12).
+  /// a wedding needs first (life-cycle §12) — unless its rung houses nobody
+  /// (`no_residents` below).
   std::vector<std::uint8_t> is_housing;
 
   /// The type this one is a MODULE of (unit_types.csv `parent`), invalid for
   /// a free-standing type (unit rules §11, "Модули"). A module is built on a
   /// unit of this type, inside its plot, while it stands sound.
   std::vector<UnitTypeId> parent;
+
+  /// HOUSING THAT HOUSES NOBODY, by rung (unit_levels.csv `no_residents`;
+  /// boss, the logistics thread [22]-[23], 4 October 2026): 1 where nobody
+  /// lives on that rung BY DESIGN — the priest's house on its first rung is
+  /// the chairman's office, an empty house that no wedding moves into and no
+  /// specialist is given. Indexed [type][level - 1]; a type or a rung the
+  /// table does not reach is lived in, as before the column.
+  std::vector<std::vector<std::uint8_t>> no_residents;
+
+  /// @brief True when nobody lives in a unit of `type` at `level` by design.
+  bool HousesNobody(UnitTypeId type, std::uint8_t level) const {
+    if (type.value >= no_residents.size() || level == 0) {
+      return false;
+    }
+    const std::vector<std::uint8_t>& rungs = no_residents[type.value];
+    const std::size_t index = static_cast<std::size_t>(level) - 1U;
+    return index < rungs.size() && rungs[index] != 0;
+  }
+
+  /// A RUNG THAT WAITS FOR ANOTHER UNIT (unit_levels.csv `requires_unit`;
+  /// boss [22]-[24], 4 October 2026): the type that must stand — at level 1
+  /// or more, not dead — before this rung opens. The priest's house's second
+  /// rung, the specialists' dormitory, opens when the office has moved into
+  /// the built farm office. Indexed [type][level - 1]; invalid where nothing
+  /// is required (ReadRungRequirements).
+  std::vector<std::vector<UnitTypeId>> requires_unit;
+
+  /// @brief The type that must stand for `type`'s rung `level` to open;
+  ///        invalid when none.
+  UnitTypeId RungRequires(UnitTypeId type, std::uint8_t level) const {
+    if (type.value >= requires_unit.size() || level == 0) {
+      return UnitTypeId{};
+    }
+    const std::vector<UnitTypeId>& rungs = requires_unit[type.value];
+    const std::size_t index = static_cast<std::size_t>(level) - 1U;
+    return index < rungs.size() ? rungs[index] : UnitTypeId{};
+  }
 
   /// @brief Number of types the tables define. Zero in a table-less world.
   std::uint32_t Count() const { return static_cast<std::uint32_t>(plot_radius_m.size()); }
@@ -124,6 +162,20 @@ bool LoadDefinitions(const ITableSet& tables,
                      StubTables stubs,
                      Definitions& definitions,
                      std::string& error);
+
+/// @brief The rungs' two words of unit_levels.csv — `no_residents` and
+///        `requires_unit` — into `defs` (sized by unit_types' rows). ONE
+///        READER for every holder: the catalogue reads it, and so does the
+///        era's readiness catalogue (core_world/era_readiness.h), which must
+///        not ask a rung the world cannot open.
+/// @return false when a cell is malformed: a flag not 0 or 1, a level out of
+///         range, a `requires_unit` naming no type of unit_types. A table
+///         without a column leaves that word empty — every rung lived in,
+///         every rung open as before the column.
+bool ReadRungWords(const ITable& unit_types,
+                   const ITable& unit_levels,
+                   UnitTypeDefs& defs,
+                   std::string& error);
 
 }  // namespace core
 

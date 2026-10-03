@@ -14,10 +14,16 @@
 namespace core {
 namespace {
 
+/// A house no household lives in, of the housing class, with no residents'
+/// capacity (a family's house, not a dormitory) — and on a rung somebody may
+/// live on: the priest's house on its first rung is the chairman's office
+/// (unit_levels.csv no_residents; boss, the logistics thread [22]). Until
+/// 0.37.178 the first wedding of year 1 moved into it.
 bool IsFreeHouse(const LifeConfig& config, const UnitRow& unit) {
   return unit.household.value == kInvalidEntityIdValue && unit.level != 0 &&
          unit.type.value < config.definitions.units.is_housing.size() &&
          config.definitions.units.is_housing[unit.type.value] != 0 &&
+         !config.definitions.units.HousesNobody(unit.type, unit.level) &&
          ResidentsCapacity(config, unit) <= 0.0F;
 }
 

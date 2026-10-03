@@ -85,8 +85,12 @@ class HousePolicy {
     bool an_older_site_waits = false;
     for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
       const core::UnitRow& unit = world.units.rows[row];
+      // Not a rung nobody lives on (unit_levels.csv no_residents, 0.37.178):
+      // counted free, the priest's house — the chairman's office — took a
+      // wooden house off the first year and the felling with it.
       if (IsHousing(unit) && unit.level > 0 &&
-          unit.household.value == core::kInvalidEntityIdValue) {
+          unit.household.value == core::kInvalidEntityIdValue &&
+          !definitions_.units.HousesNobody(unit.type, unit.level)) {
         ++free_houses;
       }
       // THE FARM'S SHORTAGE FIRST, THEN HOUSES IN MARKING ORDER (boss, parcel

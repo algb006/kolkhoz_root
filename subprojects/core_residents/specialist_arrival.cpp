@@ -35,8 +35,11 @@ std::vector<std::uint32_t> FreeHouses(const LifeConfig& config, const WorldState
     for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
       const UnitRow& unit = current.units.rows[row];
       // Not a barrack: nobody's house, and no house for a specialist.
+      // Nor a rung nobody lives on (the priest's house is the office on its
+      // first: unit_levels.csv no_residents, 0.37.178).
       if (unit.household.value == kInvalidEntityIdValue && unit.level > 0 &&
           unit.reserved_for_specialist == reserved && IsHousing(config, unit.type) &&
+          !config.definitions.units.HousesNobody(unit.type, unit.level) &&
           ResidentsCapacity(config, unit) <= 0.0F) {
         free.push_back(row);
       }
