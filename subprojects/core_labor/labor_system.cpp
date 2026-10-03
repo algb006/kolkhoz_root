@@ -32,6 +32,7 @@
 #include <vector>
 
 #include "assignment.h"
+#include "cart_passengers.h"
 #include "core_common/alarm_state.h"
 #include "core_common/away_in_district.h"
 #include "core_common/calendar.h"
@@ -168,6 +169,16 @@ class LaborSystem final : public ILaborSystem {
     if (hour == 1) {
       PlaceIdleHoldersOnModules(current);
       TopUpDay(current);
+      // THE GOODS CARTS TAKE PASSENGERS ON THEIR FIRST LEG (routing stage A,
+      // 0.37.164; cart_passengers.h): the day's orders stand, nobody has set
+      // out. The year's book counts the seats and the waits.
+      const PassengerTally tally = SeatCartPassengers(config_, current);
+      YearLedger& book = current.ledger.current;
+      book.cart_passengers += tally.seated;
+      book.cart_passengers_no_seat += tally.no_seat;
+      book.cart_wait_hours += tally.wait_hours;
+      book.cart_wait_worst_hours = std::max(book.cart_wait_worst_hours, tally.worst_wait_hours);
+      book.cart_hours_saved += tally.hours_saved;
     }
     RunHour(current, hour);
     // The night posts go on at sunset (posts.h).
@@ -1981,6 +1992,9 @@ class LaborSystem final : public ILaborSystem {
       // A DAY WITH A HORSE BEGINS AT THE HORSE YARD (horse_yard_road.h;
       // 0.37.158): on foot to the horse, on it to the work.
       if (current.residents.rows[row].work.travel_hours < 0.0F) {
+        // A road measured anew is a target changed since the morning: the
+        // seat on a cart was for the old one (cart_passengers.h).
+        current.residents.rows[row].work.rides_cart_of = ResidentId{};
         current.residents.rows[row].work.travel_hours =
             WorkRoadHours(current,
                           work,

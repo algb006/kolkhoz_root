@@ -5,6 +5,7 @@
 
 kolkhoz_add_module(core_labor
     assignment.cpp
+    cart_passengers.cpp
     labor_config.cpp
     labor_day.cpp
     labor_system.cpp

@@ -27,6 +27,7 @@
 #include "assignment.h"
 #include "brigade_cart_checks.h"
 #include "cart_load_checks.h"
+#include "cart_passengers_checks.h"
 #include "carter_on_foot_checks.h"
 #include "carter_road_checks.h"
 #include "core_common/alarm_state.h"
@@ -4225,6 +4226,7 @@ int main() {
   failures += CheckCarterOnFoot();
   failures += CheckTheCartersRoad();
   failures += CheckTheHorseYardRoad();
+  failures += CheckTheCartsPassengers();
   failures += CheckStuckStates();
   failures += CheckTheCartOfTheCompressedYear();
   failures += CheckTheHayCartsRank();
