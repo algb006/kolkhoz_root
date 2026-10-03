@@ -412,6 +412,16 @@ struct ConstructionConfig {
   /// Missing column = 0 for every type.
   std::vector<std::uint8_t> type_has_heating;
 
+  /// 0/1 per unit type, dense by UnitTypeId: unit_types.csv never_demolished
+  /// — A UNIT THAT IS NEVER TAKEN DOWN (the human's word of 4 October 2026,
+  /// «Мельницу сносить нельзя. Добавь у юнитов признак если еще нет запрет
+  /// сноса», and «Домик попа тоже несносимый»; the church and the chapel by
+  /// boss's export of 3 October): the order to demolish one is refused
+  /// (kRuleForbids), and so is a parent's whose module carries it. The column
+  /// stood in the table from 0.37.163 with no reader until 0.37.170. Missing
+  /// column or empty cell = 0.
+  std::vector<std::uint8_t> type_never_demolished;
+
   /// WAS THERE A has_wear COLUMN AT ALL? Without this the config cannot tell
   /// "this unit has nothing to wear" from "the table said nothing", because
   /// both arrive as has_wear = 0 — and those are two different answers to

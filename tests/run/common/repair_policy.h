@@ -41,6 +41,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <iostream>
+#include <optional>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -65,6 +66,18 @@ class RepairPolicy {
       const std::uint32_t row = types->FindRowByKey("old_house");
       if (row != core::kNoTableRow) {
         old_house_ = core::UnitTypeId{static_cast<std::uint16_t>(row)};
+      }
+      // THE TYPES NEVER TAKEN DOWN (unit_types.csv never_demolished; the
+      // human's word of 4 October 2026: «Мельницу сносить нельзя»): the core
+      // refuses the order, and the chairman does not spend his one demolition
+      // on a refusal — he takes the next empty unit. Until 0.37.170 he took
+      // the water mill in every village of the canon, on day 240.
+      const std::uint32_t column = types->FindColumn("never_demolished");
+      never_demolished_.assign(types->RowCount(), 0);
+      for (std::uint32_t type = 0; column != core::kNoTableColumn && type < types->RowCount();
+           ++type) {
+        const std::optional<float> flag = types->CellReal(type, column);
+        never_demolished_[type] = flag.has_value() && *flag > 0.0F ? 1U : 0U;
       }
     }
     const core::ITable* resources = tables.FindTable("resources");
@@ -325,6 +338,9 @@ class RepairPolicy {
       if (old_house_.value != core::kInvalidDefIdValue && unit.type.value == old_house_.value) {
         continue;
       }
+      if (unit.type.value < never_demolished_.size() && never_demolished_[unit.type.value] != 0) {
+        continue;  // the core would refuse it: the next empty unit is asked
+      }
       if (!(unit.wear > 0.0F)) {
         continue;  // a heap or a stack: nothing was built, nothing to take down
       }
@@ -347,6 +363,9 @@ class RepairPolicy {
   }
 
   core::UnitTypeId old_house_;
+
+  /// unit_types.csv never_demolished, by UnitTypeId (the constructor).
+  std::vector<std::uint8_t> never_demolished_;
 
   core::ResourceId spare_;
 

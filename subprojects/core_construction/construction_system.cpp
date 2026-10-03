@@ -832,6 +832,12 @@ class ConstructionSystem final : public IConstructionSystem {
     if (current.units.rows[row].construction.phase == ConstructionPhase::kDemolishing) {
       return OrderRefusal::kRuleForbids;
     }
+    // A UNIT THAT IS NEVER TAKEN DOWN (construction_config.h,
+    // type_never_demolished; the human's word of 4 October 2026): the mill,
+    // the priest's house, the church — refused, whatever stands in it.
+    if (NeverDemolished(current.units.rows[row].type)) {
+      return OrderRefusal::kRuleForbids;
+    }
     // Its modules, by id: taking one down may remove a row and move the rest.
     std::vector<UnitId> modules;
     for (std::uint32_t other = 0; other < current.units.rows.size(); ++other) {
@@ -839,6 +845,11 @@ class ConstructionSystem final : public IConstructionSystem {
       if (other == row || module.parent.value != unit.value ||
           module.construction.phase == ConstructionPhase::kDemolishing) {
         continue;
+      }
+      // Refused whole, as for the living below: the parent would take its
+      // module down with it.
+      if (NeverDemolished(module.type)) {
+        return OrderRefusal::kRuleForbids;
       }
       const UnitId module_id = current.units.row_ids[other];
       if (module.construction.phase != ConstructionPhase::kMarked &&
@@ -855,6 +866,13 @@ class ConstructionSystem final : public IConstructionSystem {
       DemolishOne(current, module);  // checked above: none is refused
     }
     return OrderRefusal::kNone;
+  }
+
+  /// Whether this unit type is never taken down (unit_types.csv
+  /// never_demolished, construction_config.h).
+  bool NeverDemolished(UnitTypeId type) const {
+    return type.value < config_.type_never_demolished.size() &&
+           config_.type_never_demolished[type.value] != 0;
   }
 
   /// One unit's demolition, modules aside (Demolish).

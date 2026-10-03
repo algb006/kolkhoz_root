@@ -1831,6 +1831,68 @@ int TestAWearTermMayBeUnnamedButNotZero() {
   return failures;
 }
 
+/// A UNIT THAT IS NEVER TAKEN DOWN (unit_types.csv never_demolished; the
+/// human's word of 4 October 2026: «Мельницу сносить нельзя»; 0.37.170): the
+/// order is refused for the mill and for a parent whose module is one; the
+/// shed beside it, with an empty cell, comes down — the pair the refusal is
+/// told apart by. A flag that is not 0 or 1 refuses the table.
+int TestNeverDemolished() {
+  int failures = 0;
+  const test::FakeTable no_costs{{"unit", "level", "resource", "amount"}, {}};
+  const test::FakeTable no_resources{{"key", "measure", "kg_per_unit"}, {}};
+  const test::FakeTable knobs{{"key", "value"}, {{"demolition_labor_share", "0.5"}}};
+  const test::FakeTable levels{{"unit", "level", "labor_days", "max_crew", "wear_years_idle"},
+                               {{"mill", "1", "70", "5", "40"}, {"shed", "1", "70", "5", "40"}}};
+  const test::FakeTable types{
+      {"key", "era", "player_built", "gate", "has_wear", "never_demolished"},
+      {{"mill", "1", "0", "start", "1", "1"}, {"shed", "1", "1", "era", "1", ""}}};
+  const test::FakeTableSet tables{{{"unit_types", &types},
+                                   {"unit_levels", &levels},
+                                   {"unit_level_cost", &no_costs},
+                                   {"resources", &no_resources},
+                                   {"construction", &knobs}}};
+  const auto system = core::CreateConstructionSystem(tables, core::StubTables::kAllowed);
+  if (system == nullptr) {
+    return Expect(false, "never demolished: the subsystem refused its tables");
+  }
+  core::WorldState world;
+  const auto place = [&world](std::uint16_t type, float east_m, core::UnitId parent) {
+    core::UnitRow unit;
+    unit.type = core::UnitTypeId{type};
+    unit.level = 1;
+    unit.wear = 10.0F;
+    unit.parent = parent;
+    unit.position = core::Vec2{.x = east_m, .y = 0.0F};
+    return core::AppendRow(world.units, unit);
+  };
+  const core::UnitId mill = place(0, 0.0F, core::UnitId{});
+  const core::UnitId shed = place(1, 100.0F, core::UnitId{});
+  const core::UnitId yard = place(1, 200.0F, core::UnitId{});
+  place(0, 210.0F, yard);  // the yard's module is a mill
+  const core::OrderId at_mill = Issue(world, UnitOrder(core::OrderKind::kDemolishUnit, mill));
+  const core::OrderId at_shed = Issue(world, UnitOrder(core::OrderKind::kDemolishUnit, shed));
+  const core::OrderId at_yard = Issue(world, UnitOrder(core::OrderKind::kDemolishUnit, yard));
+  Run(*system, world, 0);
+  failures += Expect(RefusalOf(world, at_mill) == core::OrderRefusal::kRuleForbids,
+                     "never demolished: the mill's demolition is refused by its flag");
+  failures += Expect(RefusalOf(world, at_shed) == core::OrderRefusal::kNone,
+                     "never demolished: the shed beside it, an empty cell, comes down");
+  failures += Expect(RefusalOf(world, at_yard) == core::OrderRefusal::kRuleForbids,
+                     "never demolished: a parent whose module is a mill is refused whole");
+  const test::FakeTable bad{
+      {"key", "era", "player_built", "gate", "has_wear", "never_demolished"},
+      {{"mill", "1", "0", "start", "1", "2"}, {"shed", "1", "1", "era", "1", ""}}};
+  const test::FakeTableSet bad_tables{{{"unit_types", &bad},
+                                       {"unit_levels", &levels},
+                                       {"unit_level_cost", &no_costs},
+                                       {"resources", &no_resources},
+                                       {"construction", &knobs}}};
+  failures +=
+      Expect(core::CreateConstructionSystem(bad_tables, core::StubTables::kAllowed) == nullptr,
+             "never demolished: a flag of 2 refuses the table");
+  return failures;
+}
+
 /// A LADDER WITH A HOLE IS REFUSED, AND THE REFUSAL NAMES THE UNIT AND THE
 /// RUNG.
 ///
@@ -2604,6 +2666,7 @@ int main() {
   failures += TestTheTwoReadingsOfUnitTypesAgree();
   failures += TestALadderWithAHoleIsRefused();
   failures += TestAWearTermMayBeUnnamedButNotZero();
+  failures += TestNeverDemolished();
   failures += TestTheStinkField();
   failures += TestTheStinkZoneGrowsAndGoesOut();
   failures += TestTheShippedStartHasNoHouseInAStinkZone();

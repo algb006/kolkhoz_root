@@ -178,11 +178,14 @@ bool ReadTypes(const ITable& unit_types, ConstructionConfig& config, std::string
   const std::uint32_t stink_when_col = unit_types.FindColumn("stink_when");
 
   const std::uint32_t heating_col = unit_types.FindColumn("has_heating");
+  const std::uint32_t never_demolished_col = unit_types.FindColumn("never_demolished");
 
   config.wear_column_present = has_wear_col != kNoTableColumn;
   config.types.assign(unit_types.RowCount(), BuildType{});
   // Absent column = no type is heated (construction_config.h).
   config.type_has_heating.assign(unit_types.RowCount(), 0);
+  // Absent column = every type may be taken down.
+  config.type_never_demolished.assign(unit_types.RowCount(), 0);
   for (std::uint32_t row = 0; row < unit_types.RowCount(); ++row) {
     BuildType& type = config.types[row];
     bool known = true;
@@ -223,6 +226,17 @@ bool ReadTypes(const ITable& unit_types, ConstructionConfig& config, std::string
       return false;
     }
     config.type_has_heating[row] = static_cast<std::uint8_t>(number);
+    if (!CellOrDefault(unit_types,
+                       row,
+                       never_demolished_col,
+                       Range{.low = 0.0F, .high = 1.0F},
+                       0.0F,
+                       number,
+                       error)) {
+      Fail(error, "unit_types", "never_demolished is not 0 or 1 in row " + std::to_string(row));
+      return false;
+    }
+    config.type_never_demolished[row] = static_cast<std::uint8_t>(number);
     // Absent COLUMN = 0 for every type, and that means NOTHING WEARS. The
     // honest reading of "no data" (task A5, manual/73-wear-and-repair.md
     // §2): deriving it from the capacity flag or the recipe would be a
