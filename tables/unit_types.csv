@@ -123,7 +123,7 @@ visitor_dorm,Общежитие для приезжих,housing,2,0,1,era,,1,30,
 fire_post,Пожарный пост,service,2,0,1,era,,1,45,,,absorbed,1,1,0,,1,none,,0,,1,,0,0,0,0,0
 farm_office,Контора,service,1,0,1,era,,1,60,,,absorbed,1,1,0,,1,none,,0,,1,,0,1,0,0,0
 village_council,Сельсовет,service,2,0,1,era,,1,30,,,absorbed,1,1,0,,1,none,,0,,1,,0,0,0,0,0
-cemetery,Кладбище,service,1,0,1,era,,1,25,,,follows,1,0,0,,0,none,,0,,1,,0,0,0,0,0
+cemetery,Кладбище,service,1,0,1,era,,1,25,,,follows,1,0,0,,0,none,,0,,1,,0,0,0,0,1
 propaganda,Элементы наглядной агитации,service,1,0,1,era,,0,,1.5,wall,follows,0,0,0,,0,none,,0,,0,,0,0,1,0,0
 honour_board,Доска почёта,service,1,0,1,era,,0,,1.5,wall,follows,0,0,0,,0,none,,0,,0,,0,0,1,0,0
 church_store,Церковь — склад,service,1,0,0,start,,1,35,,,absorbed,1,0,0,,0,none,,0,,1,,0,1,0,0,1
