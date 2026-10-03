@@ -351,6 +351,15 @@ struct AssignmentParams {
   /// differ. Empty: the straight line at the pace (a test with no world).
   std::vector<float> road_km;
   std::uint32_t home_slots = 0;
+
+  /// THE DAY WITH A HORSE BEGINS AT THE HORSE YARD (horse_yard_road.h;
+  /// 0.37.158): game hours on foot from each home slot to the yard, and
+  /// effective km from the yard to each job by its riding mode. A hand who
+  /// takes a horse (IsHorseWork or AssignmentJob::harnessed) is judged by
+  /// walk + ride, the way the labour hour will measure his day. Both empty:
+  /// the team is not stabled, or its yard is gone — from home, as before.
+  std::vector<float> yard_walk_hours;
+  std::vector<float> yard_ride_km;
 };
 
 /// @brief Index value meaning "left idle today" in the result.

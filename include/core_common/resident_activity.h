@@ -255,6 +255,11 @@ struct ActivityRules {
   float walk_hours_per_km = 2.4F;
 
   float harness_hours_per_km = 1.0F;
+
+  /// The livestock row of the horse (labour config `horse_kind`): a day
+  /// with a horse begins at the horse yard once the team is stabled
+  /// (horse_yard_road.h; 0.37.158). Invalid — every day from home.
+  LivestockKindId horse_kind;
 };
 
 /// @brief What one resident is doing at the hour the world stands at.

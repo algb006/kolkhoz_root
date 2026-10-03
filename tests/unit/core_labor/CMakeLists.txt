@@ -6,6 +6,7 @@ kolkhoz_add_unit_test(core_labor
     top_up_checks.cpp
     carter_on_foot_checks.cpp
     carter_road_checks.cpp
+    horse_yard_road_checks.cpp
     stuck_state_checks.cpp
     cart_load_checks.cpp
     hay_cart_rank_checks.cpp)

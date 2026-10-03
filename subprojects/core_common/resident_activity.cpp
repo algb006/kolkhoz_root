@@ -22,6 +22,7 @@
 #include "core_common/away_in_district.h"
 #include "core_common/calendar.h"
 #include "core_common/day_off.h"
+#include "core_common/horse_yard_road.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/work_seam.h"
 
@@ -83,16 +84,21 @@ ResidentActivityState ActivityOfResident(const WorldState& world,
   // HIS OWN ROAD, not the village's average: from his house to his job, at
   // the speed his kind of work travels. Harnessed work rides out.
   // The same answer the labour hour asks (work_seam.h, WorkRidesOut).
-  const bool harnessed = assigned && WorkRidesOut(world, resident.work);
-  const float hours_per_km = harnessed ? rules.harness_hours_per_km : rules.walk_hours_per_km;
   float travel = 0.0F;
   if (assigned && has_home && has_target) {
     // BY THE WAY THERE IS (road_route.h; 0.36.2) — the labour hour's own
     // measure when it has taken it today (WorkAssignment::travel_hours), so
-    // the two cannot differ; measured here the same way when it has not.
-    travel = resident.work.travel_hours >= 0.0F
-                 ? resident.work.travel_hours
-                 : RoadKm(world, WorkTravelMode(world, resident.work), home, target) * hours_per_km;
+    // the two cannot differ; measured here the same way when it has not,
+    // through the horse yard on a day with a horse (horse_yard_road.h;
+    // 0.37.158).
+    travel = resident.work.travel_hours >= 0.0F ? resident.work.travel_hours
+                                                : WorkRoadHours(world,
+                                                                resident.work,
+                                                                rules.horse_kind,
+                                                                home,
+                                                                target,
+                                                                rules.walk_hours_per_km,
+                                                                rules.harness_hours_per_km);
   }
   const float leaves = window.sunrise;
   const float starts = window.sunrise + travel;

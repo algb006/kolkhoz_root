@@ -40,6 +40,7 @@
 #include "harvest_days_off_checks.h"
 #include "harvest_order_checks.h"
 #include "hay_cart_rank_checks.h"
+#include "horse_yard_road_checks.h"
 #include "labor_config.h"
 #include "labor_day.h"
 #include "posts.h"
@@ -4223,6 +4224,7 @@ int main() {
   failures += CheckTopUpAgainstWindowlessWork();
   failures += CheckCarterOnFoot();
   failures += CheckTheCartersRoad();
+  failures += CheckTheHorseYardRoad();
   failures += CheckStuckStates();
   failures += CheckTheCartOfTheCompressedYear();
   failures += CheckTheHayCartsRank();

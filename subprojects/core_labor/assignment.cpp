@@ -350,11 +350,19 @@ struct RankedPick {
 /// One way from a candidate's home to a job, game hours: by the roads when
 /// the caller measured them (AssignmentParams::road_km; 0.36.2) — the way the
 /// labour hour will measure his day by — and the straight line otherwise.
+/// A hand who takes a horse walks to the horse yard first (AssignmentParams::
+/// yard_walk_hours; 0.37.158).
 float OneWayHours(const AssignmentJob& job,
                   std::uint32_t job_index,
                   const AssignmentCandidate& candidate,
                   const AssignmentParams& params,
-                  bool rides) {
+                  bool rides,
+                  bool takes_horse) {
+  if (takes_horse && candidate.home_slot < params.yard_walk_hours.size() &&
+      job_index < params.yard_ride_km.size()) {
+    return params.yard_walk_hours[candidate.home_slot] +
+           (params.yard_ride_km[job_index] * params.harness_hours_per_km);
+  }
   const float hours_per_km = rides ? params.harness_hours_per_km : params.walk_hours_per_km;
   if (!params.road_km.empty() && candidate.home_slot < params.home_slots) {
     const std::size_t at =
@@ -385,7 +393,7 @@ bool ConsiderCandidate(const AssignmentJob& job,
   // whose cart is out rides on it (AssignmentJob::cart_out; the caller has
   // settled whether there is a cart today).
   const bool rides = horse_work || RidesOut(job.kind) || job.cart_out;
-  const float travel = OneWayHours(job, job_index, candidate, params, rides);
+  const float travel = OneWayHours(job, job_index, candidate, params, rides, horse_work);
   // The road limit is a game rule, not accountant quality.
   if (!RoadLeavesAWorkingDay(
           travel, params.window_hours, params.travel_limit_hours, params.min_usable_hours)) {
@@ -738,7 +746,7 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
         // 0.37.109): three hours out for 20 kg is walking, not work. He is
         // left for the next load of the queue, which may lie nearer.
         const float one_way =
-            OneWayHours(on_foot, job_index, candidates[pick.candidate_index], params, false);
+            OneWayHours(on_foot, job_index, candidates[pick.candidate_index], params, false, false);
         // IN THE STANDARD DAY, NOT IN THE LIGHT (0.37.113): June's sixteen
         // hours let a pit three hours out pass with 2.8 trips, and the
         // walkers at the pits still went 2.89 hours one way on the mean. And

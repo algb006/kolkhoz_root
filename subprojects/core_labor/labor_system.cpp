@@ -43,6 +43,7 @@
 #include "core_common/haul.h"
 #include "core_common/herd_state.h"
 #include "core_common/home_reach.h"
+#include "core_common/horse_yard_road.h"
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
 #include "core_common/land_state.h"
@@ -146,6 +147,7 @@ ActivityRules ActivityRulesOfConfig(const LaborConfig& config) {
   if (config.harness_speed_kmh > 0.0F) {
     rules.harness_hours_per_km = static_cast<float>(kClockScale) / config.harness_speed_kmh;
   }
+  rules.horse_kind = config.horse_kind;
   rules.post_shift.reserve(config.professions.size());
   for (const ProfessionDef& profession : config.professions) {
     rules.post_shift.push_back(profession.shift);
@@ -773,6 +775,25 @@ class LaborSystem final : public ILaborSystem {
     }
     params.home_slots = static_cast<std::uint32_t>(homes.size());
     params.road_km.assign(jobs.size() * homes.size() * 2U, 0.0F);
+    // THE HORSE YARD, once the team stands there (horse_yard_road.h;
+    // 0.37.158): every home's walk to it, every job's ride from it.
+    Vec2 yard{};
+    const bool stabled = HorseYardPositionOf(current, config_.horse_kind, yard);
+    std::array<NetworkPlace, 4> found_yard{};
+    params.yard_walk_hours.clear();
+    params.yard_ride_km.clear();
+    if (stabled) {
+      for (std::size_t mode = 0; mode < kModes.size(); ++mode) {
+        found_yard[mode] = index->Locate(kModes[mode], yard);
+      }
+      const float walk_hours_per_km = HoursPerKm(config_, WorkKind::kHarvest);
+      params.yard_walk_hours.resize(homes.size());
+      for (std::size_t slot = 0; slot < homes.size(); ++slot) {
+        params.yard_walk_hours[slot] =
+            index->EffectiveKm(found_homes[slot][0], found_yard[0]) * walk_hours_per_km;
+      }
+      params.yard_ride_km.resize(jobs.size());
+    }
     for (std::size_t job_index = 0; job_index < jobs.size(); ++job_index) {
       const AssignmentJob& job = jobs[job_index];
       // The job's riding mode: a cart with produce on the roads, a cart with
@@ -794,6 +815,9 @@ class LaborSystem final : public ILaborSystem {
         const std::size_t at = ((job_index * homes.size()) + slot) * 2U;
         params.road_km[at] = index->EffectiveKm(found_homes[slot][0], walk_place);
         params.road_km[at + 1] = index->EffectiveKm(found_homes[slot][ride_mode], ride_place);
+      }
+      if (stabled) {
+        params.yard_ride_km[job_index] = index->EffectiveKm(found_yard[ride_mode], ride_place);
       }
     }
   }
@@ -1954,12 +1978,17 @@ class LaborSystem final : public ILaborSystem {
       // THE ROAD BY THE WAY THERE IS, MEASURED ONCE A TARGET (road_route.h;
       // 0.36.2; WorkAssignment::travel_hours): a way by the network costs a
       // query a straight line did not, and it is the same all day.
+      // A DAY WITH A HORSE BEGINS AT THE HORSE YARD (horse_yard_road.h;
+      // 0.37.158): on foot to the horse, on it to the work.
       if (current.residents.rows[row].work.travel_hours < 0.0F) {
-        const bool rides = WorkRidesOut(current, work);
-        const WorkKind road_kind = rides ? WorkKind::kPlowing : WorkKind::kHarvest;
         current.residents.rows[row].work.travel_hours =
-            RoadKm(current, WorkTravelMode(current, work), home, target) *
-            HoursPerKm(config_, road_kind);
+            WorkRoadHours(current,
+                          work,
+                          config_.horse_kind,
+                          home,
+                          target,
+                          HoursPerKm(config_, WorkKind::kHarvest),
+                          HoursPerKm(config_, WorkKind::kPlowing));
       }
       const float travel = current.residents.rows[row].work.travel_hours;
       // A CARTER'S ROAD TO THE LOAD IS HIS FIRST TRIP'S EMPTY HALF (0.37.139;
@@ -1973,13 +2002,19 @@ class LaborSystem final : public ILaborSystem {
       // holds 1.4 (nine villages, 0.37.133). So the hauling's day is the
       // light. Every other work keeps its road: a field has no trip in its
       // seam, and the ploughman's way there is a way.
-      // AN APPROXIMATION, NAMED: «home is the store is the horse yard» — the
-      // hundreds of metres inside a village against the kilometres to a
-      // meadow. The delivery of the job starting at the horse yard puts the
-      // walk to the horse here, for the carter and the ploughman alike.
-      // NOT TOUCHED: the road rule (travel_limit_hours) still asks the way
-      // home-load — whether he can get there at all.
-      const float road = kind == WorkKind::kHauling ? 0.0F : travel;
+      // AN APPROXIMATION, NAMED: «the store is the horse yard» — the yard's
+      // road to the village store is not in the day.
+      // AND THE WALK TO THE HORSE IS (0.37.158; livestock design §5): once
+      // the team is stabled, a carter with a horse walks to the yard in the
+      // morning and home from it at night, and that walk is his road — the
+      // only part of his way the load's seam does not price. A carter who
+      // sets out from home (no yard yet, or on foot) keeps the light whole.
+      // The road rule asks the whole way, walk and ride, at the placement
+      // (AssignmentParams::yard_walk_hours) — whether he can get there.
+      Vec2 yard{};
+      const bool from_yard = DayStartsAtHorseYard(current, work) &&
+                             HorseYardPositionOf(current, config_.horse_kind, yard);
+      const float road = kind == WorkKind::kHauling && !from_yard ? 0.0F : travel;
       const float worked = HoursInside(hour, window.sunrise + road, window.sunset - road);
       if (worked <= 0.0F) {
         continue;
