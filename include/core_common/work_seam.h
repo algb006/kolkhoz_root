@@ -83,18 +83,35 @@ bool RidesTheBrigadesCart(WorkKind kind, LandKind land);
 /// @brief Whether a brigade's cart is out on `field` today: somebody placed
 ///        on this kind of work there holds the horse (WorkAssignment::
 ///        rides_horse — the first hand the placement put on the field).
-/// @note A scan of the residents; asked for the hands of a reaping or a
-///       sowing only, once a target for the day's road.
+/// @note A scan of the residents; asked for the hands of a reaping, a sowing
+///       or a meadow's cut only (its mower, 0.37.168), once a target for the
+///       day's road.
 bool BrigadeCartIsOut(const WorldState& world, WorkKind kind, FieldId field);
+
+/// @brief Whether this assignment rides THE PEOPLE'S CART today (routing
+///        stage A, A3; labor_state.h, TakesThePeoplesCart): its kind walks,
+///        and it drives the cart (WorkAssignment::rides_horse) or sits on one
+///        whose driver (WorkAssignment::rides_cart_of) still holds his horse
+///        on the same work and target. A seat on a GOODS cart is not this
+///        (cart_passengers.h): its driver carts, another kind.
+/// @note A row lookup of the driver; asked once a target for the day's road.
+bool RidesThePeoplesCart(const WorldState& world, const WorkAssignment& work);
 
 /// @brief Whether this assignment's road is measured at harness speed: its
 ///        kind rides out (labor_state.h, RidesOut), or it is the cut of a
-///        meadow — the one harvest that rides, with a horse mower and hay
-///        carts (time design §7; farming design §5), or it is carting on
-///        the horse the day's placement gave (WorkAssignment::rides_horse),
-///        or it is a reaping of the arable or a sowing whose brigade has its
-///        cart out today (BrigadeCartIsOut) — every hand rides with the
-///        driver, and with no driver they walk.
+///        meadow whose mower is out today — the one harvest that rides, with
+///        a horse mower and hay carts (time design §7; farming design §5) —
+///        or it is carting on the horse the day's placement gave
+///        (WorkAssignment::rides_horse), or it is a reaping of the arable or
+///        a sowing whose brigade has its cart out today (BrigadeCartIsOut) —
+///        every hand rides with the driver, and with no driver they walk —
+///        or it rides the people's cart (RidesThePeoplesCart).
+///
+/// THE MOWERS WITH NO HORSE WALK (routing stage A, A4; 0.37.168): the
+/// meadow's horse is written on its first mower, as the brigade's cart is on
+/// its driver, and with the pool dry when the queue came to the meadow they
+/// go with scythes on foot. Until 0.37.168 they rode whether or not a horse
+/// was left for them.
 ///
 /// THE LABOUR HOUR AND THE RESIDENT'S ACTIVITY ASK THIS, and the assignment
 /// asks the same question of its job (AssignmentJob::harnessed). Until
@@ -107,9 +124,9 @@ bool WorkRidesOut(const WorldState& world, const WorkAssignment& work);
 ///        0.36.2): on foot unless it rides out (WorkRidesOut); riding, a
 ///        carter with logs off a stand as a log cart, any other carter as a
 ///        cart with produce — roads only (roads design §11) — and the rest
-///        (the plough, the harrow, the mower, the fellers, and the reaping
-///        or sowing brigade on its one cart — 0.37.89) as a team to its
-///        field work. ONE ANSWER for the labour hour and the resident's
+///        (the plough, the harrow, the mower, the reaping or sowing brigade
+///        on its one cart — 0.37.89 — and the people's cart, 0.37.168) as a
+///        team to its work. ONE ANSWER for the labour hour and the resident's
 ///        activity, as WorkRidesOut is.
 TravelMode WorkTravelMode(const WorldState& world, const WorkAssignment& work);
 
@@ -118,14 +135,17 @@ TravelMode WorkTravelMode(const WorldState& world, const WorkAssignment& work);
 struct HarnessCount {
   /// The horses the placements hold: one a ploughman or harrower, one a
   /// carter the placement gave one (WorkAssignment::rides_horse), one a
-  /// MEADOW for its mowers (the brigade's, not the mower's). May exceed the
-  /// herd — the chairman's standing orders can put more men on the plough
-  /// than there are horses, and a meadow's horse is counted whether or not
-  /// one was left for it.
+  /// MEADOW whose mower is out (the brigade's, written on its first mower),
+  /// one a brigade's cart and one a people's cart (on their drivers). May
+  /// exceed the herd — the chairman's standing orders can put more men on
+  /// the plough than there are horses. A meadow mown with no horse holds
+  /// none since 0.37.168 (A4); until then it was counted whether or not one
+  /// was left for it.
   std::uint32_t in_traces = 0;
 
   /// The harnessed assignments, with a horse and without: the ploughmen and
-  /// harrowers, every carter on a horse, one a meadow being mown — and the
+  /// harrowers, every carter on a horse, every driver of a brigade's or a
+  /// people's cart, one a meadow whose mower is out — and the
   /// carters ON FOOT ONLY AS FAR AS THE LOAD WANTED A CART: of the walkers at
   /// a load, no more than the cart-days its seam holds beyond its riders.
   /// `in_traces` never exceeds it.
@@ -143,8 +163,10 @@ struct HarnessCount {
 
   /// The part of `in_traces` the morning's release takes off when the herd
   /// is short (labor_system.cpp, ReleaseHorselessWork): the ploughmen, the
-  /// harrowers and the carters on a horse — not a meadow, whose mowers go
-  /// on with scythes.
+  /// harrowers and the carters on a horse; and the horse of a cart that
+  /// carries a crew — a brigade's, a people's, a meadow's mower — which the
+  /// release takes off the driver and leaves the work: the crew walks, the
+  /// mowers go on with scythes.
   std::uint32_t releasable = 0;
 };
 

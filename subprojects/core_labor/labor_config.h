@@ -458,6 +458,13 @@ struct LaborConfig {
   std::uint32_t cart_passenger_seats = 0;
   std::uint32_t people_cart_seats = 0;
 
+  /// THE FAR OBJECT OF THE PEOPLE'S CART, game hours of walk one way
+  /// (transport.csv people_cart `min_walk_hours`; transport design §1, «Кто»:
+  /// «дольше 2 игровых часов», STUB there; routing stage A, A3, 0.37.168): a
+  /// hand on a work that walks is carried beyond it. Nought — a table
+  /// without the cell — carries every hand of a crew of two or more.
+  float people_cart_min_walk_hours = 0.0F;
+
   /// THE TERM OF A PASSENGER'S WAIT, game hours (transport.csv cart_loaded
   /// `wait_limit_hours`; 0.37.166; boss, the queue thread [109], (b)): a man
   /// does not board where the cart comes later than this after him, and

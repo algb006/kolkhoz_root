@@ -10,7 +10,8 @@ kolkhoz_add_unit_test(core_labor
     cart_passengers_checks.cpp
     stuck_state_checks.cpp
     cart_load_checks.cpp
-    hay_cart_rank_checks.cpp)
+    hay_cart_rank_checks.cpp
+    people_cart_checks.cpp)
 
 # The placement algorithm is an internal seam of the module (assignment.h);
 # its unit tests feed the structs directly, so the module's source dir is on

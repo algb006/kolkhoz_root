@@ -184,10 +184,14 @@ constexpr bool IsHorseWork(WorkKind kind) {
 
 /// @brief True for kinds whose road to work is measured at HARNESS speed for
 /// the whole brigade, whether or not a horse is free for each worker (time
-/// design §7, "Какая работа едет, а какая идёт"). The horse works ride; so
-/// does felling, which goes out on the carts that will cart the logs (timber
-/// design §8a; boss, parcel 308). It takes no horse out of the day's pool —
-/// "едет не значит лошадь каждому".
+/// design §7, "Какая работа едет, а какая идёт"): the horse works.
+///
+/// FELLING RODE HERE UNTIL 0.37.168 — out on the carts that would cart the
+/// logs (timber design §8a; boss, parcel 308), taking no horse out of the
+/// day's pool. Routing stage A, A4 (boss, the queue thread [99]-[100]): the
+/// fellers ride the people's cart when the placement gives them one
+/// (TakesThePeoplesCart) and walk when it does not — one answer with every
+/// other crew going far on foot.
 ///
 /// ONE ANSWER FOR THE REACH AND FOR THE WORKING DAY. The assignment decides
 /// who may be sent by this road and the labour hour decides how much of the
@@ -199,7 +203,22 @@ constexpr bool IsHorseWork(WorkKind kind) {
 /// harvest of a strip and rides where that walks, so the question of an
 /// assignment is WorkRidesOut (work_seam.h), which asks this and the field.
 constexpr bool RidesOut(WorkKind kind) {
-  return IsHorseWork(kind) || kind == WorkKind::kFelling;
+  return IsHorseWork(kind);
+}
+
+/// @brief True for kinds whose crew may go to a far object on THE PEOPLE'S
+/// CART (transport design §1, «Один — верхом, двое и больше — подвода», and
+/// §11; routing stage A, A3; boss, the queue thread [99]): the works that
+/// walk — the herds' care, building, digging, a unit's own work, planting,
+/// and felling (A4). The day's placement gives a cart from the horses the
+/// plough and the goods carts left, to two or more hands whose walk one way
+/// is longer than the table's (assignment.h, AssignmentParams::
+/// people_cart_min_walk_hours). Not the road work: the design's list does
+/// not name it.
+constexpr bool TakesThePeoplesCart(WorkKind kind) {
+  return kind == WorkKind::kHerdCare || kind == WorkKind::kConstruction ||
+         kind == WorkKind::kExtraction || kind == WorkKind::kUnitWork ||
+         kind == WorkKind::kPlanting || kind == WorkKind::kFelling;
 }
 
 /// @brief How many of the settlement's people can be put to work, and how

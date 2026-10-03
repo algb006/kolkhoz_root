@@ -16,6 +16,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -44,6 +45,7 @@
 #include "horse_yard_road_checks.h"
 #include "labor_config.h"
 #include "labor_day.h"
+#include "people_cart_checks.h"
 #include "posts.h"
 #include "stuck_state_checks.h"
 #include "top_up_checks.h"
@@ -3791,40 +3793,80 @@ int TestAWorkedOutSiteTakesItsOrderOff() {
   return failures;
 }
 
-/// THE FELLING BRIGADE RIDES (time design §7, timber design §8a; boss, parcel
-/// 308): a stand 3 km out is 7.2 hours on foot, past the 4-hour road limit,
-/// and 3 hours on the carts. The fellers are sent there, AND their working day
-/// is measured by the same ride — asked two ways, they would be sent and then
-/// walk it with no day left.
+/// A labour system whose transport table seats six on the people's cart for a
+/// walk past two hours (routing stage A, A3; 0.37.168), with the horse row
+/// of livestock.csv for the pool — a herd of LivestockKindId{0} is the team.
+std::unique_ptr<core::ILaborSystem> LaborWithThePeoplesCart() {
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_labor_peoples_cart";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "livestock.csv") << "key,care_days_per_year\nhorse,0\n";
+  std::ofstream(root / "transport.csv") << "key,speed_kmh,seats,min_walk_hours\n"
+                                           "pedestrian,5,,\n"
+                                           "horse_trot,12,,\n"
+                                           "people_cart,,6,2\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  if (tables == nullptr) {
+    std::cout << error << '\n';
+    return nullptr;
+  }
+  return core::CreateLaborSystem(*tables, core::StubTables::kAllowed);
+}
+
+/// THE FELLING BRIGADE RODE FREE until 0.37.168 (time design §7, timber
+/// design §8a; boss, parcel 308): a stand 3 km out is 7.2 hours on foot, past
+/// the road limit, and 3 hours on the carts, and the fellers were sent by the
+/// ride with no horse taken. A4 (routing stage A; boss, the queue thread
+/// [99]): they ride the people's cart when a horse is left for it, and walk
+/// when not — on foot nobody goes 3 km out; with a horse in the pool both go
+/// on the cart, AND their working day is measured by the same ride — asked
+/// two ways, they would be sent and then walk it with no day left.
 int TestFellersRideOut() {
   int failures = 0;
-  const test::FakeTableSet nothing;
-  const auto labor = core::CreateLaborSystem(nothing, core::StubTables::kAllowed);
-  DayWorld day(2);
-  core::TimberStandRow stand;
-  stand.position = core::Vec2{.x = 3000.0F, .y = 0.0F};
-  stand.stock_m3 = 100.0F;
-  stand.marked_m3 = 100.0F;
-  stand.work_days_remaining = 5.0F;
-  const core::TimberStandId stand_id = core::AppendRow(day.world.stands, stand);
-  // A Wednesday, to noon: the day's crew is read while it stands, not after
-  // the evening settles it.
-  for (std::uint32_t hour = 0; hour <= 12; ++hour) {
-    day.world.calendar.tick = (static_cast<core::Tick>(2) * core::kTicksPerDay) + hour;
-    core::RefreshCalendarCaches(day.world.calendar);
-    const core::WorldState previous = day.world;
-    labor->RunAssignmentDecisions(previous, day.world);
+  const auto fellers_on = [](core::ILaborSystem& labor, bool horse) {
+    DayWorld day(2);
+    if (horse) {
+      const core::HerdId team = day.AddUnitHerd(1, 5.0F);
+      day.world.herds.rows[core::FindRow(day.world.herds, team)].kind = core::LivestockKindId{0};
+    }
+    core::TimberStandRow stand;
+    stand.position = core::Vec2{.x = 3000.0F, .y = 0.0F};
+    stand.stock_m3 = 100.0F;
+    stand.marked_m3 = 100.0F;
+    stand.work_days_remaining = 5.0F;
+    const core::TimberStandId stand_id = core::AppendRow(day.world.stands, stand);
+    // A Wednesday, to noon: the day's crew is read while it stands, not
+    // after the evening settles it.
+    for (std::uint32_t hour = 0; hour <= 12; ++hour) {
+      day.world.calendar.tick = (static_cast<core::Tick>(2) * core::kTicksPerDay) + hour;
+      core::RefreshCalendarCaches(day.world.calendar);
+      const core::WorldState previous = day.world;
+      labor.RunAssignmentDecisions(previous, day.world);
+    }
+    std::uint32_t fellers = 0;
+    for (const core::ResidentRow& resident : day.world.residents.rows) {
+      fellers += resident.work.kind == core::WorkKind::kFelling &&
+                         resident.work.stand.value == stand_id.value
+                     ? 1U
+                     : 0U;
+    }
+    return std::pair{fellers, day.world.stands.rows[0].work_days_remaining};
+  };
+  const auto labor = LaborWithThePeoplesCart();
+  if (Expect(labor != nullptr, "felling: the tables build a labor system") != 0) {
+    return 1;
   }
-  std::uint32_t fellers = 0;
-  for (const core::ResidentRow& resident : day.world.residents.rows) {
-    fellers += resident.work.kind == core::WorkKind::kFelling &&
-                       resident.work.stand.value == stand_id.value
-                   ? 1U
-                   : 0U;
-  }
-  failures += Expect(fellers == 2, "felling rides: both adults are sent to a stand 3 km out");
-  failures += Expect(day.world.stands.rows[0].work_days_remaining < 5.0F,
-                     "felling rides: and they fell there, their day measured by the ride");
+  const auto [on_foot, left_on_foot] = fellers_on(*labor, false);
+  const auto [on_cart, left_on_cart] = fellers_on(*labor, true);
+  std::cout << "  felling 3 km out: with no horse " << on_foot << " fellers, with one " << on_cart
+            << " (work left " << left_on_cart << " of 5)\n";
+  failures += Expect(on_foot == 0 && left_on_foot == 5.0F,
+                     "felling, A4: with no horse for a cart nobody walks to a stand 3 km out");
+  failures += Expect(on_cart == 2, "felling, A4: with one both adults ride the people's cart");
+  failures += Expect(left_on_cart < 5.0F,
+                     "felling, A4: and they fell there, their day measured by the ride");
   return failures;
 }
 
@@ -3833,12 +3875,18 @@ int TestFellersRideOut() {
 /// cart (road_route.h). A stand 3 km out is 4.5 hours for the team — in the
 /// 6-hour limit — and 7.5 for the log cart, past it: nobody is sent. The
 /// pair: 2 km out is 5 hours for the log cart, and the fellers go.
+/// The fellers go on the people's cart since 0.37.168 (A4): a horse stands in
+/// the pool for it.
 int TestFellingWaitsForTheLogCart() {
   int failures = 0;
-  const test::FakeTableSet nothing;
-  const auto fellers_at = [&nothing](float metres) {
-    const auto labor = core::CreateLaborSystem(nothing, core::StubTables::kAllowed);
+  const auto fellers_at = [](float metres) {
+    const auto labor = LaborWithThePeoplesCart();
+    if (labor == nullptr) {
+      return 99U;
+    }
     DayWorld day(2);
+    const core::HerdId team = day.AddUnitHerd(1, 5.0F);
+    day.world.herds.rows[core::FindRow(day.world.herds, team)].kind = core::LivestockKindId{0};
     // A road far off: the network exists, so open ground has its weights.
     core::RoadRow far_road;
     far_road.axis = {core::RoadPoint{.position = {.x = -9000.0F, .y = -9000.0F}},
@@ -3983,7 +4031,7 @@ int TestLogCartingRidesWithAHorse() {
 /// and 3 on the mower's cart: the mowers are sent and mow there. The day's
 /// pool gives the brigade one horse, not one a mower — a ploughing job after
 /// the cut still gets the rest — and with no horse at all the grass is still
-/// cut.
+/// cut, with scythes, by those who can walk to it (A4; 0.37.168).
 int TestMeadowCutRidesAndTakesOneHorse() {
   int failures = 0;
   const std::filesystem::path root =
@@ -4000,26 +4048,38 @@ int TestMeadowCutRidesAndTakesOneHorse() {
     std::cout << error << '\n';
     return 1;
   }
-  DayWorld day(2);
-  const core::FieldId meadow =
-      day.AddField(core::FieldPhase::kHarvest, 5.0F, core::Vec2{.x = 3000.0F, .y = 0.0F});
-  day.world.fields.rows[core::FindRow(day.world.fields, meadow)].kind = core::LandKind::kMeadow;
-  for (std::uint32_t hour = 0; hour <= 12; ++hour) {
-    day.world.calendar.tick = (static_cast<core::Tick>(30) * core::kTicksPerDay) + hour;
-    core::RefreshCalendarCaches(day.world.calendar);
-    const core::WorldState previous = day.world;
-    labor->RunAssignmentDecisions(previous, day.world);
-  }
-  std::uint32_t mowers = 0;
-  for (const core::ResidentRow& resident : day.world.residents.rows) {
-    mowers +=
-        resident.work.kind == core::WorkKind::kHarvest && resident.work.field.value == meadow.value
-            ? 1U
-            : 0U;
-  }
+  // THE MOWER IS A HORSE OF THE POOL (A4; 0.37.168): with none the mowers
+  // walk, and 3 km out nobody goes — until 0.37.168 they rode with no horse.
+  const auto mowers_on = [&labor](bool horse) {
+    DayWorld day(2);
+    if (horse) {
+      const core::HerdId team = day.AddUnitHerd(1, 5.0F);
+      day.world.herds.rows[core::FindRow(day.world.herds, team)].kind = core::LivestockKindId{0};
+    }
+    const core::FieldId meadow =
+        day.AddField(core::FieldPhase::kHarvest, 5.0F, core::Vec2{.x = 3000.0F, .y = 0.0F});
+    day.world.fields.rows[core::FindRow(day.world.fields, meadow)].kind = core::LandKind::kMeadow;
+    for (std::uint32_t hour = 0; hour <= 12; ++hour) {
+      day.world.calendar.tick = (static_cast<core::Tick>(30) * core::kTicksPerDay) + hour;
+      core::RefreshCalendarCaches(day.world.calendar);
+      const core::WorldState previous = day.world;
+      labor->RunAssignmentDecisions(previous, day.world);
+    }
+    std::uint32_t mowers = 0;
+    for (const core::ResidentRow& resident : day.world.residents.rows) {
+      mowers += resident.work.kind == core::WorkKind::kHarvest &&
+                        resident.work.field.value == meadow.value
+                    ? 1U
+                    : 0U;
+    }
+    return std::pair{mowers, day.world.fields.rows[0].work_days_remaining};
+  };
+  const auto [mowers, left] = mowers_on(true);
+  const auto [walkers, left_unmown] = mowers_on(false);
   failures += Expect(mowers == 2, "cut ride: both adults are sent to a meadow 3 km out");
-  failures += Expect(day.world.fields.rows[0].work_days_remaining < 5.0F,
-                     "cut ride: and they mow there, their day measured by the ride");
+  failures += Expect(left < 5.0F, "cut ride: and they mow there, their day measured by the ride");
+  failures += Expect(walkers == 0 && left_unmown == 5.0F,
+                     "cut ride, A4: with no horse for the mower nobody walks 3 km out to mow");
 
   const core::Vec2 origin{0.0F, 0.0F};
   core::AssignmentJob cut = FieldJob(core::WorkKind::kHarvest, 1, origin, 2.0F, 5);
@@ -4249,6 +4309,7 @@ int main() {
   failures += CheckStuckStates();
   failures += CheckTheCartOfTheCompressedYear();
   failures += CheckTheHayCartsRank();
+  failures += CheckThePeoplesCart();
   failures += TestPlacementDiagnosis();
   failures += TestRoadLimit();
   failures += TestHorsePoolAndLock();

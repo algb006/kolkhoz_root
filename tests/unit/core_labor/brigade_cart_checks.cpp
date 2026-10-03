@@ -172,9 +172,14 @@ int TestTheHourAndTheHarness() {
   world.fields.rows[0].kind = core::LandKind::kMeadow;
   failures += Expect(core::WorkRidesOut(world, passenger) &&
                          core::WorkTravelMode(world, passenger) == core::TravelMode::kTeam &&
-                         core::CountHarness(world).releasable == 0,
-                     "brigade cart: a meadow's mowers ride as before — a team, one horse a "
-                     "meadow, not the release's");
+                         core::CountHarness(world).releasable == 1,
+                     "brigade cart: a meadow's mowers ride with the mower written on the first "
+                     "of them — a team, one horse a meadow, the release's since 0.37.168 (A4)");
+  world.residents.rows[0].work.rides_horse = 0;
+  failures +=
+      Expect(!core::WorkRidesOut(world, passenger) && core::CountHarness(world).in_traces == 0,
+             "brigade cart: with no mower on the meadow its mowers walk and no horse is in the "
+             "traces (A4; until 0.37.168 they rode and one was counted)");
   return failures;
 }
 

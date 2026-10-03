@@ -1866,8 +1866,9 @@ int CheckTheCartHorseEatsOats() {
   put(core::WorkKind::kHauling, 1, core::FieldId{});  // on the horse the placement gave
   put(core::WorkKind::kHauling, 1, core::FieldId{});
   put(core::WorkKind::kHauling, 0, core::FieldId{});  // on foot: every horse was taken
+  // One brigade, one horse — written on its first mower since 0.37.168 (A4).
   for (int mower = 0; mower < 3; ++mower) {
-    put(core::WorkKind::kHarvest, 0, meadow);  // one brigade, one horse
+    put(core::WorkKind::kHarvest, mower == 0 ? 1 : 0, meadow);
   }
   put(core::WorkKind::kFelling, 0, core::FieldId{});  // no harness at all
 

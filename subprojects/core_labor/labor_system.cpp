@@ -126,6 +126,18 @@ bool HomePosition(const WorldState& world, FamilyId family, Vec2& home) {
   return HomePositionOf(world, family, home);
 }
 
+/// The resident who drives the people's cart a placed hand rides
+/// (PlanDayAssignments, rides_cart_with: a candidate index), or an invalid
+/// id — on foot, on his own horse, or on a cart that counts no seats.
+ResidentId PeoplesCartDriver(const WorldState& world,
+                             const std::vector<AssignmentCandidate>& candidates,
+                             std::uint32_t driver_index) {
+  if (driver_index >= candidates.size()) {
+    return ResidentId{};
+  }
+  return world.residents.row_ids[candidates[driver_index].resident_row];
+}
+
 /// THE ACTIVITY'S THRESHOLDS FROM THE OWNER OF MOST OF THEM (resident_
 /// activity.h, ActivityRules: «the caller fills this from the configs that
 /// own the numbers»): the working age, the walk-off rest, the road rates,
@@ -520,11 +532,12 @@ class LaborSystem final : public ILaborSystem {
       if (!candidates.empty()) {
         std::vector<std::uint8_t> rides_horse;
         std::vector<std::uint8_t> road_blocked;
+        std::vector<std::uint32_t> rides_cart_with;
         PlacementDiagnosis diagnosis;
         AssignmentParams params = DayParams(current);
         MeasureRoads(current, jobs, candidates, params);
-        const std::vector<std::uint32_t> plan =
-            PlanDayAssignments(jobs, candidates, params, &rides_horse, &road_blocked, &diagnosis);
+        const std::vector<std::uint32_t> plan = PlanDayAssignments(
+            jobs, candidates, params, &rides_horse, &road_blocked, &diagnosis, &rides_cart_with);
         for (std::size_t index = 0; index < jobs.size(); ++index) {
           const auto kind = static_cast<std::size_t>(jobs[index].kind);
           if (diagnosis.shortfall[index] && kind < book.short_job_days.size()) {
@@ -567,6 +580,7 @@ class LaborSystem final : public ILaborSystem {
           free_hands += job.kind == WorkKind::kHerdCare ? 0.0F : 1.0F;
           WorkAssignment& work = current.residents.rows[candidates[index].resident_row].work;
           work.rides_horse = rides_horse[index];
+          work.rides_cart_of = PeoplesCartDriver(current, candidates, rides_cart_with[index]);
           work.kind = job.kind;
           work.field = job.field;
           work.herd = job.herd;
@@ -717,9 +731,16 @@ class LaborSystem final : public ILaborSystem {
         in_traces < params.draught_horses ? params.draught_horses - in_traces : 0U;
     MeasureRoads(current, jobs, candidates, params);
     std::vector<std::uint8_t> rides_horse;
+    std::vector<std::uint32_t> rides_cart_with;
     PlacementDiagnosis diagnosis;
-    const std::vector<std::uint32_t> plan = PlanDayAssignments(
-        jobs, candidates, params, &rides_horse, nullptr, anybody_let_go ? &diagnosis : nullptr);
+    const std::vector<std::uint32_t> plan =
+        PlanDayAssignments(jobs,
+                           candidates,
+                           params,
+                           &rides_horse,
+                           nullptr,
+                           anybody_let_go ? &diagnosis : nullptr,
+                           &rides_cart_with);
     const bool rain_holds = RainHoldsFieldWork(current);
     for (std::uint32_t index = 0; index < candidates.size(); ++index) {
       if (plan[index] == kNoJobAssigned) {
@@ -743,6 +764,7 @@ class LaborSystem final : public ILaborSystem {
       placed.idle_reason = IdleReason::kIdleReasonCount;
       WorkAssignment& work = placed.work;
       work.rides_horse = rides_horse[index];
+      work.rides_cart_of = PeoplesCartDriver(current, candidates, rides_cart_with[index]);
       work.kind = job.kind;
       work.field = job.field;
       work.herd = job.herd;
@@ -858,18 +880,25 @@ class LaborSystem final : public ILaborSystem {
     // THE BRIGADES' CARTS FIRST OF ALL (0.37.89): a reaping or a sowing that
     // loses its cart loses the ride and not the day — the driver keeps his
     // work, the horse is no longer written on him, and the field's hands walk
-    // (WorkRidesOut finds no driver). Their road is measured again.
+    // (WorkRidesOut finds no driver). Their road is measured again. THE SAME
+    // FOR A MEADOW'S MOWER AND A PEOPLE'S CART (A3, A4; 0.37.168): the mowers
+    // go on with scythes, the crew walks — its seats name the driver
+    // (WorkAssignment::rides_cart_of), who holds no horse now.
     for (auto row = static_cast<std::uint32_t>(current.residents.rows.size());
          row > 0 && in_traces > herd;
          --row) {
       WorkAssignment& work = current.residents.rows[row - 1].work;
-      if (work.rides_horse == 0 ||
-          (work.kind != WorkKind::kHarvest && work.kind != WorkKind::kSowing)) {
+      const bool field_crew = work.kind == WorkKind::kHarvest || work.kind == WorkKind::kSowing;
+      if (work.rides_horse == 0 || !(field_crew || TakesThePeoplesCart(work.kind))) {
         continue;
       }
       work.rides_horse = 0;
+      work.travel_hours = -1.0F;
+      const ResidentId driver = current.residents.row_ids[row - 1];
       for (ResidentRow& person : current.residents.rows) {
-        if (person.work.kind == work.kind && person.work.field.value == work.field.value) {
+        const bool same_field = field_crew && person.work.kind == work.kind &&
+                                person.work.field.value == work.field.value;
+        if (same_field || person.work.rides_cart_of.value == driver.value) {
           person.work.travel_hours = -1.0F;
         }
       }
@@ -1957,6 +1986,8 @@ class LaborSystem final : public ILaborSystem {
     params.placement_level = config_.placement_level;
     params.walker_share_of_cart_day = WalkerShareToday(current);
     params.walker_min_trips_per_day = config_.walker_min_trips_per_day;
+    params.people_cart_seats = config_.people_cart_seats;
+    params.people_cart_min_walk_hours = config_.people_cart_min_walk_hours;
     return params;
   }
 
@@ -2023,8 +2054,13 @@ class LaborSystem final : public ILaborSystem {
       // 0.37.158): on foot to the horse, on it to the work.
       if (current.residents.rows[row].work.travel_hours < 0.0F) {
         // A road measured anew is a target changed since the morning: the
-        // seat on a cart was for the old one (cart_passengers.h).
-        current.residents.rows[row].work.rides_cart_of = ResidentId{};
+        // seat on a cart was for the old one (cart_passengers.h) — except a
+        // seat on the people's cart his own crew rides (A3; 0.37.168), whose
+        // driver is on the same work and target still: the morning's
+        // placement measures every road anew, and it gave him that seat.
+        if (!RidesThePeoplesCart(current, current.residents.rows[row].work)) {
+          current.residents.rows[row].work.rides_cart_of = ResidentId{};
+        }
         current.residents.rows[row].work.travel_hours =
             WorkRoadHours(current,
                           work,

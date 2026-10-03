@@ -127,7 +127,8 @@ constexpr std::uint32_t TargetIdValue(const AssignmentJob& job) {
 /// carters fell to the on-foot rule once the horses were gone, and on the
 /// canon forty walked for the logs every free day (seed 1931, year 2).
 /// The meadow cut: a harnessed harvest, one horse for the whole brigade,
-/// and a scythe when there is none — never judged on foot (the plan below).
+/// and a scythe when there is none — judged on foot then, since 0.37.168
+/// (A4; the plan below).
 constexpr bool IsMeadowCut(const AssignmentJob& job) {
   return job.kind == WorkKind::kHarvest && job.harnessed;
 }
@@ -508,6 +509,118 @@ std::vector<std::int32_t> SavedBands(const std::vector<AssignmentJob>& jobs,
   return bands;
 }
 
+/// The plan's state the people's carts are given from (PlanDayAssignments):
+/// read the jobs, the hands and the queue; write the placements, the cover,
+/// the carts out, the horses left, and who drives and who rides.
+struct PeoplesCartPlan {
+  const std::vector<AssignmentJob>* jobs = nullptr;
+  const std::vector<AssignmentCandidate>* candidates = nullptr;
+  const AssignmentParams* params = nullptr;
+  const std::vector<std::uint32_t>* order = nullptr;
+  std::vector<std::uint32_t>* result = nullptr;
+  std::vector<float>* covered = nullptr;
+  std::vector<std::uint8_t>* cart_today = nullptr;
+  std::uint32_t* horses_left = nullptr;
+  std::vector<std::uint8_t>* rides_horse = nullptr;       ///< nullable
+  std::vector<std::uint32_t>* rides_cart_with = nullptr;  ///< nullable
+};
+
+/// A hand going to a far object: placed by the queue already, or a free one
+/// the ride lets reach it.
+struct FarHand {
+  std::uint32_t candidate_index = 0;
+  float walk_hours = 0.0F;
+};
+
+/// THE PEOPLE'S CARTS (routing stage A, A3; assignment.h, PlanDayAssignments):
+/// after the queue, from the horses it left, in its order.
+void GivePeoplesCarts(const PeoplesCartPlan& plan) {
+  const AssignmentParams& params = *plan.params;
+  if (params.people_cart_seats == 0) {
+    return;
+  }
+  const std::vector<AssignmentCandidate>& candidates = *plan.candidates;
+  std::vector<std::uint32_t>& result = *plan.result;
+  const std::uint32_t per_cart = params.people_cart_seats + 1U;  // and its driver
+  for (const std::uint32_t job_index : *plan.order) {
+    if (*plan.horses_left == 0) {
+      return;
+    }
+    const AssignmentJob& job = (*plan.jobs)[job_index];
+    if (!TakesThePeoplesCart(job.kind) || job.on_foot_only) {
+      continue;
+    }
+    // ITS FAR WALKERS, the longest walk first: seats beyond the horses go to
+    // them, and the rest walk as they were placed.
+    std::vector<FarHand> crew;
+    std::uint32_t on_job = 0;
+    for (std::uint32_t index = 0; index < candidates.size(); ++index) {
+      if (result[index] != job_index) {
+        continue;
+      }
+      ++on_job;
+      const float walk = OneWayHours(job, job_index, candidates[index], params, false, false);
+      if (walk > params.people_cart_min_walk_hours) {
+        crew.push_back(FarHand{.candidate_index = index, .walk_hours = walk});
+      }
+    }
+    std::ranges::stable_sort(crew, [](const FarHand& left, const FarHand& right) {
+      return left.walk_hours > right.walk_hours;
+    });
+    const std::uint32_t capacity = *plan.horses_left * per_cart;
+    if (crew.size() > capacity) {
+      crew.resize(capacity);
+    }
+    // THE FREE THE RIDE LETS REACH IT, while it is short and seats are left:
+    // judged by the ride, as the brigade's hands are. A free hand near it was
+    // the queue's to place on foot, and is not carried.
+    AssignmentJob riding = job;
+    riding.cart_out = true;
+    std::vector<FarHand> joined;
+    float joined_norm = 0.0F;
+    std::uint32_t road_refused = 0;
+    if (crew.size() < capacity && (*plan.covered)[job_index] < job.work_days_remaining) {
+      for (const RankedPick& pick :
+           RankCandidates(riding, job_index, candidates, result, params, road_refused)) {
+        if (crew.size() + joined.size() >= capacity ||
+            (*plan.covered)[job_index] + joined_norm >= job.work_days_remaining ||
+            (job.max_crew != 0 && on_job + joined.size() >= job.max_crew)) {
+          break;
+        }
+        const float walk =
+            OneWayHours(job, job_index, candidates[pick.candidate_index], params, false, false);
+        if (!(walk > params.people_cart_min_walk_hours)) {
+          continue;
+        }
+        joined.push_back(FarHand{.candidate_index = pick.candidate_index, .walk_hours = walk});
+        joined_norm += pick.daily_norm;
+      }
+    }
+    crew.insert(crew.end(), joined.begin(), joined.end());
+    // «ДВОЕ И БОЛЬШЕ — ПОДВОДА»: one far hand rides no cart.
+    if (crew.size() < 2) {
+      continue;
+    }
+    const auto carts = static_cast<std::uint32_t>((crew.size() + per_cart - 1U) / per_cart);
+    *plan.horses_left -= carts;
+    (*plan.cart_today)[job_index] = 1U;
+    (*plan.covered)[job_index] += joined_norm;
+    for (std::size_t seat = 0; seat < crew.size(); ++seat) {
+      const std::uint32_t index = crew[seat].candidate_index;
+      result[index] = job_index;
+      // The first of each cart's load drives it.
+      const std::uint32_t driver = crew[(seat / per_cart) * per_cart].candidate_index;
+      if (driver == index) {
+        if (plan.rides_horse != nullptr) {
+          (*plan.rides_horse)[index] = 1U;
+        }
+      } else if (plan.rides_cart_with != nullptr) {
+        (*plan.rides_cart_with)[index] = driver;
+      }
+    }
+  }
+}
+
 }  // namespace
 
 int PlacementTier(const AssignmentJob& job) {
@@ -564,7 +677,8 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
                                               const AssignmentParams& params,
                                               std::vector<std::uint8_t>* rides_horse,
                                               std::vector<std::uint8_t>* road_blocked,
-                                              PlacementDiagnosis* diagnosis) {
+                                              PlacementDiagnosis* diagnosis,
+                                              std::vector<std::uint32_t>* rides_cart_with) {
   std::vector<std::uint32_t> result(candidates.size(), kNoJobAssigned);
   std::vector<std::optional<JobShortfall>> shortfall(jobs.size());
   if (rides_horse != nullptr) {
@@ -576,6 +690,12 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
   std::uint32_t horses_left = params.draught_horses;
   // Per job: 1 when its brigade rides a cart today (taken here or out already).
   std::vector<std::uint8_t> cart_today(jobs.size(), 0U);
+  // Per job: 1 when it is a meadow's cut the queue reached with no horse left
+  // — its mowers walk (A4).
+  std::vector<std::uint8_t> mowers_walk(jobs.size(), 0U);
+  if (rides_cart_with != nullptr) {
+    rides_cart_with->assign(candidates.size(), kNoJobAssigned);
+  }
 
   const std::vector<std::uint32_t> order = OrderJobs(jobs, SavedBands(jobs, candidates, params));
   // Per job: the norm-days its crew is expected to deliver, for the last pass.
@@ -613,10 +733,6 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
       }
       continue;
     }
-    if (meadow_cut && horses_left > 0) {
-      --horses_left;  // the mower, once for the whole brigade
-    }
-
     // Fill until today's demand is covered: no more hands than the day can
     // consume — the surplus idles and earns nothing (digest 2026-08-29
     // §2.4: a trudoden is a work norm, not attendance).
@@ -627,9 +743,21 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
     // the pool for the field, if one is left when the queue comes to it — and
     // then everybody is judged by the ride. Taken when the first hand is
     // placed, so a field nobody goes to holds no horse.
-    const bool takes_cart = job.brigade_cart && !job.cart_out && horses_left > 0;
+    //
+    // THE MEADOW'S MOWER THE SAME WAY (routing stage A, A4; 0.37.168): taken
+    // with its first mower and written on him; with the pool dry the mowers
+    // are judged on foot and walk with scythes. Until 0.37.168 the horse left
+    // the pool before anybody was placed — a meadow nobody reached held one —
+    // and with none left the mowers were judged and sent by the ride all the
+    // same.
+    const bool takes_mower = meadow_cut && horses_left > 0;
+    const bool takes_cart = (job.brigade_cart && !job.cart_out && horses_left > 0) || takes_mower;
     AssignmentJob judged = job;
     judged.cart_out = job.cart_out || takes_cart;
+    if (meadow_cut && !takes_mower) {
+      judged.harnessed = false;
+      mowers_walk[job_index] = 1U;
+    }
     cart_today[job_index] = judged.cart_out ? 1U : 0U;
     const std::vector<RankedPick> picks =
         RankCandidates(judged, job_index, candidates, result, params, road_refused);
@@ -733,6 +861,18 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
     }
   }
 
+  // THE PEOPLE'S CARTS, from the horses the queue left (A3; assignment.h).
+  GivePeoplesCarts(PeoplesCartPlan{.jobs = &jobs,
+                                   .candidates = &candidates,
+                                   .params = &params,
+                                   .order = &order,
+                                   .result = &result,
+                                   .covered = &covered,
+                                   .cart_today = &cart_today,
+                                   .horses_left = &horses_left,
+                                   .rides_horse = rides_horse,
+                                   .rides_cart_with = rides_cart_with});
+
   // THE LAST PASS: THE HANDS LEFT WITH NO WORK CARRY ON THEIR BACKS
   // (AssignmentParams::walker_share_of_cart_day; 0.37.105). Only while the
   // settlement has carts — otherwise the carriers went in the queue's own
@@ -801,9 +941,12 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
         if (!shortfall[job_index]) {
           continue;
         }
-        // As the queue judged it: by the ride where the brigade's cart went.
+        // As the queue judged it: by the ride where the brigade's cart, the
+        // people's cart or the meadow's mower went, on foot where the mower
+        // did not.
         AssignmentJob job = jobs[job_index];
         job.cart_out = cart_today[job_index] != 0;
+        job.harnessed = job.harnessed && mowers_walk[job_index] == 0;
         RankedPick pick;
         bool by_road = false;
         IdleReason here = IdleReason::kUnexplained;

@@ -229,9 +229,41 @@ bool BrigadeCartIsOut(const WorldState& world, WorkKind kind, FieldId field) {
   return false;
 }
 
+namespace {
+
+/// One work and one target: the kind and every target id alike.
+bool SameWorkAndTarget(const WorkAssignment& left, const WorkAssignment& right) {
+  return left.kind == right.kind && left.field.value == right.field.value &&
+         left.herd.value == right.herd.value && left.unit.value == right.unit.value &&
+         left.stand.value == right.stand.value &&
+         left.extraction_site.value == right.extraction_site.value &&
+         left.limit_delivery.value == right.limit_delivery.value &&
+         left.road_work.value == right.road_work.value;
+}
+
+}  // namespace
+
+bool RidesThePeoplesCart(const WorldState& world, const WorkAssignment& work) {
+  if (!TakesThePeoplesCart(work.kind)) {
+    return false;
+  }
+  if (work.rides_horse != 0) {
+    return true;  // its driver
+  }
+  const std::uint32_t row = FindRow(world.residents, work.rides_cart_of);
+  if (row == kNoRow) {
+    return false;
+  }
+  const WorkAssignment& driver = world.residents.rows[row].work;
+  return driver.rides_horse != 0 && SameWorkAndTarget(driver, work);
+}
+
 bool WorkRidesOut(const WorldState& world, const WorkAssignment& work) {
   if (RidesOut(work.kind)) {
     return true;
+  }
+  if (TakesThePeoplesCart(work.kind)) {
+    return RidesThePeoplesCart(world, work);
   }
   // A CARTER RIDES ON THE HORSE THE PLACEMENT GAVE HIM, and on no other
   // (boss, boss-core-topup-horses seq 2). Until 0.34.51 the labour hour let
@@ -249,10 +281,12 @@ bool WorkRidesOut(const WorldState& world, const WorkAssignment& work) {
     return false;
   }
   const LandKind land = world.fields.rows[row].kind;
-  // The same test the labour sub-step's CollectJobs sets `harnessed` by.
+  // The same test the labour sub-step's CollectJobs sets `harnessed` by. The
+  // mowers ride with their mower, written on the first of them, and with none
+  // they walk (A4, 0.37.168).
   if (work.kind == WorkKind::kHarvest &&
       (land == LandKind::kMeadow || land == LandKind::kFloodplainMeadow)) {
-    return true;
+    return work.rides_horse != 0 || BrigadeCartIsOut(world, work.kind, work.field);
   }
   // THE BRIGADE RIDES WITH ITS DRIVER (AssignmentJob::brigade_cart; 0.37.89):
   // the reaping of the arable and the sowing go out on the one cart the
@@ -278,7 +312,6 @@ TravelMode WorkTravelMode(const WorldState& world, const WorkAssignment& work) {
 
 HarnessCount CountHarness(const WorldState& world) {
   HarnessCount count;
-  std::vector<FieldId> meadows_mown;
 
   // The loads being carted, by their seam: riders and walkers apart, so the
   // walkers count only as far as the load wanted a cart (work_seam.h).
@@ -314,32 +347,17 @@ HarnessCount CountHarness(const WorldState& world) {
       }
       continue;
     }
-    if (work.kind != WorkKind::kHarvest && work.kind != WorkKind::kSowing) {
-      continue;
-    }
-    const std::uint32_t row = FindRow(world.fields, work.field);
-    if (row == kNoRow) {
-      continue;
-    }
-    const LandKind land = world.fields.rows[row].kind;
-    // THE BRIGADE'S CART (0.37.89): one horse a field, written on its driver.
-    // The release takes it first — the brigade walks, the work goes on.
-    if (RidesTheBrigadesCart(work.kind, land)) {
-      if (work.rides_horse != 0) {
-        ++count.in_traces;
-        ++count.harnessed;
-        ++count.releasable;
-      }
-      continue;
-    }
-    // A meadow's cut rides (WorkRidesOut), and its horse is the brigade's:
-    // one a meadow, however many mow it.
-    const bool meadow_cut = work.kind == WorkKind::kHarvest &&
-                            (land == LandKind::kMeadow || land == LandKind::kFloodplainMeadow);
-    if (meadow_cut && std::ranges::find(meadows_mown, work.field) == meadows_mown.end()) {
-      meadows_mown.push_back(work.field);
+    // THE CARTS THAT CARRY A CREW — the brigade's of the reaping and the
+    // sowing (0.37.89), the people's (A3) and a meadow's mower (A4; 0.37.168):
+    // one horse each, written on its driver. The release takes them first —
+    // the crew walks, the work goes on. Until 0.37.168 a meadow being mown
+    // counted one horse whether or not the pool had one for it.
+    if ((TakesThePeoplesCart(work.kind) || work.kind == WorkKind::kHarvest ||
+         work.kind == WorkKind::kSowing) &&
+        work.rides_horse != 0) {
       ++count.in_traces;
       ++count.harnessed;
+      ++count.releasable;
     }
   }
   // THE WALKERS, AS FAR AS THE LOAD WANTED A CART (0.37.105): the seam's

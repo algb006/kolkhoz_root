@@ -103,10 +103,12 @@ struct AssignmentJob {
   /// with him (work_seam.h, WorkRidesOut). The cart does not haul that day: a
   /// horse is counted once a day.
   ///
-  /// THE CARTER'S PATTERN, NOT THE MOWER'S OR THE FELLER'S: a meadow's brigade
-  /// rides whether or not it got its horse, and the fellers ride without
-  /// taking one at all (RidesOut) — two other answers to one question, left
-  /// as they are here and named to boss.
+  /// THE CARTER'S PATTERN, AND SINCE 0.37.168 THE MOWER'S AND THE FELLER'S
+  /// TOO (routing stage A, A4): until then a meadow's brigade rode whether or
+  /// not it got its horse, and the fellers rode without taking one at all
+  /// (RidesOut) — two other answers to one question. Now a meadow's mower is
+  /// taken with its first hand like this cart, and the fellers ride the
+  /// people's cart when the placement gives them one (PlanDayAssignments).
   bool brigade_cart = false;
 
   /// The brigade's cart is out already — a driver stands on this field from
@@ -350,6 +352,15 @@ struct AssignmentParams {
   /// walker's door. 0: no threshold.
   float walker_min_trips_per_day = 0.0F;
 
+  /// THE PEOPLE'S CART (transport design §1, «двое и больше — подвода»;
+  /// routing stage A, A3; transport.csv people_cart `seats` and
+  /// `min_walk_hours`): the hands it seats beside its driver, and the walk one
+  /// way, game hours, beyond which a hand on a work that walks
+  /// (labor_state.h, TakesThePeoplesCart) is carried. Seats 0: no cart, the
+  /// day as before stage A.
+  std::uint32_t people_cart_seats = 0;
+  float people_cart_min_walk_hours = 0.0F;
+
   /// Placement quality 0-3 (society design §1): 0 = naive "whoever is
   /// there", 1 = skill and strength, 2 = plus road and fatigue, 3 = master
   /// (phase 1: as 2 — pair synergy is a STUB).
@@ -464,18 +475,38 @@ int PlacementTier(const AssignmentJob& job);
 ///                   placed on it, and free workers were turned away by the
 ///                   road rule alone (time design §7) — the job the road
 ///                   stopped today. Resized to `jobs`; nullptr when not wanted.
+/// @param rides_cart_with Optional, per candidate: the candidate index of the
+///                   driver of THE PEOPLE'S CART he rides (routing stage A,
+///                   A3), or kNoJobAssigned. The driver himself has
+///                   rides_horse 1 and kNoJobAssigned here. Resized to
+///                   `candidates`; nullptr when not wanted — the carts are
+///                   given all the same, and rides_horse names their drivers.
+///
+/// THE PEOPLE'S CARTS ARE GIVEN AFTER THE QUEUE, from the horses it left
+/// (transport design §1: «плуг → подводы → всадники», and §11 «Работник без
+/// тягла — из остатка»): in the queue's order, to each job of a kind that
+/// walks (TakesThePeoplesCart), its crew is the hands placed on it whose
+/// walk one way is longer than people_cart_min_walk_hours, and — while the
+/// job is short and seats are left — free hands the ride lets reach it,
+/// judged by the ride. Two or more: a cart for each people_cart_seats + 1 of
+/// them, while horses are left; the first of each cart drives. Seats beyond
+/// the horses go to the longest walks, and the rest walk as they were
+/// placed. Before the last pass of the carriers on foot, so a far job's
+/// cart is offered the idle before a back load is.
 /// @return Per candidate (same order as `candidates`): the index into
 ///         `jobs` he works today, or kNoJobAssigned — surplus hands idle
 ///         and earn nothing (a trudoden is a work norm, not attendance).
 /// @note Pure and deterministic: equal inputs give the equal vector on any
 ///       platform. No RNG — even the naive level uses stable order, not
 ///       chance.
-std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& jobs,
-                                              const std::vector<AssignmentCandidate>& candidates,
-                                              const AssignmentParams& params,
-                                              std::vector<std::uint8_t>* rides_horse = nullptr,
-                                              std::vector<std::uint8_t>* road_blocked = nullptr,
-                                              PlacementDiagnosis* diagnosis = nullptr);
+std::vector<std::uint32_t> PlanDayAssignments(
+    const std::vector<AssignmentJob>& jobs,
+    const std::vector<AssignmentCandidate>& candidates,
+    const AssignmentParams& params,
+    std::vector<std::uint8_t>* rides_horse = nullptr,
+    std::vector<std::uint8_t>* road_blocked = nullptr,
+    PlacementDiagnosis* diagnosis = nullptr,
+    std::vector<std::uint32_t>* rides_cart_with = nullptr);
 
 }  // namespace core
 

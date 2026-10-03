@@ -77,16 +77,30 @@ int CheckTheCartOfTheCompressedYear() {
   // seats nobody, and the stage stays off.
   core::LaborConfig seated;
   const bool seated_ok = ParseWith("unit_core_labor_cart_seats",
-                                   "key,speed_kmh,load_tonnes,seats\n"
-                                   "pedestrian,5,,\n"
-                                   "horse_trot,12,,\n"
-                                   "cart_loaded,9,0.75,2\n"
-                                   "people_cart,,,6\n",
+                                   "key,speed_kmh,load_tonnes,seats,min_walk_hours\n"
+                                   "pedestrian,5,,,\n"
+                                   "horse_trot,12,,,\n"
+                                   "cart_loaded,9,0.75,2,\n"
+                                   "people_cart,,,6,2.5\n",
                                    seated);
   failures += Expect(seated_ok && seated.cart_passenger_seats == 2 && seated.people_cart_seats == 6,
                      "cart seats, labour: the goods cart's bench seats two, the people's cart six");
-  failures += Expect(plain_ok && plain.cart_passenger_seats == 0 && plain.people_cart_seats == 0,
+  // THE PEOPLE'S CART'S FAR OBJECT (0.37.168): 2.5, not the design's 2, so
+  // that a parser keeping a default of 2 could not pass.
+  failures += Expect(seated_ok && Near(seated.people_cart_min_walk_hours, 2.5F),
+                     "cart seats, labour: the people's cart carries beyond the table's walk");
+  failures += Expect(plain_ok && plain.cart_passenger_seats == 0 && plain.people_cart_seats == 0 &&
+                         plain.people_cart_min_walk_hours == 0.0F,
                      "cart seats, labour: a table with no seats column seats nobody");
+  core::LaborConfig far;
+  failures += Expect(!ParseWith("unit_core_labor_cart_far",
+                                "key,speed_kmh,load_tonnes,seats,min_walk_hours\n"
+                                "pedestrian,5,,,\n"
+                                "horse_trot,12,,,\n"
+                                "people_cart,,,6,200\n",
+                                far),
+                     "cart seats, labour: a far object two hundred hours out is refused as a "
+                     "slipped digit");
   core::LaborConfig crowded;
   failures += Expect(!ParseWith("unit_core_labor_cart_crowded",
                                 "key,speed_kmh,load_tonnes,seats\n"
