@@ -186,12 +186,13 @@ int TestConfig() {
   return failures;
 }
 
-/// THE PLAN'S CHAINS (B3; logistics_plan.h): two carts on two of three heaps
-/// of level 1, a stand's logs of level 2, a paused heap and a heap 10 km out.
-/// Each cart starts with its own heap, goes on to the other heaps of its
-/// level — the second cart's ring turned one, so it takes the third heap
-/// before the first — then the logs; the paused heap and the one beyond the
-/// road limit are in no chain; a carrier on foot has no cart.
+/// THE PLAN'S CHAINS AND ITS CLOCK (B3, B4b; logistics_plan.h): two carts on
+/// two of three heaps of level 1, a stand's logs of level 2, a paused heap
+/// and a heap 10 km out, a carrier on foot, a people's cart to the fellers.
+/// The second cart's ring is turned one, so done with its own heap it takes
+/// the third before the first; a heap another cart has carted is skipped;
+/// the paused heap and the one beyond the road limit are in no chain; every
+/// day lies in the light, its legs in order.
 int TestThePlansChains() {
   int failures = 0;
   core::LogisticsConfig config;  // 12 km/h: 1 game hour a km; the limit 6 hours
@@ -205,77 +206,183 @@ int TestThePlansChains() {
     field.haul_days_remaining = 2.0F;
     return core::AppendRow(world.fields, field);
   };
-  const core::FieldId first = heap_at(100.0F);
-  const core::FieldId second = heap_at(200.0F);
-  const core::FieldId third = heap_at(250.0F);
+  // The seams in cart-days (a cart-day is 10 cart-hours): the first heap a
+  // whole day, the second an hour, the third half a day.
+  const auto heap_days = [&world, &heap_at](float east_m, float days) {
+    const core::FieldId id = heap_at(east_m);
+    world.fields.rows[core::FindRow(world.fields, id)].haul_days_remaining = days;
+    return id;
+  };
+  const core::FieldId first = heap_days(100.0F, 1.0F);
+  const core::FieldId second = heap_days(200.0F, 0.1F);
+  const core::FieldId third = heap_days(250.0F, 0.5F);
   const core::FieldId paused = heap_at(300.0F);
   const core::FieldId far = heap_at(10'000.0F);
   core::TimberStandRow stand;
   stand.position = core::Vec2{.x = 400.0F, .y = 0.0F};
   stand.load_grams = 1'000'000;
-  stand.haul_days_remaining = 2.0F;
-  const core::TimberStandId logs = core::AppendRow(world.stands, stand);
+  stand.haul_days_remaining = 0.1F;
+  core::AppendRow(world.stands, stand);
+  core::TimberStandRow felled;  // the people's cart's work: fellers 2 km out
+  felled.position = core::Vec2{.x = 0.0F, .y = 2000.0F};
+  const core::TimberStandId wood = core::AppendRow(world.stands, felled);
   core::TaskDayCount count;
   core::SyncTasks(config, world, 0, count);
   for (core::LogisticsTaskRow& task : world.logistics_tasks.rows) {
     task.paused = task.field.value == paused.value;
   }
-  const auto carter = [&world](core::FieldId field, std::uint8_t horse) {
-    core::ResidentRow person;
-    person.work.kind = core::WorkKind::kHauling;
-    person.work.field = field;
-    person.work.rides_horse = horse;
-    core::AppendRow(world.residents, person);
+  // One house at the origin; twelve hours of light, 6 to 18; three horses,
+  // not stabled — no horse yard, so every day starts at the house, and a
+  // carrier on foot drains a cart-seam at his share of a cart-day (haul.h).
+  world.weather.daylight_hours = 12.0F;
+  config.horse_kind = core::LivestockKindId{0};
+  core::HerdRow horses;
+  horses.kind = core::LivestockKindId{0};
+  horses.adult_count = 3;
+  core::AppendRow(world.herds, horses);
+  core::UnitRow house;
+  house.position = core::Vec2{.x = 0.0F, .y = 0.0F};
+  const core::UnitId house_id = core::AppendRow(world.units, house);
+  core::FamilyRow household;
+  household.house = house_id;
+  const core::FamilyId family = core::AppendRow(world.families, household);
+  world.units.rows[0].household = family;
+  const auto person = [&world, family](core::WorkAssignment work) {
+    core::ResidentRow row;
+    row.family = family;
+    row.work = work;
+    return core::AppendRow(world.residents, row);
   };
-  carter(first, 1);
-  carter(second, 1);
-  carter(first, 0);  // on foot
+  const auto carter = [&person](core::FieldId field, std::uint8_t horse) {
+    core::WorkAssignment work;
+    work.kind = core::WorkKind::kHauling;
+    work.field = field;
+    work.rides_horse = horse;
+    return person(work);
+  };
+  const core::ResidentId cart_one = carter(first, 1);
+  const core::ResidentId cart_two = carter(second, 1);
+  const core::ResidentId walker = carter(first, 0);
+  core::WorkAssignment felling;
+  felling.kind = core::WorkKind::kFelling;
+  felling.stand = wood;
+  felling.rides_horse = 1;
+  const core::ResidentId people_driver = person(felling);
+  felling.rides_horse = 0;
+  felling.rides_cart_of = people_driver;
+  const core::ResidentId feller = person(felling);
+  core::WorkAssignment reaping;  // a passenger of the first goods cart
+  reaping.kind = core::WorkKind::kHarvest;
+  reaping.field = far;
+  reaping.rides_cart_of = cart_one;
+  const core::ResidentId passenger = person(reaping);
+
   core::LogisticsTally tally;
   const core::GroomPlan plan = core::BuildGroomPlan(config, world, tally);
-  const auto load_of = [&world](const core::CartLeg& leg) {
-    const core::LogisticsTaskRow& task =
-        world.logistics_tasks.rows[core::FindRow(world.logistics_tasks, leg.task)];
-    return task.load_kind == core::LogisticsLoadKind::kStandLogs
-               ? -1
-               : static_cast<int>(task.field.value);
+  const auto cart_of = [&plan](core::ResidentId driver) -> const core::CartPlan* {
+    for (const core::CartPlan& cart : plan.carts) {
+      if (cart.driver.value == driver.value) {
+        return &cart;
+      }
+    }
+    return nullptr;
   };
-  failures += Expect(plan.carts.size() == 2 && tally.carts == 2,
-                     "plan: two carts on a horse, the carrier on foot has none");
-  if (plan.carts.size() != 2) {
+  // The loads of a mover's legs, in order: a field's id, -1 the logs. With
+  // `carted_only`, those the clock sent it to — a load leg after an empty leg
+  // that rode there; without, the whole chain, the loads kept in their place
+  // as legs of no length too (carted by others first, or past the evening).
+  const auto loads_of = [&world](const core::CartPlan& cart, bool carted_only) {
+    std::vector<int> loads;
+    for (std::size_t index = 0; index < cart.legs.size(); ++index) {
+      const std::uint32_t row = core::FindRow(world.logistics_tasks, cart.legs[index].task);
+      if (row == core::kNoRow) {
+        continue;  // an empty leg
+      }
+      const bool rode_there =
+          index > 0 && cart.legs[index - 1].task.value == core::kInvalidEntityIdValue;
+      if (carted_only && !rode_there) {
+        continue;
+      }
+      const core::LogisticsTaskRow& task = world.logistics_tasks.rows[row];
+      loads.push_back(task.load_kind == core::LogisticsLoadKind::kStandLogs
+                          ? -1
+                          : static_cast<int>(task.field.value));
+    }
+    return loads;
+  };
+  const core::CartPlan* const one = cart_of(cart_one);
+  const core::CartPlan* const two = cart_of(cart_two);
+  const core::CartPlan* const foot = cart_of(walker);
+  const core::CartPlan* const people = cart_of(people_driver);
+  failures += Expect(plan.carts.size() == 4 && tally.carts == 3 && one != nullptr &&
+                         two != nullptr && foot != nullptr && people != nullptr,
+                     "plan: two goods carts, the people's cart and the carrier on foot");
+  if (one == nullptr || two == nullptr || foot == nullptr || people == nullptr) {
     return failures;
   }
-  const std::vector<core::CartLeg>& one = plan.carts[0].legs;
-  const std::vector<core::CartLeg>& two = plan.carts[1].legs;
-  std::cout << "  plan: cart 1 —";
-  for (const core::CartLeg& leg : one) {
-    std::cout << ' ' << load_of(leg);
-  }
-  std::cout << "; cart 2 —";
-  for (const core::CartLeg& leg : two) {
-    std::cout << ' ' << load_of(leg);
-  }
-  std::cout << " (field ids; -1 the logs)\n";
+  const std::vector<int> one_loads = loads_of(*one, true);
+  const std::vector<int> two_loads = loads_of(*two, true);
+  const std::vector<int> foot_loads = loads_of(*foot, true);
+  const auto print =
+      [](const char* name, const core::CartPlan& cart, const std::vector<int>& loads) {
+        std::cout << "  plan: " << name << " - loads";
+        for (const int load : loads) {
+          std::cout << ' ' << load;
+        }
+        std::cout << "; legs";
+        for (const core::CartLeg& leg : cart.legs) {
+          std::cout << ' ' << leg.depart << '-' << leg.arrive;
+        }
+        std::cout << '\n';
+      };
+  print("cart 1", *one, one_loads);
+  print("cart 2", *two, two_loads);
+  print("on foot", *foot, foot_loads);
+  print("people's cart", *people, {});
   const auto id = [](core::FieldId field) { return static_cast<int>(field.value); };
+  // Cart 2 carts its hour's heap by 7; the ring turned one sends it to the
+  // third heap, not to the first that cart 1 is still on; at noon it comes to
+  // help cart 1, and both end on the logs.
+  failures += Expect(two_loads == std::vector<int>{id(second), id(third), id(first), -1},
+                     "plan: the second cart — its own heap, then the ring turned one (the third "
+                     "heap before the first), the first heap with the other cart, the logs");
+  failures += Expect(one_loads == std::vector<int>{id(first), -1},
+                     "plan: the first cart — its day's heap with help at noon, then the logs: "
+                     "the heaps carted by others are not ridden to");
   failures +=
-      Expect(one.size() == 4 && load_of(one[0]) == id(first) && load_of(one[1]) == id(second) &&
-                 load_of(one[2]) == id(third) && load_of(one[3]) == -1,
-             "plan: the first cart — its heap, the other heaps of level 1, then the logs");
-  failures +=
-      Expect(two.size() == 4 && load_of(two[0]) == id(second) && load_of(two[1]) == id(third) &&
-                 load_of(two[2]) == id(first) && load_of(two[3]) == -1,
-             "plan: the second cart — its own heap, the ring turned one (the third heap "
-             "before the first), then the logs");
+      Expect(loads_of(*one, false) == std::vector<int>{id(first), id(second), id(third), -1},
+             "plan: and they stay in its chain in their place, as legs of no length — "
+             "the labour hour follows the seams, not the estimate");
+  failures += Expect(foot->on_foot && !foot_loads.empty() && foot_loads.front() == id(first),
+                     "plan: the carrier on foot is in the plan, on his own heap first");
   bool paused_or_far = false;
+  bool in_order = true;
   for (const core::CartPlan& cart : plan.carts) {
+    core::Tick last = 0;
     for (const core::CartLeg& leg : cart.legs) {
-      const int load = load_of(leg);
-      paused_or_far = paused_or_far || load == static_cast<int>(paused.value) ||
-                      load == static_cast<int>(far.value);
+      in_order = in_order && leg.depart <= leg.arrive && leg.depart >= last;
+      last = leg.arrive;
+    }
+    for (const int load : loads_of(cart, false)) {
+      paused_or_far = paused_or_far || load == id(paused) || load == id(far);
     }
   }
   failures += Expect(!paused_or_far,
                      "plan: the paused heap and the heap past the road limit are in no chain");
-  (void)logs;
+  failures += Expect(in_order,
+                     "plan: every leg leaves no earlier than the one before it arrived, and "
+                     "arrives no earlier than it leaves");
+  failures += Expect(one->legs.front().riders.size() == 1 &&
+                         one->legs.front().riders[0].value == passenger.value &&
+                         one->legs.front().depart >= 6 && one->legs.back().arrive <= 18,
+                     "plan: the passenger rides the first cart's first leg; its day is in the "
+                     "light, 6 to 18");
+  failures += Expect(
+      people->people_cart && people->legs.size() == 2 && people->legs[0].riders.size() == 1 &&
+          people->legs[0].riders[0].value == feller.value &&
+          people->legs[0].task.value == core::kInvalidEntityIdValue && people->legs[1].arrive == 18,
+      "plan: the people's cart — out to the fellers with its rider, home at "
+      "sunset");
   return failures;
 }
 

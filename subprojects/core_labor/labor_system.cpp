@@ -2245,16 +2245,17 @@ class LaborSystem final : public ILaborSystem {
     }
   }
 
-  /// @brief A carter on a horse whose load is carted (its seam empty) or gone
-  ///        moves on to the first load of his chain in today's plan that
-  ///        still has carting left (B4). His horse, his road to the yard and
-  ///        his day's pay stay: the way between two loads is the empty half of
-  ///        the new load's first trip, priced in its seam (0.37.139). With no
-  ///        plan for today, no chain, or no load left, nothing changes.
+  /// @brief A carter whose load is carted (its seam empty) or gone moves on
+  ///        to the first load of his chain in today's plan that still has
+  ///        carting left (B4) — on a horse, and since B4b on foot too (the
+  ///        nearest loads of his level, logistics_plan.h). His horse, his road
+  ///        and his day's pay stay: the way between two loads is the empty
+  ///        half of the new load's first trip, priced in its seam (0.37.139).
+  ///        With no plan for today, no chain, or no load left, nothing
+  ///        changes.
   static void FollowThePlan(WorldState& current, std::uint32_t row) {
     WorkAssignment& work = current.residents.rows[row].work;
-    if (work.kind != WorkKind::kHauling || work.rides_horse == 0 ||
-        current.groom_plan.day != current.calendar.day) {
+    if (work.kind != WorkKind::kHauling || current.groom_plan.day != current.calendar.day) {
       return;
     }
     const float* const seam = WorkSeamOf(current, work);

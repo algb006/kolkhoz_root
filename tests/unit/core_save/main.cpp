@@ -662,6 +662,17 @@ core::WorldState MakeWorld() {
                                          .arrive = 7'063,
                                          .riders = {}});
   world.groom_plan.carts.push_back(plan_cart);
+  // A carrier on foot (save format 137, B4b): one load leg, no riders.
+  core::CartPlan plan_walker;
+  plan_walker.driver = core::ResidentId{2};
+  plan_walker.on_foot = true;
+  plan_walker.legs.push_back(core::CartLeg{.from = core::Vec2{.x = 70.0F, .y = 80.0F},
+                                           .to = core::Vec2{.x = 70.0F, .y = 80.0F},
+                                           .task = core::LogisticsTaskId{5},
+                                           .depart = 7'058,
+                                           .arrive = 7'062,
+                                           .riders = {}});
+  world.groom_plan.carts.push_back(plan_walker);
 
   // A couple waiting for a free house (save format 35).
   core::WeddingWaitRow couple;
@@ -1693,7 +1704,7 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // Save 136 (B3): the groom's plan — 10 of day, flags and count, 9 of the
     // cart, 44 of the first leg (one rider), 40 of the second. Predicted 103
     // before the build, held; the hash read off the build.
-    {"groom_plan", 103, 0x1cccba57f865cdbfULL},
+    {"groom_plan", 154, 0xa6fedc8be9554373ULL},
     // 2026-09-17, save 52: +56 bytes over the two books — the nine yearly
     // inputs the readiness index asks of a year and the year did not keep
     // (ledger_state.h): satisfaction's sum and count, able-bodied
@@ -2594,17 +2605,21 @@ int main() {
   // first only: a codec that swapped or dropped one is red here.
   {
     const core::GroomPlan& back = loaded.groom_plan;
-    const bool shape = back.carts.size() == 1 && back.carts[0].legs.size() == 2;
+    const bool shape =
+        back.carts.size() == 2 && back.carts[0].legs.size() == 2 && back.carts[1].legs.size() == 1;
     failures += Expect(
         shape && back.day == 147 && back.stale && !back.urgent_pending &&
             back.carts[0].driver.value == 6 && back.carts[0].people_cart &&
-            back.carts[0].legs[0].from.x == 10.0F && back.carts[0].legs[0].to.y == 40.0F &&
-            back.carts[0].legs[0].task.value == 0 && back.carts[0].legs[0].depart == 7'057 &&
-            back.carts[0].legs[0].arrive == 7'059 && back.carts[0].legs[0].riders.size() == 1 &&
+            !back.carts[0].on_foot && back.carts[1].on_foot && !back.carts[1].people_cart &&
+            back.carts[1].driver.value == 2 && back.carts[1].legs[0].task.value == 5 &&
+            back.carts[1].legs[0].arrive == 7'062 && back.carts[0].legs[0].from.x == 10.0F &&
+            back.carts[0].legs[0].to.y == 40.0F && back.carts[0].legs[0].task.value == 0 &&
+            back.carts[0].legs[0].depart == 7'057 && back.carts[0].legs[0].arrive == 7'059 &&
+            back.carts[0].legs[0].riders.size() == 1 &&
             back.carts[0].legs[0].riders[0].value == 3 && back.carts[0].legs[1].task.value == 4 &&
             back.carts[0].legs[1].to.x == 50.0F && back.carts[0].legs[1].riders.empty(),
         "the groom's plan came back with its day, its flags, its cart and both legs in order, "
-        "the rider on the first (save 136)");
+        "the rider on the first (save 136), and the carrier on foot with his byte (save 137)");
   }
   failures += Expect(loaded.barter.worth_starting_raised == 1 &&
                          loaded.barter.dry_days_in_row == 3 && loaded.barter.dry_givers == 5 &&

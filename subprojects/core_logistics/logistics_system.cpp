@@ -75,7 +75,7 @@ std::unique_ptr<ILogisticsSystem> CreateLogisticsSystem(const ITableSet& tables,
   if (!RequireTables(tables,
                      stubs,
                      "logistics",
-                     {"logistics", "resources", "transport", "labor", "world_params"},
+                     {"logistics", "resources", "transport", "labor", "world_params", "livestock"},
                      &error) ||
       !ParseLogisticsConfig(tables, config, error)) {
     LogError("logistics: " + error);

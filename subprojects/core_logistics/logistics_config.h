@@ -63,6 +63,23 @@ struct LogisticsConfig {
   /// be sent to in the morning.
   float harness_speed_kmh = 12.0F;
   float travel_limit_hours = 6.0F;
+
+  /// THE PLAN'S CLOCK (B4b): the cells a leg's time is estimated from, read
+  /// by labour's keys and ranges (labor_config.cpp): the hours behind a norm
+  /// man-day (labor.csv standard_day_hours) — a seam of one cart-day is that
+  /// many hours of one cart; the walker's pace (transport.csv pedestrian
+  /// `speed_kmh`); and the two a carrier on foot's share of a cart-day is
+  /// made of (core_common/haul.h, WalkerShareOfCartDay): what a man carries
+  /// (labor.csv carry_kg_adult) and the cart's load (transport.csv
+  /// cart_loaded `load_tonnes` x `load_scale`).
+  float standard_day_hours = 10.0F;
+  float walk_speed_kmh = 5.0F;
+  float carry_kg_adult = 20.0F;
+  float cart_load_kg = 750.0F;
+
+  /// The horse's livestock row (livestock.csv key `horse`), for the horse
+  /// yard a cart's day starts at (horse_yard_road.h); invalid without one.
+  LivestockKindId horse_kind;
 };
 
 /// @brief Reads the config from the table set.

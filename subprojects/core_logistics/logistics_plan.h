@@ -39,13 +39,25 @@ inline constexpr std::uint32_t kMaxChainLoads = 6;
 /// it (§12, «Кольцевая очередь»), so the carts of a level spread over its
 /// tasks instead of queueing on one.
 ///
-/// NOT IN THE PLAN (boss [11], default 4; [9], default 4): the carriers on
-/// foot, the brigade's cart of the reaping and the sowing, the meadow's mower,
-/// the people's cart — they carry no load of a task.
+/// THE CARRIER ON FOOT (B4b; boss [11], default 1): his morning load, then
+/// the nearest open loads of its level within a walk — never a log, never a
+/// far one. THE PEOPLE'S CART (B4b): out to its work with its riders and back
+/// in the evening, two legs; it carries no load. THE RIDERS: whoever the
+/// labour hour seated on a driver's cart this morning, on its first leg.
 ///
-/// APPROXIMATIONS, NAMED: a leg's depart and arrive are not estimated (0):
-/// the hour moves a cart on when its load's seam is empty, not by the clock;
-/// a leg is a load, its trips to the store are inside the seam.
+/// THE LEGS' TICKS (B4b; default 2): estimated by a clock of five-minute
+/// steps over today's light — the way at the pace (harness, or a walker's),
+/// a load's seam shared by every mover on it, the evening when the way home
+/// no longer fits the light (logistics_state.h, CartLeg).
+///
+/// NOT IN THE PLAN (boss [11], default 4): the brigade's cart of the reaping
+/// and the sowing and the meadow's mower — they carry no load of a task.
+///
+/// APPROXIMATIONS, NAMED: the clock drains a seam at the norm, one cart-hour
+/// an hour (a walker his share of it, haul.h) — not at each man's efficiency
+/// as the labour hour does; the trips to the store are inside a load's seam,
+/// so a load leg stands at the load; a cart on its way when the light ends
+/// goes home from the place it was going to.
 /// @return The plan; `tally` counts the carts, the legs and the tasks by level.
 GroomPlan BuildGroomPlan(const LogisticsConfig& config,
                          const WorldState& world,

@@ -120,10 +120,16 @@ struct LogisticsTaskRow {
   Tick urgent_since = 0;
 };
 
-/// @brief One leg of a cart's day.
+/// @brief One leg of a cart's day (B4b). A goods cart's day is: an empty leg
+///        from the horse yard to its first load; a LOAD LEG at each load of
+///        its chain (from = to = the load: the trips to the store are inside
+///        the load's seam, 0.37.139), with an empty leg between two loads;
+///        the empty leg home at the day's end. A carrier on foot's day is the
+///        same from and to his house. A people's cart's day is two legs: out
+///        to the work with its riders, back in the evening.
 struct CartLeg {
-  /// Where the leg starts and ends (the horse yard, a load, a store, a point
-  /// of the way where somebody boards or gets off).
+  /// Where the leg starts and ends (the horse yard, the house, a load, the
+  /// work of a people's cart).
   Vec2 from;
   Vec2 to;
 
@@ -131,17 +137,22 @@ struct CartLeg {
   /// leg (to a load, home in the evening) and on a people's cart.
   LogisticsTaskId task;
 
-  /// The ticks it leaves and arrives, by the way's road and the harness pace.
-  /// STUB core, named (boss, the logistics thread [12], default 2): the legs
-  /// follow the load's seam and carry no times — both 0 from B3 (0.37.177).
+  /// The ticks it leaves and arrives — ESTIMATED when the plan is built
+  /// (B4b; boss, the logistics thread [11], default 2): an empty leg by its
+  /// road at the pace; a load leg from its first carting hour to the hour its
+  /// seam, shared with every cart on it, is carted or the light ends. The
+  /// labour hour drains the seam and moves the cart on when it is empty, not
+  /// by these ticks (B4): they say where a cart is in an hour, for whoever
+  /// asks (the passengers, B5's re-plan, the watchdog). Not finer than an
+  /// hour: one tick is a game hour.
   Tick depart = 0;
   Tick arrive = 0;
 
   /// Who rides this leg beside the driver — seated at `from` or on the way —
   /// within the cart's seats (transport.csv `seats`: the goods cart's bench
-  /// two, the people's cart six). Empty from B3: the passengers of the first
-  /// leg are seated by the labour hour (cart_passengers.h, stage A2) and
-  /// written nowhere in the plan.
+  /// two, the people's cart six): the passengers the labour hour seated this
+  /// morning (cart_passengers.h, stage A2; work_seam.h, the people's cart),
+  /// written on the cart's first leg.
   std::vector<ResidentId> riders;
 };
 
@@ -154,6 +165,11 @@ struct CartPlan {
   /// True for a people's cart (A3: two or more to one far object), false for
   /// the goods cart with its bench.
   bool people_cart = false;
+
+  /// True for a carrier on foot (B4b; boss, the logistics thread [11],
+  /// default 1): no horse, no seats — the plan gives him the nearest loads of
+  /// his load's level within a walk, never a far one.
+  bool on_foot = false;
 
   /// The legs in order; the cart is at the end of the last leg it has begun.
   std::vector<CartLeg> legs;

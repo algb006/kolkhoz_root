@@ -148,6 +148,55 @@ std::pair<bool, bool> TheCartAfterItsLoad(core::ILaborSystem& labor, bool plan_o
           after.stand.value == carted.value};
 }
 
+/// The task of a field's heap, at a level.
+core::FieldId HeapAt(core::WorldState& world, float east_m, float haul_days) {
+  core::FieldRow field;
+  field.kind = core::LandKind::kArable;
+  field.center = core::Vec2{.x = east_m, .y = 0.0F};
+  field.reaped_grams = haul_days > 0.0F ? 1'000'000 : 0;
+  field.reaped_resource = core::ResourceId{0};
+  field.haul_days_remaining = haul_days;
+  return core::AppendRow(world.fields, field);
+}
+
+core::LogisticsTaskId HeapTask(core::WorldState& world, core::FieldId field) {
+  core::LogisticsTaskRow task;
+  task.load_kind = core::LogisticsLoadKind::kFieldHeap;
+  task.field = field;
+  task.level = core::LogisticsLevel::kTerm;
+  task.base_level = core::LogisticsLevel::kTerm;
+  return core::AppendRow(world.logistics_tasks, task);
+}
+
+/// THE CARRIER ON FOOT FOLLOWS HIS CHAIN TOO (B4b; boss [11], default 1): he
+/// carries heap A, carted out; today's plan gives him the near heap B. At
+/// hour 3 he goes on to B, on foot. Returns whether he carries B on foot.
+bool TheWalkerAfterHisHeap(core::ILaborSystem& labor) {
+  core::WorldState world = Village(1);
+  const core::FieldId carted = HeapAt(world, 200.0F, 0.0F);
+  const core::FieldId next = HeapAt(world, 300.0F, 1.0F);
+  core::WorkAssignment& work = world.residents.rows[0].work;
+  work.kind = core::WorkKind::kHauling;
+  work.field = carted;
+  world.groom_plan.day = kWorkingDay;
+  core::CartPlan cart;
+  cart.driver = world.residents.row_ids[0];
+  cart.on_foot = true;
+  for (const core::LogisticsTaskId task : {HeapTask(world, carted), HeapTask(world, next)}) {
+    cart.legs.push_back(core::CartLeg{.from = core::Vec2{},
+                                      .to = core::Vec2{},
+                                      .task = task,
+                                      .depart = 0,
+                                      .arrive = 0,
+                                      .riders = {}});
+  }
+  world.groom_plan.carts.push_back(cart);
+  RunHour(labor, world, 3);
+  const core::WorkAssignment& after = world.residents.rows[0].work;
+  return after.kind == core::WorkKind::kHauling && after.rides_horse == 0 &&
+         after.field.value == next.value;
+}
+
 /// LEVEL 0 GOES AHEAD OF ALL WORK (B3; boss, the logistics thread [9]): one
 /// horse, a ploughing open and a stand's logs lying. The ploughing's window
 /// takes the horse in the morning (top_up_checks.cpp, the horse); with the
@@ -199,6 +248,9 @@ int CheckTheGroomsPlan() {
                      "chain, on his horse");
   failures +=
       Expect(!stale_followed && stale_stays, "groom's plan: a plan of yesterday moves nobody");
+  failures += Expect(TheWalkerAfterHisHeap(*labor),
+                     "groom's plan: a carrier on foot whose heap is carted goes on to the near "
+                     "heap of his chain, on foot");
   const auto [urgent_logs, urgent_ploughs] = TheHorseAgainstAnUrgentLoad(*labor, true);
   const auto [ordinary_logs, ordinary_ploughs] = TheHorseAgainstAnUrgentLoad(*labor, false);
   std::cout << "  groom's plan, level 0: logs ride " << urgent_logs << ", ploughing "

@@ -655,9 +655,23 @@ int main(int argc, char** argv) {
   // taken before that would have explained three different worlds in turn
   // (612.9, 612.9 and 613.1 on 0.37.128, 0.37.132 and 0.37.133). The same
   // nine per cent either way.
+  //
+  // TAKEN ANEW ON 0.37.180, by boss's word (boss-core-econ-logistics-
+  // priorities-go-2026-10-03 [20]), on the tree of the commit that carries
+  // this band: 679.2 measured — ploughing 89.3, harrowing 31.5, sowing 47.6,
+  // harvest 348.6, hauling 162.2. The hauling is the whole of the move again:
+  // 144.1 on 0.37.176, 172.3 on 0.37.177 (the cart follows the groom's
+  // chain, B4: it carts the next load the same day instead of standing about),
+  // 159.7 on 0.37.179 (the priest's house no longer a free house,
+  // boss's export of its rung words), 162.2 here (the carrier on foot
+  // follows his, B4b). Measured before the band moved (0.37.177's commit):
+  // the year's end left 84.2 t lying against 147.0 t, 8.3 haul-days against
+  // 32.7 — more carted, not the same dearer. The band of 0.37.133, 558..668,
+  // stood red on 0.37.177 to 0.37.179 and was named there. The same nine per
+  // cent either way.
   failures += ExpectBand(total,
-                         558.0,
-                         668.0,
+                         618.0,
+                         740.0,
                          "the year's labor matches the reference run plus what the hands can mow, "
                          "less the barn the start does not have");
   std::cout << "labor_year: " << care_left << " game man-days of barn care left undone\n";

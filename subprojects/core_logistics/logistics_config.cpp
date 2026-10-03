@@ -6,8 +6,10 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include "core_catalog/table_value.h"
+#include "core_common/haul.h"
 #include "core_tables/tables.h"
 
 namespace core {
@@ -103,25 +105,57 @@ bool ParseLogisticsConfig(const ITableSet& tables, LogisticsConfig& config, std:
     }
   }
   // THE PLAN'S REACH (B3): labour's cells, labour's ranges (labor_config.cpp).
+  // THE PLAN'S CLOCK (B4b): the same cells, the same ranges.
   if (const ITable* const transport = tables.FindTable("transport")) {
+    const std::uint32_t speed_column = transport->FindColumn("speed_kmh");
     if (!OptionalCell(*transport,
                       transport->FindRowByKey("horse_trot"),
-                      transport->FindColumn("speed_kmh"),
+                      speed_column,
                       Range{.low = 0.5F, .high = 60.0F},
                       config.harness_speed_kmh,
+                      error) ||
+        !OptionalCell(*transport,
+                      transport->FindRowByKey("pedestrian"),
+                      speed_column,
+                      Range{.low = 0.5F, .high = 20.0F},
+                      config.walk_speed_kmh,
                       error)) {
       PrefixError("transport", "speed_kmh", error);
       return false;
     }
+    float tonnes = config.cart_load_kg / 1000.0F;
+    float scale = 1.0F;
+    if (!OptionalCell(*transport,
+                      transport->FindRowByKey("cart_loaded"),
+                      transport->FindColumn("load_tonnes"),
+                      Range{.low = 0.01F, .high = 100.0F},
+                      tonnes,
+                      error) ||
+        !OptionalCell(*transport,
+                      transport->FindRowByKey("cart_loaded"),
+                      transport->FindColumn("load_scale"),
+                      Range{.low = kCartLoadScaleMin, .high = kCartLoadScaleMax},
+                      scale,
+                      error)) {
+      PrefixError("transport", "cart_loaded", error);
+      return false;
+    }
+    config.cart_load_kg = tonnes * scale * 1000.0F;
+  }
+  if (const ITable* const livestock = tables.FindTable("livestock")) {
+    config.horse_kind = DefIdFromRow<LivestockKindIdTag>(livestock->FindRowByKey("horse"));
   }
   if (const ITable* const labor = tables.FindTable("labor")) {
-    if (!OptionalValue(*labor,
-                       "travel_limit_hours",
-                       Range{.low = 0.0F, .high = 24.0F},
-                       config.travel_limit_hours,
-                       error)) {
-      PrefixError("labor", "travel_limit_hours", error);
-      return false;
+    const std::array<std::pair<std::string_view, std::pair<float*, Range>>, 3> cells = {{
+        {"travel_limit_hours", {&config.travel_limit_hours, Range{.low = 0.0F, .high = 24.0F}}},
+        {"standard_day_hours", {&config.standard_day_hours, Range{.low = 1.0F, .high = 24.0F}}},
+        {"carry_kg_adult", {&config.carry_kg_adult, Range{.low = 0.1F, .high = 1000.0F}}},
+    }};
+    for (const auto& [key, cell] : cells) {
+      if (!OptionalValue(*labor, key, cell.second, *cell.first, error)) {
+        PrefixError("labor", key, error);
+        return false;
+      }
     }
   }
   if (const ITable* const world = tables.FindTable("world_params")) {

@@ -360,7 +360,7 @@ static_assert(AggregateArity<LogisticsTaskRow>() == 12,
 // writes the lengths).
 static_assert(AggregateArity<CartLeg>() == 6,
               "CartLeg gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<CartPlan>() == 3,
+static_assert(AggregateArity<CartPlan>() == 4,
               "CartPlan gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<GroomPlan>() == 4,
               "GroomPlan gained or lost a field — update the codec and VERSION_SAVE");
@@ -1722,11 +1722,12 @@ BarterTripRow ReadBarterTripRow(LoadSource& source) {
   return row;
 }
 
-// THE GROOM'S PLAN (save 136; routing stage B, B3). The least bytes a cart
-// and a leg take, for the length checks below: a cart is its driver, its
-// byte and its legs' count (9); a leg is two points, a task, two ticks and
-// its riders' count (16 + 4 + 16 + 4 = 40).
-constexpr std::size_t kSavedCartBytes = 9;
+// THE GROOM'S PLAN (save 136; routing stage B, B3; the carrier on foot's byte
+// since save 137, B4b). The least bytes a cart and a leg take, for the length
+// checks below: a cart is its driver, its two bytes and its legs' count (10);
+// a leg is two points, a task, two ticks and its riders' count
+// (16 + 4 + 16 + 4 = 40).
+constexpr std::size_t kSavedCartBytes = 10;
 constexpr std::size_t kSavedLegBytes = 40;
 constexpr std::size_t kSavedRiderBytes = 4;
 
@@ -1739,6 +1740,7 @@ void WriteGroomPlan(SaveSink& sink, const GroomPlan& plan) {
   for (const CartPlan& cart : plan.carts) {
     WriteEntityId(out, cart.driver);
     out.WriteU8(cart.people_cart ? 1U : 0U);
+    out.WriteU8(cart.on_foot ? 1U : 0U);
     out.WriteU32(static_cast<std::uint32_t>(cart.legs.size()));
     for (const CartLeg& leg : cart.legs) {
       WriteVec2(out, leg.from);
@@ -1770,6 +1772,11 @@ GroomPlan ReadGroomPlan(LoadSource& source) {
     CartPlan cart;
     cart.driver = ReadEntityId<ResidentId>(in);
     cart.people_cart = source.ReadEnumValue(0, 1, "a cart's kind") != 0;
+    cart.on_foot = source.ReadEnumValue(0, 1, "a carrier on foot") != 0;
+    if (cart.people_cart && cart.on_foot) {
+      source.Fail("a people's cart on foot");
+      return plan;
+    }
     const std::uint32_t legs = in.ReadU32();
     if (static_cast<std::size_t>(legs) * kSavedLegBytes > in.Remaining()) {
       source.Fail("a cart of the groom's plan names more legs than the bytes left");
@@ -1783,6 +1790,10 @@ GroomPlan ReadGroomPlan(LoadSource& source) {
       leg.task = ReadEntityId<LogisticsTaskId>(in);
       leg.depart = in.ReadU64();
       leg.arrive = in.ReadU64();
+      if (leg.arrive < leg.depart) {
+        source.Fail("a leg of the groom's plan arrives before it departs");
+        return plan;
+      }
       const std::uint32_t riders = in.ReadU32();
       if (static_cast<std::size_t>(riders) * kSavedRiderBytes > in.Remaining()) {
         source.Fail("a leg of the groom's plan names more riders than the bytes left");
