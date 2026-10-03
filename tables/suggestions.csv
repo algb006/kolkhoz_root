@@ -10,8 +10,10 @@ suggest_barrack_03,barrack,8705,8805,25
 suggest_barrack_04,barrack,8815,8860,25
 suggest_barrack_05,barrack,8760,8860,25
 suggest_barrack_06,barrack,8705,8860,25
+suggest_bathhouse,bathhouse,8740,8725,25
 suggest_cattle_yard,cattle_yard,7915,8910,60
 suggest_clamp,clamp,9045,8710,25
+suggest_culture_house,culture_house,8985,9180,60
 suggest_farm_office,farm_office,9120,9020,60
 suggest_food_store,food_yard,9376,8727,45
 suggest_hay_stack,hay_stack,8985,8712,25
@@ -76,5 +78,7 @@ suggest_house_60,wooden_house,8375,9080,25
 suggest_house_65,wooden_house,8375,9135,25
 suggest_house_69,wooden_house,8320,9135,25
 suggest_manure_pile,manure_pile,7828,8905,25
+suggest_school,school,8830,9212,45
+suggest_selpo,selpo,9270,9220,25
 suggest_utility_yard,utility_yard,7900,9165,35
 suggest_well,well,8792,8832,

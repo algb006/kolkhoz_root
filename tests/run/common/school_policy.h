@@ -44,6 +44,7 @@
 #include "core_world/world.h"
 #include "house_policy.h"
 #include "start_gate.h"
+#include "suggested_place.h"
 
 namespace run {
 
@@ -51,7 +52,7 @@ namespace run {
 ///        when nothing the village needs more is waiting.
 class SchoolPolicy {
  public:
-  explicit SchoolPolicy(const core::ITableSet& tables) {
+  explicit SchoolPolicy(const core::ITableSet& tables) : suggested_(tables, "school") {
     school_ = TypeByKey(tables, "school");
     house_ = TypeByKey(tables, "wooden_house");
     std::string error;
@@ -125,8 +126,12 @@ class SchoolPolicy {
       mark.unit_type = school_;
       const std::vector<float>& radii = definitions_.units.keep_out_radius_m;
       const float radius = school_.value < radii.size() ? radii[school_.value] : 0.0F;
-      mark.position = core::FreePlot(
-          world.units, definitions_.Plots(), HousePolicy::VillageCentre(world), radius);
+      // ON THE ELDER'S POINT FIRST (suggested_place.h; 0.37.161).
+      const std::optional<core::Vec2> point = suggested_.Take(world, definitions_.Plots(), radius);
+      mark.position =
+          point ? *point
+                : core::FreePlot(
+                      world.units, definitions_.Plots(), HousePolicy::VillageCentre(world), radius);
       orders.push_back(mark);
       ++marked_;
       if (first_mark_day_ < 0) {
@@ -166,6 +171,7 @@ class SchoolPolicy {
     std::cout << run_name << ": school — marked " << marked_ << " (first on day " << first_mark_day_
               << "), start orders " << started_ << "; " << standing << " standing, " << sites
               << " sites; " << pupils << " pupils at the end\n";
+    suggested_.Report(run_name);
   }
 
   /// @brief Schools standing (level > 0).
@@ -219,6 +225,9 @@ class SchoolPolicy {
   core::UnitTypeId house_;
 
   core::Definitions definitions_;
+
+  /// The school's point (suggestions.csv).
+  SuggestedPlaces suggested_;
 
   float life_speedup_ = 4.0F;
 

@@ -69,6 +69,7 @@
 #include "core_world/world.h"
 #include "house_policy.h"
 #include "start_gate.h"
+#include "suggested_place.h"
 
 namespace run {
 
@@ -84,6 +85,13 @@ class SocialObjectsPolicy {
     house_ = TypeByKey(tables, "wooden_house");
     std::string error;
     core::LoadDefinitions(tables, core::StubTables::kAllowed, definitions_, error);
+    // THE ELDER'S POINTS OF THE SOCIAL OBJECTS (suggestions.csv; 0.37.161):
+    // a type the table names is taken there first; one it does not name — the
+    // field canteen, the stadium — stays at the village's middle.
+    for (const std::string_view key : {"bathhouse", "culture_house", "selpo"}) {
+      suggested_.push_back(
+          Suggested{.type = TypeByKey(tables, key), .places = SuggestedPlaces(tables, key)});
+    }
   }
 
   /// @brief The question asked before every start (start_gate.h).
@@ -207,8 +215,17 @@ class SocialObjectsPolicy {
         mark.unit_type = next;
         const std::vector<float>& radii = definitions_.units.keep_out_radius_m;
         const float radius = next.value < radii.size() ? radii[next.value] : 0.0F;
-        mark.position = core::FreePlot(
-            world.units, definitions_.Plots(), HousePolicy::VillageCentre(world), radius);
+        std::optional<core::Vec2> point;
+        for (Suggested& suggested : suggested_) {
+          if (suggested.type.value == next.value) {
+            point = suggested.places.Take(world, definitions_.Plots(), radius);
+          }
+        }
+        mark.position =
+            point
+                ? *point
+                : core::FreePlot(
+                      world.units, definitions_.Plots(), HousePolicy::VillageCentre(world), radius);
         orders.push_back(mark);
         ++marked_;
         marked_past_a_house_site_ += a_house_site_only ? 1U : 0U;
@@ -274,6 +291,12 @@ class SocialObjectsPolicy {
   const std::vector<core::UnitTypeId>& wanted() const { return wanted_; }
 
  private:
+  /// One social type with points in suggestions.csv.
+  struct Suggested {
+    core::UnitTypeId type;
+    SuggestedPlaces places;
+  };
+
   bool Wanted(core::UnitTypeId type) const {
     for (const core::UnitTypeId id : wanted_) {
       if (id.value == type.value) {
@@ -319,6 +342,11 @@ class SocialObjectsPolicy {
   core::UnitTypeId house_{core::kInvalidDefIdValue};
 
   core::Definitions definitions_;
+
+  /// The bathhouse's, the culture house's and the selpo's points. Not printed
+  /// at the run's end: this policy has no report of its own — the placement
+  /// probe (core-suggestprobe) reads them on the map.
+  std::vector<Suggested> suggested_;
 
   StartGate start_gate_;
 
