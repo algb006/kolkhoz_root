@@ -39,10 +39,12 @@
 #define TESTS_RUN_COMMON_REPAIR_POLICY_H_
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <iostream>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -79,6 +81,10 @@ class RepairPolicy {
         const std::optional<float> flag = types->CellReal(type, column);
         never_demolished_[type] = flag.has_value() && *flag > 0.0F ? 1U : 0U;
       }
+      type_keys_.reserve(types->RowCount());
+      for (std::uint32_t type = 0; type < types->RowCount(); ++type) {
+        type_keys_.emplace_back(types->CellText(type, types->FindColumn("key")));
+      }
     }
     const core::ITable* resources = tables.FindTable("resources");
     if (resources != nullptr) {
@@ -103,13 +109,29 @@ class RepairPolicy {
     // campaign every standing unit is lived in or holds something, and the
     // rule refuses those (unit rules §14) — a refusal would be a silent
     // wasted day rather than a measurement.
-    if (!demolition_ordered_ && day_ >= kDemolishOnDay) {
+    //
+    // AND ONLY WHAT THE DESIGN HAS THE PLAYER TAKE DOWN — a ruin or a
+    // temporary, what stands in the way of building, breaks and gives its
+    // material back (boss, the queue thread [148]; start design §7). Until
+    // 0.37.174 the chairman took the first empty worn unit by row: the water
+    // mill (0.37.169), the cemetery (0.37.171), the farm office and the school
+    // (0.37.173) — a village nobody plays so. With no ruin standing he says no
+    // demolition, and the run prints which unit was first and why it stood.
+    if (!demolition_decided_ && day_ >= kDemolishOnDay) {
       core::OrderRow order;
       if (NextDemolition(world, order)) {
-        demolition_subject_stock_ = StockOf(world, order.unit);
-        simulation.StageOrders(std::span<const core::OrderRow>(&order, 1), {});
-        demolition_ordered_ = true;
-        return;  // one order a day, like every other policy here
+        demolition_decided_ = true;
+        const std::uint32_t row = core::FindRow(world.units, order.unit);
+        const std::uint16_t type = world.units.rows[row].type.value;
+        if (IsRuinOrTemporary(type)) {
+          demolition_subject_stock_ = StockOf(world, order.unit);
+          simulation.StageOrders(std::span<const core::OrderRow>(&order, 1), {});
+          demolition_ordered_ = true;
+          return;  // one order a day, like every other policy here
+        }
+        spared_type_ = type;
+        spared_unit_ = order.unit;
+        spared_day_ = day_;
       }
     }
 
@@ -126,7 +148,8 @@ class RepairPolicy {
   static void Declare() {
     std::cout << "thirty_years: FIXTURE — the run's chairman now REPAIRS at wear " << kRepairAtWear
               << " (the design's own wear-layer mark, layers §8) and DEMOLISHES one empty unit "
-                 "once. Both verbs were silent only because no fixture said them (boss, "
+                 "once — a ruin or a temporary only, since 0.37.174 (start design §7; boss "
+                 "[148]). Both verbs were silent only because no fixture said them (boss, "
                  "2026-09-04)\n";
   }
 
@@ -155,13 +178,26 @@ class RepairPolicy {
                 << (demolition_done_ ? "the unit is gone" : "the site is still being taken down")
                 << "; " << static_cast<double>(demolition_subject_stock_) / 1.0e6
                 << " t of stored goods moved out of it before the works began\n";
+    } else if (spared_unit_.value != core::kInvalidEntityIdValue) {
+      // THE VERB'S SILENCE, SEEN (boss [148]): which unit the old rule would
+      // have taken, and why it stood.
+      std::cout << "demolition: NOT SAID — the first empty worn unit, on day " << spared_day_
+                << ", was unit " << spared_unit_.value << " ("
+                << (spared_type_ < type_keys_.size() ? type_keys_[spared_type_] : "?")
+                << "), not a ruin or a temporary (start design §7): spared\n";
+    } else {
+      std::cout << "demolition: NOT SAID — no empty worn unit stood by day " << kDemolishOnDay
+                << "\n";
     }
-    // THE VERB MUST HAVE BEEN SAID. That is this policy's whole first duty,
-    // and it is checked rather than assumed: a policy that finds no subject
-    // for thirty years reports a green run having said nothing at all.
+    // THE VERB MUST HAVE BEEN SAID — repair always. Demolition since 0.37.174
+    // only when a ruin or a temporary stands, and the tables name none
+    // (kRuinOrTemporaryKeys): an assertion here could not fail, so there is
+    // none — the demolition door is checked by unit_core_construction
+    // (TestDemolition, TestNeverDemolished), and this run prints what it
+    // spared, above. A RULE THAT CANNOT FIRE (core rules: «Правило, которое не
+    // может сработать, — заглушка»): named to boss with the delivery.
     failures += Expect(repairs_ordered_ > 0, "the chairman said kRepairUnit at least once");
     failures += Expect(repairs_finished_ > 0, "and at least one repair went all the way through");
-    failures += Expect(demolition_ordered_, "and he said kDemolishUnit once");
     return failures;
   }
 
@@ -366,6 +402,32 @@ class RepairPolicy {
 
   /// unit_types.csv never_demolished, by UnitTypeId (the constructor).
   std::vector<std::uint8_t> never_demolished_;
+
+  /// unit_types.csv keys, by UnitTypeId — for the print of what was spared.
+  std::vector<std::string> type_keys_;
+
+  /// THE RUINS AND TEMPORARIES THE PLAYER TAKES DOWN (start design §7; boss
+  /// [148]) — by unit_types key. EMPTY, AND SAID SO: the start's leftovers are
+  /// the count's house (not taken down), the chapel (never demolished) and the
+  /// piles (stores, units). STUB: a key goes here when the design names a
+  /// ruin or a temporary as a unit type.
+  static constexpr std::array<std::string_view, 0> kRuinOrTemporaryKeys = {};
+
+  bool IsRuinOrTemporary(std::uint16_t type) const {
+    if (type >= type_keys_.size()) {
+      return false;
+    }
+    return std::ranges::find(kRuinOrTemporaryKeys, std::string_view(type_keys_[type])) !=
+           kRuinOrTemporaryKeys.end();
+  }
+
+  /// The chairman has looked for his one demolition (once, from kDemolishOnDay).
+  bool demolition_decided_ = false;
+
+  /// What he would have taken under the old rule, and spared (0.37.174).
+  std::uint16_t spared_type_ = 0;
+  core::UnitId spared_unit_;
+  std::uint32_t spared_day_ = 0;
 
   core::ResourceId spare_;
 
