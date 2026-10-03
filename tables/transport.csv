@@ -1,9 +1,12 @@
-key,speed_kmh,load_tonnes,load_scale,note
+key,speed_kmh,load_tonnes,load_scale,seats,note
 # real-world speeds (transport design, section 1); the core divides by
 # kClockScale = 12 for effective game-hour speeds. Consumers arrive with
 # the labor and logistics systems.
 # load_scale: THE CART OF THE COMPRESSED YEAR (transport design section 1; the human, 2 October 2026: «Делай K = 2,4»). The cart's load in the core is load_tonnes x load_scale. The year's tonnage is a real year's and is carted in 48 game days by a clock twelve times the life's, so carting was 84 times dearer than in life while labour had been brought to the year by its own divisor (real man-days / 7); with the meadows' hay carted too it took 40 % of a village's horse-days (0.37.119). An empty cell is 1. Below 1 is refused. STUB: 2.4 is where the hay returns at the tightness the game had without it; econ's ladder of return is 3, then 4, above that the human's word.
-pedestrian,5,,,
-jog,8.5,,,running state: fire and similar events
-horse_trot,12,,,
-cart_loaded,9,0.75,2.4,horse cart; winter sled hauling uses the same speed
+# seats: PASSENGERS, the driver not counted (transport design section 11, «Подвода возит и груз, и людей»; routing stage A, 0.37.162). The goods cart's bench seats two; the people's cart six, for two or more hands going to one far object (section 1, «двое и больше — подвода»). An empty cell seats nobody. With two aboard the goods cart is to carry 0.6 t, not 0.75 — STUB core: the load of the trip the passengers ride is not lowered (the seam is priced in whole trips).
+# people_cart has no speed of its own: it rides at the harness pace (horse_trot), as the brigade's cart does (0.37.89) — STUB core, the design's 9 km/h for a loaded people's cart is not read.
+pedestrian,5,,,,
+jog,8.5,,,,running state: fire and similar events
+horse_trot,12,,,,
+cart_loaded,9,0.75,2.4,2,horse cart; winter sled hauling uses the same speed
+people_cart,,,,6,the people's cart: two or more hands to one far object

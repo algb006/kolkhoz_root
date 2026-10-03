@@ -535,6 +535,23 @@ struct YearLedger {
 
   std::uint32_t walk_offs = 0;  ///< Fatigue walk-offs from an assignment.
 
+  /// PASSENGERS ON THE GOODS CARTS (routing stage A, save 132;
+  /// core_labor/cart_passengers.h): the year's seats taken on the carts'
+  /// first legs, and the walkers for whom a cart would have been quicker and
+  /// no seat was left. Resident-days.
+  std::uint32_t cart_passengers = 0;
+  std::uint32_t cart_passengers_no_seat = 0;
+
+  /// The longest wait for a cart at a boarding point this year, game hours —
+  /// the stop condition of 2 October 2026 reads it (above one hour: the
+  /// watchdog's wait interface first) — and the year's waits summed.
+  float cart_wait_worst_hours = 0.0F;
+  float cart_wait_hours = 0.0F;
+
+  /// Game hours of road the year's passengers saved against walking, one way
+  /// each, summed.
+  float cart_hours_saved = 0.0F;
+
   /// MECHANISATION, AND IT IS MEASURED BY TRACTION RATHER THAN BY ENGINE
   /// (boss's decision of 2026-09-12; epochs design §6). The component is
   /// "доля работ НЕ ВРУЧНУЮ", and a horse mower is not hand work: in Epoch I

@@ -275,6 +275,16 @@ struct WorkAssignment {
   /// delivery 7e, save 104); invalid otherwise.
   RoadWorkId road_work;
 
+  /// THE CART HE RIDES TODAY (transport design §11; routing stage A, save
+  /// 132): the driver of the goods cart whose bench he sits on, out on its
+  /// first leg in the morning and home on its last at night, or of the
+  /// people's cart his crew rides to a far object. Invalid — on foot, by his
+  /// own horse, or on the brigade's cart of the reaping and the sowing, which
+  /// counts no seats. STORED like rides_horse, and for the same reason: who
+  /// got a seat is the morning's decision in its own order. The layer reads
+  /// it to seat him on that cart.
+  ResidentId rides_cart_of;
+
   /// Norm-days of output delivered since the day started, in game man-days
   /// of the assigned kind. Accumulated hourly while working; converted into
   /// trudodni on the family account at day close (rate x delivered), then

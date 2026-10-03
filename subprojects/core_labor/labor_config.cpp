@@ -31,6 +31,10 @@
 namespace core {
 namespace {
 
+/// The most seats transport.csv may name on one cart: a bound against a
+/// slipped digit, not a design number (the design's carts seat 2 and 6).
+constexpr float kMaxCartSeats = 20.0F;
+
 /// @brief Reads the seventeen scalar knobs of labor.csv, each with its range.
 /// The block that stood here described PrefixError, which moved to
 /// core_catalog and left its documentation over this function.
@@ -317,6 +321,25 @@ bool ParseSpeeds(const ITable& table, LaborConfig& config, std::string& error) {
     return false;
   }
   config.cart_load_kg = tonnes * scale * 1000.0F;
+  // THE SEATS (transport design §11; routing stage A, 0.37.162): the goods
+  // cart's bench and the people's cart. A table with no `seats` column, or an
+  // empty cell, seats nobody — the stage stays off.
+  const std::uint32_t seats_column = table.FindColumn("seats");
+  for (const auto& [key, seats] :
+       {std::pair<std::string_view, std::uint32_t*>{"cart_loaded", &config.cart_passenger_seats},
+        std::pair<std::string_view, std::uint32_t*>{"people_cart", &config.people_cart_seats}}) {
+    float value = static_cast<float>(*seats);
+    if (!OptionalCell(table,
+                      table.FindRowByKey(key),
+                      seats_column,
+                      Range{.low = 0.0F, .high = kMaxCartSeats},
+                      value,
+                      error)) {
+      PrefixError("transport", "seats", error);
+      return false;
+    }
+    *seats = static_cast<std::uint32_t>(value);
+  }
   return true;
 }
 

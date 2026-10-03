@@ -409,6 +409,12 @@ void EmitSheet(ColumnWriter& out, const WorldState& state, const ITableSet& tabl
   out.Number("trudodni_burned",
              static_cast<float>(book.trudodni_burned) / static_cast<float>(kTrudodniScale));
   out.Integer("walk_offs", book.walk_offs);
+  // The goods carts' passengers (routing stage A, save 132).
+  out.Integer("cart_passengers", book.cart_passengers);
+  out.Integer("cart_passengers_no_seat", book.cart_passengers_no_seat);
+  out.Number("cart_wait_worst_hours", book.cart_wait_worst_hours);
+  out.Number("cart_wait_hours", book.cart_wait_hours);
+  out.Number("cart_hours_saved", book.cart_hours_saved);
 
   // -- per resource --------------------------------------------------------
   EmitResourceBlock(out, resources, "harvest", book.harvest);

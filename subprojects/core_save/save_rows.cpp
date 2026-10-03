@@ -77,7 +77,9 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // Save 122: samogon_ml, a u32 beside the distiller's supplied month —
 // predicted 236 -> 240 before the build (a u32 after a u32, nothing shifts
 // its padding).
-static_assert(sizeof(ResidentRow) == 240,
+// Save 132: the work's rides_cart_of (+4) — predicted 240 -> 244 before the
+// build; the arity stays 54 (the work is one member).
+static_assert(sizeof(ResidentRow) == 244,
               "ResidentRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 59: distiller_supplied_month, a distiller's supplied month
 // (crime §7, register 206) — 43 fields; the size is read off the build.
@@ -258,13 +260,16 @@ static_assert(AggregateArity<OrderRow>() == 33,
 // eleven fields, predicted before the field was added.
 // Save 104 (7e): road_work, the piece of road under work — 44 and twelve
 // fields, predicted before the field was added.
-static_assert(sizeof(WorkAssignment) == 44,
+// Save 132 (routing stage A): rides_cart_of, the driver whose cart he rides —
+// 48 and thirteen fields, predicted before the field was added.
+static_assert(sizeof(WorkAssignment) == 48,
               "WorkAssignment changed — update the codec and VERSION_SAVE");
 // Save 88: rides_horse, a byte into the padding after `kind` — 32 still, 9
 // fields; predicted before the build.
 // Save 127 (0.37.140) put a second byte there, cannot_wait — thirteen
 // fields; save 128 (0.37.141) took it out unwritten — 44 still, twelve again.
-static_assert(AggregateArity<WorkAssignment>() == 12,
+// Save 132: rides_cart_of — thirteen.
+static_assert(AggregateArity<WorkAssignment>() == 13,
               "WorkAssignment gained or lost a field — update the codec and VERSION_SAVE");
 // Save 98: own_carts (a byte into the padding after the lot) and the two
 // floats of the carting seam — 8 -> 16 + A and 3 -> 6 fields, predicted before
@@ -535,6 +540,7 @@ void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
   WriteEntityId(out, row.work.extraction_site);
   WriteEntityId(out, row.work.limit_delivery);  // save 98: the district's timber lot
   WriteEntityId(out, row.work.road_work);       // save 104: the piece of road under work
+  WriteEntityId(out, row.work.rides_cart_of);   // save 132: the cart he rides
   out.WriteFloat(row.work.worked_norm_days_today);
   out.WriteFloat(row.work.hours_away_today);
   out.WriteFloat(row.work.travel_hours);  // save 93
@@ -621,6 +627,7 @@ ResidentRow ReadResidentRow(LoadSource& source) {
   row.work.extraction_site = ReadEntityId<ExtractionSiteId>(in);
   row.work.limit_delivery = ReadEntityId<LimitDeliveryId>(in);  // save 98
   row.work.road_work = ReadEntityId<RoadWorkId>(in);            // save 104
+  row.work.rides_cart_of = ReadEntityId<ResidentId>(in);        // save 132
   row.work.worked_norm_days_today = in.ReadFloat();
   row.work.hours_away_today = in.ReadFloat();
   row.work.travel_hours = in.ReadFloat();

@@ -120,9 +120,13 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // Save 131 (0.37.151): what the families gathered in the forest, a vector
 // among vectors after `bartered` — 101 -> 102 fields, 944 + 35 A -> 944 +
 // 36 A, no padding moved; predicted before the build.
-static_assert(sizeof(YearLedger) == 944 + (36 * kAmountsSize),
+// Save 132 (routing stage A): the passengers on the goods carts — two u32 and
+// three floats after walk_offs, 102 -> 107 fields; predicted 968 (944 + 20
+// rounded to eight) before the build — MISSED: 960, measured (1824 with the
+// amounts), the twenty bytes filled four of padding after walk_offs.
+static_assert(sizeof(YearLedger) == 960 + (36 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 102,
+static_assert(AggregateArity<YearLedger>() == 107,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 
 void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
@@ -239,6 +243,11 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteFloat(book.reaping_today_hours);
   out.WriteFloat(book.reaping_last_day_hours);
   out.WriteU32(book.walk_offs);
+  out.WriteU32(book.cart_passengers);  // save 132: the carts' passengers
+  out.WriteU32(book.cart_passengers_no_seat);
+  out.WriteFloat(book.cart_wait_worst_hours);
+  out.WriteFloat(book.cart_wait_hours);
+  out.WriteFloat(book.cart_hours_saved);
   out.WriteFloat(book.horse_backed_assignment_days);
   out.WriteFloat(book.total_assignment_days);
   out.WriteI32(book.limit_points_granted);
@@ -417,6 +426,11 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.reaping_today_hours = in.ReadFloat();
   book.reaping_last_day_hours = in.ReadFloat();
   book.walk_offs = in.ReadU32();
+  book.cart_passengers = in.ReadU32();  // save 132
+  book.cart_passengers_no_seat = in.ReadU32();
+  book.cart_wait_worst_hours = in.ReadFloat();
+  book.cart_wait_hours = in.ReadFloat();
+  book.cart_hours_saved = in.ReadFloat();
   book.horse_backed_assignment_days = in.ReadFloat();
   book.total_assignment_days = in.ReadFloat();
   book.limit_points_granted = in.ReadI32();

@@ -243,6 +243,9 @@ core::WorldState MakeWorld() {
   // it means nothing to the world (WorkRidesOut reads it for a carter only);
   // here it is the byte the codec must carry.
   second.work.rides_horse = 1;
+  // Save 132: the cart he rides — the first resident's id, off its invalid
+  // default, so a codec that drops it cannot round-trip clean.
+  second.work.rides_cart_of = core::ResidentId{1};
   core::AppendRow(world.residents, second);
   core::ResidentRow third;
   const core::ResidentId third_id = core::AppendRow(world.residents, third);
@@ -702,6 +705,10 @@ core::WorldState MakeWorld() {
   world.ledger.current.plan_delivered = Amounts({5'000});
   world.ledger.closed.zyab_ha_dec1 = 17.5F;  // save 114; the current book keeps nought
   world.ledger.closed.zyab_fields_dec1 = 3;
+  // Save 132: the carts' passengers, off their nought so a codec that drops
+  // them cannot round-trip clean.
+  world.ledger.closed.cart_passengers = 37;
+  world.ledger.closed.cart_wait_worst_hours = 0.75F;
   // Save 117: the trudodni by day of the year, adding up to the year's —
   // the reader refuses a book whose days do not.
   world.ledger.closed.trudodni_by_day[20] = 41'500;
@@ -1491,7 +1498,12 @@ constexpr std::array<RecordedSection, 23> kRecordedPayload = {{
     // Save 128: -2 — the mark taken out unwritten; predicted before the
     // build: 454 again AND save 126's own hash, the bytes being its bytes;
     // both held.
-    {"residents", 454, 0x64ac4b23b3098834ULL},
+    // Save 132 (routing stage A): +8 — the cart he rides, an entity id a
+    // resident, two saved; 454 -> 462 with the other sections unmoved — NOT
+    // written before the build (named in the WorkAssignment's tripwire, 44 ->
+    // 48, and not carried here; read off the build). The second resident's
+    // cart is then set off its default, and the hash moves with it.
+    {"residents", 462, 0x14893df7cf8a0c79ULL},
     // 2026-09-18, save 57: +2 — ration_granted, one byte per family of two.
     // Save 60: +2 — a yard's dry months, one byte per family of two.
     // Save 65: families +8 (overwork_penalty, two yards), fields +6 (the avral's
@@ -1720,7 +1732,11 @@ constexpr std::array<RecordedSection, 23> kRecordedPayload = {{
     // 2504 -> 2488 before the build, held.
     // Save 131: +20 — what the families gathered in the forest, the closed
     // book's 2 + 16, the current's 2; predicted 2488 -> 2508 before the build.
-    {"ledger", 2508, 0x4ae64bcecc0f38daULL},
+    // Save 132 (routing stage A): +40 — the carts' passengers, two u32 and
+    // three floats in each of the two books; 2508 -> 2548 reckoned before the
+    // build and not written down (named), held. The closed book's passengers
+    // and worst wait are set off their nought, and the hash moves with them.
+    {"ledger", 2548, 0x59b2f44a6a6d1422ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -2364,6 +2380,10 @@ int main() {
           loaded.ledger.closed.zyab_ha_dec1 == 17.5F &&
           loaded.ledger.closed.zyab_fields_dec1 == 3 && loaded.ledger.current.zyab_ha_dec1 == 0.0F,
       "the autumn furrow and the book's zyab come back (save 114)");
+  failures += Expect(loaded.ledger.closed.cart_passengers == 37 &&
+                         loaded.ledger.closed.cart_wait_worst_hours == 0.75F &&
+                         loaded.ledger.current.cart_passengers == 0,
+                     "the year's cart passengers and its worst wait come back (save 132)");
   failures += Expect(loaded.plan.last_verdict == core::PlanVerdict::kFailed,
                      "the district's verdict on the year survives the round trip");
   failures += Expect(loaded.plan.failed_years_in_a_row == 2, "and the run of failed years");
@@ -2459,6 +2479,8 @@ int main() {
                      "own-carts lot with its carting seam (save 98)");
   failures += Expect(loaded.residents.rows[1].work.limit_delivery.value == 7,
                      "a carter's district lot comes back with his work (save 98)");
+  failures += Expect(loaded.residents.rows[1].work.rides_cart_of.value == 1,
+                     "the cart a resident rides comes back with his work (save 132)");
   failures += Expect(loaded.specialist_arrivals.rows.size() == 1 &&
                          loaded.specialist_arrivals.rows[0].profession.value == 1 &&
                          loaded.specialist_arrivals.rows[0].unit.value == 3 &&

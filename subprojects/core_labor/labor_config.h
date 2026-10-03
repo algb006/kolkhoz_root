@@ -448,6 +448,16 @@ struct LaborConfig {
   /// A cart's load, kg (transport.csv cart_loaded, load_tonnes).
   float cart_load_kg = 750.0F;
 
+  /// PASSENGERS ON A CART (transport design §11, «Подвода возит и груз, и
+  /// людей»; routing stage A, 0.37.162): the bench of the goods cart
+  /// (transport.csv cart_loaded `seats`, the driver not counted) and the
+  /// people's cart (people_cart `seats`), which carries two or more hands
+  /// going to one far object (§1, «двое и больше — подвода»). Zero — a table
+  /// that names no seats — carries nobody: the stage is off, the day as
+  /// before it.
+  std::uint32_t cart_passenger_seats = 0;
+  std::uint32_t people_cart_seats = 0;
+
   /// What a grown carrier takes in a trip, kg (labor.csv carry_kg_adult).
   float carry_kg_adult = 20.0F;
 
