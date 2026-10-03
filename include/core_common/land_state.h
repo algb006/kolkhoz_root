@@ -636,6 +636,16 @@ struct FieldRow {
   /// rests by no arm of the recovery (production_system.cpp) — a May plough
   /// unfinished on 1 January.
   SimDay furrow_day = kNoFurrowDay;
+
+  /// THE DAY A PERENNIAL WAS LAST CUT (save 134; 0.37.167), or
+  /// kNeverReapedDay: one cut a calendar year, on any day of the window when
+  /// the stand has grown its days (production_system.cpp, RunFields). Kept
+  /// apart from reaped_day on purpose: a perennial that stands on after its
+  /// cut has given no field to the zyab or the seed fund's «reaped this
+  /// year», and reaped_day says exactly that to them. Until 0.37.167 the cut
+  /// opened only on day 0 of the first harvest month, and grass sown on day 1
+  /// of it stood uncut for a year (boss, the queue thread [112]-[115]).
+  SimDay last_cut_day = kNeverReapedDay;
 };
 
 /// @brief Whether the player has given this field a rotation at all.

@@ -714,6 +714,21 @@ class ProductionSystem final : public IProductionSystem {
     PlanManure(current);
   }
 
+  /// Whether a perennial standing in its window may be cut today: not cut
+  /// yet this calendar year (FieldRow::last_cut_day), and — sown this year —
+  /// grown its farming.csv `perennial_first_cut_days` since the sowing.
+  bool PerennialCutDue(const FieldRow& field, SimDay today) const {
+    const SimDay year = today / kDaysPerYear;
+    if (field.last_cut_day != kNeverReapedDay && field.last_cut_day / kDaysPerYear == year) {
+      return false;
+    }
+    if (field.sown_day != kNeverSownDay && field.sown_day / kDaysPerYear == year) {
+      const auto grown = static_cast<float>(today - field.sown_day);
+      return grown >= config_.farming.perennial_first_cut_days;
+    }
+    return true;
+  }
+
   void RunFields(WorldState& current) {
     const auto month = static_cast<std::uint8_t>(current.calendar.date.month);
     const float temperature = current.weather.air_temperature_celsius;
@@ -805,11 +820,15 @@ class ProductionSystem final : public IProductionSystem {
       // instantly and nothing is ever lost to snow.
       // One home for the condition; its back edge is open defect UB-001.
       const bool in_window = ReapingMayOpen(config_, field, month, current.calendar.day);
-      // A perennial stand stays growing after its cut, so gate it to one
-      // cut a year — the first day of its window; an annual leaves the
-      // growing phase at harvest and cannot double-fire.
-      const bool cut_today = !crop.is_perennial || (month == crop.harvest_from_month &&
-                                                    current.calendar.date.day_in_month == 0);
+      // A perennial stand stays growing after its cut, so gate it to ONE
+      // CUT A CALENDAR YEAR, on any day of its window (0.37.167; boss, the
+      // queue thread [112]-[115]) — and a stand sown this year once it has
+      // grown its days. Until 0.37.167 «one cut a year» was written as «only
+      // on day 0 of the first harvest month»: timothy sown on day 1 of it
+      // stood uncut a year, and the winter rye after it lost its slot (seed
+      // 1934, year 2). An annual leaves the growing phase at harvest and
+      // cannot double-fire.
+      const bool cut_today = !crop.is_perennial || PerennialCutDue(field, current.calendar.day);
       if (in_window && cut_today) {
         OpenPhase(config_, current, field, FieldPhase::kHarvest);
       }

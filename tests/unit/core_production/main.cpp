@@ -57,6 +57,7 @@
 #include "meadow_hay_checks.h"
 #include "milk_cart.h"
 #include "night_pasture.h"
+#include "perennial_cut_checks.h"
 #include "plan_alarms.h"
 #include "processing_shops.h"
 #include "production_alarms.h"
@@ -15001,6 +15002,7 @@ int main() {
   failures += CheckTheFeedingOrderSwitch();
   failures += CheckTheCartOfTheCompressedYear();
   failures += CheckMeadowHayLiesAtTheMeadow();
+  failures += CheckThePerennialsCut();
 
   if (failures == 0) {
     std::cout << "unit_core_production: all checks passed\n";

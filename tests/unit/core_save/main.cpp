@@ -347,6 +347,7 @@ core::WorldState MakeWorld() {
   overgrown.rush_step = 3;      // save 65: an avral of +15 % on its harvest
   overgrown.rush_phase = core::FieldPhase::kHarvest;
   overgrown.furrow_day = 41;        // save 111: off its default
+  overgrown.last_cut_day = 23;      // save 134: off its default
   overgrown.manure_applied = 30;    // save 111: a booked dose on the row
   overgrown.manure_booked = 1;      // save 111
   overgrown.rotation_assigned = 0;  // nobody has told this ground anything
@@ -1538,7 +1539,11 @@ constexpr std::array<RecordedSection, 23> kRecordedPayload = {{
     // held; the hash moved with the byte and the fixture's sowing phase.
     // Save 114: +3 — the autumn furrow, a byte a row, three rows; predicted
     // 347 -> 350 before the build, held.
-    {"fields", 350, 0x3fc1a3c3e38463e7ULL},
+    // Save 134 (0.37.167): +12 — a perennial's last cut, a SimDay on each of
+    // the three fields; 350 -> 362 read off the build (the row's 120 -> 128
+    // was predicted, this section's count was not written down — named). The
+    // third field's day is set off its default, and the hash moves with it.
+    {"fields", 362, 0x1fce6d9ef96d7cb6ULL},
     // Save 67: +27 — the store's emptying byte and the perevalka's two floats,
     // three units; predicted before the fields were added, and held.
     // Save 74: +1 a unit — the house held for a specialist; three units, +3,
@@ -2356,6 +2361,9 @@ int main() {
                          loaded.fields.rows[0].reaped_day == core::kNeverReapedDay,
                      "the day a field was last reaped comes back, and a field never reaped "
                      "comes back never reaped");
+  failures += Expect(loaded.fields.rows[2].last_cut_day == 23 &&
+                         loaded.fields.rows[0].last_cut_day == core::kNeverReapedDay,
+                     "a perennial's last cut comes back with its field (save 134)");
   failures += Expect(loaded.fields.rows[2].furrow_day == 41 &&
                          loaded.fields.rows[0].furrow_day == core::kNoFurrowDay &&
                          loaded.fields.rows[2].manure_booked == 1 &&

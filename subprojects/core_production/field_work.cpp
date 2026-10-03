@@ -468,6 +468,11 @@ void Harvest(const ProductionConfig& config,
   // both its numbers — the written and the remaining — so the evening's
   // settlement never reads a load nobody priced as a day's work (seventh
   // reconciliation pass). It is not re-priced here.
+  // ONE CUT A CALENDAR YEAR is counted from here (FieldRow::last_cut_day;
+  // 0.37.167): a stand that stays, and one that ends at this cut alike.
+  if (crop.is_perennial) {
+    field.last_cut_day = current.calendar.day;
+  }
   if (crop.is_perennial && field.rotation_year1.value == field.crop.value) {
     MoveFieldPhase(current, field, FieldPhase::kGrowing);  // the stand yields again
     return;
@@ -836,7 +841,18 @@ void RunMeadow(const ProductionConfig& config,
   if (field.phase != FieldPhase::kGrowing) {
     return;  // already being mown, and one cut a year is all there is
   }
-  if (opening_day) {
+  // ONE CUT A CALENDAR YEAR, ON ANY DAY OF THE CUT'S MONTHS (0.37.167; boss,
+  // the queue thread [115], [117]): a meadow growing from meadow_cut_month to
+  // meadow_cut_month_end and not mown this year (last_mown_day) opens its
+  // cut. Until 0.37.167 only day 0 of meadow_cut_month did — safe while every
+  // meadow is growing on that day, a trap for one marked mid-summer (the
+  // door «разметить луг»), which would have stood a year unmown.
+  const bool in_cut_months =
+      month >= config.farming.meadow_cut_month && month <= config.farming.meadow_cut_month_end;
+  const bool mown_this_year =
+      field.last_mown_day != kNeverMownDay &&
+      field.last_mown_day / kDaysPerYear == current.calendar.day / kDaysPerYear;
+  if (opening_day || (in_cut_months && !mown_this_year)) {
     OpenPhase(config, current, field, FieldPhase::kHarvest);
   }
 }
@@ -973,8 +989,9 @@ bool ReapingMayOpen(const ProductionConfig& config,
   // until reaped or taken by the snow (RunFields) — the third region of the
   // design, "за окном уборки, вызревание ДО СНЕГА". Until the repair it was
   // never opened at all, and the snow took a crop nobody was allowed to cut.
-  // A winter crop's window is its calendar; a perennial is cut once a year on
-  // its window's first day (RunFields, cut_today).
+  // A winter crop's window is its calendar; a perennial is cut once a
+  // calendar year on any day of its window (RunFields, PerennialCutDue;
+  // 0.37.167 — until then only on the window's first day).
   //
   // The first attempt of the same morning was held back because the late
   // reaping outranks carting in the work queue (its deadline is already

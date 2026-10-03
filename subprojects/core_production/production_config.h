@@ -452,6 +452,13 @@ struct FarmingConfig {
   /// yield above is the season's total precisely so that it need not.
   std::uint8_t meadow_cut_month = 5;  ///< June.
 
+  /// The last month the cut may open, 0-based (farming.csv
+  /// `meadow_cut_month_end`, the key labour reads for the cut's window;
+  /// 0.37.167): a meadow growing on any day from meadow_cut_month to this
+  /// one and not mown this calendar year opens its cut. Until 0.37.167 only
+  /// day 0 of meadow_cut_month opened it (boss, the queue thread [117]).
+  std::uint8_t meadow_cut_month_end = 6;  ///< July.
+
   /// Drought threshold on the DAY temperature (heat design: "above +25 is
   /// heat"). Until the diurnal swing existed this read the daily MEAN, whose
   /// summer ceiling is 24 — so in every run before 2026-08-31 the drought
@@ -768,6 +775,13 @@ struct FarmingConfig {
   /// key for the gathering alarm and labor's last days. STUB, econ's: 0.10
   /// is the P10 the old hand-read key was.
   float early_snow_share = 0.10F;
+
+  /// farming.csv `perennial_first_cut_days` (0.37.167; boss, the queue thread
+  /// [114]): the game days a perennial sown this year grows before its first
+  /// cut, which falls in its harvest window of the same year when the days
+  /// are grown before the window shuts (fields and crops §3, «укосами каждое
+  /// лето»). STUB core, econ's number: 4, one game month.
+  float perennial_first_cut_days = 4.0F;
 
   /// farming.csv `reaping_days_per_hand_light_hour` — 0.042: norm-days a
   /// village reaps for each hand that could reap, an hour of the day's light.

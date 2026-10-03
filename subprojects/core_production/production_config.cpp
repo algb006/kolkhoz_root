@@ -399,6 +399,7 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
   float birth_from = static_cast<float>(farming.birth_from_month) + 1.0F;
   float birth_to = static_cast<float>(farming.birth_to_month) + 1.0F;
   float mow_month = static_cast<float>(farming.meadow_cut_month) + 1.0F;
+  float mow_month_end = static_cast<float>(farming.meadow_cut_month_end) + 1.0F;
   float fallow_month = static_cast<float>(farming.fallow_plow_month) + 1.0F;
   // Real man-days in the file, game man-days in the config — the same
   // conversion the crop and field-phase norms get, done once at parse.
@@ -418,6 +419,7 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
       {"milk_floor_margin", &farming.milk_floor_margin, 1.0F, 10.0F},
       {"early_snow_share", &farming.early_snow_share, 0.0F, 1.0F},
       {"reaping_days_per_hand_light_hour", &farming.reaping_days_per_hand_light_hour, 0.001F, 1.0F},
+      {"perennial_first_cut_days", &farming.perennial_first_cut_days, 0.0F, 48.0F},
       // BOTH HALVES OF BILLETING MOVED TO world_params.csv on 2026-09-16 and
       // are read by ParseProductionWorldParams below. They used to be split:
       // the yield factor here, the yard's places there — and the reason the
@@ -435,6 +437,7 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
       {"fertility_floor", &farming.fertility_floor, 0.0F, 100.0F},
       {"meadow_mow_days_per_ha", &mow_days, 0.0F, 1000.0F},
       {"meadow_cut_month", &mow_month, 1.0F, 12.0F},
+      {"meadow_cut_month_end", &mow_month_end, 1.0F, 12.0F},
       {"fallow_plow_month", &fallow_month, 1.0F, 12.0F},
       {"birth_from_month", &birth_from, 1.0F, 12.0F},
       {"birth_to_month", &birth_to, 1.0F, 12.0F},
@@ -457,6 +460,7 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
   farming.pasture_to_month = static_cast<std::uint8_t>(pasture_to - 1.0F);
   farming.pig_slaughter_month = static_cast<std::uint8_t>(pig_month - 1.0F);
   farming.meadow_cut_month = static_cast<std::uint8_t>(mow_month - 1.0F);
+  farming.meadow_cut_month_end = static_cast<std::uint8_t>(mow_month_end - 1.0F);
   farming.fallow_plow_month = static_cast<std::uint8_t>(fallow_month - 1.0F);
   farming.meadow_mow_days_per_ha = mow_days / kRealDaysPerGameDay;
 

@@ -184,8 +184,11 @@ static_assert(AggregateArity<FamilyRow>() == 30,
 // start_reserve, into the hole at 111 (an offsetof probe listed the holes:
 // 17, 47, 60-63, 74-75, 98-99, 111) — predicted "120 stays" before the build,
 // 41 fields.
-static_assert(sizeof(FieldRow) == 120, "FieldRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<FieldRow>() == 41,
+// Save 134 (0.37.167): last_cut_day, a SimDay after furrow_day at the row's
+// end — predicted 120 -> 128 (124, rounded to the row's eight-byte alignment)
+// and 41 -> 42 fields before the build.
+static_assert(sizeof(FieldRow) == 128, "FieldRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<FieldRow>() == 42,
               "FieldRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-06: the stink radius pushed the row from 48 + amounts to 56 +
 // amounts. The pause byte before it had landed in padding and moved nothing,
@@ -902,6 +905,7 @@ void WriteFieldRow(SaveSink& sink, const FieldRow& row) {
   // The day the preparation's own furrow ended (save 111; a byte in save
   // 110): the turn's release keeps zyab only on the autumn furrow.
   out.WriteU32(row.furrow_day);
+  out.WriteU32(row.last_cut_day);  // save 134
   // The manure already in the book (save 111): booked once a field's cycle,
   // and since save 112 already paid into the fertility.
   out.WriteU8(row.manure_booked);
@@ -984,7 +988,8 @@ FieldRow ReadFieldRow(LoadSource& source) {
       static_cast<std::uint8_t>(source.ReadEnumValue(0, kMaxRushStepByte, "field's avral step"));
   row.rush_phase =
       static_cast<FieldPhase>(source.ReadEnumValue(0, kMaxFieldPhase, "field's avral phase"));
-  row.furrow_day = in.ReadU32();  // save 111
+  row.furrow_day = in.ReadU32();    // save 111
+  row.last_cut_day = in.ReadU32();  // save 134
   row.manure_booked = static_cast<std::uint8_t>(
       source.ReadEnumValue(0, 1, "the field's manure booked"));  // save 111
   if (row.manure_booked != 0 && row.manure_applied == 0) {
