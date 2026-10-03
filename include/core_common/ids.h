@@ -165,6 +165,12 @@ struct RoadWorkIdTag {};
 /// (core_common/road_work_state.h; delivery 7e).
 using RoadWorkId = EntityId<RoadWorkIdTag>;
 
+struct LogisticsTaskIdTag {};
+
+/// @brief One task of the groom's logistics — a load to be carted, with its
+/// level (core_common/logistics_state.h; routing stage B).
+using LogisticsTaskId = EntityId<LogisticsTaskIdTag>;
+
 // ---------------------------------------------------------------------------
 // Balance-table definition identifiers
 // ---------------------------------------------------------------------------
