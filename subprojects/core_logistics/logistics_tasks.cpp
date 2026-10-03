@@ -7,6 +7,7 @@
 
 #include "core_common/herd_state.h"
 #include "core_common/labor_state.h"
+#include "core_common/logistics_rules.h"
 #include "core_common/logistics_state.h"
 #include "core_common/quantities.h"
 #include "core_common/spoilage.h"
@@ -107,28 +108,6 @@ LogisticsTaskRow TaskFor(const LogisticsConfig& config, const LoadAddress& load,
   return task;
 }
 
-/// Whether this work is a carter's on this task's load.
-bool Serves(const WorkAssignment& work, const LogisticsTaskRow& task) {
-  if (work.kind != WorkKind::kHauling) {
-    return false;
-  }
-  switch (task.load_kind) {
-    case LogisticsLoadKind::kFieldHeap:
-      return work.field.value == task.field.value;
-    case LogisticsLoadKind::kStandLogs:
-      return work.stand.value == task.stand.value;
-    case LogisticsLoadKind::kSiteDig:
-      return work.extraction_site.value == task.extraction_site.value;
-    case LogisticsLoadKind::kDistrictLot:
-      return work.limit_delivery.value == task.limit_delivery.value;
-    case LogisticsLoadKind::kStoreTransfer:
-      return work.unit.value == task.unit.value;
-    case LogisticsLoadKind::kLogisticsLoadKindCount:
-      break;
-  }
-  return false;
-}
-
 /// One step up the ageing: background -> ordinary -> term; a term never
 /// ages into urgent (econ [5]: «иначе уровень 0 станет свалкой старых
 /// сроков»).
@@ -216,7 +195,7 @@ void SyncTasks(const LogisticsConfig& config,
 void MarkServed(WorldState& current, SimDay today, TaskDayCount& count) {
   for (LogisticsTaskRow& task : current.logistics_tasks.rows) {
     for (const ResidentRow& person : current.residents.rows) {
-      if (Serves(person.work, task)) {
+      if (WorkServesTask(person.work, task)) {
         task.aged_from_day = today;
         ++count.served;
         break;

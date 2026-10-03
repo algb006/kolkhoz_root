@@ -132,12 +132,16 @@ struct CartLeg {
   LogisticsTaskId task;
 
   /// The ticks it leaves and arrives, by the way's road and the harness pace.
+  /// STUB core, named (boss, the logistics thread [12], default 2): the legs
+  /// follow the load's seam and carry no times — both 0 from B3 (0.37.177).
   Tick depart = 0;
   Tick arrive = 0;
 
   /// Who rides this leg beside the driver — seated at `from` or on the way —
   /// within the cart's seats (transport.csv `seats`: the goods cart's bench
-  /// two, the people's cart six).
+  /// two, the people's cart six). Empty from B3: the passengers of the first
+  /// leg are seated by the labour hour (cart_passengers.h, stage A2) and
+  /// written nowhere in the plan.
   std::vector<ResidentId> riders;
 };
 

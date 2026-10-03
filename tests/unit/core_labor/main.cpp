@@ -39,6 +39,7 @@
 #include "core_common/world_state.h"
 #include "core_labor/labor_system.h"
 #include "core_tables/tables.h"
+#include "groom_plan_checks.h"
 #include "harvest_days_off_checks.h"
 #include "harvest_order_checks.h"
 #include "hay_cart_rank_checks.h"
@@ -4310,6 +4311,7 @@ int main() {
   failures += CheckTheCartOfTheCompressedYear();
   failures += CheckTheHayCartsRank();
   failures += CheckThePeoplesCart();
+  failures += CheckTheGroomsPlan();
   failures += TestPlacementDiagnosis();
   failures += TestRoadLimit();
   failures += TestHorsePoolAndLock();

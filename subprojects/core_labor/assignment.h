@@ -137,6 +137,13 @@ struct AssignmentJob {
   /// was lost; 10 of 18 failed plan rows of the canon were that.
   bool winter_window_closing = false;
 
+  /// A HAULING JOB WHOSE LOAD'S TASK STANDS AT LEVEL 0 (routing stage B, B3;
+  /// boss, the logistics thread [9]: «уровень 0 — впереди всего»): the groom's
+  /// request for it is closed first — the job ranks ahead of every window
+  /// (PlacementTier -1). Set by the labour sub-step from
+  /// WorldState::logistics_tasks (core_common/logistics_state.h).
+  bool logistics_urgent = false;
+
   /// True for the farm rule's zyab — the stubble ploughed for next spring's
   /// crop (FieldRow::autumn_furrowing; register 13; 0.37.18). It has no
   /// window (the tier of work with none) and goes FIRST in that tier: the
@@ -452,7 +459,8 @@ inline constexpr int kWindowlessTier = 4;
 /// uncrewed — the placement the morning would have made had it known. Before
 /// sunrise nobody has worked an hour. Placements on the tiers above stay: the
 /// morning's order among work WITH a window is not asked again.
-/// @return 0..kWindowlessTier.
+/// @return -1 (a load whose task stands at level 0, logistics_urgent) to
+///         kWindowlessTier.
 int PlacementTier(const AssignmentJob& job);
 
 /// @brief Places the day's workers over the day's jobs.

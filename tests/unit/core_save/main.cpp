@@ -641,6 +641,27 @@ core::WorldState MakeWorld() {
   task.aged_from_day = 141;
   task.urgent_since = 3'333;
   core::AppendRow(world.logistics_tasks, task);
+  // The groom's plan of the day (save format 136): one cart, two legs, a rider
+  // on the first — every field off its default, the two ticks apart.
+  world.groom_plan.day = 147;
+  world.groom_plan.stale = true;
+  world.groom_plan.urgent_pending = false;
+  core::CartPlan plan_cart;
+  plan_cart.driver = core::ResidentId{6};
+  plan_cart.people_cart = true;
+  plan_cart.legs.push_back(core::CartLeg{.from = core::Vec2{.x = 10.0F, .y = 20.0F},
+                                         .to = core::Vec2{.x = 30.0F, .y = 40.0F},
+                                         .task = core::LogisticsTaskId{0},
+                                         .depart = 7'057,
+                                         .arrive = 7'059,
+                                         .riders = {core::ResidentId{3}}});
+  plan_cart.legs.push_back(core::CartLeg{.from = core::Vec2{.x = 30.0F, .y = 40.0F},
+                                         .to = core::Vec2{.x = 50.0F, .y = 60.0F},
+                                         .task = core::LogisticsTaskId{4},
+                                         .depart = 7'061,
+                                         .arrive = 7'063,
+                                         .riders = {}});
+  world.groom_plan.carts.push_back(plan_cart);
 
   // A couple waiting for a free house (save format 35).
   core::WeddingWaitRow couple;
@@ -1421,7 +1442,7 @@ struct RecordedSection {
 /// beside it (manual/setup/57-versioning.md). No deliberate change: the codec
 /// has begun writing something else, which is the whole reason these numbers
 /// are here. Either way the number moves WITH ITS REASON, in the same commit.
-constexpr std::array<RecordedSection, 24> kRecordedPayload = {{
+constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // Save 82: +15 — the seventh dictionary, tree_species (count 2, «pine»
     // 6, «birch» 7); predicted before the build, held.
     // Save 92: +2 — the map roads' dictionary, empty in this fixture's
@@ -1669,6 +1690,10 @@ constexpr std::array<RecordedSection, 24> kRecordedPayload = {{
     // of table, 4 of id, 37 of row. Predicted 49 before the build, held; the
     // hash read off the build.
     {"logistics_tasks", 49, 0xab2a0fadbf128564ULL},
+    // Save 136 (B3): the groom's plan — 10 of day, flags and count, 9 of the
+    // cart, 44 of the first leg (one rider), 40 of the second. Predicted 103
+    // before the build, held; the hash read off the build.
+    {"groom_plan", 103, 0x1cccba57f865cdbfULL},
     // 2026-09-17, save 52: +56 bytes over the two books — the nine yearly
     // inputs the readiness index asks of a year and the year did not keep
     // (ledger_state.h): satisfaction's sum and count, able-bodied
@@ -2564,6 +2589,22 @@ int main() {
             back.aged_from_day == 141 && back.urgent_since == 3'333,
         "a task of the groom's logistics came back with its load, its two levels, its origin, "
         "its pause and its two times (save 135)");
+  }
+  // Save 136. The two legs' ticks and places are apart, the rider on the
+  // first only: a codec that swapped or dropped one is red here.
+  {
+    const core::GroomPlan& back = loaded.groom_plan;
+    const bool shape = back.carts.size() == 1 && back.carts[0].legs.size() == 2;
+    failures += Expect(
+        shape && back.day == 147 && back.stale && !back.urgent_pending &&
+            back.carts[0].driver.value == 6 && back.carts[0].people_cart &&
+            back.carts[0].legs[0].from.x == 10.0F && back.carts[0].legs[0].to.y == 40.0F &&
+            back.carts[0].legs[0].task.value == 0 && back.carts[0].legs[0].depart == 7'057 &&
+            back.carts[0].legs[0].arrive == 7'059 && back.carts[0].legs[0].riders.size() == 1 &&
+            back.carts[0].legs[0].riders[0].value == 3 && back.carts[0].legs[1].task.value == 4 &&
+            back.carts[0].legs[1].to.x == 50.0F && back.carts[0].legs[1].riders.empty(),
+        "the groom's plan came back with its day, its flags, its cart and both legs in order, "
+        "the rider on the first (save 136)");
   }
   failures += Expect(loaded.barter.worth_starting_raised == 1 &&
                          loaded.barter.dry_days_in_row == 3 && loaded.barter.dry_givers == 5 &&

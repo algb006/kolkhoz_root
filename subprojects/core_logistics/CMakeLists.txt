@@ -5,6 +5,7 @@
 
 kolkhoz_add_module(core_logistics
     logistics_config.cpp
+    logistics_plan.cpp
     logistics_system.cpp
     logistics_tasks.cpp)
 

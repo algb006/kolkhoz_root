@@ -11,7 +11,9 @@
 #include "core_common/logistics_state.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
+#include "core_logistics/logistics_system.h"
 #include "logistics_config.h"
+#include "logistics_plan.h"
 #include "logistics_tasks.h"
 
 namespace {
@@ -184,6 +186,99 @@ int TestConfig() {
   return failures;
 }
 
+/// THE PLAN'S CHAINS (B3; logistics_plan.h): two carts on two of three heaps
+/// of level 1, a stand's logs of level 2, a paused heap and a heap 10 km out.
+/// Each cart starts with its own heap, goes on to the other heaps of its
+/// level — the second cart's ring turned one, so it takes the third heap
+/// before the first — then the logs; the paused heap and the one beyond the
+/// road limit are in no chain; a carrier on foot has no cart.
+int TestThePlansChains() {
+  int failures = 0;
+  core::LogisticsConfig config;  // 12 km/h: 1 game hour a km; the limit 6 hours
+  core::WorldState world;
+  const auto heap_at = [&world](float east_m) {
+    core::FieldRow field;
+    field.kind = core::LandKind::kArable;
+    field.center = core::Vec2{.x = east_m, .y = 0.0F};
+    field.reaped_grams = 1'000'000;
+    field.reaped_resource = core::ResourceId{0};
+    field.haul_days_remaining = 2.0F;
+    return core::AppendRow(world.fields, field);
+  };
+  const core::FieldId first = heap_at(100.0F);
+  const core::FieldId second = heap_at(200.0F);
+  const core::FieldId third = heap_at(250.0F);
+  const core::FieldId paused = heap_at(300.0F);
+  const core::FieldId far = heap_at(10'000.0F);
+  core::TimberStandRow stand;
+  stand.position = core::Vec2{.x = 400.0F, .y = 0.0F};
+  stand.load_grams = 1'000'000;
+  stand.haul_days_remaining = 2.0F;
+  const core::TimberStandId logs = core::AppendRow(world.stands, stand);
+  core::TaskDayCount count;
+  core::SyncTasks(config, world, 0, count);
+  for (core::LogisticsTaskRow& task : world.logistics_tasks.rows) {
+    task.paused = task.field.value == paused.value;
+  }
+  const auto carter = [&world](core::FieldId field, std::uint8_t horse) {
+    core::ResidentRow person;
+    person.work.kind = core::WorkKind::kHauling;
+    person.work.field = field;
+    person.work.rides_horse = horse;
+    core::AppendRow(world.residents, person);
+  };
+  carter(first, 1);
+  carter(second, 1);
+  carter(first, 0);  // on foot
+  core::LogisticsTally tally;
+  const core::GroomPlan plan = core::BuildGroomPlan(config, world, tally);
+  const auto load_of = [&world](const core::CartLeg& leg) {
+    const core::LogisticsTaskRow& task =
+        world.logistics_tasks.rows[core::FindRow(world.logistics_tasks, leg.task)];
+    return task.load_kind == core::LogisticsLoadKind::kStandLogs
+               ? -1
+               : static_cast<int>(task.field.value);
+  };
+  failures += Expect(plan.carts.size() == 2 && tally.carts == 2,
+                     "plan: two carts on a horse, the carrier on foot has none");
+  if (plan.carts.size() != 2) {
+    return failures;
+  }
+  const std::vector<core::CartLeg>& one = plan.carts[0].legs;
+  const std::vector<core::CartLeg>& two = plan.carts[1].legs;
+  std::cout << "  plan: cart 1 —";
+  for (const core::CartLeg& leg : one) {
+    std::cout << ' ' << load_of(leg);
+  }
+  std::cout << "; cart 2 —";
+  for (const core::CartLeg& leg : two) {
+    std::cout << ' ' << load_of(leg);
+  }
+  std::cout << " (field ids; -1 the logs)\n";
+  const auto id = [](core::FieldId field) { return static_cast<int>(field.value); };
+  failures +=
+      Expect(one.size() == 4 && load_of(one[0]) == id(first) && load_of(one[1]) == id(second) &&
+                 load_of(one[2]) == id(third) && load_of(one[3]) == -1,
+             "plan: the first cart — its heap, the other heaps of level 1, then the logs");
+  failures +=
+      Expect(two.size() == 4 && load_of(two[0]) == id(second) && load_of(two[1]) == id(third) &&
+                 load_of(two[2]) == id(first) && load_of(two[3]) == -1,
+             "plan: the second cart — its own heap, the ring turned one (the third heap "
+             "before the first), then the logs");
+  bool paused_or_far = false;
+  for (const core::CartPlan& cart : plan.carts) {
+    for (const core::CartLeg& leg : cart.legs) {
+      const int load = load_of(leg);
+      paused_or_far = paused_or_far || load == static_cast<int>(paused.value) ||
+                      load == static_cast<int>(far.value);
+    }
+  }
+  failures += Expect(!paused_or_far,
+                     "plan: the paused heap and the heap past the road limit are in no chain");
+  (void)logs;
+  return failures;
+}
+
 }  // namespace
 
 int main() {
@@ -192,6 +287,7 @@ int main() {
   failures += TestAgeing();
   failures += TestThreats();
   failures += TestConfig();
+  failures += TestThePlansChains();
   if (failures == 0) {
     std::cout << "unit_core_logistics: all checks passed\n";
   }

@@ -77,6 +77,7 @@ constexpr const char* kSectionLandStrips = "land_strips";
 constexpr const char* kSectionRoadWorks = "road_works";
 constexpr const char* kSectionBarterTrips = "barter_trips";
 constexpr const char* kSectionLogisticsTasks = "logistics_tasks";
+constexpr const char* kSectionGroomPlan = "groom_plan";
 
 /// Puts every map road's axis back from tables/roads.csv after the section
 /// is read (a map road's axis is never saved; road_state.h), by the road's
@@ -453,6 +454,11 @@ std::vector<std::byte> EncodeWorld(const WorldState& world,
   WriteTable(sink, world.logistics_tasks, WriteLogisticsTaskRow);
   CloseSection(out, length_offset);
 
+  // The groom's plan of the day (save format 136; routing stage B, B3).
+  length_offset = OpenSection(out);
+  WriteGroomPlan(sink, world.groom_plan);
+  CloseSection(out, length_offset);
+
   length_offset = OpenSection(out);
   WriteLedger(sink, world.ledger);
   CloseSection(out, length_offset);
@@ -602,6 +608,18 @@ bool DecodeWorld(std::span<const std::byte> bytes,
     // The index is derived and never saved (world_state.h): built here from
     // the roads just read, so a loaded world travels as the saved one did.
     loaded.road_index = BuildRoadIndex(loaded.roads);
+  }
+
+  if (!OpenSection(in, kSectionGroomPlan, &section_end, error)) {
+    return false;
+  }
+  loaded.groom_plan = ReadGroomPlan(source);
+  if (!source.Valid()) {
+    Refuse(error, std::string("section '") + kSectionGroomPlan + "': " + source.Error());
+    return false;
+  }
+  if (!CloseSection(in, kSectionGroomPlan, section_end, error)) {
+    return false;
   }
 
   if (!OpenSection(in, kSectionLedger, &section_end, error)) {

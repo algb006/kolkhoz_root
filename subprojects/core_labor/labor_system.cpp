@@ -49,6 +49,8 @@
 #include "core_common/labor_state.h"
 #include "core_common/land_state.h"
 #include "core_common/ledger_state.h"
+#include "core_common/logistics_rules.h"
+#include "core_common/logistics_state.h"
 #include "core_common/module_rules.h"
 #include "core_common/quantities.h"
 #include "core_common/rain_stops_work.h"
@@ -1555,7 +1557,34 @@ class LaborSystem final : public ILaborSystem {
       }
     }
     MarkTheReapingsTheSnowWillTake(current, jobs);
+    MarkTheUrgentLoads(current, jobs);
     return jobs;
+  }
+
+  /// THE GROOM'S REQUEST AT LEVEL 0 GOES AHEAD OF ALL WORK (boss, the
+  /// logistics thread [9], Transport §11 as mended; routing stage B, B3): a
+  /// hauling job whose load's task stands at level 0 (logistics_state.h) is
+  /// placed ahead of every window (assignment.h, logistics_urgent). Levels 1-3
+  /// keep their load's window in the common queue, as before.
+  static void MarkTheUrgentLoads(const WorldState& current, std::vector<AssignmentJob>& jobs) {
+    for (AssignmentJob& job : jobs) {
+      if (job.kind != WorkKind::kHauling) {
+        continue;
+      }
+      WorkAssignment work;
+      work.kind = WorkKind::kHauling;
+      work.field = job.field;
+      work.stand = job.stand;
+      work.extraction_site = job.extraction_site;
+      work.limit_delivery = job.limit_delivery;
+      work.unit = job.unit;
+      for (const LogisticsTaskRow& task : current.logistics_tasks.rows) {
+        if (task.level == LogisticsLevel::kUrgent && WorkServesTask(work, task)) {
+          job.logistics_urgent = true;
+          break;
+        }
+      }
+    }
   }
 
   /// THE LAST DAYS: WHAT CAN STILL BE DONE, THEN THE HEAVIER (boss seq 103).
@@ -2050,6 +2079,11 @@ class LaborSystem final : public ILaborSystem {
       if (kind == WorkKind::kNone) {
         continue;
       }
+      // THE CART FOLLOWS THE GROOM'S PLAN (routing stage B, B4; logistics_
+      // state.h): its load carted, or gone, it goes on to the next load of
+      // its chain the same day. Until 0.37.177 it stood about, unpaid, to the
+      // evening (below: «the job is done for today»).
+      FollowThePlan(current, row);
       float* seam = WorkSeam(current, current.residents.rows[row].work);
       Vec2 target;
       Vec2 home;
@@ -2208,6 +2242,43 @@ class LaborSystem final : public ILaborSystem {
         event.resident = current.residents.row_ids[row];
         PayDay(current, resident);
       }
+    }
+  }
+
+  /// @brief A carter on a horse whose load is carted (its seam empty) or gone
+  ///        moves on to the first load of his chain in today's plan that
+  ///        still has carting left (B4). His horse, his road to the yard and
+  ///        his day's pay stay: the way between two loads is the empty half of
+  ///        the new load's first trip, priced in its seam (0.37.139). With no
+  ///        plan for today, no chain, or no load left, nothing changes.
+  static void FollowThePlan(WorldState& current, std::uint32_t row) {
+    WorkAssignment& work = current.residents.rows[row].work;
+    if (work.kind != WorkKind::kHauling || work.rides_horse == 0 ||
+        current.groom_plan.day != current.calendar.day) {
+      return;
+    }
+    const float* const seam = WorkSeamOf(current, work);
+    if (seam != nullptr && *seam > 0.0F) {
+      return;  // still carting his load
+    }
+    const ResidentId driver = current.residents.row_ids[row];
+    for (const CartPlan& cart : current.groom_plan.carts) {
+      if (cart.driver.value != driver.value) {
+        continue;
+      }
+      for (const CartLeg& leg : cart.legs) {
+        const std::uint32_t task_row = FindRow(current.logistics_tasks, leg.task);
+        if (task_row == kNoRow) {
+          continue;  // its load was carted and its task ended
+        }
+        const LogisticsTaskRow& task = current.logistics_tasks.rows[task_row];
+        const float* const next = WorkSeamOf(current, HaulingWorkOf(task));
+        if (next != nullptr && *next > 0.0F) {
+          RetargetWork(work, task);
+          return;
+        }
+      }
+      return;
     }
   }
 

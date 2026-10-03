@@ -102,6 +102,28 @@ bool ParseLogisticsConfig(const ITableSet& tables, LogisticsConfig& config, std:
       return false;
     }
   }
+  // THE PLAN'S REACH (B3): labour's cells, labour's ranges (labor_config.cpp).
+  if (const ITable* const transport = tables.FindTable("transport")) {
+    if (!OptionalCell(*transport,
+                      transport->FindRowByKey("horse_trot"),
+                      transport->FindColumn("speed_kmh"),
+                      Range{.low = 0.5F, .high = 60.0F},
+                      config.harness_speed_kmh,
+                      error)) {
+      PrefixError("transport", "speed_kmh", error);
+      return false;
+    }
+  }
+  if (const ITable* const labor = tables.FindTable("labor")) {
+    if (!OptionalValue(*labor,
+                       "travel_limit_hours",
+                       Range{.low = 0.0F, .high = 24.0F},
+                       config.travel_limit_hours,
+                       error)) {
+      PrefixError("labor", "travel_limit_hours", error);
+      return false;
+    }
+  }
   if (const ITable* const world = tables.FindTable("world_params")) {
     if (!OptionalValue(*world,
                        "field_heap_keeping_factor",

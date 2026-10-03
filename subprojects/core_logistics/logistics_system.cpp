@@ -1,7 +1,7 @@
 // The groom's logistics (core_logistics/logistics_system.h). Routing stage B,
-// B2: the tasks and their levels. The plan (B3), the re-plan (B5), the
-// chairman's doors (B7) and the alarm (B8) are STUBs here, their signatures
-// final: they come with their deliveries.
+// B2: the tasks and their levels; B3: the plan of the day. The re-plan (B5),
+// the chairman's doors (B7) and the alarm (B8) are STUBs here, their
+// signatures final: they come with their deliveries.
 
 #include "core_logistics/logistics_system.h"
 
@@ -14,7 +14,9 @@
 #include "core_common/calendar.h"
 #include "core_common/world_state.h"
 #include "core_log/log.h"
+#include "core_tables/required_tables.h"
 #include "logistics_config.h"
+#include "logistics_plan.h"
 #include "logistics_tasks.h"
 
 namespace core {
@@ -38,8 +40,12 @@ class LogisticsSystem final : public ILogisticsSystem {
     AgeAndRaise(config_, current, today, current.calendar.tick, count);
   }
 
-  LogisticsTally BuildPlan(WorldState& /*current*/) override {
-    return {};  // STUB: B3, the plan's builder
+  LogisticsTally BuildPlan(WorldState& current) override {
+    // THE PLAN OF THE DAY (B3; logistics_plan.h): over the carts the
+    // morning's placement and the top-up put on a horse.
+    LogisticsTally tally;
+    current.groom_plan = BuildGroomPlan(config_, current, tally);
+    return tally;
   }
 
   bool Replan(WorldState& /*current*/) override {
@@ -60,11 +66,18 @@ class LogisticsSystem final : public ILogisticsSystem {
 
 }  // namespace
 
-std::unique_ptr<ILogisticsSystem> CreateLogisticsSystem(const ITableSet& tables,
-                                                        StubTables /*stubs*/) {
+std::unique_ptr<ILogisticsSystem> CreateLogisticsSystem(const ITableSet& tables, StubTables stubs) {
   LogisticsConfig config;
   std::string error;
-  if (!ParseLogisticsConfig(tables, config, error)) {
+  // Every table the config reads, refused by name under the strict word
+  // (required_tables.h). 0.37.176 took the stubs and asked nothing: a set
+  // without logistics.csv assembled on the defaults (unit_core_world, red).
+  if (!RequireTables(tables,
+                     stubs,
+                     "logistics",
+                     {"logistics", "resources", "transport", "labor", "world_params"},
+                     &error) ||
+      !ParseLogisticsConfig(tables, config, error)) {
     LogError("logistics: " + error);
     return nullptr;
   }

@@ -105,6 +105,11 @@ BarterTripRow ReadBarterTripRow(LoadSource& source);
 void WriteLogisticsTaskRow(SaveSink& sink, const LogisticsTaskRow& row);
 LogisticsTaskRow ReadLogisticsTaskRow(LoadSource& source);
 
+/// The groom's plan of the day (save 136; routing stage B, B3): the day, the
+/// two flags, the carts with their legs and riders.
+void WriteGroomPlan(SaveSink& sink, const GroomPlan& plan);
+GroomPlan ReadGroomPlan(LoadSource& source);
+
 }  // namespace core
 
 #endif  // CORE_SAVE_SAVE_ROWS_H_

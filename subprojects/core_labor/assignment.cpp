@@ -626,6 +626,12 @@ void GivePeoplesCarts(const PeoplesCartPlan& plan) {
 int PlacementTier(const AssignmentJob& job) {
   constexpr int kWinterPreparationTier = 3;
   constexpr int kMeadowCutTier = 2;
+  constexpr int kUrgentLoadTier = -1;
+  // A load whose task stands at level 0 — ahead of every window (boss, the
+  // logistics thread [9]; 0.37.177).
+  if (job.logistics_urgent) {
+    return kUrgentLoadTier;
+  }
   if (job.prepares_winter_crop && !job.winter_window_closing) {
     return kWinterPreparationTier;
   }

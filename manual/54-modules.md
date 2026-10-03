@@ -42,7 +42,7 @@
 | **core_residents** | Жители: потребности, питание и ЛПХ, демография, семьи, довольство; **огонь еды** ([`77-stock-lights.md`](77-stock-lights.md)) | Этап 3 (структура данных жителя проектировалась отдельной задачей, до тел) |
 | **core_production** | Земля и производство: поля, плодородие, циклы юнитов, буферы, стада; **огни кормов и семян** ([`77-stock-lights.md`](77-stock-lights.md)) | Этап 4 |
 | **core_labor** | Труд: назначения, учётчик, рабочий день, трудодни, **должности** (А7), **перевозка** (А4), **наряды и рабочие руки** (А8, [`76-work-orders.md`](76-work-orders.md)) | Этап 5 |
-| **core_logistics** | Логистика конюха (ступень Б, Транспорт §11–12): задачи возки с уровнями 0–3 и старением, «само на 0» по угрозам (Б2, 0.37.176); дальше — план подвод на сутки, переплан по событию, двери председателя к задачам, аларм «Логистика не успевает». План — расписание поверх шва груза, тонны по-прежнему сливает час работы и кладёт вечер производства (решение `boss`, тред логистики [9]) | Ступень Б: Б1 (контракт, 0.37.174) → Б2 |
+| **core_logistics** | Логистика конюха (ступень Б, Транспорт §11–12): задачи возки с уровнями 0–3 и старением, «само на 0» по угрозам (Б2, 0.37.176); план подвод на сутки — цепочки грузов по уровням, кольцом внутри уровня, в пределах дороги; час работы ведёт подводу по цепочке, уровень 0 — впереди всех окон (Б3+Б4, 0.37.177); дальше — переплан по событию, двери председателя к задачам, аларм «Логистика не успевает». План — расписание поверх шва груза, тонны по-прежнему сливает час работы и кладёт вечер производства (решение `boss`, тред логистики [9]) | Ступень Б: Б1 (контракт, 0.37.174) → Б2 → Б3+Б4 |
 | **core_construction** | Стройка: разметка, доставка, ступени, снос — площадка как строка юнита, шов труда `labor_days_remaining` ([`71-construction.md`](71-construction.md)); **с А5 — износ и ремонт**: суточное старение по ступени и пятое распоряжение ([`73-wear-and-repair.md`](73-wear-and-repair.md)) | Вторая фаза: А2 (контракт 31.08.2026 → реализация) |
 | **core_world** | Генезис стартового поселения, сборка фаз, составные слоты 3 и 7 | По мере этапов |
 | **core_save** | Формат сохранений: `WorldState` в байты и обратно, перепривязка `DefId` по ключам ([`67-save-format.md`](67-save-format.md)) | Этап 7: Ф1 → O1 |
@@ -127,7 +127,7 @@
 | `core_residents` | `IResidentsSystem`: две фазы + `RunDemographyDecisions` | `include/core_residents/residents_system.h` |
 | `core_production` | `IProductionSystem`: фаза + `RunProductionDecisions` | `include/core_production/production_system.h` |
 | `core_labor` | `ILaborSystem`: `RunAssignmentDecisions`, `CollectAlarms` (А7) | `include/core_labor/labor_system.h` |
-| `core_logistics` | `ILogisticsSystem`: `RunTasks` (Б2), `BuildPlan` (Б3), `Replan` (Б5), `ReadTaskOrders` (Б7), `CollectAlarms` (Б8) — пока не сданы, `STUB` с окончательной сигнатурой | `include/core_logistics/logistics_system.h` |
+| `core_logistics` | `ILogisticsSystem`: `RunTasks` (Б2), `BuildPlan` (Б3, сдан), `Replan` (Б5), `ReadTaskOrders` (Б7), `CollectAlarms` (Б8) — пока не сданы, `STUB` с окончательной сигнатурой | `include/core_logistics/logistics_system.h` |
 | `core_construction` | `IConstructionSystem`: `RunConstructionDecisions` (А2 — контракт) | `include/core_construction/construction_system.h` |
 | `core_world` | Фабрики `CreateStartWorld`, `CreateStandardSimulation` | `include/core_world/world.h` |
 | `core_boundary` | `ISession`, фабрика `CreateSession`, кодек журнала (А1 — контракт, O2 — реализация) | `include/core_boundary/session.h` |

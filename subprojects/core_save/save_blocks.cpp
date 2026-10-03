@@ -212,7 +212,9 @@ static_assert(AggregateArity<BarterWatch>() == 5,
 // before the build: the section «world» 647 -> 651.
 // Save 135 (0.37.176): the groom's tasks of carting, the forty-fourth member —
 // a table section of its own (save.cpp, logistics_tasks; routing stage B, B2).
-static_assert(AggregateArity<WorldState>() == 44,
+// Save 136 (0.37.177): the groom's plan of the day, the forty-fifth — a
+// section of its own (save.cpp, groom_plan; B3).
+static_assert(AggregateArity<WorldState>() == 45,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 

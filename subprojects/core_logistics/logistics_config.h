@@ -55,6 +55,14 @@ struct LogisticsConfig {
   /// world_params.csv `field_heap_keeping_factor` — a heap on its field keeps
   /// this share of a store's term (production_config.h).
   float field_heap_keeping_factor = 0.33F;
+
+  /// THE PLAN'S REACH (B3): the harness pace, real km/h (transport.csv
+  /// horse_trot `speed_kmh`), and the accountant's road limit, game hours
+  /// (labor.csv travel_limit_hours) — the cells labour reads, by the same
+  /// keys and ranges: a cart is given no load in its chain that it could not
+  /// be sent to in the morning.
+  float harness_speed_kmh = 12.0F;
+  float travel_limit_hours = 6.0F;
 };
 
 /// @brief Reads the config from the table set.

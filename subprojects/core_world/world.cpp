@@ -79,6 +79,11 @@ class DecisionsSlot final : public ISequentialPhase {
     // The groom's tasks (routing stage B, B2), once a day after the morning's
     // placement: the carters placed today mark their loads served.
     logistics_->RunTasks(previous, current);
+    // The groom's plan (B3), at hour 1: after the labour sub-step's top-up and
+    // the goods carts' passengers, before the hour's work reads it (B4).
+    if (HourFromTick(current.calendar.tick) == 1) {
+      logistics_->BuildPlan(current);
+    }
     residents_->RunDemographyDecisions(previous, current);
     production_->RunProductionDecisions(previous, current);
     // Construction last (task A2, manual/71-construction.md §6): a unit

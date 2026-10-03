@@ -24,6 +24,7 @@ kolkhoz_add_module(core_common
     home_reach.cpp
     horse_yard_road.cpp
     haul.cpp
+    logistics_rules.cpp
     plot.cpp
     spoilage.cpp
     quantities.cpp

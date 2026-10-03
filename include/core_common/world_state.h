@@ -1010,6 +1010,11 @@ struct WorldState {
   /// design §12; routing stage B, B2); SAVED (save 135). logistics_state.h.
   LogisticsTaskTable logistics_tasks;
 
+  /// The groom's plan of the day: each cart's chain of loads (routing stage
+  /// B, B3; logistics_state.h); built at hour 1, read by the labour hour (B4);
+  /// SAVED (save 136) — a mid-day save must carry on the same chains.
+  GroomPlan groom_plan;
+
   /// THE GATHERING COUNT SAID «NOT IN TIME» (farming design, the harvest
   /// rule 1 as boss re-worded it, core-boss-potato-crew-trace-2026-10-01
   /// [27]; save 126): the day, PLUS ONE, at whose close the count of the
