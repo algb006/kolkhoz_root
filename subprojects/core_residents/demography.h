@@ -63,7 +63,11 @@ void RunHygiene(const LifeConfig& config, WorldState& current);
 /// @brief Drops a household that has nobody left in it, and settles what it
 /// leaves behind (its yard's herds to an heir, its house free). Shared with
 /// the housing ladder (housing_ladder.h), which sends a family away by it.
-void DropFamilyIfEmpty(WorldState& current, FamilyId family);
+/// @param heir The household that takes the yard — the larder, the earned
+///        trudodni, the herds into its own — when the yard's people went to
+///        it (0.37.156: the children who came along with a wedding). Invalid
+///        or gone: the first surviving household in row order, as before.
+void DropFamilyIfEmpty(WorldState& current, FamilyId family, FamilyId heir = FamilyId{});
 
 /// @brief Removes a resident and repairs links: the spouse becomes widowed,
 /// an emptied family disappears, a post held is announced vacant.

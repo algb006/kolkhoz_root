@@ -87,7 +87,7 @@ Metric BlendInclination(RngState& rng,
 /// is decides nothing — there is no proximity in the design and no choice for
 /// the player here — and row order is the one rule that is the same on every
 /// machine.
-void DropFamilyIfEmpty(WorldState& current, FamilyId family) {
+void DropFamilyIfEmpty(WorldState& current, FamilyId family, FamilyId heir_named) {
   if (family.value == kInvalidEntityIdValue) {
     return;
   }
@@ -100,7 +100,13 @@ void DropFamilyIfEmpty(WorldState& current, FamilyId family) {
   if (leaving == kNoRow) {
     return;
   }
-  std::uint32_t heir = kNoRow;
+  // THE NAMED HEIR FIRST (0.37.156): the yard whose children went with a
+  // wedding goes where they went, not to whoever stands first in the rows.
+  std::uint32_t heir =
+      heir_named.value != kInvalidEntityIdValue ? FindRow(current.families, heir_named) : kNoRow;
+  if (heir == leaving) {
+    heir = kNoRow;
+  }
   for (std::uint32_t row = 0; row < current.families.rows.size() && heir == kNoRow; ++row) {
     if (row == leaving) {
       continue;
@@ -563,43 +569,135 @@ void PassDowry(WorldState& current, FamilyId from, FamilyId to) {
 /// (household_plot.cpp, MowHay) and all 57 goats the hunger took in years
 /// 3-5 were theirs.
 ///
-/// THE WEDDING WAITS, IT IS NOT REFUSED: the day the yard has another adult —
-/// a child of sixteen — the same two may marry. «The new family forms in his
-/// house» would be a resident entering an EXISTING family, a door this core
-/// does not have (resident_state.h, `family`); not built here.
+/// 0.37.148 HELD THEM ALL — «the wedding waits» — and on the canon eleven a
+/// year over nine villages waited, the longest three and a half game years,
+/// every one of the longest a mother of one or two (0.37.148's print).
 ///
-/// WHAT IT DOES NOT MEND: the yard both of whose parents DIED. That one waits
-/// for the human's word (boss [13]).
-bool WeddingLeavesChildrenAlone(const LifeConfig& config,
+/// SINCE 0.37.156 THE PAIR FORMS ANOTHER WAY (life-cycle §5, «Дом не
+/// остаётся с одними детьми»; the human's word of 3 October 2026; boss,
+/// boss-all-epoch1-queue-after-counterweight-2026-10-03 [9], [16], [20]):
+/// - the one who would leave children alone IS THEIR PARENT (some child
+///   staying names him or her as mother or father): the new spouse comes
+///   into that yard — no new family, no house; the only door by which a
+///   resident enters an existing family, and only through a marriage;
+/// - the one is NOT their parent (an elder brother or sister, other kin):
+///   the younger ones come along into the couple's new house, and the yard
+///   is struck off with its larder, earned trudodni and herds going with
+///   them;
+/// - both would leave children alone, or the parent's house has no room
+///   for one more: the wedding waits, as in 0.37.148.
+/// WHAT IT DOES NOT MEND: the yard whose last adult DIED (the chain of the
+/// same §5 — kin, then neighbours — is its own delivery).
+enum class WeddingHome : std::uint8_t {
+  kNewHouse,        ///< A house of the couple's own, as every wedding before.
+  kIntoBridesYard,  ///< The groom comes into the bride's yard.
+  kIntoGroomsYard,  ///< The bride comes into the groom's yard.
+  kWaits,           ///< Not today: children would be left alone either way.
+};
+
+/// @brief How the wedding of two forms its household (see above).
+struct WeddingPlan {
+  WeddingHome home = WeddingHome::kNewHouse;
+
+  /// For kNewHouse: the yard whose residents come along into the new house
+  /// (the elder sibling's younger ones); invalid when nobody comes.
+  FamilyId brings_along;
+
+  /// People the new house must hold: the two and those who come along.
+  std::uint32_t people = 2;
+};
+
+/// @brief What `leaving`'s yard keeps if the two marry out of it.
+struct YardLeftBehind {
+  bool children_alone = false;  ///< Somebody stays, and nobody of adult age.
+  bool parent = false;          ///< A child staying names `leaving` as a parent.
+  std::uint32_t staying = 0;    ///< Residents who stay.
+  FamilyId yard;
+};
+
+YardLeftBehind WhatTheYardKeeps(const LifeConfig& config,
                                 const WorldState& current,
+                                ResidentId leaving,
                                 ResidentId bride,
                                 ResidentId groom,
                                 SimDay day) {
-  for (const ResidentId leaving : {bride, groom}) {
-    const std::uint32_t leaving_row = FindRow(current.residents, leaving);
-    if (leaving_row == kNoRow) {
+  YardLeftBehind left;
+  const std::uint32_t leaving_row = FindRow(current.residents, leaving);
+  if (leaving_row == kNoRow) {
+    return left;
+  }
+  left.yard = current.residents.rows[leaving_row].family;
+  bool an_adult_stays = false;
+  for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
+    const ResidentRow& resident = current.residents.rows[row];
+    const ResidentId id = current.residents.row_ids[row];
+    if (resident.family.value != left.yard.value || id.value == bride.value ||
+        id.value == groom.value) {
       continue;
     }
-    const FamilyId yard = current.residents.rows[leaving_row].family;
-    bool somebody_stays = false;
-    bool an_adult_stays = false;
-    for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
-      const ResidentRow& resident = current.residents.rows[row];
-      const ResidentId id = current.residents.row_ids[row];
-      if (resident.family.value != yard.value || id.value == bride.value ||
-          id.value == groom.value) {
-        continue;
-      }
-      somebody_stays = true;
-      an_adult_stays =
-          an_adult_stays || BiologicalAgeYears(config.life_speedup, resident.birth_day, day) >=
-                                config.adult_age_years;
-    }
-    if (somebody_stays && !an_adult_stays) {
-      return true;
-    }
+    ++left.staying;
+    an_adult_stays =
+        an_adult_stays ||
+        BiologicalAgeYears(config.life_speedup, resident.birth_day, day) >= config.adult_age_years;
+    left.parent = left.parent || resident.mother.value == leaving.value ||
+                  resident.father.value == leaving.value;
   }
-  return false;
+  left.children_alone = left.staying > 0 && !an_adult_stays;
+  return left;
+}
+
+/// @brief Whether the yard's house takes one resident more.
+bool YardHasRoomForOneMore(const LifeConfig& config, const WorldState& current, FamilyId yard) {
+  const std::uint32_t family_row = FindRow(current.families, yard);
+  if (family_row == kNoRow) {
+    return false;
+  }
+  const FamilyRow& family = current.families.rows[family_row];
+  const std::uint32_t house_row = FindRow(current.units, family.house);
+  // A barrack's place or a tent is no house to count: the family stands where
+  // it stands, and one more stands with it.
+  if (family.in_barrack != 0 || house_row == kNoRow) {
+    return true;
+  }
+  // A house whose type names no capacity (unit_levels.csv residents_capacity
+  // empty) is not counted full: the room is unknown, not nought.
+  const float capacity = ResidentsCapacity(config, current.units.rows[house_row]);
+  if (!(capacity > 0.0F)) {
+    return true;
+  }
+  std::uint32_t living = 0;
+  for (const ResidentRow& resident : current.residents.rows) {
+    living += resident.family.value == yard.value ? 1U : 0U;
+  }
+  return static_cast<float>(living + 1U) <= capacity;
+}
+
+WeddingPlan PlanWedding(const LifeConfig& config,
+                        const WorldState& current,
+                        ResidentId bride,
+                        ResidentId groom,
+                        SimDay day) {
+  const YardLeftBehind hers = WhatTheYardKeeps(config, current, bride, bride, groom, day);
+  const YardLeftBehind his = WhatTheYardKeeps(config, current, groom, bride, groom, day);
+  WeddingPlan plan;
+  if (!hers.children_alone && !his.children_alone) {
+    return plan;
+  }
+  if (hers.children_alone && his.children_alone) {
+    plan.home = WeddingHome::kWaits;
+    return plan;
+  }
+  const bool bride_side = hers.children_alone;
+  const YardLeftBehind& side = bride_side ? hers : his;
+  if (side.parent) {
+    plan.home = YardHasRoomForOneMore(config, current, side.yard)
+                    ? (bride_side ? WeddingHome::kIntoBridesYard : WeddingHome::kIntoGroomsYard)
+                    : WeddingHome::kWaits;
+    return plan;
+  }
+  plan.brings_along = side.yard;
+  plan.people = 2U + side.staying;
+  return plan;
 }
 
 /// @brief Whether `resident` is half of a couple waiting for a house.
@@ -613,8 +711,15 @@ bool WaitsForHouse(const WorldState& current, ResidentId resident) {
 }
 
 /// @brief The wedding itself, into the free house `house`: a new household,
-/// the dowries, the two moved in, their old yards dropped if emptied.
-void Wed(WorldState& current, ResidentId bride_id, ResidentId groom_id, UnitId house, bool shared) {
+/// the dowries, the two moved in, their old yards dropped if emptied — and
+/// the residents of `brings_along` with them, that yard struck off into the
+/// new one (WeddingPlan; 0.37.156).
+void Wed(WorldState& current,
+         ResidentId bride_id,
+         ResidentId groom_id,
+         UnitId house,
+         bool shared,
+         FamilyId brings_along) {
   const std::uint32_t bride_row = FindRow(current.residents, bride_id);
   const std::uint32_t groom_row = FindRow(current.residents, groom_id);
   const std::uint32_t house_row = FindRow(current.units, house);
@@ -645,10 +750,46 @@ void Wed(WorldState& current, ResidentId bride_id, ResidentId groom_id, UnitId h
   wedding.resident = bride_id;
   wedding.family = home;
   current.ledger.current.weddings += 1;
+  // THE YOUNGER ONES COME ALONG (0.37.156): the yard the elder brother or
+  // sister leaves goes into the new one whole — its people, then its larder,
+  // its earned trudodni and its herds by the named heir.
+  if (brings_along.value != kInvalidEntityIdValue) {
+    for (ResidentRow& resident : current.residents.rows) {
+      if (resident.family.value == brings_along.value) {
+        resident.family = home;
+      }
+    }
+    DropFamilyIfEmpty(current, brings_along, home);
+  }
   // Both parents' yards may now stand empty — a household of one that
   // married out leaves nothing behind but its books.
   DropFamilyIfEmpty(current, bride_was);
   DropFamilyIfEmpty(current, groom_was);
+}
+
+/// @brief The wedding into a yard that stands (WeddingPlan, kIntoBridesYard
+/// or kIntoGroomsYard; 0.37.156): the widow's or the widower's — the other
+/// comes into it, with a dowry from the yard left, and no house is taken.
+/// The event names the yard the couple lives in.
+void WedIntoYard(WorldState& current, ResidentId bride_id, ResidentId groom_id, bool into_brides) {
+  const std::uint32_t bride_row = FindRow(current.residents, bride_id);
+  const std::uint32_t groom_row = FindRow(current.residents, groom_id);
+  if (bride_row == kNoRow || groom_row == kNoRow) {
+    return;
+  }
+  const FamilyId home = into_brides ? current.residents.rows[bride_row].family
+                                    : current.residents.rows[groom_row].family;
+  const std::uint32_t mover_row = into_brides ? groom_row : bride_row;
+  const FamilyId mover_was = current.residents.rows[mover_row].family;
+  PassDowry(current, mover_was, home);
+  current.residents.rows[bride_row].spouse = groom_id;
+  current.residents.rows[groom_row].spouse = bride_id;
+  current.residents.rows[mover_row].family = home;
+  SimEvent& wedding = EmitEvent(current, EventKind::kWedding, EventSeverity::kNotable);
+  wedding.resident = bride_id;
+  wedding.family = home;
+  current.ledger.current.weddings += 1;
+  DropFamilyIfEmpty(current, mover_was);
 }
 
 /// @brief The couples waiting for a house, oldest first (life-cycle §12;
@@ -687,19 +828,25 @@ void RunWeddingQueue(const LifeConfig& config, WorldState& current) {
       done.push_back(id);  // one of the two died or left: the couple falls apart
       continue;
     }
-    // A couple whose wedding would leave children alone today is passed over
-    // and keeps its place: the yard's adult died after they joined the queue,
-    // and the eldest child grows up (WeddingLeavesChildrenAlone).
-    if (WeddingLeavesChildrenAlone(
-            config, current, couple.bride, couple.groom, current.calendar.day)) {
+    // The plan is asked again today (PlanWedding): the yard may have lost its
+    // adult since the couple joined. Waits — passed over, its place kept;
+    // into a standing yard — married now, it needs no house.
+    const WeddingPlan plan =
+        PlanWedding(config, current, couple.bride, couple.groom, current.calendar.day);
+    if (plan.home == WeddingHome::kWaits) {
+      continue;
+    }
+    if (plan.home != WeddingHome::kNewHouse) {
+      WedIntoYard(current, couple.bride, couple.groom, plan.home == WeddingHome::kIntoBridesYard);
+      done.push_back(id);
       continue;
     }
     bool shared = false;
-    const UnitId house = HomeForNewcomers(config, current, 2, shared);
+    const UnitId house = HomeForNewcomers(config, current, plan.people, shared);
     if (house.value == kInvalidEntityIdValue) {
       break;  // no free house for the oldest, so none for anyone behind it
     }
-    Wed(current, couple.bride, couple.groom, house, shared);
+    Wed(current, couple.bride, couple.groom, house, shared, plan.brings_along);
     done.push_back(id);
   }
   for (const WeddingWaitId id : done) {
@@ -736,17 +883,27 @@ void RunMarriages(const LifeConfig& config, WorldState& current, SimDay day) {
           BiologicalAgeYears(config.life_speedup, groom.birth_day, day) >=
               config.marriage_age_years &&
           !WaitsForHouse(current, groom_id) &&
-          !AreCloseKin(current.residents.rows[bride_row], bride_id, groom, groom_id) &&
-          !WeddingLeavesChildrenAlone(config, current, bride_id, groom_id, day);
+          !AreCloseKin(current.residents.rows[bride_row], bride_id, groom, groom_id);
       if (!eligible) {
         continue;
       }
+      // HOW THE PAIR FORMS (PlanWedding; life-cycle §5): not today — the next
+      // groom; into the widow's or the widower's yard — now, with no house
+      // and no queue; a house of their own — with the younger ones along.
+      const WeddingPlan plan = PlanWedding(config, current, bride_id, groom_id, day);
+      if (plan.home == WeddingHome::kWaits) {
+        continue;
+      }
+      if (plan.home != WeddingHome::kNewHouse) {
+        WedIntoYard(current, bride_id, groom_id, plan.home == WeddingHome::kIntoBridesYard);
+        break;
+      }
       bool shared = false;
       const UnitId house = current.wedding_waits.rows.empty()
-                               ? HomeForNewcomers(config, current, 2, shared)
+                               ? HomeForNewcomers(config, current, plan.people, shared)
                                : UnitId{};
       if (house.value != kInvalidEntityIdValue) {
-        Wed(current, bride_id, groom_id, house, shared);
+        Wed(current, bride_id, groom_id, house, shared, plan.brings_along);
         break;
       }
       WeddingWaitRow couple;
@@ -812,86 +969,10 @@ void RunMigration(const LifeConfig& config, WorldState& current, SimDay day) {
   }
 }
 
-/// Whether today's work is the sort that takes the cleanliness off a man.
-/// «Ферма, стройка, поле» of health design §3; the tannery it also names has
-/// no unit in this core.
-bool DirtyWorkToday(WorkKind kind) {
-  switch (kind) {
-    case WorkKind::kHerdCare:
-    case WorkKind::kConstruction:
-    case WorkKind::kPlowing:
-    case WorkKind::kHarrowing:
-    case WorkKind::kSowing:
-    case WorkKind::kHarvest:
-    case WorkKind::kFelling:
-    case WorkKind::kPlanting:  // earth and saplings: «поле» (save 82)
-    case WorkKind::kRoadWork:  // a road's bed is «стройка» (delivery 7a)
-      return true;
-    default:
-      return false;
-  }
-}
-
 }  // namespace
 
-/// One day of personal cleanliness (health design §3). Declared in
-/// demography.h — see there for why it stands beside the day rather than
-/// inside it.
-///
-/// IT FALLS BY ITSELF AND RISES FROM ONE THING, which is the stub and is
-/// named in the config beside every knob: the design gives four risers — the
-/// bathhouse, a yard's own, clean water nearby, soap and a change of linen —
-/// and this core has the machinery for none of the other three. So a STANDING
-/// bathhouse gives its day to everybody, «кто именно и как часто ходит» being
-/// the part that is missing.
-///
-/// THE EVENT IS A TRANSITION AND NOT A STATE, as event_state.h requires of
-/// every event: it is raised on the day a resident CROSSES the threshold
-/// downwards, so there is no second field saying "ill" and no flood of the
-/// same news every morning. `first_hygiene_disease` is not this core's word —
-/// the seam hears every crossing and the host takes the first, the way it
-/// takes `first_store_issue` from `distribution_issued`.
-void RunHygiene(const LifeConfig& config, WorldState& current) {
-  bool bathhouse = false;
-  if (config.bathhouse_type.value != kInvalidDefIdValue) {
-    bathhouse = std::any_of(
-        current.units.rows.begin(), current.units.rows.end(), [&config](const UnitRow& unit) {
-          return unit.type.value == config.bathhouse_type.value && unit.level >= 1 &&
-                 unit.dead == 0;
-        });
-  }
-  // THE AFTERNOON AND NOT THE DAY'S MEAN, which is the same day the weather
-  // calls hot (time_system.cpp: `mean + swing >= hot_afternoon_c`, raising
-  // kHotAfternoon). Until 2026-09-17 this line compared the MEAN against a
-  // literal 25 and the surcharge never fired once in sixty days across nine
-  // villages — measured, not suspected. The swing lives in the state for
-  // exactly this: its own note says production used to keep a copy of the
-  // season amplitudes to compute the afternoon, "one number with two homes".
-  const float afternoon =
-      current.weather.air_temperature_celsius + current.weather.temperature_swing_celsius;
-  const bool hot = afternoon >= config.hot_afternoon_celsius;
-  for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
-    ResidentRow& person = current.residents.rows[row];
-    const float before = person.hygiene;
-    float fall = config.hygiene_fall_per_day;
-    if (DirtyWorkToday(person.work.kind)) {
-      fall *= config.hygiene_fall_dirty_work_factor;
-    }
-    if (hot) {
-      fall += config.hygiene_fall_heat_extra;
-    }
-    const float rise = bathhouse ? config.hygiene_rise_bath_per_day : 0.0F;
-    person.hygiene = std::clamp(person.hygiene - fall + rise, kMetricMin, kMetricMax);
-    // The crossing, and only downwards: a man who was above the line
-    // yesterday and is below it today has caught what the filth gives.
-    if (before >= config.hygiene_disease_threshold &&
-        person.hygiene < config.hygiene_disease_threshold) {
-      SimEvent& caught = EmitEvent(current, EventKind::kHygieneDisease, EventSeverity::kNotable);
-      caught.resident = current.residents.row_ids[row];
-      caught.family = person.family;
-    }
-  }
-}
+// RunHygiene, declared in demography.h, lives in hygiene.cpp since 0.37.156
+// (this file's size).
 
 void RunDemographyDay(const LifeConfig& config, WorldState& current) {
   const SimDay day = current.calendar.day;

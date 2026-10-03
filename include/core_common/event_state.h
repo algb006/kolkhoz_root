@@ -68,7 +68,9 @@ enum class EventKind : std::uint8_t {
   kResidentDied,     ///< resident, family; amount = cause code of the emitter.
   kResidentArrived,  ///< resident, family — a migrant who came to stay.
   kResidentLeft,     ///< resident, family — the outflow.
-  kWedding,          ///< resident (the bride), family (the new household).
+  kWedding,          ///< resident (the bride), family (the couple's household:
+                     ///< the new one, or since 0.37.156 the widow's or the
+                     ///< widower's own, the spouse come into it).
 
   // -- land: the production decisions sub-step ------------------------------
   kFieldPhaseChanged,  ///< field; amount = the new FieldPhase value.

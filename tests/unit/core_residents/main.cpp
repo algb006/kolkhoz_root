@@ -1933,6 +1933,16 @@ int CheckCoupleSkipsHouseOnTheBrink() {
 /// young as 1.8 years. The one whose leaving would leave residents in the
 /// yard and none of adult age (life.csv adult_age_years) does not marry
 /// while that stands. The pair: the same yard with a grandmother in it.
+///
+/// AND SINCE 0.37.156 THE PAIR FORMS ANOTHER WAY (life-cycle §5, «Дом не
+/// остаётся с одними детьми»; the human's word of 3 October 2026; boss,
+/// boss-all-epoch1-queue-after-counterweight-2026-10-03 [9], [16], [20]): the
+/// widow with children takes the new husband into HER house — no new family,
+/// no house needed — and an elder brother or sister takes the younger ones
+/// along into the couple's new house. Both with children alone — the wedding
+/// waits. Until then «does not marry» held them all: on the canon of 0.37.148
+/// eleven a year over nine villages, the longest three and a half game years,
+/// every one of the longest a mother.
 int CheckAWeddingLeavesNoChildAlone() {
   int failures = 0;
   const HousingTables tables;
@@ -1958,6 +1968,7 @@ int CheckAWeddingLeavesNoChildAlone() {
     made.her_yard = AppendRow(made.world.families, core::FamilyRow{});
     made.widow = AddAdult(made.world, made.her_yard, core::Sex::kFemale, 30.0F);
     made.child = AddAdult(made.world, made.her_yard, core::Sex::kFemale, 2.0F);
+    made.world.residents.rows[FindRow(made.world.residents, made.child)].mother = made.widow;
     if (grandmother) {
       // Married, so that she is nobody's bride herself; her husband lives in
       // the bachelor's yard for the fixture's sake only.
@@ -1990,24 +2001,30 @@ int CheckAWeddingLeavesNoChildAlone() {
     }
     return others == 1;
   };
+  const auto husband_at_home = [](const Village& made) {
+    const std::uint32_t row = FindRow(made.world.residents, made.widow);
+    if (row == core::kNoRow) {
+      return false;
+    }
+    const std::uint32_t husband =
+        FindRow(made.world.residents, made.world.residents.rows[row].spouse);
+    return husband != core::kNoRow &&
+           made.world.residents.rows[husband].family.value == made.her_yard.value &&
+           made.world.residents.rows[row].family.value == made.her_yard.value;
+  };
   {
     Village alone = village(false);
     bool ever_alone = false;
-    for (std::uint32_t day = 0; day < 3 * core::kDaysPerYear && !ever_alone; ++day) {
+    for (std::uint32_t day = 0; day < 3 * core::kDaysPerYear && !ever_alone && !married(alone);
+         ++day) {
       RunDays(*system, alone.world, 1);
       ever_alone = child_alone(alone);
     }
     failures += Expect(!ever_alone,
                        "a wedding: the widow's child of two is never left to keep house alone");
-    // The queue may hold somebody else's couple — a migrant comes and takes
-    // the free house within the three years — so it is the widow who is asked.
-    bool widow_waits = false;
-    for (const core::WeddingWaitRow& couple : alone.world.wedding_waits.rows) {
-      widow_waits = widow_waits || couple.bride.value == alone.widow.value;
-    }
-    failures += Expect(!married(alone) && !widow_waits,
-                       "a wedding: the widow with nobody of adult age to leave the child with "
-                       "does not marry, and does not join the queue for a house");
+    failures += Expect(married(alone) && husband_at_home(alone) && !child_alone(alone),
+                       "a wedding: the widow with the child marries, and the new husband comes "
+                       "into HER yard — the child stays with its mother");
   }
   {
     Village kept = village(true);
@@ -2017,8 +2034,8 @@ int CheckAWeddingLeavesNoChildAlone() {
                        "the child stays with the grandmother");
   }
   // THE QUEUE ASKS THE SAME (RunWeddingQueue): a couple that joined it while
-  // the yard had an adult, and lost that adult since, waits on though a house
-  // stands — and is not struck off: the child grows up.
+  // the yard had an adult, and lost that adult since, marries into the
+  // widow's yard — it needs no house, the free one stays free.
   {
     Village waiting = village(false);
     const std::uint32_t groom_row =
@@ -2029,9 +2046,79 @@ int CheckAWeddingLeavesNoChildAlone() {
     couple.since_day = 0;
     AppendRow(waiting.world.wedding_waits, couple);
     RunDays(*system, waiting.world, 1);
-    failures += Expect(!married(waiting) && waiting.world.wedding_waits.rows.size() == 1,
-                       "a wedding: a couple in the queue whose bride would leave a child alone "
-                       "is passed over, the free house notwithstanding, and still waits");
+    failures += Expect(
+        married(waiting) && husband_at_home(waiting) && waiting.world.wedding_waits.rows.empty(),
+        "a wedding: a couple in the queue whose bride has a child of her own "
+        "marries into her yard, and leaves the queue");
+  }
+
+  // AN ELDER BROTHER TAKES THE YOUNGER ALONG: a yard of a brother of twenty-
+  // two and a sister of ten — their mother's number written, the mother gone
+  // — a bride next door with her parents, a free house. The couple and the
+  // sister live in the new house, and the old yard is struck off.
+  {
+    core::WorldState world;
+    world.world_seed = 12;
+    world.rng = core::SeedRngState(12, 0);
+    const core::FamilyId theirs = AppendRow(world.families, core::FamilyRow{});
+    const core::ResidentId brother = AddAdult(world, theirs, core::Sex::kMale, 22.0F);
+    const core::ResidentId sister = AddAdult(world, theirs, core::Sex::kFemale, 10.0F);
+    for (const core::ResidentId kin : {brother, sister}) {
+      world.residents.rows[FindRow(world.residents, kin)].mother = core::ResidentId{777};
+    }
+    AddHouse(world, theirs, core::Vec2{.x = 5000.0F, .y = 6000.0F});
+    AddParentsWithChild(world, core::Sex::kFemale, core::Vec2{.x = 5200.0F, .y = 6000.0F});
+    core::UnitRow free_house;
+    free_house.type = core::UnitTypeId{2};
+    free_house.position = core::Vec2{.x = 5400.0F, .y = 6000.0F};
+    AppendRow(world.units, free_house);
+    bool wed = false;
+    for (std::uint32_t day = 0; day < 3 * core::kDaysPerYear && !wed; ++day) {
+      RunDays(*system, world, 1);
+      const std::uint32_t row = FindRow(world.residents, brother);
+      wed = row != core::kNoRow &&
+            world.residents.rows[row].spouse.value != core::kInvalidEntityIdValue;
+    }
+    const std::uint32_t brother_row = FindRow(world.residents, brother);
+    const std::uint32_t sister_row = FindRow(world.residents, sister);
+    failures += Expect(
+        wed && brother_row != core::kNoRow && sister_row != core::kNoRow &&
+            world.residents.rows[sister_row].family.value ==
+                world.residents.rows[brother_row].family.value &&
+            world.residents.rows[brother_row].family.value != theirs.value &&
+            FindRow(world.families, theirs) == core::kNoRow,
+        "a wedding: the elder brother marries and takes his sister of ten into the couple's new "
+        "house; the old yard is struck off");
+  }
+
+  // BOTH WITH CHILDREN ALONE — THE WEDDING WAITS: a widow with her child and
+  // a widower with his son, nobody else in either yard. A year on, neither is
+  // married.
+  {
+    Village two = village(false);
+    const core::FamilyId his_yard = AppendRow(two.world.families, core::FamilyRow{});
+    const core::ResidentId widower = AddAdult(two.world, his_yard, core::Sex::kMale, 32.0F);
+    const core::ResidentId son = AddAdult(two.world, his_yard, core::Sex::kMale, 3.0F);
+    two.world.residents.rows[FindRow(two.world.residents, son)].father = widower;
+    AddHouse(two.world, his_yard, core::Vec2{.x = 4800.0F, .y = 6000.0F});
+    // The bachelor of the fixture is married off-stage: only the two may wed.
+    for (core::ResidentRow& resident : two.world.residents.rows) {
+      if (resident.family.value != two.her_yard.value && resident.family.value != his_yard.value &&
+          resident.spouse.value == core::kInvalidEntityIdValue) {
+        resident.spouse = core::ResidentId{8888};
+      }
+    }
+    // (A migrant who comes single within the year may marry either of them
+    // into their own yard — that is the rule working; it is the two of them
+    // the check asks.)
+    RunDays(*system, two.world, core::kDaysPerYear);
+    const std::uint32_t row = FindRow(two.world.residents, widower);
+    const std::uint32_t her = FindRow(two.world.residents, two.widow);
+    failures += Expect(row != core::kNoRow && her != core::kNoRow &&
+                           two.world.residents.rows[row].spouse.value != two.widow.value &&
+                           !child_alone(two),
+                       "a wedding: a widow and a widower each with a child alone do not marry "
+                       "each other — the wedding waits, neither yard is left to its child");
   }
   return failures;
 }

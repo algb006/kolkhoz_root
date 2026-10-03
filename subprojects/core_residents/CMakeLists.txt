@@ -9,6 +9,7 @@ kolkhoz_add_module(core_residents
     life_config.cpp
     food_config.cpp
     demography.cpp
+    hygiene.cpp
     housing.cpp
     housing_ladder.cpp
     family_exchange.cpp
