@@ -2814,6 +2814,25 @@ int TestWinterPreparationYieldsToWindowedWork() {
     failures +=
         Expect(plan[0] == 1, "winter preparation due in 1 day yields to a harvest due in 30");
   }
+  // UNLESS ITS WINDOW IS CLOSING (0.37.165; boss, the queue thread [102],
+  // (a)): fewer days left than the preparation needs, it ranks as a job with
+  // a window and takes the one horse from the carting of a heap.
+  {
+    core::AssignmentJob closing = prepare();
+    closing.winter_window_closing = true;
+    const std::vector<core::AssignmentJob> jobs = {
+        FieldJob(core::WorkKind::kHauling, 2, origin, 3.0F, 30), closing};
+    const auto plan = core::PlanDayAssignments(jobs, candidates, params);
+    failures += Expect(plan[0] == 1,
+                       "winter preparation whose window is closing takes the horse from a heap's "
+                       "carting due in 30");
+    const std::vector<core::AssignmentJob> open = {
+        FieldJob(core::WorkKind::kHauling, 2, origin, 3.0F, 30), prepare()};
+    const auto open_plan = core::PlanDayAssignments(open, candidates, params);
+    failures += Expect(open_plan[0] == 0,
+                       "and the same preparation with its window not closing leaves the horse to "
+                       "the carting");
+  }
   {
     core::AssignmentJob unwindowed = FieldJob(core::WorkKind::kPlowing, 2, origin, 3.0F, 0);
     unwindowed.window = core::DeadlineNotApplicable();

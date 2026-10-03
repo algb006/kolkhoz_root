@@ -1181,6 +1181,8 @@ class LaborSystem final : public ILaborSystem {
                              config_.crops[field.crop.value].kcal_per_gram;
         }
         job.prepares_winter_crop = PreparesWinterCrop(field, kind, current.calendar.day);
+        job.winter_window_closing =
+            job.prepares_winter_crop && WinterWindowClosing(current, field, kind, job.window);
         job.plan_position = IsHorseWork(kind) && CarriesPlanPosition(current, field, kind);
         // THE ZYAB HAS NO WINDOW OF ITS OWN (register 13; boss-
         // core-epoch1-queue-2026-09-29 [22]; 0.37.18): read off the field's
@@ -1654,6 +1656,33 @@ class LaborSystem final : public ILaborSystem {
     const CropId crop = JobCrop(field, today);
     return kind != WorkKind::kHarvest && crop.value < config_.crops.size() &&
            config_.crops[crop.value].is_winter != 0 && crop.value != field.rotation_year0.value;
+  }
+
+  /// Whether the winter crop's sowing window, `window`, has fewer days left
+  /// than the preparation still needs (assignment.h, winter_window_closing;
+  /// 0.37.165): this phase's norm-days over the village's draught horses,
+  /// rounded up, a day for each phase after this one up to the sowing, and a
+  /// day to spare — STUB core, the spare day is not a design number. A window
+  /// not counted in days (overdue, none) is not closing: past it the slot is
+  /// lost, and the overdue tier already stands above the preparation's.
+  bool WinterWindowClosing(const WorldState& current,
+                           const FieldRow& field,
+                           WorkKind kind,
+                           const Deadline& window) const {
+    if (window.kind != DeadlineKind::kDays) {
+      return false;
+    }
+    std::int32_t phases_after = 0;
+    if (kind == WorkKind::kPlowing) {
+      phases_after = 2;  // the harrow and the drill
+    } else if (kind == WorkKind::kHarrowing) {
+      phases_after = 1;  // the drill
+    }
+    const auto horses = static_cast<float>(std::max<std::uint32_t>(1U, DraughtHorses(current)));
+    const auto this_phase =
+        static_cast<std::int32_t>(std::ceil(field.work_days_remaining / horses));
+    constexpr std::int32_t kSpareDays = 1;
+    return window.days <= this_phase + phases_after + kSpareDays;
   }
 
   /// Urgency of a field job: the crop's own window, open or closed. The

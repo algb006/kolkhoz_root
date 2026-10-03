@@ -123,6 +123,18 @@ struct AssignmentJob {
   /// potato harvest and sent potatoes under the snow.
   bool prepares_winter_crop = false;
 
+  /// AND RISES TO ITS WINDOW'S TIER WHEN THE WINDOW IS CLOSING (0.37.165;
+  /// boss, the queue thread [102], option (a)): fewer days are left of the
+  /// winter crop's sowing window than the preparation still needs — this
+  /// phase's norm-days over the village's draught horses, a day for each
+  /// phase after it, and a day to spare. Then the job ranks as any job with
+  /// a window (tier 0), and the carting of a heap no longer takes every
+  /// horse in the last days the rye can be sown. Measured on 0.37.161
+  /// (core-ryeprobe, seed 1931): the fallow for the rye waited unploughed
+  /// days 24-30, unharrowed 34-39 while 15-17 horses carted, and the slot
+  /// was lost; 10 of 18 failed plan rows of the canon were that.
+  bool winter_window_closing = false;
+
   /// True for the farm rule's zyab — the stubble ploughed for next spring's
   /// crop (FieldRow::autumn_furrowing; register 13; 0.37.18). It has no
   /// window (the tier of work with none) and goes FIRST in that tier: the

@@ -513,7 +513,7 @@ std::vector<std::int32_t> SavedBands(const std::vector<AssignmentJob>& jobs,
 int PlacementTier(const AssignmentJob& job) {
   constexpr int kWinterPreparationTier = 3;
   constexpr int kMeadowCutTier = 2;
-  if (job.prepares_winter_crop) {
+  if (job.prepares_winter_crop && !job.winter_window_closing) {
     return kWinterPreparationTier;
   }
   // The meadow cut is the one harvest that rides out (labor_system.cpp,
