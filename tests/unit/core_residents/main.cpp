@@ -297,6 +297,136 @@ core::Grams PantryOf(const core::WorldState& world, std::uint32_t resource) {
   return pantry.size() > resource ? pantry[resource] : 0;
 }
 
+/// THE FOREST'S GIFTS (0.37.152; the human's word of 3 October 2026, «Сбор
+/// ягод и яйцо делайте»; boss, boss-all-epoch1-queue-after-counterweight-
+/// 2026-10-03 [7], [9]): the families gather as they fish — no order, no
+/// unit — a basket BY THE EATER over July to September, half of it dried the
+/// same day by its kilocalories, and the dried eaten in equal shares from
+/// December to May and at no other time.
+///
+/// The fixture's numbers: 48 kg an eater a year over the twelve days of the
+/// three months is 4 kg a day; fresh 0.4 kcal/g, dried 3.0, so a day's dried
+/// half — 2 kg fresh, 800 kcal — is 266.667 g. One adult of thirty is one
+/// eater; a child of 8.75 years is half of one by the meal's own ramp.
+int CheckTheForestsGifts() {
+  int failures = 0;
+  core::FoodConfig config = MakeExchangeConfig();
+  config.plot.fish_kg_per_yard_year = {0.0F, 0.0F, 0.0F};
+  config.resources.resize(6);
+  config.resources[4] = {.kcal_per_gram = 0.4F,
+                         .category = core::FoodCategory::kFruitAndBerries,
+                         .issue_kg_per_trudoden = 0.0F,
+                         .ration_kg_per_day = 0.0F};
+  config.resources[5] = {.kcal_per_gram = 3.0F,
+                         .category = core::FoodCategory::kFruitAndBerries,
+                         .issue_kg_per_trudoden = 0.0F,
+                         .ration_kg_per_day = 0.0F};
+  config.spoil_days = {0.0F, 0.0F, 0.0F, 0.0F, 6.0F, 2400.0F};
+  config.forage_resource = core::ResourceId{4};
+  config.dried_forage_resource = core::ResourceId{5};
+  config.plot.forage_kg_per_eater_year = 48.0F;
+  config.plot.forage_dried_share = 0.5F;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  const auto on_day = [](core::WorldState& world, std::uint32_t day_of_year, std::uint32_t hour) {
+    world.calendar.tick =
+        (static_cast<core::Tick>(day_of_year) * core::kTicksPerDay) + static_cast<core::Tick>(hour);
+    core::RefreshCalendarCaches(world.calendar);
+  };
+  const auto near = [](core::Grams value, double grams) {
+    return std::abs(static_cast<double>(value) - grams) <= 1.0;
+  };
+  const auto booked = [](const core::WorldState& world, std::size_t resource) {
+    const core::ResourceAmounts& forage = world.ledger.current.forage;
+    return resource < forage.size() ? forage[resource] : core::Grams{0};
+  };
+
+  // -- the gathering ---------------------------------------------------------
+  // (The fresh keeps six days, and the exchange rots the larders after the
+  // gathering — a sixth of the fresh gone the same evening. The gathering is
+  // read on a roster that does not spoil; the rot has its own checks.)
+  const core::FoodConfig kept = config;
+  config.spoil_days.assign(config.resources.size(), 0.0F);
+  {
+    core::WorldState world = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
+    on_day(world, 25, 0);  // July: the seventh month's second day
+    core::RunFamilyExchange(config, 4.0F, world);
+    failures += Expect(PantryOf(world, 4) == 2 * kKilo && near(PantryOf(world, 5), 266.667),
+                       "forage: a July day brings an eater 2 kg fresh and the other 2 kg dried — "
+                       "267 g by the kilocalories");
+    failures += Expect(booked(world, 4) == 2 * kKilo && near(booked(world, 5), 266.667),
+                       "forage: and the year's book has both");
+  }
+  {
+    core::WorldState world = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
+    on_day(world, 23, 0);  // June's last day
+    core::RunFamilyExchange(config, 4.0F, world);
+    core::WorldState october = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
+    on_day(october, 36, 0);
+    core::RunFamilyExchange(config, 4.0F, october);
+    failures += Expect(PantryOf(world, 4) == 0 && PantryOf(world, 5) == 0 &&
+                           PantryOf(october, 4) == 0 && PantryOf(october, 5) == 0,
+                       "forage: nothing is gathered in June or in October");
+  }
+  {
+    core::WorldState world = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
+    on_day(world, 25, 0);
+    core::ResidentRow child;
+    child.family = world.families.row_ids[0];
+    child.birth_day = static_cast<std::int32_t>(world.calendar.day) - 105;  // 8.75 years
+    AppendRow(world.residents, child);
+    core::RunFamilyExchange(config, 4.0F, world);
+    failures += Expect(PantryOf(world, 4) == 3 * kKilo && near(PantryOf(world, 5), 400.0),
+                       "forage: the basket is by the eater — a child of half an adult's need "
+                       "brings the yard half a basket more");
+  }
+
+  // -- the dried at the table --------------------------------------------------
+  config = kept;  // with its shelf lives again: the order of the table reads them
+  const auto pantry_with_dried = [&config](core::WorldState& world, core::Grams dried) {
+    world.families.rows[0].pantry.assign(config.resources.size(), 0);
+    world.families.rows[0].pantry[5] = dried;
+  };
+  {
+    // November: the dried is not touched, though the family has nothing else.
+    core::WorldState world = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
+    on_day(world, 43, core::kTicksPerDay - 1U);
+    pantry_with_dried(world, 24 * kKilo);
+    core::RunFamilyMeal(config, 4.0F, world, world, 0);
+    failures += Expect(PantryOf(world, 5) == 24 * kKilo,
+                       "forage: in November the dried is not eaten — it is the winter's");
+  }
+  {
+    // 1 December: twenty-four days to the end of May, a twenty-fourth today.
+    core::WorldState world = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
+    on_day(world, 44, core::kTicksPerDay - 1U);
+    pantry_with_dried(world, 24 * kKilo);
+    core::RunFamilyMeal(config, 4.0F, world, world, 0);
+    failures += Expect(PantryOf(world, 5) == 23 * kKilo,
+                       "forage: on the first of December a twenty-fourth of the dried is eaten — "
+                       "the store over the days left to the end of May");
+    const auto berries = static_cast<std::size_t>(core::FoodCategory::kFruitAndBerries);
+    // A kilogram at three kilocalories a gram.
+    failures += Expect(world.families.rows[0].season_category_kcal[berries] == 3'000.0F,
+                       "forage: and it stands on the season's table as fruit and berries");
+  }
+  {
+    // The last day of May: what is left is eaten, as far as the day's need.
+    core::WorldState world = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
+    on_day(world, 19, core::kTicksPerDay - 1U);
+    pantry_with_dried(world, 2 * kKilo);
+    core::RunFamilyMeal(config, 4.0F, world, world, 0);
+    failures += Expect(PantryOf(world, 5) == 0,
+                       "forage: on the last day of May the rest of the dried is eaten");
+    core::WorldState june = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
+    on_day(june, 20, core::kTicksPerDay - 1U);
+    pantry_with_dried(june, 2 * kKilo);
+    core::RunFamilyMeal(config, 4.0F, june, june, 0);
+    failures += Expect(PantryOf(june, 5) == 2 * kKilo,
+                       "forage: and on the first of June it is not touched again");
+  }
+  return failures;
+}
+
 int CheckExchange() {
   int failures = 0;
   const core::FoodConfig config = MakeExchangeConfig();
@@ -4528,6 +4658,7 @@ int main() {
   failures += CheckSatietyComponent();
   failures += CheckPlot();
   failures += CheckExchange();
+  failures += CheckTheForestsGifts();
   failures += CheckRationSwitch();
   failures += CheckIssueNorms();
   failures += CheckTheDefaultShareOfTheRemainder();

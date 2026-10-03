@@ -300,6 +300,38 @@ struct PlotConfig {
   /// order, no mechanic. It is help ON TOP of the designed coverage, never
   /// inside it. The numbers themselves are polish question P22m.
   std::array<float, 3> fish_kg_per_yard_year = {400.0F, 250.0F, 100.0F};
+
+  /// THE FOREST'S GIFTS, GATHERED BY THE FAMILIES (the human's word of 30
+  /// September and of 3 October 2026, «Сбор ягод и яйцо делайте»; boss,
+  /// boss-all-epoch1-queue-after-counterweight-2026-10-03 [7], [9];
+  /// 0.37.152): built as the nets are — no unit, no order, the families' own
+  /// rest — and measured BY THE EATER, not by the yard: a share of an adult's
+  /// need (the meal's own ramp, family_meal.h), so that a basket is the same
+  /// part of every family's table. food.csv `forage_kg_per_eater_year`, 55 kg
+  /// of fresh mushrooms and berries an eater over the months
+  /// `forage_from_month`..`forage_to_month` (July to September), spread
+  /// evenly over their days. STUB, econ's.
+  ///
+  /// forest_forage.csv — the yields by biome — is NOT read: the basket is the
+  /// same wherever the yard stands. STUB, named.
+  float forage_kg_per_eater_year = 0.0F;
+  std::uint8_t forage_from_month = 6;  ///< July, 0-based.
+  std::uint8_t forage_to_month = 8;    ///< September, 0-based.
+
+  /// The share of the basket that is dried the day it is gathered (food.csv
+  /// `forage_dried_share`, 0.5 — STUB, boss [7]): the dried is the winter's
+  /// and the spring's place at the table, the fresh is the summer's. ITS
+  /// MASS HAS NO KEY: the fresh's kilocalories over the dried's kilocalories a
+  /// gram, both food.csv's — drying keeps what is eaten and loses the water.
+  float forage_dried_share = 0.0F;
+
+  /// The months the dried is eaten in, in equal shares (food.csv
+  /// `dried_eaten_from_month`..`dried_eaten_to_month`, December to May —
+  /// boss [7]: «едят ровной долей с декабря по май»): each day the store
+  /// over the days left to the window's end. Outside the window the dried is
+  /// not touched. The window may wrap the year's end.
+  std::uint8_t dried_eaten_from_month = 11;  ///< December, 0-based.
+  std::uint8_t dried_eaten_to_month = 4;     ///< May, 0-based.
 };
 
 /// @brief What the next sowing of one crop needs, per crop row of
@@ -397,6 +429,11 @@ struct FoodConfig {
   ResourceId vegetables_resource;  ///< resources.csv "vegetables".
 
   ResourceId fish_resource;  ///< resources.csv "fish": the nets.
+
+  /// resources.csv "forest_forage" and "dried_forest_gifts": the families'
+  /// gathering, fresh and dried (PlotConfig::forage_kg_per_eater_year).
+  ResourceId forage_resource;
+  ResourceId dried_forage_resource;
 
   ResourceId hay_resource;  ///< resources.csv "hay": what the yard mows itself.
 

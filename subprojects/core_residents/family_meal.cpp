@@ -147,6 +147,63 @@ std::uint16_t VarietyMaskOf(const FoodConfig& config, const FamilyRow& family) {
 /// pushed) the potato rotted beside the grain — 1 408 t spoiled over the
 /// canon's twenty years against 978 t, hungry family-days up by a third.
 ///
+/// Whether bin `index` is THE WINTER'S STORE — the dried mushrooms and
+/// berries (FoodConfig::dried_forage_resource; 0.37.152). It is eaten by its
+/// own rule, EatTheWinterStore, and by none of the three below: «a little of
+/// each» would put it on the table in August, the order of the shelf life —
+/// 2400 days, the last of all — never, and the proportional part does not
+/// know a month.
+bool IsWinterStore(const FoodConfig& config, std::uint32_t index) {
+  return config.dried_forage_resource.value != kInvalidDefIdValue &&
+         index == config.dried_forage_resource.value;
+}
+
+/// Whether `month` lies in `from`..`to`, both ends in, WHERE THE WINDOW MAY
+/// WRAP THE YEAR'S END (December to May). The calendar's MonthInRange does
+/// not wrap, and says so; the winter is the one band here that must.
+bool MonthInWinterWindow(std::uint8_t month, std::uint8_t from, std::uint8_t to) {
+  return from <= to ? (month >= from && month <= to) : (month >= from || month <= to);
+}
+
+/// THE DRIED IS EATEN IN EQUAL SHARES OVER ITS MONTHS (PlotConfig::
+/// dried_eaten_from_month..dried_eaten_to_month, December to May; boss,
+/// boss-all-epoch1-queue-after-counterweight-2026-10-03 [7]: «запас на зиму
+/// делится на оставшиеся сутки до конца мая»): today's share is the store
+/// over the days left to the window's end, today among them — so the last
+/// day takes what is left. Never more than the day's need. Outside the
+/// window nothing is taken, whatever else the pantry holds.
+///
+/// WHY NOT «A LITTLE OF EACH»: that rule gives 4 % of the day's need while
+/// the bin holds anything, from the day the first handful is dried — a
+/// store laid in for the winter would be on the table in August and gone by
+/// the new year, and the gathering would close the summer it already closes
+/// fresh and leave the spring bare (boss [35] of the queue thread before).
+/// Returns the kilocalories.
+float EatTheWinterStore(const FoodConfig& config,
+                        FamilyRow& family,
+                        float need_kcal,
+                        const Date& date) {
+  const PlotConfig& plot = config.plot;
+  const std::uint32_t index = config.dried_forage_resource.value;
+  const auto month = static_cast<std::uint8_t>(date.month);
+  if (config.dried_forage_resource.value == kInvalidDefIdValue ||
+      index >= PantryRoster(config, family) || family.pantry[index] <= 0 ||
+      !(config.resources[index].kcal_per_gram > 0.0F) || !(need_kcal > 0.0F) ||
+      !MonthInWinterWindow(month, plot.dried_eaten_from_month, plot.dried_eaten_to_month)) {
+    return 0.0F;
+  }
+  const std::uint32_t months_after =
+      (static_cast<std::uint32_t>(plot.dried_eaten_to_month) + kMonthsPerYear - month) %
+      kMonthsPerYear;
+  const std::uint32_t days_left =
+      (months_after * kDaysPerMonth) + (kDaysPerMonth - date.day_in_month);
+  const Grams share = family.pantry[index] / static_cast<Grams>(days_left);
+  const Grams wanted =
+      GramsFromFloat(std::floor(need_kcal / config.resources[index].kcal_per_gram));
+  const Grams take = share < wanted ? share : wanted;
+  return take > 0 ? PutOnTable(config, family, index, take) : 0.0F;
+}
+
 /// The bins that go bad, shortest shelf life first, each eaten out before
 /// the next is touched. Returns the kilocalories.
 float EatPerishableFirst(const FoodConfig& config, FamilyRow& family, float need_kcal) {
@@ -155,7 +212,7 @@ float EatPerishableFirst(const FoodConfig& config, FamilyRow& family, float need
   std::vector<std::uint32_t> perishable;
   for (std::uint32_t index = 0; index < roster; ++index) {
     if (config.resources[index].kcal_per_gram > 0.0F && family.pantry[index] > 0 &&
-        SpoilDaysOf(config, index) > 0.0F) {
+        SpoilDaysOf(config, index) > 0.0F && !IsWinterStore(config, index)) {
       perishable.push_back(index);
     }
   }
@@ -210,7 +267,8 @@ float EatALittleOfEachCategory(const FoodConfig& config, FamilyRow& family, floa
     for (std::uint32_t index = 0; index < roster; ++index) {
       if (static_cast<std::size_t>(config.resources[index].category) == category &&
           config.resources[index].kcal_per_gram > 0.0F && family.pantry[index] > 0 &&
-          SpoilDaysOf(config, index) > config.consumption.little_of_each_keeps_over_days) {
+          SpoilDaysOf(config, index) > config.consumption.little_of_each_keeps_over_days &&
+          !IsWinterStore(config, index)) {
         bins.push_back(index);
       }
     }
@@ -241,15 +299,21 @@ float EatALittleOfEachCategory(const FoodConfig& config, FamilyRow& family, floa
 /// order of the shelf life, then what does not spoil at all in proportion to
 /// what is stored.
 /// @return The kilocalories eaten; never more than `need_kcal`.
-float EatFromPantry(const FoodConfig& config, FamilyRow& family, float need_kcal) {
+float EatFromPantry(const FoodConfig& config,
+                    FamilyRow& family,
+                    float need_kcal,
+                    const Date& date) {
   const std::uint32_t roster = PantryRoster(config, family);
   if (!(need_kcal > 0.0F)) {
     return 0.0F;
   }
   const auto edible = [&config, &family](std::uint32_t index) {
-    return config.resources[index].kcal_per_gram > 0.0F && family.pantry[index] > 0;
+    return config.resources[index].kcal_per_gram > 0.0F && family.pantry[index] > 0 &&
+           !IsWinterStore(config, index);
   };
-  float eaten_kcal = EatALittleOfEachCategory(config, family, need_kcal);
+  // The winter's store first, by its own rule and in its own months.
+  float eaten_kcal = EatTheWinterStore(config, family, need_kcal, date);
+  eaten_kcal += EatALittleOfEachCategory(config, family, need_kcal - eaten_kcal);
   eaten_kcal += EatPerishableFirst(config, family, need_kcal - eaten_kcal);
   // What keeps, in proportion to what is stored, for the rest of the need.
   const float left_kcal = need_kcal - eaten_kcal;
@@ -366,7 +430,7 @@ void RunFamilyMeal(const FoodConfig& config,
     family.season_need_kcal = 0.0F;
   }
   const float need_kcal = FamilyNeedKcal(config, life_speedup, previous, current, id, day);
-  const float eaten_kcal = EatFromPantry(config, family, need_kcal);
+  const float eaten_kcal = EatFromPantry(config, family, need_kcal, current.calendar.date);
   family.season_need_kcal += need_kcal;
   family.food_variety_mask = VarietyMaskOf(config, family);
   family.first_meal_eaten = 1;  // the variety ceiling applies from now on

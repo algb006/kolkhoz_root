@@ -263,6 +263,12 @@ bool ParsePlot(const ITable& table, FoodConfig& config, std::string& error) {
       {.key = "yard_hay_kg_per_head",
        .value = &plot.yard_hay_kg_per_head,
        .range = {.low = 0.0F, .high = 1.0e5F}},
+      {.key = "forage_kg_per_eater_year",
+       .value = &plot.forage_kg_per_eater_year,
+       .range = {.low = 0.0F, .high = 1.0e4F}},
+      {.key = "forage_dried_share",
+       .value = &plot.forage_dried_share,
+       .range = {.low = 0.0F, .high = 1.0F}},
   });
   return ReadKnobs(table, "food", tail, error) &&
          ReadMonth(table, "plot_summer_from_month", plot.summer_from_month, error) &&
@@ -270,7 +276,11 @@ bool ParsePlot(const ITable& table, FoodConfig& config, std::string& error) {
          ReadMonth(table, "growing_from_month", plot.growing_from_month, error) &&
          ReadMonth(table, "growing_to_month", plot.growing_to_month, error) &&
          ReadMonth(table, "garden_harvest_month", plot.garden_harvest_month, error) &&
-         ReadMonth(table, "hay_harvest_month", plot.hay_harvest_month, error);
+         ReadMonth(table, "hay_harvest_month", plot.hay_harvest_month, error) &&
+         ReadMonth(table, "forage_from_month", plot.forage_from_month, error) &&
+         ReadMonth(table, "forage_to_month", plot.forage_to_month, error) &&
+         ReadMonth(table, "dried_eaten_from_month", plot.dried_eaten_from_month, error) &&
+         ReadMonth(table, "dried_eaten_to_month", plot.dried_eaten_to_month, error);
 }
 
 /// One row per edible resource. The roster is resources.csv; a food.csv row
@@ -435,6 +445,8 @@ FoodConfig ParseFoodConfig(const ITableSet& tables, std::string* error) {
   config.potato_resource = ResourceByKey(resources, "potato");
   config.vegetables_resource = ResourceByKey(resources, "vegetables");
   config.fish_resource = ResourceByKey(resources, "fish");
+  config.forage_resource = ResourceByKey(resources, "forest_forage");
+  config.dried_forage_resource = ResourceByKey(resources, "dried_forest_gifts");
   config.hay_resource = ResourceByKey(resources, "hay");
   // WHO THE YARD MOWS FOR (0.37.54): the kinds with a hay row in
   // feed_links.csv, by livestock.csv row — HerdRow::kind's index. A feed row

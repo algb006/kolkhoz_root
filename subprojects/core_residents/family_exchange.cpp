@@ -27,6 +27,7 @@
 #include "core_common/quantities.h"
 #include "core_common/spoilage.h"
 #include "core_common/state_table_ops.h"
+#include "family_meal.h"
 #include "issue_norm.h"
 
 namespace core {
@@ -578,6 +579,78 @@ void RunNets(const FoodConfig& config, WorldState& current) {
   }
 }
 
+/// How many months a window `from`..`to` holds, both ends in, the window
+/// free to wrap the year's end (December to May is six).
+std::uint32_t MonthsInWindow(std::uint8_t from, std::uint8_t to) {
+  return ((static_cast<std::uint32_t>(to) + kMonthsPerYear - from) % kMonthsPerYear) + 1U;
+}
+
+/// THE FOREST'S GIFTS (household design §2; PlotConfig::
+/// forage_kg_per_eater_year; 0.37.152): built as the nets above — no unit, no
+/// order, the families' own rest — and measured by the EATER: each member's
+/// share of an adult's need by the meal's own ramp (DailyNeedKilograms), so
+/// a basket is the same part of every family's table. The year's basket is
+/// spread over the days of the gathering months; a share of each day's is
+/// dried the same day, the dried's mass by the kilocalories kept.
+///
+/// THE DISTRICT'S PATIENT GATHERS NOTHING: away in the district he eats the
+/// district's bread and is no eater of the yard (EaterCount above).
+void RunForage(const FoodConfig& config, float life_speedup, WorldState& current) {
+  const PlotConfig& plot = config.plot;
+  const ResourceId fresh = config.forage_resource;
+  const ResourceId dried = config.dried_forage_resource;
+  const auto month = static_cast<std::uint8_t>(current.calendar.date.month);
+  if (fresh.value == kInvalidDefIdValue || fresh.value >= config.resources.size() ||
+      !(plot.forage_kg_per_eater_year > 0.0F) ||
+      !MonthInRange(month, plot.forage_from_month, plot.forage_to_month)) {
+    return;
+  }
+  const float adult_need =
+      DailyNeedKilograms(config.consumption, config.consumption.adult_from_bio_years, false);
+  if (!(adult_need > 0.0F)) {
+    return;
+  }
+  const float days = static_cast<float>(
+      MonthsInWindow(plot.forage_from_month, plot.forage_to_month) * kDaysPerMonth);
+  // Dried only where the roster knows the dried and both are eaten: the mass
+  // is the kilocalories' — nothing is made of a food worth none.
+  const float fresh_kcal = config.resources[fresh.value].kcal_per_gram;
+  const float dried_kcal =
+      dried.value != kInvalidDefIdValue && dried.value < config.resources.size()
+          ? config.resources[dried.value].kcal_per_gram
+          : 0.0F;
+  const float dried_share = fresh_kcal > 0.0F && dried_kcal > 0.0F ? plot.forage_dried_share : 0.0F;
+  const SimDay day = current.calendar.day;
+  for (std::uint32_t row = 0; row < current.families.rows.size(); ++row) {
+    const FamilyId id = current.families.row_ids[row];
+    float eaters = 0.0F;
+    for (const ResidentRow& resident : current.residents.rows) {
+      if (resident.family.value != id.value || AwayInDistrict(resident, current.calendar.tick)) {
+        continue;
+      }
+      const float age = BiologicalAgeYears(life_speedup, resident.birth_day, day);
+      eaters += DailyNeedKilograms(config.consumption, age, false) / adult_need;
+    }
+    const float basket_kg = plot.forage_kg_per_eater_year * eaters / days;
+    if (!(basket_kg > 0.0F)) {
+      continue;
+    }
+    FamilyRow& family = current.families.rows[row];
+    const Grams kept = KilogramsToGrams(basket_kg * (1.0F - dried_share));
+    if (kept > 0) {
+      AddToPantry(family, fresh, kept);
+      AddLedgerAmount(current.ledger.current.forage, fresh, kept);
+    }
+    const Grams made = dried_share > 0.0F
+                           ? KilogramsToGrams(basket_kg * dried_share * fresh_kcal / dried_kcal)
+                           : 0;
+    if (made > 0) {
+      AddToPantry(family, dried, made);
+      AddLedgerAmount(current.ledger.current.forage, dried, made);
+    }
+  }
+}
+
 /// The economic year's close (labor-payment §3): both counters burn — what
 /// was earned and what was covered. Unredeemed trudodni are not a debt the
 /// kolkhoz carries into the next year; that is the whole point of the rule,
@@ -629,6 +702,7 @@ void RunFamilyExchange(const FoodConfig& config, float life_speedup, WorldState&
     return;  // a table-less world has no food roster and nothing to hand out
   }
   RunNets(config, current);
+  RunForage(config, life_speedup, current);
   // THE LARDERS ROT TOO, and they rot here — after the meal. The meal is the
   // needs slot, phase 2; this is the decisions slot, phase 3, of the same
   // tick, so what a family ate today it ate before today's spoilage
