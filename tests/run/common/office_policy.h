@@ -51,6 +51,7 @@
 #include "core_world/world.h"
 #include "house_policy.h"
 #include "start_gate.h"
+#include "suggested_place.h"
 
 namespace run {
 
@@ -58,7 +59,7 @@ namespace run {
 ///        nothing the village needs more is waiting.
 class OfficePolicy {
  public:
-  explicit OfficePolicy(const core::ITableSet& tables) {
+  explicit OfficePolicy(const core::ITableSet& tables) : suggested_(tables, "farm_office") {
     office_ = TypeByKey(tables, "farm_office");
     house_ = TypeByKey(tables, "wooden_house");
     std::string error;
@@ -164,8 +165,12 @@ class OfficePolicy {
       mark.unit_type = office_;
       const std::vector<float>& radii = definitions_.units.keep_out_radius_m;
       const float radius = office_.value < radii.size() ? radii[office_.value] : 0.0F;
-      mark.position = core::FreePlot(
-          world.units, definitions_.Plots(), HousePolicy::VillageCentre(world), radius);
+      // ON THE ELDER'S POINT (suggested_place.h; 0.37.159).
+      const std::optional<core::Vec2> point = suggested_.Take(world, definitions_.Plots(), radius);
+      mark.position =
+          point ? *point
+                : core::FreePlot(
+                      world.units, definitions_.Plots(), HousePolicy::VillageCentre(world), radius);
       orders.push_back(mark);
       ++marked_;
       if (first_mark_day_ < 0) {
@@ -209,6 +214,7 @@ class OfficePolicy {
               << "), start orders " << started_ << "; " << standing << " standing, " << sites
               << " sites; electrification "
               << (world.era_events.electrification_unlocked != 0 ? "came" : "did not come") << '\n';
+    suggested_.Report(run_name);
   }
 
   /// @brief Offices standing (level > 0).
@@ -233,6 +239,9 @@ class OfficePolicy {
   core::UnitTypeId house_;
 
   core::Definitions definitions_;
+
+  /// The office's point (suggestions.csv).
+  SuggestedPlaces suggested_;
 
   std::uint32_t meeting_repairs_ = 0;
 

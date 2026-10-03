@@ -55,13 +55,14 @@
 #include "core_tables/tables.h"
 #include "core_world/world.h"
 #include "rise_watch.h"
+#include "suggested_place.h"
 #include "village_middle.h"
 
 namespace run {
 
 class SawmillPolicy {
  public:
-  explicit SawmillPolicy(const core::ITableSet& tables) {
+  explicit SawmillPolicy(const core::ITableSet& tables) : suggested_(tables, "utility_yard") {
     std::string error;
     const bool parsed = core::ParseTimberCatalog(tables, catalog_, error);
     yard_type_ = RowId<core::UnitTypeIdTag>(tables, "unit_types", "utility_yard");
@@ -150,6 +151,7 @@ class SawmillPolicy {
               << ", paused it " << pauses_ << " times and resumed it " << resumes_
               << " times; it stood open " << days_sawing_ << " days; the yard was marked "
               << yard_attempts_ << " times\n";
+    suggested_.Report(run);
   }
 
   /// @brief Grams of `resource` in built units that anybody may still have —
@@ -485,10 +487,15 @@ class SawmillPolicy {
       // rings guessed around the centre. The rings found a place on day one
       // and none in a grown village: put up late, the yard was marked forty
       // times on seed 1931 and refused for crowding every time (2026-09-13).
+      // AND ON THE ELDER'S POINT FIRST (suggested_place.h; 0.37.159).
       ++yard_attempts_;
-      return Mark(yard_type_,
-                  core::FreePlot(world.units, definitions_.Plots(), Centre(world), YardRadius()),
-                  order);
+      const std::optional<core::Vec2> point =
+          suggested_.Take(world, definitions_.Plots(), YardRadius());
+      return Mark(
+          yard_type_,
+          point ? *point
+                : core::FreePlot(world.units, definitions_.Plots(), Centre(world), YardRadius()),
+          order);
     }
     if (world.units.rows[yard].level == 0) {
       return Start(world, yard, order);
@@ -625,6 +632,8 @@ class SawmillPolicy {
   /// The plot radii and the map, for FreePlot. Owned here: PlotRules is a
   /// span into it.
   core::Definitions definitions_;
+  /// The utility yard's point (suggestions.csv).
+  SuggestedPlaces suggested_;
   core::UnitTypeId yard_type_;
   core::UnitTypeId granary_type_;
 

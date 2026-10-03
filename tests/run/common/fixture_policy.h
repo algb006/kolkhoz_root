@@ -46,6 +46,7 @@
 #include "core_world/world.h"
 #include "start_gate.h"
 #include "store_parent.h"
+#include "suggested_place.h"
 #include "village_middle.h"
 
 namespace run {
@@ -63,7 +64,8 @@ namespace run {
 /// yards rather than under the knife.
 class FixturePolicy {
  public:
-  explicit FixturePolicy(const core::ITableSet& tables) {
+  explicit FixturePolicy(const core::ITableSet& tables)
+      : yard_suggested_(tables, "food_yard"), clamp_suggested_(tables, "clamp") {
     granary_ = TypeByKey(tables, "granary");
     cattle_ = TypeByKey(tables, "cattle_yard");
     pen_suggestion_ = SuggestedPoint(tables, "cattle_yard", has_pen_suggestion_);
@@ -205,6 +207,8 @@ class FixturePolicy {
       std::cout << ' ' << day << " (year " << day / core::kDaysPerYear + 1 << ')';
     }
     std::cout << (food_store_days_.empty() ? " none" : "") << "\n";
+    yard_suggested_.Report("thirty_years");
+    clamp_suggested_.Report("thirty_years");
   }
 
  private:
@@ -657,7 +661,11 @@ class FixturePolicy {
       const std::vector<float>& radii = definitions_.units.keep_out_radius_m;
       const float radius = granary_yard_.value < radii.size() ? radii[granary_yard_.value] : 0.0F;
       order.unit_type = granary_yard_;
-      order.position = core::FreePlot(world.units, definitions_.Plots(), Centre(world), radius);
+      // ON THE ELDER'S POINT FIRST (suggested_place.h; 0.37.159).
+      const std::optional<core::Vec2> point =
+          yard_suggested_.Take(world, definitions_.Plots(), radius);
+      order.position =
+          point ? *point : core::FreePlot(world.units, definitions_.Plots(), Centre(world), radius);
       ++yards_ordered_;
       return true;
     }
@@ -702,7 +710,12 @@ class FixturePolicy {
     const float radius = clamp_.value < radii.size() ? radii[clamp_.value] : 0.0F;
     order.kind = core::OrderKind::kBuildUnit;
     order.unit_type = clamp_;
-    order.position = core::FreePlot(world.units, definitions_.Plots(), near_fields, radius);
+    // ON THE ELDER'S POINT FIRST (suggested_place.h; 0.37.159); the second
+    // clamp and on by the fields, as before.
+    const std::optional<core::Vec2> point =
+        clamp_suggested_.Take(world, definitions_.Plots(), radius);
+    order.position =
+        point ? *point : core::FreePlot(world.units, definitions_.Plots(), near_fields, radius);
     ++ordered_;
     return true;
   }
@@ -824,6 +837,11 @@ class FixturePolicy {
 
   /// The plot radii and the map, for FreePlot.
   core::Definitions definitions_;
+
+  /// The food yard's and the clamp's points (suggestions.csv).
+  SuggestedPlaces yard_suggested_;
+
+  SuggestedPlaces clamp_suggested_;
 
   std::uint32_t yards_ordered_ = 0;
 

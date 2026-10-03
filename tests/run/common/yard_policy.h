@@ -23,16 +23,23 @@
 #define TESTS_RUN_COMMON_YARD_POLICY_H_
 
 #include <cstdint>
+#include <optional>
 #include <span>
+#include <string>
 #include <string_view>
+#include <vector>
 
+#include "core_catalog/definitions.h"
 #include "core_catalog/world_conventions.h"
 #include "core_common/order_state.h"
+#include "core_common/plot.h"
 #include "core_common/unit_state.h"
 #include "core_common/world_state.h"
+#include "core_tables/stub_tables.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
 #include "start_gate.h"
+#include "suggested_place.h"
 #include "village_middle.h"
 
 namespace run {
@@ -44,11 +51,13 @@ class YardPolicy {
   /// @param tables The run's own table set. A set without a horse_yard type
   ///        or a groom post leaves the policy inert: it has nothing to ask
   ///        for, and says so by doing nothing.
-  explicit YardPolicy(const core::ITableSet& tables) {
+  explicit YardPolicy(const core::ITableSet& tables) : suggested_(tables, "horse_yard") {
     yard_type_ = TypeByKey(tables, "unit_types", "horse_yard");
     groom_post_ = PostByKey(tables, "groom");
     adult_age_years_ = Knob(tables, "life", "adult_age_years", 16.0F);
     life_speedup_ = core::LifeSpeedupOr(tables, 4.0F);
+    std::string error;
+    core::LoadDefinitions(tables, core::StubTables::kAllowed, definitions_, error);
   }
 
   /// @brief Whether the policy has anything left to do. False once the team
@@ -117,6 +126,7 @@ class YardPolicy {
     const core::WorldState& world = simulation.CompletedState();
     if (world.chairman.horses_stabled != 0) {
       watching_ = false;  // the horses are in: nothing here matters any more
+      suggested_.Report("the horse yard");
       return;
     }
     if (cooldown_ > 0) {
@@ -203,11 +213,21 @@ class YardPolicy {
   bool NextOrder(const core::WorldState& world, core::OrderRow& order) {
     const std::uint32_t yard_row = FindYard(world);
     if (yard_row == core::kNoRow) {
+      order.kind = core::OrderKind::kBuildUnit;
+      order.unit_type = yard_type_;
+      // ON THE ELDER'S POINT FIRST (suggested_place.h; 0.37.159): the yard is
+      // the centre of the logistics (livestock design §5), and since 0.37.158
+      // its place costs the horse orders their walk.
+      const std::vector<float>& radii = definitions_.units.keep_out_radius_m;
+      const float radius = yard_type_.value < radii.size() ? radii[yard_type_.value] : 0.0F;
+      if (const std::optional<core::Vec2> point =
+              suggested_.Take(world, definitions_.Plots(), radius)) {
+        order.position = *point;
+        return true;
+      }
       // Nothing marked yet. Each attempt steps a little further out, so a
       // refusal for crowding is answered rather than repeated.
       const core::Vec2 centre = VillageCentre(world);
-      order.kind = core::OrderKind::kBuildUnit;
-      order.unit_type = yard_type_;
       order.position =
           core::Vec2{.x = centre.x + (static_cast<float>(attempts_) * kStepAside), .y = centre.y};
       ++attempts_;
@@ -305,6 +325,12 @@ class YardPolicy {
   bool watching_ = true;
 
   StartGate start_gate_;
+
+  /// The plot radii and the map, for the suggested point's FreePlot.
+  core::Definitions definitions_;
+
+  /// The horse yard's point (suggestions.csv).
+  SuggestedPlaces suggested_;
 };
 
 }  // namespace run

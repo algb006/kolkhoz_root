@@ -37,6 +37,7 @@
 #include "core_tables/tables.h"
 #include "core_world/world.h"
 #include "start_gate.h"
+#include "suggested_place.h"
 
 namespace run {
 
@@ -46,7 +47,7 @@ namespace run {
 /// if a run asks for that), at the nearest free place to the village.
 class HousePolicy {
  public:
-  explicit HousePolicy(const core::ITableSet& tables) {
+  explicit HousePolicy(const core::ITableSet& tables) : suggested_(tables, "wooden_house") {
     const core::ITable* types = tables.FindTable("unit_types");
     const std::uint32_t row =
         types == nullptr ? core::kNoTableRow : types->FindRowByKey("wooden_house");
@@ -182,8 +183,12 @@ class HousePolicy {
       mark.unit_type = house_;
       const std::vector<float>& radii = definitions_.units.keep_out_radius_m;
       const float radius = house_.value < radii.size() ? radii[house_.value] : 0.0F;
+      // THE NEW VILLAGE'S POINTS FIRST, in the elder's order (suggested_place.h;
+      // 0.37.159); every point taken — the nearest free place, said aloud.
+      const std::optional<core::Vec2> point = suggested_.Take(world, definitions_.Plots(), radius);
       mark.position =
-          core::FreePlot(world.units, definitions_.Plots(), VillageCentre(world), radius);
+          point ? *point
+                : core::FreePlot(world.units, definitions_.Plots(), VillageCentre(world), radius);
       orders.push_back(mark);
       ++ordered_;
       cooldown_ = by_demand ? 0U : kCooldownDays;
@@ -233,6 +238,7 @@ class HousePolicy {
               << built << " stand; " << world.wedding_waits.rows.size()
               << " couples wait for a house and " << roofless << " families have no roof ("
               << in_tents << " in tents) at the end\n";
+    suggested_.Report(run_name);
     ReportQueue(run_name);
   }
 
@@ -388,6 +394,9 @@ class HousePolicy {
   core::UnitTypeId house_;
 
   core::Definitions definitions_;
+
+  /// The new village's house points (suggestions.csv), taken in order.
+  SuggestedPlaces suggested_;
 
   std::uint32_t cooldown_ = 0;
 

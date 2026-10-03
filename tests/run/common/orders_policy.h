@@ -42,6 +42,7 @@
 #include <cstdint>
 #include <iostream>
 #include <span>
+#include <vector>
 
 #include "core_common/herd_state.h"
 #include "core_common/labor_state.h"
@@ -90,7 +91,8 @@ class OrdersPolicy {
               << wear_when_started_ << "; resident " << worker_.value << " was taken off "
               << WorkName(work_before_) << " and held on herd care " << held_days_ << " days";
     if (abandoned_ != 0) {
-      std::cout << " (after " << abandoned_ << " abandoned subjects)";
+      std::cout << " (after " << abandoned_ << " abandoned subjects, " << refused_units_.size()
+                << " of them roofs the pause was refused on)";
     }
     std::cout << '\n';
 
@@ -196,17 +198,32 @@ class OrdersPolicy {
   /// and a herd wholly on billet has no barn to staff: herd care is work at a
   /// unit-standing herd (labor_state.h). Until 0.37.64 «the first kolkhoz
   /// herd» — on the start without a cattle yard, a herd wholly on billet.
-  static core::HerdId KolkhozHerd(const core::WorldState& world) {
+  ///
+  /// AND NOT UNDER A ROOF THE PAUSE WAS ALREADY REFUSED ON (0.37.159): with
+  /// the horse yard on the elder's point the team is stabled on day 14 of
+  /// year 1, its herd comes first in the rows, and the horse yard is not a
+  /// unit the pause stops — the four thirty_years runs failed on which roof
+  /// came first, as they did on the start's row order before 0.37.64.
+  core::HerdId KolkhozHerd(const core::WorldState& world) const {
     for (std::uint32_t row = 0; row < world.herds.rows.size(); ++row) {
       const core::HerdRow& herd = world.herds.rows[row];
       const std::uint32_t heads =
           static_cast<std::uint32_t>(herd.adult_count) + herd.juvenile_count + herd.newborn_count;
       if (herd.household_owned == 0 && herd.unit.value != core::kInvalidEntityIdValue &&
-          heads > herd.billeted_count) {
+          heads > herd.billeted_count && !Refused(herd.unit)) {
         return world.herds.row_ids[row];
       }
     }
     return core::HerdId{};
+  }
+
+  bool Refused(core::UnitId unit) const {
+    for (const core::UnitId refused : refused_units_) {
+      if (refused.value == unit.value) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /// @brief A man the ACCOUNTANT has already put on something that is not
@@ -286,6 +303,16 @@ class OrdersPolicy {
       pause_took_ = unit.paused != 0;
       work_took_ = worker.work.kind == core::WorkKind::kHerdCare;
       wear_when_stopped_ = unit.wear;
+      if (!pause_took_) {
+        // Not a unit the pause stops: the next herd's roof is asked, and the
+        // refusal is said in the report rather than failed on.
+        refused_units_.push_back(unit_);
+        core::OrderRow release;
+        release.kind = core::OrderKind::kReleaseWork;
+        release.resident = worker_;
+        simulation.StageOrders(std::span<const core::OrderRow>(&release, 1), {});
+        Abandon("the pause was refused on the herd's roof");
+      }
       return;
     }
     if (unit.wear > wear_when_stopped_) {
@@ -363,6 +390,9 @@ class OrdersPolicy {
   bool released_ = false;
 
   const char* why_ = nullptr;
+
+  /// Roofs the pause was refused on, never asked again.
+  std::vector<core::UnitId> refused_units_;
 };
 
 }  // namespace run
