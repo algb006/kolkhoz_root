@@ -68,7 +68,7 @@ class RepairPolicy {
         old_house_ = core::UnitTypeId{static_cast<std::uint16_t>(row)};
       }
       // THE TYPES NEVER TAKEN DOWN (unit_types.csv never_demolished; the
-      // human's word of 4 October 2026: «Мельницу сносить нельзя»): the core
+      // human's word of 3 October 2026: «Мельницу сносить нельзя»): the core
       // refuses the order, and the chairman does not spend his one demolition
       // on a refusal — he takes the next empty unit. Until 0.37.170 he took
       // the water mill in every village of the canon, on day 240.

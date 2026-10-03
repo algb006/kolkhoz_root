@@ -413,7 +413,7 @@ struct ConstructionConfig {
   std::vector<std::uint8_t> type_has_heating;
 
   /// 0/1 per unit type, dense by UnitTypeId: unit_types.csv never_demolished
-  /// — A UNIT THAT IS NEVER TAKEN DOWN (the human's word of 4 October 2026,
+  /// — A UNIT THAT IS NEVER TAKEN DOWN (the human's word of 3 October 2026,
   /// «Мельницу сносить нельзя. Добавь у юнитов признак если еще нет запрет
   /// сноса», and «Домик попа тоже несносимый»; the church and the chapel by
   /// boss's export of 3 October): the order to demolish one is refused

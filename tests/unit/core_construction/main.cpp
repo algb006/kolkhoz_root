@@ -1832,7 +1832,7 @@ int TestAWearTermMayBeUnnamedButNotZero() {
 }
 
 /// A UNIT THAT IS NEVER TAKEN DOWN (unit_types.csv never_demolished; the
-/// human's word of 4 October 2026: «Мельницу сносить нельзя»; 0.37.170): the
+/// human's word of 3 October 2026: «Мельницу сносить нельзя»; 0.37.170): the
 /// order is refused for the mill and for a parent whose module is one; the
 /// shed beside it, with an empty cell, comes down — the pair the refusal is
 /// told apart by. A flag that is not 0 or 1 refuses the table.

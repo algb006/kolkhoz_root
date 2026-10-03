@@ -40,7 +40,7 @@ clay_pile,Куча глины,production,1,1,1,era,,0,,3,open,follows,0,0,0,,0,n
 build_yard,Строительный двор,production,1,1,1,era,,1,45,,,absorbed,1,1,0,,0,none,,0,,1,,0,0,0,0,0
 manure_pile,Навозная куча,production,1,1,1,era,,1,25,,,follows,0,0,0,,0,strong,always,0,,1,,0,0,0,0,0
 dryer,Сушилка,production,2,0,1,era,,1,30,,,absorbed,1,1,0,,0,none,,0,,1,,0,0,0,0,0
-water_mill,Водяная мельница,production,1,0,0,start,,1,20,,,absorbed,1,1,0,1.5,0,none,,0,,1,,0,0,0,0,0
+water_mill,Водяная мельница,production,1,0,0,start,,1,20,,,absorbed,1,1,0,1.5,0,none,,0,,1,,0,0,0,0,1
 utility_yard,Хозяйственный двор,production,1,0,1,era,,1,35,,,absorbed,1,1,0,,0,none,,0,,1,,0,0,0,0,0
 goods_store,Товарный склад,production,1,0,1,era,,1,25,,,absorbed,1,1,0,,0,none,,0,utility_yard,1,,0,0,0,0,0
 workshops,Мастерские,production,1,0,1,era,,1,25,,,absorbed,1,1,0,,0,weak,working,0,utility_yard,1,,0,0,0,0,0
@@ -127,6 +127,7 @@ cemetery,Кладбище,service,1,0,1,era,,1,25,,,follows,1,0,0,,0,none,,0,,1,
 propaganda,Элементы наглядной агитации,service,1,0,1,era,,0,,1.5,wall,follows,0,0,0,,0,none,,0,,0,,0,0,1,0,0
 honour_board,Доска почёта,service,1,0,1,era,,0,,1.5,wall,follows,0,0,0,,0,none,,0,,0,,0,0,1,0,0
 church_store,Церковь — склад,service,1,0,0,start,,1,35,,,absorbed,1,0,0,,0,none,,0,,1,,0,1,0,0,1
+priest_house,Дом священника,housing,1,0,0,era,,1,,,,absorbed,1,0,0,,1,none,,0,,1,0,0,1,0,0,1
 manor_ruins,Развалины графской усадьбы,service,1,0,0,start,,1,35,,,absorbed,0,0,1,,0,none,,0,,1,,0,1,0,0,0
 water_standpipe,Уличная колонка,infrastructure,2,0,1,event,event_21,0,,0.8,verge,follows,0,0,0,,0,none,,0,,1,,0,0,0,0,0
 fire_gong,Пожарный гонг,infrastructure,1,0,1,era,,0,,0.6,open,follows,0,0,0,,0,none,,0,,1,,0,1,1,0,0

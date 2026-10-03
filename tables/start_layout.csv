@@ -11,6 +11,7 @@
 # the graphics layer grows grass by this column and not by wear: grass on the verges and between the tracks at almost_none, the track barely visible at none. It kept that list in code until 20 September 2026, hand-edited for every new road
 key,kind,unit_type,x_m,y_m,area_ha,rotation_year0,rotation_year1,rotation_year2,is_derelict,meadow_kind,fill_pct,start_wear_pct,start_dead,traffic
 church_store,unit,church_store,9250,9330,,,,,0,,-1,70,0,
+priest_house,unit,priest_house,9255.1,9322.6,,,,,0,,0,60,0,
 clay_pile,unit,clay_pile,7380,8560,,,,,0,,-1,-1,0,
 field_barley,field,,9248.77,8226.44,7.5,barley,pea,wheat_spring,0,,-1,-1,0,
 field_barley_north,field,,9551.2,8846.8,3.5,barley,cabbage,barley,0,,-1,-1,0,

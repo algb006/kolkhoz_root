@@ -833,7 +833,7 @@ class ConstructionSystem final : public IConstructionSystem {
       return OrderRefusal::kRuleForbids;
     }
     // A UNIT THAT IS NEVER TAKEN DOWN (construction_config.h,
-    // type_never_demolished; the human's word of 4 October 2026): the mill,
+    // type_never_demolished; the human's word of 3 October 2026): the mill,
     // the priest's house, the church — refused, whatever stands in it.
     if (NeverDemolished(current.units.rows[row].type)) {
       return OrderRefusal::kRuleForbids;
