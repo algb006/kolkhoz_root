@@ -124,9 +124,12 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // three floats after walk_offs, 102 -> 107 fields; predicted 968 (944 + 20
 // rounded to eight) before the build — MISSED: 960, measured (1824 with the
 // amounts), the twenty bytes filled four of padding after walk_offs.
-static_assert(sizeof(YearLedger) == 960 + (36 * kAmountsSize),
+// Save 133 (0.37.166): the walkers refused a seat by the wait's term, a u32
+// after the no-seat count — 107 -> 108 fields, predicted 960 -> 968 before the
+// build (four bytes, no padding left after save 132's fill, rounded to eight).
+static_assert(sizeof(YearLedger) == 968 + (36 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 107,
+static_assert(AggregateArity<YearLedger>() == 108,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 
 void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
@@ -245,6 +248,7 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteU32(book.walk_offs);
   out.WriteU32(book.cart_passengers);  // save 132: the carts' passengers
   out.WriteU32(book.cart_passengers_no_seat);
+  out.WriteU32(book.cart_passengers_wait_refused);  // save 133
   out.WriteFloat(book.cart_wait_worst_hours);
   out.WriteFloat(book.cart_wait_hours);
   out.WriteFloat(book.cart_hours_saved);
@@ -428,6 +432,7 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.walk_offs = in.ReadU32();
   book.cart_passengers = in.ReadU32();  // save 132
   book.cart_passengers_no_seat = in.ReadU32();
+  book.cart_passengers_wait_refused = in.ReadU32();  // save 133
   book.cart_wait_worst_hours = in.ReadFloat();
   book.cart_wait_hours = in.ReadFloat();
   book.cart_hours_saved = in.ReadFloat();

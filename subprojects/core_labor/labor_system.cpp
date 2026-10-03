@@ -176,6 +176,7 @@ class LaborSystem final : public ILaborSystem {
       YearLedger& book = current.ledger.current;
       book.cart_passengers += tally.seated;
       book.cart_passengers_no_seat += tally.no_seat;
+      book.cart_passengers_wait_refused += tally.waited_too_long;
       book.cart_wait_hours += tally.wait_hours;
       book.cart_wait_worst_hours = std::max(book.cart_wait_worst_hours, tally.worst_wait_hours);
       book.cart_hours_saved += tally.hours_saved;

@@ -104,8 +104,13 @@ std::vector<CartPoint> SampleWay(const WorldState& world,
 /// The quickest way for `walker` by `cart`: walk to a point, wait for the
 /// cart if it is not there yet, ride to a later point, walk to the work. For
 /// each point he may get off at, the best point to have boarded at is kept
-/// as a running minimum — one pass over the way.
-Ride BestRide(const Walker& walker, const Cart& cart, float walk_hours_per_metre) {
+/// as a running minimum — one pass over the way. A point where he would wait
+/// longer than `wait_limit_hours` is no boarding point (0.37.166; nought or
+/// below: no limit).
+Ride BestRide(const Walker& walker,
+              const Cart& cart,
+              float walk_hours_per_metre,
+              float wait_limit_hours) {
   Ride best{.total_hours = walker.walk_hours, .wait_hours = 0.0F};
   bool found = false;
   // g(b) = max(walk to b, cart at b) - cart at b: the time lost before the
@@ -117,10 +122,14 @@ Ride BestRide(const Walker& walker, const Cart& cart, float walk_hours_per_metre
     const float walk_to = Distance(walker.home, point.position) * walk_hours_per_metre;
     const float board = std::max(walk_to, point.hours);
     const float g = board - point.hours;
-    if (!have_board || g < best_g) {
+    const bool waits_too_long = wait_limit_hours > 0.0F && board - walk_to > wait_limit_hours;
+    if (!waits_too_long && (!have_board || g < best_g)) {
       best_g = g;
       best_g_wait = board - walk_to;
       have_board = true;
+    }
+    if (!have_board) {
+      continue;  // nowhere behind this point to have got on
     }
     const float total =
         best_g + point.hours + (Distance(point.position, walker.work) * walk_hours_per_metre);
@@ -211,9 +220,19 @@ PassengerTally SeatCartPassengers(const LaborConfig& config, WorldState& current
     std::size_t best_cart = carts.size();
     Ride best{.total_hours = walker.walk_hours - kLeastSavingHours, .wait_hours = 0.0F};
     bool quicker_somewhere = false;
+    bool quicker_only_waiting_long = false;
     for (std::size_t cart = 0; cart < carts.size(); ++cart) {
-      const Ride ride = BestRide(walker, carts[cart], walk_hours_per_metre);
+      const Ride ride =
+          BestRide(walker, carts[cart], walk_hours_per_metre, config.cart_wait_limit_hours);
       if (ride.total_hours >= walker.walk_hours - kLeastSavingHours) {
+        // THE WAIT HAS A TERM (0.37.166; boss, the queue thread [109], (b);
+        // the human's rule of 2 October 2026, «у ожидания есть срок»): a
+        // cart quicker only past the term is counted, and he walks.
+        if (config.cart_wait_limit_hours > 0.0F &&
+            BestRide(walker, carts[cart], walk_hours_per_metre, 0.0F).total_hours <
+                walker.walk_hours - kLeastSavingHours) {
+          quicker_only_waiting_long = true;
+        }
         continue;
       }
       quicker_somewhere = true;
@@ -224,6 +243,7 @@ PassengerTally SeatCartPassengers(const LaborConfig& config, WorldState& current
     }
     if (best_cart == carts.size()) {
       tally.no_seat += quicker_somewhere ? 1U : 0U;
+      tally.waited_too_long += !quicker_somewhere && quicker_only_waiting_long ? 1U : 0U;
       continue;
     }
     --carts[best_cart].seats_left;

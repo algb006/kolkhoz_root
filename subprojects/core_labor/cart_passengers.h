@@ -49,6 +49,10 @@ struct PassengerTally {
   /// Walkers for whom a cart would have been quicker, and no seat was left.
   std::uint32_t no_seat = 0;
 
+  /// Walkers for whom a cart would have been quicker only by waiting for it
+  /// longer than LaborConfig::cart_wait_limit_hours (0.37.166): they walk.
+  std::uint32_t waited_too_long = 0;
+
   /// The longest wait for a cart at the boarding point among those seated,
   /// game hours — the stop condition of 2 October 2026 reads it: above one
   /// hour the watchdog's wait interface comes first.

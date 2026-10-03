@@ -412,6 +412,7 @@ void EmitSheet(ColumnWriter& out, const WorldState& state, const ITableSet& tabl
   // The goods carts' passengers (routing stage A, save 132).
   out.Integer("cart_passengers", book.cart_passengers);
   out.Integer("cart_passengers_no_seat", book.cart_passengers_no_seat);
+  out.Integer("cart_passengers_wait_refused", book.cart_passengers_wait_refused);
   out.Number("cart_wait_worst_hours", book.cart_wait_worst_hours);
   out.Number("cart_wait_hours", book.cart_wait_hours);
   out.Number("cart_hours_saved", book.cart_hours_saved);

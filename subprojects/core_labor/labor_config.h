@@ -458,6 +458,13 @@ struct LaborConfig {
   std::uint32_t cart_passenger_seats = 0;
   std::uint32_t people_cart_seats = 0;
 
+  /// THE TERM OF A PASSENGER'S WAIT, game hours (transport.csv cart_loaded
+  /// `wait_limit_hours`; 0.37.166; boss, the queue thread [109], (b)): a man
+  /// does not board where the cart comes later than this after him, and
+  /// walks. STUB core, one hour — the stop condition's own line. Nought (a
+  /// table without the column): no term.
+  float cart_wait_limit_hours = 0.0F;
+
   /// What a grown carrier takes in a trip, kg (labor.csv carry_kg_adult).
   float carry_kg_adult = 20.0F;
 

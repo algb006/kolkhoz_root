@@ -542,6 +542,11 @@ struct YearLedger {
   std::uint32_t cart_passengers = 0;
   std::uint32_t cart_passengers_no_seat = 0;
 
+  /// The walkers for whom a cart was quicker only by waiting for it past the
+  /// term (LaborConfig::cart_wait_limit_hours; 0.37.166, save 133), and who
+  /// walked. Resident-days.
+  std::uint32_t cart_passengers_wait_refused = 0;
+
   /// The longest wait for a cart at a boarding point this year, game hours —
   /// the stop condition of 2 October 2026 reads it (above one hour: the
   /// watchdog's wait interface first) — and the year's waits summed.

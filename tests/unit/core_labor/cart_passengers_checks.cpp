@@ -53,7 +53,7 @@ core::ResidentId AddWorker(core::WorldState& world,
 
 /// A world with the team stabled at a yard at (0, 0) — or not — and a carter
 /// whose house is at the yard, his load 2 km east.
-core::WorldState CartWorld(bool stabled) {
+core::WorldState CartWorld(bool stabled, float driver_home_x = 0.0F) {
   core::WorldState world;
   core::UnitRow yard;
   yard.level = 1;
@@ -67,7 +67,7 @@ core::WorldState CartWorld(bool stabled) {
   }
   core::AppendRow(world.herds, horses);
   AddWorker(world,
-            core::Vec2{.x = 0.0F, .y = 0.0F},
+            core::Vec2{.x = driver_home_x, .y = 0.0F},
             core::Vec2{.x = 2000.0F, .y = 0.0F},
             core::WorkKind::kHauling);
   return world;
@@ -147,5 +147,42 @@ int CheckTheCartsPassengers() {
   core::SeatCartPassengers(seatless, unseated);
   failures += Expect(WorkOf(unseated, walker).rides_cart_of.value == core::kInvalidEntityIdValue,
                      "carts' passengers: a table with no seats seats nobody");
+  // THE WAIT HAS A TERM (0.37.166; boss, the queue thread [109], (b)): the
+  // driver lives 600 m behind the yard — 1.44 hours' walk to it — and a man
+  // by the yard working 1.9 km out would wait about that long at the yard.
+  // With the term of one hour he does not wait there: he walks on along the
+  // cart's way and gets on where the cart reaches him within the hour — the
+  // same journey, since the cart is at every point at its own hour. Read off
+  // this check, not foreseen: a walker beside the way is never refused by the
+  // term (to be refused he must lose by walking on, and on the way he cannot);
+  // the count of refusals stays for one off the way.
+  const auto by_the_yard = [](core::WorldState& world) {
+    return AddWorker(world,
+                     core::Vec2{.x = 0.0F, .y = 30.0F},
+                     core::Vec2{.x = 1900.0F, .y = 0.0F},
+                     core::WorkKind::kHarvest);
+  };
+  core::LaborConfig termed = config;
+  termed.cart_wait_limit_hours = 1.0F;
+  core::WorldState late = CartWorld(true, -600.0F);
+  const core::ResidentId waiter = by_the_yard(late);
+  const core::PassengerTally refused = core::SeatCartPassengers(termed, late);
+  core::WorldState untermed = CartWorld(true, -600.0F);
+  const core::ResidentId rider = by_the_yard(untermed);
+  const core::PassengerTally taken = core::SeatCartPassengers(config, untermed);
+  std::cout << "  carts' passengers, the wait's term: with it the wait " << refused.worst_wait_hours
+            << " h (refused " << refused.waited_too_long << "), with no term "
+            << taken.worst_wait_hours << " h; the road " << WorkOf(late, waiter).travel_hours
+            << " h and " << WorkOf(untermed, rider).travel_hours << " h\n";
+  failures += Expect(WorkOf(untermed, rider).rides_cart_of.value != core::kInvalidEntityIdValue &&
+                         taken.worst_wait_hours > 1.0F,
+                     "carts' passengers: with no term the man by the yard rides and waits there "
+                     "over an hour");
+  failures += Expect(WorkOf(late, waiter).rides_cart_of.value != core::kInvalidEntityIdValue &&
+                         refused.worst_wait_hours <= 1.0F && refused.waited_too_long == 0 &&
+                         std::fabs(WorkOf(late, waiter).travel_hours -
+                                   WorkOf(untermed, rider).travel_hours) < 0.01F,
+                     "carts' passengers: with the term of an hour he walks on along the way and "
+                     "boards within the hour - the same road, nobody refused");
   return failures;
 }

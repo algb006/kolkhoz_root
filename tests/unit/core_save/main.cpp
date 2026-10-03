@@ -709,6 +709,7 @@ core::WorldState MakeWorld() {
   // them cannot round-trip clean.
   world.ledger.closed.cart_passengers = 37;
   world.ledger.closed.cart_wait_worst_hours = 0.75F;
+  world.ledger.closed.cart_passengers_wait_refused = 4;  // save 133
   // Save 117: the trudodni by day of the year, adding up to the year's —
   // the reader refuses a book whose days do not.
   world.ledger.closed.trudodni_by_day[20] = 41'500;
@@ -1736,7 +1737,10 @@ constexpr std::array<RecordedSection, 23> kRecordedPayload = {{
     // three floats in each of the two books; 2508 -> 2548 reckoned before the
     // build and not written down (named), held. The closed book's passengers
     // and worst wait are set off their nought, and the hash moves with them.
-    {"ledger", 2548, 0x59b2f44a6a6d1422ULL},
+    // Save 133 (0.37.166): +8 — the walkers refused by the wait's term, a u32
+    // in each of the two books; 2548 -> 2556 predicted before the build,
+    // held. The closed book's count is set off its nought.
+    {"ledger", 2556, 0xad8dc4b953b8fa46ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -2382,6 +2386,7 @@ int main() {
       "the autumn furrow and the book's zyab come back (save 114)");
   failures += Expect(loaded.ledger.closed.cart_passengers == 37 &&
                          loaded.ledger.closed.cart_wait_worst_hours == 0.75F &&
+                         loaded.ledger.closed.cart_passengers_wait_refused == 4 &&
                          loaded.ledger.current.cart_passengers == 0,
                      "the year's cart passengers and its worst wait come back (save 132)");
   failures += Expect(loaded.plan.last_verdict == core::PlanVerdict::kFailed,

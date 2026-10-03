@@ -35,6 +35,10 @@ namespace {
 /// slipped digit, not a design number (the design's carts seat 2 and 6).
 constexpr float kMaxCartSeats = 20.0F;
 
+/// The longest term transport.csv may give a passenger's wait, game hours: a
+/// light day, a bound against a slipped digit.
+constexpr float kMaxWaitLimitHours = 24.0F;
+
 /// @brief Reads the seventeen scalar knobs of labor.csv, each with its range.
 /// The block that stood here described PrefixError, which moved to
 /// core_catalog and left its documentation over this function.
@@ -339,6 +343,17 @@ bool ParseSpeeds(const ITable& table, LaborConfig& config, std::string& error) {
       return false;
     }
     *seats = static_cast<std::uint32_t>(value);
+  }
+  // THE TERM OF A PASSENGER'S WAIT (0.37.166): game hours, nought or blank —
+  // no term.
+  if (!OptionalCell(table,
+                    table.FindRowByKey("cart_loaded"),
+                    table.FindColumn("wait_limit_hours"),
+                    Range{.low = 0.0F, .high = kMaxWaitLimitHours},
+                    config.cart_wait_limit_hours,
+                    error)) {
+    PrefixError("transport", "wait_limit_hours", error);
+    return false;
   }
   return true;
 }
