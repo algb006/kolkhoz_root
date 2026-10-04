@@ -263,6 +263,8 @@ void CollectPlanShortAlarms(const ProductionConfig& config,
     // At least a gram: the share compares in float and the grams in double,
     // and a position PositionDelivered calls short is never short by nought.
     alarm.amount = std::max<Grams>(met_grams - shipped_at_turn, 1);
+    // The loss is the turn itself (raised on the year's last day: 0 or 1).
+    alarm.days_to_loss = DaysToLossOf(DaysToPlanTurn(world));
     alarms.push_back(alarm);
   }
 }
@@ -635,6 +637,9 @@ void CollectPlanAlarms(const ProductionConfig& config,
       alarm.kind = AlarmKind::kPlanPositionUncovered;
       alarm.resource = produce;
       alarm.amount = year;
+      // The position fails at the turn of year `year` (0 = the coming one).
+      alarm.days_to_loss = DaysToLossOf(static_cast<std::int64_t>(DaysToPlanTurn(world)) +
+                                        (static_cast<std::int64_t>(year) * kDaysPerYear));
       alarms.push_back(alarm);
     }
   }

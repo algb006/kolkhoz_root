@@ -4,6 +4,7 @@
 
 #include "core_world/world.h"
 
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <cstdint>
@@ -199,16 +200,49 @@ std::vector<float> FoodValuePerResource(const ITableSet& tables) {
 /// If that separation is ever broken, this fold starts lying — and it lies
 /// visibly, because the year stops balancing as "what came in minus what
 /// was eaten equals what is left".
+/// The subsystems that raise lamps, and the red's threshold: ONE HOME for the
+/// world's collection, read by the boundary between steps (CollectAlarms) and
+/// by the daily red check inside the step (EventsSlot).
+struct AlarmSources {
+  const ILaborSystem* labor = nullptr;
+  const IResidentsSystem* residents = nullptr;
+  const IProductionSystem* production = nullptr;
+  const IConstructionSystem* construction = nullptr;
+  const ILogisticsSystem* logistics = nullptr;
+
+  /// world_params `alarm_red_within_days` (PaintAlarms).
+  std::uint16_t red_within_days = 0;
+};
+
+/// Every subsystem's lamps over `state`, coloured. The order is the
+/// boundary's (it sorts after); the colour last — every subsystem has raised
+/// its alarms with their days, and production's full store has taken the
+/// days of the refusal that lights it.
+void CollectWorldAlarms(const AlarmSources& sources,
+                        const WorldState& state,
+                        std::vector<Alarm>& alarms) {
+  sources.labor->CollectAlarms(state, alarms);
+  sources.residents->CollectAlarms(state, alarms);
+  sources.production->CollectAlarms(state, alarms);
+  sources.construction->CollectAlarms(state, alarms);
+  // The groom's lamp (B8; kLogisticsLate). Not asked until B8: its
+  // CollectAlarms was a STUB and nobody called it.
+  sources.logistics->CollectAlarms(state, alarms);
+  PaintAlarms(alarms, sources.red_within_days);
+}
+
 class EventsSlot final : public ISequentialPhase {
  public:
   EventsSlot(std::vector<float> kcal_per_gram,
              ReadinessCatalog readiness,
              float food_variety_categories,
-             float life_speedup)
+             float life_speedup,
+             AlarmSources alarm_sources)
       : kcal_per_gram_(std::move(kcal_per_gram)),
         readiness_(std::move(readiness)),
         food_variety_categories_(food_variety_categories),
         life_speedup_(life_speedup),
+        alarm_sources_(alarm_sources),
         watchdog_(CreateWatchdog(CreateWaitRules())) {}
 
   /// The era's catalog the transition is judged by — read by the office's
@@ -233,6 +267,8 @@ class EventsSlot final : public ISequentialPhase {
     // the rotation below scores the new one: an order and a turn in the same
     // step meet the older verdict, and the next step the newer.
     ConsumeTransitionOrders(readiness_, current);
+    // The day's red check (hour 0), over the step's finished world.
+    SayLampsTurnedRed(current);
     SweepOrderBook(current);
     RotateLedger(current);
   }
@@ -458,6 +494,58 @@ class EventsSlot final : public ISequentialPhase {
 
   float life_speedup_ = 1.0F;
 
+  /// The lamps' sources for the daily red check (SayLampsTurnedRed).
+  AlarmSources alarm_sources_;
+
+  /// @brief THE LAMPS THAT TURNED RED (the lamp colour's interrupt; boss, the
+  /// logistics thread [123], [127]; the human, 4 October 2026: «Такие срочные
+  /// сигналы должны прерывать режим пропуска времени в игре»). Once a day, at
+  /// hour 0: the world's lit lamps (Alarm::lamp) are collected and painted;
+  /// each red one not in WorldState::red_lamps is said — kLampTurnedRed,
+  /// kInterrupting — and the memory becomes today's reds.
+  /// ONCE A DAY, NOT EVERY STEP: a collection costs 1.5-2.1 steps (Debug,
+  /// 0.37.192's measure), so every hour would double the run; a lamp red and
+  /// out between two checks says nothing here, and its own event, where it
+  /// has one, still does (the census of 0.37.193, boss [129]).
+  void SayLampsTurnedRed(WorldState& current) const {
+    if (HourFromTick(current.calendar.tick) != 0 || alarm_sources_.labor == nullptr) {
+      return;
+    }
+    std::vector<Alarm> alarms;
+    CollectWorldAlarms(alarm_sources_, current, alarms);
+    std::vector<RedLamp> red;
+    std::vector<const Alarm*> said;
+    for (const Alarm& alarm : alarms) {
+      if (alarm.lamp == 0 || alarm.colour != AlarmColour::kRed) {
+        continue;
+      }
+      const RedLamp lamp{.kind = alarm.kind, .subject = AlarmSubjectValue(alarm)};
+      red.push_back(lamp);
+      if (!std::ranges::binary_search(current.red_lamps, lamp)) {
+        said.push_back(&alarm);
+      }
+    }
+    std::ranges::sort(red);
+    const auto [first, last] = std::ranges::unique(red);
+    red.erase(first, last);
+    for (const Alarm* alarm : said) {
+      SimEvent& event = EmitEvent(current, EventKind::kLampTurnedRed, EventSeverity::kInterrupting);
+      event.amount =
+          static_cast<std::int64_t>((static_cast<std::uint64_t>(alarm->kind) << kLampKindShift) |
+                                    static_cast<std::uint64_t>(AlarmSubjectValue(*alarm)));
+      event.unit = alarm->unit;
+      event.field = alarm->field;
+      event.herd = alarm->herd;
+      event.family = alarm->family;
+      event.resource = alarm->resource;
+      event.stand = alarm->stand;
+    }
+    current.red_lamps = std::move(red);
+  }
+
+  /// kLampTurnedRed's amount: the lamp's kind above the subject's 32 bits.
+  static constexpr std::uint32_t kLampKindShift = 32;
+
   /// The watchdog over every wait kind's rules (wait_rules.h). Built with the
   /// slot; CreateWatchdog refuses a kind without rules, and then nothing
   /// walks — which the unit test of the assembly reddens on.
@@ -515,9 +603,11 @@ class StandardSimulation final : public ISimulation {
                      std::unique_ptr<IConstructionSystem> construction,
                      std::unique_ptr<ILogisticsSystem> logistics,
                      std::shared_ptr<const RoadTools> road_tools,
-                     std::vector<JunctionView> junctions)
+                     std::vector<JunctionView> junctions,
+                     std::uint16_t alarm_red_within_days)
       : road_tools_(std::move(road_tools)),
         junctions_(std::move(junctions)),
+        alarm_red_within_days_(alarm_red_within_days),
         time_(std::move(time)),
         residents_(std::move(residents)),
         production_(std::move(production)),
@@ -528,7 +618,13 @@ class StandardSimulation final : public ISimulation {
         events_slot_(FoodValuePerResource(*config.tables),
                      ReadReadinessCatalog(*config.tables, Epoch::kOne),
                      ReadFoodVarietyThreshold(*config.tables, Epoch::kOne),
-                     ReadLifeSpeedup(*config.tables)) {
+                     ReadLifeSpeedup(*config.tables),
+                     AlarmSources{.labor = labor_.get(),
+                                  .residents = residents_.get(),
+                                  .production = production_.get(),
+                                  .construction = construction_.get(),
+                                  .logistics = logistics_.get(),
+                                  .red_within_days = alarm_red_within_days}) {
     const StepPhaseSet phases{
         .time_and_weather = &time_->TimeAndWeatherPhase(),
         .needs = &residents_->NeedsPhase(),
@@ -688,14 +784,16 @@ class StandardSimulation final : public ISimulation {
   std::vector<JunctionView> Junctions() const override { return junctions_; }
 
   void CollectAlarms(std::vector<Alarm>& alarms) const override {
-    const WorldState& completed = engine_->CompletedState();
-    labor_->CollectAlarms(completed, alarms);
-    residents_->CollectAlarms(completed, alarms);
-    production_->CollectAlarms(completed, alarms);
-    construction_->CollectAlarms(completed, alarms);
-    // The groom's lamp (B8; kLogisticsLate). Not asked until B8: its
-    // CollectAlarms was a STUB and nobody called it.
-    logistics_->CollectAlarms(completed, alarms);
+    // The world's one collection, coloured (CollectWorldAlarms): the same the
+    // daily red check reads inside the step.
+    CollectWorldAlarms(AlarmSources{.labor = labor_.get(),
+                                    .residents = residents_.get(),
+                                    .production = production_.get(),
+                                    .construction = construction_.get(),
+                                    .logistics = logistics_.get(),
+                                    .red_within_days = alarm_red_within_days_},
+                       engine_->CompletedState(),
+                       alarms);
   }
 
  private:
@@ -705,6 +803,10 @@ class StandardSimulation final : public ISimulation {
 
   /// The map's junctions with the world beyond it (0.37.27; layers §15а).
   std::vector<JunctionView> junctions_;
+
+  /// world_params `alarm_red_within_days`: a loss this near or nearer is a
+  /// red lamp, a farther one a yellow (PaintAlarms).
+  std::uint16_t alarm_red_within_days_ = 0;
 
   std::unique_ptr<ITimeSystem> time_;
 
@@ -737,6 +839,9 @@ namespace {
 /// intact, the cell holding "", and the build green — and "" is what an
 /// empty table cell reads as, so a blank day_zero_weekday would parse as a
 /// day. A terminator guards the growth of a set; this guards its holes.
+/// world_params' key of the lamp's red (PaintAlarms), read by the assembly.
+constexpr std::string_view kAlarmRedWithinDaysKey = "alarm_red_within_days";
+
 constexpr std::array<std::string_view, kDaysPerWeek> kWeekdayNames = {
     "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"};
 
@@ -958,6 +1063,7 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
   //
   // Each list comes from the module that reads it, out of the same array the
   // reader indexes, so no list can age away from its code.
+  std::uint16_t alarm_red_within_days = 0;
   {
     const ITable* const world_params = config.tables->FindTable("world_params");
     if (world_params != nullptr) {
@@ -1023,12 +1129,10 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       //   this hour together. Declared before its export arrives, so the
       //   export does not stop the assembly.
       known.emplace_back("player_entry_hour");
-      //   `alarm_red_within_days` (2026-10-01, boss's e8bdde41, 53d14520;
-      //   the office design §13 «Цвет — по сроку потери», the human's «Да») —
-      //   a loss further than this many days is a yellow lamp, a nearer one a
-      //   red. Its reader is the lamp colour's delivery (boss-core-lamp-
-      //   colour); declared with the export that carried it.
-      known.emplace_back("alarm_red_within_days");
+      //   (`alarm_red_within_days` stood here from 0.37.62 to 0.37.194,
+      //   declared ahead of its reader; the assembly reads it below since the
+      //   lamp colour's delivery.)
+      known.emplace_back(kAlarmRedWithinDaysKey);
       //   (`billet_household_milk_share` stood here from 0.37.65 to 0.37.69,
       //   declared a delivery ahead of the billet milk's reader. The human
       //   cancelled the billet's new rules on 2026-10-01 — «Постой отменяем»
@@ -1042,6 +1146,20 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
         LogError(trouble);
         return nullptr;
       }
+      // THE LAMP'S RED (office design §13, «Цвет — по сроку потери»; the
+      // human's «Да», 1 October 2026): required — a lamp with no colour rule
+      // is not a lamp the layer can draw. A year at most.
+      float red_within = 0.0F;
+      if (!RequiredValue(*world_params,
+                         "world_params",
+                         kAlarmRedWithinDaysKey,
+                         Range{.low = 0.0F, .high = static_cast<float>(kDaysPerYear)},
+                         red_within,
+                         trouble)) {
+        LogError(trouble);
+        return nullptr;
+      }
+      alarm_red_within_days = static_cast<std::uint16_t>(red_within);
     }
     // The base conventions against the build, and the biology factor's two
     // homes against each other (core_catalog/world_conventions.h) — here,
@@ -1094,7 +1212,8 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
                                               std::move(construction),
                                               std::move(logistics),
                                               road_tools,
-                                              std::move(junctions));
+                                              std::move(junctions),
+                                              alarm_red_within_days);
 }
 
 }  // namespace core

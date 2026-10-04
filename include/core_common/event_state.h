@@ -681,8 +681,7 @@ enum class EventKind : std::uint8_t {
   /// out between two checks says nothing here (its own event, where it has
   /// one, still does). kInterrupting (the human, 4 October 2026: «Такие срочные
   /// сигналы должны прерывать режим пропуска времени в игре»). Seam key
-  /// `lamp_turned_red`. Declared in 0.37.196, a delivery ahead of the check.
-  /// @no_emit contract 0.37.196: said by the daily red check of the delivery after it
+  /// `lamp_turned_red`. Declared in 0.37.196, said since 0.37.197.
   kLampTurnedRed,
 
   // Reserved for project phase 3 and appended by it: fire, epoch change,

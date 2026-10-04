@@ -252,6 +252,7 @@ void CollectHerdColdAlarms(const ProductionConfig& config,
     alarm.herd = world.herds.row_ids[row];
     alarm.amount = static_cast<std::int64_t>(cold);
     alarm.days_ahead = static_cast<std::uint16_t>(days);
+    alarm.days_to_loss = DaysToLossOf(days);
     alarm.advice = type.WarmPlaceAt(static_cast<std::uint8_t>(unit->level + 1U))
                        ? AlarmAdvice::kWarmYard
                        : AlarmAdvice::kInsulateStraw;

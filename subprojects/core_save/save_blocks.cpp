@@ -217,7 +217,14 @@ static_assert(AggregateArity<BarterWatch>() == 5,
 // a table section of its own (save.cpp, logistics_tasks; routing stage B, B2).
 // Save 136 (0.37.177): the groom's plan of the day, the forty-fifth — a
 // section of its own (save.cpp, groom_plan; B3).
-static_assert(AggregateArity<WorldState>() == 45,
+// Save 143: the red lamps of the last daily check, the forty-sixth — a count
+// and five bytes a lamp at the world block's end. Predicted before the build:
+// RedLamp 8 bytes and two fields (the kind's byte, three of padding, the
+// subject's u32); the fixture's two lamps move the section «world» 654 -> 668.
+static_assert(sizeof(RedLamp) == 8, "RedLamp changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<RedLamp>() == 2,
+              "RedLamp gained or lost a field — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<WorldState>() == 46,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 
@@ -541,6 +548,13 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteU64(static_cast<std::uint64_t>(world.barter.dry_equivalent));
   // The gathering count's last «not in time» (save 126): the day plus one.
   out.WriteU32(world.gather_short_said);
+  // The red lamps of the last daily check (save 143): a count, then each
+  // lamp's kind and subject, in the list's sorted order.
+  out.WriteU32(static_cast<std::uint32_t>(world.red_lamps.size()));
+  for (const RedLamp& lamp : world.red_lamps) {
+    out.WriteU8(static_cast<std::uint8_t>(lamp.kind));
+    out.WriteU32(lamp.subject);
+  }
 }
 
 void ReadWorldBlocks(LoadSource& source, WorldState* world) {
@@ -731,6 +745,30 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->barter.dry_takers = in.ReadU16();
   world->barter.dry_equivalent = static_cast<Grams>(in.ReadU64());
   world->gather_short_said = in.ReadU32();
+  // The red lamps (save 143). A kind outside the roster, or a list out of
+  // order or repeated, refuses the file: the daily check compares a SORTED
+  // memory, and a lamp in it twice would hide a red one from the next check.
+  constexpr std::size_t kSavedRedLampBytes = 5;
+  const std::uint32_t lamps = in.ReadU32();
+  if (static_cast<std::size_t>(lamps) * kSavedRedLampBytes > in.Remaining()) {
+    source.Fail("the red lamps name more lamps than the bytes left");
+    return;
+  }
+  world->red_lamps.clear();
+  world->red_lamps.reserve(lamps);
+  for (std::uint32_t index = 0; index < lamps && source.Valid(); ++index) {
+    RedLamp lamp;
+    lamp.kind = static_cast<AlarmKind>(source.ReadEnumValue(
+        1,
+        static_cast<std::uint8_t>(static_cast<std::uint8_t>(AlarmKind::kAlarmKindCount) - 1U),
+        "a red lamp's kind"));
+    lamp.subject = in.ReadU32();
+    if (!world->red_lamps.empty() && !(world->red_lamps.back() < lamp)) {
+      source.Fail("the red lamps are out of order or repeated");
+      return;
+    }
+    world->red_lamps.push_back(lamp);
+  }
 }
 
 }  // namespace core

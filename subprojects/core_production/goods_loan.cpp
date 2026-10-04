@@ -220,6 +220,8 @@ void CollectGoodsLoanAlarms(const ProductionConfig& config,
     const std::uint16_t year = world.calendar.date.year;
     alarm.repay_harvest_year =
         DaysToPlanTurn(world) == 0 && year > 1 ? static_cast<std::uint16_t>(year - 1) : year;
+    // The unpaid rest takes the markup again at the coming turn.
+    alarm.days_to_loss = DaysToLossOf(DaysToPlanTurn(world));
     alarms.push_back(alarm);
   }
 }

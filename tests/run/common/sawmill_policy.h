@@ -462,12 +462,13 @@ class SawmillPolicy {
     // seed 1931 that turned three separate failed years into a run of three
     // and the obvious chairman into the dock.
     //
-    // AND WHILE THE SAWMILL CAN STILL BE BUILT: it takes boards itself (five
-    // cubic metres at level 1). The first "by the boards" version waited for
-    // the boards to run short, and then the sawmill's own site waited for the
-    // boards it was built to make — never built on any seed (2026-09-13). So
-    // the yard goes up once the stores hold fewer boards than the queue lacks
-    // AND the sawmill costs.
+    // AND WHILE THE SAWMILL CAN STILL BE BUILT: it took boards itself (five
+    // cubic metres at level 1 when this was written; since c3a3cd9, «the first
+    // sawmill is built of logs», level 1 takes logs and steel and no boards,
+    // and sawmill_boards below reads 0 from the table). The first "by the
+    // boards" version waited for the boards to run short, and then the sawmill's own site waited
+    // for the boards it was built to make — never built on any seed (2026-09-13). So the yard goes
+    // up once the stores hold fewer boards than the queue lacks AND the sawmill costs.
     //
     // PLUS ONE GRANARY'S BOARDS OF SLACK. Measured the same night: with the
     // sawmill's own cost alone the yard went up on time and the sawmill's

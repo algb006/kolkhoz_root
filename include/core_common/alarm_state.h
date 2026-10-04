@@ -1039,15 +1039,12 @@ std::uint32_t AlarmSubjectValue(const Alarm& alarm);
 /// collection calls it once, after every subsystem has raised its alarms and
 /// kStoreFull has taken the days of the alarm that lights it.
 /// @param red_within_days world_params `alarm_red_within_days` (8).
-/// CONTRACT, NO IMPLEMENTATION YET (core rules §12a): implemented in
-/// core_common with the raise sites' days.
 void PaintAlarms(std::span<Alarm> alarms, std::uint16_t red_within_days);
 
 /// @brief One lamp lit red at the last daily check — the world's memory the
 /// red-lamp interrupt compares against (WorldState::red_lamps; boss, the
 /// logistics thread [127]). Kind and subject are the alarm's identity, as the
-/// boundary sorts it (AlarmSubjectValue). CONTRACT — written from the
-/// delivery after it.
+/// boundary sorts it (AlarmSubjectValue). Saved since save 143.
 struct RedLamp {
   AlarmKind kind = AlarmKind::kNone;
   std::uint32_t subject = 0;

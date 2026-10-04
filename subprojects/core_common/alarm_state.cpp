@@ -6,6 +6,8 @@
 
 #include "core_common/alarm_state.h"
 
+#include <algorithm>
+
 namespace core {
 
 std::uint32_t AlarmSubjectValue(const Alarm& alarm) {
@@ -80,6 +82,74 @@ std::uint32_t AlarmSubjectValue(const Alarm& alarm) {
              static_cast<std::uint32_t>(alarm.amount);
   }
   return 0;
+}
+
+namespace {
+
+/// Whether the kind is the elder's advice and carries no colour (office
+/// design §13). No default label, as above: a new kind is a build error here
+/// until it says whether it is a lamp.
+bool IsElderAdvice(AlarmKind kind) {
+  switch (kind) {
+    case AlarmKind::kMeadowUncutBeforeSnow:
+    case AlarmKind::kSowingWindowClosing:
+      return true;
+    case AlarmKind::kNone:
+    case AlarmKind::kAlarmKindCount:
+    case AlarmKind::kStoreFull:
+    case AlarmKind::kHarvestWillNotFit:
+    case AlarmKind::kHarvestWaitingOnField:
+    case AlarmKind::kSeedShort:
+    case AlarmKind::kHerdStarving:
+    case AlarmKind::kFamilyGoingHungry:
+    case AlarmKind::kSiteWithoutMaterials:
+    case AlarmKind::kSiteWithoutCrew:
+    case AlarmKind::kSiteUnreachable:
+    case AlarmKind::kYardWithoutGroom:
+    case AlarmKind::kHerdWithoutStable:
+    case AlarmKind::kPlanPositionUncovered:
+    case AlarmKind::kFellingUnreachable:
+    case AlarmKind::kReserveFullNothingToEat:
+    case AlarmKind::kSowingWillNotFit:
+    case AlarmKind::kHarvestWillNotBeGathered:
+    case AlarmKind::kPlanPositionShort:
+    case AlarmKind::kProcessingStopped:
+    case AlarmKind::kDemolitionStockWaiting:
+    case AlarmKind::kSlaughterWaitsForRoom:
+    case AlarmKind::kPlantingUnreachable:
+    case AlarmKind::kSeedHasNoRoom:
+    case AlarmKind::kMilkAllToDebt:
+    case AlarmKind::kGoodsLoanOwed:
+    case AlarmKind::kWinterCropUnsowable:
+    case AlarmKind::kHerdAging:
+    case AlarmKind::kTeamOnHay:
+    case AlarmKind::kTooFewHorses:
+    case AlarmKind::kSeedAreaShort:
+    case AlarmKind::kHerdHayShortAhead:
+    case AlarmKind::kHerdFreezing:
+    case AlarmKind::kHerdColdAhead:
+    case AlarmKind::kLogisticsLate:
+      return false;
+  }
+  return false;
+}
+
+}  // namespace
+
+std::uint16_t DaysToLossOf(std::int64_t days) {
+  constexpr std::int64_t kNoLossInSight = 0xFFFF;
+  return static_cast<std::uint16_t>(std::clamp<std::int64_t>(days, 0, kNoLossInSight));
+}
+
+void PaintAlarms(std::span<Alarm> alarms, std::uint16_t red_within_days) {
+  for (Alarm& alarm : alarms) {
+    if (IsElderAdvice(alarm.kind)) {
+      alarm.colour = AlarmColour::kAdvice;
+    } else {
+      alarm.colour =
+          alarm.days_to_loss <= red_within_days ? AlarmColour::kRed : AlarmColour::kYellow;
+    }
+  }
 }
 
 }  // namespace core

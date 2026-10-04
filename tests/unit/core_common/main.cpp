@@ -2722,6 +2722,39 @@ int CheckAlarmSubjectValue() {
   return failures;
 }
 
+/// THE LAMP'S COLOUR BY THE TIME TO ITS LOSS (alarm_state.cpp, PaintAlarms;
+/// office design §13, the human's «Да» of 1 October 2026). Each case breaks
+/// one way the rule can be got wrong: the edge itself (8 is red, 9 yellow),
+/// a fact (0 days) red under any threshold, the elder's advice colourless
+/// however near its loss, and the clamp that keeps a negative count from
+/// wrapping into a far yellow.
+int CheckPaintAlarms() {
+  int failures = 0;
+  const auto painted = [](core::AlarmKind kind, std::uint16_t days, std::uint16_t red_within) {
+    std::array<core::Alarm, 1> alarms{};
+    alarms[0].kind = kind;
+    alarms[0].days_to_loss = days;
+    // A colour the rule must overwrite, so a painter that skips a kind fails.
+    alarms[0].colour = core::AlarmColour::kAlarmColourCount;
+    core::PaintAlarms(alarms, red_within);
+    return alarms[0].colour;
+  };
+  failures += Expect(painted(core::AlarmKind::kSeedShort, 8, 8) == core::AlarmColour::kRed &&
+                         painted(core::AlarmKind::kSeedShort, 9, 8) == core::AlarmColour::kYellow,
+                     "paint: a loss at the threshold is red, a day past it yellow");
+  failures += Expect(painted(core::AlarmKind::kHerdStarving, 0, 0) == core::AlarmColour::kRed &&
+                         painted(core::AlarmKind::kLogisticsLate, 0, 8) == core::AlarmColour::kRed,
+                     "paint: a fact (0 days) is red, under a threshold of 0 too");
+  failures += Expect(
+      painted(core::AlarmKind::kMeadowUncutBeforeSnow, 0, 8) == core::AlarmColour::kAdvice &&
+          painted(core::AlarmKind::kSowingWindowClosing, 30, 8) == core::AlarmColour::kAdvice,
+      "paint: the elder's advice has no colour, near or far");
+  failures += Expect(core::DaysToLossOf(-5) == 0 && core::DaysToLossOf(0) == 0 &&
+                         core::DaysToLossOf(12) == 12 && core::DaysToLossOf(1'000'000) == 0xFFFF,
+                     "paint: days to loss clamp a past loss to 0 and a far one to 0xFFFF");
+  return failures;
+}
+
 int main() {
   int failures = 0;
   failures += TestDistrictVisitPacking();
@@ -2800,6 +2833,7 @@ int main() {
   failures += CheckNextSowingCrop();
   failures += CheckTheFigureRule();
   failures += CheckAlarmSubjectValue();
+  failures += CheckPaintAlarms();
   failures += TestDefIdFromRow();
   failures += TestDeadlineRefusals();
   failures += TestCalendar();

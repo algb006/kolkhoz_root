@@ -1743,6 +1743,10 @@ int CheckAutumnPigs() {
                  waiting != alarms.end() && waiting->amount == 350 * core::kGramsPerKilogram,
              "with 100 kg of room for 450 kg of meat the slaughter waits, and says it "
              "lacks room for 350 kg");
+  // ITS DAYS TO THE LOSS (the lamp colour, 0.37.194): the month's last day
+  // takes it whatever the room — three days off on October's first.
+  failures += Expect(waiting != alarms.end() && waiting->days_to_loss == 3,
+                     "on October's first day the waiting slaughter's loss is three days off");
   waits.units.rows[0].stock[0] -= 1000 * core::kGramsPerKilogram;  // the hay went out
   october_day(waits, 1);
   core::RunHerdDay(config, waits);
@@ -14277,6 +14281,17 @@ int CheckAWinterCropTheChainCannotSow() {
       "winter crop unsowable: rye after potato is marked, next year, the year "
       "after and across the chain's joint — and not after oats, a fallow or on a "
       "meadow");
+  // ITS DAYS TO THE LOSS (the lamp colour, 0.37.194): the slot is lost when
+  // the rye's window closes, the end of September (day 36 of a year) of the
+  // slot's sowing year. Day 49 is day 1 of year 2: 35, 83 and 131 days.
+  const auto days = [&alarms](core::FieldId field) {
+    const auto found = std::ranges::find_if(
+        alarms, [field](const core::Alarm& alarm) { return alarm.field.value == field.value; });
+    return found == alarms.end() ? -1 : static_cast<int>(found->days_to_loss);
+  };
+  failures +=
+      Expect(days(potato_rye) == 35 && days(potato_rye_later) == 83 && days(across_joint) == 131,
+             "winter crop unsowable: each slot's loss is its sowing window's close");
   return failures;
 }
 

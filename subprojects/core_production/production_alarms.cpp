@@ -173,6 +173,25 @@ struct SowingWindow {
   std::int64_t closes = 0;
 };
 
+/// The first day of this year, from `day_of_year` to `last_day`, the reaping
+/// gate lets the field's reaping open — the gate's own answer, asked day by
+/// day; -1 when it does not open by then. ONE HOME for the gathering alarm's
+/// claims and kHarvestWillNotFit's days (the lamp colour, 0.37.194).
+std::int32_t ReapingOpenDay(const ProductionConfig& config,
+                            const WorldState& world,
+                            const FieldRow& field,
+                            std::uint32_t day_of_year,
+                            std::int32_t last_day) {
+  const SimDay year_start = world.calendar.day - day_of_year;
+  for (auto day = static_cast<std::int32_t>(day_of_year); day <= last_day; ++day) {
+    const auto month = static_cast<std::uint8_t>(static_cast<std::uint32_t>(day) / kDaysPerMonth);
+    if (ReapingMayOpen(config, field, month, year_start + static_cast<SimDay>(day))) {
+      return day;
+    }
+  }
+  return -1;
+}
+
 SowingWindow NextSowingWindow(const ProductionConfig& config, const FieldRow& field, SimDay today) {
   SowingWindow window;
   const bool year0_winter = field.rotation_year0.value < config.crops.size() &&
@@ -523,6 +542,18 @@ void CollectStableAlarms(const ProductionConfig& config,
   // (0.37.18, canon KD), the kind stood from day 0 in every run, 144 days of
   // 144 without a chairman.
   alarm.lamp = team_old ? 1U : 0U;
+  // THE LOSS IS THE FIRST AGE DEATH: the oldest head reaching the band's
+  // bottom. The band's top is an estimate of the oldest's age
+  // (herd_age_band.h), so the days are as good as it. A team with no adult,
+  // or a table with no band, has no age death in sight.
+  if (team_old) {
+    alarm.days_to_loss = 0;
+  } else if (oldest != kNoRow && life_top > 0.0F) {
+    alarm.days_to_loss = DaysToLossOf(static_cast<std::int64_t>(
+        std::ceil((old_age - oldest_years) * static_cast<float>(kDaysPerYear))));
+  } else {
+    alarm.days_to_loss = DaysToLossOf(std::numeric_limits<std::int64_t>::max());
+  }
   alarms.push_back(alarm);
   if (team_old) {
     Alarm aging;
@@ -745,15 +776,23 @@ void LightStoreFullLamps(const ProductionConfig& config,
     }
     const std::uint32_t row = FindRow(world.units, full.unit);
     bool refused = false;
+    // THE STORE'S LOSS IS THE REFUSED LOAD'S (the lamp colour's contract,
+    // boss-core-lamp-colour [5]): a full store loses nothing by itself, so it
+    // takes the nearest days of the refusals it lights for; with none, no
+    // loss is in sight.
+    std::uint16_t days = DaysToLossOf(std::numeric_limits<std::int64_t>::max());
     for (const Alarm& other : alarms) {
       const bool refusal =
           other.kind == AlarmKind::kHarvestWillNotFit || other.kind == AlarmKind::kSeedHasNoRoom;
-      refused = refused || (refusal && row != kNoRow &&
-                            IsHomeOf(world.units.rows[row], config, other.resource));
+      if (refusal && row != kNoRow && IsHomeOf(world.units.rows[row], config, other.resource)) {
+        refused = true;
+        days = std::min(days, other.days_to_loss);
+      }
     }
     // Measured before the lamp (0.37.18, canon KD): a flicker inside days
     // 0-2 of every run, with nothing to take in.
     full.lamp = refused ? 1U : 0U;
+    full.days_to_loss = days;
   }
 }
 
@@ -802,6 +841,10 @@ void CollectFieldAlarms(const ProductionConfig& config,
   const SeedHold seed_hold = SeedHeldByField(config, world, world.calendar.day);
   // Square metres each seed leaves unsown on the fields its lamp lights.
   std::vector<double> area_short(config.feed_values.size(), 0.0);
+  // Per seed, the nearest days to a sowing its lamp lights (kSeedAreaShort's).
+  std::vector<std::int64_t> area_short_days(config.feed_values.size(),
+                                            std::numeric_limits<std::int64_t>::max());
+  const std::uint32_t day_of_year = world.calendar.day % kDaysPerYear;
   for (const std::uint32_t row : FieldsInHarvestOrder(config, world)) {
     const FieldRow& field = world.fields.rows[row];
     const RoomClaim claim = RoomClaimOf(config, field);
@@ -863,6 +906,18 @@ void CollectFieldAlarms(const ProductionConfig& config,
         alarm.resource = config.straw_resource;
       }
       alarm.amount = over;
+      // THE LOSS COMES WITH THE REAPING: its first day once the gate opens
+      // it; now while the field is reaped or a heap lies. A growing crop whose
+      // reaping does not open this year (a winter crop in the autumn) has its
+      // loss beyond the year's end: no loss in sight, a yellow either way.
+      std::int32_t open_day = static_cast<std::int32_t>(day_of_year);
+      if (field.phase == FieldPhase::kGrowing && field.reaped_grams <= 0) {
+        open_day = ReapingOpenDay(
+            config, world, field, day_of_year, static_cast<std::int32_t>(kDaysPerYear) - 1);
+      }
+      alarm.days_to_loss = open_day < 0
+                               ? DaysToLossOf(std::numeric_limits<std::int64_t>::max())
+                               : DaysToLossOf(open_day - static_cast<std::int64_t>(day_of_year));
       alarms.push_back(alarm);
     }
     if (field.reaped_grams > 0) {
@@ -896,9 +951,23 @@ void CollectFieldAlarms(const ProductionConfig& config,
         // the list whole (the lamp dims, the list's readers see it); what is
         // still short after the cart is the book's line below.
         alarm.lamp = lit && !LoanTakenThisYear(world, seed) ? 1U : 0U;
+        // THE LOSS IS THE SOWING SOWN SHORT: the next window's first day, now
+        // once it is open. The winter crop AFTER the next sowing is sown past
+        // that window's close — the close is a lower bound of its days, the
+        // nearest this file knows (its lamp is the layout's line, never lit).
+        const SowingWindow window =
+            NextSowingWindow(config, world.fields.rows[row], world.calendar.day);
+        const std::int64_t today = static_cast<std::int64_t>(world.calendar.day);
+        const std::int64_t days = window.crop.value >= config.crops.size()
+                                      ? std::numeric_limits<std::int64_t>::max()
+                                      : (after ? window.closes : window.opens) - today;
+        alarm.days_to_loss = DaysToLossOf(days);
         alarms.push_back(alarm);
         if (lit) {
           AddSeedAreaShort(config, world, row, seed, short_of, area_short);
+          if (seed.value < area_short_days.size()) {
+            area_short_days[seed.value] = std::min(area_short_days[seed.value], days);
+          }
         }
         break;
       }
@@ -920,6 +989,9 @@ void CollectFieldAlarms(const ProductionConfig& config,
     alarm.resource = seed;
     alarm.amount = std::max<std::int64_t>(1, std::llround(area_short[index]));
     alarm.lamp = 0;
+    // Coloured by its days, as a lamp (boss-core-lamp-colour [5]): the
+    // nearest sowing of the fields that lit it.
+    alarm.days_to_loss = DaysToLossOf(area_short_days[index]);
     alarms.push_back(alarm);
   }
 }
@@ -983,6 +1055,10 @@ void CollectHerdAlarms(const ProductionConfig& config,
     alarm.herd = world.herds.row_ids[row];
     alarm.resource = config.meat_resource;
     alarm.amount = short_of;
+    // The month's last day takes the slaughter whatever the room (herd_life:
+    // AutumnSlaughter): that day is the loss — 0 to 3 days, always red.
+    alarm.days_to_loss = DaysToLossOf(static_cast<std::int64_t>(kDaysPerMonth) - 1 -
+                                      world.calendar.date.day_in_month);
     alarms.push_back(alarm);
   }
   CollectStableAlarms(config, world, alarms);
@@ -1024,6 +1100,15 @@ void CollectWinterCropUnsowableAlarms(const ProductionConfig& config,
       alarm.kind = AlarmKind::kWinterCropUnsowable;
       alarm.field = world.fields.row_ids[row];
       alarm.amount = year + 1;
+      // THE SLOT IS LOST WHEN ITS SOWING WINDOW CLOSES: a winter crop of slot
+      // k + 1 is sown in the autumn of slot k's year (NextSowingWindow's
+      // rule), and slot 0 is this year's.
+      const std::int64_t closes =
+          (static_cast<std::int64_t>(year) * kDaysPerYear) +
+          ((static_cast<std::int64_t>(config.crops[winter.value].sow_to_month) + 1) *
+           kDaysPerMonth);
+      alarm.days_to_loss =
+          DaysToLossOf(closes - static_cast<std::int64_t>(world.calendar.day % kDaysPerYear));
       alarms.push_back(alarm);
     }
   }
@@ -1123,7 +1208,6 @@ std::vector<GatherClaim> AnnualsToGather(const ProductionConfig& config,
                                          std::uint32_t day_of_year) {
   std::vector<GatherClaim> claims;
   const auto snow = static_cast<std::int32_t>(config.growing_season_last_day);
-  const SimDay year_start = world.calendar.day - day_of_year;
   for (std::uint32_t row = 0; row < world.fields.rows.size(); ++row) {
     const FieldRow& field = world.fields.rows[row];
     const bool standing =
@@ -1137,15 +1221,7 @@ std::vector<GatherClaim> AnnualsToGather(const ProductionConfig& config,
       claim.open_day = static_cast<std::int32_t>(day_of_year);
       claim.owed_days = field.work_days_remaining;
     } else {
-      claim.open_day = -1;
-      for (auto day = static_cast<std::int32_t>(day_of_year); day <= snow; ++day) {
-        const auto month =
-            static_cast<std::uint8_t>(static_cast<std::uint32_t>(day) / kDaysPerMonth);
-        if (ReapingMayOpen(config, field, month, year_start + static_cast<SimDay>(day))) {
-          claim.open_day = day;
-          break;
-        }
-      }
+      claim.open_day = ReapingOpenDay(config, world, field, day_of_year, snow);
       // What the reaping will write when it opens, asked of the door that
       // writes it (0.36.20: it carries the crop to the heap too, and a norm
       // times the area here would have owed less than the reaping will).
@@ -1275,6 +1351,8 @@ void CollectGatherAlarms(const ProductionConfig& config,
     // was the whole field, because the one-shot harvest let the snow take it
     // all (boss seq 176).
     alarm.amount = static_cast<std::int64_t>(StandingYieldGrams(config, field, crop));
+    // The loss is the snow's first day: the day after the last that counts.
+    alarm.days_to_loss = DaysToLossOf(static_cast<std::int64_t>(snow) + 1 - day_of_year);
     alarms.push_back(alarm);
   }
 }
@@ -1325,6 +1403,8 @@ void CollectSowingAlarms(const ProductionConfig& config,
     alarm.resource = config.crops[field.crop.value].resource;
     alarm.amount = static_cast<std::int64_t>(static_cast<double>(claim.area_ga) * short_share *
                                              kSquareMetresPerHectare);
+    // The loss is the first day past the field's last sowing day.
+    alarm.days_to_loss = DaysToLossOf(static_cast<std::int64_t>(days));
     alarms.push_back(alarm);
   }
 }

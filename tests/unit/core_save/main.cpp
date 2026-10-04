@@ -645,6 +645,10 @@ core::WorldState MakeWorld() {
   world.barter.dry_equivalent = 23'500;
   // The gathering count's last «not in time» (save 126): a day, not nought.
   world.gather_short_said = 137;
+  // The red lamps of the last daily check (save 143): two, sorted, the kinds
+  // and the subjects apart, so a codec that swapped the pair is seen.
+  world.red_lamps = {{.kind = core::AlarmKind::kSeedShort, .subject = 7},
+                     {.kind = core::AlarmKind::kLogisticsLate, .subject = 0x01020304}};
   // A task of the groom's logistics (save format 135): every field off its
   // default, the five ids apart and the two levels apart, so a codec that
   // swapped a pair is seen.
@@ -1181,7 +1185,8 @@ core::WorldState MakeWitnessWorld() {
   witness.barter.dry_givers = 7;
   witness.barter.dry_takers = 6;
   witness.barter.dry_equivalent = 31'750;
-  witness.gather_short_said = 142;  // save 126
+  witness.gather_short_said = 142;                                               // save 126
+  witness.red_lamps = {{.kind = core::AlarmKind::kHerdStarving, .subject = 3}};  // save 143
   return witness;
 }
 
@@ -1374,6 +1379,13 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
       {"barter.dry_equivalent", U64(static_cast<std::uint64_t>(world.barter.dry_equivalent))});
   // Save 126: the gathering count's last «not in time».
   chunks.push_back({"gather_short_said", U32(world.gather_short_said)});
+  // Save 143: the red lamps of the last daily check — a count, then a kind's
+  // byte and a subject a lamp.
+  chunks.push_back({"red_lamps.count", U32(static_cast<std::uint32_t>(world.red_lamps.size()))});
+  for (const core::RedLamp& lamp : world.red_lamps) {
+    chunks.push_back({"red_lamps.kind", U8(static_cast<std::uint8_t>(lamp.kind))});
+    chunks.push_back({"red_lamps.subject", U32(lamp.subject)});
+  }
   return chunks;
 }
 
@@ -1548,7 +1560,9 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // 657 -> 653 before the build, held.
     // Save 141 (B8's door): +1 — the declared day's placement owed, a byte;
     // predicted 653 -> 654 before the build, held.
-    {"world", 654, 0xf931b74d4e8e6fe3ULL},
+    // Save 143: +14 — the red lamps of the last daily check, a count and two
+    // lamps of five bytes; predicted 654 -> 668 before the build, held.
+    {"world", 668, 0x4c17aa9a808624a9ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2200,6 +2214,12 @@ int main() {
                      "(save 125)");
   failures += Expect(loaded.gather_short_said == 137,
                      "the day the gathering count last said «not in time» comes back (save 126)");
+  failures += Expect(loaded.red_lamps.size() == 2 &&
+                         loaded.red_lamps[0].kind == core::AlarmKind::kSeedShort &&
+                         loaded.red_lamps[0].subject == 7 &&
+                         loaded.red_lamps[1].kind == core::AlarmKind::kLogisticsLate &&
+                         loaded.red_lamps[1].subject == 0x01020304,
+                     "the red lamps of the last daily check come back, in order (save 143)");
   failures += Expect(loaded.chairman.days_off_cancelled_in_a_row == 2 &&
                          loaded.chairman.cancelled_day_off == 55 &&
                          loaded.chairman.place_after_declaring == 1,

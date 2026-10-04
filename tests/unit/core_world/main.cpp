@@ -1223,6 +1223,89 @@ int CheckTheIssueNormDoors() {
   return failures;
 }
 
+/// THE LAMPS THAT TURNED RED (the lamp colour's interrupt, save 143; boss, the
+/// logistics thread [127]) on the shipped world: the first hour-0 step with a
+/// red lit lamp is found; replayed from the state before it with an EMPTY
+/// memory it says each red lamp once, kInterrupting, and remembers them — the
+/// memory the boundary's own collection paints at that moment; replayed with
+/// those lamps ALREADY remembered it says nothing. No other hour says it.
+int CheckTheLampsTurnedRed() {
+  const auto shipped = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
+  if (Expect(shipped != nullptr, "red lamps: the shipped tables load") != 0) {
+    return 1;
+  }
+  core::StandardSimulationConfig config;
+  config.tables = shipped.get();
+  config.world_seed = 1929;
+  config.worker_count = 1;
+  const std::unique_ptr<core::ISimulation> simulation = core::CreateStandardSimulation(config);
+  if (Expect(simulation != nullptr, "red lamps: the shipped set assembles") != 0) {
+    return 1;
+  }
+  int failures = 0;
+  const auto said_in = [](const core::WorldState& world) {
+    std::vector<core::SimEvent> said;
+    for (const core::SimEvent& event : world.step_events) {
+      if (event.kind == core::EventKind::kLampTurnedRed) {
+        said.push_back(event);
+      }
+    }
+    return said;
+  };
+  const auto reds_now = [&simulation]() {
+    std::vector<core::Alarm> alarms;
+    simulation->CollectAlarms(alarms);
+    std::vector<core::RedLamp> red;
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.lamp != 0 && alarm.colour == core::AlarmColour::kRed) {
+        red.push_back({.kind = alarm.kind, .subject = core::AlarmSubjectValue(alarm)});
+      }
+    }
+    std::ranges::sort(red);
+    const auto [first, last] = std::ranges::unique(red);
+    red.erase(first, last);
+    return red;
+  };
+  constexpr std::uint32_t kDaysToLook = 30;
+  bool off_hour_said = false;
+  core::WorldState before;
+  std::vector<core::RedLamp> reds;
+  for (std::uint32_t step = 0; step < kDaysToLook * core::kTicksPerDay && reds.empty(); ++step) {
+    const core::WorldState previous = simulation->CompletedState();
+    simulation->AdvanceStep();
+    const core::WorldState& now = simulation->CompletedState();
+    const bool hour0 = core::HourFromTick(now.calendar.tick) == 0;
+    off_hour_said = off_hour_said || (!hour0 && !said_in(now).empty());
+    if (hour0) {
+      reds = reds_now();
+      before = previous;
+    }
+  }
+  std::cout << "red lamps: " << reds.size() << " red at the first hour 0 with any\n";
+  failures += Expect(!reds.empty(), "red lamps: the shipped world lights a red lamp in 30 days");
+  failures += Expect(!off_hour_said, "red lamps: no hour but 0 says a lamp turned red");
+  core::WorldState fresh = before;
+  fresh.red_lamps.clear();
+  simulation->ResetWorld(fresh);
+  simulation->AdvanceStep();
+  const std::vector<core::SimEvent> said = said_in(simulation->CompletedState());
+  bool interrupting = !said.empty();
+  for (const core::SimEvent& event : said) {
+    interrupting = interrupting && event.severity == core::EventSeverity::kInterrupting;
+  }
+  failures += Expect(
+      said.size() == reds.size() && interrupting && simulation->CompletedState().red_lamps == reds,
+      "red lamps: an empty memory says each red lamp once, interrupting, and "
+      "remembers what the boundary paints red");
+  core::WorldState remembered = before;
+  remembered.red_lamps = reds;
+  simulation->ResetWorld(remembered);
+  simulation->AdvanceStep();
+  failures += Expect(said_in(simulation->CompletedState()).empty(),
+                     "red lamps: the same lamps already remembered say nothing");
+  return failures;
+}
+
 /// «КУДА Я ИДУ» ON THE SHIPPED WORLD (0.37.32; boss-core-early-build [1]
 /// p. 6): before the first turn nothing is scored and the order would meet
 /// kIndicesNotHeld; the thresholds, the years asked and the weights stand
@@ -2714,6 +2797,7 @@ int main() {
   failures += CheckRoadsDoor();
   failures += CheckJunctionsDoor();
   failures += CheckTheEraReadinessDoor();
+  failures += CheckTheLampsTurnedRed();
   failures += CheckTheElderDoor();
   failures += CheckTheYardsHoldings();
   failures += CheckStartLiteracyGuarantees();

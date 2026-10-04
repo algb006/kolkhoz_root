@@ -32,6 +32,7 @@
 #include <cstdint>
 #include <memory>
 
+#include "core_common/alarm_state.h"
 #include "core_common/barter_state.h"
 #include "core_common/calendar.h"
 #include "core_common/district_car_state.h"
@@ -1021,6 +1022,14 @@ struct WorldState {
   /// B, B3; logistics_state.h); built at hour 1, read by the labour hour (B4);
   /// SAVED (save 136) — a mid-day save must carry on the same chains.
   GroomPlan groom_plan;
+
+  /// THE LAMPS LIT RED AT THE LAST DAILY CHECK, sorted (the lamp colour's
+  /// interrupt; boss, the logistics thread [127]): at hour 0 the world
+  /// collects and paints its lamps; each red one not here is said
+  /// (EventKind::kLampTurnedRed), and the list is replaced by today's. A lamp
+  /// red and out between two checks is never here. SAVED (save 143): a game
+  /// loaded mid-day must not say again what it said at its last hour 0.
+  std::vector<RedLamp> red_lamps;
 
   /// THE GATHERING COUNT SAID «NOT IN TIME» (farming design, the harvest
   /// rule 1 as boss re-worded it, core-boss-potato-crew-trace-2026-10-01

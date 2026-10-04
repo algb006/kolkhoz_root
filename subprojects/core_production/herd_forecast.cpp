@@ -903,6 +903,7 @@ void CollectHerdForecastAlarms(const ProductionConfig& config,
   alarm.resource = forecast.first_short;
   alarm.amount = forecast.heads_short;
   alarm.days_ahead = forecast.days_ahead;
+  alarm.days_to_loss = forecast.days_ahead;
   const FodderAdvice advice = AdviseOnShortFodder(config, world, forecast);
   alarm.advice = advice.advice;
   alarm.advice_resource = advice.advice_resource;
