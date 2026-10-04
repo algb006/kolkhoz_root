@@ -657,11 +657,18 @@ int TestTheChairmansDoors() {
 }
 
 /// «ЛОГИСТИКА НЕ УСПЕВАЕТ» (B8; alarm_state.h, kLogisticsLate; event_state.h,
-/// kUrgentLoadWaits): a heap's task entered level 0 at hour 10 and nobody
-/// carts it. At hour 10 — no lamp yet; at 11 the lamp, an hour waited, and
-/// one interrupting event naming the task; at 12 the lamp, two hours, and no
-/// second event. The pairs: a carter on the heap — no lamp; the task paused
-/// — no lamp; an ordinary task — no lamp.
+/// kUrgentLoadWaits), ITS CLOCK THE UNSERVED HOURS OF LIGHT (0.37.192;
+/// LogisticsTaskRow::unserved_light_hours): a heap's task at level 0, nobody
+/// carting it, a day of light from 6 to 18. Hour 10, the first hour of
+/// light unserved — the lamp, an hour, and one interrupting event naming the
+/// task; hour 11 — two hours, no second event. At night (hour 22) a fresh
+/// wait adds nothing — no lamp; a carter on the heap at hour 10 sets the
+/// clock to nought, and left again at 11 the wait is new — the lamp and the
+/// event again. The pairs: the task paused — no lamp; an ordinary task — no
+/// lamp.
+/// UNTIL 0.37.192 THE CLOCK WAS urgent_since: the lamp lit at night over a
+/// load carted all day (0.37.191's pair B9, years 1, 4, 5: 13, 9, 18 days of
+/// lamp and no event).
 int TestTheLateLoadsLamp() {
   int failures = 0;
   const test::FakeTableSet no_tables{{}};
@@ -670,6 +677,7 @@ int TestTheLateLoadsLamp() {
     return 1;
   }
   core::WorldState world;
+  world.weather.daylight_hours = 12.0F;  // light from 6 to 18
   core::FieldRow field;
   field.kind = core::LandKind::kArable;
   field.reaped_grams = 1'000'000;
@@ -688,9 +696,11 @@ int TestTheLateLoadsLamp() {
           core::WorldState& state, core::Tick tick, std::int64_t& hours, std::uint32_t& said) {
         state.calendar.tick = tick;
         state.step_events.clear();
+        // As the world does: the hour's clock and its word in the decisions
+        // slot, the lamps read off the completed step.
+        system->SayLateLoads(state);
         std::vector<core::Alarm> alarms;
         system->CollectAlarms(state, alarms);
-        system->SayLateLoads(state);
         hours = -1;
         for (const core::Alarm& alarm : alarms) {
           if (alarm.kind == core::AlarmKind::kLogisticsLate &&
@@ -711,31 +721,43 @@ int TestTheLateLoadsLamp() {
       };
   std::int64_t hours = 0;
   std::uint32_t said = 0;
+  const core::WorldState fresh = world;
   at(world, ten, hours, said);
-  failures += Expect(hours == -1 && said == 0, "late loads: at its first hour, no lamp yet");
-  at(world, ten + 1, hours, said);
   failures += Expect(hours == 1 && said == 1,
-                     "late loads: an hour unserved — the lamp, and one interrupting event "
-                     "naming the task and its load");
-  at(world, ten + 2, hours, said);
+                     "late loads: an hour of light unserved — the lamp, and one interrupting "
+                     "event naming the task and its load");
+  at(world, ten + 1, hours, said);
   failures +=
       Expect(hours == 2 && said == 0, "late loads: two hours — the lamp still, no second event");
   (void)id;
 
-  core::WorldState served = world;
+  core::WorldState night = fresh;
+  at(night, (3 * core::kTicksPerDay) + 22, hours, said);
+  failures +=
+      Expect(hours == -1 && said == 0 && night.logistics_tasks.rows[0].unserved_light_hours == 0,
+             "late loads: a night hour unserved adds nothing — no lamp");
+
+  core::WorldState served = fresh;
   core::ResidentRow carter;
   carter.work.kind = core::WorkKind::kHauling;
   carter.work.field = heap;
-  core::AppendRow(served.residents, carter);
+  const core::ResidentId carter_id = core::AppendRow(served.residents, carter);
+  served.logistics_tasks.rows[0].unserved_light_hours = 3;  // a wait before the carter came
+  at(served, ten, hours, said);
+  failures +=
+      Expect(hours == -1 && said == 0 && served.logistics_tasks.rows[0].unserved_light_hours == 0,
+             "late loads: a carter on the heap — no lamp, the clock at nought");
+  core::RemoveRow(served.residents, carter_id);
   at(served, ten + 1, hours, said);
-  failures += Expect(hours == -1 && said == 0, "late loads: a carter on the heap — no lamp");
-  core::WorldState paused = world;
+  failures += Expect(hours == 1 && said == 1,
+                     "late loads: the carter gone, the wait is new — the lamp and the event again");
+  core::WorldState paused = fresh;
   paused.logistics_tasks.rows[0].paused = true;
-  at(paused, ten + 1, hours, said);
+  at(paused, ten, hours, said);
   failures += Expect(hours == -1 && said == 0, "late loads: the task paused — no lamp");
-  core::WorldState ordinary = world;
+  core::WorldState ordinary = fresh;
   ordinary.logistics_tasks.rows[0].level = core::LogisticsLevel::kOrdinary;
-  at(ordinary, ten + 1, hours, said);
+  at(ordinary, ten, hours, said);
   failures += Expect(hours == -1 && said == 0, "late loads: an ordinary task — no lamp");
 
   // THE ADVICE (0.37.190; AlarmAdvice::kDeclareDayWorking): day 3 a Sunday
@@ -748,6 +770,7 @@ int TestTheLateLoadsLamp() {
         core::RefreshCalendarCaches(state.calendar);
         state.chairman.harvest_without_days_off = 0;
         state.chairman.cancelled_day_off = declared;
+        state.logistics_tasks.rows[0].unserved_light_hours = 2;  // the lamp lit
         std::vector<core::Alarm> alarms;
         system->CollectAlarms(state, alarms);
         for (const core::Alarm& alarm : alarms) {

@@ -645,10 +645,12 @@ enum class AlarmKind : std::uint8_t {
   /// «ЛОГИСТИКА НЕ УСПЕВАЕТ» (routing stage B, B8; transport design §12,
   /// «Уровни приоритета»: «Аларм: задача уровня 0 ждёт подводу дольше часа
   /// игры — „Логистика не успевает“ с названием груза»): a task of level 0
-  /// that nobody serves, an hour or more since it entered level 0
-  /// (LogisticsTaskRow::urgent_since). Subject: `logistics_task` — the load
-  /// is the task's (its kind and address); `amount` the whole game hours it
-  /// has waited at level 0. A loss coming without the player's move — the
+  /// that nobody serves, an hour or more of WORKING LIGHT unserved since it
+  /// was last served (LogisticsTaskRow::unserved_light_hours; since 0.37.192 —
+  /// until then the hours since it entered level 0, night included, and the
+  /// lamp lit at night over a load carted all day). Subject: `logistics_task`
+  /// — the load is the task's (its kind and address); `amount` those hours of
+  /// light. A loss coming without the player's move — the
   /// load spoils, the herd goes hungry — and he has one, so `lamp` 1.
   /// Lighting, it is said once as an interrupting event (EventKind::
   /// kUrgentLoadWaits): a fast-forward stops on it (the human, 4 October

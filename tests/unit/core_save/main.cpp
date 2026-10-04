@@ -433,6 +433,7 @@ core::WorldState MakeWorld() {
   herd.frost_progress = 0.625F;    // save 119: the frost's carry, not its default 0
   herd.cold_nights = 5;            // save 120: the cold nights, not their default 0
   herd.cold_place_yesterday = 1;   // save 120: yesterday's cold place, not its default 0
+  herd.fed_days_in_a_row = 3;      // save 142: off its «never hungry» default
   herd.fed_share = 0.625F;         // save 71: a third short of the ration, not its default 1
   herd.autumn_slaughter_done = 1;  // save 76: this October's slaughter done
   // Save 138: a horse of it at its worker's yard, waiting for his shift.
@@ -660,6 +661,7 @@ core::WorldState MakeWorld() {
   task.paused = true;
   task.aged_from_day = 141;
   task.urgent_since = 3'333;
+  task.unserved_light_hours = 7;  // save 142: the lamp's clock off its nought
   core::AppendRow(world.logistics_tasks, task);
   // The groom's plan of the day (save format 136): one cart, two legs, a rider
   // on the first — every field off its default, the two ticks apart.
@@ -1641,7 +1643,9 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // with the place, every other section unmoved, before each build.
     // Save 139 (0.37.186): +8 — the horse's wait's due tick; predicted 129 ->
     // 137 before the build, held.
-    {"herds", 137, 0x909f4decc3319ee1ULL},
+    // Save 142 (0.37.192): +2 — the fed days in a row, a u16; predicted 137
+    // -> 139 before the build, held.
+    {"herds", 139, 0x3d3f578d92ae347aULL},
     // 2026-09-16, save 48: +6 bytes, one for each of the six orders — the
     // bought head's sex. The witness named the section, the delta and the
     // offset without being asked, which is what it was rewritten for this
@@ -1733,7 +1737,9 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // Save 135 (routing stage B, B2): one task of the groom's logistics — 8
     // of table, 4 of id, 37 of row. Predicted 49 before the build, held; the
     // hash read off the build.
-    {"logistics_tasks", 49, 0xab2a0fadbf128564ULL},
+    // Save 142 (0.37.192): +2 — the lamp's clock, a u16; predicted 49 -> 51
+    // before the build, held.
+    {"logistics_tasks", 51, 0xc64d8366110425dbULL},
     // Save 136 (B3): the groom's plan — 10 of day, flags and count, 9 of the
     // cart, 44 of the first leg (one rider), 40 of the second. Predicted 103
     // before the build, held; the hash read off the build.
@@ -2381,6 +2387,8 @@ int main() {
                      "the herd's cold nights' counter comes back (save 120)");
   failures += Expect(!loaded.herds.rows.empty() && loaded.herds.rows[0].cold_place_yesterday == 1,
                      "the herd's yesterday's cold place comes back (save 120)");
+  failures += Expect(!loaded.herds.rows.empty() && loaded.herds.rows[0].fed_days_in_a_row == 3,
+                     "the herd's fed days in a row come back (save 142)");
   failures += Expect(AmountAt(loaded.ledger.closed.herd_hay_eaten, 1) == 9 &&
                          AmountAt(loaded.ledger.closed.herd_feed_short, 0) == 6 &&
                          loaded.ledger.closed.herd_feed_short.size() == 1 &&
@@ -2631,9 +2639,10 @@ int main() {
             back.level == core::LogisticsLevel::kTerm &&
             back.base_level == core::LogisticsLevel::kBackground &&
             back.origin == core::LogisticsOrigin::kPlayer && back.paused &&
-            back.aged_from_day == 141 && back.urgent_since == 3'333,
+            back.aged_from_day == 141 && back.urgent_since == 3'333 &&
+            back.unserved_light_hours == 7,
         "a task of the groom's logistics came back with its load, its two levels, its origin, "
-        "its pause and its two times (save 135)");
+        "its pause, its two times and the lamp's clock (save 135, 142)");
   }
   // Save 136. The two legs' ticks and places are apart, the rider on the
   // first only: a codec that swapped or dropped one is red here.

@@ -122,9 +122,19 @@ struct LogisticsTaskRow {
   /// STUB econ). Until its first trip: the day it was made.
   SimDay aged_from_day = 0;
 
-  /// The tick it entered level 0, for the alarm «Логистика не успевает» — a
-  /// task of level 0 waiting for a cart longer than a game hour (§12).
+  /// The tick it entered level 0. Since 0.37.192 no longer the lamp's clock
+  /// (unserved_light_hours is): kept for the record of the raise.
   Tick urgent_since = 0;
+
+  /// THE LAMP'S CLOCK (kLogisticsLate; save 142, 0.37.192; boss, the
+  /// logistics thread [113]-[114]): the game hours of WORKING LIGHT this task
+  /// has stood at level 0 with nobody on it, since it was last served — an
+  /// hour of light unserved adds one, an hour served sets it to nought, a task
+  /// below level 0 keeps nought. Night hours add nothing: nobody carts by
+  /// night, and a lamp lit over a load carted all day, because its carters
+  /// went home, was the lamp lying (0.37.191's pair B9: lit 13, 9 and 18 days
+  /// of years 1, 4 and 5 with no event of a wait).
+  std::uint16_t unserved_light_hours = 0;
 };
 
 /// @brief One leg of a cart's day (B4b). A goods cart's day is: an empty leg

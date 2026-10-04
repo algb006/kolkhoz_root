@@ -86,6 +86,17 @@ struct HerdRow {
   /// kinds (poultry); genesis and transfers keep it <= adult_count.
   std::uint16_t adult_male_count = 0;
 
+  /// THE FED DAYS IN A ROW (save 142, 0.37.192; boss, the logistics thread
+  /// [113]-[117]): days the herd was fed in full, counted to the hunger that
+  /// ends them; 0 on a hungry day. kNeverHungry for a herd never hungry yet —
+  /// its first hungry day is a new episode. A hungry day is a NEW episode of
+  /// hunger, said by kHerdWentHungry, only after kHungerEpisodeFedDays fed
+  /// days (herd_system.cpp): a herd fed one day and hungry the next is the
+  /// same hunger. Until 0.37.192 every hungry day after a fed one was said,
+  /// and a herd flapping between the two stopped the fast-forward ten times a
+  /// year (0.37.191's pair B9, village 1933 year 5, against econ's gate 8).
+  std::uint16_t fed_days_in_a_row = 0xFFFFU;
+
   // -- stage-6 cohort flow (manual/66-food-model.md §6) --------------------
   // The row stores counts, not per-head ages (mobs canon: no per-animal
   // modeling), so aging and births run as deterministic fractional flows:

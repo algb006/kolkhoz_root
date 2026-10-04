@@ -644,9 +644,12 @@ enum class EventKind : std::uint8_t {
   /// чинит»). kRoutine. Seam key `watchdog_fired`.
   kWatchdogFired,
 
-  /// herd — a KOLKHOZ herd went hungry today after a fed day (its unfed days
-  /// 0 -> 1; herd_system.cpp, RunHerdDay): the first hungry day, when the lamp
-  /// «стадо голодает» lights. amount = the herd's heads. kInterrupting (B8;
+  /// herd — a KOLKHOZ herd went hungry today as a NEW episode of hunger: after
+  /// four fed days in a row, or never hungry before (HerdRow::
+  /// fed_days_in_a_row; herd_system.cpp, RunHerdDay; since 0.37.192 — until
+  /// then every hungry day after a fed one, and a herd flapping between the two
+  /// was said ten times a year). The first hungry day of the episode, when the
+  /// lamp «стадо голодает» lights. amount = the herd's heads. kInterrupting (B8;
   /// the human, 4 October 2026: «Такие срочные сигналы должны прерывать режим
   /// пропуска времени в игре»; time design §1): until then a fast-forward ran
   /// past the hungry days and stopped at the first head dead of hunger
@@ -658,9 +661,11 @@ enum class EventKind : std::uint8_t {
   /// kLogisticsLate lights (B8; transport design §12). amount packs the task,
   /// as kWatchdogFired packs its line (SimEvent has no task field, and a new
   /// field is a new event wire): the LogisticsTaskId value in bits 0-31, its
-  /// load kind (LogisticsLoadKind) in bits 32-39. Said ONCE, at the hour the wait crosses
-  /// one hour (urgent_since + 1) — a task served then and left again later
-  /// lights the lamp without a second event, named. kInterrupting (the human,
+  /// load kind (LogisticsLoadKind) in bits 32-39. Said once for each wait, at
+  /// the hour its unserved working light reaches one hour (LogisticsTaskRow::
+  /// unserved_light_hours; since 0.37.192): a task served and left again waits
+  /// anew and is said anew. Until 0.37.192 it was said at urgent_since + 1 alone,
+  /// and a lamp lit later in the day said nothing. kInterrupting (the human,
   /// 4 October 2026: «Такие срочные сигналы должны прерывать режим пропуска
   /// времени в игре»). Seam key `urgent_load_waits`.
   kUrgentLoadWaits,

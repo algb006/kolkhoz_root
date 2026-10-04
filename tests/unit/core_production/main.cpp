@@ -4015,6 +4015,29 @@ int CheckTheFirstHungryDayIsSaid() {
   failures += Expect(first == 1 && second == 0 && said(yard) == 0 && said(fed) == 0,
                      "the first hungry day of a kolkhoz herd is said once, interrupting; the "
                      "second, a yard's herd and a fed herd are not");
+  // A NEW EPISODE ONLY AFTER FOUR FED DAYS (0.37.192; HerdRow::
+  // fed_days_in_a_row): hungry, then one fed day, then hungry — the same
+  // hunger, not said; then four fed days, then hungry — said again.
+  const auto day_with = [&config, &said](core::WorldState& state, float hay_kg) {
+    state.units.rows[0].stock[0] = static_cast<core::Grams>(hay_kg) * core::kGramsPerKilogram;
+    state.step_events.clear();
+    core::RunHerdDay(config, state);
+    return said(state);
+  };
+  core::WorldState flapping = MakeHerdWorld(0.0F);
+  AddHerd(flapping, 0, 2, 1, true);
+  const std::uint32_t episode = day_with(flapping, 0.0F);
+  const std::uint32_t fed_once = day_with(flapping, 1000.0F);
+  const std::uint32_t flap = day_with(flapping, 0.0F);
+  std::uint32_t fed_days = 0;
+  for (int day = 0; day < 4; ++day) {
+    fed_days += day_with(flapping, 1000.0F);
+  }
+  const std::uint32_t new_episode = day_with(flapping, 0.0F);
+  failures +=
+      Expect(episode == 1 && fed_once == 0 && flap == 0 && fed_days == 0 && new_episode == 1,
+             "a herd fed one day and hungry the next is the same hunger, not said again; "
+             "after four fed days its hunger is a new episode, said");
   return failures;
 }
 

@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -16,6 +17,7 @@
 #include "core_common/alarm_state.h"
 #include "core_common/calendar.h"
 #include "core_common/day_off.h"
+#include "core_common/day_window.h"
 #include "core_common/emit_event.h"
 #include "core_common/event_state.h"
 #include "core_common/labor_state.h"
@@ -59,20 +61,25 @@ bool CartsChanged(const WorldState& world, const GroomPlan& plan) {
   return planned_carts != there;
 }
 
-/// «Дольше часа» (transport §12): the game hours a task of level 0 may wait
-/// with nobody on it before the lamp lights.
-constexpr Tick kLateAfterHours = 1;
+/// «Дольше часа» (transport §12): the hours of working light a task of level
+/// 0 may stand unserved before the lamp lights.
+constexpr std::uint16_t kLateAfterHours = 1;
 
-/// A task of level 0, not paused, that nobody serves, at least
-/// kLateAfterHours since it entered level 0 (kLogisticsLate's condition).
-bool WaitsLate(const WorldState& world, const LogisticsTaskRow& task, Tick now) {
-  if (task.level != LogisticsLevel::kUrgent || task.paused ||
-      now < task.urgent_since + kLateAfterHours) {
-    return false;
-  }
-  return std::ranges::none_of(world.residents.rows, [&task](const ResidentRow& person) {
+/// Somebody stands on the task's load now.
+bool Served(const WorldState& world, const LogisticsTaskRow& task) {
+  return std::ranges::any_of(world.residents.rows, [&task](const ResidentRow& person) {
     return WorkServesTask(person.work, task);
   });
+}
+
+/// kLogisticsLate's condition: a task of level 0, not paused, its clock of
+/// unserved working light at kLateAfterHours or more (LogisticsTaskRow::
+/// unserved_light_hours, kept by SayLateLoads every hour). Until 0.37.192 the
+/// clock was the tick it entered level 0, and the lamp lit at night over a
+/// load carted all day.
+bool WaitsLate(const LogisticsTaskRow& task) {
+  return task.level == LogisticsLevel::kUrgent && !task.paused &&
+         task.unserved_light_hours >= kLateAfterHours;
 }
 
 void SettleTaskOrder(OrderRow& order, OrderRefusal refusal) {
@@ -216,7 +223,6 @@ class LogisticsSystem final : public ILogisticsSystem {
 
   void CollectAlarms(const WorldState& state, std::vector<Alarm>& out) const override {
     // «ЛОГИСТИКА НЕ УСПЕВАЕТ» (B8; alarm_state.h, kLogisticsLate).
-    const Tick now = state.calendar.tick;
     // ON A DAY OFF THE MOVE IS THE CHAIRMAN'S: declare the day working
     // (0.37.190; AlarmAdvice::kDeclareDayWorking) — named only while the
     // door would take it today, one question with the door
@@ -225,25 +231,42 @@ class LogisticsSystem final : public ILogisticsSystem {
         TodayMayBeDeclaredWorking(state) ? AlarmAdvice::kDeclareDayWorking : AlarmAdvice::kNone;
     for (std::uint32_t row = 0; row < state.logistics_tasks.rows.size(); ++row) {
       const LogisticsTaskRow& task = state.logistics_tasks.rows[row];
-      if (!WaitsLate(state, task, now)) {
+      if (!WaitsLate(task)) {
         continue;
       }
       Alarm alarm;
       alarm.kind = AlarmKind::kLogisticsLate;
       alarm.logistics_task = state.logistics_tasks.row_ids[row];
-      alarm.amount = static_cast<std::int64_t>(now - task.urgent_since);
+      alarm.amount = static_cast<std::int64_t>(task.unserved_light_hours);
       alarm.advice = advice;
       out.push_back(alarm);
     }
   }
 
   void SayLateLoads(WorldState& current) const override {
-    // THE LAMP'S FIRST HOUR, SAID (B8; event_state.h, kUrgentLoadWaits): at
-    // the hour a task's wait at level 0 crosses one hour, unserved.
-    const Tick now = current.calendar.tick;
+    // THE LAMP'S CLOCK, AN HOUR ON (0.37.192; LogisticsTaskRow::
+    // unserved_light_hours): an hour of working light with nobody on a task
+    // of level 0 adds one; an hour served, or the task below level 0 or
+    // paused, sets it to nought; a night hour leaves it as it is.
+    // AND ITS FIRST HOUR, SAID (B8; event_state.h, kUrgentLoadWaits): the hour
+    // the clock reaches kLateAfterHours — once for each wait, a new wait after
+    // a served hour said again.
+    const std::uint32_t hour = HourFromTick(current.calendar.tick);
+    const bool light = hour >= SunriseHour(current.weather.daylight_hours) &&
+                       hour < SunsetHour(current.weather.daylight_hours);
     for (std::uint32_t row = 0; row < current.logistics_tasks.rows.size(); ++row) {
-      const LogisticsTaskRow& task = current.logistics_tasks.rows[row];
-      if (!WaitsLate(current, task, now) || now != task.urgent_since + kLateAfterHours) {
+      LogisticsTaskRow& task = current.logistics_tasks.rows[row];
+      if (task.level != LogisticsLevel::kUrgent || task.paused || Served(current, task)) {
+        task.unserved_light_hours = 0;
+        continue;
+      }
+      if (!light) {
+        continue;
+      }
+      if (task.unserved_light_hours < std::numeric_limits<std::uint16_t>::max()) {
+        ++task.unserved_light_hours;
+      }
+      if (task.unserved_light_hours != kLateAfterHours) {
         continue;
       }
       SimEvent& event =

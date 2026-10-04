@@ -241,8 +241,11 @@ static_assert(AggregateArity<UnitRow>() == 18,
 // build.
 // Save 139 (0.37.186): the wait's due tick — 144 -> 152 and twenty-nine,
 // predicted before the build.
+// Save 142 (0.37.192): the fed days in a row, a u16 into the padding after
+// the adult males (offset 22) — 152 stays and thirty, predicted before the
+// build.
 static_assert(sizeof(HerdRow) == 152, "HerdRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<HerdRow>() == 29,
+static_assert(AggregateArity<HerdRow>() == 30,
               "HerdRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-13: the felling mark — a stand id and a volume — took the order row
 // from 64 to 72 and the assignment's stand from 24 to 28 (and the resident
@@ -364,9 +367,11 @@ static_assert(AggregateArity<BarterTripRow>() == 9,
 // predicted before the build (the kind's byte and three of padding, five ids
 // to 24, four bytes of level, base, origin and pause to 28, the day to 32,
 // the tick to 40; 37 bytes saved: 1 + 4 x 5 + 1 + 1 + 1 + 1 + 4 + 8).
-static_assert(sizeof(LogisticsTaskRow) == 40,
+// Save 142 (0.37.192): the lamp's clock, a u16 after the tick — 40 -> 48 and
+// thirteen fields, 39 bytes saved; predicted before the build.
+static_assert(sizeof(LogisticsTaskRow) == 48,
               "LogisticsTaskRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<LogisticsTaskRow>() == 12,
+static_assert(AggregateArity<LogisticsTaskRow>() == 13,
               "LogisticsTaskRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 136 (0.37.177): the groom's plan — a leg six fields, a cart three, the
 // plan four (each holds vectors: its size is not a byte count, the codec
@@ -1213,6 +1218,7 @@ void WriteHerdRow(SaveSink& sink, const HerdRow& row) {
   out.WriteU16(row.juvenile_count);
   out.WriteU16(row.adult_count);
   out.WriteU16(row.adult_male_count);
+  out.WriteU16(row.fed_days_in_a_row);  // save 142
 
   out.WriteFloat(row.newborn_progress);
   out.WriteFloat(row.juvenile_progress);
@@ -1250,6 +1256,7 @@ HerdRow ReadHerdRow(LoadSource& source) {
   row.juvenile_count = in.ReadU16();
   row.adult_count = in.ReadU16();
   row.adult_male_count = in.ReadU16();
+  row.fed_days_in_a_row = in.ReadU16();  // save 142
 
   row.newborn_progress = in.ReadFloat();
   row.juvenile_progress = in.ReadFloat();
@@ -1700,6 +1707,7 @@ void WriteLogisticsTaskRow(SaveSink& sink, const LogisticsTaskRow& row) {
   out.WriteU8(row.paused ? 1U : 0U);
   out.WriteU32(row.aged_from_day);
   out.WriteU64(row.urgent_since);
+  out.WriteU16(row.unserved_light_hours);  // save 142
 }
 
 LogisticsTaskRow ReadLogisticsTaskRow(LoadSource& source) {
@@ -1723,6 +1731,7 @@ LogisticsTaskRow ReadLogisticsTaskRow(LoadSource& source) {
   row.paused = source.ReadEnumValue(0, 1, "logistics pause") != 0;
   row.aged_from_day = in.ReadU32();
   row.urgent_since = in.ReadU64();
+  row.unserved_light_hours = in.ReadU16();  // save 142
   return row;
 }
 

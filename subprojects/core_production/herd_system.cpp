@@ -40,6 +40,12 @@ namespace {
 /// fed: the need is a float and the take whole grams (RunFeeding's share).
 constexpr float kFeedToleranceUnits = 0.001F;
 
+/// A herd's hunger is a NEW episode — said again by kHerdWentHungry — only
+/// after this many fed days in a row (HerdRow::fed_days_in_a_row; 0.37.192).
+/// STUB econ (boss, the logistics thread [117]: econ's N = 4, one game month);
+/// to the table with its row in the design base.
+constexpr std::uint16_t kHungerEpisodeFedDays = 4;
+
 HerdPlace PlaceOf(WorldState& world, const ProductionConfig& config, const HerdRow& herd) {
   HerdPlace place;
   // OWNERSHIP decides the purse, not the address. A kolkhoz cow billeted at
@@ -1214,12 +1220,19 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
                               &work);
     const bool fed = herd.fed_share >= 1.0F;
     // THE FIRST HUNGRY DAY STOPS THE FAST-FORWARD (B8; event_state.h,
-    // kHerdWentHungry): a kolkhoz herd, fed yesterday, hungry today.
-    if (!fed && !(herd.unfed_days > 0.0F) && herd.household_owned == 0) {
+    // kHerdWentHungry): a kolkhoz herd hungry today — and only as a NEW
+    // episode, after kHungerEpisodeFedDays fed days in a row (0.37.192): a herd
+    // fed one day and hungry the next is the same hunger, said once.
+    if (!fed && herd.fed_days_in_a_row >= kHungerEpisodeFedDays && herd.household_owned == 0) {
       SimEvent& hungry =
           EmitEvent(current, EventKind::kHerdWentHungry, EventSeverity::kInterrupting);
       hungry.herd = current.herds.row_ids[row];
       hungry.amount = static_cast<std::int64_t>(TotalHeads(herd));
+    }
+    if (!fed) {
+      herd.fed_days_in_a_row = 0;
+    } else if (herd.fed_days_in_a_row < 0xFFFFU) {
+      ++herd.fed_days_in_a_row;
     }
     herd.unfed_days = fed ? 0.0F : herd.unfed_days + 1.0F;
     if (fed) {
