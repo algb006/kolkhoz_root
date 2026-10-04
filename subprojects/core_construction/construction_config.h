@@ -361,6 +361,14 @@ struct ConstructionConfig {
   /// table set has none, and nothing collapses.
   UnitTypeId old_house_type;
 
+  /// THE RUNGS A DOOR READS AT NO PRICE (boss, the logistics thread [135],
+  /// [138]): «<unit key> <level>» of every rung whose labor_days cell is blank
+  /// — the base's «not written up yet», read as 0 man-days — and that marking,
+  /// an upgrade or a repair can reach. Each is said in the log at assembly.
+  /// STUB: a list and a log line, not a refusal, until the base's numbers
+  /// arrive; the refusal lands in one commit with that export.
+  std::vector<std::string> zero_priced_rungs;
+
   /// Game years an old house takes from its starting wear to 100 — the
   /// canon's "race of the first years: dismantle them before they fall"
   /// (start design §4). Its own figure, not the ladder's: the ladder gives

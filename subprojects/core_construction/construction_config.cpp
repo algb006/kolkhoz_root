@@ -32,7 +32,9 @@
 #include "core_catalog/table_value.h"
 #include "core_common/calendar.h"
 #include "core_construction/construction_system.h"
+#include "core_log/log.h"
 #include "core_tables/tables.h"
+#include "unit_decay.h"
 
 namespace core {
 namespace {
@@ -442,6 +444,50 @@ bool CheckCapacityLadder(const ITable& unit_types, ConstructionConfig& config, s
   return true;
 }
 
+/// THE RUNGS A DOOR READS AT NO PRICE (boss, the logistics thread [135],
+/// [138]): a blank labor_days is the base's «not written up yet» and reads as
+/// 0 man-days, and a rung an open door can reach then costs nobody's work —
+/// the start's wrecked mill came back overnight in every canon run (0.37.193).
+/// The doors as construction_system.cpp has them: marking (rung 1 of a
+/// player-built type), the upgrade (any rung past 1 — player_built is not
+/// asked), the repair (a wearing type, not the old house). A marking class
+/// (`plot`) costs no work by design and is not named.
+/// STUB: a line in the log, not a refusal, until the base's numbers arrive;
+/// the refusal lands in one commit with that export (boss [138]).
+void SayZeroPricedRungs(const ITable& unit_types,
+                        ConstructionConfig& config,
+                        const std::vector<std::pair<std::uint32_t, std::uint32_t>>& blank_labor) {
+  for (const auto& [type_row, level] : blank_labor) {
+    const BuildType& type = config.types[type_row];
+    if (level == 0 || level > type.levels.size() || type.levels[level - 1].is_marking != 0) {
+      continue;
+    }
+    std::string doors;
+    const auto add = [&doors](std::string_view door) {
+      doors += doors.empty() ? "" : ", ";
+      doors += door;
+    };
+    if (level == 1 && type.player_built != 0) {
+      add("marking");
+    }
+    if (level > 1) {
+      add("upgrade");
+    }
+    if (type.has_wear != 0 && !TypeIsOldHouse(config, DefIdFromRow<UnitTypeIdTag>(type_row))) {
+      add("repair");
+    }
+    if (doors.empty()) {
+      continue;  // no door reaches it: «what the player does not build costs nothing»
+    }
+    const std::string rung =
+        std::string(unit_types.CellText(type_row, 0)) + " " + std::to_string(level);
+    config.zero_priced_rungs.push_back(rung);
+    LogWarning("construction: unit_levels " + rung +
+               " has a blank labor_days, read as 0 man-days, and is open to " + doors +
+               " — STUB until the base's numbers (boss [138])");
+  }
+}
+
 bool ReadLevels(const ITable& levels,
                 const ITable& unit_types,
                 ConstructionConfig& config,
@@ -471,6 +517,9 @@ bool ReadLevels(const ITable& levels,
   // zero and a rung never written look identical once the loop is over. So
   // the presence is recorded HERE, where the difference still exists.
   std::vector<std::vector<std::uint8_t>> filled(config.types.size());
+  // The rungs whose labor_days cell is BLANK — the base's NULL, «not written
+  // up yet», read as 0 below (SayZeroPricedRungs).
+  std::vector<std::pair<std::uint32_t, std::uint32_t>> blank_labor;
 
   for (std::uint32_t row = 0; row < levels.RowCount(); ++row) {
     const std::uint32_t type_row = unit_types.FindRowByKey(levels.CellText(row, unit_col));
@@ -515,6 +564,9 @@ bool ReadLevels(const ITable& levels,
       return false;
     }
     step.labor_days = number / kRealDaysPerGameDay;
+    if (days_col == kNoTableColumn || levels.CellText(row, days_col).empty()) {
+      blank_labor.emplace_back(type_row, level);
+    }
     if (!CellOrDefault(levels,
                        row,
                        crew_col,
@@ -663,6 +715,7 @@ bool ReadLevels(const ITable& levels,
       return false;
     }
   }
+  SayZeroPricedRungs(unit_types, config, blank_labor);
   return CheckCapacityLadder(unit_types, config, error);
 }
 

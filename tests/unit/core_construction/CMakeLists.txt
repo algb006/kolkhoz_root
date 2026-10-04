@@ -1,5 +1,12 @@
 kolkhoz_add_unit_test(core_construction main.cpp)
 
+# The zero-priced rungs (construction_config.h, ConstructionConfig::
+# zero_priced_rungs; boss, the logistics thread [138]) are a list of the
+# parsed config, which the public header does not carry: the test reads the
+# struct directly, as core_production's tests read theirs.
+target_include_directories(unit_core_construction
+    PRIVATE "${CMAKE_SOURCE_DIR}/subprojects/core_construction")
+
 # ONE check in this file needs the SHIPPED tables, and it is the one whose
 # subject IS the shipped data: the stink radii are this core's ASSUMPTION,
 # and the designed start has three sources and twenty-one houses. Whether a

@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "../../common/fake_tables.h"
+#include "construction_config.h"
 #include "core_common/day_off.h"
 #include "core_common/module_rules.h"
 #include "core_common/order_state.h"
@@ -2441,6 +2442,33 @@ int TestTheStinkZoneGrowsAndGoesOut() {
 /// past the 268 m between the manure heap and the nearest house, THE
 /// DESIGNED START BREAKS ITS OWN RULE ON DAY ONE — and it would do it in
 /// silence, because nothing else compares the two numbers.
+/// THE RUNGS A DOOR READS AT NO PRICE (boss, the logistics thread [135],
+/// [138]; ConstructionConfig::zero_priced_rungs) on the shipped tables: the
+/// start's wrecked mill — a blank labor_days, open to repair — is named; the
+/// old house — blank too, but no door reaches it (the rule forbids its
+/// repair) — is not. The list is the twelve of 4 October's count, whose names
+/// the log prints.
+int TestTheZeroPricedRungsAreNamed() {
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  if (Expect(tables != nullptr, "zero-priced rungs: the shipped tables load") != 0) {
+    return 1;
+  }
+  core::ConstructionConfig config;
+  if (Expect(core::ParseConstructionConfig(*tables, core::StubTables::kRefused, config, error),
+             "zero-priced rungs: the shipped tables parse") != 0) {
+    return 1;
+  }
+  const auto named = [&config](std::string_view rung) {
+    return std::ranges::find(config.zero_priced_rungs, rung) != config.zero_priced_rungs.end();
+  };
+  std::cout << "zero-priced rungs: " << config.zero_priced_rungs.size() << " named\n";
+  return Expect(
+      named("water_mill 1") && !named("old_house 1") && config.zero_priced_rungs.size() == 12,
+      "zero-priced rungs: the mill's blank repair is named, the old house's is not, "
+      "twelve in all");
+}
+
 int TestTheShippedStartHasNoHouseInAStinkZone() {
   int failures = 0;
   std::string error;
@@ -2718,6 +2746,7 @@ int main() {
   failures += TestStepPaceMultipliesTypePace(tables);
   failures += TestABodyKeepsItsMetre(tables);
   failures += TestCapacityNeedsALadder();
+  failures += TestTheZeroPricedRungsAreNamed();
   failures += TestMarkAndBuild(tables);
   failures += TestTheWinterSiteIsNoAlarm(tables);
   failures += TestCrewlessDaysLightTheSiteLamp(tables);
