@@ -1,5 +1,6 @@
 kolkhoz_add_unit_test(core_production
     main.cpp
+    hourly_carting_checks.cpp
     meadow_hay_checks.cpp
     perennial_cut_checks.cpp)
 

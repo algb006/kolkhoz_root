@@ -223,33 +223,54 @@ void BookCartRun(const ProductionConfig& config,
 ///
 /// `source`: where the load lies, for the produce cart's columns
 /// (BookCartRun); a stand passes the terminator — logs are no produce cart.
-void SettleLoad(const ProductionConfig& config,
-                WorldState& current,
-                const HaulRate& rate,
-                CartLoadSource source,
-                ResourceId resource,
-                Grams& load,
-                float& haul_days_remaining,
-                float& haul_days_written,
-                const std::vector<Grams>* booked = nullptr,
-                std::uint32_t manger = kNoRow) {
+/// The room a load can be delivered into now: its home's door, the heap's
+/// with the seed booked (`booked`), or the manger's, which is never full.
+Grams LoadRoom(const ProductionConfig& config,
+               const WorldState& current,
+               ResourceId resource,
+               const std::vector<Grams>* booked,
+               std::uint32_t manger) {
+  if (manger != kNoRow) {
+    return std::numeric_limits<Grams>::max();
+  }
+  return booked == nullptr ? ReceivableRoom(config, current, resource)
+                           : HeapRoom(config, current, resource, *booked);
+}
+
+/// @brief THE CARTED SHARE REACHES THE STORE IN THE HOUR IT WAS CARTED (routing
+/// stage V1; transport §12; boss, the logistics thread [207]-[208]): what the
+/// carriers drained off the seam since it was last settled — `written` minus
+/// `remaining` — is delivered now, as that share of what the load can put
+/// through its door, and `written` comes down to `remaining`, so the next
+/// settlement measures only the hours after this one. Until 0.37.200 the
+/// tonnes of a whole day's carting reached the store at the day's last tick:
+/// a heap carted by ten o'clock fed nobody before night and lay on the field
+/// for the rain in the books (the STUB of stage B, logistics_state.h).
+/// Called every hour for every load (DeliverCartedLoads), and first thing in
+/// the evening's SettleLoad.
+void DeliverDrained(const ProductionConfig& config,
+                    WorldState& current,
+                    const HaulRate& rate,
+                    CartLoadSource source,
+                    ResourceId resource,
+                    Grams& load,
+                    float haul_days_remaining,
+                    float& haul_days_written,
+                    const std::vector<Grams>* booked,
+                    std::uint32_t manger) {
   // `manger`: A MEADOW'S HAY GOES TO THE MANGER (HeapMangerRow; 0.37.119) —
   // where the mown share went by itself until then, now by the carters'
   // share of the day. No seed is booked against a manger, and it has no
   // tonnage to be full against. kNoRow for every other load.
-  const auto room_now = [&config, &current, resource, booked, manger]() {
-    if (manger != kNoRow) {
-      return std::numeric_limits<Grams>::max();
-    }
-    return booked == nullptr ? ReceivableRoom(config, current, resource)
-                             : HeapRoom(config, current, resource, *booked);
-  };
-  const Grams receivable = room_now();
+  const Grams receivable = LoadRoom(config, current, resource, booked, manger);
   const Grams haulable = receivable < load ? receivable : load;
   const float done =
       haul_days_written > haul_days_remaining ? haul_days_written - haul_days_remaining : 0.0F;
   const float against = haul_days_written;
-  if (done > 0.0F && against > 0.0F) {
+  // The share of the drained work that became grams in the stores this hour:
+  // all of it unless the door or the room took less than the work carried.
+  float converted = 1.0F;
+  if (done > 0.0F && against > 0.0F && load > 0) {
     const float share = done / against;
     const Grams carried =
         GramsFromFloat(static_cast<float>(haulable) * (share > 1.0F ? 1.0F : share));
@@ -262,11 +283,49 @@ void SettleLoad(const ProductionConfig& config,
       moved = booked == nullptr ? DeliverToStores(current, config, resource, offered)
                                 : DeliverHeapToStores(current, config, resource, offered, *booked);
     }
+    const float worked_grams = static_cast<float>(load) * (share > 1.0F ? 1.0F : share);
     load -= moved;
     AddLedgerAmount(current.ledger.current.hauled_to_stores, resource, moved);
     BookCartRun(config, current, source, rate, moved);
+    if (worked_grams > 0.0F) {
+      converted = static_cast<float>(moved) / worked_grams;
+      converted = converted > 1.0F ? 1.0F : (converted < 0.0F ? 0.0F : converted);
+    }
   }
-  const Grams left = room_now();
+  // What was drained AND DELIVERED is settled: the seam left is measured from
+  // here. What the room or the door did not take this hour stays drained in
+  // the seam — `written` keeps it above `remaining` — and goes through the
+  // door at the next hour or in the evening, by the room then. The first V1
+  // pair dropped it every hour (0.37.200, before the amend): logs held at a
+  // full pile lost the day's carting the evening would have put through as
+  // the sites drew the pile down — logs -1.7 %, clay -3.0 %, houses at the end
+  // of year 4 -1.26 a village on 27 seeds.
+  if (haul_days_written > haul_days_remaining) {
+    haul_days_written = haul_days_remaining + done * (1.0F - converted);
+  }
+}
+
+void SettleLoad(const ProductionConfig& config,
+                WorldState& current,
+                const HaulRate& rate,
+                CartLoadSource source,
+                ResourceId resource,
+                Grams& load,
+                float& haul_days_remaining,
+                float& haul_days_written,
+                const std::vector<Grams>* booked = nullptr,
+                std::uint32_t manger = kNoRow) {
+  DeliverDrained(config,
+                 current,
+                 rate,
+                 source,
+                 resource,
+                 load,
+                 haul_days_remaining,
+                 haul_days_written,
+                 booked,
+                 manger);
+  const Grams left = LoadRoom(config, current, resource, booked, manger);
   haul_days_remaining =
       load > 0 ? HaulDaysFor(left < load ? left : load, rate, config.standard_day_hours) : 0.0F;
   haul_days_written = haul_days_remaining;
@@ -457,6 +516,56 @@ void SettleSiteHauling(const ProductionConfig& config, WorldState& current) {
   }
 }
 
+void DeliverCartedLoads(const ProductionConfig& config, WorldState& current) {
+  for (FieldRow& field : current.fields.rows) {
+    if (field.reaped_grams <= 0) {
+      continue;
+    }
+    // Seed first, as the evening settles a heap (SettleHauling below).
+    const std::vector<Grams> booked = SeedRoomBooked(config, current);
+    DeliverDrained(config,
+                   current,
+                   FieldHaulRate(config, current, field),
+                   CartLoadSource::kField,
+                   field.reaped_resource,
+                   field.reaped_grams,
+                   field.haul_days_remaining,
+                   field.haul_days_written,
+                   &booked,
+                   HeapMangerRow(config, current, field));
+  }
+  for (TimberStandRow& stand : current.stands.rows) {
+    if (stand.load_grams > 0) {
+      DeliverDrained(config,
+                     current,
+                     StandHaulRate(config, current, stand),
+                     CartLoadSource::kCartLoadSourceCount,
+                     config.timber.log_resource,
+                     stand.load_grams,
+                     stand.haul_days_remaining,
+                     stand.haul_days_written,
+                     nullptr,
+                     kNoRow);
+    }
+  }
+  for (ExtractionSiteRow& site : current.extraction_sites.rows) {
+    if (site.load_grams > 0) {
+      DeliverDrained(config,
+                     current,
+                     SiteHaulRate(config, current, site),
+                     CartLoadSource::kSite,
+                     site.resource,
+                     site.load_grams,
+                     site.haul_days_remaining,
+                     site.haul_days_written,
+                     nullptr,
+                     kNoRow);
+    }
+  }
+  SettleStoreEmptying(config, current, false);
+  SettleDistrictLotHauling(config, current, false);
+}
+
 /// @brief Turns the hauling labor delivered today into grain that actually
 /// moved, and re-sizes tomorrow's demand for what is still lying out.
 ///
@@ -570,7 +679,7 @@ std::vector<std::uint32_t> EmptyingOrder(const ProductionConfig& config, const U
 
 }  // namespace
 
-void SettleStoreEmptying(const ProductionConfig& config, WorldState& current) {
+void SettleStoreEmptying(const ProductionConfig& config, WorldState& current, bool evening) {
   for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
     UnitRow& unit = current.units.rows[row];
     if (unit.emptying == 0) {
@@ -604,9 +713,12 @@ void SettleStoreEmptying(const ProductionConfig& config, WorldState& current) {
       return destination;
     };
     const bool carrying = unit.emptying == 1;  // 2: the carrying is paused
+    // The share of the drained work that went through the door (DeliverDrained).
+    float converted = 1.0F;
     if (carrying && done > 0.0F && unit.haul_days_written > 0.0F) {
       const float share = done / unit.haul_days_written;
       Grams budget = GramsFromFloat(static_cast<float>(movable()) * (share > 1.0F ? 1.0F : share));
+      const Grams budget_at_start = budget;
       // The way the carts took today, for the year's book — measured before
       // they moved anything, as the day's other loads are (SettleLoad).
       // NOT BOOKED WHEN NO NUMBERED STORE TAKES THE FIRST OF IT: the way then
@@ -632,6 +744,20 @@ void SettleStoreEmptying(const ProductionConfig& config, WorldState& current) {
       if (way_known) {
         BookCartRun(config, current, CartLoadSource::kStore, today, carted);
       }
+      if (budget_at_start > 0) {
+        converted = static_cast<float>(carted) / static_cast<float>(budget_at_start);
+        converted = converted > 1.0F ? 1.0F : converted;
+      }
+    }
+    if (!evening) {
+      // An hour's settlement (stage V1): what was carted is in; the seam left
+      // is measured from here — what the doors did not take stays drained in
+      // it for the next hour or the evening (DeliverDrained) — and tomorrow's
+      // demand waits for the evening.
+      if (unit.haul_days_written > unit.haul_days_remaining) {
+        unit.haul_days_written = unit.haul_days_remaining + done * (1.0F - converted);
+      }
+      continue;
     }
     // Tomorrow's demand: what is left that has somewhere to go, toward the
     // first store that takes the first of it.
@@ -685,7 +811,7 @@ HaulRate DistrictLotHaulRate(const ProductionConfig& config, const WorldState& w
   return rate;
 }
 
-void SettleDistrictLotHauling(const ProductionConfig& config, WorldState& current) {
+void SettleDistrictLotHauling(const ProductionConfig& config, WorldState& current, bool evening) {
   std::vector<LimitDeliveryId> emptied;
   for (std::uint32_t row = 0; row < current.limit_deliveries.rows.size(); ++row) {
     LimitDeliveryRow& lot = current.limit_deliveries.rows[row];
@@ -710,9 +836,12 @@ void SettleDistrictLotHauling(const ProductionConfig& config, WorldState& curren
     const float done = lot.haul_days_written > lot.haul_days_remaining
                            ? lot.haul_days_written - lot.haul_days_remaining
                            : 0.0F;
+    // The share of the drained work that went through the door (DeliverDrained).
+    float converted = 1.0F;
     if (done > 0.0F && lot.haul_days_written > 0.0F) {
       const float share = done / lot.haul_days_written;
       Grams budget = GramsFromFloat(static_cast<float>(movable()) * (share > 1.0F ? 1.0F : share));
+      const Grams budget_at_start = budget;
       Grams carted = 0;
       for (std::size_t index = 0; index < lot.goods.size() && budget > 0; ++index) {
         if (lot.goods[index] <= 0) {
@@ -726,6 +855,19 @@ void SettleDistrictLotHauling(const ProductionConfig& config, WorldState& curren
         carted += moved;
       }
       BookCartRun(config, current, CartLoadSource::kDistrict, rate, carted);
+      if (budget_at_start > 0) {
+        converted = static_cast<float>(carted) / static_cast<float>(budget_at_start);
+        converted = converted > 1.0F ? 1.0F : converted;
+      }
+    }
+    if (!evening) {
+      // An hour's settlement (stage V1): the lot's row stays to the evening,
+      // when an emptied lot is taken off and tomorrow's demand is written;
+      // what the doors did not take stays drained in the seam (DeliverDrained).
+      if (lot.haul_days_written > lot.haul_days_remaining) {
+        lot.haul_days_written = lot.haul_days_remaining + done * (1.0F - converted);
+      }
+      continue;
     }
     if (std::ranges::none_of(lot.goods, [](Grams grams) { return grams > 0; })) {
       emptied.push_back(current.limit_deliveries.row_ids[row]);

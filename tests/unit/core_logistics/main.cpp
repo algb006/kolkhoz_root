@@ -772,6 +772,18 @@ int TestTheLateLoadsLamp() {
       hours == -1 && said == 0 && carted.logistics_tasks.rows[0].unserved_light_hours == 0,
       "late loads: a heap carted for today, its grams not yet landed — no lamp, the clock at "
       "nought");
+  // CARTED TO NOTHING (0.37.200, stage V1): the hour's carting reaches the
+  // store in its hour, and a heap emptied in the afternoon keeps its task till
+  // tomorrow's hour 0 — the load gone, its seam unaddressed. No lamp, the
+  // clock at nought. 141 of V1's first 162 lamp-hours stood so.
+  core::WorldState gone = fresh;
+  gone.fields.rows[0].reaped_grams = 0;
+  gone.logistics_tasks.rows[0].unserved_light_hours = 3;
+  at(gone, ten, hours, said);
+  failures += Expect(
+      hours == -1 && said == 0 && gone.logistics_tasks.rows[0].unserved_light_hours == 0,
+      "late loads: a heap carted to nothing in the afternoon, its task kept till tomorrow — no "
+      "lamp, the clock at nought");
 
   // THE ADVICE (0.37.190; AlarmAdvice::kDeclareDayWorking): day 3 a Sunday
   // (day 0 a Thursday) — «declare the day working»; a working day — none;

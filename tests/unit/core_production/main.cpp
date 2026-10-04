@@ -53,6 +53,7 @@
 #include "herd_forecast.h"
 #include "herd_life.h"
 #include "herd_system.h"
+#include "hourly_carting_checks.h"
 #include "livestock_homes.h"
 #include "meadow_hay_checks.h"
 #include "milk_cart.h"
@@ -15310,6 +15311,7 @@ int main() {
   failures += CheckTheFeedingOrderSwitch();
   failures += CheckTheCartOfTheCompressedYear();
   failures += CheckMeadowHayLiesAtTheMeadow();
+  failures += CheckTheCartingReachesTheStoreInItsHour();
   failures += CheckThePerennialsCut();
 
   if (failures == 0) {

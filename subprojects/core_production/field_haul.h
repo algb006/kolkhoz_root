@@ -70,8 +70,13 @@ HaulRate DistrictLotHaulRate(const ProductionConfig& config, const WorldState& w
 ///        wait at the district centre (LimitDeliveryRow::own_carts): what
 ///        they drained since last night comes in through the store door,
 ///        tomorrow's demand is written, and an empty lot's row goes.
+/// @param evening false for an hour's settlement (DeliverCartedLoads): the
+///        carted share comes in, and the demand and the row wait for the
+///        evening.
 /// @note Runs beside SettleStoreEmptying, at the day's last tick.
-void SettleDistrictLotHauling(const ProductionConfig& config, WorldState& current);
+void SettleDistrictLotHauling(const ProductionConfig& config,
+                              WorldState& current,
+                              bool evening = true);
 
 /// @brief Where a field's heap stands: at the edge of the field nearest a road
 ///        a produce cart may use — or at that road where it crosses the field;
@@ -145,8 +150,22 @@ void SettleSiteHauling(const ProductionConfig& config, WorldState& current);
 /// (ProductionConfig::theft_rank), then row order; tomorrow's demand is
 /// re-sized for what is left that has somewhere to go. A paused unit carries
 /// nothing and asks for nobody; the order stands.
+/// @param evening false for an hour's settlement (DeliverCartedLoads):
+///        tomorrow's demand waits for the evening.
 /// @pre The day's last tick, sequential slot, after labor has run.
-void SettleStoreEmptying(const ProductionConfig& config, WorldState& current);
+void SettleStoreEmptying(const ProductionConfig& config, WorldState& current, bool evening = true);
+
+/// @brief THE CARTED SHARE REACHES THE STORE IN THE HOUR IT WAS CARTED
+/// (routing stage V1; transport §12; boss, the logistics thread [207]-[208]):
+/// every load — a field's heap, a stand's logs, a pit's dig, a store being
+/// emptied, a district lot fetched by the village's carts — delivers what the
+/// carriers drained off its seam this hour, through the same door and by the
+/// same share as the evening's settlement; the seam left is measured from
+/// here. Tomorrow's demand is still written in the evening (SettleHauling and
+/// its siblings). Until 0.37.200 a whole day's carting reached the store at
+/// the day's last tick (the STUB of stage B, logistics_state.h).
+/// @pre Every tick but the day's last, sequential slot, after labor has run.
+void DeliverCartedLoads(const ProductionConfig& config, WorldState& current);
 
 /// @brief The speed multiplier the haul goes at today: the DIRT bed's
 ///        condition (road_rules.h), on runners in the snow (sleighs, STUB).

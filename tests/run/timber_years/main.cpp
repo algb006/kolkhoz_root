@@ -270,18 +270,23 @@ int main(int argc, char** argv) {
   for (std::uint32_t year = 0; year < kYears; ++year) {
     YearTally& tally = years[year];
     for (std::uint32_t day = 0; day < core::kDaysPerYear; ++day) {
-      // THE CARTING OF LOGS, IN MAN-DAYS: the stand's seam is drained through
-      // the day and settled at its last tick (field_haul.cpp, SettleLoad), so
-      // what was drained is the most the gap reached over the day's ticks: the
-      // settle closes it to zero. The ledger cannot say it — its hauling
-      // column is the fields' and the stands' together. (A first version read
-      // one tick before the last and read zero on every seed: the settle had
-      // already run by then.)
+      // THE CARTING OF LOGS, IN MAN-DAYS: the stand's seam is drained hour by
+      // hour, and SINCE 0.37.200 (stage V1) each hour's carting is settled in
+      // its hour (field_haul.cpp, DeliverCartedLoads), which closes the gap
+      // between `written` and `remaining` every tick — so what was drained is
+      // the sum of each hour's fall of `remaining`, the evening's tick left out
+      // (its settlement writes tomorrow's demand into the same field). Until
+      // then the most the gap reached over the day said it. The ledger cannot
+      // say it — its hauling column is the fields' and the stands' together.
       std::vector<float> drained(started.State().stands.rows.size(), 0.0F);
       const std::vector<core::FieldRow> morning_fields = started.State().fields.rows;
       const std::vector<core::FieldId> morning_ids = started.State().fields.row_ids;
       for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
+        const std::vector<core::TimberStandRow> before_step = started.State().stands.rows;
         started->AdvanceStep();
+        const bool evening =
+            core::HourFromTick(started.State().calendar.tick) == 0 ||
+            core::HourFromTick(started.State().calendar.tick) + 1U >= core::kTicksPerDay;
         if (tick == 0) {
           // READ AFTER THE TOP-UP (0.37.103; manual/75-logistics.md §10). The
           // loop's day starts on the day's hour 0 already made, so its first
@@ -297,9 +302,14 @@ int main(int argc, char** argv) {
           timber_cart_days_over_plough += carts > 0 ? 1U : 0U;
         }
         const std::vector<core::TimberStandRow>& stands = started.State().stands.rows;
-        for (std::size_t row = 0; row < stands.size() && row < drained.size(); ++row) {
-          const float gap = stands[row].haul_days_written - stands[row].haul_days_remaining;
-          drained[row] = std::max(drained[row], gap);
+        // Either hour of the day's turn is left out, whichever the completed
+        // state names: the evening's demand is written there, and nobody
+        // carts at midnight.
+        for (std::size_t row = 0;
+             !evening && row < stands.size() && row < drained.size() && row < before_step.size();
+             ++row) {
+          const float fall = before_step[row].haul_days_remaining - stands[row].haul_days_remaining;
+          drained[row] += std::max(0.0F, fall);
         }
       }
       for (const float drained_today : drained) {

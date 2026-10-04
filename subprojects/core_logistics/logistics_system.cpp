@@ -84,9 +84,15 @@ bool Served(const WorldState& world, const LogisticsTaskRow& task) {
 /// village 1932, year 4, a hay heap carted by 10 o'clock waited «9 hours» to
 /// 19 (boss, the logistics thread [125]-[129]: the clock measured the book,
 /// not the carting).
+/// AND A LOAD THAT IS GONE IS CARTED (0.37.200, stage V1): since the hour's
+/// carting reaches the store in its hour, a heap can be carted to nothing at
+/// three in the afternoon, and its task stays till tomorrow's hour 0, when
+/// SyncTasks takes it off. The seam of a load that is no more has no address
+/// (WorkSeamOf answers nothing), and the clock counted every hour after: 141
+/// of the 162 lamp-hours of V1's first pair stood over an empty field.
 bool CartedToday(const WorldState& world, const LogisticsTaskRow& task) {
   const float* const seam = WorkSeamOf(world, HaulingWorkOf(task));
-  return seam != nullptr && !(*seam > 0.0F);
+  return seam == nullptr || !(*seam > 0.0F);
 }
 
 /// kLogisticsLate's condition: a task of level 0, not paused, its clock of

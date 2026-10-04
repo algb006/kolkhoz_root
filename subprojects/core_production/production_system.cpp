@@ -260,6 +260,12 @@ class ProductionSystem final : public IProductionSystem {
     // means the seam labor reads next morning already says what is really
     // left to carry. Settle at dawn instead and every second day would find
     // an empty demand and send nobody (task A4).
+    // THE HOUR'S CARTING REACHES THE STORE IN ITS HOUR (stage V1): every other
+    // tick delivers what the carriers drained this hour; the last one below
+    // does the same and writes tomorrow's demand.
+    if (HourFromTick(current.calendar.tick) + 1U < kTicksPerDay) {
+      DeliverCartedLoads(config_, current);
+    }
     if (HourFromTick(current.calendar.tick) + 1U >= kTicksPerDay) {
       SettleHauling(config_, current);
       SettleStandHauling(config_, current);
