@@ -45,10 +45,12 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 
 #include "core_common/ids.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table.h"
+#include "core_common/wait_state.h"
 
 namespace core {
 
@@ -219,6 +221,15 @@ struct HerdRow {
   /// Unmet care has no consequence yet — that STUB ties into feeding
   /// (stage 6). Zero for household-standing herds (see @file).
   float care_days_remaining = 0.0F;
+
+  /// THE WAIT A HEAD OF IT STANDS IN (save 138; architecture §7ж³; routing
+  /// stage B, B6): a riding horse spending the night at its worker's yard
+  /// (wait_state.h, kHorseAtWorkersYard). The herd is the agent: the core
+  /// keeps a horse as a head of the kolkhoz team, not as a row of its own.
+  /// Nothing makes it yet — the rider kept overnight is queued after stage B
+  /// — and the watchdog's rules for it stand ready (the contract builds no
+  /// dog with a kind that has none).
+  std::optional<WaitRecord> wait;
 };
 
 /// @brief The herds table type used by WorldState.

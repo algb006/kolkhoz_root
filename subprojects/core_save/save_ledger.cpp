@@ -127,9 +127,12 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // Save 133 (0.37.166): the walkers refused a seat by the wait's term, a u32
 // after the no-seat count — 107 -> 108 fields, predicted 960 -> 968 before the
 // build (four bytes, no padding left after save 132's fill, rounded to eight).
-static_assert(sizeof(YearLedger) == 968 + (36 * kAmountsSize),
+// Save 138 (0.37.182, B6): the waits made and the watchdog's firings, two
+// arrays of two u32 after cart_hours_saved — 108 -> 110 fields, 968 -> 984,
+// predicted before the build.
+static_assert(sizeof(YearLedger) == 984 + (36 * kAmountsSize),
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 108,
+static_assert(AggregateArity<YearLedger>() == 110,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 
 void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
@@ -252,6 +255,10 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteFloat(book.cart_wait_worst_hours);
   out.WriteFloat(book.cart_wait_hours);
   out.WriteFloat(book.cart_hours_saved);
+  for (std::size_t kind = 0; kind < kWaitKindCount; ++kind) {  // save 138
+    out.WriteU32(book.waits_made[kind]);
+    out.WriteU32(book.watchdog_fired[kind]);
+  }
   out.WriteFloat(book.horse_backed_assignment_days);
   out.WriteFloat(book.total_assignment_days);
   out.WriteI32(book.limit_points_granted);
@@ -436,6 +443,10 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.cart_wait_worst_hours = in.ReadFloat();
   book.cart_wait_hours = in.ReadFloat();
   book.cart_hours_saved = in.ReadFloat();
+  for (std::size_t kind = 0; kind < kWaitKindCount; ++kind) {  // save 138
+    book.waits_made[kind] = in.ReadU32();
+    book.watchdog_fired[kind] = in.ReadU32();
+  }
   book.horse_backed_assignment_days = in.ReadFloat();
   book.total_assignment_days = in.ReadFloat();
   book.limit_points_granted = in.ReadI32();

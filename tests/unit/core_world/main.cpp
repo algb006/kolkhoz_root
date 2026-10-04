@@ -38,6 +38,7 @@
 #include "core_world/road_tools.h"
 #include "core_world/world.h"
 #include "start_literacy.h"
+#include "watchdog_checks.h"
 
 namespace {
 
@@ -2702,6 +2703,7 @@ int main() {
   namespace fs = std::filesystem;
   int failures = 0;
   failures += CheckReadinessShape();
+  failures += CheckTheWatchdog();
   failures += CheckBaseConventions();
   failures += CheckIceRowsAssemble();
   failures += CheckStartRoads();
@@ -3229,6 +3231,28 @@ int main() {
                          (state.families.rows.empty() || many_state.families.rows[0].satisfaction ==
                                                              state.families.rows[0].satisfaction),
                      "the population and its metrics agree across worker counts");
+  // THE WATCHDOG'S COUNT AGREES ACROSS WORKER COUNTS (architecture §7ж³,
+  // «Пёс и многопоточность»; B6): the waits made and the firings, by kind,
+  // this year and the last. Printed beside: a count of nought on both sides
+  // agrees vacuously, and says so.
+  {
+    std::uint32_t waits = 0;
+    std::uint32_t fired = 0;
+    bool same = true;
+    for (const auto* books : {&state.ledger.current, &state.ledger.closed}) {
+      const core::YearLedger& many_book =
+          books == &state.ledger.current ? many_state.ledger.current : many_state.ledger.closed;
+      for (std::size_t kind = 0; kind < core::kWaitKindCount; ++kind) {
+        waits += books->waits_made[kind];
+        fired += books->watchdog_fired[kind];
+        same = same && books->waits_made[kind] == many_book.waits_made[kind] &&
+               books->watchdog_fired[kind] == many_book.watchdog_fired[kind];
+      }
+    }
+    std::cout << "  watchdog across worker counts: waits made " << waits << ", fired " << fired
+              << (waits == 0 ? " (no wait made: the agreement is vacuous)" : "") << '\n';
+    failures += Expect(same, "the watchdog's waits and firings agree across worker counts");
+  }
   // NOBODY BUILDS IN THIS WORLD, and since 2026-09-14 no house comes from
   // nothing: the start's old houses fall in the fifth and sixth years and the
   // roofless leave in the cold (housing design §20; boss, parcel 257). The

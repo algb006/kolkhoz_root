@@ -9,6 +9,8 @@
 #include <memory>
 #include <vector>
 
+#include "core_common/calendar.h"
+#include "core_common/day_window.h"
 #include "core_common/geometry.h"
 #include "core_common/horse_yard_road.h"
 #include "core_common/ids.h"
@@ -18,6 +20,7 @@
 #include "core_common/road_route.h"
 #include "core_common/road_state.h"
 #include "core_common/state_table_ops.h"
+#include "core_common/wait_state.h"
 #include "core_common/work_seam.h"
 #include "core_common/world_state.h"
 #include "labor_day.h"
@@ -60,6 +63,7 @@ struct Walker {
 struct Ride {
   float total_hours = 0.0F;
   float wait_hours = 0.0F;
+  float walk_to_hours = 0.0F;  ///< When he reaches his boarding point (B6).
 };
 
 float Distance(Vec2 from, Vec2 to) {
@@ -111,12 +115,13 @@ Ride BestRide(const Walker& walker,
               const Cart& cart,
               float walk_hours_per_metre,
               float wait_limit_hours) {
-  Ride best{.total_hours = walker.walk_hours, .wait_hours = 0.0F};
+  Ride best{.total_hours = walker.walk_hours, .wait_hours = 0.0F, .walk_to_hours = 0.0F};
   bool found = false;
   // g(b) = max(walk to b, cart at b) - cart at b: the time lost before the
   // ride begins, counted from the cart's own clock.
   float best_g = 0.0F;
   float best_g_wait = 0.0F;
+  float best_g_walk = 0.0F;
   bool have_board = false;
   for (const CartPoint& point : cart.points) {
     const float walk_to = Distance(walker.home, point.position) * walk_hours_per_metre;
@@ -126,6 +131,7 @@ Ride BestRide(const Walker& walker,
     if (!waits_too_long && (!have_board || g < best_g)) {
       best_g = g;
       best_g_wait = board - walk_to;
+      best_g_walk = walk_to;
       have_board = true;
     }
     if (!have_board) {
@@ -136,6 +142,7 @@ Ride BestRide(const Walker& walker,
     if (!found || total < best.total_hours) {
       best.total_hours = total;
       best.wait_hours = best_g_wait;
+      best.walk_to_hours = best_g_walk;
       found = true;
     }
   }
@@ -218,7 +225,9 @@ PassengerTally SeatCartPassengers(const LaborConfig& config, WorldState& current
   });
   for (const Walker& walker : walkers) {
     std::size_t best_cart = carts.size();
-    Ride best{.total_hours = walker.walk_hours - kLeastSavingHours, .wait_hours = 0.0F};
+    Ride best{.total_hours = walker.walk_hours - kLeastSavingHours,
+              .wait_hours = 0.0F,
+              .walk_to_hours = 0.0F};
     bool quicker_somewhere = false;
     bool quicker_only_waiting_long = false;
     for (std::size_t cart = 0; cart < carts.size(); ++cart) {
@@ -250,6 +259,25 @@ PassengerTally SeatCartPassengers(const LaborConfig& config, WorldState& current
     WorkAssignment& work = current.residents.rows[walker.row].work;
     work.rides_cart_of = carts[best_cart].driver;
     work.travel_hours = best.total_hours;
+    // HE WAITS AT HIS POINT, AND THE WAIT HAS A RECORD WITH ITS TERM (routing
+    // stage B, B6; architecture §7ж³; wait_state.h kPassengerAwaitsCart):
+    // from the hour he reaches the point, the term transport.csv's
+    // wait_limit_hours (one game hour, STUB core). The labour hour strikes it
+    // the hour after (ClearPassengerWaits): an honest wait is an hour at
+    // most, so the watchdog sees only a cart that is gone. No wait, no
+    // record.
+    if (best.wait_hours > 0.0F) {
+      const DayWindow window = SolarWindow(current.weather.daylight_hours);
+      const Tick since = (static_cast<Tick>(current.calendar.day) * kTicksPerDay) +
+                         HourOfDayMoment(window.sunrise + best.walk_to_hours);
+      const auto term = static_cast<std::uint32_t>(std::ceil(config.cart_wait_limit_hours));
+      current.residents.rows[walker.row].wait = WaitRecord(
+          WaitKind::kPassengerAwaitsCart,
+          since,
+          term,
+          WaitTarget{.resident = carts[best_cart].driver, .unit = UnitId{}, .field = FieldId{}});
+      ++tally.waits_made;
+    }
     ++tally.seated;
     tally.wait_hours += best.wait_hours;
     tally.worst_wait_hours = std::max(tally.worst_wait_hours, best.wait_hours);

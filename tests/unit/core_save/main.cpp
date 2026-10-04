@@ -246,6 +246,15 @@ core::WorldState MakeWorld() {
   // Save 132: the cart he rides — the first resident's id, off its invalid
   // default, so a codec that drops it cannot round-trip clean.
   second.work.rides_cart_of = core::ResidentId{1};
+  // Save 138: he waits for that cart at a point of its way — every field of
+  // the wait off its default, last_polled apart from since.
+  second.wait = core::WaitRecord(
+      core::WaitKind::kPassengerAwaitsCart,
+      7'061,
+      1,
+      core::WaitTarget{
+          .resident = core::ResidentId{1}, .unit = core::UnitId{2}, .field = core::FieldId{3}});
+  second.wait->last_polled = 7'062;
   core::AppendRow(world.residents, second);
   core::ResidentRow third;
   const core::ResidentId third_id = core::AppendRow(world.residents, third);
@@ -422,6 +431,13 @@ core::WorldState MakeWorld() {
   herd.cold_place_yesterday = 1;   // save 120: yesterday's cold place, not its default 0
   herd.fed_share = 0.625F;         // save 71: a third short of the ration, not its default 1
   herd.autumn_slaughter_done = 1;  // save 76: this October's slaughter done
+  // Save 138: a horse of it at its worker's yard, waiting for his shift.
+  herd.wait = core::WaitRecord(
+      core::WaitKind::kHorseAtWorkersYard,
+      7'040,
+      20,
+      core::WaitTarget{
+          .resident = core::ResidentId{2}, .unit = core::UnitId{}, .field = core::FieldId{}});
   core::AppendRow(world.herds, herd);
 
   // The chairman's order book (the boundary, manual/70-boundary.md §2): one
@@ -1554,7 +1570,7 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // written before the build (named in the WorkAssignment's tripwire, 44 ->
     // 48, and not carried here; read off the build). The second resident's
     // cart is then set off its default, and the hash moves with it.
-    {"residents", 462, 0x14893df7cf8a0c79ULL},
+    {"residents", 497, 0x69d9ffeb09c9b30aULL},
     // 2026-09-18, save 57: +2 — ration_granted, one byte per family of two.
     // Save 60: +2 — a yard's dry months, one byte per family of two.
     // Save 65: families +8 (overwork_penalty, two yards), fields +6 (the avral's
@@ -1610,7 +1626,7 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // Save 120: +2 — the cold nights' counter and yesterday's cold place, a
     // byte each, one herd; predicted 93 -> 94 for the counter alone, then 95
     // with the place, every other section unmoved, before each build.
-    {"herds", 95, 0x1dd6b5bb501ee8a8ULL},
+    {"herds", 129, 0xd61b9b960a1d97b0ULL},
     // 2026-09-16, save 48: +6 bytes, one for each of the six orders — the
     // bought head's sex. The witness named the section, the delta and the
     // offset without being asked, which is what it was rewritten for this
@@ -1802,7 +1818,7 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // Save 133 (0.37.166): +8 — the walkers refused by the wait's term, a u32
     // in each of the two books; 2548 -> 2556 predicted before the build,
     // held. The closed book's count is set off its nought.
-    {"ledger", 2556, 0xad8dc4b953b8fa46ULL},
+    {"ledger", 2588, 0xb6d5a23ce705a246ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -2620,6 +2636,22 @@ int main() {
             back.carts[0].legs[1].to.x == 50.0F && back.carts[0].legs[1].riders.empty(),
         "the groom's plan came back with its day, its flags, its cart and both legs in order, "
         "the rider on the first (save 136), and the carrier on foot with his byte (save 137)");
+  }
+  // Save 138: the waits — the passenger's and the herd's, every field, and
+  // the first resident's absent wait stays absent.
+  {
+    const auto& waiting = loaded.residents.rows[1].wait;
+    const auto& horse = loaded.herds.rows[0].wait;
+    failures +=
+        Expect(!loaded.residents.rows[0].wait.has_value() && waiting.has_value() &&
+                   waiting->kind == core::WaitKind::kPassengerAwaitsCart &&
+                   waiting->since == 7'061 && waiting->term_hours == 1 &&
+                   waiting->last_polled == 7'062 && waiting->target.resident.value == 1 &&
+                   waiting->target.unit.value == 2 && waiting->target.field.value == 3 &&
+                   horse.has_value() && horse->kind == core::WaitKind::kHorseAtWorkersYard &&
+                   horse->term_hours == 20 && horse->target.resident.value == 2,
+               "the waits came back: the passenger's and the herd's whole, the absent one absent "
+               "(save 138)");
   }
   failures += Expect(loaded.barter.worth_starting_raised == 1 &&
                          loaded.barter.dry_days_in_row == 3 && loaded.barter.dry_givers == 5 &&

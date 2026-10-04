@@ -47,8 +47,10 @@
 #include "core_time/time_system.h"
 #include "core_world/era_readiness.h"
 #include "core_world/road_tools.h"
+#include "core_world/watchdog.h"
 #include "start_elder.h"
 #include "start_literacy.h"
+#include "wait_rules.h"
 
 namespace core {
 
@@ -197,7 +199,8 @@ class EventsSlot final : public ISequentialPhase {
       : kcal_per_gram_(std::move(kcal_per_gram)),
         readiness_(std::move(readiness)),
         food_variety_categories_(food_variety_categories),
-        life_speedup_(life_speedup) {}
+        life_speedup_(life_speedup),
+        watchdog_(CreateWatchdog(CreateWaitRules())) {}
 
   /// The era's catalog the transition is judged by — read by the office's
   /// «куда я иду» (EraReadiness), so the view and the order share one.
@@ -205,6 +208,16 @@ class EventsSlot final : public ISequentialPhase {
 
   void RunSequential(const WorldState& previous, WorldState& current) override {
     FoldPantryFlows(previous, current);
+    // THE WATCHDOG, every game hour, here and nowhere else: the one
+    // single-threaded phase of the step (architecture §7ж³; core_world/
+    // watchdog.h; routing stage B, B6). Before the ledger turns, so a firing
+    // in the year's last hour is counted in that year.
+    if (watchdog_ != nullptr) {
+      const WatchdogTally tally = watchdog_->WalkHour(current);
+      for (std::size_t kind = 0; kind < kWaitKindCount; ++kind) {
+        current.ledger.current.watchdog_fired[kind] += tally.fired[kind];
+      }
+    }
     // Before the sweep, so the transition is answered in the step it was
     // read in and the sweep finds it terminal rather than unconsumed. On the
     // year's first tick it reads the readiness of the turn BEFORE, because
@@ -435,6 +448,11 @@ class EventsSlot final : public ISequentialPhase {
   float food_variety_categories_ = 0.0F;
 
   float life_speedup_ = 1.0F;
+
+  /// The watchdog over every wait kind's rules (wait_rules.h). Built with the
+  /// slot; CreateWatchdog refuses a kind without rules, and then nothing
+  /// walks — which the unit test of the assembly reddens on.
+  std::unique_ptr<IWatchdog> watchdog_;
 
   /// @brief Closes the year's book and opens the next.
   ///

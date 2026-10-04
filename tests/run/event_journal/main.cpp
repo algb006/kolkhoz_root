@@ -218,6 +218,8 @@ const char* KindName(core::EventKind kind) {
       return "barter_day";
     case core::EventKind::kSugarStolen:
       return "sugar_stolen";
+    case core::EventKind::kWatchdogFired:
+      return "watchdog_fired";
     case core::EventKind::kEventKindCount:
       return "COUNT";
   }

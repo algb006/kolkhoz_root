@@ -46,6 +46,10 @@ struct PassengerTally {
   /// Walkers seated.
   std::uint32_t seated = 0;
 
+  /// Of them, those who wait for the cart at their point and stand in a
+  /// wait record (routing stage B, B6; wait_state.h kPassengerAwaitsCart).
+  std::uint32_t waits_made = 0;
+
   /// Walkers for whom a cart would have been quicker, and no seat was left.
   std::uint32_t no_seat = 0;
 

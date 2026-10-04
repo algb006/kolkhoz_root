@@ -79,7 +79,10 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // its padding).
 // Save 132: the work's rides_cart_of (+4) — predicted 240 -> 244 before the
 // build; the arity stays 54 (the work is one member).
-static_assert(sizeof(ResidentRow) == 244,
+// Save 138 (0.37.182, B6): the wait, an optional WaitRecord (56 with its flag,
+// aligned to 8, and the row's own alignment rises to 8: 244 -> 248 + 56) —
+// 304 and fifty-five, predicted before the build.
+static_assert(sizeof(ResidentRow) == 304,
               "ResidentRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 59: distiller_supplied_month, a distiller's supplied month
 // (crime §7, register 206) — 43 fields; the size is read off the build.
@@ -87,7 +90,7 @@ static_assert(sizeof(ResidentRow) == 244,
 // Save 79: away_until_day, _hour, _walk_hours, _reason — 50. Save 105:
 // idle_reason — 51. Save 113: satiety_year and satiety_childhood — 53.
 // Save 122: samogon_ml — 54.
-static_assert(AggregateArity<ResidentRow>() == 54,
+static_assert(AggregateArity<ResidentRow>() == 55,
               "ResidentRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-14: first_meal_eaten landed in padding beside food_variety_mask; the
 // size stayed 56 + amounts and the field count went to 16. The same day the
@@ -231,8 +234,11 @@ static_assert(AggregateArity<UnitRow>() == 18,
 // Save 120 (0.37.60): the cold nights' counter and yesterday's cold place,
 // two bytes into the padding after autumn_slaughter_done — 88 still and
 // twenty-eight, predicted before the fields were added.
-static_assert(sizeof(HerdRow) == 88, "HerdRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<HerdRow>() == 28,
+// Save 138 (0.37.182, B6): the wait, an optional WaitRecord (48 bytes and its
+// flag, aligned to 8: 56) — 88 -> 144 and twenty-nine, predicted before the
+// build.
+static_assert(sizeof(HerdRow) == 144, "HerdRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<HerdRow>() == 29,
               "HerdRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-13: the felling mark — a stand id and a volume — took the order row
 // from 64 to 72 and the assignment's stand from 24 to 28 (and the resident
@@ -534,6 +540,10 @@ bool RememberedMetricIsSound(Metric value) {
 // ResidentRow — resident_state.h
 // ---------------------------------------------------------------------------
 
+// The wait in an agent's row (save 138), below with its byte count.
+void WriteWait(ByteWriter& out, const std::optional<WaitRecord>& wait);
+std::optional<WaitRecord> ReadWait(LoadSource& source);
+
 void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
   ByteWriter& out = sink.Out();
   WriteEntityId(out, row.family);
@@ -619,6 +629,7 @@ void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
   // The look's memory (save 113; core_residents/appearance_memory.h).
   out.WriteFloat(row.satiety_year);
   out.WriteFloat(row.satiety_childhood);
+  WriteWait(out, row.wait);  // save 138
 }
 
 ResidentRow ReadResidentRow(LoadSource& source) {
@@ -709,7 +720,52 @@ ResidentRow ReadResidentRow(LoadSource& source) {
       !RememberedMetricIsSound(row.satiety_childhood)) {
     source.Fail("a resident's remembered satiety is outside 0..100 and not «not yet»");
   }
+  row.wait = ReadWait(source);  // save 138
   return row;
+}
+
+// ---------------------------------------------------------------------------
+// WaitRecord — wait_state.h, in a resident's and a herd's row (save 138)
+// ---------------------------------------------------------------------------
+
+// One byte for its presence, then, when present, the kind (1), since (8), the
+// term (4), last_polled (8) and the target's three ids (12): 34 bytes in all,
+// 1 without - predicted before the build.
+void WriteWait(ByteWriter& out, const std::optional<WaitRecord>& wait) {
+  out.WriteU8(wait.has_value() ? 1U : 0U);
+  if (!wait.has_value()) {
+    return;
+  }
+  out.WriteU8(static_cast<std::uint8_t>(wait->kind));
+  out.WriteU64(wait->since);
+  out.WriteU32(wait->term_hours);
+  out.WriteU64(wait->last_polled);
+  WriteEntityId(out, wait->target.resident);
+  WriteEntityId(out, wait->target.unit);
+  WriteEntityId(out, wait->target.field);
+}
+
+std::optional<WaitRecord> ReadWait(LoadSource& source) {
+  ByteReader& in = source.In();
+  if (source.ReadEnumValue(0, 1, "a wait's presence") == 0) {
+    return std::nullopt;
+  }
+  const auto kind = static_cast<WaitKind>(
+      source.ReadEnumValue(0, static_cast<std::uint32_t>(kWaitKindCount) - 1U, "a wait's kind"));
+  const Tick since = in.ReadU64();
+  const std::uint32_t term = in.ReadU32();
+  const Tick last_polled = in.ReadU64();
+  WaitTarget target;
+  target.resident = ReadEntityId<ResidentId>(in);
+  target.unit = ReadEntityId<UnitId>(in);
+  target.field = ReadEntityId<FieldId>(in);
+  if (term == 0) {
+    source.Fail("a wait with a term of nought");
+    return std::nullopt;
+  }
+  WaitRecord wait(kind, since, term, target);
+  wait.last_polled = last_polled;
+  return wait;
 }
 
 // ---------------------------------------------------------------------------
@@ -1168,6 +1224,7 @@ void WriteHerdRow(SaveSink& sink, const HerdRow& row) {
   out.WriteU8(row.cold_nights);            // save 120
   out.WriteU8(row.cold_place_yesterday);   // save 120
   out.WriteFloat(row.care_days_remaining);
+  WriteWait(out, row.wait);  // save 138
 }
 
 HerdRow ReadHerdRow(LoadSource& source) {
@@ -1207,6 +1264,7 @@ HerdRow ReadHerdRow(LoadSource& source) {
   row.cold_nights = in.ReadU8();           // save 120
   row.cold_place_yesterday = in.ReadU8();  // save 120
   row.care_days_remaining = in.ReadFloat();
+  row.wait = ReadWait(source);  // save 138
   return row;
 }
 

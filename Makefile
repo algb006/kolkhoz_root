@@ -131,6 +131,7 @@ check-tests:
 	@python3 scripts/check_tables_export.py
 	@python3 scripts/check_plan_positions.py
 	@python3 scripts/event_sites.py
+	@python3 scripts/wait_kinds.py
 	@python3 scripts/check_manual_paths.py
 
 # Bumping is the closing step of a delivery cycle, run in the same commit as the

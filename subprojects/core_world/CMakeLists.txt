@@ -15,6 +15,8 @@ kolkhoz_add_module(core_world
     start_layout.cpp
     start_literacy.cpp
     start_roads.cpp
+    wait_rules.cpp
+    watchdog.cpp
     world.cpp)
 
 target_link_libraries(core_world

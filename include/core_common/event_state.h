@@ -631,6 +631,19 @@ enum class EventKind : std::uint8_t {
   /// short of. kNotable. Seam key `sugar_stolen`.
   kSugarStolen,
 
+  /// resident OR herd — the watchdog found a wait that hangs and put its
+  /// agent where it belongs (architecture §7ж³: «Запись в журнал — всегда»;
+  /// core_world/watchdog.h; routing stage B, B6, 0.37.182). resident = the
+  /// waiting resident, or herd = the waiting herd (WaitAgentTable); amount
+  /// packs the rest, low bits first: the game hours it stood in the wait
+  /// (bits 0-31), the verdict (core_world/watchdog.h WaitVerdict, bits
+  /// 32-39), the wait's kind (wait_state.h WaitKind, bits 40-47) and the
+  /// agents nudged (bits 48-63). What the dog did is the kind's one emergency
+  /// (a passenger walks; a horse stands in the stable again). A FINDING, not
+  /// a norm: never shown to the player as an alarm (§7ж³, «Игрок этого не
+  /// чинит»). kRoutine. Seam key `watchdog_fired`.
+  kWatchdogFired,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

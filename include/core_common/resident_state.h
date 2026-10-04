@@ -34,11 +34,13 @@
 #define CORE_COMMON_RESIDENT_STATE_H_
 
 #include <cstdint>
+#include <optional>
 
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table.h"
+#include "core_common/wait_state.h"
 
 namespace core {
 
@@ -449,6 +451,13 @@ struct ResidentRow {
   /// пределах генератора». The start's residents are seeded with their first
   /// day's satiety: STUB «измождённое село» (appearance_memory.h).
   Metric satiety_childhood = kNotYetRemembered;
+
+  /// THE WAIT HE STANDS IN, with its term (save 138; architecture §7ж³,
+  /// core_common/wait_state.h; routing stage B, B6): written only in the
+  /// sequential decisions slot (a passenger seated by the labour hour) and in
+  /// phase 6 by the watchdog. Empty when he waits for nobody — a wait without
+  /// a term cannot be made.
+  std::optional<WaitRecord> wait;
 };
 
 /// @brief The residents table type used by WorldState.

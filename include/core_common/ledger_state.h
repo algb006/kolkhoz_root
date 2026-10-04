@@ -49,6 +49,7 @@
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
 #include "core_common/quantities.h"
+#include "core_common/wait_state.h"
 
 namespace core {
 
@@ -556,6 +557,14 @@ struct YearLedger {
   /// Game hours of road the year's passengers saved against walking, one way
   /// each, summed.
   float cart_hours_saved = 0.0F;
+
+  /// THE WATCHDOG'S COUNT, by wait kind (save 138; architecture §7ж³ —
+  /// «Счёт срабатываний по видам печатается в прогонах»; routing stage B, B6):
+  /// the waits made this year, and the dog's firings. Printed side by side
+  /// (boss, the logistics thread [39]): nought firings over nought waits and
+  /// nought over thousands are different claims.
+  std::array<std::uint32_t, kWaitKindCount> waits_made = {};
+  std::array<std::uint32_t, kWaitKindCount> watchdog_fired = {};
 
   /// MECHANISATION, AND IT IS MEASURED BY TRACTION RATHER THAN BY ENGINE
   /// (boss's decision of 2026-09-12; epochs design §6). The component is

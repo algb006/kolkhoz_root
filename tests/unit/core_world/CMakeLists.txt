@@ -1,4 +1,4 @@
-kolkhoz_add_unit_test(core_world main.cpp)
+kolkhoz_add_unit_test(core_world main.cpp watchdog_checks.cpp)
 
 # Genesis only reaches the herds and the start economy when the whole table
 # set is there (genesis.cpp, BuildStartEconomy), so the guard tests copy the

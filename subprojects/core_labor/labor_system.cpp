@@ -194,7 +194,9 @@ class LaborSystem final : public ILaborSystem {
       book.cart_wait_hours += tally.wait_hours;
       book.cart_wait_worst_hours = std::max(book.cart_wait_worst_hours, tally.worst_wait_hours);
       book.cart_hours_saved += tally.hours_saved;
+      book.waits_made[static_cast<std::size_t>(WaitKind::kPassengerAwaitsCart)] += tally.waits_made;
     }
+    ClearPassengerWaits(current, hour + 1U >= kTicksPerDay);
     RunHour(current, hour);
     // The night posts go on at sunset (posts.h).
     AnnounceNightShifts(config_, current);
@@ -2241,6 +2243,21 @@ class LaborSystem final : public ILaborSystem {
         SimEvent& event = EmitEvent(current, EventKind::kWalkOff, EventSeverity::kNotable);
         event.resident = current.residents.row_ids[row];
         PayDay(current, resident);
+      }
+    }
+  }
+
+  /// @brief A passenger's wait ends when the cart has come (B6): the hour
+  ///        after he reached his point — an honest wait is an hour at most
+  ///        (cart_passengers.cpp, the term) — and at the day's last hour
+  ///        whatever stands. Struck before the watchdog walks (phase 6), so
+  ///        the dog sees a wait only in the hour it is honest or hangs.
+  static void ClearPassengerWaits(WorldState& current, bool day_ends) {
+    const Tick now = current.calendar.tick;
+    for (ResidentRow& person : current.residents.rows) {
+      if (person.wait.has_value() && person.wait->kind == WaitKind::kPassengerAwaitsCart &&
+          (day_ends || now >= person.wait->since + 1U)) {
+        person.wait.reset();
       }
     }
   }
