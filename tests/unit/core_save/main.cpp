@@ -1690,7 +1690,9 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // sixth time the top of the enum has moved here unannounced.
     // Save 125: kHarvestWithoutDaysOff became the top OrderKind — same 788
     // bytes, the hash moved; predicted before the build this time.
-    {"orders", 788, 0x33d59a104820d24dULL},
+    // Save 140 (B7's contract): +30 — the groom's task and its level, five
+    // bytes an order, six orders; predicted 788 -> 818 before the build, held.
+    {"orders", 818, 0x256de39b1be3a147ULL},
     // Save 82: the fixture's first stand, a birch planting — 8 -> 67 (its id
     // 4, the old fields 41, species 2, hectares 4, two days 8); predicted,
     // held.

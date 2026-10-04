@@ -60,9 +60,11 @@ bool ShapeIsValid(const OrderRow& order) {
   // the journal writes them for every row and reads them back range-checked,
   // so a kSetRotation carrying a stray road kind of 7 would be staged here
   // and refuse to replay (delivery 7a, the static review).
+  // The groom's task's level likewise (B7's contract).
   if (order.road_kind >= RoadKind::kRoadKindCount ||
       order.road_surface >= RoadSurface::kRoadSurfaceCount ||
-      order.road_point_count > kRoadDraftMaxPoints) {
+      order.road_point_count > kRoadDraftMaxPoints ||
+      order.logistics_level >= LogisticsLevel::kLogisticsLevelCount) {
     return false;
   }
   switch (order.kind) {
@@ -274,6 +276,16 @@ bool ShapeIsValid(const OrderRow& order) {
       // Whether it already stands as asked is the consumer's.
       return order.enable <= 1 && order.amount == 0 && !has_resident && !has_unit && !has_field &&
              !has_herd && !has_stand && !has_site;
+    case OrderKind::kSetLogisticsLevel:
+      // The task and a level that is a level, and no other subject: the
+      // player manages tasks, not carts (B7). Whether the task still stands
+      // and already has that level is the consumer's.
+      return order.logistics_task.value != kInvalidEntityIdValue && !has_resident && !has_unit &&
+             !has_field && !has_herd && !has_stand && !has_site;
+    case OrderKind::kPauseLogisticsTask:
+      // The task and a switch that is a switch.
+      return order.logistics_task.value != kInvalidEntityIdValue && order.enable <= 1 &&
+             !has_resident && !has_unit && !has_field && !has_herd && !has_stand && !has_site;
     case OrderKind::kDeliverPlan:
       // One position or all of them (resource invalid); no other subject. A
       // quantity names its position: "this many of everything" means nothing.

@@ -27,7 +27,9 @@
 ///     the readiness is scored;
 ///   * NONE YET — kUpgradeRoad (delivery 7a, the contract): the sweep refuses
 ///     it kNoConsumer in the step it is read, until core_construction takes it
-///     in 7e.
+///     in 7e; kSetLogisticsLevel and kPauseLogisticsTask (routing stage B, B7's
+///     contract), until core_logistics — the SIXTH consumer — takes them in
+///     B7's implementation.
 /// This list was three consumers and short by seven kinds on 2026-09-18,
 /// when the fourth consumer was added and the list counted rather than
 /// appended to: every kind below names its consumer, and that is the
@@ -124,6 +126,7 @@
 #include "core_common/geometry.h"
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
+#include "core_common/logistics_state.h"
 #include "core_common/quantities.h"
 #include "core_common/road_state.h"
 #include "core_common/state_table.h"
@@ -857,6 +860,40 @@ enum class OrderKind : std::uint8_t {
   /// until then none, and the sweep refuses it kNoConsumer.
   kHarvestWithoutDaysOff,
 
+  /// A LOGISTICS TASK'S LEVEL, THE CHAIRMAN'S (transport design §12,
+  /// «Вмешательство председателя»: «Поставить приоритет — свой задаче и
+  /// автоматической»; routing stage B, B7): `logistics_task` takes
+  /// `logistics_level` as its own — its base level and its level now; the
+  /// ageing starts again from today (logistics_state.h, base_level,
+  /// aged_from_day). Raised to level 0 it is placed ahead of every window at
+  /// the next placement, and the groom's plan is planned again at the next
+  /// hour (GroomPlan::stale, urgent_pending — this order is their writer).
+  /// The PLAYER manages TASKS and the groom the EXECUTION (the human, 3
+  /// October 2026): which cart, which driver, which road is not an order.
+  ///
+  /// Refusals: kNotFound (no such task — carted and gone), kRuleForbids (the
+  /// task stands at that level as its own already). Seam key proposed:
+  /// `set_logistics_level`. Consumer: core_logistics FROM B7's
+  /// implementation; until then none, and the sweep refuses it kNoConsumer.
+  kSetLogisticsLevel,
+
+  /// A LOGISTICS TASK PAUSED OR GOING ON (transport design §12: «Поставить
+  /// задачу на паузу — временно снять фон, чтобы освободить мощность под
+  /// срочное»; B7): `enable` 1 — `logistics_task` is not planned and its
+  /// ageing stands still; `enable` 0 — it goes on, its ageing counted from
+  /// today. Either way the groom's plan is planned again at the next hour.
+  ///
+  /// Refusals: kNotFound (no such task), kRuleForbids (it stands as asked
+  /// already). Seam key proposed: `pause_logistics_task`. Consumer:
+  /// core_logistics FROM B7's implementation; until then none, and the sweep
+  /// refuses it kNoConsumer.
+  ///
+  /// «Завести задачу» IS NOT A DOOR YET (boss, the logistics thread [79]-
+  /// [80]): the game makes a task for every load the core knows; the door
+  /// returns with the first load the game makes no task for (supply by a
+  /// threshold, routing stage C).
+  kPauseLogisticsTask,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).
@@ -1415,6 +1452,16 @@ struct OrderRow {
   /// (road_work_state.h; delivery 7e, save 104). A field of its own, for the
   /// reason `enable` gives.
   RoadWorkId road_work;
+
+  // -- the groom's tasks (routing stage B, B7; logistics_state.h). Fields of
+  // their own, for the reason `enable` gives; the pause's switch IS `enable`.
+
+  /// kSetLogisticsLevel, kPauseLogisticsTask: the task.
+  LogisticsTaskId logistics_task;
+
+  /// kSetLogisticsLevel: the level it takes as its own. kLogisticsLevelCount
+  /// is refused by shape.
+  LogisticsLevel logistics_level = LogisticsLevel::kOrdinary;
 };
 
 /// @brief The order book type used by WorldState.

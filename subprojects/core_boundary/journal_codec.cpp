@@ -64,9 +64,11 @@ namespace {
 /// EIGHTH definition id. And for the road tools (delivery 7a): the road's
 /// kind and surface two more one-byte enums, the point count a raw byte,
 /// the four points eight more floats, the road an EIGHTH entity id. And for
-/// road work (delivery 7e): the piece under work a NINTH entity id.
+/// road work (delivery 7e): the piece under work a NINTH entity id. And for
+/// the groom's tasks (B7's contract): the task a TENTH entity id, its level
+/// one more one-byte enum.
 constexpr std::size_t kOrderBytes =
-    5 + 8 + (7 * 4) + (8 * 2) + (4 * 4) + 8 + 2 + (2 + 1) + (8 * 4) + 4 + 4;
+    5 + 8 + (7 * 4) + (8 * 2) + (4 * 4) + 8 + 2 + (2 + 1) + (8 * 4) + 4 + 4 + 4 + 1;
 
 constexpr std::size_t kEntryBytes = 8 + 4 + 1 + kOrderBytes + 4;
 
@@ -80,7 +82,7 @@ constexpr std::size_t kHeaderBytes = 16;  // magic (8) + format (4) + count (4)
 /// makes the build fail until WriteOrder, ReadOrder and kOrderBytes have all
 /// been brought along — and VERSION_SAVE bumped by the human, since an order
 /// row is a state row.
-static_assert(sizeof(OrderRow) == 136, "OrderRow changed — update the journal codec too");
+static_assert(sizeof(OrderRow) == 144, "OrderRow changed — update the journal codec too");
 
 /// AND THE FIELD COUNT BESIDE THE SIZE, for the reason the size alone cannot
 /// give (2026-09-12). The size tripwire caught kUnsealFund — three fields
@@ -104,7 +106,9 @@ static_assert(sizeof(OrderRow) == 136, "OrderRow changed — update the journal 
 /// predicted off the dumped layout before the build. Delivery 7e: the piece
 /// under work, 33 fields and still 136 bytes — the id in the tail padding
 /// after the road, predicted before the build: only this wire could fire.
-static_assert(AggregateArity<OrderRow>() == 33,
+/// B7's contract: the groom's task and its level, 35 fields and 144 bytes,
+/// predicted before the build.
+static_assert(AggregateArity<OrderRow>() == 35,
               "OrderRow gained or lost a field — recount kOrderBytes and update WriteOrder");
 
 constexpr std::uint8_t kMaxFundKind = static_cast<std::uint8_t>(FundKind::kFundKindCount) - 1;
@@ -292,7 +296,9 @@ void WriteOrder(Writer& out, const OrderRow& row) {
     out.Float(point.y);
   }
   out.U32(row.road.value);
-  out.U32(row.road_work.value);  // delivery 7e
+  out.U32(row.road_work.value);       // delivery 7e
+  out.U32(row.logistics_task.value);  // B7's contract
+  out.U8(static_cast<std::uint8_t>(row.logistics_level));
 }
 
 OrderRow ReadOrder(Reader& in) {
@@ -346,6 +352,9 @@ OrderRow ReadOrder(Reader& in) {
   }
   row.road = RoadId{in.U32()};
   row.road_work = RoadWorkId{in.U32()};
+  row.logistics_task = LogisticsTaskId{in.U32()};
+  row.logistics_level = static_cast<LogisticsLevel>(
+      in.EnumValue(static_cast<std::uint8_t>(kLogisticsLevelCount - 1U)));
   return row;
 }
 

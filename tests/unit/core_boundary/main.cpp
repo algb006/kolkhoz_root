@@ -1479,6 +1479,94 @@ int TestWorkerIndependence(const core::ITableSet& tables) {
   return failures;
 }
 
+/// THE GROOM'S TASK DOORS' CONTRACT (routing stage B, B7; order_state.h,
+/// kSetLogisticsLevel and kPauseLogisticsTask): the session takes a door of
+/// the right shape — a task, a level that is a level, a switch that is a
+/// switch, and no cart, driver or other subject (the player manages tasks,
+/// the groom the execution) — and refuses a wrong one; the engine refuses
+/// the right one with kNoConsumer until B7's implementation, rather than
+/// leaving it pending; the journal carries the task and its level there and
+/// back. The pair of each refusal is the same row taken once the fault is
+/// put right.
+int TestLogisticsDoorsContract(const core::ITableSet& tables) {
+  int failures = 0;
+  core::StandardSimulationConfig sim_config;
+  sim_config.stub_tables = core::StubTables::kAllowed;
+  sim_config.tables = &tables;
+  sim_config.worker_count = 1;
+  core::SessionConfig config;
+  config.stub_tables = core::StubTables::kAllowed;
+  config.tables = &tables;
+  config.simulation = core::CreateStandardSimulation(sim_config);
+  std::unique_ptr<core::ISession> session = core::CreateSession(std::move(config));
+  if (!session) {
+    std::cout << "FAIL: the logistics-doors session was refused\n";
+    return 1;
+  }
+  core::OrderRow level;
+  level.kind = core::OrderKind::kSetLogisticsLevel;
+  level.logistics_level = core::LogisticsLevel::kUrgent;
+  failures += Expect(session->IssueOrder(level).value == 0,
+                     "logistics doors: a level names the task it is for");
+  level.logistics_task = core::LogisticsTaskId{3};
+  level.resident = core::ResidentId{1};
+  failures += Expect(session->IssueOrder(level).value == 0,
+                     "logistics doors: and no driver — the cart is the groom's, not the player's");
+  level.resident = core::ResidentId{};
+  level.logistics_level = core::LogisticsLevel::kLogisticsLevelCount;
+  failures +=
+      Expect(session->IssueOrder(level).value == 0, "logistics doors: the count is not a level");
+  level.logistics_level = core::LogisticsLevel::kUrgent;
+  const core::OrderId raised = session->IssueOrder(level);
+  failures += Expect(raised.value != 0, "logistics doors: a task raised to level 0 is taken");
+
+  core::OrderRow pause;
+  pause.kind = core::OrderKind::kPauseLogisticsTask;
+  pause.logistics_task = core::LogisticsTaskId{4};
+  pause.enable = 2;
+  failures +=
+      Expect(session->IssueOrder(pause).value == 0, "logistics doors: a pause is 0 or 1, not 2");
+  pause.enable = 1;
+  const core::OrderId paused = session->IssueOrder(pause);
+  failures += Expect(paused.value != 0, "logistics doors: a task paused is taken");
+
+  // The level is in range on EVERY kind, as the road fields are: the journal
+  // reads it back range-checked.
+  core::OrderRow stray;
+  stray.kind = core::OrderKind::kSetRotation;
+  stray.field = core::FieldId{1};
+  stray.logistics_level = core::LogisticsLevel::kLogisticsLevelCount;
+  failures += Expect(session->IssueOrder(stray).value == 0,
+                     "logistics doors: a stray level on another kind is not staged");
+
+  session->AdvanceStep();
+  std::uint32_t no_consumer = 0;
+  for (const core::SimEvent& event : session->Events()) {
+    no_consumer +=
+        event.kind == core::EventKind::kOrderRefused &&
+                event.amount == static_cast<std::int64_t>(core::OrderRefusal::kNoConsumer) &&
+                (event.order.value == raised.value || event.order.value == paused.value)
+            ? 1U
+            : 0U;
+  }
+  failures += Expect(no_consumer == 2 && session->State().orders.rows.empty(),
+                     "logistics doors: both refused kNoConsumer until B7's implementation, and "
+                     "neither outlives its step");
+  session->AcknowledgeEvents(session->Events().size());
+
+  const std::vector<core::JournalEntry> journal = session->TakeJournal();
+  std::vector<core::JournalEntry> back;
+  std::string error;
+  const bool decoded = core::DecodeJournal(core::EncodeJournal(journal), &back, &error);
+  failures += Expect(decoded && back.size() == 2 && journal.size() == 2 &&
+                         back[0].order.logistics_task.value == 3 &&
+                         back[0].order.logistics_level == core::LogisticsLevel::kUrgent &&
+                         back[1].order.logistics_task.value == 4 && back[1].order.enable == 1,
+                     "logistics doors: the journal carries the task, its level and the switch "
+                     "there and back");
+  return failures;
+}
+
 /// THE ROAD TOOLS' CONTRACT (delivery 7a; road_draft.h): the session takes a
 /// road order of the right shape and refuses a wrong one; the engine refuses
 /// the order with no consumer until its part lands, rather than leaving it
@@ -1953,6 +2041,7 @@ int main() {
   failures += TestWorkerIndependence(tables);
   failures += TestCrewOrderShape(tables);
   failures += TestRoadToolsContract(tables);
+  failures += TestLogisticsDoorsContract(tables);
   failures += TestStockLights(tables);
   failures += TestWorkforceQuestions(tables);
 

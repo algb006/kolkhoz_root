@@ -259,13 +259,16 @@ static_assert(AggregateArity<HerdRow>() == 29,
 // points and road — the three bytes into the tail's padding at 93-95, the
 // points at 96-127, the road at 128: predicted 96 -> 136 and 32 fields off
 // the dumped layout before the build.
-static_assert(sizeof(OrderRow) == 136, "OrderRow changed — update the codec and VERSION_SAVE");
+// Save 140 (B7's contract): the groom's task, an entity id at 136, and its
+// level, a byte at 140 — predicted 136 -> 144 and 35 fields off the layout
+// before the build.
+static_assert(sizeof(OrderRow) == 144, "OrderRow changed — update the codec and VERSION_SAVE");
 // 2026-09-16: the bought head's sex landed in the padding as well — 80 still,
 // 23 fields. Two padding fields in a row now, which is the answer to whether
 // the arity check was worth its line.
 // Save 104 (7e): road_work, an entity id into the tail's padding after the
 // road — 136 still and 33 fields, predicted before the build.
-static_assert(AggregateArity<OrderRow>() == 33,
+static_assert(AggregateArity<OrderRow>() == 35,
               "OrderRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 93: travel_hours, a float at the end — 36 and ten fields, predicted
 // before the field was added.
@@ -1347,6 +1350,9 @@ void WriteOrderRow(SaveSink& sink, const OrderRow& row) {
   }
   WriteEntityId(out, row.road);
   WriteEntityId(out, row.road_work);  // save 104
+  // The groom's tasks (routing stage B, B7's contract, save 140).
+  WriteEntityId(out, row.logistics_task);
+  out.WriteU8(static_cast<std::uint8_t>(row.logistics_level));
 }
 
 OrderRow ReadOrderRow(LoadSource& source) {
@@ -1394,7 +1400,10 @@ OrderRow ReadOrderRow(LoadSource& source) {
     point = ReadVec2(in);
   }
   row.road = ReadEntityId<RoadId>(in);
-  row.road_work = ReadEntityId<RoadWorkId>(in);  // save 104
+  row.road_work = ReadEntityId<RoadWorkId>(in);            // save 104
+  row.logistics_task = ReadEntityId<LogisticsTaskId>(in);  // save 140
+  row.logistics_level = static_cast<LogisticsLevel>(
+      source.ReadEnumValue(0, kLogisticsLevelCount - 1U, "order logistics level"));
   return row;
 }
 
