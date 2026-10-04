@@ -77,6 +77,10 @@ class DecisionsSlot final : public ISequentialPhase {
     // The chairman in the district (core_common/chairman_away.h): the
     // village's orders are answered before any consumer can take one.
     RefuseVillageOrdersWhileAway(current);
+    // The chairman's doors to the groom's tasks (B7), ahead of the placement:
+    // a task paused this hour is not offered to it, a task raised to level 0
+    // is placed ahead of every window (labor_system.cpp).
+    logistics_->ReadTaskOrders(current);
     labor_->RunAssignmentDecisions(previous, current);
     // The groom's tasks (routing stage B, B2), once a day after the morning's
     // placement: the carters placed today mark their loads served.

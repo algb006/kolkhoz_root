@@ -491,6 +491,158 @@ int TestTheReplan() {
   return failures;
 }
 
+/// THE CHAIRMAN'S DOORS TO THE TASKS (B7; order_state.h, kSetLogisticsLevel
+/// and kPauseLogisticsTask): two heaps, a task each, today's plan built at
+/// hour 1. At hour 5 the chairman raises the first to level 0 and pauses the
+/// second: both settle done; the first takes level 0 as its own, its time at
+/// level 0 starts now, the plan is stale and urgent; the second is paused.
+/// At hour 6 the plan is planned again — the carts unchanged, so by the
+/// doors alone — and the paused heap is in no cart's chain. The pairs: the
+/// same orders again are refused (they stand as asked), a task that is not
+/// there is refused no such subject, and a day with no order re-plans
+/// nothing. The next morning's ageing keeps the player's level 0.
+int TestTheChairmansDoors() {
+  int failures = 0;
+  const test::FakeTableSet no_tables{{}};
+  const auto system = core::CreateLogisticsSystem(no_tables, core::StubTables::kAllowed);
+  if (Expect(system != nullptr, "doors: the system assembles on its defaults") != 0) {
+    return 1;
+  }
+  core::LogisticsConfig config;
+  const auto village = [&system, &config](core::WorldState& world) {
+    world.weather.daylight_hours = 12.0F;
+    world.calendar.day = 3;
+    for (const float east_m : {500.0F, 1'500.0F}) {
+      core::FieldRow field;
+      field.kind = core::LandKind::kArable;
+      field.center = core::Vec2{.x = east_m, .y = 0.0F};
+      field.reaped_grams = 1'000'000;
+      field.reaped_resource = core::ResourceId{0};
+      field.haul_days_remaining = 1.0F;
+      core::AppendRow(world.fields, field);
+    }
+    core::TaskDayCount count;
+    core::SyncTasks(config, world, 3, count);
+    core::UnitRow house;  // the carter sets out from home: no house, no cart in the plan
+    const core::UnitId house_id = core::AppendRow(world.units, house);
+    core::FamilyRow household;
+    household.house = house_id;
+    const core::FamilyId family = core::AppendRow(world.families, household);
+    world.units.rows[0].household = family;
+    core::ResidentRow carter;
+    carter.family = family;
+    carter.work.kind = core::WorkKind::kHauling;
+    carter.work.field = world.fields.row_ids[0];
+    carter.work.rides_horse = 1;
+    core::AppendRow(world.residents, carter);
+    world.calendar.tick = (3 * core::kTicksPerDay) + 1;
+    system->BuildPlan(world);
+    world.calendar.tick = (3 * core::kTicksPerDay) + 5;
+  };
+  const auto order = [](core::WorldState& world,
+                        core::OrderKind kind,
+                        core::LogisticsTaskId task,
+                        core::LogisticsLevel level,
+                        std::uint8_t enable) {
+    core::OrderRow row;
+    row.kind = kind;
+    row.logistics_task = task;
+    row.logistics_level = level;
+    row.enable = enable;
+    return core::AppendRow(world.orders, row);
+  };
+  const auto status = [](const core::WorldState& world, core::OrderId id) {
+    const std::uint32_t row = core::FindRow(world.orders, id);
+    return row == core::kNoRow ? core::OrderRefusal::kNoConsumer : world.orders.rows[row].refusal;
+  };
+
+  core::WorldState world;
+  village(world);
+  if (Expect(world.logistics_tasks.rows.size() == 2, "doors: two heaps, two tasks") != 0) {
+    return failures + 1;
+  }
+  const core::LogisticsTaskId first = world.logistics_tasks.row_ids[0];
+  const core::LogisticsTaskId second = world.logistics_tasks.row_ids[1];
+  const core::OrderId raise =
+      order(world, core::OrderKind::kSetLogisticsLevel, first, core::LogisticsLevel::kUrgent, 0);
+  const core::OrderId pause = order(
+      world, core::OrderKind::kPauseLogisticsTask, second, core::LogisticsLevel::kOrdinary, 1);
+  const core::OrderId nobody = order(world,
+                                     core::OrderKind::kSetLogisticsLevel,
+                                     core::LogisticsTaskId{99},
+                                     core::LogisticsLevel::kUrgent,
+                                     0);
+  system->ReadTaskOrders(world);
+  const core::LogisticsTaskRow& raised = world.logistics_tasks.rows[0];
+  const core::LogisticsTaskRow& paused = world.logistics_tasks.rows[1];
+  const bool settled = world.orders.rows[0].status == core::OrderStatus::kDone &&
+                       world.orders.rows[1].status == core::OrderStatus::kDone;
+  failures += Expect(settled && raised.base_level == core::LogisticsLevel::kUrgent &&
+                         raised.level == core::LogisticsLevel::kUrgent &&
+                         raised.urgent_since == world.calendar.tick && paused.paused &&
+                         world.groom_plan.stale && world.groom_plan.urgent_pending,
+                     "doors: raised to 0 and paused — done; level 0 its own from this hour, the "
+                     "plan stale and urgent, the second paused");
+  failures += Expect(status(world, nobody) == core::OrderRefusal::kNoSuchSubject,
+                     "doors: a task that is not there — no such subject");
+  (void)raise;
+  (void)pause;
+
+  // AGAIN, AS ASKED: both stand already.
+  const core::OrderId raise_again =
+      order(world, core::OrderKind::kSetLogisticsLevel, first, core::LogisticsLevel::kUrgent, 0);
+  const core::OrderId pause_again = order(
+      world, core::OrderKind::kPauseLogisticsTask, second, core::LogisticsLevel::kOrdinary, 1);
+  system->ReadTaskOrders(world);
+  failures += Expect(status(world, raise_again) == core::OrderRefusal::kRuleForbids &&
+                         status(world, pause_again) == core::OrderRefusal::kRuleForbids,
+                     "doors: the same orders again — refused, they stand as asked");
+
+  // THE NEXT HOUR: re-planned by the doors alone, the paused heap in no chain.
+  world.calendar.tick = (3 * core::kTicksPerDay) + 6;
+  const bool replanned = system->Replan(world);
+  bool paused_planned = false;
+  for (const core::CartPlan& cart : world.groom_plan.carts) {
+    for (const core::CartLeg& leg : cart.legs) {
+      paused_planned = paused_planned || leg.task.value == second.value;
+    }
+  }
+  failures += Expect(
+      replanned && !paused_planned && !world.groom_plan.stale && !world.groom_plan.urgent_pending,
+      "doors: the next hour re-plans — the carts unchanged — the paused heap in no "
+      "cart's chain, the flags spent");
+  // A PAUSE ALONE re-plans too — the raise is not what made the plan stale.
+  core::WorldState pause_only;
+  village(pause_only);
+  order(pause_only,
+        core::OrderKind::kPauseLogisticsTask,
+        pause_only.logistics_tasks.row_ids[1],
+        core::LogisticsLevel::kOrdinary,
+        1);
+  system->ReadTaskOrders(pause_only);
+  pause_only.calendar.tick = (3 * core::kTicksPerDay) + 6;
+  failures += Expect(!pause_only.groom_plan.urgent_pending && system->Replan(pause_only),
+                     "doors: a pause alone, nothing urgent — the next hour re-plans all the same");
+  core::WorldState calm;
+  village(calm);
+  calm.calendar.tick = (3 * core::kTicksPerDay) + 6;
+  failures += Expect(!system->Replan(calm), "doors: no order, no re-plan");
+  bool calm_planned = false;
+  for (const core::CartPlan& cart : calm.groom_plan.carts) {
+    for (const core::CartLeg& leg : cart.legs) {
+      calm_planned = calm_planned || leg.task.value == calm.logistics_tasks.row_ids[1].value;
+    }
+  }
+  failures += Expect(calm_planned, "doors: unpaused, the second heap is in the cart's chain");
+
+  // THE NEXT MORNING: the ageing keeps the player's level 0.
+  core::TaskDayCount count;
+  core::AgeAndRaise(config, world, 4, (4 * core::kTicksPerDay), count);
+  failures += Expect(world.logistics_tasks.rows[0].level == core::LogisticsLevel::kUrgent,
+                     "doors: the next morning's ageing keeps the player's level 0");
+  return failures;
+}
+
 /// THE WAY HOME FITS THE LIGHT (0.37.181; 0.37.180's canon: a goods cart's
 /// leg home after sunset in all 27 village-years, core-legsprobe2 late_h): a
 /// winter's day of four hours, 10 to 14. A cart carts its own heap 100 m out
@@ -574,6 +726,7 @@ int main() {
   failures += TestThePlansChains();
   failures += TestTheWayHomeFitsTheLight();
   failures += TestTheReplan();
+  failures += TestTheChairmansDoors();
   if (failures == 0) {
     std::cout << "unit_core_logistics: all checks passed\n";
   }

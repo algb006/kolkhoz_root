@@ -1573,6 +1573,7 @@ class LaborSystem final : public ILaborSystem {
     }
     MarkTheReapingsTheSnowWillTake(current, jobs);
     MarkTheUrgentLoads(current, jobs);
+    DropPausedLoads(current, jobs);
     return jobs;
   }
 
@@ -1581,6 +1582,31 @@ class LaborSystem final : public ILaborSystem {
   /// hauling job whose load's task stands at level 0 (logistics_state.h) is
   /// placed ahead of every window (assignment.h, logistics_urgent). Levels 1-3
   /// keep their load's window in the common queue, as before.
+  /// A PAUSED TASK'S LOAD IS NOT OFFERED (B7; transport §12: «Поставить
+  /// задачу на паузу — временно снять фон, чтобы освободить мощность под
+  /// срочное»): a hauling job whose load's task the chairman paused leaves the
+  /// queue, so the hands and horses go to what is not paused. Until B7 the
+  /// pause held only the plan (logistics_plan.cpp, OpenTasks) — and a pause
+  /// with no door to set it was a flag nothing wrote.
+  static void DropPausedLoads(const WorldState& current, std::vector<AssignmentJob>& jobs) {
+    std::erase_if(jobs, [&current](const AssignmentJob& job) {
+      if (job.kind != WorkKind::kHauling) {
+        return false;
+      }
+      WorkAssignment work;
+      work.kind = WorkKind::kHauling;
+      work.field = job.field;
+      work.stand = job.stand;
+      work.extraction_site = job.extraction_site;
+      work.limit_delivery = job.limit_delivery;
+      work.unit = job.unit;
+      return std::ranges::any_of(current.logistics_tasks.rows,
+                                 [&work](const LogisticsTaskRow& task) {
+                                   return task.paused && WorkServesTask(work, task);
+                                 });
+    });
+  }
+
   static void MarkTheUrgentLoads(const WorldState& current, std::vector<AssignmentJob>& jobs) {
     for (AssignmentJob& job : jobs) {
       if (job.kind != WorkKind::kHauling) {

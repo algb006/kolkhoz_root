@@ -1540,18 +1540,22 @@ int TestLogisticsDoorsContract(const core::ITableSet& tables) {
                      "logistics doors: a stray level on another kind is not staged");
 
   session->AdvanceStep();
-  std::uint32_t no_consumer = 0;
+  // ANSWERED BY THEIR CONSUMER (core_logistics since 0.37.188; kNoConsumer
+  // from the sweep in 0.37.187's contract): tasks 3 and 4 are not in this
+  // empty world, so both are refused kNoSuchSubject — by the consumer that
+  // owns tasks.
+  std::uint32_t no_task = 0;
   for (const core::SimEvent& event : session->Events()) {
-    no_consumer +=
+    no_task +=
         event.kind == core::EventKind::kOrderRefused &&
-                event.amount == static_cast<std::int64_t>(core::OrderRefusal::kNoConsumer) &&
+                event.amount == static_cast<std::int64_t>(core::OrderRefusal::kNoSuchSubject) &&
                 (event.order.value == raised.value || event.order.value == paused.value)
             ? 1U
             : 0U;
   }
-  failures += Expect(no_consumer == 2 && session->State().orders.rows.empty(),
-                     "logistics doors: both refused kNoConsumer until B7's implementation, and "
-                     "neither outlives its step");
+  failures += Expect(no_task == 2 && session->State().orders.rows.empty(),
+                     "logistics doors: both refused by the consumer that owns tasks — no such "
+                     "task — and neither outlives its step");
   session->AcknowledgeEvents(session->Events().size());
 
   const std::vector<core::JournalEntry> journal = session->TakeJournal();

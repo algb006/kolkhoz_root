@@ -9,7 +9,7 @@
 /// and MARKS cancellations before phase 1, in arrival order (buffer-law
 /// rule 2, core_sim/step.h). The consuming half is wired for EVERY kind
 /// since 2026-09-12:
-/// THERE ARE FIVE CONSUMERS NOW, and each settles its own kinds to kDone or
+/// THERE ARE SIX CONSUMERS NOW (five until 0.37.188), and each settles its own kinds to kDone or
 /// kRefused IN THE STEP THE ROW IS READ — never to kAccepted or kActive,
 /// except where a kind says otherwise:
 ///   * core_construction — kBuildUnit, kStartBuild, kUpgradeUnit,
@@ -27,9 +27,10 @@
 ///     the readiness is scored;
 ///   * NONE YET — kUpgradeRoad (delivery 7a, the contract): the sweep refuses
 ///     it kNoConsumer in the step it is read, until core_construction takes it
-///     in 7e; kSetLogisticsLevel and kPauseLogisticsTask (routing stage B, B7's
-///     contract), until core_logistics — the SIXTH consumer — takes them in
-///     B7's implementation.
+///     in 7e;
+///   * core_logistics — kSetLogisticsLevel and kPauseLogisticsTask (routing
+///     stage B, B7), the SIXTH consumer since 0.37.188, read in the decisions
+///     slot ahead of the placement (logistics_system.h, ReadTaskOrders).
 /// This list was three consumers and short by seven kinds on 2026-09-18,
 /// when the fourth consumer was added and the list counted rather than
 /// appended to: every kind below names its consumer, and that is the
@@ -871,10 +872,11 @@ enum class OrderKind : std::uint8_t {
   /// The PLAYER manages TASKS and the groom the EXECUTION (the human, 3
   /// October 2026): which cart, which driver, which road is not an order.
   ///
-  /// Refusals: kNotFound (no such task — carted and gone), kRuleForbids (the
-  /// task stands at that level as its own already). Seam key proposed:
-  /// `set_logistics_level`. Consumer: core_logistics FROM B7's
-  /// implementation; until then none, and the sweep refuses it kNoConsumer.
+  /// Refusals: kNoSuchSubject (no such task — carted and gone), kRuleForbids
+  /// (the task stands at that level as its own already). Seam key proposed:
+  /// `set_logistics_level`. Consumer: core_logistics since 0.37.188
+  /// (logistics_system.cpp, SetTaskLevel); the contract (0.37.187) named the
+  /// first refusal kNotFound, a value OrderRefusal has not.
   kSetLogisticsLevel,
 
   /// A LOGISTICS TASK PAUSED OR GOING ON (transport design §12: «Поставить
@@ -883,10 +885,10 @@ enum class OrderKind : std::uint8_t {
   /// ageing stands still; `enable` 0 — it goes on, its ageing counted from
   /// today. Either way the groom's plan is planned again at the next hour.
   ///
-  /// Refusals: kNotFound (no such task), kRuleForbids (it stands as asked
-  /// already). Seam key proposed: `pause_logistics_task`. Consumer:
-  /// core_logistics FROM B7's implementation; until then none, and the sweep
-  /// refuses it kNoConsumer.
+  /// Refusals: kNoSuchSubject (no such task), kRuleForbids (it stands as
+  /// asked already). Seam key proposed: `pause_logistics_task`. Consumer:
+  /// core_logistics since 0.37.188 (logistics_system.cpp, PauseTask; the
+  /// placement drops the paused load, labor_system.cpp, DropPausedLoads).
   ///
   /// «Завести задачу» IS NOT A DOOR YET (boss, the logistics thread [79]-
   /// [80]): the game makes a task for every load the core knows; the door

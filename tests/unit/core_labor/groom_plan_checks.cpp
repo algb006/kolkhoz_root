@@ -2,6 +2,7 @@
 
 #include "groom_plan_checks.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -224,6 +225,21 @@ std::pair<bool, bool> TheHorseAgainstAnUrgentLoad(core::ILaborSystem& labor, boo
   return {logs_ride, ploughs};
 }
 
+/// A PAUSED TASK'S LOAD IS NOT OFFERED (B7; transport §12): a stand's logs
+/// lying and their task paused by the chairman — the morning puts nobody on
+/// them. The pair: not paused, somebody carts them. Returns whether anybody
+/// stands on the logs after hour 0.
+bool TheLogsOfATask(core::ILaborSystem& labor, bool paused) {
+  core::WorldState world = Village(3);
+  const core::TimberStandId logs = StandAt(world, 1000.0F, 5.0F);
+  const core::LogisticsTaskId task = LogsTask(world, logs, core::LogisticsLevel::kOrdinary);
+  world.logistics_tasks.rows[core::FindRow(world.logistics_tasks, task)].paused = paused;
+  RunHour(labor, world, 0);
+  return std::ranges::any_of(world.residents.rows, [&logs](const core::ResidentRow& person) {
+    return person.work.kind == core::WorkKind::kHauling && person.work.stand.value == logs.value;
+  });
+}
+
 /// LEVEL 0 IN THE TOP-UP (B5): the morning gives the one horse to a
 /// ploughing — the logs' task is ordinary then — and after the placement the
 /// task is raised to level 0 (as the hour-0 ageing does). At hour 1 the top-up
@@ -394,6 +410,9 @@ int CheckTheGroomsPlan() {
   failures += Expect(
       !TheWaitAfterTheWork(*labor, {.term = 3, .hour = 12, .due_after = 2, .cart_planned = false}),
       "a driver the plan has no cart for: the passenger's wait is struck at its due hour");
+  failures += Expect(!TheLogsOfATask(*labor, true) && TheLogsOfATask(*labor, false),
+                     "groom's plan: a paused task's load is offered to nobody — unpaused, it is "
+                     "carted");
   const auto [urgent_logs, urgent_ploughs] = TheHorseAgainstAnUrgentLoad(*labor, true);
   const auto [ordinary_logs, ordinary_ploughs] = TheHorseAgainstAnUrgentLoad(*labor, false);
   std::cout << "  groom's plan, level 0: logs ride " << urgent_logs << ", ploughing "

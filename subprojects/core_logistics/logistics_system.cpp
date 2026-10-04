@@ -1,7 +1,7 @@
 // The groom's logistics (core_logistics/logistics_system.h). Routing stage B,
-// B2: the tasks and their levels; B3: the plan of the day. The re-plan (B5),
-// the chairman's doors (B7) and the alarm (B8) are STUBs here, their
-// signatures final: they come with their deliveries.
+// B2: the tasks and their levels; B3: the plan of the day; B5: the re-plan;
+// B7: the chairman's doors to the tasks. The alarm (B8) is a STUB here, its
+// signature final: it comes with its delivery.
 
 #include "core_logistics/logistics_system.h"
 
@@ -17,6 +17,8 @@
 #include "core_common/calendar.h"
 #include "core_common/labor_state.h"
 #include "core_common/logistics_state.h"
+#include "core_common/order_state.h"
+#include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
 #include "core_log/log.h"
 #include "core_tables/required_tables.h"
@@ -51,6 +53,73 @@ bool CartsChanged(const WorldState& world, const GroomPlan& plan) {
   const auto planned_carts = static_cast<std::size_t>(
       std::ranges::count_if(plan.carts, [](const CartPlan& cart) { return !cart.on_foot; }));
   return planned_carts != there;
+}
+
+void SettleTaskOrder(OrderRow& order, OrderRefusal refusal) {
+  order.status = refusal == OrderRefusal::kNone ? OrderStatus::kDone : OrderStatus::kRefused;
+  order.refusal = refusal;
+}
+
+/// kSetLogisticsLevel (order_state.h): the task takes the level as its own —
+/// its base, so the morning's ageing (AgeAndRaise) counts from it and a trip
+/// returns the task to it — and as its level now, the ageing from today.
+/// Raised to level 0 it is placed ahead of every window at the next
+/// placement and its time at level 0 starts now (urgent_since, B8's lamp);
+/// the plan is stale and, for level 0, urgent (GroomPlan's two flags — this
+/// door is the writer they had none of). A threat the morning reads (a heap
+/// under rain, a hungry herd) still raises the task above the player's
+/// level: the player's level is a floor for it, not a lid.
+/// The range before anything else: a pending row loaded from a save comes
+/// past the boundary's shape.
+OrderRefusal SetTaskLevel(WorldState& current, const OrderRow& order) {
+  if (order.logistics_level >= LogisticsLevel::kLogisticsLevelCount) {
+    return OrderRefusal::kRuleForbids;
+  }
+  const std::uint32_t row = FindRow(current.logistics_tasks, order.logistics_task);
+  if (row == kNoRow) {
+    return OrderRefusal::kNoSuchSubject;
+  }
+  LogisticsTaskRow& task = current.logistics_tasks.rows[row];
+  if (task.base_level == order.logistics_level && task.level == order.logistics_level) {
+    return OrderRefusal::kRuleForbids;
+  }
+  const bool raised_to_urgent =
+      order.logistics_level == LogisticsLevel::kUrgent && task.level != LogisticsLevel::kUrgent;
+  task.base_level = order.logistics_level;
+  task.level = order.logistics_level;
+  task.aged_from_day = current.calendar.day;
+  if (raised_to_urgent) {
+    task.urgent_since = current.calendar.tick;
+    current.groom_plan.urgent_pending = true;
+  }
+  current.groom_plan.stale = true;
+  return OrderRefusal::kNone;
+}
+
+/// kPauseLogisticsTask (order_state.h): `enable` 1 pauses — the plan leaves
+/// the task out (OpenTasks) and the placement offers no carting of its load
+/// (labor_system.cpp, DropPausedLoads), from the next re-plan and the next
+/// placement; a carter on it now finishes the hour's carting and is not sent
+/// back. `enable` 0 goes on, its ageing counted from today.
+OrderRefusal PauseTask(WorldState& current, const OrderRow& order) {
+  if (order.enable > 1) {
+    return OrderRefusal::kRuleForbids;
+  }
+  const std::uint32_t row = FindRow(current.logistics_tasks, order.logistics_task);
+  if (row == kNoRow) {
+    return OrderRefusal::kNoSuchSubject;
+  }
+  LogisticsTaskRow& task = current.logistics_tasks.rows[row];
+  const bool pause = order.enable != 0;
+  if (task.paused == pause) {
+    return OrderRefusal::kRuleForbids;
+  }
+  task.paused = pause;
+  if (!pause) {
+    task.aged_from_day = current.calendar.day;
+  }
+  current.groom_plan.stale = true;
+  return OrderRefusal::kNone;
 }
 
 class LogisticsSystem final : public ILogisticsSystem {
@@ -88,12 +157,13 @@ class LogisticsSystem final : public ILogisticsSystem {
     // is (BuildGroomPlan, `earlier`). The tasks themselves change once a day,
     // at hour 0, before the plan.
     //
-    // `urgent_pending` («a load of level 0 waits») is read here and WRITTEN BY
-    // NOTHING yet (0.37.185, found re-reading 0.37.184): a load raised to
-    // level 0 is placed by the hour-1 top-up (labor_system.cpp, TopUpDay),
-    // and mid-day no task changes level in the core. Its writer is the
-    // chairman's door «raise to level 0» (B7) — until then this reading of it
-    // never fires, and it is said here rather than claimed.
+    // AND WHEN A DOOR OF THE CHAIRMAN'S CHANGED A TASK (B7, ReadTaskOrders):
+    // its level or its pause makes the plan stale, and a task raised to
+    // level 0 sets `urgent_pending` too — the flag's only writer. It was
+    // written by nothing from 0.37.184 to 0.37.187 (found re-reading 184): a
+    // load raised to level 0 by the morning is placed by the hour-1 top-up
+    // (labor_system.cpp, TopUpDay), and mid-day no task changes level but by
+    // this door.
     GroomPlan& plan = current.groom_plan;
     if (plan.day != current.calendar.day || HourFromTick(current.calendar.tick) < 2) {
       return false;
@@ -108,8 +178,20 @@ class LogisticsSystem final : public ILogisticsSystem {
     return true;
   }
 
-  void ReadTaskOrders(WorldState& /*current*/) override {
-    // STUB: B7, the chairman's doors to the tasks
+  void ReadTaskOrders(WorldState& current) override {
+    // THE CHAIRMAN'S DOORS TO THE TASKS (B7; transport §12, «Вмешательство
+    // председателя»; order_state.h): each settles in the step it is read, and
+    // each makes the plan stale — re-planned at the next hour (Replan).
+    for (OrderRow& order : current.orders.rows) {
+      if (order.status != OrderStatus::kPending) {
+        continue;
+      }
+      if (order.kind == OrderKind::kSetLogisticsLevel) {
+        SettleTaskOrder(order, SetTaskLevel(current, order));
+      } else if (order.kind == OrderKind::kPauseLogisticsTask) {
+        SettleTaskOrder(order, PauseTask(current, order));
+      }
+    }
   }
 
   void CollectAlarms(const WorldState& /*state*/, std::vector<Alarm>& /*out*/) const override {
