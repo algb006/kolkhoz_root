@@ -63,8 +63,11 @@ enum class LogisticsLevel : std::uint8_t {
   /// When there is power left: the church store's transfer.
   kBackground = 3,
 
-  /// NOT A LEVEL: the count.
-  kLogisticsLevelCount = 4,
+  /// NOT A LEVEL: the count. Written without its number (it is 4), as every
+  /// terminator of the boundary's enums is: scripts/boundary_enums.py reads
+  /// the last value's NAME, and «kLogisticsLevelCount = 4» stood MISSING in
+  /// every suite from 0.37.176 to 0.37.182 unread (0.37.183).
+  kLogisticsLevelCount,
 };
 
 inline constexpr std::uint32_t kLogisticsLevelCount =
@@ -85,6 +88,10 @@ enum class LogisticsLoadKind : std::uint8_t {
 enum class LogisticsOrigin : std::uint8_t {
   kAuto = 0,  ///< Made by the game as the load appeared (§12, «заводятся сами»).
   kPlayer,    ///< Made by the chairman's order (§12, «Вмешательство председателя»).
+
+  /// NOT AN ORIGIN: the count, for a mirror's length and the codecs' range
+  /// (scripts/boundary_enums.py; 0.37.183).
+  kLogisticsOriginCount,
 };
 
 /// @brief One task of the groom's logistics.

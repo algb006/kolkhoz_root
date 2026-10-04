@@ -224,6 +224,41 @@ std::pair<bool, bool> TheHorseAgainstAnUrgentLoad(core::ILaborSystem& labor, boo
   return {logs_ride, ploughs};
 }
 
+/// A PASSENGER'S WAIT GOES WITH ITS WORK (0.37.183; 0.37.182's canon: 29
+/// firings of the dog, all «work gone», the record outliving the work the
+/// labour hour ended): a passenger waiting from hour 10 for his driver's cart,
+/// at hour 3 — his work ended (the pair: still on the cart) — keeps his wait
+/// only while he still has the work and the cart. Returns whether the wait
+/// stands after hour 3.
+bool TheWaitAfterTheWork(core::ILaborSystem& labor, bool work_ended) {
+  core::WorldState world = Village(2);
+  core::WorkAssignment& driver = world.residents.rows[0].work;
+  driver.kind = core::WorkKind::kHauling;
+  driver.rides_horse = 1;
+  core::FieldRow field;  // his work: a reaping with days left, so the hour keeps it
+  field.center = core::Vec2{.x = 2000.0F, .y = 0.0F};
+  field.area_ga = 10.0F;
+  field.phase = core::FieldPhase::kHarvest;
+  field.work_days_remaining = 5.0F;
+  const core::FieldId reaped = core::AppendRow(world.fields, field);
+  core::ResidentRow& rider = world.residents.rows[1];
+  rider.work.kind = work_ended ? core::WorkKind::kNone : core::WorkKind::kHarvest;
+  rider.work.field = work_ended ? core::FieldId{} : reaped;
+  // His road measured at the seating: a road measured anew is a target
+  // changed since the morning, and the hour drops the seat (labor_system.cpp).
+  rider.work.travel_hours = 2.0F;
+  rider.work.rides_cart_of = world.residents.row_ids[0];
+  const core::Tick since = (static_cast<core::Tick>(kWorkingDay) * core::kTicksPerDay) + 10;
+  rider.wait = core::WaitRecord(core::WaitKind::kPassengerAwaitsCart,
+                                since,
+                                1,
+                                core::WaitTarget{.resident = world.residents.row_ids[0],
+                                                 .unit = core::UnitId{},
+                                                 .field = core::FieldId{}});
+  RunHour(labor, world, 3);
+  return world.residents.rows[1].wait.has_value();
+}
+
 }  // namespace
 
 int CheckTheGroomsPlan() {
@@ -251,6 +286,11 @@ int CheckTheGroomsPlan() {
   failures += Expect(TheWalkerAfterHisHeap(*labor),
                      "groom's plan: a carrier on foot whose heap is carted goes on to the near "
                      "heap of his chain, on foot");
+  failures += Expect(!TheWaitAfterTheWork(*labor, true),
+                     "a passenger's wait: his work ended, the wait goes with it");
+  failures +=
+      Expect(TheWaitAfterTheWork(*labor, false),
+             "a passenger's wait: still on his work and the cart, it stands until his hour");
   const auto [urgent_logs, urgent_ploughs] = TheHorseAgainstAnUrgentLoad(*labor, true);
   const auto [ordinary_logs, ordinary_ploughs] = TheHorseAgainstAnUrgentLoad(*labor, false);
   std::cout << "  groom's plan, level 0: logs ride " << urgent_logs << ", ploughing "

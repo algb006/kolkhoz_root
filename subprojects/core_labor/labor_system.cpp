@@ -196,8 +196,9 @@ class LaborSystem final : public ILaborSystem {
       book.cart_hours_saved += tally.hours_saved;
       book.waits_made[static_cast<std::size_t>(WaitKind::kPassengerAwaitsCart)] += tally.waits_made;
     }
-    ClearPassengerWaits(current, hour + 1U >= kTicksPerDay);
     RunHour(current, hour);
+    // After the hour: a work the hour ended takes its wait with it.
+    ClearPassengerWaits(current, hour + 1U >= kTicksPerDay);
     // The night posts go on at sunset (posts.h).
     AnnounceNightShifts(config_, current);
     if (hour + 1U >= kTicksPerDay) {
@@ -2255,8 +2256,16 @@ class LaborSystem final : public ILaborSystem {
   static void ClearPassengerWaits(WorldState& current, bool day_ends) {
     const Tick now = current.calendar.tick;
     for (ResidentRow& person : current.residents.rows) {
-      if (person.wait.has_value() && person.wait->kind == WaitKind::kPassengerAwaitsCart &&
-          (day_ends || now >= person.wait->since + 1U)) {
+      if (!person.wait.has_value() || person.wait->kind != WaitKind::kPassengerAwaitsCart) {
+        continue;
+      }
+      // AND WITH THE WORK IT SERVED (0.37.183): a job finished or released
+      // ends his walk to the cart — the wait has nothing left to wait for.
+      // Until then the record outlived it, and the dog «found» it: 29 firings
+      // in 0.37.182's canon, all «work gone», stood nought hours.
+      const bool work_gone = person.work.kind == WorkKind::kNone ||
+                             person.work.rides_cart_of.value != person.wait->target.resident.value;
+      if (day_ends || work_gone || now >= person.wait->since + 1U) {
         person.wait.reset();
       }
     }
