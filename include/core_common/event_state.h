@@ -670,6 +670,21 @@ enum class EventKind : std::uint8_t {
   /// времени в игре»). Seam key `urgent_load_waits`.
   kUrgentLoadWaits,
 
+  /// A lit lamp TURNED RED since the last daily check (the lamp colour's
+  /// interrupt; boss, the logistics thread [123], [127]): at hour 0 the world
+  /// collects its lamps, paints them (PaintAlarms) and compares the red ones
+  /// with WorldState::red_lamps; each lamp red now and not then is said once.
+  /// amount packs the lamp as kUrgentLoadWaits packs its task: the subject
+  /// (AlarmSubjectValue) in bits 0-31, the lamp's kind (AlarmKind) in bits
+  /// 32-39; the alarm's own ids ride in their fields where its kind has them
+  /// (unit, field, herd, family, resource, stand). Once a day, so a lamp red and
+  /// out between two checks says nothing here (its own event, where it has
+  /// one, still does). kInterrupting (the human, 4 October 2026: «Такие срочные
+  /// сигналы должны прерывать режим пропуска времени в игре»). Seam key
+  /// `lamp_turned_red`. Declared in 0.37.196, a delivery ahead of the check.
+  /// @no_emit contract 0.37.196: said by the daily red check of the delivery after it
+  kLampTurnedRed,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

@@ -45,6 +45,7 @@
 #define CORE_COMMON_ALARM_STATE_H_
 
 #include <cstdint>
+#include <span>
 
 #include "core_common/ids.h"
 #include "core_common/quantities.h"
@@ -361,10 +362,12 @@ enum class AlarmKind : std::uint8_t {
   /// is the chairman's — an аврал on the reaping (register 220), hands off
   /// other work. The fields spend the days in the order they ripen; the one
   /// that finds them gone is named. Subject: `field`; `resource` = its crop's
-  /// produce; `amount` = GRAMS the snow will take: the WHOLE field's crop, as
-  /// LoseFieldToSnow takes it — a field still being reaped is lost entire, not
-  /// by its unreaped share (boss seq 176; it named the share until
-  /// 2026-09-19, less than the snow takes).
+  /// produce; `amount` = GRAMS the snow will take: the share STILL STANDING,
+  /// as LoseFieldToSnow takes it since the harvest by parts (0.34.44) — each
+  /// day's cut is in the heap already. From 2026-09-19 (boss seq 176) to
+  /// 0.34.44 it was the whole field, while the one-shot harvest let the snow
+  /// take it all; this line kept that reading until the lamp colour's
+  /// contract (2026-10-04).
   kHarvestWillNotBeGathered,
 
   /// A PLAN POSITION WILL FALL SHORT AT THE TURN (boss seq 89; alarms.csv
@@ -818,6 +821,25 @@ enum class AlarmAdvice : std::uint8_t {
   kAlarmAdviceCount,
 };
 
+/// @brief A lamp's colour BY THE TIME TO ITS LOSS (office design §13, «Цвет —
+/// по сроку потери»; the human's «Да», 1 October 2026; boss-core-lamp-colour-
+/// 2026-10-01 [5]). Set for every alarm by PaintAlarms after the collection,
+/// from the kind's class and Alarm::days_to_loss. Appended, never renumbered.
+enum class AlarmColour : std::uint8_t {
+  /// The elder's advice: no colour, not a lamp (kMeadowUncutBeforeSnow,
+  /// kSowingWindowClosing).
+  kAdvice = 0,
+
+  /// A loss further than world_params `alarm_red_within_days` (8) days away.
+  kYellow,
+
+  /// A loss nearer, or happening now: a FACT's days_to_loss is 0.
+  kRed,
+
+  /// NOT A COLOUR: the count, so a consumer can static_assert its mirror.
+  kAlarmColourCount,
+};
+
 /// @brief One standing condition. Which fields are meaningful is fixed by
 /// the kind (see AlarmKind); the rest are invalid / zero. Two alarms with
 /// the same kind and subject are one alarm — a predicate yields each
@@ -873,6 +895,22 @@ struct Alarm {
   /// short for the work is a loss the player has a move against.
   /// @note Not in the save: the list is collected afresh every step.
   std::uint8_t lamp = 1;
+
+  /// THE LAMP'S COLOUR (AlarmColour; the lamp colour's contract): red, yellow,
+  /// or no colour for the elder's advice — set by PaintAlarms after the
+  /// collection, never by a raise site. `lamp` stands beside it for one
+  /// delivery (host's probes and the canon's limit policy read it) and goes
+  /// after host's re-pin.
+  /// @note Not in the save, as `lamp`.
+  AlarmColour colour = AlarmColour::kRed;
+
+  /// WHOLE GAME DAYS FROM TODAY TO THE LOSS: 0 for a FACT — the loss is
+  /// happening (a herd starving, a heap spoiling, a family hungry). Written by
+  /// each kind's raise site from what that site already counts (the survey of
+  /// 1 October: 8 kinds ready, 4 to compute, the facts nought); kStoreFull
+  /// inherits the days of the alarm that lights it. Saturates at 0xFFFF.
+  /// @note Not in the save, as `lamp`.
+  std::uint16_t days_to_loss = 0;
 
   /// kGoodsLoanOwed only: the campaign year (counted from 1, as
   /// CalendarState::date.year) whose harvest the debt is repaid from at the
@@ -994,6 +1032,35 @@ struct Alarm {
 /// alarms of one kind sort by this; kinds sort by their value. 0 for
 /// kNone. Implemented in core_common (alarm_state.cpp).
 std::uint32_t AlarmSubjectValue(const Alarm& alarm);
+
+/// @brief Colours every alarm of a collected list (Alarm::colour): the elder's
+/// advice kAdvice; every other kind kRed when its days_to_loss is at most
+/// `red_within_days`, kYellow past it. ONE HOME for the rule — the world's
+/// collection calls it once, after every subsystem has raised its alarms and
+/// kStoreFull has taken the days of the alarm that lights it.
+/// @param red_within_days world_params `alarm_red_within_days` (8).
+/// CONTRACT, NO IMPLEMENTATION YET (core rules §12a): implemented in
+/// core_common with the raise sites' days.
+void PaintAlarms(std::span<Alarm> alarms, std::uint16_t red_within_days);
+
+/// @brief One lamp lit red at the last daily check — the world's memory the
+/// red-lamp interrupt compares against (WorldState::red_lamps; boss, the
+/// logistics thread [127]). Kind and subject are the alarm's identity, as the
+/// boundary sorts it (AlarmSubjectValue). CONTRACT — written from the
+/// delivery after it.
+struct RedLamp {
+  AlarmKind kind = AlarmKind::kNone;
+  std::uint32_t subject = 0;
+
+  friend bool operator==(const RedLamp&, const RedLamp&) = default;
+  friend auto operator<=>(const RedLamp&, const RedLamp&) = default;
+};
+
+/// @brief Alarm::days_to_loss from a raise site's signed count of days: a
+/// loss already past or today is 0 (a fact), a count past the field's range
+/// saturates at 0xFFFF («no loss in sight»). ONE HOME for the clamp, so no
+/// raise site wraps a negative count into a far yellow.
+std::uint16_t DaysToLossOf(std::int64_t days);
 
 }  // namespace core
 
