@@ -3941,6 +3941,96 @@ int CheckFeedLightLeavesThePloughsOats() {
   return failures;
 }
 
+/// THE STARVING HERD'S CAUSE AND DOOR (0.37.185; boss, the logistics thread
+/// [66]; livestock design §11, «лампа обязана назвать дверь»): a cow that
+/// eats oats alone, the oats' seed rung holding 10 kg for next spring and
+/// the stores 5 kg of oats — all of it in the fund: the lamp says «unseal a
+/// fund», the oats, 5 kg. The pairs: the stores empty — «bring feed»; the
+/// seed fund unsealed — nothing left in a fund, «bring feed», and the
+/// feeding's own door now gives the cow the 5 kg (the lamp names what the
+/// order opens); the oats a reserve feed of the people's bread — «bring
+/// feed», no unsealing lets the cow eat it.
+int CheckTheStarvingHerdNamesItsCause() {
+  int failures = 0;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.feed_values = {1.0F, 1.0F, 0.0F};
+  config.milk_resource = core::ResourceId{};
+  config.feed_links = {core::FeedLinkDef{
+      .kind = core::LivestockKindId{0}, .resource = core::ResourceId{1}, .max_share = 1.0F}};
+  core::CropDef oats_crop;
+  oats_crop.resource = core::ResourceId{1};
+  oats_crop.sow_from_month = 2;
+  oats_crop.sow_to_month = 3;
+  oats_crop.harvest_from_month = 6;
+  oats_crop.harvest_to_month = 7;
+  oats_crop.sowing_norm_kg_per_ha = 10.0F;  // 10 kg of oat seed for next spring
+  config.crops = {oats_crop};
+
+  core::WorldState world = MakeHerdWorld(0.0F);
+  world.calendar.tick = static_cast<core::Tick>(core::kDaysPerYear + 44) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  core::FieldRow oats_field;
+  oats_field.kind = core::LandKind::kArable;
+  oats_field.area_ga = 1.0F;
+  oats_field.rotation_year0 = core::CropId{0};
+  oats_field.rotation_assigned = 1;
+  oats_field.reaped_day = world.calendar.day - 10;  // this year's oats are off
+  oats_field.rotation_year1 = core::CropId{0};
+  core::AppendRow(world.fields, oats_field);
+  AddHerd(world, 0, 1, 0, true);
+  world.herds.rows[0].unfed_days = 1.0F;  // it went hungry yesterday
+
+  const auto starving = [](const core::ProductionConfig& tables, const core::WorldState& state) {
+    std::vector<core::Alarm> alarms;
+    core::CollectHerdAlarms(tables, state, alarms);
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kHerdStarving) {
+        return alarm;
+      }
+    }
+    return core::Alarm{};
+  };
+
+  core::WorldState locked = world;
+  locked.units.rows[0].stock[1] = 5 * kKilo;
+  const core::Alarm in_fund = starving(config, locked);
+  std::cout << "  starving herd, the oats in the seed fund: advice "
+            << static_cast<int>(in_fund.advice) << ", " << in_fund.advice_amount / kKilo
+            << " kg of resource " << in_fund.advice_resource.value << '\n';
+  failures += Expect(
+      in_fund.kind == core::AlarmKind::kHerdStarving &&
+          in_fund.advice == core::AlarmAdvice::kUnsealFund && in_fund.advice_resource.value == 1 &&
+          in_fund.advice_amount == 5 * kKilo && core::HerdFeedAllowance(config, locked)[1] == 0,
+      "starving herd: its oats lie in the seed fund, shut from it — «unseal a fund», "
+      "the oats, 5 kg");
+
+  const core::Alarm empty = starving(config, world);
+  failures += Expect(empty.kind == core::AlarmKind::kHerdStarving &&
+                         empty.advice == core::AlarmAdvice::kBringFeed && empty.advice_amount == 0,
+                     "starving herd: the stores hold no oats — «bring feed or reduce the herd»");
+
+  core::WorldState unsealed = locked;
+  unsealed.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kSeed)].assign(3, 0);
+  unsealed.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kSeed)][1] = 100 * kKilo;
+  failures += Expect(starving(config, unsealed).advice == core::AlarmAdvice::kBringFeed &&
+                         core::HerdFeedAllowance(config, unsealed)[1] == 5 * kKilo,
+                     "starving herd: the seed fund unsealed, nothing is left in a fund and the "
+                     "feeding's door gives the cow the 5 kg the lamp named");
+
+  core::ProductionConfig bread = config;
+  bread.feed_links[0].reserve = 1;
+  core::WorldState issued = locked;
+  core::AddLedgerAmount(issued.ledger.current.issued, core::ResourceId{1}, kKilo);
+  const core::Alarm people = starving(bread, issued);
+  failures += Expect(people.kind == core::AlarmKind::kHerdStarving &&
+                         people.advice == core::AlarmAdvice::kBringFeed &&
+                         starving(bread, locked).advice == core::AlarmAdvice::kUnsealFund,
+                     "starving herd: oats the people are issued, a reserve feed of the cow — no "
+                     "unsealing lets it eat them, «bring feed»; not issued, the fund again");
+  return failures;
+}
+
 /// THE FEEDING ORDER'S SWITCH (0.37.63; boss-core-start-no-yards [21]-[23],
 /// econ's pair): hay for ten heads a day, ten cows in the first row and ten
 /// horses in the second. The rows' order feeds the cows and leaves the team
@@ -14923,6 +15013,7 @@ int main() {
   failures += CheckFeedCaps();
   failures += CheckFeedLightCountsTheWinter();
   failures += CheckFeedLightLeavesThePloughsOats();
+  failures += CheckTheStarvingHerdNamesItsCause();
   failures += CheckFeedLightRespectsTheCeiling();
   failures += CheckFeedLightNeverRunsOut();
   failures += CheckSeedLightMeasuresCoverage();

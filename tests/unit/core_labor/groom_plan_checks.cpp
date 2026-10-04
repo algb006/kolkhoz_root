@@ -230,6 +230,12 @@ std::pair<bool, bool> TheHorseAgainstAnUrgentLoad(core::ILaborSystem& labor, boo
 /// lets the ploughman's horse go and the urgent logs take it. The pair: the
 /// task left ordinary, the plough keeps its horse. Returns: the logs ride, the
 /// ploughing ploughs, after hour 1.
+///
+/// THE PLOUGHING HAS A WINDOW — its field's crop (oat, crops.csv row 0) — so
+/// the old top-up does not let it go as windowless work: it did in this
+/// check's first form (0.37.184), which passed with the new let-go switched
+/// off — 0.37.184's fault «the top-up keeps the windows' horses» reddened
+/// nothing.
 std::pair<bool, bool> TheHorseAfterARaise(core::ILaborSystem& labor, bool raised) {
   core::WorldState world = Village(3);
   const core::TimberStandId logs = StandAt(world, 1000.0F, 5.0F);
@@ -239,6 +245,7 @@ std::pair<bool, bool> TheHorseAfterARaise(core::ILaborSystem& labor, bool raised
   field.area_ga = 10.0F;
   field.phase = core::FieldPhase::kPlowing;
   field.work_days_remaining = 5.0F;
+  field.crop = core::CropId{0};
   const core::FieldId ploughed = core::AppendRow(world.fields, field);
   RunHour(labor, world, 0);
   if (raised) {
@@ -264,7 +271,10 @@ std::pair<bool, bool> TheHorseAfterARaise(core::ILaborSystem& labor, bool raised
 /// at hour 3 — his work ended (the pair: still on the cart) — keeps his wait
 /// only while he still has the work and the cart. Returns whether the wait
 /// stands after hour 3.
-bool TheWaitAfterTheWork(core::ILaborSystem& labor, bool work_ended) {
+bool TheWaitAfterTheWork(core::ILaborSystem& labor,
+                         bool work_ended,
+                         std::uint32_t term = 1,
+                         std::uint32_t hour = 3) {
   core::WorldState world = Village(2);
   core::WorkAssignment& driver = world.residents.rows[0].work;
   driver.kind = core::WorkKind::kHauling;
@@ -285,11 +295,11 @@ bool TheWaitAfterTheWork(core::ILaborSystem& labor, bool work_ended) {
   const core::Tick since = (static_cast<core::Tick>(kWorkingDay) * core::kTicksPerDay) + 10;
   rider.wait = core::WaitRecord(core::WaitKind::kPassengerAwaitsCart,
                                 since,
-                                1,
+                                term,
                                 core::WaitTarget{.resident = world.residents.row_ids[0],
                                                  .unit = core::UnitId{},
                                                  .field = core::FieldId{}});
-  RunHour(labor, world, 3);
+  RunHour(labor, world, hour);
   return world.residents.rows[1].wait.has_value();
 }
 
@@ -334,6 +344,18 @@ int CheckTheGroomsPlan() {
   failures +=
       Expect(TheWaitAfterTheWork(*labor, false),
              "a passenger's wait: still on his work and the cart, it stands until his hour");
+  // A WAIT LIVES ITS TERM (0.37.185; boss [64]-[65]): a passenger waiting
+  // from hour 10 on a term of three hours still waits at hour 12 — the
+  // honest two-hour wait is not struck at the first hour — and at hour 13 his
+  // term is out; the pair, a term of one hour, is struck at hour 11. «At four
+  // hours the dog fires» (boss [65] p. 3) is not checked: the dog's term
+  // verdict cannot fire for a passenger (ClearPassengerWaits).
+  failures += Expect(TheWaitAfterTheWork(*labor, false, 3, 12),
+                     "a passenger's wait of a three-hour term stands two hours on");
+  failures +=
+      Expect(!TheWaitAfterTheWork(*labor, false, 3, 13), "and is struck when its term is out");
+  failures += Expect(!TheWaitAfterTheWork(*labor, false, 1, 11),
+                     "a wait of a one-hour term is struck at its second hour");
   const auto [urgent_logs, urgent_ploughs] = TheHorseAgainstAnUrgentLoad(*labor, true);
   const auto [ordinary_logs, ordinary_ploughs] = TheHorseAgainstAnUrgentLoad(*labor, false);
   std::cout << "  groom's plan, level 0: logs ride " << urgent_logs << ", ploughing "

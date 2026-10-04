@@ -2260,11 +2260,22 @@ class LaborSystem final : public ILaborSystem {
     }
   }
 
-  /// @brief A passenger's wait ends when the cart has come (B6): the hour
-  ///        after he reached his point — an honest wait is an hour at most
-  ///        (cart_passengers.cpp, the term) — and at the day's last hour
-  ///        whatever stands. Struck before the watchdog walks (phase 6), so
-  ///        the dog sees a wait only in the hour it is honest or hangs.
+  /// @brief A passenger's wait ends when the cart has come (B6): by the end
+  ///        of its term at the latest — the seating seats nobody whose wait
+  ///        runs past the term (cart_passengers.cpp) — and at the day's last
+  ///        hour whatever stands. Struck before the watchdog walks (phase 6),
+  ///        so the dog sees a wait only while it is honest or once it hangs.
+  ///        It was struck the hour after he reached his point until 0.37.185:
+  ///        the same while the term is one hour (STUB core), and a wait of a
+  ///        longer term would have been struck before its term was out.
+  ///        THE DOG'S «TERM PASSED» CANNOT FIRE FOR A PASSENGER, in this form
+  ///        and in 0.37.182's: the verdict needs the tick PAST since + term
+  ///        (wait_rules.cpp) and this strike comes at it, in phase 3, before
+  ///        the dog walks in phase 6. The dog sees a passenger's hang by its
+  ///        cart's driver alone (the horse or the work gone). The verdict lives
+  ///        once the strike asks whether the cart has come rather than the
+  ///        clock — the record knows no hour the cart is due (named in
+  ///        0.37.185, put to boss).
   static void ClearPassengerWaits(WorldState& current, bool day_ends) {
     const Tick now = current.calendar.tick;
     for (ResidentRow& person : current.residents.rows) {
@@ -2277,7 +2288,7 @@ class LaborSystem final : public ILaborSystem {
       // in 0.37.182's canon, all «work gone», stood nought hours.
       const bool work_gone = person.work.kind == WorkKind::kNone ||
                              person.work.rides_cart_of.value != person.wait->target.resident.value;
-      if (day_ends || work_gone || now >= person.wait->since + 1U) {
+      if (day_ends || work_gone || now >= person.wait->since + person.wait->term_hours) {
         person.wait.reset();
       }
     }

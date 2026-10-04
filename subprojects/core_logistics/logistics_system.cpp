@@ -84,9 +84,16 @@ class LogisticsSystem final : public ILogisticsSystem {
     // [61]-[62]): once a game hour after the plan's own hour, the plan is
     // stale when the carts it planned are not the carts there are — a driver
     // who lost his horse or his work, a cart the hour's top-up or a door gave
-    // since — or when a load of level 0 waits; the rest of the day is then
-    // planned again from where each cart is (BuildGroomPlan, `earlier`).
-    // The tasks themselves change once a day, at hour 0, before the plan.
+    // since; the rest of the day is then planned again from where each cart
+    // is (BuildGroomPlan, `earlier`). The tasks themselves change once a day,
+    // at hour 0, before the plan.
+    //
+    // `urgent_pending` («a load of level 0 waits») is read here and WRITTEN BY
+    // NOTHING yet (0.37.185, found re-reading 0.37.184): a load raised to
+    // level 0 is placed by the hour-1 top-up (labor_system.cpp, TopUpDay),
+    // and mid-day no task changes level in the core. Its writer is the
+    // chairman's door «raise to level 0» (B7) — until then this reading of it
+    // never fires, and it is said here rather than claimed.
     GroomPlan& plan = current.groom_plan;
     if (plan.day != current.calendar.day || HourFromTick(current.calendar.tick) < 2) {
       return false;

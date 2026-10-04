@@ -132,6 +132,10 @@ enum class AlarmKind : std::uint8_t {
   /// starved sixteen horses beside two thousand tonnes of grain without a
   /// word (balance/69-reconciliation.md §3 D1). Subject: `herd`;
   /// `amount` = the head count.
+  /// THE CAUSE AND THE DOOR SINCE 0.37.185 (livestock design §11): `advice`
+  /// kUnsealFund — a feed of the kind lies in a fund, `advice_resource` and
+  /// `advice_amount` which and how many grams — or kBringFeed, there is none
+  /// to unseal; never kNone. The KIND is the herd's (`herd` -> HerdRow::kind).
   kHerdStarving,
 
   // -- people: core_residents ----------------------------------------------------
@@ -676,9 +680,9 @@ enum class ProcessingStopReason : std::uint8_t {
 /// @brief The first move a forecast alarm names (boss-core-epoch1-resume-
 /// 2026-09-30 [85], [86]) — the seam's vocabulary `alarm_advice`, its words
 /// the enumerators' snake_case; the layer shows the move by the key. Only
-/// the forecast kinds and the cold's red set it (kHerdHayShortAhead,
-/// kHerdColdAhead, kHerdFreezing); every other alarm keeps
-/// kNone. Appended, never renumbered.
+/// the forecast kinds, the cold's red and the starving herd set it
+/// (kHerdHayShortAhead, kHerdColdAhead, kHerdFreezing, kHerdStarving since
+/// 0.37.185); every other alarm keeps kNone. Appended, never renumbered.
 enum class AlarmAdvice : std::uint8_t {
   /// No move the core can name — shown as such: a feed runs out first that
   /// no move of the player's brings (straw, silage).
@@ -759,6 +763,28 @@ enum class AlarmAdvice : std::uint8_t {
   /// it sounded on no day while the herds starved.
   kReduceHerd,
 
+  /// THE FEED IS IN A FUND — «корм лежит в фонде, распечатайте фонд»
+  /// (0.37.185; the dictionary's `unseal_fund`; the human's word of 4 October
+  /// 2026 on boss's points, livestock design §11: «Стадо само в запертый фонд
+  /// не входит; лампа обязана назвать дверь»). Named by kHerdStarving when a
+  /// feed of the herd's kind lies in the stores under the seed fund or the
+  /// plan reserve (HerdFeedInFunds) — the door is kUnsealFund. `advice_resource`
+  /// the first such feed in the kind's feeding order, `advice_amount` its
+  /// grams in the funds. A reserve feed that is the people's bread is not
+  /// named: no unsealing lets the herd eat it (PeoplesFoods).
+  /// The measure behind it: a village's hens starved 17 of 19 in 60 days
+  /// beside barley and oats under the rungs, the lamp saying «bring feed or
+  /// reduce the herd» (host [165]; the core's trace on 0.37.181).
+  kUnsealFund,
+
+  /// NO FEED OF THE KIND IN A FUND — «подвезти корма или уменьшить стадо»
+  /// (0.37.185; the dictionary's `bring_feed`): kHerdStarving's other cause,
+  /// the lamp's text until then. The feed of the herd's kind is not in the
+  /// stores, or is held by what no order opens (next year's hold, the
+  /// plough's oats; HerdFeedInFunds). Two moves, one word: the core does not
+  /// weigh them here (kHerdHayShortAhead does, with its numbers).
+  kBringFeed,
+
   /// NOT A MOVE: the count, so a consumer can static_assert its mirror.
   kAlarmAdviceCount,
 };
@@ -832,10 +858,11 @@ struct Alarm {
   /// @note Not in the save, as `lamp`.
   std::uint16_t days_ahead = 0;
 
-  /// The forecast kinds and kHerdFreezing: the first move the core names
-  /// (AlarmAdvice). kNone for every other kind, for a forecast whose first
-  /// short feed no move brings (0.37.56), and for a freezing herd when the
-  /// stores hold no straw for an insulation (0.37.60).
+  /// The forecast kinds, kHerdFreezing and kHerdStarving: the first move the
+  /// core names (AlarmAdvice). kNone for every other kind, for a forecast
+  /// whose first short feed no move brings (0.37.56), and for a freezing herd
+  /// when the stores hold no straw for an insulation (0.37.60); never kNone
+  /// for kHerdStarving (0.37.185: kUnsealFund or kBringFeed).
   /// @note Not in the save, as `lamp`.
   AlarmAdvice advice = AlarmAdvice::kNone;
 
@@ -843,8 +870,10 @@ struct Alarm {
   /// year's points buy today and how much of it, in grams — the largest
   /// purchase the lot's door would take this morning (the feed lots of the
   /// catalogue open in this epoch that some store accepts, as many as the
-  /// points cover, the best feed units a point first). Invalid and 0 for
-  /// every other advice and kind.
+  /// points cover, the best feed units a point first). kHerdStarving with
+  /// `advice` kUnsealFund (0.37.185): the feed in the funds and its grams
+  /// there (AlarmAdvice::kUnsealFund). Invalid and 0 for every other advice
+  /// and kind.
   /// @note Not in the save, as `lamp`.
   ResourceId advice_resource;
   std::int64_t advice_amount = 0;

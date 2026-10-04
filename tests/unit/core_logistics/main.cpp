@@ -387,11 +387,14 @@ int TestThePlansChains() {
 }
 
 /// THE RE-PLAN BY EVENT (B5; logistics_system.h, Replan): two carts on two
-/// heaps a long way apart, planned at hour 1 of a twelve-hour day. At hour 5
-/// the second carter has lost his horse: the plan is stale — the system plans
-/// the rest of the day again, the first cart keeps every leg it had begun by
-/// then exactly, no new leg leaves before hour 6, and the second carter has no
-/// cart. The pair: nothing changed, no re-plan.
+/// heaps a long way apart, planned at hour 1 of a twelve-hour day (6 to 18).
+/// At hour 9 the second carter has lost his horse: the plan is stale — the
+/// system plans the rest of the day again, the first cart keeps every leg it
+/// had begun by then exactly (two at least: the way out and its load), no new
+/// leg leaves before hour 10, and the second carter has no cart. The pair:
+/// nothing changed, no re-plan. The re-plan stood at hour 5 in 0.37.184's
+/// form — before sunrise, nothing begun, and «kept» held over nothing: the
+/// fault «the re-plan breaks begun legs» reddened none of it.
 int TestTheReplan() {
   int failures = 0;
   const test::FakeTableSet no_tables{{}};
@@ -435,7 +438,7 @@ int TestTheReplan() {
     if (horse_lost) {
       world.residents.rows[1].work.rides_horse = 0;
     }
-    world.calendar.tick = (3 * core::kTicksPerDay) + 5;
+    world.calendar.tick = (3 * core::kTicksPerDay) + 9;
     replanned = system->Replan(world);
   };
   bool replanned = false;
@@ -451,7 +454,8 @@ int TestTheReplan() {
   bool kept = !lost.groom_plan.carts.empty() && !before.groom_plan.carts.empty();
   bool nothing_early = true;
   bool second_has_cart = false;
-  const core::Tick hour_five = (3 * core::kTicksPerDay) + 5;
+  std::size_t begun = 0;
+  const core::Tick hour_five = (3 * core::kTicksPerDay) + 9;  // the re-plan's hour
   for (const core::CartPlan& cart : lost.groom_plan.carts) {
     if (cart.driver.value == lost.residents.row_ids[1].value && !cart.on_foot) {
       second_has_cart = true;
@@ -467,6 +471,7 @@ int TestTheReplan() {
              cart.legs[index].depart == morning_cart.legs[index].depart &&
              cart.legs[index].arrive == morning_cart.legs[index].arrive &&
              cart.legs[index].task.value == morning_cart.legs[index].task.value;
+      ++begun;
     }
     for (; index < cart.legs.size(); ++index) {
       nothing_early = nothing_early && cart.legs[index].depart > hour_five;
@@ -475,9 +480,10 @@ int TestTheReplan() {
   failures += Expect(replanned && !second_has_cart,
                      "re-plan: a carter who lost his horse makes the plan stale — re-planned, and "
                      "he has no cart in it");
-  failures += Expect(kept && nothing_early,
-                     "re-plan: the other cart keeps every leg begun by then, and nothing new "
-                     "leaves before the next hour");
+  std::cout << "  re-plan at hour 9: legs begun and kept " << begun << '\n';
+  failures += Expect(kept && nothing_early && begun >= 2,
+                     "re-plan: the other cart keeps every leg begun by then (two at least), and "
+                     "nothing new leaves before the next hour");
   core::WorldState calm;
   bool calm_replanned = true;
   day_of(false, calm_replanned, calm);

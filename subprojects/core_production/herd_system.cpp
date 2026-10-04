@@ -132,6 +132,15 @@ Grams TakeFeed(WorldState& world,
   return taken;
 }
 
+/// The grams of `resource` in every unit, less what is reserved there.
+Grams UnreservedEverywhere(const WorldState& world, ResourceId resource) {
+  Grams stock = 0;
+  for (const UnitRow& unit : world.units.rows) {
+    stock += UnreservedOf(unit, resource);
+  }
+  return stock;
+}
+
 /// WHAT THE STORES MAY GIVE THE HERDS TODAY: everything above the plan reserve
 /// (core_common/fund_ladder.h). Computed once for the whole walk and spent by
 /// it, so the first herd in row order cannot eat what the ladder holds for the
@@ -166,13 +175,13 @@ Grams TakeFeed(WorldState& world,
 /// price is the pace — the work ration at nought on 72 of 108 spring
 /// seed-days, the ploughing at 1/0.7 — and it is the ladder as the design
 /// writes it (resources design §6): the seed above the fodder.
-/// @param ploughing_today Whether the plough or the harrow is out today: on
-///        such a day the ploughing's oats are the plough's to eat, and are
-///        not held (PloughFeedHold). The fodder fund's own read passes true —
-///        the fund is the team's, the plough's share inside it.
-ResourceAmounts FeedAllowance(const ProductionConfig& config,
-                              const WorldState& world,
-                              bool ploughing_today) {
+///
+/// THIS PART — the seed and the plan rungs with their rot's margins — IS
+/// WHAT AN ORDER OPENS: kUnsealFund's seed and plan reserve come off these
+/// rungs (fund_ladder.h, HeldAboveFodder). Next year's hold and the plough's
+/// oats, added by FeedAllowance, are opened by none (0.37.185: the starving
+/// herd's lamp names a fund only for this part; HerdFeedInFunds).
+ResourceAmounts SeedAndPlanHeld(const ProductionConfig& config, const WorldState& world) {
   const std::vector<SeedNorm> seed_norms = SeedNormsOf(config);
   // THE HERDS STAND UNDER THE WHOLE PLAN RUNG — the harvest to come is not
   // handed to them (0.37.40; boss-core-epoch1-resume-2026-09-30 [35], (в);
@@ -194,6 +203,19 @@ ResourceAmounts FeedAllowance(const ProductionConfig& config,
   const ResourceAmounts seed_part = SeedRungLeft(world, seed_norms, config.feed_values.size());
   AddRungRotMargins(
       world, seed_norms, rungs, seed_part, config.spoil_days, config.keeping_factor, allowance);
+  return allowance;
+}
+
+/// @brief What the kolkhoz herds may eat of each resource today (the
+/// contract is HerdFeedAllowance's).
+/// @param ploughing_today Whether the plough or the harrow is out today: on
+///        such a day the ploughing's oats are the plough's to eat, and are
+///        not held (PloughFeedHold). The fodder fund's own read passes true —
+///        the fund is the team's, the plough's share inside it.
+ResourceAmounts FeedAllowance(const ProductionConfig& config,
+                              const WorldState& world,
+                              bool ploughing_today) {
+  ResourceAmounts allowance = SeedAndPlanHeld(config, world);
   // AND WHAT NEXT YEAR'S OWN HARVEST WILL NOT PAY (0.37.2; boss-core-epoch1-
   // queue [52]-[54]): the rotation gives oats 19 t one year and 3.7 t the
   // next. While the carts' horses ate hay the good year's carry-over lay, and
@@ -228,11 +250,7 @@ ResourceAmounts FeedAllowance(const ProductionConfig& config,
     // counted gross, a construction's reserve R of a planned crop came out as
     // an allowance of R the feeding could not take anyway, and the herd then
     // ate R out of the plan's grain (static review of 0.34.42).
-    Grams stock = 0;
-    const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
-    for (const UnitRow& unit : world.units.rows) {
-      stock += UnreservedOf(unit, resource);
-    }
+    const Grams stock = UnreservedEverywhere(world, DefIdFromIndex<ResourceIdTag>(index));
     allowance[index] = stock > allowance[index] ? stock - allowance[index] : 0;
   }
   return allowance;
@@ -992,6 +1010,17 @@ bool PloughingToday(const WorldState& world) {
 
 ResourceAmounts HerdFeedAllowance(const ProductionConfig& config, const WorldState& world) {
   return FeedAllowance(config, world, PloughingToday(world));
+}
+
+ResourceAmounts HerdFeedInFunds(const ProductionConfig& config, const WorldState& world) {
+  // The stores fill the ladder from its bottom rung up: of the stock, the
+  // seed and the plan take theirs first.
+  ResourceAmounts in_funds = SeedAndPlanHeld(config, world);
+  for (std::size_t index = 0; index < in_funds.size(); ++index) {
+    const Grams stock = UnreservedEverywhere(world, DefIdFromIndex<ResourceIdTag>(index));
+    in_funds[index] = std::min(stock, in_funds[index]);
+  }
+  return in_funds;
 }
 
 bool StableBuilt(const WorldState& world, const ProductionConfig& config) {

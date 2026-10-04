@@ -926,13 +926,28 @@ void CollectFieldAlarms(const ProductionConfig& config,
 
 /// kHerdStarving: a kolkhoz herd that went underfed and has not been fed
 /// since. A household herd is the family's business, not the farm's.
+///
+/// ITS CAUSE AND ITS DOOR (0.37.185; livestock design §11): the first feed
+/// of the kind's feeding order that lies in a fund the chairman can unseal
+/// (HerdFeedInFunds) — kUnsealFund with that feed and its grams; none —
+/// kBringFeed. A reserve feed that is the people's bread is passed over: the
+/// herd may not eat it unsealed or not (PeoplesFoods). Read once a call, at
+/// the first starving herd: the funds are the farm's, not the herd's.
 void CollectHerdAlarms(const ProductionConfig& config,
                        const WorldState& world,
                        std::vector<Alarm>& alarms) {
+  bool funds_read = false;
+  ResourceAmounts in_funds;
+  std::vector<std::uint8_t> peoples_foods;
   for (std::uint32_t row = 0; row < world.herds.rows.size(); ++row) {
     const HerdRow& herd = world.herds.rows[row];
     if (herd.unfed_days <= 0.0F || herd.household.value != kInvalidEntityIdValue) {
       continue;
+    }
+    if (!funds_read) {
+      in_funds = HerdFeedInFunds(config, world);
+      peoples_foods = PeoplesFoods(config, world);
+      funds_read = true;
     }
     Alarm alarm;
     alarm.kind = AlarmKind::kHerdStarving;
@@ -940,6 +955,20 @@ void CollectHerdAlarms(const ProductionConfig& config,
     alarm.amount = static_cast<std::int64_t>(herd.newborn_count) +
                    static_cast<std::int64_t>(herd.juvenile_count) +
                    static_cast<std::int64_t>(herd.adult_count);
+    alarm.advice = AlarmAdvice::kBringFeed;
+    for (const FeedLinkDef& link : config.feed_links) {
+      const std::size_t index = link.resource.value;
+      if (link.kind.value != herd.kind.value || index >= in_funds.size() || in_funds[index] <= 0) {
+        continue;
+      }
+      if (link.reserve != 0 && index < peoples_foods.size() && peoples_foods[index] != 0) {
+        continue;
+      }
+      alarm.advice = AlarmAdvice::kUnsealFund;
+      alarm.advice_resource = link.resource;
+      alarm.advice_amount = in_funds[index];
+      break;
+    }
     alarms.push_back(alarm);
   }
   // The pig slaughter that waits for room (herd_life.h): the herd, and the

@@ -205,6 +205,20 @@ PloughFeedHold PloughFeedHoldOf(const ProductionConfig& config, const WorldState
 /// site holding stock (static review of 0.37.15, left as it is).
 ResourceAmounts HerdFeedAllowance(const ProductionConfig& config, const WorldState& world);
 
+/// @brief What lies in the stores of each resource and is shut from the
+/// herds by a FUND THE CHAIRMAN CAN UNSEAL, grams, dense by ResourceId: the
+/// stock unreserved in every unit, up to the seed and the plan rungs with
+/// their rot's margins — the part kUnsealFund's seed fund and plan reserve
+/// open (0.37.185; livestock design §11, «Стадо само в запертый фонд не
+/// входит; лампа обязана назвать дверь»). The starving herd's lamp reads it
+/// to tell «the feed is in a fund» from «there is no feed».
+///
+/// NOT COUNTED, because no order opens them: next year's hold (NextYearHold —
+/// unlike the people's issue, the herds' read of it takes no release off it;
+/// found writing this door, put to boss) and the plough's oats on a day
+/// nobody ploughs. Grain those two hold reads as no feed.
+ResourceAmounts HerdFeedInFunds(const ProductionConfig& config, const WorldState& world);
+
 /// @brief The milk the KOLKHOZ's herds give in one day at each herd's factor
 /// today (YieldFactor: billeting, underfeeding), grams — the same sum
 /// RunProduce delivers, read without delivering it. A household's cow is the
