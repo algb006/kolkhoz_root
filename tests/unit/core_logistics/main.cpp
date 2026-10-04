@@ -386,6 +386,78 @@ int TestThePlansChains() {
   return failures;
 }
 
+/// THE WAY HOME FITS THE LIGHT (0.37.181; 0.37.180's canon: a goods cart's
+/// leg home after sunset in all 27 village-years, core-legsprobe2 late_h): a
+/// winter's day of four hours, 10 to 14. A cart carts its own heap 100 m out
+/// for an hour; the next heap of its level lies 2.5 km away — 2.5 hours
+/// there, 2.5 back — and does not fit what is left of the light. The cart
+/// goes home instead, home by 14, the far heap kept in its chain as a leg of
+/// no length. The pair: in a day of twelve hours it rides to the far heap.
+int TestTheWayHomeFitsTheLight() {
+  int failures = 0;
+  const auto day_of = [](float light_hours, bool& rode_far, core::Tick& home_by) {
+    core::LogisticsConfig config;  // 12 km/h: 1 game hour a km
+    core::WorldState world;
+    world.weather.daylight_hours = light_hours;
+    const auto heap_at = [&world](float east_m, float days) {
+      core::FieldRow field;
+      field.kind = core::LandKind::kArable;
+      field.center = core::Vec2{.x = east_m, .y = 0.0F};
+      field.reaped_grams = 1'000'000;
+      field.reaped_resource = core::ResourceId{0};
+      field.haul_days_remaining = days;
+      return core::AppendRow(world.fields, field);
+    };
+    const core::FieldId near = heap_at(100.0F, 0.1F);
+    const core::FieldId far = heap_at(2'500.0F, 0.1F);
+    core::TaskDayCount count;
+    core::SyncTasks(config, world, 0, count);
+    core::UnitRow house;
+    const core::UnitId house_id = core::AppendRow(world.units, house);
+    core::FamilyRow household;
+    household.house = house_id;
+    const core::FamilyId family = core::AppendRow(world.families, household);
+    world.units.rows[0].household = family;
+    core::ResidentRow carter;
+    carter.family = family;
+    carter.work.kind = core::WorkKind::kHauling;
+    carter.work.field = near;
+    carter.work.rides_horse = 1;
+    core::AppendRow(world.residents, carter);
+    core::LogisticsTally tally;
+    const core::GroomPlan plan = core::BuildGroomPlan(config, world, tally);
+    rode_far = false;
+    home_by = 0;
+    if (plan.carts.size() != 1) {
+      return;
+    }
+    const std::vector<core::CartLeg>& legs = plan.carts[0].legs;
+    for (std::size_t index = 1; index < legs.size(); ++index) {
+      const std::uint32_t row = core::FindRow(world.logistics_tasks, legs[index].task);
+      rode_far = rode_far ||
+                 (row != core::kNoRow && world.logistics_tasks.rows[row].field.value == far.value &&
+                  legs[index - 1].task.value == core::kInvalidEntityIdValue);
+    }
+    home_by = legs.empty() ? 0 : legs.back().arrive;
+  };
+  bool winter_far = true;
+  bool summer_far = false;
+  core::Tick winter_home = 0;
+  core::Tick summer_home = 0;
+  day_of(4.0F, winter_far, winter_home);
+  day_of(12.0F, summer_far, summer_home);
+  std::cout << "  plan, the way home: a 4-hour day - rides to the far heap " << winter_far
+            << ", home by " << winter_home << "; a 12-hour day - " << summer_far << ", home by "
+            << summer_home << '\n';
+  failures += Expect(!winter_far && winter_home <= 14,
+                     "plan: in a day of four hours the far heap does not fit the light — the cart "
+                     "goes home, home by sunset");
+  failures += Expect(summer_far && summer_home <= 18,
+                     "plan: in a day of twelve hours it rides to the far heap and is home by "
+                     "sunset too");
+  return failures;
+}
+
 }  // namespace
 
 int main() {
@@ -395,6 +467,7 @@ int main() {
   failures += TestThreats();
   failures += TestConfig();
   failures += TestThePlansChains();
+  failures += TestTheWayHomeFitsTheLight();
   if (failures == 0) {
     std::cout << "unit_core_logistics: all checks passed\n";
   }

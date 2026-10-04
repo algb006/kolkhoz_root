@@ -224,11 +224,27 @@ void GoOn(const WorldState& world,
           Mover& mover,
           SimDay day,
           float hours,
+          float sunset,
           bool evening = false) {
   std::vector<CartLeg>& legs = plan.carts[mover.cart].legs;
-  while (mover.next < mover.chain.size() &&
-         (evening || !(remaining[mover.chain[mover.next]] > 0.0F))) {
-    KeepInTheChain(world, plan, mover, mover.chain[mover.next], day, hours);
+  while (mover.next < mover.chain.size()) {
+    const std::uint32_t next = mover.chain[mover.next];
+    if (!evening && remaining[next] > 0.0F) {
+      // THE WAY THERE AND HOME MUST FIT THE LIGHT, with a step of carting
+      // between (0.37.181): until then the clock sent a cart to its next load
+      // whatever the hour, and its leg home came after sunset in every
+      // village of 0.37.180's canon (core-legsprobe2, late_h).
+      const LogisticsTaskRow& candidate = world.logistics_tasks.rows[next];
+      Vec2 place = mover.at;
+      WorkPlaceOf(world, HaulingWorkOf(candidate), place);
+      const float there = RideHours(world, mover, &candidate, mover.at, place);
+      const float back = RideHours(world, mover, &candidate, place, mover.home);
+      if (hours + there + kStepHours + back < sunset) {
+        break;
+      }
+      evening = true;
+    }
+    KeepInTheChain(world, plan, mover, next, day, hours);
     ++mover.next;
   }
   if (mover.next >= mover.chain.size()) {
@@ -277,7 +293,7 @@ void RunTheClock(const WorldState& world,
       switch (mover.phase) {
         case Mover::Phase::kNotOut:
           if (hours >= mover.sets_out) {
-            GoOn(world, remaining, plan, mover, day, hours);
+            GoOn(world, remaining, plan, mover, day, hours, window.sunset);
           }
           break;
         case Mover::Phase::kRiding:
@@ -294,15 +310,15 @@ void RunTheClock(const WorldState& world,
           }
           break;
         case Mover::Phase::kCarting:
-          if (hours + mover.ride_home >= window.sunset) {
+          if (hours + kStepHours + mover.ride_home >= window.sunset) {
             legs.back().arrive = TickAt(day, hours);
-            GoOn(world, remaining, plan, mover, day, hours, /*evening=*/true);
+            GoOn(world, remaining, plan, mover, day, hours, window.sunset, /*evening=*/true);
             break;
           }
           remaining[mover.task] -= mover.drain;
           legs.back().arrive = TickAt(day, hours + kStepHours);
           if (!(remaining[mover.task] > 0.0F)) {
-            GoOn(world, remaining, plan, mover, day, hours + kStepHours);
+            GoOn(world, remaining, plan, mover, day, hours + kStepHours, window.sunset);
           }
           break;
         case Mover::Phase::kDone:
@@ -321,7 +337,7 @@ void RunTheClock(const WorldState& world,
         plan.carts[mover.cart].legs.back().arrive = TickAt(day, window.sunset);
         KeepInTheChain(world, plan, mover, mover.task, day, window.sunset);
       }
-      GoOn(world, remaining, plan, mover, day, window.sunset, /*evening=*/true);
+      GoOn(world, remaining, plan, mover, day, window.sunset, window.sunset, /*evening=*/true);
     }
   }
 }
