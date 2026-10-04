@@ -13608,7 +13608,9 @@ int CheckTheUnpricedLotsOfTheShippedTables() {
   };
   // lime_gravel_lot left this list with boss's export of 27.09 (price 15,
   // boss-core-epoch1-resume [102]): the gravel the roads' 7e asks for is sold.
-  for (const char* key : {"kerosene_lot", "coal_lot", "consumer_goods_lot"}) {
+  // kerosene_lot left it with boss's export of 04.10 17:00 (price 10, the
+  // church store keeps it; 0.37.190) — priced, it is sold, below.
+  for (const char* key : {"coal_lot", "consumer_goods_lot"}) {
     std::int32_t points = 0;
     const core::OrderRefusal refusal = verdict(key, points);
     failures += Expect(points == -1 && refusal == core::OrderRefusal::kRuleForbids,
@@ -13624,6 +13626,10 @@ int CheckTheUnpricedLotsOfTheShippedTables() {
   failures += Expect(
       verdict("lime_gravel_lot", gravel_points) == core::OrderRefusal::kNone && gravel_points > 0,
       "shipped limit catalogue: lime and gravel, priced, are sold in Epoch I");
+  std::int32_t kerosene_points = 0;
+  failures += Expect(
+      verdict("kerosene_lot", kerosene_points) == core::OrderRefusal::kNone && kerosene_points > 0,
+      "shipped limit catalogue: kerosene, priced since 0.37.190, is sold in Epoch I");
   return failures;
 }
 

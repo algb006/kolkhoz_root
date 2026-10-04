@@ -80,6 +80,7 @@ honey,food_yard,food_store
 hops,utility_yard,goods_store
 industrial_equipment,utility_yard,goods_store
 insulation,build_yard,build_yard
+kerosene,church_store,church_store
 kerosene,utility_yard,goods_store
 leather,crafts_yard,crafts_store
 light_bulb,utility_yard,goods_store

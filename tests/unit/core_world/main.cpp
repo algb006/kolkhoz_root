@@ -2395,6 +2395,9 @@ int CheckTheOfficeDoors() {
   const core::ITable* const lots = shipped->FindTable("limit_catalog");
   const std::uint32_t timber = lots->FindRowByKey("timber_lot");
   const std::uint32_t kerosene = lots->FindRowByKey("kerosene_lot");
+  // The unpriced lot of the pair: coal (kerosene was it until boss's export
+  // of 04.10 17:00 priced it — 0.37.190).
+  const std::uint32_t coal = lots->FindRowByKey("coal_lot");
   const std::uint32_t mts = lots->FindRowByKey("mts_column_spring");
   core::WorldState rich = start;
   rich.limit.points = 1000;
@@ -2417,10 +2420,10 @@ int CheckTheOfficeDoors() {
                          full.catalogue[timber].points > 0 &&
                          full.catalogue[timber].orderable == core::OrderRefusal::kNone &&
                          empty.catalogue[timber].orderable == core::OrderRefusal::kLimitShort &&
-                         full.catalogue[kerosene].points == -1 &&
-                         full.catalogue[kerosene].orderable == core::OrderRefusal::kRuleForbids,
+                         full.catalogue[coal].points == -1 &&
+                         full.catalogue[coal].orderable == core::OrderRefusal::kRuleForbids,
                      "office doors: the whole catalogue — timber priced and sold, short of "
-                     "points kLimitShort, the unpriced kerosene kRuleForbids");
+                     "points kLimitShort, the unpriced coal kRuleForbids");
   // THE WINDOW ANSWERS AS THE DOOR WOULD (0.37.122; district_limit.h,
   // LimitLotRefusalToday): with no store standing to take the logs, the
   // timber lot is not shown as sold. Until then the window asked the balance
