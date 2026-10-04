@@ -539,6 +539,9 @@ class ConstructionSystem final : public IConstructionSystem {
     if (site.type.value >= config_.types.size() || config_.types[site.type.value].has_wear == 0) {
       return OrderRefusal::kRuleForbids;  // nothing to wear, nothing to mend
     }
+    if (!Restorable(site)) {
+      return OrderRefusal::kNotRestorable;
+    }
     if (core::TypeIsOldHouse(config_, site.type)) {
       // "They are to be replaced, not improved" (housing design §10).
       return OrderRefusal::kRuleForbids;
@@ -560,6 +563,17 @@ class ConstructionSystem final : public IConstructionSystem {
     site.construction.max_crew = LevelCrew(site.type, site.level);
     site.construction.winter_works = LevelWinterWorks(site.type, site.level);
     return OrderRefusal::kNone;
+  }
+
+  /// False for a DEAD unit whose type unit_types.csv marks `restorable` 0 —
+  /// the start's wrecked water mill in the early build (the human's word of
+  /// 5 October 2026, «По мельнице б»). A live unit of such a type, and every
+  /// unit of a type the key does not close, is restorable.
+  bool Restorable(const UnitRow& site) const {
+    if (site.dead == 0 || site.type.value >= config_.type_restorable.size()) {
+      return true;
+    }
+    return config_.type_restorable[site.type.value] != 0;
   }
 
   /// Spare parts a repair of this many man-days eats, in grams. Parts are
@@ -803,6 +817,9 @@ class ConstructionSystem final : public IConstructionSystem {
     const std::uint32_t type_row = site.type.value;
     if (type_row >= config_.types.size()) {
       return OrderRefusal::kNoSuchSubject;
+    }
+    if (!Restorable(site)) {
+      return OrderRefusal::kNotRestorable;  // an upgrade revives as a repair does
     }
     const BuildType& type = config_.types[type_row];
     const std::uint32_t next = static_cast<std::uint32_t>(site.level) + 1;

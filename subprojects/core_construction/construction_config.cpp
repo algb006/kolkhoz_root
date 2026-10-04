@@ -181,6 +181,7 @@ bool ReadTypes(const ITable& unit_types, ConstructionConfig& config, std::string
 
   const std::uint32_t heating_col = unit_types.FindColumn("has_heating");
   const std::uint32_t never_demolished_col = unit_types.FindColumn("never_demolished");
+  const std::uint32_t restorable_col = unit_types.FindColumn("restorable");
 
   config.wear_column_present = has_wear_col != kNoTableColumn;
   config.types.assign(unit_types.RowCount(), BuildType{});
@@ -188,6 +189,8 @@ bool ReadTypes(const ITable& unit_types, ConstructionConfig& config, std::string
   config.type_has_heating.assign(unit_types.RowCount(), 0);
   // Absent column = every type may be taken down.
   config.type_never_demolished.assign(unit_types.RowCount(), 0);
+  // Absent column = every dead unit may be brought back, as before the key.
+  config.type_restorable.assign(unit_types.RowCount(), 1);
   for (std::uint32_t row = 0; row < unit_types.RowCount(); ++row) {
     BuildType& type = config.types[row];
     bool known = true;
@@ -239,6 +242,17 @@ bool ReadTypes(const ITable& unit_types, ConstructionConfig& config, std::string
       return false;
     }
     config.type_never_demolished[row] = static_cast<std::uint8_t>(number);
+    if (!CellOrDefault(unit_types,
+                       row,
+                       restorable_col,
+                       Range{.low = 0.0F, .high = 1.0F},
+                       1.0F,
+                       number,
+                       error)) {
+      Fail(error, "unit_types", "restorable is not 0 or 1 in row " + std::to_string(row));
+      return false;
+    }
+    config.type_restorable[row] = static_cast<std::uint8_t>(number);
     // Absent COLUMN = 0 for every type, and that means NOTHING WEARS. The
     // honest reading of "no data" (task A5, manual/73-wear-and-repair.md
     // §2): deriving it from the capacity flag or the recipe would be a
@@ -467,13 +481,19 @@ void SayZeroPricedRungs(const ITable& unit_types,
       doors += doors.empty() ? "" : ", ";
       doors += door;
     };
+    // A type the player does not build and whose dead may not come back
+    // (`restorable` 0: the start's wrecked mill, «По мельнице б»; the count
+    // lodge boarded up in Epoch I) has no repair or upgrade door left — its
+    // only units are the start's dead ones, and both doors refuse a dead one.
+    const bool closed = type.player_built == 0 && config.type_restorable[type_row] == 0;
     if (level == 1 && type.player_built != 0) {
       add("marking");
     }
-    if (level > 1) {
+    if (level > 1 && !closed) {
       add("upgrade");
     }
-    if (type.has_wear != 0 && !TypeIsOldHouse(config, DefIdFromRow<UnitTypeIdTag>(type_row))) {
+    if (type.has_wear != 0 && !closed &&
+        !TypeIsOldHouse(config, DefIdFromRow<UnitTypeIdTag>(type_row))) {
       add("repair");
     }
     if (doors.empty()) {

@@ -81,9 +81,40 @@ class RepairPolicy {
         const std::optional<float> flag = types->CellReal(type, column);
         never_demolished_[type] = flag.has_value() && *flag > 0.0F ? 1U : 0U;
       }
+      // THE DEAD NEVER BROUGHT BACK (unit_types.csv restorable; the human's
+      // word of 5 October 2026, «По мельнице б»): the core refuses a repair of
+      // a dead unit of such a type, and the wrecked mill at wear 90 is the
+      // worst-worn unit of every start — asked first every day, it would take
+      // the chairman's one repair a day for good. Absent column or cell = 1.
+      const std::uint32_t restorable = types->FindColumn("restorable");
+      restorable_.assign(types->RowCount(), 1);
+      for (std::uint32_t type = 0; restorable != core::kNoTableColumn && type < types->RowCount();
+           ++type) {
+        const std::optional<float> flag = types->CellReal(type, restorable);
+        restorable_[type] = !flag.has_value() || *flag > 0.0F ? 1U : 0U;
+      }
       type_keys_.reserve(types->RowCount());
       for (std::uint32_t type = 0; type < types->RowCount(); ++type) {
         type_keys_.emplace_back(types->CellText(type, types->FindColumn("key")));
+      }
+      // HOUSES AND STORES FIRST (boss, the logistics thread [199]; econ [140]
+      // §7, «Вопрос 2 по ремонту согласен с econ»): a dwelling of the housing
+      // class and the stores the food and goods lie in are mended at once;
+      // everything else — the priest's house and the church store among them,
+      // priced since boss's export of 5 October — only when the hands are
+      // free, i.e. no other site of the village is open (being delivered,
+      // built or repaired). Until then the run mended the worst-worn unit
+      // first, whatever it was.
+      const std::uint32_t class_column = types->FindColumn("class");
+      first_.assign(types->RowCount(), 0);
+      for (std::uint32_t type = 0; type < types->RowCount(); ++type) {
+        const std::string_view key = type_keys_[type];
+        const bool housing = class_column != core::kNoTableColumn &&
+                             types->CellText(type, class_column) == "housing" &&
+                             key != "priest_house";
+        const bool store =
+            key == "granary" || key == "food_store" || key == "goods_store" || key == "icehouse";
+        first_[type] = housing || store ? 1U : 0U;
       }
     }
     const core::ITable* resources = tables.FindTable("resources");
@@ -332,6 +363,10 @@ class RepairPolicy {
       // anyway would spend a day of the fixture's one order on a refusal.
       return false;
     }
+    if (unit.dead != 0 && unit.type.value < restorable_.size() &&
+        restorable_[unit.type.value] == 0) {
+      return false;  // the core would refuse it (kNotRestorable)
+    }
     return unit.wear >= kRepairAtWear;
   }
 
@@ -339,11 +374,30 @@ class RepairPolicy {
   /// on the wear it is ordered at: putting it off makes it dearer, so a
   /// chairman with one order a day spends it where it has grown most.
   bool NextRepair(const core::WorldState& world, core::OrderRow& order) const {
+    bool site_open = false;
+    for (const core::UnitRow& unit : world.units.rows) {
+      site_open = site_open || unit.construction.phase == core::ConstructionPhase::kDelivering ||
+                  unit.construction.phase == core::ConstructionPhase::kBuilding ||
+                  unit.construction.phase == core::ConstructionPhase::kRepairing;
+    }
     std::uint32_t best = core::kNoRow;
+    bool best_first = false;
     float worst = 0.0F;
     for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
       if (!Repairable(world, row)) {
         continue;
+      }
+      const std::uint16_t type = world.units.rows[row].type.value;
+      const bool first = type < first_.size() && first_[type] != 0;
+      if (!first && site_open) {
+        continue;  // the hands are not free: houses and stores only
+      }
+      if (best_first && !first) {
+        continue;  // a house or a store already found outranks any wear
+      }
+      if (first && !best_first) {
+        best_first = true;
+        worst = 0.0F;
       }
       if (world.units.rows[row].wear > worst) {
         worst = world.units.rows[row].wear;
@@ -402,6 +456,8 @@ class RepairPolicy {
 
   /// unit_types.csv never_demolished, by UnitTypeId (the constructor).
   std::vector<std::uint8_t> never_demolished_;
+  std::vector<std::uint8_t> restorable_;
+  std::vector<std::uint8_t> first_;  ///< 1: a house or a store, mended first.
 
   /// unit_types.csv keys, by UnitTypeId — for the print of what was spared.
   std::vector<std::string> type_keys_;

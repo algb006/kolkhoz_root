@@ -2463,10 +2463,66 @@ int TestTheZeroPricedRungsAreNamed() {
     return std::ranges::find(config.zero_priced_rungs, rung) != config.zero_priced_rungs.end();
   };
   std::cout << "zero-priced rungs: " << config.zero_priced_rungs.size() << " named\n";
-  return Expect(
-      named("water_mill 1") && !named("old_house 1") && config.zero_priced_rungs.size() == 12,
-      "zero-priced rungs: the mill's blank repair is named, the old house's is not, "
-      "twelve in all");
+  // The mill's and the count lodge's doors closed with `restorable` 0 («По
+  // мельнице б»; «Вопрос 2 по ремонту согласен с econ»), the priest's house
+  // and the church store 1-2 priced by boss's export of 5 October: the beach's
+  // rungs past 1 are still blank, and still named.
+  return Expect(named("beach 2") && !named("water_mill 1") && !named("count_lodge 2") &&
+                    !named("church_store 1") && !named("old_house 1") &&
+                    config.zero_priced_rungs.size() == 6,
+                "zero-priced rungs: the beach's blank upgrade is named; the closed mill and "
+                "lodge, the priced church store and the old house are not; six in all");
+}
+
+/// THE START'S WRECKED MILL IS NOT BROUGHT BACK (the human's word of 5 October
+/// 2026, «По мельнице б»; unit_types.csv restorable): a repair and an upgrade
+/// of the dead mill are refused kNotRestorable; a dead priest's house — dead
+/// here by the test's hand, its type restorable — takes its repair.
+int TestTheDeadMillIsNotRestored() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  if (Expect(tables != nullptr, "dead mill: the shipped tables load") != 0) {
+    return 1;
+  }
+  const auto system = core::CreateConstructionSystem(*tables, core::StubTables::kRefused);
+  if (Expect(system != nullptr, "dead mill: the shipped tables build a construction system") != 0) {
+    return 1;
+  }
+  core::WorldState world =
+      core::CreateStartWorld(*tables, core::StubTables::kAllowed, system.get(), 12345, nullptr);
+  const core::ITable* const unit_types = tables->FindTable("unit_types");
+  const auto first_of = [&world, unit_types](std::string_view key) {
+    const std::uint32_t type = unit_types->FindRowByKey(key);
+    for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+      if (world.units.rows[row].type.value == type && world.units.rows[row].level > 0) {
+        return world.units.row_ids[row];
+      }
+    }
+    return core::UnitId{};
+  };
+  const core::UnitId mill = first_of("water_mill");
+  const core::UnitId lodge = first_of("priest_house");
+  if (Expect(mill.value != core::kInvalidEntityIdValue &&
+                 lodge.value != core::kInvalidEntityIdValue &&
+                 world.units.rows[core::FindRow(world.units, mill)].dead != 0,
+             "dead mill: the start holds a dead mill and a priest's house") != 0) {
+    return failures + 1;
+  }
+  world.units.rows[core::FindRow(world.units, lodge)].dead = 1;
+  world.units.rows[core::FindRow(world.units, lodge)].wear = 60.0F;
+  const core::OrderId mend_mill = Issue(world, UnitOrder(core::OrderKind::kRepairUnit, mill));
+  const core::OrderId raise_mill = Issue(world, UnitOrder(core::OrderKind::kUpgradeUnit, mill));
+  const core::OrderId mend_lodge = Issue(world, UnitOrder(core::OrderKind::kRepairUnit, lodge));
+  Run(*system, world, 1);
+  failures += Expect(RefusalOf(world, mend_mill) == core::OrderRefusal::kNotRestorable &&
+                         RefusalOf(world, raise_mill) == core::OrderRefusal::kNotRestorable,
+                     "dead mill: its repair and its upgrade are refused kNotRestorable");
+  failures += Expect(RefusalOf(world, mend_lodge) == core::OrderRefusal::kNone &&
+                         world.units.rows[core::FindRow(world.units, lodge)].construction.phase !=
+                             core::ConstructionPhase::kNone,
+                     "dead mill: a dead priest's house, restorable, takes its repair");
+  return failures;
 }
 
 int TestTheShippedStartHasNoHouseInAStinkZone() {
@@ -2747,6 +2803,7 @@ int main() {
   failures += TestABodyKeepsItsMetre(tables);
   failures += TestCapacityNeedsALadder();
   failures += TestTheZeroPricedRungsAreNamed();
+  failures += TestTheDeadMillIsNotRestored();
   failures += TestMarkAndBuild(tables);
   failures += TestTheWinterSiteIsNoAlarm(tables);
   failures += TestCrewlessDaysLightTheSiteLamp(tables);

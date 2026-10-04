@@ -861,5 +861,9 @@ cemetery,3,board,8
 cemetery,3,stone,5
 cemetery,3,clay,3
 cemetery,3,glass,6
+church_store,2,board,0.8
+church_store,2,glass,4
+church_store,2,steel,0.05
+church_store,2,spare_part,4
 beach,1,board,0.075
 clamp,1,straw,2

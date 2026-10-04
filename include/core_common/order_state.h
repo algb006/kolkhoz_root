@@ -1274,6 +1274,15 @@ enum class OrderRefusal : std::uint8_t {
   /// word of 2026-09-27). Seam key `population_short`.
   kPopulationShort,
 
+  /// kRepairUnit, kUpgradeUnit on a DEAD unit (UnitRow::dead) whose type
+  /// unit_types.csv marks `restorable` 0: the start's wrecked water mill is not
+  /// brought back in the early build — its millstones and wheel are gone and
+  /// there is no miller (the human's word of 5 October 2026, «По мельнице б»;
+  /// boss, the logistics thread [168], [174]). Until then its repair cost
+  /// nothing (a blank labor_days) and grind nothing (no milling in the core).
+  /// Seam key `not_restorable`.
+  kNotRestorable,
+
   /// NOT A VALUE, and never written to a save or read from one: the
   /// codecs range-check 0..kOrderRefusalCount-1 and this is what they check against.
   /// Values are appended BEFORE it — that is the whole rule, and it is a

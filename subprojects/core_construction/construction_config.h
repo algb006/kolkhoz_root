@@ -430,6 +430,13 @@ struct ConstructionConfig {
   /// column or empty cell = 0.
   std::vector<std::uint8_t> type_never_demolished;
 
+  /// 0/1 per unit type, dense by UnitTypeId: unit_types.csv `restorable` —
+  /// A DEAD UNIT OF THIS TYPE MAY BE BROUGHT BACK (the human's word of 5
+  /// October 2026, «По мельнице б»; boss's export of the same night): 0
+  /// refuses a repair or an upgrade of a dead one (kNotRestorable); a live one
+  /// mends as any other. Missing column or empty cell = 1, as before the key.
+  std::vector<std::uint8_t> type_restorable;
+
   /// WAS THERE A has_wear COLUMN AT ALL? Without this the config cannot tell
   /// "this unit has nothing to wear" from "the table said nothing", because
   /// both arrive as has_wear = 0 — and those are two different answers to
