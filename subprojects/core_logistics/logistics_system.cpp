@@ -25,6 +25,7 @@
 #include "core_common/logistics_state.h"
 #include "core_common/order_state.h"
 #include "core_common/state_table_ops.h"
+#include "core_common/work_seam.h"
 #include "core_common/world_state.h"
 #include "core_log/log.h"
 #include "core_tables/required_tables.h"
@@ -70,6 +71,22 @@ bool Served(const WorldState& world, const LogisticsTaskRow& task) {
   return std::ranges::any_of(world.residents.rows, [&task](const ResidentRow& person) {
     return WorkServesTask(person.work, task);
   });
+}
+
+/// THE LOAD'S CARTING IS DONE FOR TODAY: its seam (work_seam.h, the carting
+/// still owed — what the carters drain hour by hour and FollowThePlan leaves
+/// when empty) stands at nought. The grams land only at the day's last tick
+/// (SettleHauling), so the task stays at its level until then with nobody on
+/// it, and nobody is needed. An empty seam is also a load with no room to go
+/// to: no carter can serve that either, and its lamps are the store's
+/// (kHarvestWaitingOnField, kStoreFull).
+/// UNTIL 0.37.194 the lamp's clock asked Served alone and counted those hours:
+/// village 1932, year 4, a hay heap carted by 10 o'clock waited «9 hours» to
+/// 19 (boss, the logistics thread [125]-[129]: the clock measured the book,
+/// not the carting).
+bool CartedToday(const WorldState& world, const LogisticsTaskRow& task) {
+  const float* const seam = WorkSeamOf(world, HaulingWorkOf(task));
+  return seam != nullptr && !(*seam > 0.0F);
 }
 
 /// kLogisticsLate's condition: a task of level 0, not paused, its clock of
@@ -246,8 +263,9 @@ class LogisticsSystem final : public ILogisticsSystem {
   void SayLateLoads(WorldState& current) const override {
     // THE LAMP'S CLOCK, AN HOUR ON (0.37.192; LogisticsTaskRow::
     // unserved_light_hours): an hour of working light with nobody on a task
-    // of level 0 adds one; an hour served, or the task below level 0 or
-    // paused, sets it to nought; a night hour leaves it as it is.
+    // of level 0 adds one; an hour served, or carted for today (CartedToday;
+    // 0.37.194), or the task below level 0 or paused, sets it to nought; a
+    // night hour leaves it as it is.
     // AND ITS FIRST HOUR, SAID (B8; event_state.h, kUrgentLoadWaits): the hour
     // the clock reaches kLateAfterHours — once for each wait, a new wait after
     // a served hour said again.
@@ -256,7 +274,8 @@ class LogisticsSystem final : public ILogisticsSystem {
                        hour < SunsetHour(current.weather.daylight_hours);
     for (std::uint32_t row = 0; row < current.logistics_tasks.rows.size(); ++row) {
       LogisticsTaskRow& task = current.logistics_tasks.rows[row];
-      if (task.level != LogisticsLevel::kUrgent || task.paused || Served(current, task)) {
+      if (task.level != LogisticsLevel::kUrgent || task.paused || Served(current, task) ||
+          CartedToday(current, task)) {
         task.unserved_light_hours = 0;
         continue;
       }

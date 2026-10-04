@@ -759,6 +759,19 @@ int TestTheLateLoadsLamp() {
   ordinary.logistics_tasks.rows[0].level = core::LogisticsLevel::kOrdinary;
   at(ordinary, ten, hours, said);
   failures += Expect(hours == -1 && said == 0, "late loads: an ordinary task — no lamp");
+  // CARTED FOR TODAY (0.37.194; boss, the logistics thread [129]): the heap's
+  // seam drained to nought, its grams still on the field until the day's
+  // last tick — nobody is needed, so no hour counts, and a clock that had run
+  // is set to nought. Its pair is `fresh` above: the same heap with a day of
+  // carting owed lights the lamp at the same hour.
+  core::WorldState carted = fresh;
+  carted.fields.rows[0].haul_days_remaining = 0.0F;
+  carted.logistics_tasks.rows[0].unserved_light_hours = 3;
+  at(carted, ten, hours, said);
+  failures += Expect(
+      hours == -1 && said == 0 && carted.logistics_tasks.rows[0].unserved_light_hours == 0,
+      "late loads: a heap carted for today, its grams not yet landed — no lamp, the clock at "
+      "nought");
 
   // THE ADVICE (0.37.190; AlarmAdvice::kDeclareDayWorking): day 3 a Sunday
   // (day 0 a Thursday) — «declare the day working»; a working day — none;
