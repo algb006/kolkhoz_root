@@ -177,10 +177,10 @@ Grams UnreservedEverywhere(const WorldState& world, ResourceId resource) {
 /// writes it (resources design §6): the seed above the fodder.
 ///
 /// THIS PART — the seed and the plan rungs with their rot's margins — IS
-/// WHAT AN ORDER OPENS: kUnsealFund's seed and plan reserve come off these
-/// rungs (fund_ladder.h, HeldAboveFodder). Next year's hold and the plough's
-/// oats, added by FeedAllowance, are opened by none (0.37.185: the starving
-/// herd's lamp names a fund only for this part; HerdFeedInFunds).
+/// OPENED BY kUnsealFund's seed fund and plan reserve (fund_ladder.h,
+/// HeldAboveFodder); HerdHoldsOf adds the plough's oats, which no order
+/// opens, and next year's hold, which a plan reserve's release opens past
+/// this rung since 0.37.186 (HerdFeedInFunds counts both opened ones).
 ResourceAmounts SeedAndPlanHeld(const ProductionConfig& config, const WorldState& world) {
   const std::vector<SeedNorm> seed_norms = SeedNormsOf(config);
   // THE HERDS STAND UNDER THE WHOLE PLAN RUNG — the harvest to come is not
@@ -206,16 +206,33 @@ ResourceAmounts SeedAndPlanHeld(const ProductionConfig& config, const WorldState
   return allowance;
 }
 
-/// @brief What the kolkhoz herds may eat of each resource today (the
-/// contract is HerdFeedAllowance's).
+/// The rungs the kolkhoz herds stand below today, by resource, in the
+/// ladder's order from the bottom (FeedAllowance's parts; HerdFeedInFunds
+/// reads the same — one home).
+struct HerdHolds {
+  /// The seed and the plan rungs with their rot's margins (SeedAndPlanHeld):
+  /// kUnsealFund's seed fund and plan reserve open them.
+  ResourceAmounts seed_and_plan;
+
+  /// The plough's oats on a day nobody ploughs (PloughFeedHold): no order
+  /// opens them.
+  ResourceAmounts plough;
+
+  /// Next year's hold, less what a release of the plan reserve frees past
+  /// this year's plan rung (NextYearRungLeft, since 0.37.186).
+  ResourceAmounts next_year;
+};
+
 /// @param ploughing_today Whether the plough or the harrow is out today: on
 ///        such a day the ploughing's oats are the plough's to eat, and are
 ///        not held (PloughFeedHold). The fodder fund's own read passes true —
 ///        the fund is the team's, the plough's share inside it.
-ResourceAmounts FeedAllowance(const ProductionConfig& config,
-                              const WorldState& world,
-                              bool ploughing_today) {
-  ResourceAmounts allowance = SeedAndPlanHeld(config, world);
+HerdHolds HerdHoldsOf(const ProductionConfig& config,
+                      const WorldState& world,
+                      bool ploughing_today) {
+  HerdHolds holds;
+  holds.seed_and_plan = SeedAndPlanHeld(config, world);
+  holds.plough.assign(holds.seed_and_plan.size(), 0);
   // AND WHAT NEXT YEAR'S OWN HARVEST WILL NOT PAY (0.37.2; boss-core-epoch1-
   // queue [52]-[54]): the rotation gives oats 19 t one year and 3.7 t the
   // next. While the carts' horses ate hay the good year's carry-over lay, and
@@ -224,7 +241,18 @@ ResourceAmounts FeedAllowance(const ProductionConfig& config,
   // shipped 1.65 t of its 2.5 (seed 1933, years 4-5). Held with the rot of
   // its wait, to the end of next year, where the last of it is used. One
   // hold with the people's issue (NextYearHold; boss [60], (г)).
-  ResourceAmounts next_year = NextYearHold(config, world);
+  //
+  // AND OPENED BY THE SAME ORDER AS THE PEOPLE'S (0.37.186; boss, the
+  // logistics thread [77] p. 3): a release of the plan reserve frees it past
+  // this year's plan rung (fund_ladder.h, NextYearRungLeft). Until then the
+  // herds read the hold whole — grain held there was shut from a herd by no
+  // door at all, and the starving herd's lamp, naming «unseal a fund», would
+  // have sent the chairman to a door that fed nobody. The plan rung is the
+  // herds' own (the whole of it: no harvest to come, as SeedAndPlanHeld).
+  const std::vector<SeedNorm> seed_norms = SeedNormsOf(config);
+  ResourceAmounts next_year =
+      NextYearRungLeft(world, seed_norms, true, config.milk_resource, NextYearHold(config, world));
+  next_year.resize(holds.seed_and_plan.size(), 0);
   // AND THE PLOUGH'S OATS ON A DAY NOBODY PLOUGHS (0.37.2; boss [59]-[60], (а)).
   //
   // THE PLOUGH STANDS ABOVE NEXT YEAR'S HOLD (0.37.3; boss [62]-[63], (д)):
@@ -239,11 +267,23 @@ ResourceAmounts FeedAllowance(const ProductionConfig& config,
     Grams& held = next_year[plough.resource.value];
     held = held > plough.grams ? held - plough.grams : 0;
   }
-  for (std::size_t index = 0; index < allowance.size() && index < next_year.size(); ++index) {
-    allowance[index] += next_year[index];
+  if (!ploughing_today && plough.held && plough.resource.value < holds.plough.size()) {
+    holds.plough[plough.resource.value] = plough.grams;
   }
-  if (!ploughing_today && plough.held && plough.resource.value < allowance.size()) {
-    allowance[plough.resource.value] += plough.grams;
+  holds.next_year = std::move(next_year);
+  return holds;
+}
+
+/// @brief What the kolkhoz herds may eat of each resource today (the
+/// contract is HerdFeedAllowance's): the stores above every rung of
+/// HerdHoldsOf.
+ResourceAmounts FeedAllowance(const ProductionConfig& config,
+                              const WorldState& world,
+                              bool ploughing_today) {
+  const HerdHolds holds = HerdHoldsOf(config, world, ploughing_today);
+  ResourceAmounts allowance = holds.seed_and_plan;
+  for (std::size_t index = 0; index < allowance.size(); ++index) {
+    allowance[index] += holds.plough[index] + holds.next_year[index];
   }
   for (std::size_t index = 0; index < allowance.size(); ++index) {
     // UNRESERVED, as the plan rung counts it (fund_ladder.h, PlanRungGrams):
@@ -1013,12 +1053,17 @@ ResourceAmounts HerdFeedAllowance(const ProductionConfig& config, const WorldSta
 }
 
 ResourceAmounts HerdFeedInFunds(const ProductionConfig& config, const WorldState& world) {
-  // The stores fill the ladder from its bottom rung up: of the stock, the
-  // seed and the plan take theirs first.
-  ResourceAmounts in_funds = SeedAndPlanHeld(config, world);
+  // The stores fill the ladder from its bottom rung up: the seed and the
+  // plan, the plough's oats (no order opens them), next year's hold. What
+  // lies in the first and the last is in a fund the chairman can unseal.
+  const HerdHolds holds = HerdHoldsOf(config, world, PloughingToday(world));
+  ResourceAmounts in_funds(holds.seed_and_plan.size(), 0);
   for (std::size_t index = 0; index < in_funds.size(); ++index) {
-    const Grams stock = UnreservedEverywhere(world, DefIdFromIndex<ResourceIdTag>(index));
-    in_funds[index] = std::min(stock, in_funds[index]);
+    Grams left = UnreservedEverywhere(world, DefIdFromIndex<ResourceIdTag>(index));
+    const Grams seed_and_plan = std::min(left, holds.seed_and_plan[index]);
+    left -= seed_and_plan;
+    left -= std::min(left, holds.plough[index]);
+    in_funds[index] = seed_and_plan + std::min(left, holds.next_year[index]);
   }
   return in_funds;
 }

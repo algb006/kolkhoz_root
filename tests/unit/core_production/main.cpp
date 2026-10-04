@@ -1298,9 +1298,17 @@ int CheckTheHerdDoesNotEatNextYear() {
   config.plan_grain_share = 1.0F;
   config.plan_positions = {{.crop = core::CropId{0}, .area_share = 0.1F}};
 
-  const auto herd_day = [&config](float next_year_ha, core::Grams& unpaid) {
+  const auto herd_day = [&config](float next_year_ha,
+                                  core::Grams& unpaid,
+                                  core::Grams released = 0,
+                                  core::Grams* in_funds = nullptr) {
     core::WorldState world = MakeHerdWorld(100.0F);
     world.plan.due.assign(1, 50 * kKilo);
+    if (released > 0) {
+      std::vector<core::Grams>& plan_reserve =
+          world.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kPlanReserve)];
+      plan_reserve.assign(1, released);
+    }
     world.plan.worked_ha_last_year = 1.0F;
     core::FieldRow next_year;
     next_year.kind = core::LandKind::kArable;
@@ -1315,6 +1323,9 @@ int CheckTheHerdDoesNotEatNextYear() {
     year_after.rotation_year2 = core::CropId{0};
     AppendRow(world.fields, year_after);
     unpaid = core::NextYearUnpaidGrams(config, world, core::ResourceId{0}, world.calendar.day);
+    if (in_funds != nullptr) {
+      *in_funds = core::AmountOf(core::HerdFeedInFunds(config, world), core::ResourceId{0});
+    }
     AddHerd(world, 0, 4, 2, true);
     core::RunHerdDay(config, world);
     return StoreOf(world, 0);
@@ -1334,6 +1345,25 @@ int CheckTheHerdDoesNotEatNextYear() {
   // Thick: 20 kg owed and 50 of seed against a 100 kg harvest — nothing held.
   failures += Expect(thick_unpaid == 0 && thick == 96 * kKilo,
                      "a thick next year pays its own way: the herd eats its 4 kg in full");
+  // THE PLAN RESERVE'S RELEASE OPENS NEXT YEAR'S HOLD FOR THE HERD TOO
+  // (0.37.186; boss, the logistics thread [77] p. 3; fund_ladder.h,
+  // NextYearRungLeft): the thin year with the plan reserve unsealed by 100 kg
+  // — this year's 50 and next year's 50 open, and the herd eats its 4 kg.
+  // Until 0.37.186 it read next year's hold whole and ate none; and the
+  // starving herd's lamp counts the hold as in a fund: all 100 kg of the thin
+  // year are (HerdFeedInFunds), where 0.37.185 counted this year's 50.
+  core::Grams released_unpaid = 0;
+  const core::Grams released = herd_day(0.1F, released_unpaid, 100 * kKilo);
+  core::Grams thin_in_funds = 0;
+  herd_day(0.1F, thin_unpaid, 0, &thin_in_funds);
+  std::cout << "herd, next year: the plan reserve unsealed by 100 kg - the store after the day "
+            << released << " g; the thin year in the funds " << thin_in_funds << " g\n";
+  failures += Expect(released == 96 * kKilo,
+                     "a thin next year, the plan reserve unsealed: next year's hold opens with "
+                     "this year's plan, and the herd eats its 4 kg");
+  failures +=
+      Expect(thin_in_funds == 100 * kKilo,
+             "a thin next year: the lamp counts next year's hold as in a fund — all 100 kg");
   return failures;
 }
 

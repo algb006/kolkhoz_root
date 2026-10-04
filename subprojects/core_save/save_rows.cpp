@@ -82,7 +82,9 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // Save 138 (0.37.182, B6): the wait, an optional WaitRecord (56 with its flag,
 // aligned to 8, and the row's own alignment rises to 8: 244 -> 248 + 56) —
 // 304 and fifty-five, predicted before the build.
-static_assert(sizeof(ResidentRow) == 304,
+// Save 139 (0.37.186): the wait's due tick (+8: the record 48 -> 56, with its
+// flag 56 -> 64) — 312 and fifty-five, predicted before the build.
+static_assert(sizeof(ResidentRow) == 312,
               "ResidentRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 59: distiller_supplied_month, a distiller's supplied month
 // (crime §7, register 206) — 43 fields; the size is read off the build.
@@ -237,7 +239,9 @@ static_assert(AggregateArity<UnitRow>() == 18,
 // Save 138 (0.37.182, B6): the wait, an optional WaitRecord (48 bytes and its
 // flag, aligned to 8: 56) — 88 -> 144 and twenty-nine, predicted before the
 // build.
-static_assert(sizeof(HerdRow) == 144, "HerdRow changed — update the codec and VERSION_SAVE");
+// Save 139 (0.37.186): the wait's due tick — 144 -> 152 and twenty-nine,
+// predicted before the build.
+static_assert(sizeof(HerdRow) == 152, "HerdRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<HerdRow>() == 29,
               "HerdRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-13: the felling mark — a stand id and a volume — took the order row
@@ -729,8 +733,9 @@ ResidentRow ReadResidentRow(LoadSource& source) {
 // ---------------------------------------------------------------------------
 
 // One byte for its presence, then, when present, the kind (1), since (8), the
-// term (4), last_polled (8) and the target's three ids (12): 34 bytes in all,
-// 1 without - predicted before the build.
+// term (4), last_polled (8), due (8, save 139) and the target's three ids
+// (12): 42 bytes in all, 1 without - predicted before the build (34 until
+// save 139).
 void WriteWait(ByteWriter& out, const std::optional<WaitRecord>& wait) {
   out.WriteU8(wait.has_value() ? 1U : 0U);
   if (!wait.has_value()) {
@@ -740,6 +745,7 @@ void WriteWait(ByteWriter& out, const std::optional<WaitRecord>& wait) {
   out.WriteU64(wait->since);
   out.WriteU32(wait->term_hours);
   out.WriteU64(wait->last_polled);
+  out.WriteU64(wait->due);  // save 139
   WriteEntityId(out, wait->target.resident);
   WriteEntityId(out, wait->target.unit);
   WriteEntityId(out, wait->target.field);
@@ -755,6 +761,7 @@ std::optional<WaitRecord> ReadWait(LoadSource& source) {
   const Tick since = in.ReadU64();
   const std::uint32_t term = in.ReadU32();
   const Tick last_polled = in.ReadU64();
+  const Tick due = in.ReadU64();  // save 139
   WaitTarget target;
   target.resident = ReadEntityId<ResidentId>(in);
   target.unit = ReadEntityId<UnitId>(in);
@@ -765,6 +772,7 @@ std::optional<WaitRecord> ReadWait(LoadSource& source) {
   }
   WaitRecord wait(kind, since, term, target);
   wait.last_polled = last_polled;
+  wait.due = due;
   return wait;
 }
 

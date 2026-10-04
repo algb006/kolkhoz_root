@@ -207,16 +207,19 @@ ResourceAmounts HerdFeedAllowance(const ProductionConfig& config, const WorldSta
 
 /// @brief What lies in the stores of each resource and is shut from the
 /// herds by a FUND THE CHAIRMAN CAN UNSEAL, grams, dense by ResourceId: the
-/// stock unreserved in every unit, up to the seed and the plan rungs with
-/// their rot's margins — the part kUnsealFund's seed fund and plan reserve
-/// open (0.37.185; livestock design §11, «Стадо само в запертый фонд не
-/// входит; лампа обязана назвать дверь»). The starving herd's lamp reads it
-/// to tell «the feed is in a fund» from «there is no feed».
+/// stock unreserved in every unit, filling the herds' ladder from the bottom
+/// — the seed and the plan rungs with their rot's margins, the plough's oats,
+/// next year's hold — and counted in the first and the last: what
+/// kUnsealFund's seed fund and plan reserve open (0.37.185; livestock design
+/// §11, «Стадо само в запертый фонд не входит; лампа обязана назвать дверь»).
+/// The starving herd's lamp reads it to tell «the feed is in a fund» from
+/// «there is no feed».
 ///
-/// NOT COUNTED, because no order opens them: next year's hold (NextYearHold —
-/// unlike the people's issue, the herds' read of it takes no release off it;
-/// found writing this door, put to boss) and the plough's oats on a day
-/// nobody ploughs. Grain those two hold reads as no feed.
+/// NEXT YEAR'S HOLD COUNTS SINCE 0.37.186, when the herds' read of it began
+/// to take a plan reserve's release off it, as the people's issue does
+/// (NextYearRungLeft; boss, the logistics thread [77] p. 3). NOT COUNTED: the
+/// plough's oats on a day nobody ploughs — no order opens them, and grain
+/// they hold reads as no feed.
 ResourceAmounts HerdFeedInFunds(const ProductionConfig& config, const WorldState& world);
 
 /// @brief The milk the KOLKHOZ's herds give in one day at each herd's factor

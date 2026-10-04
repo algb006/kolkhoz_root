@@ -780,8 +780,10 @@ enum class AlarmAdvice : std::uint8_t {
   /// NO FEED OF THE KIND IN A FUND — «подвезти корма или уменьшить стадо»
   /// (0.37.185; the dictionary's `bring_feed`): kHerdStarving's other cause,
   /// the lamp's text until then. The feed of the herd's kind is not in the
-  /// stores, or is held by what no order opens (next year's hold, the
-  /// plough's oats; HerdFeedInFunds). Two moves, one word: the core does not
+  /// stores, or is held by what no order opens (the plough's oats on a day
+  /// nobody ploughs; HerdFeedInFunds — next year's hold too until 0.37.186,
+  /// when a plan reserve's release began to open it for the herds). Two
+  /// moves, one word: the core does not
   /// weigh them here (kHerdHayShortAhead does, with its numbers).
   kBringFeed,
 

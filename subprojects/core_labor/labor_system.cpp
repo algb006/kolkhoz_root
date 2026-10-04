@@ -2260,25 +2260,57 @@ class LaborSystem final : public ILaborSystem {
     }
   }
 
-  /// @brief A passenger's wait ends when the cart has come (B6): by the end
-  ///        of its term at the latest — the seating seats nobody whose wait
-  ///        runs past the term (cart_passengers.cpp) — and at the day's last
-  ///        hour whatever stands. Struck before the watchdog walks (phase 6),
-  ///        so the dog sees a wait only while it is honest or once it hangs.
-  ///        It was struck the hour after he reached his point until 0.37.185:
-  ///        the same while the term is one hour (STUB core), and a wait of a
-  ///        longer term would have been struck before its term was out.
-  ///        THE DOG'S «TERM PASSED» CANNOT FIRE FOR A PASSENGER, in this form
-  ///        and in 0.37.182's: the verdict needs the tick PAST since + term
-  ///        (wait_rules.cpp) and this strike comes at it, in phase 3, before
-  ///        the dog walks in phase 6. The dog sees a passenger's hang by its
-  ///        cart's driver alone (the horse or the work gone). The verdict lives
-  ///        once the strike asks whether the cart has come rather than the
-  ///        clock — the record knows no hour the cart is due (named in
-  ///        0.37.185, put to boss).
+  /// @brief Whether a passenger's cart HAS COME to him (0.37.186): its
+  ///        driver is there and holds a horse, and today's plan does not
+  ///        refute it. «Come» is «the hour the seating estimated, and the cart
+  ///        alive»: the core's cart has no hour of arrival but an estimate.
+  ///        THE PLAN REFUTES, IT DOES NOT CONFIRM: a plan that has this
+  ///        driver's goods cart and carries the passenger on none of its legs
+  ///        says the cart is not bringing him; a driver the plan has no cart
+  ///        for — no plan today, no task on his load, before the first horse
+  ///        yard there are no tasks at all — is taken at the seating's word.
+  ///        Asked for a cart in the plan, every passenger of a planless
+  ///        morning would have hung, and the dog walked them all.
+  static bool PassengersCartCame(const WorldState& current, ResidentId passenger, ResidentId of) {
+    const std::uint32_t driver = FindRow(current.residents, of);
+    if (driver == kNoRow || current.residents.rows[driver].work.rides_horse == 0) {
+      return false;
+    }
+    if (current.groom_plan.day != current.calendar.day) {
+      return true;
+    }
+    bool planned = false;
+    bool carried = false;
+    for (const CartPlan& cart : current.groom_plan.carts) {
+      if (cart.driver.value != of.value || cart.on_foot) {
+        continue;
+      }
+      planned = true;
+      for (const CartLeg& leg : cart.legs) {
+        carried = carried || std::ranges::any_of(leg.riders, [&](ResidentId rider) {
+                    return rider.value == passenger.value;
+                  });
+      }
+    }
+    return !planned || carried;
+  }
+
+  /// @brief A passenger's wait ends when the cart has come (B6): at the hour
+  ///        it is due at his point (WaitRecord::due, the seating's) if the
+  ///        cart has come (PassengersCartCame); with the work it served; and
+  ///        at the day's last hour whatever stands. A cart that has not come
+  ///        leaves the record standing, and past its term the dog finds it —
+  ///        «term passed» — and he walks (wait_rules.cpp). Struck before the
+  ///        watchdog walks (phase 6).
+  ///        BY THE CLOCK ALONE UNTIL 0.37.186: the hour after he reached his
+  ///        point (0.37.182-0.37.184), then the term's end (0.37.185) — and in
+  ///        both forms the dog's «term passed», which needs the tick PAST the
+  ///        term, could not fire for a passenger: the strike came first
+  ///        (boss, the logistics thread [77] p. 2).
   static void ClearPassengerWaits(WorldState& current, bool day_ends) {
     const Tick now = current.calendar.tick;
-    for (ResidentRow& person : current.residents.rows) {
+    for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
+      ResidentRow& person = current.residents.rows[row];
       if (!person.wait.has_value() || person.wait->kind != WaitKind::kPassengerAwaitsCart) {
         continue;
       }
@@ -2288,7 +2320,10 @@ class LaborSystem final : public ILaborSystem {
       // in 0.37.182's canon, all «work gone», stood nought hours.
       const bool work_gone = person.work.kind == WorkKind::kNone ||
                              person.work.rides_cart_of.value != person.wait->target.resident.value;
-      if (day_ends || work_gone || now >= person.wait->since + person.wait->term_hours) {
+      const bool came =
+          now >= person.wait->due &&
+          PassengersCartCame(current, current.residents.row_ids[row], person.wait->target.resident);
+      if (day_ends || work_gone || came) {
         person.wait.reset();
       }
     }

@@ -114,6 +114,17 @@ struct WaitRecord {
   /// The next look is due when the kind's poll interval has passed since it.
   Tick last_polled;
 
+  /// The tick the awaited thing is DUE — the honest end of the wait, at or
+  /// before the term's end (save 139, 0.37.186; boss, the logistics thread
+  /// [77] p. 2). The constructor sets the term's end; a kind that knows
+  /// better writes it: a passenger's is the hour his cart reaches his point
+  /// (the seating, cart_passengers.cpp). A wait is struck as HONEST at `due`
+  /// only when what it waits for has come (the kind's own question); one
+  /// still standing past the term is the dog's «term passed». Until 0.37.186
+  /// a passenger's wait was struck by the clock alone, and the dog's term
+  /// verdict could not fire for it (0.37.185).
+  Tick due;
+
   WaitTarget target;
 };
 

@@ -248,13 +248,16 @@ core::WorldState MakeWorld() {
   second.work.rides_cart_of = core::ResidentId{1};
   // Save 138: he waits for that cart at a point of its way — every field of
   // the wait off its default, last_polled apart from since.
+  // Save 139: its due tick apart from since, last_polled and the default (the
+  // term's end, 7'064) — a swap of any two of them is seen.
   second.wait = core::WaitRecord(
       core::WaitKind::kPassengerAwaitsCart,
       7'061,
-      1,
+      3,
       core::WaitTarget{
           .resident = core::ResidentId{1}, .unit = core::UnitId{2}, .field = core::FieldId{3}});
   second.wait->last_polled = 7'062;
+  second.wait->due = 7'063;
   core::AppendRow(world.residents, second);
   core::ResidentRow third;
   const core::ResidentId third_id = core::AppendRow(world.residents, third);
@@ -1570,7 +1573,11 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // written before the build (named in the WorkAssignment's tripwire, 44 ->
     // 48, and not carried here; read off the build). The second resident's
     // cart is then set off its default, and the hash moves with it.
-    {"residents", 497, 0x69d9ffeb09c9b30aULL},
+    // Save 139 (0.37.186): +8 — the wait's due tick, one wait among the
+    // residents; predicted 497 -> 505 with only the herds beside it moving,
+    // before the build — the size held; the hash moved with the due tick and
+    // the passenger's term set off their defaults.
+    {"residents", 505, 0xdb47b6aa5869da7eULL},
     // 2026-09-18, save 57: +2 — ration_granted, one byte per family of two.
     // Save 60: +2 — a yard's dry months, one byte per family of two.
     // Save 65: families +8 (overwork_penalty, two yards), fields +6 (the avral's
@@ -1626,7 +1633,9 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // Save 120: +2 — the cold nights' counter and yesterday's cold place, a
     // byte each, one herd; predicted 93 -> 94 for the counter alone, then 95
     // with the place, every other section unmoved, before each build.
-    {"herds", 129, 0xd61b9b960a1d97b0ULL},
+    // Save 139 (0.37.186): +8 — the horse's wait's due tick; predicted 129 ->
+    // 137 before the build, held.
+    {"herds", 137, 0x909f4decc3319ee1ULL},
     // 2026-09-16, save 48: +6 bytes, one for each of the six orders — the
     // bought head's sex. The witness named the section, the delta and the
     // offset without being asked, which is what it was rewritten for this
@@ -2642,16 +2651,16 @@ int main() {
   {
     const auto& waiting = loaded.residents.rows[1].wait;
     const auto& horse = loaded.herds.rows[0].wait;
-    failures +=
-        Expect(!loaded.residents.rows[0].wait.has_value() && waiting.has_value() &&
-                   waiting->kind == core::WaitKind::kPassengerAwaitsCart &&
-                   waiting->since == 7'061 && waiting->term_hours == 1 &&
-                   waiting->last_polled == 7'062 && waiting->target.resident.value == 1 &&
-                   waiting->target.unit.value == 2 && waiting->target.field.value == 3 &&
-                   horse.has_value() && horse->kind == core::WaitKind::kHorseAtWorkersYard &&
-                   horse->term_hours == 20 && horse->target.resident.value == 2,
-               "the waits came back: the passenger's and the herd's whole, the absent one absent "
-               "(save 138)");
+    failures += Expect(
+        !loaded.residents.rows[0].wait.has_value() && waiting.has_value() &&
+            waiting->kind == core::WaitKind::kPassengerAwaitsCart && waiting->since == 7'061 &&
+            waiting->term_hours == 3 && waiting->last_polled == 7'062 && waiting->due == 7'063 &&
+            waiting->target.resident.value == 1 && waiting->target.unit.value == 2 &&
+            waiting->target.field.value == 3 && horse.has_value() &&
+            horse->kind == core::WaitKind::kHorseAtWorkersYard && horse->term_hours == 20 &&
+            horse->due == 7'060 && horse->target.resident.value == 2,
+        "the waits came back: the passenger's and the herd's whole, the due ticks "
+        "too, the absent one absent (save 138, 139)");
   }
   failures += Expect(loaded.barter.worth_starting_raised == 1 &&
                          loaded.barter.dry_days_in_row == 3 && loaded.barter.dry_givers == 5 &&

@@ -262,20 +262,29 @@ PassengerTally SeatCartPassengers(const LaborConfig& config, WorldState& current
     // HE WAITS AT HIS POINT, AND THE WAIT HAS A RECORD WITH ITS TERM (routing
     // stage B, B6; architecture §7ж³; wait_state.h kPassengerAwaitsCart):
     // from the hour he reaches the point, the term transport.csv's
-    // wait_limit_hours (one game hour, STUB core). The labour hour strikes it
-    // the hour after (ClearPassengerWaits): an honest wait is an hour at
-    // most, so the watchdog sees only a cart that is gone. No wait, no
-    // record.
+    // wait_limit_hours (one game hour, STUB core). DUE AT THE HOUR THE CART
+    // REACHES HIM (0.37.186; boss, the logistics thread [77] p. 2): the
+    // labour hour strikes the record then, if the cart has come
+    // (ClearPassengerWaits); a cart that has not leaves it standing for the
+    // dog. No wait, no record.
     if (best.wait_hours > 0.0F) {
       const DayWindow window = SolarWindow(current.weather.daylight_hours);
       const Tick since = (static_cast<Tick>(current.calendar.day) * kTicksPerDay) +
                          HourOfDayMoment(window.sunrise + best.walk_to_hours);
       const auto term = static_cast<std::uint32_t>(std::ceil(config.cart_wait_limit_hours));
-      current.residents.rows[walker.row].wait = WaitRecord(
+      WaitRecord record(
           WaitKind::kPassengerAwaitsCart,
           since,
           term,
           WaitTarget{.resident = carts[best_cart].driver, .unit = UnitId{}, .field = FieldId{}});
+      // The hour of his point and the cart's arrival there, each rounded as
+      // the clock counts hours (HourOfDayMoment): never before `since`, never
+      // after the term's end — the seating seats nobody whose wait runs past
+      // the term.
+      const Tick arrives = (static_cast<Tick>(current.calendar.day) * kTicksPerDay) +
+                           HourOfDayMoment(window.sunrise + best.walk_to_hours + best.wait_hours);
+      record.due = std::clamp(arrives, since, record.due);
+      current.residents.rows[walker.row].wait = record;
       ++tally.waits_made;
     }
     ++tally.seated;

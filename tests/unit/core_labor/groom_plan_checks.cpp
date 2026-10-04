@@ -265,16 +265,29 @@ std::pair<bool, bool> TheHorseAfterARaise(core::ILaborSystem& labor, bool raised
   return {logs_ride, ploughs};
 }
 
+/// A passenger's wait as the fixture below makes it.
+struct PassengerWait {
+  bool work_ended = false;
+  std::uint32_t term = 1;
+  /// The hour the labour hour runs.
+  std::uint32_t hour = 3;
+  /// Hours after `since` the cart is due at his point; 0 leaves the record's
+  /// own (the term's end).
+  std::uint32_t due_after = 0;
+  /// Whether today's plan carries him on the driver's cart.
+  bool planned = true;
+  /// Whether today's plan has the driver's cart at all.
+  bool cart_planned = true;
+};
+
 /// A PASSENGER'S WAIT GOES WITH ITS WORK (0.37.183; 0.37.182's canon: 29
 /// firings of the dog, all «work gone», the record outliving the work the
-/// labour hour ended): a passenger waiting from hour 10 for his driver's cart,
-/// at hour 3 — his work ended (the pair: still on the cart) — keeps his wait
-/// only while he still has the work and the cart. Returns whether the wait
-/// stands after hour 3.
-bool TheWaitAfterTheWork(core::ILaborSystem& labor,
-                         bool work_ended,
-                         std::uint32_t term = 1,
-                         std::uint32_t hour = 3) {
+/// labour hour ended), AND WITH THE CART THAT HAS COME (0.37.186): a passenger
+/// waiting from hour 10 for his driver's cart keeps his wait while he still
+/// has the work and the cart and the cart is not yet due — or is due and not
+/// come, which is the dog's. Returns whether the wait stands after the hour.
+bool TheWaitAfterTheWork(core::ILaborSystem& labor, const PassengerWait& asked) {
+  const bool work_ended = asked.work_ended;
   core::WorldState world = Village(2);
   core::WorkAssignment& driver = world.residents.rows[0].work;
   driver.kind = core::WorkKind::kHauling;
@@ -295,11 +308,24 @@ bool TheWaitAfterTheWork(core::ILaborSystem& labor,
   const core::Tick since = (static_cast<core::Tick>(kWorkingDay) * core::kTicksPerDay) + 10;
   rider.wait = core::WaitRecord(core::WaitKind::kPassengerAwaitsCart,
                                 since,
-                                term,
+                                asked.term,
                                 core::WaitTarget{.resident = world.residents.row_ids[0],
                                                  .unit = core::UnitId{},
                                                  .field = core::FieldId{}});
-  RunHour(labor, world, hour);
+  if (asked.due_after != 0) {
+    rider.wait->due = since + asked.due_after;
+  }
+  // Today's plan: the driver's goods cart, its first leg from the yard to
+  // the load, the passenger on it — or a plan without him.
+  world.groom_plan.day = kWorkingDay;
+  core::CartPlan cart{.driver = world.residents.row_ids[0], .legs = {core::CartLeg{}}};
+  if (asked.planned) {
+    cart.legs.front().riders.push_back(world.residents.row_ids[1]);
+  }
+  if (asked.cart_planned) {
+    world.groom_plan.carts.push_back(cart);
+  }
+  RunHour(labor, world, asked.hour);
   return world.residents.rows[1].wait.has_value();
 }
 
@@ -339,23 +365,35 @@ int CheckTheGroomsPlan() {
                      "a load raised to level 0 after the morning takes the horse in the top-up");
   failures += Expect(!kept_logs && kept_ploughs,
                      "an ordinary load leaves the plough its horse in the top-up");
-  failures += Expect(!TheWaitAfterTheWork(*labor, true),
+  failures += Expect(!TheWaitAfterTheWork(*labor, {.work_ended = true}),
                      "a passenger's wait: his work ended, the wait goes with it");
   failures +=
-      Expect(TheWaitAfterTheWork(*labor, false),
+      Expect(TheWaitAfterTheWork(*labor, {}),
              "a passenger's wait: still on his work and the cart, it stands until his hour");
-  // A WAIT LIVES ITS TERM (0.37.185; boss [64]-[65]): a passenger waiting
-  // from hour 10 on a term of three hours still waits at hour 12 — the
-  // honest two-hour wait is not struck at the first hour — and at hour 13 his
-  // term is out; the pair, a term of one hour, is struck at hour 11. «At four
-  // hours the dog fires» (boss [65] p. 3) is not checked: the dog's term
-  // verdict cannot fire for a passenger (ClearPassengerWaits).
-  failures += Expect(TheWaitAfterTheWork(*labor, false, 3, 12),
-                     "a passenger's wait of a three-hour term stands two hours on");
+  // STRUCK WHEN THE CART HAS COME (0.37.186; boss, the logistics thread [77]
+  // p. 2): a passenger waiting from hour 10 on a term of three hours, his
+  // cart due two hours on — late — still waits at hour 11 and is struck at
+  // hour 12, the cart there. A cart that does not come — today's plan
+  // carries him on no cart — leaves the record standing at hour 13, its term
+  // out, and past it (hour 14) the dog's «term passed» (core_world's
+  // watchdog checks). Until 0.37.186 the record went at the term's end by the
+  // clock alone, and the dog's verdict could not fire.
+  failures += Expect(TheWaitAfterTheWork(*labor, {.term = 3, .hour = 11, .due_after = 2}),
+                     "a passenger's wait: his cart two hours late, the record stands an hour on");
+  failures += Expect(!TheWaitAfterTheWork(*labor, {.term = 3, .hour = 12, .due_after = 2}),
+                     "and is struck at the hour the cart reaches him");
   failures +=
-      Expect(!TheWaitAfterTheWork(*labor, false, 3, 13), "and is struck when its term is out");
-  failures += Expect(!TheWaitAfterTheWork(*labor, false, 1, 11),
-                     "a wait of a one-hour term is struck at its second hour");
+      Expect(TheWaitAfterTheWork(*labor, {.term = 3, .hour = 13, .due_after = 2, .planned = false}),
+             "a cart that does not come leaves the record standing past its due hour and its term");
+  failures += Expect(TheWaitAfterTheWork(*labor, {.term = 1, .hour = 11, .planned = false}) &&
+                         !TheWaitAfterTheWork(*labor, {.term = 1, .hour = 11}),
+                     "a one-hour term: struck at its end with the cart there, standing without");
+  // THE PLAN REFUTES, IT DOES NOT CONFIRM: a driver the plan has no cart for
+  // (no task on his load; no tasks at all before the first horse yard) is
+  // taken at the seating's word — struck at the due hour.
+  failures += Expect(
+      !TheWaitAfterTheWork(*labor, {.term = 3, .hour = 12, .due_after = 2, .cart_planned = false}),
+      "a driver the plan has no cart for: the passenger's wait is struck at its due hour");
   const auto [urgent_logs, urgent_ploughs] = TheHorseAgainstAnUrgentLoad(*labor, true);
   const auto [ordinary_logs, ordinary_ploughs] = TheHorseAgainstAnUrgentLoad(*labor, false);
   std::cout << "  groom's plan, level 0: logs ride " << urgent_logs << ", ploughing "

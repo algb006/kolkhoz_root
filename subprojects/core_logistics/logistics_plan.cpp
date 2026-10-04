@@ -481,16 +481,24 @@ GroomPlan BuildGroomPlan(const LogisticsConfig& config,
   }
   RunTheClock(world, remaining, plan, movers, window);
   // THE RIDERS (B4b): whoever the labour hour seated this morning on a
-  // driver's cart rides its first leg.
+  // driver's cart rides its first leg. ONCE (0.37.186): a re-plan keeps a
+  // begun first leg with its riders (above), and until then this loop wrote
+  // them onto it a second time — found writing the passenger's strike, which
+  // reads them.
   for (std::uint32_t row = 0; row < world.residents.rows.size(); ++row) {
     const ResidentId of = world.residents.rows[row].work.rides_cart_of;
     if (of.value == kInvalidEntityIdValue) {
       continue;
     }
+    const ResidentId rider = world.residents.row_ids[row];
     for (CartPlan& cart : plan.carts) {
       if (cart.driver.value == of.value && !cart.on_foot && !cart.legs.empty()) {
-        cart.legs.front().riders.push_back(world.residents.row_ids[row]);
-        ++tally.riders;
+        std::vector<ResidentId>& riders = cart.legs.front().riders;
+        if (std::ranges::none_of(
+                riders, [rider](ResidentId seated) { return seated.value == rider.value; })) {
+          riders.push_back(rider);
+          ++tally.riders;
+        }
         break;
       }
     }
