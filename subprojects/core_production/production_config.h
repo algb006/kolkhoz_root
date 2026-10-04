@@ -683,6 +683,12 @@ struct FarmingConfig {
   std::uint8_t cold_first_month = 11;
   std::uint8_t cold_last_month = 1;
 
+  /// A herd's hunger is a NEW episode — said again by kHerdWentHungry — only
+  /// after this many fed days in a row (world_params
+  /// `herd_hunger_episode_fed_days`, econ's 4, bounds 2..8; HerdRow::
+  /// fed_days_in_a_row). A constant in herd_system.cpp in 0.37.192.
+  std::uint16_t hunger_episode_fed_days = 4;
+
   /// «Замерзает» from this count.
   float freezing_counter = 6.0F;
 

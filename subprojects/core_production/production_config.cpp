@@ -1060,7 +1060,7 @@ bool ParseMeadowKinds(const ITable& table, FarmingConfig& farming, std::string& 
 /// AT ALL: until 2026-09-16 this module took every number off its own
 /// hand-written tables, and the two halves of billeting are what brought it
 /// here. The next world constant lands in the same place.
-constexpr std::array<std::string_view, 29> kProductionWorldParamKeys = {
+constexpr std::array<std::string_view, 30> kProductionWorldParamKeys = {
     "billet_heads_per_yard",
     "billet_yield_factor",
     "school_year_start_month",
@@ -1093,7 +1093,8 @@ constexpr std::array<std::string_view, 29> kProductionWorldParamKeys = {
     "livestock_freezing_loss_share_day",
     "feed_draught_first",
     "livestock_cold_first_month",
-    "livestock_cold_last_month"};
+    "livestock_cold_last_month",
+    "herd_hunger_episode_fed_days"};
 
 /// THE SCHOOL YEAR IS READ HERE AS WELL AS BY THE SCHOOL, and that is a
 /// second READER, not a second home: the months live in world_params.csv and
@@ -1117,6 +1118,7 @@ bool ParseProductionWorldParams(const ITable& world,
   float school_to = static_cast<float>(farming.school_year_end_month) + 1.0F;
   float cold_from = static_cast<float>(farming.cold_first_month) + 1.0F;
   float cold_to = static_cast<float>(farming.cold_last_month) + 1.0F;
+  float hunger_episode_fed_days = static_cast<float>(farming.hunger_episode_fed_days);
   const Range months{.low = 1.0F, .high = static_cast<float>(kMonthsPerYear)};
   const std::array<ScalarKnob, kProductionWorldParamKeys.size()> knobs = {
       ScalarKnob{.key = kProductionWorldParamKeys[0],
@@ -1224,10 +1226,17 @@ bool ParseProductionWorldParams(const ITable& world,
                  .range = Range{.low = 0.0F, .high = 1.0F}},
       // THE COLD'S SEASON (0.37.69): human months in the table, from zero here.
       ScalarKnob{.key = kProductionWorldParamKeys[27], .value = &cold_from, .range = months},
-      ScalarKnob{.key = kProductionWorldParamKeys[28], .value = &cold_to, .range = months}};
+      ScalarKnob{.key = kProductionWorldParamKeys[28], .value = &cold_to, .range = months},
+      // A HUNGER'S NEW EPISODE (0.37.193; boss, the logistics thread [117],
+      // [120]; econ's N, its bounds 2..8): the fed days in a row after which
+      // a herd's hunger is said again (herd_system.cpp, kHerdWentHungry).
+      ScalarKnob{.key = kProductionWorldParamKeys[29],
+                 .value = &hunger_episode_fed_days,
+                 .range = Range{.low = 2.0F, .high = 8.0F}}};
   if (!ReadKnobs(world, "world_params", knobs, error)) {
     return false;
   }
+  farming.hunger_episode_fed_days = static_cast<std::uint16_t>(hunger_episode_fed_days);
   farming.cold_first_month = static_cast<std::uint8_t>(cold_from - 1.0F);
   farming.cold_last_month = static_cast<std::uint8_t>(cold_to - 1.0F);
   farming.school_year_start_month = static_cast<std::uint8_t>(school_from - 1.0F);

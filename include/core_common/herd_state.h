@@ -88,9 +88,10 @@ struct HerdRow {
 
   /// THE FED DAYS IN A ROW (save 142, 0.37.192; boss, the logistics thread
   /// [113]-[117]): days the herd was fed in full, counted to the hunger that
-  /// ends them; 0 on a hungry day. kNeverHungry for a herd never hungry yet —
+  /// ends them; 0 on a hungry day. 0xFFFF for a herd never hungry yet —
   /// its first hungry day is a new episode. A hungry day is a NEW episode of
-  /// hunger, said by kHerdWentHungry, only after kHungerEpisodeFedDays fed
+  /// hunger, said by kHerdWentHungry, only after FarmingConfig::
+  /// hunger_episode_fed_days (world_params, econ's 4) fed
   /// days (herd_system.cpp): a herd fed one day and hungry the next is the
   /// same hunger. Until 0.37.192 every hungry day after a fed one was said,
   /// and a herd flapping between the two stopped the fast-forward ten times a
