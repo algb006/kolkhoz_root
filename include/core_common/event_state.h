@@ -684,6 +684,16 @@ enum class EventKind : std::uint8_t {
   /// `lamp_turned_red`. Declared in 0.37.196, said since 0.37.197.
   kLampTurnedRed,
 
+  /// THE DISTRICT MOVED A WINTER POSITION TO THE SPRING ONES (district §9,
+  /// «Озимая, которой нет в земле, — перенос на яровые»; the human's word of
+  /// 5 October 2026, «Правило плана для озимой ржи - делай»): at the January
+  /// letter a winter crop's position counted only what stood in the ground,
+  /// and the rest went to the plan's spring positions by grain. `resource` —
+  /// the winter crop's produce; `amount` — the grams moved off it. kNotable;
+  /// the letter's line («Озимой у вас в земле нет…») is the layer's. Seam key
+  /// `plan_winter_moved`.
+  kPlanWinterMoved,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

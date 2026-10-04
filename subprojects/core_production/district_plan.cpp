@@ -384,6 +384,93 @@ void AnnounceMilkPosition(const ProductionConfig& config, WorldState& current) {
   AddToStock(current.plan.due, config.milk_resource, share * days_to_turn);
 }
 
+/// A gram of `resource` in grams of grain, as the overfulfilment weighs it
+/// (PlanOverfulfilGrainTonnes): 0 when the tables carry no weight for it.
+double GrainPerGram(const ProductionConfig& config, ResourceId resource) {
+  if (!(config.limit.overfulfil_grain_kcal_per_gram > 0.0F) ||
+      resource.value >= config.food_kcal_per_gram.size()) {
+    return 0.0;
+  }
+  return static_cast<double>(config.food_kcal_per_gram[resource.value]) /
+         static_cast<double>(config.limit.overfulfil_grain_kcal_per_gram);
+}
+
+/// What the winter crop standing in the ground on the letter's day gives at
+/// its yield: every field of `crop` in kGrowing, its area × the crop's full
+/// yield. The full yield and not the plan's share of it: a field sown on
+/// part of the position's area still covers the position when its harvest
+/// does (econ's numbers, winter-crop-plan-rule-2026-10-04 §5 — the eight
+/// villages that sowed 3.5 ha of rye keep their 1 116 kg).
+Grams StandingWinterGrams(const WorldState& current, const CropDef& crop, CropId crop_id) {
+  double kilograms = 0.0;
+  for (const FieldRow& field : current.fields.rows) {
+    if (field.crop.value == crop_id.value && field.phase == FieldPhase::kGrowing) {
+      kilograms += static_cast<double>(field.area_ga) * static_cast<double>(crop.yield_kg_per_ha);
+    }
+  }
+  return GramsFromKilograms(static_cast<float>(kilograms));
+}
+
+/// THE WINTER CROP THAT IS NOT IN THE GROUND (district §9, «Озимая, которой
+/// нет в земле, — перенос на яровые»; the human's word of 5 October 2026,
+/// «Правило плана для озимой ржи - делай»). The letter comes in January,
+/// four months after the winter crop's sowing window closed: a winter
+/// position counts only what stands in the ground today, and the rest is
+/// not forgiven but MOVED to the plan's spring positions, by grain
+/// equivalent, in proportion to their size — the village owes as much grain,
+/// in what it can still grow. Each move is said (kPlanWinterMoved) for the
+/// January letter's line. Positions the tables cannot weigh in grain are
+/// left as they were: nothing to move them by.
+void MoveWinterShortfall(const ProductionConfig& config, WorldState& current) {
+  double moved_grain = 0.0;
+  double spring_grain = 0.0;
+  for (const ProductionConfig::PlanPosition& position : config.plan_positions) {
+    if (position.crop.value >= config.crops.size()) {
+      continue;
+    }
+    const CropDef& crop = config.crops[position.crop.value];
+    const double grain = GrainPerGram(config, crop.resource);
+    const Grams norm = PlanPositionGrams(config, position, current.plan.worked_ha_last_year);
+    if (!crop.is_winter) {
+      spring_grain += static_cast<double>(norm) * grain;
+      continue;
+    }
+    const Grams lacking = norm - std::min(norm, StandingWinterGrams(current, crop, position.crop));
+    if (lacking <= 0 || !(grain > 0.0)) {
+      continue;
+    }
+    moved_grain += static_cast<double>(lacking) * grain;
+  }
+  if (!(moved_grain > 0.0) || !(spring_grain > 0.0)) {
+    return;  // nothing to move, or nothing to move it to: the positions stand
+  }
+  for (const ProductionConfig::PlanPosition& position : config.plan_positions) {
+    if (position.crop.value >= config.crops.size()) {
+      continue;
+    }
+    const CropDef& crop = config.crops[position.crop.value];
+    const double grain = GrainPerGram(config, crop.resource);
+    const Grams norm = PlanPositionGrams(config, position, current.plan.worked_ha_last_year);
+    if (!crop.is_winter) {
+      if (grain > 0.0) {
+        const double share = static_cast<double>(norm) * grain / spring_grain;
+        AddToStock(current.plan.due,
+                   crop.resource,
+                   static_cast<Grams>(std::llround(moved_grain * share / grain)));
+      }
+      continue;
+    }
+    const Grams lacking = norm - std::min(norm, StandingWinterGrams(current, crop, position.crop));
+    if (lacking <= 0 || !(grain > 0.0)) {
+      continue;
+    }
+    AddToStock(current.plan.due, crop.resource, -lacking);
+    SimEvent& event = EmitEvent(current, EventKind::kPlanWinterMoved, EventSeverity::kNotable);
+    event.resource = crop.resource;
+    event.amount = lacking;
+  }
+}
+
 }  // namespace
 
 Grams PlanPositionGrams(const ProductionConfig& config,
@@ -492,6 +579,11 @@ void AnnouncePlan(const ProductionConfig& config, WorldState& current) {
     AddToStock(current.plan.due,
                crop.resource,
                PlanPositionGrams(config, position, current.plan.worked_ha_last_year));
+  }
+  if (!first_year) {
+    // The first year asks by the start stock and has no winter crop to ask:
+    // «winter rye cannot stand in the first spring» (above).
+    MoveWinterShortfall(config, current);
   }
   AnnounceMilkPosition(config, current);
   // THE HIGHEST POSITION EVER NAMED, by resource (PlanState::highest_due;

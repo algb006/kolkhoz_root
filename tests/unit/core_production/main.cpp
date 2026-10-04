@@ -8389,6 +8389,17 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
     resting.rotation_assigned = 0;
     resting.overgrown = 1;
     core::AppendRow(previous.fields, resting);
+    // AND THE WINTER RYE IN THE GROUND (0.37.199, district §9, «Озимая, которой
+    // нет в земле, — перенос на яровые»): a hectare sown last autumn covers its
+    // position, so the letter moves nothing to the spring crops and the sum
+    // below is still the positions as named. Without it the rye's position
+    // went to the potato by grain, and grams summed across crops grew.
+    core::FieldRow rye_sown;
+    rye_sown.kind = core::LandKind::kArable;
+    rye_sown.area_ga = 1.0F;
+    rye_sown.crop = core::CropId{static_cast<std::uint16_t>(crops->FindRowByKey("rye_winter"))};
+    rye_sown.phase = core::FieldPhase::kGrowing;
+    core::AppendRow(previous.fields, rye_sown);
 
     core::WorldState current = previous;
     current.calendar.tick += 1;
@@ -11792,6 +11803,88 @@ int CheckTheMilkCart() {
   return failures;
 }
 
+/// THE WINTER CROP THAT IS NOT IN THE GROUND (district §9, «Озимая, которой нет
+/// в земле, — перенос на яровые»; the human's «Правило плана для озимой ржи -
+/// делай», 5 October 2026). Positions on 100 worked ha at a share of 0.5: rye
+/// (winter, 1 000 kg/ha, 10 %) 5 t; oat (1 000 kg/ha, 20 %) 10 t; potato (8 000
+/// kg/ha, 20 %, a quarter of grain a gram) 80 t, 20 t of grain. The rye's
+/// lack goes to oat and potato by grain, 1 : 2.
+int CheckTheWinterCropMovesToTheSpring() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.crops.resize(3);
+  const core::ResourceId rye{3};
+  const core::ResourceId oat{4};
+  const core::ResourceId potato{5};
+  config.crops[0].resource = rye;
+  config.crops[0].yield_kg_per_ha = 1000.0F;
+  config.crops[0].is_winter = true;
+  config.crops[1].resource = oat;
+  config.crops[1].yield_kg_per_ha = 1000.0F;
+  config.crops[2].resource = potato;
+  config.crops[2].yield_kg_per_ha = 8000.0F;
+  config.plan_positions = {{.crop = core::CropId{0}, .area_share = 0.1F},
+                           {.crop = core::CropId{1}, .area_share = 0.2F},
+                           {.crop = core::CropId{2}, .area_share = 0.2F}};
+  config.plan_grain_share = 0.5F;
+  config.plan_milk_share = 0.0F;
+  config.limit.overfulfil_grain_kcal_per_gram = 3.0F;
+  config.food_kcal_per_gram = {0.0F, 0.0F, 0.0F, 3.0F, 3.0F, 0.75F};
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  // The letter at the second year's turn; `rye_ha` of rye standing in the ground.
+  const auto letter = [&config](float rye_ha) {
+    core::WorldState world = MakeHerdWorld(0.0F);
+    world.calendar.tick = core::kDaysPerYear * static_cast<core::Tick>(core::kTicksPerDay);
+    core::RefreshCalendarCaches(world.calendar);
+    world.plan.worked_ha_last_year = 100.0F;
+    if (rye_ha > 0.0F) {
+      core::FieldRow field;
+      field.area_ga = rye_ha;
+      field.crop = core::CropId{0};
+      field.phase = core::FieldPhase::kGrowing;
+      core::AppendRow(world.fields, field);
+    }
+    world.step_events.clear();
+    core::AnnouncePlan(config, world);
+    return world;
+  };
+  const auto near = [](core::Grams value, core::Grams want) {
+    return value >= want - 2 && value <= want + 2;
+  };
+  const auto moved_said = [](const core::WorldState& world) {
+    core::Grams said = 0;
+    for (const core::SimEvent& event : world.step_events) {
+      if (event.kind == core::EventKind::kPlanWinterMoved) {
+        said += event.amount;
+      }
+    }
+    return said;
+  };
+  // The rye in the ground covers its position: nothing moves, nothing is said.
+  const core::WorldState sown = letter(5.0F);
+  failures +=
+      Expect(core::AmountOf(sown.plan.due, rye) == 5'000 * kKilo &&
+                 core::AmountOf(sown.plan.due, oat) == 10'000 * kKilo &&
+                 core::AmountOf(sown.plan.due, potato) == 80'000 * kKilo && moved_said(sown) == 0,
+             "winter crop: the rye standing covers its position, the plan is as named");
+  // None in the ground: the 5 t move, 1 667 kg to oat and 13 333 kg of potato.
+  const core::WorldState bare = letter(0.0F);
+  failures += Expect(core::AmountOf(bare.plan.due, rye) == 0 &&
+                         near(core::AmountOf(bare.plan.due, oat), 11'666'667) &&
+                         near(core::AmountOf(bare.plan.due, potato), 93'333'333) &&
+                         moved_said(bare) == 5'000 * kKilo,
+                     "winter crop: none in the ground, the rye moves to oat and potato by grain, "
+                     "and the letter says 5 t moved");
+  // Two hectares in the ground keep 2 t of rye; 3 t move.
+  const core::WorldState part = letter(2.0F);
+  failures += Expect(core::AmountOf(part.plan.due, rye) == 2'000 * kKilo &&
+                         near(core::AmountOf(part.plan.due, oat), 11'000'000) &&
+                         near(core::AmountOf(part.plan.due, potato), 88'000'000) &&
+                         moved_said(part) == 3'000 * kKilo,
+                     "winter crop: sown on part, the rye keeps that part and the rest moves");
+  return failures;
+}
+
 /// The shops of epoch I (production units §8а, registers 239-240; boss seq
 /// 183-189): the sauerkraut shop above the fresh reserve and in its season,
 /// the barrels as room, the smokehouse, the cooperage on demand and not on the
@@ -15092,6 +15185,7 @@ int main() {
   failures += CheckDemolitionStockWaits();
   failures += CheckDistrictTrip();
   failures += CheckTheMilkCart();
+  failures += CheckTheWinterCropMovesToTheSpring();
   failures += CheckTheChurchStoreIsEmptied();
   failures += CheckTheAccumulationLimit();
   failures += CheckTheLimitKeepsTheTeamsOats();

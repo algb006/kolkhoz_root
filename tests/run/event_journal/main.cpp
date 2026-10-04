@@ -226,6 +226,8 @@ const char* KindName(core::EventKind kind) {
       return "urgent_load_waits";
     case core::EventKind::kLampTurnedRed:
       return "lamp_turned_red";
+    case core::EventKind::kPlanWinterMoved:
+      return "plan_winter_moved";
     case core::EventKind::kEventKindCount:
       return "COUNT";
   }
