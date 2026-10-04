@@ -34,9 +34,14 @@ namespace core {
 ///     gone, kRuleForbids for one with no work standing (growing, idle, its
 ///     phase's work done). Sets the step and the phase it stands on; 0 lifts.
 ///   * kDeclareRush on a unit: the same for a site with building work left.
-///   * kCancelDayOff: the next weekly day off from tomorrow within two weeks,
-///     holidays skipped (time §9, «праздники неприкосновенны»); refused
-///     kRuleForbids while a cancelled day still stands ahead.
+///   * kCancelDayOff, `enable` 0: the next weekly day off from tomorrow
+///     within two weeks, holidays skipped (time §9, «праздники
+///     неприкосновенны»); refused kRuleForbids while a cancelled day still
+///     stands ahead.
+///   * kCancelDayOff, `enable` 1 (B8's door, 0.37.190): TODAY, while today
+///     is a day off and no holiday (TodayMayBeDeclaredWorking); the day
+///     starts at the next hour's placement (ChairmanState::
+///     place_after_declaring). Refused kRuleForbids otherwise.
 void ReadRushOrders(WorldState& current);
 
 /// @brief The share an avral adds to this assignment's work: step ×

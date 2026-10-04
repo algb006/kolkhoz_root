@@ -15,6 +15,7 @@
 
 #include "core_common/alarm_state.h"
 #include "core_common/calendar.h"
+#include "core_common/day_off.h"
 #include "core_common/emit_event.h"
 #include "core_common/event_state.h"
 #include "core_common/labor_state.h"
@@ -216,6 +217,12 @@ class LogisticsSystem final : public ILogisticsSystem {
   void CollectAlarms(const WorldState& state, std::vector<Alarm>& out) const override {
     // «ЛОГИСТИКА НЕ УСПЕВАЕТ» (B8; alarm_state.h, kLogisticsLate).
     const Tick now = state.calendar.tick;
+    // ON A DAY OFF THE MOVE IS THE CHAIRMAN'S: declare the day working
+    // (0.37.190; AlarmAdvice::kDeclareDayWorking) — named only while the
+    // door would take it today, one question with the door
+    // (TodayMayBeDeclaredWorking).
+    const AlarmAdvice advice =
+        TodayMayBeDeclaredWorking(state) ? AlarmAdvice::kDeclareDayWorking : AlarmAdvice::kNone;
     for (std::uint32_t row = 0; row < state.logistics_tasks.rows.size(); ++row) {
       const LogisticsTaskRow& task = state.logistics_tasks.rows[row];
       if (!WaitsLate(state, task, now)) {
@@ -225,6 +232,7 @@ class LogisticsSystem final : public ILogisticsSystem {
       alarm.kind = AlarmKind::kLogisticsLate;
       alarm.logistics_task = state.logistics_tasks.row_ids[row];
       alarm.amount = static_cast<std::int64_t>(now - task.urgent_since);
+      alarm.advice = advice;
       out.push_back(alarm);
     }
   }

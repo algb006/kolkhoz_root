@@ -240,6 +240,48 @@ bool TheLogsOfATask(core::ILaborSystem& labor, bool paused) {
   });
 }
 
+/// TODAY'S DAY OFF DECLARED WORKING (B8's door, 0.37.190; kCancelDayOff with
+/// `enable` 1; boss, the logistics thread [103]): a Sunday, a stand's logs
+/// lying and their task at level 0. The hour-0 placement puts nobody on them
+/// — a day off. With the order read at hour 4, at hour 5 somebody carts them
+/// the same day; without it, nobody till the morning. Returns: anybody on the
+/// logs at hour 5, and whether a second order the same hour was refused.
+std::pair<bool, bool> TheDeclaredDay(core::ILaborSystem& labor, bool declare) {
+  constexpr std::uint32_t kSunday = kWorkingDay + 4;  // day 0 a Monday: 34 is a Sunday
+  core::WorldState world = Village(3);
+  const core::TimberStandId logs = StandAt(world, 1000.0F, 5.0F);
+  LogsTask(world, logs, core::LogisticsLevel::kUrgent);
+  const auto run = [&labor, &world](std::uint32_t hour) {
+    world.calendar.tick = (static_cast<core::Tick>(kSunday) * core::kTicksPerDay) + hour;
+    core::RefreshCalendarCaches(world.calendar);
+    const core::WorldState previous = world;
+    labor.RunAssignmentDecisions(previous, world);
+  };
+  for (std::uint32_t hour = 0; hour < 4; ++hour) {
+    run(hour);
+  }
+  bool second_refused = false;
+  if (declare) {
+    core::OrderRow order;
+    order.kind = core::OrderKind::kCancelDayOff;
+    order.enable = 1;
+    core::AppendRow(world.orders, order);
+    core::AppendRow(world.orders, order);
+  }
+  run(4);
+  if (declare) {
+    second_refused = world.orders.rows.size() == 2 &&
+                     world.orders.rows[0].status == core::OrderStatus::kDone &&
+                     world.orders.rows[1].refusal == core::OrderRefusal::kRuleForbids;
+  }
+  run(5);
+  const bool carted =
+      std::ranges::any_of(world.residents.rows, [&logs](const core::ResidentRow& p) {
+        return p.work.kind == core::WorkKind::kHauling && p.work.stand.value == logs.value;
+      });
+  return {carted, second_refused};
+}
+
 /// LEVEL 0 IN THE TOP-UP (B5): the morning gives the one horse to a
 /// ploughing — the logs' task is ordinary then — and after the placement the
 /// task is raised to level 0 (as the hour-0 ageing does). At hour 1 the top-up
@@ -410,6 +452,13 @@ int CheckTheGroomsPlan() {
   failures += Expect(
       !TheWaitAfterTheWork(*labor, {.term = 3, .hour = 12, .due_after = 2, .cart_planned = false}),
       "a driver the plan has no cart for: the passenger's wait is struck at its due hour");
+  const auto [declared_carted, second_refused] = TheDeclaredDay(*labor, true);
+  const auto [sunday_carted, ignored] = TheDeclaredDay(*labor, false);
+  (void)ignored;
+  failures +=
+      Expect(declared_carted && second_refused && !sunday_carted,
+             "groom's plan: a Sunday declared working at hour 4 — the urgent logs carted at "
+             "hour 5, a second order refused; not declared, nobody till the morning");
   failures += Expect(!TheLogsOfATask(*labor, true) && TheLogsOfATask(*labor, false),
                      "groom's plan: a paused task's load is offered to nobody — unpaused, it is "
                      "carted");

@@ -153,7 +153,8 @@ core::WorldState MakeWorld() {
   // Save 65: a series of two cancelled days off, and the next one standing.
   world.chairman.days_off_cancelled_in_a_row = 2;
   world.chairman.cancelled_day_off = 55;
-  world.chairman.last_talk_season = 5;  // save 69: a talk had, not nought
+  world.chairman.place_after_declaring = 1;  // save 141: the declared day's placement owed
+  world.chairman.last_talk_season = 5;       // save 69: a talk had, not nought
   // Save 77: away on a summons, a trip of his own before, a trade had.
   world.chairman.away_from_tick = 2'000;
   world.chairman.away_until_tick = 2'012;
@@ -1100,6 +1101,7 @@ core::WorldState MakeWitnessWorld() {
   // The cancelled day off (save 65): both away from their zero defaults.
   witness.chairman.days_off_cancelled_in_a_row = 2;
   witness.chairman.cancelled_day_off = 55;
+  witness.chairman.place_after_declaring = 1;  // save 141
   // The chairman's talk (save 69): the last season away from nought.
   witness.chairman.last_talk_season = 5;
   // The trip to the district (save 77): every field away from nought.
@@ -1236,6 +1238,8 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   // The cancelled day off (save 65): the series, then the day.
   chunks.push_back(
       {"chairman.days_off_cancelled_in_a_row", U8(world.chairman.days_off_cancelled_in_a_row)});
+  // The declared day's placement owed (save 141, B8's door).
+  chunks.push_back({"chairman.place_after_declaring", U8(world.chairman.place_after_declaring)});
   chunks.push_back({"chairman.cancelled_day_off", U32(world.chairman.cancelled_day_off)});
   chunks.push_back({"chairman.last_talk_season", U32(world.chairman.last_talk_season)});
   // The trip to the district (save 77).
@@ -1540,7 +1544,9 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // vector (2); predicted 651 -> 657 before the build, held.
     // Save 128: -4 — the harness peak taken out unwritten; predicted
     // 657 -> 653 before the build, held.
-    {"world", 653, 0xeacaf3af189dcfecULL},
+    // Save 141 (B8's door): +1 — the declared day's placement owed, a byte;
+    // predicted 653 -> 654 before the build, held.
+    {"world", 654, 0xf931b74d4e8e6fe3ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2188,9 +2194,10 @@ int main() {
                      "(save 125)");
   failures += Expect(loaded.gather_short_said == 137,
                      "the day the gathering count last said «not in time» comes back (save 126)");
-  failures += Expect(
-      loaded.chairman.days_off_cancelled_in_a_row == 2 && loaded.chairman.cancelled_day_off == 55,
-      "the cancelled day off and its series come back (save 65)");
+  failures += Expect(loaded.chairman.days_off_cancelled_in_a_row == 2 &&
+                         loaded.chairman.cancelled_day_off == 55 &&
+                         loaded.chairman.place_after_declaring == 1,
+                     "the cancelled day off and its series come back (save 65)");
   failures += Expect(
       loaded.chairman.last_talk_season == 5 && loaded.residents.rows[0].talk_until_day == 140,
       "the talk's season and a man's talk come back (save 69)");

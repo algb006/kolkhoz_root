@@ -641,8 +641,23 @@ enum class OrderKind : std::uint8_t {
   /// formula of question 107) — key `day_off_cancel_rest_per_series` 4. And
   /// `day_off_cancel_satisfaction` (STUB) to each worker's family, into the
   /// same season's memory as the avral's (time §9: «довольство падает —
-  /// заметно»). Not built yet, named as queue lines: declaring it for the
-  /// same day, and a part-day (time §9).
+  /// заметно»). Not built yet, named as a queue line: a part-day (time §9).
+  ///
+  /// `enable` 1 — TODAY (0.37.190; routing stage B, B8's door; boss, the
+  /// logistics thread [102]-[103]): while today is a day off and no holiday
+  /// (core_common/day_off.h, TodayMayBeDeclaredWorking), today is the
+  /// cancelled day, at the same price. The hour-0 placement is not given back:
+  /// the day starts at the next hour's (ChairmanState::place_after_declaring).
+  /// The lamp kLogisticsLate names it on a day off (AlarmAdvice::
+  /// kDeclareDayWorking). Refused kRuleForbids when today is no day off — a
+  /// working day, a holiday, or today already declared: the 19.09 hole of a
+  /// second order on the cancelled day itself stays shut.
+  /// WHETHER «РАБОЧИЙ ПРАЗДНИК» (work_on_holiday, the human's word of 2
+  /// October; ~1.4 d, queued) MAKES THIS REDUNDANT: no — that order works a
+  /// HOLIDAY («до обеда», for a day off too), this one only the week's day
+  /// off at the full price. If the working-holiday order comes to cover a
+  /// whole day off today as well, `enable` 1 is removed with it — the
+  /// condition written here.
   ///
   /// ONE DOOR FOR «IS TODAY A DAY OFF» (core_common/day_off.h, IsDayOffIn):
   /// five callers in three modules read the calendar's IsRestDay today —

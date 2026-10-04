@@ -652,9 +652,10 @@ enum class AlarmKind : std::uint8_t {
   /// load spoils, the herd goes hungry — and he has one, so `lamp` 1.
   /// Lighting, it is said once as an interrupting event (EventKind::
   /// kUrgentLoadWaits): a fast-forward stops on it (the human, 4 October
-  /// 2026). Its advice on a day off — «declare the day working» — comes with
-  /// the door that can do it today (B8's second delivery); until then
-  /// `advice` is kNone. Collected by core_logistics (logistics_system.h).
+  /// 2026). `advice` on a day off, while the door would take it today:
+  /// kDeclareDayWorking (since 0.37.190; kNone in 0.37.189, before the door
+  /// existed); on a working day kNone — the move is more drivers, which the
+  /// core does not name. Collected by core_logistics (logistics_system.h).
   kLogisticsLate,
 
   // Appended by later tasks and phases: children out of school, sewage.
@@ -800,6 +801,16 @@ enum class AlarmAdvice : std::uint8_t {
   /// moves, one word: the core does not
   /// weigh them here (kHerdHayShortAhead does, with its numbers).
   kBringFeed,
+
+  /// DECLARE TODAY'S DAY OFF WORKING — «объявить день рабочим» (0.37.190;
+  /// the dictionary's `declare_day_working`; boss, the logistics thread [77]
+  /// p. 1, [103]; the human, 4 October 2026: «По выходному дню ты прав, это
+  /// прерогатива председателя. Ему должен быть сигнал»). Named by
+  /// kLogisticsLate on a day off — the level-0 load waits because nobody is
+  /// placed — and only while the door would take it today (core_common/
+  /// day_off.h, TodayMayBeDeclaredWorking): the door is kCancelDayOff with
+  /// `enable` 1. Level 0 does NOT override a day off by itself (boss [77]).
+  kDeclareDayWorking,
 
   /// NOT A MOVE: the count, so a consumer can static_assert its mirror.
   kAlarmAdviceCount,

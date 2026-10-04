@@ -180,6 +180,25 @@ class LaborSystem final : public ILaborSystem {
     if (hour == 0) {
       StartDay(current);
     }
+    // TODAY'S DAY OFF DECLARED WORKING (B8's door; rush.cpp, CancelDayOff,
+    // `enable` 1): the order was read at the end of the last hour, the hour-0
+    // placement passed on a day off and placed nobody, and it is not given
+    // back (no second StartDay: the morning's housekeeping and the standing
+    // orders stay the morning's). The day starts here, by the top-up's
+    // placement of everybody idle on everything uncrewed. At hour 1 the
+    // top-up below does it anyway.
+    // Owed only on the declared day itself: an order read at the day's last
+    // hour declares a day that is over by the next hour, and that morning's
+    // placement is the new day's own.
+    const bool placement_owed = current.chairman.place_after_declaring != 0 &&
+                                current.chairman.cancelled_day_off == current.calendar.day;
+    if (hour != 0 && hour != 1 && placement_owed) {
+      PlaceIdleHoldersOnModules(current);
+      TopUpDay(current);
+    }
+    if (hour != 0 || !placement_owed) {
+      current.chairman.place_after_declaring = 0;
+    }
     if (hour == 1) {
       PlaceIdleHoldersOnModules(current);
       TopUpDay(current);

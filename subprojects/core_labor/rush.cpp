@@ -91,9 +91,29 @@ OrderRefusal DeclareRush(WorldState& current, const OrderRow& order) {
   return OrderRefusal::kNone;
 }
 
-OrderRefusal CancelDayOff(WorldState& current) {
+OrderRefusal CancelDayOff(WorldState& current, const OrderRow& order) {
   const SimDay today = current.calendar.day;
   ChairmanState& chairman = current.chairman;
+  // TODAY, DECLARED WORKING (`enable` 1; routing stage B, B8's door; boss, the
+  // logistics thread [103]): the lamp «Логистика не успевает» on a day off
+  // names this move, and until 0.37.190 no door made it — the order below
+  // cancels from tomorrow. The day's price is the cancelled day's (the series,
+  // the rest, the satisfaction: IsCancelledDayOff reads the same day). The
+  // hour-0 placement passed and placed nobody, and it is NOT given back: the
+  // day starts at the next hour's placement (labor_system.cpp,
+  // place_after_declaring). The 19.09 hole stays shut: a day declared is no
+  // longer a day off, so TodayMayBeDeclaredWorking refuses the second order.
+  if (order.enable > 1) {
+    return OrderRefusal::kRuleForbids;
+  }
+  if (order.enable == 1) {
+    if (!TodayMayBeDeclaredWorking(current)) {
+      return OrderRefusal::kRuleForbids;
+    }
+    chairman.cancelled_day_off = today;
+    chairman.place_after_declaring = 1;
+    return OrderRefusal::kNone;
+  }
   // AT OR AFTER TODAY (static analysis, 2026-09-19): on the cancelled day
   // itself a second order moved the cancellation to next Sunday — today
   // became a day off again halfway through it, unpriced, and the series
@@ -136,7 +156,7 @@ void ReadRushOrders(WorldState& current) {
     if (order.kind == OrderKind::kDeclareRush) {
       Settle(order, DeclareRush(current, order));
     } else if (order.kind == OrderKind::kCancelDayOff) {
-      Settle(order, CancelDayOff(current));
+      Settle(order, CancelDayOff(current, order));
     } else if (order.kind == OrderKind::kHarvestWithoutDaysOff) {
       Settle(order, SwitchHarvestWithoutDaysOff(current, order));
     }

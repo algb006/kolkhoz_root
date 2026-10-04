@@ -304,10 +304,11 @@ bool ShapeIsValid(const OrderRow& order) {
       return has_unit && !has_resident && !has_field && !has_herd && !has_stand && !has_site &&
              order.enable <= 1;
     case OrderKind::kCancelDayOff:
-      // Nothing: the village's next day off. Whether it is already cancelled
-      // is the consumer's.
+      // Nothing: the village's next day off (`enable` 0), or today (`enable`
+      // 1, B8's door) — a switch that is a switch. Whether the day may be
+      // cancelled is the consumer's.
       return !has_resident && !has_unit && !has_field && !has_herd && !has_stand && !has_site &&
-             order.amount == 0;
+             order.amount == 0 && order.enable <= 1;
     case OrderKind::kTalkToSport:
       // The man, and nothing else. Whether he is a man of age, under a talk
       // already, and has somewhere to go change with the world — the

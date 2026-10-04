@@ -67,4 +67,10 @@ bool IsDayOffIn(const WorldState& world, SimDay day) {
   return true;
 }
 
+bool TodayMayBeDeclaredWorking(const WorldState& world) {
+  const SimDay today = world.calendar.day;
+  return IsDayOffIn(world, today) &&
+         HolidayOn(today, world.calendar.day_zero_weekday, world.epoch) == Holiday::kNone;
+}
+
 }  // namespace core

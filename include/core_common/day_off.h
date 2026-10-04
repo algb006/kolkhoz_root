@@ -76,6 +76,16 @@ bool GatherShortStands(const WorldState& world);
 ///       by then; the evening's rest reads the evening's answer.
 bool IsDayOffIn(const WorldState& world, SimDay day);
 
+/// @brief Whether TODAY's day off may be declared working now (kCancelDayOff
+/// with `enable` 1; routing stage B, B8's door; boss, the logistics thread
+/// [103]): today is a day off in this world (IsDayOffIn) and not a holiday —
+/// a holiday is never worked (time §9). ONE QUESTION for the door and for the
+/// advice that names it (alarm_state.h, AlarmAdvice::kDeclareDayWorking): an
+/// advice the door would refuse today is not given (0.37.121's rule).
+/// The hole of 19.09 stays shut by it: a day already declared or cancelled is
+/// no longer a day off, so it cannot be declared twice.
+bool TodayMayBeDeclaredWorking(const WorldState& world);
+
 }  // namespace core
 
 #endif  // CORE_COMMON_DAY_OFF_H_

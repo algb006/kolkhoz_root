@@ -737,6 +737,32 @@ int TestTheLateLoadsLamp() {
   ordinary.logistics_tasks.rows[0].level = core::LogisticsLevel::kOrdinary;
   at(ordinary, ten + 1, hours, said);
   failures += Expect(hours == -1 && said == 0, "late loads: an ordinary task — no lamp");
+
+  // THE ADVICE (0.37.190; AlarmAdvice::kDeclareDayWorking): day 3 a Sunday
+  // (day 0 a Thursday) — «declare the day working»; a working day — none;
+  // the Sunday already declared — none (the door would refuse it).
+  const auto advice_on =
+      [&system](core::WorldState state, core::Weekday day_zero, core::SimDay declared) {
+        state.calendar.day_zero_weekday = day_zero;
+        state.calendar.tick = (3 * core::kTicksPerDay) + 11;
+        core::RefreshCalendarCaches(state.calendar);
+        state.chairman.harvest_without_days_off = 0;
+        state.chairman.cancelled_day_off = declared;
+        std::vector<core::Alarm> alarms;
+        system->CollectAlarms(state, alarms);
+        for (const core::Alarm& alarm : alarms) {
+          if (alarm.kind == core::AlarmKind::kLogisticsLate) {
+            return alarm.advice;
+          }
+        }
+        return core::AlarmAdvice::kAlarmAdviceCount;  // no lamp at all
+      };
+  failures += Expect(
+      advice_on(world, core::Weekday::kThursday, 0) == core::AlarmAdvice::kDeclareDayWorking &&
+          advice_on(world, core::Weekday::kMonday, 0) == core::AlarmAdvice::kNone &&
+          advice_on(world, core::Weekday::kThursday, 3) == core::AlarmAdvice::kNone,
+      "late loads: on a Sunday the lamp advises declaring the day working; on a working day, "
+      "and on the Sunday already declared, it names no move");
   return failures;
 }
 

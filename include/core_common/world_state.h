@@ -454,9 +454,16 @@ struct ChairmanState {
   /// taken breaks the series; the rest price of the next one is −4 × this.
   std::uint8_t days_off_cancelled_in_a_row = 0;
 
+  /// 0/1: TODAY's day off was declared working this hour (kCancelDayOff with
+  /// `enable` 1; B8's door, save 141), and the labour sub-step owes the day
+  /// its placement at the next hour — the hour-0 placement passed on a day
+  /// off and placed nobody. Cleared by that placement.
+  std::uint8_t place_after_declaring = 0;
+
   /// The day the chairman cancelled, or 0 when none stands. 0 is free as the
-  /// sentinel because an order cancels from TOMORROW on, and no order is
-  /// read before day 0 — so the day it names is 1 or later.
+  /// sentinel: no order is read before day 0, and a day declared TODAY
+  /// (B8's door) is day 1 or later the same way — day 0 has no day off to
+  /// declare before the first order can be read.
   /// Read through IsDayOffIn (core_common/day_off.h) and nowhere else.
   SimDay cancelled_day_off = 0;
 

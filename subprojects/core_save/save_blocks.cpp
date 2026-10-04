@@ -64,8 +64,11 @@ static_assert(AggregateArity<WeatherState>() == 14,
 // Save 125: the harvest without days off, a byte at offset 73 beside the
 // pencil's: 80 stays, twenty-one fields; a byte in the codec. Both predicted
 // before the build.
+// Save 141 (B8's door): the declared day's placement owed, a byte beside the
+// series' count, in the padding before the cancelled day: 80 stays,
+// twenty-two fields; a byte in the codec. Predicted before the build.
 static_assert(sizeof(ChairmanState) == 80, "ChairmanState changed — update the codec");
-static_assert(AggregateArity<ChairmanState>() == 21,
+static_assert(AggregateArity<ChairmanState>() == 22,
               "ChairmanState gained or lost a field — update the codec and VERSION_SAVE");
 // PLANSTATE HAD NO TRIPWIRE AT ALL until 2026-09-12, and it was the only
 // serialized block without one: six blocks go into the save, five were
@@ -421,6 +424,7 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteU8(world.chairman.ration_auto);
   // The cancelled day off (save 65): the series and the day, 0 for none.
   out.WriteU8(world.chairman.days_off_cancelled_in_a_row);
+  out.WriteU8(world.chairman.place_after_declaring);  // save 141
   out.WriteU32(world.chairman.cancelled_day_off);
   // The chairman's talk (save 69): the season of the last one, plus one.
   out.WriteU32(world.chairman.last_talk_season);
@@ -601,6 +605,8 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->chairman.ration_auto =
       static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "the ration's checkbox"));
   world->chairman.days_off_cancelled_in_a_row = in.ReadU8();
+  world->chairman.place_after_declaring = static_cast<std::uint8_t>(
+      source.ReadEnumValue(0, 1, "the declared day's placement owed"));  // save 141
   world->chairman.cancelled_day_off = in.ReadU32();
   world->chairman.last_talk_season = in.ReadU32();
   world->chairman.away_from_tick = in.ReadU64();
