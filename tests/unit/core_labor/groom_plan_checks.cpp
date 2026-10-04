@@ -224,6 +224,40 @@ std::pair<bool, bool> TheHorseAgainstAnUrgentLoad(core::ILaborSystem& labor, boo
   return {logs_ride, ploughs};
 }
 
+/// LEVEL 0 IN THE TOP-UP (B5): the morning gives the one horse to a
+/// ploughing — the logs' task is ordinary then — and after the placement the
+/// task is raised to level 0 (as the hour-0 ageing does). At hour 1 the top-up
+/// lets the ploughman's horse go and the urgent logs take it. The pair: the
+/// task left ordinary, the plough keeps its horse. Returns: the logs ride, the
+/// ploughing ploughs, after hour 1.
+std::pair<bool, bool> TheHorseAfterARaise(core::ILaborSystem& labor, bool raised) {
+  core::WorldState world = Village(3);
+  const core::TimberStandId logs = StandAt(world, 1000.0F, 5.0F);
+  const core::LogisticsTaskId task = LogsTask(world, logs, core::LogisticsLevel::kOrdinary);
+  core::FieldRow field;
+  field.center = core::Vec2{.x = 0.0F, .y = 20.0F};
+  field.area_ga = 10.0F;
+  field.phase = core::FieldPhase::kPlowing;
+  field.work_days_remaining = 5.0F;
+  const core::FieldId ploughed = core::AppendRow(world.fields, field);
+  RunHour(labor, world, 0);
+  if (raised) {
+    core::LogisticsTaskRow& row =
+        world.logistics_tasks.rows[core::FindRow(world.logistics_tasks, task)];
+    row.level = core::LogisticsLevel::kUrgent;
+  }
+  RunHour(labor, world, 1);
+  bool logs_ride = false;
+  bool ploughs = false;
+  for (const core::ResidentRow& person : world.residents.rows) {
+    logs_ride =
+        logs_ride || (person.work.stand.value == logs.value && person.work.rides_horse != 0);
+    ploughs = ploughs || (person.work.field.value == ploughed.value &&
+                          person.work.kind == core::WorkKind::kPlowing);
+  }
+  return {logs_ride, ploughs};
+}
+
 /// A PASSENGER'S WAIT GOES WITH ITS WORK (0.37.183; 0.37.182's canon: 29
 /// firings of the dog, all «work gone», the record outliving the work the
 /// labour hour ended): a passenger waiting from hour 10 for his driver's cart,
@@ -286,6 +320,15 @@ int CheckTheGroomsPlan() {
   failures += Expect(TheWalkerAfterHisHeap(*labor),
                      "groom's plan: a carrier on foot whose heap is carted goes on to the near "
                      "heap of his chain, on foot");
+  const auto [raised_logs, raised_ploughs] = TheHorseAfterARaise(*labor, true);
+  const auto [kept_logs, kept_ploughs] = TheHorseAfterARaise(*labor, false);
+  std::cout << "  groom's plan, a raise after the morning: logs ride " << raised_logs
+            << ", ploughing " << raised_ploughs << "; not raised - logs " << kept_logs
+            << ", ploughing " << kept_ploughs << '\n';
+  failures += Expect(raised_logs && !raised_ploughs,
+                     "a load raised to level 0 after the morning takes the horse in the top-up");
+  failures += Expect(!kept_logs && kept_ploughs,
+                     "an ordinary load leaves the plough its horse in the top-up");
   failures += Expect(!TheWaitAfterTheWork(*labor, true),
                      "a passenger's wait: his work ended, the wait goes with it");
   failures +=

@@ -5,6 +5,9 @@
 
 #include "core_logistics/logistics_system.h"
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -12,6 +15,8 @@
 
 #include "core_common/alarm_state.h"
 #include "core_common/calendar.h"
+#include "core_common/labor_state.h"
+#include "core_common/logistics_state.h"
 #include "core_common/world_state.h"
 #include "core_log/log.h"
 #include "core_tables/required_tables.h"
@@ -21,6 +26,32 @@
 
 namespace core {
 namespace {
+
+/// The carts there are against the carts the plan planned: a carter on a horse
+/// (a goods cart) or a driver of a people's cart, by id and kind. A carrier on
+/// foot is not asked — his chain is his placement's load and the near ones.
+bool CartsChanged(const WorldState& world, const GroomPlan& plan) {
+  std::size_t there = 0;
+  for (std::uint32_t row = 0; row < world.residents.rows.size(); ++row) {
+    const WorkAssignment& work = world.residents.rows[row].work;
+    const bool goods = work.kind == WorkKind::kHauling && work.rides_horse != 0;
+    const bool people = TakesThePeoplesCart(work.kind) && work.rides_horse != 0;
+    if (!goods && !people) {
+      continue;
+    }
+    ++there;
+    const ResidentId driver = world.residents.row_ids[row];
+    const bool planned = std::ranges::any_of(plan.carts, [&](const CartPlan& cart) {
+      return cart.driver.value == driver.value && !cart.on_foot && cart.people_cart == people;
+    });
+    if (!planned) {
+      return true;
+    }
+  }
+  const auto planned_carts = static_cast<std::size_t>(
+      std::ranges::count_if(plan.carts, [](const CartPlan& cart) { return !cart.on_foot; }));
+  return planned_carts != there;
+}
 
 class LogisticsSystem final : public ILogisticsSystem {
  public:
@@ -48,8 +79,26 @@ class LogisticsSystem final : public ILogisticsSystem {
     return tally;
   }
 
-  bool Replan(WorldState& /*current*/) override {
-    return false;  // STUB: B5, the re-plan by event
+  bool Replan(WorldState& current) override {
+    // THE RE-PLAN BY EVENT (B5; transport §11; boss, the logistics thread
+    // [61]-[62]): once a game hour after the plan's own hour, the plan is
+    // stale when the carts it planned are not the carts there are — a driver
+    // who lost his horse or his work, a cart the hour's top-up or a door gave
+    // since — or when a load of level 0 waits; the rest of the day is then
+    // planned again from where each cart is (BuildGroomPlan, `earlier`).
+    // The tasks themselves change once a day, at hour 0, before the plan.
+    GroomPlan& plan = current.groom_plan;
+    if (plan.day != current.calendar.day || HourFromTick(current.calendar.tick) < 2) {
+      return false;
+    }
+    plan.stale = plan.stale || CartsChanged(current, plan);
+    if (!plan.stale && !plan.urgent_pending) {
+      return false;
+    }
+    LogisticsTally tally;
+    const GroomPlan earlier = plan;
+    plan = BuildGroomPlan(config_, current, tally, &earlier);
+    return true;
   }
 
   void ReadTaskOrders(WorldState& /*current*/) override {

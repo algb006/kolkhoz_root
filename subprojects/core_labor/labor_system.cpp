@@ -687,6 +687,16 @@ class LaborSystem final : public ILaborSystem {
     std::vector<bool> walkers_left(offered.size(), false);
     bool anybody_let_go = false;
     const bool carts_haul = WalkerShareToday(current) < 1.0F;
+    // LEVEL 0 IN THE TOP-UP TOO, AHEAD OF EVERY WINDOW (routing stage B, B5;
+    // boss, the logistics thread [61]-[62]): a load raised to level 0 after the
+    // morning's placement (the tasks are aged at hour 0, after it) waited for
+    // this hour, and this hour let only the windowless work go — 15 % of the
+    // level-0 task-days of 0.37.177's canon stood without a cart at hour 1.
+    // With such a load uncrewed, everybody holding a horse is let go too and
+    // placed again: the queue puts the urgent load first and the windows after
+    // it. Nobody has worked an hour yet, so no begun trip is broken.
+    const bool urgent_uncrewed =
+        std::ranges::any_of(jobs, [](const AssignmentJob& job) { return job.logistics_urgent; });
     for (const AssignmentCandidate& candidate : candidates) {
       WorkAssignment& work = current.residents.rows[candidate.resident_row].work;
       if (work.kind == WorkKind::kNone) {
@@ -699,7 +709,9 @@ class LaborSystem final : public ILaborSystem {
       }
       const bool walks_to_a_cart_load =
           carts_haul && work.kind == WorkKind::kHauling && work.rides_horse == 0;
-      if (PlacementTier(*his) == kWindowlessTier || walks_to_a_cart_load) {
+      const bool holds_a_horse = work.rides_horse != 0 || IsHorseWork(work.kind);
+      if (PlacementTier(*his) == kWindowlessTier || walks_to_a_cart_load ||
+          (urgent_uncrewed && holds_a_horse && !his->logistics_urgent)) {
         walkers_left[static_cast<std::size_t>(his - offered.begin())] = walks_to_a_cart_load;
         work = WorkAssignment{};
         let_go[candidate.resident_row] = true;

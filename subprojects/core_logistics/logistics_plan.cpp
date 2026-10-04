@@ -182,6 +182,11 @@ Tick TickAt(SimDay day, float hours) {
   return (static_cast<Tick>(day) * kTicksPerDay) + HourOfDayMoment(hours);
 }
 
+/// The hour of its day a tick begins at, as hours from midnight.
+float HoursOfTick(Tick tick) {
+  return static_cast<float>(tick % kTicksPerDay);
+}
+
 /// The hours of the way between two places for this mover.
 float RideHours(
     const WorldState& world, const Mover& mover, const LogisticsTaskRow* task, Vec2 from, Vec2 to) {
@@ -346,9 +351,11 @@ void RunTheClock(const WorldState& world,
 
 GroomPlan BuildGroomPlan(const LogisticsConfig& config,
                          const WorldState& world,
-                         LogisticsTally& tally) {
+                         LogisticsTally& tally,
+                         const GroomPlan* earlier) {
   GroomPlan plan;
   plan.day = world.calendar.day;
+  const Tick now = world.calendar.tick;
   for (const LogisticsTaskRow& task : world.logistics_tasks.rows) {
     const auto level = static_cast<std::size_t>(task.level);
     if (level < tally.tasks.size()) {
@@ -444,8 +451,32 @@ GroomPlan BuildGroomPlan(const LogisticsConfig& config,
       mover.sets_out = window.sunrise;
     }
     mover.at = mover.home;
-    plan.carts.push_back(
-        CartPlan{.driver = driver, .people_cart = false, .on_foot = mover.on_foot, .legs = {}});
+    CartPlan cart{.driver = driver, .people_cart = false, .on_foot = mover.on_foot, .legs = {}};
+    // THE RE-PLAN (B5): the rest of the day from where the cart is. Every leg
+    // the earlier plan had begun by now is kept as it was — a begun leg is
+    // never broken (boss [11], default 3) — and the clock sets the cart out
+    // again where and when the last of them ends, but not before this hour.
+    if (earlier != nullptr) {
+      for (const CartPlan& before : earlier->carts) {
+        if (before.driver.value != driver.value || before.people_cart) {
+          continue;
+        }
+        for (const CartLeg& leg : before.legs) {
+          if (leg.depart > now) {
+            break;
+          }
+          cart.legs.push_back(leg);
+        }
+        break;
+      }
+      const float start = std::max(mover.sets_out, HoursOfTick(now) + 1.0F);
+      mover.sets_out = start;
+      if (!cart.legs.empty()) {
+        mover.at = cart.legs.back().to;
+        mover.sets_out = std::max(start, HoursOfTick(cart.legs.back().arrive));
+      }
+    }
+    plan.carts.push_back(std::move(cart));
     movers.push_back(std::move(mover));
   }
   RunTheClock(world, remaining, plan, movers, window);

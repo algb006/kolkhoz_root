@@ -85,6 +85,9 @@ class DecisionsSlot final : public ISequentialPhase {
     // the goods carts' passengers, before the hour's work reads it (B4).
     if (HourFromTick(current.calendar.tick) == 1) {
       logistics_->BuildPlan(current);
+    } else {
+      // THE RE-PLAN BY EVENT, every later hour (B5; logistics_system.h).
+      logistics_->Replan(current);
     }
     residents_->RunDemographyDecisions(previous, current);
     production_->RunProductionDecisions(previous, current);

@@ -386,6 +386,105 @@ int TestThePlansChains() {
   return failures;
 }
 
+/// THE RE-PLAN BY EVENT (B5; logistics_system.h, Replan): two carts on two
+/// heaps a long way apart, planned at hour 1 of a twelve-hour day. At hour 5
+/// the second carter has lost his horse: the plan is stale — the system plans
+/// the rest of the day again, the first cart keeps every leg it had begun by
+/// then exactly, no new leg leaves before hour 6, and the second carter has no
+/// cart. The pair: nothing changed, no re-plan.
+int TestTheReplan() {
+  int failures = 0;
+  const test::FakeTableSet no_tables{{}};
+  const auto system = core::CreateLogisticsSystem(no_tables, core::StubTables::kAllowed);
+  if (Expect(system != nullptr, "re-plan: the system assembles on its defaults") != 0) {
+    return 1;
+  }
+  const auto day_of = [&system](bool horse_lost, bool& replanned, core::WorldState& world) {
+    world.weather.daylight_hours = 12.0F;
+    world.calendar.day = 3;
+    core::LogisticsConfig config;
+    const auto heap_at = [&world](float east_m) {
+      core::FieldRow field;
+      field.kind = core::LandKind::kArable;
+      field.center = core::Vec2{.x = east_m, .y = 0.0F};
+      field.reaped_grams = 1'000'000;
+      field.reaped_resource = core::ResourceId{0};
+      field.haul_days_remaining = 1.0F;
+      return core::AppendRow(world.fields, field);
+    };
+    const core::FieldId one = heap_at(500.0F);
+    const core::FieldId two = heap_at(1'500.0F);
+    core::TaskDayCount count;
+    core::SyncTasks(config, world, 3, count);
+    core::UnitRow house;
+    const core::UnitId house_id = core::AppendRow(world.units, house);
+    core::FamilyRow household;
+    household.house = house_id;
+    const core::FamilyId family = core::AppendRow(world.families, household);
+    world.units.rows[0].household = family;
+    for (const core::FieldId field : {one, two}) {
+      core::ResidentRow carter;
+      carter.family = family;
+      carter.work.kind = core::WorkKind::kHauling;
+      carter.work.field = field;
+      carter.work.rides_horse = 1;
+      core::AppendRow(world.residents, carter);
+    }
+    world.calendar.tick = (3 * core::kTicksPerDay) + 1;
+    system->BuildPlan(world);
+    if (horse_lost) {
+      world.residents.rows[1].work.rides_horse = 0;
+    }
+    world.calendar.tick = (3 * core::kTicksPerDay) + 5;
+    replanned = system->Replan(world);
+  };
+  bool replanned = false;
+  core::WorldState lost;
+  day_of(true, replanned, lost);
+  core::WorldState before = lost;  // the morning's plan, rebuilt to compare the kept legs
+  {
+    core::WorldState morning;
+    bool ignored = false;
+    day_of(false, ignored, morning);
+    before.groom_plan = morning.groom_plan;
+  }
+  bool kept = !lost.groom_plan.carts.empty() && !before.groom_plan.carts.empty();
+  bool nothing_early = true;
+  bool second_has_cart = false;
+  const core::Tick hour_five = (3 * core::kTicksPerDay) + 5;
+  for (const core::CartPlan& cart : lost.groom_plan.carts) {
+    if (cart.driver.value == lost.residents.row_ids[1].value && !cart.on_foot) {
+      second_has_cart = true;
+    }
+    if (cart.driver.value != lost.residents.row_ids[0].value) {
+      continue;
+    }
+    const core::CartPlan& morning_cart = before.groom_plan.carts.front();
+    std::size_t index = 0;
+    for (; index < morning_cart.legs.size() && morning_cart.legs[index].depart <= hour_five;
+         ++index) {
+      kept = kept && index < cart.legs.size() &&
+             cart.legs[index].depart == morning_cart.legs[index].depart &&
+             cart.legs[index].arrive == morning_cart.legs[index].arrive &&
+             cart.legs[index].task.value == morning_cart.legs[index].task.value;
+    }
+    for (; index < cart.legs.size(); ++index) {
+      nothing_early = nothing_early && cart.legs[index].depart > hour_five;
+    }
+  }
+  failures += Expect(replanned && !second_has_cart,
+                     "re-plan: a carter who lost his horse makes the plan stale — re-planned, and "
+                     "he has no cart in it");
+  failures += Expect(kept && nothing_early,
+                     "re-plan: the other cart keeps every leg begun by then, and nothing new "
+                     "leaves before the next hour");
+  core::WorldState calm;
+  bool calm_replanned = true;
+  day_of(false, calm_replanned, calm);
+  failures += Expect(!calm_replanned, "re-plan: nothing changed, nothing re-planned");
+  return failures;
+}
+
 /// THE WAY HOME FITS THE LIGHT (0.37.181; 0.37.180's canon: a goods cart's
 /// leg home after sunset in all 27 village-years, core-legsprobe2 late_h): a
 /// winter's day of four hours, 10 to 14. A cart carts its own heap 100 m out
@@ -468,6 +567,7 @@ int main() {
   failures += TestConfig();
   failures += TestThePlansChains();
   failures += TestTheWayHomeFitsTheLight();
+  failures += TestTheReplan();
   if (failures == 0) {
     std::cout << "unit_core_logistics: all checks passed\n";
   }

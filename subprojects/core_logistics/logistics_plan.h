@@ -59,9 +59,15 @@ inline constexpr std::uint32_t kMaxChainLoads = 6;
 /// so a load leg stands at the load; a cart on its way when the light ends
 /// goes home from the place it was going to.
 /// @return The plan; `tally` counts the carts, the legs and the tasks by level.
+///
+/// THE RE-PLAN (B5): with `earlier` — today's plan as it stands — the carts'
+/// legs begun by now are kept as they were (a begun leg is never broken) and
+/// the clock plans the rest of the day from where each cart then is, not
+/// before the next hour; the people's carts as the morning planned them.
 GroomPlan BuildGroomPlan(const LogisticsConfig& config,
                          const WorldState& world,
-                         LogisticsTally& tally);
+                         LogisticsTally& tally,
+                         const GroomPlan* earlier = nullptr);
 
 }  // namespace core
 
