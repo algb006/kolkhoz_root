@@ -95,3 +95,5 @@ kBarterWorthStarting,1,
 kBarterDay,0,"contract 0.37.66: raised by the exchange's delivery, the third"
 kSugarStolen,1,
 kWatchdogFired,1,
+kHerdWentHungry,1,
+kUrgentLoadWaits,1,

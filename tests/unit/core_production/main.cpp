@@ -3981,6 +3981,43 @@ int CheckFeedLightLeavesThePloughsOats() {
   return failures;
 }
 
+/// THE FIRST HUNGRY DAY STOPS THE FAST-FORWARD (B8; event_state.h,
+/// kHerdWentHungry): a kolkhoz cow on an empty manger — the first hungry day
+/// raises one interrupting event, the second none (it is hungry already); a
+/// household's cow, as hungry, says nothing; and a fed cow none.
+int CheckTheFirstHungryDayIsSaid() {
+  int failures = 0;
+  const core::ProductionConfig config = MakeHerdConfig();
+  const auto said = [](const core::WorldState& world) {
+    std::uint32_t count = 0;
+    for (const core::SimEvent& event : world.step_events) {
+      count += event.kind == core::EventKind::kHerdWentHungry &&
+                       event.severity == core::EventSeverity::kInterrupting
+                   ? 1U
+                   : 0U;
+    }
+    return count;
+  };
+  core::WorldState world = MakeHerdWorld(0.0F);
+  AddHerd(world, 0, 2, 1, true);
+  core::RunHerdDay(config, world);
+  const std::uint32_t first = said(world);
+  world.step_events.clear();
+  core::RunHerdDay(config, world);
+  const std::uint32_t second = said(world);
+  core::WorldState yard = MakeHerdWorld(0.0F);
+  AddHerd(yard, 0, 2, 1, true);
+  yard.herds.rows[0].household_owned = 1;
+  core::RunHerdDay(config, yard);
+  core::WorldState fed = MakeHerdWorld(1000.0F);
+  AddHerd(fed, 0, 2, 1, true);
+  core::RunHerdDay(config, fed);
+  failures += Expect(first == 1 && second == 0 && said(yard) == 0 && said(fed) == 0,
+                     "the first hungry day of a kolkhoz herd is said once, interrupting; the "
+                     "second, a yard's herd and a fed herd are not");
+  return failures;
+}
+
 /// THE STARVING HERD'S CAUSE AND DOOR (0.37.185; boss, the logistics thread
 /// [66]; livestock design §11, «лампа обязана назвать дверь»): a cow that
 /// eats oats alone, the oats' seed rung holding 10 kg for next spring and
@@ -15054,6 +15091,7 @@ int main() {
   failures += CheckFeedLightCountsTheWinter();
   failures += CheckFeedLightLeavesThePloughsOats();
   failures += CheckTheStarvingHerdNamesItsCause();
+  failures += CheckTheFirstHungryDayIsSaid();
   failures += CheckFeedLightRespectsTheCeiling();
   failures += CheckFeedLightNeverRunsOut();
   failures += CheckSeedLightMeasuresCoverage();

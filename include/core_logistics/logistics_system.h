@@ -112,8 +112,15 @@ class ILogisticsSystem {
   virtual void ReadTaskOrders(WorldState& current) = 0;
 
   /// @brief «Логистика не успевает» (B8): a task of level 0 waiting for a
-  ///        cart longer than a game hour, with the load named.
+  ///        cart longer than a game hour, with the load named
+  ///        (alarm_state.h, kLogisticsLate).
   virtual void CollectAlarms(const WorldState& state, std::vector<Alarm>& out) const = 0;
+
+  /// @brief Says the lamp's first hour (B8): an interrupting
+  ///        kUrgentLoadWaits for each task whose unserved wait at level 0
+  ///        crosses one hour this hour. Called once a game hour after the
+  ///        plan, in the decisions slot.
+  virtual void SayLateLoads(WorldState& current) const = 0;
 };
 
 /// @brief Builds the subsystem from the table set (transport.csv: seats, the

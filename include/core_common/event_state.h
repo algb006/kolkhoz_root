@@ -644,6 +644,27 @@ enum class EventKind : std::uint8_t {
   /// чинит»). kRoutine. Seam key `watchdog_fired`.
   kWatchdogFired,
 
+  /// herd — a KOLKHOZ herd went hungry today after a fed day (its unfed days
+  /// 0 -> 1; herd_system.cpp, RunHerdDay): the first hungry day, when the lamp
+  /// «стадо голодает» lights. amount = the herd's heads. kInterrupting (B8;
+  /// the human, 4 October 2026: «Такие срочные сигналы должны прерывать режим
+  /// пропуска времени в игре»; time design §1): until then a fast-forward ran
+  /// past the hungry days and stopped at the first head dead of hunger
+  /// (kHerdDied). A household's herd is the family's business, and says
+  /// nothing. Seam key `herd_went_hungry`.
+  kHerdWentHungry,
+
+  /// A task of level 0 has waited an hour with nobody on it: the lamp
+  /// kLogisticsLate lights (B8; transport design §12). amount packs the task,
+  /// as kWatchdogFired packs its line (SimEvent has no task field, and a new
+  /// field is a new event wire): the LogisticsTaskId value in bits 0-31, its
+  /// load kind (LogisticsLoadKind) in bits 32-39. Said ONCE, at the hour the wait crosses
+  /// one hour (urgent_since + 1) — a task served then and left again later
+  /// lights the lamp without a second event, named. kInterrupting (the human,
+  /// 4 October 2026: «Такие срочные сигналы должны прерывать режим пропуска
+  /// времени в игре»). Seam key `urgent_load_waits`.
+  kUrgentLoadWaits,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

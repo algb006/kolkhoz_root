@@ -1213,6 +1213,14 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
                               current,
                               &work);
     const bool fed = herd.fed_share >= 1.0F;
+    // THE FIRST HUNGRY DAY STOPS THE FAST-FORWARD (B8; event_state.h,
+    // kHerdWentHungry): a kolkhoz herd, fed yesterday, hungry today.
+    if (!fed && !(herd.unfed_days > 0.0F) && herd.household_owned == 0) {
+      SimEvent& hungry =
+          EmitEvent(current, EventKind::kHerdWentHungry, EventSeverity::kInterrupting);
+      hungry.herd = current.herds.row_ids[row];
+      hungry.amount = static_cast<std::int64_t>(TotalHeads(herd));
+    }
     herd.unfed_days = fed ? 0.0F : herd.unfed_days + 1.0F;
     if (fed) {
       herd.hunger_progress = 0.0F;  // a fed day clears the debt, not just the count

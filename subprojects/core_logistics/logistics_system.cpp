@@ -15,7 +15,10 @@
 
 #include "core_common/alarm_state.h"
 #include "core_common/calendar.h"
+#include "core_common/emit_event.h"
+#include "core_common/event_state.h"
 #include "core_common/labor_state.h"
+#include "core_common/logistics_rules.h"
 #include "core_common/logistics_state.h"
 #include "core_common/order_state.h"
 #include "core_common/state_table_ops.h"
@@ -53,6 +56,22 @@ bool CartsChanged(const WorldState& world, const GroomPlan& plan) {
   const auto planned_carts = static_cast<std::size_t>(
       std::ranges::count_if(plan.carts, [](const CartPlan& cart) { return !cart.on_foot; }));
   return planned_carts != there;
+}
+
+/// «Дольше часа» (transport §12): the game hours a task of level 0 may wait
+/// with nobody on it before the lamp lights.
+constexpr Tick kLateAfterHours = 1;
+
+/// A task of level 0, not paused, that nobody serves, at least
+/// kLateAfterHours since it entered level 0 (kLogisticsLate's condition).
+bool WaitsLate(const WorldState& world, const LogisticsTaskRow& task, Tick now) {
+  if (task.level != LogisticsLevel::kUrgent || task.paused ||
+      now < task.urgent_since + kLateAfterHours) {
+    return false;
+  }
+  return std::ranges::none_of(world.residents.rows, [&task](const ResidentRow& person) {
+    return WorkServesTask(person.work, task);
+  });
 }
 
 void SettleTaskOrder(OrderRow& order, OrderRefusal refusal) {
@@ -194,8 +213,36 @@ class LogisticsSystem final : public ILogisticsSystem {
     }
   }
 
-  void CollectAlarms(const WorldState& /*state*/, std::vector<Alarm>& /*out*/) const override {
-    // STUB: B8, «Логистика не успевает»
+  void CollectAlarms(const WorldState& state, std::vector<Alarm>& out) const override {
+    // «ЛОГИСТИКА НЕ УСПЕВАЕТ» (B8; alarm_state.h, kLogisticsLate).
+    const Tick now = state.calendar.tick;
+    for (std::uint32_t row = 0; row < state.logistics_tasks.rows.size(); ++row) {
+      const LogisticsTaskRow& task = state.logistics_tasks.rows[row];
+      if (!WaitsLate(state, task, now)) {
+        continue;
+      }
+      Alarm alarm;
+      alarm.kind = AlarmKind::kLogisticsLate;
+      alarm.logistics_task = state.logistics_tasks.row_ids[row];
+      alarm.amount = static_cast<std::int64_t>(now - task.urgent_since);
+      out.push_back(alarm);
+    }
+  }
+
+  void SayLateLoads(WorldState& current) const override {
+    // THE LAMP'S FIRST HOUR, SAID (B8; event_state.h, kUrgentLoadWaits): at
+    // the hour a task's wait at level 0 crosses one hour, unserved.
+    const Tick now = current.calendar.tick;
+    for (std::uint32_t row = 0; row < current.logistics_tasks.rows.size(); ++row) {
+      const LogisticsTaskRow& task = current.logistics_tasks.rows[row];
+      if (!WaitsLate(current, task, now) || now != task.urgent_since + kLateAfterHours) {
+        continue;
+      }
+      SimEvent& event =
+          EmitEvent(current, EventKind::kUrgentLoadWaits, EventSeverity::kInterrupting);
+      event.amount = static_cast<std::int64_t>(current.logistics_tasks.row_ids[row].value) |
+                     (static_cast<std::int64_t>(task.load_kind) << 32);
+    }
   }
 
  private:

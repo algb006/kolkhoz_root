@@ -93,6 +93,8 @@ class DecisionsSlot final : public ISequentialPhase {
       // THE RE-PLAN BY EVENT, every later hour (B5; logistics_system.h).
       logistics_->Replan(current);
     }
+    // A load of level 0 an hour unserved stops the fast-forward (B8).
+    logistics_->SayLateLoads(current);
     residents_->RunDemographyDecisions(previous, current);
     production_->RunProductionDecisions(previous, current);
     // Construction last (task A2, manual/71-construction.md §6): a unit
@@ -691,6 +693,9 @@ class StandardSimulation final : public ISimulation {
     residents_->CollectAlarms(completed, alarms);
     production_->CollectAlarms(completed, alarms);
     construction_->CollectAlarms(completed, alarms);
+    // The groom's lamp (B8; kLogisticsLate). Not asked until B8: its
+    // CollectAlarms was a STUB and nobody called it.
+    logistics_->CollectAlarms(completed, alarms);
   }
 
  private:

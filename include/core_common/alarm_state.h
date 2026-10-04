@@ -642,9 +642,23 @@ enum class AlarmKind : std::uint8_t {
   /// warm, kInsulateStraw otherwise. `lamp` always 0.
   kHerdColdAhead,
 
-  // Appended by later tasks and phases: children out of school, sewage,
-  // logistics falling behind. Named so the numbering is planned, not
-  // discovered.
+  /// «ЛОГИСТИКА НЕ УСПЕВАЕТ» (routing stage B, B8; transport design §12,
+  /// «Уровни приоритета»: «Аларм: задача уровня 0 ждёт подводу дольше часа
+  /// игры — „Логистика не успевает“ с названием груза»): a task of level 0
+  /// that nobody serves, an hour or more since it entered level 0
+  /// (LogisticsTaskRow::urgent_since). Subject: `logistics_task` — the load
+  /// is the task's (its kind and address); `amount` the whole game hours it
+  /// has waited at level 0. A loss coming without the player's move — the
+  /// load spoils, the herd goes hungry — and he has one, so `lamp` 1.
+  /// Lighting, it is said once as an interrupting event (EventKind::
+  /// kUrgentLoadWaits): a fast-forward stops on it (the human, 4 October
+  /// 2026). Its advice on a day off — «declare the day working» — comes with
+  /// the door that can do it today (B8's second delivery); until then
+  /// `advice` is kNone. Collected by core_logistics (logistics_system.h).
+  kLogisticsLate,
+
+  // Appended by later tasks and phases: children out of school, sewage.
+  // Named so the numbering is planned, not discovered.
 
   /// NOT A KIND, and never a value anybody stores or sends: the count, so a
   /// CONSUMER can static_assert the length of its own mirror.
@@ -814,6 +828,10 @@ struct Alarm {
 
   /// For kinds that are about a resource: which one. Invalid otherwise.
   ResourceId resource;
+
+  /// kLogisticsLate: the groom's task whose load waits (logistics_state.h).
+  /// Invalid for every other kind. Not in the save, as `lamp`.
+  LogisticsTaskId logistics_task;
 
   /// Grams, heads — the kind says which. 0 when the kind has no number.
   std::int64_t amount = 0;

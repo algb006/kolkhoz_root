@@ -611,6 +611,19 @@ int TestTheChairmansDoors() {
       replanned && !paused_planned && !world.groom_plan.stale && !world.groom_plan.urgent_pending,
       "doors: the next hour re-plans — the carts unchanged — the paused heap in no "
       "cart's chain, the flags spent");
+  // A RAISE ALONE makes the plan stale AND urgent — in the world above the
+  // pause beside it made it stale as well, and 0.37.188's fault «a raise
+  // leaves the plan fresh» reddened nothing there.
+  core::WorldState raise_only;
+  village(raise_only);
+  order(raise_only,
+        core::OrderKind::kSetLogisticsLevel,
+        raise_only.logistics_tasks.row_ids[0],
+        core::LogisticsLevel::kUrgent,
+        0);
+  system->ReadTaskOrders(raise_only);
+  failures += Expect(raise_only.groom_plan.stale && raise_only.groom_plan.urgent_pending,
+                     "doors: a raise alone makes the plan stale and urgent");
   // A PAUSE ALONE re-plans too — the raise is not what made the plan stale.
   core::WorldState pause_only;
   village(pause_only);
@@ -640,6 +653,90 @@ int TestTheChairmansDoors() {
   core::AgeAndRaise(config, world, 4, (4 * core::kTicksPerDay), count);
   failures += Expect(world.logistics_tasks.rows[0].level == core::LogisticsLevel::kUrgent,
                      "doors: the next morning's ageing keeps the player's level 0");
+  return failures;
+}
+
+/// «ЛОГИСТИКА НЕ УСПЕВАЕТ» (B8; alarm_state.h, kLogisticsLate; event_state.h,
+/// kUrgentLoadWaits): a heap's task entered level 0 at hour 10 and nobody
+/// carts it. At hour 10 — no lamp yet; at 11 the lamp, an hour waited, and
+/// one interrupting event naming the task; at 12 the lamp, two hours, and no
+/// second event. The pairs: a carter on the heap — no lamp; the task paused
+/// — no lamp; an ordinary task — no lamp.
+int TestTheLateLoadsLamp() {
+  int failures = 0;
+  const test::FakeTableSet no_tables{{}};
+  const auto system = core::CreateLogisticsSystem(no_tables, core::StubTables::kAllowed);
+  if (Expect(system != nullptr, "late loads: the system assembles on its defaults") != 0) {
+    return 1;
+  }
+  core::WorldState world;
+  core::FieldRow field;
+  field.kind = core::LandKind::kArable;
+  field.reaped_grams = 1'000'000;
+  field.reaped_resource = core::ResourceId{0};
+  field.haul_days_remaining = 1.0F;
+  const core::FieldId heap = core::AppendRow(world.fields, field);
+  core::LogisticsTaskRow task;
+  task.load_kind = core::LogisticsLoadKind::kFieldHeap;
+  task.field = heap;
+  task.level = core::LogisticsLevel::kUrgent;
+  const core::Tick ten = (3 * core::kTicksPerDay) + 10;
+  task.urgent_since = ten;
+  const core::LogisticsTaskId id = core::AppendRow(world.logistics_tasks, task);
+  const auto at =
+      [&system](
+          core::WorldState& state, core::Tick tick, std::int64_t& hours, std::uint32_t& said) {
+        state.calendar.tick = tick;
+        state.step_events.clear();
+        std::vector<core::Alarm> alarms;
+        system->CollectAlarms(state, alarms);
+        system->SayLateLoads(state);
+        hours = -1;
+        for (const core::Alarm& alarm : alarms) {
+          if (alarm.kind == core::AlarmKind::kLogisticsLate &&
+              alarm.logistics_task.value == state.logistics_tasks.row_ids[0].value) {
+            hours = alarm.amount;
+          }
+        }
+        said = 0;
+        for (const core::SimEvent& event : state.step_events) {
+          said += event.kind == core::EventKind::kUrgentLoadWaits &&
+                          event.severity == core::EventSeverity::kInterrupting &&
+                          (event.amount & 0xFFFFFFFF) == state.logistics_tasks.row_ids[0].value &&
+                          (event.amount >> 32) ==
+                              static_cast<std::int64_t>(core::LogisticsLoadKind::kFieldHeap)
+                      ? 1U
+                      : 0U;
+        }
+      };
+  std::int64_t hours = 0;
+  std::uint32_t said = 0;
+  at(world, ten, hours, said);
+  failures += Expect(hours == -1 && said == 0, "late loads: at its first hour, no lamp yet");
+  at(world, ten + 1, hours, said);
+  failures += Expect(hours == 1 && said == 1,
+                     "late loads: an hour unserved — the lamp, and one interrupting event "
+                     "naming the task and its load");
+  at(world, ten + 2, hours, said);
+  failures +=
+      Expect(hours == 2 && said == 0, "late loads: two hours — the lamp still, no second event");
+  (void)id;
+
+  core::WorldState served = world;
+  core::ResidentRow carter;
+  carter.work.kind = core::WorkKind::kHauling;
+  carter.work.field = heap;
+  core::AppendRow(served.residents, carter);
+  at(served, ten + 1, hours, said);
+  failures += Expect(hours == -1 && said == 0, "late loads: a carter on the heap — no lamp");
+  core::WorldState paused = world;
+  paused.logistics_tasks.rows[0].paused = true;
+  at(paused, ten + 1, hours, said);
+  failures += Expect(hours == -1 && said == 0, "late loads: the task paused — no lamp");
+  core::WorldState ordinary = world;
+  ordinary.logistics_tasks.rows[0].level = core::LogisticsLevel::kOrdinary;
+  at(ordinary, ten + 1, hours, said);
+  failures += Expect(hours == -1 && said == 0, "late loads: an ordinary task — no lamp");
   return failures;
 }
 
@@ -727,6 +824,7 @@ int main() {
   failures += TestTheWayHomeFitsTheLight();
   failures += TestTheReplan();
   failures += TestTheChairmansDoors();
+  failures += TestTheLateLoadsLamp();
   if (failures == 0) {
     std::cout << "unit_core_logistics: all checks passed\n";
   }

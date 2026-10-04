@@ -220,6 +220,10 @@ const char* KindName(core::EventKind kind) {
       return "sugar_stolen";
     case core::EventKind::kWatchdogFired:
       return "watchdog_fired";
+    case core::EventKind::kHerdWentHungry:
+      return "herd_went_hungry";
+    case core::EventKind::kUrgentLoadWaits:
+      return "urgent_load_waits";
     case core::EventKind::kEventKindCount:
       return "COUNT";
   }

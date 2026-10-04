@@ -66,6 +66,8 @@ std::uint32_t AlarmSubjectValue(const Alarm& alarm) {
     case AlarmKind::kFellingUnreachable:
     case AlarmKind::kPlantingUnreachable:
       return alarm.stand.value;
+    case AlarmKind::kLogisticsLate:
+      return alarm.logistics_task.value;
     case AlarmKind::kPlanPositionUncovered:
       // The resource, times the three years a chain lays out, plus the year:
       // one value per alarm, so two years of one position sort by the year.
