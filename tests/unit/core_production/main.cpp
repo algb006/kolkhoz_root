@@ -48,7 +48,9 @@
 #include "field_haul.h"
 #include "field_work.h"
 #include "goods_loan.h"
+#include "heap_lamp_checks.h"
 #include "herd_cold.h"
+#include "herd_death_checks.h"
 #include "herd_floors.h"
 #include "herd_forecast.h"
 #include "herd_life.h"
@@ -15312,6 +15314,8 @@ int main() {
   failures += CheckTheCartOfTheCompressedYear();
   failures += CheckMeadowHayLiesAtTheMeadow();
   failures += CheckTheCartingReachesTheStoreInItsHour();
+  failures += CheckTheHeapLampIsRedOnlyWhenItSpoils();
+  failures += CheckAStarvedKolkhozHerdDoesNotInterruptAgain();
   failures += CheckThePerennialsCut();
 
   if (failures == 0) {

@@ -540,7 +540,16 @@ void RunHungerDeaths(const ProductionConfig& config,
     // the kind's contract says "severity says hunger from age"
     // (event_state.h), so the two paths share a kind and part on how loudly
     // they say it. An animal that starved is news the player has to act on.
-    SimEvent& event = EmitEvent(world, EventKind::kHerdDied, EventSeverity::kInterrupting);
+    // ONCE AN EPISODE FOR A KOLKHOZ HERD (0.37.201; boss, the logistics thread
+    // [218]): its hunger was said, interrupting, the day the episode began
+    // (kHerdWentHungry, herd_system.cpp) and a death of hunger is always
+    // inside one, so the deaths are notable and the fast-forward is not torn
+    // by each — on the canon, seed 1936, year 5, the barrack's chickens died
+    // 52 days running and stopped it 52 times. A household's herd has no such
+    // episode said, and its deaths still interrupt.
+    const EventSeverity severity =
+        herd.household_owned == 0 ? EventSeverity::kNotable : EventSeverity::kInterrupting;
+    SimEvent& event = EmitEvent(world, EventKind::kHerdDied, severity);
     event.herd = herd_id;
     event.amount = static_cast<std::int64_t>(starved);
   }

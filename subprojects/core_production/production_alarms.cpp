@@ -926,6 +926,23 @@ void CollectFieldAlarms(const ProductionConfig& config,
       alarm.field = world.fields.row_ids[row];
       alarm.resource = field.reaped_resource;
       alarm.amount = field.reaped_grams;
+      // A HEAP WAITING FOR THE CARTS IS THE HARVEST'S ORDINARY COURSE, NOT A
+      // LOSS TODAY (0.37.201; boss, the logistics thread [215]-[217]). Its
+      // loss is the open sky's spoilage, and the day it becomes a loss worth
+      // a red lamp is the day the groom's rule says so: its task at level 0
+      // (core_logistics, HeapSpoils — econ's 10 % or a tonne within a day).
+      // Red then; yellow, no loss in sight, otherwise. 0.37.197 wrote no days
+      // here, read 0, «a fact»: every heap of every reaping day turned red, and
+      // the canon's fast-forward was stopped 823 times in 45 village-years by
+      // this lamp alone (20-81 interrupts a village a year, econ's gate <= 4).
+      // The snow is not its loss: it has not touched a heap since 0.37.11.
+      bool urgent = false;
+      for (const LogisticsTaskRow& task : world.logistics_tasks.rows) {
+        urgent = urgent || (task.load_kind == LogisticsLoadKind::kFieldHeap &&
+                            task.field == alarm.field && task.level == LogisticsLevel::kUrgent);
+      }
+      alarm.days_to_loss =
+          urgent ? DaysToLossOf(0) : DaysToLossOf(std::numeric_limits<std::int64_t>::max());
       alarms.push_back(alarm);
     }
     // ONE kSeedShort A FIELD (alarm_state.h: a kind and a subject are one
