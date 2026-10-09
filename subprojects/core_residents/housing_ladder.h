@@ -46,9 +46,10 @@ void RunRoofless(const LifeConfig& config, WorldState& current);
 
 /// @brief Into a barrack place (housing §9): `house` is the barrack, its
 /// `household` stays unset — many families share it — `in_barrack` is set,
-/// the ladder's other marks are cleared, and the family's own herds go to the
-/// kolkhoz (no yard, no animals; boss seq 197). Shared with the wedding and
-/// the migrant's arrival, who take a barrack place when no house is free.
+/// the ladder's other marks are cleared. The family's animals are settled by
+/// the next herd day, by the barrack's one rule (0.37.205; core_production,
+/// SettleBarrackStock) — not here. Shared with the wedding and the migrant's
+/// arrival, who take a barrack place when no house is free.
 void MoveIntoBarrack(WorldState& current, std::uint32_t family_row, UnitId barrack);
 
 /// @brief kReserveHouse and kAnswerLeaveRequest (order_state.h), in whatever

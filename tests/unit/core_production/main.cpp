@@ -2975,6 +2975,75 @@ int CheckYardOffspringReplaces() {
                    knifed(yard.world) == 0,
                "yard young: the new-born over the cap stand in the yard until they are grown");
   }
+  // IN A BARRACK A FAMILY KEEPS ITS SHARE OF THE COMMON HENHOUSE AND EATS THE
+  // REST (0.37.205; FarmingConfig::barrack_poultry_heads, three). Five adults
+  // of a kind capped at twelve: in a house the five stand; in a barrack three
+  // stand the next day, two are the family's meat — and not a neighbour's
+  // head, though a family that keeps nothing stands by. Two stay two.
+  {
+    core::ProductionConfig roomy = config;
+    roomy.livestock[2].household_cap_heads = 12.0F;
+    roomy.livestock[2].household_group = 2;  // a bird
+    Yard housed = yard_with(5, 0.2F, 0.2F, 0, 0);
+    RunHerdDays(roomy, housed.world, 1);
+    failures += Expect(housed.world.herds.rows[0].adult_count == 5 && knifed(housed.world) == 0,
+                       "barrack flock: in a house the yard keeps the five it had (the check's "
+                       "own ground)");
+    Yard barrack = yard_with(5, 0.2F, 0.2F, 0, 0);
+    barrack.world.families.rows[0].in_barrack = 1;
+    core::FamilyRow neighbour;
+    neighbour.pantry.assign(3, 0);
+    AppendRow(barrack.world.families, neighbour);
+    RunHerdDays(roomy, barrack.world, 1);
+    failures += Expect(
+        barrack.world.herds.rows.size() == 1 && barrack.world.herds.rows[0].adult_count == 3 &&
+            barrack.world.herds.rows[0].household_owned == 1 && knifed(barrack.world) == 2 &&
+            barrack.world.families.rows[0].pantry[2] == 20 * core::kGramsPerKilogram,
+        "barrack flock: a family that brought five keeps three, its own, and "
+        "eats two — none is walked to a neighbour, none goes to the kolkhoz");
+    Yard small = yard_with(2, 0.2F, 0.2F, 0, 0);
+    small.world.families.rows[0].in_barrack = 1;
+    RunHerdDays(roomy, small.world, 1);
+    failures += Expect(small.world.herds.rows[0].adult_count == 2 && knifed(small.world) == 0,
+                       "barrack flock: a family that brought two keeps its two");
+  }
+  // THE BARRACK'S ONE RULE FOR THE REST (SettleBarrackStock), by whatever
+  // door the animal came — here it simply stands with a family in a barrack,
+  // as after an inheritance. A kind that lives only at family yards is eaten
+  // whole that day: two adults and a half-grown give three carcasses, the
+  // new-born none, and no head is left the kolkhoz's. A kind the kolkhoz can
+  // hold goes to its herd, every head. And in a house neither happens.
+  {
+    core::ProductionConfig yard_only = config;
+    yard_only.livestock[2].household_only = 1;
+    Yard goats = yard_with(2, 0.2F, 0.2F, 1, 1);
+    goats.world.families.rows[0].in_barrack = 1;
+    RunHerdDays(yard_only, goats.world, 1);
+    const core::HerdRow& eaten = goats.world.herds.rows[0];
+    failures +=
+        Expect(eaten.adult_count == 0 && eaten.juvenile_count == 0 && eaten.newborn_count == 0 &&
+                   eaten.household_owned == 1 && knifed(goats.world) == 4 &&
+                   goats.world.families.rows[0].pantry[2] == 30 * core::kGramsPerKilogram,
+               "barrack stock: a yard-only kind is eaten the day it stands with a "
+               "barrack family — three carcasses in its pantry, four heads booked, none "
+               "the kolkhoz's");
+    Yard cows = yard_with(2, 0.2F, 0.2F, 1, 1);
+    cows.world.families.rows[0].in_barrack = 1;
+    RunHerdDays(config, cows.world, 1);
+    const core::HerdRow& handed = cows.world.herds.rows[0];
+    failures += Expect(handed.household_owned == 0 &&
+                           handed.household.value == core::kInvalidEntityIdValue &&
+                           handed.adult_count + handed.juvenile_count + handed.newborn_count == 4 &&
+                           knifed(cows.world) == 0,
+                       "barrack stock: a kind the kolkhoz can hold goes to its herd, all four "
+                       "heads, none under the knife");
+    Yard at_home = yard_with(2, 0.2F, 0.2F, 1, 1);
+    RunHerdDays(yard_only, at_home.world, 1);
+    failures +=
+        Expect(at_home.world.herds.rows[0].household_owned == 1 &&
+                   at_home.world.herds.rows[0].adult_count == 2 && knifed(at_home.world) == 0,
+               "barrack stock: in a house the yard keeps its own (the check's ground)");
+  }
   // THE HEAD GIVEN TO A NEIGHBOUR GOES WITH ITS SHARE OF THE YARD'S HAY
   // (0.37.145; econ, host-boss-pin-0-37-133-2026-10-02 [59]). Two young
   // adults and a kid, 900 kg of hay in the yard's pantry, and a second

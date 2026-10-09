@@ -337,6 +337,16 @@ void RunBirths(const ProductionConfig& config,
     if (!(kind.household_cap_heads > 0.0F)) {
       return;
     }
+    // A FLOCK IN A BARRACK DOES NOT BREED (0.37.205; boss and econ, core-
+    // boss-c2-site-supply-2026-10-09 [23]-[24], «no growth of the flock in a
+    // barrack and no more than the family brought»): the family kept its
+    // hens on the move (housing_ladder.cpp, MoveIntoBarrack), and they feed
+    // themselves with no store touched — free food, allowed at the scale the
+    // yard had it and no larger. The breeding returns with a house.
+    const std::uint32_t family_row = FindRow(world.families, herd.household);
+    if (family_row != kNoRow && world.families.rows[family_row].in_barrack != 0) {
+      return;
+    }
   } else if (herd.fed_share < config.farming.calving_fed_share_floor) {
     // A HUNGRY HERD DOES NOT CALVE (boss, boss-core-epoch1-2 seq 19, B): the
     // natural brake. The billet gate above was the only one, so a herd given

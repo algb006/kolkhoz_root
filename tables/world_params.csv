@@ -315,3 +315,4 @@ barter_walk_limit_hours,2,core
 livestock_cold_first_month,12,core
 livestock_cold_last_month,2,core
 herd_hunger_episode_fed_days,4,core
+barrack_poultry_heads_per_family,3,core

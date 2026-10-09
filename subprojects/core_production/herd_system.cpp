@@ -962,6 +962,70 @@ void CarryHayShare(const ProductionConfig& config,
   AddToStock(world.families.rows[taker].pantry, hay, share);
 }
 
+/// THE BARRACK'S STOCK, ONE RULE FOR EVERY DOOR (0.37.205; boss, core-boss-c2-
+/// site-supply-2026-10-09 [23]-[30]; the human, 9 October 2026: «Если у
+/// барака будут куры, то нужен курятник»; housing §9). A family living in a
+/// barrack holds hens up to its share of the common henhouse and nothing
+/// else. Asked of every household herd at the start of its day, so it holds
+/// by whatever door the animal came — the family's move, an inheritance
+/// (demography.cpp, the heir's flock), any door found later:
+///   - a bird (`household_group` 2) stays the family's; its share is kept by
+///     the yard's surplus knife (PlaceSurplusHead);
+///   - a kind that lives only at family yards (`household_only`, the goat) is
+///     eaten that day — the knife, into the family's pantry. It never becomes
+///     the kolkhoz's;
+///   - every other kind goes to the kolkhoz herd: no stall and no hay at a
+///     barrack. Fed from the stores and billeted from this same day.
+///
+/// UNTIL THEN the move itself handed every herd of the family to the kolkhoz
+/// (housing_ladder.cpp, MoveIntoBarrack) and no other door did anything: the
+/// hens became a kolkhoz herd with no unit that ate the farm's oats from under
+/// the plan rung and starved below it (23 of the 25 herd hunger episodes of
+/// nine villages' five years on 0.37.203-204); the goats became a kolkhoz
+/// herd of a kind the kolkhoz has no unit for (4 251 head-days in the same
+/// span, the hen probe); and an heir in a barrack kept an inherited goat as
+/// its own (seed 1933, day 170).
+///
+/// THE YOUNG OF A KIND UNDER THE KNIFE: the grown and the half-grown give the
+/// kind's carcass (livestock.csv `meat_kg_per_head`, the one number there
+/// is), the new-born give nothing. STUB, named: no table says what a kid
+/// weighs.
+/// @return True when the herd changed hands or was emptied.
+bool SettleBarrackStock(const ProductionConfig& config,
+                        const LivestockDef& kind,
+                        HerdRow& herd,
+                        HerdId herd_id,
+                        WorldState& world) {
+  if (herd.household_owned == 0 || kind.household_group == 2U || TotalHeads(herd) == 0) {
+    return false;
+  }
+  const std::uint32_t family_row = FindRow(world.families, herd.household);
+  if (family_row == kNoRow || world.families.rows[family_row].in_barrack == 0) {
+    return false;
+  }
+  if (kind.household_only == 0) {
+    herd.household_owned = 0;
+    herd.household = FamilyId{};
+    herd.unit = UnitId{};
+    return true;
+  }
+  const std::uint32_t heads = TotalHeads(herd);
+  const auto carcasses = static_cast<std::uint16_t>(herd.adult_count + herd.juvenile_count);
+  Slaughter(config, kind, PlaceOf(world, config, herd), carcasses, world);
+  world.ledger.current.herd_culled += heads;
+  AddLedgerHeads(world.ledger.current.herd_surplus_slaughtered, herd.kind, heads);
+  SimEvent& event = EmitEvent(world, EventKind::kHerdSurplusSlaughtered);
+  event.herd = herd_id;
+  event.amount = static_cast<std::int64_t>(heads);
+  herd.adult_count = 0;
+  herd.adult_male_count = 0;
+  herd.juvenile_count = 0;
+  herd.newborn_count = 0;
+  herd.adult_age_game_years_total = 0.0F;
+  herd.adult_older_count = 0;
+  return true;
+}
+
 void PlaceSurplusHead(const ProductionConfig& config,
                       const LivestockDef& kind,
                       const HerdPlace& place,
@@ -986,8 +1050,19 @@ void PlaceSurplusHead(const ProductionConfig& config,
   // hen kept one hen for ever, and the eggs of one hen are half of one
   // eater's line at the table.
   const auto grows_to = static_cast<std::uint16_t>(kind.household_grow_to_heads);
-  const std::uint16_t keeps =
+  std::uint16_t keeps =
       std::min(cap, std::max<std::uint16_t>({adults_before, grows_to, std::uint16_t{1}}));
+  // IN A BARRACK THE FAMILY KEEPS ITS SHARE OF THE COMMON HENHOUSE AND EATS
+  // THE REST (0.37.205; FarmingConfig::barrack_poultry_heads): no more than
+  // that share and no more than it has — a flock there neither grows by its
+  // young nor is walked to a neighbour, and nothing of it goes to the
+  // kolkhoz. The surplus of the move falls under this knife on the family's
+  // first herd day in the barrack.
+  const std::uint32_t family_row = FindRow(world.families, herd.household);
+  const bool in_barrack = family_row != kNoRow && world.families.rows[family_row].in_barrack != 0;
+  if (in_barrack) {
+    keeps = std::min(config.farming.barrack_poultry_heads, herd.adult_count);
+  }
   std::uint32_t slaughtered = 0;
   while (herd.adult_count > keeps) {
     float age = adult_from_years;
@@ -1007,7 +1082,7 @@ void PlaceSurplusHead(const ProductionConfig& config,
         herd.adult_age_game_years_total < youngest ? youngest : herd.adult_age_game_years_total;
     // A yard that keeps nothing of this group takes it, free; and if there
     // is no such yard, it is meat.
-    if (!GiveToNeighbour(queues, pending, herd, kind, true, age)) {
+    if (in_barrack || !GiveToNeighbour(queues, pending, herd, kind, true, age)) {
       world.ledger.current.herd_culled += 1;
       ++slaughtered;
       Slaughter(config, kind, place, 1, world);
@@ -1190,6 +1265,9 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
     // carries the sires with it at its own site, where what happened is known.
     herd.adult_male_count =
         kind.sexed == 0 ? 0U : std::min(herd.adult_male_count, herd.adult_count);
+    // The barrack's one rule, before the herd's place is asked: a herd that
+    // goes to the kolkhoz here eats the kolkhoz's fodder from this day.
+    SettleBarrackStock(config, kind, herd, current.herds.row_ids[row], current);
     HerdPlace place = PlaceOf(current, config, herd);
     place.feed_allowance = &feed_allowance;
     place.peoples_foods = &peoples_foods;

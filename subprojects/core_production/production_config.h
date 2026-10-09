@@ -689,6 +689,18 @@ struct FarmingConfig {
   /// fed_days_in_a_row). A constant in herd_system.cpp in 0.37.192.
   std::uint16_t hunger_episode_fed_days = 4;
 
+  /// THE BARRACK'S HENHOUSE, A FAMILY'S SHARE (0.37.205; the human, 9 October
+  /// 2026: «Если у барака будут куры, то нужен курятник»; boss and econ, the
+  /// C2 thread [25]-[27]): the adult birds a family keeps while it lives in a
+  /// barrack — one common henhouse, a part of the barrack, three hens a
+  /// family place (world_params `barrack_poultry_heads_per_family`; STUB 3
+  /// until the row is exported — a yard keeps eight at the start, a barrack
+  /// family has only the kitchen). What a family brings beyond it is eaten:
+  /// the yard's own surplus knife, into the family's pantry (herd_system.cpp,
+  /// PlaceSurplusHead) — never handed to the kolkhoz, which would make again
+  /// the herd with no unit this rule removed.
+  std::uint16_t barrack_poultry_heads = 3;
+
   /// «Замерзает» from this count.
   float freezing_counter = 6.0F;
 

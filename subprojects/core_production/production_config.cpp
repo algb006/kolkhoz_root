@@ -1060,7 +1060,7 @@ bool ParseMeadowKinds(const ITable& table, FarmingConfig& farming, std::string& 
 /// AT ALL: until 2026-09-16 this module took every number off its own
 /// hand-written tables, and the two halves of billeting are what brought it
 /// here. The next world constant lands in the same place.
-constexpr std::array<std::string_view, 30> kProductionWorldParamKeys = {
+constexpr std::array<std::string_view, 31> kProductionWorldParamKeys = {
     "billet_heads_per_yard",
     "billet_yield_factor",
     "school_year_start_month",
@@ -1094,7 +1094,8 @@ constexpr std::array<std::string_view, 30> kProductionWorldParamKeys = {
     "feed_draught_first",
     "livestock_cold_first_month",
     "livestock_cold_last_month",
-    "herd_hunger_episode_fed_days"};
+    "herd_hunger_episode_fed_days",
+    "barrack_poultry_heads_per_family"};
 
 /// THE SCHOOL YEAR IS READ HERE AS WELL AS BY THE SCHOOL, and that is a
 /// second READER, not a second home: the months live in world_params.csv and
@@ -1119,6 +1120,7 @@ bool ParseProductionWorldParams(const ITable& world,
   float cold_from = static_cast<float>(farming.cold_first_month) + 1.0F;
   float cold_to = static_cast<float>(farming.cold_last_month) + 1.0F;
   float hunger_episode_fed_days = static_cast<float>(farming.hunger_episode_fed_days);
+  auto barrack_poultry_heads = static_cast<float>(farming.barrack_poultry_heads);
   const Range months{.low = 1.0F, .high = static_cast<float>(kMonthsPerYear)};
   const std::array<ScalarKnob, kProductionWorldParamKeys.size()> knobs = {
       ScalarKnob{.key = kProductionWorldParamKeys[0],
@@ -1232,10 +1234,17 @@ bool ParseProductionWorldParams(const ITable& world,
       // a herd's hunger is said again (herd_system.cpp, kHerdWentHungry).
       ScalarKnob{.key = kProductionWorldParamKeys[29],
                  .value = &hunger_episode_fed_days,
-                 .range = Range{.low = 2.0F, .high = 8.0F}}};
+                 .range = Range{.low = 2.0F, .high = 8.0F}},
+      // THE BARRACK'S HENHOUSE, A FAMILY'S SHARE (0.37.205; boss and econ, the
+      // C2 thread [25]-[27]): the adult birds a family keeps there
+      // (herd_system.cpp, PlaceSurplusHead). Nought: none.
+      ScalarKnob{.key = kProductionWorldParamKeys[30],
+                 .value = &barrack_poultry_heads,
+                 .range = Range{.low = 0.0F, .high = 100.0F}}};
   if (!ReadKnobs(world, "world_params", knobs, error)) {
     return false;
   }
+  farming.barrack_poultry_heads = static_cast<std::uint16_t>(barrack_poultry_heads);
   farming.hunger_episode_fed_days = static_cast<std::uint16_t>(hunger_episode_fed_days);
   farming.cold_first_month = static_cast<std::uint8_t>(cold_from - 1.0F);
   farming.cold_last_month = static_cast<std::uint8_t>(cold_to - 1.0F);

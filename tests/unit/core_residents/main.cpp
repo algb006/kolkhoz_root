@@ -2443,8 +2443,9 @@ int CheckRooflessLadder() {
 }
 
 /// The barrack (housing §9, §20 second rung; boss seq 197): many families, no
-/// yard. A roofless family takes a place before the tent, its herds go to the
-/// kolkhoz, a full barrack takes nobody, a free house takes the barrack family
+/// yard. A roofless family takes a place before the tent, its large stock
+/// goes to the kolkhoz and its hens stay its own (0.37.205), a full barrack
+/// takes nobody, a free house takes the barrack family
 /// out, and a couple with no free house gets a place.
 int CheckBarrack() {
   int failures = 0;
@@ -2473,9 +2474,14 @@ int CheckBarrack() {
                          world.families.rows[0].in_barrack == 1 &&
                          world.units.rows[0].household.value == core::kInvalidEntityIdValue,
                      "barrack: a roofless family takes a place before the tent; nobody's house");
-  failures += Expect(world.herds.rows[0].household_owned == 0 &&
-                         world.herds.rows[0].household.value == core::kInvalidEntityIdValue,
-                     "and its goat goes to the kolkhoz: no yard, no animals of its own");
+  // The move hands nothing over (0.37.205): the family's animals are settled
+  // by the herd's day, by the barrack's one rule for every door
+  // (core_production, SettleBarrackStock; its checks are that module's).
+  failures += Expect(world.herds.rows[0].household_owned == 1 &&
+                         world.herds.rows[0].household.value == three.value &&
+                         world.herds.rows[0].adult_count == 1,
+                     "and the move itself touches no herd: the goat is the family's until the "
+                     "herd's day settles it");
 
   const core::FamilyId another = AppendRow(world.families, core::FamilyRow{});
   AddAdult(world, another, core::Sex::kFemale, 25.0F);

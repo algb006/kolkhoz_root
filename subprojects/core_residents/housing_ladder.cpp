@@ -55,7 +55,6 @@ std::uint32_t MembersOf(const WorldState& world, FamilyId family) {
 
 void MoveIntoBarrack(WorldState& current, std::uint32_t family_row, UnitId barrack) {
   const std::uint32_t barrack_row = FindRow(current.units, barrack);
-  const FamilyId id = current.families.row_ids[family_row];
   FamilyRow& family = current.families.rows[family_row];
   // The barrack is nobody's house: `household` stays as it is (unset), and
   // the families living there say so by their own `house`.
@@ -65,16 +64,13 @@ void MoveIntoBarrack(WorldState& current, std::uint32_t family_row, UnitId barra
   family.lodged_in = UnitId{};
   family.asked_to_leave = 0;
   family.in_barrack = 1;
-  // NO YARD, SO NO ANIMALS OF ITS OWN (housing §9; boss seq 197): the
-  // family's herds go to the kolkhoz — fed from the stores and billeted,
-  // as the start's horses are.
-  for (HerdRow& herd : current.herds.rows) {
-    if (herd.household_owned != 0 && herd.household.value == id.value) {
-      herd.household_owned = 0;
-      herd.household = FamilyId{};
-      herd.unit = UnitId{};
-    }
-  }
+  // NO YARD, SO NO STALL AND NO HAY (housing §9) — AND THE STOCK IS SETTLED BY
+  // THE HERD'S DAY, NOT HERE (0.37.205; core_production, herd_system.cpp,
+  // SettleBarrackStock): one rule for every door by which an animal reaches
+  // a family in a barrack. Until then this move handed every herd of the
+  // family to the kolkhoz — the hens to starve there with no unit, the goat
+  // to be a kolkhoz herd of a kind the kolkhoz cannot hold — and the second
+  // door, an inheritance, handed over nothing at all.
 }
 
 namespace {
