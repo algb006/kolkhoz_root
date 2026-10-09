@@ -126,7 +126,7 @@ class LimitPolicy {
                  "and NEVER while his own logs lie felled at a stand (0.37.107) — "
                  "when the year's points cover it and no cart with that material is on the road "
                  "(district design §1; boss, 2026-09-13 and 2026-09-24); and TAKES THE "
-                 "DISTRICT'S SEED LOAN for the shortfall seed_short names, seven days before the "
+                 "DISTRICT'S SEED LOAN for the shortfall seed_short names, ten days before the "
                  "seed's sowing window, once a resource a year (boss, boss-core-epoch1-5 seq 15)\n";
   }
 
@@ -219,9 +219,20 @@ class LimitPolicy {
  private:
   static constexpr std::uint32_t kCooldownDays = 1;
 
-  /// Days before a seed's sowing window the chairman takes the loan (boss,
-  /// boss-core-epoch1-5 seq 15: «за 7 суток до окна сева»).
-  static constexpr std::uint32_t kLoanLeadDays = 7;
+  /// Days before a seed's sowing window the chairman takes the loan.
+  ///
+  /// TEN, WHILE THE LAMP IS YELLOW (0.37.203; boss, the resume thread of
+  /// 9 October [12]). It was 7 (boss-core-epoch1-5 seq 15: «за 7 суток до
+  /// окна сева») from before the lamps had a colour; since 0.37.197 kSeedShort
+  /// lights 12 days before the window and turns red at 8
+  /// (world_params `alarm_red_within_days`), so the chairman answered the day
+  /// AFTER the red lamp stopped the fast-forward — every time: on 0.37.202,
+  /// nine villages, five years, 56 of 198 alarm stop-days were the seed lamp
+  /// alone. A chairman who waits four days of a yellow lamp out is a gross
+  /// error the runs do not test (the human, 2 October 2026). Above
+  /// `alarm_red_within_days` and inside the lamp's 12 lit days; a threshold
+  /// raised to 10 or more would bring the stop back.
+  static constexpr std::uint32_t kLoanLeadDays = 10;
 
   /// Each crop's seed resource (a resources.csv row, or kNoTableRow) and the
   /// first month of its sowing window, 0-based.
@@ -241,7 +252,7 @@ class LimitPolicy {
     }
   }
 
-  /// THE SEED LOAN (boss, boss-core-epoch1-5 seq 15): seven days before a
+  /// THE SEED LOAN (boss, boss-core-epoch1-5 seq 15): kLoanLeadDays before a
   /// seed's sowing window, if seed_short stands for it, the shortfall the
   /// alarms name is borrowed — once a resource a year, and only what is
   /// short: the core lends up to the whole need, and the markup is paid on
