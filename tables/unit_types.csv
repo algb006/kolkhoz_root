@@ -131,7 +131,7 @@ priest_house,Дом священника,housing,1,0,0,era,,1,,,,absorbed,1,0,0,
 manor_ruins,Развалины графской усадьбы,service,1,0,0,start,,1,35,,,absorbed,0,0,1,,0,none,,0,,1,,0,1,0,0,0,1
 water_standpipe,Уличная колонка,infrastructure,2,0,1,event,event_21,0,,0.8,verge,follows,0,0,0,,0,none,,0,,1,,0,0,0,0,0,1
 fire_gong,Пожарный гонг,infrastructure,1,0,1,era,,0,,0.6,open,follows,0,0,0,,0,none,,0,,1,,0,1,1,0,0,1
-field_camp,Полевой стан,logistics,1,0,1,event,event_22,1,,,,follows,0,0,0,,0,none,,0,,1,,0,1,1,1,0,1
+field_camp,Полевой стан,logistics,1,0,0,event,event_22,1,,,,follows,0,0,0,,0,none,,0,,1,,0,1,1,1,0,1
 count_lodge,Графская сторожка,production,1,0,0,start,,1,135,,,absorbed,1,1,1,,0,none,,0,,1,,0,1,0,0,0,0
 beach,Пляж,social,1,0,1,era,,0,,8,open,follows,1,0,0,,,none,,0,,1,0,0,0,0,0,0,1
 clamp,Бурт,production,1,1,1,era,,0,,6,open,follows,0,0,0,,,none,,0,,1,,0,0,0,0,0,1
