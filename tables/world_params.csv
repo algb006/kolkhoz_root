@@ -316,3 +316,7 @@ livestock_cold_first_month,12,core
 livestock_cold_last_month,2,core
 herd_hunger_episode_fed_days,4,core
 barrack_poultry_heads_per_family,3,core
+timber_mark_release_days,8,core
+home_light_hours_after_sunset,2,layer
+home_light_hours_before_sunrise,0.5,layer
+yard_dusk_spread_minutes,24,layer
