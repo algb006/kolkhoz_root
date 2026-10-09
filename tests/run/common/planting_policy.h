@@ -333,8 +333,11 @@ class PlantingPolicy {
   /// own question for kPlantingUnreachable (timber_felling.cpp,
   /// NearestHomeTravelHours). Until 0.36.12 the straight line, while the
   /// limit it is compared with is by the network since 0.36.2.
-  /// The houses are found on the network once a step (felling_policy.h,
-  /// RideHours, for why).
+  /// The houses are found on the network once a step: finding is the costly
+  /// half of a query (road_route.h, NetworkPlace), and asking it anew for
+  /// every house and every zone doubled timber_years' time. THE WALK ALONE,
+  /// though a planter past it rides since 0.37.208 and the lamp is then
+  /// dark: this chairman plants no farther than a walk — the stricter rule.
   float WalkHours(const core::WorldState& world, core::Vec2 place) const {
     const std::shared_ptr<const core::RoadIndex> index = core::RoadIndexOf(world);
     if (homes_tick_ != world.calendar.tick || homes_index_ != index.get() ||

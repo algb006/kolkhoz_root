@@ -316,9 +316,12 @@ static_assert(AggregateArity<WeddingWaitRow>() == 3,
               "WeddingWaitRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 82: a planting's species, hectares and two days — 48 -> 64, nine
 // fields -> thirteen, predicted before the fields were added.
-static_assert(sizeof(TimberStandRow) == 64,
+// Save 144: the days a felling mark stood out of reach — 64 -> 72 (a u32
+// after the last u32, the row is aligned to its 8-byte load), thirteen
+// fields -> fourteen; predicted before the build.
+static_assert(sizeof(TimberStandRow) == 72,
               "TimberStandRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<TimberStandRow>() == 13,
+static_assert(AggregateArity<TimberStandRow>() == 14,
               "TimberStandRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(ExtractionSiteRow) == 64,
               "ExtractionSiteRow changed — update the codec and VERSION_SAVE");
@@ -1445,6 +1448,8 @@ void WriteTimberStandRow(SaveSink& sink, const TimberStandRow& row) {
   out.WriteFloat(row.planted_area_ha);
   out.WriteU32(row.planted_day);
   out.WriteU32(row.matures_day);
+  // Save 144: the days in a row the felling mark could take no hand.
+  out.WriteU32(row.unreached_days);
 }
 
 TimberStandRow ReadTimberStandRow(LoadSource& source) {
@@ -1464,6 +1469,7 @@ TimberStandRow ReadTimberStandRow(LoadSource& source) {
   row.planted_area_ha = in.ReadFloat();
   row.planted_day = in.ReadU32();
   row.matures_day = in.ReadU32();
+  row.unreached_days = in.ReadU32();
   return row;
 }
 

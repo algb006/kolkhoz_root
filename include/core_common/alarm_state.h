@@ -330,6 +330,13 @@ enum class AlarmKind : std::uint8_t {
   /// for its reasons: the window is shorter in winter, so a stand out of reach
   /// in December is within it in June, and this goes out by itself when the
   /// day grows. Ranked 13 in the design's roster (alarms.csv).
+  ///
+  /// SINCE 0.37.208 ALSO WHERE NO FELLER CAN BE SENT (home_reach.h,
+  /// HandReachToday): the fellers WALK since routing stage A4, and a stand
+  /// the log cart reaches but no hand does — past the walk with no ride to
+  /// give — is named too, with the hours of the ride nobody can give. A mark
+  /// the accountant would not offer for timber_mark_release_days dawns in a
+  /// row is released (EventKind::kFellingMarkReleased).
   kFellingUnreachable,
 
   /// FOOD LOCKED IN THE FUNDS WHILE A FAMILY GOES HUNGRY (econ's audit I6,
@@ -424,6 +431,9 @@ enum class AlarmKind : std::uint8_t {
   /// walking speed. A warning and not a refusal at the order, for the same
   /// reason: a zone out of reach in December is within it in June. Subject:
   /// `stand`; `amount` = the hours of the walk, one way, in game hours.
+  /// SINCE 0.37.208 NOT WHILE A RIDE SERVES IT: a planter past the walk rides
+  /// (labor_state.h, TakesThePeoplesCart), so a zone the ride reaches is not
+  /// named while the kolkhoz has a horse (home_reach.h, HandReachToday).
   kPlantingUnreachable,
 
   /// SEED WITH NOWHERE TO LIE (alarms.csv `seed_has_no_room`, words STUB;

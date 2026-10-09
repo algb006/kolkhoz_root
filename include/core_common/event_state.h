@@ -696,6 +696,18 @@ enum class EventKind : std::uint8_t {
   /// `plan_winter_moved`.
   kPlanWinterMoved,
 
+  /// A FELLING MARK WAS RELEASED: NO HAND COULD BE SENT TO IT (0.37.208; the
+  /// human's rule of 2 October 2026 — every wait has a deadline, the
+  /// watchdog writes to the log and moves on). The stand's felling was not
+  /// offerable for timber_mark_release_days dawns in a row (home_reach.h,
+  /// FellingCanBeMannedToday): past the log cart's road, or past the walk
+  /// with no ride to give. What its crew had felled lies on the stand as
+  /// logs; the rest stands again, unmarked. `stand` — which; `amount` — the
+  /// volume left UNFELLED, in whole litres (cubic metres × 1000). The days
+  /// are the table's number and are not carried. kNotable. Seam key
+  /// `felling_mark_released`.
+  kFellingMarkReleased,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

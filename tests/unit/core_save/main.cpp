@@ -733,6 +733,7 @@ core::WorldState MakeWorld() {
   planting.planted_area_ha = 2.5F;
   planting.planted_day = 97;
   planting.matures_day = 337;
+  planting.unreached_days = 5;  // save 144: the days a felling mark stood out of reach
   core::AppendRow(world.stands, planting);
 
   // An appointment still waiting (task A7): kAccepted is exactly the status
@@ -1724,7 +1725,10 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // Save 82: the fixture's first stand, a birch planting — 8 -> 67 (its id
     // 4, the old fields 41, species 2, hectares 4, two days 8); predicted,
     // held.
-    {"stands", 67, 0x9d5183df2ce65288ULL},
+    // Save 144: +4 — the days the stand's felling mark stood out of reach, a
+    // u32 at the row's end; predicted 67 -> 71 with every other section
+    // unmoved before the build; held, and the hash recorded from that run.
+    {"stands", 71, 0x95a8923408454dddULL},
     // Save 98: +9 — own_carts and the carting seam's two floats on the one
     // cart of the fixture; predicted 44 -> 53 before the build, held.
     {"limit_deliveries", 53, 0x6030630cf91d7457ULL},
@@ -2284,7 +2288,8 @@ int main() {
                          loaded.stands.rows[0].species.value == 1 &&
                          loaded.stands.rows[0].planted_area_ha == 2.5F &&
                          loaded.stands.rows[0].planted_day == 97 &&
-                         loaded.stands.rows[0].matures_day == 337,
+                         loaded.stands.rows[0].matures_day == 337 &&
+                         loaded.stands.rows[0].unreached_days == 5,
                      "a birch planting comes back birch, its hectares and both its days");
   failures += Expect(loaded.residents.rows[1].work.kind == core::WorkKind::kExtraction &&
                          loaded.residents.rows[1].work.extraction_site.value == 4 &&

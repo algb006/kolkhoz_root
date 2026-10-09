@@ -228,6 +228,8 @@ const char* KindName(core::EventKind kind) {
       return "lamp_turned_red";
     case core::EventKind::kPlanWinterMoved:
       return "plan_winter_moved";
+    case core::EventKind::kFellingMarkReleased:
+      return "felling_mark_released";
     case core::EventKind::kEventKindCount:
       return "COUNT";
   }

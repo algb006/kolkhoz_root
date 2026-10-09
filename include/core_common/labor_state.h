@@ -213,8 +213,9 @@ constexpr bool RidesOut(WorkKind kind) {
 /// and felling (A4). The day's placement gives a cart from the horses the
 /// plough and the goods carts left, to two or more hands whose walk one way
 /// is longer than the table's (assignment.h, AssignmentParams::
-/// people_cart_min_walk_hours). Not the road work: the design's list does
-/// not name it.
+/// people_cart_min_walk_hours) — and, since 0.37.208, the horse itself to
+/// ONE such hand, «один — верхом» (until then one far hand got nothing). Not the road work: the
+/// design's list does not name it.
 constexpr bool TakesThePeoplesCart(WorkKind kind) {
   return kind == WorkKind::kHerdCare || kind == WorkKind::kConstruction ||
          kind == WorkKind::kExtraction || kind == WorkKind::kUnitWork ||

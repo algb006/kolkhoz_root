@@ -22,7 +22,7 @@ namespace {
 // its biome and ships only the result, in timber_stands.csv. The core read
 // them for one commit because they were declared `core`; boss re-declared
 // them on 2026-09-13 and they left world_params.csv.
-constexpr std::array<std::string_view, 13> kTimberWorldParamKeys = {
+constexpr std::array<std::string_view, 14> kTimberWorldParamKeys = {
     "timber_log_m3",
     "timber_grove_stock_m3_per_ha",
     "timber_shelterbelt_stock_m3_per_ha",
@@ -35,7 +35,8 @@ constexpr std::array<std::string_view, 13> kTimberWorldParamKeys = {
     "timber_sawing_days_per_m3",
     "sawmill_sawyers_max",
     "timber_planting_days_per_ha",
-    "timber_planting_max_ha"};
+    "timber_planting_max_ha",
+    "timber_mark_release_days"};
 
 /// The largest mass any conversion of the core accepts — the same ceiling as
 /// GramsFromFloat's (quantities.cpp), nine thousand million tonnes.
@@ -210,6 +211,11 @@ bool ParseTimberCatalog(const ITableSet& tables, TimberCatalog& catalog, std::st
         {.key = kTimberWorldParamKeys[12],
          .value = &catalog.planting_max_ha,
          .range = {.low = 0.1F, .high = 1000.0F}},
+        // The deadline of a felling mark no hand can be sent to (0.37.208);
+        // 0 switches the release off.
+        {.key = kTimberWorldParamKeys[13],
+         .value = &catalog.mark_release_days,
+         .range = {.low = 0.0F, .high = 365.0F}},
     }};
     const float default_planting_days = catalog.planting_days_per_ha;
     catalog.planting_days_per_ha = default_planting_days * kRealDaysPerGameDay;  // back to real

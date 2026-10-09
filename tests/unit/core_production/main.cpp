@@ -28,6 +28,7 @@
 #include "core_common/day_off.h"
 #include "core_common/fund_ladder.h"
 #include "core_common/herd_age_band.h"
+#include "core_common/home_reach.h"
 #include "core_common/order_state.h"
 #include "core_common/quantities.h"
 #include "core_common/random.h"
@@ -10492,6 +10493,223 @@ int CheckTheReapingGate() {
   return failures;
 }
 
+/// THE HOUSES KEPT ON THE NETWORK ARE NEVER STALE (0.37.208; home_reach.cpp):
+/// NearestHomeTravelHours keeps the lived-in houses found on the road index
+/// and must answer, in every state, exactly what asking each house anew
+/// answers — after a house is settled, emptied, taken down, and after the
+/// network is replaced.
+int CheckNearestHomeIsKeptFresh() {
+  int failures = 0;
+  constexpr float kSpeed = 12.0F;  // one game hour a kilometre
+  const core::Vec2 place{.x = 2000.0F, .y = 0.0F};
+  core::WorldState world;
+  core::UnitRow house;
+  house.level = 1;
+  house.household = core::FamilyId{1};
+  core::AppendRow(world.units, house);
+  world.road_index = core::BuildRoadIndex(world.roads);
+  const std::array<core::TravelMode, 3> modes = {
+      core::TravelMode::kWalk, core::TravelMode::kTeam, core::TravelMode::kLogCart};
+  // Asked of each lived-in house anew: the function as it was before it kept
+  // anything.
+  const auto anew = [&](core::TravelMode mode) {
+    float best = -1.0F;
+    for (const core::UnitRow& unit : world.units.rows) {
+      if (unit.level == 0 || unit.household.value == core::kInvalidEntityIdValue) {
+        continue;
+      }
+      const float hours = core::RoadKm(world, mode, unit.position, place) *
+                          (static_cast<float>(core::kClockScale) / kSpeed);
+      best = best < 0.0F || hours < best ? hours : best;
+    }
+    return best;
+  };
+  const auto same_as_anew = [&]() {
+    bool same = true;
+    for (const core::TravelMode mode : modes) {
+      const float kept = core::NearestHomeTravelHours(world, place, kSpeed, mode);
+      same = same && kept == anew(mode) &&
+             core::NearestHomeTravelHours(world, place, kSpeed, mode) == kept;
+    }
+    return same;
+  };
+  const float one_house =
+      core::NearestHomeTravelHours(world, place, kSpeed, core::TravelMode::kTeam);
+  failures += Expect(same_as_anew() && one_house > 0.0F,
+                     "homes kept: one house — the kept answer is the answer asked anew, by "
+                     "every way, the second asking as the first");
+  // A SECOND HOUSE IS SETTLED nearer the place.
+  core::UnitRow nearer;
+  nearer.level = 1;
+  nearer.household = core::FamilyId{2};
+  nearer.position = core::Vec2{.x = 1500.0F, .y = 0.0F};
+  core::AppendRow(world.units, nearer);
+  const float two_houses =
+      core::NearestHomeTravelHours(world, place, kSpeed, core::TravelMode::kTeam);
+  failures += Expect(same_as_anew() && two_houses < one_house,
+                     "homes kept: a house settled nearer the place is in the next answer");
+  // IT IS EMPTIED: the family is gone, the walls stand.
+  world.units.rows[1].household = core::FamilyId{};
+  failures +=
+      Expect(same_as_anew() && core::NearestHomeTravelHours(
+                                   world, place, kSpeed, core::TravelMode::kTeam) == one_house,
+             "homes kept: a house emptied is out of the next answer");
+  // IT IS LIVED IN AGAIN, and then taken down to pegs.
+  world.units.rows[1].household = core::FamilyId{2};
+  failures +=
+      Expect(same_as_anew() && core::NearestHomeTravelHours(
+                                   world, place, kSpeed, core::TravelMode::kTeam) == two_houses,
+             "homes kept: a house lived in again is back in the next answer");
+  world.units.rows[1].level = 0;
+  failures +=
+      Expect(same_as_anew() && core::NearestHomeTravelHours(
+                                   world, place, kSpeed, core::TravelMode::kTeam) == one_house,
+             "homes kept: a house taken down is out of the next answer");
+  // THE NETWORK IS REPLACED: a road laid far off gives open ground its
+  // weights (1.5 for a team), and the index is a new one.
+  core::RoadRow far_road;
+  far_road.axis = {core::RoadPoint{.position = {.x = -9000.0F, .y = -9000.0F}},
+                   core::RoadPoint{.position = {.x = -8900.0F, .y = -9000.0F}}};
+  far_road.stretches = {
+      core::RoadStretch{}, core::RoadStretch{}, core::RoadStretch{}, core::RoadStretch{}};
+  core::AppendRow(world.roads, far_road);
+  world.road_index = core::BuildRoadIndex(world.roads);
+  const float roaded = core::NearestHomeTravelHours(world, place, kSpeed, core::TravelMode::kTeam);
+  std::cout << "  homes kept: the team's hours to 2 km — one house " << one_house << ", a nearer "
+            << two_houses << ", with a network somewhere " << roaded << '\n';
+  failures += Expect(same_as_anew() && roaded > one_house,
+                     "homes kept: a new network is asked anew — open ground has its weight now");
+  // NOBODY LIVES ANYWHERE.
+  world.units.rows[0].household = core::FamilyId{};
+  failures +=
+      Expect(core::NearestHomeTravelHours(world, place, kSpeed, core::TravelMode::kTeam) < 0.0F,
+             "homes kept: with every house empty the answer is «nobody», not the last "
+             "one kept");
+  return failures;
+}
+
+/// THE DEADLINE OF A MARK NO HAND CAN BE SENT TO (0.37.208): the one question
+/// (home_reach.h, FellingCanBeMannedToday) answers by the walk, the ride and
+/// the horse; a mark out of reach three dawns in a row — the table's number
+/// here — is released with what was felled laid as logs and an event; a dawn
+/// in reach starts the count again; a mark in reach is never released.
+int CheckFellingMarkRelease() {
+  int failures = 0;
+  core::ProductionConfig config;
+  config.harness_speed_kmh = 12.0F;  // one game hour a kilometre; 2.4 on foot
+  config.walk_speed_kmh = 5.0F;
+  config.travel_limit_hours = 4.0F;
+  config.min_usable_hours = 1.0F;
+  config.horse_kind = core::LivestockKindId{0};
+  config.timber.log_m3 = 0.25F;
+  config.timber.log_grams = 200000;
+  config.timber.felling_days_per_m3 = 0.05F;
+  config.timber.mark_release_days = 3.0F;
+  config.timber.stands = {{.kind = core::TimberStandKind::kGrove,
+                           .position = core::Vec2{},
+                           .area_ha = 20.0F,
+                           .log_share = 0.5F}};
+  core::WorldState world;
+  world.weather.daylight_hours = 12.0F;
+  core::HerdRow horses;
+  horses.kind = core::LivestockKindId{0};
+  horses.adult_count = 2;
+  core::AppendRow(world.herds, horses);
+  core::UnitRow house;
+  house.level = 1;
+  house.household = core::FamilyId{1};
+  core::AppendRow(world.units, house);
+
+  const core::ReachRule rule{.walk_speed_kmh = 5.0F,
+                             .ride_speed_kmh = 12.0F,
+                             .travel_limit_hours = 4.0F,
+                             .min_usable_hours = 1.0F};
+  const auto at = [](float x) { return core::Vec2{.x = x, .y = 0.0F}; };
+  failures +=
+      Expect(core::HandReachToday(world, at(1000.0F), rule) == core::HandReach::kOnFoot &&
+                 core::HandReachToday(world, at(2000.0F), rule) == core::HandReach::kByRide &&
+                 core::HandReachToday(world, at(4500.0F), rule) == core::HandReach::kNone,
+             "hand's reach: 1 km is a walk of 2.4 hours, 2 km only a ride of 2, 4.5 km "
+             "neither");
+  failures += Expect(core::FellingCanBeMannedToday(world, at(2000.0F), rule, 2) &&
+                         !core::FellingCanBeMannedToday(world, at(2000.0F), rule, 0) &&
+                         core::FellingCanBeMannedToday(world, at(1000.0F), rule, 0) &&
+                         !core::FellingCanBeMannedToday(world, at(4500.0F), rule, 2),
+                     "felling's offer: past the walk it needs a horse in the kolkhoz, within the "
+                     "walk it does not, and past the ride nothing helps");
+  world.weather.daylight_hours = 5.0F;  // 2 hours each way leave 1; 2.4 each way leave 0.2
+  failures += Expect(core::HandReachToday(world, at(1000.0F), rule) == core::HandReach::kByRide,
+                     "hand's reach: on a five-hour day the kilometre's walk leaves no working "
+                     "day, and the ride does");
+  world.weather.daylight_hours = 12.0F;
+  // A stand past the ride, a quarter of its 20 m3 felled: 1.0 man-day written,
+  // 0.75 left. And one within the walk, marked the same.
+  const auto marked_at = [&world](float x) {
+    core::TimberStandRow stand;
+    stand.table_row = 0;
+    stand.position = core::Vec2{.x = x, .y = 0.0F};
+    stand.stock_m3 = 100.0F;
+    stand.marked_m3 = 20.0F;
+    stand.work_days_remaining = 0.75F;
+    return core::AppendRow(world.stands, stand);
+  };
+  const core::TimberStandId far = marked_at(4500.0F);
+  marked_at(1000.0F);
+  const auto released = [](const core::WorldState& state) {
+    std::int64_t litres = -1;
+    for (const core::SimEvent& event : state.step_events) {
+      if (event.kind == core::EventKind::kFellingMarkReleased) {
+        litres = event.amount;
+      }
+    }
+    return litres;
+  };
+  core::ReleaseUnreachableMarks(config, world);
+  core::ReleaseUnreachableMarks(config, world);
+  failures +=
+      Expect(world.stands.rows[0].unreached_days == 2 && world.stands.rows[0].marked_m3 == 20.0F &&
+                 world.stands.rows[1].unreached_days == 0 && released(world) < 0,
+             "mark's deadline: two dawns out of reach are counted on the far stand, "
+             "none on the near one, and nothing is released yet");
+  // A dawn in reach — the house moved beside it for a day — starts again.
+  world.units.rows[0].position = core::Vec2{.x = 4000.0F, .y = 0.0F};
+  core::ReleaseUnreachableMarks(config, world);
+  world.units.rows[0].position = core::Vec2{};
+  failures += Expect(world.stands.rows[0].unreached_days == 0,
+                     "mark's deadline: a dawn the felling would be offered zeroes the count");
+  core::ReleaseUnreachableMarks(config, world);
+  core::ReleaseUnreachableMarks(config, world);
+  failures += Expect(world.stands.rows[0].marked_m3 == 20.0F && released(world) < 0,
+                     "mark's deadline: two dawns after the reset the mark still stands");
+  core::ReleaseUnreachableMarks(config, world);
+  const core::TimberStandRow& gone = world.stands.rows[0];
+  std::cout << "  mark's deadline: after the third dawn marked " << gone.marked_m3 << " m3, stock "
+            << gone.stock_m3 << " m3, logs " << gone.load_grams / 200000 << ", said "
+            << released(world) << " litres unfelled\n";
+  failures +=
+      Expect(gone.marked_m3 == 0.0F && gone.work_days_remaining == 0.0F && gone.unreached_days == 0,
+             "mark's deadline: the third dawn in a row releases the mark");
+  failures += Expect(std::fabs(gone.stock_m3 - 95.0F) < 0.01F && gone.load_grams == 10 * 200000,
+                     "mark's deadline: the quarter felled — 5 m3, ten logs at a half share — "
+                     "leaves the stock and lies on the stand; the 15 m3 uncut are stock again");
+  failures += Expect(released(world) == 15000 && world.step_events.back().stand.value == far.value,
+                     "mark's deadline: the event names the stand and the 15 000 litres unfelled");
+  failures += Expect(
+      world.stands.rows[1].marked_m3 == 20.0F && world.stands.rows[1].work_days_remaining == 0.75F,
+      "mark's deadline: the mark within the walk is never touched");
+  // The table's zero switches the release off: the count runs, the mark stays.
+  config.timber.mark_release_days = 0.0F;
+  world.stands.rows[0].marked_m3 = 20.0F;
+  world.stands.rows[0].work_days_remaining = 0.75F;
+  for (int dawn = 0; dawn < 5; ++dawn) {
+    core::ReleaseUnreachableMarks(config, world);
+  }
+  failures +=
+      Expect(world.stands.rows[0].marked_m3 == 20.0F && world.stands.rows[0].unreached_days == 5,
+             "mark's deadline: zero days in the table releases nothing");
+  return failures;
+}
+
 /// kFellingUnreachable (boss, parcel 308): a stand marked for felling that the
 /// brigade's ride from the nearest lived-in house does not reach — past the
 /// road limit, or with no daylight left after the ride there and back — is
@@ -10502,8 +10720,14 @@ int CheckFellingUnreachable() {
   config.harness_speed_kmh = 12.0F;  // one game hour a kilometre
   config.travel_limit_hours = 4.0F;
   config.min_usable_hours = 1.0F;
+  config.horse_kind = core::LivestockKindId{0};
   core::WorldState world;
   world.weather.daylight_hours = 12.0F;
+  // A horse to ride: the fellers walk, and past the walk they ride (0.37.208).
+  core::HerdRow horses;
+  horses.kind = core::LivestockKindId{0};
+  horses.adult_count = 2;
+  core::AppendRow(world.herds, horses);
   core::UnitRow house;
   house.level = 1;
   house.household = core::FamilyId{1};
@@ -10594,11 +10818,26 @@ int CheckFellingUnreachable() {
     }
     return hours;
   };
-  failures += Expect(walk_named(walk_far) == 4 && named(planting, near) < 0,
-                     "planting out of reach: the zone 2 km out is 4.8 hours on foot and named, "
-                     "the stand the brigade rides 2 km to is not");
+  // WITH A HORSE THE PLANTER RIDES (0.37.208; labor_state.h,
+  // TakesThePeoplesCart): the zone 4.8 hours' walk out is 2 hours' ride, and
+  // no lamp burns over a zone the placement serves.
+  failures += Expect(walk_named(walk_far) < 0 && named(planting, near) < 0,
+                     "planting out of reach: with a horse in the kolkhoz the zone 2 km out is "
+                     "ridden to and not named, and neither is the stand beside it");
   failures += Expect(walk_named(walk_near) < 0 && walk_named(walk_done) < 0,
                      "planting out of reach: 1 km on foot fits, and a planted zone asks nobody");
+  // WITHOUT ONE both are named: the zone by its walk of 4.8 hours, and the
+  // stand 2 km out — whose log cart's road is 2 hours and fits — because its
+  // FELLERS walk 4.8 and nothing carries them; named with the ride of 2.
+  world.herds.rows[0].adult_count = 0;
+  planting.clear();
+  core::CollectTimberAlarms(config, world, planting);
+  failures += Expect(walk_named(walk_far) == 4 && walk_named(walk_near) < 0,
+                     "planting out of reach: with no horse the zone 2 km out is 4.8 hours on "
+                     "foot and named; the zone 1 km out is not");
+  failures += Expect(named(planting, near) == 2,
+                     "felling out of reach: with no horse the stand 2 km out is named, with the "
+                     "ride of 2 hours nobody can give — its fellers walk 4.8");
   return failures;
 }
 
@@ -15258,6 +15497,8 @@ int main() {
   failures += CheckFelling();
   failures += CheckPlanting();
   failures += CheckFellingUnreachable();
+  failures += CheckFellingMarkRelease();
+  failures += CheckNearestHomeIsKeptFresh();
   failures += CheckExtraction();
   failures += CheckSawing();
   failures += CheckAnUpgradesRecipeIsNobodysElse();

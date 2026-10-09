@@ -708,6 +708,10 @@ class StandardSimulation final : public ISimulation {
     return labor_->OfficeWorkbook(engine_->CompletedState());
   }
 
+  bool FellingCanBeManned(Vec2 place) const override {
+    return labor_->FellingCanBeManned(engine_->CompletedState(), place);
+  }
+
   PlanBook OfficePlan() const override {
     return production_->OfficePlan(engine_->CompletedState());
   }

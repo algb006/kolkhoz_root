@@ -363,8 +363,9 @@ struct AssignmentParams {
   /// routing stage A, A3; transport.csv people_cart `seats` and
   /// `min_walk_hours`): the hands it seats beside its driver, and the walk one
   /// way, game hours, beyond which a hand on a work that walks
-  /// (labor_state.h, TakesThePeoplesCart) is carried. Seats 0: no cart, the
-  /// day as before stage A.
+  /// (labor_state.h, TakesThePeoplesCart) is carried. ONE such hand rides the
+  /// horse itself, the driver of a cart of one (0.37.208). Seats 0: no cart
+  /// and no rider, the day as before stage A.
   std::uint32_t people_cart_seats = 0;
   float people_cart_min_walk_hours = 0.0F;
 

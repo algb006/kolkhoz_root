@@ -391,6 +391,14 @@ class ISimulation {
   /// @note Called between steps on the sim thread.
   virtual std::vector<MaterialShortfall> MaterialsShortFor(UnitId unit) const = 0;
 
+  /// @brief Would a felling at `place` be offered to the hands today
+  /// (labor_system.h, ILaborSystem::FellingCanBeManned — the offering's own
+  /// predicate; 0.37.208): the log cart reaches it and a feller can be sent,
+  /// on foot or by a ride. Fans out to core_labor; the bare engine knows no
+  /// accountant and answers false.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual bool FellingCanBeManned(Vec2 place) const = 0;
+
   /// @brief How badly it stinks at a point of the map — AT WORST
   /// (StinkFullAt) and AS IT IS TODAY (StinkNowAt). Water design §4.
   ///

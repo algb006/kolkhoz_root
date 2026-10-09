@@ -3922,6 +3922,25 @@ int TestFellingWaitsForTheLogCart() {
   failures += Expect(far == 0 && near == 2,
                      "log cart: no felling where the log cart cannot come; the fellers go where "
                      "it can");
+  // THE CHAIRMAN'S DOOR IS THE OFFERING'S OWN PREDICATE (0.37.208). On open
+  // ground with no network (every weight 1): 3 km is 7.2 hours on foot — past
+  // the limit of 6 — and 3 by the ride; 7 km is past the ride and the cart.
+  const auto door = [](float metres, std::uint16_t horses) {
+    const auto labor = LaborWithThePeoplesCart();
+    if (labor == nullptr) {
+      return false;
+    }
+    DayWorld day(2);
+    const core::HerdId team = day.AddUnitHerd(horses, 5.0F);
+    day.world.herds.rows[core::FindRow(day.world.herds, team)].kind = core::LivestockKindId{0};
+    return labor->FellingCanBeManned(day.world, core::Vec2{.x = metres, .y = 0.0F});
+  };
+  failures += Expect(door(3000.0F, 1) && !door(7000.0F, 1),
+                     "felling's door: «yes» past the walk while a ride reaches and a horse "
+                     "stands in the pool; «no» past the ride");
+  failures += Expect(!door(3000.0F, 0) && door(1000.0F, 0),
+                     "felling's door: past the walk with no horse in the kolkhoz — «no»; within "
+                     "the walk no horse is asked");
   return failures;
 }
 

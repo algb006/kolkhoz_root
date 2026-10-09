@@ -56,9 +56,6 @@ class FellingPolicy {
              !catalog_.stands.empty();
     granary_logs_ = GranaryLogs(tables);
     logs_by_type_ = FirstLevelLogs(tables);
-    ride_hours_per_km_ = static_cast<float>(core::kClockScale) /
-                         Cell(tables, "transport", "horse_trot", "speed_kmh", 12.0F);
-    ride_limit_hours_ = Cell(tables, "labor", "travel_limit_hours", "value", 6.0F);
   }
 
   /// @brief The fixture difference, in words, for the run to print BEFORE it
@@ -80,15 +77,21 @@ class FellingPolicy {
     if (!ready_) {
       return;
     }
+    const core::WorldState& world = simulation.CompletedState();
+    // ONE STAND AT A TIME — WHILE ITS FELLING MOVES (boss, the resume thread,
+    // 9 October 2026). A mark nobody has felled at for kStalledDays days is no
+    // reason to fell nothing: the next stand is marked. Until 0.37.208 any
+    // mark held every other felling, and one mark no hand could be sent to
+    // (the last 0.085 man-day of stand 37, village 1936: 312 days) stopped
+    // the village's logs, its houses and its residents from year ten on.
+    // Counted every day, before the cooldown, so the count is of days.
+    const bool held = AMovingMarkStands(world);
     if (cooldown_ > 0) {
       --cooldown_;
       return;
     }
-    const core::WorldState& world = simulation.CompletedState();
-    for (const core::TimberStandRow& stand : world.stands.rows) {
-      if (stand.marked_m3 > 0.0F) {
-        return;  // the run's chairman fells one stand at a time
-      }
+    if (held) {
+      return;
     }
     // LOGS IN HAND, and the logs already felled and lying count as in hand: a
     // chairman who has a heap in the grove does not fell another for want of
@@ -157,7 +160,7 @@ class FellingPolicy {
     const auto short_logs =
         static_cast<std::uint32_t>((wanted - logs + catalog_.log_grams - 1) / catalog_.log_grams);
     core::OrderRow order;
-    if (!NearestMark(world, short_logs > granary_logs_ ? short_logs : granary_logs_, order)) {
+    if (!NearestMark(simulation, short_logs > granary_logs_ ? short_logs : granary_logs_, order)) {
       return;
     }
     simulation.StageOrders(std::span<const core::OrderRow>(&order, 1), {});
@@ -239,68 +242,34 @@ class FellingPolicy {
   /// (village_middle.h; the mean of every unit until 0.37.111).
   static core::Vec2 Centre(const core::WorldState& world) { return VillageMiddle(world); }
 
+  /// Whether some stand is marked and its felling has moved within the last
+  /// kStalledDays days — the mark that holds the next one. Call once a day:
+  /// it counts, for every marked stand, the days its work has not moved.
+  bool AMovingMarkStands(const core::WorldState& world) {
+    const std::size_t stands = world.stands.rows.size();
+    seen_work_.resize(stands, 0.0F);
+    still_days_.resize(stands, 0U);
+    bool moving = false;
+    for (std::size_t row = 0; row < stands; ++row) {
+      const core::TimberStandRow& stand = world.stands.rows[row];
+      if (!(stand.marked_m3 > 0.0F)) {
+        seen_work_[row] = 0.0F;
+        still_days_[row] = 0U;
+        continue;
+      }
+      still_days_[row] = stand.work_days_remaining == seen_work_[row] ? still_days_[row] + 1U : 0U;
+      seen_work_[row] = stand.work_days_remaining;
+      moving = moving || still_days_[row] < kStalledDays;
+    }
+    return moving;
+  }
+
   /// @param logs How many logs the mark is for: one granary's, or what the
   ///        village and its sites are short of when that is more.
-  /// Hours of the ride, one way, from the nearest lived-in house, at the
-  /// labour model's harness speed (felling rides; labor_state.h, RidesOut).
-  /// BY THE ROAD, as the LOG CART goes it (0.36.29; team until then, from
-  /// 0.36.12): the core's own question for kFellingUnreachable and for the
-  /// accountant's felling offer (home_reach.h, NearestHomeTravelHours) — the
-  /// limit is by the network since 0.36.2, and until 0.36.12 this measured
-  /// the straight line, so the canon marked stands the core then refused;
-  /// kept in step with the core for that reason.
-  /// THE HOUSES ARE FOUND ON THE NETWORK ONCE A STEP, the stand once a call:
-  /// finding is the costly half of a query (road_route.h, NetworkPlace), and
-  /// asking it anew for every house and every stand doubled timber_years'
-  /// time (5.6 s -> 11.7 s). The answer is the same by construction.
-  float RideHours(const core::WorldState& world, core::Vec2 place) const {
-    const std::shared_ptr<const core::RoadIndex> index = core::RoadIndexOf(world);
-    if (homes_tick_ != world.calendar.tick || homes_index_ != index.get() ||
-        homes_units_ != world.units.rows.size()) {
-      homes_.clear();
-      for (const core::UnitRow& unit : world.units.rows) {
-        if (unit.level == 0 || unit.household.value == core::kInvalidEntityIdValue) {
-          continue;
-        }
-        homes_.push_back(index->Locate(core::TravelMode::kLogCart, unit.position));
-      }
-      homes_tick_ = world.calendar.tick;
-      homes_index_ = index.get();
-      homes_units_ = world.units.rows.size();
-      homes_owner_ = index;
-    }
-    const core::NetworkPlace there = index->Locate(core::TravelMode::kLogCart, place);
-    float best = 1.0e9F;
-    for (const core::NetworkPlace& home : homes_) {
-      best = std::min(best, index->EffectiveKm(home, there) * ride_hours_per_km_);
-    }
-    return best;
-  }
-
-  mutable std::vector<core::NetworkPlace> homes_;
-  mutable std::uint64_t homes_tick_ = ~std::uint64_t{0};
-  mutable const core::RoadIndex* homes_index_ = nullptr;
-  mutable std::size_t homes_units_ = 0;
-  /// Keeps the index the cached places were found on alive (a hand-built
-  /// world's index is built on the spot).
-  mutable std::shared_ptr<const core::RoadIndex> homes_owner_;
-
-  /// A cell of a key/value table, or `fallback`.
-  static float Cell(const core::ITableSet& tables,
-                    std::string_view table_name,
-                    std::string_view key,
-                    std::string_view column,
-                    float fallback) {
-    const core::ITable* const table = tables.FindTable(table_name);
-    if (table == nullptr) {
-      return fallback;
-    }
-    const std::optional<float> cell =
-        table->CellReal(table->FindRowByKey(key), table->FindColumn(column));
-    return cell.has_value() && *cell > 0.0F ? *cell : fallback;
-  }
-
-  bool NearestMark(const core::WorldState& world, std::uint32_t logs, core::OrderRow& order) const {
+  bool NearestMark(const core::ISimulation& simulation,
+                   std::uint32_t logs,
+                   core::OrderRow& order) const {
+    const core::WorldState& world = simulation.CompletedState();
     const core::Vec2 centre = Centre(world);
     std::uint32_t best = core::kNoRow;
     float best_distance = 0.0F;
@@ -322,7 +291,9 @@ class FellingPolicy {
                     ? def.log_share * catalog_.old_log_share_factor
                     : def.log_share;
       }
-      if (!(share > 0.0F) || !(stand.stock_m3 > 0.0F)) {
+      // A stand still marked takes no second mark (timber_felling.cpp,
+      // MarkFelling: kConflictsWithActive) — a stalled one among them.
+      if (!(share > 0.0F) || !(stand.stock_m3 > 0.0F) || stand.marked_m3 > 0.0F) {
         continue;
       }
       // Enough of the stand for the logs asked, or what it has left.
@@ -334,10 +305,14 @@ class FellingPolicy {
       if (volume * share < catalog_.log_m3) {
         continue;
       }
-      // NOT BEYOND THE BRIGADE'S RIDE (boss, parcel 308): a stand past the
-      // road limit from every lived-in house is marked for nobody — on seed
-      // 1929 one such mark stood from year 14 to the end with no feller.
-      if (RideHours(world, stand.position) > ride_limit_hours_) {
+      // ONLY WHERE A FELLER CAN BE SENT TODAY — THE CORE'S OWN ANSWER
+      // (ISimulation::FellingCanBeManned, the accountant's offering itself;
+      // 0.37.208), as the building chairman asks MaterialsShortFor before a
+      // start. Until then this policy measured the LOG CART's ride against
+      // the road limit by a copy of the core's arithmetic (boss, parcel 308;
+      // 0.36.12, 0.36.29) — the weaker question: the fellers walk, and a
+      // stand the cart reached and no hand did was marked for nobody.
+      if (!simulation.FellingCanBeManned(stand.position)) {
         continue;
       }
       const float dx = stand.position.x - centre.x;
@@ -360,11 +335,13 @@ class FellingPolicy {
 
   core::TimberCatalog catalog_;
 
-  float ride_hours_per_km_ = 1.0F;
+  /// A mark whose work has not moved for this many days holds no other
+  /// felling (boss: N = 8, the core's own deadline's number).
+  static constexpr std::uint32_t kStalledDays = 8;
 
-  /// labor.csv travel_limit_hours: six hours by the network since 0.36.9
-  /// (decision 276), measured by RideHours along the roads since 0.36.12.
-  float ride_limit_hours_ = 6.0F;
+  /// By stand row: the work left as last seen, and the days it has not moved.
+  std::vector<float> seen_work_;
+  std::vector<std::uint32_t> still_days_;
 
   bool ready_ = false;
 

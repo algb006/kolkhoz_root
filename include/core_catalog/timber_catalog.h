@@ -65,6 +65,9 @@ struct TimberCatalog {
   float fallen_vanish_years = 2.0F;           ///< Years a fallen trunk lies (Epoch I).
   float felling_days_per_m3 = 0.05F;          ///< Game man-days per cubic metre felled.
   float tools_per_feller = 1.0F;              ///< Tools in the stores per feller, not spent.
+  /// Days in a row a felling mark may stand where no hand can be sent before
+  /// it is released (boss, the resume thread: N = 8; 0 = never released).
+  float mark_release_days = 8.0F;
 
   /// The sawmill (timber design §8б, boss 2026-09-13 — assigned, not measured).
   float board_yield = 0.55F;              ///< Share of a log's volume that becomes boards.

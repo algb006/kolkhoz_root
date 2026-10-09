@@ -9,6 +9,7 @@ kolkhoz_add_module(core_labor
     labor_config.cpp
     labor_day.cpp
     labor_system.cpp
+    people_cart.cpp
     posts.cpp
     rush.cpp
     work_orders.cpp)

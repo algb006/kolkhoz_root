@@ -122,8 +122,58 @@ int TestAFarSiteRidesOneCart() {
   const std::vector<core::AssignmentJob> one_hand = {
       Site(core::WorkKind::kConstruction, 1000.0F, 0.4F)};
   const Plan alone = Run(one_hand, 5, OctoberDay(1, 6));
-  failures += Expect(alone.on_first == 1 && alone.holders == 0,
-                     "people's cart: one far hand rides no cart — «двое и больше — подвода»");
+  // «ОДИН — ВЕРХОМ» (0.37.208): until then «one far hand rides no cart» was
+  // the whole of the rule and this line asserted holders == 0.
+  failures += Expect(alone.on_first == 1 && alone.holders == 1 && alone.riders == 0,
+                     "people's cart: one far hand rides the horse itself — «один — верхом» — and "
+                     "nobody rides beside him");
+  // THE STUCK MARK'S OWN CASE: a job past the WALK (3 km: 7.2 hours on foot
+  // against the limit of 6; 3 hours by the ride) whose work one hand covers.
+  // The queue places nobody on foot; the ride sends one — on the horse.
+  const std::vector<core::AssignmentJob> past_the_walk = {
+      Site(core::WorkKind::kFelling, 3000.0F, 0.3F)};
+  const Plan sliver = Run(past_the_walk, 5, OctoberDay(1, 6));
+  std::cout << "  people's cart, a felling 3 km out with 0.3 of a day left, one horse: on it "
+            << sliver.on_first << ", holders " << sliver.holders << '\n';
+  failures += Expect(sliver.on_first == 1 && sliver.holders == 1 && sliver.riders == 0,
+                     "people's cart: a felling past the walk with one hand's work left is manned "
+                     "by one rider");
+  const Plan sliver_no_horse = Run(past_the_walk, 5, OctoberDay(0, 6));
+  failures += Expect(sliver_no_horse.on_first == 0 && sliver_no_horse.holders == 0,
+                     "people's cart: the same felling with the pool dry takes nobody");
+  // HIS WAY IS BY THE HORSE YARD, as the hour takes it: 3.5 hours on foot to
+  // the yard and 3 on the horse from it are 6.5, past the limit of 6 — he
+  // does not ride alone: a SECOND hand is seated and they go as a cart of
+  // two (the passenger rides from his house, 3 hours); with nobody to seat,
+  // nobody goes. A yard half an hour's walk off (3.5 in all), and he rides.
+  const auto by_the_yard = [&past_the_walk](float walk_to_yard, std::uint32_t free_hands) {
+    core::AssignmentParams params = OctoberDay(1, 6);
+    params.yard_walk_hours = {walk_to_yard};
+    params.yard_ride_km = {3.0F};
+    std::vector<core::AssignmentCandidate> hands = Hands(free_hands);
+    for (core::AssignmentCandidate& hand : hands) {
+      hand.home_slot = 0;
+    }
+    std::uint32_t on_it = 0;
+    for (const std::uint32_t job : core::PlanDayAssignments(past_the_walk, hands, params)) {
+      on_it += job == 0 ? 1U : 0U;
+    }
+    return on_it;
+  };
+  failures += Expect(by_the_yard(0.5F, 5) == 1,
+                     "people's cart: a lone rider whose way through the horse yard is 3.5 hours "
+                     "rides alone");
+  failures += Expect(by_the_yard(3.5F, 5) == 2 && by_the_yard(3.5F, 1) == 0,
+                     "people's cart: a lone rider whose way through the horse yard is 6.5 hours "
+                     "does not ride alone — a second is seated and they go as a cart; with "
+                     "nobody to seat, nobody goes");
+  // The horse is COUNTED: two such jobs and one horse — one is manned.
+  const std::vector<core::AssignmentJob> two_slivers = {
+      Site(core::WorkKind::kFelling, 3000.0F, 0.3F), Site(core::WorkKind::kFelling, 3100.0F, 0.3F)};
+  const Plan two = Run(two_slivers, 5, OctoberDay(1, 6));
+  failures += Expect(two.on_first + two.on_second == 1 && two.holders == 1,
+                     "people's cart: two far slivers and one horse — one rider, the horse is "
+                     "taken from the pool");
   return failures;
 }
 

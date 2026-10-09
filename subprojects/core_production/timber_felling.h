@@ -41,6 +41,21 @@ OrderRefusal MarkFelling(const ProductionConfig& config,
 ///       finished by noon is lying on the ground by noon.
 void FellFinishedStands(const ProductionConfig& config, WorldState& current);
 
+/// @brief THE DEADLINE OF A FELLING MARK NO HAND CAN BE SENT TO (0.37.208; the
+///        human's rule of 2 October 2026: every wait has a deadline). Counts,
+///        for every stand marked with work left, the dawns in a row its
+///        felling would not be offered (home_reach.h, FellingCanBeMannedToday
+///        — the offering's own predicate) in TimberStandRow::unreached_days;
+///        a dawn it would be offered zeroes the count. At the table's
+///        timber_mark_release_days the mark is released: the share the crew
+///        felled leaves the stock and lies on the stand as logs, the rest is
+///        stock again, and kFellingMarkReleased says it with the stand and
+///        the litres left unfelled. 0 days in the table releases nothing.
+/// @note Called ONCE A DAY, at the dawn tick, in production's sequential
+///       slot. Side effects: the stand rows and one event a release. A mark
+///       nobody is FREE for is not this function's: it counts reach, not hands.
+void ReleaseUnreachableMarks(const ProductionConfig& config, WorldState& current);
+
 /// @brief The year's turn for the old forest: every old-forest stand gains
 ///        the year's fallen trunks, and holds no more than
 ///        timber_fallen_vanish_years of them — a trunk lies that long and is
@@ -53,7 +68,11 @@ void GrowOldForest(const ProductionConfig& config, WorldState& current);
 ///        less than min_usable_hours of the daylight after the ride there and
 ///        back (the same test as kSiteUnreachable) — and kPlantingUnreachable,
 ///        the same test at walking speed, for every planting zone not yet
-///        planted. Each stand at most once, in row order. A pure read.
+///        planted. SINCE 0.37.208 BOTH ALSO ASK WHETHER A HAND CAN BE SENT
+///        (home_reach.h, HandReachToday): a felling is named as well when its
+///        fellers can neither walk nor be given a ride, and a planting zone
+///        past the walk is NOT named while a ride reaches it and the kolkhoz
+///        has a horse. Each stand at most once, in row order. A pure read.
 /// @param alarms Appended to; never cleared.
 void CollectTimberAlarms(const ProductionConfig& config,
                          const WorldState& world,

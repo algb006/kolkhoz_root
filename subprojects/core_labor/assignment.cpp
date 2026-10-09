@@ -16,6 +16,8 @@
 #include <vector>
 
 #include "core_common/geometry.h"
+#include "people_cart.h"
+#include "placement_rank.h"
 
 namespace core {
 namespace {
@@ -329,30 +331,9 @@ std::vector<std::uint32_t> OrderJobs(const std::vector<AssignmentJob>& jobs,
   return order;
 }
 
-/// A worker considered for one job, with everything the pick order needs.
-struct RankedPick {
-  std::uint32_t candidate_index = 0;
+}  // namespace
 
-  std::uint32_t resident_row = 0;
-
-  /// Norm man-days this worker would deliver on this job today.
-  float daily_norm = 0.0F;
-
-  float score = 0.0F;
-
-  /// Sort-first flag on horse works from level 1 up: a horse-locked
-  /// resident is useless anywhere else, so spending him here preserves
-  /// everyone else's flexibility.
-  bool prefer = false;
-};
-
-/// The accountant's eye on one worker for one job: nothing (still busy,
-/// barred or out of reach) or a ranked pick.
-/// One way from a candidate's home to a job, game hours: by the roads when
-/// the caller measured them (AssignmentParams::road_km; 0.36.2) — the way the
-/// labour hour will measure his day by — and the straight line otherwise.
-/// A hand who takes a horse walks to the horse yard first (AssignmentParams::
-/// yard_walk_hours; 0.37.158).
+// One way from a candidate's home to a job (placement_rank.h).
 float OneWayHours(const AssignmentJob& job,
                   std::uint32_t job_index,
                   const AssignmentCandidate& candidate,
@@ -376,6 +357,10 @@ float OneWayHours(const AssignmentJob& job,
   return TravelHours(candidate.home, job.position, hours_per_km);
 }
 
+namespace {
+
+/// The accountant's eye on one worker for one job: nothing (still busy,
+/// barred or out of reach) or a ranked pick.
 bool ConsiderCandidate(const AssignmentJob& job,
                        std::uint32_t job_index,
                        const AssignmentCandidate& candidate,
@@ -439,8 +424,9 @@ bool ConsiderCandidate(const AssignmentJob& job,
   return true;
 }
 
-/// Everyone still free who may and can reach this job today, best first.
-/// `road_refused`: how many free workers the road rule alone turned away.
+}  // namespace
+
+// Everyone still free who may and can reach this job today (placement_rank.h).
 std::vector<RankedPick> RankCandidates(const AssignmentJob& job,
                                        std::uint32_t job_index,
                                        const std::vector<AssignmentCandidate>& candidates,
@@ -477,6 +463,8 @@ std::vector<RankedPick> RankCandidates(const AssignmentJob& job,
   return picks;
 }
 
+namespace {
+
 /// The band of a job with nothing at risk: below every band a float's
 /// logarithm can give.
 constexpr std::int32_t kNoSavedBand = INT32_MIN;
@@ -507,118 +495,6 @@ std::vector<std::int32_t> SavedBands(const std::vector<AssignmentJob>& jobs,
             : kNoSavedBand + 1;
   }
   return bands;
-}
-
-/// The plan's state the people's carts are given from (PlanDayAssignments):
-/// read the jobs, the hands and the queue; write the placements, the cover,
-/// the carts out, the horses left, and who drives and who rides.
-struct PeoplesCartPlan {
-  const std::vector<AssignmentJob>* jobs = nullptr;
-  const std::vector<AssignmentCandidate>* candidates = nullptr;
-  const AssignmentParams* params = nullptr;
-  const std::vector<std::uint32_t>* order = nullptr;
-  std::vector<std::uint32_t>* result = nullptr;
-  std::vector<float>* covered = nullptr;
-  std::vector<std::uint8_t>* cart_today = nullptr;
-  std::uint32_t* horses_left = nullptr;
-  std::vector<std::uint8_t>* rides_horse = nullptr;       ///< nullable
-  std::vector<std::uint32_t>* rides_cart_with = nullptr;  ///< nullable
-};
-
-/// A hand going to a far object: placed by the queue already, or a free one
-/// the ride lets reach it.
-struct FarHand {
-  std::uint32_t candidate_index = 0;
-  float walk_hours = 0.0F;
-};
-
-/// THE PEOPLE'S CARTS (routing stage A, A3; assignment.h, PlanDayAssignments):
-/// after the queue, from the horses it left, in its order.
-void GivePeoplesCarts(const PeoplesCartPlan& plan) {
-  const AssignmentParams& params = *plan.params;
-  if (params.people_cart_seats == 0) {
-    return;
-  }
-  const std::vector<AssignmentCandidate>& candidates = *plan.candidates;
-  std::vector<std::uint32_t>& result = *plan.result;
-  const std::uint32_t per_cart = params.people_cart_seats + 1U;  // and its driver
-  for (const std::uint32_t job_index : *plan.order) {
-    if (*plan.horses_left == 0) {
-      return;
-    }
-    const AssignmentJob& job = (*plan.jobs)[job_index];
-    if (!TakesThePeoplesCart(job.kind) || job.on_foot_only) {
-      continue;
-    }
-    // ITS FAR WALKERS, the longest walk first: seats beyond the horses go to
-    // them, and the rest walk as they were placed.
-    std::vector<FarHand> crew;
-    std::uint32_t on_job = 0;
-    for (std::uint32_t index = 0; index < candidates.size(); ++index) {
-      if (result[index] != job_index) {
-        continue;
-      }
-      ++on_job;
-      const float walk = OneWayHours(job, job_index, candidates[index], params, false, false);
-      if (walk > params.people_cart_min_walk_hours) {
-        crew.push_back(FarHand{.candidate_index = index, .walk_hours = walk});
-      }
-    }
-    std::ranges::stable_sort(crew, [](const FarHand& left, const FarHand& right) {
-      return left.walk_hours > right.walk_hours;
-    });
-    const std::uint32_t capacity = *plan.horses_left * per_cart;
-    if (crew.size() > capacity) {
-      crew.resize(capacity);
-    }
-    // THE FREE THE RIDE LETS REACH IT, while it is short and seats are left:
-    // judged by the ride, as the brigade's hands are. A free hand near it was
-    // the queue's to place on foot, and is not carried.
-    AssignmentJob riding = job;
-    riding.cart_out = true;
-    std::vector<FarHand> joined;
-    float joined_norm = 0.0F;
-    std::uint32_t road_refused = 0;
-    if (crew.size() < capacity && (*plan.covered)[job_index] < job.work_days_remaining) {
-      for (const RankedPick& pick :
-           RankCandidates(riding, job_index, candidates, result, params, road_refused)) {
-        if (crew.size() + joined.size() >= capacity ||
-            (*plan.covered)[job_index] + joined_norm >= job.work_days_remaining ||
-            (job.max_crew != 0 && on_job + joined.size() >= job.max_crew)) {
-          break;
-        }
-        const float walk =
-            OneWayHours(job, job_index, candidates[pick.candidate_index], params, false, false);
-        if (!(walk > params.people_cart_min_walk_hours)) {
-          continue;
-        }
-        joined.push_back(FarHand{.candidate_index = pick.candidate_index, .walk_hours = walk});
-        joined_norm += pick.daily_norm;
-      }
-    }
-    crew.insert(crew.end(), joined.begin(), joined.end());
-    // «ДВОЕ И БОЛЬШЕ — ПОДВОДА»: one far hand rides no cart.
-    if (crew.size() < 2) {
-      continue;
-    }
-    const auto carts = static_cast<std::uint32_t>((crew.size() + per_cart - 1U) / per_cart);
-    *plan.horses_left -= carts;
-    (*plan.cart_today)[job_index] = 1U;
-    (*plan.covered)[job_index] += joined_norm;
-    for (std::size_t seat = 0; seat < crew.size(); ++seat) {
-      const std::uint32_t index = crew[seat].candidate_index;
-      result[index] = job_index;
-      // The first of each cart's load drives it.
-      const std::uint32_t driver = crew[(seat / per_cart) * per_cart].candidate_index;
-      if (driver == index) {
-        if (plan.rides_horse != nullptr) {
-          (*plan.rides_horse)[index] = 1U;
-        }
-      } else if (plan.rides_cart_with != nullptr) {
-        (*plan.rides_cart_with)[index] = driver;
-      }
-    }
-  }
 }
 
 }  // namespace

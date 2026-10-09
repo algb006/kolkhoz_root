@@ -226,6 +226,12 @@ class ProductionSystem final : public IProductionSystem {
     // A felling the crew finished this hour is lying on the ground this hour
     // (timber_felling.h) — the same reasoning as the field phases below.
     FellFinishedStands(config_, current);
+    // And at the dawn, the deadline of a mark no hand can be sent to
+    // (timber_felling.h, ReleaseUnreachableMarks): after the finished ones,
+    // so a felling done yesterday is not counted as a mark standing.
+    if (HourFromTick(current.calendar.tick) == 0U) {
+      ReleaseUnreachableMarks(config_, current);
+    }
     // And a planting finished this hour is planted this hour
     // (timber_planting.h).
     FinishPlantings(config_, current);

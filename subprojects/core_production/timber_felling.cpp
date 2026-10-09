@@ -8,6 +8,8 @@
 
 #include "core_catalog/timber_catalog.h"
 #include "core_common/calendar.h"
+#include "core_common/emit_event.h"
+#include "core_common/event_state.h"
 #include "core_common/home_reach.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/timber_state.h"
@@ -21,6 +23,20 @@ namespace {
 const TimberStandDef* DefOf(const ProductionConfig& config, const TimberStandRow& stand) {
   return stand.table_row < config.timber.stands.size() ? &config.timber.stands[stand.table_row]
                                                        : nullptr;
+}
+
+/// The adult horses of the kolkhoz, the pool a ride is given from — the same
+/// count as labor's (labor_system.cpp, DraughtHorses) and the sowing lamp's
+/// (production_alarms.cpp, DraughtTeam).
+std::uint32_t DraughtHorsesOf(const ProductionConfig& config, const WorldState& world) {
+  std::uint32_t horses = 0;
+  for (const HerdRow& herd : world.herds.rows) {
+    if (config.horse_kind.value != kInvalidDefIdValue &&
+        herd.kind.value == config.horse_kind.value) {
+      horses += herd.adult_count;
+    }
+  }
+  return horses;
 }
 
 }  // namespace
@@ -75,6 +91,53 @@ void FellFinishedStands(const ProductionConfig& config, WorldState& current) {
   }
 }
 
+void ReleaseUnreachableMarks(const ProductionConfig& config, WorldState& current) {
+  const auto limit = static_cast<std::uint32_t>(config.timber.mark_release_days);
+  const ReachRule rule{.walk_speed_kmh = config.walk_speed_kmh,
+                       .ride_speed_kmh = config.harness_speed_kmh,
+                       .travel_limit_hours = config.travel_limit_hours,
+                       .min_usable_hours = config.min_usable_hours};
+  const std::uint32_t horses = DraughtHorsesOf(config, current);
+  for (std::uint32_t row = 0; row < current.stands.rows.size(); ++row) {
+    TimberStandRow& stand = current.stands.rows[row];
+    const bool marked = stand.marked_m3 > 0.0F && stand.work_days_remaining > 0.0F;
+    if (!marked || FellingCanBeMannedToday(current, stand.position, rule, horses)) {
+      stand.unreached_days = 0;
+      continue;
+    }
+    ++stand.unreached_days;
+    if (limit == 0 || stand.unreached_days < limit) {
+      continue;
+    }
+    // WHAT WAS FELLED STAYS FELLED: the crew's share of the mark, by the work
+    // done of the work written, leaves the stock and lies as logs — exactly
+    // as a finished felling's does (FellFinishedStands). The rest was never
+    // cut and is the stand's stock again, unmarked.
+    const float written = stand.marked_m3 * config.timber.felling_days_per_m3;
+    const float done_share =
+        written > 0.0F ? std::clamp(1.0F - (stand.work_days_remaining / written), 0.0F, 1.0F)
+                       : 0.0F;
+    const float felled = std::min(stand.marked_m3 * done_share, stand.stock_m3);
+    const float unfelled = stand.marked_m3 - felled;
+    TimberStandDef planted;
+    const TimberStandDef* const def =
+        PlantedStandDef(config, stand, planted)
+            ? &planted
+            : (stand.kind == TimberStandKind::kPlanted ? nullptr : DefOf(config, stand));
+    if (def != nullptr && felled > 0.0F) {
+      stand.load_grams += LogGramsFromVolume(config.timber, *def, felled);
+    }
+    stand.stock_m3 = std::max(stand.stock_m3 - felled, 0.0F);
+    stand.marked_m3 = 0.0F;
+    stand.work_days_remaining = 0.0F;
+    stand.unreached_days = 0;
+    constexpr float kLitresPerM3 = 1000.0F;
+    SimEvent& event = EmitEvent(current, EventKind::kFellingMarkReleased, EventSeverity::kNotable);
+    event.stand = current.stands.row_ids[row];
+    event.amount = static_cast<std::int64_t>(std::lround(unfelled * kLitresPerM3));
+  }
+}
+
 void GrowOldForest(const ProductionConfig& config, WorldState& current) {
   for (TimberStandRow& stand : current.stands.rows) {
     if (stand.kind != TimberStandKind::kForestOld) {
@@ -115,16 +178,38 @@ void CollectTimberAlarms(const ProductionConfig& config,
     // weighs 2.5 to the team's 1.5 (road_route.h), so its road is the longer
     // and covers the brigade's own ride too.
     const float speed = felling ? config.harness_speed_kmh : config.walk_speed_kmh;
-    const float road = NearestHomeTravelHours(
+    float road = NearestHomeTravelHours(
         world, stand.position, speed, felling ? TravelMode::kLogCart : TravelMode::kWalk);
     if (road < 0.0F) {
       continue;  // nobody lives anywhere: every alarm of the village says so already
     }
     // THE ACCOUNTANT'S QUESTION, as kSiteUnreachable asks it (construction):
-    // too long a road for him, or too little of the day left after it.
+    // too long a road for him, or too little of the day left after it. Of a
+    // felling it is asked of the LOG CART; of a planting nothing is carried
+    // out, and the hands' own road below is the whole of it.
     const bool too_long = road > config.travel_limit_hours;
     const bool no_day_left = world.weather.daylight_hours - (2.0F * road) < config.min_usable_hours;
-    if (too_long || no_day_left) {
+    const bool cart_fails = felling && (too_long || no_day_left);
+    // AND WHETHER A HAND CAN BE SENT THERE AT ALL (0.37.208; home_reach.h,
+    // HandReachToday — the offering's and the placement's own question): on
+    // foot, or by a ride while the kolkhoz has a horse. Until then a felling
+    // was asked of the log cart alone, while its fellers walk, and a planting
+    // of the walk alone, while a planter past the walk rides (labor_state.h,
+    // TakesThePeoplesCart): the first lamp stayed dark over a stand no hand
+    // was ever sent to, the second burned over a zone the cart served.
+    const ReachRule rule{.walk_speed_kmh = config.walk_speed_kmh,
+                         .ride_speed_kmh = config.harness_speed_kmh,
+                         .travel_limit_hours = config.travel_limit_hours,
+                         .min_usable_hours = config.min_usable_hours};
+    const HandReach reach = HandReachToday(world, stand.position, rule);
+    const bool no_hand = reach == HandReach::kNone ||
+                         (reach == HandReach::kByRide && DraughtHorsesOf(config, world) == 0);
+    if (!cart_fails && no_hand && felling) {
+      // The hours named are then the hands' ride, not the log cart's.
+      road = NearestHomeTravelHours(
+          world, stand.position, config.harness_speed_kmh, TravelMode::kTeam);
+    }
+    if (cart_fails || no_hand) {
       Alarm alarm;
       alarm.kind = felling ? AlarmKind::kFellingUnreachable : AlarmKind::kPlantingUnreachable;
       alarm.stand = world.stands.row_ids[row];

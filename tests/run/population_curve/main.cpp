@@ -24,9 +24,12 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <future>
 #include <iostream>
+#include <streambuf>
 #include <string>
 #include <vector>
 
@@ -823,15 +826,74 @@ Number Median(std::vector<Number> values) {
   return values[values.size() / 2];
 }
 
+/// @brief A page of text a walk, so nine villages walking at once print as
+/// nine walking in turn (0.37.208). While open, everything written to
+/// std::cout and std::cerr — by this run, its policies and the core's log —
+/// goes to the page of the walk whose thread writes it; a thread that named
+/// no walk writes to the page past the last, which nobody prints.
+///
+/// BOTH STREAMS INTO ONE PAGE, in the order they were written: left to the
+/// process, the two reach a file by two bufferings, and their order in it is
+/// the buffers' and not the run's.
+class WalkPages final : public std::streambuf {
+ public:
+  explicit WalkPages(std::size_t walks) : pages_(walks + 1) {}
+
+  /// @brief Names the walk the calling thread writes for, from here on.
+  static void WriteTo(std::size_t walk) { t_walk = walk; }
+
+  /// @brief Takes std::cout and std::cerr; Close gives them back.
+  void Open() {
+    cout_ = std::cout.rdbuf(this);
+    cerr_ = std::cerr.rdbuf(this);
+  }
+
+  void Close() {
+    std::cout.rdbuf(cout_);
+    std::cerr.rdbuf(cerr_);
+  }
+
+  const std::string& Page(std::size_t walk) const { return pages_[walk]; }
+
+ protected:
+  int_type overflow(int_type character) override {
+    if (!traits_type::eq_int_type(character, traits_type::eof())) {
+      Own().push_back(traits_type::to_char_type(character));
+    }
+    return traits_type::not_eof(character);
+  }
+
+  std::streamsize xsputn(const char* text, std::streamsize count) override {
+    Own().append(text, static_cast<std::size_t>(count));
+    return count;
+  }
+
+ private:
+  /// The calling thread's page: each walk has its own, so no two threads
+  /// write one string.
+  std::string& Own() { return pages_[t_walk < pages_.size() ? t_walk : pages_.size() - 1]; }
+
+  static thread_local std::size_t t_walk;
+
+  std::vector<std::string> pages_;
+  std::streambuf* cout_ = nullptr;
+  std::streambuf* cerr_ = nullptr;
+};
+
+thread_local std::size_t WalkPages::t_walk = static_cast<std::size_t>(-1);
+
 }  // namespace
 
 int main(int argc, char** argv) {
   int failures = 0;
   run::BuildingChairman::Declare("population_curve");
   std::uint64_t probe_seed = 0;
+  bool sequential = false;
   for (int index = 1; index < argc; ++index) {
     const std::string_view argument(argv[index]);
-    if (argument == "--no-planting") {
+    if (argument == "--sequential") {
+      sequential = true;
+    } else if (argument == "--no-planting") {
       g_no_planting = true;
     } else if (argument == "--epoch-one-forever") {
       g_epoch_one_forever = true;
@@ -896,13 +958,54 @@ int main(int argc, char** argv) {
     return 0;
   }
 
+  // THE NINE VILLAGES WALK AT ONCE (0.37.208): each is a simulation of its own
+  // and shares nothing with the others, and one after another they were 84
+  // minutes of a suite whose every other test fits in ten — the test that
+  // bounded the suite whatever the machine gave it.
+  //
+  // EACH WALK WRITES INTO ITS OWN PAGE (WalkPages, above) — its policies'
+  // lines, the core's log, the first village's years — and the pages are
+  // printed here in the seeds' order, each before its village's line. So
+  // the text is the same whichever way they walked: `--sequential` walks
+  // them one after another through the same pages, and the job that
+  // compares the two texts byte for byte is the proof of «shares nothing».
+  std::vector<Trajectory> walked(kSeeds.size());
+  std::vector<char> walked_well(kSeeds.size(), 0);
+  WalkPages pages(kSeeds.size());
+  const auto walk_one = [&walked, &walked_well](std::size_t index) {
+    WalkPages::WriteTo(index);
+    walked_well[index] = Walk(kSeeds[index] + g_seed_offset, index == 0, walked[index]) ? 1 : 0;
+  };
+  std::cout.flush();
+  std::cerr.flush();
+  pages.Open();
+  if (sequential) {
+    for (std::size_t index = 0; index < kSeeds.size(); ++index) {
+      walk_one(index);
+    }
+  } else {
+    std::vector<std::future<void>> pending;
+    for (std::size_t index = 0; index < kSeeds.size(); ++index) {
+      pending.push_back(std::async(std::launch::async, walk_one, index));
+    }
+    for (std::future<void>& one : pending) {
+      one.get();
+    }
+  }
+  pages.Close();
+  // What a thread that named no walk wrote (a worker of a simulation's own):
+  // said, not dropped — its order among the walks is not known.
+  if (!pages.Page(kSeeds.size()).empty()) {
+    std::cout << "population_curve: WRITTEN BY NO WALK'S OWN THREAD, in the order it came:\n"
+              << pages.Page(kSeeds.size());
+  }
   std::vector<Trajectory> walks;
-  for (const std::uint64_t canonical : kSeeds) {
-    const std::uint64_t seed = canonical + g_seed_offset;
-    Trajectory walk;
-    if (!Walk(seed, canonical == kSeeds.front(), walk)) {
+  for (std::size_t index = 0; index < kSeeds.size(); ++index) {
+    std::cout << pages.Page(index);
+    if (walked_well[index] == 0) {
       return 1;
     }
+    const Trajectory& walk = walked[index];
     std::cout << "population_curve: seed " << walk.seed << " — year 7 = " << walk.year7
               << ", year 14 = " << walk.year14 << ", year 33 = " << walk.year33 << ", male share "
               << walk.male_share << ", first filth disease day " << walk.first_disease_day
@@ -1064,10 +1167,25 @@ int main(int argc, char** argv) {
                                 std::to_string(opened_years.size()) + " of " +
                                 std::to_string(walks.size());
   failures += run::Expect(opened_years.size() == walks.size(), all_claim.c_str());
+  // OF THE THREE BANDS BELOW THE MEDIAN'S IS RED SINCE 0.37.208 (the felling
+  // cure) — a balance finding at econ, the band NOT re-taken (boss, 10
+  // October 2026): the stuck felling mark had been braking growth, and with
+  // it gone Epoch II opens in years 11..13, median 11 (0.37.207: 11..14,
+  // median 12) and the residents at year 10 are 356 by the median (341) —
+  // four short of the third band's edge. They are ECON'S ACCEPTANCE BANDS OF
+  // 0.37.133, a tripwire on one delivery — not the design's (the design's
+  // are «500 residents — Epoch II» at year 14 and the door's «residents >=
+  // 380»); re-taken by her as the band of a named world after the colts'
+  // delivery and the bot's arm — not stale.
+  // THE OTHER TWO ARE ONE TABLE EXPORT AWAY: on this tree with boss's three
+  // exports of 9-10 October laid on it and not yet committed (the start
+  // layout's fallow cell, the repair's materials, world_params) the run
+  // read 10..12 and 361, and all three were red.
   const std::string year_claim = "and opens it in years 11 to 20 — now " +
                                  std::to_string(earliest_opened) + " to " +
                                  std::to_string(latest_opened) + " (0 = no village opens it)";
   failures += run::Expect(earliest_opened >= 11 && latest_opened <= 20, year_claim.c_str());
+  // Red since 0.37.208 (the felling cure) — a balance finding at econ, band not re-taken.
   const std::string median_claim = "and the median village opens it not before year 12 — now " +
                                    std::to_string(median_opened_year);
   failures += run::Expect(median_opened_year >= 12, median_claim.c_str());

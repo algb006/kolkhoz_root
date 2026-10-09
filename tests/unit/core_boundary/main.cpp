@@ -144,6 +144,8 @@ class ScriptedSimulation final : public core::ISimulation {
     return {};
   }
 
+  bool FellingCanBeManned(core::Vec2 /*place*/) const override { return false; }
+
   // The scripted double answers clean air for both stink questions: this
   // test is about the session's forwarding, not about the field.
   core::StinkStrength StinkFullAt(core::Vec2 /*point*/) const override {

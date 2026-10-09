@@ -249,6 +249,9 @@ class StepEngine final : public ISimulation {
   /// No subsystems, so no recipe: nothing is short.
   std::vector<MaterialShortfall> MaterialsShortFor(UnitId /*unit*/) const override { return {}; }
 
+  /// No accountant, so nobody to offer a felling to.
+  bool FellingCanBeManned(Vec2 /*place*/) const override { return false; }
+
   // The bare engine knows no subsystems, so it knows no sources: clean air
   // rather than a refusal, exactly as WearDeadline answers kNoData.
   StinkStrength StinkFullAt(Vec2 /*point*/) const override { return StinkStrength::kNone; }

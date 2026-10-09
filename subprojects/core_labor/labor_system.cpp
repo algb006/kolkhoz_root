@@ -73,14 +73,6 @@
 namespace core {
 namespace {
 
-/// @brief Whether the log cart reaches `place` from the nearest lived-in
-/// house within `limit_hours` at `speed_kmh`, by the network (home_reach.h).
-/// Nobody living anywhere reaches nothing.
-bool LogCartReaches(const WorldState& world, Vec2 place, float speed_kmh, float limit_hours) {
-  const float hours = NearestHomeTravelHours(world, place, speed_kmh, TravelMode::kLogCart);
-  return hours >= 0.0F && hours <= limit_hours;
-}
-
 /// @brief The window as a PAIR: open with days left, or closed with the days
 /// since (core_common/deadline.h).
 ///
@@ -299,6 +291,10 @@ class LaborSystem final : public ILaborSystem {
       lines.push_back(line);
     }
     return lines;
+  }
+
+  bool FellingCanBeManned(const WorldState& state, Vec2 place) const override {
+    return FellingCanBeMannedToday(state, place, ReachRuleOf(), DraughtHorses(state));
   }
 
   void CollectAlarms(const WorldState& state, std::vector<Alarm>& out) const override {
@@ -1419,10 +1415,13 @@ class LaborSystem final : public ILaborSystem {
         // fellers were sent where the logs then lay. A dirt road laid there
         // brings the stand back by itself; kFellingUnreachable says why it
         // stands (timber_felling.cpp, the same road).
+        // AND ONLY WHERE A FELLER CAN BE SENT TODAY (0.37.208; home_reach.h,
+        // HandReachToday — the placement's own question): on foot, or by a
+        // ride while the kolkhoz has a horse. Until then the log cart's reach
+        // was the whole offer, the fellers walk (routing stage A4), and a
+        // stand past the walk was offered every morning to nobody.
         const bool carted_out =
-            stand.marked_m3 > 0.0F &&
-            LogCartReaches(
-                current, stand.position, config_.harness_speed_kmh, config_.travel_limit_hours);
+            stand.marked_m3 > 0.0F && FellingCanBeManned(current, stand.position);
         if (stand.marked_m3 > 0.0F && stand.work_days_remaining > 0.0F && crew_cap > 0 &&
             carted_out) {
           AssignmentJob job;
@@ -1968,6 +1967,14 @@ class LaborSystem final : public ILaborSystem {
   /// accountant's pool because he has his own place, not because he cannot
   /// be given work. Counting him idle would put the village's groom into a
   /// red number every day of his life.
+  /// The knobs of the one reach question (home_reach.h), from this config.
+  ReachRule ReachRuleOf() const {
+    return ReachRule{.walk_speed_kmh = config_.walk_speed_kmh,
+                     .ride_speed_kmh = config_.harness_speed_kmh,
+                     .travel_limit_hours = config_.travel_limit_hours,
+                     .min_usable_hours = config_.min_usable_hours};
+  }
+
   bool Employable(const WorldState& state, const ResidentRow& resident) const {
     // AWAY IN THE DISTRICT (away_in_district.h): in its hospital, or on the
     // road home from its border — nobody's worker (district_car.h).

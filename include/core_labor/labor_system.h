@@ -130,6 +130,18 @@ class ILaborSystem {
   /// boundary sorts the union (session.h, ActiveAlarms).
   /// @param state Any complete world — the current buffer between steps.
   virtual void CollectAlarms(const WorldState& state, std::vector<Alarm>& out) const = 0;
+
+  /// @brief WOULD A FELLING AT `place` BE OFFERED TODAY (0.37.208): the log
+  /// cart reaches it within the road limit AND a feller can be sent — on
+  /// foot, or by a ride while the kolkhoz has a draught horse (home_reach.h,
+  /// HandReachToday). THE OFFERING'S OWN PREDICATE, not a copy of it: the
+  /// morning's felling jobs are built by this very function, so a chairman
+  /// who asks it before he marks is refused nothing the accountant then
+  /// offers, and marks nothing the accountant then leaves standing.
+  /// @param state Any complete world — the current buffer between steps.
+  /// @return False as well when nobody lives anywhere. Says nothing of
+  ///         whether a hand is FREE today — that is the placement's.
+  virtual bool FellingCanBeManned(const WorldState& state, Vec2 place) const = 0;
 };
 
 /// @brief Creates the labor subsystem.

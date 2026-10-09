@@ -135,6 +135,14 @@ struct TimberStandRow {
   /// The day the planting reaches its logs (planted_day + the species'
   /// plant_years_to_logs); kNeverPlanted until planted.
   std::uint32_t matures_day = kNeverPlanted;
+
+  /// THE DAYS IN A ROW THIS STAND'S FELLING MARK COULD TAKE NO HAND (save
+  /// 144; 0.37.208): counted at each dawn the felling would not be offered
+  /// (home_reach.h, FellingCanBeMannedToday), zeroed at a dawn it would and
+  /// with the mark. At the table's timber_mark_release_days the mark is
+  /// released (timber_felling.h, ReleaseUnreachableMarks) — the human's rule
+  /// of 2 October 2026: every wait has a deadline. 0 for a stand not marked.
+  std::uint32_t unreached_days = 0;
 };
 
 /// @brief The table type used by WorldState.
