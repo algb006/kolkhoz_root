@@ -67,6 +67,21 @@ bool StillStanding(const ProductionConfig& config, const WorldState& world, Reso
   return false;
 }
 
+/// Whether a field is under the plough, the harrow or the drill for `crop`
+/// today — a sowing begun (the hold's own words, fund_ladder.cpp).
+bool SowingBegunOf(const ProductionConfig& config, const WorldState& world, const CropDef& crop) {
+  for (const FieldRow& field : world.fields.rows) {
+    if (field.crop.value >= config.crops.size() || &config.crops[field.crop.value] != &crop) {
+      continue;
+    }
+    if (field.phase == FieldPhase::kPlowing || field.phase == FieldPhase::kHarrowing ||
+        field.phase == FieldPhase::kSowing) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /// Game days from today to the END of the latest sowing month of the crops
 /// `seed` sows — the latest the held seed is taken — counted forward over
 /// the turn, since the booking holds the NEXT sowing. 0 when no crop of it
@@ -81,8 +96,20 @@ std::uint32_t DaysToSowingEnd(const ProductionConfig& config,
       continue;
     }
     // This month counts whole, as the seed fund's horizon counts it.
-    const std::uint32_t months =
-        ((crop.sow_to_month + kMonthsPerYear - today) % kMonthsPerYear) + 1U;
+    std::uint32_t months = ((crop.sow_to_month + kMonthsPerYear - today) % kMonthsPerYear) + 1U;
+    // A SOWING BEGUN AND NOT DONE WHEN ITS WINDOW SHUT IS THIS MONTH'S, NOT
+    // NEXT YEAR'S (0.37.204): the month after the crop's last sowing month
+    // wraps to a whole year above, and while a field of it is still under the
+    // plough, the harrow or the drill — its crew finishes it past the window
+    // (fund_ladder.cpp, «a sowing already begun») — the seed is taken in
+    // days, not in twelve months. Until 0.37.204 the rot margin of the seed
+    // lamp grew by a year's rot on the closing day: a shortfall of 0.2-0.5 %
+    // of a field's need read 8.3 %, over the lamp's 5 %, with the seed in the
+    // barn at the bare need and the field sown two days later — 30 red lamps
+    // in 45 village-years (0.37.203, nine villages, five years).
+    if (months == kMonthsPerYear && SowingBegunOf(config, world, crop)) {
+      months = 1U;
+    }
     latest = std::max(latest, months * kDaysPerMonth);
   }
   return latest;

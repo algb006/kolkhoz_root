@@ -67,6 +67,7 @@
 #include "production_alarms.h"
 #include "production_config.h"
 #include "production_orders.h"
+#include "seed_lamp_checks.h"
 #include "seed_room.h"
 #include "stable_horses.h"
 #include "stock_lights.h"
@@ -15327,6 +15328,7 @@ int main() {
   failures += CheckMeadowHayLiesAtTheMeadow();
   failures += CheckTheCartingReachesTheStoreInItsHour();
   failures += CheckTheHeapLampIsRedOnlyWhenItSpoils();
+  failures += CheckTheSeedLampIsNotAFalseAlarm();
   failures += CheckAStarvedKolkhozHerdDoesNotInterruptAgain();
   failures += CheckThePerennialsCut();
 

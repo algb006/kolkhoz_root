@@ -120,6 +120,49 @@ Grams SpendRoom(const ProductionConfig& config,
 /// spring crop (SeedHold::after_by_field_row, 0.37.13) — held, it takes its
 /// share of its seed's shortfall like any sowing, named when the field's
 /// next sowing is not short (one alarm a field, CollectFieldAlarms).
+/// @brief THE SEED LYING REAPED ON THE FIELDS COUNTS AS HELD (0.37.204; boss,
+/// the resume thread of 9 October [22]-[23]): the grams of `seed` in the
+/// fields' heaps, less what the plan is still owed of it — HeapAbovePlanDebt's
+/// rule (fund_ladder.h), over the heaps that are not themselves in trouble.
+///
+/// WHY: the hold releases a sowing while a harvest of its seed is ahead («a
+/// harvest comes first — it gives the seed», SeedHeldByField), and the need
+/// falls due the day that reaping ends — when the harvest has given the seed
+/// to the HEAP, not to the barn. Until 0.37.204 the lamp read the stores
+/// alone: on 0.37.203, nine villages, five years, the rye lamp turned red 14
+/// times, each the day after another field's rye was reaped, with 4-54 kg in
+/// the barn against 1 890 kg needed and the new rye a day's carting away —
+/// and the run's chairman borrowed 1.9 t from the district at the loan's
+/// markup for seed he had.
+///
+/// A HEAP IS NOT A BARN: one whose carting task stands at level 0 (it spoils
+/// by tomorrow — logistics_tasks.cpp, HeapSpoils; the heap lamp's own red) is
+/// not counted. Seed that may not live to the cart does not silence the lamp.
+///
+/// NOT HeapAbovePlanDebt ITSELF, named: that one sums every heap and cannot
+/// leave out the troubled ones; the subtraction of the plan's debt is its
+/// rule, written here a second time over a narrower sum.
+Grams SeedInSoundHeaps(const WorldState& world, ResourceId seed) {
+  Grams lying = 0;
+  for (std::uint32_t row = 0; row < world.fields.rows.size(); ++row) {
+    const FieldRow& field = world.fields.rows[row];
+    if (field.reaped_grams <= 0 || field.reaped_resource != seed) {
+      continue;
+    }
+    bool spoiling = false;
+    for (const LogisticsTaskRow& task : world.logistics_tasks.rows) {
+      spoiling = spoiling ||
+                 (task.load_kind == LogisticsLoadKind::kFieldHeap &&
+                  task.field == world.fields.row_ids[row] && task.level == LogisticsLevel::kUrgent);
+    }
+    if (!spoiling) {
+      lying += field.reaped_grams;
+    }
+  }
+  const Grams owed = PlanOwedGrams(world, seed);
+  return lying > owed ? lying - owed : 0;
+}
+
 Grams SeedShortfall(const ProductionConfig& config,
                     const WorldState& world,
                     const SeedHold& hold,
@@ -138,7 +181,7 @@ Grams SeedShortfall(const ProductionConfig& config,
   // seed loan is sized by this alarm, and sized on the bare norm it arrived a
   // week before the window and the rot took the difference back.
   const Grams need = SeedNeedWithRot(config, world, resource, bare);
-  const Grams have = HeldEverywhere(world, resource);
+  const Grams have = HeldEverywhere(world, resource) + SeedInSoundHeaps(world, resource);
   if (have >= need) {
     return 0;
   }
@@ -252,8 +295,15 @@ bool SeedShortLamp(const ProductionConfig& config,
     return false;
   }
   const SowingWindow window = NextSowingWindow(config, world.fields.rows[row], world.calendar.day);
-  return window.crop.value < config.crops.size() &&
-         window.opens - static_cast<std::int64_t>(world.calendar.day) <= kSeedShortLampLeadDays;
+  // NOT ONCE THE WINDOW HAS SHUT (0.37.204; boss, the resume thread of
+  // 9 October [19]): the lamp's loss is «the sowing sown short», dated by its
+  // window; past the window's last day there is no day left to answer it by,
+  // and an unsown field's loss is kSowingWillNotFit's to name. Until 0.37.204
+  // a window already open read «0 days to the loss» for ever after, its close
+  // included.
+  const auto today = static_cast<std::int64_t>(world.calendar.day);
+  return window.crop.value < config.crops.size() && today < window.closes &&
+         window.opens - today <= kSeedShortLampLeadDays;
 }
 
 /// This year's goods loan of `seed` is taken (PlanState::goods_loan_taken —
