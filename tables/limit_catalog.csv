@@ -9,7 +9,7 @@ cow_head,80,1,livestock
 sheep_head,25,1,livestock
 piglet_lot,20,1,livestock
 chick_lot,10,1,livestock
-seed_grain_lot,30,1,choice
+seed_grain_lot,,1,choice
 timber_lot,20,1,goods
 roofing_lot,25,1,goods
 consumer_goods_lot,,1,goods
