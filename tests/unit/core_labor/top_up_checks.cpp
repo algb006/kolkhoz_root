@@ -184,6 +184,52 @@ Crews LateWorkAgainstThePlanting(core::ILaborSystem& labor, bool a_reaping_opens
   return crews;
 }
 
+/// A CREW LET GO RETURNS TO ITS JOB WHOEVER STILL STANDS ON IT (0.37.206;
+/// timber_years, seed 1929, day 253). Three hands plant a zone in the
+/// morning; a small reaping — one hand's — opens after it; the top-up lets
+/// the planters go and places them again: one reaps, the others plant on.
+/// With `one_stays` one planter is past his rest limit by hour 1: the
+/// top-up's list does not carry him, he keeps his morning's place — and until
+/// 0.37.206 that one place made the planting read «crewed», it was not in the
+/// queue, and the planter let go beside him stood the day idle.
+Crews ALetGoCrewReturns(core::ILaborSystem& labor, bool one_stays) {
+  core::WorldState world = Village(3);
+  core::TimberStandRow zone;
+  zone.kind = core::TimberStandKind::kPlanted;
+  zone.position = core::Vec2{.x = 300.0F, .y = 0.0F};
+  zone.planted_area_ha = 5.0F;
+  zone.work_days_remaining = 20.0F;
+  const core::TimberStandId zone_id = core::AppendRow(world.stands, zone);
+  core::FieldRow late;
+  late.center = core::Vec2{.x = 0.0F, .y = 20.0F};
+  late.area_ga = 10.0F;
+  late.phase = core::FieldPhase::kGrowing;
+  const core::FieldId late_id = core::AppendRow(world.fields, late);
+  Crews crews;
+  RunHour(labor, world, 0);
+  for (const core::ResidentRow& person : world.residents.rows) {
+    crews.morning_planters += person.work.kind == core::WorkKind::kPlanting ? 1U : 0U;
+  }
+  if (one_stays) {
+    world.residents.rows[0].rest = 0.0F;  // past the rest limit: not on the top-up's list
+  }
+  core::FieldRow& opened = world.fields.rows[core::FindRow(world.fields, late_id)];
+  opened.phase = core::FieldPhase::kHarvest;
+  opened.work_days_remaining = 0.2F;  // one hand's morning
+  RunHour(labor, world, 1);
+  for (const core::ResidentRow& person : world.residents.rows) {
+    crews.planters +=
+        person.work.kind == core::WorkKind::kPlanting && person.work.stand.value == zone_id.value
+            ? 1U
+            : 0U;
+    crews.on_the_field +=
+        person.work.field.value == late_id.value && person.work.kind == core::WorkKind::kHarvest
+            ? 1U
+            : 0U;
+  }
+  return crews;
+}
+
 /// The labour system of the people's cart: six seats for a walk past two
 /// hours (transport.csv), and a cow beside the horse (livestock.csv row 1).
 std::unique_ptr<core::ILaborSystem> LaborWithThePeoplesCart() {
@@ -316,6 +362,20 @@ int CheckTopUpAgainstWindowlessWork() {
                      "hour 1");
   failures += Expect(no_reaping.planters == 3,
                      "top-up, the hands: with no reaping opened the planters plant on");
+
+  const Crews all_listed = ALetGoCrewReturns(*labor, false);
+  const Crews one_stays = ALetGoCrewReturns(*labor, true);
+  std::cout << "  top-up, the crew let go: morning planters " << all_listed.morning_planters
+            << "; a one-hand reaping opens - reapers " << all_listed.on_the_field << ", planters "
+            << all_listed.planters << "; with one planter off the list - reapers "
+            << one_stays.on_the_field << ", planters " << one_stays.planters << '\n';
+  failures += Expect(
+      all_listed.morning_planters == 3 && all_listed.on_the_field == 1 && all_listed.planters == 2,
+      "top-up, the crew let go: one planter reaps the small field and the other two "
+      "are back on the planting (the check's own ground)");
+  failures += Expect(one_stays.on_the_field == 1 && one_stays.planters == 2,
+                     "top-up, the crew let go: with one planter off the top-up's list still "
+                     "standing there, the planter let go beside him returns to the planting");
 
   const auto carting = LaborWithThePeoplesCart();
   if (Expect(carting != nullptr, "top-up, the people's cart: the tables build a labor system") !=

@@ -704,6 +704,21 @@ class LaborSystem final : public ILaborSystem {
     // horses and it takes no second crew of them.
     std::vector<bool> let_go(current.residents.rows.size(), false);
     std::vector<bool> walkers_left(offered.size(), false);
+    // THE JOBS WHOSE CREW WAS LET GO, by `offered` (0.37.206): every job a
+    // hand was taken off other than as a walker of a cart load. They are in
+    // the queue again WHOEVER STILL STANDS ON THEM. Until then a job was
+    // offered again only when nobody stood on it at all — and a hand the
+    // top-up's list does not carry (it is collected anew at this hour, and
+    // not everybody the morning placed is on it) kept his place, made the job
+    // read «crewed», and the crew just taken off it was placed elsewhere:
+    // timber_years, seed 1929, day 253 — a level-0 load stood uncrewed, the
+    // plough of field 12 (13 hands at dawn) and the harrow of field 14 (14)
+    // were let go with every horse-holder, two hands and one stayed on them,
+    // neither job was in the queue of seven, and both stood the day with
+    // nobody while eighteen hands went to three other harrows and five horses
+    // idled. The run's assertion saw one cart on a horse for the district's
+    // lot; the loss was two field works' day.
+    std::vector<bool> crew_let_go(offered.size(), false);
     bool anybody_let_go = false;
     const bool carts_haul = WalkerShareToday(current) < 1.0F;
     // LEVEL 0 IN THE TOP-UP TOO, AHEAD OF EVERY WINDOW (routing stage B, B5;
@@ -731,7 +746,9 @@ class LaborSystem final : public ILaborSystem {
       const bool holds_a_horse = work.rides_horse != 0 || IsHorseWork(work.kind);
       if (PlacementTier(*his) == kWindowlessTier || walks_to_a_cart_load ||
           (urgent_uncrewed && holds_a_horse && !his->logistics_urgent)) {
-        walkers_left[static_cast<std::size_t>(his - offered.begin())] = walks_to_a_cart_load;
+        const auto job_index = static_cast<std::size_t>(his - offered.begin());
+        walkers_left[job_index] = walks_to_a_cart_load;
+        crew_let_go[job_index] = crew_let_go[job_index] || !walks_to_a_cart_load;
         work = WorkAssignment{};
         let_go[candidate.resident_row] = true;
         anybody_let_go = true;
@@ -742,7 +759,7 @@ class LaborSystem final : public ILaborSystem {
       // whose walkers went and whose riders stayed joins it for walkers alone.
       jobs.clear();
       for (std::size_t index = 0; index < offered.size(); ++index) {
-        if (!crewed(offered[index])) {
+        if (!crewed(offered[index]) || crew_let_go[index]) {
           jobs.push_back(offered[index]);
         } else if (walkers_left[index]) {
           jobs.push_back(offered[index]);
