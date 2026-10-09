@@ -962,6 +962,11 @@ void CarryHayShare(const ProductionConfig& config,
   AddToStock(world.families.rows[taker].pantry, hay, share);
 }
 
+/// The share of the kind's meat a half-grown head gives under the barrack's
+/// knife (SettleBarrackStock). STUB, boss's of 9 October 2026, econ's to
+/// confirm or replace.
+constexpr float kHalfGrownMeatShare = 0.5F;
+
 /// THE BARRACK'S STOCK, ONE RULE FOR EVERY DOOR (0.37.205; boss, core-boss-c2-
 /// site-supply-2026-10-09 [23]-[30]; the human, 9 October 2026: «Если у
 /// барака будут куры, то нужен курятник»; housing §9). A family living in a
@@ -986,10 +991,14 @@ void CarryHayShare(const ProductionConfig& config,
 /// span, the hen probe); and an heir in a barrack kept an inherited goat as
 /// its own (seed 1933, day 170).
 ///
-/// THE YOUNG OF A KIND UNDER THE KNIFE: the grown and the half-grown give the
-/// kind's carcass (livestock.csv `meat_kg_per_head`, the one number there
-/// is), the new-born give nothing. STUB, named: no table says what a kid
-/// weighs.
+/// THE YOUNG OF A KIND UNDER THE KNIFE (0.37.207; boss, the C2 thread [41]+):
+/// a grown head gives the kind's whole carcass — meat, hide, pelt and down, as
+/// every slaughter does; a HALF-GROWN head gives half the kind's meat
+/// (kHalfGrownMeatShare) and nothing else; a new-born gives nothing. STUB,
+/// boss's, for econ to confirm: no table says what a kid weighs. In 0.37.205-
+/// 206 the half-grown paid the whole carcass (my stub, named then) — and paid
+/// nothing at all for the goat, whose meat cell was empty until 0.37.207's
+/// table.
 /// @return True when the herd changed hands or was emptied.
 bool SettleBarrackStock(const ProductionConfig& config,
                         const LivestockDef& kind,
@@ -1010,8 +1019,14 @@ bool SettleBarrackStock(const ProductionConfig& config,
     return true;
   }
   const std::uint32_t heads = TotalHeads(herd);
-  const auto carcasses = static_cast<std::uint16_t>(herd.adult_count + herd.juvenile_count);
-  Slaughter(config, kind, PlaceOf(world, config, herd), carcasses, world);
+  const HerdPlace place = PlaceOf(world, config, herd);
+  Slaughter(config, kind, place, herd.adult_count, world);
+  DeliverProduce(world,
+                 config,
+                 place,
+                 config.meat_resource,
+                 KilogramsToGrams(kind.meat_kg_per_head * kHalfGrownMeatShare *
+                                  static_cast<float>(herd.juvenile_count)));
   world.ledger.current.herd_culled += heads;
   AddLedgerHeads(world.ledger.current.herd_surplus_slaughtered, herd.kind, heads);
   SimEvent& event = EmitEvent(world, EventKind::kHerdSurplusSlaughtered);

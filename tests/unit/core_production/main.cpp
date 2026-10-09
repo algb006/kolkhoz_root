@@ -3010,9 +3010,10 @@ int CheckYardOffspringReplaces() {
   // THE BARRACK'S ONE RULE FOR THE REST (SettleBarrackStock), by whatever
   // door the animal came — here it simply stands with a family in a barrack,
   // as after an inheritance. A kind that lives only at family yards is eaten
-  // whole that day: two adults and a half-grown give three carcasses, the
-  // new-born none, and no head is left the kolkhoz's. A kind the kolkhoz can
-  // hold goes to its herd, every head. And in a house neither happens.
+  // whole that day: two adults give two carcasses, a half-grown half of one
+  // (0.37.207; boss's stub), the new-born none, and no head is left the
+  // kolkhoz's. A kind the kolkhoz can hold goes to its herd, every head. And
+  // in a house neither happens.
   {
     core::ProductionConfig yard_only = config;
     yard_only.livestock[2].household_only = 1;
@@ -3023,10 +3024,10 @@ int CheckYardOffspringReplaces() {
     failures +=
         Expect(eaten.adult_count == 0 && eaten.juvenile_count == 0 && eaten.newborn_count == 0 &&
                    eaten.household_owned == 1 && knifed(goats.world) == 4 &&
-                   goats.world.families.rows[0].pantry[2] == 30 * core::kGramsPerKilogram,
+                   goats.world.families.rows[0].pantry[2] == 25 * core::kGramsPerKilogram,
                "barrack stock: a yard-only kind is eaten the day it stands with a "
-               "barrack family — three carcasses in its pantry, four heads booked, none "
-               "the kolkhoz's");
+               "barrack family — two carcasses and a half-grown's half in its pantry, four "
+               "heads booked, none the kolkhoz's");
     Yard cows = yard_with(2, 0.2F, 0.2F, 1, 1);
     cows.world.families.rows[0].in_barrack = 1;
     RunHerdDays(config, cows.world, 1);
