@@ -161,8 +161,20 @@ fi
 # of that shell have to be worked around at once: //c keeps MSYS from
 # rewriting the switch into a path, and the single quotes keep bash from
 # eating the backslash before cmd ever sees the name.
+#
+# WIN_JOBS (env): the most compilers at once. `cmake --build` with Ninja takes
+# every thread of the host and two more; on a host that shares its memory
+# with guests the human caps it (10 October 2026: «at most 2 compilers»), and
+# until this knob the script could not be told. CMake reads the number from
+# its own environment variable, which MSYS2 bash hands on to cmd. Unset — as
+# before, Ninja's own default.
 run_build() {
-  ssh "${host}" "cd '${remote_dir}' && cmd //c 'scripts\\build-core.bat' $1 ${clean_arg}"
+  local jobs_env=""
+  if [ -n "${WIN_JOBS:-}" ]; then
+    jobs_env="CMAKE_BUILD_PARALLEL_LEVEL=${WIN_JOBS} "
+    echo "Сборка не более чем в ${WIN_JOBS} компилятора (WIN_JOBS)."
+  fi
+  ssh "${host}" "cd '${remote_dir}' && ${jobs_env}cmd //c 'scripts\\build-core.bat' $1 ${clean_arg}"
 }
 
 # Not scp: with MSYS2 bash as the sshd shell the SFTP subsystem is broken
