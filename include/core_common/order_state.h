@@ -911,6 +911,23 @@ enum class OrderKind : std::uint8_t {
   /// threshold, routing stage C).
   kPauseLogisticsTask,
 
+  /// MARK A MEADOW (Livestock design §5 «Игрок размечает луг сам»; contract
+  /// 0.37.210, meadow_mark.h; implemented 0.37.211). Free, at once, on any
+  /// day, no ceiling. TWO FORMS: `field` invalid — a NEW meadow, a circle of
+  /// `area_ha` hectares at `position`, its kind read off the floodplain's
+  /// share of the circle; `field` naming an ARABLE field with an empty
+  /// rotation — that field is mown as it lies, as dry meadow, until
+  /// kSetRotation says otherwise. Refusals (OrderRefusalOf, meadow_mark.h):
+  /// kRuleForbids (area not positive, the circle off the map), kWrongLand
+  /// (water, the river, forest, a grove, a reserve, ruins, a pit, a flood
+  /// share between the two kinds, or — form 2 — a meadow or a field with a
+  /// rotation), kTooClose (a unit's plot, a stand, another field or meadow),
+  /// kNoSuchSubject (form 2: no such field), kConflictsWithActive (form 2:
+  /// mown as it lies already). The finer reason is the preview's
+  /// (ISimulation::PreviewMeadowMark). Unmarking is kRemoveField. Seam key
+  /// `mark_meadow`. Consumer: core_production.
+  kMarkMeadow,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).

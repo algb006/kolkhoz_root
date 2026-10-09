@@ -13,6 +13,7 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -20,6 +21,7 @@
 
 #include "campaign_tables.h"
 #include "core_catalog/definitions.h"
+#include "core_catalog/map_obstacle_tables.h"
 #include "core_catalog/table_value.h"
 #include "core_catalog/world_conventions.h"
 #include "core_common/body.h"
@@ -959,7 +961,25 @@ void PlaceStartLayout(WorldState& world,
                       const ITable* crops,
                       Metric start_fertility,
                       float map_side_m,
+                      std::span<const std::string> start_land_keys,
                       std::vector<std::pair<std::string_view, UnitId>>& placed) {
+  // THE ROW's POLYGON ON THE MAP (FieldRow::start_shape; 0.37.211): 1 + the
+  // key's place among the map's start land, 0 when the map draws none for
+  // it. More than 255 polygons would not fit the byte — the 256th and later
+  // are left unbound, tested as circles, and said.
+  const auto shape_of = [start_land_keys](const std::string& key) -> std::uint8_t {
+    const auto found = std::find(start_land_keys.begin(), start_land_keys.end(), key);
+    if (found == start_land_keys.end()) {
+      return 0;
+    }
+    const auto ordinal = static_cast<std::size_t>(found - start_land_keys.begin()) + 1U;
+    if (ordinal > 255U) {
+      LogWarning("genesis: layout row '" + key +
+                 "' is past the 255th start polygon of the map and is left unbound");
+      return 0;
+    }
+    return static_cast<std::uint8_t>(ordinal);
+  };
   for (const StartLayoutRow& row : layout.rows) {
     // The map bounds ARE checked somewhere — on the positions the chairman
     // orders a building at (core_construction) — and were never checked on
@@ -993,6 +1013,7 @@ void PlaceStartLayout(WorldState& world,
     }
     if (row.kind == LayoutKind::kMeadow) {
       PlaceMeadow(world, row.area_ha, row.place, row.floodplain);
+      world.fields.rows.back().start_shape = shape_of(row.key);
       continue;
     }
     if (row.kind == LayoutKind::kRoad) {
@@ -1010,6 +1031,7 @@ void PlaceStartLayout(WorldState& world,
     }
     const FieldId field = PlaceField(
         world, row.area_ha, row.place, start_fertility, rotation[0], rotation[1], rotation[2]);
+    world.fields.rows[FindRow(world.fields, field)].start_shape = shape_of(row.key);
     if (row.derelict) {
       // THE START'S NINETY-THREE HECTARES OF WEEDS, and they are a LOOK now
       // and not a kind of land. The field is ordinary arable with an empty
@@ -1395,8 +1417,15 @@ bool BuildStartEconomy(WorldState& world,
     }
     return false;
   }
-  PlaceStartLayout(
-      world, scene, unit_types, crops, kStartFertility, definitions.map_side_m, placed);
+  const std::vector<std::string> start_land_keys = ReadStartLandKeys(tables);
+  PlaceStartLayout(world,
+                   scene,
+                   unit_types,
+                   crops,
+                   kStartFertility,
+                   definitions.map_side_m,
+                   start_land_keys,
+                   placed);
   // THE ROADS, the map's network with the layout's wear on it (0.36.0).
   std::string road_error;
   if (!PlaceMapRoads(tables, scene, world, road_error)) {

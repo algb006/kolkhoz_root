@@ -77,6 +77,7 @@
 #include "core_common/issue_norm_view.h"
 #include "core_common/labor_state.h"
 #include "core_common/material_shortfall.h"
+#include "core_common/meadow_mark.h"
 #include "core_common/office_views.h"
 #include "core_common/order_state.h"
 #include "core_common/readiness_view.h"
@@ -398,6 +399,20 @@ class ISimulation {
   /// accountant and answers false.
   /// @note Called between steps on the sim thread. A pure read.
   virtual bool FellingCanBeManned(Vec2 place) const = 0;
+
+  /// @brief The core's answer to a meadow's mark the player is drawing — what
+  /// the order kMarkMeadow with the same fields would be told
+  /// (core_common/meadow_mark.h; 0.37.211): the refusal by its own finer word
+  /// (MeadowMarkRefusal), the kind the meadow would be, the floodplain's
+  /// share of the circle, a whole cut's hay and the mowers' man-days, and
+  /// where the first obstacle lies. Form 1: `position` and `area_ha`, `field`
+  /// invalid. Form 2: `field`, an arable field with an empty rotation to mow
+  /// as it lies. Fans out to core_production; the bare engine knows no map
+  /// and refuses every mark kBadArea.
+  /// @note Called between steps on the sim thread; a pure read. The first
+  ///       call builds the obstacle raster if no road was traced before it;
+  ///       a 100 ha mark reads ~160 000 cells.
+  virtual MeadowMarkAnswer PreviewMeadowMark(Vec2 position, float area_ha, FieldId field) const = 0;
 
   /// @brief How badly it stinks at a point of the map — AT WORST
   /// (StinkFullAt) and AS IT IS TODAY (StinkNowAt). Water design §4.

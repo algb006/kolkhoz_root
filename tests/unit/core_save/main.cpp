@@ -332,6 +332,8 @@ core::WorldState MakeWorld() {
   // — the one phase and crop the loader lets carry it.
   field.phase = core::FieldPhase::kSowing;
   field.fallow_rest_owed = 1;
+  // Save 145: the row's polygon on the map, off its default.
+  field.start_shape = 7;
   core::AppendRow(world.fields, field);
 
   // And one meadow: a different LandKind, so the byte the row gained in task
@@ -346,6 +348,9 @@ core::WorldState MakeWorld() {
   // the loader lets carry it (the codec is under test, not the meadow).
   meadow.phase = core::FieldPhase::kPlowing;
   meadow.autumn_furrowing = 1;
+  // Save 145: former arable mown as it lies — a dry meadow is the one kind
+  // the loader lets carry the mark.
+  meadow.mown_fallow = 1;
   core::AppendRow(world.fields, meadow);
   // The TOP of the land enum, so its bound is exercised, and the overgrown
   // byte set so the round trip carries it. The byte replaced a whole
@@ -1638,7 +1643,11 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // the three fields; 350 -> 362 read off the build (the row's 120 -> 128
     // was predicted, this section's count was not written down — named). The
     // third field's day is set off its default, and the hash moves with it.
-    {"fields", 362, 0x1fce6d9ef96d7cb6ULL},
+    // Save 145 (0.37.211): +6 — start_shape and mown_fallow, two bytes on each
+    // of the three fields; predicted 362 -> 368 with every other section's
+    // size unmoved before the build; held, and the hash recorded from that run
+    // (the first field's polygon and the meadow's mark set off their defaults).
+    {"fields", 368, 0xfa47c0e0a8034c3eULL},
     // Save 67: +27 — the store's emptying byte and the perevalka's two floats,
     // three units; predicted before the fields were added, and held.
     // Save 74: +1 a unit — the house held for a specialist; three units, +3,
@@ -1721,7 +1730,10 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // the hash moved; VERSION_SAVE stays 143, as it stayed 81 the first time.
     // NOT predicted: the suite found it, the seventh time the top of an enum
     // has moved here unannounced.
-    {"orders", 818, 0x9b7fa6f8bd034bf8ULL},
+    // Save 145 (0.37.211): kMarkMeadow became the top OrderKind — same 818
+    // bytes, the hash moved; predicted before the build (the eighth time, and
+    // the second written down first).
+    {"orders", 818, 0x56409d1b68e84b33ULL},
     // Save 82: the fixture's first stand, a birch planting — 8 -> 67 (its id
     // 4, the old fields 41, species 2, hectares 4, two days 8); predicted,
     // held.
@@ -2457,6 +2469,11 @@ int main() {
       Expect(loaded.fields.rows[0].sown_share == 0.625F, "and the sown share comes back (save 87)");
   failures += Expect(loaded.fields.rows[2].overgrown == 1,
                      "the weeds on the unworked ground survive the round trip");
+  failures +=
+      Expect(loaded.fields.rows[0].start_shape == 7 && loaded.fields.rows[1].start_shape == 0 &&
+                 loaded.fields.rows[1].mown_fallow == 1 && loaded.fields.rows[0].mown_fallow == 0,
+             "the field's polygon and the mark of ground mown as it lies come back "
+             "(save 145)");
   // AND WHETHER ANYBODY EVER TOLD THE FIELD WHAT TO GROW, which the three
   // crop slots beside it cannot say: an empty slot in a chain that exists is
   // a fallow year, and the same emptiness in a field nobody assigned is

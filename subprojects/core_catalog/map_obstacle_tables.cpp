@@ -28,7 +28,9 @@ constexpr std::array<std::string_view, static_cast<std::size_t>(MapAreaKind::kMa
                       "village_zone",
                       "stone_quarry",
                       "clay_pit",
-                      "sand_pit"};
+                      "sand_pit",
+                      "start_field",
+                      "start_meadow"};
 
 std::optional<MapAreaKind> AreaKindOf(std::string_view word) {
   for (std::size_t index = 0; index < kAreaKindWords.size(); ++index) {
@@ -289,6 +291,40 @@ bool ReadMapObstacles(const ITableSet& tables, MapObstacles& obstacles, std::str
   }
   obstacles = std::move(read);
   return true;
+}
+
+std::vector<std::string> ReadStartLandKeys(const ITableSet& tables) {
+  std::vector<std::string> keys;
+  const ITable* areas = tables.FindTable("map_areas");
+  if (areas == nullptr) {
+    return keys;
+  }
+  const std::uint32_t key_column = areas->FindColumn("area");
+  const std::uint32_t kind_column = areas->FindColumn("kind");
+  if (key_column == kNoTableColumn || kind_column == kNoTableColumn) {
+    return keys;  // a malformed table is ReadMapObstacles' to refuse, with its reason
+  }
+  for (std::uint32_t row = 0; row < areas->RowCount(); ++row) {
+    const std::string_view kind = areas->CellText(row, kind_column);
+    if (kind != "start_field" && kind != "start_meadow") {
+      continue;
+    }
+    const std::string_view key = areas->CellText(row, key_column);
+    if (std::find(keys.begin(), keys.end(), key) == keys.end()) {
+      keys.emplace_back(key);
+    }
+  }
+  return keys;
+}
+
+std::vector<StartLandShape> StartLandOf(const MapObstacles& obstacles) {
+  std::vector<StartLandShape> shapes;
+  for (const MapAreaDef& area : obstacles.areas) {
+    if (area.kind == MapAreaKind::kStartField || area.kind == MapAreaKind::kStartMeadow) {
+      shapes.push_back(StartLandShape{.key = area.key, .outline = area.outline});
+    }
+  }
+  return shapes;
 }
 
 }  // namespace core

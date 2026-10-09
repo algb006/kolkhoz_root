@@ -708,6 +708,11 @@ enum class EventKind : std::uint8_t {
   /// `felling_mark_released`.
   kFellingMarkReleased,
 
+  /// A MEADOW WAS MARKED (0.37.211; kMarkMeadow, meadow_mark.h): field = the
+  /// row — the new meadow, or the arable field now mown as it lies; amount =
+  /// its hectares × 100. kRoutine. Seam key `meadow_marked`.
+  kMeadowMarked,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

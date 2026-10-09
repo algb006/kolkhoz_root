@@ -45,6 +45,10 @@ namespace core_test {
 /// Defined in version_linkage_probe.cpp — a second translation unit, so that
 /// the linkage of the version constants is measurable from inside one build.
 const char* const* VersionStringAddressFromOtherTu();
+
+/// The meadow's mark against its contract (meadow_mark_contract_check.cpp;
+/// core_common/meadow_mark.h, 0.37.211).
+int TestMeadowMarkContract();
 }  // namespace core_test
 
 namespace {
@@ -2774,6 +2778,7 @@ int main() {
   failures += TestRoadGraph();
   failures += TestRoadViews();
   failures += TestObstacleRaster();
+  failures += core_test::TestMeadowMarkContract();
   failures += TestRoadTrace();
   failures += TestRoadPieces();
   failures += TestRoadCut();

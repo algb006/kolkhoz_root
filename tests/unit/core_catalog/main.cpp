@@ -766,6 +766,41 @@ int TestMapObstacleTables() {
   std::string error;
   failures += Expect(core::ReadMapObstacles(empty, none, error) && none.areas.empty(),
                      "map obstacles: a set without the tables reads as no map");
+
+  // THE START'S LAND (0.37.211; meadow_mark.h): the two new kinds read, and
+  // the keys genesis binds rows by are the shapes the marking asks, in one
+  // order — the file's — with other areas between them.
+  {
+    const std::vector<std::vector<std::string>> with_start = {
+        {"meadow_02", "start_meadow", "0", "0", "0"},
+        {"meadow_02", "start_meadow", "1", "10", "0"},
+        {"meadow_02", "start_meadow", "2", "10", "10"},
+        {"wood", "forest", "0", "100", "0"},
+        {"wood", "forest", "1", "110", "0"},
+        {"wood", "forest", "2", "110", "10"},
+        {"field_oat", "start_field", "0", "200", "0"},
+        {"field_oat", "start_field", "1", "210", "0"},
+        {"field_oat", "start_field", "2", "210", "10"}};
+    const test::FakeTable area_table(area_columns, with_start);
+    const test::FakeTableSet set("map_areas", area_table);
+    core::MapObstacles start_map;
+    std::string trouble;
+    const bool read_ok = core::ReadMapObstacles(set, start_map, trouble);
+    const std::vector<std::string> keys = core::ReadStartLandKeys(set);
+    const std::vector<core::StartLandShape> shapes = core::StartLandOf(start_map);
+    failures += Expect(read_ok && start_map.areas.size() == 3 &&
+                           start_map.areas[0].kind == core::MapAreaKind::kStartMeadow &&
+                           start_map.areas[2].kind == core::MapAreaKind::kStartField,
+                       "map obstacles: start_field and start_meadow are area kinds the core knows");
+    failures += Expect(keys.size() == 2 && keys[0] == "meadow_02" && keys[1] == "field_oat",
+                       "start land: the keys, each once, in the file's order, the forest skipped");
+    failures += Expect(shapes.size() == 2 && shapes[0].key == keys[0] && shapes[1].key == keys[1] &&
+                           shapes[1].outline.size() == 3 && shapes[1].outline[1].x == 210.0F,
+                       "start land: the shapes stand in the keys' order — what genesis binds is "
+                       "what the marking asks");
+    failures += Expect(core::ReadStartLandKeys(empty).empty(),
+                       "start land: a set without map_areas has no keys");
+  }
   return failures;
 }
 

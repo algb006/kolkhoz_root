@@ -81,8 +81,23 @@ std::optional<RoadTools> RoadTools::Read(const ITableSet& tables, std::string& e
     if (area.kind == MapAreaKind::kVillageZone) {
       tools.village_.push_back(area.outline);
     }
+    if (area.kind == MapAreaKind::kStoneQuarry || area.kind == MapAreaKind::kClayPit ||
+        area.kind == MapAreaKind::kSandPit) {
+      tools.pits_.push_back(area.outline);
+    }
   }
+  tools.start_land_ = StartLandOf(tools.obstacles_);
   return tools;
+}
+
+MeadowMarkGround RoadTools::MeadowGround(bool with_raster) const {
+  MeadowMarkGround ground;
+  ground.raster = with_raster ? Raster() : nullptr;
+  ground.start_land = &start_land_;
+  ground.pits = &pits_;
+  ground.plot_radius_m = plot_radius_m_;
+  ground.map_side_m = map_side_m_;
+  return ground;
 }
 
 const ObstacleRaster* RoadTools::Raster() const {

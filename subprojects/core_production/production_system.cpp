@@ -57,6 +57,7 @@
 #include "herd_cold.h"
 #include "herd_forecast.h"
 #include "herd_system.h"
+#include "meadow_orders.h"
 #include "milk_cart.h"
 #include "night_pasture.h"
 #include "plan_alarms.h"
@@ -487,6 +488,13 @@ class ProductionSystem final : public IProductionSystem {
 
   bool StoredHayShortWithin(const WorldState& world, std::uint32_t days) const override {
     return core::StoredHayShortWithin(config_, world, days);
+  }
+
+  MeadowMarkAnswer PreviewMeadowMark(const WorldState& completed,
+                                     Vec2 position,
+                                     float area_ha,
+                                     FieldId field) const override {
+    return PreviewMeadow(config_, completed, position, area_ha, field);
   }
 
   Grams StandingCropGrams(const WorldState& /*world*/, const FieldRow& field) const override {
@@ -949,11 +957,13 @@ class ProductionSystem final : public IProductionSystem {
 
 }  // namespace
 
-std::unique_ptr<IProductionSystem> CreateProductionSystem(const ITableSet& tables,
-                                                          StubTables stubs,
-                                                          std::uint32_t growing_season_last_day,
-                                                          const RainDayShares& rain_day_shares,
-                                                          const SnowLainShares& snow_lain_shares) {
+std::unique_ptr<IProductionSystem> CreateProductionSystem(
+    const ITableSet& tables,
+    StubTables stubs,
+    std::uint32_t growing_season_last_day,
+    const RainDayShares& rain_day_shares,
+    const SnowLainShares& snow_lain_shares,
+    std::function<MeadowMarkGround(bool)> meadow_ground) {
   // THE DEFAULTS ARE LEGITIMATE AND THEIR SILENCE WAS NOT
   // (core_tables/stub_tables.h). A caller that has not said it wants
   // this module's documented defaults is refused by name, so that a
@@ -1012,6 +1022,7 @@ std::unique_ptr<IProductionSystem> CreateProductionSystem(const ITableSet& table
   config.rain_day_shares = rain_day_shares;
   config.early_snow_last_day =
       EarlySnowLastDay(snow_lain_shares, config.farming.early_snow_share, growing_season_last_day);
+  config.meadow_ground = std::move(meadow_ground);
   return std::make_unique<ProductionSystem>(config);
 }
 

@@ -192,8 +192,11 @@ static_assert(AggregateArity<FamilyRow>() == 30,
 // Save 134 (0.37.167): last_cut_day, a SimDay after furrow_day at the row's
 // end — predicted 120 -> 128 (124, rounded to the row's eight-byte alignment)
 // and 41 -> 42 fields before the build.
+// Save 145 (0.37.211): start_shape and mown_fallow, two bytes after
+// last_cut_day into the row's tail padding (124, 125) — predicted "128
+// stays" and 42 -> 44 fields before the build; the wire row + 2 bytes.
 static_assert(sizeof(FieldRow) == 128, "FieldRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<FieldRow>() == 42,
+static_assert(AggregateArity<FieldRow>() == 44,
               "FieldRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-06: the stink radius pushed the row from 48 + amounts to 56 +
 // amounts. The pause byte before it had landed in padding and moved nothing,
@@ -998,6 +1001,8 @@ void WriteFieldRow(SaveSink& sink, const FieldRow& row) {
   // 110): the turn's release keeps zyab only on the autumn furrow.
   out.WriteU32(row.furrow_day);
   out.WriteU32(row.last_cut_day);  // save 134
+  out.WriteU8(row.start_shape);    // save 145
+  out.WriteU8(row.mown_fallow);    // save 145
   // The manure already in the book (save 111): booked once a field's cycle,
   // and since save 112 already paid into the fertility.
   out.WriteU8(row.manure_booked);
@@ -1082,6 +1087,15 @@ FieldRow ReadFieldRow(LoadSource& source) {
       static_cast<FieldPhase>(source.ReadEnumValue(0, kMaxFieldPhase, "field's avral phase"));
   row.furrow_day = in.ReadU32();    // save 111
   row.last_cut_day = in.ReadU32();  // save 134
+  row.start_shape = in.ReadU8();    // save 145: an ordinal the map's start land answers
+  row.mown_fallow =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "the field mown as it lies"));
+  // Former arable mown as it lies IS a dry meadow while it is mown
+  // (meadow_mark.cpp, MarkMeadow): any other kind under the mark is a row no
+  // order could have made.
+  if (row.mown_fallow != 0 && row.kind != LandKind::kMeadow) {
+    source.Fail("a field marked as mown as it lies is not a dry meadow");
+  }
   row.manure_booked = static_cast<std::uint8_t>(
       source.ReadEnumValue(0, 1, "the field's manure booked"));  // save 111
   if (row.manure_booked != 0 && row.manure_applied == 0) {

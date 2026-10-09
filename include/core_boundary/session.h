@@ -35,6 +35,7 @@
 ///               NeedUntilHarvest, EraReadiness
 ///     roads     PreviewRoad, SelectRoadPieces, RoadKindsAvailable, Roads,
 ///               Junctions
+///     land      PreviewMeadowMark
 ///     orders    IssueOrder, CancelOrder
 ///     events    Events, AcknowledgeEvents, EventsLost — the default reader;
 ///               OpenEventReader, Events(reader), AcknowledgeEvents(reader,
@@ -840,6 +841,19 @@ class ISession {
   ///        the map cannot tell yet (ISimulation::PreviewRoad).
   /// @note Between steps; the answer describes State().
   virtual RoadDraftResult PreviewRoad(const RoadDraft& draft) const = 0;
+
+  /// @brief The core's answer to a meadow's mark the player is drawing — what
+  ///        the order kMarkMeadow with the same fields would be told
+  ///        (ISimulation::PreviewMeadowMark; core_common/meadow_mark.h;
+  ///        0.37.211): the refusal by its own finer word, the kind the meadow
+  ///        would be, the floodplain's share of the circle, a whole cut's hay,
+  ///        the mowers' man-days, and where the first obstacle lies. Form 1:
+  ///        `position` and `area_ha`, `field` invalid — the mark is a CIRCLE
+  ///        of its area (a STUB until the field door brings shapes). Form 2:
+  ///        `field`, an arable field with an empty rotation, mown as it lies.
+  /// @note Between steps; the answer describes State(). The first call
+  ///       builds the map's obstacle raster if no road was previewed before.
+  virtual MeadowMarkAnswer PreviewMeadowMark(Vec2 position, float area_ha, FieldId field) const = 0;
 
   /// @brief The pieces a drag along a laid road selects for `operation`,
   ///        snapped to whole pieces, each in or out and why, and the

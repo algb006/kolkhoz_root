@@ -17,8 +17,10 @@
 #include "district_trip.h"
 #include "extraction_digging.h"
 #include "field_removal.h"
+#include "field_work.h"
 #include "goods_loan.h"
 #include "herd_system.h"
+#include "meadow_orders.h"
 #include "night_pasture.h"
 #include "stock_ops.h"
 #include "timber_felling.h"
@@ -187,6 +189,27 @@ OrderRefusal UnsealFund(const ProductionConfig& config,
   return OrderRefusal::kNone;
 }
 
+/// @brief Turns ground mown as it lies back into an arable field (kMarkMeadow's
+///        second form; land_state.h, mown_fallow) — the rotation order's side
+///        of it. A row that is not such ground is left alone.
+///
+/// The grass still standing is lost with the mowing under way — the uncut
+/// share is not laid; HAY ALREADY MOWN STAYS on the row as its heap and is
+/// carted like any field's. The row is idle arable after this, and the chain
+/// the order writes (or the empty one) decides what comes next.
+void PloughUpMownFallow(WorldState& current, FieldRow& field) {
+  if (field.kind != LandKind::kMeadow || field.mown_fallow == 0) {
+    return;
+  }
+  field.kind = LandKind::kArable;
+  field.mown_fallow = 0;
+  field.work_days_remaining = 0.0F;
+  field.harvest_work_days = 0.0F;
+  field.harvest_laid_share = 0.0F;
+  field.harvest_laid_grams = 0;
+  MoveFieldPhase(current, field, FieldPhase::kIdle);
+}
+
 /// @brief The player tells a field what to grow for three years.
 ///
 /// THE ONE DECISION THE CORE COULD NOT TAKE UNTIL NOW, and its absence is
@@ -280,7 +303,12 @@ OrderRefusal SetRotation(const ProductionConfig& config,
     return OrderRefusal::kNoSuchSubject;
   }
   FieldRow& field = current.fields.rows[row];
-  if (field.kind != LandKind::kArable) {
+  // FORMER ARABLE MOWN AS IT LIES TAKES THE ORDER (0.37.211; land_state.h,
+  // mown_fallow): it is a dry meadow only while it is mown, and this order
+  // is the one that ends that — PloughUpMownFallow below, once the slots
+  // have passed. Every other meadow is refused as before.
+  const bool mown_fallow = field.kind == LandKind::kMeadow && field.mown_fallow != 0;
+  if (field.kind != LandKind::kArable && !mown_fallow) {
     return OrderRefusal::kWrongLand;
   }
   // EVERY SLOT IS EITHER A CROP THIS BUILD KNOWS OR NOTHING AT ALL. An id
@@ -319,6 +347,10 @@ OrderRefusal SetRotation(const ProductionConfig& config,
     field.rotation_year1 = CropId{};
     field.rotation_year2 = CropId{};
     field.rotation_assigned = 0;
+    // THE EMPTY CHAIN ALSO STOPS THE SCYTHES on ground mown as it lies
+    // (0.37.211; meadow_mark.h): form 2 has no unmarking order of its own,
+    // and «the word taken back» is this door.
+    PloughUpMownFallow(current, field);
     // And the standing turn goes with them: a field with no chain has no
     // phase to hold still, and a bit left set would spend itself on
     // whatever chain the next order writes.
@@ -329,6 +361,10 @@ OrderRefusal SetRotation(const ProductionConfig& config,
   field.rotation_year1 = slots[1];
   field.rotation_year2 = slots[2];
   field.rotation_assigned = 1;
+  // A chain ploughs up ground that was mown as it lay (kMarkMeadow's second
+  // form; land_state.h, mown_fallow): «косятся как суходол, пока не
+  // распаханы».
+  PloughUpMownFallow(current, field);
   // A FRESH CHAIN HAS NOT USED ITS FIRST SEASON YET, and that — not the
   // month — is what the mark says (land_state.h, rotation_skips_turn). It
   // is cleared by the field itself, the moment work opens from the chain.
@@ -507,6 +543,9 @@ void ConsumeProductionOrders(const ProductionConfig& config, WorldState& current
         break;
       case OrderKind::kRemoveField:
         Settle(order, RemoveField(current, order));
+        break;
+      case OrderKind::kMarkMeadow:
+        Settle(order, OrderMarkMeadow(config, current, order));
         break;
       case OrderKind::kGrazeAtNight:
         Settle(order, OrderNightPasture(config, current));

@@ -43,6 +43,14 @@ enum class MapAreaKind : std::uint8_t {
   kStoneQuarry,
   kClayPit,
   kSandPit,
+  /// THE START'S LAND AS THE MAP DRAWS IT (0.37.211; meadow_mark.h; boss,
+  /// core-boss-c2-site-supply-2026-10-09 [71]): the closed polygon of a start
+  /// field or meadow, `key` = its start_layout key. NOT AN OBSTACLE to a road
+  /// and not a cell of the raster — a field is the core's own row, and the
+  /// polygon only says where that row lies while it stands (FieldRow::
+  /// start_shape). A mark's circle and a planting's are tested against it.
+  kStartField,
+  kStartMeadow,
   kMapAreaKindCount,  ///< NOT A KIND: the count, for mirrors.
 };
 

@@ -1,0 +1,28 @@
+# generated from db/map.db — do not edit by hand
+# metres from the map's SOUTH-WEST corner, x east, y north
+# WHERE A RUN'S BOT MARKS ITS MEADOWS (kMarkMeadow), in rank
+# order: a circle of area_ha round the point, clear of the
+# start's land, water, forest and zones by 5 m (econ's page
+# bot-meadows-and-derelict-arms-2026-10-10). The kind (dry or
+# floodplain) is the core's own reading of the flood, not a
+# column. `field` names a start field for the second form and
+# is empty here. Not the player's hint: the layer does not
+# read this file.
+rank,key,x_m,y_m,area_ha,field
+1,bot_meadow_01,7600.0,9600.0,19.2,
+2,bot_meadow_02,7050.0,8900.0,18.9,
+3,bot_meadow_03,7250.0,8250.0,15.3,
+4,bot_meadow_04,6800.0,8450.0,20.0,
+5,bot_meadow_05,9300.0,7500.0,16.8,
+6,bot_meadow_06,5700.0,8900.0,19.0,
+7,bot_meadow_07,8800.0,7400.0,20.0,
+8,bot_meadow_08,9850.0,7750.0,17.3,
+9,bot_meadow_09,7100.0,7800.0,16.0,
+10,bot_meadow_10,8300.0,7350.0,16.0,
+11,bot_meadow_11,6350.0,8750.0,20.0,
+12,bot_meadow_12,6600.0,7950.0,20.0,
+13,bot_meadow_13,7800.0,7250.0,18.9,
+14,bot_meadow_14,9750.0,7250.0,20.0,
+15,bot_meadow_15,9150.0,7000.0,20.0,
+16,bot_meadow_16,7200.0,7300.0,16.8,
+

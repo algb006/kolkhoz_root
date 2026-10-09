@@ -18,6 +18,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -29,6 +30,7 @@
 #include "core_catalog/timber_catalog.h"
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
+#include "core_common/meadow_mark.h"
 #include "core_common/quantities.h"
 #include "core_common/rain_stops_work.h"
 #include "core_common/road_rules.h"
@@ -1208,6 +1210,16 @@ struct ProductionConfig {
   /// that one carries a span, and this config is copied into the system.
   std::vector<float> plot_radius_m;
   float map_side_m = 0.0F;
+
+  /// THE MAP's HALF OF MARKING A MEADOW (meadow_mark.h; 0.37.211): the
+  /// obstacle raster, the start's land as polygons and the pits, handed in by
+  /// the assembly (core_world, RoadTools::MeadowGround) the way construction
+  /// is handed the road tracer. `with_raster` false asks for the shapes
+  /// alone — a planting's zone needs the start's polygons and must not build
+  /// the raster for them. EMPTY in a system assembled without a map (unit
+  /// fixtures): then nothing of the map refuses, every mark is a dry meadow
+  /// and every field is asked as its circle.
+  std::function<MeadowMarkGround(bool with_raster)> meadow_ground;
 
   /// Production units §8а: the shops' recipes, the barrels and the room a
   /// resource takes in a store (2026-09-19).

@@ -84,6 +84,11 @@ OrderRefusal OrderPlantForest(const ProductionConfig& config,
                               WorldState& current,
                               const OrderRow& order);
 
+/// @brief The radius of a stand's contour, metres: a circle of its hectares —
+///        a planting's own, else its table row's. What a planting's zone and
+///        a meadow's mark (meadow_orders.h) keep clear of.
+float StandContourRadiusM(const ProductionConfig& config, const TimberStandRow& stand);
+
 /// @brief Finishes every planting whose crew has drained its seam: sets
 ///        planted_day to today and matures_day to today + the species'
 ///        plant_years_to_logs, and emits kForestPlanted.

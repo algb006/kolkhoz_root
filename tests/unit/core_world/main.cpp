@@ -1713,11 +1713,20 @@ int CheckRoadTracer() {
   }
   // 33 AREAS AND 5 LINES SINCE 0.37.136: the count's pond and the count's
   // brook by the manor, new water of the map's base (32 and 4 until then).
-  std::cout << "tracer: read " << obstacles.areas.size() << " areas (expected 33), of them "
-            << diggings << " diggings (6), " << obstacles.lines.size() << " lines (5), " << fords
-            << " fords (4)" << (read ? "" : " — READ FAILED: " + error) << '\n';
-  failures += Expect(read && obstacles.areas.size() == 33 && diggings == 6 &&
-                         obstacles.lines.size() == 5 && fords == 4,
+  // 58 AREAS SINCE 0.37.211: the 33 and the start's land as the map draws
+  // it — 15 start fields and 10 start meadows (meadow_mark.h), counted apart.
+  std::size_t start_fields = 0;
+  std::size_t start_meadows = 0;
+  for (const core::MapAreaDef& area : obstacles.areas) {
+    start_fields += area.kind == core::MapAreaKind::kStartField ? 1U : 0U;
+    start_meadows += area.kind == core::MapAreaKind::kStartMeadow ? 1U : 0U;
+  }
+  std::cout << "tracer: read " << obstacles.areas.size() << " areas (expected 58), of them "
+            << diggings << " diggings (6), " << start_fields << " start fields (15), "
+            << start_meadows << " start meadows (10), " << obstacles.lines.size() << " lines (5), "
+            << fords << " fords (4)" << (read ? "" : " — READ FAILED: " + error) << '\n';
+  failures += Expect(read && obstacles.areas.size() == 58 && diggings == 6 && start_fields == 15 &&
+                         start_meadows == 10 && obstacles.lines.size() == 5 && fords == 4,
                      "tracer: the reader takes every area, line and ford of the export");
 
   const auto built_at = std::chrono::steady_clock::now();
@@ -3871,7 +3880,12 @@ int main() {
     // this list with that door.
     // start_yard_holdings.csv stood here from boss's export of 01.10
     // (0.37.70) until genesis read it (0.37.78).
-    const std::array<std::string_view, 1> not_read_yet = {"suggestions"};
+    // meadow_suggestions.csv came with boss's export of 10 October 2026
+    // (0.37.211, the meadow door): the places a RUN's chairman marks his
+    // meadows at — a run's reader, like suggestions.csv, and it has none yet
+    // (the bot's move is the delivery after the door). The core reads it
+    // never; out of this list when a run's policy does.
+    const std::array<std::string_view, 2> not_read_yet = {"suggestions", "meadow_suggestions"};
     const fs::path doctored = fs::temp_directory_path() / "unit_core_world_missing_table";
     for (const fs::directory_entry& file : fs::directory_iterator(fs::path(KOLKHOZ_TABLES_DIR))) {
       if (file.path().extension() != ".csv") {

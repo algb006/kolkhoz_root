@@ -14,8 +14,10 @@
 #define CORE_CATALOG_MAP_OBSTACLE_TABLES_H_
 
 #include <string>
+#include <vector>
 
 #include "core_common/map_obstacles.h"
+#include "core_common/meadow_mark.h"
 
 namespace core {
 
@@ -33,6 +35,20 @@ class ITableSet;
 ///         than three points or a line of fewer than two — with the reason
 ///         in `error`.
 bool ReadMapObstacles(const ITableSet& tables, MapObstacles& obstacles, std::string& error);
+
+/// @brief The start_layout keys the map draws a polygon for (map_areas.csv
+///        kinds `start_field` and `start_meadow`), each once, in the order
+///        the file first names them — THE ORDER FieldRow::start_shape counts
+///        in (1 + the index here). Genesis asks this; the marking asks
+///        StartLandOf; both read the same file order, and a unit test holds
+///        the two to one list.
+/// @return Empty when the set has no `map_areas` table or it lacks the
+///         `area` or `kind` column (the latter is ReadMapObstacles' to
+///         refuse).
+std::vector<std::string> ReadStartLandKeys(const ITableSet& tables);
+
+/// @brief The start's land as polygons, in the order of ReadStartLandKeys.
+std::vector<StartLandShape> StartLandOf(const MapObstacles& obstacles);
 
 }  // namespace core
 

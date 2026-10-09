@@ -8841,6 +8841,29 @@ int CheckTheChairmanSetsARotation() {
                        "a meadow carries no rotation, and never will");
     failures += Expect(!core::HasRotation(after.fields.rows[0]),
                        "and a refused order leaves the field as it found it");
+
+    // FORMER ARABLE MOWN AS IT LIES IS THE ONE MEADOW THAT TAKES THE ORDER
+    // (0.37.211; kMarkMeadow's second form; land_state.h, mown_fallow): a
+    // chain ploughs it up, the empty chain only stops the scythes — and
+    // either way it is an arable field again.
+    core::WorldState mown = after;
+    mown.fields.rows[0].mown_fallow = 1;
+    mown.fields.rows[0].phase = core::FieldPhase::kGrowing;
+    const core::WorldState ploughed = order_again(mown, {oat, oat, oat});
+    failures += Expect(ploughed.orders.rows[0].status == core::OrderStatus::kDone &&
+                           ploughed.fields.rows[0].kind == core::LandKind::kArable &&
+                           ploughed.fields.rows[0].mown_fallow == 0 &&
+                           core::HasRotation(ploughed.fields.rows[0]),
+                       "ground mown as it lies takes a chain: arable again, the mark gone, the "
+                       "rotation set");
+    const core::WorldState stopped =
+        order_again(mown, {core::CropId{}, core::CropId{}, core::CropId{}});
+    failures += Expect(stopped.orders.rows[0].status == core::OrderStatus::kDone &&
+                           stopped.fields.rows[0].kind == core::LandKind::kArable &&
+                           stopped.fields.rows[0].mown_fallow == 0 &&
+                           !core::HasRotation(stopped.fields.rows[0]),
+                       "ground mown as it lies takes the empty chain: the scythes stop, the field "
+                       "is fallow arable again");
   }
 
   // -- a crop this build does not know is refused, not written --------------
@@ -10947,6 +10970,40 @@ int CheckPlanting() {
   core::FellFinishedStands(config, world);
   failures += Expect(world.stands.rows[0].load_grams == 24 * 200000,
                      "planting: felled at its species' log share");
+
+  // -- A START FIELD IS ASKED BY THE MAP's POLYGON (0.37.211; meadow_mark.h,
+  // CircleTouchesLand; found by the meadow door's reading). A long field,
+  // 1000 m by 20 m (two hectares): its row says centre and area, a circle of
+  // 79.8 m; a hectare's planting is a circle of 56.4 m. Until 0.37.211 the two
+  // circles were compared and both answers below were the other way round.
+  const std::vector<core::StartLandShape> start_land = {
+      core::StartLandShape{.key = "field_long",
+                           .outline = {{.x = 2000.0F, .y = 10990.0F},
+                                       {.x = 3000.0F, .y = 10990.0F},
+                                       {.x = 3000.0F, .y = 11010.0F},
+                                       {.x = 2000.0F, .y = 11010.0F}}}};
+  config.meadow_ground = [&start_land](bool /*with_raster*/) {
+    core::MeadowMarkGround ground;
+    ground.start_land = &start_land;
+    return ground;
+  };
+  core::FieldRow long_field;
+  long_field.center = core::Vec2{.x = 2500.0F, .y = 11000.0F};
+  long_field.area_ga = 2.0F;
+  long_field.start_shape = 1;
+  core::AppendRow(world.fields, long_field);
+  // 30 m north of the field's far end: across it by the map, 451 m from the
+  // row's centre — clear of the two circles by 315 m.
+  failures += Expect(plant(pine, 1.0F, core::Vec2{.x = 2950.0F, .y = 11040.0F}, {}) ==
+                         core::OrderRefusal::kWrongLand,
+                     "planting: a zone across the far end of a long start field is refused — the "
+                     "map's polygon is asked, not the row's circle");
+  // 100 m north of its middle: clear of the polygon by 90 m, and inside the
+  // two circles' reach (100 m against 136.2).
+  failures += Expect(
+      plant(pine, 1.0F, core::Vec2{.x = 2500.0F, .y = 11100.0F}, {}) == core::OrderRefusal::kNone,
+      "planting: a zone clear of the polygon is taken though it lies inside the "
+      "row's old centre-and-area circle");
   return failures;
 }
 
@@ -15384,10 +15441,25 @@ int CheckTheChairmanRemovesAField() {
     core::FieldRow meadow;
     meadow.area_ga = 20.0F;
     meadow.kind = core::LandKind::kMeadow;
+    // A MEADOW IS UNMARKED LIKE A FIELD since 0.37.211 (boss's ruling (e) of
+    // 10 October 2026; Livestock design §5 «снять разметку — всегда и
+    // даром»). Until then this block asserted kWrongLand — «a meadow is not
+    // a contour anybody drew»; the rule changed, the assertion with it.
+    meadow.phase = core::FieldPhase::kHarvest;  // standing grass in its window goes with the row
     const core::WorldState after = remove(meadow, std::nullopt);
-    failures += Expect(after.orders.rows[0].refusal == core::OrderRefusal::kWrongLand &&
-                           after.fields.rows.size() == 2,
-                       "remove: a meadow is not a contour anybody drew, kWrongLand");
+    failures += Expect(after.orders.rows[0].status == core::OrderStatus::kDone &&
+                           after.fields.rows.size() == 1 && after.fields.rows[0].area_ga == 7.0F,
+                       "remove: a meadow with its grass standing is unmarked, free and at once");
+    const auto events = removed_events(after);
+    failures += Expect(events.size() == 1 && events[0]->amount == 0,
+                       "remove: and kFieldRemoved names it, not as the reserve");
+    // MOWN HAY DOES NOT VANISH: while it lies on the meadow the removal is
+    // refused, the rule a field with reaped grain has.
+    meadow.reaped_grams = 2'000'000;
+    const core::WorldState held = remove(meadow, std::nullopt);
+    failures += Expect(held.orders.rows[0].refusal == core::OrderRefusal::kNotEmpty &&
+                           held.fields.rows.size() == 2 && removed_events(held).empty(),
+                       "remove: a meadow with mown hay lying on it is refused kNotEmpty and stays");
   }
   {
     const core::WorldState after = remove(core::FieldRow{}, core::FieldId{9999});

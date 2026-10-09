@@ -9,6 +9,7 @@
 #include "core_catalog/timber_catalog.h"
 #include "core_common/emit_event.h"
 #include "core_common/geometry.h"
+#include "core_common/meadow_mark.h"
 #include "core_common/plot.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/timber_state.h"
@@ -74,8 +75,19 @@ OrderRefusal ZoneRefusal(const ProductionConfig& config,
                          Vec2 place,
                          float hectares) {
   const float radius = RadiusOfHectares(hectares);
+  // A START FIELD OR MEADOW IS ASKED BY THE MAP's POLYGON (0.37.211;
+  // meadow_mark.h, CircleTouchesLand). Until then every field was a circle
+  // of its area round its centre, and the start's are long shapes: a
+  // planting could be laid across the far end of one, and was refused on
+  // free ground beside its middle. Found by the meadow door's reading —
+  // the same hole, the same test. The shapes alone are asked for: a
+  // planting does not build the raster.
+  MeadowMarkGround ground;
+  if (config.meadow_ground) {
+    ground = config.meadow_ground(false);
+  }
   for (const FieldRow& field : world.fields.rows) {
-    if (DistanceMeters(place, field.center) < radius + RadiusOfHectares(field.area_ga)) {
+    if (CircleTouchesLand(ground, field, place, radius)) {
       return OrderRefusal::kWrongLand;
     }
   }
@@ -107,6 +119,10 @@ void OpenPlanting(const ProductionConfig& config,
 }
 
 }  // namespace
+
+float StandContourRadiusM(const ProductionConfig& config, const TimberStandRow& stand) {
+  return RadiusOfHectares(StandHectares(config, stand));
+}
 
 OrderRefusal OrderPlantForest(const ProductionConfig& config,
                               WorldState& current,

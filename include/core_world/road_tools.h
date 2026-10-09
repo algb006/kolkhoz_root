@@ -20,6 +20,7 @@
 
 #include "core_common/calendar.h"
 #include "core_common/map_obstacles.h"
+#include "core_common/meadow_mark.h"
 #include "core_common/obstacle_raster.h"
 #include "core_common/road_draft.h"
 #include "core_common/road_trace.h"
@@ -65,12 +66,24 @@ class RoadTools {
   ///        an instrument asking it measures the same circles.
   std::vector<RoadUnitDisc> UnitDiscs(const WorldState& world) const;
 
+  /// @brief THE MAP's HALF of what marking a meadow reads (meadow_mark.h;
+  ///        0.37.211): the raster — built here if it was not — the start's
+  ///        land as polygons, the pits, the plots' radii and the map's side.
+  ///        The tables' numbers and the stands' radii are left nought and
+  ///        null: they are production's, and it fills them.
+  /// @param with_raster false leaves the raster null and unbuilt — for a
+  ///        caller that wants the shapes alone (a planting's zone).
+  /// @note The pointers and the span live as long as this object.
+  MeadowMarkGround MeadowGround(bool with_raster) const;
+
  private:
   RoadTools() = default;
 
   MapObstacles obstacles_;
   std::vector<RoadFord> fords_;
   std::vector<std::vector<Vec2>> village_;
+  std::vector<StartLandShape> start_land_;  ///< By FieldRow::start_shape - 1 (meadow_mark.h).
+  std::vector<std::vector<Vec2>> pits_;     ///< Clay, sand and stone diggings.
   /// By RoadSurface: the price per 100 m (its `open` set per call from the
   /// world's epoch) and the epoch each opens in.
   std::array<RoadSurfaceCost, kRoadSurfaceSlots> costs_{};

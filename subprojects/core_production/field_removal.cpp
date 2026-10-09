@@ -17,7 +17,23 @@ OrderRefusal RemoveField(WorldState& current, const OrderRow& order) {
   }
   const FieldRow& field = current.fields.rows[row];
   if (field.kind != LandKind::kArable) {
-    return OrderRefusal::kWrongLand;
+    // A MEADOW IS UNMARKED LIKE A FIELD since 0.37.211 (Livestock design §5:
+    // «снять разметку — всегда и даром»; boss, 10 October 2026, ruling (e) —
+    // the start's meadows too: with kMarkMeadow to mark it back the removal
+    // is no longer a one-way loss). It was refused kWrongLand until then —
+    // «a meadow is grass that grew there, not a contour anybody drew».
+    // STANDING GRASS GOES WITH THE ROW («некошеный луг ничего не стоит и
+    // ничего не даёт»), whatever the phase; MOWN HAY DOES NOT VANISH: while
+    // it lies on the meadow waiting for the carts the removal is refused,
+    // the rule a field with reaped grain has.
+    if (field.reaped_grams > 0) {
+      return OrderRefusal::kNotEmpty;
+    }
+    RemoveRow(current.fields, order.field);
+    SimEvent& unmarked = EmitEvent(current, EventKind::kFieldRemoved);
+    unmarked.field = order.field;
+    unmarked.amount = 0;
+    return OrderRefusal::kNone;
   }
   // BREAD STANDS: ripe and being reaped, or reaped and not yet carted. The
   // design lets a growing field go with what was put into it and refuses

@@ -25,6 +25,7 @@ kolkhoz_add_module(core_production
     stock_lights.cpp
     timber_felling.cpp
     timber_planting.cpp
+    meadow_orders.cpp
     extraction_digging.cpp
     unit_production.cpp
     processing_shops.cpp

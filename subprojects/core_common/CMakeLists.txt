@@ -17,6 +17,7 @@ kolkhoz_add_module(core_common
     road_route.cpp
     road_rules.cpp
     road_view.cpp
+    meadow_mark.cpp
     obstacle_raster.cpp
     road_trace.cpp
     road_pieces.cpp

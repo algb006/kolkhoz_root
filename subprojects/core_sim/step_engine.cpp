@@ -252,6 +252,14 @@ class StepEngine final : public ISimulation {
   /// No accountant, so nobody to offer a felling to.
   bool FellingCanBeManned(Vec2 /*place*/) const override { return false; }
 
+  /// No map and no meadows' numbers: every mark is refused, and by the word
+  /// that names no ground.
+  MeadowMarkAnswer PreviewMeadowMark(Vec2 /*position*/,
+                                     float /*area_ha*/,
+                                     FieldId /*field*/) const override {
+    return MeadowMarkAnswer{.refusal = MeadowMarkRefusal::kBadArea};
+  }
+
   // The bare engine knows no subsystems, so it knows no sources: clean air
   // rather than a refusal, exactly as WearDeadline answers kNoData.
   StinkStrength StinkFullAt(Vec2 /*point*/) const override { return StinkStrength::kNone; }

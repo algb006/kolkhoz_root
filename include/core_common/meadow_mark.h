@@ -10,7 +10,10 @@
 /// rewrites one, and appends to the step's outbox. The preview is a pure
 /// read, called between steps on the sim thread like PreviewRoad.
 ///
-/// CONTRACT ONLY (0.37.210): no body stands behind this header yet.
+/// CONTRACT 0.37.210, IMPLEMENTED 0.37.211 (subprojects/core_common/
+/// meadow_mark.cpp). What the implementation changed in the contract: the
+/// ground gained the plots' radii and the stands' — the contract named «a
+/// unit's plot» and «a stand's contour» and gave the function neither.
 ///
 /// WHAT THE IMPLEMENTATION ADDS TO THE SEAM, named so boss enters the words in
 /// the same move as the delivery:
@@ -93,6 +96,7 @@
 #define CORE_COMMON_MEADOW_MARK_H_
 
 #include <cstdint>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -187,6 +191,17 @@ struct MeadowMarkGround {
   /// not cells of the raster.
   const std::vector<std::vector<Vec2>>* pits = nullptr;
 
+  /// The radius nothing may come inside, by UnitTypeId value (PlotRules,
+  /// plot.h). ADDED BY THE IMPLEMENTATION (0.37.211): the contract named
+  /// «a unit's plot» and gave the function no way to know one.
+  std::span<const float> plot_radius_m;
+
+  /// The radius of each timber stand's contour, by the stands table's ROW,
+  /// metres — the caller's, because a stand's hectares are a table's number
+  /// the map does not hold. Null or short: the stands past it refuse nothing.
+  /// Added by the implementation, as above.
+  const std::vector<float>* stand_radius_m = nullptr;
+
   float map_side_m = 0.0F;
   float mow_days_per_ha = 0.0F;             ///< farming.csv meadow_mow_days_per_ha, real man-days.
   float dry_yield_kg_per_ha = 0.0F;         ///< meadow_kinds.csv, the dry meadow.
@@ -237,6 +252,17 @@ OrderRefusal MarkMeadow(const MeadowMarkGround& ground, WorldState& current, con
 /// @pre `outline` holds at least three points.
 /// @note The test kPlantForest's zone asks of a start field too.
 bool CircleTouchesPolygon(Vec2 centre, float radius_m, const std::vector<Vec2>& outline);
+
+/// @brief Whether a circle touches the field or meadow `land`: by the map's
+///        polygon when the row has one (FieldRow::start_shape and
+///        `ground.start_land`), by the row's own circle of its area when it
+///        has none. THE ONE TEST for a mark and for a planting's zone
+///        (kPlantForest), so the two cannot draw the start's land apart.
+/// @note Strict: shapes that only touch do not overlap.
+bool CircleTouchesLand(const MeadowMarkGround& ground,
+                       const FieldRow& land,
+                       Vec2 centre,
+                       float radius_m);
 
 }  // namespace core
 

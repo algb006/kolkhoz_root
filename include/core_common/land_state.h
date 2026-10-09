@@ -646,6 +646,27 @@ struct FieldRow {
   /// opened only on day 0 of the first harvest month, and grass sown on day 1
   /// of it stood uncut for a year (boss, the queue thread [112]-[115]).
   SimDay last_cut_day = kNeverReapedDay;
+
+  /// WHICH POLYGON OF THE MAP THIS ROW LIES ON (save 145; 0.37.211;
+  /// meadow_mark.h): 1 + the ordinal of its outline among the map's start
+  /// land (map_areas.csv kinds start_field / start_meadow, in file order),
+  /// bound at genesis by the start_layout key; 0 for a row with no polygon —
+  /// every row the player marked, and a start row the map does not draw. A
+  /// mark's circle and a planting's are tested against the polygon while the
+  /// row stands, and against the row's own circle when this is 0.
+  std::uint8_t start_shape = 0;
+
+  /// FORMER ARABLE MOWN AS IT LIES (save 145; 0.37.211; kMarkMeadow's second
+  /// form, Livestock design §5: «залежь и бывшая пашня косятся как суходол,
+  /// пока не распаханы»): 0/1. THE ROW WAS AN ARABLE FIELD WITH AN EMPTY
+  /// ROTATION AND IS A DRY MEADOW WHILE THIS IS SET — its `kind` is kMeadow,
+  /// so the meadows' rules mow it and the arable's stop asking it — and it
+  /// keeps its fertility, last crop and polygon for the day it is ploughed
+  /// up. kSetRotation turns it back into arable: a chain ploughs it, the
+  /// empty chain only stops the scythes. The contract (0.37.210) said «the
+  /// row stays arable»; the implementation changed the kind instead of
+  /// teaching fifteen meadow branches a second way to be a meadow.
+  std::uint8_t mown_fallow = 0;
 };
 
 /// @brief Whether the player has given this field a rotation at all.

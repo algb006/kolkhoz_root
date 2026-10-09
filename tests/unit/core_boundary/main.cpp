@@ -146,6 +146,12 @@ class ScriptedSimulation final : public core::ISimulation {
 
   bool FellingCanBeManned(core::Vec2 /*place*/) const override { return false; }
 
+  core::MeadowMarkAnswer PreviewMeadowMark(core::Vec2 /*position*/,
+                                           float /*area_ha*/,
+                                           core::FieldId /*field*/) const override {
+    return {};
+  }
+
   // The scripted double answers clean air for both stink questions: this
   // test is about the session's forwarding, not about the field.
   core::StinkStrength StinkFullAt(core::Vec2 /*point*/) const override {
@@ -1490,6 +1496,104 @@ int TestWorkerIndependence(const core::ITableSet& tables) {
 /// leaving it pending; the journal carries the task and its level there and
 /// back. The pair of each refusal is the same row taken once the fault is
 /// put right.
+/// THE MEADOW's DOOR AT THE BOUNDARY (0.37.211; core_common/meadow_mark.h):
+/// the session takes a kMarkMeadow of one form or the other and refuses a
+/// row that is both or neither; and through the whole assembly THE PREVIEW
+/// AND THE ORDER ANSWER ALIKE — every mark is settled the step it is read,
+/// done with one kMeadowMarked where the preview said kNone, refused with
+/// the order's word for the preview's reason where it did not.
+int TestMeadowDoor(const core::ITableSet& tables) {
+  int failures = 0;
+  core::StandardSimulationConfig sim_config;
+  sim_config.stub_tables = core::StubTables::kAllowed;
+  sim_config.tables = &tables;
+  sim_config.worker_count = 1;
+  core::SessionConfig config;
+  config.stub_tables = core::StubTables::kAllowed;
+  config.tables = &tables;
+  config.simulation = core::CreateStandardSimulation(sim_config);
+  std::unique_ptr<core::ISession> session = core::CreateSession(std::move(config));
+  if (!session) {
+    std::cout << "FAIL: the meadow-door session was refused\n";
+    return 1;
+  }
+  core::OrderRow mark;
+  mark.kind = core::OrderKind::kMarkMeadow;
+  mark.position = core::Vec2{.x = 300.0F, .y = 300.0F};
+  failures += Expect(session->IssueOrder(mark).value == 0,
+                     "meadow door: neither hectares nor a field is not an order");
+  mark.area_ha = 1.0F;
+  mark.field = core::FieldId{1};
+  failures += Expect(session->IssueOrder(mark).value == 0,
+                     "meadow door: hectares AND a field is two forms in one row, not staged");
+  mark.field = core::FieldId{};
+  mark.unit = core::UnitId{1};
+  failures += Expect(session->IssueOrder(mark).value == 0, "meadow door: a mark names no unit");
+  mark.unit = core::UnitId{};
+
+  // Three marks of the first form and one of the second, previewed and then
+  // ordered on the same world.
+  struct Asked {
+    core::OrderId order;
+    core::MeadowMarkRefusal preview = core::MeadowMarkRefusal::kNone;
+  };
+
+  std::vector<Asked> asked;
+  const std::array<core::Vec2, 3> places = {core::Vec2{.x = 300.0F, .y = 300.0F},
+                                            core::Vec2{.x = 20.0F, .y = 20.0F},
+                                            core::Vec2{.x = 3000.0F, .y = 3000.0F}};
+  for (const core::Vec2 place : places) {
+    mark.position = place;
+    const core::MeadowMarkAnswer answer = session->PreviewMeadowMark(place, 1.0F, core::FieldId{});
+    const core::OrderId id = session->IssueOrder(mark);
+    failures += Expect(id.value != 0, "meadow door: a mark of one hectare is staged");
+    asked.push_back(Asked{.order = id, .preview = answer.refusal});
+  }
+  core::OrderRow lies;
+  lies.kind = core::OrderKind::kMarkMeadow;
+  lies.field = core::FieldId{9999};
+  const core::MeadowMarkAnswer no_field =
+      session->PreviewMeadowMark(core::Vec2{}, 0.0F, core::FieldId{9999});
+  failures += Expect(no_field.refusal == core::MeadowMarkRefusal::kNoSuchField,
+                     "meadow door: the preview of a field that is not there says so");
+  const core::OrderId lies_id = session->IssueOrder(lies);
+  failures += Expect(lies_id.value != 0, "meadow door: the second form is staged by its field");
+  asked.push_back(Asked{.order = lies_id, .preview = no_field.refusal});
+
+  session->AdvanceStep();
+  std::uint32_t agreed = 0;
+  std::uint32_t said = 0;
+  std::uint32_t expected_said = 0;
+  for (const Asked& one : asked) {
+    expected_said += one.preview == core::MeadowMarkRefusal::kNone ? 1U : 0U;
+    for (const core::SimEvent& event : session->Events()) {
+      if (event.order.value != one.order.value) {
+        continue;
+      }
+      const bool done = event.kind == core::EventKind::kOrderDone &&
+                        one.preview == core::MeadowMarkRefusal::kNone;
+      const bool refused =
+          event.kind == core::EventKind::kOrderRefused &&
+          one.preview != core::MeadowMarkRefusal::kNone &&
+          event.amount == static_cast<std::int64_t>(core::OrderRefusalOf(one.preview));
+      agreed += done || refused ? 1U : 0U;
+    }
+  }
+  for (const core::SimEvent& event : session->Events()) {
+    said += event.kind == core::EventKind::kMeadowMarked ? 1U : 0U;
+  }
+  std::cout << "  meadow door: " << asked.size() << " marks asked, " << agreed
+            << " settled as their preview said, " << said
+            << " kMeadowMarked (previews taken: " << expected_said << ")\n";
+  failures += Expect(agreed == asked.size(),
+                     "meadow door: every mark is settled the step it is read, and as its "
+                     "preview said");
+  failures += Expect(said == expected_said,
+                     "meadow door: one kMeadowMarked for each mark the preview took, none for "
+                     "the refused");
+  return failures;
+}
+
 int TestLogisticsDoorsContract(const core::ITableSet& tables) {
   int failures = 0;
   core::StandardSimulationConfig sim_config;
@@ -2048,6 +2152,7 @@ int main() {
   failures += TestCrewOrderShape(tables);
   failures += TestRoadToolsContract(tables);
   failures += TestLogisticsDoorsContract(tables);
+  failures += TestMeadowDoor(tables);
   failures += TestStockLights(tables);
   failures += TestWorkforceQuestions(tables);
 

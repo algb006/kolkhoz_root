@@ -51,6 +51,7 @@
 #define CORE_PRODUCTION_PRODUCTION_SYSTEM_H_
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <span>
 #include <string_view>
@@ -58,6 +59,7 @@
 
 #include "core_common/calendar.h"
 #include "core_common/early_snow.h"
+#include "core_common/meadow_mark.h"
 #include "core_common/office_views.h"
 #include "core_common/quantities.h"
 #include "core_common/rain_stops_work.h"
@@ -221,6 +223,20 @@ class IProductionSystem {
   /// @note A pure read; called by labor in the decisions slot (phase 3).
   virtual Grams StandingCropGrams(const WorldState& world, const FieldRow& field) const = 0;
 
+  /// @brief The core's answer to a meadow's mark being drawn — what a
+  ///        kMarkMeadow with the same fields would be told this step
+  ///        (core_common/meadow_mark.h; 0.37.211). The same function reads
+  ///        the order, so the preview and the order cannot answer apart.
+  /// @param position Form 1: the centre, metres. @param area_ha Form 1:
+  ///        hectares. @param field Form 2: the arable field to mow as it
+  ///        lies; invalid for form 1.
+  /// @note A pure read on the sim thread, between steps. The first call
+  ///       builds the map's obstacle raster if no road was traced before it.
+  virtual MeadowMarkAnswer PreviewMeadowMark(const WorldState& completed,
+                                             Vec2 position,
+                                             float area_ha,
+                                             FieldId field) const = 0;
+
   /// @brief Whether the hay IN THE STORES is below what the kolkhoz herds
   /// will eat of it in the next `days` days (0.37.131; boss, boss-all-carts-
   /// carry-people-go-2026-10-02 [51]: «ранг по нужде кормушки»).
@@ -346,12 +362,19 @@ class IProductionSystem {
 ///       (the cold ladder's frost months). The cold's season is the
 ///       calendar's since 0.37.69 and the module reads no night of the
 ///       climate.
+/// @param meadow_ground The map's half of marking a meadow (the obstacle
+///        raster, the start's land as polygons, the pits), handed in by the
+///        assembly the way construction is handed the road tracer
+///        (core_world, RoadTools::MeadowGround; 0.37.211). The default, empty,
+///        is a system with no map: nothing of the map refuses a mark, every
+///        mark is a dry meadow and every field is asked as its circle.
 std::unique_ptr<IProductionSystem> CreateProductionSystem(
     const ITableSet& tables,
     StubTables stubs,
     std::uint32_t growing_season_last_day = kDaysPerYear - 1U,
     const RainDayShares& rain_day_shares = RainDayShares{},
-    const SnowLainShares& snow_lain_shares = SnowLainShares{});
+    const SnowLainShares& snow_lain_shares = SnowLainShares{},
+    std::function<MeadowMarkGround(bool with_raster)> meadow_ground = {});
 
 /// @brief The world_params.csv keys this module reads, for the assembly's
 /// declared-readers check (core_world/world.cpp).

@@ -39,6 +39,8 @@ std::uint8_t ObstacleFlagOf(MapAreaKind kind) {
     case MapAreaKind::kStoneQuarry:  // a pit wants its road, not a refusal
     case MapAreaKind::kClayPit:
     case MapAreaKind::kSandPit:
+    case MapAreaKind::kStartField:  // the core's own rows, asked by polygon (meadow_mark.h)
+    case MapAreaKind::kStartMeadow:
     case MapAreaKind::kMapAreaKindCount:
       return 0;
   }

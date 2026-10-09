@@ -282,6 +282,14 @@ bool ShapeIsValid(const OrderRow& order) {
       // and already has that level is the consumer's.
       return order.logistics_task.value != kInvalidEntityIdValue && !has_resident && !has_unit &&
              !has_field && !has_herd && !has_stand && !has_site;
+    case OrderKind::kMarkMeadow:
+      // ONE FORM OR THE OTHER (order_state.h): a field to mow as it lies, or
+      // hectares above nothing for a new meadow at `position` — never both,
+      // and no other subject. Whether the ground takes a meadow, and whether
+      // the field is fallow, is the consumer's verdict (meadow_mark.h); the
+      // position is not checked against the map here, as a unit's is not.
+      return (has_field ? !(order.area_ha > 0.0F) : order.area_ha > 0.0F) && !has_resident &&
+             !has_unit && !has_herd && !has_stand && !has_site;
     case OrderKind::kPauseLogisticsTask:
       // The task and a switch that is a switch.
       return order.logistics_task.value != kInvalidEntityIdValue && order.enable <= 1 &&
@@ -495,6 +503,10 @@ class Session final : public ISession {
 
   RoadDraftResult PreviewRoad(const RoadDraft& draft) const override {
     return simulation_->PreviewRoad(draft);
+  }
+
+  MeadowMarkAnswer PreviewMeadowMark(Vec2 position, float area_ha, FieldId field) const override {
+    return simulation_->PreviewMeadowMark(position, area_ha, field);
   }
 
   RoadPieces SelectRoadPieces(const RoadSelection& selection,

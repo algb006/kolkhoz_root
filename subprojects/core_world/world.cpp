@@ -708,6 +708,10 @@ class StandardSimulation final : public ISimulation {
     return labor_->OfficeWorkbook(engine_->CompletedState());
   }
 
+  MeadowMarkAnswer PreviewMeadowMark(Vec2 position, float area_ha, FieldId field) const override {
+    return production_->PreviewMeadowMark(engine_->CompletedState(), position, area_ha, field);
+  }
+
   bool FellingCanBeManned(Vec2 place) const override {
     return labor_->FellingCanBeManned(engine_->CompletedState(), place);
   }
@@ -971,8 +975,24 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
   // the edge off them by the one key, farming.csv `early_snow_share`.
   const SnowLainShares snow_lain =
       time == nullptr ? SnowLainShares{} : time->ClimateSnowLainShares();
+  // THE ROAD TOOLS ARE READ HERE, before production (0.37.211): they hold the
+  // map — the obstacles, the start's land as polygons — and production's
+  // meadow door asks it of them (meadow_mark.h) the way construction is
+  // handed the tracer below. A malformed table refuses the assembly.
+  std::string road_tools_error;
+  std::optional<RoadTools> read_tools = RoadTools::Read(*config.tables, road_tools_error);
+  if (!read_tools) {
+    LogError(road_tools_error);
+    return nullptr;
+  }
+  const auto road_tools = std::make_shared<const RoadTools>(std::move(*read_tools));
   auto production = CreateProductionSystem(
-      *config.tables, config.stub_tables, season_last_day, rain_days, snow_lain);
+      *config.tables,
+      config.stub_tables,
+      season_last_day,
+      rain_days,
+      snow_lain,
+      [road_tools](bool with_raster) { return road_tools->MeadowGround(with_raster); });
   // THE GRAMS OF A STANDING CROP ARE PRODUCTION'S to count, and labor's last
   // days before the snow order the reaping by them (boss seq 95): labor is
   // handed the one estimate, not a copy of its formula. The world owns both
@@ -1036,13 +1056,8 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
   // tracer by the same road labor is handed the grams of a crop, so the
   // preview and the order that lays a road trace alike. A malformed table
   // refuses the assembly.
-  std::string road_tools_error;
-  std::optional<RoadTools> read_tools = RoadTools::Read(*config.tables, road_tools_error);
-  if (!read_tools) {
-    LogError(road_tools_error);
-    return nullptr;
-  }
-  const auto road_tools = std::make_shared<const RoadTools>(std::move(*read_tools));
+  // (Read above production's factory since 0.37.211: the meadow's mark asks
+  // the same object for the map.)
   auto construction = CreateConstructionSystem(
       *config.tables,
       config.stub_tables,
