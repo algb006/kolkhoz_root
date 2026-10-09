@@ -1041,6 +1041,20 @@ std::uint32_t AlarmSubjectValue(const Alarm& alarm);
 /// @param red_within_days world_params `alarm_red_within_days` (8).
 void PaintAlarms(std::span<Alarm> alarms, std::uint16_t red_within_days);
 
+/// @brief Whether a lamp of this kind turning red stops the fast-forward
+/// (EventKind::kLampTurnedRed said kInterrupting) or is only notable.
+///
+/// EVERY KIND BUT kHerdStarving (0.37.202; boss, the resume thread [5], [7],
+/// on econ's order): that lamp is lit while a kolkhoz herd is unfed, and a
+/// kolkhoz herd's hunger was said interrupting the day its episode began
+/// (EventKind::kHerdWentHungry) — the lamp reddens inside an episode already
+/// said, by construction. Measured on 0.37.201, nine villages, five years:
+/// 37 of its 37 sayings stood on or after a kHerdWentHungry of the same herd;
+/// a herd fed one day and hungry the next put the lamp out and lit it again
+/// while the episode went on. The lamp itself stays red in the office.
+/// @return false for kHerdStarving, true for every other kind.
+bool RedLampInterrupts(AlarmKind kind);
+
 /// @brief One lamp lit red at the last daily check — the world's memory the
 /// red-lamp interrupt compares against (WorldState::red_lamps; boss, the
 /// logistics thread [127]). Kind and subject are the alarm's identity, as the

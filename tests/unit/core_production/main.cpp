@@ -5,6 +5,7 @@
 //     order, billeting instead of slaughter, the produce and its two leaks,
 //     the cohort flows of maturation and birth, and the autumn pigs.
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -2105,6 +2106,17 @@ int CheckTheTeamOnHayAndTooFewHorses() {
   failures += Expect(too_few.has_value() && too_few->amount == 2 &&
                          too_few->herd.value == week.herds.row_ids[0].value,
                      "too few horses: 15 % lights it, 2 teams short a working day");
+  // YELLOW ALWAYS (0.37.202): painted under the shipped threshold and under
+  // the widest a days count can carry but one — a lamp with no days written
+  // reads 0 and is red under both.
+  {
+    std::array<core::Alarm, 1> painted{*too_few};
+    core::PaintAlarms(painted, 8);
+    const bool yellow_at_eight = painted[0].colour == core::AlarmColour::kYellow;
+    core::PaintAlarms(painted, 0xFFFE);
+    failures += Expect(yellow_at_eight && painted[0].colour == core::AlarmColour::kYellow,
+                       "too few horses: the lamp is yellow, no loss within any horizon");
+  }
   week.herds.rows[0].adult_count = 0;
   week.herds.rows[0].adult_male_count = 0;
   const std::optional<core::Alarm> none_left = lit(week, core::AlarmKind::kTooFewHorses);

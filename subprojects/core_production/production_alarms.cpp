@@ -661,6 +661,15 @@ void CollectTeamAlarms(const ProductionConfig& config,
       too_few.resource = with_one_more.first_short;
       too_few.lamp = 0;
     }
+    // YELLOW ALWAYS (0.37.202; boss, the resume thread [10]): the lamp wrote no
+    // days to its loss, read 0, «a fact», and turned red — 48 times in 45
+    // village-years on 0.37.201, 42 stop-days of the fast-forward its own.
+    // Red is a loss within the lamp's horizon; a horse short is a year's
+    // question (the forecast above looks to the next year's scythes), and the
+    // dated loss has its own lamp (kSowingWillNotFit). NOT «red on a day a work
+    // stands for want of a horse», the first wording: such days were counted
+    // before the build — median 22 of 48 a village a year.
+    too_few.days_to_loss = DaysToLossOf(std::numeric_limits<std::int64_t>::max());
     alarms.push_back(too_few);
   }
 }

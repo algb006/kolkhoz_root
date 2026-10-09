@@ -680,7 +680,9 @@ enum class EventKind : std::uint8_t {
   /// (unit, field, herd, family, resource, stand). Once a day, so a lamp red and
   /// out between two checks says nothing here (its own event, where it has
   /// one, still does). kInterrupting (the human, 4 October 2026: «Такие срочные
-  /// сигналы должны прерывать режим пропуска времени в игре»). Seam key
+  /// сигналы должны прерывать режим пропуска времени в игре»). kNotable for
+  /// kHerdStarving alone since 0.37.202 (alarm_state.h, RedLampInterrupts):
+  /// kHerdWentHungry said that hunger. Seam key
   /// `lamp_turned_red`. Declared in 0.37.196, said since 0.37.197.
   kLampTurnedRed,
 

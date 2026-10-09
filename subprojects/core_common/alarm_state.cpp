@@ -152,4 +152,8 @@ void PaintAlarms(std::span<Alarm> alarms, std::uint16_t red_within_days) {
   }
 }
 
+bool RedLampInterrupts(AlarmKind kind) {
+  return kind != AlarmKind::kHerdStarving;
+}
+
 }  // namespace core

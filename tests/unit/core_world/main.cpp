@@ -1289,9 +1289,16 @@ int CheckTheLampsTurnedRed() {
   simulation->ResetWorld(fresh);
   simulation->AdvanceStep();
   const std::vector<core::SimEvent> said = said_in(simulation->CompletedState());
+  // Each by its kind's rule (alarm_state.h, RedLampInterrupts; 0.37.202): the
+  // kind rides in the amount above the subject's 32 bits.
   bool interrupting = !said.empty();
   for (const core::SimEvent& event : said) {
-    interrupting = interrupting && event.severity == core::EventSeverity::kInterrupting;
+    const auto kind =
+        static_cast<core::AlarmKind>((static_cast<std::uint64_t>(event.amount) >> 32U) & 0xFFU);
+    const core::EventSeverity expected = core::RedLampInterrupts(kind)
+                                             ? core::EventSeverity::kInterrupting
+                                             : core::EventSeverity::kNotable;
+    interrupting = interrupting && event.severity == expected;
   }
   failures += Expect(
       said.size() == reds.size() && interrupting && simulation->CompletedState().red_lamps == reds,

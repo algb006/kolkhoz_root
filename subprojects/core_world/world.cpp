@@ -502,7 +502,8 @@ class EventsSlot final : public ISequentialPhase {
   /// сигналы должны прерывать режим пропуска времени в игре»). Once a day, at
   /// hour 0: the world's lit lamps (Alarm::lamp) are collected and painted;
   /// each red one not in WorldState::red_lamps is said — kLampTurnedRed,
-  /// kInterrupting — and the memory becomes today's reds.
+  /// kInterrupting, but kNotable for a kind RedLampInterrupts refuses — and
+  /// the memory becomes today's reds.
   /// ONCE A DAY, NOT EVERY STEP: a collection costs 1.5-2.1 steps (Debug,
   /// 0.37.192's measure), so every hour would double the run; a lamp red and
   /// out between two checks says nothing here, and its own event, where it
@@ -529,7 +530,12 @@ class EventsSlot final : public ISequentialPhase {
     const auto [first, last] = std::ranges::unique(red);
     red.erase(first, last);
     for (const Alarm* alarm : said) {
-      SimEvent& event = EmitEvent(current, EventKind::kLampTurnedRed, EventSeverity::kInterrupting);
+      // A STARVING KOLKHOZ HERD'S LAMP IS NOTABLE (alarm_state.h,
+      // RedLampInterrupts): its episode was said by kHerdWentHungry already.
+      SimEvent& event = EmitEvent(
+          current,
+          EventKind::kLampTurnedRed,
+          RedLampInterrupts(alarm->kind) ? EventSeverity::kInterrupting : EventSeverity::kNotable);
       event.amount =
           static_cast<std::int64_t>((static_cast<std::uint64_t>(alarm->kind) << kLampKindShift) |
                                     static_cast<std::uint64_t>(AlarmSubjectValue(*alarm)));

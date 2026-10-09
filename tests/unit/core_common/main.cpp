@@ -2752,6 +2752,17 @@ int CheckPaintAlarms() {
   failures += Expect(core::DaysToLossOf(-5) == 0 && core::DaysToLossOf(0) == 0 &&
                          core::DaysToLossOf(12) == 12 && core::DaysToLossOf(1'000'000) == 0xFFFF,
                      "paint: days to loss clamp a past loss to 0 and a far one to 0xFFFF");
+  // WHICH RED LAMP STOPS THE FAST-FORWARD (0.37.202): the starving herd's
+  // alone does not — and its neighbours of the same subject (a herd) do, so a
+  // rule widened to «the herd's lamps» fails here.
+  failures += Expect(!core::RedLampInterrupts(core::AlarmKind::kHerdStarving),
+                     "red lamp: a starving herd's lamp turning red does not interrupt");
+  failures += Expect(core::RedLampInterrupts(core::AlarmKind::kHerdFreezing) &&
+                         core::RedLampInterrupts(core::AlarmKind::kTooFewHorses) &&
+                         core::RedLampInterrupts(core::AlarmKind::kSeedShort) &&
+                         core::RedLampInterrupts(core::AlarmKind::kFamilyGoingHungry),
+                     "red lamp: a freezing herd's, the horses', the seed's and a hungry "
+                     "family's lamps turning red interrupt");
   return failures;
 }
 
