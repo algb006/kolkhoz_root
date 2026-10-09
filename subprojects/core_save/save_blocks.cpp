@@ -528,7 +528,7 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   // The era events that have come (epochs design §14, save format 50).
   out.WriteU8(world.era_events.electrification_unlocked);
 
-  // The former elder's resident (save format 118): who Ryabinin is cannot be
+  // The former elder's resident (save format 118): who the elder is cannot be
   // found again on load — genesis chose him, and his family may have moved.
   out.WriteU32(world.named.elder.value);
 

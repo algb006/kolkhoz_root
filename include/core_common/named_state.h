@@ -14,7 +14,7 @@ namespace core {
 /// @brief The named characters who are residents, by role.
 struct NamedCharactersState {
   /// THE FORMER ELDER (society design §1а; boss-core-start-quest-facts-
-  /// 2026-09-30 [6]-[8]): the resident who is Ryabinin in every game — a
+  /// 2026-09-30 [6]-[8]): the resident who is the former elder in every game — a
   /// man of solid age of the family the start settles in `yard_21`. The
   /// door follows the MAN, not the yard: his family may move. Invalid when
   /// the world has none (a table set with no yard_21, or before genesis).

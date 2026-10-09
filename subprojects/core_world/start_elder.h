@@ -5,7 +5,7 @@
 /// @threading SINGLE_THREADED
 /// Genesis, once the yards are given out; the view between steps.
 ///
-/// THE YARD IS THE START'S, THE DOOR IS THE MAN'S. Ryabinin lives in
+/// THE YARD IS THE START'S, THE DOOR IS THE MAN'S. The elder lives in
 /// `yard_21` in every game, so genesis puts the family with the man of the
 /// right age there; from then on the door follows him and not the yard — his
 /// family may move, and yard_21 is not held from collapse (boss [8] p. 2).
