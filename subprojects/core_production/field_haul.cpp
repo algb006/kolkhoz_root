@@ -286,6 +286,9 @@ void DeliverDrained(const ProductionConfig& config,
     const float worked_grams = static_cast<float>(load) * (share > 1.0F ? 1.0F : share);
     load -= moved;
     AddLedgerAmount(current.ledger.current.hauled_to_stores, resource, moved);
+    if (source == CartLoadSource::kSite) {
+      AddLedgerAmount(current.ledger.current.hauled_from_sites, resource, moved);
+    }
     BookCartRun(config, current, source, rate, moved);
     if (worked_grams > 0.0F) {
       converted = static_cast<float>(moved) / worked_grams;

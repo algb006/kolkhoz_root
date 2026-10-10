@@ -45,6 +45,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "core_common/built_in_by_type.h"
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
@@ -221,6 +222,18 @@ struct YearLedger {
   /// in" from "rotted in the heap" — the heap's rot is in lost_no_room.
   /// Save 94.
   ResourceAmounts hauled_to_stores;
+
+  /// WHAT THE CREWS DUG (save 150; the year's book, boss core-boss-c2-site-
+  /// supply-2026-10-09 [91], [99]): clay, stone and sand laid on a pit's pile
+  /// when a marked dig is finished (extraction_digging.cpp). Booked when DUG,
+  /// as `harvest` is when laid: what the carts did not fetch is the pile.
+  ResourceAmounts dug;
+
+  /// The pits' share of hauled_to_stores (save 150): what the carts brought
+  /// in off the dig sites' piles, written by the same line as the column
+  /// above (field_haul.cpp, DeliverDrained) for a load of CartLoadSource::
+  /// kSite. Until it, the stores' clay could not be told from the fields'.
+  ResourceAmounts hauled_from_sites;
 
   /// WHAT IS GONE FOR WANT OF ROOM — and the name carries the "gone",
   /// because the name is what a reader trusts.
@@ -426,6 +439,11 @@ struct YearLedger {
   /// straw left the village 23–65 t a year through the builders with no line
   /// at all. Nothing vanishes without a line.
   ResourceAmounts built_in;
+
+  /// THE SAME, BY THE UNIT TYPE THAT TOOK IT (save 150; the year's book):
+  /// a row per (type, resource) that took anything this year. Its rows of
+  /// one resource sum to that resource's `built_in` (built_in_by_type.h).
+  BuiltInByType built_in_by_type;
 
   /// WHAT THE YARDS' OWN BEASTS ATE out of the family larders (boss seq 165;
   /// save 70). Its own column and not `feed`: `feed` is the kolkhoz herds'

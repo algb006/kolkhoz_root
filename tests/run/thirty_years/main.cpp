@@ -46,6 +46,7 @@
 #include "../common/timber_chain_tally.h"
 #include "../common/watchman_policy.h"
 #include "../common/yard_policy.h"
+#include "../common/year_book.h"
 #include "core_catalog/definitions.h"
 #include "core_catalog/world_conventions.h"
 #include "core_common/calendar.h"
@@ -584,6 +585,7 @@ int main(int argc, char** argv) {
   // And the clay, stone and sand those houses stand on (extraction_policy.h).
   run::ExtractionPolicy digging(*world.tables);
   run::ExtractionPolicy::Declare("thirty_years");
+  run::YearBook year_book(*world.tables);  // the year's book (save 150; year_book.h)
   // And one school once the children are there (school_policy.h; parcel 358).
   run::SchoolPolicy school(*world.tables);
   run::SchoolPolicy::Declare("thirty_years");
@@ -738,6 +740,7 @@ int main(int argc, char** argv) {
     }
     last_year = state.ledger.closed.year;
     failures += book_balance.CloseYear(state, *world.tables);
+    year_book.CloseYear(state);
     sheet << core::LedgerCsvRow(state, *world.tables);
     ++rows_written;
     PrintYear(state);
@@ -1036,6 +1039,7 @@ int main(int argc, char** argv) {
   std::cout << "thirty_years: layout — " << layout.Answered() << " plan alarms answered, "
             << layout.Unanswered() << " found no field\n";
   digging.Report(state, "thirty_years");
+  year_book.Report("thirty_years");
   timber_chain.Report("thirty_years", g_years);
   if (g_tick_cost) {
     tick_cost.Report("thirty_years");

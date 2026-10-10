@@ -515,6 +515,14 @@ int TestMarkAndBuild(const core::ITableSet& tables) {
                      "at zero the level moves and the site is a unit");
   failures += Expect(built.stock.empty() || built.stock[0] == 0,
                      "and the recipe is consumed, not left lying on the site");
+  // THE YEAR'S BOOK (save 150): the ten logs went into a barn's walls, and
+  // the row by type says whose — the same grams as built_in's.
+  const core::BuiltInByType& by_type = world.ledger.current.built_in_by_type;
+  failures += Expect(
+      by_type.size() == 1 && by_type[0].type.value == kBarnType && by_type[0].resource.value == 0 &&
+          by_type[0].grams == 10 * kLogGrams &&
+          core::AmountOf(world.ledger.current.built_in, core::ResourceId{0}) == by_type[0].grams,
+      "the barn's ten logs are booked under the barn's type, as built_in's");
   bool announced = false;
   for (const core::SimEvent& event : world.step_events) {
     announced =

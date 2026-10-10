@@ -48,6 +48,7 @@ void DigFinishedSites(WorldState& current) {
       const Grams dug = site.marked_grams < site.stock_grams ? site.marked_grams : site.stock_grams;
       site.load_grams += dug;
       site.stock_grams -= dug;
+      AddLedgerAmount(current.ledger.current.dug, site.resource, dug);  // the year's book
       site.marked_grams = 0;
       site.work_days_remaining = 0.0F;
     }

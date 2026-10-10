@@ -130,10 +130,51 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // Save 138 (0.37.182, B6): the waits made and the watchdog's firings, two
 // arrays of two u32 after cart_hours_saved — 108 -> 110 fields, 968 -> 984,
 // predicted before the build.
-static_assert(sizeof(YearLedger) == 984 + (36 * kAmountsSize),
+// Save 150 (the year's book): dug and hauled_from_sites, two vectors after
+// hauled_to_stores, and built_in_by_type, a vector of rows after built_in —
+// 110 -> 113 fields, 984 + 36 A -> 984 + 38 A + one rows vector, no padding
+// moved (vectors among vectors); predicted before the build.
+constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
+static_assert(sizeof(YearLedger) == 984 + (38 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 110,
+static_assert(AggregateArity<YearLedger>() == 113,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
+static_assert(sizeof(BuiltInRow) == 16 && AggregateArity<BuiltInRow>() == 3,
+              "BuiltInRow changed — update its codec and VERSION_SAVE");
+
+// A row a (type, resource) pair: the type and the resource against their
+// dictionaries, so a reordered unit_types.csv or resources.csv reads back by
+// key; the count first.
+void WriteBuiltInByType(SaveSink& sink, const BuiltInByType& rows) {
+  sink.Out().WriteU32(static_cast<std::uint32_t>(rows.size()));
+  for (const BuiltInRow& row : rows) {
+    sink.WriteDefId(DefKind::kUnitType, row.type.value);
+    sink.WriteDefId(DefKind::kResource, row.resource.value);
+    sink.Out().WriteI64(row.grams);
+  }
+}
+
+BuiltInByType ReadBuiltInByType(LoadSource& source) {
+  BuiltInByType rows;
+  constexpr std::size_t kSavedRowBytes = 2 + 2 + 8;
+  const std::uint32_t count = source.In().ReadU32();
+  if (static_cast<std::size_t>(count) * kSavedRowBytes > source.In().Remaining()) {
+    source.Fail("the built-in-by-type rows name more rows than the bytes left");
+    return rows;
+  }
+  rows.reserve(count);
+  for (std::uint32_t index = 0; index < count && source.Valid(); ++index) {
+    BuiltInRow row;
+    row.type = UnitTypeId{source.ReadDefId(DefKind::kUnitType)};
+    row.resource = ResourceId{source.ReadDefId(DefKind::kResource)};
+    row.grams = source.In().ReadI64();
+    if (row.grams <= 0) {
+      source.Fail("a built-in-by-type row holds no grams");
+    }
+    rows.push_back(row);
+  }
+  return rows;
+}
 
 void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   ByteWriter& out = sink.Out();
@@ -163,12 +204,15 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   sink.WriteAmounts(DefKind::kResource, book.eaten);
 
   sink.WriteAmounts(DefKind::kResource, book.harvest);
-  sink.WriteAmounts(DefKind::kResource, book.hauled_to_stores);  // save 94
+  sink.WriteAmounts(DefKind::kResource, book.hauled_to_stores);   // save 94
+  sink.WriteAmounts(DefKind::kResource, book.dug);                // save 150
+  sink.WriteAmounts(DefKind::kResource, book.hauled_from_sites);  // save 150
   sink.WriteAmounts(DefKind::kResource, book.lost_no_room);
   sink.WriteAmounts(DefKind::kResource, book.lost_to_snow);  // save 61
   sink.WriteAmounts(DefKind::kResource, book.seized);        // save 62
   sink.WriteAmounts(DefKind::kResource, book.spoiled);
   sink.WriteAmounts(DefKind::kResource, book.built_in);   // save 70
+  WriteBuiltInByType(sink, book.built_in_by_type);        // save 150
   sink.WriteAmounts(DefKind::kResource, book.yard_feed);  // save 70
   sink.WriteAmounts(DefKind::kResource, book.processed);  // save 73
   sink.WriteAmounts(DefKind::kResource, book.made);       // save 73
@@ -321,11 +365,21 @@ YearLedger ReadYearLedger(LoadSource& source) {
       source.Fail("the book's hauled-in column is negative");
     }
   }
+  book.dug = source.ReadAmounts(DefKind::kResource);                // save 150
+  book.hauled_from_sites = source.ReadAmounts(DefKind::kResource);  // save 150
+  for (const ResourceAmounts* column : {&book.dug, &book.hauled_from_sites}) {
+    for (const Grams grams : *column) {
+      if (grams < 0) {
+        source.Fail("the book's dug or pit-hauled column is negative");
+      }
+    }
+  }
   book.lost_no_room = source.ReadAmounts(DefKind::kResource);
   book.lost_to_snow = source.ReadAmounts(DefKind::kResource);
   book.seized = source.ReadAmounts(DefKind::kResource);
   book.spoiled = source.ReadAmounts(DefKind::kResource);
   book.built_in = source.ReadAmounts(DefKind::kResource);
+  book.built_in_by_type = ReadBuiltInByType(source);  // save 150
   book.yard_feed = source.ReadAmounts(DefKind::kResource);
   book.processed = source.ReadAmounts(DefKind::kResource);
   book.made = source.ReadAmounts(DefKind::kResource);

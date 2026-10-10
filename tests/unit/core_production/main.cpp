@@ -6033,6 +6033,32 @@ int CheckHaulingIsNotFree() {
   failures += Expect(moved > 0 && core::AmountOf(world.ledger.current.hauled_to_stores,
                                                  core::ResourceId{0}) == moved,
                      "a worked haul books what it brought in, gram for gram, in hauled_to_stores");
+  // THE YEAR'S BOOK (save 150): a field's heap is not a pit's pile — the
+  // pits' column stays empty while only a field was carted.
+  failures +=
+      Expect(core::AmountOf(world.ledger.current.hauled_from_sites, core::ResourceId{0}) == 0,
+             "a field's haul books nothing in the pits' column");
+
+  // And a pit's pile, carted the same way, books the same grams in both.
+  core::ExtractionSiteRow pit;
+  pit.resource = core::ResourceId{0};
+  pit.position = core::Vec2{.x = 1500.0F, .y = 0.0F};
+  pit.load_grams = 2000 * kKilo;
+  core::AppendRow(world.extraction_sites, pit);
+  core::SettleSiteHauling(config, world);
+  world.extraction_sites.rows[0].haul_days_remaining =
+      world.extraction_sites.rows[0].haul_days_written / 2.0F;
+  const core::Grams hauled_before =
+      core::AmountOf(world.ledger.current.hauled_to_stores, core::ResourceId{0});
+  const core::Grams on_pile = world.extraction_sites.rows[0].load_grams;
+  core::SettleSiteHauling(config, world);
+  const core::Grams from_pit = on_pile - world.extraction_sites.rows[0].load_grams;
+  failures += Expect(
+      from_pit > 0 &&
+          core::AmountOf(world.ledger.current.hauled_from_sites, core::ResourceId{0}) == from_pit &&
+          core::AmountOf(world.ledger.current.hauled_to_stores, core::ResourceId{0}) ==
+              hauled_before + from_pit,
+      "a pit's haul books its grams in the pits' column and in hauled_to_stores alike");
   return failures;
 }
 
@@ -11356,6 +11382,8 @@ int CheckExtraction() {
                          world.extraction_sites.rows[0].stock_grams == 10'000'000 &&
                          world.extraction_sites.rows[0].marked_grams == 0,
                      "digging: the finished mark leaves the stock and lies as a load");
+  failures += Expect(core::AmountOf(world.ledger.current.dug, core::ResourceId{6}) == 20'000'000,
+                     "digging: the year's book holds the 20 t dug, under stone (save 150)");
 
   // The last ten tonnes: the site runs out, is told of once, and refuses.
   order.amount = 10'000'000;

@@ -853,7 +853,16 @@ core::WorldState MakeWorld() {
   world.ledger.closed.lost_to_snow = Amounts({0, 150'000'000});
   // What the district seized above the limit (save 62).
   world.ledger.closed.seized = Amounts({5'000'000});
-  world.ledger.closed.built_in = Amounts({0, 250});      // save 70: straw into a roof
+  world.ledger.closed.built_in = Amounts({0, 250});  // save 70: straw into a roof
+  // The year's book (save 150): what was dug, the pits' share of the haul,
+  // and the built-in by type — two rows of different types and resources,
+  // so a codec that swapped the type and the resource would be seen.
+  world.ledger.closed.dug = Amounts({0, 4'000'000});
+  world.ledger.closed.hauled_from_sites = Amounts({0, 3'000'000});
+  world.ledger.closed.built_in_by_type = {
+      core::BuiltInRow{.type = core::UnitTypeId{1}, .resource = core::ResourceId{1}, .grams = 250},
+      core::BuiltInRow{.type = core::UnitTypeId{0}, .resource = core::ResourceId{2}, .grams = 900},
+  };
   world.ledger.closed.yard_feed = Amounts({0, 0, 300});  // save 70: a goat's hay
   world.ledger.closed.processed = Amounts({0, 0, 400});  // save 73: cabbage pickled
   // Cell 2 and not 3: resource 3 is the key a later check removes as unused,
@@ -1946,7 +1955,11 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // Save 133 (0.37.166): +8 — the walkers refused by the wait's term, a u32
     // in each of the two books; 2548 -> 2556 predicted before the build,
     // held. The closed book's count is set off its nought.
-    {"ledger", 2588, 0xb6d5a23ce705a246ULL},
+    // Save 150 (the year's book): +72 — two empty columns and a row count in
+    // each book (2 + 2 + 4, twice), the closed book's dug and pits' haul (16
+    // each) and its two rows (12 each); 2588 -> 2660 predicted before the
+    // build with every other section unmoved; the hash read off the first build.
+    {"ledger", 2660, 0xaaa4194e2920feb8ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 

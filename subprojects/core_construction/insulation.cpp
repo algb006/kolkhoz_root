@@ -162,6 +162,8 @@ void CompleteInsulation(const ConstructionConfig& config, WorldState& current, s
   const Grams straw = FrozenStraw(config, site);
   AddTo(site.stock, config.straw_resource, -straw);
   AddLedgerAmount(current.ledger.current.built_in, config.straw_resource, straw);  // into the walls
+  AddBuiltInByType(
+      current.ledger.current.built_in_by_type, site.type, config.straw_resource, straw);
   site.insulated = 1;
   site.construction = ConstructionState{};
   SimEvent& event = EmitEvent(current, EventKind::kUnitInsulated, EventSeverity::kNotable);
