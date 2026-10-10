@@ -294,10 +294,52 @@ class LogisticsSystem final : public ILogisticsSystem {
       if (task.unserved_light_hours != kLateAfterHours) {
         continue;
       }
+      const std::int64_t packed =
+          static_cast<std::int64_t>(current.logistics_tasks.row_ids[row].value) |
+          (static_cast<std::int64_t>(task.load_kind) << 32);
       SimEvent& event =
           EmitEvent(current, EventKind::kUrgentLoadWaits, EventSeverity::kInterrupting);
-      event.amount = static_cast<std::int64_t>(current.logistics_tasks.row_ids[row].value) |
-                     (static_cast<std::int64_t>(task.load_kind) << 32);
+      event.amount = packed;
+      // AND WHY NOBODY CAME, ON A DAY OFF (task 427, item 3; event_state.h,
+      // kDayOffHeldUrgentLoad): the allocator offers no carting that day.
+      if (IsDayOffIn(current, current.calendar.day)) {
+        SayDayOffHeld(current, current.logistics_tasks.rows[row], packed);
+      }
+    }
+  }
+
+  /// kDayOffHeldUrgentLoad for `task`: where its load waits and what it is.
+  void SayDayOffHeld(WorldState& current, const LogisticsTaskRow& task, std::int64_t packed) const {
+    SimEvent& held = EmitEvent(current, EventKind::kDayOffHeldUrgentLoad, EventSeverity::kNotable);
+    held.amount = packed;
+    switch (task.load_kind) {
+      case LogisticsLoadKind::kFieldHeap: {
+        held.field = task.field;
+        const std::uint32_t field_row = FindRow(current.fields, task.field);
+        held.resource =
+            field_row != kNoRow ? current.fields.rows[field_row].reaped_resource : ResourceId{};
+        break;
+      }
+      case LogisticsLoadKind::kStandLogs:
+        held.stand = task.stand;
+        held.resource = config_.log_resource;
+        break;
+      case LogisticsLoadKind::kSiteDig: {
+        const std::uint32_t site_row = FindRow(current.extraction_sites, task.extraction_site);
+        held.resource =
+            site_row != kNoRow ? current.extraction_sites.rows[site_row].resource : ResourceId{};
+        break;
+      }
+      case LogisticsLoadKind::kDistrictLot: {
+        const std::uint32_t lot_row = FindRow(current.limit_deliveries, task.limit_delivery);
+        held.lot = lot_row != kNoRow ? current.limit_deliveries.rows[lot_row].lot : LimitLotId{};
+        break;
+      }
+      case LogisticsLoadKind::kStoreTransfer:
+        held.unit = task.unit;
+        break;
+      case LogisticsLoadKind::kLogisticsLoadKindCount:
+        break;
     }
   }
 

@@ -44,6 +44,10 @@ struct LogisticsConfig {
   float urgent_spoil_share = 0.10F;
   float urgent_spoil_tonnes = 1.0F;
 
+  /// resources.csv `log`: what a stand's load is (kDayOffHeldUrgentLoad names
+  /// it; task 427). Invalid with no such row.
+  ResourceId log_resource;
+
   /// resources.csv `spoil_days`, by ResourceId; 0 keeps for ever — the cells
   /// production reads (production_config.cpp), by the same rule.
   std::vector<float> spoil_days;

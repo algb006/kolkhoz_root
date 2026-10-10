@@ -60,6 +60,7 @@
 #include "core_common/timber_state.h"
 #include "core_common/turned_away_state.h"
 #include "core_common/unit_state.h"
+#include "core_common/unmanned_run_state.h"
 #include "core_common/wedding_state.h"
 
 namespace core {
@@ -1045,6 +1046,11 @@ struct WorldState {
   /// no free house and no barrack place, read by the lamp «жилья не хватает»
   /// (kHousingShort, its condition (c)). SAVED (save 148).
   TurnedAwayYear arrivals_turned_away;
+
+  /// THE JOBS' RUNS OF MORNINGS WITH NO HAND (unmanned_run_state.h): written
+  /// by labour's morning allocation, read by it to say kWorkGotNoHands on a
+  /// run's fourth working morning. SAVED (save 149).
+  UnmannedRuns unmanned_runs;
 
   /// THE GATHERING COUNT SAID «NOT IN TIME» (farming design, the harvest
   /// rule 1 as boss re-worded it, core-boss-potato-crew-trace-2026-10-01

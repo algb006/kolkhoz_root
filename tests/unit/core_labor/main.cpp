@@ -824,6 +824,52 @@ int TestHandsIdleWhileWorkWaitsIsSaidOnce() {
   return failures;
 }
 
+/// A JOB WITH NO HANDS FOR FOUR WORKING MORNINGS IS SAID ONCE (task 427,
+/// item 2; event_state.h, kWorkGotNoHands; unmanned_run_state.h): a ploughing
+/// and no horse — nobody placed on it. The run grows a working morning at a
+/// time (days off skipped); the fourth says it once, naming the field, the
+/// kind and the horse's shortfall; the fifth says nothing.
+int TestWorkGotNoHandsIsSaidOnce() {
+  int failures = 0;
+  const test::FakeTableSet tables;
+  const auto labor = core::CreateLaborSystem(tables, core::StubTables::kAllowed);
+  if (labor == nullptr) {
+    return Expect(false, "factory yields a system");
+  }
+  DayWorld day(4);
+  day.AddField(core::FieldPhase::kPlowing, 1.0F, core::Vec2{.x = 200.0F, .y = 0.0F});
+  std::vector<std::uint32_t> said_on;  // the working morning each word came on
+  std::uint32_t working = 0;
+  for (core::SimDay date = 0; working < 5 && date < 14; ++date) {
+    day.world.calendar.day = date;
+    day.world.calendar.tick = static_cast<core::Tick>(date) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(day.world.calendar);
+    if (core::IsDayOffIn(day.world, date)) {
+      continue;
+    }
+    ++working;
+    day.world.step_events.clear();
+    const core::WorldState before = day.world;
+    labor->RunAssignmentDecisions(before, day.world);
+    for (const core::SimEvent& event : day.world.step_events) {
+      if (event.kind == core::EventKind::kWorkGotNoHands) {
+        said_on.push_back(working);
+        failures +=
+            Expect((event.amount & 0xFFFFFFFF) == core::kWorkGotNoHandsDays &&
+                       ((event.amount >> 32) & 0xFF) ==
+                           static_cast<std::int64_t>(core::WorkKind::kPlowing) &&
+                       ((event.amount >> 40) & 0xFF) ==
+                           static_cast<std::int64_t>(core::JobShortfall::kNoHorse) &&
+                       event.field.value == day.world.fields.row_ids.back().value,
+                   "no hands: the word names four mornings, the ploughing, the horse, the field");
+      }
+    }
+  }
+  failures += Expect(said_on.size() == 1 && said_on.front() == 4,
+                     "no hands: said once, on the fourth working morning with nobody on the job");
+  return failures;
+}
+
 int TestTheWorkbookCarriesTheMorningsReason() {
   int failures = 0;
   const test::FakeTableSet tables;
@@ -4395,6 +4441,7 @@ int main() {
   failures += TestWholeWorkingDay();
   failures += TestTheWorkbookCarriesTheMorningsReason();
   failures += TestHandsIdleWhileWorkWaitsIsSaidOnce();
+  failures += TestWorkGotNoHandsIsSaidOnce();
   failures += TestTheRainIsTheIdlesReason();
   failures += TestRoadBlockedIsBooked();
   failures += TestWalkOffPaysAndStops();

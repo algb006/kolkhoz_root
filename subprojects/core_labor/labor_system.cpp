@@ -25,7 +25,9 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -540,6 +542,8 @@ class LaborSystem final : public ILaborSystem {
       for (const AssignmentCandidate& candidate : candidates) {
         current.residents.rows[candidate.resident_row].idle_reason = none;
       }
+      // No job this morning: no run stands (a day off keeps them as they are).
+      TrackUnmannedRuns(current, jobs, {}, {}, day_off_today);
     }
     if (!jobs.empty()) {
       book.offered_job_days += static_cast<std::uint32_t>(jobs.size());
@@ -553,6 +557,7 @@ class LaborSystem final : public ILaborSystem {
             ++book.short_job_days[kind][static_cast<std::size_t>(JobShortfall::kNoHands)];
           }
         }
+        TrackUnmannedRuns(current, jobs, {}, {}, day_off_today);
       }
       if (!candidates.empty()) {
         std::vector<std::uint8_t> rides_horse;
@@ -583,6 +588,7 @@ class LaborSystem final : public ILaborSystem {
         if (!hands_idle_yesterday) {
           SayHandsIdleWithWorkWaiting(current, jobs, candidates, diagnosis);
         }
+        TrackUnmannedRuns(current, jobs, plan, diagnosis.shortfall, day_off_today);
         // THE MORNING'S PLAN ONLY: the day's jobs the road stopped, by kind
         // (YearLedger::road_blocked_job_days). The top-up re-plans the same
         // day and would count it twice.
@@ -1244,6 +1250,78 @@ class LaborSystem final : public ILaborSystem {
                                  planned == IdleReason::kWorkCovered ||
                                  planned == IdleReason::kCrewCap;
     return rain_holds && no_work_for_him ? IdleReason::kRain : planned;
+  }
+
+  /// @brief THE JOBS' RUNS OF MORNINGS WITH NO HAND (task 427, item 2;
+  ///        unmanned_run_state.h): every job of this morning with work left
+  ///        and nobody placed on it by `plan` (empty: nobody was placed at
+  ///        all) carries its run one morning on, or starts one; every other
+  ///        run ends. On the kWorkGotNoHandsDays-th morning kWorkGotNoHands is
+  ///        said, once a run. A day off changes nothing.
+  /// @param shortfall The plan's diagnosis by job (empty: kNoHands for all).
+  static void TrackUnmannedRuns(WorldState& current,
+                                const std::vector<AssignmentJob>& jobs,
+                                const std::vector<std::uint32_t>& plan,
+                                const std::vector<std::optional<JobShortfall>>& shortfall,
+                                bool day_off_today) {
+    if (day_off_today) {
+      return;
+    }
+    std::vector<std::uint8_t> manned(jobs.size(), 0);
+    for (const std::uint32_t job : plan) {
+      if (job != kNoJobAssigned && job < jobs.size()) {
+        manned[job] = 1;
+      }
+    }
+    const auto same = [](const UnmannedRunRow& run, const AssignmentJob& job) {
+      return run.kind == job.kind && run.field.value == job.field.value &&
+             run.herd.value == job.herd.value && run.unit.value == job.unit.value &&
+             run.stand.value == job.stand.value &&
+             run.extraction_site.value == job.extraction_site.value &&
+             run.limit_delivery.value == job.limit_delivery.value &&
+             run.road_work.value == job.road_work.value;
+    };
+    UnmannedRuns runs;
+    for (std::size_t index = 0; index < jobs.size(); ++index) {
+      const AssignmentJob& job = jobs[index];
+      if (manned[index] != 0 || !(job.work_days_remaining > 0.0F)) {
+        continue;
+      }
+      UnmannedRunRow run;
+      for (const UnmannedRunRow& before : current.unmanned_runs) {
+        if (same(before, job)) {
+          run = before;
+          break;
+        }
+      }
+      run.kind = job.kind;
+      run.field = job.field;
+      run.herd = job.herd;
+      run.unit = job.unit;
+      run.stand = job.stand;
+      run.extraction_site = job.extraction_site;
+      run.limit_delivery = job.limit_delivery;
+      run.road_work = job.road_work;
+      run.days = run.days < std::numeric_limits<std::uint16_t>::max()
+                     ? static_cast<std::uint16_t>(run.days + 1U)
+                     : run.days;
+      if (run.days >= kWorkGotNoHandsDays && run.said == 0) {
+        run.said = 1;
+        const JobShortfall why = index < shortfall.size() && shortfall[index]
+                                     ? *shortfall[index]
+                                     : JobShortfall::kNoHands;
+        SimEvent& event = EmitEvent(current, EventKind::kWorkGotNoHands, EventSeverity::kNotable);
+        event.amount = static_cast<std::int64_t>(run.days) |
+                       (static_cast<std::int64_t>(job.kind) << 32) |
+                       (static_cast<std::int64_t>(why) << 40);
+        event.unit = job.unit;
+        event.field = job.field;
+        event.herd = job.herd;
+        event.stand = job.stand;
+      }
+      runs.push_back(run);
+    }
+    current.unmanned_runs = std::move(runs);
   }
 
   /// Whether a booked idle reason is a JOB'S SHORTFALL — the man was free and

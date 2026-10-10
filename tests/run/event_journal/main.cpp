@@ -234,6 +234,10 @@ const char* KindName(core::EventKind kind) {
       return "meadow_marked";
     case core::EventKind::kHandsIdleWithWorkWaiting:
       return "hands_idle_with_work_waiting";
+    case core::EventKind::kDayOffHeldUrgentLoad:
+      return "day_off_held_urgent_load";
+    case core::EventKind::kWorkGotNoHands:
+      return "work_got_no_hands";
     case core::EventKind::kEventKindCount:
       return "COUNT";
   }

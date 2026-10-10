@@ -240,7 +240,15 @@ static_assert(sizeof(TurnedAwayYear) == 52,
               "TurnedAwayYear changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<TurnedAwayYear>() == 2,
               "TurnedAwayYear gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<WorldState>() == 48,
+// Save 149: the jobs' runs of mornings with no hand, the forty-ninth — a
+// count and 32 bytes a run at the block's end. Predicted before the build:
+// UnmannedRunRow 36 bytes and ten fields; the fixture's two runs move the
+// section «world» 772 -> 840 (4 + 2 x 32), every other section unmoved.
+static_assert(sizeof(UnmannedRunRow) == 36,
+              "UnmannedRunRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<UnmannedRunRow>() == 10,
+              "UnmannedRunRow gained or lost a field — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<WorldState>() == 49,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 
@@ -581,6 +589,21 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   for (const std::uint8_t turned : world.arrivals_turned_away.per_day) {
     out.WriteU8(turned);
   }
+  // The jobs' runs of mornings with no hand (save 149): a count, then each
+  // run's kind, its seven subject ids, its mornings and whether it was said.
+  out.WriteU32(static_cast<std::uint32_t>(world.unmanned_runs.size()));
+  for (const UnmannedRunRow& run : world.unmanned_runs) {
+    out.WriteU8(static_cast<std::uint8_t>(run.kind));
+    out.WriteU32(run.field.value);
+    out.WriteU32(run.herd.value);
+    out.WriteU32(run.unit.value);
+    out.WriteU32(run.stand.value);
+    out.WriteU32(run.extraction_site.value);
+    out.WriteU32(run.limit_delivery.value);
+    out.WriteU32(run.road_work.value);
+    out.WriteU16(run.days);
+    out.WriteU8(run.said);
+  }
 }
 
 void ReadWorldBlocks(LoadSource& source, WorldState* world) {
@@ -805,6 +828,33 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->arrivals_turned_away.last_day = in.ReadU32();
   for (std::uint8_t& turned : world->arrivals_turned_away.per_day) {
     turned = in.ReadU8();
+  }
+  // The jobs' runs of mornings with no hand (save 149): a count asked of the
+  // bytes left first, each kind and flag by its range.
+  constexpr std::size_t kSavedUnmannedRunBytes = 32;
+  const std::uint32_t runs = in.ReadU32();
+  if (static_cast<std::size_t>(runs) * kSavedUnmannedRunBytes > in.Remaining()) {
+    source.Fail("the unmanned runs name more runs than the bytes left");
+    return;
+  }
+  world->unmanned_runs.clear();
+  world->unmanned_runs.reserve(runs);
+  for (std::uint32_t index = 0; index < runs && source.Valid(); ++index) {
+    UnmannedRunRow run;
+    run.kind = static_cast<WorkKind>(source.ReadEnumValue(
+        0,
+        static_cast<std::uint8_t>(static_cast<std::uint8_t>(WorkKind::kWorkKindCount) - 1U),
+        "an unmanned run's kind of work"));
+    run.field = FieldId{in.ReadU32()};
+    run.herd = HerdId{in.ReadU32()};
+    run.unit = UnitId{in.ReadU32()};
+    run.stand = TimberStandId{in.ReadU32()};
+    run.extraction_site = ExtractionSiteId{in.ReadU32()};
+    run.limit_delivery = LimitDeliveryId{in.ReadU32()};
+    run.road_work = RoadWorkId{in.ReadU32()};
+    run.days = in.ReadU16();
+    run.said = source.ReadEnumValue(0, 1, "an unmanned run's said flag");
+    world->unmanned_runs.push_back(run);
   }
 }
 

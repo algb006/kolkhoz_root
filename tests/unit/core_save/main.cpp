@@ -665,6 +665,20 @@ core::WorldState MakeWorld() {
   world.arrivals_turned_away.last_day = 300;
   world.arrivals_turned_away.per_day[2] = 1;
   world.arrivals_turned_away.per_day[44] = 3;
+  // The jobs' runs of mornings with no hand (save 149): two, every id and
+  // count off its default, the second one said.
+  world.unmanned_runs.resize(2);
+  world.unmanned_runs[0].kind = core::WorkKind::kPlowing;
+  world.unmanned_runs[0].field = core::FieldId{3};
+  world.unmanned_runs[0].days = 2;
+  world.unmanned_runs[1].kind = core::WorkKind::kConstruction;
+  world.unmanned_runs[1].unit = core::UnitId{11};
+  world.unmanned_runs[1].stand = core::TimberStandId{4};
+  world.unmanned_runs[1].extraction_site = core::ExtractionSiteId{5};
+  world.unmanned_runs[1].limit_delivery = core::LimitDeliveryId{6};
+  world.unmanned_runs[1].road_work = core::RoadWorkId{8};
+  world.unmanned_runs[1].days = 4;
+  world.unmanned_runs[1].said = 1;
   // A task of the groom's logistics (save format 135): every field off its
   // default, the five ids apart and the two levels apart, so a codec that
   // swapped a pair is seen.
@@ -1208,6 +1222,10 @@ core::WorldState MakeWitnessWorld() {
   witness.horse_lamp.teams_short[19] = 2;
   witness.arrivals_turned_away.last_day = 290;  // save 148
   witness.arrivals_turned_away.per_day[5] = 4;
+  witness.unmanned_runs.resize(1);  // save 149
+  witness.unmanned_runs[0].kind = core::WorkKind::kHerdCare;
+  witness.unmanned_runs[0].herd = core::HerdId{2};
+  witness.unmanned_runs[0].days = 1;
   return witness;
 }
 
@@ -1417,6 +1435,21 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   for (const std::uint8_t turned : world.arrivals_turned_away.per_day) {
     chunks.push_back({"arrivals_turned_away.per_day", U8(turned)});
   }
+  // Save 149: the jobs' runs — a count, then each run's fields in order.
+  chunks.push_back(
+      {"unmanned_runs.count", U32(static_cast<std::uint32_t>(world.unmanned_runs.size()))});
+  for (const core::UnmannedRunRow& run : world.unmanned_runs) {
+    chunks.push_back({"unmanned_runs.kind", U8(static_cast<std::uint8_t>(run.kind))});
+    chunks.push_back({"unmanned_runs.field", U32(run.field.value)});
+    chunks.push_back({"unmanned_runs.herd", U32(run.herd.value)});
+    chunks.push_back({"unmanned_runs.unit", U32(run.unit.value)});
+    chunks.push_back({"unmanned_runs.stand", U32(run.stand.value)});
+    chunks.push_back({"unmanned_runs.extraction_site", U32(run.extraction_site.value)});
+    chunks.push_back({"unmanned_runs.limit_delivery", U32(run.limit_delivery.value)});
+    chunks.push_back({"unmanned_runs.road_work", U32(run.road_work.value)});
+    chunks.push_back({"unmanned_runs.days", U16(run.days)});
+    chunks.push_back({"unmanned_runs.said", U8(run.said)});
+  }
   return chunks;
 }
 
@@ -1599,7 +1632,10 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // Save 148: +52 — the migrants turned away, a day and forty-eight bytes
     // after the horse lamp's; predicted 720 -> 772 with every other section
     // unmoved before the build, held; the hash read off the first build.
-    {"world", 772, 0xa723b2a41676bb45ULL},
+    // Save 149: +68 — the jobs' runs of mornings with no hand, a count and the
+    // fixture's two runs of 32 bytes; predicted 772 -> 840 with every other
+    // section unmoved before the build, held; the hash read off the first build.
+    {"world", 840, 0xddc8ac5ed12263e4ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2284,6 +2320,15 @@ int main() {
                          loaded.arrivals_turned_away.per_day[44] == 3 &&
                          loaded.arrivals_turned_away.per_day[0] == 0,
                      "the migrants turned away come back, day and counts in place (save 148)");
+  failures += Expect(loaded.unmanned_runs.size() == 2 &&
+                         loaded.unmanned_runs[0].kind == core::WorkKind::kPlowing &&
+                         loaded.unmanned_runs[0].field.value == 3 &&
+                         loaded.unmanned_runs[0].days == 2 && loaded.unmanned_runs[0].said == 0 &&
+                         loaded.unmanned_runs[1].kind == core::WorkKind::kConstruction &&
+                         loaded.unmanned_runs[1].unit.value == 11 &&
+                         loaded.unmanned_runs[1].road_work.value == 8 &&
+                         loaded.unmanned_runs[1].days == 4 && loaded.unmanned_runs[1].said == 1,
+                     "the jobs' runs of mornings with no hand come back, in order (save 149)");
   failures += Expect(loaded.chairman.days_off_cancelled_in_a_row == 2 &&
                          loaded.chairman.cancelled_day_off == 55 &&
                          loaded.chairman.place_after_declaring == 1,

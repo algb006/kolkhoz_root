@@ -103,6 +103,10 @@ bool ParseLogisticsConfig(const ITableSet& tables, LogisticsConfig& config, std:
     if (!ParseResources(*resources, config, error)) {
       return false;
     }
+    // The stand's load (kDayOffHeldUrgentLoad's resource; task 427): the log.
+    const std::uint32_t log_row = resources->FindRowByKey("log");
+    config.log_resource =
+        log_row == kNoTableRow ? ResourceId{} : DefIdFromRow<ResourceIdTag>(log_row);
   }
   // THE PLAN'S REACH (B3): labour's cells, labour's ranges (labor_config.cpp).
   // THE PLAN'S CLOCK (B4b): the same cells, the same ranges.

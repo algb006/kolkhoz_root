@@ -6,6 +6,7 @@
 #include <string>
 
 #include "../../common/fake_tables.h"
+#include "core_common/day_off.h"
 #include "core_common/herd_state.h"
 #include "core_common/land_state.h"
 #include "core_common/logistics_state.h"
@@ -669,6 +670,61 @@ int TestTheChairmansDoors() {
 /// UNTIL 0.37.192 THE CLOCK WAS urgent_since: the lamp lit at night over a
 /// load carted all day (0.37.191's pair B9, years 1, 4, 5: 13, 9, 18 days of
 /// lamp and no event).
+/// A DAY OFF HELD AN URGENT LOAD (task 427, item 3; event_state.h,
+/// kDayOffHeldUrgentLoad): the late load's first hour on a day off says,
+/// beside the interrupting kUrgentLoadWaits, one notable word naming the
+/// heap's field and its reaped resource, the task packed as the urgent one
+/// packs it; on a working day it says nothing.
+int TestTheDayOffHeldTheLoad() {
+  int failures = 0;
+  const test::FakeTableSet no_tables{{}};
+  const auto system = core::CreateLogisticsSystem(no_tables, core::StubTables::kAllowed);
+  if (Expect(system != nullptr, "day off held: the system assembles on its defaults") != 0) {
+    return 1;
+  }
+  const auto said_on = [&system](bool day_off) {
+    core::WorldState world;
+    world.weather.daylight_hours = 12.0F;
+    core::SimDay day = 0;
+    while (core::IsDayOffIn(world, day) != day_off && day < 14) {
+      ++day;
+    }
+    world.calendar.day = day;
+    world.calendar.tick = (static_cast<core::Tick>(day) * core::kTicksPerDay) + 10;
+    core::FieldRow field;
+    field.kind = core::LandKind::kArable;
+    field.reaped_grams = 1'000'000;
+    field.reaped_resource = core::ResourceId{2};
+    field.haul_days_remaining = 1.0F;
+    const core::FieldId heap = core::AppendRow(world.fields, field);
+    core::LogisticsTaskRow task;
+    task.load_kind = core::LogisticsLoadKind::kFieldHeap;
+    task.field = heap;
+    task.level = core::LogisticsLevel::kUrgent;
+    core::AppendRow(world.logistics_tasks, task);
+    system->SayLateLoads(world);
+    std::uint32_t held = 0;
+    bool named = false;
+    for (const core::SimEvent& event : world.step_events) {
+      if (event.kind == core::EventKind::kDayOffHeldUrgentLoad) {
+        ++held;
+        named = event.severity == core::EventSeverity::kNotable &&
+                event.field.value == heap.value && event.resource.value == 2 &&
+                (event.amount & 0xFFFFFFFF) == world.logistics_tasks.row_ids[0].value;
+      }
+    }
+    return std::pair{held, named};
+  };
+  const auto [off_held, off_named] = said_on(true);
+  failures += Expect(off_held == 1 && off_named,
+                     "day off held: on a day off, one notable word — the heap's field, its "
+                     "resource, the task");
+  const auto [work_held, work_named] = said_on(false);
+  (void)work_named;
+  failures += Expect(work_held == 0, "day off held: on a working day, nothing");
+  return failures;
+}
+
 int TestTheLateLoadsLamp() {
   int failures = 0;
   const test::FakeTableSet no_tables{{}};
@@ -899,6 +955,7 @@ int main() {
   failures += TestTheReplan();
   failures += TestTheChairmansDoors();
   failures += TestTheLateLoadsLamp();
+  failures += TestTheDayOffHeldTheLoad();
   if (failures == 0) {
     std::cout << "unit_core_logistics: all checks passed\n";
   }

@@ -730,6 +730,32 @@ enum class EventKind : std::uint8_t {
   /// kRoutine. Seam key `hands_idle_with_work_waiting`.
   kHandsIdleWithWorkWaiting,
 
+  /// A DAY OFF HELD AN URGENT LOAD (task 427, item 3; boss, core-boss-feed-
+  /// events-2026-10-10 [2]): said beside kUrgentLoadWaits, at the same hour
+  /// of the same wait, when the day is a day off (IsDayOffIn) — the reason
+  /// nobody came: the allocator offers no carting on a day off. kNotable;
+  /// kUrgentLoadWaits still interrupts (the human's word of 4 October).
+  /// amount packs the task as kUrgentLoadWaits does (its id in bits 0-31, its
+  /// load kind in 32-39). It names WHERE THE LOAD WAITS, not where it was
+  /// going (no destination exists before a cart is loaded): `resource` — a
+  /// field's heap its reaped resource, a stand's load the log, a pit's its
+  /// resource, none for a district lot or a store's transfer; `field`, `stand`
+  /// or `unit` the source where it is one; `lot` the district lot's.
+  /// Seam key `day_off_held_urgent_load`.
+  kDayOffHeldUrgentLoad,
+
+  /// A JOB GOT NO HANDS FOR DAYS (task 427, item 2; boss, core-boss-feed-
+  /// events-2026-10-10 [2]): said ONCE, on the kWorkGotNoHandsDays-th
+  /// working morning in a row a job of the village stood with work left and
+  /// nobody placed on it (WorldState::unmanned_runs; a day off neither counts
+  /// nor breaks the run; the run ends when a hand is placed or the job goes).
+  /// amount packs three numbers: the mornings (bits 0-31, the threshold at
+  /// the saying), the job's WorkKind (32-39) and the morning's JobShortfall
+  /// (40-47; kNoHands when the plan named none). The job's subject rides in
+  /// unit / field / herd / stand; `order` invalid (a job is standing work).
+  /// kNotable. Seam key `work_got_no_hands`.
+  kWorkGotNoHands,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.
