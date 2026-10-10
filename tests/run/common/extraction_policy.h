@@ -51,12 +51,32 @@ class ExtractionPolicy {
   static void Declare(std::string_view run_name) {
     std::cout << run_name
               << ": FIXTURE DIFFERS FROM THE START CANON — the run's chairman MARKS the nearest "
-                 "clay pit, stone quarry or sand pit when the building sites wait for more of it "
-                 "than the village holds (construction design §3; boss, parcel 270)\n";
+                 "clay pit, stone quarry or sand pit when the building sites and the next three "
+                 "houses want more of it than the village holds (construction design §3; boss, "
+                 "parcel 270; ahead of the queue since 10 October 2026)\n";
   }
 
   /// @brief Counts the step the chairman's yard waits to take (rise_watch.h).
   void SetRiseWatch(RiseWatch watch) { rise_watch_ = std::move(watch); }
+
+  /// @brief THE DIG AHEAD OF THE QUEUE (econ's ruling passed by boss,
+  /// core-boss-c2-site-supply-2026-10-09 after [87]): the material of so many
+  /// NEXT houses is kept in the village — in the stores, dug or marked —
+  /// beside what the open sites wait for, and the dig is marked when the
+  /// village falls under that.
+  ///
+  /// Until then the chairman marked a dig only when a site ALREADY waited for
+  /// more than the village held: every tonne came a dig and a carting after
+  /// its site began to wait. On 0.37.212, nine villages, years 1-5: 635
+  /// site-days of a marked house short of clay with the same 788 t dug that an
+  /// arm with 887 such site-days dug — not less clay, later clay — and the
+  /// three-site cap held the next houses unmarked meanwhile. «A chairman who
+  /// waits for idle builders before sending two men to the pit» is the bot's
+  /// gross error, which the runs are not to measure (the human, 2 October
+  /// 2026).
+  /// @param houses How many next houses' first-level recipe to keep; 0 — the
+  ///        dig follows the waiting sites only (the rule before).
+  void KeepAhead(std::uint32_t houses) { houses_ahead_ = houses; }
 
   /// @brief One day of the chairman's attention. Call once a day.
   void RunDay(core::ISimulation& simulation) {
@@ -69,7 +89,8 @@ class ExtractionPolicy {
       if (resource.value == core::kInvalidDefIdValue) {
         continue;
       }
-      const core::Grams short_of = Owed(world, resource) - InHand(world, resource);
+      const core::Grams short_of =
+          Owed(world, resource) + Ahead(resource) - InHand(world, resource);
       if (short_of <= 0) {
         continue;
       }
@@ -121,6 +142,7 @@ class ExtractionPolicy {
     const std::uint32_t resource_col = costs->FindColumn("resource");
     const std::uint32_t amount_col = costs->FindColumn("amount");
     const std::uint32_t mass_col = resources->FindColumn("kg_per_unit");
+    house_type_ = types->FindRowByKey("wooden_house");
     for (std::uint32_t row = 0; row < costs->RowCount(); ++row) {
       const std::uint32_t resource_row =
           resources->FindRowByKey(costs->CellText(row, resource_col));
@@ -168,6 +190,22 @@ class ExtractionPolicy {
       }
     }
     return owed;
+  }
+
+  /// The material of the next houses kept ahead (KeepAhead): the first
+  /// level's recipe of the wooden house, so many times. Nought with no house
+  /// type in the tables or none kept.
+  core::Grams Ahead(core::ResourceId resource) const {
+    if (houses_ahead_ == 0 || house_type_ == core::kNoTableRow) {
+      return 0;
+    }
+    core::Grams a_house = 0;
+    for (const CostRow& cost : costs_) {
+      if (cost.type == house_type_ && cost.level == 1 && cost.resource == resource.value) {
+        a_house += cost.grams;
+      }
+    }
+    return a_house * static_cast<core::Grams>(houses_ahead_);
   }
 
   /// What the village has of a resource or will have: in the built stores,
@@ -229,6 +267,14 @@ class ExtractionPolicy {
   bool ready_ = false;
 
   RiseWatch rise_watch_;
+
+  /// The next houses whose recipe is kept ahead (KeepAhead). THREE BY
+  /// DEFAULT, in every run that digs: the house policy's three sites at once
+  /// (house_policy.h) — the next batch he will open.
+  std::uint32_t houses_ahead_ = 3;
+
+  /// unit_types.csv row of the wooden house; kNoTableRow when absent.
+  std::uint32_t house_type_ = core::kNoTableRow;
 
   std::array<std::uint32_t, core::kExtractedMaterialCount> marked_{};
 

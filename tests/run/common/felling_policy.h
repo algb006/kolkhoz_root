@@ -56,6 +56,9 @@ class FellingPolicy {
              !catalog_.stands.empty();
     granary_logs_ = GranaryLogs(tables);
     logs_by_type_ = FirstLevelLogs(tables);
+    if (const core::ITable* const types = tables.FindTable("unit_types")) {
+      house_type_ = types->FindRowByKey("wooden_house");
+    }
   }
 
   /// @brief The fixture difference, in words, for the run to print BEFORE it
@@ -63,12 +66,22 @@ class FellingPolicy {
   static void Declare(const char* run) {
     std::cout << run
               << ": FIXTURE DIFFERS FROM THE START CANON — the run's chairman FELLS the nearest "
-                 "stand when the village has fewer logs than one granary takes (timber design "
-                 "§8a; boss, 2026-09-13)\n";
+                 "stand when the village has fewer logs than one granary, the waiting sites and "
+                 "the next three houses take (timber design §8a; boss, 2026-09-13; ahead of the "
+                 "queue since 10 October 2026)\n";
   }
 
   /// @brief Counts the step the chairman's yard waits to take (rise_watch.h).
   void SetRiseWatch(RiseWatch watch) { rise_watch_ = std::move(watch); }
+
+  /// @brief THE FELLING AHEAD OF THE QUEUE (econ's ruling passed by boss,
+  /// core-boss-c2-site-supply-2026-10-09 after [87]; ExtractionPolicy::
+  /// KeepAhead is the same rule for the pit): the logs of so many NEXT houses
+  /// are kept in hand beside the granary's worth, the open sites' and the
+  /// saw's. On 0.37.212, nine villages, years 1-5, a marked house stood short
+  /// of logs on 439 site-days; the felling began when the site already waited.
+  /// @param houses How many next houses' logs to keep; 0 — as before.
+  void KeepAhead(std::uint32_t houses) { houses_ahead_ = houses; }
 
   /// @brief One day of the chairman's attention. Call once a day.
   /// @param saw_log_grams The logs the saw needs for the boards the sites still
@@ -147,8 +160,13 @@ class FellingPolicy {
         }
       }
     }
-    const core::Grams wanted =
-        (static_cast<core::Grams>(granary_logs_) * catalog_.log_grams) + owed + saw_log_grams;
+    // And the next houses' logs, kept ahead (KeepAhead).
+    const core::Grams ahead = house_type_ < logs_by_type_.size()
+                                  ? static_cast<core::Grams>(logs_by_type_[house_type_]) *
+                                        static_cast<core::Grams>(houses_ahead_) * catalog_.log_grams
+                                  : 0;
+    const core::Grams wanted = (static_cast<core::Grams>(granary_logs_) * catalog_.log_grams) +
+                               owed + saw_log_grams + ahead;
     if (logs >= wanted) {
       return;
     }
@@ -349,6 +367,14 @@ class FellingPolicy {
 
   /// Logs a first level takes, by unit_types row: what a site still waits for.
   std::vector<std::uint32_t> logs_by_type_;
+
+  /// The next houses whose logs are kept ahead (KeepAhead). THREE BY DEFAULT,
+  /// in every run that fells: the house policy's three sites at once
+  /// (house_policy.h) — the next batch he will open.
+  std::uint32_t houses_ahead_ = 3;
+
+  /// unit_types.csv row of the wooden house; past logs_by_type_ when absent.
+  std::uint32_t house_type_ = core::kNoTableRow;
 
   RiseWatch rise_watch_;
 
