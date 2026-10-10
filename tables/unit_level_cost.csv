@@ -877,3 +877,13 @@ priest_house,1,clay,5
 priest_house,1,glass,16
 beach,1,board,0.075
 clamp,1,straw,2
+vegetable_store,1,straw,4
+vegetable_store,1,log,60
+vegetable_store,1,board,8
+vegetable_store,1,stone,5
+vegetable_store,1,clay,3
+vegetable_store,1,glass,6
+vegetable_store,2,straw,2
+vegetable_store,2,log,30
+vegetable_store,2,board,6
+vegetable_store,2,glass,4

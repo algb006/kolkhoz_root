@@ -4726,6 +4726,49 @@ int CheckTheColdLadderParses() {
 /// the shipped tables, a 10 ha meadow mown to its half books half its
 /// season's hay and 5 ha that day; mown out, the rest — the whole season to
 /// the gram — and the grass stands again with its day.
+/// THE VEGETABLE STORE KEEPS THE POTATOES (task 440; resources.md §4, the
+/// human's word of 10 October 2026: «Овощехранилище делаем сразу. Из
+/// продовольственного двора его убрать»): on the shipped tables raw potato
+/// and vegetables have their home in vegetable_store, the clamp and the
+/// church store — and no longer in the food store.
+int CheckTheVegetableStoreKeepsThePotatoes() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  core::ProductionConfig config;
+  if (Expect(tables != nullptr && core::ParseProductionConfig(*tables, config, error),
+             "vegetable store: the shipped tables parse") != 0) {
+    return 1;
+  }
+  const core::ITable* types = tables->FindTable("unit_types");
+  const core::ITable* resources = tables->FindTable("resources");
+  if (Expect(types != nullptr && resources != nullptr && config.resource_stores_read == 1,
+             "vegetable store: the tables hold unit types, resources and their homes") != 0) {
+    return 1;
+  }
+  const auto keeps = [&](const char* type_key, const char* resource_key) {
+    const std::uint32_t type = types->FindRowByKey(type_key);
+    const std::uint32_t resource = resources->FindRowByKey(resource_key);
+    if (type == core::kNoTableRow || resource == core::kNoTableRow) {
+      return false;
+    }
+    for (const core::ResourceId held : config.unit_types[type].home_of) {
+      if (held.value == resource) {
+        return true;
+      }
+    }
+    return false;
+  };
+  failures += Expect(keeps("vegetable_store", "potato") && keeps("vegetable_store", "vegetables"),
+                     "vegetable store: it keeps raw potato and vegetables");
+  failures += Expect(!keeps("food_store", "potato") && !keeps("food_store", "vegetables"),
+                     "vegetable store: the food store keeps neither any more");
+  failures += Expect(keeps("clamp", "potato") && keeps("church_store", "potato") &&
+                         keeps("clamp", "vegetables") && keeps("church_store", "vegetables"),
+                     "vegetable store: the clamp and the church store keep both, as before");
+  return failures;
+}
+
 int CheckTheMeadowLaysItsHayAsItIsMown() {
   int failures = 0;
   std::string error;
@@ -15927,6 +15970,7 @@ int main() {
   failures += CheckTheElderSpeaksOfGrassBeforeTheSnow();
   failures += CheckTheElderSpeaksOfAClosingSowingWindow();
   failures += CheckTheMeadowLaysItsHayAsItIsMown();
+  failures += CheckTheVegetableStoreKeepsThePotatoes();
   failures += CheckTheChairmanCanUnsealAFund();
   failures += CheckThePencilRingsInTheAfternoon();
   failures += CheckAHeapOnTheFieldRots();

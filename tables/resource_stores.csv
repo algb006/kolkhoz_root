@@ -108,7 +108,7 @@ pea,elevator,elevator
 pea,food_yard,granary
 potato,church_store,church_store
 potato,clamp,clamp
-potato,food_yard,food_store
+potato,vegetable_store,vegetable_store
 radio,selpo,selpo
 radio,utility_yard,goods_store
 reed,hay_stack,stack
@@ -154,7 +154,7 @@ tool,church_store,church_store
 tool,utility_yard,goods_store
 vegetables,church_store,church_store
 vegetables,clamp,clamp
-vegetables,food_yard,food_store
+vegetables,vegetable_store,vegetable_store
 washing_machine,selpo,selpo
 washing_machine,utility_yard,goods_store
 watch,selpo,selpo
