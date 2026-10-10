@@ -133,9 +133,16 @@ bool HousingShortAlarm(const LifeConfig& config, const WorldState& world, Alarm&
   const bool brink_with_nowhere =
       on_the_brink > 0 && !house_site_open &&
       FreeHouseNotOnTheBrink(config, world).value == kInvalidEntityIdValue;
-  // (c) THE MIGRANTS TURNED AWAY in the year (the design's «newcomers wait»).
+  // (c) THE MIGRANTS TURNED AWAY in the year (the design's «newcomers wait»)
+  // — AND NO ROOF FOR A NEWCOMER TODAY. The year's count alone kept the lamp
+  // lit up to a year after a barrack was built: the canon's pair (task 433,
+  // econ housing-pair-reading-2026-10-11) showed it lit in 1934 y2 and 1935,
+  // 1936 y3 with places free and nobody waiting (boss, 11 October 2026).
   const std::uint32_t turned_away = TurnedAwayOfYear(world.arrivals_turned_away, today);
-  const bool newcomers_wait = turned_away >= kHousingShortTurnedAway;
+  bool shared = false;
+  const bool newcomers_wait =
+      turned_away >= kHousingShortTurnedAway &&
+      HomeForNewcomers(config, world, 1, shared).value == kInvalidEntityIdValue;
   if (!couples_wait && !brink_with_nowhere && !newcomers_wait) {
     return false;
   }

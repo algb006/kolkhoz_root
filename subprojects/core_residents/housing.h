@@ -66,7 +66,8 @@ bool HouseOnTheBrink(const LifeConfig& config, const UnitRow& unit);
 ///        `alarm`: true when it is lit — (a) a couple waiting too long or too
 ///        many waiting, (b) a family's house on the brink with no free house
 ///        and no house site open, (c) too many migrants turned away in the
-///        year (the thresholds above). Subject, `amount` and `amount_more` as
+///        year (the thresholds above) while no roof stands for a newcomer
+///        today (HomeForNewcomers). Subject, `amount` and `amount_more` as
 ///        alarm_state.h says. A pure read.
 bool HousingShortAlarm(const LifeConfig& config, const WorldState& world, Alarm& alarm);
 

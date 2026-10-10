@@ -684,7 +684,9 @@ enum class AlarmKind : std::uint8_t {
   /// and no house site open in the village; (c) kHousingShortTurnedAway or
   /// more migrants were turned away for want of a home in the last year
   /// (WorldState::arrivals_turned_away; the design's «four newcomers wait»,
-  /// measured, since there is no queue). Thresholds STUB until its pair.
+  /// measured, since there is no queue) AND no free house nor barrack place
+  /// stands for a newcomer today (housing.h, HomeForNewcomers; since
+  /// 0.37.218). Thresholds STUB.
   /// Subject: `family` — the oldest waiting couple's bride's, else the first
   /// family on the brink; none when only (c) holds. `amount` the homes asked
   /// (couples waiting + families on the brink); `amount_more` the barrack

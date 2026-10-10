@@ -1929,8 +1929,8 @@ int CheckCoupleSkipsHouseOnTheBrink() {
 /// naming the bride's family; three couples — lit at once; (b) a family's old
 /// house on the brink with no free house and no site — lit, naming that
 /// family, and out again when a house site opens; (c) four migrants turned
-/// away in the year — lit with no subject, `amount_more` four, and out a year
-/// after the last.
+/// away in the year — lit with no subject, `amount_more` four, out while a
+/// free house stands for a newcomer, and out a year after the last.
 int CheckHousingShortLamp() {
   int failures = 0;
   core::LifeConfig config;
@@ -1993,6 +1993,17 @@ int CheckHousingShortLamp() {
     failures += Expect(lit && alarm.family.value == core::kInvalidEntityIdValue &&
                            alarm.amount == 0 && alarm.amount_more == 4,
                        "housing short: four migrants turned away — lit, no subject, four places");
+    // A ROOF FOR A NEWCOMER TODAY puts (c) out, whatever the year's count
+    // (boss, 11 October 2026: the canon's lamp burned on beside a new barrack).
+    core::UnitRow free_house;
+    free_house.type = core::UnitTypeId{1};
+    free_house.level = 1;
+    AppendRow(world.units, free_house);
+    failures += Expect(!core::HousingShortAlarm(config, world, alarm),
+                       "housing short: four turned away but a free house stands today — out");
+    world.units.rows.back().household = core::FamilyId{9};
+    failures += Expect(core::HousingShortAlarm(config, world, alarm),
+                       "housing short: the house taken, nowhere for a newcomer — lit again");
     world.calendar.day = 59;
     failures += Expect(!core::HousingShortAlarm(config, world, alarm),
                        "housing short: a year after the first — three in the year, out");
