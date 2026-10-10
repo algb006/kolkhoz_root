@@ -10,6 +10,7 @@
 #include "core_common/calendar.h"
 #include "core_common/emit_event.h"
 #include "core_common/herd_age_band.h"
+#include "core_common/horse_lamp_memory.h"
 #include "core_common/random.h"
 #include "core_common/state_table_ops.h"
 #include "herd_life.h"
@@ -474,10 +475,49 @@ OrderRefusal OrderHandStock(const ProductionConfig& config,
   // made a visible decision and the district sells that kind by the head; a
   // farm left with mares and no stallion has made an invisible one. The trap
   // is the second, and it is the second this refuses.
-  const std::uint16_t adults_going = std::min<std::uint16_t>(wanted, herd.adult_count);
+  //
+  // THE HORSES' ORDER (econ's rule «the base does not breed horses for
+  // points», econ/manual/proposals/horses-not-bred-for-points-2026-10-10.md
+  // §1; horse_lamp_memory.h). A KOLKHOZ HORSE herd hands over the young above
+  // what it keeps first — the newborns, then the juveniles — and its adults
+  // only while the lamp «лошадей не хватает» has been dark a whole year; a
+  // kept young never. Until it, the oldest adults went first whatever the
+  // team lacked, and the base bred a stream of horses for the district's
+  // points: 934 adults handed in ten years while the lamp stood lit, foals
+  // kept. Every other kind: the oldest first, as below.
+  const bool horses = herd.kind.value == config.horse_kind.value;
+  std::uint16_t newborns_first = 0;
+  std::uint16_t juveniles_first = 0;
+  std::uint16_t adults_going = std::min<std::uint16_t>(wanted, herd.adult_count);
+  if (horses) {
+    const std::int64_t young = static_cast<std::int64_t>(herd.juvenile_count) + herd.newborn_count;
+    const std::int64_t above = std::max<std::int64_t>(
+        0, young - HorseYoungKept(current.horse_lamp, herd.adult_count, current.calendar.day));
+    newborns_first = static_cast<std::uint16_t>(
+        std::min<std::int64_t>({static_cast<std::int64_t>(wanted), above, herd.newborn_count}));
+    juveniles_first = static_cast<std::uint16_t>(
+        std::min<std::int64_t>({static_cast<std::int64_t>(wanted) - newborns_first,
+                                above - newborns_first,
+                                herd.juvenile_count}));
+    const auto young_going = static_cast<std::uint16_t>(newborns_first + juveniles_first);
+    adults_going = HorseLampLitWithinYear(current.horse_lamp, current.calendar.day)
+                       ? std::uint16_t{0}
+                       : std::min<std::uint16_t>(static_cast<std::uint16_t>(wanted - young_going),
+                                                 herd.adult_count);
+    if (young_going + adults_going == 0) {
+      // Nothing this herd may give today: no young above what it keeps, and
+      // the lamp lit within the year keeps every adult.
+      return OrderRefusal::kRuleForbids;
+    }
+  }
   const std::uint16_t adults_left = static_cast<std::uint16_t>(herd.adult_count - adults_going);
-  if (kind.sexed != 0 && kind.males_share > 0.0F && herd.adult_male_count > 0 && adults_left > 0 &&
-      MalesAfterLoss(herd.adult_male_count, herd.adult_count, adults_going) == 0) {
+  // BY THE TAKE'S OWN ARITHMETIC (herd_life.h, MalesAfterHandOver; 0.37.209):
+  // a kind whose males are work stock gives its males first, down to its
+  // sire share, and only then by proportion.
+  const std::uint16_t males_before = herd.adult_male_count;
+  const std::uint16_t adults_before = herd.adult_count;
+  if (kind.sexed != 0 && kind.males_share > 0.0F && males_before > 0 && adults_left > 0 &&
+      MalesAfterHandOver(kind, males_before, adults_before, adults_going) == 0) {
     return OrderRefusal::kLastSire;
   }
   // THE OLDEST FIRST, cohort by cohort: adults from the old end, then the
@@ -486,17 +526,30 @@ OrderRefusal OrderHandStock(const ProductionConfig& config,
   // names no head because a head is not an entity in this model.
   std::int32_t points = 0;
   const bool old_herd = MeanAdultAgeYears(herd) >= kind.life_game_years_min;
-  const std::uint16_t adults_gone = TakeOldestAdults(kind, herd, wanted);
+  // The horses' young above what the herd keeps, first (the order above).
+  const std::uint16_t newborns_taken_first = TakeFromCohort(herd.newborn_count, newborns_first);
+  const std::uint16_t juveniles_taken_first = TakeFromCohort(herd.juvenile_count, juveniles_first);
+  const std::uint16_t adults_gone = TakeOldestAdults(kind, herd, horses ? adults_going : wanted);
+  // WHO OF THE ADULTS WENT, BY SEX (0.37.209): TakeOldestAdults takes the
+  // sires out in proportion, as every loss does; the door's own order is
+  // MalesAfterHandOver's — the same function the refusal above asked. For a
+  // kind whose males are not work stock the two are one number.
+  herd.adult_male_count = MalesAfterHandOver(kind, males_before, adults_before, adults_gone);
   points += static_cast<std::int32_t>(adults_gone) *
             HandoverPoints(
                 lot->points,
                 old_herd ? config.limit.handover_share_old : config.limit.handover_share_adult);
-  auto left = static_cast<std::uint16_t>(wanted - adults_gone);
-  const std::uint16_t juveniles_gone = TakeFromCohort(herd.juvenile_count, left);
+  // The rest of the cohorts, oldest first — for every kind but the horse,
+  // whose kept young stay.
+  auto left = horses ? std::uint16_t{0} : static_cast<std::uint16_t>(wanted - adults_gone);
+  const auto juveniles_gone =
+      static_cast<std::uint16_t>(juveniles_taken_first + TakeFromCohort(herd.juvenile_count, left));
   points += static_cast<std::int32_t>(juveniles_gone) *
             HandoverPoints(lot->points, config.limit.handover_share_young);
-  left = static_cast<std::uint16_t>(left - juveniles_gone);
-  const std::uint16_t newborns_gone = TakeFromCohort(herd.newborn_count, left);
+  left = horses ? std::uint16_t{0}
+                : static_cast<std::uint16_t>(left - (juveniles_gone - juveniles_taken_first));
+  const auto newborns_gone =
+      static_cast<std::uint16_t>(newborns_taken_first + TakeFromCohort(herd.newborn_count, left));
   points += static_cast<std::int32_t>(newborns_gone) *
             HandoverPoints(lot->points, config.limit.handover_share_newborn);
 

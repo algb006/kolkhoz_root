@@ -41,6 +41,7 @@
 #include "core_common/extraction_state.h"
 #include "core_common/family_state.h"
 #include "core_common/herd_state.h"
+#include "core_common/horse_lamp_memory.h"
 #include "core_common/land_state.h"
 #include "core_common/ledger_state.h"
 #include "core_common/limit_state.h"
@@ -1030,6 +1031,13 @@ struct WorldState {
   /// red and out between two checks is never here. SAVED (save 143): a game
   /// loaded mid-day must not say again what it said at its last hour 0.
   std::vector<RedLamp> red_lamps;
+
+  /// THE LAMP «ЛОШАДЕЙ НЕ ХВАТАЕТ» OF THE LAST YEAR, as the same hour-0 check
+  /// painted it (horse_lamp_memory.h): the days it was lit and their «teams
+  /// short». Read by the horses' hand-over order — the district's door, the
+  /// advice and the forecast (econ's rule «the base does not breed horses
+  /// for points»). SAVED (save 147).
+  HorseLampMemory horse_lamp;
 
   /// THE GATHERING COUNT SAID «NOT IN TIME» (farming design, the harvest
   /// rule 1 as boss re-worded it, core-boss-potato-crew-trace-2026-10-01

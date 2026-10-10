@@ -656,6 +656,11 @@ core::WorldState MakeWorld() {
   // and the subjects apart, so a codec that swapped the pair is seen.
   world.red_lamps = {{.kind = core::AlarmKind::kSeedShort, .subject = 7},
                      {.kind = core::AlarmKind::kLogisticsLate, .subject = 0x01020304}};
+  // The horse lamp's year (save 147): a painted day off nought and two
+  // slots apart, so a codec that read the bytes shifted is seen.
+  world.horse_lamp.last_painted_day = 205;
+  world.horse_lamp.teams_short[1] = 3;
+  world.horse_lamp.teams_short[13] = 7;
   // A task of the groom's logistics (save format 135): every field off its
   // default, the five ids apart and the two levels apart, so a codec that
   // swapped a pair is seen.
@@ -1195,6 +1200,8 @@ core::WorldState MakeWitnessWorld() {
   witness.barter.dry_equivalent = 31'750;
   witness.gather_short_said = 142;                                               // save 126
   witness.red_lamps = {{.kind = core::AlarmKind::kHerdStarving, .subject = 3}};  // save 143
+  witness.horse_lamp.last_painted_day = 211;                                     // save 147
+  witness.horse_lamp.teams_short[19] = 2;
   return witness;
 }
 
@@ -1394,6 +1401,11 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
     chunks.push_back({"red_lamps.kind", U8(static_cast<std::uint8_t>(lamp.kind))});
     chunks.push_back({"red_lamps.subject", U32(lamp.subject)});
   }
+  // Save 147: the horse lamp's year — its last painted day, a byte a day.
+  chunks.push_back({"horse_lamp.last_painted_day", U32(world.horse_lamp.last_painted_day)});
+  for (const std::uint8_t teams : world.horse_lamp.teams_short) {
+    chunks.push_back({"horse_lamp.teams_short", U8(teams)});
+  }
   return chunks;
 }
 
@@ -1570,7 +1582,10 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // predicted 653 -> 654 before the build, held.
     // Save 143: +14 — the red lamps of the last daily check, a count and two
     // lamps of five bytes; predicted 654 -> 668 before the build, held.
-    {"world", 668, 0x4c17aa9a808624a9ULL},
+    // Save 147: +52 — the horse lamp's year, a day and forty-eight bytes at
+    // the block's end; predicted 668 -> 720 with every other section
+    // unmoved before the build, held; the hash read off the first build.
+    {"world", 720, 0xd4b5c2ed23de7a8ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2246,6 +2261,10 @@ int main() {
                          loaded.red_lamps[1].kind == core::AlarmKind::kLogisticsLate &&
                          loaded.red_lamps[1].subject == 0x01020304,
                      "the red lamps of the last daily check come back, in order (save 143)");
+  failures +=
+      Expect(loaded.horse_lamp.last_painted_day == 205 && loaded.horse_lamp.teams_short[1] == 3 &&
+                 loaded.horse_lamp.teams_short[13] == 7 && loaded.horse_lamp.teams_short[0] == 0,
+             "the horse lamp's year comes back, day and bytes in place (save 147)");
   failures += Expect(loaded.chairman.days_off_cancelled_in_a_row == 2 &&
                          loaded.chairman.cancelled_day_off == 55 &&
                          loaded.chairman.place_after_declaring == 1,

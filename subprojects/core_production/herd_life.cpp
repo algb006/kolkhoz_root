@@ -160,6 +160,26 @@ std::uint16_t MalesAfterLoss(std::uint16_t males, std::uint16_t adults_before, s
   return kept < left ? kept : left;
 }
 
+std::uint16_t MalesAfterHandOver(const LivestockDef& kind,
+                                 std::uint16_t males,
+                                 std::uint16_t adults_before,
+                                 std::uint16_t gone) {
+  if (kind.males_work == 0 || gone >= adults_before) {
+    return MalesAfterLoss(males, adults_before, gone);
+  }
+  // The males first, one head at a time, while the herd left would still
+  // hold its sire share.
+  std::uint16_t males_first = 0;
+  while (males_first < gone && males_first < males &&
+         static_cast<std::uint16_t>(males - males_first - 1U) >=
+             TargetMales(kind, static_cast<std::uint16_t>(adults_before - males_first - 1U))) {
+    ++males_first;
+  }
+  return MalesAfterLoss(static_cast<std::uint16_t>(males - males_first),
+                        static_cast<std::uint16_t>(adults_before - males_first),
+                        static_cast<std::uint16_t>(gone - males_first));
+}
+
 std::uint16_t TotalHeads(const HerdRow& herd) {
   return static_cast<std::uint16_t>(herd.newborn_count + herd.juvenile_count + herd.adult_count);
 }
@@ -258,6 +278,22 @@ void RunMaturation(const ProductionConfig& config,
   const std::uint16_t males_target = TargetMales(kind, herd.adult_count);
   if (kind.sexed == 0) {
     herd.adult_male_count = 0;
+    return;
+  }
+  // A KIND WHOSE MALES ARE WORK STOCK KEEPS THEM ALL (LivestockDef::
+  // males_work; 0.37.209; Livestock design: «Работают и кобылы, и жеребцы»).
+  // Half of what matures is male, as for every kind — counted through the
+  // same carried stream the cull draws from, so no head is lost to rounding —
+  // and they join the adults COUNTED AS MALES: a colt counted a mare would
+  // foal (RunBirths takes the females as adults less males). Nothing is
+  // culled, booked or said. Until 0.37.209 the horse kept one sire to
+  // fourteen like a cow and the other colts vanished with no carcass — 312 in
+  // nine villages by year 5, against 398 horses standing.
+  if (kind.males_work != 0) {
+    const std::uint16_t young_males =
+        DrawFlow(herd.cull_progress, static_cast<float>(grown) * 0.5F);
+    herd.adult_male_count = static_cast<std::uint16_t>(std::min<std::uint32_t>(
+        herd.adult_male_count + std::min(young_males, grown), herd.adult_count));
     return;
   }
   const auto room_for_males = static_cast<float>(

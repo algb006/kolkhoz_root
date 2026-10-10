@@ -29,9 +29,12 @@
 /// — the calving band, a billeted herd, a hungry herd, a kind that keeps
 /// sires with none, a horse with no stable — as herd_life.cpp does; a test
 /// holds the two to one head a herd on a year of a fixture, a billeted herd
-/// included (0.37.57). Deaths and culls are NOT forecast: the need is the
-/// larger for it, and a forecast that over-predicts the need lights early,
-/// the safe side.
+/// included (0.37.57). Deaths are NOT forecast: the need is the larger for it,
+/// and a forecast that over-predicts the need lights early, the safe side.
+/// The cull of young males IS forecast since 0.37.95 (MatureOneDay) — this
+/// paragraph said «deaths and culls are not» until 0.37.209 — and a kind
+/// whose males are work stock (LivestockDef::males_work) keeps them all, in
+/// the forecast as in the herd.
 #ifndef CORE_PRODUCTION_HERD_FORECAST_H_
 #define CORE_PRODUCTION_HERD_FORECAST_H_
 

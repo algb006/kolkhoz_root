@@ -20,6 +20,7 @@
 #include "core_common/fund_ladder.h"
 #include "core_common/herd_age_band.h"
 #include "core_common/herd_state.h"
+#include "core_common/horse_lamp_memory.h"
 #include "core_common/ids.h"
 #include "core_common/map_obstacles.h"
 #include "core_common/obstacle_raster.h"
@@ -2476,6 +2477,41 @@ int TestRoadIndex() {
   return failures;
 }
 
+/// THE HORSE LAMP'S YEAR (horse_lamp_memory.h; save 147): painted on day 10
+/// with two teams short and on day 12 with five; the year's worst is five
+/// while day 12 is in the year, and the lamp is dark a year after day 12. A
+/// painting on day 70 clears the dark days between — day 60's slot, which is
+/// day 12's, says nothing of day 12 any more. The young kept: a third of the
+/// adults and the year's worst more while lit.
+int TestHorseLampMemory() {
+  int failures = 0;
+  core::HorseLampMemory memory;
+  failures += Expect(
+      !core::HorseLampLitWithinYear(memory, 0) && core::HorseLampTeamsShortOfYear(memory, 0) == 0,
+      "horse lamp: never painted is dark, nought teams short");
+  core::NoteHorseLampPainted(memory, 10, 2);
+  core::NoteHorseLampPainted(memory, 12, 5);
+  core::NoteHorseLampPainted(memory, 12, 3);  // the same day again: the worst stays
+  failures += Expect(
+      core::HorseLampLitWithinYear(memory, 20) && core::HorseLampTeamsShortOfYear(memory, 20) == 5,
+      "horse lamp: within the year, lit, the year's worst five");
+  failures += Expect(
+      core::HorseLampLitWithinYear(memory, 59) && core::HorseLampTeamsShortOfYear(memory, 59) == 5,
+      "horse lamp: day 59 still holds day 12, the last day of its year");
+  failures += Expect(
+      !core::HorseLampLitWithinYear(memory, 60) && core::HorseLampTeamsShortOfYear(memory, 60) == 0,
+      "horse lamp: a whole year after day 12 it is dark, nought");
+  core::NoteHorseLampPainted(memory, 70, 1);
+  failures += Expect(core::HorseLampTeamsShortOfYear(memory, 70) == 1,
+                     "horse lamp: painted again on day 70 with one — the dark days between are "
+                     "cleared, day 12's five is not read as day 60's");
+  failures += Expect(
+      core::HorseYoungKept(memory, 21, 70) == 7 + 1 && core::HorseYoungKept(memory, 21, 200) == 7,
+      "horse lamp: the young kept — a third of the adults, and the year's worst "
+      "more while lit");
+  return failures;
+}
+
 /// THE HERD'S AGE BAND (herd_age_band.h; 0.35.16): set by the first heads,
 /// widened by more within a year of it, folded when herds are gathered, aged,
 /// and cut from the top when the oldest go — the top of a uniform band, by
@@ -2774,6 +2810,7 @@ int main() {
   int failures = 0;
   failures += TestDistrictVisitPacking();
   failures += TestHerdAgeBand();
+  failures += TestHorseLampMemory();
   failures += TestRoadBeds();
   failures += TestRoadGraph();
   failures += TestRoadViews();

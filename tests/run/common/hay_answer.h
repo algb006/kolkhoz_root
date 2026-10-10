@@ -258,8 +258,12 @@ class HayAnswer {
     }
   }
 
-  /// `heads` adults of the kolkhoz herds `pick` selects, herd by herd in row
-  /// order — an order a herd. Returns the heads put into orders.
+  /// `heads` of the kolkhoz herds `pick` selects, herd by herd in row order —
+  /// an order a herd. A cow herd is asked for its adults; a HORSE herd for any
+  /// of its heads, because the door hands a horse herd's young above what it
+  /// keeps first and its adults only while the lamp has been dark a year
+  /// (district_limit.cpp, OrderHandStock) — the advice counted the horses in
+  /// that same order. Returns the heads put into orders.
   template <typename Pick>
   std::int64_t Hand(const core::WorldState& world,
                     Pick pick,
@@ -269,13 +273,19 @@ class HayAnswer {
     for (std::uint32_t row = 0; row < world.herds.rows.size() && handed < heads; ++row) {
       const core::HerdRow& herd = world.herds.rows[row];
       if (herd.household_owned != 0 || herd.kind.value >= kinds_.size() ||
-          !pick(kinds_[herd.kind.value]) || herd.adult_count == 0) {
+          !pick(kinds_[herd.kind.value])) {
+        continue;
+      }
+      const std::int64_t young =
+          kinds_[herd.kind.value].horse ? herd.juvenile_count + herd.newborn_count : 0;
+      const std::int64_t askable = static_cast<std::int64_t>(herd.adult_count) + young;
+      if (askable == 0) {
         continue;
       }
       core::OrderRow order;
       order.kind = core::OrderKind::kHandStock;
       order.herd = world.herds.row_ids[row];
-      order.amount = std::min<std::int64_t>(heads - handed, herd.adult_count);
+      order.amount = std::min<std::int64_t>(heads - handed, askable);
       handed += order.amount;
       orders.push_back(order);
       ++hand_orders_;

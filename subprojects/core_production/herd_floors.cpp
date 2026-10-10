@@ -7,6 +7,7 @@
 #include <limits>
 
 #include "core_common/calendar.h"
+#include "core_common/horse_lamp_memory.h"
 #include "core_common/land_state.h"
 #include "core_common/ledger_state.h"
 #include "core_common/quantities.h"
@@ -136,7 +137,25 @@ HandOverAdvice LeastHeadsToHandOver(const ProductionConfig& config, const WorldS
     heads.juveniles += herd.juvenile_count;
   }
   const HerdFloors floors = HerdFloorsOf(config, world);
-  const std::int64_t horses_above = std::max<std::int64_t>(0, horses.adults - floors.horses_kept);
+  // THE HORSES ABOVE, IN THE DOOR'S ORDER (district_limit.cpp, OrderHandStock;
+  // horse_lamp_memory.h): the young above what each herd keeps, and the
+  // adults above the ploughing's floor ONLY while the lamp «лошадей не
+  // хватает» has been dark a whole year — while it is lit an adult horse is
+  // not surplus, whatever the floor says.
+  std::int64_t young_above = 0;
+  for (const HerdRow& herd : world.herds.rows) {
+    if (herd.household_owned != 0 || herd.kind.value != config.horse_kind.value) {
+      continue;
+    }
+    const std::int64_t young = static_cast<std::int64_t>(herd.juvenile_count) + herd.newborn_count;
+    young_above += std::max<std::int64_t>(
+        0, young - HorseYoungKept(world.horse_lamp, herd.adult_count, world.calendar.day));
+  }
+  const std::int64_t adults_above =
+      HorseLampLitWithinYear(world.horse_lamp, world.calendar.day)
+          ? 0
+          : std::max<std::int64_t>(0, horses.adults - floors.horses_kept);
+  const std::int64_t horses_above = young_above + adults_above;
   const std::int64_t cows_above = std::max<std::int64_t>(0, cows.adults - floors.cows_kept);
   // One class of `handed` taken from `from` (short there) up to `upto`:
   // true, and the class left at the least count that feeds the rest, when

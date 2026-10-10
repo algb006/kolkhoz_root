@@ -518,6 +518,14 @@ class EventsSlot final : public ISequentialPhase {
     }
     std::vector<Alarm> alarms;
     CollectWorldAlarms(alarm_sources_, current, alarms);
+    // THE HORSE LAMP'S YEAR, NOTED FROM THE SAME PAINTING (horse_lamp_memory.h;
+    // save 147): the rule that keeps young horses while the team is short
+    // reads what the world painted, not a second copy of the lamp's test.
+    for (const Alarm& alarm : alarms) {
+      if (alarm.kind == AlarmKind::kTooFewHorses && alarm.lamp != 0) {
+        NoteHorseLampPainted(current.horse_lamp, current.calendar.day, alarm.amount);
+      }
+    }
     std::vector<RedLamp> red;
     std::vector<const Alarm*> said;
     for (const Alarm& alarm : alarms) {

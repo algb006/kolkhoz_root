@@ -196,6 +196,25 @@ void RunBirths(const ProductionConfig& config,
 /// function the take will use is the only way the two cannot disagree.
 std::uint16_t MalesAfterLoss(std::uint16_t males, std::uint16_t adults_before, std::uint16_t gone);
 
+/// @brief The males left after `gone` adults of a herd are HANDED OVER to the
+///        district (district_limit.h, OrderHandStock; 0.37.209).
+///
+/// A KIND WHOSE MALES ARE WORK STOCK GIVES ITS MALES FIRST (LivestockDef::
+/// males_work; boss's ruling of 10 October 2026, option (b)): while the herd
+/// would still keep its sire share (TargetMales of the adults left) one head
+/// more of the `gone` is a male; only then the rest go as every loss does,
+/// the males in proportion (MalesAfterLoss). The design's «Лишних лошадей
+/// сдают райкому» speaks of surplus WORK stock: by proportion alone the
+/// canon's villages handed over 856 mares of 925 horses in ten years, and
+/// «how many horses» was silently a decision about foals. Every other kind:
+/// MalesAfterLoss, as before.
+/// @return Never above the adults left. The refusal kLastSire and the take
+///         itself ask this one function, so they cannot disagree.
+std::uint16_t MalesAfterHandOver(const LivestockDef& kind,
+                                 std::uint16_t males,
+                                 std::uint16_t adults_before,
+                                 std::uint16_t gone);
+
 /// @brief The mean age of the herd's adults, in game years; 0 with no adults.
 float MeanAdultAgeYears(const HerdRow& herd);
 

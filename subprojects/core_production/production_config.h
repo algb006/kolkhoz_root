@@ -220,6 +220,17 @@ struct LivestockDef {
   /// count, because "one bull" stops being right as the herd grows.
   float males_share = 0.0F;
 
+  /// THE KIND's MALES ARE WORK STOCK (livestock.csv `males_work`; 0.37.209;
+  /// Livestock design, the harness row: «В упряжке пол не решает ничего.
+  /// Работают и кобылы, и жеребцы» — the horse). A young male of such a kind
+  /// JOINS THE HERD at maturing, counted a male, where every other sexed
+  /// kind keeps `males_share` of them and sends the rest to meat; and the
+  /// district's door takes such a herd's MALES FIRST while it keeps its sire
+  /// share, then the oldest (district_limit.h, OrderHandStock). `males_share`
+  /// stays what it says for breeding and for the door: the sires the herd
+  /// does not part with. Absent from the table — 0, every kind as before.
+  std::uint8_t males_work = 0;
+
   // -- produce: per adult head per game year, or per head at slaughter -----
   /// Milk is in LITRES in the table and roughly a kilogram a litre in the
   /// store (quantities.h); parsing does not convert, the flow does.

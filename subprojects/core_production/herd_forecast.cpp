@@ -9,6 +9,7 @@
 
 #include "core_common/calendar.h"
 #include "core_common/fund_ladder.h"
+#include "core_common/horse_lamp_memory.h"
 #include "core_common/land_state.h"
 #include "core_common/ledger_state.h"
 #include "core_common/quantities.h"
@@ -108,7 +109,11 @@ void MatureOneDay(const LivestockDef& kind, ProjectedHerd& herd) {
     // (RunMaturation): half of what grows is male, the herd keeps its share
     // of sires, the rest is culled. Kept out of the forecast at first, it
     // carried a kolkhoz herd's bull calves for a year (0.37.57's pair).
-    if (kind.sexed != 0) {
+    if (kind.sexed != 0 && kind.males_work != 0) {
+      // A kind whose males are work stock keeps them all (RunMaturation;
+      // 0.37.209): half of what grows is male, none is culled.
+      herd.males += grown_juveniles * 0.5F;
+    } else if (kind.sexed != 0) {
       const auto target = static_cast<float>(TargetMales(kind, RoundHeads(herd.adults)));
       const float room = target > herd.males ? target - herd.males : 0.0F;
       const float culled = std::max(0.0F, grown_juveniles * 0.5F - room);
@@ -460,7 +465,19 @@ float TakeCohort(const ProductionConfig& config,
     float& cohort = adults ? herd.adults : herd.juveniles;
     const float gone = std::min(cohort, wanted);
     if (adults && cohort > 0.0F) {
-      herd.males *= (cohort - gone) / cohort;
+      // AS THE DOOR TAKES THEM (herd_life.h, MalesAfterHandOver; 0.37.209): a
+      // kind whose males are work stock gives its males first, down to its
+      // sire share of the adults left; the rest, and every other kind, in
+      // proportion.
+      float males_first = 0.0F;
+      if (herd.kind.value < config.livestock.size() &&
+          config.livestock[herd.kind.value].males_work != 0) {
+        const float sires = config.livestock[herd.kind.value].males_share * (cohort - gone);
+        males_first = std::clamp(herd.males - sires, 0.0F, gone);
+      }
+      const float after_males = cohort - males_first;
+      herd.males =
+          after_males > 0.0F ? (herd.males - males_first) * ((cohort - gone) / after_males) : 0.0F;
     }
     cohort -= gone;
     wanted -= gone;
@@ -468,9 +485,40 @@ float TakeCohort(const ProductionConfig& config,
   return wanted;
 }
 
-/// HeadsHandedOver off the projected herds, in its own order: the adults of
-/// a class, then its juveniles.
+/// The horses' share of HeadsHandedOver off the projected herds IN THE
+/// DOOR'S ORDER (district_limit.cpp, OrderHandStock; horse_lamp_memory.h):
+/// the young above what each herd keeps — newborns, then juveniles — and the
+/// adults only while the lamp has been dark a whole year; a kept young never.
+void TakeHorsesHandedOver(const ProductionConfig& config,
+                          const WorldState& world,
+                          std::int64_t heads,
+                          std::vector<ProjectedHerd>& herds) {
+  const LivestockKindId cow = MilkKind(config);
+  auto wanted = static_cast<float>(heads);
+  for (ProjectedHerd& herd : herds) {
+    if (!(wanted > 0.0F) || ClassOf(config, cow, herd.kind) != HeadClass::kHorses) {
+      continue;
+    }
+    const auto kept = static_cast<float>(HorseYoungKept(
+        world.horse_lamp, static_cast<std::int64_t>(herd.adults), world.calendar.day));
+    float above = std::max(0.0F, herd.newborns + herd.juveniles - kept);
+    const float newborns = std::min({herd.newborns, above, wanted});
+    herd.newborns -= newborns;
+    above -= newborns;
+    wanted -= newborns;
+    const float juveniles = std::min({herd.juveniles, above, wanted});
+    herd.juveniles -= juveniles;
+    wanted -= juveniles;
+  }
+  if (!HorseLampLitWithinYear(world.horse_lamp, world.calendar.day)) {
+    TakeCohort(config, cow, HeadClass::kHorses, true, wanted, herds);
+  }
+}
+
+/// HeadsHandedOver off the projected herds, in the door's order: the horses
+/// by TakeHorsesHandedOver; every other class its adults, then its juveniles.
 void TakeHandedOver(const ProductionConfig& config,
+                    const WorldState& world,
                     const HeadsHandedOver& handed,
                     std::vector<ProjectedHerd>& herds) {
   const LivestockKindId cow = MilkKind(config);
@@ -483,7 +531,7 @@ void TakeHandedOver(const ProductionConfig& config,
                TakeCohort(config, cow, of_class, true, wanted, herds),
                herds);
   };
-  take(HeadClass::kHorses, handed.horses);
+  TakeHorsesHandedOver(config, world, handed.horses, herds);
   take(HeadClass::kCows, handed.cows);
   take(HeadClass::kOther, handed.other);
 }
@@ -583,7 +631,7 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
   // herds that stand, before the stock on the road is added — a head bought
   // and not yet come is not the chairman's to hand back.
   if (handed != nullptr) {
-    TakeHandedOver(config, *handed, herds);
+    TakeHandedOver(config, world, *handed, herds);
   }
   // THE MOVES ALREADY MADE (econ §4а, boss [70]): stock bought on the limit
   // stands in from its day; its heads eat from the farm's stores.

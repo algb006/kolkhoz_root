@@ -3083,6 +3083,201 @@ int CheckYardOffspringReplaces() {
   return failures;
 }
 
+/// A KIND WHOSE MALES ARE WORK STOCK (LivestockDef::males_work; 0.37.209;
+/// Livestock design: «Работают и кобылы, и жеребцы»): its young males join
+/// the herd at maturing, counted as males, and nothing is culled; and the
+/// district's door takes its MALES FIRST while the herd keeps its sire
+/// share, then the oldest in proportion. The pair of each: the same kind
+/// without the mark culls and gives by proportion, as before.
+int CheckWorkStockMales() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  core::LivestockDef& horse = config.livestock[0];
+  horse.males_share = 0.07F;  // a sire to about fourteen
+  horse.births_per_game_year = 0.0F;
+  config.limit.lots.resize(1);
+  config.limit.lots[0].points = 100;
+  config.limit.lots[0].kind = core::LimitLotKind::kLivestock;
+  config.limit.lots[0].livestock = core::LivestockKindId{0};
+  config.limit.lots[0].head_count = 1;
+  config.limit.handover_share_adult = 0.55F;
+
+  // -- the maturing: twenty adults with one sire, eight young growing up ------
+  struct Grown {
+    std::uint16_t adults = 0;
+    std::uint16_t males = 0;
+    std::uint16_t young = 0;
+    std::uint32_t culled = 0;
+    std::uint32_t said = 0;
+  };
+
+  const auto mature = [&config](std::uint8_t males_work) {
+    config.livestock[0].males_work = males_work;
+    core::WorldState world = MakeHerdWorld(1000.0F);
+    const core::HerdId id = AddHerd(world, 0, 20, 1, true);
+    core::HerdRow& herd = world.herds.rows[0];
+    herd.juvenile_count = 8;
+    const core::HerdPlace place{};
+    for (int day = 0; day < 60; ++day) {
+      core::RunMaturation(config, config.livestock[0], place, herd, id, world);
+    }
+    Grown grown{.adults = herd.adult_count,
+                .males = herd.adult_male_count,
+                .young = herd.juvenile_count,
+                .culled = world.ledger.current.herd_culled};
+    for (const core::SimEvent& event : world.step_events) {
+      grown.said += event.kind == core::EventKind::kHerdMalesCulled ? 1U : 0U;
+    }
+    return grown;
+  };
+  const Grown kept = mature(1);
+  const Grown culled = mature(0);
+  std::cout
+      << "  work-stock males, eight young maturing beside twenty adults with one sire: kept — "
+      << kept.adults << " adults, " << kept.males << " males, culled " << kept.culled
+      << "; without the mark — " << culled.adults << " adults, " << culled.males
+      << " males, culled " << culled.culled << '\n';
+  failures += Expect(kept.young == 0 && kept.adults == 28 && kept.males == 5,
+                     "work-stock males: all eight young join the adults, the four males of them "
+                     "counted as males beside the sire");
+  failures += Expect(kept.culled == 0 && kept.said == 0,
+                     "work-stock males: nothing is culled and no cull is said");
+  failures += Expect(culled.young == 0 && culled.adults == 25 && culled.males == 2 &&
+                         culled.culled == 3 && culled.said > 0,
+                     "work-stock males, the pair: without the mark the herd keeps its share — one "
+                     "sire more — and three young males go to meat, said");
+
+  // -- and the forecast grows the herd the same way ---------------------------
+  const auto forecast = [&config](std::uint8_t males_work) {
+    config.livestock[0].males_work = males_work;
+    core::WorldState world = MakeHerdWorld(1000.0F);
+    const core::HerdId id = AddHerd(world, 0, 20, 1, true);
+    world.herds.rows[0].juvenile_count = 8;
+    return core::ForecastHerdHeads(config, world, id, 60);
+  };
+  const float forecast_kept = forecast(1);
+  const float forecast_culled = forecast(0);
+  std::cout << "  work-stock males, the forecast of the same herd sixty days on: kept "
+            << forecast_kept << " heads, without the mark " << forecast_culled << '\n';
+  failures += Expect(std::abs(forecast_kept - 28.0F) <= 1.0F,
+                     "work-stock males: the forecast keeps every young male, within a head of "
+                     "the herd's own twenty-eight");
+  failures += Expect(std::abs(forecast_culled - 25.0F) <= 1.0F,
+                     "work-stock males, the pair: without the mark the forecast culls, within a "
+                     "head of the herd's own twenty-five");
+
+  // -- the door: males first while the sire share is kept, then by proportion --
+  const auto hand =
+      [&config](
+          std::uint8_t males_work, std::uint16_t adults, std::uint16_t males, std::int64_t heads) {
+        config.livestock[0].males_work = males_work;
+        core::WorldState world = MakeHerdWorld(1000.0F);
+        const core::HerdId id = AddHerd(world, 0, adults, males, true);
+        core::OrderRow order;
+        order.kind = core::OrderKind::kHandStock;
+        order.herd = id;
+        order.amount = heads;
+        const core::OrderRefusal refusal = core::OrderHandStock(config, world, order);
+        return std::array<int, 3>{static_cast<int>(refusal),
+                                  static_cast<int>(world.herds.rows[0].adult_count),
+                                  static_cast<int>(world.herds.rows[0].adult_male_count)};
+      };
+  const int taken = static_cast<int>(core::OrderRefusal::kNone);
+  // Twelve mares and twelve males, six handed: all six are males — eighteen
+  // left keep their one sire five times over.
+  failures += Expect(hand(1, 24, 12, 6) == std::array<int, 3>{taken, 18, 6},
+                     "work-stock males at the door: of twelve mares and twelve males six handed "
+                     "are six males — the mares stay");
+  failures += Expect(hand(0, 24, 12, 6) == std::array<int, 3>{taken, 18, 9},
+                     "work-stock males at the door, the pair: without the mark the six go by "
+                     "proportion — three males, three females");
+  // Seventeen mares and three males, six handed: two males go first (the
+  // third is the sire of the eighteen left), then four by proportion — the
+  // sire stays among fourteen.
+  failures += Expect(hand(1, 20, 3, 6) == std::array<int, 3>{taken, 14, 1},
+                     "work-stock males at the door: the males go first only down to the sire "
+                     "share — of three, two; the sire stays with the fourteen left");
+  // And the helper says what the door did, for the refusal that asks it.
+  config.livestock[0].males_work = 0;
+  const std::uint16_t by_proportion = core::MalesAfterHandOver(config.livestock[0], 12, 24, 6);
+  config.livestock[0].males_work = 1;
+  const std::uint16_t males_first = core::MalesAfterHandOver(config.livestock[0], 12, 24, 6);
+  failures += Expect(by_proportion == 9 && males_first == 6,
+                     "work-stock males: the door's arithmetic is one function for the refusal and "
+                     "the take");
+  return failures;
+}
+
+/// THE HORSES' ORDER AT THE DOOR (econ's rule «the base does not breed
+/// horses for points»; district_limit.cpp, OrderHandStock;
+/// horse_lamp_memory.h). Twelve adults, six juveniles, four newborns; the
+/// herd keeps four young (a third of twelve), and two more while the lamp
+/// was painted within the year with two teams short.
+/// - Lit: six asked — the four young above six kept go, the newborns first;
+///   no adult, though two more were asked.
+/// - Dark: six asked — four newborns and two juveniles (six above four
+///   kept), no adult; nine asked — the same six and then three adults.
+/// - Lit with no young above what is kept: refused kRuleForbids, nothing
+///   taken.
+int CheckHorsesOrderAtTheDoor() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.horse_kind = core::LivestockKindId{0};
+  config.limit.lots.resize(1);
+  config.limit.lots[0].points = 100;
+  config.limit.lots[0].kind = core::LimitLotKind::kLivestock;
+  config.limit.lots[0].livestock = core::LivestockKindId{0};
+  config.limit.lots[0].head_count = 1;
+
+  struct Left {
+    core::OrderRefusal refusal = core::OrderRefusal::kNone;
+    int adults = 0;
+    int juveniles = 0;
+    int newborns = 0;
+  };
+
+  const auto hand =
+      [&config](bool lit, std::uint16_t juveniles, std::uint16_t newborns, std::int64_t heads) {
+        core::WorldState world = MakeHerdWorld(1000.0F);
+        world.calendar.day = 100;
+        if (lit) {
+          core::NoteHorseLampPainted(world.horse_lamp, 90, 2);
+        }
+        const core::HerdId id = AddHerd(world, 0, 12, 2, true);
+        world.herds.rows[0].juvenile_count = juveniles;
+        world.herds.rows[0].newborn_count = newborns;
+        core::OrderRow order;
+        order.kind = core::OrderKind::kHandStock;
+        order.herd = id;
+        order.amount = heads;
+        Left left;
+        left.refusal = core::OrderHandStock(config, world, order);
+        left.adults = world.herds.rows[0].adult_count;
+        left.juveniles = world.herds.rows[0].juvenile_count;
+        left.newborns = world.herds.rows[0].newborn_count;
+        return left;
+      };
+  const Left lit = hand(true, 6, 4, 6);
+  failures += Expect(lit.refusal == core::OrderRefusal::kNone && lit.newborns == 0 &&
+                         lit.juveniles == 6 && lit.adults == 12,
+                     "horses' order, lit: the four young above the six kept go, newborns "
+                     "first — no adult");
+  const Left dark = hand(false, 6, 4, 6);
+  failures += Expect(dark.refusal == core::OrderRefusal::kNone && dark.newborns == 0 &&
+                         dark.juveniles == 4 && dark.adults == 12,
+                     "horses' order, dark: six asked are the four newborns and two juveniles "
+                     "above the four kept");
+  const Left dark_more = hand(false, 6, 4, 9);
+  failures += Expect(dark_more.refusal == core::OrderRefusal::kNone && dark_more.newborns == 0 &&
+                         dark_more.juveniles == 4 && dark_more.adults == 9,
+                     "horses' order, dark: nine asked — the six young, then three adults");
+  const Left none = hand(true, 3, 0, 2);
+  failures += Expect(
+      none.refusal == core::OrderRefusal::kRuleForbids && none.adults == 12 && none.juveniles == 3,
+      "horses' order, lit with no young above the kept: refused, nothing taken");
+  return failures;
+}
+
 int CheckHandingStockBack() {
   int failures = 0;
   core::ProductionConfig config = MakeHerdConfig();
@@ -15663,6 +15858,8 @@ int main() {
   failures += CheckStableGate();
   failures += CheckNightPasture();
   failures += CheckYardOffspringReplaces();
+  failures += CheckWorkStockMales();
+  failures += CheckHorsesOrderAtTheDoor();
   failures += CheckHandingStockBack();
   failures += CheckElectrification();
   failures += CheckTheMeadowFlowersAndTheAftermathComesBack();

@@ -677,6 +677,19 @@ bool ParseLivestock(const ITable& table, std::vector<LivestockDef>& livestock, s
       error = "livestock: " + error;
       return false;
     }
+    // `males_work` (0.37.209): absent or empty - 0, the kind as before.
+    float males_work = 0.0F;
+    if (!CellOrDefault(table,
+                       row,
+                       table.FindColumn("males_work"),
+                       Range{.low = 0, .high = 1},
+                       0,
+                       males_work,
+                       error)) {
+      error = "livestock: " + error;
+      return false;
+    }
+    kind.males_work = static_cast<std::uint8_t>(males_work);
     const std::string_view group =
         group_col == kNoTableColumn ? std::string_view{} : table.CellText(row, group_col);
     kind.household_group = group == "stock" ? 1U : (group == "bird" ? 2U : 0U);

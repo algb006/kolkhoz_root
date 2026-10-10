@@ -224,7 +224,15 @@ static_assert(AggregateArity<BarterWatch>() == 5,
 static_assert(sizeof(RedLamp) == 8, "RedLamp changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<RedLamp>() == 2,
               "RedLamp gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<WorldState>() == 46,
+// Save 147: the horse lamp's memory of the last year, the forty-seventh — a
+// day and forty-eight bytes at the world block's end. Predicted before the
+// build: HorseLampMemory 52 bytes and two fields (the day's u32, the year's
+// bytes); the section «world» 668 -> 720 with every other section unmoved.
+static_assert(sizeof(HorseLampMemory) == 52,
+              "HorseLampMemory changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<HorseLampMemory>() == 2,
+              "HorseLampMemory gained or lost a field — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<WorldState>() == 47,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 
@@ -555,6 +563,11 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
     out.WriteU8(static_cast<std::uint8_t>(lamp.kind));
     out.WriteU32(lamp.subject);
   }
+  // The horse lamp's year (save 147): its last painted day, then a byte a day.
+  out.WriteU32(world.horse_lamp.last_painted_day);
+  for (const std::uint8_t teams : world.horse_lamp.teams_short) {
+    out.WriteU8(teams);
+  }
 }
 
 void ReadWorldBlocks(LoadSource& source, WorldState* world) {
@@ -768,6 +781,12 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
       return;
     }
     world->red_lamps.push_back(lamp);
+  }
+  // The horse lamp's year (save 147): any day is a day, and so is «never»;
+  // a byte a day of the year, any count of teams.
+  world->horse_lamp.last_painted_day = in.ReadU32();
+  for (std::uint8_t& teams : world->horse_lamp.teams_short) {
+    teams = in.ReadU8();
   }
 }
 
