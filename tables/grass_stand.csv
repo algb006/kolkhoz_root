@@ -1,0 +1,11 @@
+# generated from db/design.db — do not edit by hand
+# one row a summer of a sown hay stand; the LAST row is «this summer and every later»
+# yield_factor: the share of the crop's table yield; banks_fertility: 1 = the cut adds the crop's fertility_delta to the field, 0 = not
+# natural and marked meadows have no age and do not read this table
+# EVERY NUMBER IS A STUB: econ's estimate (clover-stand-age-2026-10-10) until the core's pair
+summer,yield_factor,banks_fertility
+1,0.7,1
+2,1,1
+3,1,1
+4,0.7,1
+5,0.4,0

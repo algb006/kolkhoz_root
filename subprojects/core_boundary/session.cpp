@@ -509,6 +509,10 @@ class Session final : public ISession {
     return simulation_->PreviewMeadowMark(position, area_ha, field);
   }
 
+  GrassStandView GrassStandOf(FieldId field) const override {
+    return simulation_->GrassStandOf(field);
+  }
+
   RoadPieces SelectRoadPieces(const RoadSelection& selection,
                               RoadOperation operation) const override {
     return simulation_->SelectRoadPieces(selection, operation);

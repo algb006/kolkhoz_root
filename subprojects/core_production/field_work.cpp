@@ -266,10 +266,64 @@ void CapRestedFertility(const ProductionConfig& config, FieldRow& field) {
   }
 }
 
+FarmingConfig::GrassStandSummer GrassStandOfSummer(const ProductionConfig& config,
+                                                   const FieldRow& field) {
+  const std::vector<FarmingConfig::GrassStandSummer>& life = config.farming.grass_stand;
+  if (life.empty()) {
+    return FarmingConfig::GrassStandSummer{};
+  }
+  const std::size_t summer = field.stand_summers == 0 ? 1U : field.stand_summers;
+  return life[std::min(summer, life.size()) - 1U];
+}
+
+GrassStandView GrassStandOn(const ProductionConfig& config,
+                            const WorldState& world,
+                            FieldId field_id) {
+  GrassStandView view;
+  const std::uint32_t row = FindRow(world.fields, field_id);
+  if (row == kNoRow) {
+    return view;
+  }
+  const FieldRow& field = world.fields.rows[row];
+  if (field.kind != LandKind::kArable || field.crop.value >= config.crops.size() ||
+      !config.crops[field.crop.value].stand_ages) {
+    return view;
+  }
+  const CropDef& crop = config.crops[field.crop.value];
+  const FarmingConfig::GrassStandSummer summer = GrassStandOfSummer(config, field);
+  view.stands = true;
+  view.summer = field.stand_summers == 0 ? std::uint8_t{1} : field.stand_summers;
+  view.summers_described =
+      static_cast<std::uint8_t>(std::min<std::size_t>(config.farming.grass_stand.size(), 255U));
+  view.yield_factor = summer.yield_factor;
+  view.banks_fertility = summer.banks_fertility;
+  view.being_cut = field.phase == FieldPhase::kHarvest;
+  // One cut a calendar year (land_state.h, last_cut_day): after it nothing
+  // stands to be lost until the next summer's grass.
+  const bool cut_this_year = field.last_cut_day != kNeverReapedDay &&
+                             field.last_cut_day / kDaysPerYear == world.calendar.day / kDaysPerYear;
+  view.hay_standing = cut_this_year ? 0 : StandingYieldGrams(config, field, crop);
+  return view;
+}
+
+void EndGrassStand(WorldState& current, FieldRow& field) {
+  field.last_crop = field.crop;
+  field.crop = CropId{};
+  field.stand_summers = 0;
+  field.work_days_remaining = 0.0F;
+  ClearFieldWeather(field);
+  MoveFieldPhase(current, field, FieldPhase::kIdle);
+}
+
 Grams FieldYieldGrams(const ProductionConfig& config, const FieldRow& field, const CropDef& crop) {
   // At most 100 however far a paid dose lifts the row before its harvest
   // settles the cap (0.37.13; SoilFertility).
-  const float soil_factor = SoilFertility(field) / config.farming.fertility_neutral;
+  float soil_factor = SoilFertility(field) / config.farming.fertility_neutral;
+  // A SOWN GRASS STAND (0.37.212): the table's yield is its ceiling, and the
+  // stand's summer scales it (field_work.h).
+  if (crop.stand_ages) {
+    soil_factor = std::min(soil_factor, 1.0F) * GrassStandOfSummer(config, field).yield_factor;
+  }
   // The sum of the two, capped exactly where the single number was.
   const float stress_total = field.drought_stress + field.wet_stress;
   const float capped =
@@ -450,7 +504,15 @@ void Harvest(const ProductionConfig& config,
   const float charged = repeated < config.farming.repeat_penalty_max_years
                             ? repeated
                             : config.farming.repeat_penalty_max_years;
-  field.fertility += crop.fertility_delta - charged * config.farming.repeat_penalty_per_year;
+  // A SOWN GRASS STAND BANKS ONLY WHILE IT IS ALIVE (0.37.212; grass_stand.csv
+  // `banks_fertility`): the +4 of a clover cut is for the crop that comes
+  // after the stand, and a stand past its life must not keep paying. Until
+  // 0.37.212 every cut banked for ever and the gain came back to the grass
+  // itself through the yield.
+  const float banked = crop.stand_ages && !GrassStandOfSummer(config, field).banks_fertility
+                           ? 0.0F
+                           : crop.fertility_delta;
+  field.fertility += banked - charged * config.farming.repeat_penalty_per_year;
   // And a floor under it: an exhausted field bears little, but it bears.
   const float floor_value = config.farming.fertility_floor;
   field.fertility = field.fertility < floor_value ? floor_value : field.fertility;
@@ -474,6 +536,13 @@ void Harvest(const ProductionConfig& config,
     field.last_cut_day = current.calendar.day;
   }
   if (crop.is_perennial && field.rotation_year1.value == field.crop.value) {
+    // The stand outlives this cut and enters its next summer (0.37.212;
+    // land_state.h, stand_summers): counted here, after the cut has read its
+    // own summer's factor and banked by its own summer's rule.
+    if (crop.stand_ages) {
+      const std::uint32_t summer = field.stand_summers == 0 ? 1U : field.stand_summers;
+      field.stand_summers = static_cast<std::uint8_t>(std::min<std::uint32_t>(summer + 1U, 255U));
+    }
     MoveFieldPhase(current, field, FieldPhase::kGrowing);  // the stand yields again
     return;
   }
@@ -1351,6 +1420,10 @@ void FinishSowing(const ProductionConfig& config, WorldState& current, FieldRow&
   }
   current.ledger.current.area_sown_ha += field.area_ga * field.sown_share;
   field.crop = crop_id;
+  // A sown grass stand begins its first summer here (0.37.212); any other
+  // sowing clears the count.
+  field.stand_summers =
+      crop_id.value < config.crops.size() && config.crops[crop_id.value].stand_ages ? 1 : 0;
   MoveFieldPhase(current, field, FieldPhase::kGrowing);
   field.work_days_remaining = 0.0F;
   ClearFieldWeather(field);

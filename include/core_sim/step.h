@@ -73,6 +73,7 @@
 #include "core_common/deadline.h"
 #include "core_common/delivery_term.h"
 #include "core_common/elder_view.h"
+#include "core_common/grass_stand_view.h"
 #include "core_common/ids.h"
 #include "core_common/issue_norm_view.h"
 #include "core_common/labor_state.h"
@@ -413,6 +414,15 @@ class ISimulation {
   ///       call builds the obstacle raster if no road was traced before it;
   ///       a 100 ha mark reads ~160 000 cells.
   virtual MeadowMarkAnswer PreviewMeadowMark(Vec2 position, float area_ha, FieldId field) const = 0;
+
+  /// @brief The sown grass stand on `field` (core_common/grass_stand_view.h;
+  /// 0.37.212): the summer it is in, this summer's yield factor, whether it
+  /// still banks fertility, the hay standing uncut — what a renewal by
+  /// kSetRotation would lose now — and whether it is being cut (the order is
+  /// then refused). `stands` false for a field with no such stand. Fans out
+  /// to core_production; the bare engine knows no crops and answers none.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual GrassStandView GrassStandOf(FieldId field) const = 0;
 
   /// @brief How badly it stinks at a point of the map — AT WORST
   /// (StinkFullAt) and AS IT IS TODAY (StinkNowAt). Water design §4.

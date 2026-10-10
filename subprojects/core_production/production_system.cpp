@@ -497,6 +497,10 @@ class ProductionSystem final : public IProductionSystem {
     return PreviewMeadow(config_, completed, position, area_ha, field);
   }
 
+  GrassStandView GrassStandOf(const WorldState& completed, FieldId field) const override {
+    return GrassStandOn(config_, completed, field);
+  }
+
   Grams StandingCropGrams(const WorldState& /*world*/, const FieldRow& field) const override {
     if (field.crop.value >= config_.crops.size()) {
       return 0;
@@ -1007,7 +1011,11 @@ std::unique_ptr<IProductionSystem> CreateProductionSystem(
                       // The cold ladder's still frost and the livestock
                       // insulation's straw, second readers (0.37.62).
                       "weather_params",
-                      "construction"},
+                      "construction",
+                      // The life of a sown grass stand (0.37.212): without
+                      // it a marked crop has no age, and that silence is
+                      // exactly what this list refuses.
+                      "grass_stand"},
                      nullptr)) {
     return nullptr;
   }

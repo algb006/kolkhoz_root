@@ -28,6 +28,7 @@
 
 #include <cstdint>
 
+#include "core_common/grass_stand_view.h"
 #include "core_common/world_state.h"
 #include "production_config.h"
 
@@ -278,7 +279,41 @@ std::int32_t RipenDays(const ProductionConfig& config, CropId crop);
 /// the late-sowing slope. THE ONE ESTIMATE, used by the harvest and by the
 /// snow that takes the field unreaped — a loss booked by a second formula
 /// would be a loss the harvest could not have given.
+///
+/// A SOWN GRASS STAND (CropDef::stand_ages; 0.37.212) reads two rules more:
+/// the fertility factor is capped at 1 — the table's yield is the hay crop's
+/// CEILING, poor ground lowers it and rich ground does not lift it — and the
+/// whole is multiplied by the factor of the stand's summer
+/// (GrassStandOfSummer). Until 0.37.212 a clover field gave 2.85 t a hectare
+/// against the table's 2.2 in its first summer and climbed to 4.0 by its
+/// eighth, the +4 of each cut feeding the next for ever (the hay arm,
+/// measured on 0.37.208's world).
 Grams FieldYieldGrams(const ProductionConfig& config, const FieldRow& field, const CropDef& crop);
+
+/// @brief The row of the stand's life the field's stand is in
+///        (FarmingConfig::grass_stand): FieldRow::stand_summers, 0 read as
+///        summer 1, a summer past the table's last row as that row. With an
+///        empty table — factor 1, banks.
+FarmingConfig::GrassStandSummer GrassStandOfSummer(const ProductionConfig& config,
+                                                   const FieldRow& field);
+
+/// @brief The sown grass stand on `field`, as the layer is told it before a
+///        renewal (grass_stand_view.h; IProductionSystem::GrassStandOf).
+/// @return `stands` false for a field that is not there, is not arable, or
+///         whose crop does not live by the stand's age. `hay_standing` is
+///         StandingYieldGrams while this calendar year's cut has not been
+///         finished, and 0 after it: the grass a renewal would lose.
+GrassStandView GrassStandOn(const ProductionConfig& config, const WorldState& world, FieldId field);
+
+/// @brief Ends a standing grass stand the chairman has ordered renewed
+///        (kSetRotation on a field under a CropDef::stand_ages crop that is
+///        growing, not being cut; boss's ruling of 10 October 2026): the
+///        grass standing is lost, the field's crop is cleared and remembered
+///        as its last, and the field is idle arable for the chain to plough.
+/// @pre `field.crop` is a stand_ages crop and `field.phase` is kGrowing.
+/// @note Side effects: the row's crop, phase and stand's summer; one
+///       kFieldPhaseChanged. Nothing is booked: no hay was cut.
+void EndGrassStand(WorldState& current, FieldRow& field);
 
 /// @brief The part of the field's yield still on the stalk: FieldYieldGrams
 ///        less the share this reaping has already laid into the heap

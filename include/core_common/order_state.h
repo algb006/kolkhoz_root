@@ -188,7 +188,17 @@ enum class OrderKind : std::uint8_t {
   /// phase. Refused with kNoSuchSubject for a field that is not there,
   /// kNoSuchCrop for a slot naming a crop this build does not carry, and
   /// kWrongLand for a meadow, which is mown where it grew and is never sown
-  /// at all. Consumer: core_production.
+  /// at all — except former arable mown as it lies (kMarkMeadow's second
+  /// form; 0.37.211), which this order turns back into a field.
+  ///
+  /// IT RENEWS A SOWN GRASS STAND (0.37.212; crops.csv `stand_ages`, clover
+  /// and timothy): given to a field whose STANDING crop lives by the stand's
+  /// age and is growing, the order ends the stand AT ONCE — the grass
+  /// standing is lost (ISession::GrassStandOf says how much before the order
+  /// is given), the field is idle and the chain ploughs and sows it anew.
+  /// While that stand is being cut the order is refused with
+  /// kConflictsWithActive. Any other standing crop is left to its end, as
+  /// before. Consumer: core_production.
   kSetRotation,
 
   /// MARK a new unit of `unit_type` at `position`: pegs and string, the

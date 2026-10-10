@@ -80,6 +80,16 @@ struct CropDef {
   /// 0 = the crop leaves nothing behind.
   float straw_ratio = 0.0F;
 
+  /// THE CROP IS A SOWN GRASS WHOSE STAND HAS AN AGE (crops.csv `stand_ages`;
+  /// 0.37.212; fields design «три-четыре года берут укосы, пока травостой не
+  /// выродится»; econ's page clover-stand-age-2026-10-10): its yield is the
+  /// table's × the factor of the stand's summer (FarmingConfig::grass_stand),
+  /// the table's yield is its CEILING — fertility lowers it on poor ground
+  /// and never lifts it — and it banks its fertility_delta only in the
+  /// summers the table says. Clover and timothy; an absent column — false,
+  /// the crop as before.
+  bool stand_ages = false;
+
   float drought_sensitivity = 0.0F;  ///< 0..1 scale on the stress rate.
 
   float wet_sensitivity = 0.0F;
@@ -802,6 +812,20 @@ struct FarmingConfig {
   /// are grown before the window shuts (fields and crops §3, «укосами каждое
   /// лето»). STUB core, econ's number: 4, one game month.
   float perennial_first_cut_days = 4.0F;
+
+  /// THE LIFE OF A SOWN GRASS STAND (grass_stand.csv; 0.37.212): one row a
+  /// summer of the stand, counted from the summer it was sown; the LAST row
+  /// stands for its summer and every later one. Read for a crop with
+  /// CropDef::stand_ages. EMPTY — the table set carries no grass_stand: every
+  /// summer's factor is 1 and every summer banks, which leaves the ceiling as
+  /// the mark's only effect. Econ's numbers, STUB «until the pair»:
+  /// 0.7 / 1.0 / 1.0 / 0.7 / 0.4, banking in summers 1–4.
+  struct GrassStandSummer {
+    float yield_factor = 1.0F;    ///< Of the table's yield, 0..1.
+    bool banks_fertility = true;  ///< Whether this summer's cut adds fertility_delta.
+  };
+
+  std::vector<GrassStandSummer> grass_stand;
 
   /// farming.csv `reaping_days_per_hand_light_hour` — 0.042: norm-days a
   /// village reaps for each hand that could reap, an hour of the day's light.

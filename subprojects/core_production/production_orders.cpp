@@ -339,6 +339,26 @@ OrderRefusal SetRotation(const ProductionConfig& config,
     }
     ++named;
   }
+  // A STANDING GRASS STAND IS RENEWED BY THIS ORDER (0.37.212; boss's ruling
+  // of 10 October 2026 on econ's «renewing a stand is the same order that
+  // made it»): given to a field whose crop lives by the stand's age
+  // (CropDef::stand_ages) and is growing, the order ENDS THE STAND AT ONCE —
+  // the grass standing is lost, the field goes idle and the chain ploughs
+  // and sows it anew in its window. A stand in its second summer ends by the
+  // same order as one in its fifth: the chairman's decision, and the
+  // preview says what he loses (GrassStandOf). WHILE THE STAND IS BEING CUT
+  // the order is refused, not queued. Until 0.37.212 the same chain on a
+  // standing stand changed nothing — «work already opened runs to its end» —
+  // and a stand could only end when its next slot differed.
+  if (field.kind == LandKind::kArable && field.crop.value < config.crops.size() &&
+      config.crops[field.crop.value].stand_ages) {
+    if (field.phase == FieldPhase::kHarvest) {
+      return OrderRefusal::kConflictsWithActive;
+    }
+    if (field.phase == FieldPhase::kGrowing) {
+      EndGrassStand(current, field);
+    }
+  }
   if (named == 0) {
     // THE WORD TAKEN BACK, and the slots are cleared with the byte: a
     // released field must not keep the crops of the chain it no longer

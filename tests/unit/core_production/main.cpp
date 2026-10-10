@@ -50,6 +50,7 @@
 #include "field_haul.h"
 #include "field_work.h"
 #include "goods_loan.h"
+#include "grass_stand_checks.h"
 #include "heap_lamp_checks.h"
 #include "herd_cold.h"
 #include "herd_death_checks.h"
@@ -15714,6 +15715,7 @@ int main() {
   failures += CheckTheSeedLampIsNotAFalseAlarm();
   failures += CheckAStarvedKolkhozHerdDoesNotInterruptAgain();
   failures += CheckThePerennialsCut();
+  failures += CheckTheGrassStandsAge();
 
   if (failures == 0) {
     std::cout << "unit_core_production: all checks passed\n";

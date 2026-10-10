@@ -152,6 +152,8 @@ class ScriptedSimulation final : public core::ISimulation {
     return {};
   }
 
+  core::GrassStandView GrassStandOf(core::FieldId /*field*/) const override { return {}; }
+
   // The scripted double answers clean air for both stink questions: this
   // test is about the session's forwarding, not about the field.
   core::StinkStrength StinkFullAt(core::Vec2 /*point*/) const override {

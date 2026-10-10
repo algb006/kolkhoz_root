@@ -59,6 +59,7 @@
 
 #include "core_common/calendar.h"
 #include "core_common/early_snow.h"
+#include "core_common/grass_stand_view.h"
 #include "core_common/meadow_mark.h"
 #include "core_common/office_views.h"
 #include "core_common/quantities.h"
@@ -236,6 +237,14 @@ class IProductionSystem {
                                              Vec2 position,
                                              float area_ha,
                                              FieldId field) const = 0;
+
+  /// @brief The sown grass stand on `field` (core_common/grass_stand_view.h;
+  ///        0.37.212): its summer, the summer's yield factor, whether it
+  ///        banks, the hay standing uncut — what kSetRotation given now would
+  ///        lose — and whether it is being cut. `stands` false for a field
+  ///        with no crop that lives by the stand's age.
+  /// @note A pure read on the sim thread, between steps.
+  virtual GrassStandView GrassStandOf(const WorldState& completed, FieldId field) const = 0;
 
   /// @brief Whether the hay IN THE STORES is below what the kolkhoz herds
   /// will eat of it in the next `days` days (0.37.131; boss, boss-all-carts-

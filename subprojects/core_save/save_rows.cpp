@@ -195,8 +195,11 @@ static_assert(AggregateArity<FamilyRow>() == 30,
 // Save 145 (0.37.211): start_shape and mown_fallow, two bytes after
 // last_cut_day into the row's tail padding (124, 125) — predicted "128
 // stays" and 42 -> 44 fields before the build; the wire row + 2 bytes.
+// Save 146 (0.37.212): stand_summers, one byte after mown_fallow, still in
+// the tail padding (126) — predicted "128 stays" and 44 -> 45 fields before
+// the build; the wire row + 1 byte.
 static_assert(sizeof(FieldRow) == 128, "FieldRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<FieldRow>() == 44,
+static_assert(AggregateArity<FieldRow>() == 45,
               "FieldRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-06: the stink radius pushed the row from 48 + amounts to 56 +
 // amounts. The pause byte before it had landed in padding and moved nothing,
@@ -1003,6 +1006,7 @@ void WriteFieldRow(SaveSink& sink, const FieldRow& row) {
   out.WriteU32(row.last_cut_day);  // save 134
   out.WriteU8(row.start_shape);    // save 145
   out.WriteU8(row.mown_fallow);    // save 145
+  out.WriteU8(row.stand_summers);  // save 146
   // The manure already in the book (save 111): booked once a field's cycle,
   // and since save 112 already paid into the fertility.
   out.WriteU8(row.manure_booked);
@@ -1096,6 +1100,7 @@ FieldRow ReadFieldRow(LoadSource& source) {
   if (row.mown_fallow != 0 && row.kind != LandKind::kMeadow) {
     source.Fail("a field marked as mown as it lies is not a dry meadow");
   }
+  row.stand_summers = in.ReadU8();  // save 146: any count is a summer
   row.manure_booked = static_cast<std::uint8_t>(
       source.ReadEnumValue(0, 1, "the field's manure booked"));  // save 111
   if (row.manure_booked != 0 && row.manure_applied == 0) {

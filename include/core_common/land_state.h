@@ -667,6 +667,16 @@ struct FieldRow {
   /// row stays arable»; the implementation changed the kind instead of
   /// teaching fifteen meadow branches a second way to be a meadow.
   std::uint8_t mown_fallow = 0;
+
+  /// THE SUMMER A SOWN GRASS STAND IS IN (save 146; 0.37.212; fields design
+  /// «три-четыре года берут укосы, пока травостой не выродится»): 1 from the
+  /// day a crop with CropDef::stand_ages is sown, + 1 after each cut the
+  /// stand outlives, saturating at 255. It picks the stand's yield factor
+  /// and whether the cut banks fertility (FarmingConfig::grass_stand). 0 on
+  /// every field whose last sowing was not such a crop — and read as summer 1
+  /// by the one reader, so a stand that somehow carries none is a young one.
+  /// Meaningful only while the field's crop is a stand_ages crop.
+  std::uint8_t stand_summers = 0;
 };
 
 /// @brief Whether the player has given this field a rotation at all.

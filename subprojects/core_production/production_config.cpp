@@ -91,7 +91,7 @@ bool ParseCrops(const ITable& table,
 
   // Months are 1..12 here, so the shift to the core's 0-based Month enum
   // below can never produce a negative value.
-  constexpr std::array<Column, 16> kColumns = {{{"is_winter", 0, 0, 1},
+  constexpr std::array<Column, 17> kColumns = {{{"is_winter", 0, 0, 1},
                                                 {"is_perennial", 0, 0, 1},
                                                 {"sow_from_month", 1, 1, 12},
                                                 {"sow_to_month", 1, 1, 12},
@@ -110,7 +110,10 @@ bool ParseCrops(const ITable& table,
                                                 // columns exist.
                                                 {"sow_days_per_ha", 3, 0, 1000},
                                                 {"harvest_days_per_ha", 8, 0, 1000},
-                                                {"straw_ratio", 0, 0, 10}}};
+                                                {"straw_ratio", 0, 0, 10},
+                                                // 0.37.212: absent or blank - 0,
+                                                // the crop as before.
+                                                {"stand_ages", 0, 0, 1}}};
   std::array<std::uint32_t, kColumns.size()> columns{};
   for (std::uint32_t index = 0; index < kColumns.size(); ++index) {
     columns[index] = table.FindColumn(kColumns[index].name);
@@ -162,6 +165,44 @@ bool ParseCrops(const ITable& table,
     crop.sow_days_per_ha = values[13] / kRealDaysPerGameDay;
     crop.harvest_days_per_ha = values[14] / kRealDaysPerGameDay;
     crop.straw_ratio = values[15];
+    crop.stand_ages = values[16] != 0.0F;
+  }
+  return true;
+}
+
+/// The life of a sown grass stand, grass_stand.csv (FarmingConfig::
+/// grass_stand): rows `summer` 1, 2, 3 … with no gap, in order — the row's
+/// place IS its summer, and a file that skips one would shift every later
+/// factor by a year in silence.
+bool ParseGrassStand(const ITable& table, FarmingConfig& farming, std::string& error) {
+  const std::uint32_t summer_col = table.FindColumn("summer");
+  const std::uint32_t factor_col = table.FindColumn("yield_factor");
+  const std::uint32_t banks_col = table.FindColumn("banks_fertility");
+  if (summer_col == kNoTableColumn || factor_col == kNoTableColumn || banks_col == kNoTableColumn) {
+    error = "grass_stand: a column of summer, yield_factor, banks_fertility is missing";
+    return false;
+  }
+  farming.grass_stand.clear();
+  for (std::uint32_t row = 0; row < table.RowCount(); ++row) {
+    float summer = 0.0F;
+    float factor = 1.0F;
+    float banks = 1.0F;
+    const auto cell = [&](std::string_view name, std::uint32_t column, Range range, float& value) {
+      return RequiredCell(table, "grass_stand", name, row, column, range, value, error);
+    };
+    if (!cell("summer", summer_col, Range{.low = 1, .high = 255}, summer) ||
+        !cell("yield_factor", factor_col, Range{.low = 0, .high = 1}, factor) ||
+        !cell("banks_fertility", banks_col, Range{.low = 0, .high = 1}, banks)) {
+      return false;
+    }
+    if (summer != static_cast<float>(row + 1U)) {
+      error = "grass_stand: row " + std::to_string(row) + " names summer " +
+              std::to_string(static_cast<int>(summer)) + ", and its place is summer " +
+              std::to_string(row + 1U);
+      return false;
+    }
+    farming.grass_stand.push_back(
+        FarmingConfig::GrassStandSummer{.yield_factor = factor, .banks_fertility = banks != 0.0F});
   }
   return true;
 }
@@ -1403,6 +1444,11 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
   }
   if (const ITable* field_phases = tables.FindTable("field_phases")) {
     if (!ParseFieldPhases(*field_phases, config.farming, error)) {
+      return false;
+    }
+  }
+  if (const ITable* grass_stand = tables.FindTable("grass_stand")) {
+    if (!ParseGrassStand(*grass_stand, config.farming, error)) {
       return false;
     }
   }

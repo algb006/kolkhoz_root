@@ -260,6 +260,9 @@ class StepEngine final : public ISimulation {
     return MeadowMarkAnswer{.refusal = MeadowMarkRefusal::kBadArea};
   }
 
+  /// No crops, so no grass stand on any field.
+  GrassStandView GrassStandOf(FieldId /*field*/) const override { return {}; }
+
   // The bare engine knows no subsystems, so it knows no sources: clean air
   // rather than a refusal, exactly as WearDeadline answers kNoData.
   StinkStrength StinkFullAt(Vec2 /*point*/) const override { return StinkStrength::kNone; }

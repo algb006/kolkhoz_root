@@ -36,6 +36,7 @@
 #include "sawmill_policy.h"
 #include "school_policy.h"
 #include "social_objects_policy.h"
+#include "stand_renewal_policy.h"
 #include "transition_policy.h"
 #include "upgrade_policy.h"
 #include "watchman_policy.h"
@@ -174,6 +175,7 @@ class BuildingChairman {
     FixturePolicy::Declare();
     FellingPolicy::Declare(run_name.c_str());
     PlantingPolicy::Declare(run_name);
+    StandRenewalPolicy::Declare(run_name);
     SawmillPolicy::Declare(run_name.c_str());
     LimitPolicy::Declare(run_name.c_str());
     RepairPolicy::Declare();
@@ -206,6 +208,9 @@ class BuildingChairman {
     // The forest after the felling: a zone a year, from the first spring
     // (boss, boss-core-epoch1-3 seq 18 and 25).
     planting.RunDay(simulation);
+    // A sown grass stand that has lived its life is ploughed up and sown anew
+    // (0.37.212; stand_renewal_policy.h).
+    stand_renewal.RunDay(simulation);
     sawmill.RunDay(simulation);
     limit.RunDay(simulation);
     night_pasture.RunDay(simulation);
@@ -274,6 +279,7 @@ class BuildingChairman {
   FixturePolicy fixture;
   FellingPolicy felling;
   PlantingPolicy planting;
+  StandRenewalPolicy stand_renewal;
   SawmillPolicy sawmill;
   LimitPolicy limit;
   NightPasturePolicy night_pasture;

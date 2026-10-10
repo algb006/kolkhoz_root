@@ -334,6 +334,8 @@ core::WorldState MakeWorld() {
   field.fallow_rest_owed = 1;
   // Save 145: the row's polygon on the map, off its default.
   field.start_shape = 7;
+  // Save 146: the summer of a sown grass stand, off its default.
+  field.stand_summers = 4;
   core::AppendRow(world.fields, field);
 
   // And one meadow: a different LandKind, so the byte the row gained in task
@@ -1647,7 +1649,11 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // of the three fields; predicted 362 -> 368 with every other section's
     // size unmoved before the build; held, and the hash recorded from that run
     // (the first field's polygon and the meadow's mark set off their defaults).
-    {"fields", 368, 0xfa47c0e0a8034c3eULL},
+    // Save 146 (0.37.212): +3 — stand_summers, a byte on each of the three
+    // fields; predicted 368 -> 371 with every other section unmoved before
+    // the build; held, and the hash recorded from that run (the first field's
+    // stand in its fourth summer).
+    {"fields", 371, 0x3e03565e0de7c248ULL},
     // Save 67: +27 — the store's emptying byte and the perevalka's two floats,
     // three units; predicted before the fields were added, and held.
     // Save 74: +1 a unit — the house held for a specialist; three units, +3,
@@ -2474,6 +2480,9 @@ int main() {
                  loaded.fields.rows[1].mown_fallow == 1 && loaded.fields.rows[0].mown_fallow == 0,
              "the field's polygon and the mark of ground mown as it lies come back "
              "(save 145)");
+  failures +=
+      Expect(loaded.fields.rows[0].stand_summers == 4 && loaded.fields.rows[1].stand_summers == 0,
+             "the grass stand's summer comes back (save 146)");
   // AND WHETHER ANYBODY EVER TOLD THE FIELD WHAT TO GROW, which the three
   // crop slots beside it cannot say: an empty slot in a chain that exists is
   // a fallow year, and the same emptiness in a field nobody assigned is

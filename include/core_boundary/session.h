@@ -35,7 +35,7 @@
 ///               NeedUntilHarvest, EraReadiness
 ///     roads     PreviewRoad, SelectRoadPieces, RoadKindsAvailable, Roads,
 ///               Junctions
-///     land      PreviewMeadowMark
+///     land      PreviewMeadowMark, GrassStandOf
 ///     orders    IssueOrder, CancelOrder
 ///     events    Events, AcknowledgeEvents, EventsLost — the default reader;
 ///               OpenEventReader, Events(reader), AcknowledgeEvents(reader,
@@ -854,6 +854,15 @@ class ISession {
   /// @note Between steps; the answer describes State(). The first call
   ///       builds the map's obstacle raster if no road was previewed before.
   virtual MeadowMarkAnswer PreviewMeadowMark(Vec2 position, float area_ha, FieldId field) const = 0;
+
+  /// @brief The sown grass stand on `field` — what the layer shows before
+  ///        the chairman orders it renewed (ISimulation::GrassStandOf;
+  ///        core_common/grass_stand_view.h; 0.37.212): its summer, this
+  ///        summer's yield factor, whether it still banks fertility, the hay
+  ///        standing that a kSetRotation given now would lose, and whether
+  ///        it is being cut (the order is refused then).
+  /// @note Between steps; the answer describes State().
+  virtual GrassStandView GrassStandOf(FieldId field) const = 0;
 
   /// @brief The pieces a drag along a laid road selects for `operation`,
   ///        snapped to whole pieces, each in or out and why, and the
