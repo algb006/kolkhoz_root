@@ -340,7 +340,7 @@ enum class AlarmKind : std::uint8_t {
   kFellingUnreachable,
 
   /// FOOD LOCKED IN THE FUNDS WHILE A FAMILY GOES HUNGRY (econ's audit I6,
-  /// Л1; alarms.csv `reserve_full_nothing_to_eat`, rank 2, «Еда заперта в
+  /// Л1; alarms.csv `reserve_full_nothing_to_eat`, «Еда заперта в
   /// фондах»): some family stands at the ration's threshold, nothing of a
   /// ration position is free in the stores, and the sealed funds — the seed,
   /// the plan's reserve, the fodder — hold some. The door is the chairman's
@@ -464,7 +464,7 @@ enum class AlarmKind : std::uint8_t {
   kGoodsLoanOwed,
 
   /// A WINTER CROP THE CHAIN CANNOT SOW (alarms.csv `winter_crop_unsowable`,
-  /// rank 25; fields design §7, the mark before the loss; boss, boss-core-
+  /// fields design §7, the mark before the loss; boss, boss-core-
   /// epoch1-resume [34], [47] form (a)): the field's chain puts a winter crop
   /// right after a crop whose reaping opens no earlier than the last month
   /// of the winter crop's sowing — potato, cabbage, buckwheat or maize before
@@ -569,7 +569,7 @@ enum class AlarmKind : std::uint8_t {
 
   /// «НЕ ХВАТИТ НА N ГА — ЗАСЕЕМ МЕНЬШЕ» — A LINE OF THE BOOK, NOT A LAMP
   /// (boss-core-epoch1-resume-2026-09-30 [39], [40], [46]; alarms.csv
-  /// `seed_area_short`, rank 31; rpg's `book.seed_area_short` (crop,
+  /// `seed_area_short`; rpg's `book.seed_area_short` (crop,
   /// hectares)): the seed of a crop is short for its sowing, this year's
   /// goods loan of it is taken and its cart has come — the district lends no
   /// second one, and the part of the field the seed does not cover stays
@@ -582,7 +582,7 @@ enum class AlarmKind : std::uint8_t {
   /// «К УКОСУ СЕНА НЕ ХВАТИТ» — THE HERDS' YELLOW STAGE, A FORECAST AND NOT A
   /// FACT (boss-core-epoch1-resume-2026-09-30 [49] p. 2, [68], [70], [85],
   /// [86]; econ horse-spring-starvation §4, §4а; alarms.csv
-  /// `herd_hay_short_ahead`, rank 32). The kolkhoz herds' fodder, drained
+  /// `herd_hay_short_ahead`). The kolkhoz herds' fodder, drained
   /// day by day by the herd feeding's own order and ceilings, runs short
   /// before the NEAREST first scythes — this year's until its mowing begins,
   /// next year's from then on (0.37.95; boss, econ-boss-hay-term-2026-10-01
@@ -621,7 +621,7 @@ enum class AlarmKind : std::uint8_t {
 
   /// «СТАДО МЁРЗНЕТ» — THE COLD'S RED (Livestock design, «Замерзание —
   /// метрика скота», «Числа лестницы — Эпоха I» — in force by boss-core-
-  /// start-no-yards [15]; alarms.csv `herd_freezing`, rank 33): a kolkhoz
+  /// start-no-yards [15]; alarms.csv `herd_freezing`): a kolkhoz
   /// herd whose cold nights' counter (HerdRow::cold_nights) stands at 1 or
   /// more — heads in a COLD place (a unit of a rung whose unit_levels.csv
   /// `warm_place` is 0 and that is not insulated: the cattle yard's open pen,
@@ -644,7 +644,7 @@ enum class AlarmKind : std::uint8_t {
 
   /// «К ЗИМЕ ПЛОЩАДКА НЕ УКРОЕТ N ГОЛОВ — ХЛЕВ ДО МОРОЗОВ» — THE COLD'S
   /// YELLOW, A FORECAST (the same design and threads; alarms.csv
-  /// `herd_cold_ahead`, rank 34): in the autumn, the kolkhoz heads that
+  /// `herd_cold_ahead`): in the autumn, the kolkhoz heads that
   /// will stand under a COLD roof when the cold's season opens — a herd up
   /// to its roof's room (what the roof does not hold stands billeted, warm).
   /// Subject: `herd`; `amount` those heads; `days_ahead` the days to the
