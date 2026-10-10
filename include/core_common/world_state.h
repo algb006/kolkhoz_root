@@ -58,6 +58,7 @@
 #include "core_common/road_work_state.h"
 #include "core_common/specialist_state.h"
 #include "core_common/timber_state.h"
+#include "core_common/turned_away_state.h"
 #include "core_common/unit_state.h"
 #include "core_common/wedding_state.h"
 
@@ -1038,6 +1039,12 @@ struct WorldState {
   /// advice and the forecast (econ's rule «the base does not breed horses
   /// for points»). SAVED (save 147).
   HorseLampMemory horse_lamp;
+
+  /// THE MIGRANTS TURNED AWAY FOR WANT OF A HOME, a day over the last year
+  /// (turned_away_state.h): written by the migration the day a settler finds
+  /// no free house and no barrack place, read by the lamp «жилья не хватает»
+  /// (kHousingShort, its condition (c)). SAVED (save 148).
+  TurnedAwayYear arrivals_turned_away;
 
   /// THE GATHERING COUNT SAID «NOT IN TIME» (farming design, the harvest
   /// rule 1 as boss re-worded it, core-boss-potato-crew-trace-2026-10-01

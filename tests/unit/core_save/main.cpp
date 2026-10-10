@@ -661,6 +661,10 @@ core::WorldState MakeWorld() {
   world.horse_lamp.last_painted_day = 205;
   world.horse_lamp.teams_short[1] = 3;
   world.horse_lamp.teams_short[13] = 7;
+  // The migrants turned away (save 148): a day and two counts apart.
+  world.arrivals_turned_away.last_day = 300;
+  world.arrivals_turned_away.per_day[2] = 1;
+  world.arrivals_turned_away.per_day[44] = 3;
   // A task of the groom's logistics (save format 135): every field off its
   // default, the five ids apart and the two levels apart, so a codec that
   // swapped a pair is seen.
@@ -1202,6 +1206,8 @@ core::WorldState MakeWitnessWorld() {
   witness.red_lamps = {{.kind = core::AlarmKind::kHerdStarving, .subject = 3}};  // save 143
   witness.horse_lamp.last_painted_day = 211;                                     // save 147
   witness.horse_lamp.teams_short[19] = 2;
+  witness.arrivals_turned_away.last_day = 290;  // save 148
+  witness.arrivals_turned_away.per_day[5] = 4;
   return witness;
 }
 
@@ -1406,6 +1412,11 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   for (const std::uint8_t teams : world.horse_lamp.teams_short) {
     chunks.push_back({"horse_lamp.teams_short", U8(teams)});
   }
+  // Save 148: the migrants turned away — the last day, a byte a day.
+  chunks.push_back({"arrivals_turned_away.last_day", U32(world.arrivals_turned_away.last_day)});
+  for (const std::uint8_t turned : world.arrivals_turned_away.per_day) {
+    chunks.push_back({"arrivals_turned_away.per_day", U8(turned)});
+  }
   return chunks;
 }
 
@@ -1585,7 +1596,10 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // Save 147: +52 — the horse lamp's year, a day and forty-eight bytes at
     // the block's end; predicted 668 -> 720 with every other section
     // unmoved before the build, held; the hash read off the first build.
-    {"world", 720, 0xd4b5c2ed23de7a8ULL},
+    // Save 148: +52 — the migrants turned away, a day and forty-eight bytes
+    // after the horse lamp's; predicted 720 -> 772 with every other section
+    // unmoved before the build, held; the hash read off the first build.
+    {"world", 772, 0xa723b2a41676bb45ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2265,6 +2279,11 @@ int main() {
       Expect(loaded.horse_lamp.last_painted_day == 205 && loaded.horse_lamp.teams_short[1] == 3 &&
                  loaded.horse_lamp.teams_short[13] == 7 && loaded.horse_lamp.teams_short[0] == 0,
              "the horse lamp's year comes back, day and bytes in place (save 147)");
+  failures += Expect(loaded.arrivals_turned_away.last_day == 300 &&
+                         loaded.arrivals_turned_away.per_day[2] == 1 &&
+                         loaded.arrivals_turned_away.per_day[44] == 3 &&
+                         loaded.arrivals_turned_away.per_day[0] == 0,
+                     "the migrants turned away come back, day and counts in place (save 148)");
   failures += Expect(loaded.chairman.days_off_cancelled_in_a_row == 2 &&
                          loaded.chairman.cancelled_day_off == 55 &&
                          loaded.chairman.place_after_declaring == 1,

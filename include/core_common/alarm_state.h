@@ -673,6 +673,26 @@ enum class AlarmKind : std::uint8_t {
   /// core does not name. Collected by core_logistics (logistics_system.h).
   kLogisticsLate,
 
+  /// «ЖИЛЬЯ НЕ ХВАТАЕТ» — ONE LAMP FOR THE WHOLE SHORTAGE OF HOMES (task 433;
+  /// demography design, «Лампа «жилья не хватает»», boss's decision of 10
+  /// October 2026 on econ's housing-short-lamp-2026-10-10.md; alarms.csv
+  /// `housing_short`). A STATE: lit while any of three holds, out when none
+  /// does — (a) the oldest couple waiting for a house has waited
+  /// kHousingShortCoupleDays or more, or kHousingShortCouples or more wait
+  /// (WorldState::wedding_waits); (b) a family's house is on the brink
+  /// (housing.cpp, the old house's near-collapse wear) with no free house
+  /// and no house site open in the village; (c) kHousingShortTurnedAway or
+  /// more migrants were turned away for want of a home in the last year
+  /// (WorldState::arrivals_turned_away; the design's «four newcomers wait»,
+  /// measured, since there is no queue). Thresholds STUB until its pair.
+  /// Subject: `family` — the oldest waiting couple's bride's, else the first
+  /// family on the brink; none when only (c) holds. `amount` the homes asked
+  /// (couples waiting + families on the brink); `amount_more` the barrack
+  /// places asked (the migrants turned away in the year). Yellow always: no
+  /// dated loss (days_to_loss as kTooFewHorses'). `lamp` 1: the move is to
+  /// build. Collected by core_residents (residents_system.cpp).
+  kHousingShort,
+
   // Appended by later tasks and phases: children out of school, sewage.
   // Named so the numbering is planned, not discovered.
 

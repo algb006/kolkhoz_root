@@ -1924,6 +1924,82 @@ int CheckCoupleSkipsHouseOnTheBrink() {
   return failures;
 }
 
+/// THE LAMP «ЖИЛЬЯ НЕ ХВАТАЕТ» (task 433; housing.h, HousingShortAlarm): out
+/// in an empty village; (a) one couple waiting 11 days — out, 12 days — lit,
+/// naming the bride's family; three couples — lit at once; (b) a family's old
+/// house on the brink with no free house and no site — lit, naming that
+/// family, and out again when a house site opens; (c) four migrants turned
+/// away in the year — lit with no subject, `amount_more` four, and out a year
+/// after the last.
+int CheckHousingShortLamp() {
+  int failures = 0;
+  core::LifeConfig config;
+  config.definitions.units.is_housing = {1, 1};
+  config.old_house_type = core::UnitTypeId{0};
+  config.old_house_near_collapse_wear = 0.9F;
+  core::Alarm alarm;
+  {
+    core::WorldState world;
+    world.calendar.day = 100;
+    failures += Expect(!core::HousingShortAlarm(config, world, alarm),
+                       "housing short: an empty village, out");
+    core::ResidentRow bride;
+    bride.family = core::FamilyId{7};
+    const core::ResidentId bride_id = AppendRow(world.residents, bride);
+    core::WeddingWaitRow couple;
+    couple.bride = bride_id;
+    couple.since_day = 89;
+    AppendRow(world.wedding_waits, couple);
+    failures += Expect(!core::HousingShortAlarm(config, world, alarm),
+                       "housing short: one couple waiting eleven days, out");
+    world.wedding_waits.rows[0].since_day = 88;
+    const bool lit = core::HousingShortAlarm(config, world, alarm);
+    failures += Expect(lit && alarm.kind == core::AlarmKind::kHousingShort &&
+                           alarm.family.value == 7 && alarm.amount == 1 && alarm.lamp == 1,
+                       "housing short: twelve days — lit, the bride's family, one home asked");
+    world.wedding_waits.rows[0].since_day = 99;
+    AppendRow(world.wedding_waits, couple);
+    AppendRow(world.wedding_waits, couple);
+    failures += Expect(core::HousingShortAlarm(config, world, alarm) && alarm.amount == 3,
+                       "housing short: three couples — lit at once, three homes asked");
+  }
+  {
+    core::WorldState world;
+    world.calendar.day = 100;
+    core::UnitRow old_house;
+    old_house.type = core::UnitTypeId{0};
+    old_house.level = 1;
+    old_house.wear = 95.0F;
+    old_house.household = core::FamilyId{5};
+    AppendRow(world.units, old_house);
+    const bool lit = core::HousingShortAlarm(config, world, alarm);
+    failures += Expect(lit && alarm.family.value == 5 && alarm.amount == 1,
+                       "housing short: a house on the brink and nowhere to move — lit, its family");
+    core::UnitRow site;
+    site.type = core::UnitTypeId{1};
+    site.level = 0;
+    site.construction.phase = core::ConstructionPhase::kBuilding;
+    AppendRow(world.units, site);
+    failures += Expect(!core::HousingShortAlarm(config, world, alarm),
+                       "housing short: a house site open — out");
+  }
+  {
+    core::WorldState world;
+    for (const core::SimDay day : {10U, 20U, 30U, 40U}) {
+      core::NoteTurnedAway(world.arrivals_turned_away, day);
+    }
+    world.calendar.day = 40;
+    const bool lit = core::HousingShortAlarm(config, world, alarm);
+    failures += Expect(lit && alarm.family.value == core::kInvalidEntityIdValue &&
+                           alarm.amount == 0 && alarm.amount_more == 4,
+                       "housing short: four migrants turned away — lit, no subject, four places");
+    world.calendar.day = 59;
+    failures += Expect(!core::HousingShortAlarm(config, world, alarm),
+                       "housing short: a year after the first — three in the year, out");
+  }
+  return failures;
+}
+
 /// HOUSING THAT HOUSES NOBODY (unit_levels.csv no_residents; boss, the
 /// logistics thread [22]): the priest's house on its first rung is the
 /// chairman's office. No wedding, no roofless family and no specialist moves
@@ -4801,6 +4877,7 @@ int main() {
   failures += CheckWeddingQueueOrder();
   failures += CheckAWeddingLeavesNoChildAlone();
   failures += CheckCoupleSkipsHouseOnTheBrink();
+  failures += CheckHousingShortLamp();
   failures += CheckTheOfficeRungHousesNobody();
   failures += CheckTwins();
   failures += CheckRooflessLadder();

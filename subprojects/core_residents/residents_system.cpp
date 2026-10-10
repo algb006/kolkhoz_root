@@ -47,6 +47,7 @@
 #include "family_meal.h"
 #include "food_config.h"
 #include "household_plot.h"
+#include "housing.h"
 #include "housing_ladder.h"
 #include "issue_norm.h"
 #include "life_config.h"
@@ -285,6 +286,11 @@ class ResidentsSystem final : public IResidentsSystem {
   }
 
   void CollectAlarms(const WorldState& completed, std::vector<Alarm>& alarms) const override {
+    // THE LAMP «ЖИЛЬЯ НЕ ХВАТАЕТ» (task 433; housing.h, HousingShortAlarm).
+    Alarm housing;
+    if (HousingShortAlarm(config_, completed, housing)) {
+      alarms.push_back(housing);
+    }
     std::vector<FamilyId> hungry;
     CollectHungryFamilies(completed, hungry);
     // THE VILLAGE'S LAMP, NOT EACH FAMILY'S (Alarm::lamp; boss-core-epoch1-

@@ -19,6 +19,7 @@
 #include "core_common/random.h"
 #include "core_common/resident_state.h"
 #include "core_common/state_table_ops.h"
+#include "core_common/turned_away_state.h"
 #include "core_common/unit_state.h"
 #include "housing.h"
 #include "housing_ladder.h"
@@ -938,6 +939,10 @@ void RunMigration(const LifeConfig& config, WorldState& current, SimDay day) {
     bool shared = false;
     household.house = HomeForNewcomers(config, current, 1, shared);
     if (household.house.value == kInvalidEntityIdValue) {
+      // TURNED AWAY, AND COUNTED (save 148; task 433): until then he did not
+      // come and nothing kept it — the lamp «жилья не хватает» reads the
+      // year's count as its «newcomers waiting».
+      NoteTurnedAway(current.arrivals_turned_away, day);
       continue;
     }
     household.lost_house_position =

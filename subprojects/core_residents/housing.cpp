@@ -3,12 +3,16 @@
 #include "housing.h"
 
 #include <cstdint>
+#include <limits>
 #include <vector>
 
+#include "core_common/alarm_state.h"
+#include "core_common/calendar.h"
 #include "core_common/family_state.h"
 #include "core_common/quantities.h"
 #include "core_common/resident_state.h"
 #include "core_common/state_table_ops.h"
+#include "core_common/turned_away_state.h"
 #include "core_common/unit_state.h"
 
 namespace core {
@@ -87,6 +91,68 @@ UnitId BarrackPlace(const LifeConfig& config, const WorldState& current, std::ui
     }
   }
   return UnitId{};
+}
+
+bool HouseOnTheBrink(const LifeConfig& config, const UnitRow& unit) {
+  return OnTheBrink(config, unit);
+}
+
+bool HousingShortAlarm(const LifeConfig& config, const WorldState& world, Alarm& alarm) {
+  const SimDay today = world.calendar.day;
+  // (a) THE COUPLES WAITING FOR A HOUSE: the oldest's wait, and how many.
+  const auto couples = static_cast<std::uint32_t>(world.wedding_waits.rows.size());
+  std::uint32_t oldest_row = kNoRow;
+  for (std::uint32_t row = 0; row < couples; ++row) {
+    if (oldest_row == kNoRow ||
+        world.wedding_waits.rows[row].since_day < world.wedding_waits.rows[oldest_row].since_day) {
+      oldest_row = row;
+    }
+  }
+  const bool couples_wait =
+      couples >= kHousingShortCouples ||
+      (oldest_row != kNoRow &&
+       today - world.wedding_waits.rows[oldest_row].since_day >= kHousingShortCoupleDays);
+  // (b) A FAMILY'S HOUSE ON THE BRINK, with nowhere to move: no free house
+  // and no house site open in the village.
+  std::uint32_t on_the_brink = 0;
+  FamilyId first_on_the_brink;
+  bool house_site_open = false;
+  for (const UnitRow& unit : world.units.rows) {
+    const bool housing = unit.type.value < config.definitions.units.is_housing.size() &&
+                         config.definitions.units.is_housing[unit.type.value] != 0;
+    if (!housing) {
+      continue;
+    }
+    house_site_open = house_site_open || (unit.level == 0 && unit.dead == 0 &&
+                                          unit.construction.phase != ConstructionPhase::kNone);
+    if (unit.household.value != kInvalidEntityIdValue && OnTheBrink(config, unit)) {
+      first_on_the_brink = on_the_brink == 0 ? unit.household : first_on_the_brink;
+      ++on_the_brink;
+    }
+  }
+  const bool brink_with_nowhere =
+      on_the_brink > 0 && !house_site_open &&
+      FreeHouseNotOnTheBrink(config, world).value == kInvalidEntityIdValue;
+  // (c) THE MIGRANTS TURNED AWAY in the year (the design's «newcomers wait»).
+  const std::uint32_t turned_away = TurnedAwayOfYear(world.arrivals_turned_away, today);
+  const bool newcomers_wait = turned_away >= kHousingShortTurnedAway;
+  if (!couples_wait && !brink_with_nowhere && !newcomers_wait) {
+    return false;
+  }
+  alarm = Alarm{};
+  alarm.kind = AlarmKind::kHousingShort;
+  if (couples_wait && oldest_row != kNoRow) {
+    const std::uint32_t bride =
+        FindRow(world.residents, world.wedding_waits.rows[oldest_row].bride);
+    alarm.family = bride != kNoRow ? world.residents.rows[bride].family : FamilyId{};
+  } else if (brink_with_nowhere) {
+    alarm.family = first_on_the_brink;
+  }
+  alarm.amount = static_cast<std::int64_t>(couples) + on_the_brink;
+  alarm.amount_more = turned_away;
+  alarm.lamp = 1;
+  alarm.days_to_loss = DaysToLossOf(std::numeric_limits<std::int64_t>::max());
+  return true;
 }
 
 UnitId HomeForNewcomers(const LifeConfig& config,

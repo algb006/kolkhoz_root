@@ -14,6 +14,9 @@
 #ifndef CORE_RESIDENTS_HOUSING_H_
 #define CORE_RESIDENTS_HOUSING_H_
 
+#include <cstdint>
+
+#include "core_common/alarm_state.h"
 #include "core_common/ids.h"
 #include "core_common/world_state.h"
 #include "life_config.h"
@@ -46,6 +49,26 @@ float ResidentsCapacity(const LifeConfig& config, const UnitRow& unit);
 ///        is). Invalid when none has room. The ladder's second rung (§20),
 ///        and a couple's or a migrant's roof when no house is free (§9).
 UnitId BarrackPlace(const LifeConfig& config, const WorldState& current, std::uint32_t people);
+
+/// THE LAMP «ЖИЛЬЯ НЕ ХВАТАЕТ»'s THRESHOLDS (alarm_state.h, kHousingShort;
+/// demography design, the lamp's table). STUB until its pair with host: the
+/// design's numbers, not measured.
+inline constexpr std::uint32_t kHousingShortCoupleDays = 12;  ///< STUB: the oldest couple's wait
+inline constexpr std::uint32_t kHousingShortCouples = 3;      ///< STUB: couples waiting
+inline constexpr std::uint32_t kHousingShortTurnedAway = 4;  ///< STUB: migrants turned away, a year
+
+/// @brief Whether `unit` is an old house on the brink of collapse — wear at
+///        or above the table's near-collapse share (the one test the free
+///        house and the lamp «жилья не хватает» both ask).
+bool HouseOnTheBrink(const LifeConfig& config, const UnitRow& unit);
+
+/// @brief The lamp «жилья не хватает» (kHousingShort) of `world` today, into
+///        `alarm`: true when it is lit — (a) a couple waiting too long or too
+///        many waiting, (b) a family's house on the brink with no free house
+///        and no house site open, (c) too many migrants turned away in the
+///        year (the thresholds above). Subject, `amount` and `amount_more` as
+///        alarm_state.h says. A pure read.
+bool HousingShortAlarm(const LifeConfig& config, const WorldState& world, Alarm& alarm);
 
 /// @brief A NEWCOMER's roof — a couple's, a migrant's (housing §9 «свадьбы не
 ///        встают», «переселенцы размещаются»; boss seq 197): a free house not

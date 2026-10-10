@@ -232,7 +232,15 @@ static_assert(sizeof(HorseLampMemory) == 52,
               "HorseLampMemory changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<HorseLampMemory>() == 2,
               "HorseLampMemory gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<WorldState>() == 47,
+// Save 148: the migrants turned away for want of a home over the last year,
+// the forty-eighth — a day and forty-eight bytes after the horse lamp's.
+// Predicted before the build: TurnedAwayYear 52 bytes and two fields; the
+// section «world» 720 -> 772 with every other section unmoved.
+static_assert(sizeof(TurnedAwayYear) == 52,
+              "TurnedAwayYear changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<TurnedAwayYear>() == 2,
+              "TurnedAwayYear gained or lost a field — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<WorldState>() == 48,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 
@@ -568,6 +576,11 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   for (const std::uint8_t teams : world.horse_lamp.teams_short) {
     out.WriteU8(teams);
   }
+  // The migrants turned away (save 148): the last day, then a byte a day.
+  out.WriteU32(world.arrivals_turned_away.last_day);
+  for (const std::uint8_t turned : world.arrivals_turned_away.per_day) {
+    out.WriteU8(turned);
+  }
 }
 
 void ReadWorldBlocks(LoadSource& source, WorldState* world) {
@@ -787,6 +800,11 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->horse_lamp.last_painted_day = in.ReadU32();
   for (std::uint8_t& teams : world->horse_lamp.teams_short) {
     teams = in.ReadU8();
+  }
+  // The migrants turned away (save 148): any day is a day, any byte a count.
+  world->arrivals_turned_away.last_day = in.ReadU32();
+  for (std::uint8_t& turned : world->arrivals_turned_away.per_day) {
+    turned = in.ReadU8();
   }
 }
 

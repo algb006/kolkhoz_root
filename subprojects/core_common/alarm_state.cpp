@@ -64,6 +64,9 @@ std::uint32_t AlarmSubjectValue(const Alarm& alarm) {
     case AlarmKind::kSeedAreaShort:
       return alarm.resource.value;
     case AlarmKind::kFamilyGoingHungry:
+    // The oldest waiting couple's family, or the family on the brink; 0 when
+    // only the migrants turned away light it (task 433).
+    case AlarmKind::kHousingShort:
       return alarm.family.value;
     case AlarmKind::kFellingUnreachable:
     case AlarmKind::kPlantingUnreachable:
@@ -129,6 +132,7 @@ bool IsElderAdvice(AlarmKind kind) {
     case AlarmKind::kHerdFreezing:
     case AlarmKind::kHerdColdAhead:
     case AlarmKind::kLogisticsLate:
+    case AlarmKind::kHousingShort:
       return false;
   }
   return false;
