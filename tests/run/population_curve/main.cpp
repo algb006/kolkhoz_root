@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -1145,10 +1146,11 @@ int main(int argc, char** argv) {
   // horse yard bring the median back to 13-14, and it is checked on those
   // deliveries, with the condition of return there (the lever is the
   // arrivals and a house's price, not the horses and not the cart's load).
-  // ECON'S CONDITION OF ACCEPTANCE stands beside the band as its own three
-  // assertions: the earliest village not before year 11, the median village
-  // not before year 12, and the residents at the end of year 10 at 290 to
-  // 360 by the median.
+  // ECON'S CONDITION OF ACCEPTANCE stood beside the band as its own three
+  // assertions until 86b4e22 (the earliest village not before year 11, the
+  // median not before year 12, the residents at year 10 at 290 to 360 by the
+  // median); her era corridor gate replaced them and the band of years 11 to
+  // 20, below.
   std::uint32_t earliest_opened = 0;
   std::uint32_t latest_opened = 0;
   for (const std::uint32_t year : opened_years) {
@@ -1167,32 +1169,81 @@ int main(int argc, char** argv) {
                                 std::to_string(opened_years.size()) + " of " +
                                 std::to_string(walks.size());
   failures += run::Expect(opened_years.size() == walks.size(), all_claim.c_str());
-  // OF THE THREE BANDS BELOW THE MEDIAN'S IS RED SINCE 0.37.208 (the felling
-  // cure) — a balance finding at econ, the band NOT re-taken (boss, 10
-  // October 2026): the stuck felling mark had been braking growth, and with
-  // it gone Epoch II opens in years 11..13, median 11 (0.37.207: 11..14,
-  // median 12) and the residents at year 10 are 356 by the median (341) —
-  // four short of the third band's edge. They are ECON'S ACCEPTANCE BANDS OF
-  // 0.37.133, a tripwire on one delivery — not the design's (the design's
+  // THOSE THREE BANDS WENT RED one by one from 0.37.208 (the felling cure:
+  // years 11..13, median 11) to 0.37.212 (10..15) — ECON'S ACCEPTANCE BANDS
+  // OF 0.37.133, a tripwire on one delivery, not the design's (the design's
   // are «500 residents — Epoch II» at year 14 and the door's «residents >=
-  // 380»); re-taken by her as the band of a named world after the colts'
-  // delivery and the bot's arm — not stale.
-  // THE OTHER TWO ARE ONE TABLE EXPORT AWAY: on this tree with boss's three
-  // exports of 9-10 October laid on it and not yet committed (the start
-  // layout's fallow cell, the repair's materials, world_params) the run
-  // read 10..12 and 361, and all three were red.
-  const std::string year_claim = "and opens it in years 11 to 20 — now " +
-                                 std::to_string(earliest_opened) + " to " +
-                                 std::to_string(latest_opened) + " (0 = no village opens it)";
-  failures += run::Expect(earliest_opened >= 11 && latest_opened <= 20, year_claim.c_str());
-  // Red since 0.37.208 (the felling cure) — a balance finding at econ, band not re-taken.
-  const std::string median_claim = "and the median village opens it not before year 12 — now " +
-                                   std::to_string(median_opened_year);
-  failures += run::Expect(median_opened_year >= 12, median_claim.c_str());
-  const std::string year10_claim =
-      "and the residents at the end of year 10 are 290 to 360 by the median — now " +
-      std::to_string(median_year10);
-  failures += run::Expect(median_year10 >= 290 && median_year10 <= 360, year10_claim.c_str());
+  // 380»). Re-drawn below as the band of a named world.
+  //
+  // THE THREE BANDS ABOVE WERE RE-DRAWN ON 86b4e22 (econ, econ/manual/audit/
+  // era-bands-origin-and-levers-2026-10-10.md §5; boss, the thread core-boss-
+  // c2-site-supply-2026-10-09 after [94]). They were her tripwires cut on a
+  // bot that dug only after a site waited; the bot that digs ahead (86b4e22,
+  // taken as the base by the human's «Я ДА») opens the era in years 9..11,
+  // median 11, at 379 residents by year 10 — red on all three, as 0.37.212
+  // was red on two of them. They are replaced by her era corridor gate on
+  // that base's own numbers: E1 the mean door, E2 the doors' spread, E3 no
+  // door held more than a year after the residents' condition; the residents
+  // at year 10 are PRINTED (their spread between worlds is 19-29 a village).
+  // EARLIER THAN E1's FLOOR STOPS FOR THE HUMAN; later is a finding to read.
+  constexpr double kEraMeanFloor = 10.33;
+  constexpr double kEraMeanCeiling = 11.33;
+  constexpr double kEraSpreadFloor = 9.33;
+  constexpr double kEraSpreadCeiling = 12.33;
+  constexpr std::size_t kEraSpreadAtLeast = 7;
+  constexpr std::size_t kResidentsCondition = 7;  // TransitionPolicy's order: the village's size
+  std::vector<double> doors;
+  std::size_t doors_inside = 0;
+  std::size_t doors_late = 0;
+  double year10_sum = 0.0;
+  for (const Trajectory& walk : walks) {
+    year10_sum += static_cast<double>(walk.year10);
+    if (walk.epoch2_day < 0) {
+      continue;
+    }
+    const double door = static_cast<double>(walk.epoch2_day) / core::kDaysPerYear + 1.0;
+    doors.push_back(door);
+    doors_inside += door >= kEraSpreadFloor && door <= kEraSpreadCeiling ? 1U : 0U;
+    const std::int64_t residents_met = walk.condition_first_met_day[kResidentsCondition];
+    doors_late += residents_met >= 0 && walk.epoch2_day - residents_met >
+                                            static_cast<std::int64_t>(core::kDaysPerYear)
+                      ? 1U
+                      : 0U;
+  }
+  double door_mean = 0.0;
+  for (const double door : doors) {
+    door_mean += door / static_cast<double>(doors.size());
+  }
+  const double year10_mean = walks.empty() ? 0.0 : year10_sum / static_cast<double>(walks.size());
+  std::cout << "population_curve: the era corridor — doors in fractional years:";
+  for (const double door : doors) {
+    std::cout << ' ' << door;
+  }
+  std::cout << "; mean " << door_mean << "; inside " << kEraSpreadFloor << ".." << kEraSpreadCeiling
+            << ": " << doors_inside
+            << "; more than a year after the residents' condition: " << doors_late
+            << "; residents at year 10, mean " << year10_mean << ", median " << median_year10
+            << " | BASE 86b4e22 (kdig): mean 10.83, doors 9.92..11.75, 9 of 9 inside, 0 late; "
+               "residents at year 10, median 379\n";
+  const auto two_places = [](double value) {
+    const long hundredths = std::lround(value * 100.0);
+    return std::to_string(hundredths / 100) + (hundredths % 100 < 10 ? ".0" : ".") +
+           std::to_string(hundredths % 100);
+  };
+  const std::string mean_claim = "E1: the mean door is " + two_places(kEraMeanFloor) + " to " +
+                                 two_places(kEraMeanCeiling) +
+                                 " (earlier stops for the human) — now " + two_places(door_mean);
+  failures +=
+      run::Expect(!doors.empty() && door_mean >= kEraMeanFloor && door_mean <= kEraMeanCeiling,
+                  mean_claim.c_str());
+  const std::string spread_claim =
+      "E2: at least 7 of 9 doors inside " + two_places(kEraSpreadFloor) + " to " +
+      two_places(kEraSpreadCeiling) + " — now " + std::to_string(doors_inside);
+  failures += run::Expect(doors_inside >= kEraSpreadAtLeast, spread_claim.c_str());
+  const std::string late_claim =
+      "E3: no door opens more than a year after the residents' condition was first met — now " +
+      std::to_string(doors_late);
+  failures += run::Expect(doors_late == 0, late_claim.c_str());
   failures += run::Expect(median_year14 <= 800, "and not exploding by year 14");
   failures += run::KnownGap(median_year33 >= 1150,
                             "and lands in the canon's order of magnitude by year 33",
