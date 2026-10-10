@@ -272,6 +272,19 @@ class HousePolicy {
                 << sum.started << "; house-days unmarked: cap " << sum.cap_held << ", cooldown "
                 << sum.cooldown_held << '\n';
     }
+    // EVERY YEAR BESIDE THE WINDOWS (boss, core-boss-c2-site-supply-2026-10-09
+    // [85]-[87]): the windows summed years 1-5 into one line, and «why was a
+    // house not started in year 2» was guessed at by two roles until a probe
+    // printed these rows. A year with no site and nobody waiting prints its
+    // noughts: an absent line would read as a year not run.
+    for (std::size_t year = 0; year < years_.size(); ++year) {
+      const QueueTally& one = years_[year];
+      std::cout << run_name << ":   house queue year " << year + 1 << " — site-days: going up "
+                << one.going_up << ", short of recipe " << one.short_of_recipe << ", farm first "
+                << one.farm_first << ", older site waits " << one.older_site_waits << ", saw gate "
+                << one.saw_gate << ", started " << one.started << "; house-days unmarked: cap "
+                << one.cap_held << ", cooldown " << one.cooldown_held << '\n';
+    }
     std::cout << run_name << ":   house site-days short, by line —";
     for (const auto& [resource, days] : short_by_resource_) {
       std::cout << ' ' << (resource < resource_keys_.size() ? resource_keys_[resource] : "?") << ' '
