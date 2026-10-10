@@ -713,6 +713,23 @@ enum class EventKind : std::uint8_t {
   /// its hectares × 100. kRoutine. Seam key `meadow_marked`.
   kMeadowMarked,
 
+  /// HANDS STOOD IDLE WHILE WORK WAITED (task 427; host's feed, host-boss-event-
+  /// feed-reading-2026-10-10 [10]; boss, core-boss-feed-events-2026-10-10 [2]):
+  /// at the morning allocation able residents were left without a job for a
+  /// reason that is a job's shortfall (IdleReason kNoHorse, kCrewCap, kRoad,
+  /// kHorseLock — as booked, so a day off or the rain answers first) while a
+  /// job was left short. Said on the FIRST morning of such a run only: a
+  /// morning before it with any resident idle for those reasons holds it
+  /// (ResidentRow::idle_reason, yesterday's, is the run's memory). amount packs
+  /// three numbers, as kUrgentLoadWaits packs its task: the residents so left
+  /// in bits 0-31, the WorkKind of the job named in bits 32-39, its
+  /// JobShortfall in bits 40-47. The job named is the first left short in the
+  /// allocator's own order (PlacementTier, then the job list's order); its
+  /// subject rides in unit / field / herd / stand where it has one. `order`
+  /// stays invalid: a job is the village's standing work, not an order's.
+  /// kRoutine. Seam key `hands_idle_with_work_waiting`.
+  kHandsIdleWithWorkWaiting,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.
@@ -775,6 +792,16 @@ struct SimEvent {
   /// kRoadWorkFinished, kRoadDemolished (delivery 7a); and, on the three order
   /// events, the road the order named (OrderRow::road). Invalid otherwise.
   RoadId road;
+
+  /// The unit type an order named (OrderRow::unit_type): set on kOrderDone,
+  /// kOrderRefused and kOrderCancelled of every order, invalid for an order
+  /// that names none (task 427; boss, core-boss-feed-events-2026-10-10 [6]).
+  /// A refused kBuildUnit is refused before its unit exists, so `unit` is
+  /// invalid there and this is the only way a reader can say WHAT was not
+  /// built. A field of its own and not packed into `amount`: on the order
+  /// events `amount` is the OrderRefusal and nothing else (host names it by
+  /// its range). Seam word `unit_type`.
+  UnitTypeId unit_type;
 };
 
 /// @brief The outbox type used by WorldState: one step's events, in the

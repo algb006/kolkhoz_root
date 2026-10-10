@@ -515,7 +515,12 @@ class LaborSystem final : public ILaborSystem {
     const bool day_off_today = IsDayOffIn(current, current.calendar.day);
     // AND ON THE RESIDENT (ResidentRow::idle_reason; the office's workbook):
     // the same reason the book counts, one a person, this morning's. Cleared
-    // first: a man placed today, or not asked, carries no reason.
+    // first: a man placed today, or not asked, carries no reason. Yesterday's
+    // reasons are read before they go: they are the memory of the run
+    // kHandsIdleWithWorkWaiting is said at the start of (task 427).
+    const bool hands_idle_yesterday = std::ranges::any_of(
+        current.residents.rows,
+        [](const ResidentRow& resident) { return IdleForAJobsShortfall(resident.idle_reason); });
     for (ResidentRow& resident : current.residents.rows) {
       resident.idle_reason = IdleReason::kIdleReasonCount;
     }
@@ -574,6 +579,9 @@ class LaborSystem final : public ILaborSystem {
             ++book.idle_person_days[static_cast<std::size_t>(reason)];
             current.residents.rows[candidates[index].resident_row].idle_reason = reason;
           }
+        }
+        if (!hands_idle_yesterday) {
+          SayHandsIdleWithWorkWaiting(current, jobs, candidates, diagnosis);
         }
         // THE MORNING'S PLAN ONLY: the day's jobs the road stopped, by kind
         // (YearLedger::road_blocked_job_days). The top-up re-plans the same
@@ -1236,6 +1244,51 @@ class LaborSystem final : public ILaborSystem {
                                  planned == IdleReason::kWorkCovered ||
                                  planned == IdleReason::kCrewCap;
     return rain_holds && no_work_for_him ? IdleReason::kRain : planned;
+  }
+
+  /// Whether a booked idle reason is a JOB'S SHORTFALL — the man was free and
+  /// fit, and the work that wanted him was held by a horse, a brigade or the
+  /// road (kHandsIdleWithWorkWaiting; task 427). A day off, the rain, no work
+  /// or the work covered say that nothing waited for him.
+  static bool IdleForAJobsShortfall(IdleReason reason) {
+    return reason == IdleReason::kNoHorse || reason == IdleReason::kCrewCap ||
+           reason == IdleReason::kRoad || reason == IdleReason::kHorseLock;
+  }
+
+  /// @brief Says kHandsIdleWithWorkWaiting when the morning's booked reasons
+  ///        left hands idle for a job's shortfall and a job stood short —
+  ///        the caller asks it only on the first morning of such a run.
+  /// The job named is the first left short in the allocator's own order: its
+  /// placement tier, then the job list's order. Reads the reasons as booked
+  /// on the residents this morning (the rain and a day off already answered).
+  static void SayHandsIdleWithWorkWaiting(WorldState& current,
+                                          const std::vector<AssignmentJob>& jobs,
+                                          const std::vector<AssignmentCandidate>& candidates,
+                                          const PlacementDiagnosis& diagnosis) {
+    std::uint32_t idle = 0;
+    for (const AssignmentCandidate& candidate : candidates) {
+      idle += IdleForAJobsShortfall(current.residents.rows[candidate.resident_row].idle_reason)
+                  ? 1U
+                  : 0U;
+    }
+    std::size_t named = jobs.size();
+    for (std::size_t index = 0; index < jobs.size(); ++index) {
+      if (diagnosis.shortfall[index] &&
+          (named == jobs.size() || PlacementTier(jobs[index]) < PlacementTier(jobs[named]))) {
+        named = index;
+      }
+    }
+    if (idle == 0 || named == jobs.size()) {
+      return;
+    }
+    const AssignmentJob& job = jobs[named];
+    SimEvent& event = EmitEvent(current, EventKind::kHandsIdleWithWorkWaiting);
+    event.amount = static_cast<std::int64_t>(idle) | (static_cast<std::int64_t>(job.kind) << 32) |
+                   (static_cast<std::int64_t>(*diagnosis.shortfall[named]) << 40);
+    event.unit = job.unit;
+    event.field = job.field;
+    event.herd = job.herd;
+    event.stand = job.stand;
   }
 
   /// The day's openings: fields in a working phase and barns with care

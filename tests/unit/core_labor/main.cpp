@@ -777,6 +777,53 @@ int TestTheRainIsTheIdlesReason() {
   return failures;
 }
 
+/// HANDS IDLE WHILE WORK WAITS IS SAID ON THE FIRST MORNING (task 427; event_
+/// state.h, kHandsIdleWithWorkWaiting): four adults and a ploughing with no
+/// horse in the village — all four idle «no horse», the plough short of a
+/// horse. The first morning says it once, naming the ploughing's field, the
+/// four, the kind and the shortfall; the next morning of the same run says
+/// nothing (yesterday's reasons are the run's memory).
+int TestHandsIdleWhileWorkWaitsIsSaidOnce() {
+  int failures = 0;
+  const test::FakeTableSet tables;
+  const auto labor = core::CreateLaborSystem(tables, core::StubTables::kAllowed);
+  if (labor == nullptr) {
+    return Expect(false, "factory yields a system");
+  }
+  DayWorld day(4);
+  day.AddField(core::FieldPhase::kPlowing, 1.0F, core::Vec2{.x = 200.0F, .y = 0.0F});
+  const auto morning = [&labor, &day]() {
+    day.world.calendar.tick = 0;
+    core::RefreshCalendarCaches(day.world.calendar);
+    day.world.step_events.clear();
+    const core::WorldState before = day.world;
+    labor->RunAssignmentDecisions(before, day.world);
+    std::vector<core::SimEvent> said;
+    for (const core::SimEvent& event : day.world.step_events) {
+      if (event.kind == core::EventKind::kHandsIdleWithWorkWaiting) {
+        said.push_back(event);
+      }
+    }
+    return said;
+  };
+  const std::vector<core::SimEvent> first = morning();
+  const bool one = first.size() == 1;
+  const std::int64_t amount = one ? first.front().amount : 0;
+  failures += Expect(one, "hands idle: the first morning of the run says it once");
+  failures +=
+      Expect(one && (amount & 0xFFFFFFFF) == 4 &&
+                 ((amount >> 32) & 0xFF) == static_cast<std::int64_t>(core::WorkKind::kPlowing) &&
+                 ((amount >> 40) & 0xFF) == static_cast<std::int64_t>(core::JobShortfall::kNoHorse),
+             "hands idle: four left, the ploughing named, for want of a horse");
+  failures += Expect(one && first.front().field.value == day.world.fields.row_ids.back().value &&
+                         first.front().order.value == core::kInvalidEntityIdValue,
+                     "hands idle: the job's field rides on the event, and no order");
+  // The next morning of the same run.
+  day.world.calendar.day += 1;
+  failures += Expect(morning().empty(), "hands idle: the run's second morning says nothing");
+  return failures;
+}
+
 int TestTheWorkbookCarriesTheMorningsReason() {
   int failures = 0;
   const test::FakeTableSet tables;
@@ -4347,6 +4394,7 @@ int main() {
   failures += TestReferenceWorkerDeliversOneNorm();
   failures += TestWholeWorkingDay();
   failures += TestTheWorkbookCarriesTheMorningsReason();
+  failures += TestHandsIdleWhileWorkWaitsIsSaidOnce();
   failures += TestTheRainIsTheIdlesReason();
   failures += TestRoadBlockedIsBooked();
   failures += TestWalkOffPaysAndStops();

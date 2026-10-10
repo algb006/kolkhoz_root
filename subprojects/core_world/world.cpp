@@ -323,6 +323,10 @@ class EventsSlot final : public ISequentialPhase {
       // And the road an upgrade or a demolition named (delivery 7a), for the
       // same reason as the lot.
       event.road = order.road;
+      // And the unit type a build named (task 427 4(a); boss, core-boss-feed-
+      // events-2026-10-10 [6]): a refused kBuildUnit is refused before a unit
+      // exists, so its event named no building at all.
+      event.unit_type = order.unit_type;
       done.push_back(current.orders.row_ids[row]);
     }
     for (const OrderId id : done) {

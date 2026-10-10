@@ -232,6 +232,8 @@ const char* KindName(core::EventKind kind) {
       return "felling_mark_released";
     case core::EventKind::kMeadowMarked:
       return "meadow_marked";
+    case core::EventKind::kHandsIdleWithWorkWaiting:
+      return "hands_idle_with_work_waiting";
     case core::EventKind::kEventKindCount:
       return "COUNT";
   }

@@ -2067,6 +2067,45 @@ int CheckRoadPiecesOnStart() {
 ///     kRoadWorkFinished names the gravel row;
 ///   * the gravel taken up opens a work of labour alone, a third of the
 ///     laying's, and takes nothing off the stores.
+/// A REFUSED BUILD NAMES ITS TYPE (task 427 4(a); event_state.h, SimEvent::
+/// unit_type): a kBuildUnit is refused before a unit exists — here it is
+/// marked far off the map — so its kOrderRefused names no unit; the type it
+/// asked for rides on the event, and `amount` stays the refusal code alone.
+int CheckRefusedBuildNamesItsType() {
+  int failures = 0;
+  const auto shipped = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
+  core::StandardSimulationConfig config;
+  config.tables = shipped.get();
+  config.world_seed = 1929;
+  config.worker_count = 1;
+  const std::unique_ptr<core::ISimulation> simulation =
+      shipped ? core::CreateStandardSimulation(config) : nullptr;
+  if (Expect(simulation != nullptr, "refused build: the shipped set assembles") != 0) {
+    return 1;
+  }
+  core::OrderRow build;
+  build.kind = core::OrderKind::kBuildUnit;
+  build.unit_type = core::UnitTypeId{1};
+  build.position = core::Vec2{.x = -1.0e6F, .y = -1.0e6F};
+  const std::array<core::OrderRow, 1> orders = {build};
+  simulation->StageOrders(orders, {});
+  simulation->AdvanceStep();
+  std::uint32_t refused = 0;
+  bool named = false;
+  bool code_alone = false;
+  for (const core::SimEvent& event : simulation->CompletedState().step_events) {
+    if (event.kind == core::EventKind::kOrderRefused) {
+      ++refused;
+      named = event.unit_type.value == 1 && event.unit.value == core::kInvalidEntityIdValue;
+      code_alone = event.amount > 0 && event.amount <= 0xFF;
+    }
+  }
+  failures += Expect(refused == 1 && named,
+                     "refused build: the refusal names the type asked for, and no unit");
+  failures += Expect(code_alone, "refused build: amount is the refusal code and nothing else");
+  return failures;
+}
+
 int CheckRoadWork() {
   int failures = 0;
   const auto shipped = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
@@ -2829,6 +2868,7 @@ int main() {
   failures += CheckRoadPiecesOnStart();
   failures += CheckRoadDemolition();
   failures += CheckRoadWork();
+  failures += CheckRefusedBuildNamesItsType();
   failures += CheckTheOfficeDoors();
   failures += CheckRequiredUnitLevel();
   failures += CheckTransitionOrder();
