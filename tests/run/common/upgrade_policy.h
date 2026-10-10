@@ -65,7 +65,44 @@ class UpgradePolicy {
   // the one the block reads — so the fixture and the score cannot disagree
   // about what "at its level" means.
   explicit UpgradePolicy(const core::ITableSet& tables)
-      : catalog_(core::ReadReadinessCatalog(tables, core::Epoch::kOne)) {}
+      : catalog_(core::ReadReadinessCatalog(tables, core::Epoch::kOne)) {
+    ReadPens(tables);
+  }
+
+  /// @brief Whether a SECOND cattle yard waits for its warm (the cattle yard's
+  ///        winter warm; econ's kdig ruling §4 and males-work-pair-ruling §2):
+  ///        a level-1 cattle yard while a warm one already stands is raised
+  ///        only when the kolkhoz's cattle heads today are above the warm
+  ///        places standing — the herd expected at the November close, read
+  ///        as today's — or once the village has 340 residents. The first pen
+  ///        (no warm yard yet) is never held here.
+  /// Measured on the warm pair: of eight second-pen warms in dm, three came on
+  /// a day the warm places already held every head; with the rule nought of
+  /// eight (the thread core-boss-c2-site-supply-2026-10-09 [97]).
+  bool SecondPenWaits(const core::WorldState& world, const core::UnitRow& unit) const {
+    if (unit.type.value != cattle_type_ || unit.level != 1 ||
+        world.residents.rows.size() >= kSecondPenResidents) {
+      return false;
+    }
+    float warm = 0.0F;
+    for (const core::UnitRow& yard : world.units.rows) {
+      if (yard.type.value == cattle_type_ && yard.level >= 2 && yard.dead == 0 &&
+          static_cast<std::size_t>(yard.level) - 1U < cattle_places_.size()) {
+        warm += cattle_places_[static_cast<std::size_t>(yard.level) - 1U];
+      }
+    }
+    if (!(warm > 0.0F)) {
+      return false;
+    }
+    float heads = 0.0F;
+    for (const core::HerdRow& herd : world.herds.rows) {
+      if (herd.household_owned == 0 && herd.kind.value < cattle_home_.size() &&
+          cattle_home_[herd.kind.value] != 0) {
+        heads += static_cast<float>(herd.adult_count + herd.juvenile_count + herd.newborn_count);
+      }
+    }
+    return !(heads > warm);
+  }
 
   /// @brief The question asked before every upgrade (start_gate.h).
   void SetStartGate(StartGate gate) { start_gate_ = std::move(gate); }
@@ -137,6 +174,11 @@ class UpgradePolicy {
         hold(held_.site_open);
         continue;
       }
+      // A second cattle yard waits for the winter herd or 340 residents.
+      if (SecondPenWaits(world, unit)) {
+        hold(held_.second_pen_waits);
+        continue;
+      }
       const auto next = static_cast<std::uint8_t>(unit.level + 1U);
       if (!GateOpen(start_gate_, world, unit.type, next)) {
         hold(held_.gate_closed);
@@ -192,6 +234,7 @@ class UpgradePolicy {
     std::uint32_t site_open = 0;          ///< the unit is a site already (delivering, repair…)
     std::uint32_t gate_closed = 0;        ///< the start gate said no
     std::uint32_t materials_short = 0;    ///< the next rung's recipe is short
+    std::uint32_t second_pen_waits = 0;   ///< a second cattle yard waits for its winter herd
     std::uint32_t unexplained = 0;        ///< none of the above: must stay nought
     /// The first short line on the materials_short days, by resource row.
     std::map<std::uint16_t, std::uint32_t> short_by_resource;
@@ -211,7 +254,8 @@ class UpgradePolicy {
       const core::UnitRow& unit = world.units.rows[row];
       if (unit.level != 0 && unit.dead == 0 && Kolkhoz(unit.type) &&
           unit.level < core::RequiredUnitLevel(catalog_, unit.type, world.epoch, world) &&
-          unit.construction.phase == core::ConstructionPhase::kNone) {
+          unit.construction.phase == core::ConstructionPhase::kNone &&
+          !SecondPenWaits(world, unit)) {
         return row;
       }
     }
@@ -392,6 +436,57 @@ class UpgradePolicy {
     }
     return false;
   }
+
+  /// The cattle yard's row (unit_types.csv), the kinds whose home it is
+  /// (livestock.csv home_unit), and its places by level (unit_levels.csv
+  /// livestock_capacity_head) — what SecondPenWaits reads.
+  void ReadPens(const core::ITableSet& tables) {
+    const core::ITable* types = tables.FindTable("unit_types");
+    const std::uint32_t cattle =
+        types == nullptr ? core::kNoTableRow : types->FindRowByKey("cattle_yard");
+    cattle_type_ =
+        cattle == core::kNoTableRow ? core::kInvalidDefIdValue : static_cast<std::uint16_t>(cattle);
+    const core::ITable* livestock = tables.FindTable("livestock");
+    const std::uint32_t home =
+        livestock == nullptr ? core::kNoTableColumn : livestock->FindColumn("home_unit");
+    for (std::uint32_t row = 0; home != core::kNoTableColumn && row < livestock->RowCount();
+         ++row) {
+      cattle_home_.push_back(livestock->CellText(row, home) == "cattle_yard" ? 1U : 0U);
+    }
+    const core::ITable* levels = tables.FindTable("unit_levels");
+    if (levels == nullptr) {
+      return;
+    }
+    const std::uint32_t unit_column = levels->FindColumn("unit");
+    const std::uint32_t level_column = levels->FindColumn("level");
+    const std::uint32_t heads_column = levels->FindColumn("livestock_capacity_head");
+    for (std::uint32_t row = 0; row < levels->RowCount(); ++row) {
+      if (unit_column == core::kNoTableColumn ||
+          levels->CellText(row, unit_column) != "cattle_yard") {
+        continue;
+      }
+      const std::optional<float> level = levels->CellReal(row, level_column);
+      const std::optional<float> heads = levels->CellReal(row, heads_column);
+      if (!level || !(*level >= 1.0F)) {
+        continue;
+      }
+      const auto index = static_cast<std::size_t>(*level) - 1U;
+      if (cattle_places_.size() <= index) {
+        cattle_places_.resize(index + 1U, 0.0F);
+      }
+      cattle_places_[index] = heads ? *heads : 0.0F;
+    }
+  }
+
+  /// SecondPenWaits's residents, past which a second pen is warmed for the
+  /// era's «units at level» whatever the herd (econ's kdig ruling §4).
+  static constexpr std::size_t kSecondPenResidents = 340;
+
+  std::uint16_t cattle_type_ = core::kInvalidDefIdValue;
+
+  std::vector<std::uint8_t> cattle_home_;
+
+  std::vector<float> cattle_places_;
 
   Held held_;
 

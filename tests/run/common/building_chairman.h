@@ -72,6 +72,7 @@ class BuildingChairman {
     WireSawGate(social, sawmill);
     WireSawGate(upgrades, sawmill);
     WireRiseWatches(yard, felling, limit, digging);
+    WirePenWatch(yard, fixture, felling, digging);
     WireUpgradeRiseWatch(yard, upgrades, limit);
     // THE SAW KEEPS A RESERVE (boss, parcel 314's P1; the Epoch II boards,
     // boss-core-epoch1-3 seq 3). Sawing only towards the MARKED sites' need,
@@ -86,6 +87,23 @@ class BuildingChairman {
     // LimitPolicy's default in every run; said here because this chairman's
     // Epoch II turns on it — 9 villages of 9 with it, 3 without.
     limit.BuyTimberInEmergency(true);
+  }
+
+  /// @brief Tells the felling and the digging of the first pen's warm too, after
+  /// the chairman's yard's step (the cattle yard's winter warm; econ, males-
+  /// work-pair-ruling-2026-10-10 §2): its logs and clay are kept ahead from
+  /// the day the pen stands with cows. Called after WireRiseWatches, whose
+  /// watch it replaces on those two; the limit keeps the yard's.
+  static void WirePenWatch(const YardPolicy& yard_policy,
+                           const FixturePolicy& fixture_policy,
+                           FellingPolicy& felling_policy,
+                           ExtractionPolicy& digging_policy) {
+    const RiseWatch watch = [&yard_policy, &fixture_policy](const core::WorldState& world) {
+      const std::uint32_t yard_row = yard_policy.RowWaitingToRise(world);
+      return yard_row != core::kNoRow ? yard_row : fixture_policy.PenWaitingForWarm(world);
+    };
+    felling_policy.SetRiseWatch(watch);
+    digging_policy.SetRiseWatch(watch);
   }
 
   /// @brief Tells the felling, the limit and the digging of the step the

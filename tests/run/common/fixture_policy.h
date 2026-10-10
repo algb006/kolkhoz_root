@@ -85,6 +85,7 @@ class FixturePolicy {
 
   /// @brief One day of the chairman's attention. Call once a day.
   void RunDay(core::ISimulation& simulation) {
+    PauseSitesForThePen(simulation);
     CountWaitStreaks(simulation.CompletedState());
     NoteStoreDays(simulation.CompletedState());
     if (cooldown_ > 0) {
@@ -126,13 +127,96 @@ class FixturePolicy {
     cooldown_ = kCooldownDays;
   }
 
+  /// @brief The first cattle yard's pen waiting for its warm while cows stand
+  ///        on the farm: PenToWarm when a kolkhoz head of a cattle-yard kind
+  ///        stands, else kNoRow. The felling and the digging keep its warm's
+  ///        logs and clay ahead (BuildingChairman wires it as a rise watch).
+  std::uint32_t PenWaitingForWarm(const core::WorldState& world) const {
+    bool cows = false;
+    for (const core::HerdRow& herd : world.herds.rows) {
+      cows = cows || (herd.household_owned == 0 && herd.kind.value < cattle_home_.size() &&
+                      cattle_home_[herd.kind.value] != 0 &&
+                      herd.adult_count + herd.juvenile_count + herd.newborn_count > 0);
+    }
+    return cows ? PenToWarm(world) : core::kNoRow;
+  }
+
+  /// @brief THE FIRST PEN'S WARM BEFORE THE WINTER (econ, males-work-pair-
+  ///        ruling-2026-10-10 §2, §4; the warm pair's second form): from
+  ///        August to November, while the FIRST pen's warm is under works,
+  ///        every other open construction site is paused (kPauseUnit) so the
+  ///        builders go to the pen; they are resumed when the pen stands warm
+  ///        or the window closes.
+  /// WHY HANDS AND NOT MATERIALS: seed 1931's warm was ordered on day 31 with
+  /// its whole recipe on the site that day, and its works stood open to day
+  /// 57 beside two to five other sites — seven cows froze from day 49 (the
+  /// pen probe, the thread core-boss-c2-site-supply-2026-10-09 [97]). With
+  /// the pause: nought frozen in nine villages, 1931's warm on day 43.
+  void PauseSitesForThePen(core::ISimulation& simulation) {
+    const core::WorldState& world = simulation.CompletedState();
+    const std::uint32_t month =
+        (world.calendar.day % core::kDaysPerYear) / core::kDaysPerMonth + 1U;
+    std::uint32_t pen = core::kNoRow;
+    bool warm_stands = false;
+    for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+      const core::UnitRow& unit = world.units.rows[row];
+      if (unit.type.value != cattle_.value) {
+        continue;
+      }
+      warm_stands = warm_stands || unit.level >= kWarmBarnLevel;
+      if (pen == core::kNoRow && unit.level == kWarmBarnLevel - 1 &&
+          unit.construction.phase != core::ConstructionPhase::kNone &&
+          unit.construction.target_level == kWarmBarnLevel) {
+        pen = row;
+      }
+    }
+    const bool hold = pen != core::kNoRow && !warm_stands && month >= kPenWindowFirstMonth &&
+                      month <= kPenWindowLastMonth;
+    std::vector<core::OrderRow> orders;
+    if (hold) {
+      for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+        const core::UnitRow& unit = world.units.rows[row];
+        const bool works = unit.construction.phase == core::ConstructionPhase::kDelivering ||
+                           unit.construction.phase == core::ConstructionPhase::kBuilding;
+        if (row == pen || !works || unit.paused != 0) {
+          continue;
+        }
+        core::OrderRow order;
+        order.kind = core::OrderKind::kPauseUnit;
+        order.unit = world.units.row_ids[row];
+        orders.push_back(order);
+        paused_for_pen_.push_back(order.unit);
+      }
+    } else if (!paused_for_pen_.empty()) {
+      for (const core::UnitId unit : paused_for_pen_) {
+        core::OrderRow order;
+        order.kind = core::OrderKind::kResumeUnit;
+        order.unit = unit;
+        orders.push_back(order);
+      }
+      paused_for_pen_.clear();
+    }
+    if (!orders.empty()) {
+      simulation.StageOrders(std::span<const core::OrderRow>(orders.data(), orders.size()), {});
+    }
+  }
+
   /// @brief Whether today the farm's own building must go before any house
   /// (boss, parcel 298: the chairman builds what the farm lacks MOST). True
   /// while a site of a store for the harvest is marked and short of its recipe
   /// and the harvest has nowhere to go, or a cattle-yard site is and animals
   /// stand without a roof. A site already started holds nothing back.
+  /// AND FROM AUGUST TO NOVEMBER WHILE THE FIRST PEN WITH COWS IS NOT WARM
+  /// (the cattle yard's winter warm; econ, males-work-pair-ruling-2026-10-10
+  /// §2 and §4): the pen's warm recipe is taken by no other site first.
   bool HoldsHousesBack(const core::ISimulation& simulation) const {
     const core::WorldState& world = simulation.CompletedState();
+    const std::uint32_t month =
+        (world.calendar.day % core::kDaysPerYear) / core::kDaysPerMonth + 1U;
+    if (month >= kPenWindowFirstMonth && month <= kPenWindowLastMonth &&
+        PenWaitingForWarm(world) != core::kNoRow) {
+      return true;
+    }
     const bool room_short = RoomWasShort(world);
     const bool roof_short = RoofWasShort(world);
     if (!room_short && !roof_short) {
@@ -866,6 +950,15 @@ class FixturePolicy {
   /// The cattle yard's rung that is warm (Livestock design: rung 2, the
   /// wattle-and-clay barn; rung 1 the open pen).
   static constexpr std::uint8_t kWarmBarnLevel = 2;
+
+  /// The months the first pen's warm comes before every other building
+  /// (August to November: the winter months begin in December).
+  static constexpr std::uint32_t kPenWindowFirstMonth = 8;
+  static constexpr std::uint32_t kPenWindowLastMonth = 11;
+
+  /// The sites paused for the first pen's warm (PauseSitesForThePen), to be
+  /// resumed when it stands warm or the window closes.
+  std::vector<core::UnitId> paused_for_pen_;
 
   /// suggestions.csv's point for the cattle yard, and whether there is one.
   core::Vec2 pen_suggestion_{};
