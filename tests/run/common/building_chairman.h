@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <string>
 
+#include "barrack_policy.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
 #include "extraction_policy.h"
@@ -56,6 +57,7 @@ class BuildingChairman {
         limit(tables),
         repairs(tables),
         houses(tables),
+        barracks(tables),
         school(tables),
         office(tables),
         social(tables),
@@ -67,6 +69,7 @@ class BuildingChairman {
     WireStartGates(yard, fixture, houses, sawmill);
     WireSchoolGate(school, sawmill);
     WireSawGate(office, sawmill);
+    WireSawGate(barracks, sawmill);
     // The social objects ask the saw's question too: none of them is worth
     // the boards the sawmill itself is built of.
     WireSawGate(social, sawmill);
@@ -198,6 +201,7 @@ class BuildingChairman {
     LimitPolicy::Declare(run_name.c_str());
     RepairPolicy::Declare();
     HousePolicy::Declare(run_name);
+    BarrackPolicy::Declare(run_name);
     SchoolPolicy::Declare(run_name);
     OfficePolicy::Declare(run_name);
     SocialObjectsPolicy::Declare(run_name);
@@ -247,6 +251,9 @@ class BuildingChairman {
       upgrades.RunDay(simulation, farm_first);
     }
     houses.RunDay(simulation, farm_first);
+    // The barracks right after the houses: the newcomers' roof, by the
+    // design's canon (barrack_policy.h).
+    barracks.RunDay(simulation, farm_first);
     // The school after the houses: a family without a roof comes first.
     school.RunDay(simulation, farm_first);
     // And the office after the school. It is the farm's FIRST ORDERED
@@ -303,6 +310,7 @@ class BuildingChairman {
   NightPasturePolicy night_pasture;
   RepairPolicy repairs;
   HousePolicy houses;
+  BarrackPolicy barracks;
   SchoolPolicy school;
   OfficePolicy office;
   SocialObjectsPolicy social;
