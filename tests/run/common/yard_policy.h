@@ -44,8 +44,22 @@
 
 namespace run {
 
-/// @brief Builds the kolkhoz yard, takes it up to the stable step and
-/// appoints a groom — then stops, for good, the day the team comes in.
+/// @brief Builds the kolkhoz yard, appoints a groom the day it stands and
+/// takes it up to the stable step — then stops, for good, the day the team
+/// is in under the stable's roof.
+///
+/// THE GROOM THE DAY THE YARD STANDS (0.37.228; boss, 11 October 2026, on
+/// F3's pair): until then the run took the ladder up to the stable first
+/// and appointed the groom after — and the stable's step waits for its
+/// recipe (forty logs, five boards: the sawmill's), so the groom came in
+/// summer, and the team with him. Since the logistics open «in the person
+/// of the groom» (transport §11, «заводится в лице конюха»; the core's
+/// gate is the team stabled, horses_stabled), the hay heaps of year 1's
+/// August stood without a plan: hay hauling 430 -> 282 person-days over
+/// nine villages. Under «optimal play for the bots» (the human, 2 October
+/// 2026) the groom holds the yard the day it stands — the team comes in at
+/// the first level (stable_horses.cpp asks level > 0; foals wait for the
+/// stable's roof, livestock design §5) — and the ladder goes on after him.
 class YardPolicy {
  public:
   /// @param tables The run's own table set. A set without a horse_yard type
@@ -63,6 +77,17 @@ class YardPolicy {
   /// @brief Whether the policy has anything left to do. False once the team
   /// is stabled — the milestone it exists for.
   bool Watching() const { return watching_; }
+
+  /// @brief Whether the stable's step may be ordered today: August to
+  ///        March (kStableFromMonth, kStableToMonth), after the hay. PUBLIC
+  ///        because the yard's rise has a second door —
+  ///        UpgradePolicy raises every kolkhoz building to the era's level
+  ///        and raised the yard on day 13 past this policy's wait (base4, 11
+  ///        October 2026, bot v2 to the digit of v1): one rule, two doors.
+  static bool StableStepInSeason(const core::WorldState& world) {
+    const auto month = static_cast<std::uint8_t>(world.calendar.date.month);
+    return month >= kStableFromMonth || month <= kStableToMonth;
+  }
 
   /// @brief The question asked before every start (start_gate.h).
   void SetStartGate(StartGate gate) { start_gate_ = std::move(gate); }
@@ -82,7 +107,7 @@ class YardPolicy {
       return false;
     }
     const core::WorldState& world = simulation.CompletedState();
-    if (world.chairman.horses_stabled != 0) {
+    if (StableStands(world)) {
       return false;
     }
     const std::uint32_t yard_row = FindYard(world);
@@ -92,8 +117,12 @@ class YardPolicy {
     const core::UnitRow& yard = world.units.rows[yard_row];
     const bool waits_to_start =
         yard.level == 0 && yard.construction.phase == core::ConstructionPhase::kMarked;
+    // The stable's step holds the houses back only in its own months: out
+    // of them it is not ordered (NextOrder), and a step nobody orders holds
+    // nothing back.
     const bool waits_to_rise = yard.level > 0 && yard.level < kStableLevel &&
-                               yard.construction.phase == core::ConstructionPhase::kNone;
+                               yard.construction.phase == core::ConstructionPhase::kNone &&
+                               StableStepInSeason(world);
     return (waits_to_start || waits_to_rise) &&
            !simulation.MaterialsShortFor(world.units.row_ids[yard_row]).empty();
   }
@@ -102,8 +131,7 @@ class YardPolicy {
   /// the step not yet taken — the step the core refuses until its whole
   /// recipe is in the village — or kNoRow.
   std::uint32_t RowWaitingToRise(const core::WorldState& world) const {
-    if (!watching_ || yard_type_.value == core::kInvalidDefIdValue ||
-        world.chairman.horses_stabled != 0) {
+    if (!watching_ || yard_type_.value == core::kInvalidDefIdValue || StableStands(world)) {
       return core::kNoRow;
     }
     const std::uint32_t yard_row = FindYard(world);
@@ -112,7 +140,8 @@ class YardPolicy {
     }
     const core::UnitRow& yard = world.units.rows[yard_row];
     const bool waits_to_rise = yard.level > 0 && yard.level < kStableLevel &&
-                               yard.construction.phase == core::ConstructionPhase::kNone;
+                               yard.construction.phase == core::ConstructionPhase::kNone &&
+                               StableStepInSeason(world);
     return waits_to_rise ? yard_row : core::kNoRow;
   }
 
@@ -124,8 +153,8 @@ class YardPolicy {
       return;
     }
     const core::WorldState& world = simulation.CompletedState();
-    if (world.chairman.horses_stabled != 0) {
-      watching_ = false;  // the horses are in: nothing here matters any more
+    if (StableStands(world)) {
+      watching_ = false;  // the team is in under the stable's roof: nothing here matters any more
       suggested_.Report("the horse yard");
       return;
     }
@@ -246,12 +275,38 @@ class YardPolicy {
       order.unit = id;
       return true;
     }
+    // THE GROOM FIRST, the day the yard stands (the class doc): the team
+    // comes in on the herd day after him, and the logistics with it.
+    if (!HasGroom(world, id)) {
+      const std::uint32_t groom = NextCandidate(world);
+      if (groom == core::kNoRow || groom_post_.value == core::kInvalidDefIdValue) {
+        return false;
+      }
+      order.kind = core::OrderKind::kAppoint;
+      order.resident = world.residents.row_ids[groom];
+      order.unit = id;
+      order.profession = groom_post_;
+      return true;
+    }
     // The stable is the SECOND step, and foals come only under its roof
-    // (livestock design §5) — so the run takes the ladder up before it
-    // worries about the groom.
+    // (livestock design §5). ITS LOGS ARE WINTER'S (boss, 11 October 2026,
+    // the second ruling on F3's pair, and his pick of the window after the
+    // trade was measured): the step is put on the ladder after the hay —
+    // August to March — so its forty logs are not felled in the sowing and
+    // hay months and the stable stands for the autumn foaling's tail. With
+    // the groom appointed at the first level (above) the
+    // step went on the ladder in April and the run's chairman felled for it
+    // that spring: felling in year 1 went 11 -> 278 hands' days over nine
+    // villages, out of the hay (-21 %), the harvest (-15 %) and the houses
+    // (-30 %). The old policy's wait was an ACCIDENT of its order (the
+    // groom after the stable, the stable after the sawmill's boards), not a
+    // rule — this is the rule.
     if (yard.level < kStableLevel) {
       if (yard.construction.phase != core::ConstructionPhase::kNone) {
         return false;
+      }
+      if (!StableStepInSeason(world)) {
+        return false;  // spring and summer: the hands are the fields' and the meadows'
       }
       if (!GateOpen(start_gate_, world, yard.type, static_cast<std::uint8_t>(yard.level + 1U))) {
         return false;
@@ -260,18 +315,19 @@ class YardPolicy {
       order.unit = id;
       return true;
     }
-    if (HasGroom(world, id)) {
-      return false;  // appointed; the horses come in on the herd day
-    }
-    const std::uint32_t groom = NextCandidate(world);
-    if (groom == core::kNoRow || groom_post_.value == core::kInvalidDefIdValue) {
+    return false;  // the groom holds the yard and the stable stands: the herd day does the rest
+  }
+
+  /// @brief The milestone this policy exists for: the team stabled
+  /// (chairman.horses_stabled) under a yard at its stable step. Until
+  /// 0.37.228 the flag alone — and with the groom appointed at the first
+  /// level it would stop the policy before the stable's roof.
+  bool StableStands(const core::WorldState& world) const {
+    if (world.chairman.horses_stabled == 0) {
       return false;
     }
-    order.kind = core::OrderKind::kAppoint;
-    order.resident = world.residents.row_ids[groom];
-    order.unit = id;
-    order.profession = groom_post_;
-    return true;
+    const std::uint32_t yard_row = FindYard(world);
+    return yard_row != core::kNoRow && world.units.rows[yard_row].level >= kStableLevel;
   }
 
   /// @brief An adult with no post, taken in row order — and a different one
@@ -308,6 +364,20 @@ class YardPolicy {
   /// The ladder step that is the stable (livestock design §5).
   static constexpr std::uint8_t kStableLevel = 2;
 
+  /// The months the stable's step is ordered in: August (7, counted from
+  /// January 0) to March (2) — after the hay, so the stable stands for the
+  /// tail of the autumn foaling (boss's pick of 11 October 2026 by his rule
+  /// «the earliest window in which no field window above the felling's tier
+  /// loses anything»: against October–March it costs no winter hectare —
+  /// 31.5 ha of winter rye on both — and gives 42 foals in year 1 against
+  /// 13 and 208 adults at year 2's end against 197, for ten spring hectares
+  /// and 0.47 t under snow; the window from August WITH the felling moved
+  /// into it put 13.5 t under snow and was refused).
+ public:
+  static constexpr std::uint8_t kStableFromMonth = 7;
+  static constexpr std::uint8_t kStableToMonth = 2;
+
+ private:
   core::UnitTypeId yard_type_;
 
   core::ProfessionId groom_post_;

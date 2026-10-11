@@ -51,6 +51,7 @@
 #include "core_world/era_readiness.h"
 #include "core_world/world.h"
 #include "start_gate.h"
+#include "yard_policy.h"
 
 namespace run {
 
@@ -190,6 +191,15 @@ class UpgradePolicy {
         hold(held_.clay_out_of_season);
         continue;
       }
+      // THE HORSE YARD'S STABLE IS WINTER'S TOO (YardPolicy::StableStepInSeason;
+      // boss, 11 October 2026): the yard policy waits for October, and this
+      // door raised the yard on day 13 of year 1 past that wait — its forty
+      // logs felled in the sowing months (base4: bot v2 to the digit of v1).
+      if (unit.type.value == horse_type_ && unit.level == 1 &&
+          !YardPolicy::StableStepInSeason(world)) {
+        hold(held_.stable_out_of_season);
+        continue;
+      }
       const auto next = static_cast<std::uint8_t>(unit.level + 1U);
       if (!GateOpen(start_gate_, world, unit.type, next)) {
         hold(held_.gate_closed);
@@ -239,15 +249,16 @@ class UpgradePolicy {
   /// Days a kolkhoz unit stood below the era's level and nothing was
   /// raised, by the first reason that held it, in RunDay's order.
   struct Held {
-    std::uint32_t farm_first = 0;          ///< the farm's own shortage waits for its recipe
-    std::uint32_t farm_not_standing = 0;   ///< the chairman's yard not up yet
-    std::uint32_t one_going_up = 0;        ///< another upgrade is building
-    std::uint32_t site_open = 0;           ///< the unit is a site already (delivering, repair…)
-    std::uint32_t gate_closed = 0;         ///< the start gate said no
-    std::uint32_t materials_short = 0;     ///< the next rung's recipe is short
-    std::uint32_t second_pen_waits = 0;    ///< a second cattle yard waits for its winter herd
-    std::uint32_t clay_out_of_season = 0;  ///< a cattle yard's clay warm waits for March (a1)
-    std::uint32_t unexplained = 0;         ///< none of the above: must stay nought
+    std::uint32_t farm_first = 0;            ///< the farm's own shortage waits for its recipe
+    std::uint32_t farm_not_standing = 0;     ///< the chairman's yard not up yet
+    std::uint32_t one_going_up = 0;          ///< another upgrade is building
+    std::uint32_t site_open = 0;             ///< the unit is a site already (delivering, repair…)
+    std::uint32_t gate_closed = 0;           ///< the start gate said no
+    std::uint32_t materials_short = 0;       ///< the next rung's recipe is short
+    std::uint32_t second_pen_waits = 0;      ///< a second cattle yard waits for its winter herd
+    std::uint32_t clay_out_of_season = 0;    ///< a cattle yard's clay warm waits for March (a1)
+    std::uint32_t stable_out_of_season = 0;  ///< the horse yard's stable waits for October
+    std::uint32_t unexplained = 0;           ///< none of the above: must stay nought
     /// The first short line on the materials_short days, by resource row.
     std::map<std::uint16_t, std::uint32_t> short_by_resource;
   };
@@ -458,6 +469,10 @@ class UpgradePolicy {
         types == nullptr ? core::kNoTableRow : types->FindRowByKey("cattle_yard");
     cattle_type_ =
         cattle == core::kNoTableRow ? core::kInvalidDefIdValue : static_cast<std::uint16_t>(cattle);
+    const std::uint32_t horse =
+        types == nullptr ? core::kNoTableRow : types->FindRowByKey("horse_yard");
+    horse_type_ =
+        horse == core::kNoTableRow ? core::kInvalidDefIdValue : static_cast<std::uint16_t>(horse);
     const core::ITable* livestock = tables.FindTable("livestock");
     const std::uint32_t home =
         livestock == nullptr ? core::kNoTableColumn : livestock->FindColumn("home_unit");
@@ -499,6 +514,7 @@ class UpgradePolicy {
   static constexpr std::uint32_t kClayWarmLastMonth = 8;
 
   std::uint16_t cattle_type_ = core::kInvalidDefIdValue;
+  std::uint16_t horse_type_ = core::kInvalidDefIdValue;
 
   std::vector<std::uint8_t> cattle_home_;
 
