@@ -13,6 +13,7 @@
 #include "core_common/alarm_state.h"
 #include "core_common/body.h"
 #include "core_common/calendar.h"
+#include "core_common/cold_housing.h"
 #include "core_common/day_window.h"
 #include "core_common/daylight.h"
 #include "core_common/deadline.h"
@@ -2483,6 +2484,57 @@ int TestRoadIndex() {
 /// painting on day 70 clears the dark days between — day 60's slot, which is
 /// day 12's, says nothing of day 12 any more. The young kept: a third of the
 /// adults and the year's worst more while lit.
+/// THE WORKS THAT WILL HOUSE A HERD FACING THE COLD (cold_housing.h; boss, 11
+/// October 2026): a cattle yard under works, cows of a freezing kind standing
+/// and no warm cattle yard — in September it holds; in July it does not; nor
+/// when a warm rung stands, nor for a kind that does not freeze, nor for a
+/// herd a family owns.
+int TestColdHousing() {
+  int failures = 0;
+  core::ColdHousing cold;
+  cold.home_by_kind = {core::UnitTypeId{1}};  // kind 0's home: type 1, the cattle yard
+  cold.freezes_by_kind = {1};
+  cold.warm_by_type_level = {{}, {0, 0, 1}};  // type 1: rung 2 warm
+  const auto world_in = [](std::uint32_t day) {
+    core::WorldState world;
+    world.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(world.calendar);
+    core::UnitRow pen;
+    pen.type = core::UnitTypeId{1};
+    pen.level = 0;
+    pen.construction.phase = core::ConstructionPhase::kBuilding;
+    pen.construction.target_level = 1;
+    core::AppendRow(world.units, pen);
+    core::HerdRow cows;
+    cows.kind = core::LivestockKindId{0};
+    cows.adult_count = 10;
+    core::AppendRow(world.herds, cows);
+    return world;
+  };
+  core::WorldState september = world_in(33);
+  failures += Expect(core::WorksHouseAColdHerd(cold, september, 0),
+                     "cold housing: a pen under works for freezing cows in September — first");
+  failures += Expect(!core::WorksHouseAColdHerd(cold, world_in(25), 0),
+                     "cold housing: the same in July — no rank");
+  failures += Expect(core::WorksHouseAColdHerd(cold, world_in(1), 0),
+                     "cold housing: and in January, the window wrapping the year — first");
+  core::UnitRow warm;
+  warm.type = core::UnitTypeId{1};
+  warm.level = 2;
+  core::AppendRow(september.units, warm);
+  failures += Expect(!core::WorksHouseAColdHerd(cold, september, 0),
+                     "cold housing: a warm cattle yard already stands — no rank");
+  core::ColdHousing hardy = cold;
+  hardy.freezes_by_kind = {0};
+  failures += Expect(!core::WorksHouseAColdHerd(hardy, world_in(33), 0),
+                     "cold housing: a kind that does not freeze — no rank");
+  core::WorldState yards = world_in(33);
+  yards.herds.rows[0].household_owned = 1;
+  failures += Expect(!core::WorksHouseAColdHerd(cold, yards, 0),
+                     "cold housing: the cows a family owns — not the kolkhoz's, no rank");
+  return failures;
+}
+
 int TestHorseLampMemory() {
   int failures = 0;
   core::HorseLampMemory memory;
@@ -2811,6 +2863,7 @@ int main() {
   failures += TestDistrictVisitPacking();
   failures += TestHerdAgeBand();
   failures += TestHorseLampMemory();
+  failures += TestColdHousing();
   failures += TestRoadBeds();
   failures += TestRoadGraph();
   failures += TestRoadViews();

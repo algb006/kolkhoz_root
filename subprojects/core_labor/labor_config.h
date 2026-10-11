@@ -31,6 +31,7 @@
 #include <string_view>
 #include <vector>
 
+#include "core_catalog/cold_housing_catalog.h"
 #include "core_catalog/extraction_catalog.h"
 #include "core_catalog/processing_catalog.h"
 #include "core_catalog/timber_catalog.h"
@@ -591,6 +592,10 @@ struct LaborConfig {
 
   /// Construction design §3: the digging crew's cap by tools (boss, parcel 270).
   ExtractionCatalog extraction;
+
+  /// The cold-housing rule's data (core_common/cold_housing.h): the works
+  /// that will house a herd facing the cold go first among the construction.
+  ColdHousing cold_housing;
 };
 
 /// @brief Fills `config` from the table set.

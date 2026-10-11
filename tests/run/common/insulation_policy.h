@@ -74,7 +74,13 @@ class InsulationPolicy {
       return;
     }
     const auto month = static_cast<std::uint32_t>(world.calendar.date.month);
-    if (month < kFirstMonth || month > kLastMonth) {
+    const bool house_window = month >= kFirstMonth && month <= kLastMonth;
+    // THE HERDS' STRAW THROUGH THE WINTER TOO (form (a1); boss, 11 October
+    // 2026): the coat is a winter job and the frost does not stop it, and a
+    // pen that stood after November froze its cows till spring in every
+    // village of 0.37.221's pair. October to February.
+    const bool byre_window = month >= kFirstMonth || month <= kLastByreMonth;
+    if (!house_window && !byre_window) {
       return;
     }
     core::Grams straw = 0;
@@ -106,10 +112,10 @@ class InsulationPolicy {
     // behind the stable either: the cows' pen stands long before the horses'.
     std::uint32_t target = core::kNoRow;
     core::Grams price = 0;
-    if (byre != core::kNoRow) {
+    if (byre != core::kNoRow && byre_window) {
       target = byre;
       price = herd_straw_;
-    } else if (house != core::kNoRow && world.chairman.horses_stabled != 0) {
+    } else if (house != core::kNoRow && house_window && world.chairman.horses_stabled != 0) {
       target = house;
       price = kHouseStraw;
     }
@@ -161,6 +167,8 @@ class InsulationPolicy {
   /// tables before boss's export of 2026-09-15.
   static constexpr std::uint32_t kFirstMonth = 9;
   static constexpr std::uint32_t kLastMonth = 10;
+  /// The herds' straw goes on to February (0-based 1): October to February.
+  static constexpr std::uint32_t kLastByreMonth = 1;
 
   /// A house's straw (construction.csv, 2 t) and what is left for the herds.
   static constexpr core::Grams kHouseStraw = 2 * core::kGramsPerTonne;
@@ -214,8 +222,10 @@ class InsulationPolicy {
     for (const core::HerdRow& herd : world.herds.rows) {
       const std::uint32_t heads =
           static_cast<std::uint32_t>(herd.newborn_count) + herd.juvenile_count + herd.adult_count;
-      if (herd.household_owned == 0 && herd.unit.value == unit.value &&
-          heads > herd.billeted_count) {
+      // Its heads under the roof — or billeted for want of room under it: the
+      // herd is the yard's either way (form (a1): «and also when the herd
+      // stands billeted»).
+      if (herd.household_owned == 0 && herd.unit.value == unit.value && heads > 0) {
         return true;
       }
     }

@@ -179,6 +179,17 @@ class UpgradePolicy {
         hold(held_.second_pen_waits);
         continue;
       }
+      // NO CLAY WARM OPENED FROM OCTOBER TO FEBRUARY (form (a1), the fixture's
+      // own rule, fixture_policy.h kClayWarmFirstMonth..LastMonth): this door
+      // raised the first pen to its warm on day 47, December, in 0.37.221's
+      // pair while the fixture held it — and the clay stood stopped by the
+      // winter till March. The pen takes the straw coat meanwhile.
+      const auto month = static_cast<std::uint32_t>(world.calendar.date.month);
+      if (unit.type.value == cattle_type_ && unit.level == 1 &&
+          (month < kClayWarmFirstMonth || month > kClayWarmLastMonth)) {
+        hold(held_.clay_out_of_season);
+        continue;
+      }
       const auto next = static_cast<std::uint8_t>(unit.level + 1U);
       if (!GateOpen(start_gate_, world, unit.type, next)) {
         hold(held_.gate_closed);
@@ -228,14 +239,15 @@ class UpgradePolicy {
   /// Days a kolkhoz unit stood below the era's level and nothing was
   /// raised, by the first reason that held it, in RunDay's order.
   struct Held {
-    std::uint32_t farm_first = 0;         ///< the farm's own shortage waits for its recipe
-    std::uint32_t farm_not_standing = 0;  ///< the chairman's yard not up yet
-    std::uint32_t one_going_up = 0;       ///< another upgrade is building
-    std::uint32_t site_open = 0;          ///< the unit is a site already (delivering, repair…)
-    std::uint32_t gate_closed = 0;        ///< the start gate said no
-    std::uint32_t materials_short = 0;    ///< the next rung's recipe is short
-    std::uint32_t second_pen_waits = 0;   ///< a second cattle yard waits for its winter herd
-    std::uint32_t unexplained = 0;        ///< none of the above: must stay nought
+    std::uint32_t farm_first = 0;          ///< the farm's own shortage waits for its recipe
+    std::uint32_t farm_not_standing = 0;   ///< the chairman's yard not up yet
+    std::uint32_t one_going_up = 0;        ///< another upgrade is building
+    std::uint32_t site_open = 0;           ///< the unit is a site already (delivering, repair…)
+    std::uint32_t gate_closed = 0;         ///< the start gate said no
+    std::uint32_t materials_short = 0;     ///< the next rung's recipe is short
+    std::uint32_t second_pen_waits = 0;    ///< a second cattle yard waits for its winter herd
+    std::uint32_t clay_out_of_season = 0;  ///< a cattle yard's clay warm waits for March (a1)
+    std::uint32_t unexplained = 0;         ///< none of the above: must stay nought
     /// The first short line on the materials_short days, by resource row.
     std::map<std::uint16_t, std::uint32_t> short_by_resource;
   };
@@ -481,6 +493,10 @@ class UpgradePolicy {
   /// SecondPenWaits's residents, past which a second pen is warmed for the
   /// era's «units at level» whatever the herd (econ's kdig ruling §4).
   static constexpr std::size_t kSecondPenResidents = 340;
+  /// The clay warm's season, 0-based months: March to September — the
+  /// fixture's own (fixture_policy.h; form (a1), STUB).
+  static constexpr std::uint32_t kClayWarmFirstMonth = 2;
+  static constexpr std::uint32_t kClayWarmLastMonth = 8;
 
   std::uint16_t cattle_type_ = core::kInvalidDefIdValue;
 

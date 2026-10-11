@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "core_common/calendar.h"
+#include "core_common/cold_housing.h"
 #include "core_common/day_window.h"
 #include "core_common/geometry.h"
 #include "core_common/haul.h"
@@ -34,6 +35,9 @@ constexpr float kStepHours = 1.0F / 12.0F;
 struct OpenTask {
   std::uint32_t row = 0;
   std::uint8_t level = 0;
+  /// A works' supply that will house a herd facing the cold (cold_housing.h):
+  /// first within its level.
+  bool cold_first = false;
   SimDay aged_from_day = 0;
   Vec2 place;
   bool logs = false;  ///< carted by the log cart (a stand's logs, the district's lot)
@@ -41,7 +45,7 @@ struct OpenTask {
 
 /// The open tasks — not paused, a seam left — by level, the longest waiting
 /// first, then the row: the plan's order, repeatable.
-std::vector<OpenTask> OpenTasks(const WorldState& world) {
+std::vector<OpenTask> OpenTasks(const LogisticsConfig& config, const WorldState& world) {
   std::vector<OpenTask> open;
   for (std::uint32_t row = 0; row < world.logistics_tasks.rows.size(); ++row) {
     const LogisticsTaskRow& task = world.logistics_tasks.rows[row];
@@ -58,12 +62,19 @@ std::vector<OpenTask> OpenTasks(const WorldState& world) {
     // the log cart too (the direct leg; IsLogs below asks the same).
     bool logs = task.load_kind == LogisticsLoadKind::kStandLogs ||
                 task.load_kind == LogisticsLoadKind::kDistrictLot;
+    bool cold_first = false;
     if (task.load_kind == LogisticsLoadKind::kSiteSupply) {
       const std::uint32_t unit_row = FindRow(world.units, task.unit);
       logs = unit_row != kNoRow && world.units.rows[unit_row].construction.supply_log_way != 0;
+      // THE SUPPLY OF THE WORKS THAT WILL HOUSE A HERD FACING THE COLD first
+      // within its level (cold_housing.h; econ's form (a), boss 11 October
+      // 2026): ahead of every other works' supply, still behind level 0 —
+      // the harvest's carting.
+      cold_first = unit_row != kNoRow && WorksHouseAColdHerd(config.cold_housing, world, unit_row);
     }
     open.push_back(OpenTask{.row = row,
                             .level = static_cast<std::uint8_t>(task.level),
+                            .cold_first = cold_first,
                             .aged_from_day = task.aged_from_day,
                             .place = place,
                             .logs = logs});
@@ -71,6 +82,9 @@ std::vector<OpenTask> OpenTasks(const WorldState& world) {
   std::ranges::stable_sort(open, [](const OpenTask& left, const OpenTask& right) {
     if (left.level != right.level) {
       return left.level < right.level;
+    }
+    if (left.cold_first != right.cold_first) {
+      return left.cold_first;
     }
     if (left.aged_from_day != right.aged_from_day) {
       return left.aged_from_day < right.aged_from_day;
@@ -378,7 +392,7 @@ GroomPlan BuildGroomPlan(const LogisticsConfig& config,
       ++tally.tasks[level];
     }
   }
-  const std::vector<OpenTask> open = OpenTasks(world);
+  const std::vector<OpenTask> open = OpenTasks(config, world);
   // Each level's ring: the open tasks of the level, in the plan's order, and
   // where the next cart starts on it.
   std::array<std::vector<std::uint32_t>, kLogisticsLevelCount> rings;

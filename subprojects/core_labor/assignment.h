@@ -160,6 +160,12 @@ struct AssignmentJob {
   /// carrier on foot is sent to it (PlanDayAssignments).
   bool supplies_works = false;
 
+  /// True for a construction works that will house a herd facing the cold
+  /// (core_common/cold_housing.h, WorksHouseAColdHerd; August to February):
+  /// a KEY in OrderJobs that lifts it first among its tier's windowless jobs
+  /// — the construction — and nothing above them.
+  bool houses_cold_herd = false;
+
   /// True for a supply whose front leg is logs straight off a stand (the
   /// direct leg; ConstructionState::supply_log_way): the ride to it is the
   /// log cart's, across the felling's ground, as a stand's own carting is —

@@ -8,6 +8,7 @@
 #include <string_view>
 #include <utility>
 
+#include "core_catalog/cold_housing_catalog.h"
 #include "core_catalog/table_value.h"
 #include "core_common/haul.h"
 #include "core_tables/tables.h"
@@ -173,7 +174,7 @@ bool ParseLogisticsConfig(const ITableSet& tables, LogisticsConfig& config, std:
       return false;
     }
   }
-  return true;
+  return ReadColdHousing(tables, config.cold_housing, error);
 }
 
 }  // namespace core

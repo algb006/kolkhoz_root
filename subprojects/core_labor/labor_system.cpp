@@ -38,6 +38,7 @@
 #include "core_common/alarm_state.h"
 #include "core_common/away_in_district.h"
 #include "core_common/calendar.h"
+#include "core_common/cold_housing.h"
 #include "core_common/day_off.h"
 #include "core_common/emit_event.h"
 #include "core_common/event_state.h"
@@ -1768,6 +1769,11 @@ class LaborSystem final : public ILaborSystem {
         job.position = unit.position;
         job.work_days_remaining = unit.construction.labor_days_remaining;
         job.max_crew = unit.construction.max_crew;
+        // The allocator's DEFAULT for the works that will house a herd facing
+        // the cold (cold_housing.h). The player's explicit builders win over
+        // it: his standing work orders override this morning's placement
+        // after the accountant has made it (work_orders.h, ApplyStandingWork).
+        job.houses_cold_herd = WorksHouseAColdHerd(config_.cold_housing, current, row);
         jobs.push_back(job);
       }
       // THE PIECES OF ROAD UNDER WORK (7e; road_work_state.h): a site as a

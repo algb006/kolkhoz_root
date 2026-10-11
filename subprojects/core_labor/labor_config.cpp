@@ -694,7 +694,8 @@ bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string&
   }
   return ParseTimberCatalog(tables, config.timber, error) &&
          ParseProcessingCatalog(tables, config.processing, error) &&
-         ParseExtractionCatalog(tables, config.extraction, error);
+         ParseExtractionCatalog(tables, config.extraction, error) &&
+         ReadColdHousing(tables, config.cold_housing, error);
 }
 
 }  // namespace core

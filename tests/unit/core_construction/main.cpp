@@ -1576,6 +1576,12 @@ int TestInsulation() {
   Run(*system, world, 1);
   failures += Expect(RefusalOf(world, again) == core::OrderRefusal::kRuleForbids,
                      "insulation: a warm house is not insulated twice");
+  // WORKS OPEN ON THE UNIT, NAMED (form (a1)): the byre with its own coat
+  // under labour refuses a second order by the one-active-task rule.
+  const core::OrderId over_works = Issue(world, UnitOrder(core::OrderKind::kInsulateUnit, byre));
+  Run(*system, world, 0);
+  failures += Expect(RefusalOf(world, over_works) == core::OrderRefusal::kConflictsWithActive,
+                     "insulation: works open on the unit refuse the coat as a conflict, named");
 
   // A paused job is carried nothing and does not finish; resumed, the stores
   // give again and the labour opens. The byre's straw is taken off by hand to

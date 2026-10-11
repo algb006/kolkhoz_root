@@ -630,7 +630,16 @@ class FixturePolicy {
       last_ordered_cattle_ = true;
       return MarkPen(world, order);
     }
-    if (warm_barn_in_hand_) {
+    // NO CLAY WARM OPENED FROM OCTOBER (boss, 11 October 2026, form (a1);
+    // livestock design «Не успел»): a warm begun in October could not stand
+    // by 1 December under the carted supply — 0.37.221's pen reached the
+    // winter 0.09 man-days short and stood stopped till March while its cows
+    // froze. From October to the end of winter the pen takes the straw coat
+    // instead (insulation_policy.h), and the clay warm opens in spring. STUB:
+    // «cannot be done by 1 December» is read as «not begun by 1 October».
+    const auto month_now = static_cast<std::uint32_t>(world.calendar.date.month);
+    const bool clay_season = month_now >= kClayWarmFirstMonth && month_now <= kClayWarmLastMonth;
+    if (warm_barn_in_hand_ && clay_season) {
       const std::uint32_t pen = PenToWarm(world);
       if (pen != core::kNoRow) {
         order.kind = core::OrderKind::kUpgradeUnit;
@@ -972,6 +981,10 @@ class FixturePolicy {
   /// (August to November: the winter months begin in December).
   static constexpr std::uint32_t kPenWindowFirstMonth = 8;
   static constexpr std::uint32_t kPenWindowLastMonth = 11;
+  /// The clay warm is ordered from March to September, 0-based months of
+  /// calendar.date.month (form (a1); STUB, «cannot be done by 1 December»).
+  static constexpr std::uint32_t kClayWarmFirstMonth = 2;
+  static constexpr std::uint32_t kClayWarmLastMonth = 8;
 
   /// The sites paused for the first pen's warm (PauseSitesForThePen), to be
   /// resumed when it stands warm or the window closes.

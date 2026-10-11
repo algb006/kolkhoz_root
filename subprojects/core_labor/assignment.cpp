@@ -265,6 +265,15 @@ std::vector<std::uint32_t> OrderJobs(const std::vector<AssignmentJob>& jobs,
     if (a.autumn_furrow != b.autumn_furrow) {
       return a.autumn_furrow;
     }
+    // THE WORKS THAT WILL HOUSE A HERD FACING THE COLD next (core_common/
+    // cold_housing.h; boss, 11 October 2026): a KEY that lifts such a works
+    // above the other windowless jobs — the other sites — and leaves every
+    // job with a window where it was. Under the carted supply the first pen
+    // stood eight October days with nobody on it while older sites took the
+    // builders, and the cows froze.
+    if (a.houses_cold_herd != b.houses_cold_herd) {
+      return a.houses_cold_herd;
+    }
     // THE PLOUGH GOES TO THE PLAN'S FIELDS FIRST (boss, boss-core-epoch1-5 seq
     // 50; transport design §1): inside one tier and one kind of window, horse
     // work on a field whose crop carries a plan position goes before the

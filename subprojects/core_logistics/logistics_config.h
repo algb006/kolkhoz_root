@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 
+#include "core_common/cold_housing.h"
 #include "core_common/logistics_state.h"
 #include "core_tables/tables.h"
 
@@ -85,6 +86,10 @@ struct LogisticsConfig {
   /// The horse's livestock row (livestock.csv key `horse`), for the horse
   /// yard a cart's day starts at (horse_yard_road.h); invalid without one.
   LivestockKindId horse_kind;
+
+  /// The cold-housing rule's data (core_common/cold_housing.h): a works that
+  /// will house a herd facing the cold goes first among the supply.
+  ColdHousing cold_housing;
 };
 
 /// @brief Reads the config from the table set.

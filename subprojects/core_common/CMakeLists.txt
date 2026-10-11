@@ -26,6 +26,7 @@ kolkhoz_add_module(core_common
     horse_yard_road.cpp
     haul.cpp
     logistics_rules.cpp
+    cold_housing.cpp
     wait_state.cpp
     plot.cpp
     spoilage.cpp

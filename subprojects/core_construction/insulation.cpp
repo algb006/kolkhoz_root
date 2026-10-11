@@ -86,8 +86,16 @@ OrderRefusal StartInsulation(const ConstructionConfig& config, WorldState& curre
     return OrderRefusal::kNoSuchSubject;
   }
   const UnitRow& site = current.units.rows[row];
-  if (site.level == 0 || site.construction.phase != ConstructionPhase::kNone ||
-      site.insulated != 0 || config.straw_resource.value == kInvalidDefIdValue) {
+  // WORKS OPEN ON THE UNIT FORBID THE COAT, AND SAY SO (boss, 11 October 2026,
+  // form (a1)): a unit carries one construction block, and an upgrade marked,
+  // carted to, under labour or stopped by the winter holds it — the straw would
+  // overwrite its seam. Its own refusal, the one-active-task rule's, so the
+  // player reads «a works stands on it» and not a bare «forbidden»: a pen whose
+  // clay warm is open waits for spring; one not yet begun takes the straw.
+  if (site.construction.phase != ConstructionPhase::kNone) {
+    return OrderRefusal::kConflictsWithActive;
+  }
+  if (site.level == 0 || site.insulated != 0 || config.straw_resource.value == kInvalidDefIdValue) {
     return OrderRefusal::kRuleForbids;
   }
   const InsulationKind kind = InsulationKindOf(config, site.type, site.level);
