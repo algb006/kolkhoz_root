@@ -4629,6 +4629,24 @@ int CheckTheColdLadder() {
         straw_ahead && alarms.size() == 1 && alarms[0].advice == core::AlarmAdvice::kWarmYard,
         "cold ladder: the autumn's yellow on 1 October, eight days to the first of December, "
         "the barn when rung 2 is warm");
+    // FROM 1 SEPTEMBER, the pasture's last month (livestock design; boss, 11
+    // October 2026): lit on its first day, twelve days ahead; out on 31 August.
+    core::WorldState september = MakeHerdWorld(100000.0F);
+    september.calendar.tick = 32U * core::kTicksPerDay;
+    core::RefreshCalendarCaches(september.calendar);
+    AddHerd(september, 0, 10, 5, true);
+    alarms.clear();
+    core::CollectHerdColdAlarms(autumn, september, alarms);
+    const bool first_of_september = alarms.size() == 1 &&
+                                    alarms[0].kind == core::AlarmKind::kHerdColdAhead &&
+                                    alarms[0].days_ahead == 12;
+    september.calendar.tick = 31U * core::kTicksPerDay;
+    core::RefreshCalendarCaches(september.calendar);
+    alarms.clear();
+    core::CollectHerdColdAlarms(autumn, september, alarms);
+    failures += Expect(first_of_september && alarms.empty(),
+                       "cold ladder: the autumn's yellow from 1 September, twelve days ahead; "
+                       "none on the last day of August");
   }
   // The draught.
   {

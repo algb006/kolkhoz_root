@@ -243,7 +243,11 @@ void CollectHerdColdAlarms(const ProductionConfig& config,
     const auto heads = static_cast<float>(TotalHeads(herd));
     const UnitTypeDef& type = config.unit_types[unit->type.value];
     const float cold = std::min(heads, type.LivestockCapacityHeadAt(unit->level));
-    const bool autumn = month > config.farming.pasture_to_month && days > 0;
+    // FROM THE PASTURE'S LAST MONTH, 1 September (livestock design; econ's
+    // complexity review 2026-10-11, risk 1): `>` lit it from 1 October, eight
+    // game days before the cold, while the first pen's warm takes from day 31
+    // to day 57 with other sites open (boss, 11 October 2026).
+    const bool autumn = month >= config.farming.pasture_to_month && days > 0;
     if (!autumn || !(cold >= 1.0F)) {
       continue;
     }

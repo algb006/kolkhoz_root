@@ -644,7 +644,8 @@ enum class AlarmKind : std::uint8_t {
 
   /// «К ЗИМЕ ПЛОЩАДКА НЕ УКРОЕТ N ГОЛОВ — ХЛЕВ ДО МОРОЗОВ» — THE COLD'S
   /// YELLOW, A FORECAST (the same design and threads; alarms.csv
-  /// `herd_cold_ahead`): in the autumn, the kolkhoz heads that
+  /// `herd_cold_ahead`): in the autumn — from the pasture's last month, 1
+  /// September (0.37.219; it was 1 October) — the kolkhoz heads that
   /// will stand under a COLD roof when the cold's season opens — a herd up
   /// to its roof's room (what the roof does not hold stands billeted, warm).
   /// Subject: `herd`; `amount` those heads; `days_ahead` the days to the
