@@ -399,6 +399,9 @@ struct SportMonth {
   std::uint8_t downpour_yesterday = 0;
 };
 
+/// ChairmanState::foaling_from_day before the stable first stands.
+inline constexpr SimDay kNoFoalingDay = 0xFFFFFFFFU;
+
 /// @brief The chairman's standing. He is an abstract figure without a body or
 /// personal metrics (design: chairman), but his reputations are world state.
 /// @note NO LONGER A STUB, and the note that said so was already false when
@@ -542,6 +545,16 @@ struct ChairmanState {
   /// Read through IsDayOffIn (core_common/day_off.h) and nowhere else.
   /// Last in the struct, beside the other bytes: the size stays 80.
   std::uint8_t harvest_without_days_off = 1;
+
+  /// THE FIRST DAY THE HORSES COULD FOAL (save 152; the foaling's edge,
+  /// econ's gate of 11 October 2026 and the thread core-boss-c2-site-supply-
+  /// 2026-10-09 [79]-[81], form (i-full)): the day the stable first stood
+  /// (the horse yard at its second rung — StableBuilt, «no stable, no
+  /// foals»), written once by the herd day; kNoFoalingDay until then. The
+  /// kolkhoz horses foal for a whole birth band from it (herd_system.cpp): a
+  /// stable that stood after the calendar's band foaled nobody that year. In
+  /// the padding after the bytes above: the size stays 80.
+  SimDay foaling_from_day = kNoFoalingDay;
 };
 
 /// @brief Why the district calls the chairman «на ковёр» (district-trip.md

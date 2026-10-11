@@ -40,6 +40,15 @@ namespace {
 /// fed: the need is a float and the take whole grams (RunFeeding's share).
 constexpr float kFeedToleranceUnits = 0.001F;
 
+/// The calendar's birth band in days, its two months inclusive and wrapping
+/// the year's turn (March to May: twelve).
+std::uint32_t BirthBandDays(const ProductionConfig& config) {
+  const std::uint32_t from = config.farming.birth_from_month;
+  const std::uint32_t to = config.farming.birth_to_month;
+  const std::uint32_t months = (to + kMonthsPerYear - from) % kMonthsPerYear + 1U;
+  return months * kDaysPerMonth;
+}
+
 HerdPlace PlaceOf(WorldState& world, const ProductionConfig& config, const HerdRow& herd) {
   HerdPlace place;
   // OWNERSHIP decides the purse, not the address. A kolkhoz cow billeted at
@@ -1223,6 +1232,10 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
     }
   }
   const bool stable_built = StableBuilt(current, config);
+  // The first day the horses could foal (save 152; the foaling's edge, below).
+  if (stable_built && current.chairman.foaling_from_day == kNoFoalingDay) {
+    current.chairman.foaling_from_day = current.calendar.day;
+  }
   // THE SUMMER DISCOUNT IS THE NIGHT PASTURE AND NOTHING ELSE, for the team.
   // Until 2026-09-17 every kind with a `pasture_coverage_summer` got it for
   // every pasture month unconditionally — and for the horses that was the
@@ -1339,7 +1352,19 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
     // The calving band is the WALK's to read: it owns the calendar, and
     // herd_life.h owns the animal. Handed down as a bare bool, exactly as
     // `stable_built` above it already is.
+    // THE FOALING DOES NOT HANG ON A DAY (form (i-full); econ's gate of 11
+    // October 2026, the thread core-boss-c2-site-supply-2026-10-09 [79]-[81]):
+    // the kolkhoz horses foal for a whole birth band counted from the first
+    // day the stable stood, whatever the calendar's band says that year. A
+    // stable that stood after day 19 foaled nobody in year 1 - 0.37.220's
+    // carted supply moved it there in six villages of nine, and 58 foals of
+    // 69 were not born. From the next year the calendar's band alone.
+    const bool foals_from_stabling =
+        herd.household_owned == 0 && herd.kind.value == config.horse_kind.value &&
+        current.chairman.foaling_from_day != kNoFoalingDay &&
+        current.calendar.day - current.chairman.foaling_from_day < BirthBandDays(config);
     const bool in_birth_season =
+        foals_from_stabling ||
         MonthInRange(month, config.farming.birth_from_month, config.farming.birth_to_month);
     RunBirths(config,
               kind,

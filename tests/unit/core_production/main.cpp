@@ -313,6 +313,47 @@ int CheckTheForecastOffspring() {
   return failures;
 }
 
+/// THE FOALING DOES NOT HANG ON A DAY (form (i-full), save 152; econ's gate
+/// of 11 October 2026): a stable that first stands on 1 July, after the birth
+/// band (March to May), is noted by the herd day and its horses foal through
+/// the twelve days that follow; the same stable standing since long ago
+/// foals nobody in July. The pair: the chairman's first foaling day is their
+/// one difference.
+int CheckTheFoalingCountsFromTheStabling() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.horse_kind = core::LivestockKindId{0};
+  config.stable_type = core::UnitTypeId{0};
+  config.livestock[0].births_per_game_year = 1.0F;
+  config.farming.birth_from_month = 2;
+  config.farming.birth_to_month = 4;
+  SetLivestockHead(config.unit_types[0], 1000.0F);
+  std::uint32_t noted_day = 0;
+  const auto foals_in_july = [&config, &noted_day](std::uint32_t first_day) {
+    core::WorldState world = MakeHerdWorld(1.0e7F);
+    world.calendar.tick = static_cast<core::Tick>(24) * core::kTicksPerDay;  // 1 July
+    core::RefreshCalendarCaches(world.calendar);
+    world.units.rows[0].level = 2;  // the stable stands (StableBuilt)
+    world.chairman.horses_stabled = 1;
+    world.chairman.foaling_from_day = first_day;
+    AddHerd(world, 0, 20, 2, true);
+    RunHerdDays(config, world, 12);
+    noted_day = world.chairman.foaling_from_day;
+    return static_cast<std::uint32_t>(world.herds.rows[0].newborn_count) +
+           static_cast<std::uint32_t>(world.herds.rows[0].juvenile_count);
+  };
+  const std::uint32_t just_stood = foals_in_july(core::kNoFoalingDay);
+  const std::uint32_t day_noted = noted_day;
+  const std::uint32_t long_stood = foals_in_july(0);
+  // RunHerdDays steps the calendar before each herd day: the first is day 25.
+  failures +=
+      Expect(day_noted == 25, "foaling: the first herd day notes the stable's first day, 25");
+  failures += Expect(just_stood > 0 && long_stood == 0,
+                     "foaling: a stable first standing on 1 July, after the band, foals in the "
+                     "twelve days that follow; one standing since long ago foals nobody in July");
+  return failures;
+}
+
 /// THE HAY IN THE STORES AGAINST THE DAYS AHEAD (0.37.132; StoredHayShortWithin
 /// — the hay cart's rank by the manger's need): four cows eating a unit of
 /// hay a day, 4 kg; eight days are 32 kg.
@@ -15903,6 +15944,7 @@ int main() {
   failures += CheckFeeding();
   failures += CheckTheForecastOffspring();
   failures += CheckTheStoredHayAgainstTheDaysAhead();
+  failures += CheckTheFoalingCountsFromTheStabling();
   failures += CheckTheHerdHayForecast();
   failures += CheckTheForecastAdvice();
   failures += CheckTheShippedFeedingOrder();

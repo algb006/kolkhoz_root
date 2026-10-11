@@ -148,8 +148,9 @@ core::WorldState MakeWorld() {
   world.rng = core::SeedRngState(world.world_seed, 3);
   core::NextRandomBits(world.rng);
   world.chairman.raikom_reputation = 61.5F;
-  world.chairman.horses_stabled = 1;  // the campaign's one-time milestone (task A7)
-  world.chairman.ration_auto = 0;     // save 57: off, against the struct's default on
+  world.chairman.horses_stabled = 1;     // the campaign's one-time milestone (task A7)
+  world.chairman.foaling_from_day = 21;  // save 152: the stable's first day, the foaling's edge
+  world.chairman.ration_auto = 0;        // save 57: off, against the struct's default on
   // Save 65: a series of two cancelled days off, and the next one standing.
   world.chairman.days_off_cancelled_in_a_row = 2;
   world.chairman.cancelled_day_off = 55;
@@ -1333,6 +1334,8 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"chairman.pencil_pending", U8(world.chairman.pencil_pending)});
   chunks.push_back(
       {"chairman.harvest_without_days_off", U8(world.chairman.harvest_without_days_off)});
+  // The stable's first day (save 152, the foaling's edge).
+  chunks.push_back({"chairman.foaling_from_day", U32(world.chairman.foaling_from_day)});
 
   chunks.push_back({"traction_ration", F32(world.traction_ration)});
   // The team's two alarms' memory (save 109).
@@ -1668,7 +1671,10 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // Save 149: +68 — the jobs' runs of mornings with no hand, a count and the
     // fixture's two runs of 32 bytes; predicted 772 -> 840 with every other
     // section unmoved before the build, held; the hash read off the first build.
-    {"world", 840, 0xddc8ac5ed12263e4ULL},
+    // Save 152: +4 — the stable's first day, a u32 in the chairman's block, the
+    // fixture's 21; predicted 840 -> 844 with every other section unmoved
+    // before the build; the hash read off the first build.
+    {"world", 844, 0x9ae84570d694a8fbULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
