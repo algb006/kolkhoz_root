@@ -109,6 +109,10 @@ bool ParseLogisticsConfig(const ITableSet& tables, LogisticsConfig& config, std:
     const std::uint32_t log_row = resources->FindRowByKey("log");
     config.log_resource =
         log_row == kNoTableRow ? ResourceId{} : DefIdFromRow<ResourceIdTag>(log_row);
+    // The mowing's load a works' supply yields to (#507).
+    const std::uint32_t hay_row = resources->FindRowByKey("hay");
+    config.hay_resource =
+        hay_row == kNoTableRow ? ResourceId{} : DefIdFromRow<ResourceIdTag>(hay_row);
   }
   // THE PLAN'S REACH (B3): labour's cells, labour's ranges (labor_config.cpp).
   // THE PLAN'S CLOCK (B4b): the same cells, the same ranges.

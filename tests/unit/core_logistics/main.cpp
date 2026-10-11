@@ -460,6 +460,93 @@ int TestThePlansChains() {
   return failures;
 }
 
+/// THE MOWING FIRST (#507, econ's cure (ii)): one cart, its morning on a
+/// grain heap; a works' supply waiting since day 0 and a heap waiting since
+/// day 5, both due by a date. When the heap is HAY, the cart's chain takes it
+/// before the supply; when it is grain, the supply goes first by its age —
+/// the pair that says the order moved for the hay alone.
+int TestTheSupplyYieldsToTheMowing() {
+  int failures = 0;
+  const auto first_after_morning = [](core::ResourceId heap_resource) {
+    core::LogisticsConfig config;
+    config.hay_resource = core::ResourceId{1};
+    core::WorldState world;
+    world.weather.daylight_hours = 12.0F;
+    config.horse_kind = core::LivestockKindId{0};
+    core::HerdRow horses;
+    horses.kind = core::LivestockKindId{0};
+    horses.adult_count = 1;
+    core::AppendRow(world.herds, horses);
+    const auto heap = [&world](float east_m, core::ResourceId resource) {
+      core::FieldRow field;
+      field.kind = core::LandKind::kArable;
+      field.center = core::Vec2{.x = east_m, .y = 0.0F};
+      field.reaped_grams = 1'000'000;
+      field.reaped_resource = resource;
+      field.haul_days_remaining = 0.1F;
+      return core::AppendRow(world.fields, field);
+    };
+    const core::FieldId morning = heap(100.0F, core::ResourceId{0});
+    const core::FieldId mown = heap(200.0F, heap_resource);
+    core::UnitRow house;
+    house.position = core::Vec2{.x = 0.0F, .y = 0.0F};
+    const core::UnitId house_id = core::AppendRow(world.units, house);
+    core::UnitRow site;
+    site.position = core::Vec2{.x = 300.0F, .y = 0.0F};
+    site.construction.phase = core::ConstructionPhase::kDelivering;
+    site.construction.awaiting = {0, 3'000'000};
+    site.construction.supply_days_remaining = 0.1F;
+    const core::UnitId works = core::AppendRow(world.units, site);
+    core::FamilyRow household;
+    household.house = house_id;
+    const core::FamilyId family = core::AppendRow(world.families, household);
+    world.units.rows[0].household = family;
+    core::TaskDayCount count;
+    core::SyncTasks(config, world, 0, count);
+    for (core::LogisticsTaskRow& task : world.logistics_tasks.rows) {
+      task.level = core::LogisticsLevel::kTerm;
+      task.aged_from_day = task.load_kind == core::LogisticsLoadKind::kSiteSupply ? 0U : 5U;
+    }
+    core::ResidentRow carter;
+    carter.family = family;
+    carter.work.kind = core::WorkKind::kHauling;
+    carter.work.field = morning;
+    carter.work.rides_horse = 1;
+    const core::ResidentId driver = core::AppendRow(world.residents, carter);
+    core::LogisticsTally tally;
+    const core::GroomPlan plan = core::BuildGroomPlan(config, world, tally);
+    // The first load after the morning's: 1 the mown heap, 2 the works, 0 none.
+    for (const core::CartPlan& cart : plan.carts) {
+      if (cart.driver.value != driver.value) {
+        continue;
+      }
+      for (const core::CartLeg& leg : cart.legs) {
+        const std::uint32_t row = core::FindRow(world.logistics_tasks, leg.task);
+        if (row == core::kNoRow) {
+          continue;
+        }
+        const core::LogisticsTaskRow& task = world.logistics_tasks.rows[row];
+        if (task.load_kind == core::LogisticsLoadKind::kSiteSupply &&
+            task.unit.value == works.value) {
+          return 2;
+        }
+        if (task.load_kind == core::LogisticsLoadKind::kFieldHeap &&
+            task.field.value == mown.value) {
+          return 1;
+        }
+      }
+    }
+    return 0;
+  };
+  failures += Expect(first_after_morning(core::ResourceId{1}) == 1,
+                     "mowing first: with mown hay uncarted, the cart takes the hay before the "
+                     "older works' supply");
+  failures += Expect(first_after_morning(core::ResourceId{2}) == 2,
+                     "mowing first: with a grain heap instead, the older works' supply goes "
+                     "first, by its age");
+  return failures;
+}
+
 /// THE RE-PLAN BY EVENT (B5; logistics_system.h, Replan): two carts on two
 /// heaps a long way apart, planned at hour 1 of a twelve-hour day (6 to 18).
 /// At hour 9 the second carter has lost his horse: the plan is stale — the
@@ -1025,6 +1112,7 @@ int main() {
   failures += TestTheSupplyOfAWorks();
   failures += TestConfig();
   failures += TestThePlansChains();
+  failures += TestTheSupplyYieldsToTheMowing();
   failures += TestTheWayHomeFitsTheLight();
   failures += TestTheReplan();
   failures += TestTheChairmansDoors();

@@ -38,6 +38,7 @@ struct OpenTask {
   /// A works' supply that will house a herd facing the cold (cold_housing.h):
   /// first within its level.
   bool cold_first = false;
+  bool yields = false;  ///< a works' supply while mown hay lies uncarted (#507)
   SimDay aged_from_day = 0;
   Vec2 place;
   bool logs = false;  ///< carted by the log cart (a stand's logs, the district's lot)
@@ -47,6 +48,21 @@ struct OpenTask {
 /// first, then the row: the plan's order, repeatable.
 std::vector<OpenTask> OpenTasks(const LogisticsConfig& config, const WorldState& world) {
   std::vector<OpenTask> open;
+  // THE MOWING FIRST (#507, econ's cure (ii), v2-relanded-reds-2026-10-11):
+  // under В2's supply the hay of years 1-2 was cut 7.9-13 % short — the
+  // works' supply, aged longer, went ahead of the mown hay's carting within
+  // their shared level, and the uncarted swaths held the mowers. While a
+  // field's heap of hay lies uncarted, a works' supply yields within its
+  // level to every task that is not a supply; a cold herd's works still goes
+  // first (cold_first). A key, not a pairwise rule, so the order stays total:
+  // in those weeks the supply yields to the level's other loads too, not to
+  // the hay alone.
+  bool hay_lies = false;
+  for (const FieldRow& field : world.fields.rows) {
+    hay_lies =
+        hay_lies || (field.reaped_grams > 0 && config.hay_resource.value != kInvalidDefIdValue &&
+                     field.reaped_resource.value == config.hay_resource.value);
+  }
   for (std::uint32_t row = 0; row < world.logistics_tasks.rows.size(); ++row) {
     const LogisticsTaskRow& task = world.logistics_tasks.rows[row];
     if (task.paused) {
@@ -63,6 +79,7 @@ std::vector<OpenTask> OpenTasks(const LogisticsConfig& config, const WorldState&
     bool logs = task.load_kind == LogisticsLoadKind::kStandLogs ||
                 task.load_kind == LogisticsLoadKind::kDistrictLot;
     bool cold_first = false;
+    bool yields = false;
     if (task.load_kind == LogisticsLoadKind::kSiteSupply) {
       const std::uint32_t unit_row = FindRow(world.units, task.unit);
       logs = unit_row != kNoRow && world.units.rows[unit_row].construction.supply_log_way != 0;
@@ -71,10 +88,12 @@ std::vector<OpenTask> OpenTasks(const LogisticsConfig& config, const WorldState&
       // 2026): ahead of every other works' supply, still behind level 0 —
       // the harvest's carting.
       cold_first = unit_row != kNoRow && WorksHouseAColdHerd(config.cold_housing, world, unit_row);
+      yields = hay_lies && !cold_first;
     }
     open.push_back(OpenTask{.row = row,
                             .level = static_cast<std::uint8_t>(task.level),
                             .cold_first = cold_first,
+                            .yields = yields,
                             .aged_from_day = task.aged_from_day,
                             .place = place,
                             .logs = logs});
@@ -85,6 +104,9 @@ std::vector<OpenTask> OpenTasks(const LogisticsConfig& config, const WorldState&
     }
     if (left.cold_first != right.cold_first) {
       return left.cold_first;
+    }
+    if (left.yields != right.yields) {
+      return right.yields;
     }
     if (left.aged_from_day != right.aged_from_day) {
       return left.aged_from_day < right.aged_from_day;

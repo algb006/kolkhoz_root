@@ -50,6 +50,10 @@ struct LogisticsConfig {
   /// it; task 427). Invalid with no such row.
   ResourceId log_resource;
 
+  /// resources.csv `hay`: while a field's heap of it lies uncarted, a works'
+  /// supply yields its turn (#507, econ's cure (ii)). Invalid with no such row.
+  ResourceId hay_resource;
+
   /// resources.csv `spoil_days`, by ResourceId; 0 keeps for ever — the cells
   /// production reads (production_config.cpp), by the same rule.
   std::vector<float> spoil_days;
