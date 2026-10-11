@@ -172,6 +172,61 @@ OrderRefusal PauseTask(WorldState& current, const OrderRow& order) {
   return OrderRefusal::kNone;
 }
 
+/// The resource of most grams in `amounts`, invalid when all are nought.
+ResourceId MostGrams(const ResourceAmounts& amounts) {
+  ResourceId most;
+  Grams best = 0;
+  for (std::uint32_t index = 0; index < amounts.size(); ++index) {
+    if (amounts[index] > best) {
+      best = amounts[index];
+      most = ResourceId{static_cast<std::uint16_t>(index)};
+    }
+  }
+  return most;
+}
+
+/// What a leg's task carries: a field's heap its reaped resource, a stand
+/// `log`, a pit its dug resource, a works' supply its front leg's (most
+/// grams), a district lot its goods (most grams), a store being emptied its
+/// stock (most grams). Invalid for an empty leg or a task that is gone.
+ResourceId LegResource(const WorldState& world, const CartLeg& leg, ResourceId log) {
+  const std::uint32_t task_row = FindRow(world.logistics_tasks, leg.task);
+  if (task_row == kNoRow) {
+    return ResourceId{};
+  }
+  const LogisticsTaskRow& task = world.logistics_tasks.rows[task_row];
+  switch (task.load_kind) {
+    case LogisticsLoadKind::kFieldHeap: {
+      const std::uint32_t row = FindRow(world.fields, task.field);
+      return row != kNoRow ? world.fields.rows[row].reaped_resource : ResourceId{};
+    }
+    case LogisticsLoadKind::kStandLogs:
+      return log;
+    case LogisticsLoadKind::kSiteDig: {
+      const std::uint32_t row = FindRow(world.extraction_sites, task.extraction_site);
+      return row != kNoRow ? world.extraction_sites.rows[row].resource : ResourceId{};
+    }
+    case LogisticsLoadKind::kDistrictLot: {
+      const std::uint32_t row = FindRow(world.limit_deliveries, task.limit_delivery);
+      return row != kNoRow ? MostGrams(world.limit_deliveries.rows[row].goods) : ResourceId{};
+    }
+    case LogisticsLoadKind::kStoreTransfer: {
+      const std::uint32_t row = FindRow(world.units, task.unit);
+      return row != kNoRow ? MostGrams(world.units.rows[row].stock) : ResourceId{};
+    }
+    case LogisticsLoadKind::kSiteSupply: {
+      const std::uint32_t row = FindRow(world.units, task.unit);
+      if (row == kNoRow || world.units.rows[row].construction.legs.empty()) {
+        return ResourceId{};
+      }
+      return MostGrams(world.units.rows[row].construction.legs.front().grams);
+    }
+    case LogisticsLoadKind::kLogisticsLoadKindCount:
+      break;
+  }
+  return ResourceId{};
+}
+
 class LogisticsSystem final : public ILogisticsSystem {
  public:
   explicit LogisticsSystem(LogisticsConfig config) : config_(std::move(config)) {}
@@ -266,13 +321,25 @@ class LogisticsSystem final : public ILogisticsSystem {
     }
   }
 
-  // STUB (stage В, the cargo form's contract F1): every leg answers kNone
-  // until F2 reads resources.csv `cargo_form` (boss's export) and the leg's
-  // load. Final signature; the layer may call it now and draws an empty cart.
-  CargoForm CargoFormOfLeg(const WorldState& /*completed*/,
-                           std::uint32_t /*cart*/,
-                           std::uint32_t /*leg*/) const override {
-    return CargoForm::kNone;
+  // THE FORM OF A LEG'S LOAD (stage В, F2): the form of the resource its
+  // task carries (LegResource). A leg carrying several at once — a works'
+  // front leg at a store, a district lot, a store being emptied — is drawn by
+  // the one of most grams until the mixing (F3) loads them by form.
+  CargoForm CargoFormOfLeg(const WorldState& completed,
+                           std::uint32_t cart,
+                           std::uint32_t leg) const override {
+    const GroomPlan& plan = completed.groom_plan;
+    if (plan.day != completed.calendar.day || cart >= plan.carts.size() ||
+        leg >= plan.carts[cart].legs.size()) {
+      return CargoForm::kNone;
+    }
+    if (plan.carts[cart].people_cart) {
+      return CargoForm::kPeople;
+    }
+    const ResourceId resource =
+        LegResource(completed, plan.carts[cart].legs[leg], config_.log_resource);
+    return resource.value < config_.cargo_form.size() ? config_.cargo_form[resource.value]
+                                                      : CargoForm::kNone;
   }
 
   void SayLateLoads(WorldState& current) const override {

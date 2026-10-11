@@ -27,6 +27,7 @@ kolkhoz_add_module(core_common
     haul.cpp
     logistics_rules.cpp
     cold_housing.cpp
+    cargo_form.cpp
     wait_state.cpp
     plot.cpp
     spoilage.cpp

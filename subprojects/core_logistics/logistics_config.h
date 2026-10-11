@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 
+#include "core_common/cargo_form.h"
 #include "core_common/cold_housing.h"
 #include "core_common/logistics_state.h"
 #include "core_tables/tables.h"
@@ -57,6 +58,14 @@ struct LogisticsConfig {
   /// 1 for a resource with feed_value above nought (resources.csv): a heap of
   /// it feeds a herd, and a hungry herd raises it to level 0.
   std::vector<std::uint8_t> feed;
+
+  /// resources.csv `cargo_form`, by ResourceId (cargo_form.h; transport §11):
+  /// kNone for every resource of a set with no such column.
+  std::vector<CargoForm> cargo_form;
+
+  /// resources.csv `is_fuel`, by ResourceId: 1 for a fuel, which rides in no
+  /// body with food (CargoFormsMix).
+  std::vector<std::uint8_t> is_fuel;
 
   /// world_params.csv `field_heap_keeping_factor` — a heap on its field keeps
   /// this share of a store's term (production_config.h).

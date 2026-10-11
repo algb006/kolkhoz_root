@@ -260,6 +260,102 @@ int TestConfig() {
   return failures;
 }
 
+/// THE CARGO FORM (stage В, F2; transport §11, «Форма груза»; resources.csv
+/// `cargo_form`, `is_fuel`): the column read by resource, an unknown word
+/// refused by name; the two rules — logs, manure and the live seat nobody,
+/// hay and grain do, an empty leg always; hay mixes with hay only, sacks with
+/// sacks unless food meets fuel — and the door: a cart's empty leg is kNone,
+/// its leg on a hay heap kRick, its leg on the stand's logs kLong, a people's
+/// cart kPeople, a leg past the plan kNone.
+int TestTheCargoForm() {
+  int failures = 0;
+  const test::FakeTable resources{{"key", "cargo_form", "is_fuel"},
+                                  {{"hay", "rick", "0"},
+                                   {"log", "long", "0"},
+                                   {"kerosene", "packed", "1"},
+                                   {"potato", "bulk", "0"}}};
+  const test::FakeTableSet tables{{{"resources", &resources}}};
+  core::LogisticsConfig config;
+  std::string error;
+  failures +=
+      Expect(core::ParseLogisticsConfig(tables, config, error) && config.cargo_form.size() == 4 &&
+                 config.cargo_form[0] == core::CargoForm::kRick &&
+                 config.cargo_form[1] == core::CargoForm::kLong &&
+                 config.cargo_form[3] == core::CargoForm::kBulk && config.is_fuel[2] == 1 &&
+                 config.is_fuel[0] == 0,
+             "cargo form: the column is read by resource, the fuel mark beside it");
+  const test::FakeTable wrong{{"key", "cargo_form"}, {{"hay", "heap"}}};
+  const test::FakeTableSet wrong_tables{{{"resources", &wrong}}};
+  core::LogisticsConfig refused;
+  failures += Expect(!core::ParseLogisticsConfig(wrong_tables, refused, error) &&
+                         error.find("heap") != std::string::npos,
+                     "cargo form: a word that is no form is refused, and named");
+  failures += Expect(!core::CargoFormSeatsRiders(core::CargoForm::kLong) &&
+                         !core::CargoFormSeatsRiders(core::CargoForm::kManure) &&
+                         !core::CargoFormSeatsRiders(core::CargoForm::kLive) &&
+                         core::CargoFormSeatsRiders(core::CargoForm::kRick) &&
+                         core::CargoFormSeatsRiders(core::CargoForm::kBulk) &&
+                         core::CargoFormSeatsRiders(core::CargoForm::kNone),
+                     "cargo form: logs, manure and the live seat nobody; hay, grain and an "
+                     "empty leg do");
+  failures += Expect(
+      core::CargoFormsMix(core::CargoForm::kRick, core::CargoForm::kRick, true, false) &&
+          !core::CargoFormsMix(core::CargoForm::kRick, core::CargoForm::kRick, false, false) &&
+          core::CargoFormsMix(core::CargoForm::kPacked, core::CargoForm::kPacked, false, false) &&
+          !core::CargoFormsMix(core::CargoForm::kPacked, core::CargoForm::kPacked, false, true) &&
+          !core::CargoFormsMix(core::CargoForm::kLong, core::CargoForm::kBulk, false, false),
+      "cargo form: hay with hay only, sacks with sacks unless food meets fuel, "
+      "logs not with grain");
+
+  // The door, on a hand-made plan: a cart's empty leg, its hay leg, the
+  // stand's logs; a people's cart.
+  config.log_resource = core::ResourceId{1};
+  const auto system = core::CreateLogisticsSystem(tables, core::StubTables::kAllowed);
+  core::WorldState world;
+  core::FieldRow field;
+  field.reaped_grams = 1'000'000;
+  field.reaped_resource = core::ResourceId{0};
+  core::AppendRow(world.fields, field);
+  core::TimberStandRow stand;
+  stand.load_grams = 1'000'000;
+  core::AppendRow(world.stands, stand);
+  core::TaskDayCount count;
+  core::SyncTasks(config, world, 0, count);
+  core::CartPlan cart;
+  cart.legs.push_back(core::CartLeg{});  // empty, to the load
+  for (const core::LogisticsTaskId task : world.logistics_tasks.row_ids) {
+    core::CartLeg leg;
+    leg.task = task;
+    cart.legs.push_back(leg);
+  }
+  core::CartPlan people;
+  people.people_cart = true;
+  people.legs.push_back(core::CartLeg{});
+  world.groom_plan.day = world.calendar.day;
+  world.groom_plan.carts = {cart, people};
+  if (Expect(system != nullptr, "cargo form: the system assembles on the hand-made set") != 0) {
+    return failures + 1;
+  }
+  const auto form_of_task = [&](core::LogisticsLoadKind kind) {
+    for (std::uint32_t leg = 0; leg < cart.legs.size(); ++leg) {
+      const std::uint32_t row = core::FindRow(world.logistics_tasks, cart.legs[leg].task);
+      if (row != core::kNoRow && world.logistics_tasks.rows[row].load_kind == kind) {
+        return system->CargoFormOfLeg(world, 0, leg);
+      }
+    }
+    return core::CargoForm::kCargoFormCount;
+  };
+  failures +=
+      Expect(system->CargoFormOfLeg(world, 0, 0) == core::CargoForm::kNone &&
+                 form_of_task(core::LogisticsLoadKind::kFieldHeap) == core::CargoForm::kRick &&
+                 form_of_task(core::LogisticsLoadKind::kStandLogs) == core::CargoForm::kLong &&
+                 system->CargoFormOfLeg(world, 1, 0) == core::CargoForm::kPeople &&
+                 system->CargoFormOfLeg(world, 0, 9) == core::CargoForm::kNone,
+             "cargo form: the empty leg kNone, the hay leg kRick, the logs kLong, the "
+             "people's cart kPeople, a leg past the plan kNone");
+  return failures;
+}
+
 /// THE PLAN'S CHAINS AND ITS CLOCK (B3, B4b; logistics_plan.h): two carts on
 /// two of three heaps of level 1, a stand's logs of level 2, a paused heap
 /// and a heap 10 km out, a carrier on foot, a people's cart to the fellers.
@@ -1025,6 +1121,7 @@ int main() {
   failures += TestTheSupplyOfAWorks();
   failures += TestConfig();
   failures += TestThePlansChains();
+  failures += TestTheCargoForm();
   failures += TestTheWayHomeFitsTheLight();
   failures += TestTheReplan();
   failures += TestTheChairmansDoors();

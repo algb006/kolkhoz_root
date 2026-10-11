@@ -63,6 +63,44 @@ bool ParseKnobs(const ITable& table, LogisticsConfig& config, std::string& error
   return true;
 }
 
+/// THE CARGO FORM AND THE FUEL MARK, by resource (resources.csv `cargo_form`,
+/// `is_fuel`; boss's design 624d11e6; transport §11, «Форма груза»). A table
+/// with no `cargo_form` column at all — a test's hand-made set — leaves every
+/// resource kNone. A column with an empty cell or a word that is no form is
+/// refused by name: «not yet specified» is not a form a cart can be drawn by.
+bool ParseCargoForms(const ITable& resources, LogisticsConfig& config, std::string& error) {
+  config.cargo_form.assign(resources.RowCount(), CargoForm::kNone);
+  config.is_fuel.assign(resources.RowCount(), 0);
+  const std::uint32_t form_column = resources.FindColumn("cargo_form");
+  const std::uint32_t fuel_column = resources.FindColumn("is_fuel");
+  for (std::uint32_t row = 0; row < resources.RowCount(); ++row) {
+    if (form_column != kNoTableColumn) {
+      const std::string_view word = resources.CellText(row, form_column);
+      const CargoForm form = word == "bulk"     ? CargoForm::kBulk
+                             : word == "manure" ? CargoForm::kManure
+                             : word == "packed" ? CargoForm::kPacked
+                             : word == "rick"   ? CargoForm::kRick
+                             : word == "long"   ? CargoForm::kLong
+                             : word == "live"   ? CargoForm::kLive
+                                                : CargoForm::kNone;
+      if (form == CargoForm::kNone) {
+        error = "resources: cargo_form: row " + std::string(resources.CellText(row, 0)) + ": «" +
+                std::string(word) + "» is not a cargo form";
+        return false;
+      }
+      config.cargo_form[row] = form;
+    }
+    float fuel = 0.0F;
+    if (!CellOrDefault(
+            resources, row, fuel_column, Range{.low = 0.0F, .high = 1.0F}, 0.0F, fuel, error)) {
+      error = "resources: is_fuel: " + error;
+      return false;
+    }
+    config.is_fuel[row] = fuel > 0.0F ? 1U : 0U;
+  }
+  return true;
+}
+
 /// What spoils and what feeds, by resource — the cells production reads
 /// (production_config.cpp), by the same rules: an empty spoil_days keeps for
 /// ever, a feed_value above nought feeds.
@@ -90,7 +128,7 @@ bool ParseResources(const ITable& resources, LogisticsConfig& config, std::strin
     }
     config.feed[row] = feed_value > 0.0F ? 1U : 0U;
   }
-  return true;
+  return ParseCargoForms(resources, config, error);
 }
 
 }  // namespace
