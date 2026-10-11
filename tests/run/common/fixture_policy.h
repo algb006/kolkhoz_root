@@ -593,13 +593,39 @@ class FixturePolicy {
   }
 
   bool NextOrder(const core::WorldState& world, core::OrderRow& order) {
-    // A site of any of its kinds already going up: nothing new until it stands.
+    // THE FIRST PEN BESIDE THE FARM'S OWN SITE, NOT BEHIND IT (boss, 11 October
+    // 2026, #517 (a)): while the kolkhoz cows stand billeted and no cattle yard
+    // stands, the first pen is marked and started whatever other site of the
+    // farm is open. Behind the granary it was marked on day 48 instead of 24
+    // in seed 1931 and its straw coat stood on day 50-52 in five villages of
+    // nine - eleven cows froze in those five and none elsewhere (0.37.222's
+    // pair, core-warmprobe WI). Its rung is 0.86 man-days. The bot's rule
+    // only: the player marks what he marks.
+    const bool first_pen = cattle_.value != core::kInvalidDefIdValue &&
+                           Built(world, cattle_) == 0 && world.calendar.day >= entry_day_ &&
+                           KolkhozHeadsBilleted(world);
+    if (first_pen && Rows(world, cattle_) == 0) {
+      last_ordered_cattle_ = true;
+      return MarkPen(world, order);
+    }
+    for (std::uint32_t row = 0; first_pen && row < world.units.rows.size(); ++row) {
+      const core::UnitRow& unit = world.units.rows[row];
+      if (unit.type.value == cattle_.value && unit.level == 0 &&
+          unit.construction.phase == core::ConstructionPhase::kMarked &&
+          GateOpen(start_gate_, world, unit.type, unit.construction.target_level)) {
+        order.kind = core::OrderKind::kStartBuild;
+        order.unit = world.units.row_ids[row];
+        return true;
+      }
+    }
+    // A site of any of its kinds already going up: nothing new until it stands
+    // - the first pen's site aside (above).
     for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
       const core::UnitRow& unit = world.units.rows[row];
       const bool ours = unit.type.value == granary_.value || unit.type.value == cattle_.value ||
                         unit.type.value == granary_yard_.value ||
                         unit.type.value == food_store_.value || unit.type.value == clamp_.value;
-      if (!ours || unit.level != 0) {
+      if (!ours || unit.level != 0 || (first_pen && unit.type.value == cattle_.value)) {
         continue;
       }
       if (unit.construction.labor_days_remaining > 0.0F) {
