@@ -70,9 +70,10 @@ class BuildingChairman {
     WireSchoolGate(school, sawmill);
     WireSawGate(office, sawmill);
     WireSawGate(barracks, sawmill);
-    // The barracks wait for the first pen's warm (barrack_policy.h).
+    // The barracks wait for the farm's own sites and the first pen's warm
+    // (barrack_policy.h).
     barracks.SetPenWait([this](const core::WorldState& world) {
-      return fixture.PenWaitingForWarm(world) != core::kNoRow;
+      return fixture.FarmSiteOpen(world) || fixture.PenWaitingForWarm(world) != core::kNoRow;
     });
     // The social objects ask the saw's question too: none of them is worth
     // the boards the sawmill itself is built of.

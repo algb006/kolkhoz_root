@@ -141,6 +141,23 @@ class FixturePolicy {
     return cows ? PenToWarm(world) : core::kNoRow;
   }
 
+  /// @brief Whether a site of the farm's own kinds (granary, granary yard,
+  ///        cattle yard, food store, clamp) stands marked or going up — the
+  ///        set NextOrder waits on before it marks the next («nothing new
+  ///        until it stands»). A site that starves holds the farm's whole
+  ///        queue, the first pen included (BarrackPolicy asks this).
+  bool FarmSiteOpen(const core::WorldState& world) const {
+    for (const core::UnitRow& unit : world.units.rows) {
+      const bool ours = unit.type.value == granary_.value || unit.type.value == cattle_.value ||
+                        unit.type.value == granary_yard_.value ||
+                        unit.type.value == food_store_.value || unit.type.value == clamp_.value;
+      if (ours && unit.level == 0 && unit.dead == 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /// @brief THE FIRST PEN'S WARM BEFORE THE WINTER (econ, males-work-pair-
   ///        ruling-2026-10-10 §2, §4; the warm pair's second form): from
   ///        August to November, while the FIRST pen's warm is under works,

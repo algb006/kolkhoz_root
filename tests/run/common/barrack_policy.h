@@ -16,7 +16,8 @@
 /// year Y (1-based) are 1 + (Y - 1) / 3 — one marked in year 1 to stand by
 /// year 2, the second in year 4 for year 5, and so on. Marked at the elder's
 /// barrack point first (suggestions.csv), started once the chairman's yard
-/// stands (the horses stabled) and the first pen with cows is warm, its
+/// stands (the horses stabled), no site of the farm's own is open and the
+/// first pen with cows is warm, its
 /// recipe is covered and the farm has no
 /// shortage of its own waiting. The houses do not hold it
 /// back: a barrack is housing too, for those a house does not take.
@@ -65,8 +66,10 @@ class BarrackPolicy {
   /// @brief The question asked before every start (start_gate.h).
   void SetStartGate(StartGate gate) { start_gate_ = std::move(gate); }
 
-  /// @brief Whether the first pen with cows still waits for its warm
-  ///        (FixturePolicy::PenWaitingForWarm): no barrack starts while it does.
+  /// @brief Whether the farm's own building comes first today — a site of the
+  ///        farm's kinds open (FixturePolicy::FarmSiteOpen) or the first pen
+  ///        with cows waiting for its warm (PenWaitingForWarm): no barrack
+  ///        starts while it does.
   void SetPenWait(std::function<bool(const core::WorldState&)> pen_waits) {
     pen_waits_ = std::move(pen_waits);
   }
@@ -101,11 +104,16 @@ class BarrackPolicy {
       // and the builders the chairman's yard waited on: no horse yard within
       // the year, no goods cart, and watchdog_threads found no wait to measure
       // (3334e5a's first suite). Marked on time, started after the horses.
-      // AND NOT WHILE THE FIRST PEN WITH COWS WAITS FOR ITS WARM, in any month:
-      // the pen's pause (fixture_policy.h) stops only sites working inside its
-      // August-November window, and a barrack started in the summer took the
-      // logs the warm needed — 73e0fcc's pen warmed on day 56-57 in three
-      // villages of nine and 13 cows froze (the warm line red; 0 before it).
+      // AND NOT WHILE THE FARM'S OWN SITE STANDS OPEN OR THE FIRST PEN WAITS FOR
+      // ITS WARM. 73e0fcc's barrack, started the day the horses were stabled
+      // (seed 1931, day 14), took the logs and the crew of the granary marked
+      // on day 11: the granary started on day 31 instead of 16 and stood on
+      // day 47 instead of 23, and the farm marks nothing new while a site of
+      // its own kinds is open (FixturePolicy::NextOrder) — the first pen was
+      // marked on day 48 instead of 24, warmed on day 56, and 13 cows froze in
+      // three villages (core-penline probe, m22; the warm line red, 0 dead
+      // without barracks). 9056154's first guess, the pen's warm alone, moved
+      // nothing: the pen did not exist yet.
       const bool pen_waits = pen_waits_ && pen_waits_(world);
       if (marked && !farm_first && !pen_waits && world.chairman.horses_stabled != 0 &&
           simulation.MaterialsShortFor(world.units.row_ids[row]).empty() &&
@@ -150,7 +158,8 @@ class BarrackPolicy {
         << ": FIXTURE DIFFERS FROM THE START CANON — the run's chairman marks BARRACKS by "
            "the design's canon, one by year 2 and one more every three years (1 + (Y - 1) / 3 "
            "standing or going up in year Y), on the barrack points first, and starts each "
-           "once the chairman's yard stands and the first pen with cows is warm, its "
+           "once the chairman's yard stands, no site of the farm's own is open and the "
+           "first pen with cows is warm, its "
            "recipe is covered and no farm shortage "
            "waits (demography design, the "
            "migrants' table; boss, 11 October 2026)\n";
