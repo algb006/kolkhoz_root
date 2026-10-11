@@ -156,13 +156,20 @@ HaulRate RateToward(const ProductionConfig& config,
   const float bed = HaulBedFactor(config, world.weather);
   const float speed_kmh = (harnessed ? config.harness_speed_kmh : config.walk_speed_kmh) * bed;
   const float hours_per_km = speed_kmh > 0.0F ? static_cast<float>(kClockScale) / speed_kmh : 0.0F;
+  // THE LOADED HALF AT THE LOADED PACE (#570, 2a; 0.37.229): the cart's
+  // cart_loaded speed, the bed's condition on it as on the empty half; a
+  // carrier on foot walks both halves.
+  const float loaded_kmh = (harnessed ? config.loaded_speed_kmh : config.walk_speed_kmh) * bed;
+  const float loaded_hours_per_km =
+      loaded_kmh > 0.0F ? static_cast<float>(kClockScale) / loaded_kmh : 0.0F;
   const Grams load = GramsFromKilograms(harnessed ? config.cart_load_kg : config.carry_kg_adult);
   // BY THE ROAD, NOT THE STRAIGHT LINE (roads design §11-§13; 0.36.2): the
   // cart keeps to the network, the carrier walks roads, paths and open
   // ground as is shortest.
   const TravelMode mode = harnessed ? cart_mode : TravelMode::kWalk;
   if (mode != TravelMode::kCart) {
-    HaulRate walked = RateOverKm(RoadKm(world, mode, from, destination), hours_per_km, load);
+    HaulRate walked =
+        RateOverKm(RoadKm(world, mode, from, destination), hours_per_km, loaded_hours_per_km, load);
     walked.receiver = destination;
     walked.has_receiver = true;
     return walked;
@@ -171,7 +178,7 @@ HaulRate RateToward(const ProductionConfig& config,
   // the year's book (YearLedger::cart_trips; question 268). One choice of
   // way — Measure answers RoadKm's kilometres beside the metres.
   const RouteMeasure way = RoadMeasure(world, mode, from, destination);
-  HaulRate rate = RateOverKm(way.effective_km, hours_per_km, load);
+  HaulRate rate = RateOverKm(way.effective_km, hours_per_km, loaded_hours_per_km, load);
   rate.produce_cart = true;
   rate.off_road_load_m = way.off_road_start_m;
   rate.off_road_store_m = way.off_road_end_m;
@@ -393,13 +400,17 @@ float CarryToHeapDays(const ProductionConfig& config,
   const bool harnessed = DraughtHorsesFree(config, world);
   const TravelMode mode = harnessed ? TravelMode::kCart : TravelMode::kWalk;
   const float speed_kmh = harnessed ? config.harness_speed_kmh : config.walk_speed_kmh;
-  if (!(speed_kmh > 0.0F)) {
+  const float loaded_kmh = harnessed ? config.loaded_speed_kmh : config.walk_speed_kmh;
+  if (!(speed_kmh > 0.0F) || !(loaded_kmh > 0.0F)) {
     return 0.0F;
   }
   const float hours_per_km = static_cast<float>(kClockScale) / speed_kmh;
+  const float loaded_hours_per_km = static_cast<float>(kClockScale) / loaded_kmh;
   const Grams load = GramsFromKilograms(harnessed ? config.cart_load_kg : config.carry_kg_adult);
-  const HaulRate rate =
-      RateOverKm((shoulder_m / 1000.0F) * OffRoadWeightOf(world, mode), hours_per_km, load);
+  const HaulRate rate = RateOverKm((shoulder_m / 1000.0F) * OffRoadWeightOf(world, mode),
+                                   hours_per_km,
+                                   loaded_hours_per_km,
+                                   load);
   return HaulDaysFor(yield, rate, config.standard_day_hours);
 }
 
@@ -805,12 +816,16 @@ HaulRate DistrictLotHaulRate(const ProductionConfig& config, const WorldState& w
   const float bed = HaulBedFactor(config, world.weather);
   const float speed_kmh = config.harness_speed_kmh * bed;
   const float hours_per_km = speed_kmh > 0.0F ? static_cast<float>(kClockScale) / speed_kmh : 0.0F;
+  const float loaded_kmh = config.loaded_speed_kmh * bed;
+  const float loaded_hours_per_km =
+      loaded_kmh > 0.0F ? static_cast<float>(kClockScale) / loaded_kmh : 0.0F;
   // THE WAY: from the district centre to the map's border (off the map, by
   // the district's road — district_center_km), then by the network to the
   // pile (TravelMode::kLogCart, the log cart's roads).
   const RouteMeasure way = RoadMeasure(world, TravelMode::kLogCart, exit, destination);
   HaulRate rate = RateOverKm(config.district_center_km + way.effective_km,
                              hours_per_km,
+                             loaded_hours_per_km,
                              GramsFromKilograms(config.cart_load_kg));
   // Booked on the cart's columns under the district (CartLoadSource::kDistrict):
   // the load's end is the district's road, never a field; the store's end is

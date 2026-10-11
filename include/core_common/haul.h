@@ -85,19 +85,26 @@ struct HaulRate {
 };
 
 /// @brief The terms of a trip between two places.
-/// @param hours_per_km Game hours per kilometre for this carrier — walking
-///        or harnessed; the caller picks, because the caller knows whether a
-///        horse was spared for this job.
+/// @param hours_per_km Game hours per kilometre for this carrier EMPTY —
+///        walking or harnessed; the caller picks, because the caller knows
+///        whether a horse was spared for this job.
+/// @param loaded_hours_per_km Game hours per kilometre LOADED, the half to
+///        the receiver (#570, 2a; transport design §11: a loaded cart goes
+///        9 km/h against the trot's 12 — transport.csv cart_loaded
+///        `speed_kmh`, read by nobody until 0.37.229). A carrier on foot
+///        passes his walking pace twice. The round trip is the sum of the
+///        two halves, not twice the empty one: every seam priced before was
+///        a sixth short on the roads.
 /// @param load Grams one trip takes.
 /// @return A rate whose round trip is never zero: two places at the same
 ///         point still cost the loading and unloading of a trip, and a zero
 ///         would divide the day by nothing.
-HaulRate RateBetween(Vec2 from, Vec2 to, float hours_per_km, Grams load);
+HaulRate RateBetween(Vec2 from, Vec2 to, float hours_per_km, float loaded_hours_per_km, Grams load);
 
 /// @brief The same terms over a way already measured: `one_way_km` is the
 ///        effective kilometres of the way (core_common/road_route.h,
 ///        RoadKm) rather than a straight line (0.36.2).
-HaulRate RateOverKm(float one_way_km, float hours_per_km, Grams load);
+HaulRate RateOverKm(float one_way_km, float hours_per_km, float loaded_hours_per_km, Grams load);
 
 /// @brief Grams one worker moves in `hours` of hauling at this rate.
 /// Trips are NOT rounded down to whole ones: half a trip at the end of the
@@ -113,7 +120,9 @@ float HaulDaysFor(Grams waiting, const HaulRate& rate, float standard_day_hours)
 
 /// @brief The part of a CART's norm-day of hauling that a carrier ON FOOT
 ///        does in a norm-day of his own, on a load whose seam was written in
-///        cart-days: (carry / cart load) x (walking pace / harness pace).
+///        cart-days: (carry / cart load) x (the cart's round trip / the
+///        walker's) — the cart's round is its empty pace out and its loaded
+///        pace back (#570, 2a), the walker's twice his walk.
 ///
 /// WHY (0.37.105; manual/75-logistics.md §9, the finding of 2 October 2026):
 /// production writes a load's seam ONCE, at the cart's rate whenever the
@@ -150,7 +159,8 @@ float HaulDaysFor(Grams waiting, const HaulRate& rate, float standard_day_hours)
 float WalkerShareOfCartDay(Grams carry_grams,
                            Grams cart_grams,
                            float walk_hours_per_km,
-                           float harness_hours_per_km);
+                           float harness_hours_per_km,
+                           float loaded_hours_per_km);
 
 }  // namespace core
 

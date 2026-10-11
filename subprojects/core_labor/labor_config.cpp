@@ -304,6 +304,12 @@ bool ParseSpeeds(const ITable& table, LaborConfig& config, std::string& error) {
                     speed_column,
                     Range{.low = 0.5F, .high = 60.0F},
                     config.harness_speed_kmh,
+                    error) ||
+      !OptionalCell(table,
+                    table.FindRowByKey("cart_loaded"),
+                    speed_column,
+                    Range{.low = 0.5F, .high = 60.0F},
+                    config.loaded_speed_kmh,
                     error)) {
     PrefixError("transport", "speed_kmh", error);
     return false;

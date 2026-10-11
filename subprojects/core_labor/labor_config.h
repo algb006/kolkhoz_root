@@ -452,6 +452,11 @@ struct LaborConfig {
   /// a plowman rides out with his horse instead of walking (decision 103).
   float harness_speed_kmh = 12.0F;
 
+  /// Real speed of a LOADED cart, km/h (transport.csv cart_loaded row;
+  /// #570, 2a): the carrier on foot's share of a cart-day is made of the
+  /// cart's round trip, empty out and loaded back (haul.h).
+  float loaded_speed_kmh = 9.0F;
+
   // WHAT A CARRIER CARRIES IS HERE AGAIN, WITH A READER (0.37.105). It stood
   // here once before — cart_load_kg, carry_kg_adult and a fitness bonus,
   // parsed and never read, because the price of a trip belongs to ONE owner,

@@ -163,6 +163,12 @@ bool ParseLogisticsConfig(const ITableSet& tables, LogisticsConfig& config, std:
                       speed_column,
                       Range{.low = 0.5F, .high = 20.0F},
                       config.walk_speed_kmh,
+                      error) ||
+        !OptionalCell(*transport,
+                      transport->FindRowByKey("cart_loaded"),
+                      speed_column,
+                      Range{.low = 0.5F, .high = 60.0F},
+                      config.loaded_speed_kmh,
                       error)) {
       PrefixError("transport", "speed_kmh", error);
       return false;

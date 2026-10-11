@@ -174,12 +174,19 @@ int CheckCarterOnFoot() {
   int failures = 0;
   // The share itself: 20 kg against 750, 2.4 game hours a kilometre on foot
   // against 1.0 in harness.
-  const float share = core::WalkerShareOfCartDay(20'000, 750'000, 2.4F, 1.0F);
+  const float share = core::WalkerShareOfCartDay(20'000, 750'000, 2.4F, 1.0F, 1.0F);
   failures += Expect(std::fabs(share - (20.0F / 750.0F / 2.4F)) < 1.0e-6F,
                      "carter on foot: a walker's day is the carry over the cart's load, by the "
                      "paces — a ninetieth of a cart's");
-  failures += Expect(core::WalkerShareOfCartDay(0, 750'000, 2.4F, 1.0F) == 1.0F &&
-                         core::WalkerShareOfCartDay(20'000, 750'000, 0.0F, 1.0F) == 1.0F,
+  // THE LOADED HALF (#570, 2a): the cart's round is 1.0 out and 1.333 back
+  // at 9 km/h, the walker's twice 2.4 — the walker's share grows by the
+  // cart's longer round, 2.333 / 2.
+  const float loaded = core::WalkerShareOfCartDay(20'000, 750'000, 2.4F, 1.0F, 4.0F / 3.0F);
+  failures += Expect(std::fabs(loaded - (share * (1.0F + (4.0F / 3.0F)) / 2.0F)) < 1.0e-6F,
+                     "carter on foot: the loaded half's slower pace lengthens the cart's round and "
+                     "the walker's share with it");
+  failures += Expect(core::WalkerShareOfCartDay(0, 750'000, 2.4F, 1.0F, 1.0F) == 1.0F &&
+                         core::WalkerShareOfCartDay(20'000, 750'000, 0.0F, 1.0F, 1.0F) == 1.0F,
                      "carter on foot: a number missing changes nothing — the share is a whole day");
 
   const auto labor = Labor();

@@ -800,7 +800,13 @@ int TestTheTripsAndTheEvening() {
     core::TimberStandRow felling;  // the feller's work, at the load's place; no load of its own
     felling.position = load_at;
     const core::TimberStandId wood = core::AppendRow(world.stands, felling);
+    // THE HOUSE 800 m BEYOND THE YARD (0.37.229): the feller's walk home is
+    // then 2 km (4.8 h), and the cart's last loaded trip — which leaves ~3 h
+    // before sunset once its loaded half goes at the loaded pace — still
+    // beats it; at the yard his 1.2 km walk (2.9 h) was the cheaper, and by
+    // the plan's own rule he walked.
     core::UnitRow house;
+    house.position = core::Vec2{.x = -800.0F, .y = 0.0F};
     const core::UnitId house_id = core::AppendRow(world.units, house);
     core::FamilyRow household;
     household.house = house_id;

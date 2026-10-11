@@ -19,6 +19,7 @@
 #include "core_common/deadline.h"
 #include "core_common/district_visit_state.h"
 #include "core_common/fund_ladder.h"
+#include "core_common/haul.h"
 #include "core_common/herd_age_band.h"
 #include "core_common/herd_state.h"
 #include "core_common/horse_lamp_memory.h"
@@ -591,6 +592,35 @@ int TestPlot() {
 /// the answer does not depend on which case a reader put first, and the
 /// only way to test that is to build a resident several of them are true
 /// of and see which one comes out.
+/// THE LOADED HALF AT THE LOADED PACE (#570, 2a; transport design §11: a
+/// loaded cart goes 9 km/h against the trot's 12): a round trip is the empty
+/// half out plus the loaded half back, not twice the empty one — one
+/// kilometre at 1.0 h empty and 1.333 h loaded is 2.333 h, a sixth more than
+/// the 2.0 h every seam was priced at until 0.37.229; a carrier on foot
+/// passes his walk twice and gets twice his walk. The grams a day follow:
+/// 10 hours at 2.333 h a round carry 4.29 loads, not 5.
+int TestTheLoadedPace() {
+  int failures = 0;
+  const core::HaulRate loaded = core::RateOverKm(1.0F, 1.0F, 4.0F / 3.0F, 1'800'000);
+  failures += Expect(std::fabs(loaded.round_trip_hours - (1.0F + (4.0F / 3.0F))) < 1.0e-5F,
+                     "loaded pace: a kilometre's round trip is the empty half plus the loaded "
+                     "half, 2.333 h");
+  const core::HaulRate walked = core::RateOverKm(1.0F, 2.4F, 2.4F, 20'000);
+  failures += Expect(std::fabs(walked.round_trip_hours - 4.8F) < 1.0e-5F,
+                     "loaded pace: a carrier on foot walks both halves, twice his walk");
+  const core::HaulRate between = core::RateBetween(core::Vec2{.x = 0.0F, .y = 0.0F},
+                                                   core::Vec2{.x = 1'000.0F, .y = 0.0F},
+                                                   1.0F,
+                                                   4.0F / 3.0F,
+                                                   1'800'000);
+  failures += Expect(std::fabs(between.round_trip_hours - loaded.round_trip_hours) < 1.0e-5F,
+                     "loaded pace: the straight-line door prices the same round");
+  failures += Expect(std::fabs(static_cast<float>(core::HaulGrams(10.0F, loaded)) -
+                               (1'800'000.0F * 10.0F / (1.0F + (4.0F / 3.0F)))) < 1.0F,
+                     "loaded pace: ten hours carry 4.29 loads at the longer round, not 5");
+  return failures;
+}
+
 int TestResidentActivity() {
   int failures = 0;
   core::ActivityRules rules;
@@ -2949,6 +2979,7 @@ int main() {
   failures += TestVersionPin();
   failures += TestPlot();
   failures += TestResidentActivity();
+  failures += TestTheLoadedPace();
   if (failures == 0) {
     std::cout << "unit_core_common: all checks passed\n";
   }

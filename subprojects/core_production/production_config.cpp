@@ -1701,6 +1701,13 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
                        error) ||
         !CellOrDefault(*transport,
                        transport->FindRowByKey("cart_loaded"),
+                       speed_col,
+                       Range{.low = 0.5F, .high = 60.0F},
+                       0.5F,
+                       config.loaded_speed_kmh,
+                       error) ||
+        !CellOrDefault(*transport,
+                       transport->FindRowByKey("cart_loaded"),
                        load_col,
                        Range{.low = 0.01F, .high = 100.0F},
                        0.01F,

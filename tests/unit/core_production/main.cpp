@@ -7123,7 +7123,11 @@ int CheckTheCarryToTheHeap() {
   horses.adult_count = 2;
   core::AppendRow(world.herds, horses);
   const float by_cart = core::CarryToHeapDays(config, world, field, ten_tonnes);
-  failures += Expect(near(by_cart, 0.5532F), "carry: with a horse, a cart's 750 kg: 0.553 days");
+  // 0.553 days until 0.37.229, with the round trip at the trot both ways; the
+  // loaded half at 9 km/h makes the round 2.333/2 of it (#570, 2a).
+  failures +=
+      Expect(near(by_cart, 0.5532F * (1.0F + (4.0F / 3.0F)) / 2.0F),
+             "carry: with a horse, a cart's 750 kg: 0.645 days (the loaded half at 9 km/h)");
   core::FieldRow meadow = field;
   meadow.kind = core::LandKind::kMeadow;
   failures += Expect(core::CarryToHeapDays(config, world, meadow, ten_tonnes) == 0.0F &&

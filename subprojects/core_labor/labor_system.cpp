@@ -2343,7 +2343,8 @@ class LaborSystem final : public ILaborSystem {
     return WalkerShareOfCartDay(GramsFromKilograms(config_.carry_kg_adult),
                                 GramsFromKilograms(config_.cart_load_kg),
                                 HoursPerKm(config_, WorkKind::kHarvest),
-                                HoursPerKm(config_, WorkKind::kPlowing));
+                                HoursPerKm(config_, WorkKind::kPlowing),
+                                static_cast<float>(kClockScale) / config_.loaded_speed_kmh);
   }
 
   // -- the working hour ----------------------------------------------------

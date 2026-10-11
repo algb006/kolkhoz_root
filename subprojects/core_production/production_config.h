@@ -1101,6 +1101,10 @@ struct ProductionConfig {
 
   float harness_speed_kmh = 12.0F;
 
+  /// Real speed of a LOADED cart, km/h (transport.csv cart_loaded
+  /// `speed_kmh`; #570, 2a): the half of every round trip to the receiver.
+  float loaded_speed_kmh = 9.0F;
+
   float standard_day_hours = 10.0F;
 
   /// labor.csv `travel_limit_hours` and `min_usable_hours`: the accountant's

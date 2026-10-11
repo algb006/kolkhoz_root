@@ -15,18 +15,20 @@ constexpr float kMinRoundTripHours = 0.25F;
 
 }  // namespace
 
-HaulRate RateBetween(Vec2 from, Vec2 to, float hours_per_km, Grams load) {
+HaulRate RateBetween(
+    Vec2 from, Vec2 to, float hours_per_km, float loaded_hours_per_km, Grams load) {
   const float dx = to.x - from.x;
   const float dy = to.y - from.y;
   const float metres = std::sqrt((dx * dx) + (dy * dy));
-  return RateOverKm(metres / 1000.0F, hours_per_km, load);
+  return RateOverKm(metres / 1000.0F, hours_per_km, loaded_hours_per_km, load);
 }
 
-HaulRate RateOverKm(float one_way_km, float hours_per_km, Grams load) {
-  const float one_way = one_way_km * hours_per_km;
+HaulRate RateOverKm(float one_way_km, float hours_per_km, float loaded_hours_per_km, Grams load) {
+  // The empty half out and the loaded half back (#570, 2a): until 0.37.229
+  // both halves went at the empty pace.
   HaulRate rate;
   rate.load = load;
-  rate.round_trip_hours = 2.0F * one_way;
+  rate.round_trip_hours = one_way_km * (hours_per_km + loaded_hours_per_km);
   if (!(rate.round_trip_hours >= kMinRoundTripHours)) {
     rate.round_trip_hours = kMinRoundTripHours;  // positive test: nan lands here too
   }
@@ -44,15 +46,17 @@ Grams HaulGrams(float hours, const HaulRate& rate) {
 float WalkerShareOfCartDay(Grams carry_grams,
                            Grams cart_grams,
                            float walk_hours_per_km,
-                           float harness_hours_per_km) {
+                           float harness_hours_per_km,
+                           float loaded_hours_per_km) {
   if (carry_grams <= 0 || cart_grams <= 0 || !(walk_hours_per_km > 0.0F) ||
-      !(harness_hours_per_km > 0.0F)) {
+      !(harness_hours_per_km > 0.0F) || !(loaded_hours_per_km > 0.0F)) {
     return 1.0F;
   }
-  // Loads by trips: a trip's length is its way by the pace, and the way is
-  // one for both (the cart's — haul.h), so the trips go as the paces.
+  // Loads by trips: a trip's length is its way by the paces, and the way is
+  // one for both (the cart's — haul.h), so the trips go as the round trips:
+  // the cart's empty out and loaded back, the walker's twice his walk.
   const float share = (static_cast<float>(carry_grams) / static_cast<float>(cart_grams)) *
-                      (harness_hours_per_km / walk_hours_per_km);
+                      ((harness_hours_per_km + loaded_hours_per_km) / (2.0F * walk_hours_per_km));
   return share < 1.0F ? share : 1.0F;
 }
 

@@ -77,6 +77,10 @@ struct LogisticsConfig {
   /// keys and ranges: a cart is given no load in its chain that it could not
   /// be sent to in the morning.
   float harness_speed_kmh = 12.0F;
+  /// The LOADED cart's pace (transport.csv cart_loaded `speed_kmh`; #570,
+  /// 2a): a trip's loaded half in the plan, and the evening rider's ride on
+  /// a loaded leg.
+  float loaded_speed_kmh = 9.0F;
   float travel_limit_hours = 6.0F;
 
   /// THE PLAN'S CLOCK (B4b): the cells a leg's time is estimated from, read
