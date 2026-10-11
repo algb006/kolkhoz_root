@@ -364,6 +364,7 @@ Verdict Play(const BadPlay& play, std::uint64_t seed, std::uint32_t trial_thresh
   // instrument, it is already pulled.
   builder.fixture.Report(started.State());
   builder.felling.Report("plan_trial", started.State());
+  builder.roads.Report("plan_trial");
   if (play.obvious_chairman) {
     // SAID OUT LOUD, and boss made it the condition of the prosthetic existing
     // at all: the giving-back is a crutch for a verb the seam does not have,

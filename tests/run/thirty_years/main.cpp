@@ -597,6 +597,10 @@ int main(int argc, char** argv) {
   // And straw on the houses' walls before winter (insulation_policy.h; parcel 364).
   run::InsulationPolicy insulation(*world.tables);
   run::InsulationPolicy::Declare("thirty_years");
+  // And the elder's suggested roads with the first new building beside each
+  // (suggested_roads_policy.h, #423), as BuildingChairman lays them.
+  run::SuggestedRoadsPolicy roads(*world.tables);
+  run::SuggestedRoadsPolicy::Declare("thirty_years");
   // And the layout's mark: a plan crop given a field in every year of the chain
   // (sowing_policy.h, the plan alarm only — no releases; boss, parcel 397). The
   // ripening figures are unused in this mode.
@@ -676,6 +680,7 @@ int main(int argc, char** argv) {
       insulation.RunDay(*world.simulation);
       layout.AnswerPlanAlarmsOnly(*world.simulation);
       digging.RunDay(*world.simulation);
+      roads.RunDay(*world.simulation);
       year_seconds +=
           std::chrono::duration<double>(std::chrono::steady_clock::now() - day_began).count();
       const core::WorldState& mid = world.State();
@@ -1052,6 +1057,7 @@ int main(int argc, char** argv) {
             << harvest_waited_days << " days over " << g_years << " years, worst year "
             << harvest_waited_worst << " days\n";
   felling.Report("thirty_years", state);
+  roads.Report("thirty_years");
   planting.Report("thirty_years", state);
   sawmill.Report("thirty_years");
   limit.Report("thirty_years");
