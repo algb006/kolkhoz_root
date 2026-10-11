@@ -94,7 +94,13 @@ class OfficePolicy {
       if (unit.type.value != office_.value || unit.level == 0 || unit.dead != 0) {
         continue;
       }
-      if (unit.wear <= 0.0F || unit.construction.phase != core::ConstructionPhase::kNone) {
+      // An office already inside the era's line (units rules §11: wear at
+      // most a percent, era_readiness.cpp kOfficeWearAtMostPercent) is in
+      // order: until 0.37.230 the policy re-ordered a repair two days after
+      // the last at wear 0.04 — a wobble the traces of 12 October 2026 showed
+      // in every village, not a finding.
+      if (unit.wear <= core::kWearScale * 0.01F ||
+          unit.construction.phase != core::ConstructionPhase::kNone) {
         return;
       }
       core::OrderRow repair;

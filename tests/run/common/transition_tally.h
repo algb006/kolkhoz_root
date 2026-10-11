@@ -58,18 +58,34 @@ class TransitionTally {
     /// then (TransitionPolicy::ConditionsMet's order).
     std::uint32_t residents = 0;
     std::array<bool, TransitionPolicy::kConditions> gates = {};
+    /// The wintering's three counts off the closed book (era_readiness.cpp:
+    /// closed when BOTH food and feed reach the grass), so a wintering
+    /// gate read «-» names its short half (0.37.230: E3's holder in 1938 was
+    /// «зимовка 2 года» and the row showed only their mean).
+    float food_days_dec1 = 0.0F;
+    float feed_days_dec1 = 0.0F;
+    std::uint16_t winter_days_dec1 = 0;
+    /// The year's hay reaped (the book's `harvest`), t: the feed half's source.
+    float hay_reaped_t = 0.0F;
+    /// The same by calendar month (0 = January), t.
+    std::array<float, core::kMonthsPerYear> hay_by_month = {};
     bool scored = false;
   };
 
   /// @param years_decomposed Closed years printed with their components.
   explicit TransitionTally(const core::ITableSet& tables,
                            std::size_t years_decomposed = kYearsDecomposedDefault)
-      : catalog_(core::ReadReadinessCatalog(tables, core::Epoch::kOne)), years_(years_decomposed) {}
+      : catalog_(core::ReadReadinessCatalog(tables, core::Epoch::kOne)), years_(years_decomposed) {
+    if (const core::ITable* const resources = tables.FindTable("resources")) {
+      hay_ = resources->FindRowByKey("hay");
+    }
+  }
 
   /// @brief One day, after the day's steps and the chairman's orders.
   void CountDay(const TransitionPolicy& transition, const core::WorldState& world) {
     const core::SimDay day = world.calendar.day;
     ScoreTurn(transition, world, day);
+    CountHayOfTheMonth(world, day);
     if (world.epoch != core::Epoch::kOne) {
       if (opened_day_ < 0) {
         opened_day_ = static_cast<std::int64_t>(day);
@@ -144,6 +160,14 @@ class TransitionTally {
       for (const bool met : score.gates) {
         std::cout << (met ? '+' : '-');
       }
+      std::cout << "; Dec 1 food/feed days " << score.food_days_dec1 << '/' << score.feed_days_dec1
+                << " of " << score.winter_days_dec1 << ", hay reaped " << score.hay_reaped_t
+                << " t, by month";
+      for (std::size_t month = 0; month < score.hay_by_month.size(); ++month) {
+        if (score.hay_by_month[month] > 0.0F) {
+          std::cout << ' ' << month + 1 << ':' << score.hay_by_month[month];
+        }
+      }
     }
     std::cout << '\n';
   }
@@ -173,6 +197,28 @@ class TransitionTally {
 
   /// The turn scores the closed year after the books rotate (world.cpp): on
   /// the new year's first day, the readiness judges the year just closed.
+  /// The year's hay reaped BY MONTH off the open book's cumulative harvest
+  /// (boss, 12 October 2026: 1938's year-9 feed of 13 days on the yard's
+  /// move — the cut, the herd or the feeding, and in which month).
+  void CountHayOfTheMonth(const core::WorldState& world, core::SimDay day) {
+    if (hay_ == core::kNoTableRow) {
+      return;
+    }
+    const std::size_t year = day / core::kDaysPerYear;
+    const std::size_t month = (day % core::kDaysPerYear) / core::kDaysPerMonth;
+    const core::ResourceAmounts& harvest = world.ledger.current.harvest;
+    const float cumulative =
+        hay_ < harvest.size() ? static_cast<float>(harvest[hay_]) / core::kGramsPerTonne : 0.0F;
+    if (year != hay_year_) {
+      hay_year_ = year;
+      hay_cumulative_ = 0.0F;
+    }
+    if (year < years_.size()) {
+      years_[year].hay_by_month[month] += std::max(cumulative - hay_cumulative_, 0.0F);
+    }
+    hay_cumulative_ = cumulative;
+  }
+
   void ScoreTurn(const TransitionPolicy& transition,
                  const core::WorldState& world,
                  core::SimDay day) {
@@ -205,6 +251,14 @@ class TransitionTally {
                           readiness.society.demography.score};
       score.satisfaction_stub_points = readiness.satisfaction_stub_points;
       score.residents = static_cast<std::uint32_t>(world.residents.rows.size());
+      // The turn is the new year's first day, so the closed book is `closed`'s.
+      score.food_days_dec1 = world.ledger.closed.food_days_dec1;
+      score.feed_days_dec1 = world.ledger.closed.feed_days_dec1;
+      score.winter_days_dec1 = world.ledger.closed.winter_days_dec1;
+      if (hay_ != core::kNoTableRow && hay_ < world.ledger.closed.harvest.size()) {
+        score.hay_reaped_t =
+            static_cast<float>(world.ledger.closed.harvest[hay_]) / core::kGramsPerTonne;
+      }
       // The gates as the door reads them in Epoch I; after the transition
       // the door answers every question "not eligible", so none stands met.
       if (world.epoch == core::Epoch::kOne) {
@@ -229,6 +283,9 @@ class TransitionTally {
   }
 
   core::ReadinessCatalog catalog_;
+  std::uint32_t hay_ = core::kNoTableRow;
+  std::size_t hay_year_ = 0;
+  float hay_cumulative_ = 0.0F;
   std::array<std::int64_t, kGates> first_met_day_ = {-1, -1, -1, -1, -1, -1, -1, -1};
   std::array<std::int64_t, kGates> became_met_day_ = {-1, -1, -1, -1, -1, -1, -1, -1};
   std::array<bool, kGates> met_yesterday_ = {};

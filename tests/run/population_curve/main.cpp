@@ -62,6 +62,9 @@ constexpr std::array<const char*, run::TransitionPolicy::kConditions> kCondition
 
 /// The residents' condition's index in that order (the village's size).
 constexpr std::size_t kResidentsConditionIndex = 7;
+/// «правление ≤1 %» — the formal last blocker, repaired on the door's day
+/// (office_policy.h): never the holder E3 names.
+constexpr std::size_t kOfficeConditionIndex = 3;
 
 /// The nine seeds. Nine and not five because nine already stands in two
 /// instruments beside this one — `thirty_years` and the lean-season band of
@@ -558,8 +561,10 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
   // econ's births and horses prints: the "forever" branch only.
   run::BirthsHerdTally births_herd(*world.tables);
   run::BirthsHerdTally* const births_herd_on = g_epoch_one_forever ? &births_herd : nullptr;
-  run::TransitionTally transition_tally(
-      *world.tables, g_epoch_one_forever ? kYears : run::TransitionTally::kYearsDecomposedDefault);
+  // EVERY YEAR DECOMPOSED (0.37.230): with six, E3's holder stood in a year
+  // the table did not print (1938's wintering of years 9-11 on the yard's
+  // move), and the finding had to be aimed by guesswork.
+  run::TransitionTally transition_tally(*world.tables, kYears);
   if (const core::ITable* const types = world.tables->FindTable("unit_types")) {
     const std::uint32_t key_column = types->FindColumn("key");
     for (std::uint32_t row = 0; row < types->RowCount(); ++row) {
@@ -1275,9 +1280,22 @@ int main(int argc, char** argv) {
         walk.epoch2_day - residents_met <= static_cast<std::int64_t>(core::kDaysPerYear)) {
       continue;
     }
-    std::size_t longest = 0;
+    // NOT THE OFFICE (0.37.230): the comment above promised it and the loop
+    // did not keep it — the office is unmet until the door's own day by
+    // construction (office_policy.h repairs it once every other condition is
+    // met, in one to three days), so it is always the longest, and the line
+    // named it for 1938 on the yard's move while the real holder was another
+    // condition. Every condition's days are printed beside the longest, so
+    // the reader sees the whole hand.
+    std::size_t longest = 1;
+    std::string hand;
     for (std::size_t condition = 1; condition < walk.unmet_after_residents_days.size();
          ++condition) {
+      hand += " " + std::string(kConditionNames[condition]) + "=" +
+              std::to_string(walk.unmet_after_residents_days[condition]);
+      if (condition == kOfficeConditionIndex) {
+        continue;
+      }
       longest =
           walk.unmet_after_residents_days[condition] > walk.unmet_after_residents_days[longest]
               ? condition
@@ -1285,7 +1303,8 @@ int main(int argc, char** argv) {
     }
     late_holders += " seed " + std::to_string(kSeeds[walk_index]) + ": " +
                     kConditionNames[longest] +
-                    std::to_string(walk.unmet_after_residents_days[longest]) + " days unmet;";
+                    std::to_string(walk.unmet_after_residents_days[longest]) +
+                    " days unmet (every condition, days:" + hand + ");";
   }
   const std::string late_claim =
       "E3: no door opens more than a year after the residents' condition was first met — now " +
