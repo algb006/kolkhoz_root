@@ -84,7 +84,9 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // 304 and fifty-five, predicted before the build.
 // Save 139 (0.37.186): the wait's due tick (+8: the record 48 -> 56, with its
 // flag 56 -> 64) — 312 and fifty-five, predicted before the build.
-static_assert(sizeof(ResidentRow) == 312,
+// Save 153 (stage В, F3): the work's way home and the cart home (+4 +4) —
+// predicted 312 -> 320 before the build; the arity stays 55.
+static_assert(sizeof(ResidentRow) == 320,
               "ResidentRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 59: distiller_supplied_month, a distiller's supplied month
 // (crime §7, register 206) — 43 fields; the size is read off the build.
@@ -198,8 +200,10 @@ static_assert(AggregateArity<FamilyRow>() == 30,
 // Save 146 (0.37.212): stand_summers, one byte after mown_fallow, still in
 // the tail padding (126) — predicted "128 stays" and 44 -> 45 fields before
 // the build; the wire row + 1 byte.
-static_assert(sizeof(FieldRow) == 128, "FieldRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<FieldRow>() == 45,
+// Save 153 (stage В, F3): haul_to, a point after haul_days_written — predicted
+// 128 -> 136 and 45 -> 46 fields before the build; the wire row + 8 bytes.
+static_assert(sizeof(FieldRow) == 136, "FieldRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<FieldRow>() == 46,
               "FieldRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-06: the stink radius pushed the row from 48 + amounts to 56 +
 // amounts. The pause byte before it had landed in padding and moved nothing,
@@ -227,7 +231,10 @@ static_assert(AggregateArity<FieldRow>() == 45,
 // up to the eight); the fifth I predicted at 56 and it stayed 48 — it went
 // into that rounding, a miss named. (The tree's first pairs carried a third
 // amounts vector, `owed`; it went with the direct leg, before any delivery.)
-static_assert(sizeof(UnitRow) == 112 + (3 * kAmountsSize) + sizeof(std::vector<SupplyLeg>),
+// Save 153 (stage В, F3): the perevalka's receiver, a point after its seam —
+// predicted 112 -> 120 + three amounts + the legs' vector, 18 -> 19 fields,
+// before the build.
+static_assert(sizeof(UnitRow) == 120 + (3 * kAmountsSize) + sizeof(std::vector<SupplyLeg>),
               "UnitRow changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(ConstructionState) == 48 + (2 * kAmountsSize) + sizeof(std::vector<SupplyLeg>),
               "ConstructionState changed — update the codec and VERSION_SAVE");
@@ -243,7 +250,7 @@ static_assert(AggregateArity<SupplyLeg>() == 4,
 static_assert(AggregateArity<ConstructionState>() == 18,
               "ConstructionState gained or lost a field — update the codec and VERSION_SAVE");
 // Save 74: reserved_for_specialist, a byte beside `dead` — 18 fields.
-static_assert(AggregateArity<UnitRow>() == 18,
+static_assert(AggregateArity<UnitRow>() == 19,
               "UnitRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 71: fed_share, the day's covered ration — 68 and nineteen fields,
 // predicted before the field was added and measured after. Save 76:
@@ -303,19 +310,23 @@ static_assert(AggregateArity<OrderRow>() == 35,
 // fields, predicted before the field was added.
 // Save 132 (routing stage A): rides_cart_of, the driver whose cart he rides —
 // 48 and thirteen fields, predicted before the field was added.
-static_assert(sizeof(WorkAssignment) == 48,
+// Save 153 (stage В, F3): travel_home_hours and rides_home_with — 56 and
+// fifteen fields, predicted before the fields were added.
+static_assert(sizeof(WorkAssignment) == 56,
               "WorkAssignment changed — update the codec and VERSION_SAVE");
 // Save 88: rides_horse, a byte into the padding after `kind` — 32 still, 9
 // fields; predicted before the build.
 // Save 127 (0.37.140) put a second byte there, cannot_wait — thirteen
 // fields; save 128 (0.37.141) took it out unwritten — 44 still, twelve again.
 // Save 132: rides_cart_of — thirteen.
-static_assert(AggregateArity<WorkAssignment>() == 13,
+static_assert(AggregateArity<WorkAssignment>() == 15,
               "WorkAssignment gained or lost a field — update the codec and VERSION_SAVE");
 // Save 98: own_carts (a byte into the padding after the lot) and the two
 // floats of the carting seam — 8 -> 16 + A and 3 -> 6 fields, predicted before
 // the build.
-static_assert(sizeof(LimitDeliveryRow) == 16 + kAmountsSize,
+// Save 153 (stage В, F3): haul_to, a point after the seam — 16 -> 24 + A and
+// 6 -> 7 fields, predicted before the build.
+static_assert(sizeof(LimitDeliveryRow) == 24 + kAmountsSize,
               "LimitDeliveryRow changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(LivestockArrivalRow) == 16,
               "LivestockArrivalRow changed — update the codec and VERSION_SAVE");
@@ -326,7 +337,7 @@ static_assert(sizeof(LivestockArrivalRow) == 16,
 // twice over on the very day this row was written.
 static_assert(AggregateArity<LivestockArrivalRow>() == 6,
               "LivestockArrivalRow gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<LimitDeliveryRow>() == 6,
+static_assert(AggregateArity<LimitDeliveryRow>() == 7,
               "LimitDeliveryRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(SpecialistArrivalRow) == 12,
               "SpecialistArrivalRow changed — update the codec and VERSION_SAVE");
@@ -341,13 +352,17 @@ static_assert(AggregateArity<WeddingWaitRow>() == 3,
 // Save 144: the days a felling mark stood out of reach — 64 -> 72 (a u32
 // after the last u32, the row is aligned to its 8-byte load), thirteen
 // fields -> fourteen; predicted before the build.
-static_assert(sizeof(TimberStandRow) == 72,
+// Save 153 (stage В, F3): haul_to, a point after the seam — 72 -> 80 and
+// 14 -> 15 fields, predicted before the build.
+static_assert(sizeof(TimberStandRow) == 80,
               "TimberStandRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<TimberStandRow>() == 14,
+static_assert(AggregateArity<TimberStandRow>() == 15,
               "TimberStandRow gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(sizeof(ExtractionSiteRow) == 64,
+// Save 153 (stage В, F3): haul_to, a point after the seam — 64 -> 72 and
+// 10 -> 11 fields, predicted before the build.
+static_assert(sizeof(ExtractionSiteRow) == 72,
               "ExtractionSiteRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<ExtractionSiteRow>() == 10,
+static_assert(AggregateArity<ExtractionSiteRow>() == 11,
               "ExtractionSiteRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(NightOutingRow) == 24,
               "NightOutingRow changed — update the codec and VERSION_SAVE");
@@ -401,7 +416,8 @@ static_assert(AggregateArity<LogisticsTaskRow>() == 13,
 // Save 136 (0.37.177): the groom's plan — a leg six fields, a cart three, the
 // plan four (each holds vectors: its size is not a byte count, the codec
 // writes the lengths).
-static_assert(AggregateArity<CartLeg>() == 6,
+// Save 153 (stage В, F3): the loaded byte — seven.
+static_assert(AggregateArity<CartLeg>() == 7,
               "CartLeg gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<CartPlan>() == 4,
               "CartPlan gained or lost a field — update the codec and VERSION_SAVE");
@@ -610,7 +626,9 @@ void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
   WriteEntityId(out, row.work.rides_cart_of);   // save 132: the cart he rides
   out.WriteFloat(row.work.worked_norm_days_today);
   out.WriteFloat(row.work.hours_away_today);
-  out.WriteFloat(row.work.travel_hours);  // save 93
+  out.WriteFloat(row.work.travel_hours);         // save 93
+  out.WriteFloat(row.work.travel_home_hours);    // save 153: the way home (F3)
+  WriteEntityId(out, row.work.rides_home_with);  // save 153: the cart home (F3)
   // Save 105: the morning's idle reason (the office's workbook);
   // kIdleReasonCount — none — is a legal value.
   out.WriteU8(static_cast<std::uint8_t>(row.idle_reason));
@@ -699,6 +717,8 @@ ResidentRow ReadResidentRow(LoadSource& source) {
   row.work.worked_norm_days_today = in.ReadFloat();
   row.work.hours_away_today = in.ReadFloat();
   row.work.travel_hours = in.ReadFloat();
+  row.work.travel_home_hours = in.ReadFloat();              // save 153
+  row.work.rides_home_with = ReadEntityId<ResidentId>(in);  // save 153
   row.idle_reason =
       static_cast<IdleReason>(source.ReadEnumValue(0, kIdleReasonNone, "idle reason"));
 
@@ -975,6 +995,7 @@ void WriteFieldRow(SaveSink& sink, const FieldRow& row) {
   // to a row almost always lands in a hole, because holes are what sit
   // between fields of different widths.
   out.WriteFloat(row.haul_days_written);
+  WriteVec2(out, row.haul_to);  // save 153: the heap's receiver (F3)
   out.WriteI64(row.reaped_grams);
   sink.WriteDefId(DefKind::kResource, row.reaped_resource.value);
   // The harvest by parts (save 84): the share of this reaping already laid
@@ -1079,6 +1100,7 @@ FieldRow ReadFieldRow(LoadSource& source) {
   row.work_days_remaining = in.ReadFloat();
   row.haul_days_remaining = in.ReadFloat();
   row.haul_days_written = in.ReadFloat();
+  row.haul_to = ReadVec2(in);  // save 153
   row.reaped_grams = in.ReadI64();
   row.reaped_resource = ResourceId{source.ReadDefId(DefKind::kResource)};
   row.harvest_laid_share = in.ReadFloat();
@@ -1205,6 +1227,7 @@ void WriteUnitRow(SaveSink& sink, const UnitRow& row) {
   out.WriteU8(row.emptying);
   out.WriteFloat(row.haul_days_remaining);
   out.WriteFloat(row.haul_days_written);
+  WriteVec2(out, row.haul_to);  // save 153: the perevalka's receiver (F3)
   // The dead byte of a start placement (2026-09-12) went into the same
   // padding, and the tripwire stayed silent for the third time running —
   // which is the documented usual outcome, not the surprise. VERSION_SAVE
@@ -1269,6 +1292,7 @@ UnitRow ReadUnitRow(LoadSource& source) {
   row.emptying = static_cast<std::uint8_t>(source.ReadEnumValue(0, 2, "store emptying"));
   row.haul_days_remaining = in.ReadFloat();
   row.haul_days_written = in.ReadFloat();
+  row.haul_to = ReadVec2(in);  // save 153
   row.dead = in.ReadU8();
   row.reserved_for_specialist =
       static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "house held for a specialist"));
@@ -1516,6 +1540,7 @@ void WriteTimberStandRow(SaveSink& sink, const TimberStandRow& row) {
   out.WriteU64(static_cast<std::uint64_t>(row.load_grams));
   out.WriteFloat(row.haul_days_remaining);
   out.WriteFloat(row.haul_days_written);
+  WriteVec2(out, row.haul_to);  // save 153: the logs' receiver (F3)
   // A planting (save 82): its species through the dictionary, its own
   // hectares, and its two days.
   sink.WriteDefId(DefKind::kTreeSpecies, row.species.value);
@@ -1539,6 +1564,7 @@ TimberStandRow ReadTimberStandRow(LoadSource& source) {
   row.load_grams = static_cast<Grams>(in.ReadU64());
   row.haul_days_remaining = in.ReadFloat();
   row.haul_days_written = in.ReadFloat();
+  row.haul_to = ReadVec2(in);  // save 153
   row.species = TreeSpeciesId{source.ReadDefId(DefKind::kTreeSpecies)};
   row.planted_area_ha = in.ReadFloat();
   row.planted_day = in.ReadU32();
@@ -1567,6 +1593,7 @@ void WriteExtractionSiteRow(SaveSink& sink, const ExtractionSiteRow& row) {
   out.WriteU64(static_cast<std::uint64_t>(row.load_grams));
   out.WriteFloat(row.haul_days_remaining);
   out.WriteFloat(row.haul_days_written);
+  WriteVec2(out, row.haul_to);  // save 153: the dig's receiver (F3)
   out.WriteU8(row.exhausted);
 }
 
@@ -1582,6 +1609,7 @@ ExtractionSiteRow ReadExtractionSiteRow(LoadSource& source) {
   row.load_grams = static_cast<Grams>(in.ReadU64());
   row.haul_days_remaining = in.ReadFloat();
   row.haul_days_written = in.ReadFloat();
+  row.haul_to = ReadVec2(in);  // save 153
   row.exhausted = in.ReadU8();
   return row;
 }
@@ -1600,6 +1628,7 @@ void WriteLimitDeliveryRow(SaveSink& sink, const LimitDeliveryRow& row) {
   out.WriteU8(row.own_carts);
   out.WriteFloat(row.haul_days_remaining);
   out.WriteFloat(row.haul_days_written);
+  WriteVec2(out, row.haul_to);  // save 153: the lot's receiver (F3)
   sink.WriteAmounts(DefKind::kResource, row.goods);
 }
 
@@ -1611,6 +1640,7 @@ LimitDeliveryRow ReadLimitDeliveryRow(LoadSource& source) {
   row.own_carts = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "own carts"));  // save 98
   row.haul_days_remaining = in.ReadFloat();
   row.haul_days_written = in.ReadFloat();
+  row.haul_to = ReadVec2(in);  // save 153
   row.goods = source.ReadAmounts(DefKind::kResource);
   return row;
 }
@@ -1889,10 +1919,10 @@ BarterTripRow ReadBarterTripRow(LoadSource& source) {
 // THE GROOM'S PLAN (save 136; routing stage B, B3; the carrier on foot's byte
 // since save 137, B4b). The least bytes a cart and a leg take, for the length
 // checks below: a cart is its driver, its two bytes and its legs' count (10);
-// a leg is two points, a task, two ticks and its riders' count
-// (16 + 4 + 16 + 4 = 40).
+// a leg is two points, a task, its loaded byte (save 153, F3), two ticks and
+// its riders' count (16 + 4 + 1 + 16 + 4 = 41).
 constexpr std::size_t kSavedCartBytes = 10;
-constexpr std::size_t kSavedLegBytes = 40;
+constexpr std::size_t kSavedLegBytes = 41;
 constexpr std::size_t kSavedRiderBytes = 4;
 
 void WriteGroomPlan(SaveSink& sink, const GroomPlan& plan) {
@@ -1910,6 +1940,7 @@ void WriteGroomPlan(SaveSink& sink, const GroomPlan& plan) {
       WriteVec2(out, leg.from);
       WriteVec2(out, leg.to);
       WriteEntityId(out, leg.task);
+      out.WriteU8(leg.loaded);  // save 153: a loaded trip (F3)
       out.WriteU64(leg.depart);
       out.WriteU64(leg.arrive);
       out.WriteU32(static_cast<std::uint32_t>(leg.riders.size()));
@@ -1952,6 +1983,11 @@ GroomPlan ReadGroomPlan(LoadSource& source) {
       leg.from = ReadVec2(in);
       leg.to = ReadVec2(in);
       leg.task = ReadEntityId<LogisticsTaskId>(in);
+      leg.loaded = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "a loaded trip"));
+      if (leg.loaded != 0 && leg.task.value == kInvalidEntityIdValue) {
+        source.Fail("a leg of the groom's plan is loaded with no task's load");
+        return plan;
+      }
       leg.depart = in.ReadU64();
       leg.arrive = in.ReadU64();
       if (leg.arrive < leg.depart) {

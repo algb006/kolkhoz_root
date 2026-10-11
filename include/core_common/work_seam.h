@@ -67,6 +67,14 @@ float* WorkSeamOf(WorldState& world, const WorkAssignment& work);
 ///         with nullptr, and for the same reason.
 bool WorkPlaceOf(const WorldState& world, const WorkAssignment& work, Vec2& place);
 
+/// @brief WHERE A HAULING WORK'S LOAD GOES — its trip's receiver (stage В,
+///        F3 (A)): the `haul_to` production wrote with the load's seam (a
+///        field's heap, a stand, a pit, a district lot, a store being
+///        emptied), or the unit itself for a works' supply.
+/// @return false for a work that is not hauling, a target that is gone, or
+///         a load whose receiver was never written (no seam yet).
+bool WorkReceiverOf(const WorldState& world, const WorkAssignment& work, Vec2& receiver);
+
 /// @brief Where a resident's day starts and ends: his family's house, or —
 ///        for a family in a tent — the plot its house stood on.
 /// @return false for a family with neither a house nor a tent: a roofless

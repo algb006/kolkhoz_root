@@ -53,11 +53,23 @@ inline constexpr std::uint32_t kMaxChainLoads = 6;
 /// NOT IN THE PLAN (boss [11], default 4): the brigade's cart of the reaping
 /// and the sowing and the meadow's mower — they carry no load of a task.
 ///
+/// THE TRIPS (stage В, F3 (A)): a load's carting is drawn as its trips —
+/// loaded from the load to its receiver (WorkReceiverOf), empty back — each
+/// as long as the round trip the load's seam is priced at (haul.h, HaulRate),
+/// as many as the seam's carting by the clock holds; the last trip's way back
+/// is not drawn when the cart goes on from the receiver (to its next load, or
+/// home). A trip the light cannot finish is not begun: the cart goes home
+/// from where it is. A load with no receiver written is drawn as before, one
+/// leg standing at the load, and counted (a shout in the tally's legs).
+///
 /// APPROXIMATIONS, NAMED: the clock drains a seam at the norm, one cart-hour
 /// an hour (a walker his share of it, haul.h) — not at each man's efficiency
-/// as the labour hour does; the trips to the store are inside a load's seam,
-/// so a load leg stands at the load; a cart on its way when the light ends
-/// goes home from the place it was going to.
+/// as the labour hour does; the trips are cut whole from the seam's span by
+/// the priced round trip, while the labour hour carts half a trip at the day's
+/// end as half a load (haul.h) — the drawing rounds, the carting does not; a
+/// carrier on foot's day stays one leg a load (he has no cart to draw); a
+/// cart on its way when the light ends goes home from the place it was going
+/// to.
 /// @return The plan; `tally` counts the carts, the legs and the tasks by level.
 ///
 /// THE RE-PLAN (B5): with `earlier` — today's plan as it stands — the carts'
@@ -68,6 +80,45 @@ GroomPlan BuildGroomPlan(const LogisticsConfig& config,
                          const WorldState& world,
                          LogisticsTally& tally,
                          const GroomPlan* earlier = nullptr);
+
+/// @brief THE EVENING RETURN (stage В, F3 (B); transport design §11,
+///        «Обратный путь», 357c60d0; «Подвода бригады — как была»,
+///        ddbf6f48): seats the day's riders for the way home on `plan`'s
+///        carts and writes every such worker's WorkAssignment::
+///        travel_home_hours and rides_home_with.
+///
+/// WHO WANTS A RIDE HOME: every worker who rode a GOODS cart this morning
+/// (rides_cart_of names a goods cart's driver) — a feller seated on the empty
+/// log cart going out to the stand among them: by ddbf6f48 a felling or log
+/// brigade rides by the form table, so the loaded log trip home refuses him.
+/// Not asked: a crew on the people's cart (its evening leg brings it home, as
+/// the morning planned), the field brigade of the harvest on its own cart
+/// (its cart counts no seats, §11, «Подвода бригады — как была»), a walker,
+/// a horseman.
+///
+/// WHICH LEG TAKES HIM: of the carts whose last trips of the day or ride home
+/// pass within a walk of his work toward the village, the one that brings him
+/// home soonest — on a LOADED trip only if its load's form seats riders
+/// (CargoFormSeatsRiders: not logs, manure or the live), on an empty way
+/// always — within the cart's seats, the farthest walkers first (§11, «Кому
+/// место, если желающих больше»), the morning's wait term on the evening
+/// pick-up too.
+///
+/// HIS WAY HOME, AND THE DAY IT COSTS (boss, 11 October 2026: «a rider the
+/// evening trip cannot take walks home, and his day loses the
+/// walk-minus-ride»): seated — his walk to the pick-up plus the ride to the
+/// point nearest his house plus the walk from it; not seated — his whole walk
+/// home (WorkRoadHours on foot). A worker who refuses nothing and is refused
+/// nothing keeps no new number: travel_home_hours stays negative and the
+/// labour hour reads travel_hours, as before.
+///
+/// Counts `tally`'s evening fields. Called after BuildGroomPlan, and after
+/// every re-plan (the evening is the day's rest, re-seated from the new legs).
+/// @pre `plan` is current.groom_plan's, built for today.
+void SeatEveningRiders(const LogisticsConfig& config,
+                       WorldState& current,
+                       GroomPlan& plan,
+                       LogisticsTally& tally);
 
 }  // namespace core
 

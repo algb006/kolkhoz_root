@@ -119,6 +119,11 @@ struct TimberStandRow {
   /// FieldRow::haul_days_written.
   float haul_days_written = 0.0F;
 
+  /// THE LOGS' RECEIVER (stage В, F3 (A); save 153): the log pile or the
+  /// shared store the trip of the seam above is priced to (field_haul.cpp,
+  /// StandHaulRate), written with the seam by production.
+  Vec2 haul_to;
+
   // -- a planting (kind kPlanted; timber_planting.h; save 82) ---------------
   /// What was planted; invalid for every other kind.
   TreeSpeciesId species;

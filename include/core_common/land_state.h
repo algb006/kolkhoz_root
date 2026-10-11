@@ -415,6 +415,13 @@ struct FieldRow {
   /// written minus left, and nothing else can move it.
   float haul_days_written = 0.0F;
 
+  /// THE HEAP'S RECEIVER (stage В, F3 (A); save 153): where the trip the
+  /// seam above is priced at goes — the store that takes the crop, the hay's
+  /// manger — written with the seam by production (field_haul.cpp,
+  /// HeapHaulRate's destination), so the plan draws the same trip the seam
+  /// pays for. Meaningless while nothing is reaped.
+  Vec2 haul_to;
+
   /// Produce reaped and NOT YET IN A STORE, in grams: the field brigade's
   /// buffer of the transport design (§9, "what accumulates: the harvest off
   /// the field"), in its smallest form — one resource, one number. Laid

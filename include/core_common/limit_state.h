@@ -17,6 +17,7 @@
 
 #include <cstdint>
 
+#include "core_common/geometry.h"
 #include "core_common/ids.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table.h"
@@ -101,6 +102,11 @@ struct LimitDeliveryRow {
   /// settlement wrote last night. Nought for the district's cart.
   float haul_days_remaining = 0.0F;
   float haul_days_written = 0.0F;
+
+  /// THE LOT'S RECEIVER (stage В, F3 (A); save 153): the store the trip of
+  /// the seam above is priced to from the district's road (field_haul.cpp),
+  /// written with the seam by production.
+  Vec2 haul_to;
 
   /// What is still on the cart, grams by resource. FROZEN AT THE ORDER from
   /// the lot's amounts: a balance edit mid-delivery does not change a cart

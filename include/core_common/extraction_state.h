@@ -90,6 +90,11 @@ struct ExtractionSiteRow {
   /// FieldRow::haul_days_written.
   float haul_days_written = 0.0F;
 
+  /// THE DIG'S RECEIVER (stage В, F3 (A); save 153): the resource's pile or
+  /// the shared store the trip of the seam above is priced to
+  /// (field_haul.cpp, SiteHaulRate), written with the seam by production.
+  Vec2 haul_to;
+
   /// 1 once the stock has run out and the village was told
   /// (EventKind::kExtractionSiteExhausted); the announcement is made once.
   std::uint8_t exhausted = 0;

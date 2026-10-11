@@ -81,6 +81,18 @@ struct LogisticsTally {
   std::uint32_t aged_up = 0;                                   ///< Tasks raised by ageing today.
   std::uint32_t urgent_by_threat = 0;    ///< Tasks set to level 0 by a threat today.
   float urgent_worst_wait_hours = 0.0F;  ///< The longest a level-0 task waited for a cart.
+  /// THE TRIPS AND THE EVENING (stage В, F3): loaded trips drawn today; the
+  /// workers wanting a ride home (seated on a cart this morning, or on foot
+  /// with a cart's way passing them); of them seated for the evening; refused
+  /// by a loaded trip's FORM (logs, manure, the live: CargoFormSeatsRiders)
+  /// with no other seat; with no seat left. A felling brigade refused counts
+  /// in `evening_refused_by_form`; the field brigade in the harvest is seated
+  /// uncounted by transport §11 and is not among these.
+  std::uint32_t loaded_trips = 0;
+  std::uint32_t evening_wanting = 0;
+  std::uint32_t evening_seated = 0;
+  std::uint32_t evening_refused_by_form = 0;
+  std::uint32_t evening_no_seat = 0;
 };
 
 /// @brief The boundary of the logistics subsystem.
@@ -98,7 +110,11 @@ class ILogisticsSystem {
   /// @brief Builds the day's plan (B3), after the morning placement and the
   ///        top-up of the labour sub-step.
   /// @post current.groom_plan is today's, not stale; the carters' and riders'
-  ///       work assignments name their carts.
+  ///       work assignments name their carts. Each load of a chain is drawn as
+  ///       its trips (CartLeg, F3 (A)); the evening's riders are seated
+  ///       (F3 (B); logistics_plan.h, SeatEveningRiders) and every worker who
+  ///       rode a cart this morning has WorkAssignment::travel_home_hours
+  ///       written - his evening ride, or his walk when no cart takes him.
   /// @return The day's tally.
   virtual LogisticsTally BuildPlan(WorldState& current) = 0;
 

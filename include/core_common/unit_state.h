@@ -413,6 +413,12 @@ struct UnitRow {
   float haul_days_remaining = 0.0F;
   float haul_days_written = 0.0F;
 
+  /// THE PEREVALKA'S RECEIVER (stage В, F3 (A); save 153): the store the
+  /// emptied goods go to, as the seam above is priced (field_haul.cpp, the
+  /// store-emptying settlement), written with it by production. A works'
+  /// supply needs none: its receiver is the unit itself.
+  Vec2 haul_to;
+
   /// THE UNIT STANDS AND DOES NOT WORK AT ALL until it is restored — the
   /// wrecked water mill of the first morning (start design; boss's decision
   /// of 2026-09-12). Set by genesis from start_layout.csv and by nothing

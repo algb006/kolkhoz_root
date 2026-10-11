@@ -1711,7 +1711,9 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // residents; predicted 497 -> 505 with only the herds beside it moving,
     // before the build — the size held; the hash moved with the due tick and
     // the passenger's term set off their defaults.
-    {"residents", 505, 0xdb47b6aa5869da7eULL},
+    // Save 153 (0.37.227, F3's contract): +8 a resident — travel_home_hours
+    // and rides_home_with; predicted 505 -> 521 before the build, held.
+    {"residents", 521, 0x4aa1c071b94e47beULL},
     // 2026-09-18, save 57: +2 — ration_granted, one byte per family of two.
     // Save 60: +2 — a yard's dry months, one byte per family of two.
     // Save 65: families +8 (overwork_penalty, two yards), fields +6 (the avral's
@@ -1757,7 +1759,8 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // fields; predicted 368 -> 371 with every other section unmoved before
     // the build; held, and the hash recorded from that run (the first field's
     // stand in its fourth summer).
-    {"fields", 371, 0x3e03565e0de7c248ULL},
+    // Save 153: +8 a field — haul_to, the load's receiver; 371 -> 395, held.
+    {"fields", 395, 0xbb5df227b4e03e68ULL},
     // Save 67: +27 — the store's emptying byte and the perevalka's two floats,
     // three units; predicted before the fields were added, and held.
     // Save 74: +1 a unit — the house held for a specialist; three units, +3,
@@ -1783,7 +1786,8 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // six cells: 533 -> 634, PREDICTED before the build and held. And +4 a
     // unit for what is still to cart on every leg (three units, +12): 634 ->
     // 646, PREDICTED before the build and held; the hash is read off it.
-    {"units", 646, 0xccc50e80c2f2342aULL},
+    // Save 153: +8 a unit — haul_to, the perevalka's receiver; 646 -> 670, held.
+    {"units", 670, 0xcf26c1acbc3c9c0aULL},
     // Save 71: +4 — fed_share, one herd; predicted before the field, held.
     // Save 91: +8 — the adult age band, two floats, one herd; predicted
     // 71 -> 79 with every other section unmoved before the build.
@@ -1867,16 +1871,19 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // Save 144: +4 — the days the stand's felling mark stood out of reach, a
     // u32 at the row's end; predicted 67 -> 71 with every other section
     // unmoved before the build; held, and the hash recorded from that run.
-    {"stands", 71, 0x95a8923408454dddULL},
+    // Save 153: +8 a stand — haul_to; 71 -> 79, held.
+    {"stands", 79, 0xfb61a01e824e149dULL},
     // Save 98: +9 — own_carts and the carting seam's two floats on the one
     // cart of the fixture; predicted 44 -> 53 before the build, held.
-    {"limit_deliveries", 53, 0x6030630cf91d7457ULL},
+    // Save 153: +8 a lot — haul_to; 53 -> 61, held.
+    {"limit_deliveries", 61, 0x3103a4220a1bf577ULL},
     // 2026-09-16, save 48: the stock bought and still on its way. A section of
     // its own beside the carts, because a head rides nothing.
     {"livestock_arrivals", 24, 0x216b896caae651cbULL},
     {"specialist_arrivals", 22, 0x11b22bab116fbc84ULL},
     {"wedding_waits", 24, 0x3ce63fbbccfcbd4aULL},
-    {"extraction_sites", 63, 0x52bb8a69b99d0d65ULL},
+    // Save 153: +8 a site — haul_to; 63 -> 71, held.
+    {"extraction_sites", 71, 0x2d4a7a9d31cdf7a5ULL},
     {"district_visits", 19, 0x3785c4246ee3283bULL},
     {"night_outings", 31, 0xa7633d02f71169f5ULL},
     {"district_cars", 34, 0xaeab8ced44f30f22ULL},
@@ -1904,7 +1911,8 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // Save 136 (B3): the groom's plan — 10 of day, flags and count, 9 of the
     // cart, 44 of the first leg (one rider), 40 of the second. Predicted 103
     // before the build, held; the hash read off the build.
-    {"groom_plan", 154, 0xa6fedc8be9554373ULL},
+    // Save 153: +1 a leg — the loaded byte; three legs, 154 -> 157, held.
+    {"groom_plan", 157, 0xb85a4799c573b6d7ULL},
     // 2026-09-17, save 52: +56 bytes over the two books — the nine yearly
     // inputs the readiness index asks of a year and the year did not keep
     // (ledger_state.h): satisfaction's sum and count, able-bodied

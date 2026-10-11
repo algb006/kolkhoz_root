@@ -540,4 +540,12 @@ GroomPlan BuildGroomPlan(const LogisticsConfig& config,
   return plan;
 }
 
+// STUB (stage В, F3's contract): seats nobody and writes no way home until
+// F3 (B)'s implementation; every worker keeps travel_hours both ways, as
+// before. Final signature.
+void SeatEveningRiders(const LogisticsConfig& /*config*/,
+                       WorldState& /*current*/,
+                       GroomPlan& /*plan*/,
+                       LogisticsTally& /*tally*/) {}
+
 }  // namespace core

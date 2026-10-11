@@ -143,22 +143,47 @@ struct LogisticsTaskRow {
   std::uint16_t unserved_light_hours = 0;
 };
 
-/// @brief One leg of a cart's day (B4b). A goods cart's day is: an empty leg
-///        from the horse yard to its first load; a LOAD LEG at each load of
-///        its chain (from = to = the load: the trips to the store are inside
-///        the load's seam, 0.37.139), with an empty leg between two loads;
-///        the empty leg home at the day's end. A carrier on foot's day is the
-///        same from and to his house. A people's cart's day is two legs: out
-///        to the work with its riders, back in the evening.
+/// @brief One leg of a cart's day (B4b; TRIPS since stage В, F3 (A)). A goods
+///        cart's day is: a RIDE from the horse yard (or the house) to its first
+///        load; at each load of its chain, its TRIPS - a LOADED leg from the
+///        load to the load's RECEIVER (work_seam.h, WorkReceiverOf: the store,
+///        the pile, the works it supplies) and an EMPTY leg back to the load,
+///        as many as the light holds; a ride between two loads; the ride home
+///        at the day's end, from wherever the cart is. A carrier on foot's day
+///        is the same from and to his house. A people's cart's day is two
+///        legs: out to the work with its riders, back in the evening.
+///
+/// THE THREE KINDS, by two fields:
+///   * a RIDE: `task` invalid, `loaded` 0 - to a load, between loads, home;
+///   * a LOADED TRIP: `task` set, `loaded` 1 - from = the load, to = its
+///     receiver; the cart's look is the load's form (CargoFormOfLeg);
+///   * the WAY BACK of a trip: `task` set, `loaded` 0 - from = the receiver,
+///     to = the load; the cart is empty.
+/// Until F3 a load was ONE leg with from = to = the load and the trips inside
+/// its seam (0.37.139), so no leg ever moved loaded: a rider could not be
+/// refused for a load, and the layer could not draw a cart on its way with
+/// its load (the human, 5 October 2026: «От этого зависит визуал телеги в
+/// пути»).
+///
+/// THE TRIPS ARE THE PLAN'S DRAWING, NOT THE CARTING: the labour hour drains
+/// the load's seam by the norm-days as before (a half trip at the day's end is
+/// a load half carried, haul.h), and the trips are cut from the seam's span
+/// by the round trip the seam was priced at. What is carted does not change
+/// by F3 (its gate: tonnes per village-year row for row).
 struct CartLeg {
-  /// Where the leg starts and ends (the horse yard, the house, a load, the
-  /// work of a people's cart).
+  /// Where the leg starts and ends (the horse yard, the house, a load, a
+  /// load's receiver, the work of a people's cart).
   Vec2 from;
   Vec2 to;
 
-  /// The task whose load the cart carries on this leg; invalid on an empty
-  /// leg (to a load, home in the evening) and on a people's cart.
+  /// The task whose load this leg is a trip of - loaded or on its way back;
+  /// invalid on a ride (to a load, between loads, home) and on a people's
+  /// cart.
   LogisticsTaskId task;
+
+  /// 1 while the cart carries the task's load on this leg (from the load to
+  /// its receiver); 0 on a ride and on a trip's way back. Save 153.
+  std::uint8_t loaded = 0;
 
   /// The ticks it leaves and arrives — ESTIMATED when the plan is built
   /// (B4b; boss, the logistics thread [11], default 2): an empty leg by its
@@ -175,7 +200,11 @@ struct CartLeg {
   /// within the cart's seats (transport.csv `seats`: the goods cart's bench
   /// two, the people's cart six): the passengers the labour hour seated this
   /// morning (cart_passengers.h, stage A2; work_seam.h, the people's cart),
-  /// written on the cart's first leg.
+  /// written on the cart's first leg; and since F3 (B) the passengers the
+  /// plan seats for the EVENING (logistics_plan.h, SeatEveningRiders), written
+  /// on the leg that picks them up - a loaded trip only if its load's form
+  /// seats riders (CargoFormSeatsRiders: not logs, manure or the live), a
+  /// ride home always.
   std::vector<ResidentId> riders;
 };
 

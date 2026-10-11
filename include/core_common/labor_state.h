@@ -297,8 +297,10 @@ struct WorkAssignment {
 
   /// THE CART HE RIDES TODAY (transport design §11; routing stage A, save
   /// 132): the driver of the goods cart whose bench he sits on, out on its
-  /// first leg in the morning and home on its last at night, or of the
-  /// people's cart his crew rides to a far object. Invalid — on foot, by his
+  /// first leg in the morning, or of the people's cart his crew rides to a
+  /// far object. The way HOME is rides_home_with's since F3 (B): until it,
+  /// this one seat was read as both ways, and the labour hour charged him the
+  /// ride home too — a cart that brought nobody home. Invalid — on foot, by his
   /// own horse, or on the brigade's cart of the reaping and the sowing, which
   /// counts no seats. STORED like rides_horse, and for the same reason: who
   /// got a seat is the morning's decision in its own order. The layer reads
@@ -326,6 +328,22 @@ struct WorkAssignment {
   /// and a way by the network costs a query a straight line did not; the
   /// resident's activity reads the same number, so the two cannot differ.
   float travel_hours = -1.0F;
+
+  /// THE WAY HOME, its own (stage В, F3 (B); transport design «Обратный
+  /// путь», boss 11 October 2026, 357c60d0: «a rider the evening trip cannot
+  /// take walks home, and his day loses the walk-minus-ride»). Game hours,
+  /// written by the plan (logistics_plan.h, SeatEveningRiders) for a worker
+  /// who rode a cart this morning: the evening ride when a cart takes him,
+  /// his walk when none does. Negative: not written — the way home is
+  /// travel_hours, as before (a walker, a horseman, the field brigade of the
+  /// harvest on its own cart). The labour hour ends his day at sunset minus
+  /// this, and books travel_hours + this as his road. Save 153.
+  float travel_home_hours = -1.0F;
+
+  /// The driver of the cart that takes him home tonight (F3 (B)); invalid
+  /// when he walks home or rides his own horse. Save 153. The layer reads it
+  /// to seat him on that cart in the evening.
+  ResidentId rides_home_with;
 };
 
 }  // namespace core

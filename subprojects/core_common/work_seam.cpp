@@ -414,4 +414,12 @@ float* WorkSeamOf(WorldState& world, const WorkAssignment& work) {
   return const_cast<float*>(WorkSeamOf(static_cast<const WorldState&>(world), work));
 }
 
+// STUB (stage В, F3's contract): no receiver until production writes the
+// loads' `haul_to` (F3 (A)'s implementation). Final signature.
+bool WorkReceiverOf(const WorldState& /*world*/,
+                    const WorkAssignment& /*work*/,
+                    Vec2& /*receiver*/) {
+  return false;
+}
+
 }  // namespace core
