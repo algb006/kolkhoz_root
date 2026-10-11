@@ -255,6 +255,9 @@ struct ActivityRules {
   float walk_hours_per_km = 2.4F;
 
   float harness_hours_per_km = 1.0F;
+  /// The people's cart's pace (#570, 2b): a crew of two or more to a far
+  /// object rides loaded with them, at cart_loaded's speed, not the trot's.
+  float people_cart_hours_per_km = 4.0F / 3.0F;
 
   /// The livestock row of the horse (labour config `horse_kind`): a day
   /// with a horse begins at the horse yard once the team is stabled

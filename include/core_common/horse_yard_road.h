@@ -50,6 +50,9 @@ bool DayStartsAtHorseYard(const WorldState& world, const WorkAssignment& work);
 ///        work by WorkTravelMode, as since 0.36.2.
 /// @param walk_hours_per_km, ride_hours_per_km Game hours a kilometre on foot
 ///        and behind a harness (the labour config's HoursPerKm).
+/// @param people_cart_hours_per_km Game hours a kilometre on the PEOPLE'S
+///        CART (#570, 2b): a work that takes it (TakesThePeoplesCart) rides at
+///        the loaded pace, not the trot's.
 /// @note A CARTER'S RIDE TO THE LOAD IS NOT IN IT when his day starts at the
 ///       yard: it is his first trip's empty half, which the load's seam
 ///       already prices (haul.h; 0.37.139) — only the walk to the horse is
@@ -61,7 +64,8 @@ float WorkRoadHours(const WorldState& world,
                     Vec2 home,
                     Vec2 target,
                     float walk_hours_per_km,
-                    float ride_hours_per_km);
+                    float ride_hours_per_km,
+                    float people_cart_hours_per_km);
 
 }  // namespace core
 

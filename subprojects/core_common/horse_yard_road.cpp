@@ -45,9 +45,16 @@ float WorkRoadHours(const WorldState& world,
                     Vec2 home,
                     Vec2 target,
                     float walk_hours_per_km,
-                    float ride_hours_per_km) {
+                    float ride_hours_per_km,
+                    float people_cart_hours_per_km) {
   const bool rides = WorkRidesOut(world, work);
   const TravelMode mode = WorkTravelMode(world, work);
+  // THE PEOPLE'S CART AT THE LOADED PACE (#570, 2b; transport design §1:
+  // «подвода… 9 км/ч»): a crew of two or more to a far object rides the
+  // people's cart — loaded with them — not the trot; the plough, the
+  // harrow and the meadow's cart keep the trot (HoursPerKm).
+  const float ride_rate =
+      TakesThePeoplesCart(work.kind) ? people_cart_hours_per_km : ride_hours_per_km;
   Vec2 yard{};
   if (rides && DayStartsAtHorseYard(world, work) && HorseYardPositionOf(world, horse_kind, yard)) {
     // HE WALKS TO THE HORSE (livestock design §5; the human's word of
@@ -58,9 +65,9 @@ float WorkRoadHours(const WorldState& world,
     if (work.kind == WorkKind::kHauling) {
       return walk;  // the ride to the load is the first trip's empty half
     }
-    return walk + (RoadKm(world, mode, yard, target) * ride_hours_per_km);
+    return walk + (RoadKm(world, mode, yard, target) * ride_rate);
   }
-  return RoadKm(world, mode, home, target) * (rides ? ride_hours_per_km : walk_hours_per_km);
+  return RoadKm(world, mode, home, target) * (rides ? ride_rate : walk_hours_per_km);
 }
 
 }  // namespace core

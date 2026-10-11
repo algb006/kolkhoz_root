@@ -570,7 +570,8 @@ GroomPlan BuildGroomPlan(const LogisticsConfig& config,
       const float sets_out =
           window.sunrise +
           (stabled ? RoadKm(world, TravelMode::kWalk, house, yard) * walk_hours_per_km : 0.0F);
-      const float ride = RoadKm(world, TravelMode::kCart, start, place) * harness_hours_per_km;
+      // AT THE LOADED PACE (#570, 2b): loaded with its crew, 9 km/h, not the trot.
+      const float ride = RoadKm(world, TravelMode::kCart, start, place) * loaded_hours_per_km;
       // ITS CREW RIDES BOTH LEGS (F3 (B); the Fable review of 11 October
       // 2026, item 7): the layer draws them out and back. STUB core — it
       // picks nobody up on the way («подбирает и высаживает по пути», §11):

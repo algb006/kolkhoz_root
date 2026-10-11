@@ -25,12 +25,18 @@ int Expect(bool condition, const char* label) {
 /// The October day of the brigade's cart checks: 9.4 hours of light, a
 /// walker at 2.4 game hours a kilometre, a cart at 1.0, six hours of road at
 /// most — and the people's cart with `seats` beside its driver for a walk
-/// one way longer than two hours (0.83 km).
+/// one way longer than two hours (0.83 km). THE PEOPLE'S CART RIDES AT THE
+/// HARNESS PACE HERE, said aloud: the rules of WHO rides (one — on the
+/// horse, the way by the yard, the counted horse, the remainder of the pool)
+/// are written on 3 km = 3 hours, and the pace has its own test below, which
+/// sets the loaded 1.333 itself (0.37.230; five of these went red when the
+/// struct's default moved under them).
 core::AssignmentParams OctoberDay(std::uint32_t horses, std::uint32_t seats) {
   core::AssignmentParams params;
   params.window_hours = 9.4F;
   params.walk_hours_per_km = 2.4F;
   params.harness_hours_per_km = 1.0F;
+  params.people_cart_hours_per_km = params.harness_hours_per_km;
   params.travel_limit_hours = 6.0F;
   params.min_usable_hours = 1.0F;
   params.standard_day_hours = 10.0F;
@@ -119,6 +125,27 @@ int TestAFarSiteRidesOneCart() {
   const Plan near_site = Run(near, 5, OctoberDay(1, 6));
   failures += Expect(near_site.on_first == 2 && near_site.holders == 0 && near_site.riders == 0,
                      "people's cart: half a kilometre out — 1.2 hours on foot — they walk");
+  // THE LOADED PACE (#570, 2b): the people's cart rides at cart_loaded's 9
+  // km/h (1.333 h a km here), not the trot's 1.0. Four kilometres out the
+  // trot would fit the day (4 h each way in 9.4 h of window, 1.4 h usable)
+  // and the loaded cart does not (5.33 h each way): nobody rides, and on
+  // foot (9.6 h) nobody goes. The pair: at the trot's pace the crew rides.
+  const std::vector<core::AssignmentJob> four_km = {
+      Site(core::WorkKind::kConstruction, 4000.0F, 1.0F)};
+  core::AssignmentParams loaded_pace = OctoberDay(1, 6);
+  loaded_pace.people_cart_hours_per_km = 4.0F / 3.0F;
+  const Plan loaded = Run(four_km, 5, loaded_pace);
+  failures += Expect(loaded.holders == 0 && loaded.riders == 0 && loaded.on_first == 0,
+                     "people's cart: four kilometres out at the loaded pace does not fit the day — "
+                     "nobody rides, nobody walks");
+  core::AssignmentParams trot = OctoberDay(1, 6);
+  trot.people_cart_hours_per_km = trot.harness_hours_per_km;
+  // The crew is sized by the work against the short day left (1.4 h), so it
+  // is larger than the kilometre's three: the cart rides with at least two.
+  const Plan at_the_trot = Run(four_km, 5, trot);
+  failures +=
+      Expect(at_the_trot.holders == 1 && at_the_trot.riders >= 2,
+             "people's cart: and at the trot's pace the same four kilometres fit — the pair");
   const std::vector<core::AssignmentJob> one_hand = {
       Site(core::WorkKind::kConstruction, 1000.0F, 0.4F)};
   const Plan alone = Run(one_hand, 5, OctoberDay(1, 6));

@@ -352,12 +352,16 @@ float OneWayHours(const AssignmentJob& job,
                   const AssignmentParams& params,
                   bool rides,
                   bool takes_horse) {
+  // The people's cart rides at the loaded pace (#570, 2b; horse_yard_road.cpp,
+  // WorkRoadHours): the road rule reaches as far as the cart does.
+  const float ride_rate =
+      TakesThePeoplesCart(job.kind) ? params.people_cart_hours_per_km : params.harness_hours_per_km;
   if (takes_horse && candidate.home_slot < params.yard_walk_hours.size() &&
       job_index < params.yard_ride_km.size()) {
     return params.yard_walk_hours[candidate.home_slot] +
-           (params.yard_ride_km[job_index] * params.harness_hours_per_km);
+           (params.yard_ride_km[job_index] * ride_rate);
   }
-  const float hours_per_km = rides ? params.harness_hours_per_km : params.walk_hours_per_km;
+  const float hours_per_km = rides ? ride_rate : params.walk_hours_per_km;
   if (!params.road_km.empty() && candidate.home_slot < params.home_slots) {
     const std::size_t at =
         ((((static_cast<std::size_t>(job_index) * params.home_slots) + candidate.home_slot) * 2U) +

@@ -208,14 +208,17 @@ PassengerTally SeatCartPassengers(const LaborConfig& config, WorldState& current
     if (!HomePositionOf(current, resident.family, home) || !WorkPlaceOf(current, work, place)) {
       continue;
     }
-    const float walk = work.travel_hours >= 0.0F ? work.travel_hours
-                                                 : WorkRoadHours(current,
-                                                                 work,
-                                                                 config.horse_kind,
-                                                                 home,
-                                                                 place,
-                                                                 walk_hours_per_km,
-                                                                 ride_hours_per_km);
+    const float walk =
+        work.travel_hours >= 0.0F
+            ? work.travel_hours
+            : WorkRoadHours(current,
+                            work,
+                            config.horse_kind,
+                            home,
+                            place,
+                            walk_hours_per_km,
+                            ride_hours_per_km,
+                            static_cast<float>(kClockScale) / config.loaded_speed_kmh);
     walkers.push_back(Walker{.row = row, .home = home, .work = place, .walk_hours = walk});
   }
   // SEATS TO WHOEVER WALKS FARTHEST (§11, «Кому место, если желающих

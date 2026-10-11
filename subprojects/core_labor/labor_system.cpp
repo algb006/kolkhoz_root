@@ -157,6 +157,9 @@ ActivityRules ActivityRulesOfConfig(const LaborConfig& config) {
   if (config.harness_speed_kmh > 0.0F) {
     rules.harness_hours_per_km = static_cast<float>(kClockScale) / config.harness_speed_kmh;
   }
+  if (config.loaded_speed_kmh > 0.0F) {
+    rules.people_cart_hours_per_km = static_cast<float>(kClockScale) / config.loaded_speed_kmh;
+  }
   rules.horse_kind = config.horse_kind;
   rules.post_shift.reserve(config.professions.size());
   for (const ProfessionDef& profession : config.professions) {
@@ -2316,6 +2319,7 @@ class LaborSystem final : public ILaborSystem {
     // being asked.
     params.walk_hours_per_km = HoursPerKm(config_, WorkKind::kHarvest);
     params.harness_hours_per_km = HoursPerKm(config_, WorkKind::kPlowing);
+    params.people_cart_hours_per_km = static_cast<float>(kClockScale) / config_.loaded_speed_kmh;
     params.travel_limit_hours = config_.travel_limit_hours;
     // The queue advances by one a day and wraps on the roster.
     params.rotation = static_cast<std::uint32_t>(current.calendar.day);
@@ -2418,7 +2422,8 @@ class LaborSystem final : public ILaborSystem {
                           home,
                           target,
                           HoursPerKm(config_, WorkKind::kHarvest),
-                          HoursPerKm(config_, WorkKind::kPlowing));
+                          HoursPerKm(config_, WorkKind::kPlowing),
+                          static_cast<float>(kClockScale) / config_.loaded_speed_kmh);
       }
       const float travel = current.residents.rows[row].work.travel_hours;
       // A CARTER'S ROAD TO THE LOAD IS HIS FIRST TRIP'S EMPTY HALF (0.37.139;

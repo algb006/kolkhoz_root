@@ -98,7 +98,8 @@ ResidentActivityState ActivityOfResident(const WorldState& world,
                                                                 home,
                                                                 target,
                                                                 rules.walk_hours_per_km,
-                                                                rules.harness_hours_per_km);
+                                                                rules.harness_hours_per_km,
+                                                                rules.people_cart_hours_per_km);
   }
   // THE WAY HOME, ITS OWN when the evening plan wrote it (F3 (B);
   // WorkAssignment::travel_home_hours) — the labour hour's own end of day.

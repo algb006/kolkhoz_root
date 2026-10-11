@@ -323,6 +323,11 @@ struct AssignmentParams {
   /// farther in the same hours. 12 km/h at factor 1.0 gives 1.0.
   float harness_hours_per_km = 1.0F;
 
+  /// The PEOPLE'S CART's pace (#570, 2b; transport.csv cart_loaded, 9 km/h):
+  /// a crew of two or more to a far object rides loaded with them, slower
+  /// than the trot — the road rule reaches as far as that cart does.
+  float people_cart_hours_per_km = 4.0F / 3.0F;
+
   /// One-way travel limit in game hours: a job farther than this from a
   /// worker's home cannot take him at all. Six hours by the network since
   /// decision 276 (four along the straight line by decision 109 before), one
