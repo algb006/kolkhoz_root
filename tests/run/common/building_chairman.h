@@ -38,6 +38,7 @@
 #include "school_policy.h"
 #include "social_objects_policy.h"
 #include "stand_renewal_policy.h"
+#include "straw_keep.h"
 #include "suggested_roads_policy.h"
 #include "transition_policy.h"
 #include "upgrade_policy.h"
@@ -67,7 +68,8 @@ class BuildingChairman {
         insulation(tables),
         digging(tables),
         roads(tables),
-        transition(tables) {
+        transition(tables),
+        straw(tables) {
     WireStartGates(yard, fixture, houses, sawmill);
     WireSchoolGate(school, sawmill);
     WireSawGate(office, sawmill);
@@ -83,6 +85,10 @@ class BuildingChairman {
     WireSawGate(upgrades, sawmill);
     WireRiseWatches(yard, felling, limit, digging);
     WirePenWatch(yard, fixture, felling, digging);
+    // And the warm's straw, the third material, is kept (straw_keep.h, #546):
+    // every start gate above asks it after the saw.
+    WireStrawKeep(
+        straw, fixture, sawmill, yard, fixture, houses, school, office, barracks, social, upgrades);
     WireUpgradeRiseWatch(yard, upgrades, limit);
     // THE SAW KEEPS A RESERVE (boss, parcel 314's P1; the Epoch II boards,
     // boss-core-epoch1-3 seq 3). Sawing only towards the MARKED sites' need,
@@ -114,6 +120,28 @@ class BuildingChairman {
     };
     felling_policy.SetRiseWatch(watch);
     digging_policy.SetRiseWatch(watch);
+  }
+
+  /// @brief Keeps the first pen's warm straw (straw_keep.h, #546): watches
+  /// FixturePolicy::PenWaitingForWarm, and hands every policy given the
+  /// sawmill's question AND the straw's as its start gate. Called after the
+  /// saw's gates, which it replaces with the pair; thirty_years calls it with
+  /// the policies it wires.
+  template <typename... Policies>
+  static void WireStrawKeep(StrawKeep& straw_keep,
+                            const FixturePolicy& fixture_policy,
+                            const SawmillPolicy& sawmill_policy,
+                            Policies&... policies) {
+    straw_keep.SetPenWatch([&fixture_policy](const core::WorldState& world) {
+      return fixture_policy.PenWaitingForWarm(world);
+    });
+    const StartGate gate = [&sawmill_policy, &straw_keep](const core::WorldState& world,
+                                                          core::UnitTypeId type,
+                                                          std::uint8_t level) {
+      return sawmill_policy.SparesBoardsFor(world, type, level) &&
+             straw_keep.SparesStrawFor(world, type, level);
+    };
+    (policies.SetStartGate(gate), ...);
   }
 
   /// @brief Tells the felling, the limit and the digging of the step the
@@ -217,6 +245,7 @@ class BuildingChairman {
     InsulationPolicy::Declare(run_name);
     ExtractionPolicy::Declare(run_name);
     SuggestedRoadsPolicy::Declare(run_name);
+    StrawKeep::Declare(run_name);
     TransitionPolicy::Declare(run_name);
   }
 
@@ -331,6 +360,8 @@ class BuildingChairman {
   ExtractionPolicy digging;
   SuggestedRoadsPolicy roads;
   TransitionPolicy transition;
+  /// The first pen's straw kept (#546); the start gates hold a reference.
+  StrawKeep straw;
 };
 
 }  // namespace run
