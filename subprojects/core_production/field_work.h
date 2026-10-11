@@ -223,8 +223,19 @@ void RunMeadow(const ProductionConfig& config,
 ///       scythe touched keeps none — it was not cut.
 void CloseMeadowCutsAtSeasonsEnd(const ProductionConfig& config, WorldState& current);
 
+/// @brief The last month a winter crop may be sown: the month after its
+///        window (#513, boss's decision 278: a crop missed in September is
+///        sown in October at a falling yield, CropDef::late_october_loss_per_
+///        day; the fallow only from November). For a crop with no such loss,
+///        its window's own last month.
+std::uint8_t WinterLastSowingMonth(const CropDef& def);
+
 /// @brief Opens the ploughing of NEXT year's winter slot on idle ground when
-///        the autumn window and the temperature both allow it.
+///        the autumn window allows it. NOT the temperature (#513, decision
+///        278 (a)): the plough and the harrow need no warm day, only the seed
+///        does — SowingMayOpen asks sow_min_temp_c of the drill alone. Until
+///        0.37.223 a field reaped on a cold late-September day waited for a
+///        warm one, and three villages lost their rye over the window's edge.
 ///
 /// The autumn sowing (defect D12). A winter crop is harvested the summer
 /// AFTER it is sown, so the slot it belongs to is next year's — "winter rye
@@ -239,7 +250,8 @@ void TrySowWinter(const ProductionConfig& config,
 
 /// @brief Opens a winter crop on THIS year's black fallow — ploughed,
 ///        harrowed and standing bare — at the HARROWING, in its autumn
-///        window and warm enough (fields design §3, «Пар»; boss-core-epoch1-
+///        window, warm or not (#513 (a): the drill asks the temperature)
+///        (fields design §3, «Пар»; boss-core-epoch1-
 ///        queue [82], 0.37.6): the fallow's furrow is the crop's, not turned a
 ///        second time, and its manure, booked at that furrow, not booked again
 ///        ([84] (3), 0.37.9).

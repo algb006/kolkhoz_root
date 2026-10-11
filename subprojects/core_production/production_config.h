@@ -56,6 +56,13 @@ struct CropDef {
 
   float sow_min_temp_c = 0.0F;
 
+  /// A winter crop sown in the month after its window (October for a
+  /// September window) loses this share of its yield a day of that month
+  /// (#513; boss's decision 278: rye 0.88/0.76/0.64/0.52 over October's four
+  /// days, winter wheat -15 % a day). 0 for a crop with no such month. STUB,
+  /// by key in the parser until crops.csv carries a column.
+  float late_october_loss_per_day = 0.0F;
+
   float harvest_min_temp_c = 0.0F;  ///< "Убрать до": kept for stage-5 timing.
 
   float yield_kg_per_ha = 0.0F;  ///< At neutral fertility.

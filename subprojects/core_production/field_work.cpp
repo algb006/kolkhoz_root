@@ -196,7 +196,22 @@ float LateSowingFactor(const ProductionConfig& config, const FieldRow& field) {
 }  // namespace
 
 float LateFactorOnDay(const ProductionConfig& config, const CropDef& def, SimDay sown_day) {
-  if (def.is_winter || def.is_perennial) {
+  // A WINTER CROP SOWN IN THE MONTH AFTER ITS WINDOW (#513, boss's decision
+  // 278 (b)): late_october_loss_per_day a day of that month, the first day
+  // already late (rye: 0.88, 0.76, 0.64, 0.52). Until 0.37.223 winter crops
+  // were exempt here because no sowing after their window existed at all.
+  if (def.is_winter) {
+    const auto window_end =
+        static_cast<std::int32_t>(((def.sow_to_month + 1U) * kDaysPerMonth) - 1U);
+    const auto sown_on = static_cast<std::int32_t>(sown_day % kDaysPerYear);
+    const std::int32_t late_days = sown_on - window_end;
+    if (late_days <= 0 || !(def.late_october_loss_per_day > 0.0F)) {
+      return 1.0F;
+    }
+    const float factor = 1.0F - (static_cast<float>(late_days) * def.late_october_loss_per_day);
+    return factor > 0.0F ? factor : 0.0F;
+  }
+  if (def.is_perennial) {
     return 1.0F;  // sown in another year's reckoning; its window is not this one
   }
   const auto last_sowing =
@@ -1127,7 +1142,11 @@ bool SowingMayOpen(const ProductionConfig& config,
   // host's trace sowed rye in NOVEMBER. Past the window the field waits
   // harrowed, the year's turn lets the preparation go, and the slot is lost
   // (question 278, WinterSlotLost).
-  if (def.is_winter && month > def.sow_to_month) {
+  // AND SINCE #513 (boss's decision 278 (b)) THE MONTH AFTER THE WINDOW STILL
+  // SOWS, at a falling yield (LateFactorOnDay, late_october_loss_per_day): a
+  // field harrowed on 1-2 October lost its whole crop for two days of
+  // weather drift. Past that month the field waits harrowed, as before.
+  if (def.is_winter && month > WinterLastSowingMonth(def)) {
     return false;
   }
   const std::int32_t ripen = RipenDays(config, crop);
@@ -1140,28 +1159,32 @@ bool SowingMayOpen(const ProductionConfig& config,
 
 namespace {
 
-/// Whether `slot` is a winter crop whose autumn window is open and the day
-/// warm enough to begin it.
-bool WinterWindowOpen(const ProductionConfig& config,
-                      CropId slot,
-                      std::uint8_t month,
-                      float temperature) {
+/// Whether `slot` is a winter crop whose autumn window — its October grace
+/// included (WinterLastSowingMonth) — is open. Not the temperature: that is
+/// the drill's (SowingMayOpen; #513, decision 278 (a)).
+bool WinterWindowOpen(const ProductionConfig& config, CropId slot, std::uint8_t month) {
   if (slot.value >= config.crops.size()) {
     return false;
   }
   const CropDef& crop = config.crops[slot.value];
-  return crop.is_winter && month >= crop.sow_from_month && month <= crop.sow_to_month &&
-         temperature >= crop.sow_min_temp_c;
+  return crop.is_winter && month >= crop.sow_from_month && month <= WinterLastSowingMonth(crop);
 }
 
 }  // namespace
+
+std::uint8_t WinterLastSowingMonth(const CropDef& def) {
+  if (!(def.late_october_loss_per_day > 0.0F)) {
+    return def.sow_to_month;
+  }
+  return static_cast<std::uint8_t>((def.sow_to_month + 1U) % kMonthsPerYear);
+}
 
 void TrySowWinter(const ProductionConfig& config,
                   WorldState& current,
                   FieldRow& field,
                   std::uint8_t month,
-                  float temperature) {
-  if (WinterWindowOpen(config, field.rotation_year1, month, temperature)) {
+                  float /*temperature*/) {
+  if (WinterWindowOpen(config, field.rotation_year1, month)) {
     OpenPlowing(config, current, field, field.rotation_year1);
   }
 }
@@ -1170,7 +1193,7 @@ void TrySowOnBlackFallow(const ProductionConfig& config,
                          WorldState& current,
                          FieldRow& field,
                          std::uint8_t month,
-                         float temperature) {
+                         float /*temperature*/) {
   // THE BLACK FALLOW'S FURROW IS THE RYE'S (boss-core-epoch1-queue [81]-[82]).
   // Until 0.37.6 the rye opened a ploughing from nothing on a fallow the
   // village had ploughed and harrowed that summer. On seed 1945 the second
@@ -1178,7 +1201,7 @@ void TrySowOnBlackFallow(const ProductionConfig& config,
   // September's last two days were at 4.4 and 2.9 °C against the rye's 8: the
   // slot was lost, and year 2 delivered 19 kg of 1116 kg of rye.
   const CropId slot = field.rotation_skips_turn != 0 ? field.rotation_year0 : field.rotation_year1;
-  if (WinterWindowOpen(config, slot, month, temperature)) {
+  if (WinterWindowOpen(config, slot, month)) {
     OpenPlowing(config, current, field, slot, PreparationStart::kBlackFallow);
   }
 }

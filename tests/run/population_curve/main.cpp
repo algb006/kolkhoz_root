@@ -48,6 +48,21 @@
 
 namespace {
 
+/// The transition's conditions in TransitionPolicy's order, as the report
+/// names them (the conditions' table and E3's line read the one list).
+constexpr std::array<const char*, run::TransitionPolicy::kConditions> kConditionNames = {
+    "индексы 3 года    ",
+    "своя тяга/база    ",
+    "зимовка 2 года    ",
+    "правление ≤1%     ",
+    "разнообразие пищи ",
+    "4 соцобъекта из 6 ",
+    "юниты на уровне   ",
+    "жителей ≥ 380     "};
+
+/// The residents' condition's index in that order (the village's size).
+constexpr std::size_t kResidentsConditionIndex = 7;
+
 /// The nine seeds. Nine and not five because nine already stands in two
 /// instruments beside this one — `thirty_years` and the lean-season band of
 /// `food_year` — and a third count in a third run would be a third home for
@@ -147,6 +162,11 @@ struct Trajectory {
   std::array<std::int64_t, run::TransitionPolicy::kConditions> condition_first_met_day = {
       -1, -1, -1, -1, -1, -1, -1, -1};
   std::array<std::uint32_t, run::TransitionPolicy::kConditions> sole_holdout_days = {};
+  /// Per condition: the Epoch I days it stood UNMET after the residents'
+  /// condition was first met — what E3's line names for a late door (econ
+  /// 110ec10: the formal last blocker, the office repaired on the door's day,
+  /// hid «зимовка 2 года» in 1938).
+  std::array<std::uint32_t, run::TransitionPolicy::kConditions> unmet_after_residents_days = {};
   /// Days walked in Epoch I: what the two above are counted against.
   std::uint32_t epoch_one_days = 0;
   /// WHAT SHUTS THE TWO STANDING BLOCKS (boss-core-epoch1-queue [18]): from
@@ -584,6 +604,11 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
         const int sole = builder.transition.SoleHoldout(today);
         if (sole >= 0) {
           ++out.sole_holdout_days[static_cast<std::size_t>(sole)];
+        }
+        if (out.condition_first_met_day[kResidentsConditionIndex] >= 0) {
+          for (std::size_t condition = 0; condition < met.size(); ++condition) {
+            out.unmet_after_residents_days[condition] += met[condition] ? 0U : 1U;
+          }
         }
         CountStandingShut(builder.transition, today, met, out);
       }
@@ -1191,7 +1216,6 @@ int main(int argc, char** argv) {
   constexpr double kEraSpreadFloor = 9.33;
   constexpr double kEraSpreadCeiling = 12.33;
   constexpr std::size_t kEraSpreadAtLeast = 7;
-  constexpr std::size_t kResidentsCondition = 7;  // TransitionPolicy's order: the village's size
   std::vector<double> doors;
   std::size_t doors_inside = 0;
   std::size_t doors_late = 0;
@@ -1204,7 +1228,7 @@ int main(int argc, char** argv) {
     const double door = static_cast<double>(walk.epoch2_day) / core::kDaysPerYear + 1.0;
     doors.push_back(door);
     doors_inside += door >= kEraSpreadFloor && door <= kEraSpreadCeiling ? 1U : 0U;
-    const std::int64_t residents_met = walk.condition_first_met_day[kResidentsCondition];
+    const std::int64_t residents_met = walk.condition_first_met_day[kResidentsConditionIndex];
     doors_late += residents_met >= 0 && walk.epoch2_day - residents_met >
                                             static_cast<std::int64_t>(core::kDaysPerYear)
                       ? 1U
@@ -1240,9 +1264,33 @@ int main(int argc, char** argv) {
       "E2: at least 7 of 9 doors inside " + two_places(kEraSpreadFloor) + " to " +
       two_places(kEraSpreadCeiling) + " — now " + std::to_string(doors_inside);
   failures += run::Expect(doors_inside >= kEraSpreadAtLeast, spread_claim.c_str());
+  // WHAT HELD A LATE DOOR (econ 110ec10): by late village, the condition
+  // unmet longest between the residents' day and the door — not the formal
+  // last (the office, repaired on the door's day).
+  std::string late_holders;
+  for (std::size_t walk_index = 0; walk_index < walks.size(); ++walk_index) {
+    const Trajectory& walk = walks[walk_index];
+    const std::int64_t residents_met = walk.condition_first_met_day[kResidentsConditionIndex];
+    if (walk.epoch2_day < 0 || residents_met < 0 ||
+        walk.epoch2_day - residents_met <= static_cast<std::int64_t>(core::kDaysPerYear)) {
+      continue;
+    }
+    std::size_t longest = 0;
+    for (std::size_t condition = 1; condition < walk.unmet_after_residents_days.size();
+         ++condition) {
+      longest =
+          walk.unmet_after_residents_days[condition] > walk.unmet_after_residents_days[longest]
+              ? condition
+              : longest;
+    }
+    late_holders += " seed " + std::to_string(kSeeds[walk_index]) + ": " +
+                    kConditionNames[longest] +
+                    std::to_string(walk.unmet_after_residents_days[longest]) + " days unmet;";
+  }
   const std::string late_claim =
       "E3: no door opens more than a year after the residents' condition was first met — now " +
-      std::to_string(doors_late);
+      std::to_string(doors_late) +
+      (late_holders.empty() ? "" : " (held longest by:" + late_holders + ")");
   failures += run::Expect(doors_late == 0, late_claim.c_str());
   failures += run::Expect(median_year14 <= 800, "and not exploding by year 14");
   failures += run::KnownGap(median_year33 >= 1150,
@@ -1432,15 +1480,6 @@ int main(int argc, char** argv) {
   // campaign year each condition stood met ("-" never), and the Epoch I days
   // it alone held the door. The office's days are the fixture's own: the run
   // repairs it only once the other six are met (office_policy.h).
-  constexpr std::array<const char*, run::TransitionPolicy::kConditions> kConditionNames = {
-      "индексы 3 года    ",
-      "своя тяга/база    ",
-      "зимовка 2 года    ",
-      "правление ≤1%     ",
-      "разнообразие пищи ",
-      "4 соцобъекта из 6 ",
-      "юниты на уровне   ",
-      "жителей ≥ 380     "};
   std::cout << "population_curve: transition conditions by village, first year met / Epoch I days "
                "it ALONE held the door (villages "
             << walks.size() << "; Epoch I days by village:";

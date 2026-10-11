@@ -180,7 +180,10 @@ bool SlotLost(const ProductionConfig& config,
   const CropDef& crop = config.crops[slot.value];
   const std::uint8_t month = MonthOf(today);
   if (year == 1) {
-    return crop.is_winter && month > crop.sow_to_month && !SownThisYear(field, slot, today);
+    // Past its October grace (#513), not its window: in October it may still
+    // be sown (WinterLastSowingMonth).
+    return crop.is_winter && month > WinterLastSowingMonth(crop) &&
+           !SownThisYear(field, slot, today);
   }
   if (year != 0) {
     return false;

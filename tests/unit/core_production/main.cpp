@@ -4786,6 +4786,49 @@ int CheckTheColdLadderParses() {
 /// the shipped tables, a 10 ha meadow mown to its half books half its
 /// season's hay and 5 ha that day; mown out, the rest — the whole season to
 /// the gram — and the grass stands again with its day.
+/// THE WINTER SOWING'S OCTOBER (#513; boss's decision 278 (b)): on the
+/// shipped tables rye sown on October's four days yields 0.88, 0.76, 0.64,
+/// 0.52 of its yield, winter wheat 0.85 down by 0.15 a day; the last day of
+/// September loses nothing; October is the last month either may be sown,
+/// and a spring crop's last month stays its window's.
+int CheckTheOctoberSowing() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  core::ProductionConfig config;
+  if (Expect(tables != nullptr && core::ParseProductionConfig(*tables, config, error),
+             "october sowing: the shipped tables parse") != 0) {
+    return 1;
+  }
+  const core::ITable* crops = tables->FindTable("crops");
+  const auto crop = [&](const char* key) -> const core::CropDef* {
+    const std::uint32_t row = crops == nullptr ? core::kNoTableRow : crops->FindRowByKey(key);
+    return row == core::kNoTableRow ? nullptr : &config.crops[row];
+  };
+  const core::CropDef* rye = crop("rye_winter");
+  const core::CropDef* wheat = crop("wheat_winter");
+  const core::CropDef* oat = crop("oat");
+  if (Expect(rye != nullptr && wheat != nullptr && oat != nullptr,
+             "october sowing: rye_winter, wheat_winter and oat on the tables") != 0) {
+    return 1;
+  }
+  const core::SimDay year2 = core::kDaysPerYear;  // past the first spring's grace
+  const auto factor = [&](const core::CropDef& def, core::SimDay day_of_year) {
+    return core::LateFactorOnDay(config, def, year2 + day_of_year);
+  };
+  const auto near = [](float a, float b) { return std::fabs(a - b) < 1e-4F; };
+  failures += Expect(near(factor(*rye, 35), 1.0F) && near(factor(*rye, 36), 0.88F) &&
+                         near(factor(*rye, 37), 0.76F) && near(factor(*rye, 38), 0.64F) &&
+                         near(factor(*rye, 39), 0.52F),
+                     "october sowing: rye 1.0 on September's last day, then 0.88 0.76 0.64 0.52");
+  failures += Expect(near(factor(*wheat, 36), 0.85F) && near(factor(*wheat, 39), 0.40F),
+                     "october sowing: winter wheat 0.85 on October's first day, 0.40 on its last");
+  failures += Expect(core::WinterLastSowingMonth(*rye) == rye->sow_to_month + 1U &&
+                         core::WinterLastSowingMonth(*oat) == oat->sow_to_month,
+                     "october sowing: rye's last month is the one after its window; oat's its own");
+  return failures;
+}
+
 /// THE VEGETABLE STORE KEEPS THE POTATOES (task 440; resources.md §4, the
 /// human's word of 10 October 2026: «Овощехранилище делаем сразу. Из
 /// продовольственного двора его убрать»): on the shipped tables raw potato
@@ -9632,23 +9675,31 @@ int CheckNoWinterSowingAfterWindow() {
   failures += Expect(september.fields.rows[0].phase == core::FieldPhase::kSowing,
                      "harrowed for the rye inside its window, the field opens the sowing");
 
-  // October: the window went by (sow_to_month September).
+  // October: the window went by (sow_to_month September), and since #513
+  // (boss's decision 278 (b)) October still sows, at a falling yield.
   core::WorldState october = harrowed_on(36);
   step(october, 10.0F);
-  failures += Expect(october.fields.rows[0].phase == core::FieldPhase::kHarrowing,
-                     "harrowed in October, past the rye's window, it does not sow (no sowing "
-                     "after the window)");
+  failures += Expect(october.fields.rows[0].phase == core::FieldPhase::kSowing,
+                     "harrowed in October, the month after the rye's window, it still sows "
+                     "(#513: October at a falling yield)");
+
+  // November: past October's grace, no sowing (fields design §7, «Сева после
+  // окна нет», moved a month by decision 278).
+  core::WorldState november = harrowed_on(40);
+  step(november, 10.0F);
+  failures += Expect(november.fields.rows[0].phase == core::FieldPhase::kHarrowing,
+                     "harrowed in November, past October's grace, it does not sow");
 
   // The year's turn lets the preparation go, and the lost slot is said.
-  october.calendar.tick = (core::kDaysPerYear * core::kTicksPerDay) - 1U;
-  core::RefreshCalendarCaches(october.calendar);
-  step(october, -12.0F);
+  november.calendar.tick = (core::kDaysPerYear * core::kTicksPerDay) - 1U;
+  core::RefreshCalendarCaches(november.calendar);
+  step(november, -12.0F);
   bool said = false;
-  for (const core::SimEvent& event : october.step_events) {
+  for (const core::SimEvent& event : november.step_events) {
     said = said || (event.kind == core::EventKind::kWinterSowingLost &&
                     event.amount == static_cast<std::int64_t>(rye.value));
   }
-  failures += Expect(said && october.fields.rows[0].phase == core::FieldPhase::kIdle,
+  failures += Expect(said && november.fields.rows[0].phase == core::FieldPhase::kIdle,
                      "and at the turn the rye's slot is lost (kWinterSowingLost), the field idle");
   return failures;
 }
@@ -9804,9 +9855,12 @@ int CheckTheBlackFallowsFurrowIsTheRyes() {
 
   core::WorldState cold = august_world();
   step(cold, 4.0F);  // under the rye's 8 °C
-  failures += Expect(cold.fields.rows[0].crop.value == core::kInvalidDefIdValue &&
-                         cold.fields.rows[0].phase == core::FieldPhase::kGrowing,
-                     "black fallow: too cold for the rye, nothing opens");
+  // Since #513 (decision 278 (a)) the cold holds the DRILL only: the fallow's
+  // rye opens its preparation on a cold day, and the sowing waits.
+  failures += Expect(cold.fields.rows[0].crop.value == rye.value &&
+                         cold.fields.rows[0].phase != core::FieldPhase::kSowing,
+                     "black fallow: on a day too cold for the rye its preparation opens, the "
+                     "sowing does not");
   return failures;
 }
 
@@ -16032,6 +16086,7 @@ int main() {
   failures += CheckTheElderSpeaksOfAClosingSowingWindow();
   failures += CheckTheMeadowLaysItsHayAsItIsMown();
   failures += CheckTheVegetableStoreKeepsThePotatoes();
+  failures += CheckTheOctoberSowing();
   failures += CheckTheChairmanCanUnsealAFund();
   failures += CheckThePencilRingsInTheAfternoon();
   failures += CheckAHeapOnTheFieldRots();

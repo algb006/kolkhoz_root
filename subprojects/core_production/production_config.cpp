@@ -166,6 +166,17 @@ bool ParseCrops(const ITable& table,
     crop.harvest_days_per_ha = values[14] / kRealDaysPerGameDay;
     crop.straw_ratio = values[15];
     crop.stand_ages = values[16] != 0.0F;
+    // THE OCTOBER SOWING'S LOSS a day (#513; boss's decision 278): STUB by key
+    // until crops.csv carries the column.
+    constexpr float kRyeOctoberLossPerDay = 0.12F;    // STUB: 0.88/0.76/0.64/0.52
+    constexpr float kWheatOctoberLossPerDay = 0.15F;  // STUB: -15 % a day
+    const std::uint32_t key_col = table.FindColumn("key");
+    const std::string_view key =
+        key_col == kNoTableColumn ? std::string_view{} : table.CellText(row, key_col);
+    crop.late_october_loss_per_day = !crop.is_winter         ? 0.0F
+                                     : key == "rye_winter"   ? kRyeOctoberLossPerDay
+                                     : key == "wheat_winter" ? kWheatOctoberLossPerDay
+                                                             : 0.0F;
   }
   return true;
 }
