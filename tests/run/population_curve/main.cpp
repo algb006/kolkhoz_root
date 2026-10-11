@@ -71,8 +71,15 @@ constexpr std::size_t kOfficeConditionIndex = 3;
 /// `food_year` — and a third count in a third run would be a third home for
 /// one decision. 1931 leads: it is the seed every earlier reading of this
 /// curve was taken on, so the recorded numbers stay comparable.
-constexpr std::array<std::uint64_t, 9> kSeeds = {
-    1931, 1932, 1933, 1934, 1935, 1936, 1937, 1938, 1939};
+/// SIXTEEN since 0.37.230's series (boss, 12 October 2026): at nine the mean
+/// door's standard error was 0.27-0.37 y on four trees (villages spread sd
+/// 0.8-1.1 y) against E1's one-year corridor, whose third is 0.33 - the gate
+/// was narrower than its own instrument, and a neutral edit (every delivered
+/// hour x1.0001) moved the mean by 0.10-0.24 y. Sixteen bring the error to
+/// ~0.27. The seven new villages are appended, nothing re-ordered: every
+/// earlier reading on the nine still stands by seed.
+constexpr std::array<std::uint64_t, 16> kSeeds = {
+    1931, 1932, 1933, 1934, 1935, 1936, 1937, 1938, 1939, 1940, 1941, 1942, 1943, 1944, 1945, 1946};
 
 constexpr std::uint32_t kYears = 33;
 
@@ -1220,7 +1227,9 @@ int main(int argc, char** argv) {
   constexpr double kEraMeanCeiling = 11.33;
   constexpr double kEraSpreadFloor = 9.33;
   constexpr double kEraSpreadCeiling = 12.33;
-  constexpr std::size_t kEraSpreadAtLeast = 7;
+  // 7 of 9 (78 %) became 12 of 16 (75 %) with the sixteen villages: the
+  // nearest share that does not tighten the gate by rounding.
+  constexpr std::size_t kEraSpreadAtLeast = 12;
   std::vector<double> doors;
   std::size_t doors_inside = 0;
   std::size_t doors_late = 0;
@@ -1266,8 +1275,9 @@ int main(int argc, char** argv) {
       run::Expect(!doors.empty() && door_mean >= kEraMeanFloor && door_mean <= kEraMeanCeiling,
                   mean_claim.c_str());
   const std::string spread_claim =
-      "E2: at least 7 of 9 doors inside " + two_places(kEraSpreadFloor) + " to " +
-      two_places(kEraSpreadCeiling) + " — now " + std::to_string(doors_inside);
+      "E2: at least " + std::to_string(kEraSpreadAtLeast) + " of " + std::to_string(kSeeds.size()) +
+      " doors inside " + two_places(kEraSpreadFloor) + " to " + two_places(kEraSpreadCeiling) +
+      " — now " + std::to_string(doors_inside);
   failures += run::Expect(doors_inside >= kEraSpreadAtLeast, spread_claim.c_str());
   // WHAT HELD A LATE DOOR (econ 110ec10): by late village, the condition
   // unmet longest between the residents' day and the door — not the formal
