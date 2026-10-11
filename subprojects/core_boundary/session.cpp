@@ -497,6 +497,10 @@ class Session final : public ISession {
     return simulation_->SupplyEstimateFor(unit);
   }
 
+  CargoForm CargoFormOfLeg(std::uint32_t cart, std::uint32_t leg) const override {
+    return simulation_->CargoFormOfLeg(cart, leg);
+  }
+
   StinkStrength StinkFullAt(Vec2 point) const override { return simulation_->StinkFullAt(point); }
 
   StinkStrength StinkNowAt(Vec2 point) const override { return simulation_->StinkNowAt(point); }

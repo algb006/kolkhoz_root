@@ -766,6 +766,10 @@ class StandardSimulation final : public ISimulation {
 
   /// What and from where is construction's, the price production's
   /// (supply_estimate.h): neither knows the other's half.
+  CargoForm CargoFormOfLeg(std::uint32_t cart, std::uint32_t leg) const override {
+    return logistics_->CargoFormOfLeg(engine_->CompletedState(), cart, leg);
+  }
+
   SupplyEstimate SupplyEstimateFor(UnitId unit) const override {
     const WorldState& completed = engine_->CompletedState();
     const SupplyEstimate plan = construction_->SupplyPlanFor(completed, unit);

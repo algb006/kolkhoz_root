@@ -70,6 +70,7 @@
 
 #include "core_common/alarm_state.h"
 #include "core_common/barter_view.h"
+#include "core_common/cargo_form.h"
 #include "core_common/deadline.h"
 #include "core_common/delivery_term.h"
 #include "core_common/elder_view.h"
@@ -431,6 +432,13 @@ class ISimulation {
   /// core_production (at what price); the bare engine answers nothing to cart.
   /// @note Called between steps on the sim thread. A pure read.
   virtual SupplyEstimate SupplyEstimateFor(UnitId unit) const = 0;
+
+  /// @brief The cargo form of leg `leg` of cart `cart` in the completed
+  /// state's groom plan (cargo_form.h; transport §11, «Форма груза»): what
+  /// the layer builds the cart's look from. Fans out to core_logistics; the
+  /// bare engine knows no loads and answers kNone.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual CargoForm CargoFormOfLeg(std::uint32_t cart, std::uint32_t leg) const = 0;
 
   /// @brief How badly it stinks at a point of the map — AT WORST
   /// (StinkFullAt) and AS IT IS TODAY (StinkNowAt). Water design §4.

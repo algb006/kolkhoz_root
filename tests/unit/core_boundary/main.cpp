@@ -157,6 +157,10 @@ class ScriptedSimulation final : public core::ISimulation {
   /// No works and no carts here: nothing to cart.
   core::SupplyEstimate SupplyEstimateFor(core::UnitId /*unit*/) const override { return {}; }
 
+  core::CargoForm CargoFormOfLeg(std::uint32_t /*cart*/, std::uint32_t /*leg*/) const override {
+    return core::CargoForm::kNone;
+  }
+
   // The scripted double answers clean air for both stink questions: this
   // test is about the session's forwarding, not about the field.
   core::StinkStrength StinkFullAt(core::Vec2 /*point*/) const override {

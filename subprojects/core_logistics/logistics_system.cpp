@@ -266,6 +266,15 @@ class LogisticsSystem final : public ILogisticsSystem {
     }
   }
 
+  // STUB (stage В, the cargo form's contract F1): every leg answers kNone
+  // until F2 reads resources.csv `cargo_form` (boss's export) and the leg's
+  // load. Final signature; the layer may call it now and draws an empty cart.
+  CargoForm CargoFormOfLeg(const WorldState& /*completed*/,
+                           std::uint32_t /*cart*/,
+                           std::uint32_t /*leg*/) const override {
+    return CargoForm::kNone;
+  }
+
   void SayLateLoads(WorldState& current) const override {
     // THE LAMP'S CLOCK, AN HOUR ON (0.37.192; LogisticsTaskRow::
     // unserved_light_hours): an hour of working light with nobody on a task

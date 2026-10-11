@@ -266,6 +266,11 @@ class StepEngine final : public ISimulation {
   /// No subsystems, so no works and no carts: nothing to cart.
   SupplyEstimate SupplyEstimateFor(UnitId /*unit*/) const override { return {}; }
 
+  // No subsystems, no loads: every leg is empty.
+  CargoForm CargoFormOfLeg(std::uint32_t /*cart*/, std::uint32_t /*leg*/) const override {
+    return CargoForm::kNone;
+  }
+
   // The bare engine knows no subsystems, so it knows no sources: clean air
   // rather than a refusal, exactly as WearDeadline answers kNoData.
   StinkStrength StinkFullAt(Vec2 /*point*/) const override { return StinkStrength::kNone; }

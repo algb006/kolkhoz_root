@@ -60,6 +60,7 @@
 #include <vector>
 
 #include "core_common/alarm_state.h"
+#include "core_common/cargo_form.h"
 #include "core_common/logistics_state.h"
 #include "core_tables/stub_tables.h"
 #include "core_tables/tables.h"
@@ -121,6 +122,16 @@ class ILogisticsSystem {
   ///        crosses one hour this hour. Called once a game hour after the
   ///        plan, in the decisions slot.
   virtual void SayLateLoads(WorldState& current) const = 0;
+
+  /// @brief The cargo form of leg `leg` of cart `cart` in `completed`'s
+  ///        groom plan (cargo_form.h; transport §11, «Форма груза»): its
+  ///        task's load's form — for a works' supply, the form of the load
+  ///        that leg carries from its sender. kPeople for a people's cart;
+  ///        kNone for an empty leg, an index past the plan, or a plan of
+  ///        another day. A pure read.
+  virtual CargoForm CargoFormOfLeg(const WorldState& completed,
+                                   std::uint32_t cart,
+                                   std::uint32_t leg) const = 0;
 };
 
 /// @brief Builds the subsystem from the table set (transport.csv: seats, the

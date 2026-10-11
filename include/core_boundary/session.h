@@ -22,14 +22,15 @@
 /// go down, commands come up through a queue, data crosses and objects do
 /// not, the core computes and the presentation reads, and nothing calls
 /// back into the core from the renderer. This header is that shape made
-/// concrete, and it is deliberately small — forty-four methods, counting
+/// concrete, and it is deliberately small — fifty methods, counting
 /// each overload separately, two codec functions, one factory:
 ///
 ///     time      AdvanceStep, AdvanceUntil
 ///     read      Stamp, State, MapSideMeters, SignalsOfUnit, SignalsOfField,
 ///               WhereaboutsOf, ActivityOf, ActiveAlarms, CanBeOrdered, Workforce,
 ///               StockLights, WeatherForecast, WearDeadline,
-///               LimitDeliveryTerm, MaterialsShortFor, StinkFullAt,
+///               LimitDeliveryTerm, MaterialsShortFor, SupplyEstimateFor,
+///               CargoFormOfLeg, StinkFullAt,
 ///               StinkNowAt, ResidentHeightMeters, Elder
 ///     office    OfficeWorkbook, OfficePlan, OfficeLimit, IssueNorms,
 ///               NeedUntilHarvest, EraReadiness
@@ -54,7 +55,10 @@
 /// thirty-nine with a resident's activity, 0.37.19; forty with the map's
 /// junctions, 0.37.26; forty-two with the issue norms and the need until
 /// the harvest, 0.37.28; forty-three with the era's readiness, 0.37.31;
-/// forty-four with the elder, 0.37.52 — all additions, which is what the
+/// forty-four with the elder, 0.37.52; then five more nobody counted here
+/// (the meadow's mark, the grass stand, the supply estimate among them —
+/// found by the cargo form's count of `virtual` in ISession, 49); fifty
+/// with the cargo form of a cart's leg, stage В — all additions, which is what the
 /// contract's minor number is for; 70-boundary.md §6.)
 ///
 /// TWO CONSUMERS OF EVENTS. In the game the presentation creates and holds
@@ -132,6 +136,7 @@
 
 #include "core_common/alarm_state.h"
 #include "core_common/calendar.h"
+#include "core_common/cargo_form.h"
 #include "core_common/elder_view.h"
 #include "core_common/event_state.h"
 #include "core_common/geometry.h"
@@ -791,6 +796,18 @@ class ISession {
   /// it is what still awaits its carting.
   /// @note Between steps; the answer describes State().
   virtual SupplyEstimate SupplyEstimateFor(UnitId unit) const = 0;
+
+  /// @brief WHAT A CART CARRIES ON A LEG OF ITS DAY, as a form (cargo_form.h;
+  /// transport §11, «Форма груза»; the human's word of 5 October 2026:
+  /// «Визуал телеги перестраивается под текущий груз»). `cart` and `leg`
+  /// index State().groom_plan.carts and that cart's legs. The layer builds
+  /// the cart's look from it: a box heaped (kBulk), a box with sacks and
+  /// barrels (kPacked), a high rick tied with a pole (kRick), logs along the
+  /// bed (kLong), the night-soil barrel (kManure), cages (kLive), the
+  /// people's cart (kPeople); kNone an empty cart. kNone also for an index
+  /// past the plan or a plan of another day.
+  /// @note Between steps; the answer describes State().
+  virtual CargoForm CargoFormOfLeg(std::uint32_t cart, std::uint32_t leg) const = 0;
 
   /// @brief How badly it stinks at a point of the map, in the four bands the
   /// design speaks in (water design §4). Two questions, two doors:
