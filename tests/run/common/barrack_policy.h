@@ -16,7 +16,8 @@
 /// year Y (1-based) are 1 + (Y - 1) / 3 — one marked in year 1 to stand by
 /// year 2, the second in year 4 for year 5, and so on. Marked at the elder's
 /// barrack point first (suggestions.csv), started once the chairman's yard
-/// stands (the horses stabled), its recipe is covered and the farm has no
+/// stands (the horses stabled) and the first pen with cows is warm, its
+/// recipe is covered and the farm has no
 /// shortage of its own waiting. The houses do not hold it
 /// back: a barrack is housing too, for those a house does not take.
 
@@ -24,6 +25,7 @@
 #define TESTS_RUN_COMMON_BARRACK_POLICY_H_
 
 #include <cstdint>
+#include <functional>
 #include <iostream>
 #include <optional>
 #include <span>
@@ -63,6 +65,12 @@ class BarrackPolicy {
   /// @brief The question asked before every start (start_gate.h).
   void SetStartGate(StartGate gate) { start_gate_ = std::move(gate); }
 
+  /// @brief Whether the first pen with cows still waits for its warm
+  ///        (FixturePolicy::PenWaitingForWarm): no barrack starts while it does.
+  void SetPenWait(std::function<bool(const core::WorldState&)> pen_waits) {
+    pen_waits_ = std::move(pen_waits);
+  }
+
   /// @brief The barracks the canon wants standing or going up in `year`
   ///        (1-based): one by year 2, then one every three years.
   static std::uint32_t WantedInYear(std::uint32_t year) {
@@ -93,7 +101,13 @@ class BarrackPolicy {
       // and the builders the chairman's yard waited on: no horse yard within
       // the year, no goods cart, and watchdog_threads found no wait to measure
       // (3334e5a's first suite). Marked on time, started after the horses.
-      if (marked && !farm_first && world.chairman.horses_stabled != 0 &&
+      // AND NOT WHILE THE FIRST PEN WITH COWS WAITS FOR ITS WARM, in any month:
+      // the pen's pause (fixture_policy.h) stops only sites working inside its
+      // August-November window, and a barrack started in the summer took the
+      // logs the warm needed — 73e0fcc's pen warmed on day 56-57 in three
+      // villages of nine and 13 cows froze (the warm line red; 0 before it).
+      const bool pen_waits = pen_waits_ && pen_waits_(world);
+      if (marked && !farm_first && !pen_waits && world.chairman.horses_stabled != 0 &&
           simulation.MaterialsShortFor(world.units.row_ids[row]).empty() &&
           GateOpen(start_gate_, world, unit.type, unit.construction.target_level)) {
         core::OrderRow start;
@@ -136,7 +150,8 @@ class BarrackPolicy {
         << ": FIXTURE DIFFERS FROM THE START CANON — the run's chairman marks BARRACKS by "
            "the design's canon, one by year 2 and one more every three years (1 + (Y - 1) / 3 "
            "standing or going up in year Y), on the barrack points first, and starts each "
-           "once the chairman's yard stands, its recipe is covered and no farm shortage "
+           "once the chairman's yard stands and the first pen with cows is warm, its "
+           "recipe is covered and no farm shortage "
            "waits (demography design, the "
            "migrants' table; boss, 11 October 2026)\n";
   }
@@ -173,6 +188,8 @@ class BarrackPolicy {
   std::uint32_t cooldown_ = 0;
 
   StartGate start_gate_;
+
+  std::function<bool(const core::WorldState&)> pen_waits_;
 };
 
 }  // namespace run
