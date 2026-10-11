@@ -9538,9 +9538,13 @@ int CheckLostWinterCropLiesFallow() {
   const core::CropId oat{static_cast<std::uint16_t>(crops->FindRowByKey("oat"))};
   const core::CropId potato{static_cast<std::uint16_t>(crops->FindRowByKey("potato"))};
 
-  // The last tick of year N: the potatoes are off, the rye's autumn is gone.
+  // The last tick of October, year N: the potatoes are off, the rye's autumn
+  // and its late window are gone (0.37.231: said on the first of November,
+  // not at the turn).
   core::WorldState world;
-  world.calendar.tick = (core::kDaysPerYear * core::kTicksPerDay) - 1U;
+  world.calendar.tick = (static_cast<std::uint32_t>(core::Month::kNovember) * core::kDaysPerMonth *
+                         core::kTicksPerDay) -
+                        1U;
   core::RefreshCalendarCaches(world.calendar);
   world.weather.air_temperature_celsius = -12.0F;
   core::FieldRow field;
@@ -9568,16 +9572,27 @@ int CheckLostWinterCropLiesFallow() {
     core::RefreshCalendarCaches(state.calendar);
   };
 
+  const auto said_lost = [&id, &rye](const core::WorldState& state) {
+    bool said = false;
+    for (const core::SimEvent& event : state.step_events) {
+      said = said ||
+             (event.kind == core::EventKind::kWinterSowingLost && event.field.value == id.value &&
+              event.amount == static_cast<std::int64_t>(rye.value));
+    }
+    return said;
+  };
+  next_day(world, 2.0F);  // the first of November
+  failures += Expect(said_lost(world) && world.fields.rows[0].rotation_year1.value == rye.value,
+                     "the first of November says the rye was not sown in its window "
+                     "(kWinterSowingLost, the field, the rye) - the moment, not the turn");
+  // ONCE A FIELD A YEAR: the turn into the rye's year moves the chain and
+  // does not say it again.
+  world.calendar.tick = (core::kDaysPerYear * core::kTicksPerDay) - 1U;
+  core::RefreshCalendarCaches(world.calendar);
   next_day(world, -12.0F);  // the turn into year N+1
-  bool said = false;
-  for (const core::SimEvent& event : world.step_events) {
-    said = said ||
-           (event.kind == core::EventKind::kWinterSowingLost && event.field.value == id.value &&
-            event.amount == static_cast<std::int64_t>(rye.value));
-  }
-  failures += Expect(said && world.fields.rows[0].rotation_year0.value == rye.value,
-                     "the turn into the rye's year says the rye was not sown in its window "
-                     "(kWinterSowingLost, the field, the rye)");
+  failures +=
+      Expect(!said_lost(world) && world.fields.rows[0].rotation_year0.value == rye.value,
+             "the turn into the rye's year moves the chain and says the loss no second time");
 
   // Year N+1, January to July, thawed: the first work opened is a fallow's.
   bool rye_ploughed = false;
@@ -9694,17 +9709,33 @@ int CheckNoWinterSowingAfterWindow() {
   failures += Expect(november.fields.rows[0].phase == core::FieldPhase::kHarrowing,
                      "harrowed in November, past October's grace, it does not sow");
 
-  // The year's turn lets the preparation go, and the lost slot is said.
-  november.calendar.tick = (core::kDaysPerYear * core::kTicksPerDay) - 1U;
-  core::RefreshCalendarCaches(november.calendar);
-  step(november, -12.0F);
-  bool said = false;
-  for (const core::SimEvent& event : november.step_events) {
-    said = said || (event.kind == core::EventKind::kWinterSowingLost &&
-                    event.amount == static_cast<std::int64_t>(rye.value));
-  }
-  failures += Expect(said && november.fields.rows[0].phase == core::FieldPhase::kIdle,
-                     "and at the turn the rye's slot is lost (kWinterSowingLost), the field idle");
+  // THE LOSS IS SAID THE DAY IT BECOMES FACT (0.37.231): harrowed on the
+  // last day of October and not sown, the first of November says the rye's
+  // slot is lost; the year's turn lets the preparation go and says it no
+  // second time.
+  const auto said_lost = [&rye](const core::WorldState& state) {
+    bool said = false;
+    for (const core::SimEvent& event : state.step_events) {
+      said = said || (event.kind == core::EventKind::kWinterSowingLost &&
+                      event.amount == static_cast<std::int64_t>(rye.value));
+    }
+    return said;
+  };
+  core::WorldState october_last = harrowed_on(39);
+  step(october_last, 2.0F);  // onto the first of November
+  failures += Expect(
+      said_lost(october_last) && october_last.fields.rows[0].phase == core::FieldPhase::kHarrowing,
+      "harrowed on October's last day and unsown, the first of November says the "
+      "rye's slot is lost (kWinterSowingLost), the field still harrowed");
+  failures += Expect(!said_lost(november),
+                     "a step inside November says it no second time (the first of November only)");
+  october_last.calendar.tick = (core::kDaysPerYear * core::kTicksPerDay) - 1U;
+  core::RefreshCalendarCaches(october_last.calendar);
+  step(october_last, -12.0F);
+  failures += Expect(
+      !said_lost(october_last) && october_last.fields.rows[0].phase == core::FieldPhase::kIdle,
+      "and at the turn the preparation goes (the field idle) and the loss is not "
+      "said again");
   return failures;
 }
 

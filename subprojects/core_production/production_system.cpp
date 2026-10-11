@@ -326,6 +326,16 @@ class ProductionSystem final : public IProductionSystem {
     if (current.calendar.day % kDaysPerYear == 0) {
       RunYearStart(current);
     }
+    // THE LOST WINTER SLOT IS SAID THE DAY IT BECOMES FACT (boss, 12 October
+    // 2026: «the moment, not the turn»): the first of November, when the
+    // late sowing window has closed (field_work.cpp, TrySow). Until 0.37.231
+    // it was said at the year's turn, where a player can no longer connect
+    // it to the autumn he lived through. Once a field a year: the turn no
+    // longer says it.
+    if (current.calendar.day % kDaysPerYear ==
+        static_cast<std::uint32_t>(Month::kNovember) * kDaysPerMonth) {
+      SayLostWinterSlots(current);
+    }
     // A planting that reaches its day holds its logs from this morning
     // (timber_planting.h).
     GrowPlantings(config_, current);
@@ -575,6 +585,24 @@ class ProductionSystem final : public IProductionSystem {
     }
   }
 
+  /// November 1: every field whose ARRIVING slot (rotation_year1 until the
+  /// turn moves the chain) is a winter crop not in hand has lost it
+  /// (ArrivingWinterSlotLost, land_state.h) - said once, for the layout's
+  /// mark and the feed (kWinterSowingLost, the field, the crop).
+  void SayLostWinterSlots(WorldState& current) const {
+    for (FieldRow& field : current.fields.rows) {
+      const CropId arriving = field.rotation_year1;
+      const bool arriving_winter =
+          arriving.value < config_.crops.size() && config_.crops[arriving.value].is_winter;
+      if (!ArrivingWinterSlotLost(field, arriving, arriving_winter)) {
+        continue;
+      }
+      SimEvent& lost = EmitEvent(current, EventKind::kWinterSowingLost, EventSeverity::kNotable);
+      lost.field = FieldIdOf(current, field);
+      lost.amount = static_cast<std::int64_t>(arriving.value);
+    }
+  }
+
   /// January 1: the rotation plan advances one year, and fallow that stood
   /// the whole year pays out its recovery.
   void RunYearStart(WorldState& current) const {
@@ -731,17 +759,10 @@ class ProductionSystem final : public IProductionSystem {
         MoveFieldPhase(current, field, FieldPhase::kIdle);
         ClearFieldWeather(field);
       }
-      // THE YEAR'S WINTER CROP IS NOT IN THE GROUND (question 278, 0.36.13):
-      // its autumn went by unsown, and the slot lies fallow this year
-      // (field_work.cpp, TrySow). Said once, here, for the layout's mark.
-      const CropId arriving = field.rotation_year0;
-      const bool arriving_winter =
-          arriving.value < config_.crops.size() && config_.crops[arriving.value].is_winter;
-      if (WinterSlotLost(field, arriving_winter, current.calendar.day)) {
-        SimEvent& lost = EmitEvent(current, EventKind::kWinterSowingLost, EventSeverity::kNotable);
-        lost.field = FieldIdOf(current, field);
-        lost.amount = static_cast<std::int64_t>(arriving.value);
-      }
+      // THE YEAR'S WINTER CROP NOT IN THE GROUND (question 278, 0.36.13) was
+      // SAID HERE until 0.37.231 - on New Year's Day, two months after the
+      // loss became fact; it is said on the first of November now
+      // (SayLostWinterSlots), the day the late window closes.
     }
     PlanManure(current);
   }

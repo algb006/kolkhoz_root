@@ -778,6 +778,32 @@ inline bool WinterSlotLost(const FieldRow& field, bool year0_is_winter, SimDay t
   return !reaped_this_year && !in_hand;
 }
 
+/// @brief The same question asked on the FIRST OF NOVEMBER, before the turn
+///        has moved the chain: has the field lost the winter crop ARRIVING
+///        with the next slot (0.37.231; boss, 12 October 2026: «the moment,
+///        not the turn» - feed.winter_sowing_lost is said the day the late
+///        window closes, not on New Year's Day).
+///
+/// Until the turn the arriving winter crop sits in `rotation_year1` and its
+/// sowing is this autumn's, so «in hand» is read against that slot, and the
+/// field's `reaped_day` (this year's potatoes) says nothing about it. A
+/// chain that skips the turn (rotation_skips_turn) waits for its first
+/// slot's season, as at the turn. The turn's form above, asked after the
+/// shift, answers the same field the same way; it no longer says the event.
+/// @param arriving The crop in `rotation_year1`.
+/// @param arriving_is_winter Whether that crop is a winter crop - the
+///        caller's crop table says; false for a fallow slot.
+inline bool ArrivingWinterSlotLost(const FieldRow& field,
+                                   CropId arriving,
+                                   bool arriving_is_winter) {
+  if (!arriving_is_winter || field.rotation_skips_turn != 0 || !HasRotation(field)) {
+    return false;
+  }
+  const bool in_hand = field.crop.value == arriving.value &&
+                       (field.phase == FieldPhase::kSowing || field.phase == FieldPhase::kGrowing);
+  return !in_hand;
+}
+
 /// @brief Is this meadow in flower today?
 ///
 /// ONE HOME FOR THE JUDGEMENT, like FieldRow::weather_state next door: the
