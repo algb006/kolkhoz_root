@@ -711,6 +711,77 @@ int TestReferenceWorkerDeliversOneNorm() {
   return failures;
 }
 
+/// THE WAY HOME OF ONE'S OWN (stage В, F3 (B); transport design «Обратный
+/// путь», 357c60d0; WorkAssignment::travel_home_hours): one sower, a field a
+/// kilometre out, twelve hours of light. Placed and his road measured by
+/// hour 1, the plan then writes his way home — here by hand, as
+/// SeatEveningRiders would. A ride home of half his walk ends his day that
+/// much later and the field is sown that much more; a way home of twice his
+/// walk (sent round by the pick-up) that much less; the day away is the
+/// light either way — the ride turns walking into work, it does not lengthen
+/// the day. Unwritten (negative), the day is the morning's road twice, as it
+/// was before F3.
+int TestTheWayHomeIsHisOwn() {
+  int failures = 0;
+  const test::FakeTableSet tables;
+  const auto labor = core::CreateLaborSystem(tables, core::StubTables::kAllowed);
+  if (labor == nullptr) {
+    return Expect(false, "factory yields a system");
+  }
+
+  struct Outcome {
+    float travel = 0.0F;
+    float away = 0.0F;
+    float sown = 0.0F;
+  };
+
+  const auto day_with = [&labor](float home_hours_of_travel, Outcome& outcome) {
+    DayWorld day(1);
+    const core::FieldId field =
+        day.AddField(core::FieldPhase::kSowing, 5.0F, core::Vec2{.x = 1'000.0F, .y = 0.0F});
+    const auto hour = [&day, &labor](std::uint32_t at) {
+      day.world.calendar.tick = at;
+      core::RefreshCalendarCaches(day.world.calendar);
+      const core::WorldState previous = day.world;
+      labor->RunAssignmentDecisions(previous, day.world);
+    };
+    hour(0);
+    hour(1);
+    core::WorkAssignment& work = day.world.residents.rows[0].work;
+    if (work.kind != core::WorkKind::kSowing || !(work.travel_hours > 0.0F)) {
+      return false;
+    }
+    outcome.travel = work.travel_hours;
+    work.travel_home_hours =
+        home_hours_of_travel < 0.0F ? -1.0F : home_hours_of_travel * work.travel_hours;
+    for (std::uint32_t at = 2; at < core::kTicksPerDay; ++at) {
+      hour(at);
+    }
+    outcome.away = day.world.residents.rows[0].work.hours_away_today;
+    outcome.sown =
+        5.0F - day.world.fields.rows[core::FindRow(day.world.fields, field)].work_days_remaining;
+    return true;
+  };
+  Outcome unwritten;
+  Outcome ride;
+  Outcome sent_round;
+  if (Expect(day_with(-1.0F, unwritten) && day_with(0.5F, ride) && day_with(2.0F, sent_round),
+             "way home: the sower is placed and his road measured by hour 1") != 0) {
+    return failures + 1;
+  }
+  std::cout << "  way home: the road " << unwritten.travel << " h; sown unwritten "
+            << unwritten.sown << ", riding " << ride.sown << ", sent round " << sent_round.sown
+            << " man-days; away " << unwritten.away << " / " << ride.away << " / "
+            << sent_round.away << " h\n";
+  failures += Expect(ride.sown > unwritten.sown && sent_round.sown < unwritten.sown,
+                     "way home: a ride home sows more, a way home twice the walk sows less");
+  failures += Expect(std::abs(unwritten.away - ride.away) < 0.01F &&
+                         std::abs(unwritten.away - sent_round.away) < 0.01F,
+                     "way home: the day away is the light either way — the ride turns walking "
+                     "into work");
+  return failures;
+}
+
 /// THE OFFICE'S WORKBOOK (core_common/office_views.h; boss-core-epoch1-queue
 /// [1], item 3): the morning writes each free adult's reason on him — the
 /// very reason the book counts, one a person — and OfficeWorkbook reads it
@@ -4559,6 +4630,7 @@ int main() {
   failures += TestHandsIdleWhileWorkWaitsIsSaidOnce();
   failures += TestWorkGotNoHandsIsSaidOnce();
   failures += TestTheRainIsTheIdlesReason();
+  failures += TestTheWayHomeIsHisOwn();
   failures += TestRoadBlockedIsBooked();
   failures += TestWalkOffPaysAndStops();
   failures += TestASpentManIsNotSent();

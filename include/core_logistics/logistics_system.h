@@ -69,18 +69,24 @@ namespace core {
 
 struct WorldState;
 
-/// @brief What the day's plan did, for the run's print (the logistics thread
-///        [5]: «печатать без ворот» — re-plans a day, tasks by level, raised by
-///        ageing, set to level 0 by themselves by the three threats).
+/// @brief What the day's plan did: the unit tests' instrument (the runs read
+///        the state, not this — BuildPlan's return is not kept by the world).
+///        The columns «re-plans a day», «set to level 0 by a threat» and «the
+///        longest a level-0 task waited» stood here from 0.37.177 with no
+///        writer (the Fable review of 11 October 2026, item 5) and are gone:
+///        the re-plans are Replan's return, the threats and the waits the
+///        tasks' own rows (logistics_state.h).
 struct LogisticsTally {
   std::uint32_t carts = 0;                                     ///< Carts out today.
   std::uint32_t legs = 0;                                      ///< Legs planned.
   std::uint32_t riders = 0;                                    ///< Seats taken on all legs.
-  std::uint32_t replans = 0;                                   ///< Re-plans by event today.
   std::array<std::uint32_t, kLogisticsLevelCount> tasks = {};  ///< Tasks by level at the plan.
-  std::uint32_t aged_up = 0;                                   ///< Tasks raised by ageing today.
-  std::uint32_t urgent_by_threat = 0;    ///< Tasks set to level 0 by a threat today.
-  float urgent_worst_wait_hours = 0.0F;  ///< The longest a level-0 task waited for a cart.
+  std::uint32_t aged_up =
+      0;  ///< Tasks raised by ageing today (SyncTasks's count, not this plan's).
+  /// A cart's load carted standing at the load — no receiver written for it,
+  /// or the receiver at the load (F3 (A), logistics_plan.h): the shout that
+  /// a trip was not drawn.
+  std::uint32_t legs_standing_at_load = 0;
   /// THE TRIPS AND THE EVENING (stage В, F3): loaded trips drawn today; the
   /// workers wanting a ride home (seated on a cart this morning, or on foot
   /// with a cart's way passing them); of them seated for the evening; refused

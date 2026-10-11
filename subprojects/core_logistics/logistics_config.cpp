@@ -185,6 +185,19 @@ bool ParseLogisticsConfig(const ITableSet& tables, LogisticsConfig& config, std:
       return false;
     }
     config.cart_load_kg = tonnes * scale * 1000.0F;
+    // THE EVENING'S SEATS (F3 (B)): the goods cart's bench, labour's cell
+    // and range (labor_config.cpp, cart_passenger_seats). Blank: nobody.
+    float seats = static_cast<float>(config.cart_passenger_seats);
+    if (!OptionalCell(*transport,
+                      transport->FindRowByKey("cart_loaded"),
+                      transport->FindColumn("seats"),
+                      Range{.low = 0.0F, .high = 64.0F},
+                      seats,
+                      error)) {
+      PrefixError("transport", "seats", error);
+      return false;
+    }
+    config.cart_passenger_seats = static_cast<std::uint32_t>(seats);
   }
   if (const ITable* const livestock = tables.FindTable("livestock")) {
     config.horse_kind = DefIdFromRow<LivestockKindIdTag>(livestock->FindRowByKey("horse"));

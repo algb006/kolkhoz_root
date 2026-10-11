@@ -162,7 +162,10 @@ HaulRate RateToward(const ProductionConfig& config,
   // ground as is shortest.
   const TravelMode mode = harnessed ? cart_mode : TravelMode::kWalk;
   if (mode != TravelMode::kCart) {
-    return RateOverKm(RoadKm(world, mode, from, destination), hours_per_km, load);
+    HaulRate walked = RateOverKm(RoadKm(world, mode, from, destination), hours_per_km, load);
+    walked.receiver = destination;
+    walked.has_receiver = true;
+    return walked;
   }
   // THE PRODUCE CART: the same way, and how much of it is off the road, for
   // the year's book (YearLedger::cart_trips; question 268). One choice of
@@ -172,6 +175,8 @@ HaulRate RateToward(const ProductionConfig& config,
   rate.produce_cart = true;
   rate.off_road_load_m = way.off_road_start_m;
   rate.off_road_store_m = way.off_road_end_m;
+  rate.receiver = destination;
+  rate.has_receiver = true;
   return rate;
 }
 
@@ -462,6 +467,7 @@ void SettleStandHauling(const ProductionConfig& config, WorldState& current) {
       continue;
     }
     const HaulRate rate = StandHaulRate(config, current, stand);
+    stand.haul_to = rate.has_receiver ? rate.receiver : stand.haul_to;  // F3 (A)
     SettleLoad(config,
                current,
                rate,
@@ -504,6 +510,7 @@ void SettleSiteHauling(const ProductionConfig& config, WorldState& current) {
       continue;
     }
     const HaulRate rate = SiteHaulRate(config, current, site);
+    site.haul_to = rate.has_receiver ? rate.receiver : site.haul_to;  // F3 (A)
     SettleLoad(config,
                current,
                rate,
@@ -580,6 +587,8 @@ void SettleHauling(const ProductionConfig& config, WorldState& current) {
       continue;
     }
     const HaulRate rate = FieldHaulRate(config, current, field);
+    // The trip's receiver beside the seam it prices (F3 (A); FieldRow::haul_to).
+    field.haul_to = rate.has_receiver ? rate.receiver : field.haul_to;
     // NOBODY IS SENT FOR A LOAD THAT HAS NOWHERE TO GO. The ceiling is a
     // refusal at the door (task A3), and a cart turned away at the door
     // has still cost the village a man for a day. The first version of
@@ -763,6 +772,7 @@ void SettleStoreEmptying(const ProductionConfig& config, WorldState& current, bo
     // first store that takes the first of it.
     const Grams left = carrying ? movable() : 0;
     const HaulRate rate = RateToward(config, current, unit.position, destination_of());
+    unit.haul_to = rate.receiver;  // F3 (A): the perevalka's receiver
     unit.haul_days_remaining = left > 0 ? HaulDaysFor(left, rate, config.standard_day_hours) : 0.0F;
     unit.haul_days_written = unit.haul_days_remaining;
   }
@@ -808,6 +818,8 @@ HaulRate DistrictLotHaulRate(const ProductionConfig& config, const WorldState& w
   rate.produce_cart = true;
   rate.off_road_load_m = 0.0F;
   rate.off_road_store_m = way.off_road_end_m;
+  rate.receiver = destination;
+  rate.has_receiver = true;
   return rate;
 }
 
@@ -833,6 +845,7 @@ void SettleDistrictLotHauling(const ProductionConfig& config, WorldState& curren
       return total;
     };
     const HaulRate rate = DistrictLotHaulRate(config, current);
+    lot.haul_to = rate.has_receiver ? rate.receiver : lot.haul_to;  // F3 (A)
     const float done = lot.haul_days_written > lot.haul_days_remaining
                            ? lot.haul_days_written - lot.haul_days_remaining
                            : 0.0F;

@@ -100,9 +100,15 @@ ResidentActivityState ActivityOfResident(const WorldState& world,
                                                                 rules.walk_hours_per_km,
                                                                 rules.harness_hours_per_km);
   }
+  // THE WAY HOME, ITS OWN when the evening plan wrote it (F3 (B);
+  // WorkAssignment::travel_home_hours) — the labour hour's own end of day.
+  const float travel_home =
+      assigned && has_home && has_target && resident.work.travel_home_hours >= 0.0F
+          ? resident.work.travel_home_hours
+          : travel;
   const float leaves = window.sunrise;
   const float starts = window.sunrise + travel;
-  const float stops = window.sunset - travel;
+  const float stops = window.sunset - travel_home;
   const float returns = window.sunset;
   const bool of_working_age =
       age_years >= rules.work_from_bio_years && age_years < rules.work_to_bio_years;

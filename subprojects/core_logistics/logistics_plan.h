@@ -81,6 +81,16 @@ GroomPlan BuildGroomPlan(const LogisticsConfig& config,
                          LogisticsTally& tally,
                          const GroomPlan* earlier = nullptr);
 
+/// @brief The cargo form of a leg's load (cargo_form.h): the form of the
+///        resource its task carries — a field's heap its reaped resource, a
+///        stand `log`, a pit its dug resource, a works' supply, a district lot
+///        or a store being emptied the resource of MOST grams (one form a leg
+///        until the mixing, F4). kNone for a ride and for a trip's WAY BACK
+///        (task set, not loaded, from ≠ to); a load leg standing at its load
+///        (from = to: no receiver written, or a carrier on foot) keeps its
+///        load's form, as F2 drew it.
+CargoForm LegCargoForm(const LogisticsConfig& config, const WorldState& world, const CartLeg& leg);
+
 /// @brief THE EVENING RETURN (stage В, F3 (B); transport design §11,
 ///        «Обратный путь», 357c60d0; «Подвода бригады — как была»,
 ///        ddbf6f48): seats the day's riders for the way home on `plan`'s
@@ -97,8 +107,14 @@ GroomPlan BuildGroomPlan(const LogisticsConfig& config,
 /// a horseman.
 ///
 /// WHICH LEG TAKES HIM: of the carts whose last trips of the day or ride home
-/// pass within a walk of his work toward the village, the one that brings him
-/// home soonest — on a LOADED trip only if its load's form seats riders
+/// PASS within a walk of his work — the nearest point of the leg's way, as the
+/// morning's pick-up (§11, «на тех же условиях»; boss, 11 October 2026) — the
+/// one that costs his day least: he leaves work to be at that point when the
+/// cart passes, so a leg passing at noon costs him the afternoon and loses to
+/// his walk (the cart does not turn aside and does not wait for the day's
+/// end: «Подвода с маршрута не сворачивает. Попутчик подстраивается под
+/// неё»); he gets off at the point that brings him home soonest; on a LOADED
+/// trip only if its load's form seats riders
 /// (CargoFormSeatsRiders: not logs, manure or the live), on an empty way
 /// always — within the cart's seats, the farthest walkers first (§11, «Кому
 /// место, если желающих больше»), the morning's wait term on the evening
@@ -106,8 +122,9 @@ GroomPlan BuildGroomPlan(const LogisticsConfig& config,
 ///
 /// HIS WAY HOME, AND THE DAY IT COSTS (boss, 11 October 2026: «a rider the
 /// evening trip cannot take walks home, and his day loses the
-/// walk-minus-ride»): seated — his walk to the pick-up plus the ride to the
-/// point nearest his house plus the walk from it; not seated — his whole walk
+/// walk-minus-ride»): seated — sunset less the leg's departure plus his walk
+/// to it, and never less than that walk plus the ride plus the walk from the
+/// leg's end; not seated — his whole walk
 /// home (WorkRoadHours on foot). A worker who refuses nothing and is refused
 /// nothing keeps no new number: travel_home_hours stays negative and the
 /// labour hour reads travel_hours, as before.

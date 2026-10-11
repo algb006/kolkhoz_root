@@ -74,6 +74,14 @@ struct HaulRate {
   bool produce_cart = false;
   float off_road_load_m = 0.0F;
   float off_road_store_m = 0.0F;
+
+  /// THE TRIP'S RECEIVER (stage В, F3 (A)): where the loaded half of the
+  /// round trip goes — the destination the caller measured the way to
+  /// (RateToward, the district lot's rate), so the load's row can keep it
+  /// beside its seam (`haul_to`) and the groom's plan draws the trip the
+  /// seam pays for. RateBetween and RateOverKm leave it unset.
+  Vec2 receiver;
+  bool has_receiver = false;
 };
 
 /// @brief The terms of a trip between two places.

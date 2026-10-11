@@ -414,11 +414,49 @@ float* WorkSeamOf(WorldState& world, const WorkAssignment& work) {
   return const_cast<float*>(WorkSeamOf(static_cast<const WorldState&>(world), work));
 }
 
-// STUB (stage В, F3's contract): no receiver until production writes the
-// loads' `haul_to` (F3 (A)'s implementation). Final signature.
-bool WorkReceiverOf(const WorldState& /*world*/,
-                    const WorkAssignment& /*work*/,
-                    Vec2& /*receiver*/) {
+// THE TRIP'S RECEIVER (stage В, F3 (A)): the `haul_to` production wrote with
+// the load's seam (field_haul.cpp), or the works itself for its supply. A
+// point at the map's origin is a receiver never written: no store stands in
+// the corner of the map, and a row made before its first settlement holds the
+// default. AN APPROXIMATION, NAMED: «unwritten» is read off the point, not off
+// a flag of its own.
+bool WorkReceiverOf(const WorldState& world, const WorkAssignment& work, Vec2& receiver) {
+  if (work.kind != WorkKind::kHauling) {
+    return false;
+  }
+  const auto written = [&receiver](Vec2 point) {
+    if (point.x == 0.0F && point.y == 0.0F) {
+      return false;
+    }
+    receiver = point;
+    return true;
+  };
+  if (work.unit.value != kInvalidEntityIdValue) {
+    const std::uint32_t row = FindRow(world.units, work.unit);
+    if (row == kNoRow) {
+      return false;
+    }
+    const UnitRow& unit = world.units.rows[row];
+    // A works' supply goes to the works; a store being emptied, to its store.
+    return unit.emptying == 0 && AnythingAwaits(unit.construction) ? written(unit.position)
+                                                                   : written(unit.haul_to);
+  }
+  if (work.stand.value != kInvalidEntityIdValue) {
+    const std::uint32_t row = FindRow(world.stands, work.stand);
+    return row != kNoRow && written(world.stands.rows[row].haul_to);
+  }
+  if (work.limit_delivery.value != kInvalidEntityIdValue) {
+    const std::uint32_t row = FindRow(world.limit_deliveries, work.limit_delivery);
+    return row != kNoRow && written(world.limit_deliveries.rows[row].haul_to);
+  }
+  if (work.extraction_site.value != kInvalidEntityIdValue) {
+    const std::uint32_t row = FindRow(world.extraction_sites, work.extraction_site);
+    return row != kNoRow && written(world.extraction_sites.rows[row].haul_to);
+  }
+  if (work.field.value != kInvalidEntityIdValue) {
+    const std::uint32_t row = FindRow(world.fields, work.field);
+    return row != kNoRow && written(world.fields.rows[row].haul_to);
+  }
   return false;
 }
 

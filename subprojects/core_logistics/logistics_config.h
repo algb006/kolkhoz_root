@@ -89,6 +89,11 @@ struct LogisticsConfig {
   /// cart_loaded `load_tonnes` x `load_scale`).
   float standard_day_hours = 10.0F;
   float walk_speed_kmh = 5.0F;
+
+  /// transport.csv `seats` of `cart_loaded`: the goods cart's bench, which
+  /// the evening return seats (F3 (B); logistics_plan.h, SeatEveningRiders).
+  /// 0 seats nobody, as labour reads the same cell for the morning.
+  std::uint32_t cart_passenger_seats = 0;
   float carry_kg_adult = 20.0F;
   float cart_load_kg = 750.0F;
 

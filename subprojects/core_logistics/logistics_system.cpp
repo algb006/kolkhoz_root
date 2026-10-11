@@ -20,6 +20,7 @@
 #include "core_common/day_window.h"
 #include "core_common/emit_event.h"
 #include "core_common/event_state.h"
+#include "core_common/horse_yard_road.h"
 #include "core_common/labor_state.h"
 #include "core_common/logistics_rules.h"
 #include "core_common/logistics_state.h"
@@ -172,61 +173,6 @@ OrderRefusal PauseTask(WorldState& current, const OrderRow& order) {
   return OrderRefusal::kNone;
 }
 
-/// The resource of most grams in `amounts`, invalid when all are nought.
-ResourceId MostGrams(const ResourceAmounts& amounts) {
-  ResourceId most;
-  Grams best = 0;
-  for (std::uint32_t index = 0; index < amounts.size(); ++index) {
-    if (amounts[index] > best) {
-      best = amounts[index];
-      most = ResourceId{static_cast<std::uint16_t>(index)};
-    }
-  }
-  return most;
-}
-
-/// What a leg's task carries: a field's heap its reaped resource, a stand
-/// `log`, a pit its dug resource, a works' supply its front leg's (most
-/// grams), a district lot its goods (most grams), a store being emptied its
-/// stock (most grams). Invalid for an empty leg or a task that is gone.
-ResourceId LegResource(const WorldState& world, const CartLeg& leg, ResourceId log) {
-  const std::uint32_t task_row = FindRow(world.logistics_tasks, leg.task);
-  if (task_row == kNoRow) {
-    return ResourceId{};
-  }
-  const LogisticsTaskRow& task = world.logistics_tasks.rows[task_row];
-  switch (task.load_kind) {
-    case LogisticsLoadKind::kFieldHeap: {
-      const std::uint32_t row = FindRow(world.fields, task.field);
-      return row != kNoRow ? world.fields.rows[row].reaped_resource : ResourceId{};
-    }
-    case LogisticsLoadKind::kStandLogs:
-      return log;
-    case LogisticsLoadKind::kSiteDig: {
-      const std::uint32_t row = FindRow(world.extraction_sites, task.extraction_site);
-      return row != kNoRow ? world.extraction_sites.rows[row].resource : ResourceId{};
-    }
-    case LogisticsLoadKind::kDistrictLot: {
-      const std::uint32_t row = FindRow(world.limit_deliveries, task.limit_delivery);
-      return row != kNoRow ? MostGrams(world.limit_deliveries.rows[row].goods) : ResourceId{};
-    }
-    case LogisticsLoadKind::kStoreTransfer: {
-      const std::uint32_t row = FindRow(world.units, task.unit);
-      return row != kNoRow ? MostGrams(world.units.rows[row].stock) : ResourceId{};
-    }
-    case LogisticsLoadKind::kSiteSupply: {
-      const std::uint32_t row = FindRow(world.units, task.unit);
-      if (row == kNoRow || world.units.rows[row].construction.legs.empty()) {
-        return ResourceId{};
-      }
-      return MostGrams(world.units.rows[row].construction.legs.front().grams);
-    }
-    case LogisticsLoadKind::kLogisticsLoadKindCount:
-      break;
-  }
-  return ResourceId{};
-}
-
 class LogisticsSystem final : public ILogisticsSystem {
  public:
   explicit LogisticsSystem(LogisticsConfig config) : config_(std::move(config)) {}
@@ -235,7 +181,7 @@ class LogisticsSystem final : public ILogisticsSystem {
     // ONCE A DAY, AFTER THE MORNING'S PLACEMENT (core_world: the decisions
     // slot calls this after the labour sub-step): hour 0, so the carters
     // placed this morning mark their loads served.
-    if (HourFromTick(current.calendar.tick) != 0) {
+    if (HourFromTick(current.calendar.tick) != 0 || !Stabled(current)) {
       return;
     }
     const SimDay today = current.calendar.day;
@@ -249,7 +195,16 @@ class LogisticsSystem final : public ILogisticsSystem {
     // THE PLAN OF THE DAY (B3; logistics_plan.h): over the carts the
     // morning's placement and the top-up put on a horse.
     LogisticsTally tally;
+    if (!Stabled(current)) {
+      GroomPlan none;  // today's, and empty: no groom, no cart
+      none.day = current.calendar.day;
+      current.groom_plan = none;
+      return tally;
+    }
     current.groom_plan = BuildGroomPlan(config_, current, tally);
+    // AND THE EVENING (F3 (B); logistics_plan.h): who rides home on which
+    // leg, and every morning rider's own way home.
+    SeatEveningRiders(config_, current, current.groom_plan, tally);
     return tally;
   }
 
@@ -270,7 +225,8 @@ class LogisticsSystem final : public ILogisticsSystem {
     // (labor_system.cpp, TopUpDay), and mid-day no task changes level but by
     // this door.
     GroomPlan& plan = current.groom_plan;
-    if (plan.day != current.calendar.day || HourFromTick(current.calendar.tick) < 2) {
+    if (plan.day != current.calendar.day || HourFromTick(current.calendar.tick) < 2 ||
+        !Stabled(current)) {
       return false;
     }
     plan.stale = plan.stale || CartsChanged(current, plan);
@@ -280,6 +236,10 @@ class LogisticsSystem final : public ILogisticsSystem {
     LogisticsTally tally;
     const GroomPlan earlier = plan;
     plan = BuildGroomPlan(config_, current, tally, &earlier);
+    // The evening is re-seated from the new legs (F3 (B)). AN APPROXIMATION,
+    // NAMED: a worker's hours away were booked at his first hour with the
+    // morning plan's way home; a re-plan moves his end of day, not that book.
+    SeatEveningRiders(config_, current, plan, tally);
     return true;
   }
 
@@ -336,10 +296,7 @@ class LogisticsSystem final : public ILogisticsSystem {
     if (plan.carts[cart].people_cart) {
       return CargoForm::kPeople;
     }
-    const ResourceId resource =
-        LegResource(completed, plan.carts[cart].legs[leg], config_.log_resource);
-    return resource.value < config_.cargo_form.size() ? config_.cargo_form[resource.value]
-                                                      : CargoForm::kNone;
+    return LegCargoForm(config_, completed, plan.carts[cart].legs[leg]);
   }
 
   void SayLateLoads(WorldState& current) const override {
@@ -426,6 +383,18 @@ class LogisticsSystem final : public ILogisticsSystem {
   }
 
  private:
+  /// @brief Whether the horse yard stands (horse_yard_road.h): until it does
+  ///        there is no groom and no logistics at all — the loads go with
+  ///        their work orders (transport design §12, «До конного двора нет и
+  ///        конюха — логистики нет вовсе»; the Fable review of 11 October
+  ///        2026, item 6). The morning's passengers ask the same question
+  ///        (cart_passengers.cpp). A yard lost later freezes the tasks where
+  ///        they stand: none is born, none ages, none is planned.
+  bool Stabled(const WorldState& world) const {
+    Vec2 yard;
+    return HorseYardPositionOf(world, config_.horse_kind, yard);
+  }
+
   LogisticsConfig config_;
 };
 

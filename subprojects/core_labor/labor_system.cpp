@@ -2406,6 +2406,10 @@ class LaborSystem final : public ILaborSystem {
         if (!RidesThePeoplesCart(current, current.residents.rows[row].work)) {
           current.residents.rows[row].work.rides_cart_of = ResidentId{};
         }
+        // And the evening's seat and way home were the old target's too
+        // (F3 (B); logistics_plan.h, SeatEveningRiders): the next plan asks.
+        current.residents.rows[row].work.travel_home_hours = -1.0F;
+        current.residents.rows[row].work.rides_home_with = ResidentId{};
         current.residents.rows[row].work.travel_hours =
             WorkRoadHours(current,
                           work,
@@ -2440,13 +2444,20 @@ class LaborSystem final : public ILaborSystem {
       const bool from_yard = DayStartsAtHorseYard(current, work) &&
                              HorseYardPositionOf(current, config_.horse_kind, yard);
       const float road = kind == WorkKind::kHauling && !from_yard ? 0.0F : travel;
-      const float worked = HoursInside(hour, window.sunrise + road, window.sunset - road);
+      // THE WAY HOME, ITS OWN (stage В, F3 (B); transport design «Обратный
+      // путь», 357c60d0): a morning rider the evening plan seated rides home
+      // and one it refused walks — the day ends that much before sunset, and
+      // the walk-minus-ride is what a refusal costs. Unwritten (negative): the
+      // way home is the way there, as before.
+      const float written_home = current.residents.rows[row].work.travel_home_hours;
+      const float road_home = written_home >= 0.0F ? written_home : road;
+      const float worked = HoursInside(hour, window.sunrise + road, window.sunset - road_home);
       if (worked <= 0.0F) {
         continue;
       }
       ResidentRow& resident = current.residents.rows[row];
       if (resident.work.hours_away_today <= 0.0F) {
-        resident.work.hours_away_today = 2.0F * road;  // the round trip, booked once
+        resident.work.hours_away_today = road + road_home;  // the round trip, booked once
       }
       resident.work.hours_away_today += worked;
       const float age = BiologicalAgeYears(config_, resident.birth_day, current.calendar.day);

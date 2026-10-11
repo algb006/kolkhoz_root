@@ -28,6 +28,24 @@ int Expect(bool condition, const char* label) {
   return 0;
 }
 
+/// @brief Builds the horse yard at the origin and stables the team in it
+///        (horse_yard_road.h, HorseYardPositionOf; the livestock table's
+///        `horse` is kind 0): until the yard stands there is no logistics at
+///        all (the Fable review of 11 October 2026, item 6). At the origin,
+///        where the tests' house stands, so a carter's walk to it is nought
+///        and the day's clock is the house's.
+void StableTheTeam(core::WorldState& world) {
+  core::UnitRow yard;
+  yard.level = 1;
+  const core::UnitId yard_id = core::AppendRow(world.units, yard);
+  core::HerdRow team;
+  team.kind = core::LivestockKindId{0};
+  team.adult_count = 2;
+  team.unit = yard_id;
+  core::AppendRow(world.herds, team);
+  world.chairman.horses_stabled = 1;
+}
+
 core::FieldId AddHeap(core::WorldState& world, core::Grams grams, std::uint16_t resource) {
   core::FieldRow field;
   field.kind = core::LandKind::kArable;
@@ -326,6 +344,7 @@ int TestTheCargoForm() {
   for (const core::LogisticsTaskId task : world.logistics_tasks.row_ids) {
     core::CartLeg leg;
     leg.task = task;
+    leg.arrive = 1;  // an hour at the load: a load leg with no time on it carried nothing (F3)
     cart.legs.push_back(leg);
   }
   core::CartPlan people;
@@ -567,7 +586,8 @@ int TestThePlansChains() {
 /// fault «the re-plan breaks begun legs» reddened none of it.
 int TestTheReplan() {
   int failures = 0;
-  const test::FakeTableSet no_tables{{}};
+  const test::FakeTable horses{{"key"}, {{"horse"}}};
+  const test::FakeTableSet no_tables{{{"livestock", &horses}}};
   const auto system = core::CreateLogisticsSystem(no_tables, core::StubTables::kAllowed);
   if (Expect(system != nullptr, "re-plan: the system assembles on its defaults") != 0) {
     return 1;
@@ -603,6 +623,7 @@ int TestTheReplan() {
       carter.work.rides_horse = 1;
       core::AppendRow(world.residents, carter);
     }
+    StableTheTeam(world);
     world.calendar.tick = (3 * core::kTicksPerDay) + 1;
     system->BuildPlan(world);
     if (horse_lost) {
@@ -661,6 +682,224 @@ int TestTheReplan() {
   return failures;
 }
 
+/// NO LOGISTICS BEFORE THE HORSE YARD (transport design §12, «До конного
+/// двора нет и конюха — логистики нет вовсе»; the Fable review of 11 October
+/// 2026, item 6): a heap and a carter on a horse; with no yard the day's
+/// tasks are not born and the plan has no cart; the pair — the same village
+/// with its yard standing — has both.
+int TestNoLogisticsBeforeTheYard() {
+  int failures = 0;
+  const test::FakeTable horses{{"key"}, {{"horse"}}};
+  const test::FakeTableSet tables{{{"livestock", &horses}}};
+  const auto system = core::CreateLogisticsSystem(tables, core::StubTables::kAllowed);
+  if (Expect(system != nullptr, "before the yard: the system assembles") != 0) {
+    return 1;
+  }
+  const auto day_of = [&system](bool yard, core::WorldState& world) {
+    world.weather.daylight_hours = 12.0F;
+    world.calendar.day = 3;
+    core::FieldRow field;
+    field.kind = core::LandKind::kArable;
+    field.center = core::Vec2{.x = 500.0F, .y = 0.0F};
+    field.reaped_grams = 1'000'000;
+    field.reaped_resource = core::ResourceId{0};
+    field.haul_days_remaining = 1.0F;
+    const core::FieldId heap = core::AppendRow(world.fields, field);
+    core::UnitRow house;
+    const core::UnitId house_id = core::AppendRow(world.units, house);
+    core::FamilyRow household;
+    household.house = house_id;
+    const core::FamilyId family = core::AppendRow(world.families, household);
+    world.units.rows[0].household = family;
+    core::ResidentRow carter;
+    carter.family = family;
+    carter.work.kind = core::WorkKind::kHauling;
+    carter.work.field = heap;
+    carter.work.rides_horse = 1;
+    core::AppendRow(world.residents, carter);
+    if (yard) {
+      StableTheTeam(world);
+    }
+    world.calendar.tick = 3 * core::kTicksPerDay;
+    system->RunTasks(world, world);
+    world.calendar.tick = (3 * core::kTicksPerDay) + 1;
+    system->BuildPlan(world);
+  };
+  core::WorldState bare;
+  day_of(false, bare);
+  failures += Expect(bare.logistics_tasks.rows.empty() && bare.groom_plan.carts.empty() &&
+                         bare.groom_plan.day == 3,
+                     "before the yard: no task is born and today's plan has no cart");
+  core::WorldState stabled;
+  day_of(true, stabled);
+  failures +=
+      Expect(stabled.logistics_tasks.rows.size() == 1 && stabled.groom_plan.carts.size() == 1,
+             "and the pair: with the yard standing, the heap's task and its cart");
+  return failures;
+}
+
+/// THE TRIPS AND THE EVENING (stage В, F3 (A) and (B); transport design §11,
+/// «Обратный путь», 357c60d0; the Fable review of 11 October 2026, items 1
+/// and 10): a load 1.2 km out with its receiver written 200 m from the yard,
+/// a carter on a horse, twelve hours of light, and a feller at the load's
+/// place who rode the cart out this morning. The day's plan draws the load's
+/// trips — a loaded leg load → receiver, its empty way back — and the door
+/// names the loaded leg's form and the way back's nought. THE EVENING: on a
+/// hay heap the last loaded trip takes the feller home (rides_home_with the
+/// carter, his way home shorter than his walk, a seat on that leg); on a
+/// stand's logs the same trips refuse him by the form, no empty leg sets out
+/// within a walk of him, and he walks — his whole walk written, the refusal
+/// counted. The two worlds differ in the load's resource alone.
+int TestTheTripsAndTheEvening() {
+  int failures = 0;
+  const test::FakeTable resources{{"key", "cargo_form", "is_fuel"},
+                                  {{"hay", "rick", "0"}, {"log", "long", "0"}}};
+  const test::FakeTable transport{{"key", "seats"}, {{"cart_loaded", "2"}}};
+  const test::FakeTable horses{{"key"}, {{"horse"}}};
+  const test::FakeTableSet tables{
+      {{"resources", &resources}, {"transport", &transport}, {"livestock", &horses}}};
+  const auto system = core::CreateLogisticsSystem(tables, core::StubTables::kAllowed);
+  core::LogisticsConfig config;
+  std::string error;
+  if (Expect(system != nullptr && core::ParseLogisticsConfig(tables, config, error),
+             "trips: the system assembles and the config reads the tables") != 0) {
+    return 1;
+  }
+  const core::Vec2 load_at{.x = 1'200.0F, .y = 0.0F};
+  const core::Vec2 receiver_at{.x = 200.0F, .y = 0.0F};
+
+  struct Day {
+    core::LogisticsTally tally;
+    core::ResidentId carter;
+    core::ResidentId feller;
+  };
+
+  const auto day_of = [&system, &load_at, &receiver_at](bool logs, core::WorldState& world) {
+    world.weather.daylight_hours = 12.0F;
+    world.calendar.day = 3;
+    core::ResidentRow carter;
+    carter.work.kind = core::WorkKind::kHauling;
+    carter.work.rides_horse = 1;
+    if (logs) {
+      core::TimberStandRow stand;
+      stand.position = load_at;
+      stand.load_grams = 5'000'000;
+      stand.haul_days_remaining = 5.0F;
+      stand.haul_to = receiver_at;
+      carter.work.stand = core::AppendRow(world.stands, stand);
+    } else {
+      core::FieldRow field;
+      field.kind = core::LandKind::kArable;
+      field.center = load_at;
+      field.reaped_grams = 5'000'000;
+      field.reaped_resource = core::ResourceId{0};
+      field.haul_days_remaining = 5.0F;
+      field.haul_to = receiver_at;
+      carter.work.field = core::AppendRow(world.fields, field);
+    }
+    core::TimberStandRow felling;  // the feller's work, at the load's place; no load of its own
+    felling.position = load_at;
+    const core::TimberStandId wood = core::AppendRow(world.stands, felling);
+    core::UnitRow house;
+    const core::UnitId house_id = core::AppendRow(world.units, house);
+    core::FamilyRow household;
+    household.house = house_id;
+    const core::FamilyId family = core::AppendRow(world.families, household);
+    world.units.rows[0].household = family;
+    carter.family = family;
+    Day day;
+    day.carter = core::AppendRow(world.residents, carter);
+    core::ResidentRow feller;
+    feller.family = family;
+    feller.work.kind = core::WorkKind::kFelling;
+    feller.work.stand = wood;
+    feller.work.rides_cart_of = day.carter;  // seated on the cart's empty morning ride
+    day.feller = core::AppendRow(world.residents, feller);
+    StableTheTeam(world);
+    world.calendar.tick = 3 * core::kTicksPerDay;
+    system->RunTasks(world, world);
+    world.calendar.tick = (3 * core::kTicksPerDay) + 1;
+    day.tally = system->BuildPlan(world);
+    return day;
+  };
+  const auto legs_of = [&config](const core::WorldState& world,
+                                 const Day& day,
+                                 std::uint32_t& loaded,
+                                 std::uint32_t& ways_back,
+                                 core::CargoForm& loaded_form,
+                                 core::CargoForm& way_back_form,
+                                 bool& feller_on_a_loaded_leg) {
+    loaded = 0;
+    ways_back = 0;
+    loaded_form = core::CargoForm::kPeople;
+    way_back_form = core::CargoForm::kPeople;
+    feller_on_a_loaded_leg = false;
+    for (const core::CartPlan& cart : world.groom_plan.carts) {
+      if (cart.driver.value != day.carter.value) {
+        continue;
+      }
+      for (const core::CartLeg& leg : cart.legs) {
+        const bool load_to_receiver = leg.from.x == 1'200.0F && leg.to.x == 200.0F;
+        const bool receiver_to_load = leg.from.x == 200.0F && leg.to.x == 1'200.0F;
+        if (leg.loaded != 0 && load_to_receiver) {
+          ++loaded;
+          loaded_form = core::LegCargoForm(config, world, leg);
+          for (const core::ResidentId rider : leg.riders) {
+            feller_on_a_loaded_leg = feller_on_a_loaded_leg || rider.value == day.feller.value;
+          }
+        } else if (leg.loaded == 0 && receiver_to_load &&
+                   leg.task.value != core::kInvalidEntityIdValue) {
+          ++ways_back;
+          way_back_form = core::LegCargoForm(config, world, leg);
+        }
+      }
+    }
+  };
+  core::WorldState hay;
+  const Day hay_day = day_of(false, hay);
+  std::uint32_t loaded = 0;
+  std::uint32_t ways_back = 0;
+  core::CargoForm loaded_form = core::CargoForm::kNone;
+  core::CargoForm way_back_form = core::CargoForm::kNone;
+  bool feller_rides_loaded = false;
+  legs_of(hay, hay_day, loaded, ways_back, loaded_form, way_back_form, feller_rides_loaded);
+  std::cout << "  trips on the hay heap: loaded legs " << loaded << ", ways back " << ways_back
+            << ", the day's loaded trips " << hay_day.tally.loaded_trips << '\n';
+  failures += Expect(loaded >= 2 && ways_back >= 1 && hay_day.tally.loaded_trips == loaded &&
+                         hay_day.tally.legs_standing_at_load == 0,
+                     "trips: the hay is carted in trips — loaded legs load → receiver, empty "
+                     "ways back, none standing at the load");
+  failures +=
+      Expect(loaded_form == core::CargoForm::kRick && way_back_form == core::CargoForm::kNone,
+             "trips: the door names the loaded leg a rick and the way back nought");
+  const core::WorkAssignment& hay_feller =
+      hay.residents.rows[core::FindRow(hay.residents, hay_day.feller)].work;
+  failures += Expect(hay_feller.rides_home_with.value == hay_day.carter.value &&
+                         hay_feller.travel_home_hours >= 0.0F && feller_rides_loaded &&
+                         hay_day.tally.evening_wanting == 1 && hay_day.tally.evening_seated == 1 &&
+                         hay_day.tally.evening_refused_by_form == 0,
+                     "evening: the feller rides the hay home on a loaded trip — seated, written");
+
+  core::WorldState logs;
+  const Day log_day = day_of(true, logs);
+  legs_of(logs, log_day, loaded, ways_back, loaded_form, way_back_form, feller_rides_loaded);
+  failures += Expect(loaded >= 2 && loaded_form == core::CargoForm::kLong,
+                     "trips: the logs are carted in trips, and the door names them long");
+  const core::WorkAssignment& log_feller =
+      logs.residents.rows[core::FindRow(logs.residents, log_day.feller)].work;
+  std::cout << "  the feller's way home: on the hay " << hay_feller.travel_home_hours
+            << " h, on the logs (his walk) " << log_feller.travel_home_hours << " h\n";
+  failures +=
+      Expect(log_feller.rides_home_with.value == core::kInvalidEntityIdValue &&
+                 log_feller.travel_home_hours > 0.0F && !feller_rides_loaded &&
+                 log_day.tally.evening_seated == 0 && log_day.tally.evening_refused_by_form == 1,
+             "evening: the log trips refuse the feller by the form — he walks, his "
+             "whole walk written, the refusal counted");
+  failures += Expect(hay_feller.travel_home_hours < log_feller.travel_home_hours - 0.1F,
+                     "evening: the ride home is shorter than the walk by the plan's own margin");
+  return failures;
+}
+
 /// THE CHAIRMAN'S DOORS TO THE TASKS (B7; order_state.h, kSetLogisticsLevel
 /// and kPauseLogisticsTask): two heaps, a task each, today's plan built at
 /// hour 1. At hour 5 the chairman raises the first to level 0 and pauses the
@@ -673,7 +912,8 @@ int TestTheReplan() {
 /// nothing. The next morning's ageing keeps the player's level 0.
 int TestTheChairmansDoors() {
   int failures = 0;
-  const test::FakeTableSet no_tables{{}};
+  const test::FakeTable horses{{"key"}, {{"horse"}}};
+  const test::FakeTableSet no_tables{{{"livestock", &horses}}};
   const auto system = core::CreateLogisticsSystem(no_tables, core::StubTables::kAllowed);
   if (Expect(system != nullptr, "doors: the system assembles on its defaults") != 0) {
     return 1;
@@ -705,6 +945,7 @@ int TestTheChairmansDoors() {
     carter.work.field = world.fields.row_ids[0];
     carter.work.rides_horse = 1;
     core::AppendRow(world.residents, carter);
+    StableTheTeam(world);
     world.calendar.tick = (3 * core::kTicksPerDay) + 1;
     system->BuildPlan(world);
     world.calendar.tick = (3 * core::kTicksPerDay) + 5;
@@ -1124,6 +1365,8 @@ int main() {
   failures += TestTheCargoForm();
   failures += TestTheWayHomeFitsTheLight();
   failures += TestTheReplan();
+  failures += TestNoLogisticsBeforeTheYard();
+  failures += TestTheTripsAndTheEvening();
   failures += TestTheChairmansDoors();
   failures += TestTheLateLoadsLamp();
   failures += TestTheDayOffHeldTheLoad();
