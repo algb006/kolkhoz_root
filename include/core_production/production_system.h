@@ -141,6 +141,17 @@ class IProductionSystem {
   /// steps on the sim thread through ISimulation::CollectAlarms.
   virtual void CollectAlarms(const WorldState& completed, std::vector<Alarm>& alarms) const = 0;
 
+  /// @brief Prices a supply plan (supply_estimate.h; routing stage V2): the
+  /// days one cart — or, with no draught horse free, one carrier on foot —
+  /// would take to bring `plan.grams` from `plan.sender` to `site`, by the
+  /// rate every load is priced at today (the road, the bed, the cart's load).
+  /// @return `plan` with `cart_days` and `on_foot` filled; untouched when
+  ///         `plan.grams` is 0.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual SupplyEstimate PriceSupply(const WorldState& completed,
+                                     SupplyEstimate plan,
+                                     Vec2 site) const = 0;
+
   /// @brief Appends the stock lights this subsystem owns (task: the stock
   /// traffic light). Two: StockKind::kFeed and StockKind::kSeed.
   ///

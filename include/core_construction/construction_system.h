@@ -141,6 +141,7 @@
 #include "core_common/material_shortfall.h"
 #include "core_common/road_draft.h"
 #include "core_common/stink.h"
+#include "core_common/supply_estimate.h"
 #include "core_common/world_state.h"
 #include "core_tables/stub_tables.h"
 
@@ -233,6 +234,22 @@ class IConstructionSystem {
   /// @note Called between steps on the sim thread. A pure read.
   virtual std::vector<MaterialShortfall> MaterialsShortFor(const WorldState& completed,
                                                            UnitId unit) const = 0;
+
+  /// @brief What the works on `unit` have, or would have, carted to them and
+  /// from where — the construction half of the supply estimate
+  /// (supply_estimate.h; routing stage V2): `grams` and `sender` are filled,
+  /// the price is production's to add (IProductionSystem::PriceSupply).
+  ///
+  /// The works asked about are MaterialsShortFor's: a marked site's own
+  /// target level, a standing unit's next level; and, for works already
+  /// started, what is fixed for them and still awaits. For works not started
+  /// the fixing is rehearsed without touching anything: each recipe line less
+  /// what lies on the unit, as far as the standing units' unreserved stock
+  /// holds it, the nearest first; the sender is the largest single giver.
+  /// @return `grams` 0 for a unit that is not there, a marking class, a
+  ///         repair, a unit at the top of its ladder, or nothing to cart.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual SupplyEstimate SupplyPlanFor(const WorldState& completed, UnitId unit) const = 0;
 
   /// @brief How badly it stinks at this point AT WORST — the FULL zone of
   /// every source that reaches it (water design §4).

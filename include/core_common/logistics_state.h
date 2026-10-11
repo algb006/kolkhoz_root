@@ -76,11 +76,17 @@ inline constexpr std::uint32_t kLogisticsLevelCount =
 /// @brief What a task carts — the load's address. One task a load (boss [9],
 ///        default 2): how many carts it takes is the plan's to decide.
 enum class LogisticsLoadKind : std::uint8_t {
-  kFieldHeap = 0,           ///< A field's reaped heap (FieldRow::reaped_grams), arable or meadow.
-  kStandLogs,               ///< A stand's felled logs (TimberStandRow::load_grams).
-  kSiteDig,                 ///< A pit's dug load (ExtractionSiteRow::load_grams).
-  kDistrictLot,             ///< A timber lot at the district for the village's carts.
-  kStoreTransfer,           ///< A store being emptied (UnitRow::emptying): the church's.
+  kFieldHeap = 0,  ///< A field's reaped heap (FieldRow::reaped_grams), arable or meadow.
+  kStandLogs,      ///< A stand's felled logs (TimberStandRow::load_grams).
+  kSiteDig,        ///< A pit's dug load (ExtractionSiteRow::load_grams).
+  kDistrictLot,    ///< A timber lot at the district for the village's carts.
+  kStoreTransfer,  ///< A store being emptied (UnitRow::emptying): the church's.
+  /// The materials fixed for a works and not yet on it (routing stage V2,
+  /// 0.37.204; ConstructionState::awaiting): carted from their sender to the
+  /// unit named in `unit`. A unit under an emptying order has no such task
+  /// until the order is over — one hauling work names one unit. Seam key
+  /// `site_supply`.
+  kSiteSupply,
   kLogisticsLoadKindCount,  ///< NOT A KIND: the count.
 };
 

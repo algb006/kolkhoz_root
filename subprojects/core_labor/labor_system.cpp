@@ -920,8 +920,15 @@ class LaborSystem final : public ILaborSystem {
       // logs off them (roads design §11), every other ride a team.
       std::size_t ride_mode = 1;
       if (job.kind == WorkKind::kHauling) {
+        // AND LOGS STRAIGHT OFF A STAND TO A WORKS (the direct leg;
+        // AssignmentJob::log_cart). The arm's first run had this ride as the
+        // produce cart's: the stand's loading point lay past the road limit
+        // by the roads alone, nobody was placed, and works with a stand's leg
+        // at the front waited 150-340 days (27 works over twenty days in
+        // nine villages' ten years, every one with a direct leg; the works
+        // fed from stores alone waited 13 at the worst).
         const bool logs = job.stand.value != kInvalidEntityIdValue ||
-                          job.limit_delivery.value != kInvalidEntityIdValue;
+                          job.limit_delivery.value != kInvalidEntityIdValue || job.log_cart;
         ride_mode = logs ? 3 : 2;
       }
       // THE BRIGADE'S CART RIDES AS A TEAM, the fellers' way and the mowers'
@@ -1636,6 +1643,50 @@ class LaborSystem final : public ILaborSystem {
         job.unit = current.units.row_ids[row];
         job.position = unit.position;
         job.work_days_remaining = unit.haul_days_remaining;
+        job.harnessed = DraughtHorses(current) > 0;
+        jobs.push_back(job);
+      }
+      // THE SUPPLY OF A WORKS (routing stage V2; transport §12): the carting
+      // of the materials fixed for a site, from their sender to it — on the
+      // same carts and hands. DUE BY A DATE (level 1, «срок»): its window is
+      // the days left of LaborConfig::site_supply_term_days from the day the
+      // materials were fixed, so it stands among the open windows by them — a
+      // heap two days from the snow goes before a site fixed this morning, a
+      // site that has waited the term out goes before every window with a day
+      // to spare. The carter's place is the sender, where he loads. A unit
+      // being emptied is carted out first (work_seam.cpp): it is not offered
+      // here until that is done.
+      for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
+        const UnitRow& unit = current.units.rows[row];
+        if (unit.emptying != 0 || unit.paused != 0 ||
+            !(unit.construction.supply_days_remaining > 0.0F) ||
+            !AnythingAwaits(unit.construction)) {
+          continue;
+        }
+        AssignmentJob job;
+        job.kind = WorkKind::kHauling;
+        job.unit = current.units.row_ids[row];
+        job.position = unit.construction.supply_from;
+        job.supplies_works = true;
+        job.log_cart = unit.construction.supply_log_way != 0;
+        const SimDay since = unit.construction.supply_since_day;
+        const SimDay waited = current.calendar.day > since ? current.calendar.day - since : 0;
+        // THE TERM BY THE WORKS' OWN LOAD (econ, core-boss-c2-site-supply-
+        // 2026-10-09 [19]-[20]): the flat term up to twice its number of
+        // cart-days, and above that half the load's cart-days — a works of
+        // thirty cart-days held to the eight days of a works of two was late
+        // by the rule's own making (pair 4: 85.4 % within the flat term,
+        // worst wait 23 days). The load is the one production priced when
+        // the materials were fixed (ConstructionState::supply_days_first).
+        const SimDay term =
+            SiteSupplyTermDays(config_.site_supply_term_days, unit.construction.supply_days_first);
+        job.window = DeadlineInDays(waited < term ? static_cast<std::int32_t>(term - waited) : 0);
+        // THE CREW IS SIZED BY THE WHOLE LOAD, every leg's (ConstructionState::
+        // supply_days_all): the seam the carters drain is the front leg's,
+        // the next is written the hour it is carted out, and they go on to
+        // it — a crew sized by the front leg alone carted a leg a morning.
+        job.work_days_remaining =
+            std::max(unit.construction.supply_days_remaining, unit.construction.supply_days_all);
         job.harnessed = DraughtHorses(current) > 0;
         jobs.push_back(job);
       }

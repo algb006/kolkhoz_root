@@ -749,6 +749,8 @@ bool ReadRecipes(const ITable& costs,
   const std::uint32_t level_col = costs.FindColumn("level");
   const std::uint32_t resource_col = costs.FindColumn("resource");
   const std::uint32_t amount_col = costs.FindColumn("amount");
+  // Absent in a unit test's small roster: nothing there spoils.
+  const std::uint32_t spoil_col = resources.FindColumn("spoil_days");
   if (unit_col == kNoTableColumn || level_col == kNoTableColumn || resource_col == kNoTableColumn ||
       amount_col == kNoTableColumn) {
     Fail(error, "unit_level_cost", "a required column is missing");
@@ -791,6 +793,32 @@ bool ReadRecipes(const ITable& costs,
       Fail(error,
            "unit_level_cost",
            "row " + std::to_string(row) + " names a resource with no kg_per_unit");
+      return false;
+    }
+    // A RECIPE NAMES NOTHING THAT SPOILS (routing stage V2; boss, the C2
+    // thread [2]): a material fixed for a works leaves the stores' stock and
+    // waits in ConstructionState::awaiting until the carts bring it — in no
+    // store, so no spoilage, no theft and no keeping rule reaches it there.
+    // That is right for logs, boards, clay and stone, and wrong, silently, for
+    // the first resource with a shelf life somebody puts into a recipe: the
+    // tables are refused then, and the awaiting must learn to spoil first.
+    float spoil_days = 0.0F;
+    if (spoil_col != kNoTableColumn && !CellOrDefault(resources,
+                                                      resource_row,
+                                                      spoil_col,
+                                                      Range{.low = 0.0F, .high = 100000.0F},
+                                                      0.0F,
+                                                      spoil_days,
+                                                      error)) {
+      Fail(error, "resources", "spoil_days is out of range for a recipe's resource");
+      return false;
+    }
+    if (spoil_days > 0.0F) {
+      Fail(error,
+           "unit_level_cost",
+           "row " + std::to_string(row) +
+               " names a resource that spoils (resources.csv spoil_days): a material "
+               "awaiting its carting to a site lies in no store and would not spoil");
       return false;
     }
     if (!CellOrDefault(
@@ -971,6 +999,10 @@ bool ParseConstructionConfig(const ITableSet& tables,
       grams_per_unit[spare_row] > 0) {
     config.spare_part_resource = DefIdFromRow<ResourceIdTag>(spare_row);
     config.spare_part_grams = grams_per_unit[spare_row];
+  }
+  config.log_resource = ResourceId{};
+  if (const std::uint32_t log_row = resources->FindRowByKey("log"); log_row != kNoTableRow) {
+    config.log_resource = DefIdFromRow<ResourceIdTag>(log_row);
   }
   config.old_house_type = DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("old_house"));
   // The MTS column's camp and how near the fields it stands (field_camp.h).

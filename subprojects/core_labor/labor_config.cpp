@@ -50,9 +50,13 @@ bool ParseScalars(const ITable& table, LaborConfig& config, std::string& error) 
   float placement = config.placement_level;
   auto last_days = static_cast<float>(config.harvest_snow_last_days);
   auto hay_need_days = static_cast<float>(config.hay_cart_need_days);
-  const std::array<ScalarKnob, 20> knobs = {{
+  auto supply_term_days = static_cast<float>(config.site_supply_term_days);
+  const std::array<ScalarKnob, 21> knobs = {{
       {.key = "hay_cart_need_days",
        .value = &hay_need_days,
+       .range = {.low = 0.0F, .high = static_cast<float>(kDaysPerYear)}},
+      {.key = "site_supply_term_days",
+       .value = &supply_term_days,
        .range = {.low = 0.0F, .high = static_cast<float>(kDaysPerYear)}},
       {.key = "standard_day_hours",
        .value = &config.standard_day_hours,
@@ -114,6 +118,7 @@ bool ParseScalars(const ITable& table, LaborConfig& config, std::string& error) 
   config.placement_level = static_cast<std::uint8_t>(placement);
   config.harvest_snow_last_days = static_cast<std::uint32_t>(last_days);
   config.hay_cart_need_days = static_cast<std::uint32_t>(hay_need_days);
+  config.site_supply_term_days = static_cast<std::uint32_t>(supply_term_days);
   return true;
 }
 

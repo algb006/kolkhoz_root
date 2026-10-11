@@ -341,6 +341,23 @@ struct LaborConfig {
   /// stores stood empty in the spring and the horses fell from 40 to 24
   /// (0.37.129). 0 days, or the function empty: never short.
   std::uint32_t hay_cart_need_days = 12;
+
+  /// THE SUPPLY OF A WORKS IS DUE BY A DATE (routing stage V2, 0.37.204;
+  /// boss, the C2 thread [12]; transport §12, level 1 «срок»): the game days
+  /// from the day its materials were fixed (ConstructionState::
+  /// supply_since_day) within which they are to be on the site (labor.csv
+  /// `site_supply_term_days`; STUB 8, econ's — her own gate for the worst
+  /// wait of a site). THE FLAT TERM: a works whose whole load is above twice
+  /// as many cart-days is due in half its load's cart-days instead
+  /// (assignment.h, SiteSupplyTermDays). The supply job carries the days LEFT of it as its
+  /// window and takes its place among the open windows by them. Both ends of
+  /// the queue were measured before the date was given (nine villages, ten
+  /// years, against 0.37.203): behind every window a site waited 4-5 days at
+  /// the median for its recipe and the houses of year 4 fell by 10-16 %;
+  /// ahead of every window 219 t of the harvest went under the snow in years
+  /// 1-3 — the supply costs 6.6 cart-days a works, some 5 % of the
+  /// horse-days, in the harvest's own season.
+  std::uint32_t site_supply_term_days = 8;
   std::function<bool(const WorldState&, std::uint32_t)> stored_hay_short;
 
   /// The last month of the meadow cut, 0-based (farming.csv

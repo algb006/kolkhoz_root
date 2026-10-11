@@ -145,6 +145,53 @@ class ConstructionSystem final : public IConstructionSystem {
     return {};
   }
 
+  SupplyEstimate SupplyPlanFor(const WorldState& completed, UnitId unit) const override {
+    SupplyEstimate plan;
+    const std::uint32_t row = FindRow(completed.units, unit);
+    if (row == kNoRow) {
+      return plan;
+    }
+    const UnitRow& site = completed.units.rows[row];
+    // Works under way: what is fixed for them and still awaits, from the
+    // sender it was fixed at.
+    if (site.construction.phase == ConstructionPhase::kDelivering) {
+      for (const Grams grams : site.construction.awaiting) {
+        plan.grams += grams;
+      }
+      plan.sender = site.construction.supply_from;
+      return plan;
+    }
+    // Works a start would open (MaterialsShortFor's two cases): the fixing
+    // rehearsed on the completed state, nothing touched.
+    std::uint8_t level = 0;
+    if (site.construction.phase == ConstructionPhase::kMarked) {
+      level = site.construction.target_level;
+    } else if (site.construction.phase == ConstructionPhase::kNone && site.level > 0 &&
+               site.type.value < config_.types.size() &&
+               static_cast<std::size_t>(site.level) <
+                   config_.types[site.type.value].levels.size()) {
+      level = static_cast<std::uint8_t>(site.level + 1U);
+    }
+    const BuildLevel* const step = level == 0 ? nullptr : LevelOf(site.type, level);
+    if (step == nullptr || step->is_marking != 0) {
+      return plan;
+    }
+    LargestGiver giver;
+    for (const BuildMaterial& material : step->recipe) {
+      const Grams on_site = AmountAt(site.stock, material.resource);
+      if (on_site < material.grams) {
+        plan.grams += RehearseTakeForSite(completed,
+                                          row,
+                                          material.resource,
+                                          material.grams - on_site,
+                                          config_.log_resource,
+                                          giver);
+      }
+    }
+    plan.sender = giver.position;
+    return plan;
+  }
+
   StinkStrength StinkFullAt(const WorldState& completed, Vec2 point) const override {
     return core::StinkFullAt(config_, completed, point);
   }
@@ -249,12 +296,22 @@ class ConstructionSystem final : public IConstructionSystem {
       // The FIRST material short, in recipe order: one alarm names one
       // shortfall, and the recipe's own order is the deterministic choice.
       for (const BuildMaterial& material : step->recipe) {
-        const Grams on_site = AmountAt(site.stock, material.resource);
+        // What is fixed for the site counts, on it or on its way (V2): the
+        // alarm is the village not HAVING it, not the carts not yet there.
+        const Grams on_site = FixedForSite(site, material.resource);
         if (on_site >= material.grams) {
           continue;
         }
         const Grams lacking = material.grams - on_site;
-        const Grams available = HeldEverywhere(completed, material.resource);
+        // AND WHAT LIES DUG AT A PIT OR FELLED AT A STAND IS ON ITS WAY (V2,
+        // «стройка видит накопленное»): the start counted it as held
+        // (ShortfallOf), so the alarm may not call the same grams missing the
+        // morning after. In V2's second pair, before this line, a site
+        // started on clay still at its pit lit this lamp red at once: 47
+        // stop-days of the fast-forward in 45 village-years, 42 of them its
+        // own, for materials the carts were bringing.
+        const Grams available = HeldEverywhere(completed, material.resource) +
+                                LyingUnfetched(completed, material.resource);
         if (available >= lacking) {
           continue;  // the stores can still cover it; the stub will bring it
         }
@@ -283,6 +340,8 @@ class ConstructionSystem final : public IConstructionSystem {
       // The road works whose labour was done yesterday take their surface
       // or leave the network (7e; road_laying.h).
       SettleRoadWorks(current);
+    } else {
+      OpenSuppliedSites(current);
     }
     if (HourFromTick(current.calendar.tick) == kCrewCountHour) {
       CountCrewlessDays(current);
@@ -780,12 +839,41 @@ class ConstructionSystem final : public IConstructionSystem {
           held += UnreservedOf(world.units.rows[other], material.resource);
         }
       }
+      // What is fixed for THIS site and still on its way is its own (V2).
+      held += AmountAt(world.units.rows[row].construction.awaiting, material.resource);
+      // «СТРОЙКА ВИДИТ НАКОПЛЕННОЕ» (routing stage V2, (Б); boss, the logistics
+      // thread [205]): what lies dug at a pit and felled at a stand is the
+      // farm's too — the design's own list is «на складах, в навалах и уже на
+      // площадке» (construction design §6). Until 0.37.204 a start was refused
+      // for clay that lay dug a kilometre off, waiting for the same carts the
+      // refused site would have raised. It is not taken at the start — it is
+      // in no store — and the site takes it in the mornings after, as the carts
+      // bring it in (DeliverMaterials).
+      held += LyingUnfetched(world, material.resource);
       if (held < material.grams) {
         short_lines.push_back(MaterialShortfall{
             .resource = material.resource, .needed = material.grams, .held = held});
       }
     }
     return short_lines;
+  }
+
+  /// @brief The grams of `resource` lying dug at the pits and felled at the
+  /// stands, not yet carted to a store ((Б), ShortfallOf). A stand's load is
+  /// logs (ConstructionConfig::log_resource).
+  Grams LyingUnfetched(const WorldState& world, ResourceId resource) const {
+    Grams lying = 0;
+    for (const ExtractionSiteRow& pit : world.extraction_sites.rows) {
+      if (pit.resource.value == resource.value) {
+        lying += pit.load_grams;
+      }
+    }
+    if (resource.value == config_.log_resource.value && resource.value != kInvalidDefIdValue) {
+      for (const TimberStandRow& stand : world.stands.rows) {
+        lying += stand.load_grams;
+      }
+    }
+    return lying;
   }
 
   /// @brief THE MATERIALS BECOME THE SITE'S AT THE START (construction design
@@ -934,6 +1022,9 @@ class ConstructionSystem final : public IConstructionSystem {
     // An upgrade stopped by the demolition: its recipe is stock like the
     // rest, and nothing is held back for works that are gone.
     site.construction.reserved.clear();
+    // And what was fixed for them and not yet carted is stock too (V2): it
+    // goes out through the stores' door with the rest.
+    FoldAwaitingIntoStock(site);
     site.construction.phase = ConstructionPhase::kDemolishing;
     site.construction.target_level = 0;
     site.construction.labor_days_total = norm * config_.demolition_labor_share;
@@ -966,14 +1057,17 @@ class ConstructionSystem final : public IConstructionSystem {
   /// @brief The delivery half of a repair: bring the spare parts the frozen norm
   /// calls for, and move to kRepairing when they are all on site. The same
   /// shape as a build's delivery — one resource instead of a recipe.
-  void DeliverRepairParts(WorldState& current, std::uint32_t row) {
+  void DeliverRepairParts(WorldState& current, std::uint32_t row, bool take) {
     UnitRow& site = current.units.rows[row];
     const ResourceId parts = config_.spare_part_resource;
     const Grams need = RepairPartsGrams(site.construction.labor_days_total);
-    const Grams have = AmountAt(site.stock, parts);
-    if (have < need) {
-      const Grams taken = TakeFromStores(current, row, parts, need - have);
-      AddTo(current.units.rows[row].stock, parts, taken);
+    const Grams fixed = FixedForSite(site, parts);
+    if (take && fixed < need) {
+      // Fixed here, carted by the groom, as a recipe is (DeliverSite).
+      const bool awaited = AnythingAwaits(site.construction);
+      LargestGiver giver;
+      TakeForSite(current, row, parts, need - fixed, config_.log_resource, giver);
+      StampTheWait(current.units.rows[row], awaited, current.calendar.day);
     }
     const BuildMaterial line{.resource = parts, .grams = need};
     HoldBack(current.units.rows[row], std::span<const BuildMaterial>(&line, 1));
@@ -1002,13 +1096,17 @@ class ConstructionSystem final : public IConstructionSystem {
     // The start's wrecked mill comes back into service here and nowhere
     // else — a state nothing clears is not a state, it is a verdict.
     site.dead = 0;
+    FoldAwaitingIntoStock(site);
     site.construction = ConstructionState{};
     Emit(current, EventKind::kUnitRepaired, EventSeverity::kNotable, unit);
   }
 
-  /// @brief STUB of project phase 1's logistics: whatever the recipe still
-  /// lacks is taken from the stores in row order, distance ignored. Task A4
-  /// replaces this with routing behind the same seam — the site's own stock.
+  /// @brief The day's fixing: whatever a site's recipe still lacks — on the
+  /// site and on its way together — is taken out of the stores for it, the
+  /// nearest first, into ConstructionState::awaiting; the groom's carts bring
+  /// it (routing stage V2). Until 0.37.204 this was the STUB of project phase
+  /// 1's logistics: taken in row order and on the site the same tick,
+  /// distance ignored.
   ///
   /// It had been standing over DeliverRepairParts, which has no recipe at
   /// all — and that function's own next sentence said so, so one block
@@ -1036,16 +1134,38 @@ class ConstructionSystem final : public IConstructionSystem {
     }
   }
 
+  /// @brief THE HOUR'S LOOK AT THE SITES THE CARTS SUPPLY (routing stage V2):
+  /// production has just put the hour's carted share on each site
+  /// (field_haul.h, SettleSiteSupply — it runs before this sub-step), so a
+  /// site whose recipe is now whole opens its labour this hour and not at the
+  /// next midnight, and what arrived at a standing unit is held back for its
+  /// works before any taker of the next hour sees it. Takes nothing from the
+  /// stores: the fixing is the day's (DeliverMaterials) and the start's.
+  void OpenSuppliedSites(WorldState& current) {
+    for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
+      const UnitRow& site = current.units.rows[row];
+      if (site.construction.phase != ConstructionPhase::kDelivering || site.paused != 0 ||
+          !ModuleParentSound(current, site)) {
+        continue;
+      }
+      DeliverSite(current, row, /*take=*/false);
+    }
+  }
+
   /// @brief One site's delivery: what its recipe (or a repair's parts) still
-  /// lacks is taken from the stores, and at the full recipe the labour opens.
-  void DeliverSite(WorldState& current, std::uint32_t row) {
+  /// lacks is fixed in the stores for it, and at the full recipe ON THE SITE
+  /// the labour opens.
+  /// @param take False for the hour's look (OpenSuppliedSites): nothing is
+  ///        taken from the stores, what the carts have brought is held back
+  ///        and the labour opens if the recipe is on the site.
+  void DeliverSite(WorldState& current, std::uint32_t row, bool take = true) {
     {
       // A REPAIR asks for spare parts and nothing else (construction design
       // §2), so its "recipe" is one line computed from the frozen norm — the
       // level's own recipe would rebuild the barn instead of mending it.
       if (current.units.rows[row].construction.target_level == current.units.rows[row].level &&
           current.units.rows[row].level > 0) {
-        DeliverRepairParts(current, row);
+        DeliverRepairParts(current, row, take);
         return;
       }
       const UnitTypeId type = current.units.rows[row].type;
@@ -1054,18 +1174,32 @@ class ConstructionSystem final : public IConstructionSystem {
       if (step == nullptr) {
         return;
       }
+      // FIXED HERE, CARTED BY THE GROOM (routing stage V2, 0.37.204): what the
+      // recipe still lacks — on the site and on its way together — is taken
+      // out of the stores into ConstructionState::awaiting, and production's
+      // supply seam brings it. The labour opens on what is ON THE SITE.
       bool complete = true;
+      const bool awaited = AnythingAwaits(current.units.rows[row].construction);
+      LargestGiver giver;
       for (const BuildMaterial& material : step->recipe) {
-        const Grams have = AmountAt(current.units.rows[row].stock, material.resource);
-        if (have >= material.grams) {
-          continue;
+        const Grams fixed = FixedForSite(current.units.rows[row], material.resource);
+        if (take && fixed < material.grams) {
+          // NO BOOK OF WHAT THE FARM STILL OWES (ConstructionState::owed, of
+          // V2's first pairs, is gone with the direct leg): the start counts
+          // what lies in the stores, at the pits and at the stands
+          // (ShortfallOf) and this taking draws on exactly those, so a works
+          // that started has all of it fixed in the same tick. The book could
+          // not be written above nought, and the logistics' rule that read it
+          // (a pit's task raised while a works owed its resource) could not
+          // fire: what lay at the pit is the works' own leg now.
+          TakeForSite(
+              current, row, material.resource, material.grams - fixed, config_.log_resource, giver);
         }
-        const Grams taken = TakeFromStores(current, row, material.resource, material.grams - have);
-        AddTo(current.units.rows[row].stock, material.resource, taken);
         if (AmountAt(current.units.rows[row].stock, material.resource) < material.grams) {
           complete = false;
         }
       }
+      StampTheWait(current.units.rows[row], awaited, current.calendar.day);
       HoldBack(current.units.rows[row], step->recipe);
       if (complete) {
         UnitRow& site = current.units.rows[row];
@@ -1134,6 +1268,7 @@ class ConstructionSystem final : public IConstructionSystem {
     // An upgrade repairs on its way, and a rebuild is the fullest repair
     // there is: it revives as surely as CompleteRepair does.
     site.dead = 0;
+    FoldAwaitingIntoStock(site);
     site.construction = ConstructionState{};
     Emit(current, EventKind::kUnitBuilt, EventSeverity::kNotable, unit);
   }

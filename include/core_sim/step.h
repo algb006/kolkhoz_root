@@ -86,6 +86,7 @@
 #include "core_common/road_draft.h"
 #include "core_common/stink.h"
 #include "core_common/stock_forecast.h"
+#include "core_common/supply_estimate.h"
 #include "core_common/world_junction.h"
 #include "core_common/world_state.h"
 
@@ -423,6 +424,13 @@ class ISimulation {
   /// to core_production; the bare engine knows no crops and answers none.
   /// @note Called between steps on the sim thread. A pure read.
   virtual GrassStandView GrassStandOf(FieldId field) const = 0;
+
+  /// @brief How long the carting of the materials of the works on `unit`
+  /// would take, said before they are started (supply_estimate.h; routing
+  /// stage V2). Fans out to core_construction (what and from where) and
+  /// core_production (at what price); the bare engine answers nothing to cart.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual SupplyEstimate SupplyEstimateFor(UnitId unit) const = 0;
 
   /// @brief How badly it stinks at a point of the map — AT WORST
   /// (StinkFullAt) and AS IT IS TODAY (StinkNowAt). Water design §4.

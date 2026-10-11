@@ -9,6 +9,7 @@
 #include "core_common/day_off.h"
 #include "core_common/herd_state.h"
 #include "core_common/land_state.h"
+#include "core_common/logistics_rules.h"
 #include "core_common/logistics_state.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
@@ -163,6 +164,78 @@ int TestThreats() {
   failures += Expect(TaskOfField(world, hay)->level == core::LogisticsLevel::kUrgent &&
                          hungry.urgent_by_hunger == 1,
                      "threats: a feed heap is urgent while a herd went underfed");
+  return failures;
+}
+
+/// THE SUPPLY OF A WORKS (routing stage V2, 0.37.204): a unit with materials
+/// awaiting has one task, due by a date (transport §12, level 1), gone when
+/// nothing awaits; a paused works and one under an emptying order have none;
+/// and a pit's dig goes by the round until a works owes its resource — then
+/// it is due as the supply is, and returns to its round when nobody owes.
+int TestTheSupplyOfAWorks() {
+  int failures = 0;
+  const core::LogisticsConfig config;
+  core::WorldState world;
+  core::UnitRow site;
+  site.construction.phase = core::ConstructionPhase::kDelivering;
+  site.construction.awaiting = {0, 3'000'000};
+  const core::UnitId unit = core::AppendRow(world.units, site);
+  const auto supply_task = [&world, unit]() -> const core::LogisticsTaskRow* {
+    for (const core::LogisticsTaskRow& task : world.logistics_tasks.rows) {
+      if (task.load_kind == core::LogisticsLoadKind::kSiteSupply && task.unit.value == unit.value) {
+        return &task;
+      }
+    }
+    return nullptr;
+  };
+  core::TaskDayCount count;
+  core::SyncTasks(config, world, 0, count);
+  failures += Expect(world.logistics_tasks.rows.size() == 1 && supply_task() != nullptr &&
+                         supply_task()->level == core::LogisticsLevel::kTerm,
+                     "supply: a works with materials awaiting has one task, due by a date");
+  core::WorkAssignment carting = core::HaulingWorkOf(*supply_task());
+  failures += Expect(carting.kind == core::WorkKind::kHauling && carting.unit.value == unit.value &&
+                         core::WorkServesTask(carting, *supply_task()),
+                     "supply: its work is a hauling that names the unit, and serves it");
+
+  world.units.rows[0].paused = 1;
+  core::SyncTasks(config, world, 1, count);
+  failures += Expect(supply_task() == nullptr, "supply: a paused works has no task");
+  world.units.rows[0].paused = 0;
+  world.units.rows[0].emptying = 2;
+  core::SyncTasks(config, world, 1, count);
+  failures += Expect(supply_task() == nullptr,
+                     "supply: a unit under an emptying order is not supplied until it is over");
+  world.units.rows[0].emptying = 0;
+  core::SyncTasks(config, world, 1, count);
+  failures += Expect(supply_task() != nullptr, "supply: the order over, the task is back");
+  world.units.rows[0].construction.awaiting.clear();
+  core::SyncTasks(config, world, 2, count);
+  failures += Expect(supply_task() == nullptr, "supply: nothing awaits — the task is gone");
+
+  // A pit with a dug load goes by the round, a works standing or not: what
+  // lies there for a works is that works' own leg and task (the direct leg).
+  // Until it, a works that «owed» the pit's resource raised the dig to a
+  // date — a book the start could no longer write above nought.
+  world.units.rows[0].construction.awaiting = {0, 3'000'000};
+  core::ExtractionSiteRow pit;
+  pit.resource = core::ResourceId{1};
+  pit.load_grams = 2'000'000;
+  core::AppendRow(world.extraction_sites, pit);
+  core::SyncTasks(config, world, 2, count);
+  const auto pit_level = [&world]() {
+    for (const core::LogisticsTaskRow& task : world.logistics_tasks.rows) {
+      if (task.load_kind == core::LogisticsLoadKind::kSiteDig) {
+        return task.level;
+      }
+    }
+    return core::LogisticsLevel::kLogisticsLevelCount;
+  };
+  core::AgeAndRaise(config, world, 2, 2 * core::kTicksPerDay, count);
+  failures += Expect(pit_level() == core::LogisticsLevel::kOrdinary && supply_task() != nullptr &&
+                         supply_task()->level == core::LogisticsLevel::kTerm,
+                     "supply: a pit's dig goes by the round beside a works whose own task is "
+                     "due by a date");
   return failures;
 }
 
@@ -949,6 +1022,7 @@ int main() {
   failures += TestOneTaskALoad();
   failures += TestAgeing();
   failures += TestThreats();
+  failures += TestTheSupplyOfAWorks();
   failures += TestConfig();
   failures += TestThePlansChains();
   failures += TestTheWayHomeFitsTheLight();

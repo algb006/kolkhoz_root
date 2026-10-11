@@ -18,6 +18,7 @@
 #include "core_common/logistics_state.h"
 #include "core_common/quantities.h"
 #include "core_common/road_route.h"
+#include "core_common/state_table_ops.h"
 #include "core_common/work_seam.h"
 #include "core_common/world_state.h"
 
@@ -53,12 +54,19 @@ std::vector<OpenTask> OpenTasks(const WorldState& world) {
     if (seam == nullptr || !(*seam > 0.0F) || !WorkPlaceOf(world, work, place)) {
       continue;
     }
+    // A works' supply whose front leg is logs straight off a stand goes by
+    // the log cart too (the direct leg; IsLogs below asks the same).
+    bool logs = task.load_kind == LogisticsLoadKind::kStandLogs ||
+                task.load_kind == LogisticsLoadKind::kDistrictLot;
+    if (task.load_kind == LogisticsLoadKind::kSiteSupply) {
+      const std::uint32_t unit_row = FindRow(world.units, task.unit);
+      logs = unit_row != kNoRow && world.units.rows[unit_row].construction.supply_log_way != 0;
+    }
     open.push_back(OpenTask{.row = row,
                             .level = static_cast<std::uint8_t>(task.level),
                             .aged_from_day = task.aged_from_day,
                             .place = place,
-                            .logs = task.load_kind == LogisticsLoadKind::kStandLogs ||
-                                    task.load_kind == LogisticsLoadKind::kDistrictLot});
+                            .logs = logs});
   }
   std::ranges::stable_sort(open, [](const OpenTask& left, const OpenTask& right) {
     if (left.level != right.level) {
@@ -82,7 +90,15 @@ std::uint32_t TaskOfWork(const WorldState& world, const WorkAssignment& work) {
   return kNoRow;
 }
 
-bool IsLogs(const LogisticsTaskRow& task) {
+/// Whether the task's load goes by the log cart: a stand's logs, the
+/// district's lot — and a works' supply whose front leg is logs straight off
+/// a stand (the direct leg; ConstructionState::supply_log_way), which is a
+/// stand's load on its way to another place.
+bool IsLogs(const WorldState& world, const LogisticsTaskRow& task) {
+  if (task.load_kind == LogisticsLoadKind::kSiteSupply) {
+    const std::uint32_t row = FindRow(world.units, task.unit);
+    return row != kNoRow && world.units.rows[row].construction.supply_log_way != 0;
+  }
   return task.load_kind == LogisticsLoadKind::kStandLogs ||
          task.load_kind == LogisticsLoadKind::kDistrictLot;
 }
@@ -193,7 +209,7 @@ float RideHours(
   TravelMode mode = TravelMode::kCart;
   if (mover.on_foot) {
     mode = TravelMode::kWalk;
-  } else if (task != nullptr && IsLogs(*task)) {
+  } else if (task != nullptr && IsLogs(world, *task)) {
     mode = TravelMode::kLogCart;
   }
   return RoadKm(world, mode, from, to) * mover.hours_per_km;

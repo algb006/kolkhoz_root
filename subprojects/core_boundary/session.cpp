@@ -493,6 +493,10 @@ class Session final : public ISession {
     return simulation_->MaterialsShortFor(unit);
   }
 
+  SupplyEstimate SupplyEstimateFor(UnitId unit) const override {
+    return simulation_->SupplyEstimateFor(unit);
+  }
+
   StinkStrength StinkFullAt(Vec2 point) const override { return simulation_->StinkFullAt(point); }
 
   StinkStrength StinkNowAt(Vec2 point) const override { return simulation_->StinkNowAt(point); }

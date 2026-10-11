@@ -27,6 +27,7 @@ bool WorkServesTask(const WorkAssignment& work, const LogisticsTaskRow& task) {
     case LogisticsLoadKind::kDistrictLot:
       return work.limit_delivery.value == task.limit_delivery.value;
     case LogisticsLoadKind::kStoreTransfer:
+    case LogisticsLoadKind::kSiteSupply:
       return work.unit.value == task.unit.value;
     case LogisticsLoadKind::kLogisticsLoadKindCount:
       break;
@@ -56,6 +57,7 @@ void RetargetWork(WorkAssignment& work, const LogisticsTaskRow& task) {
       work.limit_delivery = task.limit_delivery;
       break;
     case LogisticsLoadKind::kStoreTransfer:
+    case LogisticsLoadKind::kSiteSupply:
       work.unit = task.unit;
       break;
     case LogisticsLoadKind::kLogisticsLoadKindCount:

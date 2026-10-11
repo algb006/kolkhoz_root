@@ -124,6 +124,21 @@ class BookBalance {
         held[r] += static_cast<double>(cart.goods[r]);
       }
     }
+    // WHAT A WORKS AWAITS (routing stage В2, ConstructionState::awaiting):
+    // taken from the stores, the stands and the pits when the works were
+    // fixed, in no unit's stock until the carts land it on the site. Without
+    // it the census lost a works' straw over a year's turn — thirty_years on
+    // 0.37.220's first tree: straw «through a door with no line» -6 t in year
+    // 1 and +6 t in year 2, -3 t / +3 t in years 9-10.
+    for (const core::UnitRow& unit : world.units.rows) {
+      const core::ResourceAmounts& awaiting = unit.construction.awaiting;
+      if (awaiting.size() > held.size()) {
+        held.resize(awaiting.size(), 0.0);
+      }
+      for (std::size_t r = 0; r < awaiting.size(); ++r) {
+        held[r] += static_cast<double>(awaiting[r]);
+      }
+    }
     return held;
   }
 

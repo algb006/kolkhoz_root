@@ -215,16 +215,32 @@ static_assert(AggregateArity<FieldRow>() == 45,
 // stayed, the field count went to 14 (VERSION_SAVE 44).
 // 2026-09-19, save 67: the store's emptying byte and the perevalka's two
 // floats — 64 -> 80 + two amounts (measured by a sizeof probe), 17 fields.
-static_assert(sizeof(UnitRow) == 80 + (2 * kAmountsSize),
+// Save 147 (0.37.213, routing stage V2 with the direct leg; written as 144), after `reserved`: the
+// works' awaiting amounts, the legs' vector, the sender's point, the front
+// way's byte, the load as first priced and what is still to cart on every
+// leg, the supply seam's two floats and the day the wait began. After the
+// vectors 8 (point) + 1 + 3 padding + five 4-byte members = 32: the site
+// block 16 + amounts -> 48 + two amounts + the legs' vector, the row 80 + two
+// amounts -> 112 + three amounts + the legs' vector, eighteen fields in the
+// block; a leg 8 + 1 + 7 padding + amounts + 8 = 24 + amounts, four fields.
+// The block with four such members was predicted at 48 and held (28 rounded
+// up to the eight); the fifth I predicted at 56 and it stayed 48 — it went
+// into that rounding, a miss named. (The tree's first pairs carried a third
+// amounts vector, `owed`; it went with the direct leg, before any delivery.)
+static_assert(sizeof(UnitRow) == 112 + (3 * kAmountsSize) + sizeof(std::vector<SupplyLeg>),
               "UnitRow changed — update the codec and VERSION_SAVE");
-static_assert(sizeof(ConstructionState) == 16 + kAmountsSize,
+static_assert(sizeof(ConstructionState) == 48 + (2 * kAmountsSize) + sizeof(std::vector<SupplyLeg>),
               "ConstructionState changed — update the codec and VERSION_SAVE");
+static_assert(sizeof(SupplyLeg) == 24 + kAmountsSize,
+              "SupplyLeg changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<SupplyLeg>() == 4,
+              "SupplyLeg gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-19, save 65: the avral's step, a byte beside the phase — 16 + amounts
 // stays (measured), 7 fields. Save 80: winter_works, a byte after max_crew —
 // predicted into the padding before `reserved`, 16 + amounts and 8 fields.
 // Save 115: crewless_days, a u16 after winter_works — predicted into the same
 // padding (offset 14), 16 + amounts and 9 fields, before the build.
-static_assert(AggregateArity<ConstructionState>() == 9,
+static_assert(AggregateArity<ConstructionState>() == 18,
               "ConstructionState gained or lost a field — update the codec and VERSION_SAVE");
 // Save 74: reserved_for_specialist, a byte beside `dead` — 18 fields.
 static_assert(AggregateArity<UnitRow>() == 18,
@@ -1159,6 +1175,24 @@ void WriteUnitRow(SaveSink& sink, const UnitRow& row) {
   // VERSION_SAVE 37): the upgrade's carried-in recipe, which the stock
   // alone cannot tell from the store's own goods.
   sink.WriteAmounts(DefKind::kResource, row.construction.reserved);
+  // The materials on their way and the supply seam (routing stage V2, save 147).
+  sink.WriteAmounts(DefKind::kResource, row.construction.awaiting);
+  // The legs, a sender each (the direct leg, inside save 147): a u16 count,
+  // then every leg's point, way, amounts and unpriced grams.
+  out.WriteU16(static_cast<std::uint16_t>(row.construction.legs.size()));
+  for (const SupplyLeg& leg : row.construction.legs) {
+    WriteVec2(out, leg.from);
+    out.WriteU8(leg.log_way);
+    sink.WriteAmounts(DefKind::kResource, leg.grams);
+    out.WriteI64(leg.unpriced);
+  }
+  WriteVec2(out, row.construction.supply_from);
+  out.WriteU8(row.construction.supply_log_way);
+  out.WriteFloat(row.construction.supply_days_first);
+  out.WriteFloat(row.construction.supply_days_all);
+  out.WriteFloat(row.construction.supply_days_remaining);
+  out.WriteFloat(row.construction.supply_days_written);
+  out.WriteU32(row.construction.supply_since_day);
 
   // Wear (task A5): the building's own age, which nothing can rederive.
   out.WriteFloat(row.wear);
@@ -1208,6 +1242,27 @@ UnitRow ReadUnitRow(LoadSource& source) {
       static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "site's winter class"));
   row.construction.crewless_days = in.ReadU16();  // save 115
   row.construction.reserved = source.ReadAmounts(DefKind::kResource);
+  row.construction.awaiting = source.ReadAmounts(DefKind::kResource);  // save 147
+  // The legs (inside save 147). Taken as written: the count is bounded by the
+  // file's own length — a leg that is not there fails the reader, and the
+  // loop stops with it.
+  const std::uint16_t leg_count = in.ReadU16();
+  for (std::uint16_t index = 0; index < leg_count && in.Valid(); ++index) {
+    SupplyLeg leg;
+    leg.from = ReadVec2(in);
+    leg.log_way = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "supply leg's way"));
+    leg.grams = source.ReadAmounts(DefKind::kResource);
+    leg.unpriced = in.ReadI64();
+    row.construction.legs.push_back(std::move(leg));
+  }
+  row.construction.supply_from = ReadVec2(in);
+  row.construction.supply_log_way =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "supply's front way"));
+  row.construction.supply_days_first = in.ReadFloat();
+  row.construction.supply_days_all = in.ReadFloat();
+  row.construction.supply_days_remaining = in.ReadFloat();
+  row.construction.supply_days_written = in.ReadFloat();
+  row.construction.supply_since_day = in.ReadU32();
   row.wear = in.ReadFloat();
   row.paused = in.ReadU8();
   // 0 none, 1 emptying, 2 emptying with its carrying paused (boss seq 119).

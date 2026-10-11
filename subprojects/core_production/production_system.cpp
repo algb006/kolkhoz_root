@@ -279,6 +279,8 @@ class ProductionSystem final : public IProductionSystem {
       SettleSiteHauling(config_, current);
       // And the perevalka out of a store being emptied (field_haul.h).
       SettleStoreEmptying(config_, current);
+      // And the materials on their way to the sites (routing stage V2).
+      SettleSiteSupply(config_, current, true);
       // And the timber lots the village fetches from the district centre
       // (decision 279, 0.36.17; field_haul.h).
       SettleDistrictLotHauling(config_, current);
@@ -536,6 +538,12 @@ class ProductionSystem final : public IProductionSystem {
   /// finished world and move nothing, and this file moves the world — the
   /// two are different jobs, and the seam between them is checked by the
   /// compiler rather than by anyone remembering it.
+  SupplyEstimate PriceSupply(const WorldState& completed,
+                             SupplyEstimate plan,
+                             Vec2 site) const override {
+    return PriceSiteSupply(config_, completed, plan, site);
+  }
+
   void CollectAlarms(const WorldState& completed, std::vector<Alarm>& alarms) const override {
     CollectStoreAlarms(config_, completed, alarms);
     CollectFieldAlarms(config_, completed, alarms);

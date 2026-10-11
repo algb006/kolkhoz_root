@@ -263,6 +263,9 @@ class StepEngine final : public ISimulation {
   /// No crops, so no grass stand on any field.
   GrassStandView GrassStandOf(FieldId /*field*/) const override { return {}; }
 
+  /// No subsystems, so no works and no carts: nothing to cart.
+  SupplyEstimate SupplyEstimateFor(UnitId /*unit*/) const override { return {}; }
+
   // The bare engine knows no subsystems, so it knows no sources: clean air
   // rather than a refusal, exactly as WearDeadline answers kNoData.
   StinkStrength StinkFullAt(Vec2 /*point*/) const override { return StinkStrength::kNone; }

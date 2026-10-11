@@ -138,6 +138,12 @@ void DeliverInsulation(const ConstructionConfig& config, WorldState& current, st
   if (have >= need) {
     return;  // in full already: its labour opened when the last of it came
   }
+  // NOT CARTED, NAMED (routing stage V2, 0.37.204): a recipe and a repair's
+  // parts are fixed and then carted by the groom (construction_system.cpp,
+  // DeliverSite); the straw coat still arrives the tick it is taken. Its
+  // «done» reads the seam at 0 with the straw on the unit (InsulationDone),
+  // which a straw arriving hours before its labour would satisfy with no
+  // work done — it needs its own «labour opened» mark first. STUB core.
   const Grams taken = TakeFromStores(current, row, config.straw_resource, need - have);
   UnitRow& supplied = current.units.rows[row];
   AddTo(supplied.stock, config.straw_resource, taken);
@@ -165,6 +171,7 @@ void CompleteInsulation(const ConstructionConfig& config, WorldState& current, s
   AddBuiltInByType(
       current.ledger.current.built_in_by_type, site.type, config.straw_resource, straw);
   site.insulated = 1;
+  FoldAwaitingIntoStock(site);
   site.construction = ConstructionState{};
   SimEvent& event = EmitEvent(current, EventKind::kUnitInsulated, EventSeverity::kNotable);
   event.unit = current.units.row_ids[row];

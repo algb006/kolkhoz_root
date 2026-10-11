@@ -338,6 +338,12 @@ class LogisticsSystem final : public ILogisticsSystem {
       case LogisticsLoadKind::kStoreTransfer:
         held.unit = task.unit;
         break;
+      // A works' supply (routing stage В2): its materials wait at their
+      // senders, one a leg, and the task is the works' own — the word names
+      // the works that waits for them.
+      case LogisticsLoadKind::kSiteSupply:
+        held.unit = task.unit;
+        break;
       case LogisticsLoadKind::kLogisticsLoadKindCount:
         break;
     }

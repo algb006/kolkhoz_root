@@ -764,6 +764,18 @@ class StandardSimulation final : public ISimulation {
     return construction_->MaterialsShortFor(engine_->CompletedState(), unit);
   }
 
+  /// What and from where is construction's, the price production's
+  /// (supply_estimate.h): neither knows the other's half.
+  SupplyEstimate SupplyEstimateFor(UnitId unit) const override {
+    const WorldState& completed = engine_->CompletedState();
+    const SupplyEstimate plan = construction_->SupplyPlanFor(completed, unit);
+    const std::uint32_t row = FindRow(completed.units, unit);
+    if (plan.grams <= 0 || row == kNoRow) {
+      return plan;
+    }
+    return production_->PriceSupply(completed, plan, completed.units.rows[row].position);
+  }
+
   StinkStrength StinkFullAt(Vec2 point) const override {
     return construction_->StinkFullAt(engine_->CompletedState(), point);
   }

@@ -134,8 +134,13 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // hauled_to_stores, and built_in_by_type, a vector of rows after built_in —
 // 110 -> 113 fields, 984 + 36 A -> 984 + 38 A + one rows vector, no padding
 // moved (vectors among vectors); predicted before the build.
+// Save 151 (routing stage V2, re-landed; written on 0.37.204's line as 144,
+// then as 147 on 0.37.212's): a fifth cart-run source, the supply of a works
+// — one more cell in each of the eight cart arrays (six of floats, two of
+// grams): the fixed part 984 -> 1024, the fields stay 113; predicted before
+// the build (the 40 bytes held on 0.37.212's line).
 constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
-static_assert(sizeof(YearLedger) == 984 + (38 * kAmountsSize) + kBuiltInRowsSize,
+static_assert(sizeof(YearLedger) == 1024 + (38 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<YearLedger>() == 113,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");

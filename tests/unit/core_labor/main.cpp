@@ -2892,6 +2892,108 @@ int TestTheZyabIsFirstOfTheWindowless() {
   return failures;
 }
 
+/// THE SUPPLY OF A WORKS STANDS IN THE QUEUE BY ITS DATE (routing stage V2,
+/// 0.37.204; AssignmentJob::supplies_works; transport §12, level 1 «срок»):
+/// one worker, one horse. Its mark lifts it over nothing — a carting due
+/// sooner goes before it and one due later after, in either input order; a
+/// windowless carting on its round and a load at level 0 keep their places.
+/// AND NO BACKS ONCE THE YARD STANDS: with the pool dry, an idle hand carries
+/// to a works only while the team has no yard; to any other load he goes on.
+/// The supply sits on the HIGHER target id and is the same kind as its
+/// rival, so no later key of the order puts it first by itself.
+int TestTheSupplyOfAWorksGoesBeforeTheRounds() {
+  int failures = 0;
+  const core::Vec2 origin{.x = 0.0F, .y = 0.0F};
+  const auto supply = [&origin]() {
+    core::AssignmentJob job;
+    job.kind = core::WorkKind::kHauling;
+    job.unit = core::UnitId{9};
+    job.position = origin;
+    job.work_days_remaining = 3.0F;
+    job.harnessed = true;
+    job.window = core::DeadlineInDays(6);
+    job.supplies_works = true;
+    return job;
+  };
+  const auto round = [&origin]() {
+    core::AssignmentJob job;
+    job.kind = core::WorkKind::kHauling;
+    job.unit = core::UnitId{2};
+    job.position = origin;
+    job.work_days_remaining = 3.0F;
+    job.harnessed = true;
+    job.window = core::DeadlineNotApplicable();
+    return job;
+  };
+  const std::vector<core::AssignmentCandidate> candidates = {Worker(0, origin)};
+  auto params = DayParams();
+  params.draught_horses = 1;
+  for (const bool supply_first : {true, false}) {
+    const std::vector<core::AssignmentJob> jobs =
+        supply_first ? std::vector<core::AssignmentJob>{supply(), round()}
+                     : std::vector<core::AssignmentJob>{round(), supply()};
+    const auto plan = core::PlanDayAssignments(jobs, candidates, params);
+    failures += Expect(plan[0] == (supply_first ? 0U : 1U),
+                       "supply: ahead of a windowless carting on its round, in either input order");
+  }
+  // BY THE DAYS LEFT, AMONG THE WINDOWS: due in six days, it goes before a
+  // carting due in thirty and after one due in two — in either input order,
+  // so its mark is seen to lift it over neither.
+  for (const bool supply_first : {true, false}) {
+    for (const std::uint8_t rival_days : {std::uint8_t{30}, std::uint8_t{2}}) {
+      const core::AssignmentJob windowed =
+          FieldJob(core::WorkKind::kHauling, 2, origin, 3.0F, rival_days);
+      const std::vector<core::AssignmentJob> jobs =
+          supply_first ? std::vector<core::AssignmentJob>{supply(), windowed}
+                       : std::vector<core::AssignmentJob>{windowed, supply()};
+      const auto plan = core::PlanDayAssignments(jobs, candidates, params);
+      const std::uint32_t supply_index = supply_first ? 0U : 1U;
+      const std::uint32_t expected = rival_days > 6 ? supply_index : 1U - supply_index;
+      failures +=
+          Expect(plan[0] == expected,
+                 rival_days > 6 ? "supply: due in six days, ahead of a carting due in thirty"
+                                : "supply: due in six days, behind a carting due in two");
+    }
+  }
+  {
+    core::AssignmentJob urgent = round();
+    urgent.logistics_urgent = true;
+    const std::vector<core::AssignmentJob> jobs = {supply(), urgent};
+    const auto plan = core::PlanDayAssignments(jobs, candidates, params);
+    failures += Expect(plan[0] == 1, "supply: a load whose task stands at level 0 goes first");
+  }
+  // NO BACKS ONCE THE YARD STANDS: the pool is dry and the settlement has
+  // carts (a walker's share below one), one hand is left idle.
+  {
+    auto dry = DayParams();
+    dry.draught_horses = 0;
+    dry.walker_share_of_cart_day = 0.01F;
+    const std::vector<core::AssignmentJob> to_a_works = {supply()};
+    failures += Expect(core::PlanDayAssignments(to_a_works, candidates, dry)[0] == 0,
+                       "supply: with no yard an idle hand carries to the works on his back");
+    auto stabled = dry;
+    stabled.yard_walk_hours = {0.0F};
+    stabled.yard_ride_km = {0.0F};
+    failures +=
+        Expect(core::PlanDayAssignments(to_a_works, candidates, stabled)[0] == core::kNoJobAssigned,
+               "supply: once the horse yard stands nobody carries to a works on foot");
+    const std::vector<core::AssignmentJob> to_a_round = {round()};
+    failures += Expect(core::PlanDayAssignments(to_a_round, candidates, stabled)[0] == 0,
+                       "supply: and to any other load the idle hand still goes");
+  }
+  // THE TERM BY THE WORKS' OWN LOAD: flat up to twice its number of
+  // cart-days, half the load's cart-days above that, rounded up.
+  failures +=
+      Expect(core::SiteSupplyTermDays(8, 0.0F) == 8 && core::SiteSupplyTermDays(8, 2.5F) == 8 &&
+                 core::SiteSupplyTermDays(8, 16.0F) == 8,
+             "supply term: a load of up to sixteen cart-days is due in the flat eight");
+  failures +=
+      Expect(core::SiteSupplyTermDays(8, 16.5F) == 9 && core::SiteSupplyTermDays(8, 30.0F) == 15 &&
+                 core::SiteSupplyTermDays(8, 27.8F) == 14,
+             "supply term: above sixteen cart-days it is half the load's, rounded up");
+  return failures;
+}
+
 int TestWinterPreparationYieldsToWindowedWork() {
   int failures = 0;
   const core::Vec2 origin{.x = 0.0F, .y = 0.0F};
@@ -4491,6 +4593,7 @@ int main() {
   failures += TestMeadowCutRidesAndTakesOneHorse();
   failures += TestWinterPreparationYieldsToWindowedWork();
   failures += TestTheZyabIsFirstOfTheWindowless();
+  failures += TestTheSupplyOfAWorksGoesBeforeTheRounds();
   failures += TestMeadowCutHasTheTablesWindow();
   failures += TestEveningPostIsOnTheDaysList();
   failures += TestWinterTierHasOneOrder();

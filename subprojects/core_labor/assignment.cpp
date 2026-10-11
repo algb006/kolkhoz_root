@@ -155,7 +155,10 @@ constexpr bool StopsWithoutHorse(const AssignmentJob& job, const AssignmentParam
   if (job.kind != WorkKind::kHauling) {
     return false;
   }
-  return job.stand.value != kInvalidEntityIdValue || params.walker_share_of_cart_day < 1.0F;
+  // A works' logs straight off a stand are a stand's logs (AssignmentJob::
+  // log_cart): never on a back.
+  return job.stand.value != kInvalidEntityIdValue || job.log_cart ||
+         params.walker_share_of_cart_day < 1.0F;
 }
 
 /// How much the skill blend lifts a pick: 0.7 at skill 0, 1.0 at 100.
@@ -767,6 +770,17 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
     for (const std::uint32_t job_index : order) {
       const AssignmentJob& job = jobs[job_index];
       if (!IsBackLoad(job) || !(job.work_days_remaining > covered[job_index])) {
+        continue;
+      }
+      // NO BACKS FOR A WORKS ONCE THE HORSE YARD STANDS (routing stage V2,
+      // 0.37.204; boss, the C2 thread [9], [12]): a site's recipe is tonnes of
+      // logs and clay, a carrier brings a ninetieth of a cart-day of it, and
+      // the site LOOKED served — in V2's first two pairs two thirds of the
+      // supply's person-days were hands left idle carrying on foot, and the
+      // sites stood four and five days all the same. While the team has no
+      // yard — the first weeks — the carriers go as to any load. After it the
+      // site waits for its cart, and the queue's own shortfall says so.
+      if (job.supplies_works && !params.yard_walk_hours.empty()) {
         continue;
       }
       AssignmentJob on_foot = job;

@@ -348,6 +348,12 @@ struct ConstructionConfig {
   /// refused rather than silently free.
   ResourceId spare_part_resource;
 
+  /// resources.csv "log": what lies felled at a stand (TimberStandRow::
+  /// load_grams has no resource of its own). Read by the start's check, which
+  /// counts a stand's felled logs as held (routing stage V2, «стройка видит
+  /// накопленное»). Invalid in a table-less world: no stand's load is counted.
+  ResourceId log_resource;
+
   /// Grams in one spare part (resources.csv kg_per_unit of that row).
   /// Parts are counted in PIECES by the design and in grams by every store;
   /// this is the one number that converts, resolved once at parse time like

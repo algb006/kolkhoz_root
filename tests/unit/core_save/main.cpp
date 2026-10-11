@@ -417,6 +417,30 @@ core::WorldState MakeWorld() {
   site.construction.rush_step = 5;       // save 65: the avral at its ceiling
   site.construction.winter_works = 0;    // save 80: away from its default of 1
   site.construction.crewless_days = 13;  // save 115: above the lamp's 12, off its default of 0
+  // Save 147 (routing stage V2): what awaits its carting, the sender and the
+  // supply seam — every one off its default, so a codec that crosses the
+  // seam's two floats comes back wrong.
+  site.construction.awaiting = Amounts({0, 0, 1'500'000, 0, 0, 0});
+  site.construction.supply_from = core::Vec2{.x = 41.5F, .y = 7.25F};
+  site.construction.supply_days_remaining = 1.5F;
+  site.construction.supply_days_written = 3.0F;
+  site.construction.supply_since_day = 211;
+  // The direct leg (inside save 147): two legs with every member off its
+  // default and different from the other's — a stand's by the log cart's way,
+  // then a store's — the front way's byte and the load as first priced.
+  core::SupplyLeg from_stand;
+  from_stand.from = core::Vec2{.x = 41.5F, .y = 7.25F};
+  from_stand.log_way = 1;
+  from_stand.grams = Amounts({0, 0, 900'000, 0, 0, 0});
+  from_stand.unpriced = 250'000;
+  core::SupplyLeg from_store;
+  from_store.from = core::Vec2{.x = 12.0F, .y = 90.5F};
+  from_store.grams = Amounts({0, 0, 600'000, 0, 0, 0});
+  from_store.unpriced = 600'000;
+  site.construction.legs = {from_stand, from_store};
+  site.construction.supply_log_way = 1;
+  site.construction.supply_days_first = 6.75F;
+  site.construction.supply_days_all = 4.5F;
   // Save 67: a store being emptied, its carrying half done — all three away
   // from their zero defaults.
   site.emptying = 1;
@@ -1736,7 +1760,24 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // predicted before the build.
     // Save 115: +2 a unit — the site's crewless days; three units, +6,
     // predicted before the build.
-    {"units", 365, 0x1053c579e6d33200ULL},
+    // Save 147 (0.37.213, routing stage V2; written as 144): +20 a unit — the works' awaiting
+    // and owed amounts (two empty vectors, two bytes each), the sender's point
+    // (two floats) and the supply seam (two floats); three units, +60. The
+    // row's sizeof was predicted before the build and held; this section's
+    // count was read off the build, not written down before — named. And
+    // +96 for the site's two amounts set off their emptiness (six cells
+    // each): 425 -> 521, read off the build too. And +4 a unit for the day
+    // the wait began: 521 -> 533, PREDICTED before the build (three units);
+    // the hash is read off it.
+    // The direct leg, inside save 147: +7 a unit (the legs' count, the front
+    // way's byte, the load as first priced; three units, +21) and +67 a leg
+    // (a point, a byte, six cells with their count, the unpriced grams; two
+    // legs on the site, +134); and the `owed` amounts of the tree's first
+    // pairs gone with it: -2 a unit (three units, -6) and -48 for the site's
+    // six cells: 533 -> 634, PREDICTED before the build and held. And +4 a
+    // unit for what is still to cart on every leg (three units, +12): 634 ->
+    // 646, PREDICTED before the build and held; the hash is read off it.
+    {"units", 646, 0xccc50e80c2f2342aULL},
     // Save 71: +4 — fed_share, one herd; predicted before the field, held.
     // Save 91: +8 — the adult age band, two floats, one herd; predicted
     // 71 -> 79 with every other section unmoved before the build.
@@ -1959,7 +2000,14 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // each book (2 + 2 + 4, twice), the closed book's dug and pits' haul (16
     // each) and its two rows (12 each); 2588 -> 2660 predicted before the
     // build with every other section unmoved; the hash read off the first build.
-    {"ledger", 2660, 0xaaa4194e2920feb8ULL},
+    // Save 151 (routing stage V2, re-landed; written as 144, then 147): +80 —
+    // a fifth cart-run source, the supply of a works: one cell more in each
+    // of the book's eight cart arrays (six of floats, two of grams — 40
+    // bytes), two books; 2660 -> 2740 predicted before the build, the units'
+    // 646 as В2 recorded it on 0.37.212's line (no commit since touched the
+    // units' fixture) and every other section unmoved; the hash read off the
+    // first build.
+    {"ledger", 2740, 0xaa72fde9021f46f8ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -2917,6 +2965,31 @@ int main() {
                      "a site that stands in winter still stands after a load (save 80)");
   failures += Expect(site_back.construction.crewless_days == 13,
                      "a site's crewless days come back, its lamp with them (save 115)");
+  failures += Expect(site_back.construction.awaiting.size() >= 3 &&
+                         site_back.construction.awaiting[2] == 1'500'000 &&
+                         site_back.construction.awaiting[0] == 0,
+                     "a works' awaiting materials come back in their own resource (save 147)");
+  const std::vector<core::SupplyLeg>& legs_back = site_back.construction.legs;
+  failures +=
+      Expect(legs_back.size() == 2 && legs_back[0].from.x == 41.5F && legs_back[0].log_way == 1 &&
+                 legs_back[0].unpriced == 250'000 && legs_back[0].grams.size() >= 3 &&
+                 legs_back[0].grams[2] == 900'000 && legs_back[1].from.y == 90.5F &&
+                 legs_back[1].log_way == 0 && legs_back[1].unpriced == 600'000 &&
+                 legs_back[1].grams.size() >= 3 && legs_back[1].grams[2] == 600'000,
+             "a works' two legs come back in their order, each with its sender, its "
+             "way, its grams and what is unpriced (save 147, the direct leg)");
+  failures += Expect(site_back.construction.supply_log_way == 1 &&
+                         site_back.construction.supply_days_first == 6.75F &&
+                         site_back.construction.supply_days_all == 4.5F,
+                     "the front way, the load as first priced and what is still to cart come "
+                     "back, each its own (save 147)");
+  failures += Expect(site_back.construction.supply_from.x == 41.5F &&
+                         site_back.construction.supply_from.y == 7.25F &&
+                         site_back.construction.supply_days_remaining == 1.5F &&
+                         site_back.construction.supply_days_written == 3.0F &&
+                         site_back.construction.supply_since_day == 211,
+                     "a works' sender, its supply seam half carted and the day its wait began "
+                     "come back (save 147)");
 
   // -- the staged batch ----------------------------------------------------
   //

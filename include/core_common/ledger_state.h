@@ -66,6 +66,9 @@ enum class CartLoadSource : std::uint8_t {
   /// (decision 279, 0.36.17; SettleDistrictLotHauling) — a log cart, booked
   /// here because its trips are the cost the lot's «везти далеко» names.
   kDistrict,
+  /// The materials fixed for a works, from their sender to the unit (routing
+  /// stage V2, save 147; field_haul SettleSiteSupply).
+  kSupply,
   kCartLoadSourceCount,
 };
 

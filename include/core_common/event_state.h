@@ -740,7 +740,9 @@ enum class EventKind : std::uint8_t {
   /// going (no destination exists before a cart is loaded): `resource` — a
   /// field's heap its reaped resource, a stand's load the log, a pit's its
   /// resource, none for a district lot or a store's transfer; `field`, `stand`
-  /// or `unit` the source where it is one; `lot` the district lot's.
+  /// or `unit` the source where it is one; `lot` the district lot's. A
+  /// works' supply (routing stage В2, kSiteSupply) has its senders a leg each:
+  /// `unit` is the WORKS that waits, the one exception to «the source».
   /// Seam key `day_off_held_urgent_load`.
   kDayOffHeldUrgentLoad,
 

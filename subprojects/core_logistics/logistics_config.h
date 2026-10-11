@@ -32,6 +32,7 @@ struct LogisticsConfig {
       LogisticsLevel::kOrdinary,    // a dig's load
       LogisticsLevel::kTerm,        // the district's lot
       LogisticsLevel::kBackground,  // a store's transfer
+      LogisticsLevel::kTerm,        // a works' supply (transport §12, level 1)
   };
 
   /// Days from the last trip after which a background task is ordinary, and

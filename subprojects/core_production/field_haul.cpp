@@ -21,6 +21,7 @@
 #include "core_common/state_table_ops.h"
 #include "core_common/unit_state.h"
 #include "core_common/work_seam.h"
+#include "haul_ways.h"
 #include "seed_room.h"
 #include "stock_ops.h"
 
@@ -140,16 +141,12 @@ Grams HeapDoorRoom(const ProductionConfig& config, const WorldState& world, cons
              : ReceivableRoom(config, world, field.reaped_resource);
 }
 
-namespace {
-
-/// @param cart_mode How the load goes when a horse is free: a cart with
-///        produce keeps to the roads (TravelMode::kCart), a cart with logs may
-///        cross the felling's ground (kLogCart; roads design §11).
+// Shared with the supply of a works (haul_ways.h; supply_haul.cpp).
 HaulRate RateToward(const ProductionConfig& config,
                     const WorldState& world,
                     Vec2 from,
                     Vec2 destination,
-                    TravelMode cart_mode = TravelMode::kCart) {
+                    TravelMode cart_mode) {
   const bool harnessed = DraughtHorsesFree(config, world);
   // THE BED'S CONDITION slows the cart and the carrier alike (0.36.8; roads
   // design §1, §3) — wet after rain, muddy in the mud season, faster frozen.
@@ -178,10 +175,7 @@ HaulRate RateToward(const ProductionConfig& config,
   return rate;
 }
 
-/// @brief Books what a produce cart brought in today on the year's cart
-///        columns (YearLedger::cart_trips and its siblings): the trips are
-///        the grams over the cart's load, each one loaded way off the road
-///        by `rate`. Nothing for a carrier on foot or a log cart.
+// Declared in haul_ways.h.
 void BookCartRun(const ProductionConfig& config,
                  WorldState& current,
                  CartLoadSource source,
@@ -210,6 +204,8 @@ void BookCartRun(const ProductionConfig& config,
     book.cart_grams_off_road[at] += moved;
   }
 }
+
+namespace {
 
 /// @brief One load's day: what the carriers took in, and tomorrow's demand.
 /// The body SettleHauling had for a field, over any holder of a load — a
@@ -567,6 +563,7 @@ void DeliverCartedLoads(const ProductionConfig& config, WorldState& current) {
   }
   SettleStoreEmptying(config, current, false);
   SettleDistrictLotHauling(config, current, false);
+  SettleSiteSupply(config, current, false);
 }
 
 /// @brief Turns the hauling labor delivered today into grain that actually
@@ -922,6 +919,7 @@ void RescaleHaulForBeds(const ProductionConfig& config,
   }
   for (UnitRow& unit : current.units.rows) {
     rescale(unit.haul_days_remaining, unit.haul_days_written);
+    rescale(unit.construction.supply_days_remaining, unit.construction.supply_days_written);
   }
 }
 

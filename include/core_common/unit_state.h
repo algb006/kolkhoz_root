@@ -62,7 +62,9 @@
 #define CORE_COMMON_UNIT_STATE_H_
 
 #include <cstdint>
+#include <vector>
 
+#include "core_common/calendar.h"
 #include "core_common/geometry.h"
 #include "core_common/ids.h"
 #include "core_common/quantities.h"
@@ -144,6 +146,29 @@ enum class ConstructionPhase : std::uint8_t {
 /// it started from, FROZEN at start: "invested 40 of 120" (construction
 /// design §8) must read the same after a balance edit of the class norm
 /// mid-build, and a site is priced once, when it starts.
+/// @brief ONE SENDER OF A WORKS' SUPPLY (routing stage V2, the direct leg; save
+/// 144): a place where materials fixed for the works lie until the carts
+/// bring them — a store that gave them, or the stand or the pit they were
+/// felled or dug at («прямое плечо»: what lies there is taken first and goes
+/// straight to the site, never through the pile). Plain data.
+struct SupplyLeg {
+  /// Where it lies: the store's position, the stand's or the pit's loading
+  /// point.
+  Vec2 from;
+
+  /// 1: logs straight from a stand — the log cart's way, across the felling's
+  /// ground (TravelMode::kLogCart); 0: the cart that keeps to the roads.
+  std::uint8_t log_way = 0;
+
+  /// What of the works' `awaiting` lies here, dense by ResourceId, grams.
+  ResourceAmounts grams;
+
+  /// Of them, the grams production has not yet priced into
+  /// ConstructionState::supply_days_first. Raised by the fixing, cleared by
+  /// production's settlement of the same hour.
+  Grams unpriced = 0;
+};
+
 struct ConstructionState {
   ConstructionPhase phase = ConstructionPhase::kNone;
 
@@ -217,7 +242,84 @@ struct ConstructionState {
   /// unit's stock for any other purpose takes only `stock - reserved`, never
   /// below zero. Empty vector = nothing held back.
   ResourceAmounts reserved;
+
+  /// THE MATERIALS ON THEIR WAY TO THE SITE (routing stage V2, save 147;
+  /// transport design §12, «Снабжение … материалы на стройку»), dense by
+  /// ResourceId, grams: taken out of the stores' stock for this works and not
+  /// yet on the site. The start's fixing is unchanged — «с запуска они
+  /// принадлежат площадке: пила, другой юнит и выдача их не берут»
+  /// (construction design §6) — and only the PLACE lags: what awaits lies at
+  /// the sender until the carts bring it, `UnitRow::stock` is what is on the
+  /// site, and the labour opens on the stock alone. Until 0.37.204 the whole
+  /// recipe was on the site the tick it started, the stores' distance ignored.
+  ///
+  /// Written by the construction sub-step (raised as it takes from the
+  /// stores) and by production's hourly settlement of the supply seam
+  /// (lowered as the carted share lands in `stock`). Nobody else reads it as
+  /// a store: it is in no unit's stock. Emptied with the block.
+  ResourceAmounts awaiting;
+
+  /// WHERE WHAT AWAITS LIES, A LEG A SENDER (save 147), in the order it is
+  /// carted: the stands and the pits first, then the stores, each group the
+  /// nearest to the site first. The sum of the legs' grams is `awaiting`, to
+  /// the gram and by resource — two homes bound by that invariant, kept by the
+  /// two writers of both (site_supply.cpp's fixing, field_haul.cpp's
+  /// settlement). ONE LEG IS CARTED AT A TIME, the front one: a works has one
+  /// supply seam, and the carter's place is the front leg's sender. Until the
+  /// direct leg a works had ONE sender — the store that gave the most — and
+  /// the way of everything was measured from it, whichever stores gave.
+  std::vector<SupplyLeg> legs;
+
+  /// The front leg's sender and way — what the seam below is measured from
+  /// and where the carter loads (work_seam.cpp, labor_system.cpp). Mirrors of
+  /// `legs.front()`, written with it; meaningless while nothing awaits.
+  Vec2 supply_from;
+  std::uint8_t supply_log_way = 0;
+
+  /// THE WORKS' WHOLE LOAD AS FIRST PRICED, cart-days (save 147): every leg's
+  /// grams by its own way, summed by production in the hour they were fixed
+  /// (field_haul.h, SettleSiteSupply). The supply's term is counted from it
+  /// (labor_system.cpp: a works of many cart-days is not held to the term of
+  /// a works of two). Nought while nothing awaits.
+  float supply_days_first = 0.0F;
+
+  /// WHAT IS STILL TO CART ON EVERY LEG, cart-days (save 147): the legs'
+  /// grams by their own ways, summed by production whenever it writes the
+  /// seam. The labour sub-step sizes the supply's crew by it — the seam
+  /// below is the front leg's alone, and a crew sized by one leg of five
+  /// carted a works' load a leg a morning (the direct leg's first run: a
+  /// works fed from stores alone waited 5 days at the median where one seam
+  /// for the whole load had it at 3).
+  float supply_days_all = 0.0F;
+
+  /// THE SUPPLY SEAM, in cart-days as every load's (field_haul.h, HaulDaysFor):
+  /// written by production in the evening from what awaits on the FRONT leg,
+  /// its way and the bed; drained by the labour hour (work_seam.h, WorkSeamOf — a hauling
+  /// work that names this unit); settled every hour as stage V1 settles a
+  /// load, the drained share of `awaiting` landing in the site's stock.
+  /// `written` is what the seam stood at when last settled.
+  float supply_days_remaining = 0.0F;
+  float supply_days_written = 0.0F;
+
+  /// THE DAY THE WAIT BEGAN (save 147): the game day materials were first
+  /// fixed for these works while none awaited — the start's, or the morning
+  /// a site that had all it could get was given more. The supply is due by a
+  /// date counted from it (transport §12, level 1 «срок»; labor_system.cpp,
+  /// the supply job's window): a site that has waited long outranks the
+  /// windows a fresh one yields to. Meaningless while nothing awaits.
+  SimDay supply_since_day = 0;
 };
+
+/// @brief Whether any material of the works still awaits its carting
+/// (ConstructionState::awaiting).
+inline bool AnythingAwaits(const ConstructionState& works) {
+  for (const Grams grams : works.awaiting) {
+    if (grams > 0) {
+      return true;
+    }
+  }
+  return false;
+}
 
 /// @brief One unit. Plain data; behavior comes from the type's table row.
 struct UnitRow {

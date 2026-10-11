@@ -11,6 +11,9 @@ level_stand_logs,2
 level_site_dig,2
 level_district_lot,1
 level_store_transfer,3
+# THE SUPPLY OF A WORKS (routing stage V2, 0.37.204): transport design §12's table of levels, «1 — Срок:
+# … материалы для стройки, которая стоит».
+level_site_supply,1
 #
 # AGEING from the task's last trip (econ [5], STUB econ; econ/manual/proposals/logistics-priorities-numbers-
 # 2026-10-03.md): background -> ordinary after this many days, ordinary -> term after this many; a term never

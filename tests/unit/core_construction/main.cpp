@@ -214,6 +214,27 @@ void Run(core::IConstructionSystem& system, core::WorldState& world, std::uint32
   system.RunConstructionDecisions(previous, world);
 }
 
+/// WHAT THE GROOM'S CARTS DO IN THE WHOLE SIMULATION, DONE AT ONCE (routing
+/// stage V2): everything fixed for a works and awaiting lands on its unit —
+/// production's SettleSiteSupply with the seam drained — and the sub-step
+/// takes its hour's look at an hour that is not the delivery's, so nothing
+/// more is fixed: it holds back what arrived and opens the labour on a whole
+/// recipe. This suite builds the construction sub-step alone; a test that is
+/// not about the carting calls this after a start.
+void Cart(core::IConstructionSystem& system, core::WorldState& world) {
+  for (core::UnitRow& unit : world.units.rows) {
+    for (std::size_t index = 0; index < unit.construction.awaiting.size(); ++index) {
+      if (unit.stock.size() <= index) {
+        unit.stock.resize(index + 1, 0);
+      }
+      unit.stock[index] += unit.construction.awaiting[index];
+    }
+    unit.construction.awaiting.clear();
+    unit.construction.legs.clear();
+  }
+  Run(system, world, 5);
+}
+
 /// THE START CHECKS THE RECIPE AND NAMES WHAT IS SHORT (construction design
 /// §6; the human's word of 2026-09-14): a start with one line short is refused
 /// kMaterialsShort and leaves the plot as marked; the door names the line with
@@ -256,17 +277,267 @@ int TestStartChecksTheRecipe(const core::ITableSet& tables) {
   failures += Expect(system->MaterialsShortFor(world, site).empty(),
                      "recipe: with twelve logs in the store nothing is short");
   const core::OrderId started = Issue(world, UnitOrder(core::OrderKind::kStartBuild, site));
-  Run(*system, world, 5);  // not the delivery hour: the reservation is the start's own
+  Run(*system, world, 5);  // not the delivery hour: the fixing is the start's own
+  {
+    // FIXED AT THE START, NOT YET ON THE SITE (routing stage V2): the ten logs
+    // leave the store the tick of the start and await their carting; the site
+    // holds none of them and its labour is not open.
+    const core::UnitRow& fixed = world.units.rows[core::FindRow(world.units, site)];
+    const core::Grams on_site = fixed.stock.empty() ? 0 : fixed.stock[0];
+    failures +=
+        Expect(RefusalOf(world, started) == core::OrderRefusal::kNone &&
+                   fixed.construction.phase == core::ConstructionPhase::kDelivering &&
+                   on_site == 0 && fixed.construction.awaiting.size() == 1 &&
+                   fixed.construction.awaiting[0] == 10 * kLogGrams &&
+                   world.units.rows[core::FindRow(world.units, store)].stock[0] == 2 * kLogGrams,
+               "recipe: the start fixes the ten logs for the site at once — the store keeps "
+               "two for anybody else, the ten await their carting, the labour is not open");
+    failures += Expect(
+        fixed.construction.supply_from.x == 500.0F && fixed.construction.supply_from.y == 500.0F,
+        "recipe: the sender is the store that gave the logs");
+    failures += Expect(system->MaterialsShortFor(world, site).empty(),
+                       "recipe: a started building answers nothing short while its logs await");
+    // The hour's look with nothing carted opens nothing and fixes nothing more.
+    Run(*system, world, 6);
+    const core::UnitRow& still = world.units.rows[core::FindRow(world.units, site)];
+    failures += Expect(still.construction.phase == core::ConstructionPhase::kDelivering &&
+                           still.construction.awaiting[0] == 10 * kLogGrams,
+                       "recipe: an hour with nothing carted opens no labour");
+    // Half carted: still delivering. All carted: the labour opens that hour.
+    core::UnitRow& half = world.units.rows[core::FindRow(world.units, site)];
+    half.construction.awaiting[0] = 5 * kLogGrams;
+    half.stock.assign(1, 5 * kLogGrams);
+    Run(*system, world, 7);
+    failures += Expect(world.units.rows[core::FindRow(world.units, site)].construction.phase ==
+                           core::ConstructionPhase::kDelivering,
+                       "recipe: half the recipe on the site opens no labour");
+  }
+  Cart(*system, world);
   const core::UnitRow& building = world.units.rows[core::FindRow(world.units, site)];
   failures +=
-      Expect(RefusalOf(world, started) == core::OrderRefusal::kNone &&
-                 building.construction.phase == core::ConstructionPhase::kBuilding &&
-                 building.stock[0] == 10 * kLogGrams &&
+      Expect(building.construction.phase == core::ConstructionPhase::kBuilding &&
+                 building.stock[0] == 10 * kLogGrams && building.construction.awaiting.empty() &&
                  world.units.rows[core::FindRow(world.units, store)].stock[0] == 2 * kLogGrams,
-             "recipe: the start carries the ten logs onto the site at once — the store "
-             "keeps two for anybody else");
+             "recipe: with the ten logs carted the labour opens in that hour, not at "
+             "the next midnight");
   failures += Expect(system->MaterialsShortFor(world, site).empty(),
                      "recipe: a started building answers nothing short");
+  return failures;
+}
+
+/// THE SUPPLY OF A WORKS (routing stage V2, 0.37.204): the fixing draws on the
+/// nearest store first and names the largest giver its sender; the start
+/// counts what lies dug at a pit and takes it when it reaches a store, writing
+/// what the farm has not given into `owed` meanwhile; the door answers the
+/// plan before the start; a works taken down keeps what awaited as its stock.
+int TestTheSupplyOfAWorks(const core::ITableSet& tables) {
+  int failures = 0;
+  std::unique_ptr<core::IConstructionSystem> system =
+      core::CreateConstructionSystem(tables, core::StubTables::kAllowed);
+  if (!system) {
+    return Expect(false, "the subsystem refused its tables");
+  }
+  core::WorldState world;
+  const auto row_of = [&world](core::UnitId unit) -> core::UnitRow& {
+    return world.units.rows[core::FindRow(world.units, unit)];
+  };
+  // The far store stands FIRST in row order and holds more; the near one
+  // holds four logs. A barn takes ten.
+  core::UnitRow store;
+  store.type = core::UnitTypeId{kStoreType};
+  store.position = core::Vec2{.x = 5000.0F, .y = 1000.0F};
+  store.stock.assign(1, 30 * kLogGrams);
+  const core::UnitId far_store = core::AppendRow(world.units, store);
+  store.position = core::Vec2{.x = 1200.0F, .y = 1000.0F};
+  store.stock.assign(1, 4 * kLogGrams);
+  const core::UnitId near_store = core::AppendRow(world.units, store);
+  Issue(world, BuildOrder(kBarnType, 1000.0F, 1000.0F));
+  Run(*system, world, 0);
+  const core::UnitId site = world.units.row_ids.back();
+
+  // The door before the start: ten logs to cart, from the largest giver.
+  const core::SupplyEstimate plan = system->SupplyPlanFor(world, site);
+  failures += Expect(plan.grams == 10 * kLogGrams && plan.sender.x == 5000.0F,
+                     "supply: before the start the plan is ten logs, sent from the store "
+                     "that would give the most");
+  failures += Expect(
+      row_of(far_store).stock[0] == 30 * kLogGrams && row_of(near_store).stock[0] == 4 * kLogGrams,
+      "supply: asking the plan takes nothing");
+
+  Issue(world, UnitOrder(core::OrderKind::kStartBuild, site));
+  Run(*system, world, 5);
+  failures +=
+      Expect(row_of(near_store).stock[0] == 0 && row_of(far_store).stock[0] == 24 * kLogGrams &&
+                 row_of(site).construction.awaiting[0] == 10 * kLogGrams,
+             "supply: the nearest store gives first — its four logs, then six of "
+             "the far one's");
+  // A LEG A SENDER, the nearest carted first (the direct leg). Until it the
+  // works had one sender — the largest giver, the far store — and the near
+  // store's four logs were priced by the far store's way.
+  failures += Expect(row_of(site).construction.legs.size() == 2 &&
+                         row_of(site).construction.legs[0].from.x == 1200.0F &&
+                         row_of(site).construction.legs[0].grams[0] == 4 * kLogGrams &&
+                         row_of(site).construction.legs[1].from.x == 5000.0F &&
+                         row_of(site).construction.legs[1].grams[0] == 6 * kLogGrams &&
+                         row_of(site).construction.supply_from.x == 1200.0F,
+                     "supply: a leg a store — the near one's four first, then the far one's "
+                     "six; the carter's first place is the near store");
+  const core::SupplyEstimate under_way = system->SupplyPlanFor(world, site);
+  failures += Expect(under_way.grams == 10 * kLogGrams && under_way.sender.x == 1200.0F,
+                     "supply: for works under way the plan is what still awaits");
+
+  // Taken down before the carts came: what awaited is the unit's stock, to
+  // go out through the stores' door with the rest — nothing fixed is lost.
+  Issue(world, UnitOrder(core::OrderKind::kDemolishUnit, site));
+  Run(*system, world, 5);
+  failures += Expect(row_of(site).construction.phase == core::ConstructionPhase::kDemolishing &&
+                         row_of(site).construction.awaiting.empty() &&
+                         row_of(site).stock[0] == 10 * kLogGrams,
+                     "supply: a works taken down keeps what awaited as its stock");
+
+  // «СТРОЙКА ВИДИТ НАКОПЛЕННОЕ»: a second barn, six of its material in the
+  // store and four lying dug at a pit of the same resource. The start is not
+  // refused, and THE DIRECT LEG takes the pit's four first, straight from
+  // there — a leg of their own, ahead of the store's six; the pit's load is
+  // the works' from that tick and nobody else's.
+  core::WorldState pits;
+  core::UnitRow lone;
+  lone.type = core::UnitTypeId{kStoreType};
+  lone.position = core::Vec2{.x = 500.0F, .y = 500.0F};
+  lone.stock.assign(1, 6 * kLogGrams);
+  const core::UnitId lone_store = core::AppendRow(pits.units, lone);
+  core::ExtractionSiteRow pit;
+  pit.resource = core::ResourceId{0};
+  pit.load_grams = 4 * kLogGrams;
+  core::AppendRow(pits.extraction_sites, pit);
+  Issue(pits, BuildOrder(kBarnType, 1000.0F, 1000.0F));
+  Run(*system, pits, 0);
+  const core::UnitId second = pits.units.row_ids.back();
+  failures += Expect(system->MaterialsShortFor(pits, second).empty(),
+                     "supply: six logs in the store and four lying at a pit are ten held");
+  const core::OrderId seen = Issue(pits, UnitOrder(core::OrderKind::kStartBuild, second));
+  pits.calendar.day = 3;
+  Run(*system, pits, 5);
+  const auto pit_row = [&pits](core::UnitId unit) -> core::UnitRow& {
+    return pits.units.rows[core::FindRow(pits.units, unit)];
+  };
+  failures +=
+      Expect(RefusalOf(pits, seen) == core::OrderRefusal::kNone &&
+                 pit_row(second).construction.phase == core::ConstructionPhase::kDelivering &&
+                 pit_row(second).construction.awaiting[0] == 10 * kLogGrams,
+             "direct leg: the start is taken on what lies at the pit — all ten fixed "
+             "in the tick of the start");
+  {
+    const core::ConstructionState& works = pit_row(second).construction;
+    failures +=
+        Expect(works.legs.size() == 2 && works.legs[0].from.x == 0.0F &&
+                   works.legs[0].grams[0] == 4 * kLogGrams && works.legs[1].from.x == 500.0F &&
+                   works.legs[1].grams[0] == 6 * kLogGrams && works.supply_from.x == 0.0F &&
+                   works.supply_log_way == 0,
+               "direct leg: two legs — the pit's four first, then the store's six; the "
+               "carter's first place is the pit");
+    // CONSERVATION, TO THE GRAM: ten lay in the farm, ten are the works' —
+    // none is left in the store or at the pit to be offered twice.
+    failures +=
+        Expect(pits.extraction_sites.rows[0].load_grams == 0 && pit_row(lone_store).stock[0] == 0 &&
+                   works.legs[0].grams[0] + works.legs[1].grams[0] == works.awaiting[0],
+               "direct leg: what is spoken for the works has left the pit's load and "
+               "the store's stock — one tonne, one mark");
+  }
+  // And a third barn is told so: nothing of the ten is held for it.
+  Issue(pits, BuildOrder(kBarnType, 2000.0F, 1000.0F));
+  Run(*system, pits, 6);
+  {
+    const std::vector<core::MaterialShortfall> third =
+        system->MaterialsShortFor(pits, pits.units.row_ids.back());
+    failures += Expect(third.size() == 1 && third[0].held == 0,
+                       "direct leg: another works is offered none of what lies spoken at the "
+                       "pit");
+  }
+  // The alarm counts what the start counted: nothing is «without materials»
+  // while the four lie at the pit — and the same site is, the day they do not.
+  const auto without_materials = [&system, &pits]() {
+    std::vector<core::Alarm> alarms;
+    system->CollectAlarms(pits, alarms);
+    core::Grams missing = 0;
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kSiteWithoutMaterials) {
+        missing += alarm.amount;
+      }
+    }
+    return missing;
+  };
+  failures += Expect(without_materials() == 0,
+                     "supply: a site with all its logs fixed — four of them at a pit — is not "
+                     "«without materials»");
+  failures += Expect(pit_row(second).construction.supply_since_day == 3,
+                     "supply: the wait began the day the first of it was fixed");
+  // The works found four short (the pit's leg gone — a state the start no
+  // longer makes, set by hand): the alarm names them while the farm has
+  // none, and the morning after the store holds four again they are fixed
+  // into the store's own leg, the wait's first day standing.
+  {
+    core::ConstructionState& works = pit_row(second).construction;
+    works.legs.erase(works.legs.begin());
+    works.awaiting[0] = 6 * kLogGrams;
+  }
+  failures += Expect(without_materials() == 4 * kLogGrams,
+                     "supply: with nothing anywhere in the farm, the four are named missing");
+  pit_row(lone_store).stock[0] = 4 * kLogGrams;
+  pits.calendar.day = 9;
+  Run(*system, pits, 0);
+  failures += Expect(pit_row(second).construction.supply_since_day == 3,
+                     "supply: more fixed while the first still awaits does not restart the wait — "
+                     "the term runs from its first day");
+  failures += Expect(pit_row(second).construction.awaiting[0] == 10 * kLogGrams &&
+                         pit_row(second).construction.legs.size() == 1 &&
+                         pit_row(second).construction.legs[0].grams[0] == 10 * kLogGrams &&
+                         pit_row(lone_store).stock[0] == 0,
+                     "supply: the morning after, the four are fixed into the store's own leg — "
+                     "one sender, one leg");
+
+  // LOGS STRAIGHT OFF THE STANDS (the direct leg): four felled at a near stand
+  // and eight at a far one, none in any store. The near stand gives all four,
+  // the far one six of its eight — its own carting seam shrunk to the two it
+  // keeps — both by the log cart's way.
+  core::WorldState felled;
+  core::TimberStandRow near_stand;
+  near_stand.position = core::Vec2{.x = 1000.0F, .y = 1500.0F};
+  near_stand.load_grams = 4 * kLogGrams;
+  near_stand.haul_days_remaining = 2.0F;
+  near_stand.haul_days_written = 2.0F;
+  core::AppendRow(felled.stands, near_stand);
+  core::TimberStandRow far_stand;
+  far_stand.position = core::Vec2{.x = 1000.0F, .y = 9000.0F};
+  far_stand.load_grams = 8 * kLogGrams;
+  far_stand.haul_days_remaining = 4.0F;
+  far_stand.haul_days_written = 4.0F;
+  core::AppendRow(felled.stands, far_stand);
+  Issue(felled, BuildOrder(kBarnType, 1000.0F, 1000.0F));
+  Run(*system, felled, 0);
+  const core::UnitId log_site = felled.units.row_ids.back();
+  failures += Expect(system->MaterialsShortFor(felled, log_site).empty(),
+                     "direct leg: twelve logs felled at two stands are held for a barn of ten");
+  Issue(felled, UnitOrder(core::OrderKind::kStartBuild, log_site));
+  Run(*system, felled, 5);
+  {
+    const core::ConstructionState& works =
+        felled.units.rows[core::FindRow(felled.units, log_site)].construction;
+    failures += Expect(
+        works.legs.size() == 2 && works.legs[0].log_way == 1 && works.legs[0].from.y == 1500.0F &&
+            works.legs[0].grams[0] == 4 * kLogGrams && works.legs[1].log_way == 1 &&
+            works.legs[1].from.y == 9000.0F && works.legs[1].grams[0] == 6 * kLogGrams &&
+            works.awaiting[0] == 10 * kLogGrams && works.supply_log_way == 1,
+        "direct leg: the near stand's four and six of the far stand's eight are "
+        "fixed, a leg a stand, by the log cart's way");
+    failures += Expect(felled.stands.rows[0].load_grams == 0 &&
+                           felled.stands.rows[0].haul_days_remaining == 0.0F &&
+                           felled.stands.rows[1].load_grams == 2 * kLogGrams &&
+                           felled.stands.rows[1].haul_days_remaining == 1.0F &&
+                           felled.stands.rows[1].haul_days_written == 1.0F,
+                       "direct leg: what is spoken for the works leaves the stands' loads, and "
+                       "the far stand's own carting seam is the two logs it keeps");
+  }
   return failures;
 }
 
@@ -303,6 +574,16 @@ int TestAnUpgradeHoldsItsRecipe(const core::ITableSet& tables) {
   // Level 2 takes twenty logs: five of its own and fifteen from the store.
   const core::OrderId raised = Issue(world, UnitOrder(core::OrderKind::kUpgradeUnit, first));
   Run(*system, world, 5);
+  // Fixed and not yet carted (V2): the barn's own five are held back at once,
+  // the store's fifteen await — in no stock, so nobody else's to count.
+  failures += Expect(row_of(first).stock[0] == 5 * kLogGrams &&
+                         row_of(first).construction.reserved.size() == 1 &&
+                         row_of(first).construction.reserved[0] == 5 * kLogGrams &&
+                         row_of(first).construction.awaiting[0] == 15 * kLogGrams &&
+                         row_of(store_id).stock[0] == 5 * kLogGrams,
+                     "hold-back: before the carts the barn holds back its own five and "
+                     "fifteen of the store's await");
+  Cart(*system, world);
   failures += Expect(RefusalOf(world, raised) == core::OrderRefusal::kNone &&
                          row_of(first).stock[0] == 20 * kLogGrams &&
                          row_of(store_id).stock[0] == 5 * kLogGrams,
@@ -330,6 +611,7 @@ int TestAnUpgradeHoldsItsRecipe(const core::ITableSet& tables) {
   row_of(store_id).stock[0] = 17 * kLogGrams;
   const core::OrderId started = Issue(world, UnitOrder(core::OrderKind::kUpgradeUnit, second));
   Run(*system, world, 0);
+  Cart(*system, world);
   failures += Expect(RefusalOf(world, started) == core::OrderRefusal::kNone &&
                          row_of(first).stock[0] == 20 * kLogGrams &&
                          row_of(second).construction.reserved.size() == 1 &&
@@ -493,9 +775,10 @@ int TestMarkAndBuild(const core::ITableSet& tables) {
   const core::OrderId started = Issue(world, UnitOrder(core::OrderKind::kStartBuild, site));
   Run(*system, world, 0);
   failures += Expect(RefusalOf(world, started) == core::OrderRefusal::kNone, "the works start");
+  Cart(*system, world);
   const core::UnitRow& building = world.units.rows[core::FindRow(world.units, site)];
   failures += Expect(building.construction.phase == core::ConstructionPhase::kBuilding,
-                     "the recipe was on hand, so delivery finished in the same day");
+                     "the recipe was on hand and carted, so the labour opened that hour");
   failures += Expect(building.construction.labor_days_remaining > 9.9F &&
                          building.construction.labor_days_remaining < 10.1F,
                      "70 real man-days is 10 game man-days of work left");
@@ -533,6 +816,7 @@ int TestMarkAndBuild(const core::ITableSet& tables) {
   // An upgrade: the unit keeps working at its level while the next is built.
   const core::OrderId upgrade = Issue(world, UnitOrder(core::OrderKind::kUpgradeUnit, site));
   Run(*system, world, 0);
+  Cart(*system, world);
   failures +=
       Expect(RefusalOf(world, upgrade) == core::OrderRefusal::kNone, "a barn may be raised");
   const core::UnitRow& raising = world.units.rows[core::FindRow(world.units, site)];
@@ -642,6 +926,7 @@ int TestDemolition(const core::ITableSet& tables) {
   const core::UnitId barn = world.units.row_ids.back();
   Issue(world, UnitOrder(core::OrderKind::kStartBuild, barn));
   Run(*system, world, 0);
+  Cart(*system, world);
   world.units.rows[core::FindRow(world.units, barn)].construction.labor_days_remaining = 0.0F;
   Run(*system, world, 1);
   const core::OrderId down = Issue(world, UnitOrder(core::OrderKind::kDemolishUnit, barn));
@@ -673,6 +958,7 @@ int TestDemolition(const core::ITableSet& tables) {
   const core::UnitId full = world.units.row_ids.back();
   Issue(world, UnitOrder(core::OrderKind::kStartBuild, full));
   Run(*system, world, 0);
+  Cart(*system, world);
   if (core::FindRow(world.units, full) == core::kNoRow) {
     return failures + Expect(false, "the second barn was not built — the fixture, not the rule");
   }
@@ -711,6 +997,7 @@ int TestDemolition(const core::ITableSet& tables) {
   const core::UnitId parent = world.units.row_ids.back();
   Issue(world, UnitOrder(core::OrderKind::kStartBuild, parent));
   Run(*system, world, 0);
+  Cart(*system, world);
   if (core::FindRow(world.units, parent) == core::kNoRow) {
     return failures + Expect(false, "the parent barn was not built — the fixture, not the rule");
   }
@@ -1078,6 +1365,16 @@ int TestRepair(const core::ITableSet& tables) {
 
   const core::OrderId order = Issue(world, UnitOrder(core::OrderKind::kRepairUnit, worn));
   Run(*system, world, 0);
+  {
+    // Fixed and not yet carted (V2): the parts await, the repair's labour is
+    // not open.
+    const core::UnitRow& fixed = world.units.rows[core::FindRow(world.units, worn)];
+    failures +=
+        Expect(fixed.construction.phase == core::ConstructionPhase::kDelivering &&
+                   fixed.construction.awaiting.size() > 1 && fixed.construction.awaiting[1] > 0,
+               "repair: the parts are fixed for the barn and await their carting");
+  }
+  Cart(*system, world);
   const std::uint32_t row = core::FindRow(world.units, worn);
   const core::ConstructionState& site = world.units.rows[row].construction;
   // 10 game man-days of build norm x 0.5 share x 50/100 of wear = 2.5.
@@ -1336,6 +1633,7 @@ int TestUpgradeHeals(const core::ITableSet& tables) {
   const core::UnitId unit = core::AppendRow(world.units, barn);
   Issue(world, UnitOrder(core::OrderKind::kUpgradeUnit, unit));
   Run(*system, world, 0);
+  Cart(*system, world);
   const std::uint32_t row = core::FindRow(world.units, unit);
   // Still worn — and a shade worse, because the day that opened the site
   // also aged the barn. What matters is that nothing healed.
@@ -2748,6 +3046,7 @@ int TestAModuleStandsOnItsParent() {
   // second (damage run D2, 2026-09-13).
   Issue(world, UnitOrder(core::OrderKind::kStartBuild, shed));
   Run(*system, world, 0);
+  Cart(*system, world);
   failures += Expect(world.units.rows[core::FindRow(world.units, shed)].construction.phase ==
                          core::ConstructionPhase::kBuilding,
                      "modules: and start once it stands again");
@@ -2816,6 +3115,7 @@ int main() {
   failures += TestTheWinterSiteIsNoAlarm(tables);
   failures += TestCrewlessDaysLightTheSiteLamp(tables);
   failures += TestStartChecksTheRecipe(tables);
+  failures += TestTheSupplyOfAWorks(tables);
   failures += TestAnUpgradeHoldsItsRecipe(tables);
   failures += TestRefusals(tables);
   failures += TestTheFieldCampStandsBesideTheFields(tables);

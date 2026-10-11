@@ -17,6 +17,7 @@
 #include "core_common/haul.h"
 #include "core_common/land_state.h"
 #include "core_common/quantities.h"
+#include "core_common/supply_estimate.h"
 #include "core_common/world_state.h"
 #include "production_config.h"
 
@@ -154,6 +155,37 @@ void SettleSiteHauling(const ProductionConfig& config, WorldState& current);
 ///        tomorrow's demand waits for the evening.
 /// @pre The day's last tick, sequential slot, after labor has run.
 void SettleStoreEmptying(const ProductionConfig& config, WorldState& current, bool evening = true);
+
+/// @brief THE SUPPLY OF A WORKS (routing stage V2, 0.37.204; transport §12,
+/// «Снабжение … материалы на стройку»): for every unit whose works have
+/// materials awaiting (ConstructionState::awaiting — fixed for it by the
+/// construction sub-step, lying at the sender), the share of the supply seam
+/// the carriers drained since the last settlement lands in the unit's stock,
+/// in resource order; and the seam is written — in the evening for tomorrow,
+/// and in the hour a load first appears — from what still awaits, the way
+/// from ConstructionState::supply_from to the unit, and the bed
+/// (HaulDaysFor, the rate of every load). A paused unit's seam is closed.
+///
+/// A LEG AT A TIME (the direct leg; ConstructionState::legs): the seam is the
+/// FRONT leg's — its grams, its sender, its way (the log cart's for logs
+/// straight off a stand). A leg carted out is dropped and the seam written
+/// for the next in the same hour. What the fixing added since the last hour
+/// is priced, leg by leg, into ConstructionState::supply_days_first.
+///
+/// Booked in the year's cart runs under CartLoadSource::kSupply (save 147).
+/// @param evening false for an hour's settlement (DeliverCartedLoads).
+/// @pre Sequential slot, after labour has run; before the construction
+///      sub-step, which opens the labour on what this put on the site.
+void SettleSiteSupply(const ProductionConfig& config, WorldState& current, bool evening);
+
+/// @brief The price of a supply plan (supply_estimate.h): the days one cart —
+/// one carrier on foot when no draught horse is free — takes to bring
+/// `plan.grams` from `plan.sender` to `site`, by the rate SettleSiteSupply
+/// writes the seam with. A pure read; `plan` untouched when it carts nothing.
+SupplyEstimate PriceSiteSupply(const ProductionConfig& config,
+                               const WorldState& world,
+                               SupplyEstimate plan,
+                               Vec2 site);
 
 /// @brief THE CARTED SHARE REACHES THE STORE IN THE HOUR IT WAS CARTED
 /// (routing stage V1; transport §12; boss, the logistics thread [207]-[208]):

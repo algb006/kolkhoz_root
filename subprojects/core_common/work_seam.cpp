@@ -55,7 +55,16 @@ const float* WorkSeamOf(const WorldState& world, const WorkAssignment& work) {
       return nullptr;
     }
     const UnitRow& unit = world.units.rows[row];
-    return unit.emptying == 1 ? &unit.haul_days_remaining : nullptr;
+    if (unit.emptying == 1) {
+      return &unit.haul_days_remaining;
+    }
+    // THE SUPPLY OF A WORKS (routing stage V2): carting TO a unit whose works
+    // have materials awaiting drains its supply seam — not while it is paused
+    // (construction design §6). A store being emptied is carted OUT first:
+    // one hauling work names one unit, and the order above is the chairman's.
+    return unit.emptying == 0 && unit.paused == 0 && AnythingAwaits(unit.construction)
+               ? &unit.construction.supply_days_remaining
+               : nullptr;
   }
   // A TIMBER LOT AT THE DISTRICT CENTRE (decision 279, 0.36.17): carting
   // drains the lot's own carting seam while anything of it waits there.
@@ -154,7 +163,12 @@ bool WorkPlaceOf(const WorldState& world, const WorkAssignment& work, Vec2& plac
     if (row == kNoRow) {
       return false;
     }
-    place = world.units.rows[row].position;
+    const UnitRow& unit = world.units.rows[row];
+    // The supply of a works (V2) is loaded at its SENDER: the carter's place
+    // is there, as the labour sub-step offered it (labor_system.cpp).
+    const bool supplying =
+        work.kind == WorkKind::kHauling && unit.emptying == 0 && AnythingAwaits(unit.construction);
+    place = supplying ? unit.construction.supply_from : unit.position;
     return true;
   }
   if (work.stand.value != kInvalidEntityIdValue) {
@@ -303,8 +317,17 @@ TravelMode WorkTravelMode(const WorldState& world, const WorkAssignment& work) {
   if (work.kind == WorkKind::kHauling) {
     // Logs off a stand, or a timber lot from the district (0.36.17): the log
     // cart; produce: the cart that keeps to the roads.
-    const bool logs = work.stand.value != kInvalidEntityIdValue ||
-                      work.limit_delivery.value != kInvalidEntityIdValue;
+    bool logs = work.stand.value != kInvalidEntityIdValue ||
+                work.limit_delivery.value != kInvalidEntityIdValue;
+    // AND LOGS STRAIGHT OFF A STAND TO A WORKS (the direct leg; save 147): the
+    // supply's front leg says which cart it is (ConstructionState::
+    // supply_log_way), as the seam's own rate does (field_haul.cpp, LegRate).
+    if (!logs && work.unit.value != kInvalidEntityIdValue) {
+      const std::uint32_t row = FindRow(world.units, work.unit);
+      logs = row != kNoRow && world.units.rows[row].emptying == 0 &&
+             AnythingAwaits(world.units.rows[row].construction) &&
+             world.units.rows[row].construction.supply_log_way != 0;
+    }
     return logs ? TravelMode::kLogCart : TravelMode::kCart;
   }
   return TravelMode::kTeam;

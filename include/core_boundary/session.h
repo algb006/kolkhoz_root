@@ -144,6 +144,7 @@
 #include "core_common/readiness_view.h"
 #include "core_common/resident_activity.h"
 #include "core_common/stink.h"
+#include "core_common/supply_estimate.h"
 #include "core_common/world_junction.h"
 #include "core_common/world_state.h"
 #include "core_sim/step.h"
@@ -773,6 +774,23 @@ class ISession {
   /// started (its materials are reserved) or one at the top of its ladder.
   /// @note Between steps; the answer describes State().
   virtual std::vector<MaterialShortfall> MaterialsShortFor(UnitId unit) const = 0;
+
+  /// @brief HOW LONG THE CARTING TO THE WORKS ON `unit` WOULD TAKE — asked
+  /// BEFORE the start (supply_estimate.h; routing stage V2, 0.37.204;
+  /// construction design §6). A started site waits for its recipe to be
+  /// carted from the stores; this is that wait's size while the player can
+  /// still choose another place. The layer's sentence is «подвоз ≈ N суток
+  /// одной подводой» from `cart_days`, and «подвоз пешком ≈ N суток» when
+  /// `on_foot` (no horse to give) — it may divide by the yard's carts for a
+  /// second line; the core does not know how many the groom will spare.
+  ///
+  /// `grams` 0 means nothing to cart: the recipe lies on the unit, the class
+  /// is a marking, the unit is not there or is at the top of its ladder — or
+  /// no line of the recipe is in any store (then MaterialsShortFor names what
+  /// is short, and there is nothing to estimate). For works already started
+  /// it is what still awaits its carting.
+  /// @note Between steps; the answer describes State().
+  virtual SupplyEstimate SupplyEstimateFor(UnitId unit) const = 0;
 
   /// @brief How badly it stinks at a point of the map, in the four bands the
   /// design speaks in (water design §4). Two questions, two doors:

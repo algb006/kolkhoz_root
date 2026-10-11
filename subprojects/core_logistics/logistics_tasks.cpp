@@ -34,6 +34,7 @@ LoadAddress AddressOf(const LogisticsTaskRow& task) {
     case LogisticsLoadKind::kDistrictLot:
       return {task.load_kind, task.limit_delivery.value};
     case LogisticsLoadKind::kStoreTransfer:
+    case LogisticsLoadKind::kSiteSupply:
       return {task.load_kind, task.unit.value};
     case LogisticsLoadKind::kLogisticsLoadKindCount:
       break;
@@ -70,6 +71,15 @@ std::vector<LoadAddress> LoadsOf(const WorldState& world) {
       loads.push_back({LogisticsLoadKind::kStoreTransfer, world.units.row_ids[row].value});
     }
   }
+  // The supply of a works (V2): while anything fixed for it awaits and it is
+  // neither paused nor under an emptying order (the labour sub-step offers it
+  // by the same three conditions).
+  for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+    const UnitRow& unit = world.units.rows[row];
+    if (unit.emptying == 0 && unit.paused == 0 && AnythingAwaits(unit.construction)) {
+      loads.push_back({LogisticsLoadKind::kSiteSupply, world.units.row_ids[row].value});
+    }
+  }
   return loads;
 }
 
@@ -94,6 +104,7 @@ LogisticsTaskRow TaskFor(const LogisticsConfig& config, const LoadAddress& load,
       task.limit_delivery = LimitDeliveryId{load.id};
       break;
     case LogisticsLoadKind::kStoreTransfer:
+    case LogisticsLoadKind::kSiteSupply:
       task.unit = UnitId{load.id};
       break;
     case LogisticsLoadKind::kLogisticsLoadKindCount:
@@ -237,6 +248,10 @@ void AgeAndRaise(const LogisticsConfig& config,
         }
       }
     }
+    // «МАТЕРИАЛЫ ДЛЯ СТРОЙКИ, КОТОРАЯ СТОИТ» (transport §12, level 1) is the
+    // supply task's own level (kSiteSupply): what lies at a pit or a stand
+    // for a works is that works' leg (the direct leg), carted by its task. A
+    // pit's dig and a stand's logs go by the round.
     // The player's level 0 stays (base_level kUrgent, B7).
     if (task.base_level == LogisticsLevel::kUrgent) {
       level = LogisticsLevel::kUrgent;

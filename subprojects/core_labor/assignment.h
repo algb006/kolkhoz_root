@@ -152,6 +152,21 @@ struct AssignmentJob {
   /// 29 [22]). STUB: the place, not a number of the design's.
   bool autumn_furrow = false;
 
+  /// True for the carting of the materials fixed for a works to their unit
+  /// (routing stage V2; ConstructionState::awaiting). Its place in the queue
+  /// is its WINDOW's — the days left of the supply's term (LaborConfig::
+  /// site_supply_term_days), set by the labour sub-step — and this mark only
+  /// says what the last pass must know: once the horse yard stands, no
+  /// carrier on foot is sent to it (PlanDayAssignments).
+  bool supplies_works = false;
+
+  /// True for a supply whose front leg is logs straight off a stand (the
+  /// direct leg; ConstructionState::supply_log_way): the ride to it is the
+  /// log cart's, across the felling's ground, as a stand's own carting is —
+  /// the produce cart that keeps to the roads does not reach a stand's
+  /// loading point within the road limit.
+  bool log_cart = false;
+
   /// True for the carting of the hay lying mown at a meadow — a heap on land
   /// that is not arable — WHILE THE STORES HOLD THE HAY THE HERDS NEED AHEAD
   /// (0.37.131; LaborConfig::hay_cart_need_days). The job then has no window
@@ -441,6 +456,26 @@ float SavedPerHandDay(const AssignmentJob& job,
 ///        field's work whose crop gives it no window, the meadow's cut outside
 ///        its months.
 inline constexpr int kWindowlessTier = 4;
+
+/// @brief THE TERM OF A WORKS' SUPPLY BY ITS OWN LOAD, game days from the day
+///        its materials were fixed (econ, core-boss-c2-site-supply-2026-10-09
+///        [19]-[20]): the flat term while the load is no more than twice as
+///        many cart-days, and above that half the load's cart-days, rounded
+///        up. A works of thirty cart-days held to the eight days of a works
+///        of two was late by the rule's own making (pair 4: 85.4 % within the
+///        flat term, worst wait 23 days).
+/// @param flat_days LaborConfig::site_supply_term_days.
+/// @param load_cart_days The works' whole load as first priced
+///        (ConstructionState::supply_days_first); not above nought — the flat
+///        term.
+inline std::uint32_t SiteSupplyTermDays(std::uint32_t flat_days, float load_cart_days) {
+  const float by_load = load_cart_days / 2.0F;
+  if (!(by_load > static_cast<float>(flat_days))) {
+    return flat_days;
+  }
+  const auto whole = static_cast<std::uint32_t>(by_load);
+  return static_cast<float>(whole) < by_load ? whole + 1U : whole;
+}
 
 /// @brief The tier of the placement queue `job` stands in, the first key the
 ///        queue is ordered by (AssignmentJob::window): 0 an open window, 1 an
