@@ -3925,7 +3925,11 @@ int main() {
     // meadows at — a run's reader, like suggestions.csv, and it has none yet
     // (the bot's move is the delivery after the door). The core reads it
     // never; out of this list when a run's policy does.
-    const std::array<std::string_view, 2> not_read_yet = {"suggestions", "meadow_suggestions"};
+    // suggested_roads.csv came with boss's export of 11 October 2026 (62ad621):
+    // the elder's suggested roads, read by a RUN's chairman (suggested_roads_
+    // policy.h, #423) and never by the core — like suggestions.csv.
+    const std::array<std::string_view, 3> not_read_yet = {
+        "suggestions", "meadow_suggestions", "suggested_roads"};
     const fs::path doctored = fs::temp_directory_path() / "unit_core_world_missing_table";
     for (const fs::directory_entry& file : fs::directory_iterator(fs::path(KOLKHOZ_TABLES_DIR))) {
       if (file.path().extension() != ".csv") {
