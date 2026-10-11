@@ -230,10 +230,24 @@ class OrdersPolicy {
   /// herd care, and who holds no post. Anyone at work is of working age by
   /// construction, so the age band is read where it is applied instead of
   /// being copied here — one home for the rule.
+  ///
+  /// AND NOBODY WITH AN APPOINTMENT IN THE BOOK (0.37.228): the canon's
+  /// chairman appoints posts (the office, the school, the watchman) by
+  /// kAppoint orders that stand accepted in the book until the day's close,
+  /// and the row says nothing of them until then. The core's rule is
+  /// «whichever arrives second is refused» (work_orders.cpp,
+  /// CheckAssignWork): a work order for a man whose appointment waits is
+  /// refused kConflictsWithActive — rightly — and this policy read the
+  /// refusal as «the order did not outrank the placement». It did so for the
+  /// first time on 0.37.225's suite (seed 1931, day 32: resident 1, 66, on a
+  /// supply cart, appointed the same day), when #561's tier moved the works'
+  /// finishing days and with them the day a post opened; the three
+  /// thirty_years runs reddened on the subject, not on the order.
   static core::ResidentId PlacedElsewhere(const core::WorldState& world) {
     for (std::uint32_t row = 0; row < world.residents.rows.size(); ++row) {
       const core::ResidentRow& resident = world.residents.rows[row];
-      if (resident.post.profession.value != core::kInvalidDefIdValue) {
+      if (resident.post.profession.value != core::kInvalidDefIdValue ||
+          AppointmentWaits(world, world.residents.row_ids[row])) {
         continue;
       }
       if (resident.work.kind == core::WorkKind::kNone ||
@@ -243,6 +257,20 @@ class OrdersPolicy {
       return world.residents.row_ids[row];
     }
     return core::ResidentId{};
+  }
+
+  /// @brief Whether a kAppoint order naming `resident` stands in the book,
+  /// pending or accepted — the core's AppointmentIsWaiting asked from
+  /// outside (posts.h is core_labor's own).
+  static bool AppointmentWaits(const core::WorldState& world, core::ResidentId resident) {
+    for (const core::OrderRow& order : world.orders.rows) {
+      if (order.kind == core::OrderKind::kAppoint && order.resident.value == resident.value &&
+          (order.status == core::OrderStatus::kPending ||
+           order.status == core::OrderStatus::kAccepted)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   void Abandon(const char* why) {

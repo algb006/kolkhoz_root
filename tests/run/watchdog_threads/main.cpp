@@ -36,8 +36,17 @@ namespace {
 constexpr std::uint64_t kSeed = 1931;
 constexpr std::uint32_t kFirstFaultDay = 10;
 constexpr std::uint32_t kFaultHour = 2;
+/// TWO YEARS, NOT ONE (0.37.228): the run's subject is the passenger wait,
+/// and year 1 of this village makes almost none since #561 (0.37.225) put
+/// the works' supply — year 1's goods carts on the field windows' days —
+/// behind the plough and the meadow: 38 passenger seats a year fell to 4,
+/// and the waits made from 23 to 0 — the guard below reddened on the test's
+/// own emptiness. Year 2 carts the harvest and the hay from the standing
+/// yard. The year's book of each year is read: `closed` is year 1's.
+constexpr std::uint32_t kYears = 2;
 
 struct Count {
+  std::uint32_t passengers = 0;
   std::uint32_t waits = 0;
   std::uint32_t fired = 0;
   std::uint32_t lines = 0;
@@ -74,9 +83,26 @@ std::optional<Count> RunAYear(std::uint32_t workers) {
   core::ISimulation& simulation = *world.simulation;
   run::BuildingChairman builder(*world.tables);
   Count count;
-  for (std::uint32_t tick = 0; tick < core::kTicksPerYear; ++tick) {
+  // THE BOOKS ARE READ AS THEY CLOSE (0.37.228): the ledger turns on the
+  // year's first tick, so after kYears whole years `closed` is the LAST year's
+  // book and `current` the next year's empty one — year 1's firings were
+  // nowhere (f3i: 8 firings, 8 lines, the books said 4). Each closed book is
+  // added the step it closes; the unclosed one at the end.
+  std::uint32_t booked_year = 0;
+  const auto book = [&count](const core::YearLedger& ledger) {
+    count.passengers += ledger.cart_passengers;
+    for (std::size_t kind = 0; kind < core::kWaitKindCount; ++kind) {
+      count.waits += ledger.waits_made[kind];
+      count.fired += ledger.watchdog_fired[kind];
+    }
+  };
+  for (std::uint32_t tick = 0; tick < kYears * core::kTicksPerYear; ++tick) {
     simulation.AdvanceStep();
     const core::WorldState& now = simulation.CompletedState();
+    if (now.ledger.closed.year != booked_year) {
+      book(now.ledger.closed);
+      booked_year = now.ledger.closed.year;
+    }
     for (const core::SimEvent& event : now.step_events) {
       count.lines += event.kind == core::EventKind::kWatchdogFired ? 1U : 0U;
     }
@@ -89,12 +115,7 @@ std::optional<Count> RunAYear(std::uint32_t workers) {
     }
   }
   const core::WorldState& end = simulation.CompletedState();
-  for (const core::YearLedger* book : {&end.ledger.current, &end.ledger.closed}) {
-    for (std::size_t kind = 0; kind < core::kWaitKindCount; ++kind) {
-      count.waits += book->waits_made[kind];
-      count.fired += book->watchdog_fired[kind];
-    }
-  }
+  book(end.ledger.current);  // the year under way, if the last step did not close it
   count.world = core::EncodeWorld(end, *world.tables);
   return count;
 }
@@ -109,7 +130,11 @@ int main() {
     std::cout << "FAIL: the runs did not start\n";
     return 1;
   }
-  std::cout << "watchdog_threads: seed " << kSeed << ", one year - waits made " << one->waits
+  // The passengers are printed beside the waits: a village with no
+  // passengers waits for nobody, and the guard below says «vacuous» without
+  // saying why.
+  std::cout << "watchdog_threads: seed " << kSeed << ", " << kYears << " years - passengers "
+            << one->passengers << " / " << three->passengers << ", waits made " << one->waits
             << " / " << three->waits << ", faults " << one->faults << " / " << three->faults
             << ", fired " << one->fired << " / " << three->fired << ", journal lines " << one->lines
             << " / " << three->lines << " (one worker / three)\n";
