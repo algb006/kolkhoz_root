@@ -1651,10 +1651,18 @@ class LaborSystem final : public ILaborSystem {
       // of the materials fixed for a site, from their sender to it — on the
       // same carts and hands. DUE BY A DATE (level 1, «срок»): its window is
       // the days left of LaborConfig::site_supply_term_days from the day the
-      // materials were fixed, so it stands among the open windows by them — a
-      // heap two days from the snow goes before a site fixed this morning, a
-      // site that has waited the term out goes before every window with a day
-      // to spare. The carter's place is the sender, where he loads. A unit
+      // materials were fixed. SINCE #561 (0.37.225) the window orders it only
+      // INSIDE the works' own tier (PlacementTier: supplies_works -> the
+      // windowless tier), ahead of the works it feeds; every job with an open
+      // window, the overdue, the meadow's cut and the rye's fallow go first.
+      // Until then the window put it among the open windows by its days, and
+      // in year 1's June it took the mowing's hands (transport design «Подвоз
+      // к стройке — на месте самой стройки, а не своего срока»).
+      // NOT IN THE CORE (#561's second half, «дни, когда покос забрал
+      // возчиков, не идут в срок стройки»): the core has no lamp or alarm on
+      // this term yet - its one reader is the order above - so there is
+      // nothing to exempt; the rule goes with the alarm when stage В6 brings
+      // one. The carter's place is the sender, where he loads. A unit
       // being emptied is carted out first (work_seam.cpp): it is not offered
       // here until that is done.
       for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {

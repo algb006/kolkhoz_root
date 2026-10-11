@@ -153,11 +153,12 @@ struct AssignmentJob {
   bool autumn_furrow = false;
 
   /// True for the carting of the materials fixed for a works to their unit
-  /// (routing stage V2; ConstructionState::awaiting). Its place in the queue
-  /// is its WINDOW's — the days left of the supply's term (LaborConfig::
-  /// site_supply_term_days), set by the labour sub-step — and this mark only
-  /// says what the last pass must know: once the horse yard stands, no
-  /// carrier on foot is sent to it (PlanDayAssignments).
+  /// (routing stage V2; ConstructionState::awaiting). Its TIER is the works'
+  /// own, the windowless one (PlacementTier; #561, 0.37.225), and inside it
+  /// its WINDOW — the days left of the supply's term (LaborConfig::
+  /// site_supply_term_days), set by the labour sub-step — orders it. And the
+  /// last pass reads it too: once the horse yard stands, no carrier on foot
+  /// is sent to it (PlanDayAssignments).
   bool supplies_works = false;
 
   /// True for a construction works that will house a herd facing the cold

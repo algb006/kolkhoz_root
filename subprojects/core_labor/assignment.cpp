@@ -523,6 +523,18 @@ int PlacementTier(const AssignmentJob& job) {
   if (job.prepares_winter_crop && !job.winter_window_closing) {
     return kWinterPreparationTier;
   }
+  // A WORKS' SUPPLY STANDS ON THE WORKS' OWN TIER, NOT ITS TERM'S (#561;
+  // transport design «Подвоз к стройке — на месте самой стройки, а не
+  // своего срока», boss 11 October 2026 on econ's supply-below-mowing and
+  // core's HM print: in year 1's June the supply took up to 175 person-noons
+  // from the mowing and two years' hay fell 9 %). Its term (the window
+  // below) orders it only inside that tier — ahead of the works it feeds —
+  // so in haymaking the works' carter mows while the meadow is in its
+  // window. Until 0.37.225 the term's window put it on tier 0, ahead of the
+  // meadow's cut (tier 2) and the rye's fallow (tier 3).
+  if (job.supplies_works) {
+    return kWindowlessTier;
+  }
   // The meadow cut is the one harvest that rides out (labor_system.cpp,
   // CollectJobs sets `harnessed` on a harvest for a meadow and no other).
   if (IsMeadowCut(job)) {

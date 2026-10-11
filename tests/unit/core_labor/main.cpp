@@ -2936,9 +2936,11 @@ int TestTheSupplyOfAWorksGoesBeforeTheRounds() {
     failures += Expect(plan[0] == (supply_first ? 0U : 1U),
                        "supply: ahead of a windowless carting on its round, in either input order");
   }
-  // BY THE DAYS LEFT, AMONG THE WINDOWS: due in six days, it goes before a
-  // carting due in thirty and after one due in two — in either input order,
-  // so its mark is seen to lift it over neither.
+  // ON THE WORKS' OWN TIER, NOT ITS TERM'S (#561; transport design «Подвоз
+  // к стройке — на месте самой стройки»): due in six days, it goes behind a
+  // field's carting with a window of thirty days AND of two — every job with
+  // an open window is on a tier above it. Until 0.37.225 it went ahead of the
+  // thirty-day one by its days (the term's window put it on tier 0).
   for (const bool supply_first : {true, false}) {
     for (const std::uint8_t rival_days : {std::uint8_t{30}, std::uint8_t{2}}) {
       const core::AssignmentJob windowed =
@@ -2948,12 +2950,24 @@ int TestTheSupplyOfAWorksGoesBeforeTheRounds() {
                        : std::vector<core::AssignmentJob>{windowed, supply()};
       const auto plan = core::PlanDayAssignments(jobs, candidates, params);
       const std::uint32_t supply_index = supply_first ? 0U : 1U;
-      const std::uint32_t expected = rival_days > 6 ? supply_index : 1U - supply_index;
       failures +=
-          Expect(plan[0] == expected,
-                 rival_days > 6 ? "supply: due in six days, ahead of a carting due in thirty"
-                                : "supply: due in six days, behind a carting due in two");
+          Expect(plan[0] == 1U - supply_index,
+                 rival_days > 6 ? "supply: on the works' tier, behind a carting due in thirty"
+                                : "supply: on the works' tier, behind a carting due in two");
     }
+  }
+  // AND THE MOWING IN ITS WINDOW TAKES THE HAND FIRST (#561): one worker, a
+  // meadow's cut with days left and the supply - the cut, in either order.
+  for (const bool supply_first : {true, false}) {
+    core::AssignmentJob mowing =
+        FieldJob(core::WorkKind::kHarvest, 3, origin, 3.0F, std::uint8_t{8});
+    mowing.harnessed = true;  // a meadow's cut rides out (IsMeadowCut)
+    const std::vector<core::AssignmentJob> jobs =
+        supply_first ? std::vector<core::AssignmentJob>{supply(), mowing}
+                     : std::vector<core::AssignmentJob>{mowing, supply()};
+    const auto plan = core::PlanDayAssignments(jobs, candidates, params);
+    failures += Expect(plan[0] == (supply_first ? 1U : 0U),
+                       "supply: the meadow's cut in its window takes the one hand first");
   }
   {
     core::AssignmentJob urgent = round();
