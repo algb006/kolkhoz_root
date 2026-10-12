@@ -177,6 +177,10 @@ class ScriptedSimulation final : public core::ISimulation {
     alarms.insert(alarms.end(), alarms_.begin(), alarms_.end());
   }
 
+  void CollectPorterLegs(std::vector<core::PorterLeg>& out) const override {
+    out.insert(out.end(), porters_.begin(), porters_.end());
+  }
+
   /// The scripted double has no weather; the days ahead read from whatever
   /// the test set, so a session test can pin a forecast without a table set.
   void CollectWeatherForecast(std::span<core::DayForecast> into) const override {
@@ -238,6 +242,9 @@ class ScriptedSimulation final : public core::ISimulation {
 
   /// What the next CollectAlarms will hand back, in the order given.
   std::vector<core::Alarm> alarms_;
+
+  /// What the next CollectPorterLegs will hand back, in the order given.
+  std::vector<core::PorterLeg> porters_;
 
  private:
   core::WorldState world_;
@@ -1237,6 +1244,35 @@ int TestSignals(const core::ITableSet& tables) {
     script->alarms_.clear();
     session->AdvanceStep();
     failures += Expect(session->ActiveAlarms().empty(), "and a condition that passed is gone");
+  }
+
+  // THE PORTERS' DOOR (#671; session.h, PorterLegs): the simulation's records,
+  // sorted by porter whatever order they came in, refreshed by a step and by
+  // a load alike.
+  {
+    failures += Expect(session->PorterLegs().empty(), "nobody carrying on foot: no porters");
+    core::PorterLeg high;
+    high.porter = core::ResidentId{9};
+    high.partner = core::ResidentId{4};
+    core::PorterLeg low;
+    low.porter = core::ResidentId{4};
+    low.partner = core::ResidentId{9};
+    low.grams = 20'000;
+    script->porters_ = {high, low};
+    session->AdvanceStep();
+    const std::span<const core::PorterLeg> porters = session->PorterLegs();
+    failures += Expect(porters.size() == 2 && porters[0].porter.value == 4 &&
+                           porters[0].partner.value == 9 && porters[0].grams == 20'000 &&
+                           porters[1].porter.value == 9,
+                       "the porters come sorted by porter, each with his partner and grams");
+    script->porters_ = {low};
+    core::WorldState reloaded;
+    session->ReplaceWorld(reloaded);
+    failures += Expect(session->PorterLegs().size() == 1,
+                       "a load stands the new world's porters without waiting for a step");
+    script->porters_.clear();
+    session->AdvanceStep();
+    failures += Expect(session->PorterLegs().empty(), "and a porter who arrived is gone");
   }
 
   // The junctions door (0.37.26) is the simulation's answer, forwarded: a

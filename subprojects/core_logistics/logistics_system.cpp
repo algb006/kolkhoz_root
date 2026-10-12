@@ -30,6 +30,7 @@
 #include "core_common/world_state.h"
 #include "core_log/log.h"
 #include "core_tables/required_tables.h"
+#include "leg_loads.h"
 #include "logistics_config.h"
 #include "logistics_plan.h"
 #include "logistics_tasks.h"
@@ -297,6 +298,11 @@ class LogisticsSystem final : public ILogisticsSystem {
       return CargoForm::kPeople;
     }
     return LegCargoForm(config_, completed, plan.carts[cart].legs[leg]);
+  }
+
+  // THE PORTERS ON THE MAP (#671; leg_loads.h).
+  void CollectPorterLegs(const WorldState& completed, std::vector<PorterLeg>& out) const override {
+    core::CollectPorterLegs(config_, completed, out);
   }
 
   void SayLateLoads(WorldState& current) const override {

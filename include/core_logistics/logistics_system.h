@@ -62,6 +62,7 @@
 #include "core_common/alarm_state.h"
 #include "core_common/cargo_form.h"
 #include "core_common/logistics_state.h"
+#include "core_common/porter_leg.h"
 #include "core_tables/stub_tables.h"
 #include "core_tables/tables.h"
 
@@ -154,6 +155,15 @@ class ILogisticsSystem {
   virtual CargoForm CargoFormOfLeg(const WorldState& completed,
                                    std::uint32_t cart,
                                    std::uint32_t leg) const = 0;
+
+  /// @brief Every carrier on foot of `completed`'s groom plan on the leg he
+  ///        walks at its tick (#671; core_common/porter_leg.h), appended to
+  ///        `out` in the plan's cart order. Empty for a plan of another day.
+  ///        A pure read: each record's form from the resources' cargo_form,
+  ///        its load share from WalkerTripGrams (haul.h) over this
+  ///        subsystem's copy of the labour table's carry numbers.
+  virtual void CollectPorterLegs(const WorldState& completed,
+                                 std::vector<PorterLeg>& out) const = 0;
 };
 
 /// @brief Builds the subsystem from the table set (transport.csv: seats, the

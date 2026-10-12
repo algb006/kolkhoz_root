@@ -32,6 +32,7 @@
 #include "../common/felling_policy.h"
 #include "../common/fixture_policy.h"
 #include "../common/haul_tally.h"
+#include "../common/hauled_line.h"
 #include "../common/house_policy.h"
 #include "../common/insulation_policy.h"
 #include "../common/limit_policy.h"
@@ -749,6 +750,12 @@ int main(int argc, char** argv) {
     sheet << core::LedgerCsvRow(state, *world.tables);
     ++rows_written;
     PrintYear(state);
+    // Who carried the year (#671's instrument; hauled_line.h).
+    const core::ITable* const resources = world.tables->FindTable("resources");
+    run::PrintHauledLine(state.ledger.closed,
+                         resources != nullptr ? core::DefIdFromRow<core::ResourceIdTag>(
+                                                    resources->FindRowByKey("hay"))
+                                              : core::ResourceId{});
     PrintMembers(state, *world.tables);
     // THE DISTRICT'S TALLY OVER THE RUN, kept because the epoch's ending
     // condition lives in it: three failed plans in a row put the chairman

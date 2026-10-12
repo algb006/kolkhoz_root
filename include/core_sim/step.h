@@ -82,6 +82,7 @@
 #include "core_common/meadow_mark.h"
 #include "core_common/office_views.h"
 #include "core_common/order_state.h"
+#include "core_common/porter_leg.h"
 #include "core_common/readiness_view.h"
 #include "core_common/resident_activity.h"
 #include "core_common/road_draft.h"
@@ -439,6 +440,16 @@ class ISimulation {
   /// bare engine knows no loads and answers kNone.
   /// @note Called between steps on the sim thread. A pure read.
   virtual CargoForm CargoFormOfLeg(std::uint32_t cart, std::uint32_t leg) const = 0;
+
+  /// @brief Every carrier on foot on the leg he walks at the completed
+  /// state's tick (#671; porter_leg.h). Fans out to core_logistics
+  /// (CollectPorterLegs); appends, as CollectAlarms does.
+  /// @note Called between steps on the sim thread. A pure read.
+  /// @note NOT PURE, for the reason ActivityOf gives: host's proxy forwards
+  ///       every method, and a new pure one would stop plan700 building
+  ///       against the contract. The default appends nothing - true of a
+  ///       simulation with no logistics and of a proxy not yet forwarding.
+  virtual void CollectPorterLegs(std::vector<PorterLeg>& /*out*/) const {}
 
   /// @brief How badly it stinks at a point of the map — AT WORST
   /// (StinkFullAt) and AS IT IS TODAY (StinkNowAt). Water design §4.

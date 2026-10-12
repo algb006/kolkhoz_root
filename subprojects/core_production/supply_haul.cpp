@@ -7,6 +7,7 @@
 #include <cstdint>
 
 #include "core_common/haul.h"
+#include "core_common/hauled_book.h"
 #include "core_common/ledger_state.h"
 #include "core_common/quantities.h"
 #include "core_common/road_route.h"
@@ -58,7 +59,8 @@ HaulRate LegRate(const ProductionConfig& config,
 }  // namespace
 
 void SettleSiteSupply(const ProductionConfig& config, WorldState& current, bool evening) {
-  for (UnitRow& unit : current.units.rows) {
+  for (std::size_t row = 0; row < current.units.rows.size(); ++row) {
+    UnitRow& unit = current.units.rows[row];
     ConstructionState& works = unit.construction;
     // Legs carted out are dropped from the front; the sender follows.
     const auto drop_empty_front = [&works]() {
@@ -115,6 +117,13 @@ void SettleSiteSupply(const ProductionConfig& config, WorldState& current, bool 
                   CartLoadSource::kSupply,
                   LegRate(config, current, front, unit.position),
                   budget);
+      // Who carried it (#671's instrument; hauled_book.h). A site takes all
+      // the drained work, so the notes are spent whole.
+      WorkAssignment hauled;
+      hauled.kind = WorkKind::kHauling;
+      hauled.unit = current.units.row_ids[row];
+      const float foot =
+          FootShareOf(current, hauled, SettlementHasCarts(current, config.horse_kind));
       for (std::size_t index = 0; index < front.grams.size() && budget > 0; ++index) {
         // Never more than the works' own total holds of it: the two homes
         // are bound gram for gram (ConstructionState::legs).
@@ -130,9 +139,11 @@ void SettleSiteSupply(const ProductionConfig& config, WorldState& current, bool 
           unit.stock.resize(index + 1, 0);
         }
         unit.stock[index] += moved;
+        BookHauled(current.ledger.current, DefIdFromIndex<ResourceIdTag>(index), moved, foot);
         budget -= moved;
         awaiting -= moved;
       }
+      SpendHaulNotes(current, hauled, 1.0F);
       works.supply_days_written = works.supply_days_remaining;
     }
     // A LEG CARTED OUT GIVES THE SEAM TO THE NEXT: the seam is closed here and

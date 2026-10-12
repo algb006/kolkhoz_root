@@ -412,17 +412,22 @@ static_assert(AggregateArity<BarterTripRow>() == 9,
 // the tick to 40; 37 bytes saved: 1 + 4 x 5 + 1 + 1 + 1 + 1 + 4 + 8).
 // Save 142 (0.37.192): the lamp's clock, a u16 after the tick — 40 -> 48 and
 // thirteen fields, 39 bytes saved; predicted before the build.
-static_assert(sizeof(LogisticsTaskRow) == 48,
+// Save 155 (0.37.235, #671's instrument): who drained the seam, two floats
+// after the u16 — 42 aligns to 44, 52, padded to 56; fifteen fields, 47
+// bytes saved; predicted before the build.
+static_assert(sizeof(LogisticsTaskRow) == 56,
               "LogisticsTaskRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<LogisticsTaskRow>() == 13,
+static_assert(AggregateArity<LogisticsTaskRow>() == 15,
               "LogisticsTaskRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 136 (0.37.177): the groom's plan — a leg six fields, a cart three, the
 // plan four (each holds vectors: its size is not a byte count, the codec
 // writes the lengths).
 // Save 153 (stage В, F3): the loaded byte — seven.
-static_assert(AggregateArity<CartLeg>() == 7,
+// Save 155 (#671): a leg's trip resource and a walker's grams — nine; a
+// cart's partner — five.
+static_assert(AggregateArity<CartLeg>() == 9,
               "CartLeg gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<CartPlan>() == 4,
+static_assert(AggregateArity<CartPlan>() == 5,
               "CartPlan gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<GroomPlan>() == 4,
               "GroomPlan gained or lost a field — update the codec and VERSION_SAVE");
@@ -1824,6 +1829,8 @@ void WriteLogisticsTaskRow(SaveSink& sink, const LogisticsTaskRow& row) {
   out.WriteU32(row.aged_from_day);
   out.WriteU64(row.urgent_since);
   out.WriteU16(row.unserved_light_hours);  // save 142
+  out.WriteFloat(row.drained_on_foot);     // save 155: who drained the seam (#671)
+  out.WriteFloat(row.drained_by_cart);
 }
 
 LogisticsTaskRow ReadLogisticsTaskRow(LoadSource& source) {
@@ -1848,6 +1855,11 @@ LogisticsTaskRow ReadLogisticsTaskRow(LoadSource& source) {
   row.aged_from_day = in.ReadU32();
   row.urgent_since = in.ReadU64();
   row.unserved_light_hours = in.ReadU16();  // save 142
+  row.drained_on_foot = in.ReadFloat();     // save 155 (#671)
+  row.drained_by_cart = in.ReadFloat();
+  if (!(row.drained_on_foot >= 0.0F) || !(row.drained_by_cart >= 0.0F)) {
+    source.Fail("a logistics task's drained units are negative or not a number");
+  }
   return row;
 }
 
@@ -1927,8 +1939,9 @@ BarterTripRow ReadBarterTripRow(LoadSource& source) {
 // checks below: a cart is its driver, its two bytes and its legs' count (10);
 // a leg is two points, a task, its loaded byte (save 153, F3), two ticks and
 // its riders' count (16 + 4 + 1 + 16 + 4 = 41).
-constexpr std::size_t kSavedCartBytes = 10;
-constexpr std::size_t kSavedLegBytes = 41;
+// Save 155 (#671): a cart's partner (+4), a leg's resource (+2) and grams (+8).
+constexpr std::size_t kSavedCartBytes = 14;
+constexpr std::size_t kSavedLegBytes = 51;
 constexpr std::size_t kSavedRiderBytes = 4;
 
 void WriteGroomPlan(SaveSink& sink, const GroomPlan& plan) {
@@ -1941,12 +1954,15 @@ void WriteGroomPlan(SaveSink& sink, const GroomPlan& plan) {
     WriteEntityId(out, cart.driver);
     out.WriteU8(cart.people_cart ? 1U : 0U);
     out.WriteU8(cart.on_foot ? 1U : 0U);
+    WriteEntityId(out, cart.partner);  // save 155 (#671)
     out.WriteU32(static_cast<std::uint32_t>(cart.legs.size()));
     for (const CartLeg& leg : cart.legs) {
       WriteVec2(out, leg.from);
       WriteVec2(out, leg.to);
       WriteEntityId(out, leg.task);
-      out.WriteU8(leg.loaded);  // save 153: a loaded trip (F3)
+      out.WriteU8(leg.loaded);                                  // save 153: a loaded trip (F3)
+      sink.WriteDefId(DefKind::kResource, leg.resource.value);  // save 155 (#671)
+      out.WriteI64(leg.carried);
       out.WriteU64(leg.depart);
       out.WriteU64(leg.arrive);
       out.WriteU32(static_cast<std::uint32_t>(leg.riders.size()));
@@ -1978,6 +1994,11 @@ GroomPlan ReadGroomPlan(LoadSource& source) {
       source.Fail("a people's cart on foot");
       return plan;
     }
+    cart.partner = ReadEntityId<ResidentId>(in);  // save 155 (#671)
+    if (cart.partner.value != kInvalidEntityIdValue && !cart.on_foot) {
+      source.Fail("a cart of the groom's plan names a carrying partner");
+      return plan;
+    }
     const std::uint32_t legs = in.ReadU32();
     if (static_cast<std::size_t>(legs) * kSavedLegBytes > in.Remaining()) {
       source.Fail("a cart of the groom's plan names more legs than the bytes left");
@@ -1992,6 +2013,12 @@ GroomPlan ReadGroomPlan(LoadSource& source) {
       leg.loaded = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "a loaded trip"));
       if (leg.loaded != 0 && leg.task.value == kInvalidEntityIdValue) {
         source.Fail("a leg of the groom's plan is loaded with no task's load");
+        return plan;
+      }
+      leg.resource = ResourceId{source.ReadDefId(DefKind::kResource)};  // save 155 (#671)
+      leg.carried = in.ReadI64();
+      if (leg.carried < 0 || (leg.carried > 0 && (leg.loaded == 0 || !cart.on_foot))) {
+        source.Fail("a leg of the groom's plan carries grams on no walker's loaded trip");
         return plan;
       }
       leg.depart = in.ReadU64();

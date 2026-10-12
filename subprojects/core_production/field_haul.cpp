@@ -13,6 +13,7 @@
 #include <numbers>
 #include <vector>
 
+#include "core_common/hauled_book.h"
 #include "core_common/herd_state.h"
 #include "core_common/ids.h"
 #include "core_common/ledger_state.h"
@@ -256,10 +257,34 @@ Grams LoadRoom(const ProductionConfig& config,
 /// for the rain in the books (the STUB of stage B, logistics_state.h).
 /// Called every hour for every load (DeliverCartedLoads), and first thing in
 /// the evening's SettleLoad.
+/// The hauling work on a load, as hauled_book.h finds its task by: a field's
+/// heap, a stand's logs, a dig's load (#671's instrument).
+WorkAssignment HaulOf(FieldId field) {
+  WorkAssignment work;
+  work.kind = WorkKind::kHauling;
+  work.field = field;
+  return work;
+}
+
+WorkAssignment HaulOf(TimberStandId stand) {
+  WorkAssignment work;
+  work.kind = WorkKind::kHauling;
+  work.stand = stand;
+  return work;
+}
+
+WorkAssignment HaulOf(ExtractionSiteId site) {
+  WorkAssignment work;
+  work.kind = WorkKind::kHauling;
+  work.extraction_site = site;
+  return work;
+}
+
 void DeliverDrained(const ProductionConfig& config,
                     WorldState& current,
                     const HaulRate& rate,
                     CartLoadSource source,
+                    const WorkAssignment& hauled,
                     ResourceId resource,
                     Grams& load,
                     float haul_days_remaining,
@@ -302,6 +327,13 @@ void DeliverDrained(const ProductionConfig& config,
       converted = static_cast<float>(moved) / worked_grams;
       converted = converted > 1.0F ? 1.0F : (converted < 0.0F ? 0.0F : converted);
     }
+    // WHO CARRIED THEM (#671's instrument; hauled_book.h): the grams moved
+    // split by whose units the drain was, and those units spent.
+    BookHauled(current.ledger.current,
+               resource,
+               moved,
+               FootShareOf(current, hauled, SettlementHasCarts(current, config.horse_kind)));
+    SpendHaulNotes(current, hauled, converted);
   }
   // What was drained AND DELIVERED is settled: the seam left is measured from
   // here. What the room or the door did not take this hour stays drained in
@@ -320,6 +352,7 @@ void SettleLoad(const ProductionConfig& config,
                 WorldState& current,
                 const HaulRate& rate,
                 CartLoadSource source,
+                const WorkAssignment& hauled,
                 ResourceId resource,
                 Grams& load,
                 float& haul_days_remaining,
@@ -330,6 +363,7 @@ void SettleLoad(const ProductionConfig& config,
                  current,
                  rate,
                  source,
+                 hauled,
                  resource,
                  load,
                  haul_days_remaining,
@@ -471,7 +505,8 @@ HaulRate StandHaulRate(const ProductionConfig& config,
 }
 
 void SettleStandHauling(const ProductionConfig& config, WorldState& current) {
-  for (TimberStandRow& stand : current.stands.rows) {
+  for (std::uint32_t row = 0; row < current.stands.rows.size(); ++row) {
+    TimberStandRow& stand = current.stands.rows[row];
     if (stand.load_grams <= 0) {
       stand.haul_days_remaining = 0.0F;
       stand.haul_days_written = 0.0F;
@@ -483,6 +518,7 @@ void SettleStandHauling(const ProductionConfig& config, WorldState& current) {
                current,
                rate,
                CartLoadSource::kCartLoadSourceCount,  // logs: no produce cart
+               HaulOf(current.stands.row_ids[row]),
                config.timber.log_resource,
                stand.load_grams,
                stand.haul_days_remaining,
@@ -514,7 +550,8 @@ HaulRate SiteHaulRate(const ProductionConfig& config,
 }
 
 void SettleSiteHauling(const ProductionConfig& config, WorldState& current) {
-  for (ExtractionSiteRow& site : current.extraction_sites.rows) {
+  for (std::uint32_t row = 0; row < current.extraction_sites.rows.size(); ++row) {
+    ExtractionSiteRow& site = current.extraction_sites.rows[row];
     if (site.load_grams <= 0) {
       site.haul_days_remaining = 0.0F;
       site.haul_days_written = 0.0F;
@@ -526,6 +563,7 @@ void SettleSiteHauling(const ProductionConfig& config, WorldState& current) {
                current,
                rate,
                CartLoadSource::kSite,
+               HaulOf(current.extraction_sites.row_ids[row]),
                site.resource,
                site.load_grams,
                site.haul_days_remaining,
@@ -534,7 +572,8 @@ void SettleSiteHauling(const ProductionConfig& config, WorldState& current) {
 }
 
 void DeliverCartedLoads(const ProductionConfig& config, WorldState& current) {
-  for (FieldRow& field : current.fields.rows) {
+  for (std::uint32_t row = 0; row < current.fields.rows.size(); ++row) {
+    FieldRow& field = current.fields.rows[row];
     if (field.reaped_grams <= 0) {
       continue;
     }
@@ -544,6 +583,7 @@ void DeliverCartedLoads(const ProductionConfig& config, WorldState& current) {
                    current,
                    FieldHaulRate(config, current, field),
                    CartLoadSource::kField,
+                   HaulOf(current.fields.row_ids[row]),
                    field.reaped_resource,
                    field.reaped_grams,
                    field.haul_days_remaining,
@@ -551,12 +591,14 @@ void DeliverCartedLoads(const ProductionConfig& config, WorldState& current) {
                    &booked,
                    HeapMangerRow(config, current, field));
   }
-  for (TimberStandRow& stand : current.stands.rows) {
+  for (std::uint32_t row = 0; row < current.stands.rows.size(); ++row) {
+    TimberStandRow& stand = current.stands.rows[row];
     if (stand.load_grams > 0) {
       DeliverDrained(config,
                      current,
                      StandHaulRate(config, current, stand),
                      CartLoadSource::kCartLoadSourceCount,
+                     HaulOf(current.stands.row_ids[row]),
                      config.timber.log_resource,
                      stand.load_grams,
                      stand.haul_days_remaining,
@@ -565,12 +607,14 @@ void DeliverCartedLoads(const ProductionConfig& config, WorldState& current) {
                      kNoRow);
     }
   }
-  for (ExtractionSiteRow& site : current.extraction_sites.rows) {
+  for (std::uint32_t row = 0; row < current.extraction_sites.rows.size(); ++row) {
+    ExtractionSiteRow& site = current.extraction_sites.rows[row];
     if (site.load_grams > 0) {
       DeliverDrained(config,
                      current,
                      SiteHaulRate(config, current, site),
                      CartLoadSource::kSite,
+                     HaulOf(current.extraction_sites.row_ids[row]),
                      site.resource,
                      site.load_grams,
                      site.haul_days_remaining,
@@ -593,7 +637,8 @@ void DeliverCartedLoads(const ProductionConfig& config, WorldState& current) {
 /// rule and transport is labor's muscle, which is why one of them writes
 /// the seam and the other drains it.
 void SettleHauling(const ProductionConfig& config, WorldState& current) {
-  for (FieldRow& field : current.fields.rows) {
+  for (std::uint32_t row = 0; row < current.fields.rows.size(); ++row) {
+    FieldRow& field = current.fields.rows[row];
     if (field.reaped_grams <= 0) {
       continue;
     }
@@ -651,6 +696,7 @@ void SettleHauling(const ProductionConfig& config, WorldState& current) {
                current,
                rate,
                CartLoadSource::kField,
+               HaulOf(current.fields.row_ids[row]),
                field.reaped_resource,
                field.reaped_grams,
                field.haul_days_remaining,
@@ -749,6 +795,12 @@ void SettleStoreEmptying(const ProductionConfig& config, WorldState& current, bo
       const Vec2 destination = destination_of();
       const bool way_known = destination.x != unit.position.x || destination.y != unit.position.y;
       const HaulRate today = RateToward(config, current, unit.position, destination);
+      // Who carried it (#671's instrument; hauled_book.h).
+      WorkAssignment hauled;
+      hauled.kind = WorkKind::kHauling;
+      hauled.unit = current.units.row_ids[row];
+      const float foot =
+          FootShareOf(current, hauled, SettlementHasCarts(current, config.horse_kind));
       Grams carted = 0;
       for (const std::uint32_t index : order) {
         if (budget <= 0) {
@@ -758,6 +810,7 @@ void SettleStoreEmptying(const ProductionConfig& config, WorldState& current, bo
         const Grams wanted = unit.stock[index] < budget ? unit.stock[index] : budget;
         const Grams moved = DeliverToStores(current, config, resource, wanted);
         AddToStock(unit.stock, resource, -moved);
+        BookHauled(current.ledger.current, resource, moved, foot);
         budget -= moved;
         carted += moved;
       }
@@ -768,6 +821,7 @@ void SettleStoreEmptying(const ProductionConfig& config, WorldState& current, bo
         converted = static_cast<float>(carted) / static_cast<float>(budget_at_start);
         converted = converted > 1.0F ? 1.0F : converted;
       }
+      SpendHaulNotes(current, hauled, converted);
     }
     if (!evening) {
       // An hour's settlement (stage V1): what was carted is in; the seam left
@@ -870,6 +924,12 @@ void SettleDistrictLotHauling(const ProductionConfig& config, WorldState& curren
       const float share = done / lot.haul_days_written;
       Grams budget = GramsFromFloat(static_cast<float>(movable()) * (share > 1.0F ? 1.0F : share));
       const Grams budget_at_start = budget;
+      // Who carried it (#671's instrument; hauled_book.h): log carts alone.
+      WorkAssignment hauled;
+      hauled.kind = WorkKind::kHauling;
+      hauled.limit_delivery = current.limit_deliveries.row_ids[row];
+      const float foot =
+          FootShareOf(current, hauled, SettlementHasCarts(current, config.horse_kind));
       Grams carted = 0;
       for (std::size_t index = 0; index < lot.goods.size() && budget > 0; ++index) {
         if (lot.goods[index] <= 0) {
@@ -879,6 +939,7 @@ void SettleDistrictLotHauling(const ProductionConfig& config, WorldState& curren
         const Grams wanted = lot.goods[index] < budget ? lot.goods[index] : budget;
         const Grams moved = DeliverToStores(current, config, resource, wanted);
         lot.goods[index] -= moved;
+        BookHauled(current.ledger.current, resource, moved, foot);
         budget -= moved;
         carted += moved;
       }
@@ -887,6 +948,7 @@ void SettleDistrictLotHauling(const ProductionConfig& config, WorldState& curren
         converted = static_cast<float>(carted) / static_cast<float>(budget_at_start);
         converted = converted > 1.0F ? 1.0F : converted;
       }
+      SpendHaulNotes(current, hauled, converted);
     }
     if (!evening) {
       // An hour's settlement (stage V1): the lot's row stays to the evening,

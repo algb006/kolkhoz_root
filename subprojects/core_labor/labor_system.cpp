@@ -45,6 +45,7 @@
 #include "core_common/family_state.h"
 #include "core_common/geometry.h"
 #include "core_common/haul.h"
+#include "core_common/hauled_book.h"
 #include "core_common/herd_state.h"
 #include "core_common/home_reach.h"
 #include "core_common/horse_yard_road.h"
@@ -2410,9 +2411,15 @@ class LaborSystem final : public ILaborSystem {
       if (delivered <= 0.0F) {
         continue;  // the job is done for today; he stands about, unpaid
       }
+      const float seam_before = *seam;
       *seam -= delivered * seam_share;
       if (*seam < 0.0F) {
         *seam = 0.0F;  // the division above may leave a float's last digit
+      }
+      // WHOSE UNITS THEY WERE (#671's instrument; hauled_book.h): noted on the
+      // load's task, split into grams by production's settle.
+      if (kind == WorkKind::kHauling) {
+        NoteHaulDrain(current, resident.work, seam_before - *seam, resident.work.rides_horse == 0);
       }
       // AND HE IS PAID BY WHAT HE CARRIED, NOT BY HIS HOURS (0.37.109; boss, 2
       // October 2026; labor.csv walker_norm_kg_per_day): the day's trips —

@@ -540,6 +540,33 @@ struct YearLedger {
   std::array<Grams, kCartLoadSourceCountValue> cart_grams = {};
   std::array<Grams, kCartLoadSourceCountValue> cart_grams_off_road = {};
 
+  // -- WHO CARRIED IT: backs and carts (#671; save 155 with the
+  // implementation). Transport design §2's return condition reads the share
+  // on foot by year («если в год 1 доля пеших в перевезённом весе выше
+  // 20 %» - three bands of carry); econ's pair prints it with hay by hand.
+  // EVERY hauled gram, of every load and every way (the produce cart's
+  // columns above count kCart's alone), dense by ResourceId. A seam drained
+  // by carts and walkers together is split by the norm-days each drained,
+  // each at its own rate - the grams moved that hour pro rata.
+  /// The grams carried on foot.
+  ResourceAmounts hauled_on_foot;
+  /// The grams carted - by any cart: produce, logs, the district's lot.
+  ResourceAmounts hauled_by_cart;
+
+  // -- LOGS BY TWO (#671; save 155): the last resort's events, for econ's
+  // gates («a channel, not a rescue»). A pair trip is one log; a day counts
+  // once whatever its trips.
+  /// Pair trips with a log, fractional as every trip.
+  float log_pair_trips = 0.0F;
+  /// Days on which any pair carried a log.
+  std::uint16_t log_pair_days = 0;
+  /// The longest walk from a sender to a site a pair carried over, metres.
+  float log_pair_worst_leg_m = 0.0F;
+  /// Days a works waited for logs with no horse free and the only sender
+  /// beyond log_pair_max_leg_m - the gate's near misses: with firing at
+  /// nought everywhere, this row says which term held it shut.
+  std::uint16_t log_pair_near_miss_days = 0;
+
   TrudodniHundredths trudodni_accrued = 0;
 
   /// THE SAME, DAY BY DAY OF THE YEAR (save 117; labor-payment §7, the

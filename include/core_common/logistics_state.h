@@ -39,6 +39,7 @@
 #include "core_common/calendar.h"
 #include "core_common/geometry.h"
 #include "core_common/ids.h"
+#include "core_common/quantities.h"
 #include "core_common/state_table.h"
 
 namespace core {
@@ -141,6 +142,17 @@ struct LogisticsTaskRow {
   /// went home, was the lamp lying (0.37.191's pair B9: lit 13, 9 and 18 days
   /// of years 1, 4 and 5 with no event of a wait).
   std::uint16_t unserved_light_hours = 0;
+
+  /// WHO DRAINED THE LOAD'S SEAM since its last settle (#671's instrument;
+  /// save 155): the seam units carriers on foot and carts took off it, added
+  /// by the labour hour as it drains (hauled_book.h, NoteHaulDrain) and spent
+  /// by production's settle as it converts them, which splits the grams it
+  /// moves between YearLedger::hauled_on_foot and hauled_by_cart by these two
+  /// (FootShareOf, SpendHaulNotes). A unit of the seam is a cart-day while the settlement
+  /// has carts and a walker's day while it has none — the split is of the
+  /// seam, so the grams follow the units whatever they are.
+  float drained_on_foot = 0.0F;
+  float drained_by_cart = 0.0F;
 };
 
 /// @brief One leg of a cart's day (B4b; TRIPS since stage В, F3 (A)). A goods
@@ -185,6 +197,21 @@ struct CartLeg {
   /// its receiver); 0 on a ride and on a trip's way back. Save 153.
   std::uint8_t loaded = 0;
 
+  /// THE TRIP'S ONE RESOURCE (#671, porter_leg.h; save 155 with the
+  /// implementation): for a carrier on foot, the one resource his back holds
+  /// on this trip and its way back - one resource a trip, a works' supply
+  /// walked in resource-id order. For a cart, the first resource the leg's
+  /// load carries (the cart may mix; its look is CargoFormOfLeg's). Invalid
+  /// on a ride and a people's cart.
+  ResourceId resource = ResourceId{};
+
+  /// THE TRIP'S GRAMS FOR ONE CARRIER (#671; save 155): on a loaded leg of a
+  /// carrier on foot, what his back holds - at most WalkerTripGrams of the
+  /// resource's form and his hold, less on a load's last trip; half the pair's
+  /// load for a stretcher or a log. 0 on an empty leg, and on every leg of a
+  /// cart (its load is the seam's, not a back's).
+  Grams carried = 0;
+
   /// The ticks it leaves and arrives — ESTIMATED when the plan is built
   /// (B4b; boss, the logistics thread [11], default 2): an empty leg by its
   /// road at the pace; a load leg from its first carting hour to the hour its
@@ -222,6 +249,13 @@ struct CartPlan {
   /// default 1): no horse, no seats — the plan gives him the nearest loads of
   /// his load's level within a walk, never a far one.
   bool on_foot = false;
+
+  /// THE OTHER OF A PAIR (#671; transport design §2; save 155): for a carrier
+  /// on foot on a stretcher (manure) or under a log (logs by two,
+  /// LogPairMayCarry), the other carrier, whose plan has the same legs with
+  /// the same ticks and names this one back. Invalid alone - every cart, every
+  /// other form, and the odd hand on manure, who carries it as bulk.
+  ResidentId partner = ResidentId{};
 
   /// The legs in order; the cart is at the end of the last leg it has begun.
   std::vector<CartLeg> legs;

@@ -374,6 +374,7 @@ class Session final : public ISession {
     // session freshly created over a loaded world answers with the
     // conditions of that world at its very first call.
     RefreshAlarms();
+    RefreshPorters();
     RefreshStockLights();
     RefreshForecast();
   }
@@ -384,6 +385,7 @@ class Session final : public ISession {
     RunOneStep();
     HoldTheLogLimit();
     RefreshAlarms();
+    RefreshPorters();
     RefreshStockLights();
     RefreshForecast();
   }
@@ -425,6 +427,7 @@ class Session final : public ISession {
       }
     }
     RefreshAlarms();
+    RefreshPorters();
     RefreshStockLights();
     RefreshForecast();
     return report;
@@ -505,6 +508,8 @@ class Session final : public ISession {
   CargoForm CargoFormOfLeg(std::uint32_t cart, std::uint32_t leg) const override {
     return simulation_->CargoFormOfLeg(cart, leg);
   }
+
+  std::span<const PorterLeg> PorterLegs() const override { return porters_; }
 
   StinkStrength StinkFullAt(Vec2 point) const override { return simulation_->StinkFullAt(point); }
 
@@ -670,6 +675,7 @@ class Session final : public ISession {
     serial_ = 0;
     simulation_->ResetWorld(initial);
     RefreshAlarms();
+    RefreshPorters();
     RefreshStockLights();
     RefreshForecast();
   }
@@ -829,6 +835,16 @@ class Session final : public ISession {
         return left.kind < right.kind;
       }
       return AlarmSubjectValue(left) < AlarmSubjectValue(right);
+    });
+  }
+
+  /// The porters on the map (#671; session.h, PorterLegs): asked of the
+  /// simulation and sorted by porter, so the list is the state's alone.
+  void RefreshPorters() {
+    porters_.clear();
+    simulation_->CollectPorterLegs(porters_);
+    std::sort(porters_.begin(), porters_.end(), [](const PorterLeg& left, const PorterLeg& right) {
+      return left.porter.value < right.porter.value;
     });
   }
 
@@ -994,6 +1010,9 @@ class Session final : public ISession {
   /// The conditions standing in the completed state; rebuilt after every
   /// step, so it never describes a world other than State()'s.
   std::vector<Alarm> alarms_;
+
+  /// The porters on the map in the completed state, rebuilt with the alarms.
+  std::vector<PorterLeg> porters_;
 
   std::vector<StockForecast> lights_;
 

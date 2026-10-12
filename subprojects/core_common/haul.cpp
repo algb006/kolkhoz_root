@@ -72,4 +72,35 @@ float HaulDaysFor(Grams waiting, const HaulRate& rate, float standard_day_hours)
   return static_cast<float>(waiting) / per_day;
 }
 
+Grams WalkerTripGrams(CargoForm form,
+                      WalkerHold hold,
+                      const WalkerCarry& carry,
+                      Grams log_piece_grams) {
+  switch (form) {
+    case CargoForm::kNone:
+    case CargoForm::kLive:
+    case CargoForm::kPeople:
+    case CargoForm::kCargoFormCount:
+      return 0;
+    case CargoForm::kRick:
+      return carry.rick;
+    case CargoForm::kManure:
+      return hold == WalkerHold::kStretcher ? carry.stretcher_pair / 2 : carry.adult;
+    case CargoForm::kLong:
+      return hold == WalkerHold::kLogPair ? log_piece_grams / 2 : carry.adult;
+    case CargoForm::kBulk:
+    case CargoForm::kPacked:
+      return carry.adult;
+  }
+  return carry.adult;
+}
+
+bool LogPairMayCarry(bool delivering_with_logs_awaiting,
+                     bool draught_horse_free,
+                     float walk_m,
+                     float max_leg_m) {
+  return delivering_with_logs_awaiting && !draught_horse_free && walk_m >= 0.0F &&
+         walk_m <= max_leg_m;
+}
+
 }  // namespace core

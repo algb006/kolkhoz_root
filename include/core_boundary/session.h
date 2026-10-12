@@ -145,6 +145,7 @@
 #include "core_common/material_shortfall.h"
 #include "core_common/office_views.h"
 #include "core_common/order_state.h"
+#include "core_common/porter_leg.h"
 #include "core_common/quantities.h"
 #include "core_common/readiness_view.h"
 #include "core_common/resident_activity.h"
@@ -808,6 +809,25 @@ class ISession {
   /// past the plan or a plan of another day.
   /// @note Between steps; the answer describes State().
   virtual CargoForm CargoFormOfLeg(std::uint32_t cart, std::uint32_t leg) const = 0;
+
+  /// @brief EVERY PORTER ON THE MAP NOW (#671; core_common/porter_leg.h;
+  /// transport design §2, «Как носят»): each resident carrying on foot on the
+  /// leg he walks at the completed state's tick - who, from where to where,
+  /// leaving and arriving when, which one resource, its form, his grams and
+  /// share of a full trip, and the partner of a stretcher or a log. THE LAYER'S
+  /// WHOLE VIEW OF A WALKER (ue, 12 October 2026: no reader of the groom plan
+  /// exists; every demo walker is staged by the layer): it needs no other
+  /// door to place, load and move him.
+  ///
+  /// Recomputed after every step and after ReplaceWorld by asking the
+  /// simulation (ISimulation::CollectPorterLegs), then sorted by porter id -
+  /// the same list for the same state whatever the plan's order underneath,
+  /// so a reader can diff it hour by hour. A pair is two records, each naming
+  /// the other. Valid until the next step or ReplaceWorld. Empty with nobody
+  /// carrying on foot: a village whose carts carry everything, a night, a
+  /// world with no logistics.
+  /// @note Between steps; the answer describes State().
+  virtual std::span<const PorterLeg> PorterLegs() const = 0;
 
   /// @brief How badly it stinks at a point of the map, in the four bands the
   /// design speaks in (water design §4). Two questions, two doors:

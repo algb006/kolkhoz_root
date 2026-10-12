@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <iostream>
 #include <string>
+#include <vector>
 
 #include "../../common/fake_tables.h"
 #include "core_common/day_off.h"
@@ -14,6 +15,7 @@
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
 #include "core_logistics/logistics_system.h"
+#include "leg_loads.h"
 #include "logistics_config.h"
 #include "logistics_plan.h"
 #include "logistics_tasks.h"
@@ -372,6 +374,71 @@ int TestTheCargoForm() {
                  system->CargoFormOfLeg(world, 0, 9) == core::CargoForm::kNone,
              "cargo form: the empty leg kNone, the hay leg kRick, the logs kLong, the "
              "people's cart kPeople, a leg past the plan kNone");
+
+  // THE PORTERS' DOOR (#671; leg_loads.h): a walker on his loaded leg at the
+  // tick is reported - who, partner, the leg, its resource and form, his
+  // grams and their share of a full trip; a cart at the same tick is not, nor
+  // a walker not yet out, nor anyone on a plan of another day.
+  const core::LogisticsTaskId hay_task = world.logistics_tasks.row_ids[0];
+  core::CartPlan walker;
+  walker.driver = core::ResidentId{21};
+  walker.on_foot = true;
+  walker.partner = core::ResidentId{22};
+  walker.legs.push_back(core::CartLeg{.from = {.x = 0.0F, .y = 0.0F},
+                                      .to = {.x = 100.0F, .y = 0.0F},
+                                      .task = {},
+                                      .depart = 10,
+                                      .arrive = 11,
+                                      .riders = {}});  // to the heap
+  walker.legs.push_back(core::CartLeg{.from = {.x = 100.0F, .y = 0.0F},
+                                      .to = {.x = 300.0F, .y = 0.0F},
+                                      .task = hay_task,
+                                      .loaded = 1,
+                                      .depart = 11,
+                                      .arrive = 13,
+                                      .riders = {}});  // the heap to the stack
+  core::CartPlan later = walker;
+  later.driver = core::ResidentId{23};
+  later.partner = core::ResidentId{};
+  later.legs.resize(1);  // he sets out at 14
+  later.legs[0].depart = 14;
+  later.legs[0].arrive = 15;
+  core::CartPlan carter = cart;
+  carter.driver = core::ResidentId{24};
+  carter.legs[1].depart = 11;
+  carter.legs[1].arrive = 13;
+  world.groom_plan.carts = {walker, later, carter};
+  world.calendar.tick = 12;
+  core::FillTripLoads(config, world, world.groom_plan);
+  const core::CartLeg& filled = world.groom_plan.carts[0].legs[1];
+  failures +=
+      Expect(filled.resource.value == 0 && filled.carried == 20'000 &&
+                 world.groom_plan.carts[0].legs[0].resource.value == core::kInvalidDefIdValue &&
+                 world.groom_plan.carts[2].legs[1].carried == 0,
+             "porters: the plan writes the hay trip's resource and the walker's 20 kg "
+             "(today's one carry for every form); the walk to the heap has no resource; a "
+             "cart's leg carries no back's grams");
+  std::vector<core::PorterLeg> porters;
+  system->CollectPorterLegs(world, porters);
+  const bool one = porters.size() == 1;
+  const core::PorterLeg porter = one ? porters[0] : core::PorterLeg{};
+  failures +=
+      Expect(one && porter.porter.value == 21 && porter.partner.value == 22 && porter.loaded == 1 &&
+                 porter.from.x == 100.0F && porter.to.x == 300.0F && porter.depart == 11 &&
+                 porter.arrive == 13 && porter.resource.value == 0 &&
+                 porter.form == core::CargoForm::kRick && porter.grams == 20'000 &&
+                 porter.load_share == 1.0F,
+             "porters: the one walker on his leg at tick 12 - his partner, the leg, hay as a rick, "
+             "20 kg a full trip; the walker not yet out and the cart are not porters");
+  world.groom_plan.carts[0].legs[1].carried = 5'000;
+  porters.clear();
+  system->CollectPorterLegs(world, porters);
+  failures += Expect(porters.size() == 1 && porters[0].load_share == 0.25F,
+                     "porters: a last trip of 5 kg is a quarter of a full one");
+  world.groom_plan.day = world.calendar.day + 1;
+  porters.clear();
+  system->CollectPorterLegs(world, porters);
+  failures += Expect(porters.empty(), "porters: a plan of another day has nobody on it");
   return failures;
 }
 

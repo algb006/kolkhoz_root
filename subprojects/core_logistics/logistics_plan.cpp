@@ -26,6 +26,7 @@
 #include "core_common/state_table_ops.h"
 #include "core_common/work_seam.h"
 #include "core_common/world_state.h"
+#include "leg_loads.h"
 
 namespace core {
 namespace {
@@ -692,6 +693,9 @@ GroomPlan BuildGroomPlan(const LogisticsConfig& config,
       }
     }
   }
+  // WHAT EACH LEG CARRIES (#671; leg_loads.h): the trip's resource, and on a
+  // walker's loaded leg the grams on his back.
+  FillTripLoads(config, world, plan);
   for (const CartPlan& cart : plan.carts) {
     tally.legs += static_cast<std::uint32_t>(cart.legs.size());
     tally.carts += cart.on_foot ? 0U : 1U;
@@ -711,59 +715,6 @@ GroomPlan BuildGroomPlan(const LogisticsConfig& config,
 }
 
 namespace {
-
-/// The resource of most grams in `amounts`, invalid when all are nought.
-ResourceId MostGrams(const ResourceAmounts& amounts) {
-  ResourceId most;
-  Grams best = 0;
-  for (std::uint32_t index = 0; index < amounts.size(); ++index) {
-    if (amounts[index] > best) {
-      best = amounts[index];
-      most = ResourceId{static_cast<std::uint16_t>(index)};
-    }
-  }
-  return most;
-}
-
-/// What a leg's task carries (LegCargoForm's rule); invalid for a ride or a
-/// task that is gone.
-ResourceId LegResource(const WorldState& world, const CartLeg& leg, ResourceId log) {
-  const std::uint32_t task_row = FindRow(world.logistics_tasks, leg.task);
-  if (task_row == kNoRow) {
-    return ResourceId{};
-  }
-  const LogisticsTaskRow& task = world.logistics_tasks.rows[task_row];
-  switch (task.load_kind) {
-    case LogisticsLoadKind::kFieldHeap: {
-      const std::uint32_t row = FindRow(world.fields, task.field);
-      return row != kNoRow ? world.fields.rows[row].reaped_resource : ResourceId{};
-    }
-    case LogisticsLoadKind::kStandLogs:
-      return log;
-    case LogisticsLoadKind::kSiteDig: {
-      const std::uint32_t row = FindRow(world.extraction_sites, task.extraction_site);
-      return row != kNoRow ? world.extraction_sites.rows[row].resource : ResourceId{};
-    }
-    case LogisticsLoadKind::kDistrictLot: {
-      const std::uint32_t row = FindRow(world.limit_deliveries, task.limit_delivery);
-      return row != kNoRow ? MostGrams(world.limit_deliveries.rows[row].goods) : ResourceId{};
-    }
-    case LogisticsLoadKind::kStoreTransfer: {
-      const std::uint32_t row = FindRow(world.units, task.unit);
-      return row != kNoRow ? MostGrams(world.units.rows[row].stock) : ResourceId{};
-    }
-    case LogisticsLoadKind::kSiteSupply: {
-      const std::uint32_t row = FindRow(world.units, task.unit);
-      if (row == kNoRow || world.units.rows[row].construction.legs.empty()) {
-        return ResourceId{};
-      }
-      return MostGrams(world.units.rows[row].construction.legs.front().grams);
-    }
-    case LogisticsLoadKind::kLogisticsLoadKindCount:
-      break;
-  }
-  return ResourceId{};
-}
 
 /// A walk from the worker's work to an evening leg's start that still counts
 /// as «the cart passes him»: game hours on foot. STUB core — the morning
@@ -873,23 +824,6 @@ float EveningRideCost(const std::vector<EveningPoint>& points,
 }
 
 }  // namespace
-
-CargoForm LegCargoForm(const LogisticsConfig& config, const WorldState& world, const CartLeg& leg) {
-  if (leg.task.value == kInvalidEntityIdValue) {
-    return CargoForm::kNone;  // a ride
-  }
-  const bool stands_at_load = leg.from.x == leg.to.x && leg.from.y == leg.to.y;
-  if (leg.loaded == 0 && (!stands_at_load || leg.depart == leg.arrive)) {
-    // A trip's way back, empty; or a load of the chain the cart never
-    // carted — kept in its place with no time on it (KeepInTheChain) — which
-    // would otherwise be drawn loaded at a heap it never reached (the Fable
-    // review of 11 October 2026, item 9).
-    return CargoForm::kNone;
-  }
-  const ResourceId resource = LegResource(world, leg, config.log_resource);
-  return resource.value < config.cargo_form.size() ? config.cargo_form[resource.value]
-                                                   : CargoForm::kNone;
-}
 
 void SeatEveningRiders(const LogisticsConfig& config,
                        WorldState& current,

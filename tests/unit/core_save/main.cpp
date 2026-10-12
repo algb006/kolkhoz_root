@@ -722,6 +722,8 @@ core::WorldState MakeWorld() {
   task.aged_from_day = 141;
   task.urgent_since = 3'333;
   task.unserved_light_hours = 7;  // save 142: the lamp's clock off its nought
+  task.drained_on_foot = 0.5F;    // save 155: who drained the seam, the two apart
+  task.drained_by_cart = 1.25F;
   core::AppendRow(world.logistics_tasks, task);
   // The groom's plan of the day (save format 136): one cart, two legs, a rider
   // on the first — every field off its default, the two ticks apart.
@@ -734,6 +736,7 @@ core::WorldState MakeWorld() {
   plan_cart.legs.push_back(core::CartLeg{.from = core::Vec2{.x = 10.0F, .y = 20.0F},
                                          .to = core::Vec2{.x = 30.0F, .y = 40.0F},
                                          .task = core::LogisticsTaskId{0},
+                                         .resource = core::ResourceId{2},  // save 155
                                          .depart = 7'057,
                                          .arrive = 7'059,
                                          .riders = {core::ResidentId{3}}});
@@ -748,9 +751,13 @@ core::WorldState MakeWorld() {
   core::CartPlan plan_walker;
   plan_walker.driver = core::ResidentId{2};
   plan_walker.on_foot = true;
+  plan_walker.partner = core::ResidentId{4};  // save 155: a stretcher's other
   plan_walker.legs.push_back(core::CartLeg{.from = core::Vec2{.x = 70.0F, .y = 80.0F},
                                            .to = core::Vec2{.x = 70.0F, .y = 80.0F},
                                            .task = core::LogisticsTaskId{5},
+                                           .loaded = 1,
+                                           .resource = core::ResourceId{1},  // save 155
+                                           .carried = 20'000,
                                            .depart = 7'058,
                                            .arrive = 7'062,
                                            .riders = {}});
@@ -953,6 +960,14 @@ core::WorldState MakeWorld() {
   world.ledger.closed.cart_store_off_road_worst_m = {40.0F, 120.0F, 2.5F};
   world.ledger.closed.cart_grams = {9'375'000, 187'500, 2'250'000};
   world.ledger.closed.cart_grams_off_road = {4'500'000, 187'500, 1'500'000};
+  // Who carried it and the logs by two (save 155, #671): every field off its
+  // nought, the two hauled columns apart.
+  world.ledger.closed.hauled_on_foot = Amounts({0, 250});
+  world.ledger.closed.hauled_by_cart = Amounts({0, 0, 300});
+  world.ledger.closed.log_pair_trips = 1.5F;
+  world.ledger.closed.log_pair_days = 2;
+  world.ledger.closed.log_pair_worst_leg_m = 210.5F;
+  world.ledger.closed.log_pair_near_miss_days = 3;
   world.ledger.closed.trudodni_burned = 4200;
   // The office wall (ledger_state.h, Chronicle): three years, so that the
   // round trip proves the LENGTH and the ORDER and not just that one row
@@ -1913,12 +1928,12 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // hash read off the build.
     // Save 142 (0.37.192): +2 — the lamp's clock, a u16; predicted 49 -> 51
     // before the build, held.
-    {"logistics_tasks", 51, 0xc64d8366110425dbULL},
+    {"logistics_tasks", 59, 0x4ed590984fcf66cbULL},  // save 155: two floats
     // Save 136 (B3): the groom's plan — 10 of day, flags and count, 9 of the
     // cart, 44 of the first leg (one rider), 40 of the second. Predicted 103
     // before the build, held; the hash read off the build.
     // Save 153: +1 a leg — the loaded byte; three legs, 154 -> 157, held.
-    {"groom_plan", 157, 0xb85a4799c573b6d7ULL},
+    {"groom_plan", 195, 0xb2217ae0f1c0b873ULL},  // save 155: 2 partners, 3 legs' loads
     // 2026-09-17, save 52: +56 bytes over the two books — the nine yearly
     // inputs the readiness index asks of a year and the year did not keep
     // (ledger_state.h): satisfaction's sum and count, able-bodied
@@ -2027,7 +2042,7 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // 646 as В2 recorded it on 0.37.212's line (no commit since touched the
     // units' fixture) and every other section unmoved; the hash read off the
     // first build.
-    {"ledger", 2740, 0xaa72fde9021f46f8ULL},
+    {"ledger", 2812, 0xa4801c06ee225355ULL},  // save 155: hauled, logs by two
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -2525,6 +2540,11 @@ int main() {
                    back.cart_grams == sent.cart_grams &&
                    back.cart_grams_off_road == sent.cart_grams_off_road,
                "the produce cart's six columns survive, source by source (save 96)");
+    failures += Expect(back.hauled_on_foot == sent.hauled_on_foot &&
+                           back.hauled_by_cart == sent.hauled_by_cart &&
+                           back.log_pair_trips == 1.5F && back.log_pair_days == 2 &&
+                           back.log_pair_worst_leg_m == 210.5F && back.log_pair_near_miss_days == 3,
+                       "who carried it and the logs by two survive, each in its place (save 155)");
   }
   failures += Expect(AmountAt(loaded.ledger.closed.built_in, 1) == 250 &&
                          AmountAt(loaded.ledger.closed.yard_feed, 2) == 300,
@@ -2859,9 +2879,10 @@ int main() {
             back.base_level == core::LogisticsLevel::kBackground &&
             back.origin == core::LogisticsOrigin::kPlayer && back.paused &&
             back.aged_from_day == 141 && back.urgent_since == 3'333 &&
-            back.unserved_light_hours == 7,
+            back.unserved_light_hours == 7 && back.drained_on_foot == 0.5F &&
+            back.drained_by_cart == 1.25F,
         "a task of the groom's logistics came back with its load, its two levels, its origin, "
-        "its pause, its two times and the lamp's clock (save 135, 142)");
+        "its pause, its two times, the lamp's clock and who drained it (save 135, 142, 155)");
   }
   // Save 136. The two legs' ticks and places are apart, the rider on the
   // first only: a codec that swapped or dropped one is red here.
@@ -2879,9 +2900,16 @@ int main() {
             back.carts[0].legs[0].depart == 7'057 && back.carts[0].legs[0].arrive == 7'059 &&
             back.carts[0].legs[0].riders.size() == 1 &&
             back.carts[0].legs[0].riders[0].value == 3 && back.carts[0].legs[1].task.value == 4 &&
-            back.carts[0].legs[1].to.x == 50.0F && back.carts[0].legs[1].riders.empty(),
+            back.carts[0].legs[1].to.x == 50.0F && back.carts[0].legs[1].riders.empty() &&
+            back.carts[0].legs[0].resource.value == 2 && back.carts[0].legs[0].carried == 0 &&
+            back.carts[0].legs[1].resource.value == core::kInvalidDefIdValue &&
+            back.carts[1].partner.value == 4 &&
+            back.carts[0].partner.value == core::kInvalidEntityIdValue &&
+            back.carts[1].legs[0].loaded == 1 && back.carts[1].legs[0].resource.value == 1 &&
+            back.carts[1].legs[0].carried == 20'000,
         "the groom's plan came back with its day, its flags, its cart and both legs in order, "
-        "the rider on the first (save 136), and the carrier on foot with his byte (save 137)");
+        "the rider on the first (save 136), the carrier on foot with his byte (save 137), and "
+        "the trips' resources, the walker's grams and his partner (save 155)");
   }
   // Save 138: the waits — the passenger's and the herd's, every field, and
   // the first resident's absent wait stays absent.

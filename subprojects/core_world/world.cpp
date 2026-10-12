@@ -778,6 +778,10 @@ class StandardSimulation final : public ISimulation {
     return logistics_->CargoFormOfLeg(engine_->CompletedState(), cart, leg);
   }
 
+  void CollectPorterLegs(std::vector<PorterLeg>& out) const override {
+    logistics_->CollectPorterLegs(engine_->CompletedState(), out);
+  }
+
   SupplyEstimate SupplyEstimateFor(UnitId unit) const override {
     const WorldState& completed = engine_->CompletedState();
     const SupplyEstimate plan = construction_->SupplyPlanFor(completed, unit);

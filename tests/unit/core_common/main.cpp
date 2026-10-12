@@ -53,6 +53,9 @@ const char* const* VersionStringAddressFromOtherTu();
 /// The meadow's mark against its contract (meadow_mark_contract_check.cpp;
 /// core_common/meadow_mark.h, 0.37.211).
 int TestMeadowMarkContract();
+
+/// The porter's rules and the hauled book (porter_checks.cpp; #671).
+int TestThePorter();
 }  // namespace core_test
 
 namespace {
@@ -2940,6 +2943,7 @@ int main() {
   failures += TestRoadViews();
   failures += TestObstacleRaster();
   failures += core_test::TestMeadowMarkContract();
+  failures += core_test::TestThePorter();
   failures += TestRoadTrace();
   failures += TestRoadPieces();
   failures += TestRoadCut();

@@ -4,6 +4,7 @@
 
 #include "save_ledger.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -139,10 +140,14 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // — one more cell in each of the eight cart arrays (six of floats, two of
 // grams): the fixed part 984 -> 1024, the fields stay 113; predicted before
 // the build (the 40 bytes held on 0.37.212's line).
+// Save 155 (#671's instrument): hauled_on_foot and hauled_by_cart, two
+// vectors after the cart grams, and the logs by two - a float, a u16, a float,
+// a u16 (14 bytes, 16 with the padding before the trudodni) - 113 -> 119
+// fields, 1024 + 38 A -> 1040 + 40 A; predicted before the build.
 constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
-static_assert(sizeof(YearLedger) == 1024 + (38 * kAmountsSize) + kBuiltInRowsSize,
+static_assert(sizeof(YearLedger) == 1040 + (40 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 113,
+static_assert(AggregateArity<YearLedger>() == 119,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(BuiltInRow) == 16 && AggregateArity<BuiltInRow>() == 3,
               "BuiltInRow changed — update its codec and VERSION_SAVE");
@@ -282,6 +287,13 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   for (const Grams grams : book.cart_grams_off_road) {
     out.WriteI64(grams);
   }
+  // Save 155 (#671): who carried it, and the logs carried by two.
+  sink.WriteAmounts(DefKind::kResource, book.hauled_on_foot);
+  sink.WriteAmounts(DefKind::kResource, book.hauled_by_cart);
+  out.WriteFloat(book.log_pair_trips);
+  out.WriteU16(book.log_pair_days);
+  out.WriteFloat(book.log_pair_worst_leg_m);
+  out.WriteU16(book.log_pair_near_miss_days);
   out.WriteI32(book.trudodni_accrued);
   for (const TrudodniHundredths hundredths : book.trudodni_by_day) {  // save 117
     out.WriteI32(hundredths);
@@ -473,6 +485,21 @@ YearLedger ReadYearLedger(LoadSource& source) {
           "the book's produce cart column is negative or carries more beyond the road "
           "than it carried");
     }
+  }
+  // Save 155 (#671): who carried it, and the logs carried by two.
+  book.hauled_on_foot = source.ReadAmounts(DefKind::kResource);
+  book.hauled_by_cart = source.ReadAmounts(DefKind::kResource);
+  for (const ResourceAmounts* column : {&book.hauled_on_foot, &book.hauled_by_cart}) {
+    if (std::ranges::any_of(*column, [](Grams grams) { return grams < 0; })) {
+      source.Fail("the book's hauled grams are negative");
+    }
+  }
+  book.log_pair_trips = in.ReadFloat();
+  book.log_pair_days = in.ReadU16();
+  book.log_pair_worst_leg_m = in.ReadFloat();
+  book.log_pair_near_miss_days = in.ReadU16();
+  if (!(book.log_pair_trips >= 0.0F) || !(book.log_pair_worst_leg_m >= 0.0F)) {
+    source.Fail("the book's logs carried by two are negative or not a number");
   }
   book.trudodni_accrued = in.ReadI32();
   // Save 117: the same by day. Each day is a count of hundredths earned, so

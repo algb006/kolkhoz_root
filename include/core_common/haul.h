@@ -23,6 +23,9 @@
 #ifndef CORE_COMMON_HAUL_H_
 #define CORE_COMMON_HAUL_H_
 
+#include <cstdint>
+
+#include "core_common/cargo_form.h"
 #include "core_common/geometry.h"
 #include "core_common/quantities.h"
 
@@ -161,6 +164,63 @@ float WalkerShareOfCartDay(Grams carry_grams,
                            float walk_hours_per_km,
                            float harness_hours_per_km,
                            float loaded_hours_per_km);
+
+/// @brief What a carrier on foot takes in a trip, by the load's form (#671;
+///        transport design §2, «Как носят»; core_common/porter_leg.h). The
+///        labour table's numbers (labor.csv, STUB econ), in grams.
+struct WalkerCarry {
+  /// carry_kg_adult: bulk, packed, long boards, and manure carried alone.
+  Grams adult = 0;
+  /// carry_kg_rick: a bundle of hay or straw on the back.
+  Grams rick = 0;
+  /// carry_kg_stretcher_pair: manure on a stretcher, for the PAIR.
+  Grams stretcher_pair = 0;
+};
+
+/// @brief How a carrier on foot holds his load (#671): alone, or one of a
+///        pair - on a stretcher (manure) or under a log (logs by two).
+enum class WalkerHold : std::uint8_t {
+  kAlone = 0,
+  kStretcher,
+  kLogPair,
+};
+
+/// @brief ONE carrier's grams in a full trip of `form` held `hold`, the one
+///        rule production prices a walker's seam by, the plan cuts his trips
+///        by and the porter's record reports (porter_leg.h, load_share).
+/// @param log_piece_grams A log's mass as a piece (resources.csv, the log's
+///        grams per piece: 200 kg); read for kLogPair only.
+/// @return kRick: carry.rick; kManure with kStretcher: half of
+///         carry.stretcher_pair; kLong with kLogPair: half of
+///         log_piece_grams; every other form, and manure or a log alone:
+///         carry.adult. 0 for kNone, kLive and kPeople - nothing a back
+///         carries as a resource's grams (the live are led on a rope).
+/// @note A log ALONE is never carried: the caller asks kLogPair or nothing
+///       (haul.h above, «A LOG IS NOT CARRIED ON FOOT AT ALL» outside the
+///       gate, LogPairMayCarry).
+Grams WalkerTripGrams(CargoForm form,
+                      WalkerHold hold,
+                      const WalkerCarry& carry,
+                      Grams log_piece_grams);
+
+/// @brief Whether two walkers may carry a works' logs today - the last
+///        resort's three terms (#671; transport design §2, «Брёвна вдвоём —
+///        только подвоз на стройку»; boss, 12 October 2026).
+/// @param delivering_with_logs_awaiting The works is kDelivering and its
+///        ConstructionState::awaiting holds logs - the state that puts
+///        «Нет материалов» on its builders. NOT kSiteWithoutMaterials: that
+///        alarm lights only when the village lacks the logs altogether.
+/// @param draught_horse_free DraughtHorsesFree at the morning's placement.
+/// @param walk_m The walk from the log leg's sender to the site, metres
+///        (RoadKm by TravelMode::kWalk x 1000).
+/// @param max_leg_m labor.csv log_pair_max_leg_m (300, STUB econ).
+/// @return true only when the works waits for logs, no horse is free and
+///         the walk is at most `max_leg_m`. Never asked of a stand's logs, a
+///         dig or the district's lot: the caller is a works' supply alone.
+bool LogPairMayCarry(bool delivering_with_logs_awaiting,
+                     bool draught_horse_free,
+                     float walk_m,
+                     float max_leg_m);
 
 }  // namespace core
 

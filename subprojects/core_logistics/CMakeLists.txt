@@ -4,6 +4,7 @@
 # phase (3), after the labour sub-step, and names no other subject module.
 
 kolkhoz_add_module(core_logistics
+    leg_loads.cpp
     logistics_config.cpp
     logistics_plan.cpp
     logistics_system.cpp
