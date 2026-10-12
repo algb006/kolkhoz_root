@@ -33,6 +33,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "../common/run_args.h"
 #include "../common/run_harness.h"
 #include "core_common/calendar.h"
 #include "core_common/land_state.h"
@@ -199,7 +200,10 @@ int main(int argc, char** argv) {
   // bands below are still checked against the canonical seed — the run's job
   // is unchanged — but the same binary can now be swept over seeds to say
   // how OFTEN a year comes out the way it did (69-reconciliation.md §13.11).
-  const std::uint64_t seed = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : 1930;
+  std::uint64_t seed = 1930;  // refused when not a number (run_args.h; #700)
+  if (!run::PositionalNumber(argc, argv, 0, 1930, "labor_year", "the seed", seed)) {
+    return 2;
+  }
   // The fed-harness factor, settable so the same binary can be swept to find
   // the coverage at which the field work stops fitting its window — the number
   // `look`, `art` and `sound` are all waiting on. One is "fully fed", which is

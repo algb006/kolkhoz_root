@@ -157,10 +157,16 @@ class LimitPolicy {
     // the heads the lamp names handed to the district, a lot of feed on its
     // «buy feed» (0.37.142). Its own orders and cooldown, before the lots': a
     // herd short of hay is not waiting for a lot of boards.
-    hay_.RunDay(simulation, ready_ ? &catalog_ : nullptr);
-    WatchTheLampsAdvice(simulation);
+    // ONE COLLECTION OF THE ALARMS A DAY for its three readers (#700: it was
+    // three collections a day, ~0.3 s each at year 29): the hay's answer
+    // stages orders, which the completed state's alarms do not see until the
+    // next step, so all three read the same list either way.
+    std::vector<core::Alarm> alarms;
+    simulation.CollectAlarms(alarms);
+    hay_.RunDay(simulation, alarms, ready_ ? &catalog_ : nullptr);
+    WatchTheLampsAdvice(simulation, alarms);
     // The loan needs no catalogue and no points: before the lots' gate.
-    StageSeedLoans(simulation, world);
+    StageSeedLoans(simulation, world, alarms);
     if (!ready_) {
       return;
     }
@@ -257,9 +263,9 @@ class LimitPolicy {
   /// alarms name is borrowed — once a resource a year, and only what is
   /// short: the core lends up to the whole need, and the markup is paid on
   /// every gram taken.
-  void StageSeedLoans(core::ISimulation& simulation, const core::WorldState& world) {
-    std::vector<core::Alarm> alarms;
-    simulation.CollectAlarms(alarms);
+  void StageSeedLoans(core::ISimulation& simulation,
+                      const core::WorldState& world,
+                      const std::vector<core::Alarm>& alarms) {
     std::unordered_map<std::uint32_t, core::Grams> short_by_resource;
     const std::uint32_t today = world.calendar.day % core::kDaysPerYear;
     for (const core::Alarm& alarm : alarms) {
@@ -462,9 +468,7 @@ class LimitPolicy {
  private:
   /// Every day, whatever the chairman does about it: what the lamp advised,
   /// and whether the door would take the lot it named.
-  void WatchTheLampsAdvice(core::ISimulation& simulation) {
-    std::vector<core::Alarm> alarms;
-    simulation.CollectAlarms(alarms);
+  void WatchTheLampsAdvice(core::ISimulation& simulation, const std::vector<core::Alarm>& alarms) {
     for (const core::Alarm& alarm : alarms) {
       if (alarm.kind != core::AlarmKind::kHerdHayShortAhead) {
         continue;

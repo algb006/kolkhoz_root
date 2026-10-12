@@ -28,6 +28,7 @@
 #include "../common/book_balance.h"
 #include "../common/brakes_tally.h"
 #include "../common/building_chairman.h"
+#include "../common/chairman_clock.h"
 #include "../common/extraction_policy.h"
 #include "../common/felling_policy.h"
 #include "../common/fixture_policy.h"
@@ -39,9 +40,11 @@
 #include "../common/office_policy.h"
 #include "../common/orders_policy.h"
 #include "../common/repair_policy.h"
+#include "../common/run_args.h"
 #include "../common/run_harness.h"
 #include "../common/sawmill_policy.h"
 #include "../common/school_policy.h"
+#include "../common/session_cost.h"
 #include "../common/sowing_policy.h"
 #include "../common/tick_cost.h"
 #include "../common/timber_chain_tally.h"
@@ -244,6 +247,10 @@ constexpr std::size_t kMeasuredNoiseResidents = 60;
 /// there for: a step that became forty times dearer.
 constexpr double kDayBudgetSeconds = 2.0;
 
+/// Game days stepped through a session at the run's end (session_cost.h; #700):
+/// two, so the costliest is not one day's accident.
+constexpr std::uint32_t kSessionDays = 2;
+
 /// Where the sheet goes. Relative to the repository root, which is this
 /// test's working directory (its CMakeLists sets it).
 /// The second sheet: one row per arable field per year — fertility at the
@@ -432,11 +439,18 @@ std::uint32_t OutlineHeapRow(const core::WorldState& world, const core::ITableSe
 
 int main(int argc, char** argv) {
   int failures = 0;
-  if (argc > 1) {
-    g_seed = std::strtoull(argv[1], nullptr, 10);
+  // THE SEED AND THE YEARS, REFUSED WHEN NOT NUMBERS (run_args.h; #700): «thirty_years
+  // --tick-cost» ran seed 0 in silence until then.
+  std::uint64_t years_given = kYears;
+  if (!run::PositionalNumber(argc, argv, 0, kSeed, "thirty_years", "the seed", g_seed) ||
+      !run::PositionalNumber(argc, argv, 1, kYears, "thirty_years", "the years", years_given)) {
+    return 2;
   }
-  if (argc > 2) {
-    g_years = static_cast<std::uint32_t>(std::strtoul(argv[2], nullptr, 10));
+  g_years = static_cast<std::uint32_t>(years_given);
+  // SAID FIRST (#700; boss, 12 October 2026): the suite's flag arms run seed 0
+  // by name, and their output must not read as the canon's.
+  if (g_seed != kSeed) {
+    std::cout << "thirty_years: seed " << g_seed << " (not the canon's " << kSeed << ")\n";
   }
   for (int index = 1; index < argc; ++index) {
     const std::string_view argument(argv[index]);
@@ -626,6 +640,7 @@ int main(int argc, char** argv) {
   run::DepartureTally departures;
   // What a tick costs as the village grows, and only when asked for it.
   run::TickCost tick_cost;
+  run::ChairmanClock chairman;  // the run's chairman's time, beside the gate (#700)
   core::EnableStepTiming(g_tick_cost);
   // Every gram of a harvested resource on a line, checked at every year's
   // turn (boss seq 162, 165; book_balance.h).
@@ -646,12 +661,19 @@ int main(int argc, char** argv) {
     double year_seconds = 0.0;
     std::uint32_t harvest_waited_days_this_year = 0;
     for (std::uint32_t day = 0; day < core::kDaysPerYear; ++day) {
-      const std::chrono::steady_clock::time_point day_began = std::chrono::steady_clock::now();
       // Step by step rather than a day at once, so that every step's events
       // are read before the next step clears them: the departures by reason
       // (house contract; boss, parcel 287).
       for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
+        // THE GATE TIMES THE GAME'S STEP AND NOTHING ELSE (#700; boss, 12
+        // October 2026): until then the whole day was timed - the run's
+        // instruments in this loop and its chairman's sixteen policies after it
+        // - and on 0.37.234 the chairman carried most of the rise. The chairman
+        // is printed beside the gate (chairman_clock.h), with no gate of its own.
+        const auto step_began = std::chrono::steady_clock::now();
         world.simulation->AdvanceStep();
+        year_seconds +=
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - step_began).count();
         if (g_tick_cost) {
           // Right after the step and before anything else reads the world:
           // the timing the clock holds is that step's.
@@ -664,26 +686,26 @@ int main(int argc, char** argv) {
         }
       }
       hauls.CountDay(world.State());  // the day's end, before any order
-      yard.RunDay(*world.simulation);
-      fixture.RunDay(*world.simulation);
-      felling.RunDay(*world.simulation, sawmill.LogsForMissingBoards(world.State()));
-      planting.RunDay(*world.simulation);
-      sawmill.RunDay(*world.simulation);
-      limit.RunDay(*world.simulation);
-      orders.RunDay(*world.simulation);
-      repairs.RunDay(*world.simulation);
-      const bool farm_first =
-          fixture.HoldsHousesBack(*world.simulation) || yard.HoldsHousesBack(*world.simulation);
-      houses.RunDay(*world.simulation, farm_first);
-      school.RunDay(*world.simulation, farm_first);
-      office.RunDay(*world.simulation, farm_first);
-      watchman.RunDay(*world.simulation);
-      insulation.RunDay(*world.simulation);
-      layout.AnswerPlanAlarmsOnly(*world.simulation);
-      digging.RunDay(*world.simulation);
-      roads.RunDay(*world.simulation);
-      year_seconds +=
-          std::chrono::duration<double>(std::chrono::steady_clock::now() - day_began).count();
+      // The run's chairman, each policy on its own clock (chairman_clock.h).
+      core::ISimulation& sim = *world.simulation;
+      chairman.Time("yard", [&] { yard.RunDay(sim); });
+      chairman.Time("fixture", [&] { fixture.RunDay(sim); });
+      chairman.Time("felling",
+                    [&] { felling.RunDay(sim, sawmill.LogsForMissingBoards(world.State())); });
+      chairman.Time("planting", [&] { planting.RunDay(sim); });
+      chairman.Time("sawmill", [&] { sawmill.RunDay(sim); });
+      chairman.Time("limit", [&] { limit.RunDay(sim); });
+      chairman.Time("orders", [&] { orders.RunDay(sim); });
+      chairman.Time("repairs", [&] { repairs.RunDay(sim); });
+      const bool farm_first = fixture.HoldsHousesBack(sim) || yard.HoldsHousesBack(sim);
+      chairman.Time("houses", [&] { houses.RunDay(sim, farm_first); });
+      chairman.Time("school", [&] { school.RunDay(sim, farm_first); });
+      chairman.Time("office", [&] { office.RunDay(sim, farm_first); });
+      chairman.Time("watchman", [&] { watchman.RunDay(sim); });
+      chairman.Time("insulation", [&] { insulation.RunDay(sim); });
+      chairman.Time("layout", [&] { layout.AnswerPlanAlarmsOnly(sim); });
+      chairman.Time("digging", [&] { digging.RunDay(sim); });
+      chairman.Time("roads", [&] { roads.RunDay(sim); });
       const core::WorldState& mid = world.State();
       timber_chain.CountDay(mid);
       harvest_waited_days_this_year += fixture.HarvestWaitsForRoom() ? 1U : 0U;
@@ -721,6 +743,7 @@ int main(int argc, char** argv) {
     hauls.CloseYear();
     harvest_waited_days += harvest_waited_days_this_year;
     harvest_waited_worst = std::max(harvest_waited_worst, harvest_waited_days_this_year);
+    chairman.CloseYear(year + 1);
     const double day_seconds = year_seconds / static_cast<double>(core::kDaysPerYear);
     simulated_seconds += year_seconds;
     if (day_seconds > costliest_year_day_seconds) {
@@ -968,10 +991,34 @@ int main(int argc, char** argv) {
   }
 
   // -- THE PHASE GATE, HALF TWO: fast-forward holds the norm ---------------
+  // THE CORE'S 24 STEPS A DAY ALONE since #700 (the loop above); the run's
+  // chairman on the line after, with no gate.
   std::cout << "gate: a game day of the costliest year cost " << costliest_year_day_seconds
-            << " s (year " << costliest_year << "), the run averaged "
+            << " s of the core's steps (year " << costliest_year << "), the run averaged "
             << simulated_seconds / static_cast<double>(g_years * core::kDaysPerYear)
             << " s/day against a budget of " << kDayBudgetSeconds << " s\n";
+  chairman.Report("thirty_years");
+  // -- THE PHASE GATE, HALF THREE: the game's day, through the session -------
+  // THE SAME DOOR AS THE RELEASE (#700; boss, 12 October 2026): the session
+  // refreshes the alarms, the porters, the stock lights and the forecast after
+  // every step, and this run drives the simulation without one - at year 27
+  // construction's alarms cost ~0.13 s a collection, twenty-four a day in the
+  // game, a cost no run saw. Two game days of a session over the run's last
+  // world, the costliest held to the same budget.
+  const run::SessionDayCost session_day =
+      run::SessionDaySeconds(*world.tables, g_seed, world.State(), kSessionDays);
+  std::cout << "gate: a game day through the session at year " << g_years << " ("
+            << world.State().residents.rows.size() << " residents) cost "
+            << session_day.worst_day_seconds << " s at worst, " << session_day.mean_day_seconds
+            << " s on the mean of " << kSessionDays << " days, against a budget of "
+            << kDayBudgetSeconds << " s"
+            << (session_day.measured ? "" : " - NOT MEASURED: the session did not assemble")
+            << '\n';
+  failures += run::Expect(session_day.measured && session_day.worst_day_seconds > 0.0,
+                          "the session's day was actually timed");
+  failures += run::Expect(session_day.worst_day_seconds <= kDayBudgetSeconds,
+                          "and a game day through the session - the steps and every refresh - "
+                          "costs no more than the norm allows");
   // A STOPPED CLOCK IS UNDER EVERY BUDGET. The measure has to prove it
   // measured before its verdict means anything — the same reason the
   // determinism run counts the residents it agreed on.

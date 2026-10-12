@@ -36,6 +36,7 @@
 
 #include "../common/building_chairman.h"
 #include "../common/orders_policy.h"
+#include "../common/run_args.h"
 #include "../common/run_harness.h"
 #include "core_catalog/world_conventions.h"
 #include "core_common/calendar.h"
@@ -221,7 +222,12 @@ int CensusOfSeed(std::uint64_t seed, bool last, std::array<std::uint64_t, kNames
 
 int main(int argc, char** argv) {
   int failures = 0;
-  const std::uint64_t first_seed = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : kFirstSeed;
+  // One seed when one is given, refused when not a number (run_args.h; #700).
+  std::uint64_t first_seed = kFirstSeed;
+  if (!run::PositionalNumber(
+          argc, argv, 0, kFirstSeed, "activity_census", "the seed", first_seed)) {
+    return 2;
+  }
   const std::uint64_t seed_count = argc > 1 ? 1U : kSeedCount;
   std::array<std::uint64_t, kNames.size()> seen{};
   for (std::uint64_t seed = first_seed; seed < first_seed + seed_count; ++seed) {

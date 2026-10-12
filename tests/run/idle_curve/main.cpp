@@ -39,6 +39,7 @@
 
 #include "../common/building_chairman.h"
 #include "../common/orders_policy.h"
+#include "../common/run_args.h"
 #include "../common/run_harness.h"
 #include "core_catalog/world_conventions.h"
 #include "core_common/alarm_state.h"
@@ -106,7 +107,17 @@ float SeamsStanding(const core::WorldState& world) {
 }  // namespace
 
 int main(int argc, char** argv) {
-  const std::uint32_t seed = argc > 1 ? static_cast<std::uint32_t>(std::atoi(argv[1])) : 1930;
+  // The seed, refused when not a number (run_args.h; #700): a flag first ran seed 0.
+  std::uint64_t seed_given = 1930;
+  if (!run::PositionalNumber(argc, argv, 0, 1930, "idle_curve", "the seed", seed_given)) {
+    return 2;
+  }
+  const auto seed = static_cast<std::uint32_t>(seed_given);
+  // SAID FIRST (#700; boss, 12 October 2026): the suite's arms run seed 0 by
+  // name, and their output must not read as the canon's.
+  if (seed != 1930U) {
+    std::cout << "idle_curve: seed " << seed << " (not the canon's 1930)\n";
+  }
   bool sow_idle_land = false;
   // ONE ARM, ONE VARIABLE. The other instrument runs without a chairman and
   // finds winter the QUIET season; this one runs with one and finds winter
@@ -1270,8 +1281,9 @@ int main(int argc, char** argv) {
     // two thirds of it at the least. Boss's condition: above half on any
     // seed is a design question, not a band to widen.
     //
-    // CTEST MEASURES SEED 0, NOT 1930: the seed is atoi(argv[1]), and the
-    // arm's first argument is its flag. The top of the band is that seed.
+    // CTEST MEASURES SEED 0, NOT 1930: the arms were registered with their
+    // flag first, read as the seed (atoi of a flag is nought); since #700 the
+    // arms pass 0 by name (CMakeLists.txt). The top of the band is that seed.
     constexpr float kBandLowShare = 0.16F;   // 11 / 66.5 = 0.165, rounded outward
     constexpr float kBandHighShare = 0.33F;  // 21.5 / 66.5 = 0.323, rounded outward
     const float sown_share = canon_sown_ha > 0.0F ? first_year_sown_ha / canon_sown_ha : 1.0F;

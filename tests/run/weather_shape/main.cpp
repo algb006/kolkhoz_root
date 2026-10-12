@@ -50,6 +50,7 @@
 #include <string_view>
 #include <vector>
 
+#include "../common/run_args.h"
 #include "../common/run_harness.h"
 #include "core_common/calendar.h"
 #include "core_common/world_state.h"
@@ -692,8 +693,9 @@ bool WriteWeatherWithMemory(const std::filesystem::path& into, float memory) {
 
 int main(int argc, char** argv) {
   namespace fs = std::filesystem;
-  if (argc > 1 && std::string_view(argv[1]).substr(0, 2) != "--") {
-    g_seed = std::strtoull(argv[1], nullptr, 10);
+  // Refused when not a number (run_args.h; #700); this run skipped a leading flag already.
+  if (!run::PositionalNumber(argc, argv, 0, g_seed, "weather_shape", "the seed", g_seed)) {
+    return 2;
   }
   float sweep = -1.0F;
   for (int index = 1; index < argc; ++index) {

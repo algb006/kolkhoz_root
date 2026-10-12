@@ -29,6 +29,7 @@
 #include <string>
 #include <vector>
 
+#include "../common/run_args.h"
 #include "../common/run_harness.h"
 #include "core_common/calendar.h"
 #include "core_common/quantities.h"
@@ -111,7 +112,10 @@ core::Grams VillageStores(const core::WorldState& world, core::ResourceId resour
 }  // namespace
 
 int main(int argc, char** argv) {
-  const std::uint64_t seed = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : kDefaultSeed;
+  std::uint64_t seed = kDefaultSeed;  // refused when not a number (run_args.h; #700)
+  if (!run::PositionalNumber(argc, argv, 0, kDefaultSeed, "oat_balance", "the seed", seed)) {
+    return 2;
+  }
   int failures = 0;
   run::Simulation world = run::Start(seed);
   if (!world) {

@@ -26,6 +26,7 @@
 #include "core_common/module_rules.h"
 #include "core_common/order_state.h"
 #include "core_common/quantities.h"
+#include "core_common/road_route.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/unit_state.h"
 #include "core_common/world_state.h"
@@ -33,6 +34,7 @@
 #include "core_log/log.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
+#include "unit_decay.h"
 
 static_assert(std::is_abstract_v<core::IConstructionSystem>, "IConstructionSystem is a contract");
 static_assert(static_cast<int>(core::ConstructionPhase::kNone) == 0,
@@ -2813,6 +2815,91 @@ int TestTheZeroPricedRungsAreNamed() {
                 "lodge, the priced church store and the old house are not; six in all");
 }
 
+/// THE NEAREST DWELLING, PRUNED BY THE STRAIGHT LINE, IS THE BRUTE FORCE'S
+/// MINIMUM (#700, 12 October 2026): NearestDwellingHours stops asking ways
+/// at the first house whose straight line cannot beat the best way found. On
+/// a hand world of thirty houses scattered over 6 km and twelve places to ask
+/// from, its answer equals the minimum over every house's way, place by place
+/// - and a world with no house answers nought.
+int TestTheNearestDwellingIsTheBruteForcesMinimum() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  core::ConstructionConfig config;
+  if (Expect(tables != nullptr &&
+                 core::ParseConstructionConfig(*tables, core::StubTables::kRefused, config, error),
+             "nearest dwelling: the shipped tables load and parse") != 0) {
+    return 1;
+  }
+  std::uint16_t housing = core::kInvalidDefIdValue;
+  for (std::size_t type = 0; type < config.definitions.units.is_housing.size(); ++type) {
+    if (config.definitions.units.is_housing[type] != 0) {
+      housing = static_cast<std::uint16_t>(type);
+      break;
+    }
+  }
+  if (Expect(housing != core::kInvalidDefIdValue,
+             "nearest dwelling: the tables name a housing type") != 0) {
+    return 1;
+  }
+  core::WorldState world;
+  failures +=
+      Expect(core::NearestDwellingHours(config, world, core::Vec2{.x = 10.0F, .y = 10.0F}) == 0.0F,
+             "nearest dwelling: no house, nought");
+  for (std::uint32_t index = 0; index < 30; ++index) {
+    core::UnitRow house;
+    house.type = core::UnitTypeId{housing};
+    house.level = 1;
+    // A fixed scatter, not a pattern a sort could get right by accident.
+    house.position = core::Vec2{.x = static_cast<float>((index * 7919U) % 6000U),
+                                .y = static_cast<float>((index * 104729U) % 6000U)};
+    core::AppendRow(world.units, house);
+  }
+  for (std::uint32_t probe = 0; probe < 12; ++probe) {
+    const core::Vec2 place{.x = static_cast<float>((probe * 1543U) % 6000U),
+                           .y = static_cast<float>((probe * 2971U) % 6000U)};
+    float brute = -1.0F;
+    for (const core::UnitRow& unit : world.units.rows) {
+      const float hours = core::RoadKm(world, core::TravelMode::kWalk, unit.position, place) *
+                          config.walk_hours_per_km;
+      brute = brute < 0.0F || hours < brute ? hours : brute;
+    }
+    failures += Expect(core::NearestDwellingHours(config, world, place) == brute,
+                       "nearest dwelling: the pruned answer is the brute force's, to the bit");
+  }
+  // THE NEAREST BY THE LINE IS NOT THE NEAREST BY THE WAY (the fault «bound x10»
+  // passed every check above: with no road the two orders are one, and a
+  // pruning that asks only the first house cannot be told apart). A road along
+  // y = 0; the place on it at x = 100; house A 1000 m away across the field
+  // (1.2 km effective off the road), house B 1150 m away along the road
+  // (1.15 km): by the line A is nearer, by the way B - and the answer is B's.
+  core::WorldState roads;
+  core::RoadRow road;
+  road.axis.push_back(core::RoadPoint{.position = {.x = 0.0F, .y = 0.0F}});
+  road.axis.push_back(core::RoadPoint{.position = {.x = 6000.0F, .y = 0.0F}});
+  core::AppendRow(roads.roads, road);
+  roads.road_index = core::BuildRoadIndex(roads.roads);
+  const core::Vec2 on_road{.x = 100.0F, .y = 0.0F};
+  for (const core::Vec2 at :
+       {core::Vec2{.x = 100.0F, .y = 1000.0F}, core::Vec2{.x = 1250.0F, .y = 0.0F}}) {
+    core::UnitRow house;
+    house.type = core::UnitTypeId{housing};
+    house.level = 1;
+    house.position = at;
+    core::AppendRow(roads.units, house);
+  }
+  const float by_a =
+      core::RoadKm(roads, core::TravelMode::kWalk, roads.units.rows[0].position, on_road);
+  const float by_b =
+      core::RoadKm(roads, core::TravelMode::kWalk, roads.units.rows[1].position, on_road);
+  failures +=
+      Expect(by_b < by_a, "nearest dwelling: the road makes the farther house the nearer by way");
+  failures +=
+      Expect(core::NearestDwellingHours(config, roads, on_road) == by_b * config.walk_hours_per_km,
+             "nearest dwelling: the answer is the house nearer by the way, not by the line");
+  return failures;
+}
+
 /// THE START'S WRECKED MILL IS NOT BROUGHT BACK (the human's word of 5 October
 /// 2026, «По мельнице б»; unit_types.csv restorable): a repair and an upgrade
 /// of the dead mill are refused kNotRestorable; a dead priest's house — dead
@@ -3137,6 +3224,7 @@ int TestTheFieldCampStandsBesideTheFields(const core::ITableSet& tables) {
 int main() {
   int failures = 0;
   failures += CheckStubTablesMustBeDeclared();
+  failures += TestTheNearestDwellingIsTheBruteForcesMinimum();
   failures += TestAModuleStandsOnItsParent();
   const BuildTables tables;
   failures += TestStepPaceMultipliesTypePace(tables);

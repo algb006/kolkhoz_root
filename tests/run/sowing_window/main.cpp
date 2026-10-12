@@ -79,6 +79,7 @@
 #include "../common/fixture_policy.h"
 #include "../common/orders_policy.h"
 #include "../common/repair_policy.h"
+#include "../common/run_args.h"
 #include "../common/run_harness.h"
 #include "../common/yard_policy.h"
 #include "core_common/calendar.h"
@@ -515,7 +516,10 @@ void ReportYear(std::uint32_t year_index, const Year& year, const core::WorldSta
 }  // namespace
 
 int main(int argc, char** argv) {
-  const std::uint64_t seed = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : 1930;
+  std::uint64_t seed = 1930;  // refused when not a number (run_args.h; #700)
+  if (!run::PositionalNumber(argc, argv, 0, 1930, "sowing_window", "the seed", seed)) {
+    return 2;
+  }
   run::Simulation started = run::Start(seed);
   if (!started) {
     return 1;

@@ -43,6 +43,7 @@
 #include "../common/limit_policy.h"
 #include "../common/planting_policy.h"
 #include "../common/repair_policy.h"
+#include "../common/run_args.h"
 #include "../common/run_harness.h"
 #include "../common/sawmill_policy.h"
 #include "../common/sowing_policy.h"
@@ -752,15 +753,22 @@ int main(int argc, char** argv) {
   // The layout under question and the canonical one beside it: the DIFFERENCE
   // between the two lists is the answer to "what makes 1931 worse", and that
   // question has never once been asked.
-  const std::uint64_t suspect = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : 1931;
-  const std::uint64_t canon = argc > 2 ? std::strtoull(argv[2], nullptr, 10) : 1929;
+  // Each refused when not a number (run_args.h; #700).
+  std::uint64_t suspect = 1931;
+  std::uint64_t canon = 1929;
   // An optional third argument traces the potato fields of that run year,
   // day by day, on the layout under question only. COUNTED FROM ZERO, while
   // the shortfall lines print the year from one: "year 1 THE DEBT" is traced
   // with 0. The first trace of 2026-09-13 was run on 1 and watched a year
   // whose potato came in whole.
-  const std::uint32_t trace_year =
-      argc > 3 ? static_cast<std::uint32_t>(std::strtoul(argv[3], nullptr, 10)) : kYears;
+  std::uint64_t trace_given = kYears;
+  if (!run::PositionalNumber(argc, argv, 0, 1931, "plan_shortfall", "the suspect seed", suspect) ||
+      !run::PositionalNumber(argc, argv, 1, 1929, "plan_shortfall", "the canon seed", canon) ||
+      !run::PositionalNumber(
+          argc, argv, 2, kYears, "plan_shortfall", "the traced year", trace_given)) {
+    return 2;
+  }
+  const auto trace_year = static_cast<std::uint32_t>(trace_given);
 
   run::FellingPolicy::Declare("plan_shortfall");
   run::PlantingPolicy::Declare("plan_shortfall");

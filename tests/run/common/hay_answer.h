@@ -95,13 +95,16 @@ class HayAnswer {
 
   /// @brief One day of the chairman's attention. Call once a day, after the
   /// day's steps.
+  /// @param alarms The completed state's alarms, collected ONCE a day by the
+  ///        caller and shared with its other reader (#700: each collection
+  ///        cost ~0.4 s at year 29, and the limit policy made two a day).
   /// @param catalog The district's lots (LimitPolicy's parsed catalogue), or
   ///        nullptr — then «buy feed» is not answered, as before 0.37.142.
-  void RunDay(core::ISimulation& simulation, const core::LimitCatalog* catalog = nullptr) {
+  void RunDay(core::ISimulation& simulation,
+              const std::vector<core::Alarm>& alarms,
+              const core::LimitCatalog* catalog = nullptr) {
     const core::WorldState& world = simulation.CompletedState();
     NoteTheDay(world);
-    std::vector<core::Alarm> alarms;
-    simulation.CollectAlarms(alarms);
     const core::Alarm* yellow = nullptr;
     for (const core::Alarm& alarm : alarms) {
       if (alarm.kind == core::AlarmKind::kHerdHayShortAhead) {

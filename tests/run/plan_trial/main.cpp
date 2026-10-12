@@ -44,6 +44,7 @@
 #include <vector>
 
 #include "../common/building_chairman.h"
+#include "../common/run_args.h"
 #include "../common/run_harness.h"
 #include "../common/sowing_policy.h"
 #include "core_common/calendar.h"
@@ -385,7 +386,10 @@ Verdict Play(const BadPlay& play, std::uint64_t seed, std::uint32_t trial_thresh
 }  // namespace
 
 int main(int argc, char** argv) {
-  const std::uint64_t seed = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : 1929;
+  std::uint64_t seed = 1929;  // refused when not a number (run_args.h; #700)
+  if (!run::PositionalNumber(argc, argv, 0, 1929, "plan_trial", "the seed", seed)) {
+    return 2;
+  }
 
   // THE THRESHOLD IS READ AND NOT COPIED — the same rule 0.17.99's gate follows.
   // A run that writes "3" into itself stops measuring the campaign the day boss

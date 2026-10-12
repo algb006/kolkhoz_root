@@ -35,6 +35,7 @@
 #include "../common/limit_policy.h"
 #include "../common/planting_policy.h"
 #include "../common/repair_policy.h"
+#include "../common/run_args.h"
 #include "../common/run_harness.h"
 #include "../common/sawmill_policy.h"
 #include "../common/sowing_policy.h"
@@ -176,7 +177,10 @@ float KeyValue(const core::ITableSet& tables,
 }
 
 int main(int argc, char** argv) {
-  const std::uint64_t seed = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : 1929;
+  std::uint64_t seed = 1929;  // refused when not a number (run_args.h; #700)
+  if (!run::PositionalNumber(argc, argv, 0, 1929, "timber_years", "the seed", seed)) {
+    return 2;
+  }
   run::Simulation started = run::Start(seed);
   if (!started) {
     return 1;

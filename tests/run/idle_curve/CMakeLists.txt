@@ -21,8 +21,13 @@ set_tests_properties(idle_curve PROPERTIES
 # was written before the work, as its acceptance, and was red on purpose until
 # the district would sell a horse. An arm outside the suite is either that or
 # a forgotten check, and by the file the two are identical.
+# SEED 0 BY NAME (#700, 12 Oct 2026): the arms ran `idle_curve --${arm}`, whose
+# first argument the run read as the seed (atoi of a flag is nought) - seed 0, which
+# main.cpp's band already names («CTEST MEASURES SEED 0, NOT 1930»). The run now
+# refuses a word where a number stands and reads flags anywhere (run_args.h); the
+# arms keep their measured world, named here.
 foreach(arm far gap herd-alarm watch-build sow-idle-land no-chairman yard-only no-horses)
-  add_test(NAME idle_curve_${arm} COMMAND idle_curve --${arm})
+  add_test(NAME idle_curve_${arm} COMMAND idle_curve 0 --${arm})
   set_tests_properties(idle_curve_${arm} PROPERTIES
       WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" LABELS run)
 endforeach()

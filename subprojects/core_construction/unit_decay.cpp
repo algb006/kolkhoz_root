@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <utility>
+#include <vector>
 
 #include "core_common/calendar.h"
 #include "core_common/geometry.h"
@@ -91,15 +93,41 @@ bool InUse(const WorldState& world, std::uint32_t row) {
 float NearestDwellingHours(const ConstructionConfig& config,
                            const WorldState& completed,
                            const Vec2& place) {
-  float best = -1.0F;
-  for (const UnitRow& unit : completed.units.rows) {
+  // THE NEAREST BY THE STRAIGHT LINE FIRST, AND NO WAY ASKED THAT CANNOT WIN
+  // (#700; boss, 12 October 2026). The answer asked every house for its way
+  // to the site, and the session asks every hour for every open site: at
+  // year 25-27 of the canon this one function was most of construction's
+  // alarms, 8-25 s a year of thirty_years' four daily collections and
+  // twenty-four a day in the game's. The way's effective kilometres are
+  // never below the straight line (road_route.h: a road weighs its length,
+  // open ground more), so a house whose straight line alone is longer than
+  // the best way found cannot be nearer. THE SAME ANSWER: the houses are
+  // taken in the order of their straight lines, and the loop stops at the
+  // first whose line cannot beat the best - a hair under it, so a way that
+  // runs exactly along the line and rounds a float's last digit below it is
+  // still asked.
+  constexpr float kLineSlack = 0.999F;
+  std::vector<std::pair<float, std::uint32_t>> by_line;
+  for (std::uint32_t row = 0; row < completed.units.rows.size(); ++row) {
+    const UnitRow& unit = completed.units.rows[row];
     if (unit.level == 0 || unit.type.value >= config.definitions.units.is_housing.size() ||
         config.definitions.units.is_housing[unit.type.value] == 0) {
       continue;
     }
+    const float dx = unit.position.x - place.x;
+    const float dy = unit.position.y - place.y;
+    by_line.emplace_back(std::sqrt((dx * dx) + (dy * dy)) / 1000.0F, row);
+  }
+  std::ranges::sort(by_line);
+  float best = -1.0F;
+  for (const auto& [line_km, row] : by_line) {
+    if (best >= 0.0F && line_km * kLineSlack * config.walk_hours_per_km >= best) {
+      break;  // this house and every one after it is farther than the best way
+    }
     // On foot, by the way there is (road_route.h; 0.36.2).
     const float hours =
-        RoadKm(completed, TravelMode::kWalk, unit.position, place) * config.walk_hours_per_km;
+        RoadKm(completed, TravelMode::kWalk, completed.units.rows[row].position, place) *
+        config.walk_hours_per_km;
     if (best < 0.0F || hours < best) {
       best = hours;
     }

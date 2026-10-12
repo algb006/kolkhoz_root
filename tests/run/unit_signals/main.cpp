@@ -21,6 +21,7 @@
 #include <optional>
 
 #include "../common/building_chairman.h"
+#include "../common/run_args.h"
 #include "../common/run_harness.h"
 #include "../common/sowing_policy.h"
 #include "core_boundary/session.h"
@@ -116,7 +117,10 @@ int CheckThroughTheSession(const run::Simulation& started,
 }  // namespace
 
 int main(int argc, char** argv) {
-  const std::uint64_t seed = argc > 1 ? std::strtoull(argv[1], nullptr, 10) : 1929;
+  std::uint64_t seed = 1929;  // refused when not a number (run_args.h; #700)
+  if (!run::PositionalNumber(argc, argv, 0, 1929, "unit_signals", "the seed", seed)) {
+    return 2;
+  }
   run::Simulation started = run::Start(seed);
   if (!started) {
     return 1;

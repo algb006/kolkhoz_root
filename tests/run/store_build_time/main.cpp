@@ -35,6 +35,7 @@
 #include "../common/fixture_policy.h"
 #include "../common/orders_policy.h"
 #include "../common/repair_policy.h"
+#include "../common/run_args.h"
 #include "../common/run_harness.h"
 #include "../common/store_parent.h"
 #include "../common/yard_policy.h"
@@ -100,8 +101,16 @@ int main(int argc, char** argv) {
   // the same measurement can be taken on a village that is no longer the
   // start canon. Four days in year one and four days in year fifteen are two
   // different claims, and only measuring both tells which one was made.
-  const std::uint32_t seed = argc > 1 ? static_cast<std::uint32_t>(std::atoi(argv[1])) : 1930;
-  const std::uint32_t skip_days = argc > 2 ? static_cast<std::uint32_t>(std::atoi(argv[2])) : 0;
+  // Each refused when not a number (run_args.h; #700).
+  std::uint64_t seed_given = 1930;
+  std::uint64_t skip_given = 0;
+  if (!run::PositionalNumber(argc, argv, 0, 1930, "store_build_time", "the seed", seed_given) ||
+      !run::PositionalNumber(
+          argc, argv, 1, 0, "store_build_time", "the days skipped", skip_given)) {
+    return 2;
+  }
+  const auto seed = static_cast<std::uint32_t>(seed_given);
+  const auto skip_days = static_cast<std::uint32_t>(skip_given);
   const run::Simulation simulation = run::Start(seed);
   if (!simulation) {
     return 1;
