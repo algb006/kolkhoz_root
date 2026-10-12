@@ -175,7 +175,7 @@ manor_ruins,1,1,,brick_mid,16,,,90,60,1,,0,0,0,
 priest_house,1,1,220,brick_mid,16,,,90,60,1,,0,1,1,
 priest_house,2,1,20,brick_mid,16,,,90,60,1,6,0,1,0,farm_office
 water_standpipe,1,2,0,plot,,,,,,1,,1,0,0,
-field_camp,1,1,0,plot,,,,,,1,,1,0,0,
+field_camp,1,1,1.5,gear,4,,,30,14,1,,1,0,0,
 count_lodge,1,1,,brick_small,10,,,80,55,1,,0,0,0,
 count_lodge,2,2,,brick_small,10,,,80,55,1,,0,0,0,
 beach,1,1,1,gear,4,,,30,14,1,,1,0,0,

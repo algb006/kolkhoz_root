@@ -875,6 +875,8 @@ priest_house,1,board,18
 priest_house,1,stone,10
 priest_house,1,clay,5
 priest_house,1,glass,16
+field_camp,1,straw,1
+field_camp,1,log,1
 beach,1,board,0.075
 clamp,1,straw,2
 vegetable_store,1,straw,4
