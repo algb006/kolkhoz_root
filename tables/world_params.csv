@@ -138,9 +138,9 @@ billet_heads_per_yard,2,core
 billet_yield_factor,0.6,core
 herd_without_yard_yield_factor,0,core
 road_access_m,10,core
-livestock_handover_newborn,0.15,core
-livestock_handover_young,0.35,core
-livestock_handover_adult,0.55,core
+livestock_handover_newborn,0.07,core
+livestock_handover_young,0.17,core
+livestock_handover_adult,0.36,core
 livestock_handover_old,0.25,core
 electrification_points_min,900,core
 fire_base_chance_per_unit_year,0,core
