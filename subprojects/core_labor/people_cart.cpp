@@ -48,7 +48,7 @@ void GivePeoplesCarts(const PeoplesCartPlan& plan) {
       return;
     }
     const AssignmentJob& job = (*plan.jobs)[job_index];
-    if (!TakesThePeoplesCart(job.kind) || job.on_foot_only) {
+    if (!TakesThePeoplesCart(job.kind)) {
       continue;
     }
     // ITS FAR WALKERS, the longest walk first: seats beyond the horses go to

@@ -236,10 +236,10 @@ int CheckCarterOnFoot() {
                        "under a tenth of a cart-day between them");
   }
 
-  // THE WALKERS ARE THE LAST OF THE QUEUE AT THE TOP-UP TOO: a reaping
-  // production opens after the morning takes them off the heap at hour 1,
-  // and the rider keeps his horse and his heap. The pair: with nothing
-  // opened they carry on.
+  // THE WALKERS KEEP THEIR HEAP AT THE TOP-UP (#633, 0.37.233): a reaping
+  // production opens after the morning no longer takes them off it at hour 1
+  // (0.37.105 to 0.37.232 it did), and the rider keeps his horse and his heap.
+  // The pair: with nothing opened they carry on just the same.
   {
     const auto after_hour_1 = [&labor](bool a_reaping_opens, Crew& heap_crew) {
       core::WorldState world = Village(4, 1);
@@ -276,9 +276,11 @@ int CheckCarterOnFoot() {
     std::cout << "  carter on foot, the top-up: a reaping opened — reapers " << reapers
               << ", heap riders " << opened_crew.riders << ", walkers " << opened_crew.walkers
               << "; none opened — walkers " << quiet_crew.walkers << '\n';
-    failures += Expect(reapers == 3 && opened_crew.walkers == 0,
-                       "carter on foot, the top-up: a reaping opened after the morning takes the "
-                       "three walkers off the heap");
+    // ONE JOB A DAY (#633, 0.37.233): until then the reaping opened after the
+    // morning took the three walkers off the heap at hour 1 (0.37.105).
+    failures += Expect(reapers == 0 && opened_crew.walkers == 3,
+                       "carter on foot, the top-up: a reaping opened after the morning leaves the "
+                       "three walkers on their heap - their day's one job stands");
     failures += Expect(opened_crew.riders == 1,
                        "carter on foot, the top-up: and the rider keeps his horse and his heap");
     failures += Expect(nobody == 0 && quiet_crew.riders == 1 && quiet_crew.walkers == 3,

@@ -282,12 +282,12 @@ std::pair<bool, bool> TheDeclaredDay(core::ILaborSystem& labor, bool declare) {
   return {carted, second_refused};
 }
 
-/// LEVEL 0 IN THE TOP-UP (B5): the morning gives the one horse to a
-/// ploughing — the logs' task is ordinary then — and after the placement the
-/// task is raised to level 0 (as the hour-0 ageing does). At hour 1 the top-up
-/// lets the ploughman's horse go and the urgent logs take it. The pair: the
-/// task left ordinary, the plough keeps its horse. Returns: the logs ride, the
-/// ploughing ploughs, after hour 1.
+/// LEVEL 0 AFTER THE MORNING (B5, withdrawn at hour 1 by #633): the morning
+/// gives the one horse to a ploughing — the logs' task is ordinary then — and
+/// after the placement the task is raised to level 0 (as the hour-0 ageing
+/// does). Since 0.37.233 the ploughman keeps his horse and his day's one job
+/// either way; from B5 to 0.37.232 the top-up let the horse go and the urgent
+/// logs took it. Returns: the logs ride, the ploughing ploughs, after hour 1.
 ///
 /// THE PLOUGHING HAS A WINDOW — its field's crop (oat, crops.csv row 0) — so
 /// the old top-up does not let it go as windowless work: it did in this
@@ -419,8 +419,13 @@ int CheckTheGroomsPlan() {
   std::cout << "  groom's plan, a raise after the morning: logs ride " << raised_logs
             << ", ploughing " << raised_ploughs << "; not raised - logs " << kept_logs
             << ", ploughing " << kept_ploughs << '\n';
-  failures += Expect(raised_logs && !raised_ploughs,
-                     "a load raised to level 0 after the morning takes the horse in the top-up");
+  // ONE JOB A DAY (#633, 0.37.233): until then a load raised to level 0 after
+  // the morning took the plough's horse at hour 1 (B5, the logistics thread
+  // [61]-[62]); the ploughman keeps his day's one job, and the raised load is
+  // first in tomorrow's morning plan.
+  failures += Expect(!raised_logs && raised_ploughs,
+                     "a load raised to level 0 after the morning does not take the plough's horse "
+                     "in the top-up");
   failures += Expect(!kept_logs && kept_ploughs,
                      "an ordinary load leaves the plough its horse in the top-up");
   failures += Expect(!TheWaitAfterTheWork(*labor, {.work_ended = true}),

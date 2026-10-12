@@ -184,21 +184,21 @@ Crews LateWorkAgainstThePlanting(core::ILaborSystem& labor, bool a_reaping_opens
   return crews;
 }
 
-/// A CREW LET GO RETURNS TO ITS JOB WHOEVER STILL STANDS ON IT (0.37.206;
-/// timber_years, seed 1929, day 253). Three hands plant a zone in the
-/// morning; a small reaping — one hand's — opens after it; the top-up lets
-/// the planters go and places them again: one reaps, the others plant on.
-/// With `one_stays` one planter is past his rest limit by hour 1: the
-/// top-up's list does not carry him, he keeps his morning's place — and until
-/// 0.37.206 that one place made the planting read «crewed», it was not in the
-/// queue, and the planter let go beside him stood the day idle.
-Crews ALetGoCrewReturns(core::ILaborSystem& labor, bool one_stays) {
+/// THE UNPLACED TAKE THE OPENED JOB, AND ONLY THEY (#633, 0.37.233; time
+/// design «Один работник — одна работа в день»). Three hands; a zone to plant
+/// of `zone_days` norm-days in the morning; a small reaping — one hand's —
+/// opens after it. A zone of twenty days takes all three in the morning, and
+/// the reaping waits: nobody is re-placed. A zone of one day leaves hands the
+/// morning did not place, and one of them reaps while the planters plant on.
+/// Until 0.37.233 the top-up let the planters go and placed them again (one
+/// reaped, the others planted - 0.37.206's case, timber_years seed 1929).
+Crews TheUnplacedTakeTheOpenedJob(core::ILaborSystem& labor, float zone_days) {
   core::WorldState world = Village(3);
   core::TimberStandRow zone;
   zone.kind = core::TimberStandKind::kPlanted;
   zone.position = core::Vec2{.x = 300.0F, .y = 0.0F};
   zone.planted_area_ha = 5.0F;
-  zone.work_days_remaining = 20.0F;
+  zone.work_days_remaining = zone_days;
   const core::TimberStandId zone_id = core::AppendRow(world.stands, zone);
   core::FieldRow late;
   late.center = core::Vec2{.x = 0.0F, .y = 20.0F};
@@ -209,9 +209,6 @@ Crews ALetGoCrewReturns(core::ILaborSystem& labor, bool one_stays) {
   RunHour(labor, world, 0);
   for (const core::ResidentRow& person : world.residents.rows) {
     crews.morning_planters += person.work.kind == core::WorkKind::kPlanting ? 1U : 0U;
-  }
-  if (one_stays) {
-    world.residents.rows[0].rest = 0.0F;  // past the rest limit: not on the top-up's list
   }
   core::FieldRow& opened = world.fields.rows[core::FindRow(world.fields, late_id)];
   opened.phase = core::FieldPhase::kHarvest;
@@ -262,15 +259,14 @@ struct LentHorses {
   std::uint32_t morning_carers = 0;  ///< On the barn's care after hour 0.
 };
 
-/// THE PEOPLE'S CART IS FROM THE REMAINDER IN THE TOP-UP TOO (0.37.168; boss,
-/// the queue thread [120]-[121]). Two horses: in the morning one carts a
-/// stand's logs 3 km out — windowless — and the other, left over, carries the
-/// three hands of a barn a kilometre out (2.4 hours on foot). At hour 1 a second
-/// stand's logs lie: the top-up lets the carter go and places both loads, and
-/// the barn's cart, held by work with a window of today, lends its horse —
-/// both loads ride, the barn's hands walk. Counted as held, the cart kept its
-/// horse and the second load stood: the canon's goods carts lost 299
-/// horse-days of years 1-3 to the people's carts so.
+/// THE PEOPLE'S CART KEEPS ITS HORSE (#633, 0.37.233). Two horses: in the
+/// morning one carts a stand's logs 3 km out and the other, left over,
+/// carries the three hands of a barn a kilometre out (2.4 hours on foot). At
+/// hour 1 a second stand's logs lie: no horse is free, the barn's cart keeps
+/// its horse and its crew their ride, the first carter his load - and the
+/// second load waits for tomorrow's morning plan. From 0.37.168 to 0.37.232
+/// the top-up borrowed the cart's horse (the carter let go and placed again
+/// with both loads; the barn's hands walked).
 LentHorses TheTopUpBorrowsThePeoplesCart(core::ILaborSystem& labor) {
   core::WorldState world = Village(6);
   core::HerdRow team;
@@ -339,13 +335,15 @@ int CheckTopUpAgainstWindowlessWork() {
             << "; a ploughing opened after the morning - ploughmen " << ploughing.on_the_field
             << ", log riders " << ploughing.log_riders << "; none opened - log riders "
             << no_ploughing.log_riders << '\n';
+  // ONE JOB A DAY (#633): until 0.37.233 the ploughing opened after the
+  // morning took the horse from the log cart at hour 1 (district_lot's case
+  // of 0.37.101, seed 1931 day 30); the morning's placement stands now, and
+  // the ploughing waits for the next morning plan.
   failures += Expect(ploughing.morning_riders == 1 && no_ploughing.morning_riders == 1,
                      "top-up, the horse: the morning sends the one horse for the stand's logs");
-  failures += Expect(ploughing.on_the_field == 1,
-                     "top-up, the horse: a ploughing opened after the morning takes the horse from "
-                     "the log cart at hour 1");
-  failures += Expect(ploughing.log_riders == 0,
-                     "top-up, the horse: and the carter rides for no logs on a horse that ploughs");
+  failures += Expect(ploughing.on_the_field == 0 && ploughing.log_riders == 1,
+                     "top-up, the horse: a ploughing opened after the morning does not take the "
+                     "horse from the log cart - the carter keeps his day's one job");
   failures += Expect(no_ploughing.log_riders == 1,
                      "top-up, the horse: with no ploughing opened the carter keeps his horse");
 
@@ -357,25 +355,27 @@ int CheckTopUpAgainstWindowlessWork() {
             << no_reaping.planters << '\n';
   failures += Expect(reaping.morning_planters == 3 && no_reaping.morning_planters == 3,
                      "top-up, the hands: the morning sends all three hands to plant the zone");
-  failures += Expect(reaping.on_the_field == 3 && reaping.planters == 0,
-                     "top-up, the hands: a reaping opened after the morning takes the planters at "
-                     "hour 1");
+  failures += Expect(reaping.on_the_field == 0 && reaping.planters == 3,
+                     "top-up, the hands: a reaping opened after the morning does not take the "
+                     "planters at hour 1 - their day's one job stands");
   failures += Expect(no_reaping.planters == 3,
                      "top-up, the hands: with no reaping opened the planters plant on");
 
-  const Crews all_listed = ALetGoCrewReturns(*labor, false);
-  const Crews one_stays = ALetGoCrewReturns(*labor, true);
-  std::cout << "  top-up, the crew let go: morning planters " << all_listed.morning_planters
-            << "; a one-hand reaping opens - reapers " << all_listed.on_the_field << ", planters "
-            << all_listed.planters << "; with one planter off the list - reapers "
-            << one_stays.on_the_field << ", planters " << one_stays.planters << '\n';
+  const Crews all_placed = TheUnplacedTakeTheOpenedJob(*labor, 20.0F);
+  const Crews hands_left = TheUnplacedTakeTheOpenedJob(*labor, 1.0F);
+  std::cout << "  top-up, the unplaced: a zone of 20 days - morning planters "
+            << all_placed.morning_planters << ", then reapers " << all_placed.on_the_field
+            << ", planters " << all_placed.planters << "; a zone of 1 day - morning planters "
+            << hands_left.morning_planters << ", then reapers " << hands_left.on_the_field
+            << ", planters " << hands_left.planters << '\n';
   failures += Expect(
-      all_listed.morning_planters == 3 && all_listed.on_the_field == 1 && all_listed.planters == 2,
-      "top-up, the crew let go: one planter reaps the small field and the other two "
-      "are back on the planting (the check's own ground)");
-  failures += Expect(one_stays.on_the_field == 1 && one_stays.planters == 2,
-                     "top-up, the crew let go: with one planter off the top-up's list still "
-                     "standing there, the planter let go beside him returns to the planting");
+      all_placed.morning_planters == 3 && all_placed.on_the_field == 0 && all_placed.planters == 3,
+      "top-up, the unplaced: with every hand placed in the morning the one-hand "
+      "reaping waits - nobody is re-placed");
+  failures += Expect(hands_left.morning_planters < 3 && hands_left.on_the_field == 1 &&
+                         hands_left.planters == hands_left.morning_planters,
+                     "top-up, the unplaced: a hand the morning left reaps the small field, and the "
+                     "planters plant on as placed");
 
   const auto carting = LaborWithThePeoplesCart();
   if (Expect(carting != nullptr, "top-up, the people's cart: the tables build a labor system") !=
@@ -390,8 +390,8 @@ int CheckTopUpAgainstWindowlessWork() {
   failures += Expect(lent.morning_log_riders == 1 && lent.morning_peoples_carts == 1,
                      "top-up, the people's cart: the morning carts one load and gives the other "
                      "horse, left over, to the barn's far hands");
-  failures += Expect(lent.log_riders == 2 && lent.peoples_carts == 0,
-                     "top-up, the people's cart: a second load at hour 1 takes the cart's horse — "
-                     "both loads ride, the barn's hands walk");
+  failures += Expect(lent.log_riders == 1 && lent.peoples_carts == 1,
+                     "top-up, the people's cart: a second load at hour 1 takes no horse - the "
+                     "barn's cart keeps it and its crew their ride, the second load waits");
   return failures;
 }

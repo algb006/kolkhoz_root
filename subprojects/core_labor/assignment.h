@@ -83,14 +83,6 @@ struct AssignmentJob {
   /// pool, like ploughing.
   bool harnessed = false;
 
-  /// True for a cart load — a field's heap, a pit's dig, a store's transfer —
-  /// whose riders are placed already and which is offered again for carriers
-  /// ON FOOT alone: the hour-1 top-up lets the morning's walkers go with the
-  /// windowless work (they are the last of the queue) and gives the heap back
-  /// to them through this flag, so that it takes no second crew of horses
-  /// (0.37.105; AssignmentParams::walker_share_of_cart_day).
-  bool on_foot_only = false;
-
   /// THE BRIGADE GOES OUT ON ONE CART (farming design §6, «Дорога пешком
   /// съедает световой день»; the human's word of 2026-10-01 on econ's third
   /// proposal; boss-core-fields-daylight-decided-2026-10-01 [1], [4]): set

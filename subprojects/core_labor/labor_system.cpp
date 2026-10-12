@@ -671,19 +671,15 @@ class LaborSystem final : public ILaborSystem {
   /// production reads the morning's placement in that same hour-0 block (the
   /// team's working share, herd_system.cpp).
   ///
-  /// AND WHAT THE MORNING GAVE TO WORK WITH NO WINDOW IS ASKED AGAIN (0.37.101;
-  /// assignment.h, PlacementTier; district_lot's red on 0.37.99). Placing only
-  /// the idle, with only the horses the morning left, this kept every horse
-  /// and hand the morning had sent to windowless work: on seed 1931, day 30,
-  /// five horses rode for the district's lot while the harrowing of the rye's
-  /// fallow, opened that dawn, stood the day with no horse. So when a job
-  /// stands with nobody on it, the morning's placements on the windowless tier
-  /// are let go — of the accountant's list only; a post holder keeps his place
-  /// — and placed again in one queue with what stands uncrewed. That is the
-  /// placement the morning would have made had it known: the queue's order
-  /// puts the opened plough before the lot and the opened reaping before the
-  /// planting, and gives the windowless work what is left, as it did at dawn.
-  /// The tiers above are not asked again.
+  /// THE MORNING'S PLACEMENT STANDS THE DAY (#633, 0.37.233; time design «Один
+  /// работник — одна работа в день»): only the unplaced are placed here, with
+  /// only the horses the morning left. From 0.37.101 to 0.37.232 the morning's
+  /// windowless placements were let go and placed again whenever a job stood
+  /// uncrewed (on seed 1931, day 30, five horses rode for the district's lot
+  /// while the harrowing of the rye's fallow, opened that dawn, stood the day
+  /// with no horse); that broke the one-job rule, and a job opened after the
+  /// morning that the unplaced cannot crew waits for tomorrow's morning plan -
+  /// whose ranking is the place to mend it (boss, 12 October 2026).
   void TopUpDay(WorldState& current) const {
     ReleaseHorselessWork(current);
     const std::vector<AssignmentJob> offered = CollectJobs(current);
@@ -707,81 +703,24 @@ class LaborSystem final : public ILaborSystem {
     if (jobs.empty()) {
       return;
     }
+    // ONE JOB A DAY (#633; time design «Один работник — одна работа в день»;
+    // boss, 12 October 2026: «The morning's placement IS the day's one job once
+    // it is made … The world, not a better-ranked job, is the only thing that
+    // ends a placement»): the top-up places ONLY THE UNPLACED - the morning's
+    // idle, and the hands whose job the world ended since (the field done, the
+    // rain, the horse gone: ReleaseHorselessWork above, the labour hour's «job
+    // gone from under him»). It never re-places a placed hand, windowless or
+    // not, set out or not. Until 0.37.233 it LET GO at this hour everyone on
+    // a windowless job (0.37.101), the carriers on foot of a cart load
+    // (0.37.105) and, with a level-0 load uncrewed, every horse-holder (B5),
+    // and placed them again by tier: host's barter trace (seed 2, 0.37.228)
+    // saw a builder placed on a works at hour 0 sent to a meadow opened that
+    // morning at hour 1, the works standing four more days with 0.43 man-days
+    // left. A windowed job or a level-0 load that opens after the morning
+    // waits for the unplaced and for tomorrow's morning plan; if the morning
+    // ranks it wrong, that is the morning's ranking to mend (boss), not this
+    // hour's.
     std::vector<AssignmentCandidate> candidates = CollectCandidates(current);
-    // Let go: everyone of the list who stands on a windowless job. Before
-    // sunrise nobody has worked an hour, so the day he is taken off is whole.
-    //
-    // AND THE CARRIERS ON FOOT OF A CART LOAD WITH THEM (0.37.105): they are
-    // the last of the queue whatever the load's window — hands the morning
-    // found no other work for — so a reaping opened at dawn takes them before
-    // any windowless work. The load they stood on is offered again for
-    // walkers alone (AssignmentJob::on_foot_only): its riders keep their
-    // horses and it takes no second crew of them.
-    std::vector<bool> let_go(current.residents.rows.size(), false);
-    std::vector<bool> walkers_left(offered.size(), false);
-    // THE JOBS WHOSE CREW WAS LET GO, by `offered` (0.37.206): every job a
-    // hand was taken off other than as a walker of a cart load. They are in
-    // the queue again WHOEVER STILL STANDS ON THEM. Until then a job was
-    // offered again only when nobody stood on it at all — and a hand the
-    // top-up's list does not carry (it is collected anew at this hour, and
-    // not everybody the morning placed is on it) kept his place, made the job
-    // read «crewed», and the crew just taken off it was placed elsewhere:
-    // timber_years, seed 1929, day 253 — a level-0 load stood uncrewed, the
-    // plough of field 12 (13 hands at dawn) and the harrow of field 14 (14)
-    // were let go with every horse-holder, two hands and one stayed on them,
-    // neither job was in the queue of seven, and both stood the day with
-    // nobody while eighteen hands went to three other harrows and five horses
-    // idled. The run's assertion saw one cart on a horse for the district's
-    // lot; the loss was two field works' day.
-    std::vector<bool> crew_let_go(offered.size(), false);
-    bool anybody_let_go = false;
-    const bool carts_haul = WalkerShareToday(current) < 1.0F;
-    // LEVEL 0 IN THE TOP-UP TOO, AHEAD OF EVERY WINDOW (routing stage B, B5;
-    // boss, the logistics thread [61]-[62]): a load raised to level 0 after the
-    // morning's placement (the tasks are aged at hour 0, after it) waited for
-    // this hour, and this hour let only the windowless work go — 15 % of the
-    // level-0 task-days of 0.37.177's canon stood without a cart at hour 1.
-    // With such a load uncrewed, everybody holding a horse is let go too and
-    // placed again: the queue puts the urgent load first and the windows after
-    // it. Nobody has worked an hour yet, so no begun trip is broken.
-    const bool urgent_uncrewed =
-        std::ranges::any_of(jobs, [](const AssignmentJob& job) { return job.logistics_urgent; });
-    for (const AssignmentCandidate& candidate : candidates) {
-      WorkAssignment& work = current.residents.rows[candidate.resident_row].work;
-      if (work.kind == WorkKind::kNone) {
-        continue;
-      }
-      const auto his = std::ranges::find_if(
-          offered, [&work, &stands_on](const AssignmentJob& job) { return stands_on(work, job); });
-      if (his == offered.end()) {
-        continue;
-      }
-      const bool walks_to_a_cart_load =
-          carts_haul && work.kind == WorkKind::kHauling && work.rides_horse == 0;
-      const bool holds_a_horse = work.rides_horse != 0 || IsHorseWork(work.kind);
-      if (PlacementTier(*his) == kWindowlessTier || walks_to_a_cart_load ||
-          (urgent_uncrewed && holds_a_horse && !his->logistics_urgent)) {
-        const auto job_index = static_cast<std::size_t>(his - offered.begin());
-        walkers_left[job_index] = walks_to_a_cart_load;
-        crew_let_go[job_index] = crew_let_go[job_index] || !walks_to_a_cart_load;
-        work = WorkAssignment{};
-        let_go[candidate.resident_row] = true;
-        anybody_let_go = true;
-      }
-    }
-    if (anybody_let_go) {
-      // The windowless jobs stand uncrewed now, and join the queue; a load
-      // whose walkers went and whose riders stayed joins it for walkers alone.
-      jobs.clear();
-      for (std::size_t index = 0; index < offered.size(); ++index) {
-        if (!crewed(offered[index]) || crew_let_go[index]) {
-          jobs.push_back(offered[index]);
-        } else if (walkers_left[index]) {
-          jobs.push_back(offered[index]);
-          jobs.back().on_foot_only = true;
-        }
-      }
-    }
     std::erase_if(candidates, [&current](const AssignmentCandidate& candidate) {
       return current.residents.rows[candidate.resident_row].work.kind != WorkKind::kNone;
     });
@@ -792,46 +731,23 @@ class LaborSystem final : public ILaborSystem {
     // Until 0.34.51 this handed the placement the whole herd again, and a
     // ploughing opened after the morning took horses already in the traces:
     // host measured spring ploughing and harrowing above the herd in a third
-    // of the canon's March and April seed-months.
-    //
-    // EXCEPT THE PEOPLE'S CARTS, WHICH ARE LENT TO THIS QUEUE (0.37.168; boss,
-    // the queue thread [120]-[121]): the morning gave them from what its queue
-    // left, but the top-up lets the windowless carts go and places them again,
-    // while the carts of the herds' care (a window of today) stay out. Counted
-    // as held, they went ahead of the goods carts here: the canon's goods carts
-    // lost 299 horse-days of years 1-3 to them (nine villages, 0.37.168
-    // against 0.37.167), carting 10.7 % below 0.37.157's. Lent, and taken back
-    // first by the release below when the queue used them.
+    // of the canon's March and April seed-months. The people's carts' horses
+    // are in the traces too: until 0.37.233 they were LENT to this queue
+    // (0.37.168), since the let-go placed their crews again; with nobody let
+    // go a lent horse could only be taken back from a crew that keeps its
+    // job, which is the re-placing the one-job rule forbids.
     AssignmentParams params = DayParams(current);
-    const std::uint32_t in_traces = HorsesInTraces(current) - PeoplesCartHorses(current);
+    const std::uint32_t in_traces = HorsesInTraces(current);
     params.draught_horses =
         in_traces < params.draught_horses ? params.draught_horses - in_traces : 0U;
     MeasureRoads(current, jobs, candidates, params);
     std::vector<std::uint8_t> rides_horse;
     std::vector<std::uint32_t> rides_cart_with;
-    PlacementDiagnosis diagnosis;
-    const std::vector<std::uint32_t> plan =
-        PlanDayAssignments(jobs,
-                           candidates,
-                           params,
-                           &rides_horse,
-                           nullptr,
-                           anybody_let_go ? &diagnosis : nullptr,
-                           &rides_cart_with);
-    const bool rain_holds = RainHoldsFieldWork(current);
+    const std::vector<std::uint32_t> plan = PlanDayAssignments(
+        jobs, candidates, params, &rides_horse, nullptr, nullptr, &rides_cart_with);
     for (std::uint32_t index = 0; index < candidates.size(); ++index) {
       if (plan[index] == kNoJobAssigned) {
-        // LET GO AND NOT PLACED AGAIN: idle by this plan, and the book and the
-        // workbook say why — the morning counted him placed, with no reason.
-        // The top-up runs on no day off (CollectJobs offers the barn alone
-        // then, and the barn has a window).
-        const std::uint32_t row = candidates[index].resident_row;
-        if (let_go[row] && diagnosis.idle[index]) {
-          const IdleReason reason = BookedIdleReason(*diagnosis.idle[index], false, rain_holds);
-          ++current.ledger.current.idle_person_days[static_cast<std::size_t>(reason)];
-          current.residents.rows[row].idle_reason = reason;
-        }
-        continue;
+        continue;  // idle still: the morning booked his reason, and it stands
       }
       const AssignmentJob& job = jobs[plan[index]];
       ResidentRow& placed = current.residents.rows[candidates[index].resident_row];
@@ -852,20 +768,10 @@ class LaborSystem final : public ILaborSystem {
       work.road_work = job.road_work;
       work.travel_hours = -1.0F;  // a new target: its road is measured anew
     }
-    // THE LENT HORSES BACK (above): the people's carts first, their crews walk.
+    // A GUARD, not a lever since 0.37.233: the queue was given only the
+    // horses the morning left, so nothing is above the herd here unless the
+    // world took a horse this hour.
     ReleaseHorselessWork(current);
-  }
-
-  /// @brief The horses the people's carts hold today (labor_state.h,
-  ///        TakesThePeoplesCart): one a driver — the part of HorsesInTraces
-  ///        (CountHarness counts them by the same test) the top-up lends to its
-  ///        queue.
-  static std::uint32_t PeoplesCartHorses(const WorldState& current) {
-    std::uint32_t horses = 0;
-    for (const ResidentRow& person : current.residents.rows) {
-      horses += TakesThePeoplesCart(person.work.kind) && person.work.rides_horse != 0 ? 1U : 0U;
-    }
-    return horses;
   }
 
   /// @brief Fills AssignmentParams::road_km for these jobs and candidates, and

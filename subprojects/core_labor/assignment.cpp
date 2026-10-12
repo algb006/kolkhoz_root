@@ -620,9 +620,6 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
 
   for (const std::uint32_t job_index : order) {
     const AssignmentJob& job = jobs[job_index];
-    if (job.on_foot_only) {
-      continue;  // its riders stand on it already; the last pass gives it walkers
-    }
     // A harnessed job takes a horse out of the day's pool exactly as
     // ploughing does — which is what assignment.h has promised since the
     // meadow cut was written, and what this line did not do until task A4

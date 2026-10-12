@@ -23,6 +23,7 @@
 #include <cstdint>
 #include <iostream>
 #include <span>
+#include <string>
 #include <vector>
 
 #include "../common/run_harness.h"
@@ -187,9 +188,23 @@ int main() {
                           "the district centre for the village's carts");
   failures += run::Expect(carter_days > 0,
                           "the village's carters are sent for the lot (a work on the lot's row)");
-  failures += run::Expect(carter_days_over_a_plough == 0,
-                          "and never on a day a plough or a harrow waits with nobody on it: the "
-                          "fetch is windowless, the field's horse work goes first");
+  // A KNOWN GAP SINCE 0.37.233 (#633), written before the assertion moved so
+  // the finding stays on file: this run's own case (0.37.101) was mended by
+  // the hour-1 top-up re-placing the lot's carters; the top-up re-places
+  // nobody now (time design «одна работа в день»), and the harrowing opened
+  // after the morning's placement waits for the next morning. Removed in
+  // (A)'s own commit (the morning offers every field phase that opens
+  // today), which must turn it green as the morning's ranking.
+  failures += run::KnownGap(
+      carter_days_over_a_plough == 0,
+      "and never on a day a plough or a harrow waits with nobody on it: the fetch is windowless, "
+      "the field's horse work goes first",
+      std::to_string(carter_days_over_a_plough) + " of " + std::to_string(carter_days) +
+          " days with a carter on the lot",
+      "boss 12 Oct 2026, #633: the same mechanism as 1936's potatoes - a field phase opened after "
+      "the morning's placement; removed in (A)'s own commit, green as the morning's ranking with "
+      "no "
+      "top-up");
   failures += run::Expect(carters_on_foot == 0,
                           "and every carter on the lot rides a horse: with none free, nobody "
                           "is sent");
