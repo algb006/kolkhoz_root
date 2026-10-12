@@ -617,6 +617,11 @@ class ConstructionSystem final : public IConstructionSystem {
     if (site.level == 0 || site.construction.phase != ConstructionPhase::kNone) {
       return OrderRefusal::kRuleForbids;  // a site is one thing at a time
     }
+    // A works put aside for the winter is still the unit's one works (#715):
+    // it comes back in spring, and a repair would take its place.
+    if (site.suspended_works.has_value()) {
+      return OrderRefusal::kConflictsWithActive;
+    }
     if (site.type.value >= config_.types.size() || config_.types[site.type.value].has_wear == 0) {
       return OrderRefusal::kRuleForbids;  // nothing to wear, nothing to mend
     }
@@ -948,6 +953,11 @@ class ConstructionSystem final : public IConstructionSystem {
     if (site.level == 0 || site.construction.phase != ConstructionPhase::kNone) {
       return OrderRefusal::kRuleForbids;
     }
+    // The rung put aside for the winter comes back by itself (#715); a second
+    // upgrade would overwrite it.
+    if (site.suspended_works.has_value()) {
+      return OrderRefusal::kConflictsWithActive;
+    }
     if (!ModuleParentSound(current, site)) {
       return OrderRefusal::kNoParent;
     }
@@ -998,6 +1008,12 @@ class ConstructionSystem final : public IConstructionSystem {
     }
     if (current.units.rows[row].construction.phase == ConstructionPhase::kDemolishing) {
       return OrderRefusal::kRuleForbids;
+    }
+    // NOT WHILE A WORKS IS PUT ASIDE (#715): what it fixed and carted is on its
+    // way in its legs, and taking the unit down would lose those grams with
+    // the row. Named: the player waits for spring or for the clay to stand.
+    if (current.units.rows[row].suspended_works.has_value()) {
+      return OrderRefusal::kConflictsWithActive;
     }
     // A UNIT THAT IS NEVER TAKEN DOWN (construction_config.h,
     // type_never_demolished; the human's word of 3 October 2026): the mill,
@@ -1285,6 +1301,15 @@ class ConstructionSystem final : public IConstructionSystem {
         }
       } else if (InsulationDone(config_, current, row)) {
         CompleteInsulation(config_, current, row);
+      }
+      // THE CLAY COMES BACK (#715; «глиняное открывается весной»): the coat
+      // done and the works' own winter class no longer stopping it - the
+      // same test that stopped it (WinterStopsSite), so it returns the first
+      // hour its season allows, whole, as it was put aside.
+      if (site.construction.phase == ConstructionPhase::kNone && site.suspended_works.has_value() &&
+          !WinterStopsSite(current.calendar.season, site.suspended_works->winter_works)) {
+        site.construction = std::move(*site.suspended_works);
+        site.suspended_works.reset();
       }
     }
     for (const UnitId unit : gone) {

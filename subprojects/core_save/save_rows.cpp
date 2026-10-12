@@ -237,8 +237,16 @@ static_assert(AggregateArity<FieldRow>() == 46,
 // Save 153 (stage В, F3): the perevalka's receiver, a point after its seam —
 // predicted 112 -> 120 + three amounts + the legs' vector, 18 -> 19 fields,
 // before the build.
-static_assert(sizeof(UnitRow) == 120 + (3 * kAmountsSize) + sizeof(std::vector<SupplyLeg>),
+// Save 157 (#715): the works put aside for the winter, an optional site block
+// after `construction` - predicted before the build as the block (48 + two
+// amounts + the legs' vector = 120) plus its flag padded to the eight, 128;
+// the row 216 -> 344. On the wire a byte (0 = none) and, when set, the block
+// as `construction` writes it.
+static_assert(sizeof(UnitRow) == 120 + (3 * kAmountsSize) + sizeof(std::vector<SupplyLeg>) +
+                                     sizeof(std::optional<ConstructionState>),
               "UnitRow changed — update the codec and VERSION_SAVE");
+static_assert(sizeof(std::optional<ConstructionState>) == sizeof(ConstructionState) + 8,
+              "the suspended works' flag is not the eight predicted");
 static_assert(sizeof(ConstructionState) == 48 + (2 * kAmountsSize) + sizeof(std::vector<SupplyLeg>),
               "ConstructionState changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(SupplyLeg) == 24 + kAmountsSize,
@@ -255,8 +263,9 @@ static_assert(AggregateArity<SupplyLeg>() == 4,
 // units section +1 a unit.
 static_assert(AggregateArity<ConstructionState>() == 19,
               "ConstructionState gained or lost a field — update the codec and VERSION_SAVE");
-// Save 74: reserved_for_specialist, a byte beside `dead` — 18 fields.
-static_assert(AggregateArity<UnitRow>() == 19,
+// Save 74: reserved_for_specialist, a byte beside `dead` — 18 fields. Save 157:
+// suspended_works (#715) — 20.
+static_assert(AggregateArity<UnitRow>() == 20,
               "UnitRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 71: fed_share, the day's covered ration — 68 and nineteen fields,
 // predicted before the field was added and measured after. Save 76:
@@ -1193,6 +1202,90 @@ FieldRow ReadFieldRow(LoadSource& source) {
 // UnitRow — unit_state.h
 // ---------------------------------------------------------------------------
 
+namespace {
+
+/// The site block (task A2): a unit under construction is a unit row, so its
+/// site is fields of this row and saves with it. One writer for the open
+/// works and the one put aside for the winter (#715, save 157).
+void WriteConstructionBlock(SaveSink& sink, const ConstructionState& works) {
+  ByteWriter& out = sink.Out();
+  out.WriteU8(static_cast<std::uint8_t>(works.phase));
+  out.WriteU8(works.target_level);
+  out.WriteFloat(works.labor_days_total);
+  out.WriteFloat(works.labor_days_remaining);
+  out.WriteU8(works.max_crew);
+  out.WriteU8(works.rush_step);       // save 65: the avral on the step
+  out.WriteU8(works.winter_works);    // save 80: the site's winter class
+  out.WriteU16(works.crewless_days);  // save 115: days in a row with nobody on it
+  // What the works hold back of a standing unit's stock (2026-09-14,
+  // VERSION_SAVE 37): the upgrade's carried-in recipe, which the stock
+  // alone cannot tell from the store's own goods.
+  sink.WriteAmounts(DefKind::kResource, works.reserved);
+  // The materials on their way and the supply seam (routing stage V2, save 147).
+  sink.WriteAmounts(DefKind::kResource, works.awaiting);
+  // The legs, a sender each (the direct leg, inside save 147): a u16 count,
+  // then every leg's point, way, amounts and unpriced grams.
+  out.WriteU16(static_cast<std::uint16_t>(works.legs.size()));
+  for (const SupplyLeg& leg : works.legs) {
+    WriteVec2(out, leg.from);
+    out.WriteU8(leg.log_way);
+    sink.WriteAmounts(DefKind::kResource, leg.grams);
+    out.WriteI64(leg.unpriced);
+  }
+  WriteVec2(out, works.supply_from);
+  out.WriteU8(works.supply_log_way);
+  out.WriteU8(works.raised);  // save 154 (#595): «поднято в очереди»
+  out.WriteFloat(works.supply_days_first);
+  out.WriteFloat(works.supply_days_all);
+  out.WriteFloat(works.supply_days_remaining);
+  out.WriteFloat(works.supply_days_written);
+  out.WriteU32(works.supply_since_day);
+}
+
+ConstructionState ReadConstructionBlock(LoadSource& source) {
+  ByteReader& in = source.In();
+  ConstructionState works;
+  works.phase = static_cast<ConstructionPhase>(
+      source.ReadEnumValue(0, kMaxConstructionPhase, "construction phase"));
+  works.target_level = in.ReadU8();
+  works.labor_days_total = in.ReadFloat();
+  works.labor_days_remaining = in.ReadFloat();
+  works.max_crew = in.ReadU8();
+  works.rush_step =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, kMaxRushStepByte, "unit's avral step"));
+  // Through the domain check and not as a raw byte: a 0/1 flag read raw is
+  // the open UB-002's shape, and this one decides whether a crew is sent.
+  works.winter_works = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "site's winter class"));
+  works.crewless_days = in.ReadU16();  // save 115
+  works.reserved = source.ReadAmounts(DefKind::kResource);
+  works.awaiting = source.ReadAmounts(DefKind::kResource);  // save 147
+  // The legs (inside save 147). Taken as written: the count is bounded by the
+  // file's own length — a leg that is not there fails the reader, and the
+  // loop stops with it.
+  const std::uint16_t leg_count = in.ReadU16();
+  for (std::uint16_t index = 0; index < leg_count && in.Valid(); ++index) {
+    SupplyLeg leg;
+    leg.from = ReadVec2(in);
+    leg.log_way = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "supply leg's way"));
+    leg.grams = source.ReadAmounts(DefKind::kResource);
+    leg.unpriced = in.ReadI64();
+    works.legs.push_back(std::move(leg));
+  }
+  works.supply_from = ReadVec2(in);
+  works.supply_log_way =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "supply's front way"));
+  // Save 154 (#595): «поднято в очереди», a switch.
+  works.raised = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "site raised"));
+  works.supply_days_first = in.ReadFloat();
+  works.supply_days_all = in.ReadFloat();
+  works.supply_days_remaining = in.ReadFloat();
+  works.supply_days_written = in.ReadFloat();
+  works.supply_since_day = in.ReadU32();
+  return works;
+}
+
+}  // namespace
+
 void WriteUnitRow(SaveSink& sink, const UnitRow& row) {
   ByteWriter& out = sink.Out();
   sink.WriteDefId(DefKind::kUnitType, row.type.value);
@@ -1200,40 +1293,13 @@ void WriteUnitRow(SaveSink& sink, const UnitRow& row) {
   out.WriteU8(row.level);
   WriteEntityId(out, row.household);
   sink.WriteAmounts(DefKind::kResource, row.stock);
-
-  // The site block (task A2): a unit under construction is a unit row, so
-  // its site is fields of this row and saves with it.
-  out.WriteU8(static_cast<std::uint8_t>(row.construction.phase));
-  out.WriteU8(row.construction.target_level);
-  out.WriteFloat(row.construction.labor_days_total);
-  out.WriteFloat(row.construction.labor_days_remaining);
-  out.WriteU8(row.construction.max_crew);
-  out.WriteU8(row.construction.rush_step);       // save 65: the avral on the step
-  out.WriteU8(row.construction.winter_works);    // save 80: the site's winter class
-  out.WriteU16(row.construction.crewless_days);  // save 115: days in a row with nobody on it
-  // What the works hold back of a standing unit's stock (2026-09-14,
-  // VERSION_SAVE 37): the upgrade's carried-in recipe, which the stock
-  // alone cannot tell from the store's own goods.
-  sink.WriteAmounts(DefKind::kResource, row.construction.reserved);
-  // The materials on their way and the supply seam (routing stage V2, save 147).
-  sink.WriteAmounts(DefKind::kResource, row.construction.awaiting);
-  // The legs, a sender each (the direct leg, inside save 147): a u16 count,
-  // then every leg's point, way, amounts and unpriced grams.
-  out.WriteU16(static_cast<std::uint16_t>(row.construction.legs.size()));
-  for (const SupplyLeg& leg : row.construction.legs) {
-    WriteVec2(out, leg.from);
-    out.WriteU8(leg.log_way);
-    sink.WriteAmounts(DefKind::kResource, leg.grams);
-    out.WriteI64(leg.unpriced);
+  WriteConstructionBlock(sink, row.construction);
+  // The works put aside for the winter (#715, save 157): a byte, then the
+  // block when it is there.
+  out.WriteU8(row.suspended_works.has_value() ? 1 : 0);
+  if (row.suspended_works.has_value()) {
+    WriteConstructionBlock(sink, *row.suspended_works);
   }
-  WriteVec2(out, row.construction.supply_from);
-  out.WriteU8(row.construction.supply_log_way);
-  out.WriteU8(row.construction.raised);  // save 154 (#595): «поднято в очереди»
-  out.WriteFloat(row.construction.supply_days_first);
-  out.WriteFloat(row.construction.supply_days_all);
-  out.WriteFloat(row.construction.supply_days_remaining);
-  out.WriteFloat(row.construction.supply_days_written);
-  out.WriteU32(row.construction.supply_since_day);
 
   // Wear (task A5): the building's own age, which nothing can rederive.
   out.WriteFloat(row.wear);
@@ -1269,44 +1335,11 @@ UnitRow ReadUnitRow(LoadSource& source) {
   row.level = in.ReadU8();
   row.household = ReadEntityId<FamilyId>(in);
   row.stock = source.ReadAmounts(DefKind::kResource);
-
-  row.construction.phase = static_cast<ConstructionPhase>(
-      source.ReadEnumValue(0, kMaxConstructionPhase, "construction phase"));
-  row.construction.target_level = in.ReadU8();
-  row.construction.labor_days_total = in.ReadFloat();
-  row.construction.labor_days_remaining = in.ReadFloat();
-  row.construction.max_crew = in.ReadU8();
-  row.construction.rush_step =
-      static_cast<std::uint8_t>(source.ReadEnumValue(0, kMaxRushStepByte, "unit's avral step"));
-  // Through the domain check and not as a raw byte: a 0/1 flag read raw is
-  // the open UB-002's shape, and this one decides whether a crew is sent.
-  row.construction.winter_works =
-      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "site's winter class"));
-  row.construction.crewless_days = in.ReadU16();  // save 115
-  row.construction.reserved = source.ReadAmounts(DefKind::kResource);
-  row.construction.awaiting = source.ReadAmounts(DefKind::kResource);  // save 147
-  // The legs (inside save 147). Taken as written: the count is bounded by the
-  // file's own length — a leg that is not there fails the reader, and the
-  // loop stops with it.
-  const std::uint16_t leg_count = in.ReadU16();
-  for (std::uint16_t index = 0; index < leg_count && in.Valid(); ++index) {
-    SupplyLeg leg;
-    leg.from = ReadVec2(in);
-    leg.log_way = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "supply leg's way"));
-    leg.grams = source.ReadAmounts(DefKind::kResource);
-    leg.unpriced = in.ReadI64();
-    row.construction.legs.push_back(std::move(leg));
+  row.construction = ReadConstructionBlock(source);
+  // Save 157 (#715): the works put aside for the winter.
+  if (source.ReadEnumValue(0, 1, "suspended works") != 0) {
+    row.suspended_works = ReadConstructionBlock(source);
   }
-  row.construction.supply_from = ReadVec2(in);
-  row.construction.supply_log_way =
-      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "supply's front way"));
-  // Save 154 (#595): «поднято в очереди», a switch.
-  row.construction.raised = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "site raised"));
-  row.construction.supply_days_first = in.ReadFloat();
-  row.construction.supply_days_all = in.ReadFloat();
-  row.construction.supply_days_remaining = in.ReadFloat();
-  row.construction.supply_days_written = in.ReadFloat();
-  row.construction.supply_since_day = in.ReadU32();
   row.wear = in.ReadFloat();
   row.paused = in.ReadU8();
   // 0 none, 1 emptying, 2 emptying with its carrying paused (boss seq 119).

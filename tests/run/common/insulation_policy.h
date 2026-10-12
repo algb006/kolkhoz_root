@@ -86,6 +86,7 @@ class InsulationPolicy {
     core::Grams straw = 0;
     std::uint32_t house = core::kNoRow;
     std::uint32_t byre = core::kNoRow;
+    bool byre_over_clay = false;
     for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
       const core::UnitRow& unit = world.units.rows[row];
       if (unit.construction.phase == core::ConstructionPhase::kInsulating) {
@@ -100,10 +101,22 @@ class InsulationPolicy {
           IsHousing(unit)) {
         house = row;
       }
-      if (byre == core::kNoRow && free && !WarmRung(unit) &&
+      // AND THE PEN WHOSE CLAY WARM RUNG THE WINTER STOPPED (#715; Livestock
+      // design, «Не успел»: the coat goes on INSTEAD of the clay, which opens
+      // again in spring). Until 0.37.239 the door refused the coat beside any
+      // open works and this rule asked only of a unit with none.
+      const core::ConstructionState& works = unit.construction;
+      const bool clay_stopped =
+          unit.level > 0 && unit.insulated == 0 && !unit.suspended_works.has_value() &&
+          world.calendar.season == core::Season::kWinter && works.winter_works == 0 &&
+          (works.phase == core::ConstructionPhase::kDelivering ||
+           works.phase == core::ConstructionPhase::kBuilding) &&
+          works.target_level == unit.level + 1;
+      if (byre == core::kNoRow && (free || clay_stopped) && !WarmRung(unit) &&
           HerdUnderItsRoof(
               world, world.units.rows.size() > row ? world.units.row_ids[row] : core::UnitId{})) {
         byre = row;
+        byre_over_clay = clay_stopped;
       }
     }
     // THE HERDS' ROOF FIRST (0.37.62; Livestock design, «Числа лестницы —
@@ -123,6 +136,7 @@ class InsulationPolicy {
       return;
     }
     byres_ += target == byre ? 1U : 0U;
+    over_clay_ += target == byre && byre_over_clay ? 1U : 0U;
     core::OrderRow order;
     order.kind = core::OrderKind::kInsulateUnit;
     order.unit = world.units.row_ids[target];
@@ -155,8 +169,9 @@ class InsulationPolicy {
       }
     }
     std::cout << run_name << ": insulation — " << ordered_ << " orders (first on day "
-              << first_order_day_ << "), " << byres_ << " of them livestock units; " << warm
-              << " of " << lived_in << " lived-in houses warm at the end\n";
+              << first_order_day_ << "), " << byres_ << " of them livestock units (" << over_clay_
+              << " over a clay warm rung the winter stopped); " << warm << " of " << lived_in
+              << " lived-in houses warm at the end\n";
   }
 
  private:
@@ -238,6 +253,9 @@ class InsulationPolicy {
   core::Grams herd_straw_ = 6 * core::kGramsPerTonne;
 
   std::uint32_t byres_ = 0;
+
+  /// Of them, coats laid in place of a clay warm rung the winter stopped.
+  std::uint32_t over_clay_ = 0;
 
   core::ResourceId straw_;
 

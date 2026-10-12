@@ -19,6 +19,18 @@ Grams FrozenStraw(const ConstructionConfig& config, const UnitRow& site) {
   return AmountOf(site.construction.reserved, config.straw_resource);
 }
 
+/// The straw on the site that the coat may count: the stock less what a works
+/// put aside for the winter holds back (#715) - the clay warm rung's recipe
+/// carries straw of its own (6 t on the cattle yard's rung 2), and that is
+/// the spring's, not the coat's.
+Grams StrawOnSite(const ConstructionConfig& config, const UnitRow& site) {
+  const Grams held = AmountOf(site.stock, config.straw_resource);
+  const Grams aside = site.suspended_works.has_value()
+                          ? AmountOf(site.suspended_works->reserved, config.straw_resource)
+                          : 0;
+  return held > aside ? held - aside : 0;
+}
+
 /// Opens the man-days once the straw is all on site.
 void OpenLabour(UnitRow& site) {
   site.construction.labor_days_remaining = site.construction.labor_days_total;
@@ -92,20 +104,37 @@ OrderRefusal StartInsulation(const ConstructionConfig& config, WorldState& curre
   // overwrite its seam. Its own refusal, the one-active-task rule's, so the
   // player reads «a works stands on it» and not a bare «forbidden»: a pen whose
   // clay warm is open waits for spring; one not yet begun takes the straw.
-  if (site.construction.phase != ConstructionPhase::kNone) {
+  //
+  // EXCEPT THE CLAY WARM RUNG ITSELF (#715; livestock design «Не успел»: the
+  // coat «ставится ВМЕСТО глиняного… глиняное открывается весной»; boss, 12
+  // October 2026). Until 0.37.239 the lamp's own advice (kInsulateStraw on
+  // herd_freezing) was refused kConflictsWithActive in every village whose
+  // pen stood with its warm rung open and winter-stopped. That works is put
+  // aside whole (UnitRow::suspended_works) and the coat takes its place; any
+  // other open works still refuses.
+  const InsulationKind kind = InsulationKindOf(config, site.type, site.level);
+  const ConstructionState& open = site.construction;
+  const bool replaces_clay = kind == InsulationKind::kLivestock &&
+                             !site.suspended_works.has_value() &&
+                             (open.phase == ConstructionPhase::kDelivering ||
+                              open.phase == ConstructionPhase::kBuilding) &&
+                             open.target_level == site.level + 1 && open.winter_works == 0;
+  if (open.phase != ConstructionPhase::kNone && !replaces_clay) {
     return OrderRefusal::kConflictsWithActive;
   }
   if (site.level == 0 || site.insulated != 0 || config.straw_resource.value == kInvalidDefIdValue) {
     return OrderRefusal::kRuleForbids;
   }
-  const InsulationKind kind = InsulationKindOf(config, site.type, site.level);
   if (kind == InsulationKind::kNone) {
     return OrderRefusal::kRuleForbids;
   }
   const Grams need = InsulationStrawGrams(config, kind);
   // kStartBuild's rule: the village holds the straw in full at the word — the
-  // site's own stock and what every other built unit may give.
-  Grams held = AmountOf(site.stock, config.straw_resource);
+  // site's own stock and what every other built unit may give. The clay's
+  // own straw on the site is the clay's (StrawOnSite once it is put aside).
+  const Grams own = AmountOf(site.stock, config.straw_resource);
+  const Grams clays = replaces_clay ? AmountOf(open.reserved, config.straw_resource) : 0;
+  Grams held = own > clays ? own - clays : 0;
   for (std::uint32_t other = 0; other < current.units.rows.size(); ++other) {
     if (other != row && current.units.rows[other].level > 0) {
       held += UnreservedOf(current.units.rows[other], config.straw_resource);
@@ -116,6 +145,12 @@ OrderRefusal StartInsulation(const ConstructionConfig& config, WorldState& curre
   }
 
   UnitRow& opened = current.units.rows[row];
+  if (replaces_clay) {
+    // Whole: its legs, what it has fixed and is carting, what it holds back
+    // and its labour done so far - all of it the spring's (ReturnSuspended).
+    opened.suspended_works = std::move(opened.construction);
+    opened.construction = ConstructionState{};
+  }
   opened.construction.phase = ConstructionPhase::kInsulating;
   opened.construction.target_level = opened.level;
   opened.construction.labor_days_total = InsulationLaborDays(config, kind);
@@ -129,7 +164,7 @@ OrderRefusal StartInsulation(const ConstructionConfig& config, WorldState& curre
   opened.construction.winter_works = 1;
   opened.construction.reserved.clear();
   AddTo(opened.construction.reserved, config.straw_resource, need);
-  if (AmountOf(opened.stock, config.straw_resource) >= need) {
+  if (StrawOnSite(config, opened) >= need) {
     OpenLabour(opened);
     return OrderRefusal::kNone;
   }
@@ -142,7 +177,7 @@ OrderRefusal StartInsulation(const ConstructionConfig& config, WorldState& curre
 void DeliverInsulation(const ConstructionConfig& config, WorldState& current, std::uint32_t row) {
   const UnitRow& site = current.units.rows[row];
   const Grams need = FrozenStraw(config, site);
-  const Grams have = AmountOf(site.stock, config.straw_resource);
+  const Grams have = StrawOnSite(config, site);
   if (have >= need) {
     return;  // in full already: its labour opened when the last of it came
   }
@@ -155,7 +190,7 @@ void DeliverInsulation(const ConstructionConfig& config, WorldState& current, st
   const Grams taken = TakeFromStores(current, row, config.straw_resource, need - have);
   UnitRow& supplied = current.units.rows[row];
   AddTo(supplied.stock, config.straw_resource, taken);
-  if (AmountOf(supplied.stock, config.straw_resource) >= need) {
+  if (StrawOnSite(config, supplied) >= need) {
     OpenLabour(supplied);
   }
 }
@@ -168,7 +203,7 @@ bool InsulationDone(const ConstructionConfig& config,
   const UnitRow& site = current.units.rows[row];
   return site.construction.phase == ConstructionPhase::kInsulating &&
          site.construction.labor_days_remaining <= 0.0F &&
-         AmountOf(site.stock, config.straw_resource) >= FrozenStraw(config, site);
+         StrawOnSite(config, site) >= FrozenStraw(config, site);
 }
 
 void CompleteInsulation(const ConstructionConfig& config, WorldState& current, std::uint32_t row) {

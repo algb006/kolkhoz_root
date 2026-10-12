@@ -982,6 +982,16 @@ struct Alarm {
   ResourceId advice_resource;
   std::int64_t advice_amount = 0;
 
+  /// kHerdHayShortAhead with `advice` kGranaryForFeed: THE UNIT TYPE TO BUILD
+  /// (0.37.239; boss, 13 Oct 2026, ruling (b) on #715's guard) — the feed's
+  /// store, or THE TYPE THAT STORE IS A MODULE OF while none of it stands
+  /// sound: a granary goes on a food yard's plot, the start has no food yard,
+  /// and until then the lamp's one word named a kBuildUnit the door refused
+  /// (kNoParent). The layer names the type from this field. Invalid for every
+  /// other advice and kind.
+  /// @note Not in the save, as `lamp`.
+  UnitTypeId advice_unit_type;
+
   /// kHerdHayShortAhead: THE SECOND MOVE, named with the first (0.37.121;
   /// boss, host-boss-pin-0-37-109-2026-10-02 [12] p. 1: «совет называет оба
   /// числа разом») — kReduceHerd with `amount_more` the heads the fodder

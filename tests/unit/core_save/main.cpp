@@ -446,6 +446,18 @@ core::WorldState MakeWorld() {
   site.construction.raised = 1;  // save 154: «поднято в очереди»
   site.construction.supply_days_first = 6.75F;
   site.construction.supply_days_all = 4.5F;
+  // Save 157 (#715): a works put aside for the winter, its scalars off their
+  // defaults and different from the open works', so a codec that wrote the
+  // open block twice comes back wrong.
+  core::ConstructionState aside;
+  aside.phase = core::ConstructionPhase::kBuilding;
+  aside.target_level = 2;
+  aside.labor_days_total = 10.0F;
+  aside.labor_days_remaining = 3.5F;
+  aside.max_crew = 6;
+  aside.winter_works = 0;
+  aside.supply_since_day = 97;
+  site.suspended_works = aside;
   // Save 67: a store being emptied, its carrying half done — all three away
   // from their zero defaults.
   site.emptying = 1;
@@ -1809,7 +1821,10 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // Save 153: +8 a unit — haul_to, the perevalka's receiver; 646 -> 670, held.
     // Save 154 (#595): +1 a unit — the works' raised switch; predicted 670 ->
     // 673 (three units) before the build, the hash read off it after.
-    {"units", 673, 0xbcd78bcbd62ef491ULL},
+    // Save 157 (#715): +1 a unit — the suspended works' byte — and the site's
+    // works put aside, its block with empty amounts and no legs, 51 bytes:
+    // predicted 673 -> 727 before the build and held; the hash read off it.
+    {"units", 727, 0x7b92cd7fd4f1d899ULL},
     // Save 71: +4 — fed_share, one herd; predicted before the field, held.
     // Save 91: +8 — the adult age band, two floats, one herd; predicted
     // 71 -> 79 with every other section unmoved before the build.
@@ -3040,6 +3055,17 @@ int main() {
                  site_back.construction.supply_days_all == 4.5F,
              "the front way, the load as first priced and what is still to cart come "
              "back, each its own (save 147)");
+  failures += Expect(site_back.suspended_works.has_value() &&
+                         site_back.suspended_works->phase == core::ConstructionPhase::kBuilding &&
+                         site_back.suspended_works->target_level == 2 &&
+                         site_back.suspended_works->labor_days_total == 10.0F &&
+                         site_back.suspended_works->labor_days_remaining == 3.5F &&
+                         site_back.suspended_works->max_crew == 6 &&
+                         site_back.suspended_works->winter_works == 0 &&
+                         site_back.suspended_works->supply_since_day == 97 &&
+                         site_back.construction.supply_since_day == 211,
+                     "a works put aside for the winter comes back whole beside the open one "
+                     "(save 157, #715)");
   failures += Expect(site_back.construction.supply_from.x == 41.5F &&
                          site_back.construction.supply_from.y == 7.25F &&
                          site_back.construction.supply_days_remaining == 1.5F &&

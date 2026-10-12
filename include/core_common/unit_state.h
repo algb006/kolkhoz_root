@@ -62,6 +62,7 @@
 #define CORE_COMMON_UNIT_STATE_H_
 
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "core_common/calendar.h"
@@ -363,6 +364,17 @@ struct UnitRow {
   /// simply standing, which is most units most of the time.
   ConstructionState construction;
 
+  /// A works put aside for the winter, whole (#715; livestock design «Не
+  /// успел»: the straw coat «ставится ВМЕСТО глиняного… глиняное открывается
+  /// весной»). Set when kInsulateUnit lands on a livestock unit whose open
+  /// works is its clay warm rung: that works moves here, with everything on
+  /// its way and everything it holds back, and the coat takes `construction`.
+  /// It comes back into `construction` when the coat is done and the season
+  /// is not winter. While it is here nothing reads it but the store's
+  /// holding-back (UnreservedOf) and the doors that refuse a second works.
+  /// Save 157.
+  std::optional<ConstructionState> suspended_works;
+
   /// Wear of the building, 0..100 (unit rules §15: 0-25 as new, 26-50
   /// worn but sound, 51-75 visibly decayed, 76-99 falling apart, 100 a
   /// ruin that still works and never vanishes). Grows once a day in the
@@ -526,7 +538,11 @@ using UnitTable = StateTable<UnitId, UnitRow>;
 /// It does not skip a level-0 site; the caller's own rule does.
 inline Grams UnreservedOf(const UnitRow& unit, ResourceId resource) {
   const Grams held = AmountOf(unit.stock, resource);
-  const Grams free = held - AmountOf(unit.construction.reserved, resource);
+  // A works put aside for the winter (#715) still holds back what it carried
+  // in: its clay and logs are the spring's, not the store's to give.
+  const Grams suspended =
+      unit.suspended_works.has_value() ? AmountOf(unit.suspended_works->reserved, resource) : 0;
+  const Grams free = held - AmountOf(unit.construction.reserved, resource) - suspended;
   return free > 0 ? free : 0;
 }
 

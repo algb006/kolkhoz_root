@@ -1709,6 +1709,153 @@ int TestInsulation() {
   return failures;
 }
 
+/// A byre whose second rung is the clay warm one: winter class 0, straw in
+/// its recipe as the cattle yard's is (#715).
+class ClayRungTables final : public core::ITableSet {
+ public:
+  const core::ITable* FindTable(std::string_view name) const override {
+    if (name == "unit_types") {
+      return &types_;
+    }
+    if (name == "unit_levels") {
+      return &levels_;
+    }
+    if (name == "unit_level_cost") {
+      return &costs_;
+    }
+    if (name == "resources") {
+      return &resources_;
+    }
+    return nullptr;
+  }
+
+  std::uint32_t TableCount() const override { return 4; }
+
+  std::string_view TableName(std::uint32_t /*index*/) const override { return {}; }
+
+ private:
+  test::FakeTable types_{
+      {"key", "class", "era", "player_built", "gate", "has_plot", "has_wear", "has_heating"},
+      {{"store", "storage", "1", "0", "start", "0", "1", "0"},
+       {"byre", "livestock", "1", "1", "era", "0", "1", "0"}}};
+
+  test::FakeTable levels_{{"unit",
+                           "level",
+                           "era",
+                           "labor_days",
+                           "build_class",
+                           "max_crew",
+                           "livestock_capacity_head",
+                           "winter_works"},
+                          {{"store", "1", "1", "70", "wood_small", "5", "", "1"},
+                           {"byre", "1", "1", "70", "wood_small", "6", "20", "1"},
+                           {"byre", "2", "1", "70", "wattle_daub", "6", "20", "0"}}};
+
+  test::FakeTable costs_{{"unit", "level", "resource", "amount"},
+                         {{"byre", "2", "straw", "6"}, {"byre", "2", "log", "20"}}};
+
+  test::FakeTable resources_{{"key", "measure", "kg_per_unit"},
+                             {{"log", "pcs", "200"}, {"straw", "t", "1000"}}};
+};
+
+/// THE COAT REPLACES THE CLAY FOR THE WINTER (#715; livestock design «Не
+/// успел»: the coat «ставится ВМЕСТО глиняного… глиняное открывается
+/// весной»; boss, 12 October 2026): a byre whose clay warm rung stands open
+/// and winter-stopped takes the coat; the clay's works is put aside whole, and
+/// its own straw on the site is neither the coat's nor the store's to give;
+/// the coat done in winter leaves it aside, a second upgrade or a demolition
+/// is refused meanwhile, and spring brings it back as it was. Any other open
+/// works still refuses the coat.
+int TestTheCoatReplacesTheClay() {
+  int failures = 0;
+  const ClayRungTables tables;
+  std::unique_ptr<core::IConstructionSystem> system =
+      core::CreateConstructionSystem(tables, core::StubTables::kAllowed);
+  if (system == nullptr) {
+    return Expect(false, "coat for clay: the subsystem refused its tables");
+  }
+  constexpr core::ResourceId kStraw{1};
+  constexpr core::Grams kTonne = core::kGramsPerTonne;
+  core::WorldState world;
+  world.calendar.season = core::Season::kWinter;
+  core::UnitRow store;
+  store.type = core::UnitTypeId{0};
+  store.level = 1;
+  store.stock.assign(2, 0);
+  store.stock[kStraw.value] = 20 * kTonne;
+  const core::UnitId store_id = core::AppendRow(world.units, store);
+  core::UnitRow byre;
+  byre.type = core::UnitTypeId{1};
+  byre.level = 1;
+  byre.position = core::Vec2{.x = 100.0F, .y = 0.0F};
+  byre.stock.assign(2, 0);
+  byre.stock[kStraw.value] = 6 * kTonne;  // the clay rung's own straw, carried in
+  byre.construction.phase = core::ConstructionPhase::kBuilding;
+  byre.construction.target_level = 2;
+  byre.construction.winter_works = 0;
+  byre.construction.labor_days_total = 10.0F;
+  byre.construction.labor_days_remaining = 3.0F;
+  byre.construction.reserved.assign(2, 0);
+  byre.construction.reserved[kStraw.value] = 6 * kTonne;
+  const core::UnitId byre_id = core::AppendRow(world.units, byre);
+  const auto unit_of = [&world](core::UnitId id) -> core::UnitRow& {
+    return world.units.rows[core::FindRow(world.units, id)];
+  };
+
+  const core::OrderId coat = Issue(world, UnitOrder(core::OrderKind::kInsulateUnit, byre_id));
+  Run(*system, world, 1);
+  const core::UnitRow& coated = unit_of(byre_id);
+  failures += Expect(RefusalOf(world, coat) == core::OrderRefusal::kNone &&
+                         coated.construction.phase == core::ConstructionPhase::kInsulating,
+                     "coat for clay: the lamp's own advice is not refused over an open clay rung");
+  failures += Expect(coated.suspended_works.has_value() &&
+                         coated.suspended_works->phase == core::ConstructionPhase::kBuilding &&
+                         coated.suspended_works->target_level == 2 &&
+                         coated.suspended_works->labor_days_remaining == 3.0F,
+                     "coat for clay: the clay's works is put aside whole, its labour done kept");
+  failures += Expect(core::AmountOf(unit_of(store_id).stock, kStraw) == 14 * kTonne &&
+                         core::AmountOf(coated.stock, kStraw) == 12 * kTonne &&
+                         core::UnreservedOf(coated, kStraw) == 0,
+                     "coat for clay: the coat's 6 t come from the store, not from the clay's 6 t "
+                     "on the site, and neither is free to give");
+
+  const core::OrderId upgrade = Issue(world, UnitOrder(core::OrderKind::kUpgradeUnit, byre_id));
+  unit_of(byre_id).construction.labor_days_remaining = 0.0F;
+  Run(*system, world, 1);
+  const core::UnitRow& warm = unit_of(byre_id);
+  failures += Expect(
+      warm.insulated == 1 && warm.construction.phase == core::ConstructionPhase::kNone &&
+          warm.suspended_works.has_value() && core::AmountOf(warm.stock, kStraw) == 6 * kTonne,
+      "coat for clay: the coat done in winter, the clay stays aside with its straw");
+  const core::OrderId demolish = Issue(world, UnitOrder(core::OrderKind::kDemolishUnit, byre_id));
+  Run(*system, world, 1);
+  failures += Expect(RefusalOf(world, demolish) == core::OrderRefusal::kConflictsWithActive &&
+                         RefusalOf(world, upgrade) != core::OrderRefusal::kNone,
+                     "coat for clay: while it is aside an upgrade and a demolition are refused");
+
+  world.calendar.season = core::Season::kSpring;
+  Run(*system, world, 1);
+  const core::UnitRow& spring = unit_of(byre_id);
+  failures += Expect(!spring.suspended_works.has_value() &&
+                         spring.construction.phase == core::ConstructionPhase::kBuilding &&
+                         spring.construction.target_level == 2 &&
+                         spring.construction.labor_days_remaining == 3.0F &&
+                         core::AmountOf(spring.construction.reserved, kStraw) == 6 * kTonne,
+                     "coat for clay: spring brings the clay's works back as it was put aside");
+
+  // Any other open works still refuses: the clay rung back under labour in
+  // spring takes no second coat (the unit is warm already - so the refusal
+  // is the conflict's only if the coat came off; a repair stands for it).
+  unit_of(byre_id).insulated = 0;
+  unit_of(byre_id).construction.phase = core::ConstructionPhase::kRepairing;
+  const core::OrderId over_repair =
+      Issue(world, UnitOrder(core::OrderKind::kInsulateUnit, byre_id));
+  Run(*system, world, 0);
+  failures += Expect(RefusalOf(world, over_repair) == core::OrderRefusal::kConflictsWithActive,
+                     "coat for clay: a repair open on the byre still refuses the coat");
+  return failures;
+}
+
 /// "Any level upgrade repairs the unit entirely" (unit rules §11).
 int TestUpgradeHeals(const core::ITableSet& tables) {
   int failures = 0;
@@ -3313,6 +3460,7 @@ int main() {
   failures += TestRepair(tables);
   failures += TestUpgradeHeals(tables);
   failures += TestInsulation();
+  failures += TestTheCoatReplacesTheClay();
   failures += TestTheTwoReadingsOfUnitTypesAgree();
   failures += TestALadderWithAHoleIsRefused();
   failures += TestAWearTermMayBeUnnamedButNotZero();

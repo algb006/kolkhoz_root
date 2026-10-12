@@ -255,6 +255,15 @@ float ForecastHerdHeads(const ProductionConfig& config,
 ///       in (FieldRow::rush_phase).
 bool CutCanBeHurried(const ProductionConfig& config, const WorldState& world);
 
+/// @brief The unit type «амбар под корм» asks the chairman to build today:
+///        the store a district feed lot lies in (the module that is the
+///        feed's home by resource_stores.csv), or the type that store is a
+///        module of while no unit of it stands sound (StandsSoundAsParent -
+///        the module's door refuses without one, kNoParent).
+/// @return Invalid when no unit type is the home of any feed a goods lot
+///         carries.
+UnitTypeId FeedStoreTypeToBuild(const ProductionConfig& config, const WorldState& world);
+
 /// @brief The hay lamp's advice: the two moves and their numbers
 ///        (alarm_state.h — Alarm::advice, advice_resource, advice_amount,
 ///        advice_more, amount_more, hand_over_stock, hand_over_horses).
@@ -262,6 +271,8 @@ struct FodderAdvice {
   AlarmAdvice advice = AlarmAdvice::kNone;
   ResourceId advice_resource;
   std::int64_t advice_amount = 0;
+  /// With kGranaryForFeed: the unit type to build (Alarm::advice_unit_type).
+  UnitTypeId advice_unit_type;
   AlarmAdvice advice_more = AlarmAdvice::kNone;
   std::int64_t amount_more = 0;
   /// With kReduceHerd named, first or second: the least heads to hand over
@@ -292,7 +303,8 @@ struct FodderAdvice {
 ///      still short is not named;
 ///      kGranaryForFeed — in its place, when no feed lot is buyable today and
 ///      one was refused for want of a store alone: «finish the granary»,
-///      whether its site is under way or not yet marked;
+///      whether its site is under way or not yet marked; `advice_unit_type`
+///      the type to build — the store's parent while none stands sound;
 ///   4. the remainder BELOW THE FLOORS named apart (`below_floor_stock`,
 ///      `below_floor_horses`), beside kReduceHerd with the heads above the
 ///      floors — or beside kNone when nobody stands above them: «hand over»

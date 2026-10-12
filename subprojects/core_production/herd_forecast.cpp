@@ -12,6 +12,7 @@
 #include "core_common/horse_lamp_memory.h"
 #include "core_common/land_state.h"
 #include "core_common/ledger_state.h"
+#include "core_common/module_rules.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table_ops.h"
 #include "district_limit.h"
@@ -817,6 +818,52 @@ bool CutCanBeHurried(const ProductionConfig& config, const WorldState& world) {
   });
 }
 
+UnitTypeId FeedStoreTypeToBuild(const ProductionConfig& config, const WorldState& world) {
+  // THE STORE: the first unit type that is a module and the home of a feed
+  // some goods lot of the district carries (resource_stores.csv `storage` -
+  // the granary for compound feed); a free-standing home when no module is.
+  const auto is_module = [&config](std::size_t type) {
+    return type < config.unit_parent.size() && config.unit_parent[type].value != kInvalidDefIdValue;
+  };
+  const auto home_type_of = [&config, &is_module](std::size_t resource) {
+    UnitTypeId found;
+    for (std::size_t type = 0; type < config.unit_types.size(); ++type) {
+      const bool home =
+          std::ranges::any_of(config.unit_types[type].home_of,
+                              [resource](ResourceId held) { return held.value == resource; });
+      if (home && (is_module(type) || found.value == kInvalidDefIdValue)) {
+        found = DefIdFromIndex<UnitTypeIdTag>(type);
+        if (is_module(type)) {
+          return found;
+        }
+      }
+    }
+    return found;
+  };
+  UnitTypeId store;
+  for (const LimitLotDef& lot : config.limit.lots) {
+    for (std::size_t resource = 0;
+         store.value == kInvalidDefIdValue && lot.kind == LimitLotKind::kGoods &&
+         resource < lot.goods.size() && resource < config.feed_values.size();
+         ++resource) {
+      if (lot.goods[resource] > 0 && config.feed_values[resource] > 0.0F) {
+        store = home_type_of(resource);
+      }
+    }
+  }
+  if (store.value >= config.unit_parent.size() ||
+      config.unit_parent[store.value].value == kInvalidDefIdValue) {
+    return store;
+  }
+  // ITS PARENT FIRST while none stands sound: the module's door refuses
+  // without one (kNoParent; module_rules.h, the door's own test).
+  const UnitTypeId parent = config.unit_parent[store.value];
+  const bool parent_stands = std::ranges::any_of(world.units.rows, [parent](const UnitRow& unit) {
+    return unit.type.value == parent.value && StandsSoundAsParent(unit);
+  });
+  return parent_stands ? store : parent;
+}
+
 FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
                                  const WorldState& world,
                                  const HerdFeedForecast& forecast) {
@@ -920,6 +967,7 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
   // (kNowhereToStore), and «buy» on such a day was an order refused.
   if (!purchase.any && blocked_by_store) {
     advice.advice = AlarmAdvice::kGranaryForFeed;
+    advice.advice_unit_type = FeedStoreTypeToBuild(config, world);
     if (above > 0) {
       advice.advice_more = AlarmAdvice::kReduceHerd;
       advice.amount_more = above;
@@ -956,6 +1004,7 @@ void CollectHerdForecastAlarms(const ProductionConfig& config,
   alarm.advice = advice.advice;
   alarm.advice_resource = advice.advice_resource;
   alarm.advice_amount = advice.advice_amount;
+  alarm.advice_unit_type = advice.advice_unit_type;
   alarm.advice_more = advice.advice_more;
   alarm.amount_more = advice.amount_more;
   alarm.hand_over_stock = advice.hand_over_stock;

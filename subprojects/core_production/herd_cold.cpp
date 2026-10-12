@@ -201,6 +201,26 @@ AlarmAdvice StrawIfHeld(const ProductionConfig& config, const WorldState& world)
              : AlarmAdvice::kNone;
 }
 
+/// Whether kInsulateUnit would take `unit` as it stands - the construction
+/// door's own rule (insulation.cpp StartInsulation; #715), asked here so the
+/// lamp names only a move the door accepts: not warm already, nothing put
+/// aside, and either no works open or the clay warm rung open (it is put
+/// aside for the coat). THE SAME RULE IN TWO PLACES, bound by the guard
+/// (core_world advice_checks): a lamp whose advice the door refuses teaches
+/// the player to ignore lamps.
+bool CoatTakes(const UnitRow& unit) {
+  if (unit.insulated != 0 || unit.suspended_works.has_value()) {
+    return false;
+  }
+  const ConstructionState& open = unit.construction;
+  if (open.phase == ConstructionPhase::kNone) {
+    return true;
+  }
+  return (open.phase == ConstructionPhase::kDelivering ||
+          open.phase == ConstructionPhase::kBuilding) &&
+         open.target_level == unit.level + 1 && open.winter_works == 0;
+}
+
 }  // namespace
 
 void CollectHerdColdAlarms(const ProductionConfig& config,
@@ -216,7 +236,12 @@ void CollectHerdColdAlarms(const ProductionConfig& config,
     alarm.kind = AlarmKind::kHerdFreezing;
     alarm.herd = world.herds.row_ids[row];
     alarm.amount = HeadsUnderRoof(herd);
-    alarm.advice = StrawIfHeld(config, world);
+    // THE COAT ONLY WHERE THE DOOR TAKES IT (#715's guard): a pen whose coat is
+    // being laid, or under a repair, was told «утеплить соломой» and the order
+    // was refused.
+    const UnitRow* const roof = HerdUnit(world, herd);
+    alarm.advice =
+        roof != nullptr && CoatTakes(*roof) ? StrawIfHeld(config, world) : AlarmAdvice::kNone;
     alarms.push_back(alarm);
   }
   // THE YELLOW, in the autumn: the heads that will stand under a cold roof
@@ -257,9 +282,17 @@ void CollectHerdColdAlarms(const ProductionConfig& config,
     alarm.amount = static_cast<std::int64_t>(cold);
     alarm.days_ahead = static_cast<std::uint16_t>(days);
     alarm.days_to_loss = DaysToLossOf(days);
-    alarm.advice = type.WarmPlaceAt(static_cast<std::uint8_t>(unit->level + 1U))
-                       ? AlarmAdvice::kWarmYard
-                       : AlarmAdvice::kInsulateStraw;
+    // THE MOVE THE DOORS TAKE TODAY (#715's guard). «Утеплить двор» while the
+    // warm rung is already open was refused by the upgrade's door (a works is
+    // open) - the rung is under way, and what is left before the cold is the
+    // coat that replaces it. Any other open works takes neither.
+    const bool works_open =
+        unit->construction.phase != ConstructionPhase::kNone || unit->suspended_works.has_value();
+    if (!works_open && type.WarmPlaceAt(static_cast<std::uint8_t>(unit->level + 1U))) {
+      alarm.advice = AlarmAdvice::kWarmYard;
+    } else {
+      alarm.advice = CoatTakes(*unit) ? AlarmAdvice::kInsulateStraw : AlarmAdvice::kNone;
+    }
     alarm.lamp = 0;
     alarms.push_back(alarm);
   }

@@ -1833,6 +1833,7 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
   }
   config.plot_radius_m = definitions.units.keep_out_radius_m;
   config.map_side_m = definitions.map_side_m;
+  config.unit_parent = definitions.units.parent;
   return ParseTimberCatalog(tables, config.timber, error) &&
          ParseProcessingCatalog(tables, config.processing, error) &&
          ParseExtractionCatalog(tables, config.extraction, error) &&

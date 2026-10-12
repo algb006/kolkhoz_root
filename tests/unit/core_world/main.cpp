@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "../../common/fake_tables.h"
+#include "advice_checks.h"
 #include "core_catalog/definitions.h"
 #include "core_catalog/extraction_catalog.h"
 #include "core_catalog/map_obstacle_tables.h"
@@ -2849,6 +2850,7 @@ int main() {
   int failures = 0;
   failures += CheckReadinessShape();
   failures += CheckTheWatchdog();
+  failures += CheckEveryAdviceIsTaken();
   failures += CheckBaseConventions();
   failures += CheckIceRowsAssemble();
   failures += CheckStartRoads();

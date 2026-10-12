@@ -1257,6 +1257,12 @@ struct ProductionConfig {
   std::vector<float> plot_radius_m;
   float map_side_m = 0.0F;
 
+  /// The type each unit type is a MODULE of (unit_types.csv `parent`; the
+  /// same definitions), invalid for a free-standing type: the hay lamp names
+  /// the yard before the granary that stands on it (herd_forecast.h,
+  /// FeedStoreTypeToBuild).
+  std::vector<UnitTypeId> unit_parent;
+
   /// THE MAP's HALF OF MARKING A MEADOW (meadow_mark.h; 0.37.211): the
   /// obstacle raster, the start's land as polygons and the pits, handed in by
   /// the assembly (core_world, RoadTools::MeadowGround) the way construction
