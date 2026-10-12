@@ -15,6 +15,7 @@
 #include "core_common/world_state.h"
 #include "core_production/production_system.h"
 #include "core_tables/tables.h"
+#include "run_production_day.h"
 
 namespace {
 
@@ -85,7 +86,7 @@ std::int64_t FirstCutDay(core::IProductionSystem& production,
       core::RefreshCalendarCaches(world.calendar);
       world.weather.air_temperature_celsius = 18.0F;
       world.weather.precipitation = core::Precipitation::kNone;
-      production.RunProductionDecisions(previous, world);
+      RunProductionDay(production, previous, world);
       if (world.fields.rows[0].phase == core::FieldPhase::kHarvest) {
         return static_cast<std::int64_t>(day);
       }
@@ -114,7 +115,7 @@ std::int64_t FirstMeadowCutDay(core::IProductionSystem& production,
       core::RefreshCalendarCaches(world.calendar);
       world.weather.air_temperature_celsius = 18.0F;
       world.weather.precipitation = core::Precipitation::kNone;
-      production.RunProductionDecisions(previous, world);
+      RunProductionDay(production, previous, world);
       if (world.fields.rows[0].phase == core::FieldPhase::kHarvest) {
         return static_cast<std::int64_t>(day);
       }
@@ -125,12 +126,94 @@ std::int64_t FirstMeadowCutDay(core::IProductionSystem& production,
 
 }  // namespace
 
+/// THE FIELDS' DAY IS ITS OWN DOOR (0.37.234, (A); IProductionSystem::
+/// OpenTodaysFieldPhases, called by the step before the placement):
+/// (1) an old grass stand on its window's first day - RunProductionDecisions
+/// alone leaves it growing (it opens no field phase any more), the door opens
+/// its cut; (2) 1 January, a warm one: the door opens nothing - the year's
+/// first day keeps its fields after the turn (RunProductionDecisions), so an
+/// idle field does not plough for the slot the turn is about to retire; the
+/// decisions door then opens its ploughing for the new slot; (3) November: the zyab
+/// of a field reaped THIS year DOES open on a day at or above nought - a
+/// spring crop's furrow, never a winter slot, so the lost winter slots said
+/// on 1 November read the same before and after the door.
+int CheckTheFieldsDayDoor(core::IProductionSystem& production) {
+  int failures = 0;
+  const auto one_field = [](core::FieldPhase phase, core::SimDay reaped) {
+    core::WorldState world;
+    core::FieldRow field;
+    field.area_ga = 5.0F;
+    field.crop = phase == core::FieldPhase::kIdle ? core::CropId{} : core::CropId{0};
+    field.rotation_year0 = core::CropId{0};
+    field.rotation_year1 = core::CropId{0};
+    field.rotation_assigned = 1;
+    field.phase = phase;
+    field.sown_day = core::kNeverSownDay;
+    field.last_cut_day = core::kNeverReapedDay;
+    field.reaped_day = reaped;
+    core::AppendRow(world.fields, field);
+    return world;
+  };
+  // The day's first tick of `day`, at `celsius`, from the last tick before it.
+  const auto dawn_of = [](core::WorldState& world, core::SimDay day, float celsius) {
+    world.calendar.tick = (static_cast<core::Tick>(day) * core::kTicksPerDay) - 1U;
+    core::RefreshCalendarCaches(world.calendar);
+    core::WorldState previous = world;
+    world.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(world.calendar);
+    world.weather.air_temperature_celsius = celsius;
+    world.weather.precipitation = core::Precipitation::kNone;
+    previous.weather = world.weather;
+    return previous;
+  };
+
+  core::WorldState ripe = one_field(core::FieldPhase::kGrowing, core::kNeverReapedDay);
+  const core::WorldState before = dawn_of(ripe, kWindowOpens, 18.0F);
+  production.RunProductionDecisions(before, ripe);
+  failures += Expect(ripe.fields.rows[0].phase == core::FieldPhase::kGrowing,
+                     "fields' day: RunProductionDecisions alone opens no phase on a ripe stand");
+  // THE DOOR ON A WORLD OF ITS OWN: asked after the decisions on the same
+  // world, it read a cut the decisions had opened - the fault «the fields'
+  // day back after the placement» left it green (0.37.234's first fault run).
+  core::WorldState ripe_at_dawn = one_field(core::FieldPhase::kGrowing, core::kNeverReapedDay);
+  const core::WorldState before_dawn = dawn_of(ripe_at_dawn, kWindowOpens, 18.0F);
+  production.OpenTodaysFieldPhases(before_dawn, ripe_at_dawn);
+  failures += Expect(ripe_at_dawn.fields.rows[0].phase == core::FieldPhase::kHarvest,
+                     "fields' day: the door opens the ripe stand's cut on the morning it is due");
+
+  core::WorldState january =
+      one_field(core::FieldPhase::kIdle, core::kDaysPerYear - (2U * core::kDaysPerMonth));
+  const core::WorldState new_year_eve = dawn_of(january, core::kDaysPerYear, 2.0F);
+  production.OpenTodaysFieldPhases(new_year_eve, january);
+  failures += Expect(january.fields.rows[0].phase == core::FieldPhase::kIdle,
+                     "fields' day: on a warm 1 January the door opens nothing - the year's first "
+                     "day keeps its fields after the turn");
+  production.RunProductionDecisions(new_year_eve, january);
+  failures += Expect(january.fields.rows[0].phase == core::FieldPhase::kPlowing,
+                     "fields' day: and after the turn the decisions door opens the ploughing for "
+                     "the new year's slot, on the same day");
+
+  const core::SimDay november =
+      (2U * core::kDaysPerYear) +
+      (static_cast<core::SimDay>(core::Month::kNovember) * core::kDaysPerMonth);
+  core::WorldState stubble =
+      one_field(core::FieldPhase::kIdle, november - (2U * core::kDaysPerMonth));
+  const core::WorldState october_night = dawn_of(stubble, november, 2.0F);
+  production.OpenTodaysFieldPhases(october_night, stubble);
+  failures +=
+      Expect(stubble.fields.rows[0].phase == core::FieldPhase::kPlowing,
+             "fields' day: in November a stubble reaped this year opens its zyab on a day at "
+             "or above nought - a spring crop's furrow, no winter slot");
+  return failures;
+}
+
 int CheckThePerennialsCut() {
   int failures = 0;
   const auto production = Production();
   if (Expect(production != nullptr, "perennial's cut: the tables build a production system") != 0) {
     return 1;
   }
+  failures += CheckTheFieldsDayDoor(*production);
   // GRASS SOWN ON DAY 1 OF ITS HARVEST MONTH (the timothy of seed 1934, year
   // 2): grown four days, it is cut in the same window — until 0.37.167 the
   // cut opened only on the window's first day and this stand stood a year.

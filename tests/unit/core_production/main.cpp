@@ -69,6 +69,7 @@
 #include "production_alarms.h"
 #include "production_config.h"
 #include "production_orders.h"
+#include "run_production_day.h"
 #include "seed_lamp_checks.h"
 #include "seed_room.h"
 #include "site_supply_checks.h"
@@ -3969,7 +3970,7 @@ int CheckStoreCeilingAndAlarms() {
   const core::FieldId field_id = core::AppendRow(world.fields, field);
 
   const core::WorldState before = world;
-  system->RunProductionDecisions(before, world);
+  RunProductionDay(*system, before, world);
 
   // THE WHOLE TEN TONNES STAY ON THE FIELD. Until task A4 the store took
   // its tonne in the same tick the crop was cut, for nothing, and only the
@@ -4069,7 +4070,7 @@ int CheckStoreCeilingAndAlarms() {
     const core::WorldState yesterday = world;
     world.calendar.tick += core::kTicksPerDay;
     core::RefreshCalendarCaches(world.calendar);
-    system->RunProductionDecisions(yesterday, world);
+    RunProductionDay(*system, yesterday, world);
   }
   failures += Expect(world.units.rows[0].stock.empty() || world.units.rows[0].stock[0] == 0,
                      "room that appeared moves nothing by itself: a load needs carrying");
@@ -4089,7 +4090,7 @@ int CheckStoreCeilingAndAlarms() {
     const core::WorldState yesterday = world;
     world.calendar.tick += core::kTicksPerDay - 1U;
     core::RefreshCalendarCaches(world.calendar);
-    system->RunProductionDecisions(yesterday, world);
+    RunProductionDay(*system, yesterday, world);
   }
   failures += Expect(!world.units.rows[0].stock.empty() &&
                          world.units.rows[0].stock[0] == 5'000 * core::kGramsPerKilogram,
@@ -4108,7 +4109,7 @@ int CheckStoreCeilingAndAlarms() {
     const core::WorldState yesterday = world;
     world.calendar.tick += 1U;
     core::RefreshCalendarCaches(world.calendar);
-    system->RunProductionDecisions(yesterday, world);
+    RunProductionDay(*system, yesterday, world);
   }
   failures += Expect(world.fields.rows[0].reaped_grams == 5'000 * core::kGramsPerKilogram,
                      "a first day's snow cover takes nothing off the field");
@@ -4117,7 +4118,7 @@ int CheckStoreCeilingAndAlarms() {
     const core::WorldState yesterday = world;
     world.calendar.tick += core::kTicksPerDay;
     core::RefreshCalendarCaches(world.calendar);
-    system->RunProductionDecisions(yesterday, world);
+    RunProductionDay(*system, yesterday, world);
   }
   failures += Expect(
       world.fields.rows[0].reaped_grams == 5'000 * core::kGramsPerKilogram &&
@@ -4137,7 +4138,7 @@ int CheckStoreCeilingAndAlarms() {
     const core::WorldState yesterday = world;
     world.calendar.tick += core::kTicksPerDay;
     core::RefreshCalendarCaches(world.calendar);
-    system->RunProductionDecisions(yesterday, world);
+    RunProductionDay(*system, yesterday, world);
   }
   failures += Expect(world.fields.rows[0].crop.value == core::kInvalidDefIdValue &&
                          world.fields.rows[0].phase == core::FieldPhase::kIdle,
@@ -8190,7 +8191,7 @@ int CheckTheChairmanCanUnsealAFund() {
     core::WorldState current = previous;
     current.calendar.tick += 1;
     core::RefreshCalendarCaches(current.calendar);
-    system->RunProductionDecisions(previous, current);
+    RunProductionDay(*system, previous, current);
     return current;
   };
 
@@ -8213,7 +8214,7 @@ int CheckTheChairmanCanUnsealAFund() {
     failures += Expect(current.calendar.season == core::Season::kSpring &&
                            previous.calendar.season != core::Season::kSpring,
                        "the fixture crosses into spring");
-    system->RunProductionDecisions(previous, current);
+    RunProductionDay(*system, previous, current);
     failures += Expect(
         current.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kSeed)][rye.value] ==
             500'000,
@@ -8254,7 +8255,7 @@ int CheckTheChairmanCanUnsealAFund() {
         core::WorldState current = previous;
         current.calendar.tick += 1;
         core::RefreshCalendarCaches(current.calendar);
-        system->RunProductionDecisions(previous, current);
+        RunProductionDay(*system, previous, current);
         return current;
       };
 
@@ -8328,7 +8329,7 @@ int CheckTheChairmanCanUnsealAFund() {
     core::WorldState current = previous;
     current.calendar.tick += 1;
     core::RefreshCalendarCaches(current.calendar);
-    system->RunProductionDecisions(previous, current);
+    RunProductionDay(*system, previous, current);
     failures += Expect(current.orders.rows[0].refusal == core::OrderRefusal::kRuleForbids,
                        "a plan that names another crop is still a plan, and the door refuses by "
                        "the ceiling rather than by 'no plan yet'");
@@ -8370,7 +8371,7 @@ int CheckTheChairmanCanUnsealAFund() {
     core::WorldState current = previous;
     current.calendar.tick += 1;
     core::RefreshCalendarCaches(current.calendar);
-    system->RunProductionDecisions(previous, current);
+    RunProductionDay(*system, previous, current);
     failures += Expect(current.orders.rows[0].status == core::OrderStatus::kRefused,
                        "an unsealing of a resource the roster does not carry is refused");
     failures += Expect(
@@ -8411,7 +8412,7 @@ int CheckTheChairmanCanUnsealAFund() {
     core::WorldState current = previous;
     current.calendar.tick += 1;
     core::RefreshCalendarCaches(current.calendar);
-    system->RunProductionDecisions(previous, current);
+    RunProductionDay(*system, previous, current);
     failures += Expect(current.orders.rows[0].status == core::OrderStatus::kRefused,
                        "an unsealing that would wrap the running total is refused, not wrapped");
     failures += Expect(
@@ -8483,7 +8484,7 @@ int CheckTheChairmanCanUnsealAFund() {
     core::WorldState current = previous;
     current.calendar.tick += 1;
     core::RefreshCalendarCaches(current.calendar);
-    system->RunProductionDecisions(previous, current);
+    RunProductionDay(*system, previous, current);
     failures += Expect(current.orders.rows[0].status == core::OrderStatus::kRefused,
                        "hay does not come out of the fodder fund");
     failures += Expect(current.orders.rows[0].refusal == core::OrderRefusal::kRuleForbids,
@@ -8553,7 +8554,7 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
         core::WorldState current = previous;
         current.calendar.tick += 1;
         core::RefreshCalendarCaches(current.calendar);
-        system->RunProductionDecisions(previous, current);
+        RunProductionDay(*system, previous, current);
         return current;
       };
 
@@ -8597,7 +8598,7 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
     core::WorldState current = previous;
     current.calendar.tick += 1;
     core::RefreshCalendarCaches(current.calendar);
-    system->RunProductionDecisions(previous, current);
+    RunProductionDay(*system, previous, current);
     failures +=
         Expect(current.plan.worked_ha_last_year > 11.9F && current.plan.worked_ha_last_year < 12.1F,
                "the year's turn writes down the arable that was SOWN — twelve hectares, not "
@@ -8623,7 +8624,7 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
     core::WorldState turned = held;
     turned.calendar.tick += 1;
     core::RefreshCalendarCaches(turned.calendar);
-    system->RunProductionDecisions(held, turned);
+    RunProductionDay(*system, held, turned);
     failures +=
         Expect(turned.plan.worked_ha_last_year > 11.9F && turned.plan.worked_ha_last_year < 12.1F,
                "a chain withdrawn on the turn's own tick does not empty the year's figure: the "
@@ -8645,7 +8646,7 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
     core::WorldState idle_turned = idle_year;
     idle_turned.calendar.tick += 1;
     core::RefreshCalendarCaches(idle_turned.calendar);
-    system->RunProductionDecisions(idle_year, idle_turned);
+    RunProductionDay(*system, idle_year, idle_turned);
     failures += Expect(idle_turned.plan.worked_ha_last_year > 19.9F &&
                            idle_turned.plan.worked_ha_last_year < 20.1F,
                        "a year with every chain withdrawn does not lower the plan's base: "
@@ -8794,7 +8795,7 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
     core::WorldState first_hour = dawn;
     first_hour.calendar.tick = 1;
     core::RefreshCalendarCaches(first_hour.calendar);
-    system->RunProductionDecisions(dawn, first_hour);
+    RunProductionDay(*system, dawn, first_hour);
     failures += Expect(first_hour.plan.announced == 1,
                        "the first year's plan is named on the first morning, beside the limit");
   }
@@ -8866,7 +8867,7 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
     const bool crossed = previous.calendar.day != current.calendar.day &&
                          current.calendar.day % core::kDaysPerYear == 0;
     failures += Expect(crossed, "the fixture really does cross into the year's turn");
-    system->RunProductionDecisions(previous, current);
+    RunProductionDay(*system, previous, current);
 
     core::Grams asked = 0;
     for (const core::Grams due : current.plan.due) {
@@ -8936,7 +8937,7 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
     core::WorldState fallow_current = fallow_previous;
     fallow_current.calendar.tick += 1;
     core::RefreshCalendarCaches(fallow_current.calendar);
-    system->RunProductionDecisions(fallow_previous, fallow_current);
+    RunProductionDay(*system, fallow_previous, fallow_current);
     core::Grams asked_on_fallow = 0;
     for (const core::Grams due : fallow_current.plan.due) {
       asked_on_fallow += due;
@@ -8962,7 +8963,7 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
     core::WorldState first_current = first_previous;
     first_current.calendar.tick += 1;
     core::RefreshCalendarCaches(first_current.calendar);
-    system->RunProductionDecisions(first_previous, first_current);
+    RunProductionDay(*system, first_previous, first_current);
     const float first_percent = std::stof(std::string(campaign->CellText(
         campaign->FindRowByKey("first_plan_start_stock_percent"), campaign->FindColumn("value"))));
     const core::ITable* const stock = tables->FindTable("start_stock");
@@ -9081,7 +9082,7 @@ int CheckUnworkedGroundDoesNotRecover() {
   core::WorldState current = previous;
   current.calendar.tick += 1;
   core::RefreshCalendarCaches(current.calendar);
-  system->RunProductionDecisions(previous, current);
+  RunProductionDay(*system, previous, current);
 
   failures += Expect(current.fields.rows[0].fertility > 65.0F,
                      "a field on a fallow YEAR recovers over the winter: it was ploughed bare "
@@ -9140,7 +9141,7 @@ int CheckTheChairmanSetsARotation() {
     core::WorldState current = previous;
     current.calendar.tick += 1;
     core::RefreshCalendarCaches(current.calendar);
-    system->RunProductionDecisions(previous, current);
+    RunProductionDay(*system, previous, current);
     return current;
   };
 
@@ -9161,7 +9162,7 @@ int CheckTheChairmanSetsARotation() {
     core::WorldState current = world;
     current.calendar.tick += 1;
     core::RefreshCalendarCaches(current.calendar);
-    system->RunProductionDecisions(world, current);
+    RunProductionDay(*system, world, current);
     return current;
   };
 
@@ -9293,7 +9294,7 @@ int CheckTheChairmanSetsARotation() {
     core::WorldState current = previous;
     current.calendar.tick += 1;
     core::RefreshCalendarCaches(current.calendar);
-    system->RunProductionDecisions(previous, current);
+    RunProductionDay(*system, previous, current);
     failures += Expect(current.orders.rows[0].refusal == core::OrderRefusal::kNoSuchSubject,
                        "a field that is not there is refused as a missing SUBJECT, not as a "
                        "missing crop");
@@ -9335,7 +9336,7 @@ int CheckTheChairmanSetsARotation() {
     core::WorldState current = previous;
     current.calendar.tick += 1;
     core::RefreshCalendarCaches(current.calendar);
-    system->RunProductionDecisions(previous, current);
+    RunProductionDay(*system, previous, current);
     const core::FieldRow& told = current.fields.rows[0];
     // Written AS NAMED — the chairman's sheet and the field say the same
     // thing — and the coming turn is marked to leave it alone.
@@ -9370,7 +9371,7 @@ int CheckTheChairmanSetsARotation() {
     // guards was intact. Below zero, nothing but the turn can move.
     before_turn.weather.air_temperature_celsius = -12.0F;
     turned.weather.air_temperature_celsius = -12.0F;
-    system->RunProductionDecisions(before_turn, turned);
+    RunProductionDay(*system, before_turn, turned);
     const core::FieldRow& after_turn = turned.fields.rows[0];
     failures += Expect(after_turn.rotation_year0.value == oat.value,
                        "the year turns and the chain stands still: the spring sows the crop he "
@@ -9405,7 +9406,7 @@ int CheckTheChairmanSetsARotation() {
     core::WorldState current = previous;
     current.calendar.tick += 1;
     core::RefreshCalendarCaches(current.calendar);
-    system->RunProductionDecisions(previous, current);
+    RunProductionDay(*system, previous, current);
     failures += Expect(current.fields.rows[0].rotation_skips_turn == 1,
                        "oats named in May wait for the next spring: the window that decides is "
                        "the named crop's own, not the latest in the table");
@@ -9437,7 +9438,7 @@ int CheckTheChairmanSetsARotation() {
     order.rotation_year1 = core::CropId{};
     order.rotation_year2 = core::CropId{};
     core::AppendRow(current.orders, order);
-    system->RunProductionDecisions(previous, current);
+    RunProductionDay(*system, previous, current);
     failures += Expect(current.fields.rows[0].rotation_year0.value == oat.value,
                        "a chain settled on the year's first day is not advanced past its own "
                        "first season by the turn that runs in the same call");
@@ -9476,20 +9477,31 @@ int CheckTheChairmanSetsARotation() {
     order.rotation_year1 = oat;
     order.rotation_year2 = oat;
     core::AppendRow(current.orders, order);
-    system->RunProductionDecisions(previous, current);
-    const core::FieldRow& sown = current.fields.rows[0];
-    failures += Expect(sown.rotation_year0.value == rye.value,
+    RunProductionDay(*system, previous, current);
+    failures += Expect(current.fields.rows[0].rotation_year0.value == rye.value,
                        "the chain is written as the chairman named it");
+    // THE PLOUGHING OPENS THE NEXT MORNING (0.37.234, (A)): the fields' day
+    // runs before the placement, so before the order is read at the same
+    // tick - the field opens on the next day's first tick, which is the
+    // morning its crew was placed on before as well. Until 0.37.234 it
+    // opened on the order's own tick.
+    core::WorldState next_morning = current;
+    next_morning.calendar.tick = 31U * core::kTicksPerDay;
+    core::RefreshCalendarCaches(next_morning.calendar);
+    next_morning.orders.rows.clear();
+    next_morning.orders.row_ids.clear();
+    RunProductionDay(*system, current, next_morning);
+    const core::FieldRow& sown = next_morning.fields.rows[0];
     failures += Expect(sown.phase == core::FieldPhase::kPlowing,
                        "and the rye's own window is this fortnight, so the ploughing opens the "
-                       "same day the order lands");
+                       "morning after the order lands");
     failures += Expect(sown.rotation_skips_turn == 1,
                        "and the mark STANDS: a winter crop named first reaches its year only at "
                        "the coming turn (0.36.10)");
 
     // The rye in the ground at the turn: the chain holds, and the turn spends
     // the mark — the next turn moves on.
-    core::WorldState before_turn = current;
+    core::WorldState before_turn = next_morning;
     before_turn.calendar.tick = (48U * core::kTicksPerDay) - 1U;
     core::RefreshCalendarCaches(before_turn.calendar);
     before_turn.orders.rows.clear();
@@ -9506,7 +9518,7 @@ int CheckTheChairmanSetsARotation() {
     core::WorldState turned = before_turn;
     turned.calendar.tick = 48U * core::kTicksPerDay;
     core::RefreshCalendarCaches(turned.calendar);
-    system->RunProductionDecisions(before_turn, turned);
+    RunProductionDay(*system, before_turn, turned);
     const core::FieldRow& held = turned.fields.rows[0];
     failures += Expect(held.rotation_year0.value == rye.value &&
                            held.rotation_year1.value == oat.value && held.rotation_skips_turn == 0,
@@ -9566,7 +9578,7 @@ int CheckLostWinterCropLiesFallow() {
     core::RefreshCalendarCaches(next.calendar);
     next.weather.air_temperature_celsius = temperature;
     next.step_events.clear();
-    system->RunProductionDecisions(state, next);
+    RunProductionDay(*system, state, next);
     state = next;
     state.calendar.tick += core::kTicksPerDay - 1U;  // the day's last tick, for the next step
     core::RefreshCalendarCaches(state.calendar);
@@ -9684,7 +9696,7 @@ int CheckNoWinterSowingAfterWindow() {
     core::RefreshCalendarCaches(next.calendar);
     next.weather.air_temperature_celsius = temperature;
     next.step_events.clear();
-    system->RunProductionDecisions(state, next);
+    RunProductionDay(*system, state, next);
     state = next;
   };
 
@@ -9820,7 +9832,7 @@ int CheckTheBlackFallowsFurrowIsTheRyes() {
     core::RefreshCalendarCaches(next.calendar);
     next.weather.air_temperature_celsius = temperature;
     next.step_events.clear();
-    system->RunProductionDecisions(state, next);
+    RunProductionDay(*system, state, next);
     state = next;
   };
 
@@ -9932,7 +9944,7 @@ int CheckTheTurnRestsBareGroundAndCarriesPaidManure() {
     core::RefreshCalendarCaches(next.calendar);
     next.weather.air_temperature_celsius = temperature;
     next.step_events.clear();
-    system->RunProductionDecisions(state, next);
+    RunProductionDay(*system, state, next);
     state = next;
   };
   core::FieldRow base;
@@ -10066,7 +10078,7 @@ int CheckTheFarmRulesZyab() {
     core::RefreshCalendarCaches(next.calendar);
     next.weather.air_temperature_celsius = temperature;
     next.step_events.clear();
-    system->RunProductionDecisions(state, next);
+    RunProductionDay(*system, state, next);
     state = next;
   };
   // Year 2, the day before the first of November (0-based month 10).
@@ -10411,7 +10423,7 @@ int CheckTheCapBitesAfterTheDelta() {
   next.calendar.tick += 1;
   core::RefreshCalendarCaches(next.calendar);
   next.weather.air_temperature_celsius = 8.0F;
-  system->RunProductionDecisions(april, next);
+  RunProductionDay(*system, april, next);
   core::FieldRow& opened = next.fields.rows[0];
   failures += Expect(opened.crop.value == potato.value && opened.manure_booked == 1 &&
                          opened.fertility == 95.0F + parsed.farming.manure_fertility_bonus,
@@ -10488,7 +10500,7 @@ int CheckTheHeapsManurePaysItsFurrow() {
     core::RefreshCalendarCaches(next.calendar);
     next.weather.air_temperature_celsius = temperature;
     next.step_events.clear();
-    system->RunProductionDecisions(state, next);
+    RunProductionDay(*system, state, next);
     state = next;
   };
   core::FieldRow base;
@@ -10669,7 +10681,7 @@ int CheckPauseAndResume() {
   const core::OrderId pause_demolition = give(core::OrderKind::kPauseUnit, taking_down_id);
 
   const core::WorldState before = world;
-  system->RunProductionDecisions(before, world);
+  RunProductionDay(*system, before, world);
 
   const auto refusal = [&world](core::OrderId id) {
     const std::uint32_t row = core::FindRow(world.orders, id);
@@ -10713,7 +10725,7 @@ int CheckPauseAndResume() {
     const core::OrderId pause_school_site = give(core::OrderKind::kPauseUnit, school_site_id);
     const core::OrderId pause_byre = give(core::OrderKind::kPauseUnit, byre_id);
     const core::WorldState previous = world;
-    system->RunProductionDecisions(previous, world);
+    RunProductionDay(*system, previous, world);
     failures += Expect(refusal(pause_school) == core::OrderRefusal::kNotEligible &&
                            world.units.rows[core::FindRow(world.units, school_id)].paused == 0,
                        "a standing school is not paused: it produces nothing to stop");
@@ -10726,7 +10738,7 @@ int CheckPauseAndResume() {
     world.units.rows[core::FindRow(world.units, school_id)].paused = 1;
     const core::OrderId resume_school = give(core::OrderKind::kResumeUnit, school_id);
     const core::WorldState paused_before = world;
-    system->RunProductionDecisions(paused_before, world);
+    RunProductionDay(*system, paused_before, world);
     failures += Expect(status(resume_school) == core::OrderStatus::kDone &&
                            world.units.rows[core::FindRow(world.units, school_id)].paused == 0,
                        "and a school paused before the rule can be resumed");
@@ -10738,7 +10750,7 @@ int CheckPauseAndResume() {
   const core::OrderId start = give(core::OrderKind::kResumeUnit, barn_id);
   {
     const core::WorldState previous = world;
-    system->RunProductionDecisions(previous, world);
+    RunProductionDay(*system, previous, world);
   }
   failures += Expect(refusal(again) == core::OrderRefusal::kRuleForbids,
                      "stopping what already stands is refused, not silently agreed with");
@@ -12100,7 +12112,7 @@ int CheckThePencilRingsInTheAfternoon() {
   world.chairman.raikom_reputation = 25.0F;
   const core::WorldState before = world;
   world.chairman.raikom_reputation = 18.0F;  // the bargain's five and more, this hour
-  system->RunProductionDecisions(before, world);
+  RunProductionDay(*system, before, world);
   failures += Expect(
       world.chairman.summon_cause == static_cast<std::uint8_t>(core::SummonCause::kOnThePencil) &&
           world.chairman.summon_day != 0,
@@ -12112,7 +12124,7 @@ int CheckThePencilRingsInTheAfternoon() {
   next.calendar.tick += 1;
   core::RefreshCalendarCaches(next.calendar);
   const core::WorldState still_below = world;
-  system->RunProductionDecisions(still_below, next);
+  RunProductionDay(*system, still_below, next);
   failures += Expect(next.chairman.summon_day == 0,
                      "pencil: a reputation already below twenty calls nobody again");
   return failures;
@@ -15790,7 +15802,7 @@ int CheckTheChairmanRemovesAField() {
     current.calendar.tick += 1;
     core::RefreshCalendarCaches(current.calendar);
     current.step_events.clear();
-    system->RunProductionDecisions(previous, current);
+    RunProductionDay(*system, previous, current);
     return current;
   };
   const auto removed_events = [](const core::WorldState& world) {
@@ -16025,7 +16037,7 @@ int main() {
   failures += Expect(system->ProductionPhase().ParallelItemCount(previous) == 0,
                      "production stub has zero items");
   system->ProductionPhase().RunItemRange(previous, current, 0, 0);
-  system->RunProductionDecisions(previous, current);
+  RunProductionDay(*system, previous, current);
   failures +=
       Expect(current.calendar.tick == previous.calendar.tick && current.epoch == previous.epoch,
              "stubs leave the world unchanged");

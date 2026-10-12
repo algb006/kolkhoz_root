@@ -82,6 +82,14 @@ class DecisionsSlot final : public ISequentialPhase {
     // a task paused this hour is not offered to it, a task raised to level 0
     // is placed ahead of every window (labor_system.cpp).
     logistics_->ReadTaskOrders(current);
+    // THE FIELDS' DAY BEFORE THE MORNING'S PLACEMENT (0.37.234, (A); boss, 12
+    // October 2026): the day's shares laid, the snow's loss taken, and every
+    // phase the day opens opened - so the morning places hands on a harvest
+    // or a ploughing that opens today. Until 0.37.234 RunFields ran inside
+    // RunProductionDecisions below, after the placement, and a phase opened
+    // there waited for the next morning (the hour-1 top-up re-placed hands
+    // into it until 0.37.233).
+    production_->OpenTodaysFieldPhases(previous, current);
     labor_->RunAssignmentDecisions(previous, current);
     // The groom's tasks (routing stage B, B2), once a day after the morning's
     // placement: the carters placed today mark their loads served.

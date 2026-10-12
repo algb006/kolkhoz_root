@@ -515,23 +515,15 @@ int main(int argc, char** argv) {
   std::cout << "timber_years: seed " << seed << ": timber carts on a horse while a plough or "
             << "harrow waited uncrewed since the morning — " << timber_carts_over_plough
             << " man-days on " << timber_cart_days_over_plough << " days\n";
-  // A KNOWN GAP SINCE 0.37.233 (#633), written before the assertion moved so
-  // the finding stays on file: the hour-1 top-up no longer re-places a hand
-  // the morning placed (time design «одна работа в день»), and a plough or a
-  // harrow production opens AFTER the morning's placement waits for the next
-  // morning - the morning is blind to the day's openings. Removed in (A)'s
-  // own commit (the morning offers every field phase that opens today),
-  // which must turn it green as the morning's ranking with no top-up.
-  failures += run::KnownGap(
-      timber_carts_over_plough == 0,
-      "no cart goes for logs, a dig's load or the lot on a horse while a plough or a harrow waits "
-      "with nobody on it",
-      std::to_string(timber_carts_over_plough) + " man-days on " +
-          std::to_string(timber_cart_days_over_plough) + " days",
-      "boss 12 Oct 2026, #633: the same mechanism as 1936's potatoes - a field phase opened after "
-      "the morning's placement; removed in (A)'s own commit, green as the morning's ranking with "
-      "no "
-      "top-up");
+  // THE MORNING'S OWN RANKING SINCE 0.37.234 ((A)): a KNOWN GAP in 0.37.233
+  // (the hour-1 top-up no longer re-places a hand the morning placed, time
+  // design «одна работа в день», and a plough or a harrow production opened
+  // AFTER the morning's placement waited for the next morning), closed by the
+  // fields' day running before the placement: the morning sees the day's
+  // openings and puts the field's horse work ahead of the timber carts.
+  failures += run::Expect(timber_carts_over_plough == 0,
+                          "no cart goes for logs, a dig's load or the lot on a horse while a "
+                          "plough or a harrow waits with nobody on it");
   // PRINTED, NOT ASSERTED: an assertion here could not go red. With the
   // felling policy's reach test switched off altogether (every stand
   // "reachable") seed 1929 still raised not one unreachable alarm in thirty

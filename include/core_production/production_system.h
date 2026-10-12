@@ -85,12 +85,44 @@ class IProductionSystem {
   /// into StepPhaseSet::production.
   virtual IParallelPhase& ProductionPhase() = 0;
 
+  /// @brief THE FIELDS' DAY, BEFORE THE MORNING'S PLACEMENT (0.37.234, (A);
+  /// boss, 12 October 2026): on the day's first tick — `current.calendar.day`
+  /// differs from `previous`'s, but NOT the year's first day, whose fields
+  /// RunProductionDecisions runs after the year's turn so that an idle field
+  /// ploughs for the new year's slot — every field in turn lays the day's reaped
+  /// and mown share into its heap, a meadow closes last year's cut and opens
+  /// this year's, an idle field opens its ploughing (the spring's, the zyab,
+  /// the black fallow's), and a standing annual is taken by the snow or
+  /// opens its harvest: the whole of what RunProductionDecisions did in its
+  /// daily block under the name RunFields, moved, the in-loop order kept. On
+  /// every other tick it does nothing.
+  ///
+  /// WHY BEFORE THE PLACEMENT: the labour sub-step places the day's work at
+  /// the first tick too, and placed before this the morning was blind to the
+  /// phases the day opens — a harvest or a ploughing opened after it waited
+  /// for the next morning (seed 1936, year 1: 66 t of potatoes under the
+  /// snow on 0.37.233, whose hour-1 top-up no longer re-places the morning's
+  /// hands). Called by core_world in the decisions slot before
+  /// ILaborSystem::RunAssignmentDecisions; RunProductionDecisions no longer
+  /// opens a field phase — one writer, one place, nothing opened twice.
+  /// What moved in ORDER against production's other daily work, which now
+  /// runs after this: the lost winter slots (1 November - the zyab may open
+  /// that day, a spring crop's furrow, never a winter slot), the wintering
+  /// book (1 December), the worked-ha maximum and the settled-snow plan debt
+  /// off the heaps; and a production order (kSetRotation) read at the day's
+  /// first tick opens its ploughing the next morning instead of the same
+  /// tick - its crew comes the same next morning as before.
+  /// @threading SINGLE_THREADED (the decisions slot, phase 3, sim thread).
+  virtual void OpenTodaysFieldPhases(const WorldState& previous, WorldState& current) = 0;
+
   /// @brief Production decisions: the sub-step of the decisions slot.
   /// Called by core_world every step (phase 3, sim thread), third in the
   /// fixed order of that slot (manual/54-modules.md, §3). Sequential,
   /// structure-changing work of the domain: what each unit produces next
   /// (nomenclature), starting and closing cycles, seasonal transitions of
   /// fields. Runs every tick; daily work gates itself to day boundaries.
+  /// A field's phases are OPENED by OpenTodaysFieldPhases (0.37.234), which
+  /// the step calls before the placement; this door advances them.
   virtual void RunProductionDecisions(const WorldState& previous, WorldState& current) = 0;
 
   /// @brief The start's year, settled before the first tick: the first

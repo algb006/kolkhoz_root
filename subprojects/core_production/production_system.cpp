@@ -191,6 +191,21 @@ class ProductionSystem final : public IProductionSystem {
 
   IParallelPhase& ProductionPhase() override { return phase_; }
 
+  void OpenTodaysFieldPhases(const WorldState& previous, WorldState& current) override {
+    if (current.calendar.day == previous.calendar.day) {
+      return;  // the fields' day is the day's first tick only
+    }
+    // EXCEPT THE YEAR'S FIRST DAY, whose fields come after the turn
+    // (RunProductionDecisions): an idle field's ploughing opens for its slot,
+    // and before RunYearStart moves the chain that slot is LAST year's - a
+    // warm 1 January would plough for the crop the turn is about to retire.
+    // One place a day either way: here, or after the turn on 1 January.
+    if (current.calendar.day % kDaysPerYear == 0) {
+      return;
+    }
+    RunFields(current);
+  }
+
   void RunProductionDecisions(const WorldState& previous, WorldState& current) override {
     RunDecisionsOfTheHour(previous, current);
     // EVERY TICK, AFTER EVERY WRITER OF THE REPUTATION (the static loop of
@@ -396,7 +411,14 @@ class ProductionSystem final : public IProductionSystem {
     if (current.weather.snow_cover_days == kSettledSnowCoverDays) {
       TakePlanDebtFromFields(config_, current, current.calendar.day);
     }
-    RunFields(current);
+    // THE FIELDS' DAY RUNS BEFORE THE PLACEMENT (0.37.234, (A);
+    // OpenTodaysFieldPhases): RunFields was called HERE every day until then,
+    // after the morning's placement, which was blind to the phases it
+    // opened. It stays here on the YEAR'S FIRST DAY only, after the turn
+    // (RunYearStart above), so an idle field ploughs for the new year's slot.
+    if (current.calendar.day % kDaysPerYear == 0) {
+      RunFields(current);
+    }
     // BEFORE THE HERD DAY, because the herd day is what reads it: the feed
     // need asks whether the team is out tonight, and the first night has to
     // be said on the day it happens and not the day after.

@@ -944,17 +944,17 @@ int main(int argc, char** argv) {
     // delivered from stock, the year line's "plan short" says so. The hole is
     // the rye's stock in a year with no rye harvest (the autumn's seed held
     // first), found in 0.36.8 and 0.36.10 as well; 0.36.12 did not make it,
-    // it moved this seed's rye rhythm onto it. RESTORE the assertion when
-    // question 278 (a winter crop that missed its window lies fallow) and
-    // econ's reserve for next year's rye debt are both delivered — and the
-    // gap prints CLOSED the first run the year stops failing.
-    failures += run::KnownGap(
-        plan_failed_years == 0,
-        "the floor meets the district's plan in all thirty years — until drought (register 226) "
-        "makes it failable again",
-        std::to_string(plan_failed_years) + " failed years",
-        "boss, boss-core-epoch1-resume [22]: the rye stock's hole, question 278 and econ's reserve "
-        "for next year's rye debt");
+    // it moved this seed's rye rhythm onto it.
+    //
+    // RESTORED IN 0.37.234 (boss, 12 October 2026, #674): the gap printed
+    // CLOSED (0 failed years) on every tree run back to 0.37.222, the oldest
+    // on hand; it closed at or before 0.37.222, after question 278 and econ's
+    // reserve for the rye debt were delivered. A gap left standing after it
+    // closed is a guard that cannot turn red; the closing change is bisected
+    // as its own line (#690).
+    failures += run::Expect(plan_failed_years == 0,
+                            "the floor meets the district's plan in all thirty years — until "
+                            "drought (register 226) makes it failable again");
   } else {
     std::cout << "gate: not the canonical run (seed " << g_seed << ", " << g_years
               << " years) — the canon band is printed and not asserted\n";
