@@ -1527,6 +1527,42 @@ int TestBarnLeadsTheDayTheWindowShuts() {
 /// took the hands off the hay that still could be cut. The counted proof is
 /// that the crew goes to the OPEN window with plenty of days left rather than
 /// to the overdue job, which is the opposite of what the old rule did.
+/// «ПОДНЯТЬ В ОЧЕРЕДИ» (kRaiseSite, AssignmentJob::raised; #595): two
+/// windowless sites, the SECOND raised - the crew goes to it; the same two
+/// unraised, the crew goes to the first (the id), which is what proves the
+/// key moved them and not the order of the list. And a raised site does not
+/// leave its tier: an open window above it keeps the crew.
+int TestTheRaisedSiteGoesFirstInItsTier() {
+  int failures = 0;
+  const core::Vec2 origin{.x = 0.0F, .y = 0.0F};
+  core::AssignmentJob first = FieldJob(core::WorkKind::kConstruction, 1, origin, 40.0F, 0);
+  first.window = core::DeadlineNotApplicable();
+  core::AssignmentJob second = FieldJob(core::WorkKind::kConstruction, 2, origin, 40.0F, 0);
+  second.window = core::DeadlineNotApplicable();
+  std::vector<core::AssignmentCandidate> candidates;
+  for (std::uint32_t row = 0; row < 4; ++row) {
+    candidates.push_back(Worker(row, origin));
+  }
+  const auto on_job = [&candidates](const std::vector<core::AssignmentJob>& jobs,
+                                    std::uint32_t which) {
+    std::uint32_t count = 0;
+    for (const std::uint32_t job : core::PlanDayAssignments(jobs, candidates, DayParams())) {
+      count += job == which ? 1U : 0U;
+    }
+    return count;
+  };
+  failures += Expect(on_job({first, second}, 0) == candidates.size(),
+                     "raised site: two plain sites - the crew goes to the first by id");
+  second.raised = true;
+  failures += Expect(on_job({first, second}, 1) == candidates.size(),
+                     "raised site: the second raised - the crew goes to it, first inside its tier");
+  core::AssignmentJob open_window = FieldJob(core::WorkKind::kSowing, 3, origin, 40.0F, 20);
+  failures += Expect(on_job({first, second, open_window}, 2) == candidates.size(),
+                     "raised site: and it does not leave its tier - an open window above it "
+                     "keeps the crew");
+  return failures;
+}
+
 int TestTheQueueRanksInTiers() {
   int failures = 0;
   const core::Vec2 origin{.x = 0.0F, .y = 0.0F};
@@ -4656,6 +4692,7 @@ int main() {
   }
   failures += TestBarnLeadsTheDayTheWindowShuts();
   failures += TestTheQueueRanksInTiers();
+  failures += TestTheRaisedSiteGoesFirstInItsTier();
   failures += TestPostTablesParse();
   failures += TestAppointmentTakesEffectAtTheDayClose();
   failures += TestAppointmentRefusals();

@@ -144,6 +144,16 @@ struct AssignmentJob {
   /// WorldState::logistics_tasks (core_common/logistics_state.h).
   bool logistics_urgent = false;
 
+  /// FIRST INSIDE ITS TIER (#595, 0.37.232): a construction job of a RAISED
+  /// site (kRaiseSite, «Поднять в очереди»; ConstructionState::raised) and
+  /// the supply job of the FIRST site of the sites' queue (core_common/
+  /// site_supply_queue.h: a raised site, else the oldest start) - before the
+  /// window rank and the days, «встаёт первой внутри своего срока» (society
+  /// design §1); the tier itself does not move. Set by the labour sub-step.
+  /// Two such jobs keep their order by the window, the days and the id, as
+  /// the tier does.
+  bool raised = false;
+
   /// True for the farm rule's zyab — the stubble ploughed for next spring's
   /// crop (FieldRow::autumn_furrowing; register 13; 0.37.18). It has no
   /// window (the tier of work with none) and goes FIRST in that tier: the

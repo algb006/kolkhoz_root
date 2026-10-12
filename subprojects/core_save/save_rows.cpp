@@ -247,7 +247,10 @@ static_assert(AggregateArity<SupplyLeg>() == 4,
 // predicted into the padding before `reserved`, 16 + amounts and 8 fields.
 // Save 115: crewless_days, a u16 after winter_works — predicted into the same
 // padding (offset 14), 16 + amounts and 9 fields, before the build.
-static_assert(AggregateArity<ConstructionState>() == 18,
+// Save 154 (#595): raised, a byte after supply_log_way — predicted into the
+// padding after it (sizeof 48 unmoved) and 19 fields, before the build; the
+// units section +1 a unit.
+static_assert(AggregateArity<ConstructionState>() == 19,
               "ConstructionState gained or lost a field — update the codec and VERSION_SAVE");
 // Save 74: reserved_for_specialist, a byte beside `dead` — 18 fields.
 static_assert(AggregateArity<UnitRow>() == 19,
@@ -1210,6 +1213,7 @@ void WriteUnitRow(SaveSink& sink, const UnitRow& row) {
   }
   WriteVec2(out, row.construction.supply_from);
   out.WriteU8(row.construction.supply_log_way);
+  out.WriteU8(row.construction.raised);  // save 154 (#595): «поднято в очереди»
   out.WriteFloat(row.construction.supply_days_first);
   out.WriteFloat(row.construction.supply_days_all);
   out.WriteFloat(row.construction.supply_days_remaining);
@@ -1281,6 +1285,8 @@ UnitRow ReadUnitRow(LoadSource& source) {
   row.construction.supply_from = ReadVec2(in);
   row.construction.supply_log_way =
       static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "supply's front way"));
+  // Save 154 (#595): «поднято в очереди», a switch.
+  row.construction.raised = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "site raised"));
   row.construction.supply_days_first = in.ReadFloat();
   row.construction.supply_days_all = in.ReadFloat();
   row.construction.supply_days_remaining = in.ReadFloat();

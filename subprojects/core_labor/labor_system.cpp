@@ -60,6 +60,7 @@
 #include "core_common/reaping_pace.h"
 #include "core_common/reaping_road.h"
 #include "core_common/resident_state.h"
+#include "core_common/site_supply_queue.h"
 #include "core_common/state_table.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/work_seam.h"
@@ -1680,6 +1681,11 @@ class LaborSystem final : public ILaborSystem {
         job.unit = current.units.row_ids[row];
         job.position = unit.construction.supply_from;
         job.supplies_works = true;
+        // THE SITES' QUEUE (#595; core_common/site_supply_queue.h): the FIRST
+        // site's supply ranks first inside the windowless tier - the same key
+        // a raised site's own job carries - and the next site's hands come
+        // from what the first cannot use today. Every site keeps its offer.
+        job.raised = SiteSupplyRank(current, row) == 0;
         job.log_cart = unit.construction.supply_log_way != 0;
         const SimDay since = unit.construction.supply_since_day;
         const SimDay waited = current.calendar.day > since ? current.calendar.day - since : 0;
@@ -1785,6 +1791,8 @@ class LaborSystem final : public ILaborSystem {
         // it: his standing work orders override this morning's placement
         // after the accountant has made it (work_orders.h, ApplyStandingWork).
         job.houses_cold_herd = WorksHouseAColdHerd(config_.cold_housing, current, row);
+        // «Поднято в очереди» (kRaiseSite; #595): first inside its tier.
+        job.raised = unit.construction.raised != 0;
         jobs.push_back(job);
       }
       // THE PIECES OF ROAD UNDER WORK (7e; road_work_state.h): a site as a

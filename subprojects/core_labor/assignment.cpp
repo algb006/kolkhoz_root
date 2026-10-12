@@ -256,6 +256,13 @@ std::vector<std::uint32_t> OrderJobs(const std::vector<AssignmentJob>& jobs,
           return 2;
       }
     };
+    // A RAISED SITE FIRST INSIDE ITS TIER (kRaiseSite, AssignmentJob::raised;
+    // #595; society design §1: «встаёт первой внутри своего срока») - a KEY
+    // before the window rank, so a raised works goes ahead of its tier's
+    // windowed jobs too, and never leaves the tier.
+    if (a.raised != b.raised) {
+      return a.raised;
+    }
     if (window_rank(a) != window_rank(b)) {
       return window_rank(a) < window_rank(b);
     }

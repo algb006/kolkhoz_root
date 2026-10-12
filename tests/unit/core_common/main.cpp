@@ -39,6 +39,7 @@
 #include "core_common/road_rules.h"
 #include "core_common/road_trace.h"
 #include "core_common/road_view.h"
+#include "core_common/site_supply_queue.h"
 #include "core_common/state_table.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/version_pin.h"
@@ -599,6 +600,46 @@ int TestPlot() {
 /// the 2.0 h every seam was priced at until 0.37.229; a carrier on foot
 /// passes his walk twice and gets twice his walk. The grams a day follow:
 /// 10 hours at 2.333 h a round carry 4.29 loads, not 5.
+/// THE SITES' QUEUE IS AN ORDER (#595, site_supply_queue.h): three works
+/// awaiting logs, started on days 12, 10 and 14 - every one of them is in
+/// the queue, the oldest start (the second) first; raised, the youngest (the
+/// third) goes to the head and the rest keep their order; a site awaiting
+/// nothing, or paused, is not in the queue at all, and its rank says so.
+int TestTheSiteSupplyQueue() {
+  int failures = 0;
+  core::WorldState world;
+  const auto site = [&world](core::SimDay since) {
+    core::UnitRow unit;
+    unit.construction.phase = core::ConstructionPhase::kDelivering;
+    unit.construction.awaiting = {0, 1'000'000};
+    unit.construction.supply_since_day = since;
+    return core::AppendRow(world.units, unit);
+  };
+  site(12);
+  site(10);
+  site(14);
+  std::vector<std::uint32_t> order = core::SiteSupplyOrder(world);
+  failures += Expect(order == std::vector<std::uint32_t>{1, 0, 2},
+                     "supply queue: three sites, every one in it, the oldest start first");
+  failures += Expect(core::SiteSupplyRank(world, 1) == 0 && core::SiteSupplyRank(world, 0) == 1 &&
+                         core::SiteSupplyRank(world, 2) == 2,
+                     "supply queue: asked for one site, its rank is its place");
+  world.units.rows[2].construction.raised = 1;
+  order = core::SiteSupplyOrder(world);
+  failures += Expect(order == std::vector<std::uint32_t>{2, 1, 0},
+                     "supply queue: the youngest site raised goes to the head, the rest keep "
+                     "their order");
+  world.units.rows[1].construction.awaiting = {0, 0};
+  order = core::SiteSupplyOrder(world);
+  failures += Expect(order == std::vector<std::uint32_t>{2, 0} &&
+                         core::SiteSupplyRank(world, 1) == core::kNoSupplyRank,
+                     "supply queue: a site awaiting nothing is not in the queue, its rank says so");
+  world.units.rows[2].paused = 1;
+  order = core::SiteSupplyOrder(world);
+  failures += Expect(order == std::vector<std::uint32_t>{0}, "supply queue: a paused site neither");
+  return failures;
+}
+
 int TestTheLoadedPace() {
   int failures = 0;
   const core::HaulRate loaded = core::RateOverKm(1.0F, 1.0F, 4.0F / 3.0F, 1'800'000);
@@ -2980,6 +3021,7 @@ int main() {
   failures += TestPlot();
   failures += TestResidentActivity();
   failures += TestTheLoadedPace();
+  failures += TestTheSiteSupplyQueue();
   if (failures == 0) {
     std::cout << "unit_core_common: all checks passed\n";
   }

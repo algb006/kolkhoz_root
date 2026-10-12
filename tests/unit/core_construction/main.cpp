@@ -386,6 +386,33 @@ int TestTheSupplyOfAWorks(const core::ITableSet& tables) {
   failures += Expect(under_way.grams == 10 * kLogGrams && under_way.sender.x == 1200.0F,
                      "supply: for works under way the plan is what still awaits");
 
+  // «ПОДНЯТЬ В ОЧЕРЕДИ» (kRaiseSite, #595): the flag on the works, once;
+  // again is refused; lowered, plain again; a standing unit has no works to
+  // raise.
+  core::OrderRow raise = UnitOrder(core::OrderKind::kRaiseSite, site);
+  raise.enable = 1;
+  const core::OrderId raised = Issue(world, raise);
+  Run(*system, world, 5);
+  failures += Expect(RefusalOf(world, raised) == core::OrderRefusal::kNone &&
+                         row_of(site).construction.raised == 1,
+                     "raise site: a works under way is raised, the flag on its block");
+  const core::OrderId again = Issue(world, raise);
+  Run(*system, world, 5);
+  failures += Expect(RefusalOf(world, again) == core::OrderRefusal::kRuleForbids,
+                     "raise site: raised already is refused kRuleForbids");
+  raise.enable = 0;
+  const core::OrderId lowered = Issue(world, raise);
+  Run(*system, world, 5);
+  failures += Expect(RefusalOf(world, lowered) == core::OrderRefusal::kNone &&
+                         row_of(site).construction.raised == 0,
+                     "raise site: lowered, the works is plain again");
+  core::OrderRow on_a_store = UnitOrder(core::OrderKind::kRaiseSite, near_store);
+  on_a_store.enable = 1;
+  const core::OrderId no_works = Issue(world, on_a_store);
+  Run(*system, world, 5);
+  failures += Expect(RefusalOf(world, no_works) == core::OrderRefusal::kNoSuchSubject,
+                     "raise site: a standing unit has no works to raise - kNoSuchSubject");
+
   // Taken down before the carts came: what awaited is the unit's stock, to
   // go out through the stores' door with the rest — nothing fixed is lost.
   Issue(world, UnitOrder(core::OrderKind::kDemolishUnit, site));

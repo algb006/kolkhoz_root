@@ -22,6 +22,7 @@
 #include "core_common/quantities.h"
 #include "core_common/road_graph.h"
 #include "core_common/road_route.h"
+#include "core_common/site_supply_queue.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/work_seam.h"
 #include "core_common/world_state.h"
@@ -42,6 +43,11 @@ struct OpenTask {
   /// A works' supply that will house a herd facing the cold (cold_housing.h):
   /// first within its level.
   bool cold_first = false;
+  /// A works' supply: its place in the sites' queue (#595, core_common/
+  /// site_supply_queue.h: raised first, then the oldest start) - the first
+  /// site's loads are drawn before the next site's, inside the level.
+  /// kNoSupplyRank for every other load.
+  std::uint32_t site_rank = kNoSupplyRank;
   SimDay aged_from_day = 0;
   Vec2 place;
   bool logs = false;  ///< carted by the log cart (a stand's logs, the district's lot)
@@ -67,9 +73,11 @@ std::vector<OpenTask> OpenTasks(const LogisticsConfig& config, const WorldState&
     bool logs = task.load_kind == LogisticsLoadKind::kStandLogs ||
                 task.load_kind == LogisticsLoadKind::kDistrictLot;
     bool cold_first = false;
+    std::uint32_t site_rank = kNoSupplyRank;
     if (task.load_kind == LogisticsLoadKind::kSiteSupply) {
       const std::uint32_t unit_row = FindRow(world.units, task.unit);
       logs = unit_row != kNoRow && world.units.rows[unit_row].construction.supply_log_way != 0;
+      site_rank = unit_row == kNoRow ? kNoSupplyRank : SiteSupplyRank(world, unit_row);
       // THE SUPPLY OF THE WORKS THAT WILL HOUSE A HERD FACING THE COLD first
       // within its level (cold_housing.h; econ's form (a), boss 11 October
       // 2026): ahead of every other works' supply, still behind level 0 —
@@ -79,6 +87,7 @@ std::vector<OpenTask> OpenTasks(const LogisticsConfig& config, const WorldState&
     open.push_back(OpenTask{.row = row,
                             .level = static_cast<std::uint8_t>(task.level),
                             .cold_first = cold_first,
+                            .site_rank = site_rank,
                             .aged_from_day = task.aged_from_day,
                             .place = place,
                             .logs = logs});
@@ -89,6 +98,11 @@ std::vector<OpenTask> OpenTasks(const LogisticsConfig& config, const WorldState&
     }
     if (left.cold_first != right.cold_first) {
       return left.cold_first;
+    }
+    // THE SITES' QUEUE (#595): the first site's loads before the next site's,
+    // inside the level; every other load keeps its place by age.
+    if (left.site_rank != right.site_rank) {
+      return left.site_rank < right.site_rank;
     }
     if (left.aged_from_day != right.aged_from_day) {
       return left.aged_from_day < right.aged_from_day;

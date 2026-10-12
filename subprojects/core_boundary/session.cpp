@@ -290,6 +290,11 @@ bool ShapeIsValid(const OrderRow& order) {
       // position is not checked against the map here, as a unit's is not.
       return (has_field ? !(order.area_ha > 0.0F) : order.area_ha > 0.0F) && !has_resident &&
              !has_unit && !has_herd && !has_stand && !has_site;
+    case OrderKind::kRaiseSite:
+      // The site and a switch that is a switch (#595); whether works stand on
+      // it and whether it is already as asked is the consumer's.
+      return has_unit && order.enable <= 1 && !has_resident && !has_field && !has_herd &&
+             !has_stand && !has_site;
     case OrderKind::kPauseLogisticsTask:
       // The task and a switch that is a switch.
       return order.logistics_task.value != kInvalidEntityIdValue && order.enable <= 1 &&

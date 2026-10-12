@@ -440,6 +440,7 @@ core::WorldState MakeWorld() {
   from_store.unpriced = 600'000;
   site.construction.legs = {from_stand, from_store};
   site.construction.supply_log_way = 1;
+  site.construction.raised = 1;  // save 154: «поднято в очереди»
   site.construction.supply_days_first = 6.75F;
   site.construction.supply_days_all = 4.5F;
   // Save 67: a store being emptied, its carrying half done — all three away
@@ -1787,7 +1788,9 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // unit for what is still to cart on every leg (three units, +12): 634 ->
     // 646, PREDICTED before the build and held; the hash is read off it.
     // Save 153: +8 a unit — haul_to, the perevalka's receiver; 646 -> 670, held.
-    {"units", 670, 0xcf26c1acbc3c9c0aULL},
+    // Save 154 (#595): +1 a unit — the works' raised switch; predicted 670 ->
+    // 673 (three units) before the build, the hash read off it after.
+    {"units", 673, 0xbcd78bcbd62ef491ULL},
     // Save 71: +4 — fed_share, one herd; predicted before the field, held.
     // Save 91: +8 — the adult age band, two floats, one herd; predicted
     // 71 -> 79 with every other section unmoved before the build.
@@ -1864,7 +1867,10 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // Save 145 (0.37.211): kMarkMeadow became the top OrderKind — same 818
     // bytes, the hash moved; predicted before the build (the eighth time, and
     // the second written down first).
-    {"orders", 818, 0x56409d1b68e84b33ULL},
+    // Save 154 (0.37.232, #595): kRaiseSite became the top OrderKind — same
+    // 818 bytes, the hash moved; NOT predicted before the build (the ninth
+    // time; the units section's +3 was predicted, this one the test found).
+    {"orders", 818, 0x9610fff945ef0326ULL},
     // Save 82: the fixture's first stand, a birch planting — 8 -> 67 (its id
     // 4, the old fields 41, species 2, hectares 4, two days 8); predicted,
     // held.
@@ -2992,11 +2998,12 @@ int main() {
                  legs_back[1].grams.size() >= 3 && legs_back[1].grams[2] == 600'000,
              "a works' two legs come back in their order, each with its sender, its "
              "way, its grams and what is unpriced (save 147, the direct leg)");
-  failures += Expect(site_back.construction.supply_log_way == 1 &&
-                         site_back.construction.supply_days_first == 6.75F &&
-                         site_back.construction.supply_days_all == 4.5F,
-                     "the front way, the load as first priced and what is still to cart come "
-                     "back, each its own (save 147)");
+  failures +=
+      Expect(site_back.construction.supply_log_way == 1 && site_back.construction.raised == 1 &&
+                 site_back.construction.supply_days_first == 6.75F &&
+                 site_back.construction.supply_days_all == 4.5F,
+             "the front way, the load as first priced and what is still to cart come "
+             "back, each its own (save 147)");
   failures += Expect(site_back.construction.supply_from.x == 41.5F &&
                          site_back.construction.supply_from.y == 7.25F &&
                          site_back.construction.supply_days_remaining == 1.5F &&

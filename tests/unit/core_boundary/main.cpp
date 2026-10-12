@@ -1603,6 +1603,53 @@ int TestMeadowDoor(const core::ITableSet& tables) {
   return failures;
 }
 
+/// «ПОДНЯТЬ В ОЧЕРЕДИ» FOR A WORKS (kRaiseSite, #595): the session takes a
+/// unit and a switch that is a switch, and nothing else; whether works stand
+/// on the unit is the consumer's (core_construction), which refuses this
+/// empty world's unit 7 kNoSuchSubject within the step.
+int TestRaiseSiteDoor(const core::ITableSet& tables) {
+  int failures = 0;
+  core::StandardSimulationConfig sim_config;
+  sim_config.stub_tables = core::StubTables::kAllowed;
+  sim_config.tables = &tables;
+  sim_config.worker_count = 1;
+  core::SessionConfig config;
+  config.stub_tables = core::StubTables::kAllowed;
+  config.tables = &tables;
+  config.simulation = core::CreateStandardSimulation(sim_config);
+  std::unique_ptr<core::ISession> session = core::CreateSession(std::move(config));
+  if (!session) {
+    std::cout << "FAIL: the raise-site session was refused\n";
+    return 1;
+  }
+  core::OrderRow raise_site;
+  raise_site.kind = core::OrderKind::kRaiseSite;
+  raise_site.unit = core::UnitId{7};
+  raise_site.enable = 2;
+  failures +=
+      Expect(session->IssueOrder(raise_site).value == 0, "raise site: the switch is 0 or 1, not 2");
+  raise_site.enable = 1;
+  raise_site.unit = core::UnitId{};
+  failures += Expect(session->IssueOrder(raise_site).value == 0,
+                     "raise site: without a unit nothing is raised");
+  raise_site.unit = core::UnitId{7};
+  const core::OrderId taken = session->IssueOrder(raise_site);
+  failures += Expect(taken.value != 0, "raise site: a unit and a switch are taken");
+  session->AdvanceStep();
+  std::uint32_t no_works = 0;
+  for (const core::SimEvent& event : session->Events()) {
+    no_works +=
+        event.kind == core::EventKind::kOrderRefused && event.order.value == taken.value &&
+                event.amount == static_cast<std::int64_t>(core::OrderRefusal::kNoSuchSubject)
+            ? 1U
+            : 0U;
+  }
+  failures += Expect(no_works == 1,
+                     "raise site: with no works on unit 7 the consumer refuses it kNoSuchSubject "
+                     "within the step");
+  return failures;
+}
+
 int TestLogisticsDoorsContract(const core::ITableSet& tables) {
   int failures = 0;
   core::StandardSimulationConfig sim_config;
@@ -2161,6 +2208,7 @@ int main() {
   failures += TestCrewOrderShape(tables);
   failures += TestRoadToolsContract(tables);
   failures += TestLogisticsDoorsContract(tables);
+  failures += TestRaiseSiteDoor(tables);
   failures += TestMeadowDoor(tables);
   failures += TestStockLights(tables);
   failures += TestWorkforceQuestions(tables);

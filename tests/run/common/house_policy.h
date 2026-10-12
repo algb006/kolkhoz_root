@@ -125,6 +125,21 @@ class HousePolicy {
         start.kind = core::OrderKind::kStartBuild;
         start.unit = world.units.row_ids[row];
         orders.push_back(start);
+        // «ПОДНЯТЬ В ОЧЕРЕДИ» ON YEAR 1'S FIRST HOUSES (boss, 12 October
+        // 2026, on #570's pair: the third house of 1938 slipped 15 -> 34 days
+        // under the loaded pace, over his three-day line; kRaiseSite, #595):
+        // the first kFirstHousesRaised houses started in the first year go
+        // first in both their doors, the hands and the carts. The raise is
+        // settled after the start in the same pass (the orders are read in
+        // row order), and goes out with the works' end.
+        if (world.calendar.day < core::kDaysPerYear && raised_in_year_one_ < kFirstHousesRaised) {
+          core::OrderRow raise;
+          raise.kind = core::OrderKind::kRaiseSite;
+          raise.unit = world.units.row_ids[row];
+          raise.enable = 1;
+          orders.push_back(raise);
+          ++raised_in_year_one_;
+        }
       }
       // THE QUEUE BY CAUSE (debt (a), boss parcel 320): each site-day of a
       // marked house counted under the FIRST rule that held it, in the order
@@ -415,6 +430,11 @@ class HousePolicy {
   /// The new village's house points (suggestions.csv), taken in order.
   SuggestedPlaces suggested_;
 
+  /// Year 1's first houses raised in the queue (kRaiseSite; #595): the
+  /// count so far, and how many the chairman raises - three, boss's
+  /// line on the pair's third house.
+  static constexpr std::uint32_t kFirstHousesRaised = 3;
+  std::uint32_t raised_in_year_one_ = 0;
   std::uint32_t cooldown_ = 0;
 
   std::uint32_t ordered_ = 0;

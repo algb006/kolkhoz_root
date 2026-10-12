@@ -37,4 +37,5 @@ kolkhoz_add_module(core_common
     resident_activity.cpp
     version_pin.cpp
     work_seam.cpp
+    site_supply_queue.cpp
     chairman_away.cpp)

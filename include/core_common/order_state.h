@@ -938,6 +938,26 @@ enum class OrderKind : std::uint8_t {
   /// `mark_meadow`. Consumer: core_production.
   kMarkMeadow,
 
+  /// «ПОДНЯТЬ В ОЧЕРЕДИ» FOR A WORKS (society design §1: «поле или стройка
+  /// встаёт первой внутри своего срока, без цены довольства, за счёт других
+  /// работ»; #595, 0.37.232): `unit` names a site in kDelivering or
+  /// kBuilding (a new unit, an upgrade, a repair, a module); `enable` 1
+  /// raises it, 0 lowers it. A raised site is FIRST among its kind in both
+  /// doors of its works: its construction job goes first inside its tier
+  /// (AssignmentJob::raised, PlanDayAssignments) and its supply heads the
+  /// sites' queue (core_common/site_supply_queue.h: its loads drawn first,
+  /// its supply job first inside the tier) with the task at level 0
+  /// (LogisticsTaskRow::level) - the one lever the player had for the supply
+  /// half only, kSetLogisticsLevel on the site's task, now reaches the hands
+  /// too. No satisfaction price; the cost is the other works'
+  /// days. The flag is the site's (ConstructionState::raised, save 154) and
+  /// goes out with the works' end. Two raised sites rank by the older
+  /// start. Refusals: kNoSuchSubject (no such unit, or no works on it: a
+  /// standing unit, a marked plot), kRuleForbids (already as asked). Seam
+  /// key proposed: `raise_site` (boss's vocabulary). Consumer:
+  /// core_construction.
+  kRaiseSite,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).

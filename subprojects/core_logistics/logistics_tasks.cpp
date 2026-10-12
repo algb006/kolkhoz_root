@@ -10,6 +10,7 @@
 #include "core_common/logistics_rules.h"
 #include "core_common/logistics_state.h"
 #include "core_common/quantities.h"
+#include "core_common/site_supply_queue.h"
 #include "core_common/spoilage.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
@@ -73,12 +74,12 @@ std::vector<LoadAddress> LoadsOf(const WorldState& world) {
   }
   // The supply of a works (V2): while anything fixed for it awaits and it is
   // neither paused nor under an emptying order (the labour sub-step offers it
-  // by the same three conditions).
-  for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
-    const UnitRow& unit = world.units.rows[row];
-    if (unit.emptying == 0 && unit.paused == 0 && AnythingAwaits(unit.construction)) {
-      loads.push_back({LogisticsLoadKind::kSiteSupply, world.units.row_ids[row].value});
-    }
+  // by the same three conditions) - EVERY such site, in the queue's order
+  // (#595, core_common/site_supply_queue.h): the order is read again where it
+  // acts, in the plan's OpenTasks; the list's order here only seats the
+  // tasks' rows the same way.
+  for (const std::uint32_t row : SiteSupplyOrder(world)) {
+    loads.push_back({LogisticsLoadKind::kSiteSupply, world.units.row_ids[row].value});
   }
   return loads;
 }
@@ -255,6 +256,15 @@ void AgeAndRaise(const LogisticsConfig& config,
     // The player's level 0 stays (base_level kUrgent, B7).
     if (task.base_level == LogisticsLevel::kUrgent) {
       level = LogisticsLevel::kUrgent;
+    }
+    // A RAISED SITE'S SUPPLY IS AT LEVEL 0 (kRaiseSite, ConstructionState::
+    // raised; #595): the one order moves both halves of the works, the hands
+    // and the carts, and lowering it puts the task back at its own level.
+    if (task.load_kind == LogisticsLoadKind::kSiteSupply) {
+      const std::uint32_t unit_row = FindRow(current.units, task.unit);
+      if (unit_row != kNoRow && current.units.rows[unit_row].construction.raised != 0) {
+        level = LogisticsLevel::kUrgent;
+      }
     }
     if (level == LogisticsLevel::kUrgent && was != LogisticsLevel::kUrgent) {
       task.urgent_since = now;

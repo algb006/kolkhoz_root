@@ -586,6 +586,28 @@ class ConstructionSystem final : public IConstructionSystem {
   /// labour, and the unit works all the while. The price is frozen at the
   /// order, scaled by the wear it was ordered at: a neglected repair is
   /// dearer in man-days and in parts alike.
+  /// «Поднять в очереди» (kRaiseSite; #595): the flag on a works in
+  /// kDelivering or kBuilding; the readers are the placement and the supply
+  /// queue (order_state.h). Nothing to raise on a standing unit or a marked
+  /// plot; already as asked is refused too, so a replayed order is not a
+  /// silent no-op.
+  static OrderRefusal RaiseSite(WorldState& current, UnitId unit, bool raise) {
+    const std::uint32_t row = FindRow(current.units, unit);
+    if (row == kNoRow) {
+      return OrderRefusal::kNoSuchSubject;
+    }
+    ConstructionState& works = current.units.rows[row].construction;
+    if (works.phase != ConstructionPhase::kDelivering &&
+        works.phase != ConstructionPhase::kBuilding) {
+      return OrderRefusal::kNoSuchSubject;
+    }
+    if ((works.raised != 0) == raise) {
+      return OrderRefusal::kRuleForbids;
+    }
+    works.raised = raise ? 1 : 0;
+    return OrderRefusal::kNone;
+  }
+
   OrderRefusal StartRepair(WorldState& current, UnitId unit) {
     const std::uint32_t row = FindRow(current.units, unit);
     if (row == kNoRow) {
@@ -677,6 +699,9 @@ class ConstructionSystem final : public IConstructionSystem {
           break;
         case OrderKind::kInsulateUnit:
           Settle(order, StartInsulation(config_, current, order.unit));
+          break;
+        case OrderKind::kRaiseSite:
+          Settle(order, RaiseSite(current, order.unit, order.enable != 0));
           break;
         case OrderKind::kLayRoad:
           // A path or a dirt road laid at once (7c), gravel with its work

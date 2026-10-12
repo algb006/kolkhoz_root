@@ -276,6 +276,17 @@ struct ConstructionState {
   Vec2 supply_from;
   std::uint8_t supply_log_way = 0;
 
+  /// «ПОДНЯТО В ОЧЕРЕДИ» (kRaiseSite; society design §1; #595, save 154):
+  /// 1 - this works goes first among its kind in both its doors: its
+  /// construction job first inside its tier (AssignmentJob::raised) and its
+  /// supply at the head of the sites' queue, at level 0 (core_common/
+  /// site_supply_queue.h; LogisticsTaskRow::level). Written by the
+  /// order's consumer (core_construction) and emptied with the block when
+  /// the works end; a lowered site (enable 0) is plain again. Sits in the
+  /// padding after `supply_log_way`, so sizeof(ConstructionState) did not
+  /// move - the wire did, by one byte, and VERSION_SAVE counts that.
+  std::uint8_t raised = 0;
+
   /// THE WORKS' WHOLE LOAD AS FIRST PRICED, cart-days (save 147): every leg's
   /// grams by its own way, summed by production in the hour they were fixed
   /// (field_haul.h, SettleSiteSupply). The supply's term is counted from it
