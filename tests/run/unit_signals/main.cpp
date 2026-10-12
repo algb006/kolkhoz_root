@@ -63,7 +63,10 @@ std::optional<Crew> FirstCrew(const core::WorldState& world, core::WorkKind kind
 std::uint32_t HerdCrewAt(const core::WorldState& world, core::UnitId unit) {
   std::uint32_t count = 0;
   for (const core::ResidentRow& resident : world.residents.rows) {
-    if (resident.work.kind != core::WorkKind::kHerdCare) {
+    // A hand released home by a drained care (0.37.237, #709) still names the
+    // herd and is at home: the seam reads him there (signals.cpp), and this
+    // count read him at the barn until #714's yard held its herd from day 1.
+    if (resident.work.kind != core::WorkKind::kHerdCare || resident.work.released_home != 0) {
       continue;
     }
     for (std::uint32_t row = 0; row < world.herds.rows.size(); ++row) {

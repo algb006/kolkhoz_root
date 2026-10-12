@@ -818,8 +818,32 @@ class ConstructionSystem final : public IConstructionSystem {
     site.level = 0;
     site.construction.phase = ConstructionPhase::kMarked;
     site.construction.target_level = 1;
-    AppendRow(current.units, site);
+    // THE FIRST ONE STANDS AT ONCE (#714; livestock design «Первое утро»: the
+    // horse yard and the cattle yard's first rung, «даром… ни материалов, ни
+    // труда»; boss, 12 October 2026). Free is no cost, not no rules: it comes
+    // here only past every check above. Only while no row of the type is on
+    // the map at all — a marked site, a ruin or a standing one ends it — so a
+    // second is built as any other. Nothing is spent, so nothing goes into
+    // the year's walls (built_in). Until 0.37.238 the column was read by
+    // nobody, both yards were paid works through the queue, and the herd sat
+    // in the households' billets into the autumn.
+    const bool stands_free = type.first_free != 0 && TypeRowCount(current, order.unit_type) == 0;
+    if (stands_free) {
+      site.level = 1;
+      site.construction = ConstructionState{};
+    }
+    const UnitId unit = AppendRow(current.units, site);
+    if (stands_free) {
+      Emit(current, EventKind::kUnitBuilt, EventSeverity::kNotable, unit);
+    }
     return OrderRefusal::kNone;
+  }
+
+  /// @brief Rows of `type` on the map in any state (marked, going up,
+  /// standing, dead): the first_free rule's «no unit of the type yet».
+  static std::uint32_t TypeRowCount(const WorldState& current, UnitTypeId type) {
+    return static_cast<std::uint32_t>(std::ranges::count_if(
+        current.units.rows, [type](const UnitRow& unit) { return unit.type.value == type.value; }));
   }
 
   /// The works start only on the chairman's command — never by themselves

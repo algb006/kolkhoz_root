@@ -171,6 +171,7 @@ StinkWhen StinkWhenFromText(std::string_view text, bool& known) {
 bool ReadTypes(const ITable& unit_types, ConstructionConfig& config, std::string& error) {
   const std::uint32_t gate_col = unit_types.FindColumn("gate");
   const std::uint32_t built_col = unit_types.FindColumn("player_built");
+  const std::uint32_t first_free_col = unit_types.FindColumn("first_free");
   const std::uint32_t era_col = unit_types.FindColumn("era");
   const std::uint32_t by_plot_col = unit_types.FindColumn("capacity_by_plot");
   const std::uint32_t has_wear_col = unit_types.FindColumn("has_wear");
@@ -208,6 +209,17 @@ bool ReadTypes(const ITable& unit_types, ConstructionConfig& config, std::string
       return false;
     }
     type.player_built = static_cast<std::uint8_t>(number);
+    if (!CellOrDefault(unit_types,
+                       row,
+                       first_free_col,
+                       Range{.low = 0.0F, .high = 1.0F},
+                       0.0F,
+                       number,
+                       error)) {
+      Fail(error, "unit_types", "first_free is not 0 or 1 in row " + std::to_string(row));
+      return false;
+    }
+    type.first_free = static_cast<std::uint8_t>(number);
     if (!CellOrDefault(unit_types,
                        row,
                        era_col,

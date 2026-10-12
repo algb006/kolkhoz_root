@@ -160,6 +160,12 @@ struct BuildType {
   /// 0/1 from unit_types.csv: whether the player may raise it at all.
   std::uint8_t player_built = 0;
 
+  /// 0/1 from unit_types.csv `first_free` (livestock design «Первое утро»):
+  /// the first unit of the type the player places stands at once at its
+  /// first rung — no materials, no labour — wherever the placement rules
+  /// let it stand. Every later one is built as any other. Absent column = 0.
+  std::uint8_t first_free = 0;
+
   std::uint8_t era = 1;
 
   /// Levels 1..N, dense: index 0 is level 1. Empty for a type with no

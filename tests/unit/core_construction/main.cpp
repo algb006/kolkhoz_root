@@ -94,19 +94,24 @@ class BuildTables final : public core::ITableSet {
                           "has_wear",
                           "burns",
                           "wear_factor",
-                          "footprint_r_m"},
-                         {{"store", "1", "0", "start", "1", "10", "1", "0", "", ""},
-                          {"barn", "1", "1", "era", "1", "20", "1", "1", "1.5", ""},
-                          {"club", "2", "1", "era", "1", "20", "1", "1", "", ""},
-                          {"orchard", "1", "1", "era", "1", "", "0", "1", "", ""},
-                          {"old_house", "1", "0", "start", "1", "10", "1", "1", "", ""},
+                          "footprint_r_m",
+                          "first_free"},
+                         {{"store", "1", "0", "start", "1", "10", "1", "0", "", "", ""},
+                          {"barn", "1", "1", "era", "1", "20", "1", "1", "1.5", "", "0"},
+                          {"club", "2", "1", "era", "1", "20", "1", "1", "", "", ""},
+                          {"orchard", "1", "1", "era", "1", "", "0", "1", "", "", ""},
+                          {"old_house", "1", "0", "start", "1", "10", "1", "1", "", "", ""},
                           // A well: no plot, but a body of 1.2 m that
                           // nothing else may stand inside (task of
                           // 2026-09-05). has_plot is 0 and that is now three
                           // different facts, not one.
-                          {"well", "1", "1", "era", "0", "", "0", "0", "", "1.2"},
+                          {"well", "1", "1", "era", "0", "", "0", "0", "", "1.2", ""},
                           // The MTS column's camp (boss, parcel 449).
-                          {"field_camp", "1", "1", "era", "1", "10", "0", "0", "", ""}}};
+                          {"field_camp", "1", "1", "era", "1", "10", "0", "0", "", "", ""},
+                          // The first one placed stands at once, free (#714;
+                          // livestock design «Первое утро»): the cattle yard's
+                          // and the horse yard's row in the real tables.
+                          {"pen", "1", "1", "era", "1", "20", "1", "1", "", "", "1"}}};
 
   // wear_factor is the STEP's pace over its class's term, and it stands on
   // three rows on purpose: the store carries it where the type has none
@@ -138,10 +143,12 @@ class BuildTables final : public core::ITableSet {
                            {"orchard", "1", "1", "0", "plot", "", "", "", "", "1"},
                            {"old_house", "1", "1", "70", "wood_small", "5", "10", "5", "1.1", "1"},
                            {"well", "1", "1", "14", "earthwork", "2", "", "", "", "0"},
-                           {"field_camp", "1", "1", "14", "earthwork", "2", "", "", "", "0"}}};
+                           {"field_camp", "1", "1", "14", "earthwork", "2", "", "", "", "0"},
+                           {"pen", "1", "1", "70", "wood_small", "5", "10", "5", "", "1"}}};
 
-  test::FakeTable costs_{{"unit", "level", "resource", "amount"},
-                         {{"barn", "1", "log", "10"}, {"barn", "2", "log", "20"}}};
+  test::FakeTable costs_{
+      {"unit", "level", "resource", "amount"},
+      {{"barn", "1", "log", "10"}, {"barn", "2", "log", "20"}, {"pen", "1", "log", "10"}}};
 
   test::FakeTable resources_{{"key", "measure", "kg_per_unit"},
                              {{"log", "pcs", "200"}, {"spare_part", "pcs", "5"}}};
@@ -162,6 +169,8 @@ constexpr std::uint16_t kOldHouseType = 4;
 constexpr std::uint16_t kWellType = 5;
 
 constexpr std::uint16_t kFieldCampType = 6;
+
+constexpr std::uint16_t kPenType = 7;
 
 /// Grams of one spare part, as the fixture states it: 5 kg a piece.
 constexpr core::Grams kPartGrams = 5 * core::kGramsPerKilogram;
@@ -861,6 +870,59 @@ int TestMarkAndBuild(const core::ITableSet& tables) {
   return failures;
 }
 
+/// THE FIRST YARD STANDS AT ONCE AND FREE, AND OBEYS THE RULES (#714; livestock
+/// design «Первое утро»; boss, 12 October 2026: «free means no cost, not no
+/// rules»): a first_free type's first placement too close to another plot is
+/// refused as any other; the first that fits stands at rung 1 the same hour,
+/// with no stock spent and nothing in the year's walls, and the world is told
+/// a unit was built; the second is a marked site, built and paid as any other.
+int TestTheFirstYardIsFree(const core::ITableSet& tables) {
+  int failures = 0;
+  std::unique_ptr<core::IConstructionSystem> system =
+      core::CreateConstructionSystem(tables, core::StubTables::kAllowed);
+  if (system == nullptr) {
+    return Expect(false, "the subsystem refused its tables");
+  }
+  core::WorldState world;
+  const core::UnitId store = PlaceStore(world, 30 * kLogGrams);
+  const core::OrderId crowded = Issue(world, BuildOrder(kPenType, 510.0F, 500.0F));
+  Run(*system, world, 0);
+  failures += Expect(
+      RefusalOf(world, crowded) == core::OrderRefusal::kTooClose && world.units.rows.size() == 1,
+      "first free: on another's plot it is refused like any placement");
+  const core::OrderId first = Issue(world, BuildOrder(kPenType, 1000.0F, 1000.0F));
+  Run(*system, world, 0);
+  const core::UnitId pen = world.units.row_ids.back();
+  const core::UnitRow& stood = world.units.rows[core::FindRow(world.units, pen)];
+  failures +=
+      Expect(RefusalOf(world, first) == core::OrderRefusal::kNone && stood.type.value == kPenType &&
+                 stood.level == 1 && stood.construction.phase == core::ConstructionPhase::kNone,
+             "first free: the first pen placed stands at rung 1 the same hour");
+  failures +=
+      Expect(world.units.rows[core::FindRow(world.units, store)].stock[0] == 30 * kLogGrams &&
+                 world.ledger.current.built_in_by_type.empty(),
+             "first free: no log left the store and nothing went into the walls");
+  bool announced = false;
+  for (const core::SimEvent& event : world.step_events) {
+    announced =
+        announced || (event.kind == core::EventKind::kUnitBuilt && event.unit.value == pen.value);
+  }
+  failures += Expect(announced, "first free: the world is told a unit was built");
+  const core::OrderId second = Issue(world, BuildOrder(kPenType, 1200.0F, 1000.0F));
+  Run(*system, world, 0);
+  const core::UnitRow& site = world.units.rows.back();
+  failures += Expect(RefusalOf(world, second) == core::OrderRefusal::kNone && site.level == 0 &&
+                         site.construction.phase == core::ConstructionPhase::kMarked,
+                     "first free: the second pen is a marked site, built as any other");
+  // A type without the key stays a marked site on its first placement.
+  Issue(world, BuildOrder(kBarnType, 1500.0F, 1500.0F));
+  Run(*system, world, 0);
+  failures +=
+      Expect(world.units.rows.back().type.value == kBarnType && world.units.rows.back().level == 0,
+             "first free: a barn (first_free 0) is marked on its first placement");
+  return failures;
+}
+
 int TestRefusals(const core::ITableSet& tables) {
   int failures = 0;
   std::unique_ptr<core::IConstructionSystem> system =
@@ -1181,7 +1243,8 @@ class NoWearColumnTables final : public core::ITableSet {
                           // roster lacks refuses the whole config, and the
                           // refusal would be right.
                           {"well", "1", "1", "era", "0", ""},
-                          {"field_camp", "1", "1", "era", "1", "10"}}};
+                          {"field_camp", "1", "1", "era", "1", "10"},
+                          {"pen", "1", "1", "era", "1", "20"}}};
 };
 
 /// THE DEADLINE MUST AGREE WITH THE WORLD, and that is the only test of a
@@ -3239,6 +3302,7 @@ int main() {
   failures += TestTheSupplyOfAWorks(tables);
   failures += TestAnUpgradeHoldsItsRecipe(tables);
   failures += TestRefusals(tables);
+  failures += TestTheFirstYardIsFree(tables);
   failures += TestTheFieldCampStandsBesideTheFields(tables);
   failures += TestDemolition(tables);
   failures += TestTableLessWorld();

@@ -793,8 +793,15 @@ class LimitPolicy {
     }
     // Counting what is already on its way, so the cooldown does not buy the
     // same pair three times over while the first two are still coming.
+    // AND THE SIRES ON THEIR WAY (#714's pair, 12 October 2026): the sire
+    // ordered first was still coming when the second order was asked, so
+    // «sires == 0» held twice and the district brought two stallions - on
+    // the free yard of day 1 both orders went out in year 1, and the pair
+    // that was to begin a team could never foal. Until then the yard's own
+    // works spaced the two orders and the second found the stallion landed.
     for (const core::LivestockArrivalRow& coming : world.livestock_arrivals.rows) {
       adults += coming.kind.value == horse_kind_ ? coming.head_count : 0U;
+      sires += coming.kind.value == horse_kind_ && coming.male != 0 ? coming.head_count : 0U;
     }
     if (adults >= kTeamFloor) {
       return false;

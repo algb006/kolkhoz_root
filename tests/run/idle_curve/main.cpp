@@ -678,6 +678,12 @@ int main(int argc, char** argv) {
   std::uint32_t leave_requests = 0;
   std::uint32_t lodgings = 0;
   std::vector<std::size_t> population_by_year;
+  // --no-horses: the year the team stands again (two adults), whether any foal
+  // was ever seen, and whether the plough went out in a year after the team's
+  // return (#714's pair; boss, 12 October 2026, form (a)).
+  std::int32_t team_back_year = -1;
+  bool foal_seen = false;
+  bool ploughed_after_team = false;
   for (const core::FieldRow& field : world.State().fields.rows) {
     if (field.kind == core::LandKind::kArable && core::HasRotation(field) &&
         field.rotation_year0.value != core::kInvalidDefIdValue) {
@@ -857,6 +863,16 @@ int main(int argc, char** argv) {
         young += static_cast<std::uint32_t>(herd.newborn_count) + herd.juvenile_count;
       }
       std::cout << " | лошадей " << adults << "/" << sires << " жеребцов, молодняк " << young;
+      constexpr std::uint32_t kTeam = 2;
+      if (team_back_year < 0 && adults >= kTeam) {
+        team_back_year = static_cast<std::int32_t>(year + 1);
+      }
+      foal_seen = foal_seen || young > 0;
+      ploughed_after_team =
+          ploughed_after_team ||
+          (team_back_year > 0 &&
+           done.ledger.closed
+                   .work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kPlowing)] > 0.0F);
     }
     // THE YARD'S LOAD, which is the number the livestock window needs and
     // the one nobody has ever measured: how many head of the FARM's stock
@@ -1223,9 +1239,29 @@ int main(int argc, char** argv) {
               << "; на двенадцатом году взрослых лошадей " << adults << ", посеяно "
               << last.ledger.closed.area_sown_ha << " га, убрано "
               << last.ledger.closed.area_harvested_ha << " га\n";
-    failures += run::Expect(adults > 0,
-                            "a played village that lost its team gets one back: the district's "
-                            "horse_head lot is the design's own «страховка от тупика»");
+    // THE TEAM STANDS AGAIN WITHIN FOUR YEARS OF ITS LOSS (#714's pair; boss,
+    // 12 October 2026, form (a)). Until 0.37.238 this asked for adults alive
+    // in year 12, and that held by the purchase's DATE: the yard's paid works
+    // spaced the orders and the pair came in year 4 and was still alive at
+    // year 12; with the first yard free it comes in year 1 and ages out
+    // before year 12. Neither world ever saw a foal, so «alive at year 12»
+    // measured when the pair was bought, not whether the way out works. Four
+    // is the base's own year (0.37.237), a STUB: a slower door is a finding.
+    constexpr std::int32_t kTeamBackWithinYears = 4;
+    std::cout << "idle_curve: упряжка снова стоит с " << team_back_year
+              << "-го года (-1 = никогда), жеребята были: " << (foal_seen ? "да" : "нет") << '\n';
+    failures += run::Expect(team_back_year > 0 && team_back_year <= kTeamBackWithinYears,
+                            "a played village that lost its team gets one back within four years: "
+                            "the district's horse_head lot is the design's own «страховка от "
+                            "тупика»");
+    // AND THE TEAM BREEDS - not yet: foals come only under the stable's roof
+    // (livestock design §5, «жеребята — только под крышей конюшни и только от
+    // пары»), and this arm's chairman never finishes the stable's step.
+    failures += run::KnownGap(foal_seen,
+                              "the team bought back breeds: a foal within twelve years",
+                              foal_seen ? "a foal seen" : "no foal in twelve years",
+                              "boss, 12 October 2026, #714; closer: the run chairman builds the "
+                              "stable's warm step in this arm");
     // THE PLOUGH, ASKED BY ITS OWN DAYS AND NOT BY THE SOWN HECTARES (0.35.9).
     // The sown area was the proxy, and it also asks for seed: with the loan
     // withheld from a debtor who already owes a sowing (boss, boss-core-epoch1-5
@@ -1234,10 +1270,15 @@ int main(int argc, char** argv) {
     // here is the circle horse -> plough, so it is asked of the ploughing.
     const float ploughed =
         last.ledger.closed.work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kPlowing)];
-    std::cout << "idle_curve: на двенадцатом году вспашки " << ploughed << " чел-дн\n";
-    failures += run::Expect(ploughed > 0.0F,
-                            "and the plough goes out again: no horse, no ploughing, and the arable "
-                            "is where the circle closes");
+    std::cout << "idle_curve: на двенадцатом году вспашки " << ploughed
+              << " чел-дн; пахали после возвращения упряжки: "
+              << (ploughed_after_team ? "да" : "нет") << '\n';
+    // ASKED OF THE YEARS AFTER THE TEAM'S RETURN, not of year 12 (#714's pair,
+    // form (a)): a pair that ages out without a foal leaves year 12 without a
+    // plough in any world, and that is the gap above, not the circle.
+    failures += run::Expect(ploughed_after_team,
+                            "and the plough goes out again once the team is back: no horse, no "
+                            "ploughing, and the arable is where the circle closes");
     // AND THE RESCUE COSTS A SEASON, NOT THE CAMPAIGN. The chairman buys his
     // pair in the first days, the district takes its delivery days, and the
     // sowing window of that first year is gone — one stalled year, and the

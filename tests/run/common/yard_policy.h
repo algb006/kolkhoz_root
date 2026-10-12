@@ -167,7 +167,14 @@ class YardPolicy {
       return;
     }
     simulation.StageOrders(std::span<const core::OrderRow>(&order, 1), {});
-    cooldown_ = kCooldownDays;
+    // THE GROOM THE NEXT DAY, NOT THREE DAYS ON (#714's pair; boss, 12
+    // October 2026, the human: «логистика не запустится пока игрок не
+    // назначит конюха» - an optimal player appoints him at once): the first
+    // yard stands the hour its order lands (first_free, 0.37.238), so the
+    // wait meant for an order's answer only held the groom back - the horses
+    // came in on day 5 against the yard's day 1. A paid yard is marked by the
+    // same order and the next day starts it, which costs nothing either.
+    cooldown_ = order.kind == core::OrderKind::kBuildUnit ? 0 : kCooldownDays;
   }
 
  private:
