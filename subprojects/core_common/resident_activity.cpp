@@ -72,7 +72,12 @@ ResidentActivityState ActivityOfResident(const WorldState& world,
   Vec2 home{};
   const bool has_home = HomePositionOf(world, resident.family, home);
   Vec2 target{};
-  const bool assigned = resident.work.kind != WorkKind::kNone;
+  // RELEASED FOR THE DAY (#709; WorkAssignment::released_home): his herd's
+  // care was drained to nought and the world finished his work; with no clerk
+  // to re-place him he went home. Neither at work nor standing about - the
+  // remainder below, at home. STUB, named: his walk home is not drawn.
+  const bool released = resident.work.released_home != 0;
+  const bool assigned = resident.work.kind != WorkKind::kNone && !released;
   const bool has_target = assigned && WorkPlaceOf(world, resident.work, target);
   const float* seam = assigned ? WorkSeamOf(world, resident.work) : nullptr;
 
@@ -157,7 +162,8 @@ ResidentActivityState ActivityOfResident(const WorldState& world,
   // hand back a different truant after a save. `hours_away_today` and
   // `rest` are both saved, so this answer survives a load — and the census
   // probe is what says so rather than my saying it.
-  if (!assigned && resident.work.hours_away_today > 0.0F && resident.rest <= rules.walkoff_rest) {
+  if (!assigned && !released && resident.work.hours_away_today > 0.0F &&
+      resident.rest <= rules.walkoff_rest) {
     set(ResidentActivity::kTruant);
   }
   if (nothing_to_work_with && Inside(hour, starts, stops)) {
@@ -171,7 +177,7 @@ ResidentActivityState ActivityOfResident(const WorldState& world,
   // rule (labor_system.cpp, IdleReason::kDayOff), and a man at home on his
   // Sunday is not standing about — the idle count read the whole workforce
   // at noon on every day off (static review of 0.37.20).
-  if (!assigned && of_working_age && fit && Inside(hour, leaves, returns) &&
+  if (!assigned && !released && of_working_age && fit && Inside(hour, leaves, returns) &&
       !IsDayOffIn(world, world.calendar.day)) {
     set(ResidentActivity::kIdle);
   }

@@ -612,6 +612,12 @@ class LaborSystem final : public ILaborSystem {
         // reapers in July are the queue's choice of a day.
         float free_hands = 0.0F;
         for (std::uint32_t index = 0; index < candidates.size(); ++index) {
+          // The care's re-pricing (#709; care_reprice.h): marked whether the
+          // second pass placed him or left him free.
+          const bool moved_off_care =
+              index < diagnosis.moved_off_care.size() && diagnosis.moved_off_care[index] != 0;
+          current.residents.rows[candidates[index].resident_row].work.moved_off_care =
+              moved_off_care ? 1U : 0U;
           if (plan[index] == kNoJobAssigned) {
             free_hands += 1.0F;
             continue;
@@ -2296,6 +2302,19 @@ class LaborSystem final : public ILaborSystem {
         PayDay(current, current.residents.rows[row]);
         continue;
       }
+      // A HERD'S CARE DRAINED TO NOUGHT IS WORK FINISHED BY THE WORLD (#709;
+      // time design «Один работник — одна работа в день», the exception row;
+      // boss, 12 October 2026): his hands are released for the rest of the
+      // day. With no clerk in the core only the player re-places them, by an
+      // order; nothing automatic - he goes home, and the hour takes no more of
+      // him. What he did stands and is paid at the day's close. Until #709 he
+      // stood at the barn to the evening - 10 to 20 hands of seed 1936's cattle
+      // yard from noon to hour 17 while a ripe potato field had nobody.
+      if (kind == WorkKind::kHerdCare &&
+          (current.residents.rows[row].work.released_home != 0 || !(*seam > 0.0F))) {
+        current.residents.rows[row].work.released_home = 1U;
+        continue;
+      }
       // Asked of the ASSIGNMENT and not of the kind: a meadow's cut rides and
       // a strip's harvest walks, one kind between them (work_seam.h).
       // AND THE CARTING RIDES WHEN THERE IS A HORSE — the one question the
@@ -2416,6 +2435,11 @@ class LaborSystem final : public ILaborSystem {
       if (*seam < 0.0F) {
         *seam = 0.0F;  // the division above may leave a float's last digit
       }
+      // AND THE HAND WHOSE HOUR DRAINED A HERD'S CARE is released with it (#709;
+      // above): the rest of his day is not the barn's.
+      if (kind == WorkKind::kHerdCare && !(*seam > 0.0F)) {
+        resident.work.released_home = 1U;
+      }
       // WHOSE UNITS THEY WERE (#671's instrument; hauled_book.h): noted on the
       // load's task, split into grams by production's settle.
       if (kind == WorkKind::kHauling) {
@@ -2459,6 +2483,20 @@ class LaborSystem final : public ILaborSystem {
         SimEvent& event = EmitEvent(current, EventKind::kWalkOff, EventSeverity::kNotable);
         event.resident = current.residents.row_ids[row];
         PayDay(current, resident);
+      }
+    }
+    // AND EVERY HAND OF A CARE THE HOUR DRAINED, at the hour's end (#709): a
+    // hand earlier in the rows than the one whose hour drained it was asked
+    // while it still had work, and would stand at the barn to the next hour.
+    // The suite's first run of the release read 3 700 - 4 300 such hand-hours
+    // over thirty years: one hour per hand per drained care.
+    for (ResidentRow& resident : current.residents.rows) {
+      if (resident.work.kind != WorkKind::kHerdCare || resident.work.released_home != 0) {
+        continue;
+      }
+      const float* seam = WorkSeam(current, resident.work);
+      if (seam != nullptr && !(*seam > 0.0F)) {
+        resident.work.released_home = 1U;
       }
     }
   }

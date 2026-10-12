@@ -53,6 +53,20 @@ float OneWayHours(const AssignmentJob& job,
                   bool rides,
                   bool takes_horse);
 
+/// @brief The accountant's eye on one worker for one job: false when he is
+///        still busy, barred or out of reach (`refused_by_road` says the road
+///        rule alone turned him away); else his pick - the norm-days he would
+///        deliver today by the job's way (its `cart_out` and `harnessed` say
+///        whether he rides) and his score. Shared with the care's re-pricing
+///        (care_reprice.h; #709), so both price a hand by one measure.
+bool ConsiderCandidate(const AssignmentJob& job,
+                       std::uint32_t job_index,
+                       const AssignmentCandidate& candidate,
+                       std::uint32_t candidate_index,
+                       const AssignmentParams& params,
+                       RankedPick& pick,
+                       bool& refused_by_road);
+
 /// @brief Everyone still free who may and can reach this job today, best
 ///        first.
 /// @param result       The plan so far: kNoJobAssigned marks the free.

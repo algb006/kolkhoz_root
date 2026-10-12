@@ -128,9 +128,12 @@ UnitSignals DeriveUnitSignals(const BoundaryConfig& config, const WorldState& wo
       case WorkKind::kNone:
         break;
       case WorkKind::kHerdCare: {
+        // Released for the day (#709): he went home, the barn counts him no more.
         const std::uint32_t herd_row = FindRow(world.herds, resident.work.herd);
-        working +=
-            herd_row != kNoRow && world.herds.rows[herd_row].unit.value == unit.value ? 1U : 0U;
+        working += resident.work.released_home == 0 && herd_row != kNoRow &&
+                           world.herds.rows[herd_row].unit.value == unit.value
+                       ? 1U
+                       : 0U;
         break;
       }
       case WorkKind::kUnitWork:
@@ -249,7 +252,9 @@ ResidentWhereabouts DeriveWhereabouts(const BoundaryConfig& config,
     where.to = UnitPosition(world, where.unit);
     return where;
   }
-  const bool at_work = person.work.kind != WorkKind::kNone && in_shift;
+  // Released for the day (#709; WorkAssignment::released_home): at home.
+  const bool at_work =
+      person.work.kind != WorkKind::kNone && person.work.released_home == 0 && in_shift;
   if (!at_work) {
     where.place = Whereabouts::kAtHome;
     where.unit = house;

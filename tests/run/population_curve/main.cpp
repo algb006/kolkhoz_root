@@ -209,6 +209,9 @@ struct Trajectory {
   /// threshold high.
   float worst_season_variety = 0.0F;
   std::uint8_t variety_seasons_seen = 0;
+  /// Cows the frost killed in the open pen, every closed year summed
+  /// (YearLedger::herd_frozen; #712's standing gate).
+  std::uint64_t cattle_frozen = 0;
   /// The denominator beside the answer: how many units the village stands at
   /// the end, and how many of them have reached the level the transition
   /// asks. "Nought years open" says nothing about whether the shortfall is
@@ -713,6 +716,14 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
       out.highest_unit_level = std::max(out.highest_unit_level, unit.level);
     }
     out.worst_season_variety = state.ledger.closed.worst_season_variety;
+    // THE FROST'S TOLL ON THE COWS (#712): the closed year's, by the kind's key.
+    if (const core::ITable* const livestock = world.tables->FindTable("livestock")) {
+      const core::LivestockKindId cow =
+          core::DefIdFromRow<core::LivestockKindIdTag>(livestock->FindRowByKey("cow"));
+      if (cow.value < state.ledger.closed.herd_frozen.size()) {
+        out.cattle_frozen += static_cast<std::uint64_t>(state.ledger.closed.herd_frozen[cow.value]);
+      }
+    }
     // THE COUNT BESIDE THE NUMBER, because the block tests both and yesterday
     // I blamed the count from an armchair. Which of the two shuts the gate is
     // a measurement, not a derivation.
@@ -1311,17 +1322,47 @@ int main(int argc, char** argv) {
               ? condition
               : longest;
     }
-    late_holders += " seed " + std::to_string(kSeeds[walk_index]) + ": " +
-                    kConditionNames[longest] +
+    // THE DOOR'S DAY AND THE RESIDENTS' DAY FIRST (boss, 12 October 2026, #709):
+    // «late» is measured from the residents' condition, so a village that grew
+    // faster can read late with its door EARLIER than before - 1938 on #709
+    // opened y12 d3 against y13 d16 and still read late. Both days are said.
+    const auto year_day = [](std::int64_t day) {
+      return "y" + std::to_string((day / core::kDaysPerYear) + 1) + " d" +
+             std::to_string(day % core::kDaysPerYear);
+    };
+    late_holders += " seed " + std::to_string(kSeeds[walk_index]) + ": door " +
+                    year_day(walk.epoch2_day) + ", residents met " + year_day(residents_met) +
+                    "; held longest by " + kConditionNames[longest] +
                     std::to_string(walk.unmet_after_residents_days[longest]) +
                     " days unmet (every condition, days:" + hand + ");";
   }
   const std::string late_claim =
       "E3: no door opens more than a year after the residents' condition was first met — now " +
-      std::to_string(doors_late) +
-      (late_holders.empty() ? "" : " (held longest by:" + late_holders + ")");
+      std::to_string(doors_late) + (late_holders.empty() ? "" : " (" + late_holders + ")");
   failures += run::Expect(doors_late == 0, late_claim.c_str());
   failures += run::Expect(median_year14 <= 800, "and not exploding by year 14");
+  // A STANDING GATE, «no cow dies of cold» (#712; boss, 12 October 2026): the
+  // canon's warm rule went dead with the one-site queue (#595) and nothing
+  // shouted - econ counted 8 cows frozen in 4 villages on 0.37.235. Red on the
+  // next change that kills the rule. A KNOWN GAP until host's bot side lands
+  // (#710), which closes it; then the assertion is restored.
+  std::uint64_t cattle_frozen = 0;
+  std::string frozen_where;
+  for (std::size_t walk_index = 0; walk_index < walks.size(); ++walk_index) {
+    const std::uint64_t cows = walks[walk_index].cattle_frozen;
+    cattle_frozen += cows;
+    if (cows > 0) {
+      frozen_where +=
+          " seed " + std::to_string(walks[walk_index].seed) + ": " + std::to_string(cows) + ";";
+    }
+  }
+  failures += run::KnownGap(cattle_frozen == 0,
+                            "no cow of the canon dies of cold in the open pen",
+                            std::to_string(cattle_frozen) + " cows frozen in " +
+                                std::to_string(walks.size()) + " villages" +
+                                (frozen_where.empty() ? "" : " (" + frozen_where + ")"),
+                            "host #710: the run chairman's warm rule, dead since the one-site "
+                            "queue (#595)");
   failures += run::KnownGap(median_year33 >= 1150,
                             "and lands in the canon's order of magnitude by year 33",
                             std::to_string(median_year33) + " against 1150");

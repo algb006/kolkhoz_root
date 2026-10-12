@@ -257,15 +257,21 @@ void AgeAndRaise(const LogisticsConfig& config,
     if (task.base_level == LogisticsLevel::kUrgent) {
       level = LogisticsLevel::kUrgent;
     }
-    // A RAISED SITE'S SUPPLY IS AT LEVEL 0 (kRaiseSite, ConstructionState::
-    // raised; #595): the one order moves both halves of the works, the hands
-    // and the carts, and lowering it puts the task back at its own level.
-    if (task.load_kind == LogisticsLoadKind::kSiteSupply) {
-      const std::uint32_t unit_row = FindRow(current.units, task.unit);
-      if (unit_row != kNoRow && current.units.rows[unit_row].construction.raised != 0) {
-        level = LogisticsLevel::kUrgent;
-      }
-    }
+    // A RAISED SITE'S SUPPLY KEEPS ITS OWN LEVEL (#709's pair; boss, 12
+    // October 2026; transport design §12: a carter's request closes «на месте
+    // окна своего груза в общей очереди работ», a works' supply «на месте
+    // самой стройки… после открытого окна», and «Поднять в очереди» orders
+    // the sites AMONG THEMSELVES - «очередь — это порядок, а не запрет»).
+    // From 0.37.232 a raised site's supply was put at level 0, and the
+    // morning marks a load at level 0 urgent - a tier above every open
+    // window. With the run chairman's housing lever (host's pair, nine
+    // villages) the first year lost 35.8 t of 1936's potatoes to the snow
+    // at level 0 and 0.0 t at the task's own level; the morning's queue on
+    // days 37-41 showed the raised supply WITHOUT hands, so the path to the
+    // potatoes was not the placement's tier and was not traced. The raise
+    // now orders the sites only: first among the site supplies in the plan
+    // (SiteSupplyOrder) and in the placement's tier (AssignmentJob::raised,
+    // SiteSupplyRank).
     if (level == LogisticsLevel::kUrgent && was != LogisticsLevel::kUrgent) {
       task.urgent_since = now;
     }

@@ -27,6 +27,7 @@
 #include "../../common/fake_tables.h"
 #include "assignment.h"
 #include "brigade_cart_checks.h"
+#include "care_reprice_checks.h"
 #include "cart_load_checks.h"
 #include "cart_passengers_checks.h"
 #include "carter_on_foot_checks.h"
@@ -1560,6 +1561,21 @@ int TestTheRaisedSiteGoesFirstInItsTier() {
   failures += Expect(on_job({first, second, open_window}, 2) == candidates.size(),
                      "raised site: and it does not leave its tier - an open window above it "
                      "keeps the crew");
+  // AND ITS SUPPLY NEITHER (#709's pair; boss, 12 October 2026): a raised
+  // site's carting is the works' tier, below a field in its window - the
+  // logistics task keeps its own level (core_logistics' check), so nothing
+  // marks the carting an urgent load. 0.37.232 lifted it to level 0, above
+  // every window.
+  core::AssignmentJob supply = FieldJob(core::WorkKind::kHauling, 4, origin, 40.0F, 0);
+  supply.field = core::FieldId{};
+  supply.unit = core::UnitId{4};
+  supply.supplies_works = true;
+  supply.raised = true;
+  supply.window = core::DeadlineInDays(2);
+  core::AssignmentJob potatoes = FieldJob(core::WorkKind::kHarvest, 5, origin, 40.0F, 6);
+  failures += Expect(on_job({supply, potatoes}, 1) == candidates.size(),
+                     "raised site: its supply stands below a harvest in its window - the "
+                     "harvest keeps the crew");
   return failures;
 }
 
@@ -4646,6 +4662,7 @@ int main() {
   failures += CheckTheCartOfTheCompressedYear();
   failures += CheckTheHayCartsRank();
   failures += CheckThePeoplesCart();
+  failures += CheckTheCareReprice();
   failures += CheckTheGroomsPlan();
   failures += TestPlacementDiagnosis();
   failures += TestRoadLimit();

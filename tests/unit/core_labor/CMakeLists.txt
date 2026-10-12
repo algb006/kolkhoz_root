@@ -12,6 +12,7 @@ kolkhoz_add_unit_test(core_labor
     cart_load_checks.cpp
     hay_cart_rank_checks.cpp
     people_cart_checks.cpp
+    care_reprice_checks.cpp
     groom_plan_checks.cpp)
 
 # The placement algorithm is an internal seam of the module (assignment.h);

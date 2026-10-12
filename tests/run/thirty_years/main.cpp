@@ -44,6 +44,7 @@
 #include "../common/run_harness.h"
 #include "../common/sawmill_policy.h"
 #include "../common/school_policy.h"
+#include "../common/seam_zero_tally.h"
 #include "../common/session_cost.h"
 #include "../common/sowing_policy.h"
 #include "../common/tick_cost.h"
@@ -640,7 +641,8 @@ int main(int argc, char** argv) {
   run::DepartureTally departures;
   // What a tick costs as the village grows, and only when asked for it.
   run::TickCost tick_cost;
-  run::ChairmanClock chairman;  // the run's chairman's time, beside the gate (#700)
+  run::ChairmanClock chairman;   // the run's chairman's time, beside the gate (#700)
+  run::SeamZeroTally seam_zero;  // hands on a drained seam, by kind (#709)
   core::EnableStepTiming(g_tick_cost);
   // Every gram of a harvested resource on a line, checked at every year's
   // turn (boss seq 162, 165; book_balance.h).
@@ -674,6 +676,7 @@ int main(int argc, char** argv) {
         world.simulation->AdvanceStep();
         year_seconds +=
             std::chrono::duration<double>(std::chrono::steady_clock::now() - step_began).count();
+        seam_zero.CountStep(world.State());  // #709's kin and econ's instrument
         if (g_tick_cost) {
           // Right after the step and before anything else reads the world:
           // the timing the clock holds is that step's.
@@ -744,6 +747,7 @@ int main(int argc, char** argv) {
     harvest_waited_days += harvest_waited_days_this_year;
     harvest_waited_worst = std::max(harvest_waited_worst, harvest_waited_days_this_year);
     chairman.CloseYear(year + 1);
+    seam_zero.CloseYear("thirty_years", year + 1);
     const double day_seconds = year_seconds / static_cast<double>(core::kDaysPerYear);
     simulated_seconds += year_seconds;
     if (day_seconds > costliest_year_day_seconds) {
@@ -998,6 +1002,17 @@ int main(int argc, char** argv) {
             << simulated_seconds / static_cast<double>(g_years * core::kDaysPerYear)
             << " s/day against a budget of " << kDayBudgetSeconds << " s\n";
   chairman.Report("thirty_years");
+  // ECON'S INSTRUMENT (#709): «hands on kHerdCare after care_days_remaining =
+  // 0, hours». A drained care releases its hands since #709; one hour above
+  // nought SHOUTS - the barn holding the potato field's crew again.
+  const std::uint64_t care_idle_hours = seam_zero.HerdCareHours();
+  std::cout << "thirty_years: hand-hours on a drained herd care over the run " << care_idle_hours
+            << (care_idle_hours > 0 ? " - ABOVE NOUGHT: hands held at a barn with nothing to do"
+                                    : "")
+            << '\n';
+  failures +=
+      run::Expect(care_idle_hours == 0,
+                  "no hand stands at a herd's care once it is drained (econ's instrument; #709)");
   // -- THE PHASE GATE, HALF THREE: the game's day, through the session -------
   // THE SAME DOOR AS THE RELEASE (#700; boss, 12 October 2026): the session
   // refreshes the alarms, the porters, the stock lights and the forecast after

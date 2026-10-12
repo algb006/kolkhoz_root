@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "care_reprice.h"
 #include "core_common/geometry.h"
 #include "people_cart.h"
 #include "placement_rank.h"
@@ -380,10 +381,7 @@ float OneWayHours(const AssignmentJob& job,
   return TravelHours(candidate.home, job.position, hours_per_km);
 }
 
-namespace {
-
-/// The accountant's eye on one worker for one job: nothing (still busy,
-/// barred or out of reach) or a ranked pick.
+// The accountant's eye on one worker for one job (placement_rank.h).
 bool ConsiderCandidate(const AssignmentJob& job,
                        std::uint32_t job_index,
                        const AssignmentCandidate& candidate,
@@ -446,8 +444,6 @@ bool ConsiderCandidate(const AssignmentJob& job,
   };
   return true;
 }
-
-}  // namespace
 
 // Everyone still free who may and can reach this job today (placement_rank.h).
 std::vector<RankedPick> RankCandidates(const AssignmentJob& job,
@@ -618,7 +614,14 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
   // Per job: the norm-days its crew is expected to deliver, for the last pass.
   std::vector<float> covered(jobs.size(), 0.0F);
 
-  for (const std::uint32_t job_index : order) {
+  // ONE JOB'S FILL, for the main pass and for the morning's second pass over
+  // the hands the care's re-pricing released (#709; boss, 12 October 2026:
+  // «Пока не приступили — можно менять», time design). `only`: nullptr in the
+  // main pass; in the second, the hands that may be placed (the released).
+  // The second pass takes no new brigade cart or mower: the horses were dealt
+  // by the main pass and the people's carts, and a job's crew joins as it is.
+  const auto fill_job = [&](std::uint32_t job_index, const std::vector<std::uint8_t>* only) {
+    const bool second_pass = only != nullptr;
     const AssignmentJob& job = jobs[job_index];
     // A harnessed job takes a horse out of the day's pool exactly as
     // ploughing does — which is what assignment.h has promised since the
@@ -642,16 +645,20 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
     // lay a day with 45 hands idle, and a December potato load went to the
     // snow. A cart with no horse is a back.
     if (StopsWithoutHorse(job, params) && horses_left == 0) {
-      if (job.work_days_remaining > 0.0F) {
+      if (job.work_days_remaining > 0.0F && !second_pass) {
         shortfall[job_index] = JobShortfall::kNoHorse;
       }
-      continue;
+      return;
     }
     // Fill until today's demand is covered: no more hands than the day can
     // consume — the surplus idles and earns nothing (digest 2026-08-29
-    // §2.4: a trudoden is a work norm, not attendance).
-    float expected_output = 0.0F;
+    // §2.4: a trudoden is a work norm, not attendance). From what the job
+    // holds already: nought in the main pass, its crew in the second.
+    float expected_output = covered[job_index];
     std::uint32_t placed = 0;
+    if (second_pass) {
+      placed = static_cast<std::uint32_t>(std::ranges::count(result, job_index));
+    }
     std::uint32_t road_refused = 0;
     // THE BRIGADE'S CART (AssignmentJob::brigade_cart; 0.37.89): one horse of
     // the pool for the field, if one is left when the queue comes to it — and
@@ -664,15 +671,18 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
     // the pool before anybody was placed — a meadow nobody reached held one —
     // and with none left the mowers were judged and sent by the ride all the
     // same.
-    const bool takes_mower = meadow_cut && horses_left > 0;
-    const bool takes_cart = (job.brigade_cart && !job.cart_out && horses_left > 0) || takes_mower;
+    const bool takes_mower = meadow_cut && horses_left > 0 && !second_pass;
+    const bool takes_cart =
+        (job.brigade_cart && !job.cart_out && horses_left > 0 && !second_pass) || takes_mower;
     AssignmentJob judged = job;
-    judged.cart_out = job.cart_out || takes_cart;
-    if (meadow_cut && !takes_mower) {
+    judged.cart_out = job.cart_out || takes_cart || (second_pass && cart_today[job_index] != 0);
+    if (meadow_cut && !takes_mower && (!second_pass || mowers_walk[job_index] != 0)) {
       judged.harnessed = false;
       mowers_walk[job_index] = 1U;
     }
-    cart_today[job_index] = judged.cart_out ? 1U : 0U;
+    if (!second_pass) {
+      cart_today[job_index] = judged.cart_out ? 1U : 0U;
+    }
     const std::vector<RankedPick> picks =
         RankCandidates(judged, job_index, candidates, result, params, road_refused);
     // THE JOB THE ROAD STOPPED (econ, boss-econ-roads-balance [4] item 5б):
@@ -680,7 +690,7 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
     // road rule alone. A job nobody free could take for other reasons —
     // every hand already placed, a horse lock — is not the road's.
     if (road_blocked != nullptr && picks.empty() && road_refused > 0 &&
-        job.work_days_remaining > 0.0F) {
+        job.work_days_remaining > 0.0F && !second_pass) {
       (*road_blocked)[job_index] = 1U;
     }
     // What stopped the filling, for the diagnosis; and the carters with no
@@ -690,6 +700,9 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
     for (const RankedPick& pick : picks) {
       if (expected_output >= job.work_days_remaining) {
         break;
+      }
+      if (second_pass && (*only)[pick.candidate_index] == 0) {
+        continue;  // the second pass offers the released alone
       }
       // The job's own ceiling, where it has one: a build class's brigade
       // caps a site regardless of how much work is left on it.
@@ -757,6 +770,14 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
       ++placed;
     }
     covered[job_index] = expected_output;
+    if (second_pass) {
+      // The second pass only closes a shortfall the main pass wrote; it never
+      // writes a new reason (the main pass's stands for the job).
+      if (expected_output >= job.work_days_remaining) {
+        shortfall[job_index].reset();
+      }
+      return;
+    }
     if (expected_output < job.work_days_remaining) {
       // THE WAY TURNED EVERYONE AWAY: nobody placed, and every free hand
       // asked was refused by the road rule or, a carter with no horse, by
@@ -773,6 +794,9 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
         shortfall[job_index] = JobShortfall::kNoHands;
       }
     }
+  };
+  for (const std::uint32_t job_index : order) {
+    fill_job(job_index, nullptr);
   }
 
   // THE PEOPLE'S CARTS, from the horses the queue left (A3; assignment.h).
@@ -786,6 +810,28 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
                                    .horses_left = &horses_left,
                                    .rides_horse = rides_horse,
                                    .rides_cart_with = rides_cart_with});
+
+  // THE CARE PRICED BY THE WAY ITS HANDS TRAVEL, AND THE SURPLUS PLACED AGAIN
+  // (#709; care_reprice.h): the hands the carts now carry made a care's crew
+  // larger than its demand; those beyond it come off and go through the
+  // morning queue once more, in its order, the released alone.
+  std::vector<std::uint8_t> released(candidates.size(), 0U);
+  const std::uint32_t moved = RepriceCare(CareRepricePlan{.jobs = &jobs,
+                                                          .candidates = &candidates,
+                                                          .params = &params,
+                                                          .result = &result,
+                                                          .covered = &covered,
+                                                          .cart_today = &cart_today,
+                                                          .rides_horse = rides_horse,
+                                                          .rides_cart_with = rides_cart_with,
+                                                          .released = &released});
+  if (moved > 0) {
+    for (const std::uint32_t job_index : order) {
+      if (covered[job_index] < jobs[job_index].work_days_remaining) {
+        fill_job(job_index, &released);
+      }
+    }
+  }
 
   // THE LAST PASS: THE HANDS LEFT WITH NO WORK CARRY ON THEIR BACKS
   // (AssignmentParams::walker_share_of_cart_day; 0.37.105). Only while the
@@ -844,6 +890,7 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
   if (diagnosis != nullptr) {
     diagnosis->shortfall = shortfall;
     diagnosis->idle.assign(candidates.size(), std::nullopt);
+    diagnosis->moved_off_care = released;
     // Each idle person asked of every job left short, the first reason in
     // IdleReason's order kept: a horse missing outranks a full brigade,
     // which outranks his road, and so on — EXCEPT kUnexplained, which

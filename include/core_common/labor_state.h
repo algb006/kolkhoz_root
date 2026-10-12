@@ -344,6 +344,19 @@ struct WorkAssignment {
   /// when he walks home or rides his own horse. Save 153. The layer reads it
   /// to seat him on that cart in the evening.
   ResidentId rides_home_with;
+
+  /// 1 when this morning's care re-pricing took him off a herd's care and the
+  /// morning's second pass placed him elsewhere or left him free (#709;
+  /// core_labor/care_reprice.h). For the day; save 156.
+  std::uint8_t moved_off_care = 0;
+
+  /// 1 when his herd's care was drained to nought during the day: the work is
+  /// finished by the world (time design «Один работник — одна работа в день»,
+  /// the exception row) and he is released for the rest of the day. With no
+  /// clerk in the core only the player re-places him, by an order; nothing
+  /// automatic - he goes home (#709; boss, 12 October 2026). The labour hour
+  /// takes no more hours of him; his day's pay stands. For the day; save 156.
+  std::uint8_t released_home = 0;
 };
 
 }  // namespace core

@@ -439,6 +439,11 @@ struct PlacementDiagnosis {
   /// behind another job's reason); kWorkCovered when no job was left short.
   /// Nothing for the placed.
   std::vector<std::optional<IdleReason>> idle;
+
+  /// Per candidate: 1 for a hand the care's re-pricing took off a herd's care
+  /// this morning (care_reprice.h; #709) - placed again by the second pass or
+  /// left free. The caller marks the day's assignment by it.
+  std::vector<std::uint8_t> moved_off_care;
 };
 
 /// @brief Norm-days ONE hand is expected to deliver on `job` today: the mean,

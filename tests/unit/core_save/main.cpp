@@ -248,6 +248,9 @@ core::WorldState MakeWorld() {
   // Save 132: the cart he rides — the first resident's id, off its invalid
   // default, so a codec that drops it cannot round-trip clean.
   second.work.rides_cart_of = core::ResidentId{1};
+  // Save 156 (#709): the two day flags, each off its nought.
+  second.work.moved_off_care = 1;
+  second.work.released_home = 1;
   // Save 138: he waits for that cart at a point of its way — every field of
   // the wait off its default, last_polled apart from since.
   // Save 139: its due tick apart from since, last_polled and the default (the
@@ -1729,7 +1732,8 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // the passenger's term set off their defaults.
     // Save 153 (0.37.227, F3's contract): +8 a resident — travel_home_hours
     // and rides_home_with; predicted 505 -> 521 before the build, held.
-    {"residents", 521, 0x4aa1c071b94e47beULL},
+    // Save 156 (#709): +2 a resident — the work's two day flags; 521 -> 525.
+    {"residents", 525, 0x441759c5f8dd30b8ULL},
     // 2026-09-18, save 57: +2 — ration_granted, one byte per family of two.
     // Save 60: +2 — a yard's dry months, one byte per family of two.
     // Save 65: families +8 (overwork_penalty, two yards), fields +6 (the avral's
@@ -2830,6 +2834,10 @@ int main() {
                      "own-carts lot with its carting seam (save 98)");
   failures += Expect(loaded.residents.rows[1].work.limit_delivery.value == 7,
                      "a carter's district lot comes back with his work (save 98)");
+  failures += Expect(loaded.residents.rows[1].work.moved_off_care == 1 &&
+                         loaded.residents.rows[1].work.released_home == 1 &&
+                         loaded.residents.rows[0].work.released_home == 0,
+                     "the work's two day flags come back, set and unset apart (save 156)");
   failures += Expect(loaded.residents.rows[1].work.rides_cart_of.value == 1,
                      "the cart a resident rides comes back with his work (save 132)");
   failures += Expect(loaded.specialist_arrivals.rows.size() == 1 &&

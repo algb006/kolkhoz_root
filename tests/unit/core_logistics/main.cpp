@@ -256,6 +256,15 @@ int TestTheSupplyOfAWorks() {
                          supply_task()->level == core::LogisticsLevel::kTerm,
                      "supply: a pit's dig goes by the round beside a works whose own task is "
                      "due by a date");
+  // A RAISED SITE NEVER OUTRANKS A FIELD IN ITS WINDOW (#709's pair; boss, 12
+  // October 2026; transport §12): «Поднять в очереди» orders the sites among
+  // themselves, and its supply keeps its own level - not level 0, which the
+  // morning reads as an urgent load above every window (0.37.232 put it there).
+  world.units.rows[0].construction.raised = 1;
+  core::AgeAndRaise(config, world, 3, 3 * core::kTicksPerDay, count);
+  failures +=
+      Expect(supply_task() != nullptr && supply_task()->level == core::LogisticsLevel::kTerm,
+             "supply: a raised works' task keeps its own level, not level 0");
   return failures;
 }
 

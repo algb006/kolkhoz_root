@@ -10,6 +10,7 @@ kolkhoz_add_module(core_labor
     labor_day.cpp
     labor_system.cpp
     people_cart.cpp
+    care_reprice.cpp
     posts.cpp
     rush.cpp
     work_orders.cpp)
