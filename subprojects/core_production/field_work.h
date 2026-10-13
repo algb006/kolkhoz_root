@@ -207,11 +207,29 @@ void RunMeadow(const ProductionConfig& config,
                FieldRow& field,
                std::uint8_t month);
 
+/// @brief THE EVENING THE HAYMAKING ENDS (#793, 0.37.244; farming design, the
+///        reference year; boss, 13 October 2026): the evening of the growing
+///        season's last day (ProductionConfig::growing_season_last_day) and
+///        every evening after it, or - past the mowing's own months - any
+///        evening snow lies on the ground (WeatherState::snow_cover_days),
+///        whichever comes first. ONE HOME for «when the cut is over»: the
+///        closing below asks it; the elder's advice kMeadowUncutBeforeSnow
+///        warns a month ahead of the climate's early edge of that same snow
+///        (ProductionConfig::early_snow_last_day, never past the season's
+///        last day); the hay's forecast promises the cut only inside the
+///        mowing's months (herd_forecast.cpp, HayCutEndMonth) - an earlier
+///        end, so it promises nothing this rule closes.
+/// @return true on an evening the cut must not go on tomorrow.
+bool MeadowCutEndsTonight(const ProductionConfig& config, const WorldState& world);
+
 /// @brief A MEADOW DOES NOT WINTER IN ITS CUT (the harvest rule 3, part А;
-///        boss, econ-boss-hay-term-2026-10-01 [2]; 0.37.92): on the year's
-///        last evening every meadow still being mown is closed — the day's
-///        mown share is laid first, what is mown is in the book, the rest
-///        stands uncut and the meadow is grass again till its month.
+///        boss, econ-boss-hay-term-2026-10-01 [2]; 0.37.92) - AND SINCE
+///        0.37.244 DOES NOT OUTLAST ITS SEASON (#793): on an evening the
+///        haymaking ends (MeadowCutEndsTonight; until 0.37.244 the year's
+///        last evening alone) every meadow still being mown is closed — the
+///        day's mown share is laid first, what is mown is in the book, the
+///        rest stands uncut, is lost and is never laid, and the meadow is
+///        grass again till its month.
 ///
 /// WHY AT THE EVENING AND NOT ON THE MORNING AFTER: the day's list is
 /// written before the fields run, so a meadow closed in the morning has its

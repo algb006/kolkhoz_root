@@ -793,6 +793,12 @@ void CollectMeadowAdvice(const ProductionConfig& config,
   // early_snow_last_day, read off the generator): the edge is the last day
   // that counts, the snow's own day is the next. Until then world_params
   // `gather_alarm_snow_day`, the same day read by hand.
+  // THE SAME END THE CUT CLOSES BY (#793, 0.37.244; field_work.h,
+  // MeadowCutEndsTonight): the haymaking is over on the first evening snow
+  // lies, never later than the season's last day - and this is the climate's
+  // early edge of that snow, never past that day. The advice names what the
+  // closing will lose; until 0.37.244 nothing was lost, the cut ran to 31
+  // December, and the advice warned of an edge no rule kept.
   const float day_of_year = static_cast<float>(world.calendar.day % kDaysPerYear);
   const float snow_day = static_cast<float>(config.early_snow_last_day) + 1.0F;
   if (day_of_year < snow_day - static_cast<float>(kDaysPerMonth) || day_of_year >= snow_day) {

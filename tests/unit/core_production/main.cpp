@@ -4946,6 +4946,62 @@ int CheckTheMeadowLaysItsHayAsItIsMown() {
                            evening.fields.rows[1].last_mown_day == core::FieldRow{}.last_mown_day,
                        "meadow's last evening: a meadow no scythe touched is closed with nothing "
                        "booked and no day of a cut");
+    // THE HAYMAKING ENDS WITH THE SEASON OR THE FIRST LYING SNOW (#793,
+    // 0.37.244). By hand, the season's last day set to day 42: the evening
+    // before it with bare ground the cut is open; that evening it is closed,
+    // the half mown in the book and the rest lost; snow lying on an August
+    // evening closes it too; snow lying inside the mowing's own months does
+    // not; and a closed cut is not offered again that year.
+    {
+      core::ProductionConfig season_config = config;
+      season_config.growing_season_last_day = 42;
+      const auto on_evening = [&](std::uint32_t day, std::uint16_t snow_days) {
+        core::WorldState autumn;
+        autumn.calendar.tick = day * core::kTicksPerDay;
+        core::RefreshCalendarCaches(autumn.calendar);
+        autumn.weather.snow_cover_days = snow_days;
+        core::FieldRow untouched_meadow = meadow;
+        untouched_meadow.work_days_remaining = total_days;
+        core::AppendRow(autumn.fields, meadow);
+        core::AppendRow(autumn.fields, untouched_meadow);
+        core::CloseMeadowCutsAtSeasonsEnd(season_config, autumn);
+        return autumn;
+      };
+      const core::WorldState before = on_evening(41, 0);
+      failures +=
+          Expect(before.fields.rows[0].phase == core::FieldPhase::kHarvest &&
+                     hay_booked(before) == 0 && !core::MeadowCutEndsTonight(season_config, before),
+                 "meadow's season: the evening before the season's last day, bare ground - "
+                 "the cut is open");
+      const core::WorldState last = on_evening(42, 0);
+      failures +=
+          Expect(hay_booked(last) == season / 2 &&
+                     last.fields.rows[0].phase == core::FieldPhase::kGrowing &&
+                     last.fields.rows[0].work_days_remaining == 0.0F &&
+                     last.fields.rows[0].last_mown_day == last.calendar.day &&
+                     last.fields.rows[1].phase == core::FieldPhase::kGrowing &&
+                     last.fields.rows[1].last_mown_day == core::FieldRow{}.last_mown_day,
+                 "meadow's season: on the season's last evening the half mown is in the "
+                 "book, the rest is lost, and a meadow no scythe touched has no day of a cut");
+      const core::WorldState after = on_evening(45, 0);
+      failures += Expect(after.fields.rows[0].phase == core::FieldPhase::kGrowing,
+                         "meadow's season: and on every evening after it");
+      const core::WorldState august_snow = on_evening(30, 1);
+      failures += Expect(hay_booked(august_snow) == season / 2 &&
+                             august_snow.fields.rows[0].phase == core::FieldPhase::kGrowing &&
+                             august_snow.fields.rows[1].phase == core::FieldPhase::kGrowing,
+                         "meadow's season: snow lying on an August evening ends the haymaking");
+      const core::WorldState july_snow = on_evening(26, 1);
+      failures += Expect(july_snow.fields.rows[0].phase == core::FieldPhase::kHarvest &&
+                             hay_booked(july_snow) == 0,
+                         "meadow's season: snow inside the mowing's own months ends nothing");
+      // Closed, the meadow is not opened again outside the mowing's months.
+      core::WorldState closed = on_evening(42, 0);
+      core::RunMeadow(season_config, closed, closed.fields.rows[1], 10);
+      failures += Expect(closed.fields.rows[1].phase == core::FieldPhase::kGrowing,
+                         "meadow's season: a cut closed by the season is not opened again in "
+                         "November");
+    }
     // THE BACKSTOP: a world that woke past that evening with a meadow still
     // in last year's cut. On the opening day it is closed and opened anew —
     // the whole season's work ahead, nothing of last year's laid twice.

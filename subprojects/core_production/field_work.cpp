@@ -941,14 +941,33 @@ void RunMeadow(const ProductionConfig& config,
   }
 }
 
+bool MeadowCutEndsTonight(const ProductionConfig& config, const WorldState& world) {
+  const std::uint32_t day_of_year = world.calendar.day % kDaysPerYear;
+  if (day_of_year >= config.growing_season_last_day) {
+    return true;
+  }
+  // The first lying snow - past the mowing's own months only: a June hail
+  // that whitens the ground for a morning ends no haymaking, and a cut closed
+  // inside its months would be opened again the next day (RunMeadow).
+  const auto month = static_cast<std::uint8_t>(world.calendar.date.month);
+  return month > config.farming.meadow_cut_month_end && world.weather.snow_cover_days > 0;
+}
+
 void CloseMeadowCutsAtSeasonsEnd(const ProductionConfig& config, WorldState& current) {
   // THE YEAR'S LAST EVENING: the grass of a year is that year's hay. Until
   // 0.37.93 a meadow not mown through stayed in its cut over the winter, and
   // the village mowed LAST YEAR'S grass in January and February — 1936, year
   // 2 of the canon: 107 hand-days in January for 13 norm-days, and 463 t
   // booked in a year whose meadows give 415.
-  const std::uint32_t tomorrow = (current.calendar.day + 1U) % kDaysPerYear;
-  if (tomorrow != 0U) {
+  //
+  // AND SINCE 0.37.244 THE SEASON'S END, NOT THE YEAR'S (#793; boss, 13 October
+  // 2026, on host's print): closed on 31 December alone, the cut stayed a job
+  // from August to the year's end - on the windowless tier, ahead of every
+  // building site by its kind - and the village mowed under lying snow: from
+  // day 43 of year 1 every hand on kHarvest stood on a meadow, 33-108 a noon
+  // over the canon's nine villages at -1 to -6.5 C, and that hay was laid at
+  // June's weight. The grass of a year is that SEASON's hay.
+  if (!MeadowCutEndsTonight(config, current)) {
     return;
   }
   for (FieldRow& field : current.fields.rows) {
