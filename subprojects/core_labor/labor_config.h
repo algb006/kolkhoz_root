@@ -44,6 +44,7 @@
 #include "core_common/quantities.h"
 #include "core_common/rain_stops_work.h"
 #include "core_common/resident_state.h"
+#include "core_common/site_supply_floor.h"
 
 namespace core {
 
@@ -501,6 +502,11 @@ struct LaborConfig {
   /// same reading production and logistics hold. Until 0.37.240 a float
   /// here, labor.csv carry_kg_adult alone.
   PorterRules porter;
+
+  /// The floor under a works' supply (#734; core_common/site_supply_floor.h;
+  /// logistics.csv `site_supply_floor_*`, core_catalog/supply_floor_catalog.h)
+  /// - the same reading logistics' lamp holds.
+  SupplyFloorRules supply_floor;
 
   /// labor.csv `walker_min_trips_per_day` (0.37.109; boss, 2 October 2026):
   /// a carrier on foot is sent to a cart load only where the STANDARD day

@@ -897,8 +897,17 @@ enum class OrderKind : std::uint8_t {
   /// The PLAYER manages TASKS and the groom the EXECUTION (the human, 3
   /// October 2026): which cart, which driver, which road is not an order.
   ///
+  /// «ВАЖНЕЕ ПОЛЕВЫХ РАБОТ» (#734, 0.37.243; transport design «Пол подвоза»):
+  /// on a works' supply (a kSiteSupply task) `enable` 1 sets the task's
+  /// switch (LogisticsTaskRow::over_fields) and 0 clears it, with the level
+  /// taken as above: the supply's job then stands ahead of every job with a
+  /// window whole, behind the loads at level 0 - the door kSiteSupplyWaits'
+  /// advice names. `enable` 1 on any other load is refused kRuleForbids;
+  /// `enable` over 1 by shape.
+  ///
   /// Refusals: kNoSuchSubject (no such task — carted and gone), kRuleForbids
-  /// (the task stands at that level as its own already). Seam key proposed:
+  /// (the task stands at that level, and that switch, as its own already).
+  /// Seam key proposed:
   /// `set_logistics_level`. Consumer: core_logistics since 0.37.188
   /// (logistics_system.cpp, SetTaskLevel); the contract (0.37.187) named the
   /// first refusal kNotFound, a value OrderRefusal has not.

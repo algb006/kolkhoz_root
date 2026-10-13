@@ -143,6 +143,15 @@ struct LogisticsTaskRow {
   /// of years 1, 4 and 5 with no event of a wait).
   std::uint16_t unserved_light_hours = 0;
 
+  /// «ВАЖНЕЕ ПОЛЕВЫХ РАБОТ» (#734, save 158; transport design «Пол подвоза»):
+  /// the chairman's switch on a works' supply (kSiteSupply alone) - its job
+  /// stands ahead of every job with a window WHOLE, behind the loads at level
+  /// 0, not for the floor's share (core_common/site_supply_floor.h). Written
+  /// by kSetLogisticsLevel (`enable`, order_state.h); gone with the task when
+  /// the recipe is on the site - a task is its load's, and a works given more
+  /// later starts a plain one. Sits in the padding after the lamp's clock.
+  bool over_fields = false;
+
   /// WHO DRAINED THE LOAD'S SEAM since its last settle (#671's instrument;
   /// save 155): the seam units carriers on foot and carts took off it, added
   /// by the labour hour as it drains (hauled_book.h, NoteHaulDrain) and spent

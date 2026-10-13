@@ -39,6 +39,7 @@
 #include "social_objects_policy.h"
 #include "stand_renewal_policy.h"
 #include "suggested_roads_policy.h"
+#include "supply_policy.h"
 #include "transition_policy.h"
 #include "upgrade_policy.h"
 #include "watchman_policy.h"
@@ -65,6 +66,7 @@ class BuildingChairman {
         upgrades(tables),
         watchman(tables),
         insulation(tables),
+        supply(tables),
         digging(tables),
         roads(tables),
         transition(tables) {
@@ -215,6 +217,7 @@ class BuildingChairman {
     UpgradePolicy::Declare(run_name);
     WatchmanPolicy::Declare(run_name);
     InsulationPolicy::Declare(run_name);
+    SupplyPolicy::Declare(run_name);
     ExtractionPolicy::Declare(run_name);
     SuggestedRoadsPolicy::Declare(run_name);
     TransitionPolicy::Declare(run_name);
@@ -291,6 +294,8 @@ class BuildingChairman {
     }
     watchman.RunDay(simulation);
     insulation.RunDay(simulation);
+    // «Важнее полевых работ» for a supply the floor does not reach (#734).
+    supply.RunDay(simulation);
     digging.RunDay(simulation);
     // The elder's suggested roads with the first new building beside each
     // (suggested_roads_policy.h, #423).
@@ -328,6 +333,7 @@ class BuildingChairman {
   UpgradePolicy upgrades;
   WatchmanPolicy watchman;
   InsulationPolicy insulation;
+  SupplyPolicy supply;
   ExtractionPolicy digging;
   SuggestedRoadsPolicy roads;
   TransitionPolicy transition;

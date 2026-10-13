@@ -22,4 +22,10 @@ int CheckTheSupplyOfAWorksIsCarted();
 /// @return The number of failed assertions; each prints a FAIL line.
 int CheckTheHandSupplyGoesOneResourceATrip();
 
+/// @brief The floor's memory (#734; ConstructionState::supply_idle_days): a
+///        working evening with nothing landed counts, a day off and a pause
+///        neither count nor reset, a day grams landed starts from nought.
+/// @return The number of failed assertions; each prints a FAIL line.
+int CheckTheSupplyCountsItsIdleDays();
+
 #endif  // TESTS_UNIT_CORE_PRODUCTION_SITE_SUPPLY_CHECKS_H_

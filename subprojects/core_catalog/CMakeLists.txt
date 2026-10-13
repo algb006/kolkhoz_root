@@ -26,6 +26,7 @@ kolkhoz_add_module(core_catalog
     road_rules_catalog.cpp
     seed_norm_catalog.cpp
     porter_catalog.cpp
+    supply_floor_catalog.cpp
     cold_housing_catalog.cpp
     world_conventions.cpp
     world_junctions.cpp)

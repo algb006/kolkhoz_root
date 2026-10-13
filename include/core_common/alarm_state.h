@@ -696,6 +696,21 @@ enum class AlarmKind : std::uint8_t {
   /// build. Collected by core_residents (residents_system.cpp).
   kHousingShort,
 
+  /// «ПОДВОЗ НА СТРОЙКУ ЖДЁТ» (#734, 0.37.243; transport design «Пол
+  /// подвоза»; core_common/site_supply_floor.h): a works whose materials
+  /// await and to which nothing has been delivered for the floor's working
+  /// days (ConstructionState::supply_idle_days >= logistics.csv
+  /// `site_supply_floor_after_days`), in a settlement with a draught horse,
+  /// its task not paused. A STATE on the floor's own trigger: lit the morning
+  /// the floor begins to give the supply carters, out when the recipe is on
+  /// the site. Subject: `unit` - the works; `logistics_task` its supply's task
+  /// (the door's subject); `amount` those idle days. Yellow always: no dated
+  /// loss (days_to_loss as kHousingShort's). `lamp` 1: the chairman has a
+  /// move - `advice` kSupplyOverFields while the task does not carry the
+  /// switch already, kNone once it does. Proposed registry key
+  /// `site_supply_waits` (boss's vocabulary). Collected by core_logistics.
+  kSiteSupplyWaits,
+
   // Appended by later tasks and phases: children out of school, sewage.
   // Named so the numbering is planned, not discovered.
 
@@ -850,6 +865,15 @@ enum class AlarmAdvice : std::uint8_t {
   /// `enable` 1. Level 0 does NOT override a day off by itself (boss [77]).
   kDeclareDayWorking,
 
+  /// PUT THE WORKS' SUPPLY OVER THE FIELD WORK - «поставить подвоз важнее
+  /// полевых работ» (#734, 0.37.243; proposed dictionary key
+  /// `supply_over_fields`). Named by kSiteSupplyWaits while the supply's task
+  /// does not carry the switch: the door is kSetLogisticsLevel on
+  /// `Alarm::logistics_task` with `enable` 1 and the task's own level
+  /// (order_state.h). The floor gives the works a share of the team by
+  /// itself; this gives it the carts it asks ahead of every window.
+  kSupplyOverFields,
+
   /// NOT A MOVE: the count, so a consumer can static_assert its mirror.
   kAlarmAdviceCount,
 };
@@ -898,7 +922,8 @@ struct Alarm {
   ResourceId resource;
 
   /// kLogisticsLate: the groom's task whose load waits (logistics_state.h).
-  /// Invalid for every other kind. Not in the save, as `lamp`.
+  /// kSiteSupplyWaits: the works' supply task, the subject of its advice's
+  /// door. Invalid for every other kind. Not in the save, as `lamp`.
   LogisticsTaskId logistics_task;
 
   /// Grams, heads — the kind says which. 0 when the kind has no number.

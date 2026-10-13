@@ -22,6 +22,7 @@
 #include <utility>
 
 #include "core_catalog/porter_catalog.h"
+#include "core_catalog/supply_floor_catalog.h"
 #include "core_catalog/table_value.h"
 #include "core_catalog/world_conventions.h"
 #include "core_common/calendar.h"
@@ -619,7 +620,8 @@ bool ParseCropWindows(const ITable& table,
 }  // namespace
 
 bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string& error) {
-  if (!ReadPorterRules(tables, config.porter, error)) {
+  if (!ReadPorterRules(tables, config.porter, error) ||
+      !ReadSupplyFloorRules(tables, config.supply_floor, error)) {
     return false;
   }
   if (const ITable* labor = tables.FindTable("labor")) {

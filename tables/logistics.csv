@@ -14,6 +14,12 @@ level_store_transfer,3
 # THE SUPPLY OF A WORKS (routing stage V2, 0.37.204): transport design §12's table of levels, «1 — Срок:
 # … материалы для стройки, которая стоит».
 level_site_supply,1
+# THE FLOOR UNDER A WORKS' SUPPLY (#734; transport design «Пол подвоза»; core_common/site_supply_floor.h): a
+# works whose supply brought nothing for this many WORKING days in a row is offered carters with horses ahead of
+# the field windows (behind level 0) - all such works together up to this share of the day's draught horses,
+# never fewer than one. Both STUB econ. 0 days switches the floor off.
+site_supply_floor_after_days,4
+site_supply_floor_share,0.25
 #
 # AGEING from the task's last trip (econ [5], STUB econ; econ/manual/proposals/logistics-priorities-numbers-
 # 2026-10-03.md): background -> ordinary after this many days, ordinary -> term after this many; a term never

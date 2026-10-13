@@ -8,7 +8,9 @@
 #include <string>
 
 #include "core_common/calendar.h"
+#include "core_common/day_off.h"
 #include "core_common/quantities.h"
+#include "core_common/site_supply_floor.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/supply_estimate.h"
 #include "core_common/unit_state.h"
@@ -177,6 +179,100 @@ int CheckTheHandSupplyGoesOneResourceATrip() {
                        "hand supply: a tonne of logs carried on foot is booked as five pair "
                        "trips");
   }
+  return failures;
+}
+
+// THE FLOOR'S MEMORY (#734; ConstructionState::supply_idle_days). By hand: a works with a tonne
+// of clay awaiting, in a village with no horse and nobody carrying. Two working evenings with
+// nothing landed are two idle days; an evening on a day off adds none; a paused works adds none
+// and keeps its two; an hour in which the seam was drained lands grams, and that day's evening
+// sets the count to nought and clears the day's switch; a works awaiting nothing reads nought.
+int CheckTheSupplyCountsItsIdleDays() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  core::ProductionConfig config;
+  if (Expect(tables != nullptr && core::ParseProductionConfig(*tables, config, error),
+             "idle days: the shipped tables parse") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  const core::ITable* const resources = tables->FindTable("resources");
+  const core::ResourceId clay{static_cast<std::uint16_t>(resources->FindRowByKey("clay"))};
+  core::ResourceAmounts grams(static_cast<std::size_t>(clay.value) + 1U, 0);
+  grams[clay.value] = 1'000'000;
+  core::WorldState world = HandSupplyWorld(grams);
+  world.calendar.day_zero_weekday = core::Weekday::kMonday;
+  world.chairman.harvest_without_days_off = 0;
+  const auto set_day = [&world](std::uint32_t day) {
+    world.calendar.tick = day * core::kTicksPerDay + 10U;
+    core::RefreshCalendarCaches(world.calendar);
+  };
+  // A working day and a day off of one week in June.
+  std::uint32_t working = 24;
+  std::uint32_t off = 24;
+  for (std::uint32_t day = 24; day < 31; ++day) {
+    set_day(day);
+    if (core::IsDayOffIn(world, day)) {
+      off = day;
+    } else {
+      working = day;
+    }
+  }
+  if (Expect(off != working && core::IsDayOffIn(world, off) && !core::IsDayOffIn(world, working),
+             "idle days: the week has a working day and a day off") != 0) {
+    return failures + 1;
+  }
+  core::ConstructionState& works = world.units.rows[0].construction;
+  set_day(working);
+  core::SettleSiteSupply(config, world, false);  // the seam is written, nothing moves
+  failures += Expect(works.supply_idle_days == 0, "idle days: an hour of the day counts nothing");
+  core::SettleSiteSupply(config, world, true);
+  core::SettleSiteSupply(config, world, true);
+  failures += Expect(works.supply_idle_days == 2,
+                     "idle days: two working evenings with nothing landed are two");
+  set_day(off);
+  core::SettleSiteSupply(config, world, true);
+  failures += Expect(works.supply_idle_days == 2, "idle days: a day off neither counts nor resets");
+  set_day(working);
+  world.units.rows[0].paused = 1;
+  core::SettleSiteSupply(config, world, true);
+  failures += Expect(works.supply_idle_days == 2, "idle days: a paused works keeps its count");
+  world.units.rows[0].paused = 0;
+  core::SettleSiteSupply(config, world, false);  // the seam written again after the pause
+  works.supply_days_remaining = works.supply_days_written * 0.5F;  // half drained this hour
+  core::SettleSiteSupply(config, world, false);
+  failures += Expect(At(world.units.rows[0].stock, clay) > 0 && works.supply_moved_today == 1 &&
+                         works.supply_idle_days == 2,
+                     "idle days: the hour grams land sets the day's switch and leaves the count "
+                     "to the evening");
+  core::SettleSiteSupply(config, world, true);
+  failures += Expect(works.supply_idle_days == 0 && works.supply_moved_today == 0,
+                     "idle days: the evening of a day something landed starts from nought");
+  core::SettleSiteSupply(config, world, true);
+  failures += Expect(works.supply_idle_days == 1, "idle days: and the next idle evening is one");
+  // ON THE FLOOR TILL THE RECIPE IS IN: at the floor's four days a delivery no
+  // longer starts the count again - the floor's own cart must not take the
+  // works off the floor it stands on.
+  core::SettleSiteSupply(config, world, true);
+  core::SettleSiteSupply(config, world, true);
+  core::SettleSiteSupply(config, world, true);
+  failures += Expect(works.supply_idle_days == 4 && core::OnSupplyFloor(config.supply_floor, works),
+                     "idle days: four idle evenings are the floor");
+  works.supply_days_remaining = works.supply_days_written * 0.5F;
+  core::SettleSiteSupply(config, world, false);
+  core::SettleSiteSupply(config, world, true);
+  failures += Expect(works.supply_idle_days == 4 && works.supply_moved_today == 0 &&
+                         core::OnSupplyFloor(config.supply_floor, works),
+                     "idle days: a delivery to a works on the floor leaves it on the floor");
+  core::SettleSiteSupply(config, world, true);
+  failures += Expect(works.supply_idle_days == 5,
+                     "idle days: and an idle evening on the floor still counts");
+  works.supply_days_remaining = 0.0F;  // the rest carried in
+  core::SettleSiteSupply(config, world, false);
+  core::SettleSiteSupply(config, world, true);
+  failures += Expect(works.legs.empty() && works.supply_idle_days == 0,
+                     "idle days: a works awaiting nothing reads nought");
   return failures;
 }
 

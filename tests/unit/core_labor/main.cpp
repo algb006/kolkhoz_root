@@ -51,6 +51,7 @@
 #include "people_cart_checks.h"
 #include "posts.h"
 #include "stuck_state_checks.h"
+#include "supply_floor_checks.h"
 #include "top_up_checks.h"
 #include "work_orders.h"
 
@@ -4657,6 +4658,7 @@ int main() {
   failures += CheckTopUpAgainstWindowlessWork();
   failures += CheckCarterOnFoot();
   failures += CheckLogPairs();
+  failures += CheckTheSupplyFloor();
   failures += CheckTheCartersRoad();
   failures += CheckTheHorseYardRoad();
   failures += CheckTheCartsPassengers();

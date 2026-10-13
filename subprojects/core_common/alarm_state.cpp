@@ -28,6 +28,8 @@ std::uint32_t AlarmSubjectValue(const Alarm& alarm) {
     case AlarmKind::kYardWithoutGroom:
     case AlarmKind::kProcessingStopped:
     case AlarmKind::kDemolitionStockWaiting:
+    // The works whose supply waits (proposed `site_supply_waits`; #734).
+    case AlarmKind::kSiteSupplyWaits:
       return alarm.unit.value;
     case AlarmKind::kHarvestWillNotFit:
     case AlarmKind::kHarvestWaitingOnField:
@@ -133,6 +135,7 @@ bool IsElderAdvice(AlarmKind kind) {
     case AlarmKind::kHerdColdAhead:
     case AlarmKind::kLogisticsLate:
     case AlarmKind::kHousingShort:
+    case AlarmKind::kSiteSupplyWaits:
       return false;
   }
   return false;

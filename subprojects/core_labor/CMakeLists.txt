@@ -11,6 +11,7 @@ kolkhoz_add_module(core_labor
     labor_system.cpp
     people_cart.cpp
     care_reprice.cpp
+    placement_diagnosis.cpp
     posts.cpp
     rush.cpp
     work_orders.cpp)

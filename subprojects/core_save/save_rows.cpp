@@ -242,12 +242,16 @@ static_assert(AggregateArity<FieldRow>() == 46,
 // amounts + the legs' vector = 120) plus its flag padded to the eight, 128;
 // the row 216 -> 344. On the wire a byte (0 = none) and, when set, the block
 // as `construction` writes it.
-static_assert(sizeof(UnitRow) == 120 + (3 * kAmountsSize) + sizeof(std::vector<SupplyLeg>) +
+// Save 158 (#734): the floor's memory in the site block - a u16 and a byte
+// after `supply_since_day`: the block's scalars 48 -> 51, padded to 56, and
+// 21 fields; the row 120 -> 128 of scalars beside the optional block's own
+// 56. Predicted before the build. On the wire +3 a block.
+static_assert(sizeof(UnitRow) == 128 + (3 * kAmountsSize) + sizeof(std::vector<SupplyLeg>) +
                                      sizeof(std::optional<ConstructionState>),
               "UnitRow changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(std::optional<ConstructionState>) == sizeof(ConstructionState) + 8,
               "the suspended works' flag is not the eight predicted");
-static_assert(sizeof(ConstructionState) == 48 + (2 * kAmountsSize) + sizeof(std::vector<SupplyLeg>),
+static_assert(sizeof(ConstructionState) == 56 + (2 * kAmountsSize) + sizeof(std::vector<SupplyLeg>),
               "ConstructionState changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(SupplyLeg) == 24 + kAmountsSize,
               "SupplyLeg changed — update the codec and VERSION_SAVE");
@@ -261,7 +265,7 @@ static_assert(AggregateArity<SupplyLeg>() == 4,
 // Save 154 (#595): raised, a byte after supply_log_way — predicted into the
 // padding after it (sizeof 48 unmoved) and 19 fields, before the build; the
 // units section +1 a unit.
-static_assert(AggregateArity<ConstructionState>() == 19,
+static_assert(AggregateArity<ConstructionState>() == 21,
               "ConstructionState gained or lost a field — update the codec and VERSION_SAVE");
 // Save 74: reserved_for_specialist, a byte beside `dead` — 18 fields. Save 157:
 // suspended_works (#715) — 20.
@@ -429,9 +433,12 @@ static_assert(AggregateArity<BarterTripRow>() == 9,
 // Save 155 (0.37.235, #671's instrument): who drained the seam, two floats
 // after the u16 — 42 aligns to 44, 52, padded to 56; fifteen fields, 47
 // bytes saved; predicted before the build.
+// Save 158 (#734): over_fields, a switch after the u16 - predicted into the
+// padding before the floats (offset 42), 56 unmoved and sixteen fields, 48
+// bytes saved, before the build.
 static_assert(sizeof(LogisticsTaskRow) == 56,
               "LogisticsTaskRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<LogisticsTaskRow>() == 15,
+static_assert(AggregateArity<LogisticsTaskRow>() == 16,
               "LogisticsTaskRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 136 (0.37.177): the groom's plan — a leg six fields, a cart three, the
 // plan four (each holds vectors: its size is not a byte count, the codec
@@ -1240,6 +1247,8 @@ void WriteConstructionBlock(SaveSink& sink, const ConstructionState& works) {
   out.WriteFloat(works.supply_days_remaining);
   out.WriteFloat(works.supply_days_written);
   out.WriteU32(works.supply_since_day);
+  out.WriteU16(works.supply_idle_days);   // save 158 (#734): the floor's memory
+  out.WriteU8(works.supply_moved_today);  // save 158: a gram landed since the evening
 }
 
 ConstructionState ReadConstructionBlock(LoadSource& source) {
@@ -1281,6 +1290,10 @@ ConstructionState ReadConstructionBlock(LoadSource& source) {
   works.supply_days_remaining = in.ReadFloat();
   works.supply_days_written = in.ReadFloat();
   works.supply_since_day = in.ReadU32();
+  // Save 158 (#734): the floor's memory, and the day's switch it is settled from.
+  works.supply_idle_days = in.ReadU16();
+  works.supply_moved_today =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "supply moved today"));
   return works;
 }
 
@@ -1872,6 +1885,7 @@ void WriteLogisticsTaskRow(SaveSink& sink, const LogisticsTaskRow& row) {
   out.WriteU32(row.aged_from_day);
   out.WriteU64(row.urgent_since);
   out.WriteU16(row.unserved_light_hours);  // save 142
+  out.WriteU8(row.over_fields ? 1U : 0U);  // save 158 (#734): «важнее полевых работ»
   out.WriteFloat(row.drained_on_foot);     // save 155: who drained the seam (#671)
   out.WriteFloat(row.drained_by_cart);
 }
@@ -1897,8 +1911,9 @@ LogisticsTaskRow ReadLogisticsTaskRow(LoadSource& source) {
   row.paused = source.ReadEnumValue(0, 1, "logistics pause") != 0;
   row.aged_from_day = in.ReadU32();
   row.urgent_since = in.ReadU64();
-  row.unserved_light_hours = in.ReadU16();  // save 142
-  row.drained_on_foot = in.ReadFloat();     // save 155 (#671)
+  row.unserved_light_hours = in.ReadU16();                                     // save 142
+  row.over_fields = source.ReadEnumValue(0, 1, "logistics over fields") != 0;  // save 158 (#734)
+  row.drained_on_foot = in.ReadFloat();                                        // save 155 (#671)
   row.drained_by_cart = in.ReadFloat();
   if (!(row.drained_on_foot >= 0.0F) || !(row.drained_by_cart >= 0.0F)) {
     source.Fail("a logistics task's drained units are negative or not a number");

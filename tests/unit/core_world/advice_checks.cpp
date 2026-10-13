@@ -645,6 +645,71 @@ int CheckTheDayOff(const Fixture& fixture) {
   return Report(run, "logistics_late on a day off, «объявить день рабочим»");
 }
 
+/// «ПОСТАВИТЬ ПОДВОЗ ВАЖНЕЕ ПОЛЕВЫХ РАБОТ» (#734; kSiteSupplyWaits): a house's
+/// site whose materials await at a store and to which nothing came for the
+/// floor's days. The door is kSetLogisticsLevel on the lamp's own task with
+/// the switch and the task's own level - and once taken, the lamp stays lit
+/// and names no move (the door would refuse a repeat).
+int CheckTheSupplyFloor(const Fixture& fixture) {
+  core::WorldState world = fixture.genesis;
+  SetDay(world, 5);
+  core::UnitRow site;
+  site.type = core::UnitTypeId{static_cast<std::uint16_t>(fixture.Row("unit_types", "house"))};
+  site.position = world.units.rows.empty() ? core::Vec2{} : world.units.rows.front().position;
+  site.construction.phase = core::ConstructionPhase::kDelivering;
+  site.construction.target_level = 1;
+  const std::uint32_t log = fixture.Row("resources", "log");
+  core::SupplyLeg leg;
+  leg.from = site.position;
+  leg.grams.assign(static_cast<std::size_t>(log) + 1U, 0);
+  leg.grams[log] = 3'000'000;
+  site.construction.awaiting = leg.grams;
+  site.construction.legs = {leg};
+  site.construction.supply_from = leg.from;
+  site.construction.supply_days_remaining = 1.0F;
+  site.construction.supply_days_written = 1.0F;
+  site.construction.supply_since_day = 1;
+  site.construction.supply_idle_days = 6;
+  const core::UnitId id = core::AppendRow(world.units, site);
+  core::LogisticsTaskRow task;
+  task.load_kind = core::LogisticsLoadKind::kSiteSupply;
+  task.unit = id;
+  task.level = core::LogisticsLevel::kTerm;
+  task.base_level = core::LogisticsLevel::kTerm;
+  const core::LogisticsTaskId task_id = core::AppendRow(world.logistics_tasks, task);
+  const auto over_fields = [](const core::Alarm& alarm) {
+    core::OrderRow order;
+    order.kind = core::OrderKind::kSetLogisticsLevel;
+    order.logistics_task = alarm.logistics_task;
+    order.logistics_level = core::LogisticsLevel::kTerm;
+    order.enable = 1;
+    return order;
+  };
+  int failures = Report(RunAdvice(*fixture.simulation,
+                                  world,
+                                  core::AlarmKind::kSiteSupplyWaits,
+                                  core::AlarmAdvice::kSupplyOverFields,
+                                  over_fields),
+                        "site_supply_waits, «поставить подвоз важнее полевых работ»");
+  const core::WorldState& after = fixture.simulation->CompletedState();
+  const std::uint32_t row = core::FindRow(after.logistics_tasks, task_id);
+  failures += Expect(row != core::kNoRow && after.logistics_tasks.rows[row].over_fields,
+                     "site_supply_waits: the order set the task's switch");
+  // THE PAIR: with the switch set the lamp names no move, and the same order
+  // again is refused - the lamp and the door agree both ways.
+  world.logistics_tasks.rows.back().over_fields = true;
+  const AdviceRun repeat = RunAdvice(*fixture.simulation,
+                                     world,
+                                     core::AlarmKind::kSiteSupplyWaits,
+                                     core::AlarmAdvice::kNone,
+                                     over_fields);
+  failures += Expect(
+      repeat.named && repeat.refused == 1 && repeat.refusal == core::OrderRefusal::kRuleForbids,
+      "site_supply_waits: with the switch set the lamp stays lit, names no move, "
+      "and the door refuses the repeat");
+  return failures;
+}
+
 }  // namespace
 
 int CheckEveryAdviceIsTaken() {
@@ -657,6 +722,7 @@ int CheckEveryAdviceIsTaken() {
   failures += CheckTheHayLamp(fixture);
   failures += CheckTheStarvingHerd(fixture);
   failures += CheckTheDayOff(fixture);
+  failures += CheckTheSupplyFloor(fixture);
   // «ПОДВЕЗТИ КОРМ ИЛИ УМЕНЬШИТЬ СТАДО» (kBringFeed) HAS NO ONE DOOR: two moves,
   // one word (alarm_state.h) - named here, not skipped.
   std::cout << "advice: kBringFeed has no single order door (two moves, one word) — not "

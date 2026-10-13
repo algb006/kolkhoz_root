@@ -10,6 +10,7 @@
 
 #include "core_catalog/cold_housing_catalog.h"
 #include "core_catalog/porter_catalog.h"
+#include "core_catalog/supply_floor_catalog.h"
 #include "core_catalog/table_value.h"
 #include "core_common/haul.h"
 #include "core_tables/tables.h"
@@ -218,6 +219,7 @@ bool ParseLogisticsConfig(const ITableSet& tables, LogisticsConfig& config, std:
     }
   }
   return ReadPorterRules(tables, config.porter, error) &&
+         ReadSupplyFloorRules(tables, config.supply_floor, error) &&
          ReadColdHousing(tables, config.cold_housing, error);
 }
 

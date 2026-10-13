@@ -34,6 +34,7 @@
 #include "core_catalog/definitions.h"
 #include "core_catalog/porter_catalog.h"
 #include "core_catalog/road_rules_catalog.h"
+#include "core_catalog/supply_floor_catalog.h"
 #include "core_catalog/table_lookup.h"
 #include "core_catalog/table_value.h"
 #include "core_catalog/world_conventions.h"
@@ -1840,7 +1841,8 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
   config.plot_radius_m = definitions.units.keep_out_radius_m;
   config.map_side_m = definitions.map_side_m;
   config.unit_parent = definitions.units.parent;
-  if (!ReadPorterRules(tables, config.porter, error)) {
+  if (!ReadPorterRules(tables, config.porter, error) ||
+      !ReadSupplyFloorRules(tables, config.supply_floor, error)) {
     return false;
   }
   return ParseTimberCatalog(tables, config.timber, error) &&

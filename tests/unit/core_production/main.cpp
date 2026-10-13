@@ -16148,6 +16148,7 @@ int main() {
   failures += CheckTheSeedLampIsNotAFalseAlarm();
   failures += CheckTheSupplyOfAWorksIsCarted();
   failures += CheckTheHandSupplyGoesOneResourceATrip();
+  failures += CheckTheSupplyCountsItsIdleDays();
   failures += CheckTheStoresKeepByTheirRoof();
   failures += CheckAStarvedKolkhozHerdDoesNotInterruptAgain();
   failures += CheckThePerennialsCut();

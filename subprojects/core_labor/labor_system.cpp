@@ -62,6 +62,7 @@
 #include "core_common/reaping_pace.h"
 #include "core_common/reaping_road.h"
 #include "core_common/resident_state.h"
+#include "core_common/site_supply_floor.h"
 #include "core_common/site_supply_queue.h"
 #include "core_common/state_table.h"
 #include "core_common/state_table_ops.h"
@@ -749,6 +750,9 @@ class LaborSystem final : public ILaborSystem {
     const std::uint32_t in_traces = HorsesInTraces(current);
     params.draught_horses =
         in_traces < params.draught_horses ? params.draught_horses - in_traces : 0U;
+    // THE FLOOR IS THE MORNING'S (#734): its carters were dealt once, by the
+    // whole team; a top-up that dealt them again would give the share twice.
+    params.supply_floor_carters = 0;
     MeasureRoads(current, jobs, candidates, params);
     std::vector<std::uint8_t> rides_horse;
     std::vector<std::uint32_t> rides_cart_with;
@@ -1596,6 +1600,9 @@ class LaborSystem final : public ILaborSystem {
         job.unit = current.units.row_ids[row];
         job.position = unit.construction.supply_from;
         job.supplies_works = true;
+        // THE FLOOR (#734; core_common/site_supply_floor.h): nothing delivered
+        // for the rule's days - carters with horses ahead of the windows.
+        job.supply_floor = OnSupplyFloor(config_.supply_floor, unit.construction);
         // LOGS BY TWO (#671): no lone back takes a log; pairs under the gate.
         const LogLeg log_leg = LogLegOf(current, unit);
         job.walker_log = log_leg.walker_log;
@@ -1924,10 +1931,14 @@ class LaborSystem final : public ILaborSystem {
       }
       const WorkAssignment work = HaulingWorkOfJob(job);
       for (const LogisticsTaskRow& task : current.logistics_tasks.rows) {
-        if (task.level == LogisticsLevel::kUrgent && WorkServesTask(work, task)) {
-          job.logistics_urgent = true;
-          break;
+        if (!WorkServesTask(work, task)) {
+          continue;
         }
+        // One task a load: its level and the chairman's «важнее полевых
+        // работ» (#734; LogisticsTaskRow::over_fields) are read together.
+        job.logistics_urgent = task.level == LogisticsLevel::kUrgent;
+        job.over_fields = task.over_fields && job.supplies_works;
+        break;
       }
     }
   }
@@ -2397,6 +2408,9 @@ class LaborSystem final : public ILaborSystem {
     params.min_usable_hours = config_.min_usable_hours;
     params.standard_day_hours = config_.standard_day_hours;
     params.draught_horses = DraughtHorses(current);
+    // The floor under the works' supply (#734): the morning's, by the whole
+    // team; the day's top-up deals none.
+    params.supply_floor_carters = SupplyFloorCarters(config_.supply_floor, params.draught_horses);
     params.placement_level = config_.placement_level;
     params.walker_share_of_cart_day = WalkerShareToday(current);
     params.walker_min_trips_per_day = config_.walker_min_trips_per_day;

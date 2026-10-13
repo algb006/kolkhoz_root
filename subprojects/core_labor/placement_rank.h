@@ -53,6 +53,13 @@ float OneWayHours(const AssignmentJob& job,
                   bool rides,
                   bool takes_horse);
 
+/// @brief The meadow cut: a harnessed harvest, one horse for the whole
+///        brigade, and a scythe when there is none — judged on foot then,
+///        since 0.37.168 (A4; PlanDayAssignments).
+constexpr bool IsMeadowCut(const AssignmentJob& job) {
+  return job.kind == WorkKind::kHarvest && job.harnessed;
+}
+
 /// @brief The accountant's eye on one worker for one job: false when he is
 ///        still busy, barred or out of reach (`refused_by_road` says the road
 ///        rule alone turned him away); else his pick - the norm-days he would

@@ -19,6 +19,7 @@
 #include "core_common/cold_housing.h"
 #include "core_common/haul.h"
 #include "core_common/logistics_state.h"
+#include "core_common/site_supply_floor.h"
 #include "core_tables/tables.h"
 
 namespace core {
@@ -106,6 +107,11 @@ struct LogisticsConfig {
   /// same reading labour and production hold. Until 0.37.240 a float here,
   /// labor.csv carry_kg_adult alone.
   PorterRules porter;
+
+  /// The floor under a works' supply (#734; core_common/site_supply_floor.h;
+  /// logistics.csv `site_supply_floor_*`) - the same reading labour's
+  /// placement holds; here for the lamp kSiteSupplyWaits and its door.
+  SupplyFloorRules supply_floor;
 
   /// The horse's livestock row (livestock.csv key `horse`), for the horse
   /// yard a cart's day starts at (horse_yard_road.h); invalid without one.

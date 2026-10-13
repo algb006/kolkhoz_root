@@ -35,6 +35,7 @@
 #include "core_common/quantities.h"
 #include "core_common/rain_stops_work.h"
 #include "core_common/road_rules.h"
+#include "core_common/site_supply_floor.h"
 
 namespace core {
 
@@ -1120,6 +1121,12 @@ struct ProductionConfig {
   /// same reading labour and logistics hold. Until 0.37.240 a float here,
   /// labor.csv carry_kg_adult alone: a bundle of hay weighed what a sack does.
   PorterRules porter;
+
+  /// The floor under a works' supply (#734; core_common/site_supply_floor.h;
+  /// logistics.csv `site_supply_floor_*`) - the same reading labour and
+  /// logistics hold; here for the evening that settles the floor's memory
+  /// (supply_haul.cpp): a works on the floor stays on it till its recipe is in.
+  SupplyFloorRules supply_floor;
 
   float walk_speed_kmh = 5.0F;
 

@@ -25,6 +25,7 @@
 #include "core_common/logistics_rules.h"
 #include "core_common/logistics_state.h"
 #include "core_common/order_state.h"
+#include "core_common/site_supply_floor.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/work_seam.h"
 #include "core_common/world_state.h"
@@ -132,9 +133,19 @@ OrderRefusal SetTaskLevel(WorldState& current, const OrderRow& order) {
     return OrderRefusal::kNoSuchSubject;
   }
   LogisticsTaskRow& task = current.logistics_tasks.rows[row];
-  if (task.base_level == order.logistics_level && task.level == order.logistics_level) {
+  // «ВАЖНЕЕ ПОЛЕВЫХ РАБОТ» IS A WORKS' SUPPLY'S ALONE (#734; order_state.h):
+  // the switch on any other load is refused, not dropped - a heap's carting
+  // has its level for that, and a switch taken and not acted on would be a
+  // lever with no rod.
+  const bool over_fields = order.enable != 0;
+  if (over_fields && task.load_kind != LogisticsLoadKind::kSiteSupply) {
     return OrderRefusal::kRuleForbids;
   }
+  if (task.base_level == order.logistics_level && task.level == order.logistics_level &&
+      task.over_fields == over_fields) {
+    return OrderRefusal::kRuleForbids;
+  }
+  task.over_fields = over_fields;
   const bool raised_to_urgent =
       order.logistics_level == LogisticsLevel::kUrgent && task.level != LogisticsLevel::kUrgent;
   task.base_level = order.logistics_level;
@@ -278,6 +289,39 @@ class LogisticsSystem final : public ILogisticsSystem {
       alarm.logistics_task = state.logistics_tasks.row_ids[row];
       alarm.amount = static_cast<std::int64_t>(task.unserved_light_hours);
       alarm.advice = advice;
+      out.push_back(alarm);
+    }
+    CollectSupplyWaits(state, out);
+  }
+
+  /// «ПОДВОЗ НА СТРОЙКУ ЖДЁТ» (#734; alarm_state.h, kSiteSupplyWaits): on the
+  /// floor's own trigger (core_common/site_supply_floor.h, OnSupplyFloor) and
+  /// by its own conditions - a draught horse in the settlement (the floor
+  /// gives carters with horses and nothing else), the task not paused. The
+  /// advice names the door only while the door would take it: the switch not
+  /// set yet (SetTaskLevel refuses a repeat).
+  void CollectSupplyWaits(const WorldState& state, std::vector<Alarm>& out) const {
+    if (!SettlementHasCarts(state, config_.horse_kind)) {
+      return;
+    }
+    for (std::uint32_t row = 0; row < state.logistics_tasks.rows.size(); ++row) {
+      const LogisticsTaskRow& task = state.logistics_tasks.rows[row];
+      if (task.load_kind != LogisticsLoadKind::kSiteSupply || task.paused) {
+        continue;
+      }
+      const std::uint32_t unit_row = FindRow(state.units, task.unit);
+      if (unit_row == kNoRow ||
+          !OnSupplyFloor(config_.supply_floor, state.units.rows[unit_row].construction)) {
+        continue;
+      }
+      Alarm alarm;
+      alarm.kind = AlarmKind::kSiteSupplyWaits;
+      alarm.unit = task.unit;
+      alarm.logistics_task = state.logistics_tasks.row_ids[row];
+      alarm.amount = state.units.rows[unit_row].construction.supply_idle_days;
+      alarm.lamp = 1;
+      alarm.days_to_loss = DaysToLossOf(std::numeric_limits<std::int64_t>::max());
+      alarm.advice = task.over_fields ? AlarmAdvice::kNone : AlarmAdvice::kSupplyOverFields;
       out.push_back(alarm);
     }
   }

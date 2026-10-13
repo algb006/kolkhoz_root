@@ -429,6 +429,8 @@ core::WorldState MakeWorld() {
   site.construction.supply_days_remaining = 1.5F;
   site.construction.supply_days_written = 3.0F;
   site.construction.supply_since_day = 211;
+  site.construction.supply_idle_days = 5;  // save 158 (#734): the floor's memory
+  site.construction.supply_moved_today = 1;
   // The direct leg (inside save 147): two legs with every member off its
   // default and different from the other's — a stand's by the log cart's way,
   // then a store's — the front way's byte and the load as first priced.
@@ -457,6 +459,7 @@ core::WorldState MakeWorld() {
   aside.max_crew = 6;
   aside.winter_works = 0;
   aside.supply_since_day = 97;
+  aside.supply_idle_days = 9;  // save 158: apart from the open works' five
   site.suspended_works = aside;
   // Save 67: a store being emptied, its carrying half done — all three away
   // from their zero defaults.
@@ -737,6 +740,7 @@ core::WorldState MakeWorld() {
   task.aged_from_day = 141;
   task.urgent_since = 3'333;
   task.unserved_light_hours = 7;  // save 142: the lamp's clock off its nought
+  task.over_fields = true;        // save 158 (#734)
   task.drained_on_foot = 0.5F;    // save 155: who drained the seam, the two apart
   task.drained_by_cart = 1.25F;
   core::AppendRow(world.logistics_tasks, task);
@@ -1824,7 +1828,10 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // Save 157 (#715): +1 a unit — the suspended works' byte — and the site's
     // works put aside, its block with empty amounts and no legs, 51 bytes:
     // predicted 673 -> 727 before the build and held; the hash read off it.
-    {"units", 727, 0x7b92cd7fd4f1d899ULL},
+    // Save 158 (#734): +3 a site block - the floor's idle days and the day's
+    // switch; three units' open blocks and the one put aside: predicted 727 ->
+    // 739 before the build and held; the hash read off it.
+    {"units", 739, 0x67e0700070104640ULL},
     // Save 71: +4 — fed_share, one herd; predicted before the field, held.
     // Save 91: +8 — the adult age band, two floats, one herd; predicted
     // 71 -> 79 with every other section unmoved before the build.
@@ -1947,7 +1954,9 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // hash read off the build.
     // Save 142 (0.37.192): +2 — the lamp's clock, a u16; predicted 49 -> 51
     // before the build, held.
-    {"logistics_tasks", 59, 0x4ed590984fcf66cbULL},  // save 155: two floats
+    // Save 158 (#734): +1 - «важнее полевых работ»; predicted 59 -> 60 before
+    // the build and held; the hash read off it.
+    {"logistics_tasks", 60, 0xc8326b41d2ef53eULL},
     // Save 136 (B3): the groom's plan — 10 of day, flags and count, 9 of the
     // cart, 44 of the first leg (one rider), 40 of the second. Predicted 103
     // before the build, held; the hash read off the build.
@@ -2902,7 +2911,7 @@ int main() {
             back.base_level == core::LogisticsLevel::kBackground &&
             back.origin == core::LogisticsOrigin::kPlayer && back.paused &&
             back.aged_from_day == 141 && back.urgent_since == 3'333 &&
-            back.unserved_light_hours == 7 && back.drained_on_foot == 0.5F &&
+            back.unserved_light_hours == 7 && back.over_fields && back.drained_on_foot == 0.5F &&
             back.drained_by_cart == 1.25F,
         "a task of the groom's logistics came back with its load, its two levels, its origin, "
         "its pause, its two times, the lamp's clock and who drained it (save 135, 142, 155)");
@@ -3073,6 +3082,13 @@ int main() {
                          site_back.construction.supply_since_day == 211,
                      "a works' sender, its supply seam half carted and the day its wait began "
                      "come back (save 147)");
+  failures += Expect(site_back.construction.supply_idle_days == 5 &&
+                         site_back.construction.supply_moved_today == 1 &&
+                         site_back.suspended_works.has_value() &&
+                         site_back.suspended_works->supply_idle_days == 9 &&
+                         site_back.suspended_works->supply_moved_today == 0,
+                     "the floor's memory comes back - the idle days and the day's switch, the open "
+                     "works' apart from the one put aside (save 158, #734)");
 
   // -- the staged batch ----------------------------------------------------
   //

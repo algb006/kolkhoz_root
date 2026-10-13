@@ -1117,6 +1117,23 @@ int TestTheChairmansDoors() {
   system->ReadTaskOrders(raise_only);
   failures += Expect(raise_only.groom_plan.stale && raise_only.groom_plan.urgent_pending,
                      "doors: a raise alone makes the plan stale and urgent");
+  // «ВАЖНЕЕ ПОЛЕВЫХ РАБОТ» IS A WORKS' SUPPLY'S ALONE (#734): on a heap's task
+  // the switch is refused and nothing of the order is taken - neither the
+  // switch nor the level beside it. The pair, a supply's task taking it, is
+  // the advice guard's (tests/unit/core_world/advice_checks.cpp).
+  {
+    const core::OrderId over = order(raise_only,
+                                     core::OrderKind::kSetLogisticsLevel,
+                                     raise_only.logistics_tasks.row_ids[1],
+                                     core::LogisticsLevel::kBackground,
+                                     1);
+    const core::LogisticsLevel before = raise_only.logistics_tasks.rows[1].level;
+    system->ReadTaskOrders(raise_only);
+    failures += Expect(status(raise_only, over) == core::OrderRefusal::kRuleForbids &&
+                           !raise_only.logistics_tasks.rows[1].over_fields &&
+                           raise_only.logistics_tasks.rows[1].level == before,
+                       "doors: «важнее полевых работ» on a heap's task — refused, nothing taken");
+  }
   // A PAUSE ALONE re-plans too — the raise is not what made the plan stale.
   core::WorldState pause_only;
   village(pause_only);

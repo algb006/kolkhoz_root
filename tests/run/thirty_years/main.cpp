@@ -47,6 +47,7 @@
 #include "../common/seam_zero_tally.h"
 #include "../common/session_cost.h"
 #include "../common/sowing_policy.h"
+#include "../common/supply_policy.h"
 #include "../common/tick_cost.h"
 #include "../common/timber_chain_tally.h"
 #include "../common/watchman_policy.h"
@@ -617,6 +618,10 @@ int main(int argc, char** argv) {
   // And straw on the houses' walls before winter (insulation_policy.h; parcel 364).
   run::InsulationPolicy insulation(*world.tables);
   run::InsulationPolicy::Declare("thirty_years");
+  // And «важнее полевых работ» for a supply the floor does not reach
+  // (supply_policy.h; #734), as BuildingChairman orders it.
+  run::SupplyPolicy supply(*world.tables);
+  run::SupplyPolicy::Declare("thirty_years");
   // And the elder's suggested roads with the first new building beside each
   // (suggested_roads_policy.h, #423), as BuildingChairman lays them.
   run::SuggestedRoadsPolicy roads(*world.tables);
@@ -710,6 +715,7 @@ int main(int argc, char** argv) {
       chairman.Time("office", [&] { office.RunDay(sim, farm_first); });
       chairman.Time("watchman", [&] { watchman.RunDay(sim); });
       chairman.Time("insulation", [&] { insulation.RunDay(sim); });
+      chairman.Time("supply", [&] { supply.RunDay(sim); });
       chairman.Time("layout", [&] { layout.AnswerPlanAlarmsOnly(sim); });
       chairman.Time("digging", [&] { digging.RunDay(sim); });
       chairman.Time("roads", [&] { roads.RunDay(sim); });
@@ -1164,6 +1170,7 @@ int main(int argc, char** argv) {
   office.Report(state, "thirty_years");
   watchman.Report(state, "thirty_years");
   insulation.Report(state, "thirty_years");
+  supply.Report("thirty_years");
   std::cout << "thirty_years: layout — " << layout.Answered() << " plan alarms answered, "
             << layout.Unanswered() << " found no field\n";
   digging.Report(state, "thirty_years");

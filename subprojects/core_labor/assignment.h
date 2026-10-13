@@ -163,6 +163,22 @@ struct AssignmentJob {
   /// is sent to it (PlanDayAssignments).
   bool supplies_works = false;
 
+  /// THE SUPPLY IS ON THE FLOOR (#734; core_common/site_supply_floor.h): the
+  /// works has had nothing delivered for the rule's days. Before the queue
+  /// reaches the first job with a window - and after the loads at level 0 -
+  /// this job is offered carters WITH HORSES, all such jobs together up to
+  /// AssignmentParams::supply_floor_carters, in the queue's own order; then it
+  /// stands in its tier as before and asks the rest there. No hand on foot is
+  /// placed by the floor. Set by the labour sub-step.
+  bool supply_floor = false;
+
+  /// «ВАЖНЕЕ ПОЛЕВЫХ РАБОТ» (#734; LogisticsTaskRow::over_fields): the
+  /// chairman's switch on this supply's task - the job is filled WHOLE in the
+  /// floor's place, ahead of every window and behind level 0, by the queue's
+  /// ordinary rules (a carter with no horse left is judged on foot). Set by
+  /// the labour sub-step from the task.
+  bool over_fields = false;
+
   /// A CARRIER ON FOOT'S SHARE OF A CART-DAY ON THIS JOB'S LOAD (#671;
   /// core_common/haul.h, WalkerShareOfCartDay by WalkerLoadGrams of the load's
   /// resource): a bundle of hay is half a sack, and so is the hand's count in
@@ -369,6 +385,12 @@ struct AssignmentParams {
   /// Adult kolkhoz horses available today. Every worker placed on a horse
   /// work consumes one from this shared pool; the pool caps those crews.
   std::uint32_t draught_horses = 0;
+
+  /// THE FLOOR'S CARTERS (#734; core_common/site_supply_floor.h,
+  /// SupplyFloorCarters): how many carters with horses the jobs marked
+  /// `supply_floor` may take together ahead of the windows. 0 - no floor
+  /// this placement (the day's top-up: the floor is the morning's).
+  std::uint32_t supply_floor_carters = 0;
 
   /// THE CARTER ON FOOT (0.37.105; core_common/haul.h, WalkerShareOfCartDay;
   /// manual/75-logistics.md §9). 1 while the settlement has no cart: every

@@ -320,6 +320,23 @@ struct ConstructionState {
   /// the supply job's window): a site that has waited long outranks the
   /// windows a fresh one yields to. Meaningless while nothing awaits.
   SimDay supply_since_day = 0;
+
+  /// WORKING DAYS IN A ROW SOMETHING AWAITED AND NOT ONE GRAM CAME (#734, save
+  /// 158; transport design «Пол подвоза»): the memory the supply's floor and
+  /// kSiteSupplyWaits read (core_common/site_supply_floor.h). Written by
+  /// production's settlement of the supply seam (supply_haul.cpp), the module
+  /// that knows a delivery: +1 the evening of a day nothing landed, nought the
+  /// evening of a day anything did - UNLESS the works is on the floor already
+  /// (the count at the floor's days): then a delivery leaves it where it is,
+  /// and the works stays on the floor till its recipe is on the site. A day
+  /// off and a day the works stood paused neither count nor reset it, as
+  /// `crewless_days`. Nought while nothing awaits; emptied with the block.
+  std::uint16_t supply_idle_days = 0;
+
+  /// 1 - a gram of the supply landed on the site since the last evening (save
+  /// 158): the day's memory `supply_idle_days` is settled from, cleared by the
+  /// evening that reads it.
+  std::uint8_t supply_moved_today = 0;
 };
 
 /// @brief Whether any material of the works still awaits its carting

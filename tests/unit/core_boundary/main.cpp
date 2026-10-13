@@ -1715,6 +1715,11 @@ int TestLogisticsDoorsContract(const core::ITableSet& tables) {
   failures +=
       Expect(session->IssueOrder(level).value == 0, "logistics doors: the count is not a level");
   level.logistics_level = core::LogisticsLevel::kUrgent;
+  // `enable` is the supply's «важнее полевых работ» (#734): a switch, by shape.
+  level.enable = 2;
+  failures += Expect(session->IssueOrder(level).value == 0,
+                     "logistics doors: «важнее полевых работ» is a switch — two is refused");
+  level.enable = 0;
   const core::OrderId raised = session->IssueOrder(level);
   failures += Expect(raised.value != 0, "logistics doors: a task raised to level 0 is taken");
 

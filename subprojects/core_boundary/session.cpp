@@ -280,8 +280,9 @@ bool ShapeIsValid(const OrderRow& order) {
       // The task and a level that is a level, and no other subject: the
       // player manages tasks, not carts (B7). Whether the task still stands
       // and already has that level is the consumer's.
-      return order.logistics_task.value != kInvalidEntityIdValue && !has_resident && !has_unit &&
-             !has_field && !has_herd && !has_stand && !has_site;
+      // `enable` is the supply's «важнее полевых работ» (#734): a switch.
+      return order.logistics_task.value != kInvalidEntityIdValue && order.enable <= 1 &&
+             !has_resident && !has_unit && !has_field && !has_herd && !has_stand && !has_site;
     case OrderKind::kMarkMeadow:
       // ONE FORM OR THE OTHER (order_state.h): a field to mow as it lies, or
       // hectares above nothing for a new meadow at `position` — never both,

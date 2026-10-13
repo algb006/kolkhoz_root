@@ -5,13 +5,16 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
+#include "core_common/day_off.h"
 #include "core_common/haul.h"
 #include "core_common/hauled_book.h"
 #include "core_common/ledger_state.h"
 #include "core_common/quantities.h"
 #include "core_common/road_route.h"
+#include "core_common/site_supply_floor.h"
 #include "core_common/supply_estimate.h"
 #include "core_common/unit_state.h"
 #include "core_common/work_seam.h"
@@ -89,6 +92,46 @@ float LegDays(const ProductionConfig& config,
     }
   }
   return days;
+}
+
+/// THE FLOOR'S MEMORY, SETTLED IN THE EVENING (#734; ConstructionState::
+/// supply_idle_days, core_common/site_supply_floor.h): a works with something
+/// awaiting counts the working day on which not one gram landed, and starts
+/// again from nought on a day anything did. A day off and a day the works
+/// stood paused neither count nor reset - nobody carts on either by rule, and
+/// neither is the works standing unserved (the crewless days' own reading,
+/// construction_system.cpp). Here and not in labour: production is the module
+/// that knows a delivery from a carter merely sent.
+///
+/// A WORKS ON THE FLOOR STAYS ON IT TILL ITS RECIPE IS ON THE SITE (the
+/// contract's own word; the first pair of 0.37.243, nine villages, had it
+/// wrong): a delivery does not take the count below the floor's days. With
+/// the count starting again at every delivery, the floor's one cart-day
+/// reset it and the works waited four working days more for the next - a
+/// barrack of 28.8 t got a cart a week and stood 8-42 days delivering.
+void SettleSupplyIdleDays(const SupplyFloorRules& rules, WorldState& current) {
+  const bool day_off = IsDayOffIn(current, current.calendar.day);
+  for (UnitRow& unit : current.units.rows) {
+    ConstructionState& works = unit.construction;
+    const bool moved = works.supply_moved_today != 0;
+    works.supply_moved_today = 0;
+    if (!AnythingAwaits(works)) {
+      works.supply_idle_days = 0;
+      continue;
+    }
+    if (moved) {
+      if (!OnSupplyFloor(rules, works)) {
+        works.supply_idle_days = 0;
+      }
+      continue;
+    }
+    if (day_off || unit.paused != 0) {
+      continue;
+    }
+    if (works.supply_idle_days < std::numeric_limits<std::uint16_t>::max()) {
+      ++works.supply_idle_days;
+    }
+  }
 }
 
 }  // namespace
@@ -245,6 +288,7 @@ void SettleSiteSupply(const ProductionConfig& config, WorldState& current, bool 
         }
         budget -= moved;
         awaiting -= moved;
+        works.supply_moved_today = 1;  // the floor's memory (#734): a gram landed
       }
       SpendHaulNotes(current, hauled, 1.0F);
       works.supply_days_written = works.supply_days_remaining;
@@ -285,6 +329,9 @@ void SettleSiteSupply(const ProductionConfig& config, WorldState& current, bool 
     for (const SupplyLeg& leg : works.legs) {
       works.supply_days_all += LegDays(config, current, leg, unit.position);
     }
+  }
+  if (evening) {
+    SettleSupplyIdleDays(config.supply_floor, current);
   }
 }
 
