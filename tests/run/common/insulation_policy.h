@@ -105,13 +105,11 @@ class InsulationPolicy {
       // design, «Не успел»: the coat goes on INSTEAD of the clay, which opens
       // again in spring). Until 0.37.239 the door refused the coat beside any
       // open works and this rule asked only of a unit with none.
-      const core::ConstructionState& works = unit.construction;
-      const bool clay_stopped =
-          unit.level > 0 && unit.insulated == 0 && !unit.suspended_works.has_value() &&
-          world.calendar.season == core::Season::kWinter && works.winter_works == 0 &&
-          (works.phase == core::ConstructionPhase::kDelivering ||
-           works.phase == core::ConstructionPhase::kBuilding) &&
-          works.target_level == unit.level + 1;
+      // The works' own terms are the door's (unit_state.h); the winter is
+      // this rule's: outside it the clay is still being built.
+      const bool clay_stopped = unit.level > 0 && unit.insulated == 0 &&
+                                world.calendar.season == core::Season::kWinter &&
+                                core::CoatPutsAsideOpenWorks(unit);
       if (byre == core::kNoRow && (free || clay_stopped) && !WarmRung(unit) &&
           HerdUnderItsRoof(
               world, world.units.rows.size() > row ? world.units.row_ids[row] : core::UnitId{})) {

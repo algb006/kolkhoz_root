@@ -114,11 +114,8 @@ OrderRefusal StartInsulation(const ConstructionConfig& config, WorldState& curre
   // other open works still refuses.
   const InsulationKind kind = InsulationKindOf(config, site.type, site.level);
   const ConstructionState& open = site.construction;
-  const bool replaces_clay = kind == InsulationKind::kLivestock &&
-                             !site.suspended_works.has_value() &&
-                             (open.phase == ConstructionPhase::kDelivering ||
-                              open.phase == ConstructionPhase::kBuilding) &&
-                             open.target_level == site.level + 1 && open.winter_works == 0;
+  // The works' own terms have one home (unit_state.h, CoatPutsAsideOpenWorks).
+  const bool replaces_clay = kind == InsulationKind::kLivestock && CoatPutsAsideOpenWorks(site);
   if (open.phase != ConstructionPhase::kNone && !replaces_clay) {
     return OrderRefusal::kConflictsWithActive;
   }

@@ -531,6 +531,24 @@ struct UnitRow {
 /// @brief The units table type used by WorldState.
 using UnitTable = StateTable<UnitId, UnitRow>;
 
+/// @brief Whether the works open on `unit` is one the straw coat PUTS ASIDE
+/// for the winter (#715; livestock design «Не успел»): the unit's own next
+/// rung, carting or under labour, of a class the winter stops, with nothing
+/// put aside already. ONE HOME since 0.37.240 for the door that moves the
+/// works (core_construction, StartInsulation), the lamp that advises the coat
+/// (core_production, herd_cold.cpp) and the run's chairman - until then the
+/// rule stood in the door and in the lamp apart, held together only by the
+/// advice guard.
+/// @note Says nothing of the unit being a livestock one or already coated:
+///       those are the caller's own terms.
+inline bool CoatPutsAsideOpenWorks(const UnitRow& unit) {
+  const ConstructionState& open = unit.construction;
+  return !unit.suspended_works.has_value() &&
+         (open.phase == ConstructionPhase::kDelivering ||
+          open.phase == ConstructionPhase::kBuilding) &&
+         open.target_level == unit.level + 1 && open.winter_works == 0;
+}
+
 /// @brief What of `resource` in a unit's stock any taker OTHER than the
 /// unit's own works may have: `stock - construction.reserved`, never below
 /// zero. One accessor on purpose — every module that takes from a unit reads

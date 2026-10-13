@@ -205,20 +205,15 @@ AlarmAdvice StrawIfHeld(const ProductionConfig& config, const WorldState& world)
 /// door's own rule (insulation.cpp StartInsulation; #715), asked here so the
 /// lamp names only a move the door accepts: not warm already, nothing put
 /// aside, and either no works open or the clay warm rung open (it is put
-/// aside for the coat). THE SAME RULE IN TWO PLACES, bound by the guard
-/// (core_world advice_checks): a lamp whose advice the door refuses teaches
-/// the player to ignore lamps.
+/// aside for the coat). The works' terms are the door's own predicate since
+/// 0.37.240 (unit_state.h, CoatPutsAsideOpenWorks); the guard (core_world
+/// advice_checks) still runs the advice through the door: a lamp whose
+/// advice the door refuses teaches the player to ignore lamps.
 bool CoatTakes(const UnitRow& unit) {
   if (unit.insulated != 0 || unit.suspended_works.has_value()) {
     return false;
   }
-  const ConstructionState& open = unit.construction;
-  if (open.phase == ConstructionPhase::kNone) {
-    return true;
-  }
-  return (open.phase == ConstructionPhase::kDelivering ||
-          open.phase == ConstructionPhase::kBuilding) &&
-         open.target_level == unit.level + 1 && open.winter_works == 0;
+  return unit.construction.phase == ConstructionPhase::kNone || CoatPutsAsideOpenWorks(unit);
 }
 
 }  // namespace
