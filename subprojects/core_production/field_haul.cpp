@@ -980,8 +980,17 @@ void SpoilStores(const ProductionConfig& config, WorldState& current) {
     if (unit.stock.empty()) {
       continue;
     }
-    SpoilAmounts(
-        unit.stock, config.spoil_days, config.keeping_factor, current.ledger.current.spoiled);
+    // UNDER THIS ROOF (#399; UnitTypeDef::level_keeping_factor): the store's
+    // own factor at the level it stands at, on top of the global one - a
+    // dugout keeps potatoes three times a clamp's time. A site, a type the
+    // config does not know and a blank cell keep at one.
+    const float roof = unit.type.value < config.unit_types.size()
+                           ? config.unit_types[unit.type.value].KeepingFactorAt(unit.level)
+                           : 1.0F;
+    SpoilAmounts(unit.stock,
+                 config.spoil_days,
+                 config.keeping_factor * roof,
+                 current.ledger.current.spoiled);
   }
 }
 

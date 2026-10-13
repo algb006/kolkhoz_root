@@ -895,6 +895,7 @@ bool ParseUnitLevels(const ITable& levels,
   const std::uint32_t tonnes_col = levels.FindColumn("storage_capacity_t");
   const std::uint32_t heads_col = levels.FindColumn("livestock_capacity_head");
   const std::uint32_t warm_col = levels.FindColumn("warm_place");
+  const std::uint32_t keeping_col = levels.FindColumn("keeping_factor");
   if (unit_col == kNoTableColumn || level_col == kNoTableColumn) {
     error = "unit_levels: no 'unit' or 'level' column — capacities have nowhere to come from";
     return false;
@@ -908,6 +909,15 @@ bool ParseUnitLevels(const ITable& levels,
     float tonnes = 0.0F;
     float heads = 0.0F;
     float warm = 0.0F;
+    // A blank keeping_factor, or a table set without the column, keeps as
+    // every store did before it: at one. Nought would rot a store in a day
+    // and is refused; a hundred is a bound against a slipped digit.
+    float keeping = 1.0F;
+    if (!CellOrDefault(
+            levels, row, keeping_col, Range{.low = 0.01F, .high = 100.0F}, 1.0F, keeping, error)) {
+      error = "unit_levels: keeping_factor: " + error;
+      return false;
+    }
     if (!CellOrDefault(levels, row, level_col, Range{.low = 0, .high = 255}, 0, level, error) ||
         !CellOrDefault(levels, row, tonnes_col, Range{.low = 0, .high = 1e6F}, 0, tonnes, error) ||
         !CellOrDefault(levels, row, heads_col, Range{.low = 0, .high = 1e6F}, 0, heads, error) ||
@@ -924,7 +934,9 @@ bool ParseUnitLevels(const ITable& levels,
       type.level_storage_capacity_kg.resize(index + 1, 0.0F);
       type.level_livestock_capacity_head.resize(index + 1, 0.0F);
       type.level_warm_place.resize(index + 1, 0U);
+      type.level_keeping_factor.resize(index + 1, 1.0F);
     }
+    type.level_keeping_factor[index] = keeping;
     type.level_storage_capacity_kg[index] = tonnes * 1000.0F;
     type.level_livestock_capacity_head[index] = heads;
     type.level_warm_place[index] = warm > 0.0F ? 1U : 0U;

@@ -349,6 +349,17 @@ struct UnitTypeDef {
   /// Insulation with straw (UnitRow::insulated) makes any rung warm besides.
   std::vector<std::uint8_t> level_warm_place;
 
+  /// HOW LONG THIS STORE KEEPS WHAT LIES IN IT, per LEVEL (index = level - 1;
+  /// unit_levels.csv `keeping_factor`, boss's #769; resources design §4,
+  /// «Картофель и овощи: склад хранит дольше бурта»): a multiplier of every
+  /// resource's shelf life under this roof - the vegetable store 3.0, the
+  /// food store 2.0, the clamp and the church store 1.0 (STUB, the numbers
+  /// are econ's). A blank cell is 1.0. Until 0.37.242 every store kept at
+  /// the one global ProductionConfig::keeping_factor, a STUB at 1.0 - and
+  /// the vegetable store the run's chairman now builds (#756) became the
+  /// largest place of rot in the village.
+  std::vector<float> level_keeping_factor;
+
   /// 0/1: the capacity is the outline the PLAYER draws, so there is no
   /// number to read (manure heap, silage trench, hay stack, the log, stone
   /// and clay piles, the threshing floor). An empty capacity cell next to
@@ -385,6 +396,14 @@ struct UnitTypeDef {
     return level >= 1 && index < level_livestock_capacity_head.size()
                ? level_livestock_capacity_head[index]
                : 0.0F;
+  }
+
+  /// @brief The shelf-life multiplier of the level a unit stands at
+  ///        (level_keeping_factor); 1 for a site, a level the ladder does not
+  ///        name and a blank cell.
+  float KeepingFactorAt(std::uint8_t level) const {
+    const std::size_t index = static_cast<std::size_t>(level) - 1;
+    return level >= 1 && index < level_keeping_factor.size() ? level_keeping_factor[index] : 1.0F;
   }
 
   /// @brief Whether the rung a unit stands at is a warm place by the table.

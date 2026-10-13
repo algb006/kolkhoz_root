@@ -981,8 +981,7 @@ int TestThePorterCatalog();  // porter_catalog_checks.cpp (#671)
 int main() {
   int failures = 0;
   failures += TestWorldJunctions() + TestThePorterCatalog() + TestLifeSpeedupDoor();
-  failures += TestRoadRules();
-  failures += TestDistrictVisitKnobs();
+  failures += TestRoadRules() + TestDistrictVisitKnobs();
   failures += TestServiceLotKind();
   failures += TestTheMtsColumnKnobs();
   failures += TestTheOverfulfilScale();
