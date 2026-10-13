@@ -66,6 +66,7 @@
 #include "production_config.h"
 #include "production_orders.h"
 #include "seed_room.h"
+#include "silage_laying.h"
 #include "stock_lights.h"
 #include "stock_ops.h"
 #include "timber_felling.h"
@@ -334,6 +335,10 @@ class ProductionSystem final : public IProductionSystem {
       // tonight, so that tomorrow's list sends nobody to a meadow that the
       // morning would close under him (field_work.h).
       CloseMeadowCutsAtSeasonsEnd(config_, current);
+      // And the silage laying's evening, after the carting, the rot and the
+      // haymaking's own closing: the cuts of a window that is over are
+      // closed, a laying that has ended is sealed (silage_laying.h).
+      SettleSilageLaying(config_, current);
     }
     if (current.calendar.day == previous.calendar.day) {
       return;  // everything below is daily work
@@ -908,6 +913,10 @@ class ProductionSystem final : public IProductionSystem {
         OpenPhase(config_, current, field, FieldPhase::kHarvest);
       }
     }
+    // THE SILAGE LAYING'S MORNING, after every field's lay (silage_laying.h):
+    // what is on the heaps is the day's, so «covered» and «short» are read
+    // off the same morning the scythes are sent by.
+    RunSilageLaying(config_, current);
   }
 
   /// THE WINTER'S MANURE PLAN, made at the year's turn: the heap is dealt out

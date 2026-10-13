@@ -241,6 +241,41 @@ bool MeadowCutEndsTonight(const ProductionConfig& config, const WorldState& worl
 ///       scythe touched keeps none — it was not cut.
 void CloseMeadowCutsAtSeasonsEnd(const ProductionConfig& config, WorldState& current);
 
+/// @brief Closes ONE meadow's cut now, as the season's end closes them all:
+///        the share mown is laid first, the rest stands uncut and is lost.
+///        Does nothing on arable land or a meadow not being mown.
+void CloseMeadowCutNow(const ProductionConfig& config, WorldState& current, FieldRow& field);
+
+/// @brief TURNS THE REST OF A MEADOW'S CUT TO SILAGE (save 160; livestock
+///        design §8 «Закладка: приказ, окно, работа»; silage_laying.h): what
+///        the hay's scythe has cut is laid as hay, and the grass still
+///        standing becomes the silage cut's whole work — FieldRow::
+///        silage_share is that share of the area, the phase's work is sized
+///        over it at FarmingConfig::silage_mow_factor, the laid share and
+///        grams start from nought, and the heap will go to `trench`.
+///        A LOAD ALREADY ON THE HEAP - the hay not yet carted - IS PUT ASIDE
+///        (FieldRow::set_aside_grams) with its carting's price, and comes
+///        back by ReturnSetAsideLoad: one heap holds one resource.
+/// @pre `trench` names a standing unit.
+/// @post Nothing changes on arable land, on a meadow not being mown or
+///       already turned, on one mown through, and on one that still holds a
+///       load put aside by an earlier turning.
+void TurnMeadowToSilage(const ProductionConfig& config,
+                        WorldState& current,
+                        FieldRow& field,
+                        UnitId trench);
+
+/// @brief Puts the load a turning set aside back on the meadow's heap, with
+///        its carting priced anew. Does nothing while the heap still holds
+///        anything (the green mass) or nothing is aside.
+void ReturnSetAsideLoad(const ProductionConfig& config, WorldState& current, FieldRow& field);
+
+/// @brief Green mass, grams, still STANDING on a meadow being mown: for a cut
+///        turned to silage - what its scythe has yet to lay; for a hay cut -
+///        what a turning would take (the laid share as of the last lay).
+///        0 on arable land and on a meadow not being mown.
+Grams MeadowGreenStanding(const ProductionConfig& config, const FieldRow& field);
+
 /// @brief The last month a winter crop may be sown: the month after its
 ///        window (#513, boss's decision 278: a crop missed in September is
 ///        sown in October at a falling yield, CropDef::late_october_loss_per_

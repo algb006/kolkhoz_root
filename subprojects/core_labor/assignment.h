@@ -222,6 +222,24 @@ struct AssignmentJob {
   /// window instead and this is false.
   bool stacked_hay = false;
 
+  /// True for the carting of a silage cut's green mass to its trench
+  /// (FieldRow::silage_trench; 0.37.248): the job stands on THE MEADOW'S TIER
+  /// (PlacementTier), below every arable reaping and its carts, whatever its
+  /// window - «силос не забирает окно картофеля». The first silage pair gave
+  /// this heap the field load's window and the rot's urgent level, and its
+  /// carters were taken from the potato's rows.
+  bool silage_heap = false;
+
+  /// True for a meadow's cut turned to silage (FieldRow::silage_share): on the
+  /// meadow's tier like the hay's cut, but BY HAND - not `harnessed` - and
+  /// AFTER its own heap's carting (the key in OrderJobs). The second silage
+  /// pair: the cut rode out with the horse mower, a horse a mower, ahead of
+  /// its carts by its kind - the mowers took the day's horses, two to five
+  /// carts a village went for the green mass, and 32-95 % of it rotted
+  /// beside a cut paced to exactly what the carts were to take. «Скосить,
+  /// привезти»: the horses of a silage laying pull the carts.
+  bool silage_cut = false;
+
   /// True for ploughing and harrowing of a field whose crop carries a position
   /// of this year's plan (plan.due above nought for its resource). Inside one
   /// tier and one kind of window such a field is worked before the others,

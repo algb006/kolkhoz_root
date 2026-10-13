@@ -246,7 +246,15 @@ void AgeAndRaise(const LogisticsConfig& config,
       const std::uint32_t row = FindRow(current.fields, task.field);
       if (row != kNoRow) {
         const FieldRow& field = current.fields.rows[row];
-        if (HeapSpoils(config, field)) {
+        // NOT A SILAGE CUT'S GREEN HEAP (0.37.248; livestock design §8; boss,
+        // 13 October 2026): it would rot, so this rule raised it to level 0 -
+        // AHEAD OF EVERY WINDOW - and on 4 September of the first silage pair
+        // 141 hands carted green mass while the potato's diggers went from
+        // 150 to 97; 1936 left 38.7 t of potato under the snow. The cut is
+        // paced by its heaps instead (silage_laying.h), and its carting
+        // stands on the meadow's tier (AssignmentJob::silage_heap).
+        const bool silage_heap = field.silage_trench.value != kInvalidEntityIdValue;
+        if (!silage_heap && HeapSpoils(config, field)) {
           level = LogisticsLevel::kUrgent;
           ++count.urgent_by_spoil;
         } else if (hungry && HeapIsFeed(config, field)) {

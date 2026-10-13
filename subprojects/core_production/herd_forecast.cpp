@@ -20,6 +20,7 @@
 #include "herd_life.h"
 #include "herd_system.h"
 #include "night_pasture.h"
+#include "silage_laying.h"
 #include "stock_ops.h"
 
 namespace core {
@@ -681,6 +682,20 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
                             std::move(goods));
     }
   }
+  // AND THE SILAGE LAYINGS, sealed or under way, on their ripe days
+  // (silage_laying.h, SilageLandingsAhead; 0.37.248): until then green mass
+  // in a trench was no feed to the forecast at all, and a laying ordered on
+  // the lamp's advice would have left the lamp exactly as it stood.
+  if (config.silage_resource.value < held_kg.size()) {
+    std::vector<SilageLanding> layings;
+    SilageLandingsAhead(config, world, layings);
+    for (const SilageLanding& laying : layings) {
+      std::vector<float> goods(held_kg.size(), 0.0F);
+      goods[config.silage_resource.value] =
+          static_cast<float>(laying.silage) / static_cast<float>(kGramsPerKilogram);
+      landings.emplace_back(laying.day > today ? laying.day - today : 0U, std::move(goods));
+    }
+  }
   // AND THE PURCHASE ASKED ABOUT (FeedPurchase; 0.37.122), by the carts' own
   // rule: only what a store has room for lands.
   if (purchase != nullptr && purchase->any) {
@@ -884,6 +899,32 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
     advice.advice = AlarmAdvice::kCutHay;
     return advice;
   }
+  // 1a. THE SILAGE LAYING (0.37.248; livestock design §8; econ §5a: «as the
+  // hay lamp's advice, never a tenth lamp»): the hay's scythe can do no more,
+  // and grass still stands uncut beside an empty trench with the laying's
+  // window open or a month off. NAMED ONLY IF IT MOVES THE SHORTAGE OFF - the
+  // forecast run again with that silage ripe on its day - and with the days
+  // it buys («N т закроют M суток»).
+  const SilageAdvice lay = SilageLayingToAdvise(config, world);
+  if (lay.silage > 0 && config.silage_resource.value < config.feed_values.size()) {
+    FeedPurchase laid;
+    laid.goods_kg.assign(config.feed_values.size(), 0.0F);
+    laid.goods_kg[config.silage_resource.value] =
+        static_cast<float>(lay.silage) / static_cast<float>(kGramsPerKilogram);
+    laid.land_day = lay.ripe_day > world.calendar.day ? lay.ripe_day - world.calendar.day : 0U;
+    laid.any = true;
+    const HerdFeedForecast with =
+        ForecastHerdFeed(config, world, false, FeedHorizon::kNearestScythes, &laid);
+    const std::uint16_t reach = with.short_ahead ? with.days_ahead : with.horizon_days;
+    if (reach > forecast.days_ahead) {
+      advice.advice = AlarmAdvice::kLaySilage;
+      advice.advice_resource = config.silage_resource;
+      advice.advice_amount = lay.silage;
+      advice.advice_unit = lay.trench;
+      advice.advice_days = static_cast<std::uint16_t>(reach - forecast.days_ahead);
+      return advice;
+    }
+  }
   // THE HEADS OF «FEWER HEADS» ARE THE LEAST THAT FEED THE REST (0.37.137;
   // LeastHeadsToHandOver) — not the forecast's heads_short, which counts the
   // heads unfed on the worst day: the whole herd on the day the hay is out.
@@ -1007,6 +1048,8 @@ void CollectHerdForecastAlarms(const ProductionConfig& config,
   alarm.advice_unit_type = advice.advice_unit_type;
   alarm.advice_more = advice.advice_more;
   alarm.amount_more = advice.amount_more;
+  alarm.advice_unit = advice.advice_unit;
+  alarm.advice_days = advice.advice_days;
   alarm.hand_over_stock = advice.hand_over_stock;
   alarm.hand_over_horses = advice.hand_over_horses;
   alarm.below_floor_stock = advice.below_floor_stock;

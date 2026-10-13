@@ -275,6 +275,10 @@ struct FodderAdvice {
   UnitTypeId advice_unit_type;
   AlarmAdvice advice_more = AlarmAdvice::kNone;
   std::int64_t amount_more = 0;
+  /// kLaySilage: the trench and the days the shortage moves off by
+  /// (Alarm::advice_unit, advice_days).
+  UnitId advice_unit;
+  std::uint16_t advice_days = 0;
   /// With kReduceHerd named, first or second: the least heads to hand over
   /// above the floors (herd_floors.h, LeastHeadsToHandOver), the stock and
   /// the horses apart — and what would still have to go BELOW the floors,

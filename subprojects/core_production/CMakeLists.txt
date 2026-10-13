@@ -28,6 +28,7 @@ kolkhoz_add_module(core_production
     timber_felling.cpp
     timber_planting.cpp
     meadow_orders.cpp
+    silage_laying.cpp
     extraction_digging.cpp
     unit_production.cpp
     processing_shops.cpp

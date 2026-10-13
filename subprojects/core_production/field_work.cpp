@@ -97,9 +97,12 @@ void LayMownShare(const ProductionConfig& config, WorldState& current, FieldRow&
   // behind 0.29 man-days left on one meadow — the wintering's feed days read
   // 17 against 20, the hay cut but not in the book.
   const float phase_days = PhaseTotalDays(config, current, field);
-  float cut = phase_days > 0.0F ? 1.0F - (field.work_days_remaining / phase_days) : 1.0F;
+  // The work left is what the scythes see AND what a paced silage cut still
+  // holds back (FieldRow::silage_work_held; nought on a hay cut).
+  const float work_left = field.work_days_remaining + field.silage_work_held;
+  float cut = phase_days > 0.0F ? 1.0F - (work_left / phase_days) : 1.0F;
   cut = cut < 0.0F ? 0.0F : (cut > 1.0F ? 1.0F : cut);
-  if (field.work_days_remaining <= 0.0F) {
+  if (work_left <= 0.0F) {
     cut = 1.0F;  // mown through: the last of it, whatever the arithmetic says
   }
   const float share = cut - field.harvest_laid_share;
@@ -112,7 +115,12 @@ void LayMownShare(const ProductionConfig& config, WorldState& current, FieldRow&
   const float rate = field.kind == LandKind::kFloodplainMeadow
                          ? config.farming.meadow_floodplain_yield_kg_per_ha
                          : config.farming.meadow_yield_kg_per_ha;
-  const Grams hay_total = KilogramsToGrams(rate * field.area_ga);
+  // A CUT TURNED TO SILAGE (livestock design §8; FieldRow::silage_share) lays
+  // over ITS share of the meadow: `cut`, the laid share and the laid grams
+  // have counted that share alone since the morning it was turned.
+  const bool for_silage = field.silage_share > 0.0F;
+  const float part = for_silage ? field.silage_share : 1.0F;
+  const Grams hay_total = KilogramsToGrams(rate * field.area_ga * part);
   // The last lay takes exactly what is left, so the season lays to the gram.
   const Grams hay =
       cut >= 1.0F
@@ -120,8 +128,21 @@ void LayMownShare(const ProductionConfig& config, WorldState& current, FieldRow&
           : GramsFromFloat(static_cast<float>(hay_total) * share);
   field.harvest_laid_share = cut;
   field.harvest_laid_grams += hay;
-  current.ledger.current.area_harvested_ha += field.area_ga * share;
+  current.ledger.current.area_harvested_ha += field.area_ga * part * share;
   if (hay <= 0) {
+    return;
+  }
+  if (for_silage) {
+    // GREEN MASS, NOT HAY: the same grass by its fresh weight
+    // (FarmingConfig::green_mass_per_hay), booked as the green mass's
+    // harvest - the hay's book, and next year's expected cut read off it,
+    // does not move. `harvest_laid_grams` above stays in the hay's measure,
+    // the one `hay_total` is in. The heap goes to the trench (field_haul.h,
+    // HeapMangerRow) and rots by its own two days (SpoilFieldHeaps).
+    const Grams green = GramsFromFloat(static_cast<float>(hay) * config.farming.green_mass_per_hay);
+    const Grams heap_before = PutOnHeap(current, field, config.green_mass_resource, green);
+    AddLedgerAmount(current.ledger.current.harvest, config.green_mass_resource, green);
+    PriceHeapCarting(config, current, field, heap_before, green);
     return;
   }
   // THE HAY LIES AT THE MEADOW, as a field's crop lies at the field (0.37.119;
@@ -138,14 +159,37 @@ void LayMownShare(const ProductionConfig& config, WorldState& current, FieldRow&
 
 namespace {
 
+/// A silage cut is over: the share goes, and the trench's name with it unless
+/// its green mass still lies on the heap - the heap is carted to that trench
+/// (HeapMangerRow), and SettleSilageLaying drops the name with the last of it.
+void EndSilageCut(FieldRow& field) {
+  field.silage_share = 0.0F;
+  field.silage_work_held = 0.0F;
+  if (field.reaped_grams <= 0) {
+    field.silage_trench = UnitId{};
+  }
+}
+
 /// The season's cut ends: the last share laid, the meadow back to grass.
 void MowMeadow(const ProductionConfig& config, WorldState& current, FieldRow& field) {
+  // A SILAGE CUT'S DAY IS NOT ITS END, and its last share is laid the next
+  // morning like every other (silage_laying.h). Until this, a turned meadow
+  // mown through inside a day laid its green mass in the hour the scythes
+  // stopped, and the night's rot took half of it before a cart could come:
+  // «the first night is free by construction» was false exactly here. The
+  // meadow stays in its cut with no work for the scythes; the morning lays
+  // the day's share, and RunSilageLaying opens the next day's or closes it.
+  if (field.silage_share > 0.0F) {
+    field.work_days_remaining = 0.0F;
+    return;
+  }
   // The last of the cut, whatever the days before it laid (LayMownShare).
   field.work_days_remaining = 0.0F;
   LayMownShare(config, current, field);
   field.harvest_laid_share = 0.0F;
   field.harvest_laid_grams = 0;
   field.harvest_work_days = 0.0F;  // nought outside a reaping (land_state.h)
+  EndSilageCut(field);
   // THE DAY IT WAS CUT, and it is the only trace the cut leaves. The phase
   // goes straight back to kGrowing below — the grass does stand again —
   // so without this day a mown meadow and an untouched one are the same
@@ -160,11 +204,14 @@ void MowMeadow(const ProductionConfig& config, WorldState& current, FieldRow& fi
 /// laid — it stands uncut. The meadow goes back to grass; its day is kept
 /// only if a scythe touched it.
 void CloseMeadowCut(WorldState& current, FieldRow& field) {
+  // A cut turned to silage was touched by the hay's scythe before it, or by
+  // the silage's since (the turning stamps the first; TurnMeadowToSilage).
   const bool touched = field.harvest_laid_share > 0.0F;
   field.work_days_remaining = 0.0F;
   field.harvest_laid_share = 0.0F;
   field.harvest_laid_grams = 0;
   field.harvest_work_days = 0.0F;
+  EndSilageCut(field);
   if (touched) {
     field.last_mown_day = current.calendar.day;
   }
@@ -751,8 +798,15 @@ float PhaseWorkDays(const ProductionConfig& config,
   if (field.kind != LandKind::kArable) {
     // Grass is mown, never ploughed, harrowed or sown: the meadow has one
     // working phase in the year and one norm to size it.
-    return phase == FieldPhase::kHarvest ? config.farming.meadow_mow_days_per_ha * field.area_ga
-                                         : 0.0F;
+    if (phase != FieldPhase::kHarvest) {
+      return 0.0F;
+    }
+    // A CUT TURNED TO SILAGE is sized over its own share of the meadow, at
+    // the silage's labour (FieldRow::silage_share; TurnMeadowToSilage).
+    const float hay_days = config.farming.meadow_mow_days_per_ha * field.area_ga;
+    return field.silage_share > 0.0F
+               ? hay_days * field.silage_share * config.farming.silage_mow_factor
+               : hay_days;
   }
   const CropId crop = field.crop;
   float norm = 0.0F;
@@ -939,6 +993,81 @@ void RunMeadow(const ProductionConfig& config,
   if (opening_day || (in_cut_months && !mown_this_year)) {
     OpenPhase(config, current, field, FieldPhase::kHarvest);
   }
+}
+
+void CloseMeadowCutNow(const ProductionConfig& config, WorldState& current, FieldRow& field) {
+  if (field.kind == LandKind::kArable || field.phase != FieldPhase::kHarvest) {
+    return;
+  }
+  LayMownShare(config, current, field);
+  CloseMeadowCut(current, field);
+}
+
+void TurnMeadowToSilage(const ProductionConfig& config,
+                        WorldState& current,
+                        FieldRow& field,
+                        UnitId trench) {
+  if (field.kind == LandKind::kArable || field.phase != FieldPhase::kHarvest ||
+      field.silage_share > 0.0F) {
+    return;
+  }
+  // What the hay's scythe has cut is the hay's: laid first, so the share
+  // below is exactly the grass still standing.
+  LayMownShare(config, current, field);
+  const float uncut = 1.0F - field.harvest_laid_share;
+  if (!(uncut > 0.0F) || field.set_aside_grams > 0) {
+    return;
+  }
+  // THE HAY ON THE HEAP IS PUT ASIDE (FieldRow::set_aside_grams): one heap
+  // holds one resource, and the first green load would write the hay off
+  // (PutOnHeap). Its carting's price goes with it - nobody is sent for a
+  // load that is not on the heap - and comes back with the hay
+  // (ReturnSetAsideLoad).
+  if (field.reaped_grams > 0) {
+    field.set_aside_resource = field.reaped_resource;
+    field.set_aside_grams = field.reaped_grams;
+    field.reaped_grams = 0;
+    field.reaped_resource = ResourceId{};
+    field.haul_days_remaining = 0.0F;
+    field.haul_days_written = 0.0F;
+  }
+  if (field.harvest_laid_share > 0.0F) {
+    field.last_mown_day = current.calendar.day;  // the hay's cut ended here, touched
+  }
+  field.silage_share = uncut;
+  field.silage_trench = trench;
+  field.harvest_laid_share = 0.0F;
+  field.harvest_laid_grams = 0;
+  field.work_days_remaining = PhaseWorkDays(config, current, field, FieldPhase::kHarvest);
+  field.harvest_work_days = field.work_days_remaining;
+}
+
+void ReturnSetAsideLoad(const ProductionConfig& config, WorldState& current, FieldRow& field) {
+  if (field.set_aside_grams <= 0 || field.reaped_grams > 0) {
+    return;  // nothing aside, or the heap still holds the green mass
+  }
+  const Grams load = field.set_aside_grams;
+  const ResourceId resource = field.set_aside_resource;
+  field.set_aside_grams = 0;
+  field.set_aside_resource = ResourceId{};
+  const Grams heap_before = PutOnHeap(current, field, resource, load);
+  PriceHeapCarting(config, current, field, heap_before, load);
+}
+
+Grams MeadowGreenStanding(const ProductionConfig& config, const FieldRow& field) {
+  if (field.kind == LandKind::kArable || field.phase != FieldPhase::kHarvest) {
+    return 0;
+  }
+  const float rate = field.kind == LandKind::kFloodplainMeadow
+                         ? config.farming.meadow_floodplain_yield_kg_per_ha
+                         : config.farming.meadow_yield_kg_per_ha;
+  // Turned: its share less what the silage's scythe has laid. Not turned:
+  // what the hay's has not laid - the grass a turning would take.
+  const float part = field.silage_share > 0.0F ? field.silage_share : 1.0F;
+  const float standing = part * (1.0F - field.harvest_laid_share);
+  return standing > 0.0F ? GramsFromFloat(static_cast<float>(KilogramsToGrams(rate * field.area_ga)) *
+                                          standing * config.farming.green_mass_per_hay)
+                         : 0;
 }
 
 bool MeadowCutEndsTonight(const ProductionConfig& config, const WorldState& world) {

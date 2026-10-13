@@ -201,6 +201,39 @@ int CheckTheNewHouseholdsAdvance() {
     failures += Expect(world.families.rows[0].advance_debt == 0,
                        "a household of two elders has no worker and gets nothing");
   }
+  // THE WRITE-OFF AT THE SECOND YEAR-END SHARE-OUT: a debt open at the first
+  // turn stands; at the second it is written off into the year's book. A row
+  // of the genesis counts no turns.
+  {
+    core::WorldState world = BarrackWorld(0.0F);
+    const auto turn = [&world, &config](std::uint32_t year) {
+      world.calendar.tick = static_cast<core::Tick>(year * core::kDaysPerYear) * core::kTicksPerDay;
+      core::RefreshCalendarCaches(world.calendar);
+      core::RunFamilyExchange(config, 4.0F, world);
+    };
+    world.families.rows[0].formed_day = core::kDaysPerYear - 5;
+    world.families.rows[0].earned_since_formed = 1000;  // not advanced again
+    world.families.rows[0].advance_debt = 9 * kKilo;
+    world.families.rows[0].advance_given = 9 * kKilo;
+    turn(1);
+    failures += Expect(world.families.rows[0].advance_turns == 1 &&
+                           world.families.rows[0].advance_debt == 9 * kKilo &&
+                           world.ledger.current.advance_written_off_turns == 0,
+                       "the first year-end share-out leaves the debt standing");
+    turn(2);
+    failures += Expect(world.families.rows[0].advance_turns == 2 &&
+                           world.families.rows[0].advance_debt == 0 &&
+                           world.ledger.current.advance_written_off_turns == 9 * kKilo &&
+                           world.families.rows[0].advance_given == 9 * kKilo,
+                       "the second writes it off into the year's book, 9 kg");
+    core::WorldState old_row = BarrackWorld(0.0F);
+    old_row.families.rows[0].formed_day = core::kNotFormedInPlay;
+    old_row.calendar.tick = static_cast<core::Tick>(core::kDaysPerYear) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(old_row.calendar);
+    core::RunFamilyExchange(config, 4.0F, old_row);
+    failures += Expect(old_row.families.rows[0].advance_turns == 0,
+                       "a row of the genesis counts no share-out");
+  }
   // NO CAP IN KILOGRAMS: the ceiling's days are the only limit. A household
   // already advanced 500 kg is topped up to the norm like any other.
   {

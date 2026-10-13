@@ -758,6 +758,16 @@ enum class EventKind : std::uint8_t {
   /// kNotable. Seam key `work_got_no_hands`.
   kWorkGotNoHands,
 
+  /// A SILAGE TRENCH WAS SEALED (0.37.248; livestock design §8 «Закладка:
+  /// приказ, окно, работа»; silage_laying.h): the evening its laying ended -
+  /// the order met, or the window over - with nothing left on the way. `unit`
+  /// the trench, `resource` the green mass, `amount` the grams of green mass
+  /// sealed in it (0 - the order stood and nothing was laid: no meadow had
+  /// grass left, or no cart came). Its silage is ready
+  /// FarmingConfig::silage_ripen_days later. kNotable. Seam key proposed:
+  /// `silage_laid`.
+  kSilageLaid,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

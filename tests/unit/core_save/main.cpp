@@ -305,6 +305,7 @@ core::WorldState MakeWorld() {
   rich.advance_debt = 7'300'000;
   rich.advance_given = 11'900'000;
   rich.formed_in_barrack = 1;
+  rich.advance_turns = 1;  // save 160
   core::AppendRow(world.families, rich);
   core::FamilyRow bare;  // empty pantry: the vector must stay empty
   core::AppendRow(world.families, bare);
@@ -384,6 +385,14 @@ core::WorldState MakeWorld() {
   overgrown.rotation_assigned = 0;  // nobody has told this ground anything
   overgrown.area_ga = 45.0F;
   overgrown.fertility = 65.0F;
+  // Save 160: its cut turned to silage for a trench - a meadow being mown is
+  // the one state the loader lets carry the share.
+  overgrown.phase = core::FieldPhase::kHarvest;
+  overgrown.silage_share = 0.375F;
+  overgrown.silage_trench = core::UnitId{2};
+  overgrown.silage_work_held = 1.25F;  // the cut's work not yet opened
+  overgrown.set_aside_resource = core::ResourceId{1};  // the hay under the green
+  overgrown.set_aside_grams = 4'200'000;
   core::AppendRow(world.fields, overgrown);
 
   core::UnitRow barn;
@@ -395,6 +404,10 @@ core::WorldState MakeWorld() {
   barn.construction.phase = core::ConstructionPhase::kDelivering;
   barn.construction.target_level = 2;
   barn.construction.reserved = Amounts({0, 2'500'000, 0, 0, 0, 0});
+  // Save 160: a silage laying ordered of it and a day sealed - off their
+  // defaults (the codec is under test, not the barn).
+  barn.silage_target = 200'000'000;
+  barn.silage_sealed_day = 35;
   core::AppendRow(world.units, barn);
   core::UnitRow house;
   house.type = core::UnitTypeId{1};
@@ -867,8 +880,9 @@ core::WorldState MakeWorld() {
   // never mentions milk but for the two cells it clears.)
   world.ledger.closed.advance = Amounts({95'000, 0, 310'000, 0, 0, 0});
   world.ledger.closed.advance_repaid = 640'000;
-  world.ledger.closed.advance_written_off_ended =
-      71'000;  // What the district asked (save 58, M12): not empty, or a codec that forgot
+  world.ledger.closed.advance_written_off_ended = 71'000;
+  world.ledger.closed.advance_written_off_turns = 12'500;  // save 160
+  // What the district asked (save 58, M12): not empty, or a codec that forgot
   // to read the column would round-trip it perfectly.
   world.ledger.closed.plan_due = Amounts({12'000'000, 0, 0});
   // What went against the position (save 83): not empty either — in BOTH
@@ -1780,8 +1794,9 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // ten floats a family, two; predicted 242 -> 322 before the build, held.
     // Save 159 (#170): +25 a family - the day formed, the trudodni since, the
     // debt, the given, the barrack byte; two families: predicted 322 -> 372
-    // before the build and held; the hash read off it.
-    {"families", 372, 0x65e81acad2180c48ULL},
+    // before the build and held. Save 160: +1 a family - the year-end
+    // share-outs seen: predicted 372 -> 374 before the build and held.
+    {"families", 374, 0xee1167074b644d3fULL},
     // Save 84: +36 — the harvest by parts' laid share (4) and grams (8), 12
     // a row, three rows; predicted before the build and held. Then the first
     // row given non-zero values: the size held at 305, the hash moved.
@@ -1812,7 +1827,11 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // the build; held, and the hash recorded from that run (the first field's
     // stand in its fourth summer).
     // Save 153: +8 a field — haul_to, the load's receiver; 371 -> 395, held.
-    {"fields", 395, 0xbb5df227b4e03e68ULL},
+    // Save 160 (the silage laying): +8 a field - the share turned to silage
+    // and its trench; 395 -> 419, predicted before the build and held. And +14
+    // more - the cut's work held back, the load put aside (resource, grams):
+    // 419 -> 461, predicted before the build and held.
+    {"fields", 461, 0x7fe992903ca51565ULL},
     // Save 67: +27 — the store's emptying byte and the perevalka's two floats,
     // three units; predicted before the fields were added, and held.
     // Save 74: +1 a unit — the house held for a specialist; three units, +3,
@@ -1847,7 +1866,10 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // Save 158 (#734): +3 a site block - the floor's idle days and the day's
     // switch; three units' open blocks and the one put aside: predicted 727 ->
     // 739 before the build and held; the hash read off it.
-    {"units", 739, 0x67e0700070104640ULL},
+    // Save 160 (the silage laying): +12 a unit - the green mass ordered and
+    // the day sealed; three units: 739 -> 775, predicted before the build and
+    // held.
+    {"units", 775, 0xdfddd21f4d7ddd93ULL},
     // Save 71: +4 — fed_share, one herd; predicted before the field, held.
     // Save 91: +8 — the adult age band, two floats, one herd; predicted
     // 71 -> 79 with every other section unmoved before the build.
@@ -1927,7 +1949,10 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // Save 154 (0.37.232, #595): kRaiseSite became the top OrderKind — same
     // 818 bytes, the hash moved; NOT predicted before the build (the ninth
     // time; the units section's +3 was predicted, this one the test found).
-    {"orders", 818, 0x9610fff945ef0326ULL},
+    // Save 160: kLaySilage became the top OrderKind and kNoUncutMeadow the top
+    // refusal - the same 818 bytes, the hash moved; predicted (the tenth time
+    // was the first it was named before the build).
+    {"orders", 818, 0xac4a4da7a242bef6ULL},
     // Save 82: the fixture's first stand, a birch planting — 8 -> 67 (its id
     // 4, the old fields 41, species 2, hectares 4, two days 8); predicted,
     // held.
@@ -2090,8 +2115,9 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // one's six cells with their count (50) and the grams (8), the open one's
     // empty vector (2) and the grams (8): predicted 2812 -> 2880 before the
     // build and held. And the write-off of a row that ended owing, 8 bytes a
-    // book: predicted 2880 -> 2896 before the build; the hash read off it.
-    {"ledger", 2896, 0x582ea7c531114df4ULL},
+    // book: predicted 2880 -> 2896 before the build. Save 160: the write-off
+    // at the second share-out, 8 bytes a book: 2896 -> 2912, predicted and held.
+    {"ledger", 2912, 0x46fec262d2163f18ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -2518,6 +2544,9 @@ int main() {
                  loaded.families.rows[0].advance_given == 11'900'000 &&
                  loaded.families.rows[0].formed_in_barrack == 1 &&
                  loaded.ledger.closed.advance_written_off_ended == 71'000 &&
+                 loaded.ledger.closed.advance_written_off_turns == 12'500 &&
+                 loaded.families.rows[0].advance_turns == 1 &&
+                 loaded.families.rows[1].advance_turns == 0 &&
                  loaded.ledger.current.advance_written_off_ended == 0 &&
                  loaded.families.rows[1].formed_day == core::kNotFormedInPlay &&
                  loaded.families.rows[1].advance_debt == 0 &&
@@ -2722,6 +2751,21 @@ int main() {
                      "the harvest by parts' laid share and grams come back (save 84)");
   failures +=
       Expect(loaded.fields.rows[0].sown_share == 0.625F, "and the sown share comes back (save 87)");
+  failures += Expect(loaded.fields.rows[2].silage_share == 0.375F &&
+                         loaded.fields.rows[2].silage_trench.value == 2 &&
+                         loaded.fields.rows[2].silage_work_held == 1.25F &&
+                         loaded.fields.rows[2].set_aside_resource.value == 1 &&
+                         loaded.fields.rows[2].set_aside_grams == 4'200'000 &&
+                         loaded.fields.rows[0].set_aside_grams == 0 &&
+                         loaded.fields.rows[0].set_aside_resource.value == core::kInvalidDefIdValue &&
+                         loaded.fields.rows[0].silage_share == 0.0F &&
+                         loaded.fields.rows[0].silage_trench.value == core::kInvalidEntityIdValue &&
+                         loaded.units.rows[0].silage_target == 200'000'000 &&
+                         loaded.units.rows[0].silage_sealed_day == 35 &&
+                         loaded.units.rows[1].silage_target == 0 &&
+                         loaded.units.rows[1].silage_sealed_day == core::kTrenchNotSealed,
+                     "save 160: a cut turned to silage, its trench, the laying ordered and the "
+                     "day sealed come back, and their defaults stay defaults");
   failures += Expect(loaded.fields.rows[2].overgrown == 1,
                      "the weeds on the unworked ground survive the round trip");
   failures +=

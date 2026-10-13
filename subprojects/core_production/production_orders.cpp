@@ -14,6 +14,7 @@
 #include "core_common/state_table_ops.h"
 #include "district_limit.h"
 #include "district_plan.h"
+#include "silage_laying.h"
 #include "district_trip.h"
 #include "extraction_digging.h"
 #include "field_removal.h"
@@ -330,9 +331,12 @@ OrderRefusal SetRotation(const ProductionConfig& config,
     // host-boss-pin-0-37-133-2026-10-02 [55]). Maize for silage reaps green
     // mass; the start's 150 t of silage were eaten by day 41 of year 1 in
     // all nine canon villages and no work made more. A field given this
-    // crop was ploughed, sown and reaped into a heap that rotted. STUB: the
-    // refusal goes when green mass gets its trench work, and with it this
-    // test's pair (unit_core_production, the rotation order).
+    // crop was ploughed, sown and reaped into a heap that rotted. THE TRENCH
+    // WORK EXISTS since 0.37.248 (silage_laying.h) and the refusal STAYS:
+    // maize is Epoch II's crop, and Epoch II is not built (boss, the silage
+    // contract, point 8). It goes when a green-mass crop is taken into Epoch
+    // II's work, and with it this test's pair (unit_core_production, the
+    // rotation order).
     if (config.green_mass_resource.value != kInvalidDefIdValue &&
         config.crops[slot.value].resource.value == config.green_mass_resource.value) {
       return OrderRefusal::kRuleForbids;
@@ -566,6 +570,9 @@ void ConsumeProductionOrders(const ProductionConfig& config, WorldState& current
         break;
       case OrderKind::kMarkMeadow:
         Settle(order, OrderMarkMeadow(config, current, order));
+        break;
+      case OrderKind::kLaySilage:
+        Settle(order, OrderLaySilage(config, current, order));
         break;
       case OrderKind::kGrazeAtNight:
         Settle(order, OrderNightPasture(config, current));

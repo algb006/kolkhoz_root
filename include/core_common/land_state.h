@@ -684,6 +684,43 @@ struct FieldRow {
   /// by the one reader, so a stand that somehow carries none is a young one.
   /// Meaningful only while the field's crop is a stand_ages crop.
   std::uint8_t stand_summers = 0;
+
+  /// THE SHARE OF THIS MEADOW BEING CUT FOR SILAGE (save 160; livestock
+  /// design §8 «Закладка: приказ, окно, работа»; field_work.h,
+  /// TurnMeadowToSilage): 0 - the cut, if any, is the hay's. Above 0 - the
+  /// share of the meadow's area the hay scythe had not touched when a
+  /// trench's order (UnitRow::silage_target) took the REST of the cut: from
+  /// that morning the phase's work, its laid share and laid grams are counted
+  /// over this share alone, the mown grass is laid as green mass
+  /// (FarmingConfig::green_mass_per_hay), rain does not stop the scythe
+  /// (RainStopsFieldWork), and the heap is carted to `silage_trench`. Back
+  /// to 0 when the cut closes.
+  float silage_share = 0.0F;
+
+  /// The trench the silage cut above is for. Invalid while silage_share is 0
+  /// and no green heap of that cut still waits for its cart.
+  UnitId silage_trench;
+
+  /// THE SILAGE CUT'S WORK NOT YET OPENED TO THE SCYTHES, game man-days (save
+  /// 160; silage_laying.h, «косят столько, сколько увозят»): the cut is paced
+  /// by its heaps - each morning only the work of the day's green tonnes is
+  /// moved from here into `work_days_remaining`, which is all the labour sees.
+  /// THE CUT'S WORK LEFT IS THE SUM OF THE TWO, and every reader of «how much
+  /// is mown» (LayMownShare) adds them. 0 outside a silage cut. The first
+  /// pair without it: ~40 hands mowed 120 t in a day, the carts moved 10-13 t
+  /// a day, and 32-84 % of the green mass rotted at the meadows.
+  float silage_work_held = 0.0F;
+
+  /// WHAT LAY ON THE HEAP WHEN THE CUT WAS TURNED, put aside (save 160; boss,
+  /// 13 October 2026, «a second heap»): one heap holds one resource, and a
+  /// meadow with its hay still waiting for a cart - the last of the carts,
+  /// for weeks - could not be turned; the turned cuts were the far ones, the
+  /// meadow 330 m from the trench stood by. The hay waits here, with no
+  /// carting priced, and goes back on the heap when the green mass is gone
+  /// (field_work.h, ReturnSetAsideLoad). It does not rot here that would not
+  /// rot there; HeapGrams counts it as lying on the fields.
+  ResourceId set_aside_resource;
+  Grams set_aside_grams = 0;
 };
 
 /// @brief Whether the player has given this field a rotation at all.

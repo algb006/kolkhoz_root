@@ -663,7 +663,9 @@ bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string&
   }
   if (const ITable* farming = tables.FindTable("farming")) {
     float cut_to = static_cast<float>(config.meadow_cut_to_month) + 1.0F;
-    const std::array<ScalarKnob, 4> knobs = {{
+    float silage_to = static_cast<float>(config.silage_to_month) + 1.0F;
+    const std::array<ScalarKnob, 5> knobs = {{
+        {.key = "silage_to_month", .value = &silage_to, .range = {.low = 1.0F, .high = 12.0F}},
         {.key = "reaping_in_strength_share",
          .value = &config.reaping_in_strength_share,
          .range = {.low = 0.0F, .high = 1.0F}},
@@ -679,6 +681,7 @@ bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string&
       return false;
     }
     config.meadow_cut_to_month = static_cast<std::uint8_t>(cut_to - 1.0F);
+    config.silage_to_month = static_cast<std::uint8_t>(silage_to - 1.0F);
   }
   if (const ITable* professions = tables.FindTable("professions")) {
     if (!ParseProfessions(*professions, config, error)) {

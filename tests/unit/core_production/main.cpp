@@ -66,6 +66,7 @@
 #include "perennial_cut_checks.h"
 #include "plan_alarms.h"
 #include "processing_shops.h"
+#include "silage_checks.h"
 #include "production_alarms.h"
 #include "production_config.h"
 #include "production_orders.h"
@@ -15824,13 +15825,20 @@ int CheckAHeapOnTheFieldRots() {
   config.farming.field_heap_keeping_factor = 0.33F;
   constexpr core::Grams kHeap = 1'000'000;
   core::WorldState world;
+  // Both heaps' carting priced for the heap as it lies, as the evening's
+  // settlement leaves it before the rot.
+  constexpr float kPriced = 8.0F;
   core::FieldRow rotting;
   rotting.reaped_grams = kHeap;
   rotting.reaped_resource = core::ResourceId{0};
+  rotting.haul_days_remaining = kPriced;
+  rotting.haul_days_written = kPriced;
   core::AppendRow(world.fields, rotting);
   core::FieldRow keeping;
   keeping.reaped_grams = kHeap;
   keeping.reaped_resource = core::ResourceId{1};
+  keeping.haul_days_remaining = kPriced;
+  keeping.haul_days_written = kPriced;
   core::AppendRow(world.fields, keeping);
   core::SpoilFieldHeaps(config, world);
   const core::Grams heap_loss = core::SpoiledToday(kHeap, 10.0F, 0.33F);
@@ -15843,6 +15851,19 @@ int CheckAHeapOnTheFieldRots() {
              "heap: the rot is booked in spoiled");
   failures +=
       Expect(world.fields.rows[1].reaped_grams == kHeap, "heap: what does not go bad lies whole");
+  // THE CARTING'S PRICE GOES WITH WHAT ROTTED (0.37.247): the seam was priced
+  // for the whole heap, and tomorrow's delivery is «the heap x the share of
+  // the seam the carters drain» - left at the whole heap's price, the same
+  // carters' day moved less by the rot's share.
+  const float left = static_cast<float>(kHeap - heap_loss) / static_cast<float>(kHeap);
+  failures += Expect(heap_loss > 0 &&
+                         std::abs(world.fields.rows[0].haul_days_written - (kPriced * left)) < 0.001F &&
+                         world.fields.rows[0].haul_days_remaining ==
+                             world.fields.rows[0].haul_days_written,
+                     "heap: the rot scales the carting's seam by what is left of the heap");
+  failures += Expect(world.fields.rows[1].haul_days_written == kPriced &&
+                         world.fields.rows[1].haul_days_remaining == kPriced,
+                     "heap: a heap that does not rot keeps its carting's price");
   return failures;
 }
 
@@ -16217,6 +16238,7 @@ int main() {
   failures += CheckTheFeedingOrderSwitch();
   failures += CheckTheCartOfTheCompressedYear();
   failures += CheckMeadowHayLiesAtTheMeadow();
+  failures += CheckTheSilageLaying();
   failures += CheckTheCartingReachesTheStoreInItsHour();
   failures += CheckTheHeapLampIsRedOnlyWhenItSpoils();
   failures += CheckTheSeedLampIsNotAFalseAlarm();

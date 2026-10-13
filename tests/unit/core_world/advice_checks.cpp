@@ -559,6 +559,43 @@ int CheckTheHayLamp(const Fixture& fixture) {
     failures += Expect(named_type.value == food_yard,
                        "«амбар под корм» with no food yard standing names the food yard");
   }
+  // «ЗАЛОЖИТЬ СИЛОС» (0.37.248; AlarmAdvice::kLaySilage): September, the
+  // hay's own months past, grass standing uncut on the meadows beside the
+  // start's trench. The door is kLaySilage on the trench the lamp names, with
+  // the lamp's own tonnes.
+  {
+    std::vector<core::WorldState> september;
+    for (std::uint32_t tonnes = 0; tonnes <= 400; tonnes += 20) {
+      core::WorldState world = WithHay(fixture, fixture.genesis, static_cast<float>(tonnes));
+      SetDay(world, 33);
+      for (core::FieldRow& field : world.fields.rows) {
+        if (field.kind != core::LandKind::kArable) {
+          field.phase = core::FieldPhase::kHarvest;
+          field.work_days_remaining = 1.0F;
+          field.harvest_work_days = 1.0F;
+          field.harvest_laid_share = 0.0F;
+        }
+      }
+      september.push_back(std::move(world));
+    }
+    core::Alarm said;
+    const AdviceRun run = FirstNamed(*fixture.simulation,
+                                     september,
+                                     core::AlarmKind::kHerdHayShortAhead,
+                                     core::AlarmAdvice::kLaySilage,
+                                     [&said](const core::Alarm& alarm, const core::WorldState&) {
+                                       said = alarm;
+                                       core::OrderRow order;
+                                       order.kind = core::OrderKind::kLaySilage;
+                                       order.unit = alarm.advice_unit;
+                                       order.amount = alarm.advice_amount;
+                                       return order;
+                                     });
+    failures += Report(run, "herd_hay_short_ahead in September, «заложить силос»");
+    failures += Expect(said.advice_amount > 0 && said.advice_days > 0 &&
+                           said.advice_unit.value != core::kInvalidEntityIdValue,
+                       "«заложить силос» names its tonnes, the days they buy and the trench");
+  }
   return failures;
 }
 

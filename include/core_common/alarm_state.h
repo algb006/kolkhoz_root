@@ -874,6 +874,19 @@ enum class AlarmAdvice : std::uint8_t {
   /// itself; this gives it the carts it asks ahead of every window.
   kSupplyOverFields,
 
+  /// LAY SILAGE - «заложить силос» (0.37.248; livestock design §8 «Закладка:
+  /// приказ, окно, работа»; proposed dictionary key `lay_silage`). Named by
+  /// kHerdHayShortAhead after kCutHay and before the heads: the laying's
+  /// window is open or opens within a month, grass stands uncut on a meadow
+  /// in its cut, a silage trench stands unsealed with no laying ordered of
+  /// it, and the laying would push the shortage further off. The door is
+  /// kLaySilage on `Alarm::advice_unit` (the trench) with `advice_amount`
+  /// grams of SILAGE - what the grass standing uncut that morning would
+  /// give; `advice_resource` is the silage, and `Alarm::advice_days` the days
+  /// the shortage moves off by («N т закроют M суток»). Before the window the
+  /// number is a ceiling: the haymaking may yet take that grass.
+  kLaySilage,
+
   /// NOT A MOVE: the count, so a consumer can static_assert its mirror.
   kAlarmAdviceCount,
 };
@@ -1028,6 +1041,14 @@ struct Alarm {
   /// @note Not in the save, as `lamp`.
   AlarmAdvice advice_more = AlarmAdvice::kNone;
   std::int64_t amount_more = 0;
+
+  /// kHerdHayShortAhead with kLaySilage named (0.37.248): THE TRENCH the
+  /// order goes to, and THE DAYS the laying of `advice_amount` moves the
+  /// shortage off by - to the forecast's horizon when it closes the hole.
+  /// Invalid and 0 for every other advice.
+  /// @note Not in the save, as `lamp`.
+  UnitId advice_unit;
+  std::uint16_t advice_days = 0;
 
   /// kHerdHayShortAhead with kReduceHerd named — as `advice` or as
   /// `advice_more`: THE HEADS TO HAND OVER, AND THEY ARE NOT `amount`

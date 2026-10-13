@@ -47,6 +47,7 @@
 #include "../common/seam_zero_tally.h"
 #include "../common/session_cost.h"
 #include "../common/sowing_policy.h"
+#include "../common/silage_policy.h"
 #include "../common/supply_policy.h"
 #include "../common/tick_cost.h"
 #include "../common/timber_chain_tally.h"
@@ -622,6 +623,10 @@ int main(int argc, char** argv) {
   // (supply_policy.h; #734), as BuildingChairman orders it.
   run::SupplyPolicy supply(*world.tables);
   run::SupplyPolicy::Declare("thirty_years");
+  // And the autumn's silage laying (silage_policy.h; livestock §8), as
+  // BuildingChairman orders it.
+  run::SilagePolicy silage(*world.tables);
+  run::SilagePolicy::Declare("thirty_years");
   // And the elder's suggested roads with the first new building beside each
   // (suggested_roads_policy.h, #423), as BuildingChairman lays them.
   run::SuggestedRoadsPolicy roads(*world.tables);
@@ -716,6 +721,7 @@ int main(int argc, char** argv) {
       chairman.Time("watchman", [&] { watchman.RunDay(sim); });
       chairman.Time("insulation", [&] { insulation.RunDay(sim); });
       chairman.Time("supply", [&] { supply.RunDay(sim); });
+      chairman.Time("silage", [&] { silage.RunDay(sim); });
       chairman.Time("layout", [&] { layout.AnswerPlanAlarmsOnly(sim); });
       chairman.Time("digging", [&] { digging.RunDay(sim); });
       chairman.Time("roads", [&] { roads.RunDay(sim); });

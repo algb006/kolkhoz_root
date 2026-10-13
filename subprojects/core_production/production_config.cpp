@@ -458,8 +458,18 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
   // Real man-days in the file, game man-days in the config — the same
   // conversion the crop and field-phase norms get, done once at parse.
   float mow_days = farming.meadow_mow_days_per_ha * kRealDaysPerGameDay;
+  // The silage laying (livestock design §8): two months and two whole counts.
+  float silage_from = static_cast<float>(farming.silage_from_month) + 1.0F;
+  float silage_to = static_cast<float>(farming.silage_to_month) + 1.0F;
+  auto ripen_days = static_cast<float>(farming.silage_ripen_days);
   const auto knobs = std::to_array<Knob>({
-      {"unfed_produce_factor", &farming.unfed_produce_factor, 0.0F, 1.0F},
+      {"silage_from_month", &silage_from, 1.0F, 12.0F},
+      {"silage_to_month", &silage_to, 1.0F, 12.0F},
+      {"green_mass_per_hay", &farming.green_mass_per_hay, 0.0F, 20.0F},
+      {"silage_per_green", &farming.silage_per_green, 0.0F, 1.0F},
+      {"silage_ripen_days", &ripen_days, 0.0F, static_cast<float>(kDaysPerYear)},
+      {"silage_cut_ahead_t", &farming.silage_cut_ahead_t, 0.0F, 10000.0F},
+      {"silage_mow_factor", &farming.silage_mow_factor, 0.0F, 10.0F},      {"unfed_produce_factor", &farming.unfed_produce_factor, 0.0F, 1.0F},
       {"unfed_death_after_days", &farming.unfed_death_after_days, 0.0F, 1000.0F},
       {"feed_light_margin_days", &farming.feed_light_margin_days, 0.0F, 1000.0F},
       {"traction_hungry_factor", &farming.traction_hungry_factor, 0.0F, 1.0F},
@@ -517,7 +527,13 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
   farming.meadow_cut_month_end = static_cast<std::uint8_t>(mow_month_end - 1.0F);
   farming.fallow_plow_month = static_cast<std::uint8_t>(fallow_month - 1.0F);
   farming.meadow_mow_days_per_ha = mow_days / kRealDaysPerGameDay;
-
+  if (silage_to < silage_from) {
+    error = "farming: silage_to_month is before silage_from_month";
+    return false;
+  }
+  farming.silage_from_month = static_cast<std::uint8_t>(silage_from - 1.0F);
+  farming.silage_to_month = static_cast<std::uint8_t>(silage_to - 1.0F);
+  farming.silage_ripen_days = static_cast<std::uint32_t>(ripen_days);
   farming.birth_from_month = static_cast<std::uint8_t>(birth_from - 1.0F);
   farming.birth_to_month = static_cast<std::uint8_t>(birth_to - 1.0F);
   return true;
@@ -1667,6 +1683,7 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
   config.manure_resource = ResourceByKey(resources, "manure");
   config.hay_resource = ResourceByKey(resources, "hay");
   config.green_mass_resource = ResourceByKey(resources, "green_mass");
+  config.silage_resource = ResourceByKey(resources, "silage");
   config.straw_resource = ResourceByKey(resources, "straw");
   config.milk_resource = ResourceByKey(resources, "milk");
   config.egg_resource = ResourceByKey(resources, "egg");

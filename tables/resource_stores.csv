@@ -71,6 +71,8 @@ furniture_set,utility_yard,goods_store
 glass,build_yard,build_yard
 glass,church_store,church_store
 gravel,build_yard,build_yard
+green_mass,silage_tower,silo_tower
+green_mass,silage_trench,trench
 groats,church_store,church_store
 groats,food_yard,granary
 grocery,food_yard,food_store

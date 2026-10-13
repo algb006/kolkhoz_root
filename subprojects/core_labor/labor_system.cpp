@@ -1162,7 +1162,7 @@ class LaborSystem final : public ILaborSystem {
     return std::ranges::any_of(current.fields.rows, [&current](const FieldRow& field) {
       const WorkKind kind = KindOfPhase(field.phase);
       return kind != WorkKind::kNone && field.work_days_remaining > 0.0F &&
-             RainStopsWork(current.weather.precipitation, kind);
+             RainStopsFieldWork(current.weather.precipitation, kind, field);
     });
   }
 
@@ -1319,8 +1319,9 @@ class LaborSystem final : public ILaborSystem {
         // offered and left undrainable: a crew sent to a rained-out field
         // would read as men with nothing to work with (kBlocked) all day,
         // and it is the weather, not a shortage the chairman can mend. The
-        // hands go to what rain does not stop — the carting above all.
-        if (RainStopsWork(current.weather.precipitation, kind)) {
+        // hands go to what rain does not stop — the carting above all, and
+        // a meadow's cut turned to silage (RainStopsFieldWork).
+        if (RainStopsFieldWork(current.weather.precipitation, kind, field)) {
           continue;
         }
         // THE AUTUMN FURROW STOPS ON FROZEN GROUND («Надо успеть до мёрзлой
@@ -1388,8 +1389,11 @@ class LaborSystem final : public ILaborSystem {
         // The meadow cut rides out: horse mower, horse rake, hay carted home
         // (farming design §5; the start canon issues both implements). The
         // crop harvest stays hand work — sickles and scythes on the strips.
-        job.harnessed =
-            field.kind == LandKind::kMeadow || field.kind == LandKind::kFloodplainMeadow;
+        // A CUT TURNED TO SILAGE IS MOWN BY HAND (AssignmentJob::silage_cut):
+        // no drying and no horse rake, and the laying's horses pull its carts.
+        job.silage_cut = field.silage_share > 0.0F;
+        job.harnessed = !job.silage_cut && (field.kind == LandKind::kMeadow ||
+                                            field.kind == LandKind::kFloodplainMeadow);
         // THE REAPING OF THE ARABLE AND THE SOWING GO OUT ON ONE CART WHEN A
         // HORSE IS FREE (AssignmentJob::brigade_cart; farming design §6,
         // «Дорога пешком съедает световой день»; 0.37.89). The cart is out
@@ -1450,7 +1454,14 @@ class LaborSystem final : public ILaborSystem {
         // Neither calendar rank held: before the logs the building fell by a
         // quarter (0.37.128), after them the stores stood empty in the spring
         // and the horses fell from 40 to 24 (0.37.129).
-        const bool meadow_heap = field.kind != LandKind::kArable;
+        // A MEADOW'S GREEN MASS IS NOT STACKED HAY (livestock design §8): it
+        // rots in two days where hay lies for months, so it has the field
+        // load's window like the potato beside it - «конкурирует с уборкой
+        // за тот же транспорт».
+        const bool silage_heap = field.kind != LandKind::kArable &&
+                                 field.silage_trench.value != kInvalidEntityIdValue;
+        job.silage_heap = silage_heap;
+        const bool meadow_heap = field.kind != LandKind::kArable && !silage_heap;
         if (meadow_heap && !hay_short.has_value()) {
           hay_short = config_.hay_cart_need_days > 0 && config_.stored_hay_short &&
                       config_.stored_hay_short(current, config_.hay_cart_need_days);
@@ -2188,6 +2199,14 @@ class LaborSystem final : public ILaborSystem {
     // winter (boss, parcels 258 and 260). Where the cut stands among the
     // other work is the queue's tier, not this window (assignment.cpp).
     if (field.kind == LandKind::kMeadow || field.kind == LandKind::kFloodplainMeadow) {
+      // A CUT TURNED TO SILAGE HAS THE LAYING'S WINDOW (livestock design §8;
+      // FieldRow::silage_share): open to the end of silage_to_month, so the
+      // cut stands on the meadow's own tier again in September — below every
+      // arable reaping, the potato's first — and not among the windowless
+      // work the hay's leftover cut falls to after July.
+      if (field.silage_share > 0.0F) {
+        return WindowOf(calendar, config_.silage_to_month);
+      }
       return WindowOf(calendar, config_.meadow_cut_to_month);
     }
     CropId crop = SlotCrop(field, calendar.day);

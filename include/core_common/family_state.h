@@ -284,6 +284,18 @@ struct FamilyRow {
   /// barrack place): its advance ends the day it moves to a house. 0 -
   /// formed in a house of its own.
   std::uint8_t formed_in_barrack = 0;
+
+  /// THE ECONOMIC YEAR'S TURNS THE ROW HAS SEEN since it was formed in play -
+  /// the year-end share-outs it took part in (saturating at 255; save 160).
+  /// At food.csv `advance_write_off_turns` a debt still open is written off
+  /// into the year's book (YearLedger::advance_written_off_turns): a barrack
+  /// family on a ration with no yard may never be lifted above the norm by an
+  /// ordinary issue, and a counter that cannot close is read by nobody (econ,
+  /// boss, 13 October 2026). WRITTEN, WITHDRAWN AND RETURNED IN ONE DAY: it
+  /// fired 0 times in the canon pair's nine seeds and four years and was
+  /// taken out as a stub; population_curve's seed 1941 then showed it fire
+  /// inside 33 years, which was its own return condition.
+  std::uint8_t advance_turns = 0;
 };
 
 /// @brief FamilyRow::formed_day of a row of the genesis: no day of the game.

@@ -350,6 +350,9 @@ inline bool AnythingAwaits(const ConstructionState& works) {
   return false;
 }
 
+/// UnitRow::silage_sealed_day of a trench that is not sealed.
+inline constexpr SimDay kTrenchNotSealed = static_cast<SimDay>(-1);
+
 /// @brief One unit. Plain data; behavior comes from the type's table row.
 struct UnitRow {
   /// Row of tables/unit_types.csv: barn, warehouse, well, house, heap...
@@ -543,6 +546,22 @@ struct UnitRow {
   /// what the workers did from what the raw material allowed. Same contract
   /// as FieldRow::haul_days_written.
   float production_days_written = 0.0F;
+
+  /// THE SILAGE LAYING ORDERED OF THIS TRENCH (save 160; livestock design §8
+  /// «Закладка: приказ, окно, работа»; OrderKind::kLaySilage): grams of GREEN
+  /// MASS the chairman wants laid into it this autumn - the order's tonnes of
+  /// silage over FarmingConfig::silage_per_green. While it is above what the
+  /// trench holds and what lies on heaps bound for it, the core turns the
+  /// uncut rest of the nearest meadows to silage (FieldRow::silage_share).
+  /// 0 - no laying is ordered. Cleared when the trench is sealed and at the
+  /// year's turn.
+  Grams silage_target = 0;
+
+  /// THE DAY THE TRENCH WAS SEALED (save 160): the evening its laying ended -
+  /// the order met, or the window over - with nothing left on the way. All
+  /// its green mass becomes silage FarmingConfig::silage_ripen_days later,
+  /// and the day goes back to kNotSealed. Green mass in a trench does not rot.
+  SimDay silage_sealed_day = kTrenchNotSealed;
 };
 
 /// @brief The units table type used by WorldState.

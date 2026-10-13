@@ -48,9 +48,14 @@ Grams ReceivableRoom(const ProductionConfig& config, const WorldState& world, Re
 /// off an arable field went through the store door before this and goes
 /// through it still: one change a delivery, and where that hay should lie is
 /// not this one's question.
-/// @return The unit's row; kNoRow for an arable field, for a heap that is not
-///         hay, for an unnamed hay resource, and where no stock yard stands —
-///         the heap then goes through the store door like every other.
+/// AND A MEADOW'S GREEN MASS HAS ITS TRENCH (save 160; livestock design §8):
+/// a green heap on a meadow whose cut was turned to silage goes to
+/// FieldRow::silage_trench while that trench stands - the same kind of
+/// receiver, a named unit with no tonnage to be full against.
+/// @return The unit's row; kNoRow for an arable field, for a heap that is
+///         neither hay nor a trench's green mass, for an unnamed resource,
+///         and where no stock yard (or the trench) stands — the heap then
+///         goes through the store door like every other.
 std::uint32_t HeapMangerRow(const ProductionConfig& config,
                             const WorldState& world,
                             const FieldRow& field);

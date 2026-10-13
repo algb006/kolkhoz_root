@@ -370,6 +370,11 @@ struct LaborConfig {
   /// parcels 258 and 260; farming design, "Июнь–июль: рост и сенокос").
   std::uint8_t meadow_cut_to_month = 6;
 
+  /// The last month of the silage laying, 0-based (farming.csv
+  /// silage_to_month): the window of a meadow's cut turned to silage
+  /// (FieldRow::silage_share).
+  std::uint8_t silage_to_month = 8;
+
   /// livestock.csv "horse" row: the kind whose adults are the draught pool
   /// and whose private standing locks its host to horse work (start canon).
   LivestockKindId horse_kind;

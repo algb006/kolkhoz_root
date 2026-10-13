@@ -118,6 +118,11 @@ Grams HeapGrams(const WorldState& world, ResourceId resource) {
     if (field.reaped_grams > 0 && field.reaped_resource.value == resource.value) {
       heaps += field.reaped_grams;
     }
+    // And the load put aside under a silage cut's green mass (land_state.h):
+    // it lies on the same meadow and comes back to the heap.
+    if (field.set_aside_grams > 0 && field.set_aside_resource.value == resource.value) {
+      heaps += field.set_aside_grams;
+    }
   }
   return heaps;
 }

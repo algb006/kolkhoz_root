@@ -119,7 +119,9 @@ static_assert(AggregateArity<ResidentRow>() == 55,
 // Save 159 (#170): the new household's advance at the row's end - the day
 // formed (4), the trudodni since (4), the debt and the given (8 + 8), the
 // barrack byte: predicted 136 -> 168 + amounts (25 bytes after a word's edge,
-// the row aligns to 8) and 35 fields, before the build.
+// the row aligns to 8) and 35 fields, before the build. Save 160: the year-end
+// share-outs seen, a byte beside the barrack's - predicted 168 unmoved (into
+// the tail's padding) and 36 fields before the build; on the wire +1 a family.
 static_assert(sizeof(FamilyRow) == 168 + kAmountsSize,
               "FamilyRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 57: ration_granted, the yard's ration decision — 19 fields;
@@ -130,7 +132,7 @@ static_assert(sizeof(FamilyRow) == 168 + kAmountsSize,
 // Save 75: in_barrack and hunger_alarm_lit — 27 fields. Save 113:
 // satisfaction_year — 28. Save 124: season_category_kcal and
 // season_need_kcal — 30.
-static_assert(AggregateArity<FamilyRow>() == 35,
+static_assert(AggregateArity<FamilyRow>() == 36,
               "FamilyRow gained or lost a field — update the codec and VERSION_SAVE");
 // FieldRow took LandKind into a padding byte it already had, so sizeof did
 // NOT move — the one case the tripwire of manual/67-save-format.md §7 cannot
@@ -209,8 +211,13 @@ static_assert(AggregateArity<FamilyRow>() == 35,
 // the build; the wire row + 1 byte.
 // Save 153 (stage В, F3): haul_to, a point after haul_days_written — predicted
 // 128 -> 136 and 45 -> 46 fields before the build; the wire row + 8 bytes.
-static_assert(sizeof(FieldRow) == 136, "FieldRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<FieldRow>() == 46,
+// Save 160 (the silage laying): silage_share, a float, and silage_trench, an
+// id, at the row's end — predicted 136 -> 144 and 46 -> 48 fields before the
+// build; the wire row + 8 bytes. And the cut's work held back (a float), the
+// load put aside (its resource, its grams) — predicted 144 -> 160 and 51
+// fields before the build; the wire row + 14 more.
+static_assert(sizeof(FieldRow) == 160, "FieldRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<FieldRow>() == 51,
               "FieldRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-06: the stink radius pushed the row from 48 + amounts to 56 +
 // amounts. The pause byte before it had landed in padding and moved nothing,
@@ -250,7 +257,10 @@ static_assert(AggregateArity<FieldRow>() == 46,
 // after `supply_since_day`: the block's scalars 48 -> 51, padded to 56, and
 // 21 fields; the row 120 -> 128 of scalars beside the optional block's own
 // 56. Predicted before the build. On the wire +3 a block.
-static_assert(sizeof(UnitRow) == 128 + (3 * kAmountsSize) + sizeof(std::vector<SupplyLeg>) +
+// Save 160 (the silage laying): silage_target, grams, and silage_sealed_day
+// at the row's end — predicted 128 -> 144 of scalars and 20 -> 22 fields
+// before the build; on the wire +12 a unit.
+static_assert(sizeof(UnitRow) == 144 + (3 * kAmountsSize) + sizeof(std::vector<SupplyLeg>) +
                                      sizeof(std::optional<ConstructionState>),
               "UnitRow changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(std::optional<ConstructionState>) == sizeof(ConstructionState) + 8,
@@ -273,7 +283,7 @@ static_assert(AggregateArity<ConstructionState>() == 21,
               "ConstructionState gained or lost a field — update the codec and VERSION_SAVE");
 // Save 74: reserved_for_specialist, a byte beside `dead` — 18 fields. Save 157:
 // suspended_works (#715) — 20.
-static_assert(AggregateArity<UnitRow>() == 20,
+static_assert(AggregateArity<UnitRow>() == 22,
               "UnitRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 71: fed_share, the day's covered ration — 68 and nineteen fields,
 // predicted before the field was added and measured after. Save 76:
@@ -922,6 +932,7 @@ void WriteFamilyRow(SaveSink& sink, const FamilyRow& row) {
   out.WriteI64(row.advance_debt);
   out.WriteI64(row.advance_given);
   out.WriteU8(row.formed_in_barrack);
+  out.WriteU8(row.advance_turns);  // save 160
 }
 
 FamilyRow ReadFamilyRow(LoadSource& source) {
@@ -985,6 +996,7 @@ FamilyRow ReadFamilyRow(LoadSource& source) {
   row.advance_given = in.ReadI64();
   row.formed_in_barrack =
       static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "family formed in a barrack"));
+  row.advance_turns = in.ReadU8();  // save 160
   if (row.earned_since_formed < 0 || row.advance_debt < 0 || row.advance_given < row.advance_debt) {
     source.Fail("a family's advance is negative or owes more than it was given");
   }
@@ -1105,6 +1117,12 @@ void WriteFieldRow(SaveSink& sink, const FieldRow& row) {
   out.WriteU8(row.fallow_rest_owed);
   // The zyab's autumn furrow in progress (save 114).
   out.WriteU8(row.autumn_furrowing);
+  // The silage cut (save 160): its share of the meadow and its trench.
+  out.WriteFloat(row.silage_share);
+  WriteEntityId(out, row.silage_trench);
+  out.WriteFloat(row.silage_work_held);
+  sink.WriteDefId(DefKind::kResource, row.set_aside_resource.value);
+  out.WriteI64(row.set_aside_grams);
 }
 
 FieldRow ReadFieldRow(LoadSource& source) {
@@ -1221,6 +1239,28 @@ FieldRow ReadFieldRow(LoadSource& source) {
       (!furrow_place || row.crop.value != kInvalidDefIdValue || row.autumn_plowed != 0)) {
     source.Fail(
         "a field ploughs an autumn furrow outside a crop-less ploughing or a part-turned rest");
+  }
+  // Save 160: the silage cut - a share in (0, 1] only on a meadow being mown,
+  // with its trench named; and the trench's name without a share only over a
+  // heap still waiting for its cart (field_work.cpp, EndSilageCut).
+  row.silage_share = in.ReadFloat();
+  row.silage_trench = ReadEntityId<UnitId>(in);
+  row.silage_work_held = in.ReadFloat();
+  row.set_aside_resource = ResourceId{source.ReadDefId(DefKind::kResource)};
+  row.set_aside_grams = in.ReadI64();
+  // Work held back only under a silage cut; a load aside is named, and
+  // nothing aside is unnamed.
+  if (!(row.silage_work_held >= 0.0F) || (row.silage_work_held > 0.0F && !(row.silage_share > 0.0F)) ||
+      row.set_aside_grams < 0 ||
+      (row.set_aside_grams > 0) != (row.set_aside_resource.value != kInvalidDefIdValue)) {
+    source.Fail("a field's silage cut holds work with no cut, or a load put aside is unnamed");
+  }
+  const bool cut_for_silage = row.silage_share > 0.0F;
+  const bool trench_named = row.silage_trench.value != kInvalidEntityIdValue;
+  if (!(row.silage_share >= 0.0F && row.silage_share <= 1.0F) ||
+      (cut_for_silage && (!trench_named || row.phase != FieldPhase::kHarvest)) ||
+      (trench_named && row.kind == LandKind::kArable)) {
+    source.Fail("a field's silage cut is not a share of a meadow being mown for a named trench");
   }
   return row;
 }
@@ -1358,6 +1398,9 @@ void WriteUnitRow(SaveSink& sink, const UnitRow& row) {
   WriteEntityId(out, row.parent);
   out.WriteFloat(row.production_days_remaining);
   out.WriteFloat(row.production_days_written);
+  // The silage laying (save 160): the green mass ordered, the day sealed.
+  out.WriteI64(row.silage_target);
+  out.WriteU32(row.silage_sealed_day);
 }
 
 UnitRow ReadUnitRow(LoadSource& source) {
@@ -1388,6 +1431,11 @@ UnitRow ReadUnitRow(LoadSource& source) {
   row.parent = ReadEntityId<UnitId>(in);
   row.production_days_remaining = in.ReadFloat();
   row.production_days_written = in.ReadFloat();
+  row.silage_target = in.ReadI64();  // save 160
+  row.silage_sealed_day = in.ReadU32();
+  if (row.silage_target < 0) {
+    source.Fail("a trench's silage order is negative");
+  }
   return row;
 }
 

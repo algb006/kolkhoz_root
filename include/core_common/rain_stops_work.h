@@ -44,6 +44,19 @@ namespace core {
 /// @return true when the work does not go on this day.
 bool RainStopsWork(Precipitation precipitation, WorkKind kind);
 
+/// @brief Whether a day of this precipitation stops this kind of work ON THIS
+///        FIELD: RainStopsWork, less the one cut the rain does not stop — a
+///        meadow's cut turned to silage (FieldRow::silage_share; livestock
+///        design §8, «дождливое лето бьёт по сену сильнее, чем по силосу»:
+///        green mass is carted wet, hay must dry where it fell).
+///
+/// ONE HOME for the doors to a field's work, as FrostStopsFieldWork below is:
+/// the accountant's job list, the idle reason and the chairman's standing
+/// order all ask it, so a silage cut cannot be mown through one and stopped
+/// through another.
+/// @param field The field the work is on.
+bool RainStopsFieldWork(Precipitation precipitation, WorkKind kind, const FieldRow& field);
+
 /// @brief Whether the frost stops the autumn furrow on this field today.
 ///
 /// «Надо успеть до мёрзлой земли» (farming design; static review of 0.37.18):

@@ -967,6 +967,25 @@ enum class OrderKind : std::uint8_t {
   /// core_construction.
   kRaiseSite,
 
+  /// «ЗАЛОЖИТЬ СИЛОС» (livestock design §8 «Закладка: приказ, окно, работа»;
+  /// contract core-boss-silage-contract-2026-10-13; 0.37.248): `unit` names a
+  /// silage trench, `amount` is the SILAGE wanted from this autumn's laying,
+  /// grams; 0 withdraws the order. The order stands on the trench
+  /// (UnitRow::silage_target, in green mass) and, inside the laying's window
+  /// (FarmingConfig::silage_from_month..silage_to_month), turns the uncut
+  /// rest of the nearest meadows' cut to silage until the green mass in the
+  /// trench and on the way covers it (silage_laying.h). It may be given
+  /// before the window opens. The trench is sealed the evening the laying
+  /// ends (EventKind::kSilageLaid). Refusals, each with a seam key of its
+  /// own so the layer can say WHY: kNoSuchSubject (no such unit),
+  /// kRuleForbids (the unit is not a standing silage trench),
+  /// kLayingWindowClosed (the window's last day is past, or the haymaking is
+  /// over for the year), kTrenchSealed (the trench is ripening what was laid),
+  /// kNoUncutMeadow (inside the window, and no meadow has grass standing
+  /// uncut - nothing to lay). Seam key proposed: `lay_silage` (boss's
+  /// vocabulary). Consumer: core_production.
+  kLaySilage,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).
@@ -1338,6 +1357,23 @@ enum class OrderRefusal : std::uint8_t {
   /// nothing (a blank labor_days) and grind nothing (no milling in the core).
   /// Seam key `not_restorable`.
   kNotRestorable,
+
+  /// kLaySilage: the laying's window is over for this year - past
+  /// silage_to_month, or the haymaking itself has ended (the season's last
+  /// day, the first lying snow). The remedy is next autumn. Seam key
+  /// proposed: `laying_window_closed`.
+  kLayingWindowClosed,
+
+  /// kLaySilage: the trench is sealed and ripening what was laid; a second
+  /// laying would open it. The remedy is to wait for the silage. Seam key
+  /// proposed: `trench_sealed`.
+  kTrenchSealed,
+
+  /// kLaySilage, inside the window: no meadow has grass standing uncut -
+  /// every one is mown through or closed for the year. The remedy is none
+  /// this autumn; next year's is to leave grass for it or mark a meadow.
+  /// Seam key proposed: `no_uncut_meadow`.
+  kNoUncutMeadow,
 
   /// NOT A VALUE, and never written to a save or read from one: the
   /// codecs range-check 0..kOrderRefusalCount-1 and this is what they check against.

@@ -128,6 +128,19 @@ std::uint32_t HeapMangerRow(const ProductionConfig& config,
                             const WorldState& world,
                             const FieldRow& field) {
   const ResourceId resource = field.reaped_resource;
+  // A MEADOW'S GREEN MASS GOES TO THE TRENCH ITS CUT WAS TURNED FOR (livestock
+  // design §8; FieldRow::silage_trench): the same kind of receiver as the
+  // manger - a named unit with no tonnage to be full against. A trench that
+  // no longer stands receives nothing: the heap falls to the stores' door.
+  if (field.kind != LandKind::kArable && resource.value != kInvalidDefIdValue &&
+      resource.value == config.green_mass_resource.value &&
+      field.silage_trench.value != kInvalidEntityIdValue) {
+    const std::uint32_t trench = FindRow(world.units, field.silage_trench);
+    return trench != kNoRow && world.units.rows[trench].dead == 0 &&
+                   world.units.rows[trench].level > 0
+               ? trench
+               : kNoRow;
+  }
   // An unnamed hay resource compares equal to an unnamed load by two 0xFFFF
   // sentinels (0.17.79): named, or it is nobody's manger.
   if (field.kind == LandKind::kArable || resource.value == kInvalidDefIdValue ||
@@ -959,12 +972,35 @@ void SpoilFieldHeaps(const ProductionConfig& config, WorldState& current) {
     if (field.reaped_grams <= 0 || resource.value >= config.spoil_days.size()) {
       continue;
     }
-    const Grams gone = SpoiledToday(field.reaped_grams, config.spoil_days[resource.value], keeping);
+    // GREEN MASS ROTS BY ITS OWN TERM, without the field heap's factor (boss,
+    // 13 October 2026, the silage contract Q7): at 2 days x 0.33 the whole
+    // heap went the first night it could, and every tonne mown ahead of a
+    // cart was a pure loss. Its first night is free by construction - the
+    // day's cut is laid in the morning and carted all day before this runs.
+    const bool green = resource.value == config.green_mass_resource.value;
+    const Grams gone = SpoiledToday(field.reaped_grams,
+                                    config.spoil_days[resource.value],
+                                    green ? config.keeping_factor : keeping);
     if (gone <= 0) {
       continue;
     }
+    const Grams before = field.reaped_grams;
     field.reaped_grams -= gone;
     AddLedgerAmount(current.ledger.current.spoiled, resource, gone);
+    // THE CARTING'S PRICE GOES WITH WHAT ROTTED (0.37.247; the silage pair's
+    // cart trace, 13 October 2026). The seam was priced this evening for the
+    // heap as it lay (SettleLoad, before this), and tomorrow's delivery is
+    // the heap times the share of that seam the carters drain
+    // (DeliverDrained): a heap half gone under a seam still priced for the
+    // whole of it gave half the grams for the same carters' day. On green
+    // mass, which loses half a night, seventeen carts moved 11-16 t a day
+    // over 0.8 km beside the potato's 48-90 t; on the potato's own heap the
+    // same hole cost its two or three per cent a night, unseen.
+    const float left = before > 0 && field.reaped_grams > 0
+                           ? static_cast<float>(field.reaped_grams) / static_cast<float>(before)
+                           : 0.0F;
+    field.haul_days_remaining *= left;
+    field.haul_days_written *= left;
     if (field.reaped_grams <= 0) {
       field.reaped_grams = 0;
       field.reaped_resource = ResourceId{};  // the invariant: empty means unnamed
@@ -987,10 +1023,23 @@ void SpoilStores(const ProductionConfig& config, WorldState& current) {
     const float roof = unit.type.value < config.unit_types.size()
                            ? config.unit_types[unit.type.value].KeepingFactorAt(unit.level)
                            : 1.0F;
+    // GREEN MASS IN ITS TRENCH DOES NOT ROT, IT RIPENS (livestock design §8;
+    // silage_laying.h): set aside over the night's rot. Anywhere else it
+    // rots by its two days like any other pile.
+    const std::size_t green = config.green_mass_resource.value;
+    const bool ripens = green < unit.stock.size() && unit.stock[green] > 0 &&
+                        IsHomeOf(unit, config, config.green_mass_resource);
+    const Grams ripening = ripens ? unit.stock[green] : 0;
+    if (ripens) {
+      unit.stock[green] = 0;
+    }
     SpoilAmounts(unit.stock,
                  config.spoil_days,
                  config.keeping_factor * roof,
                  current.ledger.current.spoiled);
+    if (ripens) {
+      unit.stock[green] = ripening;
+    }
   }
 }
 

@@ -393,7 +393,15 @@ void ApplyStandingWork(const WorldState& world,
     // reaping (core_common/rain_stops_work.h), so the chairman's man is left
     // where the accountant put him for the day — he planned him as his own —
     // and the order stands for tomorrow. Nothing is revoked.
-    if (RainStopsWork(world.weather.precipitation, order.work)) {
+    // Asked of the FIELD where the order names one: a cut turned to silage is
+    // not stopped (RainStopsFieldWork, the one home).
+    const std::uint32_t rained_row = order.field.value != kInvalidEntityIdValue
+                                         ? FindRow(world.fields, order.field)
+                                         : kNoRow;
+    if (rained_row != kNoRow ? RainStopsFieldWork(world.weather.precipitation,
+                                                  order.work,
+                                                  world.fields.rows[rained_row])
+                             : RainStopsWork(world.weather.precipitation, order.work)) {
       continue;
     }
     // AND THE FROST STOPS THE AUTUMN FURROW, for the same reason (static

@@ -262,6 +262,15 @@ std::vector<std::uint32_t> OrderJobs(const std::vector<AssignmentJob>& jobs,
     if (window_rank(a) != window_rank(b)) {
       return window_rank(a) < window_rank(b);
     }
+    // THE GREEN MASS ALREADY MOWN IS CARTED BEFORE MORE IS MOWN (0.37.248;
+    // AssignmentJob::silage_heap, silage_cut): a KEY for every job, lifting
+    // the silage heap's carting to the head of its tier and window - so the
+    // day's horses go to its carts before the cut, or anything else of the
+    // meadow's tier, takes a hand. It never leaves the tier: every arable
+    // reaping and its carts stand above it.
+    if (a.silage_heap != b.silage_heap) {
+      return a.silage_heap;
+    }
     // THE ZYAB FIRST OF THE WINDOWLESS (0.37.18; AssignmentJob::
     // autumn_furrow): a KEY, like the plan's plough below — a zyab job carries
     // no window, so it only ever meets its own tier's jobs here.
@@ -519,6 +528,12 @@ int PlacementTier(const AssignmentJob& job) {
   constexpr int kUrgentLoadTier = -1;
   // A load whose task stands at level 0 — ahead of every window (boss, the
   // logistics thread [9]; 0.37.177).
+  // A silage cut's green heap: the meadow's tier, and never the urgent one
+  // (AssignmentJob::silage_heap) - the player's own level 0 on its task too:
+  // the heap is the cut's other half, and the cut has a tier.
+  if (job.silage_heap || job.silage_cut) {
+    return kMeadowCutTier;
+  }
   if (job.logistics_urgent) {
     return kUrgentLoadTier;
   }

@@ -510,6 +510,42 @@ struct FarmingConfig {
   /// day 0 of meadow_cut_month opened it (boss, the queue thread [117]).
   std::uint8_t meadow_cut_month_end = 6;  ///< July.
 
+  /// THE SILAGE LAYING (livestock design §8; contract core-boss-silage-
+  /// contract-2026-10-13). ALL SEVEN ARE STUB econ. The window's months,
+  /// 0-based, both ends in: a trench's kLaySilage turns meadows' uncut rest
+  /// to silage only inside it, and the cut's own end (MeadowCutEndsTonight)
+  /// still closes it earlier.
+  std::uint8_t silage_from_month = 8;  ///< September.
+  std::uint8_t silage_to_month = 8;    ///< September.
+
+  /// Grams of green mass a share of a meadow lays per gram of the hay the
+  /// same share would have laid. ESTIMATE: hay is a quarter of fresh grass.
+  float green_mass_per_hay = 4.0F;
+
+  /// Grams of silage a gram of green mass becomes when a sealed trench is
+  /// ripe, 0..1.
+  float silage_per_green = 0.75F;
+
+  /// Game days from a trench's sealing to its silage.
+  std::uint32_t silage_ripen_days = 6;
+
+  /// The silage cut's labour per hectare as a multiple of the hay cut's
+  /// (no drying and raking; treading and covering at the trench instead -
+  /// no work site stands at the trench).
+  float silage_mow_factor = 1.0F;
+
+  /// «КОСЯТ СТОЛЬКО, СКОЛЬКО УВОЗЯТ»: one day of the village's green carting,
+  /// TONNES of green mass a trench (silage_laying.cpp, MowingOpenedToday) -
+  /// each morning the scythes are opened this much, less what lies on the
+  /// heaps above it. STUB econ: 25 by the first pair's cart trace; to become
+  /// «yesterday's carted tonnes», the rule that sets itself.
+  float silage_cut_ahead_t = 25.0F;
+  // THE GREEN HEAP'S FIRST NIGHT IS FREE BY CONSTRUCTION, with no knob (econ
+  // §5b: a swath one night old is wilted, not rotten): a day's cut is laid on
+  // the heap the next morning (LayMownShare), carted all that day, and first
+  // rots that evening (SpoilFieldHeaps) - by resources.csv `spoil_days` as
+  // written, WITHOUT field_heap_keeping_factor.
+
   /// Drought threshold on the DAY temperature (heat design: "above +25 is
   /// heat"). Until the diurnal swing existed this read the daily MEAN, whose
   /// summer ceiling is 24 — so in every run before 2026-08-31 the drought
@@ -1033,12 +1069,17 @@ struct ProductionConfig {
 
   ResourceId hay_resource;  ///< resources.csv "hay" row.
 
-  /// resources.csv "green_mass" row: what maize for silage reaps. NOTHING
-  /// TAKES IT (0.37.147): no trench work turns it into silage and no feed
-  /// link names it, so a rotation naming a crop that reaps it is refused
-  /// (production_orders.cpp, SetRotation). STUB: the refusal is lifted in the
-  /// same move that gives green mass its processing.
+  /// resources.csv "green_mass" row: what a meadow's cut turned to silage
+  /// lays (0.37.248; silage_laying.h) and what maize for silage would reap.
+  /// Its home is the silage trench (resource_stores.csv), where it ripens
+  /// into `silage_resource`. A ROTATION NAMING A CROP THAT REAPS IT IS STILL
+  /// REFUSED (production_orders.cpp, SetRotation): maize is Epoch II's, which
+  /// is not built. The refusal goes when a green-mass crop is taken into
+  /// Epoch II's work - the carting and the trench take any green heap already.
   ResourceId green_mass_resource;
+
+  /// resources.csv "silage" row: what a sealed trench's green mass becomes.
+  ResourceId silage_resource;
 
   ResourceId straw_resource;  ///< resources.csv "straw" row: the grain's by-product.
 

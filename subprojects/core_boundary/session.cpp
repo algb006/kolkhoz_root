@@ -296,6 +296,11 @@ bool ShapeIsValid(const OrderRow& order) {
       // it and whether it is already as asked is the consumer's.
       return has_unit && order.enable <= 1 && !has_resident && !has_field && !has_herd &&
              !has_stand && !has_site;
+    case OrderKind::kLaySilage:
+      // The trench and a mass that is not negative (0 withdraws); whether the
+      // unit is a trench, and the window, are the consumer's (silage_laying.h).
+      return has_unit && order.amount >= 0 && !has_resident && !has_field && !has_herd &&
+             !has_stand && !has_site;
     case OrderKind::kPauseLogisticsTask:
       // The task and a switch that is a switch.
       return order.logistics_task.value != kInvalidEntityIdValue && order.enable <= 1 &&

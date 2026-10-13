@@ -26,6 +26,13 @@ bool RainStopsWork(Precipitation precipitation, WorkKind kind) {
          (kind == WorkKind::kSowing || kind == WorkKind::kHarvest);
 }
 
+bool RainStopsFieldWork(Precipitation precipitation, WorkKind kind, const FieldRow& field) {
+  if (kind == WorkKind::kHarvest && field.silage_share > 0.0F) {
+    return false;
+  }
+  return RainStopsWork(precipitation, kind);
+}
+
 bool FrostStopsFieldWork(const FieldRow& field, float air_celsius) {
   return field.autumn_furrowing != 0 && field.phase == FieldPhase::kPlowing && air_celsius < 0.0F;
 }
