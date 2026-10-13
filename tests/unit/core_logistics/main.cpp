@@ -184,6 +184,35 @@ int TestThreats() {
   failures += Expect(TaskOfField(world, hay)->level == core::LogisticsLevel::kUrgent &&
                          hungry.urgent_by_hunger == 1,
                      "threats: a feed heap is urgent while a herd went underfed");
+  // A BILLETED HERD IS HUNGRY TOO (0.37.245; boss, 13 October 2026): the herd
+  // standing in the yards before its own unit is built - no unit - raises
+  // the heap as the housed one does; a family's own herd and a herd with no
+  // adult raise nothing. Until 0.37.245 only a herd AT A UNIT counted, and
+  // the first winter's cows starved in May and June with the new hay lying
+  // on the meadow at level 1.
+  world.herds.rows[0].fed_share = 1.0F;
+  core::HerdRow billeted;
+  billeted.adult_count = 6;
+  billeted.fed_share = 0.4F;
+  core::AppendRow(world.herds, billeted);
+  core::TaskDayCount billet_day;
+  core::AgeAndRaise(config, world, 2, 60, billet_day);
+  failures += Expect(TaskOfField(world, hay)->level == core::LogisticsLevel::kUrgent &&
+                         billet_day.urgent_by_hunger == 1,
+                     "threats: a feed heap is urgent while a BILLETED herd, with no unit, went "
+                     "underfed");
+  world.herds.rows[1].household_owned = 1;
+  core::TaskDayCount family_day;
+  core::AgeAndRaise(config, world, 3, 90, family_day);
+  failures += Expect(TaskOfField(world, hay)->level != core::LogisticsLevel::kUrgent &&
+                         family_day.urgent_by_hunger == 0,
+                     "threats: a family's own hungry herd raises no heap of the farm's");
+  world.herds.rows[1].household_owned = 0;
+  world.herds.rows[1].adult_count = 0;
+  core::TaskDayCount young_day;
+  core::AgeAndRaise(config, world, 4, 120, young_day);
+  failures +=
+      Expect(young_day.urgent_by_hunger == 0, "threats: a herd with no adult raises none either");
   return failures;
 }
 

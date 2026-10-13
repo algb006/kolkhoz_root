@@ -136,11 +136,17 @@ LogisticsLevel AgedLevel(const LogisticsConfig& config, LogisticsLevel base, flo
   return base;
 }
 
-/// A kolkhoz herd at a unit went underfed today (HerdRow::fed_share).
+/// A kolkhoz herd went underfed today (HerdRow::fed_share) - AT ITS UNIT OR
+/// BILLETED (0.37.245; boss, 13 October 2026). Until then only a herd with a
+/// unit counted: the cows standing in the yards before their own yard is
+/// built eat the farm's fodder as any herd does (herd_system.cpp, the stock
+/// yard's fallback) and starved as any does, but raised no heap - and with
+/// the December hay gone (0.37.244) the first winter's herds were short from
+/// March and died in May and June of year 2 while the first scythes' hay lay
+/// on the meadow at level 1.
 bool AHerdIsHungry(const WorldState& world) {
   for (const HerdRow& herd : world.herds.rows) {
-    if (herd.household_owned == 0 && herd.unit.value != kInvalidEntityIdValue &&
-        herd.adult_count > 0 && herd.fed_share < 1.0F) {
+    if (herd.household_owned == 0 && herd.adult_count > 0 && herd.fed_share < 1.0F) {
       return true;
     }
   }

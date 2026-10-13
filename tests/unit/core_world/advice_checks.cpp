@@ -562,7 +562,12 @@ int CheckTheHayLamp(const Fixture& fixture) {
   return failures;
 }
 
-int CheckTheStarvingHerd(const Fixture& fixture) {
+/// @param billeted false - the team stands in its yard (a unit); true - it
+///        stands where the genesis put it, in the families' yards (0.37.245:
+///        until then the lamp skipped a kolkhoz herd billeted in a family's
+///        yard - `household` is where it stands, not whose it is - and the
+///        first winter's billeted stock starved with no red lamp at all).
+int CheckTheStarvingHerdAt(const Fixture& fixture, bool billeted) {
   // «РАСПЕЧАТАТЬ ФОНД»: a kolkhoz herd unfed today, its feed lying in a fund.
   // THE ADVICE NAMES THE FEED AND ITS GRAMS, NOT THE FUND, and kUnsealFund
   // asks for one - the seed fund is tried, then the plan's reserve: the gap
@@ -570,20 +575,30 @@ int CheckTheStarvingHerd(const Fixture& fixture) {
   int failures = 0;
   core::WorldState world = fixture.genesis;
   SetDay(world, 2);
-  // The team in its yard (a kolkhoz herd at a unit, not billeted), unfed
-  // today, and the spring's seed oats in the stores - its feed in the fund.
+  // The team unfed today - in its yard (a kolkhoz herd at a unit) or billeted
+  // as the genesis has it - and the spring's seed oats in the stores: its
+  // feed in the fund.
   core::UnitRow yard;
   yard.type = core::UnitTypeId{static_cast<std::uint16_t>(fixture.Row("unit_types", "horse_yard"))};
   yard.level = 1;
   yard.position = world.units.rows.empty() ? core::Vec2{} : world.units.rows.front().position;
   const core::UnitId yard_id = core::AppendRow(world.units, yard);
   const std::uint32_t horse = fixture.Row("livestock", "horse");
+  std::uint32_t in_family_yards = 0;
   for (core::HerdRow& herd : world.herds.rows) {
     if (herd.household_owned == 0 && herd.kind.value == horse) {
-      herd.unit = yard_id;
-      herd.household = core::FamilyId{};
+      if (!billeted) {
+        herd.unit = yard_id;
+        herd.household = core::FamilyId{};
+      }
+      in_family_yards += herd.household.value != core::kInvalidEntityIdValue ? 1U : 0U;
       herd.unfed_days = 1.0F;
     }
+  }
+  if (billeted) {
+    failures +=
+        Expect(in_family_yards > 0,
+               "herd_starving, billeted: the genesis keeps the team in the families' yards");
   }
   Stock(world, fixture.Row("resources", "oat"), 20 * core::kGramsPerTonne);
   const auto unseal = [](core::FundKind fund) {
@@ -601,8 +616,10 @@ int CheckTheStarvingHerd(const Fixture& fixture) {
                                     core::AlarmKind::kHerdStarving,
                                     core::AlarmAdvice::kUnsealFund,
                                     unseal(core::FundKind::kSeed));
+  const std::string where =
+      billeted ? "herd_starving, billeted in the families' yards, " : "herd_starving, ";
   if (!seed.named || seed.refused == 0) {
-    return Report(seed, "herd_starving, «распечатать фонд» (the seed fund)");
+    return failures + Report(seed, where + "«распечатать фонд» (the seed fund)");
   }
   const AdviceRun plan = FirstNamed(*fixture.simulation,
                                     {world},
@@ -612,8 +629,12 @@ int CheckTheStarvingHerd(const Fixture& fixture) {
   std::cout << "advice: «распечатать фонд» names no fund; the seed fund refused "
             << static_cast<int>(seed.refusal) << ", the plan's reserve answered "
             << (plan.refused == 0 ? 0 : static_cast<int>(plan.refusal)) << '\n';
-  failures += Report(plan, "herd_starving, «распечатать фонд» (the plan's reserve)");
+  failures += Report(plan, where + "«распечатать фонд» (the plan's reserve)");
   return failures;
+}
+
+int CheckTheStarvingHerd(const Fixture& fixture) {
+  return CheckTheStarvingHerdAt(fixture, false) + CheckTheStarvingHerdAt(fixture, true);
 }
 
 int CheckTheDayOff(const Fixture& fixture) {

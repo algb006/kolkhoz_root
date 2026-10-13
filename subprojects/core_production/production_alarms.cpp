@@ -1095,7 +1095,12 @@ void CollectHerdAlarms(const ProductionConfig& config,
   std::vector<std::uint8_t> peoples_foods;
   for (std::uint32_t row = 0; row < world.herds.rows.size(); ++row) {
     const HerdRow& herd = world.herds.rows[row];
-    if (herd.unfed_days <= 0.0F || herd.household.value != kInvalidEntityIdValue) {
+    // WHOSE THE HERD IS, NOT WHERE IT STANDS (0.37.245; boss, 13 October 2026):
+    // until then this skipped every herd with `household` set - the family
+    // yard it stands in - and a KOLKHOZ herd billeted there has it set too
+    // (herd_state.h: «billeting is placement, not ownership»). The team and
+    // the cows of the first months, starving in the yards, lit no lamp.
+    if (herd.unfed_days <= 0.0F || herd.household_owned != 0) {
       continue;
     }
     if (!funds_read) {

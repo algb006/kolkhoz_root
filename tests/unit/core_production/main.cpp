@@ -4459,6 +4459,24 @@ int CheckTheStarvingHerdNamesItsCause() {
                          starving(bread, locked).advice == core::AlarmAdvice::kUnsealFund,
                      "starving herd: oats the people are issued, a reserve feed of the cow — no "
                      "unsealing lets it eat them, «bring feed»; not issued, the fund again");
+
+  // WHOSE THE HERD IS, NOT WHERE IT STANDS (0.37.245): the same kolkhoz herd
+  // standing in a family's yard - `household` set, `unit` none - is starving
+  // as it was, with the same advice; a FAMILY's own herd, standing in the
+  // same yard, is the family's business and lights nothing.
+  core::WorldState billeted = locked;
+  billeted.herds.rows[0].unit = core::UnitId{};
+  billeted.herds.rows[0].household = core::FamilyId{7};
+  billeted.herds.rows[0].household_owned = 0;
+  const core::Alarm in_a_yard = starving(config, billeted);
+  failures += Expect(in_a_yard.kind == core::AlarmKind::kHerdStarving &&
+                         in_a_yard.advice == in_fund.advice &&
+                         in_a_yard.advice_amount == in_fund.advice_amount,
+                     "starving herd: a kolkhoz herd billeted in a family's yard lights the lamp, "
+                     "with the advice it has at a unit");
+  billeted.herds.rows[0].household_owned = 1;
+  failures += Expect(starving(config, billeted).kind == core::AlarmKind::kNone,
+                     "starving herd: a family's own herd in that yard lights nothing");
   return failures;
 }
 
