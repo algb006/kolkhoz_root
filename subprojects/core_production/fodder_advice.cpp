@@ -12,12 +12,14 @@
 #include <vector>
 
 #include "core_common/calendar.h"
+#include "core_common/day_off.h"
 #include "core_common/fund_ladder.h"
 #include "core_common/horse_lamp_memory.h"
 #include "core_common/land_state.h"
 #include "core_common/ledger_state.h"
 #include "core_common/module_rules.h"
 #include "core_common/quantities.h"
+#include "core_common/resident_state.h"
 #include "core_common/state_table_ops.h"
 #include "district_limit.h"
 #include "herd_floors.h"
@@ -27,6 +29,128 @@
 #include "stock_ops.h"
 
 namespace core {
+namespace {
+
+/// 1 + year x 12 + month of `day` (ChairmanState::hay_day_worked_month).
+std::uint16_t MonthCodeOf(SimDay day) {
+  return static_cast<std::uint16_t>(1U + (day / kDaysPerMonth));
+}
+
+/// Whether a meadow stands in its cut inside the cut's months.
+bool AMeadowIsInItsCut(const ProductionConfig& config, const WorldState& world) {
+  const auto month = static_cast<std::uint8_t>(world.calendar.date.month);
+  if (month < config.farming.meadow_cut_month || month > HayCutLastMonth(config)) {
+    return false;
+  }
+  return std::ranges::any_of(world.fields.rows, [](const FieldRow& field) {
+    return field.kind != LandKind::kArable && field.phase == FieldPhase::kHarvest &&
+           field.work_days_remaining > 0.0F;
+  });
+}
+
+/// Whether this year's cut is open with grass still standing in it: a meadow
+/// in its cut with mowing left, from the cut's first month on. (Not before
+/// it: a meadow found in last year's cut's phase in January - a world of
+/// before 0.37.93 - is no open cut, and the ladder goes on past it.)
+bool GrassStandsInAnOpenCut(const ProductionConfig& config, const WorldState& world) {
+  // AND NOT AFTER THE CUT'S LAST MONTH (found by thirty_years' guard on the
+  // candidate, 14 October 2026): a meadow not mown through stands in its
+  // cut's phase until the season closes it (the first snow, 0.37.244), the
+  // cut's moves end with August - and with no upper month here the lamp
+  // stood lit and silent through September and October with the ladder's
+  // lower rungs shut behind this very test.
+  // With the upper month it is the question above, word for word - asked
+  // there, so the two cannot part again.
+  return AMeadowIsInItsCut(config, world);
+}
+
+/// Whether an avral stands on a meadow's cut today.
+bool AvralStandsOnAMeadowsCut(const WorldState& world) {
+  return std::ranges::any_of(world.fields.rows, [](const FieldRow& field) {
+    return field.kind != LandKind::kArable && field.phase == FieldPhase::kHarvest &&
+           field.rush_phase == FieldPhase::kHarvest && field.rush_step > 0;
+  });
+}
+
+}  // namespace
+
+bool DayOffWorthWorkingForTheCut(const ProductionConfig& config,
+                                 const WorldState& world,
+                                 const HerdFeedForecast& forecast) {
+  return forecast.short_ahead && forecast.by_pace && TodayMayBeDeclaredWorking(world) &&
+         world.weather.precipitation != Precipitation::kRain && AMeadowIsInItsCut(config, world) &&
+         world.chairman.hay_day_worked_month != MonthCodeOf(world.calendar.day);
+}
+
+SimDay DayOffAheadForTheCut(const ProductionConfig& config,
+                            const WorldState& world,
+                            const HerdFeedForecast& forecast) {
+  const SimDay today = world.calendar.day;
+  if (!forecast.short_ahead || !forecast.by_pace || !AMeadowIsInItsCut(config, world) ||
+      world.chairman.hay_day_worked_month == MonthCodeOf(today)) {
+    return 0;
+  }
+  // AFTER today: today's own day off is the rung above when it dawned dry,
+  // and is not left when it dawned wet.
+  const SimDay month_end = today - (today % kDaysPerMonth) + kDaysPerMonth - 1U;
+  for (SimDay day = today + 1U; day <= month_end; ++day) {
+    if (IsDayOffIn(world, day)) {
+      return day;
+    }
+  }
+  return 0;
+}
+
+bool AvralMayBeNamedOnTheCut(const ProductionConfig& config, const WorldState& world) {
+  if (!CutCanBeHurried(config, world) ||
+      world.chairman.hay_cut_avral_days >= config.farming.hay_avral_days_a_cut) {
+    return false;
+  }
+  const SimDay today = world.calendar.day;
+  if (world.chairman.hay_day_worked_month == MonthCodeOf(today)) {
+    return true;  // the month's day off is worked
+  }
+  // A day off still ahead in this calendar month - or today's, not yet
+  // declared - comes first.
+  const SimDay month_end = today - (today % kDaysPerMonth) + kDaysPerMonth - 1U;
+  for (SimDay day = today; day <= month_end; ++day) {
+    if (IsDayOffIn(world, day)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+void SettleHayCutDay(const ProductionConfig& config, WorldState& current) {
+  const auto month = static_cast<std::uint8_t>(current.calendar.date.month);
+  if (month == config.farming.meadow_cut_month && current.calendar.date.day_in_month == 0) {
+    current.chairman.hay_cut_dry_work_days = 0;  // the cut opened this morning
+    current.chairman.hay_cut_avral_days = 0;
+  }
+  // A day an avral stands on a meadow's cut (ChairmanState::hay_cut_avral_days).
+  const bool avral = AvralStandsOnAMeadowsCut(current);
+  if (avral && current.chairman.hay_cut_avral_days < std::numeric_limits<std::uint16_t>::max()) {
+    ++current.chairman.hay_cut_avral_days;
+  }
+  const SimDay today = current.calendar.day;
+  const bool working = !IsDayOffIn(current, today);
+  if (AMeadowIsInItsCut(config, current) && working &&
+      current.weather.precipitation != Precipitation::kRain &&
+      current.chairman.hay_cut_dry_work_days < std::numeric_limits<std::uint16_t>::max()) {
+    ++current.chairman.hay_cut_dry_work_days;
+  }
+  // THE DAY OFF WORKED ON THE LAMP'S ADVICE: today was the chairman's
+  // cancelled day off, and the cut's pace was short this evening - the
+  // lamp's own condition. A day off cancelled for a load in a month the hay
+  // is not short does not spend the month's one.
+  if (current.chairman.cancelled_day_off == today && today != 0) {
+    const HerdFeedForecast forecast =
+        ForecastHerdFeed(config, current, false, FeedHorizon::kNearestScythes);
+    if (forecast.short_ahead && forecast.by_pace) {
+      current.chairman.hay_day_worked_month = MonthCodeOf(today);
+    }
+  }
+}
 
 UnitTypeId FeedStoreTypeToBuild(const ProductionConfig& config, const WorldState& world) {
   // THE STORE: the first unit type that is a module and the home of a feed
@@ -90,8 +214,89 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
   // AND ONLY WHILE THE CUT CAN STILL BE HURRIED (CutCanBeHurried; 0.37.123):
   // a meadow in its cut whose avral stands at the last step has no move left
   // on it, and the ladder goes on.
-  if (CutCanBeHurried(config, world)) {
+  // 0. A DRY DAY OFF IN THE CUT, WORKED (lever 1; econ's four-levers §2: «a
+  // quarter of the summer's days are days off, and on each a dry village
+  // lays nought where it lays 27-28 t on a working day»): today is a day off
+  // the door would let be declared working, no rain stops the scythes this
+  // morning, the forecast reads the cut by its pace and finds it short, and
+  // no day off was worked on this advice this calendar month. The door is
+  // kCancelDayOff with `enable` 1, TODAY's - the day's own morning and not
+  // its eve: the lamp can read today's rain, not tomorrow's, and an advice
+  // the door would refuse is not given. The cut's own move rides as the
+  // second.
+  // BEFORE EVERY MOVE: THE AVRAL THAT HAS STOOD ITS DAYS IS LIFTED (econ's
+  // four-levers §2d; boss, 13 October 2026). Capped only in its NAMING, an
+  // avral once declared stood on - nine days in five villages of arm 3 - and
+  // its price in rest and satisfaction ran with it. It does not end by
+  // itself: the lamp says so and the chairman lifts it (kDeclareRush, 0).
+  if (AvralStandsOnAMeadowsCut(world) &&
+      world.chairman.hay_cut_avral_days >= config.farming.hay_avral_days_a_cut) {
+    advice.advice = AlarmAdvice::kLiftRush;
+    return advice;
+  }
+  // THE CUT'S MOVES ARE NAMED ONLY WHILE THE PACE IS THE BOUND (econ's
+  // four-levers §2e; boss, 13 October 2026): with the grass the smaller term
+  // the meadows end mown through, and a day off worked or an avral lays the
+  // same hay earlier at the price of rest and satisfaction - in years 3-4 of
+  // arm C the run's chairman worked 5-7 days off a year for hay nobody lacked.
+  // A DATED DAY OFF IS NOT KEPT AGAINST THE FORECAST («a dated move stands»
+  // was tried on 13 October 2026 and withdrawn by boss): with the prior
+  // naming a day off at every cut's opening dawn it meant «the month's day
+  // off is worked in every lit year» - 51 days off in ten years against 31.
+  // THE KNOWN MISS that buys: one village-year of thirty-six (seed 1933, year
+  // 3) left 11.7 ha, 20 t, uncut - rain on three of the cut's last four days
+  // in a village with nine more cows to tend than its base.
+  const bool pace_is_the_bound = !forecast.grass_bound;
+  if (pace_is_the_bound && DayOffWorthWorkingForTheCut(config, world, forecast)) {
+    advice.advice = AlarmAdvice::kDeclareDayWorking;
+    return advice;
+  }
+  // 1. THE AVRAL ON THE CUT - ONLY AFTER THE MONTH'S DAY OFF, AND FOR A FEW
+  // DAYS (econ's four-levers §2c; boss, 13 October 2026): named when the
+  // month's day off has been worked on this lamp's advice or none is left in
+  // the month, the forecast is still short, and the avral has stood on this
+  // cut for fewer than FarmingConfig::hay_avral_days_a_cut days. Named every
+  // day the lamp was lit inside the first summer's cut, it cost the villages
+  // that followed it 6-8 points of rest by August's end.
+  if (pace_is_the_bound && AvralMayBeNamedOnTheCut(config, world)) {
     advice.advice = AlarmAdvice::kCutHay;
+    return advice;
+  }
+  // WHILE A CUT IS OPEN AND GRASS STILL STANDS IN IT, THE LAMP NAMES ONLY THE
+  // CUT'S OWN MOVES (boss, 13 October 2026, on lever 1's first pair): the
+  // lower rungs - the heads above the floors, the granary, bought feed, the
+  // remainder below the floors - are named from the day the year's cut
+  // closes or its grass is mown through, on the hay actually in. The
+  // ladder's first rung IS the cut, and a head handed over in June eats
+  // grass, not hay, until the stall months. Lit inside year 1's cut for the
+  // first time, the lamp went on down its ladder on ordinary days and the
+  // run's chairman handed twenty horses over nine villages in the first
+  // summer (189 -> 169). With neither move left - the avral at its last
+  // step, no dry day off to work - it names none: the lamp stays lit with its
+  // days and tonnes.
+  // BUT A DAY OFF STILL AHEAD IN THE MONTH IS NAMED WITH ITS DATE (boss, 13
+  // October 2026, on arm 3: 45-79 village-days a summer lit with no move at
+  // all): the move is that day's own morning, and the lamp says so.
+  if (GrassStandsInAnOpenCut(config, world)) {
+    // THE GRASS IS THE BOUND AND THE HAY IS STILL SHORT: the move that is
+    // true is the ladder's own «сдать головы», DATED to the day after the
+    // cut's last - the day the lower rungs open by the calendar. No head is
+    // named below the floors here; with none above them the lamp names none.
+    if (forecast.grass_bound) {
+      const HandOverAdvice heads = LeastHeadsToHandOver(config, world);
+      if (heads.stock + heads.horses > 0) {
+        advice.advice = AlarmAdvice::kReduceHerd;
+        advice.hand_over_stock = heads.stock;
+        advice.hand_over_horses = heads.horses;
+        advice.advice_day = forecast.cut_end_day + 1U;
+      }
+      return advice;
+    }
+    const SimDay coming = DayOffAheadForTheCut(config, world, forecast);
+    if (coming != 0) {
+      advice.advice = AlarmAdvice::kDeclareDayWorking;
+      advice.advice_day = coming;
+    }
     return advice;
   }
   // THE HEADS OF «FEWER HEADS» ARE THE LEAST THAT FEED THE REST (0.37.137;
@@ -203,10 +408,23 @@ void CollectHerdForecastAlarms(const ProductionConfig& config,
   if (!forecast.short_ahead) {
     return;
   }
+  // THE THRESHOLD INSIDE THE CUT (FarmingConfig::hay_pace_short_share): read
+  // by the pace, the lamp is lit when what covers the need is under that
+  // share of it. At 1.0 - the shipped value - that is any shortage at all.
+  // (Two thresholds, 0.9 to light and 1.0 to go out, were tried on 13 October
+  // 2026 and dropped: no lit day fewer, 3 % of the first summer's hay less.)
+  if (forecast.by_pace && forecast.need_units > 0.0F &&
+      forecast.covered_units >= config.farming.hay_pace_short_share * forecast.need_units) {
+    return;
+  }
   Alarm alarm;
   alarm.kind = AlarmKind::kHerdHayShortAhead;
   alarm.herd = forecast.herd;
-  alarm.resource = forecast.first_short;
+  // THE LAMP NAMES THE HAY (0.37.250): the shortage is the hay ladder's. The
+  // row of the feeding order found empty first rides beside it.
+  alarm.resource = config.hay_resource;
+  alarm.first_short_resource = forecast.first_short;
+  alarm.short_grams = forecast.short_hay_grams;
   alarm.amount = forecast.heads_short;
   alarm.days_ahead = forecast.days_ahead;
   alarm.days_to_loss = forecast.days_ahead;
@@ -217,6 +435,7 @@ void CollectHerdForecastAlarms(const ProductionConfig& config,
   alarm.advice_unit_type = advice.advice_unit_type;
   alarm.advice_more = advice.advice_more;
   alarm.amount_more = advice.amount_more;
+  alarm.advice_day = advice.advice_day;
   alarm.hand_over_stock = advice.hand_over_stock;
   alarm.hand_over_horses = advice.hand_over_horses;
   alarm.below_floor_stock = advice.below_floor_stock;

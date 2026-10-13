@@ -37,6 +37,7 @@
 #include "../common/advance_write_off_tally.h"
 #include "../common/births_herd_tally.h"
 #include "../common/building_chairman.h"
+#include "../common/hay_day_off_policy.h"
 #include "../common/run_harness.h"
 #include "../common/timber_flow_tally.h"
 #include "../common/transition_tally.h"
@@ -359,11 +360,17 @@ constexpr float kHotAfternoonCelsius = 25.0F;
 void LiveOneDay(core::ISimulation& simulation,
                 const run::UpgradePolicy& upgrades,
                 Trajectory& out,
-                run::BirthsHerdTally* births_herd = nullptr) {
+                run::BirthsHerdTally* births_herd = nullptr,
+                run::HayDayOffPolicy* hay_day_off = nullptr) {
   bool hot_at_any_tick = false;
   const core::UnitId awaiting = upgrades.Awaiting();
   for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
     simulation.AdvanceStep();
+    // The hay lamp's «объявить день рабочим» is the day off's own morning
+    // (hay_day_off_policy.h): asked after every step, answered in the first.
+    if (hay_day_off != nullptr) {
+      hay_day_off->RunStep(simulation);
+    }
     const core::WorldState& state = simulation.CompletedState();
     // econ's work sample (births_herd_tally.h), once a day at noon.
     if (births_herd != nullptr && tick == run::BirthsHerdTally::kSampleHour) {
@@ -579,6 +586,9 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
   // Every write-off of an advance at the second share-out, by name
   // (advance_write_off_tally.h; #170).
   run::AdvanceWriteOffTally advance_write_offs;
+  // The day off worked on the hay lamp's advice (hay_day_off_policy.h; lever 1).
+  run::HayDayOffPolicy hay_day_off;
+  run::HayDayOffPolicy::Declare("population_curve");
   if (const core::ITable* const types = world.tables->FindTable("unit_types")) {
     const std::uint32_t key_column = types->FindColumn("key");
     for (std::uint32_t row = 0; row < types->RowCount(); ++row) {
@@ -607,7 +617,7 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
       // calls the rest silence (event_journal's own header says the same).
       // `AdvanceDays(1)` IS this loop — the order of `builder.RunDay` after
       // the day is untouched, and the bands below are the proof.
-      LiveOneDay(*simulation, builder.upgrades, out, births_herd_on);
+      LiveOneDay(*simulation, builder.upgrades, out, births_herd_on, &hay_day_off);
       builder.RunDay(*simulation);
       timber.CountDay(simulation->CompletedState());
       // What held the transition TODAY, by the order's own door.
@@ -815,6 +825,8 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
   out.epoch2_population = transition_tally.OpenedPopulation();
   transition_tally.Print("population_curve", seed);
   advance_write_offs.Print("population_curve", seed);
+  std::cout << "population_curve (seed " << seed << "): days off worked on the hay lamp's advice "
+            << hay_day_off.Ordered() << " in " << kYears << " years\n";
   if (births_herd_on != nullptr) {
     births_herd_on->Print("population_curve", seed);
   }

@@ -508,25 +508,44 @@ int CheckTheHerdHayForecast() {
   failures += Expect(far(with_cut).short_ahead && far(with_cut).days_ahead == 64,
                      "hay forecast, the long look, year 2: last year's 150 kg land over days "
                      "24-27 and carry to day 63 - short on day 64");
-  // TO NEXT YEAR'S FIRST SCYTHES, NOT THE END OF ITS MOWING (0.37.57's check-
-  // run): from day 48 the long horizon is 72 days (day 120, year 3's first
-  // scythes). 290 kg carry four heads 72 days - not short; a horizon to the
-  // mowing's end (day 123) read short on day 72.
-  core::WorldState to_scythes = MakeHerdWorld(290.0F);
+  // TO NEXT YEAR'S SCYTHES AND THE DAYS THE NEW HAY TAKES TO REACH A STORE
+  // (0.37.57's check-run; the eight days since 0.37.250,
+  // hay_new_cut_in_store_days): from day 48 the long horizon is 80 days (day
+  // 128: year 3's first scythes on day 120, and eight). 322 kg carry four
+  // heads 80 days - not short; 290 kg, which reached the first scythes,
+  // are short before the new hay is in.
+  core::WorldState to_scythes = MakeHerdWorld(322.0F);
   AddHerd(to_scythes, 0, 4, 2, true);
   year_two(to_scythes);
-  failures += Expect(!far(to_scythes).short_ahead && far(to_scythes).horizon_days == 72,
-                     "hay forecast, the long look, year 2: 290 kg reach next year's first scythes "
-                     "- not short; the new cut feeds from its first day");
+  failures += Expect(!far(to_scythes).short_ahead && far(to_scythes).horizon_days == 80,
+                     "hay forecast, the long look, year 2: 322 kg reach the eighth day of next "
+                     "year's cut - not short");
+  core::WorldState to_first_scythes = MakeHerdWorld(290.0F);
+  AddHerd(to_first_scythes, 0, 4, 2, true);
+  year_two(to_first_scythes);
+  failures += Expect(far(to_first_scythes).short_ahead,
+                     "hay forecast, the long look, year 2: 290 kg reach the first scythes and "
+                     "not the day the new hay is in a store - short");
   // THE LAMP LOOKS TO THE NEAREST FIRST SCYTHES (FeedHorizon::kNearestScythes;
   // boss, econ-boss-hay-term-2026-10-01 [7]; 0.37.96). On 1 January of year
   // 2 that is day 24: the 100 kg the long look calls short on day 25 reach
   // the scythes and the lamp is silent — the January to come is two
   // haymakings away; 80 kg are short on day 20 and it speaks. A lot on the
   // road that reaches the scythes puts it out.
-  failures += Expect(!yellow(bare).has_value(),
-                     "hay lamp, year 2: 100 kg reach this year's first scythes on day 24 - no "
-                     "yellow, though the long look is short on day 25");
+  // (Since 0.37.250 the nearest scythes are day 24 AND THE EIGHT DAYS the new
+  // hay takes to reach a store - day 32: 128 kg reach it, the 100 kg that
+  // reached the first scythes are short on day 25. In a world with a book the
+  // cut itself lands in those eight days; this one has none.)
+  core::WorldState to_new_hay = MakeHerdWorld(128.0F);
+  AddHerd(to_new_hay, 0, 4, 2, true);
+  year_two(to_new_hay);
+  const std::optional<core::Alarm> bare_yellow = yellow(bare);
+  failures += Expect(bare_yellow.has_value() && bare_yellow->days_ahead == 25,
+                     "hay lamp, year 2: 100 kg reach the first scythes and not the eighth day "
+                     "of the cut - yellow on day 25");
+  failures += Expect(!yellow(to_new_hay).has_value(),
+                     "hay lamp, year 2: 128 kg reach the eighth day of this year's cut - no "
+                     "yellow");
   core::WorldState lean_two = MakeHerdWorld(80.0F);
   AddHerd(lean_two, 0, 4, 2, true);
   year_two(lean_two);
@@ -550,11 +569,13 @@ int CheckTheHerdHayForecast() {
   failures += Expect(autumn_yellow.has_value() && autumn_yellow->days_ahead == 40,
                      "hay lamp, year 2 after the mowing: 160 kg are short on day 40 of the 42 to "
                      "next year's scythes - yellow");
-  core::WorldState autumn_fed = MakeHerdWorld(170.0F);
+  // (Fifty days since 0.37.250 - the 42 to the scythes and the eight to the
+  // store: 202 kg reach them; the 170 that reached the scythes do not.)
+  core::WorldState autumn_fed = MakeHerdWorld(202.0F);
   AddHerd(autumn_fed, 0, 4, 2, true);
   year_two(autumn_fed, 30);
   failures += Expect(!yellow(autumn_fed).has_value(),
-                     "hay lamp, year 2 after the mowing: 170 kg reach next year's scythes - no "
+                     "hay lamp, year 2 after the mowing: 202 kg reach the new hay's day - no "
                      "yellow");
   // NEVER MORE HEADS THAN STAND TODAY (0.37.96, (б)): a herd that calves
   // every month and has no hay at all is short from today, and by the
@@ -665,6 +686,302 @@ int CheckTheShippedFeedingOrder() {
   } else {
     ++failures;
   }
+  return failures;
+}
+
+/// THE HAY LAMP BY THE CUT'S PACE (lever 1; 0.37.250; contract core-boss-
+/// lever1-hay-pace-contract-2026-10-13): inside the cut, from its second dry
+/// working day, the hay to come is the mowers' pace over the dry working days
+/// left - the days off among them taken out by the calendar - and never more
+/// than the grass standing; the lamp speaks in tonnes of hay; and on a dry day
+/// off it names «объявить день рабочим», once a calendar month.
+int CheckTheHayLampByTheCutsPace() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  // A meadow of ten hectares at 10 kg a hectare: 100 kg of hay a season, one
+  // norm-day a hectare. The cut's months are the config's own (days 24-27).
+  config.farming.meadow_yield_kg_per_ha = 10.0F;
+  config.hay_resource = core::ResourceId{0};  // the store's first cell, a unit a kilogram
+  const core::SimDay cut_from =
+      static_cast<core::SimDay>(config.farming.meadow_cut_month) * core::kDaysPerMonth;
+  const core::SimDay cut_end = cut_from + core::kDaysPerMonth - 1U;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  const auto village = [&config](core::SimDay day, float hay_kg, std::uint16_t dry_days) {
+    core::WorldState world = MakeHerdWorld(hay_kg);
+    world.plan.highest_due = {0, 0};
+    AddHerd(world, 0, 4, 2, true);
+    world.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(world.calendar);
+    core::FieldRow meadow;
+    meadow.kind = core::LandKind::kMeadow;
+    meadow.area_ga = 10.0F;
+    meadow.phase = core::FieldPhase::kHarvest;
+    meadow.harvest_work_days = 10.0F;
+    meadow.work_days_remaining = 8.0F;  // a fifth mown: 20 kg laid, 80 standing
+    AppendRow(world.fields, meadow);
+    world.ledger.current.harvest = {20 * core::kGramsPerKilogram};
+    world.chairman.hay_cut_dry_work_days = dry_days;
+    (void)config;
+    return world;
+  };
+  const auto look = [&config](const core::WorldState& world) {
+    return core::ForecastHerdFeed(config, world, false, core::FeedHorizon::kNearestScythes);
+  };
+  // The cut's second day; the working days left of it by the calendar.
+  const core::SimDay today = cut_from + 1U;
+  const core::WorldState second_day = village(today, 100.0F, 2);
+  float working_left = 0.0F;
+  for (core::SimDay day = today + 1U; day <= cut_end; ++day) {
+    working_left += core::IsDayOffIn(second_day, day) ? 0.0F : 1.0F;
+  }
+  const core::HerdFeedForecast paced = look(second_day);
+  std::cout << "  hay pace: day " << today << " of a cut of days " << cut_from << "-" << cut_end
+            << ", 20 kg laid in 2 dry working days - pace " << paced.pace_kg_a_day
+            << " kg a day, dry working days left " << paced.dry_work_days_left << " (calendar "
+            << working_left << "), horizon " << paced.horizon_days << " days, short "
+            << paced.short_hay_grams / kKilo << " kg of hay\n";
+  failures += Expect(
+      paced.by_pace && paced.pace_kg_a_day == 10.0F && paced.dry_work_days_left == working_left,
+      "hay pace: from the cut's second dry working day the forecast reads the "
+      "pace - 10 kg a day - over the working days the calendar leaves");
+  // The need runs hay_new_cut_in_store_days into NEXT year's cut: four heads, 4 kg a day.
+  const auto horizon = static_cast<std::uint16_t>(cut_from + core::kDaysPerYear +
+                                                  config.farming.hay_new_cut_in_store_days - today);
+  // WHAT THE PACE PROMISES IS HAY: the same village with that hay already in
+  // the store and nothing more to come (a pace of nought) is short by the
+  // same kilograms. (The need itself is the herd's over 55 days, calves and
+  // all - not asserted here.)
+  const auto in_store_instead = [&village, &look, today](float hay_kg) {
+    core::WorldState world = village(today, hay_kg, 2);
+    world.ledger.current.harvest = {0};
+    return look(world);
+  };
+  const float to_come_kg = working_left * 10.0F;
+  const core::HerdFeedForecast same_hay = in_store_instead(100.0F + to_come_kg);
+  failures += Expect(paced.horizon_days == horizon && paced.short_ahead && same_hay.by_pace &&
+                         same_hay.pace_kg_a_day == 0.0F &&
+                         std::llabs(paced.short_hay_grams - same_hay.short_hay_grams) <= kKilo,
+                     "hay pace: year 1 inside its cut is forecast to the day of next year's the "
+                     "new hay is in a store - and what the pace still lays counts as that much hay "
+                     "in the store");
+  // ONE DRY WORKING DAY IS NO PACE YET - THE PRIOR STANDS IN (arm 4): the
+  // norm's hay a mower-day, 80 kg standing over 8 norm-days = 10 kg, times
+  // the mowers on the cut; none placed - 0.4 of the grown: ten grown
+  // residents are four mowers, 40 kg a day.
+  core::WorldState first_morning = village(today, 100.0F, 1);
+  for (int grown = 0; grown < 10; ++grown) {
+    core::ResidentRow hand;
+    hand.birth_day = -1000;
+    AppendRow(first_morning.residents, hand);
+  }
+  const core::HerdFeedForecast by_prior = look(first_morning);
+  failures += Expect(by_prior.by_pace && by_prior.pace_kg_a_day == 40.0F,
+                     "hay pace: with one dry working day behind the prior stands in for the "
+                     "pace - the norm's 10 kg a mower-day by four tenths of ten grown residents");
+  // A mower PLACED is the count: one of them on the meadow - 10 kg a day.
+  first_morning.residents.rows[0].work.kind = core::WorkKind::kHarvest;
+  first_morning.residents.rows[0].work.field = first_morning.fields.row_ids.back();
+  failures += Expect(look(first_morning).pace_kg_a_day == 10.0F,
+                     "hay pace: the prior counts the mowers placed on the cut when there are any");
+  // NO MEADOW OPEN - NO PRIOR: the cut's month with the grass not yet in its
+  // cut says nothing in year 1, as before.
+  core::WorldState unopened = village(today, 100.0F, 1);
+  unopened.fields.rows.back().phase = core::FieldPhase::kGrowing;
+  failures += Expect(!look(unopened).by_pace && !look(unopened).short_ahead,
+                     "hay pace: before a meadow opens in its cut there is no norm to read - no "
+                     "prior, and year 1's first cut is not forecast");
+  // NEVER MORE THAN THE GRASS: a pace of 500 kg a day promises the 80 kg standing.
+  core::WorldState fast = village(today, 100.0F, 2);
+  fast.ledger.current.harvest = {1000 * core::kGramsPerKilogram};
+  const core::HerdFeedForecast capped = look(fast);
+  failures += Expect(
+      working_left > 0.0F
+          ? std::llabs(capped.short_hay_grams - in_store_instead(180.0F).short_hay_grams) <= kKilo
+          : capped.by_pace,
+      "hay pace: the pace promises no more than the grass still standing, 80 kg");
+  // THE CLIMATE'S WET SHARE takes its part of every working day left.
+  core::ProductionConfig wet = config;
+  wet.rain_day_shares.fill(0.5F);
+  const core::HerdFeedForecast damp =
+      core::ForecastHerdFeed(wet, second_day, false, core::FeedHorizon::kNearestScythes);
+  failures += Expect(damp.dry_work_days_left == working_left * 0.5F,
+                     "hay pace: a climate that rains every other day halves the dry working days "
+                     "left");
+
+  // THE LAMP: the hay named, tonnes beside days, the row found empty first apart.
+  const auto lamp = [&config](const core::WorldState& world) {
+    std::vector<core::Alarm> alarms;
+    core::CollectHerdForecastAlarms(config, world, alarms);
+    return alarms.empty() ? core::Alarm{} : alarms[0];
+  };
+  const core::Alarm lit = lamp(second_day);
+  failures += Expect(lit.kind == core::AlarmKind::kHerdHayShortAhead &&
+                         lit.resource.value == config.hay_resource.value &&
+                         lit.short_grams == paced.short_hay_grams && lit.short_grams > 0 &&
+                         lit.days_ahead == paced.days_ahead,
+                     "hay pace: the lamp is lit inside year 1's cut, names the hay and says the "
+                     "tonnes short beside the days");
+  // THE THRESHOLD: at half the need the same village is not lit (it covers more).
+  core::ProductionConfig lenient = config;
+  lenient.farming.hay_pace_short_share = 0.01F;
+  std::vector<core::Alarm> none;
+  core::CollectHerdForecastAlarms(lenient, second_day, none);
+  failures += Expect(none.empty() && paced.covered_units > 0.01F * paced.need_units,
+                     "hay pace: under a threshold of a hundredth of the need the lamp is out - "
+                     "the share is read");
+
+  // THE DAY OFF: found by the calendar inside some year's cut, from its second day.
+  core::SimDay day_off = 0;
+  for (core::SimDay year = 0; year < 12 && day_off == 0; ++year) {
+    for (core::SimDay day = cut_from + 1U; day <= cut_end; ++day) {
+      const core::SimDay candidate = (year * core::kDaysPerYear) + day;
+      if (core::IsDayOffIn(village(candidate, 100.0F, 2), candidate)) {
+        day_off = candidate;
+        break;
+      }
+    }
+  }
+  if (Expect(day_off != 0, "hay pace: some year of twelve has a day off inside its cut") != 0) {
+    return failures + 1;
+  }
+  core::WorldState sunday = village(day_off, 100.0F, 2);
+  const auto spent_world = [](core::WorldState world, core::SimDay day) {
+    world.chairman.hay_day_worked_month =
+        static_cast<std::uint16_t>(1U + (day / core::kDaysPerMonth));
+    return world;
+  };
+  const core::Alarm on_day_off = lamp(sunday);
+  failures += Expect(on_day_off.advice == core::AlarmAdvice::kDeclareDayWorking &&
+                         on_day_off.advice_more == core::AlarmAdvice::kNone,
+                     "hay pace: on a dry day off with the pace short the lamp names «объявить "
+                     "день рабочим» - and not the avral beside it: the day off comes first");
+  // THE GRASS IS THE BOUND (arm E): the same dry day off with a pace that
+  // mows the meadow through before the cut ends - no move of the cut adds a
+  // tonne, and the lamp names neither the day off nor the avral; what it
+  // names, if anything, is the heads, dated to the day after the cut's last.
+  core::WorldState mown_through = sunday;
+  mown_through.ledger.current.harvest = {1000 * core::kGramsPerKilogram};
+  const core::Alarm grass_bound = lamp(mown_through);
+  const core::SimDay after_the_cut =
+      day_off - (day_off % core::kDaysPerMonth) + core::kDaysPerMonth;
+  // A POOR DRAW OF THE WEATHER: under a climate that rains every other day
+  // the dry working days left are a draw of n halves - n/2 expected, less
+  // sqrt(n)/2. A pace that mows the grass through by the MEAN (a tenth over
+  // it) and not by the poor draw leaves the cut's moves named; under a
+  // climate with no rain the same promise is the bound.
+  const core::HerdFeedForecast slow = look(sunday);
+  const float standing_kg = 80.0F;
+  const auto promising = [&sunday, standing_kg](float dry_days) {
+    core::WorldState world = sunday;
+    world.ledger.current.harvest = {core::GramsFromKilograms(
+        1.1F * standing_kg / dry_days * static_cast<float>(world.chairman.hay_cut_dry_work_days))};
+    return world;
+  };
+  core::ProductionConfig coin = config;
+  coin.rain_day_shares.fill(0.5F);
+  failures += Expect(
+      slow.dry_work_days_left > 0.0F
+          ? look(promising(slow.dry_work_days_left)).grass_bound &&
+                !core::ForecastHerdFeed(coin,
+                                        promising(slow.dry_work_days_left * 0.5F),
+                                        false,
+                                        core::FeedHorizon::kNearestScythes)
+                     .grass_bound
+          : true,
+      "hay pace: a promise a tenth over the grass by the mean is the bound under a dry climate "
+      "and is not under one that rains every other day - a poor draw would not mow it through");
+  failures += Expect(look(mown_through).grass_bound && !look(sunday).grass_bound &&
+                         grass_bound.kind == core::AlarmKind::kHerdHayShortAhead &&
+                         grass_bound.advice != core::AlarmAdvice::kDeclareDayWorking &&
+                         grass_bound.advice != core::AlarmAdvice::kCutHay &&
+                         (grass_bound.advice == core::AlarmAdvice::kNone ||
+                          (grass_bound.advice == core::AlarmAdvice::kReduceHerd &&
+                           grass_bound.advice_day == after_the_cut)),
+                     "hay pace: with the grass the bound of the forecast the lamp names no move "
+                     "of the cut - the heads dated to the day after the cut, or none");
+  // THE PAIRS: rain this morning, the month's one already spent, a working day.
+  // IN THE RAIN the day off is not worth working, and the avral waits for
+  // the month's day off all the same - the lamp is lit and names no move.
+  core::WorldState rainy = sunday;
+  rainy.weather.precipitation = core::Precipitation::kRain;
+  failures += Expect(lamp(rainy).kind == core::AlarmKind::kHerdHayShortAhead &&
+                         lamp(rainy).advice == core::AlarmAdvice::kNone,
+                     "hay pace: a day off in the rain is not worth working, and the avral is not "
+                     "named ahead of the month's day off - no move");
+  // THE AVRAL'S DAYS: named on a working day with the month's day off spent,
+  // and no more once it has stood its days on this cut.
+  core::WorldState stood = spent_world(sunday, day_off);
+  stood.chairman.cancelled_day_off = day_off;
+  failures += Expect(lamp(stood).advice == core::AlarmAdvice::kCutHay,
+                     "hay pace: with the month's day off worked the avral is the move");
+  stood.chairman.hay_cut_avral_days =
+      static_cast<std::uint16_t>(config.farming.hay_avral_days_a_cut);
+  failures += Expect(lamp(stood).advice == core::AlarmAdvice::kNone,
+                     "hay pace: the avral has stood its four days on this cut - it is named no "
+                     "more, and with the grass standing nothing below it is");
+  // «СНЯТЬ АВРАЛ»: the same village with the avral still STANDING on the
+  // meadow - the lamp's first move is to lift it; a day short of its days it
+  // is not.
+  core::WorldState standing = stood;
+  standing.fields.rows.back().rush_phase = core::FieldPhase::kHarvest;
+  standing.fields.rows.back().rush_step = 1;
+  failures += Expect(lamp(standing).advice == core::AlarmAdvice::kLiftRush,
+                     "hay pace: the avral has stood its four days and still stands on the "
+                     "meadow - the lamp says «снять аврал» before any other move");
+  --standing.chairman.hay_cut_avral_days;
+  failures += Expect(lamp(standing).advice == core::AlarmAdvice::kCutHay,
+                     "hay pace: an avral standing three days of four is not lifted yet");
+  // THE DATED MOVE: the eve of that day off, a working day with the pace
+  // short - the lamp names the day off with ITS day; on the day itself the
+  // move is of today; in the rain and with the month's day off spent nothing
+  // dated is named.
+  const core::WorldState eve = village(day_off - 1U, 100.0F, 2);
+  const core::Alarm on_eve = lamp(eve);
+  failures +=
+      Expect(on_eve.advice == core::AlarmAdvice::kDeclareDayWorking && on_eve.advice_day == day_off,
+             "hay pace: on the eve the lamp names the day off ahead with its day - "
+             "«выходной N-го объявить рабочим»");
+  failures += Expect(on_day_off.advice_day == 0 && lamp(rainy).advice_day == 0,
+                     "hay pace: on the day off itself the move is of today, and a day off that "
+                     "dawned wet names nothing dated");
+  const core::Alarm eve_spent = lamp(spent_world(eve, day_off));
+  failures += Expect(eve_spent.advice == core::AlarmAdvice::kCutHay && eve_spent.advice_day == 0,
+                     "hay pace: with the month's day off already worked no day is dated - the "
+                     "avral is the move");
+  core::WorldState spent = sunday;
+  spent.chairman.hay_day_worked_month =
+      static_cast<std::uint16_t>(1U + (day_off / core::kDaysPerMonth));
+  failures += Expect(lamp(spent).advice == core::AlarmAdvice::kCutHay,
+                     "hay pace: the month's one day off was worked already - the cut alone");
+  core::WorldState monday = village(day_off, 100.0F, 2);
+  monday.chairman.cancelled_day_off = day_off;  // declared working: no longer a day off
+  failures += Expect(lamp(monday).advice == core::AlarmAdvice::kCutHay,
+                     "hay pace: on a working day the advice is the cut");
+
+  // THE EVENING'S COUNT.
+  core::WorldState counted = village(day_off, 100.0F, 2);
+  core::SettleHayCutDay(config, counted);
+  failures += Expect(
+      counted.chairman.hay_cut_dry_work_days == 2 && counted.chairman.hay_day_worked_month == 0,
+      "hay pace: a day off kept adds no dry working day and marks no month");
+  core::SettleHayCutDay(config, monday);
+  failures +=
+      Expect(monday.chairman.hay_cut_dry_work_days == 3 &&
+                 monday.chairman.hay_day_worked_month == 1U + (day_off / core::kDaysPerMonth),
+             "hay pace: the day off worked with the pace short is a dry working day, and "
+             "its month is marked");
+  core::WorldState rained_out = monday;
+  rained_out.chairman.hay_cut_dry_work_days = 2;
+  rained_out.weather.precipitation = core::Precipitation::kRain;
+  core::SettleHayCutDay(config, rained_out);
+  failures += Expect(rained_out.chairman.hay_cut_dry_work_days == 2,
+                     "hay pace: a day the rain stopped the scythes is not counted");
+  core::WorldState opening = village(cut_from, 100.0F, 9);
+  opening.chairman.cancelled_day_off = cut_from;  // a working day whatever the calendar says
+  core::SettleHayCutDay(config, opening);
+  failures += Expect(opening.chairman.hay_cut_dry_work_days == 1,
+                     "hay pace: the day the cut opens the count starts anew - last year's nine "
+                     "are gone, today is the first");
   return failures;
 }
 
@@ -1078,9 +1395,20 @@ int CheckTheForecastAdvice() {
     // 27 villages — and the ladder never went on.
     world.fields.rows[0].rush_step = static_cast<std::uint8_t>(core::kMaxRushStep);
     world.fields.rows[0].rush_phase = core::FieldPhase::kHarvest;
-    failures += Expect(past_the_cut(world),
-                       "forecast advice: the meadow's avral at its last step - nothing to hurry, "
-                       "the ladder goes on past the cut");
+    // AND THE LADDER DOES NOT GO ON WHILE THE GRASS STANDS (0.37.250; boss, 13
+    // October 2026): with the avral at its last step and no day off to work
+    // the lamp names NO move - not the heads, not the remainder below the
+    // floors. Until then it went on past the cut here, and a lamp lit inside
+    // the first summer's cut handed twenty horses over nine villages.
+    const core::Alarm rushed_out = lamp(world);
+    failures += Expect(rushed_out.kind == core::AlarmKind::kHerdHayShortAhead &&
+                           rushed_out.advice == core::AlarmAdvice::kNone &&
+                           rushed_out.advice_more == core::AlarmAdvice::kNone &&
+                           rushed_out.below_floor_stock == 0 && rushed_out.hand_over_stock == 0 &&
+                           rushed_out.hand_over_horses == 0 && !past_the_cut(world),
+                       "forecast advice: the meadow's avral at its last step with grass still "
+                       "standing - the lamp is lit and names no move; the lower rungs wait for "
+                       "the cut to close");
     world.fields.rows[0].rush_step = static_cast<std::uint8_t>(core::kMaxRushStep - 1);
     failures += Expect(lamp(world).advice == core::AlarmAdvice::kCutHay,
                        "forecast advice: a step below the last - the cut is still the move");
@@ -1088,10 +1416,23 @@ int CheckTheForecastAdvice() {
     world.fields.rows[0].rush_phase = core::FieldPhase::kIdle;
     to_day(core::kDaysPerYear);  // 1 January of year 2, the meadow still in its cut's phase
     const core::Alarm winter = lamp(world);
+    std::cout << "  forecast advice, 1 January of year 2: advice "
+              << static_cast<int>(winter.advice) << ", short in " << winter.days_ahead << " days, "
+              << winter.short_grams / 1000 << " kg of hay short to the horizon\n";
+    // THE LADDER GOES ON PAST THE CUT, and since 0.37.250 it ends below the
+    // lot here: the need runs eight days into the new cut
+    // (hay_new_cut_in_store_days), this fixture's one lot no longer closes
+    // the hole, and a purchase that leaves the herds short is not named
+    // (0.37.142). What the check holds is its own claim - the cut is not the
+    // move in January - and that the lamp speaks in tonnes of hay.
     failures += Expect(winter.kind == core::AlarmKind::kHerdHayShortAhead &&
-                           winter.advice == core::AlarmAdvice::kBuyFeed,
+                           winter.advice != core::AlarmAdvice::kCutHay &&
+                           winter.advice != core::AlarmAdvice::kDeclareDayWorking,
                        "forecast advice: the grass left unmown stands in its cut's phase in "
-                       "January - no cut to hurry, the ladder goes on to the lot");
+                       "January - no cut to hurry, the ladder goes on past it");
+    failures += Expect(winter.resource.value == config.hay_resource.value && winter.short_grams > 0,
+                       "forecast advice: the lamp names the hay, and what is short to the "
+                       "horizon in its tonnes");
   }
   // THE YEAR'S EDGE (boss, boss-all-carts-carry-people-go-2026-10-02 [82],
   // [84] p. 2): the last day of year 1 and the first of year 2 look to the
@@ -1117,10 +1458,12 @@ int CheckTheForecastAdvice() {
               << first_day.days_ahead << "; the same with the book not closed - "
               << first_day_open_book.horizon_days << " and " << first_day_open_book.days_ahead
               << '\n';
-    failures += Expect(last_day.horizon_days == 25 && first_day.horizon_days == 24 &&
-                           first_day_open_book.horizon_days == 24,
-                       "forecast, the year's edge: the horizon is the same first scythes from "
-                       "either side of the turn, the book closed or not");
+    // (33 and 32 since 0.37.250: the first scythes on day 72 and the eight
+    // days the new hay takes to reach a store - one horizon from both sides.)
+    failures += Expect(last_day.horizon_days == 33 && first_day.horizon_days == 32 &&
+                           first_day_open_book.horizon_days == 32,
+                       "forecast, the year's edge: the horizon is the same day of the same cut "
+                       "from either side of the turn, the book closed or not");
     failures +=
         Expect(last_day.short_ahead && first_day.short_ahead && first_day_open_book.short_ahead &&
                    last_day.days_ahead == first_day.days_ahead + 1 &&
@@ -1128,9 +1471,9 @@ int CheckTheForecastAdvice() {
                    last_day.heads_short == first_day.heads_short,
                "forecast, the year's edge: a day's hay eaten, the same shortage a day "
                "nearer - nothing turns with the year");
-    failures += Expect(!at(47, 100.0F, 0).short_ahead && !at(48, 96.0F, 1).short_ahead,
-                       "forecast, the year's edge: and the hay that reaches the scythes reaches "
-                       "them from both days");
+    failures += Expect(!at(47, 132.0F, 0).short_ahead && !at(48, 128.0F, 1).short_ahead,
+                       "forecast, the year's edge: and the hay that reaches the new hay's day "
+                       "reaches it from both days");
   }
   return failures;
 }
@@ -16143,6 +16486,7 @@ int main() {
   failures += CheckTheFoalingCountsFromTheStabling();
   failures += CheckTheHerdHayForecast();
   failures += CheckTheForecastAdvice();
+  failures += CheckTheHayLampByTheCutsPace();
   failures += CheckTheShippedFeedingOrder();
   failures += CheckTheHerdsMilkGoesToItsHome();
   failures += CheckTheHerdDoesNotEatThePlan();

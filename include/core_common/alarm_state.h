@@ -47,6 +47,7 @@
 #include <cstdint>
 #include <span>
 
+#include "core_common/calendar.h"
 #include "core_common/ids.h"
 #include "core_common/quantities.h"
 
@@ -874,6 +875,17 @@ enum class AlarmAdvice : std::uint8_t {
   /// itself; this gives it the carts it asks ahead of every window.
   kSupplyOverFields,
 
+  /// LIFT THE AVRAL ON THE CUT - «снять аврал» (lever 1, 0.37.250; econ's
+  /// four-levers §2d; boss, 13 October 2026; proposed dictionary key
+  /// `lift_rush`). Named by kHerdHayShortAhead, first of its moves, while an
+  /// avral stands on a meadow's cut and has stood there
+  /// farming.csv `hay_avral_days_a_cut` days of this cut: the door is
+  /// kDeclareRush on that meadow with `amount` 0. The avral does not end by
+  /// itself («стоит, пока идёт работа, и снимается в любой момент» - the
+  /// human, 18 September 2026): the lamp says when its days are up, the
+  /// chairman lifts it.
+  kLiftRush,
+
   /// NOT A MOVE: the count, so a consumer can static_assert its mirror.
   kAlarmAdviceCount,
 };
@@ -1028,6 +1040,40 @@ struct Alarm {
   /// @note Not in the save, as `lamp`.
   AlarmAdvice advice_more = AlarmAdvice::kNone;
   std::int64_t amount_more = 0;
+
+  /// kHerdHayShortAhead (0.37.250; lever 1; econ's four-levers §2b): THE
+  /// LAMP'S LINE IN TONNES - the hay the herds are short of from today to the
+  /// forecast's horizon, grams («до покоса не хватит 54 т»), beside
+  /// `days_ahead` («сена до 12 марта»). Every uncovered fodder unit of the
+  /// days forecast over the hay's feed value. The heads in `amount` stay for
+  /// the ladder's own use and are not the line to show: they read seventy in
+  /// a village with nothing wrong. 0 for every other kind.
+  /// @note Not in the save, as `lamp`.
+  std::int64_t short_grams = 0;
+
+  /// kHerdHayShortAhead (0.37.250; boss, 13 October 2026): THE DAY THE MOVE IN
+  /// `advice` BELONGS TO when it is not today's - «выходной 14 июля -
+  /// объявить рабочим». 0: the move is today's (or none is named). Set only
+  /// with kDeclareDayWorking, to the day off still ahead in this calendar
+  /// month while the cut's pace is short and the month's day off is not yet
+  /// worked: the door (kCancelDayOff) is that day's own morning and refuses
+  /// before it, so a chairman acts on the day, not on the lamp's first
+  /// lighting. That morning the advice is of today (0) if the day dawned
+  /// dry, and none if it rains.
+  /// AND with kReduceHerd, inside a cut whose grass is the bound of the
+  /// forecast (the meadows end mown through and the hay is still short): the
+  /// day after the cut's last, when the ladder's lower rungs open.
+  /// @note Not in the save, as `lamp`.
+  SimDay advice_day = 0;
+
+  /// kHerdHayShortAhead (0.37.250): THE ROW OF THE FEEDING ORDER FOUND EMPTY
+  /// FIRST for the herd underfed first - what `resource` held until 0.37.250.
+  /// `resource` is now THE HAY whenever the lamp is lit: the shortage is the
+  /// hay ladder's, and a lamp named «silage» in a world where no work makes
+  /// silage named a feed nobody could bring (the start's trench is eaten out
+  /// by November of year 1). Invalid for every other kind.
+  /// @note Not in the save, as `lamp`.
+  ResourceId first_short_resource;
 
   /// kHerdHayShortAhead with kReduceHerd named — as `advice` or as
   /// `advice_more`: THE HEADS TO HAND OVER, AND THEY ARE NOT `amount`

@@ -70,8 +70,16 @@ static_assert(AggregateArity<WeatherState>() == 14,
 // Save 152 (the foaling's edge): the first day the stable stood, a u32 at
 // offset 76 in the padding after the bytes: 80 stays, twenty-three fields;
 // four bytes in the codec. Predicted before the build.
-static_assert(sizeof(ChairmanState) == 80, "ChairmanState changed — update the codec");
-static_assert(AggregateArity<ChairmanState>() == 23,
+// Save 161 (lever 1): two u16 after the foaling's day - the cut's dry working
+// days and the month of the last day off worked on the hay lamp's advice:
+// predicted 80 -> 84 and twenty-five fields before the build; four bytes in
+// the codec. THE SIZE WAS A MISS: 88 - the struct aligns to eight (its
+// 64-bit members), and 84 is padded up. The fields and the codec's bytes held.
+static_assert(sizeof(ChairmanState) == 88, "ChairmanState changed — update the codec");
+// And the avral's days on the cut, a third u16 beside them: predicted 88
+// unmoved (into the tail's padding) and twenty-six fields; two more bytes in
+// the codec.
+static_assert(AggregateArity<ChairmanState>() == 26,
               "ChairmanState gained or lost a field — update the codec and VERSION_SAVE");
 // PLANSTATE HAD NO TRIPWIRE AT ALL until 2026-09-12, and it was the only
 // serialized block without one: six blocks go into the save, five were
@@ -476,6 +484,11 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   // The harvest without days off (save 125): the standing order's switch.
   out.WriteU8(world.chairman.harvest_without_days_off);
   out.WriteU32(world.chairman.foaling_from_day);  // save 152: the foaling's edge
+  // Save 161 (lever 1): the cut's dry working days and the month of the last
+  // day off worked on the hay lamp's advice.
+  out.WriteU16(world.chairman.hay_cut_dry_work_days);
+  out.WriteU16(world.chairman.hay_day_worked_month);
+  out.WriteU16(world.chairman.hay_cut_avral_days);
 
   out.WriteFloat(world.traction_ration);
   // The team's two alarms' memory (save 109).
@@ -690,7 +703,10 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->chairman.pencil_pending = source.ReadEnumValue(0, 1, "the pencil's deferred summons");
   world->chairman.harvest_without_days_off =
       source.ReadEnumValue(0, 1, "the harvest without days off");
-  world->chairman.foaling_from_day = in.ReadU32();  // save 152
+  world->chairman.foaling_from_day = in.ReadU32();       // save 152
+  world->chairman.hay_cut_dry_work_days = in.ReadU16();  // save 161
+  world->chairman.hay_day_worked_month = in.ReadU16();
+  world->chairman.hay_cut_avral_days = in.ReadU16();
 
   world->traction_ration = in.ReadFloat();
   world->traction_watch.short_ration_days = in.ReadU16();  // save 109

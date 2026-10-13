@@ -115,6 +115,12 @@ class HayAnswer {
     if (yellow == nullptr) {
       return;
     }
+    // A DATED MOVE IS ANOTHER DAY'S (Alarm::advice_day, 0.37.250): he waits
+    // for its day - a day off still ahead, the heads named for the day after
+    // the cut closes.
+    if (yellow->advice_day != 0) {
+      return;
+    }
     // EVERY YELLOW DAY IS COUNTED AND EVERY ONE IS ANSWERED. Until 0.37.142
     // an answer was followed by a day not looked at («one order a recount»)
     // and not counted either. The day is not needed: the orders staged this

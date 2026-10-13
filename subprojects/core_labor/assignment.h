@@ -79,8 +79,17 @@ struct AssignmentJob {
   /// farming design §5 — "scythes, sickles, HORSE MOWERS"). It changes two
   /// things and only two: the shoulder is measured at harness speed (time
   /// design §7 — "whoever rides out with a horse reaches farther than the
-  /// man on foot"), and each worker placed takes one horse from the day's
-  /// pool, like ploughing.
+  /// man on foot"), and THE BRIGADE takes ONE horse from the day's pool -
+  /// «косилка одна на бригаду, а не всадник на косца» (assignment.cpp, the
+  /// job's placement; since 14 September 2026), taken with its first mower.
+  /// WITH THE POOL DRY THE CUT DOES NOT STOP: the mowers are judged on foot
+  /// and walk with scythes. The horse shortens the brigade's road, not its
+  /// scythe - the cut's rate is the bare norm either way.
+  /// (Until 0.37.250 this comment said «each worker placed takes one horse,
+  /// like ploughing» - true before 14 September and read as the code on 13
+  /// October: «June's hay is bounded by horses» went to boss and to econ on
+  /// it, and was withdrawn the same evening. On a dry working day of June the
+  /// cut rides 0.0 horses and stands 18.7 mowers a village.)
   bool harnessed = false;
 
   /// THE BRIGADE GOES OUT ON ONE CART (farming design §6, «Дорога пешком

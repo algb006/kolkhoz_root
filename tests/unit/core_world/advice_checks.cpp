@@ -666,6 +666,80 @@ int CheckTheDayOff(const Fixture& fixture) {
   return Report(run, "logistics_late on a day off, «объявить день рабочим»");
 }
 
+/// «ОБЪЯВИТЬ ДЕНЬ РАБОЧИМ» BY THE HAY'S LAMP (lever 1; 0.37.250): a dry day off
+/// inside the cut with its pace short - and THE DAY LIVED THROUGH TO ITS
+/// CLOSE, the engine's own order of things. The unit test of the count calls
+/// it directly and could not see WHEN the engine calls it: the first pair
+/// counted at the day's last tick, after the day's close had let «today's
+/// cancelled day» go - the worked day off added nothing to the pace and
+/// marked no month.
+int CheckTheHayDayOff(const Fixture& fixture) {
+  int failures = 0;
+  const std::uint32_t hay = fixture.Row("resources", "hay");
+  core::WorldState world = WithHay(fixture, fixture.genesis, 20.0F);
+  // The cut's months, past its opening day: June's and July's days.
+  constexpr std::uint32_t kFirst = 21;
+  constexpr std::uint32_t kLast = 27;
+  std::uint32_t found = 0;
+  for (std::uint32_t day = kFirst; day <= kLast && found == 0; ++day) {
+    SetDay(world, day);
+    if (core::TodayMayBeDeclaredWorking(world)) {
+      found = day;
+    }
+  }
+  if (Expect(found != 0, "hay day off: the cut's months hold a day off the door would take") != 0) {
+    return 1;
+  }
+  for (core::FieldRow& field : world.fields.rows) {
+    if (field.kind != core::LandKind::kArable) {
+      field.phase = core::FieldPhase::kHarvest;
+      field.harvest_work_days = 10.0F;
+      field.work_days_remaining = 9.0F;
+      field.harvest_laid_share = 0.1F;
+    }
+  }
+  world.chairman.hay_cut_dry_work_days = 2;
+  world.chairman.hay_day_worked_month = 0;
+  if (world.ledger.current.harvest.size() <= hay) {
+    world.ledger.current.harvest.resize(static_cast<std::size_t>(hay) + 1U, 0);
+  }
+  world.ledger.current.harvest[hay] = 2 * core::kGramsPerTonne;
+  world.weather.precipitation = core::Precipitation::kNone;
+  const core::SimDay today = world.calendar.day;
+  const AdviceRun run = RunAdvice(*fixture.simulation,
+                                  world,
+                                  core::AlarmKind::kHerdHayShortAhead,
+                                  core::AlarmAdvice::kDeclareDayWorking,
+                                  [](const core::Alarm&) {
+                                    core::OrderRow order;
+                                    order.kind = core::OrderKind::kCancelDayOff;
+                                    order.enable = 1;
+                                    return order;
+                                  });
+  failures +=
+      Report(run, "herd_hay_short_ahead on a dry day off in the cut, «объявить день рабочим»");
+  if (!run.named) {
+    return failures;
+  }
+  // To the day's noon - the count's hour - and on through its close.
+  bool rained_at_noon = false;
+  for (std::uint32_t step = 1; step < core::kTicksPerDay; ++step) {
+    fixture.simulation->AdvanceStep();
+    const core::WorldState& now = fixture.simulation->CompletedState();
+    if (now.calendar.day == today && core::HourFromTick(now.calendar.tick) == 12) {
+      rained_at_noon = now.weather.precipitation == core::Precipitation::kRain;
+    }
+  }
+  const core::WorldState& after = fixture.simulation->CompletedState();
+  failures += Expect(after.chairman.hay_day_worked_month == 1U + (today / core::kDaysPerMonth),
+                     "hay day off: lived through to its close, the worked day off has marked its "
+                     "month - the lamp does not name a second one in it");
+  failures += Expect(after.chairman.hay_cut_dry_work_days == (rained_at_noon ? 2U : 3U),
+                     "hay day off: and it is a dry working day of the cut's pace (or, rained out "
+                     "at noon, none)");
+  return failures;
+}
+
 /// «ПОСТАВИТЬ ПОДВОЗ ВАЖНЕЕ ПОЛЕВЫХ РАБОТ» (#734; kSiteSupplyWaits): a house's
 /// site whose materials await at a store and to which nothing came for the
 /// floor's days. The door is kSetLogisticsLevel on the lamp's own task with
@@ -743,6 +817,7 @@ int CheckEveryAdviceIsTaken() {
   failures += CheckTheHayLamp(fixture);
   failures += CheckTheStarvingHerd(fixture);
   failures += CheckTheDayOff(fixture);
+  failures += CheckTheHayDayOff(fixture);
   failures += CheckTheSupplyFloor(fixture);
   // «ПОДВЕЗТИ КОРМ ИЛИ УМЕНЬШИТЬ СТАДО» (kBringFeed) HAS NO ONE DOOR: two moves,
   // one word (alarm_state.h) - named here, not skipped.

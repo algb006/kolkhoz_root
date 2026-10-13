@@ -288,6 +288,17 @@ class ProductionSystem final : public IProductionSystem {
     if (HourFromTick(current.calendar.tick) + 1U < kTicksPerDay) {
       DeliverCartedLoads(config_, current);
     }
+    // THE CUT'S DRY WORKING DAY, for the hay lamp's pace (lever 1;
+    // herd_forecast.h) - COUNTED AT NOON, not at the day's last tick: a day
+    // off declared working is «today's cancelled day» only while the day
+    // lasts (ChairmanState::cancelled_day_off), and by the last tick the
+    // day's close has let it go. The first pair counted at the last tick:
+    // the worked day off read as a day off kept, added no day to the pace
+    // and marked no month - and the lamp named the same advice on the next
+    // day off of the same month.
+    if (HourFromTick(current.calendar.tick) == kHayCutDayCountedAtHour) {
+      SettleHayCutDay(config_, current);
+    }
     if (HourFromTick(current.calendar.tick) + 1U >= kTicksPerDay) {
       SettleHauling(config_, current);
       SettleStandHauling(config_, current);

@@ -148,9 +148,12 @@ core::WorldState MakeWorld() {
   world.rng = core::SeedRngState(world.world_seed, 3);
   core::NextRandomBits(world.rng);
   world.chairman.raikom_reputation = 61.5F;
-  world.chairman.horses_stabled = 1;     // the campaign's one-time milestone (task A7)
-  world.chairman.foaling_from_day = 21;  // save 152: the stable's first day, the foaling's edge
-  world.chairman.ration_auto = 0;        // save 57: off, against the struct's default on
+  world.chairman.horses_stabled = 1;         // the campaign's one-time milestone (task A7)
+  world.chairman.foaling_from_day = 21;      // save 152: the stable's first day, the foaling's edge
+  world.chairman.hay_cut_dry_work_days = 5;  // save 161: the cut's dry working days so far
+  world.chairman.hay_day_worked_month = 6;   // save 161: June of year 1 (1 + the month's index)
+  world.chairman.hay_cut_avral_days = 3;     // save 161: the avral's days on this cut
+  world.chairman.ration_auto = 0;            // save 57: off, against the struct's default on
   // Save 65: a series of two cancelled days off, and the next one standing.
   world.chairman.days_off_cancelled_in_a_row = 2;
   world.chairman.cancelled_day_off = 55;
@@ -1386,6 +1389,11 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
       {"chairman.harvest_without_days_off", U8(world.chairman.harvest_without_days_off)});
   // The stable's first day (save 152, the foaling's edge).
   chunks.push_back({"chairman.foaling_from_day", U32(world.chairman.foaling_from_day)});
+  // The hay cut's dry working days and the month of the last day off worked
+  // on the hay lamp's advice (save 161, lever 1).
+  chunks.push_back({"chairman.hay_cut_dry_work_days", U16(world.chairman.hay_cut_dry_work_days)});
+  chunks.push_back({"chairman.hay_day_worked_month", U16(world.chairman.hay_day_worked_month)});
+  chunks.push_back({"chairman.hay_cut_avral_days", U16(world.chairman.hay_cut_avral_days)});
 
   chunks.push_back({"traction_ration", F32(world.traction_ration)});
   // The team's two alarms' memory (save 109).
@@ -1724,7 +1732,13 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // Save 152: +4 — the stable's first day, a u32 in the chairman's block, the
     // fixture's 21; predicted 840 -> 844 with every other section unmoved
     // before the build; the hash read off the first build.
-    {"world", 844, 0x9ae84570d694a8fbULL},
+    // Save 161 (lever 1): +4 — the hay cut's dry working days and the month of
+    // the last day off worked on the hay lamp's advice, two u16 in the
+    // chairman's block, the fixture's 5 and 6; predicted 844 -> 848 with every
+    // other section unmoved before the build, held (the STRUCT's size was the
+    // miss: 88, not 84); the hash read off the first build. And the avral's
+    // days on the cut, a third u16, the fixture's 3: 848 -> 850, predicted.
+    {"world", 850, 0xcc5481c2f4d58613ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2515,25 +2529,27 @@ int main() {
       "a yard granted the ration comes back granted, and one not granted, not");
   failures +=
       Expect(loaded.families.rows[0].dry_months == 4, "a yard's dry months come back (save 60)");
-  failures +=
-      Expect(loaded.families.rows[0].formed_day == 131 &&
-                 loaded.families.rows[0].earned_since_formed == 245 &&
-                 loaded.families.rows[0].advance_debt == 7'300'000 &&
-                 loaded.families.rows[0].advance_given == 11'900'000 &&
-                 loaded.families.rows[0].formed_in_barrack == 1 &&
-                 loaded.ledger.closed.advance_written_off_ended == 71'000 &&
-                 loaded.ledger.closed.advance_written_off_turns == 12'500 &&
-                 loaded.families.rows[0].advance_turns == 1 &&
-                 loaded.families.rows[1].advance_turns == 0 &&
-                 loaded.ledger.current.advance_written_off_ended == 0 &&
-                 loaded.families.rows[1].formed_day == core::kNotFormedInPlay &&
-                 loaded.families.rows[1].advance_debt == 0 &&
-                 loaded.ledger.closed.advance == world.ledger.closed.advance &&
-                 loaded.ledger.closed.advance_repaid == 640'000 &&
-                 loaded.ledger.current.advance.empty() && loaded.ledger.current.advance_repaid == 0,
-             "a new household's advance comes back - the day formed, the trudodni since, "
-             "the debt, the given, the barrack - and the book's advance and repaid, the "
-             "closed year's apart from the open one's (save 159, #170)");
+  failures += Expect(
+      loaded.families.rows[0].formed_day == 131 &&
+          loaded.families.rows[0].earned_since_formed == 245 &&
+          loaded.families.rows[0].advance_debt == 7'300'000 &&
+          loaded.families.rows[0].advance_given == 11'900'000 &&
+          loaded.families.rows[0].formed_in_barrack == 1 &&
+          loaded.ledger.closed.advance_written_off_ended == 71'000 &&
+          loaded.ledger.closed.advance_written_off_turns == 12'500 &&
+          loaded.chairman.hay_cut_dry_work_days == 5 &&  // save 161
+          loaded.chairman.hay_day_worked_month == 6 && loaded.chairman.hay_cut_avral_days == 3 &&
+          loaded.families.rows[0].advance_turns == 1 &&
+          loaded.families.rows[1].advance_turns == 0 &&
+          loaded.ledger.current.advance_written_off_ended == 0 &&
+          loaded.families.rows[1].formed_day == core::kNotFormedInPlay &&
+          loaded.families.rows[1].advance_debt == 0 &&
+          loaded.ledger.closed.advance == world.ledger.closed.advance &&
+          loaded.ledger.closed.advance_repaid == 640'000 && loaded.ledger.current.advance.empty() &&
+          loaded.ledger.current.advance_repaid == 0,
+      "a new household's advance comes back - the day formed, the trudodni since, "
+      "the debt, the given, the barrack - and the book's advance and repaid, the "
+      "closed year's apart from the open one's (save 159, #170)");
   failures += Expect(loaded.wedding_waits.rows.size() == 1 &&
                          loaded.wedding_waits.rows[0].bride.value == 7 &&
                          loaded.wedding_waits.rows[0].groom.value == 9 &&

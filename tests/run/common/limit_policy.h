@@ -57,6 +57,7 @@
 #include "core_tables/tables.h"
 #include "core_world/world.h"
 #include "hay_answer.h"
+#include "hay_day_off_policy.h"
 #include "rise_watch.h"
 
 namespace run {
@@ -153,6 +154,14 @@ class LimitPolicy {
     CountWaits(world);
     days_logs_lay_ += OwnLogsLie(world) ? 1U : 0U;
     ++days_watched_;
+    // THE HAY LAMP'S MORNING MOVES, ANSWERED IN EVERY RUN THAT ANSWERS ITS
+    // EVENING ONES (hay_day_off_policy.h; 0.37.250): the day off declared
+    // working and the avral lifted. Until this line only population_curve
+    // answered them, and a run that rushed the cut on the lamp's word never
+    // lifted it on the lamp's word - two worlds under one lamp. The policy
+    // acts only in the day's first hour: a run whose day ends elsewhere
+    // answers nothing here, and says how many it answered in its report.
+    hay_morning_.RunStep(simulation);
     // THE HAY'S YELLOW, ANSWERED (hay_answer.h; 0.37.64): the rush on the cut,
     // the heads the lamp names handed to the district, a lot of feed on its
     // «buy feed» (0.37.142). Its own orders and cooldown, before the lots': a
@@ -207,7 +216,13 @@ class LimitPolicy {
               << "), no move with the remainder below the floors named "
               << advice_.below_floor_only_days << ", «HAND OVER» WITH NO HEAD IN IT "
               << advice_.empty_hand_over_days << " (must be nought), NO ADVICE "
-              << advice_.none_days << "\n";
+              << advice_.none_days << " (must be nought), no advice INSIDE AN OPEN CUT "
+              << advice_.none_in_open_cut_days << " (allowed since 0.37.250), a day off to "
+              << "declare working " << advice_.day_working_days << " (of them dated ahead "
+              << advice_.day_working_dated_days << "), the avral to lift " << advice_.lift_rush_days
+              << "; the run's chairman declared " << hay_morning_.Ordered()
+              << " days off working and lifted " << hay_morning_.Lifted()
+              << " avrals on those words\n";
     std::cout << run << ": the hay lamp's yellow days by the day of the year (day:count, days "
               << "with none left out):";
     for (std::uint32_t day = 0; day < yellow_by_day_of_year_.size(); ++day) {
@@ -516,16 +531,44 @@ class LimitPolicy {
         case core::AlarmAdvice::kReduceHerd:
           ++advice_.reduce_days;
           break;
+        // THE CUT'S OWN MOVES SINCE 0.37.250 (lever 1): a day off to declare
+        // working - today's, or a later one with its date - and the avral to
+        // lift. Each is an advice; until this case they fell to «no advice»
+        // below and the guard read the lamp as silent on every such day.
+        case core::AlarmAdvice::kDeclareDayWorking:
+          ++advice_.day_working_days;
+          advice_.day_working_dated_days += alarm.advice_day != 0 ? 1U : 0U;
+          break;
+        case core::AlarmAdvice::kLiftRush:
+          ++advice_.lift_rush_days;
+          break;
         default:
           // «NO MOVE» WITH THE REMAINDER BELOW THE FLOORS NAMED IS AN ANSWER
           // (0.37.143): the herd stands at its floors, nothing closes the
           // shortage, and the lamp says what the floors cost. No move AND no
           // remainder is the lamp with nothing to say — that one must be
           // nought.
+          // INSIDE AN OPEN CUT THE LAMP MAY STAND WITH ITS DAYS AND TONNES AND
+          // NO MOVE (0.37.250; boss, 13 October 2026: «lit, none» is a line of
+          // the pair, not a defect): a day off that dawned wet, the avral's
+          // days spent, the grass the bound with no head above the floors.
+          // Counted apart and printed; OUTSIDE the cut silence is still a
+          // defect. «Open» is read off the world here - the mowing's months
+          // and a meadow in its cut with mowing left - not by the core's own
+          // question.
           if (alarm.below_floor_stock + alarm.below_floor_horses > 0) {
             ++advice_.below_floor_only_days;
           } else {
-            ++advice_.none_days;
+            const core::WorldState& world = simulation.CompletedState();
+            const auto month = static_cast<std::uint32_t>(world.calendar.date.month);
+            const bool open_cut =
+                month >= cut_from_month_ && month <= cut_to_month_ &&
+                std::ranges::any_of(world.fields.rows, [](const core::FieldRow& field) {
+                  return field.kind != core::LandKind::kArable &&
+                         field.phase == core::FieldPhase::kHarvest &&
+                         field.work_days_remaining > 0.0F;
+                });
+            ++(open_cut ? advice_.none_in_open_cut_days : advice_.none_days);
           }
           break;
       }
@@ -583,6 +626,10 @@ class LimitPolicy {
     std::uint32_t reduce_days = 0;
     std::uint32_t reduce_more_days = 0;
     std::uint32_t none_days = 0;
+    std::uint32_t none_in_open_cut_days = 0;   ///< Lit with no move inside an open cut (allowed).
+    std::uint32_t day_working_days = 0;        ///< «объявить день рабочим», today's or dated.
+    std::uint32_t day_working_dated_days = 0;  ///< Of them, a later day's.
+    std::uint32_t lift_rush_days = 0;          ///< «снять аврал».
     std::uint32_t below_floor_only_days = 0;
     std::uint32_t empty_hand_over_days = 0;
     std::uint64_t heads_named = 0;
@@ -857,6 +904,8 @@ class LimitPolicy {
 
   /// The answer to the herds' hay yellow (hay_answer.h).
   HayAnswer hay_;
+  /// The morning's answer: the day off worked, the avral lifted.
+  HayDayOffPolicy hay_morning_;
   bool hold_timber_while_logs_lie_ = true;
   std::uint32_t days_logs_lay_ = 0;
   std::uint32_t days_watched_ = 0;
