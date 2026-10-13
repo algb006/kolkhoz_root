@@ -27,6 +27,7 @@
 #include "core_common/work_seam.h"
 #include "core_common/world_state.h"
 #include "leg_loads.h"
+#include "porter_pairs.h"
 
 namespace core {
 namespace {
@@ -218,9 +219,12 @@ struct Mover {
   float hours_per_km = 0.0F;         ///< Empty: the trot's pace, or the walk's.
   float loaded_hours_per_km = 0.0F;  ///< Loaded (#570, 2a): cart_loaded's pace, or the walk's.
   float drain = 0.0F;                ///< Seam-days one step of carting takes.
-  float sets_out = 0.0F;             ///< Hours from midnight.
-  Vec2 home;                         ///< Where its day starts and ends.
-  Vec2 at;                           ///< The last place it reached.
+  /// A carrier on foot: `drain` by the load of each task of `chain` (#671; a
+  /// bundle of hay or a sack by its form). Empty for a cart: one number.
+  std::vector<float> chain_drain;
+  float sets_out = 0.0F;  ///< Hours from midnight.
+  Vec2 home;              ///< Where its day starts and ends.
+  Vec2 at;                ///< The last place it reached.
   Phase phase = Phase::kNotOut;
   float ride_left = 0.0F;  ///< Hours of the way still ahead.
   float ride_home = 0.0F;  ///< Hours home from where it carts (its receiver, on trips).
@@ -329,6 +333,9 @@ void GoOn(const WorldState& world,
     return;
   }
   mover.task = mover.chain[mover.next];
+  if (mover.next < mover.chain_drain.size()) {
+    mover.drain = mover.chain_drain[mover.next];
+  }
   ++mover.next;
   const LogisticsTaskRow& task = world.logistics_tasks.rows[mover.task];
   Vec2 place = mover.at;
@@ -351,7 +358,10 @@ void GoOn(const WorldState& world,
 /// receiver, where its carting ends.
 bool BeginTrips(const WorldState& world, Mover& mover) {
   mover.trips = false;
-  if (mover.on_foot || mover.task == kNoRow) {
+  // A CARRIER ON FOOT'S TRIPS ARE DRAWN TOO since 0.37.240 (#671, the second
+  // delivery): the porter's record reads his loaded and empty legs
+  // (porter_leg.h), and until then he stood at the load all day.
+  if (mover.task == kNoRow) {
     return false;
   }
   const LogisticsTaskRow& task = world.logistics_tasks.rows[mover.task];
@@ -557,14 +567,12 @@ GroomPlan BuildGroomPlan(const LogisticsConfig& config,
   const float loaded_hours_per_km = static_cast<float>(kClockScale) / config.loaded_speed_kmh;
   const float walk_hours_per_km = static_cast<float>(kClockScale) / config.walk_speed_kmh;
   const float cart_drain = kStepHours / config.standard_day_hours;
-  const float walker_drain =
-      cart_drain * (SettlementHasCarts(world, config.horse_kind)
-                        ? WalkerShareOfCartDay(GramsFromKilograms(config.carry_kg_adult),
-                                               GramsFromKilograms(config.cart_load_kg),
-                                               walk_hours_per_km,
-                                               harness_hours_per_km,
-                                               loaded_hours_per_km)
-                        : 1.0F);
+  // A WALKER'S STEP BY HIS LOAD'S FORM (#671; porter_pairs.h).
+  const PlanPaces paces{.cart_drain = cart_drain,
+                        .walk_hours_per_km = walk_hours_per_km,
+                        .harness_hours_per_km = harness_hours_per_km,
+                        .loaded_hours_per_km = loaded_hours_per_km,
+                        .has_carts = SettlementHasCarts(world, config.horse_kind)};
   Vec2 yard;
   const bool stabled = HorseYardPositionOf(world, config.horse_kind, yard);
 
@@ -636,7 +644,10 @@ GroomPlan BuildGroomPlan(const LogisticsConfig& config,
       mover.chain = WalkerChain(config, world, open, first, place);
       mover.hours_per_km = walk_hours_per_km;
       mover.loaded_hours_per_km = walk_hours_per_km;  // a carrier walks both halves
-      mover.drain = walker_drain;
+      for (const std::uint32_t task_row : mover.chain) {
+        mover.chain_drain.push_back(WalkerDrainOf(config, world, task_row, paces));
+      }
+      mover.drain = mover.chain_drain.front();
       mover.home = house;
       mover.sets_out = window.sunrise;
     }
@@ -668,6 +679,36 @@ GroomPlan BuildGroomPlan(const LogisticsConfig& config,
     }
     plan.carts.push_back(std::move(cart));
     movers.push_back(std::move(mover));
+  }
+  // THE PAIRS (#671; porter_pairs.h; CartPlan::partner): the carriers on foot
+  // on a manure heap, and those under a works' log, go two by two in the
+  // plan's order, each naming the other; the odd hand stays alone.
+  {
+    constexpr std::size_t kNobody = static_cast<std::size_t>(-1);
+    std::vector<std::size_t> waiting(world.logistics_tasks.rows.size(), kNobody);
+    for (std::size_t index = 0; index < movers.size(); ++index) {
+      Mover& mover = movers[index];
+      const std::uint32_t first = mover.on_foot && !mover.chain.empty() ? mover.chain.front() : 0;
+      const PairTerms terms = mover.on_foot && !mover.chain.empty()
+                                  ? PairTermsOf(config, world, first, paces)
+                                  : PairTerms{};
+      if (!terms.pairs) {
+        continue;
+      }
+      if (terms.log) {
+        mover.loaded_hours_per_km = terms.loaded_hours_per_km;
+        mover.drain = terms.drain;
+        mover.chain_drain.front() = mover.drain;
+      }
+      if (waiting[first] == kNobody) {
+        waiting[first] = index;
+        continue;
+      }
+      const Mover& other = movers[waiting[first]];
+      plan.carts[mover.cart].partner = plan.carts[other.cart].driver;
+      plan.carts[other.cart].partner = plan.carts[mover.cart].driver;
+      waiting[first] = kNobody;
+    }
   }
   RunTheClock(world, remaining, plan, movers, window);
   // THE RIDERS (B4b): whoever the labour hour seated this morning on a

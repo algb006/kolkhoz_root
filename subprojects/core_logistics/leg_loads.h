@@ -27,10 +27,6 @@ namespace core {
 ///        grams. Invalid for a ride and for a task that is gone.
 ResourceId LegResource(const WorldState& world, const CartLeg& leg, ResourceId log);
 
-/// @brief The carry numbers of today's world for a walker's trip (haul.h,
-///        WalkerCarry), in grams, from the logistics config.
-WalkerCarry WalkerCarryOf(const LogisticsConfig& config);
-
 /// @brief Writes each leg's trip load (CartLeg::resource, CartLeg::carried):
 ///        the resource of every leg with a task that has none yet - a leg the
 ///        earlier plan had begun keeps what it was written with - and on a

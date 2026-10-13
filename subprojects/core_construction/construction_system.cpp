@@ -158,6 +158,7 @@ class ConstructionSystem final : public IConstructionSystem {
       for (const Grams grams : site.construction.awaiting) {
         plan.grams += grams;
       }
+      plan.by_resource = site.construction.awaiting;
       plan.sender = site.construction.supply_from;
       return plan;
     }
@@ -180,12 +181,17 @@ class ConstructionSystem final : public IConstructionSystem {
     for (const BuildMaterial& material : step->recipe) {
       const Grams on_site = AmountAt(site.stock, material.resource);
       if (on_site < material.grams) {
-        plan.grams += RehearseTakeForSite(completed,
-                                          row,
-                                          material.resource,
-                                          material.grams - on_site,
-                                          config_.log_resource,
-                                          giver);
+        const Grams taken = RehearseTakeForSite(completed,
+                                                row,
+                                                material.resource,
+                                                material.grams - on_site,
+                                                config_.log_resource,
+                                                giver);
+        plan.grams += taken;
+        if (plan.by_resource.size() <= material.resource.value) {
+          plan.by_resource.resize(static_cast<std::size_t>(material.resource.value) + 1U, 0);
+        }
+        plan.by_resource[material.resource.value] += taken;
       }
     }
     plan.sender = giver.position;

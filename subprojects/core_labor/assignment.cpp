@@ -157,8 +157,9 @@ constexpr bool StopsWithoutHorse(const AssignmentJob& job, const AssignmentParam
     return false;
   }
   // A works' logs straight off a stand are a stand's logs (AssignmentJob::
-  // log_cart): never on a back.
-  return job.stand.value != kInvalidEntityIdValue || job.log_cart ||
+  // log_cart): never on a back. AND A LOG FROM A PILE NEVER ON ONE BACK
+  // (walker_log; #671): by a cart here, by pairs in the last pass.
+  return job.stand.value != kInvalidEntityIdValue || job.log_cart || job.walker_log ||
          params.walker_share_of_cart_day < 1.0F;
 }
 
@@ -841,12 +842,32 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
   // cart's day, which never covers a heap — everyone who can walk there and
   // has nothing else goes. The shortfall the queue wrote for the load stands:
   // it is still short of horses.
-  if (params.walker_share_of_cart_day < 1.0F) {
+  //
+  // AND LOGS BY TWO (#671; AssignmentJob::walker_log): the one load of this
+  // pass that goes in PAIRS, in a settlement with carts or without - when
+  // the works waits for the log within the pair's walk and the morning's
+  // pool has no horse left. A hand without a second stays unplaced.
+  const bool settlement_has_carts = params.walker_share_of_cart_day < 1.0F;
+  const bool logs_wait =
+      std::ranges::any_of(jobs, [](const AssignmentJob& job) { return job.walker_log; });
+  if (settlement_has_carts || logs_wait) {
     for (const std::uint32_t job_index : order) {
       const AssignmentJob& job = jobs[job_index];
       if (!IsBackLoad(job) || !(job.work_days_remaining > covered[job_index])) {
         continue;
       }
+      // A log the queue gave a cart is the cart's this day («ни одна подвода в
+      // этот день его не возьмёт»): the pairs go only to a works nobody is on.
+      if (job.walker_log
+              ? (!job.log_pair_open || horses_left > 0 || std::ranges::count(result, job_index) > 0)
+              : !settlement_has_carts) {
+        continue;
+      }
+      const float share =
+          job.walker_share > 0.0F ? job.walker_share : params.walker_share_of_cart_day;
+      // The first of a pair, held until his second is found.
+      std::uint32_t first_of_pair = kNoJobAssigned;
+      float first_norm = 0.0F;
       // NO BACKS FOR A WORKS ONCE THE HORSE YARD STANDS (routing stage V2,
       // 0.37.204; boss, the C2 thread [9], [12]): a site's recipe is tonnes of
       // logs and clay, a carrier brings a ninetieth of a cart-day of it, and
@@ -855,7 +876,9 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
       // sites stood four and five days all the same. While the team has no
       // yard — the first weeks — the carriers go as to any load. After it the
       // site waits for its cart, and the queue's own shortfall says so.
-      if (job.supplies_works && !params.yard_walk_hours.empty()) {
+      // NOT THE PAIRS UNDER A LOG: theirs is the last resort's own gate above,
+      // and a pair's trip is a whole log.
+      if (job.supplies_works && !params.yard_walk_hours.empty() && !job.walker_log) {
         continue;
       }
       AssignmentJob on_foot = job;
@@ -881,8 +904,18 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
             trip_day / (2.0F * one_way) < params.walker_min_trips_per_day) {
           continue;
         }
+        if (job.walker_log) {
+          if (first_of_pair == kNoJobAssigned) {
+            first_of_pair = static_cast<std::uint32_t>(pick.candidate_index);
+            first_norm = pick.daily_norm;
+            continue;
+          }
+          result[first_of_pair] = job_index;
+          covered[job_index] += first_norm * share;
+          first_of_pair = kNoJobAssigned;
+        }
         result[pick.candidate_index] = job_index;
-        covered[job_index] += pick.daily_norm * params.walker_share_of_cart_day;
+        covered[job_index] += pick.daily_norm * share;
       }
     }
   }

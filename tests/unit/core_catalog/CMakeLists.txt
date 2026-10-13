@@ -1,1 +1,1 @@
-kolkhoz_add_unit_test(core_catalog main.cpp)
+kolkhoz_add_unit_test(core_catalog main.cpp porter_catalog_checks.cpp)

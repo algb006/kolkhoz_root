@@ -36,6 +36,7 @@
 #include "core_catalog/processing_catalog.h"
 #include "core_catalog/timber_catalog.h"
 #include "core_common/calendar.h"
+#include "core_common/haul.h"
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
 #include "core_common/land_state.h"
@@ -495,8 +496,11 @@ struct LaborConfig {
   /// table without the column): no term.
   float cart_wait_limit_hours = 0.0F;
 
-  /// What a grown carrier takes in a trip, kg (labor.csv carry_kg_adult).
-  float carry_kg_adult = 20.0F;
+  /// What a back carries by the load's form, and the terms of logs by two
+  /// (core_common/haul.h, PorterRules; core_catalog/porter_catalog.h) - the
+  /// same reading production and logistics hold. Until 0.37.240 a float
+  /// here, labor.csv carry_kg_adult alone.
+  PorterRules porter;
 
   /// labor.csv `walker_min_trips_per_day` (0.37.109; boss, 2 October 2026):
   /// a carrier on foot is sent to a cart load only where the STANDARD day

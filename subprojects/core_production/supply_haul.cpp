@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 #include "core_common/haul.h"
 #include "core_common/hauled_book.h"
@@ -19,22 +20,6 @@
 
 namespace core {
 
-SupplyEstimate PriceSiteSupply(const ProductionConfig& config,
-                               const WorldState& world,
-                               SupplyEstimate plan,
-                               Vec2 site) {
-  if (plan.grams <= 0) {
-    return plan;
-  }
-  // The seam's own arithmetic (SettleSiteSupply): the rate of today's road,
-  // bed and carrier from the sender to the site.
-  const HaulRate rate = RateToward(config, world, plan.sender, site);
-  plan.cart_days = HaulDaysFor(plan.grams, rate, config.standard_day_hours);
-  // The rate's own question (work_seam.h): no adult kolkhoz horse, no cart.
-  plan.on_foot = !SettlementHasCarts(world, config.horse_kind);
-  return plan;
-}
-
 namespace {
 
 /// The grams of a dense amounts vector.
@@ -48,15 +33,92 @@ Grams SumOf(const ResourceAmounts& amounts) {
 
 /// The rate of one leg of a works' supply: from its sender to the site, the
 /// log cart's way for logs straight off a stand (StandHaulRate's mode).
+/// @param carried What a carrier on foot would take (RateToward): read only
+///        when no draught horse is free.
 HaulRate LegRate(const ProductionConfig& config,
                  const WorldState& world,
                  const SupplyLeg& leg,
-                 Vec2 site) {
-  return RateToward(
-      config, world, leg.from, site, leg.log_way != 0 ? TravelMode::kLogCart : TravelMode::kCart);
+                 Vec2 site,
+                 ResourceId carried = ResourceId{}) {
+  return RateToward(config,
+                    world,
+                    leg.from,
+                    site,
+                    leg.log_way != 0 ? TravelMode::kLogCart : TravelMode::kCart,
+                    carried);
+}
+
+/// The seam-days of bringing `leg`'s grams to `site` today. A CART MIXES: the
+/// sum at the cart's rate. A CARRIER ON FOOT TAKES ONE RESOURCE A TRIP
+/// (transport design §2, «Смешанное снабжение стройки»; #671): each resource
+/// by its own form's trip - the straw's bundle, the boards' armful - summed.
+/// `by_resource`, when given, receives the days of each (on foot only).
+float LegDays(const ProductionConfig& config,
+              const WorldState& world,
+              const SupplyLeg& leg,
+              Vec2 site,
+              std::vector<float>* by_resource = nullptr) {
+  if (SettlementHasCarts(world, config.horse_kind)) {
+    return HaulDaysFor(
+        SumOf(leg.grams), LegRate(config, world, leg, site), config.standard_day_hours);
+  }
+  float days = 0.0F;
+  if (by_resource != nullptr) {
+    by_resource->assign(leg.grams.size(), 0.0F);
+  }
+  // One way for every resource (the walker's), asked of the roads once; the
+  // trip's grams differ by the form.
+  const HaulRate walked = LegRate(config, world, leg, site);
+  for (std::size_t index = 0; index < leg.grams.size(); ++index) {
+    if (leg.grams[index] <= 0) {
+      continue;
+    }
+    // A LOG GOES BY TWO OR NOT AT ALL (haul.h, LogPairRate): its days are a
+    // pair's heads', whether today's gate lets a pair carry or not - the
+    // seam of a log no pair may carry is simply not drained (labour's gate).
+    HaulRate rate = walked;
+    if (index == config.porter.log.value) {
+      rate = LogPairRate(config.porter, walked);
+    } else {
+      rate.load = WalkerLoadGrams(config.porter, DefIdFromIndex<ResourceIdTag>(index));
+    }
+    const float own = HaulDaysFor(leg.grams[index], rate, config.standard_day_hours);
+    days += own;
+    if (by_resource != nullptr) {
+      (*by_resource)[index] = own;
+    }
+  }
+  return days;
 }
 
 }  // namespace
+
+SupplyEstimate PriceSiteSupply(const ProductionConfig& config,
+                               const WorldState& world,
+                               SupplyEstimate plan,
+                               Vec2 site) {
+  if (plan.grams <= 0) {
+    return plan;
+  }
+  // The rate's own question (work_seam.h): no adult kolkhoz horse, no cart.
+  plan.on_foot = !SettlementHasCarts(world, config.horse_kind);
+  // The seam's own arithmetic (SettleSiteSupply, LegDays): the rate of
+  // today's road, bed and carrier from the sender to the site - ON FOOT EACH
+  // RESOURCE BY ITS OWN TRIP when the plan names them (#671): until 0.37.240
+  // the estimate was the sum by the sack, and with the forms in the seam it
+  // would have told the chairman one price while the works paid another. A
+  // plan with grams alone is still priced by the sack.
+  if (plan.on_foot && !plan.by_resource.empty()) {
+    SupplyLeg as_leg;
+    as_leg.from = plan.sender;
+    as_leg.grams = plan.by_resource;
+    plan.cart_days = LegDays(config, world, as_leg, site);
+    return plan;
+  }
+  const HaulRate rate = RateToward(config, world, plan.sender, site);
+  plan.cart_days = HaulDaysFor(plan.grams, rate, config.standard_day_hours);
+  return plan;
+}
 
 void SettleSiteSupply(const ProductionConfig& config, WorldState& current, bool evening) {
   for (std::size_t row = 0; row < current.units.rows.size(); ++row) {
@@ -91,8 +153,16 @@ void SettleSiteSupply(const ProductionConfig& config, WorldState& current, bool 
     // by its own way and today's bed.
     for (SupplyLeg& leg : works.legs) {
       if (leg.unpriced > 0) {
-        works.supply_days_first += HaulDaysFor(
-            leg.unpriced, LegRate(config, current, leg, unit.position), config.standard_day_hours);
+        // At the leg's own mix: `unpriced` is a sum of grams, and on foot the
+        // price of a gram depends on its resource (LegDays).
+        const Grams all = SumOf(leg.grams);
+        works.supply_days_first +=
+            all > 0 && !SettlementHasCarts(current, config.horse_kind)
+                ? LegDays(config, current, leg, unit.position) *
+                      (static_cast<float>(leg.unpriced) / static_cast<float>(all))
+                : HaulDaysFor(leg.unpriced,
+                              LegRate(config, current, leg, unit.position),
+                              config.standard_day_hours);
         leg.unpriced = 0;
       }
     }
@@ -110,6 +180,31 @@ void SettleSiteSupply(const ProductionConfig& config, WorldState& current, bool 
       Grams budget = works.supply_days_remaining <= 0.0F || share >= 1.0F
                          ? awaiting
                          : GramsFromFloat(static_cast<float>(awaiting) * share);
+      // ON FOOT ONE RESOURCE A TRIP (#671; transport design §2): the hour's
+      // work is spent on the front leg's resources in id order, each at its
+      // own form's price - the first to the last gram before the next is
+      // touched. Until 0.37.240 a walker's hour brought a share of the leg's
+      // SUM, several resources at once. The work done is taken at today's
+      // price of the leg (the seam's share of it), as the carts' is.
+      std::vector<Grams> quota;
+      const bool has_carts = SettlementHasCarts(current, config.horse_kind);
+      if (!has_carts && budget < awaiting) {
+        std::vector<float> days;
+        float left = LegDays(config, current, front, unit.position, &days) * share;
+        quota.assign(front.grams.size(), 0);
+        budget = 0;
+        for (std::size_t index = 0; index < front.grams.size() && left > 0.0F; ++index) {
+          if (!(days[index] > 0.0F)) {
+            continue;
+          }
+          quota[index] =
+              left >= days[index]
+                  ? front.grams[index]
+                  : GramsFromFloat(static_cast<float>(front.grams[index]) * (left / days[index]));
+          left -= days[index];
+          budget += quota[index];
+        }
+      }
       // The way the carts took, for the year's book (CartLoadSource::kSupply),
       // measured before anything moved, as the day's other loads are.
       BookCartRun(config,
@@ -122,14 +217,16 @@ void SettleSiteSupply(const ProductionConfig& config, WorldState& current, bool 
       WorkAssignment hauled;
       hauled.kind = WorkKind::kHauling;
       hauled.unit = current.units.row_ids[row];
-      const float foot =
-          FootShareOf(current, hauled, SettlementHasCarts(current, config.horse_kind));
+      const float foot = FootShareOf(current, hauled, has_carts);
       for (std::size_t index = 0; index < front.grams.size() && budget > 0; ++index) {
         // Never more than the works' own total holds of it: the two homes
         // are bound gram for gram (ConstructionState::legs).
         const Grams total = index < works.awaiting.size() ? works.awaiting[index] : 0;
         Grams moved = front.grams[index] < budget ? front.grams[index] : budget;
         moved = moved < total ? moved : total;
+        if (!quota.empty() && moved > quota[index]) {
+          moved = quota[index];
+        }
         if (moved <= 0) {
           continue;
         }
@@ -140,6 +237,12 @@ void SettleSiteSupply(const ProductionConfig& config, WorldState& current, bool 
         }
         unit.stock[index] += moved;
         BookHauled(current.ledger.current, DefIdFromIndex<ResourceIdTag>(index), moved, foot);
+        // LOGS BY TWO, FOR THE YEAR'S BOOK (#671): a log that came on foot
+        // came under a pair - one log a pair's trip.
+        if (index == config.porter.log.value && foot > 0.0F && config.porter.log_piece_grams > 0) {
+          current.ledger.current.log_pair_trips +=
+              static_cast<float>(moved) * foot / static_cast<float>(config.porter.log_piece_grams);
+        }
         budget -= moved;
         awaiting -= moved;
       }
@@ -173,17 +276,14 @@ void SettleSiteSupply(const ProductionConfig& config, WorldState& current, bool 
     if (!evening && !unwritten) {
       continue;
     }
-    const HaulRate rate = LegRate(config, current, works.legs.front(), unit.position);
     works.supply_days_remaining =
-        awaiting > 0 ? HaulDaysFor(awaiting, rate, config.standard_day_hours) : 0.0F;
+        awaiting > 0 ? LegDays(config, current, works.legs.front(), unit.position) : 0.0F;
     works.supply_days_written = works.supply_days_remaining;
     // And what is still to cart on every leg, for the crew's size
     // (ConstructionState::supply_days_all).
     works.supply_days_all = 0.0F;
     for (const SupplyLeg& leg : works.legs) {
-      works.supply_days_all += HaulDaysFor(SumOf(leg.grams),
-                                           LegRate(config, current, leg, unit.position),
-                                           config.standard_day_hours);
+      works.supply_days_all += LegDays(config, current, leg, unit.position);
     }
   }
 }

@@ -5,6 +5,7 @@
 
 kolkhoz_add_module(core_logistics
     leg_loads.cpp
+    porter_pairs.cpp
     logistics_config.cpp
     logistics_plan.cpp
     logistics_system.cpp

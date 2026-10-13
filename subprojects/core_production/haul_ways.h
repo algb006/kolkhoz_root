@@ -24,13 +24,18 @@ namespace core {
 /// @param cart_mode How the load goes when a horse is free: a cart with
 ///        produce keeps to the roads (TravelMode::kCart), a cart with logs may
 ///        cross the felling's ground (kLogCart; roads design §11).
+/// @param carried What a carrier on foot would carry there (#671): his trip
+///        is the bundle for a rick, the sack for the rest (haul.h,
+///        WalkerLoadGrams). Read only when no draught horse is free; invalid
+///        is a sack.
 /// @return The rate; for the produce cart with the way's metres off the road
 ///         at both ends, for the year's book.
 HaulRate RateToward(const ProductionConfig& config,
                     const WorldState& world,
                     Vec2 from,
                     Vec2 destination,
-                    TravelMode cart_mode = TravelMode::kCart);
+                    TravelMode cart_mode = TravelMode::kCart,
+                    ResourceId carried = ResourceId{});
 
 /// @brief Books what a produce cart brought in today on the year's cart
 ///        columns (YearLedger::cart_trips and its siblings): the trips are

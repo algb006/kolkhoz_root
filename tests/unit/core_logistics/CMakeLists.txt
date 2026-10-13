@@ -1,4 +1,4 @@
-kolkhoz_add_unit_test(core_logistics main.cpp)
+kolkhoz_add_unit_test(core_logistics main.cpp porter_plan_checks.cpp)
 
 # The tasks' functions are an internal seam of the module (logistics_tasks.h);
 # the unit tests drive them directly, so the module's source dir is on the

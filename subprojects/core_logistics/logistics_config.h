@@ -17,6 +17,7 @@
 
 #include "core_common/cargo_form.h"
 #include "core_common/cold_housing.h"
+#include "core_common/haul.h"
 #include "core_common/logistics_state.h"
 #include "core_tables/tables.h"
 
@@ -98,8 +99,13 @@ struct LogisticsConfig {
   /// the evening return seats (F3 (B); logistics_plan.h, SeatEveningRiders).
   /// 0 seats nobody, as labour reads the same cell for the morning.
   std::uint32_t cart_passenger_seats = 0;
-  float carry_kg_adult = 20.0F;
   float cart_load_kg = 750.0F;
+
+  /// What a back carries by the load's form, and the terms of logs by two
+  /// (core_common/haul.h, PorterRules; core_catalog/porter_catalog.h) - the
+  /// same reading labour and production hold. Until 0.37.240 a float here,
+  /// labor.csv carry_kg_adult alone.
+  PorterRules porter;
 
   /// The horse's livestock row (livestock.csv key `horse`), for the horse
   /// yard a cart's day starts at (horse_yard_road.h); invalid without one.

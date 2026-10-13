@@ -24,9 +24,11 @@
 #define CORE_COMMON_HAUL_H_
 
 #include <cstdint>
+#include <vector>
 
 #include "core_common/cargo_form.h"
 #include "core_common/geometry.h"
+#include "core_common/ids.h"
 #include "core_common/quantities.h"
 
 namespace core {
@@ -202,6 +204,73 @@ Grams WalkerTripGrams(CargoForm form,
                       WalkerHold hold,
                       const WalkerCarry& carry,
                       Grams log_piece_grams);
+
+/// @brief THE PORTER'S RULES AS DATA (#671, the second delivery): what a back
+///        carries by the load's form, and the terms of logs by two. ONE
+///        struct, parsed in ONE place (core_catalog/porter_catalog.h) and held
+///        by labour, production and logistics - until 0.37.240 each of the
+///        three read labor.csv `carry_kg_adult` alone and every form weighed
+///        what a sack does.
+struct PorterRules {
+  /// labor.csv carry_kg_adult, carry_kg_rick, carry_kg_stretcher_pair, grams.
+  /// The defaults are a hand-made config's: every form a 20-kg sack, as the
+  /// world was before the forms.
+  WalkerCarry carry{.adult = 20 * kGramsPerKilogram,
+                    .rick = 20 * kGramsPerKilogram,
+                    .stretcher_pair = 40 * kGramsPerKilogram};
+
+  /// resources.csv `cargo_form` by ResourceId; empty for a hand-made table
+  /// set with no such column - every load is then carried as a sack.
+  std::vector<CargoForm> cargo_form;
+
+  /// The log (resources.csv `log`) and its mass as a piece (kg_per_unit: 200
+  /// kg) - ONE log a pair's trip. Invalid and 0 without the row.
+  ResourceId log;
+  Grams log_piece_grams = 0;
+
+  /// labor.csv log_pair_max_leg_m (300, STUB econ): the longest walk from
+  /// the sender to the site a pair carries a log over.
+  float log_pair_max_leg_m = 300.0F;
+
+  /// labor.csv log_pair_loaded_pace (0.5, STUB econ): the pair's pace under
+  /// the log as a share of the walk.
+  float log_pair_loaded_pace = 0.5F;
+};
+
+/// @brief The form of `resource` by `rules`; kNone for a resource the table
+///        does not name.
+CargoForm CargoFormOf(const PorterRules& rules, ResourceId resource);
+
+/// @brief ONE walker's grams in a trip with `resource`, as every rate, share,
+///        drain and pay of a carrier on foot counts it: the bundle for a rick,
+///        half the stretcher for manure (a pair's trip - the odd hand carries
+///        carry.adult, the same 20 kg today), carry.adult for everything
+///        else. A resource with NO FORM (kNone, a table without the column)
+///        is carried as a sack - never nought: a rate of nought moves nothing
+///        and a share of nought divides by it.
+/// @note Not a log's: a log goes by two or not at all (WalkerTripGrams with
+///       kLogPair under LogPairMayCarry); asked of a log this answers
+///       carry.adult, the board's trip, and the caller is the gate.
+Grams WalkerLoadGrams(const PorterRules& rules, ResourceId resource);
+
+/// @brief ONE HEAD OF A PAIR UNDER A LOG, as a rate (#671; transport design
+///        §2, «Длинномер — брёвна»): from `walked` - a walker's rate over
+///        the same way, both halves at the walk - half a log a trip
+///        (`rules.log_piece_grams` / 2: one log a pair) and the loaded half
+///        at `rules.log_pair_loaded_pace` of the walk.
+/// @return `walked` with the load and the round trip replaced; unchanged when
+///         the rules name no log piece or no pace.
+HaulRate LogPairRate(const PorterRules& rules, HaulRate walked);
+
+/// @brief WalkerShareOfCartDay for one head of a pair under a log: half a log
+///        over the cart's load, by the cart's round trip over the pair's
+///        (the walk out, the walk back at log_pair_loaded_pace).
+/// @return A share in (0, 1]; 1 when any argument is not above nought.
+float LogPairShareOfCartDay(const PorterRules& rules,
+                            Grams cart_grams,
+                            float walk_hours_per_km,
+                            float harness_hours_per_km,
+                            float loaded_hours_per_km);
 
 /// @brief Whether two walkers may carry a works' logs today - the last
 ///        resort's three terms (#671; transport design §2, «Брёвна вдвоём —

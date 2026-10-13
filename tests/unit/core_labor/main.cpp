@@ -47,6 +47,7 @@
 #include "horse_yard_road_checks.h"
 #include "labor_config.h"
 #include "labor_day.h"
+#include "log_pair_checks.h"
 #include "people_cart_checks.h"
 #include "posts.h"
 #include "stuck_state_checks.h"
@@ -4655,6 +4656,7 @@ int main() {
   failures += CheckBrigadeCart();
   failures += CheckTopUpAgainstWindowlessWork();
   failures += CheckCarterOnFoot();
+  failures += CheckLogPairs();
   failures += CheckTheCartersRoad();
   failures += CheckTheHorseYardRoad();
   failures += CheckTheCartsPassengers();

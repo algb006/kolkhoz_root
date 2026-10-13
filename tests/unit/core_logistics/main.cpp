@@ -1436,6 +1436,9 @@ int TestTheWayHomeFitsTheLight() {
 
 }  // namespace
 
+// The carriers on foot in the plan (porter_plan_checks.cpp; #671).
+int TestThePortersPlan();
+
 int main() {
   int failures = 0;
   failures += TestOneTaskALoad();
@@ -1452,6 +1455,7 @@ int main() {
   failures += TestTheChairmansDoors();
   failures += TestTheLateLoadsLamp();
   failures += TestTheDayOffHeldTheLoad();
+  failures += TestThePortersPlan();
   if (failures == 0) {
     std::cout << "unit_core_logistics: all checks passed\n";
   }

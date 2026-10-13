@@ -53,6 +53,7 @@
 #include "core_common/labor_state.h"
 #include "core_common/land_state.h"
 #include "core_common/ledger_state.h"
+#include "core_common/load_resource.h"
 #include "core_common/logistics_rules.h"
 #include "core_common/logistics_state.h"
 #include "core_common/module_rules.h"
@@ -580,6 +581,7 @@ class LaborSystem final : public ILaborSystem {
             ++book.short_job_days[kind][static_cast<std::size_t>(*diagnosis.shortfall[index])];
           }
         }
+        BookLogPairs(jobs, plan, rides_horse, diagnosis, book);
         for (std::size_t index = 0; index < candidates.size(); ++index) {
           if (diagnosis.idle[index]) {
             // A day off answers for the idle — except a contradiction of the
@@ -1594,6 +1596,11 @@ class LaborSystem final : public ILaborSystem {
         job.unit = current.units.row_ids[row];
         job.position = unit.construction.supply_from;
         job.supplies_works = true;
+        // LOGS BY TWO (#671): no lone back takes a log; pairs under the gate.
+        const LogLeg log_leg = LogLegOf(current, unit);
+        job.walker_log = log_leg.walker_log;
+        job.log_pair_open = log_leg.open;
+        job.log_pair_leg_m = log_leg.leg_m;
         // THE SITES' QUEUE (#595; core_common/site_supply_queue.h): the FIRST
         // site's supply ranks first inside the windowless tier - the same key
         // a raised site's own job carries - and the next site's hands come
@@ -1729,7 +1736,161 @@ class LaborSystem final : public ILaborSystem {
     MarkTheReapingsTheSnowWillTake(current, jobs);
     MarkTheUrgentLoads(current, jobs);
     DropPausedLoads(current, jobs);
+    PriceTheWalkersShares(current, jobs);
     return jobs;
+  }
+
+  /// The hauling a job is, as the assignment its hands will carry.
+  static WorkAssignment HaulingWorkOfJob(const AssignmentJob& job) {
+    WorkAssignment work;
+    work.kind = WorkKind::kHauling;
+    work.field = job.field;
+    work.stand = job.stand;
+    work.extraction_site = job.extraction_site;
+    work.limit_delivery = job.limit_delivery;
+    work.unit = job.unit;
+    return work;
+  }
+
+  /// LOGS BY TWO, THE WORKS' SIDE (#671; core_common/haul.h, LogPairMayCarry):
+  /// what a walker's next trip on a works' supply is to the last resort's gate.
+  struct LogLeg {
+    /// The next trip is a log from a pile: the front leg's first resource by
+    /// id is the log and the leg is not a stand's own (log_way).
+    bool walker_log = false;
+    /// The works is delivering and the walk is within log_pair_max_leg_m -
+    /// the gate's two terms that are the works' own; «no horse free» is the
+    /// morning pool's (assignment.cpp) and the hour's (LogPairCarriesNow).
+    bool open = false;
+    /// The walk from the pile to the site, metres.
+    float leg_m = 0.0F;
+  };
+
+  LogLeg LogLegOf(const WorldState& current, const UnitRow& unit) const {
+    LogLeg leg;
+    const ConstructionState& works = unit.construction;
+    if (works.legs.empty() || works.legs.front().log_way != 0 ||
+        config_.porter.log.value == kInvalidDefIdValue) {
+      return leg;
+    }
+    const ResourceAmounts& grams = works.legs.front().grams;
+    std::size_t first = 0;
+    while (first < grams.size() && grams[first] <= 0) {
+      ++first;
+    }
+    if (first != config_.porter.log.value) {
+      return leg;
+    }
+    leg.walker_log = true;
+    leg.leg_m =
+        RoadKm(current, TravelMode::kWalk, works.legs.front().from, unit.position) * 1000.0F;
+    leg.open = LogPairMayCarry(works.phase == ConstructionPhase::kDelivering,
+                               /*draught_horse_free=*/false,
+                               leg.leg_m,
+                               config_.porter.log_pair_max_leg_m);
+    return leg;
+  }
+
+  /// THE MORNING'S LOGS BY TWO, FOR THE YEAR'S BOOK (#671; YearLedger::
+  /// log_pair_days, log_pair_worst_leg_m, log_pair_near_miss_days): a day
+  /// counts once whatever its pairs. A NEAR MISS is a works that waited for a
+  /// log with no horse for it this morning and the pile beyond the pair's
+  /// walk - with firing at nought everywhere this row says which term held
+  /// the gate shut (econ's porter page).
+  void BookLogPairs(const std::vector<AssignmentJob>& jobs,
+                    const std::vector<std::uint32_t>& plan,
+                    const std::vector<std::uint8_t>& rides_horse,
+                    const PlacementDiagnosis& diagnosis,
+                    YearLedger& book) const {
+    bool carried = false;
+    bool near_miss = false;
+    for (std::uint32_t index = 0; index < jobs.size(); ++index) {
+      const AssignmentJob& job = jobs[index];
+      if (!job.walker_log) {
+        continue;
+      }
+      std::uint32_t on_foot = 0;
+      for (std::size_t hand = 0; hand < plan.size(); ++hand) {
+        on_foot +=
+            plan[hand] == index && (hand >= rides_horse.size() || rides_horse[hand] == 0) ? 1U : 0U;
+      }
+      if (job.log_pair_open && on_foot >= 2) {
+        carried = true;
+        book.log_pair_worst_leg_m = std::max(book.log_pair_worst_leg_m, job.log_pair_leg_m);
+      } else if (job.log_pair_leg_m > config_.porter.log_pair_max_leg_m &&
+                 diagnosis.shortfall[index] == JobShortfall::kNoHorse) {
+        near_miss = true;
+      }
+    }
+    book.log_pair_days = static_cast<std::uint16_t>(book.log_pair_days + (carried ? 1U : 0U));
+    book.log_pair_near_miss_days =
+        static_cast<std::uint16_t>(book.log_pair_near_miss_days + (near_miss ? 1U : 0U));
+  }
+
+  /// One head of a pair's share of a cart-day under a log today: below 1
+  /// while the settlement has carts, a whole day while it has none (the seam
+  /// is then the pair's own - supply_haul.cpp, LegDays).
+  float LogPairShareToday(const WorldState& current) const {
+    if (!SettlementHasCarts(current, config_.horse_kind)) {
+      return 1.0F;
+    }
+    return LogPairShareOfCartDay(config_.porter,
+                                 GramsFromKilograms(config_.cart_load_kg),
+                                 HoursPerKm(config_, WorkKind::kHarvest),
+                                 HoursPerKm(config_, WorkKind::kPlowing),
+                                 static_cast<float>(kClockScale) / config_.loaded_speed_kmh);
+  }
+
+  /// WHETHER THIS HAND IS ONE OF A PAIR UNDER A LOG THIS HOUR (#671): asked of
+  /// a carrier on foot whose works' next trip is a log. The works' own terms
+  /// (LogLegOf), no cart on the same supply today - a carter with a horse
+  /// takes the log, and the pairs stand - and A SECOND HAND: the on-foot
+  /// hands of this supply in row order go two by two, and the odd last one
+  /// stands. Stateless on purpose: the morning's pairs are not kept anywhere,
+  /// and a hand whose load BECAME a log at noon is judged by the same rule.
+  bool LogPairCarriesNow(const WorldState& current,
+                         std::uint32_t resident_row,
+                         const UnitRow& unit) const {
+    if (!LogLegOf(current, unit).open) {
+      return false;
+    }
+    const UnitId works = current.residents.rows[resident_row].work.unit;
+    std::uint32_t on_foot = 0;
+    std::uint32_t before = 0;
+    for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
+      const WorkAssignment& work = current.residents.rows[row].work;
+      if (work.kind != WorkKind::kHauling || work.unit.value != works.value ||
+          work.stand.value != kInvalidEntityIdValue ||
+          work.limit_delivery.value != kInvalidEntityIdValue) {
+        continue;
+      }
+      if (work.rides_horse != 0) {
+        return false;  // a cart is on it
+      }
+      ++on_foot;
+      before += row < resident_row ? 1U : 0U;
+    }
+    return before + 1U < on_foot || on_foot % 2U == 0U;
+  }
+
+  /// A WALKER'S SHARE OF A CART-DAY BY THE JOB'S OWN LOAD (#671; AssignmentJob::
+  /// walker_share): the last pass counts a hand on a heap of hay at the
+  /// bundle's share, half the sack's. Only while the settlement has carts -
+  /// without them the seam is the walker's own and the share is one.
+  void PriceTheWalkersShares(const WorldState& current, std::vector<AssignmentJob>& jobs) const {
+    if (!SettlementHasCarts(current, config_.horse_kind)) {
+      return;
+    }
+    for (AssignmentJob& job : jobs) {
+      if (job.walker_log) {
+        job.walker_share = LogPairShareToday(current);  // a head of a pair, not a sack
+        continue;
+      }
+      if (job.kind == WorkKind::kHauling) {
+        job.walker_share = WalkerShareToday(
+            current, WalkerLoadResourceOfWork(current, HaulingWorkOfJob(job), config_.porter.log));
+      }
+    }
   }
 
   /// THE GROOM'S REQUEST AT LEVEL 0 GOES AHEAD OF ALL WORK (boss, the
@@ -1748,13 +1909,7 @@ class LaborSystem final : public ILaborSystem {
       if (job.kind != WorkKind::kHauling) {
         return false;
       }
-      WorkAssignment work;
-      work.kind = WorkKind::kHauling;
-      work.field = job.field;
-      work.stand = job.stand;
-      work.extraction_site = job.extraction_site;
-      work.limit_delivery = job.limit_delivery;
-      work.unit = job.unit;
+      const WorkAssignment work = HaulingWorkOfJob(job);
       return std::ranges::any_of(current.logistics_tasks.rows,
                                  [&work](const LogisticsTaskRow& task) {
                                    return task.paused && WorkServesTask(work, task);
@@ -1767,13 +1922,7 @@ class LaborSystem final : public ILaborSystem {
       if (job.kind != WorkKind::kHauling) {
         continue;
       }
-      WorkAssignment work;
-      work.kind = WorkKind::kHauling;
-      work.field = job.field;
-      work.stand = job.stand;
-      work.extraction_site = job.extraction_site;
-      work.limit_delivery = job.limit_delivery;
-      work.unit = job.unit;
+      const WorkAssignment work = HaulingWorkOfJob(job);
       for (const LogisticsTaskRow& task : current.logistics_tasks.rows) {
         if (task.level == LogisticsLevel::kUrgent && WorkServesTask(work, task)) {
           job.logistics_urgent = true;
@@ -2261,11 +2410,15 @@ class LaborSystem final : public ILaborSystem {
   ///        seams in cart-days then, by the same predicate
   ///        (work_seam.h, SettlementHasCarts) — and a whole day while it
   ///        has none (core_common/haul.h, WalkerShareOfCartDay).
-  float WalkerShareToday(const WorldState& current) const {
+  /// @param carried The load's resource: a back takes a bundle of hay or a
+  ///        sack by its form (#671; haul.h, WalkerLoadGrams). Invalid is the
+  ///        sack - the day's own share, which the placement reads as «the
+  ///        settlement has carts» when below 1.
+  float WalkerShareToday(const WorldState& current, ResourceId carried = ResourceId{}) const {
     if (!SettlementHasCarts(current, config_.horse_kind)) {
       return 1.0F;
     }
-    return WalkerShareOfCartDay(GramsFromKilograms(config_.carry_kg_adult),
+    return WalkerShareOfCartDay(WalkerLoadGrams(config_.porter, carried),
                                 GramsFromKilograms(config_.cart_load_kg),
                                 HoursPerKm(config_, WorkKind::kHarvest),
                                 HoursPerKm(config_, WorkKind::kPlowing),
@@ -2279,7 +2432,6 @@ class LaborSystem final : public ILaborSystem {
   /// seam must always drain it in the same order.
   void RunHour(WorldState& current, std::uint32_t hour) const {
     const DayWindow window = SolarWindow(current.weather.daylight_hours);
-    const float walker_share = WalkerShareToday(current);
     for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
       const WorkKind kind = current.residents.rows[row].work.kind;
       if (kind == WorkKind::kNone) {
@@ -2422,6 +2574,32 @@ class LaborSystem final : public ILaborSystem {
           kind == WorkKind::kHauling && resident.work.rides_horse == 0 &&
           resident.work.stand.value == kInvalidEntityIdValue &&
           resident.work.limit_delivery.value == kInvalidEntityIdValue;
+      // BY HIS LOAD'S FORM (#671): the bundle of hay is half the sack, and so
+      // is his share of the cart-day and his pay below.
+      const ResourceId carried =
+          on_foot_at_a_cart_load
+              ? WalkerLoadResourceOfWork(current, resident.work, config_.porter.log)
+              : ResourceId{};
+      // A LOG GOES BY TWO OR NOT AT ALL (#671; LogPairCarriesNow): a hand
+      // whose works' next trip is a log from a pile carries it as one of a
+      // pair under the last resort's gate, or stands this hour.
+      bool under_a_log = false;
+      if (on_foot_at_a_cart_load && carried.value != kInvalidDefIdValue &&
+          carried.value == config_.porter.log.value) {
+        const std::uint32_t works_row = FindRow(current.units, resident.work.unit);
+        if (works_row != kNoRow && LogLegOf(current, current.units.rows[works_row]).walker_log) {
+          if (!LogPairCarriesNow(current, row, current.units.rows[works_row])) {
+            continue;
+          }
+          under_a_log = true;
+        }
+      }
+      float walker_share = 1.0F;
+      if (under_a_log) {
+        walker_share = LogPairShareToday(current);
+      } else if (on_foot_at_a_cart_load) {
+        walker_share = WalkerShareToday(current, carried);
+      }
       const float seam_share = on_foot_at_a_cart_load ? walker_share : 1.0F;
       const float could_deliver = delivered;
       if (delivered * seam_share > *seam) {
@@ -2464,8 +2642,12 @@ class LaborSystem final : public ILaborSystem {
         // does not keep yet (transport design §2). Without it the pay ROSE
         // with the pair of 0.37.109, 0.56 -> 0.71 norm-days a walker's day:
         // the man had dropped out of the sum.
-        const float day_pay = std::min(
-            1.0F, trips * config_.carry_kg_adult * efficiency / config_.walker_norm_kg_per_day);
+        const float carry_kg =
+            static_cast<float>(under_a_log ? config_.porter.log_piece_grams / 2
+                                           : WalkerLoadGrams(config_.porter, carried)) /
+            static_cast<float>(kGramsPerKilogram);
+        const float day_pay =
+            std::min(1.0F, trips * carry_kg * efficiency / config_.walker_norm_kg_per_day);
         // Spread over the hours he works — the whole light since 0.37.139
         // (his walk to the heap is his first trip's, above); until then the
         // light less the road, which his hours no longer are.

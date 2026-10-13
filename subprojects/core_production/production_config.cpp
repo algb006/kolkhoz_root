@@ -32,6 +32,7 @@
 #include <vector>
 
 #include "core_catalog/definitions.h"
+#include "core_catalog/porter_catalog.h"
 #include "core_catalog/road_rules_catalog.h"
 #include "core_catalog/table_lookup.h"
 #include "core_catalog/table_value.h"
@@ -1744,13 +1745,6 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
                        config.standard_day_hours,
                        error) ||
         !CellOrDefault(*labor,
-                       labor->FindRowByKey("carry_kg_adult"),
-                       value_col,
-                       Range{.low = 0.1F, .high = 1000.0F},
-                       20.0F,
-                       config.carry_kg_adult,
-                       error) ||
-        !CellOrDefault(*labor,
                        labor->FindRowByKey("travel_limit_hours"),
                        value_col,
                        Range{.low = 0.1F, .high = 24.0F},
@@ -1834,6 +1828,9 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
   config.plot_radius_m = definitions.units.keep_out_radius_m;
   config.map_side_m = definitions.map_side_m;
   config.unit_parent = definitions.units.parent;
+  if (!ReadPorterRules(tables, config.porter, error)) {
+    return false;
+  }
   return ParseTimberCatalog(tables, config.timber, error) &&
          ParseProcessingCatalog(tables, config.processing, error) &&
          ParseExtractionCatalog(tables, config.extraction, error) &&

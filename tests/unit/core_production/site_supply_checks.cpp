@@ -2,6 +2,7 @@
 
 #include "site_supply_checks.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <iostream>
 #include <string>
@@ -31,7 +32,153 @@ core::Grams At(const core::ResourceAmounts& amounts, core::ResourceId resource) 
   return resource.value < amounts.size() ? amounts[resource.value] : 0;
 }
 
+/// A works a kilometre from a store at the origin, delivering, its one leg
+/// holding `grams` (dense by resource) - in a village with no horse.
+core::WorldState HandSupplyWorld(const core::ResourceAmounts& grams) {
+  core::WorldState world;
+  world.calendar.tick = 25U * core::kTicksPerDay + 10U;  // June, ten o'clock
+  core::RefreshCalendarCaches(world.calendar);
+  core::UnitRow site;
+  site.position = core::Vec2{.x = 1000.0F, .y = 0.0F};
+  site.construction.phase = core::ConstructionPhase::kDelivering;
+  site.construction.awaiting = grams;
+  core::SupplyLeg leg;
+  leg.grams = grams;
+  for (const core::Grams of_one : grams) {
+    leg.unpriced += of_one;
+  }
+  site.construction.legs.push_back(leg);
+  core::AppendRow(world.units, site);
+  return world;
+}
+
+/// The seam a settlement writes for a leg of `grams` on foot.
+float HandSeamOf(const core::ProductionConfig& config, const core::ResourceAmounts& grams) {
+  core::WorldState world = HandSupplyWorld(grams);
+  core::SettleSiteSupply(config, world, false);
+  return world.units.rows[0].construction.supply_days_remaining;
+}
+
 }  // namespace
+
+// ON FOOT ONE RESOURCE A TRIP, EACH BY ITS FORM (#671, the second delivery; transport design §2,
+// «Смешанное снабжение стройки»). By hand, over one way: a tonne of straw in 10-kg bundles is
+// twice the days of a tonne of clay in 20-kg sacks, so a leg of both is three clay-tonnes' days;
+// a third of that seam drained is half the straw and NO clay (until 0.37.240 it was a third of
+// the sum, 667 kg, moved in id order); two thirds is all the straw and still no clay. A log goes
+// by two - 100 kg a head, the loaded half at half pace: (20 / 100) x (3 / 2) = 0.3 of the days
+// the same grams take as sacks.
+int CheckTheHandSupplyGoesOneResourceATrip() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  core::ProductionConfig config;
+  if (Expect(tables != nullptr && core::ParseProductionConfig(*tables, config, error),
+             "hand supply: the shipped tables parse") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  const core::ITable* const resources = tables->FindTable("resources");
+  const auto id = [resources](const char* key) {
+    return core::ResourceId{static_cast<std::uint16_t>(resources->FindRowByKey(key))};
+  };
+  const core::ResourceId straw = id("straw");
+  const core::ResourceId clay = id("clay");
+  const core::ResourceId logs = config.timber.log_resource;
+  if (Expect(straw.value < clay.value && logs.value != core::kInvalidDefIdValue,
+             "hand supply: straw comes before clay by id, and the roster names the log") != 0) {
+    return failures + 1;
+  }
+  constexpr core::Grams kTonne = 1'000'000;
+  const auto leg_of = [&](core::Grams straw_grams, core::Grams clay_grams, core::Grams log_grams) {
+    core::ResourceAmounts grams(
+        static_cast<std::size_t>(std::max({straw.value, clay.value, logs.value})) + 1U, 0);
+    grams[straw.value] = straw_grams;
+    grams[clay.value] = clay_grams;
+    grams[logs.value] = log_grams;
+    return grams;
+  };
+  const float clay_days = HandSeamOf(config, leg_of(0, kTonne, 0));
+  const float straw_days = HandSeamOf(config, leg_of(kTonne, 0, 0));
+  const float both_days = HandSeamOf(config, leg_of(kTonne, kTonne, 0));
+  std::cout << "  hand supply, a tonne over a kilometre on foot: clay " << clay_days
+            << " days, straw " << straw_days << ", both " << both_days << '\n';
+  failures +=
+      Expect(clay_days > 0.0F && straw_days > clay_days * 1.999F && straw_days < clay_days * 2.001F,
+             "hand supply: a tonne of straw in bundles is twice the days of a tonne of "
+             "clay in sacks");
+  failures += Expect(both_days > clay_days * 2.999F && both_days < clay_days * 3.001F,
+                     "hand supply: a leg of both is priced by each resource's own trip, summed");
+  // The estimate before the start is the same arithmetic when the plan names
+  // the resources, and the sack's when it names grams alone.
+  {
+    const core::WorldState world = HandSupplyWorld(leg_of(kTonne, kTonne, 0));
+    core::SupplyEstimate plan;
+    plan.grams = 2 * kTonne;
+    plan.sender = core::Vec2{};
+    const float by_sack =
+        core::PriceSiteSupply(config, world, plan, world.units.rows[0].position).cart_days;
+    plan.by_resource = leg_of(kTonne, kTonne, 0);
+    const float by_form =
+        core::PriceSiteSupply(config, world, plan, world.units.rows[0].position).cart_days;
+    failures += Expect(by_form == both_days,
+                       "hand supply: the price asked before the start is the seam's own when the "
+                       "plan names the resources");
+    failures += Expect(by_sack > clay_days * 1.999F && by_sack < clay_days * 2.001F,
+                       "hand supply: a plan of grams alone is priced by the sack");
+  }
+  // ONE RESOURCE A TRIP: the seam's first third is half the straw, alone.
+  {
+    core::WorldState world = HandSupplyWorld(leg_of(kTonne, kTonne, 0));
+    core::SettleSiteSupply(config, world, false);
+    core::UnitRow& works = world.units.rows[0];
+    works.construction.supply_days_remaining = both_days * 2.0F / 3.0F;
+    core::SettleSiteSupply(config, world, false);
+    const core::Grams straw_in = At(works.stock, straw);
+    std::cout << "  hand supply, a third of the seam drained: straw " << straw_in / 1000
+              << " kg, clay " << At(works.stock, clay) / 1000 << " kg\n";
+    failures += Expect(straw_in > (kTonne / 2) - 2000 && straw_in < (kTonne / 2) + 2000 &&
+                           At(works.stock, clay) == 0,
+                       "hand supply: a third of the seam is half the straw and no clay - the "
+                       "first resource before the next is touched");
+    works.construction.supply_days_remaining = both_days / 3.0F;
+    core::SettleSiteSupply(config, world, false);
+    failures +=
+        Expect(At(works.stock, straw) > kTonne - 4000 && At(works.stock, clay) < 4000 &&
+                   At(works.stock, straw) + At(works.construction.awaiting, straw) == kTonne &&
+                   At(works.stock, clay) + At(works.construction.awaiting, clay) == kTonne,
+               "hand supply: two thirds is the straw whole and still no clay, to the gram "
+               "between the site and what awaits");
+    works.construction.supply_days_remaining = 0.0F;
+    core::SettleSiteSupply(config, world, false);
+    failures += Expect(At(works.stock, straw) == kTonne && At(works.stock, clay) == kTonne &&
+                           works.construction.legs.empty(),
+                       "hand supply: the seam drained to nought brings every gram of both");
+  }
+  // A LOG GOES BY TWO: its days are a pair's heads'.
+  {
+    const float log_days = HandSeamOf(config, leg_of(0, 0, 2 * kTonne));
+    const float as_sacks = 2.0F * clay_days;
+    std::cout << "  hand supply, two tonnes of logs by pairs: " << log_days << " days against "
+              << as_sacks << " as sacks\n";
+    failures += Expect(log_days > as_sacks * 0.299F && log_days < as_sacks * 0.301F,
+                       "hand supply: logs are priced by the pair - 100 kg a head, the loaded "
+                       "half at half pace - three tenths of the sack's days");
+  }
+  // AND THE YEAR'S BOOK COUNTS THE PAIRS' TRIPS: a tonne of logs on foot is
+  // five logs, five pair trips.
+  {
+    core::WorldState world = HandSupplyWorld(leg_of(0, 0, kTonne));
+    core::SettleSiteSupply(config, world, false);
+    world.units.rows[0].construction.supply_days_remaining = 0.0F;
+    core::SettleSiteSupply(config, world, false);
+    const float trips = world.ledger.current.log_pair_trips;
+    failures += Expect(trips > 4.99F && trips < 5.01F,
+                       "hand supply: a tonne of logs carried on foot is booked as five pair "
+                       "trips");
+  }
+  return failures;
+}
 
 int CheckTheSupplyOfAWorksIsCarted() {
   int failures = 0;
@@ -85,6 +232,9 @@ int CheckTheSupplyOfAWorksIsCarted() {
   // estimate says it is a carrier's.
   core::SupplyEstimate plan;
   plan.grams = kTenTonnes;
+  // By resource, as construction's plan names them (#671): on foot the price
+  // follows each resource's own trip - these logs go by two.
+  plan.by_resource = works.construction.awaiting;
   plan.sender = works.construction.supply_from;
   const core::SupplyEstimate priced = core::PriceSiteSupply(config, world, plan, works.position);
   failures += Expect(priced.cart_days == whole && priced.on_foot && priced.grams == kTenTonnes,

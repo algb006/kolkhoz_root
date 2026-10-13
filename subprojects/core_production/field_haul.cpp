@@ -17,6 +17,7 @@
 #include "core_common/herd_state.h"
 #include "core_common/ids.h"
 #include "core_common/ledger_state.h"
+#include "core_common/load_resource.h"
 #include "core_common/road_route.h"
 #include "core_common/spoilage.h"
 #include "core_common/state_table_ops.h"
@@ -142,81 +143,7 @@ Grams HeapDoorRoom(const ProductionConfig& config, const WorldState& world, cons
              : ReceivableRoom(config, world, field.reaped_resource);
 }
 
-// Shared with the supply of a works (haul_ways.h; supply_haul.cpp).
-HaulRate RateToward(const ProductionConfig& config,
-                    const WorldState& world,
-                    Vec2 from,
-                    Vec2 destination,
-                    TravelMode cart_mode) {
-  const bool harnessed = DraughtHorsesFree(config, world);
-  // THE BED'S CONDITION slows the cart and the carrier alike (0.36.8; roads
-  // design §1, §3) — wet after rain, muddy in the mud season, faster frozen.
-  // THE DIRT BED'S, for the whole way: the start's roads are all dirt and
-  // open ground is earth too. STUB until a gravel road is laid (delivery 7):
-  // then a way over two beds is still priced by dirt's.
-  const float bed = HaulBedFactor(config, world.weather);
-  const float speed_kmh = (harnessed ? config.harness_speed_kmh : config.walk_speed_kmh) * bed;
-  const float hours_per_km = speed_kmh > 0.0F ? static_cast<float>(kClockScale) / speed_kmh : 0.0F;
-  // THE LOADED HALF AT THE LOADED PACE (#570, 2a; 0.37.229): the cart's
-  // cart_loaded speed, the bed's condition on it as on the empty half; a
-  // carrier on foot walks both halves.
-  const float loaded_kmh = (harnessed ? config.loaded_speed_kmh : config.walk_speed_kmh) * bed;
-  const float loaded_hours_per_km =
-      loaded_kmh > 0.0F ? static_cast<float>(kClockScale) / loaded_kmh : 0.0F;
-  const Grams load = GramsFromKilograms(harnessed ? config.cart_load_kg : config.carry_kg_adult);
-  // BY THE ROAD, NOT THE STRAIGHT LINE (roads design §11-§13; 0.36.2): the
-  // cart keeps to the network, the carrier walks roads, paths and open
-  // ground as is shortest.
-  const TravelMode mode = harnessed ? cart_mode : TravelMode::kWalk;
-  if (mode != TravelMode::kCart) {
-    HaulRate walked =
-        RateOverKm(RoadKm(world, mode, from, destination), hours_per_km, loaded_hours_per_km, load);
-    walked.receiver = destination;
-    walked.has_receiver = true;
-    return walked;
-  }
-  // THE PRODUCE CART: the same way, and how much of it is off the road, for
-  // the year's book (YearLedger::cart_trips; question 268). One choice of
-  // way — Measure answers RoadKm's kilometres beside the metres.
-  const RouteMeasure way = RoadMeasure(world, mode, from, destination);
-  HaulRate rate = RateOverKm(way.effective_km, hours_per_km, loaded_hours_per_km, load);
-  rate.produce_cart = true;
-  rate.off_road_load_m = way.off_road_start_m;
-  rate.off_road_store_m = way.off_road_end_m;
-  rate.receiver = destination;
-  rate.has_receiver = true;
-  return rate;
-}
-
-// Declared in haul_ways.h.
-void BookCartRun(const ProductionConfig& config,
-                 WorldState& current,
-                 CartLoadSource source,
-                 const HaulRate& rate,
-                 Grams moved) {
-  const auto at = static_cast<std::size_t>(source);
-  if (!rate.produce_cart || moved <= 0 || rate.load <= 0 || at >= kCartLoadSourceCountValue) {
-    return;
-  }
-  YearLedger& book = current.ledger.current;
-  const float trips = static_cast<float>(moved) / static_cast<float>(rate.load);
-  book.cart_trips[at] += trips;
-  book.cart_grams[at] += moved;
-  book.cart_off_road_m[at] += trips * rate.off_road_load_m;
-  if (rate.off_road_load_m > book.cart_off_road_worst_m[at]) {
-    book.cart_off_road_worst_m[at] = rate.off_road_load_m;
-  }
-  book.cart_store_off_road_m[at] += trips * rate.off_road_store_m;
-  if (rate.off_road_store_m > book.cart_store_off_road_worst_m[at]) {
-    book.cart_store_off_road_worst_m[at] = rate.off_road_store_m;
-  }
-  // THE LOAD'S END ONLY against road_access_m (0.36.15): the store's gate is
-  // a unit's road access, not the driving question 268 is about.
-  if (rate.off_road_load_m > config.road_access_m) {
-    book.cart_trips_off_road[at] += trips;
-    book.cart_grams_off_road[at] += moved;
-  }
-}
+// RateToward and BookCartRun: haul_ways.cpp (haul_ways.h).
 
 namespace {
 
@@ -440,7 +367,8 @@ float CarryToHeapDays(const ProductionConfig& config,
   }
   const float hours_per_km = static_cast<float>(kClockScale) / speed_kmh;
   const float loaded_hours_per_km = static_cast<float>(kClockScale) / loaded_kmh;
-  const Grams load = GramsFromKilograms(harnessed ? config.cart_load_kg : config.carry_kg_adult);
+  const Grams load = harnessed ? GramsFromKilograms(config.cart_load_kg)
+                               : WalkerLoadGrams(config.porter, field.reaped_resource);
   const HaulRate rate = RateOverKm((shoulder_m / 1000.0F) * OffRoadWeightOf(world, mode),
                                    hours_per_km,
                                    loaded_hours_per_km,
@@ -476,7 +404,12 @@ HaulRate FieldHaulRate(const ProductionConfig& config,
   // boss-core-epoch1-resume [31] (b)), not from the field's centre: carrying
   // the reaped crop to the heap is field work, paid in the reaping since
   // 0.36.20 (CarryToHeapDays) — not here, and not twice.
-  return RateToward(config, world, FieldHeapPoint(world, field), destination);
+  return RateToward(config,
+                    world,
+                    FieldHeapPoint(world, field),
+                    destination,
+                    TravelMode::kCart,
+                    field.reaped_resource);
 }
 
 HaulRate StandHaulRate(const ProductionConfig& config,
@@ -546,7 +479,7 @@ HaulRate SiteHaulRate(const ProductionConfig& config,
   }
   const Vec2 destination =
       destination_row == kNoRow ? site.position : world.units.rows[destination_row].position;
-  return RateToward(config, world, site.position, destination);
+  return RateToward(config, world, site.position, destination, TravelMode::kCart, site.resource);
 }
 
 void SettleSiteHauling(const ProductionConfig& config, WorldState& current) {
@@ -794,7 +727,8 @@ void SettleStoreEmptying(const ProductionConfig& config, WorldState& current, bo
       // 0.36.9). Tomorrow's demand keeps that fallback, as it did before.
       const Vec2 destination = destination_of();
       const bool way_known = destination.x != unit.position.x || destination.y != unit.position.y;
-      const HaulRate today = RateToward(config, current, unit.position, destination);
+      const HaulRate today = RateToward(
+          config, current, unit.position, destination, TravelMode::kCart, MostGramsOf(unit.stock));
       // Who carried it (#671's instrument; hauled_book.h).
       WorkAssignment hauled;
       hauled.kind = WorkKind::kHauling;
@@ -836,7 +770,12 @@ void SettleStoreEmptying(const ProductionConfig& config, WorldState& current, bo
     // Tomorrow's demand: what is left that has somewhere to go, toward the
     // first store that takes the first of it.
     const Grams left = carrying ? movable() : 0;
-    const HaulRate rate = RateToward(config, current, unit.position, destination_of());
+    const HaulRate rate = RateToward(config,
+                                     current,
+                                     unit.position,
+                                     destination_of(),
+                                     TravelMode::kCart,
+                                     MostGramsOf(unit.stock));
     unit.haul_to = rate.receiver;  // F3 (A): the perevalka's receiver
     unit.haul_days_remaining = left > 0 ? HaulDaysFor(left, rate, config.standard_day_hours) : 0.0F;
     unit.haul_days_written = unit.haul_days_remaining;

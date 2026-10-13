@@ -8,6 +8,7 @@ kolkhoz_add_module(core_production
     production_system.cpp
     production_config.cpp
     field_haul.cpp
+    haul_ways.cpp
     supply_haul.cpp
     field_work.cpp
     herd_cold.cpp

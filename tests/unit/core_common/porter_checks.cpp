@@ -13,6 +13,7 @@
 #include "core_common/hauled_book.h"
 #include "core_common/labor_state.h"
 #include "core_common/ledger_state.h"
+#include "core_common/load_resource.h"
 #include "core_common/logistics_rules.h"
 #include "core_common/logistics_state.h"
 #include "core_common/state_table_ops.h"
@@ -124,10 +125,107 @@ int CheckTheHauledBook() {
   return failures;
 }
 
+// THE RULES AS DATA (#671, the second delivery; PorterRules). By hand: the bundle 10 kg, the
+// stretcher's head 20, the sack 20; a resource the table gives NO form is a sack, never nought;
+// a hand-made config (no table) carries every form as the 20-kg sack the world had before.
+int CheckTheLoadByForm() {
+  int failures = 0;
+  core::PorterRules rules;
+  failures += ExpectPorter(core::WalkerLoadGrams(rules, core::ResourceId{0}) == 20 * kKg &&
+                               core::WalkerLoadGrams(rules, core::ResourceId{}) == 20 * kKg,
+                           "a config with no table carries any load as the 20-kg sack");
+  rules.carry = core::WalkerCarry{.adult = 20 * kKg, .rick = 10 * kKg, .stretcher_pair = 40 * kKg};
+  using core::CargoForm;
+  // Resources 0..5: bulk, rick, manure, long, live, and one the table left formless.
+  rules.cargo_form = {CargoForm::kBulk,
+                      CargoForm::kRick,
+                      CargoForm::kManure,
+                      CargoForm::kLong,
+                      CargoForm::kLive,
+                      CargoForm::kNone};
+  const auto load = [&rules](std::uint16_t resource) {
+    return core::WalkerLoadGrams(rules, core::ResourceId{resource});
+  };
+  failures += ExpectPorter(load(0) == 20 * kKg, "bulk by form: the sack, 20 kg");
+  failures += ExpectPorter(load(1) == 10 * kKg, "a rick by form: the bundle, 10 kg");
+  failures += ExpectPorter(load(2) == 20 * kKg, "manure by form: a stretcher's head, 20 kg");
+  failures += ExpectPorter(load(3) == 20 * kKg, "long by form: boards on the shoulder, 20 kg");
+  failures += ExpectPorter(load(4) == 20 * kKg && load(5) == 20 * kKg && load(9) == 20 * kKg,
+                           "a load with no carried form is priced as a sack, never as nought");
+  failures += ExpectPorter(core::CargoFormOf(rules, core::ResourceId{1}) == CargoForm::kRick &&
+                               core::CargoFormOf(rules, core::ResourceId{9}) == CargoForm::kNone,
+                           "the form is the table's, kNone past it");
+  return failures;
+}
+
+// THE PAIR UNDER A LOG, by hand: a walker's round of 2 h (1 h out, 1 h back) becomes 1 h out and
+// 2 h back at half pace - 3 h - with half a 200-kg log a head. Its share of a cart-day of 1800 kg
+// whose round is 1/12 + 1/9 h a km against the pair's (1/5)(1 + 2) h a km:
+// (100 / 1800) x ((1/12 + 1/9) x 12 / (0.6 x 12)) with hours a km x 12 (the clock's scale).
+int CheckTheLogPair() {
+  int failures = 0;
+  core::PorterRules rules;
+  rules.log = core::ResourceId{3};
+  rules.log_piece_grams = 200 * kKg;
+  rules.log_pair_loaded_pace = 0.5F;
+  core::HaulRate walked;
+  walked.load = 20 * kKg;
+  walked.round_trip_hours = 2.0F;
+  const core::HaulRate pair = core::LogPairRate(rules, walked);
+  failures += ExpectPorter(pair.load == 100 * kKg, "a pair's head carries half the log, 100 kg");
+  failures += ExpectPorter(pair.round_trip_hours > 2.999F && pair.round_trip_hours < 3.001F,
+                           "the loaded half at half pace: a 2-hour round becomes 3");
+  core::PorterRules no_log = rules;
+  no_log.log_piece_grams = 0;
+  failures += ExpectPorter(core::LogPairRate(no_log, walked).load == walked.load,
+                           "rules with no log piece leave the rate as it was");
+  const float walk = 12.0F / 5.0F;
+  const float trot = 12.0F / 12.0F;
+  const float loaded = 12.0F / 9.0F;
+  const float share = core::LogPairShareOfCartDay(rules, 1800 * kKg, walk, trot, loaded);
+  const float by_hand = (100.0F / 1800.0F) * ((trot + loaded) / (walk * 3.0F));
+  failures += ExpectPorter(share > by_hand * 0.999F && share < by_hand * 1.001F,
+                           "a pair head's share of a cart-day is half a log over the cart's "
+                           "load by the rounds");
+  failures +=
+      ExpectPorter(core::LogPairShareOfCartDay(no_log, 1800 * kKg, walk, trot, loaded) == 1.0F,
+                   "and one, not nought, when the rules name no log");
+  return failures;
+}
+
+// ONE RESOURCE A TRIP: a works' supply is a walker's by the FIRST resource its front leg holds,
+// a cart's by the one of MOST grams.
+int CheckTheLoadResource() {
+  int failures = 0;
+  core::WorldState world;
+  core::UnitRow site;
+  core::SupplyLeg leg;
+  leg.grams = {0, 500 * kKg, 0, 4000 * kKg};  // resource 1 first, resource 3 the most
+  site.construction.legs.push_back(leg);
+  const core::UnitId unit = core::AppendRow(world.units, site);
+  core::LogisticsTaskRow task;
+  task.load_kind = core::LogisticsLoadKind::kSiteSupply;
+  task.unit = unit;
+  failures += ExpectPorter(core::WalkerLoadResource(world, task, core::ResourceId{9}).value == 1,
+                           "a walker's trip on a works' supply is the front leg's first resource");
+  failures += ExpectPorter(core::TaskLoadResource(world, task, core::ResourceId{9}).value == 3,
+                           "a cart's leg on it is named by the resource of most grams");
+  world.units.rows[0].construction.legs.clear();
+  failures += ExpectPorter(
+      core::WalkerLoadResource(world, task, core::ResourceId{9}).value == core::kInvalidDefIdValue,
+      "a supply with no leg left has no resource to carry");
+  core::LogisticsTaskRow logs;
+  logs.load_kind = core::LogisticsLoadKind::kStandLogs;
+  failures += ExpectPorter(core::WalkerLoadResource(world, logs, core::ResourceId{9}).value == 9,
+                           "a stand's load is the log, whoever asks");
+  return failures;
+}
+
 }  // namespace
 
 int TestThePorter() {
-  return CheckTripGrams() + CheckTheLogGate() + CheckTheHauledBook();
+  return CheckTripGrams() + CheckTheLogGate() + CheckTheHauledBook() + CheckTheLoadByForm() +
+         CheckTheLogPair() + CheckTheLoadResource();
 }
 
 }  // namespace core_test

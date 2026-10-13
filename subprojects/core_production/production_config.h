@@ -29,6 +29,7 @@
 #include "core_catalog/processing_catalog.h"
 #include "core_catalog/timber_catalog.h"
 #include "core_common/calendar.h"
+#include "core_common/haul.h"
 #include "core_common/ids.h"
 #include "core_common/meadow_mark.h"
 #include "core_common/quantities.h"
@@ -1095,7 +1096,11 @@ struct ProductionConfig {
   /// simplification, not an oversight.
   float cart_load_kg = 750.0F;
 
-  float carry_kg_adult = 20.0F;
+  /// What a back carries by the load's form, and the terms of logs by two
+  /// (core_common/haul.h, PorterRules; core_catalog/porter_catalog.h) - the
+  /// same reading labour and logistics hold. Until 0.37.240 a float here,
+  /// labor.csv carry_kg_adult alone: a bundle of hay weighed what a sack does.
+  PorterRules porter;
 
   float walk_speed_kmh = 5.0F;
 

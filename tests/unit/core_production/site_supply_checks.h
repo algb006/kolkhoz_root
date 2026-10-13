@@ -16,4 +16,10 @@
 /// @return The number of failed assertions; each prints a FAIL line.
 int CheckTheSupplyOfAWorksIsCarted();
 
+/// @brief The supply on foot (#671): each resource by its own form's trip,
+///        one resource a trip in id order, logs by the pair, the estimate
+///        before the start the seam's own.
+/// @return The number of failed assertions; each prints a FAIL line.
+int CheckTheHandSupplyGoesOneResourceATrip();
+
 #endif  // TESTS_UNIT_CORE_PRODUCTION_SITE_SUPPLY_CHECKS_H_

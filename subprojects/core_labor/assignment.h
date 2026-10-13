@@ -163,6 +163,26 @@ struct AssignmentJob {
   /// is sent to it (PlanDayAssignments).
   bool supplies_works = false;
 
+  /// A CARRIER ON FOOT'S SHARE OF A CART-DAY ON THIS JOB'S LOAD (#671;
+  /// core_common/haul.h, WalkerShareOfCartDay by WalkerLoadGrams of the load's
+  /// resource): a bundle of hay is half a sack, and so is the hand's count in
+  /// the last pass. 0 - not priced (a job that is no hauling, a hand-built
+  /// job): AssignmentParams::walker_share_of_cart_day stands in.
+  float walker_share = 0.0F;
+
+  /// LOGS BY TWO (#671; transport design §2, «Брёвна вдвоём — только подвоз на
+  /// стройку»; core_common/haul.h, LogPairMayCarry). `walker_log`: a walker's
+  /// next trip on this works' supply would be a LOG from a pile (the front
+  /// leg's first resource, not a stand's own logs) - NO LONE BACK CARRIES IT,
+  /// in the queue or after it. `log_pair_open`: the works is delivering and
+  /// the walk from the pile to it is within labor.csv log_pair_max_leg_m -
+  /// then, AND ONLY WITH NO HORSE LEFT IN THE MORNING'S POOL, the hands left
+  /// with no work go to it in PAIRS (the last pass), whether the horse yard
+  /// stands or not. `log_pair_leg_m`: that walk, metres, for the year's book.
+  bool walker_log = false;
+  bool log_pair_open = false;
+  float log_pair_leg_m = 0.0F;
+
   /// True for a construction works that will house a herd facing the cold
   /// (core_common/cold_housing.h, WorksHouseAColdHerd; August to February):
   /// a KEY in OrderJobs that lifts it first among its tier's windowless jobs

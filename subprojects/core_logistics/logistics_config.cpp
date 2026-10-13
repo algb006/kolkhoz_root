@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "core_catalog/cold_housing_catalog.h"
+#include "core_catalog/porter_catalog.h"
 #include "core_catalog/table_value.h"
 #include "core_common/haul.h"
 #include "core_tables/tables.h"
@@ -69,27 +70,13 @@ bool ParseKnobs(const ITable& table, LogisticsConfig& config, std::string& error
 /// resource kNone. A column with an empty cell or a word that is no form is
 /// refused by name: «not yet specified» is not a form a cart can be drawn by.
 bool ParseCargoForms(const ITable& resources, LogisticsConfig& config, std::string& error) {
-  config.cargo_form.assign(resources.RowCount(), CargoForm::kNone);
+  // The column's words have one home (core_catalog/porter_catalog.h).
+  if (!ReadCargoForms(resources, config.cargo_form, error)) {
+    return false;
+  }
   config.is_fuel.assign(resources.RowCount(), 0);
-  const std::uint32_t form_column = resources.FindColumn("cargo_form");
   const std::uint32_t fuel_column = resources.FindColumn("is_fuel");
   for (std::uint32_t row = 0; row < resources.RowCount(); ++row) {
-    if (form_column != kNoTableColumn) {
-      const std::string_view word = resources.CellText(row, form_column);
-      const CargoForm form = word == "bulk"     ? CargoForm::kBulk
-                             : word == "manure" ? CargoForm::kManure
-                             : word == "packed" ? CargoForm::kPacked
-                             : word == "rick"   ? CargoForm::kRick
-                             : word == "long"   ? CargoForm::kLong
-                             : word == "live"   ? CargoForm::kLive
-                                                : CargoForm::kNone;
-      if (form == CargoForm::kNone) {
-        error = "resources: cargo_form: row " + std::string(resources.CellText(row, 0)) + ": «" +
-                std::string(word) + "» is not a cargo form";
-        return false;
-      }
-      config.cargo_form[row] = form;
-    }
     float fuel = 0.0F;
     if (!CellOrDefault(
             resources, row, fuel_column, Range{.low = 0.0F, .high = 1.0F}, 0.0F, fuel, error)) {
@@ -209,10 +196,9 @@ bool ParseLogisticsConfig(const ITableSet& tables, LogisticsConfig& config, std:
     config.horse_kind = DefIdFromRow<LivestockKindIdTag>(livestock->FindRowByKey("horse"));
   }
   if (const ITable* const labor = tables.FindTable("labor")) {
-    const std::array<std::pair<std::string_view, std::pair<float*, Range>>, 3> cells = {{
+    const std::array<std::pair<std::string_view, std::pair<float*, Range>>, 2> cells = {{
         {"travel_limit_hours", {&config.travel_limit_hours, Range{.low = 0.0F, .high = 24.0F}}},
         {"standard_day_hours", {&config.standard_day_hours, Range{.low = 1.0F, .high = 24.0F}}},
-        {"carry_kg_adult", {&config.carry_kg_adult, Range{.low = 0.1F, .high = 1000.0F}}},
     }};
     for (const auto& [key, cell] : cells) {
       if (!OptionalValue(*labor, key, cell.second, *cell.first, error)) {
@@ -231,7 +217,8 @@ bool ParseLogisticsConfig(const ITableSet& tables, LogisticsConfig& config, std:
       return false;
     }
   }
-  return ReadColdHousing(tables, config.cold_housing, error);
+  return ReadPorterRules(tables, config.porter, error) &&
+         ReadColdHousing(tables, config.cold_housing, error);
 }
 
 }  // namespace core

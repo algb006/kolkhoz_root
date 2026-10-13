@@ -6139,7 +6139,7 @@ int CheckHaulingIsNotFree() {
   constexpr core::Grams kKilo = core::kGramsPerKilogram;
   core::ProductionConfig config = MakeHerdConfig();
   config.cart_load_kg = 750.0F;
-  config.carry_kg_adult = 20.0F;
+  config.porter.carry.adult = 20 * core::kGramsPerKilogram;
   config.walk_speed_kmh = 5.0F;
   config.harness_speed_kmh = 12.0F;
   config.standard_day_hours = 10.0F;
@@ -7193,7 +7193,7 @@ int CheckTheHarvestWillNotBeGathered() {
   // out on the norm alone. A carrier that takes a thousand tonnes makes it
   // nought; that the alarm reads it is checked on its own, after "twice the
   // pace".
-  config.carry_kg_adult = 1.0e6F;
+  config.porter.carry.adult = 1'000'000 * core::kGramsPerKilogram;
   core::WorldState world;
   world.calendar.tick = 30 * static_cast<core::Tick>(core::kTicksPerDay);
   core::RefreshCalendarCaches(world.calendar);
@@ -7359,11 +7359,11 @@ int CheckTheHarvestWillNotBeGathered() {
   far_road.axis.push_back(core::RoadPoint{.position = {.x = 2000.0F, .y = 1000.0F}});
   core::AppendRow(world.roads, far_road);
   world.road_index = core::BuildRoadIndex(world.roads);
-  config.carry_kg_adult = 20.0F;
+  config.porter.carry.adult = 20 * core::kGramsPerKilogram;
   failures += Expect(warned() == 10'000'000,
                      "gather: the reaping owes the carry to the heap as well, and at a norm-day "
                      "an hour on foot the potato is lost");
-  config.carry_kg_adult = 1.0e6F;
+  config.porter.carry.adult = 1'000'000 * core::kGramsPerKilogram;
   // RAIN STOPS THE REAPING (core_common/rain_stops_work.h): the same norm-day
   // an hour, the days counted as above (no Sunday 34, last day 39). Today
   // (day 30) is dry and counts whole. Six rain days in ten ahead: the oat
@@ -16146,6 +16146,7 @@ int main() {
   failures += CheckTheHeapLampIsRedOnlyWhenItSpoils();
   failures += CheckTheSeedLampIsNotAFalseAlarm();
   failures += CheckTheSupplyOfAWorksIsCarted();
+  failures += CheckTheHandSupplyGoesOneResourceATrip();
   failures += CheckAStarvedKolkhozHerdDoesNotInterruptAgain();
   failures += CheckThePerennialsCut();
   failures += CheckTheGrassStandsAge();

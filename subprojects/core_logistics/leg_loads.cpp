@@ -4,30 +4,12 @@
 
 #include <cstdint>
 
+#include "core_common/load_resource.h"
 #include "core_common/state_table_ops.h"
 #include "logistics_plan.h"
 
 namespace core {
 namespace {
-
-/// The resource of most grams in `amounts`, invalid when all are nought.
-ResourceId MostGrams(const ResourceAmounts& amounts) {
-  ResourceId most;
-  Grams best = 0;
-  for (std::uint32_t index = 0; index < amounts.size(); ++index) {
-    if (amounts[index] > best) {
-      best = amounts[index];
-      most = ResourceId{static_cast<std::uint16_t>(index)};
-    }
-  }
-  return most;
-}
-
-/// The form of `resource` by resources.csv `cargo_form`; kNone for none.
-CargoForm FormOf(const LogisticsConfig& config, ResourceId resource) {
-  return resource.value < config.cargo_form.size() ? config.cargo_form[resource.value]
-                                                   : CargoForm::kNone;
-}
 
 /// How a carrier holds `form`: in a pair on a stretcher or under a log when
 /// his plan names a partner, alone otherwise (haul.h, WalkerHold).
@@ -41,44 +23,23 @@ WalkerHold HoldOf(CargoForm form, ResidentId partner) {
   return form == CargoForm::kLong ? WalkerHold::kLogPair : WalkerHold::kAlone;
 }
 
+/// A full trip's grams for ONE carrier of `cart` with `resource` - the
+/// bundle, the stretcher's half, the log's half under LogPairMayCarry, the
+/// sack (haul.h, WalkerTripGrams). A resource with no form is a sack
+/// (WalkerLoadGrams).
+Grams FullTripOf(const LogisticsConfig& config, const CartPlan& cart, ResourceId resource) {
+  const CargoForm form = CargoFormOf(config.porter, resource);
+  const Grams grams = WalkerTripGrams(
+      form, HoldOf(form, cart.partner), config.porter.carry, config.porter.log_piece_grams);
+  return grams > 0 ? grams : config.porter.carry.adult;
+}
+
 }  // namespace
 
 ResourceId LegResource(const WorldState& world, const CartLeg& leg, ResourceId log) {
   const std::uint32_t task_row = FindRow(world.logistics_tasks, leg.task);
-  if (task_row == kNoRow) {
-    return ResourceId{};
-  }
-  const LogisticsTaskRow& task = world.logistics_tasks.rows[task_row];
-  switch (task.load_kind) {
-    case LogisticsLoadKind::kFieldHeap: {
-      const std::uint32_t row = FindRow(world.fields, task.field);
-      return row != kNoRow ? world.fields.rows[row].reaped_resource : ResourceId{};
-    }
-    case LogisticsLoadKind::kStandLogs:
-      return log;
-    case LogisticsLoadKind::kSiteDig: {
-      const std::uint32_t row = FindRow(world.extraction_sites, task.extraction_site);
-      return row != kNoRow ? world.extraction_sites.rows[row].resource : ResourceId{};
-    }
-    case LogisticsLoadKind::kDistrictLot: {
-      const std::uint32_t row = FindRow(world.limit_deliveries, task.limit_delivery);
-      return row != kNoRow ? MostGrams(world.limit_deliveries.rows[row].goods) : ResourceId{};
-    }
-    case LogisticsLoadKind::kStoreTransfer: {
-      const std::uint32_t row = FindRow(world.units, task.unit);
-      return row != kNoRow ? MostGrams(world.units.rows[row].stock) : ResourceId{};
-    }
-    case LogisticsLoadKind::kSiteSupply: {
-      const std::uint32_t row = FindRow(world.units, task.unit);
-      if (row == kNoRow || world.units.rows[row].construction.legs.empty()) {
-        return ResourceId{};
-      }
-      return MostGrams(world.units.rows[row].construction.legs.front().grams);
-    }
-    case LogisticsLoadKind::kLogisticsLoadKindCount:
-      break;
-  }
-  return ResourceId{};
+  return task_row != kNoRow ? TaskLoadResource(world, world.logistics_tasks.rows[task_row], log)
+                            : ResourceId{};
 }
 
 CargoForm LegCargoForm(const LogisticsConfig& config, const WorldState& world, const CartLeg& leg) {
@@ -93,28 +54,33 @@ CargoForm LegCargoForm(const LogisticsConfig& config, const WorldState& world, c
     // review of 11 October 2026, item 9).
     return CargoForm::kNone;
   }
-  return FormOf(config, LegResource(world, leg, config.log_resource));
-}
-
-WalkerCarry WalkerCarryOf(const LogisticsConfig& config) {
-  // TODAY'S WORLD: one carry for every form (labor.csv carry_kg_adult) - a
-  // bundle and a stretcher's half weigh what a sack does until the porter's
-  // rules land (#671, the second delivery).
-  const Grams adult = GramsFromKilograms(config.carry_kg_adult);
-  return WalkerCarry{.adult = adult, .rick = adult, .stretcher_pair = 2 * adult};
+  // The cart's look by the logistics' own column (LogisticsConfig::cargo_form,
+  // the one CargoFormsMix reads) - the same reading as the porter's rules on
+  // a parsed table set; a hand-made config sets the one it tests.
+  const ResourceId resource = LegResource(world, leg, config.log_resource);
+  return resource.value < config.cargo_form.size() ? config.cargo_form[resource.value]
+                                                   : CargoForm::kNone;
 }
 
 void FillTripLoads(const LogisticsConfig& config, const WorldState& world, GroomPlan& plan) {
-  const WalkerCarry carry = WalkerCarryOf(config);
   for (CartPlan& cart : plan.carts) {
     for (CartLeg& leg : cart.legs) {
       if (leg.task.value == kInvalidEntityIdValue || leg.resource.value != kInvalidDefIdValue) {
         continue;  // a ride; or a leg written before, kept by a re-plan
       }
-      leg.resource = LegResource(world, leg, config.log_resource);
-      if (cart.on_foot && leg.loaded != 0) {
-        const CargoForm form = FormOf(config, leg.resource);
-        leg.carried = WalkerTripGrams(form, HoldOf(form, cart.partner), carry, 0);
+      if (!cart.on_foot) {
+        leg.resource = LegResource(world, leg, config.log_resource);
+        continue;
+      }
+      // ONE RESOURCE A TRIP (transport design §2): a works' supply by the
+      // first resource its front leg holds, as production's settle moves it.
+      const std::uint32_t task_row = FindRow(world.logistics_tasks, leg.task);
+      leg.resource =
+          task_row != kNoRow
+              ? WalkerLoadResource(world, world.logistics_tasks.rows[task_row], config.log_resource)
+              : ResourceId{};
+      if (leg.loaded != 0) {
+        leg.carried = FullTripOf(config, cart, leg.resource);
       }
     }
   }
@@ -128,7 +94,6 @@ void CollectPorterLegs(const LogisticsConfig& config,
     return;
   }
   const Tick now = completed.calendar.tick;
-  const WalkerCarry carry = WalkerCarryOf(config);
   for (const CartPlan& cart : plan.carts) {
     if (!cart.on_foot) {
       continue;
@@ -146,11 +111,10 @@ void CollectPorterLegs(const LogisticsConfig& config,
       porter.arrive = leg.arrive;
       porter.loaded = leg.loaded;
       porter.resource = leg.resource;
-      porter.form = FormOf(config, leg.resource);
+      porter.form = CargoFormOf(config.porter, leg.resource);
       if (leg.loaded != 0) {
         porter.grams = leg.carried;
-        const Grams full =
-            WalkerTripGrams(porter.form, HoldOf(porter.form, cart.partner), carry, 0);
+        const Grams full = FullTripOf(config, cart, leg.resource);
         porter.load_share =
             full > 0 ? static_cast<float>(leg.carried) / static_cast<float>(full) : 0.0F;
       }

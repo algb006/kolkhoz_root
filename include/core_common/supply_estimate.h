@@ -45,6 +45,14 @@ struct SupplyEstimate {
   /// recipe is on the unit, a marking class, no such unit, or no recipe line
   /// is in any store), and `cart_days` is 0 with it.
   Grams grams = 0;
+
+  /// `grams` BY RESOURCE, dense by ResourceId (#671, 0.37.240): a carrier on
+  /// foot takes one resource a trip and each by its own form's trip - a
+  /// bundle of straw is half a sack, a log goes by two - so the price on foot
+  /// is the sum over these (transport design §2, «Смешанное снабжение
+  /// стройки»), the works' own seam's arithmetic. A cart mixes and reads only
+  /// `grams`. Empty from a caller that does not know them: priced by the sack.
+  ResourceAmounts by_resource;
 };
 
 }  // namespace core

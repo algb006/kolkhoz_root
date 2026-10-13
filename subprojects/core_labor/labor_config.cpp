@@ -21,6 +21,7 @@
 #include <string_view>
 #include <utility>
 
+#include "core_catalog/porter_catalog.h"
 #include "core_catalog/table_value.h"
 #include "core_catalog/world_conventions.h"
 #include "core_common/calendar.h"
@@ -51,7 +52,7 @@ bool ParseScalars(const ITable& table, LaborConfig& config, std::string& error) 
   auto last_days = static_cast<float>(config.harvest_snow_last_days);
   auto hay_need_days = static_cast<float>(config.hay_cart_need_days);
   auto supply_term_days = static_cast<float>(config.site_supply_term_days);
-  const std::array<ScalarKnob, 21> knobs = {{
+  const std::array<ScalarKnob, 20> knobs = {{
       {.key = "hay_cart_need_days",
        .value = &hay_need_days,
        .range = {.low = 0.0F, .high = static_cast<float>(kDaysPerYear)}},
@@ -61,9 +62,6 @@ bool ParseScalars(const ITable& table, LaborConfig& config, std::string& error) 
       {.key = "standard_day_hours",
        .value = &config.standard_day_hours,
        .range = {.low = 1.0F, .high = 24.0F}},
-      {.key = "carry_kg_adult",
-       .value = &config.carry_kg_adult,
-       .range = {.low = 0.1F, .high = 1000.0F}},
       {.key = "walker_min_trips_per_day",
        .value = &config.walker_min_trips_per_day,
        .range = {.low = 0.0F, .high = 100.0F}},
@@ -621,6 +619,9 @@ bool ParseCropWindows(const ITable& table,
 }  // namespace
 
 bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string& error) {
+  if (!ReadPorterRules(tables, config.porter, error)) {
+    return false;
+  }
   if (const ITable* labor = tables.FindTable("labor")) {
     if (!ParseScalars(*labor, config, error) || !ParseEfficiencyKnobs(*labor, config, error) ||
         !ParseEducationFactors(*labor, config, error) ||

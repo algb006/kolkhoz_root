@@ -95,6 +95,45 @@ Grams WalkerTripGrams(CargoForm form,
   return carry.adult;
 }
 
+CargoForm CargoFormOf(const PorterRules& rules, ResourceId resource) {
+  return resource.value < rules.cargo_form.size() ? rules.cargo_form[resource.value]
+                                                  : CargoForm::kNone;
+}
+
+Grams WalkerLoadGrams(const PorterRules& rules, ResourceId resource) {
+  const CargoForm form = CargoFormOf(rules, resource);
+  const Grams grams = WalkerTripGrams(form, WalkerHold::kStretcher, rules.carry, 0);
+  return grams > 0 ? grams : rules.carry.adult;
+}
+
+HaulRate LogPairRate(const PorterRules& rules, HaulRate walked) {
+  if (rules.log_piece_grams <= 0 || !(rules.log_pair_loaded_pace > 0.0F)) {
+    return walked;
+  }
+  walked.load = rules.log_piece_grams / 2;
+  // The walk's round trip is two equal halves; the loaded one slows.
+  walked.round_trip_hours =
+      (walked.round_trip_hours / 2.0F) * (1.0F + (1.0F / rules.log_pair_loaded_pace));
+  return walked;
+}
+
+float LogPairShareOfCartDay(const PorterRules& rules,
+                            Grams cart_grams,
+                            float walk_hours_per_km,
+                            float harness_hours_per_km,
+                            float loaded_hours_per_km) {
+  if (rules.log_piece_grams <= 0 || !(rules.log_pair_loaded_pace > 0.0F) || cart_grams <= 0 ||
+      !(walk_hours_per_km > 0.0F) || !(harness_hours_per_km > 0.0F) ||
+      !(loaded_hours_per_km > 0.0F)) {
+    return 1.0F;
+  }
+  const float pair_round = walk_hours_per_km * (1.0F + (1.0F / rules.log_pair_loaded_pace));
+  const float share =
+      (static_cast<float>(rules.log_piece_grams / 2) / static_cast<float>(cart_grams)) *
+      ((harness_hours_per_km + loaded_hours_per_km) / pair_round);
+  return share < 1.0F ? share : 1.0F;
+}
+
 bool LogPairMayCarry(bool delivering_with_logs_awaiting,
                      bool draught_horse_free,
                      float walk_m,
