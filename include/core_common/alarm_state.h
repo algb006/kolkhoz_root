@@ -1029,6 +1029,25 @@ struct Alarm {
   AlarmAdvice advice_more = AlarmAdvice::kNone;
   std::int64_t amount_more = 0;
 
+  /// kHerdHayShortAhead (0.37.250; lever 1; econ's four-levers §2b): THE
+  /// LAMP'S LINE IN TONNES - the hay the herds are short of from today to the
+  /// forecast's horizon, grams («до покоса не хватит 54 т»), beside
+  /// `days_ahead` («сена до 12 марта»). Every uncovered fodder unit of the
+  /// days forecast over the hay's feed value. The heads in `amount` stay for
+  /// the ladder's own use and are not the line to show: they read seventy in
+  /// a village with nothing wrong. 0 for every other kind.
+  /// @note Not in the save, as `lamp`.
+  std::int64_t short_grams = 0;
+
+  /// kHerdHayShortAhead (0.37.250): THE ROW OF THE FEEDING ORDER FOUND EMPTY
+  /// FIRST for the herd underfed first - what `resource` held until 0.37.250.
+  /// `resource` is now THE HAY whenever the lamp is lit: the shortage is the
+  /// hay ladder's, and a lamp named «silage» in a world where no work makes
+  /// silage named a feed nobody could bring (the start's trench is eaten out
+  /// by November of year 1). Invalid for every other kind.
+  /// @note Not in the save, as `lamp`.
+  ResourceId first_short_resource;
+
   /// kHerdHayShortAhead with kReduceHerd named — as `advice` or as
   /// `advice_more`: THE HEADS TO HAND OVER, AND THEY ARE NOT `amount`
   /// (0.37.137). `amount` is the lamp's own number — the heads the fodder

@@ -305,6 +305,7 @@ core::WorldState MakeWorld() {
   rich.advance_debt = 7'300'000;
   rich.advance_given = 11'900'000;
   rich.formed_in_barrack = 1;
+  rich.advance_turns = 1;  // save 160
   core::AppendRow(world.families, rich);
   core::FamilyRow bare;  // empty pantry: the vector must stay empty
   core::AppendRow(world.families, bare);
@@ -867,8 +868,9 @@ core::WorldState MakeWorld() {
   // never mentions milk but for the two cells it clears.)
   world.ledger.closed.advance = Amounts({95'000, 0, 310'000, 0, 0, 0});
   world.ledger.closed.advance_repaid = 640'000;
-  world.ledger.closed.advance_written_off_ended =
-      71'000;  // What the district asked (save 58, M12): not empty, or a codec that forgot
+  world.ledger.closed.advance_written_off_ended = 71'000;
+  world.ledger.closed.advance_written_off_turns = 12'500;  // save 160
+  // What the district asked (save 58, M12): not empty, or a codec that forgot
   // to read the column would round-trip it perfectly.
   world.ledger.closed.plan_due = Amounts({12'000'000, 0, 0});
   // What went against the position (save 83): not empty either — in BOTH
@@ -1780,8 +1782,9 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // ten floats a family, two; predicted 242 -> 322 before the build, held.
     // Save 159 (#170): +25 a family - the day formed, the trudodni since, the
     // debt, the given, the barrack byte; two families: predicted 322 -> 372
-    // before the build and held; the hash read off it.
-    {"families", 372, 0x65e81acad2180c48ULL},
+    // before the build and held. Save 160: +1 a family - the year-end
+    // share-outs seen: predicted 372 -> 374 before the build and held.
+    {"families", 374, 0xee1167074b644d3fULL},
     // Save 84: +36 — the harvest by parts' laid share (4) and grams (8), 12
     // a row, three rows; predicted before the build and held. Then the first
     // row given non-zero values: the size held at 305, the hash moved.
@@ -2090,8 +2093,9 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // one's six cells with their count (50) and the grams (8), the open one's
     // empty vector (2) and the grams (8): predicted 2812 -> 2880 before the
     // build and held. And the write-off of a row that ended owing, 8 bytes a
-    // book: predicted 2880 -> 2896 before the build; the hash read off it.
-    {"ledger", 2896, 0x582ea7c531114df4ULL},
+    // book: predicted 2880 -> 2896 before the build. Save 160: the write-off
+    // at the second share-out, 8 bytes a book: 2896 -> 2912, predicted and held.
+    {"ledger", 2912, 0x46fec262d2163f18ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -2518,6 +2522,9 @@ int main() {
                  loaded.families.rows[0].advance_given == 11'900'000 &&
                  loaded.families.rows[0].formed_in_barrack == 1 &&
                  loaded.ledger.closed.advance_written_off_ended == 71'000 &&
+                 loaded.ledger.closed.advance_written_off_turns == 12'500 &&
+                 loaded.families.rows[0].advance_turns == 1 &&
+                 loaded.families.rows[1].advance_turns == 0 &&
                  loaded.ledger.current.advance_written_off_ended == 0 &&
                  loaded.families.rows[1].formed_day == core::kNotFormedInPlay &&
                  loaded.families.rows[1].advance_debt == 0 &&

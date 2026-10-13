@@ -510,6 +510,17 @@ struct FarmingConfig {
   /// day 0 of meadow_cut_month opened it (boss, the queue thread [117]).
   std::uint8_t meadow_cut_month_end = 6;  ///< July.
 
+  /// THE HAY LAMP BY THE CUT'S PACE (lever 1; farming.csv, both STUB econ).
+  /// The days into next year's cut by which new hay can be in a store: the
+  /// forecast's need runs to that day, not to the first scythes.
+  std::uint32_t hay_new_cut_in_store_days = 8;
+
+  /// The yellow's threshold inside the cut: lit when the forecast leaves the
+  /// herds short - and the day off's advice (AlarmAdvice::kDeclareDayWorking)
+  /// is given when the hay the forecast sees is under this share of the
+  /// need. 1.0: any shortage.
+  float hay_pace_short_share = 1.0F;
+
   /// Drought threshold on the DAY temperature (heat design: "above +25 is
   /// heat"). Until the diurnal swing existed this read the daily MEAN, whose
   /// summer ceiling is 24 — so in every run before 2026-08-31 the drought

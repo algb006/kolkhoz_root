@@ -555,6 +555,24 @@ struct ChairmanState {
   /// stable that stood after the calendar's band foaled nobody that year. In
   /// the padding after the bytes above: the size stays 80.
   SimDay foaling_from_day = kNoFoalingDay;
+
+  /// THE DRY WORKING DAYS THIS YEAR'S HAY CUT HAS BEEN OPEN (save 161; lever
+  /// 1, contract core-boss-lever1-hay-pace-contract-2026-10-13; livestock
+  /// design «Лампа сена по темпу покоса»): counted each evening of the cut's
+  /// months on which no rain stopped the scythes, the day was not a day off
+  /// and a meadow stood in its cut; reset the morning the cut opens. THE
+  /// CUT'S PACE is the year's hay laid over this count (herd_forecast.cpp):
+  /// the forecast inside the cut reads what the mowers do, not the grass
+  /// that stands. The weather's past is kept nowhere else.
+  std::uint16_t hay_cut_dry_work_days = 0;
+
+  /// THE MONTH A DAY OFF WAS LAST WORKED ON THE HAY LAMP'S ADVICE (save 161),
+  /// as 1 + year x 12 + month; 0 - never. Written the evening of a day off
+  /// declared working (kCancelDayOff) while the cut's pace was short - the
+  /// lamp's own condition for AlarmAdvice::kDeclareDayWorking. The lamp
+  /// names that advice once a calendar month («не чаще раза в месяц»): a day
+  /// off the chairman cancels for a load does not spend it.
+  std::uint16_t hay_day_worked_month = 0;
 };
 
 /// @brief Why the district calls the chairman «на ковёр» (district-trip.md

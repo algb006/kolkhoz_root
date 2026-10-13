@@ -228,6 +228,10 @@ struct AdvanceRules {
   /// The share the store keeps against the debt, 0..1 - of what an issue
   /// gives ABOVE the period's norm, never of the norm itself.
   float repay_share = 0.5F;
+
+  /// A debt still open at this many of the household's year-end share-outs
+  /// is written off (FamilyRow::advance_turns). 0 - never.
+  std::uint32_t write_off_turns = 2;
 };
 
 /// @brief Household-plot time and the garden (household design §1). The

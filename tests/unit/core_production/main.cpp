@@ -508,25 +508,44 @@ int CheckTheHerdHayForecast() {
   failures += Expect(far(with_cut).short_ahead && far(with_cut).days_ahead == 64,
                      "hay forecast, the long look, year 2: last year's 150 kg land over days "
                      "24-27 and carry to day 63 - short on day 64");
-  // TO NEXT YEAR'S FIRST SCYTHES, NOT THE END OF ITS MOWING (0.37.57's check-
-  // run): from day 48 the long horizon is 72 days (day 120, year 3's first
-  // scythes). 290 kg carry four heads 72 days - not short; a horizon to the
-  // mowing's end (day 123) read short on day 72.
-  core::WorldState to_scythes = MakeHerdWorld(290.0F);
+  // TO NEXT YEAR'S SCYTHES AND THE DAYS THE NEW HAY TAKES TO REACH A STORE
+  // (0.37.57's check-run; the eight days since 0.37.250,
+  // hay_new_cut_in_store_days): from day 48 the long horizon is 80 days (day
+  // 128: year 3's first scythes on day 120, and eight). 322 kg carry four
+  // heads 80 days - not short; 290 kg, which reached the first scythes,
+  // are short before the new hay is in.
+  core::WorldState to_scythes = MakeHerdWorld(322.0F);
   AddHerd(to_scythes, 0, 4, 2, true);
   year_two(to_scythes);
-  failures += Expect(!far(to_scythes).short_ahead && far(to_scythes).horizon_days == 72,
-                     "hay forecast, the long look, year 2: 290 kg reach next year's first scythes "
-                     "- not short; the new cut feeds from its first day");
+  failures += Expect(!far(to_scythes).short_ahead && far(to_scythes).horizon_days == 80,
+                     "hay forecast, the long look, year 2: 322 kg reach the eighth day of next "
+                     "year's cut - not short");
+  core::WorldState to_first_scythes = MakeHerdWorld(290.0F);
+  AddHerd(to_first_scythes, 0, 4, 2, true);
+  year_two(to_first_scythes);
+  failures += Expect(far(to_first_scythes).short_ahead,
+                     "hay forecast, the long look, year 2: 290 kg reach the first scythes and "
+                     "not the day the new hay is in a store - short");
   // THE LAMP LOOKS TO THE NEAREST FIRST SCYTHES (FeedHorizon::kNearestScythes;
   // boss, econ-boss-hay-term-2026-10-01 [7]; 0.37.96). On 1 January of year
   // 2 that is day 24: the 100 kg the long look calls short on day 25 reach
   // the scythes and the lamp is silent — the January to come is two
   // haymakings away; 80 kg are short on day 20 and it speaks. A lot on the
   // road that reaches the scythes puts it out.
-  failures += Expect(!yellow(bare).has_value(),
-                     "hay lamp, year 2: 100 kg reach this year's first scythes on day 24 - no "
-                     "yellow, though the long look is short on day 25");
+  // (Since 0.37.250 the nearest scythes are day 24 AND THE EIGHT DAYS the new
+  // hay takes to reach a store - day 32: 128 kg reach it, the 100 kg that
+  // reached the first scythes are short on day 25. In a world with a book the
+  // cut itself lands in those eight days; this one has none.)
+  core::WorldState to_new_hay = MakeHerdWorld(128.0F);
+  AddHerd(to_new_hay, 0, 4, 2, true);
+  year_two(to_new_hay);
+  const std::optional<core::Alarm> bare_yellow = yellow(bare);
+  failures += Expect(bare_yellow.has_value() && bare_yellow->days_ahead == 25,
+                     "hay lamp, year 2: 100 kg reach the first scythes and not the eighth day "
+                     "of the cut - yellow on day 25");
+  failures += Expect(!yellow(to_new_hay).has_value(),
+                     "hay lamp, year 2: 128 kg reach the eighth day of this year's cut - no "
+                     "yellow");
   core::WorldState lean_two = MakeHerdWorld(80.0F);
   AddHerd(lean_two, 0, 4, 2, true);
   year_two(lean_two);
@@ -550,11 +569,13 @@ int CheckTheHerdHayForecast() {
   failures += Expect(autumn_yellow.has_value() && autumn_yellow->days_ahead == 40,
                      "hay lamp, year 2 after the mowing: 160 kg are short on day 40 of the 42 to "
                      "next year's scythes - yellow");
-  core::WorldState autumn_fed = MakeHerdWorld(170.0F);
+  // (Fifty days since 0.37.250 - the 42 to the scythes and the eight to the
+  // store: 202 kg reach them; the 170 that reached the scythes do not.)
+  core::WorldState autumn_fed = MakeHerdWorld(202.0F);
   AddHerd(autumn_fed, 0, 4, 2, true);
   year_two(autumn_fed, 30);
   failures += Expect(!yellow(autumn_fed).has_value(),
-                     "hay lamp, year 2 after the mowing: 170 kg reach next year's scythes - no "
+                     "hay lamp, year 2 after the mowing: 202 kg reach the new hay's day - no "
                      "yellow");
   // NEVER MORE HEADS THAN STAND TODAY (0.37.96, (б)): a herd that calves
   // every month and has no hay at all is short from today, and by the
@@ -1088,10 +1109,24 @@ int CheckTheForecastAdvice() {
     world.fields.rows[0].rush_phase = core::FieldPhase::kIdle;
     to_day(core::kDaysPerYear);  // 1 January of year 2, the meadow still in its cut's phase
     const core::Alarm winter = lamp(world);
+    std::cout << "  forecast advice, 1 January of year 2: advice "
+              << static_cast<int>(winter.advice) << ", short in " << winter.days_ahead
+              << " days, " << winter.short_grams / 1000 << " kg of hay short to the horizon\n";
+    // THE LADDER GOES ON PAST THE CUT, and since 0.37.250 it ends below the
+    // lot here: the need runs eight days into the new cut
+    // (hay_new_cut_in_store_days), this fixture's one lot no longer closes
+    // the hole, and a purchase that leaves the herds short is not named
+    // (0.37.142). What the check holds is its own claim - the cut is not the
+    // move in January - and that the lamp speaks in tonnes of hay.
     failures += Expect(winter.kind == core::AlarmKind::kHerdHayShortAhead &&
-                           winter.advice == core::AlarmAdvice::kBuyFeed,
+                           winter.advice != core::AlarmAdvice::kCutHay &&
+                           winter.advice != core::AlarmAdvice::kDeclareDayWorking,
                        "forecast advice: the grass left unmown stands in its cut's phase in "
-                       "January - no cut to hurry, the ladder goes on to the lot");
+                       "January - no cut to hurry, the ladder goes on past it");
+    failures += Expect(winter.resource.value == config.hay_resource.value &&
+                           winter.short_grams > 0,
+                       "forecast advice: the lamp names the hay, and what is short to the "
+                       "horizon in its tonnes");
   }
   // THE YEAR'S EDGE (boss, boss-all-carts-carry-people-go-2026-10-02 [82],
   // [84] p. 2): the last day of year 1 and the first of year 2 look to the
@@ -1117,10 +1152,12 @@ int CheckTheForecastAdvice() {
               << first_day.days_ahead << "; the same with the book not closed - "
               << first_day_open_book.horizon_days << " and " << first_day_open_book.days_ahead
               << '\n';
-    failures += Expect(last_day.horizon_days == 25 && first_day.horizon_days == 24 &&
-                           first_day_open_book.horizon_days == 24,
-                       "forecast, the year's edge: the horizon is the same first scythes from "
-                       "either side of the turn, the book closed or not");
+    // (33 and 32 since 0.37.250: the first scythes on day 72 and the eight
+    // days the new hay takes to reach a store - one horizon from both sides.)
+    failures += Expect(last_day.horizon_days == 33 && first_day.horizon_days == 32 &&
+                           first_day_open_book.horizon_days == 32,
+                       "forecast, the year's edge: the horizon is the same day of the same cut "
+                       "from either side of the turn, the book closed or not");
     failures +=
         Expect(last_day.short_ahead && first_day.short_ahead && first_day_open_book.short_ahead &&
                    last_day.days_ahead == first_day.days_ahead + 1 &&
@@ -1128,9 +1165,9 @@ int CheckTheForecastAdvice() {
                    last_day.heads_short == first_day.heads_short,
                "forecast, the year's edge: a day's hay eaten, the same shortage a day "
                "nearer - nothing turns with the year");
-    failures += Expect(!at(47, 100.0F, 0).short_ahead && !at(48, 96.0F, 1).short_ahead,
-                       "forecast, the year's edge: and the hay that reaches the scythes reaches "
-                       "them from both days");
+    failures += Expect(!at(47, 132.0F, 0).short_ahead && !at(48, 128.0F, 1).short_ahead,
+                       "forecast, the year's edge: and the hay that reaches the new hay's day "
+                       "reaches it from both days");
   }
   return failures;
 }

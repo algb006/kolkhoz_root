@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "core_common/calendar.h"
+#include "core_common/day_off.h"
 #include "core_common/fund_ladder.h"
 #include "core_common/horse_lamp_memory.h"
 #include "core_common/land_state.h"
@@ -136,6 +137,81 @@ Grams ExpectedCutStillToCome(const ProductionConfig& config, const WorldState& w
   const Grams expected = AmountOf(world.ledger.closed.harvest, hay);
   const Grams laid = AmountOf(world.ledger.current.harvest, hay);
   return expected > laid ? expected - laid : 0;
+}
+
+/// The hay still standing as grass on the meadows, grams: the uncut share of
+/// every meadow in its cut, and a meadow the cut's months will still open
+/// this year, whole.
+Grams HayStandingOnMeadows(const ProductionConfig& config, const WorldState& world) {
+  const auto month = static_cast<std::uint8_t>(world.calendar.date.month);
+  Grams standing = 0;
+  for (const FieldRow& field : world.fields.rows) {
+    if (field.kind == LandKind::kArable) {
+      continue;
+    }
+    const float rate = field.kind == LandKind::kFloodplainMeadow
+                           ? config.farming.meadow_floodplain_yield_kg_per_ha
+                           : config.farming.meadow_yield_kg_per_ha;
+    const auto whole = static_cast<float>(KilogramsToGrams(rate * field.area_ga));
+    if (field.phase == FieldPhase::kHarvest) {
+      const float left = field.harvest_work_days > 0.0F
+                             ? field.work_days_remaining / field.harvest_work_days
+                             : 0.0F;
+      standing += GramsFromFloat(whole * (left < 0.0F ? 0.0F : (left > 1.0F ? 1.0F : left)));
+    } else if (field.phase == FieldPhase::kGrowing && month <= config.farming.meadow_cut_month_end &&
+               (field.last_mown_day == kNeverMownDay ||
+                field.last_mown_day / kDaysPerYear != world.calendar.day / kDaysPerYear)) {
+      standing += GramsFromFloat(whole);
+    }
+  }
+  return standing;
+}
+
+/// The cut's pace and what it promises (lever 1).
+struct CutPace {
+  bool known = false;       ///< Inside the cut, from its second dry working day.
+  Grams hay_to_come = 0;    ///< min(grass standing, pace x dry working days left).
+  float kg_a_day = 0.0F;    ///< The pace: the year's hay laid over the days counted.
+  float dry_days_left = 0;  ///< The dry working days left, by the calendar and the climate.
+};
+
+/// @brief THE CUT'S PACE (econ's four-levers §2a, as boss ruled it on 13
+///        October 2026): the hay this year's cut has laid over the dry
+///        working days it has been open (ChairmanState::hay_cut_dry_work_days),
+///        and the dry working days left - the days left to the cut's end
+///        LESS THE DAYS OFF AMONG THEM, counted from the calendar (a quarter
+///        of the cut's days are days off, and unlike rain they are known in
+///        advance - a harvest worked without days off falls out of the same
+///        count), each by the climate's dry share of its day
+///        (ProductionConfig::rain_day_shares): the table's weather, never the
+///        run's coming one.
+CutPace PaceOfTheCut(const ProductionConfig& config,
+                     const WorldState& world,
+                     SimDay cut_from,
+                     SimDay this_cut_end) {
+  /// The pace is read from the cut's second dry working day.
+  constexpr std::uint16_t kFirstPaceDay = 2;
+  CutPace pace;
+  const SimDay today = world.calendar.day;
+  const std::uint16_t worked = world.chairman.hay_cut_dry_work_days;
+  if (today < cut_from || today > this_cut_end || worked < kFirstPaceDay ||
+      config.hay_resource.value == kInvalidDefIdValue) {
+    return pace;
+  }
+  pace.known = true;
+  const Grams laid = AmountOf(world.ledger.current.harvest, config.hay_resource);
+  pace.kg_a_day = static_cast<float>(laid) / static_cast<float>(kGramsPerKilogram) /
+                  static_cast<float>(worked);
+  for (SimDay day = today + 1U; day <= this_cut_end; ++day) {
+    if (!IsDayOffIn(world, day)) {
+      const float wet = config.rain_day_shares[day % kDaysPerYear];
+      pace.dry_days_left += 1.0F - (wet < 0.0F ? 0.0F : (wet > 1.0F ? 1.0F : wet));
+    }
+  }
+  const Grams by_pace = GramsFromKilograms(pace.kg_a_day * pace.dry_days_left);
+  const Grams standing = HayStandingOnMeadows(config, world);
+  pace.hay_to_come = by_pace < standing ? by_pace : standing;
+  return pace;
 }
 
 /// THE MONTH THE CUT ENDS (static review of 0.37.57): the later of the
@@ -585,11 +661,27 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
   // year's. Past the nearest scythes the lamp is silent.
   // THE HORSE BOUGHT TO STAY keeps the long look (FeedHorizon::
   // kNextYearsScythes): this year's cut in the income and the winter after.
-  SimDay horizon_end = cut_from + kDaysPerYear;
-  if (first_year && today <= this_cut_end) {
+  // THE CUT READ BY ITS PACE (lever 1; contract core-boss-lever1-hay-pace-
+  // contract-2026-10-13; econ's four-levers §2a): inside this year's cut,
+  // from its second dry working day, the hay still to come is what the
+  // mowers' own pace lays in the dry working days left - not the grass that
+  // stands and not last year's book. Year 1 included: until 0.37.250 the
+  // lamp said nothing through the first mowing and lit in September, after
+  // the last day it could be answered.
+  const CutPace pace = PaceOfTheCut(config, world, cut_from, this_cut_end);
+  // TO THE DAY THE NEW HAY CAN BE IN A STORE (FarmingConfig::
+  // hay_new_cut_in_store_days): from this year's first scythes on, the need
+  // runs that many days into next year's cut - on its first day the herds
+  // still eat the old hay.
+  SimDay horizon_end = cut_from + kDaysPerYear + config.farming.hay_new_cut_in_store_days;
+  if (first_year && today <= this_cut_end && !pace.known) {
     horizon_end = today < cut_from ? cut_from : today;
   } else if (horizon == FeedHorizon::kNearestScythes && today < cut_from) {
-    horizon_end = cut_from;
+    // This year's scythes, and the same days into their cut: one horizon from
+    // either side of the year's turn. (Year 1 before its first cut is the
+    // branch above and stops on the first scythes: it has no book to promise
+    // a cut by, and the start's rick is sized to that day.)
+    horizon_end = cut_from + config.farming.hay_new_cut_in_store_days;
   }
   const auto horizon_days = static_cast<std::uint32_t>(horizon_end - today);
   forecast.horizon_days = static_cast<std::uint16_t>(horizon_days);
@@ -598,8 +690,12 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
   // the mowing lays it (LayMownShare). Landed whole on the cut's last day it
   // lit the yellow in every January of 0.37.57's first pair: the start's hay
   // is sized to the first scythes (day 22). Year 1 expects none (above).
+  // By the pace where it is known; else, from year 2, last year's book as
+  // before (the days before the cut and its first dry working day).
   const Grams expected_cut =
-      !first_year && today <= this_cut_end ? ExpectedCutStillToCome(config, world) : 0;
+      pace.known ? pace.hay_to_come
+                 : (!first_year && today <= this_cut_end ? ExpectedCutStillToCome(config, world)
+                                                         : 0);
   const std::uint32_t cut_first_day = today <= cut_from ? cut_from - today : 0U;
   const std::uint32_t cut_last_day = today <= this_cut_end ? this_cut_end - today : 0U;
   const float cut_kg_a_day =
@@ -705,6 +801,7 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
     team_out_in[month] = TeamOutInMonth(config, world, month) ? 1U : 0U;
   }
   constexpr std::uint32_t kNeverOut = std::numeric_limits<std::uint32_t>::max();
+  float short_units = 0.0F;  // every uncovered fodder unit of the days forecast
   std::vector<std::uint32_t> out_day(held_kg.size(), kNeverOut);
   std::vector<FeedDayNeed> needs;
   std::vector<std::size_t> needs_of;  // index into `herds` per need
@@ -761,9 +858,13 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
     }
     float unfed_heads = 0.0F;
     for (std::size_t index = 0; index < needs.size(); ++index) {
+      forecast.need_units += needs[index].units;
+      forecast.covered_units +=
+          covered[index] < needs[index].units ? covered[index] : needs[index].units;
       if (covered[index] + kFedSlackUnits >= needs[index].units) {
         continue;
       }
+      short_units += needs[index].units - covered[index];
       const ProjectedHerd& herd = herds[needs_of[index]];
       unfed_heads += (needs[index].units - covered[index]) / needs[index].units * HeadsOf(herd);
       if (forecast.short_ahead) {
@@ -795,7 +896,70 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
   // «short for 127 heads» with 92 in the yards is told a number he cannot
   // act on. The stock on the road counts: its heads are bought already.
   forecast.heads_short = std::min(forecast.heads_short, standing_heads);
+  // The shortage in the hay's own measure (HerdFeedForecast::short_hay_grams).
+  const float hay_value = config.hay_resource.value < config.feed_values.size()
+                              ? config.feed_values[config.hay_resource.value]
+                              : 0.0F;
+  forecast.short_hay_grams = hay_value > 0.0F ? GramsFromKilograms(short_units / hay_value) : 0;
+  forecast.by_pace = pace.known;
+  forecast.pace_kg_a_day = pace.kg_a_day;
+  forecast.dry_work_days_left = pace.dry_days_left;
   return forecast;
+}
+
+namespace {
+
+/// 1 + year x 12 + month of `day` (ChairmanState::hay_day_worked_month).
+std::uint16_t MonthCodeOf(SimDay day) {
+  return static_cast<std::uint16_t>(1U + (day / kDaysPerMonth));
+}
+
+/// Whether a meadow stands in its cut inside the cut's months.
+bool AMeadowIsInItsCut(const ProductionConfig& config, const WorldState& world) {
+  const auto month = static_cast<std::uint8_t>(world.calendar.date.month);
+  if (month < config.farming.meadow_cut_month || month > HayCutEndMonth(config)) {
+    return false;
+  }
+  return std::ranges::any_of(world.fields.rows, [](const FieldRow& field) {
+    return field.kind != LandKind::kArable && field.phase == FieldPhase::kHarvest &&
+           field.work_days_remaining > 0.0F;
+  });
+}
+
+}  // namespace
+
+bool DayOffWorthWorkingForTheCut(const ProductionConfig& config,
+                                 const WorldState& world,
+                                 const HerdFeedForecast& forecast) {
+  return forecast.short_ahead && forecast.by_pace && TodayMayBeDeclaredWorking(world) &&
+         world.weather.precipitation != Precipitation::kRain &&
+         AMeadowIsInItsCut(config, world) &&
+         world.chairman.hay_day_worked_month != MonthCodeOf(world.calendar.day);
+}
+
+void SettleHayCutDay(const ProductionConfig& config, WorldState& current) {
+  const auto month = static_cast<std::uint8_t>(current.calendar.date.month);
+  if (month == config.farming.meadow_cut_month && current.calendar.date.day_in_month == 0) {
+    current.chairman.hay_cut_dry_work_days = 0;  // the cut opened this morning
+  }
+  const SimDay today = current.calendar.day;
+  const bool working = !IsDayOffIn(current, today);
+  if (AMeadowIsInItsCut(config, current) && working &&
+      current.weather.precipitation != Precipitation::kRain &&
+      current.chairman.hay_cut_dry_work_days < std::numeric_limits<std::uint16_t>::max()) {
+    ++current.chairman.hay_cut_dry_work_days;
+  }
+  // THE DAY OFF WORKED ON THE LAMP'S ADVICE: today was the chairman's
+  // cancelled day off, and the cut's pace was short this evening - the
+  // lamp's own condition. A day off cancelled for a load in a month the hay
+  // is not short does not spend the month's one.
+  if (current.chairman.cancelled_day_off == today && today != 0) {
+    const HerdFeedForecast forecast =
+        ForecastHerdFeed(config, current, false, FeedHorizon::kNearestScythes);
+    if (forecast.short_ahead && forecast.by_pace) {
+      current.chairman.hay_day_worked_month = MonthCodeOf(today);
+    }
+  }
 }
 
 bool CutCanBeHurried(const ProductionConfig& config, const WorldState& world) {
@@ -880,6 +1044,21 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
   // AND ONLY WHILE THE CUT CAN STILL BE HURRIED (CutCanBeHurried; 0.37.123):
   // a meadow in its cut whose avral stands at the last step has no move left
   // on it, and the ladder goes on.
+  // 0. A DRY DAY OFF IN THE CUT, WORKED (lever 1; econ's four-levers §2: «a
+  // quarter of the summer's days are days off, and on each a dry village
+  // lays nought where it lays 27-28 t on a working day»): today is a day off
+  // the door would let be declared working, no rain stops the scythes this
+  // morning, the forecast reads the cut by its pace and finds it short, and
+  // no day off was worked on this advice this calendar month. The door is
+  // kCancelDayOff with `enable` 1, TODAY's - the day's own morning and not
+  // its eve: the lamp can read today's rain, not tomorrow's, and an advice
+  // the door would refuse is not given. The cut's own move rides as the
+  // second.
+  if (DayOffWorthWorkingForTheCut(config, world, forecast)) {
+    advice.advice = AlarmAdvice::kDeclareDayWorking;
+    advice.advice_more = CutCanBeHurried(config, world) ? AlarmAdvice::kCutHay : AlarmAdvice::kNone;
+    return advice;
+  }
   if (CutCanBeHurried(config, world)) {
     advice.advice = AlarmAdvice::kCutHay;
     return advice;
@@ -993,10 +1172,21 @@ void CollectHerdForecastAlarms(const ProductionConfig& config,
   if (!forecast.short_ahead) {
     return;
   }
+  // THE THRESHOLD INSIDE THE CUT (FarmingConfig::hay_pace_short_share): read
+  // by the pace, the lamp is lit when what covers the need is under that
+  // share of it. At 1.0 - the shipped value - that is any shortage at all.
+  if (forecast.by_pace && forecast.need_units > 0.0F &&
+      forecast.covered_units >= config.farming.hay_pace_short_share * forecast.need_units) {
+    return;
+  }
   Alarm alarm;
   alarm.kind = AlarmKind::kHerdHayShortAhead;
   alarm.herd = forecast.herd;
-  alarm.resource = forecast.first_short;
+  // THE LAMP NAMES THE HAY (0.37.250): the shortage is the hay ladder's. The
+  // row of the feeding order found empty first rides beside it.
+  alarm.resource = config.hay_resource;
+  alarm.first_short_resource = forecast.first_short;
+  alarm.short_grams = forecast.short_hay_grams;
   alarm.amount = forecast.heads_short;
   alarm.days_ahead = forecast.days_ahead;
   alarm.days_to_loss = forecast.days_ahead;

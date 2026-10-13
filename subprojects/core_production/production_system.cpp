@@ -334,6 +334,9 @@ class ProductionSystem final : public IProductionSystem {
       // tonight, so that tomorrow's list sends nobody to a meadow that the
       // morning would close under him (field_work.h).
       CloseMeadowCutsAtSeasonsEnd(config_, current);
+      // And the cut's dry working day, for the hay lamp's pace (lever 1;
+      // herd_forecast.h).
+      SettleHayCutDay(config_, current);
     }
     if (current.calendar.day == previous.calendar.day) {
       return;  // everything below is daily work

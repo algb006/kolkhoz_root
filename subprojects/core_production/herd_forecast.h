@@ -174,6 +174,27 @@ struct HerdFeedForecast {
   /// HEADS STANDING TODAY (with the stock on the road): the calves to come
   /// are in the need, not in the number the chairman is told (0.37.95).
   std::int64_t heads_short = 0;
+
+  /// WHAT THE HERDS ARE SHORT OF TO THE HORIZON, IN HAY (lever 1; econ's
+  /// four-levers §2b: «сена до 12 марта; до покоса не хватит 54 т»): every
+  /// uncovered fodder unit of every day forecast, over the hay's feed value,
+  /// grams. The lamp's line speaks in days and tonnes; the heads above read
+  /// seventy in a village with nothing wrong.
+  Grams short_hay_grams = 0;
+
+  /// The need to the horizon and what covered it, fodder units - so the
+  /// share the threshold asks (FarmingConfig::hay_pace_short_share) is one
+  /// division.
+  float need_units = 0.0F;
+  float covered_units = 0.0F;
+
+  /// The cut's pace, where the forecast read the cut by it (inside this
+  /// year's cut from its second dry working day): the hay laid a dry working
+  /// day, kilograms, and the dry working days it counts ahead. 0 and 0
+  /// elsewhere.
+  bool by_pace = false;
+  float pace_kg_a_day = 0.0F;
+  float dry_work_days_left = 0.0F;
 };
 
 /// @brief The kolkhoz herds' fodder from today to the first scythes the
@@ -254,6 +275,26 @@ float ForecastHerdHeads(const ProductionConfig& config,
 /// @note Read-only; a field's rush counts only on the phase it was declared
 ///       in (FieldRow::rush_phase).
 bool CutCanBeHurried(const ProductionConfig& config, const WorldState& world);
+
+/// @brief WHETHER «DECLARE TODAY'S DAY OFF WORKING» IS THE HAY LAMP'S MOVE
+///        THIS MORNING (lever 1; 0.37.250): the forecast reads the cut by its
+///        pace and is short; today is a day off the door would let be
+///        declared (TodayMayBeDeclaredWorking); no rain stops the scythes; a
+///        meadow stands in its cut inside the cut's months; and no day off
+///        was worked on this advice this calendar month
+///        (ChairmanState::hay_day_worked_month).
+/// @note Read-only. The door is kCancelDayOff with `enable` 1.
+bool DayOffWorthWorkingForTheCut(const ProductionConfig& config,
+                                 const WorldState& world,
+                                 const HerdFeedForecast& forecast);
+
+/// @brief The evening's count for the cut's pace (lever 1; save 161): resets
+///        ChairmanState::hay_cut_dry_work_days the day the cut opens, adds
+///        the day when no rain stopped the scythes, it was not a day off and
+///        a meadow stood in its cut; and marks the month when today was a
+///        cancelled day off with the pace short.
+/// @pre Called once a day at its last tick, after the day's labour is booked.
+void SettleHayCutDay(const ProductionConfig& config, WorldState& current);
 
 /// @brief The unit type «амбар под корм» asks the chairman to build today:
 ///        the store a district feed lot lies in (the module that is the
