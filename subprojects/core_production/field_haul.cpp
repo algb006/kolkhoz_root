@@ -963,8 +963,23 @@ void SpoilFieldHeaps(const ProductionConfig& config, WorldState& current) {
     if (gone <= 0) {
       continue;
     }
+    const Grams before = field.reaped_grams;
     field.reaped_grams -= gone;
     AddLedgerAmount(current.ledger.current.spoiled, resource, gone);
+    // THE CARTING'S PRICE GOES WITH WHAT ROTTED (0.37.247; found by the cart
+    // trace of the silage laying's first pair, 13 October 2026). The seam was
+    // priced this evening for the heap as it lay (SettleLoad, before this),
+    // and tomorrow's delivery is the heap times the share of that seam the
+    // carters drain (DeliverDrained): a heap that lost a share overnight
+    // under a seam still priced for the whole of it gave that share less for
+    // the same carters' day. A heap of green mass, losing half a night, was
+    // carted at half the potato's pace by the same carts on the same way; the
+    // potato's own heap has paid its 2.5 % a night unseen.
+    const float left = before > 0 && field.reaped_grams > 0
+                           ? static_cast<float>(field.reaped_grams) / static_cast<float>(before)
+                           : 0.0F;
+    field.haul_days_remaining *= left;
+    field.haul_days_written *= left;
     if (field.reaped_grams <= 0) {
       field.reaped_grams = 0;
       field.reaped_resource = ResourceId{};  // the invariant: empty means unnamed
