@@ -34,6 +34,7 @@
 #include <string>
 #include <vector>
 
+#include "../common/advance_write_off_tally.h"
 #include "../common/births_herd_tally.h"
 #include "../common/building_chairman.h"
 #include "../common/run_harness.h"
@@ -575,6 +576,9 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
   // the table did not print (1938's wintering of years 9-11 on the yard's
   // move), and the finding had to be aimed by guesswork.
   run::TransitionTally transition_tally(*world.tables, kYears);
+  // Every write-off of an advance at the second share-out, by name
+  // (advance_write_off_tally.h; #170).
+  run::AdvanceWriteOffTally advance_write_offs;
   if (const core::ITable* const types = world.tables->FindTable("unit_types")) {
     const std::uint32_t key_column = types->FindColumn("key");
     for (std::uint32_t row = 0; row < types->RowCount(); ++row) {
@@ -628,6 +632,7 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
         CountStandingShut(builder.transition, today, met, out);
       }
       transition_tally.CountDay(builder.transition, today);
+      advance_write_offs.CountDay(today);
       if (births_herd_on != nullptr) {
         // The team's two alarms, through the simulation's own door (0.37.8).
         std::vector<core::Alarm> alarms;
@@ -809,6 +814,7 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
   out.epoch2_day = transition_tally.OpenedDay();
   out.epoch2_population = transition_tally.OpenedPopulation();
   transition_tally.Print("population_curve", seed);
+  advance_write_offs.Print("population_curve", seed);
   if (births_herd_on != nullptr) {
     births_herd_on->Print("population_curve", seed);
   }

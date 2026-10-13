@@ -194,7 +194,11 @@ bool ParseDistribution(const ITable& table, FoodConfig& config, std::string& err
 bool ParseAdvance(const ITable& table, FoodConfig& config, std::string& error) {
   AdvanceRules& advance = config.advance;
   auto ceiling = static_cast<float>(advance.ceiling_days);
-  const std::array<ScalarKnob, 3> knobs = {{
+  auto write_off = static_cast<float>(advance.write_off_turns);
+  const std::array<ScalarKnob, 4> knobs = {{
+      {.key = "advance_write_off_turns",
+       .value = &write_off,
+       .range = {.low = 0.0F, .high = 255.0F}},
       {.key = "advance_trudodni_per_worker",
        .value = &advance.trudodni_per_worker,
        .range = {.low = 0.0F, .high = 100.0F}},
@@ -209,6 +213,7 @@ bool ParseAdvance(const ITable& table, FoodConfig& config, std::string& error) {
     return false;
   }
   advance.ceiling_days = static_cast<std::uint32_t>(ceiling);
+  advance.write_off_turns = static_cast<std::uint32_t>(write_off);
   return true;
 }
 

@@ -119,7 +119,9 @@ static_assert(AggregateArity<ResidentRow>() == 55,
 // Save 159 (#170): the new household's advance at the row's end - the day
 // formed (4), the trudodni since (4), the debt and the given (8 + 8), the
 // barrack byte: predicted 136 -> 168 + amounts (25 bytes after a word's edge,
-// the row aligns to 8) and 35 fields, before the build.
+// the row aligns to 8) and 35 fields, before the build. Save 160: the year-end
+// share-outs seen, a byte beside the barrack's - predicted 168 unmoved (into
+// the tail's padding) and 36 fields before the build; on the wire +1 a family.
 static_assert(sizeof(FamilyRow) == 168 + kAmountsSize,
               "FamilyRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 57: ration_granted, the yard's ration decision — 19 fields;
@@ -130,7 +132,7 @@ static_assert(sizeof(FamilyRow) == 168 + kAmountsSize,
 // Save 75: in_barrack and hunger_alarm_lit — 27 fields. Save 113:
 // satisfaction_year — 28. Save 124: season_category_kcal and
 // season_need_kcal — 30.
-static_assert(AggregateArity<FamilyRow>() == 35,
+static_assert(AggregateArity<FamilyRow>() == 36,
               "FamilyRow gained or lost a field — update the codec and VERSION_SAVE");
 // FieldRow took LandKind into a padding byte it already had, so sizeof did
 // NOT move — the one case the tripwire of manual/67-save-format.md §7 cannot
@@ -922,6 +924,7 @@ void WriteFamilyRow(SaveSink& sink, const FamilyRow& row) {
   out.WriteI64(row.advance_debt);
   out.WriteI64(row.advance_given);
   out.WriteU8(row.formed_in_barrack);
+  out.WriteU8(row.advance_turns);  // save 160
 }
 
 FamilyRow ReadFamilyRow(LoadSource& source) {
@@ -985,6 +988,7 @@ FamilyRow ReadFamilyRow(LoadSource& source) {
   row.advance_given = in.ReadI64();
   row.formed_in_barrack =
       static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "family formed in a barrack"));
+  row.advance_turns = in.ReadU8();  // save 160
   if (row.earned_since_formed < 0 || row.advance_debt < 0 || row.advance_given < row.advance_debt) {
     source.Fail("a family's advance is negative or owes more than it was given");
   }

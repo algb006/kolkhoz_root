@@ -181,16 +181,15 @@ struct YearLedger {
   /// the store kept. No goods moved for it - they never left the store.
   Grams advance_repaid = 0;
 
-  /// DEBTS WRITTEN OFF, grams of grain equivalent - so the book says where
-  /// the grain went and nothing vanishes unbooked (boss, 13 October 2026):
-  /// the row ceased to be while it owed (a single newcomer wed out and his
-  /// yard was struck off; the last member died) - the debt does not follow
-  /// anybody into another row. A SECOND CAUSE, «still open at the household's
-  /// second year-end share-out», WAS WRITTEN AND WITHDRAWN the same day: it
-  /// fired 0 times in the canon's 36 village-years (the share-out clears the
-  /// debt first). It returns when a debt is printed open across a year-end
-  /// share-out.
+  /// DEBTS WRITTEN OFF, grams of grain equivalent, by their cause - so the
+  /// book says where the grain went and nothing vanishes unbooked (boss, 13
+  /// October 2026): `_ended` - the row ceased to be while it owed (a single
+  /// newcomer wed out and his yard was struck off; the last member died):
+  /// the debt does not follow anybody into another row; `_turns` (save 160) -
+  /// the debt was still open at the household's second year-end share-out
+  /// (FamilyRow::advance_turns, food.csv `advance_write_off_turns`).
   Grams advance_written_off_ended = 0;
+  Grams advance_written_off_turns = 0;
 
   ResourceAmounts nets;  ///< The yards' fish.
 

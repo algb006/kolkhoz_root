@@ -148,10 +148,12 @@ constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
 // Save 159 (#170): the advance - a vector after the ration, its repaid grams
 // and the write-off of a row that ended owing - 119 -> 122 fields,
 // 1040 + 40 A -> 1056 + 41 A; predicted before each build (1048 with the
-// repaid alone, held).
-static_assert(sizeof(YearLedger) == 1056 + (41 * kAmountsSize) + kBuiltInRowsSize,
+// repaid alone, held). Save 160: the write-off at the second share-out, its
+// grams beside the other's - predicted 1056 -> 1064 and 123 fields before
+// the build; on the wire +8 a book.
+static_assert(sizeof(YearLedger) == 1064 + (41 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 122,
+static_assert(AggregateArity<YearLedger>() == 123,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(BuiltInRow) == 16 && AggregateArity<BuiltInRow>() == 3,
               "BuiltInRow changed — update its codec and VERSION_SAVE");
@@ -210,6 +212,7 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   sink.WriteAmounts(DefKind::kResource, book.advance);  // save 159 (#170)
   sink.Out().WriteI64(book.advance_repaid);
   sink.Out().WriteI64(book.advance_written_off_ended);
+  sink.Out().WriteI64(book.advance_written_off_turns);  // save 160
   sink.WriteAmounts(DefKind::kResource, book.nets);
   sink.WriteAmounts(DefKind::kResource, book.night_catch);
   sink.WriteAmounts(DefKind::kResource, book.stolen);
@@ -375,7 +378,9 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.advance = source.ReadAmounts(DefKind::kResource);  // save 159 (#170)
   book.advance_repaid = in.ReadI64();
   book.advance_written_off_ended = in.ReadI64();
-  if (book.advance_repaid < 0 || book.advance_written_off_ended < 0) {
+  book.advance_written_off_turns = in.ReadI64();  // save 160
+  if (book.advance_repaid < 0 || book.advance_written_off_ended < 0 ||
+      book.advance_written_off_turns < 0) {
     source.Fail("the book's repaid or written-off advance is negative");
   }
   book.nets = source.ReadAmounts(DefKind::kResource);

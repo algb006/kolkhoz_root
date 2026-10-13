@@ -803,6 +803,26 @@ std::vector<Grams> SealedFunds(const FoodConfig& config, const WorldState& world
   return IssueReserve(config, world);
 }
 
+/// THE YEAR-END SHARE-OUT, COUNTED FOR THE ADVANCE (#170; FamilyRow::
+/// advance_turns): every household formed in play has seen one more, and a
+/// debt still open at its `write_off_turns`-th is written off into the
+/// year's book. Called with the burn, the ending year's last business.
+void WriteOffOldAdvances(const AdvanceRules& rules, WorldState& current) {
+  for (FamilyRow& family : current.families.rows) {
+    if (family.formed_day == kNotFormedInPlay) {
+      continue;
+    }
+    if (family.advance_turns < 255U) {
+      ++family.advance_turns;
+    }
+    if (family.advance_debt > 0 && rules.write_off_turns > 0 &&
+        family.advance_turns >= rules.write_off_turns) {
+      current.ledger.current.advance_written_off_turns += family.advance_debt;
+      family.advance_debt = 0;
+    }
+  }
+}
+
 void RunFamilyExchange(const FoodConfig& config, float life_speedup, WorldState& current) {
   if (config.resources.empty()) {
     return;  // a table-less world has no food roster and nothing to hand out
@@ -840,6 +860,7 @@ void RunFamilyExchange(const FoodConfig& config, float life_speedup, WorldState&
   }
   if (day > 0 && day % kDaysPerYear == 0) {
     BurnTrudodni(current);
+    WriteOffOldAdvances(config.advance, current);
   }
 }
 
