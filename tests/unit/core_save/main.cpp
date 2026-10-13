@@ -298,6 +298,13 @@ core::WorldState MakeWorld() {
   // need; `bare` keeps the noughts.
   rich.season_category_kcal = {9100.5F, 820.25F, 77.0F, 640.0F, 12.5F, 0.0F, 3.75F, 150.0F, 1.0F};
   rich.season_need_kcal = 20625.0F;
+  // Save 159 (#170): the new household's advance, five unlike values; `bare`
+  // keeps «not formed in play» and the noughts.
+  rich.formed_day = 131;
+  rich.earned_since_formed = 245;
+  rich.advance_debt = 7'300'000;
+  rich.advance_given = 11'900'000;
+  rich.formed_in_barrack = 1;
   core::AppendRow(world.families, rich);
   core::FamilyRow bare;  // empty pantry: the vector must stay empty
   core::AppendRow(world.families, bare);
@@ -855,7 +862,13 @@ core::WorldState MakeWorld() {
   world.ledger.closed.deaths = 3;
   world.ledger.closed.harvest = Amounts({43'000'000, 5'000'000, 0, 0, 0, 0});
   world.ledger.closed.eaten = Amounts({0, 0, 9'000'000, 1'200'000, 0, 0});
-  // What the district asked (save 58, M12): not empty, or a codec that forgot
+  // Save 159 (#170): the year's advances and what the issues paid back.
+  // (Not the fourth cell: the removed-key check below needs a world that
+  // never mentions milk but for the two cells it clears.)
+  world.ledger.closed.advance = Amounts({95'000, 0, 310'000, 0, 0, 0});
+  world.ledger.closed.advance_repaid = 640'000;
+  world.ledger.closed.advance_written_off_ended =
+      71'000;  // What the district asked (save 58, M12): not empty, or a codec that forgot
   // to read the column would round-trip it perfectly.
   world.ledger.closed.plan_due = Amounts({12'000'000, 0, 0});
   // What went against the position (save 83): not empty either — in BOTH
@@ -1765,7 +1778,10 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // 234 -> 242 before the build, held (the struct's size was the miss).
     // Save 124: +80 — the season's table by category and the season's need,
     // ten floats a family, two; predicted 242 -> 322 before the build, held.
-    {"families", 322, 0x9a3bba10dcb7e9aeULL},
+    // Save 159 (#170): +25 a family - the day formed, the trudodni since, the
+    // debt, the given, the barrack byte; two families: predicted 322 -> 372
+    // before the build and held; the hash read off it.
+    {"families", 372, 0x65e81acad2180c48ULL},
     // Save 84: +36 — the harvest by parts' laid share (4) and grams (8), 12
     // a row, three rows; predicted before the build and held. Then the first
     // row given non-zero values: the size held at 305, the hash moved.
@@ -2070,7 +2086,12 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // 646 as В2 recorded it on 0.37.212's line (no commit since touched the
     // units' fixture) and every other section unmoved; the hash read off the
     // first build.
-    {"ledger", 2812, 0xa4801c06ee225355ULL},  // save 155: hauled, logs by two
+    // Save 159 (#170): the advance and its repaid grams, two books - the closed
+    // one's six cells with their count (50) and the grams (8), the open one's
+    // empty vector (2) and the grams (8): predicted 2812 -> 2880 before the
+    // build and held. And the write-off of a row that ended owing, 8 bytes a
+    // book: predicted 2880 -> 2896 before the build; the hash read off it.
+    {"ledger", 2896, 0x582ea7c531114df4ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -2490,6 +2511,22 @@ int main() {
       "a yard granted the ration comes back granted, and one not granted, not");
   failures +=
       Expect(loaded.families.rows[0].dry_months == 4, "a yard's dry months come back (save 60)");
+  failures +=
+      Expect(loaded.families.rows[0].formed_day == 131 &&
+                 loaded.families.rows[0].earned_since_formed == 245 &&
+                 loaded.families.rows[0].advance_debt == 7'300'000 &&
+                 loaded.families.rows[0].advance_given == 11'900'000 &&
+                 loaded.families.rows[0].formed_in_barrack == 1 &&
+                 loaded.ledger.closed.advance_written_off_ended == 71'000 &&
+                 loaded.ledger.current.advance_written_off_ended == 0 &&
+                 loaded.families.rows[1].formed_day == core::kNotFormedInPlay &&
+                 loaded.families.rows[1].advance_debt == 0 &&
+                 loaded.ledger.closed.advance == world.ledger.closed.advance &&
+                 loaded.ledger.closed.advance_repaid == 640'000 &&
+                 loaded.ledger.current.advance.empty() && loaded.ledger.current.advance_repaid == 0,
+             "a new household's advance comes back - the day formed, the trudodni since, "
+             "the debt, the given, the barrack - and the book's advance and repaid, the "
+             "closed year's apart from the open one's (save 159, #170)");
   failures += Expect(loaded.wedding_waits.rows.size() == 1 &&
                          loaded.wedding_waits.rows[0].bride.value == 7 &&
                          loaded.wedding_waits.rows[0].groom.value == 9 &&

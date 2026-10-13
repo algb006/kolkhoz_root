@@ -196,6 +196,12 @@ void DropFamilyIfEmpty(WorldState& current, FamilyId family, FamilyId heir_named
       }
     }
   }
+  // A ROW THAT ENDS OWING: its advance is written off with it, into the year's
+  // book (#170; boss, 13 October 2026) - a wedding carries no loan into a new
+  // household, and nothing vanishes unbooked.
+  if (current.families.rows[leaving].advance_debt > 0) {
+    current.ledger.current.advance_written_off_ended += current.families.rows[leaving].advance_debt;
+  }
   RemoveRow(current.families, family);
   // The emptied family's house stands free again (families design §2).
   for (UnitRow& unit : current.units.rows) {
@@ -733,6 +739,8 @@ void Wed(WorldState& current,
   // A barrack place (housing §9, boss seq 197) is the couple's roof and
   // nobody's house: the unit's household stays unset.
   household.in_barrack = shared ? 1U : 0U;
+  // A NEW HOUSEHOLD, formed today (#170; family_state.h): the advance's clock.
+  MarkFormedInPlay(household, current.calendar.day);
   const FamilyId home = AppendRow(current.families, household);
   if (!shared) {
     current.units.rows[house_row].household = home;
@@ -948,6 +956,7 @@ void RunMigration(const LifeConfig& config, WorldState& current, SimDay day) {
     household.lost_house_position =
         current.units.rows[FindRow(current.units, household.house)].position;
     household.in_barrack = shared ? 1U : 0U;
+    MarkFormedInPlay(household, current.calendar.day);  // #170: an arrival is a new household
     migrant.family = AppendRow(current.families, household);
     const std::uint32_t house_row = FindRow(current.units, household.house);
     if (!shared) {

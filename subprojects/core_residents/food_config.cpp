@@ -190,6 +190,28 @@ bool ParseDistribution(const ITable& table, FoodConfig& config, std::string& err
   return true;
 }
 
+/// The new household's advance (#170; AdvanceRules).
+bool ParseAdvance(const ITable& table, FoodConfig& config, std::string& error) {
+  AdvanceRules& advance = config.advance;
+  auto ceiling = static_cast<float>(advance.ceiling_days);
+  const std::array<ScalarKnob, 3> knobs = {{
+      {.key = "advance_trudodni_per_worker",
+       .value = &advance.trudodni_per_worker,
+       .range = {.low = 0.0F, .high = 100.0F}},
+      {.key = "advance_ceiling_days",
+       .value = &ceiling,
+       .range = {.low = 0.0F, .high = static_cast<float>(10U * kDaysPerYear)}},
+      {.key = "advance_repay_share",
+       .value = &advance.repay_share,
+       .range = {.low = 0.0F, .high = 1.0F}},
+  }};
+  if (!ReadKnobs(table, "food", knobs, error)) {
+    return false;
+  }
+  advance.ceiling_days = static_cast<std::uint32_t>(ceiling);
+  return true;
+}
+
 bool ParsePlot(const ITable& table, FoodConfig& config, std::string& error) {
   PlotConfig& plot = config.plot;
   const std::array<ScalarKnob, 15> knobs = {{
@@ -399,7 +421,7 @@ FoodConfig ParseFoodConfig(const ITableSet& tables, std::string* error) {
   if (const ITable* food = tables.FindTable("food")) {
     const bool ok = ParseConsumptionAndSatiety(*food, config, message) &&
                     ParseDistribution(*food, config, message) &&
-                    ParsePlot(*food, config, message) &&
+                    ParseAdvance(*food, config, message) && ParsePlot(*food, config, message) &&
                     (resources == nullptr || ParseResourceRows(*food, *resources, config, message));
     if (!ok) {
       if (error != nullptr) {

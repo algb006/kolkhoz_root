@@ -1079,6 +1079,23 @@ int TestWholeWorkingDay() {
            book.trudodni_by_day[(worked_on + core::kDaysPerYear - 1) % core::kDaysPerYear] ==
                book.trudodni_accrued),
       "the trudodni are booked on the day they were earned, and the days add up");
+  // THE NEW HOUSEHOLD'S OWN SUM (#170; FamilyRow::earned_since_formed): a row
+  // of the genesis keeps nought; the same day worked by a household formed in
+  // play credits the sum beside the account, hundredth for hundredth.
+  failures += Expect(household.earned_since_formed == 0,
+                     "a row of the genesis earns into its account alone");
+  {
+    DayWorld young(2);
+    young.AddField(core::FieldPhase::kSowing, 1.0F, core::Vec2{.x = 200.0F, .y = 0.0F});
+    core::MarkFormedInPlay(
+        young.world.families.rows[core::FindRow(young.world.families, young.family)], 0);
+    young.RunDay(*labor, 1);
+    const core::FamilyRow& formed =
+        young.world.families.rows[core::FindRow(young.world.families, young.family)];
+    failures +=
+        Expect(formed.trudodni_account > 0 && formed.earned_since_formed == formed.trudodni_account,
+               "a household formed in play has the day's trudodni in its earned sum too");
+  }
   bool cleared = true;
   for (const core::ResidentRow& resident : day.world.residents.rows) {
     cleared = cleared && resident.work.kind == core::WorkKind::kNone &&

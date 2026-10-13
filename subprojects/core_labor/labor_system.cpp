@@ -2896,6 +2896,12 @@ class LaborSystem final : public ILaborSystem {
         const auto hundredths =
             static_cast<TrudodniHundredths>(std::lround(trudodni * kTrudodniScale));
         current.families.rows[family_row].trudodni_account += hundredths;
+        // THE NEW HOUSEHOLD'S OWN SUM (#170; FamilyRow::earned_since_formed):
+        // what it has earned since it was formed, kept apart from the account
+        // because the account burns at the economic year's turn.
+        if (current.families.rows[family_row].formed_day != kNotFormedInPlay) {
+          current.families.rows[family_row].earned_since_formed += hundredths;
+        }
         current.ledger.current.trudodni_accrued += hundredths;
         // And on its day of the year: next year's issue norm forecasts the
         // trudodni to a harvest from these (ledger_state.h, save 117).

@@ -169,6 +169,29 @@ struct YearLedger {
 
   ResourceAmounts ration;  ///< The safety ration handed out below the floor.
 
+  /// THE NEW HOUSEHOLD'S ADVANCE (#170, save 159; labor-payment design,
+  /// «Аванс новосёлу»; core_residents/household_advance.h): what the stores
+  /// topped a new household up with on the exchange's days, against its
+  /// trudodni to come. A transfer inside the village, like the issue and the
+  /// ration - in neither sum of the book's balance.
+  ResourceAmounts advance;
+
+  /// What of the advances the year's issues paid back, grams of GRAIN
+  /// EQUIVALENT (the debt's own unit): the half of an indebted family's issue
+  /// the store kept. No goods moved for it - they never left the store.
+  Grams advance_repaid = 0;
+
+  /// DEBTS WRITTEN OFF, grams of grain equivalent - so the book says where
+  /// the grain went and nothing vanishes unbooked (boss, 13 October 2026):
+  /// the row ceased to be while it owed (a single newcomer wed out and his
+  /// yard was struck off; the last member died) - the debt does not follow
+  /// anybody into another row. A SECOND CAUSE, «still open at the household's
+  /// second year-end share-out», WAS WRITTEN AND WITHDRAWN the same day: it
+  /// fired 0 times in the canon's 36 village-years (the share-out clears the
+  /// debt first). It returns when a debt is printed open across a year-end
+  /// share-out.
+  Grams advance_written_off_ended = 0;
+
   ResourceAmounts nets;  ///< The yards' fish.
 
   /// What the night trades brought home past the kolkhoz — the poached fish

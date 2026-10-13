@@ -212,6 +212,24 @@ struct DistributionConfig {
   std::uint8_t reserve_seed_fund = 1;
 };
 
+/// @brief THE NEW HOUSEHOLD'S ADVANCE (labor-payment design, «Аванс
+/// новосёлу»; #170; household_advance.h): food.csv `advance_*`, all STUB
+/// econ's.
+struct AdvanceRules {
+  /// The household is advanced while it has earned LESS than this many
+  /// trudodni per worker since it was formed.
+  float trudodni_per_worker = 1.0F;
+
+  /// And no longer than this many game days from the day it was formed (a
+  /// game year; the design's ceiling, not its end). 0 switches the advance
+  /// off.
+  std::uint32_t ceiling_days = kDaysPerYear;
+
+  /// The share the store keeps against the debt, 0..1 - of what an issue
+  /// gives ABOVE the period's norm, never of the norm itself.
+  float repay_share = 0.5F;
+};
+
 /// @brief Household-plot time and the garden (household design §1). The
 /// family's plot hours = the working members' mean day remainder (24 -
 /// sleep - hours away, the stage-5 arithmetic) plus additive factors; the
@@ -420,6 +438,8 @@ struct FoodConfig {
   SatietyConfig satiety;
 
   DistributionConfig distribution;
+
+  AdvanceRules advance;
 
   PlotConfig plot;
 

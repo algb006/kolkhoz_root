@@ -28,6 +28,7 @@
 #include "core_common/spoilage.h"
 #include "core_common/state_table_ops.h"
 #include "family_meal.h"
+#include "household_advance.h"
 #include "issue_norm.h"
 
 namespace core {
@@ -471,13 +472,48 @@ void RunDistribution(const FoodConfig& config,
       continue;
     }
     const float trudodni = static_cast<float>(outstanding) / static_cast<float>(kTrudodniScale);
+    // AN INDEBTED FAMILY REPAYS OUT OF WHAT ITS ISSUE GIVES ABOVE THE NORM
+    // (#170; labor-payment design, «Аванс новосёлу», «Возврат»;
+    // household_advance.h, IssueAboveNorm): half of that part stays in the
+    // store, the same share of every position; the trudodni are redeemed in
+    // full, and the debt falls by its grain equivalent. An issue that leaves
+    // the family at or under the period's norm repays nothing. The ration
+    // below is not touched.
+    float handed_share = 1.0F;
+    if (family.advance_debt > 0) {
+      double issue_eq = 0.0;
+      for (std::uint32_t index = 0; index < roster; ++index) {
+        const float norm = norm_kg(index);
+        if (norm > 0.0F && coverage[index] > 0.0F) {
+          issue_eq += static_cast<double>(KilogramsToGrams(norm * trudodni * coverage[index])) *
+                      static_cast<double>(GrainEquivalentPerGram(config, index));
+        }
+      }
+      const std::size_t family_row =
+          static_cast<std::size_t>(&family - current.families.rows.data());
+      const HouseholdCounts counts = CountHousehold(config,
+                                                    life_speedup,
+                                                    current,
+                                                    current.families.row_ids[family_row],
+                                                    current.calendar.day);
+      const Grams above = IssueAboveNorm(counts,
+                                         config.distribution.period_days,
+                                         PantryGrainEquivalent(config, family.pantry),
+                                         static_cast<Grams>(issue_eq));
+      const Grams kept = AdvanceRepayment(config.advance, family.advance_debt, above);
+      if (kept > 0 && issue_eq > 0.0) {
+        handed_share = 1.0F - static_cast<float>(static_cast<double>(kept) / issue_eq);
+        family.advance_debt -= kept;
+        current.ledger.current.advance_repaid += kept;
+      }
+    }
     for (std::uint32_t index = 0; index < roster; ++index) {
       const float norm = norm_kg(index);
       if (norm <= 0.0F || !(coverage[index] > 0.0F)) {
         continue;
       }
       const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
-      const Grams issue = KilogramsToGrams(norm * trudodni * coverage[index]);
+      const Grams issue = KilogramsToGrams(norm * trudodni * coverage[index] * handed_share);
       // `coverage` carries the substitution too (CoverBundle): a keeping
       // position covers a share of its norm that is the shorter ones'
       // shortfall, and nothing when they were whole.
@@ -554,6 +590,76 @@ void RunRation(const FoodConfig& config,
       SimEvent& event = EmitEvent(current, EventKind::kRationIssued, EventSeverity::kNotable);
       event.family = id;
     }
+  }
+}
+
+/// THE NEW HOUSEHOLD'S ADVANCE, THE STORE'S HALF (#170; household_advance.h
+/// decides who and how much): on the exchange's day, after the issue and the
+/// ration, each eligible household's pantry is topped up to the period's
+/// norm - in the issue bundle's own proportions and substitutes (CoverBundle,
+/// one order for the issue and the advance), ONLY out of the free remainder
+/// above `reserve`. What the store gave is the family's debt, in grain
+/// equivalent. No free stock - no advance and no debt.
+void RunHouseholdAdvance(const FoodConfig& config,
+                         float life_speedup,
+                         const std::vector<Grams>& reserve,
+                         WorldState& current) {
+  if (config.advance.ceiling_days == 0) {
+    return;
+  }
+  const auto roster = static_cast<std::uint32_t>(config.resources.size());
+  const SimDay day = current.calendar.day;
+  std::vector<IssueNormLine> norms;  // resolved for the first eligible household only
+  double bundle_eq = 0.0;            // grain-equivalent grams of one trudoden's bundle
+  for (std::uint32_t row = 0; row < current.families.rows.size(); ++row) {
+    FamilyRow& family = current.families.rows[row];
+    if (family.formed_day == kNotFormedInPlay) {
+      continue;
+    }
+    const HouseholdCounts counts =
+        CountHousehold(config, life_speedup, current, current.families.row_ids[row], day);
+    if (!AdvanceEligible(config.advance, family, counts, day)) {
+      continue;
+    }
+    const Grams top_up = AdvanceTopUp(
+        counts, config.distribution.period_days, PantryGrainEquivalent(config, family.pantry));
+    if (top_up <= 0) {
+      continue;
+    }
+    if (norms.empty()) {
+      norms = ResolveIssueNorms(config, reserve, current, life_speedup);
+      for (std::uint32_t index = 0; index < roster; ++index) {
+        bundle_eq += static_cast<double>(norms[index].grams_per_trudoden) *
+                     static_cast<double>(GrainEquivalentPerGram(config, index));
+      }
+    }
+    if (!(bundle_eq > 0.0)) {
+      return;  // no position is issued at all: nothing to advance in
+    }
+    const double bundles = static_cast<double>(top_up) / bundle_eq;
+    std::vector<Grams> wanted(roster, 0);
+    for (std::uint32_t index = 0; index < roster; ++index) {
+      wanted[index] =
+          static_cast<Grams>(static_cast<double>(norms[index].grams_per_trudoden) * bundles);
+    }
+    const BundleCover cover = CoverBundle(config, reserve, current, wanted);
+    Grams given_eq = 0;
+    for (std::uint32_t index = 0; index < roster; ++index) {
+      if (wanted[index] <= 0 || !(cover.coverage[index] > 0.0F)) {
+        continue;
+      }
+      const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
+      const Grams given = TakeFromUnits(
+          current,
+          resource,
+          static_cast<Grams>(static_cast<float>(wanted[index]) * cover.coverage[index]));
+      AddToPantry(family, resource, given);
+      AddLedgerAmount(current.ledger.current.advance, resource, given);
+      given_eq += static_cast<Grams>(static_cast<double>(given) *
+                                     static_cast<double>(GrainEquivalentPerGram(config, index)));
+    }
+    family.advance_debt += given_eq;
+    family.advance_given += given_eq;
   }
 }
 
@@ -728,6 +834,9 @@ void RunFamilyExchange(const FoodConfig& config, float life_speedup, WorldState&
     const std::vector<Grams> reserve = IssueReserve(config, current);
     RunDistribution(config, life_speedup, reserve, current);
     RunRation(config, life_speedup, reserve, current);
+    // And the new households' advance, last: it tops up what the issue and
+    // the ration left short (#170).
+    RunHouseholdAdvance(config, life_speedup, reserve, current);
   }
   if (day > 0 && day % kDaysPerYear == 0) {
     BurnTrudodni(current);

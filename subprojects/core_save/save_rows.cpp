@@ -116,7 +116,11 @@ static_assert(AggregateArity<ResidentRow>() == 55,
 // Save 124: the season's table by category, nine floats and the season's
 // need at the row's end — predicted 96 -> 136 + amounts before the build
 // (forty bytes after a float that ends on a word).
-static_assert(sizeof(FamilyRow) == 136 + kAmountsSize,
+// Save 159 (#170): the new household's advance at the row's end - the day
+// formed (4), the trudodni since (4), the debt and the given (8 + 8), the
+// barrack byte: predicted 136 -> 168 + amounts (25 bytes after a word's edge,
+// the row aligns to 8) and 35 fields, before the build.
+static_assert(sizeof(FamilyRow) == 168 + kAmountsSize,
               "FamilyRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 57: ration_granted, the yard's ration decision — 19 fields;
 // the size is read off the build below, not guessed.
@@ -126,7 +130,7 @@ static_assert(sizeof(FamilyRow) == 136 + kAmountsSize,
 // Save 75: in_barrack and hunger_alarm_lit — 27 fields. Save 113:
 // satisfaction_year — 28. Save 124: season_category_kcal and
 // season_need_kcal — 30.
-static_assert(AggregateArity<FamilyRow>() == 30,
+static_assert(AggregateArity<FamilyRow>() == 35,
               "FamilyRow gained or lost a field — update the codec and VERSION_SAVE");
 // FieldRow took LandKind into a padding byte it already had, so sizeof did
 // NOT move — the one case the tripwire of manual/67-save-format.md §7 cannot
@@ -912,6 +916,12 @@ void WriteFamilyRow(SaveSink& sink, const FamilyRow& row) {
     out.WriteFloat(kcal);
   }
   out.WriteFloat(row.season_need_kcal);
+  // Save 159 (#170): the new household's advance.
+  out.WriteU32(row.formed_day);
+  out.WriteI32(row.earned_since_formed);
+  out.WriteI64(row.advance_debt);
+  out.WriteI64(row.advance_given);
+  out.WriteU8(row.formed_in_barrack);
 }
 
 FamilyRow ReadFamilyRow(LoadSource& source) {
@@ -967,6 +977,16 @@ FamilyRow ReadFamilyRow(LoadSource& source) {
   row.season_need_kcal = in.ReadFloat();
   if (!(row.season_need_kcal >= 0.0F)) {
     source.Fail("a family's need over the season is negative or unreadable");
+  }
+  // Save 159 (#170). A debt or a sum below nought is a file no world wrote.
+  row.formed_day = in.ReadU32();
+  row.earned_since_formed = in.ReadI32();
+  row.advance_debt = in.ReadI64();
+  row.advance_given = in.ReadI64();
+  row.formed_in_barrack =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "family formed in a barrack"));
+  if (row.earned_since_formed < 0 || row.advance_debt < 0 || row.advance_given < row.advance_debt) {
+    source.Fail("a family's advance is negative or owes more than it was given");
   }
   return row;
 }

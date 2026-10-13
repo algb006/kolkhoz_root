@@ -158,6 +158,7 @@ void Arrive(const LifeConfig& config,
             std::uint32_t house_row) {
   FamilyRow household;
   household.house = current.units.row_ids[house_row];
+  MarkFormedInPlay(household, current.calendar.day);  // #170: a new household too
   const FamilyId family = AppendRow(current.families, household);
   current.units.rows[house_row].household = family;
 

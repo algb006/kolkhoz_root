@@ -43,6 +43,7 @@
 #include <array>
 #include <cstdint>
 
+#include "core_common/calendar.h"
 #include "core_common/geometry.h"
 #include "core_common/ids.h"
 #include "core_common/quantities.h"
@@ -248,7 +249,54 @@ struct FamilyRow {
 
   /// The family's need over the season so far, kilocalories (see above).
   float season_need_kcal = 0.0F;
+
+  // -- the new household's advance (labor-payment design, «Аванс новосёлу»;
+  // #170, save 159; core_residents/household_advance.h) -----------------------
+  /// THE DAY THE ROW WAS FORMED IN PLAY: an arrival's, a wedding's, a
+  /// specialist's (MarkFormedInPlay, called by every writer that appends a
+  /// family during the game). kNotFormedInPlay for a row of the genesis: it
+  /// is no new household and is never advanced.
+  SimDay formed_day = static_cast<SimDay>(-1);  // kNotFormedInPlay, named below the struct
+
+  /// TRUDODNI CREDITED SINCE THE ROW WAS FORMED, hundredths: the SUM of what
+  /// the labour sub-step credited to `trudodni_account` (PayDay), not a
+  /// difference of the account - the account burns to nought at the economic
+  /// year's turn, and a household formed in November would read as having
+  /// earned nothing till spring. An heir's inherited outstanding is no
+  /// earning and is not in it. Written by core_labor beside the account, for
+  /// a row formed in play.
+  TrudodniHundredths earned_since_formed = 0;
+
+  /// WHAT THE FAMILY OWES FOR ITS ADVANCE, grams of grain equivalent: raised
+  /// by the day's top-up, lowered by the half of each later issue the store
+  /// keeps. Stays whole with THIS row when a member weds out (boss, 13
+  /// October 2026).
+  Grams advance_debt = 0;
+
+  /// ALL IT WAS EVER ADVANCED, grams of grain equivalent - a printed sum,
+  /// never lowered and bounding nothing: the advance's limit is the ceiling's
+  /// days alone (the cap in kilograms, 57 kg an adult, went before the first
+  /// commit - it was nine days of the norm written in another unit and bound
+  /// before the ceiling did; boss, 13 October 2026).
+  Grams advance_given = 0;
+
+  /// 1 - the row was formed in a barrack (an arrival or a couple given a
+  /// barrack place): its advance ends the day it moves to a house. 0 -
+  /// formed in a house of its own.
+  std::uint8_t formed_in_barrack = 0;
 };
+
+/// @brief FamilyRow::formed_day of a row of the genesis: no day of the game.
+inline constexpr SimDay kNotFormedInPlay = static_cast<SimDay>(-1);
+
+/// @brief Stamps a family row appended DURING THE GAME (see
+///        FamilyRow::formed_day): the day, and whether its first roof is a
+///        barrack. Call it on the row before it is appended, after
+///        `in_barrack` is set.
+inline void MarkFormedInPlay(FamilyRow& row, SimDay day) {
+  row.formed_day = day;
+  row.formed_in_barrack = row.in_barrack;
+}
 
 /// @brief The families table type used by WorldState.
 using FamilyTable = StateTable<FamilyId, FamilyRow>;

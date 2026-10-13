@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "../../common/fake_tables.h"
+#include "advance_checks.h"
 #include "alcoholism.h"
 #include "appearance_memory.h"
 #include "barter_checks.h"
@@ -1753,10 +1754,35 @@ int CheckSettleHouse() {
     barn.type = core::UnitTypeId{1};  // free of households too, but not a dwelling
     AppendRow(world.units, barn);
     const auto units_before = static_cast<std::uint32_t>(world.units.rows.size());
+    // THE ADVANCE'S MEMORY AT A WEDDING (#170; boss, 13 October 2026): the old
+    // rows keep their debt and their earned sum whole, the new row starts at
+    // nought, stamped with the day it was formed.
+    for (core::FamilyRow& parents : world.families.rows) {
+      parents.advance_debt = 5'000;
+      parents.advance_given = 9'000;
+      parents.earned_since_formed = 70;
+    }
+    const std::size_t old_rows = world.families.rows.size();
     const core::FamilyId home = RunUntilWedding(*system, world);
     failures += Expect(home.value != core::kInvalidEntityIdValue, "a wedding founded a household");
     if (home.value != core::kInvalidEntityIdValue) {
       const core::FamilyRow& family = world.families.rows[FindRow(world.families, home)];
+      bool old_whole = world.families.rows.size() > old_rows;
+      for (std::size_t row = 0; row < old_rows && row < world.families.rows.size(); ++row) {
+        const core::FamilyRow& parents = world.families.rows[row];
+        old_whole = old_whole && parents.advance_debt == 5'000 && parents.advance_given == 9'000 &&
+                    parents.earned_since_formed == 70 &&
+                    parents.formed_day == core::kNotFormedInPlay;
+      }
+      failures += Expect(old_whole,
+                         "a wedding leaves the old yards' debt, given and earned sum whole, and "
+                         "they stay rows of the genesis");
+      failures += Expect(family.formed_day != core::kNotFormedInPlay &&
+                             family.formed_day <= world.calendar.day &&
+                             family.formed_in_barrack == 0 && family.advance_debt == 0 &&
+                             family.advance_given == 0 && family.earned_since_formed == 0,
+                         "the new household is stamped with the day it was formed, in a house, "
+                         "and owes nothing");
       failures += Expect(family.house.value == free_id.value, "and it moved into the free house");
       failures += Expect(world.units.rows.size() == units_before,
                          "so no house was raised: the free one was there");
@@ -4614,6 +4640,10 @@ int CheckOldAgeTakesTheOld(core::IResidentsSystem& system) {
   static constexpr core::Grams kKeptGrams = 7'000;
   world.families.rows[0].pantry.assign(kKept + 1U, 0);
   world.families.rows[0].pantry[kKept] = kKeptGrams;
+  // And an advance it still owes (#170): the row ends owing, and the debt is
+  // written off into the year's book with it.
+  static constexpr core::Grams kOwed = 5'000;
+  world.families.rows[0].advance_debt = kOwed;
   core::Grams held_the_day_before = 0;
   for (std::uint32_t day = 0; day < 30 * core::kDaysPerYear; ++day) {
     if (FindRow(world.residents, old_man) == core::kNoRow) {
@@ -4633,6 +4663,8 @@ int CheckOldAgeTakesTheOld(core::IResidentsSystem& system) {
                                         core::ResourceId{static_cast<std::uint16_t>(kKept)}) ==
                              held_the_day_before,
                      "and the pantry of a household nobody inherits is booked as gone");
+  failures += Expect(world.ledger.current.advance_written_off_ended == kOwed,
+                     "and the advance it still owed is written off into the year's book, 5 kg");
   return failures;
 }
 
@@ -4883,6 +4915,7 @@ int main() {
   failures += CheckLockedRationFood();
   failures += CheckSamogonPurchase();
   failures += CheckBarter();
+  failures += CheckTheNewHouseholdsAdvance();
   failures += CheckVitals();
   failures += CheckSettleHouse();
   failures += CheckWeddingQueueOrder();
