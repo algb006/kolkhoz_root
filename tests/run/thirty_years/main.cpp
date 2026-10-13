@@ -537,6 +537,10 @@ int main(int argc, char** argv) {
   }
   double eaten_tonnes = 0.0;
   std::uint32_t rows_written = 0;
+  // #756's guard: the suggested stores with no row at a year's end, from the
+  // early build's horizon on.
+  constexpr std::uint32_t kStoreGuardFromYear = 3;
+  std::vector<std::string> stores_never_marked;
   std::uint16_t last_year = 0;
   double hungry_head_days = 0.0;
   double lived_head_days = 0.0;
@@ -777,6 +781,21 @@ int main(int argc, char** argv) {
     sheet << core::LedgerCsvRow(state, *world.tables);
     ++rows_written;
     PrintYear(state);
+    // THE STORES THE LAYOUT DRAWS AND NOBODY MARKED (#756; crop_roof.h): from
+    // the third year's end on - the early build's horizon - a suggested store
+    // with no row in the world is a rule that could not fire. Printed by name
+    // and year; asserted after the run.
+    if (state.ledger.closed.year >= kStoreGuardFromYear) {
+      for (const std::string& key :
+           run::FixturePolicy::SuggestedStoresNeverMarked(*world.tables, state)) {
+        std::cout << "thirty_years: STORE NEVER MARKED — year " << state.ledger.closed.year
+                  << ": the layout suggests «" << key
+                  << "» and no unit of it stands or is staked\n";
+        if (std::ranges::find(stores_never_marked, key) == stores_never_marked.end()) {
+          stores_never_marked.push_back(key);
+        }
+      }
+    }
     // Who carried the year (#671's instrument; hauled_line.h).
     const core::ITable* const resources = world.tables->FindTable("resources");
     run::PrintHauledLine(state.ledger.closed,
@@ -853,6 +872,41 @@ int main(int argc, char** argv) {
   // last tick of the Nth year of ticks: thirty years of ticks therefore
   // close exactly thirty books, the last of them year 30.
   failures += run::Expect(rows_written == g_years, "one row per year of the run");
+  std::cout << "thirty_years: suggested stores never marked at a year's end from year "
+            << kStoreGuardFromYear << ": " << stores_never_marked.size() << " type(s)";
+  for (const std::string& key : stores_never_marked) {
+    std::cout << ' ' << key;
+  }
+  std::cout << "; the roof read " << fixture.RoofedCrops() << " crop(s)\n";
+  failures += run::Expect(fixture.RoofedCrops() > 0,
+                          "the run's chairman reads at least one crop that needs a roof - none "
+                          "means the clamp's and the store's rules cannot fire (#756)");
+  // HARD ON THE STORES THIS RUN'S CHAIRMAN BUILDS (the clamp, the long store):
+  // one of them unmarked is #756 again. A suggested store of a policy this
+  // hand-wired run does not carry is said aloud and fails nothing - the selpo
+  // is the social objects policy's, which population_curve and the building
+  // chairman wire and thirty_years does not (#190: the canon's wiring from
+  // one place closes it, and this line then says so).
+  std::uint32_t own_never_marked = 0;
+  std::string foreign_never_marked;
+  for (const std::string& key : stores_never_marked) {
+    if (fixture.BuildsStore(key)) {
+      ++own_never_marked;
+    } else {
+      foreign_never_marked += (foreign_never_marked.empty() ? "" : ", ") + key;
+    }
+  }
+  failures += run::Expect(own_never_marked == 0,
+                          "the clamp and the long store of its crops have a unit standing or "
+                          "staked at each year's end from the third (#756; the names are printed "
+                          "above)");
+  failures += run::KnownGap(foreign_never_marked.empty(),
+                            "every other store the layout suggests is marked by this run's "
+                            "chairman",
+                            foreign_never_marked.empty() ? std::string("none unmarked")
+                                                         : "never marked: " + foreign_never_marked,
+                            "#190: thirty_years is wired by hand and carries no social objects "
+                            "policy; closer - the canon's wiring from one place");
   failures += run::Expect(state.ledger.closed.year == g_years,
                           "the last closed book is the last full year");
   failures += run::Expect(state.families.rows.size() > 20, "and it has households");

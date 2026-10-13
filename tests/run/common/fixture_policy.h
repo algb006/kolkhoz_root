@@ -39,11 +39,13 @@
 #include "core_common/ledger_state.h"
 #include "core_common/order_state.h"
 #include "core_common/plot.h"
+#include "core_common/state_table_ops.h"
 #include "core_common/unit_state.h"
 #include "core_common/world_state.h"
 #include "core_tables/stub_tables.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
+#include "crop_roof.h"
 #include "start_gate.h"
 #include "store_parent.h"
 #include "suggested_place.h"
@@ -65,19 +67,23 @@ namespace run {
 class FixturePolicy {
  public:
   explicit FixturePolicy(const core::ITableSet& tables)
-      : yard_suggested_(tables, "food_yard"), clamp_suggested_(tables, "clamp") {
+      : roof_(ReadCropRoof(tables)),
+        yard_suggested_(tables, "food_yard"),
+        clamp_suggested_(tables, "clamp"),
+        store_suggested_(tables, roof_.store_key) {
     granary_ = TypeByKey(tables, "granary");
     cattle_ = TypeByKey(tables, "cattle_yard");
     pen_suggestion_ = SuggestedPoint(tables, "cattle_yard", has_pen_suggestion_);
     ReadCattleRoof(tables);
     ReadEntryDay(tables);
     granary_yard_ = ParentTypeOf(tables, "granary");
-    food_store_ = TypeByKey(tables, "food_store");
+    food_store_ = roof_.store;
+    store_on_yard_ = granary_yard_.value != core::kInvalidDefIdValue &&
+                     ParentTypeOf(tables, roof_.store_key).value == granary_yard_.value;
     clamp_ = TypeByKey(tables, "clamp");
     church_ = TypeByKey(tables, "church_store");
     std::string error;
     core::LoadDefinitions(tables, core::StubTables::kAllowed, definitions_, error);
-    ReadRoofedFood(tables);
   }
 
   /// @brief The question asked before every start (start_gate.h).
@@ -114,6 +120,14 @@ class FixturePolicy {
     warm_barn_in_hand_ =
         pen != core::kNoRow && simulation.MaterialsShortFor(world.units.row_ids[pen]).empty() &&
         GateOpen(start_gate_, world, cattle_, static_cast<std::uint8_t>(kWarmBarnLevel));
+    // AND THE LONG STORE'S NEXT LEVEL the same way (#756).
+    const std::uint32_t store = StoreToRaise(world);
+    store_raise_in_hand_ = store != core::kNoRow &&
+                           simulation.MaterialsShortFor(world.units.row_ids[store]).empty() &&
+                           GateOpen(start_gate_,
+                                    world,
+                                    food_store_,
+                                    static_cast<std::uint8_t>(world.units.rows[store].level + 1U));
     core::OrderRow order;
     if (!NextOrder(world, order)) {
       return;
@@ -122,7 +136,13 @@ class FixturePolicy {
       marked_type_ = order.unit_type;
       rows_before_mark_ = Rows(world, order.unit_type);
     }
-    warms_ordered_ += order.kind == core::OrderKind::kUpgradeUnit ? 1U : 0U;
+    const std::uint32_t raised = order.kind == core::OrderKind::kUpgradeUnit
+                                     ? core::FindRow(world.units, order.unit)
+                                     : core::kNoRow;
+    const bool store_raised =
+        raised != core::kNoRow && world.units.rows[raised].type.value == food_store_.value;
+    stores_raised_ += store_raised ? 1U : 0U;
+    warms_ordered_ += order.kind == core::OrderKind::kUpgradeUnit && !store_raised ? 1U : 0U;
     simulation.StageOrders(std::span<const core::OrderRow>(&order, 1), {});
     cooldown_ = kCooldownDays;
   }
@@ -280,15 +300,19 @@ class FixturePolicy {
     std::cout << "thirty_years: FIXTURE DIFFERS FROM THE START CANON — the run's chairman "
                  "builds GRANARIES and CATTLE YARDS, because the canon gives neither and a "
                  "run has nobody to decide on them (boss, 2026-09-03); and a CLAMP by the "
-                 "fields before the first reaping, with FOOD STORES under this year's potatoes "
-                 "and vegetables (boss, parcel 419)\n";
+                 "fields before the first reaping, with the LONG STORE of the clamp's crops - "
+                 "the vegetable store, raised to its second level before another is staked - "
+                 "under this year's potatoes and vegetables (boss, parcel 419; #756)\n";
   }
 
   /// @brief What the fixture actually did, for the run to print at the end.
   void Report(const core::WorldState& world) const {
     std::cout << "thirty_years: the run's chairman ordered " << ordered_ << " fixture buildings; "
               << Built(world, granary_) << " granaries, " << Built(world, food_store_)
-              << " food stores and " << Built(world, cattle_)
+              << " long stores of the clamp's crops ("
+              << (roof_.store_key.empty() ? std::string("NO SUCH TYPE IN THE TABLES")
+                                          : roof_.store_key)
+              << ", " << stores_raised_ << " upgrade(s) ordered) and " << Built(world, cattle_)
               << " cattle yards stand; the stores stand as modules of "
               << Built(world, granary_yard_) << " food yards (" << yards_ordered_
               << " yard orders); marks refused: cattle yards " << cattle_refused_
@@ -303,21 +327,45 @@ class FixturePolicy {
               << "\n";
     std::cout << "thirty_years: the horses were stabled "
               << (stable_seen_ ? "on day " + std::to_string(stable_day_) : std::string("never"))
-              << "; food stores of " << kFoodStoreRoomTonnes << " t stood up on days";
+              << "; long stores of " << StoreRoomAt(1) / core::kGramsPerTonne
+              << " t at the first level stood up on days";
     for (const core::SimDay day : food_store_days_) {
       std::cout << ' ' << day << " (year " << day / core::kDaysPerYear + 1 << ')';
     }
     std::cout << (food_store_days_.empty() ? " none" : "") << "\n";
+    // THE ROOF AS READ (#756): a set of nought is the defect of 0.37.217-239,
+    // when the rules below it could not fire and nothing said so.
+    std::cout << "thirty_years: the roof of potatoes and vegetables — " << roof_.crops
+              << " crop(s) the clamp keeps"
+              << (roof_.crops == 0 ? " — NONE: THE CLAMP'S AND THE STORE'S RULES CANNOT FIRE" : "")
+              << "; the clamp is UNBOUNDED in the core (no contour: econ's sizing rule has no "
+                 "door, #759), so a roof that exists never binds\n";
     yard_suggested_.Report("thirty_years");
     clamp_suggested_.Report("thirty_years");
+    store_suggested_.Report("thirty_years");
+  }
+
+  /// @brief THE GUARD OF #756: the stores the layout suggests that have no
+  ///        row in `world` (crop_roof.h, SuggestedStoresNeverMarked), for the
+  ///        run to assert on at a year's end.
+  static std::vector<std::string> SuggestedStoresNeverMarked(const core::ITableSet& tables,
+                                                             const core::WorldState& world) {
+    return run::SuggestedStoresNeverMarked(tables, world);
+  }
+
+  /// @brief How many crop rows the roof was read for: 0 means the clamp's and
+  ///        the store's rules cannot fire.
+  std::uint32_t RoofedCrops() const { return roof_.crops; }
+
+  /// @brief Whether `key` is a store THIS policy builds: the clamp or the
+  ///        long store of its crops. The guard is hard on these; a suggested
+  ///        store of another policy's is that policy's to answer for.
+  bool BuildsStore(std::string_view key) const {
+    return key == "clamp" || (!roof_.store_key.empty() && key == roof_.store_key);
   }
 
  private:
   static constexpr std::uint32_t kCooldownDays = 4;
-
-  /// unit_levels.csv, food_store level 1. Printed beside the days, not read:
-  /// the report says what a store holds so a day can be read against a crop.
-  static constexpr int kFoodStoreRoomTonnes = 60;
 
   void NoteStoreDays(const core::WorldState& world) {
     if (!stable_seen_ && world.chairman.horses_stabled != 0) {
@@ -589,7 +637,7 @@ class FixturePolicy {
 
   /// Whether the food store (not the granary) keeps this resource.
   bool Roofed(core::ResourceId resource) const {
-    return resource.value < roofed_resource_.size() && roofed_resource_[resource.value] != 0;
+    return resource.value < roof_.resource.size() && roof_.resource[resource.value] != 0;
   }
 
   bool NextOrder(const core::WorldState& world, core::OrderRow& order) {
@@ -700,11 +748,26 @@ class FixturePolicy {
         RoofedHarvestGrams(world) > 0) {
       return MarkClamp(world, order);
     }
-    const bool wants_food_store = food_store_.value != core::kInvalidDefIdValue &&
-                                  RoofedHarvestGrams(world) > RoofedRoomGrams(world) &&
-                                  Rows(world, food_store_) < kMaxOfEach;
+    // THE LONG STORE (crop_roof.h: the vegetable store since 0.37.217), until
+    // its room and the church's hold this year's harvest: the store standing
+    // is raised to its next level before another is staked (resources design
+    // §4, «150 т, затем 300 т»), and nothing more of the kind while one is
+    // being raised.
+    // A store that can be raised is raised when its recipe is in the village
+    // and WAITED FOR when it is not: a second plot would wait for the same
+    // boards.
+    const std::uint32_t raise = StoreToRaise(world);
+    const bool wants_food_store =
+        food_store_.value != core::kInvalidDefIdValue &&
+        RoofedHarvestGrams(world) > RoofedRoomGrams(world) && !StoreBeingRaised(world) &&
+        (raise != core::kNoRow ? store_raise_in_hand_ : Rows(world, food_store_) < kMaxOfEach);
     if (wants_food_store && !(last_ordered_food_store_ && (wants_granary || wants_cattle))) {
       last_ordered_food_store_ = true;
+      if (raise != core::kNoRow) {
+        order.kind = core::OrderKind::kUpgradeUnit;
+        order.unit = world.units.row_ids[raise];
+        return true;
+      }
       return Mark(world, food_store_, order);
     }
     last_ordered_food_store_ = false;
@@ -736,7 +799,11 @@ class FixturePolicy {
   bool Mark(const core::WorldState& world, core::UnitTypeId type, core::OrderRow& order) {
     order.kind = core::OrderKind::kBuildUnit;
     order.unit_type = type;
-    if ((type.value == granary_.value || type.value == food_store_.value) &&
+    // A module of the food yard goes on the yard: the granary, and the long
+    // store when the tables make it one (the food store did; the vegetable
+    // store stands by itself - resources design §4, «не модуль продуктового
+    // двора»).
+    if ((type.value == granary_.value || (type.value == food_store_.value && store_on_yard_)) &&
         granary_yard_.value != core::kInvalidDefIdValue) {
       return MarkOnYard(world, order);
     }
@@ -747,8 +814,17 @@ class FixturePolicy {
     // years were refused on seeds 1930 and 1934 (boss, parcel 226).
     const std::vector<float>& radii = definitions_.units.keep_out_radius_m;
     if (type.value < radii.size() && radii[type.value] > 0.0F) {
+      // THE LONG STORE ON THE ELDER'S POINT FIRST (suggested_place.h; #756:
+      // suggest_vegetable_store was never taken by any run); the next by the
+      // village's middle, as every other roof.
+      const std::optional<core::Vec2> point =
+          type.value == food_store_.value
+              ? store_suggested_.Take(world, definitions_.Plots(), radii[type.value])
+              : std::nullopt;
       order.position =
-          core::FreePlot(world.units, definitions_.Plots(), Centre(world), radii[type.value]);
+          point
+              ? *point
+              : core::FreePlot(world.units, definitions_.Plots(), Centre(world), radii[type.value]);
       ++ordered_;
       return true;
     }
@@ -831,8 +907,8 @@ class FixturePolicy {
     double y = 0.0;
     for (const core::FieldRow& field : world.fields.rows) {
       const std::uint16_t crop = field.rotation_year0.value;
-      if (field.kind != core::LandKind::kArable || crop >= roofed_yield_kg_per_ha_.size() ||
-          !(roofed_yield_kg_per_ha_[crop] > 0.0F)) {
+      if (field.kind != core::LandKind::kArable || crop >= roof_.yield_kg_per_ha.size() ||
+          !(roof_.yield_kg_per_ha[crop] > 0.0F)) {
         continue;
       }
       weight += static_cast<double>(field.area_ga);
@@ -886,66 +962,22 @@ class FixturePolicy {
   /// The clamp: the field store of potatoes and vegetables, an outline.
   core::UnitTypeId clamp_;
 
-  /// kg per hectare by crop row, for the crops whose produce the food store
-  /// keeps (resource_stores.csv storage `food_store`); 0 for every other crop.
-  std::vector<float> roofed_yield_kg_per_ha_;
+  /// What needs a roof and what gives it, READ OFF THE STORES THAT KEEP THE
+  /// CROP (crop_roof.h; #756). Until 0.37.240 the set was read by the name
+  /// `food_store`, which keeps no crop since 0.37.217.
+  CropRoof roof_;
 
-  /// 1 per ResourceId the food store keeps.
-  std::vector<std::uint8_t> roofed_resource_;
+  /// Whether the long store is a module of the granary's yard.
+  bool store_on_yard_ = false;
 
-  /// Level-1 capacity, grams, of the food store and the church.
-  core::Grams food_store_grams_ = 0;
+  /// Whether the recipe of the standing long store's next level is in the
+  /// village today (RunDay asks the core, as for the warm barn).
+  bool store_raise_in_hand_ = false;
 
-  core::Grams church_grams_ = 0;
+  /// Upgrades of a long store ordered.
+  std::uint32_t stores_raised_ = 0;
 
   bool last_ordered_food_store_ = false;
-
-  void ReadRoofedFood(const core::ITableSet& tables) {
-    const core::ITable* const stores = tables.FindTable("resource_stores");
-    const core::ITable* const crops = tables.FindTable("crops");
-    const core::ITable* const levels = tables.FindTable("unit_levels");
-    if (stores == nullptr || crops == nullptr || levels == nullptr) {
-      return;
-    }
-    roofed_yield_kg_per_ha_.assign(crops->RowCount(), 0.0F);
-    if (const core::ITable* const resources = tables.FindTable("resources")) {
-      roofed_resource_.assign(resources->RowCount(), 0);
-      for (std::uint32_t row = 0; row < stores->RowCount(); ++row) {
-        const std::uint32_t resource =
-            resources->FindRowByKey(stores->CellText(row, stores->FindColumn("resource")));
-        if (resource < roofed_resource_.size() &&
-            stores->CellText(row, stores->FindColumn("storage")) == "food_store") {
-          roofed_resource_[resource] = 1;
-        }
-      }
-    }
-    for (std::uint32_t crop = 0; crop < crops->RowCount(); ++crop) {
-      const std::string_view produce = crops->CellText(crop, crops->FindColumn("resource"));
-      bool roofed = false;
-      for (std::uint32_t row = 0; row < stores->RowCount(); ++row) {
-        roofed = roofed || (stores->CellText(row, stores->FindColumn("resource")) == produce &&
-                            stores->CellText(row, stores->FindColumn("storage")) == "food_store");
-      }
-      if (roofed) {
-        roofed_yield_kg_per_ha_[crop] = std::strtof(
-            std::string(crops->CellText(crop, crops->FindColumn("yield_kg_per_ha"))).c_str(),
-            nullptr);
-      }
-    }
-    for (std::uint32_t row = 0; row < levels->RowCount(); ++row) {
-      const std::string_view unit = levels->CellText(row, levels->FindColumn("unit"));
-      if (levels->CellText(row, levels->FindColumn("level")) != "1") {
-        continue;
-      }
-      const core::Grams grams = core::GramsFromKilograms(
-          1000.0F *
-          std::strtof(
-              std::string(levels->CellText(row, levels->FindColumn("storage_capacity_t"))).c_str(),
-              nullptr));
-      food_store_grams_ = unit == "food_store" ? grams : food_store_grams_;
-      church_grams_ = unit == "church_store" ? grams : church_grams_;
-    }
-  }
 
   /// This year's potatoes and vegetables by the fields' chains at a normal
   /// yield: what needs a roof this autumn.
@@ -953,22 +985,62 @@ class FixturePolicy {
     double kilograms = 0.0;
     for (const core::FieldRow& field : world.fields.rows) {
       const std::uint16_t crop = field.rotation_year0.value;
-      if (field.kind == core::LandKind::kArable && crop < roofed_yield_kg_per_ha_.size()) {
+      if (field.kind == core::LandKind::kArable && crop < roof_.yield_kg_per_ha.size()) {
         kilograms +=
-            static_cast<double>(roofed_yield_kg_per_ha_[crop]) * static_cast<double>(field.area_ga);
+            static_cast<double>(roof_.yield_kg_per_ha[crop]) * static_cast<double>(field.area_ga);
       }
     }
     return core::GramsFromKilograms(static_cast<float>(kilograms));
   }
 
-  /// The room of the church and of every food store, standing or going up.
+  /// A long store's room at `level`, grams (crop_roof.h; 0 beyond the table).
+  core::Grams StoreRoomAt(std::size_t level) const {
+    return level >= 1 && level <= roof_.store_grams.size() ? roof_.store_grams[level - 1] : 0;
+  }
+
+  /// The room of the church and of every long store, standing or going up -
+  /// at the level it stands at or is being raised to.
   core::Grams RoofedRoomGrams(const core::WorldState& world) const {
     core::Grams room = 0;
     for (const core::UnitRow& unit : world.units.rows) {
-      room += unit.type.value == food_store_.value ? food_store_grams_ : 0;
-      room += unit.type.value == church_.value && unit.level > 0 ? church_grams_ : 0;
+      if (unit.type.value == food_store_.value && unit.dead == 0) {
+        const std::size_t level = unit.construction.target_level > unit.level
+                                      ? unit.construction.target_level
+                                      : unit.level;
+        room += StoreRoomAt(level);
+      }
+      room += unit.type.value == church_.value && unit.level > 0 ? roof_.church_grams : 0;
     }
     return room;
+  }
+
+  /// A long store standing below its top level with no works open, or kNoRow:
+  /// the next room is its next level before another store's plot
+  /// (resources design §4: «150 т, затем 300 т; место под последний уровень с
+  /// первого дня»).
+  std::uint32_t StoreToRaise(const core::WorldState& world) const {
+    for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+      const core::UnitRow& unit = world.units.rows[row];
+      if (unit.type.value == food_store_.value && unit.dead == 0 && unit.level > 0 &&
+          unit.level < roof_.store_grams.size() &&
+          unit.construction.phase == core::ConstructionPhase::kNone &&
+          !unit.suspended_works.has_value()) {
+        return row;
+      }
+    }
+    return core::kNoRow;
+  }
+
+  /// Whether a long store's upgrade is open: nothing more of its kind until
+  /// it stands (the rule every site of the farm's keeps).
+  bool StoreBeingRaised(const core::WorldState& world) const {
+    for (const core::UnitRow& unit : world.units.rows) {
+      if (unit.type.value == food_store_.value && unit.dead == 0 && unit.level > 0 &&
+          unit.construction.phase != core::ConstructionPhase::kNone) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /// The plot radii and the map, for FreePlot.
@@ -978,6 +1050,9 @@ class FixturePolicy {
   SuggestedPlaces yard_suggested_;
 
   SuggestedPlaces clamp_suggested_;
+
+  /// The long store's point (suggest_vegetable_store today).
+  SuggestedPlaces store_suggested_;
 
   std::uint32_t yards_ordered_ = 0;
 
