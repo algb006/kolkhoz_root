@@ -758,6 +758,18 @@ enum class EventKind : std::uint8_t {
   /// kNotable. Seam key `work_got_no_hands`.
   kWorkGotNoHands,
 
+  /// A NEW HOUSEHOLD'S ADVANCE WAS WRITTEN OFF (#170; 0.37.251; boss and
+  /// econ, 14 October 2026): at the year-end share-out a household formed in
+  /// play still owed its advance at its `advance_write_off_turns`-th and the
+  /// debt went into the year's book (YearLedger::advance_written_off_turns).
+  /// family = the household; amount = the grams of grain equivalent written
+  /// off. The book held the sum and named nobody: from year 12 about half of
+  /// what a village advances is written off, and 110 t of it over sixteen
+  /// villages could not be laid at any household's door from outside the
+  /// rule. The household's age is the event's day less FamilyRow::formed_day.
+  /// kNotable. Seam key proposed: `advance_written_off`.
+  kAdvanceWrittenOff,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

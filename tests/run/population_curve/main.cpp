@@ -361,7 +361,8 @@ void LiveOneDay(core::ISimulation& simulation,
                 const run::UpgradePolicy& upgrades,
                 Trajectory& out,
                 run::BirthsHerdTally* births_herd = nullptr,
-                run::HayDayOffPolicy* hay_day_off = nullptr) {
+                run::HayDayOffPolicy* hay_day_off = nullptr,
+                run::AdvanceWriteOffTally* write_offs = nullptr) {
   bool hot_at_any_tick = false;
   const core::UnitId awaiting = upgrades.Awaiting();
   for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
@@ -372,6 +373,11 @@ void LiveOneDay(core::ISimulation& simulation,
       hay_day_off->RunStep(simulation);
     }
     const core::WorldState& state = simulation.CompletedState();
+    // The advance's write-offs are the step's own events (#170; 0.37.251):
+    // read before the next step clears them.
+    if (write_offs != nullptr) {
+      write_offs->CountStep(state);
+    }
     // econ's work sample (births_herd_tally.h), once a day at noon.
     if (births_herd != nullptr && tick == run::BirthsHerdTally::kSampleHour) {
       births_herd->SampleWork(state);
@@ -617,7 +623,8 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
       // calls the rest silence (event_journal's own header says the same).
       // `AdvanceDays(1)` IS this loop — the order of `builder.RunDay` after
       // the day is untouched, and the bands below are the proof.
-      LiveOneDay(*simulation, builder.upgrades, out, births_herd_on, &hay_day_off);
+      LiveOneDay(
+          *simulation, builder.upgrades, out, births_herd_on, &hay_day_off, &advance_write_offs);
       builder.RunDay(*simulation);
       timber.CountDay(simulation->CompletedState());
       // What held the transition TODAY, by the order's own door.

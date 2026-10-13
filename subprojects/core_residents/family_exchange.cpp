@@ -808,7 +808,8 @@ std::vector<Grams> SealedFunds(const FoodConfig& config, const WorldState& world
 /// debt still open at its `write_off_turns`-th is written off into the
 /// year's book. Called with the burn, the ending year's last business.
 void WriteOffOldAdvances(const AdvanceRules& rules, WorldState& current) {
-  for (FamilyRow& family : current.families.rows) {
+  for (std::uint32_t row = 0; row < current.families.rows.size(); ++row) {
+    FamilyRow& family = current.families.rows[row];
     if (family.formed_day == kNotFormedInPlay) {
       continue;
     }
@@ -818,6 +819,11 @@ void WriteOffOldAdvances(const AdvanceRules& rules, WorldState& current) {
     if (family.advance_debt > 0 && rules.write_off_turns > 0 &&
         family.advance_turns >= rules.write_off_turns) {
       current.ledger.current.advance_written_off_turns += family.advance_debt;
+      // THE HOUSEHOLD IS NAMED WHERE IT HAPPENS (0.37.251): the book's column
+      // is a sum, and which household it was could not be told from outside.
+      SimEvent& event = EmitEvent(current, EventKind::kAdvanceWrittenOff, EventSeverity::kNotable);
+      event.family = current.families.row_ids[row];
+      event.amount = family.advance_debt;
       family.advance_debt = 0;
     }
   }

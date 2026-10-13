@@ -15,8 +15,10 @@
 
 #include <cstdint>
 #include <iostream>
+#include <utility>
 
 #include "core_common/calendar.h"
+#include "core_common/event_state.h"
 #include "core_common/family_state.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table_ops.h"
@@ -220,7 +222,25 @@ int CheckTheNewHouseholdsAdvance() {
                            world.families.rows[0].advance_debt == 9 * kKilo &&
                            world.ledger.current.advance_written_off_turns == 0,
                        "the first year-end share-out leaves the debt standing");
+    const auto written_off_events = [&world]() {
+      std::int64_t grams = 0;
+      std::uint32_t count = 0;
+      for (const core::SimEvent& event : world.step_events) {
+        if (event.kind == core::EventKind::kAdvanceWrittenOff &&
+            event.family.value == world.families.row_ids[0].value) {
+          grams += event.amount;
+          ++count;
+        }
+      }
+      return std::pair<std::uint32_t, std::int64_t>{count, grams};
+    };
+    failures +=
+        Expect(written_off_events().first == 0, "and names no household: nothing was written off");
     turn(2);
+    failures +=
+        Expect(written_off_events() == std::pair<std::uint32_t, std::int64_t>{1U, 9 * kKilo},
+               "the write-off names its household where it happens: one event, this "
+               "family, 9 kg");
     failures += Expect(world.families.rows[0].advance_turns == 2 &&
                            world.families.rows[0].advance_debt == 0 &&
                            world.ledger.current.advance_written_off_turns == 9 * kKilo &&
