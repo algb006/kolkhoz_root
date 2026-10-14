@@ -21,8 +21,8 @@ pea,Горох,t,1000,,3.3,slow,600,только крупа: в корм не и
 potato,Картофель,t,1000,0.3,0.77,medium,120,,some,,0,bulk,0,
 vegetables,Овощи,t,1000,,0.25,medium,120,"капуста, морковь, свёкла, лук, чеснок; огурцы и помидоры — только теплица",some,,0,bulk,0,
 flax,Лён,t,1000,,,none,,,none,,0,packed,0,
-hay,Сено,t,1000,0.45,,none,,,some,,0,rick,0,0.6
-straw,Солома,t,1000,0.2,,none,,,none,,0,rick,0,0.45
+hay,Сено,t,1000,0.45,,none,,,some,,0,rick,0,1
+straw,Солома,t,1000,0.2,,none,,,none,,0,rick,0,1
 green_mass,Зелёная масса,t,1000,,,very_fast,2,травы и кукуруза на силос,,,0,bulk,0,
 silage,Силос,t,1000,0.2,,special,,,none,,0,bulk,0,
 fodder_beet,Кормовая свёкла и турнепс,t,1000,0.12,,medium,120,сочный корм на зимовку,,,0,bulk,0,
@@ -41,7 +41,7 @@ hide,Шкуры,pcs,20,,,slow,600,,some,,0,packed,0,
 down,Пух и перо,kg,1,,,none,,,some,,0,packed,0,
 mink_pelt,Норковые шкурки,pcs,0.2,,,none,,,eager,,0,packed,0,
 offal,Субпродукты,t,1000,0.35,,very_fast,2,,none,,0,packed,0,
-reed,Камыш,t,1000,0.15,,none,,,none,,0,rick,0,0.6
+reed,Камыш,t,1000,0.15,,none,,,none,,0,rick,0,1
 manure,Навоз и перегной,t,1000,,,special,,,none,,0,manure,0,
 compound_feed,Комбикорм,t,1000,1,,slow,600,,eager,,0,packed,0,
 log,Брёвна,pcs,200,,,none,,,none,,0,long,0,
