@@ -37,6 +37,7 @@
 #include "core_common/world_state.h"
 #include "core_residents/residents_system.h"
 #include "core_tables/tables.h"
+#include "crowded_barrack_checks.h"
 #include "demography.h"
 #include "family_exchange.h"
 #include "family_meal.h"
@@ -4915,6 +4916,7 @@ int main() {
   failures += CheckLockedRationFood();
   failures += CheckSamogonPurchase();
   failures += CheckBarter();
+  failures += CheckNoWeddingIntoABarrackAndTheCrowdedBarrack();
   failures += CheckTheNewHouseholdsAdvance();
   failures += CheckVitals();
   failures += CheckSettleHouse();

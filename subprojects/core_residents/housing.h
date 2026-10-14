@@ -15,6 +15,7 @@
 #define CORE_RESIDENTS_HOUSING_H_
 
 #include <cstdint>
+#include <vector>
 
 #include "core_common/alarm_state.h"
 #include "core_common/ids.h"
@@ -56,6 +57,19 @@ UnitId BarrackPlace(const LifeConfig& config, const WorldState& current, std::ui
 inline constexpr std::uint32_t kHousingShortCoupleDays = 12;  ///< STUB: the oldest couple's wait
 inline constexpr std::uint32_t kHousingShortCouples = 3;      ///< STUB: couples waiting
 inline constexpr std::uint32_t kHousingShortTurnedAway = 4;  ///< STUB: migrants turned away, a year
+/// STUB (econ): families living in crowded barracks that light (a)
+/// («Тесный барак», demography design; boss 11 October 2026).
+inline constexpr std::uint32_t kHousingCrowdedBarrackFamilies = 3;
+
+/// @brief By unit row: whether the unit is a barrack (residents' capacity
+///        above nought) holding MORE people than its places, every family
+///        whose house it is counted. Children are born into families, not
+///        into places, and nobody is evicted: so a barrack overfills.
+std::vector<bool> CrowdedBarracks(const LifeConfig& config, const WorldState& current);
+
+/// @brief The families living in a crowded barrack (CrowdedBarracks): they
+///        ask for a house in the lamp's (a) and climb into a free house first.
+std::uint32_t FamiliesInCrowdedBarracks(const LifeConfig& config, const WorldState& current);
 
 /// @brief Whether `unit` is an old house on the brink of collapse — wear at
 ///        or above the table's near-collapse share (the one test the free

@@ -653,6 +653,15 @@ YardLeftBehind WhatTheYardKeeps(const LifeConfig& config,
   return left;
 }
 
+/// @brief A wedding couple's home: a free house of their own, never a barrack
+/// place (the human's «Нет», 11 October 2026; row 456). Until 456 the couple
+/// took a barrack place when no house was free (HomeForNewcomers) - the
+/// probe found the barracks filled by weddings and births. Migrants still
+/// take a barrack place.
+UnitId HomeForCouple(const LifeConfig& config, const WorldState& current) {
+  return FreeHouseNotOnTheBrink(config, current);
+}
+
 /// @brief Whether the yard's house takes one resident more.
 bool YardHasRoomForOneMore(const LifeConfig& config, const WorldState& current, FamilyId yard) {
   const std::uint32_t family_row = FindRow(current.families, yard);
@@ -661,9 +670,17 @@ bool YardHasRoomForOneMore(const LifeConfig& config, const WorldState& current, 
   }
   const FamilyRow& family = current.families.rows[family_row];
   const std::uint32_t house_row = FindRow(current.units, family.house);
-  // A barrack's place or a tent is no house to count: the family stands where
-  // it stands, and one more stands with it.
-  if (family.in_barrack != 0 || house_row == kNoRow) {
+  // NO WEDDING INTO A BARRACK (the human's «Нет», 11 October 2026; row 456):
+  // a groom or a bride coming into a yard that lives in a barrack is a wedding
+  // into a barrack place - the couple waits, as for a full house. Until 456
+  // the barrack «had room for one more» always, and the place filled by
+  // weddings.
+  if (family.in_barrack != 0) {
+    return false;
+  }
+  // A tent is no house to count: the family stands where it stands, and one
+  // more stands with it.
+  if (house_row == kNoRow) {
     return true;
   }
   // A house whose type names no capacity (unit_levels.csv residents_capacity
@@ -725,7 +742,6 @@ void Wed(WorldState& current,
          ResidentId bride_id,
          ResidentId groom_id,
          UnitId house,
-         bool shared,
          FamilyId brings_along) {
   const std::uint32_t bride_row = FindRow(current.residents, bride_id);
   const std::uint32_t groom_row = FindRow(current.residents, groom_id);
@@ -736,15 +752,12 @@ void Wed(WorldState& current,
   FamilyRow household;
   household.house = house;
   household.lost_house_position = current.units.rows[house_row].position;
-  // A barrack place (housing §9, boss seq 197) is the couple's roof and
-  // nobody's house: the unit's household stays unset.
-  household.in_barrack = shared ? 1U : 0U;
+  // A house of their own: since row 456 no couple weds into a barrack place
+  // (HomeForCouple), so the household is the house's.
   // A NEW HOUSEHOLD, formed today (#170; family_state.h): the advance's clock.
   MarkFormedInPlay(household, current.calendar.day);
   const FamilyId home = AppendRow(current.families, household);
-  if (!shared) {
-    current.units.rows[house_row].household = home;
-  }
+  current.units.rows[house_row].household = home;
   const FamilyId bride_was = current.residents.rows[bride_row].family;
   const FamilyId groom_was = current.residents.rows[groom_row].family;
   PassDowry(current, bride_was, home);
@@ -850,12 +863,11 @@ void RunWeddingQueue(const LifeConfig& config, WorldState& current) {
       done.push_back(id);
       continue;
     }
-    bool shared = false;
-    const UnitId house = HomeForNewcomers(config, current, plan.people, shared);
+    const UnitId house = HomeForCouple(config, current);
     if (house.value == kInvalidEntityIdValue) {
       break;  // no free house for the oldest, so none for anyone behind it
     }
-    Wed(current, couple.bride, couple.groom, house, shared, plan.brings_along);
+    Wed(current, couple.bride, couple.groom, house, plan.brings_along);
     done.push_back(id);
   }
   for (const WeddingWaitId id : done) {
@@ -907,12 +919,10 @@ void RunMarriages(const LifeConfig& config, WorldState& current, SimDay day) {
         WedIntoYard(current, bride_id, groom_id, plan.home == WeddingHome::kIntoBridesYard);
         break;
       }
-      bool shared = false;
-      const UnitId house = current.wedding_waits.rows.empty()
-                               ? HomeForNewcomers(config, current, plan.people, shared)
-                               : UnitId{};
+      const UnitId house =
+          current.wedding_waits.rows.empty() ? HomeForCouple(config, current) : UnitId{};
       if (house.value != kInvalidEntityIdValue) {
-        Wed(current, bride_id, groom_id, house, shared, plan.brings_along);
+        Wed(current, bride_id, groom_id, house, plan.brings_along);
         break;
       }
       WeddingWaitRow couple;

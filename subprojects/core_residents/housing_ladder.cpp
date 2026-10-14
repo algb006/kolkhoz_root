@@ -285,17 +285,28 @@ void ClimbFromLodging(const LifeConfig& config, WorldState& current, bool cold) 
 }
 
 /// THE BARRACK NEXT (boss seq 197): a free house takes a barrack family
-/// before any couple.
+/// before any couple - AND A FAMILY OF A CROWDED BARRACK FIRST («Тесный
+/// барак», demography design; boss 11 October 2026): until row 456 the row
+/// order served a barrack with places to spare as readily as one over them.
+/// The crowded set is read once, before anybody moves.
 void ClimbFromBarrack(const LifeConfig& config, WorldState& current, bool cold) {
-  for (std::uint32_t row = 0; row < current.families.rows.size(); ++row) {
-    if (current.families.rows[row].in_barrack == 0) {
-      continue;
+  const std::vector<bool> crowded = CrowdedBarracks(config, current);
+  for (const bool crowded_first : {true, false}) {
+    for (std::uint32_t row = 0; row < current.families.rows.size(); ++row) {
+      if (current.families.rows[row].in_barrack == 0) {
+        continue;
+      }
+      const std::uint32_t unit_row = FindRow(current.units, current.families.rows[row].house);
+      const bool in_crowded = unit_row != kNoRow && unit_row < crowded.size() && crowded[unit_row];
+      if (in_crowded != crowded_first) {
+        continue;
+      }
+      const UnitId house = FreeHouse(config, current, cold);
+      if (house.value == kInvalidEntityIdValue) {
+        return;
+      }
+      MoveIn(current, row, house);
     }
-    const UnitId house = FreeHouse(config, current, cold);
-    if (house.value == kInvalidEntityIdValue) {
-      break;
-    }
-    MoveIn(current, row, house);
   }
 }
 

@@ -681,7 +681,9 @@ enum class AlarmKind : std::uint8_t {
   /// `housing_short`). A STATE: lit while any of three holds, out when none
   /// does — (a) the oldest couple waiting for a house has waited
   /// kHousingShortCoupleDays or more, or kHousingShortCouples or more wait
-  /// (WorldState::wedding_waits); (b) a family's house is on the brink
+  /// (WorldState::wedding_waits), or kHousingCrowdedBarrackFamilies or more
+  /// families live in a barrack over its places («Тесный барак», row 456);
+  /// (b) a family's house is on the brink
   /// (housing.cpp, the old house's near-collapse wear) with no free house
   /// and no house site open in the village; (c) kHousingShortTurnedAway or
   /// more migrants were turned away for want of a home in the last year
@@ -690,8 +692,9 @@ enum class AlarmKind : std::uint8_t {
   /// stands for a newcomer today (housing.h, HomeForNewcomers; since
   /// 0.37.218). Thresholds STUB.
   /// Subject: `family` — the oldest waiting couple's bride's, else the first
-  /// family on the brink; none when only (c) holds. `amount` the homes asked
-  /// (couples waiting + families on the brink); `amount_more` the barrack
+  /// family on the brink; none when only (c) or the crowded barrack holds.
+  /// `amount` the homes asked (couples waiting + families in crowded barracks
+  /// + families on the brink); `amount_more` the barrack
   /// places asked (the migrants turned away in the year). Yellow always: no
   /// dated loss (days_to_loss as kTooFewHorses'). `lamp` 1: the move is to
   /// build. Collected by core_residents (residents_system.cpp).

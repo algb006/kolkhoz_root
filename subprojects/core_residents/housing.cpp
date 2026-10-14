@@ -71,8 +71,10 @@ UnitId FreeHouseNotOnTheBrink(const LifeConfig& config, const WorldState& curren
   return UnitId{};
 }
 
-UnitId BarrackPlace(const LifeConfig& config, const WorldState& current, std::uint32_t people) {
-  // People living in each unit, by the families whose house it is.
+namespace {
+
+/// People living in each unit (by unit row), by the families whose house it is.
+std::vector<std::uint32_t> LivingByUnit(const WorldState& current) {
   std::vector<std::uint32_t> living(current.units.rows.size(), 0);
   for (const ResidentRow& resident : current.residents.rows) {
     const std::uint32_t family_row = FindRow(current.families, resident.family);
@@ -84,6 +86,33 @@ UnitId BarrackPlace(const LifeConfig& config, const WorldState& current, std::ui
       ++living[unit_row];
     }
   }
+  return living;
+}
+
+}  // namespace
+
+std::vector<bool> CrowdedBarracks(const LifeConfig& config, const WorldState& current) {
+  const std::vector<std::uint32_t> living = LivingByUnit(current);
+  std::vector<bool> crowded(current.units.rows.size(), false);
+  for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
+    const float capacity = ResidentsCapacity(config, current.units.rows[row]);
+    crowded[row] = capacity > 0.0F && static_cast<float>(living[row]) > capacity;
+  }
+  return crowded;
+}
+
+std::uint32_t FamiliesInCrowdedBarracks(const LifeConfig& config, const WorldState& current) {
+  const std::vector<bool> crowded = CrowdedBarracks(config, current);
+  std::uint32_t families = 0;
+  for (const FamilyRow& family : current.families.rows) {
+    const std::uint32_t unit_row = FindRow(current.units, family.house);
+    families += family.in_barrack != 0 && unit_row != kNoRow && crowded[unit_row] ? 1U : 0U;
+  }
+  return families;
+}
+
+UnitId BarrackPlace(const LifeConfig& config, const WorldState& current, std::uint32_t people) {
+  const std::vector<std::uint32_t> living = LivingByUnit(current);
   for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
     const float capacity = ResidentsCapacity(config, current.units.rows[row]);
     if (capacity > 0.0F && static_cast<float>(living[row] + people) <= capacity) {
@@ -108,8 +137,13 @@ bool HousingShortAlarm(const LifeConfig& config, const WorldState& world, Alarm&
       oldest_row = row;
     }
   }
+  // «ТЕСНЫЙ БАРАК» (demography design; boss 11 October 2026, core's
+  // barrack probe: of 468 residents over the places 462 were born there): a
+  // family in a barrack over its places asks for a house as a waiting couple
+  // does - (a) is lit at kHousingCrowdedBarrackFamilies of them.
+  const std::uint32_t crowded = FamiliesInCrowdedBarracks(config, world);
   const bool couples_wait =
-      couples >= kHousingShortCouples ||
+      couples >= kHousingShortCouples || crowded >= kHousingCrowdedBarrackFamilies ||
       (oldest_row != kNoRow &&
        today - world.wedding_waits.rows[oldest_row].since_day >= kHousingShortCoupleDays);
   // (b) A FAMILY'S HOUSE ON THE BRINK, with nowhere to move: no free house
@@ -155,7 +189,7 @@ bool HousingShortAlarm(const LifeConfig& config, const WorldState& world, Alarm&
   } else if (brink_with_nowhere) {
     alarm.family = first_on_the_brink;
   }
-  alarm.amount = static_cast<std::int64_t>(couples) + on_the_brink;
+  alarm.amount = static_cast<std::int64_t>(couples) + crowded + on_the_brink;
   alarm.amount_more = turned_away;
   alarm.lamp = 1;
   alarm.days_to_loss = DaysToLossOf(std::numeric_limits<std::int64_t>::max());
