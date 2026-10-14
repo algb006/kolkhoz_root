@@ -53,6 +53,7 @@
 #include "field_work.h"
 #include "goods_loan.h"
 #include "grass_stand_checks.h"
+#include "harvest_advice_checks.h"
 #include "heap_lamp_checks.h"
 #include "herd_cold.h"
 #include "herd_death_checks.h"
@@ -16562,6 +16563,7 @@ int main() {
   failures += CheckAReapedFieldStillSpendsTheRoom();
   failures += CheckTheWarningBurnsUntilTheHarvestIsResolved();
   failures += CheckTheRoomIsByResource();
+  failures += CheckTheStoreLampsMove();
   failures += CheckTheStrawIsTheCause();
   failures += CheckTheStrawClaimsRoomToo();
   failures += CheckTheLayPricesOnlyTheRoomLeft();

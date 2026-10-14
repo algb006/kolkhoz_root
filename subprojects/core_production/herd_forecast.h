@@ -349,6 +349,14 @@ inline constexpr std::uint32_t kHayCutDayCountedAtHour = 12;
 ///         carries.
 UnitTypeId FeedStoreTypeToBuild(const ProductionConfig& config, const WorldState& world);
 
+/// @brief The type to order for `store`: `store` itself, or the type it is a
+///        module of while no unit of that parent stands sound (the module's
+///        door refuses without one, kNoParent). One rule for every lamp that
+///        names a store (the hay's kGranaryForFeed, the harvest's kBuildStore).
+UnitTypeId StoreTypeOrItsParent(const ProductionConfig& config,
+                                const WorldState& world,
+                                UnitTypeId store);
+
 /// @brief The hay lamp's advice: the two moves and their numbers
 ///        (alarm_state.h — Alarm::advice, advice_resource, advice_amount,
 ///        advice_more, amount_more, hand_over_stock, hand_over_horses).

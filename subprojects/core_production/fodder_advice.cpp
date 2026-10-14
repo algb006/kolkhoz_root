@@ -213,6 +213,12 @@ UnitTypeId FeedStoreTypeToBuild(const ProductionConfig& config, const WorldState
       }
     }
   }
+  return StoreTypeOrItsParent(config, world, store);
+}
+
+UnitTypeId StoreTypeOrItsParent(const ProductionConfig& config,
+                                const WorldState& world,
+                                UnitTypeId store) {
   if (store.value >= config.unit_parent.size() ||
       config.unit_parent[store.value].value == kInvalidDefIdValue) {
     return store;

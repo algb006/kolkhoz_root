@@ -893,6 +893,27 @@ enum class AlarmAdvice : std::uint8_t {
   /// chairman lifts it.
   kLiftRush,
 
+  /// BUILD A STORE - «построить хранилище» (row 936; econ, 14 October 2026,
+  /// econ-boss-935-granary-threshold; proposed dictionary key `build_store`).
+  /// Named by kHarvestWillNotFit when the village's WHOLE shortfall of the
+  /// resource (summed over every field of it, `amount_more`) is at least
+  /// kStoreAdviceShareOfSmallest of the level-1 capacity of the smallest
+  /// store type taking it (grain: a granary of 150 t -> 50 t): the door is
+  /// kBuildUnit of `advice_unit_type`. Below the third a new store stood at
+  /// 6-20 % in two years (host's print on 0.37.255) - its materials and hands
+  /// were the novice's houses.
+  kBuildStore,
+
+  /// DELIVER ABOVE THE PLAN - «сдать сверх плана» (row 936; proposed
+  /// dictionary key `deliver_above_plan`). Named by kHarvestWillNotFit below
+  /// kBuildStore's third while the resource is a position of the named plan:
+  /// the door is kDeliverPlan of `advice_resource` with `advice_amount` grams
+  /// - the summed shortfall, capped at what the stores hold of it. It frees
+  /// the store and pays the overfulfilment's points. Neither door open:
+  /// kNone, the lamp names the loss alone. (No «issue earlier»: no such door;
+  /// returns with an advance-issue door, boss 14 October 2026.)
+  kDeliverAbovePlan,
+
   /// NOT A MOVE: the count, so a consumer can static_assert its mirror.
   kAlarmAdviceCount,
 };
@@ -1020,8 +1041,9 @@ struct Alarm {
   /// catalogue open in this epoch that some store accepts, as many as the
   /// points cover, the best feed units a point first). kHerdStarving with
   /// `advice` kUnsealFund (0.37.185): the feed in the funds and its grams
-  /// there (AlarmAdvice::kUnsealFund). Invalid and 0 for every other advice
-  /// and kind.
+  /// there (AlarmAdvice::kUnsealFund). kHarvestWillNotFit with `advice`
+  /// kDeliverAbovePlan (row 936): the position and the grams to deliver.
+  /// Invalid and 0 for every other advice and kind.
   /// @note Not in the save, as `lamp`.
   ResourceId advice_resource;
   std::int64_t advice_amount = 0;
@@ -1031,8 +1053,9 @@ struct Alarm {
   /// store, or THE TYPE THAT STORE IS A MODULE OF while none of it stands
   /// sound: a granary goes on a food yard's plot, the start has no food yard,
   /// and until then the lamp's one word named a kBuildUnit the door refused
-  /// (kNoParent). The layer names the type from this field. Invalid for every
-  /// other advice and kind.
+  /// (kNoParent). The layer names the type from this field. kHarvestWillNotFit
+  /// with `advice` kBuildStore (row 936): the store to build, by the same
+  /// module rule. Invalid for every other advice and kind.
   /// @note Not in the save, as `lamp`.
   UnitTypeId advice_unit_type;
 
@@ -1043,7 +1066,10 @@ struct Alarm {
   /// `advice_amount` landed on its day; behind kGranaryForFeed, with nothing
   /// bought). kNone and 0 when the first move closes the hole, when the
   /// first move is itself kReduceHerd (its heads are `amount`), and for
-  /// every other kind.
+  /// every other kind - except kHarvestWillNotFit (row 936): `advice_more`
+  /// kNone and `amount_more` THE SUMMED SHORTFALL of the resource over every
+  /// field, the grams kBuildStore's third was tested against (`amount` is
+  /// the field's own).
   /// @note Not in the save, as `lamp`.
   AlarmAdvice advice_more = AlarmAdvice::kNone;
   std::int64_t amount_more = 0;

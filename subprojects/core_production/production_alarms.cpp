@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <utility>
 #include <vector>
 
 #include "core_common/away_in_district.h"
@@ -861,6 +862,83 @@ void LightStoreFullLamps(const ProductionConfig& config,
   }
 }
 
+namespace {
+
+/// STUB (econ, row 936): the share of the smallest store's level-1 capacity
+/// a resource's summed shortfall must reach before the lamp advises a new
+/// store (grain: a third of a 150 t granary, 50 t).
+constexpr float kStoreAdviceShareOfSmallest = 1.0F / 3.0F;
+
+/// The level-1 capacity, grams, of the smallest unit type that is the home of
+/// `resource` (resource_stores.csv), and that type; invalid and 0 when none.
+std::pair<UnitTypeId, Grams> SmallestStoreFor(const ProductionConfig& config, ResourceId resource) {
+  std::pair<UnitTypeId, Grams> smallest{UnitTypeId{}, 0};
+  for (std::size_t type = 0; type < config.unit_types.size(); ++type) {
+    const UnitTypeDef& def = config.unit_types[type];
+    const bool home = std::ranges::any_of(
+        def.home_of, [resource](ResourceId held) { return held.value == resource.value; });
+    if (!home || def.level_storage_capacity_kg.empty() ||
+        !(def.level_storage_capacity_kg[0] > 0.0F)) {
+      continue;
+    }
+    const auto grams = static_cast<Grams>(
+        std::llround(static_cast<double>(def.level_storage_capacity_kg[0]) * kGramsPerKilogram));
+    if (smallest.first.value == kInvalidDefIdValue || grams < smallest.second) {
+      smallest = {DefIdFromIndex<UnitTypeIdTag>(type), grams};
+    }
+  }
+  return smallest;
+}
+
+/// THE STORE LAMP's MOVE (row 936; econ-boss-935-granary-threshold; boss,
+/// core-boss-936-contract-2026-10-14 [2]): on every kHarvestWillNotFit from
+/// `first` on, the village's WHOLE shortfall of its resource (summed over the
+/// fields) in `amount_more`, and the advice: kBuildStore when that sum is at
+/// least kStoreAdviceShareOfSmallest of the smallest store taking it; else
+/// kDeliverAbovePlan while the resource is a position of the named plan and
+/// the stores hold some of it; else kNone. Until 936 the lamp named no move
+/// and the novice built the store for any gram: eight granaries of 150 t
+/// stood at 6-20 % two years on lamps of 1.8-18.7 t (host, 0.37.255).
+void AdviseOnHarvestShortfall(const ProductionConfig& config,
+                              const WorldState& world,
+                              std::vector<Alarm>& alarms,
+                              std::size_t first) {
+  std::vector<Grams> summed(config.feed_values.size(), 0);
+  for (std::size_t index = first; index < alarms.size(); ++index) {
+    const Alarm& alarm = alarms[index];
+    if (alarm.kind == AlarmKind::kHarvestWillNotFit && alarm.resource.value < summed.size()) {
+      summed[alarm.resource.value] += alarm.amount;
+    }
+  }
+  for (std::size_t index = first; index < alarms.size(); ++index) {
+    Alarm& alarm = alarms[index];
+    if (alarm.kind != AlarmKind::kHarvestWillNotFit || alarm.resource.value >= summed.size()) {
+      continue;
+    }
+    const Grams shortfall = summed[alarm.resource.value];
+    alarm.amount_more = shortfall;
+    const auto [store, capacity] = SmallestStoreFor(config, alarm.resource);
+    if (store.value != kInvalidDefIdValue &&
+        static_cast<double>(shortfall) >=
+            static_cast<double>(capacity) * static_cast<double>(kStoreAdviceShareOfSmallest)) {
+      alarm.advice = AlarmAdvice::kBuildStore;
+      alarm.advice_unit_type = StoreTypeOrItsParent(config, world, store);
+      continue;
+    }
+    const std::size_t position = alarm.resource.value;
+    const bool plan_position = world.plan.announced != 0 && position < world.plan.due.size() &&
+                               world.plan.due[position] > 0;
+    const Grams held = plan_position ? TakeableGrams(world, config, alarm.resource) : 0;
+    if (held > 0) {
+      alarm.advice = AlarmAdvice::kDeliverAbovePlan;
+      alarm.advice_resource = alarm.resource;
+      alarm.advice_amount = std::min(shortfall, held);
+    }
+  }
+}
+
+}  // namespace
+
 /// kHarvestWaitingOnField, kHarvestWillNotFit and kSeedShort — the three
 /// conditions of a field, in kind order so that the caller's sort has
 /// less to do (it still sorts: row order is not id order) — and after them
@@ -900,6 +978,7 @@ void CollectFieldAlarms(const ProductionConfig& config,
   // two days later (host, seed 1930: twenty-seven tonnes of timothy).
   //
   // The alarm may keep silent about a field. The arithmetic may not.
+  const std::size_t first_alarm = alarms.size();
   std::vector<Grams> room = NumberedRoomByRow(config, world);
   // The plan door's own rule, as of today: alarms are read off a completed
   // step, the turn's rotation already turned.
@@ -1055,6 +1134,7 @@ void CollectFieldAlarms(const ProductionConfig& config,
       }
     }
   }
+  AdviseOnHarvestShortfall(config, world, alarms, first_alarm);
   // «НЕ ХВАТИТ НА N ГА — ЗАСЕЕМ МЕНЬШЕ» (kSeedAreaShort; 0.37.43): one line a
   // seed, once its year's loan is taken and in — the outcome, with no move.
   // BY THE SEED, NOT BY THE SOWING: the spring and the winter wheat share
