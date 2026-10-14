@@ -85,11 +85,16 @@ bool HouseOnTheBrink(const LifeConfig& config, const UnitRow& unit);
 ///        alarm_state.h says. A pure read.
 bool HousingShortAlarm(const LifeConfig& config, const WorldState& world, Alarm& alarm);
 
-/// @brief A NEWCOMER's roof — a couple's, a migrant's (housing §9 «свадьбы не
-///        встают», «переселенцы размещаются»; boss seq 197): a free house not
-///        on the brink, else a barrack place for `people`. `shared` says which:
-///        true for the barrack, whose `household` the newcomer must not take.
-///        Invalid when neither is there.
+/// @brief A MIGRANT's roof (since row 456 no couple's - HomeForCouple):
+///        A BARRACK PLACE for `people` FIRST, and a free house not on the
+///        brink only when no barrack has room AND no couple waits for a house
+///        (demography design «Жильё приезжего — барак… В очередь за домом
+///        наравне с молодожёнами приезжие не встают», the human, 1 October
+///        2026; boss and econ, 14 October 2026). Until then the free house
+///        came first: with couples barred from barracks, the canon's migrants
+///        took the houses (8 a year) while 48 couples waited and barracks
+///        stood nearly empty (host's 456 pair). `shared` true for the barrack,
+///        whose `household` the newcomer must not take. Invalid when neither.
 UnitId HomeForNewcomers(const LifeConfig& config,
                         const WorldState& current,
                         std::uint32_t people,

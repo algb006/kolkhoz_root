@@ -241,6 +241,31 @@ int CheckNoWeddingIntoABarrackYard() {
   return failures;
 }
 
+/// A migrant's roof: a barrack place before a free house; with no barrack
+/// place, the free house only while no couple waits for one.
+int CheckTheMigrantGoesToTheBarrackFirst() {
+  int failures = 0;
+  const core::LifeConfig config = BarrackConfig();
+  core::WorldState world;
+  const core::UnitId house = AddUnit(world, 0);
+  const core::UnitId barrack = AddUnit(world, 1);
+  bool shared = false;
+  failures +=
+      Expect(core::HomeForNewcomers(config, world, 1, shared).value == barrack.value && shared,
+             "migrant: a barrack place before the free house");
+  AddBarrackFamily(world, barrack, 5);  // the barrack full
+  failures +=
+      Expect(core::HomeForNewcomers(config, world, 1, shared).value == house.value && !shared,
+             "migrant: the barrack full and no couple waiting - the free house");
+  core::WeddingWaitRow couple;
+  couple.since_day = 0;
+  AppendRow(world.wedding_waits, couple);
+  failures +=
+      Expect(core::HomeForNewcomers(config, world, 1, shared).value == core::kInvalidEntityIdValue,
+             "migrant: a couple waiting - the free house is theirs, the migrant has none");
+  return failures;
+}
+
 }  // namespace
 
 int CheckNoWeddingIntoABarrackAndTheCrowdedBarrack() {
@@ -249,5 +274,6 @@ int CheckNoWeddingIntoABarrackAndTheCrowdedBarrack() {
   failures += CheckTheClimb();
   failures += CheckNoWeddingIntoABarrackPlace();
   failures += CheckNoWeddingIntoABarrackYard();
+  failures += CheckTheMigrantGoesToTheBarrackFirst();
   return failures;
 }
