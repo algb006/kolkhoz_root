@@ -47,6 +47,11 @@
 ///    is a tour of its own. THE DISTRICT LOT likewise: the lots standing at the
 ///    district centre on one day for the village's own carts are one sender
 ///    (PlanDistrictTours), the stores they go to the receivers.
+///    A NAMED SIMPLIFICATION (boss, core-boss-v4-scope-2026-10-14 [6]): a
+///    tour changes the PRICE of each works' seam, NOT WHO CARTS IT - labour
+///    still places a carter per works, and the one cart driving the tour is
+///    the layer's picture. Do not read the labour placement as the route.
+///    The saving is real (shared trips priced once); the route is not a job.
 /// 3. THE ORDER OF STOPS IS GREEDY - THE OPTIMUM BY DELIVERY TIME IS A STUB
 ///    (transport §12 «Выбор варианта»). Its return condition, written here:
 ///    the pair's probe prints each tour's km by the greedy order against the
