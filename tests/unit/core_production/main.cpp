@@ -43,6 +43,7 @@
 #include "core_tables/tables.h"
 #include "demolition_stock.h"
 #include "district_car.h"
+#include "district_carts_checks.h"
 #include "district_limit.h"
 #include "district_plan.h"
 #include "district_trip.h"
@@ -15648,7 +15649,8 @@ int CheckAWinterCropTheChainCannotSow() {
 /// produce and the year, and goes out once any chain grows it then. By
 /// produce, so a second crop of the same produce covers it; fallow and
 /// unassigned ground cover nothing.
-/// kPlanPositionShort (boss seq 89): on the year's last day, a position the
+/// kPlanPositionShort (boss seq 89): from one district collection before the
+/// deadline's (stage В5) to the year's last day, a position the
 /// turn's delivery cannot bring to the met share, with the grams it lacks.
 int CheckAShortPlanPositionIsAnAlarmOnTheLastDay() {
   int failures = 0;
@@ -15694,8 +15696,14 @@ int CheckAShortPlanPositionIsAnAlarmOnTheLastDay() {
   failures += Expect(shorts(core::kDaysPerYear - 1) == expected,
                      "plan short: on the year's last day each position the stores cannot make "
                      "whole is named with the grams it lacks");
-  failures += Expect(shorts(core::kDaysPerYear - 2).empty() && shorts(0).empty(),
-                     "plan short: not on any other day — the boss's «за сутки до поворота»");
+  // Stage В5: one district collection before the deadline's — the eleventh
+  // month's last day — and every day after it to the turn.
+  failures += Expect(shorts(core::kDaysPerYear - 1 - core::kDaysPerMonth) == expected &&
+                         shorts(core::kDaysPerYear - 2) == expected,
+                     "plan short: lit from one district collection before the deadline's");
+  failures +=
+      Expect(shorts(core::kDaysPerYear - 2 - core::kDaysPerMonth).empty() && shorts(0).empty(),
+             "plan short: not before that collection, nor after the turn");
   failures += Expect(shorts((2 * core::kDaysPerYear) - 1) == expected,
                      "plan short: and on the last day of every year, not only the first");
   // 9.9 t of rye in reach is met at 0.99: the alarm goes out.
@@ -16611,6 +16619,7 @@ int main() {
   failures += CheckMeadowHayLiesAtTheMeadow();
   failures += CheckEachFarmEatsFromItsOwnRick();
   failures += CheckWholeTripsAndTheRoutes();
+  failures += CheckWhoseTransportToTheDistrict();
   failures += CheckTheCartingReachesTheStoreInItsHour();
   failures += CheckTheHeapLampIsRedOnlyWhenItSpoils();
   failures += CheckTheSeedLampIsNotAFalseAlarm();

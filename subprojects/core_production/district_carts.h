@@ -1,5 +1,5 @@
 /// @file
-/// @brief CONTRACT, NO BODY YET - WHOSE TRANSPORT TO THE DISTRICT (routing
+/// @brief WHOSE TRANSPORT TO THE DISTRICT (routing
 ///        stage В5; district §4 «Логистика с районом», transport §12 «Задачи
 ///        с райцентром»): every operation with the district - a lot received
 ///        by the limit, or the plan delivered - names on its request whose
@@ -30,7 +30,8 @@
 ///     tonnes earn, by the share own carts carried - 10 % × plan_met_points ×
 ///     (own share of the plan's tonnes) + 10 % × the above-plan points × (own
 ///     share of the above-plan tonnes). The 10 % is a table cell
-///     (limit_points.csv, proposed key `own_delivery_bonus_share`; boss's base).
+///     (world_params `own_delivery_bonus_share`, the body's home; boss's base;
+///     0.1 by default until the export lands).
 /// (c) THE RUN CHAIRMAN (tests/run/common, the canon): own carts for the
 ///     plan's delivery only on a day with no field in its harvest window and
 ///     no heap lying on a field; the district otherwise. The novice (host):
@@ -44,12 +45,12 @@
 ///    to deliver above the deadline's default, by position, and by whose
 ///    transport. kDeliverPlan with the district's transport RAISES the
 ///    request (collected on the month's last day, or slipped in the mud); with
-///    own transport it opens the OWN DELIVERY: a carting seam from the
-///    granary that holds it to the district centre - the district lot's road
-///    reversed (the store → the map's exit → district_center_km), drained by
-///    carters as the lot's is, a logistics task in the common queue; grams
-///    count to the plan AS THEY ARRIVE (the evening's settlement). No order at
-///    all: the deadline's delivery, as today (the year's last collection).
+///    own transport it opens the OWN DELIVERY: an outbound LimitDeliveryRow
+///    (`outbound` 1), carted by the district lot's own seam from the store
+///    that holds the first good to the district centre, drained by carters as
+///    the lot's is, a logistics task in the common queue, stopped in the mud;
+///    grams count to the plan AS THEY ARE CARTED (the evening's settlement).
+///    No order at all: the deadline's delivery, as today (never slips).
 /// 3. OWN CARTS FOR ANY LOT: kOrderLimitLot's `enable` 1 sets
 ///    LimitDeliveryRow::own_carts for any lot; the lot then waits at the
 ///    district centre from its arrive_day as the timber lot does (the same
@@ -61,17 +62,14 @@
 /// 5. THE BONUS: YearLimitPoints gains the own shares; YearLedger books the
 ///    plan's grams delivered by own carts (delivered_own) beside `delivered`.
 ///
-/// THE SAVE (VERSION_SAVE 163, predicted before the body):
+/// THE SAVE (VERSION_SAVE 163; the contract predicted five fields, the body
+/// built three - the own delivery rides a lot row, whose seam is saved):
 ///   * PlanState::requested, ResourceAmounts - the district's standing
-///     request beyond the deadline's default (a u16 count + 8 bytes a
-///     position on the wire);
-///   * PlanState::own_requested, ResourceAmounts - what own carts still owe
-///     to carry (same);
-///   * PlanState::own_haul_days_remaining, own_haul_days_written - floats, the
-///     own delivery's seam (8 bytes); PlanState::own_haul_to - Vec2, its
-///     sender, the granary (8 bytes);
+///     request beyond the deadline's default; cleared at the year's turn;
+///   * LimitDeliveryRow::outbound, a byte - the row is the plan's own
+///     delivery going out, not a lot coming in;
 ///   * YearLedger::delivered_own, ResourceAmounts - the year's plan grams that
-///     came by own carts (a u16 + 8 a position, a book);
+///     came by own carts;
 ///   * NOTHING for the slipped collection: the mud is read on the collection's
 ///     day (WeatherState::mud is saved already), the calendar is the clock's.
 ///
@@ -139,12 +137,12 @@ OrderRefusal RequestPlanDelivery(const ProductionConfig& config,
                                  Grams amount,
                                  bool own);
 
-/// @brief The own delivery's evening (and hourly) settlement: the share the
-///        carters drained leaves the granary and counts to the plan as it
-///        arrives (delivered and delivered_own); tomorrow's seam priced by the
-///        one price door (cart_trips.h, CartDaysFor) from the granary to the
-///        district centre. As SettleDistrictLotHauling, reversed.
-void SettleOwnPlanDelivery(const ProductionConfig& config, WorldState& current, bool evening);
+/// THE OWN DELIVERY's SETTLEMENT IS THE DISTRICT LOT's (the body found): the
+/// outgoing row is a LimitDeliveryRow with `outbound` 1, carted by the same
+/// seam, labour job and logistics task as an own-carts lot; field_haul.cpp,
+/// SettleDistrictLotHauling, takes the carted share from the stores and counts
+/// it to the plan (delivered, delivered_own). The contract's separate
+/// SettleOwnPlanDelivery was dropped for that reason - one machinery, both ways.
 
 /// @brief The lot window's horse price: the cart-days a lot of `lot` would
 ///        take by the village's own carts today (its goods, its store, the
@@ -152,12 +150,15 @@ void SettleOwnPlanDelivery(const ProductionConfig& config, WorldState& current, 
 float LotOwnCartDays(const ProductionConfig& config, const WorldState& world, LimitLotId lot);
 
 /// @brief The bonus points of a year (econ's (a)): bonus share × plan_met_points
-///        × own share of the plan + bonus share × above-plan points × own share
-///        of the above-plan tonnes. Rounded as YearLimitPoints rounds.
+///        × own share + bonus share × `overfulfil_points` × own share, the own
+///        share read off the closing year's book (delivered_own ÷ delivered) -
+///        ONE share for the plan's tonnes and the above-plan ones, the book not
+///        telling which tonne was above the plan (a named simplification).
+///        Rounded as YearLimitPoints rounds.
 std::int32_t OwnDeliveryBonusPoints(const ProductionConfig& config,
                                     const WorldState& world,
                                     bool plan_fully_met,
-                                    float overfulfil_grain_tonnes);
+                                    float overfulfil_points);
 
 }  // namespace core
 

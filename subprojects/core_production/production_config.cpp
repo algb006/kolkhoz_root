@@ -1365,6 +1365,15 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
                                     error)) {
       return false;
     }
+    // THE OWN-DELIVERY BONUS's SHARE (routing stage В5; econ's (a)): no row,
+    // the default 0.1 stands.
+    if (!OptionalValue(*world,
+                       "own_delivery_bonus_share",
+                       Range{.low = 0.0F, .high = 1.0F},
+                       config.own_delivery_bonus_share,
+                       error)) {
+      return false;
+    }
   }
   if (const ITable* const weather = tables.FindTable("weather_params")) {
     if (!OptionalValue(*weather,

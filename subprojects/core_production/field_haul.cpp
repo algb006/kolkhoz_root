@@ -24,6 +24,7 @@
 #include "core_common/state_table_ops.h"
 #include "core_common/unit_state.h"
 #include "core_common/work_seam.h"
+#include "district_plan.h"
 #include "feed_home.h"
 #include "haul_ways.h"
 #include "seed_room.h"
@@ -787,11 +788,28 @@ void SettleStoreEmptying(const ProductionConfig& config, WorldState& current, bo
   }
 }
 
-HaulRate DistrictLotHaulRate(const ProductionConfig& config, const WorldState& world) {
+HaulRate DistrictLotHaulRate(const ProductionConfig& config,
+                             const WorldState& world,
+                             const LimitDeliveryRow* lot) {
+  // WHAT IT CARRIES (routing stage В5): a timber lot's logs, or - for any
+  // other lot by own carts, and for the plan's delivery going out - the first
+  // of its goods.
+  ResourceId carried = config.timber.log_resource;
+  const bool logs = lot == nullptr || (config.timber.log_resource.value < lot->goods.size() &&
+                                       lot->goods[config.timber.log_resource.value] > 0);
+  if (!logs) {
+    for (std::size_t index = 0; index < lot->goods.size(); ++index) {
+      if (lot->goods[index] > 0) {
+        carried = DefIdFromIndex<ResourceIdTag>(static_cast<std::uint32_t>(index));
+        break;
+      }
+    }
+  }
   // TO THE LOG PILE, as a stand's logs go (StandHaulRate): the door's own
-  // home for logs; no pile, the shared store.
+  // home for logs; no pile, the shared store. Any other load, in or out: the
+  // shared store (the granary the plan's grain leaves from).
   std::uint32_t destination_row = kNoRow;
-  for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+  for (std::uint32_t row = 0; logs && row < world.units.rows.size(); ++row) {
     const UnitRow& unit = world.units.rows[row];
     if (StoresGoods(unit, config) && StorageCapacityGrams(unit, config) < 0 &&
         IsHomeOf(unit, config, config.timber.log_resource)) {
@@ -821,11 +839,10 @@ HaulRate DistrictLotHaulRate(const ProductionConfig& config, const WorldState& w
   // the district's road — district_center_km), then by the network to the
   // pile (TravelMode::kLogCart, the log cart's roads).
   const RouteMeasure way = RoadMeasure(world, TravelMode::kLogCart, exit, destination);
-  HaulRate rate =
-      RateOverKm(config.district_center_km + way.effective_km,
-                 hours_per_km,
-                 loaded_hours_per_km,
-                 CartLoadGrams(config.porter, config.cart_load_kg, config.timber.log_resource));
+  HaulRate rate = RateOverKm(config.district_center_km + way.effective_km,
+                             hours_per_km,
+                             loaded_hours_per_km,
+                             CartLoadGrams(config.porter, config.cart_load_kg, carried));
   // Booked on the cart's columns under the district (CartLoadSource::kDistrict):
   // the load's end is the district's road, never a field; the store's end is
   // the pile's gate.
@@ -843,6 +860,7 @@ void SettleDistrictLotHauling(const ProductionConfig& config, WorldState& curren
   struct LotLeft {
     std::uint32_t row = 0;
     Grams left = 0;
+    HaulRate rate;
   };
 
   std::vector<LotLeft> pending;  // the evening's seams, priced after the loop
@@ -851,21 +869,26 @@ void SettleDistrictLotHauling(const ProductionConfig& config, WorldState& curren
     if (lot.own_carts == 0 || lot.arrive_day > current.calendar.day) {
       continue;
     }
+    const bool outbound = lot.outbound != 0;  // the plan's own delivery (В5)
     // AS A STORE BEING EMPTIED IS (SettleStoreEmptying): what the carters
     // drained since last night is a share of what could be taken in, carted
-    // in the lot's resource order — logs first — through the store door.
-    const auto movable = [&config, &current, &lot]() {
+    // in the lot's resource order — logs first — through the store door. GOING
+    // OUT: what of the delivery still lies in the stores above the seed.
+    const auto movable = [&config, &current, &lot, outbound]() {
       Grams total = 0;
       for (std::size_t index = 0; index < lot.goods.size(); ++index) {
         if (lot.goods[index] <= 0) {
           continue;
         }
-        const Grams room = ReceivableRoom(config, current, DefIdFromIndex<ResourceIdTag>(index));
+        const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
+        const Grams room =
+            outbound ? DeliverableFromStores(config, current, resource, current.calendar.day)
+                     : ReceivableRoom(config, current, resource);
         total += lot.goods[index] < room ? lot.goods[index] : room;
       }
       return total;
     };
-    const HaulRate rate = DistrictLotHaulRate(config, current);
+    const HaulRate rate = DistrictLotHaulRate(config, current, &lot);
     lot.haul_to = rate.has_receiver ? rate.receiver : lot.haul_to;  // F3 (A)
     const float done = lot.haul_days_written > lot.haul_days_remaining
                            ? lot.haul_days_written - lot.haul_days_remaining
@@ -889,7 +912,27 @@ void SettleDistrictLotHauling(const ProductionConfig& config, WorldState& curren
         }
         const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
         const Grams wanted = lot.goods[index] < budget ? lot.goods[index] : budget;
-        const Grams moved = DeliverToStores(current, config, resource, wanted);
+        Grams moved = 0;
+        if (outbound) {
+          // THE PLAN's OWN DELIVERY (routing stage В5): it leaves the stores and
+          // counts to the plan as it arrives - booked as delivered, and as
+          // delivered by own carts (the bonus's share).
+          // Each good at its own ceiling: the budget is the row's sum.
+          moved = TakeFromStorage(
+              current,
+              config,
+              resource,
+              std::min(wanted,
+                       DeliverableFromStores(config, current, resource, current.calendar.day)));
+          if (current.plan.delivered.size() <= index) {
+            current.plan.delivered.resize(index + 1, 0);
+          }
+          current.plan.delivered[index] += moved;
+          AddLedgerAmount(current.ledger.current.delivered, resource, moved);
+          AddLedgerAmount(current.ledger.current.delivered_own, resource, moved);
+        } else {
+          moved = DeliverToStores(current, config, resource, wanted);
+        }
         lot.goods[index] -= moved;
         BookHauled(current.ledger.current, resource, moved, foot);
         budget -= moved;
@@ -917,32 +960,40 @@ void SettleDistrictLotHauling(const ProductionConfig& config, WorldState& curren
     }
     // Tomorrow's demand: what is still at the district that has somewhere
     // to go. No horse free: nobody is sent (the rate carries no load).
-    pending.push_back(LotLeft{.row = row, .left = movable()});
+    pending.push_back(LotLeft{.row = row, .left = movable(), .rate = rate});
   }
   // THE PRICE, after every lot is known (routing stage В4's door): under the
   // routes (WR) the lots waiting at the district centre for the village's own
   // carts are ONE SENDER to one receiver, the log pile - their loads ride one
   // cart, and each lot pays its share of the pool's whole trips. Otherwise
   // each lot alone, as before.
+  // THE POOL holds the timber lots alone (one receiver, the log pile); any
+  // other row - a lot of other goods, the plan's delivery going out - is
+  // priced alone at its own rate (routing stage В5).
   if (evening && !pending.empty()) {
-    const HaulRate rate = DistrictLotHaulRate(config, current);
+    const std::size_t log = config.timber.log_resource.value;
+    const auto pooled = [&current, log](const LotLeft& lot) {
+      const LimitDeliveryRow& row = current.limit_deliveries.rows[lot.row];
+      return row.outbound == 0 && log < row.goods.size() && row.goods[log] > 0;
+    };
+    const HaulRate pool_rate = DistrictLotHaulRate(config, current);
     Grams pool = 0;
     for (const LotLeft& lot : pending) {
-      pool += lot.left;
+      pool += pooled(lot) ? lot.left : 0;
     }
     const bool routed =
         config.cart_trip_model == static_cast<std::uint8_t>(CartTripModel::kWholeRouted);
     const float pool_days =
-        routed && pool > 0 && rate.load > 0 ? CartDaysFor(config, pool, rate) : 0.0F;
+        routed && pool > 0 && pool_rate.load > 0 ? CartDaysFor(config, pool, pool_rate) : 0.0F;
     for (const LotLeft& lot : pending) {
       LimitDeliveryRow& row = current.limit_deliveries.rows[lot.row];
-      if (lot.left <= 0 || rate.load <= 0) {
+      if (lot.left <= 0 || lot.rate.load <= 0) {
         row.haul_days_remaining = 0.0F;
-      } else if (routed) {
+      } else if (routed && pooled(lot) && pool > 0) {
         row.haul_days_remaining =
             pool_days * static_cast<float>(lot.left) / static_cast<float>(pool);
       } else {
-        row.haul_days_remaining = CartDaysFor(config, lot.left, rate);
+        row.haul_days_remaining = CartDaysFor(config, lot.left, lot.rate);
       }
       row.haul_days_written = row.haul_days_remaining;
     }

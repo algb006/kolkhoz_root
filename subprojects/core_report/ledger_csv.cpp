@@ -434,6 +434,8 @@ void EmitSheet(ColumnWriter& out, const WorldState& state, const ITableSet& tabl
   // outside any position here too (milk_cart.cpp), so delivered >= due does
   // not mean the position held — plan_verdict says that (manual/68 §5).
   EmitResourceBlock(out, resources, "delivered", book.delivered);
+  // Of it, what the village's own carts carried (routing stage В5).
+  EmitResourceBlock(out, resources, "delivered_own", book.delivered_own);
   // What the district asked by position (M12): beside `delivered`, the
   // year's lost_no_room and issued, a failed position names its cause.
   EmitResourceBlock(out, resources, "plan_due", book.plan_due);

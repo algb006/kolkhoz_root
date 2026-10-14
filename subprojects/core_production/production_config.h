@@ -1160,6 +1160,12 @@ struct ProductionConfig {
   /// column, or an empty cell: 0.
   std::uint8_t cart_trip_model = 0;
 
+  /// THE OWN-DELIVERY BONUS's SHARE (routing stage В5; district §4; econ's
+  /// (a)): world_params.csv `own_delivery_bonus_share` - the share of the
+  /// points own-carted tonnes earned that a year adds (district_carts.h,
+  /// OwnDeliveryBonusPoints). 0.1 by econ; no row: 0.1.
+  float own_delivery_bonus_share = 0.1F;
+
   /// What a back carries by the load's form, and the terms of logs by two
   /// (core_common/haul.h, PorterRules; core_catalog/porter_catalog.h) - the
   /// same reading labour and logistics hold. Until 0.37.240 a float here,
