@@ -69,6 +69,10 @@ enum class CartLoadSource : std::uint8_t {
   /// The materials fixed for a works, from their sender to the unit (routing
   /// stage V2, save 147; field_haul SettleSiteSupply).
   kSupply,
+  /// A timber stand's felled logs, to their pile (routing stage В4, save 162;
+  /// SettleStandHauling): until В4 their log cart was booked nowhere, and the
+  /// print that priced whole trips missed them.
+  kStand,
   kCartLoadSourceCount,
 };
 

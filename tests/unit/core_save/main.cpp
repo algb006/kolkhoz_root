@@ -1829,7 +1829,9 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // the build; held, and the hash recorded from that run (the first field's
     // stand in its fourth summer).
     // Save 153: +8 a field — haul_to, the load's receiver; 371 -> 395, held.
-    {"fields", 395, 0xbb5df227b4e03e68ULL},
+    // Save 162 (stage В4): +8 a field — the straw lying at the field;
+    // 395 -> 419 predicted (three fields) and held; the hash read off the build.
+    {"fields", 419, 0xb53348527e0000c8ULL},
     // Save 67: +27 — the store's emptying byte and the perevalka's two floats,
     // three units; predicted before the fields were added, and held.
     // Save 74: +1 a unit — the house held for a specialist; three units, +3,
@@ -2109,7 +2111,10 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // build and held. And the write-off of a row that ended owing, 8 bytes a
     // book: predicted 2880 -> 2896 before the build. Save 160: the write-off
     // at the second share-out, 8 bytes a book: 2896 -> 2912, predicted and held.
-    {"ledger", 2912, 0x46fec262d2163f18ULL},
+    // Save 162 (stage В4): the cart book's sixth source, the stands' logs - one
+    // entry in eight arrays (6 floats, 2 Grams), 40 bytes a book: 2912 -> 2992
+    // predicted and held; the hash read off the build.
+    {"ledger", 2992, 0x175cb13794ce38b8ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 

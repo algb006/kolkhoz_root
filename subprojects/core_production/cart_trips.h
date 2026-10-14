@@ -1,9 +1,21 @@
 /// @file
-/// @brief CONTRACT, NO BODY YET - WHOLE TRIPS AND THE ROUTES (routing stage
-///        В4): a cart's trip is whole - it leaves with what lies, up to its
-///        load, and comes back - and one sender's loads for several receivers
-///        ride one cart where their forms mix (transport §11-§12). Private to
-///        core_production.
+/// @brief WHOLE TRIPS AND THE ROUTES (routing stage В4), built and NOT
+///        SHIPPED: the switch stands at 0, the fluid (below). A cart's trip
+///        whole - it leaves with what lies, up to its load, and comes back -
+///        and one sender's loads for several receivers on one cart where their
+///        forms mix (transport §11-§12). Private to core_production.
+///
+/// THE FLUID IS A STATED STUB (boss, core-boss-v4-scope-2026-10-14 [8], by
+/// econ's gate set before the run): «carting priced by the gram; a part-load
+/// costs its fraction». The arms on nine villages, four years: W cost +12.0 %
+/// of the carters' hours (median +12.3 %); WR +5.1 % MORE than W - the tours
+/// gave back 0.4 %, the mix rule cost +5 %; gate 3 («WR gives back at least
+/// half of W») failed, and W/WR showed 3 underfed kolkhoz herd-evenings
+/// against F's 0. RETURN CONDITION: U above 1.10 on a later base AND a
+/// consolidation that gives back at least half (pooling two fields' leftovers
+/// is the candidate - the field heaps held 52 of 82 thousand fluid
+/// cart-hours, and §12's one-sender rule pools none of them), or Epoch II's
+/// lorries. The tours and the mix stay here behind the switch, unused.
 ///
 /// WHY. Until this stage the core priced every carting as a FLUID: a seam's
 /// cart-days were grams ÷ (cart load × trips a day) (core_common/haul.cpp,
@@ -20,10 +32,10 @@
 /// field heaps +13 %. A LOWER BOUND: logs off the stands are outside the
 /// cart book (below, item 5) - U is printed again with them before W is read.
 ///
-/// ONE SWITCH, THREE ARMS (a table cell, not a build - transport.csv
-/// `cart_trip_model`, proposed key; boss's base): 0 F - the fluid, as today;
-/// 1 W - whole trips, no consolidation; 2 WR - whole trips and the routes.
-/// The released value is decided by the pair (econ's lines, below).
+/// ONE SWITCH, THREE ARMS (a table cell, not a build - transport.csv, column
+/// `trip_model` on the `cart_loaded` row; boss's base; absent reads 0): 0 F -
+/// the fluid, as today; 1 W - whole trips, no consolidation; 2 WR - whole
+/// trips and the routes. Shipped at 0.
 ///
 /// 1. THE PRICE OF A LOAD (every carting: field heaps, extraction sites, stores
 ///    emptied, the district lot, the works' supply, the stands' logs, the
@@ -46,7 +58,10 @@
 ///    whole trips, by grams (StopShareOfTour). A load that mixes with no other
 ///    is a tour of its own. THE DISTRICT LOT likewise: the lots standing at the
 ///    district centre on one day for the village's own carts are one sender
-///    (PlanDistrictTours), the stores they go to the receivers.
+///    and - the body found - ONE RECEIVER, the log pile (an own-carts lot is a
+///    timber lot): no tour to plan, a POOL - each lot pays its share of the
+///    pool's whole trips (field_haul.cpp, SettleDistrictLotHauling). The
+///    contract's PlanDistrictTours was dropped with the body for that reason.
 ///    A NAMED SIMPLIFICATION (boss, core-boss-v4-scope-2026-10-14 [6]): a
 ///    tour changes the PRICE of each works' seam, NOT WHO CARTS IT - labour
 ///    still places a carter per works, and the one cart driving the tour is
@@ -121,7 +136,8 @@
 
 namespace core {
 
-/// @brief The cart trip's model, transport.csv `cart_trip_model` (proposed).
+/// @brief The cart trip's model, transport.csv `trip_model` on the
+///        `cart_loaded` row (ProductionConfig::cart_trip_model).
 enum class CartTripModel : std::uint8_t {
   kFluid = 0,        ///< F: grams ÷ load × round trip - today.
   kWhole = 1,        ///< W: whole trips, no consolidation.
@@ -133,6 +149,15 @@ enum class CartTripModel : std::uint8_t {
 ///        trips stand as today (haul.h): this door is the cart's.
 /// @return 0 for no grams or no rate, as HaulDaysFor.
 float CartDaysFor(const ProductionConfig& config, Grams grams, const HaulRate& rate);
+
+/// @brief What `added` grams laid on a seam already priced for `before`
+///        grams adds to its price - CartDaysFor(before + added) less
+///        CartDaysFor(before): under whole trips a few kilograms more may cost
+///        nothing (they ride the last trip) or a whole trip.
+float CartDaysAdded(const ProductionConfig& config,
+                    Grams before,
+                    Grams added,
+                    const HaulRate& rate);
 
 /// @brief One receiver of a tour: the unit (a works, or a store for the
 ///        district lot) and what it takes off this cart.
@@ -160,10 +185,6 @@ struct CartTour {
 ///        load is full. In row order of the senders, deterministic.
 /// @return Empty under F and W: each works is then its own tour, as today.
 std::vector<CartTour> PlanSupplyTours(const ProductionConfig& config, const WorldState& world);
-
-/// @brief THE DISTRICT LOT's TOURS (item 2; WR only): the lots waiting at the
-///        district centre for the village's own carts, as one sender.
-std::vector<CartTour> PlanDistrictTours(const ProductionConfig& config, const WorldState& world);
 
 /// @brief A stop's share of its tour's whole trips, cart-days, by grams.
 /// @pre `stop` < tour.stops.size().

@@ -140,5 +140,35 @@ int CheckMeadowHayLiesAtTheMeadow() {
   failures += Expect(HayAt(world, manger, hay) == manger_before,
                      "meadow hay: the hay of an arable field does not go to the manger — its door "
                      "is the stores', as before");
+
+  // THE FIELD's STRAW GETS ITS CART (routing stage В4, item 4): two tonnes of
+  // straw lying at an arable field whose grain is in - that evening the straw
+  // becomes the field's load, priced to the rick nearest by road; carted
+  // through, it is in that rick and none is left at the field.
+  const core::ResourceId straw = config.straw_resource;
+  core::FieldRow stubble;
+  stubble.kind = core::LandKind::kArable;
+  stubble.center = core::Vec2{.x = 950.0F, .y = 0.0F};
+  stubble.area_ga = 5.0F;
+  stubble.straw_grams = 2'000'000;
+  core::AppendRow(world.fields, stubble);
+  core::SettleHauling(config, world);
+  const core::FieldRow& turned = world.fields.rows.back();
+  failures +=
+      Expect(turned.reaped_resource.value == straw.value && turned.reaped_grams == 2'000'000 &&
+                 turned.straw_grams == 0 && turned.haul_days_remaining > 0.0F,
+             "field straw: the evening the grain is in, the straw is the field's load and "
+             "its carting is priced");
+  world.fields.rows.back().haul_days_remaining = 0.0F;
+  core::SettleHauling(config, world);
+  const auto straw_at = [&](core::UnitId unit) {
+    const core::UnitRow& row = world.units.rows[core::FindRow(world.units, unit)];
+    return straw.value < row.stock.size() ? row.stock[straw.value] : 0;
+  };
+  std::cout << "  field straw: carted - in the nearest rick " << straw_at(near_stack) / 1000
+            << " kg, at the field " << world.fields.rows.back().reaped_grams / 1000 << " kg\n";
+  failures +=
+      Expect(straw_at(near_stack) == 2'000'000 && world.fields.rows.back().reaped_grams == 0,
+             "field straw: carted through, the whole of it is in the nearest rick");
   return failures;
 }

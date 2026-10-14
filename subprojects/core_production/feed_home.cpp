@@ -540,8 +540,12 @@ std::uint32_t HeapRickRow(const ProductionConfig& config,
   const ResourceId resource = field.reaped_resource;
   // An unnamed hay resource compares equal to an unnamed load by two 0xFFFF
   // sentinels (0.17.79): named, or it is nobody's manger.
-  if (field.kind == LandKind::kArable || resource.value == kInvalidDefIdValue ||
-      resource.value != config.hay_resource.value) {
+  // A MEADOW's HAY, or A FIELD's STRAW on any land (routing stage В4, item 4):
+  // the straw lying at the field goes to a rick by the same door.
+  const bool meadow_hay =
+      field.kind != LandKind::kArable && resource.value == config.hay_resource.value;
+  const bool straw = resource.value == config.straw_resource.value;
+  if (resource.value == kInvalidDefIdValue || !(meadow_hay || straw)) {
     return kNoRow;
   }
   // THE RICK THE DOOR CHOSE (RickForLoadFrom; routing stage В3, step two).
@@ -575,8 +579,10 @@ void ChooseRickForHeap(const ProductionConfig& config,
                        const WorldState& world,
                        FieldRow& field,
                        bool afresh) {
-  if (field.kind == LandKind::kArable || field.reaped_resource.value == kInvalidDefIdValue ||
-      field.reaped_resource.value != config.hay_resource.value) {
+  const bool meadow_hay =
+      field.kind != LandKind::kArable && field.reaped_resource.value == config.hay_resource.value;
+  const bool straw = field.reaped_resource.value == config.straw_resource.value;
+  if (field.reaped_resource.value == kInvalidDefIdValue || !(meadow_hay || straw)) {
     return;
   }
   std::uint32_t count = 0;

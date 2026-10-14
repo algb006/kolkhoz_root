@@ -53,6 +53,12 @@ HaulRate RateToward(const ProductionConfig& config,
         RateOverKm(RoadKm(world, mode, from, destination), hours_per_km, loaded_hours_per_km, load);
     walked.receiver = destination;
     walked.has_receiver = true;
+    // THE LOG CART IS A CART IN THE BOOK (routing stage В4): its trips are
+    // booked as the produce cart's, with no off-road metres measured - the way
+    // crosses the felling's ground, which is not «off the road» in the
+    // question the book asks. Until В4 a stand's logs and a works' logs
+    // straight off a stand were carted and booked nowhere.
+    walked.produce_cart = mode == TravelMode::kLogCart;
     return walked;
   }
   // THE PRODUCE CART: the same way, and how much of it is off the road, for

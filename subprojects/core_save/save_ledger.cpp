@@ -150,8 +150,11 @@ constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
 // 1040 + 40 A -> 1056 + 41 A; predicted before each build (1048 with the
 // repaid alone, held). Save 160: the write-off at the second share-out, its
 // grams beside the other's - predicted 1056 -> 1064 and 123 fields before
-// the build; on the wire +8 a book.
-static_assert(sizeof(YearLedger) == 1064 + (41 * kAmountsSize) + kBuiltInRowsSize,
+// the build; on the wire +8 a book. Save 162 (stage В4): CartLoadSource gains
+// kStand, the eight arrays by source one entry each (six floats, two Grams) -
+// predicted 1064 -> 1104 before the build, 123 fields unchanged; on the wire
+// +40 a book.
+static_assert(sizeof(YearLedger) == 1104 + (41 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<YearLedger>() == 123,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");

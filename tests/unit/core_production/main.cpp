@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "../../common/fake_tables.h"
+#include "cart_trips_checks.h"
 #include "core_catalog/seed_norm_catalog.h"
 #include "core_common/alarm_state.h"
 #include "core_common/away_in_district.h"
@@ -14069,8 +14070,13 @@ int CheckProduceCartOffTheRoad() {
   core::TimberStandRow stand;
   stand.position = core::Vec2{.x = 1000.0F, .y = 300.0F};
   const core::HaulRate logs = core::StandHaulRate(config, world, stand);
-  failures += Expect(!logs.produce_cart,
-                     "and a cart with logs is no produce cart: it may leave the road (§11)");
+  // SINCE 0.37.257 (routing stage В4) the log cart is in the cart book - its
+  // trips counted - but with no off-road metres: it may leave the road
+  // (§11), and the book's off-road question is the produce cart's.
+  failures +=
+      Expect(logs.produce_cart && logs.off_road_load_m == 0.0F && logs.off_road_store_m == 0.0F,
+             "a cart with logs is booked as a cart, with no off-road metres: it may leave "
+             "the road (§11)");
   return failures;
 }
 
@@ -16589,6 +16595,7 @@ int main() {
   failures += CheckTheCartOfTheCompressedYear();
   failures += CheckMeadowHayLiesAtTheMeadow();
   failures += CheckEachFarmEatsFromItsOwnRick();
+  failures += CheckWholeTripsAndTheRoutes();
   failures += CheckTheCartingReachesTheStoreInItsHour();
   failures += CheckTheHeapLampIsRedOnlyWhenItSpoils();
   failures += CheckTheSeedLampIsNotAFalseAlarm();

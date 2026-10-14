@@ -211,8 +211,13 @@ static_assert(AggregateArity<FamilyRow>() == 36,
 // the build; the wire row + 1 byte.
 // Save 153 (stage В, F3): haul_to, a point after haul_days_written — predicted
 // 128 -> 136 and 45 -> 46 fields before the build; the wire row + 8 bytes.
-static_assert(sizeof(FieldRow) == 136, "FieldRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<FieldRow>() == 46,
+// Save 162 (stage В4): straw_grams, a Grams - predicted 136 -> 144 and
+// 46 -> 47 fields before the build; MISSED on the first build (152: placed
+// after the two-byte reaped_resource it took 16 bytes), held at 144 by
+// declaring it beside reaped_grams. On the wire + 8 bytes, after
+// reaped_resource.
+static_assert(sizeof(FieldRow) == 144, "FieldRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<FieldRow>() == 47,
               "FieldRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-06: the stink radius pushed the row from 48 + amounts to 56 +
 // amounts. The pause byte before it had landed in padding and moved nothing,
@@ -1056,6 +1061,7 @@ void WriteFieldRow(SaveSink& sink, const FieldRow& row) {
   WriteVec2(out, row.haul_to);  // save 153: the heap's receiver (F3)
   out.WriteI64(row.reaped_grams);
   sink.WriteDefId(DefKind::kResource, row.reaped_resource.value);
+  out.WriteI64(row.straw_grams);  // save 162: the straw lying at the field (В4)
   // The harvest by parts (save 84): the share of this reaping already laid
   // into the heap, and its grams.
   out.WriteFloat(row.harvest_laid_share);
@@ -1161,6 +1167,10 @@ FieldRow ReadFieldRow(LoadSource& source) {
   row.haul_to = ReadVec2(in);  // save 153
   row.reaped_grams = in.ReadI64();
   row.reaped_resource = ResourceId{source.ReadDefId(DefKind::kResource)};
+  row.straw_grams = in.ReadI64();  // save 162
+  if (row.straw_grams < 0) {
+    source.Fail("a field's straw lying at the field is negative");
+  }
   row.harvest_laid_share = in.ReadFloat();
   row.sown_share = in.ReadFloat();
   // A share, and the yield is multiplied by it: outside 0..1 a loaded field

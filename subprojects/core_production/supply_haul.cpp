@@ -8,6 +8,7 @@
 #include <limits>
 #include <vector>
 
+#include "cart_trips.h"
 #include "core_common/day_off.h"
 #include "core_common/haul.h"
 #include "core_common/hauled_book.h"
@@ -62,8 +63,7 @@ float LegDays(const ProductionConfig& config,
               Vec2 site,
               std::vector<float>* by_resource = nullptr) {
   if (SettlementHasCarts(world, config.horse_kind)) {
-    return HaulDaysFor(
-        SumOf(leg.grams), LegRate(config, world, leg, site), config.standard_day_hours);
+    return CartDaysFor(config, SumOf(leg.grams), LegRate(config, world, leg, site));  // В4
   }
   float days = 0.0F;
   if (by_resource != nullptr) {
@@ -159,11 +159,27 @@ SupplyEstimate PriceSiteSupply(const ProductionConfig& config,
     return plan;
   }
   const HaulRate rate = RateToward(config, world, plan.sender, site);
-  plan.cart_days = HaulDaysFor(plan.grams, rate, config.standard_day_hours);
+  plan.cart_days = CartDaysFor(config, plan.grams, rate);  // В4's door
   return plan;
 }
 
 void SettleSiteSupply(const ProductionConfig& config, WorldState& current, bool evening) {
+  // THE TOURS OF THE EVENING (routing stage В4, WR; cart_trips.h): each works'
+  // seam is priced at its share of the tours its front leg rides in, planned
+  // once from the legs as they stand this evening. Empty under F and W.
+  std::vector<float> tour_days;
+  if (evening) {
+    const std::vector<CartTour> tours = PlanSupplyTours(config, current);
+    if (!tours.empty()) {
+      tour_days.assign(current.units.rows.size(), -1.0F);
+      for (const CartTour& tour : tours) {
+        for (std::size_t stop = 0; stop < tour.stops.size(); ++stop) {
+          float& days = tour_days[tour.stops[stop].unit_row];
+          days = (days < 0.0F ? 0.0F : days) + StopShareOfTour(config, tour, stop);
+        }
+      }
+    }
+  }
   for (std::size_t row = 0; row < current.units.rows.size(); ++row) {
     UnitRow& unit = current.units.rows[row];
     ConstructionState& works = unit.construction;
@@ -203,9 +219,10 @@ void SettleSiteSupply(const ProductionConfig& config, WorldState& current, bool 
             all > 0 && !SettlementHasCarts(current, config.horse_kind)
                 ? LegDays(config, current, leg, unit.position) *
                       (static_cast<float>(leg.unpriced) / static_cast<float>(all))
-                : HaulDaysFor(leg.unpriced,
-                              LegRate(config, current, leg, unit.position),
-                              config.standard_day_hours);
+                : CartDaysAdded(config,  // В4's door: the new grams' share of whole trips
+                                all - leg.unpriced,
+                                leg.unpriced,
+                                LegRate(config, current, leg, unit.position));
         leg.unpriced = 0;
       }
     }
@@ -320,8 +337,11 @@ void SettleSiteSupply(const ProductionConfig& config, WorldState& current, bool 
     if (!evening && !unwritten) {
       continue;
     }
-    works.supply_days_remaining =
-        awaiting > 0 ? LegDays(config, current, works.legs.front(), unit.position) : 0.0F;
+    const bool toured = row < tour_days.size() && tour_days[row] >= 0.0F;
+    works.supply_days_remaining = awaiting <= 0 ? 0.0F
+                                  : toured
+                                      ? tour_days[row]  // its share of the evening's tours (WR)
+                                      : LegDays(config, current, works.legs.front(), unit.position);
     works.supply_days_written = works.supply_days_remaining;
     // And what is still to cart on every leg, for the crew's size
     // (ConstructionState::supply_days_all).

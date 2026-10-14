@@ -438,6 +438,17 @@ struct FieldRow {
   /// SAVED: history the simulation cannot rederive (VERSION_SAVE 4 → 5).
   Grams reaped_grams = 0;
 
+  /// THE STRAW LYING AT THE FIELD, grams (routing stage В4, save 162;
+  /// core_production cart_trips.h, item 4): the straw cut with the field's
+  /// grain waits here for its cart and is carted after the grain, to the rick
+  /// the door chooses (feed_home.h, RickForLoadAt) - the field's load becomes
+  /// the straw the evening the grain is in. Until В4 it landed in the rick by
+  /// no road the hour it was cut. Nought in a village with no rick standing:
+  /// the straw then goes through the store door as before. Beside
+  /// reaped_grams and not after the two-byte id below: placed there it cost 16
+  /// bytes, not 8 (the build's own count against the prediction).
+  Grams straw_grams = 0;
+
   /// What the waiting load IS. The buffer has to name its own resource: the
   /// field goes idle after payout and its `crop` is cleared for the next
   /// rotation slot, so by the time a cart comes the crop field no longer

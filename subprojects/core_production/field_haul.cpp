@@ -13,6 +13,7 @@
 #include <numbers>
 #include <vector>
 
+#include "cart_trips.h"
 #include "core_common/hauled_book.h"
 #include "core_common/herd_state.h"
 #include "core_common/ids.h"
@@ -290,7 +291,7 @@ void SettleLoad(const ProductionConfig& config,
                  manger);
   const Grams left = LoadRoom(config, current, resource, booked, manger);
   haul_days_remaining =
-      load > 0 ? HaulDaysFor(left < load ? left : load, rate, config.standard_day_hours) : 0.0F;
+      load > 0 ? CartDaysFor(config, left < load ? left : load, rate) : 0.0F;  // В4's door
   haul_days_written = haul_days_remaining;
 }
 
@@ -442,7 +443,7 @@ void SettleStandHauling(const ProductionConfig& config, WorldState& current) {
     SettleLoad(config,
                current,
                rate,
-               CartLoadSource::kCartLoadSourceCount,  // logs: no produce cart
+               CartLoadSource::kStand,  // logs: in the cart book since В4
                HaulOf(current.stands.row_ids[row]),
                config.timber.log_resource,
                stand.load_grams,
@@ -522,7 +523,7 @@ void DeliverCartedLoads(const ProductionConfig& config, WorldState& current) {
       DeliverDrained(config,
                      current,
                      StandHaulRate(config, current, stand),
-                     CartLoadSource::kCartLoadSourceCount,
+                     CartLoadSource::kStand,
                      HaulOf(current.stands.row_ids[row]),
                      config.timber.log_resource,
                      stand.load_grams,
@@ -564,6 +565,16 @@ void DeliverCartedLoads(const ProductionConfig& config, WorldState& current) {
 void SettleHauling(const ProductionConfig& config, WorldState& current) {
   for (std::uint32_t row = 0; row < current.fields.rows.size(); ++row) {
     FieldRow& field = current.fields.rows[row];
+    // THE STRAW's TURN (routing stage В4, item 4; cart_trips.h): the evening
+    // the grain is in, the straw lying at the field becomes the field's load,
+    // carted by the same seam to the rick the door chooses (HeapRickRow).
+    if (field.reaped_grams <= 0 && field.straw_grams > 0) {
+      field.reaped_grams = field.straw_grams;
+      field.reaped_resource = config.straw_resource;
+      field.straw_grams = 0;
+      field.haul_days_remaining = 0.0F;
+      field.haul_days_written = 0.0F;
+    }
     if (field.reaped_grams <= 0) {
       continue;
     }
@@ -771,7 +782,7 @@ void SettleStoreEmptying(const ProductionConfig& config, WorldState& current, bo
                                      TravelMode::kCart,
                                      MostGramsOf(unit.stock));
     unit.haul_to = rate.receiver;  // F3 (A): the perevalka's receiver
-    unit.haul_days_remaining = left > 0 ? HaulDaysFor(left, rate, config.standard_day_hours) : 0.0F;
+    unit.haul_days_remaining = left > 0 ? CartDaysFor(config, left, rate) : 0.0F;  // В4's door
     unit.haul_days_written = unit.haul_days_remaining;
   }
 }
@@ -828,6 +839,13 @@ HaulRate DistrictLotHaulRate(const ProductionConfig& config, const WorldState& w
 
 void SettleDistrictLotHauling(const ProductionConfig& config, WorldState& current, bool evening) {
   std::vector<LimitDeliveryId> emptied;
+
+  struct LotLeft {
+    std::uint32_t row = 0;
+    Grams left = 0;
+  };
+
+  std::vector<LotLeft> pending;  // the evening's seams, priced after the loop
   for (std::uint32_t row = 0; row < current.limit_deliveries.rows.size(); ++row) {
     LimitDeliveryRow& lot = current.limit_deliveries.rows[row];
     if (lot.own_carts == 0 || lot.arrive_day > current.calendar.day) {
@@ -899,10 +917,35 @@ void SettleDistrictLotHauling(const ProductionConfig& config, WorldState& curren
     }
     // Tomorrow's demand: what is still at the district that has somewhere
     // to go. No horse free: nobody is sent (the rate carries no load).
-    const Grams left = movable();
-    lot.haul_days_remaining =
-        left > 0 && rate.load > 0 ? HaulDaysFor(left, rate, config.standard_day_hours) : 0.0F;
-    lot.haul_days_written = lot.haul_days_remaining;
+    pending.push_back(LotLeft{.row = row, .left = movable()});
+  }
+  // THE PRICE, after every lot is known (routing stage В4's door): under the
+  // routes (WR) the lots waiting at the district centre for the village's own
+  // carts are ONE SENDER to one receiver, the log pile - their loads ride one
+  // cart, and each lot pays its share of the pool's whole trips. Otherwise
+  // each lot alone, as before.
+  if (evening && !pending.empty()) {
+    const HaulRate rate = DistrictLotHaulRate(config, current);
+    Grams pool = 0;
+    for (const LotLeft& lot : pending) {
+      pool += lot.left;
+    }
+    const bool routed =
+        config.cart_trip_model == static_cast<std::uint8_t>(CartTripModel::kWholeRouted);
+    const float pool_days =
+        routed && pool > 0 && rate.load > 0 ? CartDaysFor(config, pool, rate) : 0.0F;
+    for (const LotLeft& lot : pending) {
+      LimitDeliveryRow& row = current.limit_deliveries.rows[lot.row];
+      if (lot.left <= 0 || rate.load <= 0) {
+        row.haul_days_remaining = 0.0F;
+      } else if (routed) {
+        row.haul_days_remaining =
+            pool_days * static_cast<float>(lot.left) / static_cast<float>(pool);
+      } else {
+        row.haul_days_remaining = CartDaysFor(config, lot.left, rate);
+      }
+      row.haul_days_written = row.haul_days_remaining;
+    }
   }
   for (const LimitDeliveryId id : emptied) {
     RemoveRow(current.limit_deliveries, id);

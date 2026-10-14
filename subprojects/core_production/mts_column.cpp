@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <limits>
 
+#include "cart_trips.h"
 #include "core_common/calendar.h"
 #include "core_common/day_off.h"
 #include "core_common/emit_event.h"
@@ -79,9 +80,10 @@ void CarryShare(const ProductionConfig& config, WorldState& current, FieldRow& f
     field.haul_days_remaining = 0.0F;
   } else {
     const Grams room = ReceivableRoom(config, current, field.reaped_resource);
-    field.haul_days_remaining = HaulDaysFor(room < field.reaped_grams ? room : field.reaped_grams,
-                                            FieldHaulRate(config, current, field),
-                                            config.standard_day_hours);
+    field.haul_days_remaining =  // В4's door
+        CartDaysFor(config,
+                    room < field.reaped_grams ? room : field.reaped_grams,
+                    FieldHaulRate(config, current, field));
   }
   field.haul_days_written = field.haul_days_remaining;
 }

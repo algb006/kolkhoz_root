@@ -1755,6 +1755,20 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
       return false;
     }
     config.cart_load_kg = tonnes * scale * 1000.0F;
+    // THE CART TRIP's MODEL (routing stage В4; cart_trips.h): 0, 1 or 2.
+    float model = 0.0F;
+    const std::uint32_t model_col = transport->FindColumn("trip_model");
+    if (model_col != kNoTableColumn && !CellOrDefault(*transport,
+                                                      transport->FindRowByKey("cart_loaded"),
+                                                      model_col,
+                                                      Range{.low = 0.0F, .high = 2.0F},
+                                                      0.0F,
+                                                      model,
+                                                      error)) {
+      error = "transport: " + error;
+      return false;
+    }
+    config.cart_trip_model = static_cast<std::uint8_t>(model);
   }
   if (const ITable* labor = tables.FindTable("labor")) {
     const std::uint32_t value_col = labor->FindColumn("value");

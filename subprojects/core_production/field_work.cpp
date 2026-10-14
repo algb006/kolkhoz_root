@@ -6,10 +6,12 @@
 
 #include "field_work.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
 
+#include "cart_trips.h"
 #include "core_common/calendar.h"
 #include "core_common/crop_calendar.h"
 #include "core_common/emit_event.h"
@@ -81,8 +83,9 @@ void PriceHeapCarting(const ProductionConfig& config,
   const Grams room_left = room - spoken_for;
   const Grams priced = room_left < laid ? room_left : laid;
   if (priced > 0) {
+    // В4's door: what the new part adds to the heap's whole trips.
     const float more =
-        HaulDaysFor(priced, FieldHaulRate(config, current, field), config.standard_day_hours);
+        CartDaysAdded(config, spoken_for, priced, FieldHaulRate(config, current, field));
     field.haul_days_remaining += more;
     field.haul_days_written += more;
   }
@@ -406,15 +409,23 @@ void LayReapedShare(const ProductionConfig& config, WorldState& current, FieldRo
   // what does not fit is gone, with a line in the book.
   if (crop.straw_ratio > 0.0F) {
     const auto straw = GramsFromFloat(static_cast<float>(laid) * crop.straw_ratio);
-    // ITS LANDING IS NAMED (feed_home.h; routing stage В3, step two): the rick
-    // the door chooses for a load from this field - the largest gap, else the
-    // nearest by road - and no longer the first store in row order. Still by
-    // no road and no cart: stage В4's row.
-    const std::uint32_t rick =
-        RickForLoadAt(config, current, field.center, config.straw_resource, nullptr);
-    const Grams straw_placed =
-        rick != kNoRow ? AddToStock(current.units.rows[rick].stock, config.straw_resource, straw)
-                       : DeliverToStores(current, config, config.straw_resource, straw);
+    // IT LIES AT THE FIELD FOR ITS CART (routing stage В4, item 4; cart_trips.h):
+    // where a rick stands, the straw waits at the field (FieldRow::straw_grams)
+    // and is carted after the grain, to the rick the door chooses (feed_home.h,
+    // RickForLoadFrom; field_haul.cpp, SettleHauling). From step two of В3 to
+    // В4 it landed in that rick by no road the hour it was cut. With no rick
+    // standing it goes through the store door, as before.
+    const bool a_rick_stands =
+        std::ranges::any_of(current.units.rows, [&config](const UnitRow& unit) {
+          return unit.dead == 0 && HomeOutlineAccepts(unit, config, config.straw_resource);
+        });
+    Grams straw_placed = 0;
+    if (a_rick_stands) {
+      field.straw_grams += straw;
+      straw_placed = straw;
+    } else {
+      straw_placed = DeliverToStores(current, config, config.straw_resource, straw);
+    }
     AddLedgerAmount(current.ledger.current.harvest, config.straw_resource, straw);
     AddLedgerAmount(
         current.ledger.current.lost_no_room, config.straw_resource, straw - straw_placed);

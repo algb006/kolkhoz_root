@@ -1140,6 +1140,13 @@ struct ProductionConfig {
   /// simplification, not an oversight.
   float cart_load_kg = 750.0F;
 
+  /// THE CART TRIP's MODEL (routing stage В4; cart_trips.h, CartTripModel):
+  /// transport.csv `trip_model` on the `cart_loaded` row - 0 the fluid (a
+  /// load pays its fraction of a round trip; the shipped value until econ's
+  /// gates and boss's word), 1 whole trips, 2 whole trips and the routes. No
+  /// column, or an empty cell: 0.
+  std::uint8_t cart_trip_model = 0;
+
   /// What a back carries by the load's form, and the terms of logs by two
   /// (core_common/haul.h, PorterRules; core_catalog/porter_catalog.h) - the
   /// same reading labour and logistics hold. Until 0.37.240 a float here,
