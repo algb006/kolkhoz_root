@@ -1259,8 +1259,15 @@ int main(int argc, char** argv) {
   // door held more than a year after the residents' condition; the residents
   // at year 10 are PRINTED (their spread between worlds is 19-29 a village).
   // EARLIER THAN E1's FLOOR STOPS FOR THE HUMAN; later is a finding to read.
-  constexpr double kEraMeanFloor = 10.33;
-  constexpr double kEraMeanCeiling = 11.33;
+  //
+  // E1 RE-CUT on row 456 (0.37.259): with no wedding into a barrack and the
+  // newcomers behind the couples, the door's mean moved 11.11 → 12.02 (s456c,
+  // e12e465f; residents at year 10 mean 393.5 → 354), red on the old band
+  // 10.33..11.33. The human, 14 October 2026, to «door ~12.0 y with 456 —
+  // accept and release?»: «Принять ~12 лет» [“Accept ~12 years”]; boss cut
+  // the band 11.5..12.5 (thread core-boss-936-contract-2026-10-14 after [13]).
+  constexpr double kEraMeanFloor = 11.5;
+  constexpr double kEraMeanCeiling = 12.5;
   constexpr double kEraSpreadFloor = 9.33;
   constexpr double kEraSpreadCeiling = 12.33;
   // 7 of 9 (78 %) became 12 of 16 (75 %) with the sixteen villages: the
@@ -1298,7 +1305,8 @@ int main(int argc, char** argv) {
             << "; more than a year after the residents' condition: " << doors_late
             << "; residents at year 10, mean " << year10_mean << ", median " << median_year10
             << " | BASE 86b4e22 (kdig): mean 10.83, doors 9.92..11.75, 9 of 9 inside, 0 late; "
-               "residents at year 10, median 379\n";
+               "residents at year 10, median 379 | ROW 456 e12e465f: mean 12.02, 13 of 16 inside, "
+               "0 late; residents at year 10, median 355\n";
   const auto two_places = [](double value) {
     const long hundredths = std::lround(value * 100.0);
     return std::to_string(hundredths / 100) + (hundredths % 100 < 10 ? ".0" : ".") +
