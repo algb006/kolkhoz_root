@@ -23,6 +23,7 @@
 #include "core_common/state_table_ops.h"
 #include "core_common/unit_state.h"
 #include "core_common/work_seam.h"
+#include "feed_home.h"
 #include "haul_ways.h"
 #include "seed_room.h"
 #include "stock_ops.h"
@@ -124,38 +125,8 @@ Grams ReceivableRoom(const ProductionConfig& config, const WorldState& world, Re
   return room;
 }
 
-std::uint32_t HeapRickRow(const ProductionConfig& config,
-                          const WorldState& world,
-                          const FieldRow& field) {
-  const ResourceId resource = field.reaped_resource;
-  // An unnamed hay resource compares equal to an unnamed load by two 0xFFFF
-  // sentinels (0.17.79): named, or it is nobody's manger.
-  if (field.kind == LandKind::kArable || resource.value == kInvalidDefIdValue ||
-      resource.value != config.hay_resource.value) {
-    return kNoRow;
-  }
-  // THE NEAREST RICK BY ROAD (routing stage В3): until it this was «the first
-  // stock yard in row order», a door that asked no distance - all the
-  // meadows' hay went to one yard a kilometre or two away and every herd ate
-  // there. The cart's own way, or the carrier's when no horse is harnessed.
-  const TravelMode mode =
-      SettlementHasCarts(world, config.horse_kind) ? TravelMode::kCart : TravelMode::kWalk;
-  const Vec2 heap = FieldHeapPoint(world, field);
-  std::uint32_t nearest = kNoRow;
-  float nearest_km = std::numeric_limits<float>::max();
-  for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
-    const UnitRow& unit = world.units.rows[row];
-    if (unit.dead != 0 || !HomeOutlineAccepts(unit, config, resource)) {
-      continue;
-    }
-    const float km = RoadKm(world, mode, heap, unit.position);
-    if (km < nearest_km) {
-      nearest_km = km;
-      nearest = row;
-    }
-  }
-  return nearest;
-}
+// HeapRickRow and ChooseRickForHeap: feed_home.cpp, beside the door's rule
+// they read (declared in field_haul.h, where their callers look).
 
 Grams HeapDoorRoom(const ProductionConfig& config, const WorldState& world, const FieldRow& field) {
   return HeapRickRow(config, world, field) != kNoRow
@@ -596,6 +567,8 @@ void SettleHauling(const ProductionConfig& config, WorldState& current) {
     if (field.reaped_grams <= 0) {
       continue;
     }
+    // The evening's choice of a rick for a meadow's hay, before its price.
+    ChooseRickForHeap(config, current, field, true);
     const HaulRate rate = FieldHaulRate(config, current, field);
     // The trip's receiver beside the seam it prices (F3 (A); FieldRow::haul_to).
     field.haul_to = rate.has_receiver ? rate.receiver : field.haul_to;

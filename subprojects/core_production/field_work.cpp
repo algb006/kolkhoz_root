@@ -19,6 +19,7 @@
 #include "core_common/state_table_ops.h"
 #include "core_common/work_seam.h"
 #include "core_common/world_state.h"
+#include "feed_home.h"
 #include "field_haul.h"
 #include "herd_cold.h"
 #include "production_config.h"
@@ -60,6 +61,9 @@ void PriceHeapCarting(const ProductionConfig& config,
                       FieldRow& field,
                       Grams heap_before,
                       Grams laid) {
+  // A meadow's hay with no rick named on its row yet is given one before its
+  // first price (field_haul.h, ChooseRickForHeap); the evening asks afresh.
+  ChooseRickForHeap(config, current, field, false);
   // THE CARTING'S PRICE GROWS BY THE SAME LOAD, in both its numbers. The
   // evening settlement reads what was carried as written less remaining
   // (field_haul.cpp, SettleLoad), so a load added to one and not the other
@@ -402,7 +406,15 @@ void LayReapedShare(const ProductionConfig& config, WorldState& current, FieldRo
   // what does not fit is gone, with a line in the book.
   if (crop.straw_ratio > 0.0F) {
     const auto straw = GramsFromFloat(static_cast<float>(laid) * crop.straw_ratio);
-    const Grams straw_placed = DeliverToStores(current, config, config.straw_resource, straw);
+    // ITS LANDING IS NAMED (feed_home.h; routing stage В3, step two): the rick
+    // the door chooses for a load from this field - the largest gap, else the
+    // nearest by road - and no longer the first store in row order. Still by
+    // no road and no cart: stage В4's row.
+    const std::uint32_t rick =
+        RickForLoadAt(config, current, field.center, config.straw_resource, nullptr);
+    const Grams straw_placed =
+        rick != kNoRow ? AddToStock(current.units.rows[rick].stock, config.straw_resource, straw)
+                       : DeliverToStores(current, config, config.straw_resource, straw);
     AddLedgerAmount(current.ledger.current.harvest, config.straw_resource, straw);
     AddLedgerAmount(
         current.ledger.current.lost_no_room, config.straw_resource, straw - straw_placed);

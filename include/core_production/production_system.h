@@ -64,6 +64,7 @@
 #include "core_common/office_views.h"
 #include "core_common/quantities.h"
 #include "core_common/rain_stops_work.h"
+#include "core_common/work_seam.h"
 #include "core_sim/step.h"
 #include "core_tables/stub_tables.h"
 
@@ -310,6 +311,25 @@ class IProductionSystem {
   ///         herds graze their whole need.
   /// @note A pure read; called by labor in the decisions slot (phase 3).
   virtual bool StoredHayShortWithin(const WorldState& world, std::uint32_t days) const = 0;
+
+  /// @brief EVERY rick whose farm's herds will be out of the feeds a rick is
+  /// the home of within `days` days, each with the days it still feeds them
+  /// (0.37.255; routing stage В3, step two - «each farm its own rick»): the
+  /// herds standing today drained day by day off THEIR rick and their own
+  /// unit for hay, straw and reed, off the village's allowance for the rest.
+  /// In the units' row order.
+  ///
+  /// BESIDE StoredHayShortWithin, which keeps its meaning («the village's
+  /// stores») for `hay_cart_need_days` and `hay_cart_in_cut_days`: the urgent
+  /// rule (`hay_cart_urgent_days`) asks this one - a farm's rick out with the
+  /// other farm's full is a hungry herd the village's sum does not show.
+  /// @param days The days ahead, today the first; 0 answers none.
+  /// @return Empty when no rick is short, when no rick stands, when no
+  ///         kolkhoz herd is fed at a unit, and in a month the herds graze
+  ///         their whole need. A rick no herd is bound to is never short.
+  /// @note A pure read; called by labor in the decisions slot (phase 3).
+  virtual std::vector<ShortRickUnit> ShortRicksWithin(const WorldState& world,
+                                                      std::uint32_t days) const = 0;
 
   /// @brief The fodder FUND today, grams, dense by ResourceId: the working
   /// stock's ration of each work feed until its next reaping, capped by the

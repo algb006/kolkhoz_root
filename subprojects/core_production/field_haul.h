@@ -63,6 +63,21 @@ std::uint32_t HeapRickRow(const ProductionConfig& config,
                           const WorldState& world,
                           const FieldRow& field);
 
+/// @brief Writes the rick the door chooses for a meadow's hay (feed_home.h,
+///        RickForLoadFrom) on the field's own row - FieldRow::haul_to, the
+///        receiver HeapRickRow then reads all day. Nothing for any other
+///        load, and nothing in a village with fewer than two ricks: one rick
+///        is the answer whatever the row holds.
+/// @param afresh True in the evening's settlement: the choice is asked again
+///        whatever the row names. False at the mowing: only when the row
+///        names no standing rick.
+/// @note Side effect: `field.haul_to`, a saved field the evening wrote
+///       already (no new save number).
+void ChooseRickForHeap(const ProductionConfig& config,
+                       const WorldState& world,
+                       FieldRow& field,
+                       bool afresh);
+
 /// @brief The room a land's heap is priced and carted against: Grams max
 ///        where it has a rick (HeapRickRow), else ReceivableRoom of what
 ///        lies on it.

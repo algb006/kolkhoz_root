@@ -1,5 +1,5 @@
 /// @file
-/// @brief CONTRACT, NO BODY YET - a farm's own store of coarse feed: «each
+/// @brief A farm's own store of coarse feed (body: feed_home.cpp): «each
 ///        farm its own rick» (routing stage В3, step two; the human's word of
 ///        14 October 2026: «что мешает хранить сено на ферме? В реале так и
 ///        есть, должно быть свое хранилище кормов»; econ's
@@ -160,6 +160,28 @@ BoundTake TakeBoundFeedAt(const ProductionConfig& config,
                           ResourceId resource,
                           Grams wanted,
                           std::uint32_t* far_row);
+
+/// THE FLOOR OF A FAR-RICK DAY (econ, 14 October 2026): the day counts, and
+/// EventKind::kHerdAteFromFarRick is said, when what the herd took by the
+/// fallback is at least this share of all it ate of the bound feeds that day
+/// - a share of the herd's own day, not a number of heads. Under it the take
+/// is a remainder of grams.
+inline constexpr float kFarRickDayShare = 0.1F;
+
+/// THE FAR-RICK EVENT's AMOUNT, two fields in one (EventKind::
+/// kHerdAteFromFarRick): the way in tens of metres in bits 0-15, its ceiling
+/// 65 535 (655.35 km); the kilograms eaten that way from bit 16 up, their
+/// ceiling 2^47 - 1. Each half is CLAMPED at its ceiling and never rolls into
+/// the other (PackFarRickAmount).
+inline constexpr int kFarRickKilogramsShift = 16;
+inline constexpr std::int64_t kFarRickWayMax = 0xFFFF;
+inline constexpr std::int64_t kFarRickKilogramsMax = (std::int64_t{1} << 47) - 1;
+inline constexpr float kFarRickTensOfMetresPerKm = 100.0F;
+
+/// @brief Packs the far-rick event's amount: the way by road, km, and what the
+///        herd ate that way, grams - each clamped at its ceiling aloud (a
+///        negative way or weight reads nought).
+std::int64_t PackFarRickAmount(float road_km, Grams grams);
 
 /// @brief One herd's day of eating a bound feed from a far rick: the step's
 ///        instrument, counted by village-year with the distance. SAID AS AN

@@ -5,9 +5,12 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "core_common/calendar.h"
 #include "core_common/event_state.h"
@@ -42,7 +45,17 @@ struct Manger {
   std::uint32_t days_held = 0;
   std::uint32_t asked = 0;       ///< Times the question was put.
   std::uint32_t asked_days = 0;  ///< The days of the last question.
+
+  /// The ricks' question (0.37.255) is bound only `with_ricks` - set before
+  /// the labor system is built; `a_rick_is_short` then answers it with one
+  /// rick, kShortRick, out this morning.
+  bool with_ricks = false;
+  bool a_rick_is_short = false;
+  std::uint32_t ricks_asked_days = 0;
 };
+
+/// The rick the ricks' question names.
+constexpr core::UnitId kShortRick{77};
 
 /// A labor system on a table set of one winter crop and the horse;
 /// `labor_csv` empty leaves labor.csv out — the documented defaults.
@@ -67,16 +80,28 @@ std::unique_ptr<core::ILaborSystem> Labor(const char* directory,
   if (manger == nullptr) {
     return core::CreateLaborSystem(*tables, core::StubTables::kAllowed);
   }
-  return core::CreateLaborSystem(*tables,
-                                 core::StubTables::kAllowed,
-                                 core::kDaysPerYear - 1U,
-                                 {},
-                                 core::RainDayShares{},
-                                 [manger](const core::WorldState& /*world*/, std::uint32_t days) {
-                                   ++manger->asked;
-                                   manger->asked_days = days;
-                                   return manger->short_of_hay && days > manger->days_held;
-                                 });
+  std::function<std::vector<core::ShortRickUnit>(const core::WorldState&, std::uint32_t)> ricks;
+  if (manger->with_ricks) {
+    ricks = [manger](const core::WorldState& /*world*/, std::uint32_t days) {
+      manger->ricks_asked_days = days;
+      return manger->a_rick_is_short
+                 ? std::vector<core::ShortRickUnit>{{.rick = kShortRick, .days_left = 0}}
+                 : std::vector<core::ShortRickUnit>{};
+    };
+  }
+  return core::CreateLaborSystem(
+      *tables,
+      core::StubTables::kAllowed,
+      core::kDaysPerYear - 1U,
+      {},
+      core::RainDayShares{},
+      [manger](const core::WorldState& /*world*/, std::uint32_t days) {
+        ++manger->asked;
+        manger->asked_days = days;
+        return manger->short_of_hay && days > manger->days_held;
+      },
+      core::SnowLainShares{},
+      std::move(ricks));
 }
 
 /// What the one man with the one horse does at noon.
@@ -92,6 +117,7 @@ struct UrgentWord {
   std::uint32_t days_asked = 0;
   bool named_the_heap = false;
   std::uint32_t at_hour = 0;
+  core::UnitId rick;  ///< The rick the last word named; unset when none.
 };
 
 /// One man, one horse, a day of August; a heap lying on land of `heap_land`
@@ -182,6 +208,7 @@ Sent TheHorseOnADayOfAugust(core::ILaborSystem& labor,
         said->days_asked = static_cast<std::uint32_t>(event.amount & 0xFFFF);
         said->named_the_heap = event.field.value == heap_id.value;
         said->at_hour = core::HourFromTick(event.tick);
+        said->rick = event.unit;
       }
     }
   }
@@ -373,6 +400,49 @@ int CheckTheStackIsUrgentUnderADayOfHay() {
   return failures;
 }
 
+/// THE URGENT RULE ASKS A RICK AT A TIME (0.37.255; routing stage В3, step
+/// two): the village's stores HOLD their hay - by the village's sum the stack
+/// waits behind the open cut - and one farm's rick is out this morning: the
+/// stack is carted ahead of all work, and the day's word names that rick.
+/// The pair: the same village with no rick short waits, and says nothing.
+int CheckTheStackIsUrgentByAFarmsRick() {
+  int failures = 0;
+  Manger one_short;
+  one_short.with_ricks = true;
+  one_short.a_rick_is_short = true;  // short_of_hay false: the village's sum holds
+  const auto by_rick = Labor("unit_core_labor_hay_cart_rick_short",
+                             &one_short,
+                             "key,value\nhay_cart_in_cut_days,0\nhay_cart_urgent_days,1\n");
+  Manger none_short;
+  none_short.with_ricks = true;
+  const auto by_none = Labor("unit_core_labor_hay_cart_no_rick_short",
+                             &none_short,
+                             "key,value\nhay_cart_in_cut_days,0\nhay_cart_urgent_days,1\n");
+  if (Expect(by_rick != nullptr && by_none != nullptr,
+             "hay cart's rank, by rick: the tables build a labor system") != 0) {
+    return 1;
+  }
+  UrgentWord said;
+  UrgentWord not_said;
+  const Sent carted = TheHorseOnADayOfAugust(
+      *by_rick, core::LandKind::kMeadow, Rival::kTheFallowForRye, true, kAugustDay, &said);
+  const Sent waited = TheHorseOnADayOfAugust(
+      *by_none, core::LandKind::kMeadow, Rival::kTheFallowForRye, true, kAugustDay, &not_said);
+  std::cout << "  the hay cart's rank, the village's stores holding and a meadow still to mow: "
+            << "with one farm's rick out - " << Name(carted) << " (words " << said.times
+            << "); with no rick short - " << Name(waited) << " (words " << not_said.times << ")\n";
+  failures += Expect(carted == Sent::kToTheHeap && one_short.ricks_asked_days == 2,
+                     "hay cart's rank: with one farm's rick out the stack is carted ahead of all "
+                     "work though the village's stores hold - the ricks asked about two days");
+  failures += Expect(said.times == 1 && said.rick.value == kShortRick.value,
+                     "hay cart's rank: the urgent word is said once for the short rick and names "
+                     "it");
+  failures += Expect(waited != Sent::kToTheHeap && not_said.times == 0,
+                     "hay cart's rank: with no rick short and the village's stores holding the "
+                     "stack waits behind the open cut and nothing is said");
+  return failures;
+}
+
 /// THE DAYS ARE THE TABLE'S (labor.csv `hay_cart_need_days`), and nought
 /// switches the need off: the hay is the last whatever production would say.
 int CheckTheDaysAreTheTables() {
@@ -510,5 +580,6 @@ int CheckTheHayCartsRank() {
   failures += CheckTheHayGoesFirstWhenTheStoresAreShort();
   failures += CheckTheDaysAreTheTables();
   failures += CheckTheStackIsUrgentUnderADayOfHay();
+  failures += CheckTheStackIsUrgentByAFarmsRick();
   return failures;
 }

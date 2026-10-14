@@ -50,6 +50,13 @@
 
 namespace core {
 
+/// A feed is out when its store has less than this, kilograms. One home for
+/// every drain that asks (herd_forecast.cpp, feed_home.cpp).
+inline constexpr float kOutKg = 1.0e-3F;
+
+/// A herd is fed when what it got is within this of its need, feed units.
+inline constexpr float kFedSlackUnits = 0.001F;
+
 /// @brief One herd's fodder need for one day, in feed units.
 struct FeedDayNeed {
   LivestockKindId kind;

@@ -1183,6 +1183,12 @@ struct ProductionConfig {
 
   float min_usable_hours = 1.0F;
 
+  /// labor.csv `hay_cart_urgent_days`, read here too (0.37.255): the door's
+  /// choice of a rick asks the urgent rule's own horizon
+  /// (day_off.h, UrgentHayHorizonDays; feed_home.h, RickForLoadAt). The cell
+  /// has one home, the table; labour's reader is LaborConfig's.
+  float hay_cart_urgent_days = 1.0F;
+
   // -- shelf life (task A4; transport design §10) --------------------------
   /// Game days a resource keeps, by ResourceId — resources.csv `spoil_days`,
   /// empty for what does not go bad. Read here for the units' stores;

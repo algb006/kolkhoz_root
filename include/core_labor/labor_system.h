@@ -64,6 +64,7 @@
 #include "core_common/office_views.h"
 #include "core_common/rain_stops_work.h"
 #include "core_common/resident_activity.h"
+#include "core_common/work_seam.h"
 #include "core_common/world_state.h"
 #include "core_tables/stub_tables.h"
 
@@ -190,6 +191,12 @@ class ILaborSystem {
 ///        `early_snow_share` — the gathering alarm's own edge
 ///        (core_common/early_snow.h; 0.37.147). The default, all zeros, leaves
 ///        the edge at `growing_season_last_day`.
+/// @param short_ricks Which ricks' herds will be out of their feed within the
+///        days given - IProductionSystem::ShortRicksWithin, bound by the
+///        assembly (0.37.255). The urgent rule (labor.csv
+///        `hay_cart_urgent_days`) asks it: some rick short, a meadow's stack
+///        is carted ahead of all work, whatever the village's sum says.
+///        Empty: the rule asks `stored_hay_short` alone, as before.
 std::unique_ptr<ILaborSystem> CreateLaborSystem(
     const ITableSet& tables,
     StubTables stubs,
@@ -197,7 +204,8 @@ std::unique_ptr<ILaborSystem> CreateLaborSystem(
     std::function<Grams(const WorldState&, const FieldRow&)> standing_crop_grams = {},
     const RainDayShares& rain_day_shares = RainDayShares{},
     std::function<bool(const WorldState&, std::uint32_t)> stored_hay_short = {},
-    const SnowLainShares& snow_lain_shares = SnowLainShares{});
+    const SnowLainShares& snow_lain_shares = SnowLainShares{},
+    std::function<std::vector<ShortRickUnit>(const WorldState&, std::uint32_t)> short_ricks = {});
 
 }  // namespace core
 

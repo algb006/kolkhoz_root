@@ -789,6 +789,21 @@ enum class EventKind : std::uint8_t {
   /// yes or no. kNotable. Seam key proposed: `stack_cart_urgent`.
   kStackCartUrgent,
 
+  /// A KOLKHOZ HERD ATE A RICK's FEED FROM ELSEWHERE IN THE VILLAGE, WITH NO
+  /// CART ON THE ROAD (0.37.255; routing stage В3, step two, form (b);
+  /// core_production's feed_home.h): its own unit and its farm's rick were
+  /// out of hay, straw or reed, and another unit gave it by the old chain.
+  /// The step's own instrument - near nought, the form stands; not near
+  /// nought, carting from rick to rick is built. Said by production once a
+  /// herd a day.
+  /// herd = the herd; unit = the first unit the feed came from (another
+  /// farm's manger or a far rick; unset when only a numbered store gave);
+  /// amount packs two numbers: the way from that unit to the herd's farm by
+  /// road, tens of metres (bits 0-15, 0 with no unit named), and what the
+  /// herd ate that way today, kilograms (bits 16-63). kRoutine. Seam key
+  /// proposed: `herd_ate_from_far_rick`.
+  kHerdAteFromFarRick,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

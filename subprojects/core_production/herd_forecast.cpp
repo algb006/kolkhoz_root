@@ -27,12 +27,6 @@
 namespace core {
 namespace {
 
-/// A feed is out when its store has less than this, kilograms.
-constexpr float kOutKg = 1.0e-3F;
-
-/// A herd is fed when what it got is within this of its need, feed units.
-constexpr float kFedSlackUnits = 0.001F;
-
 /// One kolkhoz herd as the forecast carries it: fractional heads, grown and
 /// born by the herd day's own numbers.
 struct ProjectedHerd {

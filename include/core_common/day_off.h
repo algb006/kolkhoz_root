@@ -76,6 +76,17 @@ bool GatherShortStands(const WorldState& world);
 ///       by then; the evening's rest reads the evening's answer.
 bool IsDayOffIn(const WorldState& world, SimDay day);
 
+/// @brief THE DAYS TO THE NEXT MORNING A CART CAN STILL MEND, the urgent hay
+/// rule's horizon (labor.csv `hay_cart_urgent_days`): this morning's feeding,
+/// the rule's days, and every day off that follows tomorrow in a row -
+/// nothing is carted on those. ONE COUNT FOR TWO MODULES (0.37.255): labour
+/// asks «is a rick short within these» to send a stack ahead of all work, and
+/// production asks the same at the evening's choice of the rick that stack
+/// goes to; a second copy would let the cart be sent for one rick and its
+/// hay priced to another.
+/// @param urgent_days The table's cell; 0 (the rule off) answers 0.
+std::uint32_t UrgentHayHorizonDays(const WorldState& world, std::uint32_t urgent_days);
+
 /// @brief Whether TODAY's day off may be declared working now (kCancelDayOff
 /// with `enable` 1; routing stage B, B8's door; boss, the logistics thread
 /// [103]): today is a day off in this world (IsDayOffIn) and not a holiday —

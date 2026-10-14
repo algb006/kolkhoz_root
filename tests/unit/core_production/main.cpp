@@ -47,6 +47,7 @@
 #include "district_trip.h"
 #include "district_visit.h"
 #include "extraction_digging.h"
+#include "feed_home_checks.h"
 #include "field_haul.h"
 #include "field_work.h"
 #include "goods_loan.h"
@@ -16581,6 +16582,7 @@ int main() {
   failures += CheckTheFeedingOrderSwitch();
   failures += CheckTheCartOfTheCompressedYear();
   failures += CheckMeadowHayLiesAtTheMeadow();
+  failures += CheckEachFarmEatsFromItsOwnRick();
   failures += CheckTheCartingReachesTheStoreInItsHour();
   failures += CheckTheHeapLampIsRedOnlyWhenItSpoils();
   failures += CheckTheSeedLampIsNotAFalseAlarm();

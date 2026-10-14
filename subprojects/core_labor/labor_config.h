@@ -45,6 +45,7 @@
 #include "core_common/rain_stops_work.h"
 #include "core_common/resident_state.h"
 #include "core_common/site_supply_floor.h"
+#include "core_common/work_seam.h"
 
 namespace core {
 
@@ -381,6 +382,11 @@ struct LaborConfig {
   /// horse-days, in the harvest's own season.
   std::uint32_t site_supply_term_days = 8;
   std::function<bool(const WorldState&, std::uint32_t)> stored_hay_short;
+
+  /// Which ricks are short within the days given (IProductionSystem::
+  /// ShortRicksWithin; 0.37.255): the urgent rule's question. Empty: the
+  /// rule asks `stored_hay_short` alone.
+  std::function<std::vector<ShortRickUnit>(const WorldState&, std::uint32_t)> short_ricks;
 
   /// The last month of the meadow cut, 0-based (farming.csv
   /// meadow_cut_month_end, 1-based in the file). A meadow has no crop, so

@@ -50,6 +50,7 @@
 #include "district_trip.h"
 #include "district_visit.h"
 #include "extraction_digging.h"
+#include "feed_home.h"
 #include "field_haul.h"
 #include "field_removal.h"
 #include "field_work.h"
@@ -533,6 +534,16 @@ class ProductionSystem final : public IProductionSystem {
 
   bool StoredHayShortWithin(const WorldState& world, std::uint32_t days) const override {
     return core::StoredHayShortWithin(config_, world, days);
+  }
+
+  std::vector<ShortRickUnit> ShortRicksWithin(const WorldState& world,
+                                              std::uint32_t days) const override {
+    std::vector<ShortRickUnit> short_ricks;
+    for (const ShortRick& rick : core::ShortRicksWithin(config_, world, days)) {
+      short_ricks.push_back(
+          ShortRickUnit{.rick = world.units.row_ids[rick.rick_row], .days_left = rick.days_left});
+    }
+    return short_ricks;
   }
 
   MeadowMarkAnswer PreviewMeadowMark(const WorldState& completed,

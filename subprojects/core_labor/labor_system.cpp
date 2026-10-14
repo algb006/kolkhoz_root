@@ -695,7 +695,12 @@ class LaborSystem final : public ILaborSystem {
   /// whose carting the rule of `hay_cart_urgent_days` put ahead of all work.
   /// Called from the hour-1 top-up alone, so once a village-day; a day off
   /// offers no carting and says nothing.
-  static void SayAStackIsUrgent(WorldState& current, const std::vector<AssignmentJob>& offered) {
+  ///
+  /// ONCE A RICK A DAY since 0.37.255: each rick short by the rule is named
+  /// (SimEvent::unit), in the units' row order; a day the rule fired on the
+  /// village's sum alone (no rick asked, or the herds bound to none) says the
+  /// one word with no unit, as before.
+  void SayAStackIsUrgent(WorldState& current, const std::vector<AssignmentJob>& offered) const {
     constexpr int kHayKilogramsShift = 16;
     for (const AssignmentJob& job : offered) {
       if (job.kind != WorkKind::kHauling || job.urgent_by_stores_days == 0) {
@@ -710,11 +715,21 @@ class LaborSystem final : public ILaborSystem {
       for (const UnitRow& unit : current.units.rows) {
         in_units += unit.dead == 0 ? UnreservedOf(unit, hay) : 0;
       }
-      SimEvent& event = EmitEvent(current, EventKind::kStackCartUrgent, EventSeverity::kNotable);
-      event.field = job.field;
-      event.resource = hay;
-      event.amount = static_cast<std::int64_t>(job.urgent_by_stores_days) |
-                     ((in_units / kGramsPerKilogram) << kHayKilogramsShift);
+      std::vector<ShortRickUnit> short_ricks;
+      if (config_.short_ricks) {
+        short_ricks = config_.short_ricks(current, job.urgent_by_stores_days);
+      }
+      if (short_ricks.empty()) {
+        short_ricks.push_back(ShortRickUnit{});  // the village's sum: no rick named
+      }
+      for (const ShortRickUnit& rick : short_ricks) {
+        SimEvent& event = EmitEvent(current, EventKind::kStackCartUrgent, EventSeverity::kNotable);
+        event.field = job.field;
+        event.unit = rick.rick;
+        event.resource = hay;
+        event.amount = static_cast<std::int64_t>(job.urgent_by_stores_days) |
+                       ((in_units / kGramsPerKilogram) << kHayKilogramsShift);
+      }
       return;
     }
   }
@@ -1542,15 +1557,23 @@ class LaborSystem final : public ILaborSystem {
         // days off stood behind it (form (c)'s first pair, seed 1934, year 3:
         // fired on day 14 at one o'clock, carted on day 17, the herds underfed
         // on 15, 16 and 17 with 94 t on the meadow).
-        if (meadow_heap && hay_short.value_or(false) && !hay_out_tomorrow.has_value()) {
-          std::uint32_t days_to_mend = config_.hay_cart_urgent_days + 1U;
-          for (SimDay ahead = 1;
-               ahead <= kDaysPerWeek && IsDayOffIn(current, current.calendar.day + ahead);
-               ++ahead) {
-            ++days_to_mend;
-          }
-          hay_out_tomorrow =
-              config_.hay_cart_urgent_days > 0 && config_.stored_hay_short(current, days_to_mend);
+        //
+        // ASKED A RICK AT A TIME since 0.37.255 (`short_ricks`; routing stage
+        // В3, step two - each farm eats from its own rick): some farm's rick
+        // short within those days is the rule's «yes», whatever the village's
+        // sum holds - the other farm's full rick is not at this manger. The
+        // village's own answer stays beside it, for the herds bound to no
+        // rick; a labour built without the ricks' question asks it alone.
+        if (meadow_heap && !hay_out_tomorrow.has_value() &&
+            (hay_short.value_or(false) || config_.short_ricks)) {
+          // One count with production's choice of the rick (day_off.h).
+          const std::uint32_t days_to_mend =
+              UrgentHayHorizonDays(current, config_.hay_cart_urgent_days);
+          const bool rule_on = config_.hay_cart_urgent_days > 0;
+          const bool some_rick_short =
+              rule_on && config_.short_ricks && !config_.short_ricks(current, days_to_mend).empty();
+          hay_out_tomorrow = some_rick_short || (rule_on && hay_short.value_or(false) &&
+                                                 config_.stored_hay_short(current, days_to_mend));
           hay_days_asked = static_cast<std::uint16_t>(days_to_mend);
         }
         job.logistics_urgent = meadow_heap && hay_out_tomorrow.value_or(false);
@@ -3056,7 +3079,8 @@ std::unique_ptr<ILaborSystem> CreateLaborSystem(
     std::function<Grams(const WorldState&, const FieldRow&)> standing_crop_grams,
     const RainDayShares& rain_day_shares,
     std::function<bool(const WorldState&, std::uint32_t)> stored_hay_short,
-    const SnowLainShares& snow_lain_shares) {
+    const SnowLainShares& snow_lain_shares,
+    std::function<std::vector<ShortRickUnit>(const WorldState&, std::uint32_t)> short_ricks) {
   // THE DEFAULTS ARE LEGITIMATE AND THEIR SILENCE WAS NOT
   // (core_tables/stub_tables.h). A caller that has not said it wants
   // this module's documented defaults is refused by name, so that a
@@ -3091,6 +3115,7 @@ std::unique_ptr<ILaborSystem> CreateLaborSystem(
   config.standing_crop_grams = std::move(standing_crop_grams);
   config.rain_day_shares = rain_day_shares;
   config.stored_hay_short = std::move(stored_hay_short);
+  config.short_ricks = std::move(short_ricks);
   config.early_snow_last_day =
       EarlySnowLastDay(snow_lain_shares, config.early_snow_share, growing_season_last_day);
   return std::make_unique<LaborSystem>(std::move(config));

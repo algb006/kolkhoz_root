@@ -21,9 +21,11 @@
 #include "core_common/ledger_state.h"
 #include "core_common/quantities.h"
 #include "core_common/random.h"
+#include "core_common/road_route.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/work_seam.h"
 #include "district_plan.h"
+#include "feed_home.h"
 #include "herd_cold.h"
 #include "herd_life.h"
 #include "livestock_homes.h"
@@ -117,6 +119,35 @@ Grams TakeFeed(WorldState& world,
       allowed = 0;
     }
     wanted = wanted < allowed ? wanted : allowed;
+  }
+  // A FARM's OWN RICK (feed_home.h): the feeds a rick is the home of come from
+  // the herd's own unit and ITS rick; the rest of the village only by form
+  // (b)'s fallback, counted for the day's event.
+  if (place.bound && place.unit != nullptr && IsBoundFeed(config, resource)) {
+    std::uint32_t far_row = kNoRow;
+    const BoundTake take =
+        TakeBoundFeedAt(config,
+                        world,
+                        static_cast<std::uint32_t>(place.unit - world.units.rows.data()),
+                        place.rick_row,
+                        resource,
+                        wanted,
+                        &far_row);
+    if (take.from_far > 0 && place.far_grams != nullptr) {
+      if (*place.far_grams == 0 && place.far_row != nullptr) {
+        *place.far_row = far_row;
+      }
+      *place.far_grams += take.from_far;
+    }
+    const Grams bound_taken = take.from_own_unit + take.from_its_rick + take.from_far;
+    if (place.bound_grams != nullptr) {
+      *place.bound_grams += bound_taken;
+    }
+    if (place.feed_allowance != nullptr && resource.value < place.feed_allowance->size()) {
+      (*place.feed_allowance)[resource.value] -= bound_taken;
+    }
+    AddLedgerAmount(world.ledger.current.feed, resource, bound_taken);
+    return bound_taken;
   }
   Grams taken = place.unit != nullptr ? TakeFromUnit(*place.unit, resource, wanted) : 0;
   // Then the MANGER, and only then the general store. The hay of the whole
@@ -1299,6 +1330,20 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
     HerdPlace place = PlaceOf(current, config, herd);
     place.feed_allowance = &feed_allowance;
     place.peoples_foods = &peoples_foods;
+    // ITS FARM's RICK, found once a herd-day (feed_home.h).
+    Grams far_grams = 0;
+    Grams bound_grams = 0;
+    std::uint32_t far_row = kNoRow;
+    FeedHome feed_home;
+    if (place.at_unit && place.unit != nullptr) {
+      feed_home = FeedHomeOf(
+          config, current, static_cast<std::uint32_t>(place.unit - current.units.rows.data()));
+      place.bound = feed_home.rick_row != kNoRow;
+      place.rick_row = feed_home.rick_row;
+      place.far_grams = &far_grams;
+      place.far_row = &far_row;
+      place.bound_grams = &bound_grams;
+    }
     herd.billeted_count = row < billet.size() ? billet[row] : 0;
     // THE COLD NIGHT, once a day, off the day's billet (herd_cold.h): the
     // count the produce below and the deaths after the hunger's read.
@@ -1318,6 +1363,29 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
                               working_share,
                               current,
                               &work);
+    // THE DAY IT ATE FROM A FAR RICK WITH NO ROAD (EventKind::
+    // kHerdAteFromFarRick; feed_home.h, form (b)'s instrument), once a herd a
+    // day: its own unit and its rick were out of a bound feed and another
+    // unit of the village gave it by the old chain.
+    //
+    // NOT FOR A REMAINDER (kFarRickDayShare; econ and boss, 14 October 2026):
+    // the far part is at least a tenth of what the herd ate of the bound
+    // feeds today. In the body's first pair 203 of 271 such herd-days were
+    // under a kilogram - the grams left after the herd's own rick gave the
+    // rest are not a herd eating from a far rick.
+    if (far_grams > 0 &&
+        static_cast<float>(far_grams) >= kFarRickDayShare * static_cast<float>(bound_grams)) {
+      SimEvent& far = EmitEvent(current, EventKind::kHerdAteFromFarRick, EventSeverity::kRoutine);
+      far.herd = current.herds.row_ids[row];
+      float road_km = 0.0F;
+      if (far_row != kNoRow) {
+        far.unit = current.units.row_ids[far_row];
+        const TravelMode mode =
+            SettlementHasCarts(current, config.horse_kind) ? TravelMode::kCart : TravelMode::kWalk;
+        road_km = RoadKm(current, mode, current.units.rows[far_row].position, place.unit->position);
+      }
+      far.amount = PackFarRickAmount(road_km, far_grams);  // feed_home.h: both halves clamped
+    }
     const bool fed = herd.fed_share >= 1.0F;
     // THE FIRST HUNGRY DAY STOPS THE FAST-FORWARD (B8; event_state.h,
     // kHerdWentHungry): a kolkhoz herd hungry today — and only as a NEW

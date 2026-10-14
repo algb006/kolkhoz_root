@@ -82,6 +82,24 @@ struct HerdPlace {
   /// хлеба, который выдают людям»; herd_system.h, PeoplesFoods). Null:
   /// nothing kept back. Owned by the caller, as `feed_allowance` is.
   const std::vector<std::uint8_t>* peoples_foods = nullptr;
+
+  /// A FARM's OWN RICK (feed_home.h; routing stage В3, step two): true for a
+  /// kolkhoz herd fed at a unit in a village where a rick stands - the feeds
+  /// a rick is the home of are then taken from its own unit, its rick
+  /// (`rick_row`) and only then, counted, from the rest of the village. Set
+  /// by the herd day alone; false keeps the whole old chain (the autumn's
+  /// slaughter, a hand-built place, a village with no rick).
+  bool bound = false;
+  std::uint32_t rick_row = 0xFFFFFFFFU;
+
+  /// What this herd ate of the bound feeds by form (b)'s fallback today, and
+  /// the first unit it came from: the caller's, for the day's one event
+  /// (EventKind::kHerdAteFromFarRick). Null: not counted.
+  Grams* far_grams = nullptr;
+  std::uint32_t* far_row = nullptr;
+  /// All it ate of the bound feeds today, whatever the source - the day's
+  /// ration the far part is set against (feed_home.h, kFarRickDayShare).
+  Grams* bound_grams = nullptr;
 };
 
 /// THE LIFETIME CONTRACT OF THE TWO POINTERS INTO THE WORLD, the pantry and

@@ -1061,7 +1061,13 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       [estimate](const WorldState& world, std::uint32_t days) {
         return estimate != nullptr && estimate->StoredHayShortWithin(world, days);
       },
-      snow_lain);
+      snow_lain,
+      // And WHICH ricks are short (0.37.255): the urgent rule's question, a
+      // farm's rick at a time.
+      [estimate](const WorldState& world, std::uint32_t days) {
+        return estimate == nullptr ? std::vector<ShortRickUnit>{}
+                                   : estimate->ShortRicksWithin(world, days);
+      });
   // THE FODDER FUND IS PRODUCTION'S to size, and the people's issue must stay
   // below rung 3 of the ladder, which holds it (core_common/fund_ladder.h;
   // boss seq 14 and 17): residents is handed the one size by the same road

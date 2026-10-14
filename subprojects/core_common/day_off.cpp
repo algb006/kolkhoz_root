@@ -37,6 +37,18 @@ bool GatherShortStands(const WorldState& world) {
          (world.gather_short_said == today || world.gather_short_said == today + 1U);
 }
 
+std::uint32_t UrgentHayHorizonDays(const WorldState& world, std::uint32_t urgent_days) {
+  if (urgent_days == 0) {
+    return 0;
+  }
+  std::uint32_t days_to_mend = urgent_days + 1U;
+  for (SimDay ahead = 1; ahead <= kDaysPerWeek && IsDayOffIn(world, world.calendar.day + ahead);
+       ++ahead) {
+    ++days_to_mend;
+  }
+  return days_to_mend;
+}
+
 bool IsDayOffIn(const WorldState& world, SimDay day) {
   if (!IsCalendarDayOffIn(world, day)) {
     return false;

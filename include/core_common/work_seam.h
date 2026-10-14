@@ -204,6 +204,17 @@ HarnessCount CountHarness(const WorldState& world);
 ///        false.
 bool SettlementHasCarts(const WorldState& world, LivestockKindId horse_kind);
 
+/// @brief A rick whose farm's herds will be out of the feeds it is the home
+///        of soon (routing stage В3, step two; core_production's
+///        feed_home.h, ShortRicksWithin): production's answer to labour's
+///        question «which ricks are short», by UnitId across the seam.
+struct ShortRickUnit {
+  UnitId rick;
+  /// The whole days its stock still feeds its herds, today the first: 0 -
+  /// this morning's feeding is not covered.
+  std::uint32_t days_left = 0;
+};
+
 }  // namespace core
 
 #endif  // CORE_COMMON_WORK_SEAM_H_

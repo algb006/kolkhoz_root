@@ -126,6 +126,8 @@ const char* KindName(core::EventKind kind) {
       return "advance_written_off";
     case core::EventKind::kStackCartUrgent:
       return "stack_cart_urgent";
+    case core::EventKind::kHerdAteFromFarRick:
+      return "herd_ate_from_far_rick";
     case core::EventKind::kElectrificationUnlocked:
       return "electrification_unlocked";
     case core::EventKind::kFireBroke:
