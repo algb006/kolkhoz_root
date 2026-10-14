@@ -266,10 +266,10 @@ int CheckTheMigrantGoesToTheBarrackFirst() {
   return failures;
 }
 
-/// The morning climb with a couple waiting: the family whose house fell takes
-/// the free house, the newcomer of the same roomy barrack does not - nor a
-/// second free house while the couple still waits; the pair - the couple gone,
-/// the newcomer climbs.
+/// The morning climb with a couple waiting: a family not formed in a barrack
+/// (here one whose house fell) takes the free house, the newcomer of the same roomy barrack does
+/// not - nor a second free house while the couple still waits; the pair - the couple gone, the
+/// newcomer climbs.
 int CheckTheNewcomerClimbsBehindTheCouples() {
   int failures = 0;
   const core::LifeConfig config = BarrackConfig();
