@@ -157,6 +157,20 @@ int CheckTheOwnDelivery() {
   return failures;
 }
 
+int CheckOwnCartsTakeOverTheRequest() {
+  int failures = 0;
+  core::ProductionConfig config;
+  core::WorldState world;
+  SetUpVillage(config, world);
+  world.calendar.day = 1;
+  core::RequestPlanDelivery(config, world, Rye(), 0, false);
+  failures += Expect(
+      core::RequestPlanDelivery(config, world, Rye(), 0, true) == core::OrderRefusal::kNone &&
+          world.plan.requested[0] == kTonne && world.limit_deliveries.rows.size() == 1,
+      "own delivery: what own carts take on leaves the district's request");
+  return failures;
+}
+
 int CheckTheBonus() {
   int failures = 0;
   core::ProductionConfig config;
@@ -187,6 +201,7 @@ int CheckWhoseTransportToTheDistrict() {
   failures += CheckTheCalendar();
   failures += CheckTheDistrictsRequest();
   failures += CheckTheOwnDelivery();
+  failures += CheckOwnCartsTakeOverTheRequest();
   failures += CheckTheBonus();
   return failures;
 }
