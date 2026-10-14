@@ -266,6 +266,39 @@ int CheckTheMigrantGoesToTheBarrackFirst() {
   return failures;
 }
 
+/// The morning climb with a couple waiting: the family whose house fell takes
+/// the free house, the newcomer of the same roomy barrack does not - nor a
+/// second free house while the couple still waits; the pair - the couple gone,
+/// the newcomer climbs.
+int CheckTheNewcomerClimbsBehindTheCouples() {
+  int failures = 0;
+  const core::LifeConfig config = BarrackConfig();
+  core::WorldState world;
+  SetDay(world, 16);  // May
+  const core::UnitId barrack = AddUnit(world, 1);
+  const core::FamilyId newcomer = AddBarrackFamily(world, barrack, 1);
+  world.families.rows[FindRow(world.families, newcomer)].formed_in_barrack = 1;
+  const core::FamilyId fell = AddBarrackFamily(world, barrack, 2);
+  core::WeddingWaitRow couple;
+  couple.since_day = 10;
+  const auto couple_id = AppendRow(world.wedding_waits, couple);
+  AddUnit(world, 0);
+  core::RunRoofless(config, world);
+  failures += Expect(world.families.rows[FindRow(world.families, fell)].in_barrack == 0 &&
+                         world.families.rows[FindRow(world.families, newcomer)].in_barrack == 1,
+                     "barrack climb: with a couple waiting the house goes to the family whose "
+                     "house fell, not to the newcomer");
+  AddUnit(world, 0);
+  core::RunRoofless(config, world);
+  failures += Expect(world.families.rows[FindRow(world.families, newcomer)].in_barrack == 1,
+                     "barrack climb: a free house, a couple waiting - the newcomer stays");
+  RemoveRow(world.wedding_waits, couple_id);
+  core::RunRoofless(config, world);
+  failures += Expect(world.families.rows[FindRow(world.families, newcomer)].in_barrack == 0,
+                     "barrack climb: no couple waiting - the newcomer takes the free house");
+  return failures;
+}
+
 }  // namespace
 
 int CheckNoWeddingIntoABarrackAndTheCrowdedBarrack() {
@@ -275,5 +308,6 @@ int CheckNoWeddingIntoABarrackAndTheCrowdedBarrack() {
   failures += CheckNoWeddingIntoABarrackPlace();
   failures += CheckNoWeddingIntoABarrackYard();
   failures += CheckTheMigrantGoesToTheBarrackFirst();
+  failures += CheckTheNewcomerClimbsBehindTheCouples();
   return failures;
 }

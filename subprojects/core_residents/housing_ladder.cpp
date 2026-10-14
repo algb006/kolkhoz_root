@@ -284,21 +284,48 @@ void ClimbFromLodging(const LifeConfig& config, WorldState& current, bool cold) 
   }
 }
 
+/// Who climbs from a barrack in which round of the morning (ClimbFromBarrack).
+enum class BarrackClimbRound : std::uint8_t {
+  kCrowded,    ///< a family of a barrack over its places, whatever brought it there
+  kHouseFell,  ///< a roomy barrack's family that came down to it from a house of its own
+  kNewcomer,   ///< a roomy barrack's family formed there: an arrival
+};
+
+BarrackClimbRound ClimbRoundOf(const FamilyRow& family, bool in_crowded) {
+  if (in_crowded) {
+    return BarrackClimbRound::kCrowded;
+  }
+  return family.formed_in_barrack != 0 ? BarrackClimbRound::kNewcomer
+                                       : BarrackClimbRound::kHouseFell;
+}
+
 /// THE BARRACK NEXT (boss seq 197): a free house takes a barrack family
-/// before any couple - AND A FAMILY OF A CROWDED BARRACK FIRST («Тесный
-/// барак», demography design; boss 11 October 2026): until row 456 the row
-/// order served a barrack with places to spare as readily as one over them.
-/// The crowded set is read once, before anybody moves.
+/// before the wedding queue - A FAMILY OF A CROWDED BARRACK FIRST («Тесный
+/// барак», demography design; boss 11 October 2026), then one whose own house
+/// fell; A NEWCOMER WITH ROOM IN ITS BARRACK ONLY WHILE NO COUPLE WAITS
+/// (demography design «Жильё приезжего — барак»: «В очередь за домом наравне
+/// с молодожёнами приезжие не встают»; boss and econ, 14 October 2026). Until
+/// then every barrack family climbed ahead of the couples: the migrant put in
+/// a barrack by HomeForNewcomers took the next finished house the morning
+/// after - host's R′ counted 63 of 87 climbs with couples waiting. A
+/// newcomer is told by `formed_in_barrack`, so an arrival that once climbed
+/// to a house and lost it counts as a newcomer again (STUB: no field keeps
+/// «came down from a house»). The crowded set is read once, before anybody
+/// moves.
 void ClimbFromBarrack(const LifeConfig& config, WorldState& current, bool cold) {
   const std::vector<bool> crowded = CrowdedBarracks(config, current);
-  for (const bool crowded_first : {true, false}) {
+  for (const BarrackClimbRound round :
+       {BarrackClimbRound::kCrowded, BarrackClimbRound::kHouseFell, BarrackClimbRound::kNewcomer}) {
+    if (round == BarrackClimbRound::kNewcomer && !current.wedding_waits.rows.empty()) {
+      return;
+    }
     for (std::uint32_t row = 0; row < current.families.rows.size(); ++row) {
       if (current.families.rows[row].in_barrack == 0) {
         continue;
       }
       const std::uint32_t unit_row = FindRow(current.units, current.families.rows[row].house);
       const bool in_crowded = unit_row != kNoRow && unit_row < crowded.size() && crowded[unit_row];
-      if (in_crowded != crowded_first) {
+      if (ClimbRoundOf(current.families.rows[row], in_crowded) != round) {
         continue;
       }
       const UnitId house = FreeHouse(config, current, cold);
