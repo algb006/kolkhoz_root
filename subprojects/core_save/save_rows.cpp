@@ -358,6 +358,8 @@ static_assert(AggregateArity<WorkAssignment>() == 17,
 // the build.
 // Save 153 (stage В, F3): haul_to, a point after the seam — 16 -> 24 + A and
 // 6 -> 7 fields, predicted before the build.
+// Save 163 (stage В5): outbound, a byte in the padding after own_carts -
+// predicted «24 + A stays» before the build; the wire + 1 byte a row.
 static_assert(sizeof(LimitDeliveryRow) == 24 + kAmountsSize,
               "LimitDeliveryRow changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(LivestockArrivalRow) == 16,
@@ -369,7 +371,9 @@ static_assert(sizeof(LivestockArrivalRow) == 16,
 // twice over on the very day this row was written.
 static_assert(AggregateArity<LivestockArrivalRow>() == 6,
               "LivestockArrivalRow gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<LimitDeliveryRow>() == 7,
+// Save 163: 7 -> 8 (outbound) - the arity was not named with the size's
+// prediction, a miss in the inventory, caught by this tripwire.
+static_assert(AggregateArity<LimitDeliveryRow>() == 8,
               "LimitDeliveryRow gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(SpecialistArrivalRow) == 12,
               "SpecialistArrivalRow changed — update the codec and VERSION_SAVE");
@@ -1727,6 +1731,7 @@ void WriteLimitDeliveryRow(SaveSink& sink, const LimitDeliveryRow& row) {
   out.WriteU32(row.arrive_day);
   // The village's own carts (decision 279, save 98): the flag and the seam.
   out.WriteU8(row.own_carts);
+  out.WriteU8(row.outbound);  // save 163: the plan's own delivery going out (В5)
   out.WriteFloat(row.haul_days_remaining);
   out.WriteFloat(row.haul_days_written);
   WriteVec2(out, row.haul_to);  // save 153: the lot's receiver (F3)
@@ -1739,6 +1744,10 @@ LimitDeliveryRow ReadLimitDeliveryRow(LoadSource& source) {
   row.lot = LimitLotId{source.ReadDefId(DefKind::kLimitLot)};
   row.arrive_day = in.ReadU32();
   row.own_carts = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "own carts"));  // save 98
+  row.outbound = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "outbound"));    // save 163
+  if (row.outbound != 0 && row.own_carts == 0) {
+    source.Fail("a plan delivery going out names no own carts");
+  }
   row.haul_days_remaining = in.ReadFloat();
   row.haul_days_written = in.ReadFloat();
   row.haul_to = ReadVec2(in);  // save 153

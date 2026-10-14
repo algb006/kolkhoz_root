@@ -67,6 +67,16 @@ Grams DeliverableAboveSeed(const ProductionConfig& config,
                            ResourceId resource,
                            SimDay seed_as_of);
 
+/// @brief Grams of `resource` a delivery from the STORES alone may take,
+/// leaving the next sowing's seed in them - the heaps not counted against
+/// the seed (stage В5: the district's monthly collection and the own
+/// delivery take from the stores, not from the fields).
+/// @param seed_as_of See SeedHeldToSowing.
+Grams DeliverableFromStores(const ProductionConfig& config,
+                            const WorldState& current,
+                            ResourceId resource,
+                            SimDay seed_as_of);
+
 /// @brief «Сдать сейчас» (kDeliverPlan; econ's audit M2, Л1): what is still
 /// owed of one position — or of every position when `only` is invalid —
 /// leaves the stores now, as much as the stores hold, and is added to

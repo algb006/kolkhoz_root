@@ -153,10 +153,11 @@ constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
 // the build; on the wire +8 a book. Save 162 (stage В4): CartLoadSource gains
 // kStand, the eight arrays by source one entry each (six floats, two Grams) -
 // predicted 1064 -> 1104 before the build, 123 fields unchanged; on the wire
-// +40 a book.
-static_assert(sizeof(YearLedger) == 1104 + (41 * kAmountsSize) + kBuiltInRowsSize,
+// +40 a book. Save 163 (stage В5): delivered_own, a 42nd amounts vector after
+// `delivered` - predicted 1104 + 42 A and 124 fields before the build.
+static_assert(sizeof(YearLedger) == 1104 + (42 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 123,
+static_assert(AggregateArity<YearLedger>() == 124,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(BuiltInRow) == 16 && AggregateArity<BuiltInRow>() == 3,
               "BuiltInRow changed — update its codec and VERSION_SAVE");
@@ -262,6 +263,7 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteFloat(book.herd_hungry_head_days);
 
   sink.WriteAmounts(DefKind::kResource, book.delivered);
+  sink.WriteAmounts(DefKind::kResource, book.delivered_own);  // save 163 (В5)
   // What the district asked, by position (save 58, M12).
   sink.WriteAmounts(DefKind::kResource, book.plan_due);
   // What went against each position (save 83).
@@ -452,6 +454,7 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.herd_hungry_head_days = in.ReadFloat();
 
   book.delivered = source.ReadAmounts(DefKind::kResource);
+  book.delivered_own = source.ReadAmounts(DefKind::kResource);  // save 163
   book.plan_due = source.ReadAmounts(DefKind::kResource);
   book.plan_delivered = source.ReadAmounts(DefKind::kResource);
   book.milk_debt = in.ReadI64();

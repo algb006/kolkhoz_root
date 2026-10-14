@@ -87,8 +87,18 @@ struct LimitDeliveryRow {
   /// northern border, and come in only as the village's carters haul them
   /// (field_haul.cpp, SettleDistrictLotHauling). 0: the district's cart, as
   /// every other lot. Set at the order, from the lot's goods. Beside `lot`,
-  /// in its padding.
+  /// in its padding. SINCE В5 (0.37.258) ALSO BY THE ORDER's CHOICE for any
+  /// lot (kOrderLimitLot `enable` 1; district §4 «Чья логистика»).
   std::uint8_t own_carts = 0;
+
+  /// THE OTHER WAY (routing stage В5, save 163; core_production
+  /// district_carts.h): 1 - this row is the PLAN's OWN DELIVERY going OUT:
+  /// `goods` is what the village's own carts still owe to carry from the stores
+  /// to the district centre (`own_carts` 1, `lot` invalid, `arrive_day` the
+  /// order's day); the carted share leaves the stores and counts to the plan as
+  /// it arrives (SettleDistrictLotHauling). 0: a lot coming in. In the padding
+  /// after `own_carts`.
+  std::uint8_t outbound = 0;
 
   /// The campaign day the cart reaches the village: the order's day plus
   /// limit_delivery_days plus a delay of 0..limit_delivery_delay_days_max drawn

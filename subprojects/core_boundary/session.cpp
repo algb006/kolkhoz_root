@@ -236,8 +236,9 @@ bool ShapeIsValid(const OrderRow& order) {
     case OrderKind::kOrderLimitLot:
       // A lot named, and nothing else. Whether the catalogue carries it, its
       // epoch is open and the year's points cover it change with the world —
-      // the consumer's verdict (order_state.h).
-      return order.lot.value != kInvalidDefIdValue;
+      // the consumer's verdict (order_state.h). `enable` is whose transport
+      // (routing stage В5: 1 own carts, 0 the district's) - a switch.
+      return order.lot.value != kInvalidDefIdValue && order.enable <= 1;
     case OrderKind::kHandStock:
       // A herd and a head count above nothing. Which heads go, what they
       // fetch and whether the last sire is among them all change with the
@@ -304,7 +305,9 @@ bool ShapeIsValid(const OrderRow& order) {
       // One position or all of them (resource invalid); no other subject. A
       // quantity names its position: "this many of everything" means nothing.
       // What is owed and what the stores hold is the consumer's.
-      return order.amount >= 0 &&
+      // `enable` is whose transport (routing stage В5: 1 own carts, 0 the
+      // district's standing request) - a switch that is a switch.
+      return order.amount >= 0 && order.enable <= 1 &&
              (order.amount == 0 || order.resource.value != kInvalidDefIdValue) && !has_resident &&
              !has_unit && !has_field && !has_herd && !has_stand && !has_site;
     case OrderKind::kDeclareRush:

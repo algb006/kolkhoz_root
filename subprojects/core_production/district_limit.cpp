@@ -13,6 +13,7 @@
 #include "core_common/horse_lamp_memory.h"
 #include "core_common/random.h"
 #include "core_common/state_table_ops.h"
+#include "district_carts.h"
 #include "herd_life.h"
 #include "livestock_homes.h"
 #include "stock_ops.h"
@@ -331,6 +332,9 @@ OrderRefusal OrderLimitLot(const ProductionConfig& config,
   // of 26.09: 6 t of logs in the stores on the third day, 0 man-days).
   const std::size_t log = config.timber.log_resource.value;
   cart.own_carts = log < cart.goods.size() && cart.goods[log] > 0 ? 1U : 0U;
+  // AND ANY LOT BY THE ORDER's CHOICE (routing stage В5; district §4 «Чья
+  // логистика — выбирает председатель при оформлении заявки»): `enable` 1.
+  cart.own_carts = cart.own_carts != 0 || order.enable != 0 ? 1U : 0U;
   AppendRow(current.limit_deliveries, cart);
   return OrderRefusal::kNone;
 }
@@ -653,6 +657,11 @@ void GrantYear(const ProductionConfig& config,
                                          plan_fully_met,
                                          overfulfil_grain_tonnes,
                                          current.chairman.raikom_reputation);
+  // THE OWN-DELIVERY BONUS (routing stage В5; district §4; econ's (a)): a
+  // tenth of the points the own-carted tonnes earned - read off the closing
+  // year's book, which is still `current` here.
+  current.limit.points += OwnDeliveryBonusPoints(
+      config, current, plan_fully_met, OverfulfilPoints(config.limit, overfulfil_grain_tonnes));
   current.limit.points_granted_total += current.limit.points;
 }
 

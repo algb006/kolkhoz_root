@@ -230,7 +230,8 @@ float ChainHectares(const ProductionConfig& config,
   return grown_ha;
 }
 
-/// kPlanPositionShort (boss seq 89): on the year's last day, every position
+/// kPlanPositionShort (boss seq 89): from one district collection before the
+/// deadline's (stage В5) to the year's last day, every position
 /// the turn's delivery cannot bring to the met share. THE FORECAST ENTERS BY
 /// THE TURN'S OWN DOOR since 0.36.23 (boss-core-epoch1-resume [54]):
 /// delivered plus the least of owed and DeliverableAboveSeed — the heaps and
@@ -241,8 +242,14 @@ float ChainHectares(const ProductionConfig& config,
 void CollectPlanShortAlarms(const ProductionConfig& config,
                             const WorldState& world,
                             std::vector<Alarm>& alarms) {
-  // «ЗА СУТКИ ДО ПОВОРОТА ГОДА», the boss's word: the day the turn follows.
-  if (world.plan.announced == 0 || world.calendar.day % kDaysPerYear != kDaysPerYear - 1) {
+  // «ЗА СУТКИ ДО ПОВОРОТА ГОДА», the boss's word, was the day the turn follows.
+  // STAGE В5 MOVED IT ONE DISTRICT COLLECTION EARLIER (econ's gate (b)): the
+  // district's cart takes what lies in the stores on each month's last day,
+  // and a lamp lit on the deadline's own day left the player no collection
+  // to answer it with. It burns from the last regular collection before the
+  // deadline's (the eleventh month's last day) to the turn.
+  constexpr std::uint32_t kFirstWarningDayOfYear = kDaysPerYear - 1U - kDaysPerMonth;
+  if (world.plan.announced == 0 || world.calendar.day % kDaysPerYear < kFirstWarningDayOfYear) {
     return;
   }
   for (std::uint32_t index = 0; index < world.plan.due.size(); ++index) {
@@ -266,7 +273,7 @@ void CollectPlanShortAlarms(const ProductionConfig& config,
     // At least a gram: the share compares in float and the grams in double,
     // and a position PositionDelivered calls short is never short by nought.
     alarm.amount = std::max<Grams>(met_grams - shipped_at_turn, 1);
-    // The loss is the turn itself (raised on the year's last day: 0 or 1).
+    // The loss is the turn itself (raised in the year's last five days).
     alarm.days_to_loss = DaysToLossOf(DaysToPlanTurn(world));
     alarms.push_back(alarm);
   }

@@ -45,6 +45,7 @@
 #include "core_tables/tables.h"
 #include "demolition_stock.h"
 #include "district_car.h"
+#include "district_carts.h"
 #include "district_limit.h"
 #include "district_plan.h"
 #include "district_trip.h"
@@ -309,8 +310,12 @@ class ProductionSystem final : public IProductionSystem {
       // And the materials on their way to the sites (routing stage V2).
       SettleSiteSupply(config_, current, true);
       // And the timber lots the village fetches from the district centre
-      // (decision 279, 0.36.17; field_haul.h).
+      // (decision 279, 0.36.17; field_haul.h) - and since В5 any lot by own
+      // carts and the plan's own delivery going out.
       SettleDistrictLotHauling(config_, current);
+      // THE DISTRICT's CART FOR THE PLAN (routing stage В5; district_carts.h):
+      // the month's last day collects the standing request, a mud day slips it.
+      SettleDistrictCollection(config_, current);
       // And what a unit being taken down held (demolition_stock.h) — before
       // the shops, so the manor's firewood reaches the smokehouse tonight.
       SettleDemolitionStock(config_, current);
@@ -518,6 +523,11 @@ class ProductionSystem final : public IProductionSystem {
     }
     const auto today = static_cast<std::uint32_t>(completed.calendar.day);
     for (const LimitDeliveryRow& cart : completed.limit_deliveries.rows) {
+      if (cart.outbound != 0) {
+        // The plan's own delivery is not on its way TO the village (stage
+        // В5); the window has no line for it yet - a named gap.
+        continue;
+      }
       book.on_the_way.push_back(LimitCartLine{.lot = cart.lot,
                                               .arrive_day = cart.arrive_day,
                                               .arrived = cart.arrive_day <= today,

@@ -12,6 +12,7 @@
 #include "core_common/emit_event.h"
 #include "core_common/order_state.h"
 #include "core_common/state_table_ops.h"
+#include "district_carts.h"
 #include "district_limit.h"
 #include "district_plan.h"
 #include "district_trip.h"
@@ -574,7 +575,12 @@ void ConsumeProductionOrders(const ProductionConfig& config, WorldState& current
         Settle(order, OrderHandStock(config, current, order));
         break;
       case OrderKind::kDeliverPlan:
-        Settle(order, DeliverPlanNow(config, current, order.resource, order.amount));
+        // WHOSE TRANSPORT (routing stage В5; district_carts.h): the district's
+        // standing request (enable 0) or the village's own carts (enable 1).
+        // Until В5 the order delivered on the spot (DeliverPlanNow).
+        Settle(
+            order,
+            RequestPlanDelivery(config, current, order.resource, order.amount, order.enable != 0));
         break;
       case OrderKind::kEmptyStore:
         Settle(order, EmptyStore(config, current, order));

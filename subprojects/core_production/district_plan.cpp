@@ -14,9 +14,11 @@
 #include "core_common/emit_event.h"
 #include "core_common/land_state.h"
 #include "core_common/ledger_state.h"
+#include "core_common/limit_state.h"
 #include "core_common/order_state.h"
 #include "core_common/quantities.h"
 #include "core_common/spoilage.h"
+#include "core_common/state_table_ops.h"
 #include "district_visit.h"
 #include "herd_system.h"
 #include "milk_cart.h"
@@ -69,6 +71,23 @@ Grams DeliverableAboveSeed(const ProductionConfig& config,
   }
   const Grams available = lying + TakeableGrams(current, config, resource);
   return available > held_for_seed ? available - held_for_seed : 0;
+}
+
+Grams DeliverableFromStores(const ProductionConfig& config,
+                            const WorldState& current,
+                            ResourceId resource,
+                            SimDay seed_as_of) {
+  // THE HEAPS DO NOT FREE THE STORES' SEED (stage В5): read with the heaps,
+  // as DeliverableAboveSeed is, 10 t in the barn against 8 t of seed beside a
+  // 20 t heap is 22 t deliverable - and a door that takes from the stores
+  // alone would take all ten, the seed with them.
+  const std::vector<Grams> need = SeedHeldToSowing(config, current, seed_as_of);
+  const Grams seed_need = resource.value < need.size() ? need[resource.value] : 0;
+  const auto& unsealed = current.unsealed.by_fund[static_cast<std::size_t>(FundKind::kSeed)];
+  const Grams opened = AmountOf(unsealed, resource);
+  const Grams held_for_seed = seed_need > opened ? seed_need - opened : 0;
+  const Grams stored = TakeableGrams(current, config, resource);
+  return stored > held_for_seed ? stored - held_for_seed : 0;
 }
 
 /// The year's delivery: what the plan asked for leaves the stores and is
@@ -825,6 +844,21 @@ void JudgePlan(const ProductionConfig& config, WorldState& current) {
   // And its debt: whatever was still owed was short in the verdict above,
   // and the debt does not carry over the turn (the human's «вариант с долгом»).
   current.plan.milk_debt = 0;
+  // And the standing request (stage В5): it named goods against this figure,
+  // and the deadline's collection above carried what was still owed.
+  current.plan.requested.assign(current.plan.requested.size(), 0);
+  // And an own delivery not carted to the end: what it still held lay in the
+  // stores, and the deadline's delivery above took it. Left standing, the row
+  // would cart next spring's grain against a figure not yet named.
+  std::vector<LimitDeliveryId> outgoing;
+  for (std::uint32_t row = 0; row < current.limit_deliveries.rows.size(); ++row) {
+    if (current.limit_deliveries.rows[row].outbound != 0) {
+      outgoing.push_back(current.limit_deliveries.row_ids[row]);
+    }
+  }
+  for (const LimitDeliveryId id : outgoing) {
+    RemoveRow(current.limit_deliveries, id);
+  }
   // The unsealings go with the year they were an emergency of. Carried
   // over, they would quietly become a lower fund instead of a decision
   // somebody took on a particular hungry winter.

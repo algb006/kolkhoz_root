@@ -813,6 +813,9 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
   // them (a lot with nowhere to go is refused at the door — kNowhereToStore).
   std::vector<std::pair<std::uint32_t, std::vector<float>>> landings;
   for (const LimitDeliveryRow& cart : world.limit_deliveries.rows) {
+    if (cart.outbound != 0) {
+      continue;  // the plan's own delivery leaves the village (stage В5)
+    }
     std::vector<float> goods(held_kg.size(), 0.0F);
     bool any = false;
     for (std::size_t resource = 0; resource < cart.goods.size() && resource < goods.size();

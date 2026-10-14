@@ -175,6 +175,7 @@ core::WorldState MakeWorld() {
   // The accumulation limit (save 62): not empty, or a codec that forgot it
   // would round-trip an empty vector perfectly.
   world.plan.accumulation_limit = Amounts({15'000'000, 0, 4'000'000});
+  world.plan.requested = Amounts({2'000'000, 0, 0});  // save 163: the district's standing request
   // The milk cart (save 66): a daily share, and the winter's milk that went
   // with no position — both away from their empty defaults.
   world.plan.milk_daily_share = 250'000;
@@ -1412,6 +1413,7 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   AppendAmounts(chunks, "plan.delivered", world.plan.delivered);
   AppendAmounts(chunks, "plan.highest_due", world.plan.highest_due);                // save 127
   AppendAmounts(chunks, "plan.accumulation_limit", world.plan.accumulation_limit);  // save 62
+  AppendAmounts(chunks, "plan.requested", world.plan.requested);                    // save 163
   // The milk cart's daily share and the deliveries outside any position (save 66).
   chunks.push_back(
       {"plan.milk_daily_share", U64(static_cast<std::uint64_t>(world.plan.milk_daily_share))});
@@ -1738,7 +1740,10 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // other section unmoved before the build, held (the STRUCT's size was the
     // miss: 88, not 84); the hash read off the first build. And the avral's
     // days on the cut, a third u16, the fixture's 3: 848 -> 850, predicted.
-    {"world", 850, 0xcc5481c2f4d58613ULL},
+    // Save 163 (stage В5): the plan's standing request to the district, one
+    // amounts vector, the fixture's one resource: 850 -> 876 - read off the
+    // build, NOT predicted before it (the miss is named).
+    {"world", 876, 0x84cc1395c17bd874ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -1958,7 +1963,8 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // Save 98: +9 — own_carts and the carting seam's two floats on the one
     // cart of the fixture; predicted 44 -> 53 before the build, held.
     // Save 153: +8 a lot — haul_to; 53 -> 61, held.
-    {"limit_deliveries", 61, 0x3103a4220a1bf577ULL},
+    // Save 163 (stage В5): +1 a lot — the outbound byte; 61 -> 62, held.
+    {"limit_deliveries", 62, 0xa025d8f08bda4065ULL},
     // 2026-09-16, save 48: the stock bought and still on its way. A section of
     // its own beside the carts, because a head rides nothing.
     {"livestock_arrivals", 24, 0x216b896caae651cbULL},
@@ -2114,7 +2120,9 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // Save 162 (stage В4): the cart book's sixth source, the stands' logs - one
     // entry in eight arrays (6 floats, 2 Grams), 40 bytes a book: 2912 -> 2992
     // predicted and held; the hash read off the build.
-    {"ledger", 2992, 0x175cb13794ce38b8ULL},
+    // Save 163 (stage В5): delivered_own, an empty amounts vector in each of
+    // the two books: 2992 -> 2996; the hash read off the build.
+    {"ledger", 2996, 0x10bda6017126fe00ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 

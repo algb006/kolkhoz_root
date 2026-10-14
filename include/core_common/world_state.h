@@ -727,6 +727,14 @@ struct PlanState {
   /// board shows it beside the stock, so the seizure can be foreseen.
   ResourceAmounts accumulation_limit;
 
+  /// THE STANDING REQUEST TO THE DISTRICT's CART (routing stage В5, save 163;
+  /// core_production district_carts.h): what the chairman asked the district
+  /// to collect beyond the deadline's own delivery, by resource, grams. The
+  /// district collects on the month's last day what of it lies in the stores
+  /// (a mud day slips the collection to the next month); kDeliverPlan by the
+  /// district raises it. Dense by ResourceId; emptied at the turn.
+  ResourceAmounts requested;
+
   /// THE MILK CART'S SHARE OF A DAY (district §9 «Молоко — в плане с
   /// первого года»; register 231; boss seq 98 and 113; save 66), grams: the
   /// milk position ÷ the milking days from the spring's announcement to the

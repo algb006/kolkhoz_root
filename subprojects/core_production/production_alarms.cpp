@@ -316,7 +316,9 @@ bool LoanTakenThisYear(const WorldState& world, ResourceId seed) {
 /// of `seed`: on the road, or at the gate with a part not yet stored.
 bool LoanOnTheRoad(const WorldState& world, ResourceId seed) {
   return std::ranges::any_of(world.limit_deliveries.rows, [seed](const LimitDeliveryRow& cart) {
-    return cart.lot.value == kInvalidDefIdValue && AmountOf(cart.goods, seed) > 0;
+    // The plan's own delivery has no lot either, and goes the other way (В5).
+    return cart.lot.value == kInvalidDefIdValue && cart.outbound == 0 &&
+           AmountOf(cart.goods, seed) > 0;
   });
 }
 

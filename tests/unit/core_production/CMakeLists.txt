@@ -1,6 +1,7 @@
 kolkhoz_add_unit_test(core_production
     main.cpp
     cart_trips_checks.cpp
+    district_carts_checks.cpp
     feed_home_checks.cpp
     grass_stand_checks.cpp
     heap_lamp_checks.cpp
