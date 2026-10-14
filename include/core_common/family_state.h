@@ -166,7 +166,10 @@ struct FamilyRow {
   /// with other families, with no yard — no garden, no animals of its own
   /// (its herds went to the kolkhoz when it moved in; boss seq 197). Every
   /// morning such a family climbs to a free house before the wedding queue
-  /// does. Read by production too (a grown head is not walked to a barrack).
+  /// does - except a newcomer (`formed_in_barrack`) in a barrack with room,
+  /// which climbs only while no couple waits (row 456; housing_ladder.cpp
+  /// ClimbFromBarrack). Read by production too (a grown head is not walked to
+  /// a barrack).
   /// Save 75.
   std::uint8_t in_barrack = 0;
 
