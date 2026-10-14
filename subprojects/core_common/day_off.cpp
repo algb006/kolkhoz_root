@@ -79,10 +79,13 @@ bool IsDayOffIn(const WorldState& world, SimDay day) {
   return true;
 }
 
+bool DayOffMayBeDeclaredWorking(const WorldState& world, SimDay day) {
+  return IsDayOffIn(world, day) &&
+         HolidayOn(day, world.calendar.day_zero_weekday, world.epoch) == Holiday::kNone;
+}
+
 bool TodayMayBeDeclaredWorking(const WorldState& world) {
-  const SimDay today = world.calendar.day;
-  return IsDayOffIn(world, today) &&
-         HolidayOn(today, world.calendar.day_zero_weekday, world.epoch) == Holiday::kNone;
+  return DayOffMayBeDeclaredWorking(world, world.calendar.day);
 }
 
 }  // namespace core

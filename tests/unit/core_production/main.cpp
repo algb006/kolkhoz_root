@@ -915,6 +915,12 @@ int CheckTheHayLampByTheCutsPace() {
   stood.chairman.cancelled_day_off = day_off;
   failures += Expect(lamp(stood).advice == core::AlarmAdvice::kCutHay,
                      "hay pace: with the month's day off worked the avral is the move");
+  // #852: THE AVRAL NAMES ITS MEADOW - kDeclareRush takes a field; on a move
+  // that is not the avral no field rides.
+  failures += Expect(lamp(stood).field.value == stood.fields.row_ids.back().value &&
+                         lamp(rainy).field.value == core::kInvalidEntityIdValue,
+                     "hay pace: the avral advice names the meadow in its cut; no other advice "
+                     "names a field");
   stood.chairman.hay_cut_avral_days =
       static_cast<std::uint16_t>(config.farming.hay_avral_days_a_cut);
   failures += Expect(lamp(stood).advice == core::AlarmAdvice::kNone,

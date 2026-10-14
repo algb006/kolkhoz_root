@@ -64,6 +64,29 @@ bool GrassStandsInAnOpenCut(const ProductionConfig& config, const WorldState& wo
   return AMeadowIsInItsCut(config, world);
 }
 
+/// THE MEADOW THE AVRAL IS NAMED ON (#852; econ's complexity pass of 14
+/// October 2026, Risk 1.2: «`cut_hay` names a work that is not in the list»):
+/// kDeclareRush takes a field, so the advice names one - of the meadows in
+/// their cut with mowing left and the avral below its last step (the door's
+/// own test, CutCanBeHurried), the one with the most mowing left; ties to the
+/// first in row order. Invalid when none is, which AvralMayBeNamedOnTheCut
+/// has already refused.
+FieldId MeadowToHurry(const WorldState& world) {
+  FieldId meadow;
+  float most_left = 0.0F;
+  for (std::uint32_t row = 0; row < world.fields.rows.size(); ++row) {
+    const FieldRow& field = world.fields.rows[row];
+    const std::int64_t step = field.rush_phase == field.phase ? field.rush_step : 0;
+    if (field.kind == LandKind::kArable || field.phase != FieldPhase::kHarvest ||
+        !(field.work_days_remaining > most_left) || step >= kMaxRushStep) {
+      continue;
+    }
+    most_left = field.work_days_remaining;
+    meadow = world.fields.row_ids[row];
+  }
+  return meadow;
+}
+
 /// Whether an avral stands on a meadow's cut today.
 bool AvralStandsOnAMeadowsCut(const WorldState& world) {
   return std::ranges::any_of(world.fields.rows, [](const FieldRow& field) {
@@ -94,7 +117,9 @@ SimDay DayOffAheadForTheCut(const ProductionConfig& config,
   // and is not left when it dawned wet.
   const SimDay month_end = today - (today % kDaysPerMonth) + kDaysPerMonth - 1U;
   for (SimDay day = today + 1U; day <= month_end; ++day) {
-    if (IsDayOffIn(world, day)) {
+    // THE DOOR's OWN QUESTION OF THAT DAY (#852): a holiday is a day off the
+    // door will refuse on its morning, and a dated advice must not name it.
+    if (DayOffMayBeDeclaredWorking(world, day)) {
       return day;
     }
   }
@@ -113,8 +138,11 @@ bool AvralMayBeNamedOnTheCut(const ProductionConfig& config, const WorldState& w
   // A day off still ahead in this calendar month - or today's, not yet
   // declared - comes first.
   const SimDay month_end = today - (today % kDaysPerMonth) + kDaysPerMonth - 1U;
+  // A HOLIDAY IS NOT SUCH A DAY (#852): the door refuses it, the day-off rung
+  // does not name it, and counted here it shut the avral's rung behind a move
+  // nobody may make - the lamp lit with nothing to say.
   for (SimDay day = today; day <= month_end; ++day) {
-    if (IsDayOffIn(world, day)) {
+    if (DayOffMayBeDeclaredWorking(world, day)) {
       return false;
     }
   }
@@ -260,6 +288,7 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
   // that followed it 6-8 points of rest by August's end.
   if (pace_is_the_bound && AvralMayBeNamedOnTheCut(config, world)) {
     advice.advice = AlarmAdvice::kCutHay;
+    advice.advice_field = MeadowToHurry(world);
     return advice;
   }
   // WHILE A CUT IS OPEN AND GRASS STILL STANDS IN IT, THE LAMP NAMES ONLY THE
@@ -436,6 +465,7 @@ void CollectHerdForecastAlarms(const ProductionConfig& config,
   alarm.advice_more = advice.advice_more;
   alarm.amount_more = advice.amount_more;
   alarm.advice_day = advice.advice_day;
+  alarm.field = advice.advice_field;
   alarm.hand_over_stock = advice.hand_over_stock;
   alarm.hand_over_horses = advice.hand_over_horses;
   alarm.below_floor_stock = advice.below_floor_stock;

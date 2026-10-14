@@ -14,6 +14,7 @@
 #include "core_common/body.h"
 #include "core_common/calendar.h"
 #include "core_common/cold_housing.h"
+#include "core_common/day_off.h"
 #include "core_common/day_window.h"
 #include "core_common/daylight.h"
 #include "core_common/deadline.h"
@@ -3006,6 +3007,15 @@ int main() {
                        "holiday: New Year is a holiday from Epoch II and not in Epoch I");
     failures += Expect(core::IsRestDay(16, monday, one) && !core::IsRestDay(17, monday, one),
                        "holiday: a holiday is a day of rest, the day after it is not");
+    // THE DOOR's QUESTION OF ANY DAY (#852, day_off.h): a Sunday may be
+    // declared working, May Day may not - the door and the lamp ask this one.
+    core::WorldState plain;
+    plain.calendar.day_zero_weekday = monday;
+    failures += Expect(core::DayOffMayBeDeclaredWorking(plain, 6) &&
+                           !core::DayOffMayBeDeclaredWorking(plain, 16) &&
+                           !core::DayOffMayBeDeclaredWorking(plain, 17),
+                       "day off: a Sunday may be declared working; May Day and a working day may "
+                       "not");
   }
   failures += TestDaylightCurve();
   failures += TestRainStopsWork();

@@ -363,6 +363,9 @@ struct FodderAdvice {
   /// With kDeclareDayWorking: the day off the move belongs to when it is not
   /// today's (Alarm::advice_day); 0 for a move of today.
   SimDay advice_day = 0;
+  /// With kCutHay: the meadow the avral is the door on (Alarm::field; #852) -
+  /// kDeclareRush takes a field, and an advice naming none named no order.
+  FieldId advice_field;
   /// With kReduceHerd named, first or second: the least heads to hand over
   /// above the floors (herd_floors.h, LeastHeadsToHandOver), the stock and
   /// the horses apart — and what would still have to go BELOW the floors,

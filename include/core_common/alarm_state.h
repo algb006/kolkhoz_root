@@ -761,6 +761,10 @@ enum class AlarmAdvice : std::uint8_t {
   /// mowers, a meadow mown. Since 0.37.92 not named once the haymaking is
   /// over: a meadow marked then gives its hay next summer (kBuyFeed,
   /// kReduceHerd).
+  /// SINCE 0.37.256 (#852) THE MEADOW TO HURRY rides in Alarm::field: the
+  /// door is kDeclareRush on that field, one step up - the meadow in its cut
+  /// with the most mowing left, its avral below the last step. Unset on
+  /// every other advice of kHerdHayShortAhead.
   kCutHay,
 
   /// Grain or compound feed runs out first, and the farm has no granary or
