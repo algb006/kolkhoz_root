@@ -200,14 +200,16 @@ UnitId HomeForNewcomers(const LifeConfig& config,
                         const WorldState& current,
                         std::uint32_t people,
                         bool& shared) {
-  const UnitId house = FreeHouseNotOnTheBrink(config, current);
-  if (house.value != kInvalidEntityIdValue) {
-    shared = false;
-    return house;
-  }
   const UnitId barrack = BarrackPlace(config, current, people);
-  shared = barrack.value != kInvalidEntityIdValue;
-  return barrack;
+  if (barrack.value != kInvalidEntityIdValue) {
+    shared = true;
+    return barrack;
+  }
+  shared = false;
+  if (!current.wedding_waits.rows.empty()) {
+    return UnitId{};  // the free house is the waiting couple's
+  }
+  return FreeHouseNotOnTheBrink(config, current);
 }
 
 }  // namespace core
