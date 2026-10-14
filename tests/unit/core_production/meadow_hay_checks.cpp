@@ -71,6 +71,10 @@ int CheckMeadowHayLiesAtTheMeadow() {
       AddUnit(world, *tables, "cattle_yard", {.x = 0.0F, .y = 0.0F}, resources);
   const core::UnitId stack =
       AddUnit(world, *tables, "hay_stack", {.x = 50.0F, .y = 0.0F}, resources);
+  // A SECOND RICK, NEARER THE MEADOW and later in the rows (routing stage В3):
+  // the meadow's hay goes to the nearest by road, not the first by row.
+  const core::UnitId near_stack =
+      AddUnit(world, *tables, "hay_stack", {.x = 900.0F, .y = 0.0F}, resources);
   core::FieldRow meadow;
   meadow.kind = core::LandKind::kMeadow;
   meadow.center = core::Vec2{.x = 1000.0F, .y = 0.0F};
@@ -108,11 +112,13 @@ int CheckMeadowHayLiesAtTheMeadow() {
   core::SettleHauling(config, world);
   failures += Expect(world.fields.rows[0].reaped_grams == 0,
                      "meadow hay: carted through, none is left at the meadow");
-  // IN THE MANGER, where it went by itself before — not in the stack beside
-  // it: the delivery changes who brings the hay, not where it lies.
-  failures += Expect(HayAt(world, manger, hay) == season / 2 && HayAt(world, stack, hay) == 0,
-                     "meadow hay: carted through, the whole of it is in the manger — where the "
-                     "mown hay always went — and none in the stack");
+  // IN THE NEAREST RICK (0.37.252; field_haul.h, HeapRickRow) - a hundred
+  // metres off, not the first by row at the far end, and NOT IN THE MANGER,
+  // where all of it went from 0.37.119: a farm's hay is carted to its buffer.
+  failures += Expect(HayAt(world, near_stack, hay) == season / 2 && HayAt(world, stack, hay) == 0 &&
+                         HayAt(world, manger, hay) == 0,
+                     "meadow hay: carted through, the whole of it is in the nearest rick — none in "
+                     "the rick first by row, none in the manger");
 
   // THE OTHER LAND: the hay of sown grass off an ARABLE field goes through
   // the store door as it did, to the stack, and not to the manger.

@@ -70,6 +70,37 @@ int TestThePorterCatalog() {
         ExpectCatalog(read && core::WalkerLoadGrams(rules, core::ResourceId{0}) == 10 * kKg &&
                           core::WalkerLoadGrams(rules, core::ResourceId{3}) == 20 * kKg,
                       "and a walker's load follows: hay the bundle, clay the sack");
+    failures +=
+        ExpectCatalog(read && rules.load_share.empty() &&
+                          core::CartLoadGrams(rules, 1800.0F, core::ResourceId{0}) == 1800 * kKg,
+                      "a resources table with no load_share column leaves the list empty "
+                      "- every load is the cart's whole tonnage");
+  }
+  {
+    // THE SHARE OF A CART'S TONNAGE (0.37.252): hay 0.6, an empty cell the
+    // whole cart; a share of nought or above one is refused with the column.
+    const test::FakeTable shared({"key", "kg_per_unit", "cargo_form", "load_share"},
+                                 {{"hay", "1000", "rick", "0.6"},
+                                  {"straw", "1000", "rick", "0.45"},
+                                  {"clay", "1000", "bulk", ""}});
+    const test::FakeTableSet set({{"resources", &shared}});
+    core::PorterRules rules;
+    std::string error;
+    const bool read = core::ReadPorterRules(set, rules, error);
+    failures +=
+        ExpectCatalog(read && rules.load_share.size() == 3 &&
+                          core::CartLoadGrams(rules, 1800.0F, core::ResourceId{0}) == 1080 * kKg &&
+                          core::CartLoadGrams(rules, 1800.0F, core::ResourceId{1}) == 810 * kKg &&
+                          core::CartLoadGrams(rules, 1800.0F, core::ResourceId{2}) == 1800 * kKg &&
+                          core::CartLoadGrams(rules, 1800.0F, core::ResourceId{}) == 1800 * kKg,
+                      "a cart of hay is 1.08 t and of straw 0.81 t of a 1.8 t cart; an "
+                      "empty cell and a load with no resource are the whole cart");
+    const test::FakeTable nought({"key", "kg_per_unit", "load_share"}, {{"hay", "1000", "0"}});
+    const test::FakeTableSet bad({{"resources", &nought}});
+    core::PorterRules refused;
+    failures += ExpectCatalog(!core::ReadPorterRules(bad, refused, error) &&
+                                  error.find("load_share") != std::string::npos,
+                              "a share of nought is refused, and the column is named");
   }
   {
     // A table set written before the keys: only carry_kg_adult.

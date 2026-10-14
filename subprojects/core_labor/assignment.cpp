@@ -906,6 +906,12 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
               : !settlement_has_carts) {
         continue;
       }
+      // A RICK WAITS FOR ITS CART (row 818; AssignmentJob::rick_waits_for_a_cart):
+      // hay and straw are not carried on a back while the settlement has
+      // carts - the hand stays free for the day's top-up.
+      if (job.rick_waits_for_a_cart) {
+        continue;
+      }
       const float share =
           job.walker_share > 0.0F ? job.walker_share : params.walker_share_of_cart_day;
       // The first of a pair, held until his second is found.

@@ -83,6 +83,25 @@ bool ReadPorterRules(const ITableSet& tables, PorterRules& rules, std::string& e
   if (!ReadCargoForms(*resources, rules.cargo_form, error)) {
     return false;
   }
+  // THE SHARE OF A CART'S TONNAGE BY RESOURCE (resources.csv `load_share`;
+  // 0.37.252): an empty cell is the whole cart, a table with no such column
+  // leaves the list empty - the whole cart for every load.
+  rules.load_share.clear();
+  const std::uint32_t share_column = resources->FindColumn("load_share");
+  if (share_column != kNoTableColumn) {
+    rules.load_share.assign(resources->RowCount(), 1.0F);
+    for (std::uint32_t row = 0; row < resources->RowCount(); ++row) {
+      if (!OptionalCell(*resources,
+                        row,
+                        share_column,
+                        Range{.low = 0.05F, .high = 1.0F},
+                        rules.load_share[row],
+                        error)) {
+        PrefixError("resources", "load_share", error);
+        return false;
+      }
+    }
+  }
   const std::uint32_t log_row = resources->FindRowByKey("log");
   if (log_row != kNoTableRow) {
     rules.log = ResourceId{static_cast<std::uint16_t>(log_row)};

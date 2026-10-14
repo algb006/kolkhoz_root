@@ -70,7 +70,9 @@ class FixturePolicy {
       : roof_(ReadCropRoof(tables)),
         yard_suggested_(tables, "food_yard"),
         clamp_suggested_(tables, "clamp"),
-        store_suggested_(tables, roof_.store_key) {
+        store_suggested_(tables, roof_.store_key),
+        rick_suggested_(tables, "hay_stack") {
+    rick_ = TypeByKey(tables, "hay_stack");
     granary_ = TypeByKey(tables, "granary");
     cattle_ = TypeByKey(tables, "cattle_yard");
     pen_suggestion_ = SuggestedPoint(tables, "cattle_yard", has_pen_suggestion_);
@@ -343,6 +345,16 @@ class FixturePolicy {
     yard_suggested_.Report("thirty_years");
     clamp_suggested_.Report("thirty_years");
     store_suggested_.Report("thirty_years");
+    std::cout << "thirty_years: the second rick was "
+              << (rick_marked_day_ == kNoRickDay
+                      ? std::string("NOT MARKED (no free point of hay_stack in suggestions.csv, "
+                                    "or none before September of year 1)")
+                      : "marked on day " + std::to_string(rick_marked_day_))
+              << ", stood up "
+              << (rick_days_.empty() ? std::string("never")
+                                     : "on day " + std::to_string(rick_days_.front()))
+              << "\n";
+    rick_suggested_.Report("thirty_years");
   }
 
   /// @brief THE GUARD OF #756: the stores the layout suggests that have no
@@ -379,6 +391,11 @@ class FixturePolicy {
     const std::uint32_t clamps = Built(world, clamp_);
     while (clamp_days_.size() < clamps) {
       clamp_days_.push_back(world.calendar.day);
+    }
+    // The ricks beyond the start's own (one, by the old village).
+    const std::uint32_t ricks = Built(world, rick_);
+    while (rick_days_.size() + 1U < ricks) {
+      rick_days_.push_back(world.calendar.day);
     }
   }
 
@@ -664,6 +681,41 @@ class FixturePolicy {
         order.kind = core::OrderKind::kStartBuild;
         order.unit = world.units.row_ids[row];
         return true;
+      }
+    }
+    // THE SECOND RICK ON THE ELDER'S POINT (rick_suggested_ has the reason):
+    // marked once and started, from the entry morning and before September of
+    // year 1 - BESIDE the farm's other sites, not behind them: an outline of
+    // eight earthwork days with no recipe to wait for. Its first form stood
+    // after the clamp's branch and named no start: the queue below returns
+    // while any site of the farm goes up, so the mark was rarely reached, and
+    // a rick is not one of «ours» there, so a marked one was never started -
+    // the second rick stood in no village of nine (form (c)'s first pair).
+    if (rick_.value != core::kInvalidDefIdValue && world.calendar.day >= entry_day_ &&
+        world.calendar.day < kSecondRickBeforeDay) {
+      for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+        const core::UnitRow& unit = world.units.rows[row];
+        if (unit.type.value == rick_.value && unit.level == 0 &&
+            unit.construction.phase == core::ConstructionPhase::kMarked &&
+            GateOpen(start_gate_, world, unit.type, unit.construction.target_level)) {
+          order.kind = core::OrderKind::kStartBuild;
+          order.unit = world.units.row_ids[row];
+          return true;
+        }
+      }
+      if (!rick_settled_) {
+        rick_settled_ = true;
+        const std::vector<float>& radii = definitions_.units.keep_out_radius_m;
+        const std::optional<core::Vec2> point = rick_suggested_.Take(
+            world, definitions_.Plots(), rick_.value < radii.size() ? radii[rick_.value] : 0.0F);
+        if (point) {
+          order.kind = core::OrderKind::kBuildUnit;
+          order.unit_type = rick_;
+          order.position = *point;
+          rick_marked_day_ = world.calendar.day;
+          ++ordered_;
+          return true;
+        }
       }
     }
     // A site of any of its kinds already going up: nothing new until it stands
@@ -1053,6 +1105,31 @@ class FixturePolicy {
 
   /// The long store's point (suggest_vegetable_store today).
   SuggestedPlaces store_suggested_;
+
+  /// THE SECOND RICK (routing stage В3; boss's ruling «(i)», 14 October 2026;
+  /// suggestions.csv `suggest_hay_stack`): from the stage a meadow's hay is
+  /// carted to the NEAREST rick and a farm is fed from the nearest holder, so
+  /// where the ricks stand is the layout's question - and the start has one,
+  /// by the old village. The chairman stakes a second on the elder's point,
+  /// once, before September of year 1. A table set with no such row is the
+  /// layout without it: the mark is not made and the report says so.
+  core::UnitTypeId rick_;
+
+  SuggestedPlaces rick_suggested_;
+
+  /// The second rick was marked, or found to have no point: not asked again.
+  bool rick_settled_ = false;
+
+  /// The day the second rick was marked; kNoRickDay while it has not been.
+  core::SimDay rick_marked_day_ = kNoRickDay;
+
+  /// The days the ricks beyond the start's first stood up.
+  std::vector<core::SimDay> rick_days_;
+
+  static constexpr core::SimDay kNoRickDay = static_cast<core::SimDay>(-1);
+
+  /// September of year 1, its first day: the second rick is staked before it.
+  static constexpr core::SimDay kSecondRickBeforeDay = 8U * core::kDaysPerMonth;
 
   std::uint32_t yards_ordered_ = 0;
 

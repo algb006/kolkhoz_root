@@ -100,6 +100,15 @@ CargoForm CargoFormOf(const PorterRules& rules, ResourceId resource) {
                                                   : CargoForm::kNone;
 }
 
+Grams CartLoadGrams(const PorterRules& rules, float cart_load_kg, ResourceId resource) {
+  const float share =
+      resource.value < rules.load_share.size() ? rules.load_share[resource.value] : 1.0F;
+  // A share of nought would be a cart that carries nothing and a rate that
+  // divides by it: the parser refuses it, and a hand-made rule set is read
+  // as the whole cart.
+  return GramsFromKilograms(cart_load_kg * (share > 0.0F ? share : 1.0F));
+}
+
 Grams WalkerLoadGrams(const PorterRules& rules, ResourceId resource) {
   const CargoForm form = CargoFormOf(rules, resource);
   const Grams grams = WalkerTripGrams(form, WalkerHold::kStretcher, rules.carry, 0);

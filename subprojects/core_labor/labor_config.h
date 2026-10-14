@@ -345,6 +345,25 @@ struct LaborConfig {
   /// (0.37.129). 0 days, or the function empty: never short.
   std::uint32_t hay_cart_need_days = 12;
 
+  /// AND WHILE A CUT IS OPEN, ONLY THIS MANY DAYS AHEAD (0.37.252; labor.csv
+  /// `hay_cart_in_cut_days`, STUB 2): with mowing still left on a meadow the
+  /// stack's carting takes a field load's window only when the stores are
+  /// short within these days, not within `hay_cart_need_days`. The grass does
+  /// not wait and the stack does - but a herd must not stand hungry beside
+  /// it: with no days at all (the rule's first form) three villages of nine
+  /// went 28 t short in year 3 with 536 t on their meadows; with the full
+  /// twelve the carts took 28 mower-days of year 1's August. 0 - never ahead
+  /// of the mowing.
+  std::uint32_t hay_cart_in_cut_days = 2;
+
+  /// AND URGENT UNDER THIS MANY DAYS (0.37.252, routing stage В3's form (c);
+  /// labor.csv `hay_cart_urgent_days`, STUB 1): with the stores' hay short
+  /// within these days of the herds' ration a meadow's stack is carted ahead
+  /// of ALL work, the open cut's mowing included - before a herd is
+  /// underfed, not the morning after. 0 - never by this rule (the hungry
+  /// herd's level 0 remains).
+  std::uint32_t hay_cart_urgent_days = 1;
+
   /// THE SUPPLY OF A WORKS IS DUE BY A DATE (routing stage V2, 0.37.204;
   /// boss, the C2 thread [12]; transport §12, level 1 «срок»): the game days
   /// from the day its materials were fixed (ConstructionState::

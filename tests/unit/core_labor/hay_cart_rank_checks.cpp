@@ -36,6 +36,9 @@ constexpr std::uint32_t kAugustDay = 30;
 /// What production is made to answer, and what it was asked.
 struct Manger {
   bool short_of_hay = false;
+  /// With short_of_hay: the days the stores DO hold - a question about no
+  /// more days than these is answered «not short». 0: short at any horizon.
+  std::uint32_t days_held = 0;
   std::uint32_t asked = 0;       ///< Times the question was put.
   std::uint32_t asked_days = 0;  ///< The days of the last question.
 };
@@ -71,7 +74,7 @@ std::unique_ptr<core::ILaborSystem> Labor(const char* directory,
                                  [manger](const core::WorldState& /*world*/, std::uint32_t days) {
                                    ++manger->asked;
                                    manger->asked_days = days;
-                                   return manger->short_of_hay;
+                                   return manger->short_of_hay && days > manger->days_held;
                                  });
 }
 
@@ -85,7 +88,13 @@ enum class Rival : std::uint8_t { kTheFallowForRye, kTheStandsLogs };
 /// against the rival, equal work. THE HEAP HAS EVERY LATER KEY OF THE QUEUE:
 /// its field is the first row of its table and it lies the nearer, so only
 /// the rank can send the horse elsewhere.
-Sent TheHorseOnADayOfAugust(core::ILaborSystem& labor, core::LandKind heap_land, Rival rival) {
+/// `mowing_left`: another meadow stands in its cut with mowing left - an open
+/// cut beside the heap.
+Sent TheHorseOnADayOfAugust(core::ILaborSystem& labor,
+                            core::LandKind heap_land,
+                            Rival rival,
+                            bool mowing_left = false,
+                            std::uint32_t day = kAugustDay) {
   core::WorldState world;
   world.calendar.day_zero_weekday = core::Weekday::kMonday;
   world.weather.daylight_hours = 12.0F;
@@ -118,6 +127,16 @@ Sent TheHorseOnADayOfAugust(core::ILaborSystem& labor, core::LandKind heap_land,
   heap.reaped_grams = 10'000'000;
   heap.haul_days_remaining = 5.0F;
   const core::FieldId heap_id = core::AppendRow(world.fields, heap);
+  if (mowing_left) {
+    core::FieldRow uncut;
+    uncut.kind = core::LandKind::kMeadow;
+    uncut.center = core::Vec2{.x = 0.0F, .y = 60.0F};
+    uncut.area_ga = 10.0F;
+    uncut.phase = core::FieldPhase::kHarvest;
+    uncut.harvest_work_days = 10.0F;
+    uncut.work_days_remaining = 5.0F;
+    core::AppendRow(world.fields, uncut);
+  }
   core::FieldId fallow_id;
   core::TimberStandId stand_id;
   if (rival == Rival::kTheFallowForRye) {
@@ -139,7 +158,7 @@ Sent TheHorseOnADayOfAugust(core::ILaborSystem& labor, core::LandKind heap_land,
   }
 
   for (std::uint32_t hour = 0; hour <= 12; ++hour) {
-    world.calendar.tick = (static_cast<core::Tick>(kAugustDay) * core::kTicksPerDay) + hour;
+    world.calendar.tick = (static_cast<core::Tick>(day) * core::kTicksPerDay) + hour;
     core::RefreshCalendarCaches(world.calendar);
     const core::WorldState previous = world;
     labor.RunAssignmentDecisions(previous, world);
@@ -234,6 +253,89 @@ int CheckTheHayGoesFirstWhenTheStoresAreShort() {
   failures += Expect(logs == Sent::kToTheHeap,
                      "hay cart's rank: with the stores short the hay is carted ahead of the "
                      "stand's logs");
+  // BUT NOT AHEAD OF AN OPEN CUT'S MOWING (0.37.252): the same short stores -
+  // five days of hay held, short of the twelve - with another meadow still
+  // to mow: the stack waits, the grass does not. The horse does not go to
+  // the heap; where it goes instead (the scythes take no horse, the logs or
+  // the fallow do) is the queue's.
+  manger.days_held = 5;
+  const Sent with_mowing_logs =
+      TheHorseOnADayOfAugust(*labor, core::LandKind::kMeadow, Rival::kTheStandsLogs, true);
+  const Sent with_mowing_fallow =
+      TheHorseOnADayOfAugust(*labor, core::LandKind::kMeadow, Rival::kTheFallowForRye, true);
+  std::cout << "  the hay cart's rank, the stores short AND a meadow still to mow: against the "
+            << "logs - " << Name(with_mowing_logs) << "; against the fallow - "
+            << Name(with_mowing_fallow) << '\n';
+  failures += Expect(with_mowing_logs != Sent::kToTheHeap && with_mowing_fallow != Sent::kToTheHeap,
+                     "hay cart's rank: while a meadow still has mowing left the stack's carting "
+                     "has no window though the stores are short of the twelve days - it does not "
+                     "take the horse");
+  // AND NOT BESIDE A HUNGRY HERD (labor.csv hay_cart_in_cut_days, 2): one day
+  // of hay held - short within the two - and the stack is carted ahead of
+  // the mowing and of the fallow after all.
+  manger.days_held = 1;
+  const Sent nearly_out =
+      TheHorseOnADayOfAugust(*labor, core::LandKind::kMeadow, Rival::kTheFallowForRye, true);
+  failures += Expect(nearly_out == Sent::kToTheHeap && manger.asked_days == 2,
+                     "hay cart's rank: with the stores short within two days the stack is carted "
+                     "ahead of an open cut's mowing - production's last question is the urgent "
+                     "rule's, about this morning's feeding and the rule's one day");
+  return failures;
+}
+
+/// URGENT UNDER A DAY OF HAY (0.37.252, form (c); labor.csv
+/// `hay_cart_urgent_days`, 1) - A PAIR. The in-cut rule switched off
+/// (hay_cart_in_cut_days 0), a meadow still to mow, the stores holding no hay
+/// at all: by every other rule the stack waits, last of the windowless, and
+/// the horse ploughs the fallow. With the urgent rule's one day it is carted
+/// ahead of everything; with the rule at nought it waits as before.
+int CheckTheStackIsUrgentUnderADayOfHay() {
+  int failures = 0;
+  Manger empty;
+  empty.short_of_hay = true;  // days_held 0: short at any horizon
+  const auto urgent = Labor("unit_core_labor_hay_cart_urgent",
+                            &empty,
+                            "key,value\nhay_cart_in_cut_days,0\nhay_cart_urgent_days,1\n");
+  Manger also_empty;
+  also_empty.short_of_hay = true;
+  const auto never = Labor("unit_core_labor_hay_cart_not_urgent",
+                           &also_empty,
+                           "key,value\nhay_cart_in_cut_days,0\nhay_cart_urgent_days,0\n");
+  if (Expect(urgent != nullptr && never != nullptr,
+             "hay cart's rank, urgent: the tables build a labor system") != 0) {
+    return 1;
+  }
+  const Sent carted =
+      TheHorseOnADayOfAugust(*urgent, core::LandKind::kMeadow, Rival::kTheFallowForRye, true);
+  const Sent waited =
+      TheHorseOnADayOfAugust(*never, core::LandKind::kMeadow, Rival::kTheFallowForRye, true);
+  std::cout << "  the hay cart's rank, no hay in the stores and a meadow still to mow: with the "
+            << "urgent rule's one day - " << Name(carted) << "; with the rule at nought - "
+            << Name(waited) << '\n';
+  failures += Expect(carted == Sent::kToTheHeap && empty.asked_days == 2,
+                     "hay cart's rank: with no hay in the stores the stack is carted ahead of all "
+                     "work - production asked about two days: this morning's feeding and the "
+                     "rule's one");
+  failures += Expect(waited != Sent::kToTheHeap,
+                     "hay cart's rank: with the urgent rule at nought the same stack waits behind "
+                     "the open cut");
+  // Today's and tomorrow's hay held: not urgent on a Wednesday, and the stack
+  // waits with the rule on.
+  empty.days_held = 2;
+  const Sent held =
+      TheHorseOnADayOfAugust(*urgent, core::LandKind::kMeadow, Rival::kTheFallowForRye, true);
+  failures += Expect(held != Sent::kToTheHeap,
+                     "hay cart's rank: with today's and tomorrow's hay held the urgent rule does "
+                     "not fire in the middle of the week");
+  // THE SAME TWO DAYS HELD ON THE EVE OF A DAY OFF (day 33, a Saturday; day 0
+  // is a Monday): nothing is carted tomorrow, so the days are counted to
+  // Monday's feeding - three - and the stack goes today.
+  const Sent on_the_eve =
+      TheHorseOnADayOfAugust(*urgent, core::LandKind::kMeadow, Rival::kTheFallowForRye, true, 33);
+  failures += Expect(on_the_eve == Sent::kToTheHeap && empty.asked_days == 3,
+                     "hay cart's rank: on the eve of a day off the same two days held are short "
+                     "of Monday's feeding - the stack is carted today, production asked about "
+                     "three days");
   return failures;
 }
 
@@ -244,7 +346,11 @@ int CheckTheDaysAreTheTables() {
   Manger five;
   five.short_of_hay = true;
   const auto asked_five =
-      Labor("unit_core_labor_hay_cart_five", &five, "key,value\nhay_cart_need_days,5\n");
+      // The urgent rule off: its one day would be production's LAST question
+      // (asked after the need's), and this case reads the last.
+      Labor("unit_core_labor_hay_cart_five",
+            &five,
+            "key,value\nhay_cart_need_days,5\nhay_cart_urgent_days,0\n");
   Manger nought;
   nought.short_of_hay = true;
   const auto never =
@@ -271,12 +377,104 @@ int CheckTheDaysAreTheTables() {
   return failures;
 }
 
+/// A RICK IS NOT CARRIED ON FOOT (row 818; AssignmentJob::rick_waits_for_a_cart)
+/// - A PAIR. Two men and one horse, one heap on an arable field (its load
+/// keeps a field load's window, so only the cargo's form differs): a heap of
+/// GRAIN takes the rider and, in the last pass, the man left without a horse;
+/// the same heap of HAY takes the rider alone - the second man stays free.
+int CheckARickWaitsForItsCart() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_labor_rick_on_foot";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "crops.csv") << "key,sow_to_month,harvest_to_month,is_winter\n"
+                                       "rye_winter,12,7,1\n";
+  std::ofstream(root / "livestock.csv") << "key,care_days_per_year\nhorse,0\n";
+  std::ofstream(root / "resources.csv") << "key,kg_per_unit,cargo_form\n"
+                                           "hay,1000,rick\n"
+                                           "grain,1000,bulk\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto labor =
+      tables == nullptr ? nullptr : core::CreateLaborSystem(*tables, core::StubTables::kAllowed);
+  if (Expect(labor != nullptr, "a rick on foot: the tables build a labor system") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  const auto carters_on = [&labor](std::uint16_t resource) {
+    core::WorldState world;
+    world.calendar.day_zero_weekday = core::Weekday::kMonday;
+    world.weather.daylight_hours = 12.0F;
+    world.chairman.harvest_without_days_off = 0;
+    core::UnitRow house;
+    const core::UnitId house_id = core::AppendRow(world.units, house);
+    core::FamilyRow household;
+    household.house = house_id;
+    const core::FamilyId family = core::AppendRow(world.families, household);
+    world.units.rows[0].household = family;
+    for (int man = 0; man < 2; ++man) {
+      core::ResidentRow resident;
+      resident.family = family;
+      resident.birth_day = -300;
+      resident.health = 70.0F;
+      resident.rest = 70.0F;
+      resident.mood = 60.0F;
+      resident.stamina = 50.0F;
+      resident.education_stage = core::EducationStage::kPrimary;
+      core::AppendRow(world.residents, resident);
+    }
+    core::HerdRow team;
+    team.kind = core::LivestockKindId{0};
+    team.adult_count = 1;
+    core::AppendRow(world.herds, team);
+    core::FieldRow heap;
+    heap.kind = core::LandKind::kArable;
+    heap.center = core::Vec2{.x = 0.0F, .y = 20.0F};
+    heap.area_ga = 10.0F;
+    heap.phase = core::FieldPhase::kIdle;
+    heap.reaped_grams = 10'000'000;
+    heap.reaped_resource = core::ResourceId{resource};
+    heap.haul_days_remaining = 5.0F;
+    const core::FieldId heap_id = core::AppendRow(world.fields, heap);
+    for (std::uint32_t hour = 0; hour <= 12; ++hour) {
+      world.calendar.tick = (static_cast<core::Tick>(kAugustDay) * core::kTicksPerDay) + hour;
+      core::RefreshCalendarCaches(world.calendar);
+      const core::WorldState previous = world;
+      labor->RunAssignmentDecisions(previous, world);
+    }
+    int riders = 0;
+    int walkers = 0;
+    for (const core::ResidentRow& resident : world.residents.rows) {
+      if (resident.work.kind == core::WorkKind::kHauling &&
+          resident.work.field.value == heap_id.value) {
+        (resident.work.rides_horse != 0 ? riders : walkers) += 1;
+      }
+    }
+    return riders * 10 + walkers;
+  };
+  const int grain = carters_on(1);
+  const int hay = carters_on(0);
+  std::cout << "  a rick on foot: two men, one horse, one heap - of grain: " << grain / 10
+            << " rider(s), " << grain % 10 << " on foot; of hay: " << hay / 10 << " rider(s), "
+            << hay % 10 << " on foot\n";
+  failures += Expect(grain == 11,
+                     "a rick on foot: a heap of grain takes the rider and the man left without "
+                     "a horse, on foot");
+  failures += Expect(hay == 10,
+                     "a rick on foot: the same heap of hay takes the rider alone - a rick waits "
+                     "for its cart and the second man stays free");
+  return failures;
+}
+
 }  // namespace
 
 int CheckTheHayCartsRank() {
   int failures = 0;
+  failures += CheckARickWaitsForItsCart();
   failures += CheckTheHayWaitsWhileTheStoresHold();
   failures += CheckTheHayGoesFirstWhenTheStoresAreShort();
   failures += CheckTheDaysAreTheTables();
+  failures += CheckTheStackIsUrgentUnderADayOfHay();
   return failures;
 }

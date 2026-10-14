@@ -223,6 +223,15 @@ struct PorterRules {
   /// set with no such column - every load is then carried as a sack.
   std::vector<CargoForm> cargo_form;
 
+  /// resources.csv `load_share` by ResourceId (0.37.252; transport.md «Воз
+  /// ограничен объёмом, а не весом»; econ, STUB): THE SHARE OF A CART'S
+  /// TONNAGE a load of this resource fills the body with - hay 0.6, straw
+  /// 0.45, everything else 1.0. A cart is full of hay long before it is
+  /// heavy. Empty for a table set with no such column: every load is then
+  /// the cart's whole tonnage, as the world was before the share. Read in ONE
+  /// place - CartLoadGrams below.
+  std::vector<float> load_share;
+
   /// The log (resources.csv `log`) and its mass as a piece (kg_per_unit: 200
   /// kg) - ONE log a pair's trip. Invalid and 0 without the row.
   ResourceId log;
@@ -240,6 +249,15 @@ struct PorterRules {
 /// @brief The form of `resource` by `rules`; kNone for a resource the table
 ///        does not name.
 CargoForm CargoFormOf(const PorterRules& rules, ResourceId resource);
+
+/// @brief A CART'S LOAD OF `resource`, grams: the cart's tonnage
+///        (`cart_load_kg`, transport.csv x the epoch's scale) times the
+///        resource's `load_share` (PorterRules::load_share; 1.0 for a
+///        resource the table does not name or names with no share). The one
+///        reader of the share: every rate, drain and share of a cart's trip
+///        asks its load here.
+/// @param cart_load_kg The cart's tonnage, kilograms; above nought.
+Grams CartLoadGrams(const PorterRules& rules, float cart_load_kg, ResourceId resource);
 
 /// @brief ONE walker's grams in a trip with `resource`, as every rate, share,
 ///        drain and pay of a carrier on foot counts it: the bundle for a rick,

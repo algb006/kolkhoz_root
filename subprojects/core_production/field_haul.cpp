@@ -124,9 +124,9 @@ Grams ReceivableRoom(const ProductionConfig& config, const WorldState& world, Re
   return room;
 }
 
-std::uint32_t HeapMangerRow(const ProductionConfig& config,
-                            const WorldState& world,
-                            const FieldRow& field) {
+std::uint32_t HeapRickRow(const ProductionConfig& config,
+                          const WorldState& world,
+                          const FieldRow& field) {
   const ResourceId resource = field.reaped_resource;
   // An unnamed hay resource compares equal to an unnamed load by two 0xFFFF
   // sentinels (0.17.79): named, or it is nobody's manger.
@@ -134,11 +134,31 @@ std::uint32_t HeapMangerRow(const ProductionConfig& config,
       resource.value != config.hay_resource.value) {
     return kNoRow;
   }
-  return FindStockYardRow(world, config);
+  // THE NEAREST RICK BY ROAD (routing stage В3): until it this was «the first
+  // stock yard in row order», a door that asked no distance - all the
+  // meadows' hay went to one yard a kilometre or two away and every herd ate
+  // there. The cart's own way, or the carrier's when no horse is harnessed.
+  const TravelMode mode =
+      SettlementHasCarts(world, config.horse_kind) ? TravelMode::kCart : TravelMode::kWalk;
+  const Vec2 heap = FieldHeapPoint(world, field);
+  std::uint32_t nearest = kNoRow;
+  float nearest_km = std::numeric_limits<float>::max();
+  for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+    const UnitRow& unit = world.units.rows[row];
+    if (unit.dead != 0 || !HomeOutlineAccepts(unit, config, resource)) {
+      continue;
+    }
+    const float km = RoadKm(world, mode, heap, unit.position);
+    if (km < nearest_km) {
+      nearest_km = km;
+      nearest = row;
+    }
+  }
+  return nearest;
 }
 
 Grams HeapDoorRoom(const ProductionConfig& config, const WorldState& world, const FieldRow& field) {
-  return HeapMangerRow(config, world, field) != kNoRow
+  return HeapRickRow(config, world, field) != kNoRow
              ? std::numeric_limits<Grams>::max()
              : ReceivableRoom(config, world, field.reaped_resource);
 }
@@ -218,7 +238,7 @@ void DeliverDrained(const ProductionConfig& config,
                     float& haul_days_written,
                     const std::vector<Grams>* booked,
                     std::uint32_t manger) {
-  // `manger`: A MEADOW'S HAY GOES TO THE MANGER (HeapMangerRow; 0.37.119) —
+  // `manger`: A MEADOW'S HAY GOES TO THE MANGER (HeapRickRow; 0.37.119) —
   // where the mown share went by itself until then, now by the carters'
   // share of the day. No seed is booked against a manger, and it has no
   // tonnage to be full against. kNoRow for every other load.
@@ -367,8 +387,9 @@ float CarryToHeapDays(const ProductionConfig& config,
   }
   const float hours_per_km = static_cast<float>(kClockScale) / speed_kmh;
   const float loaded_hours_per_km = static_cast<float>(kClockScale) / loaded_kmh;
-  const Grams load = harnessed ? GramsFromKilograms(config.cart_load_kg)
-                               : WalkerLoadGrams(config.porter, field.reaped_resource);
+  const Grams load = harnessed
+                         ? CartLoadGrams(config.porter, config.cart_load_kg, field.reaped_resource)
+                         : WalkerLoadGrams(config.porter, field.reaped_resource);
   const HaulRate rate = RateOverKm((shoulder_m / 1000.0F) * OffRoadWeightOf(world, mode),
                                    hours_per_km,
                                    loaded_hours_per_km,
@@ -394,7 +415,7 @@ HaulRate FieldHaulRate(const ProductionConfig& config,
     store_row = FindStorageRow(world, config);
   }
   // Hay: to the manger, wherever a store that would take it stands (0.37.119).
-  const std::uint32_t manger = HeapMangerRow(config, world, field);
+  const std::uint32_t manger = HeapRickRow(config, world, field);
   if (manger != kNoRow) {
     store_row = manger;
   }
@@ -522,7 +543,7 @@ void DeliverCartedLoads(const ProductionConfig& config, WorldState& current) {
                    field.haul_days_remaining,
                    field.haul_days_written,
                    &booked,
-                   HeapMangerRow(config, current, field));
+                   HeapRickRow(config, current, field));
   }
   for (std::uint32_t row = 0; row < current.stands.rows.size(); ++row) {
     TimberStandRow& stand = current.stands.rows[row];
@@ -635,7 +656,7 @@ void SettleHauling(const ProductionConfig& config, WorldState& current) {
                field.haul_days_remaining,
                field.haul_days_written,
                &booked,
-               HeapMangerRow(config, current, field));
+               HeapRickRow(config, current, field));
     if (field.reaped_grams == 0) {
       field.reaped_resource = ResourceId{};
     }
@@ -816,10 +837,11 @@ HaulRate DistrictLotHaulRate(const ProductionConfig& config, const WorldState& w
   // the district's road — district_center_km), then by the network to the
   // pile (TravelMode::kLogCart, the log cart's roads).
   const RouteMeasure way = RoadMeasure(world, TravelMode::kLogCart, exit, destination);
-  HaulRate rate = RateOverKm(config.district_center_km + way.effective_km,
-                             hours_per_km,
-                             loaded_hours_per_km,
-                             GramsFromKilograms(config.cart_load_kg));
+  HaulRate rate =
+      RateOverKm(config.district_center_km + way.effective_km,
+                 hours_per_km,
+                 loaded_hours_per_km,
+                 CartLoadGrams(config.porter, config.cart_load_kg, config.timber.log_resource));
   // Booked on the cart's columns under the district (CartLoadSource::kDistrict):
   // the load's end is the district's road, never a field; the store's end is
   // the pile's gate.

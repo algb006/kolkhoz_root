@@ -42,8 +42,8 @@ HaulRate RateToward(const ProductionConfig& config,
       loaded_kmh > 0.0F ? static_cast<float>(kClockScale) / loaded_kmh : 0.0F;
   // A BACK'S TRIP BY THE LOAD'S FORM (#671): a bundle of hay is 10 kg, a sack
   // 20 - until 0.37.240 every load on foot was the sack.
-  const Grams load =
-      harnessed ? GramsFromKilograms(config.cart_load_kg) : WalkerLoadGrams(config.porter, carried);
+  const Grams load = harnessed ? CartLoadGrams(config.porter, config.cart_load_kg, carried)
+                               : WalkerLoadGrams(config.porter, carried);
   // BY THE ROAD, NOT THE STRAIGHT LINE (roads design §11-§13; 0.36.2): the
   // cart keeps to the network, the carrier walks roads, paths and open
   // ground as is shortest.

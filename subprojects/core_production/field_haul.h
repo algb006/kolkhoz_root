@@ -36,8 +36,16 @@ namespace core {
 ///         already holds this resource stands built.
 Grams ReceivableRoom(const ProductionConfig& config, const WorldState& world, ResourceId resource);
 
-/// @brief THE MANGER A MEADOW'S HAY IS CARTED TO (0.37.118; in force from
-///        0.37.127 — field_work.h, LayMownShare): the
+/// @brief THE RICK A MEADOW'S HAY IS CARTED TO (routing stage В3, 0.37.252):
+///        the NEAREST BY ROAD of the built outlines that are hay's home
+///        (stock_ops.h, HomeOutlineAccepts) - an outline has no tonnage to be
+///        full against. The hay lies on the meadow as a STACK until a cart
+///        takes it there; the herds eat it from the village's stores, the
+///        ricks among them (herd_system.cpp, TakeFeed's last step).
+///
+///        UNTIL 0.37.252 THIS WAS «THE MANGER» (HeapMangerRow; 0.37.118, in
+///        force from 0.37.127 — field_work.h, LayMownShare), and the words
+///        below are that door's, kept for the reason it stood: the
 ///        settlement's stock yard (stock_ops.h, FindStockYardRow), where the
 ///        herd eats and where the mown hay went in the hour it was cut until
 ///        0.37.127. It is not a numbered store — its table capacity is in
@@ -49,14 +57,14 @@ Grams ReceivableRoom(const ProductionConfig& config, const WorldState& world, Re
 /// through it still: one change a delivery, and where that hay should lie is
 /// not this one's question.
 /// @return The unit's row; kNoRow for an arable field, for a heap that is not
-///         hay, for an unnamed hay resource, and where no stock yard stands —
-///         the heap then goes through the store door like every other.
-std::uint32_t HeapMangerRow(const ProductionConfig& config,
-                            const WorldState& world,
-                            const FieldRow& field);
+///         hay, for an unnamed hay resource, and where no rick stands — the
+///         heap then goes through the store door like every other.
+std::uint32_t HeapRickRow(const ProductionConfig& config,
+                          const WorldState& world,
+                          const FieldRow& field);
 
 /// @brief The room a land's heap is priced and carted against: Grams max
-///        where it has a manger (HeapMangerRow), else ReceivableRoom of what
+///        where it has a rick (HeapRickRow), else ReceivableRoom of what
 ///        lies on it.
 Grams HeapDoorRoom(const ProductionConfig& config, const WorldState& world, const FieldRow& field);
 

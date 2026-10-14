@@ -195,6 +195,15 @@ struct AssignmentJob {
   /// job): AssignmentParams::walker_share_of_cart_day stands in.
   float walker_share = 0.0F;
 
+  /// A RICK IS NOT CARRIED ON FOOT (row 818, reopened 14 October 2026; cargo
+  /// of form rick - hay, straw, reed): the load of this hauling is such a
+  /// cargo and the settlement has carts, so the LAST PASS gives it no hands -
+  /// it waits for its cart. Never set for a works' supply (the hand supply of
+  /// a works keeps its own gate) nor in a settlement with no cart at all,
+  /// where the carriers go in the queue's own place. Set by the labour
+  /// sub-step with `walker_share`.
+  bool rick_waits_for_a_cart = false;
+
   /// LOGS BY TWO (#671; transport design §2, «Брёвна вдвоём — только подвоз на
   /// стройку»; core_common/haul.h, LogPairMayCarry). `walker_log`: a walker's
   /// next trip on this works' supply would be a LOG from a pile (the front

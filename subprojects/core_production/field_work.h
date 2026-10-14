@@ -373,13 +373,13 @@ void LayReapedShare(const ProductionConfig& config, WorldState& current, FieldRo
 ///        CARTED since 0.37.127 (the stubs' registry A75; written and
 ///        measured as 0.37.118-119, taken back by 0.37.120 — it took 40 % of
 ///        a village's horse-days — and in force with the cart of the
-///        compressed year, core_common/haul.h): it reaches the manger — or, with no stock yard, the
-///        stores that take hay — by the carters' day (SettleHauling; field_haul.h, HeapMangerRow),
-///        and lies at the meadow until then, rotting as a field's heap rots (SpoilFieldHeaps).
-///        Until then it was in the manger in the hour it was cut, whatever the way, and what found
-///        no room was lost; nothing is lost for want of room now. Does nothing on arable land, a
-///        meadow not being mown, or a share already laid. Called at the day's turn beside
-///        LayReapedShare, and by MowMeadow for the last of it.
+///        compressed year, core_common/haul.h): it reaches the nearest rick (the manger until
+///        0.37.252) — or, with no rick, the stores that take hay — by the carters' day
+///        (SettleHauling; field_haul.h, HeapRickRow), and lies at the meadow until then, rotting as
+///        a field's heap rots (SpoilFieldHeaps). Until then it was in the manger in the hour it was
+///        cut, whatever the way, and what found no room was lost; nothing is lost for want of room
+///        now. Does nothing on arable land, a meadow not being mown, or a share already laid.
+///        Called at the day's turn beside LayReapedShare, and by MowMeadow for the last of it.
 void LayMownShare(const ProductionConfig& config, WorldState& current, FieldRow& field);
 
 /// @brief The snow takes what still STANDS of an unreaped annual (farming

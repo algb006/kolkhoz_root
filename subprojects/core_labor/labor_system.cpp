@@ -1413,6 +1413,9 @@ class LaborSystem final : public ILaborSystem {
       // Asked of production once a collection, and only with a meadow's heap
       // lying (StoredHayShortWithin walks the herds for each day ahead).
       std::optional<bool> hay_short;
+      std::optional<bool> mowing_left;
+      std::optional<bool> hay_short_soon;
+      std::optional<bool> hay_out_tomorrow;
       for (std::uint32_t row = 0; row < current.fields.rows.size(); ++row) {
         const FieldRow& field = current.fields.rows[row];
         // Carrying has a seam of its own (land_state.h), so a field may be
@@ -1455,9 +1458,73 @@ class LaborSystem final : public ILaborSystem {
           hay_short = config_.hay_cart_need_days > 0 && config_.stored_hay_short &&
                       config_.stored_hay_short(current, config_.hay_cart_need_days);
         }
-        const bool waits = meadow_heap && !hay_short.value_or(false);
+        // THE RULE AND ITS ONE EXCEPTION, IN ONE SENTENCE: a meadow's stack
+        // never outranks an open cut's mowing - EXCEPT when the stores' hay
+        // will not last to the next morning a cart can still mend
+        // (`hay_cart_urgent_days`, below: then it goes ahead of ALL work).
+        //
+        // AND NEVER AHEAD OF AN OPEN CUT'S MOWING (0.37.252; boss, core-boss-v3-
+        // feed-contract-2026-10-14 [6] (b), [8]): hay stacked on a meadow does
+        // not rot and the snow does not take it - it waits, the grass does
+        // not. While any meadow still has mowing left the stack's carting has
+        // no window, short stores or not. With the stores short it took a
+        // field load's window and stood above the cut: in August of year 1,
+        // with a cart of hay at 1.08 t, the heaps drew 49 worker-days more and
+        // the scythes lost 28 - 67 t of hay never laid, a village at -6.8 %.
+        // A herd underfed still raises the load's task to level 0, and that
+        // is placed ahead of everything.
+        if (meadow_heap && !mowing_left.has_value()) {
+          mowing_left = std::ranges::any_of(current.fields.rows, [](const FieldRow& meadow) {
+            return meadow.kind != LandKind::kArable && meadow.phase == FieldPhase::kHarvest &&
+                   meadow.work_days_remaining > 0.0F;
+          });
+        }
+        // BUT NOT BESIDE A HUNGRY HERD (LaborConfig::hay_cart_in_cut_days):
+        // with the stores short within those few days the stack is carted
+        // ahead of the mowing after all.
+        if (meadow_heap && mowing_left.value_or(false) && !hay_short_soon.has_value()) {
+          hay_short_soon = hay_short.value_or(false) && config_.hay_cart_in_cut_days > 0 &&
+                           config_.stored_hay_short(current, config_.hay_cart_in_cut_days);
+        }
+        const bool waits =
+            meadow_heap && (!hay_short.value_or(false) ||
+                            (mowing_left.value_or(false) && !hay_short_soon.value_or(false)));
         job.window = waits ? DeadlineNotApplicable() : HaulWindow(current);
         job.stacked_hay = waits;
+        // AND URGENT BEFORE A HERD GOES UNDERFED (0.37.252, routing stage В3's
+        // form (c); LaborConfig::hay_cart_urgent_days): with the stores'
+        // hay under that many days of the herds' ration the stack's carting
+        // goes ahead of all work this morning, the mowing included. Until it
+        // the stack's last resort was «a herd underfed raises the load's task
+        // to level 0» - a level set in logistics' day, after the morning's
+        // placement and after the hungry morning: in year 3's spring three
+        // villages of nine went 21 t short with 37-88 t of hay on their
+        // meadows. Set HERE and kept by MarkTheUrgentLoads: the task's row
+        // takes no part in it and names no level of its own for it.
+        //
+        // THE DAYS ARE COUNTED TO THE NEXT MORNING A CART CAN STILL MEND: this
+        // morning's feeding (it comes after this placement), the rule's days,
+        // and every day off that follows tomorrow in a row - nothing is carted
+        // on those. Asked about the rule's one day alone, the stores answered
+        // «not short» on the morning they held exactly today's ration, the
+        // rule fired at the hour-1 top-up when the horses were out, and two
+        // days off stood behind it (form (c)'s first pair, seed 1934, year 3:
+        // fired on day 14 at one o'clock, carted on day 17, the herds underfed
+        // on 15, 16 and 17 with 94 t on the meadow).
+        if (meadow_heap && hay_short.value_or(false) && !hay_out_tomorrow.has_value()) {
+          std::uint32_t days_to_mend = config_.hay_cart_urgent_days + 1U;
+          for (SimDay ahead = 1;
+               ahead <= kDaysPerWeek && IsDayOffIn(current, current.calendar.day + ahead);
+               ++ahead) {
+            ++days_to_mend;
+          }
+          hay_out_tomorrow =
+              config_.hay_cart_urgent_days > 0 && config_.stored_hay_short(current, days_to_mend);
+        }
+        job.logistics_urgent = meadow_heap && hay_out_tomorrow.value_or(false);
+        if (job.logistics_urgent) {
+          job.stacked_hay = false;
+        }
         jobs.push_back(job);
       }
     }
@@ -1841,11 +1908,12 @@ class LaborSystem final : public ILaborSystem {
     if (!SettlementHasCarts(current, config_.horse_kind)) {
       return 1.0F;
     }
-    return LogPairShareOfCartDay(config_.porter,
-                                 GramsFromKilograms(config_.cart_load_kg),
-                                 HoursPerKm(config_, WorkKind::kHarvest),
-                                 HoursPerKm(config_, WorkKind::kPlowing),
-                                 static_cast<float>(kClockScale) / config_.loaded_speed_kmh);
+    return LogPairShareOfCartDay(
+        config_.porter,
+        CartLoadGrams(config_.porter, config_.cart_load_kg, config_.porter.log),
+        HoursPerKm(config_, WorkKind::kHarvest),
+        HoursPerKm(config_, WorkKind::kPlowing),
+        static_cast<float>(kClockScale) / config_.loaded_speed_kmh);
   }
 
   /// WHETHER THIS HAND IS ONE OF A PAIR UNDER A LOG THIS HOUR (#671): asked of
@@ -1894,8 +1962,22 @@ class LaborSystem final : public ILaborSystem {
         continue;
       }
       if (job.kind == WorkKind::kHauling) {
-        job.walker_share = WalkerShareToday(
-            current, WalkerLoadResourceOfWork(current, HaulingWorkOfJob(job), config_.porter.log));
+        const ResourceId carried =
+            WalkerLoadResourceOfWork(current, HaulingWorkOfJob(job), config_.porter.log);
+        job.walker_share = WalkerShareToday(current, carried);
+        // A RICK IS NOT CARRIED ON FOOT (row 818; AssignmentJob::
+        // rick_waits_for_a_cart): under the cart's share of a rick's tonnage
+        // (0.37.252) a meadow's stack waits behind the open cut with no window,
+        // and the last pass gave it the hands the queue had left - 16435
+        // carter-hours on foot over two years in nine villages against 2690
+        // before, all of them June to September, at a bundle of ten kilograms
+        // a trip; and a hand the morning put on a stack is not idle for the
+        // hour-1 top-up, which is where a field opened at hour 0 finds its
+        // mowers. A works' supply is not touched: its hands have their own
+        // gate (the horse yard's), and straw to a site in the first weeks goes
+        // as it went.
+        job.rick_waits_for_a_cart =
+            !job.supplies_works && CargoFormOf(config_.porter, carried) == CargoForm::kRick;
       }
     }
   }
@@ -1936,7 +2018,9 @@ class LaborSystem final : public ILaborSystem {
         }
         // One task a load: its level and the chairman's «важнее полевых
         // работ» (#734; LogisticsTaskRow::over_fields) are read together.
-        job.logistics_urgent = task.level == LogisticsLevel::kUrgent;
+        // A stack came urgent by the stores' hay (CollectJobs) and stays so
+        // whatever its task's row says this morning.
+        job.logistics_urgent = job.logistics_urgent || task.level == LogisticsLevel::kUrgent;
         job.over_fields = task.over_fields && job.supplies_works;
         break;
       }
@@ -2432,8 +2516,11 @@ class LaborSystem final : public ILaborSystem {
     if (!SettlementHasCarts(current, config_.horse_kind)) {
       return 1.0F;
     }
+    // The cart's load by the same resource (0.37.252): labour's share of a
+    // cart-day and logistics' (porter_pairs.cpp) ask one function, or a
+    // walker with hay would be paid against a cart heavier than hay's.
     return WalkerShareOfCartDay(WalkerLoadGrams(config_.porter, carried),
-                                GramsFromKilograms(config_.cart_load_kg),
+                                CartLoadGrams(config_.porter, config_.cart_load_kg, carried),
                                 HoursPerKm(config_, WorkKind::kHarvest),
                                 HoursPerKm(config_, WorkKind::kPlowing),
                                 static_cast<float>(kClockScale) / config_.loaded_speed_kmh);
