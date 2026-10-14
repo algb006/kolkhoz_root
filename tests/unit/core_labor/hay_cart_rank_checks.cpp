@@ -10,6 +10,7 @@
 #include <string>
 
 #include "core_common/calendar.h"
+#include "core_common/event_state.h"
 #include "core_common/herd_state.h"
 #include "core_common/labor_state.h"
 #include "core_common/land_state.h"
@@ -84,6 +85,15 @@ enum class Sent : std::uint8_t { kNowhere, kToTheHeap, kToTheFallow, kToTheLogs 
 /// What the heap is set against.
 enum class Rival : std::uint8_t { kTheFallowForRye, kTheStandsLogs };
 
+/// The day's word that a stack is urgent by the stores' hay
+/// (EventKind::kStackCartUrgent), as a day of the run below said it.
+struct UrgentWord {
+  int times = 0;
+  std::uint32_t days_asked = 0;
+  bool named_the_heap = false;
+  std::uint32_t at_hour = 0;
+};
+
 /// One man, one horse, a day of August; a heap lying on land of `heap_land`
 /// against the rival, equal work. THE HEAP HAS EVERY LATER KEY OF THE QUEUE:
 /// its field is the first row of its table and it lies the nearer, so only
@@ -94,7 +104,8 @@ Sent TheHorseOnADayOfAugust(core::ILaborSystem& labor,
                             core::LandKind heap_land,
                             Rival rival,
                             bool mowing_left = false,
-                            std::uint32_t day = kAugustDay) {
+                            std::uint32_t day = kAugustDay,
+                            UrgentWord* said = nullptr) {
   core::WorldState world;
   world.calendar.day_zero_weekday = core::Weekday::kMonday;
   world.weather.daylight_hours = 12.0F;
@@ -162,6 +173,17 @@ Sent TheHorseOnADayOfAugust(core::ILaborSystem& labor,
     core::RefreshCalendarCaches(world.calendar);
     const core::WorldState previous = world;
     labor.RunAssignmentDecisions(previous, world);
+  }
+  if (said != nullptr) {
+    // The step's events are never cleared by this loop: the day's words.
+    for (const core::SimEvent& event : world.step_events) {
+      if (event.kind == core::EventKind::kStackCartUrgent) {
+        ++said->times;
+        said->days_asked = static_cast<std::uint32_t>(event.amount & 0xFFFF);
+        said->named_the_heap = event.field.value == heap_id.value;
+        said->at_hour = core::HourFromTick(event.tick);
+      }
+    }
   }
   const core::WorkAssignment& work = world.residents.rows[0].work;
   if (work.kind == core::WorkKind::kHauling && work.field.value == heap_id.value) {
@@ -305,10 +327,22 @@ int CheckTheStackIsUrgentUnderADayOfHay() {
              "hay cart's rank, urgent: the tables build a labor system") != 0) {
     return 1;
   }
-  const Sent carted =
-      TheHorseOnADayOfAugust(*urgent, core::LandKind::kMeadow, Rival::kTheFallowForRye, true);
-  const Sent waited =
-      TheHorseOnADayOfAugust(*never, core::LandKind::kMeadow, Rival::kTheFallowForRye, true);
+  UrgentWord said;
+  UrgentWord not_said;
+  const Sent carted = TheHorseOnADayOfAugust(
+      *urgent, core::LandKind::kMeadow, Rival::kTheFallowForRye, true, kAugustDay, &said);
+  const Sent waited = TheHorseOnADayOfAugust(
+      *never, core::LandKind::kMeadow, Rival::kTheFallowForRye, true, kAugustDay, &not_said);
+  // THE DAY's ONE WORD (EventKind::kStackCartUrgent, 0.37.253): thirteen hours
+  // of the day run, the rule firing at hour 0 and at the top-up - said once,
+  // at hour 1, naming the meadow and the two days asked; with the rule at
+  // nought, never.
+  failures +=
+      Expect(said.times == 1 && said.at_hour == 1 && said.days_asked == 2 && said.named_the_heap,
+             "hay cart's rank: the urgent stack is said once that day, at the top-up's "
+             "hour, naming the meadow and the two days the stores were asked about");
+  failures += Expect(not_said.times == 0,
+                     "hay cart's rank: with the urgent rule at nought the word is never said");
   std::cout << "  the hay cart's rank, no hay in the stores and a meadow still to mow: with the "
             << "urgent rule's one day - " << Name(carted) << "; with the rule at nought - "
             << Name(waited) << '\n';

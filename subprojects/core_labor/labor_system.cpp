@@ -690,9 +690,39 @@ class LaborSystem final : public ILaborSystem {
   /// with no horse); that broke the one-job rule, and a job opened after the
   /// morning that the unplaced cannot crew waits for tomorrow's morning plan -
   /// whose ranking is the place to mend it (boss, 12 October 2026).
+  /// THE DAY'S ONE WORD ABOUT A STACK MADE URGENT BY THE STORES' HAY
+  /// (EventKind::kStackCartUrgent; 0.37.253): the first meadow in row order
+  /// whose carting the rule of `hay_cart_urgent_days` put ahead of all work.
+  /// Called from the hour-1 top-up alone, so once a village-day; a day off
+  /// offers no carting and says nothing.
+  static void SayAStackIsUrgent(WorldState& current, const std::vector<AssignmentJob>& offered) {
+    constexpr int kHayKilogramsShift = 16;
+    for (const AssignmentJob& job : offered) {
+      if (job.kind != WorkKind::kHauling || job.urgent_by_stores_days == 0) {
+        continue;
+      }
+      const std::uint32_t field_row = FindRow(current.fields, job.field);
+      if (field_row == kNoRow) {
+        continue;
+      }
+      const ResourceId hay = current.fields.rows[field_row].reaped_resource;
+      Grams in_units = 0;
+      for (const UnitRow& unit : current.units.rows) {
+        in_units += unit.dead == 0 ? UnreservedOf(unit, hay) : 0;
+      }
+      SimEvent& event = EmitEvent(current, EventKind::kStackCartUrgent, EventSeverity::kNotable);
+      event.field = job.field;
+      event.resource = hay;
+      event.amount = static_cast<std::int64_t>(job.urgent_by_stores_days) |
+                     ((in_units / kGramsPerKilogram) << kHayKilogramsShift);
+      return;
+    }
+  }
+
   void TopUpDay(WorldState& current) const {
     ReleaseHorselessWork(current);
     const std::vector<AssignmentJob> offered = CollectJobs(current);
+    SayAStackIsUrgent(current, offered);
     // road_work is not asked, as it never was here: one road crew answers for
     // every road job of the morning (named in the commit of 0.37.101, not
     // mended by it — the canon lays no road).
@@ -1416,6 +1446,7 @@ class LaborSystem final : public ILaborSystem {
       std::optional<bool> mowing_left;
       std::optional<bool> hay_short_soon;
       std::optional<bool> hay_out_tomorrow;
+      std::uint16_t hay_days_asked = 0;
       for (std::uint32_t row = 0; row < current.fields.rows.size(); ++row) {
         const FieldRow& field = current.fields.rows[row];
         // Carrying has a seam of its own (land_state.h), so a field may be
@@ -1520,10 +1551,12 @@ class LaborSystem final : public ILaborSystem {
           }
           hay_out_tomorrow =
               config_.hay_cart_urgent_days > 0 && config_.stored_hay_short(current, days_to_mend);
+          hay_days_asked = static_cast<std::uint16_t>(days_to_mend);
         }
         job.logistics_urgent = meadow_heap && hay_out_tomorrow.value_or(false);
         if (job.logistics_urgent) {
           job.stacked_hay = false;
+          job.urgent_by_stores_days = hay_days_asked;  // for the day's one event
         }
         jobs.push_back(job);
       }

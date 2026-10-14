@@ -145,6 +145,11 @@ struct AssignmentJob {
   /// WorldState::logistics_tasks (core_common/logistics_state.h).
   bool logistics_urgent = false;
 
+  /// A meadow's stack made urgent BY THE STORES' HAY (labor.csv
+  /// `hay_cart_urgent_days`): the days the stores were asked about; 0 - not
+  /// by that rule. For the day's one event (EventKind::kStackCartUrgent).
+  std::uint16_t urgent_by_stores_days = 0;
+
   /// FIRST INSIDE ITS TIER (#595, 0.37.232): a construction job of a RAISED
   /// site (kRaiseSite, «Поднять в очереди»; ConstructionState::raised) and
   /// the supply job of the FIRST site of the sites' queue (core_common/

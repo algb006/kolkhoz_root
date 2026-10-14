@@ -770,6 +770,25 @@ enum class EventKind : std::uint8_t {
   /// kNotable. Seam key proposed: `advance_written_off`.
   kAdvanceWrittenOff,
 
+  /// A STACK's CARTING IS URGENT BY THE STORES' HAY (0.37.253; boss and host,
+  /// 14 October 2026): the rule of labor.csv `hay_cart_urgent_days` fired
+  /// today - the stores' hay will not last to the next morning a cart can
+  /// still mend, and a meadow's stack is carted ahead of all work. Said by
+  /// labour ONCE A VILLAGE-DAY, at the hour-1 top-up (a firing of the
+  /// morning's placement still stands then: the herds have eaten since and
+  /// nothing was carted in that hour). THE URGENCY LIVES IN LABOUR's JOB and
+  /// the load's task row in logistics keeps its level: until this event no
+  /// reader of the stream or of the task rows could tell such a day, and the
+  /// knob's return condition could not be read from outside.
+  /// field = the first meadow in row order whose stack is carted by the rule;
+  /// resource = its hay; amount packs two numbers: the days the stores were
+  /// asked about (bits 0-15: this morning's feeding, the rule's days and the
+  /// days off that follow tomorrow in a row) and the hay unreserved in all the
+  /// village's units that hour, kilograms (bits 16-63). NOT the forecast's
+  /// own daily need: that is production's and labour is handed only its
+  /// yes or no. kNotable. Seam key proposed: `stack_cart_urgent`.
+  kStackCartUrgent,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.
