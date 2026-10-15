@@ -33,6 +33,9 @@ enum class HorsePostGround : std::uint8_t {
   /// (herd_state.h). Present (boss [2] Q2): the prologue shows the horse, and
   /// the rule does not punish the first days.
   kNoStableYet,
+
+  /// NOT A GROUND: the count, for a consumer's mirror.
+  kHorsePostGroundCount,
 };
 
 /// @brief The chairman's motor transport. Appended, never renumbered.
@@ -42,6 +45,9 @@ enum class ChairmanVehicle : std::uint8_t {
   /// rule is built with Epoch II's vehicles (boss [2] Q4), and this enum grows
   /// then.
   kNone = 0,
+
+  /// NOT A VEHICLE: the count, for a consumer's mirror.
+  kChairmanVehicleCount,
 };
 
 /// @brief The answer to «стоит ли транспорт председателя на месте».
