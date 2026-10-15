@@ -870,14 +870,22 @@ namespace {
 constexpr float kStoreAdviceShareOfSmallest = 1.0F / 3.0F;
 
 /// The level-1 capacity, grams, of the smallest unit type that is the home of
-/// `resource` (resource_stores.csv), and that type; invalid and 0 when none.
-std::pair<UnitTypeId, Grams> SmallestStoreFor(const ProductionConfig& config, ResourceId resource) {
+/// `resource` (resource_stores.csv) AND that the chairman can order built in
+/// the world's era, and that type; invalid and 0 when none. The advice names
+/// this type and its third is the threshold, so both must measure a store the
+/// build door takes: until 0.37.261 the church store (player_built 0), the
+/// smallest home of the potato and the vegetables, was named for them and
+/// set their third (host, host-core-936-build-store-unbuildable-2026-10-16).
+std::pair<UnitTypeId, Grams> SmallestStoreFor(const ProductionConfig& config,
+                                              const WorldState& world,
+                                              ResourceId resource) {
   std::pair<UnitTypeId, Grams> smallest{UnitTypeId{}, 0};
   for (std::size_t type = 0; type < config.unit_types.size(); ++type) {
     const UnitTypeDef& def = config.unit_types[type];
     const bool home = std::ranges::any_of(
         def.home_of, [resource](ResourceId held) { return held.value == resource.value; });
-    if (!home || def.level_storage_capacity_kg.empty() ||
+    const bool orderable = def.OrderableInEra(static_cast<std::uint8_t>(world.epoch));
+    if (!home || !orderable || def.level_storage_capacity_kg.empty() ||
         !(def.level_storage_capacity_kg[0] > 0.0F)) {
       continue;
     }
@@ -917,7 +925,7 @@ void AdviseOnHarvestShortfall(const ProductionConfig& config,
     }
     const Grams shortfall = summed[alarm.resource.value];
     alarm.amount_more = shortfall;
-    const auto [store, capacity] = SmallestStoreFor(config, alarm.resource);
+    const auto [store, capacity] = SmallestStoreFor(config, world, alarm.resource);
     if (store.value != kInvalidDefIdValue &&
         static_cast<double>(shortfall) >=
             static_cast<double>(capacity) * static_cast<double>(kStoreAdviceShareOfSmallest)) {

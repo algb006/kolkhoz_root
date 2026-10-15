@@ -374,6 +374,25 @@ struct UnitTypeDef {
   /// house or a road is not stopped by a pause: kPauseUnit on one is refused.
   std::uint8_t pausable = 0;
 
+  /// 0/1: the chairman can ORDER this type built (unit_types.csv
+  /// `player_built`; a blank cell or no column is 0, as construction reads
+  /// it). Read by the store lamp's advice, which must name a store the
+  /// build door takes: until 0.37.261 it named the church store, which no
+  /// order builds (host, host-core-936-build-store-unbuildable-2026-10-16).
+  std::uint8_t player_built = 0;
+
+  /// The era the type opens in, 1..3 (unit_types.csv `era`; a blank cell or
+  /// no column is 1). The same advice skips a type of a later era than the
+  /// world's.
+  std::uint8_t era = 1;
+
+  /// @brief Whether an order can build this type in `world_era` (1..3,
+  ///        WorldState::epoch): player-built and of that era or an earlier
+  ///        one. Every advice that NAMES a type to build asks it.
+  bool OrderableInEra(std::uint8_t world_era) const {
+    return player_built != 0 && era <= world_era;
+  }
+
   /// The resources this type is the declared home of (resource_stores.csv:
   /// the row names the type as its `unit` or as its `storage`). Asked of an
   /// outline store only — a heap under the open sky takes what the table

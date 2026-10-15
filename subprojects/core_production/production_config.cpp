@@ -732,14 +732,22 @@ bool ParseLivestock(const ITable& table, std::vector<LivestockDef>& livestock, s
 bool ParseUnitTypes(const ITable& table, std::vector<UnitTypeDef>& types, std::string& error) {
   const std::uint32_t by_plot_col = table.FindColumn("capacity_by_plot");
   const std::uint32_t class_col = table.FindColumn("class");
+  const std::uint32_t built_col = table.FindColumn("player_built");
+  const std::uint32_t era_col = table.FindColumn("era");
   types.resize(table.RowCount());
   for (std::uint32_t row = 0; row < table.RowCount(); ++row) {
     float by_plot = 0.0F;
-    if (!CellOrDefault(table, row, by_plot_col, Range{.low = 0, .high = 1}, 0, by_plot, error)) {
+    float built = 0.0F;
+    float era = 1.0F;
+    if (!CellOrDefault(table, row, by_plot_col, Range{.low = 0, .high = 1}, 0, by_plot, error) ||
+        !CellOrDefault(table, row, built_col, Range{.low = 0, .high = 1}, 0, built, error) ||
+        !CellOrDefault(table, row, era_col, Range{.low = 1, .high = 3}, 1, era, error)) {
       error = "unit_types: " + error;
       return false;
     }
     types[row].capacity_by_plot = static_cast<std::uint8_t>(by_plot);
+    types[row].player_built = static_cast<std::uint8_t>(built);
+    types[row].era = static_cast<std::uint8_t>(era);
     // Units rules §5: «Производственный юнит можно остановить», and the same
     // section's own example is a milking — so the livestock class, a farm
     // that produces, pauses too. A missing class column pauses nothing: a

@@ -75,9 +75,18 @@ int CheckTheStoreLampsMove() {
          "manure_fertility_bonus,10\nfallow_recovery,6\nrepeat_penalty_per_year,3\n"
          "drought_temp_c,25\nstress_per_day,0.02\nstress_cap,0.3\n"
          "weather_state_days,5\n";
-  std::ofstream(root / "unit_types.csv") << "key,capacity_by_plot\ngranary,0\n";
-  std::ofstream(root / "unit_levels.csv") << "unit,level,storage_capacity_t\ngranary,1,150\n";
-  std::ofstream(root / "resource_stores.csv") << "resource,unit,storage\nrye,granary,granary\n";
+  // Two SMALLER homes of the rye no order builds in Epoch I: the church
+  // store (player_built 0) and a store of Epoch II. Named or measured, either
+  // gives every case below a wrong answer - a third of 30 or 60 t is under
+  // 40 t (host-core-936-build-store-unbuildable-2026-10-16).
+  std::ofstream(root / "unit_types.csv")
+      << "key,capacity_by_plot,player_built,era\ngranary,0,1,1\nchurch_store,0,0,1\n"
+         "elevator,0,1,2\n";
+  std::ofstream(root / "unit_levels.csv")
+      << "unit,level,storage_capacity_t\ngranary,1,150\nchurch_store,1,30\nelevator,1,60\n";
+  std::ofstream(root / "resource_stores.csv")
+      << "resource,unit,storage\nrye,granary,granary\nrye,church_store,church_store\n"
+         "rye,elevator,elevator\n";
   std::string error;
   const auto tables = core::LoadTableSet(root.string(), &error);
   const auto system = tables == nullptr

@@ -187,12 +187,20 @@ UnitTypeId FeedStoreTypeToBuild(const ProductionConfig& config, const WorldState
   const auto is_module = [&config](std::size_t type) {
     return type < config.unit_parent.size() && config.unit_parent[type].value != kInvalidDefIdValue;
   };
-  const auto home_type_of = [&config, &is_module](std::size_t resource) {
+  // ONLY A TYPE AN ORDER BUILDS in this era (UnitTypeDef::OrderableInEra):
+  // the store lamp's advice named the church store until 0.37.261 by the
+  // same kind of search (host-core-936-build-store-unbuildable-2026-10-16),
+  // and this one would have too the day the church store held a feed.
+  const auto world_era = static_cast<std::uint8_t>(world.epoch);
+  const auto home_type_of = [&config, &is_module, world_era](std::size_t resource) {
     UnitTypeId found;
     for (std::size_t type = 0; type < config.unit_types.size(); ++type) {
       const bool home =
           std::ranges::any_of(config.unit_types[type].home_of,
                               [resource](ResourceId held) { return held.value == resource; });
+      if (!config.unit_types[type].OrderableInEra(world_era)) {
+        continue;
+      }
       if (home && (is_module(type) || found.value == kInvalidDefIdValue)) {
         found = DefIdFromIndex<UnitTypeIdTag>(type);
         if (is_module(type)) {
