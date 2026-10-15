@@ -71,6 +71,7 @@
 #include "core_common/alarm_state.h"
 #include "core_common/barter_view.h"
 #include "core_common/cargo_form.h"
+#include "core_common/chairman_transport_view.h"
 #include "core_common/deadline.h"
 #include "core_common/delivery_term.h"
 #include "core_common/elder_view.h"
@@ -334,6 +335,12 @@ class ISimulation {
   /// @note NOT PURE, for ActivityOf's reason. The default answers the empty
   ///       view (both ids invalid).
   virtual ElderView Elder() const { return {}; }
+
+  /// @brief Whether the chairman's horse stands at the hitching post, and why
+  /// (chairman_transport_view.h; «Нет ресурса — нет транспорта»).
+  /// @note NOT PURE, for ActivityOf's reason. The default answers the horse
+  ///       present on kNoStableYet.
+  virtual ChairmanTransportView ChairmanTransport() const { return {}; }
 
   /// @brief The exchange's dry count by yard and resource, counted now off
   /// the completed state (barter_view.h, BarterYardLine): what each yard

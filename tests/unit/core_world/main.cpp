@@ -19,6 +19,7 @@
 
 #include "../../common/fake_tables.h"
 #include "advice_checks.h"
+#include "chairman_transport_checks.h"
 #include "core_catalog/definitions.h"
 #include "core_catalog/extraction_catalog.h"
 #include "core_catalog/map_obstacle_tables.h"
@@ -2860,6 +2861,7 @@ int main() {
   failures += CheckTheEraReadinessDoor();
   failures += CheckTheLampsTurnedRed();
   failures += CheckTheElderDoor();
+  failures += CheckTheChairmansTransportDoor();
   failures += CheckTheYardsHoldings();
   failures += CheckStartLiteracyGuarantees();
   failures += CheckStartLiteracyOrder();

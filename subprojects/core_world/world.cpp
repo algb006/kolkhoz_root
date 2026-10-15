@@ -15,6 +15,7 @@
 #include <utility>
 
 #include "campaign_tables.h"
+#include "chairman_transport.h"
 #include "core_catalog/district_trip_catalog.h"
 #include "core_catalog/district_visit_catalog.h"
 #include "core_catalog/extraction_catalog.h"
@@ -150,6 +151,16 @@ class DecisionsSlot final : public ISequentialPhase {
 /// here. That is a separate reader with a separate door to write, and saying
 /// so is the difference between a bound and a belief.
 constexpr float kMaxKcalPerGram = 10.0F;
+
+/// @brief livestock.csv "horse"; invalid without the table or the row, and
+/// then the chairman's transport door finds no stable and says kNoStableYet.
+LivestockKindId HorseKindOf(const ITableSet& tables) {
+  const ITable* const livestock = tables.FindTable("livestock");
+  if (livestock == nullptr) {
+    return {};
+  }
+  return DefIdFromRow<LivestockKindIdTag>(livestock->FindRowByKey("horse"));
+}
 
 /// @brief Caloric density per resource, dense by ResourceId.
 /// A resource without the column, or with a blank cell, reads zero — which
@@ -634,6 +645,7 @@ class StandardSimulation final : public ISimulation {
       : road_tools_(std::move(road_tools)),
         junctions_(std::move(junctions)),
         alarm_red_within_days_(alarm_red_within_days),
+        horse_kind_(HorseKindOf(*config.tables)),
         time_(std::move(time)),
         residents_(std::move(residents)),
         production_(std::move(production)),
@@ -764,6 +776,10 @@ class StandardSimulation final : public ISimulation {
 
   ElderView Elder() const override { return ElderViewOf(engine_->CompletedState()); }
 
+  ChairmanTransportView ChairmanTransport() const override {
+    return ChairmanTransportOf(engine_->CompletedState(), horse_kind_);
+  }
+
   std::vector<BarterYardLine> BarterDryLines() const override {
     return residents_->BarterDryLines(engine_->CompletedState());
   }
@@ -865,6 +881,9 @@ class StandardSimulation final : public ISimulation {
   /// world_params `alarm_red_within_days`: a loss this near or nearer is a
   /// red lamp, a farther one a yellow (PaintAlarms).
   std::uint16_t alarm_red_within_days_ = 0;
+
+  /// livestock.csv "horse", for the chairman's transport door.
+  LivestockKindId horse_kind_;
 
   std::unique_ptr<ITimeSystem> time_;
 

@@ -498,6 +498,10 @@ class Session final : public ISession {
 
   ElderView Elder() const override { return simulation_->Elder(); }
 
+  ChairmanTransportView ChairmanTransport() const override {
+    return simulation_->ChairmanTransport();
+  }
+
   std::vector<MaterialShortfall> MaterialsShortFor(UnitId unit) const override {
     return simulation_->MaterialsShortFor(unit);
   }

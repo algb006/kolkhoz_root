@@ -8,6 +8,7 @@
 # the executables in tests/ and src/.
 
 kolkhoz_add_module(core_world
+    chairman_transport.cpp
     era_readiness.cpp
     genesis.cpp
     road_tools.cpp

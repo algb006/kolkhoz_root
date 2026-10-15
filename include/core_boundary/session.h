@@ -22,7 +22,7 @@
 /// go down, commands come up through a queue, data crosses and objects do
 /// not, the core computes and the presentation reads, and nothing calls
 /// back into the core from the renderer. This header is that shape made
-/// concrete, and it is deliberately small — fifty methods, counting
+/// concrete, and it is deliberately small — fifty-one methods, counting
 /// each overload separately, two codec functions, one factory:
 ///
 ///     time      AdvanceStep, AdvanceUntil
@@ -31,7 +31,7 @@
 ///               StockLights, WeatherForecast, WearDeadline,
 ///               LimitDeliveryTerm, MaterialsShortFor, SupplyEstimateFor,
 ///               CargoFormOfLeg, StinkFullAt,
-///               StinkNowAt, ResidentHeightMeters, Elder
+///               StinkNowAt, ResidentHeightMeters, Elder, ChairmanTransport
 ///     office    OfficeWorkbook, OfficePlan, OfficeLimit, IssueNorms,
 ///               NeedUntilHarvest, EraReadiness
 ///     roads     PreviewRoad, SelectRoadPieces, RoadKindsAvailable, Roads,
@@ -58,7 +58,8 @@
 /// forty-four with the elder, 0.37.52; then five more nobody counted here
 /// (the meadow's mark, the grass stand, the supply estimate among them —
 /// found by the cargo form's count of `virtual` in ISession, 49); fifty
-/// with the cargo form of a cart's leg, stage В — all additions, which is what the
+/// with the cargo form of a cart's leg, stage В; fifty-one with the
+/// chairman's transport, 0.37.260 — all additions, which is what the
 /// contract's minor number is for; 70-boundary.md §6.)
 ///
 /// TWO CONSUMERS OF EVENTS. In the game the presentation creates and holds
@@ -137,6 +138,7 @@
 #include "core_common/alarm_state.h"
 #include "core_common/calendar.h"
 #include "core_common/cargo_form.h"
+#include "core_common/chairman_transport_view.h"
 #include "core_common/elder_view.h"
 #include "core_common/event_state.h"
 #include "core_common/geometry.h"
@@ -768,6 +770,16 @@ class ISession {
   /// @note Between steps; the answer describes State(). Both ids invalid
   ///       when the world has no elder, or he has died.
   virtual ElderView Elder() const = 0;
+
+  /// @brief «Нет ресурса — нет транспорта» (chairman_transport_view.h;
+  ///        camera-and-visuals.md): whether the chairman's horse stands at
+  ///        the office's hitching post, and the ground it was read on. The
+  ///        layer hides it while absent, in any view mode, but never under
+  ///        the rider — it applies a change on dismount.
+  /// @note Between steps; the answer describes State() and changes at most
+  ///       once a game day, at the day's first tick. `vehicle` is kNone in
+  ///       Epoch I.
+  virtual ChairmanTransportView ChairmanTransport() const = 0;
 
   /// @brief What the village lacks to START the works on `unit`, line by line:
   /// the resource, needed, held (construction design §6, "старт проверяет
