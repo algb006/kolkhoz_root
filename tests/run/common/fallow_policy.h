@@ -121,7 +121,7 @@ class FallowPolicy {
       return;
     }
     std::cout << " - SHORT\n";
-    if (!BlockKeepsThePlan(world, AreaOf(world, NextBlockFields(world)))) {
+    if (!BlockKeepsThePlan(world, NextBlockFields(world))) {
       std::cout << "fallow_policy: year " << year << " block " << opened_blocks_ + 1U
                 << " HELD by the plan guard\n";
       return;
@@ -168,6 +168,8 @@ class FallowPolicy {
   /// Where in chain_ (barley, rye_winter, oat) each of a block's three fields
   /// starts: barley, oat, barley - spring crops only in the opening year.
   static constexpr std::array<std::size_t, 3> kOpeningSlot = {0, 2, 0};
+  /// STUB 1.10 (econ 21508ba): the plan guard's margin over the due.
+  static constexpr double kPlanGuardMargin = 1.10;
   static constexpr std::uint32_t kHistoryYears = 3;
   static constexpr std::uint32_t kFirstOfDecember =
       static_cast<std::uint32_t>(core::Month::kDecember) * core::kDaysPerMonth;
@@ -482,24 +484,71 @@ class FallowPolicy {
   /// ground's fields will give of it, net of loss and less seed. A position
   /// with no crop behind it (milk) is not priced by ha and is not asked.
   /// Prints every position it read, and which one held the block.
-  bool BlockKeepsThePlan(const core::WorldState& world, double block_ha) const {
-    const std::vector<double> grams = ForecastGrams(world);
+  ///
+  /// (b′), pair 4 (econ 21508ba; boss): the harvest side is the coming year's
+  /// NET harvest of every field WITH the block (yield × (1 − last year's loss
+  /// share) × area, the block on its opening slots), less NEXT spring's seed of
+  /// every field with the block (each field's second slot, the seed the eve
+  /// holds - pair 3's smoke found every failed position SEED-BOUND on its
+  /// eve), and the due at the new ha takes kPlanGuardMargin on top.
+  bool BlockKeepsThePlan(const core::WorldState& world,
+                         const std::vector<core::FieldId>& block) const {
+    const double block_ha = AreaOf(world, block);
+    std::vector<double> harvest(eaten_kcal_per_gram_.size(), 0.0);
+    std::vector<double> seed_next(eaten_kcal_per_gram_.size(), 0.0);
+    const auto add = [&](core::CropId now, core::CropId next, double area) {
+      if (now.value < crops_.size()) {
+        const CropRow& row = crops_[now.value];
+        if (row.resource < harvest.size()) {
+          const double kept =
+              row.resource < loss_share_.size() ? 1.0 - loss_share_[row.resource] : 1.0;
+          harvest[row.resource] += YieldKgPerHa(now) * kept * area * kGramsPerKilogram;
+        }
+      }
+      if (next.value < crops_.size()) {
+        const CropRow& row = crops_[next.value];
+        if (row.resource < seed_next.size()) {
+          seed_next[row.resource] += row.seed_kg_per_ha * area * kGramsPerKilogram;
+        }
+      }
+    };
+    for (std::uint32_t row = 0; row < world.fields.rows.size(); ++row) {
+      const core::FieldRow& field = world.fields.rows[row];
+      if (field.kind != core::LandKind::kArable ||
+          std::ranges::find(block, world.fields.row_ids[row]) != block.end()) {
+        continue;
+      }
+      add(field.rotation_year0, field.rotation_year1, static_cast<double>(field.area_ga));
+    }
+    for (std::size_t k = 0; k < block.size(); ++k) {
+      const std::uint32_t row = core::FindRow(world.fields, block[k]);
+      if (row == core::kNoRow) {
+        continue;
+      }
+      const std::size_t start = kOpeningSlot[k % kOpeningSlot.size()];
+      add(chain_[start % 3],
+          chain_[(start + 1) % 3],
+          static_cast<double>(world.fields.rows[row].area_ga));
+    }
     const auto now_ha = static_cast<double>(world.plan.worked_ha_last_year);
     const double scale =
         priced_ha_last_year_ > 0.0 ? (now_ha + block_ha) / priced_ha_last_year_ : 1.0;
     bool keeps = true;
     std::cout << "fallow_policy: year " << world.ledger.closed.year + 1U << " plan guard at +"
-              << block_ha << " ha (x" << scale << "):";
+              << block_ha << " ha (x" << scale << ", margin " << kPlanGuardMargin
+              << "; t due x margin / net harvest - next seed):";
     for (std::size_t resource = 0; resource < due_last_year_.size(); ++resource) {
       if (due_last_year_[resource] <= 0 || resource >= crop_resource_.size() ||
           !crop_resource_[resource]) {
         continue;
       }
-      const double due_t = static_cast<double>(due_last_year_[resource]) * scale / 1e6;
-      const double old_t = resource < grams.size() ? grams[resource] / 1e6 : 0.0;
-      const bool over = due_t > old_t;
+      const double due_t =
+          static_cast<double>(due_last_year_[resource]) * scale * kPlanGuardMargin / 1e6;
+      const double left_t =
+          resource < harvest.size() ? (harvest[resource] - seed_next[resource]) / 1e6 : 0.0;
+      const bool over = due_t > left_t;
       keeps = keeps && !over;
-      std::cout << ' ' << resource_keys_[resource] << ' ' << due_t << '/' << old_t
+      std::cout << ' ' << resource_keys_[resource] << ' ' << due_t << '/' << left_t
                 << (over ? " OVER" : "");
     }
     std::cout << (keeps ? " - keeps\n" : " - HOLDS the block\n");
