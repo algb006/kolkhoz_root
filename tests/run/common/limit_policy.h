@@ -65,7 +65,7 @@ namespace run {
 
 class LimitPolicy {
  public:
-  explicit LimitPolicy(const core::ITableSet& tables) : hay_(tables) {
+  explicit LimitPolicy(const core::ITableSet& tables) : hay_(tables), delivery_(tables) {
     std::string error;
     ready_ = core::ParseLimitCatalog(tables, catalog_, error) && !catalog_.lots.empty();
     ReadCosts(tables);
