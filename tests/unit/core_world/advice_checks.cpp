@@ -1019,11 +1019,13 @@ int CheckTheStoreLamp(const Fixture& fixture) {
     for (const float hectares : {5.0F, 10.0F, 20.0F, 40.0F, 80.0F, 160.0F}) {
       worlds.push_back(july_with_rye(hectares, true));
     }
+    core::Alarm named;
     const AdviceRun run = FirstNamed(*fixture.simulation,
                                      worlds,
                                      core::AlarmKind::kHarvestWillNotFit,
                                      core::AlarmAdvice::kDeliverAbovePlan,
-                                     [](const core::Alarm& alarm, const core::WorldState&) {
+                                     [&named](const core::Alarm& alarm, const core::WorldState&) {
+                                       named = alarm;
                                        core::OrderRow order;
                                        order.kind = core::OrderKind::kDeliverPlan;
                                        order.resource = alarm.advice_resource;
@@ -1031,6 +1033,16 @@ int CheckTheStoreLamp(const Fixture& fixture) {
                                        return order;
                                      });
     failures += Report(run, "harvest_will_not_fit under a store's third, «сдать сверх плана»");
+    // THE DOOR TAKES A SHAPELESS ORDER TOO: kDeliverPlan with no resource
+    // ships the whole debt and refuses nothing (district_plan.h,
+    // DeliverPlanNow), so «taken» cannot tell an advice that names its
+    // resource from one that names none - the fault test of #991 (e2) found
+    // it. The advice must name the lamp's resource and an amount.
+    failures +=
+        Expect(!run.named || (named.advice_resource.value == rye && named.advice_amount > 0 &&
+                              named.advice_amount <= named.amount_more),
+               "«сдать сверх плана» names the lamp's resource and an amount no larger "
+               "than the shortfall");
   }
   return failures;
 }
