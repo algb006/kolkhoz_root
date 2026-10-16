@@ -20,7 +20,10 @@
 ///     own book; a crop with none yet reads the table's yield) NET of the
 ///     closed year's losses (rot, the heap's, the snow's, over the harvest;
 ///     boss [3] (a): a gross forecast read plenty in a hungry village), less
-///     the plan's due (the largest position named last year), less its seed
+///     the plan's due the coming year will carry (the largest position named
+///     last year x the worked ha the turn now prices on ÷ the ha it was priced
+///     on: PlanPositionGrams is linear in the worked ha; econ 7f20b3f, Reading
+///     A of core-boss-725 [8] - the honest forecast, not a brake), less its seed
 ///     (sowing norm x area). A crop counts by what the residents EAT of it:
 ///     a resource out of the issue bundle (food.csv issue_kg_per_trudoden
 ///     blank: oat and pea, which the horses eat) counts nought, and stays in
@@ -28,8 +31,11 @@
 ///   * the need: the core's own village need (NeedUntilHarvest's
 ///     village_need_kcal_per_day, by age as the meal counts it) x 48 days x
 ///     (1 + last year's net growth);
-///   * under it, the next block's chains for spring: rye_winter -> potato ->
-///     oat, field k starting at slot k. At most one block a year, never taken
+///   * under it, the next block's chains for spring: rye_winter -> barley ->
+///     oat, field k starting at slot k - a GRAIN chain, no potato (econ's (4),
+///     bc22032: every red of the first pair, the snow, the potato's failed
+///     delivery and the hauling out of the building, passed through the
+///     block's potato; boss [9]). At most one block a year, never taken
 ///     back. A block is three derelict fields; the first is the three nearest
 ///     a standing grain store (granary or church store), the second the rest.
 ///
@@ -75,7 +81,8 @@ class FallowPolicy {
               << ": FIXTURE DIFFERS FROM THE START CANON — the run's chairman ploughs the "
                  "derelict ground three fields (45 ha) at a time, one block a year at most, when "
                  "next year's food per eater falls under the village's need (#725; econ "
-                 "fields-grow-with-eaters); chain rye_winter -> potato -> oat; oat and pea "
+                 "fields-grow-with-eaters); chain rye_winter -> barley -> oat, no potato; the "
+                 "forecast takes off the due at the worked ha the turn prices on; oat and pea "
                  "count nought as food (the meal does not eat them)\n";
   }
 
@@ -96,6 +103,7 @@ class FallowPolicy {
     last_turn_day_ = world.calendar.day;
     BookLastYear(world);
     PrintLossShares(world);
+    PrintPotatoBook(world);
     const double forecast = ForecastFoodKcal(world);
     const double need = NeedKcal(simulation, world);
     const std::uint32_t year = world.ledger.closed.year + 1U;
@@ -192,7 +200,7 @@ class FallowPolicy {
         grain_stores_.push_back(row);
       }
     }
-    const std::array<std::string_view, 3> chain_keys = {"rye_winter", "potato", "oat"};
+    const std::array<std::string_view, 3> chain_keys = {"rye_winter", "barley", "oat"};
     for (std::size_t slot = 0; slot < chain_keys.size(); ++slot) {
       const std::uint32_t row = crops->FindRowByKey(chain_keys[slot]);
       chain_[slot] =
@@ -219,18 +227,87 @@ class FallowPolicy {
     }
   }
 
-  /// The largest position of each resource named over the year that closes.
+  /// The largest position of each resource named over the year that closes,
+  /// and the worked ha it was priced on.
   void WatchTheDue(const core::WorldState& world) {
-    if (world.calendar.day % core::kDaysPerYear == 0) {
+    if (world.calendar.day % core::kDaysPerYear == 0 && world.calendar.day != watched_turn_day_) {
+      watched_turn_day_ = world.calendar.day;
       due_last_year_ = due_this_year_;
       due_this_year_.assign(due_this_year_.size(), 0);
+      priced_ha_last_year_ = priced_ha_this_year_;
+      priced_ha_this_year_ = 0.0;
     }
-    if (due_this_year_.size() < world.plan.due.size()) {
-      due_this_year_.resize(world.plan.due.size(), 0);
+    const auto grow = [](std::vector<core::Grams>& into, const core::ResourceAmounts& from) {
+      if (into.size() < from.size()) {
+        into.resize(from.size(), 0);
+      }
+      for (std::size_t index = 0; index < from.size(); ++index) {
+        into[index] = std::max(into[index], from[index]);
+      }
+    };
+    grow(due_this_year_, world.plan.due);
+    // The ha the year's figures were priced on: the ratchet as it stood while
+    // the district named them (PlanState::worked_ha_last_year).
+    if (world.plan.announced != 0) {
+      priced_ha_this_year_ = static_cast<double>(world.plan.worked_ha_last_year);
     }
-    for (std::size_t index = 0; index < world.plan.due.size(); ++index) {
-      due_this_year_[index] = std::max(due_this_year_[index], world.plan.due[index]);
+  }
+
+  /// The due the coming year will carry, by resource: last year's largest
+  /// position x the worked ha the turn now prices on ÷ the ha it was priced
+  /// on (Reading A). 1 before a year has been priced.
+  double DueScale(const core::WorldState& world) const {
+    const auto now_ha = static_cast<double>(world.plan.worked_ha_last_year);
+    return priced_ha_last_year_ > 0.0 && now_ha > 0.0 ? now_ha / priced_ha_last_year_ : 1.0;
+  }
+
+  /// THE POTATO'S BOOK BY YEAR (boss [9]): the position named, shipped, the
+  /// harvest, and the coming year's due as the forecast takes it. The blocks
+  /// sow no potato, so the harvest is the old ground's; the block's potato ha
+  /// are printed to show it stays nought.
+  void PrintPotatoBook(const core::WorldState& world) const {
+    if (potato_resource_ == core::kNoTableRow) {
+      return;
     }
+    const auto at = [this](const std::vector<core::Grams>& amounts) {
+      return potato_resource_ < amounts.size()
+                 ? static_cast<double>(amounts[potato_resource_]) / 1e6
+                 : 0.0;
+    };
+    double block_potato_ha = 0.0;
+    for (const core::FieldId id : opened_fields_) {
+      const std::uint32_t row = core::FindRow(world.fields, id);
+      if (row != core::kNoRow && world.fields.rows[row].last_crop.value < crops_.size() &&
+          crops_[world.fields.rows[row].last_crop.value].resource == potato_resource_) {
+        block_potato_ha += static_cast<double>(world.fields.rows[row].area_ga);
+      }
+    }
+    // The judged pair from the closed year's book (YearLedger plan_due /
+    // plan_delivered, booked at the turn): a daily watch of PlanState never
+    // sees the delivery, which the turn ships and clears in one step.
+    std::cout << "fallow_policy: year " << world.ledger.closed.year << " potato due "
+              << at(world.ledger.closed.plan_due) << " t, delivered "
+              << at(world.ledger.closed.plan_delivered) << " t, harvested "
+              << at(world.ledger.closed.harvest) << " t (block potato " << block_potato_ha
+              << " ha); priced on " << priced_ha_last_year_ << " ha, the turn prices on "
+              << world.plan.worked_ha_last_year << " ha: the coming due x" << DueScale(world)
+              << " = " << at(due_last_year_) * DueScale(world) << " t\n";
+    // EVERY POSITION, short ones named: the grain block raises the rye and
+    // the oat positions too (the district prices every position off the total
+    // worked ha), and the smoke village 1929 failed year 5 on rye, not potato.
+    const core::YearLedger& closed = world.ledger.closed;
+    std::cout << "fallow_policy: year " << closed.year << " plan by position (t):";
+    for (std::size_t resource = 0; resource < closed.plan_due.size(); ++resource) {
+      const core::Grams due = closed.plan_due[resource];
+      if (due <= 0) {
+        continue;
+      }
+      const core::Grams shipped =
+          resource < closed.plan_delivered.size() ? closed.plan_delivered[resource] : 0;
+      std::cout << ' ' << resource_keys_[resource] << ' ' << static_cast<double>(shipped) / 1e6
+                << '/' << static_cast<double>(due) / 1e6 << (shipped < due ? " SHORT" : "");
+    }
+    std::cout << '\n';
   }
 
   /// The closed year's yield of each resource, kg/ha: its harvest over the
@@ -333,9 +410,11 @@ class FallowPolicy {
                              static_cast<double>(field.area_ga) * kGramsPerKilogram;
     }
     double kcal = 0.0;
+    const double scale = DueScale(world);
     for (std::size_t resource = 0; resource < grams.size(); ++resource) {
-      const double due =
-          resource < due_last_year_.size() ? static_cast<double>(due_last_year_[resource]) : 0.0;
+      const double due = resource < due_last_year_.size()
+                             ? static_cast<double>(due_last_year_[resource]) * scale
+                             : 0.0;
       const double left = std::max(0.0, grams[resource] - due);
       kcal += left * static_cast<double>(eaten_kcal_per_gram_[resource]);
     }
@@ -453,6 +532,9 @@ class FallowPolicy {
   std::vector<double> loss_share_;
   std::vector<core::Grams> due_this_year_;
   std::vector<core::Grams> due_last_year_;
+  double priced_ha_this_year_ = 0.0;
+  double priced_ha_last_year_ = 0.0;
+  core::SimDay watched_turn_day_ = 0;
 
   std::vector<core::FieldId> derelict_;
   bool derelict_read_ = false;
