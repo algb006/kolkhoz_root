@@ -113,6 +113,15 @@ OrderRefusal StartInsulation(const ConstructionConfig& config, WorldState& curre
   // aside whole (UnitRow::suspended_works) and the coat takes its place; any
   // other open works still refuses.
   const InsulationKind kind = InsulationKindOf(config, site.type, site.level);
+  // THE LIVESTOCK COAT IS WITHDRAWN (#979; the human, 13 October 2026,
+  // registry 316: «Мне не нравится обмазка… временные решения»; on its scope
+  // «Да» - only the yards' coat goes, «Тёплый» of the houses stays). STUB
+  // until 795 B's billet into the residents' yards, the winter's answer. A
+  // coat a save opened before 0.37.264 still finishes, so the put-aside
+  // clay (CoatPutsAsideOpenWorks, ReturnSuspended) keeps its code.
+  if (kind == InsulationKind::kLivestock) {
+    return OrderRefusal::kRuleForbids;
+  }
   const ConstructionState& open = site.construction;
   // The works' own terms have one home (unit_state.h, CoatPutsAsideOpenWorks).
   const bool replaces_clay = kind == InsulationKind::kLivestock && CoatPutsAsideOpenWorks(site);

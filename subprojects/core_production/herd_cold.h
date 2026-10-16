@@ -109,12 +109,12 @@ std::uint32_t DaysToColdSeason(const ProductionConfig& config, std::uint32_t day
 
 /// @brief The cold's two alarms (alarm_state.h): kHerdFreezing for every
 ///        kolkhoz herd freezing today — `amount` the heads under the cold
-///        roof, `advice` kInsulateStraw while the stores hold one
-///        insulation's straw; and kHerdColdAhead in the autumn before the
+///        roof; and kHerdColdAhead in the autumn before the
 ///        cold's season opens — `amount` the heads that will stand under a
 ///        cold roof then, the herd up to its roof's room; `days_ahead` to
-///        the season's first day; `advice` kWarmYard when the unit's next
-///        rung is warm, kInsulateStraw otherwise. The autumn is from the
+///        the season's first day. Both advise kWarmYard when the unit's next
+///        rung is warm and no works stands on it, kNone otherwise (the straw
+///        coat withdrawn, #979; STUB until 795 B's billet). The autumn is from the
 ///        end of the pasture (FarmingConfig::pasture_to_month) to the
 ///        season.
 void CollectHerdColdAlarms(const ProductionConfig& config,

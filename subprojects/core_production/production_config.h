@@ -752,12 +752,6 @@ struct FarmingConfig {
   /// value lives in the one table both read.
   float still_frost_c = -12.0F;
 
-  /// construction.csv `insulation_livestock_straw_t` (6): the straw of one
-  /// insulation of a livestock unit. kHerdFreezing names kInsulateStraw only
-  /// while the stores hold it (boss, 2026-10-01). A second READER, for the
-  /// still frost's reason: the construction module owns the insulation.
-  float insulation_livestock_straw_t = 6.0F;
-
   /// world_params `feed_draught_first` (0/1, boss's d567729b; econ's pair of
   /// the feeding order, boss-core-start-no-yards [21]-[23]): the herd day
   /// walks — and so feeds — the kolkhoz's horse herds before the rest. 0,

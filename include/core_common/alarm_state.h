@@ -636,11 +636,12 @@ enum class AlarmKind : std::uint8_t {
   /// adults a day). The heads on billet stand outside the metric; the billet
   /// is what a roof has no room for, in every month (from 0.37.62 to 0.37.68
   /// it kept its places first in a frost month). Subject: `herd`;
-  /// `amount` the heads in the cold. `advice` kInsulateStraw when the stores
-  /// hold the straw of an insulation (construction.csv
-  /// `insulation_livestock_straw_t`), kNone otherwise — the billet and the
-  /// knife are the lamp's text, not a move (boss, 2026-10-01). `lamp` 1: a
-  /// loss the player has a move against.
+  /// `amount` the heads in the cold. `advice` kWarmYard when the unit's next
+  /// rung is warm and no works stands on it — the cattle yard's rung 2 is
+  /// built in winter too (registry 316) — kNone otherwise: STUB until 795 B's
+  /// billet into the residents' yards. Until 0.37.264 it named the straw
+  /// coat (kInsulateStraw), withdrawn by the human on 13 October 2026
+  /// (#979). `lamp` 1: a loss the player has a move against.
   kHerdFreezing,
 
   /// «К ЗИМЕ ПЛОЩАДКА НЕ УКРОЕТ N ГОЛОВ — ХЛЕВ ДО МОРОЗОВ» — THE COLD'S
@@ -654,7 +655,8 @@ enum class AlarmKind : std::uint8_t {
   /// the first of December (0.37.69; it was the first cold night by the
   /// climate); `advice` kWarmYard — the cattle yard's warm barn, laid before
   /// the clay freezes (boss, 2026-10-01) — when the unit's next rung is
-  /// warm, kInsulateStraw otherwise. `lamp` always 0.
+  /// warm and no works stands on it, kNone otherwise (kInsulateStraw until
+  /// 0.37.264, #979). `lamp` always 0.
   kHerdColdAhead,
 
   /// «ЛОГИСТИКА НЕ УСПЕВАЕТ» (routing stage B, B8; transport design §12,
@@ -784,15 +786,15 @@ enum class AlarmAdvice : std::uint8_t {
 
   /// The cattle yard's warm barn (rung 2) before the frosts — «утеплить
   /// скотный двор» (boss-core-start-no-yards [8]; the dictionary's
-  /// `warm_yard`). Named by kHerdColdAhead.
+  /// `warm_yard`). Named by kHerdColdAhead, and by kHerdFreezing in winter.
   kWarmYard,
 
-  /// Straw on the walls of the cold place the herd stands in — «утеплить
-  /// площадку соломой», kInsulateUnit at the price of construction.csv
-  /// `insulation_livestock_straw_t` and `_labor_days` (boss-core-start-no-
-  /// yards, 2026-10-01; the dictionary's `insulate_straw`). Named by
-  /// kHerdFreezing, and only while the stores hold that straw: the move a
-  /// winter leaves when the clay of the warm barn is frozen.
+  /// RETIRED 0.37.264, NAMED BY NO LAMP (#979): straw on the walls of a cold
+  /// livestock place, «утеплить площадку соломой». The human withdrew the
+  /// coat on 13 October 2026 (registry 316: «Мне не нравится обмазка…
+  /// временные решения»), and kInsulateUnit refuses a livestock unit. The
+  /// value stays so the numbering holds (appended, never renumbered): STUB
+  /// until 795 B's billet gives the winter's move its own value.
   kInsulateStraw,
 
   /// The hay runs out first and NO MEADOW STANDS IN ITS CUT (the haymaking

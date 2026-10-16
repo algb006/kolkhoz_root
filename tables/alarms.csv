@@ -41,3 +41,4 @@ seed_area_short,resource,33
 herd_hay_short_ahead,herd,34
 herd_freezing,herd,35
 herd_cold_ahead,herd,36
+site_supply_waits,unit,37

@@ -1376,16 +1376,6 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
       return false;
     }
   }
-  if (const ITable* const construction = tables.FindTable("construction")) {
-    if (!OptionalValue(*construction,
-                       "insulation_livestock_straw_t",
-                       Range{.low = 0.0F, .high = 1e3F},
-                       config.farming.insulation_livestock_straw_t,
-                       error)) {
-      error = "construction: " + error;
-      return false;
-    }
-  }
   if (!ParseRoadRules(tables, config.roads, error)) {
     return false;
   }

@@ -1617,8 +1617,9 @@ int TestInsulation() {
   };
   const auto straw_at = [&](core::UnitId id) { return core::AmountOf(unit_of(id).stock, kStraw); };
 
-  // The house (2 t, 2 man-days) and the byre (6 t, 5) in one step; the school
-  // (3 t) finds 2 t left and is refused; the shed and the hut may not be.
+  // The house (2 t, 2 man-days) and the school (3 t) in one step; the byre's
+  // coat is withdrawn (#979, the human 13 October 2026; until 0.37.264 it
+  // took 6 t and left the school short); the shed and the hut may not be.
   const core::OrderId house_order = Issue(world, UnitOrder(core::OrderKind::kInsulateUnit, house));
   const core::OrderId byre_order = Issue(world, UnitOrder(core::OrderKind::kInsulateUnit, byre));
   const core::OrderId school_order =
@@ -1635,14 +1636,14 @@ int TestInsulation() {
       straw_at(house) == 2 * kTonne && core::AmountOf(house_site.reserved, kStraw) == 2 * kTonne &&
           house_site.labor_days_total == 2.0F && house_site.labor_days_remaining == 2.0F,
       "insulation: housing takes 2 t, held back, and its 2 man-days open with it");
-  failures += Expect(RefusalOf(world, byre_order) == core::OrderRefusal::kNone &&
-                         straw_at(byre) == 6 * kTonne &&
-                         unit_of(byre).construction.labor_days_remaining == 5.0F,
-                     "insulation: a byre with room for animals, cold or not, takes 6 t and 5");
-  failures += Expect(straw_at(store_id) == 2 * kTonne &&
-                         RefusalOf(world, school_order) == core::OrderRefusal::kMaterialsShort &&
-                         unit_of(school).construction.phase == core::ConstructionPhase::kNone,
-                     "insulation: the school's 3 t are not in the village, and it is refused");
+  failures += Expect(RefusalOf(world, byre_order) == core::OrderRefusal::kRuleForbids &&
+                         straw_at(byre) == 0 &&
+                         unit_of(byre).construction.phase == core::ConstructionPhase::kNone,
+                     "insulation: a unit for animals is refused - the yards' coat is withdrawn");
+  failures += Expect(straw_at(store_id) == 5 * kTonne &&
+                         RefusalOf(world, school_order) == core::OrderRefusal::kNone &&
+                         straw_at(school) == 3 * kTonne,
+                     "insulation: the school's 3 t are in the village, and it takes them");
   failures += Expect(RefusalOf(world, shed_order) == core::OrderRefusal::kRuleForbids &&
                          RefusalOf(world, hut_order) == core::OrderRefusal::kRuleForbids,
                      "insulation: neither heated nor for animals — a housing class included — "
@@ -1661,36 +1662,37 @@ int TestInsulation() {
                          unit_of(house).construction.phase == core::ConstructionPhase::kNone &&
                          straw_at(house) == 0 && insulated_events == 1,
                      "insulation: at zero the straw is spent, the house warm, and it is said");
-  failures += Expect(unit_of(byre).insulated == 0 &&
-                         unit_of(byre).construction.phase == core::ConstructionPhase::kInsulating,
-                     "insulation: the byre with its labour still ahead is not finished");
+  failures += Expect(unit_of(school).insulated == 0 &&
+                         unit_of(school).construction.phase == core::ConstructionPhase::kInsulating,
+                     "insulation: the school with its labour still ahead is not finished");
   const core::OrderId again = Issue(world, UnitOrder(core::OrderKind::kInsulateUnit, house));
   Run(*system, world, 1);
   failures += Expect(RefusalOf(world, again) == core::OrderRefusal::kRuleForbids,
                      "insulation: a warm house is not insulated twice");
-  // WORKS OPEN ON THE UNIT, NAMED (form (a1)): the byre with its own coat
+  // WORKS OPEN ON THE UNIT, NAMED (form (a1)): the school with its own coat
   // under labour refuses a second order by the one-active-task rule.
-  const core::OrderId over_works = Issue(world, UnitOrder(core::OrderKind::kInsulateUnit, byre));
+  const core::OrderId over_works = Issue(world, UnitOrder(core::OrderKind::kInsulateUnit, school));
   Run(*system, world, 0);
   failures += Expect(RefusalOf(world, over_works) == core::OrderRefusal::kConflictsWithActive,
                      "insulation: works open on the unit refuse the coat as a conflict, named");
 
   // A paused job is carried nothing and does not finish; resumed, the stores
-  // give again and the labour opens. The byre's straw is taken off by hand to
-  // make its delivery half run.
-  unit_of(byre).stock[kStraw.value] = 0;
-  unit_of(byre).construction.labor_days_remaining = 0.0F;
-  unit_of(byre).paused = 1;
+  // give again and the labour opens. The school's straw is taken off by hand
+  // to make its delivery half run.
+  const float school_days = unit_of(school).construction.labor_days_total;
+  unit_of(school).stock[kStraw.value] = 0;
+  unit_of(school).construction.labor_days_remaining = 0.0F;
+  unit_of(school).paused = 1;
   unit_of(store_id).stock[kStraw.value] = 10 * kTonne;
   Run(*system, world, 0);
-  failures += Expect(straw_at(byre) == 0 && unit_of(byre).insulated == 0 &&
-                         unit_of(byre).construction.phase == core::ConstructionPhase::kInsulating,
+  failures += Expect(straw_at(school) == 0 && unit_of(school).insulated == 0 &&
+                         unit_of(school).construction.phase == core::ConstructionPhase::kInsulating,
                      "insulation: a paused job is carried no straw and is not finished");
-  unit_of(byre).paused = 0;
+  unit_of(school).paused = 0;
   Run(*system, world, 0);
-  failures += Expect(
-      straw_at(byre) == 6 * kTonne && unit_of(byre).construction.labor_days_remaining == 5.0F,
-      "insulation: resumed, the straw comes and the man-days open");
+  failures += Expect(straw_at(school) == 3 * kTonne && school_days > 0.0F &&
+                         unit_of(school).construction.labor_days_remaining == school_days,
+                     "insulation: resumed, the straw comes and the man-days open");
 
   // The second level keeps the straw; the third takes it off.
   unit_of(house).stock.assign(2, 0);
@@ -1802,22 +1804,34 @@ int TestTheCoatReplacesTheClay() {
     return world.units.rows[core::FindRow(world.units, id)];
   };
 
+  // THE COAT IS WITHDRAWN (#979, 0.37.264): over the open clay rung too, the
+  // order is refused and the clay's works stands as it was.
   const core::OrderId coat = Issue(world, UnitOrder(core::OrderKind::kInsulateUnit, byre_id));
   Run(*system, world, 1);
-  const core::UnitRow& coated = unit_of(byre_id);
-  failures += Expect(RefusalOf(world, coat) == core::OrderRefusal::kNone &&
-                         coated.construction.phase == core::ConstructionPhase::kInsulating,
-                     "coat for clay: the lamp's own advice is not refused over an open clay rung");
-  failures += Expect(coated.suspended_works.has_value() &&
-                         coated.suspended_works->phase == core::ConstructionPhase::kBuilding &&
-                         coated.suspended_works->target_level == 2 &&
-                         coated.suspended_works->labor_days_remaining == 3.0F,
-                     "coat for clay: the clay's works is put aside whole, its labour done kept");
-  failures += Expect(core::AmountOf(unit_of(store_id).stock, kStraw) == 14 * kTonne &&
-                         core::AmountOf(coated.stock, kStraw) == 12 * kTonne &&
-                         core::UnreservedOf(coated, kStraw) == 0,
-                     "coat for clay: the coat's 6 t come from the store, not from the clay's 6 t "
-                     "on the site, and neither is free to give");
+  failures +=
+      Expect(RefusalOf(world, coat) == core::OrderRefusal::kRuleForbids &&
+                 !unit_of(byre_id).suspended_works.has_value() &&
+                 unit_of(byre_id).construction.phase == core::ConstructionPhase::kBuilding &&
+                 core::AmountOf(unit_of(store_id).stock, kStraw) == 20 * kTonne,
+             "coat for clay: refused over an open clay rung, the clay untouched");
+
+  // A COAT A SAVE OPENED BEFORE 0.37.264 STILL FINISHES, and the spring
+  // brings the clay back: the state the door built until then, by hand - the
+  // clay put aside whole, the coat's 6 t from the store beside the clay's 6 t.
+  {
+    core::UnitRow& coated = unit_of(byre_id);
+    coated.suspended_works = coated.construction;
+    coated.construction = core::ConstructionState{};
+    coated.construction.phase = core::ConstructionPhase::kInsulating;
+    coated.construction.target_level = 1;
+    coated.construction.labor_days_total = 5.0F;
+    coated.construction.labor_days_remaining = 5.0F;
+    coated.construction.winter_works = 1;
+    coated.construction.reserved.assign(2, 0);
+    coated.construction.reserved[kStraw.value] = 6 * kTonne;
+    coated.stock[kStraw.value] = 12 * kTonne;
+    unit_of(store_id).stock[kStraw.value] = 14 * kTonne;
+  }
 
   const core::OrderId upgrade = Issue(world, UnitOrder(core::OrderKind::kUpgradeUnit, byre_id));
   unit_of(byre_id).construction.labor_days_remaining = 0.0F;
@@ -1843,16 +1857,16 @@ int TestTheCoatReplacesTheClay() {
                          core::AmountOf(spring.construction.reserved, kStraw) == 6 * kTonne,
                      "coat for clay: spring brings the clay's works back as it was put aside");
 
-  // Any other open works still refuses: the clay rung back under labour in
-  // spring takes no second coat (the unit is warm already - so the refusal
-  // is the conflict's only if the coat came off; a repair stands for it).
+  // And a repair open on the byre: the withdrawn coat's refusal comes first
+  // (until 0.37.264 this was the one-active-task rule's conflict).
   unit_of(byre_id).insulated = 0;
   unit_of(byre_id).construction.phase = core::ConstructionPhase::kRepairing;
   const core::OrderId over_repair =
       Issue(world, UnitOrder(core::OrderKind::kInsulateUnit, byre_id));
   Run(*system, world, 0);
-  failures += Expect(RefusalOf(world, over_repair) == core::OrderRefusal::kConflictsWithActive,
-                     "coat for clay: a repair open on the byre still refuses the coat");
+  failures +=
+      Expect(RefusalOf(world, over_repair) == core::OrderRefusal::kRuleForbids,
+             "coat for clay: with a repair open the byre's coat is still the withdrawn one");
   return failures;
 }
 

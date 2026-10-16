@@ -186,34 +186,16 @@ std::uint32_t DaysToColdSeason(const ProductionConfig& config, std::uint32_t day
 
 namespace {
 
-/// kInsulateStraw while the stores hold one livestock insulation's straw
-/// (boss, 2026-10-01); kNone otherwise — the billet and the knife are the
-/// lamp's text, not a move.
-AlarmAdvice StrawIfHeld(const ProductionConfig& config, const WorldState& world) {
-  if (config.straw_resource.value == kInvalidDefIdValue) {
-    return AlarmAdvice::kNone;
-  }
-  constexpr float kKilogramsPerTonne = 1000.0F;
-  const Grams price =
-      KilogramsToGrams(config.farming.insulation_livestock_straw_t * kKilogramsPerTonne);
-  return price > 0 && TakeableGrams(world, config, config.straw_resource) >= price
-             ? AlarmAdvice::kInsulateStraw
-             : AlarmAdvice::kNone;
-}
-
-/// Whether kInsulateUnit would take `unit` as it stands - the construction
-/// door's own rule (insulation.cpp StartInsulation; #715), asked here so the
-/// lamp names only a move the door accepts: not warm already, nothing put
-/// aside, and either no works open or the clay warm rung open (it is put
-/// aside for the coat). The works' terms are the door's own predicate since
-/// 0.37.240 (unit_state.h, CoatPutsAsideOpenWorks); the guard (core_world
-/// advice_checks) still runs the advice through the door: a lamp whose
-/// advice the door refuses teaches the player to ignore lamps.
-bool CoatTakes(const UnitRow& unit) {
-  if (unit.insulated != 0 || unit.suspended_works.has_value()) {
+/// THE MOVE THE UPGRADE'S DOOR TAKES TODAY (#715's guard): the unit's next
+/// rung is warm and no works stands on it. «Утеплить двор» while the warm
+/// rung is already open was refused (a works is open) - the rung is under
+/// way; any other open works takes it neither.
+bool WarmRungTakes(const ProductionConfig& config, const UnitRow& unit) {
+  if (unit.type.value >= config.unit_types.size() ||
+      unit.construction.phase != ConstructionPhase::kNone || unit.suspended_works.has_value()) {
     return false;
   }
-  return unit.construction.phase == ConstructionPhase::kNone || CoatPutsAsideOpenWorks(unit);
+  return config.unit_types[unit.type.value].WarmPlaceAt(static_cast<std::uint8_t>(unit.level + 1U));
 }
 
 }  // namespace
@@ -231,12 +213,16 @@ void CollectHerdColdAlarms(const ProductionConfig& config,
     alarm.kind = AlarmKind::kHerdFreezing;
     alarm.herd = world.herds.row_ids[row];
     alarm.amount = HeadsUnderRoof(herd);
-    // THE COAT ONLY WHERE THE DOOR TAKES IT (#715's guard): a pen whose coat is
-    // being laid, or under a repair, was told «утеплить соломой» and the order
-    // was refused.
+    // THE WARM RUNG, IN WINTER TOO (#979; registry 316: «тёплая ступень
+    // скотного двора строится и зимой», cattle_yard rung 2 winter_works 1
+    // since boss's export of 16 October 2026). Until 0.37.264 the red named
+    // the straw coat, which the human withdrew on 13 October («Мне не
+    // нравится обмазка… временные решения»). Where the rung does not take
+    // the order: no move - STUB until 795 B's billet into the residents'
+    // yards, the lamp's answer when that order is built.
     const UnitRow* const roof = HerdUnit(world, herd);
-    alarm.advice =
-        roof != nullptr && CoatTakes(*roof) ? StrawIfHeld(config, world) : AlarmAdvice::kNone;
+    alarm.advice = roof != nullptr && WarmRungTakes(config, *roof) ? AlarmAdvice::kWarmYard
+                                                                   : AlarmAdvice::kNone;
     alarms.push_back(alarm);
   }
   // THE YELLOW, in the autumn: the heads that will stand under a cold roof
@@ -277,17 +263,9 @@ void CollectHerdColdAlarms(const ProductionConfig& config,
     alarm.amount = static_cast<std::int64_t>(cold);
     alarm.days_ahead = static_cast<std::uint16_t>(days);
     alarm.days_to_loss = DaysToLossOf(days);
-    // THE MOVE THE DOORS TAKE TODAY (#715's guard). «Утеплить двор» while the
-    // warm rung is already open was refused by the upgrade's door (a works is
-    // open) - the rung is under way, and what is left before the cold is the
-    // coat that replaces it. Any other open works takes neither.
-    const bool works_open =
-        unit->construction.phase != ConstructionPhase::kNone || unit->suspended_works.has_value();
-    if (!works_open && type.WarmPlaceAt(static_cast<std::uint8_t>(unit->level + 1U))) {
-      alarm.advice = AlarmAdvice::kWarmYard;
-    } else {
-      alarm.advice = CoatTakes(*unit) ? AlarmAdvice::kInsulateStraw : AlarmAdvice::kNone;
-    }
+    // Otherwise no move: the straw coat named here until 0.37.264 is
+    // withdrawn (#979; STUB until 795 B's billet).
+    alarm.advice = WarmRungTakes(config, *unit) ? AlarmAdvice::kWarmYard : AlarmAdvice::kNone;
     alarm.lamp = 0;
     alarms.push_back(alarm);
   }

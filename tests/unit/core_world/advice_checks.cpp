@@ -6,6 +6,7 @@
 #include <functional>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -189,33 +190,73 @@ int CheckTheColdLamps(const Fixture& fixture) {
   const auto by_tonnes = [](float tonnes) {
     return static_cast<core::Grams>(tonnes * static_cast<float>(core::kGramsPerTonne));
   };
-  const auto coat = [](const core::Alarm& alarm, core::UnitId pen) {
+  const auto upgrade = [](core::UnitId pen) {
     core::OrderRow order;
-    order.kind = core::OrderKind::kInsulateUnit;
+    order.kind = core::OrderKind::kUpgradeUnit;
     order.unit = pen;
-    static_cast<void>(alarm);
     return order;
   };
-  // THE RED, DECEMBER: the cows freezing in a cold pen, straw in the stores.
-  for (const bool clay_open : {false, true}) {
+  // The advice `kind`'s lamp names on `world`, or nothing when it is dark.
+  const auto advice_of = [&fixture](const core::WorldState& world, core::AlarmKind kind) {
+    fixture.simulation->ResetWorld(world);
+    std::vector<core::Alarm> alarms;
+    fixture.simulation->CollectAlarms(alarms);
+    std::optional<core::AlarmAdvice> advice;
+    for (const core::Alarm& alarm : alarms) {
+      advice = !advice && alarm.kind == kind ? std::optional(alarm.advice) : advice;
+    }
+    return advice;
+  };
+  // THE RED, DECEMBER: the cows freezing in a cold pen, the warm rung's
+  // recipe in the village - «утеплить двор», built in winter too (registry
+  // 316; #979). Until 0.37.264 the red named the straw coat.
+  {
     core::WorldState world = fixture.genesis;
     SetDay(world, 45);
     const core::UnitId pen = CowsInAPen(fixture, world);
-    if (clay_open) {
-      OpenTheClay(world, pen);
-    }
     for (core::HerdRow& herd : world.herds.rows) {
       herd.cold_nights = herd.unit.value == pen.value ? 1 : herd.cold_nights;
     }
     Stock(world, straw, by_tonnes(30.0F));
+    Stock(world, log, by_tonnes(40.0F));
+    Stock(world, clay, by_tonnes(30.0F));
     const AdviceRun run = RunAdvice(*fixture.simulation,
                                     world,
                                     core::AlarmKind::kHerdFreezing,
-                                    core::AlarmAdvice::kInsulateStraw,
-                                    [&](const core::Alarm& alarm) { return coat(alarm, pen); });
-    failures += Report(run,
-                       clay_open ? "herd_freezing over an open clay rung, «утеплить соломой»"
-                                 : "herd_freezing, «утеплить соломой»");
+                                    core::AlarmAdvice::kWarmYard,
+                                    [&](const core::Alarm&) { return upgrade(pen); });
+    failures += Report(run, "herd_freezing, «утеплить двор» in December");
+    // THE COAT IS GONE FROM THE DOOR TOO (#979): kInsulateUnit on the pen is
+    // refused, the straw in the stores and nothing open on it.
+    const AdviceRun coat = RunAdvice(*fixture.simulation,
+                                     world,
+                                     core::AlarmKind::kHerdFreezing,
+                                     core::AlarmAdvice::kWarmYard,
+                                     [pen](const core::Alarm&) {
+                                       core::OrderRow order;
+                                       order.kind = core::OrderKind::kInsulateUnit;
+                                       order.unit = pen;
+                                       return order;
+                                     });
+    failures +=
+        Expect(coat.named && coat.refused == 1 && coat.refusal == core::OrderRefusal::kRuleForbids,
+               "herd_freezing: the straw coat on a livestock unit is refused "
+               "kRuleForbids - withdrawn by the human, 13 October 2026");
+  }
+  // OVER AN OPEN CLAY RUNG: the rung is under way, and the lamp names no
+  // move (the coat it named here until 0.37.264 is withdrawn; STUB 795 B).
+  {
+    core::WorldState world = fixture.genesis;
+    SetDay(world, 45);
+    const core::UnitId pen = CowsInAPen(fixture, world);
+    OpenTheClay(world, pen);
+    for (core::HerdRow& herd : world.herds.rows) {
+      herd.cold_nights = herd.unit.value == pen.value ? 1 : herd.cold_nights;
+    }
+    Stock(world, straw, by_tonnes(30.0F));
+    failures += Expect(
+        advice_of(world, core::AlarmKind::kHerdFreezing) == std::optional(core::AlarmAdvice::kNone),
+        "herd_freezing over an open clay rung: lit, and no move named");
   }
   // THE YELLOW, SEPTEMBER: the cold season ahead, a pen whose next rung is
   // warm - «утеплить двор»; the recipe in the village.
@@ -238,20 +279,17 @@ int CheckTheColdLamps(const Fixture& fixture) {
                                     });
     failures += Report(run, "herd_cold_ahead, «утеплить двор»");
   }
-  // AND WITH THE WARM RUNG OPEN ALREADY: what is left before the cold is the
-  // coat that replaces it (#715) - not a second «утеплить двор».
+  // AND WITH THE WARM RUNG OPEN ALREADY: not a second «утеплить двор», and
+  // no coat either (#979): lit, no move.
   {
     core::WorldState world = fixture.genesis;
     SetDay(world, 40);
     const core::UnitId pen = CowsInAPen(fixture, world);
     OpenTheClay(world, pen);
     Stock(world, straw, by_tonnes(30.0F));
-    const AdviceRun run = RunAdvice(*fixture.simulation,
-                                    world,
-                                    core::AlarmKind::kHerdColdAhead,
-                                    core::AlarmAdvice::kInsulateStraw,
-                                    [&](const core::Alarm& alarm) { return coat(alarm, pen); });
-    failures += Report(run, "herd_cold_ahead over an open warm rung, «утеплить соломой»");
+    failures += Expect(advice_of(world, core::AlarmKind::kHerdColdAhead) ==
+                           std::optional(core::AlarmAdvice::kNone),
+                       "herd_cold_ahead over an open warm rung: lit, and no move named");
   }
   return failures;
 }

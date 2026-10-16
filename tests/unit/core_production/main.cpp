@@ -5014,14 +5014,21 @@ int CheckTheColdLadder() {
     core::CollectHerdColdAlarms(config, cold, alarms);
     const bool bare = alarms.size() == 1 && alarms[0].kind == core::AlarmKind::kHerdFreezing &&
                       alarms[0].amount == 10 && alarms[0].advice == core::AlarmAdvice::kNone;
+    // THE STRAW NAMES NOTHING SINCE 0.37.264 (#979: the coat is withdrawn);
+    // a warm next rung is the red's move, in winter too (registry 316).
     core::ProductionConfig straw = config;
     straw.straw_resource = core::ResourceId{2};
     cold.units.rows[0].stock[2] = 6000 * core::kGramsPerKilogram;
     alarms.clear();
     core::CollectHerdColdAlarms(straw, cold, alarms);
-    failures +=
-        Expect(bare && alarms.size() == 1 && alarms[0].advice == core::AlarmAdvice::kInsulateStraw,
-               "cold ladder: the red names straw only while six tonnes are held");
+    const bool straw_bare = alarms.size() == 1 && alarms[0].advice == core::AlarmAdvice::kNone;
+    straw.unit_types[0].level_warm_place = {0, 1, 1, 1};
+    alarms.clear();
+    core::CollectHerdColdAlarms(straw, cold, alarms);
+    failures += Expect(bare && straw_bare && alarms.size() == 1 &&
+                           alarms[0].advice == core::AlarmAdvice::kWarmYard,
+                       "cold ladder: the red names no coat for six tonnes of straw, and the "
+                       "warm barn when rung 2 is warm");
     core::ProductionConfig autumn = config;
     autumn.farming.cold_first_month = shipped_first;
     autumn.farming.cold_last_month = shipped_last;
@@ -5035,7 +5042,7 @@ int CheckTheColdLadder() {
     const bool straw_ahead = alarms.size() == 1 &&
                              alarms[0].kind == core::AlarmKind::kHerdColdAhead &&
                              alarms[0].amount == 10 && alarms[0].days_ahead == 8 &&
-                             alarms[0].advice == core::AlarmAdvice::kInsulateStraw;
+                             alarms[0].advice == core::AlarmAdvice::kNone;
     autumn.unit_types[0].level_warm_place = {0, 1, 1, 1};
     alarms.clear();
     core::CollectHerdColdAlarms(autumn, october, alarms);
