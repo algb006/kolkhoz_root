@@ -898,10 +898,53 @@ std::pair<UnitTypeId, Grams> SmallestStoreFor(const ProductionConfig& config,
   return smallest;
 }
 
+/// The first-year store of `resource`, or invalid (boss, 16 October 2026, on
+/// resources.md §4 «Бурт — на первый год, склад — надолго», «Первая осень
+/// лежит в буртах»): in game year 1, while no numbered home of the resource
+/// stands or is staked, the orderable home whose capacity is the outline the
+/// player draws (the clamp). 0.37.262 named the vegetable store from the
+/// first day, because the clamp has no number and SmallestStoreFor skipped it.
+UnitTypeId FirstYearPlotStoreFor(const ProductionConfig& config,
+                                 const WorldState& world,
+                                 ResourceId resource) {
+  if (world.calendar.day / kDaysPerYear != 0) {
+    return UnitTypeId{};
+  }
+  const auto era = static_cast<std::uint8_t>(world.epoch);
+  const auto orderable_home = [&config, era, resource](UnitTypeId type) {
+    if (type.value >= config.unit_types.size()) {
+      return false;
+    }
+    const UnitTypeDef& def = config.unit_types[type.value];
+    return def.OrderableInEra(era) && std::ranges::any_of(def.home_of, [resource](ResourceId held) {
+             return held.value == resource.value;
+           });
+  };
+  // A unit at any level counts, a site (level 0) too: staking the vegetable
+  // store is the player's choice of the long answer (quests: the start only
+  // stakes its place).
+  const bool numbered_home_stands =
+      std::ranges::any_of(world.units.rows, [&config, &orderable_home](const UnitRow& unit) {
+        return orderable_home(unit.type) &&
+               config.unit_types[unit.type.value].capacity_by_plot == 0;
+      });
+  if (numbered_home_stands) {
+    return UnitTypeId{};
+  }
+  for (std::size_t type = 0; type < config.unit_types.size(); ++type) {
+    const UnitTypeId id = DefIdFromIndex<UnitTypeIdTag>(type);
+    if (config.unit_types[type].capacity_by_plot != 0 && orderable_home(id)) {
+      return id;
+    }
+  }
+  return UnitTypeId{};
+}
+
 /// THE STORE LAMP's MOVE (row 936; econ-boss-935-granary-threshold; boss,
 /// core-boss-936-contract-2026-10-14 [2]): on every kHarvestWillNotFit from
 /// `first` on, the village's WHOLE shortfall of its resource (summed over the
-/// fields) in `amount_more`, and the advice: kBuildStore when that sum is at
+/// fields) in `amount_more`, and the advice: kBuildStore of the clamp in the
+/// first year (FirstYearPlotStoreFor); else kBuildStore when that sum is at
 /// least kStoreAdviceShareOfSmallest of the smallest store taking it; else
 /// kDeliverAbovePlan while the resource is a position of the named plan and
 /// the stores hold some of it; else kNone. Until 936 the lamp named no move
@@ -925,6 +968,15 @@ void AdviseOnHarvestShortfall(const ProductionConfig& config,
     }
     const Grams shortfall = summed[alarm.resource.value];
     alarm.amount_more = shortfall;
+    // STUB (econ): the clamp at any shortfall. Its size grows with the
+    // outline, so the third's guard against a 150 t store for 2 t has
+    // nothing to guard (boss accepted, 16 October 2026).
+    const UnitTypeId plot_store = FirstYearPlotStoreFor(config, world, alarm.resource);
+    if (plot_store.value != kInvalidDefIdValue && shortfall > 0) {
+      alarm.advice = AlarmAdvice::kBuildStore;
+      alarm.advice_unit_type = StoreTypeOrItsParent(config, world, plot_store);
+      continue;
+    }
     const auto [store, capacity] = SmallestStoreFor(config, world, alarm.resource);
     if (store.value != kInvalidDefIdValue &&
         static_cast<double>(shortfall) >=

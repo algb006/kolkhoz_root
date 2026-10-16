@@ -55,6 +55,92 @@ core::FieldRow RyeField(float hectares) {
   return field;
 }
 
+/// True when every lamp of `lamps` (expected `count`) says «build» the type
+/// `store` with `sum` beside it.
+bool AllBuild(const std::vector<core::Alarm>& lamps,
+              std::size_t count,
+              std::uint32_t store,
+              core::Grams sum) {
+  bool all = lamps.size() == count;
+  for (const core::Alarm& lamp : lamps) {
+    all = all && lamp.advice == core::AlarmAdvice::kBuildStore &&
+          lamp.advice_unit_type.value == store && lamp.amount_more == sum;
+  }
+  return all;
+}
+
+/// The first year's clamp (boss, 16 October 2026; resources.md §4 «Бурт — на
+/// первый год, склад — надолго»): the potato's homes are the clamp (its size
+/// the outline, no number) and a 150 t vegetable store.
+int CheckTheFirstYearClamp() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_production_first_year_clamp";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "resources.csv") << "key,feed_value\npotato,0.3\n";
+  std::ofstream(root / "crops.csv")
+      << "key,resource,is_winter,is_perennial,sow_from_month,sow_to_month,sow_min_temp_c,"
+         "growth_min_temp_c,harvest_from_month,harvest_to_month,harvest_min_temp_c,"
+         "yield_kg_per_ha,sowing_norm_kg_per_ha,fertility_delta,drought_sensitivity,"
+         "wet_sensitivity,sow_days_per_ha,harvest_days_per_ha,straw_ratio\n"
+         "potato,potato,0,0,4,5,5,5,8,8,2,1000,0,-1,0,0,3,8,0\n";
+  std::ofstream(root / "farming.csv")
+      << "key,value\nfertility_neutral,50\nmanure_norm_kg_per_ha,20000\n"
+         "manure_fertility_bonus,10\nfallow_recovery,6\nrepeat_penalty_per_year,3\n"
+         "drought_temp_c,25\nstress_per_day,0.02\nstress_cap,0.3\n"
+         "weather_state_days,5\n";
+  std::ofstream(root / "unit_types.csv")
+      << "key,capacity_by_plot,player_built,era\nvegetable_store,0,1,1\nclamp,1,1,1\n";
+  std::ofstream(root / "unit_levels.csv")
+      << "unit,level,storage_capacity_t\nvegetable_store,1,150\nclamp,1,\n";
+  std::ofstream(root / "resource_stores.csv")
+      << "resource,unit,storage\npotato,vegetable_store,vegetable_store\npotato,clamp,clamp\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto system = tables == nullptr
+                          ? nullptr
+                          : core::CreateProductionSystem(*tables, core::StubTables::kAllowed);
+  if (Expect(system != nullptr, "first-year clamp: the table set builds a production system") !=
+      0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  constexpr std::uint32_t kVegetableStore = 0;
+  constexpr std::uint32_t kClamp = 1;
+
+  // 1. Year 1, nothing stands, 10 t short: under the vegetable store's third,
+  // and still the clamp - its size grows with the outline.
+  core::WorldState world;
+  core::RefreshCalendarCaches(world.calendar);
+  core::AppendRow(world.fields, RyeField(10.0F));
+  failures += Expect(AllBuild(RyeLamps(*system, world), 1, kClamp, 10 * kTonne),
+                     "first-year clamp: year 1, no vegetable store, 10 t short - the lamp names "
+                     "the clamp");
+
+  // 2. Year 2, 60 t short: the long answer, the vegetable store over its third.
+  for (int field = 0; field < 5; ++field) {
+    core::AppendRow(world.fields, RyeField(10.0F));
+  }
+  world.calendar.tick = core::kTicksPerYear;
+  core::RefreshCalendarCaches(world.calendar);
+  failures += Expect(AllBuild(RyeLamps(*system, world), 6, kVegetableStore, 60 * kTonne),
+                     "first-year clamp: year 2, 60 t short - the lamp names the vegetable store");
+
+  // 3. Year 1 again with the vegetable store staked (a site, level 0): the
+  // player chose the long answer, and the lamp names it.
+  world.calendar.tick = 0;
+  core::RefreshCalendarCaches(world.calendar);
+  core::UnitRow site;
+  site.type = core::UnitTypeId{kVegetableStore};
+  site.level = 0;
+  core::AppendRow(world.units, site);
+  failures += Expect(AllBuild(RyeLamps(*system, world), 6, kVegetableStore, 60 * kTonne),
+                     "first-year clamp: year 1 with the vegetable store staked - the lamp names "
+                     "the vegetable store, not the clamp");
+  return failures;
+}
+
 }  // namespace
 
 int CheckTheStoreLampsMove() {
@@ -147,5 +233,6 @@ int CheckTheStoreLampsMove() {
   failures += Expect(all_deliver,
                      "store lamp's move: under the third with the rye a plan position and in the "
                      "stores - «deliver 40 t above the plan»");
+  failures += CheckTheFirstYearClamp();
   return failures;
 }
