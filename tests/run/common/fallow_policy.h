@@ -31,18 +31,18 @@
 ///   * the need: the core's own village need (NeedUntilHarvest's
 ///     village_need_kcal_per_day, by age as the meal counts it) x 48 days x
 ///     (1 + last year's net growth);
-///   * under it, the next block's chains for spring: rye_winter -> barley ->
-///     oat, field k starting at slot k - a GRAIN chain, no potato (econ's (4),
-///     bc22032: every red of the first pair, the snow, the potato's failed
-///     delivery and the hauling out of the building, passed through the
-///     block's potato; boss [9]). At most one block a year, never taken
-///     back. A block is three derelict fields; the first is the three nearest
-///     a standing grain store (granary or church store), the second the rest.
-///
-/// The field whose chain starts at the winter rye cannot have it in hand in
-/// the first spring (it is sown in autumn): its first year is a bare fallow,
-/// the core's own rule for a lost winter slot, and the chain runs from the
-/// next.
+///   * under it, the next block's chains for spring: barley -> rye_winter ->
+///     oat, a GRAIN chain, no potato (econ's (4), bc22032: every red of the
+///     first pair, the snow, the potato's failed delivery and the hauling out
+///     of the building, passed through the block's potato; boss [9]). The
+///     opening year's three fields start on the SPRING slots only, barley,
+///     oat, barley (kOpeningSlot; econ 2f7c7d7): a field set to winter rye
+///     stood bare its first summer while its hectares already raised the rye
+///     position - the smoke village 1929 failed year 5 on rye so. The rye
+///     follows barley's August harvest from year 2. At most one block a year,
+///     never taken back. A block is three derelict fields; the first is the
+///     three nearest a standing grain store (granary or church store), the
+///     second the rest.
 
 #ifndef TESTS_RUN_COMMON_FALLOW_POLICY_H_
 #define TESTS_RUN_COMMON_FALLOW_POLICY_H_
@@ -81,7 +81,8 @@ class FallowPolicy {
               << ": FIXTURE DIFFERS FROM THE START CANON — the run's chairman ploughs the "
                  "derelict ground three fields (45 ha) at a time, one block a year at most, when "
                  "next year's food per eater falls under the village's need (#725; econ "
-                 "fields-grow-with-eaters); chain rye_winter -> barley -> oat, no potato; the "
+                 "fields-grow-with-eaters); chain barley -> rye_winter -> oat, the opening "
+                 "year's three fields on barley, oat, barley, no potato; the "
                  "forecast takes off the due at the worked ha the turn prices on; oat and pea "
                  "count nought as food (the meal does not eat them)\n";
   }
@@ -152,6 +153,9 @@ class FallowPolicy {
  private:
   static constexpr std::uint32_t kFieldsPerBlock = 3;
   static constexpr std::uint32_t kBlocks = 2;
+  /// Where in chain_ (barley, rye_winter, oat) each of a block's three fields
+  /// starts: barley, oat, barley - spring crops only in the opening year.
+  static constexpr std::array<std::size_t, 3> kOpeningSlot = {0, 2, 0};
   static constexpr std::uint32_t kHistoryYears = 3;
   static constexpr std::uint32_t kFirstOfDecember =
       static_cast<std::uint32_t>(core::Month::kDecember) * core::kDaysPerMonth;
@@ -200,7 +204,7 @@ class FallowPolicy {
         grain_stores_.push_back(row);
       }
     }
-    const std::array<std::string_view, 3> chain_keys = {"rye_winter", "barley", "oat"};
+    const std::array<std::string_view, 3> chain_keys = {"barley", "rye_winter", "oat"};
     for (std::size_t slot = 0; slot < chain_keys.size(); ++slot) {
       const std::uint32_t row = crops->FindRowByKey(chain_keys[slot]);
       chain_[slot] =
@@ -471,9 +475,10 @@ class FallowPolicy {
       core::OrderRow order;
       order.kind = core::OrderKind::kSetRotation;
       order.field = by_distance[k].second;
-      order.rotation_year0 = chain_[k % 3];
-      order.rotation_year1 = chain_[(k + 1) % 3];
-      order.rotation_year2 = chain_[(k + 2) % 3];
+      const std::size_t start = kOpeningSlot[k % kOpeningSlot.size()];
+      order.rotation_year0 = chain_[start % 3];
+      order.rotation_year1 = chain_[(start + 1) % 3];
+      order.rotation_year2 = chain_[(start + 2) % 3];
       orders.push_back(order);
       opened_fields_.push_back(by_distance[k].second);
     }
