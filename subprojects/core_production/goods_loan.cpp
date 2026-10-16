@@ -40,6 +40,10 @@ Grams& Slot(ResourceAmounts& amounts, ResourceId resource) {
 
 }  // namespace
 
+Grams GoodsLoanWithMarkup(const ProductionConfig& config, Grams borrowed) {
+  return WithMarkup(config, borrowed);
+}
+
 Grams GoodsLoanCeiling(const ProductionConfig& config,
                        const WorldState& current,
                        ResourceId resource) {

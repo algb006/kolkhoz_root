@@ -486,6 +486,10 @@ class Session final : public ISession {
 
   PlanBook OfficePlan() const override { return simulation_->OfficePlan(); }
 
+  Grams GoodsLoanAmountBack(Grams borrowed) const override {
+    return simulation_->GoodsLoanAmountBack(borrowed);
+  }
+
   LimitBook OfficeLimit() const override { return simulation_->OfficeLimit(); }
 
   std::vector<IssueNormLine> IssueNorms() const override { return simulation_->IssueNorms(); }

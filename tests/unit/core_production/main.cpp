@@ -15061,6 +15061,12 @@ int CheckTheGoodsLoan() {
           core::AmountOf(world.plan.goods_loan_taken, core::ResourceId{0}) == 10 * kTonne &&
           core::AmountOf(world.ledger.current.goods_loan_taken, core::ResourceId{0}) == 10 * kTonne,
       "loan: owed 12 t with the markup, taken and booked 10 t");
+  // THE PREVIEW IS THE BOOKING (#984): the order window's «вернуть {M}» is
+  // GoodsLoanWithMarkup of what the order lends, and the debt the order booked
+  // is the same figure to the gram.
+  failures += Expect(core::GoodsLoanWithMarkup(config, 10 * kTonne) ==
+                         core::AmountOf(world.plan.goods_loan_owed, core::ResourceId{0}),
+                     "loan: the order's preview of the amount back is the debt it books");
   failures += Expect(core::TakeGoodsLoan(config, world, loan(core::ResourceId{0}, kTonne)) ==
                          core::OrderRefusal::kRuleForbids,
                      "loan: one a resource a year — the second is refused");

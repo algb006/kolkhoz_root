@@ -132,7 +132,18 @@ class ScriptedSimulation final : public core::ISimulation {
   }
 
   core::PlanBook OfficePlan() const override {
-    return core::PlanBook{.announced = true, .deadline = 48, .positions = {}};
+    return core::PlanBook{
+        .announced = true,
+        .deadline = 48,
+        .positions = {},
+        .failed_years_in_a_row = 2,
+        .failed_years_to_trial = 3,
+        .loans = {core::LoanLine{
+            .resource = core::ResourceId{4}, .owed = 1'200'000, .taken_this_year = 1'000'000}}};
+  }
+
+  core::Grams GoodsLoanAmountBack(core::Grams borrowed) const override {
+    return borrowed + (borrowed / 5);
   }
 
   core::LimitBook OfficeLimit() const override {
@@ -2095,6 +2106,12 @@ int TestStockLights(const core::ITableSet& tables) {
                          plan.announced && plan.deadline == 48 && limit.points == 7,
                      "the office's workbook, plan and limit reach the window as the simulation "
                      "computes them");
+  failures += Expect(plan.failed_years_in_a_row == 2 && plan.failed_years_to_trial == 3 &&
+                         plan.loans.size() == 1 && plan.loans[0].owed == 1'200'000 &&
+                         plan.loans[0].taken_this_year == 1'000'000,
+                     "the trial's count and the loan's amount back reach the year's book");
+  failures += Expect(session->GoodsLoanAmountBack(1'000'000) == 1'200'000,
+                     "the loan order's preview is the simulation's own amount back");
   failures += Expect(forecast.size() == 3 && forecast[1].sky == core::SkyStep::kClear &&
                          forecast[2].sky == core::SkyStep::kHeavyPrecipitation,
                      "the sky step travels beside the name");

@@ -32,7 +32,7 @@
 ///               LimitDeliveryTerm, MaterialsShortFor, SupplyEstimateFor,
 ///               CargoFormOfLeg, StinkFullAt,
 ///               StinkNowAt, ResidentHeightMeters, Elder, ChairmanTransport
-///     office    OfficeWorkbook, OfficePlan, OfficeLimit, IssueNorms,
+///     office    OfficeWorkbook, OfficePlan, GoodsLoanAmountBack, OfficeLimit, IssueNorms,
 ///               NeedUntilHarvest, EraReadiness
 ///     roads     PreviewRoad, SelectRoadPieces, RoadKindsAvailable, Roads,
 ///               Junctions
@@ -731,9 +731,18 @@ class ISession {
   virtual std::vector<WorkbookLine> OfficeWorkbook() const = 0;
 
   /// @brief The office's plan window: the year's positions, shipped, met,
-  /// and the term (office_views.h). Through core_production; not announced
-  /// for a table-less world.
+  /// and the term; the trial's count «Планы сорваны подряд: N из M»; the
+  /// goods loans «к возврату {M}» (office_views.h). Through core_production;
+  /// not announced for a table-less world.
   virtual PlanBook OfficePlan() const = 0;
+
+  /// @brief The goods loan order's preview: what `borrowed` grams will be
+  /// owed back at the year's turn, the mark-up included — «Вернуть к
+  /// повороту года {M} т» (labor-payment.md §6.1). The same computation the
+  /// order books, so the layer never multiplies the mark-up itself. 0 for a
+  /// table-less world, which lends nothing.
+  /// @note Between steps; the answer describes the tables, not State().
+  virtual Grams GoodsLoanAmountBack(Grams borrowed) const = 0;
 
   /// @brief The office's limit window: the points left, the catalogue with
   /// price and today's answer, the carts on the way (office_views.h).

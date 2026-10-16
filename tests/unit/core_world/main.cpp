@@ -2535,6 +2535,35 @@ int CheckTheOfficeDoors() {
                      "office doors: the plan by resource, its term the next turn — 99 % met at "
                      "the district's share, 98 % not, no figure not listed");
 
+  // THE YEAR'S BOOK (#984): the trial's run «N из M» and the loans «к
+  // возврату {M}», read with no announcement too. Two failed years of
+  // campaign.csv's three; resource 1 owed 12 t, 10 t of it taken this year;
+  // resource 2 owed a carried 3 t, nothing taken; resource 0 nothing.
+  core::WorldState in_debt = start;
+  in_debt.plan.announced = 0;
+  in_debt.plan.failed_years_in_a_row = 2;
+  in_debt.plan.goods_loan_owed.assign(3, 0);
+  in_debt.plan.goods_loan_owed[1] = 12 * core::kGramsPerTonne;
+  in_debt.plan.goods_loan_owed[2] = 3 * core::kGramsPerTonne;
+  in_debt.plan.goods_loan_taken.assign(2, 0);
+  in_debt.plan.goods_loan_taken[1] = kTen;
+  simulation->ResetWorld(in_debt);
+  const core::PlanBook book = simulation->OfficePlan();
+  failures +=
+      Expect(!book.announced && book.failed_years_in_a_row == 2 && book.failed_years_to_trial == 3,
+             "office doors: the book's trial count is the run, of campaign.csv's "
+             "threshold 3, before any announcement");
+  failures += Expect(
+      book.loans.size() == 2 && book.loans[0].resource.value == 1 &&
+          book.loans[0].owed == 12 * core::kGramsPerTonne &&
+          book.loans[0].taken_this_year == kTen && book.loans[1].resource.value == 2 &&
+          book.loans[1].owed == 3 * core::kGramsPerTonne && book.loans[1].taken_this_year == 0,
+      "office doors: the book lists every resource owed, the mark-up included, "
+      "and what was taken this year; nothing owed is not listed");
+  failures += Expect(simulation->GoodsLoanAmountBack(kTen) == 12 * core::kGramsPerTonne,
+                     "office doors: the loan order's preview of 10 t is 12 t back at "
+                     "world_params' mark-up 0.2");
+
   // THE LIMIT: the lots by the catalogue's own words, and the balance.
   const core::ITable* const lots = shipped->FindTable("limit_catalog");
   const std::uint32_t timber = lots->FindRowByKey("timber_lot");

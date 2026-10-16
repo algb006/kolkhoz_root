@@ -246,9 +246,16 @@ class IProductionSystem {
   /// @brief The plan window off `completed` (office_views.h, PlanBook): every
   /// produce with a figure, by resource row, each with the turn's own
   /// PositionDelivered on what is shipped so far; the deadline the next
-  /// year's first day.
+  /// year's first day; the trial's run and its threshold; every resource
+  /// owed back or borrowed this year.
   /// @note Called between steps on the sim thread. A pure read.
   virtual PlanBook OfficePlan(const WorldState& completed) const = 0;
+
+  /// @brief What a goods loan of `borrowed` grams books as owed back, the
+  /// mark-up included (goods_loan.h GoodsLoanWithMarkup) — the order's
+  /// preview and the debt are one computation.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual Grams GoodsLoanAmountBack(Grams borrowed) const = 0;
 
   /// @brief The limit window off `completed` (office_views.h, LimitBook): the
   /// points left, every lot of the catalogue with its price and LotOrderable's

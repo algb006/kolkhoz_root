@@ -242,6 +242,8 @@ class StepEngine final : public ISimulation {
 
   PlanBook OfficePlan() const override { return PlanBook{}; }
 
+  Grams GoodsLoanAmountBack(Grams /*borrowed*/) const override { return 0; }
+
   LimitBook OfficeLimit() const override {
     return LimitBook{.points = CompletedState().limit.points, .catalogue = {}, .on_the_way = {}};
   }

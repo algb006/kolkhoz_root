@@ -26,6 +26,15 @@
 
 namespace core {
 
+/// @brief What a loan of `borrowed` grams books as owed: × (1 +
+///        goods_loan_markup), rounded to the gram — the one computation
+///        TakeGoodsLoan books and the order's preview shows
+///        (ISession::GoodsLoanAmountBack; labor-payment.md §6.1 «Игрок видит
+///        возврат числом там, где берёт заём»). The district's reputation
+///        lowering the mark-up (district §5) is NOT ENTERED: when it is, it
+///        goes here, and the preview follows.
+Grams GoodsLoanWithMarkup(const ProductionConfig& config, Grams borrowed);
+
 /// @brief The most of `resource` the district lends this year: the seed the
 ///        stores must keep for its sowings before its next harvest — the plan
 ///        door's rule (SeedHeldToSowing, as of today; 0.36.23) — with what the

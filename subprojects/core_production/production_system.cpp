@@ -490,7 +490,24 @@ class ProductionSystem final : public IProductionSystem {
       line.met = PositionDelivered(config_, due, line.delivered);
       book.positions.push_back(line);
     }
+    book.failed_years_in_a_row = completed.plan.failed_years_in_a_row;
+    book.failed_years_to_trial = config_.plan_failed_years_to_trial;
+    const std::size_t loan_rows =
+        std::max(completed.plan.goods_loan_owed.size(), completed.plan.goods_loan_taken.size());
+    for (std::size_t index = 0; index < loan_rows; ++index) {
+      LoanLine loan;
+      loan.resource = DefIdFromIndex<ResourceIdTag>(static_cast<std::uint32_t>(index));
+      loan.owed = AmountOf(completed.plan.goods_loan_owed, loan.resource);
+      loan.taken_this_year = AmountOf(completed.plan.goods_loan_taken, loan.resource);
+      if (loan.owed > 0 || loan.taken_this_year > 0) {
+        book.loans.push_back(loan);
+      }
+    }
     return book;
+  }
+
+  Grams GoodsLoanAmountBack(Grams borrowed) const override {
+    return GoodsLoanWithMarkup(config_, borrowed);
   }
 
   void SettleStartYear(WorldState& start) const override { GrantFirstLimitYear(config_, start); }

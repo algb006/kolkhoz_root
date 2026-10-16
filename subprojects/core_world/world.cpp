@@ -756,6 +756,10 @@ class StandardSimulation final : public ISimulation {
     return production_->OfficePlan(engine_->CompletedState());
   }
 
+  Grams GoodsLoanAmountBack(Grams borrowed) const override {
+    return production_->GoodsLoanAmountBack(borrowed);
+  }
+
   LimitBook OfficeLimit() const override {
     return production_->OfficeLimit(engine_->CompletedState());
   }
