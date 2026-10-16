@@ -30,6 +30,7 @@
 #include "../common/building_chairman.h"
 #include "../common/chairman_clock.h"
 #include "../common/extraction_policy.h"
+#include "../common/fallow_policy.h"
 #include "../common/felling_policy.h"
 #include "../common/fixture_policy.h"
 #include "../common/haul_tally.h"
@@ -127,6 +128,11 @@ bool g_saw_by_anyone = false;
 /// world can see — which is why it does not take the run out of the
 /// canonical set the way a doctored table set does.
 bool g_tick_cost = false;
+
+/// --fallow-by-eaters: the run's chairman ploughs the derelict ground as the
+/// eaters grow (fallow_policy.h, #725). An arm of a pair until its gates are
+/// read, so it takes the run out of the canonical set.
+bool g_fallow_by_eaters = false;
 
 constexpr std::uint64_t kSeed = 1929;
 std::uint64_t g_seed = kSeed;
@@ -460,6 +466,7 @@ int main(int argc, char** argv) {
     g_saw_reserve = g_saw_reserve || argument == "--saw-reserve";
     g_saw_by_anyone = g_saw_by_anyone || argument == "--saw-by-anyone";
     g_tick_cost = g_tick_cost || argument == "--tick-cost";
+    g_fallow_by_eaters = g_fallow_by_eaters || argument == "--fallow-by-eaters";
     if (argument.starts_with("--house-sites=")) {
       g_house_sites = static_cast<std::uint32_t>(std::strtoul(
           std::string(argument.substr(std::string_view("--house-sites=").size())).c_str(),
@@ -476,7 +483,7 @@ int main(int argc, char** argv) {
   // the simulation.
   g_canonical_run = g_seed == kSeed && g_years == kYears && !g_free_materials &&
                     g_tables_dir == "tables" && !g_saw_reserve && g_house_sites == 3 &&
-                    !g_saw_by_anyone;
+                    !g_saw_by_anyone && !g_fallow_by_eaters;
   run::Simulation world = run::Start(g_seed, 1, g_tables_dir);
   if (!world) {
     return 1;
@@ -630,6 +637,10 @@ int main(int argc, char** argv) {
   // (sowing_policy.h, the plan alarm only — no releases; boss, parcel 397). The
   // ripening figures are unused in this mode.
   run::SowingPolicy layout(13, 42, false, world.tables.get());
+  run::FallowPolicy fallow(*world.tables);
+  if (g_fallow_by_eaters) {
+    run::FallowPolicy::Declare("thirty_years");
+  }
   std::cout << "thirty_years: FIXTURE DIFFERS FROM THE START CANON — the run's chairman gives "
                "every plan crop a field in every year of the rotation when the layout marks "
                "one missing (farming design §7; boss, parcel 397)\n";
@@ -716,6 +727,11 @@ int main(int argc, char** argv) {
       chairman.Time("watchman", [&] { watchman.RunDay(sim); });
       chairman.Time("insulation", [&] { insulation.RunDay(sim); });
       chairman.Time("supply", [&] { supply.RunDay(sim); });
+      // THE FALLOW BEFORE THE LAYOUT'S MARK: a block opened on the year's
+      // first day is in the chains the mark reads on the second.
+      if (g_fallow_by_eaters) {
+        chairman.Time("fallow", [&] { fallow.RunDay(sim); });
+      }
       chairman.Time("layout", [&] { layout.AnswerPlanAlarmsOnly(sim); });
       chairman.Time("digging", [&] { digging.RunDay(sim); });
       chairman.Time("roads", [&] { roads.RunDay(sim); });
@@ -1170,6 +1186,9 @@ int main(int argc, char** argv) {
   office.Report(state, "thirty_years");
   watchman.Report(state, "thirty_years");
   insulation.Report(state, "thirty_years");
+  if (g_fallow_by_eaters) {
+    fallow.Report(state);
+  }
   supply.Report("thirty_years");
   std::cout << "thirty_years: layout — " << layout.Answered() << " plan alarms answered, "
             << layout.Unanswered() << " found no field\n";

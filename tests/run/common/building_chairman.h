@@ -25,6 +25,7 @@
 #include "core_tables/tables.h"
 #include "core_world/world.h"
 #include "extraction_policy.h"
+#include "fallow_policy.h"
 #include "felling_policy.h"
 #include "fixture_policy.h"
 #include "house_policy.h"
@@ -69,7 +70,8 @@ class BuildingChairman {
         supply(tables),
         digging(tables),
         roads(tables),
-        transition(tables) {
+        transition(tables),
+        fallow(tables) {
     WireStartGates(yard, fixture, houses, sawmill);
     WireSchoolGate(school, sawmill);
     WireSawGate(office, sawmill);
@@ -244,6 +246,11 @@ class BuildingChairman {
     // A sown grass stand that has lived its life is ploughed up and sown anew
     // (0.37.212; stand_renewal_policy.h).
     stand_renewal.RunDay(simulation);
+    // The derelict ground as the eaters grow (#725; fallow_policy.h): an arm
+    // of a pair until its gates are read, so off unless a run turns it on.
+    if (fallow_by_eaters) {
+      fallow.RunDay(simulation);
+    }
     sawmill.RunDay(simulation);
     limit.RunDay(simulation);
     night_pasture.RunDay(simulation);
@@ -337,6 +344,9 @@ class BuildingChairman {
   ExtractionPolicy digging;
   SuggestedRoadsPolicy roads;
   TransitionPolicy transition;
+  FallowPolicy fallow;
+  /// Whether RunDay calls `fallow` (#725): false until the pair's gates read.
+  bool fallow_by_eaters = false;
 };
 
 }  // namespace run
