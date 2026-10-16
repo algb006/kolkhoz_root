@@ -2,7 +2,10 @@
 
 #include "placement_diagnosis.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <optional>
 #include <vector>
 
@@ -76,6 +79,47 @@ void DiagnosePlacement(const PlacedPlan& plan, PlacementDiagnosis& diagnosis) {
         here = IdleReason::kHorseLock;
       } else {
         here = IdleReason::kNoDayLeft;
+      }
+      // PROBE #994 (probe/994 only, never main): the first kUnexplained days
+      // from KOLKHOZ_PROBE_994_FROM_DAY, with the job and the two skips of the
+      // walkers' pass the diagnosis does not replay.
+      if (here == IdleReason::kUnexplained) {
+        static int printed = 0;
+        static const char* const from_env = std::getenv("KOLKHOZ_PROBE_994_FROM_DAY");
+        const long from = from_env == nullptr ? -1 : std::strtol(from_env, nullptr, 10);
+        if (from >= 0 && static_cast<long>(params.rotation) >= from && printed < 400) {
+          ++printed;
+          AssignmentJob on_foot = job;
+          on_foot.harnessed = false;
+          const float one_way =
+              OneWayHours(on_foot, job_index, candidates[index], params, false, false);
+          const float trip_day = std::min(params.standard_day_hours, params.window_hours);
+          std::uint32_t placed = 0;
+          for (const std::uint32_t assigned : *plan.result) {
+            placed += assigned == job_index ? 1U : 0U;
+          }
+          std::printf(
+              "PROBE994 day=%u resident_row=%u job=%u kind=%u shortfall=%u placed=%u max_crew=%u "
+              "left_days=%.2f harnessed=%d walker_log=%d log_pair_open=%d supplies_works=%d "
+              "rick_waits=%d cart_today=%u one_way_h=%.2f trips=%.2f min_trips=%.2f\n",
+              params.rotation,
+              candidates[index].resident_row,
+              job_index,
+              static_cast<unsigned>(job.kind),
+              static_cast<unsigned>(*shortfall[job_index]),
+              placed,
+              static_cast<unsigned>(job.max_crew),
+              static_cast<double>(job.work_days_remaining),
+              job.harnessed ? 1 : 0,
+              job.walker_log ? 1 : 0,
+              job.log_pair_open ? 1 : 0,
+              job.supplies_works ? 1 : 0,
+              job.rick_waits_for_a_cart ? 1 : 0,
+              static_cast<unsigned>((*plan.cart_today)[job_index]),
+              static_cast<double>(one_way),
+              static_cast<double>(one_way > 0.0F ? trip_day / (2.0F * one_way) : -1.0F),
+              static_cast<double>(params.walker_min_trips_per_day));
+        }
       }
       if (!reason || rank(here) < rank(*reason)) {
         reason = here;
