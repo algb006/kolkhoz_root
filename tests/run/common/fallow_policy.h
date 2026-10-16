@@ -59,7 +59,9 @@
 #include <string_view>
 #include <vector>
 
+#include "core_catalog/seed_norm_catalog.h"
 #include "core_common/calendar.h"
+#include "core_common/fund_ladder.h"
 #include "core_common/land_state.h"
 #include "core_common/order_state.h"
 #include "core_common/quantities.h"
@@ -98,6 +100,9 @@ class FallowPolicy {
     if (day_of_year == kFirstOfDecember) {
       CountPotatoOnTheBlocks(world);
     }
+    if (day_of_year == core::kDaysPerYear - 1U) {
+      PrintTheEvesSeed(world);
+    }
     if (world.calendar.day == 0 || day_of_year != 0 || world.calendar.day == last_turn_day_) {
       return;
     }
@@ -115,8 +120,15 @@ class FallowPolicy {
       std::cout << (opened_blocks_ >= kBlocks ? " - every block open\n" : " - enough\n");
       return;
     }
+    std::cout << " - SHORT\n";
+    if (!BlockKeepsThePlan(world, AreaOf(world, NextBlockFields(world)))) {
+      std::cout << "fallow_policy: year " << year << " block " << opened_blocks_ + 1U
+                << " HELD by the plan guard\n";
+      return;
+    }
     OpenNextBlock(simulation, world);
-    std::cout << " - SHORT, block " << opened_blocks_ << " opened for this spring\n";
+    std::cout << "fallow_policy: year " << year << " block " << opened_blocks_
+              << " opened for this spring\n";
     opened_in_year_.push_back(year);
   }
 
@@ -211,6 +223,17 @@ class FallowPolicy {
           row == core::kNoTableRow ? core::CropId{} : core::CropId{static_cast<std::uint16_t>(row)};
     }
     potato_resource_ = resources->FindRowByKey("potato");
+    crop_resource_.assign(resources->RowCount(), false);
+    for (const CropRow& crop : crops_) {
+      if (crop.resource < crop_resource_.size()) {
+        crop_resource_[crop.resource] = true;
+      }
+    }
+    std::string error;
+    if (!core::ReadSeedNorms(*crops, resources, seed_norms_, error)) {
+      std::cout << "fallow_policy: REFUSED: seed norms - " << error << '\n';
+      seed_norms_.clear();
+    }
     history_.assign(resources->RowCount(), {});
     for (std::uint32_t row = 0; row < resources->RowCount(); ++row) {
       resource_keys_.emplace_back(resources->CellText(row, 0));
@@ -399,6 +422,22 @@ class FallowPolicy {
 
   /// Next year's eaten kilocalories off the fields' coming slot.
   double ForecastFoodKcal(const core::WorldState& world) const {
+    const std::vector<double> grams = ForecastGrams(world);
+    double kcal = 0.0;
+    const double scale = DueScale(world);
+    for (std::size_t resource = 0; resource < grams.size(); ++resource) {
+      const double due = resource < due_last_year_.size()
+                             ? static_cast<double>(due_last_year_[resource]) * scale
+                             : 0.0;
+      const double left = std::max(0.0, grams[resource] - due);
+      kcal += left * static_cast<double>(eaten_kcal_per_gram_[resource]);
+    }
+    return kcal;
+  }
+
+  /// Next year's grams of every crop's resource off the fields' coming slot,
+  /// net of last year's loss share, less the seed.
+  std::vector<double> ForecastGrams(const core::WorldState& world) const {
     std::vector<double> grams(eaten_kcal_per_gram_.size(), 0.0);
     for (const core::FieldRow& field : world.fields.rows) {
       const core::CropId crop = field.rotation_year0;
@@ -413,16 +452,7 @@ class FallowPolicy {
       grams[row.resource] += ((YieldKgPerHa(crop) * kept) - row.seed_kg_per_ha) *
                              static_cast<double>(field.area_ga) * kGramsPerKilogram;
     }
-    double kcal = 0.0;
-    const double scale = DueScale(world);
-    for (std::size_t resource = 0; resource < grams.size(); ++resource) {
-      const double due = resource < due_last_year_.size()
-                             ? static_cast<double>(due_last_year_[resource]) * scale
-                             : 0.0;
-      const double left = std::max(0.0, grams[resource] - due);
-      kcal += left * static_cast<double>(eaten_kcal_per_gram_[resource]);
-    }
-    return kcal;
+    return grams;
   }
 
   /// The village's need for a year, by the core's own count, with last
@@ -446,8 +476,39 @@ class FallowPolicy {
     return per_day * static_cast<double>(core::kDaysPerYear) * (1.0 + growth);
   }
 
-  /// The next block: the derelict fields nearest a standing grain store.
-  void OpenNextBlock(core::ISimulation& simulation, const core::WorldState& world) {
+  /// THE PLAN'S GUARD ON A BLOCK (#725 pair 3; econ 913ed56, (b)): the block
+  /// is opened only if, for every position the district prices off the
+  /// worked ha, the due at the ha WITH the block stays under what the old
+  /// ground's fields will give of it, net of loss and less seed. A position
+  /// with no crop behind it (milk) is not priced by ha and is not asked.
+  /// Prints every position it read, and which one held the block.
+  bool BlockKeepsThePlan(const core::WorldState& world, double block_ha) const {
+    const std::vector<double> grams = ForecastGrams(world);
+    const auto now_ha = static_cast<double>(world.plan.worked_ha_last_year);
+    const double scale =
+        priced_ha_last_year_ > 0.0 ? (now_ha + block_ha) / priced_ha_last_year_ : 1.0;
+    bool keeps = true;
+    std::cout << "fallow_policy: year " << world.ledger.closed.year + 1U << " plan guard at +"
+              << block_ha << " ha (x" << scale << "):";
+    for (std::size_t resource = 0; resource < due_last_year_.size(); ++resource) {
+      if (due_last_year_[resource] <= 0 || resource >= crop_resource_.size() ||
+          !crop_resource_[resource]) {
+        continue;
+      }
+      const double due_t = static_cast<double>(due_last_year_[resource]) * scale / 1e6;
+      const double old_t = resource < grams.size() ? grams[resource] / 1e6 : 0.0;
+      const bool over = due_t > old_t;
+      keeps = keeps && !over;
+      std::cout << ' ' << resource_keys_[resource] << ' ' << due_t << '/' << old_t
+                << (over ? " OVER" : "");
+    }
+    std::cout << (keeps ? " - keeps\n" : " - HOLDS the block\n");
+    return keeps;
+  }
+
+  /// The derelict fields the next block would take: the nearest a standing
+  /// grain store first, kFieldsPerBlock of them.
+  std::vector<core::FieldId> NextBlockFields(const core::WorldState& world) const {
     std::vector<std::pair<double, core::FieldId>> by_distance;
     for (const core::FieldId id : derelict_) {
       if (std::ranges::find(opened_fields_, id) != opened_fields_.end()) {
@@ -470,22 +531,76 @@ class FallowPolicy {
     }
     // Nearest first; equal distances keep the genesis order.
     std::ranges::stable_sort(by_distance, {}, &std::pair<double, core::FieldId>::first);
-    std::vector<core::OrderRow> orders;
+    std::vector<core::FieldId> fields;
     for (std::size_t k = 0; k < by_distance.size() && k < kFieldsPerBlock; ++k) {
+      fields.push_back(by_distance[k].second);
+    }
+    return fields;
+  }
+
+  double AreaOf(const core::WorldState& world, const std::vector<core::FieldId>& fields) const {
+    double area = 0.0;
+    for (const core::FieldId id : fields) {
+      const std::uint32_t row = core::FindRow(world.fields, id);
+      area += row == core::kNoRow ? 0.0 : static_cast<double>(world.fields.rows[row].area_ga);
+    }
+    return area;
+  }
+
+  /// The next block: NextBlockFields, each on its opening slot.
+  void OpenNextBlock(core::ISimulation& simulation, const core::WorldState& world) {
+    const std::vector<core::FieldId> fields = NextBlockFields(world);
+    std::vector<core::OrderRow> orders;
+    for (std::size_t k = 0; k < fields.size(); ++k) {
       core::OrderRow order;
       order.kind = core::OrderKind::kSetRotation;
-      order.field = by_distance[k].second;
+      order.field = fields[k];
       const std::size_t start = kOpeningSlot[k % kOpeningSlot.size()];
       order.rotation_year0 = chain_[start % 3];
       order.rotation_year1 = chain_[(start + 1) % 3];
       order.rotation_year2 = chain_[(start + 2) % 3];
       orders.push_back(order);
-      opened_fields_.push_back(by_distance[k].second);
+      opened_fields_.push_back(fields[k]);
     }
     if (!orders.empty()) {
       simulation.StageOrders(std::span<const core::OrderRow>(orders), {});
       ++opened_blocks_;
     }
+  }
+
+  /// THE EVE'S SEED (#725 pair 3; boss, on seed 1935 year 11, whose oat
+  /// shipped 0 of 5.16 t with 9.48 t in store): on the year's last day, every
+  /// crop position's stock against the seed the core's seed rung holds of it
+  /// (core_common fund_ladder.h SeedRungLeft, as of the eve; the turn's
+  /// delivery reads it as of the closing day too, DeliverableAboveSeed), and
+  /// what is left above the seed for the plan.
+  void PrintTheEvesSeed(const core::WorldState& world) const {
+    if (seed_norms_.empty()) {
+      return;
+    }
+    const core::ResourceAmounts held =
+        core::SeedRungLeft(world, seed_norms_, resource_keys_.size());
+    std::cout << "fallow_policy: year " << world.ledger.closed.year + 1U
+              << " eve (t, stored / held as seed / above seed / owed):";
+    for (std::size_t resource = 0; resource < world.plan.due.size(); ++resource) {
+      if (world.plan.due[resource] <= 0 || resource >= crop_resource_.size() ||
+          !crop_resource_[resource]) {
+        continue;
+      }
+      core::Grams stored = 0;
+      for (const core::UnitRow& unit : world.units.rows) {
+        stored += resource < unit.stock.size() ? unit.stock[resource] : 0;
+      }
+      const core::Grams seed = resource < held.size() ? held[resource] : 0;
+      const core::Grams delivered =
+          resource < world.plan.delivered.size() ? world.plan.delivered[resource] : 0;
+      const core::Grams owed = std::max<core::Grams>(0, world.plan.due[resource] - delivered);
+      const core::Grams above = std::max<core::Grams>(0, stored - seed);
+      std::cout << ' ' << resource_keys_[resource] << ' ' << static_cast<double>(stored) / 1e6
+                << '/' << static_cast<double>(seed) / 1e6 << '/' << static_cast<double>(above) / 1e6
+                << '/' << static_cast<double>(owed) / 1e6 << (above < owed ? " SEED-BOUND" : "");
+    }
+    std::cout << '\n';
   }
 
   /// The block's potato lying on its fields on 1 December, apart from the
@@ -531,6 +646,9 @@ class FallowPolicy {
   std::vector<std::uint32_t> grain_stores_;
   std::array<core::CropId, 3> chain_{};
   std::uint32_t potato_resource_ = core::kNoTableRow;
+  /// By resource: some crop of the table yields it (a position priced by ha).
+  std::vector<bool> crop_resource_;
+  std::vector<core::SeedNorm> seed_norms_;
   std::vector<std::vector<double>> history_;
   std::vector<std::string> resource_keys_;
   /// The closed year's loss over its harvest, by resource, 0..1.
