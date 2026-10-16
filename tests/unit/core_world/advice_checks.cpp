@@ -108,6 +108,10 @@ struct AdviceRun {
   std::uint32_t refused = 0;
 };
 
+/// Every advice some case below named AND whose order its door took, by
+/// value - the census at the end reads it (#980).
+std::array<bool, static_cast<std::size_t>(core::AlarmAdvice::kAlarmAdviceCount)> g_taken_advice{};
+
 /// Lays `world` in, reads the lamps, finds `kind` with `advice`, stages the
 /// order `order_of` builds from it and steps once: the refusals of that step.
 AdviceRun RunAdvice(core::ISimulation& simulation,
@@ -139,7 +143,72 @@ AdviceRun RunAdvice(core::ISimulation& simulation,
       run.refusal = static_cast<core::OrderRefusal>(event.amount);
     }
   }
+  if (run.refused == 0 && order.kind != core::OrderKind::kNone) {
+    g_taken_advice[static_cast<std::size_t>(advice)] = true;
+  }
   return run;
+}
+
+/// An advice no order carries, and why (#980; econ's complexity pass of 16
+/// October 2026, risk 2: «every advice carries the exact words of the button
+/// it means, or names no move»). The lamp's string must then name no move.
+struct NoDoor {
+  core::AlarmAdvice advice;
+  const char* why;
+};
+
+constexpr std::array<NoDoor, 2> kNoDoor = {{
+    {core::AlarmAdvice::kBringFeed,
+     "two moves, one word - «подвезти корма или уменьшить стадо»; no single order"},
+    {core::AlarmAdvice::kInsulateStraw,
+     "retired 0.37.264 (#979): named by no lamp, its door refuses a livestock unit"},
+}};
+
+/// An advice with a door that no case here has run through it yet: OWED, by
+/// name and door, printed on every run until a case takes it.
+struct Owed {
+  core::AlarmAdvice advice;
+  const char* door;
+};
+
+constexpr std::array<Owed, 3> kOwed = {{
+    {core::AlarmAdvice::kLiftRush, "kDeclareRush on the meadow, amount 0"},
+    {core::AlarmAdvice::kBuildStore, "kBuildUnit of advice_unit_type"},
+    {core::AlarmAdvice::kDeliverAbovePlan, "kDeliverPlan of advice_resource, advice_amount"},
+}};
+
+/// THE CENSUS (#980): every advice value is taken by its door in a case
+/// above, flagged no-door with a reason, or owed by name - a new value in
+/// none of the three is red, and so is one listed twice or a stale entry.
+int CheckTheAdviceCensus() {
+  int failures = 0;
+  std::uint32_t taken = 0;
+  for (std::size_t value = 1; value < g_taken_advice.size(); ++value) {
+    const auto advice = static_cast<core::AlarmAdvice>(value);
+    const bool no_door = std::ranges::any_of(
+        kNoDoor, [advice](const NoDoor& entry) { return entry.advice == advice; });
+    const bool owed =
+        std::ranges::any_of(kOwed, [advice](const Owed& entry) { return entry.advice == advice; });
+    const bool run = g_taken_advice[value];
+    taken += run ? 1U : 0U;
+    const int homes = (run ? 1 : 0) + (no_door ? 1 : 0) + (owed ? 1 : 0);
+    failures += Expect(homes == 1,
+                       "advice census: advice " + std::to_string(value) + " is in " +
+                           std::to_string(homes) +
+                           " of {taken by its door here, no door, owed} - want exactly 1");
+  }
+  std::cout << "advice census: " << taken << " taken by their doors, " << kNoDoor.size()
+            << " with no door, " << kOwed.size() << " OWED of " << g_taken_advice.size() - 1U
+            << " advice values\n";
+  for (const NoDoor& entry : kNoDoor) {
+    std::cout << "advice census: NO DOOR " << static_cast<int>(entry.advice) << " - " << entry.why
+              << '\n';
+  }
+  for (const Owed& entry : kOwed) {
+    std::cout << "advice census: OWED " << static_cast<int>(entry.advice) << " - " << entry.door
+              << " - no case runs it through its door yet\n";
+  }
+  return failures;
 }
 
 int Report(const AdviceRun& run, const std::string& what) {
@@ -857,9 +926,7 @@ int CheckEveryAdviceIsTaken() {
   failures += CheckTheDayOff(fixture);
   failures += CheckTheHayDayOff(fixture);
   failures += CheckTheSupplyFloor(fixture);
-  // «ПОДВЕЗТИ КОРМ ИЛИ УМЕНЬШИТЬ СТАДО» (kBringFeed) HAS NO ONE DOOR: two moves,
-  // one word (alarm_state.h) - named here, not skipped.
-  std::cout << "advice: kBringFeed has no single order door (two moves, one word) — not "
-               "checked by an order, named\n";
+  // LAST: it reads what every case above took.
+  failures += CheckTheAdviceCensus();
   return failures;
 }
