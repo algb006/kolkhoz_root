@@ -18,7 +18,8 @@
 ///
 /// WHOSE TRANSPORT (kCanon, econ's rule (c′)): OWN CARTS only on a day with no
 /// arable field in its sowing or harvest window and no ploughing open, and no
-/// grain lying reaped on a field; the DISTRICT's cart otherwise. Named
+/// heap lying reaped on a field of a tonne or more (kHeapHoldsHorsesGrams) or
+/// of a crop still in its harvest months; the DISTRICT's cart otherwise. Named
 /// readings: a field is in its SOWING window when this year's slot
 /// (rotation_year0) is a crop whose sow months hold today and the field is not
 /// yet sown this year; in its HARVEST window when it stands (growing) in a crop
@@ -38,6 +39,7 @@
 #ifndef TESTS_RUN_COMMON_DELIVERY_POLICY_H_
 #define TESTS_RUN_COMMON_DELIVERY_POLICY_H_
 
+#include <array>
 #include <cstdint>
 #include <iostream>
 #include <optional>
@@ -62,6 +64,11 @@ enum class RunDeliveryMode : std::uint8_t {
   kDistrictOnly,  ///< always the district's calendar (arm D)
   kOwnOnly,       ///< always own carts (arm O)
 };
+
+/// A reaped heap of at least this many grams holds the own carts home, in any
+/// month (econ's narrowing of (c′), econ-boss-v5-acceptance-gate [3]). STUB:
+/// a cart's tonne, no measurement behind it.
+inline constexpr core::Grams kHeapHoldsHorsesGrams = 1'000'000;
 
 /// The mode every run plays; the pair's arms change this one line.
 inline constexpr RunDeliveryMode kRunDeliveryMode = RunDeliveryMode::kCanon;
@@ -102,11 +109,22 @@ class DeliveryPolicy {
     if (world.plan.announced == 0) {
       return;
     }
+    const HorseHold hold = FieldsNeedHorses(world);
+    ++hold_days_[static_cast<std::size_t>(hold)];
+    ++hold_by_month_[(world.calendar.day % core::kDaysPerYear) / core::kDaysPerMonth]
+                    [static_cast<std::size_t>(hold)];
     const bool own = mode_ == RunDeliveryMode::kOwnOnly ||
-                     (mode_ == RunDeliveryMode::kCanon && !FieldsNeedHorses(world));
+                     (mode_ == RunDeliveryMode::kCanon && hold == HorseHold::kFree);
     std::vector<core::OrderRow> orders;
     for (std::size_t index = 0; index < world.plan.due.size(); ++index) {
-      if (!YieldedByACrop(index) || !Unasked(world, index)) {
+      // A request standing with the district is taken over by own carts on
+      // the first free day (the core's door: own carts take what they load
+      // off the request). Until then a position was ordered once, on the day
+      // its harvest came in - always a day the next crop held the horses -
+      // and arm C sent own carts nowhere in 36 village-years.
+      const bool take_over =
+          own && index < world.plan.requested.size() && world.plan.requested[index] > 0;
+      if (!YieldedByACrop(index) || (!Unasked(world, index) && !take_over)) {
         continue;
       }
       if (!HarvestIn(world, index)) {
@@ -152,17 +170,40 @@ class DeliveryPolicy {
     std::cout << run << ": the run's chairman ordered " << own_orders_
               << " plan deliveries by own carts and " << district_orders_
               << " by the district's cart; " << held_days_
-              << " position-days owed waited for their harvest to be in\n";
+              << " position-days owed waited for their harvest to be in\n"
+              << run << ": the plan's days by what held own carts home (rule (c′)): free "
+              << hold_days_[0] << ", a heap " << hold_days_[1] << ", ploughing " << hold_days_[2]
+              << ", a field in harvest " << hold_days_[3] << ", a crop in its harvest months "
+              << hold_days_[4] << ", a slot in its sow months " << hold_days_[5] << '\n'
+              << run << ": by month, free/heap/plough/harvest/harvest-months/sow-months:";
+    for (std::size_t month = 0; month < hold_by_month_.size(); ++month) {
+      std::cout << ' ' << month + 1 << '=';
+      for (std::size_t hold = 0; hold < hold_by_month_[month].size(); ++hold) {
+        std::cout << (hold == 0 ? "" : "/") << hold_by_month_[month][hold];
+      }
+    }
+    std::cout << '\n';
   }
 
  private:
+  /// What held the own carts home on a day, by (c′)'s clauses.
+  enum class HorseHold : std::uint8_t {
+    kFree,
+    kHeap,
+    kPloughing,
+    kHarvest,
+    kHarvestWindow,
+    kSowWindow,
+    kCount,
+  };
+
   static const char* ModeWords(RunDeliveryMode mode) {
     return mode == RunDeliveryMode::kDistrictOnly ? "always by the district's monthly cart (arm D)"
            : mode == RunDeliveryMode::kOwnOnly
                ? "always by own carts (arm O)"
                : "by own carts on a day with no field in its sowing or harvest window, no "
-                 "ploughing open and no grain reaped on a field, by the district's monthly cart "
-                 "otherwise (econ's rule (c′))";
+                 "ploughing open and no heap on a field of a tonne or of a crop in its harvest "
+                 "months, by the district's monthly cart otherwise (econ's rule (c′), narrowed)";
   }
 
   struct CropRule {
@@ -234,14 +275,37 @@ class DeliveryPolicy {
     return true;
   }
 
-  /// econ's (c′): a field in its sowing or harvest window, ploughing open,
-  /// or grain lying reaped on a field.
-  bool FieldsNeedHorses(const core::WorldState& world) const {
+  /// A heap that holds the horses home: one of a cart's size, or of a crop
+  /// still inside its harvest months (econ's narrowing of (c′),
+  /// econ-boss-v5-acceptance-gate [3]). Until then any reaped gram did, and
+  /// the crumbs lying all winter kept arm C's own carts home in every one of
+  /// 36 village-years (C == D to the digit).
+  bool HeapHoldsHorses(const core::FieldRow& field, std::int32_t month) const {
+    if (field.reaped_grams >= kHeapHoldsHorsesGrams) {
+      return true;
+    }
+    if (field.reaped_grams <= 0) {
+      return false;
+    }
+    for (const CropRule& rule : crops_) {
+      if (rule.resource == field.reaped_resource.value &&
+          InMonths(month, rule.harvest_from, rule.harvest_to)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// econ's (c′), narrowed: the first clause that holds the horses today, or
+  /// kFree - a heap that holds them (HeapHoldsHorses), ploughing open, a field
+  /// in kHarvest, a growing field inside its harvest months, an idle field
+  /// inside its slot's sow months.
+  HorseHold FieldsNeedHorses(const core::WorldState& world) const {
     const auto month =
         static_cast<std::int32_t>((world.calendar.day % core::kDaysPerYear) / core::kDaysPerMonth);
     for (const core::FieldRow& field : world.fields.rows) {
-      if (field.reaped_grams > 0) {
-        return true;
+      if (HeapHoldsHorses(field, month)) {
+        return HorseHold::kHeap;
       }
       if (field.kind != core::LandKind::kArable) {
         continue;
@@ -250,19 +314,20 @@ class DeliveryPolicy {
         case core::FieldPhase::kPlowing:
         case core::FieldPhase::kHarrowing:
         case core::FieldPhase::kSowing:
+          return HorseHold::kPloughing;
         case core::FieldPhase::kHarvest:
-          return true;
+          return HorseHold::kHarvest;
         case core::FieldPhase::kGrowing: {
           const CropRule* const rule = RuleOf(field.crop);
           if (rule != nullptr && InMonths(month, rule->harvest_from, rule->harvest_to)) {
-            return true;
+            return HorseHold::kHarvestWindow;
           }
           break;
         }
         case core::FieldPhase::kIdle: {
           const CropRule* const rule = RuleOf(field.rotation_year0);
           if (rule != nullptr && InMonths(month, rule->sow_from, rule->sow_to)) {
-            return true;
+            return HorseHold::kSowWindow;
           }
           break;
         }
@@ -270,11 +335,15 @@ class DeliveryPolicy {
           break;
       }
     }
-    return false;
+    return HorseHold::kFree;
   }
 
   std::vector<CropRule> crops_;
   RunDeliveryMode mode_ = kRunDeliveryMode;
+  std::array<std::uint32_t, static_cast<std::size_t>(HorseHold::kCount)> hold_days_{};
+  std::array<std::array<std::uint32_t, static_cast<std::size_t>(HorseHold::kCount)>,
+             core::kMonthsPerYear>
+      hold_by_month_{};
   std::uint32_t own_orders_ = 0;
   std::uint32_t district_orders_ = 0;
   std::uint32_t held_days_ = 0;
