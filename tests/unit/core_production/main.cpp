@@ -15733,6 +15733,20 @@ int CheckThePlanShortCountsTheDrawToTheTurn() {
   failures += Expect(world.plan.draw_last_month[0] == 5'000 * kKg && world.plan.draw_mark[0] == 0,
                      "plan short, the draw: the year's last evening closes the month and the mark "
                      "goes to nought with the book");
+  // THE MONTH SO FAR WHEN IT EATS FASTER (the lamp thread [9], 1934 y3): on
+  // doy 39's morning the last closed month drew 0.26 t, and this month's
+  // three settled evenings 2.4 t against a 1 t mark - 3.2 t a month; nine
+  // days to the turn eat 7.2 t, not 0.585.
+  world.calendar.day = core::kDaysPerYear - 1 - (2 * core::kDaysPerMonth);
+  world.plan.draw_last_month = {260 * kKg};
+  world.plan.draw_mark = {1'000 * kKg};
+  world.ledger.current.issued = {3'400 * kKg};
+  failures += Expect(core::StoresDrawToTheTurn(world, core::ResourceId{0}) == 7'200 * kKg,
+                     "plan short, the draw: the month so far stands in when it eats faster than "
+                     "the last closed one");
+  world.plan.draw_last_month = {9'000 * kKg};
+  failures += Expect(core::StoresDrawToTheTurn(world, core::ResourceId{0}) == 20'250 * kKg,
+                     "plan short, the draw: and the last closed month when it ate faster");
   return failures;
 }
 

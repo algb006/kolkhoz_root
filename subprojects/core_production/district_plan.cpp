@@ -98,15 +98,43 @@ Grams DeliverableFromStores(const ProductionConfig& config,
   return DeliverableForPlan(config, current, resource, seed_as_of, false);
 }
 
+namespace {
+
+/// The book's cumulative draw of one resource out of the stores.
+Grams StoresDrawn(const YearLedger& book, std::uint32_t index) {
+  const auto at = [index](const ResourceAmounts& amounts) {
+    return index < amounts.size() ? amounts[index] : 0;
+  };
+  return at(book.issued) + at(book.ration) + at(book.feed) + at(book.spoiled) + at(book.processed) +
+         at(book.stolen);
+}
+
+}  // namespace
+
 Grams StoresDrawToTheTurn(const WorldState& current, ResourceId resource) {
   const std::uint32_t index = resource.value;
   if (index >= current.plan.draw_last_month.size()) {
     return 0;
   }
+  const SimDay day_of_year = current.calendar.day % kDaysPerYear;
   // The days left to the turn, today's included: the lamp is read in the
   // morning, before today's issue and feed.
-  const auto days_left = static_cast<Grams>(kDaysPerYear - (current.calendar.day % kDaysPerYear));
-  return current.plan.draw_last_month[index] * days_left / static_cast<Grams>(kDaysPerMonth);
+  const auto days_left = static_cast<Grams>(kDaysPerYear - day_of_year);
+  // THE RATE: the last closed month's, or this month's so far when it eats
+  // faster (the lamp thread [9]: on doy 39's morning the last closed month
+  // was September's 0.26 t of potato and October, closed that evening, was
+  // drawing 2.9 t - 1934 y3 lit only on doy 40). The month so far counts the
+  // evenings already settled this month.
+  const auto month_days = static_cast<Grams>(kDaysPerMonth);
+  Grams rate_by_month = current.plan.draw_last_month[index];
+  const auto evenings = static_cast<Grams>(day_of_year % kDaysPerMonth);
+  if (evenings > 0 && index < current.plan.draw_mark.size()) {
+    const Grams drawn = StoresDrawn(current.ledger.current, index);
+    const Grams mark = current.plan.draw_mark[index];
+    const Grams so_far = drawn > mark ? drawn - mark : 0;
+    rate_by_month = std::max(rate_by_month, so_far * month_days / evenings);
+  }
+  return rate_by_month * days_left / month_days;
 }
 
 Grams TurnWillShip(const ProductionConfig& config,
@@ -124,19 +152,6 @@ Grams TurnWillShip(const ProductionConfig& config,
   const Grams left = deliverable > draw_to_turn ? deliverable - draw_to_turn : 0;
   return std::min(owed, left);
 }
-
-namespace {
-
-/// The book's cumulative draw of one resource out of the stores.
-Grams StoresDrawn(const YearLedger& book, std::uint32_t index) {
-  const auto at = [index](const ResourceAmounts& amounts) {
-    return index < amounts.size() ? amounts[index] : 0;
-  };
-  return at(book.issued) + at(book.ration) + at(book.feed) + at(book.spoiled) + at(book.processed) +
-         at(book.stolen);
-}
-
-}  // namespace
 
 void MarkStoresDraw(WorldState& current) {
   const SimDay day_of_year = current.calendar.day % kDaysPerYear;
