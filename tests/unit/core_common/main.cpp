@@ -19,6 +19,7 @@
 #include "core_common/daylight.h"
 #include "core_common/deadline.h"
 #include "core_common/district_visit_state.h"
+#include "core_common/felling_crew.h"
 #include "core_common/fund_ladder.h"
 #include "core_common/haul.h"
 #include "core_common/herd_age_band.h"
@@ -2933,8 +2934,45 @@ int CheckPaintAlarms() {
   return failures;
 }
 
+/// THE FELLING CREW SIZED TO THE MARK (felling_crew.h; save 165): no need
+/// date keeps the cap; past the date the whole remainder, capped; a far date
+/// one hand; and a nearer date never fewer hands than a farther one.
+int TestFellingCrewSizedToTheMark() {
+  int failures = 0;
+  core::WorldState world;
+  world.calendar.day = 100;
+  core::TimberStandRow stand;
+  stand.marked_m3 = 100.0F;
+  stand.work_days_remaining = 6.0F;
+  failures += Expect(core::FellingCrewToday(world, stand, 5) == 5,
+                     "felling crew: a mark with no need date keeps the whole cap");
+  stand.need_by_day = 100;
+  failures += Expect(core::FellingCrewToday(world, stand, 5) == 5,
+                     "felling crew: on its need date the whole remainder, capped (6 > 5)");
+  stand.work_days_remaining = 3.0F;
+  failures += Expect(core::FellingCrewToday(world, stand, 5) == 3,
+                     "felling crew: on its need date 3 man-days ask 3 hands");
+  stand.need_by_day = 100 + 200;
+  failures += Expect(core::FellingCrewToday(world, stand, 5) == 1,
+                     "felling crew: a far date asks one hand, never nought");
+  std::uint32_t previous = 0;
+  bool shrinks = true;
+  stand.work_days_remaining = 20.0F;
+  for (core::SimDay ahead = 1; ahead <= 40; ++ahead) {
+    stand.need_by_day = 100 + ahead;
+    const std::uint32_t crew = core::FellingCrewToday(world, stand, 50);
+    shrinks = shrinks && (ahead == 1 || crew <= previous);
+    previous = crew;
+  }
+  failures += Expect(shrinks, "felling crew: the farther the need date, the smaller the crew");
+  failures +=
+      Expect(core::FellingCrewToday(world, stand, 0) == 0, "felling crew: no tools, no crew");
+  return failures;
+}
+
 int main() {
   int failures = 0;
+  failures += TestFellingCrewSizedToTheMark();
   failures += TestDistrictVisitPacking();
   failures += TestHerdAgeBand();
   failures += TestHorseLampMemory();

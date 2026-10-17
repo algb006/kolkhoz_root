@@ -11916,6 +11916,10 @@ int CheckFelling() {
   core::TimberStandRow& marked = world.stands.rows[0];
   failures += Expect(marked.marked_m3 == 40.0F && marked.work_days_remaining == 2.0F,
                      "felling: the mark opens a seam of volume x days per m3");
+  // THE NEED DATE (save 165): the order names none - the timber's window,
+  // 12 days.
+  failures += Expect(marked.need_by_day == world.calendar.day + 12U,
+                     "felling: a mark naming no date is wanted by the timber's window");
   failures +=
       Expect(core::MarkFelling(config, world, order) == core::OrderRefusal::kConflictsWithActive,
              "felling: a second mark on the stand being felled is a conflict");
@@ -11929,8 +11933,12 @@ int CheckFelling() {
   core::OrderRow second_order = order;
   second_order.stand = second_id;
   second_order.volume_m3 = 20.0F;
+  second_order.amount = 4;  // «к сроку»: four days
   failures += Expect(core::MarkFelling(config, world, second_order) == core::OrderRefusal::kNone,
                      "felling: another stand is marked while the first is still being felled");
+  failures +=
+      Expect(world.stands.rows[world.stands.rows.size() - 1].need_by_day == world.calendar.day + 4U,
+             "felling: a mark naming its days is wanted by them");
   core::RemoveRow(world.stands, second_id);
 
   core::FellFinishedStands(config, world);
@@ -11942,8 +11950,9 @@ int CheckFelling() {
   // 40 m3 x 0.25 of logs / 0.25 m3 a log = 40 logs of 200 kg.
   failures +=
       Expect(world.stands.rows[0].stock_m3 == 260.0F && world.stands.rows[0].marked_m3 == 0.0F &&
-                 world.stands.rows[0].load_grams == 40 * 200000,
-             "felling: the finished mark leaves the stock and lies as logs");
+                 world.stands.rows[0].load_grams == 40 * 200000 &&
+                 world.stands.rows[0].need_by_day == core::kNeverPlanted,
+             "felling: the finished mark leaves the stock and lies as logs, its need date gone");
 
   for (int turn = 0; turn < 3; ++turn) {
     core::GrowOldForest(config, world);

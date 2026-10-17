@@ -43,6 +43,7 @@
 #include "core_common/emit_event.h"
 #include "core_common/event_state.h"
 #include "core_common/family_state.h"
+#include "core_common/felling_crew.h"
 #include "core_common/geometry.h"
 #include "core_common/haul.h"
 #include "core_common/hauled_book.h"
@@ -79,32 +80,6 @@
 
 namespace core {
 namespace {
-
-/// THE FELLING CREW SIZED TO THE MARK (timber design «Докуда рубят», boss
-/// 17 October 2026: «едет столько рук, сколько срубят отмеченный объём к
-/// сроку нужды, не больше»; econ's felling-crew-sized-to-mark §1): the mark's
-/// remaining man-days over the working days left to its need date, rounded
-/// up, clamped to 1..`cap`. Behind the date the crew grows; ahead it shrinks;
-/// past it the whole remainder is asked in one day, capped. A mark with no
-/// need date (before save 165) keeps the whole cap. Until 0.37.272 every
-/// free hand within the cap went: in #994's pair (riding) 3.7 times the
-/// fellers felled the same marks sooner, and the old households lost their
-/// yards' plot hours (hunger +22.6 %).
-std::uint32_t FellingCrewToday(const WorldState& world,
-                               const TimberStandRow& stand,
-                               std::uint32_t cap) {
-  if (stand.need_by_day == kNeverPlanted || cap == 0) {
-    return cap;
-  }
-  std::uint32_t working_days = 0;
-  for (SimDay day = world.calendar.day; day < stand.need_by_day; ++day) {
-    working_days += IsDayOffIn(world, day) ? 0U : 1U;
-  }
-  working_days = std::max(working_days, 1U);
-  const auto crew = static_cast<std::uint32_t>(
-      std::ceil(stand.work_days_remaining / static_cast<float>(working_days)));
-  return std::clamp(crew, 1U, cap);
-}
 
 /// @brief The window as a PAIR: open with days left, or closed with the days
 /// since (core_common/deadline.h).

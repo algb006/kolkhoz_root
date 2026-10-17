@@ -830,6 +830,7 @@ core::WorldState MakeWorld() {
   planting.planted_day = 97;
   planting.matures_day = 337;
   planting.unreached_days = 5;  // save 144: the days a felling mark stood out of reach
+  planting.need_by_day = 109;   // save 165: the mark's need date
   core::AppendRow(world.stands, planting);
 
   // An appointment still waiting (task A7): kAccepted is exactly the status
@@ -1967,7 +1968,9 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // u32 at the row's end; predicted 67 -> 71 with every other section
     // unmoved before the build; held, and the hash recorded from that run.
     // Save 153: +8 a stand — haul_to; 71 -> 79, held.
-    {"stands", 79, 0xfb61a01e824e149dULL},
+    // Save 165: +4 a stand — the mark's need date, a u32 at the row's end;
+    // 79 -> 83 predicted before the build, held; the hash read off it.
+    {"stands", 83, 0x84db35ac1b4a1bf0ULL},
     // Save 98: +9 — own_carts and the carting seam's two floats on the one
     // cart of the fixture; predicted 44 -> 53 before the build, held.
     // Save 153: +8 a lot — haul_to; 53 -> 61, held.
@@ -2589,14 +2592,15 @@ int main() {
                          loaded.extraction_sites.rows[0].haul_days_written == 2.25F &&
                          loaded.extraction_sites.rows[0].exhausted == 1,
                      "a clay pit comes back half dug, its load waiting and its mark standing");
-  failures += Expect(loaded.stands.rows.size() == 1 &&
-                         loaded.stands.rows[0].kind == core::TimberStandKind::kPlanted &&
-                         loaded.stands.rows[0].species.value == 1 &&
-                         loaded.stands.rows[0].planted_area_ha == 2.5F &&
-                         loaded.stands.rows[0].planted_day == 97 &&
-                         loaded.stands.rows[0].matures_day == 337 &&
-                         loaded.stands.rows[0].unreached_days == 5,
-                     "a birch planting comes back birch, its hectares and both its days");
+  failures += Expect(
+      loaded.stands.rows.size() == 1 &&
+          loaded.stands.rows[0].kind == core::TimberStandKind::kPlanted &&
+          loaded.stands.rows[0].species.value == 1 &&
+          loaded.stands.rows[0].planted_area_ha == 2.5F &&
+          loaded.stands.rows[0].planted_day == 97 && loaded.stands.rows[0].matures_day == 337 &&
+          loaded.stands.rows[0].unreached_days == 5 && loaded.stands.rows[0].need_by_day == 109,
+      "a birch planting comes back birch, its hectares, both its days and the "
+      "mark's need date");
   failures += Expect(loaded.residents.rows[1].work.kind == core::WorkKind::kExtraction &&
                          loaded.residents.rows[1].work.extraction_site.value == 4 &&
                          loaded.residents.rows[1].work.rides_horse == 1,

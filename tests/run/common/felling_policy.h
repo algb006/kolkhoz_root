@@ -348,8 +348,28 @@ class FellingPolicy {
     order.kind = core::OrderKind::kMarkFelling;
     order.stand = world.stands.row_ids[best];
     order.volume_m3 = best_volume;
+    // THE MARK's NEED DATE (econ's felling-crew-sized-to-mark §1; boss,
+    // #994 [8]): a game month, kSiteWaitsNeedDays, when a site already waits
+    // for logs; otherwise the core's default window (the timber's
+    // felling_window_days, one season). STUBs both.
+    order.amount = SiteWaitsForLogs(world) ? kSiteWaitsNeedDays : 0;
     return true;
   }
+
+  /// A building site that still awaits logs (ConstructionState::awaiting).
+  bool SiteWaitsForLogs(const core::WorldState& world) const {
+    const std::uint32_t log = catalog_.log_resource.value;
+    for (const core::UnitRow& unit : world.units.rows) {
+      if (log < unit.construction.awaiting.size() && unit.construction.awaiting[log] > 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Days from a mark to its need date when a site already waits for logs
+  /// (econ: one game month). STUB.
+  static constexpr core::Grams kSiteWaitsNeedDays = core::kDaysPerMonth;
 
   core::TimberCatalog catalog_;
 
