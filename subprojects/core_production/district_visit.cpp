@@ -185,8 +185,10 @@ Grams SeizeAboveLimit(const ProductionConfig& config, WorldState& current) {
   }
   if (seized > 0) {
     // «Репутация вниз» (district §9), once a seizure, whatever it took.
+    const float before = current.chairman.raikom_reputation;
     current.chairman.raikom_reputation =
         std::max(0.0F, current.chairman.raikom_reputation - config.limit.seizure_reputation_loss);
+    BookReputationLoss(current, before);  // the rating's year by its writers (save 166)
   }
   return seized;
 }
@@ -236,8 +238,10 @@ void ArriveDistrictVisits(const ProductionConfig& config, WorldState& current) {
     }
     if (outcome.found == DistrictVisitFinding::kDiscrepancy) {
       SummonChairman(config, current, SummonCause::kAuditDiscrepancy);
+      OweReputationRecovery(current);  // the next clean visit's recovery (#1043)
     }
-    // A CLEAN VISIT EARNS (#1043; district_reputation.h): whatever called it.
+    // A CLEAN VISIT RECOVERS (#1043; district_reputation.h): only while a
+    // recovery is owed, whatever called the visit.
     if (outcome.found == DistrictVisitFinding::kNone) {
       StepReputationForCleanVisit(config, current);
     }

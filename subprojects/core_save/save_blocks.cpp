@@ -78,8 +78,10 @@ static_assert(AggregateArity<WeatherState>() == 14,
 static_assert(sizeof(ChairmanState) == 88, "ChairmanState changed — update the codec");
 // And the avral's days on the cut, a third u16 beside them: predicted 88
 // unmoved (into the tail's padding) and twenty-six fields; two more bytes in
-// the codec.
-static_assert(AggregateArity<ChairmanState>() == 26,
+// the codec. Save 166 (#1043): the rating's recovery owed, a byte after them:
+// predicted 88 unmoved (the tail's padding) and twenty-seven fields; one byte
+// in the codec.
+static_assert(AggregateArity<ChairmanState>() == 27,
               "ChairmanState gained or lost a field — update the codec and VERSION_SAVE");
 // PLANSTATE HAD NO TRIPWIRE AT ALL until 2026-09-12, and it was the only
 // serialized block without one: six blocks go into the save, five were
@@ -495,6 +497,7 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteU16(world.chairman.hay_cut_dry_work_days);
   out.WriteU16(world.chairman.hay_day_worked_month);
   out.WriteU16(world.chairman.hay_cut_avral_days);
+  out.WriteU8(world.chairman.reputation_recovery_owed);  // save 166 (#1043)
 
   out.WriteFloat(world.traction_ration);
   // The team's two alarms' memory (save 109).
@@ -716,6 +719,8 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->chairman.hay_cut_dry_work_days = in.ReadU16();  // save 161
   world->chairman.hay_day_worked_month = in.ReadU16();
   world->chairman.hay_cut_avral_days = in.ReadU16();
+  world->chairman.reputation_recovery_owed = static_cast<std::uint8_t>(
+      source.ReadEnumValue(0, 1, "the rating's recovery owed"));  // save 166 (#1043)
 
   world->traction_ration = in.ReadFloat();
   world->traction_watch.short_ration_days = in.ReadU16();  // save 109

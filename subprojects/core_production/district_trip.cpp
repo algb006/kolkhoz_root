@@ -10,6 +10,7 @@
 #include "core_common/chairman_away.h"
 #include "core_common/emit_event.h"
 #include "core_common/quantities.h"
+#include "district_reputation.h"
 #include "stock_ops.h"
 
 namespace core {
@@ -192,7 +193,9 @@ OrderRefusal OrderTradePlan(const ProductionConfig& config,
   } else {
     MovePosition(config, current, position, order.amount);
   }
+  const float before = chairman.raikom_reputation;
   chairman.raikom_reputation = std::max(0.0F, chairman.raikom_reputation - cost);
+  BookReputationLoss(current, before);  // the rating's year by its writers (save 166)
   chairman.plan_traded_year = year_mark;
   SimEvent& traded = EmitEvent(current, EventKind::kPlanTraded, EventSeverity::kNotable);
   traded.resource = position;

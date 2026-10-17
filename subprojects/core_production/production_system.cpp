@@ -689,10 +689,11 @@ class ProductionSystem final : public IProductionSystem {
     // Read before JudgePlan hands the next year's plan down over this one.
     const bool plan_fully_met = PlanFullyDelivered(config_, current);
     const float overfulfil_tonnes = PlanOverfulfilGrainTonnes(config_, current);
-    JudgePlan(config_, current);
     // The rating earned beyond the plan, its own year's (district_reputation.h;
-    // #1043): off until its cells are set.
-    StepReputationBeyondPlan(config_, current, overfulfil_tonnes);
+    // #1043): read off this year's dues and deliveries, so before JudgePlan
+    // hands the next plan down; off until its cells are set, booked always.
+    StepReputationBeyondPlan(config_, current);
+    JudgePlan(config_, current);
     SummonIfTheYearFailed(config_, current);
     TurnLimitYear(config_, current, plan_fully_met, overfulfil_tonnes);
     // Scored, and gone with its year: what went with no position counts

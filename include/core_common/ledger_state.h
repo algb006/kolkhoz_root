@@ -861,6 +861,33 @@ struct YearLedger {
   float zyab_ha_dec1 = 0.0F;
 
   std::uint16_t zyab_fields_dec1 = 0;
+
+  /// THE RATING'S YEAR BY ITS WRITERS (save 166; #1043; boss, the #1043
+  /// thread [6]: «name the source by a print») - each the points it moved
+  /// chairman.raikom_reputation by, after the scale's clamp:
+  /// - `reputation_plan_step`: the plan's verdict (JudgePlan), met or failed;
+  /// - `reputation_tier_step`: the overfulfilment's tiers (district_reputation.h);
+  /// - `reputation_visit_step`: the clean visits' recovery steps;
+  /// - `reputation_losses`: the seizure and the plan trade, as a positive
+  ///   number taken off.
+  /// And their grounds: `reputation_tiers_reached` (0..3) and
+  /// `reputation_own_overfulfil_t` (the grain-and-potato over-tonnes the
+  /// tiers were read off, the lent grain taken out), booked at the turn
+  /// whatever the cells; `reputation_clean_visits` (every visit that found
+  /// nothing, stepped or not).
+  float reputation_plan_step = 0.0F;
+
+  float reputation_tier_step = 0.0F;
+
+  float reputation_visit_step = 0.0F;
+
+  float reputation_losses = 0.0F;
+
+  std::uint16_t reputation_clean_visits = 0;
+
+  std::uint16_t reputation_tiers_reached = 0;
+
+  float reputation_own_overfulfil_t = 0.0F;
 };
 
 /// @brief The two books of the world: the year being written and the last
