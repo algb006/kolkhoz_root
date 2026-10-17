@@ -100,18 +100,25 @@ Grams DeliverableFromStores(const ProductionConfig& config,
 
 namespace {
 
-/// The book's cumulative draw of one resource out of the stores.
+/// The book's cumulative NON-ROT draw of one resource out of the stores:
+/// issued, ration, feed, processed, stolen. The rot is the rot model's
+/// (StoresDrawToTheTurn), not a rate (econ's (e2′), the lamp thread [13]).
 Grams StoresDrawn(const YearLedger& book, std::uint32_t index) {
   const auto at = [index](const ResourceAmounts& amounts) {
     return index < amounts.size() ? amounts[index] : 0;
   };
-  return at(book.issued) + at(book.ration) + at(book.feed) + at(book.spoiled) + at(book.processed) +
-         at(book.stolen);
+  return at(book.issued) + at(book.ration) + at(book.feed) + at(book.processed) + at(book.stolen);
 }
+
+/// The month so far stands for the rate once it has this many settled
+/// evenings (econ's (e2′)): the tenth month's third, doy 39's morning.
+constexpr Grams kMonthSoFarEvenings = 3;
 
 }  // namespace
 
-Grams StoresDrawToTheTurn(const WorldState& current, ResourceId resource) {
+Grams StoresDrawToTheTurn(const ProductionConfig& config,
+                          const WorldState& current,
+                          ResourceId resource) {
   const std::uint32_t index = resource.value;
   if (index >= current.plan.draw_last_month.size()) {
     return 0;
@@ -120,21 +127,35 @@ Grams StoresDrawToTheTurn(const WorldState& current, ResourceId resource) {
   // The days left to the turn, today's included: the lamp is read in the
   // morning, before today's issue and feed.
   const auto days_left = static_cast<Grams>(kDaysPerYear - day_of_year);
-  // THE RATE: the last closed month's, or this month's so far when it eats
-  // faster (the lamp thread [9]: on doy 39's morning the last closed month
-  // was September's 0.26 t of potato and October, closed that evening, was
-  // drawing 2.9 t - 1934 y3 lit only on doy 40). The month so far counts the
-  // evenings already settled this month.
+  // THE EATING (econ's (e2′), the lamp thread [13]): the non-rot draw of the
+  // month so far per settled evening once it has three, else the last closed
+  // month's. Until then the rate took the rot in and the faster of the two:
+  // October's first three evenings, the clamps' fresh rot among them, lit 17
+  // of 144 canon village-years with nothing failing (917baa66); and the last
+  // closed month alone was September's 0.26 t of potato on doy 39 (1934 y3 of
+  // host's x3.57 arm lit only on doy 40).
   const auto month_days = static_cast<Grams>(kDaysPerMonth);
-  Grams rate_by_month = current.plan.draw_last_month[index];
+  Grams eaten = current.plan.draw_last_month[index] * days_left / month_days;
   const auto evenings = static_cast<Grams>(day_of_year % kDaysPerMonth);
-  if (evenings > 0 && index < current.plan.draw_mark.size()) {
+  if (evenings >= kMonthSoFarEvenings && index < current.plan.draw_mark.size()) {
     const Grams drawn = StoresDrawn(current.ledger.current, index);
     const Grams mark = current.plan.draw_mark[index];
     const Grams so_far = drawn > mark ? drawn - mark : 0;
-    rate_by_month = std::max(rate_by_month, so_far * month_days / evenings);
+    eaten = so_far * days_left / evenings;
   }
-  return rate_by_month * days_left / month_days;
+  // THE ROT TO THE TURN by the store's own model (spoilage.h; the shelf life
+  // HeldForDeliveryGrams reads): what lies today, kept day by day to the
+  // turn, loses the rest. Neither extrapolated from a month nor dropped.
+  const float shelf_days =
+      index < config.spoil_days.size() ? config.spoil_days[index] * config.keeping_factor : 0.0F;
+  Grams rot = 0;
+  if (shelf_days > 1.0F) {
+    const Grams stored = TakeableGrams(current, config, resource);
+    const double kept =
+        std::pow(1.0 - (1.0 / static_cast<double>(shelf_days)), static_cast<double>(days_left));
+    rot = GramsFromFloat(static_cast<float>(static_cast<double>(stored) * (1.0 - kept)));
+  }
+  return eaten + rot;
 }
 
 Grams TurnWillShip(const ProductionConfig& config,

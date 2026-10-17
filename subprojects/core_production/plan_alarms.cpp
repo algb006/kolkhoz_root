@@ -325,7 +325,7 @@ void CollectPlanShortAlarms(const ProductionConfig& config,
     // over the last two ordinary collections it is right. Before doy 39 the
     // bare forecast - a light there is a shortfall eating cannot explain.
     const bool milk = index == config.milk_resource.value;
-    const Grams draw = milk || !latest_window ? 0 : StoresDrawToTheTurn(world, resource);
+    const Grams draw = milk || !latest_window ? 0 : StoresDrawToTheTurn(config, world, resource);
     Grams shipped_at_turn =
         delivered + TurnWillShip(config, world, resource, world.calendar.day, draw);
     // THE MILK CART's COMING DAYS (0.37.269's pair: the lamp moved a

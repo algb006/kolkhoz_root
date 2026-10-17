@@ -15644,12 +15644,13 @@ int CheckAWinterCropTheChainCannotSow() {
   return failures;
 }
 
-/// THE DRAW TO THE TURN (boss, the lamp thread [4]): 1935 y2's potato of
-/// host's x3.57 arm in small - 122.8 t in the barn on the last collection's
-/// morning (doy 43), 118.5 t owed, the stores drawn 5.2 t the last month
-/// (1.3 t a day). Five days to the turn, today's included, eat 6.5 t: the
-/// turn ships 116.3 t, the lamp lights with the whole 2.2 t and names the
-/// 6.5 t drawn beside it. And the month's draw is closed by the book.
+/// THE DRAW TO THE TURN (boss, the lamp thread [4]; econ's (e2′), [13]):
+/// 1935 y2's potato of host's x3.57 arm in small - 122.8 t in the barn on the
+/// last collection's morning (doy 43), 118.5 t owed, the month's three
+/// settled evenings eating 3.9 t (1.3 t an evening). Five days to the turn,
+/// today's included, eat 6.5 t: the turn ships 116.3 t, the lamp lights with
+/// the whole 2.2 t and names the 6.5 t drawn beside it. And the month's draw
+/// is closed by the book, the rot left to the shelf-life model.
 int CheckThePlanShortCountsTheDrawToTheTurn() {
   int failures = 0;
   constexpr core::Grams kKg = 1'000;
@@ -15666,6 +15667,8 @@ int CheckThePlanShortCountsTheDrawToTheTurn() {
   world.plan.due = {118'500 * kKg};
   world.plan.delivered = {0};
   world.plan.draw_last_month = {5'200 * kKg};
+  world.plan.draw_mark = {0};
+  world.ledger.current.issued = {3'900 * kKg};
   world.calendar.day = core::kDaysPerYear - 1 - core::kDaysPerMonth;  // doy 43
   std::vector<core::Alarm> alarms;
   core::CollectPlanAlarms(config, world, alarms);
@@ -15677,7 +15680,7 @@ int CheckThePlanShortCountsTheDrawToTheTurn() {
       Expect(lamp != nullptr && lamp->amount == 2'200 * kKg && lamp->short_grams == 6'500 * kKg,
              "plan short, the draw: 122.8 t above seed less 6.5 t eaten to the turn ships "
              "116.3 t of 118.5 - lit with the whole 2.2 t, the 6.5 t named beside it");
-  world.plan.draw_last_month = {0};
+  world.ledger.current.issued = {0};
   alarms.clear();
   core::CollectPlanAlarms(config, world, alarms);
   bool lit = false;
@@ -15694,7 +15697,7 @@ int CheckThePlanShortCountsTheDrawToTheTurn() {
   config.crops.resize(1);
   config.crops[0].resource = core::ResourceId{0};
   world.ledger.current.harvest = {130'000 * kKg};
-  world.plan.draw_last_month = {5'200 * kKg};
+  world.ledger.current.issued = {3'900 * kKg};
   const auto first_lit = [&config, &world](core::SimDay day) {
     world.calendar.day = day;
     std::vector<core::Alarm> found;
@@ -15714,15 +15717,16 @@ int CheckThePlanShortCountsTheDrawToTheTurn() {
   world.ledger.current.harvest.clear();
   world.calendar.day = core::kDaysPerYear - 1 - core::kDaysPerMonth;
   // The month's draw: the book issued 4 t by the eleventh month's last
-  // evening against a 1 t mark - a 3 t month; the year's last evening closes
-  // it and sets the mark back to nought with the book.
+  // evening against a 1 t mark - a 3 t month, the 2 t rotted not in it; the
+  // year's last evening closes it and sets the mark back to nought.
   world.ledger.current.issued = {4'000 * kKg};
+  world.ledger.current.spoiled = {2'000 * kKg};
   world.plan.draw_mark = {1'000 * kKg};
   core::MarkStoresDraw(world);
   failures +=
       Expect(world.plan.draw_last_month[0] == 3'000 * kKg && world.plan.draw_mark[0] == 4'000 * kKg,
-             "plan short, the draw: a month's last evening closes the month's draw from "
-             "the book");
+             "plan short, the draw: a month's last evening closes the month's non-rot draw "
+             "from the book");
   world.calendar.day = core::kDaysPerYear - 2;
   world.ledger.current.issued = {9'000 * kKg};
   core::MarkStoresDraw(world);
@@ -15733,20 +15737,36 @@ int CheckThePlanShortCountsTheDrawToTheTurn() {
   failures += Expect(world.plan.draw_last_month[0] == 5'000 * kKg && world.plan.draw_mark[0] == 0,
                      "plan short, the draw: the year's last evening closes the month and the mark "
                      "goes to nought with the book");
-  // THE MONTH SO FAR WHEN IT EATS FASTER (the lamp thread [9], 1934 y3): on
-  // doy 39's morning the last closed month drew 0.26 t, and this month's
-  // three settled evenings 2.4 t against a 1 t mark - 3.2 t a month; nine
-  // days to the turn eat 7.2 t, not 0.585.
+  // THE MONTH SO FAR FROM ITS THIRD EVENING (econ's (e2′); the lamp thread
+  // [9], 1934 y3): on doy 39's morning the month's three settled evenings
+  // ate 2.4 t against a 1 t mark - 0.8 t an evening, nine days 7.2 t -
+  // whatever the last closed month did (0.26 t or 9 t).
   world.calendar.day = core::kDaysPerYear - 1 - (2 * core::kDaysPerMonth);
   world.plan.draw_last_month = {260 * kKg};
   world.plan.draw_mark = {1'000 * kKg};
   world.ledger.current.issued = {3'400 * kKg};
-  failures += Expect(core::StoresDrawToTheTurn(world, core::ResourceId{0}) == 7'200 * kKg,
-                     "plan short, the draw: the month so far stands in when it eats faster than "
-                     "the last closed one");
+  world.ledger.current.spoiled = {50'000 * kKg};  // the rot is not a rate
+  failures += Expect(core::StoresDrawToTheTurn(config, world, core::ResourceId{0}) == 7'200 * kKg,
+                     "plan short, the draw: from the month's third evening its own non-rot "
+                     "eating stands for the rate");
   world.plan.draw_last_month = {9'000 * kKg};
-  failures += Expect(core::StoresDrawToTheTurn(world, core::ResourceId{0}) == 20'250 * kKg,
-                     "plan short, the draw: and the last closed month when it ate faster");
+  failures += Expect(core::StoresDrawToTheTurn(config, world, core::ResourceId{0}) == 7'200 * kKg,
+                     "plan short, the draw: even when the last closed month ate faster");
+  // Before the third evening (doy 37, one evening): the last closed month,
+  // 9 t over four days, eleven days 24.75 t.
+  world.calendar.day = (9 * core::kDaysPerMonth) + 1;
+  failures += Expect(core::StoresDrawToTheTurn(config, world, core::ResourceId{0}) == 24'750 * kKg,
+                     "plan short, the draw: before the month's third evening the last closed one");
+  // THE ROT BY THE SHELF-LIFE MODEL: a 100-day shelf, 122.8 t in the barn,
+  // nothing eaten this month, nine days to the turn: 122.8 x (1 - 0.99^9) =
+  // 10.62 t.
+  config.spoil_days = {100.0F};
+  config.keeping_factor = 1.0F;
+  world.calendar.day = core::kDaysPerYear - 1 - (2 * core::kDaysPerMonth);
+  world.ledger.current.issued = {1'000 * kKg};
+  const core::Grams rot = core::StoresDrawToTheTurn(config, world, core::ResourceId{0});
+  failures += Expect(rot > 10'610 * kKg && rot < 10'630 * kKg,
+                     "plan short, the draw: the stores' rot to the turn by their own shelf life");
   return failures;
 }
 

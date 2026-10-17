@@ -736,11 +736,12 @@ struct PlanState {
   ResourceAmounts requested;
 
   /// THE STORES' DRAW, a month at a time (the plan-short lamp; boss, the
-  /// lamp thread [4]; save 164): the year's book's cumulative draw of each
-  /// resource out of the stores - issued, ration, feed, spoiled, processed,
-  /// stolen - as it stood on the last month's last evening, and the month's
-  /// draw it closed, grams. The lamp's forecast subtracts the last month's
-  /// draw over the days left to the turn: until save 164 it counted as
+  /// lamp thread [4]; save 164): the year's book's cumulative NON-ROT draw of
+  /// each resource out of the stores - issued, ration, feed, processed, stolen
+  /// (the rot is the shelf-life model's, econ's (e2′)) - as it stood on the
+  /// last month's last evening, and the month's draw it closed, grams. The
+  /// lamp's forecast subtracts the eating to the turn (district_plan.h,
+  /// StoresDrawToTheTurn): until save 164 it counted as
   /// shippable the potato the village ate before the turn (1935 y2 of host's
   /// x3.57 arm: ~6.5 t eaten from day 91, the lamp dark, the position
   /// seed-bound). The mark is reset with the book at the turn.

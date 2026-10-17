@@ -100,11 +100,14 @@ Grams TurnWillShip(const ProductionConfig& config,
                    Grams draw_to_turn);
 
 /// @brief The stores' expected draw of `resource` from this morning to the
-///        turn, grams: the faster of the last closed month's draw
-///        (PlanState::draw_last_month) and this month's so far, over the days
-///        left, today's included. An ESTIMATE: the next days eat as the faster
-///        of the two did (boss, the lamp thread [4], [9]).
-Grams StoresDrawToTheTurn(const WorldState& current, ResourceId resource);
+///        turn, grams (econ's (e2′), the lamp thread [13]): the EATING - the
+///        non-rot draw of this month so far per settled evening once it has
+///        three, else the last closed month's (PlanState::draw_last_month) -
+///        over the days left, today's included, PLUS the ROT of what lies in
+///        the stores today to the turn by the shelf-life model. An ESTIMATE.
+Grams StoresDrawToTheTurn(const ProductionConfig& config,
+                          const WorldState& current,
+                          ResourceId resource);
 
 /// @brief On each month's last evening, closes the month's draw out of the
 ///        stores (PlanState::draw_mark, draw_last_month) from the year's
