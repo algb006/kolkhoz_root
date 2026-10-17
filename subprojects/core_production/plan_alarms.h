@@ -46,6 +46,16 @@ void CollectPlanAlarms(const ProductionConfig& config,
                        const WorldState& world,
                        std::vector<Alarm>& alarms);
 
+/// @brief Hectares of arable whose chain grows `produce` in chain year `year`
+///        (0 this, 1 next, 2 the one after), as of `as_of`, less the slots
+///        already lost - the lamps' own count, by produce. The plan's split
+///        by the sown mix reads it (#1036; plan_due.h). 0 past year 2.
+float PlannedChainHectares(const ProductionConfig& config,
+                           const WorldState& world,
+                           ResourceId produce,
+                           std::uint32_t year,
+                           SimDay as_of);
+
 /// @brief Grams of `resource` NEXT year's own harvest will not pay of what
 /// next year needs out of it (0.37.2; boss-core-epoch1-queue [52]-[54]): the
 /// district's positions of it, priced off the area next spring's figure will
