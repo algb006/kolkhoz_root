@@ -94,6 +94,25 @@ float LegDays(const ProductionConfig& config,
   return days;
 }
 
+/// A MEADOW'S CUT OPEN IN ITS WINDOW TODAY: a meadow in kHarvest with its cut
+/// not done, in a month up to meadow_cut_month_end - the cut's window by the
+/// same month the meadow's opening reads (field_work.cpp, RunMeadow) and the
+/// labour's FieldWindow gives the cut its tier by.
+bool MowingHoldsTheCarters(const ProductionConfig& config, const WorldState& current) {
+  const auto month = static_cast<std::uint8_t>(current.calendar.date.month);
+  if (month > config.farming.meadow_cut_month_end) {
+    return false;
+  }
+  for (const FieldRow& field : current.fields.rows) {
+    const bool meadow =
+        field.kind == LandKind::kMeadow || field.kind == LandKind::kFloodplainMeadow;
+    if (meadow && field.phase == FieldPhase::kHarvest && field.work_days_remaining > 0.0F) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /// THE FLOOR'S MEMORY, SETTLED IN THE EVENING (#734; ConstructionState::
 /// supply_idle_days, core_common/site_supply_floor.h): a works with something
 /// awaiting counts the working day on which not one gram landed, and starts
@@ -109,8 +128,20 @@ float LegDays(const ProductionConfig& config,
 /// the count starting again at every delivery, the floor's one cart-day
 /// reset it and the works waited four working days more for the next - a
 /// barrack of 28.8 t got a cart a week and stood 8-42 days delivering.
-void SettleSupplyIdleDays(const SupplyFloorRules& rules, WorldState& current) {
-  const bool day_off = IsDayOffIn(current, current.calendar.day);
+///
+/// AND A DAY THE MOWING TOOK THE CARTERS NEITHER COUNTS NOR RESETS (stage В6
+/// part 3; transport design «Подвоз к стройке — на месте самой стройки», the
+/// rule's second half: «дни, когда покос забрал возчиков, не идут в срок
+/// стройки — иначе каждая стройка июня–июля желтела бы по правилу»): while
+/// a meadow's cut is open in its window (MowingHoldsTheCarters) the works'
+/// carter mows by the queue's own tier (assignment.cpp, PlacementTier: the
+/// supply stands on the works' tier, the cut above it). Until 0.37.277 those
+/// days counted, and the floor lit every June works and took the mowers'
+/// horses back (#734's share).
+void SettleSupplyIdleDays(const SupplyFloorRules& rules,
+                          bool mowing_holds_carters,
+                          WorldState& current) {
+  const bool day_off = IsDayOffIn(current, current.calendar.day) || mowing_holds_carters;
   for (UnitRow& unit : current.units.rows) {
     ConstructionState& works = unit.construction;
     const bool moved = works.supply_moved_today != 0;
@@ -351,7 +382,7 @@ void SettleSiteSupply(const ProductionConfig& config, WorldState& current, bool 
     }
   }
   if (evening) {
-    SettleSupplyIdleDays(config.supply_floor, current);
+    SettleSupplyIdleDays(config.supply_floor, MowingHoldsTheCarters(config, current), current);
   }
 }
 
