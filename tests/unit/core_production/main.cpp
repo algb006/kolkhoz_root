@@ -15687,6 +15687,32 @@ int CheckThePlanShortCountsTheDrawToTheTurn() {
   failures += Expect(!lit,
                      "plan short, the draw: with no draw the stores cover it - dark (the "
                      "1935 lamp until 0.37.271)");
+  // ECON's (c), the lamp thread [7]: the draw only from the latest window. A
+  // crop yields the potato and its harvest is in, so the lamp may burn early
+  // - but before doy 39 the bare forecast covers 118.5 t with 122.8 t: dark.
+  // On doy 39 nine days of 1.3 t eat 11.7 t: lit with 118.5 - 111.1 = 7.4 t.
+  config.crops.resize(1);
+  config.crops[0].resource = core::ResourceId{0};
+  world.ledger.current.harvest = {130'000 * kKg};
+  world.plan.draw_last_month = {5'200 * kKg};
+  const auto first_lit = [&config, &world](core::SimDay day) {
+    world.calendar.day = day;
+    std::vector<core::Alarm> found;
+    core::CollectPlanAlarms(config, world, found);
+    for (const core::Alarm& alarm : found) {
+      if (alarm.kind == core::AlarmKind::kPlanPositionShort) {
+        return alarm.amount;
+      }
+    }
+    return std::int64_t{0};
+  };
+  const core::SimDay latest = core::kDaysPerYear - 1 - (2 * core::kDaysPerMonth);
+  failures += Expect(first_lit(latest - 1) == 0 && first_lit(latest) == 7'400 * kKg,
+                     "plan short, the draw (c): before the latest window the bare forecast, dark; "
+                     "from it the draw over the days left, lit with the whole shortfall");
+  config.crops.clear();
+  world.ledger.current.harvest.clear();
+  world.calendar.day = core::kDaysPerYear - 1 - core::kDaysPerMonth;
   // The month's draw: the book issued 4 t by the eleventh month's last
   // evening against a 1 t mark - a 3 t month; the year's last evening closes
   // it and sets the mark back to nought with the book.

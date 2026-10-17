@@ -319,8 +319,13 @@ void CollectPlanShortAlarms(const ProductionConfig& config,
     // x3.57 arm stood 122.8 t above the seed on day 91, 118.5 t owed, and the
     // village ate ~6.5 t of it before the turn - the lamp was dark and the
     // position failed seed-bound). Not for milk: its cart is counted below.
+    // ONLY FROM THE LATEST WINDOW (econ's (c), the lamp thread [7]): the
+    // last month's draw over the whole autumn projected the harvest month's
+    // heavy issue and lit 40 of 144 canon village-years with nothing failing;
+    // over the last two ordinary collections it is right. Before doy 39 the
+    // bare forecast - a light there is a shortfall eating cannot explain.
     const bool milk = index == config.milk_resource.value;
-    const Grams draw = milk ? 0 : StoresDrawToTheTurn(world, resource);
+    const Grams draw = milk || !latest_window ? 0 : StoresDrawToTheTurn(world, resource);
     Grams shipped_at_turn =
         delivered + TurnWillShip(config, world, resource, world.calendar.day, draw);
     // THE MILK CART's COMING DAYS (0.37.269's pair: the lamp moved a
