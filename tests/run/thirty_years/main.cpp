@@ -40,6 +40,7 @@
 #include "../common/office_policy.h"
 #include "../common/orders_policy.h"
 #include "../common/repair_policy.h"
+#include "../common/ring_policy.h"
 #include "../common/run_args.h"
 #include "../common/run_harness.h"
 #include "../common/sawmill_policy.h"
@@ -127,6 +128,9 @@ bool g_saw_by_anyone = false;
 /// world can see — which is why it does not take the run out of the
 /// canonical set the way a doctored table set does.
 bool g_tick_cost = false;
+
+/// --ring: the reference ring on the derelict fields (ring_policy.h), an arm.
+bool g_ring = false;
 
 constexpr std::uint64_t kSeed = 1929;
 std::uint64_t g_seed = kSeed;
@@ -460,6 +464,7 @@ int main(int argc, char** argv) {
     g_saw_reserve = g_saw_reserve || argument == "--saw-reserve";
     g_saw_by_anyone = g_saw_by_anyone || argument == "--saw-by-anyone";
     g_tick_cost = g_tick_cost || argument == "--tick-cost";
+    g_ring = g_ring || argument == "--ring";
     if (argument.starts_with("--house-sites=")) {
       g_house_sites = static_cast<std::uint32_t>(std::strtoul(
           std::string(argument.substr(std::string_view("--house-sites=").size())).c_str(),
@@ -630,6 +635,12 @@ int main(int argc, char** argv) {
   // (sowing_policy.h, the plan alarm only — no releases; boss, parcel 397). The
   // ripening figures are unused in this mode.
   run::SowingPolicy layout(13, 42, false, world.tables.get());
+  // THE REFERENCE RING on the derelict fields (ring_policy.h; boss, the ring
+  // thread [6]): an arm until its pair reads, so off unless --ring.
+  run::RingPolicy ring(*world.tables);
+  if (g_ring) {
+    run::RingPolicy::Declare("thirty_years");
+  }
   std::cout << "thirty_years: FIXTURE DIFFERS FROM THE START CANON — the run's chairman gives "
                "every plan crop a field in every year of the rotation when the layout marks "
                "one missing (farming design §7; boss, parcel 397)\n";
@@ -706,6 +717,9 @@ int main(int argc, char** argv) {
                     [&] { felling.RunDay(sim, sawmill.LogsForMissingBoards(world.State())); });
       chairman.Time("planting", [&] { planting.RunDay(sim); });
       chairman.Time("sawmill", [&] { sawmill.RunDay(sim); });
+      if (g_ring) {
+        chairman.Time("ring", [&] { ring.RunDay(sim); });
+      }
       chairman.Time("limit", [&] { limit.RunDay(sim); });
       chairman.Time("orders", [&] { orders.RunDay(sim); });
       chairman.Time("repairs", [&] { repairs.RunDay(sim); });
@@ -1190,6 +1204,9 @@ int main(int argc, char** argv) {
   roads.Report("thirty_years");
   planting.Report("thirty_years", state);
   sawmill.Report("thirty_years");
+  if (g_ring) {
+    ring.Report("thirty_years");
+  }
   limit.Report("thirty_years");
   // THE LAMP NAMES NO MOVE THE DOOR REFUSES, AND NEVER STANDS SILENT
   // (0.37.122; limit_policy.h, WatchTheLampsAdvice): every day the hay lamp
