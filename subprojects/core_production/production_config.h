@@ -1282,6 +1282,20 @@ struct ProductionConfig {
   /// what tells that apart from a year the district asked nothing of.
   std::vector<PlanPosition> plan_positions;
 
+  /// THE SPLIT FOLLOWS THE CROPS SOWN (#1036; district.md «Раскладка по
+  /// культурам — по плану сева этого года»; econ's plan-by-sown-mix §2a):
+  /// when set, the grain total stays on the worked ha and the positions'
+  /// shares of it follow the year's planned sowing (plan_due.h). campaign.csv
+  /// `plan_split_by_sown_mix` 0/1; 0 until its pair reads.
+  bool plan_split_by_sown_mix = false;
+
+  /// THE SIZE FOLLOWS THE DISTRICT RATING (#1036 (b); the human's word of 4
+  /// October, «Делай»): the factor on the grain total by
+  /// chairman.raikom_reputation's band, 0-20, 21-40, 41-60, 61-80, 81-100.
+  /// campaign.csv `plan_band_factor_0_20` ... `_81_100`; STUBs, 1.0 until
+  /// the pair (econ's arm: 0.9/1.0/1.0/1.1/1.2), never tuned after it.
+  std::array<float, 5> plan_band_factor = {1.0F, 1.0F, 1.0F, 1.0F, 1.0F};
+
   /// THE FIRST PLAN IS OFF THE START STOCK, NOT OFF THE ARABLE (boss, parcel
   /// 399; district design §9, "Первый план считается от стартового запаса").
   /// The start's arable is derelict — nobody ploughs 160 ha in the first year

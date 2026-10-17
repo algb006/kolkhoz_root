@@ -15,6 +15,7 @@
 #include "district_plan.h"
 #include "field_work.h"
 #include "milk_cart.h"
+#include "plan_due.h"
 #include "seed_room.h"
 
 namespace core {
@@ -380,13 +381,16 @@ void CollectPlanShortAlarms(const ProductionConfig& config,
 /// that is the player's call.
 bool PositionCovered(const ProductionConfig& config,
                      const WorldState& world,
-                     const ProductionConfig::PlanPosition& position,
+                     std::size_t index,
                      std::uint32_t year,
                      SimDay as_of) {
+  const ProductionConfig::PlanPosition& position = config.plan_positions[index];
   const ResourceId produce = config.crops[position.crop.value].resource;
   const float grown_ha = ChainHectares(config, world, produce, year, as_of);
   const float priced_ha = year == 0 ? world.plan.worked_ha_last_year : NextPlanAreaHa(world, as_of);
-  const float owed_ha = priced_ha * position.area_share * config.plan_grain_share;
+  // The letter's own hectares (plan_due.h; #1036): split and band included.
+  const float owed_ha =
+      PlanPricedHectares(config, world, index, priced_ha, year, as_of) * config.plan_grain_share;
   return owed_ha > 0.0F ? grown_ha >= owed_ha : grown_ha > 0.0F;
 }
 
@@ -427,8 +431,7 @@ std::vector<CoverYears> CoveredPositions(const ProductionConfig& config, const W
       continue;
     }
     for (std::uint32_t year = 0; year < kChainYears; ++year) {
-      covered[index][year] =
-          PositionCovered(config, world, config.plan_positions[index], year, today);
+      covered[index][year] = PositionCovered(config, world, index, year, today);
     }
   }
   const auto produce_of = [&config](std::size_t index) {
@@ -463,8 +466,7 @@ std::vector<CoverYears> CoveredPositions(const ProductionConfig& config, const W
       owed_now = due > delivered ? due - delivered : 0;
     } else {
       for (const std::size_t index : positions) {
-        owed_now +=
-            PlanPositionGrams(config, config.plan_positions[index], world.plan.worked_ha_last_year);
+        owed_now += PlanDueGrams(config, world, index, world.plan.worked_ha_last_year, 0, today);
       }
     }
     const Grams claim_now = HeldForDeliveryGrams(config, produce, owed_now, days_to_turn);
@@ -498,7 +500,7 @@ std::vector<CoverYears> CoveredPositions(const ProductionConfig& config, const W
       if (covered[index][2]) {
         continue;
       }
-      const Grams owed = PlanPositionGrams(config, config.plan_positions[index], next_area);
+      const Grams owed = PlanDueGrams(config, world, index, next_area, 2, today);
       const Grams claim =
           HeldForDeliveryGrams(config, produce, owed, days_to_turn + (2 * kDaysPerYear));
       covered[index][2] = owed > 0 && stock >= claim;
@@ -574,6 +576,14 @@ void AddFieldHarvestToCome(const ProductionConfig& config,
 
 }  // namespace
 
+float PlannedChainHectares(const ProductionConfig& config,
+                           const WorldState& world,
+                           ResourceId produce,
+                           std::uint32_t year,
+                           SimDay as_of) {
+  return year < kChainYears ? ChainHectares(config, world, produce, year, as_of) : 0.0F;
+}
+
 Grams NextYearUnpaidGrams(const ProductionConfig& config,
                           const WorldState& world,
                           ResourceId resource,
@@ -619,10 +629,13 @@ Grams NextPlanOwedGrams(const ProductionConfig& config,
                         SimDay as_of) {
   Grams owed = 0;
   const float next_area = NextPlanAreaHa(world, as_of);
-  for (const ProductionConfig::PlanPosition& position : config.plan_positions) {
+  for (std::size_t index = 0; index < config.plan_positions.size(); ++index) {
+    const ProductionConfig::PlanPosition& position = config.plan_positions[index];
     if (PositionCounts(config, position) &&
         config.crops[position.crop.value].resource.value == resource.value) {
-      owed += PlanPositionGrams(config, position, next_area);
+      // Next year's letter as it will be priced (plan_due.h; #1036), at
+      // TODAY's band: the rating may move by the turn - a named limit.
+      owed += PlanDueGrams(config, world, index, next_area, 1, as_of);
     }
   }
   return owed;

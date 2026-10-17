@@ -45,6 +45,7 @@
 #include "core_tables/stub_tables.h"
 #include "core_tables/tables.h"
 #include "district_plan.h"
+#include "plan_due.h"
 
 namespace core {
 namespace {
@@ -1677,6 +1678,10 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
   }
   // The first plan's share and the start stock it is taken off (district_plan.h).
   if (!ParseFirstPlan(tables, config, error)) {
+    return false;
+  }
+  // The split by the sown mix and the rating's band (plan_due.h; #1036).
+  if (!ParsePlanDue(tables, config, error)) {
     return false;
   }
   config.manure_resource = ResourceByKey(resources, "manure");

@@ -69,6 +69,7 @@
 #include "night_pasture.h"
 #include "perennial_cut_checks.h"
 #include "plan_alarms.h"
+#include "plan_due_checks.h"
 #include "processing_shops.h"
 #include "production_alarms.h"
 #include "production_config.h"
@@ -16862,6 +16863,7 @@ int main() {
   failures += CheckTheHandSupplyGoesOneResourceATrip();
   failures += CheckTheSupplyCountsItsIdleDays();
   failures += CheckTheStoresKeepByTheirRoof();
+  failures += CheckThePlanDue();
   failures += CheckAStarvedKolkhozHerdDoesNotInterruptAgain();
   failures += CheckThePerennialsCut();
   failures += CheckTheGrassStandsAge();

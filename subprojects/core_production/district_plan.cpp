@@ -23,6 +23,7 @@
 #include "district_visit.h"
 #include "herd_system.h"
 #include "milk_cart.h"
+#include "plan_due.h"
 #include "seed_room.h"
 #include "stock_ops.h"
 
@@ -545,13 +546,16 @@ Grams StandingWinterGrams(const WorldState& current, const CropDef& crop, CropId
 void MoveWinterShortfall(const ProductionConfig& config, WorldState& current) {
   double moved_grain = 0.0;
   double spring_grain = 0.0;
-  for (const ProductionConfig::PlanPosition& position : config.plan_positions) {
+  const float area = current.plan.worked_ha_last_year;
+  const SimDay today = current.calendar.day;
+  for (std::size_t index = 0; index < config.plan_positions.size(); ++index) {
+    const ProductionConfig::PlanPosition& position = config.plan_positions[index];
     if (position.crop.value >= config.crops.size()) {
       continue;
     }
     const CropDef& crop = config.crops[position.crop.value];
     const double grain = GrainPerGram(config, crop.resource);
-    const Grams norm = PlanPositionGrams(config, position, current.plan.worked_ha_last_year);
+    const Grams norm = PlanDueGrams(config, current, index, area, 0, today);
     if (!crop.is_winter) {
       spring_grain += static_cast<double>(norm) * grain;
       continue;
@@ -565,13 +569,14 @@ void MoveWinterShortfall(const ProductionConfig& config, WorldState& current) {
   if (!(moved_grain > 0.0) || !(spring_grain > 0.0)) {
     return;  // nothing to move, or nothing to move it to: the positions stand
   }
-  for (const ProductionConfig::PlanPosition& position : config.plan_positions) {
+  for (std::size_t index = 0; index < config.plan_positions.size(); ++index) {
+    const ProductionConfig::PlanPosition& position = config.plan_positions[index];
     if (position.crop.value >= config.crops.size()) {
       continue;
     }
     const CropDef& crop = config.crops[position.crop.value];
     const double grain = GrainPerGram(config, crop.resource);
-    const Grams norm = PlanPositionGrams(config, position, current.plan.worked_ha_last_year);
+    const Grams norm = PlanDueGrams(config, current, index, area, 0, today);
     if (!crop.is_winter) {
       if (grain > 0.0) {
         const double share = static_cast<double>(norm) * grain / spring_grain;
@@ -680,7 +685,8 @@ void AnnouncePlan(const ProductionConfig& config, WorldState& current) {
   // first spring — and year 1 failed whatever the play: seeds 1933 and 1936
   // failed it on every run. The share is a STUB (campaign.csv).
   const bool first_year = current.calendar.day < kDaysPerYear;
-  for (const ProductionConfig::PlanPosition& position : config.plan_positions) {
+  for (std::size_t index = 0; index < config.plan_positions.size(); ++index) {
+    const ProductionConfig::PlanPosition& position = config.plan_positions[index];
     if (position.crop.value >= config.crops.size()) {
       continue;
     }
@@ -697,11 +703,17 @@ void AnnouncePlan(const ProductionConfig& config, WorldState& current) {
                                   static_cast<double>(config.first_plan_start_stock_share))));
       continue;
     }
-    AddToStock(current.plan.due,
-               crop.resource,
-               PlanPositionGrams(config, position, current.plan.worked_ha_last_year));
+    // One home for the figure (plan_due.h; #1036): the split by the sown mix
+    // and the rating's band, both off by default.
+    AddToStock(
+        current.plan.due,
+        crop.resource,
+        PlanDueGrams(
+            config, current, index, current.plan.worked_ha_last_year, 0, current.calendar.day));
   }
-  if (!first_year) {
+  // The split prices the winter crop that STANDS already: moving «the
+  // lacking» on top would ask it twice (the #1036 contract (iv)).
+  if (!first_year && !config.plan_split_by_sown_mix) {
     // The first year asks by the start stock and has no winter crop to ask:
     // «winter rye cannot stand in the first spring» (above).
     MoveWinterShortfall(config, current);
