@@ -55,6 +55,15 @@ void DiagnosePlacement(const PlacedPlan& plan, PlacementDiagnosis& diagnosis) {
           here = IdleReason::kNoHorse;
         } else if (*shortfall[job_index] == JobShortfall::kCrewCap) {
           here = IdleReason::kCrewCap;
+        } else if (*shortfall[job_index] == JobShortfall::kRoad) {
+          // THE QUEUE SAID THE WAY (#994; boss [2], [8]): its fill turned every
+          // hand away by the road, and a replay that judges him fit judged him
+          // by a transport the fill did not (probe/994: 400 of 400 kUnexplained
+          // pairs of seed 1933's year 8 were felling stands the queue had
+          // marked kRoad, replayed with cart_today 1; probe/994c: 46 200 such
+          // person-days Feb-June in nine villages' 16 years). The queue's
+          // verdict is the one filed.
+          here = IdleReason::kRoad;
         } else if (job.harnessed && !IsMeadowCut(job)) {
           // A carter left over with no horse is judged on foot (the queue's
           // own rule); the mower is not. LIMIT: whether a horse was still
