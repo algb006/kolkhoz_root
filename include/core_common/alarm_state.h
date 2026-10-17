@@ -1082,7 +1082,12 @@ struct Alarm {
   /// `days_ahead` («сена до 12 марта»). Every uncovered fodder unit of the
   /// days forecast over the hay's feed value. The heads in `amount` stay for
   /// the ladder's own use and are not the line to show: they read seventy in
-  /// a village with nothing wrong. 0 for every other kind.
+  /// a village with nothing wrong.
+  /// kPlanPositionShort (0.37.271; boss, the lamp thread [4]): THE STORES'
+  /// EXPECTED DRAW TO THE TURN the forecast took off, grams - the last
+  /// month's draw over the days left (PlanState::draw_last_month), printed
+  /// beside `amount`, the whole shortfall it is part of.
+  /// 0 for every other kind.
   /// @note Not in the save, as `lamp`.
   std::int64_t short_grams = 0;
 

@@ -15644,11 +15644,72 @@ int CheckAWinterCropTheChainCannotSow() {
   return failures;
 }
 
-/// kPlanPositionUncovered (boss, 2026-09-13): a district position that no
-/// chain grows in one of its three years stands as an alarm naming the
-/// produce and the year, and goes out once any chain grows it then. By
-/// produce, so a second crop of the same produce covers it; fallow and
-/// unassigned ground cover nothing.
+/// THE DRAW TO THE TURN (boss, the lamp thread [4]): 1935 y2's potato of
+/// host's x3.57 arm in small - 122.8 t in the barn on the last collection's
+/// morning (doy 43), 118.5 t owed, the stores drawn 5.2 t the last month
+/// (1.3 t a day). Five days to the turn, today's included, eat 6.5 t: the
+/// turn ships 116.3 t, the lamp lights with the whole 2.2 t and names the
+/// 6.5 t drawn beside it. And the month's draw is closed by the book.
+int CheckThePlanShortCountsTheDrawToTheTurn() {
+  int failures = 0;
+  constexpr core::Grams kKg = 1'000;
+  core::ProductionConfig config;
+  config.unit_types.resize(1);
+  config.unit_types[0].level_storage_capacity_kg = {1'000'000.0F};
+  core::WorldState world;
+  core::UnitRow barn;
+  barn.type = core::UnitTypeId{0};
+  barn.level = 1;
+  barn.stock = {122'800 * kKg};
+  core::AppendRow(world.units, barn);
+  world.plan.announced = 1;
+  world.plan.due = {118'500 * kKg};
+  world.plan.delivered = {0};
+  world.plan.draw_last_month = {5'200 * kKg};
+  world.calendar.day = core::kDaysPerYear - 1 - core::kDaysPerMonth;  // doy 43
+  std::vector<core::Alarm> alarms;
+  core::CollectPlanAlarms(config, world, alarms);
+  const core::Alarm* lamp = nullptr;
+  for (const core::Alarm& alarm : alarms) {
+    lamp = alarm.kind == core::AlarmKind::kPlanPositionShort ? &alarm : lamp;
+  }
+  failures +=
+      Expect(lamp != nullptr && lamp->amount == 2'200 * kKg && lamp->short_grams == 6'500 * kKg,
+             "plan short, the draw: 122.8 t above seed less 6.5 t eaten to the turn ships "
+             "116.3 t of 118.5 - lit with the whole 2.2 t, the 6.5 t named beside it");
+  world.plan.draw_last_month = {0};
+  alarms.clear();
+  core::CollectPlanAlarms(config, world, alarms);
+  bool lit = false;
+  for (const core::Alarm& alarm : alarms) {
+    lit = lit || alarm.kind == core::AlarmKind::kPlanPositionShort;
+  }
+  failures += Expect(!lit,
+                     "plan short, the draw: with no draw the stores cover it - dark (the "
+                     "1935 lamp until 0.37.271)");
+  // The month's draw: the book issued 4 t by the eleventh month's last
+  // evening against a 1 t mark - a 3 t month; the year's last evening closes
+  // it and sets the mark back to nought with the book.
+  world.ledger.current.issued = {4'000 * kKg};
+  world.plan.draw_mark = {1'000 * kKg};
+  core::MarkStoresDraw(world);
+  failures +=
+      Expect(world.plan.draw_last_month[0] == 3'000 * kKg && world.plan.draw_mark[0] == 4'000 * kKg,
+             "plan short, the draw: a month's last evening closes the month's draw from "
+             "the book");
+  world.calendar.day = core::kDaysPerYear - 2;
+  world.ledger.current.issued = {9'000 * kKg};
+  core::MarkStoresDraw(world);
+  failures += Expect(world.plan.draw_last_month[0] == 3'000 * kKg,
+                     "plan short, the draw: another evening of the month closes nothing");
+  world.calendar.day = core::kDaysPerYear - 1;
+  core::MarkStoresDraw(world);
+  failures += Expect(world.plan.draw_last_month[0] == 5'000 * kKg && world.plan.draw_mark[0] == 0,
+                     "plan short, the draw: the year's last evening closes the month and the mark "
+                     "goes to nought with the book");
+  return failures;
+}
+
 /// boss's 9b case (district.md §4, 17 October 2026): «a position short by the
 /// forecast before the last two ordinary collections lights with the whole
 /// remaining shortfall; a position the stores cover stays dark» - and it
@@ -15869,6 +15930,11 @@ int CheckAShortPlanPositionIsAnAlarmOnTheLastDay() {
   return failures;
 }
 
+/// kPlanPositionUncovered (boss, 2026-09-13): a district position that no
+/// chain grows in one of its three years stands as an alarm naming the
+/// produce and the year, and goes out once any chain grows it then. By
+/// produce, so a second crop of the same produce covers it; fallow and
+/// unassigned ground cover nothing.
 int CheckAnUncoveredPlanPositionIsAnAlarm() {
   int failures = 0;
   core::ProductionConfig config;
@@ -16573,6 +16639,7 @@ int main() {
   failures += CheckAShortPlanPositionIsAnAlarmOnTheLastDay();
   failures += CheckThePlanShortCountsTheMilkCartsComingDays();
   failures += CheckThePlanShortLightsOnceTheHarvestIsIn();
+  failures += CheckThePlanShortCountsTheDrawToTheTurn();
   failures += CheckAnUnsownFieldLetsItsCropGoAtTheTurn();
   failures += CheckTheReapingGate();
   failures += CheckFelling();

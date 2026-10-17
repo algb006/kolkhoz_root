@@ -98,17 +98,62 @@ Grams DeliverableFromStores(const ProductionConfig& config,
   return DeliverableForPlan(config, current, resource, seed_as_of, false);
 }
 
+Grams StoresDrawToTheTurn(const WorldState& current, ResourceId resource) {
+  const std::uint32_t index = resource.value;
+  if (index >= current.plan.draw_last_month.size()) {
+    return 0;
+  }
+  // The days left to the turn, today's included: the lamp is read in the
+  // morning, before today's issue and feed.
+  const auto days_left = static_cast<Grams>(kDaysPerYear - (current.calendar.day % kDaysPerYear));
+  return current.plan.draw_last_month[index] * days_left / static_cast<Grams>(kDaysPerMonth);
+}
+
 Grams TurnWillShip(const ProductionConfig& config,
                    const WorldState& current,
                    ResourceId resource,
-                   SimDay seed_as_of) {
+                   SimDay seed_as_of,
+                   Grams draw_to_turn) {
   const std::uint32_t index = resource.value;
   if (index >= current.plan.due.size()) {
     return 0;
   }
   const Grams delivered = index < current.plan.delivered.size() ? current.plan.delivered[index] : 0;
   const Grams owed = current.plan.due[index] > delivered ? current.plan.due[index] - delivered : 0;
-  return std::min(owed, DeliverableAboveSeed(config, current, resource, seed_as_of));
+  const Grams deliverable = DeliverableAboveSeed(config, current, resource, seed_as_of);
+  const Grams left = deliverable > draw_to_turn ? deliverable - draw_to_turn : 0;
+  return std::min(owed, left);
+}
+
+namespace {
+
+/// The book's cumulative draw of one resource out of the stores.
+Grams StoresDrawn(const YearLedger& book, std::uint32_t index) {
+  const auto at = [index](const ResourceAmounts& amounts) {
+    return index < amounts.size() ? amounts[index] : 0;
+  };
+  return at(book.issued) + at(book.ration) + at(book.feed) + at(book.spoiled) + at(book.processed) +
+         at(book.stolen);
+}
+
+}  // namespace
+
+void MarkStoresDraw(WorldState& current) {
+  const SimDay day_of_year = current.calendar.day % kDaysPerYear;
+  if (day_of_year % kDaysPerMonth != kDaysPerMonth - 1U) {
+    return;
+  }
+  const std::size_t size = current.plan.due.size();
+  current.plan.draw_mark.resize(size, 0);
+  current.plan.draw_last_month.resize(size, 0);
+  for (std::uint32_t index = 0; index < size; ++index) {
+    const Grams drawn = StoresDrawn(current.ledger.current, index);
+    const Grams mark = current.plan.draw_mark[index];
+    current.plan.draw_last_month[index] = drawn > mark ? drawn - mark : 0;
+    // THE BOOK CLOSES AT THE TURN after this evening: its next count starts
+    // at nought, and so does the mark.
+    current.plan.draw_mark[index] = day_of_year == kDaysPerYear - 1U ? 0 : drawn;
+  }
 }
 
 /// The year's delivery: what the plan asked for leaves the stores and is
@@ -131,7 +176,7 @@ void DeliverPlan(const ProductionConfig& config, WorldState& current) {
   }
   for (std::uint32_t index = 0; index < current.plan.due.size(); ++index) {
     const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
-    const Grams owed = TurnWillShip(config, current, resource, seed_as_of);
+    const Grams owed = TurnWillShip(config, current, resource, seed_as_of, 0);
     if (owed <= 0) {
       continue;
     }

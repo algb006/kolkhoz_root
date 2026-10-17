@@ -735,6 +735,18 @@ struct PlanState {
   /// district raises it. Dense by ResourceId; emptied at the turn.
   ResourceAmounts requested;
 
+  /// THE STORES' DRAW, a month at a time (the plan-short lamp; boss, the
+  /// lamp thread [4]; save 164): the year's book's cumulative draw of each
+  /// resource out of the stores - issued, ration, feed, spoiled, processed,
+  /// stolen - as it stood on the last month's last evening, and the month's
+  /// draw it closed, grams. The lamp's forecast subtracts the last month's
+  /// draw over the days left to the turn: until save 164 it counted as
+  /// shippable the potato the village ate before the turn (1935 y2 of host's
+  /// x3.57 arm: ~6.5 t eaten from day 91, the lamp dark, the position
+  /// seed-bound). The mark is reset with the book at the turn.
+  ResourceAmounts draw_mark;
+  ResourceAmounts draw_last_month;
+
   /// THE MILK CART'S SHARE OF A DAY (district §9 «Молоко — в плане с
   /// первого года»; register 231; boss seq 98 and 113; save 66), grams: the
   /// milk position ÷ the milking days from the spring's announcement to the

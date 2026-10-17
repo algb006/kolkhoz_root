@@ -316,6 +316,9 @@ class ProductionSystem final : public IProductionSystem {
       // THE DISTRICT's CART FOR THE PLAN (routing stage В5; district_carts.h):
       // the month's last day collects the standing request, a mud day slips it.
       SettleDistrictCollection(config_, current);
+      // And the month's draw out of the stores, for the plan-short lamp's
+      // forecast (district_plan.h, MarkStoresDraw; save 164).
+      MarkStoresDraw(current);
       // And what a unit being taken down held (demolition_stock.h) — before
       // the shops, so the manor's firewood reaches the smokehouse tonight.
       SettleDemolitionStock(config_, current);

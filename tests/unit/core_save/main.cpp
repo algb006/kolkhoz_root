@@ -176,6 +176,8 @@ core::WorldState MakeWorld() {
   // would round-trip an empty vector perfectly.
   world.plan.accumulation_limit = Amounts({15'000'000, 0, 4'000'000});
   world.plan.requested = Amounts({2'000'000, 0, 0});  // save 163: the district's standing request
+  world.plan.draw_mark = Amounts({3'000'000, 0, 0});  // save 164: the stores' draw mark
+  world.plan.draw_last_month = Amounts({700'000, 0, 0});  // save 164: and the month's draw
   // The milk cart (save 66): a daily share, and the winter's milk that went
   // with no position — both away from their empty defaults.
   world.plan.milk_daily_share = 250'000;
@@ -1414,6 +1416,8 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   AppendAmounts(chunks, "plan.highest_due", world.plan.highest_due);                // save 127
   AppendAmounts(chunks, "plan.accumulation_limit", world.plan.accumulation_limit);  // save 62
   AppendAmounts(chunks, "plan.requested", world.plan.requested);                    // save 163
+  AppendAmounts(chunks, "plan.draw_mark", world.plan.draw_mark);                    // save 164
+  AppendAmounts(chunks, "plan.draw_last_month", world.plan.draw_last_month);        // save 164
   // The milk cart's daily share and the deliveries outside any position (save 66).
   chunks.push_back(
       {"plan.milk_daily_share", U64(static_cast<std::uint64_t>(world.plan.milk_daily_share))});
@@ -1743,7 +1747,11 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // Save 163 (stage В5): the plan's standing request to the district, one
     // amounts vector, the fixture's one resource: 850 -> 876 - read off the
     // build, NOT predicted before it (the miss is named).
-    {"world", 876, 0x84cc1395c17bd874ULL},
+    // Save 164 (the plan-short lamp): the stores' draw mark and the last
+    // month's draw, two amounts vectors of the fixture's one resource each,
+    // +26 apiece as the request's: 876 -> 928, predicted before the build;
+    // the hash read off it.
+    {"world", 928, 0xabf2f43802bfdc85ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:

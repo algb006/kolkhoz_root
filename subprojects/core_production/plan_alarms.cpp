@@ -313,16 +313,23 @@ void CollectPlanShortAlarms(const ProductionConfig& config,
     }
     const Grams delivered = index < world.plan.delivered.size() ? world.plan.delivered[index] : 0;
     // THE TURN's OWN ANSWER (TurnWillShip): the one function the turn acts
-    // on, read as of today - the seed still to be sown after today held.
-    Grams shipped_at_turn = delivered + TurnWillShip(config, world, resource, world.calendar.day);
+    // on, read as of today - the seed still to be sown after today held, and
+    // what the stores will be drawn of before the turn taken off (the last
+    // month's draw; boss, the lamp thread [4]: the 1935 y2 potato of host's
+    // x3.57 arm stood 122.8 t above the seed on day 91, 118.5 t owed, and the
+    // village ate ~6.5 t of it before the turn - the lamp was dark and the
+    // position failed seed-bound). Not for milk: its cart is counted below.
+    const bool milk = index == config.milk_resource.value;
+    const Grams draw = milk ? 0 : StoresDrawToTheTurn(world, resource);
+    Grams shipped_at_turn =
+        delivered + TurnWillShip(config, world, resource, world.calendar.day, draw);
     // THE MILK CART's COMING DAYS (0.37.269's pair: the lamp moved a
     // collection earlier lit on milk in 144 of 144 village-years and the
     // position was met in every one): the cart ships its share each evening
     // to the turn, and the forecast counted none of it. The days AFTER today
     // only - today's share is not promised by the morning's lamp - and none
     // while a milk debt stands: the cart is already short of its share.
-    if (index == config.milk_resource.value && world.plan.milk_debt == 0 &&
-        MilkPositionStands(config, world)) {
+    if (milk && world.plan.milk_debt == 0 && MilkPositionStands(config, world)) {
       const auto days_after_today =
           static_cast<Grams>(kDaysPerYear - 1U - world.calendar.day % kDaysPerYear);
       shipped_at_turn += world.plan.milk_daily_share * days_after_today;
@@ -334,13 +341,13 @@ void CollectPlanShortAlarms(const ProductionConfig& config,
     alarm.kind = AlarmKind::kPlanPositionShort;
     alarm.resource = resource;
     // N IS THE WHOLE REMAINING SHORTFALL (district.md §4): due less what the
-    // turn will ship. Until 0.37.271 it was the met share's (0.99 of due)
-    // less it. (host's x3.57 arm read the lamp's amount at a median 0.63 of
-    // what remained short at the year's end: most of that gap is the turn
-    // shipping less than this forecast, traced apart - #lamp, the 1935 y2
-    // potato.) At least a gram: the share compares in float and the grams in
-    // double.
+    // turn will ship, the draw to the turn included. Until 0.37.271 it was the
+    // met share's (0.99 of due) less a forecast blind to the draw: host's
+    // x3.57 arm read it at a median 0.63 of what remained short. At least a
+    // gram: the share compares in float and the grams in double.
     alarm.amount = std::max<Grams>(due - shipped_at_turn, 1);
+    // The draw it took off, beside N (Alarm::short_grams).
+    alarm.short_grams = draw;
     // The loss is the turn itself.
     alarm.days_to_loss = DaysToLossOf(DaysToPlanTurn(world));
     alarms.push_back(alarm);

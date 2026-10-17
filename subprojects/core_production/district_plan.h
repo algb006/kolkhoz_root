@@ -89,13 +89,27 @@ Grams DeliverableForPlan(const ProductionConfig& config,
                          bool with_heaps);
 
 /// @brief What the turn's delivery ships of `resource`'s position, read as
-///        of `seed_as_of`: the least of what is owed and DeliverableAboveSeed.
-///        The ONE answer the turn (DeliverPlan) acts on and the plan-short
-///        lamp forecasts by. 0 for a resource with no position.
+///        of `seed_as_of`: the least of what is owed and DeliverableAboveSeed
+///        less `draw_to_turn`. The ONE answer the turn (DeliverPlan, draw 0:
+///        its own day) acts on and the plan-short lamp forecasts by (draw:
+///        StoresDrawToTheTurn). 0 for a resource with no position.
 Grams TurnWillShip(const ProductionConfig& config,
                    const WorldState& current,
                    ResourceId resource,
-                   SimDay seed_as_of);
+                   SimDay seed_as_of,
+                   Grams draw_to_turn);
+
+/// @brief The stores' expected draw of `resource` from this morning to the
+///        turn, grams: the last month's draw (PlanState::draw_last_month)
+///        over the days left, today's included. An ESTIMATE: the next days
+///        eat as the last month did (boss, the lamp thread [4]).
+Grams StoresDrawToTheTurn(const WorldState& current, ResourceId resource);
+
+/// @brief On each month's last evening, closes the month's draw out of the
+///        stores (PlanState::draw_mark, draw_last_month) from the year's
+///        book; on the year's last evening the mark goes back to nought with
+///        the book. Does nothing on another day. Call once a day, evening.
+void MarkStoresDraw(WorldState& current);
 
 /// @brief «Сдать сейчас» (kDeliverPlan; econ's audit M2, Л1): what is still
 /// owed of one position — or of every position when `only` is invalid —
