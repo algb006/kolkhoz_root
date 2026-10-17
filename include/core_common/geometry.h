@@ -75,6 +75,23 @@ constexpr bool RoadLeavesAWorkingDay(float travel_hours,
   return travel_hours <= limit_hours && daylight_hours - (2.0F * travel_hours) >= min_usable_hours;
 }
 
+/// @brief A HAND'S DAY OF WORK ON A ROAD: the share of a standard day's norm
+///        a hand of `efficiency` brings when `road_hours` one way are walked
+///        or ridden both ways out of `daylight_hours`. Negative when the road
+///        eats the day; whether it may be walked at all is the rule above's.
+///
+///        ONE HOME FOR TWO READERS (0.37.272): the placement prices each
+///        candidate by it (assignment.cpp, ConsiderCandidate), and the felling
+///        crew is sized by it (felling_crew.h). Sized by whole man-days, the
+///        crew was two to five times short of what its mark asked (econ's
+///        felling-crew-sized-to-mark §3a).
+constexpr float HandDailyNorm(float road_hours,
+                              float daylight_hours,
+                              float efficiency,
+                              float standard_day_hours) {
+  return (daylight_hours - (2.0F * road_hours)) * efficiency / standard_day_hours;
+}
+
 }  // namespace core
 
 #endif  // CORE_COMMON_GEOMETRY_H_

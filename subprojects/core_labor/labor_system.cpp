@@ -1615,7 +1615,13 @@ class LaborSystem final : public ILaborSystem {
           job.stand = current.stands.row_ids[row];
           job.position = stand.position;
           job.work_days_remaining = stand.work_days_remaining;
-          job.max_crew = static_cast<std::uint8_t>(FellingCrewToday(current, stand, crew_cap));
+          // Sized by what a hand brings there today (felling_crew.h): the
+          // placement's own price of the road, from the nearest house.
+          job.max_crew = static_cast<std::uint8_t>(FellingCrewToday(
+              current,
+              stand,
+              crew_cap,
+              HandNormToday(current, stand.position, ReachRuleOf(), config_.standard_day_hours)));
           jobs.push_back(job);
         }
         // A planting still to be planted (timber_planting.h): windowless,

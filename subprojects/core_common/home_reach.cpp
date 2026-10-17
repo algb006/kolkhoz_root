@@ -1,5 +1,6 @@
 #include "core_common/home_reach.h"
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cstddef>
@@ -131,6 +132,23 @@ HandReach HandReachToday(const WorldState& world, Vec2 place, const ReachRule& r
     return HandReach::kByRide;
   }
   return HandReach::kNone;
+}
+
+float HandNormToday(const WorldState& world,
+                    Vec2 place,
+                    const ReachRule& rule,
+                    float standard_day_hours) {
+  const HandReach reach = HandReachToday(world, place, rule);
+  if (reach == HandReach::kNone || standard_day_hours <= 0.0F) {
+    return 0.0F;
+  }
+  const bool on_foot = reach == HandReach::kOnFoot;
+  const float road = NearestHomeTravelHours(world,
+                                            place,
+                                            on_foot ? rule.walk_speed_kmh : rule.ride_speed_kmh,
+                                            on_foot ? TravelMode::kWalk : TravelMode::kTeam);
+  return std::max(HandDailyNorm(road, world.weather.daylight_hours, 1.0F, standard_day_hours),
+                  0.0F);
 }
 
 bool FellingCanBeMannedToday(const WorldState& world,

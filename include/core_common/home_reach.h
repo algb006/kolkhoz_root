@@ -67,6 +67,17 @@ enum class HandReach : std::uint8_t {
 ///         the caller's to ask.
 HandReach HandReachToday(const WorldState& world, Vec2 place, const ReachRule& rule);
 
+/// @brief WHAT ONE HAND BRINGS AT `place` TODAY (0.37.272): the share of a
+///        norm man-day (geometry.h, HandDailyNorm — the placement's own
+///        price) a hand of efficiency 1 from the nearest lived-in house brings
+///        there, by his feet if HandReachToday sends him so, else by a ride.
+///        The felling crew is sized by it (felling_crew.h).
+/// @return 0 when no hand can be sent (kNone) or `standard_day_hours` <= 0.
+float HandNormToday(const WorldState& world,
+                    Vec2 place,
+                    const ReachRule& rule,
+                    float standard_day_hours);
+
 /// @brief WOULD A FELLING AT `place` BE OFFERED TODAY (0.37.208): the log
 ///        cart reaches it within the road limit (the logs go out by it;
 ///        0.36.29) AND a feller can be sent — on foot, or by a ride while

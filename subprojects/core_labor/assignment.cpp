@@ -415,8 +415,8 @@ bool ConsiderCandidate(const AssignmentJob& job,
     refused_by_road = true;
     return false;
   }
-  const float usable_hours = params.window_hours - (2.0F * light_road);
-  const float daily_norm = usable_hours * candidate.efficiency / params.standard_day_hours;
+  const float daily_norm = HandDailyNorm(
+      light_road, params.window_hours, candidate.efficiency, params.standard_day_hours);
   if (daily_norm <= 0.0F) {
     return false;
   }

@@ -21,6 +21,7 @@
 #include "core_common/district_visit_state.h"
 #include "core_common/felling_crew.h"
 #include "core_common/fund_ladder.h"
+#include "core_common/geometry.h"
 #include "core_common/haul.h"
 #include "core_common/herd_age_band.h"
 #include "core_common/herd_state.h"
@@ -2935,8 +2936,10 @@ int CheckPaintAlarms() {
 }
 
 /// THE FELLING CREW SIZED TO THE MARK (felling_crew.h; save 165): no need
-/// date keeps the cap; past the date the whole remainder, capped; a far date
-/// one hand; and a nearer date never fewer hands than a farther one.
+/// date, or no hand to send, keeps the cap; past the date a catch-up window of
+/// kFellingCatchUpWorkingDays, not the whole remainder in one day; a hand
+/// that brings a quarter of a norm asks four times the hands; a far date one
+/// hand; and a nearer date never fewer hands than a farther one.
 int TestFellingCrewSizedToTheMark() {
   int failures = 0;
   core::WorldState world;
@@ -2944,35 +2947,53 @@ int TestFellingCrewSizedToTheMark() {
   core::TimberStandRow stand;
   stand.marked_m3 = 100.0F;
   stand.work_days_remaining = 6.0F;
-  failures += Expect(core::FellingCrewToday(world, stand, 5) == 5,
+  failures += Expect(core::FellingCrewToday(world, stand, 5, 1.0F) == 5,
                      "felling crew: a mark with no need date keeps the whole cap");
   stand.need_by_day = 100;
-  failures += Expect(core::FellingCrewToday(world, stand, 5) == 5,
-                     "felling crew: on its need date the whole remainder, capped (6 > 5)");
-  stand.work_days_remaining = 3.0F;
-  failures += Expect(core::FellingCrewToday(world, stand, 5) == 3,
-                     "felling crew: on its need date 3 man-days ask 3 hands");
+  failures += Expect(core::FellingCrewToday(world, stand, 5, 0.0F) == 5,
+                     "felling crew: no hand can be sent there, the cap stands");
+  failures += Expect(core::FellingCrewToday(world, stand, 5, 0.5F) == 3,
+                     "felling crew: past its date 6 man-days at half a norm a hand over the "
+                     "4-day catch-up ask 3 hands, not the whole cap at once");
+  stand.work_days_remaining = 4.0F;
+  failures += Expect(core::FellingCrewToday(world, stand, 5, 1.0F) == 1 &&
+                         core::FellingCrewToday(world, stand, 5, 0.25F) == 4,
+                     "felling crew: a hand bringing a quarter of a norm asks four times the "
+                     "hands of one bringing a whole norm");
   stand.need_by_day = 100 + 200;
-  failures += Expect(core::FellingCrewToday(world, stand, 5) == 1,
+  failures += Expect(core::FellingCrewToday(world, stand, 5, 1.0F) == 1,
                      "felling crew: a far date asks one hand, never nought");
   std::uint32_t previous = 0;
   bool shrinks = true;
   stand.work_days_remaining = 20.0F;
   for (core::SimDay ahead = 1; ahead <= 40; ++ahead) {
     stand.need_by_day = 100 + ahead;
-    const std::uint32_t crew = core::FellingCrewToday(world, stand, 50);
+    const std::uint32_t crew = core::FellingCrewToday(world, stand, 50, 0.5F);
     shrinks = shrinks && (ahead == 1 || crew <= previous);
     previous = crew;
   }
   failures += Expect(shrinks, "felling crew: the farther the need date, the smaller the crew");
   failures +=
-      Expect(core::FellingCrewToday(world, stand, 0) == 0, "felling crew: no tools, no crew");
+      Expect(core::FellingCrewToday(world, stand, 0, 1.0F) == 0, "felling crew: no tools, no crew");
+  return failures;
+}
+
+/// A HAND'S DAY ON A ROAD (geometry.h, HandDailyNorm), the placement's and
+/// the felling crew's one price: 2 h each way out of a 10-hour light at a
+/// 10-hour standard day leave 0.6 of a norm.
+int TestHandDailyNormPricesTheRoad() {
+  int failures = 0;
+  failures += Expect(std::fabs(core::HandDailyNorm(2.0F, 10.0F, 1.0F, 10.0F) - 0.6F) < 1e-5F,
+                     "hand norm: 2 h each way out of 10 h of light leave 0.6 of a norm");
+  failures += Expect(std::fabs(core::HandDailyNorm(0.0F, 10.0F, 0.5F, 10.0F) - 0.5F) < 1e-5F,
+                     "hand norm: no road, half an efficiency, half a norm");
   return failures;
 }
 
 int main() {
   int failures = 0;
   failures += TestFellingCrewSizedToTheMark();
+  failures += TestHandDailyNormPricesTheRoad();
   failures += TestDistrictVisitPacking();
   failures += TestHerdAgeBand();
   failures += TestHorseLampMemory();
