@@ -14,6 +14,7 @@
 #include "core_common/land_state.h"
 #include "district_plan.h"
 #include "field_work.h"
+#include "milk_cart.h"
 #include "seed_room.h"
 
 namespace core {
@@ -261,7 +262,19 @@ void CollectPlanShortAlarms(const ProductionConfig& config,
     const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
     const Grams owed = due > delivered ? due - delivered : 0;
     const Grams deliverable = DeliverableAboveSeed(config, world, resource, world.calendar.day);
-    const Grams shipped_at_turn = delivered + (deliverable < owed ? deliverable : owed);
+    Grams shipped_at_turn = delivered + (deliverable < owed ? deliverable : owed);
+    // THE MILK CART's COMING DAYS (0.37.269's pair: the lamp moved a
+    // collection earlier lit on milk in 144 of 144 village-years and the
+    // position was met in every one): the cart ships its share each evening
+    // to the turn, and the forecast counted none of it. The days AFTER today
+    // only - today's share is not promised by the morning's lamp - and none
+    // while a milk debt stands: the cart is already short of its share.
+    if (index == config.milk_resource.value && world.plan.milk_debt == 0 &&
+        MilkPositionStands(config, world)) {
+      const auto days_after_today =
+          static_cast<Grams>(kDaysPerYear - 1U - world.calendar.day % kDaysPerYear);
+      shipped_at_turn += world.plan.milk_daily_share * days_after_today;
+    }
     if (PositionDelivered(config, due, shipped_at_turn)) {
       continue;
     }

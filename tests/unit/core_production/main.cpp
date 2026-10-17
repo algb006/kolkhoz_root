@@ -15649,6 +15649,43 @@ int CheckAWinterCropTheChainCannotSow() {
 /// produce and the year, and goes out once any chain grows it then. By
 /// produce, so a second crop of the same produce covers it; fallow and
 /// unassigned ground cover nothing.
+/// kPlanPositionShort on milk: the cart's shares of the days after today count
+/// toward the turn (0.37.269's pair: lit on milk in 144 of 144 village-years,
+/// every one met), unless a milk debt says the cart is already short.
+int CheckThePlanShortCountsTheMilkCartsComingDays() {
+  int failures = 0;
+  constexpr core::Grams kTonne = 1'000'000;
+  core::ProductionConfig config;
+  config.milk_resource = core::ResourceId{0};
+  core::WorldState world;
+  world.plan.announced = 1;
+  world.plan.due = {10 * kTonne};
+  world.plan.delivered = {8 * kTonne};
+  world.plan.milk_daily_share = kTonne / 2;
+  const auto milk_short = [&config, &world](core::SimDay day) {
+    world.calendar.day = day;
+    std::vector<core::Alarm> alarms;
+    core::CollectPlanAlarms(config, world, alarms);
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kPlanPositionShort) {
+        return true;
+      }
+    }
+    return false;
+  };
+  // The eleventh month's last day: four days after it, 2 t to come, 10 of 10.
+  const core::SimDay first = core::kDaysPerYear - 1 - core::kDaysPerMonth;
+  failures += Expect(!milk_short(first),
+                     "plan short, milk: the cart's coming days make the position whole");
+  // The year's last day: no day after it, 8 of 10 with nothing in the stores.
+  failures += Expect(milk_short(core::kDaysPerYear - 1),
+                     "plan short, milk: no day left for the cart, the position is short");
+  world.plan.milk_debt = kTonne / 4;
+  failures +=
+      Expect(milk_short(first), "plan short, milk: a standing debt counts none of the cart's days");
+  return failures;
+}
+
 /// kPlanPositionShort (boss seq 89): from one district collection before the
 /// deadline's (stage В5) to the year's last day, a position the
 /// turn's delivery cannot bring to the met share, with the grams it lacks.
@@ -16465,6 +16502,7 @@ int main() {
   failures += CheckALostSlotIsAnUncoveredPosition();
   failures += CheckAWinterCropTheChainCannotSow();
   failures += CheckAShortPlanPositionIsAnAlarmOnTheLastDay();
+  failures += CheckThePlanShortCountsTheMilkCartsComingDays();
   failures += CheckAnUnsownFieldLetsItsCropGoAtTheTurn();
   failures += CheckTheReapingGate();
   failures += CheckFelling();
