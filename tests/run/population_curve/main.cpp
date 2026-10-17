@@ -1431,6 +1431,14 @@ int main(int argc, char** argv) {
       " days the units stood unmet after the residents)" +
       (unexplained_where.empty() ? "" : " (" + unexplained_where + ")");
   failures += run::Expect(unexplained_holds == 0, late_claim.c_str());
+  // THE GUARD IS THIN, and says so every run (boss, the E3 thread [4]): it
+  // reads only the window above, which on 0.37.284's world held 53 unit-unmet
+  // days after the residents in all sixteen villages; its own fault (the
+  // next rung's shortfall left unattributed) reached 14 days in one village.
+  // A defect that blanks a cause OUTSIDE that window passes it silently.
+  std::cout << "population_curve: E3 GUARD's window (its limit): " << units_unmet_days
+            << " days the units stood unmet after the residents, in " << walks.size()
+            << " villages - an unexplained hold outside this window is not seen\n";
   failures += run::Expect(median_year14 <= 800, "and not exploding by year 14");
   // A STANDING GATE, «no cow dies of cold» (#712; boss, 12 October 2026): the
   // canon's warm rule went dead with the one-site queue (#595) and nothing
