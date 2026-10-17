@@ -792,7 +792,7 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
         walk_min = std::min(walk_min, OneWayHours(job, job_index, candidate, params, false, false));
       }
       std::printf(
-          "PROBE994B day=%u job=%u pass=%s brigade_cart=%d cart_out_in=%d takes_cart=%d "
+          "PROBE994B,day=%u job=%u pass=%s brigade_cart=%d cart_out_in=%d takes_cart=%d "
           "judged_cart_out=%d horses_left=%u harnessed=%d picks=%zu road_refused=%u "
           "refused_on_foot=%u placed=%u expected=%.2f work=%.2f stopped=%d ride_min_h=%.2f "
           "walk_min_h=%.2f limit_h=%.2f\n",
