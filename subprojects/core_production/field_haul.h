@@ -88,7 +88,14 @@ Grams HeapDoorRoom(const ProductionConfig& config, const WorldState& world, cons
 ///        `district_center_km` beyond the border — and by the network to the
 ///        log pile. No draught horse free: a rate with no load (nobody is
 ///        sent; the lot waits at the district).
-HaulRate DistrictLotHaulRate(const ProductionConfig& config, const WorldState& world);
+/// @param lot The row carted (routing stage В5): a timber lot - or nullptr -
+///        goes to the log pile at a log cart's load; any other lot by own carts,
+///        and the plan's delivery going out (LimitDeliveryRow::outbound), to or
+///        from the shared store at its first good's load. The way is the same
+///        road either direction.
+HaulRate DistrictLotHaulRate(const ProductionConfig& config,
+                             const WorldState& world,
+                             const LimitDeliveryRow* lot = nullptr);
 
 /// @brief One day of the village's carters fetching the timber lots that
 ///        wait at the district centre (LimitDeliveryRow::own_carts): what

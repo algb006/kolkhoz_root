@@ -14,6 +14,7 @@
 #include "core_common/land_state.h"
 #include "district_plan.h"
 #include "field_work.h"
+#include "milk_cart.h"
 #include "seed_room.h"
 
 namespace core {
@@ -230,7 +231,8 @@ float ChainHectares(const ProductionConfig& config,
   return grown_ha;
 }
 
-/// kPlanPositionShort (boss seq 89): on the year's last day, every position
+/// kPlanPositionShort (boss seq 89): from one district collection before the
+/// deadline's (stage В5) to the year's last day, every position
 /// the turn's delivery cannot bring to the met share. THE FORECAST ENTERS BY
 /// THE TURN'S OWN DOOR since 0.36.23 (boss-core-epoch1-resume [54]):
 /// delivered plus the least of owed and DeliverableAboveSeed — the heaps and
@@ -241,8 +243,14 @@ float ChainHectares(const ProductionConfig& config,
 void CollectPlanShortAlarms(const ProductionConfig& config,
                             const WorldState& world,
                             std::vector<Alarm>& alarms) {
-  // «ЗА СУТКИ ДО ПОВОРОТА ГОДА», the boss's word: the day the turn follows.
-  if (world.plan.announced == 0 || world.calendar.day % kDaysPerYear != kDaysPerYear - 1) {
+  // «ЗА СУТКИ ДО ПОВОРОТА ГОДА», the boss's word, was the day the turn follows.
+  // STAGE В5 MOVED IT ONE DISTRICT COLLECTION EARLIER (econ's gate (b)): the
+  // district's cart takes what lies in the stores on each month's last day,
+  // and a lamp lit on the deadline's own day left the player no collection
+  // to answer it with. It burns from the last regular collection before the
+  // deadline's (the eleventh month's last day) to the turn.
+  constexpr std::uint32_t kFirstWarningDayOfYear = kDaysPerYear - 1U - kDaysPerMonth;
+  if (world.plan.announced == 0 || world.calendar.day % kDaysPerYear < kFirstWarningDayOfYear) {
     return;
   }
   for (std::uint32_t index = 0; index < world.plan.due.size(); ++index) {
@@ -254,7 +262,19 @@ void CollectPlanShortAlarms(const ProductionConfig& config,
     const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
     const Grams owed = due > delivered ? due - delivered : 0;
     const Grams deliverable = DeliverableAboveSeed(config, world, resource, world.calendar.day);
-    const Grams shipped_at_turn = delivered + (deliverable < owed ? deliverable : owed);
+    Grams shipped_at_turn = delivered + (deliverable < owed ? deliverable : owed);
+    // THE MILK CART's COMING DAYS (0.37.269's pair: the lamp moved a
+    // collection earlier lit on milk in 144 of 144 village-years and the
+    // position was met in every one): the cart ships its share each evening
+    // to the turn, and the forecast counted none of it. The days AFTER today
+    // only - today's share is not promised by the morning's lamp - and none
+    // while a milk debt stands: the cart is already short of its share.
+    if (index == config.milk_resource.value && world.plan.milk_debt == 0 &&
+        MilkPositionStands(config, world)) {
+      const auto days_after_today =
+          static_cast<Grams>(kDaysPerYear - 1U - world.calendar.day % kDaysPerYear);
+      shipped_at_turn += world.plan.milk_daily_share * days_after_today;
+    }
     if (PositionDelivered(config, due, shipped_at_turn)) {
       continue;
     }
@@ -266,7 +286,7 @@ void CollectPlanShortAlarms(const ProductionConfig& config,
     // At least a gram: the share compares in float and the grams in double,
     // and a position PositionDelivered calls short is never short by nought.
     alarm.amount = std::max<Grams>(met_grams - shipped_at_turn, 1);
-    // The loss is the turn itself (raised on the year's last day: 0 or 1).
+    // The loss is the turn itself (raised in the year's last five days).
     alarm.days_to_loss = DaysToLossOf(DaysToPlanTurn(world));
     alarms.push_back(alarm);
   }

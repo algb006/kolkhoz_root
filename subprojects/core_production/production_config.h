@@ -1160,6 +1160,17 @@ struct ProductionConfig {
   /// column, or an empty cell: 0.
   std::uint8_t cart_trip_model = 0;
 
+  /// THE OWN-DELIVERY BONUS's SHARE (routing stage В5; district §4; econ's
+  /// (a)): world_params.csv `own_delivery_bonus_share` - the share of the
+  /// points own-carted tonnes earned that a year adds (district_carts.h,
+  /// OwnDeliveryBonusPoints). No row: 0 - the design's release condition
+  /// («если „всегда свой" ничего не стоит, надбавка в 0», district §4): in
+  /// the pair of 17 October 2026 arm O (always own carts) lost no harvest
+  /// against arm D in 0 of 36 village-years (boss-core-v5-gate [10]). RETURN
+  /// CONDITION: a later base on which O loses harvest (lost ha, snow, no
+  /// room) against D in >= 1/3 of village-years - then econ's 0.1.
+  float own_delivery_bonus_share = 0.0F;
+
   /// What a back carries by the load's form, and the terms of logs by two
   /// (core_common/haul.h, PorterRules; core_catalog/porter_catalog.h) - the
   /// same reading labour and logistics hold. Until 0.37.240 a float here,

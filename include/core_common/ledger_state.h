@@ -410,6 +410,9 @@ struct YearLedger {
 
   // -- district ------------------------------------------------------------
   ResourceAmounts delivered;  ///< Shipped against the plan.
+  /// Of `delivered`, what the village's OWN carts carried (routing stage В5,
+  /// save 163): the share the own-delivery bonus is read by (district §4).
+  ResourceAmounts delivered_own;
 
   /// WHAT THE DISTRICT ASKED, by position, written by the plan's judge at
   /// the turn before it clears the figure (econ's audit M12, Л1; boss, seq

@@ -63,7 +63,10 @@ std::vector<LoadAddress> LoadsOf(const WorldState& world) {
   }
   for (std::uint32_t row = 0; row < world.limit_deliveries.rows.size(); ++row) {
     const LimitDeliveryRow& lot = world.limit_deliveries.rows[row];
-    if (lot.own_carts != 0 && lot.haul_days_remaining > 0.0F) {
+    // THE MUD CLOSES THE DISTRICT's ROAD to own carts both ways (routing stage
+    // В5): the labour's offer of the same job asks it too (labor_system.cpp) -
+    // asked at one door only, the other sent carters through the mud.
+    if (lot.own_carts != 0 && lot.haul_days_remaining > 0.0F && !world.weather.mud) {
       loads.push_back({LogisticsLoadKind::kDistrictLot, world.limit_deliveries.row_ids[row].value});
     }
   }

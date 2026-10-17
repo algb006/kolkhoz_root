@@ -37,6 +37,7 @@ kolkhoz_add_module(core_production
     demolition_stock.cpp
     district_car.cpp
     district_trip.cpp
+    district_carts.cpp
     district_limit.cpp
     mts_column.cpp
     district_visit.cpp

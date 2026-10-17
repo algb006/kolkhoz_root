@@ -1773,8 +1773,11 @@ class LaborSystem final : public ILaborSystem {
       // district's road begins (road_route.h, DistrictExitPoint).
       for (std::uint32_t row = 0; row < current.limit_deliveries.rows.size(); ++row) {
         const LimitDeliveryRow& lot = current.limit_deliveries.rows[row];
+        // IN THE MUD NOBODY GOES TO THE DISTRICT (routing stage В5; district §4,
+        // «не проходит ни свой транспорт, ни районный»): no own cart is offered
+        // for a lot coming in or the plan's delivery going out on a mud day.
         if (lot.own_carts == 0 || lot.arrive_day > current.calendar.day ||
-            !(lot.haul_days_remaining > 0.0F)) {
+            !(lot.haul_days_remaining > 0.0F) || current.weather.mud) {
           continue;
         }
         AssignmentJob job;

@@ -37,8 +37,9 @@ namespace core {
 /// with the rot of its wait (HeldForDeliveryGrams) — the measure the goods
 /// loan keeps by. A slot already lost does not count (question
 /// 278; boss-core-epoch1-resume [98]), and a chain that stands before its
-/// first season is read by the year its first slot is grown in. On the
-/// year's last day, also kPlanPositionShort for every position that
+/// first season is read by the year its first slot is grown in. From the
+/// eleventh month's last day (one district collection before the deadline's,
+/// stage В5) to the year's last day, also kPlanPositionShort for every position that
 /// delivered plus takeable (TakeableGrams) will not bring to the met share.
 /// @param alarms Appended to; never cleared.
 void CollectPlanAlarms(const ProductionConfig& config,

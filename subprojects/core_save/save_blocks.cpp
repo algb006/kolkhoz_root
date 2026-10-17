@@ -105,9 +105,12 @@ static_assert(AggregateArity<ChairmanState>() == 26,
 // + 32 and 14 fields, predicted before the build.
 // Save 127 (0.37.140): the highest position ever named, a seventh amounts
 // vector — 7 x amounts + 32 and 15 fields, predicted before the build.
-static_assert(sizeof(PlanState) == (7 * kAmountsSize) + 32,
+// Save 163 (stage В5): the standing request to the district's cart, an eighth
+// amounts vector — 8 x amounts + 32 and 16 fields, predicted before the build
+// (the contract's own-delivery fields went to LimitDeliveryRow instead).
+static_assert(sizeof(PlanState) == (8 * kAmountsSize) + 32,
               "PlanState changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<PlanState>() == 15,
+static_assert(AggregateArity<PlanState>() == 16,
               "PlanState gained or lost a field — update the codec and VERSION_SAVE");
 // THE CONTAINER ITSELF, and it was the one thing here without a guard.
 // Seventeen asserts below watch the BLOCKS of a world and not one watched the
@@ -508,6 +511,7 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   sink.WriteAmounts(DefKind::kResource, world.plan.delivered);
   sink.WriteAmounts(DefKind::kResource, world.plan.highest_due);         // save 127
   sink.WriteAmounts(DefKind::kResource, world.plan.accumulation_limit);  // save 62
+  sink.WriteAmounts(DefKind::kResource, world.plan.requested);           // save 163 (В5)
   // The milk cart's daily share and what went with no position (save 66).
   out.WriteI64(world.plan.milk_daily_share);
   out.WriteI64(world.plan.milk_debt);  // save 85: the milk with debt
@@ -735,6 +739,7 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->plan.delivered = source.ReadAmounts(DefKind::kResource);
   world->plan.highest_due = source.ReadAmounts(DefKind::kResource);  // save 127
   world->plan.accumulation_limit = source.ReadAmounts(DefKind::kResource);
+  world->plan.requested = source.ReadAmounts(DefKind::kResource);  // save 163
   world->plan.milk_daily_share = in.ReadI64();
   world->plan.milk_debt = in.ReadI64();
   // A NEGATIVE SHARE OR DEBT IS NO STATE the simulation makes (the debt is
