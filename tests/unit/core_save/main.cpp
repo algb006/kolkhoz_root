@@ -1879,7 +1879,10 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // Save 158 (#734): +3 a site block - the floor's idle days and the day's
     // switch; three units' open blocks and the one put aside: predicted 727 ->
     // 739 before the build and held; the hash read off it.
-    {"units", 739, 0x67e0700070104640ULL},
+    // Save 165 (stage В6 part 3): +2 a site block - the idle days a mowing
+    // held; three units' open blocks and the one put aside, +8: 739 -> 747 as
+    // the arity's note predicted; the hash read off it.
+    {"units", 747, 0x5f0684b09c7a3c58ULL},
     // Save 71: +4 — fed_share, one herd; predicted before the field, held.
     // Save 91: +8 — the adult age band, two floats, one herd; predicted
     // 71 -> 79 with every other section unmoved before the build.

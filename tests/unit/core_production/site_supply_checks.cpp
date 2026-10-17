@@ -251,6 +251,42 @@ int CheckTheSupplyCountsItsIdleDays() {
                      "idle days: the evening of a day something landed starts from nought");
   core::SettleSiteSupply(config, world, true);
   failures += Expect(works.supply_idle_days == 1, "idle days: and the next idle evening is one");
+  // THE MOWING'S DAYS ARE THE FLOOR'S AND NOT THE LAMP'S (save 165; stage В6
+  // part 3): three June evenings with a meadow's cut open count for the floor
+  // (four idle days: on it, its carters given) and for the mowing; the lamp
+  // reads one day and stays dark. The pair: the cut done, idle evenings count
+  // for both again.
+  core::FieldRow meadow;
+  meadow.kind = core::LandKind::kMeadow;
+  meadow.phase = core::FieldPhase::kHarvest;
+  meadow.work_days_remaining = 3.0F;
+  core::AppendRow(world.fields, meadow);
+  std::uint32_t june = 20;  // a working day of the cut's first month (days 20-23)
+  for (std::uint32_t day = 20; day < 24; ++day) {
+    if (!core::IsDayOffIn(world, day)) {
+      june = day;
+    }
+  }
+  set_day(june);
+  core::SettleSiteSupply(config, world, true);
+  core::SettleSiteSupply(config, world, true);
+  core::SettleSiteSupply(config, world, true);
+  failures += Expect(works.supply_idle_days == 4 && works.supply_mowing_days == 3 &&
+                         core::OnSupplyFloor(config.supply_floor, works) &&
+                         core::SupplyLampDays(works) == 1 &&
+                         !core::SupplyWaitLampLit(config.supply_floor, works),
+                     "idle days: three evenings the mowing held put the works on the floor and "
+                     "leave its lamp dark at one day");
+  world.fields.rows.back().work_days_remaining = 0.0F;  // the cut done
+  core::SettleSiteSupply(config, world, true);
+  core::SettleSiteSupply(config, world, true);
+  core::SettleSiteSupply(config, world, true);
+  failures += Expect(works.supply_mowing_days == 3 && core::SupplyLampDays(works) == 4 &&
+                         core::SupplyWaitLampLit(config.supply_floor, works),
+                     "idle days: the cut done, three idle evenings more light the lamp at four");
+  works.supply_idle_days = 1;  // back to the case's own count below (off the floor)
+  works.supply_mowing_days = 0;
+  set_day(working);
   // ON THE FLOOR TILL THE RECIPE IS IN: at the floor's four days a delivery no
   // longer starts the count again - the floor's own cart must not take the
   // works off the floor it stands on.

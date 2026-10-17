@@ -325,15 +325,17 @@ class LogisticsSystem final : public ILogisticsSystem {
         continue;
       }
       const std::uint32_t unit_row = FindRow(state.units, task.unit);
+      // THE MOWING'S DAYS ARE NOT THE WORKS' WAIT (stage В6 part 3; save 165):
+      // lit on the lamp's days, not the floor's (site_supply_floor.h).
       if (unit_row == kNoRow ||
-          !OnSupplyFloor(config_.supply_floor, state.units.rows[unit_row].construction)) {
+          !SupplyWaitLampLit(config_.supply_floor, state.units.rows[unit_row].construction)) {
         continue;
       }
       Alarm alarm;
       alarm.kind = AlarmKind::kSiteSupplyWaits;
       alarm.unit = task.unit;
       alarm.logistics_task = state.logistics_tasks.row_ids[row];
-      alarm.amount = state.units.rows[unit_row].construction.supply_idle_days;
+      alarm.amount = SupplyLampDays(state.units.rows[unit_row].construction);
       alarm.lamp = 1;
       alarm.days_to_loss = DaysToLossOf(std::numeric_limits<std::int64_t>::max());
       alarm.advice = task.over_fields ? AlarmAdvice::kNone : AlarmAdvice::kSupplyOverFields;

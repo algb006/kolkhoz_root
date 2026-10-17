@@ -337,6 +337,17 @@ struct ConstructionState {
   /// 158): the day's memory `supply_idle_days` is settled from, cleared by the
   /// evening that reads it.
   std::uint8_t supply_moved_today = 0;
+
+  /// THE DAYS OF `supply_idle_days` A MOWING HELD (save 165; stage В6 part 3,
+  /// boss, the В6 thread [10]-[12]; transport design «Подвоз к стройке»: «дни,
+  /// когда покос забрал возчиков, не идут в срок стройки»): of the idle
+  /// evenings counted, those on which a meadow's cut was open in its window
+  /// (supply_haul.cpp, MowingHoldsTheCarters). THE LAMP's reading only: the
+  /// floor and its carters read `supply_idle_days` whole, so scheduling is
+  /// 0.37.276's; kSiteSupplyWaits lights on the difference
+  /// (site_supply_floor.h, SupplyLampDays). Never above `supply_idle_days`,
+  /// reset with it.
+  std::uint16_t supply_mowing_days = 0;
 };
 
 /// @brief Whether any material of the works still awaits its carting

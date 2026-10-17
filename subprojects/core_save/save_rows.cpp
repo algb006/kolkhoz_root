@@ -275,8 +275,9 @@ static_assert(AggregateArity<SupplyLeg>() == 4,
 // padding (offset 14), 16 + amounts and 9 fields, before the build.
 // Save 154 (#595): raised, a byte after supply_log_way — predicted into the
 // padding after it (sizeof 48 unmoved) and 19 fields, before the build; the
-// units section +1 a unit.
-static_assert(AggregateArity<ConstructionState>() == 21,
+// units section +1 a unit. Save 165 (stage В6 part 3): supply_mowing_days, a
+// u16 after supply_moved_today - 22 fields, the units section +2 a unit.
+static_assert(AggregateArity<ConstructionState>() == 22,
               "ConstructionState gained or lost a field — update the codec and VERSION_SAVE");
 // Save 74: reserved_for_specialist, a byte beside `dead` — 18 fields. Save 157:
 // suspended_works (#715) — 20.
@@ -1285,8 +1286,9 @@ void WriteConstructionBlock(SaveSink& sink, const ConstructionState& works) {
   out.WriteFloat(works.supply_days_remaining);
   out.WriteFloat(works.supply_days_written);
   out.WriteU32(works.supply_since_day);
-  out.WriteU16(works.supply_idle_days);   // save 158 (#734): the floor's memory
-  out.WriteU8(works.supply_moved_today);  // save 158: a gram landed since the evening
+  out.WriteU16(works.supply_idle_days);    // save 158 (#734): the floor's memory
+  out.WriteU8(works.supply_moved_today);   // save 158: a gram landed since the evening
+  out.WriteU16(works.supply_mowing_days);  // save 165 (В6 part 3): the idle days a mowing held
 }
 
 ConstructionState ReadConstructionBlock(LoadSource& source) {
@@ -1332,6 +1334,11 @@ ConstructionState ReadConstructionBlock(LoadSource& source) {
   works.supply_idle_days = in.ReadU16();
   works.supply_moved_today =
       static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "supply moved today"));
+  // Save 165 (stage В6 part 3): the lamp's own memory, never above the floor's.
+  works.supply_mowing_days = in.ReadU16();
+  if (works.supply_mowing_days > works.supply_idle_days) {
+    source.Fail("supply mowing days above the idle days");
+  }
   return works;
 }
 

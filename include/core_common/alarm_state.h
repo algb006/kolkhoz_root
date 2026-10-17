@@ -725,7 +725,12 @@ enum class AlarmKind : std::uint8_t {
   /// its task not paused. A STATE on the floor's own trigger: lit the morning
   /// the floor begins to give the supply carters, out when the recipe is on
   /// the site. Subject: `unit` - the works; `logistics_task` its supply's task
-  /// (the door's subject); `amount` those idle days. Yellow always: no dated
+  /// (the door's subject); `amount` those idle days. SINCE SAVE 165 (stage
+  /// В6 part 3) LESS THE DAYS A MOWING HELD (site_supply_floor.h,
+  /// SupplyWaitLampLit, SupplyLampDays): the floor still gives its carters
+  /// on the idle days whole; the lamp does not light a June works because the
+  /// meadow took its carters. The run's chairman reads the floor's own count,
+  /// not this lamp (supply_policy.h). Yellow always: no dated
   /// loss (days_to_loss as kHousingShort's). `lamp` 1: the chairman has a
   /// move - `advice` kSupplyOverFields while the task does not carry the
   /// switch already, kNone once it does. Proposed registry key
