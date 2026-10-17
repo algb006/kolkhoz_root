@@ -6,12 +6,15 @@
 #include "core_common/work_seam.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
 #include "core_common/module_rules.h"
 #include "core_common/state_table_ops.h"
+#include "core_common/unit_state.h"
 
 namespace core {
 
@@ -395,6 +398,77 @@ HarnessCount CountHarness(const WorldState& world) {
     count.harnessed += load.walkers < wanted ? load.walkers : wanted;
   }
   return count;
+}
+
+std::array<std::uint16_t, kCartUseCount> HorsesByUse(const WorldState& world,
+                                                     std::uint32_t draught_horses) {
+  std::array<std::uint32_t, kCartUseCount> held{};
+  const auto add = [&held](CartUse use) { ++held[static_cast<std::size_t>(use)]; };
+  const auto on_meadow = [&world](FieldId field) {
+    const std::uint32_t row = FindRow(world.fields, field);
+    if (row == kNoRow) {
+      return false;
+    }
+    const LandKind land = world.fields.rows[row].kind;
+    return land == LandKind::kMeadow || land == LandKind::kFloodplainMeadow;
+  };
+  // THE SAME HORSES CountHarness PUTS IN THE TRACES (above), classed: one a
+  // ploughman or harrower, one a carter on a horse, one a crew's cart on its
+  // driver.
+  for (const ResidentRow& person : world.residents.rows) {
+    const WorkAssignment& work = person.work;
+    if (IsHorseWork(work.kind)) {
+      add(CartUse::kPlough);
+      continue;
+    }
+    if (work.rides_horse == 0) {
+      continue;
+    }
+    if (work.kind == WorkKind::kHauling) {
+      if (work.field.value != kInvalidEntityIdValue) {
+        add(on_meadow(work.field) ? CartUse::kHay : CartUse::kFields);
+        continue;
+      }
+      const std::uint32_t unit =
+          work.unit.value != kInvalidEntityIdValue ? FindRow(world.units, work.unit) : kNoRow;
+      const bool supply = unit != kNoRow && world.units.rows[unit].emptying == 0 &&
+                          AnythingAwaits(world.units.rows[unit].construction);
+      add(supply ? CartUse::kSiteSupply : CartUse::kOtherLoad);
+      continue;
+    }
+    if (work.kind == WorkKind::kHarvest || work.kind == WorkKind::kSowing) {
+      add(work.kind == WorkKind::kHarvest && on_meadow(work.field) ? CartUse::kHay
+                                                                   : CartUse::kFields);
+      continue;
+    }
+    if (TakesThePeoplesCart(work.kind)) {
+      add(CartUse::kPeoplesCart);
+    }
+  }
+  std::uint32_t in_use = 0;
+  for (const std::uint32_t count : held) {
+    in_use += count;
+  }
+  held[static_cast<std::size_t>(CartUse::kFree)] =
+      draught_horses > in_use ? draught_horses - in_use : 0U;
+  std::array<std::uint16_t, kCartUseCount> out{};
+  for (std::size_t use = 0; use < kCartUseCount; ++use) {
+    out[use] = static_cast<std::uint16_t>(std::min<std::uint32_t>(held[use], 0xFFFFU));
+  }
+  return out;
+}
+
+std::uint32_t DraughtHorsesOf(const WorldState& world, LivestockKindId horse_kind) {
+  if (horse_kind.value == kInvalidDefIdValue) {
+    return 0;
+  }
+  std::uint32_t horses = 0;
+  for (const HerdRow& herd : world.herds.rows) {
+    if (herd.kind.value == horse_kind.value) {
+      horses += herd.adult_count;
+    }
+  }
+  return horses;
 }
 
 bool SettlementHasCarts(const WorldState& world, LivestockKindId horse_kind) {

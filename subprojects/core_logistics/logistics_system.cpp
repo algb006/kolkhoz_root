@@ -6,10 +6,12 @@
 #include "core_logistics/logistics_system.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -279,16 +281,23 @@ class LogisticsSystem final : public ILogisticsSystem {
     // (TodayMayBeDeclaredWorking).
     const AlarmAdvice advice =
         TodayMayBeDeclaredWorking(state) ? AlarmAdvice::kDeclareDayWorking : AlarmAdvice::kNone;
+    // AND WHERE THE HORSES ARE (stage В6; registry №310): one breakdown an
+    // hour, the same for every late load of it (work_seam.h, HorsesByUse).
+    std::optional<std::array<std::uint16_t, kCartUseCount>> horses;
     for (std::uint32_t row = 0; row < state.logistics_tasks.rows.size(); ++row) {
       const LogisticsTaskRow& task = state.logistics_tasks.rows[row];
       if (!WaitsLate(task)) {
         continue;
+      }
+      if (!horses) {
+        horses = HorsesByUse(state, DraughtHorsesOf(state, config_.horse_kind));
       }
       Alarm alarm;
       alarm.kind = AlarmKind::kLogisticsLate;
       alarm.logistics_task = state.logistics_tasks.row_ids[row];
       alarm.amount = static_cast<std::int64_t>(task.unserved_light_hours);
       alarm.advice = advice;
+      alarm.carts_by_use = *horses;
       out.push_back(alarm);
     }
     CollectSupplyWaits(state, out);

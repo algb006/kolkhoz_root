@@ -44,6 +44,8 @@
 #ifndef CORE_COMMON_ALARM_STATE_H_
 #define CORE_COMMON_ALARM_STATE_H_
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <span>
 
@@ -675,6 +677,19 @@ enum class AlarmKind : std::uint8_t {
   /// kDeclareDayWorking (since 0.37.190; kNone in 0.37.189, before the door
   /// existed); on a working day kNone — the move is more drivers, which the
   /// core does not name. Collected by core_logistics (logistics_system.h).
+  /// AND IT SAYS WHERE THE HORSES ARE (stage В6; the human's word of 12
+  /// October 2026, registry №310): `carts_by_use`, the groom's horses by what
+  /// holds them at the hour - «подвод сегодня 3 из 5 — две на сене». For
+  /// Epoch I this lamp with its cause IS «Логистика не успевает»; the wider
+  /// «задачи копятся, буферы падают ниже порогов» is a STUB until supply by
+  /// threshold (stage C; boss, the В6 thread [2]).
+  ///
+  /// «НЕТ ТОВАРА НА СКЛАДЕ» (transport §12's other alarm) IS NOT A KIND OF ITS
+  /// OWN (boss, the В6 thread [2]): the tasks whose sender can stand empty
+  /// are the works' supply and the farm's feed, and their lamps say it -
+  /// kSiteWithoutMaterials for the supply, kHerdHayShortAhead and
+  /// kHerdStarving for the feed. Every other task carries its cargo by
+  /// definition (a heap, logs, a dig, a store emptied, the district's lot).
   kLogisticsLate,
 
   /// «ЖИЛЬЯ НЕ ХВАТАЕТ» — ONE LAMP FOR THE WHOLE SHORTAGE OF HOMES (task 433;
@@ -939,6 +954,29 @@ enum class AlarmColour : std::uint8_t {
   kAlarmColourCount,
 };
 
+/// @brief WHAT HOLDS EACH OF THE GROOM'S HORSES at the hour a lamp reads it
+/// (routing stage В6; transport design §12, «„Логистика не успевает"
+/// называет причину»; the human's word of 12 October 2026, registry №310):
+/// the breakdown kLogisticsLate carries in Alarm::carts_by_use. A horse IS a
+/// cart in the core (labor_state.h), so a horse without harness is not a
+/// state - the design's «лошадей без упряжи» returns with a harness/cart
+/// inventory (boss, the В6 thread [2]). Seam words: the enumerators' snake
+/// case. Appended, never renumbered.
+enum class CartUse : std::uint8_t {
+  kHay = 0,      ///< On the meadows: a mower out, or hay carted.
+  kSiteSupply,   ///< At the works: a supply carted to a site.
+  kFields,       ///< On the arable: a field's heap carted, a reaping or sowing brigade's cart.
+  kPlough,       ///< In the plough or the harrow.
+  kPeoplesCart,  ///< Carrying hands to a walking work (the people's cart).
+  kOtherLoad,    ///< Any other load: logs, a dig, a store emptied, the district's lot.
+  kFree,         ///< In the pool: no placement holds it.
+
+  /// NOT A USE: the count, so a consumer can static_assert its mirror.
+  kCartUseCount,
+};
+
+inline constexpr std::size_t kCartUseCount = static_cast<std::size_t>(CartUse::kCartUseCount);
+
 /// @brief One standing condition. Which fields are meaningful is fixed by
 /// the kind (see AlarmKind); the rest are invalid / zero. Two alarms with
 /// the same kind and subject are one alarm — a predicate yields each
@@ -1179,6 +1217,14 @@ struct Alarm {
   std::int64_t hand_over_horses = 0;
   std::int64_t below_floor_stock = 0;
   std::int64_t below_floor_horses = 0;
+
+  /// kLogisticsLate (routing stage В6; registry №310): THE GROOM'S HORSES BY
+  /// WHAT HOLDS THEM at the hour the lamp is collected, by CartUse - the
+  /// lamp's line «подвод сегодня 3 из 5 — две на сене». The sum is the
+  /// adult kolkhoz horses (work_seam.h, HorsesByUse); kFree is what no
+  /// placement holds. Zeros for every other kind.
+  /// @note Not in the save, as `lamp`.
+  std::array<std::uint16_t, kCartUseCount> carts_by_use{};
 };
 
 /// @brief The subject id of an alarm as one number, for ordering: the id

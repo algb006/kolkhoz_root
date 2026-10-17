@@ -44,6 +44,7 @@
 #include "core_common/state_table.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/version_pin.h"
+#include "core_common/work_seam.h"
 #include "core_common/world_state.h"
 
 namespace core_test {
@@ -2933,6 +2934,62 @@ int CheckPaintAlarms() {
   return failures;
 }
 
+/// THE GROOM'S HORSES BY WHAT HOLDS THEM (work_seam.h, HorsesByUse; stage
+/// В6): seven horses; a ploughman, a carter on a horse at a meadow's hay, one
+/// at a works' supply, one at a field's heap, one at a stand's logs, a
+/// reaping brigade's driver and a felling's people's-cart driver hold one each
+/// - a use apiece and none free; an eighth horse is free; a carter on foot
+/// holds none; and the pool short of the placements frees nought, never less.
+int TestHorsesByUse() {
+  int failures = 0;
+  core::WorldState world;
+  core::HerdRow horses;
+  horses.kind = core::LivestockKindId{0};
+  horses.adult_count = 7;
+  core::AppendRow(world.herds, horses);
+  core::FieldRow meadow;
+  meadow.kind = core::LandKind::kMeadow;
+  const core::FieldId meadow_id = core::AppendRow(world.fields, meadow);
+  core::FieldRow arable;
+  arable.kind = core::LandKind::kArable;
+  const core::FieldId arable_id = core::AppendRow(world.fields, arable);
+  core::UnitRow site;
+  site.construction.awaiting.assign(1, 1000);
+  const core::UnitId site_id = core::AppendRow(world.units, site);
+  const auto hand = [&world](core::WorkKind kind, std::uint8_t rides) -> core::WorkAssignment& {
+    core::ResidentRow person;
+    person.work.kind = kind;
+    person.work.rides_horse = rides;
+    core::AppendRow(world.residents, person);
+    return world.residents.rows.back().work;
+  };
+  hand(core::WorkKind::kPlowing, 0);
+  hand(core::WorkKind::kHauling, 1).field = meadow_id;
+  hand(core::WorkKind::kHauling, 1).unit = site_id;
+  hand(core::WorkKind::kHauling, 1).field = arable_id;
+  hand(core::WorkKind::kHauling, 1).stand = core::TimberStandId{3};
+  hand(core::WorkKind::kHarvest, 1).field = arable_id;
+  hand(core::WorkKind::kFelling, 1);
+  hand(core::WorkKind::kHauling, 0).field = meadow_id;  // on foot: no horse
+  const auto use = [](const std::array<std::uint16_t, core::kCartUseCount>& by,
+                      core::CartUse which) { return by[static_cast<std::size_t>(which)]; };
+  const auto seven =
+      core::HorsesByUse(world, core::DraughtHorsesOf(world, core::LivestockKindId{0}));
+  failures += Expect(
+      use(seven, core::CartUse::kPlough) == 1 && use(seven, core::CartUse::kHay) == 1 &&
+          use(seven, core::CartUse::kSiteSupply) == 1 && use(seven, core::CartUse::kFields) == 2 &&
+          use(seven, core::CartUse::kOtherLoad) == 1 &&
+          use(seven, core::CartUse::kPeoplesCart) == 1 && use(seven, core::CartUse::kFree) == 0,
+      "horses by use: seven held a use apiece - the brigade's cart and the "
+      "heap both on the fields, none free, the walker holds none");
+  world.herds.rows[0].adult_count = 8;
+  failures += Expect(use(core::HorsesByUse(world, 8), core::CartUse::kFree) == 1,
+                     "horses by use: an eighth horse no placement holds is free");
+  failures += Expect(use(core::HorsesByUse(world, 5), core::CartUse::kFree) == 0,
+                     "horses by use: a pool short of the placements frees nought, never less");
+  return failures;
+}
+
 int main() {
   int failures = 0;
   failures += TestDistrictVisitPacking();
@@ -3036,6 +3093,7 @@ int main() {
   failures += TestResidentActivity();
   failures += TestTheLoadedPace();
   failures += TestTheSiteSupplyQueue();
+  failures += TestHorsesByUse();
   if (failures == 0) {
     std::cout << "unit_core_common: all checks passed\n";
   }

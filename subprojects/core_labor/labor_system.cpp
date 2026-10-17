@@ -2515,19 +2515,10 @@ class LaborSystem final : public ILaborSystem {
     return locked;
   }
 
-  /// Adult kolkhoz horses, wherever they stand: the shared draught pool of
-  /// the day (a horse at a private yard is still a kolkhoz horse).
+  /// Adult kolkhoz horses, wherever they stand (work_seam.h, DraughtHorsesOf:
+  /// one home with the logistics' lamp since 0.37.276).
   std::uint32_t DraughtHorses(const WorldState& current) const {
-    if (config_.horse_kind.value == kInvalidDefIdValue) {
-      return 0;
-    }
-    std::uint32_t horses = 0;
-    for (const HerdRow& herd : current.herds.rows) {
-      if (herd.kind.value == config_.horse_kind.value) {
-        horses += herd.adult_count;
-      }
-    }
-    return horses;
+    return DraughtHorsesOf(current, config_.horse_kind);
   }
 
   AssignmentParams DayParams(const WorldState& current) const {

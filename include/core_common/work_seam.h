@@ -17,6 +17,10 @@
 #ifndef CORE_COMMON_WORK_SEAM_H_
 #define CORE_COMMON_WORK_SEAM_H_
 
+#include <array>
+#include <cstdint>
+
+#include "core_common/alarm_state.h"
 #include "core_common/geometry.h"
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
@@ -203,6 +207,24 @@ HarnessCount CountHarness(const WorldState& world);
 /// @param horse_kind The livestock row of the horse; an invalid id answers
 ///        false.
 bool SettlementHasCarts(const WorldState& world, LivestockKindId horse_kind);
+
+/// @brief THE GROOM'S HORSES BY WHAT HOLDS THEM, as the placements stand
+///        (stage В6; registry №310; alarm_state.h, CartUse): every horse
+///        CountHarness puts in the traces, classed by its work - the plough
+///        and harrow, a carter on a horse by his load (a meadow's hay, a
+///        works' supply, a field's heap, any other), a crew's cart (a meadow's
+///        mower, a reaping or sowing brigade, the people's cart) - and the
+///        rest of the adult kolkhoz horses (`draught_horses`) as kFree, never
+///        below nought. The classes sum to the larger of the two.
+std::array<std::uint16_t, kCartUseCount> HorsesByUse(const WorldState& world,
+                                                     std::uint32_t draught_horses);
+
+/// @brief Adult kolkhoz horses, wherever they stand: the day's shared draught
+///        pool (a horse at a private yard is still a kolkhoz horse). ONE HOME
+///        for the labour's pool and the logistics' lamp (stage В6); it lived
+///        in core_labor alone (LaborSystem::DraughtHorses) until 0.37.276.
+/// @return 0 for an invalid `horse_kind`.
+std::uint32_t DraughtHorsesOf(const WorldState& world, LivestockKindId horse_kind);
 
 /// @brief A rick whose farm's herds will be out of the feeds it is the home
 ///        of soon (routing stage В3, step two; core_production's
