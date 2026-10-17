@@ -181,6 +181,14 @@ struct Trajectory {
   std::array<std::uint32_t, run::TransitionPolicy::kConditions> unmet_after_residents_days = {};
   /// Days walked in Epoch I: what the two above are counted against.
   std::uint32_t epoch_one_days = 0;
+  /// THE DOOR HELD FOR NO NAMED REASON (#776's E3; boss, the E3 thread [2]):
+  /// Epoch I days on which «юниты на уровне» ALONE held the door
+  /// (SoleHoldout) and the upgrade policy found no reason for the unit below
+  /// the era's level that day (upgrade_policy.h, Held::unexplained). The one
+  /// condition whose hold the runs attribute; the others are states (the
+  /// residents, the winters, the board's wear, the social objects standing)
+  /// and their gaps are printed, not gated.
+  std::uint32_t unexplained_sole_hold_days = 0;
   /// WHAT SHUTS THE TWO STANDING BLOCKS (boss-core-epoch1-queue [18]): from
   /// the first day each was met, the Epoch I days it stood shut, and on those
   /// days, by unit type row, the kolkhoz types below the era's level and the
@@ -623,6 +631,8 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
       // calls the rest silence (event_journal's own header says the same).
       // `AdvanceDays(1)` IS this loop — the order of `builder.RunDay` after
       // the day is untouched, and the bands below are the proof.
+      // The upgrade policy's unexplained days before today's (E3, #776).
+      const std::uint32_t unexplained_before = builder.upgrades.held().unexplained;
       LiveOneDay(
           *simulation, builder.upgrades, out, births_herd_on, &hay_day_off, &advance_write_offs);
       builder.RunDay(*simulation);
@@ -640,6 +650,11 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
         const int sole = builder.transition.SoleHoldout(today);
         if (sole >= 0) {
           ++out.sole_holdout_days[static_cast<std::size_t>(sole)];
+        }
+        // THE UNITS ALONE HOLD THE DOOR, AND FOR NO NAMED REASON (E3, #776).
+        constexpr int kUnitsCondition = 6;
+        if (sole == kUnitsCondition && builder.upgrades.held().unexplained > unexplained_before) {
+          ++out.unexplained_sole_hold_days;
         }
         if (out.condition_first_met_day[kResidentsConditionIndex] >= 0) {
           for (std::size_t condition = 0; condition < met.size(); ++condition) {
@@ -1369,10 +1384,45 @@ int main(int argc, char** argv) {
                     std::to_string(walk.unmet_after_residents_days[longest]) +
                     " days unmet (every condition, days:" + hand + ");";
   }
+  // E3 GATES A DOOR DEFECT, NOT THE GAP (#776; boss, the E3 thread [2], on
+  // core's finding). It gated «no door more than a year after the residents'
+  // condition» until 0.37.284, and that number is the difference of two dates
+  // that BOTH move with any world change: the base's own gaps ran 0.3-0.98
+  // years against the 1.0 threshold, so the red set floated - green on
+  // 0.37.275-276, red on 278-281 by one village with three different holds,
+  // red by a later door (1932, 1934 on В6 part 3) and by EARLIER residents
+  // (1938; 1941 on 0.37.278). Every red's hold had a named cause, UNEXPLAINED
+  // 0. Now the gate is the defect a slow but honest world cannot produce: the
+  // days «юниты на уровне» alone held the door with no reason the upgrade
+  // policy could name. The gap is printed LOUD, every village over a year on
+  // its own line with its last blocker - a balance question for econ, kept
+  // visible, not gated.
+  std::cout << "population_curve: E3 GAP (printed, not gated): gap > 1 y: " << doors_late << " of "
+            << walks.size() << '\n';
+  if (!late_holders.empty()) {
+    std::cout << "population_curve: E3 GAP villages:" << late_holders << '\n';
+  }
+  std::uint32_t unexplained_holds = 0;
+  std::string unexplained_where;
+  for (std::size_t walk_index = 0; walk_index < walks.size(); ++walk_index) {
+    const std::uint32_t days = walks[walk_index].unexplained_sole_hold_days;
+    unexplained_holds += days;
+    if (days > 0) {
+      unexplained_where +=
+          " seed " + std::to_string(kSeeds[walk_index]) + ": " + std::to_string(days) + " days;";
+    }
+  }
+  std::uint32_t units_sole_days = 0;
+  for (const Trajectory& walk : walks) {
+    units_sole_days += walk.sole_holdout_days[6];
+  }
   const std::string late_claim =
-      "E3: no door opens more than a year after the residents' condition was first met — now " +
-      std::to_string(doors_late) + (late_holders.empty() ? "" : " (" + late_holders + ")");
-  failures += run::Expect(doors_late == 0, late_claim.c_str());
+      "E3: the door is never held, after every other condition is met, by a unit below the era's "
+      "level for no named reason — now " +
+      std::to_string(unexplained_holds) + " days (of " + std::to_string(units_sole_days) +
+      " days the units alone held it)" +
+      (unexplained_where.empty() ? "" : " (" + unexplained_where + ")");
+  failures += run::Expect(unexplained_holds == 0, late_claim.c_str());
   failures += run::Expect(median_year14 <= 800, "and not exploding by year 14");
   // A STANDING GATE, «no cow dies of cold» (#712; boss, 12 October 2026): the
   // canon's warm rule went dead with the one-site queue (#595) and nothing
