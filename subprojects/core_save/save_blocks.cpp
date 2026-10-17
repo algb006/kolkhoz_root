@@ -111,9 +111,12 @@ static_assert(AggregateArity<ChairmanState>() == 26,
 // Save 164 (the plan-short lamp): the stores' draw mark and the last month's
 // draw, two amounts vectors — 10 x amounts + 32 and 18 fields, predicted
 // before the build.
-static_assert(sizeof(PlanState) == (10 * kAmountsSize) + 32,
+// Save 165 (the lamp's (e1)): the window's draw mark and last year's window
+// draw, two amounts vectors — 12 x amounts + 32 and 20 fields, predicted
+// before the build.
+static_assert(sizeof(PlanState) == (12 * kAmountsSize) + 32,
               "PlanState changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<PlanState>() == 18,
+static_assert(AggregateArity<PlanState>() == 20,
               "PlanState gained or lost a field — update the codec and VERSION_SAVE");
 // THE CONTAINER ITSELF, and it was the one thing here without a guard.
 // Seventeen asserts below watch the BLOCKS of a world and not one watched the
@@ -512,11 +515,13 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   sink.WriteAmounts(DefKind::kResource, world.issue_norms);
   sink.WriteAmounts(DefKind::kResource, world.plan.due);
   sink.WriteAmounts(DefKind::kResource, world.plan.delivered);
-  sink.WriteAmounts(DefKind::kResource, world.plan.highest_due);         // save 127
-  sink.WriteAmounts(DefKind::kResource, world.plan.accumulation_limit);  // save 62
-  sink.WriteAmounts(DefKind::kResource, world.plan.requested);           // save 163 (В5)
-  sink.WriteAmounts(DefKind::kResource, world.plan.draw_mark);           // save 164
-  sink.WriteAmounts(DefKind::kResource, world.plan.draw_last_month);     // save 164
+  sink.WriteAmounts(DefKind::kResource, world.plan.highest_due);            // save 127
+  sink.WriteAmounts(DefKind::kResource, world.plan.accumulation_limit);     // save 62
+  sink.WriteAmounts(DefKind::kResource, world.plan.requested);              // save 163 (В5)
+  sink.WriteAmounts(DefKind::kResource, world.plan.draw_mark);              // save 164
+  sink.WriteAmounts(DefKind::kResource, world.plan.draw_last_month);        // save 164
+  sink.WriteAmounts(DefKind::kResource, world.plan.draw_window_mark);       // save 165
+  sink.WriteAmounts(DefKind::kResource, world.plan.draw_window_last_year);  // save 165
   // The milk cart's daily share and what went with no position (save 66).
   out.WriteI64(world.plan.milk_daily_share);
   out.WriteI64(world.plan.milk_debt);  // save 85: the milk with debt
@@ -744,9 +749,11 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->plan.delivered = source.ReadAmounts(DefKind::kResource);
   world->plan.highest_due = source.ReadAmounts(DefKind::kResource);  // save 127
   world->plan.accumulation_limit = source.ReadAmounts(DefKind::kResource);
-  world->plan.requested = source.ReadAmounts(DefKind::kResource);        // save 163
-  world->plan.draw_mark = source.ReadAmounts(DefKind::kResource);        // save 164
-  world->plan.draw_last_month = source.ReadAmounts(DefKind::kResource);  // save 164
+  world->plan.requested = source.ReadAmounts(DefKind::kResource);              // save 163
+  world->plan.draw_mark = source.ReadAmounts(DefKind::kResource);              // save 164
+  world->plan.draw_last_month = source.ReadAmounts(DefKind::kResource);        // save 164
+  world->plan.draw_window_mark = source.ReadAmounts(DefKind::kResource);       // save 165
+  world->plan.draw_window_last_year = source.ReadAmounts(DefKind::kResource);  // save 165
   world->plan.milk_daily_share = in.ReadI64();
   world->plan.milk_debt = in.ReadI64();
   // A NEGATIVE SHARE OR DEBT IS NO STATE the simulation makes (the debt is

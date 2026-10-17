@@ -177,7 +177,9 @@ core::WorldState MakeWorld() {
   world.plan.accumulation_limit = Amounts({15'000'000, 0, 4'000'000});
   world.plan.requested = Amounts({2'000'000, 0, 0});  // save 163: the district's standing request
   world.plan.draw_mark = Amounts({3'000'000, 0, 0});  // save 164: the stores' draw mark
-  world.plan.draw_last_month = Amounts({700'000, 0, 0});  // save 164: and the month's draw
+  world.plan.draw_last_month = Amounts({700'000, 0, 0});        // save 164: and the month's draw
+  world.plan.draw_window_mark = Amounts({1'500'000, 0, 0});     // save 165: the lamp window's mark
+  world.plan.draw_window_last_year = Amounts({900'000, 0, 0});  // save 165: last year's window
   // The milk cart (save 66): a daily share, and the winter's milk that went
   // with no position — both away from their empty defaults.
   world.plan.milk_daily_share = 250'000;
@@ -1418,6 +1420,8 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   AppendAmounts(chunks, "plan.requested", world.plan.requested);                    // save 163
   AppendAmounts(chunks, "plan.draw_mark", world.plan.draw_mark);                    // save 164
   AppendAmounts(chunks, "plan.draw_last_month", world.plan.draw_last_month);        // save 164
+  AppendAmounts(chunks, "plan.draw_window_mark", world.plan.draw_window_mark);      // save 165
+  AppendAmounts(chunks, "plan.draw_window_last_year", world.plan.draw_window_last_year);  // 165
   // The milk cart's daily share and the deliveries outside any position (save 66).
   chunks.push_back(
       {"plan.milk_daily_share", U64(static_cast<std::uint64_t>(world.plan.milk_daily_share))});
@@ -1751,7 +1755,10 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // month's draw, two amounts vectors of the fixture's one resource each,
     // +26 apiece as the request's: 876 -> 928, predicted before the build;
     // the hash read off it.
-    {"world", 928, 0xabf2f43802bfdc85ULL},
+    // Save 165 (the lamp's (e1)): the window's mark and last year's window
+    // draw, two more amounts vectors of one resource each: 928 -> 980,
+    // predicted before the build; the hash read off it.
+    {"world", 980, 0x181deaed41a38450ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:

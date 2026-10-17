@@ -743,10 +743,22 @@ struct PlanState {
   /// lamp's forecast subtracts the eating to the turn (district_plan.h,
   /// StoresDrawToTheTurn): until save 164 it counted as
   /// shippable the potato the village ate before the turn (1935 y2 of host's
-  /// x3.57 arm: ~6.5 t eaten from day 91, the lamp dark, the position
-  /// seed-bound). The mark is reset with the book at the turn.
+  /// x3.57 arm: ~6.5 t gone from the stores from day 91 - to rot and feed,
+  /// not to the families, who eat from their pantries - the lamp dark, the
+  /// position seed-bound). The mark is reset with the book at the turn.
   ResourceAmounts draw_mark;
   ResourceAmounts draw_last_month;
+
+  /// THE LAMP WINDOW's DRAW, LAST YEAR (econ's (e1), the lamp thread [15];
+  /// save 165): the year's book's cumulative draw of each resource out of the
+  /// stores, rot included, as it stood on the evening before the window
+  /// (doy 38), and what the window - doy 39 to the turn - drew last year,
+  /// grams. The lamp's forecast takes last year's window over the days left;
+  /// empty until a first window has closed, and then the lamp reads
+  /// draw_mark / draw_last_month and the shelf-life model (econ's (e2′)) -
+  /// a village's first year. Kept over the turn.
+  ResourceAmounts draw_window_mark;
+  ResourceAmounts draw_window_last_year;
 
   /// THE MILK CART'S SHARE OF A DAY (district §9 «Молоко — в плане с
   /// первого года»; register 231; boss seq 98 and 113; save 66), grams: the

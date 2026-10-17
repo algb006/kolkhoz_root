@@ -15767,6 +15767,31 @@ int CheckThePlanShortCountsTheDrawToTheTurn() {
   const core::Grams rot = core::StoresDrawToTheTurn(config, world, core::ResourceId{0});
   failures += Expect(rot > 10'610 * kKg && rot < 10'630 * kKg,
                      "plan short, the draw: the stores' rot to the turn by their own shelf life");
+  // LAST YEAR's WINDOW (econ's (e1), the lamp thread [15]): marked on doy
+  // 38's evening, closed on the year's last - every channel, the rot in it -
+  // and read next year over the days left: 18 t over the nine-day window, on
+  // doy 43 five days 10 t.
+  world.ledger.current.issued = {10'000 * kKg};
+  world.ledger.current.spoiled = {2'000 * kKg};
+  world.calendar.day = core::kDaysPerYear - 1 - (2 * core::kDaysPerMonth) - 1;  // doy 38
+  core::MarkStoresDraw(world);
+  failures += Expect(
+      world.plan.draw_window_mark.size() == 1 && world.plan.draw_window_mark[0] == 12'000 * kKg,
+      "plan short, the window: marked the evening before it opens, rot included");
+  world.ledger.current.issued = {24'000 * kKg};
+  world.ledger.current.spoiled = {6'000 * kKg};
+  world.calendar.day = core::kDaysPerYear - 1;
+  core::MarkStoresDraw(world);
+  failures +=
+      Expect(world.plan.draw_window_last_year.size() == 1 &&
+                 world.plan.draw_window_last_year[0] == 18'000 * kKg &&
+                 world.plan.draw_window_mark.empty(),
+             "plan short, the window: closed on the year's last evening, kept for next year");
+  world.calendar.day =
+      core::kDaysPerYear + core::kDaysPerYear - 1 - core::kDaysPerMonth;  // y2 doy 43
+  failures += Expect(core::StoresDrawToTheTurn(config, world, core::ResourceId{0}) == 10'000 * kKg,
+                     "plan short, the window: next year the lamp reads last year's window over the "
+                     "days left, not the month or the shelf model");
   return failures;
 }
 

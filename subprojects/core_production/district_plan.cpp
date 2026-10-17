@@ -114,6 +114,15 @@ Grams StoresDrawn(const YearLedger& book, std::uint32_t index) {
 /// evenings (econ's (e2′)): the tenth month's third, doy 39's morning.
 constexpr Grams kMonthSoFarEvenings = 3;
 
+/// The lamp's latest window opens on this day's morning (plan_alarms.cpp,
+/// kPlanShortLatestFirstDay): the window's draw is marked the evening before.
+constexpr SimDay kLampWindowFirstDay = kDaysPerYear - 1U - (2U * kDaysPerMonth);
+
+/// Every channel out of the stores, the rot with them (econ's (e1)).
+Grams StoresDrawnAll(const YearLedger& book, std::uint32_t index) {
+  return StoresDrawn(book, index) + (index < book.spoiled.size() ? book.spoiled[index] : 0);
+}
+
 }  // namespace
 
 Grams StoresDrawToTheTurn(const ProductionConfig& config,
@@ -127,6 +136,17 @@ Grams StoresDrawToTheTurn(const ProductionConfig& config,
   // The days left to the turn, today's included: the lamp is read in the
   // morning, before today's issue and feed.
   const auto days_left = static_cast<Grams>(kDaysPerYear - day_of_year);
+  // LAST YEAR's WINDOW (econ's (e1), the lamp thread [15]): what the stores
+  // lost from doy 39 to the turn last year, every channel and the rot in it,
+  // over this year's days left. It reads the real October-December loss:
+  // (e2′) below read the rot off the stores alone, and on doy 39's morning
+  // the potato still lying in heaps was carted into them that evening - 1936
+  // y3 of host's x3.57 arm lit only on doy 40 (aae6fa84). Not before a first
+  // window has closed: a village's first year reads (e2′).
+  if (index < current.plan.draw_window_last_year.size()) {
+    const auto window_days = static_cast<Grams>(kDaysPerYear - kLampWindowFirstDay);
+    return current.plan.draw_window_last_year[index] * days_left / window_days;
+  }
   // THE EATING (econ's (e2′), the lamp thread [13]): the non-rot draw of the
   // month so far per settled evening once it has three, else the last closed
   // month's. Until then the rate took the rot in and the faster of the two:
@@ -176,10 +196,28 @@ Grams TurnWillShip(const ProductionConfig& config,
 
 void MarkStoresDraw(WorldState& current) {
   const SimDay day_of_year = current.calendar.day % kDaysPerYear;
+  const std::size_t size = current.plan.due.size();
+  // THE LAMP WINDOW (econ's (e1)): marked the evening before it opens,
+  // closed on the year's last evening, kept over the turn for next year.
+  if (day_of_year + 1U == kLampWindowFirstDay) {
+    current.plan.draw_window_mark.assign(size, 0);
+    for (std::uint32_t index = 0; index < size; ++index) {
+      current.plan.draw_window_mark[index] = StoresDrawnAll(current.ledger.current, index);
+    }
+  }
+  if (day_of_year == kDaysPerYear - 1U && current.plan.draw_window_mark.size() == size &&
+      size > 0) {
+    current.plan.draw_window_last_year.assign(size, 0);
+    for (std::uint32_t index = 0; index < size; ++index) {
+      const Grams drawn = StoresDrawnAll(current.ledger.current, index);
+      const Grams mark = current.plan.draw_window_mark[index];
+      current.plan.draw_window_last_year[index] = drawn > mark ? drawn - mark : 0;
+    }
+    current.plan.draw_window_mark.clear();
+  }
   if (day_of_year % kDaysPerMonth != kDaysPerMonth - 1U) {
     return;
   }
-  const std::size_t size = current.plan.due.size();
   current.plan.draw_mark.resize(size, 0);
   current.plan.draw_last_month.resize(size, 0);
   for (std::uint32_t index = 0; index < size; ++index) {
