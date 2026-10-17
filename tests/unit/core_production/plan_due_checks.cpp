@@ -15,7 +15,6 @@
 #include <cstdlib>
 #include <initializer_list>
 #include <iostream>
-#include <utility>
 
 #include "core_common/calendar.h"
 #include "core_common/event_state.h"
@@ -92,9 +91,17 @@ bool Near(core::Grams value, core::Grams expected) {
   return std::llabs(value - expected) <= 2 + (std::llabs(expected) / 1000000);
 }
 
+/// One position's due: a resource row and its grams. A named aggregate and
+/// not std::pair: `{0, grams}` into pair<uint16_t, Grams> converts the int
+/// inside <utility>, and MSVC's C4244 there is an error under /WX (host's
+/// MSVC Debug build of 0.37.279).
+struct ResourceDue {
+  std::uint16_t resource = 0;
+  core::Grams grams = 0;
+};
+
 /// Grams of grain the dues are worth, by the config's own weights.
-core::Grams GrainOf(const core::ProductionConfig& config,
-                    std::initializer_list<std::pair<std::uint16_t, core::Grams>> dues) {
+core::Grams GrainOf(const core::ProductionConfig& config, std::initializer_list<ResourceDue> dues) {
   double grain = 0.0;
   for (const auto& [resource, grams] : dues) {
     grain += static_cast<double>(grams) * core::GrainPerGram(config, core::ResourceId{resource});
