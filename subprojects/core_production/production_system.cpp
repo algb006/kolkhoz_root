@@ -48,6 +48,7 @@
 #include "district_carts.h"
 #include "district_limit.h"
 #include "district_plan.h"
+#include "district_reputation.h"
 #include "district_trip.h"
 #include "district_visit.h"
 #include "extraction_digging.h"
@@ -689,6 +690,9 @@ class ProductionSystem final : public IProductionSystem {
     const bool plan_fully_met = PlanFullyDelivered(config_, current);
     const float overfulfil_tonnes = PlanOverfulfilGrainTonnes(config_, current);
     JudgePlan(config_, current);
+    // The rating earned beyond the plan, its own year's (district_reputation.h;
+    // #1043): off until its cells are set.
+    StepReputationBeyondPlan(config_, current, overfulfil_tonnes);
     SummonIfTheYearFailed(config_, current);
     TurnLimitYear(config_, current, plan_fully_met, overfulfil_tonnes);
     // Scored, and gone with its year: what went with no position counts

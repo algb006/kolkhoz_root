@@ -11,6 +11,7 @@ kolkhoz_add_unit_test(core_production
     meadow_hay_checks.cpp
     perennial_cut_checks.cpp
     plan_due_checks.cpp
+    district_reputation_checks.cpp
     seed_lamp_checks.cpp
     site_supply_checks.cpp
     store_keeping_checks.cpp)

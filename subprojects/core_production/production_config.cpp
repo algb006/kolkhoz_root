@@ -1570,6 +1570,24 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
       error = "campaign: plan_failed_reputation: " + error;
       return false;
     }
+    // The rating earned beyond the plan (#1043): steps of the same scale.
+    const std::array<std::pair<const char*, float*>, 3> beyond = {{
+        {"plan_overfulfil_reputation_per_tier", &config.plan_overfulfil_reputation_per_tier},
+        {"plan_overfulfil_reputation_max", &config.plan_overfulfil_reputation_max},
+        {"district_visit_clean_reputation", &config.district_visit_clean_reputation},
+    }};
+    for (const auto& [key, value] : beyond) {
+      if (!CellOrDefault(*campaign,
+                         campaign->FindRowByKey(key),
+                         value_col,
+                         Range{.low = 0.0F, .high = kMetricMax},
+                         *value,
+                         *value,
+                         error)) {
+        error = std::string("campaign: ") + key + ": " + error;
+        return false;
+      }
+    }
     float percent = 0.0F;
     if (!CellOrDefault(*campaign,
                        campaign->FindRowByKey("plan_grain_share_percent"),

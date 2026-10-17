@@ -43,6 +43,7 @@ kolkhoz_add_module(core_production
     mts_column.cpp
     district_visit.cpp
     district_plan.cpp
+    district_reputation.cpp
     production_orders.cpp
     field_removal.cpp)
 

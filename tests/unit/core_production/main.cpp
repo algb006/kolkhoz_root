@@ -46,6 +46,7 @@
 #include "district_carts_checks.h"
 #include "district_limit.h"
 #include "district_plan.h"
+#include "district_reputation_checks.h"
 #include "district_trip.h"
 #include "district_visit.h"
 #include "extraction_digging.h"
@@ -16864,6 +16865,7 @@ int main() {
   failures += CheckTheSupplyCountsItsIdleDays();
   failures += CheckTheStoresKeepByTheirRoof();
   failures += CheckThePlanDue();
+  failures += CheckTheRatingBeyondThePlan();
   failures += CheckAStarvedKolkhozHerdDoesNotInterruptAgain();
   failures += CheckThePerennialsCut();
   failures += CheckTheGrassStandsAge();

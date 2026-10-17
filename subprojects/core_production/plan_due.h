@@ -47,7 +47,8 @@ class ITableSet;
 
 /// @brief The district rating's band factor on the grain total, by
 ///        world.chairman.raikom_reputation (bands 0-20, 21-40, 41-60, 61-80,
-///        81-100; ProductionConfig::plan_band_factor).
+///        81-100; ProductionConfig::plan_band_factor), times the plan's weight
+///        (ProductionConfig::plan_total_factor; #1043) - one product.
 float PlanBandFactor(const ProductionConfig& config, const WorldState& world);
 
 /// @brief THE HECTARES position `index` is priced on: `area_ha` x its share

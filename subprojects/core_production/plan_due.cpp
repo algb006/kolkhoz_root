@@ -40,7 +40,8 @@ float PlanBandFactor(const ProductionConfig& config, const WorldState& world) {
   while (band < kBandTops.size() && rating > kBandTops[band]) {
     ++band;
   }
-  return config.plan_band_factor[band];
+  // ONE PRODUCT with the plan's weight (#1043; boss, the #1043 thread [2]).
+  return config.plan_band_factor[band] * config.plan_total_factor;
 }
 
 float PlanPricedHectares(const ProductionConfig& config,
@@ -145,6 +146,17 @@ bool ParsePlanDue(const ITableSet& tables, ProductionConfig& config, std::string
       return false;
     }
     config.plan_band_factor[band] = factor;
+  }
+  // The plan's weight (#1043), on the same scale as a band's factor.
+  if (!CellOrDefault(*campaign,
+                     campaign->FindRowByKey("plan_total_factor"),
+                     value_col,
+                     Range{.low = 0.0F, .high = 5.0F},
+                     config.plan_total_factor,
+                     config.plan_total_factor,
+                     error)) {
+    error = "campaign: plan_total_factor: " + error;
+    return false;
   }
   return true;
 }

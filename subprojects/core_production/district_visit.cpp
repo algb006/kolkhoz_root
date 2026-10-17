@@ -13,6 +13,7 @@
 #include "core_common/ledger_state.h"
 #include "core_common/state_table_ops.h"
 #include "district_carts.h"
+#include "district_reputation.h"
 #include "district_trip.h"
 #include "stock_ops.h"
 
@@ -235,6 +236,10 @@ void ArriveDistrictVisits(const ProductionConfig& config, WorldState& current) {
     }
     if (outcome.found == DistrictVisitFinding::kDiscrepancy) {
       SummonChairman(config, current, SummonCause::kAuditDiscrepancy);
+    }
+    // A CLEAN VISIT EARNS (#1043; district_reputation.h): whatever called it.
+    if (outcome.found == DistrictVisitFinding::kNone) {
+      StepReputationForCleanVisit(config, current);
     }
     const bool extraordinary = visit.kind == DistrictVisitKind::kExtraordinary;
     SimEvent& event =

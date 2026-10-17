@@ -1355,6 +1355,25 @@ struct ProductionConfig {
 
   float plan_failed_reputation = -8.0F;
 
+  /// THE RATING EARNED BEYOND THE PLAN (#1043; district.md «Рейтинг райкома
+  /// упирается в потолок»): the step a year's own overfulfilment gives per
+  /// tier it REACHES (the limit's three tiers: any tonne over, past
+  /// overfulfil_tier1_t, past tier1 + tier2), capped by
+  /// `plan_overfulfil_reputation_max`; and the step a district visit that
+  /// finds nothing gives, whatever called it. campaign.csv
+  /// `plan_overfulfil_reputation_per_tier` (0), `plan_overfulfil_reputation_max`
+  /// (3), `district_visit_clean_reputation` (0): today's world until host's
+  /// pair (its arm: 1, 3, 1, with plan_met_reputation 1).
+  float plan_overfulfil_reputation_per_tier = 0.0F;
+  float plan_overfulfil_reputation_max = 3.0F;
+  float district_visit_clean_reputation = 0.0F;
+
+  /// THE PLAN'S WEIGHT (#1043): the factor on the grain total beside the
+  /// rating's band (plan_due.h, PlanBandFactor - one product). campaign.csv
+  /// `plan_total_factor`; 1.0 until host's pair (×1.6 / ×2.0), never tuned
+  /// after it.
+  float plan_total_factor = 1.0F;
+
   /// Timber design §8a: the stands and the felling numbers (2026-09-13).
   TimberCatalog timber;
 
