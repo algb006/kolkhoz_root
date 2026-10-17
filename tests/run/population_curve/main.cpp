@@ -182,9 +182,10 @@ struct Trajectory {
   /// Days walked in Epoch I: what the two above are counted against.
   std::uint32_t epoch_one_days = 0;
   /// THE DOOR HELD FOR NO NAMED REASON (#776's E3; boss, the E3 thread [2]):
-  /// Epoch I days on which «юниты на уровне» ALONE held the door
-  /// (SoleHoldout) and the upgrade policy found no reason for the unit below
-  /// the era's level that day (upgrade_policy.h, Held::unexplained). The one
+  /// Epoch I days, after the residents' condition was first met, on which
+  /// «юниты на уровне» stood unmet and the upgrade policy found no reason for
+  /// the unit below the era's level that day (upgrade_policy.h,
+  /// Held::unexplained). The one
   /// condition whose hold the runs attribute; the others are states (the
   /// residents, the winters, the board's wear, the social objects standing)
   /// and their gaps are printed, not gated.
@@ -651,9 +652,16 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
         if (sole >= 0) {
           ++out.sole_holdout_days[static_cast<std::size_t>(sole)];
         }
-        // THE UNITS ALONE HOLD THE DOOR, AND FOR NO NAMED REASON (E3, #776).
-        constexpr int kUnitsCondition = 6;
-        if (sole == kUnitsCondition && builder.upgrades.held().unexplained > unexplained_before) {
+        // THE UNITS HOLD THE DOOR, AND FOR NO NAMED REASON (E3, #776): a day in
+        // the window E3 always read - the residents' condition met, the units
+        // below the era's level - on which the upgrade policy named no reason.
+        // NOT «the units ALONE» (SoleHoldout): in sixteen villages the units
+        // were the sole holdout on 0 days (the residents or the board always
+        // beside them), and that gate stayed green under its own fault with
+        // 800-1 000 unexplained days a village - a gate that could not fire.
+        constexpr std::size_t kUnitsCondition = 6;
+        if (out.condition_first_met_day[kResidentsConditionIndex] >= 0 && !met[kUnitsCondition] &&
+            builder.upgrades.held().unexplained > unexplained_before) {
           ++out.unexplained_sole_hold_days;
         }
         if (out.condition_first_met_day[kResidentsConditionIndex] >= 0) {
@@ -1393,7 +1401,7 @@ int main(int argc, char** argv) {
   // red by a later door (1932, 1934 on В6 part 3) and by EARLIER residents
   // (1938; 1941 on 0.37.278). Every red's hold had a named cause, UNEXPLAINED
   // 0. Now the gate is the defect a slow but honest world cannot produce: the
-  // days «юниты на уровне» alone held the door with no reason the upgrade
+  // days, after the residents, «юниты на уровне» held the door with no reason the upgrade
   // policy could name. The gap is printed LOUD, every village over a year on
   // its own line with its last blocker - a balance question for econ, kept
   // visible, not gated.
@@ -1412,15 +1420,15 @@ int main(int argc, char** argv) {
           " seed " + std::to_string(kSeeds[walk_index]) + ": " + std::to_string(days) + " days;";
     }
   }
-  std::uint32_t units_sole_days = 0;
+  std::uint32_t units_unmet_days = 0;
   for (const Trajectory& walk : walks) {
-    units_sole_days += walk.sole_holdout_days[6];
+    units_unmet_days += walk.unmet_after_residents_days[6];
   }
   const std::string late_claim =
-      "E3: the door is never held, after every other condition is met, by a unit below the era's "
-      "level for no named reason — now " +
-      std::to_string(unexplained_holds) + " days (of " + std::to_string(units_sole_days) +
-      " days the units alone held it)" +
+      "E3: after the residents' condition is met, the door is never held by a unit below the "
+      "era's level for no named reason — now " +
+      std::to_string(unexplained_holds) + " days (of " + std::to_string(units_unmet_days) +
+      " days the units stood unmet after the residents)" +
       (unexplained_where.empty() ? "" : " (" + unexplained_where + ")");
   failures += run::Expect(unexplained_holds == 0, late_claim.c_str());
   failures += run::Expect(median_year14 <= 800, "and not exploding by year 14");
