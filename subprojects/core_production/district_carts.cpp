@@ -43,6 +43,14 @@ bool DistrictCollectsToday(const WorldState& world) {
   return world.calendar.day == DistrictCollectionDay(world.calendar.day) && !world.weather.mud;
 }
 
+void LowerPlanRequest(WorldState& current, ResourceId resource, Grams delivered) {
+  if (delivered <= 0 || resource.value >= current.plan.requested.size()) {
+    return;
+  }
+  Grams& asked = current.plan.requested[resource.value];
+  asked -= std::min(asked, delivered);
+}
+
 void SettleDistrictCollection(const ProductionConfig& config, WorldState& current) {
   if (!DistrictCollectsToday(current) || current.plan.requested.empty()) {
     return;

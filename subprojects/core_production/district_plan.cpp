@@ -19,6 +19,7 @@
 #include "core_common/quantities.h"
 #include "core_common/spoilage.h"
 #include "core_common/state_table_ops.h"
+#include "district_carts.h"
 #include "district_visit.h"
 #include "herd_system.h"
 #include "milk_cart.h"
@@ -167,6 +168,7 @@ void TakePlanDebtFromFields(const ProductionConfig& config,
     }
     current.plan.delivered[index] += taken;
     AddLedgerAmount(current.ledger.current.delivered, resource, taken);
+    LowerPlanRequest(current, resource, taken);
     SimEvent& event =
         EmitEvent(current, EventKind::kDistrictTookFromField, EventSeverity::kNotable);
     event.resource = resource;

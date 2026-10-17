@@ -119,6 +119,34 @@ int CheckTheDistrictsRequest() {
   return failures;
 }
 
+/// The pair of 17 October 2026: the collection took the request whole while
+/// the milk cart had delivered against the same position - +36 % milk.
+int CheckAnotherDoorLowersTheRequest() {
+  int failures = 0;
+  core::ProductionConfig config;
+  core::WorldState world;
+  SetUpVillage(config, world);
+  world.calendar.day = 1;
+  core::RequestPlanDelivery(config, world, Rye(), 0, false);  // 6 t asked
+  // Another door delivers 4 t of rye against the position before the cart.
+  world.plan.delivered[0] += 4 * kTonne;
+  core::LowerPlanRequest(world, Rye(), 4 * kTonne);
+  failures += Expect(world.plan.requested[0] == 2 * kTonne,
+                     "district request: grams delivered by another door leave the request");
+  core::LowerPlanRequest(world, Rye(), 9 * kTonne);
+  failures += Expect(world.plan.requested[0] == 0,
+                     "district request: lowered past nought, it stops at nought");
+  core::LowerPlanRequest(world, core::ResourceId{40}, kTonne);
+  failures += Expect(world.plan.requested.size() == 3,
+                     "district request: a position never requested is not grown");
+  world.calendar.day = core::kDaysPerMonth - 1;
+  core::SettleDistrictCollection(config, world);
+  failures +=
+      Expect(world.plan.delivered[0] == 8 * kTonne && world.units.rows[0].stock[0] == 5 * kTonne,
+             "district collection: nothing left asked, nothing leaves the barn");
+  return failures;
+}
+
 int CheckTheOwnDelivery() {
   int failures = 0;
   core::ProductionConfig config;
@@ -200,6 +228,7 @@ int CheckWhoseTransportToTheDistrict() {
   int failures = 0;
   failures += CheckTheCalendar();
   failures += CheckTheDistrictsRequest();
+  failures += CheckAnotherDoorLowersTheRequest();
   failures += CheckTheOwnDelivery();
   failures += CheckOwnCartsTakeOverTheRequest();
   failures += CheckTheBonus();

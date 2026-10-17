@@ -119,6 +119,15 @@ SimDay DistrictCollectionDay(SimDay day);
 ///        slips the collection to the next month's.
 bool DistrictCollectsToday(const WorldState& world);
 
+/// @brief Grams of `resource` that reached the plan by another door (the milk
+///        cart's share, the auditor's debt, the heaps on the snow's day)
+///        leave the standing request: the same goods are asked of one
+///        transport, not of two. Until 0.37.269's pair the collection took
+///        the request whole beside the milk cart, and arm C shipped 1031 t of
+///        milk against 757 t due in nine villages' years 1-4 - out of the
+///        families' milk. No-op on a position never requested.
+void LowerPlanRequest(WorldState& current, ResourceId resource, Grams delivered);
+
 /// @brief The collection: everything the standing request names that lies
 ///        in the stores this morning leaves for the district, counted to the
 ///        plan (PlanState::delivered, YearLedger::delivered). Called once a

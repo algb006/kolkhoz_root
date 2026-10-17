@@ -133,6 +133,10 @@ class LimitPolicy {
     DeliveryPolicy::Declare(run);
   }
 
+  /// @brief Whose transport carries the plan from now on (DeliveryPolicy::SetMode;
+  ///        host's novice: the district always).
+  void SetDeliveryMode(std::string_view run, RunDeliveryMode mode) { delivery_.SetMode(run, mode); }
+
   /// @brief Counts the step the chairman's yard waits to take (rise_watch.h).
   void SetRiseWatch(RiseWatch watch) { rise_watch_ = std::move(watch); }
 

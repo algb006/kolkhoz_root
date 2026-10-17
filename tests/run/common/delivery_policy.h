@@ -10,7 +10,10 @@
 /// reaped on a field. Until 0.37.269 the canon ordered every position from the
 /// year's first day, and the district's January collection took last year's
 /// bread above seed: the winter's food. A position no crop yields (milk) is
-/// ordered any day. "Still to be reaped this year" is a standing crop of the
+/// NOT ordered: the district's milk cart carries it daily (milk_cart.cpp), and
+/// the pair of 17 October 2026 read +36 % milk over the due when the run also
+/// requested it (0.37.269's first tree; the core's half of that hole is
+/// LowerPlanRequest). "Still to be reaped this year" is a standing crop of the
 /// resource, except a winter crop sown this calendar year (next year's).
 ///
 /// WHOSE TRANSPORT (kCanon, econ's rule (c′)): OWN CARTS only on a day with no
@@ -99,11 +102,11 @@ class DeliveryPolicy {
     if (world.plan.announced == 0) {
       return;
     }
-    const bool own = kRunDeliveryMode == RunDeliveryMode::kOwnOnly ||
-                     (kRunDeliveryMode == RunDeliveryMode::kCanon && !FieldsNeedHorses(world));
+    const bool own = mode_ == RunDeliveryMode::kOwnOnly ||
+                     (mode_ == RunDeliveryMode::kCanon && !FieldsNeedHorses(world));
     std::vector<core::OrderRow> orders;
     for (std::size_t index = 0; index < world.plan.due.size(); ++index) {
-      if (!Unasked(world, index)) {
+      if (!YieldedByACrop(index) || !Unasked(world, index)) {
         continue;
       }
       if (!HarvestIn(world, index)) {
@@ -124,20 +127,23 @@ class DeliveryPolicy {
     (own ? own_orders_ : district_orders_) += static_cast<std::uint32_t>(orders.size());
   }
 
+  /// @brief Whose transport from now on, for a run whose bot is not the canon's
+  ///        (host's novice rides the district always: boss-core-v5-gate [4]).
+  ///        Says so in the run's stream, beside the Declare it overrides.
+  void SetMode(std::string_view run, RunDeliveryMode mode) {
+    mode_ = mode;
+    std::cout << run << ": THE DELIVERY MODE IS SET AT RUN TIME - the plan goes " << ModeWords(mode)
+              << '\n';
+  }
+
   /// @brief The fixture difference, in words, before anything is measured.
   static void Declare(std::string_view run) {
     std::cout << run
               << ": FIXTURE DIFFERS FROM 0.37.257 - the run's chairman ORDERS THE PLAN'S "
-                 "DELIVERY of each position owed beyond what is asked once that crop's harvest "
-                 "of the year is in (stage В5; econ's 1.1), "
-              << (kRunDeliveryMode == RunDeliveryMode::kDistrictOnly
-                      ? "always by the district's monthly cart (arm D)"
-                  : kRunDeliveryMode == RunDeliveryMode::kOwnOnly
-                      ? "always by own carts (arm O)"
-                      : "by own carts on a day with no field in its sowing or harvest window, "
-                        "no ploughing open and no grain reaped on a field, by the district's "
-                        "monthly cart otherwise (econ's rule (c′))")
-              << '\n';
+                 "DELIVERY of each position some crop yields, owed beyond what is asked, once "
+                 "that crop's harvest of the year is in (stage В5; econ's 1.1; milk keeps its "
+                 "own cart), "
+              << ModeWords(kRunDeliveryMode) << '\n';
   }
 
   /// @brief How many orders went by each transport, and how many position-days
@@ -150,6 +156,15 @@ class DeliveryPolicy {
   }
 
  private:
+  static const char* ModeWords(RunDeliveryMode mode) {
+    return mode == RunDeliveryMode::kDistrictOnly ? "always by the district's monthly cart (arm D)"
+           : mode == RunDeliveryMode::kOwnOnly
+               ? "always by own carts (arm O)"
+               : "by own carts on a day with no field in its sowing or harvest window, no "
+                 "ploughing open and no grain reaped on a field, by the district's monthly cart "
+                 "otherwise (econ's rule (c′))";
+  }
+
   struct CropRule {
     std::uint32_t resource = core::kNoTableRow;
     bool winter = false;
@@ -184,15 +199,18 @@ class DeliveryPolicy {
     return crop.value < crops_.size() ? &crops_[crop.value] : nullptr;
   }
 
+  /// A position some crop yields (rye, oat, potato); milk is not one.
+  bool YieldedByACrop(std::size_t index) const {
+    for (const CropRule& rule : crops_) {
+      if (rule.resource == index) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /// econ's 1.1: this year's harvest of the resource is in the stores.
   bool HarvestIn(const core::WorldState& world, std::size_t index) const {
-    bool yielded_by_a_crop = false;
-    for (const CropRule& rule : crops_) {
-      yielded_by_a_crop = yielded_by_a_crop || rule.resource == index;
-    }
-    if (!yielded_by_a_crop) {
-      return true;  // milk and the like: no harvest to wait for
-    }
     if (index >= world.ledger.current.harvest.size() || world.ledger.current.harvest[index] <= 0) {
       return false;  // nothing of it harvested yet this year
     }
@@ -256,6 +274,7 @@ class DeliveryPolicy {
   }
 
   std::vector<CropRule> crops_;
+  RunDeliveryMode mode_ = kRunDeliveryMode;
   std::uint32_t own_orders_ = 0;
   std::uint32_t district_orders_ = 0;
   std::uint32_t held_days_ = 0;

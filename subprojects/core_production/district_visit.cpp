@@ -12,6 +12,7 @@
 #include "core_common/ids.h"
 #include "core_common/ledger_state.h"
 #include "core_common/state_table_ops.h"
+#include "district_carts.h"
 #include "district_trip.h"
 #include "stock_ops.h"
 
@@ -171,6 +172,7 @@ Grams SeizeAboveLimit(const ProductionConfig& config, WorldState& current) {
       const Grams paid = TakeFromStorage(current, config, resource, to_debt);
       current.plan.delivered[index] += paid;
       AddLedgerAmount(current.ledger.current.delivered, resource, paid);
+      LowerPlanRequest(current, resource, paid);
     }
     const Grams rest = surplus - to_debt;
     if (rest <= 0) {

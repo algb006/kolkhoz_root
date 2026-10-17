@@ -6,6 +6,7 @@
 #include "core_common/ids.h"
 #include "core_common/ledger_state.h"
 #include "core_common/quantities.h"
+#include "district_carts.h"
 #include "stock_ops.h"
 
 namespace core {
@@ -24,6 +25,9 @@ void BookDelivered(const ProductionConfig& config,
              config.milk_resource,
              grams);
   AddLedgerAmount(current.ledger.current.delivered, config.milk_resource, grams);
+  if (against_position) {
+    LowerPlanRequest(current, config.milk_resource, grams);
+  }
 }
 
 }  // namespace
