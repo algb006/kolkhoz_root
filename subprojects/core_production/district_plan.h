@@ -183,6 +183,12 @@ bool PlanWasMet(const ProductionConfig& config, const WorldState& current);
 /// nothing (ProductionConfig::first_plan_start_stock_share).
 void AnnouncePlan(const ProductionConfig& config, WorldState& current);
 
+/// @brief A gram of `resource` in grams of grain, as the overfulfilment weighs
+///        it (PlanOverfulfilGrainTonnes) and the winter crop's move to the
+///        spring positions does: 0 when the tables carry no weight for it.
+///        ONE HOME with the split's total (plan_due.h; 0.37.278).
+double GrainPerGram(const ProductionConfig& config, ResourceId resource);
+
 /// @brief One position's spring figure off `worked_ha`: a normal yield on its
 /// share of the area, times the plan's share — AnnouncePlan's rule, in one
 /// home for the announcement, the hold of what

@@ -506,8 +506,8 @@ void AnnounceMilkPosition(const ProductionConfig& config, WorldState& current) {
   AddToStock(current.plan.due, config.milk_resource, share * days_to_turn);
 }
 
-/// A gram of `resource` in grams of grain, as the overfulfilment weighs it
-/// (PlanOverfulfilGrainTonnes): 0 when the tables carry no weight for it.
+}  // namespace
+
 double GrainPerGram(const ProductionConfig& config, ResourceId resource) {
   if (!(config.limit.overfulfil_grain_kcal_per_gram > 0.0F) ||
       resource.value >= config.food_kcal_per_gram.size()) {
@@ -516,6 +516,8 @@ double GrainPerGram(const ProductionConfig& config, ResourceId resource) {
   return static_cast<double>(config.food_kcal_per_gram[resource.value]) /
          static_cast<double>(config.limit.overfulfil_grain_kcal_per_gram);
 }
+
+namespace {
 
 /// What the winter crop standing in the ground on the letter's day gives at
 /// its yield: every field of `crop` in kGrowing, its area × the crop's full
@@ -717,6 +719,32 @@ void AnnouncePlan(const ProductionConfig& config, WorldState& current) {
     // The first year asks by the start stock and has no winter crop to ask:
     // «winter rye cannot stand in the first spring» (above).
     MoveWinterShortfall(config, current);
+  }
+  // AND THE PLAYER IS STILL TOLD (0.37.278; boss on host's finding, the #1036
+  // thread [9]): under the split a winter crop priced below its fixed share
+  // went to the crops that stand - the same move by another arithmetic - and
+  // the January letter says it, kPlanWinterMoved, as MoveWinterShortfall did.
+  // Until 0.37.278 the split moved it in silence and the event never fired.
+  if (!first_year && config.plan_split_by_sown_mix) {
+    const float band = PlanBandFactor(config, current);
+    for (std::size_t index = 0; index < config.plan_positions.size(); ++index) {
+      const ProductionConfig::PlanPosition& position = config.plan_positions[index];
+      if (position.crop.value >= config.crops.size() ||
+          !config.crops[position.crop.value].is_winter) {
+        continue;
+      }
+      const auto fixed =
+          static_cast<Grams>(std::llround(static_cast<double>(PlanPositionGrams(
+                                              config, position, current.plan.worked_ha_last_year)) *
+                                          static_cast<double>(band)));
+      const Grams split = PlanDueGrams(
+          config, current, index, current.plan.worked_ha_last_year, 0, current.calendar.day);
+      if (fixed > split) {
+        SimEvent& event = EmitEvent(current, EventKind::kPlanWinterMoved, EventSeverity::kNotable);
+        event.resource = config.crops[position.crop.value].resource;
+        event.amount = fixed - split;
+      }
+    }
   }
   AnnounceMilkPosition(config, current);
   // THE HIGHEST POSITION EVER NAMED, by resource (PlanState::highest_due;

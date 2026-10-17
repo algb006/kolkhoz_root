@@ -9,6 +9,7 @@
 
 #include "core_catalog/table_value.h"
 #include "core_tables/tables.h"
+#include "district_plan.h"
 #include "plan_alarms.h"
 
 namespace core {
@@ -55,11 +56,17 @@ float PlanPricedHectares(const ProductionConfig& config,
     return 0.0F;
   }
   float hectares = area_ha * config.plan_positions[index].area_share;
-  if (config.plan_split_by_sown_mix) {
-    // The total in today's terms and the planned mix in the same crop-units
-    // (econ §2a): each crop priced by its own yield, so the potato's 9 t/ha
-    // does not swamp the grains. Two positions of one produce would each
-    // read that produce's whole planned ha - the tables have none (named).
+  const CropDef& own = config.crops[config.plan_positions[index].crop.value];
+  // A crop the tables weigh nothing in grain keeps its fixed share: the split
+  // keeps the total in grain and cannot weigh it.
+  if (config.plan_split_by_sown_mix && GrainPerGram(config, own.resource) > 0.0) {
+    // THE TOTAL IN GRAIN EQUIVALENT, each crop by its own yield (0.37.278;
+    // boss on host's finding, the #1036 thread [9]; district.md §9, «Обязательство
+    // не меняется: зерна должен столько же»): the split moves the positions,
+    // never the grain owed. Weighed in crop kilograms (0.37.275) a year whose
+    // rye did not stand owed 7.1 % less grain (1933 y4) - the potato's
+    // kilograms are not the rye's grain. Two positions of one produce would
+    // each read that produce's whole planned ha - the tables have none (named).
     double total_today = 0.0;
     double total_planned = 0.0;
     float planned_here = 0.0F;
@@ -69,10 +76,14 @@ float PlanPricedHectares(const ProductionConfig& config,
         continue;
       }
       const CropDef& crop = config.crops[position.crop.value];
-      const auto yield = static_cast<double>(crop.yield_kg_per_ha);
+      const double grain = GrainPerGram(config, crop.resource);
+      if (!(grain > 0.0)) {
+        continue;
+      }
+      const double weight = static_cast<double>(crop.yield_kg_per_ha) * grain;
       const float planned = PlannedChainHectares(config, world, crop.resource, year, as_of);
-      total_today += yield * static_cast<double>(area_ha * position.area_share);
-      total_planned += yield * static_cast<double>(planned);
+      total_today += weight * static_cast<double>(area_ha * position.area_share);
+      total_planned += weight * static_cast<double>(planned);
       if (other == index) {
         planned_here = planned;
       }

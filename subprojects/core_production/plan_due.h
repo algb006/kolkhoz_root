@@ -15,10 +15,14 @@
 /// THE RULE (district.md «Раскладка по культурам — по плану сева этого
 /// года»; econ's plan-by-sown-mix §2):
 /// - (a) the grain TOTAL stays on the worked ha, as before, and is split by
-///   the year's planned sowing: k = sum of y_c x area x share_c over sum of
-///   y_c x planned_c, and position c is priced on k x planned_c hectares.
-///   A crop the plan does not sow owes nothing that year. With nothing
-///   planned at all the split falls back to the fixed shares.
+///   the year's planned sowing IN GRAIN EQUIVALENT (district_plan.h,
+///   GrainPerGram; since 0.37.278): k = sum of y_c x g_c x area x share_c over
+///   sum of y_c x g_c x planned_c, and position c is priced on k x planned_c
+///   hectares - so the grain owed is the fixed shares' grain in every year,
+///   whatever the mix. A crop the plan does not sow owes nothing that year
+///   (and a winter crop priced below its fixed share says so, kPlanWinterMoved,
+///   AnnouncePlan). With nothing planned at all the split falls back to the
+///   fixed shares; a crop with no grain weight keeps its fixed share.
 /// - (b) the total is multiplied by the band factor of the district rating
 ///   (chairman.raikom_reputation). Not milk (its own position), not the first
 ///   year (the start stock's rule, AnnouncePlan). A forecast reads TODAY's
