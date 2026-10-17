@@ -1,8 +1,8 @@
 /// @file delivery_policy.h
 /// @brief The run chairman's plan deliveries and whose transport carries them
 /// (routing stage В5; district §4 «Логистика с районом»; econ's rules 1.1 and
-/// (c′), econ/manual/audit/stage-v5-acceptance-gate-2026-10-17.md, taken by
-/// boss in boss-core-v5-gate-2026-10-17 [1]).
+/// (c″), econ/manual/audit/stage-v5-acceptance-gate-2026-10-17.md, taken by
+/// boss in boss-core-v5-gate-2026-10-17 [1] and [7]).
 ///
 /// WHEN (econ's 1.1, every mode): a position is ordered only once that crop's
 /// harvest of the year is in the stores - something of it was harvested this
@@ -16,16 +16,16 @@
 /// LowerPlanRequest). "Still to be reaped this year" is a standing crop of the
 /// resource, except a winter crop sown this calendar year (next year's).
 ///
-/// WHOSE TRANSPORT (kCanon, econ's rule (c′)): OWN CARTS only on a day with no
-/// arable field in its sowing or harvest window and no ploughing open, and no
-/// heap lying reaped on a field of a tonne or more (kHeapHoldsHorsesGrams) or
-/// of a crop still in its harvest months; the DISTRICT's cart otherwise. Named
-/// readings: a field is in its SOWING window when this year's slot
-/// (rotation_year0) is a crop whose sow months hold today and the field is not
-/// yet sown this year; in its HARVEST window when it stands (growing) in a crop
-/// whose harvest months hold today; ploughing open is a field in kPlowing,
-/// kHarrowing or kSowing. The straw lying at a field is not counted as a heap
-/// (the straw is feed, carted after the grain).
+/// WHOSE TRANSPORT (kCanon, econ's rule (c″), boss-core-v5-gate [7]): OWN
+/// CARTS only on a day with no plough, harrow or sowing crew and no harvest
+/// crew assigned that day or the previous working day, and no heap of a tonne
+/// or more (kHeapHoldsHorsesGrams) lying reaped on a field; the DISTRICT's
+/// cart otherwise. A standing district request is taken over by own carts on
+/// a free day. Rule (c′) before it read the fields' phases and windows: a
+/// part-turned autumn furrow sits in kPlowing to the year's turn, and no day
+/// after a harvest was ever free (C == D in 36 of 36 village-years). The
+/// straw lying at a field is not counted as a heap (the straw is feed,
+/// carted after the grain).
 ///
 /// THE PAIR's ARMS (a run patch flips kRunDeliveryMode; never two worlds in one
 /// tree): kDistrictOnly - every request to the district's calendar (arm D);
@@ -75,8 +75,7 @@ inline constexpr RunDeliveryMode kRunDeliveryMode = RunDeliveryMode::kCanon;
 
 class DeliveryPolicy {
  public:
-  /// @brief Reads each crop's resource, winter flag and its sowing and
-  ///        harvest months off crops.csv (human months 1..12, kept 0-based).
+  /// @brief Reads each crop's resource and winter flag off crops.csv.
   explicit DeliveryPolicy(const core::ITableSet& tables) {
     const core::ITable* const crops = tables.FindTable("crops");
     const core::ITable* const resources = tables.FindTable("resources");
@@ -85,18 +84,11 @@ class DeliveryPolicy {
     }
     const std::uint32_t resource_column = crops->FindColumn("resource");
     const std::uint32_t winter_column = crops->FindColumn("is_winter");
-    const std::uint32_t sow_from = crops->FindColumn("sow_from_month");
-    const std::uint32_t sow_to = crops->FindColumn("sow_to_month");
-    const std::uint32_t harvest_from = crops->FindColumn("harvest_from_month");
-    const std::uint32_t harvest_to = crops->FindColumn("harvest_to_month");
     for (std::uint32_t row = 0; row < crops->RowCount(); ++row) {
       CropRule rule;
       rule.resource = resources->FindRowByKey(crops->CellText(row, resource_column));
-      rule.winter = MonthOf(crops, row, winter_column) != 0;
-      rule.sow_from = MonthOf(crops, row, sow_from) - 1;
-      rule.sow_to = MonthOf(crops, row, sow_to) - 1;
-      rule.harvest_from = MonthOf(crops, row, harvest_from) - 1;
-      rule.harvest_to = MonthOf(crops, row, harvest_to) - 1;
+      const std::optional<float> winter = crops->CellReal(row, winter_column);
+      rule.winter = winter && *winter != 0.0F;
       crops_.push_back(rule);
     }
   }
@@ -106,10 +98,10 @@ class DeliveryPolicy {
   ///        Call once a day.
   void RunDay(core::ISimulation& simulation) {
     const core::WorldState& world = simulation.CompletedState();
+    const HorseHold hold = FieldsNeedHorses(world);
     if (world.plan.announced == 0) {
       return;
     }
-    const HorseHold hold = FieldsNeedHorses(world);
     ++hold_days_[static_cast<std::size_t>(hold)];
     ++hold_by_month_[(world.calendar.day % core::kDaysPerYear) / core::kDaysPerMonth]
                     [static_cast<std::size_t>(hold)];
@@ -171,11 +163,12 @@ class DeliveryPolicy {
               << " plan deliveries by own carts and " << district_orders_
               << " by the district's cart; " << held_days_
               << " position-days owed waited for their harvest to be in\n"
-              << run << ": the plan's days by what held own carts home (rule (c′)): free "
-              << hold_days_[0] << ", a heap " << hold_days_[1] << ", ploughing " << hold_days_[2]
-              << ", a field in harvest " << hold_days_[3] << ", a crop in its harvest months "
-              << hold_days_[4] << ", a slot in its sow months " << hold_days_[5] << '\n'
-              << run << ": by month, free/heap/plough/harvest/harvest-months/sow-months:";
+              << run << ": the days by what held own carts home (rule (c″)): free " << hold_days_[0]
+              << ", a heap of a tonne " << hold_days_[1] << ", a plough/harrow/sowing crew today "
+              << hold_days_[2] << " or the previous working day " << hold_days_[3]
+              << ", a harvest crew today " << hold_days_[4] << " or the previous working day "
+              << hold_days_[5] << '\n'
+              << run << ": by month, free/heap/plough/plough-before/harvest/harvest-before:";
     for (std::size_t month = 0; month < hold_by_month_.size(); ++month) {
       std::cout << ' ' << month + 1 << '=';
       for (std::size_t hold = 0; hold < hold_by_month_[month].size(); ++hold) {
@@ -186,14 +179,14 @@ class DeliveryPolicy {
   }
 
  private:
-  /// What held the own carts home on a day, by (c′)'s clauses.
+  /// What held the own carts home on a day, by (c″)'s clauses.
   enum class HorseHold : std::uint8_t {
     kFree,
     kHeap,
-    kPloughing,
-    kHarvest,
-    kHarvestWindow,
-    kSowWindow,
+    kPloughCrew,
+    kPloughCrewBefore,
+    kHarvestCrew,
+    kHarvestCrewBefore,
     kCount,
   };
 
@@ -201,28 +194,15 @@ class DeliveryPolicy {
     return mode == RunDeliveryMode::kDistrictOnly ? "always by the district's monthly cart (arm D)"
            : mode == RunDeliveryMode::kOwnOnly
                ? "always by own carts (arm O)"
-               : "by own carts on a day with no field in its sowing or harvest window, no "
-                 "ploughing open and no heap on a field of a tonne or of a crop in its harvest "
-                 "months, by the district's monthly cart otherwise (econ's rule (c′), narrowed)";
+               : "by own carts on a day with no plough, harrow, sowing or harvest crew "
+                 "assigned that day or the previous working day and no heap of a tonne on a "
+                 "field, by the district's monthly cart otherwise (econ's rule (c″))";
   }
 
   struct CropRule {
     std::uint32_t resource = core::kNoTableRow;
     bool winter = false;
-    std::int32_t sow_from = -1;
-    std::int32_t sow_to = -1;
-    std::int32_t harvest_from = -1;
-    std::int32_t harvest_to = -1;
   };
-
-  static std::int32_t MonthOf(const core::ITable* table, std::uint32_t row, std::uint32_t column) {
-    const std::optional<float> value = table->CellReal(row, column);
-    return value ? static_cast<std::int32_t>(*value) : 0;
-  }
-
-  static bool InMonths(std::int32_t month, std::int32_t from, std::int32_t to) {
-    return from >= 0 && month >= from && month <= to;
-  }
 
   /// The position is owed beyond what the district is asked for and what an
   /// own delivery carries.
@@ -275,71 +255,54 @@ class DeliveryPolicy {
     return true;
   }
 
-  /// A heap that holds the horses home: one of a cart's size, or of a crop
-  /// still inside its harvest months (econ's narrowing of (c′),
-  /// econ-boss-v5-acceptance-gate [3]). Until then any reaped gram did, and
-  /// the crumbs lying all winter kept arm C's own carts home in every one of
-  /// 36 village-years (C == D to the digit).
-  bool HeapHoldsHorses(const core::FieldRow& field, std::int32_t month) const {
-    if (field.reaped_grams >= kHeapHoldsHorsesGrams) {
-      return true;
+  /// econ's (c″) (econ-boss-v5-acceptance-gate [4], boss's ruling [7]): the
+  /// first clause that holds the horses today, or kFree - a reaped heap of a
+  /// tonne or more on a field; a plough, harrow or sowing crew assigned
+  /// today, or on the previous working day; a harvest crew the same. Until
+  /// (c″) the clauses read the fields' PHASES and windows, and a part-turned
+  /// autumn furrow sits in kPlowing to the year's turn: no free day came
+  /// after any harvest, and arm C == arm D. A working day is one with anyone
+  /// assigned; a day off keeps the previous working day's crews.
+  HorseHold FieldsNeedHorses(const core::WorldState& world) {
+    bool plough_crew = false;
+    bool harvest_crew = false;
+    bool anyone = false;
+    for (const core::ResidentRow& person : world.residents.rows) {
+      const core::WorkKind kind = person.work.kind;
+      anyone = anyone || kind != core::WorkKind::kNone;
+      plough_crew = plough_crew || kind == core::WorkKind::kPlowing ||
+                    kind == core::WorkKind::kHarrowing || kind == core::WorkKind::kSowing;
+      harvest_crew = harvest_crew || kind == core::WorkKind::kHarvest;
     }
-    if (field.reaped_grams <= 0) {
-      return false;
+    const bool plough_held = plough_crew || plough_crew_before_;
+    const bool harvest_held = harvest_crew || harvest_crew_before_;
+    if (anyone) {
+      plough_crew_before_ = plough_crew;
+      harvest_crew_before_ = harvest_crew;
     }
-    for (const CropRule& rule : crops_) {
-      if (rule.resource == field.reaped_resource.value &&
-          InMonths(month, rule.harvest_from, rule.harvest_to)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  /// econ's (c′), narrowed: the first clause that holds the horses today, or
-  /// kFree - a heap that holds them (HeapHoldsHorses), ploughing open, a field
-  /// in kHarvest, a growing field inside its harvest months, an idle field
-  /// inside its slot's sow months.
-  HorseHold FieldsNeedHorses(const core::WorldState& world) const {
-    const auto month =
-        static_cast<std::int32_t>((world.calendar.day % core::kDaysPerYear) / core::kDaysPerMonth);
+    // A HEAP IS A CROP's (a named reading of econ's «heap»): grain or potato
+    // reaped on arable. The hay mown on a meadow and the straw are not - the
+    // smoke of 17 October 2026 found hay heaps of 15-50 t on meadows from June
+    // to December holding the horses every one of those days.
     for (const core::FieldRow& field : world.fields.rows) {
-      if (HeapHoldsHorses(field, month)) {
+      if (field.kind == core::LandKind::kArable && field.reaped_grams >= kHeapHoldsHorsesGrams &&
+          YieldedByACrop(field.reaped_resource.value)) {
         return HorseHold::kHeap;
       }
-      if (field.kind != core::LandKind::kArable) {
-        continue;
-      }
-      switch (field.phase) {
-        case core::FieldPhase::kPlowing:
-        case core::FieldPhase::kHarrowing:
-        case core::FieldPhase::kSowing:
-          return HorseHold::kPloughing;
-        case core::FieldPhase::kHarvest:
-          return HorseHold::kHarvest;
-        case core::FieldPhase::kGrowing: {
-          const CropRule* const rule = RuleOf(field.crop);
-          if (rule != nullptr && InMonths(month, rule->harvest_from, rule->harvest_to)) {
-            return HorseHold::kHarvestWindow;
-          }
-          break;
-        }
-        case core::FieldPhase::kIdle: {
-          const CropRule* const rule = RuleOf(field.rotation_year0);
-          if (rule != nullptr && InMonths(month, rule->sow_from, rule->sow_to)) {
-            return HorseHold::kSowWindow;
-          }
-          break;
-        }
-        default:
-          break;
-      }
+    }
+    if (plough_held) {
+      return plough_crew ? HorseHold::kPloughCrew : HorseHold::kPloughCrewBefore;
+    }
+    if (harvest_held) {
+      return harvest_crew ? HorseHold::kHarvestCrew : HorseHold::kHarvestCrewBefore;
     }
     return HorseHold::kFree;
   }
 
   std::vector<CropRule> crops_;
   RunDeliveryMode mode_ = kRunDeliveryMode;
+  bool plough_crew_before_ = false;
+  bool harvest_crew_before_ = false;
   std::array<std::uint32_t, static_cast<std::size_t>(HorseHold::kCount)> hold_days_{};
   std::array<std::array<std::uint32_t, static_cast<std::size_t>(HorseHold::kCount)>,
              core::kMonthsPerYear>
