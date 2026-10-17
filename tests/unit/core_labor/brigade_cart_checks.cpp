@@ -219,6 +219,57 @@ int TestTheDiagnosisKeepsTheQueuesRoad() {
   return failures;
 }
 
+/// A RIDE'S WORK LEFT FOR WANT OF A HORSE IS kNoHorse (#1034): a felling
+/// three kilometres out (7.2 h on foot, past the limit; 3 h on the cart) with
+/// a free hand, nobody placed and no horse left files kNoHorse, its idle hand
+/// with it. The pair: a horse left over keeps kRoad, and so does a stand no
+/// ride reaches (seven kilometres, 7 h on the cart).
+int TestARideLeftForWantOfAHorse() {
+  int failures = 0;
+  core::AssignmentJob felling;
+  felling.kind = core::WorkKind::kFelling;
+  felling.stand = core::TimberStandId{1};
+  felling.position = core::Vec2{3000.0F, 0.0F};
+  felling.work_days_remaining = 5.0F;
+  const core::AssignmentParams params = OctoberDay(1);
+  const std::vector<core::AssignmentCandidate> hands = Hands(1);
+  const std::vector<std::uint32_t> result = {core::kNoJobAssigned};
+  const std::vector<std::optional<core::JobShortfall>> shortfall = {core::JobShortfall::kRoad};
+  const std::vector<std::uint8_t> cart_today = {0U};
+  const std::vector<std::uint8_t> mowers_walk = {0U};
+  const std::vector<std::uint8_t> released = {0U};
+  const auto diagnose = [&](const core::AssignmentJob& job, std::uint32_t horses_left) {
+    const std::vector<core::AssignmentJob> jobs = {job};
+    core::PlacementDiagnosis diagnosis;
+    core::DiagnosePlacement(core::PlacedPlan{.jobs = &jobs,
+                                             .candidates = &hands,
+                                             .params = &params,
+                                             .result = &result,
+                                             .shortfall = &shortfall,
+                                             .cart_today = &cart_today,
+                                             .mowers_walk = &mowers_walk,
+                                             .released = &released,
+                                             .horses_left = horses_left},
+                            diagnosis);
+    return diagnosis;
+  };
+  const core::PlacementDiagnosis dry = diagnose(felling, 0);
+  failures += Expect(
+      dry.shortfall[0] == core::JobShortfall::kNoHorse && dry.idle[0] == core::IdleReason::kNoHorse,
+      "diagnosis: a felling a ride reaches, left with no horse to ride, is short "
+      "of a horse and its free hand idles for one - not by the road");
+  const core::PlacementDiagnosis spare = diagnose(felling, 1);
+  failures += Expect(
+      spare.shortfall[0] == core::JobShortfall::kRoad && spare.idle[0] == core::IdleReason::kRoad,
+      "diagnosis: with a horse left over the felling stays the road's");
+  core::AssignmentJob far = felling;
+  far.position = core::Vec2{7000.0F, 0.0F};
+  const core::PlacementDiagnosis beyond = diagnose(far, 0);
+  failures += Expect(beyond.shortfall[0] == core::JobShortfall::kRoad,
+                     "diagnosis: a stand no ride reaches stays the road's with no horse left");
+  return failures;
+}
+
 }  // namespace
 
 int CheckBrigadeCart() {
@@ -228,5 +279,6 @@ int CheckBrigadeCart() {
   failures += TestTheCartReachesWhereTheWalkDoesNot();
   failures += TestTheHourAndTheHarness();
   failures += TestTheDiagnosisKeepsTheQueuesRoad();
+  failures += TestARideLeftForWantOfAHorse();
   return failures;
 }

@@ -977,7 +977,8 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
                                  .shortfall = &shortfall,
                                  .cart_today = &cart_today,
                                  .mowers_walk = &mowers_walk,
-                                 .released = &released},
+                                 .released = &released,
+                                 .horses_left = horses_left},
                       *diagnosis);
   }
   return result;
