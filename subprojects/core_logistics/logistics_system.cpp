@@ -282,7 +282,12 @@ class LogisticsSystem final : public ILogisticsSystem {
     const AlarmAdvice advice =
         TodayMayBeDeclaredWorking(state) ? AlarmAdvice::kDeclareDayWorking : AlarmAdvice::kNone;
     // AND WHERE THE HORSES ARE (stage В6; registry №310): one breakdown an
-    // hour, the same for every late load of it (work_seam.h, HorsesByUse).
+    // hour, the same for every late load of it (work_seam.h, HorsesByUse) -
+    // ON A WORKING DAY ONLY. On a day off nobody is placed and every horse
+    // reads free: the cause is the day off, and its line is the day off and
+    // the advice (boss, the В6 thread; transport §12 «Выходной»). Measured
+    // before: 125 of 137 sampled late lamps fell on the calendar's Sunday.
+    const bool day_off = IsDayOffIn(state, state.calendar.day);
     std::optional<std::array<std::uint16_t, kCartUseCount>> horses;
     for (std::uint32_t row = 0; row < state.logistics_tasks.rows.size(); ++row) {
       const LogisticsTaskRow& task = state.logistics_tasks.rows[row];
@@ -290,7 +295,8 @@ class LogisticsSystem final : public ILogisticsSystem {
         continue;
       }
       if (!horses) {
-        horses = HorsesByUse(state, DraughtHorsesOf(state, config_.horse_kind));
+        horses = day_off ? std::array<std::uint16_t, kCartUseCount>{}
+                         : HorsesByUse(state, DraughtHorsesOf(state, config_.horse_kind));
       }
       Alarm alarm;
       alarm.kind = AlarmKind::kLogisticsLate;

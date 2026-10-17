@@ -1222,7 +1222,9 @@ struct Alarm {
   /// WHAT HOLDS THEM at the hour the lamp is collected, by CartUse - the
   /// lamp's line «подвод сегодня 3 из 5 — две на сене». The sum is the
   /// adult kolkhoz horses (work_seam.h, HorsesByUse); kFree is what no
-  /// placement holds. Zeros for every other kind.
+  /// placement holds. ZEROS ON A DAY OFF: nobody is placed, the cause is the
+  /// day off - the line reads «выходной: подводы стоят» with `advice`
+  /// kDeclareDayWorking (boss, the В6 thread). Zeros for every other kind.
   /// @note Not in the save, as `lamp`.
   std::array<std::uint16_t, kCartUseCount> carts_by_use{};
 };
