@@ -582,6 +582,14 @@ struct ChairmanState {
   /// 2026): named every day of the first summer's cut, it took 6-8 points of
   /// rest from the villages that followed it.
   std::uint16_t hay_cut_avral_days = 0;
+
+  /// THE RATING'S RECOVERY OWED (save 166; #1043; boss on econ's estimate,
+  /// the #1043 pair thread [7]): 1 - a plan year failed or a visit found a
+  /// discrepancy, and the next clean visit gives its recovery step
+  /// (district_reputation.h, StepReputationForCleanVisit), then clears it.
+  /// A clean visit with nothing owed gives nothing: two regular visits a
+  /// year at +1 carried a plan-only village to 82-88 by year 12.
+  std::uint8_t reputation_recovery_owed = 0;
 };
 
 /// @brief Why the district calls the chairman «на ковёр» (district-trip.md

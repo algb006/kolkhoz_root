@@ -154,10 +154,13 @@ constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
 // kStand, the eight arrays by source one entry each (six floats, two Grams) -
 // predicted 1064 -> 1104 before the build, 123 fields unchanged; on the wire
 // +40 a book. Save 163 (stage В5): delivered_own, a 42nd amounts vector after
-// `delivered` - predicted 1104 + 42 A and 124 fields before the build.
-static_assert(sizeof(YearLedger) == 1104 + (42 * kAmountsSize) + kBuiltInRowsSize,
+// `delivered` - predicted 1104 + 42 A and 124 fields before the build. Save
+// 166 (#1043): the rating's year by its writers - four floats, two u16, a
+// float at the tail; predicted 1104 -> 1128 and 131 fields before the build;
+// on the wire +24 a book.
+static_assert(sizeof(YearLedger) == 1128 + (42 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 124,
+static_assert(AggregateArity<YearLedger>() == 131,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(BuiltInRow) == 16 && AggregateArity<BuiltInRow>() == 3,
               "BuiltInRow changed — update its codec and VERSION_SAVE");
@@ -360,6 +363,14 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   // The zyab on 1 December (save 114).
   out.WriteFloat(book.zyab_ha_dec1);
   out.WriteU16(book.zyab_fields_dec1);
+  // The rating's year by its writers (save 166; #1043).
+  out.WriteFloat(book.reputation_plan_step);
+  out.WriteFloat(book.reputation_tier_step);
+  out.WriteFloat(book.reputation_visit_step);
+  out.WriteFloat(book.reputation_losses);
+  out.WriteU16(book.reputation_clean_visits);
+  out.WriteU16(book.reputation_tiers_reached);
+  out.WriteFloat(book.reputation_own_overfulfil_t);
 }
 
 YearLedger ReadYearLedger(LoadSource& source) {
@@ -587,6 +598,27 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.zyab_fields_dec1 = in.ReadU16();  // save 114
   if (!(book.zyab_ha_dec1 >= 0.0F) || !std::isfinite(book.zyab_ha_dec1)) {
     source.Fail("the book's zyab on 1 December is negative or not a number");
+  }
+  // The rating's year by its writers (save 166; #1043).
+  book.reputation_plan_step = in.ReadFloat();
+  book.reputation_tier_step = in.ReadFloat();
+  book.reputation_visit_step = in.ReadFloat();
+  book.reputation_losses = in.ReadFloat();
+  book.reputation_clean_visits = in.ReadU16();
+  book.reputation_tiers_reached = in.ReadU16();
+  book.reputation_own_overfulfil_t = in.ReadFloat();
+  for (const float value : {book.reputation_plan_step,
+                            book.reputation_tier_step,
+                            book.reputation_visit_step,
+                            book.reputation_losses,
+                            book.reputation_own_overfulfil_t}) {
+    if (!std::isfinite(value)) {
+      source.Fail("the book's rating steps are not numbers");
+    }
+  }
+  if (book.reputation_tiers_reached > 3 || !(book.reputation_losses >= 0.0F) ||
+      !(book.reputation_own_overfulfil_t >= 0.0F)) {
+    source.Fail("the book's rating tiers or losses are out of range");
   }
   return book;
 }

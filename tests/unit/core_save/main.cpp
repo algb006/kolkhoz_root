@@ -1397,6 +1397,9 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"chairman.hay_cut_dry_work_days", U16(world.chairman.hay_cut_dry_work_days)});
   chunks.push_back({"chairman.hay_day_worked_month", U16(world.chairman.hay_day_worked_month)});
   chunks.push_back({"chairman.hay_cut_avral_days", U16(world.chairman.hay_cut_avral_days)});
+  // The rating's recovery owed (save 166, #1043).
+  chunks.push_back(
+      {"chairman.reputation_recovery_owed", U8(world.chairman.reputation_recovery_owed)});
 
   chunks.push_back({"traction_ration", F32(world.traction_ration)});
   // The team's two alarms' memory (save 109).
@@ -1751,7 +1754,9 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // month's draw, two amounts vectors of the fixture's one resource each,
     // +26 apiece as the request's: 876 -> 928, predicted before the build;
     // the hash read off it.
-    {"world", 928, 0xabf2f43802bfdc85ULL},
+    // Save 166 (#1043): the rating's recovery owed, a byte: 928 -> 929,
+    // predicted before the build and held; the hash read off it.
+    {"world", 929, 0x1d52a15cee9e6097ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2133,7 +2138,10 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // predicted and held; the hash read off the build.
     // Save 163 (stage В5): delivered_own, an empty amounts vector in each of
     // the two books: 2992 -> 2996; the hash read off the build.
-    {"ledger", 2996, 0x10bda6017126fe00ULL},
+    // Save 166 (#1043): the rating's year by its writers, 24 bytes a book (four
+    // floats, two u16, a float): 2996 -> 3044, predicted before the build and
+    // held; the hash read off it.
+    {"ledger", 3044, 0x6f67fecb94180ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 

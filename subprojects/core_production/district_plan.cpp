@@ -20,6 +20,7 @@
 #include "core_common/spoilage.h"
 #include "core_common/state_table_ops.h"
 #include "district_carts.h"
+#include "district_reputation.h"
 #include "district_visit.h"
 #include "herd_system.h"
 #include "milk_cart.h"
@@ -929,9 +930,17 @@ void JudgePlan(const ProductionConfig& config, WorldState& current) {
     // through the bands take years of nothing happening — the band table
     // of district design §5 is read off this number, so the number has
     // to mean what the table says it means.
-    const float moved = current.chairman.raikom_reputation + step;
+    const float reputation_before = current.chairman.raikom_reputation;
+    const float moved = reputation_before + step;
     current.chairman.raikom_reputation =
         moved < kMetricMin ? kMetricMin : (moved > kMetricMax ? kMetricMax : moved);
+    // The rating's year by its writers (save 166; #1043): the verdict's share;
+    // a failed year owes the next clean visit's recovery.
+    current.ledger.current.reputation_plan_step +=
+        current.chairman.raikom_reputation - reputation_before;
+    if (!met) {
+      OweReputationRecovery(current);
+    }
     SimEvent& judged = EmitEvent(
         current, met ? EventKind::kPlanMet : EventKind::kPlanFailed, EventSeverity::kNotable);
     judged.amount = met ? current.plan.met_years_in_a_row : current.plan.failed_years_in_a_row;
