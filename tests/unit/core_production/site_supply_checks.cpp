@@ -251,6 +251,40 @@ int CheckTheSupplyCountsItsIdleDays() {
                      "idle days: the evening of a day something landed starts from nought");
   core::SettleSiteSupply(config, world, true);
   failures += Expect(works.supply_idle_days == 1, "idle days: and the next idle evening is one");
+  // A DAY THE MOWING TOOK THE CARTERS (stage В6 part 3): a meadow in its cut,
+  // the cut not done, in the cut's months, holds the count; the cut done, the
+  // evening counts again. And its pair: past the cut's months it counts.
+  core::FieldRow meadow;
+  meadow.kind = core::LandKind::kMeadow;
+  meadow.phase = core::FieldPhase::kHarvest;
+  meadow.work_days_remaining = 3.0F;
+  core::AppendRow(world.fields, meadow);
+  core::FieldRow& cut = world.fields.rows.back();
+  // A working day of the cut's first month (June: days 20-23).
+  std::uint32_t june = 20;
+  for (std::uint32_t day = 20; day < 24; ++day) {
+    if (!core::IsDayOffIn(world, day)) {
+      june = day;
+    }
+  }
+  set_day(june);
+  const auto month = static_cast<std::uint8_t>(world.calendar.date.month);
+  failures += Expect(month <= config.farming.meadow_cut_month_end && month > 0,
+                     "idle days: the week stands in the cut's months");
+  core::SettleSiteSupply(config, world, true);
+  failures += Expect(works.supply_idle_days == 1,
+                     "idle days: an evening the meadow's open cut held the carters neither "
+                     "counts nor resets");
+  const std::uint8_t cut_end = config.farming.meadow_cut_month_end;
+  config.farming.meadow_cut_month_end = static_cast<std::uint8_t>(month - 1U);
+  core::SettleSiteSupply(config, world, true);
+  failures +=
+      Expect(works.supply_idle_days == 2,
+             "idle days: past the cut's months the same meadow holds nobody, and it counts");
+  config.farming.meadow_cut_month_end = cut_end;
+  works.supply_idle_days = 1;
+  cut.work_days_remaining = 0.0F;  // the cut done: the meadow holds nobody
+  set_day(working);
   // ON THE FLOOR TILL THE RECIPE IS IN: at the floor's four days a delivery no
   // longer starts the count again - the floor's own cart must not take the
   // works off the floor it stands on.
