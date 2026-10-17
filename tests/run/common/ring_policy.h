@@ -43,6 +43,7 @@
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
 #include "core_common/land_state.h"
+#include "core_common/logistics_state.h"
 #include "core_common/order_state.h"
 #include "core_common/world_state.h"
 #include "core_sim/step.h"
@@ -64,6 +65,9 @@ class RingPolicy {
       const std::uint32_t row = crops->FindRowByKey(key);
       return row == core::kNoTableRow ? core::CropId{} : core::DefIdFromIndex<core::CropIdTag>(row);
     };
+    for (std::uint32_t row = 0; row < crops->RowCount(); ++row) {
+      crop_keys_.emplace_back(crops->CellText(row, crops->FindColumn("key")));
+    }
     ring_ = {crop("oat"),
              crop("clover"),
              crop("clover"),
@@ -113,6 +117,13 @@ class RingPolicy {
         continue;
       }
       const core::FieldRow& state = world.fields.rows[row];
+      // THE RING'S CROP OF THE YEAR GROWN: the slot's crop stood growing or
+      // under the harvest on some day of this year.
+      if (field.entered && (state.phase == core::FieldPhase::kGrowing ||
+                            state.phase == core::FieldPhase::kHarvest)) {
+        field.grown_year =
+            state.crop.value == ring_[SlotIn(field, year)].value ? year : field.grown_year;
+      }
       if (field.given_year == year) {
         continue;  // one window a field a year
       }
@@ -128,18 +139,21 @@ class RingPolicy {
         if (year != when_year || doy != when_doy) {
           continue;
         }
-        if (rye_entry) {
-          window = {core::CropId{}, ring_[kRyeSlot], ring_[(kRyeSlot + 1) % kSlots]};
-        } else {
-          window = {ring_[field.entry.slot],
-                    ring_[(field.entry.slot + 1) % kSlots],
-                    ring_[(field.entry.slot + 2) % kSlots]};
-        }
+        // Every entry is a fresh chain from its own slot. The rye's entry is
+        // [rye_winter, oat, barley] with the winter crop at slot 0 (boss, the
+        // ring thread [8] (i)): [fallow, rye_winter, oat] never opened the rye
+        // on a derelict field (the smoke of 99c538c7).
+        window = WindowFrom(field.entry.slot);
         what = "entry";
         field.entered = true;
       } else {
         // AFTER AN ANNUAL IS REAPED (C2): this year's crop off the field, the
-        // field idle; the window of the slot it enters next year.
+        // field idle; when the crop the chain brings next year is not the
+        // ring's next slot, the window from that slot is given. That is W1
+        // ([clover, clover, rye_winter]) after S1's oat, W2 ([oat, barley,
+        // oat]) after S4's rye, and [oat, clover, clover] after the rye
+        // entry's barley; the clover's own S3 cut needs none (the chain
+        // brings the rye).
         const bool reaped_this_year =
             state.reaped_day != core::kNeverReapedDay &&
             state.reaped_day / core::kDaysPerYear == day / core::kDaysPerYear;
@@ -147,15 +161,20 @@ class RingPolicy {
           continue;
         }
         const std::uint32_t next = (SlotIn(field, year) + 1U) % kSlots;
-        if (next == kCloverFirstSlot) {
-          window = {ring_[1], ring_[2], ring_[3]};
-          what = "W1";
-        } else if (next == kOatAfterRyeSlot) {
-          window = {ring_[4], ring_[5], ring_[0]};
-          what = "W2";
-        } else {
+        // The crop next year: slot 0 of a fresh chain, else the chain's next.
+        const core::CropId coming =
+            state.rotation_skips_turn != 0 ? state.rotation_year0 : state.rotation_year1;
+        // W1 and W2 are ALWAYS given at their points, whatever the chain
+        // brings: a chain run on past them carries a winter crop into the
+        // slot after barley, and the rye's autumn opens on the reaping's own
+        // day, before the bot can look (the _5 smoke, 0.37.271 tree: y7
+        // sown to rye where S1 is oat).
+        const bool canonical = next == kCloverFirstSlot || next == kOatAfterRyeSlot;
+        if (!canonical && coming.value == ring_[next].value) {
           continue;
         }
+        window = WindowFrom(next);
+        what = next == kCloverFirstSlot ? "W1" : next == kOatAfterRyeSlot ? "W2" : "W0";
       }
       core::OrderRow order;
       order.kind = core::OrderKind::kSetRotation;
@@ -168,6 +187,7 @@ class RingPolicy {
       field.given_what = what;
       field.given_day = day;
     }
+    RankTheSodFurrow(world, year, orders);
     if (!orders.empty()) {
       simulation.StageOrders(std::span<const core::OrderRow>(orders), {});
     }
@@ -180,7 +200,11 @@ class RingPolicy {
           continue;
         }
         const core::FieldRow& state = world.fields.rows[row];
-        if (state.crop.value != ring_[kRyeSlot].value) {
+        // SOWN, not named: the crop is written on the row at the plough's
+        // start (the 0.37.271 smoke: _1's rye «stood» on 1 November in
+        // kHarrowing and was sown the next August).
+        if (state.crop.value != ring_[kRyeSlot].value ||
+            state.phase != core::FieldPhase::kGrowing) {
           ++c1_failures_;
           std::cout << "RING C1 FAIL, year " << year << ": " << field.entry.key
                     << " in S3 holds no rye when the rye's window has closed (crop "
@@ -194,10 +218,18 @@ class RingPolicy {
     }
     if (doy == core::kDaysPerYear - 1U) {
       for (Field& field : fields_) {
+        const std::uint32_t row = core::FindRow(world.fields, field.id);
         std::cout << "RING,year=" << year << ",field=" << field.entry.key
                   << ",slot=" << (field.entered ? std::to_string(SlotIn(field, year) + 1U) : "-")
                   << ",given=" << (field.given_year == year ? field.given_what : "none")
                   << ",day=" << (field.given_year == year ? std::to_string(field.given_day) : "-")
+                  << ",grown="
+                  << (!field.entered             ? "-"
+                      : field.grown_year == year ? "1"
+                                                 : "0")
+                  << ",last_crop="
+                  << (row == core::kNoRow ? "-" : CropName(world.fields.rows[row].last_crop))
+                  << ",chain=" << (row == core::kNoRow ? "-" : ChainOf(world.fields.rows[row]))
                   << '\n';
       }
     }
@@ -210,7 +242,9 @@ class RingPolicy {
       bound += field.id.value != core::kInvalidEntityIdValue ? 1U : 0U;
     }
     std::cout << run << ": the reference ring - " << bound << " of " << fields_.size()
-              << " derelict fields bound, C1 failed " << c1_failures_ << " time(s)\n";
+              << " derelict fields bound, C1 failed " << c1_failures_
+              << " time(s); the sod furrow stood open " << furrow_days_
+              << " day(s), background tasks paused for it " << pauses_ << " time(s)\n";
   }
 
  private:
@@ -230,6 +264,7 @@ class RingPolicy {
     std::int32_t given_year = 0;
     const char* given_what = "none";
     core::SimDay given_day = 0;
+    std::int32_t grown_year = 0;  ///< the last year the slot's crop stood growing
   };
 
   static constexpr std::uint32_t kSlots = 6;
@@ -255,6 +290,81 @@ class RingPolicy {
   static float Cell(const core::ITable& table, std::uint32_t row, const char* column) {
     const std::string text(table.CellText(row, table.FindColumn(column)));
     return text.empty() ? 0.0F : std::strtof(text.c_str(), nullptr);
+  }
+
+  /// THE SOD FURROW'S RANK (econ, the ring thread [9] (1); boss: the bot's
+  /// orders through the player's doors, not a world rule): while a ring
+  /// field in S3 is under the plough for its rye, the bot PAUSES every
+  /// background logistics task (level below kTerm: logs off a stand, a dig, a
+  /// works' supply, a store emptied) that is not the player's and not over
+  /// the fields (kPauseLogisticsTask), and goes on with them once no such
+  /// furrow is open. The harvest's heaps and the district's lot (kUrgent,
+  /// kTerm) are not touched, and neither is the cycle's own rye: its furrow
+  /// is the same work and ranks with this one, never below it. NOT DONE:
+  /// felling (no door pauses a felling; its rides take the same horses) and
+  /// a works' supply up to its floor (#734's floor is the placement's, a
+  /// paused task drops below it too) - named, read by the pair.
+  void RankTheSodFurrow(const core::WorldState& world,
+                        std::int32_t year,
+                        std::vector<core::OrderRow>& orders) {
+    bool furrow_open = false;
+    for (const Field& field : fields_) {
+      const std::uint32_t row = core::FindRow(world.fields, field.id);
+      if (field.entered && row != core::kNoRow && SlotIn(field, year) == kCloverLastSlot &&
+          world.fields.rows[row].phase == core::FieldPhase::kPlowing) {
+        furrow_open = true;
+      }
+    }
+    furrow_days_ += furrow_open ? 1U : 0U;
+    const core::LogisticsTaskTable& tasks = world.logistics_tasks;
+    if (furrow_open) {
+      for (std::uint32_t row = 0; row < tasks.rows.size(); ++row) {
+        const core::LogisticsTaskRow& task = tasks.rows[row];
+        const bool background = static_cast<std::uint8_t>(task.level) >
+                                static_cast<std::uint8_t>(core::LogisticsLevel::kTerm);
+        if (!background || task.paused || task.over_fields ||
+            task.origin != core::LogisticsOrigin::kAuto) {
+          continue;
+        }
+        core::OrderRow order;
+        order.kind = core::OrderKind::kPauseLogisticsTask;
+        order.logistics_task = tasks.row_ids[row];
+        order.enable = 1;
+        orders.push_back(order);
+        paused_.push_back(tasks.row_ids[row]);
+        ++pauses_;
+      }
+      return;
+    }
+    for (const core::LogisticsTaskId id : paused_) {
+      const std::uint32_t row = core::FindRow(tasks, id);
+      if (row == core::kNoRow || !tasks.rows[row].paused) {
+        continue;  // carted and gone, or going on already
+      }
+      core::OrderRow order;
+      order.kind = core::OrderKind::kPauseLogisticsTask;
+      order.logistics_task = id;
+      order.enable = 0;
+      orders.push_back(order);
+    }
+    paused_.clear();
+  }
+
+  /// A crop's key off crops.csv, «-» for none.
+  [[nodiscard]] std::string CropName(core::CropId crop) const {
+    return crop.value < crop_keys_.size() ? crop_keys_[crop.value] : std::string("-");
+  }
+
+  /// The field's chain, slot 0/1/2, and «+skip» while it has not used its
+  /// first season.
+  [[nodiscard]] std::string ChainOf(const core::FieldRow& state) const {
+    return CropName(state.rotation_year0) + '/' + CropName(state.rotation_year1) + '/' +
+           CropName(state.rotation_year2) + (state.rotation_skips_turn != 0 ? "+skip" : "");
+  }
+
+  /// The three-year window that starts at ring slot `slot`.
+  [[nodiscard]] std::array<core::CropId, 3> WindowFrom(std::uint32_t slot) const {
+    return {ring_[slot % kSlots], ring_[(slot + 1U) % kSlots], ring_[(slot + 2U) % kSlots]};
   }
 
   /// The field's ring slot in `year` (0-based), from its entry.
@@ -291,6 +401,10 @@ class RingPolicy {
   bool ready_ = false;
   bool bound_ = false;
   std::uint32_t c1_failures_ = 0;
+  std::vector<std::string> crop_keys_;
+  std::vector<core::LogisticsTaskId> paused_;
+  std::uint32_t furrow_days_ = 0;
+  std::uint32_t pauses_ = 0;
 };
 
 }  // namespace run
