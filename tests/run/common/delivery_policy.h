@@ -63,6 +63,7 @@ enum class RunDeliveryMode : std::uint8_t {
   kCanon,         ///< own carts outside sowing, harvest, ploughing and heaps, else the district
   kDistrictOnly,  ///< always the district's calendar (arm D)
   kOwnOnly,       ///< always own carts (arm O)
+  kNone,          ///< no plan delivery ordered: the deadline carries it (host's novice)
 };
 
 /// A reaped heap of at least this many grams holds the own carts home, in any
@@ -99,7 +100,7 @@ class DeliveryPolicy {
   void RunDay(core::ISimulation& simulation) {
     const core::WorldState& world = simulation.CompletedState();
     const HorseHold hold = FieldsNeedHorses(world);
-    if (world.plan.announced == 0) {
+    if (world.plan.announced == 0 || mode_ == RunDeliveryMode::kNone) {
       return;
     }
     ++hold_days_[static_cast<std::size_t>(hold)];
@@ -191,6 +192,9 @@ class DeliveryPolicy {
   };
 
   static const char* ModeWords(RunDeliveryMode mode) {
+    if (mode == RunDeliveryMode::kNone) {
+      return "by no order of the run's chairman: the deadline carries what is owed";
+    }
     return mode == RunDeliveryMode::kDistrictOnly ? "always by the district's monthly cart (arm D)"
            : mode == RunDeliveryMode::kOwnOnly
                ? "always by own carts (arm O)"
