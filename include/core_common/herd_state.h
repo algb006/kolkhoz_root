@@ -283,6 +283,42 @@ struct TractionWatch {
   /// Of them, the horse-backed ones (its numerator).
   std::array<float, kHarnessWeekDays> week_horse_backed = {};
 
+  // «ОВСА ПОСЕЯНО МАЛО» — THE THIN YEAR BY THE FIELD PLAN (#1040; econ's
+  // contract oat-lamp-thin-year-contract-2026-10-17.md, e4b0188 / c31d460;
+  // boss, the #1040 thread [2], [4]). Read once on 1 January by the
+  // production year start (team_oat_plan.h, ReadTheTeamsOatPlan), after the
+  // chain has moved: this year's oat slot, priced at the crop's yield, plus
+  // the oat the herds may take, against the closed year's team request.
+  // ONE DEVIATION FROM THE CONTRACT, named: the need is the herd day's own
+  // work-ration REQUEST (YearLedger::team_work_oat_requested), not
+  // YearLedger::feed's oat and barley - pigs eat both (feed_links.csv), so
+  // `feed` would count their keep as the team's.
+
+  /// 1 when this year's oat by the field plan falls short of the team's need
+  /// by more than the margin (oat_short_plan_margin): the oat lamp then
+  /// lights on short field-work days only, one stop a year.
+  std::uint8_t oat_short_by_plan = 0;
+
+  /// 1 once this year's one stop has been given (reset on 1 January).
+  std::uint8_t by_plan_stop_given = 0;
+
+  /// TODAY'S VERDICT of the by-plan lamp, written by the herd day every day
+  /// (herd_system.cpp, WatchTheTeam) and read by the alarms: 1 on a
+  /// field-work day the team's work ration was short (with the streak at
+  /// kTeamOnHayDays), 0 on every other day.
+  std::uint8_t by_plan_lit_today = 0;
+
+  /// 1 on the one day of the year the by-plan lamp is a stop (its first lit
+  /// day), 0 on every other.
+  std::uint8_t by_plan_stop_today = 0;
+
+  /// The line's three numbers, as of 1 January (team_on_hay.by_plan.text's
+  /// {oat_ha}, {expected_t}, {need_t}): this year's oat slot in hectares, its
+  /// expected grams at the crop's yield, and the team's need in grams of oat.
+  float plan_oat_ha = 0.0F;
+  Grams plan_oat_expected = 0;
+  Grams plan_team_need = 0;
+
   // NO HARNESS PEAK HERE (0.37.141). 0.37.140's contract carried one — the
   // most horses a day held under work that cannot wait, this year's and the
   // year gone's — for the hay lamp's first floor, and it was withdrawn before

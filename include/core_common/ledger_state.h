@@ -888,6 +888,14 @@ struct YearLedger {
   std::uint16_t reputation_tiers_reached = 0;
 
   float reputation_own_overfulfil_t = 0.0F;
+
+  /// THE TEAM'S WORK-OAT REQUEST OF THE YEAR, grams of oat (save 167; #1040;
+  /// econ's oat-lamp contract §1): every working day's work-ration room of
+  /// the kolkhoz team (herd_system.cpp, WatchTheTeam) — fed and short in one
+  /// — converted from FEED UNITS by the oat's feed value. The closed book's
+  /// figure is next year's team need (team_oat_plan.h). Not `feed`'s oat and
+  /// barley: pigs eat both (feed_links.csv), so `feed` counts their keep.
+  Grams team_work_oat_requested = 0;
 };
 
 /// @brief The two books of the world: the year being written and the last

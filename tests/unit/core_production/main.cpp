@@ -83,6 +83,7 @@
 #include "stock_lights.h"
 #include "stock_ops.h"
 #include "store_keeping_checks.h"
+#include "team_oat_plan_checks.h"
 #include "timber_felling.h"
 #include "timber_planting.h"
 #include "unit_production.h"
@@ -16873,6 +16874,7 @@ int main() {
   failures += CheckTheSupplyCountsItsIdleDays();
   failures += CheckTheStoresKeepByTheirRoof();
   failures += CheckThePlanDue();
+  failures += CheckTheTeamsOatPlan();
   failures += CheckTheRatingBeyondThePlan();
   failures += CheckAStarvedKolkhozHerdDoesNotInterruptAgain();
   failures += CheckThePerennialsCut();

@@ -157,10 +157,12 @@ constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
 // `delivered` - predicted 1104 + 42 A and 124 fields before the build. Save
 // 166 (#1043): the rating's year by its writers - four floats, two u16, a
 // float at the tail; predicted 1104 -> 1128 and 131 fields before the build;
-// on the wire +24 a book.
-static_assert(sizeof(YearLedger) == 1128 + (42 * kAmountsSize) + kBuiltInRowsSize,
+// on the wire +24 a book. Save 167 (#1040): the team's work-oat request, a
+// Grams at the tail - predicted 1128 -> 1136 and 132 fields before the build;
+// on the wire +8 a book.
+static_assert(sizeof(YearLedger) == 1136 + (42 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 131,
+static_assert(AggregateArity<YearLedger>() == 132,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(BuiltInRow) == 16 && AggregateArity<BuiltInRow>() == 3,
               "BuiltInRow changed — update its codec and VERSION_SAVE");
@@ -371,6 +373,8 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteU16(book.reputation_clean_visits);
   out.WriteU16(book.reputation_tiers_reached);
   out.WriteFloat(book.reputation_own_overfulfil_t);
+  // The team's work-oat request of the year (save 167; #1040).
+  out.WriteI64(book.team_work_oat_requested);
 }
 
 YearLedger ReadYearLedger(LoadSource& source) {
@@ -619,6 +623,11 @@ YearLedger ReadYearLedger(LoadSource& source) {
   if (book.reputation_tiers_reached > 3 || !(book.reputation_losses >= 0.0F) ||
       !(book.reputation_own_overfulfil_t >= 0.0F)) {
     source.Fail("the book's rating tiers or losses are out of range");
+  }
+  // The team's work-oat request of the year (save 167; #1040).
+  book.team_work_oat_requested = in.ReadI64();
+  if (book.team_work_oat_requested < 0) {
+    source.Fail("the book's team work-oat request is negative");
   }
   return book;
 }

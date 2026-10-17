@@ -513,6 +513,10 @@ enum class AlarmKind : std::uint8_t {
   /// short of hay is kHerdStarving. Subject: `herd`, the first row of the
   /// kolkhoz's horses; `resource` the horse's first work-only feed (oats);
   /// `amount` the grams of it the streak lacked (TractionWatch).
+  /// IN THE THIN YEAR BY THE FIELD PLAN (#1040; TractionWatch::
+  /// oat_short_by_plan): raised only on a short field-work day
+  /// (TractionWatch::by_plan_lit_today), `lamp` 1 on the year's first such
+  /// day and 0 after, `advice` kSowMoreOat with its door in `logistics_task`.
   kTeamOnHay,
 
   /// «ЛОШАДЕЙ НЕ ХВАТАЕТ» (0.37.8, save 109; boss [67], [90]; econ
@@ -936,6 +940,17 @@ enum class AlarmAdvice : std::uint8_t {
   /// returns with an advance-issue door, boss 14 October 2026.)
   kDeliverAbovePlan,
 
+  /// THE OAT IS SHORT BY THE FIELD PLAN - «посейте больше овса на будущий
+  /// год» (#1040; econ's oat-lamp contract, e4b0188; proposed dictionary key
+  /// `sow_more_oat`). Named by kTeamOnHay in a year TractionWatch reads thin
+  /// by the plan (oat_short_by_plan): the why and the what-next are
+  /// information - the line's numbers are TractionWatch::plan_oat_ha,
+  /// plan_oat_expected, plan_team_need - and the DOOR is the carting that
+  /// holds the teams: kSetLogisticsLevel on `task`, the logistics task with
+  /// the most horse carts in today's plan, to lower it. No such task: `task`
+  /// invalid, no move («упряжь уже вся на поле»).
+  kSowMoreOat,
+
   /// NOT A MOVE: the count, so a consumer can static_assert its mirror.
   kAlarmAdviceCount,
 };
@@ -1008,7 +1023,9 @@ struct Alarm {
 
   /// kLogisticsLate: the groom's task whose load waits (logistics_state.h).
   /// kSiteSupplyWaits: the works' supply task, the subject of its advice's
-  /// door. Invalid for every other kind. Not in the save, as `lamp`.
+  /// door. kTeamOnHay with kSowMoreOat: the task with the most horse carts
+  /// today, the door's subject (#1040). Invalid for every other kind. Not in
+  /// the save, as `lamp`.
   LogisticsTaskId logistics_task;
 
   /// Grams, heads — the kind says which. 0 when the kind has no number.

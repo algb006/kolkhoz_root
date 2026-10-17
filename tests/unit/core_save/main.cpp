@@ -984,6 +984,15 @@ core::WorldState MakeWorld() {
   world.traction_watch.work_grain_short = 700;
   world.traction_watch.week_harnessed[2] = 5.0F;
   world.traction_watch.week_horse_backed[2] = 4.0F;
+  // Save 167 (#1040): the thin year by the field plan, off nought, and the
+  // closed book's team request (the current one's stays nought).
+  world.traction_watch.oat_short_by_plan = 1;
+  world.traction_watch.by_plan_stop_given = 1;
+  world.traction_watch.by_plan_lit_today = 1;
+  world.traction_watch.plan_oat_ha = 7.5F;
+  world.traction_watch.plan_oat_expected = 6'375'000;
+  world.traction_watch.plan_team_need = 31'000'000;
+  world.ledger.closed.team_work_oat_requested = 29'000'000;
   // The closed year's adult head-days by livestock kind (save 127): NOT
   // empty, since empty is what a codec that forgot them would read back.
   world.ledger.closed.adult_head_days = Amounts({0, 1'880});
@@ -1413,6 +1422,17 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   for (const float days : world.traction_watch.week_horse_backed) {
     chunks.push_back({"traction_watch.week_horse_backed", F32(days)});
   }
+  // The thin year by the field plan (save 167, #1040).
+  const core::TractionWatch& by_plan = world.traction_watch;
+  chunks.push_back({"traction_watch.oat_short_by_plan", U8(by_plan.oat_short_by_plan)});
+  chunks.push_back({"traction_watch.by_plan_stop_given", U8(by_plan.by_plan_stop_given)});
+  chunks.push_back({"traction_watch.by_plan_lit_today", U8(by_plan.by_plan_lit_today)});
+  chunks.push_back({"traction_watch.by_plan_stop_today", U8(by_plan.by_plan_stop_today)});
+  chunks.push_back({"traction_watch.plan_oat_ha", F32(by_plan.plan_oat_ha)});
+  chunks.push_back({"traction_watch.plan_oat_expected",
+                    U64(static_cast<std::uint64_t>(by_plan.plan_oat_expected))});
+  chunks.push_back(
+      {"traction_watch.plan_team_need", U64(static_cast<std::uint64_t>(by_plan.plan_team_need))});
   AppendAmounts(chunks, "issue_norms", world.issue_norms);
   AppendAmounts(chunks, "plan.due", world.plan.due);
   AppendAmounts(chunks, "plan.delivered", world.plan.delivered);
@@ -1756,7 +1776,10 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // the hash read off it.
     // Save 166 (#1043): the rating's recovery owed, a byte: 928 -> 929,
     // predicted before the build and held; the hash read off it.
-    {"world", 929, 0x1d52a15cee9e6097ULL},
+    // Save 167 (#1040): the thin year by the field plan, four u8, a float, two
+    // Grams: 929 -> 953, predicted before the build and held; the hash read
+    // off it.
+    {"world", 953, 0xad2a2874d296a758ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2141,7 +2164,9 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // Save 166 (#1043): the rating's year by its writers, 24 bytes a book (four
     // floats, two u16, a float): 2996 -> 3044, predicted before the build and
     // held; the hash read off it.
-    {"ledger", 3044, 0x6f67fecb94180ULL},
+    // Save 167 (#1040): the team's work-oat request, a Grams a book: 3044 ->
+    // 3060, predicted before the build and held; the hash read off it.
+    {"ledger", 3060, 0xad3659645a45517aULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -2750,6 +2775,16 @@ int main() {
                          loaded.traction_watch.week_harnessed[2] == 5.0F &&
                          loaded.traction_watch.week_horse_backed[2] == 4.0F,
                      "the team's two alarms' memory comes back (save 109)");
+  failures += Expect(loaded.traction_watch.oat_short_by_plan == 1 &&
+                         loaded.traction_watch.by_plan_stop_given == 1 &&
+                         loaded.traction_watch.by_plan_lit_today == 1 &&
+                         loaded.traction_watch.by_plan_stop_today == 0 &&
+                         loaded.traction_watch.plan_oat_ha == 7.5F &&
+                         loaded.traction_watch.plan_oat_expected == 6'375'000 &&
+                         loaded.traction_watch.plan_team_need == 31'000'000 &&
+                         loaded.ledger.closed.team_work_oat_requested == 29'000'000 &&
+                         loaded.ledger.current.team_work_oat_requested == 0,
+                     "the oat lamp's thin year and the book's team request come back (save 167)");
   failures += Expect(AmountAt(loaded.ledger.closed.adult_head_days, 1) == 1'880 &&
                          loaded.ledger.current.adult_head_days.empty(),
                      "the closed year's adult head-days come back by kind, the open year's "

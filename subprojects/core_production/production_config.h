@@ -704,6 +704,17 @@ struct FarmingConfig {
   /// a design decision can reach it.
   float traction_full_ration_share = 0.5F;
 
+  /// THE THIN YEAR BY THE FIELD PLAN (#1040; econ's oat-lamp contract §1;
+  /// farming.csv): the year's oat - the slot's hectares at the crop's yield
+  /// plus what the herds may take on 1 January - short of the team's need
+  /// times this share. STUB 0.8, econ's.
+  float oat_short_plan_margin = 0.8F;
+
+  /// Year 1's team need, which has no closed year: the start team's heads at
+  /// a full work ration times these working days (econ §1, host's ≈ 31 t).
+  /// STUB 39, econ's (CLAUDE.md §9: ~39 working days a year in Epoch I).
+  float team_need_first_year_working_days = 39.0F;
+
   /// The pasture season, 0-based months inclusive: outside it a head takes
   /// nothing from the grass and its whole norm comes out of the stores.
   /// ASSUMPTION — the design names summer grazing but no month band.

@@ -173,7 +173,12 @@ struct Owed {
 
 /// Empty since #991 took the last three (kLiftRush, kBuildStore,
 /// kDeliverAbovePlan); a new advice with a door and no case goes here.
-constexpr std::array<Owed, 0> kOwed = {};
+/// kSowMoreOat (#1040): its door needs a thin year, a short field-work day
+/// and a horse cart on a task in today's plan in one fixture - owed until a
+/// case here builds that world.
+constexpr std::array<Owed, 1> kOwed = {{
+    {core::AlarmAdvice::kSowMoreOat, "kSetLogisticsLevel on the alarm's logistics_task, lower"},
+}};
 
 /// THE CENSUS (#980): every advice value is taken by its door in a case
 /// above, flagged no-door with a reason, or owed by name - a new value in

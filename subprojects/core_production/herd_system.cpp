@@ -31,9 +31,11 @@
 #include "livestock_homes.h"
 #include "night_pasture.h"
 #include "plan_alarms.h"
+#include "production_alarms.h"
 #include "seed_room.h"
 #include "stable_horses.h"
 #include "stock_ops.h"
+#include "team_oat_plan.h"
 
 namespace core {
 namespace {
@@ -727,12 +729,22 @@ void WatchTheTeam(const ProductionConfig& config,
     team_left = team_left || (herd.household_owned == 0 &&
                               herd.kind.value == config.horse_kind.value && herd.adult_count > 0);
   }
+  // THE BY-PLAN LAMP'S DAY (#1040; team_oat_plan.h): rewritten every day,
+  // nought unless today is a short field-work day of a thin year.
+  watch.by_plan_lit_today = 0;
+  watch.by_plan_stop_today = 0;
+  bool short_today = false;
   if (!team_left) {
     watch.short_ration_days = 0;
     watch.work_grain_short = 0;
   } else if (work.room > 0.0F) {
+    // THE TEAM'S REQUEST OF THE YEAR (#1040; YearLedger::
+    // team_work_oat_requested): the room is in FEED UNITS, booked in grams of
+    // the work feed by its feed value - the next year's need.
+    current.ledger.current.team_work_oat_requested += TeamWorkFeedGrams(config, work.room);
     const float short_units = work.room - work.covered;
-    if (short_units > work.gram_loss + kFeedToleranceUnits) {
+    short_today = short_units > work.gram_loss + kFeedToleranceUnits;
+    if (short_today) {
       if (watch.short_ration_days < std::numeric_limits<std::uint16_t>::max()) {
         ++watch.short_ration_days;
       }
@@ -756,6 +768,17 @@ void WatchTheTeam(const ProductionConfig& config,
   const std::uint32_t slot = current.calendar.day % kHarnessWeekDays;
   watch.week_harnessed[slot] = harnessed_days;
   watch.week_horse_backed[slot] = horse_backed_days;
+  // THE THIN YEAR BY THE FIELD PLAN (#1040; econ's contract §3): lit on a
+  // field-work day the ration fell short with the streak at the lamp's
+  // threshold; the year's first such day is the one stop.
+  if (watch.oat_short_by_plan != 0 && short_today && watch.short_ration_days >= kTeamOnHayDays &&
+      IsFieldWorkDay(config, current)) {
+    watch.by_plan_lit_today = 1;
+    if (watch.by_plan_stop_given == 0) {
+      watch.by_plan_stop_given = 1;
+      watch.by_plan_stop_today = 1;
+    }
+  }
 }
 
 /// What the day's produce is multiplied by. Three leaks, all of them the

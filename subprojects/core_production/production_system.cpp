@@ -71,6 +71,7 @@
 #include "seed_room.h"
 #include "stock_lights.h"
 #include "stock_ops.h"
+#include "team_oat_plan.h"
 #include "timber_felling.h"
 #include "timber_planting.h"
 #include "unit_production.h"
@@ -844,6 +845,10 @@ class ProductionSystem final : public IProductionSystem {
       // (SayLostWinterSlots), the day the late window closes.
     }
     PlanManure(current);
+    // THE OAT LAMP'S YEAR (#1040; team_oat_plan.h): after the chain has moved
+    // (this year's slot) and before the books rotate (the closing year's
+    // team request is still `current`).
+    ReadTheTeamsOatPlan(config_, current);
   }
 
   /// Whether a perennial standing in its window may be cut today: not cut

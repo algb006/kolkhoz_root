@@ -209,10 +209,12 @@ static_assert(AggregateArity<SportMonth>() == 2,
 // world block beside the traction ration.
 // Save 127 (0.37.140) put the harness peak here, two u16 — 80 and six
 // fields; save 128 (0.37.141) took it out unwritten — 72 and four again,
-// predicted before the build.
-static_assert(sizeof(TractionWatch) == 72,
+// predicted before the build. Save 167 (#1040): the thin year by the field
+// plan - four u8, a float, two Grams after the week - predicted 72 -> 96 and
+// eleven fields before the build; on the wire +24.
+static_assert(sizeof(TractionWatch) == 96,
               "TractionWatch changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<TractionWatch>() == 4,
+static_assert(AggregateArity<TractionWatch>() == 11,
               "TractionWatch gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(kHarnessWeekDays == 7, "the harness week's length is written — VERSION_SAVE");
 // 2026-09-30, save 118: the named characters (the former elder), 40 —
@@ -509,6 +511,14 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   for (const float days : world.traction_watch.week_horse_backed) {
     out.WriteFloat(days);
   }
+  // The thin year by the field plan (save 167; #1040).
+  out.WriteU8(world.traction_watch.oat_short_by_plan);
+  out.WriteU8(world.traction_watch.by_plan_stop_given);
+  out.WriteU8(world.traction_watch.by_plan_lit_today);
+  out.WriteU8(world.traction_watch.by_plan_stop_today);
+  out.WriteFloat(world.traction_watch.plan_oat_ha);
+  out.WriteI64(world.traction_watch.plan_oat_expected);
+  out.WriteI64(world.traction_watch.plan_team_need);
   // The chairman's issue norms (save 57, kSetIssueNorm), through the
   // resource dictionary like every amounts vector; empty until his first
   // order, and empty round-trips as empty.
@@ -733,6 +743,23 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   }
   for (float& days : world->traction_watch.week_horse_backed) {
     days = in.ReadFloat();
+  }
+  // The thin year by the field plan (save 167; #1040).
+  TractionWatch& by_plan = world->traction_watch;
+  by_plan.oat_short_by_plan =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "the oat short by the field plan"));
+  by_plan.by_plan_stop_given =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "the by-plan oat stop given"));
+  by_plan.by_plan_lit_today =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "the by-plan oat lamp today"));
+  by_plan.by_plan_stop_today =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "the by-plan oat stop today"));
+  by_plan.plan_oat_ha = in.ReadFloat();
+  by_plan.plan_oat_expected = in.ReadI64();
+  by_plan.plan_team_need = in.ReadI64();
+  if (!(by_plan.plan_oat_ha >= 0.0F) || by_plan.plan_oat_expected < 0 ||
+      by_plan.plan_team_need < 0) {
+    source.Fail("the team's oat plan of the year is negative or not a number");
   }
   for (std::uint32_t day = 0; day < kHarnessWeekDays; ++day) {
     const float harnessed = world->traction_watch.week_harnessed[day];
