@@ -16,7 +16,8 @@
 /// LowerPlanRequest). "Still to be reaped this year" is a standing crop of the
 /// resource, except a winter crop sown this calendar year (next year's).
 ///
-/// WHOSE TRANSPORT (kCanon, econ's rule (c″), boss-core-v5-gate [7]): OWN
+/// WHOSE TRANSPORT: the runs play kDistrictOnly (see kRunDeliveryMode).
+/// kOwnWhenFree is econ's rule (c″), boss-core-v5-gate [7], kept as an arm: OWN
 /// CARTS only on a day with no plough, harrow or sowing crew and no harvest
 /// crew assigned that day or the previous working day, and no heap of a tonne
 /// or more (kHeapHoldsHorsesGrams) lying reaped on a field; the DISTRICT's
@@ -60,8 +61,8 @@ namespace run {
 
 /// Whose transport the run chairman sends with the plan's delivery.
 enum class RunDeliveryMode : std::uint8_t {
-  kCanon,         ///< own carts outside sowing, harvest, ploughing and heaps, else the district
-  kDistrictOnly,  ///< always the district's calendar (arm D)
+  kOwnWhenFree,   ///< own carts on a day free of field crews and heaps (c″), else the district
+  kDistrictOnly,  ///< always the district's calendar (arm D) - THE RUNS' MODE
   kOwnOnly,       ///< always own carts (arm O)
   kNone,          ///< no plan delivery ordered: the deadline carries it (host's novice)
 };
@@ -71,8 +72,12 @@ enum class RunDeliveryMode : std::uint8_t {
 /// a cart's tonne, no measurement behind it.
 inline constexpr core::Grams kHeapHoldsHorsesGrams = 1'000'000;
 
-/// The mode every run plays; the pair's arms change this one line.
-inline constexpr RunDeliveryMode kRunDeliveryMode = RunDeliveryMode::kCanon;
+/// The mode every run plays; the pair's arms change this one line. THE
+/// DISTRICT ALWAYS (boss-core-v5-gate [10], 17 October 2026): every arm with
+/// own carts was red on econ's gate 7 - old households' hungry family-days
+/// over 16 years +18.9 % (c″), +21.7 % (c″ waiting), +24.7 % (O) against
+/// +1.0 % for D - and O lost no harvest against D in 0 of 36 village-years.
+inline constexpr RunDeliveryMode kRunDeliveryMode = RunDeliveryMode::kDistrictOnly;
 
 class DeliveryPolicy {
  public:
@@ -107,7 +112,7 @@ class DeliveryPolicy {
     ++hold_by_month_[(world.calendar.day % core::kDaysPerYear) / core::kDaysPerMonth]
                     [static_cast<std::size_t>(hold)];
     const bool own = mode_ == RunDeliveryMode::kOwnOnly ||
-                     (mode_ == RunDeliveryMode::kCanon && hold == HorseHold::kFree);
+                     (mode_ == RunDeliveryMode::kOwnWhenFree && hold == HorseHold::kFree);
     std::vector<core::OrderRow> orders;
     for (std::size_t index = 0; index < world.plan.due.size(); ++index) {
       // A request standing with the district is taken over by own carts on

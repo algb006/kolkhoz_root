@@ -1366,7 +1366,7 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
       return false;
     }
     // THE OWN-DELIVERY BONUS's SHARE (routing stage В5; econ's (a)): no row,
-    // the default 0.1 stands.
+    // the default 0 stands (production_config.h: its return condition).
     if (!OptionalValue(*world,
                        "own_delivery_bonus_share",
                        Range{.low = 0.0F, .high = 1.0F},
