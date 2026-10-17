@@ -68,6 +68,10 @@ struct TimberCatalog {
   /// Days in a row a felling mark may stand where no hand can be sent before
   /// it is released (boss, the resume thread: N = 8; 0 = never released).
   float mark_release_days = 8.0F;
+  /// Days from a felling mark to its need date when the order names none
+  /// (TimberStandRow::need_by_day; econ's felling-crew-sized-to-mark: one
+  /// season, 12 days). STUB: no table row read yet - the design base's to add.
+  float felling_window_days = 12.0F;
 
   /// The sawmill (timber design §8б, boss 2026-09-13 — assigned, not measured).
   float board_yield = 0.55F;              ///< Share of a log's volume that becomes boards.

@@ -63,6 +63,14 @@ OrderRefusal MarkFelling(const ProductionConfig& config,
   }
   stand.marked_m3 = order.volume_m3;
   stand.work_days_remaining = order.volume_m3 * config.timber.felling_days_per_m3;
+  // THE NEED DATE (save 165; timber design «Докуда рубят»): the order's
+  // `amount` days ahead when it names them («к сроку»), else the timber's
+  // window. The morning's crew is sized to it (labor_system.cpp).
+  const auto window =
+      order.amount > 0
+          ? static_cast<std::uint32_t>(order.amount)
+          : static_cast<std::uint32_t>(std::max(config.timber.felling_window_days, 1.0F));
+  stand.need_by_day = current.calendar.day + window;
   return OrderRefusal::kNone;
 }
 
@@ -88,6 +96,7 @@ void FellFinishedStands(const ProductionConfig& config, WorldState& current) {
     stand.stock_m3 = std::max(stand.stock_m3 - felled, 0.0F);
     stand.marked_m3 = 0.0F;
     stand.work_days_remaining = 0.0F;
+    stand.need_by_day = kNeverPlanted;
   }
 }
 
@@ -131,6 +140,7 @@ void ReleaseUnreachableMarks(const ProductionConfig& config, WorldState& current
     stand.marked_m3 = 0.0F;
     stand.work_days_remaining = 0.0F;
     stand.unreached_days = 0;
+    stand.need_by_day = kNeverPlanted;
     constexpr float kLitresPerM3 = 1000.0F;
     SimEvent& event = EmitEvent(current, EventKind::kFellingMarkReleased, EventSeverity::kNotable);
     event.stand = current.stands.row_ids[row];

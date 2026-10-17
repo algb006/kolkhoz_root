@@ -148,6 +148,15 @@ struct TimberStandRow {
   /// released (timber_felling.h, ReleaseUnreachableMarks) — the human's rule
   /// of 2 October 2026: every wait has a deadline. 0 for a stand not marked.
   std::uint32_t unreached_days = 0;
+
+  /// THE MARK's NEED DATE (timber design «Докуда рубят», boss 17 October
+  /// 2026: «едет столько рук, сколько срубят отмеченный объём к сроку
+  /// нужды»; econ's felling-crew-sized-to-mark; save 165): the day the marked
+  /// volume is wanted felled by, written with the mark (kMarkFelling's
+  /// `amount` days ahead, or timber `felling_window_days`). The morning's
+  /// felling crew is the mark's remaining man-days over the working days
+  /// left to it (labor_system.cpp). kNeverPlanted for a stand not marked.
+  std::uint32_t need_by_day = kNeverPlanted;
 };
 
 /// @brief The table type used by WorldState.

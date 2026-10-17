@@ -113,6 +113,7 @@ void OpenPlanting(const ProductionConfig& config,
   stand.planted_area_ha = hectares;
   stand.stock_m3 = 0.0F;
   stand.marked_m3 = 0.0F;
+  stand.need_by_day = kNeverPlanted;  // save 165: no mark, no need date
   stand.work_days_remaining = hectares * config.timber.planting_days_per_ha;
   stand.planted_day = kNeverPlanted;
   stand.matures_day = kNeverPlanted;

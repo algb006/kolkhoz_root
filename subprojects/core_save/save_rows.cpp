@@ -390,9 +390,12 @@ static_assert(AggregateArity<WeddingWaitRow>() == 3,
 // fields -> fourteen; predicted before the build.
 // Save 153 (stage В, F3): haul_to, a point after the seam — 72 -> 80 and
 // 14 -> 15 fields, predicted before the build.
+// Save 165 (the felling crew sized to the mark): need_by_day, a u32 into the
+// row's tail padding - 80 stays 80, 15 -> 16 fields; predicted before the
+// build.
 static_assert(sizeof(TimberStandRow) == 80,
               "TimberStandRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<TimberStandRow>() == 15,
+static_assert(AggregateArity<TimberStandRow>() == 16,
               "TimberStandRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 153 (stage В, F3): haul_to, a point after the seam — 64 -> 72 and
 // 10 -> 11 fields, predicted before the build.
@@ -1654,6 +1657,7 @@ void WriteTimberStandRow(SaveSink& sink, const TimberStandRow& row) {
   out.WriteU32(row.matures_day);
   // Save 144: the days in a row the felling mark could take no hand.
   out.WriteU32(row.unreached_days);
+  out.WriteU32(row.need_by_day);  // save 165: the mark's need date
 }
 
 TimberStandRow ReadTimberStandRow(LoadSource& source) {
@@ -1675,6 +1679,7 @@ TimberStandRow ReadTimberStandRow(LoadSource& source) {
   row.planted_day = in.ReadU32();
   row.matures_day = in.ReadU32();
   row.unreached_days = in.ReadU32();
+  row.need_by_day = in.ReadU32();  // save 165
   return row;
 }
 
