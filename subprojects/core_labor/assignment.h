@@ -110,6 +110,9 @@ struct AssignmentJob {
   /// (RidesOut) — two other answers to one question. Now a meadow's mower is
   /// taken with its first hand like this cart, and the fellers ride the
   /// people's cart when the placement gives them one (PlanDayAssignments).
+  /// SINCE 0.37.270 A FELLING CREW TAKES THIS CART TOO (timber design «Докуда
+  /// рубят»; boss, #994 [6]): the people's cart reached 140 of 5200 felling
+  /// fills, and the stands past the walk stood unfelled from year 7.
   bool brigade_cart = false;
 
   /// The brigade's cart is out already — a driver stands on this field from

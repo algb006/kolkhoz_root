@@ -243,6 +243,16 @@ bool BrigadeCartIsOut(const WorldState& world, WorkKind kind, FieldId field) {
   return false;
 }
 
+bool FellingCartIsOut(const WorldState& world, TimberStandId stand) {
+  for (const ResidentRow& person : world.residents.rows) {
+    if (person.work.kind == WorkKind::kFelling && person.work.stand.value == stand.value &&
+        person.work.rides_horse != 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
 namespace {
 
 /// One work and one target: the kind and every target id alike.
@@ -274,6 +284,18 @@ bool RidesThePeoplesCart(const WorldState& world, const WorkAssignment& work) {
 
 bool WorkRidesOut(const WorldState& world, const WorkAssignment& work) {
   if (RidesOut(work.kind)) {
+    return true;
+  }
+  // THE FELLERS RIDE ON THEIR CREW's CART (timber design «Докуда рубят»; boss,
+  // #994 [6]): the placement takes one horse of the pool for a stand, as the
+  // brigade's cart for a field, and the crew rides with its driver. Until
+  // 0.37.270 felling had only the people's cart (0.37.168), placed in 140 of
+  // 5200 felling fills of nine villages, and from year 7 the stands left
+  // stood past the walk: 1970 fills of years 8-10 turned away whole by the
+  // road while a ride reached in ~4 h. No driver today: the people's cart, or
+  // they walk.
+  if (work.kind == WorkKind::kFelling &&
+      (work.rides_horse != 0 || FellingCartIsOut(world, work.stand))) {
     return true;
   }
   if (TakesThePeoplesCart(work.kind)) {

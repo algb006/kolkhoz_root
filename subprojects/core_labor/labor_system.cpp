@@ -1615,6 +1615,10 @@ class LaborSystem final : public ILaborSystem {
           job.position = stand.position;
           job.work_days_remaining = stand.work_days_remaining;
           job.max_crew = static_cast<std::uint8_t>(crew_cap);
+          // THE CREW RIDES OUT ON ITS CART (timber design «Докуда рубят»;
+          // boss, #994 [6]): one horse of the pool, as a field brigade's
+          // (work_seam.cpp, WorkRidesOut, FellingCartIsOut).
+          job.brigade_cart = true;
           jobs.push_back(job);
         }
         // A planting still to be planted (timber_planting.h): windowless,

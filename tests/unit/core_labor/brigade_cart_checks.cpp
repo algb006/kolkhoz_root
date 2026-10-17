@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <iostream>
+#include <optional>
 #include <vector>
 
 #include "assignment.h"
@@ -11,6 +12,7 @@
 #include "core_common/state_table_ops.h"
 #include "core_common/work_seam.h"
 #include "core_common/world_state.h"
+#include "placement_diagnosis.h"
 
 namespace {
 
@@ -183,6 +185,83 @@ int TestTheHourAndTheHarness() {
   return failures;
 }
 
+/// THE FELLING CREW RIDES OUT ON ITS CART (timber design «Докуда рубят»;
+/// #994): a stand 3 km out is 7.2 hours on foot and four on the cart; the
+/// hour rides the fellers while their driver holds the horse.
+int TestTheFellingCrewRides() {
+  int failures = 0;
+  core::AssignmentJob felling;
+  felling.kind = core::WorkKind::kFelling;
+  felling.stand = core::TimberStandId{1};
+  felling.position = core::Vec2{3000.0F, 0.0F};
+  felling.work_days_remaining = 1.0F;
+  felling.brigade_cart = true;
+  const std::vector<core::AssignmentJob> jobs = {felling};
+  const std::vector<core::AssignmentCandidate> hands = Hands(5);
+  std::vector<std::uint8_t> rides;
+  failures += Expect(PlacedOn(core::PlanDayAssignments(jobs, hands, OctoberDay(0), &rides), 0) == 0,
+                     "felling cart: with the pool dry nobody walks three kilometres to a stand");
+  const std::vector<std::uint32_t> plan =
+      core::PlanDayAssignments(jobs, hands, OctoberDay(1), &rides);
+  // At the people's cart's loaded pace (4/3 h a km): 4 hours each way, 1.4 of
+  // the light left, 0.14 of a norm a hand - all five go, the first drives.
+  failures += Expect(PlacedOn(plan, 0) == 5 && Holders(rides) == 1 && rides[0] == 1,
+                     "felling cart: with one horse the crew rides - all five fellers, the first "
+                     "holding the horse");
+  core::WorldState world;
+  for (int index = 0; index < 3; ++index) {
+    core::ResidentRow hand;
+    hand.work.kind = core::WorkKind::kFelling;
+    hand.work.stand = core::TimberStandId{1};
+    core::AppendRow(world.residents, hand);
+  }
+  const core::WorkAssignment feller = world.residents.rows[1].work;
+  failures += Expect(!core::WorkRidesOut(world, feller),
+                     "felling cart: with no driver at the stand its fellers walk");
+  world.residents.rows[0].work.rides_horse = 1;
+  failures += Expect(core::WorkRidesOut(world, feller),
+                     "felling cart: with a driver at the stand every feller rides");
+  core::WorkAssignment elsewhere = feller;
+  elsewhere.stand = core::TimberStandId{2};
+  failures += Expect(!core::WorkRidesOut(world, elsewhere),
+                     "felling cart: a driver at another stand carries nobody here");
+  return failures;
+}
+
+/// THE QUEUE's WAY IS THE DIAGNOSIS's WAY (#994): a stand the queue marked
+/// kRoad, replayed with a cart that makes the hand fit, files kRoad - not
+/// kUnexplained (probe/994: 400 of 400 such pairs).
+int TestTheDiagnosisKeepsTheQueuesRoad() {
+  int failures = 0;
+  core::AssignmentJob felling;
+  felling.kind = core::WorkKind::kFelling;
+  felling.stand = core::TimberStandId{1};
+  felling.position = core::Vec2{1000.0F, 0.0F};
+  felling.work_days_remaining = 5.0F;
+  const std::vector<core::AssignmentJob> jobs = {felling};
+  const std::vector<core::AssignmentCandidate> hands = Hands(1);
+  const core::AssignmentParams params = OctoberDay(1);
+  const std::vector<std::uint32_t> result = {core::kNoJobAssigned};
+  const std::vector<std::optional<core::JobShortfall>> shortfall = {core::JobShortfall::kRoad};
+  const std::vector<std::uint8_t> cart_today = {1U};
+  const std::vector<std::uint8_t> mowers_walk = {0U};
+  const std::vector<std::uint8_t> released = {0U};
+  core::PlacementDiagnosis diagnosis;
+  core::DiagnosePlacement(core::PlacedPlan{.jobs = &jobs,
+                                           .candidates = &hands,
+                                           .params = &params,
+                                           .result = &result,
+                                           .shortfall = &shortfall,
+                                           .cart_today = &cart_today,
+                                           .mowers_walk = &mowers_walk,
+                                           .released = &released},
+                          diagnosis);
+  failures += Expect(diagnosis.idle.size() == 1 && diagnosis.idle[0] == core::IdleReason::kRoad,
+                     "diagnosis: a hand the replay calls fit for a job the queue turned away by "
+                     "the road is idle by the road, not unexplained");
+  return failures;
+}
+
 }  // namespace
 
 int CheckBrigadeCart() {
@@ -191,5 +270,7 @@ int CheckBrigadeCart() {
   failures += TestTheCartThatIsOut();
   failures += TestTheCartReachesWhereTheWalkDoesNot();
   failures += TestTheHourAndTheHarness();
+  failures += TestTheFellingCrewRides();
+  failures += TestTheDiagnosisKeepsTheQueuesRoad();
   return failures;
 }

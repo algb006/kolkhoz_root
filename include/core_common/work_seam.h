@@ -96,6 +96,13 @@ bool RidesTheBrigadesCart(WorkKind kind, LandKind land);
 ///       day's road.
 bool BrigadeCartIsOut(const WorldState& world, WorkKind kind, FieldId field);
 
+/// @brief Whether a felling crew's cart is out to `stand` today: somebody
+///        placed on its felling holds the horse (WorkAssignment::rides_horse,
+///        the first feller placed). The fellers ride with him (timber design,
+///        «Докуда рубят»: the crew goes out on the carts; boss, #994 [6]).
+/// @note A scan of the residents, as BrigadeCartIsOut's.
+bool FellingCartIsOut(const WorldState& world, TimberStandId stand);
+
 /// @brief Whether this assignment rides THE PEOPLE'S CART today (routing
 ///        stage A, A3; labor_state.h, TakesThePeoplesCart): its kind walks,
 ///        and it drives the cart (WorkAssignment::rides_horse) or sits on one
