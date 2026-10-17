@@ -1286,7 +1286,9 @@ struct ProductionConfig {
   /// культурам — по плану сева этого года»; econ's plan-by-sown-mix §2a):
   /// when set, the grain total stays on the worked ha and the positions'
   /// shares of it follow the year's planned sowing (plan_due.h). campaign.csv
-  /// `plan_split_by_sown_mix` 0/1; 0 until its pair reads.
+  /// `plan_split_by_sown_mix` 0/1; the canon's table sets 1 since 0.37.275
+  /// (host's pair: the total equal to the base in 287 of 288 village-years,
+  /// no new failure). False here only for the table-less worlds of the units.
   bool plan_split_by_sown_mix = false;
 
   /// THE SIZE FOLLOWS THE DISTRICT RATING (#1036 (b); the human's word of 4
