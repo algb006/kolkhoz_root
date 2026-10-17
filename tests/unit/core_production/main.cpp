@@ -9345,6 +9345,14 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
       }
     }
     failures += Expect(position_count > 0, "campaign.csv names the plan's positions");
+    // AND THE PLAN'S WEIGHT, the district's own figure on the total (#1043;
+    // plan_due.h, PlanBandFactor: the band × plan_total_factor; the band is
+    // 1.0 at the start's rating), read off the same table as the shares.
+    const std::uint32_t weight_row = campaign->FindRowByKey("plan_total_factor");
+    if (weight_row != core::kNoTableRow) {
+      expected *=
+          std::stod(std::string(campaign->CellText(weight_row, campaign->FindColumn("value"))));
+    }
     failures += Expect(static_cast<double>(asked) > expected * 0.99 &&
                            static_cast<double>(asked) < expected * 1.01,
                        "and the norm is the district's positions on last year's ten hectares — "
