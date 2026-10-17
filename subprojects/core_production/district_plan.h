@@ -77,6 +77,26 @@ Grams DeliverableFromStores(const ProductionConfig& config,
                             ResourceId resource,
                             SimDay seed_as_of);
 
+/// @brief THE ONE SEED RULE both doors above are: the stores (and, with
+///        `with_heaps`, the fields' heaps) less what is still to be sown after
+///        `seed_as_of` (district.md §4, corrected 17 October 2026). Each reader
+///        passes its own day: the lamp and the collection today, the turn
+///        SeedDayAtTheTurn.
+Grams DeliverableForPlan(const ProductionConfig& config,
+                         const WorldState& current,
+                         ResourceId resource,
+                         SimDay seed_as_of,
+                         bool with_heaps);
+
+/// @brief What the turn's delivery ships of `resource`'s position, read as
+///        of `seed_as_of`: the least of what is owed and DeliverableAboveSeed.
+///        The ONE answer the turn (DeliverPlan) acts on and the plan-short
+///        lamp forecasts by. 0 for a resource with no position.
+Grams TurnWillShip(const ProductionConfig& config,
+                   const WorldState& current,
+                   ResourceId resource,
+                   SimDay seed_as_of);
+
 /// @brief «Сдать сейчас» (kDeliverPlan; econ's audit M2, Л1): what is still
 /// owed of one position — or of every position when `only` is invalid —
 /// leaves the stores now, as much as the stores hold, and is added to

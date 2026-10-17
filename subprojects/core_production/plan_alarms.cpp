@@ -231,6 +231,54 @@ float ChainHectares(const ProductionConfig& config,
   return grown_ha;
 }
 
+/// The tenth month's last day: two ordinary collections before the deadline's
+/// (the tenth's and the eleventh's), the latest the plan-short lamp may first
+/// light (district.md §4).
+constexpr std::uint32_t kPlanShortLatestFirstDay = kDaysPerYear - 1U - (2U * kDaysPerMonth);
+
+/// This year's harvest of `resource` is in the stores: something of it was
+/// harvested this year, no field of it is still to be reaped this year (a
+/// standing crop of it, but a winter crop sown this calendar year, which is
+/// next year's), and none of it lies reaped on a field. False for a
+/// resource no crop yields (milk): its lamp waits for the latest window.
+/// The run chairman's 1.1 rule (tests/run/common/delivery_policy.h) moved
+/// into the lamp the player reads.
+bool PositionHarvestIn(const ProductionConfig& config,
+                       const WorldState& world,
+                       ResourceId resource) {
+  bool yielded = false;
+  for (const CropDef& crop : config.crops) {
+    yielded = yielded || crop.resource.value == resource.value;
+  }
+  if (!yielded || resource.value >= world.ledger.current.harvest.size() ||
+      world.ledger.current.harvest[resource.value] <= 0) {
+    return false;
+  }
+  const SimDay today = world.calendar.day;
+  for (const FieldRow& field : world.fields.rows) {
+    if (field.reaped_grams > 0 && field.reaped_resource.value == resource.value) {
+      return false;
+    }
+    if (field.crop.value >= config.crops.size()) {
+      continue;
+    }
+    const CropDef& crop = config.crops[field.crop.value];
+    if (crop.resource.value != resource.value) {
+      continue;
+    }
+    if (field.phase == FieldPhase::kHarvest) {
+      return false;
+    }
+    const bool standing = field.phase == FieldPhase::kSowing || field.phase == FieldPhase::kGrowing;
+    const bool next_years = crop.is_winter && field.sown_day != kNeverSownDay &&
+                            field.sown_day / kDaysPerYear == today / kDaysPerYear;
+    if (standing && !next_years) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /// kPlanPositionShort (boss seq 89): from one district collection before the
 /// deadline's (stage В5) to the year's last day, every position
 /// the turn's delivery cannot bring to the met share. THE FORECAST ENTERS BY
@@ -243,26 +291,30 @@ float ChainHectares(const ProductionConfig& config,
 void CollectPlanShortAlarms(const ProductionConfig& config,
                             const WorldState& world,
                             std::vector<Alarm>& alarms) {
-  // «ЗА СУТКИ ДО ПОВОРОТА ГОДА», the boss's word, was the day the turn follows.
-  // STAGE В5 MOVED IT ONE DISTRICT COLLECTION EARLIER (econ's gate (b)): the
-  // district's cart takes what lies in the stores on each month's last day,
-  // and a lamp lit on the deadline's own day left the player no collection
-  // to answer it with. It burns from the last regular collection before the
-  // deadline's (the eleventh month's last day) to the turn.
-  constexpr std::uint32_t kFirstWarningDayOfYear = kDaysPerYear - 1U - kDaysPerMonth;
-  if (world.plan.announced == 0 || world.calendar.day % kDaysPerYear < kFirstWarningDayOfYear) {
+  // WHEN IT BURNS (district.md §4, corrected 17 October 2026; boss, the
+  // plan-short lamp [2]): from the first day the position's forecast is short
+  // once that crop's harvest of the year is in, and from two ordinary
+  // collections before the deadline at the latest - the tenth month's last
+  // day - whatever the harvest. Until 0.37.271 it burned from the eleventh
+  // month's last day only, the one collection left: in host's x3.57 arm 21 of
+  // 27 failed positions lit only then, 5 later, 1 never.
+  if (world.plan.announced == 0) {
     return;
   }
+  const bool latest_window = world.calendar.day % kDaysPerYear >= kPlanShortLatestFirstDay;
   for (std::uint32_t index = 0; index < world.plan.due.size(); ++index) {
     const Grams due = world.plan.due[index];
     if (due <= 0) {
       continue;
     }
-    const Grams delivered = index < world.plan.delivered.size() ? world.plan.delivered[index] : 0;
     const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
-    const Grams owed = due > delivered ? due - delivered : 0;
-    const Grams deliverable = DeliverableAboveSeed(config, world, resource, world.calendar.day);
-    Grams shipped_at_turn = delivered + (deliverable < owed ? deliverable : owed);
+    if (!latest_window && !PositionHarvestIn(config, world, resource)) {
+      continue;
+    }
+    const Grams delivered = index < world.plan.delivered.size() ? world.plan.delivered[index] : 0;
+    // THE TURN's OWN ANSWER (TurnWillShip): the one function the turn acts
+    // on, read as of today - the seed still to be sown after today held.
+    Grams shipped_at_turn = delivered + TurnWillShip(config, world, resource, world.calendar.day);
     // THE MILK CART's COMING DAYS (0.37.269's pair: the lamp moved a
     // collection earlier lit on milk in 144 of 144 village-years and the
     // position was met in every one): the cart ships its share each evening
@@ -278,15 +330,18 @@ void CollectPlanShortAlarms(const ProductionConfig& config,
     if (PositionDelivered(config, due, shipped_at_turn)) {
       continue;
     }
-    const auto met_grams = static_cast<Grams>(
-        std::llround(static_cast<double>(due) * static_cast<double>(config.plan_met_share)));
     Alarm alarm;
     alarm.kind = AlarmKind::kPlanPositionShort;
     alarm.resource = resource;
-    // At least a gram: the share compares in float and the grams in double,
-    // and a position PositionDelivered calls short is never short by nought.
-    alarm.amount = std::max<Grams>(met_grams - shipped_at_turn, 1);
-    // The loss is the turn itself (raised in the year's last five days).
+    // N IS THE WHOLE REMAINING SHORTFALL (district.md §4): due less what the
+    // turn will ship. Until 0.37.271 it was the met share's (0.99 of due)
+    // less it. (host's x3.57 arm read the lamp's amount at a median 0.63 of
+    // what remained short at the year's end: most of that gap is the turn
+    // shipping less than this forecast, traced apart - #lamp, the 1935 y2
+    // potato.) At least a gram: the share compares in float and the grams in
+    // double.
+    alarm.amount = std::max<Grams>(due - shipped_at_turn, 1);
+    // The loss is the turn itself.
     alarm.days_to_loss = DaysToLossOf(DaysToPlanTurn(world));
     alarms.push_back(alarm);
   }

@@ -55,40 +55,60 @@ SimDay SeedDayAtTheTurn(const WorldState& current) {
   return current.calendar.day > 0 ? current.calendar.day - 1 : 0;
 }
 
-Grams DeliverableAboveSeed(const ProductionConfig& config,
-                           const WorldState& current,
-                           ResourceId resource,
-                           SimDay seed_as_of) {
+Grams DeliverableForPlan(const ProductionConfig& config,
+                         const WorldState& current,
+                         ResourceId resource,
+                         SimDay seed_as_of,
+                         bool with_heaps) {
+  // ONE SEED RULE FOR EVERY READER OF THE PLAN (district.md §4, corrected
+  // 17 October 2026; boss, the plan-short lamp [2]): what is still to be sown
+  // after the reading day is held, read by the lamp, the collection and the
+  // turn alike, each on its own day. Until 0.37.271 the rule stood in two
+  // copies, the stores' door and the heaps' door.
   const std::vector<Grams> need = SeedHeldToSowing(config, current, seed_as_of);
   const Grams seed_need = resource.value < need.size() ? need[resource.value] : 0;
   const auto& unsealed = current.unsealed.by_fund[static_cast<std::size_t>(FundKind::kSeed)];
   const Grams opened = AmountOf(unsealed, resource);
   const Grams held_for_seed = seed_need > opened ? seed_need - opened : 0;
-  Grams lying = 0;
-  for (const FieldRow& field : current.fields.rows) {
-    if (field.reaped_resource.value == resource.value && field.reaped_grams > 0) {
-      lying += field.reaped_grams;
+  Grams available = TakeableGrams(current, config, resource);
+  // THE HEAPS DO NOT FREE THE STORES' SEED (stage В5): a door that takes from
+  // the stores alone reads them alone - 10 t in the barn against 8 t of seed
+  // beside a 20 t heap is 2 t for the stores' door, 22 t for the turn's.
+  if (with_heaps) {
+    for (const FieldRow& field : current.fields.rows) {
+      if (field.reaped_resource.value == resource.value && field.reaped_grams > 0) {
+        available += field.reaped_grams;
+      }
     }
   }
-  const Grams available = lying + TakeableGrams(current, config, resource);
   return available > held_for_seed ? available - held_for_seed : 0;
+}
+
+Grams DeliverableAboveSeed(const ProductionConfig& config,
+                           const WorldState& current,
+                           ResourceId resource,
+                           SimDay seed_as_of) {
+  return DeliverableForPlan(config, current, resource, seed_as_of, true);
 }
 
 Grams DeliverableFromStores(const ProductionConfig& config,
                             const WorldState& current,
                             ResourceId resource,
                             SimDay seed_as_of) {
-  // THE HEAPS DO NOT FREE THE STORES' SEED (stage В5): read with the heaps,
-  // as DeliverableAboveSeed is, 10 t in the barn against 8 t of seed beside a
-  // 20 t heap is 22 t deliverable - and a door that takes from the stores
-  // alone would take all ten, the seed with them.
-  const std::vector<Grams> need = SeedHeldToSowing(config, current, seed_as_of);
-  const Grams seed_need = resource.value < need.size() ? need[resource.value] : 0;
-  const auto& unsealed = current.unsealed.by_fund[static_cast<std::size_t>(FundKind::kSeed)];
-  const Grams opened = AmountOf(unsealed, resource);
-  const Grams held_for_seed = seed_need > opened ? seed_need - opened : 0;
-  const Grams stored = TakeableGrams(current, config, resource);
-  return stored > held_for_seed ? stored - held_for_seed : 0;
+  return DeliverableForPlan(config, current, resource, seed_as_of, false);
+}
+
+Grams TurnWillShip(const ProductionConfig& config,
+                   const WorldState& current,
+                   ResourceId resource,
+                   SimDay seed_as_of) {
+  const std::uint32_t index = resource.value;
+  if (index >= current.plan.due.size()) {
+    return 0;
+  }
+  const Grams delivered = index < current.plan.delivered.size() ? current.plan.delivered[index] : 0;
+  const Grams owed = current.plan.due[index] > delivered ? current.plan.due[index] - delivered : 0;
+  return std::min(owed, DeliverableAboveSeed(config, current, resource, seed_as_of));
 }
 
 /// The year's delivery: what the plan asked for leaves the stores and is
@@ -111,8 +131,7 @@ void DeliverPlan(const ProductionConfig& config, WorldState& current) {
   }
   for (std::uint32_t index = 0; index < current.plan.due.size(); ++index) {
     const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
-    const Grams owed = std::min(current.plan.due[index] - current.plan.delivered[index],
-                                DeliverableAboveSeed(config, current, resource, seed_as_of));
+    const Grams owed = TurnWillShip(config, current, resource, seed_as_of);
     if (owed <= 0) {
       continue;
     }

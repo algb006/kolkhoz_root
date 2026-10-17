@@ -15649,6 +15649,72 @@ int CheckAWinterCropTheChainCannotSow() {
 /// produce and the year, and goes out once any chain grows it then. By
 /// produce, so a second crop of the same produce covers it; fallow and
 /// unassigned ground cover nothing.
+/// boss's 9b case (district.md §4, 17 October 2026): «a position short by the
+/// forecast before the last two ordinary collections lights with the whole
+/// remaining shortfall; a position the stores cover stays dark» - and it
+/// lights only once its crop's harvest of the year is in.
+int CheckThePlanShortLightsOnceTheHarvestIsIn() {
+  int failures = 0;
+  constexpr core::Grams kTonne = 1'000'000;
+  core::ProductionConfig config;
+  config.unit_types.resize(1);
+  config.unit_types[0].level_storage_capacity_kg = {100'000.0F};
+  config.crops.resize(2);
+  config.crops[0].resource = core::ResourceId{0};  // rye
+  config.crops[1].resource = core::ResourceId{1};  // potato
+  core::WorldState world;
+  core::UnitRow barn;
+  barn.type = core::UnitTypeId{0};
+  barn.level = 1;
+  barn.stock = {5 * kTonne, 3 * kTonne};
+  core::AppendRow(world.units, barn);
+  world.plan.announced = 1;
+  world.plan.due = {10 * kTonne, 2 * kTonne};
+  world.plan.delivered = {4 * kTonne, 0};
+  core::FieldRow rye;
+  rye.kind = core::LandKind::kArable;
+  rye.crop = core::CropId{0};
+  rye.phase = core::FieldPhase::kGrowing;
+  core::AppendRow(world.fields, rye);
+  const auto lit = [&config, &world](core::SimDay day) {
+    world.calendar.day = day;
+    std::vector<core::Alarm> alarms;
+    core::CollectPlanAlarms(config, world, alarms);
+    std::vector<std::pair<std::uint16_t, std::int64_t>> found;
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kPlanPositionShort) {
+        found.emplace_back(alarm.resource.value, alarm.amount);
+      }
+    }
+    return found;
+  };
+  using Short = std::pair<std::uint16_t, std::int64_t>;
+  // August (doy 30): the rye still stands this year - dark, short or not.
+  const core::SimDay august = 7 * core::kDaysPerMonth + 2;
+  failures += Expect(lit(august).empty(),
+                     "plan short, 9b: a crop still standing this year lights nothing before the "
+                     "latest window");
+  // The rye is in: harvested this year, the field idle. 4 + 5 = 9 of 10 - lit
+  // in August with the whole 1 t; the potato (3 t stored against 2 t due) is
+  // covered and its crop never harvested this year: dark.
+  world.fields.rows[0].phase = core::FieldPhase::kIdle;
+  world.ledger.current.harvest = {6 * kTonne, 0};
+  failures += Expect(lit(august) == std::vector<Short>{Short{std::uint16_t{0}, kTonne}},
+                     "plan short, 9b: once the harvest is in, a position the forecast finds short "
+                     "lights at once with the whole remaining shortfall");
+  // A heap of rye still on a field: the harvest is not in.
+  world.fields.rows[0].reaped_grams = kTonne / 2;
+  world.fields.rows[0].reaped_resource = core::ResourceId{0};
+  failures += Expect(lit(august).empty(),
+                     "plan short, 9b: rye lying reaped on a field is a harvest not yet in");
+  world.fields.rows[0].reaped_grams = 0;
+  world.fields.rows[0].reaped_resource = core::ResourceId{};
+  // The stores cover it: dark.
+  world.units.rows[0].stock[0] = 6 * kTonne;
+  failures += Expect(lit(august).empty(), "plan short, 9b: a position the stores cover stays dark");
+  return failures;
+}
+
 /// kPlanPositionShort on milk: the cart's shares of the days after today count
 /// toward the turn (0.37.269's pair: lit on milk in 144 of 144 village-years,
 /// every one met), unless a milk debt says the cart is already short.
@@ -15726,21 +15792,24 @@ int CheckAShortPlanPositionIsAnAlarmOnTheLastDay() {
     return found;
   };
   using Short = std::pair<std::uint16_t, std::int64_t>;
-  // Rye: 4 delivered + 5 in the barn = 9 of the 9.9 that is met: 0.9 t short.
-  // Potato: nothing anywhere, 1.98 t short. The third is delivered in full.
-  const std::vector<Short> expected = {Short{std::uint16_t{0}, std::int64_t{900'000}},
-                                       Short{std::uint16_t{1}, std::int64_t{1'980'000}}};
+  // THE WHOLE REMAINING SHORTFALL (district.md §4, 17 October 2026): rye 4
+  // delivered + 5 in the barn = 9 of 10 due, 1 t short; potato nothing
+  // anywhere, 2 t short. The third is delivered in full. (Until 0.37.271 the
+  // met share's: 0.9 and 1.98 t.)
+  const std::vector<Short> expected = {Short{std::uint16_t{0}, std::int64_t{1'000'000}},
+                                       Short{std::uint16_t{1}, std::int64_t{2'000'000}}};
   failures += Expect(shorts(core::kDaysPerYear - 1) == expected,
                      "plan short: on the year's last day each position the stores cannot make "
-                     "whole is named with the grams it lacks");
-  // Stage В5: one district collection before the deadline's — the eleventh
-  // month's last day — and every day after it to the turn.
-  failures += Expect(shorts(core::kDaysPerYear - 1 - core::kDaysPerMonth) == expected &&
-                         shorts(core::kDaysPerYear - 2) == expected,
-                     "plan short: lit from one district collection before the deadline's");
-  failures +=
-      Expect(shorts(core::kDaysPerYear - 2 - core::kDaysPerMonth).empty() && shorts(0).empty(),
-             "plan short: not before that collection, nor after the turn");
+                     "whole is named with the whole grams it lacks");
+  // No crop in this world yields the positions, so no harvest is ever «in»:
+  // the lamp burns from its latest window - two ordinary collections before
+  // the deadline's, the tenth month's last day - and every day after it.
+  const core::SimDay latest = core::kDaysPerYear - 1 - (2 * core::kDaysPerMonth);
+  failures += Expect(shorts(latest) == expected && shorts(core::kDaysPerYear - 2) == expected,
+                     "plan short: lit from two ordinary collections before the deadline's at the "
+                     "latest");
+  failures += Expect(shorts(latest - 1).empty() && shorts(0).empty(),
+                     "plan short: not before that window with no harvest in, nor after the turn");
   failures += Expect(shorts((2 * core::kDaysPerYear) - 1) == expected,
                      "plan short: and on the last day of every year, not only the first");
   // 9.9 t of rye in reach is met at 0.99: the alarm goes out.
@@ -16503,6 +16572,7 @@ int main() {
   failures += CheckAWinterCropTheChainCannotSow();
   failures += CheckAShortPlanPositionIsAnAlarmOnTheLastDay();
   failures += CheckThePlanShortCountsTheMilkCartsComingDays();
+  failures += CheckThePlanShortLightsOnceTheHarvestIsIn();
   failures += CheckAnUnsownFieldLetsItsCropGoAtTheTurn();
   failures += CheckTheReapingGate();
   failures += CheckFelling();
