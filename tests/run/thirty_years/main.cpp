@@ -132,6 +132,10 @@ bool g_tick_cost = false;
 /// --ring: the reference ring on the derelict fields (ring_policy.h), an arm.
 bool g_ring = false;
 
+/// --ring=slow: the ring raised one derelict field a year from year 3
+/// (ring_policy.h, kSlowEntries; econ's arm B, the ring thread [15]).
+bool g_ring_slow = false;
+
 constexpr std::uint64_t kSeed = 1929;
 std::uint64_t g_seed = kSeed;
 
@@ -464,7 +468,8 @@ int main(int argc, char** argv) {
     g_saw_reserve = g_saw_reserve || argument == "--saw-reserve";
     g_saw_by_anyone = g_saw_by_anyone || argument == "--saw-by-anyone";
     g_tick_cost = g_tick_cost || argument == "--tick-cost";
-    g_ring = g_ring || argument == "--ring";
+    g_ring = g_ring || argument == "--ring" || argument == "--ring=slow";
+    g_ring_slow = g_ring_slow || argument == "--ring=slow";
     if (argument.starts_with("--house-sites=")) {
       g_house_sites = static_cast<std::uint32_t>(std::strtoul(
           std::string(argument.substr(std::string_view("--house-sites=").size())).c_str(),
@@ -637,7 +642,10 @@ int main(int argc, char** argv) {
   run::SowingPolicy layout(13, 42, false, world.tables.get());
   // THE REFERENCE RING on the derelict fields (ring_policy.h; boss, the ring
   // thread [6]): an arm until its pair reads, so off unless --ring.
-  run::RingPolicy ring(*world.tables);
+  run::RingPolicy ring(
+      *world.tables,
+      g_ring_slow ? std::span<const run::RingPolicy::Entry>(run::RingPolicy::kSlowEntries)
+                  : std::span<const run::RingPolicy::Entry>(run::RingPolicy::kFastEntries));
   if (g_ring) {
     run::RingPolicy::Declare("thirty_years");
   }

@@ -53,9 +53,37 @@ namespace run {
 
 class RingPolicy {
  public:
+  /// @brief One derelict field's entry into the ring: the schedule is data.
+  struct Entry {
+    const char* key;     ///< start_layout.csv key
+    std::int32_t year;   ///< the campaign year (1-based) the field first stands in the ring
+    std::uint32_t slot;  ///< its slot that year, 0-based (S1 = 0)
+  };
+
+  /// THE FAST RING (econ §3a): two fields a year from year 2, the full ring
+  /// from year 4. Its pair did not ship: the raising's cost fell on the
+  /// starved team's years (econ, the ring thread [15]).
+  static constexpr std::array<Entry, 6> kFastEntries = {{{"field_derelict_3", 2, 4},
+                                                         {"field_derelict_1", 2, 0},
+                                                         {"field_derelict_4", 3, 4},
+                                                         {"field_derelict_2", 3, 0},
+                                                         {"field_derelict_6", 4, 4},
+                                                         {"field_derelict_5", 4, 3}}};
+
+  /// THE SLOW RING (econ's arm B, the ring thread [15]): one field a year
+  /// from year 3 in the same slot order, the full ring from year 8.
+  static constexpr std::array<Entry, 6> kSlowEntries = {{{"field_derelict_3", 3, 4},
+                                                         {"field_derelict_1", 4, 0},
+                                                         {"field_derelict_4", 5, 4},
+                                                         {"field_derelict_2", 6, 0},
+                                                         {"field_derelict_6", 7, 4},
+                                                         {"field_derelict_5", 8, 3}}};
+
   /// @brief Reads the ring's crops off crops.csv and the derelict fields'
-  ///        places off start_layout.csv.
-  explicit RingPolicy(const core::ITableSet& tables) {
+  ///        places off start_layout.csv; `schedule` names each field's
+  ///        entry (kFastEntries by default, the first ring's pace).
+  explicit RingPolicy(const core::ITableSet& tables,
+                      std::span<const Entry> schedule = kFastEntries) {
     const core::ITable* const crops = tables.FindTable("crops");
     const core::ITable* const layout = tables.FindTable("start_layout");
     if (crops == nullptr || layout == nullptr) {
@@ -77,7 +105,7 @@ class RingPolicy {
     for (const core::CropId slot : ring_) {
       ready_ = ready_ || slot.value != core::kInvalidDefIdValue;
     }
-    for (const Entry& entry : kEntries) {
+    for (const Entry& entry : schedule) {
       const std::uint32_t row = layout->FindRowByKey(entry.key);
       Field field;
       field.entry = entry;
@@ -248,12 +276,6 @@ class RingPolicy {
   }
 
  private:
-  struct Entry {
-    const char* key;
-    std::int32_t year;   ///< the campaign year (1-based) the field first stands in the ring
-    std::uint32_t slot;  ///< its slot that year, 0-based (S1 = 0)
-  };
-
   struct Field {
     Entry entry{};
     float x = 0.0F;
@@ -279,13 +301,6 @@ class RingPolicy {
   static constexpr core::SimDay kAfterRyeWindowDayOfYear = 10U * core::kDaysPerMonth;
   /// A layout point binds the field whose centre lies within this many metres.
   static constexpr float kBindMetres = 5.0F;
-
-  static constexpr std::array<Entry, 6> kEntries = {{{"field_derelict_3", 2, 4},
-                                                     {"field_derelict_1", 2, 0},
-                                                     {"field_derelict_4", 3, 4},
-                                                     {"field_derelict_2", 3, 0},
-                                                     {"field_derelict_6", 4, 4},
-                                                     {"field_derelict_5", 4, 3}}};
 
   static float Cell(const core::ITable& table, std::uint32_t row, const char* column) {
     const std::string text(table.CellText(row, table.FindColumn(column)));
