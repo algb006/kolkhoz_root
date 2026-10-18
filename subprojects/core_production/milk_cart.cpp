@@ -2,6 +2,8 @@
 
 #include "milk_cart.h"
 
+#include <limits>
+
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
 #include "core_common/ledger_state.h"
@@ -30,6 +32,32 @@ void BookDelivered(const ProductionConfig& config,
   }
 }
 
+/// THE BARNS' MILK (#1056 C1.1; FarmingConfig::milk_at_barn): under the switch
+/// the kolkhoz herds' milk lies in their barns, which are not stores
+/// (IsTakenFrom answers no), so the cart reads them first and the stores
+/// after. Nothing without the switch: no barn holds milk then.
+Grams TakeMilkFromBarns(WorldState& current, const ProductionConfig& config, Grams wanted) {
+  if (config.farming.milk_at_barn < 0.5F) {
+    return 0;
+  }
+  Grams taken = 0;
+  for (UnitRow& unit : current.units.rows) {
+    if (taken >= wanted) {
+      break;
+    }
+    if (!IsTakenFrom(unit, config)) {
+      taken += TakeFromUnit(unit, config.milk_resource, wanted - taken);
+    }
+  }
+  return taken;
+}
+
+/// The cart's take: the barns first, then the stores (TakeFromStorage).
+Grams TakeMilkForCart(WorldState& current, const ProductionConfig& config, Grams wanted) {
+  const Grams from_barns = TakeMilkFromBarns(current, config, wanted);
+  return from_barns + TakeFromStorage(current, config, config.milk_resource, wanted - from_barns);
+}
+
 }  // namespace
 
 bool MilkPositionStands(const ProductionConfig& config, const WorldState& current) {
@@ -46,8 +74,11 @@ void ShipMilkLeftover(const ProductionConfig& config, WorldState& current) {
   if (config.milk_resource.value == kInvalidDefIdValue) {
     return;
   }
+  // Every gram: the barns' (under milk_at_barn, what the leg did not carry)
+  // and the stores' - nothing stays overnight.
+  const Grams from_barns = TakeMilkFromBarns(current, config, std::numeric_limits<Grams>::max());
   const Grams left = TakeableGrams(current, config, config.milk_resource);
-  const Grams taken = TakeFromStorage(current, config, config.milk_resource, left);
+  const Grams taken = from_barns + TakeFromStorage(current, config, config.milk_resource, left);
   // OVER THE PLAN, ALWAYS (the milk with debt, boss seq 26/28). What the
   // issue left used to go against the position while one stood. That
   // quietly made up the short days, so the position read met while the
@@ -66,7 +97,7 @@ void ShipMilkShare(const ProductionConfig& config, WorldState& current) {
   // what earlier short days still owe, the debt first because it is older.
   // A short day's difference joins the debt.
   const Grams wanted = current.plan.milk_daily_share + current.plan.milk_debt;
-  const Grams taken = TakeFromStorage(current, config, config.milk_resource, wanted);
+  const Grams taken = TakeMilkForCart(current, config, wanted);
   BookDelivered(config, current, taken, true);
   current.plan.milk_debt = wanted - taken;
   // THE BOOK SEES IT (boss seq 7 of epoch1-5): the debt of today, and at the

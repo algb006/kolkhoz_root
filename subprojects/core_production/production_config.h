@@ -716,6 +716,15 @@ struct FarmingConfig {
   /// STUB 39, econ's (CLAUDE.md §9: ~39 working days a year in Epoch I).
   float team_need_first_year_working_days = 39.0F;
 
+  /// THE MILK LEG (#1056 C1.1; econ's stage C contract 574c366; boss, the
+  /// #1056 thread [4], [7]; farming.csv `milk_at_barn`): 1 - the kolkhoz
+  /// herds' milk goes into the barn's own stock, the district's cart takes
+  /// its share there, and the rest reaches the store the village keeps milk
+  /// in only by the barn -> store leg (herd care, worked on rest days); 0 -
+  /// the milk goes straight to that store, as before 0.37.298. STUB 0 until
+  /// the pair says otherwise.
+  float milk_at_barn = 0.0F;
+
   /// The pasture season, 0-based months inclusive: outside it a head takes
   /// nothing from the grass and its whole norm comes out of the stores.
   /// ASSUMPTION — the design names summer grazing but no month band.

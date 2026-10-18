@@ -618,6 +618,10 @@ class ProductionSystem final : public IProductionSystem {
     return StandingHarvestOf(config_, world);
   }
 
+  bool IsIssueSource(const UnitRow& unit) const override {
+    return config_.farming.milk_at_barn < 0.5F || IsTakenFrom(unit, config_);
+  }
+
   void CollectStockForecast(const WorldState& completed,
                             std::vector<StockForecast>& lights) const override {
     lights.push_back(FeedLight(config_, completed));

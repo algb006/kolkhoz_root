@@ -421,7 +421,7 @@ class ResidentsSystem final : public IResidentsSystem {
     need.village_need_kcal_per_day =
         SettlementDailyNeedKilograms(food_, config_.life_speedup, completed) *
         static_cast<float>(kGramsPerKilogram) * food_.consumption.grain_reference_kcal_per_gram;
-    need.free_grams = FreeIssueStock(completed, SealedFunds(food_, completed), resource);
+    need.free_grams = FreeIssueStock(food_, completed, SealedFunds(food_, completed), resource);
     need.free_kcal = static_cast<float>(need.free_grams) * food_.resources[index].kcal_per_gram;
     return need;
   }
@@ -583,7 +583,8 @@ std::unique_ptr<IResidentsSystem> CreateResidentsSystem(
     std::function<std::int32_t(const WorldState&, ResourceId)> days_to_harvest_of,
     std::function<ResourceAmounts(const WorldState&)> turn_plan_seal,
     std::function<ResourceAmounts(const WorldState&)> harvest_to_come,
-    std::function<ResourceAmounts(const WorldState&)> standing_harvest) {
+    std::function<ResourceAmounts(const WorldState&)> standing_harvest,
+    std::function<bool(const UnitRow&)> issue_source) {
   // THE DEFAULTS ARE LEGITIMATE AND THEIR SILENCE WAS NOT
   // (core_tables/stub_tables.h). A caller that has not said it wants
   // this module's documented defaults is refused by name, so that a
@@ -644,6 +645,7 @@ std::unique_ptr<IResidentsSystem> CreateResidentsSystem(
   food.turn_plan_seal = std::move(turn_plan_seal);
   food.harvest_to_come = std::move(harvest_to_come);
   food.standing_harvest = std::move(standing_harvest);
+  food.issue_source = std::move(issue_source);
   food.forecast_terms = life.hunger_forecast_terms;
   // The cold metric is not "zero cold", it is "cold is not counted": phase 1
   // has neither firewood nor unit heating (plan §11), so ResidentRow::cold
