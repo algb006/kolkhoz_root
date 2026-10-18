@@ -406,6 +406,26 @@ class IProductionSystem {
   /// @note A pure read; called by residents in the decisions slot (phase 3)
   /// and between steps for the ration alarm.
   virtual ResourceAmounts HarvestToComeThisYear(const WorldState& world) const = 0;
+
+  /// @brief The harvest standing in the fields now and the heaps lying at
+  /// them, by produce (#1046 (b), econ §7.2; boss, the #1046 thread [12]): per
+  /// field, its heap, and the crop in hand at the harvest's own estimate
+  /// (StandingYieldGrams) unless it is a winter crop sown this autumn. Dense
+  /// by ResourceId.
+  ///
+  /// Exposed for the hunger lamp's forecast (core_residents,
+  /// hunger_forecast.h): the issue a position's harvest inside the horizon
+  /// will share from its day.
+  /// @note A pure read; called by residents between steps (the alarms).
+  virtual ResourceAmounts StandingHarvest(const WorldState& world) const = 0;
+
+  /// @brief The milk the morning issues of the next `days` days can take
+  /// beyond the stores' milk now: the kolkhoz herds' milking of today, each
+  /// day, less the district cart's share on the days the milk position stands
+  /// (from the season's first day); nought while its debt stands (#1046 (b),
+  /// arm BM; econ §8).
+  /// @note A pure read; called by residents between steps (the alarms).
+  virtual Grams MilkToIssueAhead(const WorldState& world, std::uint32_t days) const = 0;
 };
 
 /// @brief Creates the production subsystem.

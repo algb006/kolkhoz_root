@@ -13048,6 +13048,23 @@ int CheckTheMilkCart() {
                          core::AmountOf(january.plan.delivered_outside, milk) == 30 * kKilo,
                      "milk: and in January the cart takes no share, and what it takes is outside");
 
+  // THE MILK AHEAD (#1046 (b), arm BM; econ §8, U2 and U3): what the hunger
+  // forecast reads the next mornings can issue. From day 0 over 10 days: days
+  // 1-7 before the spring keep the whole 80 kg, days 8-10 lose the 40 kg share
+  // to the cart: 7 x 80 + 3 x 40 = 680 kg.
+  failures += Expect(core::MilkToIssueAheadGrams(config, january, 10) == 680 * kKilo,
+                     "milk ahead (U2): a span crossing the spring nets the cart's share only "
+                     "from the season's first day, 680 kg");
+  core::WorldState summer = january;
+  summer.calendar.tick = 20 * static_cast<core::Tick>(core::kTicksPerDay);
+  core::RefreshCalendarCaches(summer.calendar);
+  failures += Expect(core::MilkToIssueAheadGrams(config, summer, 4) == 160 * kKilo,
+                     "milk ahead: in the season every morning keeps the milking less the share, "
+                     "4 x 40 kg");
+  summer.plan.milk_debt = 5 * kKilo;
+  failures += Expect(core::MilkToIssueAheadGrams(config, summer, 4) == 0,
+                     "milk ahead (U3): a debt standing takes every litre - no milk is promised");
+
   // And what went outside is over the plan: 3.3 t of milk at 0.64 / 3.3 is
   // 0.64 t of grain.
   core::WorldState outside;

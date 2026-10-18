@@ -414,6 +414,24 @@ struct FoodConfig {
   /// rung holds the whole owed.
   std::function<ResourceAmounts(const WorldState&)> harvest_to_come;
 
+  /// The harvest standing in the fields and the heaps at them, by ResourceId
+  /// (IProductionSystem::StandingHarvest; #1046 (b), econ §7.2): what a
+  /// position's harvest inside the hunger forecast's horizon will bring. A
+  /// CALL INTO core_production on the same terms as `fodder_fund` above.
+  /// Empty: the forecast has no harvest term.
+  std::function<ResourceAmounts(const WorldState&)> standing_harvest;
+
+  /// The milk the issues of the next N days can take beyond the stores' milk
+  /// now (IProductionSystem::MilkToIssueAhead; #1046 (b), arm BM). A CALL
+  /// INTO core_production on the same terms as `fodder_fund` above. Empty:
+  /// the forecast has no milk term.
+  std::function<Grams(const WorldState&, std::uint32_t)> milk_to_issue_ahead;
+
+  /// Which of the two terms above the hunger forecast adds (LifeConfig::
+  /// hunger_forecast_terms, copied at the assembly): 0 none, 1 the harvest,
+  /// 2 the harvest and the milk.
+  std::uint8_t forecast_terms = 2;
+
   /// THE POSITION THE DISTRICT'S CART TAKES DAILY (district §9; register
   /// 231; boss seq 113): milk, by its resources.csv key. The plan does NOT
   /// seal it from the issue — its share of the day has left at the milking

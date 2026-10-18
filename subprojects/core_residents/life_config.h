@@ -247,6 +247,14 @@ struct LifeConfig {
   /// STUB 0.9; 0.5..1.0).
   float hunger_forecast_share = 0.9F;
 
+  /// Which inflow terms the yellow stage's forecast adds to the issue to
+  /// come (world_params `hunger_forecast_terms`, STUB 2; boss, the #1046
+  /// thread [12], one build and two arms): 0 - none; 1 - the harvest inside
+  /// the horizon, from its day (econ §7.2, arm B); 2 - that and the milk the
+  /// herds give over the horizon, net of the district's cart (arm BM). The
+  /// losing arm's value leaves with the release.
+  std::uint8_t hunger_forecast_terms = 2;
+
   /// A birth is twins with this chance (world_params `twins_share`, 1/80,
   /// STUB — econ's; life cycle §4).
   float twins_share = 0.0125F;

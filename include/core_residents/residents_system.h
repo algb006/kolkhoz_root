@@ -205,6 +205,15 @@ class IResidentsSystem {
 ///        carry-over only what this will not pay (core_common/fund_ladder.h,
 ///        PlanRungGrams). Empty: the rung holds the whole owed, as before
 ///        0.37.39.
+/// @param standing_harvest The harvest standing in the fields and the heaps
+///        at them, dense by ResourceId — IProductionSystem::StandingHarvest,
+///        bound by the assembly (#1046 (b)). The hunger lamp's forecast shares
+///        a position's harvest inside its horizon from the harvest's day.
+///        Empty: no such term, as before 0.37.293.
+/// @param milk_to_issue_ahead The milk the issues of the next N days can take
+///        beyond the stores' milk now — IProductionSystem::MilkToIssueAhead,
+///        bound by the assembly (#1046 (b), arm BM). Empty: none, as before
+///        0.37.293.
 std::unique_ptr<IResidentsSystem> CreateResidentsSystem(
     const ITableSet& tables,
     StubTables stubs,
@@ -212,7 +221,9 @@ std::unique_ptr<IResidentsSystem> CreateResidentsSystem(
     std::function<ResourceAmounts(const WorldState&)> next_year_hold = {},
     std::function<std::int32_t(const WorldState&, ResourceId)> days_to_harvest_of = {},
     std::function<ResourceAmounts(const WorldState&)> turn_plan_seal = {},
-    std::function<ResourceAmounts(const WorldState&)> harvest_to_come = {});
+    std::function<ResourceAmounts(const WorldState&)> harvest_to_come = {},
+    std::function<ResourceAmounts(const WorldState&)> standing_harvest = {},
+    std::function<Grams(const WorldState&, std::uint32_t)> milk_to_issue_ahead = {});
 
 /// @brief The world_params.csv keys this module reads (the spreads of the
 /// figure a newborn is given, and the organizations' and ideology's numbers).

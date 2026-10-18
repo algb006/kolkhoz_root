@@ -581,7 +581,9 @@ std::unique_ptr<IResidentsSystem> CreateResidentsSystem(
     std::function<ResourceAmounts(const WorldState&)> next_year_hold,
     std::function<std::int32_t(const WorldState&, ResourceId)> days_to_harvest_of,
     std::function<ResourceAmounts(const WorldState&)> turn_plan_seal,
-    std::function<ResourceAmounts(const WorldState&)> harvest_to_come) {
+    std::function<ResourceAmounts(const WorldState&)> harvest_to_come,
+    std::function<ResourceAmounts(const WorldState&)> standing_harvest,
+    std::function<Grams(const WorldState&, std::uint32_t)> milk_to_issue_ahead) {
   // THE DEFAULTS ARE LEGITIMATE AND THEIR SILENCE WAS NOT
   // (core_tables/stub_tables.h). A caller that has not said it wants
   // this module's documented defaults is refused by name, so that a
@@ -641,6 +643,9 @@ std::unique_ptr<IResidentsSystem> CreateResidentsSystem(
   food.days_to_harvest_of = std::move(days_to_harvest_of);
   food.turn_plan_seal = std::move(turn_plan_seal);
   food.harvest_to_come = std::move(harvest_to_come);
+  food.standing_harvest = std::move(standing_harvest);
+  food.milk_to_issue_ahead = std::move(milk_to_issue_ahead);
+  food.forecast_terms = life.hunger_forecast_terms;
   // The cold metric is not "zero cold", it is "cold is not counted": phase 1
   // has neither firewood nor unit heating (plan §11), so ResidentRow::cold
   // never moves. Said out loud at world creation so that a run showing

@@ -90,6 +90,45 @@ core::WorldState WorkersAndRing(float child_pantry_kg) {
   return world;
 }
 
+/// THE INFLOWS (#1046 (b), econ §7.2 and §8): grain under the default rule,
+/// its harvest in `harvest_in` days with 10 t standing, and milk at the
+/// table's 30 kg a trudoden that the stores hold none of - the milk's kcal
+/// keeps the grain under a third of the bundle, so nothing cuts the horizon
+/// and it stays 24 days, as on the canon (seq 11).
+core::FoodConfig InflowConfig(std::int32_t harvest_in, std::uint8_t terms) {
+  core::FoodConfig config = GrainConfig();
+  config.resources.push_back({.kcal_per_gram = 0.64F,
+                              .category = core::FoodCategory::kDairy,
+                              .issue_kg_per_trudoden = 30.0F});
+  config.carted_daily = core::ResourceId{1};
+  config.days_to_harvest_of = [harvest_in](const core::WorldState&, core::ResourceId resource) {
+    return resource.value == 0 ? harvest_in : -1;
+  };
+  config.standing_harvest = [](const core::WorldState&) {
+    return core::ResourceAmounts{10'000 * kKilo, 0};
+  };
+  config.harvest_to_come = config.standing_harvest;
+  config.milk_to_issue_ahead = [](const core::WorldState&, std::uint32_t days) {
+    return static_cast<core::Grams>(days) * 100 * kKilo;
+  };
+  config.forecast_terms = terms;
+  return config;
+}
+
+/// Two adults of 30 with `pantry_kg` of grain; a store of `store_kg` of grain
+/// and no milk; last year's book 20 trudodni a day.
+core::WorldState InflowWorld(float pantry_kg, float store_kg) {
+  core::WorldState world = OneFamily(pantry_kg);
+  world.families.rows[0].pantry.resize(2, 0);
+  core::UnitRow store;
+  store.level = 1;
+  store.stock.assign(2, 0);
+  store.stock[0] = static_cast<core::Grams>(store_kg * static_cast<float>(kKilo));
+  core::AppendRow(world.units, store);
+  world.ledger.closed.trudodni_by_day.fill(20 * core::kTrudodniScale);
+  return world;
+}
+
 }  // namespace
 
 int CheckTheHungerForecast() {
@@ -131,5 +170,32 @@ int CheckTheHungerForecast() {
                  no_worker.under_threat[0].value == no_worker_world.families.row_ids[1].value,
              "a child alone, an empty pantry and every trudoden of the ring: no worker, "
              "no issue to come - under threat beside a full store");
+  // THE HARVEST INSIDE THE HORIZON (arm B): 100 kg in the pantry and 10 kg in
+  // the store carry two adults past a harvest on day 2, and from it the
+  // grain's norm shares 10 t over a year's trudodni: 10 t x 240 / 960 = 2.5 t
+  // to the horizon. Without the term (0) they are under threat.
+  failures += Expect(
+      core::ForecastHunger(InflowConfig(2, 1), InflowWorld(100.0F, 10.0F), kSpeedup, kShare)
+              .under_threat.empty() &&
+          core::ForecastHunger(InflowConfig(2, 0), InflowWorld(100.0F, 10.0F), kSpeedup, kShare)
+                  .under_threat.size() == 1,
+      "a harvest on day 2 shares 2.5 t to the horizon from its day: not under "
+      "threat, and under threat with the term switched off");
+  // U1 (econ §8): 60 kg (198 000 kcal) and 10 kg issued (33 000) do not reach
+  // a harvest on day 12 (445 500 needed): under threat, though the harvest
+  // would cover the horizon, and short on day 5 (198 000 / (37 125 - 2 750)).
+  const core::HungerForecast before_harvest =
+      core::ForecastHunger(InflowConfig(12, 1), InflowWorld(60.0F, 10.0F), kSpeedup, kShare);
+  failures +=
+      Expect(before_harvest.under_threat.size() == 1 && before_harvest.days_to_first_short == 5,
+             "U1: short on day 5 with the harvest on day 12 - under threat, short day 5");
+  // THE MILK AHEAD (arm BM): 23 mornings x 100 kg = 2.3 t of milk, 1 472 000
+  // kcal, cover an empty pantry with no harvest anywhere; arm B does not see it.
+  failures += Expect(
+      core::ForecastHunger(InflowConfig(-1, 2), InflowWorld(0.0F, 0.0F), kSpeedup, kShare)
+              .under_threat.empty() &&
+          core::ForecastHunger(InflowConfig(-1, 1), InflowWorld(0.0F, 0.0F), kSpeedup, kShare)
+                  .under_threat.size() == 1,
+      "the milkings ahead cover an empty pantry under arm BM, not under arm B");
   return failures;
 }

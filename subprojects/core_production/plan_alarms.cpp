@@ -535,10 +535,12 @@ Grams NextYearHarvestGrams(const ProductionConfig& config,
 /// resource into `to_come`: its heap; the crop in hand, if it ripens this
 /// year, at its own estimate; the chain's crop of this year not yet sown, at
 /// the table's yield on this field's soil, unless its slot is lost.
-void AddFieldHarvestToCome(const ProductionConfig& config,
-                           const FieldRow& field,
-                           SimDay today,
-                           ResourceAmounts& to_come) {
+/// The field's heap and its crop in hand (the file's StandingHarvestOf);
+/// true when a crop is in hand, which then is all the field will give.
+bool AddFieldHeapAndStanding(const ProductionConfig& config,
+                             const FieldRow& field,
+                             SimDay today,
+                             ResourceAmounts& to_come) {
   const auto add = [&to_come](ResourceId resource, Grams grams) {
     if (resource.value < to_come.size() && grams > 0) {
       to_come[resource.value] += grams;
@@ -555,6 +557,21 @@ void AddFieldHarvestToCome(const ProductionConfig& config,
     if (!(crop.is_winter && SownThisYear(field, field.crop, today))) {
       add(crop.resource, StandingYieldGrams(config, field, crop));
     }
+    return true;
+  }
+  return false;
+}
+
+void AddFieldHarvestToCome(const ProductionConfig& config,
+                           const FieldRow& field,
+                           SimDay today,
+                           ResourceAmounts& to_come) {
+  const auto add = [&to_come](ResourceId resource, Grams grams) {
+    if (resource.value < to_come.size() && grams > 0) {
+      to_come[resource.value] += grams;
+    }
+  };
+  if (AddFieldHeapAndStanding(config, field, today, to_come)) {
     return;
   }
   if (field.kind != LandKind::kArable || !HasRotation(field) || ReapedThisYear(field, today)) {
@@ -703,6 +720,14 @@ ResourceAmounts TurnPlanSealOf(const ProductionConfig& config, const WorldState&
     }
   }
   return seal;
+}
+
+ResourceAmounts StandingHarvestOf(const ProductionConfig& config, const WorldState& world) {
+  ResourceAmounts standing(config.feed_values.size(), 0);
+  for (const FieldRow& field : world.fields.rows) {
+    AddFieldHeapAndStanding(config, field, world.calendar.day, standing);
+  }
+  return standing;
 }
 
 ResourceAmounts HarvestToComeThisYearOf(const ProductionConfig& config, const WorldState& world) {

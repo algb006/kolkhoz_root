@@ -15,6 +15,18 @@
 ///   the family's share: its workers against the village's (CountHousehold,
 ///   the advance's door; econ §6 (a1), the #1046 thread [6]). A family with
 ///   no worker forecasts no issue;
+/// - THE INFLOWS INSIDE H (#1046 (b); econ §7.2 and §8; boss, the #1046
+///   thread [12]), by world_params `hunger_forecast_terms` (STUB 2): from 1, a
+///   position whose harvest falls inside H adds, from the harvest's day to H,
+///   the world's own norm after it - the standing crop and its heaps
+///   (IProductionSystem::StandingHarvest), at most this year's harvest net of
+///   next year's seed, less the plan still owed, over the trudodni to the
+///   next year's harvest (a NAMED DEVIATION: the funds of the harvest's day
+///   cannot be read today, so the plan owed and the seed stand for them); from
+///   2, the milk position's cap adds the milkings ahead net of the cart
+///   (IProductionSystem::MilkToIssueAhead). The family is also under threat
+///   when it runs short BY THE FIRST SUCH HARVEST on the issue before it
+///   (econ's U1: a crop of day 12 feeds nobody on day 5);
 /// - its own food: FamilyRow::own_kcal_mean × H (an exponential mean, the
 ///   contract's named deviation from «the last 7 days' mean»);
 /// - the need: DailyNeedKilograms of every member at home, in the grain

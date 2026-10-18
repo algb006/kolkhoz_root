@@ -614,6 +614,14 @@ class ProductionSystem final : public IProductionSystem {
     return HarvestToComeThisYearOf(config_, world);
   }
 
+  ResourceAmounts StandingHarvest(const WorldState& world) const override {
+    return StandingHarvestOf(config_, world);
+  }
+
+  Grams MilkToIssueAhead(const WorldState& world, std::uint32_t days) const override {
+    return MilkToIssueAheadGrams(config_, world, days);
+  }
+
   void CollectStockForecast(const WorldState& completed,
                             std::vector<StockForecast>& lights) const override {
     lights.push_back(FeedLight(config_, completed));

@@ -117,6 +117,16 @@ ResourceAmounts TurnPlanSealOf(const ProductionConfig& config, const WorldState&
 /// Dense by ResourceId.
 ResourceAmounts HarvestToComeThisYearOf(const ProductionConfig& config, const WorldState& world);
 
+/// @brief The harvest standing in the fields now, and the heaps lying at
+/// them, by produce (IProductionSystem::StandingHarvest; #1046 (b), econ
+/// §7.2, boss seq 12): per field, its heap (not in any store, so in no
+/// free remainder), and the crop in hand at the harvest's own estimate
+/// (StandingYieldGrams: FieldYieldGrams on the field's soil and season, of
+/// the part not yet laid) unless it is a winter crop sown this autumn. The
+/// first two terms of HarvestToComeThisYearOf, without the slots still to
+/// be sown and without the seed. Dense by ResourceId.
+ResourceAmounts StandingHarvestOf(const ProductionConfig& config, const WorldState& world);
+
 }  // namespace core
 
 #endif  // CORE_PRODUCTION_PLAN_ALARMS_H_
