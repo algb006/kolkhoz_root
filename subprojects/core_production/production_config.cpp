@@ -1837,6 +1837,13 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
                        Range{.low = 0.0F, .high = static_cast<float>(kDaysPerYear)},
                        1.0F,
                        config.hay_cart_urgent_days,
+                       error) ||
+        !CellOrDefault(*labor,
+                       labor->FindRowByKey("walker_min_trips_per_day"),
+                       value_col,
+                       Range{.low = 0.0F, .high = 24.0F},
+                       2.0F,
+                       config.walker_min_trips_per_day,
                        error)) {
       error = "labor: " + error;
       return false;

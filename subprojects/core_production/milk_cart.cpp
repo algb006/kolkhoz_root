@@ -112,6 +112,31 @@ void ShipMilkShare(const ProductionConfig& config, WorldState& current) {
   current.ledger.current.milk_debt = current.plan.milk_debt;
 }
 
+namespace {
+
+/// THE MILK LEG GOES ON FOOT (#1056 C1.3; econ's §C1.3 (ii-b), boss's word
+/// after seq 15; transport design §2 «Как носят», «бидон в руке»): the cans
+/// in hand, a walker's trip by the milk's form (haul.h, WalkerLoadGrams) -
+/// whether or not a horse is free. The C1 arm carted it and the year's team
+/// went short of its ration on 23 % more village-days (515 -> 633, novice
+/// 27 x 3): 9 170 horse-hours the oat plan did not price. THE CART ONLY
+/// WHERE THE WALK IS REFUSED: the standard day holds fewer round trips of
+/// it than labor.csv `walker_min_trips_per_day` - the placement's own
+/// threshold for a walker (assignment.h). Every epoch for now: Epoch I is
+/// the only one built.
+HaulRate MilkLegRate(
+    const ProductionConfig& config, const WorldState& world, Vec2 barn, Vec2 store, bool& on_foot) {
+  const HaulRate walked = WalkRateToward(config, world, barn, store, config.milk_resource);
+  const float trips = walked.round_trip_hours > 0.0F
+                          ? config.standard_day_hours / walked.round_trip_hours
+                          : std::numeric_limits<float>::infinity();
+  on_foot = !(config.walker_min_trips_per_day > 0.0F) || trips >= config.walker_min_trips_per_day;
+  return on_foot ? walked
+                 : RateToward(config, world, barn, store, TravelMode::kCart, config.milk_resource);
+}
+
+}  // namespace
+
 void PriceMilkLegs(const ProductionConfig& config, WorldState& current) {
   const bool on =
       config.farming.milk_at_barn >= 0.5F && config.milk_resource.value != kInvalidDefIdValue;
@@ -126,6 +151,7 @@ void PriceMilkLegs(const ProductionConfig& config, WorldState& current) {
     herd.leg_days_written = 0.0F;
     herd.leg_days_priced = 0.0F;
     herd.leg_resource = ResourceId{};
+    herd.leg_on_foot = 0;
     if (!on || herd.household_owned != 0) {
       continue;
     }
@@ -149,8 +175,9 @@ void PriceMilkLegs(const ProductionConfig& config, WorldState& current) {
         break;
       }
     }
-    const HaulRate rate =
-        RateToward(config, current, barn.position, store, TravelMode::kCart, config.milk_resource);
+    bool on_foot = true;
+    const HaulRate rate = MilkLegRate(config, current, barn.position, store, on_foot);
+    herd.leg_on_foot = on_foot ? 1U : 0U;
     herd.leg_resource = config.milk_resource;
     herd.leg_to = rate.receiver;
     herd.leg_days_written = CartDaysFor(config, milk, rate);
@@ -181,9 +208,12 @@ void SettleMilkLegs(const ProductionConfig& config, WorldState& current, bool ev
       const Grams moved = DeliverToStores(current, config, herd.leg_resource, budget);
       AddToStock(barn.stock, herd.leg_resource, -moved);
       AddLedgerAmount(current.ledger.current.hauled_to_stores, herd.leg_resource, moved);
-      const HaulRate rate = RateToward(
-          config, current, barn.position, herd.leg_to, TravelMode::kCart, herd.leg_resource);
-      BookCartRun(config, current, CartLoadSource::kStore, rate, moved);
+      // The carrier the leg was priced with (C1.3): a walk books no cart run.
+      if (herd.leg_on_foot == 0) {
+        const HaulRate rate = RateToward(
+            config, current, barn.position, herd.leg_to, TravelMode::kCart, herd.leg_resource);
+        BookCartRun(config, current, CartLoadSource::kStore, rate, moved);
+      }
       // Who carried it (#671's instrument; hauled_book.h).
       WorkAssignment hauled;
       hauled.kind = WorkKind::kHauling;

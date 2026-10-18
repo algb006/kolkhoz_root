@@ -1860,7 +1860,9 @@ class LaborSystem final : public ILaborSystem {
       job.herd = current.herds.row_ids[row];
       job.position = position;
       job.work_days_remaining = herd.leg_days_remaining;
-      job.harnessed = DraughtHorses(current) > 0;
+      // ON FOOT, the cans in hand (#1056 C1.3; herd_state.h, leg_on_foot):
+      // no horse is asked where production priced a walk.
+      job.harnessed = herd.leg_on_foot == 0 && DraughtHorses(current) > 0;
       job.window = DeadlineInDays(0);
       jobs.push_back(job);
     }

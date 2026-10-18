@@ -37,6 +37,16 @@ HaulRate RateToward(const ProductionConfig& config,
                     TravelMode cart_mode = TravelMode::kCart,
                     ResourceId carried = ResourceId{});
 
+/// @brief The rate of carrying `carried` on foot from `from` to `destination`
+///        today, whether or not a horse is free (#1056 C1.3, the milk leg):
+///        the walk's way, pace and the back's load by the resource's form
+///        (haul.h, WalkerLoadGrams) - RateToward's own carrier on foot.
+HaulRate WalkRateToward(const ProductionConfig& config,
+                        const WorldState& world,
+                        Vec2 from,
+                        Vec2 destination,
+                        ResourceId carried);
+
 /// @brief Books what a produce cart brought in today on the year's cart
 ///        columns (YearLedger::cart_trips and its siblings): the trips are
 ///        the grams over the cart's load, each one loaded way off the road

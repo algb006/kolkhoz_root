@@ -325,8 +325,11 @@ static_assert(AggregateArity<UnitRow>() == 21,
 // aligns to 8, and the ResourceId's two bytes open a new word); the fields held.
 // Then leg_days_priced, a third float (the evening's estimate of tomorrow's
 // leg): into the padding, 176 unmoved and 35 fields - read off the build.
+// Save 172 (#1056 C1.3): leg_on_foot, a byte after leg_resource - predicted
+// into the word the ResourceId opened, 176 unmoved and 36 fields, +1 a herd on
+// the wire, before the build.
 static_assert(sizeof(HerdRow) == 176, "HerdRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<HerdRow>() == 35,
+static_assert(AggregateArity<HerdRow>() == 36,
               "HerdRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-13: the felling mark — a stand id and a volume — took the order row
 // from 64 to 72 and the assignment's stand from 24 to 28 (and the resident
@@ -1515,7 +1518,8 @@ void WriteHerdRow(SaveSink& sink, const HerdRow& row) {
   out.WriteFloat(row.leg_days_priced);
   WriteVec2(out, row.leg_to);
   sink.WriteDefId(DefKind::kResource, row.leg_resource.value);
-  WriteWait(out, row.wait);  // save 138
+  out.WriteU8(row.leg_on_foot);  // save 172 (#1056 C1.3)
+  WriteWait(out, row.wait);      // save 138
 }
 
 HerdRow ReadHerdRow(LoadSource& source) {
@@ -1561,6 +1565,7 @@ HerdRow ReadHerdRow(LoadSource& source) {
   row.leg_days_priced = in.ReadFloat();
   row.leg_to = ReadVec2(in);
   row.leg_resource = ResourceId{source.ReadDefId(DefKind::kResource)};
+  row.leg_on_foot = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "milk leg on foot"));
   if (!(row.leg_days_remaining >= 0.0F) || !(row.leg_days_written >= 0.0F) ||
       !(row.leg_days_priced >= 0.0F)) {
     source.Fail("a herd's milk leg is negative or not a number");

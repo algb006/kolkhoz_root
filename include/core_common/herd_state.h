@@ -255,6 +255,12 @@ struct HerdRow {
   /// The resource the leg carts (the milk); invalid with no leg.
   ResourceId leg_resource;
 
+  /// 1 when the leg is carried ON FOOT, the cans in hand (#1056 C1.3; econ's
+  /// §C1.3 (ii-b); save 172): the leg was priced at a walker's trip and its
+  /// job asks no horse. 0 - by cart, only where the standard day holds fewer
+  /// walks than labor.csv `walker_min_trips_per_day` (milk_cart.cpp).
+  std::uint8_t leg_on_foot = 0;
+
   /// THE WAIT A HEAD OF IT STANDS IN (save 138; architecture §7ж³; routing
   /// stage B, B6): a riding horse spending the night at its worker's yard
   /// (wait_state.h, kHorseAtWorkersYard). The herd is the agent: the core

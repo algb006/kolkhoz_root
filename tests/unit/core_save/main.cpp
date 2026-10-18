@@ -519,6 +519,7 @@ core::WorldState MakeWorld() {
   herd.leg_days_priced = 0.875F;
   herd.leg_to = core::Vec2{8800.5F, 9250.25F};
   herd.leg_resource = core::ResourceId{1};
+  herd.leg_on_foot = 1;  // save 172 (#1056 C1.3): on foot, off its default
   // Save 138: a horse of it at its worker's yard, waiting for his shift.
   herd.wait = core::WaitRecord(
       core::WaitKind::kHorseAtWorkersYard,
@@ -1954,7 +1955,9 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // receiver (8) and resource (2); one herd: predicted 139 -> 157 before the
     // build and held. Then +4, the evening's estimate (leg_days_priced):
     // predicted 157 -> 161 and held; the hash read off it.
-    {"herds", 161, 0xd50e8d4f2f6894a5ULL},
+    // Save 172 (#1056 C1.3): +1 - the leg on foot; predicted 161 -> 162
+    // before the build and held; the hash read off it.
+    {"herds", 162, 0x2fbb997e65965dd2ULL},
     // 2026-09-16, save 48: +6 bytes, one for each of the six orders — the
     // bought head's sex. The witness named the section, the delta and the
     // offset without being asked, which is what it was rewritten for this
@@ -2805,8 +2808,8 @@ int main() {
           loaded.herds.rows[0].leg_days_written == 0.75F &&
           loaded.herds.rows[0].leg_days_priced == 0.875F &&
           loaded.herds.rows[0].leg_to.x == 8800.5F && loaded.herds.rows[0].leg_to.y == 9250.25F &&
-          loaded.herds.rows[0].leg_resource.value == 1,
-      "the herd's milk leg comes back (save 170)");
+          loaded.herds.rows[0].leg_resource.value == 1 && loaded.herds.rows[0].leg_on_foot == 1,
+      "the herd's milk leg comes back, and on foot (save 170, 172)");
   failures += Expect(AmountAt(loaded.ledger.closed.herd_hay_eaten, 1) == 9 &&
                          AmountAt(loaded.ledger.closed.herd_feed_short, 0) == 6 &&
                          loaded.ledger.closed.herd_feed_short.size() == 1 &&

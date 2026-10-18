@@ -1252,6 +1252,13 @@ struct ProductionConfig {
   /// has one home, the table; labour's reader is LaborConfig's.
   float hay_cart_urgent_days = 1.0F;
 
+  /// labor.csv `walker_min_trips_per_day`, read here too (#1056 C1.3): the
+  /// milk leg goes on foot unless the standard day holds fewer round trips
+  /// of the walk than this (milk_cart.cpp, PriceMilkLegs) - the same cell
+  /// the placement's last pass asks of a walker (assignment.h). One home,
+  /// the table.
+  float walker_min_trips_per_day = 2.0F;
+
   // -- shelf life (task A4; transport design §10) --------------------------
   /// Game days a resource keeps, by ResourceId — resources.csv `spoil_days`,
   /// empty for what does not go bad. Read here for the units' stores;

@@ -13085,6 +13085,20 @@ int CheckTheMilkCart() {
                    priced.leg_days_written == priced.leg_days_remaining && priced.leg_to.x != 0.0F,
                "milk leg: the barn's 50 kg are priced as cart-days to the store that "
                "takes milk");
+    // ON FOOT, THE CANS IN HAND (#1056 C1.3): 400 m holds every walk the
+    // day asks, so no horse is asked. Its pair: a threshold no walk meets -
+    // the cart.
+    failures +=
+        Expect(priced.leg_on_foot == 1, "milk leg: a near store is walked to, cans in hand");
+    {
+      core::ProductionConfig far_config = leg_config;
+      far_config.walker_min_trips_per_day = 1000.0F;
+      core::WorldState far_world = barn_world;
+      core::PriceMilkLegs(far_config, far_world);
+      const core::HerdRow& carted = far_world.herds.rows[core::FindRow(far_world.herds, cows)];
+      failures += Expect(carted.leg_on_foot == 0 && carted.leg_days_remaining > 0.0F,
+                         "milk leg: where the day holds too few walks, the cart");
+    }
     // The whole leg drained by its carters: the evening's settle carries it.
     barn_world.herds.rows[core::FindRow(barn_world.herds, cows)].leg_days_remaining = 0.0F;
     core::SettleMilkLegs(leg_config, barn_world, true);
