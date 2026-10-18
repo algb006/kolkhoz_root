@@ -245,6 +245,10 @@ struct HerdRow {
   /// What `leg_days_remaining` was written at, for the settle's share done.
   float leg_days_written = 0.0F;
 
+  /// The day's leg as the milking priced it: the evening writes tomorrow's
+  /// estimate from it, so the morning's placement sees a leg to crew.
+  float leg_days_priced = 0.0F;
+
   /// The leg's receiver: the store the village keeps milk in.
   Vec2 leg_to;
 

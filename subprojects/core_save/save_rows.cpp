@@ -314,8 +314,10 @@ static_assert(AggregateArity<UnitRow>() == 20,
 // after care_days_remaining - predicted 152 -> 168 and 34 fields before the
 // build. The size MISSED: the build reads 176 (the optional wait after them
 // aligns to 8, and the ResourceId's two bytes open a new word); the fields held.
+// Then leg_days_priced, a third float (the evening's estimate of tomorrow's
+// leg): into the padding, 176 unmoved and 35 fields - read off the build.
 static_assert(sizeof(HerdRow) == 176, "HerdRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<HerdRow>() == 34,
+static_assert(AggregateArity<HerdRow>() == 35,
               "HerdRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-13: the felling mark — a stand id and a volume — took the order row
 // from 64 to 72 and the assignment's stand from 24 to 28 (and the resident
@@ -1480,6 +1482,7 @@ void WriteHerdRow(SaveSink& sink, const HerdRow& row) {
   // Save 170 (#1056 C1.1): the milk leg - its seam, written, receiver, resource.
   out.WriteFloat(row.leg_days_remaining);
   out.WriteFloat(row.leg_days_written);
+  out.WriteFloat(row.leg_days_priced);
   WriteVec2(out, row.leg_to);
   sink.WriteDefId(DefKind::kResource, row.leg_resource.value);
   WriteWait(out, row.wait);  // save 138
@@ -1525,9 +1528,11 @@ HerdRow ReadHerdRow(LoadSource& source) {
   row.care_days_remaining = in.ReadFloat();
   row.leg_days_remaining = in.ReadFloat();  // save 170 (#1056 C1.1)
   row.leg_days_written = in.ReadFloat();
+  row.leg_days_priced = in.ReadFloat();
   row.leg_to = ReadVec2(in);
   row.leg_resource = ResourceId{source.ReadDefId(DefKind::kResource)};
-  if (!(row.leg_days_remaining >= 0.0F) || !(row.leg_days_written >= 0.0F)) {
+  if (!(row.leg_days_remaining >= 0.0F) || !(row.leg_days_written >= 0.0F) ||
+      !(row.leg_days_priced >= 0.0F)) {
     source.Fail("a herd's milk leg is negative or not a number");
   }
   row.wait = ReadWait(source);  // save 138

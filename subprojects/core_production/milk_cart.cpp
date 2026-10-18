@@ -117,8 +117,14 @@ void PriceMilkLegs(const ProductionConfig& config, WorldState& current) {
       config.farming.milk_at_barn >= 0.5F && config.milk_resource.value != kInvalidDefIdValue;
   std::vector<std::uint32_t> barns_priced;
   for (HerdRow& herd : current.herds.rows) {
+    // What the morning's crew already drained off yesterday evening's
+    // estimate (SettleMilkLegs) stays done.
+    const float done = herd.leg_days_written > herd.leg_days_remaining
+                           ? herd.leg_days_written - herd.leg_days_remaining
+                           : 0.0F;
     herd.leg_days_remaining = 0.0F;
     herd.leg_days_written = 0.0F;
+    herd.leg_days_priced = 0.0F;
     herd.leg_resource = ResourceId{};
     if (!on || herd.household_owned != 0) {
       continue;
@@ -147,8 +153,9 @@ void PriceMilkLegs(const ProductionConfig& config, WorldState& current) {
         RateToward(config, current, barn.position, store, TravelMode::kCart, config.milk_resource);
     herd.leg_resource = config.milk_resource;
     herd.leg_to = rate.receiver;
-    herd.leg_days_remaining = CartDaysFor(config, milk, rate);
-    herd.leg_days_written = herd.leg_days_remaining;
+    herd.leg_days_written = CartDaysFor(config, milk, rate);
+    herd.leg_days_priced = herd.leg_days_written;
+    herd.leg_days_remaining = std::max(herd.leg_days_written - done, 0.0F);
   }
 }
 
@@ -194,11 +201,16 @@ void SettleMilkLegs(const ProductionConfig& config, WorldState& current, bool ev
     // drained for the next hour (as DeliverDrained keeps it).
     herd.leg_days_written = herd.leg_days_remaining + done * (1.0F - converted);
     if (evening) {
-      // THE DAY'S LEG CLOSES: what is left in the barn goes with the cart
-      // before the next milking (ShipMilkLeftover); tomorrow's leg is priced
-      // after tomorrow's milking.
-      herd.leg_days_remaining = 0.0F;
-      herd.leg_days_written = 0.0F;
+      // THE DAY'S LEG CLOSES and TOMORROW'S IS ESTIMATED: what is left in the
+      // barn goes with the cart before the next milking (ShipMilkLeftover),
+      // and tomorrow's leg is written now at today's price - the morning's
+      // placement (hour 0, before the milking) crews a level-0 leg it can see,
+      // where a leg priced only after the milking was left to the hour-1
+      // top-up's idle hands (the first arm: 21-28 % of the milk left in the
+      // barn on working days, 0.2-0.5 % on days off). The milking re-prices
+      // it to the day's milk (PriceMilkLegs), keeping what was drained.
+      herd.leg_days_remaining = herd.leg_days_priced;
+      herd.leg_days_written = herd.leg_days_priced;
     }
   }
 }

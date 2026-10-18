@@ -13091,6 +13091,14 @@ int CheckTheMilkCart() {
     failures +=
         Expect(barn_world.units.rows[1].stock[1] == 0 && StoreOf(barn_world, 1) == 50 * kKilo,
                "milk leg: drained whole, the 50 kg go barn -> store by the store's door");
+    // TOMORROW'S LEG IS WRITTEN TONIGHT at today's price, for the morning's
+    // placement to see (the first arm left 21-28 % in the barn on working days).
+    {
+      const core::HerdRow& tonight = barn_world.herds.rows[core::FindRow(barn_world.herds, cows)];
+      failures += Expect(
+          tonight.leg_days_remaining == tonight.leg_days_priced && tonight.leg_days_priced > 0.0F,
+          "milk leg: the evening writes tomorrow's leg at today's price");
+    }
     // No switch: no leg, whatever the barn holds.
     barn_world.units.rows[1].stock[1] = 50 * kKilo;
     core::PriceMilkLegs(config, barn_world);
