@@ -253,6 +253,14 @@ class LogisticsSystem final : public ILogisticsSystem {
       return false;
     }
     plan.stale = plan.stale || CartsChanged(current, plan);
+    // AND A HEAP REAPED IN THE DAY (#1056 C4, writer (3)): its task is made
+    // now and the plan drawn again with it. Until C4 tasks changed at hour 0
+    // alone, and a heap reaped at noon waited for tomorrow's plan. The road
+    // index rebuilt in the day (writer (2)) sets `stale` where it is rebuilt
+    // (road_laying.cpp). Still one re-plan an hour.
+    if (AppendNewHeapTasks(config_, current, current.calendar.day) > 0) {
+      plan.stale = true;
+    }
     if (!plan.stale && !plan.urgent_pending) {
       return false;
     }

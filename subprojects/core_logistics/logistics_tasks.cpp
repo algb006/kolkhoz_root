@@ -245,6 +245,24 @@ void SyncTasks(const LogisticsConfig& config,
   }
 }
 
+std::uint32_t AppendNewHeapTasks(const LogisticsConfig& config, WorldState& current, SimDay today) {
+  std::uint32_t made = 0;
+  for (const LoadAddress& load : LoadsOf(current)) {
+    if (load.kind != LogisticsLoadKind::kFieldHeap) {
+      continue;
+    }
+    bool tasked = false;
+    for (const LogisticsTaskRow& task : current.logistics_tasks.rows) {
+      tasked = tasked || Same(AddressOf(task), load);
+    }
+    if (!tasked) {
+      AppendRow(current.logistics_tasks, TaskFor(config, load, today));
+      ++made;
+    }
+  }
+  return made;
+}
+
 void MarkServed(WorldState& current, SimDay today, TaskDayCount& count) {
   for (LogisticsTaskRow& task : current.logistics_tasks.rows) {
     for (const ResidentRow& person : current.residents.rows) {

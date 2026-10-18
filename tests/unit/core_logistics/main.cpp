@@ -784,6 +784,28 @@ int TestTheReplan() {
   bool calm_replanned = true;
   day_of(false, calm_replanned, calm);
   failures += Expect(!calm_replanned, "re-plan: nothing changed, nothing re-planned");
+  // A HEAP REAPED IN THE DAY (#1056 C4, writer (3)): at hour 10 a third
+  // field's heap appears - its task is made and the plan drawn again. Its
+  // pair: the same heap growing at hour 11, its task standing - no re-plan.
+  {
+    core::FieldRow field;
+    field.kind = core::LandKind::kArable;
+    field.center = core::Vec2{.x = 900.0F, .y = 0.0F};
+    field.reaped_grams = 500'000;
+    field.reaped_resource = core::ResourceId{0};
+    field.haul_days_remaining = 0.5F;
+    core::AppendRow(calm.fields, field);
+    const std::size_t tasks_before = calm.logistics_tasks.rows.size();
+    calm.calendar.tick = (3 * core::kTicksPerDay) + 10;
+    const bool new_heap = system->Replan(calm);
+    failures += Expect(new_heap && calm.logistics_tasks.rows.size() == tasks_before + 1,
+                       "re-plan: a heap reaped in the day gets its task and re-plans the day");
+    calm.fields.rows.back().reaped_grams = 900'000;
+    calm.calendar.tick = (3 * core::kTicksPerDay) + 11;
+    failures +=
+        Expect(!system->Replan(calm) && calm.logistics_tasks.rows.size() == tasks_before + 1,
+               "re-plan: a heap growing under its task re-plans nothing");
+  }
   return failures;
 }
 
