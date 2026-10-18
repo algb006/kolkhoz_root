@@ -16915,6 +16915,7 @@ int main() {
   failures += CheckTheCartOfTheCompressedYear();
   failures += CheckMeadowHayLiesAtTheMeadow();
   failures += CheckEachFarmEatsFromItsOwnRick();
+  failures += CheckARickIsSuppliedFromAnother();
   failures += CheckWholeTripsAndTheRoutes();
   failures += CheckWhoseTransportToTheDistrict();
   failures += CheckTheCartingReachesTheStoreInItsHour();

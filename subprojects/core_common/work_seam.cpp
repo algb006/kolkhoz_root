@@ -71,9 +71,12 @@ const float* WorkSeamOf(const WorldState& world, const WorkAssignment& work) {
     // have materials awaiting drains its supply seam — not while it is paused
     // (construction design §6). A store being emptied is carted OUT first:
     // one hauling work names one unit, and the order above is the chairman's.
-    return unit.emptying == 0 && unit.paused == 0 && AnythingAwaits(unit.construction)
-               ? &unit.construction.supply_days_remaining
-               : nullptr;
+    if (unit.emptying == 0 && unit.paused == 0 && AnythingAwaits(unit.construction)) {
+      return &unit.construction.supply_days_remaining;
+    }
+    // A RICK'S SUPPLY FROM ANOTHER RICK (#1056 C1.2; unit_state.h,
+    // RickSupplySeam): asked after the two above.
+    return RickSupplyStands(unit) ? &unit.rick_supply.days_remaining : nullptr;
   }
   // A TIMBER LOT AT THE DISTRICT CENTRE (decision 279, 0.36.17): carting
   // drains the lot's own carting seam while anything of it waits there.
@@ -181,6 +184,14 @@ bool WorkPlaceOf(const WorldState& world, const WorkAssignment& work, Vec2& plac
     const bool supplying =
         work.kind == WorkKind::kHauling && unit.emptying == 0 && AnythingAwaits(unit.construction);
     place = supplying ? unit.construction.supply_from : unit.position;
+    // A rick's supply is loaded at the rick it comes from (#1056 C1.2).
+    if (work.kind == WorkKind::kHauling && !supplying && RickSupplyStands(unit)) {
+      const std::uint32_t from_row = FindRow(world.units, unit.rick_supply.from);
+      if (from_row == kNoRow) {
+        return false;
+      }
+      place = world.units.rows[from_row].position;
+    }
     return true;
   }
   if (work.stand.value != kInvalidEntityIdValue) {
@@ -525,9 +536,11 @@ bool WorkReceiverOf(const WorldState& world, const WorkAssignment& work, Vec2& r
       return false;
     }
     const UnitRow& unit = world.units.rows[row];
-    // A works' supply goes to the works; a store being emptied, to its store.
-    return unit.emptying == 0 && AnythingAwaits(unit.construction) ? written(unit.position)
-                                                                   : written(unit.haul_to);
+    // A works' supply goes to the works, and a rick's supply to the rick
+    // (#1056 C1.2); a store being emptied, to its store.
+    return (unit.emptying == 0 && AnythingAwaits(unit.construction)) || RickSupplyStands(unit)
+               ? written(unit.position)
+               : written(unit.haul_to);
   }
   if (work.stand.value != kInvalidEntityIdValue) {
     const std::uint32_t row = FindRow(world.stands, work.stand);

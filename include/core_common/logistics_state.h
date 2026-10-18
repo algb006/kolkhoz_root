@@ -94,6 +94,12 @@ enum class LogisticsLoadKind : std::uint8_t {
   /// day the barn holds it - herd care, so worked on rest days. Addressed by
   /// `herd`; its seam is HerdRow::leg_days_remaining. Seam key `milk_leg`.
   kMilkLeg,
+  /// A RICK'S SUPPLY (#1056 C1.2; econ's stage C contract 574c366): hay
+  /// carted from another rick to the rick named in `unit`, while its herds'
+  /// hay stands below its threshold (UnitRow::rick_supply; the task's
+  /// `threshold_days`). Level 2 by its kind; the urgent rule's level 0 is the
+  /// job's, as for a meadow's stack (labor_system.cpp). Seam key `rick_supply`.
+  kRickSupply,
   kLogisticsLoadKindCount,  ///< NOT A KIND: the count.
 };
 
@@ -142,7 +148,8 @@ struct LogisticsTaskRow {
 
   /// THE LAMP'S CLOCK (kLogisticsLate; save 142, 0.37.192; boss, the
   /// logistics thread [113]-[114]): the game hours of WORKING LIGHT this task
-  /// has stood at level 0 with nobody on it, since it was last served — an
+  /// has stood at level 0 - or, a rick's supply, at any level (#1056 C1.2,
+  /// the wide alarm) - with nobody on it, since it was last served — an
   /// hour of light unserved adds one, an hour served sets it to nought, a task
   /// below level 0 keeps nought. Night hours add nothing: nobody carts by
   /// night, and a lamp lit over a load carted all day, because its carters
@@ -158,6 +165,12 @@ struct LogisticsTaskRow {
   /// the recipe is on the site - a task is its load's, and a works given more
   /// later starts a plain one. Sits in the padding after the lamp's clock.
   bool over_fields = false;
+
+  /// THE RICK'S THRESHOLD (#1056 C1.2, save 171): for kRickSupply, the days
+  /// of its herds' hay the rick was priced against (UnitRow::rick_supply,
+  /// threshold_days), copied as the task is synced; 0 for every other kind.
+  /// Sits in the padding after over_fields.
+  std::uint8_t threshold_days = 0;
 
   /// WHO DRAINED THE LOAD'S SEAM since its last settle (#671's instrument;
   /// save 155): the seam units carriers on foot and carts took off it, added

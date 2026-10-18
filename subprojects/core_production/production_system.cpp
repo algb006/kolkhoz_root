@@ -68,6 +68,7 @@
 #include "production_alarms.h"
 #include "production_config.h"
 #include "production_orders.h"
+#include "rick_supply.h"
 #include "seed_room.h"
 #include "stock_lights.h"
 #include "stock_ops.h"
@@ -292,6 +293,7 @@ class ProductionSystem final : public IProductionSystem {
     if (HourFromTick(current.calendar.tick) + 1U < kTicksPerDay) {
       DeliverCartedLoads(config_, current);
       SettleMilkLegs(config_, current, false);
+      SettleRickSupply(config_, current);
     }
     // THE CUT'S DRY WORKING DAY, for the hay lamp's pace (lever 1;
     // herd_forecast.h) - COUNTED AT NOON, not at the day's last tick: a day
@@ -318,6 +320,11 @@ class ProductionSystem final : public IProductionSystem {
       // (decision 279, 0.36.17; field_haul.h) - and since В5 any lot by own
       // carts and the plan's own delivery going out.
       SettleDistrictLotHauling(config_, current);
+      // And the ricks' supply rick -> rick: the day's last hour, then
+      // tomorrow's price - after every carting into a rick above (#1056 C1.2;
+      // rick_supply.h), for the next morning's placement.
+      SettleRickSupply(config_, current);
+      PriceRickSupply(config_, current);
       // THE DISTRICT's CART FOR THE PLAN (routing stage В5; district_carts.h):
       // the month's last day collects the standing request, a mud day slips it.
       SettleDistrictCollection(config_, current);

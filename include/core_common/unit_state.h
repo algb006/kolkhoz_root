@@ -350,6 +350,28 @@ struct ConstructionState {
   std::uint16_t supply_mowing_days = 0;
 };
 
+/// @brief A RICK'S SUPPLY FROM ANOTHER RICK (#1056 C1.2; econ's stage C
+/// contract 574c366; logistics_state.h, kRickSupply; save 171): written on
+/// the RECEIVING rick by production's evening (core_production rick_supply.h)
+/// when its herds' hay falls below its threshold, drained by the hauling on
+/// that unit, settled hourly by moving hay from `from` into this rick. All
+/// nought and `from` invalid when no supply stands.
+struct RickSupplySeam {
+  /// The rick the hay is carted from.
+  UnitId from;
+  /// The feed carted (hay: the one feed a rick is short of, feed_home.cpp).
+  ResourceId resource;
+  /// Game man-days of carting left today, and what the last settle wrote
+  /// (the perevalka's two, UnitRow::haul_days_remaining / written).
+  float days_remaining = 0.0F;
+  float days_written = 0.0F;
+  /// The hay still to cart, grams: the evening's price less what was moved.
+  Grams grams = 0;
+  /// The threshold it was priced against, days of its herds' hay: the urgent
+  /// check's horizon + farming.csv `rick_threshold_add_days` (STUB 7).
+  std::uint8_t threshold_days = 0;
+};
+
 /// @brief Whether any material of the works still awaits its carting
 /// (ConstructionState::awaiting).
 inline bool AnythingAwaits(const ConstructionState& works) {
@@ -554,7 +576,19 @@ struct UnitRow {
   /// what the workers did from what the raw material allowed. Same contract
   /// as FieldRow::haul_days_written.
   float production_days_written = 0.0F;
+
+  /// A rick's supply from another rick (#1056 C1.2; save 171): see the type.
+  RickSupplySeam rick_supply;
 };
+
+/// @brief Whether `unit` is supplied from another rick NOW (#1056 C1.2): a
+/// supply stands, and the unit is neither emptied nor a works' receiver -
+/// one hauling work names one unit, and those two are asked first
+/// (work_seam.cpp).
+inline bool RickSupplyStands(const UnitRow& unit) {
+  return unit.emptying == 0 && unit.rick_supply.from.value != kInvalidEntityIdValue &&
+         !AnythingAwaits(unit.construction);
+}
 
 /// @brief The units table type used by WorldState.
 using UnitTable = StateTable<UnitId, UnitRow>;

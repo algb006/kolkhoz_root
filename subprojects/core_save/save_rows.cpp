@@ -263,7 +263,16 @@ static_assert(AggregateArity<FieldRow>() == 47,
 // after `supply_since_day`: the block's scalars 48 -> 51, padded to 56, and
 // 21 fields; the row 120 -> 128 of scalars beside the optional block's own
 // 56. Predicted before the build. On the wire +3 a block.
-static_assert(sizeof(UnitRow) == 128 + (3 * kAmountsSize) + sizeof(std::vector<SupplyLeg>) +
+// Save 171 (#1056 C1.2): the rick's supply, a block after the production
+// seam - predicted 32 (two ids 8, two floats 16, the grams 24, the threshold's
+// byte 25, padded to 32), the row 128 -> 160 of scalars and 21 fields, before
+// the build, and held. On the wire predicted +21 a unit and MISSED: +23 (4 +
+// 2 + 4 + 4 + 8 + 1 - the resource's def id is two bytes).
+static_assert(sizeof(RickSupplySeam) == 32,
+              "RickSupplySeam changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<RickSupplySeam>() == 6,
+              "RickSupplySeam gained or lost a field — update the codec and VERSION_SAVE");
+static_assert(sizeof(UnitRow) == 160 + (3 * kAmountsSize) + sizeof(std::vector<SupplyLeg>) +
                                      sizeof(std::optional<ConstructionState>),
               "UnitRow changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(std::optional<ConstructionState>) == sizeof(ConstructionState) + 8,
@@ -287,7 +296,7 @@ static_assert(AggregateArity<ConstructionState>() == 22,
               "ConstructionState gained or lost a field — update the codec and VERSION_SAVE");
 // Save 74: reserved_for_specialist, a byte beside `dead` — 18 fields. Save 157:
 // suspended_works (#715) — 20.
-static_assert(AggregateArity<UnitRow>() == 20,
+static_assert(AggregateArity<UnitRow>() == 21,
               "UnitRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 71: fed_share, the day's covered ration — 68 and nineteen fields,
 // predicted before the field was added and measured after. Save 76:
@@ -466,9 +475,12 @@ static_assert(AggregateArity<BarterTripRow>() == 9,
 // bytes saved, before the build.
 // Save 170 (#1056 C1.1): `herd`, an id after `unit` - predicted 56 -> 64 and
 // seventeen fields before the build (the u64 moves to the next 8).
+// Save 171 (#1056 C1.2): threshold_days, a byte after over_fields - predicted
+// into the padding before the floats (offset 51), 64 unmoved and
+// eighteen fields, +1 on the wire, before the build.
 static_assert(sizeof(LogisticsTaskRow) == 64,
               "LogisticsTaskRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<LogisticsTaskRow>() == 17,
+static_assert(AggregateArity<LogisticsTaskRow>() == 18,
               "LogisticsTaskRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 136 (0.37.177): the groom's plan — a leg six fields, a cart three, the
 // plan four (each holds vectors: its size is not a byte count, the codec
@@ -1408,6 +1420,13 @@ void WriteUnitRow(SaveSink& sink, const UnitRow& row) {
   WriteEntityId(out, row.parent);
   out.WriteFloat(row.production_days_remaining);
   out.WriteFloat(row.production_days_written);
+  // The rick's supply (#1056 C1.2; save 171).
+  WriteEntityId(out, row.rick_supply.from);
+  sink.WriteDefId(DefKind::kResource, row.rick_supply.resource.value);
+  out.WriteFloat(row.rick_supply.days_remaining);
+  out.WriteFloat(row.rick_supply.days_written);
+  out.WriteI64(row.rick_supply.grams);
+  out.WriteU8(row.rick_supply.threshold_days);
 }
 
 UnitRow ReadUnitRow(LoadSource& source) {
@@ -1438,6 +1457,17 @@ UnitRow ReadUnitRow(LoadSource& source) {
   row.parent = ReadEntityId<UnitId>(in);
   row.production_days_remaining = in.ReadFloat();
   row.production_days_written = in.ReadFloat();
+  // The rick's supply (#1056 C1.2; save 171).
+  row.rick_supply.from = ReadEntityId<UnitId>(in);
+  row.rick_supply.resource = ResourceId{source.ReadDefId(DefKind::kResource)};
+  row.rick_supply.days_remaining = in.ReadFloat();
+  row.rick_supply.days_written = in.ReadFloat();
+  row.rick_supply.grams = in.ReadI64();
+  row.rick_supply.threshold_days = in.ReadU8();
+  if (!(row.rick_supply.days_remaining >= 0.0F) || !(row.rick_supply.days_written >= 0.0F) ||
+      row.rick_supply.grams < 0) {
+    source.Fail("a rick's supply is negative or not a number");
+  }
   return row;
 }
 
@@ -1977,6 +2007,7 @@ void WriteLogisticsTaskRow(SaveSink& sink, const LogisticsTaskRow& row) {
   out.WriteU64(row.urgent_since);
   out.WriteU16(row.unserved_light_hours);  // save 142
   out.WriteU8(row.over_fields ? 1U : 0U);  // save 158 (#734): «важнее полевых работ»
+  out.WriteU8(row.threshold_days);         // save 171 (#1056 C1.2): the rick's threshold
   out.WriteFloat(row.drained_on_foot);     // save 155: who drained the seam (#671)
   out.WriteFloat(row.drained_by_cart);
 }
@@ -2005,6 +2036,7 @@ LogisticsTaskRow ReadLogisticsTaskRow(LoadSource& source) {
   row.urgent_since = in.ReadU64();
   row.unserved_light_hours = in.ReadU16();                                     // save 142
   row.over_fields = source.ReadEnumValue(0, 1, "logistics over fields") != 0;  // save 158 (#734)
+  row.threshold_days = in.ReadU8();                                            // save 171
   row.drained_on_foot = in.ReadFloat();                                        // save 155 (#671)
   row.drained_by_cart = in.ReadFloat();
   if (!(row.drained_on_foot >= 0.0F) || !(row.drained_by_cart >= 0.0F)) {

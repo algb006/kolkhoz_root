@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "core_common/calendar.h"
+#include "core_common/day_off.h"
 #include "core_common/event_state.h"
 #include "core_common/herd_state.h"
 #include "core_common/quantities.h"
@@ -18,6 +19,7 @@
 #include "feed_home.h"
 #include "herd_system.h"
 #include "production_config.h"
+#include "rick_supply.h"
 
 namespace {
 
@@ -237,5 +239,92 @@ int CheckEachFarmEatsFromItsOwnRick() {
                      "feed home: a kilogram's remainder from the far rick is not a far-rick day");
   failures +=
       Expect(for_a_fifth == 1, "feed home: a fifth of the day from the far rick is a far-rick day");
+  return failures;
+}
+
+int CheckARickIsSuppliedFromAnother() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  core::ProductionConfig config;
+  if (Expect(tables != nullptr && core::ParseProductionConfig(*tables, config, error),
+             "rick supply: the shipped tables parse") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  const core::ResourceId hay = config.hay_resource;
+  const std::size_t resources = config.feed_values.size();
+  // The two farms of the check above, January: the team's rick empty, the
+  // cattle yard's holding 50 t for ten cows.
+  core::WorldState world;
+  world.calendar.tick = 0;
+  core::RefreshCalendarCaches(world.calendar);
+  const std::uint32_t cattle =
+      AddUnit(world, *tables, "cattle_yard", {.x = 0.0F, .y = 0.0F}, resources);
+  const std::uint32_t cattle_rick =
+      AddUnit(world, *tables, "hay_stack", {.x = 50.0F, .y = 0.0F}, resources);
+  const std::uint32_t team =
+      AddUnit(world, *tables, "horse_yard", {.x = 2000.0F, .y = 0.0F}, resources);
+  const std::uint32_t team_rick =
+      AddUnit(world, *tables, "hay_stack", {.x = 2050.0F, .y = 0.0F}, resources);
+  AddHerd(world, *tables, "cow", cattle);
+  AddHerd(world, *tables, "horse", team);
+  HayOf(world, cattle_rick, hay) = 50 * kTonne;
+
+  // THE SWITCH OFF (farming.csv rick_supply 0, as shipped): no rick has a supply.
+  core::WorldState off = world;
+  config.farming.rick_supply = 0.0F;
+  core::PriceRickSupply(config, off);
+  failures +=
+      Expect(off.units.rows[team_rick].rick_supply.from.value == core::kInvalidEntityIdValue,
+             "rick supply: with the switch off no rick is supplied");
+
+  // THE SWITCH ON: the empty rick is supplied from the full one, against the
+  // urgent horizon plus the contract's seven days.
+  config.farming.rick_supply = 1.0F;
+  core::PriceRickSupply(config, world);
+  const core::RickSupplySeam& seam = world.units.rows[team_rick].rick_supply;
+  const std::uint32_t threshold =
+      core::UrgentHayHorizonDays(world, static_cast<std::uint32_t>(config.hay_cart_urgent_days)) +
+      static_cast<std::uint32_t>(config.farming.rick_threshold_add_days);
+  std::cout << "  rick supply: the team's rick priced " << seam.grams / 1000 << " kg from row "
+            << (seam.from.value == world.units.row_ids[cattle_rick].value ? cattle_rick : 99U)
+            << ", " << seam.days_remaining << " cart-days, threshold " << +seam.threshold_days
+            << " days\n";
+  failures +=
+      Expect(seam.from.value == world.units.row_ids[cattle_rick].value &&
+                 seam.resource.value == hay.value && seam.grams > 0 && seam.grams < 50 * kTonne &&
+                 seam.days_remaining > 0.0F && seam.days_written == seam.days_remaining &&
+                 seam.threshold_days == threshold,
+             "rick supply: the empty rick is priced hay from the full one, by its threshold");
+  failures +=
+      Expect(world.units.rows[cattle_rick].rick_supply.from.value == core::kInvalidEntityIdValue,
+             "rick supply: the full rick is not supplied");
+  failures += Expect(core::RickSupplyStands(world.units.rows[team_rick]),
+                     "rick supply: the team's rick's supply stands for the labour");
+
+  // THE SETTLE: half the seam drained moves half the hay, rick to rick, and
+  // no gram is lost or made on the way.
+  core::RickSupplySeam& open = world.units.rows[team_rick].rick_supply;
+  const core::Grams priced = open.grams;
+  open.days_remaining = open.days_written / 2.0F;
+  core::SettleRickSupply(config, world);
+  const core::Grams moved = HayOf(world, team_rick, hay);
+  std::cout << "  rick supply: half the seam drained moved " << moved / 1000 << " kg of "
+            << priced / 1000 << '\n';
+  failures += Expect(moved > (priced * 49) / 100 && moved < (priced * 51) / 100 &&
+                         HayOf(world, cattle_rick, hay) + moved == 50 * kTonne &&
+                         world.units.rows[team_rick].rick_supply.grams == priced - moved,
+                     "rick supply: half the seam drained moves half the hay, none lost");
+
+  // THE SENDER KEEPS ITS OWN: a cattle rick with a day's hay spares nothing,
+  // and nobody is supplied.
+  core::WorldState poor = world;
+  HayOf(poor, cattle_rick, hay) = kTonne / 4;
+  HayOf(poor, team_rick, hay) = 0;
+  core::PriceRickSupply(config, poor);
+  failures +=
+      Expect(poor.units.rows[team_rick].rick_supply.from.value == core::kInvalidEntityIdValue,
+             "rick supply: a sender short itself spares nothing");
   return failures;
 }

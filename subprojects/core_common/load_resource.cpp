@@ -70,6 +70,10 @@ ResourceId TaskLoadResource(const WorldState& world, const LogisticsTaskRow& tas
       const std::uint32_t row = FindRow(world.herds, task.herd);
       return row != kNoRow ? world.herds.rows[row].leg_resource : ResourceId{};
     }
+    case LogisticsLoadKind::kRickSupply: {
+      const std::uint32_t row = FindRow(world.units, task.unit);
+      return row != kNoRow ? world.units.rows[row].rick_supply.resource : ResourceId{};
+    }
     case LogisticsLoadKind::kLogisticsLoadKindCount:
       break;
   }
@@ -113,12 +117,15 @@ ResourceId WalkerLoadResourceOfWork(const WorldState& world,
     as_task.load_kind = LogisticsLoadKind::kMilkLeg;
     as_task.herd = work.herd;
   } else if (work.unit.value != kInvalidEntityIdValue) {
-    // A unit being emptied is carted out first (work_seam.cpp); otherwise
-    // the hauling on a unit is its works' supply.
+    // A unit being emptied is carted out first (work_seam.cpp); then its
+    // works' supply; then a rick's supply from another rick (#1056 C1.2).
     const std::uint32_t row = FindRow(world.units, work.unit);
-    as_task.load_kind = row != kNoRow && world.units.rows[row].emptying != 0
-                            ? LogisticsLoadKind::kStoreTransfer
-                            : LogisticsLoadKind::kSiteSupply;
+    as_task.load_kind = LogisticsLoadKind::kSiteSupply;
+    if (row != kNoRow && world.units.rows[row].emptying != 0) {
+      as_task.load_kind = LogisticsLoadKind::kStoreTransfer;
+    } else if (row != kNoRow && RickSupplyStands(world.units.rows[row])) {
+      as_task.load_kind = LogisticsLoadKind::kRickSupply;
+    }
     as_task.unit = work.unit;
   } else {
     return ResourceId{};

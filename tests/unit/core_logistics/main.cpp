@@ -1353,6 +1353,47 @@ int TestTheLateLoadsLamp() {
   ordinary.logistics_tasks.rows[0].level = core::LogisticsLevel::kOrdinary;
   at(ordinary, ten, hours, said);
   failures += Expect(hours == -1 && said == 0, "late loads: an ordinary task — no lamp");
+  // THE WIDE ALARM (#1056 C1.2; «буферы падают ниже порогов»): a rick's
+  // supply at its own level 2, its rick below the threshold and owed a day's
+  // carting - the lamp after an hour of light unserved, and NO interrupting
+  // event. Its pair is the ordinary heap above: no lamp.
+  {
+    core::WorldState rick_world;
+    rick_world.weather.daylight_hours = 12.0F;
+    core::UnitRow sender;
+    const core::UnitId sender_id = core::AppendRow(rick_world.units, sender);
+    core::UnitRow rick;
+    rick.level = 1;
+    rick.rick_supply.from = sender_id;
+    rick.rick_supply.resource = core::ResourceId{0};
+    rick.rick_supply.grams = 2'000'000;
+    rick.rick_supply.days_remaining = 1.0F;
+    rick.rick_supply.days_written = 1.0F;
+    rick.rick_supply.threshold_days = 9;
+    const core::UnitId rick_id = core::AppendRow(rick_world.units, rick);
+    core::LogisticsTaskRow supply;
+    supply.load_kind = core::LogisticsLoadKind::kRickSupply;
+    supply.unit = rick_id;
+    supply.level = core::LogisticsLevel::kOrdinary;
+    core::AppendRow(rick_world.logistics_tasks, supply);
+    rick_world.calendar.tick = ten;
+    system->SayLateLoads(rick_world);
+    std::vector<core::Alarm> alarms;
+    system->CollectAlarms(rick_world, alarms);
+    std::int64_t rick_hours = -1;
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kLogisticsLate) {
+        rick_hours = alarm.amount;
+      }
+    }
+    std::uint32_t rick_said = 0;
+    for (const core::SimEvent& event : rick_world.step_events) {
+      rick_said += event.kind == core::EventKind::kUrgentLoadWaits ? 1U : 0U;
+    }
+    failures += Expect(rick_hours == 1 && rick_said == 0,
+                       "late loads: a rick's supply below its threshold at level 2, an hour "
+                       "unserved — the wide lamp, and no interrupting event");
+  }
   // CARTED FOR TODAY (0.37.194; boss, the logistics thread [129]): the heap's
   // seam drained to nought, its grams still on the field until the day's
   // last tick — nobody is needed, so no hour counts, and a clock that had run

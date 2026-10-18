@@ -100,14 +100,23 @@ bool CartedToday(const WorldState& world, const LogisticsTaskRow& task) {
   return seam == nullptr || !(*seam > 0.0F);
 }
 
+/// Whether the lamp's clock runs on `task`: a task of level 0, AND A RICK'S
+/// SUPPLY AT ANY LEVEL - the wide alarm, «буферы падают ниже порогов» (#1056
+/// C1.2; alarm_state.h, kLogisticsLate): such a task stands only while its
+/// rick is below its threshold, so its wait is a buffer under its threshold
+/// that the carts do not mend. Not paused, either.
+bool LampClockRuns(const LogisticsTaskRow& task) {
+  return !task.paused && (task.level == LogisticsLevel::kUrgent ||
+                          task.load_kind == LogisticsLoadKind::kRickSupply);
+}
+
 /// kLogisticsLate's condition: a task of level 0, not paused, its clock of
 /// unserved working light at kLateAfterHours or more (LogisticsTaskRow::
 /// unserved_light_hours, kept by SayLateLoads every hour). Until 0.37.192 the
 /// clock was the tick it entered level 0, and the lamp lit at night over a
 /// load carted all day.
 bool WaitsLate(const LogisticsTaskRow& task) {
-  return task.level == LogisticsLevel::kUrgent && !task.paused &&
-         task.unserved_light_hours >= kLateAfterHours;
+  return LampClockRuns(task) && task.unserved_light_hours >= kLateAfterHours;
 }
 
 void SettleTaskOrder(OrderRow& order, OrderRefusal refusal) {
@@ -380,8 +389,7 @@ class LogisticsSystem final : public ILogisticsSystem {
                        hour < SunsetHour(current.weather.daylight_hours);
     for (std::uint32_t row = 0; row < current.logistics_tasks.rows.size(); ++row) {
       LogisticsTaskRow& task = current.logistics_tasks.rows[row];
-      if (task.level != LogisticsLevel::kUrgent || task.paused || Served(current, task) ||
-          CartedToday(current, task)) {
+      if (!LampClockRuns(task) || Served(current, task) || CartedToday(current, task)) {
         task.unserved_light_hours = 0;
         continue;
       }
@@ -391,7 +399,9 @@ class LogisticsSystem final : public ILogisticsSystem {
       if (task.unserved_light_hours < std::numeric_limits<std::uint16_t>::max()) {
         ++task.unserved_light_hours;
       }
-      if (task.unserved_light_hours != kLateAfterHours) {
+      // The interrupting word is level 0's alone: a buffer under its
+      // threshold lights the lamp and stops no fast-forward (#1056 C1.2).
+      if (task.unserved_light_hours != kLateAfterHours || task.level != LogisticsLevel::kUrgent) {
         continue;
       }
       const std::int64_t packed =
@@ -445,6 +455,7 @@ class LogisticsSystem final : public ILogisticsSystem {
       // senders, one a leg, and the task is the works' own — the word names
       // the works that waits for them.
       case LogisticsLoadKind::kSiteSupply:
+      case LogisticsLoadKind::kRickSupply:  // the rick that waits for its hay
         held.unit = task.unit;
         break;
       case LogisticsLoadKind::kMilkLeg:  // never held by a day off (above)

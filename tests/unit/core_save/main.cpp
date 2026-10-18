@@ -417,6 +417,14 @@ core::WorldState MakeWorld() {
   house.paused = 1;
   house.dead = 1;
   house.insulated = 1;  // warm, save format 44
+  // Save 171 (#1056 C1.2): a rick's supply half carried, every field off its
+  // default and unlike the others.
+  house.rick_supply.from = core::UnitId{21};
+  house.rick_supply.resource = core::ResourceId{1};
+  house.rick_supply.days_remaining = 0.625F;
+  house.rick_supply.days_written = 1.375F;
+  house.rick_supply.grams = 2'250'000;
+  house.rick_supply.threshold_days = 9;
   // The top of the phase enum, being insulated (save format 44).
   house.construction.phase = core::ConstructionPhase::kInsulating;
   house.construction.target_level = house.level;
@@ -765,6 +773,7 @@ core::WorldState MakeWorld() {
   task.urgent_since = 3'333;
   task.unserved_light_hours = 7;  // save 142: the lamp's clock off its nought
   task.over_fields = true;        // save 158 (#734)
+  task.threshold_days = 11;       // save 171 (#1056 C1.2)
   task.drained_on_foot = 0.5F;    // save 155: who drained the seam, the two apart
   task.drained_by_cart = 1.25F;
   core::AppendRow(world.logistics_tasks, task);
@@ -1924,7 +1933,11 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // Save 165 (stage В6 part 3): +2 a site block - the idle days a mowing
     // held; three units' open blocks and the one put aside, +8: 739 -> 747 as
     // the arity's note predicted; the hash read off it.
-    {"units", 747, 0x5f0684b09c7a3c58ULL},
+    // Save 171 (#1056 C1.2): the rick's supply, +23 a unit on three units:
+    // predicted +21 a unit (747 -> 810) before the build and MISSED by two -
+    // the resource's def id is two bytes and my sum took it as one; 816, the
+    // hash read off it.
+    {"units", 816, 0xb76e129cfd5e120eULL},
     // Save 71: +4 — fed_share, one herd; predicted before the field, held.
     // Save 91: +8 — the adult age band, two floats, one herd; predicted
     // 71 -> 79 with every other section unmoved before the build.
@@ -2056,7 +2069,9 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // the build and held; the hash read off it.
     // Save 170 (#1056 C1.1): +4 - the milk leg's herd id; predicted 60 -> 64
     // before the build and held; the hash read off it.
-    {"logistics_tasks", 64, 0x81530067f180842eULL},
+    // Save 171 (#1056 C1.2): +1 - the rick's threshold; predicted 64 -> 65
+    // before the build and held; the hash read off it.
+    {"logistics_tasks", 65, 0x385b53f1f1f33b9fULL},
     // Save 136 (B3): the groom's plan — 10 of day, flags and count, 9 of the
     // cart, 44 of the first leg (one rider), 40 of the second. Predicted 103
     // before the build, held; the hash read off the build.
@@ -3070,9 +3085,10 @@ int main() {
             back.origin == core::LogisticsOrigin::kPlayer && back.paused &&
             back.aged_from_day == 141 && back.urgent_since == 3'333 &&
             back.unserved_light_hours == 7 && back.over_fields && back.drained_on_foot == 0.5F &&
-            back.drained_by_cart == 1.25F,
+            back.drained_by_cart == 1.25F && back.threshold_days == 11,
         "a task of the groom's logistics came back with its load, its two levels, its origin, "
-        "its pause, its two times, the lamp's clock and who drained it (save 135, 142, 155)");
+        "its pause, its two times, the lamp's clock, who drained it and the rick's threshold "
+        "(save 135, 142, 155, 171)");
   }
   // Save 136. The two legs' ticks and places are apart, the rider on the
   // first only: a codec that swapped or dropped one is red here.
@@ -3183,6 +3199,12 @@ int main() {
   failures += Expect(house_back.paused == 1, "a stopped unit resumes stopped");
   failures += Expect(house_back.dead == 1, "and a dead one resumes dead, not merely worn");
   failures += Expect(house_back.wear == 70.0F, "and its wear is its own number");
+  failures += Expect(
+      house_back.rick_supply.from.value == 21 && house_back.rick_supply.resource.value == 1 &&
+          house_back.rick_supply.days_remaining == 0.625F &&
+          house_back.rick_supply.days_written == 1.375F &&
+          house_back.rick_supply.grams == 2'250'000 && house_back.rick_supply.threshold_days == 9,
+      "a rick's supply resumes half carried, its sender and threshold (save 171)");
   failures += Expect(house_back.insulated == 1 &&
                          house_back.construction.phase == core::ConstructionPhase::kInsulating,
                      "and a warm house being insulated resumes warm and mid-insulation");

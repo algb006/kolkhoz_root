@@ -725,6 +725,17 @@ struct FarmingConfig {
   /// the pair says otherwise.
   float milk_at_barn = 0.0F;
 
+  /// THE RICK'S SUPPLY (#1056 C1.2; econ's stage C contract 574c366;
+  /// farming.csv `rick_supply`, `rick_threshold_add_days`): 1 - a rick whose
+  /// herds' hay falls below its threshold within the threshold's days is
+  /// supplied by cart from the rick with the most hay to spare
+  /// (rick_supply.h); 0 - no rick is supplied but by the meadows' stacks, as
+  /// before 0.37.301. The threshold: the urgent check's horizon
+  /// (UrgentHayHorizonDays) plus `rick_threshold_add_days` - STUB 7, the
+  /// contract's. STUB 0 until the pair says otherwise.
+  float rick_supply = 0.0F;
+  float rick_threshold_add_days = 7.0F;
+
   /// The pasture season, 0-based months inclusive: outside it a head takes
   /// nothing from the grass and its whole norm comes out of the stores.
   /// ASSUMPTION — the design names summer grazing but no month band.
