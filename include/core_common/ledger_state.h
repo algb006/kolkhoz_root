@@ -248,7 +248,13 @@ struct YearLedger {
   /// WHAT THE CARRIERS BROUGHT IN (0.36.5; econ, boss-econ-roads-balance [4]
   /// item 5в): what the haul took off the field heaps, the timber stands and
   /// the dig sites into the stores. Beside `harvest` it separates "brought
-  /// in" from "rotted in the heap" — the heap's rot is in lost_no_room.
+  /// in" from what else left the heap: its nightly rot in `spoiled`
+  /// (field_haul.cpp, SpoilFieldHeaps), the district's take of the plan off
+  /// it in `delivered` (district_plan.cpp, TakePlanDebtFromFields), last
+  /// year's other crop written off under a new one in `lost_no_room`
+  /// (PutOnHeap). Until 0.37.289 this said «the heap's rot is in
+  /// lost_no_room», stale since the heaps rot through SpoilFieldHeaps, and
+  /// host's potato book read 30-80 t a year as «unread» by it (#1005).
   /// Save 94.
   ResourceAmounts hauled_to_stores;
 
@@ -457,8 +463,11 @@ struct YearLedger {
   /// 89). What stays owed is PlanState::goods_loan_owed, which carries on.
   ResourceAmounts goods_loan_repaid;
 
-  /// What went bad in a store or a larder over the year, by resource
-  /// (task A4; transport design §10). A separate column from `lost_no_room`
+  /// What went bad over the year, by resource (task A4; transport design
+  /// §10). THREE writers: the units' stores at the day's last tick, the
+  /// families' larders the next day, and the field heaps every night
+  /// (SpoilFieldHeaps) - one column, not split by where it rotted. A
+  /// separate column from `lost_no_room`
   /// because they are different failures with different cures: lost_no_room is
   /// a barn too small, spoiled is a barn too slow. Nothing vanishes without
   /// a line — the same rule that gave lost_no_room its column.

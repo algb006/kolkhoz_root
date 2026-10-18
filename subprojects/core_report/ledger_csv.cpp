@@ -420,7 +420,8 @@ void EmitSheet(ColumnWriter& out, const WorldState& state, const ITableSet& tabl
   // -- per resource --------------------------------------------------------
   EmitResourceBlock(out, resources, "harvest", book.harvest);
   // What the carriers brought into the stores (0.36.5): beside the harvest,
-  // "brought in" apart from "rotted in the heap".
+  // "brought in" apart from what else left the heap (the rot in `spoiled`,
+  // the district's take in `delivered`; ledger_state.h).
   EmitResourceBlock(out, resources, "hauled_to_stores", book.hauled_to_stores);
   // What the stores had no room for and nobody could keep (task A3): the
   // first column that says what the missing storage cost, rather than
