@@ -330,7 +330,8 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
       if (heads.stock + heads.horses > 0) {
         advice.advice = AlarmAdvice::kReduceHerd;
         advice.hand_over_stock = heads.stock;
-        advice.hand_over_horses = heads.horses;
+        advice.hand_over_horses = heads.horses - heads.young_horses;
+        advice.hand_over_young_horses = heads.young_horses;
         advice.advice_day = forecast.cut_end_day + 1U;
       }
       return advice;
@@ -360,7 +361,10 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
   // stands above them goes first, and bought feed is for what is needed.
   const HandOverAdvice heads = LeastHeadsToHandOver(config, world);
   advice.hand_over_stock = heads.stock;
-  advice.hand_over_horses = heads.horses;
+  // The adults and the young apart (#1069): the door takes each class by its
+  // own count.
+  advice.hand_over_horses = heads.horses - heads.young_horses;
+  advice.hand_over_young_horses = heads.young_horses;
   const std::int64_t above = heads.stock + heads.horses;
   // «HAND OVER» IS NAMED ONLY WITH A HEAD IN IT (0.37.143; host, host-boss-
   // pin-0-37-133-2026-10-02 [43]). On 0.37.142 a herd at its floors got
@@ -482,6 +486,7 @@ void CollectHerdForecastAlarms(const ProductionConfig& config,
   alarm.field = advice.advice_field;
   alarm.hand_over_stock = advice.hand_over_stock;
   alarm.hand_over_horses = advice.hand_over_horses;
+  alarm.hand_over_young_horses = advice.hand_over_young_horses;
   alarm.below_floor_stock = advice.below_floor_stock;
   alarm.below_floor_horses = advice.below_floor_horses;
   alarm.lamp = 0;

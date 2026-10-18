@@ -245,7 +245,9 @@ bool ShapeIsValid(const OrderRow& order) {
       // day, so they are the consumer's verdict (order_state.h). The COUNT
       // is the boundary's business because a hand-over of nought heads is a
       // malformed row and not a decision anybody made.
-      return has_herd && order.amount > 0;
+      // `enable` is the horses' class (#1069): 0 both, 1 the young, 2 the
+      // adults.
+      return has_herd && order.amount > 0 && order.enable <= 2;
     case OrderKind::kTakeNightTrader:
       // The man, and nothing else. Whether he keeps a trade changes at every
       // year's turn — the consumer's verdict (order_state.h).

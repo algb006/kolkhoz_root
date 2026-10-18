@@ -304,6 +304,8 @@ HandOverAdvice LeastHeadsToHandOver(const ProductionConfig& config, const WorldS
   // ABOVE THE FLOORS: the horses, then the cows.
   bool fed = step(&HeadsHandedOver::horses, horses_above);
   advice.horses = handed.horses;
+  // The young first in the count, as the door hands them first (#1069).
+  advice.young_horses = std::min(advice.horses, young_above);
   if (!fed) {
     fed = step(&HeadsHandedOver::cows, cows_above);
     advice.stock = handed.cows;

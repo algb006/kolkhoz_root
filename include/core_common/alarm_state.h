@@ -1259,6 +1259,14 @@ struct Alarm {
   /// @note Not in the save, as `lamp`.
   std::int64_t hand_over_stock = 0;
   std::int64_t hand_over_horses = 0;
+  /// THE YOUNG HORSES APART (#1069; boss, the #1056 thread after [24]): since
+  /// #1069 `hand_over_horses` is the ADULTS above the plan's floor only, and
+  /// this the young above what each herd keeps (horse_lamp_memory.h,
+  /// HorseYoungKept). Each goes by its own class of the door (kHandStock,
+  /// OrderRow::enable 1 - the young, 2 - the adults): one count through «the
+  /// young first, then the oldest» took adults below the floor whenever the
+  /// young came short (the canon, d32 of y1: 25 -> 19 adults, floor 23).
+  std::int64_t hand_over_young_horses = 0;
   std::int64_t below_floor_stock = 0;
   std::int64_t below_floor_horses = 0;
 

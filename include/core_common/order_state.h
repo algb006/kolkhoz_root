@@ -481,6 +481,12 @@ enum class OrderKind : std::uint8_t {
   /// the chairman's to sell, and a kind the district takes only by the batch
   /// has no per-head price).
   ///
+  /// THE HORSES' CLASS, `enable` (#1069): 0 - the young above what the herd
+  /// keeps first, then the adults (as before #1069); 1 - the young above the
+  /// keep only; 2 - the adults only. The hay lamp names the two apart
+  /// (Alarm::hand_over_young_horses, hand_over_horses). Read for a kolkhoz
+  /// horse herd alone; the boundary refuses a value above 2.
+  ///
   /// Seam key `hand_stock`. Consumer: core_production.
   kHandStock,
 
