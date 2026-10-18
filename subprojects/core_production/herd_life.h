@@ -77,6 +77,14 @@ struct HerdPlace {
   /// not by the row-count rule below.
   ResourceAmounts* feed_allowance = nullptr;
 
+  /// THE TEAM'S SPRING RELEASE (#1048; resources §6 «Место в лестнице»;
+  /// herd_system.cpp, SpringTeamRelease): grams of the plan rung the team's
+  /// WORK feed may take beyond `feed_allowance` today - nought but on a
+  /// field-work day from 1 January to the oat harvest. Read only for a
+  /// horse's work-only link; every other take ignores it. Owned by the
+  /// caller, as `feed_allowance` is. Null: no release.
+  ResourceAmounts* team_work_release = nullptr;
+
   /// By resource, 1 for a food the people are issued: a RESERVE feed takes
   /// none of it (0.37.5; resources design §6, «Запас рабочего скота не ест
   /// хлеба, который выдают людям»; herd_system.h, PeoplesFoods). Null:

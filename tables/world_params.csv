@@ -320,3 +320,4 @@ timber_mark_release_days,8,core
 home_light_hours_after_sunset,2,layer
 home_light_hours_before_sunrise,0.5,layer
 yard_dusk_spread_minutes,24,layer
+spring_plan_rung_yield_share,0.5,core

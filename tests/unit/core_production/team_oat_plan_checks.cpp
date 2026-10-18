@@ -18,6 +18,7 @@
 #include "core_common/quantities.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
+#include "herd_system.h"
 #include "production_alarms.h"
 #include "production_config.h"
 #include "team_oat_plan.h"
@@ -209,6 +210,43 @@ int CheckTheLampByPlan(const core::ProductionConfig& config) {
   return failures;
 }
 
+/// THE TEAM'S SPRING RELEASE (#1048; resources §6 «Место в лестнице»): 10 t
+/// of oat owed to the plan, 20 t in store, 7.5 ha of oat sowing that expect
+/// 6 375 kg - the spring rung is 10 000 − 0.5 x 6 375 = 6 812.5 kg, so on a
+/// field-work day the team may take the plan rung's 10 t less that, 3 187.5
+/// kg; on a Sunday nothing.
+int CheckTheSpringRelease(const core::ProductionConfig& base) {
+  int failures = 0;
+  core::ProductionConfig config = base;
+  config.farming.spring_plan_rung_yield_share = 0.5F;
+  const auto world_on = [](core::SimDay day) {
+    core::WorldState world = OatWorld(day, core::FieldPhase::kSowing, 2.0F);
+    world.plan.announced = 1;
+    world.plan.due.assign(1, 10'000 * kKilo);
+    world.plan.delivered.assign(1, 0);
+    core::UnitRow store;
+    store.level = 1;
+    store.stock.assign(1, 20'000 * kKilo);
+    core::AppendRow(world.units, store);
+    return world;
+  };
+  const core::ResourceAmounts field_day =
+      core::SpringTeamRelease(config, world_on(core::kDaysPerYear + 17));
+  const core::Grams released = field_day.empty() ? -1 : field_day[0];
+  failures +=
+      Expect(released >= 3'187 * kKilo && released <= 3'188 * kKilo,
+             "the spring release: the plan rung's 10 t above the spring rung of 6 812.5 kg");
+  const core::ResourceAmounts sunday =
+      core::SpringTeamRelease(config, world_on(core::kDaysPerYear + 21));  // 69 % 7 = 6: Sunday
+  failures += Expect(!sunday.empty() && sunday[0] == 0, "the spring release: nothing on a Sunday");
+  core::WorldState reaped = world_on(core::kDaysPerYear + 17);
+  reaped.ledger.current.harvest.assign(1, 1 * kKilo);
+  const core::ResourceAmounts after = core::SpringTeamRelease(config, reaped);
+  failures += Expect(!after.empty() && after[0] == 0,
+                     "the spring release: nothing once this year's oat is reaped");
+  return failures;
+}
+
 }  // namespace
 
 int CheckTheTeamsOatPlan() {
@@ -218,5 +256,6 @@ int CheckTheTeamsOatPlan() {
   failures += CheckTheYearsReading(config);
   failures += CheckTheFieldWorkDay(config);
   failures += CheckTheLampByPlan(config);
+  failures += CheckTheSpringRelease(config);
   return failures;
 }

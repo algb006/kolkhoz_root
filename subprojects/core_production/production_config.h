@@ -716,6 +716,14 @@ struct FarmingConfig {
   /// STUB 39, econ's (CLAUDE.md §9: ~39 working days a year in Epoch I).
   float team_need_first_year_working_days = 39.0F;
 
+  /// THE TEAM'S SPRING PLAN RUNG (#1048; resources §6 «Место в лестнице»;
+  /// world_params): from 1 January to the oat harvest, on field-work days,
+  /// the team's WORK ration stands under max(0, the oat due outstanding −
+  /// this share × the expected oat harvest), not the whole plan rung; every
+  /// other herd and every other day stay under the whole rung (0.37.40).
+  /// STUB 0.5, econ's.
+  float spring_plan_rung_yield_share = 0.5F;
+
   /// The pasture season, 0-based months inclusive: outside it a head takes
   /// nothing from the grass and its whole norm comes out of the stores.
   /// ASSUMPTION — the design names summer grazing but no month band.

@@ -90,7 +90,29 @@ Grams TakeFeed(WorldState& world,
                const HerdPlace& place,
                ResourceId resource,
                Grams wanted,
-               bool reserve_feed = false) {
+               bool reserve_feed = false,
+               bool team_work_feed = false) {
+  // THE TEAM'S WORK FEED MAY ALSO TAKE THE SPRING RELEASE (#1048): what the
+  // spring rung no longer holds from it, and from nobody else.
+  const Grams released = team_work_feed && place.team_work_release != nullptr &&
+                                 resource.value < place.team_work_release->size()
+                             ? (*place.team_work_release)[resource.value]
+                             : 0;
+  // Spends the take off the allowance first, the release after.
+  const auto spend = [&place, resource](Grams taken) {
+    Grams from_release = taken;
+    if (place.feed_allowance != nullptr && resource.value < place.feed_allowance->size()) {
+      Grams& allowed = (*place.feed_allowance)[resource.value];
+      const Grams from_allowance = allowed > 0 ? (taken < allowed ? taken : allowed) : 0;
+      allowed -= from_allowance;
+      from_release = taken - from_allowance;
+    }
+    if (from_release > 0 && place.team_work_release != nullptr &&
+        resource.value < place.team_work_release->size()) {
+      Grams& left = (*place.team_work_release)[resource.value];
+      left = left > from_release ? left - from_release : 0;
+    }
+  };
   if (place.pantry != nullptr) {
     // Booked in its own column (ledger_state.h, yard_feed): the family's
     // `eaten` is the family meal and does not hold a goat's hay.
@@ -120,6 +142,7 @@ Grams TakeFeed(WorldState& world,
         (*place.peoples_foods)[resource.value] != 0) {
       allowed = 0;
     }
+    allowed += released;
     wanted = wanted < allowed ? wanted : allowed;
   }
   // A FARM's OWN RICK (feed_home.h): the feeds a rick is the home of come from
@@ -145,9 +168,7 @@ Grams TakeFeed(WorldState& world,
     if (place.bound_grams != nullptr) {
       *place.bound_grams += bound_taken;
     }
-    if (place.feed_allowance != nullptr && resource.value < place.feed_allowance->size()) {
-      (*place.feed_allowance)[resource.value] -= bound_taken;
-    }
+    spend(bound_taken);
     AddLedgerAmount(world.ledger.current.feed, resource, bound_taken);
     return bound_taken;
   }
@@ -167,9 +188,7 @@ Grams TakeFeed(WorldState& world,
   if (taken < wanted) {
     taken += TakeFromStorage(world, config, resource, wanted - taken);
   }
-  if (place.feed_allowance != nullptr && resource.value < place.feed_allowance->size()) {
-    (*place.feed_allowance)[resource.value] -= taken;
-  }
+  spend(taken);
   AddLedgerAmount(world.ledger.current.feed, resource, taken);
   return taken;
 }
@@ -644,7 +663,9 @@ float RunFeeding(const ProductionConfig& config,
       continue;
     }
     const Grams wanted = KilogramsToGrams(take_units / value);
-    const Grams got = TakeFeed(world, config, place, link.resource, wanted, link.reserve != 0);
+    const bool team_work_feed = kind_id.value == config.horse_kind.value && link.work_only != 0;
+    const Grams got =
+        TakeFeed(world, config, place, link.resource, wanted, link.reserve != 0, team_work_feed);
     // THE HAY BY KIND (save 108), on the same terms TakeFeed books `feed`:
     // the kolkhoz herds only (at_unit), a pantry's goat being `yard_feed`.
     if (place.pantry == nullptr && place.at_unit &&
@@ -1205,6 +1226,37 @@ ResourceAmounts HerdFeedAllowance(const ProductionConfig& config, const WorldSta
   return FeedAllowance(config, world, PloughingToday(world));
 }
 
+ResourceAmounts SpringTeamRelease(const ProductionConfig& config, const WorldState& world) {
+  ResourceAmounts release(config.feed_values.size(), 0);
+  const ResourceId oat = TeamWorkFeed(config);
+  if (oat.value == kInvalidDefIdValue || oat.value >= release.size()) {
+    return release;
+  }
+  // FROM 1 JANUARY TO THE OAT HARVEST, ON FIELD-WORK DAYS (resources §6
+  // «Место в лестнице»): a reaped oat crop of this year ends the spring.
+  if (AmountOf(world.ledger.current.harvest, oat) > 0 || !IsFieldWorkDay(config, world)) {
+    return release;
+  }
+  // The plan rung's part of the oat held today: the seed and plan rungs less
+  // the seed's.
+  const HerdHolds holds = HerdHoldsOf(config, world, PloughingToday(world));
+  const ResourceAmounts seed = SeedRungLeft(world, SeedNormsOf(config), holds.seed_and_plan.size());
+  const Grams held = oat.value < holds.seed_and_plan.size() ? holds.seed_and_plan[oat.value] : 0;
+  const Grams seed_part = oat.value < seed.size() ? seed[oat.value] : 0;
+  const Grams plan_part = held > seed_part ? held - seed_part : 0;
+  // THE SPRING RUNG: what the coming harvest will not cover of the due, at
+  // the share the bad year is read by - the expected harvest the #1040
+  // door's (PlannedChainYieldGrams, the fields' own yield).
+  const double expected =
+      static_cast<double>(PlannedChainYieldGrams(config, world, oat, 0, world.calendar.day));
+  const double owed = static_cast<double>(PlanOwedGrams(world, oat));
+  const double covered =
+      static_cast<double>(config.farming.spring_plan_rung_yield_share) * expected;
+  const Grams spring_rung = owed > covered ? static_cast<Grams>(std::llround(owed - covered)) : 0;
+  release[oat.value] = plan_part > spring_rung ? plan_part - spring_rung : 0;
+  return release;
+}
+
 Grams HeldAboveSeedAndPlan(const ProductionConfig& config,
                            const WorldState& world,
                            ResourceId resource) {
@@ -1319,6 +1371,7 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
     return kind_id.value != config.horse_kind.value || team_out;
   };
   ResourceAmounts feed_allowance = HerdFeedAllowance(config, current);
+  ResourceAmounts team_work_release = SpringTeamRelease(config, current);
   const std::vector<std::uint8_t> peoples_foods = PeoplesFoods(config, current);
   std::vector<HerdRow> gifts;  // appended after the walk; see GiveToNeighbour
   GiftQueues queues = CollectGiftQueues(current, config);
@@ -1365,6 +1418,7 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
     SettleBarrackStock(config, kind, herd, current.herds.row_ids[row], current);
     HerdPlace place = PlaceOf(current, config, herd);
     place.feed_allowance = &feed_allowance;
+    place.team_work_release = &team_work_release;
     place.peoples_foods = &peoples_foods;
     // ITS FARM's RICK, found once a herd-day (feed_home.h).
     Grams far_grams = 0;

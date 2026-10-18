@@ -205,6 +205,20 @@ PloughFeedHold PloughFeedHoldOf(const ProductionConfig& config, const WorldState
 /// site holding stock (static review of 0.37.15, left as it is).
 ResourceAmounts HerdFeedAllowance(const ProductionConfig& config, const WorldState& world);
 
+/// @brief THE TEAM'S SPRING RELEASE (#1048; resources §6 «Место в лестнице»,
+///        boss 26311a6f; econ's §4b): grams of the plan rung the team's WORK
+///        feed may take beyond HerdFeedAllowance today, dense by ResourceId.
+///
+/// From 1 January to this year's oat harvest, on a field-work day
+/// (IsFieldWorkDay), the team's work ration stands under the SPRING rung,
+/// max(0, the oat due outstanding − spring_plan_rung_yield_share × the
+/// expected oat harvest), instead of the whole plan rung: the release is the
+/// plan rung's part of the held oat above it. Nought on every other day, for
+/// every other feed, and for every other herd - pigs, the carts' days and
+/// the winter stay under the whole rung (0.37.40: relief fed to ALL herds
+/// through the winter failed the plan).
+ResourceAmounts SpringTeamRelease(const ProductionConfig& config, const WorldState& world);
+
 /// @brief Grams of `resource` in the stores, unreserved, above the seed fund
 ///        and this year's plan only - the plough's oats and next year's hold
 ///        COUNTED (the oat lamp's «oat on hand», #1040; econ's contract §1).

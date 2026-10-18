@@ -1161,7 +1161,7 @@ bool ParseMeadowKinds(const ITable& table, FarmingConfig& farming, std::string& 
 /// AT ALL: until 2026-09-16 this module took every number off its own
 /// hand-written tables, and the two halves of billeting are what brought it
 /// here. The next world constant lands in the same place.
-constexpr std::array<std::string_view, 31> kProductionWorldParamKeys = {
+constexpr std::array<std::string_view, 32> kProductionWorldParamKeys = {
     "billet_heads_per_yard",
     "billet_yield_factor",
     "school_year_start_month",
@@ -1196,7 +1196,8 @@ constexpr std::array<std::string_view, 31> kProductionWorldParamKeys = {
     "livestock_cold_first_month",
     "livestock_cold_last_month",
     "herd_hunger_episode_fed_days",
-    "barrack_poultry_heads_per_family"};
+    "barrack_poultry_heads_per_family",
+    "spring_plan_rung_yield_share"};
 
 /// THE SCHOOL YEAR IS READ HERE AS WELL AS BY THE SCHOOL, and that is a
 /// second READER, not a second home: the months live in world_params.csv and
@@ -1341,7 +1342,13 @@ bool ParseProductionWorldParams(const ITable& world,
       // (herd_system.cpp, PlaceSurplusHead). Nought: none.
       ScalarKnob{.key = kProductionWorldParamKeys[30],
                  .value = &barrack_poultry_heads,
-                 .range = Range{.low = 0.0F, .high = 100.0F}}};
+                 .range = Range{.low = 0.0F, .high = 100.0F}},
+      // THE TEAM'S SPRING PLAN RUNG (#1048; resources §6 «Место в лестнице»,
+      // boss 26311a6f, econ's §4b): the share of the expected oat harvest
+      // the spring rung counts against the due. STUB 0.5, econ's.
+      ScalarKnob{.key = kProductionWorldParamKeys[31],
+                 .value = &farming.spring_plan_rung_yield_share,
+                 .range = Range{.low = 0.0F, .high = 1.0F}}};
   if (!ReadKnobs(world, "world_params", knobs, error)) {
     return false;
   }
