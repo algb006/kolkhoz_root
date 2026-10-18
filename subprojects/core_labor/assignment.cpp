@@ -101,9 +101,23 @@ constexpr std::uint8_t KindPriority(WorkKind kind) {
   return 12;
 }
 
+/// A job's rank by its kind - and THE MILK LEG RANKS AS HERD CARE (#1056
+/// C1.1; boss, the #1056 thread [4] and [9]: «the milk leg IS herd care, so
+/// it ranks as herd care in the morning placement too»): a hauling on a herd
+/// (labor_state.h, WorkAssignment::herd) takes herd care's 0. The first arm
+/// ranked it as hauling (6) and left 28 / 15 / 24 % of the milk in the barn
+/// in March, May and October, the field months.
+constexpr std::uint8_t JobPriority(const AssignmentJob& job) {
+  if (job.kind == WorkKind::kHauling && job.herd.value != kInvalidEntityIdValue) {
+    return KindPriority(WorkKind::kHerdCare);
+  }
+  return KindPriority(job.kind);
+}
+
 /// The stable identity of a job's target, for deterministic tie-breaks.
 constexpr std::uint32_t TargetIdValue(const AssignmentJob& job) {
-  if (job.kind == WorkKind::kHerdCare) {
+  // The barn's care and its milk leg (#1056 C1.1) target the herd.
+  if (job.kind == WorkKind::kHerdCare || job.herd.value != kInvalidEntityIdValue) {
     return job.herd.value;
   }
   // The perevalka carries out of a unit (kEmptyStore): its target is the unit.
@@ -302,8 +316,8 @@ std::vector<std::uint32_t> OrderJobs(const std::vector<AssignmentJob>& jobs,
         a.window.days != b.window.days) {
       return a.window.days < b.window.days;
     }
-    if (KindPriority(a.kind) != KindPriority(b.kind)) {
-      return KindPriority(a.kind) < KindPriority(b.kind);
+    if (JobPriority(a) != JobPriority(b)) {
+      return JobPriority(a) < JobPriority(b);
     }
     // THE STACKED HAY IS THE LAST OF ITS KIND (0.37.132; AssignmentJob::
     // stacked_hay): a KEY for every job, like the zyab's above — only a

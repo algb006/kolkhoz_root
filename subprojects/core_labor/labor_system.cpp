@@ -1903,6 +1903,10 @@ class LaborSystem final : public ILaborSystem {
     work.extraction_site = job.extraction_site;
     work.limit_delivery = job.limit_delivery;
     work.unit = job.unit;
+    // THE MILK LEG'S HERD (#1056 C1.1): without it the leg's job matched no
+    // task, so its level 0 never marked it urgent (MarkTheUrgentLoads) - the
+    // first arm's 28 / 15 / 24 % left in the barn in March, May and October.
+    work.herd = job.herd;
     return work;
   }
 
