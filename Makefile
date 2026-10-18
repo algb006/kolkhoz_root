@@ -5,7 +5,7 @@
 
 .DEFAULT_GOAL := help
 .PHONY: help configure build release rebuild asan clean distclean test unit test-some \
-        check-tests format format-check tidy docs sync win win-release publish win-clean \
+        check-tests check-msvc format format-check tidy docs sync win win-release publish win-clean \
         win-setup hooks deps info version bump-patch bump-minor
 
 # --- Settings ---------------------------------------------------------------
@@ -42,6 +42,7 @@ help:
 	@echo '  make unit           только обязательные unit-тесты модулей'
 	@echo '  make test-some R=…  часть набора по имени: make test-some R=idle_curve'
 	@echo '  make check-tests    unit-тест на модуль, включения, перечисления границы, пути мануала'
+	@echo '  make check-msvc     сужения внутри std::pair/tuple, которые MSVC валит (C4244), ~3 мин'
 	@echo '  make version        версии ядра и формата сохранений'
 	@echo '  make bump-patch     поднять версию: сдан модуль'
 	@echo '  make bump-minor     поднять версию: сдан этап плана либо сломана граница с UE'
@@ -133,6 +134,12 @@ check-tests:
 	@python3 scripts/event_sites.py
 	@python3 scripts/wait_kinds.py
 	@python3 scripts/check_manual_paths.py
+
+# MSVC's C4244 inside std::pair / std::tuple, seen on Linux (0.37.279-284 broke the host's MSVC Debug build
+# on `{0, grams}`). NOT in check-tests: it compiles every unit syntax-only, ~3 min on two jobs - it runs in
+# the m22 suite (core-xeon-suite.sh). Needs a configured build (compile_commands.json).
+check-msvc:
+	@python3 scripts/check_pair_narrowing.py $(BUILD_DIR)
 
 # Bumping is the closing step of a delivery cycle, run in the same commit as the
 # work being delivered. VERSION_SAVE is not bumped here — see 57-versioning.md.
