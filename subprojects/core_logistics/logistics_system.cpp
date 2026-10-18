@@ -44,6 +44,38 @@ namespace {
 /// The carts there are against the carts the plan planned: a carter on a horse
 /// (a goods cart) or a driver of a people's cart, by id and kind. A carrier on
 /// foot is not asked — his chain is his placement's load and the near ones.
+bool CartsChanged(const WorldState& world, const GroomPlan& plan);
+
+/// Whether some goods cart of the plan could take a new load at `now`: it
+/// stands idle (no leg under way and none ahead of it) or is on an EMPTY leg
+/// (a ride or a trip's way back). A cart on its loaded leg, or between a ride
+/// that brought it to a load and the loaded leg that leaves it (loading), is
+/// held: a re-plan could change nothing of its day (#1056 C4; boss, the
+/// #1056 thread after [29]).
+bool SomeCartFree(const GroomPlan& plan, Tick now) {
+  for (const CartPlan& cart : plan.carts) {
+    if (cart.on_foot || cart.people_cart) {
+      continue;
+    }
+    bool held = false;
+    for (std::size_t index = 0; index < cart.legs.size(); ++index) {
+      const CartLeg& leg = cart.legs[index];
+      const bool under_way = leg.depart <= now && now < leg.arrive;
+      // Loading: arrived by the previous leg, the loaded leg not yet gone.
+      const bool loading =
+          leg.loaded != 0 && now < leg.depart && index > 0 && cart.legs[index - 1].arrive <= now;
+      if ((under_way && leg.loaded != 0) || loading) {
+        held = true;
+        break;
+      }
+    }
+    if (!held) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool CartsChanged(const WorldState& world, const GroomPlan& plan) {
   std::size_t there = 0;
   for (std::uint32_t row = 0; row < world.residents.rows.size(); ++row) {
@@ -263,7 +295,13 @@ class LogisticsSystem final : public ILogisticsSystem {
     // 9.5 s step-clock rise.
     if (current.heap_born) {
       current.heap_born = false;
-      if (AppendNewHeapTasks(config_, current, current.calendar.day) > 0) {
+      // The heap's task is made whatever the carts do (the next plan has it);
+      // the day is re-planned for it only while some cart could take it -
+      // idle or on an empty leg (SomeCartFree). Every re-plan for a new heap
+      // with every cart loading or loaded changed nothing, and cost the
+      // slot's ~14 ms (the #1056 thread [29]).
+      if (AppendNewHeapTasks(config_, current, current.calendar.day) > 0 &&
+          SomeCartFree(plan, current.calendar.tick)) {
         plan.stale = true;
       }
     }

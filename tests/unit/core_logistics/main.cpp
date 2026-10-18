@@ -806,6 +806,28 @@ int TestTheReplan() {
     failures +=
         Expect(!system->Replan(calm) && calm.logistics_tasks.rows.size() == tasks_before + 1,
                "re-plan: a heap growing under its task re-plans nothing");
+    // EVERY CART LOADED (#1056 C4; SomeCartFree): a fourth heap at hour 12
+    // with every goods cart on a loaded leg from 11 to 14 gets its task, and
+    // the day is not re-planned for it - no cart could take it.
+    core::WorldState held = calm;
+    for (core::CartPlan& cart : held.groom_plan.carts) {
+      core::CartLeg leg;
+      leg.loaded = 1;
+      leg.depart = (3 * core::kTicksPerDay) + 11;
+      leg.arrive = (3 * core::kTicksPerDay) + 14;
+      cart.legs = {leg};
+    }
+    core::FieldRow fourth = field;
+    fourth.center = core::Vec2{.x = 1'200.0F, .y = 0.0F};
+    core::AppendRow(held.fields, fourth);
+    held.heap_born = true;
+    held.groom_plan.stale = false;
+    const std::size_t held_before = held.logistics_tasks.rows.size();
+    held.calendar.tick = (3 * core::kTicksPerDay) + 12;
+    failures += Expect(!held.groom_plan.carts.empty() && !system->Replan(held) &&
+                           held.logistics_tasks.rows.size() == held_before + 1,
+                       "re-plan: a heap reaped with every cart loaded gets its task and re-plans "
+                       "nothing");
   }
   return failures;
 }
