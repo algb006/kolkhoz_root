@@ -721,8 +721,14 @@ struct FarmingConfig {
   /// herds' milk goes into the barn's own stock, the district's cart takes
   /// its share there, and the rest reaches the store the village keeps milk
   /// in only by the barn -> store leg (herd care, worked on rest days); 0 -
-  /// the milk goes straight to that store, as before 0.37.298. STUB 0 until
-  /// the pair says otherwise.
+  /// the milk goes straight to that store, as before 0.37.298.
+  /// STUB 0 (#1070; boss, the #1056 thread after [18]): THE LEG DOES NOT SHIP.
+  /// Carted, its 9 170 year-1 horse-hours went unfed by the oat plan (team
+  /// short-ration village-days +23 %, novice 27 x 3); on foot (C1.3) a
+  /// 1.4-1.8 km leg is ~7.7 game hours a round trip, under two trips a day,
+  /// and the yards' milk fell 24 %. RETURNS WHEN (iii): the food yard becomes
+  /// milk's store, near the cattle yard in the reference layout - decided
+  /// with #1061's layout re-measure - and the leg's pair is run again.
   float milk_at_barn = 0.0F;
 
   /// THE RICK'S SUPPLY (#1056 C1.2; econ's stage C contract 574c366;
