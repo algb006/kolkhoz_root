@@ -27,10 +27,22 @@
 ///     C2-b); the furrow pays the bonus by what arrived (FieldRow::
 ///     manure_applied), once, as before.
 ///
-/// CONTRACT, NO IMPLEMENTATION (core rules §12a): the rows' fields, their
-/// codecs, the save number and the bodies come with the implementation; the
-/// body waits for econ's re-prediction in game hours (boss, after [20]: ≈ 170
-/// cart-days a village-year by an estimate, the milk leg's trap at scale).
+/// STUB (C2; econ's stage C contract §C2.1, 5f7f1a6; boss, the #1056 thread
+/// after [20]; transport design §12, stage C's row): MANURE MOVES AS ON MAIN -
+/// the yard's manure into the heap with no haul, PlanManure spreading the
+/// year's doses with no haul. Re-priced in game hours the carting costs ≈ 1 700
+/// winter cart-hours a village-year on the reference layout, unfed, and every
+/// gate was predicted red, so NOTHING HERE IS DEFINED, CALLED, ADDED TO A ROW
+/// OR SAVED: this file holds the rule and the seams for the day it returns.
+/// RETURNS WHEN any one of:
+///   1. the reference layout puts the heaps within ~0.8 km road of the fields
+///      they feed (≤ ~2.5 game hours a trip), AND a run prints the village's
+///      free winter horse-hours after logs, the team fed by the ladder, at
+///      ≥ 1.5 × the manure cart-hours - both priced before the build;
+///   2. the winter's own pace enters the core (sledges, road_rules.h's STUB) at
+///      a measured pace and load - and this is re-priced in game hours first;
+///   3. Epoch II's lorries or tractor-drawn spreaders, where horse-hours stop
+///      being the limit.
 
 #ifndef CORE_COMMON_MANURE_STATE_H_
 #define CORE_COMMON_MANURE_STATE_H_

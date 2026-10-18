@@ -6,9 +6,12 @@
 /// thread: the herd day lays the yards' manure, the prices at the day's last
 /// tick, the settles every hour, the booking at the year's turn.
 ///
-/// CONTRACT, NO IMPLEMENTATION (core rules §12a): declarations only - no body
-/// is defined and nothing calls them until the implementation, which waits
-/// for econ's re-prediction in game hours (boss, the #1056 thread after [20]).
+/// STUB (C2; econ §C2.1, 5f7f1a6; transport design §12, stage C's row):
+/// DECLARATIONS WITH NO BODY, AND NOTHING CALLS THEM - manure moves as on main
+/// (herd_system.cpp into the heap; PlanManure at the year's turn). Do not
+/// define them on their own: the return conditions are core_common/
+/// manure_state.h's, and the body is priced in game hours again before it is
+/// written.
 
 #ifndef CORE_PRODUCTION_MANURE_CART_H_
 #define CORE_PRODUCTION_MANURE_CART_H_
