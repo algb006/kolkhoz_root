@@ -106,6 +106,15 @@ int CheckTheYearsReading(const core::ProductionConfig& config) {
                      "the year's line: 7.5 ha, 6 375 kg expected, 31 t needed");
   failures += Expect(read.oat_short_by_plan == 1 && read.by_plan_stop_given == 0,
                      "6.375 t against 31 t x 0.8: thin by the plan, and the year's stop is new");
+  // THE FIELDS' OWN YIELD (boss, the #1040 thread [5]): soil at 80 against
+  // the neutral 50 gives 850 x 1.6 = 1 360 kg/ha, 10 200 kg on 7.5 ha - not
+  // the table's 6 375.
+  core::WorldState rich = OatWorld(core::kDaysPerYear, core::FieldPhase::kIdle, 0.0F);
+  rich.fields.rows[0].fertility = 80.0F;
+  rich.ledger.current.team_work_oat_requested = 31'000 * kKilo;
+  core::ReadTheTeamsOatPlan(config, rich);
+  failures += Expect(rich.traction_watch.plan_oat_expected == 10'200 * kKilo,
+                     "rich soil: the line's expected oat is the field's own yield, 10 200 kg");
   // BOUGHT OATS COUNT (econ §1; core's worry in the #1040 thread [1]): 20 t in
   // store make the year 26.375 t, over the 24.8 t threshold.
   core::WorldState bought = OatWorld(core::kDaysPerYear, core::FieldPhase::kIdle, 0.0F);

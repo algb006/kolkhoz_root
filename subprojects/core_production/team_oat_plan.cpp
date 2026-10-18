@@ -100,15 +100,12 @@ void ReadTheTeamsOatPlan(const ProductionConfig& config, WorldState& current) {
   if (oat.value == kInvalidDefIdValue) {
     return;  // no horse or no work feed in the tables: no lamp to read for
   }
-  float yield_kg_per_ha = 0.0F;
-  for (const CropDef& crop : config.crops) {
-    if (crop.resource.value == oat.value) {
-      yield_kg_per_ha = crop.yield_kg_per_ha;
-      break;
-    }
-  }
+  // THE FIELDS' OWN YIELD, NOT HA x THE TABLE'S (boss, the #1040 thread [5];
+  // the contract §1 said ha x 850): the table's yield is at neutral
+  // fertility, and the canon's soil gave 1 170-1 380 kg/ha on 17.5 ha where
+  // the line read 850 - the lamp and the harvest must not diverge.
   watch.plan_oat_ha = PlannedChainHectares(config, current, oat, 0, current.calendar.day);
-  watch.plan_oat_expected = KilogramsToGrams(watch.plan_oat_ha * yield_kg_per_ha);
+  watch.plan_oat_expected = PlannedChainYieldGrams(config, current, oat, 0, current.calendar.day);
   const Grams requested = current.ledger.current.team_work_oat_requested;
   watch.plan_team_need = requested > 0 ? requested : FirstYearTeamNeed(config, current);
   if (watch.plan_team_need <= 0) {

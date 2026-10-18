@@ -11,7 +11,9 @@
 /// - a known, accepted cost of the year - the lean oat slot (f1e0442b) - is
 ///   said ONCE with its cause and the next step, not lit as a state for most
 ///   of the year;
-/// - the year is thin when (the slot's oat ha x the crop's yield + the oat the
+/// - the year is thin when (the slot's fields' own oat yield, fertility as it
+///   stands - PlannedChainYieldGrams; the contract's ha x 850 changed by boss,
+///   the #1040 thread [5] - + the oat the
 ///   stores hold above the seed and the plan, HeldAboveSeedAndPlan) < the
 ///   team's need x oat_short_plan_margin;
 /// - in a thin year the lamp lights on short field-work days only, one stop

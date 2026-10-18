@@ -584,6 +584,37 @@ float PlannedChainHectares(const ProductionConfig& config,
   return year < kChainYears ? ChainHectares(config, world, produce, year, as_of) : 0.0F;
 }
 
+Grams PlannedChainYieldGrams(const ProductionConfig& config,
+                             const WorldState& world,
+                             ResourceId produce,
+                             std::uint32_t year,
+                             SimDay as_of) {
+  if (year >= kChainYears) {
+    return 0;
+  }
+  Grams grams = 0;
+  for (const FieldRow& field : world.fields.rows) {
+    if (field.kind != LandKind::kArable || !HasRotation(field)) {
+      continue;
+    }
+    const CropId grown = CropInYear(config, field, year, as_of);
+    if (grown.value >= config.crops.size() || config.crops[grown.value].resource != produce ||
+        SlotLost(config, field, year, as_of)) {
+      continue;
+    }
+    // THE HARVEST'S OWN DOOR on the field as it will be sown: the whole
+    // field, on time, no season's stress yet - its soil is what remains.
+    FieldRow sown = field;
+    sown.crop = grown;
+    sown.sown_share = 1.0F;
+    sown.sown_day = kNeverSownDay;
+    sown.drought_stress = 0.0F;
+    sown.wet_stress = 0.0F;
+    grams += FieldYieldGrams(config, sown, config.crops[grown.value]);
+  }
+  return grams;
+}
+
 Grams NextYearUnpaidGrams(const ProductionConfig& config,
                           const WorldState& world,
                           ResourceId resource,

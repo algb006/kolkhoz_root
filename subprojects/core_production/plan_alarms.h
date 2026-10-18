@@ -56,6 +56,19 @@ float PlannedChainHectares(const ProductionConfig& config,
                            std::uint32_t year,
                            SimDay as_of);
 
+/// @brief Grams of `produce` the same fields PlannedChainHectares counts
+///        will yield by the harvest's own door (field_work.h, FieldYieldGrams)
+///        with each field's fertility as it stands, sown whole and on time and
+///        no season's stress yet (#1040; boss, the #1040 thread [5]: the oat
+///        lamp's «expected» is what the harvest brings, not the table's
+///        neutral-fertility yield x ha). The weather is the one thing it
+///        cannot know.
+Grams PlannedChainYieldGrams(const ProductionConfig& config,
+                             const WorldState& world,
+                             ResourceId produce,
+                             std::uint32_t year,
+                             SimDay as_of);
+
 /// @brief Grams of `resource` NEXT year's own harvest will not pay of what
 /// next year needs out of it (0.37.2; boss-core-epoch1-queue [52]-[54]): the
 /// district's positions of it, priced off the area next spring's figure will

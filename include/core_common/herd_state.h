@@ -287,7 +287,7 @@ struct TractionWatch {
   // contract oat-lamp-thin-year-contract-2026-10-17.md, e4b0188 / c31d460;
   // boss, the #1040 thread [2], [4]). Read once on 1 January by the
   // production year start (team_oat_plan.h, ReadTheTeamsOatPlan), after the
-  // chain has moved: this year's oat slot, priced at the crop's yield, plus
+  // chain has moved: this year's oat slot at its fields' own yield, plus
   // the oat in store above the seed and the plan, against the closed year's
   // team request.
   // ONE DEVIATION FROM THE CONTRACT, named: the need is the herd day's own
@@ -315,7 +315,8 @@ struct TractionWatch {
 
   /// The line's three numbers, as of 1 January (team_on_hay.by_plan.text's
   /// {oat_ha}, {expected_t}, {need_t}): this year's oat slot in hectares, its
-  /// expected grams at the crop's yield, and the team's need in grams of oat.
+  /// expected grams at its fields' own yield (PlannedChainYieldGrams), and the
+  /// team's need in grams of oat.
   float plan_oat_ha = 0.0F;
   Grams plan_oat_expected = 0;
   Grams plan_team_need = 0;

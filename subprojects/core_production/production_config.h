@@ -705,7 +705,7 @@ struct FarmingConfig {
   float traction_full_ration_share = 0.5F;
 
   /// THE THIN YEAR BY THE FIELD PLAN (#1040; econ's oat-lamp contract §1;
-  /// farming.csv): the year's oat - the slot's hectares at the crop's yield
+  /// farming.csv): the year's oat - the slot's fields at their own yield
   /// plus the oat in store above the seed and the plan on 1 January - short
   /// of the team's need
   /// times this share. STUB 0.8, econ's.
