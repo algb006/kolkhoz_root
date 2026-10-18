@@ -476,6 +476,23 @@ struct FarmingConfig {
 
   float plough_floor_margin = 1.33F;
 
+  /// THE FLOOR'S OTHER WINDOWS (#1069; econ's horse-floor-plan-peak-
+  /// 2026-10-19 (8789ff6), option (b); boss, the #1056 thread after [21]):
+  /// the meadow cut takes one horse a meadow at work, and a meadow's work is
+  /// its ha × meadow_mow_days_per_ha over the crew on it - `mow_crew_per_
+  /// meadow`; the harvest's carts are the plan's tonnes over
+  /// `harvest_cart_t_per_team_day`. BOTH STUB, MEASURED ONCE on the base
+  /// (wip/1056 24f385be, canon 9 x 5 and novice 27 x 4): the crew 18 is the
+  /// median at hour 12 over 2 336 meadow job-days (quartiles 8-25); the rate
+  /// 3.74 t is the median of cart t / cart team-days by crop source a
+  /// village-year over 761 rows (quartiles 2.84-5.10) - the t every cart
+  /// source of the crop, the team-days its field heaps' alone, assigned light
+  /// hours / 10. RE-MEASURE when the cart pricing or the load or speed tables
+  /// change (econ). Not a live rate: a closed year's would rise with a hungry
+  /// team.
+  float mow_crew_per_meadow = 18.0F;
+  float harvest_cart_t_per_team_day = 3.74F;
+
   float milk_floor_margin = 1.25F;
 
   float manure_norm_kg_per_ha = 20000.0F;

@@ -55,13 +55,31 @@ LivestockKindId MilkKind(const ProductionConfig& config);
 
 /// @brief The adults the floors keep.
 struct HerdFloors {
-  /// The teams that plough the plan's base of worked hectares
-  /// (PlanState::worked_ha_last_year; all the arable before a base is
-  /// written) in farming.csv `plough_window_days`, rounded up.
+  /// THE SPRING: the teams that plough AND harrow the plan's base of worked
+  /// hectares (PlanState::worked_ha_last_year; all the arable before a base
+  /// is written) in farming.csv `plough_window_days`, rounded up. The plough
+  /// alone until #1069: the harrow follows it in the same window with the
+  /// same horse (farming design; econ's horse-floor-plan-peak).
   std::int64_t plough_teams = 0;
 
-  /// The adult kolkhoz horses kept: `plough_teams` times farming.csv
-  /// `plough_floor_margin`, rounded up.
+  /// THE PLAN'S PEAK (#1069, option (b)): by game month, the teams the
+  /// plan's windows that month need - the spring's in its first sowing
+  /// month, the meadow cut's (one horse a meadow at work) in its months, each
+  /// crop's carts (its planned tonnes over FarmingConfig::
+  /// harvest_cart_t_per_team_day in its harvest months, or its heap's keeping
+  /// days where shorter) in its months - SUMMED within a month; the largest
+  /// month, and which. From the plan's ha and tonnes, never from the herd:
+  /// the occupancy measures followed it up (above).
+  double peak_teams = 0.0;
+  std::uint8_t peak_month = 0;  ///< 0-based.
+  /// The terms that month, for the print: the spring's, the cut's, the carts'.
+  double peak_spring_teams = 0.0;
+  double peak_cut_teams = 0.0;
+  double peak_cart_teams = 0.0;
+
+  /// The adult kolkhoz horses kept: `peak_teams` times farming.csv
+  /// `plough_floor_margin`, rounded up. The spring's plough alone until
+  /// #1069: 1951's novice handed its mowers and carters over in February.
   std::int64_t horses_kept = 0;
 
   /// The adult kolkhoz cows kept: the highest milk position the district
