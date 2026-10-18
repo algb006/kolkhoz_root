@@ -66,6 +66,30 @@ core::WorldState OneFamily(float pantry_grain_kg) {
   return world;
 }
 
+/// THE SHARE (econ §6, (a1)): two adults of 30 with an empty pantry, and a
+/// child of 10 holding `child_pantry_kg` of grain and every trudoden of the
+/// last 12 days; a store of 1 000 kg, last year's book 20 trudodni a day. The
+/// issue to come is 20 x 24 = 480 trudodni x 1 kg = 480 kg, 1 584 000 kcal -
+/// all of it the adults' by their workers, none of it by the ring.
+core::WorldState WorkersAndRing(float child_pantry_kg) {
+  core::WorldState world = OneFamily(0.0F);
+  core::UnitRow store;
+  store.level = 1;
+  store.stock.assign(1, 1000 * kKilo);
+  core::AppendRow(world.units, store);
+  world.ledger.closed.trudodni_by_day.fill(20 * core::kTrudodniScale);
+  core::FamilyRow child_yard;
+  child_yard.pantry.assign(1,
+                           static_cast<core::Grams>(child_pantry_kg * static_cast<float>(kKilo)));
+  child_yard.trudodni_by_day.fill(2 * core::kTrudodniScale);
+  const core::FamilyId child_id = core::AppendRow(world.families, child_yard);
+  core::ResidentRow child;
+  child.family = child_id;
+  child.birth_day = static_cast<std::int32_t>(kToday) - static_cast<std::int32_t>(10.0F * 12.0F);
+  core::AppendRow(world.residents, child);
+  return world;
+}
+
 }  // namespace
 
 int CheckTheHungerForecast() {
@@ -94,5 +118,18 @@ int CheckTheHungerForecast() {
   failures += Expect(strict.under_threat.size() == 1 && loose.under_threat.empty(),
                      "270 kg (891 000 kcal): under threat at c = 1.0 (990 000), not at c = 0.8 "
                      "(792 000) - the share moves the line the known way");
+  const core::HungerForecast by_workers =
+      core::ForecastHunger(config, WorkersAndRing(300.0F), kSpeedup, kShare);
+  failures += Expect(by_workers.under_threat.empty(),
+                     "the adults' empty pantry is covered by 1 584 000 kcal of issue at their "
+                     "workers' share 2 of 2, though the ring gives them 0 trudodni of 24");
+  const core::WorldState no_worker_world = WorkersAndRing(0.0F);
+  const core::HungerForecast no_worker =
+      core::ForecastHunger(config, no_worker_world, kSpeedup, kShare);
+  failures +=
+      Expect(no_worker.under_threat.size() == 1 &&
+                 no_worker.under_threat[0].value == no_worker_world.families.row_ids[1].value,
+             "a child alone, an empty pantry and every trudoden of the ring: no worker, "
+             "no issue to come - under threat beside a full store");
   return failures;
 }

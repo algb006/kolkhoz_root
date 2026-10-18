@@ -10,9 +10,11 @@
 /// H, its pantry + the issue to come + its own food < the members' need × H ×
 /// c (world_params `hunger_forecast_share`, STUB 0.9):
 /// - the issue to come, by position: the norm in force (ResolveIssueNorms,
-///   the distribution's own door) × the position's kcal × the family's share
-///   of the village's trudodni over the last kHungerShareDays days ×
-///   ForecastTrudodni to min(H, the position's harvest);
+///   the distribution's own door) × the position's kcal × ForecastTrudodni to
+///   min(H, the position's harvest), capped by the position's free stock ×
+///   the family's share: its workers against the village's (CountHousehold,
+///   the advance's door; econ §6 (a1), the #1046 thread [6]). A family with
+///   no worker forecasts no issue;
 /// - its own food: FamilyRow::own_kcal_mean × H (an exponential mean, the
 ///   contract's named deviation from «the last 7 days' mean»);
 /// - the need: DailyNeedKilograms of every member at home, in the grain

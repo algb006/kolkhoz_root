@@ -9,11 +9,11 @@
 
 #include "core_common/away_in_district.h"
 #include "core_common/calendar.h"
-#include "core_common/family_food_watch.h"
 #include "core_common/issue_norm_view.h"
 #include "core_common/state_table_ops.h"
 #include "family_exchange.h"
 #include "family_meal.h"
+#include "household_advance.h"
 #include "issue_norm.h"
 
 namespace core {
@@ -26,6 +26,7 @@ struct FamilyFood {
   float need_kcal_day = 0.0F;
   float pantry_kcal = 0.0F;
   float members = 0.0F;
+  float workers = 0.0F;
 };
 
 }  // namespace
@@ -58,16 +59,23 @@ HungerForecast ForecastHunger(const FoodConfig& config,
         DailyNeedKilograms(config.consumption, age, false) * grain_kcal_per_kg;
     families[row].members += 1.0F;
   }
-  float members_all = 0.0F;
-  TrudodniHundredths ring_all = 0;
+  // THE SHARE IS THE FAMILY'S WORKERS AGAINST THE VILLAGE'S (econ §6, (a1);
+  // the #1046 thread [6]), counted by the advance's own door (CountHousehold:
+  // at home, of working age). Until 0.37.292 it was the family's trudodni over
+  // the last 12 days (FamilyRow::trudodni_by_day), and a family between bursts of work read
+  // low: on the canon's false threats its ring held 1.1 trudodni while it
+  // earned 18 in the next 24 days, and its issue came to 6.8 times the
+  // forecast (seq 3).
+  float workers_all = 0.0F;
   for (std::size_t row = 0; row < families.size(); ++row) {
     const FamilyRow& family = world.families.rows[row];
     for (std::size_t r = 0; r < family.pantry.size() && r < config.resources.size(); ++r) {
       families[row].pantry_kcal +=
           static_cast<float>(family.pantry[r]) * config.resources[r].kcal_per_gram;
     }
-    members_all += families[row].members;
-    ring_all += RingTrudodni(family);
+    families[row].workers = static_cast<float>(
+        CountHousehold(config, life_speedup, world, families[row].id, world.calendar.day).workers);
+    workers_all += families[row].workers;
     forecast.families_with_members += families[row].members > 0.0F ? 1U : 0U;
   }
   // THE ISSUE TO COME, by position: the distribution's own norm, and never
@@ -118,10 +126,8 @@ HungerForecast ForecastHunger(const FoodConfig& config,
       continue;
     }
     const FamilyRow& family = world.families.rows[row];
-    const float share =
-        ring_all > 0 ? static_cast<float>(RingTrudodni(family)) / static_cast<float>(ring_all)
-        : members_all > 0.0F ? food.members / members_all
-                             : 0.0F;
+    // No worker of its own: no issue to come (econ §6).
+    const float share = workers_all > 0.0F ? food.workers / workers_all : 0.0F;
     const float issue = issue_kcal_village * share;
     const float own = family.own_kcal_mean * h;
     const float need = food.need_kcal_day * h * share_c;
