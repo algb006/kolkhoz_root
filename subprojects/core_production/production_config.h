@@ -706,7 +706,8 @@ struct FarmingConfig {
 
   /// THE THIN YEAR BY THE FIELD PLAN (#1040; econ's oat-lamp contract §1;
   /// farming.csv): the year's oat - the slot's hectares at the crop's yield
-  /// plus what the herds may take on 1 January - short of the team's need
+  /// plus the oat in store above the seed and the plan on 1 January - short
+  /// of the team's need
   /// times this share. STUB 0.8, econ's.
   float oat_short_plan_margin = 0.8F;
 

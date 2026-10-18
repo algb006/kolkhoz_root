@@ -288,7 +288,8 @@ struct TractionWatch {
   // boss, the #1040 thread [2], [4]). Read once on 1 January by the
   // production year start (team_oat_plan.h, ReadTheTeamsOatPlan), after the
   // chain has moved: this year's oat slot, priced at the crop's yield, plus
-  // the oat the herds may take, against the closed year's team request.
+  // the oat in store above the seed and the plan, against the closed year's
+  // team request.
   // ONE DEVIATION FROM THE CONTRACT, named: the need is the herd day's own
   // work-ration REQUEST (YearLedger::team_work_oat_requested), not
   // YearLedger::feed's oat and barley - pigs eat both (feed_links.csv), so

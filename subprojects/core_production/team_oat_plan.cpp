@@ -114,8 +114,10 @@ void ReadTheTeamsOatPlan(const ProductionConfig& config, WorldState& current) {
   if (watch.plan_team_need <= 0) {
     return;  // no team, no need: the year cannot be thin for it
   }
-  const ResourceAmounts allowance = HerdFeedAllowance(config, current);
-  const Grams on_hand = oat.value < allowance.size() ? allowance[oat.value] : 0;
+  // ABOVE THE SEED AND THE PLAN ONLY: the plough's oats are the team's own.
+  // HerdFeedAllowance held them back on this ploughless day, and 0.37.286's
+  // first pair arm read every year from 2 to 16 thin in nine of nine villages.
+  const Grams on_hand = HeldAboveSeedAndPlan(config, current, oat);
   const double year_oat =
       static_cast<double>(watch.plan_oat_expected) + static_cast<double>(on_hand > 0 ? on_hand : 0);
   const double threshold = static_cast<double>(watch.plan_team_need) *

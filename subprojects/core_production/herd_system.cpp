@@ -1205,6 +1205,19 @@ ResourceAmounts HerdFeedAllowance(const ProductionConfig& config, const WorldSta
   return FeedAllowance(config, world, PloughingToday(world));
 }
 
+Grams HeldAboveSeedAndPlan(const ProductionConfig& config,
+                           const WorldState& world,
+                           ResourceId resource) {
+  if (resource.value == kInvalidDefIdValue) {
+    return 0;
+  }
+  const HerdHolds holds = HerdHoldsOf(config, world, PloughingToday(world));
+  const Grams left = UnreservedEverywhere(world, resource);
+  const Grams seed_and_plan =
+      resource.value < holds.seed_and_plan.size() ? holds.seed_and_plan[resource.value] : 0;
+  return left > seed_and_plan ? left - seed_and_plan : 0;
+}
+
 ResourceAmounts HerdFeedInFunds(const ProductionConfig& config, const WorldState& world) {
   // The stores fill the ladder from its bottom rung up: the seed and the
   // plan, the plough's oats (no order opens them), next year's hold. What

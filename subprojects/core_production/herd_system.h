@@ -205,6 +205,16 @@ PloughFeedHold PloughFeedHoldOf(const ProductionConfig& config, const WorldState
 /// site holding stock (static review of 0.37.15, left as it is).
 ResourceAmounts HerdFeedAllowance(const ProductionConfig& config, const WorldState& world);
 
+/// @brief Grams of `resource` in the stores, unreserved, above the seed fund
+///        and this year's plan only - the plough's oats and next year's hold
+///        COUNTED (the oat lamp's «oat on hand», #1040; econ's contract §1).
+///        Not HerdFeedAllowance: on 1 January nobody ploughs, so that door
+///        holds the plough's oats back and read the team's own oat as none -
+///        the pair's first arm called every year thin. No rot margin.
+Grams HeldAboveSeedAndPlan(const ProductionConfig& config,
+                           const WorldState& world,
+                           ResourceId resource);
+
 /// @brief What lies in the stores of each resource and is shut from the
 /// herds by a FUND THE CHAIRMAN CAN UNSEAL, grams, dense by ResourceId: the
 /// stock unreserved in every unit, filling the herds' ladder from the bottom

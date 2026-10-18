@@ -12,7 +12,8 @@
 ///   said ONCE with its cause and the next step, not lit as a state for most
 ///   of the year;
 /// - the year is thin when (the slot's oat ha x the crop's yield + the oat the
-///   herds may take) < the team's need x oat_short_plan_margin;
+///   stores hold above the seed and the plan, HeldAboveSeedAndPlan) < the
+///   team's need x oat_short_plan_margin;
 /// - in a thin year the lamp lights on short field-work days only, one stop
 ///   a year, a yellow line after.
 /// ONE DEVIATION, named: the team's need is the herd day's own work-ration
