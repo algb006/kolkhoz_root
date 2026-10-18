@@ -790,6 +790,14 @@ Grams FreeIssueStock(const WorldState& world,
   return FreeStock(world, reserve, resource);
 }
 
+Grams IssueStockBelowReserve(const WorldState& world,
+                             const std::vector<Grams>& reserve,
+                             ResourceId resource) {
+  const Grams held = resource.value < reserve.size() ? reserve[resource.value] : 0;
+  const Grams below = held - VillageStock(world, resource);
+  return below > 0 ? below : 0;
+}
+
 /// Zero in the table is "does not go bad", the longest there is.
 float KeepsDays(const FoodConfig& config, std::uint32_t index) {
   const float days = index < config.spoil_days.size() ? config.spoil_days[index] : 0.0F;

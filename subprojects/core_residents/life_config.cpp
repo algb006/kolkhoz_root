@@ -471,7 +471,7 @@ bool ParseBodyKnobs(const ITable& world, LifeConfig& config, std::string& error)
                  .range = Range{.low = 0.5F, .high = 1.0F}},
       ScalarKnob{.key = kLifeWorldParamKeys[31],
                  .value = &forecast_terms,
-                 .range = Range{.low = 0.0F, .high = 2.0F}}};
+                 .range = Range{.low = 0.0F, .high = 15.0F}}};
   if (!ReadKnobs(world, "world_params", rows, error)) {
     return false;
   }

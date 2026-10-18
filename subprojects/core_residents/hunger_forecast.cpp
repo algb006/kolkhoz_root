@@ -14,6 +14,7 @@
 #include "family_exchange.h"
 #include "family_meal.h"
 #include "household_advance.h"
+#include "household_plot.h"
 #include "issue_norm.h"
 
 namespace core {
@@ -29,25 +30,36 @@ struct FamilyFood {
   float workers = 0.0F;
 };
 
+/// The forecast's inflow terms, bits of FoodConfig::forecast_terms
+/// (world_params `hunger_forecast_terms`; boss, the #1046 thread [12], [17]).
+inline constexpr std::uint8_t kTermHarvest = 1U;   ///< arm B: econ §7.2
+inline constexpr std::uint8_t kTermMilk = 2U;      ///< arm BM's milk, dropped (seq 17)
+inline constexpr std::uint8_t kTermGarden = 4U;    ///< arm C: the yards' gardens
+inline constexpr std::uint8_t kTermFundsNet = 8U;  ///< arm C+: the crop fills the funds first
+
+bool TermOn(const FoodConfig& config, std::uint8_t term) {
+  return (config.forecast_terms & term) != 0;
+}
+
 /// What production says comes in inside the horizon (#1046 (b); boss, the
 /// #1046 thread [12]), by the world_params switch (FoodConfig::forecast_terms).
 struct IssueInflows {
-  ResourceAmounts standing;  ///< 1+: the crop in the fields and the heaps
-  ResourceAmounts to_come;   ///< 1+: this year's harvest to come, net of next year's seed
-  Grams milk_ahead = 0;      ///< 2: the milkings ahead, net of the cart
+  ResourceAmounts standing;  ///< kTermHarvest: the crop in the fields and the heaps
+  ResourceAmounts to_come;   ///< kTermHarvest: this year's harvest to come, net of the seed
+  Grams milk_ahead = 0;      ///< kTermMilk: the milkings ahead, net of the cart
 };
 
 IssueInflows ReadIssueInflows(const FoodConfig& config,
                               const WorldState& world,
                               std::int32_t horizon) {
   IssueInflows inflows;
-  if (config.forecast_terms >= 1 && config.standing_harvest) {
+  if (TermOn(config, kTermHarvest) && config.standing_harvest) {
     inflows.standing = config.standing_harvest(world);
     if (config.harvest_to_come) {
       inflows.to_come = config.harvest_to_come(world);
     }
   }
-  if (config.forecast_terms >= 2 && config.milk_to_issue_ahead && horizon > 1) {
+  if (TermOn(config, kTermMilk) && config.milk_to_issue_ahead && horizon > 1) {
     // Today's issue takes the milk lying now; each of the other mornings
     // takes the milking before it.
     inflows.milk_ahead = config.milk_to_issue_ahead(world, static_cast<std::uint32_t>(horizon - 1));
@@ -61,14 +73,23 @@ IssueInflows ReadIssueInflows(const FoodConfig& config,
 /// («net of the funds by the norm's own rule»): the funds at the harvest's day
 /// cannot be read today - the plan rung holds before the harvest only what
 /// the harvest will not pay - so the plan's owed and the seed stand for them.
-float CropToShare(const WorldState& world, const IssueInflows& inflows, ResourceId resource) {
+/// ARM C+ (kTermFundsNet; boss seq 17, the deviation's cure for F8): the crop
+/// first fills what the stores lie below today's funds, as the issue's floor
+/// does (IssueStockBelowReserve), and only the rest is shared.
+float CropToShare(const FoodConfig& config,
+                  const WorldState& world,
+                  const std::vector<Grams>& reserve,
+                  const IssueInflows& inflows,
+                  ResourceId resource) {
   const Grams standing = AmountOf(inflows.standing, resource);
   const Grams net_of_seed =
       inflows.to_come.empty() ? standing : std::min(standing, AmountOf(inflows.to_come, resource));
   const Grams owed = world.plan.announced != 0 ? AmountOf(world.plan.due, resource) -
                                                      AmountOf(world.plan.delivered, resource)
                                                : 0;
-  const Grams left = net_of_seed - std::max<Grams>(owed, 0);
+  const Grams below_funds =
+      TermOn(config, kTermFundsNet) ? IssueStockBelowReserve(world, reserve, resource) : 0;
+  const Grams left = net_of_seed - std::max<Grams>(owed, 0) - below_funds;
   return left > 0 ? static_cast<float>(left) : 0.0F;
 }
 
@@ -116,8 +137,8 @@ IssueTerms PositionIssueTerms(const FoodConfig& config,
   if (!(after_trudodni > 0.0F)) {
     return terms;
   }
-  const float remainder =
-      std::max(free - terms.before, 0.0F) + CropToShare(world, inflows, line.resource);
+  const float remainder = std::max(free - terms.before, 0.0F) +
+                          CropToShare(config, world, reserve, inflows, line.resource);
   if (line.basis == IssueNormBasis::kShareOfRemainder) {
     if (!(line.trudodni > 0.0F)) {
       return terms;  // not in the default bundle
@@ -217,7 +238,6 @@ HungerForecast ForecastHunger(const FoodConfig& config,
   }
   // The village's trudodni to each position's harvest within the horizon.
   const IssueInflows inflows = ReadIssueInflows(config, world, horizon);
-  float issue_kcal_village = 0.0F;
   std::vector<IssueTerms> position_terms;
   std::vector<float> position_kcal;
   std::int32_t first_harvest = horizon;  // the first day an `after` term starts
@@ -228,27 +248,33 @@ HungerForecast ForecastHunger(const FoodConfig& config,
     const float kcal_per_gram = config.resources[line.resource.value].kcal_per_gram;
     const IssueTerms terms =
         PositionIssueTerms(config, world, life_speedup, reserve, inflows, line, horizon);
-    issue_kcal_village += (terms.before + terms.after) * kcal_per_gram;
     if (terms.harvest_day > 0) {
       first_harvest = std::min(first_harvest, terms.harvest_day);
     }
     position_terms.push_back(terms);
     position_kcal.push_back(kcal_per_gram);
   }
-  // THE DAYS BEFORE THE FIRST HARVEST (econ §8, U1): a crop that comes on
-  // day 12 feeds nobody on day 5. Up to it, only the `before` terms, spread
-  // evenly over their own days.
-  float issue_kcal_to_first = 0.0F;
-  if (first_harvest < horizon) {
+  // THE ISSUE TO A DAY (econ §8 U1, §9 U4): a crop that comes on day 12 feeds
+  // nobody on day 5. Each position's `before` spread evenly over its own days,
+  // its `after` over the days from its harvest to the horizon; at the horizon
+  // it is the village's whole issue to come.
+  const auto issue_kcal_to_day = [&position_terms, &position_kcal, horizon](std::int32_t day) {
+    float kcal = 0.0F;
     for (std::size_t index = 0; index < position_terms.size(); ++index) {
       const IssueTerms& terms = position_terms[index];
+      float grams = 0.0F;
       if (terms.before_days > 0) {
-        issue_kcal_to_first += terms.before * position_kcal[index] *
-                               static_cast<float>(std::min(first_harvest, terms.before_days)) /
-                               static_cast<float>(terms.before_days);
+        grams += terms.before * static_cast<float>(std::min(day, terms.before_days)) /
+                 static_cast<float>(terms.before_days);
       }
+      if (terms.harvest_day > 0 && day > terms.harvest_day && horizon > terms.harvest_day) {
+        grams += terms.after * static_cast<float>(std::min(day, horizon) - terms.harvest_day) /
+                 static_cast<float>(horizon - terms.harvest_day);
+      }
+      kcal += grams * position_kcal[index];
     }
-  }
+    return kcal;
+  };
   const float h = static_cast<float>(horizon);
   float first_short = h;
   for (std::size_t row = 0; row < families.size(); ++row) {
@@ -259,22 +285,33 @@ HungerForecast ForecastHunger(const FoodConfig& config,
     const FamilyRow& family = world.families.rows[row];
     // No worker of its own: no issue to come (econ §6).
     const float share = workers_all > 0.0F ? food.workers / workers_all : 0.0F;
-    // Two spans, the horizon and the days to the first harvest inside it: the
-    // family is under threat when it runs short by the end of either.
-    const float spans[2] = {h, static_cast<float>(first_harvest)};
-    const float issues[2] = {issue_kcal_village * share, issue_kcal_to_first * share};
+    // THE YARD'S GARDEN (arm C; boss seq 17): its harvest lands on its day and
+    // feeds only a span that ends after it - a lump, so the first short day
+    // below runs on the pantry alone.
+    const GardenAhead garden =
+        TermOn(config, kTermGarden) ? ForecastGarden(config, world, family) : GardenAhead{};
+    // THE SPANS the family must get through: the horizon, and inside it to the
+    // first harvest's issue (U1) and to the garden's day (U4) - an inflow that
+    // lands later feeds none of the days before it. Under threat when it runs
+    // short by the end of any.
+    const std::int32_t span_ends[3] = {horizon, first_harvest, garden.days};
     bool short_by_one = false;
     float days = h;
-    for (int span = 0; span < (first_harvest < horizon ? 2 : 1); ++span) {
-      const float own = family.own_kcal_mean * spans[span];
-      const float need = food.need_kcal_day * spans[span] * share_c;
-      if (food.pantry_kcal + issues[span] + own >= need) {
+    for (const std::int32_t end : span_ends) {
+      if (end <= 0 || end > horizon) {
+        continue;
+      }
+      const auto span = static_cast<float>(end);
+      const float issue = issue_kcal_to_day(end) * share;
+      const float own = family.own_kcal_mean * span;
+      const float need = food.need_kcal_day * span * share_c;
+      const float garden_kcal = garden.days > 0 && garden.days < end ? garden.kcal : 0.0F;
+      if (food.pantry_kcal + issue + own + garden_kcal >= need) {
         continue;
       }
       short_by_one = true;
       // THE FIRST SHORT DAY: the pantry spent at the span's daily shortfall.
-      const float shortfall_day =
-          food.need_kcal_day * share_c - ((issues[span] + own) / spans[span]);
+      const float shortfall_day = food.need_kcal_day * share_c - ((issue + own) / span);
       days = std::min(days, shortfall_day > 0.0F ? food.pantry_kcal / shortfall_day : h);
     }
     if (!short_by_one) {

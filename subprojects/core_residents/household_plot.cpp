@@ -199,4 +199,29 @@ void RunHouseholdPlot(const FoodConfig& config,
   }
 }
 
+GardenAhead ForecastGarden(const FoodConfig& config,
+                           const WorldState& world,
+                           const FamilyRow& family) {
+  GardenAhead ahead;
+  if (family.in_barrack != 0) {
+    return ahead;
+  }
+  // HarvestGarden pays on the garden month's last day (RunHouseholdPlot).
+  const auto pay_day = static_cast<std::int32_t>(config.plot.garden_harvest_month) *
+                           static_cast<std::int32_t>(kDaysPerMonth) +
+                       static_cast<std::int32_t>(kDaysPerMonth) - 1;
+  const auto year = static_cast<std::int32_t>(kDaysPerYear);
+  const auto today = static_cast<std::int32_t>(world.calendar.day % kDaysPerYear);
+  ahead.days = ((pay_day - today) % year + year) % year;
+  const float ratio = SeasonRatio(family);
+  const auto kcal_of = [&config](ResourceId resource) {
+    return resource.value < config.resources.size() ? config.resources[resource.value].kcal_per_gram
+                                                    : 0.0F;
+  };
+  ahead.kcal = static_cast<float>(kGramsPerKilogram) * ratio *
+               (config.plot.potato_kg_per_yard_year * kcal_of(config.potato_resource) +
+                config.plot.vegetables_kg_per_yard_year * kcal_of(config.vegetables_resource));
+  return ahead;
+}
+
 }  // namespace core

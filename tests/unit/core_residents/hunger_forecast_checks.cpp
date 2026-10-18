@@ -197,5 +197,52 @@ int CheckTheHungerForecast() {
           core::ForecastHunger(InflowConfig(-1, 1), InflowWorld(0.0F, 0.0F), kSpeedup, kShare)
                   .under_threat.size() == 1,
       "the milkings ahead cover an empty pantry under arm BM, not under arm B");
+  // THE GARDEN (arm C): today is year-day 12, the garden pays on the last day
+  // of September, year-day 35, 23 days ahead; at half the season's attention
+  // 900 kg x 0.5 x 3.3 kcal/g (the potato read as the grain here) = 1 485 000
+  // kcal. 860 000 kcal in the pantry carry two adults past day 23 (853 875)
+  // but not the horizon (891 000): the garden covers the rest.
+  core::FoodConfig garden_config = GrainConfig();
+  garden_config.potato_resource = core::ResourceId{0};
+  const auto garden_world = [](float pantry_kcal) {
+    core::WorldState world = OneFamily(pantry_kcal / 3300.0F);
+    world.families.rows[0].plot_ratio_sum = 5.0F;
+    world.families.rows[0].plot_ratio_days = 10;
+    return world;
+  };
+  garden_config.forecast_terms = 4;
+  const bool garden_feeds =
+      core::ForecastHunger(garden_config, garden_world(860'000.0F), kSpeedup, kShare)
+          .under_threat.empty();
+  garden_config.forecast_terms = 0;
+  failures += Expect(garden_feeds && core::ForecastHunger(
+                                         garden_config, garden_world(860'000.0F), kSpeedup, kShare)
+                                             .under_threat.size() == 1,
+                     "the garden of day 23 covers the horizon's last day: not under threat, and "
+                     "under threat with the term switched off");
+  // U4 (econ §9): 462 000 kcal dry on day 12, before the garden of day 23 -
+  // under threat although the garden would cover the horizon's sum.
+  garden_config.forecast_terms = 4;
+  failures += Expect(core::ForecastHunger(garden_config, garden_world(462'000.0F), kSpeedup, kShare)
+                             .under_threat.size() == 1,
+                     "U4: dry on day 12 with the garden on day 23 - under threat");
+  // U5 (arm C+): a fodder fund of 10 t over a store of 10 kg - the day-2
+  // harvest's 10 t first fill the 9.99 t the store lies below it, so 10 kg are
+  // left to share, and the 100 kg pantry does not reach the horizon. Arm B
+  // shares the whole 10 t.
+  const auto funds_config = [](std::uint8_t terms) {
+    core::FoodConfig config = InflowConfig(2, terms);
+    config.fodder_fund = [](const core::WorldState&) {
+      return core::ResourceAmounts{10'000 * kKilo, 0};
+    };
+    return config;
+  };
+  failures +=
+      Expect(core::ForecastHunger(funds_config(9), InflowWorld(100.0F, 10.0F), kSpeedup, kShare)
+                         .under_threat.size() == 1 &&
+                 core::ForecastHunger(funds_config(1), InflowWorld(100.0F, 10.0F), kSpeedup, kShare)
+                     .under_threat.empty(),
+             "U5: the crop fills the fund the store lies below first - under threat with "
+             "arm C+, not with arm B");
   return failures;
 }

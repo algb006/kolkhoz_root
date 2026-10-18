@@ -83,6 +83,14 @@ Grams FreeIssueStock(const WorldState& world,
                      const std::vector<Grams>& reserve,
                      ResourceId resource);
 
+/// @brief How far the stores' `resource` lies BELOW `reserve` (SealedFunds):
+/// what a harvest fills first, before any of it is free (#1046 (b), arm C+).
+/// Nought when the stores hold the funds or more. The other side of
+/// FreeIssueStock's floor.
+Grams IssueStockBelowReserve(const WorldState& world,
+                             const std::vector<Grams>& reserve,
+                             ResourceId resource);
+
 /// @brief Game days a food position keeps, for the order of the issue and
 /// its substitutes (resources.csv `spoil_days`); a position that does not
 /// go bad keeps forever (infinity).

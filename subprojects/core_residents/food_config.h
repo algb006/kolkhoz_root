@@ -427,10 +427,10 @@ struct FoodConfig {
   /// the forecast has no milk term.
   std::function<Grams(const WorldState&, std::uint32_t)> milk_to_issue_ahead;
 
-  /// Which of the two terms above the hunger forecast adds (LifeConfig::
-  /// hunger_forecast_terms, copied at the assembly): 0 none, 1 the harvest,
-  /// 2 the harvest and the milk.
-  std::uint8_t forecast_terms = 2;
+  /// Which inflow terms the hunger forecast adds, as bits (LifeConfig::
+  /// hunger_forecast_terms, copied at the assembly): 1 the harvest, 2 the
+  /// milk, 4 the gardens, 8 the crop net of the funds below.
+  std::uint8_t forecast_terms = 13;
 
   /// THE POSITION THE DISTRICT'S CART TAKES DAILY (district §9; register
   /// 231; boss seq 113): milk, by its resources.csv key. The plan does NOT
