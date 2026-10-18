@@ -258,8 +258,14 @@ class LogisticsSystem final : public ILogisticsSystem {
     // alone, and a heap reaped at noon waited for tomorrow's plan. The road
     // index rebuilt in the day (writer (2)) sets `stale` where it is rebuilt
     // (road_laying.cpp). Still one re-plan an hour.
-    if (AppendNewHeapTasks(config_, current, current.calendar.day) > 0) {
-      plan.stale = true;
+    // Scanned only when a heap was born since the last scan (world_state.h,
+    // heap_born): the full scan every re-plan hour cost 1.05 s of the canon's
+    // 9.5 s step-clock rise.
+    if (current.heap_born) {
+      current.heap_born = false;
+      if (AppendNewHeapTasks(config_, current, current.calendar.day) > 0) {
+        plan.stale = true;
+      }
     }
     if (!plan.stale && !plan.urgent_pending) {
       return false;

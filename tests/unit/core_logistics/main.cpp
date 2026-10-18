@@ -795,6 +795,7 @@ int TestTheReplan() {
     field.reaped_resource = core::ResourceId{0};
     field.haul_days_remaining = 0.5F;
     core::AppendRow(calm.fields, field);
+    calm.heap_born = true;  // as production's PutOnHeap marks a heap born (world_state.h)
     const std::size_t tasks_before = calm.logistics_tasks.rows.size();
     calm.calendar.tick = (3 * core::kTicksPerDay) + 10;
     const bool new_heap = system->Replan(calm);
