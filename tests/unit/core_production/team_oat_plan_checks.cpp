@@ -13,6 +13,7 @@
 
 #include "core_common/alarm_state.h"
 #include "core_common/calendar.h"
+#include "core_common/labor_state.h"
 #include "core_common/land_state.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table_ops.h"
@@ -116,6 +117,22 @@ int CheckTheYearsReading(const core::ProductionConfig& config) {
   core::ReadTheTeamsOatPlan(config, bought);
   failures += Expect(bought.traction_watch.oat_short_by_plan == 0,
                      "20 t of oat in store cover the year: not thin, the old lamp stands");
+  // THE PLOUGH'S OATS ARE THE TEAM'S OWN (0.37.286's first pair arm read every
+  // year thin): on the ploughless first of January the herds' door holds the
+  // plough's oats back - 1 000 plough-days closed x 10 units a day x the full
+  // share 0.5 over 1.0 a kilogram = 5 t - and the year's reading must count
+  // them. Through HerdFeedAllowance the 20 t read 15 t, 21.375 t < 24.8 t:
+  // thin. Above the seed and the plan only: 26.375 t, not thin.
+  core::ProductionConfig ploughing = config;
+  ploughing.livestock[0].feed_units_per_game_day = 10.0F;
+  core::WorldState held = bought;
+  held.traction_watch = core::TractionWatch{};
+  held.ledger.closed.work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kPlowing)] =
+      1000.0F;
+  core::ReadTheTeamsOatPlan(ploughing, held);
+  failures += Expect(held.traction_watch.oat_short_by_plan == 0,
+                     "the plough's 5 t held on the first of January still count as the team's "
+                     "oat: not thin");
   return failures;
 }
 
