@@ -57,11 +57,6 @@ namespace core {
 /// are tied by a static_assert beside the roster.
 inline constexpr std::size_t kFoodVarietyCategories = 9;
 
-/// The days the hunger forecast's family share of the trudodni is read over
-/// (FamilyRow::trudodni_by_day; econ forecast-lamp-2026-09-30 §2: «за
-/// последние 12 суток - четверть года держит сезон»). Written into the save.
-inline constexpr std::size_t kHungerShareDays = 12;
-
 /// @brief One household. Plain data.
 struct FamilyRow {
   /// The family's house. STUB: stays invalid until units exist (stage 4);
@@ -235,13 +230,6 @@ struct FamilyRow {
 
   // -- the hunger lamp's yellow stage (#1046; econ forecast-lamp-2026-09-30
   // §2; boss, the #1046 thread [2]) -------------------------------------------
-
-  /// The trudodni the family earned on each of the last kHungerShareDays days,
-  /// hundredths, a ring by `calendar.day % kHungerShareDays` - the family's
-  /// share of the village's trudodni over the window prices its part of the
-  /// issue to come. Written by the trudodni accrual (core_labor), every day,
-  /// noughts included. Save 168.
-  std::array<TrudodniHundredths, kHungerShareDays> trudodni_by_day = {};
 
   /// The kcal the family's OWN food brought into its pantry today: the plot
   /// and the yard, the nets, the forest's basket - not the issue. Written by

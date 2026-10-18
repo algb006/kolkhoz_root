@@ -42,7 +42,6 @@
 #include "core_common/day_off.h"
 #include "core_common/emit_event.h"
 #include "core_common/event_state.h"
-#include "core_common/family_food_watch.h"
 #include "core_common/family_state.h"
 #include "core_common/geometry.h"
 #include "core_common/haul.h"
@@ -3034,9 +3033,6 @@ class LaborSystem final : public ILaborSystem {
         const auto hundredths =
             static_cast<TrudodniHundredths>(std::lround(trudodni * kTrudodniScale));
         current.families.rows[family_row].trudodni_account += hundredths;
-        // THE HUNGER FORECAST'S RING (#1046; family_food_watch.h): today's
-        // trudodni by family, the share of the issue to come.
-        AddTodaysTrudodni(current.families.rows[family_row], current.calendar.day, hundredths);
         // THE NEW HOUSEHOLD'S OWN SUM (#170; FamilyRow::earned_since_formed):
         // what it has earned since it was formed, kept apart from the account
         // because the account burns at the economic year's turn.

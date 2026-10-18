@@ -67,11 +67,11 @@ core::WorldState OneFamily(float pantry_grain_kg) {
 }
 
 /// THE SHARE (econ §6, (a1)): two adults of 30 with an empty pantry, and a
-/// child of 10 holding `child_pantry_kg` of grain and every trudoden of the
-/// last 12 days; a store of 1 000 kg, last year's book 20 trudodni a day. The
+/// child of 10 holding `child_pantry_kg` of grain and 24 trudodni on its
+/// account; a store of 1 000 kg, last year's book 20 trudodni a day. The
 /// issue to come is 20 x 24 = 480 trudodni x 1 kg = 480 kg, 1 584 000 kcal -
-/// all of it the adults' by their workers, none of it by the ring.
-core::WorldState WorkersAndRing(float child_pantry_kg) {
+/// all of it the adults' by their workers, none of it by what was earned.
+core::WorldState WorkersNotEarnings(float child_pantry_kg) {
   core::WorldState world = OneFamily(0.0F);
   core::UnitRow store;
   store.level = 1;
@@ -81,7 +81,7 @@ core::WorldState WorkersAndRing(float child_pantry_kg) {
   core::FamilyRow child_yard;
   child_yard.pantry.assign(1,
                            static_cast<core::Grams>(child_pantry_kg * static_cast<float>(kKilo)));
-  child_yard.trudodni_by_day.fill(2 * core::kTrudodniScale);
+  child_yard.trudodni_account = 24 * core::kTrudodniScale;
   const core::FamilyId child_id = core::AppendRow(world.families, child_yard);
   core::ResidentRow child;
   child.family = child_id;
@@ -108,9 +108,6 @@ core::FoodConfig InflowConfig(std::int32_t harvest_in, std::uint8_t terms) {
     return core::ResourceAmounts{10'000 * kKilo, 0};
   };
   config.harvest_to_come = config.standing_harvest;
-  config.milk_to_issue_ahead = [](const core::WorldState&, std::uint32_t days) {
-    return static_cast<core::Grams>(days) * 100 * kKilo;
-  };
   config.forecast_terms = terms;
   return config;
 }
@@ -158,17 +155,17 @@ int CheckTheHungerForecast() {
                      "270 kg (891 000 kcal): under threat at c = 1.0 (990 000), not at c = 0.8 "
                      "(792 000) - the share moves the line the known way");
   const core::HungerForecast by_workers =
-      core::ForecastHunger(config, WorkersAndRing(300.0F), kSpeedup, kShare);
+      core::ForecastHunger(config, WorkersNotEarnings(300.0F), kSpeedup, kShare);
   failures += Expect(by_workers.under_threat.empty(),
                      "the adults' empty pantry is covered by 1 584 000 kcal of issue at their "
-                     "workers' share 2 of 2, though the ring gives them 0 trudodni of 24");
-  const core::WorldState no_worker_world = WorkersAndRing(0.0F);
+                     "workers' share 2 of 2, though the child's yard holds every trudoden earned");
+  const core::WorldState no_worker_world = WorkersNotEarnings(0.0F);
   const core::HungerForecast no_worker =
       core::ForecastHunger(config, no_worker_world, kSpeedup, kShare);
   failures +=
       Expect(no_worker.under_threat.size() == 1 &&
                  no_worker.under_threat[0].value == no_worker_world.families.row_ids[1].value,
-             "a child alone, an empty pantry and every trudoden of the ring: no worker, "
+             "a child alone, an empty pantry and every trudoden earned: no worker, "
              "no issue to come - under threat beside a full store");
   // THE HARVEST INSIDE THE HORIZON (arm B): 100 kg in the pantry and 10 kg in
   // the store carry two adults past a harvest on day 2, and from it the
@@ -189,14 +186,6 @@ int CheckTheHungerForecast() {
   failures +=
       Expect(before_harvest.under_threat.size() == 1 && before_harvest.days_to_first_short == 5,
              "U1: short on day 5 with the harvest on day 12 - under threat, short day 5");
-  // THE MILK AHEAD (arm BM): 23 mornings x 100 kg = 2.3 t of milk, 1 472 000
-  // kcal, cover an empty pantry with no harvest anywhere; arm B does not see it.
-  failures += Expect(
-      core::ForecastHunger(InflowConfig(-1, 2), InflowWorld(0.0F, 0.0F), kSpeedup, kShare)
-              .under_threat.empty() &&
-          core::ForecastHunger(InflowConfig(-1, 1), InflowWorld(0.0F, 0.0F), kSpeedup, kShare)
-                  .under_threat.size() == 1,
-      "the milkings ahead cover an empty pantry under arm BM, not under arm B");
   // THE GARDEN (arm C): today is year-day 12, the garden pays on the last day
   // of September, year-day 35, 23 days ahead; at half the season's attention
   // 900 kg x 0.5 x 3.3 kcal/g (the potato read as the grain here) = 1 485 000

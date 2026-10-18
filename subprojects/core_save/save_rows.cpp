@@ -125,7 +125,10 @@ static_assert(AggregateArity<ResidentRow>() == 55,
 // Save 168 (#1046): the trudodni ring of 12 i32 and the own food's two floats
 // after trudodni_redeemed - predicted 168 -> 224 + amounts and 39 fields
 // before the build, held; on the wire +56 a family.
-static_assert(sizeof(FamilyRow) == 224 + kAmountsSize,
+// Save 169 (#1046, boss's thread [20]): the trudodni ring leaves, nothing read
+// it from 0.37.292 - predicted 224 -> 176 + amounts and 38 fields before the
+// build; on the wire -48 a family.
+static_assert(sizeof(FamilyRow) == 176 + kAmountsSize,
               "FamilyRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 57: ration_granted, the yard's ration decision — 19 fields;
 // the size is read off the build below, not guessed.
@@ -135,7 +138,7 @@ static_assert(sizeof(FamilyRow) == 224 + kAmountsSize,
 // Save 75: in_barrack and hunger_alarm_lit — 27 fields. Save 113:
 // satisfaction_year — 28. Save 124: season_category_kcal and
 // season_need_kcal — 30.
-static_assert(AggregateArity<FamilyRow>() == 39,
+static_assert(AggregateArity<FamilyRow>() == 38,
               "FamilyRow gained or lost a field — update the codec and VERSION_SAVE");
 // FieldRow took LandKind into a padding byte it already had, so sizeof did
 // NOT move — the one case the tripwire of manual/67-save-format.md §7 cannot
@@ -925,10 +928,8 @@ void WriteFamilyRow(SaveSink& sink, const FamilyRow& row) {
 
   out.WriteI32(row.trudodni_account);
   out.WriteI32(row.trudodni_redeemed);
-  // Save 168 (#1046): the hunger forecast's trudodni ring and own food.
-  for (const TrudodniHundredths day : row.trudodni_by_day) {
-    out.WriteI32(day);
-  }
+  // Save 168 (#1046): the hunger forecast's own food; its trudodni ring left
+  // with save 169.
   out.WriteFloat(row.own_kcal_today);
   out.WriteFloat(row.own_kcal_mean);
   out.WriteFloat(row.satisfaction_year);  // save 113: the look's memory
@@ -984,13 +985,8 @@ FamilyRow ReadFamilyRow(LoadSource& source) {
 
   row.trudodni_account = in.ReadI32();
   row.trudodni_redeemed = in.ReadI32();
-  // Save 168 (#1046): the hunger forecast's trudodni ring and own food.
-  for (TrudodniHundredths& day : row.trudodni_by_day) {
-    day = in.ReadI32();
-    if (day < 0) {
-      source.Fail("a family's trudodni of a day are negative");
-    }
-  }
+  // Save 168 (#1046): the hunger forecast's own food; its trudodni ring left
+  // with save 169.
   row.own_kcal_today = in.ReadFloat();
   row.own_kcal_mean = in.ReadFloat();
   if (!(row.own_kcal_today >= 0.0F) || !(row.own_kcal_mean >= 0.0F)) {

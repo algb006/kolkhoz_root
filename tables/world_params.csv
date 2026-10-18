@@ -221,6 +221,7 @@ lodging_satisfaction_penalty,20,core
 hunger_alarm_clear_margin,10,core
 hunger_forecast_share,0.9,core
 hunger_forecast_terms,13,core
+hunger_forecast_lit,0,core
 cooperage_from_month,7,core
 cooperage_to_month,12,core
 trip_depart_hour,8,core

@@ -298,10 +298,8 @@ core::WorldState MakeWorld() {
   rich.plot_ratio_days = 27;
   rich.trudodni_account = 1234;
   rich.trudodni_redeemed = 567;
-  // Save 168 (#1046): the hunger forecast's ring and own food, unlike numbers.
-  for (std::size_t day = 0; day < rich.trudodni_by_day.size(); ++day) {
-    rich.trudodni_by_day[day] = static_cast<core::TrudodniHundredths>(100 + (7 * day));
-  }
+  // Save 168 (#1046): the hunger forecast's own food, unlike numbers (its
+  // trudodni ring left with save 169).
   rich.own_kcal_today = 1250.5F;
   rich.own_kcal_mean = 980.25F;
   rich.satisfaction_year = 47.75F;  // save 113; `bare` keeps «not yet»
@@ -1847,8 +1845,9 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // share-outs seen: predicted 372 -> 374 before the build and held.
     // Save 168 (#1046): the trudodni ring (12 i32) and the own food (2 f32), 56
     // bytes a family, two families: 374 -> 486, predicted before the build and
-    // held; the hash read off it.
-    {"families", 486, 0xaae918801eecee20ULL},
+    // held; the hash read off it. Save 169: the ring leaves, -48 a family:
+    // predicted 486 -> 390 before the build and held; the hash read off it.
+    {"families", 390, 0x8deb60c70a8cfe4ULL},
     // Save 84: +36 — the harvest by parts' laid share (4) and grams (8), 12
     // a row, three rows; predicted before the build and held. Then the first
     // row given non-zero values: the size held at 305, the hash moved.
@@ -2881,13 +2880,10 @@ int main() {
                          loaded.families.rows[0].satisfaction_year == 47.75F &&
                          loaded.families.rows[1].satisfaction_year == core::kNotYetRemembered,
                      "the look's memory comes back, and «not yet» comes back not yet (save 113)");
-  failures +=
-      Expect(loaded.families.rows[0].trudodni_by_day == world.families.rows[0].trudodni_by_day &&
-                 loaded.families.rows[0].trudodni_by_day[11] == 177 &&
-                 loaded.families.rows[0].own_kcal_today == 1250.5F &&
-                 loaded.families.rows[0].own_kcal_mean == 980.25F &&
-                 loaded.families.rows[1].own_kcal_mean == 0.0F,
-             "the hunger forecast's ring and own food come back (save 168)");
+  failures += Expect(loaded.families.rows[0].own_kcal_today == 1250.5F &&
+                         loaded.families.rows[0].own_kcal_mean == 980.25F &&
+                         loaded.families.rows[1].own_kcal_mean == 0.0F,
+                     "the hunger forecast's own food comes back (save 168)");
   failures += Expect(
       loaded.families.rows[0].season_category_kcal == world.families.rows[0].season_category_kcal &&
           loaded.families.rows[0].season_category_kcal[8] == 1.0F &&

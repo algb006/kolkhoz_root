@@ -32,8 +32,9 @@ struct FamilyFood {
 
 /// The forecast's inflow terms, bits of FoodConfig::forecast_terms
 /// (world_params `hunger_forecast_terms`; boss, the #1046 thread [12], [17]).
+/// Bit 2, arm BM's milk, left with 0.37.295 (seq 17: its ~20 % overshoot is
+/// not traced).
 inline constexpr std::uint8_t kTermHarvest = 1U;   ///< arm B: econ §7.2
-inline constexpr std::uint8_t kTermMilk = 2U;      ///< arm BM's milk, dropped (seq 17)
 inline constexpr std::uint8_t kTermGarden = 4U;    ///< arm C: the yards' gardens
 inline constexpr std::uint8_t kTermFundsNet = 8U;  ///< arm C+: the crop fills the funds first
 
@@ -46,23 +47,15 @@ bool TermOn(const FoodConfig& config, std::uint8_t term) {
 struct IssueInflows {
   ResourceAmounts standing;  ///< kTermHarvest: the crop in the fields and the heaps
   ResourceAmounts to_come;   ///< kTermHarvest: this year's harvest to come, net of the seed
-  Grams milk_ahead = 0;      ///< kTermMilk: the milkings ahead, net of the cart
 };
 
-IssueInflows ReadIssueInflows(const FoodConfig& config,
-                              const WorldState& world,
-                              std::int32_t horizon) {
+IssueInflows ReadIssueInflows(const FoodConfig& config, const WorldState& world) {
   IssueInflows inflows;
   if (TermOn(config, kTermHarvest) && config.standing_harvest) {
     inflows.standing = config.standing_harvest(world);
     if (config.harvest_to_come) {
       inflows.to_come = config.harvest_to_come(world);
     }
-  }
-  if (TermOn(config, kTermMilk) && config.milk_to_issue_ahead && horizon > 1) {
-    // Today's issue takes the milk lying now; each of the other mornings
-    // takes the milking before it.
-    inflows.milk_ahead = config.milk_to_issue_ahead(world, static_cast<std::uint32_t>(horizon - 1));
   }
   return inflows;
 }
@@ -115,16 +108,11 @@ IssueTerms PositionIssueTerms(const FoodConfig& config,
   terms.before_days = days;
   bool fallback = false;
   const float to_harvest = ForecastTrudodni(config, world, life_speedup, days, fallback);
-  auto free = static_cast<float>(FreeIssueStock(world, reserve, line.resource));
-  // THE MILK AHEAD (arm BM; seq 11: milk was 59 % of the missing issue, its
-  // norm far above one day's stock, which was the whole cap).
-  if (line.resource.value == config.carted_daily.value) {
-    free += static_cast<float>(inflows.milk_ahead);
-  }
+  const auto free = static_cast<float>(FreeIssueStock(world, reserve, line.resource));
   if (line.grams_per_trudoden > 0) {
     terms.before = std::min(static_cast<float>(line.grams_per_trudoden) * to_harvest, free);
   }
-  // THE HARVEST INSIDE THE HORIZON (econ §7.2; arms B and BM): the norm the
+  // THE HARVEST INSIDE THE HORIZON (econ §7.2; arm B and on): the norm the
   // world will have from the harvest's day, issued from that day to h only -
   // never the crop before it exists.
   const bool harvest_inside =
@@ -195,7 +183,7 @@ HungerForecast ForecastHunger(const FoodConfig& config,
   // THE SHARE IS THE FAMILY'S WORKERS AGAINST THE VILLAGE'S (econ §6, (a1);
   // the #1046 thread [6]), counted by the advance's own door (CountHousehold:
   // at home, of working age). Until 0.37.292 it was the family's trudodni over
-  // the last 12 days (FamilyRow::trudodni_by_day), and a family between bursts of work read
+  // the last 12 days (a ring that left with save 169), and a family between bursts of work read
   // low: on the canon's false threats its ring held 1.1 trudodni while it
   // earned 18 in the next 24 days, and its issue came to 6.8 times the
   // forecast (seq 3).
@@ -237,7 +225,7 @@ HungerForecast ForecastHunger(const FoodConfig& config,
     }
   }
   // The village's trudodni to each position's harvest within the horizon.
-  const IssueInflows inflows = ReadIssueInflows(config, world, horizon);
+  const IssueInflows inflows = ReadIssueInflows(config, world);
   std::vector<IssueTerms> position_terms;
   std::vector<float> position_kcal;
   std::int32_t first_harvest = horizon;  // the first day an `after` term starts

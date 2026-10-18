@@ -55,19 +55,6 @@ void ShipMilkLeftover(const ProductionConfig& config, WorldState& current);
 /// before the spring's figure.
 void ShipMilkShare(const ProductionConfig& config, WorldState& current);
 
-/// @brief The milk the morning issues of the next `days` days can take, beyond
-/// what lies in the stores now (IProductionSystem::MilkToIssueAhead; #1046
-/// (b), boss seq 12, arm BM; econ §8): each milking at today's day
-/// (KolkhozMilkDayGrams) less the cart's share of the day on the days the
-/// position stands - from the season's first day (MilkSeasonFirstDay), so a
-/// span crossing the spring nets from it; nought while the milk debt stands,
-/// when the cart takes every litre. Today's herds and today's share hold for
-/// the whole span: a herd that grows, calves or dries off inside it is not
-/// seen. Never below nought. A pure read.
-Grams MilkToIssueAheadGrams(const ProductionConfig& config,
-                            const WorldState& world,
-                            std::uint32_t days);
-
 /// @brief kMilkAllToDebt while the milk debt stands and the position with it:
 /// the cart took every litre at the last milking and the yards' morning
 /// issue has no milk (boss, boss-core-epoch1-5 seq 7). A pure read.

@@ -421,15 +421,10 @@ struct FoodConfig {
   /// Empty: the forecast has no harvest term.
   std::function<ResourceAmounts(const WorldState&)> standing_harvest;
 
-  /// The milk the issues of the next N days can take beyond the stores' milk
-  /// now (IProductionSystem::MilkToIssueAhead; #1046 (b), arm BM). A CALL
-  /// INTO core_production on the same terms as `fodder_fund` above. Empty:
-  /// the forecast has no milk term.
-  std::function<Grams(const WorldState&, std::uint32_t)> milk_to_issue_ahead;
-
   /// Which inflow terms the hunger forecast adds, as bits (LifeConfig::
-  /// hunger_forecast_terms, copied at the assembly): 1 the harvest, 2 the
-  /// milk, 4 the gardens, 8 the crop net of the funds below.
+  /// hunger_forecast_terms, copied at the assembly): 1 the harvest, 4 the
+  /// gardens, 8 the crop net of the funds below. Bit 2, the milk (arm BM),
+  /// left with 0.37.295 (boss, the #1046 thread [17]).
   std::uint8_t forecast_terms = 13;
 
   /// THE POSITION THE DISTRICT'S CART TAKES DAILY (district §9; register

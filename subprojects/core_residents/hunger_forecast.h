@@ -5,6 +5,20 @@
 ///        steps: it calls the issue norm (issue_norm.h) and FoodConfig's
 ///        production callbacks, which may not run on a worker.
 ///
+/// STUB: THE YELLOW DOES NOT LIGHT (world_params `hunger_forecast_lit` 0;
+/// boss, the #1046 thread [20], econ forecast-lamp §9.5). Its best arm (C+
+/// at c 1.0, 0.37.294) kept its promise - no hunger in 107 episodes without a
+/// yellow before it, lead median 19 days - but lit 32 days of the 48-day year
+/// in one canon village in ten, against the 24 set before the run, and only
+/// 41 % of its runs were followed by hunger. A deferral of the human's
+/// approved yellow (30 September, «делай»), not a cancellation: the code
+/// stands, ForecastHunger and its units run, and residents_system.cpp does
+/// not collect it. RETURN CONDITION (boss [20]; econ §9.5): the family-split
+/// term; the false runs printed by season (half of them in year-days 24-35)
+/// and by family size; the red's village-share margin (boss's item); barley's
+/// overshoot (its issue forecast P10 0 on the canon); and the working ages
+/// outside the 16-60 band (families of no worker by the band drew the issue).
+///
 /// THE CONTRACT IS econ's (econ/manual/audit/forecast-lamp-2026-09-30.md §2;
 /// boss, the #1046 thread [2]). A family is UNDER THREAT when, by the horizon
 /// H, its pantry + the issue to come + its own food < the members' need × H ×
@@ -25,8 +39,7 @@
 ///   next year's harvest (a NAMED DEVIATION: the funds of the harvest's day
 ///   cannot be read today, so the plan owed and the seed stand for them); bit
 ///   8, the crop first fills what the stores lie below today's funds (arm
-///   C+); bit 2, the milk position's cap adds the milkings ahead net of the
-///   cart (IProductionSystem::MilkToIssueAhead; arm BM, dropped); bit 4, the
+///   C+); bit 2, the milk ahead (arm BM), left with 0.37.295; bit 4, the
 ///   family's own garden on its day (household_plot.h, ForecastGarden; arm
 ///   C). The family is under threat when it runs short by the end of ANY of
 ///   the spans to H, to the first such harvest (econ's U1: a crop of day 12

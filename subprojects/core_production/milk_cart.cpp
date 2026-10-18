@@ -7,7 +7,6 @@
 #include "core_common/ledger_state.h"
 #include "core_common/quantities.h"
 #include "district_carts.h"
-#include "herd_system.h"
 #include "stock_ops.h"
 
 namespace core {
@@ -37,33 +36,6 @@ bool MilkPositionStands(const ProductionConfig& config, const WorldState& curren
   return current.plan.announced != 0 && config.milk_resource.value < current.plan.due.size() &&
          current.plan.due[config.milk_resource.value] > 0 &&
          current.calendar.day % kDaysPerYear >= MilkSeasonFirstDay();
-}
-
-Grams MilkToIssueAheadGrams(const ProductionConfig& config,
-                            const WorldState& world,
-                            std::uint32_t days) {
-  if (config.milk_resource.value == kInvalidDefIdValue || days == 0) {
-    return 0;
-  }
-  // A DEBT STANDING TAKES EVERY LITRE (CollectMilkDebtAlarms): while it stands
-  // the yards' issue has no milk, so none is promised (econ §8, U3).
-  if (world.plan.milk_debt > 0 && MilkPositionStands(config, world)) {
-    return 0;
-  }
-  const Grams milking = KolkhozMilkDayGrams(config, world);
-  const bool named = world.plan.announced != 0 &&
-                     config.milk_resource.value < world.plan.due.size() &&
-                     world.plan.due[config.milk_resource.value] > 0;
-  Grams ahead = 0;
-  for (std::uint32_t ahead_day = 1; ahead_day <= days; ++ahead_day) {
-    // THE CART COMES FROM THE SEASON'S FIRST DAY ONLY (MilkPositionStands):
-    // a span that crosses the spring nets its share from that day (econ §8, U2).
-    const SimDay day = world.calendar.day + ahead_day;
-    const bool cart = named && day % kDaysPerYear >= MilkSeasonFirstDay();
-    const Grams left = milking - (cart ? world.plan.milk_daily_share : 0);
-    ahead += left > 0 ? left : 0;
-  }
-  return ahead;
 }
 
 std::uint32_t MilkSeasonFirstDay() {

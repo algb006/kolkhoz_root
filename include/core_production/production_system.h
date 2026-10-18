@@ -418,14 +418,6 @@ class IProductionSystem {
   /// will share from its day.
   /// @note A pure read; called by residents between steps (the alarms).
   virtual ResourceAmounts StandingHarvest(const WorldState& world) const = 0;
-
-  /// @brief The milk the morning issues of the next `days` days can take
-  /// beyond the stores' milk now: the kolkhoz herds' milking of today, each
-  /// day, less the district cart's share on the days the milk position stands
-  /// (from the season's first day); nought while its debt stands (#1046 (b),
-  /// arm BM; econ §8).
-  /// @note A pure read; called by residents between steps (the alarms).
-  virtual Grams MilkToIssueAhead(const WorldState& world, std::uint32_t days) const = 0;
 };
 
 /// @brief Creates the production subsystem.

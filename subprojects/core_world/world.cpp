@@ -1124,14 +1124,10 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       [estimate](const WorldState& world) {
         return estimate == nullptr ? ResourceAmounts{} : estimate->HarvestToComeThisYear(world);
       },
-      // AND THE INFLOWS THE HUNGER LAMP'S FORECAST READS (#1046 (b); boss, the
-      // #1046 thread [12]): the harvest standing now and the milk ahead, both
-      // production's.
+      // AND THE HARVEST STANDING NOW, which the hunger lamp's forecast reads
+      // (#1046 (b); boss, the #1046 thread [12]) - production's.
       [estimate](const WorldState& world) {
         return estimate == nullptr ? ResourceAmounts{} : estimate->StandingHarvest(world);
-      },
-      [estimate](const WorldState& world, std::uint32_t days) -> Grams {
-        return estimate == nullptr ? 0 : estimate->MilkToIssueAhead(world, days);
       });
   // THE ROAD TOOLS (delivery 7b, 7c): the map's obstacles, the road levels'
   // prices, the plot radii — one object, and construction is handed its

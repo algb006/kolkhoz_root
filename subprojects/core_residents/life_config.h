@@ -249,12 +249,18 @@ struct LifeConfig {
 
   /// Which inflow terms the yellow stage's forecast adds, as bits
   /// (world_params `hunger_forecast_terms`, STUB 13; boss, the #1046 thread
-  /// [12], [17], one build and its arms): 1 - the harvest inside the horizon,
-  /// from its day (econ §7.2, arm B); 2 - the milk the herds give over the
-  /// horizon, net of the district's cart (arm BM, dropped in [17]); 4 - the
-  /// yards' gardens (arm C); 8 - the crop fills the funds the stores lie
-  /// below first (arm C+). The losing arms' bits leave with the release.
+  /// [12], [17]): 1 - the harvest inside the horizon, from its day (econ
+  /// §7.2, arm B); 4 - the yards' gardens (arm C); 8 - the crop fills the
+  /// funds the stores lie below first (arm C+). Bit 2, the milk (arm BM),
+  /// left with 0.37.295.
   std::uint8_t hunger_forecast_terms = 13;
+
+  /// Whether the yellow stage lights at all (world_params
+  /// `hunger_forecast_lit`, STUB 0; boss, the #1046 thread [20]): 0 - the
+  /// forecast is not collected and the hunger lamp is the red alone, as
+  /// before 0.37.291; 1 - the yellow lights. The deferral and its return
+  /// condition are in hunger_forecast.h.
+  bool hunger_forecast_lit = false;
 
   /// A birth is twins with this chance (world_params `twins_share`, 1/80,
   /// STUB — econ's; life cycle §4).

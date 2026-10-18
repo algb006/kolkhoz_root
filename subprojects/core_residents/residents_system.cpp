@@ -317,7 +317,9 @@ class ResidentsSystem final : public IResidentsSystem {
     }
     // THE YELLOW STAGE (#1046; hunger_forecast.h): the same lamp's forecast,
     // while the village is not hungry yet - the red says the rest.
-    if (!village_hungry) {
+    // STUB (boss, the #1046 thread [20]): deferred behind world_params
+    // `hunger_forecast_lit` 0 - hunger_forecast.h names the return condition.
+    if (!village_hungry && config_.hunger_forecast_lit) {
       CollectHungerForecast(completed, alarms);
     }
     // FOOD LOCKED IN THE FUNDS (I6): only while somebody is at the threshold
@@ -509,11 +511,10 @@ class ResidentsSystem final : public IResidentsSystem {
     if (current.calendar.day == previous.calendar.day) {
       return;  // daily work, self-gated to day boundaries
     }
-    // THE HUNGER FORECAST'S MEMORIES CLOSE YESTERDAY (#1046; family_food_watch.h):
-    // its own food folds into the mean, today's trudodni slot is cleared
-    // before today's work books into it.
+    // THE HUNGER FORECAST'S MEMORY CLOSES YESTERDAY (#1046; family_food_watch.h):
+    // its own food folds into the mean.
     for (FamilyRow& family : current.families.rows) {
-      CloseFamilyFoodDay(family, previous.calendar.day);
+      CloseFamilyFoodDay(family);
     }
     // The structural work — who dies, leaves, is born, marries, arrives,
     // and who gets a roof — lives in demography.cpp. What is left here is
@@ -582,8 +583,7 @@ std::unique_ptr<IResidentsSystem> CreateResidentsSystem(
     std::function<std::int32_t(const WorldState&, ResourceId)> days_to_harvest_of,
     std::function<ResourceAmounts(const WorldState&)> turn_plan_seal,
     std::function<ResourceAmounts(const WorldState&)> harvest_to_come,
-    std::function<ResourceAmounts(const WorldState&)> standing_harvest,
-    std::function<Grams(const WorldState&, std::uint32_t)> milk_to_issue_ahead) {
+    std::function<ResourceAmounts(const WorldState&)> standing_harvest) {
   // THE DEFAULTS ARE LEGITIMATE AND THEIR SILENCE WAS NOT
   // (core_tables/stub_tables.h). A caller that has not said it wants
   // this module's documented defaults is refused by name, so that a
@@ -644,7 +644,6 @@ std::unique_ptr<IResidentsSystem> CreateResidentsSystem(
   food.turn_plan_seal = std::move(turn_plan_seal);
   food.harvest_to_come = std::move(harvest_to_come);
   food.standing_harvest = std::move(standing_harvest);
-  food.milk_to_issue_ahead = std::move(milk_to_issue_ahead);
   food.forecast_terms = life.hunger_forecast_terms;
   // The cold metric is not "zero cold", it is "cold is not counted": phase 1
   // has neither firewood nor unit heating (plan §11), so ResidentRow::cold
