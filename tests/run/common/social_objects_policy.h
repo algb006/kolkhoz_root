@@ -48,7 +48,9 @@
 #ifndef TESTS_RUN_COMMON_SOCIAL_OBJECTS_POLICY_H_
 #define TESTS_RUN_COMMON_SOCIAL_OBJECTS_POLICY_H_
 
+#include <bit>
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
 #include <map>
 #include <span>
@@ -72,6 +74,25 @@
 #include "suggested_place.h"
 
 namespace run {
+
+/// THE TWO ARMS OF #1064 (econ's social-policy-order-2026-10-18 §3; boss, the
+/// #1056 thread after [30]), run flags, both OFF by default - the policy as
+/// on main:
+///  - S1, «a house waits» counts the UNMET need: roofless families + waiting
+///    couples - house sites at level 0; the hold stands only while it is
+///    above nought. Until S1 a couple waiting for a house already going up
+///    held every social mark, every day of y8-y27 in a growing village.
+///  - S2, the stall release reads any phase and a window: a social site at
+///    level 0, marked OR building, short of its recipe on kStalledDays of the
+///    last kStallWindowDays days stops holding «one going up». Until S2 the
+///    counter ran only while marked and reset on any day not short, and a
+///    started site, or one whose boards trickled in, held the queue for ever
+///    (1934's culture house, y3-y9).
+/// Set by population_curve's --social-s1 / --social-s2, or by the environment
+/// (KOLKHOZ_SOCIAL_S1, KOLKHOZ_SOCIAL_S2) for a harness with no such flag -
+/// the canon's plan700.
+inline bool g_social_s1 = std::getenv("KOLKHOZ_SOCIAL_S1") != nullptr;
+inline bool g_social_s2 = std::getenv("KOLKHOZ_SOCIAL_S2") != nullptr;
 
 /// @brief Marks the era's social objects one at a time once the farm stands,
 ///        and starts each when its recipe is covered.
@@ -114,8 +135,19 @@ class SocialObjectsPolicy {
     }
     std::vector<core::OrderRow> orders;
     bool a_house_waits = !world.wedding_waits.rows.empty();
+    std::int64_t roofless = 0;
     for (const core::FamilyRow& family : world.families.rows) {
       a_house_waits = a_house_waits || family.house.value == core::kInvalidEntityIdValue;
+      roofless += family.house.value == core::kInvalidEntityIdValue ? 1 : 0;
+    }
+    if (g_social_s1) {
+      // S1: the need the street does not already cover (#1064).
+      std::int64_t house_sites = 0;
+      for (const core::UnitRow& unit : world.units.rows) {
+        house_sites += unit.type.value == house_.value && unit.level == 0 && unit.dead == 0 ? 1 : 0;
+      }
+      a_house_waits =
+          roofless + static_cast<std::int64_t>(world.wedding_waits.rows.size()) - house_sites > 0;
     }
     bool one_is_going_up = false;
     // A house site at level 0: counted, no longer a veto on marking (the
@@ -167,12 +199,23 @@ class SocialObjectsPolicy {
         // the next type may be marked. The selpo waited 2248 days for logs
         // with five types behind it.
         const std::uint32_t id = world.units.row_ids[row].value;
-        const bool short_now =
-            marked && !simulation.MaterialsShortFor(world.units.row_ids[row]).empty();
-        const std::uint32_t stalled = short_now ? stalled_days_[id] + 1U : 0U;
-        stalled_days_[id] = stalled;
-        if (stalled < kStalledDays) {
-          one_is_going_up = true;
+        if (g_social_s2) {
+          // S2: any phase, short on kStalledDays of the last kStallWindowDays
+          // (#1064) - a day's bit a day, the oldest falling off.
+          const bool short_any = !simulation.MaterialsShortFor(world.units.row_ids[row]).empty();
+          std::uint32_t& window = stall_window_[id];
+          window = ((window << 1U) | (short_any ? 1U : 0U)) & ((1U << kStallWindowDays) - 1U);
+          if (static_cast<std::uint32_t>(std::popcount(window)) < kStalledDays) {
+            one_is_going_up = true;
+          }
+        } else {
+          const bool short_now =
+              marked && !simulation.MaterialsShortFor(world.units.row_ids[row]).empty();
+          const std::uint32_t stalled = short_now ? stalled_days_[id] + 1U : 0U;
+          stalled_days_[id] = stalled;
+          if (stalled < kStalledDays) {
+            one_is_going_up = true;
+          }
         }
         // STARTED WITHOUT THE HOUSING VETO, on purpose. The veto belongs on
         // MARKING a new one; applied here it leaves a marked plot standing
@@ -364,6 +407,11 @@ class SocialObjectsPolicy {
 
   /// Consecutive marked-and-short days by unit id.
   std::unordered_map<std::uint32_t, std::uint32_t> stalled_days_;
+
+  /// S2's window (#1064): the last days a site was short, a bit a day, by
+  /// unit id; and the window's length - two of kStalledDays, econ's.
+  static constexpr std::uint32_t kStallWindowDays = 24;
+  std::unordered_map<std::uint32_t, std::uint32_t> stall_window_;
 
   Held held_;
 
