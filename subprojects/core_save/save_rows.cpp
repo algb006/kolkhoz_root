@@ -310,8 +310,12 @@ static_assert(AggregateArity<UnitRow>() == 20,
 // Save 142 (0.37.192): the fed days in a row, a u16 into the padding after
 // the adult males (offset 22) — 152 stays and thirty, predicted before the
 // build.
-static_assert(sizeof(HerdRow) == 152, "HerdRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<HerdRow>() == 30,
+// Save 170 (#1056 C1.1): the milk leg - two floats, a Vec2 and a ResourceId
+// after care_days_remaining - predicted 152 -> 168 and 34 fields before the
+// build. The size MISSED: the build reads 176 (the optional wait after them
+// aligns to 8, and the ResourceId's two bytes open a new word); the fields held.
+static_assert(sizeof(HerdRow) == 176, "HerdRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<HerdRow>() == 34,
               "HerdRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-13: the felling mark — a stand id and a volume — took the order row
 // from 64 to 72 and the assignment's stand from 24 to 28 (and the resident
@@ -458,9 +462,11 @@ static_assert(AggregateArity<BarterTripRow>() == 9,
 // Save 158 (#734): over_fields, a switch after the u16 - predicted into the
 // padding before the floats (offset 42), 56 unmoved and sixteen fields, 48
 // bytes saved, before the build.
-static_assert(sizeof(LogisticsTaskRow) == 56,
+// Save 170 (#1056 C1.1): `herd`, an id after `unit` - predicted 56 -> 64 and
+// seventeen fields before the build (the u64 moves to the next 8).
+static_assert(sizeof(LogisticsTaskRow) == 64,
               "LogisticsTaskRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<LogisticsTaskRow>() == 16,
+static_assert(AggregateArity<LogisticsTaskRow>() == 17,
               "LogisticsTaskRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 136 (0.37.177): the groom's plan — a leg six fields, a cart three, the
 // plan four (each holds vectors: its size is not a byte count, the codec
@@ -1471,6 +1477,11 @@ void WriteHerdRow(SaveSink& sink, const HerdRow& row) {
   out.WriteU8(row.cold_nights);            // save 120
   out.WriteU8(row.cold_place_yesterday);   // save 120
   out.WriteFloat(row.care_days_remaining);
+  // Save 170 (#1056 C1.1): the milk leg - its seam, written, receiver, resource.
+  out.WriteFloat(row.leg_days_remaining);
+  out.WriteFloat(row.leg_days_written);
+  WriteVec2(out, row.leg_to);
+  sink.WriteDefId(DefKind::kResource, row.leg_resource.value);
   WriteWait(out, row.wait);  // save 138
 }
 
@@ -1512,6 +1523,13 @@ HerdRow ReadHerdRow(LoadSource& source) {
   row.cold_nights = in.ReadU8();           // save 120
   row.cold_place_yesterday = in.ReadU8();  // save 120
   row.care_days_remaining = in.ReadFloat();
+  row.leg_days_remaining = in.ReadFloat();  // save 170 (#1056 C1.1)
+  row.leg_days_written = in.ReadFloat();
+  row.leg_to = ReadVec2(in);
+  row.leg_resource = ResourceId{source.ReadDefId(DefKind::kResource)};
+  if (!(row.leg_days_remaining >= 0.0F) || !(row.leg_days_written >= 0.0F)) {
+    source.Fail("a herd's milk leg is negative or not a number");
+  }
   row.wait = ReadWait(source);  // save 138
   return row;
 }
@@ -1945,6 +1963,7 @@ void WriteLogisticsTaskRow(SaveSink& sink, const LogisticsTaskRow& row) {
   WriteEntityId(out, row.extraction_site);
   WriteEntityId(out, row.limit_delivery);
   WriteEntityId(out, row.unit);
+  WriteEntityId(out, row.herd);  // save 170 (#1056 C1.1): the milk leg's herd
   out.WriteU8(static_cast<std::uint8_t>(row.level));
   out.WriteU8(static_cast<std::uint8_t>(row.base_level));
   out.WriteU8(static_cast<std::uint8_t>(row.origin));
@@ -1969,6 +1988,7 @@ LogisticsTaskRow ReadLogisticsTaskRow(LoadSource& source) {
   row.extraction_site = ReadEntityId<ExtractionSiteId>(in);
   row.limit_delivery = ReadEntityId<LimitDeliveryId>(in);
   row.unit = ReadEntityId<UnitId>(in);
+  row.herd = ReadEntityId<HerdId>(in);  // save 170 (#1056 C1.1)
   const auto top_level = static_cast<std::uint8_t>(kLogisticsLevelCount - 1U);
   row.level = static_cast<LogisticsLevel>(source.ReadEnumValue(0, top_level, "logistics level"));
   row.base_level =

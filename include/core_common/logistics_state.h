@@ -88,6 +88,12 @@ enum class LogisticsLoadKind : std::uint8_t {
   /// until the order is over — one hauling work names one unit. Seam key
   /// `site_supply`.
   kSiteSupply,
+  /// THE MILK LEG (#1056 C1.1; econ's stage C contract 574c366; boss, the
+  /// #1056 thread [4], [7]): a kolkhoz herd's milk carted from its barn
+  /// (the herd's unit stock) to the store the village keeps milk in, every
+  /// day the barn holds it - herd care, so worked on rest days. Addressed by
+  /// `herd`; its seam is HerdRow::leg_days_remaining. Seam key `milk_leg`.
+  kMilkLeg,
   kLogisticsLoadKindCount,  ///< NOT A KIND: the count.
 };
 
@@ -111,6 +117,7 @@ struct LogisticsTaskRow {
   ExtractionSiteId extraction_site;
   LimitDeliveryId limit_delivery;
   UnitId unit;
+  HerdId herd;  ///< kMilkLeg: the herd whose barn's milk it carts (save 170).
 
   /// The level the task has now (raised by ageing or by a threat).
   LogisticsLevel level = LogisticsLevel::kOrdinary;

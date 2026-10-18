@@ -291,6 +291,7 @@ class ProductionSystem final : public IProductionSystem {
     // does the same and writes tomorrow's demand.
     if (HourFromTick(current.calendar.tick) + 1U < kTicksPerDay) {
       DeliverCartedLoads(config_, current);
+      SettleMilkLegs(config_, current, false);
     }
     // THE CUT'S DRY WORKING DAY, for the hay lamp's pace (lever 1;
     // herd_forecast.h) - COUNTED AT NOON, not at the day's last tick: a day
@@ -309,6 +310,8 @@ class ProductionSystem final : public IProductionSystem {
       SettleSiteHauling(config_, current);
       // And the perevalka out of a store being emptied (field_haul.h).
       SettleStoreEmptying(config_, current);
+      // And the milk leg's last hour, and its close (#1056 C1.1).
+      SettleMilkLegs(config_, current, true);
       // And the materials on their way to the sites (routing stage V2).
       SettleSiteSupply(config_, current, true);
       // And the timber lots the village fetches from the district centre
@@ -464,6 +467,9 @@ class ProductionSystem final : public IProductionSystem {
     RunHerdDay(config_, current);
     RescaleHorseWorkForRation(config_, traction_ration_was, cold_draught_was, current);
     ShipMilkShare(config_, current);
+    // And the barn -> store leg of what the cart left (#1056 C1.1): priced
+    // now, offered from the hour-1 top-up, carried through the day.
+    PriceMilkLegs(config_, current);
     // After the herd day: its slaughter and cull are in the stores, and the
     // smokehouse asks for them this morning (processing_shops.h).
     OpenSameDayShops(config_, current);

@@ -505,6 +505,11 @@ core::WorldState MakeWorld() {
   herd.fed_days_in_a_row = 3;      // save 142: off its «never hungry» default
   herd.fed_share = 0.625F;         // save 71: a third short of the ration, not its default 1
   herd.autumn_slaughter_done = 1;  // save 76: this October's slaughter done
+  // Save 170 (#1056 C1.1): a milk leg half carried, unlike numbers.
+  herd.leg_days_remaining = 0.375F;
+  herd.leg_days_written = 0.75F;
+  herd.leg_to = core::Vec2{8800.5F, 9250.25F};
+  herd.leg_resource = core::ResourceId{1};
   // Save 138: a horse of it at its worker's yard, waiting for his shift.
   herd.wait = core::WaitRecord(
       core::WaitKind::kHorseAtWorkersYard,
@@ -1931,7 +1936,10 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // 137 before the build, held.
     // Save 142 (0.37.192): +2 — the fed days in a row, a u16; predicted 137
     // -> 139 before the build, held.
-    {"herds", 139, 0x3d3f578d92ae347aULL},
+    // Save 170 (#1056 C1.1): +18 a herd - the milk leg's two floats, its
+    // receiver (8) and resource (2); one herd: predicted 139 -> 157 before the
+    // build and held; the hash read off it.
+    {"herds", 157, 0x76076b2e7970f604ULL},
     // 2026-09-16, save 48: +6 bytes, one for each of the six orders — the
     // bought head's sex. The witness named the section, the delta and the
     // offset without being asked, which is what it was rewritten for this
@@ -2044,7 +2052,9 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // before the build, held.
     // Save 158 (#734): +1 - «важнее полевых работ»; predicted 59 -> 60 before
     // the build and held; the hash read off it.
-    {"logistics_tasks", 60, 0xc8326b41d2ef53eULL},
+    // Save 170 (#1056 C1.1): +4 - the milk leg's herd id; predicted 60 -> 64
+    // before the build and held; the hash read off it.
+    {"logistics_tasks", 64, 0x81530067f180842eULL},
     // Save 136 (B3): the groom's plan — 10 of day, flags and count, 9 of the
     // cart, 44 of the first leg (one rider), 40 of the second. Predicted 103
     // before the build, held; the hash read off the build.
@@ -2773,6 +2783,12 @@ int main() {
                      "the herd's yesterday's cold place comes back (save 120)");
   failures += Expect(!loaded.herds.rows.empty() && loaded.herds.rows[0].fed_days_in_a_row == 3,
                      "the herd's fed days in a row come back (save 142)");
+  failures += Expect(
+      !loaded.herds.rows.empty() && loaded.herds.rows[0].leg_days_remaining == 0.375F &&
+          loaded.herds.rows[0].leg_days_written == 0.75F &&
+          loaded.herds.rows[0].leg_to.x == 8800.5F && loaded.herds.rows[0].leg_to.y == 9250.25F &&
+          loaded.herds.rows[0].leg_resource.value == 1,
+      "the herd's milk leg comes back (save 170)");
   failures += Expect(AmountAt(loaded.ledger.closed.herd_hay_eaten, 1) == 9 &&
                          AmountAt(loaded.ledger.closed.herd_feed_short, 0) == 6 &&
                          loaded.ledger.closed.herd_feed_short.size() == 1 &&

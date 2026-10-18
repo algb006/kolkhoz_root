@@ -13056,6 +13056,49 @@ int CheckTheMilkCart() {
   const float tonnes = core::PlanOverfulfilGrainTonnes(config, outside);
   failures += Expect(tonnes > 0.639F && tonnes < 0.641F,
                      "milk: what went with no position counts over the plan, in grain");
+
+  // THE MILK LEG (#1056 C1.1; milk_cart.h, PriceMilkLegs / SettleMilkLegs):
+  // under farming.csv milk_at_barn the milk lies in a barn that is no store
+  // (a type with no storage), and the leg carries it to the store that takes
+  // milk. 50 kg in the barn, a store 400 m off.
+  {
+    core::ProductionConfig leg_config = config;
+    leg_config.unit_types.resize(2);
+    SetLivestockHead(leg_config.unit_types[1], 10.0F);
+    leg_config.farming.milk_at_barn = 1.0F;
+    core::WorldState barn_world = MakeHerdWorld(0.0F);
+    barn_world.units.rows[0].level = 1;
+    barn_world.units.rows[0].position = core::Vec2{8000.0F, 9000.0F};
+    core::UnitRow barn;
+    barn.type = core::UnitTypeId{1};
+    barn.level = 1;
+    barn.position = core::Vec2{8400.0F, 9000.0F};
+    barn.stock.assign(3, 0);
+    barn.stock[1] = 50 * kKilo;
+    const core::UnitId barn_id = AppendRow(barn_world.units, barn);
+    const core::HerdId cows = AddHerd(barn_world, 0, 10, 2, true);
+    barn_world.herds.rows[core::FindRow(barn_world.herds, cows)].unit = barn_id;
+    core::PriceMilkLegs(leg_config, barn_world);
+    const core::HerdRow& priced = barn_world.herds.rows[core::FindRow(barn_world.herds, cows)];
+    failures +=
+        Expect(priced.leg_resource.value == milk.value && priced.leg_days_remaining > 0.0F &&
+                   priced.leg_days_written == priced.leg_days_remaining && priced.leg_to.x != 0.0F,
+               "milk leg: the barn's 50 kg are priced as cart-days to the store that "
+               "takes milk");
+    // The whole leg drained by its carters: the evening's settle carries it.
+    barn_world.herds.rows[core::FindRow(barn_world.herds, cows)].leg_days_remaining = 0.0F;
+    core::SettleMilkLegs(leg_config, barn_world, true);
+    failures +=
+        Expect(barn_world.units.rows[1].stock[1] == 0 && StoreOf(barn_world, 1) == 50 * kKilo,
+               "milk leg: drained whole, the 50 kg go barn -> store by the store's door");
+    // No switch: no leg, whatever the barn holds.
+    barn_world.units.rows[1].stock[1] = 50 * kKilo;
+    core::PriceMilkLegs(config, barn_world);
+    failures +=
+        Expect(barn_world.herds.rows[core::FindRow(barn_world.herds, cows)].leg_resource.value ==
+                   core::kInvalidDefIdValue,
+               "milk leg: with milk_at_barn 0 no herd has a leg");
+  }
   return failures;
 }
 

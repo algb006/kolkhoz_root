@@ -402,7 +402,10 @@ class LogisticsSystem final : public ILogisticsSystem {
       event.amount = packed;
       // AND WHY NOBODY CAME, ON A DAY OFF (task 427, item 3; event_state.h,
       // kDayOffHeldUrgentLoad): the allocator offers no carting that day.
-      if (IsDayOffIn(current, current.calendar.day)) {
+      // The milk leg is herd care, worked on a day off (#1056 C1.1): a day
+      // off holds nothing of it.
+      if (IsDayOffIn(current, current.calendar.day) &&
+          task.load_kind != LogisticsLoadKind::kMilkLeg) {
         SayDayOffHeld(current, current.logistics_tasks.rows[row], packed);
       }
     }
@@ -443,6 +446,9 @@ class LogisticsSystem final : public ILogisticsSystem {
       // the works that waits for them.
       case LogisticsLoadKind::kSiteSupply:
         held.unit = task.unit;
+        break;
+      case LogisticsLoadKind::kMilkLeg:  // never held by a day off (above)
+        held.herd = task.herd;
         break;
       case LogisticsLoadKind::kLogisticsLoadKindCount:
         break;

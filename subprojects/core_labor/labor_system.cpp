@@ -1806,6 +1806,27 @@ class LaborSystem final : public ILaborSystem {
       job.window = DeadlineInDays(0);
       jobs.push_back(job);
     }
+    // THE MILK LEG (#1056 C1.1; boss, the #1056 thread [4]: «carrying the milk
+    // away is part of milking»): the barn's milk to its store, OUTSIDE the
+    // day-off guard as herd care is - on the same carts and hands as any
+    // hauling, priced by production after the milking (herd_state.h,
+    // leg_days_remaining), so it is offered from the hour-1 top-up. Its window
+    // closes tonight: the milk sours by the morning.
+    for (std::uint32_t row = 0; row < current.herds.rows.size(); ++row) {
+      const HerdRow& herd = current.herds.rows[row];
+      Vec2 position;
+      if (!(herd.leg_days_remaining > 0.0F) || !HerdPosition(current, herd, position)) {
+        continue;
+      }
+      AssignmentJob job;
+      job.kind = WorkKind::kHauling;
+      job.herd = current.herds.row_ids[row];
+      job.position = position;
+      job.work_days_remaining = herd.leg_days_remaining;
+      job.harnessed = DraughtHorses(current) > 0;
+      job.window = DeadlineInDays(0);
+      jobs.push_back(job);
+    }
     // Construction sites (task A2). The seam is the same shape as a field's,
     // and so is this loop: core_construction sets labor_days_remaining when
     // a site starts and reads it back at zero; the two never call each other

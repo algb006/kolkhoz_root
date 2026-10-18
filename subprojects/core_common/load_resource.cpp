@@ -66,6 +66,10 @@ ResourceId TaskLoadResource(const WorldState& world, const LogisticsTaskRow& tas
       const ResourceAmounts* const front = FrontLegOf(world, task);
       return front != nullptr ? MostGramsOf(*front) : ResourceId{};
     }
+    case LogisticsLoadKind::kMilkLeg: {
+      const std::uint32_t row = FindRow(world.herds, task.herd);
+      return row != kNoRow ? world.herds.rows[row].leg_resource : ResourceId{};
+    }
     case LogisticsLoadKind::kLogisticsLoadKindCount:
       break;
   }
@@ -104,6 +108,10 @@ ResourceId WalkerLoadResourceOfWork(const WorldState& world,
   } else if (work.limit_delivery.value != kInvalidEntityIdValue) {
     as_task.load_kind = LogisticsLoadKind::kDistrictLot;
     as_task.limit_delivery = work.limit_delivery;
+  } else if (work.herd.value != kInvalidEntityIdValue) {
+    // A hauling on a herd is its milk leg (#1056 C1.1).
+    as_task.load_kind = LogisticsLoadKind::kMilkLeg;
+    as_task.herd = work.herd;
   } else if (work.unit.value != kInvalidEntityIdValue) {
     // A unit being emptied is carted out first (work_seam.cpp); otherwise
     // the hauling on a unit is its works' supply.

@@ -2,13 +2,20 @@
 
 #include "milk_cart.h"
 
+#include <algorithm>
 #include <limits>
+#include <vector>
 
+#include "cart_trips.h"
 #include "core_common/calendar.h"
+#include "core_common/hauled_book.h"
 #include "core_common/ids.h"
 #include "core_common/ledger_state.h"
 #include "core_common/quantities.h"
+#include "core_common/state_table_ops.h"
+#include "core_common/work_seam.h"
 #include "district_carts.h"
+#include "haul_ways.h"
 #include "stock_ops.h"
 
 namespace core {
@@ -103,6 +110,97 @@ void ShipMilkShare(const ProductionConfig& config, WorldState& current) {
   // THE BOOK SEES IT (boss seq 7 of epoch1-5): the debt of today, and at the
   // turn what was left unpaid (YearLedger::milk_debt).
   current.ledger.current.milk_debt = current.plan.milk_debt;
+}
+
+void PriceMilkLegs(const ProductionConfig& config, WorldState& current) {
+  const bool on =
+      config.farming.milk_at_barn >= 0.5F && config.milk_resource.value != kInvalidDefIdValue;
+  std::vector<std::uint32_t> barns_priced;
+  for (HerdRow& herd : current.herds.rows) {
+    herd.leg_days_remaining = 0.0F;
+    herd.leg_days_written = 0.0F;
+    herd.leg_resource = ResourceId{};
+    if (!on || herd.household_owned != 0) {
+      continue;
+    }
+    const std::uint32_t barn_row = FindRow(current.units, herd.unit);
+    // ONE LEG A BARN: two milked herds in one barn share its one stock.
+    if (barn_row == kNoRow || std::ranges::find(barns_priced, barn_row) != barns_priced.end()) {
+      continue;
+    }
+    const UnitRow& barn = current.units.rows[barn_row];
+    const Grams milk = UnreservedOf(barn, config.milk_resource);
+    if (milk <= 0) {
+      continue;
+    }
+    barns_priced.push_back(barn_row);
+    // THE STORE THE VILLAGE KEEPS MILK IN (boss, the #1056 thread [8]): the
+    // first that takes milk in, as DeliverToStores chooses.
+    Vec2 store = barn.position;
+    for (const UnitRow& other : current.units.rows) {
+      if (StoresGoods(other, config) && NumberedStoreTakes(other, config, config.milk_resource)) {
+        store = other.position;
+        break;
+      }
+    }
+    const HaulRate rate =
+        RateToward(config, current, barn.position, store, TravelMode::kCart, config.milk_resource);
+    herd.leg_resource = config.milk_resource;
+    herd.leg_to = rate.receiver;
+    herd.leg_days_remaining = CartDaysFor(config, milk, rate);
+    herd.leg_days_written = herd.leg_days_remaining;
+  }
+}
+
+void SettleMilkLegs(const ProductionConfig& config, WorldState& current, bool evening) {
+  for (std::uint32_t row = 0; row < current.herds.rows.size(); ++row) {
+    HerdRow& herd = current.herds.rows[row];
+    if (herd.leg_resource.value == kInvalidDefIdValue) {
+      continue;
+    }
+    const std::uint32_t barn_row = FindRow(current.units, herd.unit);
+    if (barn_row == kNoRow) {
+      continue;
+    }
+    UnitRow& barn = current.units.rows[barn_row];
+    const float done = herd.leg_days_written > herd.leg_days_remaining
+                           ? herd.leg_days_written - herd.leg_days_remaining
+                           : 0.0F;
+    float converted = 1.0F;
+    if (done > 0.0F && herd.leg_days_written > 0.0F) {
+      const float share = std::min(done / herd.leg_days_written, 1.0F);
+      const Grams lying = UnreservedOf(barn, herd.leg_resource);
+      const Grams budget = GramsFromFloat(static_cast<float>(lying) * share);
+      const Grams moved = DeliverToStores(current, config, herd.leg_resource, budget);
+      AddToStock(barn.stock, herd.leg_resource, -moved);
+      AddLedgerAmount(current.ledger.current.hauled_to_stores, herd.leg_resource, moved);
+      const HaulRate rate = RateToward(
+          config, current, barn.position, herd.leg_to, TravelMode::kCart, herd.leg_resource);
+      BookCartRun(config, current, CartLoadSource::kStore, rate, moved);
+      // Who carried it (#671's instrument; hauled_book.h).
+      WorkAssignment hauled;
+      hauled.kind = WorkKind::kHauling;
+      hauled.herd = current.herds.row_ids[row];
+      BookHauled(current.ledger.current,
+                 herd.leg_resource,
+                 moved,
+                 FootShareOf(current, hauled, SettlementHasCarts(current, config.horse_kind)));
+      if (budget > 0) {
+        converted = std::min(static_cast<float>(moved) / static_cast<float>(budget), 1.0F);
+      }
+      SpendHaulNotes(current, hauled, converted);
+    }
+    // The drained and delivered is settled; what the door did not take stays
+    // drained for the next hour (as DeliverDrained keeps it).
+    herd.leg_days_written = herd.leg_days_remaining + done * (1.0F - converted);
+    if (evening) {
+      // THE DAY'S LEG CLOSES: what is left in the barn goes with the cart
+      // before the next milking (ShipMilkLeftover); tomorrow's leg is priced
+      // after tomorrow's milking.
+      herd.leg_days_remaining = 0.0F;
+      herd.leg_days_written = 0.0F;
+    }
+  }
 }
 
 void CollectMilkDebtAlarms(const ProductionConfig& config,

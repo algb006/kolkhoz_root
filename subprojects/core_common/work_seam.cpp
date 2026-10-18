@@ -49,6 +49,12 @@ const float* WorkSeamOf(const WorldState& world, const WorkAssignment& work) {
     }
     return &unit.production_days_remaining;
   }
+  // THE MILK LEG (#1056 C1.1; logistics_state.h, kMilkLeg): a hauling on a
+  // herd carts its barn's milk to the milk's store - the herd's own leg seam.
+  if (work.kind == WorkKind::kHauling && work.herd.value != kInvalidEntityIdValue) {
+    const std::uint32_t row = FindRow(world.herds, work.herd);
+    return row == kNoRow ? nullptr : &world.herds.rows[row].leg_days_remaining;
+  }
   // THE PEREVALKA (kEmptyStore; 2026-09-19): carting out of a store being
   // emptied drains the unit's own carting seam — only while the order
   // stands and its carrying is not paused (emptying 1, not 2).
@@ -140,7 +146,10 @@ const float* WorkSeamOf(const WorldState& world, const WorkAssignment& work) {
 }
 
 bool WorkPlaceOf(const WorldState& world, const WorkAssignment& work, Vec2& place) {
-  if (work.kind == WorkKind::kHerdCare) {
+  // The herd's barn, for its care and for its milk leg (#1056 C1.1: a
+  // hauling on a herd is loaded at the barn).
+  if (work.kind == WorkKind::kHerdCare ||
+      (work.kind == WorkKind::kHauling && work.herd.value != kInvalidEntityIdValue)) {
     const std::uint32_t herd_row = FindRow(world.herds, work.herd);
     if (herd_row == kNoRow) {
       return false;
@@ -505,6 +514,11 @@ bool WorkReceiverOf(const WorldState& world, const WorkAssignment& work, Vec2& r
     receiver = point;
     return true;
   };
+  // The milk leg (#1056 C1.1): the milk's store production wrote with the seam.
+  if (work.herd.value != kInvalidEntityIdValue) {
+    const std::uint32_t row = FindRow(world.herds, work.herd);
+    return row != kNoRow && written(world.herds.rows[row].leg_to);
+  }
   if (work.unit.value != kInvalidEntityIdValue) {
     const std::uint32_t row = FindRow(world.units, work.unit);
     if (row == kNoRow) {

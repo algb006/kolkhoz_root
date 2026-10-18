@@ -37,6 +37,8 @@ LoadAddress AddressOf(const LogisticsTaskRow& task) {
     case LogisticsLoadKind::kStoreTransfer:
     case LogisticsLoadKind::kSiteSupply:
       return {task.load_kind, task.unit.value};
+    case LogisticsLoadKind::kMilkLeg:
+      return {task.load_kind, task.herd.value};
     case LogisticsLoadKind::kLogisticsLoadKindCount:
       break;
   }
@@ -84,6 +86,14 @@ std::vector<LoadAddress> LoadsOf(const WorldState& world) {
   for (const std::uint32_t row : SiteSupplyOrder(world)) {
     loads.push_back({LogisticsLoadKind::kSiteSupply, world.units.row_ids[row].value});
   }
+  // THE MILK LEG (#1056 C1.1): one task a milked kolkhoz herd, standing while
+  // the herd has a leg at all - keyed on the herd, not on today's milk, which
+  // the herd day lays in the barn after this hour-0 sync.
+  for (std::uint32_t row = 0; row < world.herds.rows.size(); ++row) {
+    if (world.herds.rows[row].leg_resource.value != kInvalidDefIdValue) {
+      loads.push_back({LogisticsLoadKind::kMilkLeg, world.herds.row_ids[row].value});
+    }
+  }
   return loads;
 }
 
@@ -110,6 +120,9 @@ LogisticsTaskRow TaskFor(const LogisticsConfig& config, const LoadAddress& load,
     case LogisticsLoadKind::kStoreTransfer:
     case LogisticsLoadKind::kSiteSupply:
       task.unit = UnitId{load.id};
+      break;
+    case LogisticsLoadKind::kMilkLeg:
+      task.herd = HerdId{load.id};
       break;
     case LogisticsLoadKind::kLogisticsLoadKindCount:
       break;
