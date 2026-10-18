@@ -152,6 +152,15 @@ enum class AlarmKind : std::uint8_t {
   /// treatment (boss, 2026-09-03). A month on the ration is itself the
   /// open statement that the farm is not feeding its people.
   /// Subject: `family`.
+  /// THE YELLOW STAGE (#1046; econ forecast-lamp-2026-09-30; hunger_forecast.h):
+  /// one more alarm of this kind, a FORECAST, raised when at least
+  /// kHungerLampShare of the families with members will run short within the
+  /// horizon - `family` the first of them, `amount` how many, `days_to_loss`
+  /// the days to the first short day (so PaintAlarms paints it yellow past
+  /// alarm_red_within_days), `forecast_month` that day's month; `advice`
+  /// kUnsealFund (`advice_resource`, `advice_amount`) while food lies in a
+  /// fund, else kLowerIssueNorm while the chairman's norm stands above the
+  /// default, else kNone.
   kFamilyGoingHungry,
 
   // -- sites: core_construction ------------------------------------------------
@@ -951,6 +960,13 @@ enum class AlarmAdvice : std::uint8_t {
   /// invalid, no move («упряжь уже вся на поле»).
   kSowMoreOat,
 
+  /// LOWER THE ISSUE NORM - «снизить норму выдачи» (#1046; dictionary
+  /// `lower_issue_norm`). Named by kFamilyGoingHungry's yellow stage only
+  /// while the chairman has raised a norm above its default (issue_norm.h):
+  /// the door is kSetIssueNorm of `advice_resource` back toward the default.
+  /// No raised norm: not named.
+  kLowerIssueNorm,
+
   /// NOT A MOVE: the count, so a consumer can static_assert its mirror.
   kAlarmAdviceCount,
 };
@@ -1071,6 +1087,12 @@ struct Alarm {
   /// inherits the days of the alarm that lights it. Saturates at 0xFFFF.
   /// @note Not in the save, as `lamp`.
   std::uint16_t days_to_loss = 0;
+
+  /// kFamilyGoingHungry's YELLOW stage only (#1046): the 0-based calendar
+  /// month of the first day a family under threat runs short - the line's
+  /// «{month}: хлеба не хватит на N семей». 0 on every other alarm, where it
+  /// is not read. Not in the save, as `lamp`.
+  std::uint8_t forecast_month = 0;
 
   /// kGoodsLoanOwed only: the campaign year (counted from 1, as
   /// CalendarState::date.year) whose harvest the debt is repaid from at the

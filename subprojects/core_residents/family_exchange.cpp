@@ -20,6 +20,7 @@
 #include "core_common/away_in_district.h"
 #include "core_common/calendar.h"
 #include "core_common/emit_event.h"
+#include "core_common/family_food_watch.h"
 #include "core_common/fund_ladder.h"
 #include "core_common/ids.h"
 #include "core_common/ledger_state.h"
@@ -679,9 +680,13 @@ void RunNets(const FoodConfig& config, WorldState& current) {
   if (daily <= 0) {
     return;
   }
+  const float fish_kcal = config.fish_resource.value < config.resources.size()
+                              ? config.resources[config.fish_resource.value].kcal_per_gram
+                              : 0.0F;
   for (FamilyRow& family : current.families.rows) {
     AddToPantry(family, config.fish_resource, daily);
     AddLedgerAmount(current.ledger.current.nets, config.fish_resource, daily);
+    AddTodaysOwnKcal(family, static_cast<float>(daily) * fish_kcal);  // #1046: its own food
   }
 }
 
@@ -746,6 +751,7 @@ void RunForage(const FoodConfig& config, float life_speedup, WorldState& current
     if (kept > 0) {
       AddToPantry(family, fresh, kept);
       AddLedgerAmount(current.ledger.current.forage, fresh, kept);
+      AddTodaysOwnKcal(family, static_cast<float>(kept) * fresh_kcal);  // #1046: its own food
     }
     const Grams made = dried_share > 0.0F
                            ? KilogramsToGrams(basket_kg * dried_share * fresh_kcal / dried_kcal)
@@ -753,6 +759,7 @@ void RunForage(const FoodConfig& config, float life_speedup, WorldState& current
     if (made > 0) {
       AddToPantry(family, dried, made);
       AddLedgerAmount(current.ledger.current.forage, dried, made);
+      AddTodaysOwnKcal(family, static_cast<float>(made) * dried_kcal);  // #1046: its own food
     }
   }
 }

@@ -45,6 +45,7 @@
 #include "household_plot.h"
 #include "housing.h"
 #include "housing_ladder.h"
+#include "hunger_forecast_checks.h"
 #include "issue_norm.h"
 #include "life_config.h"
 #include "membership.h"
@@ -4940,6 +4941,7 @@ int main() {
   failures += CheckTheWinterCountsTheHeapAbovePlan();
   failures += CheckTheLooksMemory();
   failures += CheckTakeNightTrader();
+  failures += CheckTheHungerForecast();
   if (system != nullptr) {
     failures += CheckOldAgeTakesTheOld(*system);
     failures += CheckTheElderIsSparedByAge(*system);

@@ -54,6 +54,10 @@ namespace core {
 struct HerdPlace {
   ResourceAmounts* pantry = nullptr;  ///< Non-null for a household herd.
 
+  /// The household whose pantry `pantry` is: its yard's produce is its OWN
+  /// food (#1046; family_food_watch.h, AddTodaysOwnKcal). Null with `pantry`.
+  FamilyRow* family = nullptr;
+
   /// The stock of the unit the herd stands at, if any. A herd eats out of
   /// its own barn before it sends to the shared store — which is not a
   /// nicety: hay is delivered to the stock yard by the harvest, and the yard

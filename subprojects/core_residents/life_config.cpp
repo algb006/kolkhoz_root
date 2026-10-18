@@ -266,7 +266,7 @@ bool ParseWeightRows(const ITable& table, LifeConfig& config, std::string& error
 /// deliberate rather than shared: each is the single source for ITS module's
 /// read, so the day one of them stops reading a key, its list shrinks with
 /// its code instead of waiting for someone to notice.
-constexpr std::array<std::string_view, 30> kLifeWorldParamKeys = {
+constexpr std::array<std::string_view, 31> kLifeWorldParamKeys = {
     "body_height_male_m",
     "body_height_female_m",
     "body_height_sigma_frac",
@@ -319,7 +319,9 @@ constexpr std::array<std::string_view, 30> kLifeWorldParamKeys = {
     "identical_twins_share",
     // The former elder is not taken by age through the early build's years
     // (boss-core-start-quest-facts-2026-09-30 [8] p. 1).
-    "elder_spared_through_year"};
+    "elder_spared_through_year",
+    // The hunger lamp's yellow stage (#1046; econ's c).
+    "hunger_forecast_share"};
 
 /// The barrack's places (housing §9; boss seq 197): unit_levels.csv
 /// `residents_capacity`, by type and level. A table without the column leaves
@@ -460,7 +462,10 @@ bool ParseBodyKnobs(const ITable& world, LifeConfig& config, std::string& error)
                  .range = Range{.low = 0.0F, .high = 1.0F}},
       ScalarKnob{.key = kLifeWorldParamKeys[29],
                  .value = &elder_spared,
-                 .range = Range{.low = 0.0F, .high = 100.0F}}};
+                 .range = Range{.low = 0.0F, .high = 100.0F}},
+      ScalarKnob{.key = kLifeWorldParamKeys[30],
+                 .value = &config.hunger_forecast_share,
+                 .range = Range{.low = 0.5F, .high = 1.0F}}};
   if (!ReadKnobs(world, "world_params", rows, error)) {
     return false;
   }

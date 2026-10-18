@@ -1,0 +1,98 @@
+// The checks of the hunger lamp's yellow stage (hunger_forecast_checks.h).
+//
+// THE KNOWN ANSWERS, by hand: an adult needs 300 / 48 = 6.25 kg of grain
+// equivalent a day at 3 300 kcal a kg, 20 625 kcal; two adults 41 250 kcal a
+// day. With nothing in the stores there is no issue to come and no harvest,
+// so the horizon is the cap, 24 days, and the threshold at c = 0.9 is
+// 41 250 x 24 x 0.9 = 891 000 kcal. 120 kg of grain in the pantry are
+// 396 000 kcal, spent at the day's shortfall of 41 250 x 0.9 = 37 125 kcal:
+// the first short day is day 10 (10.67, floored).
+#include "hunger_forecast_checks.h"
+
+#include <cstdint>
+#include <iostream>
+
+#include "core_common/calendar.h"
+#include "core_common/quantities.h"
+#include "core_common/state_table_ops.h"
+#include "core_common/world_state.h"
+#include "food_config.h"
+#include "hunger_forecast.h"
+
+namespace {
+
+int Expect(bool condition, const char* label) {
+  if (!condition) {
+    std::cout << "FAIL: hunger forecast: " << label << '\n';
+    return 1;
+  }
+  return 0;
+}
+
+constexpr core::Grams kKilo = core::kGramsPerKilogram;
+constexpr std::uint32_t kToday = 12;
+constexpr float kSpeedup = 4.0F;
+constexpr float kShare = 0.9F;
+
+/// Grain alone, issued by the table's grams; nothing else on the roster.
+core::FoodConfig GrainConfig() {
+  core::FoodConfig config;
+  config.resources.assign(1, core::FoodResourceDef{});
+  config.resources[0] = {.kcal_per_gram = 3.3F,
+                         .category = core::FoodCategory::kBread,
+                         .issue_kg_per_trudoden = 1.0F,
+                         .ration_kg_per_day = 2.0F};
+  config.distribution.period_days = 1;
+  config.distribution.reserve_seed_fund = 0;
+  config.plot.fish_kg_per_yard_year = {0.0F, 0.0F, 0.0F};
+  return config;
+}
+
+/// One household of two adults of 30, its pantry holding `pantry_grain_kg`
+/// of grain; no store, so nothing is issued.
+core::WorldState OneFamily(float pantry_grain_kg) {
+  core::WorldState world;
+  world.calendar.tick = static_cast<core::Tick>(kToday) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  core::FamilyRow yard;
+  yard.pantry.assign(1, static_cast<core::Grams>(pantry_grain_kg * static_cast<float>(kKilo)));
+  const core::FamilyId id = core::AppendRow(world.families, yard);
+  for (int member = 0; member < 2; ++member) {
+    core::ResidentRow adult;
+    adult.family = id;
+    adult.birth_day = static_cast<std::int32_t>(kToday) - static_cast<std::int32_t>(30.0F * 12.0F);
+    core::AppendRow(world.residents, adult);
+  }
+  return world;
+}
+
+}  // namespace
+
+int CheckTheHungerForecast() {
+  int failures = 0;
+  const core::FoodConfig config = GrainConfig();
+  const core::HungerForecast fed =
+      core::ForecastHunger(config, OneFamily(300.0F), kSpeedup, kShare);
+  failures += Expect(fed.under_threat.empty() && fed.families_with_members == 1,
+                     "300 kg of grain in the pantry carry two adults past the 24-day horizon");
+  const core::HungerForecast empty =
+      core::ForecastHunger(config, OneFamily(0.0F), kSpeedup, kShare);
+  failures += Expect(empty.under_threat.size() == 1 && empty.days_to_first_short == 0,
+                     "an empty pantry and no issue: under threat, short today");
+  const core::HungerForecast lean =
+      core::ForecastHunger(config, OneFamily(120.0F), kSpeedup, kShare);
+  failures += Expect(lean.under_threat.size() == 1 && lean.days_to_first_short == 10,
+                     "120 kg: 396 000 kcal at 37 125 a day short - the first short day is day 10");
+  core::WorldState own = OneFamily(0.0F);
+  own.families.rows[0].own_kcal_mean = 40'000.0F;  // 960 000 over 24 days > 891 000
+  failures += Expect(core::ForecastHunger(config, own, kSpeedup, kShare).under_threat.empty(),
+                     "its own food at 40 000 kcal a day covers the threshold: not under threat");
+  const core::HungerForecast strict =
+      core::ForecastHunger(config, OneFamily(270.0F), kSpeedup, 1.0F);
+  const core::HungerForecast loose =
+      core::ForecastHunger(config, OneFamily(270.0F), kSpeedup, 0.8F);
+  failures += Expect(strict.under_threat.size() == 1 && loose.under_threat.empty(),
+                     "270 kg (891 000 kcal): under threat at c = 1.0 (990 000), not at c = 0.8 "
+                     "(792 000) - the share moves the line the known way");
+  return failures;
+}

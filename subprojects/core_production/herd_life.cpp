@@ -13,6 +13,7 @@
 
 #include "core_common/calendar.h"
 #include "core_common/emit_event.h"
+#include "core_common/family_food_watch.h"
 #include "core_common/herd_age_band.h"
 #include "core_common/ids.h"
 #include "core_common/ledger_state.h"
@@ -204,6 +205,11 @@ void DeliverProduce(WorldState& world,
   if (place.pantry != nullptr) {
     AddToStock(*place.pantry, resource, amount);
     AddLedgerAmount(world.ledger.current.yard_produce, resource, amount);
+    // The yard's produce is the family's OWN food (#1046).
+    if (place.family != nullptr && resource.value < config.food_kcal_per_gram.size()) {
+      AddTodaysOwnKcal(*place.family,
+                       static_cast<float>(amount) * config.food_kcal_per_gram[resource.value]);
+    }
     return;
   }
   AddLedgerAmount(world.ledger.current.herd_produce, resource, amount);

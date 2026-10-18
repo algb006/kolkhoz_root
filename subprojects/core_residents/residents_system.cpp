@@ -34,6 +34,7 @@
 #include "core_catalog/definitions.h"
 #include "core_common/body.h"
 #include "core_common/calendar.h"
+#include "core_common/family_food_watch.h"
 #include "core_common/plot.h"
 #include "core_common/quantities.h"
 #include "core_common/random.h"
@@ -49,6 +50,7 @@
 #include "household_plot.h"
 #include "housing.h"
 #include "housing_ladder.h"
+#include "hunger_forecast.h"
 #include "issue_norm.h"
 #include "life_config.h"
 #include "specialist_arrival.h"
@@ -313,6 +315,11 @@ class ResidentsSystem final : public IResidentsSystem {
       alarm.lamp = village_hungry ? 1U : 0U;
       alarms.push_back(alarm);
     }
+    // THE YELLOW STAGE (#1046; hunger_forecast.h): the same lamp's forecast,
+    // while the village is not hungry yet - the red says the rest.
+    if (!village_hungry) {
+      CollectHungerForecast(completed, alarms);
+    }
     // FOOD LOCKED IN THE FUNDS (I6): only while somebody is at the threshold
     // — food in a fund beside a fed village is a fund doing its job.
     if (hungry.empty()) {
@@ -329,6 +336,43 @@ class ResidentsSystem final : public IResidentsSystem {
       alarm.lamp = village_hungry ? 1U : 0U;
       alarms.push_back(alarm);
     }
+  }
+
+  /// The hunger lamp's yellow stage (#1046): one alarm of kFamilyGoingHungry
+  /// when the families under threat are at least the red's share - the first
+  /// of them its subject, their count, the days and month of the first short
+  /// day, the advice by the ladder: food in a fund, else a chairman's norm.
+  void CollectHungerForecast(const WorldState& completed, std::vector<Alarm>& alarms) const {
+    const HungerForecast forecast =
+        ForecastHunger(food_, completed, config_.life_speedup, config_.hunger_forecast_share);
+    if (forecast.under_threat.empty() ||
+        static_cast<float>(forecast.under_threat.size()) <
+            kHungerLampShare * static_cast<float>(forecast.families_with_members)) {
+      return;
+    }
+    Alarm alarm;
+    alarm.kind = AlarmKind::kFamilyGoingHungry;
+    alarm.family = forecast.under_threat.front();
+    alarm.amount = static_cast<std::int64_t>(forecast.under_threat.size());
+    alarm.days_to_loss = forecast.days_to_first_short;
+    alarm.forecast_month = static_cast<std::uint8_t>(
+        DateFromDay(completed.calendar.day + forecast.days_to_first_short).month);
+    alarm.lamp = 1;
+    const std::vector<std::pair<ResourceId, Grams>> locked = LockedRationFood(food_, completed);
+    if (!locked.empty()) {
+      alarm.advice = AlarmAdvice::kUnsealFund;
+      alarm.advice_resource = locked.front().first;
+      alarm.advice_amount = locked.front().second;
+    } else {
+      for (const IssueNormLine& line : IssueNorms(completed)) {
+        if (line.basis == IssueNormBasis::kChairman && line.grams_per_trudoden > 0) {
+          alarm.advice = AlarmAdvice::kLowerIssueNorm;
+          alarm.advice_resource = line.resource;
+          break;
+        }
+      }
+    }
+    alarms.push_back(alarm);
   }
 
   bool AnyoneGoingHungry(const WorldState& completed) const {
@@ -464,6 +508,12 @@ class ResidentsSystem final : public IResidentsSystem {
     UpdateHungerAlarms(current);
     if (current.calendar.day == previous.calendar.day) {
       return;  // daily work, self-gated to day boundaries
+    }
+    // THE HUNGER FORECAST'S MEMORIES CLOSE YESTERDAY (#1046; family_food_watch.h):
+    // its own food folds into the mean, today's trudodni slot is cleared
+    // before today's work books into it.
+    for (FamilyRow& family : current.families.rows) {
+      CloseFamilyFoodDay(family, previous.calendar.day);
     }
     // The structural work — who dies, leaves, is born, marries, arrives,
     // and who gets a roof — lives in demography.cpp. What is left here is

@@ -76,6 +76,7 @@ HerdPlace PlaceOf(WorldState& world, const ProductionConfig& config, const HerdR
   const std::uint32_t family_row = FindRow(world.families, herd.household);
   if (family_row != kNoRow) {
     place.pantry = &world.families.rows[family_row].pantry;
+    place.family = &world.families.rows[family_row];
   }
   return place;
 }

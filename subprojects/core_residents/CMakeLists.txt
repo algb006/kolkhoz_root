@@ -16,6 +16,7 @@ kolkhoz_add_module(core_residents
     household_advance.cpp
     issue_norm.cpp
     family_meal.cpp
+    hunger_forecast.cpp
     household_plot.cpp
     specialist_arrival.cpp
     membership.cpp

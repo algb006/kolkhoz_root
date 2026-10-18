@@ -241,6 +241,12 @@ struct LifeConfig {
   /// STUB; boss, core-host-l1 seq 45) — the alarm's hysteresis.
   float hunger_alarm_clear_margin = 10.0F;
 
+  /// The hunger lamp's yellow stage (#1046; hunger_forecast.h): the share
+  /// of the members' need a family's food must cover to the horizon, or it
+  /// is under threat (world_params `hunger_forecast_share`, econ's `c`,
+  /// STUB 0.9; 0.5..1.0).
+  float hunger_forecast_share = 0.9F;
+
   /// A birth is twins with this chance (world_params `twins_share`, 1/80,
   /// STUB — econ's; life cycle §4).
   float twins_share = 0.0125F;

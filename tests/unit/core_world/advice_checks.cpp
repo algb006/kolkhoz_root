@@ -176,8 +176,12 @@ struct Owed {
 /// kSowMoreOat (#1040): its door needs a thin year, a short field-work day
 /// and a horse cart on a task in today's plan in one fixture - owed until a
 /// case here builds that world.
-constexpr std::array<Owed, 1> kOwed = {{
+/// kLowerIssueNorm (#1046): its door needs a chairman's norm and a village
+/// under threat of hunger within the horizon in one fixture - owed until a
+/// case here builds that world.
+constexpr std::array<Owed, 2> kOwed = {{
     {core::AlarmAdvice::kSowMoreOat, "kSetLogisticsLevel on the alarm's logistics_task, lower"},
+    {core::AlarmAdvice::kLowerIssueNorm, "kSetIssueNorm of advice_resource, toward the default"},
 }};
 
 /// THE CENSUS (#980): every advice value is taken by its door in a case
