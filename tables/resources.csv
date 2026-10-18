@@ -42,7 +42,7 @@ down,Пух и перо,kg,1,,,none,,,some,,0,packed,0,
 mink_pelt,Норковые шкурки,pcs,0.2,,,none,,,eager,,0,packed,0,
 offal,Субпродукты,t,1000,0.35,,very_fast,2,,none,,0,packed,0,
 reed,Камыш,t,1000,0.15,,none,,,none,,0,rick,0,1
-manure,Навоз и перегной,t,1000,,,special,,,none,,0,manure,0,
+manure,Навоз и перегной,t,1000,,,special,,,none,,0,manure,0,0.9
 compound_feed,Комбикорм,t,1000,1,,slow,600,,eager,,0,packed,0,
 log,Брёвна,pcs,200,,,none,,,none,,0,long,0,
 board,Доски,m3,600,,,none,,,some,,0,long,0,
