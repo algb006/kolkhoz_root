@@ -2950,11 +2950,24 @@ int CheckThePloughKeepsItsOats() {
   oats_crop.harvest_to_month = 7;
   config.crops = {oats_crop};
 
-  const auto oats_left = [&config](core::SimDay day, bool plough, core::PloughFeedHold& hold) {
+  // THE SPRING STILL OWES THE PLOUGH (0.37.288): 120 ha idle under a spring
+  // oat slot owe 120 x (10 + 3) / 7 = 222.9 horse-days, above the book's 200,
+  // so the hold is the book's; `phase` puts the field where the spring stands.
+  const auto oats_left = [&config](core::SimDay day,
+                                   bool plough,
+                                   core::PloughFeedHold& hold,
+                                   core::FieldPhase phase = core::FieldPhase::kIdle) {
     core::WorldState world = MakeHerdWorld(100.0F);
     world.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
     core::RefreshCalendarCaches(world.calendar);
     world.units.rows[0].stock[1] = 100 * kKilo;
+    core::FieldRow slot;
+    slot.kind = core::LandKind::kArable;
+    slot.area_ga = 120.0F;
+    slot.rotation_assigned = 1;
+    slot.rotation_year0 = core::CropId{0};
+    slot.phase = phase;
+    AppendRow(world.fields, slot);
     world.ledger.closed.year = 1;
     world.ledger.closed.work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kPlowing)] =
         200.0F;
@@ -2986,6 +2999,15 @@ int CheckThePloughKeepsItsOats() {
   core::PloughFeedHold spring_hold;
   const core::Grams spring = oats_left(core::kDaysPerYear + 2, true, spring_hold);
   failures += Expect(spring < 100 * kKilo, "plough's oats: on a ploughing day the team eats them");
+  // THE LAST FURROW TURNED (#1048; 0.37.288): the field is sowing by hand, no
+  // ploughing or harrowing left anywhere - nothing is held, and the carts eat.
+  // Until 0.37.288 the book's 100 kg stood to the sowing window's end.
+  core::PloughFeedHold sown_hold;
+  const core::Grams sowing =
+      oats_left(core::kDaysPerYear + 2, false, sown_hold, core::FieldPhase::kSowing);
+  failures += Expect(sown_hold.grams == 0 && sowing < 100 * kKilo,
+                     "plough's oats: with the ploughing done in the spring nothing is held, and "
+                     "the carts eat");
   core::PloughFeedHold summer_hold;
   const core::Grams summer = oats_left(core::kDaysPerYear + 20, false, summer_hold);
   failures += Expect(!summer_hold.held && summer < 100 * kKilo,
@@ -3069,6 +3091,14 @@ int CheckThePloughEatsBeforeNextYear() {
     core::RefreshCalendarCaches(world.calendar);
     world.units.rows[0].stock[1] = 100 * kKilo;
     world.plan.worked_ha_last_year = 0.1F;
+    // The spring still owes the plough (0.37.288): 120 ha idle under the oat
+    // slot, 222.9 horse-days, above the book's 200.
+    core::FieldRow slot;
+    slot.kind = core::LandKind::kArable;
+    slot.area_ga = 120.0F;
+    slot.rotation_assigned = 1;
+    slot.rotation_year0 = core::CropId{0};
+    AppendRow(world.fields, slot);
     world.ledger.closed.year = 1;
     world.ledger.closed.work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kPlowing)] =
         200.0F;

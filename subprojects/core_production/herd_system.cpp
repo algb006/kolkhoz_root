@@ -1616,6 +1616,38 @@ std::vector<std::uint8_t> PeoplesFoods(const ProductionConfig& config, const Wor
   return foods;
 }
 
+namespace {
+
+/// The horse-days of ploughing and harrowing this spring still owes: a field
+/// ploughing - its work left and its harrowing after; a field harrowing - its
+/// work left; an idle field whose slot this year is a spring crop - the whole
+/// preparation at the norms, the harrow alone on autumn-ploughed ground. A
+/// field sowing, growing or reaped owes the plough nothing.
+float SpringPreparationOwed(const ProductionConfig& config, const WorldState& world) {
+  const FarmingConfig& farming = config.farming;
+  float owed = 0.0F;
+  for (const FieldRow& field : world.fields.rows) {
+    if (field.kind != LandKind::kArable || field.rotation_assigned == 0) {
+      continue;
+    }
+    if (field.phase == FieldPhase::kPlowing) {
+      owed += field.work_days_remaining + (field.area_ga * farming.harrow_days_per_ha);
+    } else if (field.phase == FieldPhase::kHarrowing) {
+      owed += field.work_days_remaining;
+    } else if (field.phase == FieldPhase::kIdle &&
+               field.rotation_year0.value < config.crops.size() &&
+               !config.crops[field.rotation_year0.value].is_winter) {
+      const float per_ha = field.autumn_plowed != 0
+                               ? farming.harrow_days_per_ha
+                               : farming.plow_days_per_ha + farming.harrow_days_per_ha;
+      owed += field.area_ga * per_ha;
+    }
+  }
+  return owed;
+}
+
+}  // namespace
+
 PloughFeedHold PloughFeedHoldOf(const ProductionConfig& config, const WorldState& world) {
   PloughFeedHold hold;
   if (config.horse_kind.value == kInvalidDefIdValue ||
@@ -1677,6 +1709,15 @@ PloughFeedHold PloughFeedHoldOf(const ProductionConfig& config, const WorldState
             field.area_ga * (config.farming.plow_days_per_ha + config.farming.harrow_days_per_ha);
       }
     }
+  }
+  // NO MORE THAN THIS SPRING STILL OWES (#1048; boss, the #1040 thread [19]):
+  // in the spring the hold shrinks with the ploughing done. Until 0.37.288 it
+  // stood whole to the sowing window's end once the last furrow was turned -
+  // 4.5-8.3 t held on hand-sowing days with no ploughing or harrowing left in
+  // any field, and the team in the traces at a ration of nought (the trace on
+  // 0.37.286, nine seeds, 26 such days in 6 years).
+  if (!reaped && today < spring_end_day) {
+    hold.horse_days = std::min(hold.horse_days, SpringPreparationOwed(config, world));
   }
   // The oats of one horse-day at full work: the need, the oats' share of it
   // no more than the full work ration's share, at the oats' value.
