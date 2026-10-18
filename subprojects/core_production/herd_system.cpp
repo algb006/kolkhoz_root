@@ -1710,14 +1710,18 @@ PloughFeedHold PloughFeedHoldOf(const ProductionConfig& config, const WorldState
       }
     }
   }
-  // NO MORE THAN THIS SPRING STILL OWES (#1048; boss, the #1040 thread [19]):
-  // in the spring the hold shrinks with the ploughing done. Until 0.37.288 it
-  // stood whole to the sowing window's end once the last furrow was turned -
-  // 4.5-8.3 t held on hand-sowing days with no ploughing or harrowing left in
-  // any field, and the team in the traces at a ration of nought (the trace on
-  // 0.37.286, nine seeds, 26 such days in 6 years).
-  if (!reaped && today < spring_end_day) {
-    hold.horse_days = std::min(hold.horse_days, SpringPreparationOwed(config, world));
+  // RELEASED ONCE THE SPRING OWES THE PLOUGH NOTHING (#1048; boss, the #1040
+  // thread [19], [22]): with no field ploughing or harrowing and none waiting
+  // to, the hold is nought. Until 0.37.288 it stood whole to the sowing
+  // window's end after the last furrow was turned - 4.5-8.3 t held on
+  // hand-sowing days, the team in the traces at a ration of nought (the trace
+  // on 0.37.286, nine seeds, 26 such days in 6 years).
+  // NOT A CAP BY THE OWED WORK: the first cut, min(book, owed), dropped the
+  // hold DURING the ploughing - sowing later in 26 of 144 village-years, the
+  // team's spring oat −52 t (the pair on fdaecc6a) - so it asks only whether
+  // anything is owed, never how much.
+  if (!reaped && today < spring_end_day && !(SpringPreparationOwed(config, world) > 0.0F)) {
+    hold.horse_days = 0.0F;
   }
   // The oats of one horse-day at full work: the need, the oats' share of it
   // no more than the full work ration's share, at the oats' value.
