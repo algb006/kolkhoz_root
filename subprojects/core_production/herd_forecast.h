@@ -379,10 +379,7 @@ struct FodderAdvice {
   /// the horses apart — and what would still have to go BELOW the floors,
   /// named apart and in no sum.
   std::int64_t hand_over_stock = 0;
-  /// The ADULT horses above the floor and the YOUNG horses above the herds'
-  /// keep, apart (#1069; Alarm::hand_over_young_horses).
   std::int64_t hand_over_horses = 0;
-  std::int64_t hand_over_young_horses = 0;
   std::int64_t below_floor_stock = 0;
   std::int64_t below_floor_horses = 0;
 };

@@ -3678,31 +3678,27 @@ int CheckHorsesOrderAtTheDoor() {
     int newborns = 0;
   };
 
-  const auto hand = [&config](bool lit,
-                              std::uint16_t juveniles,
-                              std::uint16_t newborns,
-                              std::int64_t heads,
-                              std::uint8_t horse_class = 0) {
-    core::WorldState world = MakeHerdWorld(1000.0F);
-    world.calendar.day = 100;
-    if (lit) {
-      core::NoteHorseLampPainted(world.horse_lamp, 90, 2);
-    }
-    const core::HerdId id = AddHerd(world, 0, 12, 2, true);
-    world.herds.rows[0].juvenile_count = juveniles;
-    world.herds.rows[0].newborn_count = newborns;
-    core::OrderRow order;
-    order.kind = core::OrderKind::kHandStock;
-    order.herd = id;
-    order.amount = heads;
-    order.enable = horse_class;
-    Left left;
-    left.refusal = core::OrderHandStock(config, world, order);
-    left.adults = world.herds.rows[0].adult_count;
-    left.juveniles = world.herds.rows[0].juvenile_count;
-    left.newborns = world.herds.rows[0].newborn_count;
-    return left;
-  };
+  const auto hand =
+      [&config](bool lit, std::uint16_t juveniles, std::uint16_t newborns, std::int64_t heads) {
+        core::WorldState world = MakeHerdWorld(1000.0F);
+        world.calendar.day = 100;
+        if (lit) {
+          core::NoteHorseLampPainted(world.horse_lamp, 90, 2);
+        }
+        const core::HerdId id = AddHerd(world, 0, 12, 2, true);
+        world.herds.rows[0].juvenile_count = juveniles;
+        world.herds.rows[0].newborn_count = newborns;
+        core::OrderRow order;
+        order.kind = core::OrderKind::kHandStock;
+        order.herd = id;
+        order.amount = heads;
+        Left left;
+        left.refusal = core::OrderHandStock(config, world, order);
+        left.adults = world.herds.rows[0].adult_count;
+        left.juveniles = world.herds.rows[0].juvenile_count;
+        left.newborns = world.herds.rows[0].newborn_count;
+        return left;
+      };
   const Left lit = hand(true, 6, 4, 6);
   failures += Expect(lit.refusal == core::OrderRefusal::kNone && lit.newborns == 0 &&
                          lit.juveniles == 6 && lit.adults == 12,
@@ -3717,19 +3713,6 @@ int CheckHorsesOrderAtTheDoor() {
   failures += Expect(dark_more.refusal == core::OrderRefusal::kNone && dark_more.newborns == 0 &&
                          dark_more.juveniles == 4 && dark_more.adults == 9,
                      "horses' order, dark: nine asked — the six young, then three adults");
-  // THE CLASS BY THE ORDER (#1069; `enable`): nine asked of the young alone
-  // take the six above the keep and no adult; three asked of the adults alone
-  // take three adults and no young.
-  const Left young_only = hand(false, 6, 4, 9, 1);
-  failures += Expect(young_only.refusal == core::OrderRefusal::kNone && young_only.newborns == 0 &&
-                         young_only.juveniles == 4 && young_only.adults == 12,
-                     "horses' order, the young's class: nine asked - the six young above the "
-                     "keep, no adult");
-  const Left adults_only = hand(false, 6, 4, 3, 2);
-  failures +=
-      Expect(adults_only.refusal == core::OrderRefusal::kNone && adults_only.newborns == 4 &&
-                 adults_only.juveniles == 6 && adults_only.adults == 9,
-             "horses' order, the adults' class: three asked - three adults, no young");
   const Left none = hand(true, 3, 0, 2);
   failures += Expect(
       none.refusal == core::OrderRefusal::kRuleForbids && none.adults == 12 && none.juveniles == 3,

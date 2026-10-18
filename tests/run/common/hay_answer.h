@@ -277,8 +277,7 @@ class HayAnswer {
   std::int64_t Hand(const core::WorldState& world,
                     Pick pick,
                     std::int64_t heads,
-                    std::vector<core::OrderRow>& orders,
-                    std::uint8_t horse_class = 0) {
+                    std::vector<core::OrderRow>& orders) {
     std::int64_t handed = 0;
     for (std::uint32_t row = 0; row < world.herds.rows.size() && handed < heads; ++row) {
       const core::HerdRow& herd = world.herds.rows[row];
@@ -296,7 +295,6 @@ class HayAnswer {
       order.kind = core::OrderKind::kHandStock;
       order.herd = world.herds.row_ids[row];
       order.amount = std::min<std::int64_t>(heads - handed, askable);
-      order.enable = horse_class;  // the horses' class (#1069): 1 the young, 2 the adults
       handed += order.amount;
       orders.push_back(order);
       ++hand_orders_;
@@ -343,12 +341,9 @@ class HayAnswer {
                 const core::Alarm& yellow,
                 std::vector<core::OrderRow>& orders) {
     YearCount& year = YearOf(world);
-    year.horses_named += static_cast<std::uint64_t>(
-        std::max<std::int64_t>(0, yellow.hand_over_horses + yellow.hand_over_young_horses));
-    // THE YOUNG AND THE ADULTS EACH BY ITS OWN CLASS (#1069): one count through
-    // the door took adults below the floor when the young came short.
-    const std::int64_t horses = Hand(world, IsHorse, yellow.hand_over_young_horses, orders, 1) +
-                                Hand(world, IsHorse, yellow.hand_over_horses, orders, 2);
+    year.horses_named +=
+        static_cast<std::uint64_t>(std::max<std::int64_t>(0, yellow.hand_over_horses));
+    const std::int64_t horses = Hand(world, IsHorse, yellow.hand_over_horses, orders);
     const std::int64_t cows = Hand(world, IsCow, yellow.hand_over_stock, orders);
     horses_handed_ += static_cast<std::uint64_t>(horses);
     cows_handed_ += static_cast<std::uint64_t>(cows);

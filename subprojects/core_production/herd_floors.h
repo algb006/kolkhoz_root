@@ -98,13 +98,8 @@ HerdFloors HerdFloorsOf(const ProductionConfig& config, const WorldState& world)
 /// @brief The numbers of the advice «fewer heads» (Alarm::hand_over_horses,
 ///        hand_over_stock, below_floor_stock, below_floor_horses).
 struct HandOverAdvice {
-  /// Horses to hand over — step 1: the young above what each herd keeps, and
-  /// the adults above the plan's floor. `young_horses` is the young part of
-  /// it, named apart (#1069; boss, the #1056 thread after [24]): the door
-  /// takes each class by its own count - one count through «the young first,
-  /// then the oldest» took adults below the floor when the young came short.
+  /// Adult horses above the ploughing's floor to hand over — step 1.
   std::int64_t horses = 0;
-  std::int64_t young_horses = 0;
 
   /// Adult cows above the milk plan's floor to hand over — step 2, named
   /// only when every horse above its floor gone leaves the fodder short.

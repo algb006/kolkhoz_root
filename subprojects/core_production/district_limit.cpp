@@ -493,21 +493,10 @@ OrderRefusal OrderHandStock(const ProductionConfig& config,
   std::uint16_t newborns_first = 0;
   std::uint16_t juveniles_first = 0;
   std::uint16_t adults_going = std::min<std::uint16_t>(wanted, herd.adult_count);
-  // THE HORSES' CLASS BY THE ORDER (#1069; order_state.h, kHandStock,
-  // `enable`): 1 - the young above the keep only, 2 - the adults only, 0 - the
-  // young above the keep and then the adults, as before. The hay lamp's
-  // advice names the two apart (Alarm::hand_over_young_horses,
-  // hand_over_horses), and an order of one class takes nothing of the other.
-  const bool young_only = horses && order.enable == 1;
-  const bool adults_only = horses && order.enable == 2;
   if (horses) {
     const std::int64_t young = static_cast<std::int64_t>(herd.juvenile_count) + herd.newborn_count;
-    const std::int64_t above =
-        adults_only ? 0
-                    : std::max<std::int64_t>(
-                          0,
-                          young - HorseYoungKept(
-                                      current.horse_lamp, herd.adult_count, current.calendar.day));
+    const std::int64_t above = std::max<std::int64_t>(
+        0, young - HorseYoungKept(current.horse_lamp, herd.adult_count, current.calendar.day));
     newborns_first = static_cast<std::uint16_t>(
         std::min<std::int64_t>({static_cast<std::int64_t>(wanted), above, herd.newborn_count}));
     juveniles_first = static_cast<std::uint16_t>(
@@ -515,7 +504,7 @@ OrderRefusal OrderHandStock(const ProductionConfig& config,
                                 above - newborns_first,
                                 herd.juvenile_count}));
     const auto young_going = static_cast<std::uint16_t>(newborns_first + juveniles_first);
-    adults_going = young_only || HorseLampLitWithinYear(current.horse_lamp, current.calendar.day)
+    adults_going = HorseLampLitWithinYear(current.horse_lamp, current.calendar.day)
                        ? std::uint16_t{0}
                        : std::min<std::uint16_t>(static_cast<std::uint16_t>(wanted - young_going),
                                                  herd.adult_count);
