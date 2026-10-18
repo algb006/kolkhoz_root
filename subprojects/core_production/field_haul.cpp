@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "cart_trips.h"
+#include "core_common/clamp_rot_state.h"
 #include "core_common/hauled_book.h"
 #include "core_common/herd_state.h"
 #include "core_common/ids.h"
@@ -1080,6 +1081,13 @@ void SpoilStores(const ProductionConfig& config, WorldState& current) {
   if (config.spoil_days.empty()) {
     return;  // a table-less world keeps everything for ever
   }
+  // THE CLAMPS' SHARE (#1005; clamp_rot_state.h): a clamp's rot goes into
+  // `spoiled` like any store's, and its grams also into the book's
+  // spoiled_in_clamps and, potato and vegetables, the lamp's window. Every
+  // day is noted, a zero too, so the window moves on in a year with no
+  // clamp.
+  Grams clamp_rot_today = 0;
+  ResourceAmounts clamp_lost;
   for (UnitRow& unit : current.units.rows) {
     if (unit.stock.empty()) {
       continue;
@@ -1091,11 +1099,26 @@ void SpoilStores(const ProductionConfig& config, WorldState& current) {
     const float roof = unit.type.value < config.unit_types.size()
                            ? config.unit_types[unit.type.value].KeepingFactorAt(unit.level)
                            : 1.0F;
-    SpoilAmounts(unit.stock,
-                 config.spoil_days,
-                 config.keeping_factor * roof,
-                 current.ledger.current.spoiled);
+    if (unit.type.value != config.clamp_type.value) {
+      SpoilAmounts(unit.stock,
+                   config.spoil_days,
+                   config.keeping_factor * roof,
+                   current.ledger.current.spoiled);
+      continue;
+    }
+    clamp_lost.assign(clamp_lost.size(), 0);
+    SpoilAmounts(unit.stock, config.spoil_days, config.keeping_factor * roof, clamp_lost);
+    for (std::size_t resource = 0; resource < clamp_lost.size(); ++resource) {
+      const ResourceId id = DefIdFromIndex<ResourceIdTag>(resource);
+      AddLedgerAmount(current.ledger.current.spoiled, id, clamp_lost[resource]);
+      AddLedgerAmount(current.ledger.current.spoiled_in_clamps, id, clamp_lost[resource]);
+      if (id.value == config.potato_resource.value ||
+          id.value == config.vegetables_resource.value) {
+        clamp_rot_today += clamp_lost[resource];
+      }
+    }
   }
+  NoteClampRot(current.clamp_rot, current.calendar.day, clamp_rot_today);
 }
 
 }  // namespace core

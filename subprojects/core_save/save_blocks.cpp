@@ -269,7 +269,16 @@ static_assert(sizeof(UnmannedRunRow) == 36,
               "UnmannedRunRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<UnmannedRunRow>() == 10,
               "UnmannedRunRow gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<WorldState>() == 49,
+// Save 170 (#1005): the potato and vegetables rotted in clamps a day over the
+// last year, the fiftieth - a day and forty-eight Grams after the migrants
+// turned away. Predicted before the build: ClampRotYear 392 bytes (4, 4 of
+// padding, 384) and two fields; the section «world» +388, every other
+// section unmoved but the books' (save_ledger.cpp).
+static_assert(sizeof(ClampRotYear) == 392,
+              "ClampRotYear changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<ClampRotYear>() == 2,
+              "ClampRotYear gained or lost a field — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<WorldState>() == 50,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 
@@ -628,6 +637,11 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   for (const std::uint8_t turned : world.arrivals_turned_away.per_day) {
     out.WriteU8(turned);
   }
+  // The clamps' rot (save 170): the last day, then the grams a day.
+  out.WriteU32(world.clamp_rot.last_day);
+  for (const Grams grams : world.clamp_rot.per_day) {
+    out.WriteI64(grams);
+  }
   // The jobs' runs of mornings with no hand (save 149): a count, then each
   // run's kind, its seven subject ids, its mornings and whether it was said.
   out.WriteU32(static_cast<std::uint32_t>(world.unmanned_runs.size()));
@@ -893,6 +907,16 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->arrivals_turned_away.last_day = in.ReadU32();
   for (std::uint8_t& turned : world->arrivals_turned_away.per_day) {
     turned = in.ReadU8();
+  }
+  // The clamps' rot (save 170): any day is a day; a gram count is not
+  // negative.
+  world->clamp_rot.last_day = in.ReadU32();
+  for (Grams& grams : world->clamp_rot.per_day) {
+    grams = in.ReadI64();
+    if (grams < 0) {
+      source.Fail("the clamps' rot of a day is negative");
+      return;
+    }
   }
   // The jobs' runs of mornings with no hand (save 149): a count asked of the
   // bytes left first, each kind and flag by its range.

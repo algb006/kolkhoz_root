@@ -35,6 +35,7 @@
 #include "core_common/alarm_state.h"
 #include "core_common/barter_state.h"
 #include "core_common/calendar.h"
+#include "core_common/clamp_rot_state.h"
 #include "core_common/district_car_state.h"
 #include "core_common/district_visit_state.h"
 #include "core_common/event_state.h"
@@ -1115,6 +1116,12 @@ struct WorldState {
   /// no free house and no barrack place, read by the lamp «жилья не хватает»
   /// (kHousingShort, its condition (c)). SAVED (save 148).
   TurnedAwayYear arrivals_turned_away;
+
+  /// POTATO AND VEGETABLES ROTTED IN CLAMPS a day over the last year
+  /// (clamp_rot_state.h; #1005): written by core_production's SpoilStores at
+  /// the day's last tick, read by the lamp «В буртах сгнило N т»
+  /// (kClampRot). SAVED (save 170).
+  ClampRotYear clamp_rot;
 
   /// THE JOBS' RUNS OF MORNINGS WITH NO HAND (unmanned_run_state.h): written
   /// by labour's morning allocation, read by it to say kWorkGotNoHands on a

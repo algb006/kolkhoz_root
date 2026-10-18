@@ -21,6 +21,7 @@
 
 #include "../../common/fake_tables.h"
 #include "cart_trips_checks.h"
+#include "clamp_rot_checks.h"
 #include "core_catalog/seed_norm_catalog.h"
 #include "core_common/alarm_state.h"
 #include "core_common/away_in_district.h"
@@ -16873,6 +16874,7 @@ int main() {
   failures += CheckTheHandSupplyGoesOneResourceATrip();
   failures += CheckTheSupplyCountsItsIdleDays();
   failures += CheckTheStoresKeepByTheirRoof();
+  failures += CheckTheClampRotAndItsLamp();
   failures += CheckThePlanDue();
   failures += CheckTheTeamsOatPlan();
   failures += CheckTheRatingBeyondThePlan();

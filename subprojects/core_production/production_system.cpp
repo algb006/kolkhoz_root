@@ -32,6 +32,7 @@
 #include <string_view>
 #include <vector>
 
+#include "clamp_rot_lamp.h"
 #include "core_common/calendar.h"
 #include "core_common/emit_event.h"
 #include "core_common/haul.h"
@@ -640,6 +641,7 @@ class ProductionSystem final : public IProductionSystem {
     CollectSeedRoomAlarms(config_, completed, alarms);
     CollectMilkDebtAlarms(config_, completed, alarms);
     CollectGoodsLoanAlarms(config_, completed, alarms);
+    CollectClampRotAlarms(config_, completed, alarms);
     CollectSowingAlarms(config_, completed, alarms);
     CollectGatherAlarms(config_, completed, alarms);
     CollectHerdAlarms(config_, completed, alarms);

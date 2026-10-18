@@ -750,6 +750,20 @@ enum class AlarmKind : std::uint8_t {
   /// `site_supply_waits` (boss's vocabulary). Collected by core_logistics.
   kSiteSupplyWaits,
 
+  /// «В БУРТАХ СГНИЛО N Т» (#1005, #1068; econ's clamp-rot-lamp-2026-10-17
+  /// §4c; production design §1a: the clamp is the first year's place, the
+  /// vegetable store the long one). A STATE: lit from the first day of May
+  /// to the day before the potato's harvest window opens while the potato
+  /// and vegetables rotted IN CLAMPS over the last year (WorldState::
+  /// clamp_rot) reach farming.csv `clamp_rot_lamp_t`, and no vegetable store
+  /// stands, is staked or has works open. Subject: `resource` - the potato;
+  /// `amount` those grams. `days_to_loss` the days to the potato's harvest
+  /// window, when the new crop goes into the clamps again: yellow, red
+  /// within alarm_red_within_days. `lamp` 1, not interrupting; `advice`
+  /// kBuildStore, `advice_unit_type` the vegetable store. Proposed registry
+  /// key `clamp_rot` (boss's vocabulary). Collected by core_production.
+  kClampRot,
+
   // Appended by later tasks and phases: children out of school, sewage.
   // Named so the numbering is planned, not discovered.
 
