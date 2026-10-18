@@ -51,9 +51,31 @@ struct OpenTask {
   /// kNoSupplyRank for every other load.
   std::uint32_t site_rank = kNoSupplyRank;
   SimDay aged_from_day = 0;
+  /// A field heap's shelf life on its field, game days (resources.csv
+  /// `spoil_days` x `field_heap_keeping_factor`); infinite for every load that
+  /// does not spoil and every other kind.
+  float shelf_days = std::numeric_limits<float>::infinity();
   Vec2 place;
   bool logs = false;  ///< carted by the log cart (a stand's logs, the district's lot)
 };
+
+/// A field heap's shelf life on its field (OpenTask::shelf_days).
+float ShelfDaysOf(const LogisticsConfig& config,
+                  const WorldState& world,
+                  const LogisticsTaskRow& task) {
+  if (task.load_kind != LogisticsLoadKind::kFieldHeap) {
+    return std::numeric_limits<float>::infinity();
+  }
+  const std::uint32_t row = FindRow(world.fields, task.field);
+  if (row == kNoRow) {
+    return std::numeric_limits<float>::infinity();
+  }
+  const ResourceId resource = world.fields.rows[row].reaped_resource;
+  const float days =
+      resource.value < config.spoil_days.size() ? config.spoil_days[resource.value] : 0.0F;
+  return days > 0.0F ? days * config.field_heap_keeping_factor
+                     : std::numeric_limits<float>::infinity();
+}
 
 /// The open tasks — not paused, a seam left — by level, the longest waiting
 /// first, then the row: the plan's order, repeatable.
@@ -91,12 +113,22 @@ std::vector<OpenTask> OpenTasks(const LogisticsConfig& config, const WorldState&
                             .cold_first = cold_first,
                             .site_rank = site_rank,
                             .aged_from_day = task.aged_from_day,
+                            .shelf_days = ShelfDaysOf(config, world, task),
                             .place = place,
                             .logs = logs});
   }
   std::ranges::stable_sort(open, [](const OpenTask& left, const OpenTask& right) {
     if (left.level != right.level) {
       return left.level < right.level;
+    }
+    // WHAT SPOILS SOONEST FIRST, inside the level (#1056 C4.2 (a); econ's
+    // contract §C4.2; boss, the #1056 thread after [23]): a field heap of the
+    // shorter shelf life on its field goes ahead - the potatoes before the
+    // grain on the days both stand - in the morning plan and every re-plan
+    // alike, one order for both doors. Two heaps of one resource tie: the rot
+    // is memoryless (spoilage.h), so their order cannot change what rots.
+    if (left.shelf_days != right.shelf_days) {
+      return left.shelf_days < right.shelf_days;
     }
     if (left.cold_first != right.cold_first) {
       return left.cold_first;

@@ -1543,6 +1543,74 @@ int TestTheWayHomeFitsTheLight() {
   return failures;
 }
 
+/// WHAT SPOILS SOONEST FIRST (#1056 C4.2 (a); logistics_plan.cpp, OpenTasks):
+/// a cart done with its own small heap goes on to the next of its level - a
+/// grain heap (keeps for ever) first in the table and a potato heap (ten days)
+/// after it, at the same distance on either side. It goes to the potatoes. Its
+/// pair: the potatoes keeping for ever too - the table's order, the grain.
+int TestTheSoonestSpoiledFirst() {
+  int failures = 0;
+  const auto next_heap = [](float potato_spoil_days) {
+    core::LogisticsConfig config;
+    config.spoil_days = {0.0F, potato_spoil_days};
+    core::WorldState world;
+    world.weather.daylight_hours = 12.0F;
+    const auto heap_at = [&world](float east_m, std::uint16_t resource, float days) {
+      core::FieldRow field;
+      field.kind = core::LandKind::kArable;
+      field.center = core::Vec2{.x = east_m, .y = 0.0F};
+      field.reaped_grams = 1'000'000;
+      field.reaped_resource = core::ResourceId{resource};
+      field.haul_days_remaining = days;
+      return core::AppendRow(world.fields, field);
+    };
+    const core::FieldId own = heap_at(50.0F, 0, 0.05F);
+    const core::FieldId grain = heap_at(1'000.0F, 0, 0.5F);
+    const core::FieldId potato = heap_at(-1'000.0F, 1, 0.5F);
+    core::TaskDayCount count;
+    core::SyncTasks(config, world, 0, count);
+    core::UnitRow house;
+    const core::UnitId house_id = core::AppendRow(world.units, house);
+    core::FamilyRow household;
+    household.house = house_id;
+    const core::FamilyId family = core::AppendRow(world.families, household);
+    world.units.rows[0].household = family;
+    core::ResidentRow carter;
+    carter.family = family;
+    carter.work.kind = core::WorkKind::kHauling;
+    carter.work.field = own;
+    carter.work.rides_horse = 1;
+    core::AppendRow(world.residents, carter);
+    core::LogisticsTally tally;
+    const core::GroomPlan plan = core::BuildGroomPlan(config, world, tally);
+    if (plan.carts.size() != 1) {
+      return core::FieldId{};
+    }
+    for (const core::CartLeg& leg : plan.carts[0].legs) {
+      const std::uint32_t row = core::FindRow(world.logistics_tasks, leg.task);
+      if (row == core::kNoRow) {
+        continue;
+      }
+      const core::FieldId field = world.logistics_tasks.rows[row].field;
+      if (field.value == grain.value || field.value == potato.value) {
+        return field;  // the first other heap the chain reaches
+      }
+    }
+    (void)potato;
+    return core::FieldId{};
+  };
+  const core::FieldId spoiling = next_heap(10.0F);
+  const core::FieldId keeping = next_heap(0.0F);
+  std::cout << "  plan, soonest spoiled first: next heap with the potatoes spoiling "
+            << spoiling.value << ", keeping " << keeping.value << '\n';
+  // Field ids: own 1, grain 2, potato 3 (AppendRow's ids, from one).
+  failures += Expect(spoiling.value == 3,
+                     "plan: the potato heap that spoils goes ahead of the grain that keeps");
+  failures += Expect(keeping.value == 2,
+                     "plan: and with both keeping for ever, the table's order - the grain");
+  return failures;
+}
+
 }  // namespace
 
 // The carriers on foot in the plan (porter_plan_checks.cpp; #671).
@@ -1558,6 +1626,7 @@ int main() {
   failures += TestThePlansChains();
   failures += TestTheCargoForm();
   failures += TestTheWayHomeFitsTheLight();
+  failures += TestTheSoonestSpoiledFirst();
   failures += TestTheReplan();
   failures += TestNoLogisticsBeforeTheYard();
   failures += TestTheTripsAndTheEvening();
