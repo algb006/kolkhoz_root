@@ -33,7 +33,9 @@
 #ifndef TESTS_RUN_COMMON_OFFICE_POLICY_H_
 #define TESTS_RUN_COMMON_OFFICE_POLICY_H_
 
+#include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
 #include <span>
 #include <string>
@@ -54,6 +56,29 @@
 #include "suggested_place.h"
 
 namespace run {
+
+/// @brief Whether the environment variable is set to "1" (OFF when unset).
+/// MSVC refuses std::getenv as unsafe (C4996 under /WX): _dupenv_s there.
+inline bool EnvironmentSaysOn(const char* variable) {
+#ifdef _MSC_VER
+  char* value = nullptr;
+  std::size_t length = 0;
+  if (_dupenv_s(&value, &length, variable) != 0 || value == nullptr) {
+    return false;
+  }
+  const bool on = std::string_view(value) == "1";
+  std::free(value);
+  return on;
+#else
+  const char* const value = std::getenv(variable);
+  return value != nullptr && std::string_view(value) == "1";
+#endif
+}
+
+/// THE OFFICE'S START BY THE UNMET NEED (#1073; boss, the #1056 thread [39]):
+/// a run flag, OFF by default - the policy as on main - for the pair; on by
+/// population_curve's --office-unmet or the environment KOLKHOZ_OFFICE_UNMET=1.
+inline bool g_office_unmet_need = EnvironmentSaysOn("KOLKHOZ_OFFICE_UNMET");
 
 /// @brief Marks one farm office once the farm stands, and starts it when
 ///        nothing the village needs more is waiting.
@@ -146,6 +171,21 @@ class OfficePolicy {
                          HousePolicy::HousesWantMaterials(simulation, world, house_);
     for (const core::FamilyRow& family : world.families.rows) {
       a_house_waits = a_house_waits || family.house.value == core::kInvalidEntityIdValue;
+    }
+    if (g_office_unmet_need) {
+      // #1064's S1 ON THE OFFICE (#1073): a couple waiting for a house the
+      // street already builds held the office's start; in A-S1's seed 1946
+      // it held a marked office 1 041 of 1 098 days, y8-y30, and the era
+      // never came. Only the unmet need holds it; the houses' logs and
+      // builders still do (HousesWantMaterials).
+      std::int64_t unmet = static_cast<std::int64_t>(world.wedding_waits.rows.size());
+      for (const core::FamilyRow& family : world.families.rows) {
+        unmet += family.house.value == core::kInvalidEntityIdValue ? 1 : 0;
+      }
+      for (const core::UnitRow& unit : world.units.rows) {
+        unmet -= unit.type.value == house_.value && unit.level == 0 && unit.dead == 0 ? 1 : 0;
+      }
+      a_house_waits = unmet > 0 || HousePolicy::HousesWantMaterials(simulation, world, house_);
     }
     for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
       const core::UnitRow& unit = world.units.rows[row];

@@ -992,6 +992,8 @@ int main(int argc, char** argv) {
       sequential = true;
     } else if (argument == "--no-planting") {
       g_no_planting = true;
+    } else if (argument == "--office-unmet") {
+      run::g_office_unmet_need = true;  // #1073: the office's start by the unmet need
     } else if (argument == "--social-before-1064") {
       run::g_social_s1 = false;  // the social-objects chairman before #1064's two rules
       run::g_social_s2 = false;
@@ -1040,6 +1042,11 @@ int main(int argc, char** argv) {
                                    : " S2 (a site of any phase short on 12 of 24 days stops "
                                      "holding)")
               << "; the run's social-objects chairman differs from the declaration above\n";
+  }
+  if (run::g_office_unmet_need) {
+    std::cout << "population_curve: #1073 ARM — the office starts unless the UNMET need (roofless "
+                 "+ waiting couples - house sites) or the houses' materials hold it; the run's "
+                 "office chairman differs from the declaration above\n";
   }
   if (g_seed_offset != 0) {
     std::cout << "population_curve: NOT THE CANONICAL SAMPLE — --seed-offset=" << g_seed_offset
