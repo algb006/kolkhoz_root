@@ -27,6 +27,7 @@
 #include "extraction_policy.h"
 #include "felling_policy.h"
 #include "fixture_policy.h"
+#include "hay_heap_policy.h"
 #include "house_policy.h"
 #include "insulation_policy.h"
 #include "limit_policy.h"
@@ -58,6 +59,7 @@ class BuildingChairman {
         sawmill(tables),
         limit(tables),
         repairs(tables),
+        hay_heaps(tables),
         houses(tables),
         barracks(tables),
         school(tables),
@@ -248,6 +250,7 @@ class BuildingChairman {
     limit.RunDay(simulation);
     night_pasture.RunDay(simulation);
     repairs.RunDay(simulation);
+    hay_heaps.RunDay(simulation);
     // The farm's own shortage before any house (boss, parcel 298).
     const bool farm_first = fixture.HoldsHousesBack(simulation) || yard.HoldsHousesBack(simulation);
     // THE UPGRADES BEFORE THE HOUSES WHEN NOBODY WAITS FOR A ROOF (the Epoch
@@ -325,6 +328,10 @@ class BuildingChairman {
   LimitPolicy limit;
   NightPasturePolicy night_pasture;
   RepairPolicy repairs;
+
+  /// #1015 arm A': a hay heap still lying from 1 September raised to the level
+  /// KOLKHOZ_HAY_HEAP_LEVEL names; off when unset.
+  HayHeapPolicy hay_heaps;
   HousePolicy houses;
   BarrackPolicy barracks;
   SchoolPolicy school;
