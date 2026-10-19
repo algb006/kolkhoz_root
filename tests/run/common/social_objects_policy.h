@@ -91,9 +91,22 @@ namespace run {
 /// Turned OFF, for a control arm, by population_curve's --social-before-1064
 /// (both), or by the environment KOLKHOZ_SOCIAL_S1=0 / KOLKHOZ_SOCIAL_S2=0 for
 /// a harness with no such flag - the canon's plan700, host's novice.
+/// MSVC refuses std::getenv as unsafe (C4996, an error under /WX - host,
+/// 0.37.296-298): there the copy is _dupenv_s's, freed here.
 inline bool SocialRuleOn(const char* variable) {
+#ifdef _MSC_VER
+  char* value = nullptr;
+  std::size_t length = 0;
+  if (_dupenv_s(&value, &length, variable) != 0 || value == nullptr) {
+    return true;
+  }
+  const bool on = std::string_view(value) != "0";
+  std::free(value);
+  return on;
+#else
   const char* const value = std::getenv(variable);
   return value == nullptr || std::string_view(value) != "0";
+#endif
 }
 
 inline bool g_social_s1 = SocialRuleOn("KOLKHOZ_SOCIAL_S1");
