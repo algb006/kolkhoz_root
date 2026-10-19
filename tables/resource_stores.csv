@@ -93,6 +93,7 @@ meat,church_store,church_store
 meat,food_yard,food_store
 meat,food_yard,icehouse
 milk,cattle_yard,milk_room
+milk,church_store,church_store
 mineral_fertilizer,utility_yard,goods_store
 mink_pelt,utility_yard,goods_store
 motor_fuel,mts,mts_fuel

@@ -213,9 +213,22 @@ void DeliverProduce(WorldState& world,
     return;
   }
   AddLedgerAmount(world.ledger.current.herd_produce, resource, amount);
+  // THE HERD'S OWN MILK ROOM (MR.1; econ, boss-econ-mr-cure-2026-10-20; the
+  // #1056 thread [101]): a herd standing in a cattle yard - its unit a store
+  // that takes milk - milks into that room and nowhere else; what the room
+  // cannot hold is lost there (it sours), never moved without a cart.
+  if (resource == config.milk_resource && place.unit != nullptr &&
+      IsOwnMilkRoom(*place.unit, config)) {
+    const Grams room = FreeRoomGrams(*place.unit, config);
+    const Grams placed = std::min(amount, room > 0 ? room : 0);
+    AddToStock(place.unit->stock, resource, placed);
+    AddLedgerAmount(world.ledger.current.lost_no_room, resource, amount - placed);
+    return;
+  }
   // THE MILK STAYS AT THE BARN (#1056 C1.1; FarmingConfig::milk_at_barn):
   // the district's cart takes its share there (milk_cart.h) and the rest
-  // reaches the milk's store only by the barn -> store leg.
+  // reaches the milk's store only by the barn -> store leg. Since MR.1 only
+  // a herd with no milk room of its own - billeted in sheds before its yard.
   if (config.farming.milk_at_barn >= 0.5F && resource == config.milk_resource &&
       place.unit != nullptr) {
     AddToStock(place.unit->stock, resource, amount);

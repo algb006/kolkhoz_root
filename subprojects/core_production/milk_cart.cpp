@@ -21,6 +21,26 @@
 namespace core {
 namespace {
 
+/// The milk leg's receiver (MR.1; boss, the #1056 thread [101]): the first
+/// built store that takes milk in which no kolkhoz herd stands - the church
+/// store, never another herd's own room. kNoRow when there is none.
+std::uint32_t MilkLegReceiverRow(const ProductionConfig& config, const WorldState& world) {
+  for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+    const UnitRow& unit = world.units.rows[row];
+    if (!NumberedStoreAccepts(unit, config, config.milk_resource)) {
+      continue;
+    }
+    const UnitId id = world.units.row_ids[row];
+    const bool herds_here = std::ranges::any_of(world.herds.rows, [id](const HerdRow& herd) {
+      return herd.household_owned == 0 && herd.unit.value == id.value;
+    });
+    if (!herds_here) {
+      return row;
+    }
+  }
+  return kNoRow;
+}
+
 /// Books `grams` of milk as delivered to the district: against the position
 /// or outside any, and in the year's ledger.
 void BookDelivered(const ProductionConfig& config,
@@ -161,20 +181,19 @@ void PriceMilkLegs(const ProductionConfig& config, WorldState& current) {
       continue;
     }
     const UnitRow& barn = current.units.rows[barn_row];
+    // A HERD IN ITS OWN YARD HAS NO LEG (MR.1): it milks into the room.
+    if (IsOwnMilkRoom(barn, config)) {
+      continue;
+    }
     const Grams milk = UnreservedOf(barn, config.milk_resource);
-    if (milk <= 0) {
+    const std::uint32_t store_row = MilkLegReceiverRow(config, current);
+    if (milk <= 0 || store_row == kNoRow) {
       continue;
     }
     barns_priced.push_back(barn_row);
-    // THE STORE THE VILLAGE KEEPS MILK IN (boss, the #1056 thread [8]): the
-    // first that takes milk in, as DeliverToStores chooses.
-    Vec2 store = barn.position;
-    for (const UnitRow& other : current.units.rows) {
-      if (StoresGoods(other, config) && NumberedStoreTakes(other, config, config.milk_resource)) {
-        store = other.position;
-        break;
-      }
-    }
+    // THE STORE THE LEG CARRIES TO (boss, the #1056 thread [8], [101]): the
+    // first that takes milk and is no herd's own room - the church store.
+    const Vec2 store = current.units.rows[store_row].position;
     bool on_foot = true;
     const HaulRate rate = MilkLegRate(config, current, barn.position, store, on_foot);
     herd.leg_on_foot = on_foot ? 1U : 0U;
@@ -205,7 +224,16 @@ void SettleMilkLegs(const ProductionConfig& config, WorldState& current, bool ev
       const float share = std::min(done / herd.leg_days_written, 1.0F);
       const Grams lying = UnreservedOf(barn, herd.leg_resource);
       const Grams budget = GramsFromFloat(static_cast<float>(lying) * share);
-      const Grams moved = DeliverToStores(current, config, herd.leg_resource, budget);
+      // INTO THE LEG'S OWN RECEIVER (MR.1): the door would pick any milk
+      // store, another herd's room among them - a move no cart made.
+      const std::uint32_t store_row = MilkLegReceiverRow(config, current);
+      Grams moved = 0;
+      if (store_row != kNoRow) {
+        UnitRow& store = current.units.rows[store_row];
+        const Grams room = FreeRoomGrams(store, config);
+        moved = std::min(budget, room > 0 ? room : 0);
+        AddToStock(store.stock, herd.leg_resource, moved);
+      }
       AddToStock(barn.stock, herd.leg_resource, -moved);
       AddLedgerAmount(current.ledger.current.hauled_to_stores, herd.leg_resource, moved);
       // The carrier the leg was priced with (C1.3): a walk books no cart run.
