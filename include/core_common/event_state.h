@@ -859,6 +859,14 @@ enum class EventKind : std::uint8_t {
   /// stands. kNotable. Seam key `store_keeps_food`.
   kStoreKeepsFood,
 
+  /// A FUNERAL TOMORROW, THE CHAIRMAN INVITED (#1084; funeral_state.h): the
+  /// feed's «Завтра хоронят {name}. [Пойти]». `amount` the funeral's id,
+  /// `resident` its first dead. kInterrupting when loud, kNotable when quiet.
+  /// Key `funeral_invitation`.
+  /// @no_emit the #1084 contract (save 205): raised by the funeral's body
+  /// (OpenFunerals), which is not built yet; the site lands with it.
+  kFuneralInvitation,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

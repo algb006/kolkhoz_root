@@ -303,6 +303,10 @@ bool ShapeIsValid(const OrderRow& order) {
       // Whether N fits under the herd's places is the consumer's verdict.
       return has_herd && order.amount >= 0 && order.amount <= kNoHerdPlan && !has_resident &&
              !has_unit && !has_field && !has_stand && !has_site;
+    case OrderKind::kAttendFuneral:
+      // STUB until the funeral's body lands (#1084): the order's funeral id
+      // field comes with its codec there; until then the shape is refused.
+      return false;
     case OrderKind::kPauseLogisticsTask:
       // The task and a switch that is a switch.
       return order.logistics_task.value != kInvalidEntityIdValue && order.enable <= 1 &&

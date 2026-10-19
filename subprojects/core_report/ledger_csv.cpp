@@ -62,7 +62,8 @@ constexpr std::array<const char*, kIdleReasonCount> kIdleReasonNames = {"no_open
                                                                         "no_day_left",
                                                                         "resting",
                                                                         "unexplained",
-                                                                        "rain"};
+                                                                        "rain",
+                                                                        "funeral"};
 constexpr std::array<const char*, kJobShortfallCount> kJobShortfallNames = {
     "no_horse", "crew_cap", "no_hands", "road"};
 

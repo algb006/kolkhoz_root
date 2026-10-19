@@ -146,6 +146,8 @@ const char* KindName(core::EventKind kind) {
       return "children_ask_sweets";
     case core::EventKind::kStoreKeepsFood:
       return "store_keeps_food";
+    case core::EventKind::kFuneralInvitation:
+      return "funeral_invitation";
     case core::EventKind::kElectrificationUnlocked:
       return "electrification_unlocked";
     case core::EventKind::kFireBroke:
