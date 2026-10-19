@@ -1044,12 +1044,29 @@ void RescaleHaulForBeds(const ProductionConfig& config,
 
 void SpoilFieldHeaps(const ProductionConfig& config, WorldState& current) {
   const float keeping = config.keeping_factor * config.farming.field_heap_keeping_factor;
+  // LOOSE HAY WEATHERS WHERE IT LIES (#1015; farming.md «Сено в валках на
+  // лугу портится, пока лежит»): hay has no shelf life in a store, so its
+  // heap's loss is the season's share a month over the month's days - a
+  // memoryless daily share, like the other heaps' rot, booked as spoiled.
+  const auto month = static_cast<std::uint32_t>(current.calendar.date.month);
+  const std::uint32_t season = month == 11U ? 2U
+                               : month < 2U ? 2U
+                               : month < 5U ? 3U
+                               : month < 8U ? 0U
+                                            : 1U;
+  const float hay_share_a_day =
+      config.farming.hay_weathering_by_season[season] / static_cast<float>(kDaysPerMonth);
   for (FieldRow& field : current.fields.rows) {
     const ResourceId resource = field.reaped_resource;
-    if (field.reaped_grams <= 0 || resource.value >= config.spoil_days.size()) {
+    const bool hay = resource.value == config.hay_resource.value &&
+                     resource.value != kInvalidDefIdValue && hay_share_a_day > 0.0F;
+    if (field.reaped_grams <= 0 || (!hay && resource.value >= config.spoil_days.size())) {
       continue;
     }
-    const Grams gone = SpoiledToday(field.reaped_grams, config.spoil_days[resource.value], keeping);
+    const Grams gone =
+        hay ? static_cast<Grams>(std::llround(static_cast<double>(field.reaped_grams) *
+                                              static_cast<double>(hay_share_a_day)))
+            : SpoiledToday(field.reaped_grams, config.spoil_days[resource.value], keeping);
     if (gone <= 0) {
       continue;
     }
