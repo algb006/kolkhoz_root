@@ -75,9 +75,9 @@
 
 namespace run {
 
-/// THE TWO ARMS OF #1064 (econ's social-policy-order-2026-10-18 §3; boss, the
-/// #1056 thread after [30]), run flags, both OFF by default - the policy as
-/// on main:
+/// THE TWO RULES OF #1064 (econ's social-policy-order-2026-10-18 §3; boss, the
+/// #1056 thread after [32]), BOTH ON since 0.37.296 - the only pair green on
+/// G1-G7 in population_curve and the canon, on the start layout of #1061:
 ///  - S1, «a house waits» counts the UNMET need: roofless families + waiting
 ///    couples - house sites at level 0; the hold stands only while it is
 ///    above nought. Until S1 a couple waiting for a house already going up
@@ -88,11 +88,16 @@ namespace run {
 ///    counter ran only while marked and reset on any day not short, and a
 ///    started site, or one whose boards trickled in, held the queue for ever
 ///    (1934's culture house, y3-y9).
-/// Set by population_curve's --social-s1 / --social-s2, or by the environment
-/// (KOLKHOZ_SOCIAL_S1, KOLKHOZ_SOCIAL_S2) for a harness with no such flag -
-/// the canon's plan700.
-inline bool g_social_s1 = std::getenv("KOLKHOZ_SOCIAL_S1") != nullptr;
-inline bool g_social_s2 = std::getenv("KOLKHOZ_SOCIAL_S2") != nullptr;
+/// Turned OFF, for a control arm, by population_curve's --social-before-1064
+/// (both), or by the environment KOLKHOZ_SOCIAL_S1=0 / KOLKHOZ_SOCIAL_S2=0 for
+/// a harness with no such flag - the canon's plan700, host's novice.
+inline bool SocialRuleOn(const char* variable) {
+  const char* const value = std::getenv(variable);
+  return value == nullptr || std::string_view(value) != "0";
+}
+
+inline bool g_social_s1 = SocialRuleOn("KOLKHOZ_SOCIAL_S1");
+inline bool g_social_s2 = SocialRuleOn("KOLKHOZ_SOCIAL_S2");
 
 /// @brief Marks the era's social objects one at a time once the farm stands,
 ///        and starts each when its recipe is covered.
@@ -284,8 +289,10 @@ class SocialObjectsPolicy {
     std::cout << run_name
               << ": FIXTURE DIFFERS FROM THE START CANON — once the chairman's yard stands, the "
                  "run's chairman marks the era's SOCIAL OBJECTS one at a time, taking the list "
-                 "from the design base by class and era rather than by name, while no family "
-                 "is roofless and no couple waits, and starts each when its recipe is covered "
+                 "from the design base by class and era rather than by name, while every "
+                 "roofless family and waiting couple has a house site going up (#1064), the "
+                 "next one marked once the last has been short of its recipe 12 of 24 days, "
+                 "and starts each when its recipe is covered "
                  "and the houses want neither its logs nor its builders. The school keeps its "
                  "own rule. Measured on "
                  "2026-09-18 before this existed: one of the six was ever marked in "

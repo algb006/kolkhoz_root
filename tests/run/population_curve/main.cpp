@@ -992,10 +992,9 @@ int main(int argc, char** argv) {
       sequential = true;
     } else if (argument == "--no-planting") {
       g_no_planting = true;
-    } else if (argument == "--social-s1") {
-      run::g_social_s1 = true;  // #1064 S1: «a house waits» by the unmet need
-    } else if (argument == "--social-s2") {
-      run::g_social_s2 = true;  // #1064 S2: the stall release, any phase, 12 of 24
+    } else if (argument == "--social-before-1064") {
+      run::g_social_s1 = false;  // the social-objects chairman before #1064's two rules
+      run::g_social_s2 = false;
     } else if (argument == "--epoch-one-forever") {
       g_epoch_one_forever = true;
     } else if (argument == "--horses-half") {
@@ -1034,15 +1033,13 @@ int main(int argc, char** argv) {
                  "0, adults and young alike; the bands below are read on the whole team, so "
                  "their verdict is printed, not trusted\n";
   }
-  if (run::g_social_s1 || run::g_social_s2) {
-    std::cout << "population_curve: #1064 ARM —"
-              << (run::g_social_s1 ? " S1 (a house waits by the "
-                                     "UNMET need)"
-                                   : "")
-              << (run::g_social_s2
-                      ? " S2 (a site of any phase short on 12 of 24 days stops holding)"
-                      : "")
-              << ": the run's social-objects chairman differs from the declaration above\n";
+  if (!run::g_social_s1 || !run::g_social_s2) {
+    std::cout << "population_curve: CONTROL ARM — #1064's rules OFF:"
+              << (run::g_social_s1 ? "" : " S1 (a house waits by the UNMET need)")
+              << (run::g_social_s2 ? ""
+                                   : " S2 (a site of any phase short on 12 of 24 days stops "
+                                     "holding)")
+              << "; the run's social-objects chairman differs from the declaration above\n";
   }
   if (g_seed_offset != 0) {
     std::cout << "population_curve: NOT THE CANONICAL SAMPLE — --seed-offset=" << g_seed_offset
