@@ -56,6 +56,7 @@
 #include "goods_loan.h"
 #include "grass_stand_checks.h"
 #include "harvest_advice_checks.h"
+#include "hay_weathering_checks.h"
 #include "heap_lamp_checks.h"
 #include "herd_cold.h"
 #include "herd_death_checks.h"
@@ -16981,6 +16982,7 @@ int main() {
   failures += CheckTheHandSupplyGoesOneResourceATrip();
   failures += CheckTheSupplyCountsItsIdleDays();
   failures += CheckTheStoresKeepByTheirRoof();
+  failures += CheckTheHayWeathersOnTheField();
   failures += CheckThePlanDue();
   failures += CheckTheTeamsOatPlan();
   failures += CheckTheRatingBeyondThePlan();

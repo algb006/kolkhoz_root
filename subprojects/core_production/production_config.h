@@ -944,6 +944,15 @@ struct FarmingConfig {
   /// лето»). STUB core, econ's number: 4, one game month.
   float perennial_first_cut_days = 4.0F;
 
+  /// farming.csv `hay_weathering_{summer,autumn,winter,spring}` (#1015; econ's
+  /// meadow-hay-weathering-2026-10-17 §2; farming.md «Сено в валках на лугу
+  /// портится, пока лежит»): the share of a field's heap of hay lost a GAME
+  /// MONTH while it lies, by season - Jun-Aug, Sep-Nov, Dec-Feb, Mar-May -
+  /// applied a day at a time (the month's share over its days). In a rick or a
+  /// barn: nought. STUB, econ's numbers 0.03 / 0.10 / 0.03 / 0.10; all nought
+  /// is the world before it.
+  std::array<float, 4> hay_weathering_by_season = {0.0F, 0.0F, 0.0F, 0.0F};
+
   /// THE LIFE OF A SOWN GRASS STAND (grass_stand.csv; 0.37.212): one row a
   /// summer of the stand, counted from the summer it was sown; the LAST row
   /// stands for its summer and every later one. Read for a crop with
