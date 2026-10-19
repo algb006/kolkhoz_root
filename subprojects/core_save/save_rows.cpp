@@ -507,7 +507,9 @@ static_assert(AggregateArity<LogisticsTaskRow>() == 19,
 // Save 153 (stage В, F3): the loaded byte — seven.
 // Save 155 (#671): a leg's trip resource and a walker's grams — nine; a
 // cart's partner — five.
-static_assert(AggregateArity<CartLeg>() == 9,
+// Save 175 (SL): the sledge byte — ten (predicted in the padding after
+// `loaded`, +1 a leg on the wire, before the build).
+static_assert(AggregateArity<CartLeg>() == 10,
               "CartLeg gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<CartPlan>() == 5,
               "CartPlan gained or lost a field — update the codec and VERSION_SAVE");
@@ -2177,8 +2179,9 @@ BarterTripRow ReadBarterTripRow(LoadSource& source) {
 // a leg is two points, a task, its loaded byte (save 153, F3), two ticks and
 // its riders' count (16 + 4 + 1 + 16 + 4 = 41).
 // Save 155 (#671): a cart's partner (+4), a leg's resource (+2) and grams (+8).
+// Save 175 (SL): a leg's sledge byte (+1).
 constexpr std::size_t kSavedCartBytes = 14;
-constexpr std::size_t kSavedLegBytes = 51;
+constexpr std::size_t kSavedLegBytes = 52;
 constexpr std::size_t kSavedRiderBytes = 4;
 
 void WriteGroomPlan(SaveSink& sink, const GroomPlan& plan) {
@@ -2197,7 +2200,8 @@ void WriteGroomPlan(SaveSink& sink, const GroomPlan& plan) {
       WriteVec2(out, leg.from);
       WriteVec2(out, leg.to);
       WriteEntityId(out, leg.task);
-      out.WriteU8(leg.loaded);                                  // save 153: a loaded trip (F3)
+      out.WriteU8(leg.loaded);  // save 153: a loaded trip (F3)
+      out.WriteU8(leg.sledge);  // save 175 (SL): went out on runners
       sink.WriteDefId(DefKind::kResource, leg.resource.value);  // save 155 (#671)
       out.WriteI64(leg.carried);
       out.WriteU64(leg.depart);
@@ -2252,6 +2256,7 @@ GroomPlan ReadGroomPlan(LoadSource& source) {
         source.Fail("a leg of the groom's plan is loaded with no task's load");
         return plan;
       }
+      leg.sledge = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "a sledge leg"));  // 175
       leg.resource = ResourceId{source.ReadDefId(DefKind::kResource)};  // save 155 (#671)
       leg.carried = in.ReadI64();
       if (leg.carried < 0 || (leg.carried > 0 && (leg.loaded == 0 || !cart.on_foot))) {
