@@ -113,6 +113,22 @@ enum class LogisticsOrigin : std::uint8_t {
   kLogisticsOriginCount,
 };
 
+/// @brief WHY A TASK STANDS AT LEVEL 0 (#1099, save 174; econ
+/// standing-crop-before-keeping-heap-2026-10-19): labour keeps a load above
+/// every window only for some reasons. A heap urgent by its own rot gives way
+/// to a standing crop whose snow comes before the heap's shelf ends; the
+/// player's order and a hungry herd never do.
+enum class LogisticsUrgentBy : std::uint8_t {
+  kNone = 0,  ///< Not at level 0.
+  kSpoil,     ///< A field heap that rots by tomorrow's share (HeapSpoils).
+  kHunger,    ///< A feed heap while a kolkhoz herd is hungry.
+  kPlayer,    ///< The chairman's level 0 (base_level kUrgent).
+  kAged,      ///< Level 0 by its kind's own level or its days waiting (AgedLevel).
+
+  /// NOT A REASON: the count, for the codecs' range.
+  kLogisticsUrgentByCount,
+};
+
 /// @brief One task of the groom's logistics.
 struct LogisticsTaskRow {
   LogisticsLoadKind load_kind = LogisticsLoadKind::kLogisticsLoadKindCount;
@@ -171,6 +187,10 @@ struct LogisticsTaskRow {
   /// threshold_days), copied as the task is synced; 0 for every other kind.
   /// Sits in the padding after over_fields.
   std::uint8_t threshold_days = 0;
+
+  /// Why `level` is kUrgent this day (#1099, save 174), written beside it by
+  /// the morning's ageing (logistics_tasks.cpp); kNone below level 0.
+  LogisticsUrgentBy urgent_by = LogisticsUrgentBy::kNone;
 
   /// WHO DRAINED THE LOAD'S SEAM since its last settle (#671's instrument;
   /// save 155): the seam units carriers on foot and carts took off it, added

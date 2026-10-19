@@ -193,6 +193,8 @@ OrderRefusal SetTaskLevel(WorldState& current, const OrderRow& order) {
       order.logistics_level == LogisticsLevel::kUrgent && task.level != LogisticsLevel::kUrgent;
   task.base_level = order.logistics_level;
   task.level = order.logistics_level;
+  task.urgent_by = order.logistics_level == LogisticsLevel::kUrgent ? LogisticsUrgentBy::kPlayer
+                                                                    : LogisticsUrgentBy::kNone;
   task.aged_from_day = current.calendar.day;
   if (raised_to_urgent) {
     task.urgent_since = current.calendar.tick;

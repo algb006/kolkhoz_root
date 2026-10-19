@@ -2090,7 +2090,9 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // before the build and held; the hash read off it.
     // Save 171 (#1056 C1.2): +1 - the rick's threshold; predicted 64 -> 65
     // before the build and held; the hash read off it.
-    {"logistics_tasks", 65, 0x385b53f1f1f33b9fULL},
+    // Save 174 (#1099): +1 - why level 0; predicted 65 -> 66 before the build
+    // and held; the hash read off it.
+    {"logistics_tasks", 66, 0x7e3fb17aaef695cdULL},
     // Save 173 (#1089): the settlements - the table's next id and count, one
     // row's id and 27 bytes of fields: predicted 39 before the build and
     // held; the hash read off it.

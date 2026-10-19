@@ -141,6 +141,8 @@ LogisticsTaskRow TaskFor(const LogisticsConfig& config, const LoadAddress& load,
   task.base_level =
       kind < config.default_level.size() ? config.default_level[kind] : LogisticsLevel::kOrdinary;
   task.level = task.base_level;
+  task.urgent_by =
+      task.level == LogisticsLevel::kUrgent ? LogisticsUrgentBy::kAged : LogisticsUrgentBy::kNone;
   task.origin = LogisticsOrigin::kAuto;
   task.aged_from_day = today;
   return task;
@@ -291,6 +293,10 @@ void AgeAndRaise(const LogisticsConfig& config,
         today > task.aged_from_day ? static_cast<float>(today - task.aged_from_day) : 0.0F;
     const LogisticsLevel was = task.level;
     LogisticsLevel level = AgedLevel(config, task.base_level, days);
+    // WHY LEVEL 0 (#1099, save 174): written beside the level, the last
+    // reason below winning - the player's over the rot, as the level itself.
+    LogisticsUrgentBy urgent_by =
+        level == LogisticsLevel::kUrgent ? LogisticsUrgentBy::kAged : LogisticsUrgentBy::kNone;
     // RAISED BY AGEING TODAY: the days crossed a step's line today.
     if (days >= 1.0F && AgedLevel(config, task.base_level, days - 1.0F) != level) {
       ++count.aged_up;
@@ -301,9 +307,11 @@ void AgeAndRaise(const LogisticsConfig& config,
         const FieldRow& field = current.fields.rows[row];
         if (HeapSpoils(config, field)) {
           level = LogisticsLevel::kUrgent;
+          urgent_by = LogisticsUrgentBy::kSpoil;
           ++count.urgent_by_spoil;
         } else if (hungry && HeapIsFeed(config, field)) {
           level = LogisticsLevel::kUrgent;
+          urgent_by = LogisticsUrgentBy::kHunger;
           ++count.urgent_by_hunger;
         }
       }
@@ -315,6 +323,7 @@ void AgeAndRaise(const LogisticsConfig& config,
     // The player's level 0 stays (base_level kUrgent, B7).
     if (task.base_level == LogisticsLevel::kUrgent) {
       level = LogisticsLevel::kUrgent;
+      urgent_by = LogisticsUrgentBy::kPlayer;
     }
     // A RAISED SITE'S SUPPLY KEEPS ITS OWN LEVEL (#709's pair; boss, 12
     // October 2026; transport design §12: a carter's request closes «на месте
@@ -335,6 +344,7 @@ void AgeAndRaise(const LogisticsConfig& config,
       task.urgent_since = now;
     }
     task.level = level;
+    task.urgent_by = urgent_by;
   }
 }
 

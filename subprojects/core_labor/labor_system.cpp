@@ -73,6 +73,7 @@
 #include "core_tables/tables.h"
 #include "labor_config.h"
 #include "labor_day.h"
+#include "placement_rank.h"
 #include "posts.h"
 #include "rush.h"
 #include "work_orders.h"
@@ -2129,12 +2130,51 @@ class LaborSystem final : public ILaborSystem {
     });
   }
 
-  static void MarkTheUrgentLoads(const WorldState& current, std::vector<AssignmentJob>& jobs) {
+  /// THE STANDING CROP BEFORE A HEAP THAT KEEPS (#1099; farming design rule
+  /// 2, «в два шага»; econ standing-crop-before-keeping-heap-2026-10-19): on
+  /// a day a ripe crop stands with work left (a reaping with grams at risk,
+  /// the meadow cut aside), a heap urgent by its own rot is no loss deadline
+  /// above the reaping's while its shelf outlasts rule 5's snow edge
+  /// (early_snow_last_day) - the snow takes the crop and not the heap.
+  /// AND ITS CARTING IS STEP TWO (rule 2: «возка» is named among the works
+  /// without a loss deadline): its window goes too. The first pair read it:
+  /// with the level gone the heap still kept HaulWindow, a kDays window on
+  /// the reaping's own tier 0, and its carters stood beside the diggers (420
+  /// noons on the canon, 940 on the novice). True when the heap on `field`
+  /// keeps past the snow edge while a ripe crop stands.
+  [[nodiscard]] bool HeapKeepsPastTheSnow(const WorldState& current,
+                                          FieldId field,
+                                          bool ripe_crop_stands) const {
+    if (!ripe_crop_stands) {
+      return false;
+    }
+    const std::uint32_t row = FindRow(current.fields, field);
+    if (row == kNoRow || current.fields.rows[row].kind != LandKind::kArable ||
+        current.fields.rows[row].reaped_grams <= 0) {
+      return false;
+    }
+    const ResourceId resource = current.fields.rows[row].reaped_resource;
+    const float shelf = resource.value < config_.heap_shelf_days.size()
+                            ? config_.heap_shelf_days[resource.value]
+                            : std::numeric_limits<float>::infinity();
+    const auto today = static_cast<float>(current.calendar.day % kDaysPerYear);
+    return !(today + shelf < static_cast<float>(config_.early_snow_last_day));
+  }
+
+  void MarkTheUrgentLoads(const WorldState& current, std::vector<AssignmentJob>& jobs) const {
+    const bool ripe_crop_stands = std::ranges::any_of(jobs, [](const AssignmentJob& job) {
+      return job.kind == WorkKind::kHarvest && job.grams_at_risk > 0 && !IsMeadowCut(job);
+    });
     for (AssignmentJob& job : jobs) {
       if (job.kind != WorkKind::kHauling) {
         continue;
       }
       const WorkAssignment work = HaulingWorkOfJob(job);
+      const bool keeps = job.field.value != kInvalidEntityIdValue &&
+                         HeapKeepsPastTheSnow(current, job.field, ripe_crop_stands);
+      if (keeps) {
+        job.window = DeadlineNotApplicable();  // step two (rule 2), below the reaping
+      }
       for (const LogisticsTaskRow& task : current.logistics_tasks.rows) {
         if (!WorkServesTask(work, task)) {
           continue;
@@ -2142,8 +2182,12 @@ class LaborSystem final : public ILaborSystem {
         // One task a load: its level and the chairman's «важнее полевых
         // работ» (#734; LogisticsTaskRow::over_fields) are read together.
         // A stack came urgent by the stores' hay (CollectJobs) and stays so
-        // whatever its task's row says this morning.
-        job.logistics_urgent = job.logistics_urgent || task.level == LogisticsLevel::kUrgent;
+        // whatever its task's row says this morning. A heap urgent by its
+        // own rot that keeps past the snow is not (#1099); the player's level
+        // 0 and a hungry herd's are, whatever the shelf.
+        const bool rot_gives_way = keeps && task.urgent_by == LogisticsUrgentBy::kSpoil;
+        job.logistics_urgent =
+            job.logistics_urgent || (task.level == LogisticsLevel::kUrgent && !rot_gives_way);
         job.over_fields = task.over_fields && job.supplies_works;
         break;
       }
