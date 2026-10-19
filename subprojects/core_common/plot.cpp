@@ -56,6 +56,10 @@ bool PlotOverlaps(const UnitTable& units,
     if (other.type.value >= rules.radius_by_type.size()) {
       continue;
     }
+    if (other.type.value < rules.yields_by_type.size() &&
+        rules.yields_by_type[other.type.value] != 0) {
+      continue;  // a body that yields its place (#1089): it moves, not the plot
+    }
     const float other_radius = rules.radius_by_type[other.type.value];
     if (!(other_radius > 0.0F)) {
       continue;

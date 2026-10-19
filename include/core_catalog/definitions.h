@@ -77,6 +77,11 @@ struct UnitTypeDefs {
   /// (`no_residents` below).
   std::vector<std::uint8_t> is_housing;
 
+  /// 1 for a type whose body YIELDS its place (unit_types.csv `yields_place`;
+  /// #1089, the fire gong): other units' plots do not avoid it, and the core
+  /// moves it the day a plot comes to overlap it (settlement_rules.h).
+  std::vector<std::uint8_t> yields_place;
+
   /// The type this one is a MODULE of (unit_types.csv `parent`), invalid for
   /// a free-standing type (unit rules §11, "Модули"). A module is built on a
   /// unit of this type, inside its plot, while it stands sound.
@@ -139,7 +144,9 @@ struct Definitions {
   /// object: it must outlive the call, which it does — the catalogue is
   /// built before the systems and outlives them.
   PlotRules Plots() const {
-    return PlotRules{.radius_by_type = units.keep_out_radius_m, .map_side_m = map_side_m};
+    return PlotRules{.radius_by_type = units.keep_out_radius_m,
+                     .map_side_m = map_side_m,
+                     .yields_by_type = units.yields_place};
   }
 };
 

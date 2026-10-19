@@ -56,6 +56,7 @@
 #include "core_common/road_rules.h"
 #include "core_common/road_state.h"
 #include "core_common/road_work_state.h"
+#include "core_common/settlement_state.h"
 #include "core_common/specialist_state.h"
 #include "core_common/timber_state.h"
 #include "core_common/turned_away_state.h"
@@ -1124,6 +1125,11 @@ struct WorldState {
   /// no free house and no barrack place, read by the lamp «жилья не хватает»
   /// (kHousingShort, its condition (c)). SAVED (save 148).
   TurnedAwayYear arrivals_turned_away;
+
+  /// THE SETTLEMENTS (settlement_state.h; #1089): derived by core_world's
+  /// settlement step from the dwellings; the start village is id 1 for ever.
+  /// SAVED.
+  SettlementTable settlements;
 
   /// THE JOBS' RUNS OF MORNINGS WITH NO HAND (unmanned_run_state.h): written
   /// by labour's morning allocation, read by it to say kWorkGotNoHands on a

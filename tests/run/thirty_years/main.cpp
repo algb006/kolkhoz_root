@@ -1242,7 +1242,8 @@ int main(int argc, char** argv) {
   // A thing on the ground is not a neighbouring household: a plot fences the
   // land off from other PLOTS, not from every object standing on it.
   const core::PlotRules plot_rules{.radius_by_type = definitions.units.plot_radius_m,
-                                   .map_side_m = definitions.Plots().map_side_m};
+                                   .map_side_m = definitions.Plots().map_side_m,
+                                   .yields_by_type = {}};
   const std::span<const float> plot_radii = definitions.units.plot_radius_m;
   const std::span<const float> keep_out_radii = definitions.units.keep_out_radius_m;
   std::uint32_t overlapping = 0;

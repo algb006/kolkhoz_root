@@ -34,8 +34,10 @@ bool ReadUnitTypes(const ITable& unit_types, UnitTypeDefs& defs, std::string& er
   defs.plot_radius_m.assign(unit_types.RowCount(), 0.0F);
   defs.keep_out_radius_m.assign(unit_types.RowCount(), 0.0F);
   defs.is_housing.assign(unit_types.RowCount(), 0);
+  defs.yields_place.assign(unit_types.RowCount(), 0);
   defs.parent.assign(unit_types.RowCount(), UnitTypeId{});
   const std::uint32_t parent_column = unit_types.FindColumn("parent");
+  const std::uint32_t yields_column = unit_types.FindColumn("yields_place");
   for (std::uint32_t row = 0; row < unit_types.RowCount(); ++row) {
     // A parent the roster does not carry is a table error, not a free-standing
     // unit: reading it as "no parent" would let a module stand anywhere.
@@ -79,6 +81,9 @@ bool ReadUnitTypes(const ITable& unit_types, UnitTypeDefs& defs, std::string& er
     defs.keep_out_radius_m[row] = defs.plot_radius_m[row] > 0.0F ? defs.plot_radius_m[row] : body;
     if (class_column != kNoTableColumn && unit_types.CellText(row, class_column) == kHousingClass) {
       defs.is_housing[row] = 1;
+    }
+    if (yields_column != kNoTableColumn && unit_types.CellText(row, yields_column) == "1") {
+      defs.yields_place[row] = 1;
     }
   }
   return true;

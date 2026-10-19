@@ -738,6 +738,19 @@ core::WorldState MakeWorld() {
   world.horse_lamp.last_painted_day = 205;
   world.horse_lamp.teams_short[1] = 3;
   world.horse_lamp.teams_short[13] = 7;
+  // A settlement (save 173; #1089): every field off its default, so a codec
+  // that dropped or swapped one is seen.
+  {
+    core::SettlementRow village;
+    village.centre = core::Vec2{.x = 812.5F, .y = 940.25F};
+    village.gong = core::UnitId{7};
+    village.formed_day = 96;
+    village.gong_moved_day = 140;
+    village.merge_with = core::SettlementId{3};
+    village.split_pending = 1;
+    village.name = 4;
+    core::AppendRow(world.settlements, village);
+  }
   // The migrants turned away (save 148): a day and two counts apart.
   world.arrivals_turned_away.last_day = 300;
   world.arrivals_turned_away.per_day[2] = 1;
@@ -1697,7 +1710,7 @@ struct RecordedSection {
 /// beside it (manual/setup/57-versioning.md). No deliberate change: the codec
 /// has begun writing something else, which is the whole reason these numbers
 /// are here. Either way the number moves WITH ITS REASON, in the same commit.
-constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
+constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // Save 82: +15 — the seventh dictionary, tree_species (count 2, «pine»
     // 6, «birch» 7); predicted before the build, held.
     // Save 92: +2 — the map roads' dictionary, empty in this fixture's
@@ -1938,7 +1951,10 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // predicted +21 a unit (747 -> 810) before the build and MISSED by two -
     // the resource's def id is two bytes and my sum took it as one; 816, the
     // hash read off it.
-    {"units", 816, 0xb76e129cfd5e120eULL},
+    // Save 173 (#1089): the unit's settlement and outlying flag, +5 a unit on
+    // three units: predicted 816 -> 831 before the build and held; the hash
+    // read off it.
+    {"units", 831, 0x87e038508c8b2b86ULL},
     // Save 71: +4 — fed_share, one herd; predicted before the field, held.
     // Save 91: +8 — the adult age band, two floats, one herd; predicted
     // 71 -> 79 with every other section unmoved before the build.
@@ -2075,6 +2091,10 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // Save 171 (#1056 C1.2): +1 - the rick's threshold; predicted 64 -> 65
     // before the build and held; the hash read off it.
     {"logistics_tasks", 65, 0x385b53f1f1f33b9fULL},
+    // Save 173 (#1089): the settlements - the table's next id and count, one
+    // row's id and 27 bytes of fields: predicted 39 before the build and
+    // held; the hash read off it.
+    {"settlements", 39, 0x7aff2d53ece52e1eULL},
     // Save 136 (B3): the groom's plan — 10 of day, flags and count, 9 of the
     // cart, 44 of the first leg (one rider), 40 of the second. Predicted 103
     // before the build, held; the hash read off the build.
@@ -2573,6 +2593,16 @@ int main() {
       Expect(loaded.horse_lamp.last_painted_day == 205 && loaded.horse_lamp.teams_short[1] == 3 &&
                  loaded.horse_lamp.teams_short[13] == 7 && loaded.horse_lamp.teams_short[0] == 0,
              "the horse lamp's year comes back, day and bytes in place (save 147)");
+  failures += Expect(
+      loaded.settlements.rows.size() == 1 && loaded.settlements.row_ids[0].value == 1 &&
+          loaded.settlements.rows[0].centre.x == 812.5F &&
+          loaded.settlements.rows[0].centre.y == 940.25F &&
+          loaded.settlements.rows[0].gong.value == 7 &&
+          loaded.settlements.rows[0].formed_day == 96 &&
+          loaded.settlements.rows[0].gong_moved_day == 140 &&
+          loaded.settlements.rows[0].merge_with.value == 3 &&
+          loaded.settlements.rows[0].split_pending == 1 && loaded.settlements.rows[0].name == 4,
+      "the settlement comes back, every field in place (save 173)");
   failures += Expect(loaded.arrivals_turned_away.last_day == 300 &&
                          loaded.arrivals_turned_away.per_day[2] == 1 &&
                          loaded.arrivals_turned_away.per_day[44] == 3 &&

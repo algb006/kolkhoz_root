@@ -36,6 +36,7 @@
 #include "core_residents/residents_system.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
+#include "settlement_rules.h"
 #include "start_elder.h"
 #include "start_layout.h"
 #include "start_literacy.h"
@@ -1652,6 +1653,18 @@ bool BuildStartEconomy(WorldState& world,
   }
   PlaceHerds(world, tables, stock_yard, holdings);
   PutYardsStartHay(world, tables, resources);
+  // THE START VILLAGE (#1089; settlement_rules.h): one settlement, id 1 for
+  // ever, the start layout's gong its own, every unit its member.
+  SettlementConfig settlement_config;
+  std::string settlement_error;
+  if (!ReadSettlementConfig(tables, settlement_config, settlement_error)) {
+    LogError("genesis: " + settlement_error);
+    if (error != nullptr) {
+      *error = settlement_error;
+    }
+    return false;
+  }
+  SeedStartSettlement(settlement_config, world);
   return true;
 }
 

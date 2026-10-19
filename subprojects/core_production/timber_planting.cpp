@@ -91,7 +91,9 @@ OrderRefusal ZoneRefusal(const ProductionConfig& config,
       return OrderRefusal::kWrongLand;
     }
   }
-  const PlotRules rules{.radius_by_type = config.plot_radius_m, .map_side_m = config.map_side_m};
+  const PlotRules rules{.radius_by_type = config.plot_radius_m,
+                        .map_side_m = config.map_side_m,
+                        .yields_by_type = {}};
   if (PlotOverlaps(world.units, rules, place, radius, UnitId{})) {
     return OrderRefusal::kTooClose;
   }

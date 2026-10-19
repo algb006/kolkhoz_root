@@ -504,7 +504,7 @@ int TestPlot() {
 
   // Radii by type: type 0 has a 25-metre plot, type 1 none at all.
   const float radii[] = {25.0F, 0.0F};
-  const core::PlotRules rules{.radius_by_type = radii, .map_side_m = 0.0F};
+  const core::PlotRules rules{.radius_by_type = radii, .map_side_m = 0.0F, .yields_by_type = {}};
   core::UnitTable units;
   core::UnitRow standing;
   standing.type = core::UnitTypeId{0};  // the default id is INVALID, not row zero
@@ -561,7 +561,8 @@ int TestPlot() {
   // order is REFUSED outside the map; the stub cannot refuse, so it must
   // not go there instead — found by the delivery cycle's own analysis on
   // 2026-09-04, in the very change that was closing the same class of hole.
-  const core::PlotRules bounded{.radius_by_type = radii, .map_side_m = 300.0F};
+  const core::PlotRules bounded{
+      .radius_by_type = radii, .map_side_m = 300.0F, .yields_by_type = {}};
   core::UnitTable edge_units;
   core::UnitRow corner;
   corner.type = core::UnitTypeId{0};

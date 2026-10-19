@@ -63,6 +63,13 @@ struct PlotRules {
   /// the same convention as construction_config.h, and for the same
   /// reason: a wrong edge is worse than no edge.
   float map_side_m = 0.0F;
+
+  /// By UnitTypeId value, 1 for a type whose body YIELDS its place (#1089,
+  /// the fire gong; unit_types.csv `yields_place`): skipped by PlotOverlaps,
+  /// so it never shifts another unit's plot - the settlement step moves it
+  /// instead. Empty: no type yields (the yielding body's own placement asks
+  /// with it empty, so it avoids every body).
+  std::span<const std::uint8_t> yields_by_type;
 };
 
 /// @brief Whether a plot of `radius` centred on `place` would overlap the
