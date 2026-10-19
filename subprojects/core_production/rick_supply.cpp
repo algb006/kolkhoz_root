@@ -11,12 +11,14 @@
 #include "core_common/haul.h"
 #include "core_common/hauled_book.h"
 #include "core_common/ids.h"
+#include "core_common/land_state.h"
 #include "core_common/ledger_state.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/work_seam.h"
 #include "feed_home.h"
 #include "haul_ways.h"
+#include "herd_forecast.h"
 #include "stock_ops.h"
 
 namespace core {
@@ -46,6 +48,29 @@ std::vector<float> SpareOfEveryRick(const ProductionConfig& config,
   return spare;
 }
 
+/// The days until the next cut can have its hay in the ricks - the hay
+/// lamp's own horizon (ForecastHerdFeed, kNearestScythes: to the nearest
+/// first scythes and hay_new_cut_in_store_days into them), so the lamp and
+/// the supply read one «cut». kNoCut when nothing is mown to refill a rick:
+/// no meadow and no fallow mown as it lies (econ's case «a rick no meadow
+/// stack feeds keeps its full windows»). Every rick the cut reaches is
+/// refilled by it: a meadow's stack goes to the rick with the largest gap
+/// (RickForLoadFrom), so the village has one answer, not one a rick.
+constexpr std::uint32_t kNoCut = 0xFFFFFFFFU;
+
+std::uint32_t DaysToTheRefillingCut(const ProductionConfig& config, const WorldState& world) {
+  const bool mown = std::ranges::any_of(world.fields.rows, [](const FieldRow& field) {
+    return field.kind == LandKind::kMeadow || field.mown_fallow != 0;
+  });
+  if (!mown) {
+    return kNoCut;
+  }
+  const HerdFeedForecast forecast =
+      ForecastHerdFeed(config, world, false, FeedHorizon::kNearestScythes);
+  // A forecast with no herds to feed says no horizon (0): no cut to stop at.
+  return forecast.horizon_days > 0 ? forecast.horizon_days : kNoCut;
+}
+
 /// The row with the most to spare but `receiver`; kNoRow when none spares
 /// anything. Ties by the first row.
 std::uint32_t RichestSender(const std::vector<float>& spare, std::uint32_t receiver) {
@@ -73,9 +98,21 @@ void PriceRickSupply(const ProductionConfig& config, WorldState& current) {
   if (threshold == 0) {
     return;
   }
-  std::vector<RickHayAhead> below = RickHayWithin(config, current, threshold);
-  std::erase_if(below, [threshold](const RickHayAhead& rick) {
-    return rick.short_day >= threshold || !(rick.missing_kg > 0.0F);
+  // BOTH WINDOWS END AT THE CUT THAT REFILLS THE RICKS (#1096; econ
+  // rick-window-to-the-cut-2026-10-19, boss 19 October). Until 0.37.303 the
+  // shortfall read `threshold` days and the senders' spare twice that, both
+  // past a cut 4-9 days away: on the canon's 66 dark-lamp days a covered
+  // village priced a rick short, and the other ricks' hay, kept for their own
+  // herds past the cut, read «no spare».
+  const std::uint32_t cut = DaysToTheRefillingCut(config, current);
+  const std::uint32_t short_window = std::min(threshold, cut);
+  const std::uint32_t spare_window = std::min(2U * threshold, cut);
+  if (short_window == 0) {
+    return;  // the new hay is in store today: nothing to move before it
+  }
+  std::vector<RickHayAhead> below = RickHayWithin(config, current, short_window);
+  std::erase_if(below, [short_window](const RickHayAhead& rick) {
+    return rick.short_day >= short_window || !(rick.missing_kg > 0.0F);
   });
   if (below.empty()) {
     return;
@@ -84,7 +121,7 @@ void PriceRickSupply(const ProductionConfig& config, WorldState& current) {
     return left.short_day != right.short_day ? left.short_day < right.short_day
                                              : left.rick_row < right.rick_row;
   });
-  std::vector<float> spare = SpareOfEveryRick(config, current, 2U * threshold);
+  std::vector<float> spare = SpareOfEveryRick(config, current, spare_window);
   const float load_kg =
       static_cast<float>(CartLoadGrams(config.porter, config.cart_load_kg, config.hay_resource)) /
       kGramsPerKg;
@@ -112,7 +149,7 @@ void PriceRickSupply(const ProductionConfig& config, WorldState& current) {
     seam.grams = GramsFromFloat(kg * kGramsPerKg);
     seam.days_remaining = CartDaysFor(config, seam.grams, rate);
     seam.days_written = seam.days_remaining;
-    seam.threshold_days = static_cast<std::uint8_t>(std::min(threshold, 255U));
+    seam.threshold_days = static_cast<std::uint8_t>(std::min(short_window, 255U));
   }
 }
 
