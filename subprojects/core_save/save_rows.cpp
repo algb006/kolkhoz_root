@@ -494,9 +494,12 @@ static_assert(AggregateArity<BarterTripRow>() == 9,
 // Save 171 (#1056 C1.2): threshold_days, a byte after over_fields - predicted
 // into the padding before the floats (offset 51), 64 unmoved and
 // eighteen fields, +1 on the wire, before the build.
+// Save 174 (#1099): urgent_by, a byte after threshold_days - predicted into
+// the padding before the floats (offset 52), 64 unmoved and nineteen
+// fields, +1 on the wire, before the build.
 static_assert(sizeof(LogisticsTaskRow) == 64,
               "LogisticsTaskRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<LogisticsTaskRow>() == 18,
+static_assert(AggregateArity<LogisticsTaskRow>() == 19,
               "LogisticsTaskRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 136 (0.37.177): the groom's plan — a leg six fields, a cart three, the
 // plan four (each holds vectors: its size is not a byte count, the codec
@@ -2031,7 +2034,8 @@ void WriteLogisticsTaskRow(SaveSink& sink, const LogisticsTaskRow& row) {
   out.WriteU16(row.unserved_light_hours);  // save 142
   out.WriteU8(row.over_fields ? 1U : 0U);  // save 158 (#734): «важнее полевых работ»
   out.WriteU8(row.threshold_days);         // save 171 (#1056 C1.2): the rick's threshold
-  out.WriteFloat(row.drained_on_foot);     // save 155: who drained the seam (#671)
+  out.WriteU8(static_cast<std::uint8_t>(row.urgent_by));  // save 174 (#1099): why level 0
+  out.WriteFloat(row.drained_on_foot);                    // save 155: who drained the seam (#671)
   out.WriteFloat(row.drained_by_cart);
 }
 
@@ -2084,7 +2088,11 @@ LogisticsTaskRow ReadLogisticsTaskRow(LoadSource& source) {
   row.unserved_light_hours = in.ReadU16();                                     // save 142
   row.over_fields = source.ReadEnumValue(0, 1, "logistics over fields") != 0;  // save 158 (#734)
   row.threshold_days = in.ReadU8();                                            // save 171
-  row.drained_on_foot = in.ReadFloat();                                        // save 155 (#671)
+  row.urgent_by = static_cast<LogisticsUrgentBy>(source.ReadEnumValue(         // save 174 (#1099)
+      0,
+      static_cast<std::uint8_t>(LogisticsUrgentBy::kLogisticsUrgentByCount) - 1U,
+      "logistics urgent reason"));
+  row.drained_on_foot = in.ReadFloat();  // save 155 (#671)
   row.drained_by_cart = in.ReadFloat();
   if (!(row.drained_on_foot >= 0.0F) || !(row.drained_by_cart >= 0.0F)) {
     source.Fail("a logistics task's drained units are negative or not a number");

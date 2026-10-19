@@ -58,6 +58,15 @@ namespace core {
 /// @return Grams lost today, never more than `held`.
 Grams SpoiledToday(Grams held, float spoil_days, float keeping_factor);
 
+/// @brief A field heap's shelf in game days: `spoil_days` x the heap's
+///        keeping factor, or infinity when the resource keeps for ever (0).
+///
+/// ONE HOME for two doors (#1099): logistics orders its heaps by it (#1056
+/// C4.2, ShelfDaysOf) and labour weighs a rotting heap's shelf against a
+/// standing crop's snow (MarkTheUrgentLoads). Each reads the same two cells
+/// (resources.csv spoil_days, world_params field_heap_keeping_factor).
+float FieldHeapShelfDays(float spoil_days, float keeping_factor);
+
 /// @brief The ROT MARGIN: grams to hold beyond `held` so that `held` is
 /// still there after `days` of SpoiledToday's daily share —
 /// held / (1 − 1/spoil_days)^days − held.

@@ -73,6 +73,7 @@
 #include "core_tables/tables.h"
 #include "labor_config.h"
 #include "labor_day.h"
+#include "placement_rank.h"
 #include "posts.h"
 #include "rush.h"
 #include "work_orders.h"
@@ -2129,7 +2130,35 @@ class LaborSystem final : public ILaborSystem {
     });
   }
 
-  static void MarkTheUrgentLoads(const WorldState& current, std::vector<AssignmentJob>& jobs) {
+  /// THE STANDING CROP BEFORE A HEAP THAT KEEPS (#1099; farming design rule
+  /// 2, «в два шага»; econ standing-crop-before-keeping-heap-2026-10-19): on
+  /// a day a ripe crop stands with work left (a reaping with grams at risk,
+  /// the meadow cut aside), a heap urgent by its own rot is no loss deadline
+  /// above the reaping's while its shelf outlasts rule 5's snow edge
+  /// (early_snow_last_day) - the snow takes the crop and not the heap. True
+  /// when its level 0 stands.
+  [[nodiscard]] bool RotUrgencyStands(const WorldState& current,
+                                      const LogisticsTaskRow& task,
+                                      bool ripe_crop_stands) const {
+    if (task.urgent_by != LogisticsUrgentBy::kSpoil || !ripe_crop_stands) {
+      return true;
+    }
+    const std::uint32_t row = FindRow(current.fields, task.field);
+    if (row == kNoRow) {
+      return true;
+    }
+    const ResourceId resource = current.fields.rows[row].reaped_resource;
+    const float shelf = resource.value < config_.heap_shelf_days.size()
+                            ? config_.heap_shelf_days[resource.value]
+                            : std::numeric_limits<float>::infinity();
+    const auto today = static_cast<float>(current.calendar.day % kDaysPerYear);
+    return today + shelf < static_cast<float>(config_.early_snow_last_day);
+  }
+
+  void MarkTheUrgentLoads(const WorldState& current, std::vector<AssignmentJob>& jobs) const {
+    const bool ripe_crop_stands = std::ranges::any_of(jobs, [](const AssignmentJob& job) {
+      return job.kind == WorkKind::kHarvest && job.grams_at_risk > 0 && !IsMeadowCut(job);
+    });
     for (AssignmentJob& job : jobs) {
       if (job.kind != WorkKind::kHauling) {
         continue;
@@ -2143,7 +2172,9 @@ class LaborSystem final : public ILaborSystem {
         // работ» (#734; LogisticsTaskRow::over_fields) are read together.
         // A stack came urgent by the stores' hay (CollectJobs) and stays so
         // whatever its task's row says this morning.
-        job.logistics_urgent = job.logistics_urgent || task.level == LogisticsLevel::kUrgent;
+        job.logistics_urgent =
+            job.logistics_urgent || (task.level == LogisticsLevel::kUrgent &&
+                                     RotUrgencyStands(current, task, ripe_crop_stands));
         job.over_fields = task.over_fields && job.supplies_works;
         break;
       }

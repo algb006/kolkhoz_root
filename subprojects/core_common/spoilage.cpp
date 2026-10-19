@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <limits>
 
 namespace core {
 
@@ -17,6 +18,10 @@ Grams RotMarginGrams(Grams held, float spoil_days, std::uint32_t days) {
       std::pow(1.0 - (1.0 / static_cast<double>(spoil_days)), static_cast<double>(days));
   return GramsFromFloat(
       static_cast<float>(static_cast<double>(held) / kept_share - static_cast<double>(held)));
+}
+
+float FieldHeapShelfDays(float spoil_days, float keeping_factor) {
+  return spoil_days > 0.0F ? spoil_days * keeping_factor : std::numeric_limits<float>::infinity();
 }
 
 Grams SpoiledToday(Grams held, float spoil_days, float keeping_factor) {

@@ -280,6 +280,12 @@ struct LaborConfig {
   float early_snow_share = 0.10F;
   std::uint32_t early_snow_last_day = kDaysPerYear - 1U;
 
+  /// A field heap's shelf in game days, by ResourceId (#1099;
+  /// FieldHeapShelfDays over resources.csv `spoil_days` and world_params
+  /// `field_heap_keeping_factor`, the cells logistics reads for C4.2's
+  /// order); infinity keeps for ever. Empty: no heap rots, nothing weighed.
+  std::vector<float> heap_shelf_days;
+
   /// farming.csv `reaping_days_per_hand_light_hour` — the count of the
   /// reaping's rate for a village with no unfinished reaping day in this
   /// year's book nor in the last (core_common/reaping_pace.h, ReapingCrewOf;

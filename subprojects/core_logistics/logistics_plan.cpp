@@ -23,6 +23,7 @@
 #include "core_common/road_graph.h"
 #include "core_common/road_route.h"
 #include "core_common/site_supply_queue.h"
+#include "core_common/spoilage.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/work_seam.h"
 #include "core_common/world_state.h"
@@ -73,8 +74,8 @@ float ShelfDaysOf(const LogisticsConfig& config,
   const ResourceId resource = world.fields.rows[row].reaped_resource;
   const float days =
       resource.value < config.spoil_days.size() ? config.spoil_days[resource.value] : 0.0F;
-  return days > 0.0F ? days * config.field_heap_keeping_factor
-                     : std::numeric_limits<float>::infinity();
+  // One home with labour's weighing against the snow (#1099; spoilage.h).
+  return FieldHeapShelfDays(days, config.field_heap_keeping_factor);
 }
 
 /// The open tasks — not paused, a seam left — by level, the longest waiting
