@@ -21,20 +21,20 @@
 namespace core {
 namespace {
 
-/// The milk leg's receiver (MR.1; boss, the #1056 thread [101]): the first
-/// built store that takes milk in which no kolkhoz herd stands - the church
-/// store, never another herd's own room. kNoRow when there is none.
+/// The milk leg's receiver (MR.1; boss, the #1056 thread [101], [103]): the
+/// first built store that takes milk and HOUSES NO LIVESTOCK - the church
+/// store, never a cattle yard's room. Until MR.2 it was «no kolkhoz herd
+/// standing there», and an empty yard just built passed that test, so the
+/// sheds' legs could unload into a room (econ's suspicion, boss-econ-mr1-red
+/// seq 2). kNoRow when there is none.
 std::uint32_t MilkLegReceiverRow(const ProductionConfig& config, const WorldState& world) {
   for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
     const UnitRow& unit = world.units.rows[row];
-    if (!NumberedStoreAccepts(unit, config, config.milk_resource)) {
+    if (!NumberedStoreAccepts(unit, config, config.milk_resource) ||
+        unit.type.value >= config.unit_types.size()) {
       continue;
     }
-    const UnitId id = world.units.row_ids[row];
-    const bool herds_here = std::ranges::any_of(world.herds.rows, [id](const HerdRow& herd) {
-      return herd.household_owned == 0 && herd.unit.value == id.value;
-    });
-    if (!herds_here) {
+    if (!(config.unit_types[unit.type.value].LivestockCapacityHeadAt(unit.level) > 0.0F)) {
       return row;
     }
   }

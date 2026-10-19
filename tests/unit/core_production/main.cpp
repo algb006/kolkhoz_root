@@ -5180,13 +5180,15 @@ int CheckTheColdLadderParses() {
                      "cold ladder: the pen cold, the barn warm; the horse yard's open rung cold, "
                      "the stable of rung 2 warm");
   // And the places the same export gave the first rungs: the start's 41
-  // head of cattle fit the pen, the sixteen horses their yard.
+  // head of cattle fit the pen, the sixteen horses their yard. The barn's 80
+  // since MR.2 (econ's cow places for the milk room; boss, the #1056 thread
+  // [103]: L2 80 places / 7 t, L3 100 / 9 t; it was 60).
   failures +=
       Expect(cattle != nullptr && cattle->LivestockCapacityHeadAt(1) == 48.0F &&
-                 cattle->LivestockCapacityHeadAt(2) == 60.0F && horses != nullptr &&
+                 cattle->LivestockCapacityHeadAt(2) == 80.0F && horses != nullptr &&
                  horses->LivestockCapacityHeadAt(1) == 20.0F &&
                  horses->LivestockCapacityHeadAt(2) == 60.0F,
-             "yards: the pen holds 48 and the barn 60; the horse yard 20 and the stable 60");
+             "yards: the pen holds 48 and the barn 80; the horse yard 20 and the stable 60");
   const core::FarmingConfig& farming = config.farming;
   failures +=
       Expect(farming.cold_step_night == 1.0F && farming.cold_step_still_frost == 2.0F &&
@@ -13109,6 +13111,8 @@ int CheckTheMilkCart() {
     core::ProductionConfig leg_config = config;
     leg_config.unit_types.resize(2);
     SetLivestockHead(leg_config.unit_types[1], 10.0F);
+    // The store houses no livestock (MR.2): the leg's receiver is never a yard.
+    SetLivestockHead(leg_config.unit_types[0], 0.0F);
     leg_config.farming.milk_at_barn = 1.0F;
     core::WorldState barn_world = MakeHerdWorld(0.0F);
     barn_world.units.rows[0].level = 1;
