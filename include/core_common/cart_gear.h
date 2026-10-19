@@ -21,10 +21,19 @@ namespace core {
 
 struct WorldState;
 
-/// @brief The two vehicles' numbers, read once per module from transport.csv
-///        rows `horse_trot` (the cart empty), `cart_loaded` (loaded, its
-///        load) and `sledge` (its pace both ways, its load), the load already
-///        scaled by `load_scale` (haul.h, the cart of the compressed year).
+/// @brief The sledge's own numbers, the one thing a module's config adds to
+///        the cart's it already holds (transport.csv `sledge`: its pace both
+///        ways, its load_tonnes x load_scale). Zero: no sledge row, a snow day
+///        is a cart's.
+struct SledgeSpecs {
+  float kmh = 0.0F;
+  float load_kg = 0.0F;
+};
+
+/// @brief The two vehicles' numbers for one call, put together from the
+///        module's config: the cart's from its own fields (`horse_trot`
+///        empty, `cart_loaded` loaded and its load), the sledge's from its
+///        SledgeSpecs - one home each, no copy of the cart's numbers.
 struct CartSpecs {
   float cart_empty_kmh = 12.0F;
   float cart_loaded_kmh = 9.0F;

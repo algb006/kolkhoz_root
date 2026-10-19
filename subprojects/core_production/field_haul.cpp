@@ -831,9 +831,10 @@ HaulRate DistrictLotHaulRate(const ProductionConfig& config,
     return HaulRate{};
   }
   const float bed = HaulBedFactor(config, world.weather);
-  const float speed_kmh = config.harness_speed_kmh * bed;
+  const CartGear gear = CartGearToday(world, CartSpecsOf(config));  // SL: the sledge on snow
+  const float speed_kmh = gear.empty_kmh * bed;
   const float hours_per_km = speed_kmh > 0.0F ? static_cast<float>(kClockScale) / speed_kmh : 0.0F;
-  const float loaded_kmh = config.loaded_speed_kmh * bed;
+  const float loaded_kmh = gear.loaded_kmh * bed;
   const float loaded_hours_per_km =
       loaded_kmh > 0.0F ? static_cast<float>(kClockScale) / loaded_kmh : 0.0F;
   // THE WAY: from the district centre to the map's border (off the map, by
@@ -843,7 +844,7 @@ HaulRate DistrictLotHaulRate(const ProductionConfig& config,
   HaulRate rate = RateOverKm(config.district_center_km + way.effective_km,
                              hours_per_km,
                              loaded_hours_per_km,
-                             CartLoadGrams(config.porter, config.cart_load_kg, carried));
+                             CartLoadGrams(config.porter, gear.load_kg, carried));
   // Booked on the cart's columns under the district (CartLoadSource::kDistrict):
   // the load's end is the district's road, never a field; the store's end is
   // the pile's gate.
@@ -1019,10 +1020,22 @@ void RescaleHaulForBeds(const ProductionConfig& config,
   // Days go as one over the speed: priced at `was`, worked at `now`.
   const float was = HaulBedFactor(config, yesterday);
   const float now = HaulBedFactor(config, current.weather);
-  if (was == now || !(was > 0.0F) || !(now > 0.0F)) {
+  // AND AS THE GEAR'S ROAD-HOURS A TONNE (SL): a seam priced at the cart and
+  // worked by the sledge, or back, scales by the two gears' round-trip hours
+  // a km over their loads - the bed's own approximation, the pauses aside
+  // (0.857 cart -> sledge at today's numbers, econ's -14 %).
+  const auto per_tonne_km = [](const CartGear& gear) {
+    return (1.0F / gear.empty_kmh + 1.0F / gear.loaded_kmh) / gear.load_kg;
+  };
+  const CartGear gear_was = CartGearOf(CartSpecsOf(config), yesterday.snow_cover_days > 0);
+  const CartGear gear_now = CartGearOf(CartSpecsOf(config), current.weather.snow_cover_days > 0);
+  const float gear_scale =
+      gear_was.sledge == gear_now.sledge ? 1.0F : per_tonne_km(gear_now) / per_tonne_km(gear_was);
+  if ((was == now && gear_scale == 1.0F) || !(was > 0.0F) || !(now > 0.0F) ||
+      !(gear_scale > 0.0F)) {
     return;
   }
-  const float scale = was / now;
+  const float scale = (was / now) * gear_scale;
   const auto rescale = [scale](float& remaining, float& written) {
     remaining *= scale;
     written *= scale;

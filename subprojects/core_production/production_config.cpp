@@ -31,6 +31,7 @@
 #include <system_error>
 #include <vector>
 
+#include "core_catalog/cart_specs_catalog.h"
 #include "core_catalog/definitions.h"
 #include "core_catalog/porter_catalog.h"
 #include "core_catalog/road_rules_catalog.h"
@@ -1367,6 +1368,9 @@ std::span<const std::string_view> ProductionWorldParamKeys() {
 }
 
 bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, std::string& error) {
+  if (!ReadSledgeSpecs(tables, config.sledge, error)) {  // SL: the sledge
+    return false;
+  }
   if (const ITable* const world = tables.FindTable("world_params")) {
     if (!ParseProductionWorldParams(*world,
                                     config.farming,

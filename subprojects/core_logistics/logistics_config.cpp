@@ -8,6 +8,7 @@
 #include <string_view>
 #include <utility>
 
+#include "core_catalog/cart_specs_catalog.h"
 #include "core_catalog/cold_housing_catalog.h"
 #include "core_catalog/porter_catalog.h"
 #include "core_catalog/supply_floor_catalog.h"
@@ -124,6 +125,9 @@ bool ParseResources(const ITable& resources, LogisticsConfig& config, std::strin
 }  // namespace
 
 bool ParseLogisticsConfig(const ITableSet& tables, LogisticsConfig& config, std::string& error) {
+  if (!ReadSledgeSpecs(tables, config.sledge, error)) {  // SL: the sledge
+    return false;
+  }
   if (const ITable* const logistics = tables.FindTable("logistics")) {
     if (!ParseLevels(*logistics, config, error) || !ParseKnobs(*logistics, config, error)) {
       return false;

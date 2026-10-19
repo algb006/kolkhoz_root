@@ -29,6 +29,7 @@
 #include "core_catalog/processing_catalog.h"
 #include "core_catalog/timber_catalog.h"
 #include "core_common/calendar.h"
+#include "core_common/cart_gear.h"
 #include "core_common/haul.h"
 #include "core_common/ids.h"
 #include "core_common/meadow_mark.h"
@@ -1211,6 +1212,13 @@ struct ProductionConfig {
   /// simplification, not an oversight.
   float cart_load_kg = 750.0F;
 
+  /// THE SLEDGE (SL; core_common/cart_gear.h): transport.csv `sledge`. The
+  /// goods-carting readers take the day's gear through CartGearToday with
+  /// CartSpecsOf(config) - on a snow day the sledge's pace and load; the cart
+  /// fields above stay the cart's one home, and the people's cart and the
+  /// ride to work read them directly.
+  SledgeSpecs sledge;
+
   /// THE CART TRIP's MODEL (routing stage В4; cart_trips.h, CartTripModel):
   /// transport.csv `trip_model` on the `cart_loaded` row - 0 the fluid (a
   /// load pays its fraction of a round trip; the shipped value until econ's
@@ -1484,6 +1492,15 @@ struct ProductionConfig {
   /// The chairman's trip to the district in numbers (boss seq 206).
   DistrictTripCatalog district_trip;
 };
+
+/// @brief The cart's and the sledge's numbers of this config (SL; cart_gear.h).
+inline CartSpecs CartSpecsOf(const ProductionConfig& config) {
+  return CartSpecs{.cart_empty_kmh = config.harness_speed_kmh,
+                   .cart_loaded_kmh = config.loaded_speed_kmh,
+                   .cart_load_kg = config.cart_load_kg,
+                   .sledge_kmh = config.sledge.kmh,
+                   .sledge_load_kg = config.sledge.load_kg};
+}
 
 /// @brief Parses every table core_production reads into `config`.
 /// @param error Receives a human-readable message on failure.

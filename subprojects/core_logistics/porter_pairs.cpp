@@ -22,7 +22,9 @@ float WalkerDrainOf(const LogisticsConfig& config,
       WalkerLoadResource(world, world.logistics_tasks.rows[task_row], config.log_resource);
   return paces.cart_drain *
          WalkerShareOfCartDay(WalkerLoadGrams(config.porter, resource),
-                              CartLoadGrams(config.porter, config.cart_load_kg, resource),
+                              CartLoadGrams(config.porter,
+                                            CartGearToday(world, CartSpecsOf(config)).load_kg,
+                                            resource),  // SL: labour's same share
                               paces.walk_hours_per_km,
                               paces.harness_hours_per_km,
                               paces.loaded_hours_per_km);
@@ -43,13 +45,15 @@ PairTerms PairTermsOf(const LogisticsConfig& config,
     terms.loaded_hours_per_km = paces.walk_hours_per_km / config.porter.log_pair_loaded_pace;
     terms.drain =
         paces.cart_drain *
-        (paces.has_carts
-             ? LogPairShareOfCartDay(config.porter,
-                                     CartLoadGrams(config.porter, config.cart_load_kg, resource),
-                                     paces.walk_hours_per_km,
-                                     paces.harness_hours_per_km,
-                                     paces.loaded_hours_per_km)
-             : 1.0F);
+        (paces.has_carts ? LogPairShareOfCartDay(
+                               config.porter,
+                               CartLoadGrams(config.porter,
+                                             CartGearToday(world, CartSpecsOf(config)).load_kg,
+                                             resource),  // SL: labour's same share
+                               paces.walk_hours_per_km,
+                               paces.harness_hours_per_km,
+                               paces.loaded_hours_per_km)
+                         : 1.0F);
   }
   return terms;
 }

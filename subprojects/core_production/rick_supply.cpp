@@ -123,7 +123,9 @@ void PriceRickSupply(const ProductionConfig& config, WorldState& current) {
   });
   std::vector<float> spare = SpareOfEveryRick(config, current, spare_window);
   const float load_kg =
-      static_cast<float>(CartLoadGrams(config.porter, config.cart_load_kg, config.hay_resource)) /
+      static_cast<float>(CartLoadGrams(config.porter,
+                                       CartGearToday(current, CartSpecsOf(config)).load_kg,
+                                       config.hay_resource)) /
       kGramsPerKg;
   for (const RickHayAhead& rick : below) {
     UnitRow& receiver = current.units.rows[rick.rick_row];

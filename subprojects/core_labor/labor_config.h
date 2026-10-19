@@ -36,6 +36,7 @@
 #include "core_catalog/processing_catalog.h"
 #include "core_catalog/timber_catalog.h"
 #include "core_common/calendar.h"
+#include "core_common/cart_gear.h"
 #include "core_common/haul.h"
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
@@ -504,6 +505,11 @@ struct LaborConfig {
   /// A cart's load, kg (transport.csv cart_loaded, load_tonnes).
   float cart_load_kg = 750.0F;
 
+  /// THE SLEDGE (SL; core_common/cart_gear.h): transport.csv `sledge`; the
+  /// goods hauling's paces and load on a snow day, through CartGearToday with
+  /// CartSpecsOf(config).
+  SledgeSpecs sledge;
+
   /// PASSENGERS ON A CART (transport design §11, «Подвода возит и груз, и
   /// людей»; routing stage A, 0.37.162): the bench of the goods cart
   /// (transport.csv cart_loaded `seats`, the driver not counted) and the
@@ -643,6 +649,15 @@ struct LaborConfig {
   /// that will house a herd facing the cold go first among the construction.
   ColdHousing cold_housing;
 };
+
+/// @brief The cart's and the sledge's numbers of this config (SL; cart_gear.h).
+inline CartSpecs CartSpecsOf(const LaborConfig& config) {
+  return CartSpecs{.cart_empty_kmh = config.harness_speed_kmh,
+                   .cart_loaded_kmh = config.loaded_speed_kmh,
+                   .cart_load_kg = config.cart_load_kg,
+                   .sledge_kmh = config.sledge.kmh,
+                   .sledge_load_kg = config.sledge.load_kg};
+}
 
 /// @brief Fills `config` from the table set.
 /// @return false with `error` set when a PRESENT table is malformed; a

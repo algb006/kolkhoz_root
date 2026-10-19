@@ -13,6 +13,7 @@
 #include "core_common/alarm_state.h"
 #include "core_common/body.h"
 #include "core_common/calendar.h"
+#include "core_common/cart_gear.h"
 #include "core_common/cold_housing.h"
 #include "core_common/day_off.h"
 #include "core_common/day_window.h"
@@ -643,6 +644,46 @@ int TestTheSiteSupplyQueue() {
   world.units.rows[2].paused = 1;
   order = core::SiteSupplyOrder(world);
   failures += Expect(order == std::vector<std::uint32_t>{0}, "supply queue: a paused site neither");
+  return failures;
+}
+
+/// THE CART AND THE SLEDGE (SL1; cart_gear.h): a snowless day is the cart's
+/// 12 / 9 km/h and 1.8 t; a snow day the sledge's 8 km/h both ways and 2.7 t;
+/// no sledge row keeps the cart on snow; per tonne-km of road the sledge
+/// costs 0.857 of the cart (econ's -14 %, the pauses aside).
+int TestTheSledge() {
+  int failures = 0;
+  const core::CartSpecs specs{.cart_empty_kmh = 12.0F,
+                              .cart_loaded_kmh = 9.0F,
+                              .cart_load_kg = 1800.0F,
+                              .sledge_kmh = 8.0F,
+                              .sledge_load_kg = 2700.0F};
+  const core::CartGear cart = core::CartGearOf(specs, false);
+  const core::CartGear sledge = core::CartGearOf(specs, true);
+  failures += Expect(
+      !cart.sledge && cart.empty_kmh == 12.0F && cart.loaded_kmh == 9.0F && cart.load_kg == 1800.0F,
+      "sledge: a snowless day is the cart's");
+  failures += Expect(sledge.sledge && sledge.empty_kmh == 8.0F && sledge.loaded_kmh == 8.0F &&
+                         sledge.load_kg == 2700.0F,
+                     "sledge: a snow day is the sledge's, 8 km/h both ways and 1.5 x the load");
+  core::CartSpecs no_row = specs;
+  no_row.sledge_kmh = 0.0F;
+  no_row.sledge_load_kg = 0.0F;
+  failures += Expect(!core::CartGearOf(no_row, true).sledge,
+                     "sledge: with no sledge row a snow day stays the cart's");
+  core::WorldState world;
+  world.weather.snow_cover_days = 0;
+  const bool dry = core::SledgeDay(world);
+  world.weather.snow_cover_days = 3;
+  failures += Expect(!dry && core::SledgeDay(world) && core::CartGearToday(world, specs).sledge,
+                     "sledge: the door reads the snow cover of the day");
+  const auto per_tonne_km = [](const core::CartGear& gear) {
+    return (1.0F / gear.empty_kmh + 1.0F / gear.loaded_kmh) / gear.load_kg;
+  };
+  const float ratio = per_tonne_km(sledge) / per_tonne_km(cart);
+  std::cout << "  sledge: road-hours a tonne-km, sledge / cart = " << ratio << "\n";
+  failures += Expect(std::fabs(ratio - 0.857F) < 0.002F,
+                     "sledge: a tonne-km of road costs the sledge 0.857 of the cart");
   return failures;
 }
 
@@ -3111,6 +3152,7 @@ int main() {
   failures += TestPlot();
   failures += TestResidentActivity();
   failures += TestTheLoadedPace();
+  failures += TestTheSledge();
   failures += TestTheSiteSupplyQueue();
   failures += TestHorsesByUse();
   if (failures == 0) {

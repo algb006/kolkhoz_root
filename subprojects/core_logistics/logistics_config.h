@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "core_common/cargo_form.h"
+#include "core_common/cart_gear.h"
 #include "core_common/cold_housing.h"
 #include "core_common/haul.h"
 #include "core_common/logistics_state.h"
@@ -104,6 +105,11 @@ struct LogisticsConfig {
   std::uint32_t cart_passenger_seats = 0;
   float cart_load_kg = 750.0F;
 
+  /// THE SLEDGE (SL; core_common/cart_gear.h): transport.csv `sledge`; the
+  /// groom's plan draws a goods cart's trips at CartGearToday's paces with
+  /// CartSpecsOf(config).
+  SledgeSpecs sledge;
+
   /// What a back carries by the load's form, and the terms of logs by two
   /// (core_common/haul.h, PorterRules; core_catalog/porter_catalog.h) - the
   /// same reading labour and production hold. Until 0.37.240 a float here,
@@ -123,6 +129,15 @@ struct LogisticsConfig {
   /// will house a herd facing the cold goes first among the supply.
   ColdHousing cold_housing;
 };
+
+/// @brief The cart's and the sledge's numbers of this config (SL; cart_gear.h).
+inline CartSpecs CartSpecsOf(const LogisticsConfig& config) {
+  return CartSpecs{.cart_empty_kmh = config.harness_speed_kmh,
+                   .cart_loaded_kmh = config.loaded_speed_kmh,
+                   .cart_load_kg = config.cart_load_kg,
+                   .sledge_kmh = config.sledge.kmh,
+                   .sledge_load_kg = config.sledge.load_kg};
+}
 
 /// @brief Reads the config from the table set.
 /// @return false with `error` naming the table and the cell; a table set with

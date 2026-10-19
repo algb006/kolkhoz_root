@@ -21,6 +21,7 @@
 #include <string_view>
 #include <utility>
 
+#include "core_catalog/cart_specs_catalog.h"
 #include "core_catalog/porter_catalog.h"
 #include "core_catalog/supply_floor_catalog.h"
 #include "core_catalog/table_value.h"
@@ -670,7 +671,8 @@ bool ParseHeapShelves(const ITableSet& tables, LaborConfig& config, std::string&
 
 bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string& error) {
   if (!ReadPorterRules(tables, config.porter, error) ||
-      !ReadSupplyFloorRules(tables, config.supply_floor, error)) {
+      !ReadSupplyFloorRules(tables, config.supply_floor, error) ||
+      !ReadSledgeSpecs(tables, config.sledge, error)) {  // SL: the sledge
     return false;
   }
   if (const ITable* labor = tables.FindTable("labor")) {

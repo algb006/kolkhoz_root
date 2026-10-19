@@ -83,8 +83,9 @@ struct CartPace {
 
 CartPace PaceOf(const ProductionConfig& config, const WorldState& world) {
   const float bed = HaulBedFactor(config, world.weather);
-  const float empty_kmh = config.harness_speed_kmh * bed;
-  const float loaded_kmh = config.loaded_speed_kmh * bed;
+  const CartGear gear = CartGearToday(world, CartSpecsOf(config));  // SL: the sledge on snow
+  const float empty_kmh = gear.empty_kmh * bed;
+  const float loaded_kmh = gear.loaded_kmh * bed;
   return CartPace{
       .empty = empty_kmh > 0.0F ? static_cast<float>(kClockScale) / empty_kmh : 0.0F,
       .loaded = loaded_kmh > 0.0F ? static_cast<float>(kClockScale) / loaded_kmh : 0.0F};
@@ -223,7 +224,7 @@ std::vector<CartTour> PlanSupplyTours(const ProductionConfig& config, const Worl
       left.erase(left.begin() + static_cast<std::ptrdiff_t>(first_index));
       const Grams capacity = CartLoadGrams(
           config.porter,
-          config.cart_load_kg,
+          CartGearToday(world, CartSpecsOf(config)).load_kg,  // SL: the sledge's load on snow
           DefIdFromIndex<ResourceIdTag>(static_cast<std::uint32_t>(first.first_resource)));
       CartTour tour;
       tour.from = group.from;
