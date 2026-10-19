@@ -273,7 +273,15 @@ static_assert(AggregateArity<UnmannedRunRow>() == 10,
 // `road_index` (world_state.h): a loaded world starts it true and the first
 // re-plan hour scans once, finding what an unbroken run's scan finds. No save
 // number for a member the stream does not carry.
-static_assert(AggregateArity<WorldState>() == 50,
+// Save 173 (#993 C-1): the hands waiting for a horse, a day over the last
+// week, the fifty-first - two arrays of seven u16 after the migrants turned
+// away. Predicted before the build: HorseIdleWeek 28 bytes and two fields;
+// the section «world» +28, every other section unmoved.
+static_assert(sizeof(HorseIdleWeek) == 28,
+              "HorseIdleWeek changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<HorseIdleWeek>() == 2,
+              "HorseIdleWeek gained or lost a field — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<WorldState>() == 51,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 
@@ -632,6 +640,13 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   for (const std::uint8_t turned : world.arrivals_turned_away.per_day) {
     out.WriteU8(turned);
   }
+  // The hands waiting for a horse (save 173): seven u16 idle, seven listed.
+  for (const std::uint16_t idle : world.horse_idle_week.no_horse) {
+    out.WriteU16(idle);
+  }
+  for (const std::uint16_t listed : world.horse_idle_week.candidates) {
+    out.WriteU16(listed);
+  }
   // The jobs' runs of mornings with no hand (save 149): a count, then each
   // run's kind, its seven subject ids, its mornings and whether it was said.
   out.WriteU32(static_cast<std::uint32_t>(world.unmanned_runs.size()));
@@ -897,6 +912,19 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->arrivals_turned_away.last_day = in.ReadU32();
   for (std::uint8_t& turned : world->arrivals_turned_away.per_day) {
     turned = in.ReadU8();
+  }
+  // The hands waiting for a horse (save 173): no day idles more than it listed.
+  for (std::uint16_t& idle : world->horse_idle_week.no_horse) {
+    idle = in.ReadU16();
+  }
+  for (std::uint16_t& listed : world->horse_idle_week.candidates) {
+    listed = in.ReadU16();
+  }
+  for (std::uint32_t day = 0; day < kHorseIdleWeekDays; ++day) {
+    if (world->horse_idle_week.no_horse[day] > world->horse_idle_week.candidates[day]) {
+      source.Fail("a day of the horse-idle week idles more hands than it listed");
+      return;
+    }
   }
   // The jobs' runs of mornings with no hand (save 149): a count asked of the
   // bytes left first, each kind and flag by its range.

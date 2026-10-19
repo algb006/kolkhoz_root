@@ -278,3 +278,7 @@ hay_weathering_summer,0
 hay_weathering_autumn,0.10
 hay_weathering_winter,0.03
 hay_weathering_spring,0.10
+# «Лошадей не хватает» горит и тогда, когда руки ждут лошадь (#993 C-1; econ
+# аудит §3f): доля утренних простоев «нет лошади» в утренних списках за 7 суток
+# выше этой. STUB econ: 0,35 — по печати базы host (апрель 34 %, май 31 %); 0 — правило выключено
+too_few_horses_idle_share,0.35

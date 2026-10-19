@@ -2569,6 +2569,38 @@ int CheckTheTeamOnHayAndTooFewHorses() {
   failures += Expect(none_left.has_value() && none_left->herd.value == core::kInvalidEntityIdValue,
                      "too few horses: with no horse left it still burns, its subject invalid");
 
+  // AND THE HANDS WAITING FOR ONE (#993 C-1; horse_idle_week.h): no harness
+  // short at all, the week's mornings 100 listed a day - 40 idle for want of a
+  // horse a day lights it at the shipped 0.35, 30 does not, a rule at 0 is
+  // off; the teams short are the idle hands a day.
+  {
+    core::ProductionConfig idle_config = config;
+    idle_config.farming.too_few_horses_idle_share = 0.35F;
+    core::WorldState waiting = world;
+    waiting.traction_watch.week_harnessed.fill(0.0F);
+    waiting.traction_watch.week_horse_backed.fill(0.0F);
+    waiting.horse_idle_week.candidates.fill(100);
+    const auto lit_by = [&](const core::ProductionConfig& with) {
+      std::vector<core::Alarm> alarms;
+      core::CollectHerdAlarms(with, waiting, alarms);
+      for (const core::Alarm& alarm : alarms) {
+        if (alarm.kind == core::AlarmKind::kTooFewHorses) {
+          return std::optional<core::Alarm>(alarm);
+        }
+      }
+      return std::optional<core::Alarm>();
+    };
+    waiting.horse_idle_week.no_horse.fill(40);
+    const std::optional<core::Alarm> waits = lit_by(idle_config);
+    failures += Expect(waits.has_value() && waits->amount == 40,
+                       "too few horses: 40 % of the mornings idle for a horse lights it, 40 short");
+    failures += Expect(!lit_by(config).has_value(),
+                       "too few horses: the idle rule at 0 is off, the harness alone decides");
+    waiting.horse_idle_week.no_horse.fill(30);
+    failures += Expect(!lit_by(idle_config).has_value(),
+                       "too few horses: 30 % idle for a horse is under 0.35, silent");
+  }
+
   // AND IT SEES THE HAY (0.37.49; boss [49] p. 1): the four horses and one
   // more eat 5 kg of hay a stall day, seven stall months of four days - some
   // 140 kg; 100 kg lie and nothing was cut last year: the advice turns to

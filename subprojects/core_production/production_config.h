@@ -953,6 +953,13 @@ struct FarmingConfig {
   /// is the world before it.
   std::array<float, 4> hay_weathering_by_season = {0.0F, 0.0F, 0.0F, 0.0F};
 
+  /// farming.csv `too_few_horses_idle_share` (#993 C-1; econ's audit §3f):
+  /// the lamp «лошадей не хватает» also lights when the hands the mornings
+  /// left idle for want of a horse exceed this share of the mornings' lists
+  /// over the last seven days (horse_idle_week.h). STUB, econ's 0.35, set
+  /// on host's base print (April 34 %, May 31 %); 0 is the rule off.
+  float too_few_horses_idle_share = 0.0F;
+
   /// THE LIFE OF A SOWN GRASS STAND (grass_stand.csv; 0.37.212): one row a
   /// summer of the stand, counted from the summer it was sown; the LAST row
   /// stands for its summer and every later one. Read for a crop with

@@ -41,6 +41,7 @@
 #include "core_common/extraction_state.h"
 #include "core_common/family_state.h"
 #include "core_common/herd_state.h"
+#include "core_common/horse_idle_week.h"
 #include "core_common/horse_lamp_memory.h"
 #include "core_common/land_state.h"
 #include "core_common/ledger_state.h"
@@ -1124,6 +1125,11 @@ struct WorldState {
   /// no free house and no barrack place, read by the lamp «жилья не хватает»
   /// (kHousingShort, its condition (c)). SAVED (save 148).
   TurnedAwayYear arrivals_turned_away;
+
+  /// THE HANDS WAITING FOR A HORSE, a day over the last week
+  /// (horse_idle_week.h; #993 C-1): written by core_labor's morning
+  /// placement, read by the lamp «лошадей не хватает». SAVED (save 173).
+  HorseIdleWeek horse_idle_week;
 
   /// THE JOBS' RUNS OF MORNINGS WITH NO HAND (unmanned_run_state.h): written
   /// by labour's morning allocation, read by it to say kWorkGotNoHands on a

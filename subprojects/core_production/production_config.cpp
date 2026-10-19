@@ -491,6 +491,7 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
       {"hay_weathering_autumn", &farming.hay_weathering_by_season[1], 0.0F, 1.0F},
       {"hay_weathering_winter", &farming.hay_weathering_by_season[2], 0.0F, 1.0F},
       {"hay_weathering_spring", &farming.hay_weathering_by_season[3], 0.0F, 1.0F},
+      {"too_few_horses_idle_share", &farming.too_few_horses_idle_share, 0.0F, 1.0F},
       // BOTH HALVES OF BILLETING MOVED TO world_params.csv on 2026-09-16 and
       // are read by ParseProductionWorldParams below. They used to be split:
       // the yield factor here, the yard's places there — and the reason the

@@ -703,14 +703,38 @@ void CollectTeamAlarms(const ProductionConfig& config,
     working_days += watch.week_harnessed[day] > 0.0F ? 1U : 0U;
   }
   const float without = harnessed - horse_backed;
-  if (harnessed > 0.0F && without > kTooFewHorsesShare * harnessed) {
+  const bool harness_short = harnessed > 0.0F && without > kTooFewHorsesShare * harnessed;
+  // AND THE HANDS WAITING FOR ONE (#993 C-1; horse_idle_week.h; econ's audit
+  // §3e-§3f): the placement never makes a horse job without a horse - it
+  // leaves the hand idle - so the harness share stayed dark while the hands
+  // waited. Over the week: idle for want of a horse against the mornings'
+  // lists, above farming.csv too_few_horses_idle_share.
+  std::uint32_t idle_no_horse = 0;
+  std::uint32_t listed = 0;
+  std::uint32_t idle_days = 0;
+  for (std::uint32_t day = 0; day < kHorseIdleWeekDays; ++day) {
+    idle_no_horse += world.horse_idle_week.no_horse[day];
+    listed += world.horse_idle_week.candidates[day];
+    idle_days += world.horse_idle_week.no_horse[day] > 0 ? 1U : 0U;
+  }
+  const float idle_share = config.farming.too_few_horses_idle_share;
+  const bool hands_wait =
+      idle_share > 0.0F && listed > 0 &&
+      static_cast<float>(idle_no_horse) > idle_share * static_cast<float>(listed);
+  if (harness_short || hands_wait) {
     Alarm too_few;
     too_few.kind = AlarmKind::kTooFewHorses;
     if (team != kNoRow) {
       too_few.herd = world.herds.row_ids[team];
     }
+    // TEAMS SHORT A DAY: the harness's jobs done without a horse, or - lit
+    // by the waiting hands alone - the hands a morning left idle for one,
+    // a horse to a hand (the harness counts a horse a job the same way).
     too_few.amount =
-        static_cast<std::int64_t>(std::lround(without / static_cast<float>(working_days)));
+        harness_short
+            ? static_cast<std::int64_t>(std::lround(without / static_cast<float>(working_days)))
+            : static_cast<std::int64_t>(std::lround(static_cast<float>(idle_no_horse) /
+                                                    static_cast<float>(std::max(idle_days, 1U))));
     // AND IT SEES THE HAY (0.37.49; boss-core-epoch1-resume [49] p. 1): the
     // novice bought at this advice 22 -> 34 -> 49 horses against a hay
     // ceiling of 44-46, and the herds starved in year 4, 10 horses and 7

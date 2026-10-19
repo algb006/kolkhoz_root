@@ -36,7 +36,9 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
 #include <optional>
 #include <span>
@@ -189,6 +191,7 @@ class LimitPolicy {
     if (!ready_) {
       return;
     }
+    BuyOnTheHorseLamp(simulation, world, alarms);
     if (cooldown_ > 0) {
       --cooldown_;
       return;
@@ -209,6 +212,10 @@ class LimitPolicy {
               << "logs lay felled on " << days_logs_lay_ << " days of " << days_watched_
               << (hold_timber_while_logs_lie_ ? " — the timber lot was held back on those\n"
                                               : " — the timber lot was NOT held back on those\n");
+    if (horse_lamp_buy_) {
+      std::cout << run << ": #993 C-2 - the run's chairman bought " << lamp_horses_bought_
+                << " horse lots on the lamp «лошадей не хватает» with hay for one more\n";
+    }
     hay_.Report(run);
     delivery_.Report(run);
     std::cout << run << ": the hay lamp's advice over " << advice_.yellow_days
@@ -885,6 +892,41 @@ class LimitPolicy {
     return true;
   }
 
+  /// THE HORSE LAMP ANSWERED AS A PLAYER WOULD (#993 C-2; econ's audit §3e):
+  /// one horse lot when «лошадей не хватает» stands with hay for one more head
+  /// (its `lamp` 1: the herds' forecast with one head more is not short), at
+  /// most one in kHorseLampBuyDays, within the points. Until C-2 the canon
+  /// bought horses only below a pair (BuyBackTheTeam). OFF unless the
+  /// environment says KOLKHOZ_HORSE_LAMP_BUY=1: the pair's base is main.
+  void BuyOnTheHorseLamp(core::ISimulation& simulation,
+                         const core::WorldState& world,
+                         const std::vector<core::Alarm>& alarms) {
+    if (!horse_lamp_buy_ || horse_lot_ == core::kNoTableRow) {
+      return;
+    }
+    const auto today = static_cast<std::int64_t>(world.calendar.day);
+    if (last_lamp_buy_day_ >= 0 && today - last_lamp_buy_day_ < kHorseLampBuyDays) {
+      return;
+    }
+    const bool lit_with_hay = std::ranges::any_of(alarms, [](const core::Alarm& alarm) {
+      return alarm.kind == core::AlarmKind::kTooFewHorses && alarm.lamp != 0;
+    });
+    if (!lit_with_hay || catalog_.lots[horse_lot_].points > world.limit.points) {
+      return;
+    }
+    std::uint32_t sires = 0;
+    for (const core::HerdRow& herd : world.herds.rows) {
+      sires += herd.kind.value == horse_kind_ ? herd.adult_male_count : 0U;
+    }
+    core::OrderRow order;
+    order.kind = core::OrderKind::kOrderLimitLot;
+    order.lot = core::LimitLotId{static_cast<std::uint16_t>(horse_lot_)};
+    order.male = sires == 0 ? 1U : 0U;
+    simulation.StageOrders(std::span<const core::OrderRow>(&order, 1), {});
+    last_lamp_buy_day_ = today;
+    ++lamp_horses_bought_;
+  }
+
   bool NextOrder(const core::WorldState& world, core::OrderRow& order) const {
     if (BuyBackTheTeam(world, order)) {
       return true;  // before anything a building site wants: the plough first
@@ -912,6 +954,29 @@ class LimitPolicy {
   std::uint32_t horse_lot_ = core::kNoTableRow;
   bool ready_ = false;
   std::uint32_t cooldown_ = 0;
+
+  /// #993 C-2: on by KOLKHOZ_HORSE_LAMP_BUY=1; the last day it bought, the
+  /// lots it bought, and the spacing (econ: at most one a week).
+  bool horse_lamp_buy_ = HorseLampBuyFromEnvironment();
+  std::int64_t last_lamp_buy_day_ = -1;
+  std::uint32_t lamp_horses_bought_ = 0;
+  static constexpr std::int64_t kHorseLampBuyDays = 7;
+
+  static bool HorseLampBuyFromEnvironment() {
+#ifdef _MSC_VER
+    char* value = nullptr;
+    std::size_t length = 0;
+    if (_dupenv_s(&value, &length, "KOLKHOZ_HORSE_LAMP_BUY") != 0 || value == nullptr) {
+      return false;
+    }
+    const bool on = std::string_view(value) == "1";
+    std::free(value);
+    return on;
+#else
+    const char* const value = std::getenv("KOLKHOZ_HORSE_LAMP_BUY");
+    return value != nullptr && std::string_view(value) == "1";
+#endif
+  }
 
   /// The answer to the herds' hay yellow (hay_answer.h).
   HayAnswer hay_;

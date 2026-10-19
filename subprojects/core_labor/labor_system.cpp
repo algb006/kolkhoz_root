@@ -518,6 +518,11 @@ class LaborSystem final : public ILaborSystem {
     // orders with it. work_orders.h promises the opposite: a standing order
     // whose target has no work today leaves its man IDLE, not unassigned.
     const std::vector<AssignmentJob> jobs = CollectJobs(current);
+    // The book's two counters before this morning (#993 C-1): what the
+    // morning adds is the week's slot below.
+    const std::uint32_t no_horse_before =
+        book.idle_person_days[static_cast<std::size_t>(IdleReason::kNoHorse)];
+    const std::uint32_t candidates_before = book.candidate_person_days;
     // WHY NOT PLACED (save 102; YearLedger::idle_person_days): the morning's
     // plan only, as the road's blocked job-days. Resting adults are counted
     // by the list itself; with no job at all, everybody on the list is idle
@@ -642,6 +647,19 @@ class LaborSystem final : public ILaborSystem {
         }
         book.reaping_today_hands = free_hands;
       }
+    }
+    // THE HANDS WAITING FOR A HORSE THIS MORNING (#993 C-1;
+    // horse_idle_week.h): the book's own increments, today's slot, every
+    // morning - noughts on a morning with nobody on the list.
+    {
+      const std::uint32_t slot = current.calendar.day % kHorseIdleWeekDays;
+      const auto clamp16 = [](std::uint32_t value) {
+        return static_cast<std::uint16_t>(std::min<std::uint32_t>(value, 0xFFFFU));
+      };
+      current.horse_idle_week.no_horse[slot] = clamp16(
+          book.idle_person_days[static_cast<std::size_t>(IdleReason::kNoHorse)] - no_horse_before);
+      current.horse_idle_week.candidates[slot] =
+          clamp16(book.candidate_person_days - candidates_before);
     }
     // AND THE CHAIRMAN OVERRULES THE ACCOUNTANT, last and without argument
     // (delegation design §7, management by exception). It is done after the

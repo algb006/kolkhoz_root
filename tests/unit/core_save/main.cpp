@@ -742,6 +742,11 @@ core::WorldState MakeWorld() {
   world.arrivals_turned_away.last_day = 300;
   world.arrivals_turned_away.per_day[2] = 1;
   world.arrivals_turned_away.per_day[44] = 3;
+  // The hands waiting for a horse (save 173): two days apart, one past a
+  // byte, so a codec that wrote u8 is seen.
+  world.horse_idle_week.no_horse[1] = 7;
+  world.horse_idle_week.candidates[1] = 300;
+  world.horse_idle_week.candidates[6] = 41;
   // The jobs' runs of mornings with no hand (save 149): two, every id and
   // count off its default, the second one said.
   world.unmanned_runs.resize(2);
@@ -1578,6 +1583,13 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   for (const std::uint8_t turned : world.arrivals_turned_away.per_day) {
     chunks.push_back({"arrivals_turned_away.per_day", U8(turned)});
   }
+  // Save 173: the hands waiting for a horse - seven u16 idle, seven listed.
+  for (const std::uint16_t idle : world.horse_idle_week.no_horse) {
+    chunks.push_back({"horse_idle_week.no_horse", U16(idle)});
+  }
+  for (const std::uint16_t listed : world.horse_idle_week.candidates) {
+    chunks.push_back({"horse_idle_week.candidates", U16(listed)});
+  }
   // Save 149: the jobs' runs — a count, then each run's fields in order.
   chunks.push_back(
       {"unmanned_runs.count", U32(static_cast<std::uint32_t>(world.unmanned_runs.size()))});
@@ -1799,7 +1811,10 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // Save 167 (#1040): the thin year by the field plan, four u8, a float, two
     // Grams: 929 -> 953, predicted before the build and held; the hash read
     // off it.
-    {"world", 953, 0xad2a2874d296a758ULL},
+    // Save 173 (#993 C-1): the hands waiting for a horse, two arrays of seven
+    // u16: 953 -> 981, predicted (+28) before the build and held; the hash
+    // read off it.
+    {"world", 981, 0xee3da57e6e44cd75ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2578,6 +2593,10 @@ int main() {
                          loaded.arrivals_turned_away.per_day[44] == 3 &&
                          loaded.arrivals_turned_away.per_day[0] == 0,
                      "the migrants turned away come back, day and counts in place (save 148)");
+  failures += Expect(
+      loaded.horse_idle_week.no_horse[1] == 7 && loaded.horse_idle_week.candidates[1] == 300 &&
+          loaded.horse_idle_week.candidates[6] == 41 && loaded.horse_idle_week.no_horse[0] == 0,
+      "the hands waiting for a horse come back, days in place (save 173)");
   failures += Expect(loaded.unmanned_runs.size() == 2 &&
                          loaded.unmanned_runs[0].kind == core::WorkKind::kPlowing &&
                          loaded.unmanned_runs[0].field.value == 3 &&
