@@ -47,6 +47,7 @@
 #include <cstdint>
 #include <optional>
 
+#include "core_common/geometry.h"
 #include "core_common/ids.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table.h"
@@ -233,6 +234,32 @@ struct HerdRow {
   /// Unmet care has no consequence yet — that STUB ties into feeding
   /// (stage 6). Zero for household-standing herds (see @file).
   float care_days_remaining = 0.0F;
+
+  // -- the milk leg (#1056 C1.1; logistics_state.h, kMilkLeg; save 170) ----
+
+  /// Cart-days of the barn -> store leg left today: written after the
+  /// milking from the milk the barn holds (production, FarmingConfig::
+  /// milk_at_barn), drained by the hauling on it, nought with no switch.
+  float leg_days_remaining = 0.0F;
+
+  /// What `leg_days_remaining` was written at, for the settle's share done.
+  float leg_days_written = 0.0F;
+
+  /// The day's leg as the milking priced it: the evening writes tomorrow's
+  /// estimate from it, so the morning's placement sees a leg to crew.
+  float leg_days_priced = 0.0F;
+
+  /// The leg's receiver: the store the village keeps milk in.
+  Vec2 leg_to;
+
+  /// The resource the leg carts (the milk); invalid with no leg.
+  ResourceId leg_resource;
+
+  /// 1 when the leg is carried ON FOOT, the cans in hand (#1056 C1.3; econ's
+  /// §C1.3 (ii-b); save 172): the leg was priced at a walker's trip and its
+  /// job asks no horse. 0 - by cart, only where the standard day holds fewer
+  /// walks than labor.csv `walker_min_trips_per_day` (milk_cart.cpp).
+  std::uint8_t leg_on_foot = 0;
 
   /// THE WAIT A HEAD OF IT STANDS IN (save 138; architecture §7ж³; routing
   /// stage B, B6): a riding horse spending the night at its worker's yard

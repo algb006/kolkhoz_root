@@ -78,8 +78,10 @@ void ConsumeIssueNormOrders(const FoodConfig& config, WorldState& current);
 /// @brief What is free to hand out of `resource`: what lies in the stores,
 /// less what standing works hold back, minus `reserve` (SealedFunds).
 /// Never negative. THE one reading of "free" for the distribution, the
-/// ration and the default issue norm.
-Grams FreeIssueStock(const WorldState& world,
+/// ration and the default issue norm. «The stores» are the units the issue
+/// may take from (FoodConfig::issue_source; #1056 C1.1 (b)).
+Grams FreeIssueStock(const FoodConfig& config,
+                     const WorldState& world,
                      const std::vector<Grams>& reserve,
                      ResourceId resource);
 
@@ -87,7 +89,8 @@ Grams FreeIssueStock(const WorldState& world,
 /// what a harvest fills first, before any of it is free (#1046 (b), arm C+).
 /// Nought when the stores hold the funds or more. The other side of
 /// FreeIssueStock's floor.
-Grams IssueStockBelowReserve(const WorldState& world,
+Grams IssueStockBelowReserve(const FoodConfig& config,
+                             const WorldState& world,
                              const std::vector<Grams>& reserve,
                              ResourceId resource);
 

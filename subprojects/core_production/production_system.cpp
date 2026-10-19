@@ -68,6 +68,7 @@
 #include "production_alarms.h"
 #include "production_config.h"
 #include "production_orders.h"
+#include "rick_supply.h"
 #include "seed_room.h"
 #include "stock_lights.h"
 #include "stock_ops.h"
@@ -291,6 +292,8 @@ class ProductionSystem final : public IProductionSystem {
     // does the same and writes tomorrow's demand.
     if (HourFromTick(current.calendar.tick) + 1U < kTicksPerDay) {
       DeliverCartedLoads(config_, current);
+      SettleMilkLegs(config_, current, false);
+      SettleRickSupply(config_, current);
     }
     // THE CUT'S DRY WORKING DAY, for the hay lamp's pace (lever 1;
     // herd_forecast.h) - COUNTED AT NOON, not at the day's last tick: a day
@@ -309,12 +312,19 @@ class ProductionSystem final : public IProductionSystem {
       SettleSiteHauling(config_, current);
       // And the perevalka out of a store being emptied (field_haul.h).
       SettleStoreEmptying(config_, current);
+      // And the milk leg's last hour, and its close (#1056 C1.1).
+      SettleMilkLegs(config_, current, true);
       // And the materials on their way to the sites (routing stage V2).
       SettleSiteSupply(config_, current, true);
       // And the timber lots the village fetches from the district centre
       // (decision 279, 0.36.17; field_haul.h) - and since В5 any lot by own
       // carts and the plan's own delivery going out.
       SettleDistrictLotHauling(config_, current);
+      // And the ricks' supply rick -> rick: the day's last hour, then
+      // tomorrow's price - after every carting into a rick above (#1056 C1.2;
+      // rick_supply.h), for the next morning's placement.
+      SettleRickSupply(config_, current);
+      PriceRickSupply(config_, current);
       // THE DISTRICT's CART FOR THE PLAN (routing stage В5; district_carts.h):
       // the month's last day collects the standing request, a mud day slips it.
       SettleDistrictCollection(config_, current);
@@ -464,6 +474,9 @@ class ProductionSystem final : public IProductionSystem {
     RunHerdDay(config_, current);
     RescaleHorseWorkForRation(config_, traction_ration_was, cold_draught_was, current);
     ShipMilkShare(config_, current);
+    // And the barn -> store leg of what the cart left (#1056 C1.1): priced
+    // now, offered from the hour-1 top-up, carried through the day.
+    PriceMilkLegs(config_, current);
     // After the herd day: its slaughter and cull are in the stores, and the
     // smokehouse asks for them this morning (processing_shops.h).
     OpenSameDayShops(config_, current);
@@ -616,6 +629,10 @@ class ProductionSystem final : public IProductionSystem {
 
   ResourceAmounts StandingHarvest(const WorldState& world) const override {
     return StandingHarvestOf(config_, world);
+  }
+
+  bool IsIssueSource(const UnitRow& unit) const override {
+    return config_.farming.milk_at_barn < 0.5F || IsTakenFrom(unit, config_);
   }
 
   void CollectStockForecast(const WorldState& completed,

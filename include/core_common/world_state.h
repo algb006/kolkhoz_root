@@ -1070,6 +1070,15 @@ struct WorldState {
   /// then builds one on the spot).
   std::shared_ptr<const RoadIndex> road_index;
 
+  /// A FIELD HEAP WAS BORN since the groom's last scan for heaps with no task
+  /// (#1056 C4; core_logistics logistics_tasks.h, AppendNewHeapTasks): set
+  /// where a heap is laid from nothing (production, PutOnHeap and the
+  /// straw's turn), cleared by the scan. The scan was every re-plan hour, a
+  /// full LoadsOf against the tasks - 1.05 s of 9.5 in the canon's step
+  /// clock. DERIVED and NOT SAVED: true in a fresh or loaded world, so the
+  /// first re-plan hour scans once, and a scan finds the same heaps in both.
+  bool heap_born = true;
+
   /// The quiet trades out tonight (crime design §9); SAVED.
   /// night_trade_state.h.
   NightOutingTable night_outings;

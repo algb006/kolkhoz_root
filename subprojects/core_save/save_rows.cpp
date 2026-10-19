@@ -263,7 +263,16 @@ static_assert(AggregateArity<FieldRow>() == 47,
 // after `supply_since_day`: the block's scalars 48 -> 51, padded to 56, and
 // 21 fields; the row 120 -> 128 of scalars beside the optional block's own
 // 56. Predicted before the build. On the wire +3 a block.
-static_assert(sizeof(UnitRow) == 128 + (3 * kAmountsSize) + sizeof(std::vector<SupplyLeg>) +
+// Save 171 (#1056 C1.2): the rick's supply, a block after the production
+// seam - predicted 32 (two ids 8, two floats 16, the grams 24, the threshold's
+// byte 25, padded to 32), the row 128 -> 160 of scalars and 21 fields, before
+// the build, and held. On the wire predicted +21 a unit and MISSED: +23 (4 +
+// 2 + 4 + 4 + 8 + 1 - the resource's def id is two bytes).
+static_assert(sizeof(RickSupplySeam) == 32,
+              "RickSupplySeam changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<RickSupplySeam>() == 6,
+              "RickSupplySeam gained or lost a field — update the codec and VERSION_SAVE");
+static_assert(sizeof(UnitRow) == 160 + (3 * kAmountsSize) + sizeof(std::vector<SupplyLeg>) +
                                      sizeof(std::optional<ConstructionState>),
               "UnitRow changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(std::optional<ConstructionState>) == sizeof(ConstructionState) + 8,
@@ -287,7 +296,7 @@ static_assert(AggregateArity<ConstructionState>() == 22,
               "ConstructionState gained or lost a field — update the codec and VERSION_SAVE");
 // Save 74: reserved_for_specialist, a byte beside `dead` — 18 fields. Save 157:
 // suspended_works (#715) — 20.
-static_assert(AggregateArity<UnitRow>() == 20,
+static_assert(AggregateArity<UnitRow>() == 21,
               "UnitRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 71: fed_share, the day's covered ration — 68 and nineteen fields,
 // predicted before the field was added and measured after. Save 76:
@@ -310,8 +319,17 @@ static_assert(AggregateArity<UnitRow>() == 20,
 // Save 142 (0.37.192): the fed days in a row, a u16 into the padding after
 // the adult males (offset 22) — 152 stays and thirty, predicted before the
 // build.
-static_assert(sizeof(HerdRow) == 152, "HerdRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<HerdRow>() == 30,
+// Save 170 (#1056 C1.1): the milk leg - two floats, a Vec2 and a ResourceId
+// after care_days_remaining - predicted 152 -> 168 and 34 fields before the
+// build. The size MISSED: the build reads 176 (the optional wait after them
+// aligns to 8, and the ResourceId's two bytes open a new word); the fields held.
+// Then leg_days_priced, a third float (the evening's estimate of tomorrow's
+// leg): into the padding, 176 unmoved and 35 fields - read off the build.
+// Save 172 (#1056 C1.3): leg_on_foot, a byte after leg_resource - predicted
+// into the word the ResourceId opened, 176 unmoved and 36 fields, +1 a herd on
+// the wire, before the build.
+static_assert(sizeof(HerdRow) == 176, "HerdRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<HerdRow>() == 36,
               "HerdRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-13: the felling mark — a stand id and a volume — took the order row
 // from 64 to 72 and the assignment's stand from 24 to 28 (and the resident
@@ -458,9 +476,14 @@ static_assert(AggregateArity<BarterTripRow>() == 9,
 // Save 158 (#734): over_fields, a switch after the u16 - predicted into the
 // padding before the floats (offset 42), 56 unmoved and sixteen fields, 48
 // bytes saved, before the build.
-static_assert(sizeof(LogisticsTaskRow) == 56,
+// Save 170 (#1056 C1.1): `herd`, an id after `unit` - predicted 56 -> 64 and
+// seventeen fields before the build (the u64 moves to the next 8).
+// Save 171 (#1056 C1.2): threshold_days, a byte after over_fields - predicted
+// into the padding before the floats (offset 51), 64 unmoved and
+// eighteen fields, +1 on the wire, before the build.
+static_assert(sizeof(LogisticsTaskRow) == 64,
               "LogisticsTaskRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<LogisticsTaskRow>() == 16,
+static_assert(AggregateArity<LogisticsTaskRow>() == 18,
               "LogisticsTaskRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 136 (0.37.177): the groom's plan — a leg six fields, a cart three, the
 // plan four (each holds vectors: its size is not a byte count, the codec
@@ -1400,6 +1423,13 @@ void WriteUnitRow(SaveSink& sink, const UnitRow& row) {
   WriteEntityId(out, row.parent);
   out.WriteFloat(row.production_days_remaining);
   out.WriteFloat(row.production_days_written);
+  // The rick's supply (#1056 C1.2; save 171).
+  WriteEntityId(out, row.rick_supply.from);
+  sink.WriteDefId(DefKind::kResource, row.rick_supply.resource.value);
+  out.WriteFloat(row.rick_supply.days_remaining);
+  out.WriteFloat(row.rick_supply.days_written);
+  out.WriteI64(row.rick_supply.grams);
+  out.WriteU8(row.rick_supply.threshold_days);
 }
 
 UnitRow ReadUnitRow(LoadSource& source) {
@@ -1430,6 +1460,17 @@ UnitRow ReadUnitRow(LoadSource& source) {
   row.parent = ReadEntityId<UnitId>(in);
   row.production_days_remaining = in.ReadFloat();
   row.production_days_written = in.ReadFloat();
+  // The rick's supply (#1056 C1.2; save 171).
+  row.rick_supply.from = ReadEntityId<UnitId>(in);
+  row.rick_supply.resource = ResourceId{source.ReadDefId(DefKind::kResource)};
+  row.rick_supply.days_remaining = in.ReadFloat();
+  row.rick_supply.days_written = in.ReadFloat();
+  row.rick_supply.grams = in.ReadI64();
+  row.rick_supply.threshold_days = in.ReadU8();
+  if (!(row.rick_supply.days_remaining >= 0.0F) || !(row.rick_supply.days_written >= 0.0F) ||
+      row.rick_supply.grams < 0) {
+    source.Fail("a rick's supply is negative or not a number");
+  }
   return row;
 }
 
@@ -1471,7 +1512,14 @@ void WriteHerdRow(SaveSink& sink, const HerdRow& row) {
   out.WriteU8(row.cold_nights);            // save 120
   out.WriteU8(row.cold_place_yesterday);   // save 120
   out.WriteFloat(row.care_days_remaining);
-  WriteWait(out, row.wait);  // save 138
+  // Save 170 (#1056 C1.1): the milk leg - its seam, written, receiver, resource.
+  out.WriteFloat(row.leg_days_remaining);
+  out.WriteFloat(row.leg_days_written);
+  out.WriteFloat(row.leg_days_priced);
+  WriteVec2(out, row.leg_to);
+  sink.WriteDefId(DefKind::kResource, row.leg_resource.value);
+  out.WriteU8(row.leg_on_foot);  // save 172 (#1056 C1.3)
+  WriteWait(out, row.wait);      // save 138
 }
 
 HerdRow ReadHerdRow(LoadSource& source) {
@@ -1512,6 +1560,16 @@ HerdRow ReadHerdRow(LoadSource& source) {
   row.cold_nights = in.ReadU8();           // save 120
   row.cold_place_yesterday = in.ReadU8();  // save 120
   row.care_days_remaining = in.ReadFloat();
+  row.leg_days_remaining = in.ReadFloat();  // save 170 (#1056 C1.1)
+  row.leg_days_written = in.ReadFloat();
+  row.leg_days_priced = in.ReadFloat();
+  row.leg_to = ReadVec2(in);
+  row.leg_resource = ResourceId{source.ReadDefId(DefKind::kResource)};
+  row.leg_on_foot = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "milk leg on foot"));
+  if (!(row.leg_days_remaining >= 0.0F) || !(row.leg_days_written >= 0.0F) ||
+      !(row.leg_days_priced >= 0.0F)) {
+    source.Fail("a herd's milk leg is negative or not a number");
+  }
   row.wait = ReadWait(source);  // save 138
   return row;
 }
@@ -1945,6 +2003,7 @@ void WriteLogisticsTaskRow(SaveSink& sink, const LogisticsTaskRow& row) {
   WriteEntityId(out, row.extraction_site);
   WriteEntityId(out, row.limit_delivery);
   WriteEntityId(out, row.unit);
+  WriteEntityId(out, row.herd);  // save 170 (#1056 C1.1): the milk leg's herd
   out.WriteU8(static_cast<std::uint8_t>(row.level));
   out.WriteU8(static_cast<std::uint8_t>(row.base_level));
   out.WriteU8(static_cast<std::uint8_t>(row.origin));
@@ -1953,6 +2012,7 @@ void WriteLogisticsTaskRow(SaveSink& sink, const LogisticsTaskRow& row) {
   out.WriteU64(row.urgent_since);
   out.WriteU16(row.unserved_light_hours);  // save 142
   out.WriteU8(row.over_fields ? 1U : 0U);  // save 158 (#734): «важнее полевых работ»
+  out.WriteU8(row.threshold_days);         // save 171 (#1056 C1.2): the rick's threshold
   out.WriteFloat(row.drained_on_foot);     // save 155: who drained the seam (#671)
   out.WriteFloat(row.drained_by_cart);
 }
@@ -1969,6 +2029,7 @@ LogisticsTaskRow ReadLogisticsTaskRow(LoadSource& source) {
   row.extraction_site = ReadEntityId<ExtractionSiteId>(in);
   row.limit_delivery = ReadEntityId<LimitDeliveryId>(in);
   row.unit = ReadEntityId<UnitId>(in);
+  row.herd = ReadEntityId<HerdId>(in);  // save 170 (#1056 C1.1)
   const auto top_level = static_cast<std::uint8_t>(kLogisticsLevelCount - 1U);
   row.level = static_cast<LogisticsLevel>(source.ReadEnumValue(0, top_level, "logistics level"));
   row.base_level =
@@ -1980,6 +2041,7 @@ LogisticsTaskRow ReadLogisticsTaskRow(LoadSource& source) {
   row.urgent_since = in.ReadU64();
   row.unserved_light_hours = in.ReadU16();                                     // save 142
   row.over_fields = source.ReadEnumValue(0, 1, "logistics over fields") != 0;  // save 158 (#734)
+  row.threshold_days = in.ReadU8();                                            // save 171
   row.drained_on_foot = in.ReadFloat();                                        // save 155 (#671)
   row.drained_by_cart = in.ReadFloat();
   if (!(row.drained_on_foot >= 0.0F) || !(row.drained_by_cart >= 0.0F)) {

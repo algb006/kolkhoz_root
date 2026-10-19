@@ -418,6 +418,17 @@ class IProductionSystem {
   /// will share from its day.
   /// @note A pure read; called by residents between steps (the alarms).
   virtual ResourceAmounts StandingHarvest(const WorldState& world) const = 0;
+
+  /// @brief Whether the residents' issue, ration and advance may take from
+  /// `unit` (#1056 C1.1 (b); boss, the #1056 thread [6]-[7]): ONE rule for
+  /// «what can be taken» with production's takers (stock_ops.h, IsTakenFrom:
+  /// built and a store of goods). Under farming.csv `milk_at_barn` 0 every
+  /// unit answers yes, as the residents read before 0.37.298 - measured on
+  /// the base: none of their grams came from a non-store in 117
+  /// village-years.
+  /// @note A pure read; called by residents in the decisions slot and between
+  /// steps.
+  virtual bool IsIssueSource(const UnitRow& unit) const = 0;
 };
 
 /// @brief Creates the production subsystem.

@@ -35,28 +35,40 @@
 namespace core {
 namespace {
 
-/// @brief Grams of a resource lying in every unit of the settlement.
-Grams VillageStock(const WorldState& world, ResourceId resource) {
+/// @brief Whether the issue may take from `unit` (FoodConfig::issue_source;
+/// #1056 C1.1 (b)): every unit when the assembly bound nothing.
+bool IssueSource(const FoodConfig& config, const UnitRow& unit) {
+  return !config.issue_source || config.issue_source(unit);
+}
+
+/// @brief Grams of a resource lying in the units the issue may take from.
+Grams VillageStock(const FoodConfig& config, const WorldState& world, ResourceId resource) {
   if (resource.value == kInvalidDefIdValue) {
     return 0;
   }
   Grams total = 0;
   for (const UnitRow& unit : world.units.rows) {
     // Less what a standing unit's works hold back (boss, parcel 294).
-    total += UnreservedOf(unit, resource);
+    if (IssueSource(config, unit)) {
+      total += UnreservedOf(unit, resource);
+    }
   }
   return total;
 }
 
-/// @brief Takes up to `wanted` grams out of the unit stocks, in row order.
+/// @brief Takes up to `wanted` grams out of the stocks the issue may take
+/// from, in row order.
 /// @return What was actually taken; never more than lies there.
-Grams TakeFromUnits(WorldState& world, ResourceId resource, Grams wanted) {
+Grams TakeFromUnits(const FoodConfig& config,
+                    WorldState& world,
+                    ResourceId resource,
+                    Grams wanted) {
   if (resource.value == kInvalidDefIdValue || wanted <= 0) {
     return 0;
   }
   Grams taken = 0;
   for (UnitRow& unit : world.units.rows) {
-    if (taken >= wanted || unit.stock.size() <= resource.value) {
+    if (taken >= wanted || unit.stock.size() <= resource.value || !IssueSource(config, unit)) {
       continue;
     }
     const Grams free = UnreservedOf(unit, resource);
@@ -281,9 +293,12 @@ std::vector<Grams> IssueReserve(const FoodConfig& config, const WorldState& worl
 }
 
 /// @brief What is free to hand out: what lies in the stores minus the funds.
-Grams FreeStock(const WorldState& world, const std::vector<Grams>& reserve, ResourceId resource) {
+Grams FreeStock(const FoodConfig& config,
+                const WorldState& world,
+                const std::vector<Grams>& reserve,
+                ResourceId resource) {
   const Grams held = resource.value < reserve.size() ? reserve[resource.value] : 0;
-  const Grams free_stock = VillageStock(world, resource) - held;
+  const Grams free_stock = VillageStock(config, world, resource) - held;
   return free_stock > 0 ? free_stock : 0;
 }
 
@@ -383,7 +398,7 @@ BundleCover CoverBundle(const FoodConfig& config,
     // reaping alike, from the turn (fund_ladder.h, PlanRungGrams); everything
     // above the reserve goes out on trudodni.
     const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
-    const Grams free_stock = FreeStock(current, reserve, resource);
+    const Grams free_stock = FreeStock(config, current, reserve, resource);
     const float pool = static_cast<float>(free_stock) * food.issue_share_of_stock;
     const float given = asked > 0.0F ? std::min(pool, asked) : 0.0F;
     cover.coverage[index] = given / static_cast<float>(wanted[index]);
@@ -520,7 +535,7 @@ void RunDistribution(const FoodConfig& config,
       // shortfall, and nothing when they were whole.
       // What the store could actually give, not what the norm asked for:
       // the ledger records the hand-out, not the intention.
-      const Grams given = TakeFromUnits(current, resource, issue);
+      const Grams given = TakeFromUnits(config, current, resource, issue);
       AddToPantry(family, resource, given);
       AddLedgerAmount(current.ledger.current.issued, resource, given);
     }
@@ -577,9 +592,9 @@ void RunRation(const FoodConfig& config,
       }
       const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
       const Grams wanted = KilogramsToGrams(norm * static_cast<float>(eaters) * days);
-      const Grams free_stock = FreeStock(current, reserve, resource);
+      const Grams free_stock = FreeStock(config, current, reserve, resource);
       const Grams issue = wanted < free_stock ? wanted : free_stock;
-      const Grams given = TakeFromUnits(current, resource, issue);
+      const Grams given = TakeFromUnits(config, current, resource, issue);
       AddToPantry(current.families.rows[row], resource, given);
       AddLedgerAmount(current.ledger.current.ration, resource, given);
       given_anything = given_anything || given > 0;
@@ -651,6 +666,7 @@ void RunHouseholdAdvance(const FoodConfig& config,
       }
       const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
       const Grams given = TakeFromUnits(
+          config,
           current,
           resource,
           static_cast<Grams>(static_cast<float>(wanted[index]) * cover.coverage[index]));
@@ -784,17 +800,19 @@ void BurnTrudodni(WorldState& current) {
 
 }  // namespace
 
-Grams FreeIssueStock(const WorldState& world,
+Grams FreeIssueStock(const FoodConfig& config,
+                     const WorldState& world,
                      const std::vector<Grams>& reserve,
                      ResourceId resource) {
-  return FreeStock(world, reserve, resource);
+  return FreeStock(config, world, reserve, resource);
 }
 
-Grams IssueStockBelowReserve(const WorldState& world,
+Grams IssueStockBelowReserve(const FoodConfig& config,
+                             const WorldState& world,
                              const std::vector<Grams>& reserve,
                              ResourceId resource) {
   const Grams held = resource.value < reserve.size() ? reserve[resource.value] : 0;
-  const Grams below = held - VillageStock(world, resource);
+  const Grams below = held - VillageStock(config, world, resource);
   return below > 0 ? below : 0;
 }
 
@@ -899,10 +917,10 @@ std::vector<std::pair<ResourceId, Grams>> LockedRationFood(const FoodConfig& con
       continue;  // not a ration position: its absence starves nobody
     }
     const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
-    const Grams stock = VillageStock(world, resource);
+    const Grams stock = VillageStock(config, world, resource);
     const Grams held = index < reserve.size() ? reserve[index] : 0;
     const Grams in_funds = held < stock ? held : stock;
-    if (FreeStock(world, reserve, resource) <= 0 && in_funds > 0) {
+    if (FreeStock(config, world, reserve, resource) <= 0 && in_funds > 0) {
       locked.emplace_back(resource, in_funds);
     }
   }

@@ -733,6 +733,32 @@ struct FarmingConfig {
   /// STUB 39, econ's (CLAUDE.md §9: ~39 working days a year in Epoch I).
   float team_need_first_year_working_days = 39.0F;
 
+  /// THE MILK LEG (#1056 C1.1; econ's stage C contract 574c366; boss, the
+  /// #1056 thread [4], [7]; farming.csv `milk_at_barn`): 1 - the kolkhoz
+  /// herds' milk goes into the barn's own stock, the district's cart takes
+  /// its share there, and the rest reaches the store the village keeps milk
+  /// in only by the barn -> store leg (herd care, worked on rest days); 0 -
+  /// the milk goes straight to that store, as before 0.37.298.
+  /// STUB 0 (#1070; boss, the #1056 thread after [18]): THE LEG DOES NOT SHIP.
+  /// Carted, its 9 170 year-1 horse-hours went unfed by the oat plan (team
+  /// short-ration village-days +23 %, novice 27 x 3); on foot (C1.3) a
+  /// 1.4-1.8 km leg is ~7.7 game hours a round trip, under two trips a day,
+  /// and the yards' milk fell 24 %. RETURNS WHEN (iii): the food yard becomes
+  /// milk's store, near the cattle yard in the reference layout - decided
+  /// with #1061's layout re-measure - and the leg's pair is run again.
+  float milk_at_barn = 0.0F;
+
+  /// THE RICK'S SUPPLY (#1056 C1.2; econ's stage C contract 574c366;
+  /// farming.csv `rick_supply`, `rick_threshold_add_days`): 1 - a rick whose
+  /// herds' hay falls below its threshold within the threshold's days is
+  /// supplied by cart from the rick with the most hay to spare
+  /// (rick_supply.h); 0 - no rick is supplied but by the meadows' stacks, as
+  /// before 0.37.301. The threshold: the urgent check's horizon
+  /// (UrgentHayHorizonDays) plus `rick_threshold_add_days` - STUB 7, the
+  /// contract's. STUB 0 until the pair says otherwise.
+  float rick_supply = 0.0F;
+  float rick_threshold_add_days = 7.0F;
+
   /// The pasture season, 0-based months inclusive: outside it a head takes
   /// nothing from the grass and its whole norm comes out of the stores.
   /// ASSUMPTION — the design names summer grazing but no month band.
@@ -1248,6 +1274,13 @@ struct ProductionConfig {
   /// (day_off.h, UrgentHayHorizonDays; feed_home.h, RickForLoadAt). The cell
   /// has one home, the table; labour's reader is LaborConfig's.
   float hay_cart_urgent_days = 1.0F;
+
+  /// labor.csv `walker_min_trips_per_day`, read here too (#1056 C1.3): the
+  /// milk leg goes on foot unless the standard day holds fewer round trips
+  /// of the walk than this (milk_cart.cpp, PriceMilkLegs) - the same cell
+  /// the placement's last pass asks of a walker (assignment.h). One home,
+  /// the table.
+  float walker_min_trips_per_day = 2.0F;
 
   // -- shelf life (task A4; transport design §10) --------------------------
   /// Game days a resource keeps, by ResourceId — resources.csv `spoil_days`,

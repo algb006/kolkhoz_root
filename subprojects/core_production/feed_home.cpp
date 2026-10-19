@@ -18,11 +18,7 @@
 #include "stock_ops.h"
 
 namespace core {
-namespace {
 
-/// A rick the herds EAT from: a built outline whose type is hay's home. Not
-/// HomeOutlineAccepts - a rick being emptied is nobody's home for a delivery
-/// and still the rick its farm eats down.
 bool IsRickToEatFrom(const UnitRow& unit, const ProductionConfig& config) {
   if (unit.dead != 0 || unit.level == 0 || unit.type.value >= config.unit_types.size() ||
       StorageCapacityGrams(unit, config) >= 0) {
@@ -32,6 +28,12 @@ bool IsRickToEatFrom(const UnitRow& unit, const ProductionConfig& config) {
   return std::ranges::any_of(
       homes, [&config](ResourceId held) { return held.value == config.hay_resource.value; });
 }
+
+namespace {
+
+/// Hay enough for any herd's day, kg: the full rick a herd's lack is asked
+/// against (DrainRicks, #1056 C1.2).
+constexpr float kAmpleKg = 1.0e9F;
 
 /// The way a load takes in this village: the cart's, or the carrier's when no
 /// horse is harnessed (HeapRickRow's own choice until this step).
@@ -137,6 +139,11 @@ struct BoundHerd {
 struct RickDays {
   std::uint32_t rick_row = kNoRow;
   std::uint32_t short_day = 0;
+  /// The hay its herds lacked over the drain, kg - their shortfall in feed
+  /// units at hay's value, on the days they were short (#1056 C1.2).
+  float missing_kg = 0.0F;
+  /// The rick's hay left at the drain's end, kg (#1056 C1.2).
+  float left_kg = 0.0F;
 };
 
 /// THE RICKS' DRAIN: the herds standing today fed day by day by the
@@ -231,7 +238,12 @@ std::vector<RickDays> DrainRicks(const ProductionConfig& config,
           held_kg[resource] = own.kg[resource] + (one_pool ? 0.0F : rick.kg[resource]);
         }
       }
+      // The cells as the herd came to them - for the hay it would have eaten
+      // with its rick full (#1056 C1.2, below).
+      const std::vector<float> came_to = held_kg;
       DrainFeedDay(config, peoples_foods, std::span<const FeedDayNeed>(&need, 1), held_kg, covered);
+      const float hay_eaten =
+          came_to[config.hay_resource.value] - held_kg[config.hay_resource.value];
       bool pool_out = true;
       for (std::size_t resource = 0; resource < bound.size(); ++resource) {
         if (bound[resource] == 0) {
@@ -258,8 +270,23 @@ std::vector<RickDays> DrainRicks(const ProductionConfig& config,
       // SHORT, as the village's question words it (StoredHayShortWithin): the
       // bound feeds are out AND a herd that eats them is not fed in full.
       if (entry.eats_bound && pool_out && covered[0] + kFedSlackUnits < need.units) {
+        // THE HAY IT LACKED, by the same drain with the rick full: what it
+        // would have eaten less what it ate. Not the day's shortfall at
+        // hay's feed value - that counted the oats and every feed hay does
+        // not stand in for, and priced ten horses' nine days at 15 t (the
+        // first unit check).
+        std::vector<float> full = came_to;
+        full[config.hay_resource.value] = kAmpleKg;
+        std::vector<float> covered_full;
+        DrainFeedDay(
+            config, peoples_foods, std::span<const FeedDayNeed>(&need, 1), full, covered_full);
+        const float would_eat = kAmpleKg - full[config.hay_resource.value];
         for (RickDays& short_rick : ricks) {
-          if (short_rick.rick_row == entry.rick_row && short_rick.short_day > day) {
+          if (short_rick.rick_row != entry.rick_row) {
+            continue;
+          }
+          short_rick.missing_kg += would_eat > hay_eaten ? would_eat - hay_eaten : 0.0F;
+          if (short_rick.short_day > day) {
             short_rick.short_day = day;
             some_short = true;
           }
@@ -269,6 +296,9 @@ std::vector<RickDays> DrainRicks(const ProductionConfig& config,
     if (stop_at_first && some_short) {
       break;
     }
+  }
+  for (RickDays& rick : ricks) {
+    rick.left_kg = PoolOf(pools, world, bound, rick.rick_row).kg[config.hay_resource.value];
   }
   return ricks;
 }
@@ -392,6 +422,19 @@ BoundTake TakeBoundFeed(const ProductionConfig& config,
                          resource,
                          wanted,
                          nullptr);
+}
+
+std::vector<RickHayAhead> RickHayWithin(const ProductionConfig& config,
+                                        const WorldState& world,
+                                        std::uint32_t days) {
+  std::vector<RickHayAhead> ricks;
+  for (const RickDays& rick : DrainRicks(config, world, days, false)) {
+    ricks.push_back(RickHayAhead{.rick_row = rick.rick_row,
+                                 .short_day = rick.short_day,
+                                 .missing_kg = rick.missing_kg,
+                                 .left_kg = rick.left_kg});
+  }
+  return ricks;
 }
 
 std::vector<ShortRick> ShortRicksWithin(const ProductionConfig& config,

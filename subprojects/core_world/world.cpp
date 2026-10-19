@@ -1128,6 +1128,11 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       // (#1046 (b); boss, the #1046 thread [12]) - production's.
       [estimate](const WorldState& world) {
         return estimate == nullptr ? ResourceAmounts{} : estimate->StandingHarvest(world);
+      },
+      // AND WHICH UNITS THE ISSUE MAY TAKE FROM (#1056 C1.1 (b)): one rule
+      // with production's takers.
+      [estimate](const UnitRow& unit) {
+        return estimate == nullptr || estimate->IsIssueSource(unit);
       });
   // THE ROAD TOOLS (delivery 7b, 7c): the map's obstacles, the road levels'
   // prices, the plot radii — one object, and construction is handed its
