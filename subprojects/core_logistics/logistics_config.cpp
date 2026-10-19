@@ -32,6 +32,8 @@ bool ParseLevels(const ITable& table, LogisticsConfig& config, std::string& erro
       "level_district_lot",
       "level_store_transfer",
       "level_site_supply",
+      "level_milk_leg",
+      "level_rick_supply",
   };
   for (std::uint32_t kind = 0; kind < kLogisticsLoadKindCount; ++kind) {
     float level = static_cast<float>(config.default_level[kind]);

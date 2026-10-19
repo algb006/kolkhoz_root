@@ -14,4 +14,11 @@
 /// @return The number of failed assertions; each prints a FAIL line.
 int CheckEachFarmEatsFromItsOwnRick();
 
+/// @brief Runs the checks of a rick's supply from another rick (#1056 C1.2;
+///        core_production's rick_supply.h): the same two farms - the price
+///        under the switch and without it, the sender, the threshold, and
+///        the settle moving the drained share.
+/// @return The number of failed assertions; each prints a FAIL line.
+int CheckARickIsSuppliedFromAnother();
+
 #endif  // TESTS_UNIT_CORE_PRODUCTION_FEED_HOME_CHECKS_H_

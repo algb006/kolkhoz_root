@@ -36,7 +36,10 @@ LoadAddress AddressOf(const LogisticsTaskRow& task) {
       return {task.load_kind, task.limit_delivery.value};
     case LogisticsLoadKind::kStoreTransfer:
     case LogisticsLoadKind::kSiteSupply:
+    case LogisticsLoadKind::kRickSupply:
       return {task.load_kind, task.unit.value};
+    case LogisticsLoadKind::kMilkLeg:
+      return {task.load_kind, task.herd.value};
     case LogisticsLoadKind::kLogisticsLoadKindCount:
       break;
   }
@@ -84,6 +87,22 @@ std::vector<LoadAddress> LoadsOf(const WorldState& world) {
   for (const std::uint32_t row : SiteSupplyOrder(world)) {
     loads.push_back({LogisticsLoadKind::kSiteSupply, world.units.row_ids[row].value});
   }
+  // THE MILK LEG (#1056 C1.1): one task a milked kolkhoz herd, standing while
+  // the herd has a leg at all - keyed on the herd, not on today's milk, which
+  // the herd day lays in the barn after this hour-0 sync.
+  for (std::uint32_t row = 0; row < world.herds.rows.size(); ++row) {
+    if (world.herds.rows[row].leg_resource.value != kInvalidDefIdValue) {
+      loads.push_back({LogisticsLoadKind::kMilkLeg, world.herds.row_ids[row].value});
+    }
+  }
+  // A RICK'S SUPPLY (#1056 C1.2): one task a receiving rick while its supply
+  // stands, by the labour's own condition (unit_state.h, RickSupplyStands).
+  for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+    const UnitRow& unit = world.units.rows[row];
+    if (RickSupplyStands(unit) && unit.rick_supply.grams > 0) {
+      loads.push_back({LogisticsLoadKind::kRickSupply, world.units.row_ids[row].value});
+    }
+  }
   return loads;
 }
 
@@ -109,7 +128,11 @@ LogisticsTaskRow TaskFor(const LogisticsConfig& config, const LoadAddress& load,
       break;
     case LogisticsLoadKind::kStoreTransfer:
     case LogisticsLoadKind::kSiteSupply:
+    case LogisticsLoadKind::kRickSupply:
       task.unit = UnitId{load.id};
+      break;
+    case LogisticsLoadKind::kMilkLeg:
+      task.herd = HerdId{load.id};
       break;
     case LogisticsLoadKind::kLogisticsLoadKindCount:
       break;
@@ -211,6 +234,33 @@ void SyncTasks(const LogisticsConfig& config,
       ++count.made;
     }
   }
+  // THE RICK'S THRESHOLD, copied as it was priced (#1056 C1.2): a second
+  // home that stores the value, bound to the rick's row every sync.
+  for (LogisticsTaskRow& task : current.logistics_tasks.rows) {
+    if (task.load_kind != LogisticsLoadKind::kRickSupply) {
+      continue;
+    }
+    const std::uint32_t row = FindRow(current.units, task.unit);
+    task.threshold_days = row != kNoRow ? current.units.rows[row].rick_supply.threshold_days : 0;
+  }
+}
+
+std::uint32_t AppendNewHeapTasks(const LogisticsConfig& config, WorldState& current, SimDay today) {
+  std::uint32_t made = 0;
+  for (const LoadAddress& load : LoadsOf(current)) {
+    if (load.kind != LogisticsLoadKind::kFieldHeap) {
+      continue;
+    }
+    bool tasked = false;
+    for (const LogisticsTaskRow& task : current.logistics_tasks.rows) {
+      tasked = tasked || Same(AddressOf(task), load);
+    }
+    if (!tasked) {
+      AppendRow(current.logistics_tasks, TaskFor(config, load, today));
+      ++made;
+    }
+  }
+  return made;
 }
 
 void MarkServed(WorldState& current, SimDay today, TaskDayCount& count) {

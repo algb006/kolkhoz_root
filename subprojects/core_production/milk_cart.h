@@ -55,6 +55,21 @@ void ShipMilkLeftover(const ProductionConfig& config, WorldState& current);
 /// before the spring's figure.
 void ShipMilkShare(const ProductionConfig& config, WorldState& current);
 
+/// @brief THE MILK LEG'S PRICE (#1056 C1.1; logistics_state.h, kMilkLeg):
+/// after the milking and the cart's share, under FarmingConfig::milk_at_barn,
+/// each barn holding milk gets one leg on its first milked kolkhoz herd - the
+/// cart-days (CartDaysFor) of its milk to the first store that takes milk
+/// (HerdRow::leg_days_remaining, leg_to, leg_resource). Every other herd's leg
+/// is cleared. Nothing without the switch.
+void PriceMilkLegs(const ProductionConfig& config, WorldState& current);
+
+/// @brief THE MILK LEG'S SETTLE: what the hauling drained off a herd's leg
+/// since the last settle becomes milk carried barn -> store (DeliverToStores),
+/// hourly and in the evening, as the perevalka settles (field_haul.h,
+/// SettleStoreEmptying). The evening closes the day's leg: what is left in the
+/// barn the cart takes before the next milking (ShipMilkLeftover).
+void SettleMilkLegs(const ProductionConfig& config, WorldState& current, bool evening);
+
 /// @brief kMilkAllToDebt while the milk debt stands and the position with it:
 /// the cart took every litre at the last milking and the yards' morning
 /// issue has no milk (boss, boss-core-epoch1-5 seq 7). A pure read.

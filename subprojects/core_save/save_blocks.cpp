@@ -269,7 +269,11 @@ static_assert(sizeof(UnmannedRunRow) == 36,
               "UnmannedRunRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<UnmannedRunRow>() == 10,
               "UnmannedRunRow gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<WorldState>() == 49,
+// #1056 C4: `heap_born`, the fiftieth - DERIVED and NOT WRITTEN, as
+// `road_index` (world_state.h): a loaded world starts it true and the first
+// re-plan hour scans once, finding what an unbroken run's scan finds. No save
+// number for a member the stream does not carry.
+static_assert(AggregateArity<WorldState>() == 50,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 

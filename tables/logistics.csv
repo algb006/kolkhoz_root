@@ -14,6 +14,12 @@ level_store_transfer,3
 # THE SUPPLY OF A WORKS (routing stage V2, 0.37.204): transport design §12's table of levels, «1 — Срок:
 # … материалы для стройки, которая стоит».
 level_site_supply,1
+# THE MILK LEG (#1056 C1.1; econ's stage C contract 574c366; boss, the #1056 thread [4]): the barn -> store milk,
+# level 0 - it sours in a day - and herd care, worked on a day off.
+level_milk_leg,0
+# A RICK'S SUPPLY (#1056 C1.2; econ's stage C contract 574c366): hay carted rick -> rick while a rick's herds' hay
+# stands below its threshold - level 2 by the contract; the urgent rule's level 0 is the job's, as a stack's.
+level_rick_supply,2
 # THE FLOOR UNDER A WORKS' SUPPLY (#734; transport design «Пол подвоза»; core_common/site_supply_floor.h): a
 # works whose supply brought nothing for this many WORKING days in a row is offered carters with horses ahead of
 # the field windows (behind level 0) - all such works together up to this share of the day's draught horses,

@@ -693,9 +693,13 @@ enum class AlarmKind : std::uint8_t {
   /// AND IT SAYS WHERE THE HORSES ARE (stage В6; the human's word of 12
   /// October 2026, registry №310): `carts_by_use`, the groom's horses by what
   /// holds them at the hour - «подвод сегодня 3 из 5 — две на сене». For
-  /// Epoch I this lamp with its cause IS «Логистика не успевает»; the wider
-  /// «задачи копятся, буферы падают ниже порогов» is a STUB until supply by
-  /// threshold (stage C; boss, the В6 thread [2]).
+  /// Epoch I this lamp with its cause IS «Логистика не успевает»; THE WIDER
+  /// «задачи копятся, буферы падают ниже порогов» came with the supply by
+  /// threshold (#1056 C1.2; boss, the В6 thread [2]): a rick's supply
+  /// (kRickSupply, standing only while its rick is below its threshold)
+  /// lights it at ANY level by the same clock of unserved working light -
+  /// without the interrupting event, which stays level 0's. The task's kind
+  /// names the cause.
   ///
   /// «НЕТ ТОВАРА НА СКЛАДЕ» (transport §12's other alarm) IS NOT A KIND OF ITS
   /// OWN (boss, the В6 thread [2]): the tasks whose sender can stand empty

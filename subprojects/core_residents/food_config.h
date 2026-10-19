@@ -49,6 +49,7 @@
 namespace core {
 
 class ITableSet;  // Defined in core_tables.
+struct UnitRow;   // Defined in core_common/unit_state.h.
 
 /// @brief Food category for the family variety mask (metrics design §8):
 /// the mask bit index of FamilyRow::food_variety_mask. The roster is the
@@ -420,6 +421,12 @@ struct FoodConfig {
   /// CALL INTO core_production on the same terms as `fodder_fund` above.
   /// Empty: the forecast has no harvest term.
   std::function<ResourceAmounts(const WorldState&)> standing_harvest;
+
+  /// Whether the issue, the ration and the advance may take from a unit
+  /// (IProductionSystem::IsIssueSource; #1056 C1.1 (b): one rule for «what
+  /// can be taken» with production's takers). A CALL INTO core_production on
+  /// the same terms as `fodder_fund` above. Empty: every unit.
+  std::function<bool(const UnitRow&)> issue_source;
 
   /// Which inflow terms the hunger forecast adds, as bits (LifeConfig::
   /// hunger_forecast_terms, copied at the assembly): 1 the harvest, 4 the

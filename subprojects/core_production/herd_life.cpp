@@ -213,6 +213,14 @@ void DeliverProduce(WorldState& world,
     return;
   }
   AddLedgerAmount(world.ledger.current.herd_produce, resource, amount);
+  // THE MILK STAYS AT THE BARN (#1056 C1.1; FarmingConfig::milk_at_barn):
+  // the district's cart takes its share there (milk_cart.h) and the rest
+  // reaches the milk's store only by the barn -> store leg.
+  if (config.farming.milk_at_barn >= 0.5F && resource == config.milk_resource &&
+      place.unit != nullptr) {
+    AddToStock(place.unit->stock, resource, amount);
+    return;
+  }
   // THROUGH THE DOOR, into its home and within the ceiling (boss, parcel
   // 408). Until 2026-09-15 the kolkhoz herd's produce went into the first
   // numbered store whatever it was and however full: milk and meat into the
