@@ -430,25 +430,15 @@ std::vector<std::uint16_t> BilletHerds(const WorldState& world, std::vector<floa
 }
 
 /// The rows in the order the herd day walks them (RunHerdDay): the rows'
-/// own, or with `feed_draught_first` the kolkhoz's horse herds first.
-std::vector<std::uint32_t> HerdWalkOrder(const ProductionConfig& config, const WorldState& world) {
+/// own. The draught-first switch of econ's pair (0.37.63) went in 0.37.301:
+/// a refused rule's leftover, its world_params key read by nobody since.
+std::vector<std::uint32_t> HerdWalkOrder(const ProductionConfig& /*config*/,
+                                         const WorldState& world) {
   const auto herds = static_cast<std::uint32_t>(world.herds.rows.size());
   std::vector<std::uint32_t> walk;
   walk.reserve(herds);
-  const auto draught = [&](const HerdRow& herd) {
-    return herd.household_owned == 0 && herd.kind.value == config.horse_kind.value;
-  };
-  if (config.farming.feed_draught_first) {
-    for (std::uint32_t row = 0; row < herds; ++row) {
-      if (draught(world.herds.rows[row])) {
-        walk.push_back(row);
-      }
-    }
-  }
   for (std::uint32_t row = 0; row < herds; ++row) {
-    if (!config.farming.feed_draught_first || !draught(world.herds.rows[row])) {
-      walk.push_back(row);
-    }
+    walk.push_back(row);
   }
   return walk;
 }
@@ -1327,9 +1317,7 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
   // (feed_allowance, the stores' own stock), and a herd walked earlier eats
   // first. The rows' order it was, and nobody chose it — «коровы первыми» was
   // an accident of the start's rows (boss-core-start-no-yards [21]).
-  // world_params `feed_draught_first` 1 walks the kolkhoz's draught herds
-  // first, the rest in row order behind them; 0 is the rows' order as before.
-  // A switch for econ's pair, not a rule of the design (0.37.63).
+  // (The draught-first switch of 0.37.63 went in 0.37.301.)
   const std::vector<std::uint32_t> walk = HerdWalkOrder(config, current);
   for (const std::uint32_t row : walk) {
     HerdRow& herd = current.herds.rows[row];

@@ -1170,7 +1170,7 @@ bool ParseMeadowKinds(const ITable& table, FarmingConfig& farming, std::string& 
 /// AT ALL: until 2026-09-16 this module took every number off its own
 /// hand-written tables, and the two halves of billeting are what brought it
 /// here. The next world constant lands in the same place.
-constexpr std::array<std::string_view, 31> kProductionWorldParamKeys = {
+constexpr std::array<std::string_view, 30> kProductionWorldParamKeys = {
     "billet_heads_per_yard",
     "billet_yield_factor",
     "school_year_start_month",
@@ -1201,11 +1201,14 @@ constexpr std::array<std::string_view, 31> kProductionWorldParamKeys = {
     "livestock_cold_step_warm_night",
     "livestock_freezing_counter",
     "livestock_freezing_loss_share_day",
-    "feed_draught_first",
+    // Slot 26 held `feed_draught_first` until 0.37.301: the feeding order's
+    // switch of econ's pair of 1 October, a refused rule's leftover (econ
+    // logistics-all-on; boss, the #1056 thread [66]). The last key took the
+    // slot, so that the indices below did not move.
+    "barrack_poultry_heads_per_family",
     "livestock_cold_first_month",
     "livestock_cold_last_month",
-    "herd_hunger_episode_fed_days",
-    "barrack_poultry_heads_per_family"};
+    "herd_hunger_episode_fed_days"};
 
 /// THE SCHOOL YEAR IS READ HERE AS WELL AS BY THE SCHOOL, and that is a
 /// second READER, not a second home: the months live in world_params.csv and
@@ -1225,7 +1228,6 @@ bool ParseProductionWorldParams(const ITable& world,
                                 float& district_center_km,
                                 std::string& error) {
   float school_from = static_cast<float>(farming.school_year_start_month) + 1.0F;
-  float draught_first = farming.feed_draught_first ? 1.0F : 0.0F;
   float school_to = static_cast<float>(farming.school_year_end_month) + 1.0F;
   float cold_from = static_cast<float>(farming.cold_first_month) + 1.0F;
   float cold_to = static_cast<float>(farming.cold_last_month) + 1.0F;
@@ -1332,10 +1334,13 @@ bool ParseProductionWorldParams(const ITable& world,
       ScalarKnob{.key = kProductionWorldParamKeys[25],
                  .value = &farming.freezing_loss_share_day,
                  .range = Range{.low = 0.0F, .high = 1.0F}},
-      // THE FEEDING ORDER'S SWITCH (econ's pair; 0.37.63): 0 or 1.
+      // THE BARRACK'S HENHOUSE, A FAMILY'S SHARE (0.37.205; boss and econ, the
+      // C2 thread [25]-[27]): the adult birds a family keeps there
+      // (herd_system.cpp, PlaceSurplusHead). Nought: none. In slot 26 since
+      // 0.37.301 (the feeding order's switch went).
       ScalarKnob{.key = kProductionWorldParamKeys[26],
-                 .value = &draught_first,
-                 .range = Range{.low = 0.0F, .high = 1.0F}},
+                 .value = &barrack_poultry_heads,
+                 .range = Range{.low = 0.0F, .high = 100.0F}},
       // THE COLD'S SEASON (0.37.69): human months in the table, from zero here.
       ScalarKnob{.key = kProductionWorldParamKeys[27], .value = &cold_from, .range = months},
       ScalarKnob{.key = kProductionWorldParamKeys[28], .value = &cold_to, .range = months},
@@ -1344,13 +1349,7 @@ bool ParseProductionWorldParams(const ITable& world,
       // a herd's hunger is said again (herd_system.cpp, kHerdWentHungry).
       ScalarKnob{.key = kProductionWorldParamKeys[29],
                  .value = &hunger_episode_fed_days,
-                 .range = Range{.low = 2.0F, .high = 8.0F}},
-      // THE BARRACK'S HENHOUSE, A FAMILY'S SHARE (0.37.205; boss and econ, the
-      // C2 thread [25]-[27]): the adult birds a family keeps there
-      // (herd_system.cpp, PlaceSurplusHead). Nought: none.
-      ScalarKnob{.key = kProductionWorldParamKeys[30],
-                 .value = &barrack_poultry_heads,
-                 .range = Range{.low = 0.0F, .high = 100.0F}}};
+                 .range = Range{.low = 2.0F, .high = 8.0F}}};
   if (!ReadKnobs(world, "world_params", knobs, error)) {
     return false;
   }
@@ -1360,7 +1359,6 @@ bool ParseProductionWorldParams(const ITable& world,
   farming.cold_last_month = static_cast<std::uint8_t>(cold_to - 1.0F);
   farming.school_year_start_month = static_cast<std::uint8_t>(school_from - 1.0F);
   farming.school_year_end_month = static_cast<std::uint8_t>(school_to - 1.0F);
-  farming.feed_draught_first = draught_first >= 0.5F;
   return true;
 }
 

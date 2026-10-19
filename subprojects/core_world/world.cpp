@@ -1264,6 +1264,11 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       //   declared ahead of its reader; the assembly reads it below since the
       //   lamp colour's delivery.)
       known.emplace_back(kAlarmRedWithinDaysKey);
+      //   `feed_draught_first` (0.37.301; boss, the #1056 thread [66]) - READ
+      //   BY NOBODY since its switch went from core_production (a refused
+      //   rule's leftover, econ's logistics-all-on). Declared here only until
+      //   the base drops the key; then this line goes too.
+      known.emplace_back("feed_draught_first");
       //   (`billet_household_milk_share` stood here from 0.37.65 to 0.37.69,
       //   declared a delivery ahead of the billet milk's reader. The human
       //   cancelled the billet's new rules on 2026-10-01 — «Постой отменяем»

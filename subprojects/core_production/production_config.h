@@ -807,12 +807,6 @@ struct FarmingConfig {
   /// value lives in the one table both read.
   float still_frost_c = -12.0F;
 
-  /// world_params `feed_draught_first` (0/1, boss's d567729b; econ's pair of
-  /// the feeding order, boss-core-start-no-yards [21]-[23]): the herd day
-  /// walks — and so feeds — the kolkhoz's horse herds before the rest. 0,
-  /// the default, is the rows' order. A switch, not a rule of the design.
-  bool feed_draught_first = false;
-
   /// THE COLD COUNTS IN THE CALENDAR'S WINTER ONLY (world_params
   /// `livestock_cold_first_month`, `livestock_cold_last_month`, 12 and 2,
   /// boss's 5c4c82d2; the human's «по температуре вносите корректировки как

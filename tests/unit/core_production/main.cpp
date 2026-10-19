@@ -4879,10 +4879,10 @@ int CheckTheStarvingHerdNamesItsCause() {
   return failures;
 }
 
-/// THE FEEDING ORDER'S SWITCH (0.37.63; boss-core-start-no-yards [21]-[23],
-/// econ's pair): hay for ten heads a day, ten cows in the first row and ten
-/// horses in the second. The rows' order feeds the cows and leaves the team
-/// short; `feed_draught_first` feeds the team and leaves the cows short.
+/// THE FEEDING ORDER (0.37.63; its draught-first switch went in 0.37.301,
+/// a refused rule's leftover): hay for ten heads a day, ten cows in the first
+/// row and ten horses in the second. The rows' order feeds the cows and
+/// leaves the team short.
 int CheckTheFeedingOrderSwitch() {
   int failures = 0;
   core::ProductionConfig config = MakeHerdConfig();
@@ -4893,21 +4893,15 @@ int CheckTheFeedingOrderSwitch() {
   config.feed_links.push_back(
       core::FeedLinkDef{.kind = core::LivestockKindId{1}, .resource = core::ResourceId{0}});
   SetLivestockHead(config.unit_types[0], 100.0F);
-  const auto fed = [&](bool draught_first) {
-    config.farming.feed_draught_first = draught_first;
-    core::WorldState world = MakeHerdWorld(10.0F);
-    AddHerd(world, 0, 10, 5, true);
-    AddHerd(world, 1, 10, 5, true);
-    core::RunHerdDay(config, world);
-    return std::pair<float, float>{world.herds.rows[0].fed_share, world.herds.rows[1].fed_share};
-  };
-  const auto [cows_rows, horses_rows] = fed(false);
-  const auto [cows_first, horses_first] = fed(true);
-  std::cout << "  feeding order: rows — cows " << cows_rows << ", horses " << horses_rows
-            << "; draught first — cows " << cows_first << ", horses " << horses_first << "\n";
-  failures +=
-      Expect(cows_rows == 1.0F && horses_rows < 1.0F && horses_first == 1.0F && cows_first < 1.0F,
-             "feeding order: the rows feed the cows first, the switch the team");
+  core::WorldState world = MakeHerdWorld(10.0F);
+  AddHerd(world, 0, 10, 5, true);
+  AddHerd(world, 1, 10, 5, true);
+  core::RunHerdDay(config, world);
+  const float cows_rows = world.herds.rows[0].fed_share;
+  const float horses_rows = world.herds.rows[1].fed_share;
+  std::cout << "  feeding order: rows — cows " << cows_rows << ", horses " << horses_rows << "\n";
+  failures += Expect(cows_rows == 1.0F && horses_rows < 1.0F,
+                     "feeding order: the rows' order feeds the cows first");
   return failures;
 }
 
