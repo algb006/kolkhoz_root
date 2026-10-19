@@ -1956,6 +1956,10 @@ int CheckRoadLaying() {
                      "laying: the clean draft is laid as the preview drew it, to the bit — a "
                      "fresh player dirt road, named by kRoadLaid, in Roads()");
   failures += Expect(forest_refused, "laying: the forest draft is refused and lays nothing");
+  // THE PLAN IS STALE OVER THE NEW ROAD (#1056 C4, writer (2)): the groom's
+  // legs were drawn over the old network, and the next hour re-plans them.
+  failures +=
+      Expect(after.groom_plan.stale, "laying: a road laid in the day makes the groom's plan stale");
   const std::vector<std::byte> bytes = core::EncodeWorld(after, *shipped);
   core::WorldState loaded;
   std::string load_error;

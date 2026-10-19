@@ -74,6 +74,23 @@ HaulRate RateToward(const ProductionConfig& config,
   return rate;
 }
 
+HaulRate WalkRateToward(const ProductionConfig& config,
+                        const WorldState& world,
+                        Vec2 from,
+                        Vec2 destination,
+                        ResourceId carried) {
+  // RateToward's carrier on foot, with no horse asked about.
+  const float walk_kmh = config.walk_speed_kmh * HaulBedFactor(config, world.weather);
+  const float hours_per_km = walk_kmh > 0.0F ? static_cast<float>(kClockScale) / walk_kmh : 0.0F;
+  HaulRate walked = RateOverKm(RoadKm(world, TravelMode::kWalk, from, destination),
+                               hours_per_km,
+                               hours_per_km,
+                               WalkerLoadGrams(config.porter, carried));
+  walked.receiver = destination;
+  walked.has_receiver = true;
+  return walked;
+}
+
 void BookCartRun(const ProductionConfig& config,
                  WorldState& current,
                  CartLoadSource source,

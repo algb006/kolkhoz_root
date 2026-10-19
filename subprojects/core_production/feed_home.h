@@ -224,6 +224,32 @@ std::vector<ShortRick> ShortRicksWithin(const ProductionConfig& config,
                                         const WorldState& world,
                                         std::uint32_t days);
 
+/// @brief A rick the herds EAT from: a built outline whose type is hay's
+///        home. Not HomeOutlineAccepts - a rick being emptied is nobody's
+///        home for a delivery and still the rick its farm eats down.
+bool IsRickToEatFrom(const UnitRow& unit, const ProductionConfig& config);
+
+/// @brief A rick with herds bound to it, through `days` of the ricks' drain
+///        (#1056 C1.2, the rick's supply).
+struct RickHayAhead {
+  std::uint32_t rick_row = kNoRow;
+  /// The first day its herds were short of hay, today the first; `days`
+  /// when they were not.
+  std::uint32_t short_day = 0;
+  /// The hay they lacked over those days, kg (their shortfall at hay's feed
+  /// value - an ESTIMATE: what hay would have covered, not a ration).
+  float missing_kg = 0.0F;
+  /// Its hay left at the end, kg.
+  float left_kg = 0.0F;
+};
+
+/// @brief Every rick with herds bound to it, by the same drain as
+///        ShortRicksWithin, in row order. A rick no herd is bound to is not
+///        in the list.
+std::vector<RickHayAhead> RickHayWithin(const ProductionConfig& config,
+                                        const WorldState& world,
+                                        std::uint32_t days);
+
 /// @brief How far a rick's stock falls short of carrying its bound herds to
 ///        THE HAY LAMP's HORIZON - the next cut's opening and the days until
 ///        its hay is in store (farming.csv `hay_new_cut_in_store_days`; the

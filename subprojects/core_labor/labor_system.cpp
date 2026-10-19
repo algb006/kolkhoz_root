@@ -1758,6 +1758,42 @@ class LaborSystem final : public ILaborSystem {
         job.harnessed = DraughtHorses(current) > 0;
         jobs.push_back(job);
       }
+      // A RICK'S SUPPLY FROM ANOTHER RICK (#1056 C1.2; econ's stage C
+      // contract 574c366): priced by production's evening while the rick's
+      // herds' hay stands below its threshold (unit_state.h, RickSupplySeam).
+      // Level 2, windowless - the common queue; LEVEL 0 UNDER TODAY'S URGENT
+      // RULE, the stack's own (below, in the field loop): the rick short
+      // within the days a cart can still mend is carted ahead of all work.
+      // The carter's place is the rick it comes from, where he loads.
+      std::optional<std::vector<ShortRickUnit>> ricks_short;
+      for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
+        const UnitRow& unit = current.units.rows[row];
+        if (!RickSupplyStands(unit) || !(unit.rick_supply.days_remaining > 0.0F)) {
+          continue;
+        }
+        const std::uint32_t from_row = FindRow(current.units, unit.rick_supply.from);
+        if (from_row == kNoRow) {
+          continue;
+        }
+        AssignmentJob job;
+        job.kind = WorkKind::kHauling;
+        job.unit = current.units.row_ids[row];
+        job.position = current.units.rows[from_row].position;
+        job.work_days_remaining = unit.rick_supply.days_remaining;
+        job.harnessed = DraughtHorses(current) > 0;
+        if (!ricks_short.has_value()) {
+          ricks_short.emplace();
+          if (config_.short_ricks && config_.hay_cart_urgent_days > 0) {
+            *ricks_short = config_.short_ricks(
+                current, UrgentHayHorizonDays(current, config_.hay_cart_urgent_days));
+          }
+        }
+        job.logistics_urgent =
+            std::ranges::any_of(*ricks_short, [&job](const ShortRickUnit& short_rick) {
+              return short_rick.rick.value == job.unit.value;
+            });
+        jobs.push_back(job);
+      }
       // THE TIMBER LOT AT THE DISTRICT CENTRE (decision 279, 0.36.17): the
       // village's own carts fetch it, WINDOWLESS since 0.36.18 — below the
       // fallow for this autumn's rye (parcel 233: it yields to every job with
@@ -1803,6 +1839,30 @@ class LaborSystem final : public ILaborSystem {
       // Undone barn work expires tonight: an open window with nothing left in
       // it, which is what a zero under kDays means and the one honest use of
       // that zero (deadline.h).
+      job.window = DeadlineInDays(0);
+      jobs.push_back(job);
+    }
+    // THE MILK LEG (#1056 C1.1; boss, the #1056 thread [4]: «carrying the milk
+    // away is part of milking»): the barn's milk to its store, OUTSIDE the
+    // day-off guard as herd care is - on the same carts and hands as any
+    // hauling, estimated by production's evening for the next morning's
+    // placement and re-priced after the milking (herd_state.h,
+    // leg_days_remaining). Its window closes tonight: the milk sours by the
+    // morning.
+    for (std::uint32_t row = 0; row < current.herds.rows.size(); ++row) {
+      const HerdRow& herd = current.herds.rows[row];
+      Vec2 position;
+      if (!(herd.leg_days_remaining > 0.0F) || !HerdPosition(current, herd, position)) {
+        continue;
+      }
+      AssignmentJob job;
+      job.kind = WorkKind::kHauling;
+      job.herd = current.herds.row_ids[row];
+      job.position = position;
+      job.work_days_remaining = herd.leg_days_remaining;
+      // ON FOOT, the cans in hand (#1056 C1.3; herd_state.h, leg_on_foot):
+      // no horse is asked where production priced a walk.
+      job.harnessed = herd.leg_on_foot == 0 && DraughtHorses(current) > 0;
       job.window = DeadlineInDays(0);
       jobs.push_back(job);
     }
@@ -1882,6 +1942,10 @@ class LaborSystem final : public ILaborSystem {
     work.extraction_site = job.extraction_site;
     work.limit_delivery = job.limit_delivery;
     work.unit = job.unit;
+    // THE MILK LEG'S HERD (#1056 C1.1): without it the leg's job matched no
+    // task, so its level 0 never marked it urgent (MarkTheUrgentLoads) - the
+    // first arm's 28 / 15 / 24 % left in the barn in March, May and October.
+    work.herd = job.herd;
     return work;
   }
 

@@ -81,7 +81,7 @@ float CropToShare(const FoodConfig& config,
                                                      AmountOf(world.plan.delivered, resource)
                                                : 0;
   const Grams below_funds =
-      TermOn(config, kTermFundsNet) ? IssueStockBelowReserve(world, reserve, resource) : 0;
+      TermOn(config, kTermFundsNet) ? IssueStockBelowReserve(config, world, reserve, resource) : 0;
   const Grams left = net_of_seed - std::max<Grams>(owed, 0) - below_funds;
   return left > 0 ? static_cast<float>(left) : 0.0F;
 }
@@ -108,7 +108,7 @@ IssueTerms PositionIssueTerms(const FoodConfig& config,
   terms.before_days = days;
   bool fallback = false;
   const float to_harvest = ForecastTrudodni(config, world, life_speedup, days, fallback);
-  const auto free = static_cast<float>(FreeIssueStock(world, reserve, line.resource));
+  const auto free = static_cast<float>(FreeIssueStock(config, world, reserve, line.resource));
   if (line.grams_per_trudoden > 0) {
     terms.before = std::min(static_cast<float>(line.grams_per_trudoden) * to_harvest, free);
   }

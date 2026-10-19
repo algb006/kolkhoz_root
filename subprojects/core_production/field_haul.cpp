@@ -571,6 +571,7 @@ void SettleHauling(const ProductionConfig& config, WorldState& current) {
     // carted by the same seam to the rick the door chooses (HeapRickRow).
     if (field.reaped_grams <= 0 && field.straw_grams > 0) {
       field.reaped_grams = field.straw_grams;
+      current.heap_born = true;  // the straw's heap, born (world_state.h; #1056 C4)
       field.reaped_resource = config.straw_resource;
       field.straw_grams = 0;
       field.haul_days_remaining = 0.0F;

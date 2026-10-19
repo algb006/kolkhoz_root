@@ -28,7 +28,10 @@ bool WorkServesTask(const WorkAssignment& work, const LogisticsTaskRow& task) {
       return work.limit_delivery.value == task.limit_delivery.value;
     case LogisticsLoadKind::kStoreTransfer:
     case LogisticsLoadKind::kSiteSupply:
+    case LogisticsLoadKind::kRickSupply:  // the receiving rick (#1056 C1.2)
       return work.unit.value == task.unit.value;
+    case LogisticsLoadKind::kMilkLeg:
+      return work.herd.value == task.herd.value;
     case LogisticsLoadKind::kLogisticsLoadKindCount:
       break;
   }
@@ -58,7 +61,13 @@ void RetargetWork(WorkAssignment& work, const LogisticsTaskRow& task) {
       break;
     case LogisticsLoadKind::kStoreTransfer:
     case LogisticsLoadKind::kSiteSupply:
+    case LogisticsLoadKind::kRickSupply:
       work.unit = task.unit;
+      break;
+    case LogisticsLoadKind::kMilkLeg:
+      // A hauling on a herd is its milk leg (labor_state.h: `herd` names a
+      // kHerdCare herd otherwise).
+      work.herd = task.herd;
       break;
     case LogisticsLoadKind::kLogisticsLoadKindCount:
       break;

@@ -219,9 +219,6 @@ tent_to_month,9,core
 leave_request_answer_days,2,core
 lodging_satisfaction_penalty,20,core
 hunger_alarm_clear_margin,10,core
-hunger_forecast_share,0.9,core
-hunger_forecast_terms,13,core
-hunger_forecast_lit,0,core
 cooperage_from_month,7,core
 cooperage_to_month,12,core
 trip_depart_hour,8,core
@@ -323,3 +320,6 @@ timber_mark_release_days,8,core
 home_light_hours_after_sunset,2,layer
 home_light_hours_before_sunrise,0.5,layer
 yard_dusk_spread_minutes,24,layer
+hunger_forecast_share,0.9,core
+hunger_forecast_terms,13,core
+hunger_forecast_lit,0,core

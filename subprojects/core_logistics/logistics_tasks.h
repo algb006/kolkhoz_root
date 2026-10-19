@@ -42,6 +42,14 @@ void SyncTasks(const LogisticsConfig& config,
                SimDay today,
                TaskDayCount& count);
 
+/// @brief A FIELD'S HEAP REAPED IN THE DAY gets its task now (#1056 C4,
+///        writer (3)): a task at its kind's default level for every field
+///        heap that has none. It APPENDS ONLY - a task whose load went in the
+///        afternoon is kept till the next hour 0, as SyncTasks keeps it (its
+///        lamp's clock reads its emptied seam as carted, CartedToday).
+/// @return The tasks made.
+std::uint32_t AppendNewHeapTasks(const LogisticsConfig& config, WorldState& current, SimDay today);
+
 /// @brief A task whose load a carter was placed on today was served: its
 ///        ageing starts again from today and it returns to its base level
 ///        (§12: «после рейса задача возвращается на свой уровень»).

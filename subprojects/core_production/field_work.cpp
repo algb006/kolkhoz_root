@@ -53,6 +53,9 @@ Grams PutOnHeap(WorldState& current, FieldRow& field, ResourceId resource, Grams
   const Grams heap_before = field.reaped_grams;
   field.reaped_grams += laid;
   field.reaped_resource = resource;
+  // A heap born from nothing: the groom's next re-plan hour looks for its task
+  // (world_state.h, heap_born; #1056 C4).
+  current.heap_born = current.heap_born || (heap_before <= 0 && laid > 0);
   return heap_before;
 }
 

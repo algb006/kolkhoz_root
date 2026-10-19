@@ -784,6 +784,51 @@ int TestTheReplan() {
   bool calm_replanned = true;
   day_of(false, calm_replanned, calm);
   failures += Expect(!calm_replanned, "re-plan: nothing changed, nothing re-planned");
+  // A HEAP REAPED IN THE DAY (#1056 C4, writer (3)): at hour 10 a third
+  // field's heap appears - its task is made and the plan drawn again. Its
+  // pair: the same heap growing at hour 11, its task standing - no re-plan.
+  {
+    core::FieldRow field;
+    field.kind = core::LandKind::kArable;
+    field.center = core::Vec2{.x = 900.0F, .y = 0.0F};
+    field.reaped_grams = 500'000;
+    field.reaped_resource = core::ResourceId{0};
+    field.haul_days_remaining = 0.5F;
+    core::AppendRow(calm.fields, field);
+    calm.heap_born = true;  // as production's PutOnHeap marks a heap born (world_state.h)
+    const std::size_t tasks_before = calm.logistics_tasks.rows.size();
+    calm.calendar.tick = (3 * core::kTicksPerDay) + 10;
+    const bool new_heap = system->Replan(calm);
+    failures += Expect(new_heap && calm.logistics_tasks.rows.size() == tasks_before + 1,
+                       "re-plan: a heap reaped in the day gets its task and re-plans the day");
+    calm.fields.rows.back().reaped_grams = 900'000;
+    calm.calendar.tick = (3 * core::kTicksPerDay) + 11;
+    failures +=
+        Expect(!system->Replan(calm) && calm.logistics_tasks.rows.size() == tasks_before + 1,
+               "re-plan: a heap growing under its task re-plans nothing");
+    // EVERY CART LOADED (#1056 C4; SomeCartFree): a fourth heap at hour 12
+    // with every goods cart on a loaded leg from 11 to 14 gets its task, and
+    // the day is not re-planned for it - no cart could take it.
+    core::WorldState held = calm;
+    for (core::CartPlan& cart : held.groom_plan.carts) {
+      core::CartLeg leg;
+      leg.loaded = 1;
+      leg.depart = (3 * core::kTicksPerDay) + 11;
+      leg.arrive = (3 * core::kTicksPerDay) + 14;
+      cart.legs = {leg};
+    }
+    core::FieldRow fourth = field;
+    fourth.center = core::Vec2{.x = 1'200.0F, .y = 0.0F};
+    core::AppendRow(held.fields, fourth);
+    held.heap_born = true;
+    held.groom_plan.stale = false;
+    const std::size_t held_before = held.logistics_tasks.rows.size();
+    held.calendar.tick = (3 * core::kTicksPerDay) + 12;
+    failures += Expect(!held.groom_plan.carts.empty() && !system->Replan(held) &&
+                           held.logistics_tasks.rows.size() == held_before + 1,
+                       "re-plan: a heap reaped with every cart loaded gets its task and re-plans "
+                       "nothing");
+  }
   return failures;
 }
 
@@ -1353,6 +1398,47 @@ int TestTheLateLoadsLamp() {
   ordinary.logistics_tasks.rows[0].level = core::LogisticsLevel::kOrdinary;
   at(ordinary, ten, hours, said);
   failures += Expect(hours == -1 && said == 0, "late loads: an ordinary task — no lamp");
+  // THE WIDE ALARM (#1056 C1.2; «буферы падают ниже порогов»): a rick's
+  // supply at its own level 2, its rick below the threshold and owed a day's
+  // carting - the lamp after an hour of light unserved, and NO interrupting
+  // event. Its pair is the ordinary heap above: no lamp.
+  {
+    core::WorldState rick_world;
+    rick_world.weather.daylight_hours = 12.0F;
+    core::UnitRow sender;
+    const core::UnitId sender_id = core::AppendRow(rick_world.units, sender);
+    core::UnitRow rick;
+    rick.level = 1;
+    rick.rick_supply.from = sender_id;
+    rick.rick_supply.resource = core::ResourceId{0};
+    rick.rick_supply.grams = 2'000'000;
+    rick.rick_supply.days_remaining = 1.0F;
+    rick.rick_supply.days_written = 1.0F;
+    rick.rick_supply.threshold_days = 9;
+    const core::UnitId rick_id = core::AppendRow(rick_world.units, rick);
+    core::LogisticsTaskRow supply;
+    supply.load_kind = core::LogisticsLoadKind::kRickSupply;
+    supply.unit = rick_id;
+    supply.level = core::LogisticsLevel::kOrdinary;
+    core::AppendRow(rick_world.logistics_tasks, supply);
+    rick_world.calendar.tick = ten;
+    system->SayLateLoads(rick_world);
+    std::vector<core::Alarm> alarms;
+    system->CollectAlarms(rick_world, alarms);
+    std::int64_t rick_hours = -1;
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kLogisticsLate) {
+        rick_hours = alarm.amount;
+      }
+    }
+    std::uint32_t rick_said = 0;
+    for (const core::SimEvent& event : rick_world.step_events) {
+      rick_said += event.kind == core::EventKind::kUrgentLoadWaits ? 1U : 0U;
+    }
+    failures += Expect(rick_hours == 1 && rick_said == 0,
+                       "late loads: a rick's supply below its threshold at level 2, an hour "
+                       "unserved — the wide lamp, and no interrupting event");
+  }
   // CARTED FOR TODAY (0.37.194; boss, the logistics thread [129]): the heap's
   // seam drained to nought, its grams still on the field until the day's
   // last tick — nobody is needed, so no hour counts, and a clock that had run
@@ -1480,6 +1566,74 @@ int TestTheWayHomeFitsTheLight() {
   return failures;
 }
 
+/// WHAT SPOILS SOONEST FIRST (#1056 C4.2 (a); logistics_plan.cpp, OpenTasks):
+/// a cart done with its own small heap goes on to the next of its level - a
+/// grain heap (keeps for ever) first in the table and a potato heap (ten days)
+/// after it, at the same distance on either side. It goes to the potatoes. Its
+/// pair: the potatoes keeping for ever too - the table's order, the grain.
+int TestTheSoonestSpoiledFirst() {
+  int failures = 0;
+  const auto next_heap = [](float potato_spoil_days) {
+    core::LogisticsConfig config;
+    config.spoil_days = {0.0F, potato_spoil_days};
+    core::WorldState world;
+    world.weather.daylight_hours = 12.0F;
+    const auto heap_at = [&world](float east_m, std::uint16_t resource, float days) {
+      core::FieldRow field;
+      field.kind = core::LandKind::kArable;
+      field.center = core::Vec2{.x = east_m, .y = 0.0F};
+      field.reaped_grams = 1'000'000;
+      field.reaped_resource = core::ResourceId{resource};
+      field.haul_days_remaining = days;
+      return core::AppendRow(world.fields, field);
+    };
+    const core::FieldId own = heap_at(50.0F, 0, 0.05F);
+    const core::FieldId grain = heap_at(1'000.0F, 0, 0.5F);
+    const core::FieldId potato = heap_at(-1'000.0F, 1, 0.5F);
+    core::TaskDayCount count;
+    core::SyncTasks(config, world, 0, count);
+    core::UnitRow house;
+    const core::UnitId house_id = core::AppendRow(world.units, house);
+    core::FamilyRow household;
+    household.house = house_id;
+    const core::FamilyId family = core::AppendRow(world.families, household);
+    world.units.rows[0].household = family;
+    core::ResidentRow carter;
+    carter.family = family;
+    carter.work.kind = core::WorkKind::kHauling;
+    carter.work.field = own;
+    carter.work.rides_horse = 1;
+    core::AppendRow(world.residents, carter);
+    core::LogisticsTally tally;
+    const core::GroomPlan plan = core::BuildGroomPlan(config, world, tally);
+    if (plan.carts.size() != 1) {
+      return core::FieldId{};
+    }
+    for (const core::CartLeg& leg : plan.carts[0].legs) {
+      const std::uint32_t row = core::FindRow(world.logistics_tasks, leg.task);
+      if (row == core::kNoRow) {
+        continue;
+      }
+      const core::FieldId field = world.logistics_tasks.rows[row].field;
+      if (field.value == grain.value || field.value == potato.value) {
+        return field;  // the first other heap the chain reaches
+      }
+    }
+    (void)potato;
+    return core::FieldId{};
+  };
+  const core::FieldId spoiling = next_heap(10.0F);
+  const core::FieldId keeping = next_heap(0.0F);
+  std::cout << "  plan, soonest spoiled first: next heap with the potatoes spoiling "
+            << spoiling.value << ", keeping " << keeping.value << '\n';
+  // Field ids: own 1, grain 2, potato 3 (AppendRow's ids, from one).
+  failures += Expect(spoiling.value == 3,
+                     "plan: the potato heap that spoils goes ahead of the grain that keeps");
+  failures += Expect(keeping.value == 2,
+                     "plan: and with both keeping for ever, the table's order - the grain");
+  return failures;
+}
+
 }  // namespace
 
 // The carriers on foot in the plan (porter_plan_checks.cpp; #671).
@@ -1495,6 +1649,7 @@ int main() {
   failures += TestThePlansChains();
   failures += TestTheCargoForm();
   failures += TestTheWayHomeFitsTheLight();
+  failures += TestTheSoonestSpoiledFirst();
   failures += TestTheReplan();
   failures += TestNoLogisticsBeforeTheYard();
   failures += TestTheTripsAndTheEvening();
