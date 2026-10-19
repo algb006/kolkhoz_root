@@ -7587,18 +7587,18 @@ int CheckTheCarryToTheHeap() {
     return got > want * 0.999F && got < want * 1.001F;
   };
   // THE PAUSES (#844, 0.37.302): every round trip below also pays the loading
-  // and the unloading, 0.25 h, which does not grow with the way.
+  // and the unloading, 0.125 h, which does not grow with the way.
   const float pauses = 2.0F * core::kLoadingPauseHours;
   const float on_foot = core::CarryToHeapDays(config, world, field, ten_tonnes);
   failures += Expect(near(on_foot, 23.898F * (0.4780F + pauses) / 0.4780F),
-                     "carry: 10 t to the heap at the edge on foot, 36.40 days beyond the norm "
+                     "carry: 10 t to the heap at the edge on foot, 30.15 days beyond the norm "
                      "(23.90 before the pauses)");
   core::FieldRow big = field;
   big.area_ga = 40.0F;
   const float big_on_foot = core::CarryToHeapDays(config, world, big, 4 * ten_tonnes);
   failures +=
       Expect(near(big_on_foot, 4.0F * on_foot * ((2.0F * 0.4780F) + pauses) / (0.4780F + pauses)),
-             "carry: four times the field and the crop, 6.6 times the days (eight "
+             "carry: four times the field and the crop, 7.2 times the days (eight "
              "before the pauses: the way doubles, the pauses do not)");
   core::HerdRow horses;
   horses.kind = core::LivestockKindId{0};
@@ -7609,7 +7609,7 @@ int CheckTheCarryToTheHeap() {
   // loaded half at 9 km/h makes the round 2.333/2 of it (#570, 2a).
   const float cart_road = 0.4149F * (1.0F + (4.0F / 3.0F)) / 2.0F;
   failures += Expect(near(by_cart, 0.5532F * (cart_road + pauses) / 0.4149F),
-                     "carry: with a horse, a cart's 750 kg: 0.979 days (the loaded half at 9 "
+                     "carry: with a horse, a cart's 750 kg: 0.812 days (the loaded half at 9 "
                      "km/h, and the pauses)");
   core::FieldRow meadow = field;
   meadow.kind = core::LandKind::kMeadow;
@@ -14228,7 +14228,7 @@ int CheckMudSeason() {
   world.weather.road_beds.condition[kDirt] = core::RoadCondition::kMud;
   const core::HaulRate muddy = core::FieldHaulRate(config, world, field);
   // THE BED STRETCHES THE ROAD, NOT THE PAUSES (#844, 0.37.302): the loading
-  // and the unloading take their 0.25 h on any bed.
+  // and the unloading take their 0.125 h on any bed.
   const float pauses = 2.0F * core::kLoadingPauseHours;
   const float dry_road = dry.round_trip_hours - pauses;
   failures += Expect(dry_road > 0.0F && std::fabs(muddy.round_trip_hours - pauses -

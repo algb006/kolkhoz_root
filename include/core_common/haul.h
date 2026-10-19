@@ -41,9 +41,10 @@ namespace core {
 /// two pauses (RateOverKm), and the groom's plan draws the same two into the
 /// loaded half of each trip (core_logistics/logistics_plan.cpp). The
 /// animation's pause, not a pitchfork's hour: the design has no loading work.
-/// STUB 0.125 h (7.5 game minutes) — econ's value, the engine's old 0.25 h
-/// floor made honest; gate L6 halves it once if construction reds.
-constexpr float kLoadingPauseHours = 0.125F;
+/// STUB 0.0625 h (3.75 game minutes): econ's 0.125 h (the engine's old
+/// 0.25 h floor made honest) halved once by its pre-set gate L6, because the
+/// novice's construction fell 4.6 % at 0.125 (boss, the #1056 thread [75]).
+constexpr float kLoadingPauseHours = 0.0625F;
 
 /// THE CART OF THE COMPRESSED YEAR (0.37.125; transport design §1; the human,
 /// 2 October 2026: «Делай K = 2,4»). A cart's load in the core is the table's
