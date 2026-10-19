@@ -478,6 +478,8 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
       {"reserve_feed_factor", &farming.reserve_feed_factor, 0.0F, 1.0F},
       {"plough_window_days", &farming.plough_window_days, 1.0F, 48.0F},
       {"plough_floor_margin", &farming.plough_floor_margin, 1.0F, 10.0F},
+      {"mow_crew_per_meadow", &farming.mow_crew_per_meadow, 1.0F, 200.0F},
+      {"harvest_cart_t_per_team_day", &farming.harvest_cart_t_per_team_day, 0.1F, 100.0F},
       {"milk_floor_margin", &farming.milk_floor_margin, 1.0F, 10.0F},
       {"early_snow_share", &farming.early_snow_share, 0.0F, 1.0F},
       {"reaping_days_per_hand_light_hour", &farming.reaping_days_per_hand_light_hour, 0.001F, 1.0F},
