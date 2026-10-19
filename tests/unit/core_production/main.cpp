@@ -1265,6 +1265,9 @@ int CheckTheForecastAdvice() {
   {
     core::ProductionConfig team = config;
     team.limit.lots.clear();
+    // The plough's floor alone, as these numbers were written (0.37.142):
+    // #1069's harrow and the plan's other windows have their own check below.
+    team.farming.harrow_days_per_ha = 0.0F;
     team.horse_kind = core::LivestockKindId{1};
     team.livestock[1].feed_units_per_game_day = 1.0F;
     team.livestock[1].births_per_game_year = 0.0F;
@@ -1300,6 +1303,45 @@ int CheckTheForecastAdvice() {
     failures += Expect(floors.plough_teams == 1 && floors.horses_kept == 2,
                        "forecast advice, the floors: 5.6 ha of the plan's base are one team in "
                        "the window, and two horses kept with the margin");
+    // THE PLAN'S PEAK (#1069; herd_floors.h, peak_teams): the harrow in the
+    // plough's window - 5.6 ha x (10 + 3)/7 over 8 days, TWO teams in the
+    // spring - and the meadow cut, one horse a meadow at work: two meadows of
+    // 30 ha are 60 x 8/7 / 18 = 3.8 team-days in June-July's 8 days, ONE
+    // horse; the spring stays the peak, three kept. Ten meadows of 200 ha
+    // want 16 and are capped at their ten: the peak moves to June, 14 kept.
+    {
+      core::ProductionConfig with_harrow = team;
+      with_harrow.farming.harrow_days_per_ha = 3.0F / 7.0F;
+      core::WorldState fields = village_of(170.0F, 4, 4, 2.0F);
+      const auto meadow = [](core::WorldState& world, float ha) {
+        core::FieldRow field;
+        field.kind = core::LandKind::kMeadow;
+        field.area_ga = ha;
+        core::AppendRow(world.fields, field);
+      };
+      meadow(fields, 30.0F);
+      meadow(fields, 30.0F);
+      const core::HerdFloors spring = core::HerdFloorsOf(with_harrow, fields);
+      core::WorldState wide = village_of(170.0F, 4, 4, 2.0F);
+      for (int index = 0; index < 10; ++index) {
+        meadow(wide, 200.0F);
+      }
+      const core::HerdFloors june = core::HerdFloorsOf(with_harrow, wide);
+      std::cout << "  floors by the plan's peak: spring " << spring.peak_teams << " teams in month "
+                << +spring.peak_month << " (cut " << spring.peak_cut_teams << "), kept "
+                << spring.horses_kept << "; ten wide meadows " << june.peak_teams << " in month "
+                << +june.peak_month << ", kept " << june.horses_kept << '\n';
+      failures += Expect(spring.plough_teams == 2 && spring.peak_teams == 2.0 &&
+                             spring.peak_month == with_harrow.farming.fallow_plow_month &&
+                             spring.horses_kept == 3,
+                         "floors by the peak: the harrow joins the plough in its window - two "
+                         "teams, the spring the peak, three kept");
+      failures += Expect(june.peak_cut_teams == 10.0 &&
+                             june.peak_month == with_harrow.farming.meadow_cut_month &&
+                             june.horses_kept == 14,
+                         "floors by the peak: ten wide meadows - the cut capped at its ten "
+                         "meadows is the peak, in June, fourteen kept");
+    }
     // Two cows' yields due, times 1.25: 2.5 - three cows kept.
     failures += Expect(floors.cows_kept == 3,
                        "forecast advice, the floors: a position of two cows' yields keeps three "
