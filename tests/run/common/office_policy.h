@@ -77,15 +77,22 @@ class OfficePolicy {
   /// question, because the district looks at the office first (§15) and one
   /// does not invite it to a building with a bucket under the leak.
   ///
-  /// So the run repairs the office when the farm's OTHER conditions for the
-  /// transition are met — which is when a chairman would be thinking of
-  /// asking. Not "always", which would be a different chairman, and not "when
-  /// it opens the block", which would be the fixture fitted to the
-  /// measurement.
+  /// ALWAYS, WITH FIVE DAYS' MARGIN (#1101; econ office-repair-trigger-
+  /// 2026-10-19, boss 19 October): the run repairs the office when its wear
+  /// plus five days' wear reaches the era's line (units rules §11, a percent;
+  /// era_readiness.cpp kOfficeWearAtMostPercent) - 0.80 % at today's rate.
+  /// Until 0.37.304 it repaired only when the farm's OTHER conditions were
+  /// met, and at exactly the line: the Epoch II door reads the wear on the
+  /// year's last day, so whether a village passed was the repair saw's phase
+  /// (0.96-1.04 % in 3 of 4 failing villages, core's trace of #1100), and a
+  /// village whose other conditions lapsed went 40 days unrepaired (1936).
+  /// The margin is days, not a number, so it holds if the wear rate moves.
+  /// It costs ~0.02 labour-days a year.
   ///
-  /// @param others_ready Every transition condition except the office's own.
-  void RunMeetingUpkeep(core::ISimulation& simulation, bool others_ready) {
-    if (!others_ready || office_.value == core::kInvalidDefIdValue) {
+  /// @param others_ready Every transition condition except the office's own;
+  ///        no longer read (the repair is a habit, not the question's eve).
+  void RunMeetingUpkeep(core::ISimulation& simulation, [[maybe_unused]] bool others_ready) {
+    if (office_.value == core::kInvalidDefIdValue) {
       return;
     }
     const core::WorldState& world = simulation.CompletedState();
@@ -94,12 +101,17 @@ class OfficePolicy {
       if (unit.type.value != office_.value || unit.level == 0 || unit.dead != 0) {
         continue;
       }
-      // An office already inside the era's line (units rules §11: wear at
-      // most a percent, era_readiness.cpp kOfficeWearAtMostPercent) is in
-      // order: until 0.37.230 the policy re-ordered a repair two days after
-      // the last at wear 0.04 — a wobble the traces of 12 October 2026 showed
-      // in every village, not a finding.
-      if (unit.wear <= core::kWearScale * 0.01F ||
+      // THE OFFICE'S OWN DAILY WEAR, read off the run: the rise since the last
+      // day it rose (a repair's day reads none and keeps the last rate).
+      const auto today = static_cast<std::uint32_t>(world.calendar.day);
+      if (office_seen_ && unit.wear > office_last_wear_ && today > office_last_day_) {
+        office_wear_a_day_ =
+            (unit.wear - office_last_wear_) / static_cast<float>(today - office_last_day_);
+      }
+      office_seen_ = true;
+      office_last_wear_ = unit.wear;
+      office_last_day_ = today;
+      if (unit.wear + (kOfficeMarginDays * office_wear_a_day_) < core::kWearScale * 0.01F ||
           unit.construction.phase != core::ConstructionPhase::kNone) {
         return;
       }
@@ -250,6 +262,14 @@ class OfficePolicy {
   SuggestedPlaces suggested_;
 
   std::uint32_t meeting_repairs_ = 0;
+  /// The repair's margin, days of the office's own wear (#1101; econ's five:
+  /// a day to place and do it, the noon-against-close read, three for a day
+  /// off, the strada's queue or a missed placement).
+  static constexpr float kOfficeMarginDays = 5.0F;
+  bool office_seen_ = false;
+  float office_last_wear_ = 0.0F;
+  std::uint32_t office_last_day_ = 0;
+  float office_wear_a_day_ = 0.0F;
 
   std::uint32_t marked_ = 0;
 

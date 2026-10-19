@@ -271,13 +271,10 @@ class BuildingChairman {
     // building, which is a fact about who pays for it and not a claim on the
     // queue: children and roofs come first, as everywhere else here.
     office.RunDay(simulation, farm_first);
-    // AND THE OFFICE IS PUT IN ORDER WHEN THE REST IS READY, because that is
-    // when a chairman would be thinking of putting the question — which is
-    // the moment units rules §11 checks its wear at, and the moment the core
-    // reads it now (era_readiness.h, StandingBlocks). "The rest" is the
-    // core's own answer with the office set aside, the indices included: the
-    // yearly bytes this read until 2026-09-18 left the indices out and saw
-    // the standing blocks only at the year's turn.
+    // AND THE OFFICE IS KEPT IN ORDER, five days ahead of the era's line,
+    // whatever the rest (#1101, 0.37.304; office_policy.h). Until then it was
+    // put in order only when the rest was ready - the readiness passed in is
+    // no longer read.
     office.RunMeetingUpkeep(simulation, transition.AllButOfficeReady(simulation.CompletedState()));
     // And the era's social objects last of the buildings, because they are
     // the least urgent of them and the most easily starved: measured before
