@@ -648,13 +648,30 @@ int TestTheSiteSupplyQueue() {
 
 int TestTheLoadedPace() {
   int failures = 0;
+  // Every round trip below carries the loading and the unloading pause on
+  // top of its road (#844, 0.37.302): 0.25 h.
+  const float pauses = 2.0F * core::kLoadingPauseHours;
   const core::HaulRate loaded = core::RateOverKm(1.0F, 1.0F, 4.0F / 3.0F, 1'800'000);
-  failures += Expect(std::fabs(loaded.round_trip_hours - (1.0F + (4.0F / 3.0F))) < 1.0e-5F,
-                     "loaded pace: a kilometre's round trip is the empty half plus the loaded "
-                     "half, 2.333 h");
+  failures +=
+      Expect(std::fabs(loaded.round_trip_hours - (1.0F + (4.0F / 3.0F) + pauses)) < 1.0e-5F,
+             "loaded pace: a kilometre's round trip is the empty half plus the loaded half, "
+             "2.333 h, plus the two pauses");
   const core::HaulRate walked = core::RateOverKm(1.0F, 2.4F, 2.4F, 20'000);
-  failures += Expect(std::fabs(walked.round_trip_hours - 4.8F) < 1.0e-5F,
-                     "loaded pace: a carrier on foot walks both halves, twice his walk");
+  failures += Expect(std::fabs(walked.round_trip_hours - (4.8F + pauses)) < 1.0e-5F,
+                     "loaded pace: a carrier on foot walks both halves, twice his walk, and "
+                     "pays the same pauses");
+  // GATE L1 (econ loading-pause-2026-10-19 §4): a 10-hour day of trips on a
+  // 261 m leg is 10 / (0.261 x 2.333 + 0.25) = 11.6, on 1 km 3.9; a leg of
+  // no length is the two pauses alone.
+  const auto trips_a_day = [](float one_way_km) {
+    return 10.0F / core::RateOverKm(one_way_km, 1.0F, 4.0F / 3.0F, 1).round_trip_hours;
+  };
+  std::cout << "  loading pause: trips a 10 h day — 261 m " << trips_a_day(0.261F) << ", 1 km "
+            << trips_a_day(1.0F) << ", 0 m " << trips_a_day(0.0F) << "\n";
+  failures += Expect(std::fabs(trips_a_day(0.261F) - 11.6F) <= 0.2F &&
+                         std::fabs(trips_a_day(1.0F) - 3.9F) <= 0.05F &&
+                         std::fabs(trips_a_day(0.0F) - 40.0F) < 1.0e-3F,
+                     "loading pause (L1): 11.6 trips a day on 261 m, 3.9 on 1 km, 40 on none");
   const core::HaulRate between = core::RateBetween(core::Vec2{.x = 0.0F, .y = 0.0F},
                                                    core::Vec2{.x = 1'000.0F, .y = 0.0F},
                                                    1.0F,
@@ -663,8 +680,9 @@ int TestTheLoadedPace() {
   failures += Expect(std::fabs(between.round_trip_hours - loaded.round_trip_hours) < 1.0e-5F,
                      "loaded pace: the straight-line door prices the same round");
   failures += Expect(std::fabs(static_cast<float>(core::HaulGrams(10.0F, loaded)) -
-                               (1'800'000.0F * 10.0F / (1.0F + (4.0F / 3.0F)))) < 1.0F,
-                     "loaded pace: ten hours carry 4.29 loads at the longer round, not 5");
+                               (1'800'000.0F * 10.0F / (1.0F + (4.0F / 3.0F) + pauses))) < 1.0F,
+                     "loaded pace: ten hours carry 3.87 loads at the longer round with its "
+                     "pauses, not 5");
   return failures;
 }
 

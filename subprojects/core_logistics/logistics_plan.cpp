@@ -409,8 +409,10 @@ bool BeginTrips(const WorldState& world, Mover& mover) {
   mover.load = mover.at;
   mover.receiver = receiver;
   // THE LOADED HALF AT THE LOADED PACE (#570, 2a), the way back at the
-  // empty one — as the seam is priced (haul.h, RateOverKm).
-  mover.trip_loaded_hours = one_way_km * mover.loaded_hours_per_km;
+  // empty one — as the seam is priced (haul.h, RateOverKm). The loaded half
+  // carries the loading at its start and the unloading at its end (#844):
+  // the same two pauses RateOverKm adds, so the plan and the seam agree.
+  mover.trip_loaded_hours = (one_way_km * mover.loaded_hours_per_km) + (2.0F * kLoadingPauseHours);
   mover.trip_empty_hours = one_way_km * mover.hours_per_km;
   mover.ride_home = RideHours(world, mover, &task, receiver, mover.home);
   return true;

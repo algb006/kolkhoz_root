@@ -91,7 +91,8 @@ CartPace PaceOf(const ProductionConfig& config, const WorldState& world) {
 }
 
 /// One trip's hours over the stops in order: loaded out and between, empty
-/// back (RateOverKm's floor kept).
+/// back; one loading pause at the start and an unloading pause at every stop
+/// (#844, kLoadingPauseHours).
 float TourHours(const WorldState& world,
                 TravelMode mode,
                 const CartPace& pace,
@@ -108,10 +109,11 @@ float TourHours(const WorldState& world,
   if (empty_km != nullptr) {
     *empty_km = back;
   }
-  const float hours = loaded_km * pace.loaded + back * pace.empty;
-  // The round trip's floor is haul.cpp's own (asked, not copied).
-  const float floor = RateOverKm(0.0F, 0.0F, 0.0F, 0).round_trip_hours;
-  return hours >= floor ? hours : floor;
+  const float road = loaded_km * pace.loaded + back * pace.empty;
+  // THE PAUSES, NOT A FLOOR (#844): until 0.37.302 the tour took haul.cpp's
+  // 0.25 h floor; now a loading and an unloading at each stop, on the road.
+  const float stops_paused = static_cast<float>(stops.empty() ? 1U : stops.size());
+  return (road > 0.0F ? road : 0.0F) + (kLoadingPauseHours * (1.0F + stops_paused));
 }
 
 }  // namespace

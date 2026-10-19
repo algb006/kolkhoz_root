@@ -7586,14 +7586,20 @@ int CheckTheCarryToTheHeap() {
   const auto near = [](float got, float want) {
     return got > want * 0.999F && got < want * 1.001F;
   };
+  // THE PAUSES (#844, 0.37.302): every round trip below also pays the loading
+  // and the unloading, 0.25 h, which does not grow with the way.
+  const float pauses = 2.0F * core::kLoadingPauseHours;
   const float on_foot = core::CarryToHeapDays(config, world, field, ten_tonnes);
-  failures += Expect(near(on_foot, 23.898F),
-                     "carry: 10 t to the heap at the edge on foot, 23.90 days beyond the norm");
+  failures += Expect(near(on_foot, 23.898F * (0.4780F + pauses) / 0.4780F),
+                     "carry: 10 t to the heap at the edge on foot, 36.40 days beyond the norm "
+                     "(23.90 before the pauses)");
   core::FieldRow big = field;
   big.area_ga = 40.0F;
   const float big_on_foot = core::CarryToHeapDays(config, world, big, 4 * ten_tonnes);
-  failures += Expect(near(big_on_foot, 8.0F * on_foot),
-                     "carry: four times the field and the crop, eight times the days");
+  failures +=
+      Expect(near(big_on_foot, 4.0F * on_foot * ((2.0F * 0.4780F) + pauses) / (0.4780F + pauses)),
+             "carry: four times the field and the crop, 6.6 times the days (eight "
+             "before the pauses: the way doubles, the pauses do not)");
   core::HerdRow horses;
   horses.kind = core::LivestockKindId{0};
   horses.adult_count = 2;
@@ -7601,9 +7607,10 @@ int CheckTheCarryToTheHeap() {
   const float by_cart = core::CarryToHeapDays(config, world, field, ten_tonnes);
   // 0.553 days until 0.37.229, with the round trip at the trot both ways; the
   // loaded half at 9 km/h makes the round 2.333/2 of it (#570, 2a).
-  failures +=
-      Expect(near(by_cart, 0.5532F * (1.0F + (4.0F / 3.0F)) / 2.0F),
-             "carry: with a horse, a cart's 750 kg: 0.645 days (the loaded half at 9 km/h)");
+  const float cart_road = 0.4149F * (1.0F + (4.0F / 3.0F)) / 2.0F;
+  failures += Expect(near(by_cart, 0.5532F * (cart_road + pauses) / 0.4149F),
+                     "carry: with a horse, a cart's 750 kg: 0.979 days (the loaded half at 9 "
+                     "km/h, and the pauses)");
   core::FieldRow meadow = field;
   meadow.kind = core::LandKind::kMeadow;
   failures += Expect(core::CarryToHeapDays(config, world, meadow, ten_tonnes) == 0.0F &&
@@ -14220,15 +14227,19 @@ int CheckMudSeason() {
   const core::HaulRate dry = core::FieldHaulRate(config, world, field);
   world.weather.road_beds.condition[kDirt] = core::RoadCondition::kMud;
   const core::HaulRate muddy = core::FieldHaulRate(config, world, field);
-  failures += Expect(dry.round_trip_hours > 0.0F &&
-                         std::fabs(muddy.round_trip_hours - (2.0F * dry.round_trip_hours)) <
-                             1e-3F * dry.round_trip_hours,
-                     "in the mud a cart's round trip to the same store takes twice as long");
+  // THE BED STRETCHES THE ROAD, NOT THE PAUSES (#844, 0.37.302): the loading
+  // and the unloading take their 0.25 h on any bed.
+  const float pauses = 2.0F * core::kLoadingPauseHours;
+  const float dry_road = dry.round_trip_hours - pauses;
+  failures += Expect(dry_road > 0.0F && std::fabs(muddy.round_trip_hours - pauses -
+                                                  (2.0F * dry_road)) < 1e-3F * dry.round_trip_hours,
+                     "in the mud a cart's road to the same store takes twice as long");
   world.weather.road_beds.condition[kDirt] = core::RoadCondition::kWet;
   const core::HaulRate wet = core::FieldHaulRate(config, world, field);
-  failures += Expect(std::fabs(wet.round_trip_hours - (dry.round_trip_hours / 0.8F)) <
-                         1e-3F * dry.round_trip_hours,
-                     "on a wet bed after rain it takes 1 / 0.8 as long (road_wet_factor_dirt)");
+  failures += Expect(
+      std::fabs(wet.round_trip_hours - pauses - (dry_road / 0.8F)) < 1e-3F * dry.round_trip_hours,
+      "on a wet bed after rain its road takes 1 / 0.8 as long "
+      "(road_wet_factor_dirt)");
   world.weather.road_beds.condition[kDirt] = core::RoadCondition::kFrozen;
   const core::HaulRate frozen = core::FieldHaulRate(config, world, field);
   failures += Expect(frozen.round_trip_hours < dry.round_trip_hours,

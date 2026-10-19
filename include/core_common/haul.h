@@ -33,6 +33,18 @@
 
 namespace core {
 
+/// THE LOADING AND UNLOADING PAUSE, game hours, ONE CONSTANT ON EVERYTHING
+/// (#844; transport design §7 «Время одинаковое для всех операций… Одна
+/// константа на всё»; econ loading-pause-2026-10-19, accepted by boss 19
+/// October). Every load picked up pays it once and every load put down once,
+/// whatever the load, the amount or the carrier: a round trip is its road plus
+/// two pauses (RateOverKm), and the groom's plan draws the same two into the
+/// loaded half of each trip (core_logistics/logistics_plan.cpp). The
+/// animation's pause, not a pitchfork's hour: the design has no loading work.
+/// STUB 0.125 h (7.5 game minutes) — econ's value, the engine's old 0.25 h
+/// floor made honest; gate L6 halves it once if construction reds.
+constexpr float kLoadingPauseHours = 0.125F;
+
 /// THE CART OF THE COMPRESSED YEAR (0.37.125; transport design §1; the human,
 /// 2 October 2026: «Делай K = 2,4»). A cart's load in the core is the table's
 /// tonnes TIMES ITS SCALE — transport.csv, row `cart_loaded`, `load_tonnes` x
@@ -101,9 +113,9 @@ struct HaulRate {
 ///        two halves, not twice the empty one: every seam priced before was
 ///        a sixth short on the roads.
 /// @param load Grams one trip takes.
-/// @return A rate whose round trip is never zero: two places at the same
-///         point still cost the loading and unloading of a trip, and a zero
-///         would divide the day by nothing.
+/// @return A rate whose round trip is its road plus the loading and the
+///         unloading pause (kLoadingPauseHours each, #844), so never zero:
+///         two places at the same point still cost the two pauses.
 HaulRate RateBetween(Vec2 from, Vec2 to, float hours_per_km, float loaded_hours_per_km, Grams load);
 
 /// @brief The same terms over a way already measured: `one_way_km` is the

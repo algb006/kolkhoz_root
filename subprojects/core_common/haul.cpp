@@ -5,15 +5,6 @@
 #include <cmath>
 
 namespace core {
-namespace {
-
-/// The shortest trip the model will price. A load still has to be picked up
-/// and put down, and two places at the same coordinates would otherwise
-/// divide a day by zero and move the whole world in an instant — which is
-/// the very stub task A4 exists to remove.
-constexpr float kMinRoundTripHours = 0.25F;
-
-}  // namespace
 
 HaulRate RateBetween(
     Vec2 from, Vec2 to, float hours_per_km, float loaded_hours_per_km, Grams load) {
@@ -28,10 +19,11 @@ HaulRate RateOverKm(float one_way_km, float hours_per_km, float loaded_hours_per
   // both halves went at the empty pace.
   HaulRate rate;
   rate.load = load;
-  rate.round_trip_hours = one_way_km * (hours_per_km + loaded_hours_per_km);
-  if (!(rate.round_trip_hours >= kMinRoundTripHours)) {
-    rate.round_trip_hours = kMinRoundTripHours;  // positive test: nan lands here too
-  }
+  // THE TWO PAUSES ON TOP OF THE ROAD (#844): until 0.37.302 a 0.25 h floor
+  // stood here instead, so a trip's time was its road alone above ~107 m.
+  const float road = one_way_km * (hours_per_km + loaded_hours_per_km);
+  rate.round_trip_hours =
+      (road > 0.0F ? road : 0.0F) + (2.0F * kLoadingPauseHours);  // nan: no road
   return rate;
 }
 
