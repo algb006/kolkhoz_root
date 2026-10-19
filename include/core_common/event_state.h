@@ -804,6 +804,24 @@ enum class EventKind : std::uint8_t {
   /// proposed: `herd_ate_from_far_rick`.
   kHerdAteFromFarRick,
 
+  /// A SETTLEMENT FORMED (#1089; settlement_state.h): `amount` its id; its
+  /// gong's unit in `unit`. Notable. Proposed key `settlement_formed`.
+  kSettlementFormed,
+
+  /// TWO SETTLEMENTS MERGED (#1089): `amount` packs the survivor's id (the
+  /// elder) in its low 32 bits and the absorbed one's in its high 32, as
+  /// kUrgentLoadWaits packs its two. Notable. Key `settlement_merged`.
+  kSettlementMerged,
+
+  /// A SETTLEMENT SPLIT (#1089): `amount` packs the id that kept its name
+  /// (the side with the oldest dwelling) low and the new one's high.
+  /// Notable. Key `settlement_split`.
+  kSettlementSplit,
+
+  /// A FIRE GONG MOVED to its settlement's centre (#1089): `unit` the gong,
+  /// `amount` its settlement's id. Routine. Key `fire_gong_moved`.
+  kFireGongMoved,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

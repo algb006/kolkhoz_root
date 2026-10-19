@@ -81,6 +81,12 @@ using FieldId = EntityId<FieldIdTag>;
 /// @brief One herd: animals of one kind kept at one unit (stage 4).
 using HerdId = EntityId<HerdIdTag>;
 
+struct SettlementIdTag {};
+
+/// @brief One settlement, a village of dwellings the core derives (#1089;
+/// settlement_state.h). The start village is 1 for ever.
+using SettlementId = EntityId<SettlementIdTag>;
+
 /// @brief One standing order of the chairman: a command that came across the
 /// boundary and lives in the order book until it is done (project phase 2,
 /// core_common/order_state.h). Issued by the step engine alone, so the
