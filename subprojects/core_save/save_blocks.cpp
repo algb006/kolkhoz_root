@@ -273,7 +273,9 @@ static_assert(AggregateArity<UnmannedRunRow>() == 10,
 // `road_index` (world_state.h): a loaded world starts it true and the first
 // re-plan hour scans once, finding what an unbroken run's scan finds. No save
 // number for a member the stream does not carry.
-static_assert(AggregateArity<WorldState>() == 50,
+// Save 173 (#1089): the settlements, the fifty-first - a table of its own
+// section («settlements», after the logistics tasks), not this block's.
+static_assert(AggregateArity<WorldState>() == 51,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 

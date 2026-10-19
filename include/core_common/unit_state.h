@@ -390,6 +390,17 @@ struct UnitRow {
 
   Vec2 position;
 
+  /// THE SETTLEMENT THE UNIT BELONGS TO (#1089; settlement_state.h): sticky
+  /// for an inhabited dwelling - set at its first inhabited day, changed only
+  /// by a merge or a split; for every other unit the settlement whose
+  /// dwellings are nearest, written daily. Invalid until the first step.
+  /// SAVED.
+  SettlementId settlement;
+
+  /// An inhabited dwelling of its settlement standing as an OUTLYING yard:
+  /// beyond kJoinMetres of the rest, too few to form its own (V4). SAVED.
+  std::uint8_t outlying = 0;
+
   /// Unit level, 1-based on the type's own ladder (unit rules design §11:
   /// the first level IS the built unit). LEVEL 0 MEANS "NOT BUILT": a
   /// marked or unfinished site, or a unit being demolished. A level-0 unit

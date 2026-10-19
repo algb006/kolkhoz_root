@@ -18,6 +18,7 @@ kolkhoz_add_module(core_world
     start_roads.cpp
     wait_rules.cpp
     watchdog.cpp
+    settlement_rules.cpp
     world.cpp)
 
 target_link_libraries(core_world

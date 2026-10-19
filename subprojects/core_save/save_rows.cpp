@@ -272,6 +272,11 @@ static_assert(sizeof(RickSupplySeam) == 32,
               "RickSupplySeam changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<RickSupplySeam>() == 6,
               "RickSupplySeam gained or lost a field — update the codec and VERSION_SAVE");
+// Save 173 (#1089): the settlement, a SettlementId, and the outlying flag, a
+// byte, after the position - predicted 160 -> 168 of scalars (5 bytes,
+// rounded to the 4 the next id wants) and 23 fields, before the build -
+// MISSED: 160, measured; the five bytes went into padding the row already
+// had. 23 fields held. On the wire +5 a unit.
 static_assert(sizeof(UnitRow) == 160 + (3 * kAmountsSize) + sizeof(std::vector<SupplyLeg>) +
                                      sizeof(std::optional<ConstructionState>),
               "UnitRow changed — update the codec and VERSION_SAVE");
@@ -296,8 +301,16 @@ static_assert(AggregateArity<ConstructionState>() == 22,
               "ConstructionState gained or lost a field — update the codec and VERSION_SAVE");
 // Save 74: reserved_for_specialist, a byte beside `dead` — 18 fields. Save 157:
 // suspended_works (#715) — 20.
-static_assert(AggregateArity<UnitRow>() == 21,
+static_assert(AggregateArity<UnitRow>() == 23,
               "UnitRow gained or lost a field — update the codec and VERSION_SAVE");
+// Save 173 (#1089): the settlement's row - predicted 28 bytes (Vec2 8, four
+// u32-sized fields 16, a byte, a byte of padding, a u16) and 7 fields, before
+// the build; on the wire 29 a row (4 + 4 + 4 + 4 + 4 + 4 + 1 + 2 = 27 plus the
+// id the table writes beside it).
+static_assert(sizeof(SettlementRow) == 28,
+              "SettlementRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<SettlementRow>() == 7,
+              "SettlementRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 71: fed_share, the day's covered ration — 68 and nineteen fields,
 // predicted before the field was added and measured after. Save 76:
 // autumn_slaughter_done, a byte into the padding after disease_stage — 68
@@ -1388,6 +1401,9 @@ void WriteUnitRow(SaveSink& sink, const UnitRow& row) {
   ByteWriter& out = sink.Out();
   sink.WriteDefId(DefKind::kUnitType, row.type.value);
   WriteVec2(out, row.position);
+  // Save 173 (#1089): the unit's settlement and its outlying flag.
+  WriteEntityId(out, row.settlement);
+  out.WriteU8(row.outlying);
   out.WriteU8(row.level);
   WriteEntityId(out, row.household);
   sink.WriteAmounts(DefKind::kResource, row.stock);
@@ -1437,6 +1453,8 @@ UnitRow ReadUnitRow(LoadSource& source) {
   UnitRow row;
   row.type = UnitTypeId{source.ReadDefId(DefKind::kUnitType)};
   row.position = ReadVec2(in);
+  row.settlement = ReadEntityId<SettlementId>(in);  // save 173 (#1089)
+  row.outlying = static_cast<std::uint8_t>(source.ReadEnumValue(0, 2, "a unit's outlying flag"));
   row.level = in.ReadU8();
   row.household = ReadEntityId<FamilyId>(in);
   row.stock = source.ReadAmounts(DefKind::kResource);
@@ -2015,6 +2033,30 @@ void WriteLogisticsTaskRow(SaveSink& sink, const LogisticsTaskRow& row) {
   out.WriteU8(row.threshold_days);         // save 171 (#1056 C1.2): the rick's threshold
   out.WriteFloat(row.drained_on_foot);     // save 155: who drained the seam (#671)
   out.WriteFloat(row.drained_by_cart);
+}
+
+void WriteSettlementRow(SaveSink& sink, const SettlementRow& row) {
+  ByteWriter& out = sink.Out();
+  WriteVec2(out, row.centre);
+  WriteEntityId(out, row.gong);
+  out.WriteU32(row.formed_day);
+  out.WriteU32(row.gong_moved_day);
+  WriteEntityId(out, row.merge_with);
+  out.WriteU8(row.split_pending);
+  out.WriteU16(row.name);
+}
+
+SettlementRow ReadSettlementRow(LoadSource& source) {
+  ByteReader& in = source.In();
+  SettlementRow row;
+  row.centre = ReadVec2(in);
+  row.gong = ReadEntityId<UnitId>(in);
+  row.formed_day = in.ReadU32();
+  row.gong_moved_day = in.ReadU32();
+  row.merge_with = ReadEntityId<SettlementId>(in);
+  row.split_pending = source.ReadEnumValue(0, 1, "a settlement's split pending");
+  row.name = in.ReadU16();
+  return row;
 }
 
 LogisticsTaskRow ReadLogisticsTaskRow(LoadSource& source) {

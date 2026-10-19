@@ -10,8 +10,13 @@
 #ifndef CORE_WORLD_SETTLEMENT_RULES_H_
 #define CORE_WORLD_SETTLEMENT_RULES_H_
 
+#include <cstdint>
+#include <string>
+#include <vector>
+
 #include "core_common/ids.h"
 #include "core_common/world_state.h"
+#include "core_tables/tables.h"
 
 namespace core {
 
@@ -28,7 +33,18 @@ struct SettlementConfig {
   /// A gong frozen where it stands - the identity run of V6 (boss, the
   /// #1056 thread [53]); off in every other run.
   bool gong_frozen = false;
+
+  /// The plots' radii by UnitTypeId and the map's side (PlotRules' own
+  /// numbers, copied off the definitions): where a new or moved gong may
+  /// stand (FreePlot).
+  std::vector<float> radius_by_type;
+  float map_side_m = 0.0F;
 };
+
+/// @brief Reads the settlement step's config off the tables: the housing
+///        class, the fire_gong type, the plots' radii and the map's side.
+/// @return false with `error` set when unit_types has no `class` column.
+bool ReadSettlementConfig(const ITableSet& tables, SettlementConfig& config, std::string& error);
 
 /// @brief Whether `unit` is an inhabited dwelling of `world`: of class
 ///        housing, standing (level >= 1, not dead), and some family's house.

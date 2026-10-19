@@ -39,6 +39,7 @@
 #include "core_world/era_readiness.h"
 #include "core_world/road_tools.h"
 #include "core_world/world.h"
+#include "settlement_checks.h"
 #include "start_literacy.h"
 #include "watchdog_checks.h"
 
@@ -2884,6 +2885,7 @@ int main() {
   int failures = 0;
   failures += CheckReadinessShape();
   failures += CheckTheWatchdog();
+  failures += CheckTheSettlements();
   failures += CheckEveryAdviceIsTaken();
   failures += CheckBaseConventions();
   failures += CheckIceRowsAssemble();
