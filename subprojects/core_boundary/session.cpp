@@ -297,6 +297,10 @@ bool ShapeIsValid(const OrderRow& order) {
       // it and whether it is already as asked is the consumer's.
       return has_unit && order.enable <= 1 && !has_resident && !has_field && !has_herd &&
              !has_stand && !has_site;
+    case OrderKind::kAttendFuneral:
+      // STUB until the funeral's body lands (#1084): the order's funeral id
+      // field comes with its codec there; until then the shape is refused.
+      return false;
     case OrderKind::kPauseLogisticsTask:
       // The task and a switch that is a switch.
       return order.logistics_task.value != kInvalidEntityIdValue && order.enable <= 1 &&

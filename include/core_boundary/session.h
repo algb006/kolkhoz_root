@@ -270,6 +270,7 @@ enum class Whereabouts : std::uint8_t {
   kAtWork,       ///< At the assignment's place: a field, a herd's unit.
   kOnTheRoad,    ///< Between `from` and `to`; the leg's ticks say when.
   kAway,         ///< Out of the settlement (a later phase: trips, school).
+  kAtFuneral,    ///< At a funeral's procession and cemetery (#1084); key `funeral`.
 
   /// NOT A KIND, and never a value anybody stores or sends: the count, so a
   /// CONSUMER can static_assert the length of its own mirror.

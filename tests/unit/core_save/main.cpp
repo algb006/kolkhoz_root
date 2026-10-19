@@ -1852,7 +1852,10 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // Save 153 (0.37.227, F3's contract): +8 a resident — travel_home_hours
     // and rides_home_with; predicted 505 -> 521 before the build, held.
     // Save 156 (#709): +2 a resident — the work's two day flags; 521 -> 525.
-    {"residents", 525, 0x441759c5f8dd30b8ULL},
+    // Save 174 (#1084 contract): IdleReason gains kFuneral before its count,
+    // and a resident's «no reason» is the count - the same 525 bytes, the
+    // sentinel's byte one higher; NOT predicted, measured; the hash read off it.
+    {"residents", 525, 0xa06d3acd3e5f4d07ULL},
     // 2026-09-18, save 57: +2 — ration_granted, one byte per family of two.
     // Save 60: +2 — a yard's dry months, one byte per family of two.
     // Save 65: families +8 (overwork_penalty, two yards), fields +6 (the avral's
@@ -2040,7 +2043,10 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // Save 154 (0.37.232, #595): kRaiseSite became the top OrderKind — same
     // 818 bytes, the hash moved; NOT predicted before the build (the ninth
     // time; the units section's +3 was predicted, this one the test found).
-    {"orders", 818, 0x9610fff945ef0326ULL},
+    // Save 174 (#1084 contract): the fixture's «last order kind» is now
+    // kAttendFuneral - the same 818 bytes, the kind's byte one higher; NOT
+    // predicted, measured; the hash read off it.
+    {"orders", 818, 0x664a5fc973a921b9ULL},
     // Save 82: the fixture's first stand, a birch planting — 8 -> 67 (its id
     // 4, the old fields 41, species 2, hectares 4, two days 8); predicted,
     // held.
@@ -2224,7 +2230,9 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // held; the hash read off it.
     // Save 167 (#1040): the team's work-oat request, a Grams a book: 3044 ->
     // 3060, predicted before the build and held; the hash read off it.
-    {"ledger", 3060, 0xad3659645a45517aULL},
+    // Save 174 (#1084 contract): idle_person_days gains the kFuneral cell, a
+    // u32 a book: 3060 -> 3068; NOT predicted, measured; the hash read off it.
+    {"ledger", 3068, 0x38ec6b8b57f17ceaULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 

@@ -153,6 +153,7 @@ enum class IdleReason : std::uint8_t {
   /// seeds 1936 and 1938 (2026-10-01) showed 30-39 adults a day under those
   /// two words with potato standing in the field.
   kRain,
+  kFuneral,          ///< At a funeral: its kin the whole day, a neighbour its hours (#1084).
   kIdleReasonCount,  ///< NOT A REASON: the count, for mirrors.
 };
 

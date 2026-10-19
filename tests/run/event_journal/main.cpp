@@ -136,6 +136,8 @@ const char* KindName(core::EventKind kind) {
       return "settlement_split";
     case core::EventKind::kFireGongMoved:
       return "fire_gong_moved";
+    case core::EventKind::kFuneralInvitation:
+      return "funeral_invitation";
     case core::EventKind::kElectrificationUnlocked:
       return "electrification_unlocked";
     case core::EventKind::kFireBroke:

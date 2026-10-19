@@ -967,6 +967,15 @@ enum class OrderKind : std::uint8_t {
   /// core_construction.
   kRaiseSite,
 
+  /// THE CHAIRMAN GOES TO A FUNERAL (#1084; funeral_state.h; social.md «Как
+  /// идут похороны», the invitation's «Пойти»): `funeral` the funeral. The
+  /// core books «went»; the session carries him there - the core never
+  /// moves the chairman. Accepted until the burial day's ceremony.
+  /// Refusals: kNoSuchSubject (no such funeral, or it is over), kRuleForbids
+  /// (answered already). Seam key `attend_funeral`. Consumer: core_residents
+  /// (funeral_rules.h, TakeAttendOrders).
+  kAttendFuneral,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).

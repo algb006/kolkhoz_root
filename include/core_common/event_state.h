@@ -822,6 +822,12 @@ enum class EventKind : std::uint8_t {
   /// `amount` its settlement's id. Routine. Key `fire_gong_moved`.
   kFireGongMoved,
 
+  /// A FUNERAL TOMORROW, THE CHAIRMAN INVITED (#1084; funeral_state.h): the
+  /// feed's «Завтра хоронят {name}. [Пойти]». `amount` the funeral's id,
+  /// `resident` its first dead. kInterrupting when loud, kNotable when quiet.
+  /// Key `funeral_invitation`.
+  kFuneralInvitation,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.
