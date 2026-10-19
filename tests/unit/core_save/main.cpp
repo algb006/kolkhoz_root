@@ -2072,7 +2072,11 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // Save 200 (#1373): rest_drained_today and heat_paid, +5 a resident, two -
     // 541 -> 551, reckoned from the codec before the suite and held; the hash
     // read off the first build.
-    {"residents", 551, 0xb6545dcfc09b1022ULL},
+    // Save 205 (#1084 contract, re-laid on 0.37.357): IdleReason gains
+    // kFuneral before its count, and a resident's «no reason» is the count -
+    // the same 551 bytes, the sentinel's byte one higher; predicted before
+    // the build, the hash read off it.
+    {"residents", 551, 0x9a66e8361ec60f0fULL},
     // 2026-09-18, save 57: +2 — ration_granted, one byte per family of two.
     // Save 60: +2 — a yard's dry months, one byte per family of two.
     // Save 65: families +8 (overwork_penalty, two yards), fields +6 (the avral's
@@ -2282,7 +2286,11 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // Save 201 (#1421): pay_in_grain, a byte an order, six orders - 818 -> 824,
     // reckoned from the codec before the suite and held; the hash read off
     // the build.
-    {"orders", 824, 0x6cde2175420cdbe8ULL},
+    // Save 205 (#1084 contract, re-laid on 0.37.357): if the fixture's «last
+    // order kind» is the top OrderKind, it is now kAttendFuneral - the same
+    // 824 bytes, the kind's byte one higher; predicted before the build, the
+    // hash read off it.
+    {"orders", 824, 0xce4beb3622117b63ULL},
     // Save 82: the fixture's first stand, a birch planting — 8 -> 67 (its id
     // 4, the old fields 41, species 2, hectares 4, two days 8); predicted,
     // held.
@@ -2510,7 +2518,10 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // before the build and held. Save 202 (#1442): the yards' herd care and
     // the day's hours an adult (f32 each), +8 a book, two books: 3958 -> 3974,
     // predicted before the build and held.
-    {"ledger", 3974, 0x8e17bfa3f6781269ULL},
+    // Save 205 (#1084 contract, re-laid on 0.37.357): idle_person_days gains
+    // the kFuneral cell, a u32 a book, two books: 3974 -> 3982, predicted
+    // before the build; the hash read off it.
+    {"ledger", 3982, 0x357db32cc103a269ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
