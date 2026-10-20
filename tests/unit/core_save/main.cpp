@@ -762,6 +762,11 @@ core::WorldState MakeWorld() {
   world.arrivals_turned_away.last_day = 300;
   world.arrivals_turned_away.per_day[2] = 1;
   world.arrivals_turned_away.per_day[44] = 3;
+  // The clamps' rot (save 176): a day and two gram counts apart, one past
+  // four bytes, so a codec that wrote a u32 is seen.
+  world.clamp_rot.last_day = 301;
+  world.clamp_rot.per_day[3] = 5'000'000'123;
+  world.clamp_rot.per_day[45] = 70'000;
   // The jobs' runs of mornings with no hand (save 149): two, every id and
   // count off its default, the second one said.
   world.unmanned_runs.resize(2);
@@ -1369,6 +1374,8 @@ core::WorldState MakeWitnessWorld() {
   witness.horse_lamp.teams_short[19] = 2;
   witness.arrivals_turned_away.last_day = 290;  // save 148
   witness.arrivals_turned_away.per_day[5] = 4;
+  witness.clamp_rot.last_day = 291;  // save 176
+  witness.clamp_rot.per_day[7] = 9'000;
   witness.unmanned_runs.resize(1);  // save 149
   witness.unmanned_runs[0].kind = core::WorkKind::kHerdCare;
   witness.unmanned_runs[0].herd = core::HerdId{2};
@@ -1612,6 +1619,11 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   for (const std::uint8_t turned : world.arrivals_turned_away.per_day) {
     chunks.push_back({"arrivals_turned_away.per_day", U8(turned)});
   }
+  // Save 176: the clamps' rot - the last day, eight bytes a day.
+  chunks.push_back({"clamp_rot.last_day", U32(world.clamp_rot.last_day)});
+  for (const core::Grams grams : world.clamp_rot.per_day) {
+    chunks.push_back({"clamp_rot.per_day", U64(static_cast<std::uint64_t>(grams))});
+  }
   // Save 149: the jobs' runs — a count, then each run's fields in order.
   chunks.push_back(
       {"unmanned_runs.count", U32(static_cast<std::uint32_t>(world.unmanned_runs.size()))});
@@ -1833,10 +1845,13 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // Save 167 (#1040): the thin year by the field plan, four u8, a float, two
     // Grams: 929 -> 953, predicted before the build and held; the hash read
     // off it.
-    // Save 177 (#1056 C2.2): the manure's oats, two Grams and a u8: 953 ->
-    // 970, predicted before the build and held; the hash read off it with the
-    // three set off their defaults.
-    {"world", 970, 0xaa605874358b69f4ULL},
+    // Save 176 (#1005; 170 on its old base): the clamps' rot, a u32 day and 48
+    // Grams: 953 -> 1341,
+    // predicted (+388) before the build and held; the hash read off it.
+    // Save 177 (#1056 C2 and C2.2 on 176): the manure's oats, two Grams and a
+    // u8: 1341 -> 1358, predicted before the build; the hash read off it with
+    // the three set off their defaults.
+    {"world", 1358, 0x0ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2257,11 +2272,14 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // held; the hash read off it.
     // Save 167 (#1040): the team's work-oat request, a Grams a book: 3044 ->
     // 3060, predicted before the build and held; the hash read off it.
-    // Save 176 (#1056 C2): manure carted and late, two Grams a book: 3060 ->
-    // 3092, predicted before the build and held; the hash read off it.
-    // Save 177 (#1056 C2.2): the winter's hold's book, three floats a book:
-    // 3092 -> 3116, predicted before the build and held; the hash read off it.
-    {"ledger", 3116, 0x2739466bcc8f8831ULL},
+    // Save 170 (#1005): spoiled_in_clamps, an empty amounts vector a book:
+    // 3060 -> 3064 - predicted as «one amounts vector a book» without its
+    // bytes; measured two a book (the empty vector's count); the hash read
+    // off it.
+    // Save 177 (#1056 C2 and C2.2 on 176): manure carted and late, two Grams
+    // a book, and the winter's hold's book, three floats a book: 3064 -> 3120,
+    // predicted before the build; the hash read off it.
+    {"ledger", 3120, 0x0ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -2645,6 +2663,10 @@ int main() {
                          loaded.arrivals_turned_away.per_day[44] == 3 &&
                          loaded.arrivals_turned_away.per_day[0] == 0,
                      "the migrants turned away come back, day and counts in place (save 148)");
+  failures +=
+      Expect(loaded.clamp_rot.last_day == 301 && loaded.clamp_rot.per_day[3] == 5'000'000'123 &&
+                 loaded.clamp_rot.per_day[45] == 70'000 && loaded.clamp_rot.per_day[0] == 0,
+             "the clamps' rot comes back, day and grams in place (save 170)");
   failures += Expect(loaded.unmanned_runs.size() == 2 &&
                          loaded.unmanned_runs[0].kind == core::WorkKind::kPlowing &&
                          loaded.unmanned_runs[0].field.value == 3 &&

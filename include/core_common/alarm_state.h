@@ -513,10 +513,12 @@ enum class AlarmKind : std::uint8_t {
 
   /// «УПРЯЖЬ НА СЕНЕ» (0.37.8, save 109; boss-core-epoch1-queue [84], [90];
   /// econ canon-horses-oats.md §3): the team's work ration has been short of
-  /// full for `kTeamOnHayDays` working days in a row — the horses pull on
-  /// hay, and the ploughing goes slower (WorldState::traction_ration). Goes
-  /// out on the first working day of the full ration, or when the team is
-  /// gone; a day nobody works keeps it standing. On a carting day the
+  /// full for `kTeamOnHayDays` HEAVY working days in a row (the plough, the
+  /// harrow, a meadow's mower in traces) — the horses pull on hay, and the
+  /// ploughing goes slower (WorldState::traction_ration). Goes out on the
+  /// first heavy day of the full ration, or when the team is gone; a day
+  /// nobody works, and a carting-only day, keep it standing (econ winter-team-
+  /// oats-2026-10-20 §4l: hauling is never slowed by the ration). On a carting day the
   /// plough's oats are held by rule (FeedAllowance, PloughFeedHold), so it
   /// can stand beside oats in the barn that are the plough's. OATS, NOT HAY: a team
   /// short of hay is kHerdStarving. Subject: `herd`, the first row of the
@@ -753,6 +755,20 @@ enum class AlarmKind : std::uint8_t {
   /// switch already, kNone once it does. Proposed registry key
   /// `site_supply_waits` (boss's vocabulary). Collected by core_logistics.
   kSiteSupplyWaits,
+
+  /// «В БУРТАХ СГНИЛО N Т» (#1005, #1068; econ's clamp-rot-lamp-2026-10-17
+  /// §4c; production design §1a: the clamp is the first year's place, the
+  /// vegetable store the long one). A STATE: lit from the first day of May
+  /// to the day before the potato's harvest window opens while the potato
+  /// and vegetables rotted IN CLAMPS over the last year (WorldState::
+  /// clamp_rot) reach farming.csv `clamp_rot_lamp_t`, and no vegetable store
+  /// stands, is staked or has works open. Subject: `resource` - the potato;
+  /// `amount` those grams. `days_to_loss` the days to the potato's harvest
+  /// window, when the new crop goes into the clamps again: yellow, red
+  /// within alarm_red_within_days. `lamp` 1, not interrupting; `advice`
+  /// kBuildStore, `advice_unit_type` the vegetable store. Proposed registry
+  /// key `clamp_rot` (boss's vocabulary). Collected by core_production.
+  kClampRot,
 
   // Appended by later tasks and phases: children out of school, sewage.
   // Named so the numbering is planned, not discovered.

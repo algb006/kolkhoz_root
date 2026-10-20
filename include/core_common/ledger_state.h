@@ -486,6 +486,12 @@ struct YearLedger {
   /// a line — the same rule that gave lost_no_room its column.
   ResourceAmounts spoiled;
 
+  /// OF `spoiled`, what rotted in a clamp, by resource (#1005; save 176):
+  /// not another loss, the clamp's share of it, booked by the same writer
+  /// (SpoilStores) on the same grams. The lamp «В буртах сгнило N т» reads
+  /// these grams by day off WorldState::clamp_rot, not this column.
+  ResourceAmounts spoiled_in_clamps;
+
   /// WHAT WENT INTO A BUILDING (boss seq 165; save 70): the recipe of a
   /// finished level, a repair's spare parts, an insulation's straw — taken
   /// out of the site's stock when the works close and gone from the village

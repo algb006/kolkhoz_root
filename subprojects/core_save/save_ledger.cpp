@@ -159,13 +159,16 @@ constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
 // float at the tail; predicted 1104 -> 1128 and 131 fields before the build;
 // on the wire +24 a book. Save 167 (#1040): the team's work-oat request, a
 // Grams at the tail - predicted 1128 -> 1136 and 132 fields before the build;
-// on the wire +8 a book. Save 176 (#1056 C2): manure carted and manure late,
-// two Grams after manure_plowed_in - predicted 1136 -> 1152 and 134 fields
-// before the build; on the wire +16 a book. Save 177 (#1056 C2.2): the
-// winter's hold's book, three floats after manure_late - predicted 1152 ->
-// 1168 (12 padded to the next Grams' 8) and 137 fields before the build; on
-// the wire +12 a book.
-static_assert(sizeof(YearLedger) == 1168 + (42 * kAmountsSize) + kBuiltInRowsSize,
+// on the wire +8 a book. Save 176 (#1005; 170 on its old base, never
+// released): spoiled_in_clamps, a 43rd amounts
+// vector after `spoiled` - predicted 1136 + 43 A and 133 fields before the
+// build; on the wire one amounts vector a book. Save 177 (#1056 C2 and C2.2
+// on 176; their 176 and 177 on the old base, never released): manure carted
+// and manure late, two Grams after manure_plowed_in, and the winter's hold's
+// book, three floats after manure_late - predicted 1136 -> 1168 + 43 A (12
+// padded to the next Grams' 8) and 137 fields before the build; on the wire
+// +28 a book.
+static_assert(sizeof(YearLedger) == 1168 + (43 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<YearLedger>() == 137,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
@@ -245,11 +248,12 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   sink.WriteAmounts(DefKind::kResource, book.lost_to_snow);  // save 61
   sink.WriteAmounts(DefKind::kResource, book.seized);        // save 62
   sink.WriteAmounts(DefKind::kResource, book.spoiled);
-  sink.WriteAmounts(DefKind::kResource, book.built_in);   // save 70
-  WriteBuiltInByType(sink, book.built_in_by_type);        // save 150
-  sink.WriteAmounts(DefKind::kResource, book.yard_feed);  // save 70
-  sink.WriteAmounts(DefKind::kResource, book.processed);  // save 73
-  sink.WriteAmounts(DefKind::kResource, book.made);       // save 73
+  sink.WriteAmounts(DefKind::kResource, book.spoiled_in_clamps);  // save 176
+  sink.WriteAmounts(DefKind::kResource, book.built_in);           // save 70
+  WriteBuiltInByType(sink, book.built_in_by_type);                // save 150
+  sink.WriteAmounts(DefKind::kResource, book.yard_feed);          // save 70
+  sink.WriteAmounts(DefKind::kResource, book.processed);          // save 73
+  sink.WriteAmounts(DefKind::kResource, book.made);               // save 73
   sink.WriteAmounts(DefKind::kResource, book.seed);
   out.WriteFloat(book.area_sown_ha);
   out.WriteFloat(book.area_harvested_ha);
@@ -443,6 +447,13 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.lost_to_snow = source.ReadAmounts(DefKind::kResource);
   book.seized = source.ReadAmounts(DefKind::kResource);
   book.spoiled = source.ReadAmounts(DefKind::kResource);
+  book.spoiled_in_clamps = source.ReadAmounts(DefKind::kResource);  // save 176
+  for (std::size_t resource = 0; resource < book.spoiled_in_clamps.size(); ++resource) {
+    const Grams of_all = resource < book.spoiled.size() ? book.spoiled[resource] : 0;
+    if (book.spoiled_in_clamps[resource] < 0 || book.spoiled_in_clamps[resource] > of_all) {
+      source.Fail("the book's clamp rot is negative or more than all the rot");
+    }
+  }
   book.built_in = source.ReadAmounts(DefKind::kResource);
   book.built_in_by_type = ReadBuiltInByType(source);  // save 150
   book.yard_feed = source.ReadAmounts(DefKind::kResource);

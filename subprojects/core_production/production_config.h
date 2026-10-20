@@ -727,6 +727,16 @@ struct FarmingConfig {
   /// a design decision can reach it.
   float traction_full_ration_share = 0.5F;
 
+  /// farming.csv `light_work_oat_share` (the human, «Сначала овёс»; econ
+  /// winter-team-oats-2026-10-20 §A): a horse in a cart or a sledge draws
+  /// this share of a heavy horse-day's work oats, and keeps this share of the
+  /// work part of its need - the rest is spared, not refilled with hay
+  /// (herd_system.cpp, WorkingShare and LightDaySpared; econ §4d-§4e). Barley
+  /// and the other concentrates stay at the full work share. STUB 0.5, by the
+  /// period's norms (field work 6-8 kg of oats a horse-day, carting at a walk
+  /// 3-4 kg); 1 is the world before it.
+  float light_work_oat_share = 0.5F;
+
   /// THE THIN YEAR BY THE FIELD PLAN (#1040; econ's oat-lamp contract §1;
   /// farming.csv): the year's oat - the slot's fields at their own yield
   /// plus the oat in store above the seed and the plan on 1 January - short
@@ -953,6 +963,12 @@ struct FarmingConfig {
   /// is the world before it.
   std::array<float, 4> hay_weathering_by_season = {0.0F, 0.0F, 0.0F, 0.0F};
 
+  /// farming.csv `clamp_rot_lamp_t` (#1005; econ's clamp-rot-lamp §4c): the
+  /// tonnes of potato and vegetables rotted in clamps over the last year at
+  /// which the lamp «В буртах сгнило N т» lights. STUB, econ's provisional
+  /// 12; the writer's first print sets it before the pair.
+  float clamp_rot_lamp_t = 12.0F;
+
   /// THE LIFE OF A SOWN GRASS STAND (grass_stand.csv; 0.37.212): one row a
   /// summer of the stand, counted from the summer it was sown; the LAST row
   /// stands for its summer and every later one. Read for a crop with
@@ -1158,6 +1174,11 @@ struct ProductionConfig {
 
   ResourceId down_resource;  ///< resources.csv "down" row.
 
+  /// resources.csv "potato" and "vegetables": what the clamp-rot lamp counts
+  /// (#1005; clamp_rot_state.h).
+  ResourceId potato_resource;
+  ResourceId vegetables_resource;
+
   UnitTypeId compost_heap_type;  ///< unit_types.csv "compost_heap".
 
   /// The two stores kEmptyStore empties (start §5; registers 214 and 233):
@@ -1165,6 +1186,10 @@ struct ProductionConfig {
   /// hold the store leak open while they hold raw material.
   UnitTypeId church_store_type;
   UnitTypeId clamp_type;
+
+  /// unit_types.csv "vegetable_store": the long answer the clamp-rot lamp
+  /// names (#1005).
+  UnitTypeId vegetable_store_type;
 
   /// resources.csv `theft`, dense by ResourceId: 2 eager, 1 some, 0 none or
   /// not yet written. The perevalka carries what is stolen more readily
