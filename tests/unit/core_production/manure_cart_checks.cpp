@@ -127,18 +127,22 @@ int CheckManureIsCartedOnSledges() {
                      "manure carting: a dose not all on its field when its ploughing opens is "
                      "cancelled, counted late, and the field keeps the share that arrived");
 
-  // THE CARRY-OVER: next turn re-books what the heap still holds; nothing is
-  // lost and nothing spread free.
+  // THE NEXT BOOKING (a later sledge day, or the turn): a standing booking
+  // stands and a short one is topped up, from the heap's manure no booking
+  // holds - nothing lost, nothing spread free (boss, the #1056 thread [140]:
+  // until then the turn cleared every booking).
   const core::Grams held = core::StockOf(world.units.rows[0].stock, manure);
+  const core::Grams unbooked = held - world.fields.rows[far].manure_dose.due;
+  const core::Grams top_up = unbooked < dose / 2 ? unbooked : dose / 2;
+  const core::Grams rest = unbooked - top_up < dose ? unbooked - top_up : dose;
   core::BookManureDoses(config, world);
-  const core::Grams far_share = held < dose ? held : dose;
-  const core::Grams rest = held - far_share < dose ? held - far_share : dose;
-  failures += Expect(core::StockOf(world.units.rows[0].stock, manure) == held && held > 0 &&
-                         booked(near) == 0 && booked(middle) == 0 && booked(far) == far_share &&
-                         booked(rich) == rest,
-                     "manure carting: the next turn books the heap's carry-over - the manured "
-                     "fields out, the far one whole, the rest to the rich one once none below "
-                     "the mark is short");
+  failures +=
+      Expect(core::StockOf(world.units.rows[0].stock, manure) == held && unbooked > 0 &&
+                 booked(near) == dose && world.fields.rows[near].manure_dose.due == 0 &&
+                 booked(middle) == 0 && booked(far) == dose / 2 + top_up && booked(rich) == rest,
+             "manure carting: the next booking keeps the carted dose, leaves the ploughed "
+             "field out, tops the far one's half up from the unbooked heap, and gives the "
+             "rest to the rich one only once none below the mark is short");
 
   // THE REAPED HEAP FIRST: a dose does not stand while a harvest lies there.
   world.fields.rows[far].reaped_grams = 1'000'000;

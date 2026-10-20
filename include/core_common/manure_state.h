@@ -15,10 +15,13 @@
 ///     reference layout's suggest_manure_pile, 90 m off), so there is no
 ///     yard -> heap leg. The old contract's yard buffer and its removal task
 ///     are withdrawn with the old form (econ: «the tonne-km is conserved»);
-///   - at the year's turn the doses are BOOKED, not spread: the fields below
-///     the fertility mark, NEAREST BY ROAD FROM THE HEAP FIRST, each its full
-///     norm dose (farming §9's dose unchanged), while the heap's unbooked
-///     manure lasts. No gram moves at the turn;
+///   - from the first snow after the harvest (November-December too; boss,
+///     the #1056 thread [140]) the doses are BOOKED, not spread: the fields
+///     below the fertility mark, NEAREST BY ROAD FROM THE HEAP FIRST, each up
+///     to its full norm dose (farming §9's dose unchanged), while the heap's
+///     unbooked manure lasts - every sledge day, so the winter's own manure is
+///     booked too. A booking stands until its field's ploughing. No gram moves
+///     at the booking;
 ///   - a booked dose is carted heap -> field ON SLEDGE DAYS ONLY (snow lies,
 ///     cart_gear.h SledgeDay): level 3, its deadline the field's ploughing;
 ///   - a field whose ploughing opens (its phase leaves kIdle) with part of its

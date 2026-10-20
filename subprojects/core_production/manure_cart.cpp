@@ -61,13 +61,14 @@ struct Candidate {
 }  // namespace
 
 void BookManureDoses(const ProductionConfig& config, WorldState& current) {
-  // THE TURN CLEARS EVERY STANDING BOOKING: what was not carted never left the
-  // heap, so it is booked again below by this year's order - nothing spread
-  // free, nothing lost (the carry-over, manure_state.h). What arrived stays in
-  // the field's manure_applied.
-  for (FieldRow& field : current.fields.rows) {
-    field.manure_dose = ManureDoseSeam{};
-  }
+  // A STANDING BOOKING STANDS until its field's ploughing closes it
+  // (CancelLateManure): from the first snow after the harvest to the plough
+  // (boss, the #1056 thread [140]; farming design's manure row, «с первого
+  // снега после уборки (ноябрь–декабрь тоже) до пахоты»). Until then the
+  // turn cleared every booking and November-December carried nothing. Each
+  // call books only the fields with no booking, from the heap's manure no
+  // booking holds - so what the herds lay over the winter is booked too, and
+  // what a winter did not carry is the next one's (the carry-over).
   const std::uint32_t heap = FindUnitRowOfType(current, config.compost_heap_type);
   if (heap == kNoRow) {
     return;
@@ -88,8 +89,18 @@ void BookManureDoses(const ProductionConfig& config, WorldState& current) {
     // its own sign: it has no sowing day, and manure spread on ground nobody
     // ploughs is simply gone (the burdock, 2026-09-12).
     const bool will_be_worked = HasRotation(field) || field.sown_day != kNeverSownDay;
-    if (field.kind != LandKind::kArable || field.phase != FieldPhase::kIdle ||
-        field.manure_applied != 0 || !will_be_worked) {
+    // In November «this year» is the next: the harvested field stands idle,
+    // its dose of this cycle settled at the harvest (manure_applied 0), and
+    // its next plough is the spring's. A FIELD BOOKED ALREADY is asked again
+    // only while its booking is short of the norm, to top it up: booked daily,
+    // the last field of each day would otherwise keep that day's crumbs for
+    // good (its manure_applied is what arrived of THIS booking, not a past
+    // cycle's).
+    const bool standing = field.manure_dose.from.value != kInvalidEntityIdValue;
+    if (field.kind != LandKind::kArable || field.phase != FieldPhase::kIdle || !will_be_worked ||
+        (standing ? field.manure_dose.booked >= NormDoseOf(config, field) ||
+                        field.manure_dose.from != current.units.row_ids[heap]
+                  : field.manure_applied != 0)) {
       continue;
     }
     const Candidate candidate{row, RoadKm(current, TravelMode::kCart, heap_at, field.center)};
@@ -124,12 +135,16 @@ void BookManureDoses(const ProductionConfig& config, WorldState& current) {
       // A PARTIAL DOSE IS A DOSE (PlanManure's rule): the heap's last grams
       // go to the next field in the order. Whole doses or nothing meant the
       // biggest field could never be manured at all: 420 t for twenty-one
-      // hectares, and a herd of twenty cows makes 250 a year.
-      const Grams booked = std::min(held, dose);
-      held -= booked;
+      // hectares, and a herd of twenty cows makes 250 a year. A standing
+      // booking is topped up to the norm.
+      const Grams added = std::min(held, dose - field.manure_dose.booked);
+      if (added <= 0) {
+        continue;
+      }
+      held -= added;
       field.manure_dose.from = current.units.row_ids[heap];
-      field.manure_dose.booked = booked;
-      field.manure_dose.due = booked;
+      field.manure_dose.booked += added;
+      field.manure_dose.due += added;
     }
   }
 }

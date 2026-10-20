@@ -33,6 +33,7 @@
 #include <vector>
 
 #include "core_common/calendar.h"
+#include "core_common/cart_gear.h"
 #include "core_common/emit_event.h"
 #include "core_common/haul.h"
 #include "core_common/ledger_state.h"
@@ -329,8 +330,13 @@ class ProductionSystem final : public IProductionSystem {
       SettleRickSupply(config_, current);
       PriceRickSupply(config_, current);
       // And the fields' winter doses heap -> field: the last hour, then
-      // tomorrow's price, on a sledge day only (#1056 C2; manure_cart.h).
+      // tomorrow's price, on a sledge day only (#1056 C2; manure_cart.h) -
+      // and on a sledge day the bookings first: from the first snow after
+      // the harvest, November-December too (boss, the #1056 thread [140]).
       SettleManureDoses(config_, current);
+      if (SledgeDay(current)) {
+        BookManureDoses(config_, current);
+      }
       PriceManureDoses(config_, current);
       // THE DISTRICT's CART FOR THE PLAN (routing stage В5; district_carts.h):
       // the month's last day collects the standing request, a mud day slips it.

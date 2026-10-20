@@ -3,11 +3,8 @@
 ///        piece C2; core_common/manure_state.h holds the rule and the state).
 /// @threading SINGLE_THREADED
 /// All calls run in the production decisions sub-step (phase 3) on the sim
-/// thread: the booking at the year's turn (in PlanManure's place), the price
-/// at the day's last tick, the settle every hour.
-///
-/// CONTRACT: declarations only. The body follows boss's word on the
-/// fertility mark (core's seq 133) and C2-0's print.
+/// thread: the booking (tick 1, the year's turn and every sledge day's last
+/// tick), the price at the day's last tick, the settle every hour.
 
 #ifndef CORE_PRODUCTION_MANURE_CART_H_
 #define CORE_PRODUCTION_MANURE_CART_H_
@@ -17,14 +14,17 @@
 
 namespace core {
 
-/// @brief THE YEAR'S DOSES BOOKED, in PlanManure's place and at its two
-///        calls (tick 1, the year's turn): among the arable idle fields of the
-///        rotation not manured this cycle, those below
-///        FarmingConfig::manure_fertility_mark, nearest by road from the heap
-///        first (ties poorest first, then by row), each gets its norm dose
-///        (`manure_norm_kg_per_ha` x area) into its ManureDoseSeam while the
-///        heap's unbooked manure lasts; a partial dose is a dose. NO grams
-///        move.
+/// @brief THE DOSES BOOKED, in PlanManure's place (tick 1, the year's turn)
+///        and on every sledge day from the first snow after the harvest
+///        (boss, the #1056 thread [140]): among the arable idle fields of the
+///        rotation not manured this cycle, and those whose standing booking
+///        is short of the norm, the fields below
+///        FarmingConfig::manure_fertility_mark nearest by road from the heap
+///        first (ties poorest first, then by row) are booked up to their norm
+///        dose (`manure_norm_kg_per_ha` x area) while the heap's unbooked
+///        manure lasts, and only then the rest by the same order; a partial
+///        dose is a dose. A standing booking stands until its field's
+///        ploughing. NO grams move.
 /// @note The heap's unbooked manure is its stock less every standing
 ///       booking's `due`.
 void BookManureDoses(const ProductionConfig& config, WorldState& current);
