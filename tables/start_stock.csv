@@ -6,7 +6,7 @@
 place,resource,amount,kg_per_unit
 church_store,rye,8,1000
 church_store,wheat,2.5,1000
-church_store,oat,8.75,1000
+church_store,oat,11.25,1000
 church_store,barley,3.5,1000
 church_store,potato,34.4,1000
 church_store,board,82,600
