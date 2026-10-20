@@ -10,5 +10,6 @@ key,speed_kmh,load_tonnes,load_scale,seats,wait_limit_hours,min_walk_hours,note
 pedestrian,5,,,,,,
 jog,8.5,,,,,,running state: fire and similar events
 horse_trot,12,,,,,,
-cart_loaded,9,0.75,2.4,2,1,,horse cart; winter sled hauling uses the same speed
+cart_loaded,9,0.75,2.4,2,1,,horse cart; on a snow day it leaves the stable as the sledge below (SL)
+sledge,8,1.125,2.4,2,1,,the same horse and vehicle on snow (transport §16; §1 «Сани»: 8 km/h both ways; load x1.5 of the cart)
 people_cart,,,,6,,2,the people's cart: two or more hands to one far object

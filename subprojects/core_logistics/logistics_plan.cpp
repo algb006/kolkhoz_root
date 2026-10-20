@@ -184,7 +184,9 @@ std::vector<std::uint32_t> CartChain(
   if (first != kNoRow) {
     chain.push_back(first);
   }
-  const float hours_per_km = static_cast<float>(kClockScale) / config.harness_speed_kmh;
+  // SL: the chain's reach at the day's own gear (the sledge on snow).
+  const float hours_per_km =
+      static_cast<float>(kClockScale) / CartGearToday(world, CartSpecsOf(config)).empty_kmh;
   for (std::uint32_t level = 0; level < kLogisticsLevelCount; ++level) {
     const std::vector<std::uint32_t>& ring = rings[level];
     if (ring.empty()) {
@@ -598,8 +600,11 @@ GroomPlan BuildGroomPlan(const LogisticsConfig& config,
     remaining[task.row] = *WorkSeamOf(world, HaulingWorkOf(world.logistics_tasks.rows[task.row]));
   }
   const DayWindow window = SolarWindow(world.weather.daylight_hours);
-  const float harness_hours_per_km = static_cast<float>(kClockScale) / config.harness_speed_kmh;
-  const float loaded_hours_per_km = static_cast<float>(kClockScale) / config.loaded_speed_kmh;
+  // THE CART OR THE SLEDGE (SL; cart_gear.h): the day's gear, chosen at the
+  // stable for the whole day - the sledge's 8 km/h both ways on snow.
+  const CartGear gear = CartGearToday(world, CartSpecsOf(config));
+  const float harness_hours_per_km = static_cast<float>(kClockScale) / gear.empty_kmh;
+  const float loaded_hours_per_km = static_cast<float>(kClockScale) / gear.loaded_kmh;
   const float walk_hours_per_km = static_cast<float>(kClockScale) / config.walk_speed_kmh;
   const float cart_drain = kStepHours / config.standard_day_hours;
   // A WALKER'S STEP BY HIS LOAD'S FORM (#671; porter_pairs.h).
@@ -787,6 +792,14 @@ GroomPlan BuildGroomPlan(const LogisticsConfig& config,
                                          : 0U;
     }
   }
+  // THE SLEDGE ON THE LEG (SL; CartLeg::sledge, save 175): every horse cart of
+  // a snow day, the people's cart too (one vehicle, transport §16); a carrier
+  // on foot has none.
+  for (CartPlan& cart : plan.carts) {
+    for (CartLeg& leg : cart.legs) {
+      leg.sledge = gear.sledge && !cart.on_foot ? 1U : 0U;
+    }
+  }
   return plan;
 }
 
@@ -922,10 +935,12 @@ void SeatEveningRiders(const LogisticsConfig& config,
     }
   }
   const float walk_hours_per_km = static_cast<float>(kClockScale) / config.walk_speed_kmh;
-  const float harness_hours_per_km = static_cast<float>(kClockScale) / config.harness_speed_kmh;
+  // SL: the riders ride the day's gear (the sledge on snow).
+  const CartGear gear = CartGearToday(current, CartSpecsOf(config));
+  const float harness_hours_per_km = static_cast<float>(kClockScale) / gear.empty_kmh;
   // A loaded leg rides at the loaded pace (#570, 2a): the rider's ride home
   // on a loaded trip is that much longer.
-  const float loaded_hours_per_km = static_cast<float>(kClockScale) / config.loaded_speed_kmh;
+  const float loaded_hours_per_km = static_cast<float>(kClockScale) / gear.loaded_kmh;
   const float walk_hours_per_metre =
       walk_hours_per_km * OffRoadWeightOf(current, TravelMode::kWalk) / 1000.0F;
   const std::shared_ptr<const RoadIndex> roads = RoadIndexOf(current);

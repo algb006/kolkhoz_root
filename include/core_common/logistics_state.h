@@ -246,6 +246,12 @@ struct CartLeg {
   /// its receiver); 0 on a ride and on a trip's way back. Save 153.
   std::uint8_t loaded = 0;
 
+  /// 1 when the cart went out as a SLEDGE (SL; transport design §16 «Телега
+  /// и сани — одно и то же имущество, меняющее обличье по наличию снега… на
+  /// стоянке во дворе конюшни»): the day it left the stable lay under snow
+  /// (core_common/cart_gear.h, SledgeDay). The layer's visual; save 175.
+  std::uint8_t sledge = 0;
+
   /// THE TRIP'S ONE RESOURCE (#671, porter_leg.h; save 155 with the
   /// implementation): for a carrier on foot, the one resource his back holds
   /// on this trip and its way back - one resource a trip, a works' supply

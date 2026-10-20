@@ -32,17 +32,20 @@ HaulRate RateToward(const ProductionConfig& config,
   // open ground is earth too. STUB until a gravel road is laid (delivery 7):
   // then a way over two beds is still priced by dirt's.
   const float bed = HaulBedFactor(config, world.weather);
-  const float speed_kmh = (harnessed ? config.harness_speed_kmh : config.walk_speed_kmh) * bed;
+  // THE CART OR THE SLEDGE (SL; cart_gear.h): on a snow day the sledge's
+  // pace both ways and its load.
+  const CartGear gear = CartGearToday(world, CartSpecsOf(config));
+  const float speed_kmh = (harnessed ? gear.empty_kmh : config.walk_speed_kmh) * bed;
   const float hours_per_km = speed_kmh > 0.0F ? static_cast<float>(kClockScale) / speed_kmh : 0.0F;
   // THE LOADED HALF AT THE LOADED PACE (#570, 2a; 0.37.229): the cart's
   // cart_loaded speed, the bed's condition on it as on the empty half; a
   // carrier on foot walks both halves.
-  const float loaded_kmh = (harnessed ? config.loaded_speed_kmh : config.walk_speed_kmh) * bed;
+  const float loaded_kmh = (harnessed ? gear.loaded_kmh : config.walk_speed_kmh) * bed;
   const float loaded_hours_per_km =
       loaded_kmh > 0.0F ? static_cast<float>(kClockScale) / loaded_kmh : 0.0F;
   // A BACK'S TRIP BY THE LOAD'S FORM (#671): a bundle of hay is 10 kg, a sack
   // 20 - until 0.37.240 every load on foot was the sack.
-  const Grams load = harnessed ? CartLoadGrams(config.porter, config.cart_load_kg, carried)
+  const Grams load = harnessed ? CartLoadGrams(config.porter, gear.load_kg, carried)
                                : WalkerLoadGrams(config.porter, carried);
   // BY THE ROAD, NOT THE STRAIGHT LINE (roads design §11-§13; 0.36.2): the
   // cart keeps to the network, the carrier walks roads, paths and open

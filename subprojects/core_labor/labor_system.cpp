@@ -2032,12 +2032,12 @@ class LaborSystem final : public ILaborSystem {
     if (!SettlementHasCarts(current, config_.horse_kind)) {
       return 1.0F;
     }
-    return LogPairShareOfCartDay(
-        config_.porter,
-        CartLoadGrams(config_.porter, config_.cart_load_kg, config_.porter.log),
-        HoursPerKm(config_, WorkKind::kHarvest),
-        HoursPerKm(config_, WorkKind::kPlowing),
-        static_cast<float>(kClockScale) / config_.loaded_speed_kmh);
+    const CartGear gear = CartGearToday(current, CartSpecsOf(config_));  // SL
+    return LogPairShareOfCartDay(config_.porter,
+                                 CartLoadGrams(config_.porter, gear.load_kg, config_.porter.log),
+                                 HoursPerKm(config_, WorkKind::kHarvest),
+                                 static_cast<float>(kClockScale) / gear.empty_kmh,
+                                 static_cast<float>(kClockScale) / gear.loaded_kmh);
   }
 
   /// WHETHER THIS HAND IS ONE OF A PAIR UNDER A LOG THIS HOUR (#671): asked of
@@ -2677,11 +2677,12 @@ class LaborSystem final : public ILaborSystem {
     // The cart's load by the same resource (0.37.252): labour's share of a
     // cart-day and logistics' (porter_pairs.cpp) ask one function, or a
     // walker with hay would be paid against a cart heavier than hay's.
+    const CartGear gear = CartGearToday(current, CartSpecsOf(config_));  // SL
     return WalkerShareOfCartDay(WalkerLoadGrams(config_.porter, carried),
-                                CartLoadGrams(config_.porter, config_.cart_load_kg, carried),
+                                CartLoadGrams(config_.porter, gear.load_kg, carried),
                                 HoursPerKm(config_, WorkKind::kHarvest),
-                                HoursPerKm(config_, WorkKind::kPlowing),
-                                static_cast<float>(kClockScale) / config_.loaded_speed_kmh);
+                                static_cast<float>(kClockScale) / gear.empty_kmh,
+                                static_cast<float>(kClockScale) / gear.loaded_kmh);
   }
 
   // -- the working hour ----------------------------------------------------
