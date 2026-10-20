@@ -535,6 +535,37 @@ int CheckTheHerdHayForecast() {
   failures += Expect(far(to_first_scythes).short_ahead,
                      "hay forecast, the long look, year 2: 290 kg reach the first scythes and "
                      "not the day the new hay is in a store - short");
+  // THE LONG LOOK IN YEAR 1 TOO (#1113): the horse's question stopped at the
+  // first scythes in year 1 and asked only whether the start's rick carried
+  // one more head to day 24. Now it keeps its year (to day 80: next year's
+  // scythes and eight), the cut priced from the grass standing. The 100 kg
+  // that reach day 24 with no meadow are short on day 25; beside a meadow of
+  // 400 kg standing, landing over days 24-27, they carry four heads to day 80.
+  {
+    core::WorldState first = MakeHerdWorld(100.0F);
+    AddHerd(first, 0, 4, 2, true);
+    const core::HerdFeedForecast no_meadow = far(first);
+    failures +=
+        Expect(no_meadow.short_ahead && no_meadow.days_ahead == 25 && no_meadow.horizon_days == 80,
+               "hay forecast, the long look, year 1 (#1113): no meadow, 100 kg - short on "
+               "day 25 of an 80-day look, not silent at the first scythes");
+    core::ProductionConfig meadowed = config;
+    meadowed.farming.meadow_yield_kg_per_ha = 400.0F;
+    core::FieldRow meadow;
+    meadow.kind = core::LandKind::kMeadow;
+    meadow.area_ga = 1.0F;
+    meadow.phase = core::FieldPhase::kGrowing;
+    meadow.last_mown_day = core::kNeverMownDay;
+    AppendRow(first.fields, meadow);
+    failures +=
+        Expect(!core::ForecastHerdFeed(meadowed, first, false, core::FeedHorizon::kNextYearsScythes)
+                    .short_ahead,
+               "hay forecast, the long look, year 1 (#1113): 400 kg of grass standing "
+               "land over the cut and carry four heads to day 80 - not short");
+    failures += Expect(!yellow(first).has_value(),
+                       "hay lamp, year 1: the nearest look still stops at the first scythes (б) - "
+                       "100 kg reach day 24, no yellow");
+  }
   // THE LAMP LOOKS TO THE NEAREST FIRST SCYTHES (FeedHorizon::kNearestScythes;
   // boss, econ-boss-hay-term-2026-10-01 [7]; 0.37.96). On 1 January of year
   // 2 that is day 24: the 100 kg the long look calls short on day 25 reach
