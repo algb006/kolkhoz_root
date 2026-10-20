@@ -183,6 +183,14 @@ struct HarnessCount {
   /// release takes off the driver and leaves the work: the crew walks, the
   /// mowers go on with scythes.
   std::uint32_t releasable = 0;
+
+  /// The part of `in_traces` in LIGHT work (the human, «Сначала овёс»; econ
+  /// winter-team-oats-2026-10-20 §A; boss, the #1056 thread [148]): every
+  /// carter on a horse, and the horse of a cart that carries a crew - a
+  /// brigade's, a people's. Not the ploughmen, the harrowers or a meadow's
+  /// mower: they are the heavy work. The herd day sizes the work oats by it
+  /// (herd_system.cpp, WorkingShare; farming.csv `light_work_oat_share`).
+  std::uint32_t light_in_traces = 0;
 };
 
 /// @brief Counts the harness off the day's assignments.

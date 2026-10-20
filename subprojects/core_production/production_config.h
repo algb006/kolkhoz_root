@@ -722,6 +722,13 @@ struct FarmingConfig {
   /// a design decision can reach it.
   float traction_full_ration_share = 0.5F;
 
+  /// farming.csv `light_work_oat_share` (the human, «Сначала овёс»; econ
+  /// winter-team-oats-2026-10-20 §A): a horse in a cart or a sledge draws
+  /// this share of a heavy horse-day's work oats (herd_system.cpp,
+  /// WorkingShare). STUB 0.5, by the period's norms (field work 6-8 kg of
+  /// oats a horse-day, carting at a walk 3-4 kg); 1 is the world before it.
+  float light_work_oat_share = 0.5F;
+
   /// THE THIN YEAR BY THE FIELD PLAN (#1040; econ's oat-lamp contract §1;
   /// farming.csv): the year's oat - the slot's fields at their own yield
   /// plus the oat in store above the seed and the plan on 1 January - short

@@ -534,7 +534,19 @@ float WorkingShare(const WorldState& world,
   // the hours are the wrong one. Found while wiring the mechanisation share,
   // which reads the same quantity and would have shipped as a constant nil.
   const std::uint32_t working = harness.in_traces;
-  const float share = static_cast<float>(working) / static_cast<float>(horses);
+  // LIGHT WORK EATS LESS OATS (the human, «Сначала овёс»; econ winter-team-
+  // oats-2026-10-20 §A, 02ef5e1; boss, the #1056 thread [148]): a horse in a
+  // cart or a sledge counts at farming.csv `light_work_oat_share` of a horse
+  // at the plough, the harrow or the mower. ONE FACTOR INSIDE THE ONE OAT
+  // DOOR: this share sizes both the work-only feeds' room and the work
+  // ration's own (RunFeeding), so there is no second allowance; the rest of
+  // a light horse-day's feed is its hay, by the hay link's max_share. The
+  // assignment-days below stay one a harness: a light horse is still a horse
+  // in traces.
+  const float light = static_cast<float>(std::min(harness.light_in_traces, working));
+  const float weighted =
+      static_cast<float>(working) - (light * (1.0F - config.farming.light_work_oat_share));
+  const float share = weighted / static_cast<float>(horses);
   if (horse_backed_days != nullptr) {
     // Assignment-days: one per harness held today, and what the horses can
     // carry is the lesser of the two counts. Both halves of the ratio are

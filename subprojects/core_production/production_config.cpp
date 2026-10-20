@@ -468,6 +468,7 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
       {"feed_light_margin_days", &farming.feed_light_margin_days, 0.0F, 1000.0F},
       {"traction_hungry_factor", &farming.traction_hungry_factor, 0.0F, 1.0F},
       {"traction_full_ration_share", &farming.traction_full_ration_share, 0.01F, 1.0F},
+      {"light_work_oat_share", &farming.light_work_oat_share, 0.0F, 1.0F},
       {"oat_short_plan_margin", &farming.oat_short_plan_margin, 0.0F, 10.0F},
       {"team_need_first_year_working_days",
        &farming.team_need_first_year_working_days,

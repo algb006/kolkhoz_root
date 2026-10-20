@@ -401,6 +401,7 @@ HarnessCount CountHarness(const WorldState& world, LivestockKindId horse_kind) {
         ++count.in_traces;
         ++count.releasable;
         ++count.harnessed;
+        ++count.light_in_traces;  // a cart or a sledge: light work
         ++load->riders;
       } else {
         ++load->walkers;
@@ -418,6 +419,14 @@ HarnessCount CountHarness(const WorldState& world, LivestockKindId horse_kind) {
       ++count.in_traces;
       ++count.harnessed;
       ++count.releasable;
+      // A crew's cart is light work; a MEADOW'S MOWER is not (the mowing
+      // machine is field work, econ §A: «plough, harrow, mower stay full»).
+      bool mower = false;
+      if (work.kind == WorkKind::kHarvest) {
+        const std::uint32_t field_row = FindRow(world.fields, work.field);
+        mower = field_row != kNoRow && world.fields.rows[field_row].kind == LandKind::kMeadow;
+      }
+      count.light_in_traces += mower ? 0U : 1U;
     }
   }
   // THE WALKERS, AS FAR AS THE LOAD WANTED A CART (0.37.105): the seam's

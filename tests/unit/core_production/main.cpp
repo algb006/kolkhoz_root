@@ -2371,10 +2371,31 @@ int CheckTheCartHorseEatsOats() {
   failures += Expect(harness.in_traces == 3 && harness.harnessed == 4,
                      "the harness: two carters on horses and the meadow's one in the traces, the "
                      "carter on foot harnessed too — 3 of 4 (the felling is neither)");
+  failures += Expect(harness.light_in_traces == 2,
+                     "the light work: the two carters on horses, not the meadow's mower");
+  {
+    core::WorldState ploughing = world;
+    core::ResidentRow ploughman;
+    ploughman.work.kind = core::WorkKind::kPlowing;
+    AppendRow(ploughing.residents, ploughman);
+    const core::HarnessCount with_plough = core::CountHarness(ploughing);
+    failures += Expect(with_plough.in_traces == 4 && with_plough.light_in_traces == 2,
+                       "a ploughman is in the traces at the full share: heavy work (O8)");
+  }
+  // THE WORLD BEFORE THE LIGHT SHARE (farming.csv light_work_oat_share 1):
+  // until «Сначала овёс» this check read the three quarters with the shipped
+  // config; the carts' horses still eat the wage, at the light share now.
+  core::WorldState before = world;
+  core::ProductionConfig full = config;
+  full.farming.light_work_oat_share = 1.0F;
+  core::RunHerdDay(full, before);
+  failures += Expect(before.units.rows[0].stock[1] == 100 * kKilo - (3 * kKilo / 2),
+                     "at the full share three horses of four in the traces take three quarters of "
+                     "the oats — the carts' horses eat the wage too");
   core::RunHerdDay(config, world);
-  failures += Expect(world.units.rows[0].stock[1] == 100 * kKilo - (3 * kKilo / 2),
-                     "three horses of four in the traces take three quarters of the oats — the "
-                     "carts' horses eat the wage too");
+  failures += Expect(world.units.rows[0].stock[1] == 100 * kKilo - kKilo,
+                     "at the light share 0.5 the two cart horses count as one: (1 + 2 x 0.5) of "
+                     "four take half the oats, the mower's horse its full share (O8)");
   failures += Expect(world.ledger.current.horse_backed_assignment_days == 3.0F &&
                          world.ledger.current.harnessed_assignment_days == 4.0F,
                      "the traction share is booked off the same count: 3 horse-backed of 4 "
