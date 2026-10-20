@@ -13164,6 +13164,30 @@ int CheckTheMilkCart() {
           tonight.leg_days_remaining == tonight.leg_days_priced && tonight.leg_days_priced > 0.0F,
           "milk leg: the evening writes tomorrow's leg at today's price");
     }
+    // THE LEG ON THE MILKED HERD (#1117 item 3): a herd that gives no milk
+    // (kind 1) stands first in the barn, the cows second - the leg is the
+    // cows'; the cows gone, the barn's leftover stays on the first herd.
+    {
+      core::WorldState shared = MakeHerdWorld(0.0F);
+      shared.units.rows[0].level = 1;
+      shared.units.rows[0].position = core::Vec2{8000.0F, 9000.0F};
+      const core::UnitId stable = AppendRow(shared.units, barn);
+      const core::HerdId dry = AddHerd(shared, 1, 6, 1, true);
+      const core::HerdId milked = AddHerd(shared, 0, 10, 2, true);
+      shared.herds.rows[core::FindRow(shared.herds, dry)].unit = stable;
+      shared.herds.rows[core::FindRow(shared.herds, milked)].unit = stable;
+      core::PriceMilkLegs(leg_config, shared);
+      const bool on_cows =
+          shared.herds.rows[core::FindRow(shared.herds, milked)].leg_days_remaining > 0.0F &&
+          !(shared.herds.rows[core::FindRow(shared.herds, dry)].leg_days_remaining > 0.0F);
+      failures +=
+          Expect(on_cows, "milk leg: in a barn shared with a dry herd the leg is the cows'");
+      shared.herds.rows[core::FindRow(shared.herds, milked)].unit = shared.units.row_ids[0];
+      core::PriceMilkLegs(leg_config, shared);
+      failures +=
+          Expect(shared.herds.rows[core::FindRow(shared.herds, dry)].leg_days_remaining > 0.0F,
+                 "milk leg: the cows gone, the barn's leftover leg stays on its first herd");
+    }
     // No switch: no leg, whatever the barn holds.
     barn_world.units.rows[1].stock[1] = 50 * kKilo;
     core::PriceMilkLegs(config, barn_world);

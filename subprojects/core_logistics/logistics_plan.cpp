@@ -58,6 +58,9 @@ struct OpenTask {
   float shelf_days = std::numeric_limits<float>::infinity();
   Vec2 place;
   bool logs = false;  ///< carted by the log cart (a stand's logs, the district's lot)
+  /// A load priced ON FOOT - a milk leg whose walk holds the day's trips
+  /// (HerdRow::leg_on_foot): no cart's chain takes it (#1117).
+  bool walked = false;
 };
 
 /// A field heap's shelf life on its field (OpenTask::shelf_days).
@@ -109,6 +112,11 @@ std::vector<OpenTask> OpenTasks(const LogisticsConfig& config, const WorldState&
       // the harvest's carting.
       cold_first = unit_row != kNoRow && WorksHouseAColdHerd(config.cold_housing, world, unit_row);
     }
+    bool walked = false;
+    if (task.load_kind == LogisticsLoadKind::kMilkLeg) {
+      const std::uint32_t herd_row = FindRow(world.herds, task.herd);
+      walked = herd_row != kNoRow && world.herds.rows[herd_row].leg_on_foot != 0;
+    }
     open.push_back(OpenTask{.row = row,
                             .level = static_cast<std::uint8_t>(task.level),
                             .cold_first = cold_first,
@@ -116,7 +124,8 @@ std::vector<OpenTask> OpenTasks(const LogisticsConfig& config, const WorldState&
                             .aged_from_day = task.aged_from_day,
                             .shelf_days = ShelfDaysOf(config, world, task),
                             .place = place,
-                            .logs = logs});
+                            .logs = logs,
+                            .walked = walked});
   }
   std::ranges::stable_sort(open, [](const OpenTask& left, const OpenTask& right) {
     if (left.level != right.level) {
@@ -196,7 +205,12 @@ std::vector<std::uint32_t> CartChain(
     ++turn[level];
     for (std::uint32_t step = 0; step < ring.size() && chain.size() < kMaxChainLoads; ++step) {
       const OpenTask& next = open[ring[(start + step) % ring.size()]];
-      if (next.row == first) {
+      // A LOAD PRICED ON FOOT IS NO CART'S (#1117; boss, the #1056 thread
+      // [119]): the milk leg's cans are carried by the walkers its price
+      // sent, and a cart chaining it drew a trip no milk rode - 3 290 cart
+      // plan-hours on the canon's year 1 - and moved the timetable riders
+      // and passengers read.
+      if (next.row == first || next.walked) {
         continue;
       }
       // THE REACH: the ride from the cart's first load within the road

@@ -1634,6 +1634,78 @@ int TestTheSoonestSpoiledFirst() {
   return failures;
 }
 
+/// A MILK LEG PRICED ON FOOT IS IN NO CART'S CHAIN (#1117; boss, the #1056
+/// thread [119]): a cart on its heap 100 m out, a barn 150 m out holding a
+/// herd's leg. Priced on foot (HerdRow::leg_on_foot 1) the cart's chain
+/// leaves it to the walkers; the same leg priced by cart is chained, as any
+/// load in reach - the pair that says the rule is the price's.
+int TestAWalkedLegIsNoCartsLoad() {
+  int failures = 0;
+  const auto chained = [](std::uint8_t on_foot) {
+    core::LogisticsConfig config;
+    config.horse_kind = core::LivestockKindId{0};
+    core::WorldState world;
+    world.weather.daylight_hours = 12.0F;
+    core::FieldRow field;
+    field.kind = core::LandKind::kArable;
+    field.center = core::Vec2{.x = 100.0F, .y = 0.0F};
+    field.reaped_grams = 1'000'000;
+    field.reaped_resource = core::ResourceId{0};
+    field.haul_days_remaining = 0.2F;
+    const core::FieldId heap = core::AppendRow(world.fields, field);
+    core::UnitRow house;
+    const core::UnitId house_id = core::AppendRow(world.units, house);
+    core::FamilyRow household;
+    household.house = house_id;
+    const core::FamilyId family = core::AppendRow(world.families, household);
+    world.units.rows[0].household = family;
+    core::UnitRow barn;
+    barn.position = core::Vec2{.x = 150.0F, .y = 0.0F};
+    barn.level = 1;
+    const core::UnitId barn_id = core::AppendRow(world.units, barn);
+    core::HerdRow horses;
+    horses.kind = core::LivestockKindId{0};
+    horses.adult_count = 2;
+    horses.unit = barn_id;
+    horses.leg_resource = core::ResourceId{1};
+    horses.leg_days_remaining = 0.5F;
+    horses.leg_on_foot = on_foot;
+    const core::HerdId herd = core::AppendRow(world.herds, horses);
+    core::TaskDayCount count;
+    core::SyncTasks(config, world, 0, count);
+    core::ResidentRow carter;
+    carter.family = family;
+    carter.work.kind = core::WorkKind::kHauling;
+    carter.work.field = heap;
+    carter.work.rides_horse = 1;
+    const core::ResidentId driver = core::AppendRow(world.residents, carter);
+    core::LogisticsTally tally;
+    const core::GroomPlan plan = core::BuildGroomPlan(config, world, tally);
+    bool milk_in_chain = false;
+    bool cart_found = false;
+    for (const core::CartPlan& cart : plan.carts) {
+      if (cart.driver.value != driver.value || cart.on_foot) {
+        continue;
+      }
+      cart_found = true;
+      for (const core::CartLeg& leg : cart.legs) {
+        const std::uint32_t row = core::FindRow(world.logistics_tasks, leg.task);
+        milk_in_chain = milk_in_chain || (row != core::kNoRow &&
+                                          world.logistics_tasks.rows[row].herd.value == herd.value);
+      }
+    }
+    return cart_found ? (milk_in_chain ? 1 : 0) : -1;
+  };
+  const int walked = chained(1);
+  const int carted = chained(0);
+  std::cout << "  plan: a milk leg in the cart's chain - priced on foot " << walked << ", by cart "
+            << carted << '\n';
+  failures += Expect(walked == 0, "plan: a milk leg priced on foot is in no cart's chain");
+  failures +=
+      Expect(carted == 1, "plan: the same leg priced by cart is chained, as any load in reach");
+  return failures;
+}
+
 }  // namespace
 
 // The carriers on foot in the plan (porter_plan_checks.cpp; #671).
@@ -1657,6 +1729,7 @@ int main() {
   failures += TestTheLateLoadsLamp();
   failures += TestTheDayOffHeldTheLoad();
   failures += TestThePortersPlan();
+  failures += TestAWalkedLegIsNoCartsLoad();
   if (failures == 0) {
     std::cout << "unit_core_logistics: all checks passed\n";
   }

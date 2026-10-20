@@ -139,7 +139,12 @@ struct LogisticsTaskRow {
   ExtractionSiteId extraction_site;
   LimitDeliveryId limit_delivery;
   UnitId unit;
-  HerdId herd;  ///< kMilkLeg: the herd whose barn's milk it carts (save 170).
+  /// kMilkLeg: the herd row the barn's leg is written on (save 170) - the
+  /// barn's first MILKED kolkhoz herd: the cows' while they stand billeted in
+  /// the stable with the horses (milk_cart.cpp, «ONE LEG A BARN»; #1117). The
+  /// milk is the barn's; on the day the cows leave for their yard the
+  /// leftover's leg stays on the barn's first herd, of any kind.
+  HerdId herd;
 
   /// The level the task has now (raised by ageing or by a threat).
   LogisticsLevel level = LogisticsLevel::kOrdinary;
