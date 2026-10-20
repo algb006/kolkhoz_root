@@ -2400,11 +2400,12 @@ int CheckTheCartHorseEatsOats() {
                      "and the work ration reads full: its room is the light horse's too, so 1 kg "
                      "of oats over a room of (4 x 0.5 x 0.5) is 1.0, not 0.67 (boss, the #1056 "
                      "thread [160])");
-  failures += Expect(world.units.rows[0].stock[0] == 100 * kKilo - (5 * kKilo / 2) &&
-                         world.herds.rows[0].unfed_days == 0.0F,
-                     "H: the two light horses spare a quarter of their work part, 4 x (3/4 - 1/2) "
-                     "x 0.5 = 0.5 units, so the team eats 3.5 - 1 kg oats and 2.5 kg hay, not 3: the "
-                     "oats' lost half is not refilled with hay, and the team is fed (econ §4e)");
+  failures +=
+      Expect(world.units.rows[0].stock[0] == 100 * kKilo - (5 * kKilo / 2) &&
+                 world.herds.rows[0].unfed_days == 0.0F,
+             "H: the two light horses spare a quarter of their work part, 4 x (3/4 - 1/2) "
+             "x 0.5 = 0.5 units, so the team eats 3.5 - 1 kg oats and 2.5 kg hay, not 3: the "
+             "oats' lost half is not refilled with hay, and the team is fed (econ §4e)");
   {
     // THE OATS ONLY (econ §4d; boss [158]): with no oats in the barn the team
     // takes barley, and barley's room stays at the full work share - 3 horses
@@ -2519,6 +2520,41 @@ int CheckTheTeamOnHayAndTooFewHorses() {
       Expect(on_hay.has_value() && on_hay->amount == 3 * kKilo && on_hay->resource.value == 1 &&
                  on_hay->herd.value == world.herds.row_ids[0].value,
              "on hay: lit on the third working day, 3 kg of oats short, the team's row");
+  {
+    // L1 - ONLY A HEAVY DAY MOVES THE STREAK (econ §4l; boss, core-boss-oats-b-
+    // pair [9]): the lamp's «the ploughing goes slower» is true of the plough,
+    // the harrow and the mower alone. Two carters on horses, no ploughman.
+    const auto carting = [&config](core::WorldState state, std::uint32_t number, core::Grams oats) {
+      for (core::ResidentRow& hand : state.residents.rows) {
+        hand.work.kind = core::WorkKind::kHauling;
+        hand.work.rides_horse = 1;
+      }
+      state.units.rows[0].stock[1] = oats;
+      state.calendar.tick = static_cast<core::Tick>(number) * core::kTicksPerDay;
+      core::RefreshCalendarCaches(state.calendar);
+      core::RunHerdDay(config, state);
+      return state;
+    };
+    const core::WorldState short_carting = carting(world, 5, 0);
+    failures += Expect(short_carting.traction_watch.short_ration_days == 3 &&
+                           short_carting.traction_watch.work_grain_short == 3 * kKilo &&
+                           lit(short_carting, core::AlarmKind::kTeamOnHay).has_value(),
+                       "L1: a short carting-only day neither adds to the streak nor puts it out: "
+                       "3 days, 3 kg, still lit");
+    const core::WorldState full_carting = carting(world, 5, 100 * kKilo);
+    failures += Expect(full_carting.traction_watch.short_ration_days == 3 &&
+                           lit(full_carting, core::AlarmKind::kTeamOnHay).has_value(),
+                       "L1: a full carting-only day does not put it out either - it stands");
+    core::WorldState full_heavy = world;
+    full_heavy.units.rows[0].stock[1] = 100 * kKilo;
+    full_heavy.calendar.tick = static_cast<core::Tick>(5) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(full_heavy.calendar);
+    core::RunHerdDay(config, full_heavy);
+    failures += Expect(full_heavy.traction_watch.short_ration_days == 0 &&
+                           full_heavy.traction_watch.work_grain_short == 0 &&
+                           !lit(full_heavy, core::AlarmKind::kTeamOnHay).has_value(),
+                       "L1: the first full plough day puts it out");
+  }
   // THE LAMP WHEN THE OATS ARE NOT THERE (0.37.20; boss [36]): no oat in the
   // barn — red; the same streak beside 100 kg in the barn (held, say, for the
   // plough by rule) stands with no lamp.

@@ -454,6 +454,12 @@ struct TeamShares {
   /// (boss, the #1056 thread [160]: a light day fed as its work needs is a
   /// 1.0, so the lamp reports no shortage the rule itself makes).
   float oats = 0.0F;
+
+  /// Horses in traces at HEAVY work today - the plough, the harrow, a
+  /// meadow's mower (CountHarness: in_traces less light_in_traces). The only
+  /// days the ration slows any work (RescaleHorseWorkForRation), and so the
+  /// only ones «упряжь на сене» counts (WatchTheTeam; econ §4l).
+  std::uint32_t heavy_in_traces = 0;
 };
 
 /// @brief Share of the draught animals that went out to work today, 0..1.
@@ -577,7 +583,9 @@ TeamShares WorkingShare(const WorldState& world,
     // one count, the same unit, taken at the same hour, by the same module.
     *horse_backed_days = static_cast<float>(working < horses ? working : horses);
   }
-  return TeamShares{.work = std::min(work, 1.0F), .oats = std::min(oats, 1.0F)};
+  return TeamShares{.work = std::min(work, 1.0F),
+                    .oats = std::min(oats, 1.0F),
+                    .heavy_in_traces = working - std::min(harness.light_in_traces, working)};
 }
 
 /// The horse's oats link: the team's first work-only, non-reserve row of
@@ -617,9 +625,8 @@ float LightDaySpared(const ProductionConfig& config,
     return 0.0F;
   }
   const float light_part = shares.work - shares.oats;
-  return light_part > 0.0F
-             ? need_units * light_part * config.farming.traction_full_ration_share
-             : 0.0F;
+  return light_part > 0.0F ? need_units * light_part * config.farming.traction_full_ration_share
+                           : 0.0F;
 }
 
 /// @brief The two running sums whose quotient is the day's traction ration:
@@ -806,10 +813,13 @@ float RunFeeding(const ProductionConfig& config,
 /// `horse_backed_days` the mechanisation share's numerator, `harnessed_days`
 /// the LAMP's own denominator - a milk leg walked by choice left out, which
 /// the share keeps (WorkingShare's lamp_harnessed_days; MR.2a, [113]).
+/// `heavy_in_traces` today's horses at the plough, the harrow or the mower
+/// (TeamShares): a day without them neither counts nor clears the streak.
 void WatchTheTeam(const ProductionConfig& config,
                   const WorkRation& work,
                   float horse_backed_days,
                   float harnessed_days,
+                  std::uint32_t heavy_in_traces,
                   WorldState& current) {
   TractionWatch& watch = current.traction_watch;
   // «УПРЯЖЬ НА СЕНЕ»: a working day short of the full work ration adds a day
@@ -843,7 +853,16 @@ void WatchTheTeam(const ProductionConfig& config,
     current.ledger.current.team_work_oat_requested += TeamWorkFeedGrams(config, work.room);
     const float short_units = work.room - work.covered;
     short_today = short_units > work.gram_loss + kFeedToleranceUnits;
-    if (short_today) {
+    // ONLY A HEAVY DAY MOVES THE STREAK (econ winter-team-oats-2026-10-20
+    // §4l, d1b8960; boss, core-boss-oats-b-pair [9]): the lamp says «the
+    // ploughing goes slower», and the ration slows the plough, the harrow and
+    // the mower alone - hauling is never scaled by it ([149]). A carting-only
+    // day keeps the lamp standing, as a day nobody works does: under the
+    // plough-first ladder every lean winter would otherwise burn it on a
+    // consequence it does not have. The by-plan lamp below reads short_today
+    // and a field-work day of its own, untouched.
+    const bool heavy_day = heavy_in_traces > 0;
+    if (heavy_day && short_today) {
       if (watch.short_ration_days < std::numeric_limits<std::uint16_t>::max()) {
         ++watch.short_ration_days;
       }
@@ -857,7 +876,7 @@ void WatchTheTeam(const ProductionConfig& config,
           break;
         }
       }
-    } else {
+    } else if (heavy_day) {
       watch.short_ration_days = 0;
       watch.work_grain_short = 0;
     }
@@ -1598,7 +1617,8 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
     current.traction_ration = ration < 1.0F ? ration : 1.0F;
   }
   // The lamp reads its own count (MR.2a; boss, [113]), the ledger the old.
-  WatchTheTeam(config, work, horse_backed_days, lamp_harnessed_days, current);
+  WatchTheTeam(
+      config, work, horse_backed_days, lamp_harnessed_days, shares.heavy_in_traces, current);
   for (const HerdRow& gift : gifts) {
     AppendRow(current.herds, gift);
   }
