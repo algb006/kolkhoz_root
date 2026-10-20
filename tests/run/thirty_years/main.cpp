@@ -638,6 +638,11 @@ int main(int argc, char** argv) {
   run::BuildingChairman::WireStartGates(yard, fixture, houses, sawmill);
   run::BuildingChairman::WireSchoolGate(school, sawmill);
   run::BuildingChairman::WireSawGate(office, sawmill);
+  // And the first pen's warm ahead of every other works, as BuildingChairman
+  // wires it (warm_hold.h; MR.2's «L2 in the first wave»).
+  const run::WarmHold warm_hold(*world.tables);
+  run::WarmHold::Declare();
+  run::BuildingChairman::WireWarmHold(warm_hold, sawmill, yard, fixture, houses, school, office);
   run::BuildingChairman::WireRiseWatches(yard, felling, limit, digging);
   run::BuildingChairman::WirePenWatch(yard, fixture, felling, digging);
   sawmill.KeepBoardReserve(g_saw_reserve);

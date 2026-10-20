@@ -42,6 +42,7 @@
 #include "supply_policy.h"
 #include "transition_policy.h"
 #include "upgrade_policy.h"
+#include "warm_hold.h"
 #include "watchman_policy.h"
 #include "yard_policy.h"
 
@@ -69,11 +70,16 @@ class BuildingChairman {
         supply(tables),
         digging(tables),
         roads(tables),
-        transition(tables) {
+        transition(tables),
+        warm_hold(tables) {
     WireStartGates(yard, fixture, houses, sawmill);
     WireSchoolGate(school, sawmill);
     WireSawGate(office, sawmill);
     WireSawGate(barracks, sawmill);
+    // THE FIRST PEN'S WARM AHEAD OF EVERY OTHER WORKS (warm_hold.h; MR.2's
+    // «L2 in the first wave», boss [121]): on top of the saw's gates above.
+    WireWarmHold(warm_hold, sawmill, yard, fixture, houses, school, office);
+    barracks.SetStartGate(HeldSawGate(warm_hold, sawmill));
     // The barracks wait for the farm's own sites and the first pen's warm
     // (barrack_policy.h).
     barracks.SetPenWait([this](const core::WorldState& world) {
@@ -81,8 +87,8 @@ class BuildingChairman {
     });
     // The social objects ask the saw's question too: none of them is worth
     // the boards the sawmill itself is built of.
-    WireSawGate(social, sawmill);
-    WireSawGate(upgrades, sawmill);
+    social.SetStartGate(HeldSawGate(warm_hold, sawmill));
+    upgrades.SetStartGate(HeldSawGate(warm_hold, sawmill));
     WireRiseWatches(yard, felling, limit, digging);
     WirePenWatch(yard, fixture, felling, digging);
     WireUpgradeRiseWatch(yard, upgrades, limit);
@@ -195,6 +201,39 @@ class BuildingChairman {
     });
   }
 
+  /// @brief The saw's question and the warm's hold together (warm_hold.h).
+  static StartGate HeldSawGate(const WarmHold& hold, const SawmillPolicy& sawmill_policy) {
+    return [&hold, &sawmill_policy](
+               const core::WorldState& world, core::UnitTypeId type, std::uint8_t level) {
+      return sawmill_policy.SparesBoardsFor(world, type, level) &&
+             hold.SparesTheWarmFor(world, type, level);
+    };
+  }
+
+  /// @brief Hands the warm's hold to the policies that start sites, beside the
+  /// saw's gate - a free function so thirty_years, which wires by hand, asks
+  /// it the same way (two doors to one rule: boss's root rule). The houses
+  /// skip the hold while a family waits for a roof: its house comes first.
+  static void WireWarmHold(const WarmHold& hold,
+                           const SawmillPolicy& sawmill_policy,
+                           YardPolicy& yard_policy,
+                           FixturePolicy& fixture_policy,
+                           HousePolicy& house_policy,
+                           SchoolPolicy& school_policy,
+                           OfficePolicy& office_policy) {
+    const StartGate gate = HeldSawGate(hold, sawmill_policy);
+    yard_policy.SetStartGate(gate);
+    fixture_policy.SetStartGate(gate);
+    school_policy.SetStartGate(gate);
+    office_policy.SetStartGate(gate);
+    house_policy.SetStartGate([&hold, &sawmill_policy](const core::WorldState& world,
+                                                       core::UnitTypeId type,
+                                                       std::uint8_t level) {
+      return sawmill_policy.SparesBoardsFor(world, type, level) &&
+             (FamilyWaitsForARoof(world) || hold.SparesTheWarmFor(world, type, level));
+    });
+  }
+
   // The start gates hold a reference to `sawmill`: a copy would ask the
   // original's sawmill, so there is none.
   BuildingChairman(const BuildingChairman&) = delete;
@@ -203,6 +242,7 @@ class BuildingChairman {
   /// @brief Every fixture difference, in words, BEFORE the run measures.
   static void Declare(const std::string& run_name) {
     FixturePolicy::Declare();
+    WarmHold::Declare();
     FellingPolicy::Declare(run_name.c_str());
     PlantingPolicy::Declare(run_name);
     StandRenewalPolicy::Declare(run_name);
@@ -334,6 +374,7 @@ class BuildingChairman {
   ExtractionPolicy digging;
   SuggestedRoadsPolicy roads;
   TransitionPolicy transition;
+  WarmHold warm_hold;
 };
 
 }  // namespace run
