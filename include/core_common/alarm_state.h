@@ -1260,9 +1260,18 @@ struct Alarm {
   /// numbers above nor in `amount_more`. A chairman is told what the floors
   /// cost before he goes under them; the game does not go under them for
   /// him.
+  /// THE MILK FLOOR YIELDS TO THE HAY (#1119; livestock design, «Пол плана
+  /// молока уступает сену — пятая ступень»): with no purchase that closes
+  /// the shortage, `advice` kReduceHerd names the cows BELOW the milk floor
+  /// too, down to what the hay carries to the first scythes - in
+  /// `hand_over_stock`, of which `hand_over_below_milk_floor` are below the
+  /// floor (the line «сдать N коров: сена на них до покоса нет — молока они
+  /// не прибавят»). The horses below the plough's floor and the young stay
+  /// named apart in the remainder, as before.
   /// @note Not in the save, as `lamp`.
   std::int64_t hand_over_stock = 0;
   std::int64_t hand_over_horses = 0;
+  std::int64_t hand_over_below_milk_floor = 0;
   std::int64_t below_floor_stock = 0;
   std::int64_t below_floor_horses = 0;
 

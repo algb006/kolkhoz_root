@@ -432,7 +432,24 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
     }
     return advice;
   }
-  // 4. FEWER HEADS: the heads above the floors, and the remainder below
+  // 4. THE MILK FLOOR YIELDS TO THE HAY (#1119; livestock design, «Пол плана
+  // молока уступает сену — пятая ступень»; econ milk-floor-yields-to-hay-
+  // 2026-10-20): no feed closes the shortage, so the cows below the milk
+  // plan's floor go too, down to what the hay carries to the first scythes -
+  // the same «сдать N коров», oldest first. A cow the hay cannot carry gives
+  // no milk (YieldFactor) and spreads the hunger to the rest: on 0.37.307 the
+  // floor kept the plan's cows and the novice's y3 underfed head-days were
+  // 18 781 against the base's 9 744. The plan is not lowered here.
+  const std::int64_t cows_in_all = LeastCowsPastTheMilkFloor(config, world, heads);
+  if (cows_in_all > heads.stock) {
+    advice.advice = AlarmAdvice::kReduceHerd;
+    advice.hand_over_stock = cows_in_all;
+    advice.hand_over_below_milk_floor = cows_in_all - heads.stock;
+    advice.below_floor_stock = 0;
+    advice.below_floor_horses = 0;
+    return advice;
+  }
+  // 5. FEWER HEADS: the heads above the floors, and the remainder below
   // them beside. The alarm's own `amount` is the lamp's, not the advice's.
   // NOBODY ABOVE THE FLOORS — NO MOVE (kNone): the remainder below them
   // stands in its own pair, and the chairman is told what the floors cost,
@@ -482,6 +499,7 @@ void CollectHerdForecastAlarms(const ProductionConfig& config,
   alarm.field = advice.advice_field;
   alarm.hand_over_stock = advice.hand_over_stock;
   alarm.hand_over_horses = advice.hand_over_horses;
+  alarm.hand_over_below_milk_floor = advice.hand_over_below_milk_floor;
   alarm.below_floor_stock = advice.below_floor_stock;
   alarm.below_floor_horses = advice.below_floor_horses;
   alarm.lamp = 0;

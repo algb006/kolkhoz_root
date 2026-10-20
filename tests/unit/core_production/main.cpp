@@ -1088,18 +1088,16 @@ int CheckTheForecastAdvice() {
     core::WorldState world = village(80.0F, kNoGranary, 0.0F);
     world.plan.highest_due.clear();
     const core::Alarm alarm = lamp(world);
+    // AND SINCE #1119 THE FLOOR YIELDS TO THE HAY (rung 4): no feed sold, the
+    // one that must go is named as the MOVE, below the floor - until 0.37.307
+    // she stood apart under «no move» (0.37.143), and the novice that followed
+    // the lamp kept the plan's cows hungry (y3 underfed +93 %).
     failures += Expect(alarm.kind == core::AlarmKind::kHerdHayShortAhead &&
-                           alarm.hand_over_stock == 0 && alarm.below_floor_stock == 1,
-                       "forecast advice, the first morning: no plan named yet - no cow is named "
-                       "above the floor; the one that must go is below it");
-    // AND NO MOVE «HAND OVER» WITH NOUGHT HEADS IN IT (0.37.143; the same
-    // parcel): with nobody above the floors the advice is «no move», the
-    // remainder below the floors beside it. On 0.37.142 it was kReduceHerd
-    // with nought and nought — «hand over 0 heads».
-    failures += Expect(alarm.advice == core::AlarmAdvice::kNone &&
-                           alarm.advice_more == core::AlarmAdvice::kNone && alarm.amount_more == 0,
-                       "forecast advice, the first morning: «hand over» is not named with no "
-                       "head in it - no move, and the remainder below the floor apart");
+                           alarm.advice == core::AlarmAdvice::kReduceHerd &&
+                           alarm.hand_over_stock == 1 && alarm.hand_over_below_milk_floor == 1 &&
+                           alarm.below_floor_stock == 0 && alarm.amount_more == 0,
+                       "forecast advice, the first morning: no plan named yet - the floor keeps "
+                       "every cow, and the one the hay cannot carry is the move, below it");
   }
   core::LimitLotDef feed_lot;
   feed_lot.kind = core::LimitLotKind::kGoods;
@@ -1183,12 +1181,13 @@ int CheckTheForecastAdvice() {
     // The points spent: the lot is no move, and the heads are.
     world.limit.points = 0;
     const core::Alarm broke = lamp(world);
-    failures += Expect(broke.advice == core::AlarmAdvice::kNone && broke.amount == 4 &&
-                           broke.hand_over_stock == 0 && broke.below_floor_stock == 1 &&
-                           door(world) == core::OrderRefusal::kLimitShort,
-                       "forecast advice: the year's points spent - no move left above the "
-                       "floors, the one that must go named below the floor, and the door says "
-                       "the limit is short");
+    failures +=
+        Expect(broke.advice == core::AlarmAdvice::kReduceHerd && broke.amount == 4 &&
+                   broke.hand_over_stock == 1 && broke.hand_over_below_milk_floor == 1 &&
+                   broke.below_floor_stock == 0 && door(world) == core::OrderRefusal::kLimitShort,
+               "forecast advice: the year's points spent - no feed to buy, so the cow "
+               "below the floor the hay cannot carry is the move (#1119), and the door "
+               "says the limit is short");
   }
   // A PURCHASE AFTER WHICH THE HERDS ARE STILL SHORT IS NOT NAMED (0.37.142;
   // boss [138]). 60 kg of hay: the lot puts the first short day off and the
@@ -1205,11 +1204,12 @@ int CheckTheForecastAdvice() {
               << alarm.advice_amount / core::kGramsPerKilogram << " kg; below the floor "
               << alarm.below_floor_stock << '\n';
     failures +=
-        Expect(alarm.amount == 4 && alarm.advice == core::AlarmAdvice::kNone &&
+        Expect(alarm.amount == 4 && alarm.advice == core::AlarmAdvice::kReduceHerd &&
                    alarm.advice_amount == 0 && alarm.advice_more == core::AlarmAdvice::kNone &&
-                   alarm.hand_over_stock == 0 && alarm.below_floor_stock == 2,
+                   alarm.hand_over_stock == 2 && alarm.hand_over_below_milk_floor == 2 &&
+                   alarm.below_floor_stock == 0,
                points == 10 ? "forecast advice: a lot that helps and does not reach the "
-                              "scythes is NOT named - no move, two below the floor"
+                              "scythes is NOT named - the two cows below the floor go (#1119)"
                             : "forecast advice: nor are three lots that do not reach "
                               "them - the largest purchase is no advice either");
   }
@@ -1385,15 +1385,16 @@ int CheckTheForecastAdvice() {
                            deep.below_floor_stock == 0 && deep.below_floor_horses == 1,
                        "forecast advice, below the floors: 30 kg - two horses and four cows "
                        "above them, and one plough horse named APART, not in the two numbers");
-    failures += Expect(milk.hand_over_horses == 2 && milk.hand_over_stock == 1 &&
-                           milk.below_floor_stock == 1 && milk.below_floor_horses == 0,
-                       "forecast advice, the milk floor: three cows kept - one cow above the "
-                       "floor is named, and the next one APART as below it; no plough horse");
-    failures += Expect(unread.hand_over_horses == 2 && unread.hand_over_stock == 0 &&
-                           unread.below_floor_stock == 1,
-                       "forecast advice, the milk floor with no closed year: a position named "
-                       "and no yield to read - every cow is kept, and the one that must go is "
-                       "below the floor");
+    failures += Expect(milk.hand_over_horses == 2 && milk.hand_over_stock == 2 &&
+                           milk.hand_over_below_milk_floor == 1 && milk.below_floor_stock == 0 &&
+                           milk.below_floor_horses == 0,
+                       "forecast advice, the milk floor: three cows kept - the cow above the "
+                       "floor and the next one below it go together, the floor yielding to the "
+                       "hay (#1119); no plough horse");
+    failures += Expect(unread.hand_over_horses == 2 && unread.hand_over_stock == 1 &&
+                           unread.hand_over_below_milk_floor == 1 && unread.below_floor_stock == 0,
+                       "forecast advice, the milk floor with no closed year: every cow kept by "
+                       "the floor, and the one the hay cannot carry goes below it (#1119)");
     // THE ADVICE FOLLOWED PUTS THE LAMP OUT, AND ONE HEAD FEWER DOES NOT
     // (the second half of the guard of the lamp's advice: executable was
     // asked since 0.37.122, sufficient and least were not). The heads go as
@@ -1436,9 +1437,11 @@ int CheckTheForecastAdvice() {
     // the herd that far: past the cut the ladder ends at the remainder below
     // the floors (a lot that leaves the herds short is not named since
     // 0.37.142, nor «hand over» with nobody above the floors since 0.37.143).
+    // Since #1119 the ladder's end is rung 4: the cows below the floor the hay
+    // cannot carry, as the move.
     const auto past_the_cut = [&lamp](const core::WorldState& at) {
       const core::Alarm alarm = lamp(at);
-      return alarm.advice == core::AlarmAdvice::kNone && alarm.below_floor_stock > 0;
+      return alarm.advice == core::AlarmAdvice::kReduceHerd && alarm.hand_over_below_milk_floor > 0;
     };
     failures +=
         Expect(past_the_cut(world), "forecast advice: a meadow mown through is no cut to rush");

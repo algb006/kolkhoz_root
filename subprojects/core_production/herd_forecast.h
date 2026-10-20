@@ -380,6 +380,8 @@ struct FodderAdvice {
   /// named apart and in no sum.
   std::int64_t hand_over_stock = 0;
   std::int64_t hand_over_horses = 0;
+  /// Rung 4 (#1119): of `hand_over_stock`, the cows below the milk floor.
+  std::int64_t hand_over_below_milk_floor = 0;
   std::int64_t below_floor_stock = 0;
   std::int64_t below_floor_horses = 0;
 };

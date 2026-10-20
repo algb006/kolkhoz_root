@@ -127,6 +127,24 @@ struct HandOverAdvice {
 ///         second.
 HandOverAdvice LeastHeadsToHandOver(const ProductionConfig& config, const WorldState& world);
 
+/// @brief THE MILK FLOOR YIELDS TO THE HAY - the lamp's rung 4 (#1119;
+///        livestock design, «Пол плана молока уступает сену — пятая
+///        ступень»; econ milk-floor-yields-to-hay-2026-10-20): the least ADULT
+///        COWS in all, below the milk plan's floor too, whose leaving lets the
+///        rest be fed to the first scythes (FeedHorizon::kNearestScythes),
+///        with `above`'s horses gone beside them and no feed bought. A cow the
+///        hay cannot carry gives the herd no milk while its fed share stays at
+///        or above farming.csv `unfed_produce_factor` (YieldFactor), so the
+///        plan loses nothing by her going.
+/// @param above The heads above the floors (LeastHeadsToHandOver), already
+///        counted gone.
+/// @return The cows to hand over in all, `above.stock` included; -1 when
+///         every adult cow gone still leaves the herds short (the remainder is
+///         not the cows', rung 5).
+std::int64_t LeastCowsPastTheMilkFloor(const ProductionConfig& config,
+                                       const WorldState& world,
+                                       const HandOverAdvice& above);
+
 }  // namespace core
 
 #endif  // CORE_PRODUCTION_HERD_FLOORS_H_

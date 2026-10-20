@@ -320,4 +320,31 @@ HandOverAdvice LeastHeadsToHandOver(const ProductionConfig& config, const WorldS
   return advice;
 }
 
+std::int64_t LeastCowsPastTheMilkFloor(const ProductionConfig& config,
+                                       const WorldState& world,
+                                       const HandOverAdvice& above) {
+  const LivestockKindId cow = MilkKind(config);
+  if (cow.value == kInvalidDefIdValue) {
+    return -1;
+  }
+  std::int64_t adult_cows = 0;
+  for (const HerdRow& herd : world.herds.rows) {
+    adult_cows += herd.household_owned == 0 && herd.kind.value == cow.value ? herd.adult_count : 0;
+  }
+  const auto short_with = [&config, &world, &above](std::int64_t cows) {
+    const HeadsHandedOver handed{.horses = above.horses, .cows = cows, .other = 0};
+    return ForecastHerdFeed(config, world, false, FeedHorizon::kNearestScythes, nullptr, &handed)
+        .short_ahead;
+  };
+  // Every adult cow gone and the hay still short: the cows are not what the
+  // hay lacks for (the horses below the plough's floor, the young) - rung 5.
+  if (adult_cows <= above.stock || short_with(adult_cows)) {
+    return -1;
+  }
+  if (!short_with(above.stock)) {
+    return above.stock;
+  }
+  return LeastNotShort(above.stock, adult_cows, short_with);
+}
+
 }  // namespace core
