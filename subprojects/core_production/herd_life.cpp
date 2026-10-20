@@ -219,8 +219,15 @@ void DeliverProduce(WorldState& world,
   // cannot hold is lost there (it sours), never moved without a cart.
   if (resource == config.milk_resource && place.unit != nullptr &&
       IsOwnMilkRoom(*place.unit, config)) {
-    const Grams room = FreeRoomGrams(*place.unit, config);
-    const Grams placed = std::min(amount, room > 0 ? room : 0);
+    // THE ROOM HOLDS MILK ONLY (MR.2's trace, seed 1931): the yard's stock
+    // also holds its own works' materials - 6 t of straw, 4 t of logs, 8 t of
+    // clay for the warm in year 1 - and the unit's whole-tonnage room left the
+    // milk none, so 17 % of year 1's milk was «no room». The room's capacity
+    // is the milk's.
+    const Grams capacity = StorageCapacityGrams(*place.unit, config);
+    const Grams held = AmountOf(place.unit->stock, resource);
+    const Grams room = capacity > held ? capacity - held : 0;
+    const Grams placed = std::min(amount, room);
     AddToStock(place.unit->stock, resource, placed);
     AddLedgerAmount(world.ledger.current.lost_no_room, resource, amount - placed);
     return;
