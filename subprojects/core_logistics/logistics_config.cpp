@@ -35,6 +35,7 @@ bool ParseLevels(const ITable& table, LogisticsConfig& config, std::string& erro
       "level_site_supply",
       "level_milk_leg",
       "level_rick_supply",
+      "level_manure_field",
   };
   for (std::uint32_t kind = 0; kind < kLogisticsLoadKindCount; ++kind) {
     float level = static_cast<float>(config.default_level[kind]);
@@ -141,6 +142,10 @@ bool ParseLogisticsConfig(const ITableSet& tables, LogisticsConfig& config, std:
     const std::uint32_t log_row = resources->FindRowByKey("log");
     config.log_resource =
         log_row == kNoTableRow ? ResourceId{} : DefIdFromRow<ResourceIdTag>(log_row);
+    // A field's winter dose (kDayOffHeldUrgentLoad's resource; #1056 C2).
+    const std::uint32_t manure_row = resources->FindRowByKey("manure");
+    config.manure_resource =
+        manure_row == kNoTableRow ? ResourceId{} : DefIdFromRow<ResourceIdTag>(manure_row);
   }
   // THE PLAN'S REACH (B3): labour's cells, labour's ranges (labor_config.cpp).
   // THE PLAN'S CLOCK (B4b): the same cells, the same ranges.

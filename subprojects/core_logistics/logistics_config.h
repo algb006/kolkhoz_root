@@ -40,6 +40,7 @@ struct LogisticsConfig {
       LogisticsLevel::kTerm,        // a works' supply (transport §12, level 1)
       LogisticsLevel::kUrgent,      // the milk leg (#1056 C1.1)
       LogisticsLevel::kOrdinary,    // a rick's supply (#1056 C1.2, level 2)
+      LogisticsLevel::kBackground,  // a field's winter dose (#1056 C2, level 3)
   };
 
   /// Days from the last trip after which a background task is ordinary, and
@@ -55,6 +56,9 @@ struct LogisticsConfig {
   /// resources.csv `log`: what a stand's load is (kDayOffHeldUrgentLoad names
   /// it; task 427). Invalid with no such row.
   ResourceId log_resource;
+
+  /// resources.csv `manure`: what a field's winter dose is (#1056 C2).
+  ResourceId manure_resource;
 
   /// resources.csv `spoil_days`, by ResourceId; 0 keeps for ever — the cells
   /// production reads (production_config.cpp), by the same rule.

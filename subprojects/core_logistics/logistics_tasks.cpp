@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "core_common/cart_gear.h"
 #include "core_common/herd_state.h"
 #include "core_common/labor_state.h"
 #include "core_common/logistics_rules.h"
@@ -27,6 +28,7 @@ struct LoadAddress {
 LoadAddress AddressOf(const LogisticsTaskRow& task) {
   switch (task.load_kind) {
     case LogisticsLoadKind::kFieldHeap:
+    case LogisticsLoadKind::kManureField:
       return {task.load_kind, task.field.value};
     case LogisticsLoadKind::kStandLogs:
       return {task.load_kind, task.stand.value};
@@ -103,6 +105,18 @@ std::vector<LoadAddress> LoadsOf(const WorldState& world) {
       loads.push_back({LogisticsLoadKind::kRickSupply, world.units.row_ids[row].value});
     }
   }
+  // A FIELD'S WINTER DOSE (#1056 C2): one task a field while its dose stands
+  // (land_state.h, ManureDoseStands) AND SNOW LIES - the dose goes by sledge
+  // only (manure_state.h), so on a bare day there is no load to cart: a task
+  // standing there would age past its level all summer and light the late
+  // lamp over work nobody may do.
+  if (SledgeDay(world)) {
+    for (std::uint32_t row = 0; row < world.fields.rows.size(); ++row) {
+      if (ManureDoseStands(world.fields.rows[row])) {
+        loads.push_back({LogisticsLoadKind::kManureField, world.fields.row_ids[row].value});
+      }
+    }
+  }
   return loads;
 }
 
@@ -115,6 +129,7 @@ LogisticsTaskRow TaskFor(const LogisticsConfig& config, const LoadAddress& load,
   task.load_kind = load.kind;
   switch (load.kind) {
     case LogisticsLoadKind::kFieldHeap:
+    case LogisticsLoadKind::kManureField:
       task.field = FieldId{load.id};
       break;
     case LogisticsLoadKind::kStandLogs:

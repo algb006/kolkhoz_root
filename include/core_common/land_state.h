@@ -765,6 +765,18 @@ inline bool HasRotation(const FieldRow& field) {
   return field.rotation_assigned != 0;
 }
 
+/// @brief Whether `field`'s winter dose is a hauling work NOW (#1056 C2;
+/// manure_state.h): a dose is booked with part of it due, and no reaped heap
+/// lies on the field. One hauling work names one field, and the heap is
+/// asked first (it rots, the manure does not): every reader that resolves
+/// «hauling on a field» to the reaped heap stays right while one lies there,
+/// and the dose waits for it (work_seam.cpp, load_resource.cpp,
+/// logistics_tasks.cpp).
+inline bool ManureDoseStands(const FieldRow& field) {
+  return field.manure_dose.from.value != kInvalidEntityIdValue && field.manure_dose.due > 0 &&
+         field.reaped_grams == 0;
+}
+
 /// @brief This year's slot is a winter crop that was NOT sown in its autumn
 ///        window, so it lies fallow this year (fields design §7, «Озимая, не
 ///        посеянная в своё окно, пропадает»; question 278, 0.36.13).

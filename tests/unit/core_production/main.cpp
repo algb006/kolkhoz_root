@@ -66,6 +66,8 @@
 #include "herd_system.h"
 #include "hourly_carting_checks.h"
 #include "livestock_homes.h"
+#include "manure_cart.h"
+#include "manure_cart_checks.h"
 #include "meadow_hay_checks.h"
 #include "milk_cart.h"
 #include "night_pasture.h"
@@ -9582,11 +9584,16 @@ int CheckUnworkedGroundDoesNotRecover() {
   failures += Expect(current.fields.rows[1].fertility == 10.0F,
                      "and ground nobody has told anything KEEPS what it has — it is not resting "
                      "fallow, it is land the plough has never touched (defect D5)");
-  failures += Expect(current.fields.rows[0].manure_applied > 0,
-                     "the winter's manure plan gives the fallow field its dose");
-  failures += Expect(current.fields.rows[1].manure_applied == 0,
-                     "and none of it to ground that is never ploughed, which would simply lose "
-                     "it — the poorest-first queue would otherwise hand it the lot");
+  // BOOKED, NOT SPREAD, since #1056 C2 (manure_cart.h): until then this read
+  // manure_applied > 0 at the turn - the heap's gift with no haul. The dose
+  // now waits in the heap for the winter's sledges; the guard under test is
+  // the same: who is dealt a dose at all.
+  failures += Expect(current.fields.rows[0].manure_dose.booked > 0,
+                     "the winter's manure plan books the fallow field its dose");
+  failures += Expect(
+      current.fields.rows[1].manure_dose.booked == 0 && current.fields.rows[1].manure_applied == 0,
+      "and none of it to ground that is never ploughed, which would simply lose "
+      "it — the poorest-first queue would otherwise hand it the lot");
   return failures;
 }
 
@@ -11063,12 +11070,29 @@ int CheckTheHeapsManurePaysItsFurrow() {
   failures += Expect(world.fields.rows[1].fertility == rested,
                      "manure's furrow: the bare fallow rests by 6 alone — its manure was paid "
                      "by its May furrow, not again at the turn");
+  // BOOKED AT THE TURN, CARTED ON THE WINTER'S SLEDGES (#1056 C2): until then
+  // the turn spread both doses at once (manure_applied 100, the heap 0 here).
+  // The turn books them; the winter's carting is driven through the settle
+  // below, as the labour hour would drain it, and the furrow checks after it
+  // read what they always read.
+  failures += Expect(world.fields.rows[1].manure_dose.booked == dose &&
+                         world.fields.rows[2].manure_dose.booked == dose &&
+                         world.fields.rows[2].manure_applied == 0 &&
+                         world.fields.rows[2].fertility == 60.0F &&
+                         core::StockOf(world.units.rows[0].stock, manure) == 2 * dose,
+                     "manure's furrow: the heap books a full dose each to the plain ground and "
+                     "the fallow's idle ground, and keeps both until the sledges come");
+  for (const std::uint32_t row : {1U, 2U}) {
+    world.fields.rows[row].manure_dose.days_written = 1.0F;
+    world.fields.rows[row].manure_dose.days_remaining = 0.0F;  // the whole carting drained
+  }
+  core::SettleManureDoses(parsed, world);
   failures += Expect(
       world.fields.rows[1].manure_applied == 100 && world.fields.rows[1].manure_booked == 0 &&
           world.fields.rows[2].manure_applied == 100 && world.fields.rows[2].manure_booked == 0 &&
-          world.fields.rows[2].fertility == 60.0F,
-      "manure's furrow: the heap deals a full dose each to the plain ground and "
-      "the fallow's idle ground, unpaid until a furrow turns it in");
+          world.fields.rows[2].fertility == 60.0F && world.ledger.current.manure_carted == 2 * dose,
+      "manure's furrow: carted, a full dose each lies on the plain ground and the fallow's "
+      "idle ground, unpaid until a furrow turns it in");
   failures += Expect(core::StockOf(world.units.rows[0].stock, manure) == 0,
                      "manure's furrow: and the heap is spent on exactly those two doses");
   failures += Expect(world.fields.rows[3].fertility == 60.0F &&
@@ -17006,6 +17030,7 @@ int main() {
   failures += CheckMeadowHayLiesAtTheMeadow();
   failures += CheckEachFarmEatsFromItsOwnRick();
   failures += CheckARickIsSuppliedFromAnother();
+  failures += CheckManureIsCartedOnSledges();
   failures += CheckWholeTripsAndTheRoutes();
   failures += CheckWhoseTransportToTheDistrict();
   failures += CheckTheCartingReachesTheStoreInItsHour();

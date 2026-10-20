@@ -60,6 +60,7 @@
 #include "herd_cold.h"
 #include "herd_forecast.h"
 #include "herd_system.h"
+#include "manure_cart.h"
 #include "meadow_orders.h"
 #include "milk_cart.h"
 #include "night_pasture.h"
@@ -273,7 +274,8 @@ class ProductionSystem final : public IProductionSystem {
       // The first winter's plan: genesis hands over a heap and a January, and
       // day zero is no year's turn for the daily bookkeeping below. Without
       // this the inherited 250 t lay untouched through the whole first year.
-      PlanManure(current);
+      // Booked for the winter's sledges since #1056 C2 (manure_cart.h).
+      BookManureDoses(config_, current);
       // The first year's limit was granted here until 0.37.78; it is the
       // start's now (SettleStartYear), so the district's window answers on
       // the first morning, before any step.
@@ -294,6 +296,7 @@ class ProductionSystem final : public IProductionSystem {
       DeliverCartedLoads(config_, current);
       SettleMilkLegs(config_, current, false);
       SettleRickSupply(config_, current);
+      SettleManureDoses(config_, current);
     }
     // THE CUT'S DRY WORKING DAY, for the hay lamp's pace (lever 1;
     // herd_forecast.h) - COUNTED AT NOON, not at the day's last tick: a day
@@ -325,6 +328,10 @@ class ProductionSystem final : public IProductionSystem {
       // rick_supply.h), for the next morning's placement.
       SettleRickSupply(config_, current);
       PriceRickSupply(config_, current);
+      // And the fields' winter doses heap -> field: the last hour, then
+      // tomorrow's price, on a sledge day only (#1056 C2; manure_cart.h).
+      SettleManureDoses(config_, current);
+      PriceManureDoses(config_, current);
       // THE DISTRICT's CART FOR THE PLAN (routing stage В5; district_carts.h):
       // the month's last day collects the standing request, a mud day slips it.
       SettleDistrictCollection(config_, current);
@@ -865,7 +872,9 @@ class ProductionSystem final : public IProductionSystem {
       // loss became fact; it is said on the first of November now
       // (SayLostWinterSlots), the day the late window closes.
     }
-    PlanManure(current);
+    // The winter's doses, booked for the sledges (#1056 C2; manure_cart.h):
+    // until C2 the whole heap was spread here at once, with no haul.
+    BookManureDoses(config_, current);
     // THE OAT LAMP'S YEAR (#1040; team_oat_plan.h): after the chain has moved
     // (this year's slot) and before the books rotate (the closing year's
     // team request is still `current`).
@@ -990,101 +999,6 @@ class ProductionSystem final : public IProductionSystem {
       if (in_window && cut_today) {
         OpenPhase(config_, current, field, FieldPhase::kHarvest);
       }
-    }
-  }
-
-  /// THE WINTER'S MANURE PLAN, made at the year's turn: the heap is dealt out
-  /// in full doses to the fields that will be ploughed this year, POOREST
-  /// FIELD FIRST, until it runs out. What the herd makes during the year
-  /// waits for next winter's plan.
-  ///
-  /// It used to be first come, first served at the plough: a field took a
-  /// full dose if the heap held one that morning, or nothing. The field sheet
-  /// of the fifth reconciliation pass showed what that does — the twenty-one
-  /// hectare potato field never once qualified in thirty years, because its
-  /// dose is 420 t and the heap never holds that, while the ten-hectare field
-  /// next to it was manured twenty-seven years out of thirty and stood at a
-  /// hundred. The canon's "a hectare gets manure every four or five years"
-  /// is a rotation of the manure. NOT a player's decision and not a stub for
-  /// one: "the manure norm is a number, not a decision" (farming design §9,
-  /// closed), and a yearly allocation of the heap across the fields is the
-  /// agronomist's work — the very micromanagement the game removes epoch by
-  /// epoch. The player's lever in this loop is how much livestock to keep.
-  void PlanManure(WorldState& current) const {
-    const std::uint32_t heap = FindUnitRowOfType(current, config_.compost_heap_type);
-    if (heap == kNoRow) {
-      return;
-    }
-    Grams held = StockOf(current.units.rows[heap].stock, config_.manure_resource);
-    std::vector<std::uint32_t> candidates;
-    for (std::uint32_t row = 0; row < current.fields.rows.size(); ++row) {
-      const FieldRow& field = current.fields.rows[row];
-      // Ploughed this year: idle arable with a rotation, whether a crop is in
-      // the slot or it is fallow. A winter crop already standing was manured
-      // when IT was ploughed, last autumn.
-      //
-      // THE ROTATION TEST IS HALF OF ONE FIX AND NOT A SECOND ONE. Ground
-      // nobody has told anything is never ploughed, so manure spread on it
-      // is never turned in — it would simply be gone. It was safe here only
-      // by accident until 2026-09-12: the same missing guard in the year's
-      // fertility recovery had run the weeds up to a hundred points, which
-      // put them at the BACK of the poorest-first queue below. Repair that
-      // and they become the poorest land on the farm, and the first two
-      // years' manure goes into the burdock. The analysis said so before it
-      // happened; the two lines are one repair.
-      // THE QUESTION IS "WILL THIS GROUND BE WORKED", NOT "DOES IT HAVE A
-      // CHAIN", and those were the same question only until a field could skip
-      // a year (boss's decision of 2026-09-13).
-      //
-      // `HasRotation` asks whether the chairman has EVER told this field what
-      // to grow. That answered the right question while the only fields
-      // without a chain were the derelict ninety hectares nobody had claimed.
-      // The moment a chairman could withdraw a chain from ground he means to
-      // go on working — which is what he does when the spring will not fit —
-      // the two came apart: such a field fell out of the manure plan, grew
-      // poorer, and so was chosen to be dropped again the next year. A circle
-      // the gate made itself.
-      //
-      // Agronomy says the same thing: manure goes under the sowing to come,
-      // and a field that has rested a year is the FIRST candidate, not the
-      // last.
-      //
-      // Land never cropped stays out, and the test tells it apart on its own:
-      // the derelict ground has never been sown, so it has no sowing day.
-      const bool will_be_worked = HasRotation(field) || field.sown_day != kNeverSownDay;
-      if (field.kind == LandKind::kArable && field.phase == FieldPhase::kIdle &&
-          field.manure_applied == 0 && will_be_worked) {
-        candidates.push_back(row);
-      }
-    }
-    // Poorest first; equal fertility keeps row order, so the plan is the
-    // same on every machine.
-    std::stable_sort(candidates.begin(), candidates.end(), [&](std::uint32_t a, std::uint32_t b) {
-      return current.fields.rows[a].fertility < current.fields.rows[b].fertility;
-    });
-    for (const std::uint32_t row : candidates) {
-      if (held <= 0) {
-        break;
-      }
-      FieldRow& field = current.fields.rows[row];
-      const auto dose = GramsFromKilograms(config_.farming.manure_norm_kg_per_ha * field.area_ga);
-      if (dose <= 0) {
-        continue;
-      }
-      // A PARTIAL DOSE IS A DOSE. The poorest field takes what the heap has,
-      // up to its full norm, and its bonus scales with the share it got.
-      // Whole doses or nothing meant the biggest field could never be
-      // manured at all: 420 t for twenty-one hectares, and a herd of twenty
-      // cows makes 250 a year.
-      const Grams given = held < dose ? held : dose;
-      held -= given;
-      AddToStock(current.units.rows[heap].stock, config_.manure_resource, -given);
-      const float share = static_cast<float>(given) / static_cast<float>(dose);
-      field.manure_applied = static_cast<std::uint8_t>(share * 100.0F + 0.5F);
-      if (field.manure_applied == 0) {
-        field.manure_applied = 1;  // a dribble still counts as touched
-      }
-      field.manure_booked = 0;  // a new dose: its furrow books it (0.37.10)
     }
   }
 

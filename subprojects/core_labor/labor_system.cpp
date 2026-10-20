@@ -1795,6 +1795,28 @@ class LaborSystem final : public ILaborSystem {
             });
         jobs.push_back(job);
       }
+      // A FIELD'S WINTER DOSE FROM THE HEAP (#1056 C2; manure_state.h):
+      // priced by production's evening on a sledge day only, so a seam with
+      // days in it is a snow day's job. Level 3, windowless - the common
+      // queue, after every other load. The carter's place is the heap, where
+      // he loads.
+      for (std::uint32_t row = 0; row < current.fields.rows.size(); ++row) {
+        const FieldRow& field = current.fields.rows[row];
+        if (!ManureDoseStands(field) || !(field.manure_dose.days_remaining > 0.0F)) {
+          continue;
+        }
+        const std::uint32_t heap_row = FindRow(current.units, field.manure_dose.from);
+        if (heap_row == kNoRow) {
+          continue;
+        }
+        AssignmentJob job;
+        job.kind = WorkKind::kHauling;
+        job.field = current.fields.row_ids[row];
+        job.position = current.units.rows[heap_row].position;
+        job.work_days_remaining = field.manure_dose.days_remaining;
+        job.harnessed = DraughtHorses(current) > 0;
+        jobs.push_back(job);
+      }
       // THE TIMBER LOT AT THE DISTRICT CENTRE (decision 279, 0.36.17): the
       // village's own carts fetch it, WINDOWLESS since 0.36.18 — below the
       // fallow for this autumn's rye (parcel 233: it yields to every job with

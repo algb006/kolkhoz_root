@@ -19,6 +19,7 @@ kolkhoz_add_module(core_production
     herd_forecast.cpp
     herd_life.cpp
     herd_system.cpp
+    manure_cart.cpp
     milk_cart.cpp
     rick_supply.cpp
     goods_loan.cpp

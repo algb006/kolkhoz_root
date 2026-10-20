@@ -19,6 +19,9 @@ bool WorkServesTask(const WorkAssignment& work, const LogisticsTaskRow& task) {
   }
   switch (task.load_kind) {
     case LogisticsLoadKind::kFieldHeap:
+    // A field's winter dose (#1056 C2): the same address - a field never has
+    // both at once (land_state.h, ManureDoseStands).
+    case LogisticsLoadKind::kManureField:
       return work.field.value == task.field.value;
     case LogisticsLoadKind::kStandLogs:
       return work.stand.value == task.stand.value;
@@ -48,6 +51,7 @@ void RetargetWork(WorkAssignment& work, const LogisticsTaskRow& task) {
   work.road_work = RoadWorkId{};
   switch (task.load_kind) {
     case LogisticsLoadKind::kFieldHeap:
+    case LogisticsLoadKind::kManureField:
       work.field = task.field;
       break;
     case LogisticsLoadKind::kStandLogs:

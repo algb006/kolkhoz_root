@@ -74,6 +74,14 @@ ResourceId TaskLoadResource(const WorldState& world, const LogisticsTaskRow& tas
       const std::uint32_t row = FindRow(world.units, task.unit);
       return row != kNoRow ? world.units.rows[row].rick_supply.resource : ResourceId{};
     }
+    case LogisticsLoadKind::kManureField: {
+      // The heap's own load (#1056 C2): the manure_pile keeps nothing else.
+      const std::uint32_t field = FindRow(world.fields, task.field);
+      const std::uint32_t heap =
+          field != kNoRow ? FindRow(world.units, world.fields.rows[field].manure_dose.from)
+                          : kNoRow;
+      return heap != kNoRow ? MostGramsOf(world.units.rows[heap].stock) : ResourceId{};
+    }
     case LogisticsLoadKind::kLogisticsLoadKindCount:
       break;
   }
@@ -101,7 +109,12 @@ ResourceId WalkerLoadResourceOfWork(const WorldState& world,
   }
   LogisticsTaskRow as_task;
   if (work.field.value != kInvalidEntityIdValue) {
-    as_task.load_kind = LogisticsLoadKind::kFieldHeap;
+    // The reaped heap first; the winter dose only while no heap lies there
+    // (#1056 C2; land_state.h, ManureDoseStands).
+    const std::uint32_t row = FindRow(world.fields, work.field);
+    as_task.load_kind = row != kNoRow && ManureDoseStands(world.fields.rows[row])
+                            ? LogisticsLoadKind::kManureField
+                            : LogisticsLoadKind::kFieldHeap;
     as_task.field = work.field;
   } else if (work.stand.value != kInvalidEntityIdValue) {
     as_task.load_kind = LogisticsLoadKind::kStandLogs;
