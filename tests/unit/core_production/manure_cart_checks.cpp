@@ -2,20 +2,24 @@
 
 #include "manure_cart_checks.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <iostream>
 #include <string>
 
 #include "core_common/calendar.h"
+#include "core_common/herd_state.h"
 #include "core_common/land_state.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/unit_state.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
+#include "herd_system.h"
 #include "manure_cart.h"
 #include "production_config.h"
 #include "stock_ops.h"
+#include "team_oat_plan.h"
 
 namespace {
 
@@ -87,6 +91,24 @@ int CheckManureIsCartedOnSledges() {
                      "manure carting: booking moves no gram - the heap keeps it all and no field "
                      "is manured at the turn");
 
+  // THE TEAM'S OATS (C2.2, R8): with no oats over the ladder no dose is
+  // priced, and the windows say why.
+  core::WorldState hungry = world;
+  core::PriceManureDoses(config, hungry);
+  failures += Expect(!(hungry.fields.rows[near].manure_dose.days_remaining > 0.0F) &&
+                         hungry.fields.rows[near].manure_dose.priced == 0 &&
+                         hungry.traction_watch.manure_waits_for_oats == 1,
+                     "manure carting: with no oats over the ladder no dose is priced, and the "
+                     "manure waits for the oats");
+  // A thousand tonnes of oats in store and no horse to hold them for: every
+  // standing dose is bought whole.
+  const core::ResourceId oats = core::TeamWorkFeed(config);
+  core::UnitRow& store = world.units.rows[0];
+  if (store.stock.size() <= oats.value) {
+    store.stock.resize(static_cast<std::size_t>(oats.value) + 1U, 0);
+  }
+  store.stock[oats.value] = 1'000'000'000;
+
   // THE PRICE: none on a bare day; on a sledge day every booked field.
   core::WorldState bare = world;
   bare.weather.snow_cover_days = 0;
@@ -94,6 +116,11 @@ int CheckManureIsCartedOnSledges() {
   failures += Expect(!(bare.fields.rows[near].manure_dose.days_remaining > 0.0F),
                      "manure carting: no field is priced on a day with no snow");
   core::PriceManureDoses(config, world);
+  failures += Expect(
+      world.fields.rows[near].manure_dose.priced == world.fields.rows[near].manure_dose.due &&
+          world.traction_watch.manure_waits_for_oats == 0 && world.traction_watch.winter_hold == 0,
+      "manure carting: with oats to spare and no horse to hold them for, a dose "
+      "is priced whole and nothing waits");
   const core::ManureDoseSeam& near_seam = world.fields.rows[near].manure_dose;
   failures += Expect(
       near_seam.days_remaining > 0.0F && near_seam.days_written == near_seam.days_remaining &&
@@ -148,5 +175,62 @@ int CheckManureIsCartedOnSledges() {
   world.fields.rows[far].reaped_grams = 1'000'000;
   failures += Expect(!core::ManureDoseStands(world.fields.rows[far]),
                      "manure carting: a field's dose waits while its reaped heap lies on it");
+  world.fields.rows[far].reaped_grams = 0;
+
+  // THE WINTER'S HOLD (C2.2, R8 (c)): in year 1, with no book, every adult
+  // horse at a full work day's oats, every day from tomorrow to the first
+  // spring sowing window.
+  core::HerdRow team;
+  team.kind = config.horse_kind;
+  team.adult_count = 10;
+  team.unit = world.units.row_ids[0];
+  core::AppendRow(world.herds, team);
+  std::uint32_t first = core::kDaysPerYear;
+  for (const core::CropDef& crop : config.crops) {
+    if (!crop.is_winter) {
+      first =
+          std::min(first, static_cast<std::uint32_t>(crop.sow_from_month) * core::kDaysPerMonth);
+    }
+  }
+  const std::uint32_t today = world.calendar.day % core::kDaysPerYear;
+  const std::uint32_t days =
+      today < first ? first - today - 1U : core::kDaysPerYear - today - 1U + first;
+  const core::Grams horse_day =
+      core::TeamWorkFeedGrams(config,
+                              config.livestock[config.horse_kind.value].feed_units_per_game_day *
+                                  config.farming.traction_full_ration_share);
+  const core::Grams hold = core::WinterHoldGrams(config, world);
+  const core::Grams expected_hold =
+      core::GramsFromFloat(10.0F * static_cast<float>(days) * static_cast<float>(horse_day));
+  failures += Expect(days > 0 && horse_day > 0 && hold == expected_hold,
+                     "manure carting: year 1's winter hold is every adult horse at a full work "
+                     "day's oats for every day to the first spring sowing window");
+
+  // R8 (a) and (b): today's oats cover a trip, the hold to the plough does
+  // not - no trip; the oats above the hold buy only their own cart-days, the
+  // nearest dose first, so the winter's other carting keeps its oats.
+  const core::ResourceAmounts allowance = core::HerdFeedAllowance(config, world);
+  const core::Grams over_ladder = allowance[oats.value];
+  store.stock[oats.value] -= over_ladder - (hold - horse_day);  // a horse-day short of the hold
+  core::PriceManureDoses(config, world);
+  bool none_priced = true;
+  for (const core::FieldRow& field : world.fields.rows) {
+    none_priced = none_priced && !(field.manure_dose.days_remaining > 0.0F);
+  }
+  failures += Expect(none_priced && world.traction_watch.manure_waits_for_oats == 1 &&
+                         world.traction_watch.winter_hold == hold,
+                     "manure carting: oats today but short of the hold to the plough - no manure "
+                     "trip, and the manure waits for the oats");
+  store.stock[oats.value] += 3 * horse_day;  // two horse-days over the hold
+  core::PriceManureDoses(config, world);
+  float priced_days = 0.0F;
+  int in_part = 0;
+  for (const core::FieldRow& field : world.fields.rows) {
+    priced_days += field.manure_dose.days_remaining;
+    in_part += field.manure_dose.priced > 0 && field.manure_dose.priced < field.manure_dose.due;
+  }
+  failures += Expect(priced_days > 1.9F && priced_days < 2.1F && in_part == 1,
+                     "manure carting: the oats over the hold buy their own two cart-days of a "
+                     "standing dose, in part, and no more");
   return failures;
 }

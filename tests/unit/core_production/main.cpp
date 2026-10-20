@@ -11083,6 +11083,9 @@ int CheckTheHeapsManurePaysItsFurrow() {
                      "manure's furrow: the heap books a full dose each to the plain ground and "
                      "the fallow's idle ground, and keeps both until the sledges come");
   for (const std::uint32_t row : {1U, 2U}) {
+    // Priced whole, as an evening with the team's oats to spare prices it
+    // (C2.2's oat rung is manure_cart_checks.cpp's).
+    world.fields.rows[row].manure_dose.priced = world.fields.rows[row].manure_dose.due;
     world.fields.rows[row].manure_dose.days_written = 1.0F;
     world.fields.rows[row].manure_dose.days_remaining = 0.0F;  // the whole carting drained
   }

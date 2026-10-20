@@ -31,10 +31,23 @@ void BookManureDoses(const ProductionConfig& config, WorldState& current);
 
 /// @brief THE FIELDS' DOSE PRICE, at the day's last tick for the next
 ///        morning's placement: every seam's carting is cleared, then on a
-///        sledge day (SledgeDay) each field with a dose due gets its
-///        cart-days from the heap at the sledge's gear and the manure form's
-///        load share. Not a sledge day: no field is priced.
+///        sledge day (SledgeDay) the standing doses, nearest by road first,
+///        are priced at the sledge's gear as far as the team's oats over the
+///        ladder less the winter's hold buy their cart-days (C2.2): whole,
+///        in part (`priced` the grams bought), or not at all - and
+///        TractionWatch carries the two oat numbers and the wait. Not a
+///        sledge day: no field is priced.
 void PriceManureDoses(const ProductionConfig& config, WorldState& current);
+
+/// @brief THE WINTER'S HOLD (C2.2, «Сани по пайку»; manure_state.h), grams of
+///        the team's work feed: the winter's other carting's horse-days a day
+///        - the closed book's snow-day horse-backed days less its manure
+///        cart-days, by its snow days; in year 1 every adult horse - times
+///        the days from tomorrow to the first ploughing day (the earliest
+///        spring crop's sowing window), at a horse-day's full work oats.
+/// @note A reading, not a holder: nothing is moved or sealed. Every day to
+///       the plough counts at the snow days' rate, snow or not.
+Grams WinterHoldGrams(const ProductionConfig& config, const WorldState& world);
 
 /// @brief THE FIELDS' DOSE SETTLE, hourly and at the last tick (before the
 ///        price): the share of a seam's carting drained since the last settle

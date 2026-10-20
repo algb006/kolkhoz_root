@@ -18,7 +18,9 @@
 #include "core_common/state_table_ops.h"
 #include "core_common/work_seam.h"
 #include "haul_ways.h"
+#include "herd_system.h"
 #include "stock_ops.h"
+#include "team_oat_plan.h"
 
 namespace core {
 namespace {
@@ -58,7 +60,53 @@ struct Candidate {
   float road_km = 0.0F;
 };
 
+/// The work oats of one horse-day at full work, grams: the horse's need at
+/// the full work ration's share, at the work feed's value - the plough's
+/// hold's own sizing (herd_system.cpp, PloughFeedHoldOf).
+Grams OatsOfAHorseDay(const ProductionConfig& config) {
+  if (config.horse_kind.value >= config.livestock.size()) {
+    return 0;
+  }
+  return TeamWorkFeedGrams(config,
+                           config.livestock[config.horse_kind.value].feed_units_per_game_day *
+                               config.farming.traction_full_ration_share);
+}
+
+/// Days from tomorrow to the first ploughing day: the first day of the
+/// earliest spring crop's sowing window, this year's or next year's.
+std::uint32_t DaysToTheFirstPloughing(const ProductionConfig& config, const WorldState& world) {
+  std::uint32_t first = kDaysPerYear;
+  for (const CropDef& crop : config.crops) {
+    if (!crop.is_winter) {
+      first = std::min(first, static_cast<std::uint32_t>(crop.sow_from_month) * kDaysPerMonth);
+    }
+  }
+  const std::uint32_t today = world.calendar.day % kDaysPerYear;
+  return today < first ? first - today - 1U : kDaysPerYear - today - 1U + first;
+}
+
 }  // namespace
+
+Grams WinterHoldGrams(const ProductionConfig& config, const WorldState& world) {
+  // The winter's other carting a day: the closed book's snow-day horse-days
+  // less its manure cart-days, by its snow days; in year 1, with no book,
+  // every adult horse at work - the error to the horses' side (econ §C2.2;
+  // FirstYearTeamNeed's own choice). EVERY DAY to the plough is counted at
+  // that rate, snow or not: tomorrow's snow is not known.
+  float horses_a_day = 0.0F;
+  const YearLedger& book = world.ledger.closed;
+  if (world.calendar.day >= static_cast<SimDay>(kDaysPerYear) && book.snow_days > 0.0F) {
+    horses_a_day =
+        std::max(book.snow_horse_backed_days - book.manure_cart_days, 0.0F) / book.snow_days;
+  } else {
+    horses_a_day = static_cast<float>(DraughtHorsesOf(world, config.horse_kind));
+  }
+  const float horse_days =
+      horses_a_day * static_cast<float>(DaysToTheFirstPloughing(config, world));
+  return GramsFromFloat(horse_days * static_cast<float>(OatsOfAHorseDay(config)));
+}
+
+namespace {}  // namespace
 
 void BookManureDoses(const ProductionConfig& config, WorldState& current) {
   // A STANDING BOOKING STANDS until its field's ploughing closes it
@@ -151,13 +199,35 @@ void BookManureDoses(const ProductionConfig& config, WorldState& current) {
 
 void PriceManureDoses(const ProductionConfig& config, WorldState& current) {
   for (FieldRow& field : current.fields.rows) {
+    field.manure_dose.priced = 0;
     field.manure_dose.days_remaining = 0.0F;
     field.manure_dose.days_written = 0.0F;
   }
+  current.traction_watch.manure_waits_for_oats = 0;
   if (!SledgeDay(current)) {
     return;  // the dose goes by sledge only (manure_state.h)
   }
-  for (FieldRow& field : current.fields.rows) {
+  // THE TOP RUNG OF THE TEAM'S OATS (C2.2, «Сани по пайку»): the oats the
+  // herds may eat over the three old rungs (HerdFeedAllowance), less the
+  // winter's hold to the first ploughing day, buy tomorrow's manure
+  // cart-days at a horse-day's work oats each. Nothing is moved or sealed:
+  // the hold is a reading.
+  const ResourceId oats = TeamWorkFeed(config);
+  const ResourceAmounts allowance = HerdFeedAllowance(config, current);
+  const Grams over_ladder =
+      oats.value < allowance.size() ? std::max<Grams>(allowance[oats.value], 0) : 0;
+  const Grams hold = WinterHoldGrams(config, current);
+  current.traction_watch.oats_over_ladder = over_ladder;
+  current.traction_watch.winter_hold = hold;
+  const Grams per_day = OatsOfAHorseDay(config);
+  float days_bought = per_day > 0 ? static_cast<float>(std::max<Grams>(over_ladder - hold, 0)) /
+                                        static_cast<float>(per_day)
+                                  : 0.0F;
+  // The standing doses, nearest by road from their heap first - the
+  // booking's own order, so the oats go where the booking sent the manure.
+  std::vector<Candidate> standing;
+  for (std::uint32_t row = 0; row < current.fields.rows.size(); ++row) {
+    FieldRow& field = current.fields.rows[row];
     if (!ManureDoseStands(field)) {
       continue;
     }
@@ -166,14 +236,42 @@ void PriceManureDoses(const ProductionConfig& config, WorldState& current) {
       field.manure_dose = ManureDoseSeam{};
       continue;
     }
-    const HaulRate rate = RateToward(config,
-                                     current,
-                                     current.units.rows[heap].position,
-                                     field.center,
-                                     TravelMode::kCart,
-                                     config.manure_resource);
-    field.manure_dose.days_remaining = CartDaysFor(config, field.manure_dose.due, rate);
-    field.manure_dose.days_written = field.manure_dose.days_remaining;
+    standing.push_back(
+        {row, RoadKm(current, TravelMode::kCart, current.units.rows[heap].position, field.center)});
+  }
+  std::ranges::sort(standing, [&current](const Candidate& left, const Candidate& right) {
+    if (left.road_km != right.road_km) {
+      return left.road_km < right.road_km;
+    }
+    const float left_fertility = current.fields.rows[left.row].fertility;
+    const float right_fertility = current.fields.rows[right.row].fertility;
+    return left_fertility != right_fertility ? left_fertility < right_fertility
+                                             : left.row < right.row;
+  });
+  for (const Candidate& candidate : standing) {
+    FieldRow& field = current.fields.rows[candidate.row];
+    ManureDoseSeam& seam = field.manure_dose;
+    const UnitRow& heap = current.units.rows[FindRow(current.units, seam.from)];
+    const HaulRate rate = RateToward(
+        config, current, heap.position, field.center, TravelMode::kCart, config.manure_resource);
+    const float whole = CartDaysFor(config, seam.due, rate);
+    if (!(days_bought > 0.0F) || !(whole > 0.0F)) {
+      // A dose the oats cannot buy tomorrow waits in the heap: the windows'
+      // line (TractionWatch::manure_waits_for_oats).
+      current.traction_watch.manure_waits_for_oats = 1;
+      continue;
+    }
+    // The part the oats buy: the dose's grams by the share of its cart-days
+    // they cover (a whole-trip model may round a part's own trips; the error
+    // is a part of one trip).
+    const float share = std::min(days_bought / whole, 1.0F);
+    seam.priced = share < 1.0F ? GramsFromFloat(static_cast<float>(seam.due) * share) : seam.due;
+    seam.days_remaining = whole * share;
+    seam.days_written = seam.days_remaining;
+    days_bought -= seam.days_remaining;
+    if (share < 1.0F) {
+      current.traction_watch.manure_waits_for_oats = 1;
+    }
   }
 }
 
@@ -195,12 +293,18 @@ void SettleManureDoses(const ProductionConfig& config, WorldState& current) {
     float converted = 1.0F;
     if (done > 0.0F && seam.days_written > 0.0F) {
       const float share = std::min(done / seam.days_written, 1.0F);
-      const Grams budget = GramsFromFloat(static_cast<float>(seam.due) * share);
+      // Of TONIGHT'S PRICE (C2.2): the part the oats bought, not the whole due.
+      const Grams budget = GramsFromFloat(static_cast<float>(seam.priced) * share);
       const Grams offered = std::min(budget, StockOf(heap.stock, config.manure_resource));
       // Out of the heap and onto the field: the dose lies on the snow until
       // the furrow turns it in (OpenPlowing), so it enters no stock.
       const Grams moved = -AddToStock(heap.stock, config.manure_resource, -offered);
       seam.due = std::max<Grams>(seam.due - moved, 0);
+      seam.priced = std::max<Grams>(std::min(seam.priced - moved, seam.due), 0);
+      // The winter's hold's book: the manure's own cart-days, as drained.
+      current.ledger.current.manure_cart_days +=
+          budget > 0 ? done * std::min(static_cast<float>(moved) / static_cast<float>(budget), 1.0F)
+                     : 0.0F;
       current.ledger.current.manure_carted += moved;
       WriteAppliedShare(config, field);
       const HaulRate rate = RateToward(
