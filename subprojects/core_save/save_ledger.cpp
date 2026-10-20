@@ -166,11 +166,12 @@ constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
 // on 176; their 176 and 177 on the old base, never released): manure carted
 // and manure late, two Grams after manure_plowed_in, and the winter's hold's
 // book, three floats after manure_late - predicted 1136 -> 1168 + 43 A (12
-// padded to the next Grams' 8) and 137 fields before the build; on the wire
-// +28 a book.
+// padded to the next Grams' 8) and 137 fields before the build - the size
+// held, the arity did not: 133 + 5 = 138 (137 was C2's own 132 + 5, carried
+// over without #1005's field); on the wire +28 a book.
 static_assert(sizeof(YearLedger) == 1168 + (43 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 137,
+static_assert(AggregateArity<YearLedger>() == 138,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(BuiltInRow) == 16 && AggregateArity<BuiltInRow>() == 3,
               "BuiltInRow changed — update its codec and VERSION_SAVE");
