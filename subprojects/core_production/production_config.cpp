@@ -492,6 +492,7 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
       {"hay_weathering_autumn", &farming.hay_weathering_by_season[1], 0.0F, 1.0F},
       {"hay_weathering_winter", &farming.hay_weathering_by_season[2], 0.0F, 1.0F},
       {"hay_weathering_spring", &farming.hay_weathering_by_season[3], 0.0F, 1.0F},
+      {"clamp_rot_lamp_t", &farming.clamp_rot_lamp_t, 0.0F, 10000.0F},
       // BOTH HALVES OF BILLETING MOVED TO world_params.csv on 2026-09-16 and
       // are read by ParseProductionWorldParams below. They used to be split:
       // the yield factor here, the yard's places there — and the reason the
@@ -1729,9 +1730,12 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
   config.hide_resource = ResourceByKey(resources, "hide");
   config.pelt_resource = ResourceByKey(resources, "mink_pelt");
   config.down_resource = ResourceByKey(resources, "down");
+  config.potato_resource = ResourceByKey(resources, "potato");
+  config.vegetables_resource = ResourceByKey(resources, "vegetables");
   config.compost_heap_type = UnitTypeByKey(unit_types, "manure_pile");
   config.church_store_type = UnitTypeByKey(unit_types, "church_store");
   config.clamp_type = UnitTypeByKey(unit_types, "clamp");
+  config.vegetable_store_type = UnitTypeByKey(unit_types, "vegetable_store");
   // The stable is not a unit of its own: it is the SECOND step of the
   // kolkhoz yard (boss 2026-08-30), and foals come only under its roof
   // (livestock design §5). The type is resolved here; whether one is BUILT

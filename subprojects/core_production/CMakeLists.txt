@@ -22,6 +22,7 @@ kolkhoz_add_module(core_production
     milk_cart.cpp
     rick_supply.cpp
     goods_loan.cpp
+    clamp_rot_lamp.cpp
     livestock_homes.cpp
     stable_horses.cpp
     night_pasture.cpp

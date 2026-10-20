@@ -948,6 +948,12 @@ struct FarmingConfig {
   /// is the world before it.
   std::array<float, 4> hay_weathering_by_season = {0.0F, 0.0F, 0.0F, 0.0F};
 
+  /// farming.csv `clamp_rot_lamp_t` (#1005; econ's clamp-rot-lamp §4c): the
+  /// tonnes of potato and vegetables rotted in clamps over the last year at
+  /// which the lamp «В буртах сгнило N т» lights. STUB, econ's provisional
+  /// 12; the writer's first print sets it before the pair.
+  float clamp_rot_lamp_t = 12.0F;
+
   /// THE LIFE OF A SOWN GRASS STAND (grass_stand.csv; 0.37.212): one row a
   /// summer of the stand, counted from the summer it was sown; the LAST row
   /// stands for its summer and every later one. Read for a crop with
@@ -1153,6 +1159,11 @@ struct ProductionConfig {
 
   ResourceId down_resource;  ///< resources.csv "down" row.
 
+  /// resources.csv "potato" and "vegetables": what the clamp-rot lamp counts
+  /// (#1005; clamp_rot_state.h).
+  ResourceId potato_resource;
+  ResourceId vegetables_resource;
+
   UnitTypeId compost_heap_type;  ///< unit_types.csv "compost_heap".
 
   /// The two stores kEmptyStore empties (start §5; registers 214 and 233):
@@ -1160,6 +1171,10 @@ struct ProductionConfig {
   /// hold the store leak open while they hold raw material.
   UnitTypeId church_store_type;
   UnitTypeId clamp_type;
+
+  /// unit_types.csv "vegetable_store": the long answer the clamp-rot lamp
+  /// names (#1005).
+  UnitTypeId vegetable_store_type;
 
   /// resources.csv `theft`, dense by ResourceId: 2 eager, 1 some, 0 none or
   /// not yet written. The perevalka carries what is stolen more readily
