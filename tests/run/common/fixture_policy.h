@@ -553,6 +553,24 @@ class FixturePolicy {
     return pen;
   }
 
+  /// @brief The pen's warm (kUpgradeUnit to level 2) when its recipe is in
+  ///        hand (warm_barn_in_hand_) and the month is a clay one; false
+  ///        otherwise, `order` untouched.
+  bool WarmFirst(const core::WorldState& world, core::OrderRow& order) const {
+    const auto month_now = static_cast<std::uint32_t>(world.calendar.date.month);
+    const bool clay_season = month_now >= kClayWarmFirstMonth && month_now <= kClayWarmLastMonth;
+    if (!warm_barn_in_hand_ || !clay_season) {
+      return false;
+    }
+    const std::uint32_t pen = PenToWarm(world);
+    if (pen == core::kNoRow) {
+      return false;
+    }
+    order.kind = core::OrderKind::kUpgradeUnit;
+    order.unit = world.units.row_ids[pen];
+    return true;
+  }
+
   /// @brief Marks the first cattle yard: on the elder's point while it has
   /// not been refused, else at the nearest free place (Mark).
   bool MarkPen(const core::WorldState& world, core::OrderRow& order) {
@@ -718,6 +736,15 @@ class FixturePolicy {
         }
       }
     }
+    // THE FIRST PEN'S WARM AHEAD OF THE FARM'S SITES (MR.2's «L2 in the first
+    // wave»; boss, the #1056 thread [121]): asked before the wait below. Behind
+    // it, a granary or clamp going up held the warm - in 1934 and 1938 of
+    // MR.2's pair through the whole clay window with its recipe in hand - and
+    // with warm_hold.h holding that site's start for the warm's straw, the two
+    // waited on each other.
+    if (WarmFirst(world, order)) {
+      return true;
+    }
     // A site of any of its kinds already going up: nothing new until it stands
     // - the first pen's site aside (above).
     for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
@@ -763,16 +790,7 @@ class FixturePolicy {
     // froze. From October to the end of winter the pen takes the straw coat
     // instead (insulation_policy.h), and the clay warm opens in spring. STUB:
     // «cannot be done by 1 December» is read as «not begun by 1 October».
-    const auto month_now = static_cast<std::uint32_t>(world.calendar.date.month);
-    const bool clay_season = month_now >= kClayWarmFirstMonth && month_now <= kClayWarmLastMonth;
-    if (warm_barn_in_hand_ && clay_season) {
-      const std::uint32_t pen = PenToWarm(world);
-      if (pen != core::kNoRow) {
-        order.kind = core::OrderKind::kUpgradeUnit;
-        order.unit = world.units.row_ids[pen];
-        return true;
-      }
-    }
+    // The order itself is asked above, ahead of the farm's sites (WarmFirst).
     const bool wants_granary =
         Wants(world, granary_, Built(world, granary_) == 0 || RoomWasShort(world));
     // From the entry morning, as the pen above: before it no cattle yard is
