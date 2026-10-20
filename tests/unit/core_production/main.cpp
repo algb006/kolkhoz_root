@@ -2742,6 +2742,40 @@ int CheckTheTeamOnHayAndTooFewHorses() {
   failures +=
       Expect(buy.has_value() && buy->lamp == 1 && buy->resource.value == core::kInvalidDefIdValue,
              "too few horses, a tonne cut last year: the lamp, no resource, as before");
+  // THE LAMP'S DAY IN YEAR 1 BEFORE THE FIRST CUT (#1113; boss, core-boss-
+  // oats-b-pair [38]): the path no world of 0.37.310 reaches since MR.2a (G4:
+  // 0 flips), driven here. Day 10, the cut from day 20 (June). Before #1113
+  // the question stopped at day 20: 10 stall days x 5 kg = 50 kg of the 100
+  // lying - «buy», the lamp. Now it keeps its year (to next year's scythes
+  // and eight, day 76): 66 days are short - the hay named, no lamp. Beside a
+  // meadow of a hectare standing (1.5 t, landing over the cut) it carries the
+  // year - the lamp again: the cut is priced from the grass standing.
+  {
+    core::WorldState first_spring = week;
+    first_spring.herds.rows[0].adult_count = 4;
+    first_spring.herds.rows[0].adult_male_count = 2;
+    first_spring.calendar.tick = static_cast<core::Tick>(10) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(first_spring.calendar);
+    const core::HerdFeedForecast long_look =
+        core::ForecastHerdFeed(with_hay, first_spring, true, core::FeedHorizon::kNextYearsScythes);
+    const std::optional<core::Alarm> no_grass = advice(first_spring);
+    failures += Expect(long_look.horizon_days == 66 && no_grass.has_value() &&
+                           no_grass->lamp == 0 && no_grass->resource.value == 0,
+                       "too few horses, year 1 day 10, before the first cut (#1113): the long look "
+                       "keeps its year (66 days, not 10 to the scythes) - short, the hay named, "
+                       "no lamp");
+    core::FieldRow meadow;
+    meadow.kind = core::LandKind::kMeadow;
+    meadow.area_ga = 1.0F;
+    meadow.phase = core::FieldPhase::kGrowing;
+    meadow.last_mown_day = core::kNeverMownDay;
+    AppendRow(first_spring.fields, meadow);
+    const std::optional<core::Alarm> grass = advice(first_spring);
+    failures += Expect(
+        grass.has_value() && grass->lamp == 1 && grass->resource.value == core::kInvalidDefIdValue,
+        "too few horses, year 1 day 10 (#1113): a hectare of grass standing, "
+        "priced as the cut to come, carries one more horse - the lamp");
+  }
   return failures;
 }
 
