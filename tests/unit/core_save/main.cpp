@@ -1849,9 +1849,9 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // Grams: 953 -> 1341,
     // predicted (+388) before the build and held; the hash read off it.
     // Save 177 (#1056 C2 and C2.2 on 176): the manure's oats, two Grams and a
-    // u8: 1341 -> 1358, predicted before the build; the hash read off it with
-    // the three set off their defaults.
-    {"world", 1358, 0x0ULL},
+    // u8: 1341 -> 1358, predicted before the build and held; the hash read
+    // off it with the three set off their defaults.
+    {"world", 1358, 0x5afaf08e2212ba33ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2278,8 +2278,8 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // off it.
     // Save 177 (#1056 C2 and C2.2 on 176): manure carted and late, two Grams
     // a book, and the winter's hold's book, three floats a book: 3064 -> 3120,
-    // predicted before the build; the hash read off it.
-    {"ledger", 3120, 0x0ULL},
+    // predicted before the build and held; the hash read off it.
+    {"ledger", 3120, 0x796fca611bdd4081ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
