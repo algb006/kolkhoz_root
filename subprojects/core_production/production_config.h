@@ -724,9 +724,12 @@ struct FarmingConfig {
 
   /// farming.csv `light_work_oat_share` (the human, «Сначала овёс»; econ
   /// winter-team-oats-2026-10-20 §A): a horse in a cart or a sledge draws
-  /// this share of a heavy horse-day's work oats (herd_system.cpp,
-  /// WorkingShare). STUB 0.5, by the period's norms (field work 6-8 kg of
-  /// oats a horse-day, carting at a walk 3-4 kg); 1 is the world before it.
+  /// this share of a heavy horse-day's work oats, and keeps this share of the
+  /// work part of its need - the rest is spared, not refilled with hay
+  /// (herd_system.cpp, WorkingShare and LightDaySpared; econ §4d-§4e). Barley
+  /// and the other concentrates stay at the full work share. STUB 0.5, by the
+  /// period's norms (field work 6-8 kg of oats a horse-day, carting at a walk
+  /// 3-4 kg); 1 is the world before it.
   float light_work_oat_share = 0.5F;
 
   /// THE THIN YEAR BY THE FIELD PLAN (#1040; econ's oat-lamp contract §1;

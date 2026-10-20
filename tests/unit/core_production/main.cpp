@@ -2396,6 +2396,34 @@ int CheckTheCartHorseEatsOats() {
   failures += Expect(world.units.rows[0].stock[1] == 100 * kKilo - kKilo,
                      "at the light share 0.5 the two cart horses count as one: (1 + 2 x 0.5) of "
                      "four take half the oats, the mower's horse its full share (O8)");
+  failures += Expect(world.traction_ration >= 0.999F,
+                     "and the work ration reads full: its room is the light horse's too, so 1 kg "
+                     "of oats over a room of (4 x 0.5 x 0.5) is 1.0, not 0.67 (boss, the #1056 "
+                     "thread [160])");
+  failures += Expect(world.units.rows[0].stock[0] == 100 * kKilo - (5 * kKilo / 2) &&
+                         world.herds.rows[0].unfed_days == 0.0F,
+                     "H: the two light horses spare a quarter of their work part, 4 x (3/4 - 1/2) "
+                     "x 0.5 = 0.5 units, so the team eats 3.5 - 1 kg oats and 2.5 kg hay, not 3: the "
+                     "oats' lost half is not refilled with hay, and the team is fed (econ §4e)");
+  {
+    // THE OATS ONLY (econ §4d; boss [158]): with no oats in the barn the team
+    // takes barley, and barley's room stays at the full work share - 3 horses
+    // of 4 x 0.5 x 4 units = 1.5 kg, not the light 1 kg the first cut took,
+    // whose other half was the cows' hay.
+    core::ProductionConfig barley = config;
+    barley.feed_values = {1.0F, 1.0F, 1.0F};
+    barley.feed_links.insert(barley.feed_links.begin() + 1,
+                             core::FeedLinkDef{.kind = core::LivestockKindId{0},
+                                               .resource = core::ResourceId{2},
+                                               .max_share = 0.5F,
+                                               .work_only = 1});
+    core::WorldState lean = world;
+    lean.units.rows[0].stock[1] = 0;
+    lean.units.rows[0].stock[2] = 100 * kKilo;
+    core::RunHerdDay(barley, lean);
+    failures += Expect(lean.units.rows[0].stock[2] == 100 * kKilo - (3 * kKilo / 2),
+                       "barley stays at the full work share on a light day: 1.5 kg, not 1");
+  }
   failures += Expect(world.ledger.current.horse_backed_assignment_days == 3.0F &&
                          world.ledger.current.harnessed_assignment_days == 4.0F,
                      "the traction share is booked off the same count: 3 horse-backed of 4 "
