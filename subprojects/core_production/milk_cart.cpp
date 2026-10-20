@@ -176,7 +176,11 @@ void PriceMilkLegs(const ProductionConfig& config, WorldState& current) {
       continue;
     }
     const std::uint32_t barn_row = FindRow(current.units, herd.unit);
-    // ONE LEG A BARN: two milked herds in one barn share its one stock.
+    // ONE LEG A BARN: two milked herds in one barn share its one stock. The
+    // leg is the BARN's and is written on its FIRST kolkhoz herd row, of any
+    // kind - the horses' while the cows stand billeted in the stable before
+    // their yard (MR.2's trace: the leg read as «horses» in a per-herd print).
+    // A reader of HerdRow::leg_* asks the barn, not the herd's kind.
     if (barn_row == kNoRow || std::ranges::find(barns_priced, barn_row) != barns_priced.end()) {
       continue;
     }
