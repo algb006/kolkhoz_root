@@ -41,6 +41,26 @@ std::uint32_t MilkLegReceiverRow(const ProductionConfig& config, const WorldStat
   return kNoRow;
 }
 
+/// Whether a kind gives milk (livestock.csv milk_l_per_year).
+bool KindGivesMilk(const ProductionConfig& config, LivestockKindId kind) {
+  return kind.value < config.livestock.size() &&
+         config.livestock[kind.value].milk_l_per_year > 0.0F;
+}
+
+/// True when `herd` gives no milk and another kolkhoz herd that does stands in
+/// its barn: that herd carries the barn's leg (#1117 item 3).
+bool YieldsTheLegToMilkedHerd(const ProductionConfig& config,
+                              const WorldState& world,
+                              const HerdRow& herd) {
+  if (KindGivesMilk(config, herd.kind)) {
+    return false;
+  }
+  return std::ranges::any_of(world.herds.rows, [&](const HerdRow& other) {
+    return other.household_owned == 0 && other.unit.value == herd.unit.value &&
+           KindGivesMilk(config, other.kind);
+  });
+}
+
 /// Books `grams` of milk as delivered to the district: against the position
 /// or outside any, and in the year's ledger.
 void BookDelivered(const ProductionConfig& config,
@@ -177,11 +197,15 @@ void PriceMilkLegs(const ProductionConfig& config, WorldState& current) {
     }
     const std::uint32_t barn_row = FindRow(current.units, herd.unit);
     // ONE LEG A BARN: two milked herds in one barn share its one stock. The
-    // leg is the BARN's and is written on its FIRST kolkhoz herd row, of any
-    // kind - the horses' while the cows stand billeted in the stable before
-    // their yard (MR.2's trace: the leg read as «horses» in a per-herd print).
-    // A reader of HerdRow::leg_* asks the barn, not the herd's kind.
-    if (barn_row == kNoRow || std::ranges::find(barns_priced, barn_row) != barns_priced.end()) {
+    // leg is the BARN's, written on its first MILKED kolkhoz herd: a herd of
+    // a kind that gives no milk yields the leg to one that does in the same
+    // barn (#1117 item 3; boss, the #1056 thread [119]: before it the leg sat
+    // on the horses' row while the cows stood billeted in the stable, and a
+    // per-herd print read it as «horses»). With no milked herd left there -
+    // the cows' yard stood this morning - the barn's leftover milk stays on
+    // its first herd, as before.
+    if (barn_row == kNoRow || std::ranges::find(barns_priced, barn_row) != barns_priced.end() ||
+        YieldsTheLegToMilkedHerd(config, current, herd)) {
       continue;
     }
     const UnitRow& barn = current.units.rows[barn_row];

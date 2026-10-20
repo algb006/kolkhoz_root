@@ -140,9 +140,10 @@ struct LogisticsTaskRow {
   LimitDeliveryId limit_delivery;
   UnitId unit;
   /// kMilkLeg: the herd row the barn's leg is written on (save 170) - the
-  /// barn's FIRST kolkhoz herd, of any kind: the horses' while cows stand
-  /// billeted in the stable (milk_cart.cpp, «ONE LEG A BARN»). The milk is
-  /// the barn's, not this herd's.
+  /// barn's first MILKED kolkhoz herd: the cows' while they stand billeted in
+  /// the stable with the horses (milk_cart.cpp, «ONE LEG A BARN»; #1117). The
+  /// milk is the barn's; on the day the cows leave for their yard the
+  /// leftover's leg stays on the barn's first herd, of any kind.
   HerdId herd;
 
   /// The level the task has now (raised by ageing or by a threat).
