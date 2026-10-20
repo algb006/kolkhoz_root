@@ -2764,12 +2764,12 @@ int CheckTheTeamOnHayAndTooFewHorses() {
                        "too few horses, year 1 day 10, before the first cut (#1113): the long look "
                        "keeps its year (66 days, not 10 to the scythes) - short, the hay named, "
                        "no lamp");
-    core::FieldRow meadow;
-    meadow.kind = core::LandKind::kMeadow;
-    meadow.area_ga = 1.0F;
-    meadow.phase = core::FieldPhase::kGrowing;
-    meadow.last_mown_day = core::kNeverMownDay;
-    AppendRow(first_spring.fields, meadow);
+    core::FieldRow standing_meadow;
+    standing_meadow.kind = core::LandKind::kMeadow;
+    standing_meadow.area_ga = 1.0F;
+    standing_meadow.phase = core::FieldPhase::kGrowing;
+    standing_meadow.last_mown_day = core::kNeverMownDay;
+    AppendRow(first_spring.fields, standing_meadow);
     const std::optional<core::Alarm> grass = advice(first_spring);
     failures += Expect(
         grass.has_value() && grass->lamp == 1 && grass->resource.value == core::kInvalidDefIdValue,
