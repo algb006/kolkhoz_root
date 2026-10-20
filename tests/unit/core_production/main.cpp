@@ -2544,9 +2544,32 @@ int CheckTheTeamOnHayAndTooFewHorses() {
                        "L1: a short carting-only day neither adds to the streak nor puts it out: "
                        "3 days, 3 kg, still lit");
     const core::WorldState full_carting = carting(world, 5, 100 * kKilo);
-    failures += Expect(full_carting.traction_watch.short_ration_days == 3 &&
-                           lit(full_carting, core::AlarmKind::kTeamOnHay).has_value(),
-                       "L1: a full carting-only day does not put it out either - it stands");
+    failures +=
+        Expect(full_carting.traction_watch.short_ration_days == 0 &&
+                   full_carting.traction_watch.work_grain_short == 0 &&
+                   !lit(full_carting, core::AlarmKind::kTeamOnHay).has_value(),
+               "L1: a full carting-only day puts it out - any full day does (econ's (a), "
+               "boss [16]; the first cut kept it, and an August streak stood into February)");
+    // THE WINTER'S FIRST DAY PUTS IT OUT (boss [16]): 1 December (day 44 of
+    // the year), the streak standing and nobody at work - cleared; the day
+    // before, the same day keeps it.
+    core::WorldState november = world;
+    core::WorldState december = world;
+    for (core::ResidentRow& hand : november.residents.rows) {
+      hand.work.kind = core::WorkKind::kNone;
+    }
+    december.residents.rows = november.residents.rows;
+    november.calendar.tick = static_cast<core::Tick>(43) * core::kTicksPerDay;
+    december.calendar.tick = static_cast<core::Tick>(44) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(november.calendar);
+    core::RefreshCalendarCaches(december.calendar);
+    core::RunHerdDay(config, november);
+    core::RunHerdDay(config, december);
+    failures += Expect(november.traction_watch.short_ration_days == 3 &&
+                           december.traction_watch.short_ration_days == 0 &&
+                           december.traction_watch.work_grain_short == 0,
+                       "L1: the winter's first day puts the streak out (1 Dec: 0), the autumn's "
+                       "last idle day keeps it (30 Nov: 3)");
     core::WorldState full_heavy = world;
     full_heavy.units.rows[0].stock[1] = 100 * kKilo;
     full_heavy.calendar.tick = static_cast<core::Tick>(5) * core::kTicksPerDay;

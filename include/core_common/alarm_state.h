@@ -515,10 +515,12 @@ enum class AlarmKind : std::uint8_t {
   /// econ canon-horses-oats.md §3): the team's work ration has been short of
   /// full for `kTeamOnHayDays` HEAVY working days in a row (the plough, the
   /// harrow, a meadow's mower in traces) — the horses pull on hay, and the
-  /// ploughing goes slower (WorldState::traction_ration). Goes out on the
-  /// first heavy day of the full ration, or when the team is gone; a day
-  /// nobody works, and a carting-only day, keep it standing (econ winter-team-
-  /// oats-2026-10-20 §4l: hauling is never slowed by the ration). On a carting day the
+  /// ploughing goes slower (WorldState::traction_ration). Goes out on any
+  /// working day of the full ration, carting included, on the winter's first
+  /// day, or when the team is gone; a day nobody works, and a short
+  /// carting-only day, keep it standing (econ winter-team-oats-2026-10-20
+  /// §4l: hauling is never slowed by the ration; boss, core-boss-oats-b-pair
+  /// [16]). On a carting day the
   /// plough's oats are held by rule (FeedAllowance, PloughFeedHold), so it
   /// can stand beside oats in the barn that are the plough's. OATS, NOT HAY: a team
   /// short of hay is kHerdStarving. Subject: `herd`, the first row of the
