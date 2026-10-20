@@ -358,6 +358,12 @@ core::WorldState MakeWorld() {
   field.start_shape = 7;
   // Save 146: the summer of a sown grass stand, off its default.
   field.stand_summers = 4;
+  // Save 176 (#1056 C2): the winter's dose from the heap, part carted.
+  field.manure_dose = {.from = core::UnitId{2},
+                       .booked = 150'000'000,
+                       .due = 61'000'000,
+                       .days_remaining = 1.5F,
+                       .days_written = 2.25F};
   core::AppendRow(world.fields, field);
 
   // And one meadow: a different LandKind, so the byte the row gained in task
@@ -1026,6 +1032,8 @@ core::WorldState MakeWorld() {
   world.traction_watch.plan_oat_expected = 6'375'000;
   world.traction_watch.plan_team_need = 31'000'000;
   world.ledger.closed.team_work_oat_requested = 29'000'000;
+  world.ledger.closed.manure_carted = 89'000'000;  // save 176
+  world.ledger.closed.manure_late = 12'000'000;    // save 176
   // The closed year's adult head-days by livestock kind (save 127): NOT
   // empty, since empty is what a codec that forgot them would read back.
   world.ledger.closed.adult_head_days = Amounts({0, 1'880});
@@ -1909,7 +1917,10 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // Save 153: +8 a field — haul_to, the load's receiver; 371 -> 395, held.
     // Save 162 (stage В4): +8 a field — the straw lying at the field;
     // 395 -> 419 predicted (three fields) and held; the hash read off the build.
-    {"fields", 419, 0xb53348527e0000c8ULL},
+    // Save 176 (#1056 C2): +28 a field — the winter's dose (the heap's id, two
+    // Grams, two floats); 419 -> 503 predicted (three fields) and held; the
+    // hash read off the build with the first field's dose set off its default.
+    {"fields", 503, 0x30bff7c53005949cULL},
     // Save 67: +27 — the store's emptying byte and the perevalka's two floats,
     // three units; predicted before the fields were added, and held.
     // Save 74: +1 a unit — the house held for a specialist; three units, +3,
@@ -2228,7 +2239,9 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // held; the hash read off it.
     // Save 167 (#1040): the team's work-oat request, a Grams a book: 3044 ->
     // 3060, predicted before the build and held; the hash read off it.
-    {"ledger", 3060, 0xad3659645a45517aULL},
+    // Save 176 (#1056 C2): manure carted and late, two Grams a book: 3060 ->
+    // 3092, predicted before the build and held; the hash read off it.
+    {"ledger", 3092, 0xe8edb207aaef881fULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -2901,6 +2914,17 @@ int main() {
   failures +=
       Expect(loaded.fields.rows[0].stand_summers == 4 && loaded.fields.rows[1].stand_summers == 0,
              "the grass stand's summer comes back (save 146)");
+  {
+    const core::ManureDoseSeam& dose = loaded.fields.rows[0].manure_dose;
+    failures +=
+        Expect(dose.from.value == 2 && dose.booked == 150'000'000 && dose.due == 61'000'000 &&
+                   dose.days_remaining == 1.5F && dose.days_written == 2.25F &&
+                   loaded.fields.rows[1].manure_dose.booked == 0 &&
+                   loaded.ledger.closed.manure_carted == 89'000'000 &&
+                   loaded.ledger.closed.manure_late == 12'000'000 &&
+                   loaded.ledger.current.manure_carted == 0,
+               "a field's winter dose and the book's manure carted and late come back (save 176)");
+  }
   // AND WHETHER ANYBODY EVER TOLD THE FIELD WHAT TO GROW, which the three
   // crop slots beside it cannot say: an empty slot in a chain that exists is
   // a fallow year, and the same emptiness in a field nobody assigned is

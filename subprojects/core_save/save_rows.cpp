@@ -222,8 +222,16 @@ static_assert(AggregateArity<FamilyRow>() == 38,
 // after the two-byte reaped_resource it took 16 bytes), held at 144 by
 // declaring it beside reaped_grams. On the wire + 8 bytes, after
 // reaped_resource.
-static_assert(sizeof(FieldRow) == 144, "FieldRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<FieldRow>() == 47,
+// Save 176 (#1056 C2): the winter's dose, a ManureDoseSeam at the tail -
+// predicted 32 (the heap's id 4, padded to 8, two Grams 24, two floats 32)
+// and 5 fields; the row 144 -> 176 and 47 -> 48 fields, before the build. On
+// the wire +28 a field.
+static_assert(sizeof(ManureDoseSeam) == 32,
+              "ManureDoseSeam changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<ManureDoseSeam>() == 5,
+              "ManureDoseSeam gained or lost a field — update the codec and VERSION_SAVE");
+static_assert(sizeof(FieldRow) == 176, "FieldRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<FieldRow>() == 48,
               "FieldRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-06: the stink radius pushed the row from 48 + amounts to 56 +
 // amounts. The pause byte before it had landed in padding and moved nothing,
@@ -1178,6 +1186,12 @@ void WriteFieldRow(SaveSink& sink, const FieldRow& row) {
   out.WriteU8(row.fallow_rest_owed);
   // The zyab's autumn furrow in progress (save 114).
   out.WriteU8(row.autumn_furrowing);
+  // The winter's dose from the heap (save 176, #1056 C2).
+  WriteEntityId(out, row.manure_dose.from);
+  out.WriteI64(row.manure_dose.booked);
+  out.WriteI64(row.manure_dose.due);
+  out.WriteFloat(row.manure_dose.days_remaining);
+  out.WriteFloat(row.manure_dose.days_written);
 }
 
 FieldRow ReadFieldRow(LoadSource& source) {
@@ -1298,6 +1312,18 @@ FieldRow ReadFieldRow(LoadSource& source) {
       (!furrow_place || row.crop.value != kInvalidDefIdValue || row.autumn_plowed != 0)) {
     source.Fail(
         "a field ploughs an autumn furrow outside a crop-less ploughing or a part-turned rest");
+  }
+  // The winter's dose from the heap (save 176, #1056 C2): a booking names its
+  // heap, and what is still due is never more than what was booked.
+  row.manure_dose.from = ReadEntityId<UnitId>(in);
+  row.manure_dose.booked = in.ReadI64();
+  row.manure_dose.due = in.ReadI64();
+  row.manure_dose.days_remaining = in.ReadFloat();
+  row.manure_dose.days_written = in.ReadFloat();
+  const bool dose_named = row.manure_dose.from.value != kInvalidEntityIdValue;
+  if (row.manure_dose.due < 0 || row.manure_dose.due > row.manure_dose.booked ||
+      dose_named != (row.manure_dose.booked > 0)) {
+    source.Fail("a field's manure dose is due beyond its booking, or booked without a heap");
   }
   return row;
 }

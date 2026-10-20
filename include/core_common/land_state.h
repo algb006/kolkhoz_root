@@ -31,6 +31,7 @@
 #include "core_common/calendar.h"
 #include "core_common/geometry.h"
 #include "core_common/ids.h"
+#include "core_common/manure_state.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table.h"
 
@@ -619,6 +620,11 @@ struct FieldRow {
   /// keeps in the field in the autumn (assignment.cpp: the first of the jobs
   /// with no window).
   std::uint8_t autumn_furrowing = 0;
+
+  /// THE WINTER'S DOSE FROM THE HEAP (#1056 C2, save 176; manure_state.h):
+  /// booked at the year's turn, carted on sledge days until this field's
+  /// ploughing opens, cancelled into the heap if it is not all here by then.
+  ManureDoseSeam manure_dose;
 
   /// THE DAY THIS FIELD'S CROP WAS LAST REAPED — whole, so the field went back
   /// to kIdle — or kNeverReapedDay (2026-09-15, boss parcel 421).
