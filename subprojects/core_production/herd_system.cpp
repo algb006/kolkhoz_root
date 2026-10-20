@@ -471,10 +471,16 @@ std::vector<std::uint32_t> HerdWalkOrder(const ProductionConfig& /*config*/,
 ///        count. Answered even in a village with no horse: its carters on
 ///        foot are harnessed work pulled by hand, and the share is then nil
 ///        rather than unmeasured.
+/// @param lamp_harnessed_days Optional out: `harnessed_days` as «лошадей не
+///        хватает» reads it - a milk leg walked by choice wants no horse
+///        (CountHarness's horse-kind form; MR.2a). The mechanisation share
+///        keeps `harnessed_days`, where a can carried on foot is still hand
+///        work (boss, the #1056 thread [113]: two doors to one count split).
 float WorkingShare(const WorldState& world,
                    const ProductionConfig& config,
                    float* horse_backed_days = nullptr,
-                   float* harnessed_days = nullptr) {
+                   float* harnessed_days = nullptr,
+                   float* lamp_harnessed_days = nullptr) {
   // THE OUT-PARAMS ARE ANSWERED ON EVERY PATH, including the two that give
   // up early. The numerator was left untouched there once, and the doc's
   // "stays at nothing" was then a promise kept by the CALLER's initialiser —
@@ -482,7 +488,7 @@ float WorkingShare(const WorldState& world,
   if (horse_backed_days != nullptr) {
     *horse_backed_days = 0.0F;
   }
-  const HarnessCount harness = CountHarness(world, config.horse_kind);
+  const HarnessCount harness = CountHarness(world);
   std::uint32_t horses = 0;
   for (const HerdRow& herd : world.herds.rows) {
     if (config.horse_kind.value != kInvalidDefIdValue &&
@@ -500,6 +506,14 @@ float WorkingShare(const WorldState& world,
     const std::uint32_t excess = harness.in_traces > horses ? harness.in_traces - horses : 0U;
     const std::uint32_t released = excess < harness.releasable ? excess : harness.releasable;
     *harnessed_days = static_cast<float>(harness.harnessed - released);
+  }
+  if (lamp_harnessed_days != nullptr) {
+    // The same release off the lamp's own count: in_traces and releasable are
+    // one in both forms, only the walkers by choice differ.
+    const HarnessCount lamp = CountHarness(world, config.horse_kind);
+    const std::uint32_t excess = lamp.in_traces > horses ? lamp.in_traces - horses : 0U;
+    const std::uint32_t released = excess < lamp.releasable ? excess : lamp.releasable;
+    *lamp_harnessed_days = static_cast<float>(lamp.harnessed - released);
   }
   if (config.horse_kind.value == kInvalidDefIdValue) {
     return 0.0F;
@@ -696,8 +710,10 @@ float RunFeeding(const ProductionConfig& config,
 }
 
 /// THE TEAM'S TWO ALARMS' MEMORY, written once a day after the walk
-/// (herd_state.h, TractionWatch; save 109). `work` is the walk's work ration,
-/// the two days the herd day booked into the mechanisation share.
+/// (herd_state.h, TractionWatch; save 109). `work` is the walk's work ration;
+/// `horse_backed_days` the mechanisation share's numerator, `harnessed_days`
+/// the LAMP's own denominator - a milk leg walked by choice left out, which
+/// the share keeps (WorkingShare's lamp_harnessed_days; MR.2a, [113]).
 void WatchTheTeam(const ProductionConfig& config,
                   const WorkRation& work,
                   float horse_backed_days,
@@ -1270,7 +1286,9 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
   const std::vector<std::uint16_t> billet = BilletHerds(current, RoofRoom(current, config));
   float horse_backed_days = 0.0F;
   float harnessed_days = 0.0F;
-  const float working_share = WorkingShare(current, config, &horse_backed_days, &harnessed_days);
+  float lamp_harnessed_days = 0.0F;
+  const float working_share =
+      WorkingShare(current, config, &horse_backed_days, &harnessed_days, &lamp_harnessed_days);
   // BOTH HALVES OF THE MECHANISATION SHARE, here and only here (epochs
   // design §6; ledger_state.h). The denominator was booked by core_labor for
   // one afternoon, from delivered norm-days — a different unit at a
@@ -1486,7 +1504,8 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
     const float ration = work.covered / work.room;
     current.traction_ration = ration < 1.0F ? ration : 1.0F;
   }
-  WatchTheTeam(config, work, horse_backed_days, harnessed_days, current);
+  // The lamp reads its own count (MR.2a; boss, [113]), the ledger the old.
+  WatchTheTeam(config, work, horse_backed_days, lamp_harnessed_days, current);
   for (const HerdRow& gift : gifts) {
     AppendRow(current.herds, gift);
   }

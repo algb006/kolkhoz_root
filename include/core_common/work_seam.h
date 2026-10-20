@@ -170,9 +170,10 @@ struct HarnessCount {
   /// chairman buys horses on — and sink the mechanisation share the era's
   /// readiness reads. In a settlement with no horse the seam is in a
   /// walker's days and holds every walker the queue sent: they all count, as
-  /// before. A load priced on foot BY CHOICE - a milk leg whose walk holds
-  /// the day's trips (HerdRow::leg_on_foot) - wants no cart and counts none
-  /// of its walkers (MR.2; «мало лошадей» is a shortage of draught power).
+  /// before. In the horse-kind form (the lamp's) a load priced on foot BY
+  /// CHOICE - a milk leg whose walk holds the day's trips (HerdRow::
+  /// leg_on_foot) - wants no cart and counts none of its walkers (MR.2;
+  /// «мало лошадей» is a shortage of draught power).
   std::uint32_t harnessed = 0;
 
   /// The part of `in_traces` the morning's release takes off when the herd
@@ -197,10 +198,15 @@ struct HarnessCount {
 /// milk leg priced on foot (HerdRow::leg_on_foot) - are left out of
 /// `harnessed` only when `horse_kind` is given and SettlementHasCarts holds
 /// (MR.2; boss, the #1056 thread [109], [110]). The last pass's porters and
-/// log pairs walk for want of a horse and stay counted.
+/// log pairs walk for want of a horse and stay counted. THE LAMP's form only
+/// («лошадей не хватает» asks whether draught power is missing): the
+/// mechanisation share asks how much is done by hand and reads the
+/// one-argument form, where a can carried on foot by choice is hand work
+/// ([113]).
 /// @param horse_kind The livestock row of the horse; invalid (the one-argument
-///        form) counts every walker as before - for readers of `in_traces`
-///        and `releasable` alone, which the rule does not touch.
+///        form) counts every walker as before - the mechanisation share, and
+///        the readers of `in_traces` and `releasable`, which the rule does not
+///        touch.
 HarnessCount CountHarness(const WorldState& world, LivestockKindId horse_kind);
 
 /// @brief CountHarness with no horse kind: every walker counted as before.
