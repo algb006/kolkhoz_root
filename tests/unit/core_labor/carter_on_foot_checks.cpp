@@ -315,6 +315,47 @@ int CheckCarterOnFoot() {
                        "three walkers");
   }
 
+  // A MILK LEG WALKED BY CHOICE WANTS NO CART (MR.2; boss, the #1056 thread
+  // [109]): its seam is in walker-days, so its three can-carriers read as
+  // three cart-days pulled by hand and lit «too few horses». Priced on foot
+  // (HerdRow::leg_on_foot) none counts; the same leg priced by cart, with no
+  // rider, counts its walkers as before - the pair that says the rule is the
+  // leg's choice, not the walkers'.
+  {
+    const auto milk_leg = [](std::uint8_t on_foot, std::uint16_t horses) {
+      core::WorldState world = Village(3, horses);
+      core::HerdRow cows;
+      cows.kind = core::LivestockKindId{1};
+      cows.adult_count = 10;
+      cows.leg_days_remaining = 3.0F;
+      cows.leg_on_foot = on_foot;
+      const core::HerdId herd = core::AppendRow(world.herds, cows);
+      for (core::ResidentRow& person : world.residents.rows) {
+        person.work.kind = core::WorkKind::kHauling;
+        person.work.herd = herd;
+        person.work.rides_horse = 0;
+      }
+      return core::CountHarness(world, core::LivestockKindId{0});
+    };
+    const core::HarnessCount walked = milk_leg(1, 1);
+    const core::HarnessCount carted = milk_leg(0, 1);
+    // NO HORSE IN THE VILLAGE (boss, [110]): the walk is for want of one.
+    const core::HarnessCount horseless = milk_leg(1, 0);
+    std::cout << "  carter on foot, the milk leg: harnessed walked " << walked.harnessed
+              << ", carted " << carted.harnessed << ", walked with no horse " << horseless.harnessed
+              << '\n';
+    failures += Expect(horseless.harnessed == 3,
+                       "carter on foot, the milk leg: with no grown horse the leg's three walkers "
+                       "count - they walk for want of one");
+    failures +=
+        Expect(walked.harnessed == 0 && walked.in_traces == 0,
+               "carter on foot, the milk leg: a leg priced on foot counts none of its three "
+               "can-carriers as harness");
+    failures += Expect(carted.harnessed == 3,
+                       "carter on foot, the milk leg: the same leg priced by cart counts its three "
+                       "walkers as the carts it wanted");
+  }
+
   // A WALKER GOES ONLY WHERE A DAY GIVES TWO TRIPS (0.37.109; labor.csv
   // walker_min_trips_per_day): with twelve hours of light a heap a kilometre
   // out is 2.4 hours one way and two and a half trips — he goes; a heap a

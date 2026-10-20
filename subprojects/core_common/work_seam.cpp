@@ -357,7 +357,13 @@ TravelMode WorkTravelMode(const WorldState& world, const WorkAssignment& work) {
 }
 
 HarnessCount CountHarness(const WorldState& world) {
+  return CountHarness(world, LivestockKindId{});
+}
+
+HarnessCount CountHarness(const WorldState& world, LivestockKindId horse_kind) {
   HarnessCount count;
+  // With no grown horse every job walks for want of one (boss, [110]).
+  const bool horses_kept = SettlementHasCarts(world, horse_kind);
 
   // The loads being carted, by their seam: riders and walkers apart, so the
   // walkers count only as far as the load wanted a cart (work_seam.h).
@@ -365,6 +371,9 @@ HarnessCount CountHarness(const WorldState& world) {
     const float* seam = nullptr;
     std::uint32_t riders = 0;
     std::uint32_t walkers = 0;
+    /// The load was priced ON FOOT by the carrier's choice - a milk leg whose
+    /// walk holds the day's trips (HerdRow::leg_on_foot): it wants no cart.
+    bool walked_by_choice = false;
   };
 
   std::vector<Load> loads;
@@ -380,7 +389,12 @@ HarnessCount CountHarness(const WorldState& world) {
       const float* const seam = WorkSeamOf(world, work);
       auto load = std::ranges::find_if(loads, [seam](const Load& one) { return one.seam == seam; });
       if (load == loads.end()) {
-        loads.push_back(Load{.seam = seam});
+        bool walked_by_choice = false;
+        if (horses_kept && work.herd.value != kInvalidEntityIdValue) {
+          const std::uint32_t herd_row = FindRow(world.herds, work.herd);
+          walked_by_choice = herd_row != kNoRow && world.herds.rows[herd_row].leg_on_foot != 0;
+        }
+        loads.push_back(Load{.seam = seam, .walked_by_choice = walked_by_choice});
         load = loads.end() - 1;
       }
       if (work.rides_horse != 0) {
@@ -409,7 +423,16 @@ HarnessCount CountHarness(const WorldState& world) {
   // THE WALKERS, AS FAR AS THE LOAD WANTED A CART (0.37.105): the seam's
   // norm-days beyond one a rider — a cart-day each while the settlement has
   // carts, a walker's day each while it has none, and then they all count.
+  // A LOAD WALKED BY CHOICE WANTS NO CART (MR.2's trace; boss, the #1056
+  // thread [109]: «Мало лошадей» is «нехватка тягла», time design): the milk
+  // leg priced at a walker's trip is in walker-days, so every can-carrier
+  // read as a cart-day pulled by hand - 6 670 noon walkers in the novice's
+  // year 1 against the base's 476 - lit «too few horses», and the novice
+  // bought ~120 horses that ate year 2's hay.
   for (const Load& load : loads) {
+    if (load.walked_by_choice) {
+      continue;
+    }
     std::uint32_t wanted = load.walkers;  // a load with no seam left to read: as before
     if (load.seam != nullptr) {
       const float beyond = *load.seam - static_cast<float>(load.riders);

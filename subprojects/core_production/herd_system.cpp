@@ -482,7 +482,7 @@ float WorkingShare(const WorldState& world,
   if (horse_backed_days != nullptr) {
     *horse_backed_days = 0.0F;
   }
-  const HarnessCount harness = CountHarness(world);
+  const HarnessCount harness = CountHarness(world, config.horse_kind);
   std::uint32_t horses = 0;
   for (const HerdRow& herd : world.herds.rows) {
     if (config.horse_kind.value != kInvalidDefIdValue &&

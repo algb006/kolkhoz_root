@@ -170,7 +170,9 @@ struct HarnessCount {
   /// chairman buys horses on — and sink the mechanisation share the era's
   /// readiness reads. In a settlement with no horse the seam is in a
   /// walker's days and holds every walker the queue sent: they all count, as
-  /// before.
+  /// before. A load priced on foot BY CHOICE - a milk leg whose walk holds
+  /// the day's trips (HerdRow::leg_on_foot) - wants no cart and counts none
+  /// of its walkers (MR.2; «мало лошадей» is a shortage of draught power).
   std::uint32_t harnessed = 0;
 
   /// The part of `in_traces` the morning's release takes off when the herd
@@ -190,6 +192,18 @@ struct HarnessCount {
 /// the plough and the harrow alone, and a horse in a cart was neither in the
 /// traction nor in the oats (econ, horse-traction.md), though the placement
 /// takes it out of the pool «exactly as ploughing does».
+///
+/// THE WALKERS OF A JOB MADE UNHARNESSED WHILE THE VILLAGE HAD HORSES - a
+/// milk leg priced on foot (HerdRow::leg_on_foot) - are left out of
+/// `harnessed` only when `horse_kind` is given and SettlementHasCarts holds
+/// (MR.2; boss, the #1056 thread [109], [110]). The last pass's porters and
+/// log pairs walk for want of a horse and stay counted.
+/// @param horse_kind The livestock row of the horse; invalid (the one-argument
+///        form) counts every walker as before - for readers of `in_traces`
+///        and `releasable` alone, which the rule does not touch.
+HarnessCount CountHarness(const WorldState& world, LivestockKindId horse_kind);
+
+/// @brief CountHarness with no horse kind: every walker counted as before.
 HarnessCount CountHarness(const WorldState& world);
 
 /// @brief Whether the settlement owns a grown kolkhoz horse at all — and so a
