@@ -384,6 +384,12 @@ struct YearLedger {
   /// M-g's late count).
   Grams manure_carted = 0;
   Grams manure_late = 0;
+  /// #1056 C2.2 (save 177): the winter's hold's book - horse-backed
+  /// assignment-days on days snow lay, the manure cart-days drained, and the
+  /// days snow lay. Next year's hold reads (horse - manure) / snow days.
+  float snow_horse_backed_days = 0.0F;
+  float manure_cart_days = 0.0F;
+  float snow_days = 0.0F;
 
   // -- kolkhoz herds -------------------------------------------------------
   /// Milk, eggs, wool, manure from the kolkhoz herds into the stores.

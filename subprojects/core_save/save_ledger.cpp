@@ -161,10 +161,13 @@ constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
 // Grams at the tail - predicted 1128 -> 1136 and 132 fields before the build;
 // on the wire +8 a book. Save 176 (#1056 C2): manure carted and manure late,
 // two Grams after manure_plowed_in - predicted 1136 -> 1152 and 134 fields
-// before the build; on the wire +16 a book.
-static_assert(sizeof(YearLedger) == 1152 + (42 * kAmountsSize) + kBuiltInRowsSize,
+// before the build; on the wire +16 a book. Save 177 (#1056 C2.2): the
+// winter's hold's book, three floats after manure_late - predicted 1152 ->
+// 1168 (12 padded to the next Grams' 8) and 137 fields before the build; on
+// the wire +12 a book.
+static_assert(sizeof(YearLedger) == 1168 + (42 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 134,
+static_assert(AggregateArity<YearLedger>() == 137,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(BuiltInRow) == 16 && AggregateArity<BuiltInRow>() == 3,
               "BuiltInRow changed — update its codec and VERSION_SAVE");
@@ -253,8 +256,11 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteFloat(book.area_lost_ha);
   out.WriteFloat(book.area_manured_ha);
   out.WriteI64(book.manure_plowed_in);
-  out.WriteI64(book.manure_carted);  // save 176
-  out.WriteI64(book.manure_late);    // save 176
+  out.WriteI64(book.manure_carted);             // save 176
+  out.WriteI64(book.manure_late);               // save 176
+  out.WriteFloat(book.snow_horse_backed_days);  // save 177
+  out.WriteFloat(book.manure_cart_days);        // save 177
+  out.WriteFloat(book.snow_days);               // save 177
 
   sink.WriteAmounts(DefKind::kResource, book.herd_produce);
   sink.WriteAmounts(DefKind::kLivestock, book.adult_head_days);  // save 127
@@ -448,8 +454,11 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.area_lost_ha = in.ReadFloat();
   book.area_manured_ha = in.ReadFloat();
   book.manure_plowed_in = in.ReadI64();
-  book.manure_carted = in.ReadI64();  // save 176
-  book.manure_late = in.ReadI64();    // save 176
+  book.manure_carted = in.ReadI64();             // save 176
+  book.manure_late = in.ReadI64();               // save 176
+  book.snow_horse_backed_days = in.ReadFloat();  // save 177
+  book.manure_cart_days = in.ReadFloat();        // save 177
+  book.snow_days = in.ReadFloat();               // save 177
 
   book.herd_produce = source.ReadAmounts(DefKind::kResource);
   book.adult_head_days = source.ReadAmounts(DefKind::kLivestock);

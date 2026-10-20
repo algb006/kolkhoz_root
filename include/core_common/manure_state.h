@@ -31,6 +31,21 @@
 ///   - what the winter did not carry stays in the heap for the next winter:
 ///     not lost and not spread free.
 ///
+/// THE TEAM'S OATS (C2.2; the human, «Сани по пайку»; econ logistics-all-on
+/// §C2.2, 5a9c77c; boss, the #1056 thread [143]; farming design's manure
+/// row): manure carting is the TOP rung of the team's oat ladder - seed and
+/// plan, the plough's oats, next year's hold, THE WINTER'S HOLD, then manure.
+/// The winter's hold looks FORWARD to the first ploughing day: the team's
+/// work oats for every winter task but manure on each day left, sized from
+/// the closed book's snow-day horse-days less its manure cart-days (year 1:
+/// every adult horse at the full work share). A day's manure is priced only
+/// as far as the oats the herds may eat today, less that hold, cover its
+/// cart-days at a horse-day's work oats. No new holder: the hold is a
+/// reading, as the plough's. When the hold stops a priced dose the team's
+/// window and the heap's carry the line «Навоз ждёт в куче: овёс бережём
+/// упряжке до пахоты» with the two oat numbers (TractionWatch; the string's
+/// key `manure_waits_for_oats` is a STUB until rpg writes it).
+///
 /// THE MARK (farming.csv `manure_fertility_mark`, STUB 70 until the balance
 /// pass): every start field (65) sits below it and a field dunged once (+10)
 /// leaves the queue until it falls back, so the turn passes outward. While
@@ -56,6 +71,10 @@ struct ManureDoseSeam {
   /// it; delivered = booked - due.
   Grams booked = 0;
   Grams due = 0;
+  /// The grams tonight's price carries - all of `due`, or the part the team's
+  /// oats above the winter's hold cover (C2.2; save 177); what the day's
+  /// carting moves is this by the share drained.
+  Grams priced = 0;
   /// Game man-days of carting left today, and what the last settle wrote
   /// (the rick's supply's pair of numbers, unit_state.h RickSupplySeam).
   float days_remaining = 0.0F;

@@ -356,6 +356,16 @@ struct TractionWatch {
   // followed it a year later. A measure of how busy the horses are says how
   // many there ARE, not how many are needed (boss-all-carts-carry-people-go-
   // 2026-10-02 [127], [128]). The horses' floor is the ploughing's.
+
+  /// #1056 C2.2 (save 177; manure_state.h, «Сани по пайку»): the oats the
+  /// herds may eat over the ladder's three old rungs, and the winter's hold
+  /// against them, as tonight's manure price read them; and 1 when the hold
+  /// stopped a dose that stood priced on a sledge day - the windows' line
+  /// «Навоз ждёт в куче: овёс бережём упряжке до пахоты» (string key
+  /// `manure_waits_for_oats`, STUB).
+  Grams oats_over_ladder = 0;
+  Grams winter_hold = 0;
+  std::uint8_t manure_waits_for_oats = 0;
 };
 
 }  // namespace core
