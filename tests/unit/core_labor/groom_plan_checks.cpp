@@ -160,11 +160,13 @@ struct LeftLoad {
 /// THE SITE'S LEG CHANGE (0.37.312; boss, core-boss-oats-b-pair [52]-[56]):
 /// the carter on a horse, his load at level 1 with its seam empty, and today's
 /// plan chaining him on to stand B. A site's seam is its front leg's alone:
-/// empty at a leg change while the works still await, he stays; nothing
-/// awaiting, he goes on - until 0.37.312 he rode for B in both cases. And he
-/// still goes on to B whatever its level: «never down the levels» was tried
-/// and left the heaps in the field at the frost ([55]). Returns whether he
-/// rides for B after hour 3.
+/// empty at a leg change while the works still await, he stays if B is less
+/// urgent than the site, and goes on to B at the site's level or above (the
+/// hay the site's carters fetch on main; [59]); nothing awaiting, he goes on -
+/// until 0.37.312 he rode for B in every case. Off a site he still goes on to
+/// B whatever its level: «never down the levels» was tried and left the heaps
+/// in the field at the frost ([55]). Returns whether he rides for B after
+/// hour 3.
 bool TheCartAtAChange(core::ILaborSystem& labor, const LeftLoad& left) {
   core::WorldState world = Village(1);
   const core::TimberStandId next = StandAt(world, 1500.0F, 1.0F);
@@ -474,18 +476,22 @@ int CheckTheGroomsPlan() {
                      "chain, on his horse");
   failures +=
       Expect(!stale_followed && stale_stays, "groom's plan: a plan of yesterday moves nobody");
-  const bool site_left = TheCartAtAChange(*labor, {.site = true, .site_awaits = true});
-  const bool site_done = TheCartAtAChange(*labor, {.site = true});
+  const bool site_left = TheCartAtAChange(
+      *labor, {.site = true, .site_awaits = true, .next = core::LogisticsLevel::kBackground});
+  const bool site_level = TheCartAtAChange(*labor, {.site = true, .site_awaits = true});
+  const bool site_done =
+      TheCartAtAChange(*labor, {.site = true, .next = core::LogisticsLevel::kBackground});
   const bool down = TheCartAtAChange(*labor, {.next = core::LogisticsLevel::kBackground});
   const bool level = TheCartAtAChange(*labor, {});
   const bool up = TheCartAtAChange(*labor, {.next = core::LogisticsLevel::kUrgent});
-  std::cout << "  groom's plan, a site's leg change: a site awaiting - rides on " << site_left
-            << ", nothing awaiting " << site_done << "; to level 3 " << down << ", level 1 "
-            << level << ", level 0 " << up << '\n';
+  std::cout << "  groom's plan, a site's leg change: a site awaiting - rides on to level 3 "
+            << site_left << ", to its own level " << site_level << ", nothing awaiting "
+            << site_done << "; to level 3 " << down << ", level 1 " << level << ", level 0 " << up
+            << '\n';
   failures +=
-      Expect(!site_left && site_done,
-             "groom's plan: a site whose works still await keeps its carter at a leg change "
-             "- nothing awaiting, he goes on");
+      Expect(!site_left && site_level && site_done,
+             "groom's plan: a site whose works still await keeps its carter from a lower "
+             "load at a leg change - to its own level he goes, and nothing awaiting, to any");
   failures +=
       Expect(down && level && up,
              "groom's plan: a carter whose load is carted follows his chain to the next load "

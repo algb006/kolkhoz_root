@@ -3019,7 +3019,8 @@ class LaborSystem final : public ILaborSystem {
   ///        and his day's pay stay: the way between two loads is the empty
   ///        half of the new load's first trip, priced in its seam (0.37.139).
   ///        Since 0.37.312 a site whose works still await is not «carted» at
-  ///        its leg change. He still follows down the levels: «never to a
+  ///        its leg change: it lets him go on only to its own level or above.
+  ///        Off a site he still follows down the levels: «never to a
   ///        lower level» was tried and left the heaps in the field at the
   ///        frost (+15 % canon; core-boss-oats-b-pair [55]).
   ///        With no plan for today, no chain, or no load left, nothing
@@ -3043,12 +3044,19 @@ class LaborSystem final : public ILaborSystem {
     // stands till tomorrow's hour 0 even when its load is gone (logistics_
     // system.cpp, SyncTasks); no task names it, nothing holds him.
     const std::uint32_t own_row = TaskRowOfWork(current, work);
+    // And it lets him go on only to a load of its own level or a more urgent
+    // one: to the same-level heaps he goes as before - the meadows' hay the
+    // site's carters fetch, which rots every night it lies (holding him there
+    // too cost hay +6 % rot canon, +9 % novice; core-boss-oats-b-pair [59]).
+    bool site_holds = false;
+    std::uint8_t site_level = 0;
     if (own_row != kNoRow) {
       const LogisticsTaskRow& own = current.logistics_tasks.rows[own_row];
       if (own.load_kind == LogisticsLoadKind::kSiteSupply) {
         const std::uint32_t site = FindRow(current.units, own.unit);
         if (site != kNoRow && AnythingAwaits(current.units.rows[site].construction)) {
-          return;
+          site_holds = true;
+          site_level = static_cast<std::uint8_t>(own.level);
         }
       }
     }
@@ -3063,6 +3071,9 @@ class LaborSystem final : public ILaborSystem {
           continue;  // its load was carted and its task ended
         }
         const LogisticsTaskRow& task = current.logistics_tasks.rows[task_row];
+        if (site_holds && static_cast<std::uint8_t>(task.level) > site_level) {
+          continue;
+        }
         const float* const next = WorkSeamOf(current, HaulingWorkOf(task));
         if (next != nullptr && *next > 0.0F) {
           RetargetWork(work, task);
