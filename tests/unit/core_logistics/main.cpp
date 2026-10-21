@@ -836,7 +836,17 @@ int TestTheReplan() {
   // the rest of the day is drawn again. Its pairs: the heap carted (nothing
   // waits), and the ride home two hours off (not yet the hour before it).
   {
-    const auto going_home = [&system, &day_of](float second_left, core::Tick home_in) {
+    // Under the planned model only (the plan is the carting there): the same
+    // day re-planned by a system reading transport.csv's trip_model 3.
+    const test::FakeTable planned_transport{{"key", "trip_model"}, {{"cart_loaded", "3"}}};
+    const test::FakeTableSet planned_tables{
+        {{"livestock", &horses}, {"transport", &planned_transport}}};
+    const auto planned = core::CreateLogisticsSystem(planned_tables, core::StubTables::kAllowed);
+    if (Expect(planned != nullptr, "re-plan (M1): the planned system assembles") != 0) {
+      return failures + 1;
+    }
+    const auto going_home = [&system, &planned, &day_of](
+                                float second_left, core::Tick home_in, bool under_the_plan) {
       core::WorldState world;
       bool ignored = false;
       day_of(false, ignored, world);  // the plan of day 3, re-planned at hour 9 for nothing
@@ -870,15 +880,17 @@ int TestTheReplan() {
       }
       world.groom_plan.stale = false;
       world.calendar.tick = now;
-      return system->Replan(world);
+      return (under_the_plan ? planned : system)->Replan(world);
     };
-    failures += Expect(going_home(1.0F, 1),
+    failures += Expect(going_home(1.0F, 1, true),
                        "re-plan (M1): a cart whose ride home sets out at the next hour while "
                        "another heap waits, named by no leg ahead, re-plans the day");
-    failures += Expect(!going_home(0.0F, 1),
+    failures += Expect(!going_home(0.0F, 1, true),
                        "re-plan (M1): the same cart with nothing waiting re-plans nothing");
-    failures += Expect(!going_home(1.0F, 2),
+    failures += Expect(!going_home(1.0F, 2, true),
                        "re-plan (M1): a ride home two hours off is not yet the hour before it");
+    failures += Expect(!going_home(1.0F, 1, false),
+                       "re-plan (M1): under a model where the plan is the estimate, nothing");
   }
   return failures;
 }

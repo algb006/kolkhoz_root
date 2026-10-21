@@ -366,7 +366,11 @@ class LogisticsSystem final : public ILogisticsSystem {
     // Until M1 it stood its carter by a waiting load to the evening once the
     // drain followed the plan (b29dd388's pair: placed carter-hours on field
     // heaps +51 % canon, the district lot's -66 %; core-boss-oats-b-pair [106]).
-    plan.stale = plan.stale || CartHomeWhileLoadsWait(current, plan);
+    // Under the planned model only: there the plan is the carting; under the
+    // others the labour drains a held load by its hours and the plan is the
+    // estimate it always was.
+    plan.stale =
+        plan.stale || (PlanPricesCarts(config_, current) && CartHomeWhileLoadsWait(current, plan));
     // AND A HEAP REAPED IN THE DAY (#1056 C4, writer (3)): its task is made
     // now and the plan drawn again with it. Until C4 tasks changed at hour 0
     // alone, and a heap reaped at noon waited for tomorrow's plan. The road
