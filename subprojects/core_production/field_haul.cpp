@@ -1093,11 +1093,7 @@ void SpoilFieldHeaps(const ProductionConfig& config, WorldState& current) {
   // heap's loss is the season's share a month over the month's days - a
   // memoryless daily share, like the other heaps' rot, booked as spoiled.
   const auto month = static_cast<std::uint32_t>(current.calendar.date.month);
-  const std::uint32_t season = month == 11U ? 2U
-                               : month < 2U ? 2U
-                               : month < 5U ? 3U
-                               : month < 8U ? 0U
-                                            : 1U;
+  const std::uint32_t season = HayWeatheringSeason(month);  // one home with the plan's order
   const float hay_share_a_day =
       config.farming.hay_weathering_by_season[season] / static_cast<float>(kDaysPerMonth);
   for (FieldRow& field : current.fields.rows) {

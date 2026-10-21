@@ -76,6 +76,16 @@ float ShelfDaysOf(const LogisticsConfig& config,
     return std::numeric_limits<float>::infinity();
   }
   const ResourceId resource = world.fields.rows[row].reaped_resource;
+  // THE THIRD LEVER (#1056 C3; econ, boss-econ-c3-body-pair [21]): loose hay
+  // has no shelf in resources.csv, so it read «keeps for ever» and went LAST
+  // among a level's heaps, while it weathers every night it lies (#1015). Under
+  // the planned model its shelf is its nightly loss (spoilage.h), so the heaps
+  // of a level go hay, potato (120 d), grain (600 d) when hay weathers.
+  if (resource.value == config.hay_resource.value && resource.value != kInvalidDefIdValue &&
+      PlanPricesCarts(config, world)) {
+    const auto month = static_cast<std::uint32_t>(world.calendar.date.month);
+    return HayHeapShelfDays(config.hay_weathering_by_season[HayWeatheringSeason(month)]);
+  }
   const float days =
       resource.value < config.spoil_days.size() ? config.spoil_days[resource.value] : 0.0F;
   // One home with labour's weighing against the snow (#1099; spoilage.h).

@@ -56,6 +56,13 @@ struct LogisticsConfig {
   /// it; task 427). Invalid with no such row.
   ResourceId log_resource;
 
+  /// resources.csv `hay`, and farming.csv's hay_weathering_summer, _autumn,
+  /// _winter, _spring (the month's share of loose hay lost; the cells
+  /// production weathers it by): the third lever of #1056 C3 orders the field
+  /// heaps of a level by their nightly loss, hay's from these (ShelfDaysOf).
+  ResourceId hay_resource;
+  std::array<float, 4> hay_weathering_by_season{};
+
   /// resources.csv `spoil_days`, by ResourceId; 0 keeps for ever — the cells
   /// production reads (production_config.cpp), by the same rule.
   std::vector<float> spoil_days;

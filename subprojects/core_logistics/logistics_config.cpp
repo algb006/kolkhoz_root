@@ -144,6 +144,9 @@ bool ParseLogisticsConfig(const ITableSet& tables, LogisticsConfig& config, std:
     const std::uint32_t log_row = resources->FindRowByKey("log");
     config.log_resource =
         log_row == kNoTableRow ? ResourceId{} : DefIdFromRow<ResourceIdTag>(log_row);
+    const std::uint32_t hay_row = resources->FindRowByKey("hay");
+    config.hay_resource =
+        hay_row == kNoTableRow ? ResourceId{} : DefIdFromRow<ResourceIdTag>(hay_row);
   }
   // THE PLAN'S REACH (B3): labour's cells, labour's ranges (labor_config.cpp).
   // THE PLAN'S CLOCK (B4b): the same cells, the same ranges.
@@ -239,6 +242,24 @@ bool ParseLogisticsConfig(const ITableSet& tables, LogisticsConfig& config, std:
                        error)) {
       PrefixError("world_params", "field_heap_keeping_factor", error);
       return false;
+    }
+  }
+  // THE HAY's NIGHTLY LOSS (#1056 C3, the third lever): production's cells
+  // and ranges (production_config.cpp, hay_weathering_*). One cell, two readers.
+  if (const ITable* const farming = tables.FindTable("farming")) {
+    constexpr std::array<const char*, 4> kSeasons = {"hay_weathering_summer",
+                                                     "hay_weathering_autumn",
+                                                     "hay_weathering_winter",
+                                                     "hay_weathering_spring"};
+    for (std::size_t season = 0; season < kSeasons.size(); ++season) {
+      if (!OptionalValue(*farming,
+                         kSeasons[season],
+                         Range{.low = 0.0F, .high = 1.0F},
+                         config.hay_weathering_by_season[season],
+                         error)) {
+        PrefixError("farming", kSeasons[season], error);
+        return false;
+      }
     }
   }
   return ReadPorterRules(tables, config.porter, error) &&

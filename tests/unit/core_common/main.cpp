@@ -42,6 +42,7 @@
 #include "core_common/road_trace.h"
 #include "core_common/road_view.h"
 #include "core_common/site_supply_queue.h"
+#include "core_common/spoilage.h"
 #include "core_common/state_table.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/version_pin.h"
@@ -2623,6 +2624,26 @@ int TestRoadIndex() {
 /// painting on day 70 clears the dark days between — day 60's slot, which is
 /// day 12's, says nothing of day 12 any more. The young kept: a third of the
 /// adults and the year's worst more while lit.
+/// THE HAY's NIGHTLY LOSS (#1056 C3, the third lever; spoilage.h): the
+/// weathering's seasons - December to February winter, March to May spring,
+/// June to August summer, September to November autumn - and a hay heap's
+/// shelf as one over its daily share: 0.10 a month is 40 days; a season that
+/// weathers none keeps for ever.
+int TestHayNightlyLoss() {
+  int failures = 0;
+  failures += Expect(core::HayWeatheringSeason(11) == 2 && core::HayWeatheringSeason(0) == 2 &&
+                         core::HayWeatheringSeason(1) == 2 && core::HayWeatheringSeason(2) == 3 &&
+                         core::HayWeatheringSeason(4) == 3 && core::HayWeatheringSeason(5) == 0 &&
+                         core::HayWeatheringSeason(7) == 0 && core::HayWeatheringSeason(8) == 1 &&
+                         core::HayWeatheringSeason(10) == 1,
+                     "hay's weathering season by month: winter, spring, summer, autumn");
+  failures +=
+      Expect(std::abs(core::HayHeapShelfDays(0.10F) - 40.0F) < 1e-3F &&
+                 std::isinf(core::HayHeapShelfDays(0.0F)),
+             "a hay heap's shelf by its nightly loss: 0.10 a month is 40 days, none for ever");
+  return failures;
+}
+
 /// THE WORKS THAT WILL HOUSE A HERD FACING THE COLD (cold_housing.h; boss, 11
 /// October 2026): a cattle yard under works, cows of a freezing kind standing
 /// and no warm cattle yard — in September it holds; in July it does not; nor
@@ -3059,6 +3080,7 @@ int main() {
   failures += TestHerdAgeBand();
   failures += TestHorseLampMemory();
   failures += TestColdHousing();
+  failures += TestHayNightlyLoss();
   failures += TestRoadBeds();
   failures += TestRoadGraph();
   failures += TestRoadViews();
