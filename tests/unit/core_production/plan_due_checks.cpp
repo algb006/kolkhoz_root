@@ -237,5 +237,19 @@ int CheckThePlanDue() {
   world.chairman.raikom_reputation = 20.0F;
   failures += Expect(core::PlanBandFactor(config, world) == 0.9F,
                      "a rating of exactly 20 is still the bottom band");
+  world.chairman.raikom_reputation = 90.0F;
+  failures += Expect(Near(due(1, 0), 54432 * kKilo) && core::PlanBandFactor(config, world) == 1.2F,
+                     "«в почёте» (81-100): the potato's 45 360 kg asked x 1.2");
+
+  // READ ONCE, AT THE LETTER (#1020; boss, boss-core-1020-plan-band-factors [1]
+  // p. 2): the band in force on 1 January prices the year, and a rating that
+  // moves inside it moves no due.
+  core::AnnouncePlan(config, world);
+  const core::Grams letter = core::AmountOf(world.plan.due, core::ResourceId{1});
+  world.chairman.raikom_reputation = 10.0F;
+  failures += Expect(
+      Near(letter, 54432 * kKilo) && core::AmountOf(world.plan.due, core::ResourceId{1}) == letter,
+      "the letter at 90 names x 1.2, and the rating falling to 10 after it leaves "
+      "the due as named");
   return failures;
 }
