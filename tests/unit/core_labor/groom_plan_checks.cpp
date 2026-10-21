@@ -150,6 +150,51 @@ std::pair<bool, bool> TheCartAfterItsLoad(core::ILaborSystem& labor, bool plan_o
           after.stand.value == carted.value};
 }
 
+/// One case of TheDrainByTheLegs.
+struct DrainCase {
+  std::uint32_t hour = 9;    ///< the hour run
+  float trip_hours = 3.0F;   ///< the load's facts (0: no facts)
+  bool on_foot = false;      ///< a carrier on foot, not a carter on a horse
+  bool leg_names_it = true;  ///< his cart's plan has a leg of this load, ticks 8 to 10
+};
+
+/// THE PLAN IS THE CARTING (#1056 C3 step 1; core-boss-oats-b-pair [87]-[91]):
+/// a stand's logs with trip facts and one carter on a horse whose cart today
+/// holds a leg of them from tick 8 to tick 10. Returns the seam drained in the
+/// hour run, and whether the plan was made stale.
+std::pair<float, bool> TheDrainByTheLegs(core::ILaborSystem& labor, const DrainCase& c) {
+  core::WorldState world = Village(1);
+  const core::TimberStandId stand = StandAt(world, 1000.0F, 1.0F);
+  const core::TimberStandId elsewhere = StandAt(world, 1500.0F, 1.0F);
+  const core::LogisticsTaskId task = LogsTask(world, stand, core::LogisticsLevel::kTerm);
+  const core::LogisticsTaskId other = LogsTask(world, elsewhere, core::LogisticsLevel::kTerm);
+  core::TaskTripTerms& terms = world.logistics_tasks.rows[0].trip_terms;
+  terms.trip_hours = c.trip_hours;
+  terms.trip_loaded_hours = c.trip_hours * 0.6F;
+  terms.cart_load = 750'000;
+  terms.grams_left = 1'000'000;
+  core::WorkAssignment& work = world.residents.rows[0].work;
+  work.kind = core::WorkKind::kHauling;
+  work.stand = stand;
+  work.rides_horse = c.on_foot ? 0U : 1U;
+  world.groom_plan.day = kWorkingDay;
+  core::CartPlan cart;
+  cart.driver = world.residents.row_ids[0];
+  cart.on_foot = c.on_foot;
+  const core::Tick day_start = static_cast<core::Tick>(kWorkingDay) * core::kTicksPerDay;
+  cart.legs.push_back(core::CartLeg{.from = core::Vec2{},
+                                    .to = core::Vec2{},
+                                    .task = c.leg_names_it ? task : other,
+                                    .loaded = 1U,
+                                    .depart = day_start + 8,
+                                    .arrive = day_start + 10,
+                                    .riders = {}});
+  world.groom_plan.carts.push_back(cart);
+  RunHour(labor, world, c.hour);
+  const float left = world.stands.rows[core::FindRow(world.stands, stand)].haul_days_remaining;
+  return {1.0F - left, world.groom_plan.stale};
+}
+
 /// What the carter leaves at hour 3 in TheCartAtAChange.
 struct LeftLoad {
   bool site = false;         ///< a site's supply (else stand A's logs, carted out)
@@ -499,6 +544,36 @@ int CheckTheGroomsPlan() {
   failures += Expect(TheWalkerAfterHisHeap(*labor),
                      "groom's plan: a carrier on foot whose heap is carted goes on to the near "
                      "heap of his chain, on foot");
+  // THE PLAN IS THE CARTING (#1056 C3 step 1; core-boss-oats-b-pair [87]-[91]):
+  // until then a carter drained his load's seam every hour he held the job,
+  // whether or not his plan had him on a trip of it - 54-62 % of the drained
+  // hours lay above the tasks' own legs (C3-g).
+  const auto [on_leg, on_leg_stale] = TheDrainByTheLegs(*labor, {});
+  const auto [off_leg, off_leg_stale] = TheDrainByTheLegs(*labor, {.hour = 11});
+  const auto [undrawn, undrawn_stale] = TheDrainByTheLegs(*labor, {.leg_names_it = false});
+  const auto [walker, walker_stale] =
+      TheDrainByTheLegs(*labor, {.on_foot = true, .leg_names_it = false});
+  const auto [no_facts, no_facts_stale] =
+      TheDrainByTheLegs(*labor, {.trip_hours = 0.0F, .leg_names_it = false});
+  const auto [lot, lot_stale] =
+      TheDrainByTheLegs(*labor, {.trip_hours = 84.0F, .leg_names_it = false});
+  std::cout << "  the drain by the legs: on a leg " << on_leg << ", off it " << off_leg
+            << ", undrawn " << undrawn << ", a walker " << walker << ", no facts " << no_facts
+            << ", a trip of 84 h " << lot << '\n';
+  failures += Expect(on_leg > 0.0F && !on_leg_stale,
+                     "(a) a drawn carter drains his load in an hour of his leg of it");
+  failures += Expect(off_leg == 0.0F && !off_leg_stale,
+                     "(a, c) and nothing in an hour outside his legs; the plan stands");
+  failures += Expect(undrawn == 0.0F && undrawn_stale,
+                     "(b) a carter whose plan names his load in no leg drains nothing and makes "
+                     "the plan stale");
+  failures += Expect(walker > 0.0F && !walker_stale,
+                     "(d) a carrier on foot drains as before, by his hours");
+  failures += Expect(no_facts > 0.0F && !no_facts_stale,
+                     "(e) a load with no trip facts (trip_model below 3) drains as before");
+  failures += Expect(lot > 0.0F && !lot_stale,
+                     "(f) a load whose round trip is longer than the day's light (the district "
+                     "lot) drains by its carters' hours, undrawn (L2)");
   const auto [raised_logs, raised_ploughs] = TheHorseAfterARaise(*labor, true);
   const auto [kept_logs, kept_ploughs] = TheHorseAfterARaise(*labor, false);
   std::cout << "  groom's plan, a raise after the morning: logs ride " << raised_logs

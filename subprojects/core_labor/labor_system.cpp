@@ -2868,6 +2868,13 @@ class LaborSystem final : public ILaborSystem {
       if (delivered <= 0.0F) {
         continue;  // the job is done for today; he stands about, unpaid
       }
+      // ONE DISPATCHER (#1056 C3 step 1; core-boss-oats-b-pair [87]-[91]): a
+      // carter on a horse drains a planned load only in the hours his cart's
+      // plan has him on a leg of it (OnADrawnLeg) - the plan is the carting.
+      if (kind == WorkKind::kHauling && resident.work.rides_horse != 0 &&
+          !OnADrawnLeg(current, row)) {
+        continue;  // riding, or waiting for the next hour's re-plan; unpaid
+      }
       const float seam_before = *seam;
       *seam -= delivered * seam_share;
       if (*seam < 0.0F) {
@@ -3018,6 +3025,53 @@ class LaborSystem final : public ILaborSystem {
         person.wait.reset();
       }
     }
+  }
+
+  /// @brief THE PLAN IS THE CARTING (#1056 C3 step 1; core-boss-oats-b-pair
+  ///        [87]-[91]): whether this hour drains the planned load of carter
+  ///        `row`, a hauler on a horse. True - as before C3 - when his load has
+  ///        no trip facts (not priced by whole trips: trip_model below 3, a load
+  ///        priced on foot), when its round trip is longer than today's light (a
+  ///        BEYOND-THE-DAY load, the district lot's 67-84 h: one day's plan
+  ///        cannot draw it, so it is drained by hours, a named class; L2), or
+  ///        when no plan stands for today. Otherwise true only in an hour one of
+  ///        his cart's legs naming that load spans (depart <= now < arrive). A
+  ///        carter whose plan names his load in no leg at all makes the plan
+  ///        stale, so the next hour's re-plan draws his chain from where he is.
+  /// @note Side effect: GroomPlan::stale.
+  static bool OnADrawnLeg(WorldState& current, std::uint32_t row) {
+    const WorkAssignment& work = current.residents.rows[row].work;
+    const std::uint32_t task_row = TaskRowOfWork(current, work);
+    if (task_row == kNoRow || current.groom_plan.day != current.calendar.day) {
+      return true;
+    }
+    const TaskTripTerms& terms = current.logistics_tasks.rows[task_row].trip_terms;
+    if (!(terms.trip_hours > 0.0F) || terms.trip_hours > current.weather.daylight_hours) {
+      return true;
+    }
+    const LogisticsTaskId task = current.logistics_tasks.row_ids[task_row];
+    const ResidentId driver = current.residents.row_ids[row];
+    const Tick now = current.calendar.tick;
+    bool named = false;
+    for (const CartPlan& cart : current.groom_plan.carts) {
+      if (cart.driver.value != driver.value) {
+        continue;
+      }
+      for (const CartLeg& leg : cart.legs) {
+        if (leg.task.value != task.value) {
+          continue;
+        }
+        named = true;
+        if (leg.depart <= now && now < leg.arrive) {
+          return true;
+        }
+      }
+      break;
+    }
+    if (!named) {
+      current.groom_plan.stale = true;  // an undrawn carter: re-planned the next hour
+    }
+    return false;
   }
 
   /// @brief A carter whose load is carted (its seam empty) or gone moves on
