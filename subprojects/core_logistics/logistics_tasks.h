@@ -55,12 +55,29 @@ std::uint32_t AppendNewHeapTasks(const LogisticsConfig& config, WorldState& curr
 ///        (§12: «после рейса задача возвращается на свой уровень»).
 void MarkServed(WorldState& current, SimDay today, TaskDayCount& count);
 
+/// @brief What a field heap on row `field_row` stands to lose before it is
+///        carted (#1200, econ's urgency; hay-heap-shelf-gates §4b): its EXPECTED
+///        WAIT is its seam's cart-days left over the carts on it today (at least
+///        one: haulers on a horse whose work is this field), and at least the
+///        night ahead (a day: it is carted tomorrow at the earliest), and its loss over
+///        that wait is held x (1 - (1 - the day's share)^wait), the share of
+///        FieldHeapLossToday - crop-blind. Grams; 0 for an empty heap or one
+///        that keeps.
+/// @note The wait is NOT capped at the snow edge (econ's wording asks it):
+///       logistics holds no snow edge (labour's, derived by its factory). STUB,
+///       named; a heap past the snow edge in winter loses too little a day to
+///       reach the share on any wait the seams give (0.75 % a night).
+Grams ExpectedHeapLoss(const LogisticsConfig& config,
+                       const WorldState& world,
+                       std::uint32_t field_row);
+
 /// @brief Each task's level today: its base level, raised by ageing from the
 ///        last trip (a paused task does not age: its count stands still), and
-///        set to level 0 by a threat — a heap to lose at least the config's
-///        share or tonnes by tomorrow's spoilage, or a feed heap while a
-///        kolkhoz herd went underfed today. A task entering level 0 records
-///        the tick (the alarm's «waits longer than an hour», B8).
+///        set to level 0 by a threat — a field heap to lose at least the
+///        config's share of itself over its expected wait (ExpectedHeapLoss,
+///        #1200; until then tomorrow's loss against the share or 1 t), or a
+///        feed heap while a kolkhoz herd went underfed today. A task entering
+///        level 0 records the tick (the alarm's «waits longer than an hour», B8).
 /// @note Firewood in the frost (econ [5]'s third threat) is STUB: the core has
 ///       no firewood yet (heating design, the queue's «холод, дрова и печи»).
 ///       «Feed for less than a day of a full ration» is STUB too: a herd

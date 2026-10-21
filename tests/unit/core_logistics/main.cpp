@@ -150,22 +150,36 @@ int TestAgeing() {
   return failures;
 }
 
-/// HAY THAT WEATHERS IS A THREAT TOO (#1200; logistics_tasks.cpp HeapSpoils):
-/// a 40 t hay heap in September loses 1 t a night (0.10 a month over four
-/// days), the tonnes line - level 0 by its own rot; the same heap in July
-/// weathers none and stays due by a date; and a 20 t heap in September (0.5 t)
-/// is under both lines. Until #1200 a hay heap, with no spoil_days, never rotted
-/// by this reading.
+/// THE LOSS OVER THE EXPECTED WAIT (#1200; econ, hay-heap-shelf-gates §4b;
+/// logistics_tasks.cpp HeapSpoils, ExpectedHeapLoss): a heap is urgent when it
+/// stands to lose 10 % of itself before it is carted - its seam's cart-days
+/// over the carts on it, crop-blind. Hay in September (2.5 % a night): five
+/// cart-days for one cart lose 11.9 % (urgent), four lose 9.6 % (not), two
+/// carts halve the wait (not); in July it weathers none (not). And the 1 t line
+/// is gone: a 50 t potato heap (1.26 t a night) a day from carted loses 2.5 %
+/// (not urgent; until #1200 urgent by tonnes).
 int TestTheHayHeapThreat() {
   int failures = 0;
-  const auto level_of = [](core::Grams grams, core::Month month) {
+  const auto urgent = [](std::uint16_t resource,
+                         core::Grams grams,
+                         float seam,
+                         std::uint32_t carts,
+                         core::Month month) {
     core::LogisticsConfig config;
-    config.spoil_days = {0.0F};
+    config.spoil_days = {0.0F, 120.0F};
     config.hay_weathering =
         core::HayWeathering{.hay = core::ResourceId{0}, .by_season = {0.0F, 0.10F, 0.03F, 0.10F}};
     core::WorldState world;
     world.calendar.date.month = month;
-    const core::FieldId heap = AddHeap(world, grams, 0);
+    const core::FieldId heap = AddHeap(world, grams, resource);
+    world.fields.rows[0].haul_days_remaining = seam;
+    for (std::uint32_t index = 0; index < carts; ++index) {
+      core::ResidentRow carter;
+      carter.work.kind = core::WorkKind::kHauling;
+      carter.work.rides_horse = 1;
+      carter.work.field = heap;
+      core::AppendRow(world.residents, carter);
+    }
     core::TaskDayCount count;
     core::SyncTasks(config, world, 0, count);
     core::AgeAndRaise(config, world, 0, 5, count);
@@ -173,14 +187,94 @@ int TestTheHayHeapThreat() {
     return task != nullptr && task->level == core::LogisticsLevel::kUrgent &&
            task->urgent_by == core::LogisticsUrgentBy::kSpoil;
   };
-  const bool september = level_of(40'000'000, core::Month::kSeptember);
-  const bool july = level_of(40'000'000, core::Month::kJuly);
-  const bool small = level_of(20'000'000, core::Month::kSeptember);
-  std::cout << "  threats, a hay heap urgent by its weathering: 40 t Sep " << september
-            << ", 40 t Jul " << july << ", 20 t Sep " << small << '\n';
-  failures += Expect(september && !july && !small,
-                     "threats (#1200): a 40 t hay heap is urgent by its own weathering in "
-                     "September, not in July, and a 20 t one is under both lines");
+  const bool five = urgent(0, 40'000'000, 5.0F, 1, core::Month::kSeptember);
+  const bool four = urgent(0, 40'000'000, 4.0F, 1, core::Month::kSeptember);
+  const bool two_carts = urgent(0, 40'000'000, 5.0F, 2, core::Month::kSeptember);
+  const bool july = urgent(0, 40'000'000, 5.0F, 1, core::Month::kJuly);
+  const bool potato = urgent(1, 50'000'000, 1.0F, 1, core::Month::kSeptember);
+  std::cout << "  threats by the loss over the wait: hay Sep 5 d " << five << ", 4 d " << four
+            << ", 5 d two carts " << two_carts << ", Jul " << july << "; potato 50 t a day out "
+            << potato << '\n';
+  failures += Expect(five && !four && !two_carts && !july,
+                     "threats (#1200): a hay heap is urgent when it stands to lose 10 % before it "
+                     "is carted - five cart-days for one cart in September, not four, not with two "
+                     "carts, not in July");
+  failures += Expect(!potato,
+                     "threats (#1200): the 1 t line is gone - a 50 t potato heap a day from carted "
+                     "loses 2.5 % and is not urgent");
+  return failures;
+}
+
+/// LEVEL 0 BY THE TONNES TO BE LOST (#1200; logistics_plan.cpp, OpenTasks):
+/// two urgent heaps beside a cart's own small load - a hay heap to lose more
+/// tonnes over its wait, and a potato heap to lose fewer. The cart goes on to
+/// the hay; with the sizes swapped, to the potato. Crop-blind.
+int TestTheUrgentByTonnes() {
+  int failures = 0;
+  const auto next_heap = [](core::Grams hay_grams, core::Grams potato_grams) {
+    core::LogisticsConfig config;
+    config.spoil_days = {600.0F, 120.0F, 0.0F};
+    config.hay_weathering =
+        core::HayWeathering{.hay = core::ResourceId{2}, .by_season = {0.0F, 0.10F, 0.03F, 0.10F}};
+    core::WorldState world;
+    world.calendar.date.month = core::Month::kSeptember;
+    world.weather.daylight_hours = 12.0F;
+    const auto heap_at = [&world](
+                             float east_m, std::uint16_t resource, core::Grams grams, float days) {
+      core::FieldRow field;
+      field.kind = core::LandKind::kArable;
+      field.center = core::Vec2{.x = east_m, .y = 0.0F};
+      field.reaped_grams = grams;
+      field.reaped_resource = core::ResourceId{resource};
+      field.haul_days_remaining = days;
+      return core::AppendRow(world.fields, field);
+    };
+    const core::FieldId own = heap_at(50.0F, 0, 1'000'000, 0.05F);
+    const core::FieldId hay = heap_at(1'000.0F, 2, hay_grams, 6.0F);
+    const core::FieldId potato = heap_at(-1'000.0F, 1, potato_grams, 6.0F);
+    core::TaskDayCount count;
+    core::SyncTasks(config, world, 0, count);
+    core::AgeAndRaise(config, world, 0, 5, count);
+    core::UnitRow house;
+    const core::UnitId house_id = core::AppendRow(world.units, house);
+    core::FamilyRow household;
+    household.house = house_id;
+    const core::FamilyId family = core::AppendRow(world.families, household);
+    world.units.rows[0].household = family;
+    core::ResidentRow carter;
+    carter.family = family;
+    carter.work.kind = core::WorkKind::kHauling;
+    carter.work.field = own;
+    carter.work.rides_horse = 1;
+    core::AppendRow(world.residents, carter);
+    core::LogisticsTally tally;
+    const core::GroomPlan plan = core::BuildGroomPlan(config, world, tally);
+    const bool both_urgent = TaskOfField(world, hay)->level == core::LogisticsLevel::kUrgent &&
+                             TaskOfField(world, potato)->level == core::LogisticsLevel::kUrgent;
+    if (plan.carts.size() != 1 || !both_urgent) {
+      return core::FieldId{};
+    }
+    for (const core::CartLeg& leg : plan.carts[0].legs) {
+      const std::uint32_t row = core::FindRow(world.logistics_tasks, leg.task);
+      if (row == core::kNoRow) {
+        continue;
+      }
+      const core::FieldId field = world.logistics_tasks.rows[row].field;
+      if (field.value == hay.value || field.value == potato.value) {
+        return field;
+      }
+    }
+    return core::FieldId{};
+  };
+  // Field ids: own 1, hay 2, potato 3. Over six days the hay loses 14.1 % and the
+  // potato 14.3 %: the tonnes decide.
+  const core::FieldId big_hay = next_heap(40'000'000, 10'000'000);
+  const core::FieldId big_potato = next_heap(10'000'000, 40'000'000);
+  std::cout << "  level 0 by the tonnes to be lost: 40 t hay vs 10 t potato -> " << big_hay.value
+            << ", 10 t hay vs 40 t potato -> " << big_potato.value << '\n';
+  failures += Expect(big_hay.value == 2 && big_potato.value == 3,
+                     "level 0 (#1200): the urgent heap to lose the most tonnes goes first, "
+                     "crop-blind");
   return failures;
 }
 
@@ -1770,6 +1864,7 @@ int main() {
   failures += TestAgeing();
   failures += TestThreats();
   failures += TestTheHayHeapThreat();
+  failures += TestTheUrgentByTonnes();
   failures += TestTheSupplyOfAWorks();
   failures += TestConfig();
   failures += TestThePlansChains();

@@ -28,6 +28,7 @@
 #include "core_common/work_seam.h"
 #include "core_common/world_state.h"
 #include "leg_loads.h"
+#include "logistics_tasks.h"
 #include "porter_pairs.h"
 
 namespace core {
@@ -56,6 +57,10 @@ struct OpenTask {
   /// `spoil_days` x `field_heap_keeping_factor`); infinite for every load that
   /// does not spoil and every other kind.
   float shelf_days = std::numeric_limits<float>::infinity();
+  /// A field heap's grams to be lost before it is carted (ExpectedHeapLoss,
+  /// #1200): level 0's order, the largest first, crop-blind. 0 for every
+  /// other load.
+  Grams expected_loss = 0;
   Vec2 place;
   bool logs = false;  ///< carted by the log cart (a stand's logs, the district's lot)
   /// A load priced ON FOOT - a milk leg whose walk holds the day's trips
@@ -122,12 +127,18 @@ std::vector<OpenTask> OpenTasks(const LogisticsConfig& config, const WorldState&
       const std::uint32_t herd_row = FindRow(world.herds, task.herd);
       walked = herd_row != kNoRow && world.herds.rows[herd_row].leg_on_foot != 0;
     }
+    Grams expected_loss = 0;
+    if (task.load_kind == LogisticsLoadKind::kFieldHeap) {
+      const std::uint32_t field_row = FindRow(world.fields, task.field);
+      expected_loss = field_row == kNoRow ? 0 : ExpectedHeapLoss(config, world, field_row);
+    }
     open.push_back(OpenTask{.row = row,
                             .level = static_cast<std::uint8_t>(task.level),
                             .cold_first = cold_first,
                             .site_rank = site_rank,
                             .aged_from_day = task.aged_from_day,
                             .shelf_days = ShelfDaysOf(config, world, task),
+                            .expected_loss = expected_loss,
                             .place = place,
                             .logs = logs,
                             .walked = walked});
@@ -135,6 +146,15 @@ std::vector<OpenTask> OpenTasks(const LogisticsConfig& config, const WorldState&
   std::ranges::stable_sort(open, [](const OpenTask& left, const OpenTask& right) {
     if (left.level != right.level) {
       return left.level < right.level;
+    }
+    // LEVEL 0 BY THE TONNES TO BE LOST (#1200; econ, hay-heap-shelf-gates §4b):
+    // among the urgent, the heap that stands to lose the most before it is
+    // carted goes first, crop-blind - an urgent hay heap goes ahead of a crop's
+    // heap only when it loses more. Until #1200 the shelf's order held here too,
+    // and a 40 t hay heap at level 0 went ahead of every harvest heap below it.
+    if (left.level == static_cast<std::uint8_t>(LogisticsLevel::kUrgent) &&
+        left.expected_loss != right.expected_loss) {
+      return left.expected_loss > right.expected_loss;
     }
     // WHAT SPOILS SOONEST FIRST, inside the level (#1056 C4.2 (a); econ's
     // contract §C4.2; boss, the #1056 thread after [23]): a field heap of the

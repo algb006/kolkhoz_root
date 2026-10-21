@@ -2,6 +2,8 @@
 
 #include "logistics_tasks.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <vector>
 
@@ -181,26 +183,21 @@ bool AHerdIsHungry(const WorldState& world) {
   return false;
 }
 
-/// The threat a field's heap carries: tomorrow's spoilage at least the
-/// share or the tonnes (the arithmetic of production's heaps,
-/// field_haul.cpp SpoilFieldHeaps; keeping factor of a store STUB 1.0), or
-/// feed while a herd is hungry.
-/// AND HAY's WEATHERING (#1200; spoilage.h, FieldHeapLossToday): until then a
-/// hay heap, with no spoil_days, never spoiled by this reading.
-bool HeapSpoils(const LogisticsConfig& config, const FieldRow& field, std::uint32_t month) {
+/// The threat a field's heap carries (#1200; econ, hay-heap-shelf-gates §4b):
+/// its loss over its expected wait at least the config's share of itself,
+/// crop-blind. Until #1200 it was tomorrow's loss against the share or 1 t
+/// (urgent_spoil_tonnes): the 1 t line raised a 40 t hay heap above the
+/// harvest, and every crop's heap waited behind it (core-boss-oats-b-pair
+/// [133]: wheat +35-48 % rot, vegetables +46-58 %, the novice's snow +35 t).
+bool HeapSpoils(const LogisticsConfig& config, const WorldState& world, std::uint32_t field_row) {
+  const FieldRow& field = world.fields.rows[field_row];
   if (field.reaped_grams <= 0) {
     return false;
   }
-  const Grams gone = FieldHeapLossToday(config.spoil_days,
-                                        config.field_heap_keeping_factor,
-                                        config.hay_weathering,
-                                        field.reaped_resource,
-                                        month,
-                                        field.reaped_grams);
   const auto share_line =
       static_cast<Grams>(config.urgent_spoil_share * static_cast<float>(field.reaped_grams));
-  const Grams tonnes_line = GramsFromKilograms(config.urgent_spoil_tonnes * 1000.0F);
-  return gone > 0 && (gone >= share_line || gone >= tonnes_line);
+  const Grams lost = ExpectedHeapLoss(config, world, field_row);
+  return lost > 0 && lost >= share_line;
 }
 
 bool HeapIsFeed(const LogisticsConfig& config, const FieldRow& field) {
@@ -310,7 +307,7 @@ void AgeAndRaise(const LogisticsConfig& config,
       const std::uint32_t row = FindRow(current.fields, task.field);
       if (row != kNoRow) {
         const FieldRow& field = current.fields.rows[row];
-        if (HeapSpoils(config, field, static_cast<std::uint32_t>(current.calendar.date.month))) {
+        if (HeapSpoils(config, current, row)) {
           level = LogisticsLevel::kUrgent;
           urgent_by = LogisticsUrgentBy::kSpoil;
           ++count.urgent_by_spoil;
@@ -351,6 +348,42 @@ void AgeAndRaise(const LogisticsConfig& config,
     task.level = level;
     task.urgent_by = urgent_by;
   }
+}
+
+Grams ExpectedHeapLoss(const LogisticsConfig& config,
+                       const WorldState& world,
+                       std::uint32_t field_row) {
+  if (field_row >= world.fields.rows.size()) {
+    return 0;
+  }
+  const FieldRow& field = world.fields.rows[field_row];
+  if (field.reaped_grams <= 0) {
+    return 0;
+  }
+  const Grams today = FieldHeapLossToday(config.spoil_days,
+                                         config.field_heap_keeping_factor,
+                                         config.hay_weathering,
+                                         field.reaped_resource,
+                                         static_cast<std::uint32_t>(world.calendar.date.month),
+                                         field.reaped_grams);
+  if (today <= 0) {
+    return 0;
+  }
+  // The carts on it today: haulers on a horse whose work is this field.
+  const FieldId id = world.fields.row_ids[field_row];
+  std::uint32_t carts = 0;
+  for (const ResidentRow& resident : world.residents.rows) {
+    const WorkAssignment& work = resident.work;
+    carts +=
+        work.kind == WorkKind::kHauling && work.rides_horse != 0 && work.field.value == id.value;
+  }
+  // At least the night ahead: a heap is carted tomorrow at the earliest.
+  const float wait = std::max(
+      std::max(field.haul_days_remaining, 0.0F) / static_cast<float>(std::max(carts, 1U)), 1.0F);
+  const double share =
+      static_cast<double>(today) / static_cast<double>(field.reaped_grams);  // the day's share
+  const double kept = std::pow(1.0 - share, static_cast<double>(wait));
+  return static_cast<Grams>(std::llround(static_cast<double>(field.reaped_grams) * (1.0 - kept)));
 }
 
 }  // namespace core

@@ -48,9 +48,13 @@ struct LogisticsConfig {
   float age_background_days = 6.0F;
   float age_ordinary_days = 4.0F;
 
-  /// A heap to lose at least this share of itself, or this many tonnes, by
-  /// tomorrow's spoilage is urgent by itself (logistics.csv; econ [5]).
+  /// A heap to lose at least this share of itself over its expected wait is
+  /// urgent by itself (logistics.csv; econ [5]; the wait since #1200,
+  /// ExpectedHeapLoss).
   float urgent_spoil_share = 0.10F;
+  /// UNREAD since #1200 (econ: «the 1 t absolute line goes for every crop»):
+  /// still parsed so logistics.csv's row keeps a reader of its range; the row
+  /// is boss's to remove.
   float urgent_spoil_tonnes = 1.0F;
 
   /// resources.csv `log`: what a stand's load is (kDayOffHeldUrgentLoad names
