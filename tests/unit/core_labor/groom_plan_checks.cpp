@@ -615,10 +615,12 @@ int CheckTheGroomsPlan() {
                      "(b') under a fresh plan he goes on to the load his cart's chain names");
   // (c), boss [93], [96]: and with no load in his chain the world has ended
   // his job - his day on it is paid, his horse goes back, and the top-up may
-  // place him on other work. The moving control is `waiting`, who keeps it.
-  failures += Expect(released.drained == 0.0F && !released.holds_load && !released.on_other,
+  // place him on other work - here the other stand's logs, which nobody holds
+  // (not his own: the top-up does not offer back the job he was released
+  // from). The moving control is `waiting`, who keeps his load.
+  failures += Expect(released.drained == 0.0F && !released.holds_load && released.on_other,
                      "(c) under a fresh plan with no load of his in his cart's chain he is "
-                     "released from it");
+                     "released from it and placed in the hour on work nobody holds");
   failures += Expect(walker.drained > 0.0F && !walker.stale,
                      "(d) a carrier on foot drains as before, by his hours");
   failures += Expect(no_facts.drained > 0.0F && !no_facts.stale,
