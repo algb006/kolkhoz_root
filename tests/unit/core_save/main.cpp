@@ -2151,8 +2151,9 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // Save 178 (#1056 C3, T1): +5 a leg, two minutes and the kept byte - three
     // legs, 210 -> 225, predicted before the build and held; the hash read off it.
     // Save 179 (#1056 C3, ruling 4): +1 a leg, the back-load byte (and the first
-    // leg now loaded) - three legs, 225 -> 228, predicted before the build.
-    {"groom_plan", 228, 0xd18dd5ba5a95302dULL},  // save 155: 2 partners, 3 legs' loads
+    // leg now loaded) - three legs, 225 -> 228, predicted before the build and
+    // held; the hash read off it.
+    {"groom_plan", 228, 0xf35bb06b2e683dfULL},  // save 155: 2 partners, 3 legs' loads
     // 2026-09-17, save 52: +56 bytes over the two books — the nine yearly
     // inputs the readiness index asks of a year and the year did not keep
     // (ledger_state.h): satisfaction's sum and count, able-bodied
