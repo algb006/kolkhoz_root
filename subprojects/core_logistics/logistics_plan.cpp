@@ -542,8 +542,9 @@ void PushLoadedHalf(const LogisticsConfig& config,
   const auto pooled_today = [&plan](LogisticsTaskId id) {
     return std::ranges::any_of(plan.carts, [id](const CartPlan& cart) {
       return std::ranges::any_of(cart.legs, [id](const CartLeg& leg) {
-        return leg.pooled_task.value != kInvalidEntityIdValue &&
-               (leg.pooled_task.value == id.value || leg.task.value == id.value);
+        const bool backed = leg.back_load != 0 && leg.task.value == id.value;  // ruling 4
+        return backed || (leg.pooled_task.value != kInvalidEntityIdValue &&
+                          (leg.pooled_task.value == id.value || leg.task.value == id.value));
       });
     });
   };
@@ -599,6 +600,84 @@ void PushLoadedHalf(const LogisticsConfig& config,
   mover.half_left = pooled.to_second_hours + pooled.to_receiver_hours;
 }
 
+/// THE BACK LOAD (#1056 C3, ruling 4; trip_pricing.h, BackLoadOf): at its
+/// receiver, its load delivered, a cart going back to its own load takes
+/// another task's load on the way instead of the way back empty - a ride to
+/// that load, its loaded leg to its receiver (`back_load`), and the ride on to
+/// its own load, named its own task. Only when all of it and its next round
+/// fit the light, and the back task is in no pool today nor another cart's
+/// back load. Returns whether it was drawn.
+bool PushBackLoad(const LogisticsConfig& config,
+                  const WorldState& world,
+                  std::vector<float>& remaining,
+                  GroomPlan& plan,
+                  Mover& mover,
+                  SimDay day,
+                  float hours,
+                  float sunset) {
+  if (mover.on_foot) {
+    return false;
+  }
+  const std::uint32_t back =
+      BackLoadOf(config, world, mover.task, mover.receiver, mover.load, remaining);
+  if (back == kNoRow) {
+    return false;
+  }
+  const LogisticsTaskRow& task = world.logistics_tasks.rows[back];
+  const LogisticsTaskId back_id = world.logistics_tasks.row_ids[back];
+  const ResidentId driver = plan.carts[mover.cart].driver;
+  const bool carried_elsewhere = std::ranges::any_of(plan.carts, [&](const CartPlan& cart) {
+    return std::ranges::any_of(cart.legs, [&](const CartLeg& leg) {
+      const bool pooled =
+          leg.pooled_task.value != kInvalidEntityIdValue &&
+          (leg.pooled_task.value == back_id.value || leg.task.value == back_id.value);
+      const bool backed = leg.back_load != 0 && leg.task.value == back_id.value &&
+                          cart.driver.value != driver.value;
+      return pooled || backed;
+    });
+  });
+  Vec2 back_receiver;
+  if (carried_elsewhere || !WorkReceiverOf(world, HaulingWorkOf(task), back_receiver)) {
+    return false;
+  }
+  const Vec2 back_load = task.trip_terms.load_point;
+  const float to_it = RideHours(world, mover, &task, mover.receiver, back_load);
+  const float carried = task.trip_terms.trip_loaded_hours;
+  const float on_home = RideHours(world, mover, nullptr, back_receiver, mover.load);
+  if (!(hours + to_it + carried + on_home + mover.trip_loaded_hours + mover.ride_home < sunset)) {
+    return false;
+  }
+  std::vector<CartLeg>& legs = plan.carts[mover.cart].legs;
+  legs.push_back(Timed(
+      CartLeg{.from = mover.receiver, .to = back_load, .task = LogisticsTaskId{}, .riders = {}},
+      day,
+      hours,
+      hours + to_it));
+  legs.push_back(Timed(CartLeg{.from = back_load,
+                               .to = back_receiver,
+                               .task = back_id,
+                               .loaded = 1U,
+                               .back_load = 1U,
+                               .riders = {}},
+                       day,
+                       hours + to_it,
+                       hours + to_it + carried));
+  legs.push_back(Timed(CartLeg{.from = back_receiver,
+                               .to = mover.load,
+                               .task = world.logistics_tasks.row_ids[mover.task],
+                               .riders = {}},
+                       day,
+                       hours + to_it + carried,
+                       hours + to_it + carried + on_home));
+  // The clock carts one of its trips.
+  if (config.standard_day_hours > 0.0F) {
+    remaining[back] -= task.trip_terms.trip_hours / config.standard_day_hours;
+  }
+  mover.loaded_half = false;
+  mover.half_left = to_it + carried + on_home;
+  return true;
+}
+
 /// One step of a mover on its trips: the seam drains at the norm, as at the
 /// load (the drawing changes, not the carting); a half that ends turns the
 /// cart. At the receiver: the load carted, or the next round not fitting the
@@ -628,6 +707,9 @@ void StepTrips(const LogisticsConfig& config,
     if (carted || !round_fits) {
       mover.trips = false;
       GoOn(world, remaining, plan, mover, day, now, sunset, /*evening=*/!carted);
+      return;
+    }
+    if (PushBackLoad(config, world, remaining, plan, mover, day, now, sunset)) {
       return;
     }
     PushTripHalf(world, plan, mover, day, now, /*loaded=*/false);

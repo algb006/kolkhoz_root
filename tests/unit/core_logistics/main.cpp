@@ -1402,6 +1402,125 @@ int TestTheFieldsPooled() {
   return failures;
 }
 
+/// THE BACK LOAD (#1056 C3, ruling 4; econ's gate C3-e; M2 step 2b): heap A,
+/// 1 t at 750 kg a cart, its receiver at 200 m east, one cart on it, horse
+/// or on foot; heap B of one cart load lies by A's receiver, and B's own
+/// receiver by A's heap - so at A's receiver the cart takes B back instead of
+/// the way back empty: B's loaded leg is a back load, B is carried by A and
+/// pays its leg's share, the book counts it. The pairs: B's receiver far west
+/// (the detour saves nothing) and a carrier on foot - no back load.
+int TestTheBackLoad() {
+  int failures = 0;
+
+  struct Back {
+    bool back_leg = false;  // a loaded leg of B marked back_load
+    bool carried = false;   // B carried by A, its share above nought
+    float b_seam = -1.0F;
+    float trips_back = 0.0F;
+  };
+
+  const auto run = [](core::Vec2 b_receiver, bool on_foot) {
+    const test::FakeTable resources{{"key", "cargo_form", "is_fuel"}, {{"hay", "rick", "0"}}};
+    const test::FakeTable transport{{"key", "seats", "trip_model"}, {{"cart_loaded", "2", "3"}}};
+    const test::FakeTable horses{{"key"}, {{"horse"}}};
+    const test::FakeTableSet tables{
+        {{"resources", &resources}, {"transport", &transport}, {"livestock", &horses}}};
+    Back back;
+    const auto system = core::CreateLogisticsSystem(tables, core::StubTables::kAllowed);
+    if (system == nullptr) {
+      return back;
+    }
+    core::WorldState world;
+    world.weather.daylight_hours = 12.0F;
+    world.calendar.day = 3;
+    const auto heap = [&world](core::Vec2 at, core::Grams grams, float seam, core::Vec2 to) {
+      core::FieldRow field;
+      field.kind = core::LandKind::kArable;
+      field.center = at;
+      field.reaped_grams = grams;
+      field.reaped_resource = core::ResourceId{0};
+      field.haul_days_remaining = seam;
+      field.haul_days_written = seam;
+      field.haul_to = to;
+      return core::AppendRow(world.fields, field);
+    };
+    const core::FieldId a = heap(
+        core::Vec2{.x = 1'200.0F, .y = 0.0F}, 1'000'000, 0.6F, core::Vec2{.x = 200.0F, .y = 0.0F});
+    const core::FieldId b = heap(core::Vec2{.x = 250.0F, .y = 50.0F}, 750'000, 0.3F, b_receiver);
+    core::ResidentRow carter;
+    carter.work.kind = core::WorkKind::kHauling;
+    carter.work.rides_horse = on_foot ? 0U : 1U;
+    carter.work.field = a;
+    core::UnitRow house;
+    const core::UnitId house_id = core::AppendRow(world.units, house);
+    core::FamilyRow household;
+    household.house = house_id;
+    const core::FamilyId family = core::AppendRow(world.families, household);
+    world.units.rows[0].household = family;
+    carter.family = family;
+    core::AppendRow(world.residents, carter);
+    StableTheTeam(world);
+    world.calendar.tick = 3 * core::kTicksPerDay;
+    system->RunTasks(world, world);
+    for (core::LogisticsTaskRow& task : world.logistics_tasks.rows) {
+      const std::uint32_t row = core::FindRow(world.fields, task.field);
+      if (row == core::kNoRow) {
+        continue;
+      }
+      core::TaskTripTerms& terms = task.trip_terms;
+      terms.load_point = world.fields.rows[row].center;
+      terms.trip_hours = 3.0F;
+      terms.trip_loaded_hours = 2.0F;
+      terms.cart_load = 750'000;
+      terms.grams_left = world.fields.rows[row].reaped_grams;
+    }
+    world.calendar.tick = (3 * core::kTicksPerDay) + 1;
+    system->BuildPlan(world);
+    world.calendar.tick = (3 * core::kTicksPerDay) + 6;  // sunrise: the day's book
+    system->Replan(world);
+    const core::LogisticsTaskRow* a_task = TaskOfField(world, a);
+    const core::LogisticsTaskRow* b_task = TaskOfField(world, b);
+    if (a_task == nullptr || b_task == nullptr) {
+      return back;
+    }
+    core::LogisticsTaskId a_id;
+    core::LogisticsTaskId b_id;
+    for (std::uint32_t row = 0; row < world.logistics_tasks.rows.size(); ++row) {
+      if (&world.logistics_tasks.rows[row] == a_task) {
+        a_id = world.logistics_tasks.row_ids[row];
+      }
+      if (&world.logistics_tasks.rows[row] == b_task) {
+        b_id = world.logistics_tasks.row_ids[row];
+      }
+    }
+    for (const core::CartPlan& cart : world.groom_plan.carts) {
+      for (const core::CartLeg& leg : cart.legs) {
+        back.back_leg = back.back_leg || (leg.back_load != 0 && leg.task.value == b_id.value);
+      }
+    }
+    back.carried = b_task->carried_by.value == a_id.value && b_task->carried_share > 0.0F;
+    back.b_seam = world.fields.rows[core::FindRow(world.fields, b)].haul_days_remaining;
+    back.trips_back = world.ledger.current.cart_trips_back;
+    return back;
+  };
+  const Back taken = run(core::Vec2{.x = 1'150.0F, .y = 0.0F}, false);
+  const Back far_west = run(core::Vec2{.x = -800.0F, .y = 0.0F}, false);
+  const Back walker = run(core::Vec2{.x = 1'150.0F, .y = 0.0F}, true);
+  std::cout << "  back load: taken - leg " << taken.back_leg << ", carried " << taken.carried
+            << ", B's seam " << taken.b_seam << ", trips back " << taken.trips_back
+            << "; far west - leg " << far_west.back_leg << "; on foot - leg " << walker.back_leg
+            << '\n';
+  failures +=
+      Expect(taken.back_leg && taken.carried && taken.b_seam > 0.0F && taken.trips_back >= 1.0F,
+             "back load: a load by the receiver whose own receiver lies by the cart's heap "
+             "is taken back, carried by the cart's task, its share priced, booked");
+  failures += Expect(!far_west.back_leg && !far_west.carried && far_west.trips_back == 0.0F,
+                     "back load: one whose detour saves no empty road is not taken");
+  failures += Expect(!walker.back_leg && walker.trips_back == 0.0F,
+                     "back load: a carrier on foot takes no back load");
+  return failures;
+}
+
 /// THE PRICE IS THE PLAN THE DAY CARTS BY (#1056 C3 (ii'); core-boss-oats-b-pair
 /// [82]-[83]): a 6 t heap priced at the hour-1 plan of ONE cart; a second
 /// carter joins, and the re-plan at hour 2 - before sunrise at 6 - prices
@@ -2174,6 +2293,7 @@ int main() {
   failures += TestThePlannedTrips();
   failures += TestThePlanWritesThePrice();
   failures += TestTheFieldsPooled();
+  failures += TestTheBackLoad();
   failures += TestThePriceBeforeTheCarting();
   failures += TestTheChairmansDoors();
   failures += TestTheLateLoadsLamp();

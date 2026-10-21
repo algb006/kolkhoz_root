@@ -123,6 +123,51 @@ std::uint32_t PoolPartnerOf(const LogisticsConfig& config,
   return best;
 }
 
+std::uint32_t BackLoadOf(const LogisticsConfig& config,
+                         const WorldState& world,
+                         std::uint32_t carrier_row,
+                         Vec2 at,
+                         Vec2 next_start,
+                         const std::vector<float>& remaining) {
+  if (!PlanPricesCarts(config, world)) {
+    return kNoRow;
+  }
+  const float way_back = RoadKm(world, TravelMode::kCart, at, next_start);
+  std::uint32_t best = kNoRow;
+  float best_saving = 0.0F;
+  for (std::uint32_t row = 0; row < world.logistics_tasks.rows.size(); ++row) {
+    const LogisticsTaskRow& task = world.logistics_tasks.rows[row];
+    const TaskTripTerms& terms = task.trip_terms;
+    const bool logs = task.load_kind == LogisticsLoadKind::kStandLogs ||
+                      task.load_kind == LogisticsLoadKind::kDistrictLot;
+    bool walked = false;
+    if (task.load_kind == LogisticsLoadKind::kMilkLeg) {
+      const std::uint32_t herd_row = FindRow(world.herds, task.herd);
+      walked = herd_row != kNoRow && world.herds.rows[herd_row].leg_on_foot != 0;
+    }
+    if (row == carrier_row || task.paused || logs || walked || !(terms.trip_hours > 0.0F) ||
+        terms.trip_hours > world.weather.daylight_hours || terms.cart_load <= 0 ||
+        terms.grams_left <= 0 || row >= remaining.size() || !(remaining[row] > 0.0F)) {
+      continue;
+    }
+    Vec2 receiver;
+    if (!WorkReceiverOf(world, HaulingWorkOf(task), receiver)) {
+      continue;
+    }
+    // ruling 4, C3.1: the empty ways it adds against the empty ways it spares -
+    // the cart's own way back and the back task's own trip's empty half.
+    const float added = RoadKm(world, TravelMode::kCart, at, terms.load_point) +
+                        RoadKm(world, TravelMode::kCart, receiver, next_start);
+    const float spared = way_back + RoadKm(world, TravelMode::kCart, terms.load_point, receiver);
+    const float saving = spared - added;
+    if (saving > 0.0F && (best == kNoRow || saving > best_saving)) {
+      best = row;
+      best_saving = saving;
+    }
+  }
+  return best;
+}
+
 void PriceTasksFromPlan(const LogisticsConfig& config, WorldState& world, PriceMode mode) {
   if (!PlanPricesCarts(config, world) || world.groom_plan.day != world.calendar.day) {
     return;
@@ -139,14 +184,46 @@ void PriceTasksFromPlan(const LogisticsConfig& config, WorldState& world, PriceM
   // carrier on foot) names the task whose load it takes; a POOLED trip is two
   // loaded legs - to the second heap, then on to the receiver - and counts once,
   // on its second leg.
+  YearLedger& book = world.ledger.current;
   std::unordered_map<std::uint32_t, std::uint32_t> drawn;
   std::vector<Pooled> pooled;
+  // THE BACK LOADS (ruling 4), by the back task's row: its carrier's row, the
+  // hours it pays and its trips. It pays its loaded leg and the empty road it
+  // adds - the ride to its load and from its receiver, less the carrier's own
+  // way back it replaces - never less than its loaded leg; the carrier's trip
+  // stays its whole one.
+  std::unordered_map<std::uint32_t, std::uint32_t> back_carrier;
+  std::unordered_map<std::uint32_t, float> back_hours;
+  std::unordered_map<std::uint32_t, std::uint32_t> back_trips;
+  const auto leg_hours = [](const CartLeg& leg) {
+    return static_cast<float>(leg.arrive_minute - leg.depart_minute) / 60.0F;
+  };
   for (const CartPlan& cart : world.groom_plan.carts) {
     if (cart.on_foot) {
       continue;
     }
-    for (const CartLeg& leg : cart.legs) {
+    for (std::size_t index = 0; index < cart.legs.size(); ++index) {
+      const CartLeg& leg = cart.legs[index];
       if (leg.loaded == 0 || leg.task.value == kInvalidEntityIdValue) {
+        continue;
+      }
+      if (leg.back_load != 0) {
+        const std::uint32_t row = FindRow(world.logistics_tasks, leg.task);
+        const CartLeg* const after = index + 1 < cart.legs.size() ? &cart.legs[index + 1] : nullptr;
+        const std::uint32_t carrier =
+            after == nullptr ? kNoRow : FindRow(world.logistics_tasks, after->task);
+        if (row == kNoRow || carrier == kNoRow || index == 0) {
+          continue;
+        }
+        const TaskTripTerms& own = world.logistics_tasks.rows[carrier].trip_terms;
+        const float carrier_way_back = std::max(own.trip_hours - own.trip_loaded_hours, 0.0F);
+        const float added = leg_hours(cart.legs[index - 1]) + leg_hours(*after) - carrier_way_back;
+        back_carrier[row] = carrier;
+        back_hours[row] += leg_hours(leg) + std::max(added, 0.0F);
+        ++back_trips[row];
+        if (!write) {
+          book.cart_trips_back += 1.0F;
+        }
         continue;
       }
       if (leg.pooled_task.value != kInvalidEntityIdValue) {
@@ -162,7 +239,6 @@ void PriceTasksFromPlan(const LogisticsConfig& config, WorldState& world, PriceM
       ++drawn[leg.task.value];
     }
   }
-  YearLedger& book = world.ledger.current;
   // THE POOLED TRIPS' HOURS, split by grams (ruling 3: each seam pays by grams).
   std::unordered_map<std::uint32_t, float> first_pooled_hours;    // by the first's row
   std::unordered_map<std::uint32_t, float> second_pooled_hours;   // by the second's row
@@ -205,8 +281,13 @@ void PriceTasksFromPlan(const LogisticsConfig& config, WorldState& world, PriceM
     // A POOLED SECOND's OWN TRIPS ((iii) lifted): its last part-load rides in
     // the first's pooled trip (below); the rest of it, its whole loads, is
     // priced here as any heap's. A heap of one trip has none.
-    const Grams own_grams =
+    Grams own_grams =
         second_pooled_hours.contains(row) ? terms.grams_left - LeftoverOf(terms) : terms.grams_left;
+    // And a back task's own trips: the loads its back legs take are theirs (below).
+    if (const auto taken = back_trips.find(row); taken != back_trips.end()) {
+      own_grams =
+          std::max<Grams>(own_grams - (static_cast<Grams>(taken->second) * terms.cart_load), 0);
+    }
     const auto found = drawn.find(world.logistics_tasks.row_ids[row].value);
     const std::uint32_t needed = WholeTripsFor(own_grams, terms.cart_load);
     const std::uint32_t trips = found == drawn.end() ? 0U : std::min(found->second, needed);
@@ -258,6 +339,31 @@ void PriceTasksFromPlan(const LogisticsConfig& config, WorldState& world, PriceM
       book.cart_days_drawn += days;
     }
     second_pooled_hours.erase(trip.second);
+  }
+  // THE BACK LOADS CARRIED (ruling 4): the same carter on the outward work;
+  // the grams land on the back task's seam by the leg's share, draining with
+  // its carrier's seam (CoDrainCarriedTasks), beside its own trips.
+  for (const auto& [row, carrier_row] : back_carrier) {
+    LogisticsTaskRow& task = world.logistics_tasks.rows[row];
+    const WorkAssignment work = HaulingWorkOf(task);
+    float* const remaining = WorkSeamOf(world, work);
+    float* const written = WorkSeamWrittenOf(world, work);
+    const auto carrier = seam_of.find(carrier_row);
+    if (remaining == nullptr || written == nullptr || carrier == seam_of.end() ||
+        !(carrier->second > 0.0F) || task.carried_by.value != kInvalidEntityIdValue) {
+      continue;
+    }
+    const float days = back_hours[row] / config.standard_day_hours;
+    const auto own = seam_of.find(row);
+    const float own_days = own == seam_of.end() ? 0.0F : own->second;
+    if (write) {
+      *remaining = own_days + days;
+      *written = *remaining;
+      task.carried_by = world.logistics_tasks.row_ids[carrier_row];
+      task.carried_share = days / carrier->second;
+    } else {
+      book.cart_days_drawn += days;
+    }
   }
 }
 

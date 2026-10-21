@@ -102,15 +102,24 @@ bool PooledTripOf(const WorldState& world,
 ///        task's own trip's empty half (both by RoadKm at the cart's empty
 ///        pace). The shortest saving first, then by row. Not a load carried on
 ///        foot, not a task already carried today.
+///        AS BUILT (M2 step 2b, named): «the shortest saving first» is read as
+///        the LARGEST saving - the back load that spares the most empty road;
+///        logs (a stand's, the district lot) are not taken, the goods cart not
+///        being the log cart; nor a load past the day's light, a walked milk
+///        leg, a paused task, or one the day's clock has carted (`remaining`
+///        at nought). «Already carried today» is the caller's (the plan's
+///        legs; logistics_plan.cpp).
 /// @param at The receiver the cart stands at, its load delivered.
 /// @param next_start Where its next trip starts (its own load again, or the
 ///        next load of its chain).
+/// @param remaining The clock's seam per task row (logistics_plan.cpp).
 /// @return The back load's task row, or kNoRow.
 std::uint32_t BackLoadOf(const LogisticsConfig& config,
                          const WorldState& world,
                          std::uint32_t carrier_row,
                          Vec2 at,
-                         Vec2 next_start);
+                         Vec2 next_start,
+                         const std::vector<float>& remaining);
 
 /// What a PriceTasksFromPlan call does (C3 body (ii'), core-boss-oats-b-pair [83]).
 enum class PriceMode : std::uint8_t {

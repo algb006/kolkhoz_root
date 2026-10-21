@@ -333,6 +333,12 @@ struct CartLeg {
   /// depart == arrive, which a real trip floored to the hour also is.
   std::uint8_t kept_in_chain = 0;
 
+  /// 1 on a BACK LOAD's loaded leg (#1056 C3, ruling 4; save 179): another
+  /// task's load taken at a receiver instead of the way back empty
+  /// (trip_pricing.h, BackLoadOf). Its task pays the leg's share, not a whole
+  /// trip of its own, and drains with the carrier's seam (carried_by).
+  std::uint8_t back_load = 0;
+
   /// Who rides this leg beside the driver — seated at `from` or on the way —
   /// within the cart's seats (transport.csv `seats`: the goods cart's bench
   /// two, the people's cart six): the passengers the labour hour seated this
