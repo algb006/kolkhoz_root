@@ -147,6 +147,23 @@ int TestAgeing() {
   }
   failures += Expect(world.logistics_tasks.rows[0].level == core::LogisticsLevel::kBackground,
                      "ageing: a paused task does not age");
+  // A WINTER DOSE NEVER AGES (#1056 C2 option 2): last in the winter queue,
+  // behind the logs and the supply, however long it waits. The church's
+  // transfer beside it, unpaused, ages as before - the rule names the kind.
+  world.logistics_tasks.rows[0].paused = false;
+  world.logistics_tasks.rows[0].aged_from_day = 50;
+  core::LogisticsTaskRow dose;
+  dose.load_kind = core::LogisticsLoadKind::kManureField;
+  dose.base_level = core::LogisticsLevel::kBackground;
+  dose.level = core::LogisticsLevel::kBackground;
+  dose.aged_from_day = 50;
+  core::AppendRow(world.logistics_tasks, dose);
+  core::TaskDayCount winter;
+  core::AgeAndRaise(config, world, 80, static_cast<core::Tick>(80) * 24U, winter);
+  failures += Expect(world.logistics_tasks.rows[1].level == core::LogisticsLevel::kBackground &&
+                         world.logistics_tasks.rows[0].level == core::LogisticsLevel::kTerm,
+                     "ageing: a winter manure dose 30 days unserved stays background (the "
+                     "human's «последним в очереди»); the transfer beside it is a term");
   return failures;
 }
 

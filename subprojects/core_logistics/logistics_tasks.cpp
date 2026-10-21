@@ -304,8 +304,13 @@ void AgeAndRaise(const LogisticsConfig& config,
     if (task.paused && task.aged_from_day < today) {
       ++task.aged_from_day;
     }
+    // A WINTER DOSE NEVER AGES (#1056 C2 option 2; the human, «1 - 2»: «считать
+    // рейс только временем лошадей — последним в очереди зимней возки»): it
+    // stays at its background level behind the logs and the supply. Aged, it
+    // would stand with the logs after six days and ahead of them after ten.
+    const bool ages = task.load_kind != LogisticsLoadKind::kManureField;
     const float days =
-        today > task.aged_from_day ? static_cast<float>(today - task.aged_from_day) : 0.0F;
+        ages && today > task.aged_from_day ? static_cast<float>(today - task.aged_from_day) : 0.0F;
     const LogisticsLevel was = task.level;
     LogisticsLevel level = AgedLevel(config, task.base_level, days);
     // WHY LEVEL 0 (#1099, save 174): written beside the level, the last
