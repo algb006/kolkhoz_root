@@ -59,6 +59,9 @@ int TestMeadowMarkContract();
 
 /// The porter's rules and the hauled book (porter_checks.cpp; #671).
 int TestThePorter();
+
+/// The drawn trip's whole-trip arithmetic (trip_terms_checks.cpp; #1056 C3).
+int TestTripTerms();
 }  // namespace core_test
 
 namespace {
@@ -3062,6 +3065,7 @@ int main() {
   failures += TestObstacleRaster();
   failures += core_test::TestMeadowMarkContract();
   failures += core_test::TestThePorter();
+  failures += core_test::TestTripTerms();
   failures += TestRoadTrace();
   failures += TestRoadPieces();
   failures += TestRoadCut();

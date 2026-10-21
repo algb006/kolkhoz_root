@@ -25,6 +25,7 @@ kolkhoz_add_module(core_common
     home_reach.cpp
     horse_yard_road.cpp
     haul.cpp
+    trip_terms.cpp
     cart_gear.cpp
     load_resource.cpp
     hauled_book.cpp

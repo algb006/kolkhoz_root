@@ -11,6 +11,7 @@
 #include "core_common/haul.h"
 #include "core_common/road_route.h"
 #include "core_common/state_table_ops.h"
+#include "core_common/trip_terms.h"
 #include "core_common/unit_state.h"
 #include "core_common/work_seam.h"
 #include "field_haul.h"
@@ -131,8 +132,9 @@ float CartDaysFor(const ProductionConfig& config, Grams grams, const HaulRate& r
     return 0.0F;
   }
   // WHOLE TRIPS: a cart leaves with what lies, up to its load, and comes back
-  // (the round trip holds the empty return).
-  const std::int64_t trips = (grams + rate.load - 1) / rate.load;
+  // (the round trip holds the empty return). One home with C3's fallback
+  // (trip_terms.h, WholeTripsFor).
+  const std::uint32_t trips = WholeTripsFor(grams, rate.load);
   return static_cast<float>(trips) * rate.round_trip_hours / config.standard_day_hours;
 }
 
