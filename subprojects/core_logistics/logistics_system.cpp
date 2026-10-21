@@ -37,6 +37,7 @@
 #include "logistics_config.h"
 #include "logistics_plan.h"
 #include "logistics_tasks.h"
+#include "trip_pricing.h"
 
 namespace core {
 namespace {
@@ -259,6 +260,14 @@ class LogisticsSystem final : public ILogisticsSystem {
       return tally;
     }
     current.groom_plan = BuildGroomPlan(config_, current, tally);
+    // AND THE PRICE FROM THE DRAWING (#1056 C3; trip_pricing.h): under the
+    // planned model the morning's trips become each cart task's seam. THE
+    // MORNING's PLAN ONLY, a deviation from the contract named: a re-plan in
+    // the day draws from loads already partly carted while the facts are
+    // last evening's, so its trips would price what is gone; the morning's
+    // price stands to the evening, which writes the facts and the fallback
+    // anew.
+    PriceTasksFromPlan(config_, current);
     // AND THE EVENING (F3 (B); logistics_plan.h): who rides home on which
     // leg, and every morning rider's own way home.
     SeatEveningRiders(config_, current, current.groom_plan, tally);

@@ -65,6 +65,16 @@ const float* WorkSeamOf(const WorldState& world, const WorkAssignment& work);
 ///        sub-step drains it hourly in row order.
 float* WorkSeamOf(WorldState& world, const WorkAssignment& work);
 
+/// @brief THE SEAM's WRITTEN TWIN (#1056 C3; trip_pricing.h): for a hauling
+///        work, the value its seam was last written at (the field's, stand's,
+///        site's, store's and lot's haul_days_written, the works'
+///        supply_days_written, the milk leg's leg_days_written, the rick's
+///        days_written) - the pair production's conversion reads as «drained =
+///        written − remaining». Found from WorkSeamOf's own answer, so the
+///        roster of seams stays one.
+/// @return nullptr for any other work, or when WorkSeamOf has no seam.
+float* WorkSeamWrittenOf(WorldState& world, const WorkAssignment& work);
+
 /// @brief THE CARRIED LOADS DRAIN WITH THEIR CARRIER (#1056 C3, rulings 3-4;
 ///        core_common/trip_terms.h): after the labour hour drains `drained`
 ///        cart-days off the seam of task `carrier`, every open task carried

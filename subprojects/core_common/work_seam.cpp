@@ -540,6 +540,48 @@ float* WorkSeamOf(WorldState& world, const WorkAssignment& work) {
   return const_cast<float*>(WorkSeamOf(static_cast<const WorldState&>(world), work));
 }
 
+float* WorkSeamWrittenOf(WorldState& world, const WorkAssignment& work) {
+  float* const seam = WorkSeamOf(world, work);
+  if (seam == nullptr || work.kind != WorkKind::kHauling) {
+    return nullptr;
+  }
+  // The row the seam lies on, by its address: one roster (WorkSeamOf's), and
+  // here only each remaining cell's written twin beside it.
+  if (const std::uint32_t row = FindRow(world.herds, work.herd); row != kNoRow) {
+    HerdRow& herd = world.herds.rows[row];
+    return seam == &herd.leg_days_remaining ? &herd.leg_days_written : nullptr;
+  }
+  if (const std::uint32_t row = FindRow(world.units, work.unit); row != kNoRow) {
+    UnitRow& unit = world.units.rows[row];
+    if (seam == &unit.haul_days_remaining) {
+      return &unit.haul_days_written;
+    }
+    if (seam == &unit.construction.supply_days_remaining) {
+      return &unit.construction.supply_days_written;
+    }
+    return seam == &unit.rick_supply.days_remaining ? &unit.rick_supply.days_written : nullptr;
+  }
+  if (const std::uint32_t row = FindRow(world.limit_deliveries, work.limit_delivery);
+      row != kNoRow) {
+    LimitDeliveryRow& lot = world.limit_deliveries.rows[row];
+    return seam == &lot.haul_days_remaining ? &lot.haul_days_written : nullptr;
+  }
+  if (const std::uint32_t row = FindRow(world.stands, work.stand); row != kNoRow) {
+    TimberStandRow& stand = world.stands.rows[row];
+    return seam == &stand.haul_days_remaining ? &stand.haul_days_written : nullptr;
+  }
+  if (const std::uint32_t row = FindRow(world.extraction_sites, work.extraction_site);
+      row != kNoRow) {
+    ExtractionSiteRow& site = world.extraction_sites.rows[row];
+    return seam == &site.haul_days_remaining ? &site.haul_days_written : nullptr;
+  }
+  if (const std::uint32_t row = FindRow(world.fields, work.field); row != kNoRow) {
+    FieldRow& field = world.fields.rows[row];
+    return seam == &field.haul_days_remaining ? &field.haul_days_written : nullptr;
+  }
+  return nullptr;
+}
+
 // THE TRIP'S RECEIVER (stage В, F3 (A)): the `haul_to` production wrote with
 // the load's seam (field_haul.cpp), or the works itself for its supply. A
 // point at the map's origin is a receiver never written: no store stands in

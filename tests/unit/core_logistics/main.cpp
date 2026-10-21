@@ -1,6 +1,7 @@
 // unit_core_logistics: the groom's tasks of carting (routing stage B, B2;
 // core_logistics/logistics_tasks.h, logistics_config.h).
 
+#include <cmath>
 #include <cstdint>
 #include <iostream>
 #include <string>
@@ -1157,6 +1158,96 @@ int TestThePlannedTrips() {
   return failures;
 }
 
+/// THE PLAN WRITES THE PRICE (#1056 C3 body 4/6; trip_pricing.h,
+/// PriceTasksFromPlan): under transport's trip_model 3 a heap of 6 t at 750 kg
+/// a cart (eight whole trips of 3 h, the evening's fallback 2.4 cart-days of a
+/// 10 h day) and one cart with twelve hours of light: the morning's plan draws
+/// what the light holds and the seam is rewritten as the drawn trips' hours
+/// plus the whole trips of the rest - both halves of it, remaining and
+/// written - and the year's book splits them (C3-g). The same world at
+/// trip_model 0 leaves the evening's seam as it was.
+int TestThePlanWritesThePrice() {
+  int failures = 0;
+  const auto price =
+      [](const char* model, float& seam, float& written, float& drawn_days, float& fallback_days) {
+        const test::FakeTable resources{{"key", "cargo_form", "is_fuel"}, {{"hay", "rick", "0"}}};
+        const test::FakeTable transport{{"key", "seats", "trip_model"},
+                                        {{"cart_loaded", "2", model}}};
+        const test::FakeTable horses{{"key"}, {{"horse"}}};
+        const test::FakeTableSet tables{
+            {{"resources", &resources}, {"transport", &transport}, {"livestock", &horses}}};
+        const auto system = core::CreateLogisticsSystem(tables, core::StubTables::kAllowed);
+        if (system == nullptr) {
+          return false;
+        }
+        core::WorldState world;
+        world.weather.daylight_hours = 12.0F;
+        world.calendar.day = 3;
+        core::FieldRow field;
+        field.kind = core::LandKind::kArable;
+        field.center = core::Vec2{.x = 1'200.0F, .y = 0.0F};
+        field.reaped_grams = 6'000'000;
+        field.reaped_resource = core::ResourceId{0};
+        field.haul_days_remaining = 2.4F;
+        field.haul_days_written = 2.4F;
+        field.haul_to = core::Vec2{.x = 200.0F, .y = 0.0F};
+        core::ResidentRow carter;
+        carter.work.kind = core::WorkKind::kHauling;
+        carter.work.rides_horse = 1;
+        carter.work.field = core::AppendRow(world.fields, field);
+        core::UnitRow house;
+        const core::UnitId house_id = core::AppendRow(world.units, house);
+        core::FamilyRow household;
+        household.house = house_id;
+        const core::FamilyId family = core::AppendRow(world.families, household);
+        world.units.rows[0].household = family;
+        carter.family = family;
+        core::AppendRow(world.residents, carter);
+        StableTheTeam(world);
+        world.calendar.tick = 3 * core::kTicksPerDay;
+        system->RunTasks(world, world);
+        if (world.logistics_tasks.rows.empty()) {
+          return false;
+        }
+        core::TaskTripTerms& terms = world.logistics_tasks.rows[0].trip_terms;
+        terms.load_point = core::Vec2{.x = 1'100.0F, .y = 0.0F};
+        terms.trip_hours = 3.0F;
+        terms.trip_loaded_hours = 2.0F;
+        terms.cart_load = 750'000;
+        terms.grams_left = 6'000'000;
+        world.calendar.tick = (3 * core::kTicksPerDay) + 1;
+        system->BuildPlan(world);
+        seam = world.fields.rows[0].haul_days_remaining;
+        written = world.fields.rows[0].haul_days_written;
+        drawn_days = world.ledger.current.cart_days_drawn;
+        fallback_days = world.ledger.current.cart_days_fallback;
+        return true;
+      };
+  float seam = 0.0F;
+  float written = 0.0F;
+  float drawn_days = 0.0F;
+  float fallback_days = 0.0F;
+  const bool planned = price("3", seam, written, drawn_days, fallback_days);
+  std::cout << "  the plan's price: seam " << seam << " (written " << written << "), drawn "
+            << drawn_days << " + fallback " << fallback_days << " cart-days\n";
+  const float trips = drawn_days / 0.3F;
+  failures += Expect(planned && drawn_days > 0.0F && fallback_days > 0.0F &&
+                         std::fabs(trips - std::round(trips)) < 1.0e-3F &&
+                         std::fabs(seam - (drawn_days + fallback_days)) < 1.0e-5F &&
+                         seam == written && std::fabs(seam - 2.4F) < 1.0e-4F,
+                     "the plan's price: whole trips drawn plus the rest's whole trips, both halves "
+                     "of the seam, the book split - eight trips in all");
+  float off_seam = 0.0F;
+  float off_written = 0.0F;
+  float off_drawn = 0.0F;
+  float off_fallback = 0.0F;
+  const bool off = price("0", off_seam, off_written, off_drawn, off_fallback);
+  failures += Expect(
+      off && off_seam == 2.4F && off_written == 2.4F && off_drawn == 0.0F && off_fallback == 0.0F,
+      "the plan's price: at trip_model 0 the evening's seam stands, nothing booked");
+  return failures;
+}
+
 /// THE CHAIRMAN'S DOORS TO THE TASKS (B7; order_state.h, kSetLogisticsLevel
 /// and kPauseLogisticsTask): two heaps, a task each, today's plan built at
 /// hour 1. At hour 5 the chairman raises the first to level 0 and pauses the
@@ -1827,6 +1918,7 @@ int main() {
   failures += TestNoLogisticsBeforeTheYard();
   failures += TestTheTripsAndTheEvening();
   failures += TestThePlannedTrips();
+  failures += TestThePlanWritesThePrice();
   failures += TestTheChairmansDoors();
   failures += TestTheLateLoadsLamp();
   failures += TestTheDayOffHeldTheLoad();
