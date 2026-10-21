@@ -830,6 +830,56 @@ int TestTheReplan() {
                        "re-plan: a heap reaped with every cart loaded gets its task and re-plans "
                        "nothing");
   }
+  // A CART GOING HOME WHILE A LOAD WAITS (#1056 C3, M1): at hour 9 the first
+  // cart's ride home sets out at the next tick, its chain carted, while the
+  // second field's heap still has carting left and no leg ahead names it -
+  // the rest of the day is drawn again. Its pairs: the heap carted (nothing
+  // waits), and the ride home two hours off (not yet the hour before it).
+  {
+    const auto going_home = [&system, &day_of](float second_left, core::Tick home_in) {
+      core::WorldState world;
+      bool ignored = false;
+      day_of(false, ignored, world);  // the plan of day 3, re-planned at hour 9 for nothing
+      const core::Tick now = (3 * core::kTicksPerDay) + 10;
+      world.fields.rows[0].haul_days_remaining = 0.0F;  // the first heap: its last trip under way
+      world.fields.rows[1].haul_days_remaining = second_left;
+      const auto task_of = [&world](std::uint32_t field_row) {
+        for (std::uint32_t row = 0; row < world.logistics_tasks.rows.size(); ++row) {
+          if (world.logistics_tasks.rows[row].field.value ==
+              world.fields.row_ids[field_row].value) {
+            return world.logistics_tasks.row_ids[row];
+          }
+        }
+        return core::LogisticsTaskId{};
+      };
+      const core::LogisticsTaskId first = task_of(0);
+      for (core::CartPlan& cart : world.groom_plan.carts) {
+        core::CartLeg carting;
+        carting.task = first;
+        carting.loaded = 1;
+        carting.depart = now - 1;
+        carting.arrive = now + 1;
+        core::CartLeg home;  // a ride of no load
+        home.depart = now + home_in;
+        home.arrive = now + home_in + 1;
+        cart.legs = {carting, home};
+        if (cart.driver.value != world.residents.row_ids[0].value) {
+          cart.legs.back().depart = now + 5;  // the other cart is out to the afternoon
+          cart.legs.back().arrive = now + 6;
+        }
+      }
+      world.groom_plan.stale = false;
+      world.calendar.tick = now;
+      return system->Replan(world);
+    };
+    failures += Expect(going_home(1.0F, 1),
+                       "re-plan (M1): a cart whose ride home sets out at the next hour while "
+                       "another heap waits, named by no leg ahead, re-plans the day");
+    failures += Expect(!going_home(0.0F, 1),
+                       "re-plan (M1): the same cart with nothing waiting re-plans nothing");
+    failures += Expect(!going_home(1.0F, 2),
+                       "re-plan (M1): a ride home two hours off is not yet the hour before it");
+  }
   return failures;
 }
 
