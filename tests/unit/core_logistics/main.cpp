@@ -1417,36 +1417,46 @@ int TestTheBackLoad() {
     bool carried = false;   // B carried by A, its share above nought
     float b_seam = -1.0F;
     float trips_back = 0.0F;
+    bool seats_riders = false;  // the back leg's form seats evening riders (SeatEveningRiders)
   };
 
-  const auto run = [](core::Vec2 b_receiver, bool on_foot) {
-    const test::FakeTable resources{{"key", "cargo_form", "is_fuel"}, {{"hay", "rick", "0"}}};
+  const auto run = [](core::Vec2 b_receiver, bool on_foot, std::uint16_t b_resource) {
+    const test::FakeTable resources{{"key", "cargo_form", "is_fuel"},
+                                    {{"hay", "rick", "0"}, {"manure", "manure", "0"}}};
     const test::FakeTable transport{{"key", "seats", "trip_model"}, {{"cart_loaded", "2", "3"}}};
     const test::FakeTable horses{{"key"}, {{"horse"}}};
     const test::FakeTableSet tables{
         {{"resources", &resources}, {"transport", &transport}, {"livestock", &horses}}};
     Back back;
     const auto system = core::CreateLogisticsSystem(tables, core::StubTables::kAllowed);
-    if (system == nullptr) {
+    core::LogisticsConfig config;
+    std::string error;
+    if (system == nullptr || !core::ParseLogisticsConfig(tables, config, error)) {
       return back;
     }
     core::WorldState world;
     world.weather.daylight_hours = 12.0F;
     world.calendar.day = 3;
-    const auto heap = [&world](core::Vec2 at, core::Grams grams, float seam, core::Vec2 to) {
-      core::FieldRow field;
-      field.kind = core::LandKind::kArable;
-      field.center = at;
-      field.reaped_grams = grams;
-      field.reaped_resource = core::ResourceId{0};
-      field.haul_days_remaining = seam;
-      field.haul_days_written = seam;
-      field.haul_to = to;
-      return core::AppendRow(world.fields, field);
-    };
-    const core::FieldId a = heap(
-        core::Vec2{.x = 1'200.0F, .y = 0.0F}, 1'000'000, 0.6F, core::Vec2{.x = 200.0F, .y = 0.0F});
-    const core::FieldId b = heap(core::Vec2{.x = 250.0F, .y = 50.0F}, 750'000, 0.3F, b_receiver);
+    const auto heap =
+        [&world](
+            core::Vec2 at, core::Grams grams, float seam, core::Vec2 to, std::uint16_t resource) {
+          core::FieldRow field;
+          field.kind = core::LandKind::kArable;
+          field.center = at;
+          field.reaped_grams = grams;
+          field.reaped_resource = core::ResourceId{resource};
+          field.haul_days_remaining = seam;
+          field.haul_days_written = seam;
+          field.haul_to = to;
+          return core::AppendRow(world.fields, field);
+        };
+    const core::FieldId a = heap(core::Vec2{.x = 1'200.0F, .y = 0.0F},
+                                 1'000'000,
+                                 0.6F,
+                                 core::Vec2{.x = 200.0F, .y = 0.0F},
+                                 0);
+    const core::FieldId b =
+        heap(core::Vec2{.x = 250.0F, .y = 50.0F}, 750'000, 0.3F, b_receiver, b_resource);
     core::ResidentRow carter;
     carter.work.kind = core::WorkKind::kHauling;
     carter.work.rides_horse = on_foot ? 0U : 1U;
@@ -1495,7 +1505,12 @@ int TestTheBackLoad() {
     }
     for (const core::CartPlan& cart : world.groom_plan.carts) {
       for (const core::CartLeg& leg : cart.legs) {
-        back.back_leg = back.back_leg || (leg.back_load != 0 && leg.task.value == b_id.value);
+        if (leg.back_load != 0 && leg.task.value == b_id.value) {
+          back.back_leg = true;
+          // The evening's seating asks the loaded leg's form alone (logistics_plan.cpp,
+          // SeatEveningRiders: CargoFormSeatsRiders(LegCargoForm(...))).
+          back.seats_riders = core::CargoFormSeatsRiders(core::LegCargoForm(config, world, leg));
+        }
       }
     }
     back.carried = b_task->carried_by.value == a_id.value && b_task->carried_share > 0.0F;
@@ -1503,9 +1518,15 @@ int TestTheBackLoad() {
     back.trips_back = world.ledger.current.cart_trips_back;
     return back;
   };
-  const Back taken = run(core::Vec2{.x = 1'150.0F, .y = 0.0F}, false);
-  const Back far_west = run(core::Vec2{.x = -800.0F, .y = 0.0F}, false);
-  const Back walker = run(core::Vec2{.x = 1'150.0F, .y = 0.0F}, true);
+  const Back taken = run(core::Vec2{.x = 1'150.0F, .y = 0.0F}, false, 0);
+  const Back far_west = run(core::Vec2{.x = -800.0F, .y = 0.0F}, false, 0);
+  const Back walker = run(core::Vec2{.x = 1'150.0F, .y = 0.0F}, true, 0);
+  const Back manure = run(core::Vec2{.x = 1'150.0F, .y = 0.0F}, false, 1);
+  // C3-e (boss [112]): riders on a back leg by its form - the hay's rick
+  // seats them, manure refuses them.
+  failures += Expect(taken.seats_riders && manure.back_leg && !manure.seats_riders,
+                     "back load: its leg seats riders by its load's form - a rick of hay seats "
+                     "them, manure does not");
   std::cout << "  back load: taken - leg " << taken.back_leg << ", carried " << taken.carried
             << ", B's seam " << taken.b_seam << ", trips back " << taken.trips_back
             << "; far west - leg " << far_west.back_leg << "; on foot - leg " << walker.back_leg
