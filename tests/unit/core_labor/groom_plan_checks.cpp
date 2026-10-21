@@ -19,6 +19,7 @@
 #include "core_common/logistics_state.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/timber_state.h"
+#include "core_common/unit_state.h"
 #include "core_common/world_state.h"
 #include "core_labor/labor_system.h"
 #include "core_tables/tables.h"
@@ -147,6 +148,70 @@ std::pair<bool, bool> TheCartAfterItsLoad(core::ILaborSystem& labor, bool plan_o
   return {after.kind == core::WorkKind::kHauling && after.rides_horse != 0 &&
               after.stand.value == next.value,
           after.stand.value == carted.value};
+}
+
+/// What the carter leaves at hour 3 in TheCartAtAChange.
+struct LeftLoad {
+  bool site = false;         ///< a site's supply (else stand A's logs, carted out)
+  bool site_awaits = false;  ///< the site's works still await a leg (its seam empty)
+  core::LogisticsLevel next = core::LogisticsLevel::kTerm;  ///< stand B's task's level
+};
+
+/// THE SITE'S LEG CHANGE (0.37.312; boss, core-boss-oats-b-pair [52]-[56]):
+/// the carter on a horse, his load at level 1 with its seam empty, and today's
+/// plan chaining him on to stand B. A site's seam is its front leg's alone:
+/// empty at a leg change while the works still await, he stays if B is less
+/// urgent than the site, and goes on to B at the site's level or above (the
+/// hay the site's carters fetch on main; [59]); nothing awaiting, he goes on -
+/// until 0.37.312 he rode for B in every case. Off a site he still goes on to
+/// B whatever its level: «never down the levels» was tried and left the heaps
+/// in the field at the frost ([55]). Returns whether he rides for B after
+/// hour 3.
+bool TheCartAtAChange(core::ILaborSystem& labor, const LeftLoad& left) {
+  core::WorldState world = Village(1);
+  const core::TimberStandId next = StandAt(world, 1500.0F, 1.0F);
+  core::LogisticsTaskRow own;
+  own.level = core::LogisticsLevel::kTerm;
+  own.base_level = core::LogisticsLevel::kTerm;
+  core::WorkAssignment& work = world.residents.rows[0].work;
+  work.kind = core::WorkKind::kHauling;
+  work.rides_horse = 1;
+  if (left.site) {
+    core::UnitRow site;
+    site.position = core::Vec2{.x = 800.0F, .y = 0.0F};
+    site.level = 0;
+    site.construction.phase = core::ConstructionPhase::kDelivering;
+    site.construction.target_level = 1;
+    if (left.site_awaits) {
+      site.construction.awaiting.assign(1, 1'000'000);  // a leg's tonne still at its sender
+    }
+    const core::UnitId site_id = core::AppendRow(world.units, site);
+    own.load_kind = core::LogisticsLoadKind::kSiteSupply;
+    own.unit = site_id;
+    world.residents.rows[0].work.unit = site_id;
+  } else {
+    const core::TimberStandId carted = StandAt(world, 1000.0F, 0.0F);
+    own.load_kind = core::LogisticsLoadKind::kStandLogs;
+    own.stand = carted;
+    world.residents.rows[0].work.stand = carted;
+  }
+  const core::LogisticsTaskId own_task = core::AppendRow(world.logistics_tasks, own);
+  const core::LogisticsTaskId next_task = LogsTask(world, next, left.next);
+  world.groom_plan.day = kWorkingDay;
+  core::CartPlan cart;
+  cart.driver = world.residents.row_ids[0];
+  for (const core::LogisticsTaskId task : {own_task, next_task}) {
+    cart.legs.push_back(core::CartLeg{.from = core::Vec2{},
+                                      .to = core::Vec2{},
+                                      .task = task,
+                                      .depart = 0,
+                                      .arrive = 0,
+                                      .riders = {}});
+  }
+  world.groom_plan.carts.push_back(cart);
+  RunHour(labor, world, 3);
+  const core::WorkAssignment& after = world.residents.rows[0].work;
+  return after.kind == core::WorkKind::kHauling && after.stand.value == next.value;
 }
 
 /// The task of a field's heap, at a level.
@@ -411,6 +476,26 @@ int CheckTheGroomsPlan() {
                      "chain, on his horse");
   failures +=
       Expect(!stale_followed && stale_stays, "groom's plan: a plan of yesterday moves nobody");
+  const bool site_left = TheCartAtAChange(
+      *labor, {.site = true, .site_awaits = true, .next = core::LogisticsLevel::kBackground});
+  const bool site_level = TheCartAtAChange(*labor, {.site = true, .site_awaits = true});
+  const bool site_done =
+      TheCartAtAChange(*labor, {.site = true, .next = core::LogisticsLevel::kBackground});
+  const bool down = TheCartAtAChange(*labor, {.next = core::LogisticsLevel::kBackground});
+  const bool level = TheCartAtAChange(*labor, {});
+  const bool up = TheCartAtAChange(*labor, {.next = core::LogisticsLevel::kUrgent});
+  std::cout << "  groom's plan, a site's leg change: a site awaiting - rides on to level 3 "
+            << site_left << ", to its own level " << site_level << ", nothing awaiting "
+            << site_done << "; to level 3 " << down << ", level 1 " << level << ", level 0 " << up
+            << '\n';
+  failures +=
+      Expect(!site_left && site_level && site_done,
+             "groom's plan: a site whose works still await keeps its carter from a lower "
+             "load at a leg change - to its own level he goes, and nothing awaiting, to any");
+  failures +=
+      Expect(down && level && up,
+             "groom's plan: a carter whose load is carted follows his chain to the next load "
+             "at any level - down to level 3 too");
   failures += Expect(TheWalkerAfterHisHeap(*labor),
                      "groom's plan: a carrier on foot whose heap is carted goes on to the near "
                      "heap of his chain, on foot");
