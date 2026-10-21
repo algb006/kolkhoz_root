@@ -2122,10 +2122,11 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // before the build and held; the hash read off it.
     // Save 174 (#1099): +1 - why level 0; predicted 65 -> 66 before the build
     // and held; the hash read off it.
-    // Save 177 (#1056 C3): +44 - the trip's facts (a Vec2, two floats, two
-    // Grams) and the carried pair (an id, a float); predicted 66 -> 110 before
-    // the build; the hash read off it.
-    {"logistics_tasks", 110, 0x0ULL},
+    // Save 177 (#1056 C3): the trip's facts (a Vec2, two floats, two Grams)
+    // and the carried pair (an id, a float). Predicted 66 -> 110 before the
+    // build - a MISS: the sum was written «+44» with one float counted twice;
+    // it is 8 + 4 + 4 + 8 + 8 + 4 + 4 = 40, 66 -> 106. The hash read off it.
+    {"logistics_tasks", 106, 0x59996d89af9b302eULL},
     // Save 173 (#1089): the settlements - the table's next id and count, one
     // row's id and 27 bytes of fields: predicted 39 before the build and
     // held; the hash read off it.
@@ -2137,8 +2138,8 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // Save 175 (SL): +1 a leg — the sledge byte; three legs, 195 -> 198,
     // predicted before the build and held.
     // Save 177 (#1056 C3): +4 a leg, the pooled leg's second task - three legs,
-    // 198 -> 210, predicted before the build; the hash read off it.
-    {"groom_plan", 210, 0x0ULL},  // save 155: 2 partners, 3 legs' loads
+    // 198 -> 210, predicted before the build and held; the hash read off it.
+    {"groom_plan", 210, 0x925d0402cf663c1bULL},  // save 155: 2 partners, 3 legs' loads
     // 2026-09-17, save 52: +56 bytes over the two books — the nine yearly
     // inputs the readiness index asks of a year and the year did not keep
     // (ledger_state.h): satisfaction's sum and count, able-bodied
@@ -2268,8 +2269,8 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // bytes; measured two a book (the empty vector's count); the hash read
     // off it.
     // Save 177 (#1056 C3): +40 a book - six floats by source and four floats;
-    // 3064 -> 3144, predicted before the build; the hash read off it.
-    {"ledger", 3144, 0x0ULL},
+    // 3064 -> 3144, predicted before the build and held; the hash read off it.
+    {"ledger", 3144, 0xf25c281c720a5e20ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 

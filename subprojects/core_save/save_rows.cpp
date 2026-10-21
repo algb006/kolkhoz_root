@@ -499,9 +499,10 @@ static_assert(AggregateArity<BarterTripRow>() == 9,
 // fields, +1 on the wire, before the build.
 // Save 177 (#1056 C3): trip_terms (TaskTripTerms: a Vec2, two floats, two
 // Grams - 32 bytes, 8-aligned), carried_by (an id) and carried_share (a float)
-// at the tail - predicted 64 -> 104 and twenty-two fields; on the wire +44 a
-// task (8 + 4 + 4 + 8 + 8 + 4 + 4 + 4, the Vec2 as two floats), before the
-// build. TaskTripTerms itself: 32 bytes, five fields.
+// at the tail - predicted 64 -> 104 and twenty-two fields before the build,
+// held. On the wire +40 a task (8 + 4 + 4 + 8 + 8 + 4 + 4, the Vec2 as two
+// floats); predicted +44 with one float counted twice, read 40 off the build.
+// TaskTripTerms itself: 32 bytes, five fields.
 static_assert(sizeof(TaskTripTerms) == 32 && AggregateArity<TaskTripTerms>() == 5,
               "TaskTripTerms changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(LogisticsTaskRow) == 104,
