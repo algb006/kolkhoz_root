@@ -14,7 +14,6 @@
 #include <vector>
 
 #include "core_common/calendar.h"
-#include "core_common/cart_gear.h"
 #include "core_common/emit_event.h"
 #include "core_common/fund_ladder.h"
 #include "core_common/herd_age_band.h"
@@ -1421,13 +1420,6 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
   // wrong things still looks like a quotient.
   current.ledger.current.horse_backed_assignment_days += horse_backed_days;
   current.ledger.current.harnessed_assignment_days += harnessed_days;
-  // THE WINTER'S HOLD'S BOOK (#1056 C2.2; manure_state.h): the horse-backed
-  // days of the days snow lies, by the same count; next year's hold reads
-  // them, less the manure's own cart-days (manure_cart.cpp books those).
-  if (SledgeDay(current)) {
-    current.ledger.current.snow_horse_backed_days += horse_backed_days;
-    current.ledger.current.snow_days += 1.0F;
-  }
   // The day's work ration of the working stock, summed over every herd the
   // walk below feeds and turned into the traction ration at the end of it.
   WorkRation work;
