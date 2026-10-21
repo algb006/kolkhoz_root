@@ -272,6 +272,12 @@ void PriceTasksFromPlan(const LogisticsConfig& config, WorldState& world, PriceM
     if (!(terms.trip_hours > 0.0F) || terms.cart_load <= 0 || terms.grams_left <= 0) {
       continue;  // not a cart's whole-trip price
     }
+    // L3 (#1056 C3; core-boss-oats-b-pair [131]): a load past the day's light
+    // is never drawn (L2), so the plan writes no price for it; it keeps the
+    // fluid price production writes (field_haul.cpp, LotPastTheLight).
+    if (terms.trip_hours > world.weather.daylight_hours) {
+      continue;
+    }
     const WorkAssignment work = HaulingWorkOf(task);
     float* const remaining = WorkSeamOf(world, work);
     float* const written = WorkSeamWrittenOf(world, work);

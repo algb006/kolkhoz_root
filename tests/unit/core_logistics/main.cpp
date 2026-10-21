@@ -1190,64 +1190,67 @@ int TestThePlannedTrips() {
 /// trip_model 0 leaves the evening's seam as it was.
 int TestThePlanWritesThePrice() {
   int failures = 0;
-  const auto price =
-      [](const char* model, float& seam, float& written, float& drawn_days, float& fallback_days) {
-        const test::FakeTable resources{{"key", "cargo_form", "is_fuel"}, {{"hay", "rick", "0"}}};
-        const test::FakeTable transport{{"key", "seats", "trip_model"},
-                                        {{"cart_loaded", "2", model}}};
-        const test::FakeTable horses{{"key"}, {{"horse"}}};
-        const test::FakeTableSet tables{
-            {{"resources", &resources}, {"transport", &transport}, {"livestock", &horses}}};
-        const auto system = core::CreateLogisticsSystem(tables, core::StubTables::kAllowed);
-        if (system == nullptr) {
-          return false;
-        }
-        core::WorldState world;
-        world.weather.daylight_hours = 12.0F;
-        world.calendar.day = 3;
-        core::FieldRow field;
-        field.kind = core::LandKind::kArable;
-        field.center = core::Vec2{.x = 1'200.0F, .y = 0.0F};
-        field.reaped_grams = 6'000'000;
-        field.reaped_resource = core::ResourceId{0};
-        field.haul_days_remaining = 2.4F;
-        field.haul_days_written = 2.4F;
-        field.haul_to = core::Vec2{.x = 200.0F, .y = 0.0F};
-        core::ResidentRow carter;
-        carter.work.kind = core::WorkKind::kHauling;
-        carter.work.rides_horse = 1;
-        carter.work.field = core::AppendRow(world.fields, field);
-        core::UnitRow house;
-        const core::UnitId house_id = core::AppendRow(world.units, house);
-        core::FamilyRow household;
-        household.house = house_id;
-        const core::FamilyId family = core::AppendRow(world.families, household);
-        world.units.rows[0].household = family;
-        carter.family = family;
-        core::AppendRow(world.residents, carter);
-        StableTheTeam(world);
-        world.calendar.tick = 3 * core::kTicksPerDay;
-        system->RunTasks(world, world);
-        if (world.logistics_tasks.rows.empty()) {
-          return false;
-        }
-        core::TaskTripTerms& terms = world.logistics_tasks.rows[0].trip_terms;
-        terms.load_point = core::Vec2{.x = 1'100.0F, .y = 0.0F};
-        terms.trip_hours = 3.0F;
-        terms.trip_loaded_hours = 2.0F;
-        terms.cart_load = 750'000;
-        terms.grams_left = 6'000'000;
-        world.calendar.tick = (3 * core::kTicksPerDay) + 1;
-        system->BuildPlan(world);
-        seam = world.fields.rows[0].haul_days_remaining;
-        written = world.fields.rows[0].haul_days_written;
-        // The day's book is written at sunrise, hour 6 of twelve hours' light ((ii')).
-        world.calendar.tick = (3 * core::kTicksPerDay) + 6;
-        system->Replan(world);
-        drawn_days = world.ledger.current.cart_days_drawn;
-        fallback_days = world.ledger.current.cart_days_fallback;
-        return true;
-      };
+  const auto price = [](const char* model,
+                        float& seam,
+                        float& written,
+                        float& drawn_days,
+                        float& fallback_days,
+                        float trip_hours = 3.0F) {
+    const test::FakeTable resources{{"key", "cargo_form", "is_fuel"}, {{"hay", "rick", "0"}}};
+    const test::FakeTable transport{{"key", "seats", "trip_model"}, {{"cart_loaded", "2", model}}};
+    const test::FakeTable horses{{"key"}, {{"horse"}}};
+    const test::FakeTableSet tables{
+        {{"resources", &resources}, {"transport", &transport}, {"livestock", &horses}}};
+    const auto system = core::CreateLogisticsSystem(tables, core::StubTables::kAllowed);
+    if (system == nullptr) {
+      return false;
+    }
+    core::WorldState world;
+    world.weather.daylight_hours = 12.0F;
+    world.calendar.day = 3;
+    core::FieldRow field;
+    field.kind = core::LandKind::kArable;
+    field.center = core::Vec2{.x = 1'200.0F, .y = 0.0F};
+    field.reaped_grams = 6'000'000;
+    field.reaped_resource = core::ResourceId{0};
+    field.haul_days_remaining = 2.4F;
+    field.haul_days_written = 2.4F;
+    field.haul_to = core::Vec2{.x = 200.0F, .y = 0.0F};
+    core::ResidentRow carter;
+    carter.work.kind = core::WorkKind::kHauling;
+    carter.work.rides_horse = 1;
+    carter.work.field = core::AppendRow(world.fields, field);
+    core::UnitRow house;
+    const core::UnitId house_id = core::AppendRow(world.units, house);
+    core::FamilyRow household;
+    household.house = house_id;
+    const core::FamilyId family = core::AppendRow(world.families, household);
+    world.units.rows[0].household = family;
+    carter.family = family;
+    core::AppendRow(world.residents, carter);
+    StableTheTeam(world);
+    world.calendar.tick = 3 * core::kTicksPerDay;
+    system->RunTasks(world, world);
+    if (world.logistics_tasks.rows.empty()) {
+      return false;
+    }
+    core::TaskTripTerms& terms = world.logistics_tasks.rows[0].trip_terms;
+    terms.load_point = core::Vec2{.x = 1'100.0F, .y = 0.0F};
+    terms.trip_hours = trip_hours;
+    terms.trip_loaded_hours = trip_hours * 2.0F / 3.0F;
+    terms.cart_load = 750'000;
+    terms.grams_left = 6'000'000;
+    world.calendar.tick = (3 * core::kTicksPerDay) + 1;
+    system->BuildPlan(world);
+    seam = world.fields.rows[0].haul_days_remaining;
+    written = world.fields.rows[0].haul_days_written;
+    // The day's book is written at sunrise, hour 6 of twelve hours' light ((ii')).
+    world.calendar.tick = (3 * core::kTicksPerDay) + 6;
+    system->Replan(world);
+    drawn_days = world.ledger.current.cart_days_drawn;
+    fallback_days = world.ledger.current.cart_days_fallback;
+    return true;
+  };
   float seam = 0.0F;
   float written = 0.0F;
   float drawn_days = 0.0F;
@@ -1270,6 +1273,18 @@ int TestThePlanWritesThePrice() {
   failures += Expect(
       off && off_seam == 2.4F && off_written == 2.4F && off_drawn == 0.0F && off_fallback == 0.0F,
       "the plan's price: at trip_model 0 the evening's seam stands, nothing booked");
+  // L3 (#1056 C3; core-boss-oats-b-pair [131]): a load whose round trip (84 h)
+  // outlasts the day's light (12 h) is never drawn, and the plan writes no
+  // price for it - the evening's seam stands under the planned model too.
+  float far_seam = 0.0F;
+  float far_written = 0.0F;
+  float far_drawn = 0.0F;
+  float far_fallback = 0.0F;
+  const bool far = price("3", far_seam, far_written, far_drawn, far_fallback, 84.0F);
+  std::cout << "  the plan's price, a round trip of 84 h: seam " << far_seam << " (written "
+            << far_written << ")\n";
+  failures += Expect(far && far_seam == 2.4F && far_written == 2.4F,
+                     "the plan's price (L3): a load past the day's light keeps the evening's seam");
   return failures;
 }
 

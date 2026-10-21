@@ -877,6 +877,20 @@ HaulRate DistrictLotHaulRate(const ProductionConfig& config,
   return rate;
 }
 
+namespace {
+
+/// L3 (#1056 C3): under the planned model, a lot whose round trip outlasts
+/// today's light - one day's plan cannot draw it (L2; the labour drains it by
+/// its carters' hours) - and which therefore keeps the fluid price.
+bool LotPastTheLight(const ProductionConfig& config,
+                     const WorldState& current,
+                     const HaulRate& rate) {
+  return config.cart_trip_model == static_cast<std::uint8_t>(CartTripModel::kPlanned) &&
+         rate.round_trip_hours > current.weather.daylight_hours;
+}
+
+}  // namespace
+
 void SettleDistrictLotHauling(const ProductionConfig& config, WorldState& current, bool evening) {
   std::vector<LimitDeliveryId> emptied;
 
@@ -1016,6 +1030,13 @@ void SettleDistrictLotHauling(const ProductionConfig& config, WorldState& curren
       } else if (routed && pooled(lot) && pool > 0) {
         row.haul_days_remaining =
             pool_days * static_cast<float>(lot.left) / static_cast<float>(pool);
+      } else if (LotPastTheLight(config, current, lot.rate)) {
+        // A LOAD THE PLAN CANNOT DRAW KEEPS THE FLUID PRICE (#1056 C3, L3;
+        // core-boss-oats-b-pair [131]): under the planned model a lot whose
+        // round trip outlasts the day's light is never drawn (L2) and is drained
+        // by its carters' hours; priced at whole trips it stood longer, and the
+        // village took a fifth fewer lots (64 -> 51) at equal goods a lot.
+        row.haul_days_remaining = HaulDaysFor(lot.left, lot.rate, config.standard_day_hours);
       } else {
         row.haul_days_remaining = CartDaysFor(config, lot.left, lot.rate);
       }
