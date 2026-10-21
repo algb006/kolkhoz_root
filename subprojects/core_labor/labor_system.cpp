@@ -3019,8 +3019,9 @@ class LaborSystem final : public ILaborSystem {
   ///        and his day's pay stay: the way between two loads is the empty
   ///        half of the new load's first trip, priced in its seam (0.37.139).
   ///        Since 0.37.312 a site whose works still await is not «carted» at
-  ///        its leg change, and he follows only to a load of his load's level
-  ///        or a more urgent one.
+  ///        its leg change. He still follows down the levels: «never to a
+  ///        lower level» was tried and left the heaps in the field at the
+  ///        frost (+15 % canon; core-boss-oats-b-pair [55]).
   ///        With no plan for today, no chain, or no load left, nothing
   ///        changes.
   static void FollowThePlan(WorldState& current, std::uint32_t row) {
@@ -3032,22 +3033,18 @@ class LaborSystem final : public ILaborSystem {
     if (seam != nullptr && *seam > 0.0F) {
       return;  // still carting his load
     }
-    // THE LOAD HE LEAVES, by its task - which stands till tomorrow's hour 0
-    // even when its load is gone (logistics_system.cpp, SyncTasks). No task
-    // names it: nothing holds him, as before.
+    // A SITE'S SEAM IS ITS FRONT LEG'S ALONE (unit_state.h, supply_days_
+    // remaining): it stands empty the hour one leg is carted and the next is
+    // not yet written, while the works still await the rest. That hour is not
+    // «carted». Until 0.37.312 it read as carted, and at a house's leg changes
+    // two of its three carters followed their chains to level-3 manure doses:
+    // the house waited 1.79 t of clay through the spring's field days and
+    // stood five days late (boss, core-boss-oats-b-pair [52]-[53]). The task
+    // stands till tomorrow's hour 0 even when its load is gone (logistics_
+    // system.cpp, SyncTasks); no task names it, nothing holds him.
     const std::uint32_t own_row = TaskRowOfWork(current, work);
-    LogisticsLevel leaving = LogisticsLevel::kBackground;
     if (own_row != kNoRow) {
       const LogisticsTaskRow& own = current.logistics_tasks.rows[own_row];
-      leaving = own.level;
-      // A SITE'S SEAM IS ITS FRONT LEG'S ALONE (unit_state.h, supply_days_
-      // remaining): it stands empty the hour one leg is carted and the next
-      // is not yet written, while the works still await the rest. That hour
-      // is not «carted». Until 0.37.312 it read as carted, and at a house's
-      // leg changes two of its three carters followed their chains to
-      // level-3 manure doses: the house waited 1.79 t of clay through the
-      // spring's field days and stood five days late (boss, core-boss-oats-
-      // b-pair [52]-[53]).
       if (own.load_kind == LogisticsLoadKind::kSiteSupply) {
         const std::uint32_t site = FindRow(current.units, own.unit);
         if (site != kNoRow && AnythingAwaits(current.units.rows[site].construction)) {
@@ -3066,12 +3063,6 @@ class LaborSystem final : public ILaborSystem {
           continue;  // its load was carted and its task ended
         }
         const LogisticsTaskRow& task = current.logistics_tasks.rows[task_row];
-        // NEVER DOWN THE LEVELS (boss [53]): a load less urgent than the one
-        // he leaves is the common queue's to give, after every other load
-        // (logistics_state.h, LogisticsLevel), not his chain's.
-        if (static_cast<std::uint8_t>(task.level) > static_cast<std::uint8_t>(leaving)) {
-          continue;
-        }
         const float* const next = WorkSeamOf(current, HaulingWorkOf(task));
         if (next != nullptr && *next > 0.0F) {
           RetargetWork(work, task);

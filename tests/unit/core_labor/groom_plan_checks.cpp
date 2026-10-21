@@ -157,14 +157,14 @@ struct LeftLoad {
   core::LogisticsLevel next = core::LogisticsLevel::kTerm;  ///< stand B's task's level
 };
 
-/// THE TWO HOLES OF THE CHAIN (0.37.312; boss, core-boss-oats-b-pair [52]-
-/// [53]): the carter on a horse, his load at level 1 with its seam empty, and
-/// today's plan chaining him on to stand B. (a) A site's seam is its front
-/// leg's alone: empty at a leg change while the works still await, he stays;
-/// nothing awaiting, he goes on. (b) He never goes down the levels: B at level
-/// 3 keeps him where he is; B at his own level or above takes him. Until
-/// 0.37.312 he rode for B in every case. Returns whether he rides for B after
-/// hour 3.
+/// THE SITE'S LEG CHANGE (0.37.312; boss, core-boss-oats-b-pair [52]-[56]):
+/// the carter on a horse, his load at level 1 with its seam empty, and today's
+/// plan chaining him on to stand B. A site's seam is its front leg's alone:
+/// empty at a leg change while the works still await, he stays; nothing
+/// awaiting, he goes on - until 0.37.312 he rode for B in both cases. And he
+/// still goes on to B whatever its level: «never down the levels» was tried
+/// and left the heaps in the field at the frost ([55]). Returns whether he
+/// rides for B after hour 3.
 bool TheCartAtAChange(core::ILaborSystem& labor, const LeftLoad& left) {
   core::WorldState world = Village(1);
   const core::TimberStandId next = StandAt(world, 1500.0F, 1.0F);
@@ -479,16 +479,17 @@ int CheckTheGroomsPlan() {
   const bool down = TheCartAtAChange(*labor, {.next = core::LogisticsLevel::kBackground});
   const bool level = TheCartAtAChange(*labor, {});
   const bool up = TheCartAtAChange(*labor, {.next = core::LogisticsLevel::kUrgent});
-  std::cout << "  groom's plan, the two holes: a site awaiting - rides on " << site_left
+  std::cout << "  groom's plan, a site's leg change: a site awaiting - rides on " << site_left
             << ", nothing awaiting " << site_done << "; to level 3 " << down << ", level 1 "
             << level << ", level 0 " << up << '\n';
   failures +=
       Expect(!site_left && site_done,
              "groom's plan: a site whose works still await keeps its carter at a leg change "
              "- nothing awaiting, he goes on");
-  failures += Expect(!down && level && up,
-                     "groom's plan: a carter never follows his chain down the levels - to his own "
-                     "level or a more urgent one he does");
+  failures +=
+      Expect(down && level && up,
+             "groom's plan: a carter whose load is carted follows his chain to the next load "
+             "at any level - down to level 3 too");
   failures += Expect(TheWalkerAfterHisHeap(*labor),
                      "groom's plan: a carrier on foot whose heap is carted goes on to the near "
                      "heap of his chain, on foot");
