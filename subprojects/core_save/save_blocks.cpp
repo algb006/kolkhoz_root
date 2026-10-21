@@ -211,13 +211,10 @@ static_assert(AggregateArity<SportMonth>() == 2,
 // fields; save 128 (0.37.141) took it out unwritten — 72 and four again,
 // predicted before the build. Save 167 (#1040): the thin year by the field
 // plan - four u8, a float, two Grams after the week - predicted 72 -> 96 and
-// eleven fields before the build; on the wire +24. Save 177 (#1056 C2.2): the
-// oats over the ladder and the winter's hold, two Grams, and the manure's
-// wait, a u8, at the tail - predicted 96 -> 120 (113 padded to 8) and 14
-// fields before the build; on the wire +17.
-static_assert(sizeof(TractionWatch) == 120,
+// eleven fields before the build; on the wire +24.
+static_assert(sizeof(TractionWatch) == 96,
               "TractionWatch changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<TractionWatch>() == 14,
+static_assert(AggregateArity<TractionWatch>() == 11,
               "TractionWatch gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(kHarnessWeekDays == 7, "the harness week's length is written — VERSION_SAVE");
 // 2026-09-30, save 118: the named characters (the former elder), 40 —
@@ -538,10 +535,6 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteFloat(world.traction_watch.plan_oat_ha);
   out.WriteI64(world.traction_watch.plan_oat_expected);
   out.WriteI64(world.traction_watch.plan_team_need);
-  // The manure's oats (save 177; #1056 C2.2).
-  out.WriteI64(world.traction_watch.oats_over_ladder);
-  out.WriteI64(world.traction_watch.winter_hold);
-  out.WriteU8(world.traction_watch.manure_waits_for_oats);
   // The chairman's issue norms (save 57, kSetIssueNorm), through the
   // resource dictionary like every amounts vector; empty until his first
   // order, and empty round-trips as empty.
@@ -788,14 +781,6 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   if (!(by_plan.plan_oat_ha >= 0.0F) || by_plan.plan_oat_expected < 0 ||
       by_plan.plan_team_need < 0) {
     source.Fail("the team's oat plan of the year is negative or not a number");
-  }
-  // The manure's oats (save 177; #1056 C2.2).
-  by_plan.oats_over_ladder = in.ReadI64();
-  by_plan.winter_hold = in.ReadI64();
-  by_plan.manure_waits_for_oats =
-      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "the manure waiting for the oats"));
-  if (by_plan.oats_over_ladder < 0 || by_plan.winter_hold < 0) {
-    source.Fail("the manure's oats over the ladder or the winter's hold is negative");
   }
   for (std::uint32_t day = 0; day < kHarnessWeekDays; ++day) {
     const float harnessed = world->traction_watch.week_harnessed[day];

@@ -225,14 +225,12 @@ static_assert(AggregateArity<FamilyRow>() == 38,
 // Save 176 (#1056 C2): the winter's dose, a ManureDoseSeam at the tail -
 // predicted 32 (the heap's id 4, padded to 8, two Grams 24, two floats 32)
 // and 5 fields; the row 144 -> 176 and 47 -> 48 fields, before the build. On
-// the wire +28 a field. Save 177 (#1056 C2.2): the grams tonight's price
-// carries, a Grams after `due` - predicted 32 -> 40 and 6 fields, the row
-// 176 -> 184 and 48 fields, before the build. On the wire +8 a field.
-static_assert(sizeof(ManureDoseSeam) == 40,
+// the wire +28 a field.
+static_assert(sizeof(ManureDoseSeam) == 32,
               "ManureDoseSeam changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<ManureDoseSeam>() == 6,
+static_assert(AggregateArity<ManureDoseSeam>() == 5,
               "ManureDoseSeam gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(sizeof(FieldRow) == 184, "FieldRow changed — update the codec and VERSION_SAVE");
+static_assert(sizeof(FieldRow) == 176, "FieldRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<FieldRow>() == 48,
               "FieldRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-06: the stink radius pushed the row from 48 + amounts to 56 +
@@ -1192,7 +1190,6 @@ void WriteFieldRow(SaveSink& sink, const FieldRow& row) {
   WriteEntityId(out, row.manure_dose.from);
   out.WriteI64(row.manure_dose.booked);
   out.WriteI64(row.manure_dose.due);
-  out.WriteI64(row.manure_dose.priced);  // save 177
   out.WriteFloat(row.manure_dose.days_remaining);
   out.WriteFloat(row.manure_dose.days_written);
 }
@@ -1321,12 +1318,10 @@ FieldRow ReadFieldRow(LoadSource& source) {
   row.manure_dose.from = ReadEntityId<UnitId>(in);
   row.manure_dose.booked = in.ReadI64();
   row.manure_dose.due = in.ReadI64();
-  row.manure_dose.priced = in.ReadI64();  // save 177
   row.manure_dose.days_remaining = in.ReadFloat();
   row.manure_dose.days_written = in.ReadFloat();
   const bool dose_named = row.manure_dose.from.value != kInvalidEntityIdValue;
   if (row.manure_dose.due < 0 || row.manure_dose.due > row.manure_dose.booked ||
-      row.manure_dose.priced < 0 || row.manure_dose.priced > row.manure_dose.due ||
       dose_named != (row.manure_dose.booked > 0)) {
     source.Fail("a field's manure dose is due beyond its booking, or booked without a heap");
   }

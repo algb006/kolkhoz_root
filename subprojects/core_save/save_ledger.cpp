@@ -162,16 +162,14 @@ constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
 // on the wire +8 a book. Save 176 (#1005; 170 on its old base, never
 // released): spoiled_in_clamps, a 43rd amounts
 // vector after `spoiled` - predicted 1136 + 43 A and 133 fields before the
-// build; on the wire one amounts vector a book. Save 177 (#1056 C2 and C2.2
-// on 176; their 176 and 177 on the old base, never released): manure carted
-// and manure late, two Grams after manure_plowed_in, and the winter's hold's
-// book, three floats after manure_late - predicted 1136 -> 1168 + 43 A (12
-// padded to the next Grams' 8) and 137 fields before the build - the size
-// held, the arity did not: 133 + 5 = 138 (137 was C2's own 132 + 5, carried
-// over without #1005's field); on the wire +28 a book.
-static_assert(sizeof(YearLedger) == 1168 + (43 * kAmountsSize) + kBuiltInRowsSize,
+// build; on the wire one amounts vector a book. Save 177 (#1056 C2 option 2
+// on 176 - C2's contract without C2.2's winter-hold book, which option 2
+// retired; never released): manure carted and manure late, two Grams after
+// manure_plowed_in - predicted 1136 -> 1152 + 43 A and 135 fields before the
+// build; on the wire +16 a book.
+static_assert(sizeof(YearLedger) == 1152 + (43 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 138,
+static_assert(AggregateArity<YearLedger>() == 135,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(BuiltInRow) == 16 && AggregateArity<BuiltInRow>() == 3,
               "BuiltInRow changed — update its codec and VERSION_SAVE");
@@ -261,11 +259,8 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteFloat(book.area_lost_ha);
   out.WriteFloat(book.area_manured_ha);
   out.WriteI64(book.manure_plowed_in);
-  out.WriteI64(book.manure_carted);             // save 176
-  out.WriteI64(book.manure_late);               // save 176
-  out.WriteFloat(book.snow_horse_backed_days);  // save 177
-  out.WriteFloat(book.manure_cart_days);        // save 177
-  out.WriteFloat(book.snow_days);               // save 177
+  out.WriteI64(book.manure_carted);  // save 176
+  out.WriteI64(book.manure_late);    // save 176
 
   sink.WriteAmounts(DefKind::kResource, book.herd_produce);
   sink.WriteAmounts(DefKind::kLivestock, book.adult_head_days);  // save 127
@@ -466,11 +461,8 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.area_lost_ha = in.ReadFloat();
   book.area_manured_ha = in.ReadFloat();
   book.manure_plowed_in = in.ReadI64();
-  book.manure_carted = in.ReadI64();             // save 176
-  book.manure_late = in.ReadI64();               // save 176
-  book.snow_horse_backed_days = in.ReadFloat();  // save 177
-  book.manure_cart_days = in.ReadFloat();        // save 177
-  book.snow_days = in.ReadFloat();               // save 177
+  book.manure_carted = in.ReadI64();  // save 176
+  book.manure_late = in.ReadI64();    // save 176
 
   book.herd_produce = source.ReadAmounts(DefKind::kResource);
   book.adult_head_days = source.ReadAmounts(DefKind::kLivestock);

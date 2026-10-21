@@ -362,7 +362,6 @@ core::WorldState MakeWorld() {
   field.manure_dose = {.from = core::UnitId{2},
                        .booked = 150'000'000,
                        .due = 61'000'000,
-                       .priced = 40'000'000,  // save 177: tonight's price, part of due
                        .days_remaining = 1.5F,
                        .days_written = 2.25F};
   core::AppendRow(world.fields, field);
@@ -1038,14 +1037,8 @@ core::WorldState MakeWorld() {
   world.traction_watch.plan_oat_expected = 6'375'000;
   world.traction_watch.plan_team_need = 31'000'000;
   world.ledger.closed.team_work_oat_requested = 29'000'000;
-  world.ledger.closed.manure_carted = 89'000'000;       // save 176
-  world.ledger.closed.manure_late = 12'000'000;         // save 176
-  world.ledger.closed.snow_horse_backed_days = 412.5F;  // save 177
-  world.ledger.closed.manure_cart_days = 96.25F;        // save 177
-  world.ledger.closed.snow_days = 19.0F;                // save 177
-  world.traction_watch.oats_over_ladder = 7'500'000;    // save 177
-  world.traction_watch.winter_hold = 5'250'000;         // save 177
-  world.traction_watch.manure_waits_for_oats = 1;       // save 177
+  world.ledger.closed.manure_carted = 89'000'000;  // save 176
+  world.ledger.closed.manure_late = 12'000'000;    // save 176
   // The closed year's adult head-days by livestock kind (save 127): NOT
   // empty, since empty is what a codec that forgot them would read back.
   world.ledger.closed.adult_head_days = Amounts({0, 1'880});
@@ -1488,12 +1481,6 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
                     U64(static_cast<std::uint64_t>(by_plan.plan_oat_expected))});
   chunks.push_back(
       {"traction_watch.plan_team_need", U64(static_cast<std::uint64_t>(by_plan.plan_team_need))});
-  // The manure's oats (save 177, #1056 C2.2).
-  chunks.push_back({"traction_watch.oats_over_ladder",
-                    U64(static_cast<std::uint64_t>(by_plan.oats_over_ladder))});
-  chunks.push_back(
-      {"traction_watch.winter_hold", U64(static_cast<std::uint64_t>(by_plan.winter_hold))});
-  chunks.push_back({"traction_watch.manure_waits_for_oats", U8(by_plan.manure_waits_for_oats)});
   AppendAmounts(chunks, "issue_norms", world.issue_norms);
   AppendAmounts(chunks, "plan.due", world.plan.due);
   AppendAmounts(chunks, "plan.delivered", world.plan.delivered);
@@ -1848,10 +1835,9 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // Save 176 (#1005; 170 on its old base): the clamps' rot, a u32 day and 48
     // Grams: 953 -> 1341,
     // predicted (+388) before the build and held; the hash read off it.
-    // Save 177 (#1056 C2 and C2.2 on 176): the manure's oats, two Grams and a
-    // u8: 1341 -> 1358, predicted before the build and held; the hash read
-    // off it with the three set off their defaults.
-    {"world", 1358, 0x5afaf08e2212ba33ULL},
+    // (Save 177, C2 option 2, adds nothing to this block: C2.2's three
+    // TractionWatch fields went with C2.2's pricing.)
+    {"world", 1341, 0xf1cacfddbf8bf97ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -1951,9 +1937,7 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // Save 176 (#1056 C2): +28 a field — the winter's dose (the heap's id, two
     // Grams, two floats); 419 -> 503 predicted (three fields) and held; the
     // hash read off the build with the first field's dose set off its default.
-    // Save 177 (#1056 C2.2): +8 a field — tonight's priced grams; 503 -> 527
-    // predicted (three fields) and held; the hash read off the build.
-    {"fields", 527, 0xa0102e9c9d79247eULL},
+    {"fields", 503, 0x30bff7c53005949cULL},
     // Save 67: +27 — the store's emptying byte and the perevalka's two floats,
     // three units; predicted before the fields were added, and held.
     // Save 74: +1 a unit — the house held for a specialist; three units, +3,
@@ -2276,10 +2260,9 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // 3060 -> 3064 - predicted as «one amounts vector a book» without its
     // bytes; measured two a book (the empty vector's count); the hash read
     // off it.
-    // Save 177 (#1056 C2 and C2.2 on 176): manure carted and late, two Grams
-    // a book, and the winter's hold's book, three floats a book: 3064 -> 3120,
-    // predicted before the build and held; the hash read off it.
-    {"ledger", 3120, 0x796fca611bdd4081ULL},
+    // Save 177 (#1056 C2 option 2 on 176): manure carted and late, two Grams
+    // a book: 3064 -> 3096, predicted before the build; the hash read off it.
+    {"ledger", 3096, 0x0ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -2966,15 +2949,6 @@ int main() {
                    loaded.ledger.closed.manure_late == 12'000'000 &&
                    loaded.ledger.current.manure_carted == 0,
                "a field's winter dose and the book's manure carted and late come back (save 176)");
-    failures +=
-        Expect(dose.priced == 40'000'000 && loaded.ledger.closed.snow_horse_backed_days == 412.5F &&
-                   loaded.ledger.closed.manure_cart_days == 96.25F &&
-                   loaded.ledger.closed.snow_days == 19.0F &&
-                   loaded.traction_watch.oats_over_ladder == 7'500'000 &&
-                   loaded.traction_watch.winter_hold == 5'250'000 &&
-                   loaded.traction_watch.manure_waits_for_oats == 1,
-               "the manure's oats - tonight's price, the winter's book, the hold and the "
-               "wait - come back (save 177)");
   }
   // AND WHETHER ANYBODY EVER TOLD THE FIELD WHAT TO GROW, which the three
   // crop slots beside it cannot say: an empty slot in a chain that exists is
