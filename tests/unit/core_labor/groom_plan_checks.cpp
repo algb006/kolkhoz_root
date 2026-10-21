@@ -617,11 +617,19 @@ int CheckTheGroomsPlan() {
              "(a) on a leg of his load a carter drains the cart's hour, a tenth of a "
              "cart-day whatever his efficiency, paid and tired by it");
   // BY THE MINUTE (T1, save 178): a trip of 36 minutes inside hour 8 is
-  // 8:12-8:48 - the tick 8 to 8, no time at all, until T1.
-  std::cout << "  a trip of 36 minutes within the hour drains " << short_trip.drained << '\n';
-  failures += Expect(std::abs(short_trip.drained - 0.06F) < 1e-4F,
-                     "(T1) a trip of 36 minutes within one hour drains 0.6 of the cart's hour, "
-                     "though its ticks are 8 to 8");
+  // 8:12-8:48 - the tick 8 to 8, no time at all, until T1. With it the hour
+  // holds the ride's last 12 minutes to his load, his first trip's empty half
+  // priced in its seam: 48 minutes in all.
+  const DrainSeen riding_out = TheDrainByTheLegs(*labor, {.hour = 6});
+  std::cout << "  a trip of 36 minutes within the hour, the ride to it before, drains "
+            << short_trip.drained << "; the ride out to his load alone " << riding_out.drained
+            << '\n';
+  failures += Expect(std::abs(short_trip.drained - 0.08F) < 1e-4F,
+                     "(T1) a trip of 36 minutes and 12 of the ride to it within one hour drain "
+                     "0.8 of the cart's hour, though the trip's ticks are 8 to 8");
+  failures += Expect(std::abs(riding_out.drained - 0.1F) < 1e-4F,
+                     "(T1) the ride to his load drains the cart's hour: the empty half of its "
+                     "first trip, priced in its seam; the ride home does not (riding home)");
   failures += Expect(unloading.drained > 0.0F && unloading.drained == by_hours.drained,
                      "(a') between the legs, next to one of his load, he loads and unloads at "
                      "his efficiency, as by hours");

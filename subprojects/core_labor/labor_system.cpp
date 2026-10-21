@@ -3158,7 +3158,14 @@ class LaborSystem final : public ILaborSystem {
       CartShare share{.kind = CartHour::kPlanned};
       for (std::size_t index = 0; index < cart.legs.size(); ++index) {
         const CartLeg& leg = cart.legs[index];
-        if (his(leg)) {
+        // AND THE RIDE TO HIS LOAD IS ITS FIRST TRIP'S EMPTY HALF, priced in its
+        // seam (FollowThePlan; 0.37.139): the price is whole round trips, while
+        // the legs naming the load are k loaded and k - 1 ways back. T1's pair
+        // read the legs at 0.85-0.87 of the price without it (canon rot +147 %).
+        const bool ride_to_his = leg.task.value == kInvalidEntityIdValue &&
+                                 leg.kept_in_chain == 0 && index + 1 < cart.legs.size() &&
+                                 his(cart.legs[index + 1]);
+        if (his(leg) || ride_to_his) {
           share.road_hours +=
               overlap(leg.depart_minute, leg.arrive_minute, hour_from, hour_from + 60);
         }
