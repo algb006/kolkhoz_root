@@ -519,7 +519,9 @@ static_assert(AggregateArity<LogisticsTaskRow>() == 22,
 // `loaded`, +1 a leg on the wire, before the build).
 // Save 177 (#1056 C3): the pooled leg's second task - eleven, +4 a leg on the
 // wire, before the build.
-static_assert(AggregateArity<CartLeg>() == 11,
+// Save 178 (#1056 C3, T1): the two minutes and the kept byte - fourteen, +5 a
+// leg on the wire (the fixture's groom plan 210 -> 225), before the build.
+static_assert(AggregateArity<CartLeg>() == 14,
               "CartLeg gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<CartPlan>() == 5,
               "CartPlan gained or lost a field — update the codec and VERSION_SAVE");
@@ -2215,8 +2217,9 @@ BarterTripRow ReadBarterTripRow(LoadSource& source) {
 // Save 155 (#671): a cart's partner (+4), a leg's resource (+2) and grams (+8).
 // Save 175 (SL): a leg's sledge byte (+1).
 // Save 177 (#1056 C3): a pooled leg's second task (+4).
+// Save 178 (#1056 C3, T1): a leg's two minutes and its kept-in-chain byte (+5).
 constexpr std::size_t kSavedCartBytes = 14;
-constexpr std::size_t kSavedLegBytes = 56;
+constexpr std::size_t kSavedLegBytes = 61;
 constexpr std::size_t kSavedRiderBytes = 4;
 
 void WriteGroomPlan(SaveSink& sink, const GroomPlan& plan) {
@@ -2241,6 +2244,9 @@ void WriteGroomPlan(SaveSink& sink, const GroomPlan& plan) {
       out.WriteI64(leg.carried);
       out.WriteU64(leg.depart);
       out.WriteU64(leg.arrive);
+      out.WriteU16(leg.depart_minute);  // save 178 (T1): the plan's clock unfloored
+      out.WriteU16(leg.arrive_minute);
+      out.WriteU8(leg.kept_in_chain);  // save 178 (T1): KeepInTheChain's marker
       out.WriteU32(static_cast<std::uint32_t>(leg.riders.size()));
       for (const ResidentId rider : leg.riders) {
         WriteEntityId(out, rider);
@@ -2303,6 +2309,17 @@ GroomPlan ReadGroomPlan(LoadSource& source) {
       leg.arrive = in.ReadU64();
       if (leg.arrive < leg.depart) {
         source.Fail("a leg of the groom's plan arrives before it departs");
+        return plan;
+      }
+      leg.depart_minute = in.ReadU16();  // save 178 (T1)
+      leg.arrive_minute = in.ReadU16();
+      if (leg.arrive_minute < leg.depart_minute) {
+        source.Fail("a leg of the groom's plan arrives before it departs, by the minute");
+        return plan;
+      }
+      leg.kept_in_chain = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "a kept leg"));
+      if (leg.kept_in_chain != 0 && (leg.loaded != 0 || leg.task.value == kInvalidEntityIdValue)) {
+        source.Fail("a leg of the groom's plan is kept in the chain with no load, or loaded");
         return plan;
       }
       const std::uint32_t riders = in.ReadU32();

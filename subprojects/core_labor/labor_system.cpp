@@ -2899,27 +2899,29 @@ class LaborSystem final : public ILaborSystem {
       // road the cart's clock drains - his skill does not make the horse walk
       // faster; at the load and the receiver his efficiency stays, since a
       // skilled carter loads faster (econ, boss-econ-c3-body-pair [12]).
-      const CartHour cart_hour = kind == WorkKind::kHauling && resident.work.rides_horse != 0
-                                     ? CartHourOf(current, row)
-                                     : CartHour::kAsBefore;
-      if (cart_hour != CartHour::kAsBefore) {
-        if (cart_hour == CartHour::kOff) {
+      // AND BY THE MINUTE (T1, save 178): the hour drains the share of it the
+      // cart spends on his load's legs and next to them, by the plan's
+      // unfloored clock. With the floored ticks the legs held 0.78 of the
+      // hours the plan priced, and S1' carted every heap at that pace (hay rot
+      // +116 % canon, +107 % novice; core-boss-oats-b-pair [98]).
+      const CartShare cart_share = kind == WorkKind::kHauling && resident.work.rides_horse != 0
+                                       ? CartShareOf(current, row)
+                                       : CartShare{};
+      if (cart_share.kind == CartHour::kUndrawn) {
+        if (!current.groom_plan.stale && !FollowHisChain(current, row)) {
+          released_carters.push_back(row);
+        }
+        continue;  // re-planned, sent on along his chain, or released
+      }
+      if (cart_share.kind == CartHour::kPlanned) {
+        const float dwell_rate = worked > 0.0F ? could_deliver / worked : 0.0F;
+        delivered = (cart_share.road_hours / config_.standard_day_hours) +
+                    (cart_share.dwell_hours * dwell_rate);
+        if (delivered > *seam) {
+          delivered = *seam;
+        }
+        if (delivered <= 0.0F) {
           continue;  // riding to or from another load, or home; unpaid here
-        }
-        if (cart_hour == CartHour::kUndrawn) {
-          if (!current.groom_plan.stale && !FollowHisChain(current, row)) {
-            released_carters.push_back(row);
-          }
-          continue;  // re-planned, sent on along his chain, or released
-        }
-        if (cart_hour == CartHour::kRoad) {
-          delivered = worked / config_.standard_day_hours;
-          if (delivered > *seam) {
-            delivered = *seam;
-          }
-          if (delivered <= 0.0F) {
-            continue;
-          }
         }
       }
       const float seam_before = *seam;
@@ -3095,69 +3097,79 @@ class LaborSystem final : public ILaborSystem {
     }
   }
 
-  /// What a carter's hour is to his load in today's plan (CartHourOf).
+  /// What a carter's hour is to his load in today's plan (CartShareOf).
   enum class CartHour : std::uint8_t {
     kAsBefore,  ///< not priced by the plan: drained by his hours, as before C3
-    kRoad,      ///< on a leg naming his load: the cart's clock drains
-    kDwell,     ///< between legs, next to one naming his load: loading or
-                ///< unloading, drained by his efficiency
-    kOff,       ///< on a leg or a wait of another load, a ride, or home
-    kUndrawn,   ///< his cart's plan names his load in no leg
+    kPlanned,   ///< drained by the shares of the hour (CartShare)
+    kUndrawn,   ///< his cart's plan names his load in no leg it carts
   };
 
-  /// @brief THE PLAN IS THE CARTING (#1056 C3 step 1, S1'; core-boss-oats-
-  ///        b-pair [87]-[96]): what this hour is, in today's plan, to the load
+  /// A carter's hour by the plan's minutes (CartShareOf).
+  struct CartShare {
+    CartHour kind = CartHour::kAsBefore;
+    float road_hours = 0.0F;   ///< on legs of his load: the cart's clock drains
+    float dwell_hours = 0.0F;  ///< between legs next to one of his load: his
+                               ///< loading and unloading, by his efficiency
+  };
+
+  /// @brief THE PLAN IS THE CARTING (#1056 C3 step 1, S1', T1; core-boss-oats-
+  ///        b-pair [87]-[102]): what this hour is, in today's plan, to the load
   ///        of carter `row`, a hauler on a horse. kAsBefore when his load has
   ///        no trip facts (trip_model below 3, a load priced on foot), when its
   ///        round trip is longer than today's light (a BEYOND-THE-DAY load, the
   ///        district lot's 67-84 h: one day's plan cannot draw it - L2, a named
-  ///        class), or when no plan stands for today. Otherwise kRoad inside a
-  ///        leg naming his load (depart <= now < arrive), kDwell in a gap
-  ///        between legs whose leg before or after names it (the loading
-  ///        before a loaded leg, the unloading after it - logistics_system.cpp,
-  ///        SomeCartFree, reads the loading the same way), kOff in any other
-  ///        hour, and kUndrawn when no leg of his cart names it, or he has no
-  ///        cart in the plan.
-  static CartHour CartHourOf(const WorldState& current, std::uint32_t row) {
+  ///        class), or when no plan stands for today. kUndrawn when no leg of
+  ///        his cart names it but a kept one (KeepInTheChain), or he has no
+  ///        cart. Otherwise kPlanned, with the hour's overlap, by the legs'
+  ///        minutes (save 178), with the legs naming his load (road) and with
+  ///        the gaps between two legs one of which names it (dwell: the
+  ///        loading before a loaded leg, the unloading after it -
+  ///        logistics_system.cpp, SomeCartFree, reads the loading the same
+  ///        way). Both nought: riding to another load, on it, or home.
+  static CartShare CartShareOf(const WorldState& current, std::uint32_t row) {
     const WorkAssignment& work = current.residents.rows[row].work;
     const std::uint32_t task_row = TaskRowOfWork(current, work);
     if (task_row == kNoRow || current.groom_plan.day != current.calendar.day) {
-      return CartHour::kAsBefore;
+      return CartShare{};
     }
     const TaskTripTerms& terms = current.logistics_tasks.rows[task_row].trip_terms;
     if (!(terms.trip_hours > 0.0F) || terms.trip_hours > current.weather.daylight_hours) {
-      return CartHour::kAsBefore;
+      return CartShare{};
     }
     const std::uint32_t task = current.logistics_tasks.row_ids[task_row].value;
     const ResidentId driver = current.residents.row_ids[row];
-    const Tick now = current.calendar.tick;
+    const Tick day_start = static_cast<Tick>(current.groom_plan.day) * kTicksPerDay;
+    const int hour_from = static_cast<int>(current.calendar.tick - day_start) * 60;
+    const auto his = [task](const CartLeg& leg) {
+      return leg.task.value == task && leg.kept_in_chain == 0;
+    };
+    const auto overlap = [](int from, int to, int hour_from, int hour_to) {
+      const int start = std::max(from, hour_from);
+      const int end = std::min(to, hour_to);
+      return end > start ? static_cast<float>(end - start) / 60.0F : 0.0F;
+    };
     for (const CartPlan& cart : current.groom_plan.carts) {
       if (cart.driver.value != driver.value || cart.on_foot) {
         continue;
       }
-      const bool named = std::ranges::any_of(
-          cart.legs, [task](const CartLeg& leg) { return leg.task.value == task; });
-      if (!named) {
-        return CartHour::kUndrawn;
+      if (!std::ranges::any_of(cart.legs, his)) {
+        return CartShare{.kind = CartHour::kUndrawn};
       }
-      const CartLeg* before = nullptr;
-      const CartLeg* after = nullptr;
-      for (const CartLeg& leg : cart.legs) {
-        if (leg.depart <= now && now < leg.arrive) {
-          return leg.task.value == task ? CartHour::kRoad : CartHour::kOff;
+      CartShare share{.kind = CartHour::kPlanned};
+      for (std::size_t index = 0; index < cart.legs.size(); ++index) {
+        const CartLeg& leg = cart.legs[index];
+        if (his(leg)) {
+          share.road_hours +=
+              overlap(leg.depart_minute, leg.arrive_minute, hour_from, hour_from + 60);
         }
-        if (leg.arrive <= now && (before == nullptr || leg.arrive > before->arrive)) {
-          before = &leg;
-        }
-        if (leg.depart > now && (after == nullptr || leg.depart < after->depart)) {
-          after = &leg;
+        if (index + 1 < cart.legs.size() && (his(leg) || his(cart.legs[index + 1]))) {
+          share.dwell_hours += overlap(
+              leg.arrive_minute, cart.legs[index + 1].depart_minute, hour_from, hour_from + 60);
         }
       }
-      const bool next_to_his = (before != nullptr && before->task.value == task) ||
-                               (after != nullptr && after->task.value == task);
-      return next_to_his ? CartHour::kDwell : CartHour::kOff;
+      return share;
     }
-    return CartHour::kUndrawn;
+    return CartShare{.kind = CartHour::kUndrawn};
   }
 
   /// @brief S1': a carter whose load the fresh plan does not draw goes on to

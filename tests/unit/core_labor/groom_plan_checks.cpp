@@ -159,6 +159,7 @@ struct DrainCase {
   bool leg_names_it = true;  ///< the loaded leg 8-10 is of his load; else of no load
   bool chain_other = false;  ///< a leg of the other stand's logs at 14-16
   bool stale = false;        ///< the plan is stale (a re-plan pending)
+  bool short_trip = false;   ///< instead: rides 7:00-8:12, carts 8:12-8:48, home to 10:00
 };
 
 /// THE PLAN IS THE CARTING (#1056 C3 step 1, S1'; core-boss-oats-b-pair
@@ -194,22 +195,35 @@ DrainSeen TheDrainByTheLegs(core::ILaborSystem& labor, const DrainCase& c) {
   core::CartPlan cart;
   cart.driver = world.residents.row_ids[0];
   cart.on_foot = c.on_foot;
-  const auto leg =
-      [](core::LogisticsTaskId of, std::uint8_t loaded, core::Tick depart, core::Tick arrive) {
-        const core::Tick day_start = static_cast<core::Tick>(kWorkingDay) * core::kTicksPerDay;
-        return core::CartLeg{.from = core::Vec2{},
-                             .to = core::Vec2{},
-                             .task = of,
-                             .loaded = loaded,
-                             .depart = day_start + depart,
-                             .arrive = day_start + arrive,
-                             .riders = {}};
-      };
-  cart.legs.push_back(leg(core::LogisticsTaskId{}, 0U, 6, 7));
-  cart.legs.push_back(leg(c.leg_names_it ? task : core::LogisticsTaskId{}, 1U, 8, 10));
-  cart.legs.push_back(leg(core::LogisticsTaskId{}, 0U, 11, 13));
+  // Timed as the plan times them (T1, save 178): the minute, and the tick
+  // that holds it.
+  const auto leg = [](core::LogisticsTaskId of,
+                      std::uint8_t loaded,
+                      std::uint16_t depart_minute,
+                      std::uint16_t arrive_minute) {
+    const core::Tick day_start = static_cast<core::Tick>(kWorkingDay) * core::kTicksPerDay;
+    return core::CartLeg{.from = core::Vec2{},
+                         .to = core::Vec2{},
+                         .task = of,
+                         .loaded = loaded,
+                         .depart = day_start + (depart_minute / 60U),
+                         .arrive = day_start + (arrive_minute / 60U),
+                         .depart_minute = depart_minute,
+                         .arrive_minute = arrive_minute,
+                         .riders = {}};
+  };
+  const core::LogisticsTaskId carted = c.leg_names_it ? task : core::LogisticsTaskId{};
+  if (c.short_trip) {
+    cart.legs.push_back(leg(core::LogisticsTaskId{}, 0U, 420, 492));
+    cart.legs.push_back(leg(carted, 1U, 492, 528));
+    cart.legs.push_back(leg(core::LogisticsTaskId{}, 0U, 528, 600));
+  } else {
+    cart.legs.push_back(leg(core::LogisticsTaskId{}, 0U, 360, 420));
+    cart.legs.push_back(leg(carted, 1U, 480, 600));
+    cart.legs.push_back(leg(core::LogisticsTaskId{}, 0U, 660, 780));
+  }
   if (c.chain_other) {
-    cart.legs.push_back(leg(other, 1U, 14, 16));
+    cart.legs.push_back(leg(other, 1U, 840, 960));
   }
   world.groom_plan.carts.push_back(cart);
   const float rest_was = world.residents.rows[0].rest;
@@ -584,6 +598,7 @@ int CheckTheGroomsPlan() {
   const DrainSeen unloading = TheDrainByTheLegs(*labor, {.hour = 10});
   const DrainSeen by_hours = TheDrainByTheLegs(*labor, {.hour = 10, .trip_hours = 0.0F});
   const DrainSeen riding = TheDrainByTheLegs(*labor, {.hour = 12});
+  const DrainSeen short_trip = TheDrainByTheLegs(*labor, {.hour = 8, .short_trip = true});
   const DrainSeen waiting = TheDrainByTheLegs(*labor, {.leg_names_it = false, .stale = true});
   const DrainSeen chained = TheDrainByTheLegs(*labor, {.leg_names_it = false, .chain_other = true});
   const DrainSeen released = TheDrainByTheLegs(*labor, {.leg_names_it = false});
@@ -601,6 +616,12 @@ int CheckTheGroomsPlan() {
       Expect(std::abs(road.drained - 0.1F) < 1e-4F && road.paid > 0.0F && road.rest_spent > 0.0F,
              "(a) on a leg of his load a carter drains the cart's hour, a tenth of a "
              "cart-day whatever his efficiency, paid and tired by it");
+  // BY THE MINUTE (T1, save 178): a trip of 36 minutes inside hour 8 is
+  // 8:12-8:48 - the tick 8 to 8, no time at all, until T1.
+  std::cout << "  a trip of 36 minutes within the hour drains " << short_trip.drained << '\n';
+  failures += Expect(std::abs(short_trip.drained - 0.06F) < 1e-4F,
+                     "(T1) a trip of 36 minutes within one hour drains 0.6 of the cart's hour, "
+                     "though its ticks are 8 to 8");
   failures += Expect(unloading.drained > 0.0F && unloading.drained == by_hours.drained,
                      "(a') between the legs, next to one of his load, he loads and unloads at "
                      "his efficiency, as by hours");

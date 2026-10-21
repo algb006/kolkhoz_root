@@ -1029,6 +1029,28 @@ int TestTheTripsAndTheEvening() {
   failures +=
       Expect(loaded_form == core::CargoForm::kRick && way_back_form == core::CargoForm::kNone,
              "trips: the door names the loaded leg a rick and the way back nought");
+  // KEPT IN THE CHAIN BY ITS MARKER (#1056 C3, T1; save 178): a load of the
+  // chain the cart never carted draws no cargo (the Fable review of 11 October
+  // 2026, item 9), while a carting at the load floored to no ticks - under an
+  // hour - draws its load. Until T1 both were «depart == arrive».
+  core::CartLeg at_load{};
+  for (const core::CartPlan& cart : hay.groom_plan.carts) {
+    for (const core::CartLeg& leg : cart.legs) {
+      if (cart.driver.value == hay_day.carter.value && leg.loaded != 0) {
+        at_load = leg;
+      }
+    }
+  }
+  at_load.loaded = 0;
+  at_load.to = at_load.from;
+  at_load.riders.clear();
+  at_load.arrive = at_load.depart;
+  core::CartLeg kept = at_load;
+  kept.kept_in_chain = 1U;
+  failures += Expect(core::LegCargoForm(config, hay, kept) == core::CargoForm::kNone &&
+                         core::LegCargoForm(config, hay, at_load) == core::CargoForm::kRick,
+                     "trips: a load kept in the chain draws no cargo; a carting at the load "
+                     "under an hour, no ticks long, draws its rick");
   const core::WorkAssignment& hay_feller =
       hay.residents.rows[core::FindRow(hay.residents, hay_day.feller)].work;
   failures += Expect(hay_feller.rides_home_with.value == hay_day.carter.value &&

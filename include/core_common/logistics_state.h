@@ -315,6 +315,23 @@ struct CartLeg {
   Tick depart = 0;
   Tick arrive = 0;
 
+  /// THE SAME MOMENTS TO THE MINUTE (#1056 C3, T1; save 178): minutes from the
+  /// midnight of the plan's day, as the plan's clock had them before the ticks
+  /// floored them to the hour. The labour hour drains a priced load by them
+  /// (CartHourOf's overlap). Until T1 a half of 0.6 h begun at 8.2 h was the
+  /// leg 8->8, no time at all, and the legs held 0.78 of the hours the plan
+  /// priced (core-boss-oats-b-pair [98]). The floored ticks stay for every
+  /// reader that counts hours. CollectPorterLegs (leg_loads.h) still sends
+  /// the ticks and has no reader in the layer yet (ue, 21 October 2026): the
+  /// reader to come takes these minutes.
+  std::uint16_t depart_minute = 0;
+  std::uint16_t arrive_minute = 0;
+
+  /// 1 on a load of the chain the cart never carted, kept in its place with
+  /// no time on it (KeepInTheChain; save 178). Until T1 «no time» was read as
+  /// depart == arrive, which a real trip floored to the hour also is.
+  std::uint8_t kept_in_chain = 0;
+
   /// Who rides this leg beside the driver — seated at `from` or on the way —
   /// within the cart's seats (transport.csv `seats`: the goods cart's bench
   /// two, the people's cart six): the passengers the labour hour seated this

@@ -818,12 +818,17 @@ core::WorldState MakeWorld() {
                                          .resource = core::ResourceId{2},  // save 155
                                          .depart = 7'057,
                                          .arrive = 7'059,
+                                         .depart_minute = 77,   // save 178 (T1)
+                                         .arrive_minute = 191,  // save 178
                                          .riders = {core::ResidentId{3}}});
   plan_cart.legs.push_back(core::CartLeg{.from = core::Vec2{.x = 30.0F, .y = 40.0F},
                                          .to = core::Vec2{.x = 50.0F, .y = 60.0F},
                                          .task = core::LogisticsTaskId{4},
                                          .depart = 7'061,
                                          .arrive = 7'063,
+                                         .depart_minute = 300,  // save 178
+                                         .arrive_minute = 301,
+                                         .kept_in_chain = 1,  // save 178: kept in the chain
                                          .riders = {}});
   world.groom_plan.carts.push_back(plan_cart);
   // A carrier on foot (save format 137, B4b): one load leg, no riders.
@@ -839,6 +844,8 @@ core::WorldState MakeWorld() {
                                            .carried = 20'000,
                                            .depart = 7'058,
                                            .arrive = 7'062,
+                                           .depart_minute = 129,  // save 178
+                                           .arrive_minute = 362,
                                            .riders = {},
                                            .pooled_task = core::LogisticsTaskId{6}});  // save 177
   world.groom_plan.carts.push_back(plan_walker);
@@ -2139,7 +2146,9 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // predicted before the build and held.
     // Save 177 (#1056 C3): +4 a leg, the pooled leg's second task - three legs,
     // 198 -> 210, predicted before the build and held; the hash read off it.
-    {"groom_plan", 210, 0x925d0402cf663c1bULL},  // save 155: 2 partners, 3 legs' loads
+    // Save 178 (#1056 C3, T1): +5 a leg, two minutes and the kept byte - three
+    // legs, 210 -> 225, predicted before the build; the hash to be read off it.
+    {"groom_plan", 225, 0x925d0402cf663c1bULL},  // save 155: 2 partners, 3 legs' loads
     // 2026-09-17, save 52: +56 bytes over the two books — the nine yearly
     // inputs the readiness index asks of a year and the year did not keep
     // (ledger_state.h): satisfaction's sum and count, able-bodied
@@ -3205,11 +3214,18 @@ int main() {
             back.carts[1].legs[0].loaded == 1 && back.carts[1].legs[0].resource.value == 1 &&
             back.carts[1].legs[0].carried == 20'000 &&
             back.carts[1].legs[0].pooled_task.value == 6 &&
-            back.carts[0].legs[0].pooled_task.value == core::kInvalidEntityIdValue,
+            back.carts[0].legs[0].pooled_task.value == core::kInvalidEntityIdValue &&
+            back.carts[0].legs[0].depart_minute == 77 &&
+            back.carts[0].legs[0].arrive_minute == 191 &&
+            back.carts[0].legs[1].depart_minute == 300 &&
+            back.carts[0].legs[1].arrive_minute == 301 &&
+            back.carts[0].legs[1].kept_in_chain == 1 && back.carts[0].legs[0].kept_in_chain == 0 &&
+            back.carts[1].legs[0].depart_minute == 129 &&
+            back.carts[1].legs[0].arrive_minute == 362,
         "the groom's plan came back with its day, its flags, its cart and both legs in order, "
         "the rider on the first (save 136), the carrier on foot with his byte (save 137), "
-        "the trips' resources, the walker's grams and his partner (save 155), and the pooled "
-        "leg's second load (save 177)");
+        "the trips' resources, the walker's grams and his partner (save 155), the pooled "
+        "leg's second load (save 177), and the legs' minutes and kept byte (save 178)");
   }
   // Save 138: the waits — the passenger's and the herd's, every field, and
   // the first resident's absent wait stays absent.
