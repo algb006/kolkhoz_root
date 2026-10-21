@@ -214,13 +214,13 @@ struct LogisticsTaskRow {
   /// groom's plan, which draws whole trips from them and writes the task's
   /// seam (CartTripModel::kPlanned). All zero under every other model, on
   /// foot, and for a task the evening has not priced yet.
-  TaskTripTerms trip_terms;
+  TaskTripTerms trip_terms = TaskTripTerms{};
 
   /// CARRIED ALONG ANOTHER TASK'S TRIPS today (C3, rulings 3-4): the task
   /// whose cart takes this load too - a field heap's leftover pooled into
   /// another field's last load, or a back load on another load's way home.
   /// Invalid when the load goes by its own trips. Written by the plan.
-  LogisticsTaskId carried_by;
+  LogisticsTaskId carried_by = LogisticsTaskId{};
 
   /// What THIS task's seam drains for each cart-day the carrier's seam drains
   /// (work_seam.h, CoDrainCarriedTasks): this task's priced share of the
@@ -329,7 +329,7 @@ struct CartLeg {
   /// THE SECOND LOAD OF A POOLED LEG (#1056 C3, ruling 3): on the loaded leg
   /// from the second field's heap to the store, the second field's task
   /// beside `task`; invalid on every other leg. The layer shows both loads.
-  LogisticsTaskId pooled_task;
+  LogisticsTaskId pooled_task = LogisticsTaskId{};
 };
 
 /// @brief One cart's day: a horse of the pool and its driver.

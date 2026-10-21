@@ -54,7 +54,7 @@ struct TaskTripTerms {
   /// Where the load lies, the trip's start: a field's HEAP POINT (production's
   /// FieldHeapPoint, not the field's centre - ruling 2), the stand, the site's
   /// pit, the store emptied, the district centre, the heap of a dose.
-  Vec2 load_point;
+  Vec2 load_point = Vec2{};
 
   /// One whole round trip, game hours: the loaded half, the way back empty,
   /// and both loading pauses (haul.h, RateOverKm), at the evening's road bed
