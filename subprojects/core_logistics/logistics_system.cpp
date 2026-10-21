@@ -100,56 +100,6 @@ bool CartsChanged(const WorldState& world, const GroomPlan& plan) {
   return planned_carts != there;
 }
 
-/// THE CART THAT GOES HOME WHILE LOADS WAIT (#1056 C3, M1): whether some goods
-/// cart's ride home - its last leg, of no load - sets out at the next tick
-/// with no leg of a load after it, while some task with carting left (its seam
-/// above nought, not paused) is named by no leg of any cart not yet set out.
-/// Asked an hour ahead, so that the re-plan, which keeps every leg begun by
-/// this tick, draws the rest of the cart's day from its last load instead.
-bool CartHomeWhileLoadsWait(const WorldState& world, const GroomPlan& plan) {
-  const Tick next = world.calendar.tick + 1;
-  bool going_home = false;
-  for (const CartPlan& cart : plan.carts) {
-    if (cart.on_foot || cart.people_cart || cart.legs.empty()) {
-      continue;
-    }
-    const CartLeg& last = cart.legs.back();
-    going_home = going_home || (last.task.value == kInvalidEntityIdValue &&
-                                last.kept_in_chain == 0 && last.depart == next);
-  }
-  if (!going_home) {
-    return false;
-  }
-  for (std::uint32_t row = 0; row < world.logistics_tasks.rows.size(); ++row) {
-    const LogisticsTaskRow& task = world.logistics_tasks.rows[row];
-    // Not a load no day's cart takes: one past the day's light (L2, the
-    // district lot), or a milk leg its walkers carry (CartChain skips both).
-    const bool past_the_light = task.trip_terms.trip_hours > world.weather.daylight_hours;
-    bool walked = false;
-    if (task.load_kind == LogisticsLoadKind::kMilkLeg) {
-      const std::uint32_t herd_row = FindRow(world.herds, task.herd);
-      walked = herd_row != kNoRow && world.herds.rows[herd_row].leg_on_foot != 0;
-    }
-    if (task.paused || past_the_light || walked) {
-      continue;
-    }
-    const float* const seam = WorkSeamOf(world, HaulingWorkOf(task));
-    if (seam == nullptr || !(*seam > 0.0F)) {
-      continue;
-    }
-    const std::uint32_t id = world.logistics_tasks.row_ids[row].value;
-    const bool drawn = std::ranges::any_of(plan.carts, [id, &world](const CartPlan& cart) {
-      return std::ranges::any_of(cart.legs, [id, &world](const CartLeg& leg) {
-        return leg.task.value == id && leg.kept_in_chain == 0 && leg.depart > world.calendar.tick;
-      });
-    });
-    if (!drawn) {
-      return true;
-    }
-  }
-  return false;
-}
-
 /// «Дольше часа» (transport §12): the hours of working light a task of level
 /// 0 may stand unserved before the lamp lights.
 constexpr std::uint16_t kLateAfterHours = 1;
@@ -358,19 +308,6 @@ class LogisticsSystem final : public ILogisticsSystem {
       PriceTasksFromPlan(config_, current, PriceMode::kBook);
     }
     plan.stale = plan.stale || CartsChanged(current, plan);
-    // AND A CART GOING HOME WHILE LOADS WAIT (#1056 C3, M1; econ, boss-econ-
-    // c3-body-pair [17]): the morning's clock sends a cart home when its chain
-    // is carted by the estimate, while another load still has carting left
-    // and no cart's leg ahead names it. The hour before its ride home sets out
-    // the rest of its day is drawn again from where its last load leaves it.
-    // Until M1 it stood its carter by a waiting load to the evening once the
-    // drain followed the plan (b29dd388's pair: placed carter-hours on field
-    // heaps +51 % canon, the district lot's -66 %; core-boss-oats-b-pair [106]).
-    // Under the planned model only: there the plan is the carting; under the
-    // others the labour drains a held load by its hours and the plan is the
-    // estimate it always was.
-    plan.stale =
-        plan.stale || (PlanPricesCarts(config_, current) && CartHomeWhileLoadsWait(current, plan));
     // AND A HEAP REAPED IN THE DAY (#1056 C4, writer (3)): its task is made
     // now and the plan drawn again with it. Until C4 tasks changed at hour 0
     // alone, and a heap reaped at noon waited for tomorrow's plan. The road

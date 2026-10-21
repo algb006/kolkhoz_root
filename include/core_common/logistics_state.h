@@ -317,10 +317,11 @@ struct CartLeg {
 
   /// THE SAME MOMENTS TO THE MINUTE (#1056 C3, T1; save 178): minutes from the
   /// midnight of the plan's day, as the plan's clock had them before the ticks
-  /// floored them to the hour. The labour hour drains a priced load by them
-  /// (CartHourOf's overlap). Until T1 a half of 0.6 h begun at 8.2 h was the
-  /// leg 8->8, no time at all, and the legs held 0.78 of the hours the plan
-  /// priced (core-boss-oats-b-pair [98]). The floored ticks stay for every
+  /// floored them to the hour. Until T1 a half of 0.6 h begun at 8.2 h was the
+  /// leg 8->8, no time at all: about a tenth of a day's legs had no ticks and
+  /// a third were stretched by a quarter hour or more (core-boss-oats-b-pair
+  /// [104]). No reader in the core drains by them since M2 (the labour drains
+  /// a held load by its carters' hours; [110]). The floored ticks stay for every
   /// reader that counts hours. CollectPorterLegs (leg_loads.h) still sends
   /// the ticks and has no reader in the layer yet (ue, 21 October 2026): the
   /// reader to come takes these minutes.
