@@ -105,6 +105,23 @@ struct LogisticsConfig {
   std::uint32_t cart_passenger_seats = 0;
   float cart_load_kg = 750.0F;
 
+  /// THE CART TRIP's MODEL (#1056 C3; transport.csv `cart_loaded`
+  /// `trip_model`, production's cell): 3 (CartTripModel::kPlanned in
+  /// production's cart_trips.h) - the plan draws whole trips from each task's
+  /// TaskTripTerms and writes its seam (trip_pricing.h). Every other value:
+  /// the plan draws as before and writes no price.
+  std::uint8_t cart_trip_model = 0;
+
+  /// THE POOLED TRIP's DETOUR (#1056 C3, ruling 3; logistics.csv
+  /// `pool_detour_share`, STUB econ 0.25 by her §C3 estimate - the second
+  /// field's ~0.3-0.5 km against a field-to-store run of 1.6-2.1 km): a field
+  /// heap's last part-load takes another field's leftover when the way first
+  /// heap -> second heap -> store is at most this share longer than first heap
+  /// -> store. 0 pools nothing (C3-f's «lift off» sub-run). Return condition
+  /// (econ): pooled trips under 5 % of field-heap trips in the median village
+  /// - the share is re-read from C3-h's printed detour distribution.
+  float pool_detour_share = 0.25F;
+
   /// THE SLEDGE (SL; core_common/cart_gear.h): transport.csv `sledge`; the
   /// groom's plan draws a goods cart's trips at CartGearToday's paces with
   /// CartSpecsOf(config).

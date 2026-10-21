@@ -162,10 +162,16 @@ constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
 // on the wire +8 a book. Save 176 (#1005; 170 on its old base, never
 // released): spoiled_in_clamps, a 43rd amounts
 // vector after `spoiled` - predicted 1136 + 43 A and 133 fields before the
-// build; on the wire one amounts vector a book.
-static_assert(sizeof(YearLedger) == 1136 + (43 * kAmountsSize) + kBuiltInRowsSize,
+// build; on the wire one amounts vector a book. Save 177 (#1056 C3, the drawn
+// trip as the price; the next number free when it lands - C2's never-released
+// 177 re-bumps behind it, or C3 does behind C2, boss [34]): cart_trips_paid,
+// an array of six floats by source after cart_grams_off_road, and four floats
+// (cart_days_drawn, cart_days_fallback, cart_trips_pooled, cart_trips_back) -
+// predicted 1136 -> 1176 + 43 A and 138 fields before the build; on the wire
+// +40 a book.
+static_assert(sizeof(YearLedger) == 1176 + (43 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 133,
+static_assert(AggregateArity<YearLedger>() == 138,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(BuiltInRow) == 16 && AggregateArity<BuiltInRow>() == 3,
               "BuiltInRow changed — update its codec and VERSION_SAVE");
@@ -311,6 +317,12 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   for (const Grams grams : book.cart_grams_off_road) {
     out.WriteI64(grams);
   }
+  // #1056 C3: U's whole trips paid by source, and the prints C3-g, C3-h.
+  WriteFloatArray(out, book.cart_trips_paid);
+  out.WriteFloat(book.cart_days_drawn);
+  out.WriteFloat(book.cart_days_fallback);
+  out.WriteFloat(book.cart_trips_pooled);
+  out.WriteFloat(book.cart_trips_back);
   // Save 155 (#671): who carried it, and the logs carried by two.
   sink.WriteAmounts(DefKind::kResource, book.hauled_on_foot);
   sink.WriteAmounts(DefKind::kResource, book.hauled_by_cart);
@@ -535,6 +547,17 @@ YearLedger ReadYearLedger(LoadSource& source) {
           "the book's produce cart column is negative or carries more beyond the road "
           "than it carried");
     }
+  }
+  // #1056 C3: U's whole trips paid by source, and the prints C3-g, C3-h.
+  ReadFloatArray(in, book.cart_trips_paid);
+  book.cart_days_drawn = in.ReadFloat();
+  book.cart_days_fallback = in.ReadFloat();
+  book.cart_trips_pooled = in.ReadFloat();
+  book.cart_trips_back = in.ReadFloat();
+  if (std::ranges::any_of(book.cart_trips_paid, [](float trips) { return trips < 0.0F; }) ||
+      book.cart_days_drawn < 0.0F || book.cart_days_fallback < 0.0F ||
+      book.cart_trips_pooled < 0.0F || book.cart_trips_back < 0.0F) {
+    source.Fail("the book's drawn-trip columns are negative");
   }
   // Save 155 (#671): who carried it, and the logs carried by two.
   book.hauled_on_foot = source.ReadAmounts(DefKind::kResource);

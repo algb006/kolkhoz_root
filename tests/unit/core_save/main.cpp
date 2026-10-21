@@ -795,6 +795,14 @@ core::WorldState MakeWorld() {
   task.threshold_days = 11;       // save 171 (#1056 C1.2)
   task.drained_on_foot = 0.5F;    // save 155: who drained the seam, the two apart
   task.drained_by_cart = 1.25F;
+  // Save 177 (#1056 C3): the trip's facts and the carried pair, each apart.
+  task.trip_terms = core::TaskTripTerms{.load_point = core::Vec2{.x = 123.0F, .y = 456.0F},
+                                        .trip_hours = 2.5F,
+                                        .trip_loaded_hours = 1.5F,
+                                        .cart_load = 1'800'000,
+                                        .grams_left = 7'200'000};
+  task.carried_by = core::LogisticsTaskId{9};
+  task.carried_share = 0.375F;
   core::AppendRow(world.logistics_tasks, task);
   // The groom's plan of the day (save format 136): one cart, two legs, a rider
   // on the first — every field off its default, the two ticks apart.
@@ -831,7 +839,8 @@ core::WorldState MakeWorld() {
                                            .carried = 20'000,
                                            .depart = 7'058,
                                            .arrive = 7'062,
-                                           .riders = {}});
+                                           .riders = {},
+                                           .pooled_task = core::LogisticsTaskId{6}});  // save 177
   world.groom_plan.carts.push_back(plan_walker);
 
   // A couple waiting for a free house (save format 35).
@@ -1040,6 +1049,12 @@ core::WorldState MakeWorld() {
   // off its default, so a codec that shifts one column onto its neighbour,
   // or one source onto the next, cannot round-trip clean.
   world.ledger.closed.cart_trips = {12.5F, 0.25F, 3.0F};
+  // Save 177 (#1056 C3): U's whole trips paid, and the prints C3-g, C3-h.
+  world.ledger.closed.cart_trips_paid = {14.0F, 0.5F, 3.5F};
+  world.ledger.closed.cart_days_drawn = 4.5F;
+  world.ledger.closed.cart_days_fallback = 0.75F;
+  world.ledger.closed.cart_trips_pooled = 2.0F;
+  world.ledger.closed.cart_trips_back = 1.0F;
   world.ledger.closed.cart_off_road_m = {1500.0F, 20.0F, 90.0F};
   world.ledger.closed.cart_off_road_worst_m = {220.0F, 80.0F, 30.0F};
   world.ledger.closed.cart_trips_off_road = {6.0F, 0.25F, 2.0F};
@@ -2107,7 +2122,10 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // before the build and held; the hash read off it.
     // Save 174 (#1099): +1 - why level 0; predicted 65 -> 66 before the build
     // and held; the hash read off it.
-    {"logistics_tasks", 66, 0x7e3fb17aaef695cdULL},
+    // Save 177 (#1056 C3): +44 - the trip's facts (a Vec2, two floats, two
+    // Grams) and the carried pair (an id, a float); predicted 66 -> 110 before
+    // the build; the hash read off it.
+    {"logistics_tasks", 110, 0x0ULL},
     // Save 173 (#1089): the settlements - the table's next id and count, one
     // row's id and 27 bytes of fields: predicted 39 before the build and
     // held; the hash read off it.
@@ -2118,7 +2136,9 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // Save 153: +1 a leg — the loaded byte; three legs, 154 -> 157, held.
     // Save 175 (SL): +1 a leg — the sledge byte; three legs, 195 -> 198,
     // predicted before the build and held.
-    {"groom_plan", 198, 0xebefefde9a24b49dULL},  // save 155: 2 partners, 3 legs' loads
+    // Save 177 (#1056 C3): +4 a leg, the pooled leg's second task - three legs,
+    // 198 -> 210, predicted before the build; the hash read off it.
+    {"groom_plan", 210, 0x0ULL},  // save 155: 2 partners, 3 legs' loads
     // 2026-09-17, save 52: +56 bytes over the two books — the nine yearly
     // inputs the readiness index asks of a year and the year did not keep
     // (ledger_state.h): satisfaction's sum and count, able-bodied
@@ -2247,7 +2267,9 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // 3060 -> 3064 - predicted as «one amounts vector a book» without its
     // bytes; measured two a book (the empty vector's count); the hash read
     // off it.
-    {"ledger", 3064, 0xbb189997e6ae58aaULL},
+    // Save 177 (#1056 C3): +40 a book - six floats by source and four floats;
+    // 3064 -> 3144, predicted before the build; the hash read off it.
+    {"ledger", 3144, 0x0ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -2778,8 +2800,12 @@ int main() {
                    back.cart_store_off_road_m == sent.cart_store_off_road_m &&
                    back.cart_store_off_road_worst_m == sent.cart_store_off_road_worst_m &&
                    back.cart_grams == sent.cart_grams &&
-                   back.cart_grams_off_road == sent.cart_grams_off_road,
-               "the produce cart's six columns survive, source by source (save 96)");
+                   back.cart_grams_off_road == sent.cart_grams_off_road &&
+                   back.cart_trips_paid == sent.cart_trips_paid && back.cart_days_drawn == 4.5F &&
+                   back.cart_days_fallback == 0.75F && back.cart_trips_pooled == 2.0F &&
+                   back.cart_trips_back == 1.0F,
+               "the produce cart's six columns survive, source by source (save 96), and the "
+               "drawn trip's five (save 177)");
     failures += Expect(back.hauled_on_foot == sent.hauled_on_foot &&
                            back.hauled_by_cart == sent.hauled_by_cart &&
                            back.log_pair_trips == 1.5F && back.log_pair_days == 2 &&
@@ -3145,10 +3171,14 @@ int main() {
             back.origin == core::LogisticsOrigin::kPlayer && back.paused &&
             back.aged_from_day == 141 && back.urgent_since == 3'333 &&
             back.unserved_light_hours == 7 && back.over_fields && back.drained_on_foot == 0.5F &&
-            back.drained_by_cart == 1.25F && back.threshold_days == 11,
+            back.drained_by_cart == 1.25F && back.threshold_days == 11 &&
+            back.trip_terms.load_point.x == 123.0F && back.trip_terms.load_point.y == 456.0F &&
+            back.trip_terms.trip_hours == 2.5F && back.trip_terms.trip_loaded_hours == 1.5F &&
+            back.trip_terms.cart_load == 1'800'000 && back.trip_terms.grams_left == 7'200'000 &&
+            back.carried_by.value == 9 && back.carried_share == 0.375F,
         "a task of the groom's logistics came back with its load, its two levels, its origin, "
-        "its pause, its two times, the lamp's clock, who drained it and the rick's threshold "
-        "(save 135, 142, 155, 171)");
+        "its pause, its two times, the lamp's clock, who drained it, the rick's threshold, "
+        "and the trip's facts with the carried pair (save 135, 142, 155, 171, 177)");
   }
   // Save 136. The two legs' ticks and places are apart, the rider on the
   // first only: a codec that swapped or dropped one is red here.
@@ -3172,10 +3202,13 @@ int main() {
             back.carts[1].partner.value == 4 &&
             back.carts[0].partner.value == core::kInvalidEntityIdValue &&
             back.carts[1].legs[0].loaded == 1 && back.carts[1].legs[0].resource.value == 1 &&
-            back.carts[1].legs[0].carried == 20'000,
+            back.carts[1].legs[0].carried == 20'000 &&
+            back.carts[1].legs[0].pooled_task.value == 6 &&
+            back.carts[0].legs[0].pooled_task.value == core::kInvalidEntityIdValue,
         "the groom's plan came back with its day, its flags, its cart and both legs in order, "
-        "the rider on the first (save 136), the carrier on foot with his byte (save 137), and "
-        "the trips' resources, the walker's grams and his partner (save 155)");
+        "the rider on the first (save 136), the carrier on foot with his byte (save 137), "
+        "the trips' resources, the walker's grams and his partner (save 155), and the pooled "
+        "leg's second load (save 177)");
   }
   // Save 138: the waits — the passenger's and the herd's, every field, and
   // the first resident's absent wait stays absent.

@@ -1247,8 +1247,10 @@ struct ProductionConfig {
   /// THE CART TRIP's MODEL (routing stage В4; cart_trips.h, CartTripModel):
   /// transport.csv `trip_model` on the `cart_loaded` row - 0 the fluid (a
   /// load pays its fraction of a round trip; the shipped value until econ's
-  /// gates and boss's word), 1 whole trips, 2 whole trips and the routes. No
-  /// column, or an empty cell: 0.
+  /// gates and boss's word), 1 whole trips, 2 whole trips and the routes, 3
+  /// the plan writing the price (#1056 C3; core_common/trip_terms.h). No
+  /// column, or an empty cell: 0. The logistics config reads the same cell
+  /// (LogisticsConfig::cart_trip_model): one switch, two readers.
   std::uint8_t cart_trip_model = 0;
 
   /// THE OWN-DELIVERY BONUS's SHARE (routing stage В5; district §4; econ's

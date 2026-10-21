@@ -65,6 +65,20 @@ const float* WorkSeamOf(const WorldState& world, const WorkAssignment& work);
 ///        sub-step drains it hourly in row order.
 float* WorkSeamOf(WorldState& world, const WorkAssignment& work);
 
+/// @brief THE CARRIED LOADS DRAIN WITH THEIR CARRIER (#1056 C3, rulings 3-4;
+///        core_common/trip_terms.h): after the labour hour drains `drained`
+///        cart-days off the seam of task `carrier`, every open task carried
+///        along it today (LogisticsTaskRow::carried_by == carrier) drains
+///        `drained` × its carried_share off its own seam, floored at 0 - a
+///        pooled field's leftover and a back load move with the cart that takes
+///        them, and their grams follow their own seams through production's
+///        conversion as any load's do. The «who drained» notes
+///        (drained_by_cart) are written for them as for the carrier.
+/// @return The cart-days drained off the carried seams together (the
+///         instrument's C3-d sum); 0 when nothing is carried.
+/// @threading SINGLE_THREADED — the labour sub-step, beside the carrier's drain.
+float CoDrainCarriedTasks(WorldState& world, LogisticsTaskId carrier, float drained);
+
 /// @brief Where the work of this assignment is done: the field's centre, the
 ///        site, the unit the herd stands at, or a timber stand's loading point.
 /// @return false when the target is gone — the same case WorkSeamOf answers

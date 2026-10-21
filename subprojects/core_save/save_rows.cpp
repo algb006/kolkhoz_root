@@ -497,9 +497,16 @@ static_assert(AggregateArity<BarterTripRow>() == 9,
 // Save 174 (#1099): urgent_by, a byte after threshold_days - predicted into
 // the padding before the floats (offset 52), 64 unmoved and nineteen
 // fields, +1 on the wire, before the build.
-static_assert(sizeof(LogisticsTaskRow) == 64,
+// Save 177 (#1056 C3): trip_terms (TaskTripTerms: a Vec2, two floats, two
+// Grams - 32 bytes, 8-aligned), carried_by (an id) and carried_share (a float)
+// at the tail - predicted 64 -> 104 and twenty-two fields; on the wire +44 a
+// task (8 + 4 + 4 + 8 + 8 + 4 + 4 + 4, the Vec2 as two floats), before the
+// build. TaskTripTerms itself: 32 bytes, five fields.
+static_assert(sizeof(TaskTripTerms) == 32 && AggregateArity<TaskTripTerms>() == 5,
+              "TaskTripTerms changed — update the codec and VERSION_SAVE");
+static_assert(sizeof(LogisticsTaskRow) == 104,
               "LogisticsTaskRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<LogisticsTaskRow>() == 19,
+static_assert(AggregateArity<LogisticsTaskRow>() == 22,
               "LogisticsTaskRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 136 (0.37.177): the groom's plan — a leg six fields, a cart three, the
 // plan four (each holds vectors: its size is not a byte count, the codec
@@ -509,7 +516,9 @@ static_assert(AggregateArity<LogisticsTaskRow>() == 19,
 // cart's partner — five.
 // Save 175 (SL): the sledge byte — ten (predicted in the padding after
 // `loaded`, +1 a leg on the wire, before the build).
-static_assert(AggregateArity<CartLeg>() == 10,
+// Save 177 (#1056 C3): the pooled leg's second task - eleven, +4 a leg on the
+// wire, before the build.
+static_assert(AggregateArity<CartLeg>() == 11,
               "CartLeg gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<CartPlan>() == 5,
               "CartPlan gained or lost a field — update the codec and VERSION_SAVE");
@@ -2039,6 +2048,14 @@ void WriteLogisticsTaskRow(SaveSink& sink, const LogisticsTaskRow& row) {
   out.WriteU8(static_cast<std::uint8_t>(row.urgent_by));  // save 174 (#1099): why level 0
   out.WriteFloat(row.drained_on_foot);                    // save 155: who drained the seam (#671)
   out.WriteFloat(row.drained_by_cart);
+  // Save 177 (#1056 C3): the trip's facts and the carried pair.
+  WriteVec2(out, row.trip_terms.load_point);
+  out.WriteFloat(row.trip_terms.trip_hours);
+  out.WriteFloat(row.trip_terms.trip_loaded_hours);
+  out.WriteI64(row.trip_terms.cart_load);
+  out.WriteI64(row.trip_terms.grams_left);
+  WriteEntityId(out, row.carried_by);
+  out.WriteFloat(row.carried_share);
 }
 
 void WriteSettlementRow(SaveSink& sink, const SettlementRow& row) {
@@ -2098,6 +2115,22 @@ LogisticsTaskRow ReadLogisticsTaskRow(LoadSource& source) {
   row.drained_by_cart = in.ReadFloat();
   if (!(row.drained_on_foot >= 0.0F) || !(row.drained_by_cart >= 0.0F)) {
     source.Fail("a logistics task's drained units are negative or not a number");
+  }
+  // Save 177 (#1056 C3): the trip's facts and the carried pair.
+  row.trip_terms.load_point = ReadVec2(in);
+  row.trip_terms.trip_hours = in.ReadFloat();
+  row.trip_terms.trip_loaded_hours = in.ReadFloat();
+  row.trip_terms.cart_load = in.ReadI64();
+  row.trip_terms.grams_left = in.ReadI64();
+  row.carried_by = ReadEntityId<LogisticsTaskId>(in);
+  row.carried_share = in.ReadFloat();
+  const TaskTripTerms& terms = row.trip_terms;
+  if (!(terms.trip_hours >= 0.0F) || !(terms.trip_loaded_hours >= 0.0F) ||
+      terms.trip_loaded_hours > terms.trip_hours || terms.cart_load < 0 || terms.grams_left < 0 ||
+      !(row.carried_share >= 0.0F)) {
+    source.Fail(
+        "a logistics task's trip facts are negative, not a number, or a loaded half "
+        "longer than its round trip");
   }
   return row;
 }
@@ -2180,8 +2213,9 @@ BarterTripRow ReadBarterTripRow(LoadSource& source) {
 // its riders' count (16 + 4 + 1 + 16 + 4 = 41).
 // Save 155 (#671): a cart's partner (+4), a leg's resource (+2) and grams (+8).
 // Save 175 (SL): a leg's sledge byte (+1).
+// Save 177 (#1056 C3): a pooled leg's second task (+4).
 constexpr std::size_t kSavedCartBytes = 14;
-constexpr std::size_t kSavedLegBytes = 52;
+constexpr std::size_t kSavedLegBytes = 56;
 constexpr std::size_t kSavedRiderBytes = 4;
 
 void WriteGroomPlan(SaveSink& sink, const GroomPlan& plan) {
@@ -2210,6 +2244,7 @@ void WriteGroomPlan(SaveSink& sink, const GroomPlan& plan) {
       for (const ResidentId rider : leg.riders) {
         WriteEntityId(out, rider);
       }
+      WriteEntityId(out, leg.pooled_task);  // save 177 (#1056 C3): the pool's second load
     }
   }
 }
@@ -2277,6 +2312,12 @@ GroomPlan ReadGroomPlan(LoadSource& source) {
       leg.riders.reserve(riders);
       for (std::uint32_t rider = 0; rider < riders && source.Valid(); ++rider) {
         leg.riders.push_back(ReadEntityId<ResidentId>(in));
+      }
+      leg.pooled_task = ReadEntityId<LogisticsTaskId>(in);  // save 177 (#1056 C3)
+      if (leg.pooled_task.value != kInvalidEntityIdValue &&
+          (leg.loaded == 0 || leg.pooled_task.value == leg.task.value)) {
+        source.Fail("a leg of the groom's plan pools a second load on no loaded trip, or itself");
+        return plan;
       }
       cart.legs.push_back(std::move(leg));
     }

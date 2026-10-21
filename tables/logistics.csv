@@ -39,3 +39,11 @@ age_ordinary_days,4
 # rain or snow» is not modelled: the core's heap spoils the same in any weather — STUB core.
 urgent_spoil_share,0.10
 urgent_spoil_tonnes,1
+#
+# THE POOLED TRIP (#1056 C3, ruling 3; econ logistics-all-on «C3's four design rulings», 8607d0d): read only
+# under transport.csv cart_loaded trip_model 3 (the plan writes the price). A field heap's last part-load takes
+# another field's leftover when both fit one load and the way first heap -> second heap -> store is at most this
+# share longer than first heap -> store. STUB econ: her §C3 estimate puts the second field's detour at ~0.3-0.5 km
+# against a 1.6-2.1 km field-to-store run, 15-30 %. 0 pools nothing (C3-f's «lift off»). Return condition: pooled
+# trips under 5 % of field-heap trips in the median village - re-read from C3-h's printed detour distribution.
+pool_detour_share,0.25

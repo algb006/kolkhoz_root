@@ -41,6 +41,7 @@
 #include "core_common/ids.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table.h"
+#include "core_common/trip_terms.h"
 
 namespace core {
 
@@ -207,6 +208,24 @@ struct LogisticsTaskRow {
   /// seam, so the grams follow the units whatever they are.
   float drained_on_foot = 0.0F;
   float drained_by_cart = 0.0F;
+
+  /// THE TRIP'S FACTS (#1056 C3; core_common/trip_terms.h): written by
+  /// production's evening for every open task a cart prices, read by the
+  /// groom's plan, which draws whole trips from them and writes the task's
+  /// seam (CartTripModel::kPlanned). All zero under every other model, on
+  /// foot, and for a task the evening has not priced yet.
+  TaskTripTerms trip_terms;
+
+  /// CARRIED ALONG ANOTHER TASK'S TRIPS today (C3, rulings 3-4): the task
+  /// whose cart takes this load too - a field heap's leftover pooled into
+  /// another field's last load, or a back load on another load's way home.
+  /// Invalid when the load goes by its own trips. Written by the plan.
+  LogisticsTaskId carried_by;
+
+  /// What THIS task's seam drains for each cart-day the carrier's seam drains
+  /// (work_seam.h, CoDrainCarriedTasks): this task's priced share of the
+  /// shared legs over the carrier's own drawn cart-days. 0 when not carried.
+  float carried_share = 0.0F;
 };
 
 /// @brief One leg of a cart's day (B4b; TRIPS since stage В, F3 (A)). A goods
@@ -236,6 +255,19 @@ struct LogisticsTaskRow {
 /// a load half carried, haul.h), and the trips are cut from the seam's span
 /// by the round trip the seam was priced at. What is carted does not change
 /// by F3 (its gate: tonnes per village-year row for row).
+///
+/// SINCE C3 THE DRAWN TRIPS ARE THE PRICE (CartTripModel::kPlanned;
+/// core_common/trip_terms.h): the plan draws WHOLE trips from the task's
+/// TaskTripTerms (a cart's load each, the price's own round trip and heap
+/// point) and writes the task's seam from them. Two more legs it may draw:
+///   * a POOLED trip (ruling 3): a field heap's last part-load takes another
+///     field's leftover on the way to the store - the leg from the first heap
+///     to the second is the first task's, loaded; the leg from the second to
+///     the store carries both, `pooled_task` naming the second;
+///   * a BACK LOAD (ruling 4): at a receiver, instead of the way back empty,
+///     a loaded leg of another task whose load lies near - an ordinary loaded
+///     leg of that task on this cart's chain.
+/// Under every other model the trips are drawn as before and price nothing.
 struct CartLeg {
   /// Where the leg starts and ends (the horse yard, the house, a load, a
   /// load's receiver, the work of a people's cart).
@@ -293,6 +325,11 @@ struct CartLeg {
   /// seats riders (CargoFormSeatsRiders: not logs, manure or the live), a
   /// ride home always.
   std::vector<ResidentId> riders;
+
+  /// THE SECOND LOAD OF A POOLED LEG (#1056 C3, ruling 3): on the loaded leg
+  /// from the second field's heap to the store, the second field's task
+  /// beside `task`; invalid on every other leg. The layer shows both loads.
+  LogisticsTaskId pooled_task;
 };
 
 /// @brief One cart's day: a horse of the pool and its driver.

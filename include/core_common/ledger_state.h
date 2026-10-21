@@ -584,6 +584,25 @@ struct YearLedger {
   std::array<Grams, kCartLoadSourceCountValue> cart_grams = {};
   std::array<Grams, kCartLoadSourceCountValue> cart_grams_off_road = {};
 
+  // -- THE DRAWN TRIP IS THE PRICE (#1056 C3; core_common/trip_terms.h): U, as
+  // a column (econ's §C3), and its two prints C3-g and C3-h. Written only
+  // under CartTripModel::kPlanned; nought under every other model.
+  /// WHOLE TRIPS PAID, by source: the cart-days the labour drained off a
+  /// cart's seam, × the norm day's hours ÷ the load's round trip, booked by
+  /// production's conversion beside `cart_trips` (BookCartRun). U = their sum ÷
+  /// `cart_trips`'s sum (the fluid trips of the same grams) - the fallback's
+  /// trips counted in it, as econ's ruling 1 asks.
+  std::array<float, kCartLoadSourceCountValue> cart_trips_paid = {};
+  /// C3-g: the cart-days the plan wrote from its drawn trips, and the
+  /// fallback's (whole trips of what it did not reach), the day's last plan
+  /// summed over the year (trip_pricing.h, PriceTasksFromPlan).
+  float cart_days_drawn = 0.0F;
+  float cart_days_fallback = 0.0F;
+  /// C3-h: the day's last plan's pooled trips (two fields' leftovers in one
+  /// load) and back loads, summed over the year.
+  float cart_trips_pooled = 0.0F;
+  float cart_trips_back = 0.0F;
+
   // -- WHO CARRIED IT: backs and carts (#671; save 155 with the
   // implementation). Transport design §2's return condition reads the share
   // on foot by year («если в год 1 доля пеших в перевезённом весе выше
