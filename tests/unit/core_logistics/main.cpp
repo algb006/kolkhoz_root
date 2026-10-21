@@ -1056,6 +1056,107 @@ int TestTheTripsAndTheEvening() {
   return failures;
 }
 
+/// THE DRAWN TRIP IS THE PRICED ONE (#1056 C3 body 3/6; trip_terms.h): a field's
+/// heap whose task carries the price's facts - the heap point 100 m nearer the
+/// receiver than the field's centre, a round trip of 3 h with a loaded half of
+/// 2 h, 1.5 t at 750 kg a cart, the seam two whole trips (0.6 cart-days of a
+/// 10 h day) - is drawn from the heap point, its loaded halves 2 h each, and
+/// two of them: the trips priced. The pair: the same heap with no facts is
+/// drawn from the field's centre at the plan's own paces, as before C3.
+int TestThePlannedTrips() {
+  int failures = 0;
+  const test::FakeTable resources{{"key", "cargo_form", "is_fuel"}, {{"hay", "rick", "0"}}};
+  const test::FakeTable transport{{"key", "seats"}, {{"cart_loaded", "2"}}};
+  const test::FakeTable horses{{"key"}, {{"horse"}}};
+  const test::FakeTableSet tables{
+      {{"resources", &resources}, {"transport", &transport}, {"livestock", &horses}}};
+  const auto system = core::CreateLogisticsSystem(tables, core::StubTables::kAllowed);
+  if (Expect(system != nullptr, "planned trips: the system assembles") != 0) {
+    return 1;
+  }
+  const core::Vec2 centre{.x = 1'200.0F, .y = 0.0F};
+  const core::Vec2 heap_point{.x = 1'100.0F, .y = 0.0F};
+  const core::Vec2 receiver{.x = 200.0F, .y = 0.0F};
+
+  struct Drawn {
+    std::uint32_t loaded = 0;      // loaded legs from where the load lies to the receiver
+    bool from_heap_point = false;  // every loaded leg starts at the heap point
+    bool two_hours = true;         // every loaded leg spans 2 ticks
+    bool rode_to = false;          // an empty leg rode to the heap point
+  };
+
+  const auto draw = [&](bool facts) {
+    core::WorldState world;
+    world.weather.daylight_hours = 12.0F;
+    world.calendar.day = 3;
+    core::FieldRow field;
+    field.kind = core::LandKind::kArable;
+    field.center = centre;
+    field.reaped_grams = 1'500'000;
+    field.reaped_resource = core::ResourceId{0};
+    field.haul_days_remaining = 0.6F;
+    field.haul_to = receiver;
+    core::ResidentRow carter;
+    carter.work.kind = core::WorkKind::kHauling;
+    carter.work.rides_horse = 1;
+    carter.work.field = core::AppendRow(world.fields, field);
+    core::UnitRow house;
+    house.position = core::Vec2{.x = 0.0F, .y = 0.0F};
+    const core::UnitId house_id = core::AppendRow(world.units, house);
+    core::FamilyRow household;
+    household.house = house_id;
+    const core::FamilyId family = core::AppendRow(world.families, household);
+    world.units.rows[0].household = family;
+    carter.family = family;
+    const core::ResidentId driver = core::AppendRow(world.residents, carter);
+    StableTheTeam(world);
+    world.calendar.tick = 3 * core::kTicksPerDay;
+    system->RunTasks(world, world);
+    if (facts && !world.logistics_tasks.rows.empty()) {
+      core::TaskTripTerms& terms = world.logistics_tasks.rows[0].trip_terms;
+      terms.load_point = heap_point;
+      terms.trip_hours = 3.0F;
+      terms.trip_loaded_hours = 2.0F;
+      terms.cart_load = 750'000;
+      terms.grams_left = 1'500'000;
+    }
+    world.calendar.tick = (3 * core::kTicksPerDay) + 1;
+    system->BuildPlan(world);
+    Drawn drawn;
+    for (const core::CartPlan& cart : world.groom_plan.carts) {
+      if (cart.driver.value != driver.value) {
+        continue;
+      }
+      for (const core::CartLeg& leg : cart.legs) {
+        drawn.rode_to = drawn.rode_to || (leg.task.value == core::kInvalidEntityIdValue &&
+                                          leg.to.x == heap_point.x && leg.to.y == heap_point.y);
+        if (leg.loaded == 0 || leg.to.x != receiver.x) {
+          continue;
+        }
+        ++drawn.loaded;
+        drawn.from_heap_point = (drawn.loaded == 1 || drawn.from_heap_point) &&
+                                leg.from.x == heap_point.x && leg.from.y == heap_point.y;
+        drawn.two_hours = drawn.two_hours && leg.arrive - leg.depart == 2;
+      }
+    }
+    return drawn;
+  };
+  const Drawn planned = draw(true);
+  const Drawn before = draw(false);
+  std::cout << "  planned trips: " << planned.loaded << " loaded legs, from the heap point "
+            << planned.from_heap_point << ", 2 h each " << planned.two_hours
+            << "; without the facts " << before.loaded << " legs, from the heap point "
+            << before.from_heap_point << '\n';
+  failures +=
+      Expect(planned.rode_to && planned.from_heap_point && planned.two_hours && planned.loaded == 2,
+             "planned trips: ridden to the heap point, two whole trips priced, each "
+             "loaded half the price's 2 h");
+  failures += Expect(before.loaded > 0 && !before.from_heap_point && !before.rode_to,
+                     "planned trips: without the facts the heap is drawn from the field's "
+                     "centre, as before C3");
+  return failures;
+}
+
 /// THE CHAIRMAN'S DOORS TO THE TASKS (B7; order_state.h, kSetLogisticsLevel
 /// and kPauseLogisticsTask): two heaps, a task each, today's plan built at
 /// hour 1. At hour 5 the chairman raises the first to level 0 and pauses the
@@ -1725,6 +1826,7 @@ int main() {
   failures += TestTheReplan();
   failures += TestNoLogisticsBeforeTheYard();
   failures += TestTheTripsAndTheEvening();
+  failures += TestThePlannedTrips();
   failures += TestTheChairmansDoors();
   failures += TestTheLateLoadsLamp();
   failures += TestTheDayOffHeldTheLoad();

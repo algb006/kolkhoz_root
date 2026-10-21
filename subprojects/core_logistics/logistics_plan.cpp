@@ -317,6 +317,29 @@ float RideHours(
   return RideKm(world, mover, task, from, to) * mover.hours_per_km;
 }
 
+/// THE PRICE'S FACTS (#1056 C3; core_common/trip_terms.h): the trip terms of a
+/// task a cart prices at whole trips - written only under the planned model
+/// (trip_terms_writer.h) - or nullptr: no terms, or a carrier on foot, whose
+/// trips are his back's and keep the walk's drawing.
+const TaskTripTerms* PlannedTerms(const Mover& mover, const LogisticsTaskRow& task) {
+  return !mover.on_foot && task.trip_terms.trip_hours > 0.0F ? &task.trip_terms : nullptr;
+}
+
+/// Where the mover rides to cart `task`: the price's load point when the task
+/// has one (a field heap's HEAP POINT, ruling 2 - not the field's centre),
+/// else the work's place (work_seam.h, WorkPlaceOf). `place` is left as it
+/// came when neither knows one.
+void LoadPlaceOf(const WorldState& world,
+                 const Mover& mover,
+                 const LogisticsTaskRow& task,
+                 Vec2& place) {
+  if (const TaskTripTerms* const terms = PlannedTerms(mover, task)) {
+    place = terms->load_point;
+    return;
+  }
+  WorkPlaceOf(world, HaulingWorkOf(task), place);
+}
+
 /// A load leg of no length at `hours`: a load of the chain the clock did not
 /// send the mover to — carted by others before it came, or past the evening.
 /// It stays in the legs IN ITS PLACE OF THE CHAIN, because the clock is an
@@ -359,7 +382,7 @@ void GoOn(const WorldState& world,
       // village of 0.37.180's canon (core-legsprobe2, late_h).
       const LogisticsTaskRow& candidate = world.logistics_tasks.rows[next];
       Vec2 place = mover.at;
-      WorkPlaceOf(world, HaulingWorkOf(candidate), place);
+      LoadPlaceOf(world, mover, candidate, place);
       const float there = RideHours(world, mover, &candidate, mover.at, place);
       const float back = RideHours(world, mover, &candidate, place, mover.home);
       if (hours + there + kStepHours + back < sunset) {
@@ -388,7 +411,7 @@ void GoOn(const WorldState& world,
   ++mover.next;
   const LogisticsTaskRow& task = world.logistics_tasks.rows[mover.task];
   Vec2 place = mover.at;
-  WorkPlaceOf(world, HaulingWorkOf(task), place);
+  LoadPlaceOf(world, mover, task, place);
   mover.ride_left = RideHours(world, mover, &task, mover.at, place);
   mover.ride_home = RideHours(world, mover, &task, place, mover.home);
   legs.push_back(CartLeg{.from = mover.at,
@@ -425,13 +448,23 @@ bool BeginTrips(const WorldState& world, Mover& mover) {
   mover.trips = true;
   mover.load = mover.at;
   mover.receiver = receiver;
+  mover.ride_home = RideHours(world, mover, &task, receiver, mover.home);
+  // THE PRICE's OWN TRIP (#1056 C3; trip_terms.h): under the planned model the
+  // halves are the ones the seam was priced by - the road bed, the gear and the
+  // heap point included (ruling 2) - so a whole trip drawn drains a whole trip
+  // priced, and the drawn trips ARE the price.
+  if (const TaskTripTerms* const terms = PlannedTerms(mover, task)) {
+    mover.trip_loaded_hours = terms->trip_loaded_hours;
+    const float empty = terms->trip_hours - terms->trip_loaded_hours;
+    mover.trip_empty_hours = empty > 0.0F ? empty : 0.0F;
+    return true;
+  }
   // THE LOADED HALF AT THE LOADED PACE (#570, 2a), the way back at the
   // empty one — as the seam is priced (haul.h, RateOverKm). The loaded half
   // carries the loading at its start and the unloading at its end (#844):
   // the same two pauses RateOverKm adds, so the plan and the seam agree.
   mover.trip_loaded_hours = (one_way_km * mover.loaded_hours_per_km) + (2.0F * kLoadingPauseHours);
   mover.trip_empty_hours = one_way_km * mover.hours_per_km;
-  mover.ride_home = RideHours(world, mover, &task, receiver, mover.home);
   return true;
 }
 
