@@ -185,13 +185,18 @@ bool AHerdIsHungry(const WorldState& world) {
 /// share or the tonnes (the arithmetic of production's heaps,
 /// field_haul.cpp SpoilFieldHeaps; keeping factor of a store STUB 1.0), or
 /// feed while a herd is hungry.
-bool HeapSpoils(const LogisticsConfig& config, const FieldRow& field) {
-  const ResourceId resource = field.reaped_resource;
-  if (field.reaped_grams <= 0 || resource.value >= config.spoil_days.size()) {
+/// AND HAY's WEATHERING (#1200; spoilage.h, FieldHeapLossToday): until then a
+/// hay heap, with no spoil_days, never spoiled by this reading.
+bool HeapSpoils(const LogisticsConfig& config, const FieldRow& field, std::uint32_t month) {
+  if (field.reaped_grams <= 0) {
     return false;
   }
-  const Grams gone = SpoiledToday(
-      field.reaped_grams, config.spoil_days[resource.value], config.field_heap_keeping_factor);
+  const Grams gone = FieldHeapLossToday(config.spoil_days,
+                                        config.field_heap_keeping_factor,
+                                        config.hay_weathering,
+                                        field.reaped_resource,
+                                        month,
+                                        field.reaped_grams);
   const auto share_line =
       static_cast<Grams>(config.urgent_spoil_share * static_cast<float>(field.reaped_grams));
   const Grams tonnes_line = GramsFromKilograms(config.urgent_spoil_tonnes * 1000.0F);
@@ -305,7 +310,7 @@ void AgeAndRaise(const LogisticsConfig& config,
       const std::uint32_t row = FindRow(current.fields, task.field);
       if (row != kNoRow) {
         const FieldRow& field = current.fields.rows[row];
-        if (HeapSpoils(config, field)) {
+        if (HeapSpoils(config, field, static_cast<std::uint32_t>(current.calendar.date.month))) {
           level = LogisticsLevel::kUrgent;
           urgent_by = LogisticsUrgentBy::kSpoil;
           ++count.urgent_by_spoil;

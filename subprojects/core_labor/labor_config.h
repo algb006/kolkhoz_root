@@ -46,6 +46,7 @@
 #include "core_common/rain_stops_work.h"
 #include "core_common/resident_state.h"
 #include "core_common/site_supply_floor.h"
+#include "core_common/spoilage.h"
 #include "core_common/work_seam.h"
 
 namespace core {
@@ -281,11 +282,14 @@ struct LaborConfig {
   float early_snow_share = 0.10F;
   std::uint32_t early_snow_last_day = kDaysPerYear - 1U;
 
-  /// A field heap's shelf in game days, by ResourceId (#1099;
-  /// FieldHeapShelfDays over resources.csv `spoil_days` and world_params
-  /// `field_heap_keeping_factor`, the cells logistics reads for C4.2's
-  /// order); infinity keeps for ever. Empty: no heap rots, nothing weighed.
-  std::vector<float> heap_shelf_days;
+  /// A field heap's loss (#1099, #1200; spoilage.h FieldHeapShelfDaysOf):
+  /// resources.csv `spoil_days` by ResourceId, world_params
+  /// `field_heap_keeping_factor` and hay's weathering by season (farming.csv
+  /// hay_weathering_*) - the cells logistics reads for C4.2's order. Empty
+  /// spoil_days and no hay: no heap rots, nothing weighed.
+  std::vector<float> heap_spoil_days;
+  float heap_keeping_factor = 0.33F;
+  HayWeathering hay_weathering;
 
   /// farming.csv `reaping_days_per_hand_light_hour` — the count of the
   /// reaping's rate for a village with no unfinished reaping day in this

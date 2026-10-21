@@ -6,6 +6,8 @@
 #include <cstddef>
 #include <limits>
 
+#include "core_common/calendar.h"
+
 namespace core {
 
 Grams RotMarginGrams(Grams held, float spoil_days, std::uint32_t days) {
@@ -22,6 +24,64 @@ Grams RotMarginGrams(Grams held, float spoil_days, std::uint32_t days) {
 
 float FieldHeapShelfDays(float spoil_days, float keeping_factor) {
   return spoil_days > 0.0F ? spoil_days * keeping_factor : std::numeric_limits<float>::infinity();
+}
+
+std::uint32_t HayWeatheringSeason(std::uint32_t month) {
+  if (month == 11U || month < 2U) {
+    return 2U;  // winter
+  }
+  if (month < 5U) {
+    return 3U;  // spring
+  }
+  return month < 8U ? 0U : 1U;  // summer, autumn
+}
+
+float HayHeapShelfDays(float season_share) {
+  const float share_a_day = season_share / static_cast<float>(kDaysPerMonth);
+  return share_a_day > 0.0F ? 1.0F / share_a_day : std::numeric_limits<float>::infinity();
+}
+
+namespace {
+
+bool IsHay(const HayWeathering& hay, ResourceId resource) {
+  return resource.value != kInvalidDefIdValue && resource.value == hay.hay.value;
+}
+
+}  // namespace
+
+float FieldHeapShelfDaysOf(const std::vector<float>& spoil_days,
+                           float keeping_factor,
+                           const HayWeathering& hay,
+                           ResourceId resource,
+                           std::uint32_t month) {
+  if (IsHay(hay, resource)) {
+    return HayHeapShelfDays(hay.by_season[HayWeatheringSeason(month)]);
+  }
+  const float days = resource.value < spoil_days.size() ? spoil_days[resource.value] : 0.0F;
+  return FieldHeapShelfDays(days, keeping_factor);
+}
+
+Grams FieldHeapLossToday(const std::vector<float>& spoil_days,
+                         float keeping_factor,
+                         const HayWeathering& hay,
+                         ResourceId resource,
+                         std::uint32_t month,
+                         Grams held) {
+  if (held <= 0) {
+    return 0;
+  }
+  if (IsHay(hay, resource)) {
+    const float share_a_day =
+        hay.by_season[HayWeatheringSeason(month)] / static_cast<float>(kDaysPerMonth);
+    if (share_a_day > 0.0F) {
+      const Grams lost = static_cast<Grams>(
+          std::llround(static_cast<double>(held) * static_cast<double>(share_a_day)));
+      return lost > held ? held : lost;
+    }
+    // A season of no weathering: hay's own spoil_days (none), as before #1200.
+  }
+  const float days = resource.value < spoil_days.size() ? spoil_days[resource.value] : 0.0F;
+  return SpoiledToday(held, days, keeping_factor);
 }
 
 Grams SpoiledToday(Grams held, float spoil_days, float keeping_factor) {

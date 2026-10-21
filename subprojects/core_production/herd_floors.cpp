@@ -12,6 +12,7 @@
 #include "core_common/land_state.h"
 #include "core_common/ledger_state.h"
 #include "core_common/quantities.h"
+#include "core_common/spoilage.h"
 #include "plan_alarms.h"
 
 namespace core {
@@ -131,12 +132,16 @@ PlanPeak PlanPeakTeams(const ProductionConfig& config,
       continue;
     }
     double days = static_cast<double>((to - from + 1U) * kDaysPerMonth);
-    const double keeps = first.resource.value < config.spoil_days.size()
-                             ? static_cast<double>(config.spoil_days[first.resource.value]) *
-                                   static_cast<double>(config.keeping_factor) *
-                                   static_cast<double>(config.farming.field_heap_keeping_factor)
-                             : 0.0;
-    if (keeps > 0.0 && keeps < days) {
+    // AND HAY BY ITS WEATHERING in the harvest's first month (#1200;
+    // spoilage.h): until then hay, with no spoil_days, took no cap.
+    const double keeps = static_cast<double>(
+        FieldHeapShelfDaysOf(config.spoil_days,
+                             config.keeping_factor * config.farming.field_heap_keeping_factor,
+                             HayWeathering{.hay = config.hay_resource,
+                                           .by_season = config.farming.hay_weathering_by_season},
+                             first.resource,
+                             from));
+    if (std::isfinite(keeps) && keeps > 0.0 && keeps < days) {
       days = keeps;
     }
     const double teams =

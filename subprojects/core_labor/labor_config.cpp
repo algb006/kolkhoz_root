@@ -637,32 +637,49 @@ bool ParseHeapShelves(const ITableSet& tables, LaborConfig& config, std::string&
   if (resources == nullptr) {
     return true;
   }
-  float keeping = 0.33F;
   if (const ITable* const world = tables.FindTable("world_params")) {
     if (!OptionalValue(*world,
                        "field_heap_keeping_factor",
                        Range{.low = 0.01F, .high = 1.0F},
-                       keeping,
+                       config.heap_keeping_factor,
                        error)) {
       PrefixError("world_params", "field_heap_keeping_factor", error);
       return false;
     }
   }
   const std::uint32_t days_column = resources->FindColumn("spoil_days");
-  config.heap_shelf_days.assign(resources->RowCount(), 0.0F);
+  config.heap_spoil_days.assign(resources->RowCount(), 0.0F);
   for (std::uint32_t row = 0; row < resources->RowCount(); ++row) {
-    float days = 0.0F;
     if (!CellOrDefault(*resources,
                        row,
                        days_column,
                        Range{.low = 0.0F, .high = 100000.0F},
                        0.0F,
-                       days,
+                       config.heap_spoil_days[row],
                        error)) {
       PrefixError("resources", "spoil_days", error);
       return false;
     }
-    config.heap_shelf_days[row] = FieldHeapShelfDays(days, keeping);
+  }
+  // AND HAY's WEATHERING (#1200): production's cells and ranges.
+  const std::uint32_t hay_row = resources->FindRowByKey("hay");
+  config.hay_weathering.hay =
+      hay_row == kNoTableRow ? ResourceId{} : DefIdFromRow<ResourceIdTag>(hay_row);
+  if (const ITable* const farming = tables.FindTable("farming")) {
+    constexpr std::array<const char*, 4> kSeasons = {"hay_weathering_summer",
+                                                     "hay_weathering_autumn",
+                                                     "hay_weathering_winter",
+                                                     "hay_weathering_spring"};
+    for (std::size_t season = 0; season < kSeasons.size(); ++season) {
+      if (!OptionalValue(*farming,
+                         kSeasons[season],
+                         Range{.low = 0.0F, .high = 1.0F},
+                         config.hay_weathering.by_season[season],
+                         error)) {
+        PrefixError("farming", kSeasons[season], error);
+        return false;
+      }
+    }
   }
   return true;
 }

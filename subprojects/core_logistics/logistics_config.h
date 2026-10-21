@@ -21,6 +21,7 @@
 #include "core_common/haul.h"
 #include "core_common/logistics_state.h"
 #include "core_common/site_supply_floor.h"
+#include "core_common/spoilage.h"
 #include "core_tables/tables.h"
 
 namespace core {
@@ -59,6 +60,12 @@ struct LogisticsConfig {
   /// resources.csv `spoil_days`, by ResourceId; 0 keeps for ever — the cells
   /// production reads (production_config.cpp), by the same rule.
   std::vector<float> spoil_days;
+
+  /// Loose hay's loss on its field (#1200; core_common/spoilage.h):
+  /// resources.csv `hay` and farming.csv's hay_weathering_* (production's
+  /// cells; one cell, two readers). The plan's order (ShelfDaysOf) and the
+  /// heap's spoil urgency (HeapSpoils) read it beside spoil_days.
+  HayWeathering hay_weathering;
 
   /// 1 for a resource with feed_value above nought (resources.csv): a heap of
   /// it feeds a herd, and a hungry herd raises it to level 0.

@@ -1749,6 +1749,50 @@ class PostWorld {
   DayWorld day_;
 };
 
+/// THE HEAP KEEPS PAST THE SNOW BY ITS LOSS (#1200; labor_system.cpp
+/// HeapKeepsPastTheSnow): labour reads resources.csv spoil_days, world_params'
+/// field_heap_keeping_factor and farming.csv's hay weathering, and the shelf it
+/// weighs against the snow is FieldHeapShelfDaysOf of them - a hay heap 40
+/// days in September, for ever in July; the wheat 600 x 0.33 days in both.
+/// Until #1200 the hay's empty spoil_days read «for ever» in every month.
+int TestTheHeapShelfByItsLoss() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_labor_heap_shelf";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "resources.csv") << "key,spoil_days\nwheat,600\nhay,\n";
+  std::ofstream(root / "world_params.csv") << "key,value\nfield_heap_keeping_factor,0.33\n";
+  std::ofstream(root / "farming.csv")
+      << "key,value\nhay_weathering_summer,0\nhay_weathering_autumn,0.10\n"
+         "hay_weathering_winter,0.03\nhay_weathering_spring,0.10\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  core::LaborConfig config;
+  if (Expect(tables != nullptr && core::ParseLaborConfig(*tables, config, error),
+             "heap shelf: the tables parse") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  const auto shelf = [&config](std::uint16_t resource, core::Month month) {
+    return core::FieldHeapShelfDaysOf(config.heap_spoil_days,
+                                      config.heap_keeping_factor,
+                                      config.hay_weathering,
+                                      core::ResourceId{resource},
+                                      static_cast<std::uint32_t>(month));
+  };
+  const float hay_september = shelf(1, core::Month::kSeptember);
+  const float hay_july = shelf(1, core::Month::kJuly);
+  const float wheat_july = shelf(0, core::Month::kJuly);
+  std::cout << "  heap shelf by its loss: hay Sep " << hay_september << ", hay Jul " << hay_july
+            << ", wheat Jul " << wheat_july << '\n';
+  failures += Expect(std::abs(hay_september - 40.0F) < 1e-3F && std::isinf(hay_july) &&
+                         std::abs(wheat_july - 198.0F) < 1e-2F,
+                     "heap shelf (#1200): labour weighs a hay heap 40 days in September and for "
+                     "ever in July, the wheat 198 days");
+  return failures;
+}
+
 int TestPostTablesParse() {
   int failures = 0;
   const std::filesystem::path root = WritePostTables();
@@ -4732,6 +4776,7 @@ int main() {
   failures += TestTheQueueRanksInTiers();
   failures += TestTheRaisedSiteGoesFirstInItsTier();
   failures += TestPostTablesParse();
+  failures += TestTheHeapShelfByItsLoss();
   failures += TestAppointmentTakesEffectAtTheDayClose();
   failures += TestAppointmentRefusals();
   failures += TestLandThatCannotCarryTheWork();

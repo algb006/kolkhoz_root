@@ -32,9 +32,11 @@
 #ifndef CORE_COMMON_SPOILAGE_H_
 #define CORE_COMMON_SPOILAGE_H_
 
+#include <array>
 #include <cstdint>
 #include <vector>
 
+#include "core_common/ids.h"
 #include "core_common/quantities.h"
 
 namespace core {
@@ -66,6 +68,53 @@ Grams SpoiledToday(Grams held, float spoil_days, float keeping_factor);
 /// standing crop's snow (MarkTheUrgentLoads). Each reads the same two cells
 /// (resources.csv spoil_days, world_params field_heap_keeping_factor).
 float FieldHeapShelfDays(float spoil_days, float keeping_factor);
+
+/// @brief The season whose share of loose hay weathers in month `month`
+///        (calendar month index 0..11): 0 summer, 1 autumn, 2 winter, 3
+///        spring - the index of farming.csv's hay_weathering_summer, _autumn,
+///        _winter, _spring. One home for the heap's weathering (field_haul.cpp,
+///        SpoilFieldHeaps) and the readers of a heap's loss below.
+std::uint32_t HayWeatheringSeason(std::uint32_t month);
+
+/// @brief A loose hay heap's shelf in game days by its nightly loss: the
+///        month's share over the month's days, as 1 / that daily share;
+///        infinity when the season weathers none. Comparable with
+///        FieldHeapShelfDays, whose daily share is 1 / shelf.
+float HayHeapShelfDays(float season_share);
+
+/// @brief Loose hay's loss on its FIELD (#1200): resources.csv `hay` and
+///        farming.csv's hay_weathering_* (the month's share). Loose hay has no
+///        spoil_days - it keeps for ever in a store - but on its field it
+///        weathers by the season (#1015). Until #1200 four readers read the
+///        empty cell as «keeps for ever» on the field too: the plan's order
+///        (hay last of its level), the heap's spoil urgency (never), labour's
+///        «keeps past the snow» (always) and the carting-peak estimate (no
+///        cap). Each reader keeps its own spoil_days and keeping factor and
+///        passes them in; this holds only what hay adds.
+struct HayWeathering {
+  ResourceId hay;                    ///< resources.csv `hay`; invalid with no such row
+  std::array<float, 4> by_season{};  ///< farming.csv, the month's share (HayWeatheringSeason)
+};
+
+/// @brief A field heap's shelf in game days in month `month`: hay's by its
+///        weathering (HayHeapShelfDays), any other resource's by `spoil_days`
+///        x `keeping_factor` (FieldHeapShelfDays); infinity for one that keeps.
+float FieldHeapShelfDaysOf(const std::vector<float>& spoil_days,
+                           float keeping_factor,
+                           const HayWeathering& hay,
+                           ResourceId resource,
+                           std::uint32_t month);
+
+/// @brief What a field heap of `held` grams of `resource` loses in a day of
+///        month `month`: hay's weathering share (rounded as SpoilFieldHeaps
+///        rounded it), any other resource's SpoiledToday at its spoil_days and
+///        the keeping factor; 0 for one that keeps.
+Grams FieldHeapLossToday(const std::vector<float>& spoil_days,
+                         float keeping_factor,
+                         const HayWeathering& hay,
+                         ResourceId resource,
+                         std::uint32_t month,
+                         Grams held);
 
 /// @brief The ROT MARGIN: grams to hold beyond `held` so that `held` is
 /// still there after `days` of SpoiledToday's daily share —

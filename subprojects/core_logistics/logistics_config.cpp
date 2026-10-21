@@ -224,6 +224,29 @@ bool ParseLogisticsConfig(const ITableSet& tables, LogisticsConfig& config, std:
       return false;
     }
   }
+  // A FIELD HEAP's LOSS (#1200; spoilage.h): hay's weathering is production's
+  // cells and ranges (production_config.cpp, hay_weathering_*).
+  if (const ITable* const resources = tables.FindTable("resources")) {
+    const std::uint32_t hay_row = resources->FindRowByKey("hay");
+    config.hay_weathering.hay =
+        hay_row == kNoTableRow ? ResourceId{} : DefIdFromRow<ResourceIdTag>(hay_row);
+  }
+  if (const ITable* const farming = tables.FindTable("farming")) {
+    constexpr std::array<const char*, 4> kSeasons = {"hay_weathering_summer",
+                                                     "hay_weathering_autumn",
+                                                     "hay_weathering_winter",
+                                                     "hay_weathering_spring"};
+    for (std::size_t season = 0; season < kSeasons.size(); ++season) {
+      if (!OptionalValue(*farming,
+                         kSeasons[season],
+                         Range{.low = 0.0F, .high = 1.0F},
+                         config.hay_weathering.by_season[season],
+                         error)) {
+        PrefixError("farming", kSeasons[season], error);
+        return false;
+      }
+    }
+  }
   return ReadPorterRules(tables, config.porter, error) &&
          ReadSupplyFloorRules(tables, config.supply_floor, error) &&
          ReadColdHousing(tables, config.cold_housing, error);

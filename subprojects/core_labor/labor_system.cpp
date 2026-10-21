@@ -2153,10 +2153,14 @@ class LaborSystem final : public ILaborSystem {
         current.fields.rows[row].reaped_grams <= 0) {
       return false;
     }
-    const ResourceId resource = current.fields.rows[row].reaped_resource;
-    const float shelf = resource.value < config_.heap_shelf_days.size()
-                            ? config_.heap_shelf_days[resource.value]
-                            : std::numeric_limits<float>::infinity();
+    // AND HAY BY ITS WEATHERING (#1200; spoilage.h): until then an arable hay
+    // heap, with no spoil_days, always «kept past the snow».
+    const float shelf =
+        FieldHeapShelfDaysOf(config_.heap_spoil_days,
+                             config_.heap_keeping_factor,
+                             config_.hay_weathering,
+                             current.fields.rows[row].reaped_resource,
+                             static_cast<std::uint32_t>(current.calendar.date.month));
     const auto today = static_cast<float>(current.calendar.day % kDaysPerYear);
     return !(today + shelf < static_cast<float>(config_.early_snow_last_day));
   }

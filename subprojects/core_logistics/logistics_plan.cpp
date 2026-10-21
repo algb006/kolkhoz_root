@@ -74,11 +74,16 @@ float ShelfDaysOf(const LogisticsConfig& config,
   if (row == kNoRow) {
     return std::numeric_limits<float>::infinity();
   }
-  const ResourceId resource = world.fields.rows[row].reaped_resource;
-  const float days =
-      resource.value < config.spoil_days.size() ? config.spoil_days[resource.value] : 0.0F;
-  // One home with labour's weighing against the snow (#1099; spoilage.h).
-  return FieldHeapShelfDays(days, config.field_heap_keeping_factor);
+  // One home with labour's weighing against the snow (#1099; spoilage.h) - and
+  // since #1200 with hay's weathering: hay has no spoil_days, so until then it
+  // read «keeps for ever» and went LAST among a level's heaps while it
+  // weathered every night it lay (base: hay heaps waited 11-12 days, the
+  // crops' 2-4; core-boss-oats-b-pair [117]).
+  return FieldHeapShelfDaysOf(config.spoil_days,
+                              config.field_heap_keeping_factor,
+                              config.hay_weathering,
+                              world.fields.rows[row].reaped_resource,
+                              static_cast<std::uint32_t>(world.calendar.date.month));
 }
 
 /// The open tasks — not paused, a seam left — by level, the longest waiting

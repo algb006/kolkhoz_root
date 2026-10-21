@@ -42,6 +42,7 @@
 #include "core_common/road_trace.h"
 #include "core_common/road_view.h"
 #include "core_common/site_supply_queue.h"
+#include "core_common/spoilage.h"
 #include "core_common/state_table.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/version_pin.h"
@@ -2620,6 +2621,47 @@ int TestRoadIndex() {
 /// painting on day 70 clears the dark days between — day 60's slot, which is
 /// day 12's, says nothing of day 12 any more. The young kept: a third of the
 /// adults and the year's worst more while lit.
+/// A FIELD HEAP's LOSS, ONE HOME (#1200; spoilage.h): hay's weathering season
+/// by month; its shelf as one over its daily share (0.10 a month is 40 days,
+/// none for ever); its loss a night - 40 t in September lose 1 t, in July
+/// nothing - while a wheat heap's shelf and loss are the old rule's.
+int TestTheFieldHeapLoss() {
+  int failures = 0;
+  failures +=
+      Expect(core::HayWeatheringSeason(11) == 2 && core::HayWeatheringSeason(0) == 2 &&
+                 core::HayWeatheringSeason(1) == 2 && core::HayWeatheringSeason(2) == 3 &&
+                 core::HayWeatheringSeason(4) == 3 && core::HayWeatheringSeason(5) == 0 &&
+                 core::HayWeatheringSeason(7) == 0 && core::HayWeatheringSeason(8) == 1 &&
+                 core::HayWeatheringSeason(10) == 1,
+             "heap loss: hay's weathering season by month - winter, spring, summer, autumn");
+  const std::vector<float> spoil_days = {600.0F, 0.0F};
+  const core::HayWeathering hay{.hay = core::ResourceId{1},
+                                .by_season = {0.0F, 0.10F, 0.03F, 0.10F}};
+  constexpr std::uint32_t kSeptember = 8;
+  constexpr std::uint32_t kJuly = 6;
+  const float hay_september =
+      core::FieldHeapShelfDaysOf(spoil_days, 0.33F, hay, core::ResourceId{1}, kSeptember);
+  const float hay_july =
+      core::FieldHeapShelfDaysOf(spoil_days, 0.33F, hay, core::ResourceId{1}, kJuly);
+  const float wheat =
+      core::FieldHeapShelfDaysOf(spoil_days, 0.33F, hay, core::ResourceId{0}, kJuly);
+  failures += Expect(std::abs(hay_september - 40.0F) < 1e-3F && std::isinf(hay_july) &&
+                         std::abs(wheat - core::FieldHeapShelfDays(600.0F, 0.33F)) < 1e-4F,
+                     "heap loss: a hay heap's shelf 40 days in September and for ever in July; "
+                     "the wheat's the old rule's");
+  constexpr core::Grams kForty = 40'000'000;
+  failures += Expect(
+      core::FieldHeapLossToday(spoil_days, 0.33F, hay, core::ResourceId{1}, kSeptember, kForty) ==
+              1'000'000 &&
+          core::FieldHeapLossToday(spoil_days, 0.33F, hay, core::ResourceId{1}, kJuly, kForty) ==
+              0 &&
+          core::FieldHeapLossToday(spoil_days, 0.33F, hay, core::ResourceId{0}, kJuly, kForty) ==
+              core::SpoiledToday(kForty, 600.0F, 0.33F),
+      "heap loss: 40 t of hay lose 1 t a night in September and nothing in July; the wheat "
+      "SpoiledToday's");
+  return failures;
+}
+
 /// THE WORKS THAT WILL HOUSE A HERD FACING THE COLD (cold_housing.h; boss, 11
 /// October 2026): a cattle yard under works, cows of a freezing kind standing
 /// and no warm cattle yard — in September it holds; in July it does not; nor
@@ -3056,6 +3098,7 @@ int main() {
   failures += TestHerdAgeBand();
   failures += TestHorseLampMemory();
   failures += TestColdHousing();
+  failures += TestTheFieldHeapLoss();
   failures += TestRoadBeds();
   failures += TestRoadGraph();
   failures += TestRoadViews();

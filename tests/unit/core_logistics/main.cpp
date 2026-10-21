@@ -150,6 +150,40 @@ int TestAgeing() {
   return failures;
 }
 
+/// HAY THAT WEATHERS IS A THREAT TOO (#1200; logistics_tasks.cpp HeapSpoils):
+/// a 40 t hay heap in September loses 1 t a night (0.10 a month over four
+/// days), the tonnes line - level 0 by its own rot; the same heap in July
+/// weathers none and stays due by a date; and a 20 t heap in September (0.5 t)
+/// is under both lines. Until #1200 a hay heap, with no spoil_days, never rotted
+/// by this reading.
+int TestTheHayHeapThreat() {
+  int failures = 0;
+  const auto level_of = [](core::Grams grams, core::Month month) {
+    core::LogisticsConfig config;
+    config.spoil_days = {0.0F};
+    config.hay_weathering =
+        core::HayWeathering{.hay = core::ResourceId{0}, .by_season = {0.0F, 0.10F, 0.03F, 0.10F}};
+    core::WorldState world;
+    world.calendar.date.month = month;
+    const core::FieldId heap = AddHeap(world, grams, 0);
+    core::TaskDayCount count;
+    core::SyncTasks(config, world, 0, count);
+    core::AgeAndRaise(config, world, 0, 5, count);
+    const core::LogisticsTaskRow* const task = TaskOfField(world, heap);
+    return task != nullptr && task->level == core::LogisticsLevel::kUrgent &&
+           task->urgent_by == core::LogisticsUrgentBy::kSpoil;
+  };
+  const bool september = level_of(40'000'000, core::Month::kSeptember);
+  const bool july = level_of(40'000'000, core::Month::kJuly);
+  const bool small = level_of(20'000'000, core::Month::kSeptember);
+  std::cout << "  threats, a hay heap urgent by its weathering: 40 t Sep " << september
+            << ", 40 t Jul " << july << ", 20 t Sep " << small << '\n';
+  failures += Expect(september && !july && !small,
+                     "threats (#1200): a 40 t hay heap is urgent by its own weathering in "
+                     "September, not in July, and a 20 t one is under both lines");
+  return failures;
+}
+
 /// SELF TO LEVEL 0 (econ [5]): a heap that spoils fast is urgent, the same
 /// heap of a keeping resource is not; a feed heap is urgent while a herd is
 /// hungry, the same heap with the herd fed is not.
@@ -1573,55 +1607,63 @@ int TestTheWayHomeFitsTheLight() {
 /// pair: the potatoes keeping for ever too - the table's order, the grain.
 int TestTheSoonestSpoiledFirst() {
   int failures = 0;
-  const auto next_heap = [](float potato_spoil_days) {
-    core::LogisticsConfig config;
-    config.spoil_days = {0.0F, potato_spoil_days};
-    core::WorldState world;
-    world.weather.daylight_hours = 12.0F;
-    const auto heap_at = [&world](float east_m, std::uint16_t resource, float days) {
-      core::FieldRow field;
-      field.kind = core::LandKind::kArable;
-      field.center = core::Vec2{.x = east_m, .y = 0.0F};
-      field.reaped_grams = 1'000'000;
-      field.reaped_resource = core::ResourceId{resource};
-      field.haul_days_remaining = days;
-      return core::AppendRow(world.fields, field);
-    };
-    const core::FieldId own = heap_at(50.0F, 0, 0.05F);
-    const core::FieldId grain = heap_at(1'000.0F, 0, 0.5F);
-    const core::FieldId potato = heap_at(-1'000.0F, 1, 0.5F);
-    core::TaskDayCount count;
-    core::SyncTasks(config, world, 0, count);
-    core::UnitRow house;
-    const core::UnitId house_id = core::AppendRow(world.units, house);
-    core::FamilyRow household;
-    household.house = house_id;
-    const core::FamilyId family = core::AppendRow(world.families, household);
-    world.units.rows[0].household = family;
-    core::ResidentRow carter;
-    carter.family = family;
-    carter.work.kind = core::WorkKind::kHauling;
-    carter.work.field = own;
-    carter.work.rides_horse = 1;
-    core::AppendRow(world.residents, carter);
-    core::LogisticsTally tally;
-    const core::GroomPlan plan = core::BuildGroomPlan(config, world, tally);
-    if (plan.carts.size() != 1) {
-      return core::FieldId{};
-    }
-    for (const core::CartLeg& leg : plan.carts[0].legs) {
-      const std::uint32_t row = core::FindRow(world.logistics_tasks, leg.task);
-      if (row == core::kNoRow) {
-        continue;
-      }
-      const core::FieldId field = world.logistics_tasks.rows[row].field;
-      if (field.value == grain.value || field.value == potato.value) {
-        return field;  // the first other heap the chain reaches
-      }
-    }
-    (void)potato;
-    return core::FieldId{};
-  };
+  // `month` and `hay` (#1200): resource 1 is the hay instead, weathering 0.10
+  // a month in autumn and none in summer (farming.csv's shipped shares).
+  const auto next_heap =
+      [](float potato_spoil_days, bool hay = false, core::Month month = core::Month::kJanuary) {
+        core::LogisticsConfig config;
+        config.spoil_days = {0.0F, potato_spoil_days};
+        if (hay) {
+          config.hay_weathering = core::HayWeathering{.hay = core::ResourceId{1},
+                                                      .by_season = {0.0F, 0.10F, 0.03F, 0.10F}};
+        }
+        core::WorldState world;
+        world.calendar.date.month = month;
+        world.weather.daylight_hours = 12.0F;
+        const auto heap_at = [&world](float east_m, std::uint16_t resource, float days) {
+          core::FieldRow field;
+          field.kind = core::LandKind::kArable;
+          field.center = core::Vec2{.x = east_m, .y = 0.0F};
+          field.reaped_grams = 1'000'000;
+          field.reaped_resource = core::ResourceId{resource};
+          field.haul_days_remaining = days;
+          return core::AppendRow(world.fields, field);
+        };
+        const core::FieldId own = heap_at(50.0F, 0, 0.05F);
+        const core::FieldId grain = heap_at(1'000.0F, 0, 0.5F);
+        const core::FieldId potato = heap_at(-1'000.0F, 1, 0.5F);
+        core::TaskDayCount count;
+        core::SyncTasks(config, world, 0, count);
+        core::UnitRow house;
+        const core::UnitId house_id = core::AppendRow(world.units, house);
+        core::FamilyRow household;
+        household.house = house_id;
+        const core::FamilyId family = core::AppendRow(world.families, household);
+        world.units.rows[0].household = family;
+        core::ResidentRow carter;
+        carter.family = family;
+        carter.work.kind = core::WorkKind::kHauling;
+        carter.work.field = own;
+        carter.work.rides_horse = 1;
+        core::AppendRow(world.residents, carter);
+        core::LogisticsTally tally;
+        const core::GroomPlan plan = core::BuildGroomPlan(config, world, tally);
+        if (plan.carts.size() != 1) {
+          return core::FieldId{};
+        }
+        for (const core::CartLeg& leg : plan.carts[0].legs) {
+          const std::uint32_t row = core::FindRow(world.logistics_tasks, leg.task);
+          if (row == core::kNoRow) {
+            continue;
+          }
+          const core::FieldId field = world.logistics_tasks.rows[row].field;
+          if (field.value == grain.value || field.value == potato.value) {
+            return field;  // the first other heap the chain reaches
+          }
+        }
+        (void)potato;
+        return core::FieldId{};
+      };
   const core::FieldId spoiling = next_heap(10.0F);
   const core::FieldId keeping = next_heap(0.0F);
   std::cout << "  plan, soonest spoiled first: next heap with the potatoes spoiling "
@@ -1631,6 +1673,17 @@ int TestTheSoonestSpoiledFirst() {
                      "plan: the potato heap that spoils goes ahead of the grain that keeps");
   failures += Expect(keeping.value == 2,
                      "plan: and with both keeping for ever, the table's order - the grain");
+  // HAY BY ITS WEATHERING (#1200): with no spoil_days the hay read «keeps for
+  // ever» and went behind every heap; in September it weathers 2.5 % a night
+  // and goes ahead of the grain that keeps; in July it weathers none and the
+  // table's order stands.
+  const core::FieldId hay_september = next_heap(0.0F, true, core::Month::kSeptember);
+  const core::FieldId hay_july = next_heap(0.0F, true, core::Month::kJuly);
+  std::cout << "  plan, the hay by its weathering: next heap in September " << hay_september.value
+            << ", in July " << hay_july.value << '\n';
+  failures += Expect(hay_september.value == 3 && hay_july.value == 2,
+                     "plan (#1200): a hay heap goes ahead of a keeping grain in September, by its "
+                     "weathering, and keeps the table's order in July, when it weathers none");
   return failures;
 }
 
@@ -1716,6 +1769,7 @@ int main() {
   failures += TestOneTaskALoad();
   failures += TestAgeing();
   failures += TestThreats();
+  failures += TestTheHayHeapThreat();
   failures += TestTheSupplyOfAWorks();
   failures += TestConfig();
   failures += TestThePlansChains();
