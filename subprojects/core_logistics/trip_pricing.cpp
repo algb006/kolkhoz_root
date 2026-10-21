@@ -100,11 +100,13 @@ std::uint32_t PoolPartnerOf(const LogisticsConfig& config,
   for (std::uint32_t row = 0; row < world.logistics_tasks.rows.size(); ++row) {
     const LogisticsTaskRow& other = world.logistics_tasks.rows[row];
     const TaskTripTerms& theirs = other.trip_terms;
+    // ITS LAST PART-LOAD, of any heap (#1056 C3, (iii) lifted; core-boss-oats-
+    // b-pair [110]): until then only a heap of one trip could be a partner.
     if (row == task_row || other.load_kind != LogisticsLoadKind::kFieldHeap || other.paused ||
         !(theirs.trip_hours > 0.0F) || theirs.cart_load != terms.cart_load ||
-        theirs.grams_left <= 0 || WholeTripsFor(theirs.grams_left, theirs.cart_load) != 1U ||
-        leftover + theirs.grams_left > terms.cart_load || row >= remaining.size() ||
-        !(remaining[row] > 0.0F) || HeapResourceOf(world, other).value != resource.value) {
+        theirs.grams_left <= 0 || leftover + LeftoverOf(theirs) > terms.cart_load ||
+        row >= remaining.size() || !(remaining[row] > 0.0F) ||
+        HeapResourceOf(world, other).value != resource.value) {
       continue;
     }
     const float via = RoadKm(world, TravelMode::kCart, terms.load_point, theirs.load_point) +
@@ -177,7 +179,7 @@ void PriceTasksFromPlan(const LogisticsConfig& config, WorldState& world, PriceM
     }
     const float whole = hours.to_second_hours + hours.to_receiver_hours + hours.back_hours;
     const auto grams_first = static_cast<float>(LeftoverOf(first));
-    const auto grams_second = static_cast<float>(second.grams_left);
+    const auto grams_second = static_cast<float>(LeftoverOf(second));  // its last part-load
     const float share =
         grams_first + grams_second > 0.0F ? grams_first / (grams_first + grams_second) : 1.0F;
     first_pooled_hours[trip.first] += whole * share;
@@ -191,9 +193,8 @@ void PriceTasksFromPlan(const LogisticsConfig& config, WorldState& world, PriceM
   for (std::uint32_t row = 0; row < world.logistics_tasks.rows.size(); ++row) {
     const LogisticsTaskRow& task = world.logistics_tasks.rows[row];
     const TaskTripTerms& terms = task.trip_terms;
-    if (!(terms.trip_hours > 0.0F) || terms.cart_load <= 0 || terms.grams_left <= 0 ||
-        second_pooled_hours.contains(row)) {
-      continue;  // not a cart's whole-trip price, or carried today (below)
+    if (!(terms.trip_hours > 0.0F) || terms.cart_load <= 0 || terms.grams_left <= 0) {
+      continue;  // not a cart's whole-trip price
     }
     const WorkAssignment work = HaulingWorkOf(task);
     float* const remaining = WorkSeamOf(world, work);
@@ -201,18 +202,22 @@ void PriceTasksFromPlan(const LogisticsConfig& config, WorldState& world, PriceM
     if (remaining == nullptr || written == nullptr) {
       continue;
     }
+    // A POOLED SECOND's OWN TRIPS ((iii) lifted): its last part-load rides in
+    // the first's pooled trip (below); the rest of it, its whole loads, is
+    // priced here as any heap's. A heap of one trip has none.
+    const Grams own_grams =
+        second_pooled_hours.contains(row) ? terms.grams_left - LeftoverOf(terms) : terms.grams_left;
     const auto found = drawn.find(world.logistics_tasks.row_ids[row].value);
-    const std::uint32_t needed = WholeTripsFor(terms.grams_left, terms.cart_load);
+    const std::uint32_t needed = WholeTripsFor(own_grams, terms.cart_load);
     const std::uint32_t trips = found == drawn.end() ? 0U : std::min(found->second, needed);
-    const Grams reached =
-        std::min<Grams>(terms.grams_left, static_cast<Grams>(trips) * terms.cart_load);
+    const Grams reached = std::min<Grams>(own_grams, static_cast<Grams>(trips) * terms.cart_load);
     const auto pool = pooled_trips.find(row);
     const std::uint32_t in_pool = pool == pooled_trips.end() ? 0U : std::min(pool->second, trips);
     const float drawn_hours = (static_cast<float>(trips - in_pool) * terms.trip_hours) +
                               (in_pool > 0U ? first_pooled_hours[row] : 0.0F);
     const float drawn_days = drawn_hours / config.standard_day_hours;
     const float fallback_days =
-        FallbackCartDays(terms, terms.grams_left - reached, config.standard_day_hours);
+        FallbackCartDays(terms, own_grams - reached, config.standard_day_hours);
     // THE ONE DOOR (ruling 1): both halves of the seam, so production's
     // conversion (drained = written - remaining) reads the plan's price.
     seam_of[row] = drawn_days + fallback_days;
@@ -242,9 +247,11 @@ void PriceTasksFromPlan(const LogisticsConfig& config, WorldState& world, PriceM
       continue;
     }
     const float days = second_pooled_hours[trip.second] / config.standard_day_hours;
+    const auto own = seam_of.find(trip.second);
+    const float own_days = own == seam_of.end() ? 0.0F : own->second;
     if (write) {
-      *remaining = days;
-      *written = days;
+      *remaining = own_days + days;
+      *written = *remaining;
       second.carried_by = world.logistics_tasks.row_ids[trip.first];
       second.carried_share = days / carrier->second;
     } else {

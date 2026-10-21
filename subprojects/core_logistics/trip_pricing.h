@@ -56,10 +56,13 @@ bool PlanPricesCarts(const LogisticsConfig& config, const WorldState& world);
 ///        receiver is at most (1 + LogisticsConfig::pool_detour_share) times
 ///        first heap -> receiver, by RoadKm. The nearest such by the detour,
 ///        then by row. Not a task already carried by another today.
-///        THE PARTNER's WHOLE LOAD IS ITS LEFTOVER (body 5, named): a second
-///        field whose load takes one trip, so pooling it moves no other cart's
-///        trips; and not one the day's clock has already given carting
-///        (`remaining` at nought).
+///        THE PARTNER's LAST PART-LOAD ((iii) lifted; core-boss-oats-b-pair
+///        [110]): any heap's, the grams above its whole loads; its whole
+///        loads stay its own carts' and are priced as any heap's
+///        (PriceTasksFromPlan). Until then (body 5) only a heap of one trip
+///        could be a partner. Not one the day's clock has already given
+///        carting (`remaining` at nought); neither load of a pool is in
+///        another pool the same day (logistics_plan.cpp, PushLoadedHalf).
 /// @param task_row The first field's task row (its last part-load).
 /// @param leftover That load's grams, below its cart_load.
 /// @param receiver The first load's receiver (WorkReceiverOf).

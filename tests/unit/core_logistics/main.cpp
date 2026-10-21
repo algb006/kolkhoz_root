@@ -1377,10 +1377,19 @@ int TestTheFieldsPooled() {
   const Pool fits = run(400'000, core::Vec2{.x = 700.0F, .y = 50.0F});
   const Pool too_big = run(600'000, core::Vec2{.x = 700.0F, .y = 50.0F});
   const Pool off_the_way = run(400'000, core::Vec2{.x = 1'100.0F, .y = 1'500.0F});
+  // (iii) LIFTED (core-boss-oats-b-pair [110]): B of 1.15 t - one whole load
+  // and a last part-load of 400 kg - is a partner too; its part-load rides in
+  // A's last trip, and its whole load stays its own, priced as any heap's.
+  const Pool two_trips = run(1'150'000, core::Vec2{.x = 700.0F, .y = 50.0F});
   std::cout << "  pooled: fits - legs " << fits.pooled_legs << ", carried " << fits.carried
             << ", B's seam " << fits.second_seam << ", trips pooled " << fits.trips_pooled
             << "; too big - legs " << too_big.pooled_legs << "; off the way - legs "
-            << off_the_way.pooled_legs << '\n';
+            << off_the_way.pooled_legs << "; B of two trips - legs " << two_trips.pooled_legs
+            << ", carried " << two_trips.carried << ", B's seam " << two_trips.second_seam << '\n';
+  failures += Expect(two_trips.pooled_legs && two_trips.carried && two_trips.trips_pooled == 1.0F &&
+                         two_trips.second_seam > fits.second_seam + 0.2F,
+                     "pooled ((iii) lifted): a heap of two trips lends its last part-load to the "
+                     "pool, and its seam holds its own whole load beside its share");
   failures += Expect(fits.pooled_legs && fits.carried && fits.second_seam > 0.0F &&
                          fits.second_seam < 0.3F && fits.trips_pooled == 1.0F,
                      "pooled: a second heap that fits the last part-load and lies on the way rides "

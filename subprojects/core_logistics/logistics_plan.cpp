@@ -536,14 +536,28 @@ void PushLoadedHalf(const LogisticsConfig& config,
   const std::uint32_t trips = WholeTripsFor(terms->grams_left, terms->cart_load);
   const Grams leftover =
       trips == 0 ? 0 : terms->grams_left - (static_cast<Grams>(trips - 1U) * terms->cart_load);
+  // ONE POOL A LOAD A DAY ((iii) lifted): a heap of several trips may now be a
+  // second, and its own carts keep carting it, so neither load of a pool may
+  // be in another pool today - its last part-load would ride twice.
+  const auto pooled_today = [&plan](LogisticsTaskId id) {
+    return std::ranges::any_of(plan.carts, [id](const CartPlan& cart) {
+      return std::ranges::any_of(cart.legs, [id](const CartLeg& leg) {
+        return leg.pooled_task.value != kInvalidEntityIdValue &&
+               (leg.pooled_task.value == id.value || leg.task.value == id.value);
+      });
+    });
+  };
   const std::uint32_t second =
-      PoolPartnerOf(config, world, mover.task, leftover, mover.receiver, remaining);
+      pooled_today(world.logistics_tasks.row_ids[mover.task])
+          ? kNoRow
+          : PoolPartnerOf(config, world, mover.task, leftover, mover.receiver, remaining);
   PooledTrip pooled;
-  if (second == kNoRow || !PooledTripOf(world,
-                                        *terms,
-                                        world.logistics_tasks.rows[second].trip_terms.load_point,
-                                        mover.receiver,
-                                        pooled)) {
+  if (second == kNoRow || pooled_today(world.logistics_tasks.row_ids[second]) ||
+      !PooledTripOf(world,
+                    *terms,
+                    world.logistics_tasks.rows[second].trip_terms.load_point,
+                    mover.receiver,
+                    pooled)) {
     PushTripHalf(world, plan, mover, day, hours, /*loaded=*/true);
     return;
   }
@@ -568,7 +582,19 @@ void PushLoadedHalf(const LogisticsConfig& config,
                        day,
                        hours + pooled.to_second_hours,
                        hours + pooled.to_second_hours + pooled.to_receiver_hours));
-  remaining[second] = 0.0F;
+  // The clock's carting of the second goes by its last part-load's share; its
+  // whole loads stay for its own carts ((iii) lifted). Until then the second
+  // was a heap of one trip, carted whole, and its clock went to nought.
+  const TaskTripTerms& second_terms = world.logistics_tasks.rows[second].trip_terms;
+  const std::uint32_t second_trips = WholeTripsFor(second_terms.grams_left, second_terms.cart_load);
+  const Grams second_leftover =
+      second_trips == 0 ? 0
+                        : second_terms.grams_left -
+                              (static_cast<Grams>(second_trips - 1U) * second_terms.cart_load);
+  remaining[second] *= second_terms.grams_left > 0
+                           ? 1.0F - (static_cast<float>(second_leftover) /
+                                     static_cast<float>(second_terms.grams_left))
+                           : 0.0F;
   mover.loaded_half = true;
   mover.half_left = pooled.to_second_hours + pooled.to_receiver_hours;
 }
