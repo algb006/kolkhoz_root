@@ -814,9 +814,9 @@ core::WorldState MakeWorld() {
   plan_cart.people_cart = true;
   plan_cart.legs.push_back(core::CartLeg{.from = core::Vec2{.x = 10.0F, .y = 20.0F},
                                          .to = core::Vec2{.x = 30.0F, .y = 40.0F},
-                                         .task = core::LogisticsTaskId{0},
-                                         .loaded = 1,                      // save 179: a back load
-                                         .resource = core::ResourceId{2},  // save 155
+                                         .task = core::LogisticsTaskId{8},  // save 179: a load's
+                                         .loaded = 1,                       // save 179: a back load
+                                         .resource = core::ResourceId{2},   // save 155
                                          .depart = 7'057,
                                          .arrive = 7'059,
                                          .depart_minute = 77,   // save 178 (T1)
@@ -3207,7 +3207,7 @@ int main() {
             !back.carts[0].on_foot && back.carts[1].on_foot && !back.carts[1].people_cart &&
             back.carts[1].driver.value == 2 && back.carts[1].legs[0].task.value == 5 &&
             back.carts[1].legs[0].arrive == 7'062 && back.carts[0].legs[0].from.x == 10.0F &&
-            back.carts[0].legs[0].to.y == 40.0F && back.carts[0].legs[0].task.value == 0 &&
+            back.carts[0].legs[0].to.y == 40.0F && back.carts[0].legs[0].task.value == 8 &&
             back.carts[0].legs[0].depart == 7'057 && back.carts[0].legs[0].arrive == 7'059 &&
             back.carts[0].legs[0].riders.size() == 1 &&
             back.carts[0].legs[0].riders[0].value == 3 && back.carts[0].legs[1].task.value == 4 &&
