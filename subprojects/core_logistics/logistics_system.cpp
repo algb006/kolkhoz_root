@@ -261,13 +261,14 @@ class LogisticsSystem final : public ILogisticsSystem {
     }
     current.groom_plan = BuildGroomPlan(config_, current, tally);
     // AND THE PRICE FROM THE DRAWING (#1056 C3; trip_pricing.h): under the
-    // planned model the morning's trips become each cart task's seam. THE
-    // MORNING's PLAN ONLY, a deviation from the contract named: a re-plan in
-    // the day draws from loads already partly carted while the facts are
-    // last evening's, so its trips would price what is gone; the morning's
-    // price stands to the evening, which writes the facts and the fallback
-    // anew.
-    PriceTasksFromPlan(config_, current);
+    // planned model the morning's trips become each cart task's seam - and so
+    // do a re-plan's while nothing is carted yet today (Replan, (ii')). A
+    // re-plan AFTER the carting began does not price, a deviation from the
+    // contract named: it draws from loads already partly carted while the
+    // facts are last evening's, so its trips would price what is gone; the
+    // last price before sunrise stands to the evening, which writes the facts
+    // and the fallback anew.
+    PriceTasksFromPlan(config_, current, PriceMode::kWrite);
     // AND THE EVENING (F3 (B); logistics_plan.h): who rides home on which
     // leg, and every morning rider's own way home.
     SeatEveningRiders(config_, current, current.groom_plan, tally);
@@ -294,6 +295,17 @@ class LogisticsSystem final : public ILogisticsSystem {
     if (plan.day != current.calendar.day || HourFromTick(current.calendar.tick) < 2 ||
         !Stabled(current)) {
       return false;
+    }
+    // THE DAY's PRICE IS THE PLAN THE DAY CARTS BY (#1056 C3 (ii');
+    // core-boss-oats-b-pair [82]-[83]): every re-plan BEFORE the carting
+    // begins prices again (below); at the hour it begins the day's columns are
+    // booked once, from the plan as it then stands. Until (ii') only the
+    // morning's plan priced, and on most harvest mornings the hour-1 top-up
+    // gave carts that re-planned the day at hour 2, unpriced.
+    const std::uint32_t hour = HourFromTick(current.calendar.tick);
+    const std::uint32_t sunrise = SunriseHour(current.weather.daylight_hours);
+    if (hour == sunrise) {
+      PriceTasksFromPlan(config_, current, PriceMode::kBook);
     }
     plan.stale = plan.stale || CartsChanged(current, plan);
     // AND A HEAP REAPED IN THE DAY (#1056 C4, writer (3)): its task is made
@@ -322,6 +334,9 @@ class LogisticsSystem final : public ILogisticsSystem {
     LogisticsTally tally;
     const GroomPlan earlier = plan;
     plan = BuildGroomPlan(config_, current, tally, &earlier);
+    if (hour < sunrise) {
+      PriceTasksFromPlan(config_, current, PriceMode::kWrite);  // nothing carted yet today
+    }
     // The evening is re-seated from the new legs (F3 (B)). AN APPROXIMATION,
     // NAMED: a worker's hours away were booked at his first hour with the
     // morning plan's way home; a re-plan moves his end of day, not that book.

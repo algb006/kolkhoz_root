@@ -121,14 +121,17 @@ std::uint32_t PoolPartnerOf(const LogisticsConfig& config,
   return best;
 }
 
-void PriceTasksFromPlan(const LogisticsConfig& config, WorldState& world) {
+void PriceTasksFromPlan(const LogisticsConfig& config, WorldState& world, PriceMode mode) {
   if (!PlanPricesCarts(config, world) || world.groom_plan.day != world.calendar.day) {
     return;
   }
-  // The carried pairs are today's alone: the morning's plan writes them anew.
-  for (LogisticsTaskRow& task : world.logistics_tasks.rows) {
-    task.carried_by = LogisticsTaskId{};
-    task.carried_share = 0.0F;
+  const bool write = mode == PriceMode::kWrite;
+  // The carried pairs are today's alone: each pricing before the carting writes them anew.
+  if (write) {
+    for (LogisticsTaskRow& task : world.logistics_tasks.rows) {
+      task.carried_by = LogisticsTaskId{};
+      task.carried_share = 0.0F;
+    }
   }
   // THE WHOLE TRIPS DRAWN TODAY, by task: every loaded leg of a cart (not a
   // carrier on foot) names the task whose load it takes; a POOLED trip is two
@@ -180,7 +183,9 @@ void PriceTasksFromPlan(const LogisticsConfig& config, WorldState& world) {
     first_pooled_hours[trip.first] += whole * share;
     second_pooled_hours[trip.second] += whole * (1.0F - share);
     ++pooled_trips[trip.first];
-    book.cart_trips_pooled += 1.0F;
+    if (!write) {
+      book.cart_trips_pooled += 1.0F;
+    }
   }
   std::unordered_map<std::uint32_t, float> seam_of;  // by row: the seam written
   for (std::uint32_t row = 0; row < world.logistics_tasks.rows.size(); ++row) {
@@ -210,11 +215,14 @@ void PriceTasksFromPlan(const LogisticsConfig& config, WorldState& world) {
         FallbackCartDays(terms, terms.grams_left - reached, config.standard_day_hours);
     // THE ONE DOOR (ruling 1): both halves of the seam, so production's
     // conversion (drained = written - remaining) reads the plan's price.
-    *remaining = drawn_days + fallback_days;
-    *written = *remaining;
-    seam_of[row] = *remaining;
-    book.cart_days_drawn += drawn_days;
-    book.cart_days_fallback += fallback_days;
+    seam_of[row] = drawn_days + fallback_days;
+    if (write) {
+      *remaining = seam_of[row];
+      *written = *remaining;
+    } else {
+      book.cart_days_drawn += drawn_days;
+      book.cart_days_fallback += fallback_days;
+    }
   }
   // THE CARRIED LOADS (ruling 3): a pooled second field pays its share of the
   // trip by grams, and drains with its carrier's seam (work_seam.h,
@@ -234,11 +242,14 @@ void PriceTasksFromPlan(const LogisticsConfig& config, WorldState& world) {
       continue;
     }
     const float days = second_pooled_hours[trip.second] / config.standard_day_hours;
-    *remaining = days;
-    *written = days;
-    second.carried_by = world.logistics_tasks.row_ids[trip.first];
-    second.carried_share = days / carrier->second;
-    book.cart_days_drawn += days;
+    if (write) {
+      *remaining = days;
+      *written = days;
+      second.carried_by = world.logistics_tasks.row_ids[trip.first];
+      second.carried_share = days / carrier->second;
+    } else {
+      book.cart_days_drawn += days;
+    }
     second_pooled_hours.erase(trip.second);
   }
 }

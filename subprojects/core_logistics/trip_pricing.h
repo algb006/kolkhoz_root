@@ -109,17 +109,30 @@ std::uint32_t BackLoadOf(const LogisticsConfig& config,
                          Vec2 at,
                          Vec2 next_start);
 
-/// @brief THE ONE DOOR: rewrites every cart-priced open task's seam from
-///        today's drawn plan (world.groom_plan) and its TaskTripTerms, writes
-///        the carried pairs (LogisticsTaskRow::carried_by / carried_share) and
-///        books the day's columns. Called after BuildGroomPlan and after every
-///        re-plan; idempotent for one plan (a re-plan replaces the day's
-///        figures, it does not add to them).
+/// What a PriceTasksFromPlan call does (C3 body (ii'), core-boss-oats-b-pair [83]).
+enum class PriceMode : std::uint8_t {
+  /// The seams and the carried pairs, from the plan as it stands - at the
+  /// morning's plan and at every re-plan BEFORE the day's carting begins
+  /// (before sunrise: no work is done outside the solar window).
+  kWrite,
+  /// The day's columns in the year's book (C3-g, C3-h) from the plan the day
+  /// carts by - once, at the hour carting begins - so the re-plans of one
+  /// morning book the day once. No seam is written.
+  kBook,
+};
+
+/// @brief THE ONE DOOR: in kWrite, rewrites every cart-priced open task's seam
+///        from today's drawn plan (world.groom_plan) and its TaskTripTerms and
+///        writes the carried pairs (LogisticsTaskRow::carried_by /
+///        carried_share); in kBook, books the day's columns from the same
+///        reckoning. Idempotent for one plan.
 /// @pre PlanPricesCarts(config, world); otherwise it does nothing.
-/// @post For every such task, its seam's remaining equals its written value
-///       equals (drawn hours + carried hours + fallback hours) ÷
+/// @post (kWrite) For every such task, its seam's remaining equals its written
+///       value equals (drawn hours + carried hours + fallback hours) ÷
 ///       standard_day_hours (C3-d's identity, checked by the instrument).
-void PriceTasksFromPlan(const LogisticsConfig& config, WorldState& world);
+void PriceTasksFromPlan(const LogisticsConfig& config,
+                        WorldState& world,
+                        PriceMode mode = PriceMode::kWrite);
 
 }  // namespace core
 

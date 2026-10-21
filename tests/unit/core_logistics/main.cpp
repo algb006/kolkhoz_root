@@ -1219,6 +1219,9 @@ int TestThePlanWritesThePrice() {
         system->BuildPlan(world);
         seam = world.fields.rows[0].haul_days_remaining;
         written = world.fields.rows[0].haul_days_written;
+        // The day's book is written at sunrise, hour 6 of twelve hours' light ((ii')).
+        world.calendar.tick = (3 * core::kTicksPerDay) + 6;
+        system->Replan(world);
         drawn_days = world.ledger.current.cart_days_drawn;
         fallback_days = world.ledger.current.cart_days_fallback;
         return true;
@@ -1322,6 +1325,8 @@ int TestTheFieldsPooled() {
     }
     world.calendar.tick = (3 * core::kTicksPerDay) + 1;
     system->BuildPlan(world);
+    world.calendar.tick = (3 * core::kTicksPerDay) + 6;  // sunrise: the day's book ((ii'))
+    system->Replan(world);
     const core::LogisticsTaskRow* a = TaskOfField(world, first);
     const core::LogisticsTaskRow* b = TaskOfField(world, second);
     if (a == nullptr || b == nullptr) {
@@ -1363,6 +1368,106 @@ int TestTheFieldsPooled() {
   failures +=
       Expect(!off_the_way.pooled_legs && !off_the_way.carried && off_the_way.trips_pooled == 0.0F,
              "pooled: a second heap off the way (detour above 25 %) is not pooled");
+  return failures;
+}
+
+/// THE PRICE IS THE PLAN THE DAY CARTS BY (#1056 C3 (ii'); core-boss-oats-b-pair
+/// [82]-[83]): a 6 t heap priced at the hour-1 plan of ONE cart; a second
+/// carter joins, and the re-plan at hour 2 - before sunrise at 6 - prices
+/// again, so the day's book at sunrise counts the drawn trips of TWO carts
+/// (more than the one cart's of the day without the re-plan). And a re-plan
+/// after sunrise, with the seam drained to 1.0 meanwhile, leaves the seam as
+/// the carting left it.
+int TestThePriceBeforeTheCarting() {
+  int failures = 0;
+  const test::FakeTable resources{{"key", "cargo_form", "is_fuel"}, {{"hay", "rick", "0"}}};
+  const test::FakeTable transport{{"key", "seats", "trip_model"}, {{"cart_loaded", "2", "3"}}};
+  const test::FakeTable horses{{"key"}, {{"horse"}}};
+  const test::FakeTableSet tables{
+      {{"resources", &resources}, {"transport", &transport}, {"livestock", &horses}}};
+
+  struct Day {
+    float booked_drawn = -1.0F;
+    float seam_after = -1.0F;
+  };
+
+  const auto run = [&tables](bool second_carter, bool late_replan) {
+    Day out;
+    const auto system = core::CreateLogisticsSystem(tables, core::StubTables::kAllowed);
+    if (system == nullptr) {
+      return out;
+    }
+    core::WorldState world;
+    world.weather.daylight_hours = 12.0F;  // sunrise at hour 6
+    world.calendar.day = 3;
+    core::FieldRow field;
+    field.kind = core::LandKind::kArable;
+    field.center = core::Vec2{.x = 1'200.0F, .y = 0.0F};
+    field.reaped_grams = 6'000'000;
+    field.reaped_resource = core::ResourceId{0};
+    field.haul_days_remaining = 2.4F;
+    field.haul_days_written = 2.4F;
+    field.haul_to = core::Vec2{.x = 200.0F, .y = 0.0F};
+    const core::FieldId heap = core::AppendRow(world.fields, field);
+    core::UnitRow house;
+    const core::UnitId house_id = core::AppendRow(world.units, house);
+    core::FamilyRow household;
+    household.house = house_id;
+    const core::FamilyId family = core::AppendRow(world.families, household);
+    world.units.rows[0].household = family;
+    const auto carter = [&world, family, heap]() {
+      core::ResidentRow row;
+      row.family = family;
+      row.work.kind = core::WorkKind::kHauling;
+      row.work.rides_horse = 1;
+      row.work.field = heap;
+      core::AppendRow(world.residents, row);
+    };
+    carter();
+    StableTheTeam(world);
+    world.calendar.tick = 3 * core::kTicksPerDay;
+    system->RunTasks(world, world);
+    if (world.logistics_tasks.rows.empty()) {
+      return out;
+    }
+    core::TaskTripTerms& terms = world.logistics_tasks.rows[0].trip_terms;
+    terms.load_point = core::Vec2{.x = 1'100.0F, .y = 0.0F};
+    terms.trip_hours = 3.0F;
+    terms.trip_loaded_hours = 2.0F;
+    terms.cart_load = 750'000;
+    terms.grams_left = 6'000'000;
+    world.calendar.tick = (3 * core::kTicksPerDay) + 1;
+    system->BuildPlan(world);
+    if (second_carter) {
+      carter();
+      world.groom_plan.stale = true;
+      world.calendar.tick = (3 * core::kTicksPerDay) + 2;
+      system->Replan(world);
+    }
+    world.calendar.tick = (3 * core::kTicksPerDay) + 6;  // sunrise: the day's book
+    system->Replan(world);
+    out.booked_drawn = world.ledger.current.cart_days_drawn;
+    if (late_replan) {
+      world.fields.rows[0].haul_days_remaining = 1.0F;  // the morning's carting drained it
+      world.fields.rows[0].haul_days_written = 1.0F;
+      world.groom_plan.stale = true;
+      world.calendar.tick = (3 * core::kTicksPerDay) + 8;
+      system->Replan(world);
+    }
+    out.seam_after = world.fields.rows[0].haul_days_remaining;
+    return out;
+  };
+  const Day one = run(false, false);
+  const Day two = run(true, true);
+  std::cout << "  the price before the carting: booked drawn one cart " << one.booked_drawn
+            << ", two carts by the hour-2 re-plan " << two.booked_drawn
+            << "; the seam after a re-plan at hour 8 " << two.seam_after << '\n';
+  failures += Expect(one.booked_drawn > 0.0F && two.booked_drawn > one.booked_drawn,
+                     "(ii'): a re-plan before sunrise prices again, and the day's book counts the "
+                     "plan the day carts by - two carts' trips, not the hour-1 plan's one");
+  failures +=
+      Expect(two.seam_after == 1.0F,
+             "(ii'): a re-plan after the carting began leaves the seam as the carting left it");
   return failures;
 }
 
@@ -2038,6 +2143,7 @@ int main() {
   failures += TestThePlannedTrips();
   failures += TestThePlanWritesThePrice();
   failures += TestTheFieldsPooled();
+  failures += TestThePriceBeforeTheCarting();
   failures += TestTheChairmansDoors();
   failures += TestTheLateLoadsLamp();
   failures += TestTheDayOffHeldTheLoad();
