@@ -737,8 +737,13 @@ class LaborSystem final : public ILaborSystem {
 
   /// `only_rows` (S1'): when given, the top-up of the hour's released carters
   /// alone - it places only them, and neither releases horse work nor says a
-  /// stack is urgent, which are the morning's.
-  void TopUpDay(WorldState& current, const std::vector<std::uint32_t>* only_rows = nullptr) const {
+  /// stack is urgent, which are the morning's. `released_from`: the jobs they
+  /// were released from, not offered again this hour (the unit's first run
+  /// placed the released carter back on his own load, which the plan would
+  /// not draw, and he would be released and placed again every hour).
+  void TopUpDay(WorldState& current,
+                const std::vector<std::uint32_t>* only_rows = nullptr,
+                const std::vector<WorkAssignment>* released_from = nullptr) const {
     if (only_rows == nullptr) {
       ReleaseHorselessWork(current);
     }
@@ -763,6 +768,13 @@ class LaborSystem final : public ILaborSystem {
     };
     std::vector<AssignmentJob> jobs = offered;
     std::erase_if(jobs, crewed);
+    if (released_from != nullptr) {
+      std::erase_if(jobs, [released_from, &stands_on](const AssignmentJob& job) {
+        return std::ranges::any_of(*released_from, [&job, &stands_on](const WorkAssignment& work) {
+          return stands_on(work, job);
+        });
+      });
+    }
     if (jobs.empty()) {
       return;
     }
@@ -2985,8 +2997,10 @@ class LaborSystem final : public ILaborSystem {
     // Until S1' he stood unpaid by his load to the evening (step 1's pair:
     // the heaps' carter-hours doubled, the district lot lost 96 % of its own).
     if (!released_carters.empty()) {
+      std::vector<WorkAssignment> released_from;
       for (const std::uint32_t row : released_carters) {
         ResidentRow& carter = current.residents.rows[row];
+        released_from.push_back(carter.work);
         PayDay(current, carter);
         carter.work.rides_horse = 0;
         carter.work.stand = TimberStandId{};
@@ -2994,7 +3008,7 @@ class LaborSystem final : public ILaborSystem {
         carter.work.extraction_site = ExtractionSiteId{};
         carter.work.limit_delivery = LimitDeliveryId{};
       }
-      TopUpDay(current, &released_carters);
+      TopUpDay(current, &released_carters, &released_from);
     }
     // AND EVERY HAND OF A CARE THE HOUR DRAINED, at the hour's end (#709): a
     // hand earlier in the rows than the one whose hour drained it was asked
