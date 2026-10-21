@@ -30,10 +30,12 @@
 #include <cstdlib>
 #include <future>
 #include <iostream>
+#include <optional>
 #include <streambuf>
 #include <string>
 #include <vector>
 
+#include "../common/accepted_reds.h"
 #include "../common/advance_write_off_tally.h"
 #include "../common/births_herd_tally.h"
 #include "../common/building_chairman.h"
@@ -1346,12 +1348,34 @@ int main(int argc, char** argv) {
     return std::to_string(hundredths / 100) + (hundredths % 100 < 10 ? ".0" : ".") +
            std::to_string(hundredths % 100);
   };
-  const std::string mean_claim = "E1: the mean door is " + two_places(kEraMeanFloor) + " to " +
-                                 two_places(kEraMeanCeiling) +
-                                 " (earlier stops for the human) — now " + two_places(door_mean);
-  failures +=
-      run::Expect(!doors.empty() && door_mean >= kEraMeanFloor && door_mean <= kEraMeanCeiling,
-                  mean_claim.c_str());
+  // THE HUMAN'S ACCEPTED PRICE IS A LINE THE CHECK READS (accepted_reds.h;
+  // boss, core-boss-oats-b-pair [26]): below the floor but within the
+  // accepted value less its SE the cell passes and says so; below that it is
+  // red as before and names the line it broke; back inside the band it asks
+  // for the line to be dropped. The band's constants above are not touched.
+  const std::optional<run::AcceptedRed> accepted =
+      run::FindAcceptedRed("population_curve", "E1 mean door");
+  const bool inside_band =
+      !doors.empty() && door_mean >= kEraMeanFloor && door_mean <= kEraMeanCeiling;
+  const bool within_accepted = !doors.empty() && accepted.has_value() &&
+                               door_mean < kEraMeanFloor &&
+                               door_mean >= accepted->value - accepted->se;
+  std::string mean_claim = "E1: the mean door is " + two_places(kEraMeanFloor) + " to " +
+                           two_places(kEraMeanCeiling) + " (earlier stops for the human) — now " +
+                           two_places(door_mean);
+  if (accepted.has_value() && inside_band) {
+    std::cout << "population_curve: E1 accepted red no longer needed — drop the line ("
+              << run::kAcceptedRedsPath << ", " << accepted->date << ", " << accepted->tree
+              << ")\n";
+  } else if (within_accepted) {
+    std::cout << "population_curve: E1 ACCEPTED RED (" << accepted->word << "; " << accepted->date
+              << ", tree " << accepted->tree << "): accepted " << two_places(accepted->value)
+              << ", SE " << two_places(accepted->se) << ", now " << two_places(door_mean) << '\n';
+  } else if (accepted.has_value()) {
+    mean_claim += " — below the accepted line too (" + two_places(accepted->value) + " less SE " +
+                  two_places(accepted->se) + ", " + accepted->date + ", " + accepted->tree + ")";
+  }
+  failures += run::Expect(inside_band || within_accepted, mean_claim.c_str());
   const std::string spread_claim =
       "E2: at least " + std::to_string(kEraSpreadAtLeast) + " of " + std::to_string(kSeeds.size()) +
       " doors inside " + two_places(kEraSpreadFloor) + " to " + two_places(kEraSpreadCeiling) +
