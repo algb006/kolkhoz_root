@@ -735,10 +735,17 @@ class LaborSystem final : public ILaborSystem {
     }
   }
 
-  void TopUpDay(WorldState& current) const {
-    ReleaseHorselessWork(current);
+  /// `only_rows` (S1'): when given, the top-up of the hour's released carters
+  /// alone - it places only them, and neither releases horse work nor says a
+  /// stack is urgent, which are the morning's.
+  void TopUpDay(WorldState& current, const std::vector<std::uint32_t>* only_rows = nullptr) const {
+    if (only_rows == nullptr) {
+      ReleaseHorselessWork(current);
+    }
     const std::vector<AssignmentJob> offered = CollectJobs(current);
-    SayAStackIsUrgent(current, offered);
+    if (only_rows == nullptr) {
+      SayAStackIsUrgent(current, offered);
+    }
     // road_work is not asked, as it never was here: one road crew answers for
     // every road job of the morning (named in the commit of 0.37.101, not
     // mended by it — the canon lays no road).
@@ -777,8 +784,10 @@ class LaborSystem final : public ILaborSystem {
     // ranks it wrong, that is the morning's ranking to mend (boss), not this
     // hour's.
     std::vector<AssignmentCandidate> candidates = CollectCandidates(current);
-    std::erase_if(candidates, [&current](const AssignmentCandidate& candidate) {
-      return current.residents.rows[candidate.resident_row].work.kind != WorkKind::kNone;
+    std::erase_if(candidates, [&current, only_rows](const AssignmentCandidate& candidate) {
+      return current.residents.rows[candidate.resident_row].work.kind != WorkKind::kNone ||
+             (only_rows != nullptr &&
+              std::ranges::find(*only_rows, candidate.resident_row) == only_rows->end());
     });
     if (candidates.empty()) {
       return;
@@ -2692,6 +2701,7 @@ class LaborSystem final : public ILaborSystem {
   /// seam must always drain it in the same order.
   void RunHour(WorldState& current, std::uint32_t hour) const {
     const DayWindow window = SolarWindow(current.weather.daylight_hours);
+    std::vector<std::uint32_t> released_carters;  // S1': no leg of his load in a fresh plan
     for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
       const WorkKind kind = current.residents.rows[row].work.kind;
       if (kind == WorkKind::kNone) {
@@ -2868,12 +2878,37 @@ class LaborSystem final : public ILaborSystem {
       if (delivered <= 0.0F) {
         continue;  // the job is done for today; he stands about, unpaid
       }
-      // ONE DISPATCHER (#1056 C3 step 1; core-boss-oats-b-pair [87]-[91]): a
-      // carter on a horse drains a planned load only in the hours his cart's
-      // plan has him on a leg of it (OnADrawnLeg) - the plan is the carting.
-      if (kind == WorkKind::kHauling && resident.work.rides_horse != 0 &&
-          !OnADrawnLeg(current, row)) {
-        continue;  // riding, or waiting for the next hour's re-plan; unpaid
+      // ONE DISPATCHER (#1056 C3 step 1, S1'; core-boss-oats-b-pair [87]-[96]):
+      // a carter on a horse drains a planned load by his cart's plan - the plan
+      // is the carting. Step 1 drained it only inside the legs and by his
+      // efficiency, and so drained a priced trip at 0.57 of its price an hour:
+      // the loading between the legs drained nothing, and the efficiency
+      // slowed the horse (hay rot +162 % canon, +116 % novice; [95]). On the
+      // road the cart's clock drains - his skill does not make the horse walk
+      // faster; at the load and the receiver his efficiency stays, since a
+      // skilled carter loads faster (econ, boss-econ-c3-body-pair [12]).
+      const CartHour cart_hour = kind == WorkKind::kHauling && resident.work.rides_horse != 0
+                                     ? CartHourOf(current, row)
+                                     : CartHour::kAsBefore;
+      if (cart_hour != CartHour::kAsBefore) {
+        if (cart_hour == CartHour::kOff) {
+          continue;  // riding to or from another load, or home; unpaid here
+        }
+        if (cart_hour == CartHour::kUndrawn) {
+          if (!current.groom_plan.stale && !FollowHisChain(current, row)) {
+            released_carters.push_back(row);
+          }
+          continue;  // re-planned, sent on along his chain, or released
+        }
+        if (cart_hour == CartHour::kRoad) {
+          delivered = worked / config_.standard_day_hours;
+          if (delivered > *seam) {
+            delivered = *seam;
+          }
+          if (delivered <= 0.0F) {
+            continue;
+          }
+        }
       }
       const float seam_before = *seam;
       *seam -= delivered * seam_share;
@@ -2941,6 +2976,25 @@ class LaborSystem final : public ILaborSystem {
         event.resident = current.residents.row_ids[row];
         PayDay(current, resident);
       }
+    }
+    // A CARTER THE PLAN DOES NOT CARRY IS RELEASED TO OTHER WORK (S1'; econ,
+    // boss-econ-c3-body-pair [12]): the world ended his job - a fresh plan has
+    // no leg of his load and no load of his chain - so his day on it is paid
+    // now, his horse goes back, and the top-up may place him this hour on work
+    // nobody holds (one job a day: the world, not a better job, ended it).
+    // Until S1' he stood unpaid by his load to the evening (step 1's pair:
+    // the heaps' carter-hours doubled, the district lot lost 96 % of its own).
+    if (!released_carters.empty()) {
+      for (const std::uint32_t row : released_carters) {
+        ResidentRow& carter = current.residents.rows[row];
+        PayDay(current, carter);
+        carter.work.rides_horse = 0;
+        carter.work.stand = TimberStandId{};
+        carter.work.unit = UnitId{};
+        carter.work.extraction_site = ExtractionSiteId{};
+        carter.work.limit_delivery = LimitDeliveryId{};
+      }
+      TopUpDay(current, &released_carters);
     }
     // AND EVERY HAND OF A CARE THE HOUR DRAINED, at the hour's end (#709): a
     // hand earlier in the rows than the one whose hour drained it was asked
@@ -3027,49 +3081,96 @@ class LaborSystem final : public ILaborSystem {
     }
   }
 
-  /// @brief THE PLAN IS THE CARTING (#1056 C3 step 1; core-boss-oats-b-pair
-  ///        [87]-[91]): whether this hour drains the planned load of carter
-  ///        `row`, a hauler on a horse. True - as before C3 - when his load has
-  ///        no trip facts (not priced by whole trips: trip_model below 3, a load
-  ///        priced on foot), when its round trip is longer than today's light (a
-  ///        BEYOND-THE-DAY load, the district lot's 67-84 h: one day's plan
-  ///        cannot draw it, so it is drained by hours, a named class; L2), or
-  ///        when no plan stands for today. Otherwise true only in an hour one of
-  ///        his cart's legs naming that load spans (depart <= now < arrive). A
-  ///        carter whose plan names his load in no leg at all makes the plan
-  ///        stale, so the next hour's re-plan draws his chain from where he is.
-  /// @note Side effect: GroomPlan::stale.
-  static bool OnADrawnLeg(WorldState& current, std::uint32_t row) {
+  /// What a carter's hour is to his load in today's plan (CartHourOf).
+  enum class CartHour : std::uint8_t {
+    kAsBefore,  ///< not priced by the plan: drained by his hours, as before C3
+    kRoad,      ///< on a leg naming his load: the cart's clock drains
+    kDwell,     ///< between legs, next to one naming his load: loading or
+                ///< unloading, drained by his efficiency
+    kOff,       ///< on a leg or a wait of another load, a ride, or home
+    kUndrawn,   ///< his cart's plan names his load in no leg
+  };
+
+  /// @brief THE PLAN IS THE CARTING (#1056 C3 step 1, S1'; core-boss-oats-
+  ///        b-pair [87]-[96]): what this hour is, in today's plan, to the load
+  ///        of carter `row`, a hauler on a horse. kAsBefore when his load has
+  ///        no trip facts (trip_model below 3, a load priced on foot), when its
+  ///        round trip is longer than today's light (a BEYOND-THE-DAY load, the
+  ///        district lot's 67-84 h: one day's plan cannot draw it - L2, a named
+  ///        class), or when no plan stands for today. Otherwise kRoad inside a
+  ///        leg naming his load (depart <= now < arrive), kDwell in a gap
+  ///        between legs whose leg before or after names it (the loading
+  ///        before a loaded leg, the unloading after it - logistics_system.cpp,
+  ///        SomeCartFree, reads the loading the same way), kOff in any other
+  ///        hour, and kUndrawn when no leg of his cart names it, or he has no
+  ///        cart in the plan.
+  static CartHour CartHourOf(const WorldState& current, std::uint32_t row) {
     const WorkAssignment& work = current.residents.rows[row].work;
     const std::uint32_t task_row = TaskRowOfWork(current, work);
     if (task_row == kNoRow || current.groom_plan.day != current.calendar.day) {
-      return true;
+      return CartHour::kAsBefore;
     }
     const TaskTripTerms& terms = current.logistics_tasks.rows[task_row].trip_terms;
     if (!(terms.trip_hours > 0.0F) || terms.trip_hours > current.weather.daylight_hours) {
-      return true;
+      return CartHour::kAsBefore;
     }
-    const LogisticsTaskId task = current.logistics_tasks.row_ids[task_row];
+    const std::uint32_t task = current.logistics_tasks.row_ids[task_row].value;
     const ResidentId driver = current.residents.row_ids[row];
     const Tick now = current.calendar.tick;
-    bool named = false;
     for (const CartPlan& cart : current.groom_plan.carts) {
-      if (cart.driver.value != driver.value) {
+      if (cart.driver.value != driver.value || cart.on_foot) {
+        continue;
+      }
+      const bool named = std::ranges::any_of(
+          cart.legs, [task](const CartLeg& leg) { return leg.task.value == task; });
+      if (!named) {
+        return CartHour::kUndrawn;
+      }
+      const CartLeg* before = nullptr;
+      const CartLeg* after = nullptr;
+      for (const CartLeg& leg : cart.legs) {
+        if (leg.depart <= now && now < leg.arrive) {
+          return leg.task.value == task ? CartHour::kRoad : CartHour::kOff;
+        }
+        if (leg.arrive <= now && (before == nullptr || leg.arrive > before->arrive)) {
+          before = &leg;
+        }
+        if (leg.depart > now && (after == nullptr || leg.depart < after->depart)) {
+          after = &leg;
+        }
+      }
+      const bool next_to_his = (before != nullptr && before->task.value == task) ||
+                               (after != nullptr && after->task.value == task);
+      return next_to_his ? CartHour::kDwell : CartHour::kOff;
+    }
+    return CartHour::kUndrawn;
+  }
+
+  /// @brief S1': a carter whose load the fresh plan does not draw goes on to
+  ///        the first load of his cart's chain that still has carting left,
+  ///        as FollowThePlan sends one whose load is carted. Returns whether
+  ///        he was sent; false when his cart names no such load (he is then
+  ///        released, RunHour).
+  static bool FollowHisChain(WorldState& current, std::uint32_t row) {
+    WorkAssignment& work = current.residents.rows[row].work;
+    const ResidentId driver = current.residents.row_ids[row];
+    for (const CartPlan& cart : current.groom_plan.carts) {
+      if (cart.driver.value != driver.value || cart.on_foot) {
         continue;
       }
       for (const CartLeg& leg : cart.legs) {
-        if (leg.task.value != task.value) {
+        const std::uint32_t task_row = FindRow(current.logistics_tasks, leg.task);
+        if (task_row == kNoRow) {
           continue;
         }
-        named = true;
-        if (leg.depart <= now && now < leg.arrive) {
+        const LogisticsTaskRow& task = current.logistics_tasks.rows[task_row];
+        const float* const seam = WorkSeamOf(current, HaulingWorkOf(task));
+        if (seam != nullptr && *seam > 0.0F) {
+          RetargetWork(work, task);
           return true;
         }
       }
-      break;
-    }
-    if (!named) {
-      current.groom_plan.stale = true;  // an undrawn carter: re-planned the next hour
+      return false;
     }
     return false;
   }
