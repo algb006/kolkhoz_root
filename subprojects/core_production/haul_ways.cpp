@@ -123,4 +123,18 @@ void BookCartRun(const ProductionConfig& config,
   }
 }
 
+void BookPaidTrips(const ProductionConfig& config,
+                   WorldState& current,
+                   CartLoadSource source,
+                   const HaulRate& rate,
+                   float drained_days) {
+  const auto at = static_cast<std::size_t>(source);
+  if (!rate.produce_cart || !(drained_days > 0.0F) || !(rate.round_trip_hours > 0.0F) ||
+      at >= kCartLoadSourceCountValue) {
+    return;
+  }
+  current.ledger.current.cart_trips_paid[at] +=
+      drained_days * config.standard_day_hours / rate.round_trip_hours;
+}
+
 }  // namespace core

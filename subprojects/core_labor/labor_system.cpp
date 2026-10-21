@@ -2882,6 +2882,14 @@ class LaborSystem final : public ILaborSystem {
       // load's task, split into grams by production's settle.
       if (kind == WorkKind::kHauling) {
         NoteHaulDrain(current, resident.work, seam_before - *seam, resident.work.rides_horse == 0);
+        // AND THE LOADS HIS CART CARRIES ALONG (#1056 C3, ruling 3; work_seam.h,
+        // CoDrainCarriedTasks): a pooled second field drains with his seam.
+        if (resident.work.rides_horse != 0) {
+          const std::uint32_t own = TaskRowOfWork(current, resident.work);
+          if (own != kNoRow) {
+            CoDrainCarriedTasks(current, current.logistics_tasks.row_ids[own], seam_before - *seam);
+          }
+        }
       }
       // AND HE IS PAID BY WHAT HE CARRIED, NOT BY HIS HOURS (0.37.109; boss, 2
       // October 2026; labor.csv walker_norm_kg_per_day): the day's trips —

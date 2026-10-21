@@ -308,6 +308,12 @@ void SettleSiteSupply(const ProductionConfig& config, WorldState& current, bool 
                   CartLoadSource::kSupply,
                   LegRate(config, current, front, unit.position),
                   budget);
+      // U's numerator (#1056 C3): a site takes all the drained work.
+      BookPaidTrips(config,
+                    current,
+                    CartLoadSource::kSupply,
+                    LegRate(config, current, front, unit.position),
+                    done);
       // Who carried it (#671's instrument; hauled_book.h). A site takes all
       // the drained work, so the notes are spent whole.
       WorkAssignment hauled;

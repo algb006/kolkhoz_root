@@ -8,10 +8,12 @@
 
 #include "cart_trips.h"
 #include "core_common/haul.h"
+#include "core_common/ledger_state.h"
 #include "core_common/logistics_state.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/unit_state.h"
 #include "core_common/world_state.h"
+#include "haul_ways.h"
 #include "production_config.h"
 #include "trip_terms_writer.h"
 
@@ -83,5 +85,19 @@ int CheckTheTripsFacts() {
                      "the supply's facts land on the supply's task, not the emptying's");
   std::cout << "  trip facts: round trip " << rate.round_trip_hours << " h, loaded "
             << rate.loaded_hours << " h; planned " << planned.cart_load << " g a load\n";
+
+  // U's NUMERATOR (haul_ways.h, BookPaidTrips): 0.3 cart-days drained of a 10 h day over a round
+  // trip of 1.5 h are two whole trips paid, on the field's column; a walker's rate pays none.
+  core::HaulRate paid = rate;
+  paid.round_trip_hours = 1.5F;
+  config.standard_day_hours = 10.0F;
+  core::BookPaidTrips(config, world, core::CartLoadSource::kField, paid, 0.3F);
+  const float on_field =
+      world.ledger.current.cart_trips_paid[static_cast<std::size_t>(core::CartLoadSource::kField)];
+  core::BookPaidTrips(config, world, core::CartLoadSource::kField, walked, 0.3F);
+  failures +=
+      Expect(Near(on_field, 2.0F) && world.ledger.current.cart_trips_paid[static_cast<std::size_t>(
+                                         core::CartLoadSource::kField)] == on_field,
+             "paid trips: the drained cart-days over the round trip, none on foot");
   return failures;
 }

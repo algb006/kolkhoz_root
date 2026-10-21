@@ -12,6 +12,8 @@
 #include <cstdint>
 #include <vector>
 
+#include "core_common/hauled_book.h"
+#include "core_common/logistics_rules.h"
 #include "core_common/module_rules.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/unit_state.h"
@@ -580,6 +582,30 @@ float* WorkSeamWrittenOf(WorldState& world, const WorkAssignment& work) {
     return seam == &field.haul_days_remaining ? &field.haul_days_written : nullptr;
   }
   return nullptr;
+}
+
+float CoDrainCarriedTasks(WorldState& world, LogisticsTaskId carrier, float drained) {
+  if (!(drained > 0.0F) || carrier.value == kInvalidEntityIdValue) {
+    return 0.0F;
+  }
+  float total = 0.0F;
+  for (std::uint32_t row = 0; row < world.logistics_tasks.rows.size(); ++row) {
+    const LogisticsTaskRow& task = world.logistics_tasks.rows[row];
+    if (task.carried_by.value != carrier.value || !(task.carried_share > 0.0F)) {
+      continue;
+    }
+    const WorkAssignment carried = HaulingWorkOf(task);
+    float* const seam = WorkSeamOf(world, carried);
+    if (seam == nullptr || !(*seam > 0.0F)) {
+      continue;
+    }
+    const float take = std::min(*seam, drained * task.carried_share);
+    *seam -= take;
+    total += take;
+    // Who drained it, for production's settle (hauled_book.h): the carrier's cart.
+    NoteHaulDrain(world, carried, take, /*on_foot=*/false);
+  }
+  return total;
 }
 
 // THE TRIP'S RECEIVER (stage В, F3 (A)): the `haul_to` production wrote with

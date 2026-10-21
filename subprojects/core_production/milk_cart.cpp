@@ -287,6 +287,15 @@ void SettleMilkLegs(const ProductionConfig& config, WorldState& current, bool ev
       if (budget > 0) {
         converted = std::min(static_cast<float>(moved) / static_cast<float>(budget), 1.0F);
       }
+      if (herd.leg_on_foot == 0) {  // U's numerator (#1056 C3)
+        BookPaidTrips(
+            config,
+            current,
+            CartLoadSource::kStore,
+            RateToward(
+                config, current, barn.position, herd.leg_to, TravelMode::kCart, herd.leg_resource),
+            done * converted);
+      }
       SpendHaulNotes(current, hauled, converted);
     }
     // The drained and delivered is settled; what the door did not take stays

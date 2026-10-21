@@ -195,6 +195,13 @@ void SettleRickSupply(const ProductionConfig& config, WorldState& current) {
       const HaulRate rate = RateToward(
           config, current, sender.position, receiver.position, TravelMode::kCart, seam.resource);
       BookCartRun(config, current, CartLoadSource::kStore, rate, moved);
+      // U's numerator (#1056 C3): the drain that the move turned into grams.
+      BookPaidTrips(
+          config,
+          current,
+          CartLoadSource::kStore,
+          rate,
+          budget > 0 ? done * static_cast<float>(moved) / static_cast<float>(budget) : 0.0F);
       // Who carried it (#671's instrument; hauled_book.h).
       WorkAssignment hauled;
       hauled.kind = WorkKind::kHauling;

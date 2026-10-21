@@ -249,6 +249,7 @@ void DeliverDrained(const ProductionConfig& config,
       converted = static_cast<float>(moved) / worked_grams;
       converted = converted > 1.0F ? 1.0F : (converted < 0.0F ? 0.0F : converted);
     }
+    BookPaidTrips(config, current, source, rate, done * converted);  // U's numerator (C3)
     // WHO CARRIED THEM (#671's instrument; hauled_book.h): the grams moved
     // split by whose units the drain was, and those units spent.
     BookHauled(current.ledger.current,
@@ -773,6 +774,9 @@ void SettleStoreEmptying(const ProductionConfig& config, WorldState& current, bo
         converted = static_cast<float>(carted) / static_cast<float>(budget_at_start);
         converted = converted > 1.0F ? 1.0F : converted;
       }
+      if (way_known) {
+        BookPaidTrips(config, current, CartLoadSource::kStore, today, done * converted);  // C3's U
+      }
       SpendHaulNotes(current, hauled, converted);
     }
     if (!evening) {
@@ -962,6 +966,7 @@ void SettleDistrictLotHauling(const ProductionConfig& config, WorldState& curren
         converted = static_cast<float>(carted) / static_cast<float>(budget_at_start);
         converted = converted > 1.0F ? 1.0F : converted;
       }
+      BookPaidTrips(config, current, CartLoadSource::kDistrict, rate, done * converted);  // C3's U
       SpendHaulNotes(current, hauled, converted);
     }
     if (!evening) {
