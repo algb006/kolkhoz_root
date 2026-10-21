@@ -160,9 +160,15 @@ struct DrainCase {
 
 /// THE PLAN IS THE CARTING (#1056 C3 step 1; core-boss-oats-b-pair [87]-[91]):
 /// a stand's logs with trip facts and one carter on a horse whose cart today
-/// holds a leg of them from tick 8 to tick 10. Returns the seam drained in the
-/// hour run, and whether the plan was made stale.
-std::pair<float, bool> TheDrainByTheLegs(core::ILaborSystem& labor, const DrainCase& c) {
+/// holds a leg of them from tick 8 to tick 10. Returns what the hour run did.
+struct DrainSeen {
+  float drained = 0.0F;     ///< the seam drained, cart-days
+  bool stale = false;       ///< the plan was made stale
+  float paid = 0.0F;        ///< the carter's norm-days paid today
+  float rest_spent = 0.0F;  ///< the rest the hour took from him
+};
+
+DrainSeen TheDrainByTheLegs(core::ILaborSystem& labor, const DrainCase& c) {
   core::WorldState world = Village(1);
   const core::TimberStandId stand = StandAt(world, 1000.0F, 1.0F);
   const core::TimberStandId elsewhere = StandAt(world, 1500.0F, 1.0F);
@@ -190,9 +196,14 @@ std::pair<float, bool> TheDrainByTheLegs(core::ILaborSystem& labor, const DrainC
                                     .arrive = day_start + 10,
                                     .riders = {}});
   world.groom_plan.carts.push_back(cart);
+  const float rest_was = world.residents.rows[0].rest;
   RunHour(labor, world, c.hour);
   const float left = world.stands.rows[core::FindRow(world.stands, stand)].haul_days_remaining;
-  return {1.0F - left, world.groom_plan.stale};
+  const core::ResidentRow& carter = world.residents.rows[0];
+  return {.drained = 1.0F - left,
+          .stale = world.groom_plan.stale,
+          .paid = carter.work.worked_norm_days_today,
+          .rest_spent = rest_was - carter.rest};
 }
 
 /// What the carter leaves at hour 3 in TheCartAtAChange.
@@ -548,30 +559,37 @@ int CheckTheGroomsPlan() {
   // until then a carter drained his load's seam every hour he held the job,
   // whether or not his plan had him on a trip of it - 54-62 % of the drained
   // hours lay above the tasks' own legs (C3-g).
-  const auto [on_leg, on_leg_stale] = TheDrainByTheLegs(*labor, {});
-  const auto [off_leg, off_leg_stale] = TheDrainByTheLegs(*labor, {.hour = 11});
-  const auto [undrawn, undrawn_stale] = TheDrainByTheLegs(*labor, {.leg_names_it = false});
-  const auto [walker, walker_stale] =
-      TheDrainByTheLegs(*labor, {.on_foot = true, .leg_names_it = false});
-  const auto [no_facts, no_facts_stale] =
-      TheDrainByTheLegs(*labor, {.trip_hours = 0.0F, .leg_names_it = false});
-  const auto [lot, lot_stale] =
-      TheDrainByTheLegs(*labor, {.trip_hours = 84.0F, .leg_names_it = false});
-  std::cout << "  the drain by the legs: on a leg " << on_leg << ", off it " << off_leg
-            << ", undrawn " << undrawn << ", a walker " << walker << ", no facts " << no_facts
-            << ", a trip of 84 h " << lot << '\n';
-  failures += Expect(on_leg > 0.0F && !on_leg_stale,
-                     "(a) a drawn carter drains his load in an hour of his leg of it");
-  failures += Expect(off_leg == 0.0F && !off_leg_stale,
-                     "(a, c) and nothing in an hour outside his legs; the plan stands");
-  failures += Expect(undrawn == 0.0F && undrawn_stale,
+  const DrainSeen on_leg = TheDrainByTheLegs(*labor, {});
+  const DrainSeen off_leg = TheDrainByTheLegs(*labor, {.hour = 11});
+  const DrainSeen undrawn = TheDrainByTheLegs(*labor, {.leg_names_it = false});
+  const DrainSeen walker = TheDrainByTheLegs(*labor, {.on_foot = true, .leg_names_it = false});
+  const DrainSeen no_facts = TheDrainByTheLegs(*labor, {.trip_hours = 0.0F, .leg_names_it = false});
+  const DrainSeen lot = TheDrainByTheLegs(*labor, {.trip_hours = 84.0F, .leg_names_it = false});
+  std::cout << "  the drain by the legs (drained / paid / rest spent): on a leg " << on_leg.drained
+            << " / " << on_leg.paid << " / " << on_leg.rest_spent << ", off it " << off_leg.drained
+            << " / " << off_leg.paid << " / " << off_leg.rest_spent << ", undrawn "
+            << undrawn.drained << " / " << undrawn.paid << " / " << undrawn.rest_spent
+            << ", a walker " << walker.drained << ", no facts " << no_facts.drained
+            << ", a trip of 84 h " << lot.drained << '\n';
+  failures += Expect(
+      on_leg.drained > 0.0F && !on_leg.stale && on_leg.paid > 0.0F && on_leg.rest_spent > 0.0F,
+      "(a) a drawn carter drains his load in an hour of his leg of it, paid and "
+      "tired by it");
+  failures += Expect(off_leg.drained == 0.0F && !off_leg.stale,
+                     "(a) and nothing in an hour outside his legs; the plan stands");
+  failures += Expect(undrawn.drained == 0.0F && undrawn.stale,
                      "(b) a carter whose plan names his load in no leg drains nothing and makes "
                      "the plan stale");
-  failures += Expect(walker > 0.0F && !walker_stale,
+  // (c), boss [93]: an hour that drains nothing is the «done for today» hour -
+  // no norm-day, no rest spent; PayDay at the day's end pays only what drained.
+  failures += Expect(off_leg.paid == 0.0F && off_leg.rest_spent == 0.0F && undrawn.paid == 0.0F &&
+                         undrawn.rest_spent == 0.0F,
+                     "(c) an hour off the legs, drawn or undrawn, pays nothing and tires nothing");
+  failures += Expect(walker.drained > 0.0F && !walker.stale,
                      "(d) a carrier on foot drains as before, by his hours");
-  failures += Expect(no_facts > 0.0F && !no_facts_stale,
+  failures += Expect(no_facts.drained > 0.0F && !no_facts.stale,
                      "(e) a load with no trip facts (trip_model below 3) drains as before");
-  failures += Expect(lot > 0.0F && !lot_stale,
+  failures += Expect(lot.drained > 0.0F && !lot.stale,
                      "(f) a load whose round trip is longer than the day's light (the district "
                      "lot) drains by its carters' hours, undrawn (L2)");
   const auto [raised_logs, raised_ploughs] = TheHorseAfterARaise(*labor, true);
