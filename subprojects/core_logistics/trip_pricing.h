@@ -34,9 +34,11 @@
 #define CORE_LOGISTICS_TRIP_PRICING_H_
 
 #include <cstdint>
+#include <vector>
 
 #include "core_common/geometry.h"
 #include "core_common/quantities.h"
+#include "core_common/trip_terms.h"
 #include "core_common/world_state.h"
 #include "logistics_config.h"
 
@@ -54,15 +56,40 @@ bool PlanPricesCarts(const LogisticsConfig& config, const WorldState& world);
 ///        receiver is at most (1 + LogisticsConfig::pool_detour_share) times
 ///        first heap -> receiver, by RoadKm. The nearest such by the detour,
 ///        then by row. Not a task already carried by another today.
+///        THE PARTNER's WHOLE LOAD IS ITS LEFTOVER (body 5, named): a second
+///        field whose load takes one trip, so pooling it moves no other cart's
+///        trips; and not one the day's clock has already given carting
+///        (`remaining` at nought).
 /// @param task_row The first field's task row (its last part-load).
 /// @param leftover That load's grams, below its cart_load.
 /// @param receiver The first load's receiver (WorkReceiverOf).
+/// @param remaining The clock's seam per task row (logistics_plan.cpp).
 /// @return The partner's row, or kNoRow (also when pool_detour_share is 0).
 std::uint32_t PoolPartnerOf(const LogisticsConfig& config,
                             const WorldState& world,
                             std::uint32_t task_row,
                             Grams leftover,
-                            Vec2 receiver);
+                            Vec2 receiver,
+                            const std::vector<float>& remaining);
+
+/// @brief The hours of a POOLED trip (ruling 3): loaded from the first heap to
+///        the second's, loaded on to the receiver, and back empty to the first -
+///        at the first load's own priced paces per km (its TaskTripTerms over
+///        its way first heap -> receiver), with a pause at each loading and at
+///        the unloading. One home for the plan's legs and the price.
+struct PooledTrip {
+  float to_second_hours = 0.0F;    ///< First heap -> second heap, loaded, one pause.
+  float to_receiver_hours = 0.0F;  ///< Second heap -> receiver, loaded, two pauses.
+  float back_hours = 0.0F;         ///< Receiver -> first heap, empty.
+};
+
+/// @return false when the first load's way to its receiver has no length (no
+///         pace can be read off it).
+bool PooledTripOf(const WorldState& world,
+                  const TaskTripTerms& first,
+                  Vec2 second_load,
+                  Vec2 receiver,
+                  PooledTrip& trip);
 
 /// @brief A BACK LOAD at a receiver (ruling 4; econ's C3.1 rule as written):
 ///        an open task with carting left whose load lies near `at` and whose

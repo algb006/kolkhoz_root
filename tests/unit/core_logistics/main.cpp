@@ -1248,6 +1248,124 @@ int TestThePlanWritesThePrice() {
   return failures;
 }
 
+/// TWO FIELDS' LEFTOVERS IN ONE TRIP (#1056 C3 body 5, ruling 3; econ's gate
+/// C3-e): heap A, 1 t at 750 kg a cart - its last trip a 250 kg part-load -
+/// and one cart on it; a second heap B on the way to the same receiver. B of
+/// 400 kg fits the part-load: A's last trip goes A -> B -> receiver, both legs
+/// naming B, B pays its share by grams and is carried by A, the book counts one
+/// pooled trip. The pairs: B of 600 kg does not fit (250 + 600 > 750), and a B
+/// off the way (the detour above 25 %) is not taken - no pool in either.
+int TestTheFieldsPooled() {
+  int failures = 0;
+
+  struct Pool {
+    bool pooled_legs = false;  // a loaded leg names B as its pooled load
+    bool carried = false;      // B carried by A, its share of the seam above nought
+    float second_seam = -1.0F;
+    float trips_pooled = 0.0F;
+  };
+
+  const auto run = [](core::Grams second_grams, core::Vec2 second_at) {
+    const test::FakeTable resources{{"key", "cargo_form", "is_fuel"}, {{"hay", "rick", "0"}}};
+    const test::FakeTable transport{{"key", "seats", "trip_model"}, {{"cart_loaded", "2", "3"}}};
+    const test::FakeTable horses{{"key"}, {{"horse"}}};
+    const test::FakeTableSet tables{
+        {{"resources", &resources}, {"transport", &transport}, {"livestock", &horses}}};
+    Pool pool;
+    const auto system = core::CreateLogisticsSystem(tables, core::StubTables::kAllowed);
+    if (system == nullptr) {
+      return pool;
+    }
+    const core::Vec2 receiver{.x = 200.0F, .y = 0.0F};
+    core::WorldState world;
+    world.weather.daylight_hours = 12.0F;
+    world.calendar.day = 3;
+    const auto heap = [&world, &receiver](core::Vec2 at, core::Grams grams, float seam) {
+      core::FieldRow field;
+      field.kind = core::LandKind::kArable;
+      field.center = at;
+      field.reaped_grams = grams;
+      field.reaped_resource = core::ResourceId{0};
+      field.haul_days_remaining = seam;
+      field.haul_days_written = seam;
+      field.haul_to = receiver;
+      return core::AppendRow(world.fields, field);
+    };
+    const core::FieldId first = heap(core::Vec2{.x = 1'200.0F, .y = 0.0F}, 1'000'000, 0.6F);
+    const core::FieldId second = heap(second_at, second_grams, 0.3F);
+    core::ResidentRow carter;
+    carter.work.kind = core::WorkKind::kHauling;
+    carter.work.rides_horse = 1;
+    carter.work.field = first;
+    core::UnitRow house;
+    const core::UnitId house_id = core::AppendRow(world.units, house);
+    core::FamilyRow household;
+    household.house = house_id;
+    const core::FamilyId family = core::AppendRow(world.families, household);
+    world.units.rows[0].household = family;
+    carter.family = family;
+    core::AppendRow(world.residents, carter);
+    StableTheTeam(world);
+    world.calendar.tick = 3 * core::kTicksPerDay;
+    system->RunTasks(world, world);
+    for (core::LogisticsTaskRow& task : world.logistics_tasks.rows) {
+      const std::uint32_t row = core::FindRow(world.fields, task.field);
+      if (row == core::kNoRow) {
+        continue;
+      }
+      core::TaskTripTerms& terms = task.trip_terms;
+      terms.load_point = world.fields.rows[row].center;
+      terms.trip_hours = 3.0F;
+      terms.trip_loaded_hours = 2.0F;
+      terms.cart_load = 750'000;
+      terms.grams_left = world.fields.rows[row].reaped_grams;
+    }
+    world.calendar.tick = (3 * core::kTicksPerDay) + 1;
+    system->BuildPlan(world);
+    const core::LogisticsTaskRow* a = TaskOfField(world, first);
+    const core::LogisticsTaskRow* b = TaskOfField(world, second);
+    if (a == nullptr || b == nullptr) {
+      return pool;
+    }
+    core::LogisticsTaskId b_id;
+    core::LogisticsTaskId a_id;
+    for (std::uint32_t row = 0; row < world.logistics_tasks.rows.size(); ++row) {
+      if (&world.logistics_tasks.rows[row] == b) {
+        b_id = world.logistics_tasks.row_ids[row];
+      }
+      if (&world.logistics_tasks.rows[row] == a) {
+        a_id = world.logistics_tasks.row_ids[row];
+      }
+    }
+    for (const core::CartPlan& cart : world.groom_plan.carts) {
+      for (const core::CartLeg& leg : cart.legs) {
+        pool.pooled_legs = pool.pooled_legs || leg.pooled_task.value == b_id.value;
+      }
+    }
+    pool.carried = b->carried_by.value == a_id.value && b->carried_share > 0.0F;
+    pool.second_seam = world.fields.rows[core::FindRow(world.fields, second)].haul_days_remaining;
+    pool.trips_pooled = world.ledger.current.cart_trips_pooled;
+    return pool;
+  };
+  const Pool fits = run(400'000, core::Vec2{.x = 700.0F, .y = 50.0F});
+  const Pool too_big = run(600'000, core::Vec2{.x = 700.0F, .y = 50.0F});
+  const Pool off_the_way = run(400'000, core::Vec2{.x = 1'100.0F, .y = 1'500.0F});
+  std::cout << "  pooled: fits - legs " << fits.pooled_legs << ", carried " << fits.carried
+            << ", B's seam " << fits.second_seam << ", trips pooled " << fits.trips_pooled
+            << "; too big - legs " << too_big.pooled_legs << "; off the way - legs "
+            << off_the_way.pooled_legs << '\n';
+  failures += Expect(fits.pooled_legs && fits.carried && fits.second_seam > 0.0F &&
+                         fits.second_seam < 0.3F && fits.trips_pooled == 1.0F,
+                     "pooled: a second heap that fits the last part-load and lies on the way rides "
+                     "it, carried, its share of the trip by grams, one pooled trip booked");
+  failures += Expect(!too_big.pooled_legs && !too_big.carried && too_big.trips_pooled == 0.0F,
+                     "pooled: a second heap that does not fit the part-load is not pooled");
+  failures +=
+      Expect(!off_the_way.pooled_legs && !off_the_way.carried && off_the_way.trips_pooled == 0.0F,
+             "pooled: a second heap off the way (detour above 25 %) is not pooled");
+  return failures;
+}
+
 /// THE CHAIRMAN'S DOORS TO THE TASKS (B7; order_state.h, kSetLogisticsLevel
 /// and kPauseLogisticsTask): two heaps, a task each, today's plan built at
 /// hour 1. At hour 5 the chairman raises the first to level 0 and pauses the
@@ -1919,6 +2037,7 @@ int main() {
   failures += TestTheTripsAndTheEvening();
   failures += TestThePlannedTrips();
   failures += TestThePlanWritesThePrice();
+  failures += TestTheFieldsPooled();
   failures += TestTheChairmansDoors();
   failures += TestTheLateLoadsLamp();
   failures += TestTheDayOffHeldTheLoad();

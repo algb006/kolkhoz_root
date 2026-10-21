@@ -29,6 +29,7 @@
 #include "core_common/world_state.h"
 #include "leg_loads.h"
 #include "porter_pairs.h"
+#include "trip_pricing.h"
 
 namespace core {
 namespace {
@@ -484,13 +485,76 @@ void PushTripHalf(
   mover.half_left = loaded ? mover.trip_loaded_hours : mover.trip_empty_hours;
 }
 
+/// THE LOADED HALF, OR A POOLED ONE (#1056 C3 body 5, ruling 3): a field
+/// heap's LAST trip under the planned model, a part-load, takes a second
+/// field's whole leftover when one fits the same load and lies on the way
+/// (trip_pricing.h, PoolPartnerOf): loaded to the second heap, loaded on to the
+/// receiver, both legs naming the second load (CartLeg::pooled_task), at the
+/// first load's priced paces (PooledTripOf). The second load is the clock's
+/// no more - no other cart rides to it today. Any other trip: PushTripHalf.
+void PushLoadedHalf(const LogisticsConfig& config,
+                    const WorldState& world,
+                    std::vector<float>& remaining,
+                    GroomPlan& plan,
+                    Mover& mover,
+                    SimDay day,
+                    float hours) {
+  const LogisticsTaskRow& task = world.logistics_tasks.rows[mover.task];
+  const TaskTripTerms* const terms = PlannedTerms(mover, task);
+  const bool last_trip =
+      terms != nullptr && config.standard_day_hours > 0.0F &&
+      remaining[mover.task] <= (terms->trip_hours / config.standard_day_hours) * 1.0001F;
+  if (!last_trip || task.load_kind != LogisticsLoadKind::kFieldHeap) {
+    PushTripHalf(world, plan, mover, day, hours, /*loaded=*/true);
+    return;
+  }
+  const std::uint32_t trips = WholeTripsFor(terms->grams_left, terms->cart_load);
+  const Grams leftover =
+      trips == 0 ? 0 : terms->grams_left - (static_cast<Grams>(trips - 1U) * terms->cart_load);
+  const std::uint32_t second =
+      PoolPartnerOf(config, world, mover.task, leftover, mover.receiver, remaining);
+  PooledTrip pooled;
+  if (second == kNoRow || !PooledTripOf(world,
+                                        *terms,
+                                        world.logistics_tasks.rows[second].trip_terms.load_point,
+                                        mover.receiver,
+                                        pooled)) {
+    PushTripHalf(world, plan, mover, day, hours, /*loaded=*/true);
+    return;
+  }
+  const Vec2 second_load = world.logistics_tasks.rows[second].trip_terms.load_point;
+  const LogisticsTaskId second_id = world.logistics_tasks.row_ids[second];
+  std::vector<CartLeg>& legs = plan.carts[mover.cart].legs;
+  legs.push_back(CartLeg{.from = mover.load,
+                         .to = second_load,
+                         .task = world.logistics_tasks.row_ids[mover.task],
+                         .loaded = 1U,
+                         .depart = TickAt(day, hours),
+                         .arrive = TickAt(day, hours + pooled.to_second_hours),
+                         .riders = {},
+                         .pooled_task = second_id});
+  legs.push_back(
+      CartLeg{.from = second_load,
+              .to = mover.receiver,
+              .task = world.logistics_tasks.row_ids[mover.task],
+              .loaded = 1U,
+              .depart = TickAt(day, hours + pooled.to_second_hours),
+              .arrive = TickAt(day, hours + pooled.to_second_hours + pooled.to_receiver_hours),
+              .riders = {},
+              .pooled_task = second_id});
+  remaining[second] = 0.0F;
+  mover.loaded_half = true;
+  mover.half_left = pooled.to_second_hours + pooled.to_receiver_hours;
+}
+
 /// One step of a mover on its trips: the seam drains at the norm, as at the
 /// load (the drawing changes, not the carting); a half that ends turns the
 /// cart. At the receiver: the load carted, or the next round not fitting the
 /// light — on from there (the next load, or home); else back. At the load:
 /// the load carted — on from there; the next trip not fitting the light —
 /// home from there; else loaded again.
-void StepTrips(const WorldState& world,
+void StepTrips(const LogisticsConfig& config,
+               const WorldState& world,
                std::vector<float>& remaining,
                GroomPlan& plan,
                Mover& mover,
@@ -523,7 +587,7 @@ void StepTrips(const WorldState& world,
     GoOn(world, remaining, plan, mover, day, now, sunset, /*evening=*/!carted);
     return;
   }
-  PushTripHalf(world, plan, mover, day, now, /*loaded=*/true);
+  PushLoadedHalf(config, world, remaining, plan, mover, day, now);
 }
 
 /// THE CLOCK (B4b): every mover steps through the day together, so two carts
@@ -532,7 +596,8 @@ void StepTrips(const WorldState& world,
 /// the evening — the ride home no longer fits the light — sends it home from
 /// where it is. The seam itself is not touched: this is the estimate the legs'
 /// ticks are written from (logistics_state.h).
-void RunTheClock(const WorldState& world,
+void RunTheClock(const LogisticsConfig& config,
+                 const WorldState& world,
                  std::vector<float> remaining,
                  GroomPlan& plan,
                  std::vector<Mover>& movers,
@@ -568,7 +633,7 @@ void RunTheClock(const WorldState& world,
                 GoOn(world, remaining, plan, mover, day, hours, window.sunset, /*evening=*/true);
                 break;
               }
-              PushTripHalf(world, plan, mover, day, hours, /*loaded=*/true);
+              PushLoadedHalf(config, world, remaining, plan, mover, day, hours);
               break;
             }
             legs.push_back(CartLeg{.from = mover.at,
@@ -581,7 +646,7 @@ void RunTheClock(const WorldState& world,
           break;
         case Mover::Phase::kCarting:
           if (mover.trips) {
-            StepTrips(world, remaining, plan, mover, day, hours, window.sunset);
+            StepTrips(config, world, remaining, plan, mover, day, hours, window.sunset);
             break;
           }
           if (hours + kStepHours + mover.ride_home >= window.sunset) {
@@ -797,7 +862,7 @@ GroomPlan BuildGroomPlan(const LogisticsConfig& config,
       waiting[first] = kNobody;
     }
   }
-  RunTheClock(world, remaining, plan, movers, window);
+  RunTheClock(config, world, remaining, plan, movers, window);
   // THE RIDERS (B4b): whoever the labour hour seated this morning on a
   // driver's cart rides its first leg. ONCE (0.37.186): a re-plan keeps a
   // begun first leg with its riders (above), and until then this loop wrote
