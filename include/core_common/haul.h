@@ -80,6 +80,11 @@ struct HaulRate {
   /// which is the whole point of the shoulder.
   float round_trip_hours = 0.0F;
 
+  /// Of `round_trip_hours`, the LOADED half with both pauses (#1056 C3;
+  /// trip_terms.h, TaskTripTerms::trip_loaded_hours): the trip's leg the groom's
+  /// plan draws loaded. Written by RateOverKm beside the round trip, its one home.
+  float loaded_hours = 0.0F;
+
   /// THE PRODUCE CART'S WAY OFF THE ROAD (0.36.9): true when the load goes
   /// by a harnessed cart with produce (TravelMode::kCart) — the one carrier
   /// the design keeps to the roads (roads design §11) — and then the metres

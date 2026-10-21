@@ -21,6 +21,7 @@
 #include "core_common/work_seam.h"
 #include "field_haul.h"
 #include "haul_ways.h"
+#include "trip_terms_writer.h"
 
 namespace core {
 
@@ -378,6 +379,22 @@ void SettleSiteSupply(const ProductionConfig& config, WorldState& current, bool 
                                       ? tour_days[row]  // its share of the evening's tours (WR)
                                       : LegDays(config, current, works.legs.front(), unit.position);
     works.supply_days_written = works.supply_days_remaining;
+    // And the front leg's trip facts, from LegDays's own rate (#1056 C3;
+    // trip_terms_writer.h): the seam is the front leg's, so are its trips.
+    // (The front leg read afresh: the one above may have been carted out and dropped.)
+    if (!works.legs.empty()) {
+      const SupplyLeg& leg_now = works.legs.front();
+      WorkAssignment supplied;
+      supplied.kind = WorkKind::kHauling;
+      supplied.unit = current.units.row_ids[row];
+      WriteTripTermsFor(config,
+                        current,
+                        LogisticsLoadKind::kSiteSupply,
+                        supplied,
+                        leg_now.from,
+                        LegRate(config, current, leg_now, unit.position),
+                        awaiting > 0 ? awaiting : 0);
+    }
     // And what is still to cart on every leg, for the crew's size
     // (ConstructionState::supply_days_all).
     works.supply_days_all = 0.0F;

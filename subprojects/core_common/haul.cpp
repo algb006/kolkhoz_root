@@ -24,6 +24,9 @@ HaulRate RateOverKm(float one_way_km, float hours_per_km, float loaded_hours_per
   const float road = one_way_km * (hours_per_km + loaded_hours_per_km);
   rate.round_trip_hours =
       (road > 0.0F ? road : 0.0F) + (2.0F * kLoadingPauseHours);  // nan: no road
+  // The loaded half and both pauses (#1056 C3): the leg the plan draws loaded.
+  const float loaded = one_way_km * loaded_hours_per_km;
+  rate.loaded_hours = (loaded > 0.0F ? loaded : 0.0F) + (2.0F * kLoadingPauseHours);
   return rate;
 }
 

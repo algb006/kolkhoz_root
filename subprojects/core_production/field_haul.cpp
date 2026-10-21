@@ -30,6 +30,7 @@
 #include "haul_ways.h"
 #include "seed_room.h"
 #include "stock_ops.h"
+#include "trip_terms_writer.h"
 
 namespace core {
 namespace {
@@ -272,6 +273,7 @@ void DeliverDrained(const ProductionConfig& config,
 void SettleLoad(const ProductionConfig& config,
                 WorldState& current,
                 const HaulRate& rate,
+                Vec2 load_point,
                 CartLoadSource source,
                 const WorkAssignment& hauled,
                 ResourceId resource,
@@ -292,9 +294,14 @@ void SettleLoad(const ProductionConfig& config,
                  booked,
                  manger);
   const Grams left = LoadRoom(config, current, resource, booked, manger);
-  haul_days_remaining =
-      load > 0 ? CartDaysFor(config, left < load ? left : load, rate) : 0.0F;  // В4's door
+  const Grams priced = load > 0 ? (left < load ? left : load) : 0;
+  haul_days_remaining = load > 0 ? CartDaysFor(config, priced, rate) : 0.0F;  // В4's door
   haul_days_written = haul_days_remaining;
+  // AND THE TRIP's FACTS, from the same rate and grams (#1056 C3; trip_terms_writer.h).
+  const LogisticsLoadKind kind = source == CartLoadSource::kStand  ? LogisticsLoadKind::kStandLogs
+                                 : source == CartLoadSource::kSite ? LogisticsLoadKind::kSiteDig
+                                                                   : LogisticsLoadKind::kFieldHeap;
+  WriteTripTermsFor(config, current, kind, hauled, load_point, rate, priced);
 }
 
 }  // namespace
@@ -445,6 +452,7 @@ void SettleStandHauling(const ProductionConfig& config, WorldState& current) {
     SettleLoad(config,
                current,
                rate,
+               stand.position,
                CartLoadSource::kStand,  // logs: in the cart book since В4
                HaulOf(current.stands.row_ids[row]),
                config.timber.log_resource,
@@ -490,6 +498,7 @@ void SettleSiteHauling(const ProductionConfig& config, WorldState& current) {
     SettleLoad(config,
                current,
                rate,
+               site.position,
                CartLoadSource::kSite,
                HaulOf(current.extraction_sites.row_ids[row]),
                site.resource,
@@ -636,6 +645,7 @@ void SettleHauling(const ProductionConfig& config, WorldState& current) {
     SettleLoad(config,
                current,
                rate,
+               FieldHeapPoint(current, field),
                CartLoadSource::kField,
                HaulOf(current.fields.row_ids[row]),
                field.reaped_resource,
@@ -787,6 +797,12 @@ void SettleStoreEmptying(const ProductionConfig& config, WorldState& current, bo
     unit.haul_to = rate.receiver;  // F3 (A): the perevalka's receiver
     unit.haul_days_remaining = left > 0 ? CartDaysFor(config, left, rate) : 0.0F;  // В4's door
     unit.haul_days_written = unit.haul_days_remaining;
+    // And the trip's facts, from the same rate (#1056 C3; trip_terms_writer.h).
+    WorkAssignment emptied;
+    emptied.kind = WorkKind::kHauling;
+    emptied.unit = current.units.row_ids[row];
+    WriteTripTermsFor(
+        config, current, LogisticsLoadKind::kStoreTransfer, emptied, unit.position, rate, left);
   }
 }
 
@@ -999,6 +1015,15 @@ void SettleDistrictLotHauling(const ProductionConfig& config, WorldState& curren
         row.haul_days_remaining = CartDaysFor(config, lot.left, lot.rate);
       }
       row.haul_days_written = row.haul_days_remaining;
+      // And the trip's facts, from the lot's own rate (#1056 C3; trip_terms_writer.h): a lot
+      // coming in lies at the district centre, the northern border road's end; the plan's
+      // delivery going out lies at the store the rate measures to (DistrictLotHaulRate).
+      WorkAssignment fetched;
+      fetched.kind = WorkKind::kHauling;
+      fetched.limit_delivery = current.limit_deliveries.row_ids[lot.row];
+      const Vec2 lies = row.outbound != 0 ? lot.rate.receiver : DistrictExitPoint(current);
+      WriteTripTermsFor(
+          config, current, LogisticsLoadKind::kDistrictLot, fetched, lies, lot.rate, lot.left);
     }
   }
   for (const LimitDeliveryId id : emptied) {

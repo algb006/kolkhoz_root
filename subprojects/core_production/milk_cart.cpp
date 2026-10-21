@@ -17,6 +17,7 @@
 #include "district_carts.h"
 #include "haul_ways.h"
 #include "stock_ops.h"
+#include "trip_terms_writer.h"
 
 namespace core {
 namespace {
@@ -229,6 +230,11 @@ void PriceMilkLegs(const ProductionConfig& config, WorldState& current) {
     herd.leg_to = rate.receiver;
     herd.leg_days_written = CartDaysFor(config, milk, rate);
     herd.leg_days_priced = herd.leg_days_written;
+    // And the leg's trip facts, from the same rate (#1056 C3; trip_terms_writer.h).
+    WorkAssignment leg;
+    leg.kind = WorkKind::kHauling;
+    leg.herd = current.herds.row_ids[static_cast<std::size_t>(&herd - current.herds.rows.data())];
+    WriteTripTermsFor(config, current, LogisticsLoadKind::kMilkLeg, leg, barn.position, rate, milk);
     herd.leg_days_remaining = std::max(herd.leg_days_written - done, 0.0F);
   }
 }

@@ -9,6 +9,7 @@ kolkhoz_add_module(core_production
     production_config.cpp
     field_haul.cpp
     cart_trips.cpp
+    trip_terms_writer.cpp
     feed_home.cpp
     haul_ways.cpp
     supply_haul.cpp

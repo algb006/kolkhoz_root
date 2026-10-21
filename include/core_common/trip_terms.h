@@ -46,7 +46,8 @@ namespace core {
 
 /// @brief One load's trip, as its price sees it (C3; save 177 or the next
 ///        number free when C3 lands): on LogisticsTaskRow, written by
-///        production's evening (WriteTaskTripTerms), read by the plan. All zero
+///        each pricer at its seam's line (core_production/trip_terms_writer.h,
+///        WriteTripTermsFor), read by the plan. All zero
 ///        means «not priced by a cart»: a load carried on foot, or no carts in
 ///        the settlement - the plan then draws it as before C3 and no price is
 ///        written by the plan.

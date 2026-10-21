@@ -88,6 +88,7 @@
 #include "team_oat_plan_checks.h"
 #include "timber_felling.h"
 #include "timber_planting.h"
+#include "trip_terms_writer_checks.h"
 #include "unit_production.h"
 
 static_assert(std::is_abstract_v<core::IProductionSystem>, "IProductionSystem is a contract");
@@ -17181,6 +17182,7 @@ int main() {
   failures += CheckEachFarmEatsFromItsOwnRick();
   failures += CheckARickIsSuppliedFromAnother();
   failures += CheckWholeTripsAndTheRoutes();
+  failures += CheckTheTripsFacts();
   failures += CheckWhoseTransportToTheDistrict();
   failures += CheckTheCartingReachesTheStoreInItsHour();
   failures += CheckTheHeapLampIsRedOnlyWhenItSpoils();

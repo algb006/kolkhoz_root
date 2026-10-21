@@ -20,6 +20,7 @@
 #include "haul_ways.h"
 #include "herd_forecast.h"
 #include "stock_ops.h"
+#include "trip_terms_writer.h"
 
 namespace core {
 namespace {
@@ -151,6 +152,18 @@ void PriceRickSupply(const ProductionConfig& config, WorldState& current) {
     seam.grams = GramsFromFloat(kg * kGramsPerKg);
     seam.days_remaining = CartDaysFor(config, seam.grams, rate);
     seam.days_written = seam.days_remaining;
+    // And the trip's facts, from the same rate (#1056 C3; trip_terms_writer.h): the
+    // receiving rick names the task, the sending one is where the hay lies.
+    WorkAssignment supplied;
+    supplied.kind = WorkKind::kHauling;
+    supplied.unit = current.units.row_ids[rick.rick_row];
+    WriteTripTermsFor(config,
+                      current,
+                      LogisticsLoadKind::kRickSupply,
+                      supplied,
+                      sender.position,
+                      rate,
+                      seam.grams);
     seam.threshold_days = static_cast<std::uint8_t>(std::min(short_window, 255U));
   }
 }
