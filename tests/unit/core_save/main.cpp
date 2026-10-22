@@ -2007,8 +2007,8 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // Save 180 (#1199): the graves, a u16 a unit on three units - predicted
     // 831 -> 837 before the build and held; the hash read off it.
     // Save 181: a unit's own plot radius, a float a unit on three units -
-    // predicted 837 -> 849 before the build; the hash read off it.
-    {"units", 849, 0x8c7cfa50d8eb3accULL},
+    // predicted 837 -> 849 before the build and held; the hash read off it.
+    {"units", 849, 0xbeb3984389dfb475ULL},
     // Save 71: +4 — fed_share, one herd; predicted before the field, held.
     // Save 91: +8 — the adult age band, two floats, one herd; predicted
     // 71 -> 79 with every other section unmoved before the build.
