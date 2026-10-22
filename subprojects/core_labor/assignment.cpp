@@ -330,6 +330,12 @@ std::vector<std::uint32_t> OrderJobs(const std::vector<AssignmentJob>& jobs,
     // hay's so a dose yields to the hay too. Unkeyed, a dose and a stand's logs
     // tied down to the targets' bare ids, and the doses took every horse on the
     // y2 January mornings while the logs lay (logs y2 -25 % canon).
+    // STUB (#1056 C2, econ boss-core-c2-pair [20]; boss [21]): the key does
+    // not hold the novice's y3 winter - its stand-log horse hours fell 16 885
+    // -> 9 901 against the base's while the doses ran 116 913, logs y3 -9.7 %
+    // (1.4 SE). Which door lets a dose take a log horse then is not printed.
+    // Returns when logs or supply pass 2 SE in a later pair (canon 9 x 6 is
+    // the first check): then the y3 winter placements' trace and their cure.
     if (a.manure_dose != b.manure_dose) {
       return b.manure_dose;
     }
