@@ -7,11 +7,14 @@
 /// WorldState::burials_waiting after genesis and the save's load.
 ///
 /// Design: social.md «Два кладбища» and «Заполнение — метрика юнита»
-/// (boss, boss-core-epoch1-resume [16]). The dead is laid in the NEAREST
-/// built cemetery with room to his family's house; with no house, in the
-/// first by row. With none, he waits (burials_waiting) and kBurialHeld stops
-/// the game; the first cemetery with room takes every waiting grave, and
-/// kBurialsLaid says so. A death outside the village (the district's
+/// (boss, boss-core-epoch1-resume [16]). The dead is laid in the OLDEST built
+/// cemetery with room, by its id (boss [33], (α): «новое размечается, когда
+/// старое кончится» - the old ground is used to the end, so its fill_100 is an
+/// event the player sees). Until 0.37.317 it was the nearest to the family's
+/// house, and the run showed the old one stopping at 37 of 41 the day a nearer
+/// new one stood. With none, he waits (burials_waiting) and kBurialHeld stops
+/// the game; the oldest with room takes the waiting graves, and kBurialsLaid
+/// says so. A death outside the village (the district's
 /// ambulance) never reaches here: it lays no grave.
 
 #ifndef CORE_RESIDENTS_BURIAL_H_
@@ -48,18 +51,16 @@ std::uint16_t GraveCapacityOf(const BurialConfig& config,
                               const UnitRow& unit);
 
 /// @brief Lays the grave of `dead`, who died in the village today: one grave
-///        in the nearest built cemetery with room to `home` (no house: the
-///        first by row). With none, the grave waits — burials_waiting rises
-///        and kBurialHeld fires (resident `dead`, amount the waiting).
-/// @param home The family house's position, or nullptr for none.
+///        in the oldest built cemetery with room. With none, the grave waits —
+///        burials_waiting rises and kBurialHeld fires (resident `dead`,
+///        amount the waiting).
 void LayGraveOf(const BurialConfig& config,
                 std::span<const float> plot_radius_m,
                 WorldState& current,
-                ResidentId dead,
-                const Vec2* home);
+                ResidentId dead);
 
-/// @brief Lays the graves that wait, into the cemeteries with room, first by
-///        row; kBurialsLaid per cemetery that took any (unit, amount).
+/// @brief Lays the graves that wait, into the cemeteries with room, the
+///        oldest first; kBurialsLaid per cemetery that took any (unit, amount).
 ///        Nothing while none waits.
 void LayWaitingGraves(const BurialConfig& config,
                       std::span<const float> plot_radius_m,

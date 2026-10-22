@@ -24,6 +24,25 @@ bool TakesAGrave(const BurialConfig& config,
   return unit.graves < GraveCapacityOf(config, plot_radius_m, unit);
 }
 
+/// THE OLDEST CEMETERY WITH ROOM, by its id (an id is never reused, so the
+/// smallest is the earliest marked; the row order is not an age, a removal
+/// moves rows). kNoRow when none has room. boss [33], (α): «новое
+/// размечается, когда старое кончится» - the old ground is used to the end.
+std::uint32_t OldestWithRoom(const BurialConfig& config,
+                             std::span<const float> plot_radius_m,
+                             const WorldState& world) {
+  std::uint32_t best = kNoRow;
+  for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+    if (!TakesAGrave(config, plot_radius_m, world.units.rows[row])) {
+      continue;
+    }
+    if (best == kNoRow || world.units.row_ids[row].value < world.units.row_ids[best].value) {
+      best = row;
+    }
+  }
+  return best;
+}
+
 }  // namespace
 
 std::span<const std::string_view> BurialWorldParamKeys() {
@@ -61,27 +80,8 @@ std::uint16_t GraveCapacityOf(const BurialConfig& config,
 void LayGraveOf(const BurialConfig& config,
                 std::span<const float> plot_radius_m,
                 WorldState& current,
-                ResidentId dead,
-                const Vec2* home) {
-  std::uint32_t best = kNoRow;
-  float best_d2 = std::numeric_limits<float>::max();
-  for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
-    const UnitRow& unit = current.units.rows[row];
-    if (!TakesAGrave(config, plot_radius_m, unit)) {
-      continue;
-    }
-    if (home == nullptr) {
-      best = row;  // no house to be near: the first by row
-      break;
-    }
-    const float dx = unit.position.x - home->x;
-    const float dy = unit.position.y - home->y;
-    const float d2 = dx * dx + dy * dy;
-    if (d2 < best_d2) {
-      best_d2 = d2;
-      best = row;
-    }
-  }
+                ResidentId dead) {
+  const std::uint32_t best = OldestWithRoom(config, plot_radius_m, current);
   if (best != kNoRow) {
     ++current.units.rows[best].graves;
     return;
@@ -99,13 +99,14 @@ void LayGraveOf(const BurialConfig& config,
 void LayWaitingGraves(const BurialConfig& config,
                       std::span<const float> plot_radius_m,
                       WorldState& current) {
-  for (std::uint32_t row = 0; row < current.units.rows.size() && current.burials_waiting > 0;
-       ++row) {
+  // The oldest with room first, as a single grave is laid (OldestWithRoom).
+  while (current.burials_waiting > 0) {
+    const std::uint32_t row = OldestWithRoom(config, plot_radius_m, current);
+    if (row == kNoRow) {
+      return;
+    }
     UnitRow& unit = current.units.rows[row];
     const std::uint16_t capacity = GraveCapacityOf(config, plot_radius_m, unit);
-    if (unit.graves >= capacity) {
-      continue;
-    }
     const auto room = static_cast<std::uint16_t>(capacity - unit.graves);
     const std::uint16_t laid = room < current.burials_waiting ? room : current.burials_waiting;
     unit.graves = static_cast<std::uint16_t>(unit.graves + laid);

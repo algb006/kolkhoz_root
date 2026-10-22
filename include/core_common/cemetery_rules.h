@@ -15,9 +15,9 @@
 ///     number: π · 25² / 15 = 130 graves.
 ///   * THE OLD ONE STARTS HALF FULL: start_layout.csv fill_pct (50) of its
 ///     capacity. Until #1199 that column was read by nobody.
-///   * A DEATH IN THE VILLAGE LAYS ONE GRAVE in the nearest built cemetery
-///     with room to the dead's home. A death outside the village (the
-///     district's ambulance) lays none.
+///   * A DEATH IN THE VILLAGE LAYS ONE GRAVE in the oldest built cemetery
+///     with room (boss [33]; until 0.37.317 the nearest to the dead's home). A
+///     death outside the village (the district's ambulance) lays none.
 ///   * FULL EVERYWHERE STOPS THE GAME: «Если кладбище переполнено, а
 ///     покойник появился — игра останавливается, пока председатель не
 ///     выделит новый участок». The death waits for a grave

@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <iostream>
+#include <utility>
 
 #include "burial.h"
 #include "core_common/cemetery_rules.h"
@@ -71,28 +72,40 @@ int CheckTheRules() {
   return failures;
 }
 
-int CheckTheNearestWithRoom() {
+// THE OLDEST WITH ROOM FIRST (boss [33], (α)): the old one fills to its end
+// though the new one stands nearer to every house; the new one takes the dead
+// only from then on. Until 0.37.317 the nearest took them, and in the run the
+// old one stopped at 37 of 41 the day the new one stood.
+int CheckTheOldestWithRoom() {
   int failures = 0;
   const core::BurialConfig config = Config();
   core::WorldState world;
-  const core::UnitId near = Place(world, 0, 0.0F, 1, kFull - 1);
-  const core::UnitId far = Place(world, 0, 1000.0F, 1, 0);
+  const core::UnitId old_one = Place(world, 0, 1000.0F, 1, kFull - 1);  // marked first
+  const core::UnitId new_one = Place(world, 0, 0.0F, 1, 0);             // by the houses
   const core::UnitId house = Place(world, 1, 10.0F, 1, 0);
   failures += Expect(core::GraveCapacityOf(config, kRadii, world.units.rows[2]) == 0,
                      "burial: a house holds no graves");
-  const core::Vec2 home{.x = 10.0F, .y = 0.0F};
-  core::LayGraveOf(config, kRadii, world, core::ResidentId{1}, &home);
-  failures += Expect(GravesOf(world, near) == kFull && GravesOf(world, far) == 0,
-                     "burial: the dead is laid in the nearest cemetery with room");
-  core::LayGraveOf(config, kRadii, world, core::ResidentId{2}, &home);
-  failures += Expect(GravesOf(world, near) == kFull && GravesOf(world, far) == 1,
-                     "burial: the near one full, the next dead goes to the far one");
+  core::LayGraveOf(config, kRadii, world, core::ResidentId{1});
+  failures += Expect(GravesOf(world, old_one) == kFull && GravesOf(world, new_one) == 0,
+                     "burial: the dead is laid in the oldest cemetery with room, not the nearest");
+  core::LayGraveOf(config, kRadii, world, core::ResidentId{2});
+  failures += Expect(GravesOf(world, old_one) == kFull && GravesOf(world, new_one) == 1,
+                     "burial: the old one full, the next dead goes to the new one");
   failures += Expect(GravesOf(world, house) == 0 && world.burials_waiting == 0 &&
                          Count(world, core::EventKind::kBurialHeld) == 0,
                      "burial: with room somewhere, nobody waits and the game does not stop");
-  core::LayGraveOf(config, kRadii, world, core::ResidentId{3}, nullptr);
-  failures += Expect(GravesOf(world, far) == 2,
-                     "burial: with no house, the first cemetery with room by row");
+  // THE ID, NOT THE ROW: a removal moves rows (state_table_ops.h), so the old
+  // one may come after the new one by row and must still be first.
+  core::WorldState swapped;
+  const core::UnitId first = Place(swapped, 0, 0.0F, 1, 0);
+  const core::UnitId second = Place(swapped, 0, 500.0F, 1, 0);
+  std::swap(swapped.units.rows[0], swapped.units.rows[1]);
+  std::swap(swapped.units.row_ids[0], swapped.units.row_ids[1]);
+  swapped.units.row_by_id[first.value] = 1;  // the lookup follows the rows
+  swapped.units.row_by_id[second.value] = 0;
+  core::LayGraveOf(config, kRadii, swapped, core::ResidentId{3});
+  failures += Expect(GravesOf(swapped, first) == 1 && GravesOf(swapped, second) == 0,
+                     "burial: the oldest is found by its id when the rows have moved");
   return failures;
 }
 
@@ -102,7 +115,7 @@ int CheckTheStop() {
   core::WorldState world;
   const core::UnitId full = Place(world, 0, 0.0F, 1, kFull);
   const core::UnitId marked = Place(world, 0, 500.0F, 0, 0);  // pegs and string
-  core::LayGraveOf(config, kRadii, world, core::ResidentId{7}, nullptr);
+  core::LayGraveOf(config, kRadii, world, core::ResidentId{7});
   failures += Expect(world.burials_waiting == 1 && core::BurialHeld(world),
                      "burial: full everywhere, the grave waits and the game stops");
   failures += Expect(GravesOf(world, full) == kFull && GravesOf(world, marked) == 0,
@@ -113,7 +126,7 @@ int CheckTheStop() {
   failures += Expect(held != world.step_events.end() && held->resident.value == 7 &&
                          held->amount == 1 && held->severity == core::EventSeverity::kInterrupting,
                      "burial: kBurialHeld names the dead and the waiting, and interrupts");
-  core::LayGraveOf(config, kRadii, world, core::ResidentId{8}, nullptr);
+  core::LayGraveOf(config, kRadii, world, core::ResidentId{8});
   core::LayWaitingGraves(config, kRadii, world);
   failures += Expect(world.burials_waiting == 2 && Count(world, core::EventKind::kBurialsLaid) == 0,
                      "burial: a marked plot takes no waiting grave");
@@ -166,5 +179,5 @@ int CheckTheOwnPlot() {
 }  // namespace
 
 int CheckBurial() {
-  return CheckTheRules() + CheckTheNearestWithRoom() + CheckTheStop() + CheckTheOwnPlot();
+  return CheckTheRules() + CheckTheOldestWithRoom() + CheckTheStop() + CheckTheOwnPlot();
 }

@@ -270,29 +270,17 @@ void RunDeaths(const LifeConfig& config, WorldState& current, SimDay day) {
     // call sites and not inside RemoveResident, which cannot tell them
     // apart — and telling them apart is the whole content of the news.
     const std::uint32_t row = FindRow(current.residents, id);
-    FamilyId family;
     {
       SimEvent& died = EmitEvent(current, EventKind::kResidentDied, EventSeverity::kNotable);
       died.resident = id;
       if (row != kNoRow) {
-        family = current.residents.rows[row].family;
-        died.family = family;
+        died.family = current.residents.rows[row].family;
       }
     }
-    // THE GRAVE, near his family's house (#1199; burial.h). After the event's
-    // fields: laying may emit, and a reference into the outbox would dangle.
-    const std::uint32_t family_row =
-        family.value == kInvalidEntityIdValue ? kNoRow : FindRow(current.families, family);
-    const std::uint32_t house_row =
-        family_row == kNoRow ? kNoRow
-                             : FindRow(current.units, current.families.rows[family_row].house);
-    // A COPY, not a pointer into the units table: laying writes a unit row.
-    const Vec2 home = house_row == kNoRow ? Vec2{} : current.units.rows[house_row].position;
-    LayGraveOf(config.burial,
-               config.definitions.units.plot_radius_m,
-               current,
-               id,
-               house_row == kNoRow ? nullptr : &home);
+    // THE GRAVE, in the oldest cemetery with room (#1199; burial.h). After the
+    // event's fields: laying may emit, and a reference into the outbox would
+    // dangle.
+    LayGraveOf(config.burial, config.definitions.units.plot_radius_m, current, id);
     RemoveResident(current, id);
   }
   current.ledger.current.deaths += static_cast<std::uint32_t>(dead.size());
