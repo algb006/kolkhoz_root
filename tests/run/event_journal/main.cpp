@@ -138,6 +138,10 @@ const char* KindName(core::EventKind kind) {
       return "fire_gong_moved";
     case core::EventKind::kUnitWorksStarted:
       return "unit_works_started";
+    case core::EventKind::kBurialHeld:
+      return "burial_held";
+    case core::EventKind::kBurialsLaid:
+      return "burials_laid";
     case core::EventKind::kElectrificationUnlocked:
       return "electrification_unlocked";
     case core::EventKind::kFireBroke:

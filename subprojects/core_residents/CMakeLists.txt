@@ -22,6 +22,7 @@ kolkhoz_add_module(core_residents
     membership.cpp
     alcoholism.cpp
     sport.cpp
+    burial.cpp
     night_trade.cpp
     barter.cpp
     schooling.cpp

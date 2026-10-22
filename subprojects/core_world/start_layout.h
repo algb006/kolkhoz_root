@@ -98,6 +98,12 @@ struct StartLayoutRow {
   /// an answer (start design §4).
   float start_wear_pct = -1.0F;
 
+  /// HOW FULL THE UNIT STARTS, 0..100 % of its capacity (start_layout
+  /// fill_pct; #1199): the old cemetery's half (social.md «Половина на
+  /// старте»), as graves of its plot's capacity (cemetery_rules.h). Minus
+  /// one is no word, as with the wear. Read by nobody until #1199.
+  float fill_pct = -1.0F;
+
   /// The unit stands and does not work at all until it is restored.
   ///
   /// NOT WEAR, and that is the whole reason it is a second field: wear

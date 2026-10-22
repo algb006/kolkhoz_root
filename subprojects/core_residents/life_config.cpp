@@ -541,7 +541,8 @@ bool ParseLifeConfig(const ITableSet& tables, LifeConfig& config, std::string& e
       !ParseBarterConfig(tables, config.barter, error) ||
       !ParseSchoolingConfig(tables, config.schooling, error) ||
       !ParseAlcoholismConfig(tables, config.alcoholism, error) ||
-      !ParseSportConfig(tables, config.sport, error)) {
+      !ParseSportConfig(tables, config.sport, error) ||
+      !ParseBurialConfig(tables, config.burial, error)) {
     return false;
   }
   if (!ParseResidentsCapacity(tables, config, error)) {
@@ -586,6 +587,8 @@ std::span<const std::string_view> LifeWorldParamKeys() {
     keys.insert(keys.end(), sport.begin(), sport.end());
     const std::span<const std::string_view> barter = BarterWorldParamKeys();
     keys.insert(keys.end(), barter.begin(), barter.end());
+    const std::span<const std::string_view> burial = BurialWorldParamKeys();
+    keys.insert(keys.end(), burial.begin(), burial.end());
     return keys;
   }();
   return kAll;

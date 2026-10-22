@@ -120,6 +120,7 @@ bool ParseStartLayout(const ITable& table, StartLayout& out, std::string& error)
   // poorer scene and not a broken one.
   const std::uint32_t wear_col = table.FindColumn("start_wear_pct");
   const std::uint32_t dead_col = table.FindColumn("start_dead");
+  const std::uint32_t fill_col = table.FindColumn("fill_pct");
   const std::uint32_t meadow_kind_col = table.FindColumn("meadow_kind");
   const std::uint32_t traffic_col = table.FindColumn("traffic");
   const std::array<std::uint32_t, 3> rotation_cols = {table.FindColumn("rotation_year0"),
@@ -215,6 +216,11 @@ bool ParseStartLayout(const ITable& table, StartLayout& out, std::string& error)
       trouble =
           ReadLayoutNumber(table, row, dead_col, Range::Unit(), "start_dead", entry.key, &dead);
     }
+    float fill = -1.0F;
+    if (trouble.empty()) {
+      trouble = ReadLayoutNumber(
+          table, row, fill_col, Range{.low = -1.0F, .high = 100.0F}, "fill_pct", entry.key, &fill);
+    }
     if (!trouble.empty()) {
       error = trouble;
       return false;
@@ -222,6 +228,16 @@ bool ParseStartLayout(const ITable& table, StartLayout& out, std::string& error)
     entry.derelict = derelict > 0.5F;
     entry.start_wear_pct = wear;
     entry.start_dead = dead > 0.5F;
+    entry.fill_pct = fill;
+    // A FILL IS A CEMETERY's (#1199), and on any other row it is read by
+    // nobody. SAID, NOT REFUSED: the shipped table carries 0 on two roads
+    // (road_pond_village, road_east_pond) and on priest_house, written while
+    // the column had no reader at all - a refusal would stop the canon over
+    // the base's export, which is boss's to mend (boss-core-epoch1-resume).
+    if (entry.kind != LayoutKind::kUnit && fill >= 0.0F) {
+      LogWarning("start_layout: row '" + entry.key +
+                 "' carries fill_pct on a row that is not a unit - read by nobody");
+    }
 
     // A DEAD FIELD IS NOT A THING, and neither is a worn meadow: both
     // columns describe a BUILDING, and a value on a land row would be read

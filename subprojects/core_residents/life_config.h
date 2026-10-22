@@ -32,6 +32,7 @@
 
 #include "alcoholism.h"
 #include "barter.h"
+#include "burial.h"
 #include "core_catalog/definitions.h"
 #include "core_common/body.h"
 #include "core_common/calendar.h"
@@ -306,6 +307,9 @@ struct LifeConfig {
 
   /// The sports field and sportiness (sport.h; register 223).
   SportConfig sport;
+
+  /// The graves and the game's stop for one (burial.h; #1199).
+  BurialConfig burial;
 
   float life_speedup = 4.0F;
 

@@ -735,6 +735,36 @@ int CheckEraNormList() {
   return failures;
 }
 
+/// THE OLD CEMETERY STARTS HALF FULL (#1199; social.md «Половина на старте»):
+/// the shipped start_layout's fill_pct 50 of the 25 m plot's 130 graves at
+/// world_params' 15 m² a grave, and no other unit holds a grave.
+int CheckStartCemetery() {
+  int failures = 0;
+  const auto shipped = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
+  if (Expect(shipped != nullptr, "start cemetery: the shipped tables load") != 0) {
+    return 1;
+  }
+  const core::WorldState start =
+      core::CreateStartWorld(*shipped, core::StubTables::kRefused, nullptr, 1929, nullptr);
+  const std::uint32_t cemetery = shipped->FindTable("unit_types")->FindRowByKey("cemetery");
+  std::uint32_t cemeteries = 0;
+  std::uint32_t graves = 0;
+  std::uint32_t graves_elsewhere = 0;
+  for (const core::UnitRow& unit : start.units.rows) {
+    if (unit.type.value == cemetery) {
+      ++cemeteries;
+      graves += unit.graves;
+    } else {
+      graves_elsewhere += unit.graves;
+    }
+  }
+  failures += Expect(cemeteries == 1 && graves == 65,
+                     "start cemetery: one old cemetery, 65 of its 130 graves taken");
+  failures += Expect(graves_elsewhere == 0 && start.burials_waiting == 0,
+                     "start cemetery: no other unit holds a grave and nobody waits");
+  return failures;
+}
+
 /// count the design gives of the start network — «так на старте ДЕВЯТЬ»
 /// dead-end roads (roads design §4, the start map's wear table): a dead end
 /// is a road one of whose ends meets no other road and no border. The joins
@@ -2890,6 +2920,7 @@ int main() {
   failures += CheckBaseConventions();
   failures += CheckIceRowsAssemble();
   failures += CheckStartRoads();
+  failures += CheckStartCemetery();
   failures += CheckEraNormList();
   failures += CheckRoadsDoor();
   failures += CheckJunctionsDoor();

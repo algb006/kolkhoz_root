@@ -1185,6 +1185,15 @@ struct WorldState {
   /// fact the campaign accumulated and a save must carry.
   ReadinessState readiness;
 
+  /// THE DEAD WAITING FOR A GRAVE (#1199; social.md «Два кладбища»: «игра
+  /// останавливается, пока председатель не выделит новый участок»); SAVED
+  /// (save 180). Raised by core_residents' demography sub-step for a death in
+  /// the village when no built cemetery has room; emptied into the first
+  /// cemetery with room, in the same sub-step. While it is above 0 the game
+  /// is stopped: BurialHeld (cemetery_rules.h) is the door the layer's clock
+  /// reads. No grave is lost.
+  std::uint16_t burials_waiting = 0;
+
   /// This step's outbox (project phase 2, the boundary): what happened,
   /// for the presentation. Cleared by the step engine after the copy,
   /// appended by sequential code only, NOT SAVED. event_state.h.

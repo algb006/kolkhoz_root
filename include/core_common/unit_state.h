@@ -590,6 +590,14 @@ struct UnitRow {
 
   /// A rick's supply from another rick (#1056 C1.2; save 171): see the type.
   RickSupplySeam rick_supply;
+
+  /// THE GRAVES A CEMETERY HOLDS (#1199; social.md «Заполнение — метрика
+  /// юнита»; save 180). 0 for every other type. Set at the start from
+  /// start_layout fill_pct of the plot's capacity (cemetery_rules.h); +1
+  /// for each resident who dies in the village, laid by core_residents'
+  /// demography sub-step (slot 3) and by the save's load. Never above the
+  /// capacity: a death with no room waits in WorldState::burials_waiting.
+  std::uint16_t graves = 0;
 };
 
 /// @brief Whether `unit` is supplied from another rick NOW (#1056 C1.2): a

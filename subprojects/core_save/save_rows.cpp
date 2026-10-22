@@ -301,7 +301,9 @@ static_assert(AggregateArity<ConstructionState>() == 22,
               "ConstructionState gained or lost a field — update the codec and VERSION_SAVE");
 // Save 74: reserved_for_specialist, a byte beside `dead` — 18 fields. Save 157:
 // suspended_works (#715) — 20.
-static_assert(AggregateArity<UnitRow>() == 23,
+// Save 180 (#1199): graves, a u16 after the rick's supply - 24 fields, the units
+// section +2 a unit.
+static_assert(AggregateArity<UnitRow>() == 24,
               "UnitRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 173 (#1089): the settlement's row - predicted 28 bytes (Vec2 8, four
 // u32-sized fields 16, a byte, a byte of padding, a u16) and 7 fields, before
@@ -1465,6 +1467,7 @@ void WriteUnitRow(SaveSink& sink, const UnitRow& row) {
   out.WriteFloat(row.rick_supply.days_written);
   out.WriteI64(row.rick_supply.grams);
   out.WriteU8(row.rick_supply.threshold_days);
+  out.WriteU16(row.graves);  // save 180 (#1199)
 }
 
 UnitRow ReadUnitRow(LoadSource& source) {
@@ -1504,6 +1507,7 @@ UnitRow ReadUnitRow(LoadSource& source) {
   row.rick_supply.days_written = in.ReadFloat();
   row.rick_supply.grams = in.ReadI64();
   row.rick_supply.threshold_days = in.ReadU8();
+  row.graves = in.ReadU16();  // save 180 (#1199)
   if (!(row.rick_supply.days_remaining >= 0.0F) || !(row.rick_supply.days_written >= 0.0F) ||
       row.rick_supply.grams < 0) {
     source.Fail("a rick's supply is negative or not a number");

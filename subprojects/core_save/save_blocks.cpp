@@ -285,7 +285,10 @@ static_assert(sizeof(ClampRotYear) == 392,
               "ClampRotYear changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<ClampRotYear>() == 2,
               "ClampRotYear gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<WorldState>() == 52,
+// Save 180 (#1199): burials_waiting, the fifty-third - a u16 after the clamps'
+// rot; the section «world» +2, every other section unmoved but the units'
+// (+2 a unit, UnitRow::graves).
+static_assert(AggregateArity<WorldState>() == 53,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 
@@ -649,6 +652,8 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   for (const Grams grams : world.clamp_rot.per_day) {
     out.WriteI64(grams);
   }
+  // The dead waiting for a grave (#1199; save 180).
+  out.WriteU16(world.burials_waiting);
   // The jobs' runs of mornings with no hand (save 149): a count, then each
   // run's kind, its seven subject ids, its mornings and whether it was said.
   out.WriteU32(static_cast<std::uint32_t>(world.unmanned_runs.size()));
@@ -925,6 +930,8 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
       return;
     }
   }
+  // The dead waiting for a grave (#1199; save 180): any count is a count.
+  world->burials_waiting = in.ReadU16();
   // The jobs' runs of mornings with no hand (save 149): a count asked of the
   // bytes left first, each kind and flag by its range.
   constexpr std::size_t kSavedUnmannedRunBytes = 32;
