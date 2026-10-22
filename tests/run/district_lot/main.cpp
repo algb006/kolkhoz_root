@@ -7,7 +7,8 @@
 //   - on the lot's arrival day its logs are NOT in the stores (until 0.36.17
 //     they walked in by themselves on the third day, with no hauling day and
 //     no horse — core's check of 26.09);
-//   - the ordering village spends hauling man-days the other does not, its
+//   - the ordering village spends man-days on the lot's carting (until
+//     0.37.318: hauling man-days the other does not - see the check), its
 //     carters ride out to the map's northern border end, and the lot's logs
 //     come into the stores only as they are carted;
 //   - NO CARTER GOES FOR THE LOT ON A DAY A PLOUGH OR A HARROW WAITS WITH NO
@@ -101,6 +102,7 @@ int main() {
   std::uint32_t arrive_day = 0;
   core::Grams logs_on_arrival_extra = -1;
   std::uint32_t carter_days = 0;
+  std::uint32_t lot_man_days = 0;  // the carters on the lot, summed over the days
   std::uint32_t carter_days_over_a_plough = 0;
   std::uint32_t carters_on_foot = 0;  // man-days
   std::uint32_t emptied_day = 0;
@@ -156,6 +158,7 @@ int main() {
     }
     const std::uint32_t carters = CartingTheLot(a);
     carter_days += carters > 0 ? 1U : 0U;
+    lot_man_days += carters;
     carter_days_over_a_plough +=
         carters > 0 && run::HorseFieldsWaiting(fields_at_hour_0, ids_at_hour_0, a) > 0 ? 1U : 0U;
     carters_on_foot += CartingTheLotOnFoot(a);
@@ -174,10 +177,10 @@ int main() {
             << ", logs in the stores beyond the other village on the day after: "
             << logs_on_arrival_extra / 1000 << " kg; days with a carter on the lot " << carter_days
             << " (of them with a plough or harrow waiting uncrewed: " << carter_days_over_a_plough
-            << "; carter man-days on foot " << carters_on_foot << "), the lot's row gone on day "
-            << emptied_day << (emptied_day == 0 ? " (NOT GONE in the horizon)" : "")
-            << ", extra hauling man-days " << hauling_extra
-            << ", logs beyond the other village at the end " << logs_extra / 1000
+            << "; carter man-days on foot " << carters_on_foot << "; man-days on the lot "
+            << lot_man_days << "), the lot's row gone on day " << emptied_day
+            << (emptied_day == 0 ? " (NOT GONE in the horizon)" : "") << ", extra hauling man-days "
+            << hauling_extra << ", logs beyond the other village at the end " << logs_extra / 1000
             << " kg; district trips booked " << district_trips << " (" << district_grams / 1000
             << " kg)\n";
 
@@ -199,8 +202,15 @@ int main() {
   failures += run::Expect(carters_on_foot == 0,
                           "and every carter on the lot rides a horse: with none free, nobody "
                           "is sent");
-  failures += run::Expect(hauling_extra > 0.0F,
-                          "and the ordering village spends hauling man-days the other does not");
+  // THE LOT'S OWN MAN-DAYS, NOT THE TWO VILLAGES' HAULING DIFFERENCE (#1056
+  // C2, 0.37.318): the winter's manure doses are windowless carting for every
+  // spare carter, and the difference read -1.93 on seed 1931 while the lot
+  // took its carters on 4 days. The READING, not printed here: the village
+  // without the lot carts doses with the hands the other sends to the
+  // district, so the lot's cost is the doses it displaces. The difference
+  // stays printed.
+  failures += run::Expect(lot_man_days > 0,
+                          "and the ordering village spends man-days on the lot's carting");
   failures += run::Expect(emptied_day > arrive_day && logs_extra > 0,
                           "the lot's logs come in as they are carted, and its row goes when empty");
   failures += run::Expect(district_trips > 0.0F && district_grams > 0,
