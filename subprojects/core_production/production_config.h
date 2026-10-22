@@ -505,6 +505,15 @@ struct FarmingConfig {
   /// `manure_fertility_mark`, STUB 70 (boss, the #1056 thread [136]).
   float manure_fertility_mark = 70.0F;
 
+  /// #1056 C2's FREE SPREAD OF THE LATE REMAINDER (econ's page ae1166b, way
+  /// (2); boss, boss-core-c2-pair [1]): 1 - what a winter's carts did not take
+  /// of a field's dose goes onto it free from the heap at its ploughing,
+  /// counted as manure_late; 0 - it stays in the heap. farming.csv
+  /// `manure_late_spread_free`, optional, STUB 1. ITS RETURN: the carted share
+  /// (carted / (carted + late)) at least 90 % in the median canon village,
+  /// which needs horse-hours Epoch I lacks - more horses, or Epoch II's MTS.
+  float manure_late_spread_free = 1.0F;
+
   float fallow_recovery = 6.0F;
 
   /// The month a fallow field is ploughed, 0-based (farming design §7:

@@ -3110,6 +3110,15 @@ class LaborSystem final : public ILaborSystem {
         if (site_holds && static_cast<std::uint8_t>(task.level) > site_level) {
           continue;
         }
+        // MANURE IS THE LAST WINTER CART ((b′); the human's option 2, «logs,
+        // supply, lots and ricks first»; econ's page ae1166b): no carter goes
+        // down to a field's dose while a load of levels 0-2 stands with
+        // carting left and nobody on it. Until (b′) the chain took them to the
+        // doses after their own load, and the stand logs waited the winter
+        // (logs y2 -25 % canon on 317's tree; boss-econ-c2-on-317 [1]).
+        if (task.load_kind == LogisticsLoadKind::kManureField && HigherLoadWaits(current)) {
+          continue;
+        }
         const float* const next = WorkSeamOf(current, HaulingWorkOf(task));
         if (next != nullptr && *next > 0.0F) {
           RetargetWork(work, task);
@@ -3118,6 +3127,31 @@ class LaborSystem final : public ILaborSystem {
       }
       return;
     }
+  }
+
+  /// @brief Whether a load above the manure doses waits for a carter: a task
+  ///        of levels 0-2, not a dose, with carting left (its seam above
+  ///        nought) and no resident hauling on it this hour ((b′)).
+  static bool HigherLoadWaits(const WorldState& current) {
+    constexpr std::uint8_t kLastLevelAboveManure = 2;
+    for (std::uint32_t task_row = 0; task_row < current.logistics_tasks.rows.size(); ++task_row) {
+      const LogisticsTaskRow& task = current.logistics_tasks.rows[task_row];
+      if (task.load_kind == LogisticsLoadKind::kManureField ||
+          static_cast<std::uint8_t>(task.level) > kLastLevelAboveManure) {
+        continue;
+      }
+      const float* const seam = WorkSeamOf(current, HaulingWorkOf(task));
+      if (seam == nullptr || !(*seam > 0.0F)) {
+        continue;
+      }
+      const bool served = std::ranges::any_of(current.residents.rows, [&](const ResidentRow& r) {
+        return r.work.kind == WorkKind::kHauling && TaskRowOfWork(current, r.work) == task_row;
+      });
+      if (!served) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /// The seam this assignment drains — core_common/work_seam.h, shared with

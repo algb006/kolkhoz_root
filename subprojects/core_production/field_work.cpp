@@ -670,7 +670,7 @@ void OpenPlowing(const ProductionConfig& config,
   // THE WINTER'S DOSE IS CLOSED BY THIS FURROW (#1056 C2; manure_cart.h):
   // what is not on the field yet stays in the heap and is counted late, and
   // the furrow pays by what arrived.
-  CancelLateManure(current, field);
+  CancelLateManure(config, current, field);
   if (field.manure_applied != 0 && field.manure_booked == 0) {
     const float share = static_cast<float>(field.manure_applied) / 100.0F;
     const auto dose =

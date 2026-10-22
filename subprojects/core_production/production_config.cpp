@@ -478,6 +478,7 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
       {"rick_supply", &farming.rick_supply, 0.0F, 1.0F},
       {"rick_threshold_add_days", &farming.rick_threshold_add_days, 0.0F, 48.0F},
       {"manure_fertility_mark", &farming.manure_fertility_mark, 0.0F, 100.0F},
+      {"manure_late_spread_free", &farming.manure_late_spread_free, 0.0F, 1.0F},
       {"seed_light_margin_share", &farming.seed_light_margin_share, 0.0F, 10.0F},
       {"unfed_death_percent_per_day", &farming.unfed_death_percent_per_day, 0.0F, 100.0F},
       {"juvenile_feed_factor", &farming.juvenile_feed_factor, 0.0F, 1.0F},

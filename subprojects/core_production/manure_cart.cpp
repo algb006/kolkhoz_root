@@ -231,12 +231,28 @@ void SettleManureDoses(const ProductionConfig& config, WorldState& current) {
   }
 }
 
-void CancelLateManure(WorldState& current, FieldRow& field) {
+void CancelLateManure(const ProductionConfig& config, WorldState& current, FieldRow& field) {
   if (field.manure_dose.from.value == kInvalidEntityIdValue) {
     return;
   }
-  // What is still due never left the heap: it stays there, and is counted.
+  // What the carts did not take is counted late whatever happens to it.
   current.ledger.current.manure_late += field.manure_dose.due;
+  // AND IT GOES ONTO THE FIELD FREE (econ's way (2), boss-core-c2-pair [1]):
+  // the base's turn spread for the remainder only, a STUB with its size
+  // printed (manure_late; the carted share is carted / (carted + late)). Until
+  // it, the remainder stayed in the heap, which grew to 8 000 t canon on 317's
+  // tree, and the grain fell 3-5 %. As much as the heap holds; the furrow
+  // below pays by what arrived (WriteAppliedShare).
+  const std::uint32_t heap = FindRow(current.units, field.manure_dose.from);
+  if (config.farming.manure_late_spread_free > 0.5F && heap != kNoRow &&
+      field.manure_dose.due > 0) {
+    UnitRow& source = current.units.rows[heap];
+    const Grams offered =
+        std::min(field.manure_dose.due, StockOf(source.stock, config.manure_resource));
+    const Grams moved = -AddToStock(source.stock, config.manure_resource, -offered);
+    field.manure_dose.due -= moved;
+    WriteAppliedShare(config, field);
+  }
   field.manure_dose = ManureDoseSeam{};
 }
 

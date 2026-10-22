@@ -118,7 +118,28 @@ int CheckManureIsCartedOnSledges() {
   middle_seam.days_remaining = middle_seam.days_written / 2.0F;
   core::SettleManureDoses(config, world);
   const core::Grams middle_due = world.fields.rows[middle].manure_dose.due;
-  core::CancelLateManure(world, world.fields.rows[middle]);
+  // THE FREE SPREAD OF THE REMAINDER (econ's way (2); STUB 1): on a copy, the
+  // late half goes onto the field free from the heap - the field reads its
+  // whole dose, the heap gives exactly the remainder, and it is counted late.
+  {
+    core::WorldState spread = world;
+    core::ProductionConfig free_spread = config;
+    free_spread.farming.manure_late_spread_free = 1.0F;
+    const core::Grams heap_before = core::StockOf(spread.units.rows[0].stock, manure);
+    core::CancelLateManure(free_spread, spread, spread.fields.rows[middle]);
+    failures +=
+        Expect(spread.ledger.current.manure_late == middle_due &&
+                   spread.fields.rows[middle].manure_applied == 100 &&
+                   core::StockOf(spread.units.rows[0].stock, manure) == heap_before - middle_due &&
+                   !core::ManureDoseStands(spread.fields.rows[middle]),
+               "manure carting: with the free spread, a late remainder goes onto its "
+               "field from the heap at the ploughing and is still counted late");
+  }
+  // AND WITHOUT IT (manure_late_spread_free 0, C2 option 2's first rule) it
+  // stays in the heap.
+  core::ProductionConfig kept = config;
+  kept.farming.manure_late_spread_free = 0.0F;
+  core::CancelLateManure(kept, world, world.fields.rows[middle]);
   failures += Expect(middle_due > 0 && middle_due < dose &&
                          world.ledger.current.manure_late == middle_due &&
                          world.fields.rows[middle].manure_dose.booked == 0 &&

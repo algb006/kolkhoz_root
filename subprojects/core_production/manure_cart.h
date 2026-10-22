@@ -45,10 +45,13 @@ void SettleManureDoses(const ProductionConfig& config, WorldState& current);
 
 /// @brief A FIELD WHOSE PLOUGHING OPENS WITH ITS DOSE NOT ALL DELIVERED
 ///        (called where its phase leaves kIdle, field_work.cpp OpenPlowing,
-///        before the furrow reads manure_applied): the `due` is cancelled - it
-///        stays in the heap, the seam is cleared, and YearLedger::manure_late
-///        counts it.
-void CancelLateManure(WorldState& current, FieldRow& field);
+///        before the furrow reads manure_applied): the seam is cleared and
+///        YearLedger::manure_late counts the `due` the carts did not take.
+///        With FarmingConfig::manure_late_spread_free (STUB 1; econ's way
+///        (2)) that `due` goes onto the field free from the heap, as much as
+///        the heap holds, and raises manure_applied; with 0 it stays in the
+///        heap, as C2 option 2 first had it.
+void CancelLateManure(const ProductionConfig& config, WorldState& current, FieldRow& field);
 
 }  // namespace core
 
