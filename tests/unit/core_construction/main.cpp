@@ -30,6 +30,7 @@
 #include "core_common/state_table_ops.h"
 #include "core_common/unit_state.h"
 #include "core_common/world_state.h"
+#include "core_common/yard_ground_rules.h"
 #include "core_construction/construction_system.h"
 #include "core_log/log.h"
 #include "core_tables/tables.h"
@@ -219,6 +220,13 @@ core::ResourceId NamedOf(const core::WorldState& world, core::OrderId order) {
 
 /// One step of the sub-step, at the hour it is given: hour 0 is when the
 /// delivery stub runs.
+/// @brief How many kUnitWorksStarted the world was told for `unit` (#1203).
+int WorksStartedFor(const core::WorldState& world, core::UnitId unit) {
+  return static_cast<int>(std::ranges::count_if(world.step_events, [unit](const core::SimEvent& e) {
+    return e.kind == core::EventKind::kUnitWorksStarted && e.unit.value == unit.value;
+  }));
+}
+
 void Run(core::IConstructionSystem& system, core::WorldState& world, std::uint32_t hour) {
   world.calendar.tick = hour;
   const core::WorldState previous = world;
@@ -283,6 +291,10 @@ int TestStartChecksTheRecipe(const core::ITableSet& tables) {
              "and nothing leaves the store");
   failures += Expect(NamedOf(world, refused).value == 0,
                      "recipe: the refusal names the short material — the logs");
+  // THE YARD GROUND (#1203): pegs and a refused start mark nothing.
+  failures += Expect(WorksStartedFor(world, site) == 0 && !core::UnitStampsYardGround(waiting),
+                     "yard ground: a marked plot and a refused start raise no kUnitWorksStarted, "
+                     "and the rule leaves the pegs' ground as it is");
 
   world.units.rows[core::FindRow(world.units, store)].stock[0] = 12 * kLogGrams;
   failures += Expect(system->MaterialsShortFor(world, site).empty(),
@@ -308,6 +320,9 @@ int TestStartChecksTheRecipe(const core::ITableSet& tables) {
         "recipe: the sender is the store that gave the logs");
     failures += Expect(system->MaterialsShortFor(world, site).empty(),
                        "recipe: a started building answers nothing short while its logs await");
+    failures += Expect(WorksStartedFor(world, site) == 1 && core::UnitStampsYardGround(fixed),
+                       "yard ground: the start raises kUnitWorksStarted once for its site, and "
+                       "the rule stamps its plot from the delivering phase on");
     // The hour's look with nothing carted opens nothing and fixes nothing more.
     Run(*system, world, 6);
     const core::UnitRow& still = world.units.rows[core::FindRow(world.units, site)];

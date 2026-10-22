@@ -822,6 +822,13 @@ enum class EventKind : std::uint8_t {
   /// `amount` its settlement's id. Routine. Key `fire_gong_moved`.
   kFireGongMoved,
 
+  /// THE WORKS STARTED on a marked site (#1203): `unit` the site, the tick a
+  /// kStartBuild was carried out. Routine. Key `unit_works_started`. The yard
+  /// land mask stamps the plot on it (yard_ground_rules.h); kUnitDemolished
+  /// and kUnitCollapsed unstamp it. An upgrade does not raise it: the plot is
+  /// the type's (unit_types.csv plot_radius_m), not the level's.
+  kUnitWorksStarted,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.
