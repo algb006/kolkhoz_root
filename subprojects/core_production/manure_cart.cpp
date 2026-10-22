@@ -7,7 +7,6 @@
 #include <vector>
 
 #include "cart_trips.h"
-#include "core_common/calendar.h"
 #include "core_common/cart_gear.h"
 #include "core_common/haul.h"
 #include "core_common/hauled_book.h"
@@ -19,7 +18,6 @@
 #include "core_common/state_table_ops.h"
 #include "core_common/work_seam.h"
 #include "haul_ways.h"
-#include "herd_forecast.h"
 #include "stock_ops.h"
 
 namespace core {
@@ -59,16 +57,6 @@ struct Candidate {
   std::uint32_t row = 0;
   float road_km = 0.0F;
 };
-
-/// The days from today to the first day of the meadow cut's month
-/// (FarmingConfig::meadow_cut_month, June), today the first; a winter's
-/// December counts to next year's June.
-std::uint32_t DaysToNewHay(const ProductionConfig& config, const WorldState& world) {
-  const std::uint32_t today = static_cast<std::uint32_t>(world.calendar.day) % kDaysPerYear;
-  const std::uint32_t cut =
-      static_cast<std::uint32_t>(config.farming.meadow_cut_month) * kDaysPerMonth;
-  return today < cut ? cut - today : kDaysPerYear - today + cut;
-}
 
 }  // namespace
 
@@ -168,17 +156,6 @@ void PriceManureDoses(const ProductionConfig& config, WorldState& current) {
   }
   if (!SledgeDay(current)) {
     return;  // the dose goes by sledge only (manure_state.h)
-  }
-  // THE FEED GATE (#1056 C2; the human, 23 Oct, «1.2. ваша рекомендация» -
-  // option 2's «a feed gate returns»; boss, boss-core-c2-pair [13]): no dose
-  // is priced while the hay in store will not carry the herds to the new cut,
-  // by the hay lamp's own reckoning (StoredHayShortWithin). The sledges stay
-  // home; what the doses did not take goes onto the fields free at the
-  // ploughing (CancelLateManure). Without it the dose horses ate 1.9 t more
-  // hay a novice village in y2's winter and the May store fell 35 %.
-  if (config.farming.manure_feed_gate > 0.5F &&
-      StoredHayShortWithin(config, current, DaysToNewHay(config, current))) {
-    return;
   }
   for (FieldRow& field : current.fields.rows) {
     if (!ManureDoseStands(field)) {

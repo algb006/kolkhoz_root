@@ -514,13 +514,6 @@ struct FarmingConfig {
   /// which needs horse-hours Epoch I lacks - more horses, or Epoch II's MTS.
   float manure_late_spread_free = 1.0F;
 
-  /// #1056 C2's FEED GATE (the human, 23 Oct, «1.2. ваша рекомендация»;
-  /// boss, boss-core-c2-pair [13]; manure_cart.cpp PriceManureDoses): 1 - no
-  /// dose is priced on a day the hay in store will not carry the herds to the
-  /// new cut (StoredHayShortWithin over DaysToNewHay); 0 - the doses go on
-  /// regardless. farming.csv `manure_feed_gate`, optional, STUB 1.
-  float manure_feed_gate = 1.0F;
-
   float fallow_recovery = 6.0F;
 
   /// The month a fallow field is ploughed, 0-based (farming design §7:
