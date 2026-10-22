@@ -425,6 +425,9 @@ core::WorldState MakeWorld() {
   house.rick_supply.days_written = 1.375F;
   house.rick_supply.grams = 2'250'000;
   house.rick_supply.threshold_days = 9;
+  // The graves (save 180, #1199): past one byte, so a codec that wrote a u8 is
+  // seen. The codec writes any row's count; only a cemetery's is ever raised.
+  house.graves = 301;
   // The top of the phase enum, being insulated (save format 44).
   house.construction.phase = core::ConstructionPhase::kInsulating;
   house.construction.target_level = house.level;
@@ -760,6 +763,8 @@ core::WorldState MakeWorld() {
   world.clamp_rot.last_day = 301;
   world.clamp_rot.per_day[3] = 5'000'000'123;
   world.clamp_rot.per_day[45] = 70'000;
+  // The dead waiting for a grave (save 180, #1199): past one byte.
+  world.burials_waiting = 258;
   // The jobs' runs of mornings with no hand (save 149): two, every id and
   // count off its default, the second one said.
   world.unmanned_runs.resize(2);
@@ -1385,6 +1390,7 @@ core::WorldState MakeWitnessWorld() {
   witness.arrivals_turned_away.per_day[5] = 4;
   witness.clamp_rot.last_day = 291;  // save 176
   witness.clamp_rot.per_day[7] = 9'000;
+  witness.burials_waiting = 3;      // save 180
   witness.unmanned_runs.resize(1);  // save 149
   witness.unmanned_runs[0].kind = core::WorkKind::kHerdCare;
   witness.unmanned_runs[0].herd = core::HerdId{2};
@@ -1627,6 +1633,8 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   for (const core::Grams grams : world.clamp_rot.per_day) {
     chunks.push_back({"clamp_rot.per_day", U64(static_cast<std::uint64_t>(grams))});
   }
+  // Save 180: the dead waiting for a grave, two bytes.
+  chunks.push_back({"burials_waiting", U16(world.burials_waiting)});
   // Save 149: the jobs' runs — a count, then each run's fields in order.
   chunks.push_back(
       {"unmanned_runs.count", U32(static_cast<std::uint32_t>(world.unmanned_runs.size()))});
@@ -2676,6 +2684,8 @@ int main() {
       Expect(loaded.clamp_rot.last_day == 301 && loaded.clamp_rot.per_day[3] == 5'000'000'123 &&
                  loaded.clamp_rot.per_day[45] == 70'000 && loaded.clamp_rot.per_day[0] == 0,
              "the clamps' rot comes back, day and grams in place (save 170)");
+  failures += Expect(loaded.burials_waiting == 258,
+                     "the dead waiting for a grave come back, all of them (save 180)");
   failures += Expect(loaded.unmanned_runs.size() == 2 &&
                          loaded.unmanned_runs[0].kind == core::WorkKind::kPlowing &&
                          loaded.unmanned_runs[0].field.value == 3 &&
@@ -3326,6 +3336,7 @@ int main() {
           house_back.rick_supply.days_written == 1.375F &&
           house_back.rick_supply.grams == 2'250'000 && house_back.rick_supply.threshold_days == 9,
       "a rick's supply resumes half carried, its sender and threshold (save 171)");
+  failures += Expect(house_back.graves == 301, "a unit's graves come back, past a byte (save 180)");
   failures += Expect(house_back.insulated == 1 &&
                          house_back.construction.phase == core::ConstructionPhase::kInsulating,
                      "and a warm house being insulated resumes warm and mid-insulation");
