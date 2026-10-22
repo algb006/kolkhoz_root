@@ -876,6 +876,8 @@ class ConstructionSystem final : public IConstructionSystem {
     }
     OpenWorks(current, unit, site, site.construction.target_level);
     ReserveRecipe(current, row);
+    // The yard ground turns from here, not from the pegs (#1203).
+    Emit(current, EventKind::kUnitWorksStarted, EventSeverity::kRoutine, unit);
     return OrderRefusal::kNone;
   }
 
