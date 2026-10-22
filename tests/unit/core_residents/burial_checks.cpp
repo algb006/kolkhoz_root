@@ -10,6 +10,7 @@
 #include "burial.h"
 #include "core_common/cemetery_rules.h"
 #include "core_common/event_state.h"
+#include "core_common/plot.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
 
@@ -130,8 +131,40 @@ int CheckTheStop() {
   return failures;
 }
 
+/// THE OLD CEMETERY's OWN 14 m (boss [23], [25]): what it holds and what it
+/// blocks, both through PlotRadiusOf; a new one keeps the type's 25 m.
+int CheckTheOwnPlot() {
+  int failures = 0;
+  const core::BurialConfig config = Config();
+  core::WorldState world;
+  const core::UnitId old_one = Place(world, 0, 0.0F, 1, 0);
+  world.units.rows[core::FindRow(world.units, old_one)].plot_radius_m = 14.0F;
+  const core::UnitId new_one = Place(world, 0, 1000.0F, 1, 0);
+  const core::UnitRow& old_row = world.units.rows[core::FindRow(world.units, old_one)];
+  const core::UnitRow& new_row = world.units.rows[core::FindRow(world.units, new_one)];
+  failures += Expect(core::GraveCapacityOf(config, kRadii, old_row) == 41 &&
+                         core::GraveCapacityOf(config, kRadii, new_row) == kFull,
+                     "own plot: the old one's 14 m holds 41 graves, the new one's 25 m 130");
+  failures += Expect(
+      core::PlotRadiusOf(old_row, kRadii) == 14.0F && core::PlotRadiusOf(new_row, kRadii) == 25.0F,
+      "own plot: a unit's own radius answers before its type's");
+  // 60 m centre to centre (boss's suggest_cemetery_new_01): 14 + 25 = 39 does
+  // not overlap, the type's 25 + 25 = 50 would not either; 45 m tells them apart.
+  const core::PlotRules rules{.radius_by_type = kRadii};
+  failures +=
+      Expect(!core::PlotOverlaps(
+                 world.units, rules, core::Vec2{.x = 45.0F, .y = 0.0F}, 25.0F, core::UnitId{}),
+             "own plot: a 25 m plot 45 m from the old one's 14 m does not overlap");
+  world.units.rows[core::FindRow(world.units, old_one)].plot_radius_m = 0.0F;
+  failures +=
+      Expect(core::PlotOverlaps(
+                 world.units, rules, core::Vec2{.x = 45.0F, .y = 0.0F}, 25.0F, core::UnitId{}),
+             "own plot: with the type's 25 m again, the same plot overlaps");
+  return failures;
+}
+
 }  // namespace
 
 int CheckBurial() {
-  return CheckTheRules() + CheckTheNearestWithRoom() + CheckTheStop();
+  return CheckTheRules() + CheckTheNearestWithRoom() + CheckTheStop() + CheckTheOwnPlot();
 }

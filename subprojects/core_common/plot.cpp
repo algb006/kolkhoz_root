@@ -60,7 +60,8 @@ bool PlotOverlaps(const UnitTable& units,
         rules.yields_by_type[other.type.value] != 0) {
       continue;  // a body that yields its place (#1089): it moves, not the plot
     }
-    const float other_radius = rules.radius_by_type[other.type.value];
+    // Its own plot where it has one (the old cemetery's 14 m), else its type's.
+    const float other_radius = PlotRadiusOf(other, rules.radius_by_type);
     if (!(other_radius > 0.0F)) {
       continue;
     }

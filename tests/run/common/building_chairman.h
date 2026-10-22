@@ -22,6 +22,7 @@
 #include <string>
 
 #include "barrack_policy.h"
+#include "cemetery_policy.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
 #include "extraction_policy.h"
@@ -71,6 +72,7 @@ class BuildingChairman {
         digging(tables),
         roads(tables),
         transition(tables),
+        cemetery(tables),
         warm_hold(tables) {
     WireStartGates(yard, fixture, houses, sawmill);
     WireSchoolGate(school, sawmill);
@@ -261,6 +263,7 @@ class BuildingChairman {
     ExtractionPolicy::Declare(run_name);
     SuggestedRoadsPolicy::Declare(run_name);
     TransitionPolicy::Declare(run_name);
+    CemeteryPolicy::Declare(run_name);
   }
 
   /// @brief One day of the chairman's attention. Call once a day, after the
@@ -276,6 +279,10 @@ class BuildingChairman {
     // The transition first: it asks nothing of the day's work, and a door
     // that opened last night should not wait behind a day of building.
     transition.RunDay(simulation);
+    // The new cemetery before any building: the game stops for a grave
+    // (social.md), it costs nothing, and nothing else may hold it back
+    // (cemetery_policy.h).
+    cemetery.RunDay(simulation);
     fixture.RunDay(simulation);
     felling.RunDay(simulation, sawmill.LogsForMissingBoards(simulation.CompletedState()));
     // The forest after the felling: a zone a year, from the first spring
@@ -374,6 +381,7 @@ class BuildingChairman {
   ExtractionPolicy digging;
   SuggestedRoadsPolicy roads;
   TransitionPolicy transition;
+  CemeteryPolicy cemetery;
   WarmHold warm_hold;
 };
 

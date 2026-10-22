@@ -598,6 +598,14 @@ struct UnitRow {
   /// demography sub-step (slot 3) and by the save's load. Never above the
   /// capacity: a death with no room waits in WorldState::burials_waiting.
   std::uint16_t graves = 0;
+
+  /// THE UNIT's OWN PLOT RADIUS, metres; 0 = its type's (unit_types
+  /// plot_radius_m) (boss, boss-core-epoch1-resume [23], [25]; design.db
+  /// 82740e87). Set only by genesis, from start_layout's plot_radius_m (the
+  /// old cemetery's 14 m), and by the save's load (save 181). ONE TRUTH FOR
+  /// ONE FENCE: what the plot holds (CemeteryCapacityGraves) and what it
+  /// blocks (PlotOverlaps) both read it through PlotRadiusOf (plot.h).
+  float plot_radius_m = 0.0F;
 };
 
 /// @brief Whether `unit` is supplied from another rick NOW (#1056 C1.2): a

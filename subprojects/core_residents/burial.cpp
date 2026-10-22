@@ -8,6 +8,7 @@
 
 #include "core_catalog/table_value.h"
 #include "core_common/emit_event.h"
+#include "core_common/plot.h"
 #include "core_common/state_table_ops.h"
 
 namespace core {
@@ -53,7 +54,8 @@ std::uint16_t GraveCapacityOf(const BurialConfig& config,
       unit.type.value >= plot_radius_m.size()) {
     return 0;
   }
-  return CemeteryCapacityGraves(plot_radius_m[unit.type.value], config.m2_per_grave);
+  // Its own plot where it has one (the old cemetery's 14 m; plot.h).
+  return CemeteryCapacityGraves(PlotRadiusOf(unit, plot_radius_m), config.m2_per_grave);
 }
 
 void LayGraveOf(const BurialConfig& config,

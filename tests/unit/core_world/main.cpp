@@ -736,8 +736,9 @@ int CheckEraNormList() {
 }
 
 /// THE OLD CEMETERY STARTS HALF FULL (#1199; social.md «Половина на старте»):
-/// the shipped start_layout's fill_pct 50 of the 25 m plot's 130 graves at
-/// world_params' 15 m² a grave, and no other unit holds a grave.
+/// the shipped start_layout's fill_pct 50 of its OWN 14 m plot's 41 graves at
+/// world_params' 15 m² a grave (start_layout plot_radius_m; boss [23]), and no
+/// other unit holds a grave.
 int CheckStartCemetery() {
   int failures = 0;
   const auto shipped = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
@@ -750,16 +751,19 @@ int CheckStartCemetery() {
   std::uint32_t cemeteries = 0;
   std::uint32_t graves = 0;
   std::uint32_t graves_elsewhere = 0;
+  float own_radius = 0.0F;
   for (const core::UnitRow& unit : start.units.rows) {
     if (unit.type.value == cemetery) {
       ++cemeteries;
       graves += unit.graves;
+      own_radius = unit.plot_radius_m;
     } else {
       graves_elsewhere += unit.graves;
     }
   }
-  failures += Expect(cemeteries == 1 && graves == 65,
-                     "start cemetery: one old cemetery, 65 of its 130 graves taken");
+  // 41 graves at 50 %: lround(20.5) = 21.
+  failures += Expect(cemeteries == 1 && own_radius == 14.0F && graves == 21,
+                     "start cemetery: one old cemetery on its own 14 m, 21 of its 41 graves taken");
   failures += Expect(graves_elsewhere == 0 && start.burials_waiting == 0,
                      "start cemetery: no other unit holds a grave and nobody waits");
   return failures;

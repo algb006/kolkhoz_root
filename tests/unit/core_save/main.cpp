@@ -428,6 +428,7 @@ core::WorldState MakeWorld() {
   // The graves (save 180, #1199): past one byte, so a codec that wrote a u8 is
   // seen. The codec writes any row's count; only a cemetery's is ever raised.
   house.graves = 301;
+  house.plot_radius_m = 14.25F;  // save 181: its own plot, not the type's
   // The top of the phase enum, being insulated (save format 44).
   house.construction.phase = core::ConstructionPhase::kInsulating;
   house.construction.target_level = house.level;
@@ -2005,7 +2006,9 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // read off it.
     // Save 180 (#1199): the graves, a u16 a unit on three units - predicted
     // 831 -> 837 before the build and held; the hash read off it.
-    {"units", 837, 0x8c7cfa50d8eb3accULL},
+    // Save 181: a unit's own plot radius, a float a unit on three units -
+    // predicted 837 -> 849 before the build; the hash read off it.
+    {"units", 849, 0x8c7cfa50d8eb3accULL},
     // Save 71: +4 — fed_share, one herd; predicted before the field, held.
     // Save 91: +8 — the adult age band, two floats, one herd; predicted
     // 71 -> 79 with every other section unmoved before the build.
@@ -3337,6 +3340,8 @@ int main() {
           house_back.rick_supply.grams == 2'250'000 && house_back.rick_supply.threshold_days == 9,
       "a rick's supply resumes half carried, its sender and threshold (save 171)");
   failures += Expect(house_back.graves == 301, "a unit's graves come back, past a byte (save 180)");
+  failures += Expect(house_back.plot_radius_m == 14.25F,
+                     "a unit's own plot radius comes back, not the type's (save 181)");
   failures += Expect(house_back.insulated == 1 &&
                          house_back.construction.phase == core::ConstructionPhase::kInsulating,
                      "and a warm house being insulated resumes warm and mid-insulation");

@@ -23,6 +23,9 @@
 namespace core {
 namespace {
 
+/// A unit's own plot past this is a typo, not a yard: half a kilometre.
+constexpr float kMaxOwnPlotRadiusM = 500.0F;
+
 /// @brief Names the row the way a person reading the CSV can find it: by its
 /// key when it has one, and by its position among the data rows when it does
 /// not — the position is what is left when the key is the broken thing.
@@ -121,6 +124,7 @@ bool ParseStartLayout(const ITable& table, StartLayout& out, std::string& error)
   const std::uint32_t wear_col = table.FindColumn("start_wear_pct");
   const std::uint32_t dead_col = table.FindColumn("start_dead");
   const std::uint32_t fill_col = table.FindColumn("fill_pct");
+  const std::uint32_t plot_radius_col = table.FindColumn("plot_radius_m");
   const std::uint32_t meadow_kind_col = table.FindColumn("meadow_kind");
   const std::uint32_t traffic_col = table.FindColumn("traffic");
   const std::array<std::uint32_t, 3> rotation_cols = {table.FindColumn("rotation_year0"),
@@ -221,6 +225,16 @@ bool ParseStartLayout(const ITable& table, StartLayout& out, std::string& error)
       trouble = ReadLayoutNumber(
           table, row, fill_col, Range{.low = -1.0F, .high = 100.0F}, "fill_pct", entry.key, &fill);
     }
+    float own_radius = -1.0F;
+    if (trouble.empty()) {
+      trouble = ReadLayoutNumber(table,
+                                 row,
+                                 plot_radius_col,
+                                 Range{.low = -1.0F, .high = kMaxOwnPlotRadiusM},
+                                 "plot_radius_m",
+                                 entry.key,
+                                 &own_radius);
+    }
     if (!trouble.empty()) {
       error = trouble;
       return false;
@@ -229,14 +243,19 @@ bool ParseStartLayout(const ITable& table, StartLayout& out, std::string& error)
     entry.start_wear_pct = wear;
     entry.start_dead = dead > 0.5F;
     entry.fill_pct = fill;
+    entry.plot_radius_m = own_radius;
     // A FILL IS A CEMETERY's (#1199), and on any other row it is read by
-    // nobody. SAID, NOT REFUSED: the shipped table carries 0 on two roads
-    // (road_pond_village, road_east_pond) and on priest_house, written while
-    // the column had no reader at all - a refusal would stop the canon over
-    // the base's export, which is boss's to mend (boss-core-epoch1-resume).
+    // nobody. SAID, NOT REFUSED: the table carried 0 on two roads and on
+    // priest_house while the column had no reader; boss cured the base at the
+    // source on 22 October 2026 (boss-core-epoch1-resume [18]).
     if (entry.kind != LayoutKind::kUnit && fill >= 0.0F) {
       LogWarning("start_layout: row '" + entry.key +
                  "' carries fill_pct on a row that is not a unit - read by nobody");
+    }
+    // A PLOT IS A UNIT's, as the dead flag is (the refusal below).
+    if (entry.kind != LayoutKind::kUnit && own_radius > 0.0F) {
+      error = Refuse(entry.key, row, "plot_radius_m", "only a unit row has a plot of its own");
+      return false;
     }
 
     // A DEAD FIELD IS NOT A THING, and neither is a worn meadow: both

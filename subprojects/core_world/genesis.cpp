@@ -30,6 +30,7 @@
 #include "core_common/cemetery_rules.h"
 #include "core_common/herd_age_band.h"
 #include "core_common/ledger_state.h"
+#include "core_common/plot.h"
 #include "core_common/random.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
@@ -1018,9 +1019,14 @@ void PlaceStartLayout(WorldState& world,
       if (type.value == kInvalidDefIdValue) {
         continue;  // a type the core's tables do not carry: nothing to place
       }
-      placed.emplace_back(
-          row.key,
-          PlaceUnit(world, type, row.place.x, row.place.y, row.start_wear_pct, row.start_dead));
+      const UnitId unit =
+          PlaceUnit(world, type, row.place.x, row.place.y, row.start_wear_pct, row.start_dead);
+      // ITS OWN PLOT, where the layout gives one (the old cemetery's 14 m;
+      // UnitRow::plot_radius_m): what it holds and what it blocks.
+      if (row.plot_radius_m > 0.0F) {
+        world.units.rows[FindRow(world.units, unit)].plot_radius_m = row.plot_radius_m;
+      }
+      placed.emplace_back(row.key, unit);
       continue;
     }
     if (row.kind == LayoutKind::kMeadow) {
@@ -1095,8 +1101,6 @@ void SeedStartGraves(WorldState& world,
       cemetery.value >= definitions.units.plot_radius_m.size()) {
     return;
   }
-  const std::uint16_t capacity =
-      CemeteryCapacityGraves(definitions.units.plot_radius_m[cemetery.value], m2_per_grave);
   for (const StartLayoutRow& row : layout.rows) {
     if (row.kind != LayoutKind::kUnit || row.fill_pct < 0.0F) {
       continue;
@@ -1110,6 +1114,9 @@ void SeedStartGraves(WorldState& world,
     if (unit == kNoRow || world.units.rows[unit].type.value != cemetery.value) {
       continue;
     }
+    // Its own plot where the layout gives one, else the type's (plot.h).
+    const std::uint16_t capacity = CemeteryCapacityGraves(
+        PlotRadiusOf(world.units.rows[unit], definitions.units.plot_radius_m), m2_per_grave);
     world.units.rows[unit].graves = static_cast<std::uint16_t>(
         std::lround(static_cast<double>(capacity) * static_cast<double>(row.fill_pct) / 100.0));
   }

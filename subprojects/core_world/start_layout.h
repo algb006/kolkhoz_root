@@ -104,6 +104,11 @@ struct StartLayoutRow {
   /// one is no word, as with the wear. Read by nobody until #1199.
   float fill_pct = -1.0F;
 
+  /// THE UNIT's OWN PLOT RADIUS, metres (start_layout plot_radius_m, the last
+  /// column; design.db 82740e87): the old cemetery's 14 m. Minus one or an
+  /// empty cell is none: the type's circle (UnitRow::plot_radius_m).
+  float plot_radius_m = -1.0F;
+
   /// The unit stands and does not work at all until it is restored.
   ///
   /// NOT WEAR, and that is the whole reason it is a second field: wear

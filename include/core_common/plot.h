@@ -72,6 +72,19 @@ struct PlotRules {
   std::span<const std::uint8_t> yields_by_type;
 };
 
+/// @brief A standing unit's plot radius: its own (UnitRow::plot_radius_m, the
+///        old cemetery's 14 m) when set, else its type's from `radius_by_type`
+///        (boss, boss-core-epoch1-resume [25]: «a plot that holds 40 and blocks
+///        130 would be two truths about one fence»).
+/// @return 0 for a type outside the span with no radius of its own.
+[[nodiscard]] inline float PlotRadiusOf(const UnitRow& unit,
+                                        std::span<const float> radius_by_type) {
+  if (unit.plot_radius_m > 0.0F) {
+    return unit.plot_radius_m;
+  }
+  return unit.type.value < radius_by_type.size() ? radius_by_type[unit.type.value] : 0.0F;
+}
+
 /// @brief Whether a plot of `radius` centred on `place` would overlap the
 /// plot of any unit already standing.
 /// @param radius Radius of the plot being placed; zero or less means the
