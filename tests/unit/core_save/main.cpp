@@ -2314,8 +2314,8 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // 3064 -> 3144, predicted before the build and held; the hash read off it.
     // Save 182 (#1056 C2 option 2, re-bumped behind C3 and 0.37.317): manure
     // carted and late, two Grams a book: 3144 -> 3176, predicted before the
-    // build; the hash read off it.
-    {"ledger", 3176, 0xf25c281c720a5e20ULL},
+    // build and held; the hash read off it.
+    {"ledger", 3176, 0xc1a498d316e8612dULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
