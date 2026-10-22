@@ -392,6 +392,10 @@ HarnessCount CountHarness(const WorldState& world, LivestockKindId horse_kind) {
     /// The load was priced ON FOOT by the carrier's choice - a milk leg whose
     /// walk holds the day's trips (HerdRow::leg_on_foot): it wants no cart.
     bool walked_by_choice = false;
+    /// The load is a field's winter manure dose: the last windowless cart,
+    /// which waits for a free horse by the plan's own order (assignment.cpp,
+    /// AssignmentJob::manure_dose) - its walkers are not a team too small.
+    bool waits_for_a_free_horse = false;
   };
 
   std::vector<Load> loads;
@@ -412,7 +416,14 @@ HarnessCount CountHarness(const WorldState& world, LivestockKindId horse_kind) {
           const std::uint32_t herd_row = FindRow(world.herds, work.herd);
           walked_by_choice = herd_row != kNoRow && world.herds.rows[herd_row].leg_on_foot != 0;
         }
-        loads.push_back(Load{.seam = seam, .walked_by_choice = walked_by_choice});
+        bool dose = false;
+        if (horses_kept && seam != nullptr && work.field.value != kInvalidEntityIdValue) {
+          const std::uint32_t field_row = FindRow(world.fields, work.field);
+          dose = field_row != kNoRow &&
+                 seam == &world.fields.rows[field_row].manure_dose.days_remaining;
+        }
+        loads.push_back(Load{
+            .seam = seam, .walked_by_choice = walked_by_choice, .waits_for_a_free_horse = dose});
         load = loads.end() - 1;
       }
       if (work.rides_horse != 0) {
@@ -456,8 +467,13 @@ HarnessCount CountHarness(const WorldState& world, LivestockKindId horse_kind) {
   // read as a cart-day pulled by hand - 6 670 noon walkers in the novice's
   // year 1 against the base's 476 - lit «too few horses», and the novice
   // bought ~120 horses that ate year 2's hay.
+  // NOR DOES A DOSE WAITING FOR A FREE HORSE (#1056 C2; boss, the C2 pair
+  // thread [16], [17]): the dose is the last windowless cart, so its walkers
+  // are the plan's order of work. Counted, they lit the lamp on 15 days in 10
+  // novice villages in y1's January and 54 in 21 in February, where the base
+  // lit none, and the novice bought 25 horses that ate y2's spring hay.
   for (const Load& load : loads) {
-    if (load.walked_by_choice) {
+    if (load.walked_by_choice || load.waits_for_a_free_horse) {
       continue;
     }
     std::uint32_t wanted = load.walkers;  // a load with no seam left to read: as before

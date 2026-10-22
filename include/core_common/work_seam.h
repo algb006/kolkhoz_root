@@ -229,7 +229,9 @@ struct HarnessCount {
 /// THE WALKERS OF A JOB MADE UNHARNESSED WHILE THE VILLAGE HAD HORSES - a
 /// milk leg priced on foot (HerdRow::leg_on_foot) - are left out of
 /// `harnessed` only when `horse_kind` is given and SettlementHasCarts holds
-/// (MR.2; boss, the #1056 thread [109], [110]). The last pass's porters and
+/// (MR.2; boss, the #1056 thread [109], [110]); so are the walkers of a
+/// field's winter manure dose, the last windowless cart, which waits for a
+/// free horse by the plan's order (#1056 C2; boss, the C2 pair [17]). The last pass's porters and
 /// log pairs walk for want of a horse and stay counted. THE LAMP's form only
 /// («лошадей не хватает» asks whether draught power is missing): the
 /// mechanisation share asks how much is done by hand and reads the
