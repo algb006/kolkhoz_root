@@ -1815,6 +1815,7 @@ class LaborSystem final : public ILaborSystem {
         job.position = current.units.rows[heap_row].position;
         job.work_days_remaining = field.manure_dose.days_remaining;
         job.harnessed = DraughtHorses(current) > 0;
+        job.manure_dose = true;  // the last winter cart (assignment.cpp's key)
         jobs.push_back(job);
       }
       // THE TIMBER LOT AT THE DISTRICT CENTRE (decision 279, 0.36.17): the

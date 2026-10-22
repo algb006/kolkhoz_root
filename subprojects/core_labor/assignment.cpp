@@ -325,6 +325,14 @@ std::vector<std::uint32_t> OrderJobs(const std::vector<AssignmentJob>& jobs,
     // dig's load here and yields to each. Windowless and unkeyed (0.37.128)
     // the hay went before them: the logs came in December instead of the
     // autumn and the building of years 1-3 fell from 368 man-days to 278.
+    // MANURE IS THE LAST WINTER CART (#1056 C2; AssignmentJob::manure_dose;
+    // the human's option 2): a KEY for every job, asked before the stacked
+    // hay's so a dose yields to the hay too. Unkeyed, a dose and a stand's logs
+    // tied down to the targets' bare ids, and the doses took every horse on the
+    // y2 January mornings while the logs lay (logs y2 -25 % canon).
+    if (a.manure_dose != b.manure_dose) {
+      return b.manure_dose;
+    }
     if (a.stacked_hay != b.stacked_hay) {
       return b.stacked_hay;
     }

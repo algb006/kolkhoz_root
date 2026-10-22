@@ -48,6 +48,7 @@
 #include "labor_config.h"
 #include "labor_day.h"
 #include "log_pair_checks.h"
+#include "manure_last_checks.h"
 #include "people_cart_checks.h"
 #include "posts.h"
 #include "stuck_state_checks.h"
@@ -4682,6 +4683,7 @@ int main() {
   failures += CheckStuckStates();
   failures += CheckTheCartOfTheCompressedYear();
   failures += CheckTheHayCartsRank();
+  failures += CheckManureIsTheLastWinterCart();
   failures += CheckThePeoplesCart();
   failures += CheckTheCareReprice();
   failures += CheckTheGroomsPlan();
