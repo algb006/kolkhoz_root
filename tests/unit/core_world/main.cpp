@@ -461,6 +461,13 @@ int CheckRequiredUnitLevel() {
   core::ScoreReadiness(catalog, 4.0F, 4.0F, world);
   failures += Expect(world.readiness.blocks.units_at_level == 0,
                      "units block: and one whose second rung this era opens holds it shut");
+  // ITS LEVEL IS THE PLAYER's CHOICE (unit_types level_free; boss [36]): the
+  // same type below its level passes once the table frees it - the cemetery.
+  catalog.level_free_by_type = {0, 1};
+  core::ScoreReadiness(catalog, 4.0F, 4.0F, world);
+  failures += Expect(world.readiness.blocks.units_at_level == 1,
+                     "units block: a type whose level is free does not hold the era at level one");
+  catalog.level_free_by_type.clear();
 
   // A RUNG THAT WAITS FOR ANOTHER UNIT (unit_levels.csv requires_unit;
   // 0.37.178): type 4 — the priest's house — opens its second rung, Epoch I,
