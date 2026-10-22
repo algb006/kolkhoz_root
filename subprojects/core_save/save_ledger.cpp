@@ -168,10 +168,13 @@ constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
 // an array of six floats by source after cart_grams_off_road, and four floats
 // (cart_days_drawn, cart_days_fallback, cart_trips_pooled, cart_trips_back) -
 // predicted 1136 -> 1176 + 43 A and 138 fields before the build; on the wire
-// +40 a book.
-static_assert(sizeof(YearLedger) == 1176 + (43 * kAmountsSize) + kBuiltInRowsSize,
+// +40 a book. Save 182 (#1056 C2 option 2 on 0.37.317's 181 - C2's own
+// never-released 177 re-bumped behind C3, as boss [34] foresaw): manure carted
+// and manure late, two Grams after manure_plowed_in - predicted 1176 -> 1192 +
+// 43 A and 140 fields before the build; on the wire +16 a book.
+static_assert(sizeof(YearLedger) == 1192 + (43 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 138,
+static_assert(AggregateArity<YearLedger>() == 140,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(BuiltInRow) == 16 && AggregateArity<BuiltInRow>() == 3,
               "BuiltInRow changed — update its codec and VERSION_SAVE");
@@ -261,6 +264,8 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteFloat(book.area_lost_ha);
   out.WriteFloat(book.area_manured_ha);
   out.WriteI64(book.manure_plowed_in);
+  out.WriteI64(book.manure_carted);  // save 182 (#1056 C2)
+  out.WriteI64(book.manure_late);    // save 182 (#1056 C2)
 
   sink.WriteAmounts(DefKind::kResource, book.herd_produce);
   sink.WriteAmounts(DefKind::kLivestock, book.adult_head_days);  // save 127
@@ -467,6 +472,8 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.area_lost_ha = in.ReadFloat();
   book.area_manured_ha = in.ReadFloat();
   book.manure_plowed_in = in.ReadI64();
+  book.manure_carted = in.ReadI64();  // save 182 (#1056 C2)
+  book.manure_late = in.ReadI64();    // save 182 (#1056 C2)
 
   book.herd_produce = source.ReadAmounts(DefKind::kResource);
   book.adult_head_days = source.ReadAmounts(DefKind::kLivestock);

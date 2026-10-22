@@ -378,6 +378,13 @@ struct YearLedger {
 
   Grams manure_plowed_in = 0;
 
+  /// #1056 C2 (save 176; manure_cart.h): manure carted heap -> field on the
+  /// winter's sledges, and the booked doses cancelled back into the heap
+  /// because a field's ploughing opened before they were all on it (gate
+  /// M-g's late count).
+  Grams manure_carted = 0;
+  Grams manure_late = 0;
+
   // -- kolkhoz herds -------------------------------------------------------
   /// Milk, eggs, wool, manure from the kolkhoz herds into the stores.
   ResourceAmounts herd_produce;

@@ -9,6 +9,7 @@ kolkhoz_add_unit_test(core_production
     heap_lamp_checks.cpp
     herd_death_checks.cpp
     hourly_carting_checks.cpp
+    manure_cart_checks.cpp
     meadow_hay_checks.cpp
     perennial_cut_checks.cpp
     plan_due_checks.cpp

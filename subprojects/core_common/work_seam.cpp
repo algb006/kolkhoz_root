@@ -141,8 +141,13 @@ const float* WorkSeamOf(const WorldState& world, const WorkAssignment& work) {
     // on the strength of a comment claiming the two could never overlap —
     // and the canon's own rotation overlapped them in the same step. What
     // ends the haul is the load being gone, not a phase changing under it.
-    return world.fields.rows[row].reaped_grams > 0 ? &world.fields.rows[row].haul_days_remaining
-                                                   : nullptr;
+    const FieldRow& field = world.fields.rows[row];
+    if (field.reaped_grams > 0) {
+      return &field.haul_days_remaining;
+    }
+    // THE WINTER'S DOSE (#1056 C2): asked after the reaped heap, by the same
+    // predicate every other door reads (land_state.h, ManureDoseStands).
+    return ManureDoseStands(field) ? &field.manure_dose.days_remaining : nullptr;
   }
   if (KindOfPhase(world.fields.rows[row].phase) != work.kind) {
     return nullptr;  // production has moved the field on since the morning
@@ -225,7 +230,18 @@ bool WorkPlaceOf(const WorldState& world, const WorkAssignment& work, Vec2& plac
   if (row == kNoRow) {
     return false;
   }
-  place = world.fields.rows[row].center;
+  const FieldRow& field = world.fields.rows[row];
+  // A field's winter dose is loaded at its heap (#1056 C2), as a rick's
+  // supply at its sender.
+  if (work.kind == WorkKind::kHauling && ManureDoseStands(field)) {
+    const std::uint32_t heap_row = FindRow(world.units, field.manure_dose.from);
+    if (heap_row == kNoRow) {
+      return false;
+    }
+    place = world.units.rows[heap_row].position;
+    return true;
+  }
+  place = field.center;
   return true;
 }
 
@@ -656,7 +672,12 @@ bool WorkReceiverOf(const WorldState& world, const WorkAssignment& work, Vec2& r
   }
   if (work.field.value != kInvalidEntityIdValue) {
     const std::uint32_t row = FindRow(world.fields, work.field);
-    return row != kNoRow && written(world.fields.rows[row].haul_to);
+    if (row == kNoRow) {
+      return false;
+    }
+    // A winter dose goes to the field itself (#1056 C2).
+    const FieldRow& field = world.fields.rows[row];
+    return ManureDoseStands(field) ? written(field.center) : written(field.haul_to);
   }
   return false;
 }

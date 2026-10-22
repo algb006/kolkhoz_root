@@ -539,6 +539,10 @@ class LogisticsSystem final : public ILogisticsSystem {
       case LogisticsLoadKind::kMilkLeg:  // never held by a day off (above)
         held.herd = task.herd;
         break;
+      case LogisticsLoadKind::kManureField:  // the field that waits for its dose (#1056 C2)
+        held.field = task.field;
+        held.resource = config_.manure_resource;
+        break;
       case LogisticsLoadKind::kLogisticsLoadKindCount:
         break;
     }

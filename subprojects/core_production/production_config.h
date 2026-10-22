@@ -500,6 +500,11 @@ struct FarmingConfig {
 
   float manure_fertility_bonus = 6.0F;
 
+  /// #1056 C2: the dose goes to the fields BELOW this fertility, nearest by
+  /// road from the heap first (manure_cart.h BookManureDoses). farming.csv
+  /// `manure_fertility_mark`, STUB 70 (boss, the #1056 thread [136]).
+  float manure_fertility_mark = 70.0F;
+
   float fallow_recovery = 6.0F;
 
   /// The month a fallow field is ploughed, 0-based (farming design §7:

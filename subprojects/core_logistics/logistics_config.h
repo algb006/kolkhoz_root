@@ -40,6 +40,7 @@ struct LogisticsConfig {
       LogisticsLevel::kTerm,        // a works' supply (transport §12, level 1)
       LogisticsLevel::kUrgent,      // the milk leg (#1056 C1.1)
       LogisticsLevel::kOrdinary,    // a rick's supply (#1056 C1.2, level 2)
+      LogisticsLevel::kBackground,  // a field's winter dose (#1056 C2, level 3)
   };
 
   /// Days from the last trip after which a background task is ordinary, and
@@ -62,6 +63,9 @@ struct LogisticsConfig {
   /// heaps of a level by their nightly loss, hay's from these (ShelfDaysOf).
   ResourceId hay_resource;
   std::array<float, 4> hay_weathering_by_season{};
+
+  /// resources.csv `manure`: what a field's winter dose is (#1056 C2).
+  ResourceId manure_resource;
 
   /// resources.csv `spoil_days`, by ResourceId; 0 keeps for ever — the cells
   /// production reads (production_config.cpp), by the same rule.

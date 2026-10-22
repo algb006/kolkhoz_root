@@ -15,6 +15,14 @@ fertility_neutral,50
 # частичная и бонус пропорционален доле дозы (production_system.cpp)
 manure_norm_kg_per_ha,20000
 manure_fertility_bonus,10
+# #1056 C2 (econ logistics-all-on-2026-10-19 «C2»; boss, the #1056 thread [134]):
+# the dose goes to the fields BELOW this fertility, nearest by road from the
+# heap first; while any of them is short, a field at or above it gets none.
+# STUB until the balance pass: 70, because every start field (65) sits below it
+# and a field dunged once (+10) leaves the queue until it falls back, so the
+# turn passes outward instead of feeding the same near fields (C2-0 on
+# 0.37.308: no candidate field ever stood below 50 in years 1-4; boss [136]).
+manure_fertility_mark,70
 fallow_recovery,6
 repeat_penalty_per_year,3
 # потолок штрафа и дно плодородия — ответ boss на вопрос Q3 (31.08.2026).

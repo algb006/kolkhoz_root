@@ -101,6 +101,13 @@ enum class LogisticsLoadKind : std::uint8_t {
   /// `threshold_days`). Level 2 by its kind; the urgent rule's level 0 is the
   /// job's, as for a meadow's stack (labor_system.cpp). Seam key `rick_supply`.
   kRickSupply,
+  /// A FIELD'S WINTER DOSE (#1056 C2; econ logistics-all-on «C2»; boss, the
+  /// #1056 thread [66], [136]): manure carted from the heap to the field
+  /// named in `field`, on sledge days only, until the field's ploughing
+  /// opens (manure_state.h; ManureDoseStands: never while a reaped heap lies
+  /// on the field). Level 3 by its kind; its seam is FieldRow::manure_dose.
+  /// Seam key `manure_field`.
+  kManureField,
   kLogisticsLoadKindCount,  ///< NOT A KIND: the count.
 };
 
