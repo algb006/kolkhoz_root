@@ -322,3 +322,4 @@ yard_dusk_spread_minutes,24,layer
 hunger_forecast_share,0.9,core
 hunger_forecast_terms,13,core
 hunger_forecast_lit,0,core
+cemetery_m2_per_grave,15,core
