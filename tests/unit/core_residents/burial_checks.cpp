@@ -150,7 +150,7 @@ int CheckTheOwnPlot() {
       "own plot: a unit's own radius answers before its type's");
   // 60 m centre to centre (boss's suggest_cemetery_new_01): 14 + 25 = 39 does
   // not overlap, the type's 25 + 25 = 50 would not either; 45 m tells them apart.
-  const core::PlotRules rules{.radius_by_type = kRadii};
+  const core::PlotRules rules{.radius_by_type = kRadii, .map_side_m = 0.0F, .yields_by_type = {}};
   failures +=
       Expect(!core::PlotOverlaps(
                  world.units, rules, core::Vec2{.x = 45.0F, .y = 0.0F}, 25.0F, core::UnitId{}),
