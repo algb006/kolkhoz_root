@@ -81,6 +81,13 @@ struct ReadinessCatalog {
   /// not a family's own house. Kolkhoz wear is measured over these.
   std::vector<UnitTypeId> kolkhoz_types;
 
+  /// 1 for a type whose level is the player's choice, not the era's door
+  /// (unit_types.csv `level_free`; boss, boss-core-epoch1-resume [36]; design
+  /// db 1a18617b; epochs §6's at-level row): «юниты на уровне» passes it at any
+  /// level. Dense by type row; empty or short reads as 0. The cemetery only
+  /// today. The family houses keep their own rule in code (kolkhoz_types).
+  std::vector<std::uint8_t> level_free_by_type;
+
   /// The repair base, the other half of "its own traction or a repair base".
   UnitTypeId repair_base;
 
