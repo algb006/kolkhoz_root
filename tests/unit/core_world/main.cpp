@@ -1748,6 +1748,8 @@ int CheckRoadTracer() {
   // brook by the manor, new water of the map's base (32 and 4 until then).
   // 58 AREAS SINCE 0.37.211: the 33 and the start's land as the map draws
   // it — 15 start fields and 10 start meadows (meadow_mark.h), counted apart.
+  // 6 LINES SINCE 0.37.316: duck_backwater, a brook of boss's mill-pond re-cut
+  // (18 Oct), which reached core's tables only with the map step.
   std::size_t start_fields = 0;
   std::size_t start_meadows = 0;
   for (const core::MapAreaDef& area : obstacles.areas) {
@@ -1756,10 +1758,10 @@ int CheckRoadTracer() {
   }
   std::cout << "tracer: read " << obstacles.areas.size() << " areas (expected 58), of them "
             << diggings << " diggings (6), " << start_fields << " start fields (15), "
-            << start_meadows << " start meadows (10), " << obstacles.lines.size() << " lines (5), "
+            << start_meadows << " start meadows (10), " << obstacles.lines.size() << " lines (6), "
             << fords << " fords (4)" << (read ? "" : " — READ FAILED: " + error) << '\n';
   failures += Expect(read && obstacles.areas.size() == 58 && diggings == 6 && start_fields == 15 &&
-                         start_meadows == 10 && obstacles.lines.size() == 5 && fords == 4,
+                         start_meadows == 10 && obstacles.lines.size() == 6 && fords == 4,
                      "tracer: the reader takes every area, line and ford of the export");
 
   const auto built_at = std::chrono::steady_clock::now();
