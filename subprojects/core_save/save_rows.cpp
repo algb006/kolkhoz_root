@@ -277,7 +277,11 @@ static_assert(AggregateArity<RickSupplySeam>() == 6,
 // rounded to the 4 the next id wants) and 23 fields, before the build -
 // MISSED: 160, measured; the five bytes went into padding the row already
 // had. 23 fields held. On the wire +5 a unit.
-static_assert(sizeof(UnitRow) == 160 + (3 * kAmountsSize) + sizeof(std::vector<SupplyLeg>) +
+// Save 180 (#1199): graves, a u16 after the rick's supply - NOT predicted
+// before the first build (this tripwire caught it); predicted after it: the
+// seam's 32 bytes keep their own tail padding, so the u16 starts a new 8-byte
+// slot at the row's end, 160 -> 168. On the wire +2 a unit.
+static_assert(sizeof(UnitRow) == 168 + (3 * kAmountsSize) + sizeof(std::vector<SupplyLeg>) +
                                      sizeof(std::optional<ConstructionState>),
               "UnitRow changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(std::optional<ConstructionState>) == sizeof(ConstructionState) + 8,
