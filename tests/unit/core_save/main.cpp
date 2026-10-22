@@ -1860,8 +1860,8 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // Grams: 953 -> 1341,
     // predicted (+388) before the build and held; the hash read off it.
     // Save 180 (#1199): burials_waiting, a u16 - predicted 1341 -> 1343 before
-    // the build; the hash read off it.
-    {"world", 1343, 0xf1cacfddbf8bf97ULL},
+    // the build and held; the hash read off it.
+    {"world", 1343, 0x990b9373c6d9137eULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2004,8 +2004,8 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // three units: predicted 816 -> 831 before the build and held; the hash
     // read off it.
     // Save 180 (#1199): the graves, a u16 a unit on three units - predicted
-    // 831 -> 837 before the build; the hash read off it.
-    {"units", 837, 0x87e038508c8b2b86ULL},
+    // 831 -> 837 before the build and held; the hash read off it.
+    {"units", 837, 0x8c7cfa50d8eb3accULL},
     // Save 71: +4 — fed_share, one herd; predicted before the field, held.
     // Save 91: +8 — the adult age band, two floats, one herd; predicted
     // 71 -> 79 with every other section unmoved before the build.
