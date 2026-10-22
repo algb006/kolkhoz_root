@@ -11,7 +11,7 @@
 # the graphics layer grows grass by this column and not by wear: grass on the verges and between the tracks at almost_none, the track barely visible at none. It kept that list in code until 20 September 2026, hand-edited for every new road
 key,kind,unit_type,x_m,y_m,area_ha,rotation_year0,rotation_year1,rotation_year2,is_derelict,meadow_kind,fill_pct,start_wear_pct,start_dead,traffic
 church_store,unit,church_store,9250,9330,,,,,0,,-1,70,0,
-priest_house,unit,priest_house,9255.1,9322.6,,,,,0,,0,60,0,
+priest_house,unit,priest_house,9255.1,9322.6,,,,,0,,-1,60,0,
 clay_pile,unit,clay_pile,7380,8560,,,,,0,,-1,-1,0,
 field_barley,field,,9248.77,8226.44,7.5,barley,oat,wheat_spring,0,,-1,-1,0,
 field_barley_north,field,,9551.2,8846.8,3.5,barley,cabbage,barley,0,,-1,-1,0,
@@ -88,8 +88,8 @@ road_resort_spur,road,,9583.33,7576.67,0.35,,,,0,,-1,10,0,none
 road_new_village,road,,9176.55,9011,1.7322,,,,0,,-1,10,0,none
 road_bridge_village,road,,8131.68,9599.75,0.5829,,,,0,,-1,55,0,regular
 count_lodge,unit,count_lodge,8117,10640,,,,,0,,-1,60,1,
-road_pond_village,road,,6785.5,3898.32,0.3168,,,,0,,0,10,0,none
-road_east_pond,road,,9081.7,1993.65,4.9799,,,,0,,0,10,0,none
+road_pond_village,road,,6785.5,3898.32,0.3168,,,,0,,-1,10,0,none
+road_east_pond,road,,9081.7,1993.65,4.9799,,,,0,,-1,10,0,none
 cemetery_chapel,unit,cemetery_chapel,8104,10424,,,,,0,,-1,70,1,
 road_horse_yard_street,road,,8865.5,8971.75,0.797,,,,0,,-1,30,0,rare
 road_service_strip,road,,8754.05,8672,0,,,,0,,-1,30,0,rare
