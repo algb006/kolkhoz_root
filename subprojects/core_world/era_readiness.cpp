@@ -290,6 +290,16 @@ std::uint8_t RequiredUnitLevel(const ReadinessCatalog& catalog,
   if (type.value >= catalog.rung_eras.size()) {
     return 0;
   }
+  // ITS LEVEL IS THE PLAYER's CHOICE, not the era's (level_free; boss [36]):
+  // the era asks no rung of it. ONE HOME for both readers, the at-level block
+  // and the run chairman's upgrades (upgrade_policy.h) - a skip in the block
+  // alone left the run raising the cemetery for 70 t of logs it no longer
+  // needed. Until 0.37.317 a new cemetery marked at the old one's 90 % held
+  // seed 1940's Epoch II door for 118 days.
+  if (type.value < catalog.level_free_by_type.size() &&
+      catalog.level_free_by_type[type.value] != 0) {
+    return 0;
+  }
   // Up from the first rung and stopping at the first the era has not opened
   // — or the table skipped, or that waits for a unit the world has not built
   // (0.37.178) — so a gap is never stepped over.
@@ -520,15 +530,9 @@ TransitionBlocks StandingBlocks(const ReadinessCatalog& catalog, const WorldStat
         if (unit.level == 0 || unit.dead != 0) {
           return true;
         }
-        // ITS LEVEL IS THE PLAYER's CHOICE, not the era's door (level_free;
-        // boss [36]): the cemetery's rungs are its upkeep. Until 0.37.317 a
-        // new cemetery marked at the old one's 90 % held seed 1940's Epoch II
-        // door for 118 days.
-        if (unit.type.value < catalog.level_free_by_type.size() &&
-            catalog.level_free_by_type[unit.type.value] != 0) {
-          return true;
-        }
         // AT THE LEVEL THIS ERA REQUIRES — the highest rung it has opened —
+        // and none for a type whose level is free (the cemetery; level_free,
+        // read inside RequiredUnitLevel) —
         // and nothing above it. Seventy-seven types of a hundred and eleven
         // carry a single rung, and nineteen of the fifty buildings a village
         // stands have their second rung in a LATER era; asking either for a

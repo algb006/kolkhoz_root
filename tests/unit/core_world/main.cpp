@@ -441,6 +441,13 @@ int CheckRequiredUnitLevel() {
                      "required level: no ladder, and a type past the catalogue, ask nothing");
   failures += Expect(required(3, core::Epoch::kOne) == 1,
                      "required level: a rung the table skipped is not stepped over");
+  // A FREE LEVEL ASKS NOTHING (level_free; boss [36]) - the one home both the
+  // block and the run's upgrades read.
+  catalog.level_free_by_type = {0, 1};
+  failures +=
+      Expect(required(1, core::Epoch::kOne) == 0 && required(0, core::Epoch::kTwo) == 2,
+             "required level: a type whose level is free asks no rung; the others keep theirs");
+  catalog.level_free_by_type.clear();
 
   // THE BLOCK READS IT. A kolkhoz building of type 0 at level 1 is at its
   // level in Epoch I; type 1 at level 1 is not.
