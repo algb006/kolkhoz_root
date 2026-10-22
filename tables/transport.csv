@@ -1,4 +1,4 @@
-key,speed_kmh,load_tonnes,load_scale,seats,wait_limit_hours,min_walk_hours,note
+key,speed_kmh,load_tonnes,load_scale,seats,wait_limit_hours,min_walk_hours,trip_model,note
 # real-world speeds (transport design, section 1); the core divides by
 # kClockScale = 12 for effective game-hour speeds. Consumers arrive with
 # the labor and logistics systems.
@@ -6,10 +6,11 @@ key,speed_kmh,load_tonnes,load_scale,seats,wait_limit_hours,min_walk_hours,note
 # seats: PASSENGERS, the driver not counted (transport design section 11, «Подвода возит и груз, и людей»; routing stage A, 0.37.162). The goods cart's bench seats two; the people's cart six, for two or more hands going to one far object (section 1, «двое и больше — подвода»). An empty cell seats nobody. With two aboard the goods cart is to carry 0.6 t, not 0.75 — STUB core: the load of the trip the passengers ride is not lowered (the seam is priced in whole trips).
 # wait_limit_hours: THE TERM OF A PASSENGER'S WAIT, game hours (0.37.166; boss, boss-all-epoch1-queue-after-counterweight-2026-10-03 [109], (b); the human's rule of 2 October 2026, «у ожидания есть срок»): a man does not board where the cart comes later than this after him, and walks. STUB core: one hour, the stop condition's line of stage A. An empty cell is no term.
 # min_walk_hours: THE FAR OBJECT OF THE PEOPLE'S CART, game hours of walk one way (0.37.168; transport design section 1, «Кто»: «дольше 2 игровых часов», STUB there): the hands of the herds' care, building, digging, a unit's work, planting and felling whose walk is longer ride the people's cart when two or more go and a horse is left after the plough and the goods carts. An empty cell carries every hand of a crew of two.
+# trip_model: THE CART TRIP's MODEL, read on cart_loaded only (routing stage В4 cart_trips.h; #1056 C3): 0 priced by grams, 3 the plan writing the price (CartTripModel::kPlanned). 3 since C3's release (the human, 22 October 2026: «1» to «C3 включить»; boss, boss-core-epoch1-resume [11]). An empty cell is 0.
 # people_cart has no speed of its own: it rides at the harness pace (horse_trot), as the brigade's cart does (0.37.89) — STUB core, the design's 9 km/h for a loaded people's cart is not read.
-pedestrian,5,,,,,,
-jog,8.5,,,,,,running state: fire and similar events
-horse_trot,12,,,,,,
-cart_loaded,9,0.75,2.4,2,1,,horse cart; on a snow day it leaves the stable as the sledge below (SL)
-sledge,8,1.125,2.4,2,1,,the same horse and vehicle on snow (transport §16; §1 «Сани»: 8 km/h both ways; load x1.5 of the cart)
-people_cart,,,,6,,2,the people's cart: two or more hands to one far object
+pedestrian,5,,,,,,,
+jog,8.5,,,,,,,running state: fire and similar events
+horse_trot,12,,,,,,,
+cart_loaded,9,0.75,2.4,2,1,,3,horse cart; on a snow day it leaves the stable as the sledge below (SL)
+sledge,8,1.125,2.4,2,1,,,the same horse and vehicle on snow (transport §16; §1 «Сани»: 8 km/h both ways; load x1.5 of the cart)
+people_cart,,,,6,,2,,the people's cart: two or more hands to one far object
