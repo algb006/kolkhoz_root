@@ -41,6 +41,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -226,6 +227,8 @@ class UpgradePolicy {
       if (!short_lines.empty()) {
         if (!reason_taken) {
           ++held_.short_by_resource[short_lines.front().resource.value];
+          ++held_.short_by_type_level[{
+              unit.type.value, unit.level, short_lines.front().resource.value}];
         }
         hold(held_.materials_short);
         continue;
@@ -261,6 +264,10 @@ class UpgradePolicy {
     std::uint32_t unexplained = 0;           ///< none of the above: must stay nought
     /// The first short line on the materials_short days, by resource row.
     std::map<std::uint16_t, std::uint32_t> short_by_resource;
+    /// The same days by the unit held: its type, its level, and the first
+    /// short resource (seed 1933's door, boss-core-c2-pair [24]).
+    std::map<std::tuple<std::uint16_t, std::uint8_t, std::uint16_t>, std::uint32_t>
+        short_by_type_level;
   };
 
   const Held& held() const { return held_; }

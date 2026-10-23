@@ -1738,6 +1738,17 @@ int main(int argc, char** argv) {
                 << 'x' << days;
     }
     std::cout << "), UNEXPLAINED " << held.unexplained << '\n';
+    // THE SHORT DAYS BY THE UNIT HELD (seed 1933, boss-core-c2-pair [24]):
+    // which type at which level waited on which first short line.
+    std::cout << "population_curve: seed " << walk.seed << " next rung short by unit —";
+    for (const auto& [key, days] : held.short_by_type_level) {
+      const auto [type, level, resource] = key;
+      std::cout << ' ' << key_of(type) << '@' << static_cast<int>(level) << ':'
+                << (resource < walk.resource_keys.size() ? walk.resource_keys[resource]
+                                                         : std::to_string(resource))
+                << 'x' << days;
+    }
+    std::cout << '\n';
   }
 
   // WAS IT EVER ASKED FOR. Three numbers that turn a nought in a block from a
