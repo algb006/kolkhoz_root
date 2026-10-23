@@ -235,6 +235,23 @@ struct ProfessionDef {
   /// core_common/post_shift.h): only a workday post takes him off the
   /// accountant's daily list.
   PostShift shift = PostShift::kWorkday;
+
+  /// professions.csv `sits_post` (#789; labor-payment design §2, registry
+  /// 317): a post with no produce and no norm - the office, the school, the
+  /// club, the medics, the watchman. Its holder is never put on a module's
+  /// work or herd care, and is paid each day post_grade x the day's mean
+  /// trudodni per able adult, floor post_floor_trudodni, ceiling the grade.
+  std::uint8_t sits_post = 0;
+
+  /// professions.csv `post_grade` (STUB numbers, labor-payment §2): the
+  /// post's grade, 0.5..2.0. 0 (an empty cell) on a post that follows its
+  /// unit.
+  float post_grade = 0.0F;
+
+  /// professions.csv `grade_load = pupils`: the grade's part above 1.0 is
+  /// earned by pupils per teacher at the holder's school against
+  /// teacher_pupils_per_teacher - min(post_grade, 1 + pupils / norm).
+  std::uint8_t grade_by_pupils = 0;
 };
 
 /// One row of tables/unit_staff.csv: which unit type carries which post, on
@@ -554,6 +571,16 @@ struct LaborConfig {
   /// (econ/manual/proposals/walker-carry-norm-2026-10-02.md): with the norm
   /// below it keeps a walker's day at half a trudoden's norm or more.
   float walker_min_trips_per_day = 2.0F;
+
+  /// labor.csv `post_floor_trudodni`, optional (#789; labor-payment §2, «Нижняя
+  /// ставка»): the least a sitting post pays a day. STUB 0.3: it keeps the
+  /// watchman and the teacher of an almost empty class from going hungry.
+  float post_floor_trudodni = 0.3F;
+
+  /// world_params.csv `teacher_pupils_per_teacher` (#789; the norm the
+  /// residents' specialist arrival reads): a full class earns a grade_by_
+  /// pupils post its whole grade.
+  float pupils_per_teacher = 30.0F;
 
   /// labor.csv `carter_min_trips_per_day`, optional (#1213; boss, boss-core-c2-
   /// pair [54]): a carter on a works' DIRECT leg (logs straight off a stand,

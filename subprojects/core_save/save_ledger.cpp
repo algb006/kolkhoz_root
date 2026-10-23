@@ -171,10 +171,13 @@ constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
 // +40 a book. Save 182 (#1056 C2 option 2 on 0.37.317's 181 - C2's own
 // never-released 177 re-bumped behind C3, as boss [34] foresaw): manure carted
 // and manure late, two Grams after manure_plowed_in - predicted 1176 -> 1192 +
-// 43 A and 140 fields before the build; on the wire +16 a book.
-static_assert(sizeof(YearLedger) == 1192 + (43 * kAmountsSize) + kBuiltInRowsSize,
+// 43 A and 140 fields before the build; on the wire +16 a book. Save 183
+// (#789, the posts' pay): trudodni_by_post, an i32 after trudodni_burned -
+// predicted 1192 -> 1200 + 43 A (the odd i32 rounds the struct to its 8) and
+// 141 fields before the build; on the wire +4 a book.
+static_assert(sizeof(YearLedger) == 1200 + (43 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 140,
+static_assert(AggregateArity<YearLedger>() == 141,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(BuiltInRow) == 16 && AggregateArity<BuiltInRow>() == 3,
               "BuiltInRow changed — update its codec and VERSION_SAVE");
@@ -340,6 +343,7 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
     out.WriteI32(hundredths);
   }
   out.WriteI32(book.trudodni_burned);
+  out.WriteI32(book.trudodni_by_post);  // save 183 (#789)
   // The season's reaping pace (save 63; the best day's bytes carry the last
   // day since 2026-09-19 — same place, same width).
   out.WriteFloat(book.reaping_today);
@@ -596,6 +600,10 @@ YearLedger ReadYearLedger(LoadSource& source) {
     source.Fail("the book's trudodni by day are negative or do not add up to the year's");
   }
   book.trudodni_burned = in.ReadI32();
+  book.trudodni_by_post = in.ReadI32();  // save 183 (#789)
+  if (book.trudodni_by_post < 0 || book.trudodni_by_post > book.trudodni_accrued) {
+    source.Fail("the book's posts' trudodni are negative or above the year's");
+  }
   book.reaping_today = in.ReadFloat();
   book.reaping_last_day = in.ReadFloat();
   book.reaping_today_hands = in.ReadFloat();  // save 129
