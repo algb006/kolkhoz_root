@@ -75,22 +75,29 @@ int Expect(bool condition, const char* label) {
   return 1;
 }
 
-/// A table set with unit types alone: two kinds of dwelling and a barn, so
-/// that the housing class is something the config has to read, not assume.
+/// A table set with unit types: two kinds of dwelling and a barn, so that the
+/// housing class is something the config has to read, not assume; and a
+/// resources roster of two, rye and hay, for the dowry (#859: hay stays).
 class HousingTables final : public core::ITableSet {
  public:
   const core::ITable* FindTable(std::string_view name) const override {
+    if (name == "resources") {
+      return &resources_;
+    }
     return name == "unit_types" ? &types_ : nullptr;
   }
 
-  std::uint32_t TableCount() const override { return 1; }
+  std::uint32_t TableCount() const override { return 2; }
 
-  std::string_view TableName(std::uint32_t /*index*/) const override { return "unit_types"; }
+  std::string_view TableName(std::uint32_t index) const override {
+    return index == 0 ? "unit_types" : "resources";
+  }
 
  private:
   test::FakeTable types_{
       {"key", "class"},
       {{"old_house", "housing"}, {"barn", "livestock"}, {"wooden_house", "housing"}}};
+  test::FakeTable resources_{{"key"}, {{"rye"}, {"hay"}}};
 };
 
 /// Appends an adult of the given biological age (life speedup 4).
@@ -1764,6 +1771,9 @@ int CheckSettleHouse() {
       parents.advance_debt = 5'000;
       parents.advance_given = 9'000;
       parents.earned_since_formed = 70;
+      // THE DOWRY LEAVES THE HAY (#859): 400 kg of hay in each parents' yard.
+      parents.pantry.resize(2, 0);
+      parents.pantry[1] = static_cast<core::Grams>(400) * core::kGramsPerKilogram;
     }
     const std::size_t old_rows = world.families.rows.size();
     const core::FamilyId home = RunUntilWedding(*system, world);
@@ -1780,6 +1790,15 @@ int CheckSettleHouse() {
       failures += Expect(old_whole,
                          "a wedding leaves the old yards' debt, given and earned sum whole, and "
                          "they stay rows of the genesis");
+      bool hay_stayed = family.pantry.size() < 2 || family.pantry[1] == 0;
+      for (std::size_t row = 0; row < old_rows && row < world.families.rows.size(); ++row) {
+        const core::FamilyRow& parents = world.families.rows[row];
+        hay_stayed = hay_stayed && parents.pantry.size() > 1 &&
+                     parents.pantry[1] == static_cast<core::Grams>(400) * core::kGramsPerKilogram;
+      }
+      failures += Expect(hay_stayed,
+                         "the dowry takes no hay: the parents keep their 400 kg each and the new "
+                         "household gets none (the herd stays with the parents)");
       failures += Expect(family.formed_day != core::kNotFormedInPlay &&
                              family.formed_day <= world.calendar.day &&
                              family.formed_in_barrack == 0 && family.advance_debt == 0 &&
