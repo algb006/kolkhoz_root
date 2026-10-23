@@ -46,6 +46,7 @@
 #include "../common/transition_tally.h"
 #include "core_common/calendar.h"
 #include "core_common/state_table_ops.h"
+#include "core_common/work_seam.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 #include "core_world/era_readiness.h"
@@ -538,7 +539,65 @@ void TraceBathhouse(const run::TransitionPolicy& transition,
   }
   const std::uint32_t day = static_cast<std::uint32_t>(today.calendar.day);
   const std::uint32_t year = day / core::kDaysPerYear + 1;
-  if (day % core::kDaysPerMonth != 0 || year < 8 || year > 14) {
+  if (year < 8 || year > 14) {
+    return;
+  }
+
+  // Probe 4 ([27]): EVERY day a bathhouse is delivering, the day's pool -
+  // carters on the site, horses by use (kind 3, livestock.csv's horse row),
+  // and the hands with no work. Summed by month, printed as BD at the month's
+  // first day.
+  struct Month {
+    std::uint32_t days = 0, site_days = 0, site_carters = 0, free = 0, site_horses = 0, fields = 0,
+                  plough = 0, other = 0, hay = 0, idle = 0;
+  };
+
+  static Month month;
+  static std::int64_t month_key = -1;
+  const std::int64_t key = static_cast<std::int64_t>(day / core::kDaysPerMonth);
+  if (key != month_key) {
+    if (month_key >= 0 && month.days > 0) {
+      std::cout << "BD,seed=" << out.seed << ",year=" << month_key / 12 + 1
+                << ",month=" << month_key % 12 + 1 << ",delivering_days=" << month.days
+                << ",days_with_site_carter=" << month.site_days
+                << ",site_carter_days=" << month.site_carters << ",free_horse_days=" << month.free
+                << ",site_horse_days=" << month.site_horses << ",fields=" << month.fields
+                << ",plough=" << month.plough << ",hay=" << month.hay
+                << ",other_load=" << month.other << ",idle_hand_days=" << month.idle << '\n';
+    }
+    month = {};
+    month_key = key;
+  }
+  for (std::uint32_t row = 0; row < today.units.rows.size(); ++row) {
+    const core::UnitRow& unit = today.units.rows[row];
+    const auto it = std::ranges::find(out.unit_type_keys, "bathhouse");
+    if (it == out.unit_type_keys.end() ||
+        unit.type.value != static_cast<std::uint16_t>(it - out.unit_type_keys.begin()) ||
+        unit.dead != 0 || unit.construction.phase != core::ConstructionPhase::kDelivering) {
+      continue;
+    }
+    std::uint32_t carters = 0, idle = 0;
+    for (const core::ResidentRow& person : today.residents.rows) {
+      carters += person.work.unit.value == today.units.row_ids[row].value &&
+                         person.work.kind == core::WorkKind::kHauling
+                     ? 1U
+                     : 0U;
+      idle += person.work.kind == core::WorkKind::kNone ? 1U : 0U;
+    }
+    const auto pool = core::HorsesByUse(
+        today, core::DraughtHorsesOf(today, core::LivestockKindId{std::uint16_t{3}}));
+    ++month.days;
+    month.site_days += carters > 0 ? 1U : 0U;
+    month.site_carters += carters;
+    month.free += pool[static_cast<std::size_t>(core::CartUse::kFree)];
+    month.site_horses += pool[static_cast<std::size_t>(core::CartUse::kSiteSupply)];
+    month.fields += pool[static_cast<std::size_t>(core::CartUse::kFields)];
+    month.plough += pool[static_cast<std::size_t>(core::CartUse::kPlough)];
+    month.hay += pool[static_cast<std::size_t>(core::CartUse::kHay)];
+    month.other += pool[static_cast<std::size_t>(core::CartUse::kOtherLoad)];
+    month.idle += idle;
+  }
+  if (day % core::kDaysPerMonth != 0) {
     return;
   }
   const auto index_of = [](const std::vector<std::string>& keys, std::string_view key) {
