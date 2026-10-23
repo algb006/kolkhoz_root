@@ -13,9 +13,12 @@
 //      left at years 5 and 10.
 //
 // NO GATE. It measures criteria whose numbers are boss's to judge; a gate
-// would be a threshold nobody named. The village is steered exactly as in
+// would be a threshold nobody named. The village is steered as in
 // plan_shortfall: the yard, the building chairman, the felling chairman, the
-// repairs and the obvious chairman on the land.
+// repairs and the obvious chairman on the land - AND THE HOUSES (0.37.319;
+// boss, boss-core-c2-pair [58]-[59], row #190): with no house builder the
+// run's only wood demand was the granaries the bot marked for straw, and once
+// that rule was cured the village felled nothing in thirty years.
 //
 // Usage: timber_years [seed] (default 1929).
 
@@ -32,6 +35,7 @@
 #include "../common/extraction_policy.h"
 #include "../common/felling_policy.h"
 #include "../common/fixture_policy.h"
+#include "../common/house_policy.h"
 #include "../common/limit_policy.h"
 #include "../common/planting_policy.h"
 #include "../common/repair_policy.h"
@@ -212,6 +216,10 @@ int main(int argc, char** argv) {
   run::PlantingPolicy::Declare("timber_years");
   run::SawmillPolicy::Declare("timber_years");
   run::LimitPolicy::Declare("timber_years");
+  // THE HOUSES, AS thirty_years WIRES THEM BY HAND (house_policy.h): the
+  // couples wait and the roofless leave unless somebody builds.
+  run::HousePolicy houses(*started.tables);
+  run::HousePolicy::Declare("timber_years");
 
   // CRITERION 2, THE BOUND: one winter of the start's people. A felled cubic
   // metre costs timber_felling_days_per_m3 game man-days; the crew is capped
@@ -327,6 +335,11 @@ int main(int argc, char** argv) {
       sawmill.RunDay(*started.simulation);
       limit.RunDay(*started.simulation);
       repairs.RunDay(*started.simulation);
+      {
+        const bool farm_first = fixture.HoldsHousesBack(*started.simulation) ||
+                                yard.HoldsHousesBack(*started.simulation);
+        houses.RunDay(*started.simulation, farm_first);
+      }
       chairman.RunDay(*started.simulation);
       const core::WorldState& world = started.State();
       {
