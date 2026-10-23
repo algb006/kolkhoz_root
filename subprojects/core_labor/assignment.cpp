@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <vector>
 
 #include "care_reprice.h"
@@ -1026,6 +1027,49 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
                                  .released = &released,
                                  .horses_left = horses_left},
                       *diagnosis);
+  }
+  // PROBE ONLY (wip/1213-rank, #1213; boss, boss-core-c2-pair [53]): for each
+  // log-cart site supply (a stand's direct leg) left short this morning, its
+  // place in the order, and what the jobs ranked ahead of it took - hands and
+  // horses by work kind - with the hands left unplaced and the horses left.
+  {
+    std::vector<std::uint32_t> hands(jobs.size(), 0U);
+    std::uint32_t unplaced = 0;
+    for (const std::uint32_t job : result) {
+      if (job == kNoJobAssigned) {
+        ++unplaced;
+      } else if (job < hands.size()) {
+        ++hands[job];
+      }
+    }
+    for (std::uint32_t rank = 0; rank < order.size(); ++rank) {
+      const AssignmentJob& job = jobs[order[rank]];
+      if (!job.supplies_works || !job.log_cart || !shortfall[order[rank]].has_value()) {
+        continue;
+      }
+      std::uint32_t ahead_hands[16] = {};
+      std::uint32_t ahead_horse_jobs[16] = {};
+      for (std::uint32_t before = 0; before < rank; ++before) {
+        const std::uint32_t kind = static_cast<std::uint32_t>(jobs[order[before]].kind) & 15U;
+        ahead_hands[kind] += hands[order[before]];
+        ahead_horse_jobs[kind] +=
+            jobs[order[before]].harnessed && hands[order[before]] > 0 ? 1U : 0U;
+      }
+      std::printf("PR,rank=%u,of=%zu,short=%u,hands=%u,unplaced=%u,horses_left=%u,raised=%d,ahead=",
+                  rank,
+                  order.size(),
+                  static_cast<unsigned>(*shortfall[order[rank]]),
+                  hands[order[rank]],
+                  unplaced,
+                  horses_left,
+                  job.raised ? 1 : 0);
+      for (std::uint32_t kind = 0; kind < 16; ++kind) {
+        if (ahead_hands[kind] > 0) {
+          std::printf("k%u:%u/%u ", kind, ahead_hands[kind], ahead_horse_jobs[kind]);
+        }
+      }
+      std::printf("\n");
+    }
   }
   return result;
 }
