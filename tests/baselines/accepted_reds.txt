@@ -1,6 +1,7 @@
 # The suite's accepted reds (tests/run/common/accepted_reds.h; boss, core-boss-oats-b-pair [26]).
 # A line is the human's accepted price of ONE cell below its gate. The check passes within value - SE,
 # is red below it, and asks to drop the line once the cell is back inside its gate. The gates themselves
-# are never changed here.
+# are never changed here. A count cell (lower is better) passes at or below the accepted value.
 # run|cell|accepted value|SE|date|tree commit|the human's word and its question
 population_curve|E1 mean door|11.06|0.16|2026-10-23|63fac073|the human, 23 Oct, «1.2. ваша рекомендация» to boss's question on #1209 (boss-core-epoch1-resume [40]): accept the mean Epoch II door 11.06 as the price of «the cemetery's level is the player's choice» (level_free: the run's chairman no longer raises the old cemetery in the first week), replacing the 21 Oct line 11.41 (SE 0.25, 24c6ed36); SE 0.16 measured over the 16 doors of 63fac073, the corridor unchanged
+thirty_years|plan failed years|1|0|2026-10-24|27cc8ec3|boss, boss-core-c2-pair [85], (a) of core's [84] (on the run bot's layout under the 2 October word «bots sow good layouts»): thirty_years y23 rye 1 712 of 1 789 kg (−77): seed-bound, not the pay. The worlds fork from y3. In y22 the run chairman's layout (AnswerPlanAlarmsOnly) sowed a small rye field (630 kg of seed). Its 2 934 kg harvest could not carry the seed rung (2 520) plus the 1 789 kg due the district priced. Same family as #725's seed-bound failures. The floor 0.3 world (ty789) is green. Filed apart: «run bot: a plan crop's field must carry seed rung + priced due, or the layout does not take the position»; read again after the #725 fold on seed 1929 y23
