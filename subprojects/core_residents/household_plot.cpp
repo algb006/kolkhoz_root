@@ -120,6 +120,15 @@ float SeasonRatio(const FamilyRow& family) {
 /// season's attention nor the kolkhoz's hours scale it. A yard with nobody of
 /// adult age mows nothing. It is carried in a month before the garden and
 /// does NOT reset the season's accumulators.
+///
+/// IT MOWS FOR THE YOUNG IT EXPECTS TOO (#859; econ, yard-hay-expected-young
+/// 2026-10-19; household-farming.md «Двор косит и на будущий приплод»): the
+/// hay was mown for the heads of one August day, the spring's kids were born
+/// after it and ate the same stack, and seed 1931 y3 kept 2 adults and 1-3
+/// kids at nought feed for fifteen days with one death - a family punished
+/// for a litter it could neither foresee nor answer. The young are the
+/// year's births the herd day would give its females (births_per_game_year x
+/// litter_heads), none for a kind that needs a sire and has none.
 void MowHay(const FoodConfig& config,
             const WorldState& current,
             FamilyId id,
@@ -128,16 +137,27 @@ void MowHay(const FoodConfig& config,
   if (yard.adults == 0) {
     return;
   }
-  std::uint32_t heads = 0;
+  float heads = 0.0F;
   for (const HerdRow& herd : current.herds.rows) {
-    if (herd.household_owned != 0 && herd.household.value == id.value &&
-        herd.kind.value < config.hay_eating_kinds.size() &&
-        config.hay_eating_kinds[herd.kind.value] != 0) {
-      heads += static_cast<std::uint32_t>(herd.adult_count) + herd.juvenile_count;
+    if (herd.household_owned == 0 || herd.household.value != id.value ||
+        herd.kind.value >= config.hay_eating_kinds.size() ||
+        config.hay_eating_kinds[herd.kind.value] == 0) {
+      continue;
     }
+    heads += static_cast<float>(herd.adult_count) + static_cast<float>(herd.juvenile_count);
+    const std::uint16_t kind = herd.kind.value;
+    if (kind >= config.yard_young_per_female_year.size()) {
+      continue;
+    }
+    if (config.yard_young_need_a_sire[kind] != 0 && herd.adult_male_count == 0) {
+      continue;
+    }
+    const auto females = static_cast<float>(config.yard_kind_sexed[kind] != 0
+                                                ? herd.adult_count - herd.adult_male_count
+                                                : herd.adult_count);
+    heads += females * config.yard_young_per_female_year[kind];
   }
-  AddToPantry(
-      family, config.hay_resource, config.plot.yard_hay_kg_per_head * static_cast<float>(heads));
+  AddToPantry(family, config.hay_resource, config.plot.yard_hay_kg_per_head * heads);
 }
 
 /// The garden pays out on the last day of its month, so that the whole month

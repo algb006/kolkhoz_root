@@ -485,6 +485,23 @@ struct FoodConfig {
   /// the yard mows for its heads (PlotConfig::yard_hay_kg_per_head). Empty in
   /// a set without the two tables: no yard mows.
   std::vector<std::uint8_t> hay_eating_kinds;
+
+  /// The young a yard's female of the kind brings in a game year, by
+  /// livestock.csv row: births_per_game_year x litter_heads, 0 for a kind
+  /// with no household_cap_heads (a yard of it does not breed; herd_life.cpp
+  /// BreedHerd). The yard mows for them too (#859; household-farming.md
+  /// «Двор косит и на будущий приплод»). A second home of the herd day's
+  /// breeding numbers, read off the same table columns.
+  std::vector<float> yard_young_per_female_year;
+
+  /// 1 by livestock.csv row for a `sexed` kind, whose females are the adults
+  /// less the males (herd_life.cpp BreedHerd).
+  std::vector<std::uint8_t> yard_kind_sexed;
+
+  /// 1 by livestock.csv row for a kind whose yard breeds only with a sire:
+  /// sexed with a males_share above nought (BreedHerd). The goat's
+  /// males_share is 0, so its does breed with no buck in the yard.
+  std::vector<std::uint8_t> yard_young_need_a_sire;
 };
 
 /// @brief Parses tables/food.csv against the resource roster.

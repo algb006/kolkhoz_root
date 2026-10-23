@@ -1527,6 +1527,31 @@ int CheckPlot() {
     children.residents.rows[0].birth_day = -120;  // 10 biological years
     add_herd(children, 1, 2, 0);
     failures += Expect(run_august(children) == 0, "a yard with nobody of adult age mows nothing");
+
+    // AND FOR THE YOUNG IT EXPECTS (#859): the goats' kind brings 2 young a
+    // doe a year with no buck needed, so two does and a kid mow for 3 + 4
+    // heads. A kind that needs a sire mows for no young while it has none,
+    // and for its females' only once it has one: 3 adults, 1 of them a male.
+    mowing.yard_young_per_female_year = {0.0F, 2.0F, 1.0F};
+    mowing.yard_kind_sexed = {0, 0, 1};
+    mowing.yard_young_need_a_sire = {0, 0, 1};
+    mowing.hay_eating_kinds = {0, 1, 1};
+    core::WorldState litter = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
+    add_herd(litter, 1, 2, 1);
+    failures +=
+        Expect(run_august(litter) == static_cast<core::Grams>(7 * 1080) * core::kGramsPerKilogram,
+               "the yard mows for the four kids its two does will bring before the next mowing");
+    core::WorldState no_sire = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
+    add_herd(no_sire, 2, 3, 0);
+    failures +=
+        Expect(run_august(no_sire) == static_cast<core::Grams>(3 * 1080) * core::kGramsPerKilogram,
+               "a kind that breeds only with a sire expects no young while the yard has none");
+    core::WorldState with_sire = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
+    add_herd(with_sire, 2, 3, 0);
+    with_sire.herds.rows[0].adult_male_count = 1;
+    failures += Expect(
+        run_august(with_sire) == static_cast<core::Grams>(5 * 1080) * core::kGramsPerKilogram,
+        "with a sire it expects one young a female: 3 adults, 1 a male, 2 young");
   }
   return failures;
 }

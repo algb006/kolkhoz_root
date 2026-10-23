@@ -505,6 +505,28 @@ FoodConfig ParseFoodConfig(const ITableSet& tables, std::string* error) {
       }
       config.hay_eating_kinds[kind_row] = 1;
     }
+    // THE YOUNG THE YARD EXPECTS (#859): read where the hay kinds are, by the
+    // same row. A column the table lacks reads as nought - no young expected.
+    config.yard_young_per_female_year.assign(livestock->RowCount(), 0.0F);
+    config.yard_kind_sexed.assign(livestock->RowCount(), 0);
+    config.yard_young_need_a_sire.assign(livestock->RowCount(), 0);
+    const std::uint32_t births = livestock->FindColumn("births_per_game_year");
+    const std::uint32_t litter = livestock->FindColumn("litter_heads");
+    const std::uint32_t cap = livestock->FindColumn("household_cap_heads");
+    const std::uint32_t sexed = livestock->FindColumn("sexed");
+    const std::uint32_t males = livestock->FindColumn("males_share");
+    for (std::uint32_t row = 0; row < livestock->RowCount(); ++row) {
+      const float per_year = livestock->CellReal(row, births).value_or(0.0F);
+      const float heads = livestock->CellReal(row, litter).value_or(0.0F);
+      const float yard_cap = livestock->CellReal(row, cap).value_or(0.0F);
+      if (per_year > 0.0F && heads > 0.0F && yard_cap > 0.0F) {
+        config.yard_young_per_female_year[row] = per_year * heads;
+      }
+      const bool sexed_kind = livestock->CellReal(row, sexed).value_or(0.0F) > 0.0F;
+      const bool keeps_sires = livestock->CellReal(row, males).value_or(0.0F) > 0.0F;
+      config.yard_kind_sexed[row] = sexed_kind ? 1U : 0U;
+      config.yard_young_need_a_sire[row] = sexed_kind && keeps_sires ? 1U : 0U;
+    }
   }
   return config;
 }
