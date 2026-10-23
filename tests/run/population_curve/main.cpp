@@ -558,11 +558,44 @@ void TraceBathhouse(const run::TransitionPolicy& transition,
       held_board += std::max(0.0, kg(unit.stock, board));
     }
   }
-  for (const core::UnitRow& unit : today.units.rows) {
+  for (std::uint32_t row = 0; row < today.units.rows.size(); ++row) {
+    const core::UnitRow& unit = today.units.rows[row];
     if (unit.type.value != bath || unit.dead != 0) {
       continue;
     }
     const core::ConstructionState& site = unit.construction;
+    // Probe 3 ([26]): the site's supply and its legs, and who works on it today.
+    std::uint32_t haulers = 0, haulers_riding = 0, builders = 0;
+    for (const core::ResidentRow& person : today.residents.rows) {
+      if (person.work.unit.value != today.units.row_ids[row].value) {
+        continue;
+      }
+      if (person.work.kind == core::WorkKind::kHauling) {
+        ++haulers;
+        haulers_riding += person.work.rides_horse != 0 ? 1U : 0U;
+      } else {
+        ++builders;
+      }
+    }
+    std::cout << "BS,seed=" << out.seed << ",year=" << year
+              << ",month=" << (day % core::kDaysPerYear) / core::kDaysPerMonth + 1
+              << ",supply_from=" << site.supply_from.x << '/' << site.supply_from.y
+              << ",site=" << unit.position.x << '/' << unit.position.y
+              << ",log_way=" << static_cast<int>(site.supply_log_way)
+              << ",raised=" << static_cast<int>(site.raised)
+              << ",supply_left=" << site.supply_days_remaining
+              << ",supply_written=" << site.supply_days_written
+              << ",since=" << site.supply_since_day
+              << ",moved_today=" << static_cast<int>(site.supply_moved_today)
+              << ",legs=" << site.legs.size() << ",haulers=" << haulers
+              << ",riding=" << haulers_riding << ",builders=" << builders;
+    for (const core::SupplyLeg& leg : site.legs) {
+      std::cout << " | from " << leg.from.x << '/' << leg.from.y << " way "
+                << static_cast<int>(leg.log_way) << " log " << kg(leg.grams, log) << " board "
+                << kg(leg.grams, board) << " unpriced "
+                << static_cast<double>(leg.unpriced) / 1000.0;
+    }
+    std::cout << '\n';
     std::cout << "BT,seed=" << out.seed << ",year=" << year
               << ",month=" << (day % core::kDaysPerYear) / core::kDaysPerMonth + 1
               << ",level=" << static_cast<int>(unit.level) << ",era_level="
