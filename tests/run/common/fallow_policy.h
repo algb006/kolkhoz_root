@@ -121,7 +121,7 @@ class FallowPolicy {
       return;
     }
     std::cout << " - SHORT\n";
-    if (!BlockKeepsThePlan(world, NextBlockFields(world))) {
+    if (kPlanGuardOn && !BlockKeepsThePlan(world, NextBlockFields(world))) {
       std::cout << "fallow_policy: year " << year << " block " << opened_blocks_ + 1U
                 << " HELD by the plan guard\n";
       return;
@@ -170,6 +170,13 @@ class FallowPolicy {
   static constexpr std::array<std::size_t, 3> kOpeningSlot = {0, 2, 0};
   /// STUB 1.10 (econ 21508ba): the plan guard's margin over the due.
   static constexpr double kPlanGuardMargin = 1.10;
+  /// THE PLAN GUARD IS OFF (boss, core-boss-725-fallow [22]; econ [21]):
+  /// pairs 3 and 4 showed the guards (b) and (b′) never lowered the due -
+  /// holding a block only withheld its opening year's oat - and those pairs
+  /// ran before the plan was split by the year's sown mix. Pair 2's arm,
+  /// blocks open with no guard, is re-measured on 0.37.320. The guard and
+  /// its eve print stay in the tree until that pair reads.
+  static constexpr bool kPlanGuardOn = false;
   static constexpr std::uint32_t kHistoryYears = 3;
   static constexpr std::uint32_t kFirstOfDecember =
       static_cast<std::uint32_t>(core::Month::kDecember) * core::kDaysPerMonth;
