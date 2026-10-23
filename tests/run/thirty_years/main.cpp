@@ -711,6 +711,14 @@ int main(int argc, char** argv) {
         if (tick == core::kTicksPerDay / 2) {
           brakes.CountDay(*world.simulation);  // the working day's middle
           hauls.CountNoon(*world.simulation);
+          // THE DISTRICT HOUR (#725 (f); fallow_seed_play.h): the plan trade
+          // is taken only while the chairman is in the district, 8:00-20:00 of
+          // his trip day, so the seed play's trade is staged here, at noon -
+          // that one order, nothing else of the chairman's day. host's plan700
+          // calls the same entry at the same hour (boss, core-boss-725-fallow).
+          if (g_fallow_by_eaters) {
+            fallow.RunDistrictHour(*world.simulation);
+          }
         }
       }
       hauls.CountDay(world.State());  // the day's end, before any order

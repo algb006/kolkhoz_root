@@ -70,6 +70,7 @@
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
+#include "fallow_seed_play.h"
 
 namespace run {
 
@@ -99,6 +100,13 @@ class FallowPolicy {
     WatchTheDue(world);
     const std::uint32_t day_of_year = world.calendar.day % core::kDaysPerYear;
     HouseSuppliesOverFields(simulation, world, day_of_year);
+    // (f), the seed play: decided from the year's second day, when the turn
+    // below has booked last year's yields (day 0's turn runs after this).
+    const bool read_book = day_of_year >= 1 && day_of_year < 3 * core::kDaysPerMonth;
+    seed_play_.RunDay(simulation,
+                      world,
+                      opened_blocks_ > 0,
+                      read_book ? SeedBook(world) : std::vector<SeedPlayPosition>{});
     if (day_of_year == kFirstOfDecember) {
       CountPotatoOnTheBlocks(world);
     }
@@ -161,7 +169,13 @@ class FallowPolicy {
     }
     std::cout << "fallow_policy: house supplies set over the fields in the blocks' spring: "
               << houses_over_fields_ << '\n';
+    seed_play_.Report();
   }
+
+  /// @brief (f)'s district-hour entry (fallow_seed_play.h): the run calls it
+  ///        at an hour the chairman may be in the district - noon - every
+  ///        day; it stages only the plan trade the day entry decided.
+  void RunDistrictHour(core::ISimulation& simulation) { seed_play_.RunDistrictHour(simulation); }
 
   /// @brief The fields opened so far, for a run's own prints.
   const std::vector<core::FieldId>& OpenedFields() const { return opened_fields_; }
@@ -229,6 +243,73 @@ class FallowPolicy {
   static constexpr std::uint32_t kBlockSpringToMonth = 5;
   std::uint32_t houses_over_fields_ = 0;
 
+  /// (f) THE PROJECTED BOOK (econ, fields-grow-with-eaters «24 Oct ~03:00»):
+  /// for every plan position a field crop yields, grams - stock now, less this
+  /// spring's seed (spring crops in this year's slot), plus this year's
+  /// harvest (hectares x the three closed years' yield, net of last year's
+  /// loss share: §2's own forecast, YieldKgPerHa), less last year's issue,
+  /// feed, rot and theft scaled to this year's eaters (1 + last year's net
+  /// growth, as NeedKcal); against the due plus next year's seed of every
+  /// field with the crop in next year's slot, the block included.
+  std::vector<SeedPlayPosition> SeedBook(const core::WorldState& world) const {
+    std::vector<SeedPlayPosition> out;
+    const core::YearLedger& closed = world.ledger.closed;
+    const auto residents = static_cast<double>(world.residents.rows.size());
+    const double net =
+        static_cast<double>(closed.births) + closed.arrivals - closed.deaths - closed.departures;
+    const double eaters = 1.0 + (residents > 0.0 ? std::max(0.0, net / residents) : 0.0);
+    const auto at = [](const core::ResourceAmounts& amounts, std::size_t resource) {
+      return resource < amounts.size() ? static_cast<double>(amounts[resource]) : 0.0;
+    };
+    for (std::size_t resource = 0; resource < world.plan.due.size(); ++resource) {
+      if (world.plan.due[resource] <= 0 || resource >= crop_resource_.size() ||
+          !crop_resource_[resource]) {
+        continue;
+      }
+      SeedPlayPosition position;
+      position.resource = core::ResourceId{static_cast<std::uint16_t>(resource)};
+      position.key = resource_keys_[resource];
+      double stock = 0.0;
+      for (const core::UnitRow& unit : world.units.rows) {
+        stock += at(unit.stock, resource);
+      }
+      double spring_seed = 0.0;
+      double harvest = 0.0;
+      double next_seed = 0.0;
+      for (const core::FieldRow& field : world.fields.rows) {
+        if (field.kind != core::LandKind::kArable) {
+          continue;
+        }
+        const double area = static_cast<double>(field.area_ga);
+        const core::CropId now = field.rotation_year0;
+        if (now.value < crops_.size() && crops_[now.value].resource == resource) {
+          const double kept = resource < loss_share_.size() ? 1.0 - loss_share_[resource] : 1.0;
+          harvest += YieldKgPerHa(now) * kept * area * kGramsPerKilogram;
+          if (field.sown_day == core::kNeverSownDay ||
+              field.sown_day / core::kDaysPerYear != world.calendar.day / core::kDaysPerYear) {
+            spring_seed += crops_[now.value].seed_kg_per_ha * area * kGramsPerKilogram *
+                           (crops_[now.value].winter ? 0.0 : 1.0);
+          }
+          position.crop = now;
+        }
+        const core::CropId next = field.rotation_year1;
+        if (next.value < crops_.size() && crops_[next.value].resource == resource) {
+          next_seed += crops_[next.value].seed_kg_per_ha * area * kGramsPerKilogram;
+          position.crop = position.crop.value == core::kInvalidDefIdValue ? next : position.crop;
+        }
+      }
+      const double used = (at(closed.issued, resource) + at(closed.feed, resource) +
+                           at(closed.spoiled, resource) + at(closed.stolen, resource)) *
+                          eaters;
+      position.projected_g = stock - spring_seed + harvest - used;
+      position.need_g = static_cast<double>(world.plan.due[resource]) + next_seed;
+      out.push_back(position);
+    }
+    return out;
+  }
+
+  SeedPlay seed_play_;
+
   static constexpr std::uint32_t kFieldsPerBlock = 3;
   static constexpr std::uint32_t kBlocks = 2;
   /// Where in chain_ (barley, rye_winter, oat) each of a block's three fields
@@ -252,6 +333,7 @@ class FallowPolicy {
     std::uint32_t resource = core::kNoTableRow;
     double table_yield_kg_per_ha = 0.0;
     double seed_kg_per_ha = 0.0;
+    bool winter = false;  ///< crops.csv is_winter: sown in the autumn, not from the spring's seed.
   };
 
   void ReadTables(const core::ITableSet& tables) {
@@ -272,6 +354,7 @@ class FallowPolicy {
       crop.table_yield_kg_per_ha =
           static_cast<double>(crops->CellReal(row, yield_col).value_or(0.0F));
       crop.seed_kg_per_ha = static_cast<double>(crops->CellReal(row, seed_col).value_or(0.0F));
+      crop.winter = crops->CellReal(row, crops->FindColumn("is_winter")).value_or(0.0F) > 0.0F;
     }
     // EATEN: a resource in the issue bundle, at its kilocalories. Oat and pea
     // carry kilocalories and no issue norm: the families never get them.
