@@ -24,6 +24,7 @@
 #include "core_common/road_route.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/work_seam.h"
+#include "core_common/yard_hay_year.h"
 #include "district_plan.h"
 #include "feed_home.h"
 #include "herd_cold.h"
@@ -1126,6 +1127,14 @@ bool GiveToNeighbour(GiftQueues& queues,
 /// head it no longer fed. On nine villages of 0.37.144 the hunger took 46,
 /// 67, 54 yard goats in years 3-5, and in 31, 41, 40 of those death events
 /// the herd had been founded after the yards' last mowing.
+///
+/// AND IT CARRIES ONLY ITS OWN NEED TO THE NEXT MOWING (#859; econ,
+/// core-boss-859-yard-hay [13]): the norm times the share of a head's stack
+/// year left until the mowing (core_common/yard_hay_year.h), never more than
+/// its per-head share. The share alone is counted after the head left, so a
+/// one-doe yard handed HALF its stack to the neighbour with one grown kid,
+/// and 7 of the base's 12 yard-years that ran dry before the mowing had drawn
+/// 1 209-1 775 kg a head against the village's median 788 (p859v).
 /// @param herd The giver's herd AFTER the head has left it.
 /// @param to The family that took the head.
 void CarryHayShare(const ProductionConfig& config,
@@ -1147,7 +1156,18 @@ void CarryHayShare(const ProductionConfig& config,
   }
   // Newborns at the dam eat no hay and have no share in it.
   const Grams heads = static_cast<Grams>(herd.adult_count) + herd.juvenile_count + 1;
-  const Grams share = held / heads;
+  const YardHayYear year{.mow_month = config.hay_harvest_month,
+                         .pasture_from_month = config.farming.pasture_from_month,
+                         .pasture_to_month = config.farming.pasture_to_month};
+  const float coverage = herd.kind.value < config.livestock.size()
+                             ? config.livestock[herd.kind.value].pasture_coverage_summer
+                             : 0.0F;
+  const float year_days = StackDaysOfYear(year, coverage);
+  const std::uint32_t today = static_cast<std::uint32_t>(world.calendar.day % kDaysPerYear);
+  const float need_kg = year_days > 0.0F ? config.yard_hay_kg_per_head *
+                                               StackDaysToMowing(year, coverage, today) / year_days
+                                         : 0.0F;
+  const Grams share = std::min(held / heads, GramsFromKilograms(need_kg));
   if (share <= 0) {
     return;
   }

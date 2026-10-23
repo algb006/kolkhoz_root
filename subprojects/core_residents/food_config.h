@@ -502,6 +502,17 @@ struct FoodConfig {
   /// sexed with a males_share above nought (BreedHerd). The goat's
   /// males_share is 0, so its does breed with no buck in the yard.
   std::vector<std::uint8_t> yard_young_need_a_sire;
+
+  /// What one young of the kind eats from the yard's stack before the next
+  /// mowing, as a share of an adult head's year, by livestock.csv row
+  /// (#859; boss, core-boss-859-yard-hay [5]): computed at load by
+  /// core_common/yard_hay_year.h YoungStackShare from the herd day's own
+  /// numbers - the birth band, newborn_game_months, adult_from_game_months,
+  /// juvenile_feed_factor, the pasture months and the kind's coverage - never
+  /// a table knob, so it follows the tables. The goat on the shipped tables:
+  /// 0.058 (spring kids, weaned at a month, mostly juveniles on the pasture
+  /// before the August mowing).
+  std::vector<float> yard_young_hay_share;
 };
 
 /// @brief Parses tables/food.csv against the resource roster.

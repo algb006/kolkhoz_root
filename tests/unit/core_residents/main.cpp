@@ -36,6 +36,7 @@
 #include "core_common/wedding_state.h"
 #include "core_common/work_seam.h"
 #include "core_common/world_state.h"
+#include "core_common/yard_hay_year.h"
 #include "core_residents/residents_system.h"
 #include "core_tables/tables.h"
 #include "crowded_barrack_checks.h"
@@ -1528,19 +1529,22 @@ int CheckPlot() {
     add_herd(children, 1, 2, 0);
     failures += Expect(run_august(children) == 0, "a yard with nobody of adult age mows nothing");
 
-    // AND FOR THE YOUNG IT EXPECTS (#859): the goats' kind brings 2 young a
-    // doe a year with no buck needed, so two does and a kid mow for 3 + 4
-    // heads. A kind that needs a sire mows for no young while it has none,
-    // and for its females' only once it has one: 3 adults, 1 of them a male.
+    // AND FOR THE YOUNG IT EXPECTS (#859), each at what it eats before the
+    // next mowing: the goats' kind brings 2 young a doe a year with no buck
+    // needed, a young eating a quarter of a head's year, so two does and a
+    // kid mow for 3 + 2 x 2 x 0.25 heads. A kind that needs a sire mows for
+    // no young while it has none, and for its females' once it has one: 3
+    // adults, 1 of them a male, 2 young at a half.
     mowing.yard_young_per_female_year = {0.0F, 2.0F, 1.0F};
+    mowing.yard_young_hay_share = {0.0F, 0.25F, 0.5F};
     mowing.yard_kind_sexed = {0, 0, 1};
     mowing.yard_young_need_a_sire = {0, 0, 1};
     mowing.hay_eating_kinds = {0, 1, 1};
     core::WorldState litter = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
     add_herd(litter, 1, 2, 1);
     failures +=
-        Expect(run_august(litter) == static_cast<core::Grams>(7 * 1080) * core::kGramsPerKilogram,
-               "the yard mows for the four kids its two does will bring before the next mowing");
+        Expect(run_august(litter) == static_cast<core::Grams>(4 * 1080) * core::kGramsPerKilogram,
+               "the yard mows for the four kids its two does will bring, at their share");
     core::WorldState no_sire = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
     add_herd(no_sire, 2, 3, 0);
     failures +=
@@ -1550,8 +1554,44 @@ int CheckPlot() {
     add_herd(with_sire, 2, 3, 0);
     with_sire.herds.rows[0].adult_male_count = 1;
     failures += Expect(
-        run_august(with_sire) == static_cast<core::Grams>(5 * 1080) * core::kGramsPerKilogram,
-        "with a sire it expects one young a female: 3 adults, 1 a male, 2 young");
+        run_august(with_sire) == static_cast<core::Grams>(4 * 1080) * core::kGramsPerKilogram,
+        "with a sire it expects one young a female: 3 adults, 1 a male, 2 young at a half");
+
+    // ONLY UP TO THE NEED (#1216): the hay still in the pantry counts. Three
+    // heads with 1 000 kg left mow 2 240 kg, to 3 240 in all; a pantry
+    // already above its need mows nothing and keeps what it has.
+    mowing.yard_young_hay_share = {0.0F, 0.0F, 0.0F};
+    core::WorldState topped = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
+    add_herd(topped, 1, 2, 1);
+    topped.families.rows[0].pantry.resize(3, 0);
+    topped.families.rows[0].pantry[2] = static_cast<core::Grams>(1000) * core::kGramsPerKilogram;
+    failures +=
+        Expect(run_august(topped) == static_cast<core::Grams>(3 * 1080) * core::kGramsPerKilogram,
+               "a yard with hay left mows only up to its need");
+    core::WorldState full = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
+    add_herd(full, 1, 2, 1);
+    full.families.rows[0].pantry.resize(3, 0);
+    full.families.rows[0].pantry[2] = static_cast<core::Grams>(5000) * core::kGramsPerKilogram;
+    failures += Expect(run_august(full) == static_cast<core::Grams>(5000) * core::kGramsPerKilogram,
+                       "a yard above its need mows nothing and keeps its hay");
+  }
+
+  // THE YOUNG'S SHARE IS THE HERD DAY'S OWN ARITHMETIC (#859; yard_hay_year.h):
+  // the goat's row and farming.csv - kids born March-May evenly, at the dam a
+  // month, grown at five, juveniles at half a head, May-September on the
+  // pasture at 0.8 - eat 22.4 stall-days over the band's 12 birth days before
+  // the August mowing, against an adult's 28 + 20 x 0.2 = 32.
+  {
+    const core::YardHayYear year;
+    failures += Expect(std::fabs(core::StackDaysOfYear(year, 0.8F) - 32.0F) < 1e-4F,
+                       "an adult goat's stack year is 32 stall-days");
+    failures += Expect(std::fabs(core::YoungStackShare(year, 0.8F, 2, 4, 1.0F, 5.0F, 0.5F) -
+                                 (22.4F / 12.0F / 32.0F)) < 1e-4F,
+                       "a spring kid eats 0.058 of a goat's stack year before the mowing");
+    failures += Expect(core::YoungStackShare(year, 0.8F, 4, 2, 1.0F, 5.0F, 0.5F) == 0.0F,
+                       "an empty birth band brings no young's share");
+    failures += Expect(std::fabs(core::StackDaysToMowing(year, 0.8F, 31) - 0.2F) < 1e-4F,
+                       "on the mowing day itself a head's need to the mowing is that day's");
   }
   return failures;
 }

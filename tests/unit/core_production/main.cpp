@@ -3699,6 +3699,20 @@ int CheckYardOffspringReplaces() {
     failures += Expect(carried == kHay / 3 && kept == kHay - (kHay / 3),
                        "yard young, the gift: the head goes with its share of the yard's hay - "
                        "a third of 900 kg - and the village's hay is what it was");
+    // BUT NEVER MORE THAN ITS OWN NEED TO THE NEXT MOWING (#859; econ,
+    // core-boss-859-yard-hay [13]): at a norm of 48 kg a head-year a head
+    // needs at most 48 kg to any mowing, so it leaves with that, not a third.
+    core::ProductionConfig needy = giving;
+    needy.yard_hay_kg_per_head = 48.0F;
+    Yard small = yard_with(2, 0.2F, 0.2F, 0, 1);
+    small.world.families.rows[0].pantry[0] = kHay;
+    AppendRow(small.world.families, neighbour);
+    RunHerdDays(needy, small.world, kDays);
+    const core::Grams small_carried = small.world.families.rows[1].pantry[0];
+    failures += Expect(small_carried > 0 && small_carried <= 48 * core::kGramsPerKilogram &&
+                           small.world.families.rows[0].pantry[0] + small_carried == kHay,
+                       "yard young, the gift: the head carries its own need to the mowing, "
+                       "capped below its share, and the village's hay is what it was");
   }
   return failures;
 }
