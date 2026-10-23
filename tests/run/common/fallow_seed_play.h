@@ -78,6 +78,13 @@ class SeedPlay {
         world.chairman.plan_traded_year == world.calendar.date.year) {
       return;
     }
+    // DECIDED ONLY ON A NAMED PLAN (the R+(f) pair, core-boss-725-fallow): the
+    // year's letter can come after the book is first read, and a year marked
+    // decided on an empty list was never read again - from y5 every village
+    // printed «none short» with no position at all, and the play ran in y4 only.
+    if (positions.empty()) {
+      return;
+    }
     decided_year_ = year;
     const SeedPlayPosition* worst = nullptr;
     double worst_gap = 0.0;
