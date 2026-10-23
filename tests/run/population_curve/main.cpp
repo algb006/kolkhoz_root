@@ -45,6 +45,7 @@
 #include "../common/timber_flow_tally.h"
 #include "../common/transition_tally.h"
 #include "core_common/calendar.h"
+#include "core_common/road_route.h"
 #include "core_common/site_supply_queue.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/work_seam.h"
@@ -675,14 +676,17 @@ void TraceBathhouse(const run::TransitionPolicy& transition,
                        ? 1U
                        : 0U;
       }
-      std::cout << " | " << rank << ' '
-                << (queued.type.value < out.unit_type_keys.size()
-                        ? out.unit_type_keys[queued.type.value]
-                        : std::to_string(queued.type.value))
-                << " phase " << static_cast<int>(works.phase) << " since " << works.supply_since_day
-                << " raised " << static_cast<int>(works.raised) << " front " << works.supply_from.x
-                << '/' << works.supply_from.y << " way " << static_cast<int>(works.supply_log_way)
-                << " left " << works.supply_days_remaining << " carters " << carters;
+      std::cout
+          << " | " << rank << ' '
+          << (queued.type.value < out.unit_type_keys.size() ? out.unit_type_keys[queued.type.value]
+                                                            : std::to_string(queued.type.value))
+          << " phase " << static_cast<int>(works.phase) << " since " << works.supply_since_day
+          << " raised " << static_cast<int>(works.raised) << " front " << works.supply_from.x << '/'
+          << works.supply_from.y << " way " << static_cast<int>(works.supply_log_way) << " left "
+          << works.supply_days_remaining << " carters " << carters << " km walk/cart/logcart "
+          << core::RoadKm(today, core::TravelMode::kWalk, works.supply_from, queued.position) << '/'
+          << core::RoadKm(today, core::TravelMode::kCart, works.supply_from, queued.position) << '/'
+          << core::RoadKm(today, core::TravelMode::kLogCart, works.supply_from, queued.position);
     }
     std::cout << '\n';
     std::cout << "BT,seed=" << out.seed << ",year=" << year
