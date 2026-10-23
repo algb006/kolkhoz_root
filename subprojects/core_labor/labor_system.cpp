@@ -2679,6 +2679,7 @@ class LaborSystem final : public ILaborSystem {
     params.placement_level = config_.placement_level;
     params.walker_share_of_cart_day = WalkerShareToday(current);
     params.walker_min_trips_per_day = config_.walker_min_trips_per_day;
+    params.carter_min_trips_per_day = config_.carter_min_trips_per_day;
     params.people_cart_seats = config_.people_cart_seats;
     params.people_cart_min_walk_hours = config_.people_cart_min_walk_hours;
     return params;

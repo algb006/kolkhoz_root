@@ -555,6 +555,17 @@ struct LaborConfig {
   /// below it keeps a walker's day at half a trudoden's norm or more.
   float walker_min_trips_per_day = 2.0F;
 
+  /// labor.csv `carter_min_trips_per_day`, optional (#1213; boss, boss-core-c2-
+  /// pair [54]): a carter on a works' DIRECT leg (logs straight off a stand,
+  /// AssignmentJob::log_cart) is sent where the standard day - or the day's
+  /// light where shorter - holds this many round trips of his ride, instead
+  /// of the walker's road rule (travel_limit_hours, min_usable_hours): his
+  /// day IS the ride. STUB 0.5, the number is econ's. 0 turns the rule off and
+  /// the old road rule judges the leg. 0.5 = a round trip inside two working
+  /// days (econ, boss-core-c2-pair [55]: 1933's stand is 7.9-9.7 game hours
+  /// one way at 0.75 km a game hour, about 0.5-0.63 trips a standard day).
+  float carter_min_trips_per_day = 0.5F;
+
   /// labor.csv `walker_norm_kg_per_day` (0.37.109): the carrying norm — a
   /// walker's day is paid as what he carried over this, never above one;
   /// what he carried is the trips by carry_kg_adult BY HIS EFFICIENCY

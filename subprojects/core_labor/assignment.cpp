@@ -437,9 +437,27 @@ bool ConsiderCandidate(const AssignmentJob& job,
                                ? params.yard_walk_hours[candidate.home_slot]
                                : travel;
   // The road limit is a game rule, not accountant quality.
-  if (travel > params.travel_limit_hours ||
-      !RoadLeavesAWorkingDay(
-          light_road, params.window_hours, params.travel_limit_hours, params.min_usable_hours)) {
+  // A WORKS' DIRECT LEG IS JUDGED BY ITS TRIPS (#1213; boss, boss-core-c2-pair
+  // [54]; econ [55]): a carter whose day is the ride is not «too far» from the
+  // ride. The walker's rule below asks what work the road leaves, and on the
+  // forest legs it turned every candidate away - 1 268 of 1 880 short
+  // mornings on host's canon, with 200 hands and 11 horses left over - while
+  // four sites on one stand waited two years and seed 1933's door came at
+  // 14.65. The day is the standard one or the light where shorter, as the
+  // walker's trips are counted. A trip of two days drains its seam by the
+  // hours, so the books carry it; the plan keeps no cart on the road overnight
+  // (boss-core-c2-pair seq 56).
+  if (job.log_cart && job.supplies_works && params.carter_min_trips_per_day > 0.0F) {
+    const float trip_day = std::min(params.standard_day_hours, params.window_hours);
+    if (travel > 0.0F && trip_day / (2.0F * travel) < params.carter_min_trips_per_day) {
+      refused_by_road = true;
+      return false;
+    }
+  } else if (travel > params.travel_limit_hours ||
+             !RoadLeavesAWorkingDay(light_road,
+                                    params.window_hours,
+                                    params.travel_limit_hours,
+                                    params.min_usable_hours)) {
     refused_by_road = true;
     return false;
   }

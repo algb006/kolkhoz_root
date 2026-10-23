@@ -462,6 +462,14 @@ struct AssignmentParams {
   /// walker's door. 0: no threshold.
   float walker_min_trips_per_day = 0.0F;
 
+  /// THE DIRECT LEG'S ROAD BY ITS TRIPS (#1213; LaborConfig::
+  /// carter_min_trips_per_day): a carter for a works' logs straight off a
+  /// stand (AssignmentJob::log_cart) is judged by the round trips of his ride
+  /// the day holds - min(standard_day_hours, window_hours) / (2 x his one-way
+  /// hours) - not by travel_limit_hours and min_usable_hours, whose question
+  /// is the work left after the road. 0: the old road rule.
+  float carter_min_trips_per_day = 0.0F;
+
   /// THE PEOPLE'S CART (transport design §1, «двое и больше — подвода»;
   /// routing stage A, A3; transport.csv people_cart `seats` and
   /// `min_walk_hours`): the hands it seats beside its driver, and the walk one

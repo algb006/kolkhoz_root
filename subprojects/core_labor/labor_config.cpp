@@ -678,6 +678,11 @@ bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string&
   if (const ITable* labor = tables.FindTable("labor")) {
     if (!ParseScalars(*labor, config, error) || !ParseEfficiencyKnobs(*labor, config, error) ||
         !ParseEducationFactors(*labor, config, error) ||
+        !OptionalValue(*labor,
+                       "carter_min_trips_per_day",
+                       Range{.low = 0.0F, .high = 100.0F},
+                       config.carter_min_trips_per_day,
+                       error) ||
         !ParseWorkKindRates(*labor, config, error)) {
       return false;
     }
