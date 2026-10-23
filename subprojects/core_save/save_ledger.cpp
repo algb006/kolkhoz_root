@@ -174,8 +174,10 @@ constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
 // 43 A and 140 fields before the build; on the wire +16 a book. Save 183
 // (#789, the posts' pay): trudodni_by_post, an i32 after trudodni_burned -
 // predicted 1192 -> 1200 + 43 A (the odd i32 rounds the struct to its 8) and
-// 141 fields before the build; on the wire +4 a book.
-static_assert(sizeof(YearLedger) == 1200 + (43 * kAmountsSize) + kBuiltInRowsSize,
+// 141 fields before the build; the fields held, the size MISSED: 1192 + 43 A,
+// unmoved - the i32 took the padding after trudodni_burned. On the wire +4 a
+// book.
+static_assert(sizeof(YearLedger) == 1192 + (43 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<YearLedger>() == 141,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
