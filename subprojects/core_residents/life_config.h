@@ -358,6 +358,13 @@ struct LifeConfig {
   VitalsConfig vitals;  ///< Stage 6, decision 105.
 
   BirthConditionsConfig birth_conditions;  ///< Stage 6, decision 106.
+
+  /// resources.csv "hay": the one resource the wedding's dowry leaves with
+  /// the parents (#859; boss, core-boss-859-yard-hay [25]; life-cycle.md
+  /// «Приданое», «Четверть кладовой, кроме сена»). Hay is the herd's feed and
+  /// the herd stays in the yard. Invalid in a set without the row: the dowry
+  /// then takes its quarter of everything, as before.
+  ResourceId dowry_keeps;
 };
 
 /// @brief Parses life.csv, demography.csv, satisfaction.csv and the one row

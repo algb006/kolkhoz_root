@@ -551,7 +551,15 @@ namespace {
 /// who would have children, the settlement's whole curve halved: 672 by
 /// year 33 against the reference run's 1500. The share is ASSUMPTION; that
 /// something must move is not.
-void PassDowry(WorldState& current, FamilyId from, FamilyId to) {
+///
+/// THE HAY STAYS WITH THE HERD (#859; boss, core-boss-859-yard-hay [25];
+/// life-cycle.md «Приданое», «Четверть кладовой, кроме сена»): the quarter
+/// took the hay too, the goats stayed with the parents, and on 0.37.320's
+/// nine villages the dowries carried 8 % of the yards' stall-month hay and
+/// 27-40 % of the summer months' out of the yards that feed goats - a stall
+/// draw of 38.1 kg a head-noon against the herd day's own 33.8, and the
+/// newly-weds' yards held hay no goat of theirs ate. `keep` is that resource.
+void PassDowry(WorldState& current, FamilyId from, FamilyId to, ResourceId keep) {
   const std::uint32_t source = FindRow(current.families, from);
   const std::uint32_t target = FindRow(current.families, to);
   if (source == kNoRow || target == kNoRow || source == target) {
@@ -564,6 +572,9 @@ void PassDowry(WorldState& current, FamilyId from, FamilyId to) {
     newlyweds.resize(parents.size(), 0);
   }
   for (std::uint32_t index = 0; index < parents.size(); ++index) {
+    if (index == keep.value) {
+      continue;
+    }
     const auto share = GramsFromFloat(static_cast<float>(parents[index]) * kDowryShare);
     parents[index] -= share;
     newlyweds[index] += share;
@@ -751,7 +762,8 @@ void Wed(WorldState& current,
          ResidentId bride_id,
          ResidentId groom_id,
          UnitId house,
-         FamilyId brings_along) {
+         FamilyId brings_along,
+         ResourceId dowry_keeps) {
   const std::uint32_t bride_row = FindRow(current.residents, bride_id);
   const std::uint32_t groom_row = FindRow(current.residents, groom_id);
   const std::uint32_t house_row = FindRow(current.units, house);
@@ -769,8 +781,8 @@ void Wed(WorldState& current,
   current.units.rows[house_row].household = home;
   const FamilyId bride_was = current.residents.rows[bride_row].family;
   const FamilyId groom_was = current.residents.rows[groom_row].family;
-  PassDowry(current, bride_was, home);
-  PassDowry(current, groom_was, home);
+  PassDowry(current, bride_was, home, dowry_keeps);
+  PassDowry(current, groom_was, home, dowry_keeps);
   current.residents.rows[bride_row].spouse = groom_id;
   current.residents.rows[bride_row].family = home;
   current.residents.rows[groom_row].spouse = bride_id;
@@ -802,7 +814,11 @@ void Wed(WorldState& current,
 /// or kIntoGroomsYard; 0.37.156): the widow's or the widower's — the other
 /// comes into it, with a dowry from the yard left, and no house is taken.
 /// The event names the yard the couple lives in.
-void WedIntoYard(WorldState& current, ResidentId bride_id, ResidentId groom_id, bool into_brides) {
+void WedIntoYard(WorldState& current,
+                 ResidentId bride_id,
+                 ResidentId groom_id,
+                 bool into_brides,
+                 ResourceId dowry_keeps) {
   const std::uint32_t bride_row = FindRow(current.residents, bride_id);
   const std::uint32_t groom_row = FindRow(current.residents, groom_id);
   if (bride_row == kNoRow || groom_row == kNoRow) {
@@ -812,7 +828,7 @@ void WedIntoYard(WorldState& current, ResidentId bride_id, ResidentId groom_id, 
                                     : current.residents.rows[groom_row].family;
   const std::uint32_t mover_row = into_brides ? groom_row : bride_row;
   const FamilyId mover_was = current.residents.rows[mover_row].family;
-  PassDowry(current, mover_was, home);
+  PassDowry(current, mover_was, home, dowry_keeps);
   current.residents.rows[bride_row].spouse = groom_id;
   current.residents.rows[groom_row].spouse = bride_id;
   current.residents.rows[mover_row].family = home;
@@ -868,7 +884,11 @@ void RunWeddingQueue(const LifeConfig& config, WorldState& current) {
       continue;
     }
     if (plan.home != WeddingHome::kNewHouse) {
-      WedIntoYard(current, couple.bride, couple.groom, plan.home == WeddingHome::kIntoBridesYard);
+      WedIntoYard(current,
+                  couple.bride,
+                  couple.groom,
+                  plan.home == WeddingHome::kIntoBridesYard,
+                  config.dowry_keeps);
       done.push_back(id);
       continue;
     }
@@ -876,7 +896,7 @@ void RunWeddingQueue(const LifeConfig& config, WorldState& current) {
     if (house.value == kInvalidEntityIdValue) {
       break;  // no free house for the oldest, so none for anyone behind it
     }
-    Wed(current, couple.bride, couple.groom, house, plan.brings_along);
+    Wed(current, couple.bride, couple.groom, house, plan.brings_along, config.dowry_keeps);
     done.push_back(id);
   }
   for (const WeddingWaitId id : done) {
@@ -925,13 +945,17 @@ void RunMarriages(const LifeConfig& config, WorldState& current, SimDay day) {
         continue;
       }
       if (plan.home != WeddingHome::kNewHouse) {
-        WedIntoYard(current, bride_id, groom_id, plan.home == WeddingHome::kIntoBridesYard);
+        WedIntoYard(current,
+                    bride_id,
+                    groom_id,
+                    plan.home == WeddingHome::kIntoBridesYard,
+                    config.dowry_keeps);
         break;
       }
       const UnitId house =
           current.wedding_waits.rows.empty() ? HomeForCouple(config, current) : UnitId{};
       if (house.value != kInvalidEntityIdValue) {
-        Wed(current, bride_id, groom_id, house, plan.brings_along);
+        Wed(current, bride_id, groom_id, house, plan.brings_along, config.dowry_keeps);
         break;
       }
       WeddingWaitRow couple;
