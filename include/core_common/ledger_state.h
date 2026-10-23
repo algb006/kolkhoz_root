@@ -652,6 +652,13 @@ struct YearLedger {
   /// book, see the file header.
   TrudodniHundredths trudodni_burned = 0;
 
+  /// THE POSTS' TRUDODNI (save 183, #789; labor-payment §2, «по должности: N
+  /// трудодней»): what the sitting posts, and the posts whose unit's work the
+  /// core does not count yet, were paid at the day's close. A part of
+  /// `trudodni_accrued`, not beside it; the design's return condition (posts
+  /// over 20 % of the year's trudodni) reads it.
+  TrudodniHundredths trudodni_by_post = 0;
+
   std::uint32_t walk_offs = 0;  ///< Fatigue walk-offs from an assignment.
 
   /// PASSENGERS ON THE GOODS CARTS (routing stage A, save 132;
