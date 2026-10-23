@@ -45,6 +45,7 @@
 #include "../common/timber_flow_tally.h"
 #include "../common/transition_tally.h"
 #include "core_common/calendar.h"
+#include "core_common/site_supply_queue.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/work_seam.h"
 #include "core_common/world_state.h"
@@ -647,7 +648,10 @@ void TraceBathhouse(const run::TransitionPolicy& transition,
               << ",since=" << site.supply_since_day
               << ",moved_today=" << static_cast<int>(site.supply_moved_today)
               << ",legs=" << site.legs.size() << ",haulers=" << haulers
-              << ",riding=" << haulers_riding << ",builders=" << builders;
+              << ",riding=" << haulers_riding << ",builders=" << builders
+              << ",paused=" << static_cast<int>(unit.paused)
+              << ",emptying=" << static_cast<int>(unit.emptying)
+              << ",queue_rank=" << core::SiteSupplyRank(today, row);
     for (const core::SupplyLeg& leg : site.legs) {
       std::cout << " | from " << leg.from.x << '/' << leg.from.y << " way "
                 << static_cast<int>(leg.log_way) << " log " << kg(leg.grams, log) << " board "
