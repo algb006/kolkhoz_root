@@ -57,6 +57,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "core_catalog/seed_norm_catalog.h"
@@ -99,6 +100,7 @@ class FallowPolicy {
     WatchTheDue(world);
     const std::uint32_t day_of_year = world.calendar.day % core::kDaysPerYear;
     HouseSuppliesOverFields(simulation, world, day_of_year);
+    StandLogsAhead(simulation, world, day_of_year);
     if (day_of_year == kFirstOfDecember) {
       CountPotatoOnTheBlocks(world);
     }
@@ -161,6 +163,8 @@ class FallowPolicy {
     }
     std::cout << "fallow_policy: house supplies set over the fields in the blocks' spring: "
               << houses_over_fields_ << '\n';
+    std::cout << "fallow_policy: house stands' logs raised to level 0 in the blocks' spring: "
+              << stands_raised_ << '\n';
   }
 
   /// @brief The fields opened so far, for a run's own prints.
@@ -184,16 +188,17 @@ class FallowPolicy {
                                const core::WorldState& world,
                                std::uint32_t day_of_year) {
     const std::uint32_t month = day_of_year / core::kDaysPerMonth;
-    if (opened_blocks_ == 0 || month < kBlockSpringFromMonth || month > kBlockSpringToMonth) {
-      return;
-    }
-    std::vector<std::uint16_t> house_types;
+    house_types_.clear();
     for (const core::FamilyRow& family : world.families.rows) {
       const std::uint32_t house = core::FindRow(world.units, family.house);
       if (house != core::kNoRow) {
-        house_types.push_back(world.units.rows[house].type.value);
+        house_types_.push_back(world.units.rows[house].type.value);
       }
     }
+    if (opened_blocks_ == 0 || month < kBlockSpringFromMonth || month > kBlockSpringToMonth) {
+      return;
+    }
+    const std::vector<std::uint16_t>& house_types = house_types_;
     std::vector<core::OrderRow> orders;
     for (std::uint32_t row = 0; row < world.logistics_tasks.rows.size(); ++row) {
       const core::LogisticsTaskRow& task = world.logistics_tasks.rows[row];
@@ -223,11 +228,91 @@ class FallowPolicy {
     }
   }
 
+  /// (t1) THE HOUSES' LOGS OFF THEIR STANDS GO FIRST TOO (boss, core-boss-725-
+  /// fallow [40]; econ, boss-econ-725-trade [2]). The team rule's pair [39]
+  /// brought the carts to the sites back to -1…-17 % of base, and the carts
+  /// off the stands stayed at -74…-83 %: they serve the stands' own kStandLogs
+  /// tasks, which «важнее полевых работ» does not take (the order refuses the
+  /// switch on any load but a works' supply, logistics_system.cpp). So in the
+  /// same spring, every stand a house site draws its logs from (a direct leg,
+  /// SupplyLeg::log_way, at the stand's loading point) has its logs' task
+  /// raised to level 0, «срочное», through the same kSetLogisticsLevel - the
+  /// door a heap's carting has for that - and each goes back to the level it
+  /// had once the spring is over.
+  void StandLogsAhead(core::ISimulation& simulation,
+                      const core::WorldState& world,
+                      std::uint32_t day_of_year) {
+    const std::uint32_t month = day_of_year / core::kDaysPerMonth;
+    const bool spring =
+        opened_blocks_ > 0 && month >= kBlockSpringFromMonth && month <= kBlockSpringToMonth;
+    std::vector<core::OrderRow> orders;
+    if (!spring) {
+      for (const auto& [task_id, level] : raised_stands_) {
+        const std::uint32_t row = core::FindRow(world.logistics_tasks, task_id);
+        if (row == core::kNoRow || world.logistics_tasks.rows[row].base_level == level) {
+          continue;
+        }
+        core::OrderRow order;
+        order.kind = core::OrderKind::kSetLogisticsLevel;
+        order.logistics_task = task_id;
+        order.logistics_level = level;
+        orders.push_back(order);
+      }
+      raised_stands_.clear();
+    } else {
+      std::vector<core::Vec2> drawn_from;
+      for (const core::UnitRow& unit : world.units.rows) {
+        if (unit.dead != 0 || !core::AnythingAwaits(unit.construction) ||
+            std::ranges::find(house_types_, unit.type.value) == house_types_.end()) {
+          continue;
+        }
+        for (const core::SupplyLeg& leg : unit.construction.legs) {
+          if (leg.log_way != 0) {
+            drawn_from.push_back(leg.from);
+          }
+        }
+      }
+      for (std::uint32_t row = 0; row < world.logistics_tasks.rows.size(); ++row) {
+        const core::LogisticsTaskRow& task = world.logistics_tasks.rows[row];
+        if (task.load_kind != core::LogisticsLoadKind::kStandLogs || task.paused ||
+            task.base_level == core::LogisticsLevel::kUrgent) {
+          continue;
+        }
+        const std::uint32_t stand = core::FindRow(world.stands, task.stand);
+        if (stand == core::kNoRow) {
+          continue;
+        }
+        const core::Vec2 at = world.stands.rows[stand].position;
+        if (std::ranges::none_of(drawn_from, [&](const core::Vec2& from) {
+              return from.x == at.x && from.y == at.y;
+            })) {
+          continue;
+        }
+        const core::LogisticsTaskId task_id = world.logistics_tasks.row_ids[row];
+        raised_stands_.emplace_back(task_id, task.base_level);
+        core::OrderRow order;
+        order.kind = core::OrderKind::kSetLogisticsLevel;
+        order.logistics_task = task_id;
+        order.logistics_level = core::LogisticsLevel::kUrgent;
+        orders.push_back(order);
+      }
+      stands_raised_ += static_cast<std::uint32_t>(orders.size());
+    }
+    if (!orders.empty()) {
+      simulation.StageOrders(std::span<const core::OrderRow>(orders), {});
+    }
+  }
+
   /// The blocks' spring, 0-based months: April to June, where the binder
   /// print measured the teams taken (core-boss-725-fallow [36]).
   static constexpr std::uint32_t kBlockSpringFromMonth = 3;
   static constexpr std::uint32_t kBlockSpringToMonth = 5;
   std::uint32_t houses_over_fields_ = 0;
+  /// (t1): the stands' log tasks raised to level 0 and the level each had.
+  std::vector<std::pair<core::LogisticsTaskId, core::LogisticsLevel>> raised_stands_;
+  std::uint32_t stands_raised_ = 0;
+  /// The house types, as HouseSuppliesOverFields read them today.
+  std::vector<std::uint16_t> house_types_;
 
   static constexpr std::uint32_t kFieldsPerBlock = 3;
   static constexpr std::uint32_t kBlocks = 2;
