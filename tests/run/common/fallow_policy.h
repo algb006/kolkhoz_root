@@ -63,6 +63,7 @@
 #include "core_common/calendar.h"
 #include "core_common/fund_ladder.h"
 #include "core_common/land_state.h"
+#include "core_common/logistics_state.h"
 #include "core_common/order_state.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table_ops.h"
@@ -97,6 +98,7 @@ class FallowPolicy {
     }
     WatchTheDue(world);
     const std::uint32_t day_of_year = world.calendar.day % core::kDaysPerYear;
+    HouseSuppliesOverFields(simulation, world, day_of_year);
     if (day_of_year == kFirstOfDecember) {
       CountPotatoOnTheBlocks(world);
     }
@@ -157,12 +159,76 @@ class FallowPolicy {
                   << "'s end\n";
       }
     }
+    std::cout << "fallow_policy: house supplies set over the fields in the blocks' spring: "
+              << houses_over_fields_ << '\n';
   }
 
   /// @brief The fields opened so far, for a run's own prints.
   const std::vector<core::FieldId>& OpenedFields() const { return opened_fields_; }
 
  private:
+  /// THE BLOCKS' SPRING DOES NOT TAKE THE HOUSES' TEAMS (boss, core-boss-725-
+  /// fallow [34]; econ [32]'s spring form, chosen by the one-day print [33]:
+  /// her condition would open a block in 7 of 45 village-years). The binder
+  /// print h725 [36] found the cut in TEAMS, not hands: in April-May of y4-y8
+  /// the arm's carts to sites fell 44 % / 27 % and off the stands 83 % / 70 %,
+  /// sites in delivery rose 44 % / 72 % with their logs awaiting +67 % / +92 %,
+  /// «no horse» idling rose, and 10-15 thousand asked residents stood idle in
+  /// both arms. So once a block is open, in April-June every house site's
+  /// supply is set «важнее полевых работ» (kSetLogisticsLevel with the switch,
+  /// the door supply_policy.h uses after a week on the floor): its loads stand
+  /// ahead of every windowed job, the blocks' ploughing among them, and the
+  /// blocks take the teams the houses' carts leave. The switch is the task's
+  /// own and goes out with the works.
+  void HouseSuppliesOverFields(core::ISimulation& simulation,
+                               const core::WorldState& world,
+                               std::uint32_t day_of_year) {
+    const std::uint32_t month = day_of_year / core::kDaysPerMonth;
+    if (opened_blocks_ == 0 || month < kBlockSpringFromMonth || month > kBlockSpringToMonth) {
+      return;
+    }
+    std::vector<std::uint16_t> house_types;
+    for (const core::FamilyRow& family : world.families.rows) {
+      const std::uint32_t house = core::FindRow(world.units, family.house);
+      if (house != core::kNoRow) {
+        house_types.push_back(world.units.rows[house].type.value);
+      }
+    }
+    std::vector<core::OrderRow> orders;
+    for (std::uint32_t row = 0; row < world.logistics_tasks.rows.size(); ++row) {
+      const core::LogisticsTaskRow& task = world.logistics_tasks.rows[row];
+      if (task.load_kind != core::LogisticsLoadKind::kSiteSupply || task.paused ||
+          task.over_fields) {
+        continue;
+      }
+      const std::uint32_t unit_row = core::FindRow(world.units, task.unit);
+      if (unit_row == core::kNoRow) {
+        continue;
+      }
+      const core::UnitRow& unit = world.units.rows[unit_row];
+      if (std::ranges::find(house_types, unit.type.value) == house_types.end() ||
+          !core::AnythingAwaits(unit.construction)) {
+        continue;
+      }
+      core::OrderRow order;
+      order.kind = core::OrderKind::kSetLogisticsLevel;
+      order.logistics_task = world.logistics_tasks.row_ids[row];
+      order.logistics_level = task.base_level;
+      order.enable = 1;
+      orders.push_back(order);
+    }
+    if (!orders.empty()) {
+      simulation.StageOrders(std::span<const core::OrderRow>(orders), {});
+      houses_over_fields_ += static_cast<std::uint32_t>(orders.size());
+    }
+  }
+
+  /// The blocks' spring, 0-based months: April to June, where the binder
+  /// print measured the teams taken (core-boss-725-fallow [36]).
+  static constexpr std::uint32_t kBlockSpringFromMonth = 3;
+  static constexpr std::uint32_t kBlockSpringToMonth = 5;
+  std::uint32_t houses_over_fields_ = 0;
+
   static constexpr std::uint32_t kFieldsPerBlock = 3;
   static constexpr std::uint32_t kBlocks = 2;
   /// Where in chain_ (barley, rye_winter, oat) each of a block's three fields
