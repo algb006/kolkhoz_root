@@ -84,6 +84,7 @@ class FixturePolicy {
                      ParentTypeOf(tables, roof_.store_key).value == granary_yard_.value;
     clamp_ = TypeByKey(tables, "clamp");
     church_ = TypeByKey(tables, "church_store");
+    ReadGranaryKeeps(tables);
     std::string error;
     core::LoadDefinitions(tables, core::StubTables::kAllowed, definitions_, error);
   }
@@ -656,23 +657,33 @@ class FixturePolicy {
     // take them — eight on seed 1933 — and "the farm first" held every house
     // back while families left for want of one. The roof for those two is
     // the food store's rule below (RoofedHarvestGrams), not this one.
+    //
+    // AND ONLY WHAT A GRANARY KEEPS, BY THE TABLE (boss, boss-core-c2-pair
+    // [41]-[42]): «not the food store's» left every other resource in, and
+    // straw lost for want of room - a stack's, not a granary's - marked
+    // granaries the straw could never use. On host's canon flags they stood
+    // 83 -> 131 by year 15 over 18 villages on 0.37.318 (C2 doubled the straw
+    // years, 7 -> 13 village-years), took the houses' logs and boards, and
+    // the village was 6 % smaller. The granary's own resources are read off
+    // resource_stores.csv (storage «granary»), as the roof's are.
     for (std::size_t row = 0; row < world.fields.rows.size() && row < wait_streak_.size(); ++row) {
-      if (wait_streak_[row] > kRoomWaitDays && !Roofed(world.fields.rows[row].reaped_resource)) {
+      if (wait_streak_[row] > kRoomWaitDays &&
+          KeptByGranary(world.fields.rows[row].reaped_resource)) {
         return true;
       }
     }
     for (std::size_t index = 0; index < world.ledger.closed.lost_no_room.size(); ++index) {
       if (world.ledger.closed.lost_no_room[index] > 0 &&
-          !Roofed(core::ResourceId{static_cast<std::uint16_t>(index)})) {
+          KeptByGranary(core::ResourceId{static_cast<std::uint16_t>(index)})) {
         return true;
       }
     }
     return false;
   }
 
-  /// Whether the food store (not the granary) keeps this resource.
-  bool Roofed(core::ResourceId resource) const {
-    return resource.value < roof_.resource.size() && roof_.resource[resource.value] != 0;
+  /// Whether a granary keeps this resource (resource_stores.csv, storage «granary»).
+  bool KeptByGranary(core::ResourceId resource) const {
+    return resource.value < granary_keeps_.size() && granary_keeps_[resource.value] != 0;
   }
 
   bool NextOrder(const core::WorldState& world, core::OrderRow& order) {
@@ -1036,6 +1047,29 @@ class FixturePolicy {
   /// CROP (crop_roof.h; #756). Until 0.37.240 the set was read by the name
   /// `food_store`, which keeps no crop since 0.37.217.
   CropRoof roof_;
+
+  /// By resource row: 1 when resource_stores.csv names a granary its storage
+  /// (RoomWasShort's resources; boss-core-c2-pair [42]).
+  std::vector<std::uint8_t> granary_keeps_;
+
+  void ReadGranaryKeeps(const core::ITableSet& tables) {
+    const core::ITable* const stores = tables.FindTable("resource_stores");
+    const core::ITable* const resources = tables.FindTable("resources");
+    if (stores == nullptr || resources == nullptr) {
+      return;
+    }
+    granary_keeps_.assign(resources->RowCount(), 0);
+    for (std::uint32_t row = 0; row < stores->RowCount(); ++row) {
+      if (crop_roof_detail::Cell(*stores, row, "storage") != "granary") {
+        continue;
+      }
+      const std::uint32_t resource =
+          resources->FindRowByKey(crop_roof_detail::Cell(*stores, row, "resource"));
+      if (resource < granary_keeps_.size()) {
+        granary_keeps_[resource] = 1;
+      }
+    }
+  }
 
   /// Whether the long store is a module of the granary's yard.
   bool store_on_yard_ = false;
