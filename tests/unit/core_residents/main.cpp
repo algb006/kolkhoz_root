@@ -1514,6 +1514,14 @@ int CheckPlot() {
       const std::uint32_t hay = mowing.hay_resource.value;
       return world.families.rows[0].pantry.size() > hay ? world.families.rows[0].pantry[hay] : 0;
     };
+    // THE MOWING CARRIES THE YARD'S MARGIN (#859 §3g, kYardHayMargin 1.10): a
+    // head's need is 1 080 x 1.10 = 1 188 kg; the float's grams within 5 g.
+    const auto mown_for = [](core::Grams got, float heads) {
+      const auto want = static_cast<double>(heads) * 1080.0 *
+                        static_cast<double>(core::kYardHayMargin) *
+                        static_cast<double>(core::kGramsPerKilogram);
+      return std::fabs(static_cast<double>(got) - want) < 5.0;
+    };
     const auto add_herd =
         [](core::WorldState& world, std::uint16_t kind, std::uint16_t adults, std::uint16_t young) {
           core::HerdRow herd;
@@ -1527,10 +1535,9 @@ int CheckPlot() {
     core::WorldState world = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
     add_herd(world, 1, 2, 1);
     add_herd(world, 0, 1, 0);
-    failures +=
-        Expect(run_august(world) == static_cast<core::Grams>(3 * 1080) * core::kGramsPerKilogram,
-               "the yard mows 1080 kg a hay-eating head whatever its attention, and "
-               "nothing for the pig");
+    failures += Expect(mown_for(run_august(world), 3.0F),
+                       "the yard mows 1080 kg x the margin a hay-eating head whatever its "
+                       "attention, and nothing for the pig");
     core::WorldState children = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
     children.residents.rows[0].birth_day = -120;  // 10 biological years
     add_herd(children, 1, 2, 0);
@@ -1549,32 +1556,30 @@ int CheckPlot() {
     mowing.hay_eating_kinds = {0, 1, 1};
     core::WorldState litter = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
     add_herd(litter, 1, 2, 1);
-    failures +=
-        Expect(run_august(litter) == static_cast<core::Grams>(4 * 1080) * core::kGramsPerKilogram,
-               "the yard mows for the four kids its two does will bring, at their share");
+    failures += Expect(mown_for(run_august(litter), 4.0F),
+                       "the yard mows for the four kids its two does will bring, at their share");
     core::WorldState no_sire = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
     add_herd(no_sire, 2, 3, 0);
     failures +=
-        Expect(run_august(no_sire) == static_cast<core::Grams>(3 * 1080) * core::kGramsPerKilogram,
+        Expect(mown_for(run_august(no_sire), 3.0F),
                "a kind that breeds only with a sire expects no young while the yard has none");
     core::WorldState with_sire = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
     add_herd(with_sire, 2, 3, 0);
     with_sire.herds.rows[0].adult_male_count = 1;
-    failures += Expect(
-        run_august(with_sire) == static_cast<core::Grams>(4 * 1080) * core::kGramsPerKilogram,
-        "with a sire it expects one young a female: 3 adults, 1 a male, 2 young at a half");
+    failures +=
+        Expect(mown_for(run_august(with_sire), 4.0F),
+               "with a sire it expects one young a female: 3 adults, 1 a male, 2 young at a half");
 
     // ONLY UP TO THE NEED (#1216): the hay still in the pantry counts. Three
-    // heads with 1 000 kg left mow 2 240 kg, to 3 240 in all; a pantry
-    // already above its need mows nothing and keeps what it has.
+    // heads with 1 000 kg left mow up to 3 x 1 188 = 3 564 kg in all; a
+    // pantry already above its need mows nothing and keeps what it has.
     mowing.yard_young_hay_share = {0.0F, 0.0F, 0.0F};
     core::WorldState topped = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
     add_herd(topped, 1, 2, 1);
     topped.families.rows[0].pantry.resize(3, 0);
     topped.families.rows[0].pantry[2] = static_cast<core::Grams>(1000) * core::kGramsPerKilogram;
     failures +=
-        Expect(run_august(topped) == static_cast<core::Grams>(3 * 1080) * core::kGramsPerKilogram,
-               "a yard with hay left mows only up to its need");
+        Expect(mown_for(run_august(topped), 3.0F), "a yard with hay left mows only up to its need");
     core::WorldState full = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
     add_herd(full, 1, 2, 1);
     full.families.rows[0].pantry.resize(3, 0);
@@ -1587,11 +1592,23 @@ int CheckPlot() {
   // the goat's row and farming.csv - kids born March-May evenly, at the dam a
   // month, grown at five, juveniles at half a head, May-September on the
   // pasture at 0.8 - eat 22.4 stall-days over the band's 12 birth days before
-  // the August mowing, against an adult's 28 + 20 x 0.2 = 32.
+  // the August mowing, against an adult's 28 + 20 x 0.2 = 32. That is the
+  // herd day's arithmetic (`measured` false); the shipped year is the measured
+  // table (#859 §3g), whose stack year is 4 x the table's sum.
   {
-    const core::YardHayYear year;
+    core::YardHayYear year;
+    year.measured = false;
     failures += Expect(std::fabs(core::StackDaysOfYear(year, 0.8F) - 32.0F) < 1e-4F,
                        "an adult goat's stack year is 32 stall-days");
+    const core::YardHayYear shipped;
+    float table = 0.0F;
+    for (const float draw : core::kMeasuredMonthDraw) {
+      table += draw * static_cast<float>(core::kDaysPerMonth);
+    }
+    failures += Expect(std::fabs(core::StackDaysOfYear(shipped, 0.8F) - table) < 1e-3F &&
+                           std::fabs(table - 33.15F) < 0.01F,
+                       "the measured stack year is the table's: 33.15 stall-days, the cover "
+                       "argument unread");
     failures += Expect(std::fabs(core::YoungStackShare(year, 0.8F, 2, 4, 1.0F, 5.0F, 0.5F) -
                                  (22.4F / 12.0F / 32.0F)) < 1e-4F,
                        "a spring kid eats 0.058 of a goat's stack year before the mowing");

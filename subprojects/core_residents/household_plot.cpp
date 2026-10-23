@@ -15,6 +15,7 @@
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
 #include "core_common/quantities.h"
+#include "core_common/yard_hay_year.h"
 
 namespace core {
 namespace {
@@ -173,7 +174,11 @@ void MowHay(const FoodConfig& config,
       hay.value < family.pantry.size()
           ? static_cast<float>(family.pantry[hay.value]) / static_cast<float>(kGramsPerKilogram)
           : 0.0F;
-  const float need_kg = config.plot.yard_hay_kg_per_head * heads;
+  // WITH THE MEASURED YEAR'S MARGIN (#859 §3g; yard_hay_year.h kYardHayMargin):
+  // mown to exactly heads x the norm, nearly every small yard ran dry for the
+  // last 1-4 days before the mowing (p859e2: 2 716 underfed noons in 781
+  // episodes, the norm 4 % short of the measured year).
+  const float need_kg = config.plot.yard_hay_kg_per_head * heads * kYardHayMargin;
   if (need_kg > left_kg) {
     AddToPantry(family, hay, need_kg - left_kg);
   }

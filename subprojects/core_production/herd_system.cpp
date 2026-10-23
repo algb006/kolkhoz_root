@@ -1164,7 +1164,9 @@ void CarryHayShare(const ProductionConfig& config,
                              : 0.0F;
   const float year_days = StackDaysOfYear(year, coverage);
   const std::uint32_t today = static_cast<std::uint32_t>(world.calendar.day % kDaysPerYear);
-  const float need_kg = year_days > 0.0F ? config.yard_hay_kg_per_head *
+  // The gift's need carries the yard's margin too (#859 §3g), so the taker's
+  // stack is sized as the mowing sizes a stack.
+  const float need_kg = year_days > 0.0F ? config.yard_hay_kg_per_head * kYardHayMargin *
                                                StackDaysToMowing(year, coverage, today) / year_days
                                          : 0.0F;
   const Grams share = std::min(held / heads, GramsFromKilograms(need_kg));

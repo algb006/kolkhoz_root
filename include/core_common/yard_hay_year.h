@@ -12,26 +12,46 @@
 /// a head away with only its own need to that mowing. A copy in each module
 /// would let the yard mow for one year and give away by another.
 ///
-/// The draw of one day: 1 in a stall month, 1 - the kind's
-/// pasture_coverage_summer in a pasture month (the herd day's own split,
-/// farming.csv pasture_from_month..pasture_to_month). The mowing is the last
-/// day of the mowing month (food.csv hay_harvest_month), and that day is
-/// still eaten from the old stack: the mowing lands at its evening.
+/// THE DRAW OF ONE DAY IS THE MEASURED ONE (#859; econ, econ-boss-859-
+/// buffer [5] §3g; boss, core-boss-859-yard-hay [31]): a STUB table of the
+/// stack's draw by month, in the herd day's stall-days (1 = 33.8 kg of hay a
+/// goat-day), measured on 0.37.320 + the dowry fix (p859cw, nine villages,
+/// sixteen years) - the stall months +0.6…+2.2 % over the herd day's own
+/// (cause untraced), May at 0.377 (a cover of 0.63, cause untraced), June-
+/// September 0.20-0.21 (the pasture's 0.8). The arithmetic the table replaced
+/// - 1 in a stall month, 1 - pasture_coverage_summer on the pasture - stays
+/// for a year built with `measured` false. The mowing is the last day of the
+/// mowing month (food.csv hay_harvest_month), and that day is still eaten
+/// from the old stack: the mowing lands at its evening.
 
 #ifndef CORE_COMMON_YARD_HAY_YEAR_H_
 #define CORE_COMMON_YARD_HAY_YEAR_H_
 
+#include <array>
 #include <cstdint>
 
 #include "core_common/calendar.h"
 
 namespace core {
 
+/// STUB (econ's rule, §3g): the yard's margin over the need, P90 ÷ P50 of the
+/// measured year draw per hay-eating head over the 1-2-doe yard-years, rounded
+/// up to 0.05 - 821 ÷ 781 = 1.051 → 1.10 on p859e2 (wip/859 01022796, 9 724
+/// yard-years). Applied to the mowing and to the gift's need.
+inline constexpr float kYardHayMargin = 1.10F;
+
+/// STUB: the measured draw by 0-based month, in stall-days (see @file).
+inline constexpr std::array<float, 12> kMeasuredMonthDraw = {
+    1.006F, 1.013F, 1.018F, 1.022F, 0.377F, 0.210F, 0.212F, 0.204F, 0.202F, 1.009F, 1.008F, 1.007F};
+
 /// @brief The months that shape the yard's hay year, 0-based.
 struct YardHayYear {
   std::uint8_t mow_month = 7;           ///< August: the mowing lands on its last day.
   std::uint8_t pasture_from_month = 4;  ///< May.
   std::uint8_t pasture_to_month = 8;    ///< Inclusive: September.
+  /// True: the day's draw is kMeasuredMonthDraw's; false: the herd day's
+  /// arithmetic by `coverage` (the unit tests' reference).
+  bool measured = true;
 };
 
 /// @brief The day of the year (0..kDaysPerYear-1) the mowing lands on.
@@ -40,10 +60,14 @@ inline std::uint32_t MowingDayOfYear(const YardHayYear& year) {
 }
 
 /// @brief One adult head's draw from the stack on a day of the year, in
-///        stall-days: 1 in a stall month, 1 - coverage on the pasture.
-/// @param coverage The kind's pasture_coverage_summer, 0..1.
+///        stall-days: the measured month's, or 1 in a stall month and
+///        1 - coverage on the pasture when the year is not `measured`.
+/// @param coverage The kind's pasture_coverage_summer, 0..1 (read only when not `measured`).
 inline float StackDayDraw(const YardHayYear& year, float coverage, std::uint32_t day_of_year) {
   const std::uint32_t month = (day_of_year % kDaysPerYear) / kDaysPerMonth;
+  if (year.measured) {
+    return kMeasuredMonthDraw[month % kMeasuredMonthDraw.size()];
+  }
   const bool pasture = month >= year.pasture_from_month && month <= year.pasture_to_month;
   return pasture ? 1.0F - coverage : 1.0F;
 }
