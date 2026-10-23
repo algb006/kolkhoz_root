@@ -33,6 +33,7 @@
 #include <optional>
 #include <streambuf>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "../common/accepted_reds.h"
@@ -523,6 +524,60 @@ void KeepHorsesShare(const run::Simulation& world,
 /// read on kSeeds; a verdict on another sample is printed, not trusted).
 std::uint64_t g_seed_offset = 0;
 
+/// PROBE (seed 1933, boss-core-c2-pair [25]): with POP_TRACE_SEED set, that
+/// seed's bathhouses on each month's first day of years 8-14 - level, the
+/// era's level, the site's phase and target, labour left, the logs and boards
+/// it awaits (kg), its crewless and supply-idle days - and the stores' logs
+/// and boards held (kg).
+void TraceBathhouse(const run::TransitionPolicy& transition,
+                    const core::WorldState& today,
+                    const Trajectory& out) {
+  static const char* const wanted = std::getenv("POP_TRACE_SEED");
+  if (wanted == nullptr || std::to_string(out.seed) != wanted) {
+    return;
+  }
+  const std::uint32_t day = static_cast<std::uint32_t>(today.calendar.day);
+  const std::uint32_t year = day / core::kDaysPerYear + 1;
+  if (day % core::kDaysPerMonth != 0 || year < 8 || year > 14) {
+    return;
+  }
+  const auto index_of = [](const std::vector<std::string>& keys, std::string_view key) {
+    const auto it = std::ranges::find(keys, key);
+    return it == keys.end() ? std::size_t{0xFFFF} : static_cast<std::size_t>(it - keys.begin());
+  };
+  const std::size_t bath = index_of(out.unit_type_keys, "bathhouse");
+  const std::size_t log = index_of(out.resource_keys, "log");
+  const std::size_t board = index_of(out.resource_keys, "board");
+  const auto kg = [](const core::ResourceAmounts& amounts, std::size_t row) {
+    return row < amounts.size() ? static_cast<double>(amounts[row]) / 1000.0 : -1.0;
+  };
+  double held_log = 0.0, held_board = 0.0;
+  for (const core::UnitRow& unit : today.units.rows) {
+    if (unit.dead == 0) {
+      held_log += std::max(0.0, kg(unit.stock, log));
+      held_board += std::max(0.0, kg(unit.stock, board));
+    }
+  }
+  for (const core::UnitRow& unit : today.units.rows) {
+    if (unit.type.value != bath || unit.dead != 0) {
+      continue;
+    }
+    const core::ConstructionState& site = unit.construction;
+    std::cout << "BT,seed=" << out.seed << ",year=" << year
+              << ",month=" << (day % core::kDaysPerYear) / core::kDaysPerMonth + 1
+              << ",level=" << static_cast<int>(unit.level) << ",era_level="
+              << static_cast<int>(
+                     core::RequiredUnitLevel(transition.Catalog(), unit.type, today.epoch, today))
+              << ",phase=" << static_cast<int>(site.phase)
+              << ",target=" << static_cast<int>(site.target_level)
+              << ",labor_left=" << site.labor_days_remaining
+              << ",await_log_kg=" << kg(site.awaiting, log)
+              << ",await_board_kg=" << kg(site.awaiting, board)
+              << ",crewless=" << site.crewless_days << ",supply_idle=" << site.supply_idle_days
+              << ",held_log_kg=" << held_log << ",held_board_kg=" << held_board << '\n';
+  }
+}
+
 /// One Epoch I day of the two STANDING blocks, from the first day each was
 /// met: shut, and by what (Trajectory::units_below_days, social_missing_days).
 /// The lists are the core's door's own (TransitionPolicy::Catalog), the level
@@ -672,6 +727,7 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
           }
         }
         CountStandingShut(builder.transition, today, met, out);
+        TraceBathhouse(builder.transition, today, out);
       }
       transition_tally.CountDay(builder.transition, today);
       advance_write_offs.CountDay(today);
