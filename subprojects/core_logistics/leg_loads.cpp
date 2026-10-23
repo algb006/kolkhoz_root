@@ -47,11 +47,12 @@ CargoForm LegCargoForm(const LogisticsConfig& config, const WorldState& world, c
     return CargoForm::kNone;  // a ride
   }
   const bool stands_at_load = leg.from.x == leg.to.x && leg.from.y == leg.to.y;
-  if (leg.loaded == 0 && (!stands_at_load || leg.depart == leg.arrive)) {
+  if (leg.loaded == 0 && (!stands_at_load || leg.kept_in_chain != 0)) {
     // A trip's way back, empty; or a load of the chain the cart never
     // carted — kept in its place with no time on it (KeepInTheChain) — which
     // would otherwise be drawn loaded at a heap it never reached (the Fable
-    // review of 11 October 2026, item 9).
+    // review of 11 October 2026, item 9). Read by its marker since T1 (save
+    // 178): «depart == arrive» was also a carting under an hour, floored.
     return CargoForm::kNone;
   }
   // The cart's look by the logistics' own column (LogisticsConfig::cargo_form,

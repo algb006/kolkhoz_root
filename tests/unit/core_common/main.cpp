@@ -13,6 +13,7 @@
 #include "core_common/alarm_state.h"
 #include "core_common/body.h"
 #include "core_common/calendar.h"
+#include "core_common/cart_gear.h"
 #include "core_common/cold_housing.h"
 #include "core_common/day_off.h"
 #include "core_common/day_window.h"
@@ -41,9 +42,11 @@
 #include "core_common/road_trace.h"
 #include "core_common/road_view.h"
 #include "core_common/site_supply_queue.h"
+#include "core_common/spoilage.h"
 #include "core_common/state_table.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/version_pin.h"
+#include "core_common/work_seam.h"
 #include "core_common/world_state.h"
 
 namespace core_test {
@@ -57,6 +60,9 @@ int TestMeadowMarkContract();
 
 /// The porter's rules and the hauled book (porter_checks.cpp; #671).
 int TestThePorter();
+
+/// The drawn trip's whole-trip arithmetic (trip_terms_checks.cpp; #1056 C3).
+int TestTripTerms();
 }  // namespace core_test
 
 namespace {
@@ -503,7 +509,7 @@ int TestPlot() {
 
   // Radii by type: type 0 has a 25-metre plot, type 1 none at all.
   const float radii[] = {25.0F, 0.0F};
-  const core::PlotRules rules{.radius_by_type = radii, .map_side_m = 0.0F};
+  const core::PlotRules rules{.radius_by_type = radii, .map_side_m = 0.0F, .yields_by_type = {}};
   core::UnitTable units;
   core::UnitRow standing;
   standing.type = core::UnitTypeId{0};  // the default id is INVALID, not row zero
@@ -560,7 +566,8 @@ int TestPlot() {
   // order is REFUSED outside the map; the stub cannot refuse, so it must
   // not go there instead — found by the delivery cycle's own analysis on
   // 2026-09-04, in the very change that was closing the same class of hole.
-  const core::PlotRules bounded{.radius_by_type = radii, .map_side_m = 300.0F};
+  const core::PlotRules bounded{
+      .radius_by_type = radii, .map_side_m = 300.0F, .yields_by_type = {}};
   core::UnitTable edge_units;
   core::UnitRow corner;
   corner.type = core::UnitTypeId{0};
@@ -644,15 +651,72 @@ int TestTheSiteSupplyQueue() {
   return failures;
 }
 
+/// THE CART AND THE SLEDGE (SL1; cart_gear.h): a snowless day is the cart's
+/// 12 / 9 km/h and 1.8 t; a snow day the sledge's 8 km/h both ways and 2.7 t;
+/// no sledge row keeps the cart on snow; per tonne-km of road the sledge
+/// costs 0.857 of the cart (econ's -14 %, the pauses aside).
+int TestTheSledge() {
+  int failures = 0;
+  const core::CartSpecs specs{.cart_empty_kmh = 12.0F,
+                              .cart_loaded_kmh = 9.0F,
+                              .cart_load_kg = 1800.0F,
+                              .sledge_kmh = 8.0F,
+                              .sledge_load_kg = 2700.0F};
+  const core::CartGear cart = core::CartGearOf(specs, false);
+  const core::CartGear sledge = core::CartGearOf(specs, true);
+  failures += Expect(
+      !cart.sledge && cart.empty_kmh == 12.0F && cart.loaded_kmh == 9.0F && cart.load_kg == 1800.0F,
+      "sledge: a snowless day is the cart's");
+  failures += Expect(sledge.sledge && sledge.empty_kmh == 8.0F && sledge.loaded_kmh == 8.0F &&
+                         sledge.load_kg == 2700.0F,
+                     "sledge: a snow day is the sledge's, 8 km/h both ways and 1.5 x the load");
+  core::CartSpecs no_row = specs;
+  no_row.sledge_kmh = 0.0F;
+  no_row.sledge_load_kg = 0.0F;
+  failures += Expect(!core::CartGearOf(no_row, true).sledge,
+                     "sledge: with no sledge row a snow day stays the cart's");
+  core::WorldState world;
+  world.weather.snow_cover_days = 0;
+  const bool dry = core::SledgeDay(world);
+  world.weather.snow_cover_days = 3;
+  failures += Expect(!dry && core::SledgeDay(world) && core::CartGearToday(world, specs).sledge,
+                     "sledge: the door reads the snow cover of the day");
+  const auto per_tonne_km = [](const core::CartGear& gear) {
+    return (1.0F / gear.empty_kmh + 1.0F / gear.loaded_kmh) / gear.load_kg;
+  };
+  const float ratio = per_tonne_km(sledge) / per_tonne_km(cart);
+  std::cout << "  sledge: road-hours a tonne-km, sledge / cart = " << ratio << "\n";
+  failures += Expect(std::fabs(ratio - 0.857F) < 0.002F,
+                     "sledge: a tonne-km of road costs the sledge 0.857 of the cart");
+  return failures;
+}
+
 int TestTheLoadedPace() {
   int failures = 0;
+  // Every round trip below carries the loading and the unloading pause on
+  // top of its road (#844, 0.37.302): 0.125 h.
+  const float pauses = 2.0F * core::kLoadingPauseHours;
   const core::HaulRate loaded = core::RateOverKm(1.0F, 1.0F, 4.0F / 3.0F, 1'800'000);
-  failures += Expect(std::fabs(loaded.round_trip_hours - (1.0F + (4.0F / 3.0F))) < 1.0e-5F,
-                     "loaded pace: a kilometre's round trip is the empty half plus the loaded "
-                     "half, 2.333 h");
+  failures +=
+      Expect(std::fabs(loaded.round_trip_hours - (1.0F + (4.0F / 3.0F) + pauses)) < 1.0e-5F,
+             "loaded pace: a kilometre's round trip is the empty half plus the loaded half, "
+             "2.333 h, plus the two pauses");
   const core::HaulRate walked = core::RateOverKm(1.0F, 2.4F, 2.4F, 20'000);
-  failures += Expect(std::fabs(walked.round_trip_hours - 4.8F) < 1.0e-5F,
-                     "loaded pace: a carrier on foot walks both halves, twice his walk");
+  failures += Expect(std::fabs(walked.round_trip_hours - (4.8F + pauses)) < 1.0e-5F,
+                     "loaded pace: a carrier on foot walks both halves, twice his walk, and "
+                     "pays the same pauses");
+  // GATE L1 (econ loading-pause-2026-10-19 §4, at L6's halved value): a
+  // 10-hour day of trips on a 261 m leg is 10 / (0.261 x 2.333 + 0.125) =
+  // 13.6, on 1 km 4.07; a leg of no length is the two pauses alone.
+  const auto trips_a_day = [](float one_way_km) {
+    return 10.0F / core::RateOverKm(one_way_km, 1.0F, 4.0F / 3.0F, 1).round_trip_hours;
+  };
+  std::cout << "  loading pause: trips a 10 h day — 261 m " << trips_a_day(0.261F) << ", 1 km "
+            << trips_a_day(1.0F) << ", 0 m " << trips_a_day(0.0F) << "\n";
+  failures += Expect(std::fabs(trips_a_day(0.261F) - 13.6F) <= 0.2F &&
+                         std::fabs(trips_a_day(1.0F) - 4.07F) <= 0.05F &&
+                         std::fabs(trips_a_day(0.0F) - 80.0F) < 1.0e-3F,
+                     "loading pause (L1): 13.6 trips a day on 261 m, 4.07 on 1 km, 80 on none");
   const core::HaulRate between = core::RateBetween(core::Vec2{.x = 0.0F, .y = 0.0F},
                                                    core::Vec2{.x = 1'000.0F, .y = 0.0F},
                                                    1.0F,
@@ -661,8 +725,9 @@ int TestTheLoadedPace() {
   failures += Expect(std::fabs(between.round_trip_hours - loaded.round_trip_hours) < 1.0e-5F,
                      "loaded pace: the straight-line door prices the same round");
   failures += Expect(std::fabs(static_cast<float>(core::HaulGrams(10.0F, loaded)) -
-                               (1'800'000.0F * 10.0F / (1.0F + (4.0F / 3.0F)))) < 1.0F,
-                     "loaded pace: ten hours carry 4.29 loads at the longer round, not 5");
+                               (1'800'000.0F * 10.0F / (1.0F + (4.0F / 3.0F) + pauses))) < 1.0F,
+                     "loaded pace: ten hours carry 3.87 loads at the longer round with its "
+                     "pauses, not 5");
   return failures;
 }
 
@@ -2559,6 +2624,26 @@ int TestRoadIndex() {
 /// painting on day 70 clears the dark days between — day 60's slot, which is
 /// day 12's, says nothing of day 12 any more. The young kept: a third of the
 /// adults and the year's worst more while lit.
+/// THE HAY's NIGHTLY LOSS (#1056 C3, the third lever; spoilage.h): the
+/// weathering's seasons - December to February winter, March to May spring,
+/// June to August summer, September to November autumn - and a hay heap's
+/// shelf as one over its daily share: 0.10 a month is 40 days; a season that
+/// weathers none keeps for ever.
+int TestHayNightlyLoss() {
+  int failures = 0;
+  failures += Expect(core::HayWeatheringSeason(11) == 2 && core::HayWeatheringSeason(0) == 2 &&
+                         core::HayWeatheringSeason(1) == 2 && core::HayWeatheringSeason(2) == 3 &&
+                         core::HayWeatheringSeason(4) == 3 && core::HayWeatheringSeason(5) == 0 &&
+                         core::HayWeatheringSeason(7) == 0 && core::HayWeatheringSeason(8) == 1 &&
+                         core::HayWeatheringSeason(10) == 1,
+                     "hay's weathering season by month: winter, spring, summer, autumn");
+  failures +=
+      Expect(std::abs(core::HayHeapShelfDays(0.10F) - 40.0F) < 1e-3F &&
+                 std::isinf(core::HayHeapShelfDays(0.0F)),
+             "a hay heap's shelf by its nightly loss: 0.10 a month is 40 days, none for ever");
+  return failures;
+}
+
 /// THE WORKS THAT WILL HOUSE A HERD FACING THE COLD (cold_housing.h; boss, 11
 /// October 2026): a cattle yard under works, cows of a freezing kind standing
 /// and no warm cattle yard — in September it holds; in July it does not; nor
@@ -2933,18 +3018,76 @@ int CheckPaintAlarms() {
   return failures;
 }
 
+/// THE GROOM'S HORSES BY WHAT HOLDS THEM (work_seam.h, HorsesByUse; stage
+/// В6): seven horses; a ploughman, a carter on a horse at a meadow's hay, one
+/// at a works' supply, one at a field's heap, one at a stand's logs, a
+/// reaping brigade's driver and a felling's people's-cart driver hold one each
+/// - a use apiece and none free; an eighth horse is free; a carter on foot
+/// holds none; and the pool short of the placements frees nought, never less.
+int TestHorsesByUse() {
+  int failures = 0;
+  core::WorldState world;
+  core::HerdRow horses;
+  horses.kind = core::LivestockKindId{0};
+  horses.adult_count = 7;
+  core::AppendRow(world.herds, horses);
+  core::FieldRow meadow;
+  meadow.kind = core::LandKind::kMeadow;
+  const core::FieldId meadow_id = core::AppendRow(world.fields, meadow);
+  core::FieldRow arable;
+  arable.kind = core::LandKind::kArable;
+  const core::FieldId arable_id = core::AppendRow(world.fields, arable);
+  core::UnitRow site;
+  site.construction.awaiting.assign(1, 1000);
+  const core::UnitId site_id = core::AppendRow(world.units, site);
+  const auto hand = [&world](core::WorkKind kind, std::uint8_t rides) -> core::WorkAssignment& {
+    core::ResidentRow person;
+    person.work.kind = kind;
+    person.work.rides_horse = rides;
+    core::AppendRow(world.residents, person);
+    return world.residents.rows.back().work;
+  };
+  hand(core::WorkKind::kPlowing, 0);
+  hand(core::WorkKind::kHauling, 1).field = meadow_id;
+  hand(core::WorkKind::kHauling, 1).unit = site_id;
+  hand(core::WorkKind::kHauling, 1).field = arable_id;
+  hand(core::WorkKind::kHauling, 1).stand = core::TimberStandId{3};
+  hand(core::WorkKind::kHarvest, 1).field = arable_id;
+  hand(core::WorkKind::kFelling, 1);
+  hand(core::WorkKind::kHauling, 0).field = meadow_id;  // on foot: no horse
+  const auto use = [](const std::array<std::uint16_t, core::kCartUseCount>& by,
+                      core::CartUse which) { return by[static_cast<std::size_t>(which)]; };
+  const auto seven =
+      core::HorsesByUse(world, core::DraughtHorsesOf(world, core::LivestockKindId{0}));
+  failures += Expect(
+      use(seven, core::CartUse::kPlough) == 1 && use(seven, core::CartUse::kHay) == 1 &&
+          use(seven, core::CartUse::kSiteSupply) == 1 && use(seven, core::CartUse::kFields) == 2 &&
+          use(seven, core::CartUse::kOtherLoad) == 1 &&
+          use(seven, core::CartUse::kPeoplesCart) == 1 && use(seven, core::CartUse::kFree) == 0,
+      "horses by use: seven held a use apiece - the brigade's cart and the "
+      "heap both on the fields, none free, the walker holds none");
+  world.herds.rows[0].adult_count = 8;
+  failures += Expect(use(core::HorsesByUse(world, 8), core::CartUse::kFree) == 1,
+                     "horses by use: an eighth horse no placement holds is free");
+  failures += Expect(use(core::HorsesByUse(world, 5), core::CartUse::kFree) == 0,
+                     "horses by use: a pool short of the placements frees nought, never less");
+  return failures;
+}
+
 int main() {
   int failures = 0;
   failures += TestDistrictVisitPacking();
   failures += TestHerdAgeBand();
   failures += TestHorseLampMemory();
   failures += TestColdHousing();
+  failures += TestHayNightlyLoss();
   failures += TestRoadBeds();
   failures += TestRoadGraph();
   failures += TestRoadViews();
   failures += TestObstacleRaster();
   failures += core_test::TestMeadowMarkContract();
   failures += core_test::TestThePorter();
+  failures += core_test::TestTripTerms();
   failures += TestRoadTrace();
   failures += TestRoadPieces();
   failures += TestRoadCut();
@@ -3035,7 +3178,9 @@ int main() {
   failures += TestPlot();
   failures += TestResidentActivity();
   failures += TestTheLoadedPace();
+  failures += TestTheSledge();
   failures += TestTheSiteSupplyQueue();
+  failures += TestHorsesByUse();
   if (failures == 0) {
     std::cout << "unit_core_common: all checks passed\n";
   }

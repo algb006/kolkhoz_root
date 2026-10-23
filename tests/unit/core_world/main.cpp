@@ -39,6 +39,7 @@
 #include "core_world/era_readiness.h"
 #include "core_world/road_tools.h"
 #include "core_world/world.h"
+#include "settlement_checks.h"
 #include "start_literacy.h"
 #include "watchdog_checks.h"
 
@@ -440,6 +441,13 @@ int CheckRequiredUnitLevel() {
                      "required level: no ladder, and a type past the catalogue, ask nothing");
   failures += Expect(required(3, core::Epoch::kOne) == 1,
                      "required level: a rung the table skipped is not stepped over");
+  // A FREE LEVEL ASKS NOTHING (level_free; boss [36]) - the one home both the
+  // block and the run's upgrades read.
+  catalog.level_free_by_type = {0, 1};
+  failures +=
+      Expect(required(1, core::Epoch::kOne) == 0 && required(0, core::Epoch::kTwo) == 2,
+             "required level: a type whose level is free asks no rung; the others keep theirs");
+  catalog.level_free_by_type.clear();
 
   // THE BLOCK READS IT. A kolkhoz building of type 0 at level 1 is at its
   // level in Epoch I; type 1 at level 1 is not.
@@ -460,6 +468,13 @@ int CheckRequiredUnitLevel() {
   core::ScoreReadiness(catalog, 4.0F, 4.0F, world);
   failures += Expect(world.readiness.blocks.units_at_level == 0,
                      "units block: and one whose second rung this era opens holds it shut");
+  // ITS LEVEL IS THE PLAYER's CHOICE (unit_types level_free; boss [36]): the
+  // same type below its level passes once the table frees it - the cemetery.
+  catalog.level_free_by_type = {0, 1};
+  core::ScoreReadiness(catalog, 4.0F, 4.0F, world);
+  failures += Expect(world.readiness.blocks.units_at_level == 1,
+                     "units block: a type whose level is free does not hold the era at level one");
+  catalog.level_free_by_type.clear();
 
   // A RUNG THAT WAITS FOR ANOTHER UNIT (unit_levels.csv requires_unit;
   // 0.37.178): type 4 — the priest's house — opens its second rung, Epoch I,
@@ -731,6 +746,40 @@ int CheckEraNormList() {
   failures +=
       Expect(core::StandingBlocks(catalog, three_and_two).social_objects == 0,
              "era norm: three of the six beside the beach and the barter place open no block");
+  return failures;
+}
+
+/// THE OLD CEMETERY STARTS HALF FULL (#1199; social.md «Половина на старте»):
+/// the shipped start_layout's fill_pct 50 of its OWN 14 m plot's 41 graves at
+/// world_params' 15 m² a grave (start_layout plot_radius_m; boss [23]), and no
+/// other unit holds a grave.
+int CheckStartCemetery() {
+  int failures = 0;
+  const auto shipped = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
+  if (Expect(shipped != nullptr, "start cemetery: the shipped tables load") != 0) {
+    return 1;
+  }
+  const core::WorldState start =
+      core::CreateStartWorld(*shipped, core::StubTables::kRefused, nullptr, 1929, nullptr);
+  const std::uint32_t cemetery = shipped->FindTable("unit_types")->FindRowByKey("cemetery");
+  std::uint32_t cemeteries = 0;
+  std::uint32_t graves = 0;
+  std::uint32_t graves_elsewhere = 0;
+  float own_radius = 0.0F;
+  for (const core::UnitRow& unit : start.units.rows) {
+    if (unit.type.value == cemetery) {
+      ++cemeteries;
+      graves += unit.graves;
+      own_radius = unit.plot_radius_m;
+    } else {
+      graves_elsewhere += unit.graves;
+    }
+  }
+  // 41 graves at 50 %: lround(20.5) = 21.
+  failures += Expect(cemeteries == 1 && own_radius == 14.0F && graves == 21,
+                     "start cemetery: one old cemetery on its own 14 m, 21 of its 41 graves taken");
+  failures += Expect(graves_elsewhere == 0 && start.burials_waiting == 0,
+                     "start cemetery: no other unit holds a grave and nobody waits");
   return failures;
 }
 
@@ -1717,6 +1766,8 @@ int CheckRoadTracer() {
   // brook by the manor, new water of the map's base (32 and 4 until then).
   // 58 AREAS SINCE 0.37.211: the 33 and the start's land as the map draws
   // it — 15 start fields and 10 start meadows (meadow_mark.h), counted apart.
+  // 6 LINES SINCE 0.37.316: duck_backwater, a brook of boss's mill-pond re-cut
+  // (18 Oct), which reached core's tables only with the map step.
   std::size_t start_fields = 0;
   std::size_t start_meadows = 0;
   for (const core::MapAreaDef& area : obstacles.areas) {
@@ -1725,10 +1776,10 @@ int CheckRoadTracer() {
   }
   std::cout << "tracer: read " << obstacles.areas.size() << " areas (expected 58), of them "
             << diggings << " diggings (6), " << start_fields << " start fields (15), "
-            << start_meadows << " start meadows (10), " << obstacles.lines.size() << " lines (5), "
+            << start_meadows << " start meadows (10), " << obstacles.lines.size() << " lines (6), "
             << fords << " fords (4)" << (read ? "" : " — READ FAILED: " + error) << '\n';
   failures += Expect(read && obstacles.areas.size() == 58 && diggings == 6 && start_fields == 15 &&
-                         start_meadows == 10 && obstacles.lines.size() == 5 && fords == 4,
+                         start_meadows == 10 && obstacles.lines.size() == 6 && fords == 4,
                      "tracer: the reader takes every area, line and ford of the export");
 
   const auto built_at = std::chrono::steady_clock::now();
@@ -1956,6 +2007,10 @@ int CheckRoadLaying() {
                      "laying: the clean draft is laid as the preview drew it, to the bit — a "
                      "fresh player dirt road, named by kRoadLaid, in Roads()");
   failures += Expect(forest_refused, "laying: the forest draft is refused and lays nothing");
+  // THE PLAN IS STALE OVER THE NEW ROAD (#1056 C4, writer (2)): the groom's
+  // legs were drawn over the old network, and the next hour re-plans them.
+  failures +=
+      Expect(after.groom_plan.stale, "laying: a road laid in the day makes the groom's plan stale");
   const std::vector<std::byte> bytes = core::EncodeWorld(after, *shipped);
   core::WorldState loaded;
   std::string load_error;
@@ -2535,6 +2590,35 @@ int CheckTheOfficeDoors() {
                      "office doors: the plan by resource, its term the next turn — 99 % met at "
                      "the district's share, 98 % not, no figure not listed");
 
+  // THE YEAR'S BOOK (#984): the trial's run «N из M» and the loans «к
+  // возврату {M}», read with no announcement too. Two failed years of
+  // campaign.csv's three; resource 1 owed 12 t, 10 t of it taken this year;
+  // resource 2 owed a carried 3 t, nothing taken; resource 0 nothing.
+  core::WorldState in_debt = start;
+  in_debt.plan.announced = 0;
+  in_debt.plan.failed_years_in_a_row = 2;
+  in_debt.plan.goods_loan_owed.assign(3, 0);
+  in_debt.plan.goods_loan_owed[1] = 12 * core::kGramsPerTonne;
+  in_debt.plan.goods_loan_owed[2] = 3 * core::kGramsPerTonne;
+  in_debt.plan.goods_loan_taken.assign(2, 0);
+  in_debt.plan.goods_loan_taken[1] = kTen;
+  simulation->ResetWorld(in_debt);
+  const core::PlanBook book = simulation->OfficePlan();
+  failures +=
+      Expect(!book.announced && book.failed_years_in_a_row == 2 && book.failed_years_to_trial == 3,
+             "office doors: the book's trial count is the run, of campaign.csv's "
+             "threshold 3, before any announcement");
+  failures += Expect(
+      book.loans.size() == 2 && book.loans[0].resource.value == 1 &&
+          book.loans[0].owed == 12 * core::kGramsPerTonne &&
+          book.loans[0].taken_this_year == kTen && book.loans[1].resource.value == 2 &&
+          book.loans[1].owed == 3 * core::kGramsPerTonne && book.loans[1].taken_this_year == 0,
+      "office doors: the book lists every resource owed, the mark-up included, "
+      "and what was taken this year; nothing owed is not listed");
+  failures += Expect(simulation->GoodsLoanAmountBack(kTen) == 12 * core::kGramsPerTonne,
+                     "office doors: the loan order's preview of 10 t is 12 t back at "
+                     "world_params' mark-up 0.2");
+
   // THE LIMIT: the lots by the catalogue's own words, and the balance.
   const core::ITable* const lots = shipped->FindTable("limit_catalog");
   const std::uint32_t timber = lots->FindRowByKey("timber_lot");
@@ -2851,10 +2935,12 @@ int main() {
   int failures = 0;
   failures += CheckReadinessShape();
   failures += CheckTheWatchdog();
+  failures += CheckTheSettlements();
   failures += CheckEveryAdviceIsTaken();
   failures += CheckBaseConventions();
   failures += CheckIceRowsAssemble();
   failures += CheckStartRoads();
+  failures += CheckStartCemetery();
   failures += CheckEraNormList();
   failures += CheckRoadsDoor();
   failures += CheckJunctionsDoor();

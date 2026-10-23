@@ -108,6 +108,10 @@ struct AdviceRun {
   std::uint32_t refused = 0;
 };
 
+/// Every advice some case below named AND whose order its door took, by
+/// value - the census at the end reads it (#980).
+std::array<bool, static_cast<std::size_t>(core::AlarmAdvice::kAlarmAdviceCount)> g_taken_advice{};
+
 /// Lays `world` in, reads the lamps, finds `kind` with `advice`, stages the
 /// order `order_of` builds from it and steps once: the refusals of that step.
 AdviceRun RunAdvice(core::ISimulation& simulation,
@@ -139,7 +143,79 @@ AdviceRun RunAdvice(core::ISimulation& simulation,
       run.refusal = static_cast<core::OrderRefusal>(event.amount);
     }
   }
+  if (run.refused == 0 && order.kind != core::OrderKind::kNone) {
+    g_taken_advice[static_cast<std::size_t>(advice)] = true;
+  }
   return run;
+}
+
+/// An advice no order carries, and why (#980; econ's complexity pass of 16
+/// October 2026, risk 2: «every advice carries the exact words of the button
+/// it means, or names no move»). The lamp's string must then name no move.
+struct NoDoor {
+  core::AlarmAdvice advice;
+  const char* why;
+};
+
+constexpr std::array<NoDoor, 2> kNoDoor = {{
+    {core::AlarmAdvice::kBringFeed,
+     "two moves, one word - «подвезти корма или уменьшить стадо»; no single order"},
+    {core::AlarmAdvice::kInsulateStraw,
+     "retired 0.37.264 (#979): named by no lamp, its door refuses a livestock unit"},
+}};
+
+/// An advice with a door that no case here has run through it yet: OWED, by
+/// name and door, printed on every run until a case takes it.
+struct Owed {
+  core::AlarmAdvice advice;
+  const char* door;
+};
+
+/// Empty since #991 took the last three (kLiftRush, kBuildStore,
+/// kDeliverAbovePlan); a new advice with a door and no case goes here.
+/// kSowMoreOat (#1040): its door needs a thin year, a short field-work day
+/// and a horse cart on a task in today's plan in one fixture - owed until a
+/// case here builds that world.
+/// kLowerIssueNorm (#1046): its door needs a chairman's norm and a village
+/// under threat of hunger within the horizon in one fixture - owed until a
+/// case here builds that world.
+constexpr std::array<Owed, 2> kOwed = {{
+    {core::AlarmAdvice::kSowMoreOat, "kSetLogisticsLevel on the alarm's logistics_task, lower"},
+    {core::AlarmAdvice::kLowerIssueNorm, "kSetIssueNorm of advice_resource, toward the default"},
+}};
+
+/// THE CENSUS (#980): every advice value is taken by its door in a case
+/// above, flagged no-door with a reason, or owed by name - a new value in
+/// none of the three is red, and so is one listed twice or a stale entry.
+int CheckTheAdviceCensus() {
+  int failures = 0;
+  std::uint32_t taken = 0;
+  for (std::size_t value = 1; value < g_taken_advice.size(); ++value) {
+    const auto advice = static_cast<core::AlarmAdvice>(value);
+    const bool no_door = std::ranges::any_of(
+        kNoDoor, [advice](const NoDoor& entry) { return entry.advice == advice; });
+    const bool owed =
+        std::ranges::any_of(kOwed, [advice](const Owed& entry) { return entry.advice == advice; });
+    const bool run = g_taken_advice[value];
+    taken += run ? 1U : 0U;
+    const int homes = (run ? 1 : 0) + (no_door ? 1 : 0) + (owed ? 1 : 0);
+    failures += Expect(homes == 1,
+                       "advice census: advice " + std::to_string(value) + " is in " +
+                           std::to_string(homes) +
+                           " of {taken by its door here, no door, owed} - want exactly 1");
+  }
+  std::cout << "advice census: " << taken << " taken by their doors, " << kNoDoor.size()
+            << " with no door, " << kOwed.size() << " OWED of " << g_taken_advice.size() - 1U
+            << " advice values\n";
+  for (const NoDoor& entry : kNoDoor) {
+    std::cout << "advice census: NO DOOR " << static_cast<int>(entry.advice) << " - " << entry.why
+              << '\n';
+  }
+  for (const Owed& entry : kOwed) {
+    std::cout << "advice census: OWED " << static_cast<int>(entry.advice) << " - " << entry.door
+              << " - no case runs it through its door yet\n";
+  }
+  return failures;
 }
 
 int Report(const AdviceRun& run, const std::string& what) {
@@ -469,6 +545,46 @@ int CheckTheHayLamp(const Fixture& fixture) {
                      return order;
                    });
     failures += Report(run, "herd_hay_short_ahead, «скосить»");
+  }
+  // «СНЯТЬ АВРАЛ» (#991): the same cut, an avral standing on the meadow for
+  // more days than a cut allows (farming hay_avral_days_a_cut) - the lamp's
+  // first word is to lift it, and the door is kDeclareRush, amount 0, on the
+  // meadow it stands on.
+  {
+    std::vector<core::WorldState> worlds;
+    for (std::uint32_t day = 18; day <= 34; ++day) {
+      core::WorldState world = WithHay(fixture, fixture.genesis, 0.0F);
+      SetDay(world, day, 1);
+      MoreCows(fixture, world, 400);
+      for (core::FieldRow& field : world.fields.rows) {
+        if (field.kind != core::LandKind::kArable) {
+          field.phase = core::FieldPhase::kHarvest;
+          field.work_days_remaining = 5.0F;
+          field.rush_phase = core::FieldPhase::kHarvest;
+          field.rush_step = 1;
+        }
+      }
+      world.chairman.hay_cut_avral_days = 1000;
+      worlds.push_back(std::move(world));
+    }
+    const AdviceRun run =
+        FirstNamed(*fixture.simulation,
+                   worlds,
+                   core::AlarmKind::kHerdHayShortAhead,
+                   core::AlarmAdvice::kLiftRush,
+                   [](const core::Alarm&, const core::WorldState& world) {
+                     core::OrderRow order;
+                     order.kind = core::OrderKind::kDeclareRush;
+                     order.amount = 0;
+                     for (std::uint32_t row = 0; row < world.fields.rows.size(); ++row) {
+                       if (world.fields.rows[row].kind != core::LandKind::kArable) {
+                         order.field = world.fields.row_ids[row];
+                         break;
+                       }
+                     }
+                     return order;
+                   });
+    failures += Report(run, "herd_hay_short_ahead over a standing avral, «снять аврал»");
   }
   // «СДАТЬ ГОЛОВЫ», «КУПИТЬ КОРМ», «АМБАР ПОД КОРМ»: October, the hay from
   // nothing upward, the points of the year on hand; each on the first stock
@@ -843,6 +959,103 @@ int CheckTheSupplyFloor(const Fixture& fixture) {
   return failures;
 }
 
+/// THE STORE LAMP'S TWO MOVES (#991; row 936): kHarvestWillNotFit on a rye
+/// field of year 2 that the stores will not hold. A shortfall of at least the
+/// smallest store's third names «build the store» - the door kBuildUnit of
+/// the alarm's advice_unit_type; a smaller one, with rye a position of the
+/// announced plan and rye in the stores, names «сдать сверх плана» - the door
+/// kDeliverPlan of advice_resource, advice_amount.
+int CheckTheStoreLamp(const Fixture& fixture) {
+  int failures = 0;
+  const std::uint32_t rye_crop = fixture.Row("crops", "rye_winter");
+  const std::uint32_t rye = fixture.Row("resources", "rye");
+  const std::uint32_t food_yard = fixture.Row("unit_types", "food_yard");
+  core::Vec2 yard_point;
+  if (const core::ITable* const suggestions = fixture.tables->FindTable("suggestions")) {
+    const std::uint32_t row = suggestions->FindRowByKey("suggest_food_store");
+    yard_point.x = suggestions->CellReal(row, suggestions->FindColumn("x_m")).value_or(0.0F);
+    yard_point.y = suggestions->CellReal(row, suggestions->FindColumn("y_m")).value_or(0.0F);
+  }
+  // July of year 2, a rye field of `hectares` standing in the ground; with
+  // `planned`, the district's rye position named and 2 t of rye in store.
+  const auto july_with_rye = [&](float hectares, bool planned) {
+    core::WorldState world = fixture.genesis;
+    SetDay(world, 25, 1);
+    core::FieldRow field;
+    field.kind = core::LandKind::kArable;
+    field.area_ga = hectares;
+    field.fertility = 60.0F;
+    field.phase = core::FieldPhase::kGrowing;
+    field.crop = core::CropId{static_cast<std::uint16_t>(rye_crop)};
+    field.center = world.units.rows.empty() ? core::Vec2{} : world.units.rows.front().position;
+    core::AppendRow(world.fields, field);
+    if (planned) {
+      world.plan.announced = 1;
+      world.plan.due.resize(std::max<std::size_t>(world.plan.due.size(), rye + 1U), 0);
+      world.plan.due[rye] = 5 * core::kGramsPerTonne;
+      Stock(world, rye, 2 * core::kGramsPerTonne);
+    }
+    return world;
+  };
+  {
+    std::vector<core::WorldState> worlds;
+    for (const float hectares : {400.0F, 800.0F, 1600.0F, 3200.0F}) {
+      worlds.push_back(july_with_rye(hectares, false));
+    }
+    const AdviceRun run = FirstNamed(*fixture.simulation,
+                                     worlds,
+                                     core::AlarmKind::kHarvestWillNotFit,
+                                     core::AlarmAdvice::kBuildStore,
+                                     [&](const core::Alarm& alarm, const core::WorldState& world) {
+                                       core::OrderRow order;
+                                       order.kind = core::OrderKind::kBuildUnit;
+                                       order.unit_type = alarm.advice_unit_type;
+                                       order.position = yard_point;
+                                       for (const core::UnitRow& unit : world.units.rows) {
+                                         if (alarm.advice_unit_type.value != food_yard &&
+                                             unit.type.value == food_yard && unit.level > 0) {
+                                           order.position = unit.position;
+                                           order.position.x += 12.0F;
+                                           break;
+                                         }
+                                       }
+                                       return order;
+                                     });
+    failures += Report(run, "harvest_will_not_fit by a store's third or more, «построить склад»");
+  }
+  {
+    std::vector<core::WorldState> worlds;
+    for (const float hectares : {5.0F, 10.0F, 20.0F, 40.0F, 80.0F, 160.0F}) {
+      worlds.push_back(july_with_rye(hectares, true));
+    }
+    core::Alarm named;
+    const AdviceRun run = FirstNamed(*fixture.simulation,
+                                     worlds,
+                                     core::AlarmKind::kHarvestWillNotFit,
+                                     core::AlarmAdvice::kDeliverAbovePlan,
+                                     [&named](const core::Alarm& alarm, const core::WorldState&) {
+                                       named = alarm;
+                                       core::OrderRow order;
+                                       order.kind = core::OrderKind::kDeliverPlan;
+                                       order.resource = alarm.advice_resource;
+                                       order.amount = alarm.advice_amount;
+                                       return order;
+                                     });
+    failures += Report(run, "harvest_will_not_fit under a store's third, «сдать сверх плана»");
+    // THE DOOR TAKES A SHAPELESS ORDER TOO: kDeliverPlan with no resource
+    // ships the whole debt and refuses nothing (district_plan.h,
+    // DeliverPlanNow), so «taken» cannot tell an advice that names its
+    // resource from one that names none - the fault test of #991 (e2) found
+    // it. The advice must name the lamp's resource and an amount.
+    failures +=
+        Expect(!run.named || (named.advice_resource.value == rye && named.advice_amount > 0 &&
+                              named.advice_amount <= named.amount_more),
+               "«сдать сверх плана» names the lamp's resource and an amount no larger "
+               "than the shortfall");
+  }
+  return failures;
+}
+
 }  // namespace
 
 int CheckEveryAdviceIsTaken() {
@@ -857,9 +1070,8 @@ int CheckEveryAdviceIsTaken() {
   failures += CheckTheDayOff(fixture);
   failures += CheckTheHayDayOff(fixture);
   failures += CheckTheSupplyFloor(fixture);
-  // «ПОДВЕЗТИ КОРМ ИЛИ УМЕНЬШИТЬ СТАДО» (kBringFeed) HAS NO ONE DOOR: two moves,
-  // one word (alarm_state.h) - named here, not skipped.
-  std::cout << "advice: kBringFeed has no single order door (two moves, one word) — not "
-               "checked by an order, named\n";
+  failures += CheckTheStoreLamp(fixture);
+  // LAST: it reads what every case above took.
+  failures += CheckTheAdviceCensus();
   return failures;
 }

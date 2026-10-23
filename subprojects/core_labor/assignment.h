@@ -245,6 +245,15 @@ struct AssignmentJob {
   /// window instead and this is false.
   bool stacked_hay = false;
 
+  /// True for a field's winter manure dose (#1056 C2; the human's option 2,
+  /// «manure is the LAST winter cart: logs, supply, lots and ricks first»;
+  /// boss, boss-core-c2-pair [9]): a KEY that sends it after every other
+  /// windowless job of its tier, as stacked_hay does. Without it the dose and a
+  /// stand's logs tied to the last key - the target's bare id, a field's
+  /// against a stand's - and on y2 January mornings all 23 horse riders went
+  /// to the doses while two log tasks stood (village 1931, days 54-58).
+  bool manure_dose = false;
+
   /// True for ploughing and harrowing of a field whose crop carries a position
   /// of this year's plan (plan.due above nought for its resource). Inside one
   /// tier and one kind of window such a field is worked before the others,
@@ -452,6 +461,14 @@ struct AssignmentParams {
   /// goes to is production's to know, and here it is taken to stand at the
   /// walker's door. 0: no threshold.
   float walker_min_trips_per_day = 0.0F;
+
+  /// THE DIRECT LEG'S ROAD BY ITS TRIPS (#1213; LaborConfig::
+  /// carter_min_trips_per_day): a carter for a works' logs straight off a
+  /// stand (AssignmentJob::log_cart) is judged by the round trips of his ride
+  /// the day holds - min(standard_day_hours, window_hours) / (2 x his one-way
+  /// hours) - not by travel_limit_hours and min_usable_hours, whose question
+  /// is the work left after the road. 0: the old road rule.
+  float carter_min_trips_per_day = 0.0F;
 
   /// THE PEOPLE'S CART (transport design §1, «двое и больше — подвода»;
   /// routing stage A, A3; transport.csv people_cart `seats` and

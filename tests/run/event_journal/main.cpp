@@ -128,6 +128,20 @@ const char* KindName(core::EventKind kind) {
       return "stack_cart_urgent";
     case core::EventKind::kHerdAteFromFarRick:
       return "herd_ate_from_far_rick";
+    case core::EventKind::kSettlementFormed:
+      return "settlement_formed";
+    case core::EventKind::kSettlementMerged:
+      return "settlement_merged";
+    case core::EventKind::kSettlementSplit:
+      return "settlement_split";
+    case core::EventKind::kFireGongMoved:
+      return "fire_gong_moved";
+    case core::EventKind::kUnitWorksStarted:
+      return "unit_works_started";
+    case core::EventKind::kBurialHeld:
+      return "burial_held";
+    case core::EventKind::kBurialsLaid:
+      return "burials_laid";
     case core::EventKind::kElectrificationUnlocked:
       return "electrification_unlocked";
     case core::EventKind::kFireBroke:

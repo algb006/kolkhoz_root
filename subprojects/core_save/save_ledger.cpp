@@ -153,10 +153,28 @@ constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
 // the build; on the wire +8 a book. Save 162 (stage В4): CartLoadSource gains
 // kStand, the eight arrays by source one entry each (six floats, two Grams) -
 // predicted 1064 -> 1104 before the build, 123 fields unchanged; on the wire
-// +40 a book.
-static_assert(sizeof(YearLedger) == 1104 + (41 * kAmountsSize) + kBuiltInRowsSize,
+// +40 a book. Save 163 (stage В5): delivered_own, a 42nd amounts vector after
+// `delivered` - predicted 1104 + 42 A and 124 fields before the build. Save
+// 166 (#1043): the rating's year by its writers - four floats, two u16, a
+// float at the tail; predicted 1104 -> 1128 and 131 fields before the build;
+// on the wire +24 a book. Save 167 (#1040): the team's work-oat request, a
+// Grams at the tail - predicted 1128 -> 1136 and 132 fields before the build;
+// on the wire +8 a book. Save 176 (#1005; 170 on its old base, never
+// released): spoiled_in_clamps, a 43rd amounts
+// vector after `spoiled` - predicted 1136 + 43 A and 133 fields before the
+// build; on the wire one amounts vector a book. Save 177 (#1056 C3, the drawn
+// trip as the price; the next number free when it lands - C2's never-released
+// 177 re-bumps behind it, or C3 does behind C2, boss [34]): cart_trips_paid,
+// an array of six floats by source after cart_grams_off_road, and four floats
+// (cart_days_drawn, cart_days_fallback, cart_trips_pooled, cart_trips_back) -
+// predicted 1136 -> 1176 + 43 A and 138 fields before the build; on the wire
+// +40 a book. Save 182 (#1056 C2 option 2 on 0.37.317's 181 - C2's own
+// never-released 177 re-bumped behind C3, as boss [34] foresaw): manure carted
+// and manure late, two Grams after manure_plowed_in - predicted 1176 -> 1192 +
+// 43 A and 140 fields before the build; on the wire +16 a book.
+static_assert(sizeof(YearLedger) == 1192 + (43 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 123,
+static_assert(AggregateArity<YearLedger>() == 140,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(BuiltInRow) == 16 && AggregateArity<BuiltInRow>() == 3,
               "BuiltInRow changed — update its codec and VERSION_SAVE");
@@ -234,17 +252,20 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   sink.WriteAmounts(DefKind::kResource, book.lost_to_snow);  // save 61
   sink.WriteAmounts(DefKind::kResource, book.seized);        // save 62
   sink.WriteAmounts(DefKind::kResource, book.spoiled);
-  sink.WriteAmounts(DefKind::kResource, book.built_in);   // save 70
-  WriteBuiltInByType(sink, book.built_in_by_type);        // save 150
-  sink.WriteAmounts(DefKind::kResource, book.yard_feed);  // save 70
-  sink.WriteAmounts(DefKind::kResource, book.processed);  // save 73
-  sink.WriteAmounts(DefKind::kResource, book.made);       // save 73
+  sink.WriteAmounts(DefKind::kResource, book.spoiled_in_clamps);  // save 176
+  sink.WriteAmounts(DefKind::kResource, book.built_in);           // save 70
+  WriteBuiltInByType(sink, book.built_in_by_type);                // save 150
+  sink.WriteAmounts(DefKind::kResource, book.yard_feed);          // save 70
+  sink.WriteAmounts(DefKind::kResource, book.processed);          // save 73
+  sink.WriteAmounts(DefKind::kResource, book.made);               // save 73
   sink.WriteAmounts(DefKind::kResource, book.seed);
   out.WriteFloat(book.area_sown_ha);
   out.WriteFloat(book.area_harvested_ha);
   out.WriteFloat(book.area_lost_ha);
   out.WriteFloat(book.area_manured_ha);
   out.WriteI64(book.manure_plowed_in);
+  out.WriteI64(book.manure_carted);  // save 182 (#1056 C2)
+  out.WriteI64(book.manure_late);    // save 182 (#1056 C2)
 
   sink.WriteAmounts(DefKind::kResource, book.herd_produce);
   sink.WriteAmounts(DefKind::kLivestock, book.adult_head_days);  // save 127
@@ -262,6 +283,7 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteFloat(book.herd_hungry_head_days);
 
   sink.WriteAmounts(DefKind::kResource, book.delivered);
+  sink.WriteAmounts(DefKind::kResource, book.delivered_own);  // save 163 (В5)
   // What the district asked, by position (save 58, M12).
   sink.WriteAmounts(DefKind::kResource, book.plan_due);
   // What went against each position (save 83).
@@ -300,6 +322,12 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   for (const Grams grams : book.cart_grams_off_road) {
     out.WriteI64(grams);
   }
+  // #1056 C3: U's whole trips paid by source, and the prints C3-g, C3-h.
+  WriteFloatArray(out, book.cart_trips_paid);
+  out.WriteFloat(book.cart_days_drawn);
+  out.WriteFloat(book.cart_days_fallback);
+  out.WriteFloat(book.cart_trips_pooled);
+  out.WriteFloat(book.cart_trips_back);
   // Save 155 (#671): who carried it, and the logs carried by two.
   sink.WriteAmounts(DefKind::kResource, book.hauled_on_foot);
   sink.WriteAmounts(DefKind::kResource, book.hauled_by_cart);
@@ -358,6 +386,16 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   // The zyab on 1 December (save 114).
   out.WriteFloat(book.zyab_ha_dec1);
   out.WriteU16(book.zyab_fields_dec1);
+  // The rating's year by its writers (save 166; #1043).
+  out.WriteFloat(book.reputation_plan_step);
+  out.WriteFloat(book.reputation_tier_step);
+  out.WriteFloat(book.reputation_visit_step);
+  out.WriteFloat(book.reputation_losses);
+  out.WriteU16(book.reputation_clean_visits);
+  out.WriteU16(book.reputation_tiers_reached);
+  out.WriteFloat(book.reputation_own_overfulfil_t);
+  // The team's work-oat request of the year (save 167; #1040).
+  out.WriteI64(book.team_work_oat_requested);
 }
 
 YearLedger ReadYearLedger(LoadSource& source) {
@@ -416,6 +454,13 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.lost_to_snow = source.ReadAmounts(DefKind::kResource);
   book.seized = source.ReadAmounts(DefKind::kResource);
   book.spoiled = source.ReadAmounts(DefKind::kResource);
+  book.spoiled_in_clamps = source.ReadAmounts(DefKind::kResource);  // save 176
+  for (std::size_t resource = 0; resource < book.spoiled_in_clamps.size(); ++resource) {
+    const Grams of_all = resource < book.spoiled.size() ? book.spoiled[resource] : 0;
+    if (book.spoiled_in_clamps[resource] < 0 || book.spoiled_in_clamps[resource] > of_all) {
+      source.Fail("the book's clamp rot is negative or more than all the rot");
+    }
+  }
   book.built_in = source.ReadAmounts(DefKind::kResource);
   book.built_in_by_type = ReadBuiltInByType(source);  // save 150
   book.yard_feed = source.ReadAmounts(DefKind::kResource);
@@ -427,6 +472,8 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.area_lost_ha = in.ReadFloat();
   book.area_manured_ha = in.ReadFloat();
   book.manure_plowed_in = in.ReadI64();
+  book.manure_carted = in.ReadI64();  // save 182 (#1056 C2)
+  book.manure_late = in.ReadI64();    // save 182 (#1056 C2)
 
   book.herd_produce = source.ReadAmounts(DefKind::kResource);
   book.adult_head_days = source.ReadAmounts(DefKind::kLivestock);
@@ -452,6 +499,7 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.herd_hungry_head_days = in.ReadFloat();
 
   book.delivered = source.ReadAmounts(DefKind::kResource);
+  book.delivered_own = source.ReadAmounts(DefKind::kResource);  // save 163
   book.plan_due = source.ReadAmounts(DefKind::kResource);
   book.plan_delivered = source.ReadAmounts(DefKind::kResource);
   book.milk_debt = in.ReadI64();
@@ -506,6 +554,17 @@ YearLedger ReadYearLedger(LoadSource& source) {
           "the book's produce cart column is negative or carries more beyond the road "
           "than it carried");
     }
+  }
+  // #1056 C3: U's whole trips paid by source, and the prints C3-g, C3-h.
+  ReadFloatArray(in, book.cart_trips_paid);
+  book.cart_days_drawn = in.ReadFloat();
+  book.cart_days_fallback = in.ReadFloat();
+  book.cart_trips_pooled = in.ReadFloat();
+  book.cart_trips_back = in.ReadFloat();
+  if (std::ranges::any_of(book.cart_trips_paid, [](float trips) { return trips < 0.0F; }) ||
+      book.cart_days_drawn < 0.0F || book.cart_days_fallback < 0.0F ||
+      book.cart_trips_pooled < 0.0F || book.cart_trips_back < 0.0F) {
+    source.Fail("the book's drawn-trip columns are negative");
   }
   // Save 155 (#671): who carried it, and the logs carried by two.
   book.hauled_on_foot = source.ReadAmounts(DefKind::kResource);
@@ -584,6 +643,32 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.zyab_fields_dec1 = in.ReadU16();  // save 114
   if (!(book.zyab_ha_dec1 >= 0.0F) || !std::isfinite(book.zyab_ha_dec1)) {
     source.Fail("the book's zyab on 1 December is negative or not a number");
+  }
+  // The rating's year by its writers (save 166; #1043).
+  book.reputation_plan_step = in.ReadFloat();
+  book.reputation_tier_step = in.ReadFloat();
+  book.reputation_visit_step = in.ReadFloat();
+  book.reputation_losses = in.ReadFloat();
+  book.reputation_clean_visits = in.ReadU16();
+  book.reputation_tiers_reached = in.ReadU16();
+  book.reputation_own_overfulfil_t = in.ReadFloat();
+  for (const float value : {book.reputation_plan_step,
+                            book.reputation_tier_step,
+                            book.reputation_visit_step,
+                            book.reputation_losses,
+                            book.reputation_own_overfulfil_t}) {
+    if (!std::isfinite(value)) {
+      source.Fail("the book's rating steps are not numbers");
+    }
+  }
+  if (book.reputation_tiers_reached > 3 || !(book.reputation_losses >= 0.0F) ||
+      !(book.reputation_own_overfulfil_t >= 0.0F)) {
+    source.Fail("the book's rating tiers or losses are out of range");
+  }
+  // The team's work-oat request of the year (save 167; #1040).
+  book.team_work_oat_requested = in.ReadI64();
+  if (book.team_work_oat_requested < 0) {
+    source.Fail("the book's team work-oat request is negative");
   }
   return book;
 }

@@ -147,9 +147,9 @@ std::vector<IssueNormLine> ResolveIssueNorms(const FoodConfig& config,
       continue;  // not in the default bundle: nought
     }
     const float share = config.resources[index].issue_share_of_stock;
-    line.free_grams =
-        static_cast<Grams>(static_cast<double>(FreeIssueStock(world, reserve, line.resource)) *
-                           static_cast<double>(share));
+    line.free_grams = static_cast<Grams>(
+        static_cast<double>(FreeIssueStock(config, world, reserve, line.resource)) *
+        static_cast<double>(share));
     bool fallback = false;
     line.trudodni =
         outstanding + ForecastTrudodni(config, world, life_speedup, line.days_to_harvest, fallback);

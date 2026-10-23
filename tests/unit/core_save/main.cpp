@@ -175,6 +175,9 @@ core::WorldState MakeWorld() {
   // The accumulation limit (save 62): not empty, or a codec that forgot it
   // would round-trip an empty vector perfectly.
   world.plan.accumulation_limit = Amounts({15'000'000, 0, 4'000'000});
+  world.plan.requested = Amounts({2'000'000, 0, 0});  // save 163: the district's standing request
+  world.plan.draw_mark = Amounts({3'000'000, 0, 0});  // save 164: the stores' draw mark
+  world.plan.draw_last_month = Amounts({700'000, 0, 0});  // save 164: and the month's draw
   // The milk cart (save 66): a daily share, and the winter's milk that went
   // with no position — both away from their empty defaults.
   world.plan.milk_daily_share = 250'000;
@@ -295,6 +298,10 @@ core::WorldState MakeWorld() {
   rich.plot_ratio_days = 27;
   rich.trudodni_account = 1234;
   rich.trudodni_redeemed = 567;
+  // Save 168 (#1046): the hunger forecast's own food, unlike numbers (its
+  // trudodni ring left with save 169).
+  rich.own_kcal_today = 1250.5F;
+  rich.own_kcal_mean = 980.25F;
   rich.satisfaction_year = 47.75F;  // save 113; `bare` keeps «not yet»
   // Save 124: the season's table by category — nine unlike numbers, so a
   // codec that swapped two or dropped the last is seen — and the season's
@@ -351,6 +358,12 @@ core::WorldState MakeWorld() {
   field.start_shape = 7;
   // Save 146: the summer of a sown grass stand, off its default.
   field.stand_summers = 4;
+  // Save 176 (#1056 C2): the winter's dose from the heap, part carted.
+  field.manure_dose = {.from = core::UnitId{2},
+                       .booked = 150'000'000,
+                       .due = 61'000'000,
+                       .days_remaining = 1.5F,
+                       .days_written = 2.25F};
   core::AppendRow(world.fields, field);
 
   // And one meadow: a different LandKind, so the byte the row gained in task
@@ -410,6 +423,18 @@ core::WorldState MakeWorld() {
   house.paused = 1;
   house.dead = 1;
   house.insulated = 1;  // warm, save format 44
+  // Save 171 (#1056 C1.2): a rick's supply half carried, every field off its
+  // default and unlike the others.
+  house.rick_supply.from = core::UnitId{21};
+  house.rick_supply.resource = core::ResourceId{1};
+  house.rick_supply.days_remaining = 0.625F;
+  house.rick_supply.days_written = 1.375F;
+  house.rick_supply.grams = 2'250'000;
+  house.rick_supply.threshold_days = 9;
+  // The graves (save 180, #1199): past one byte, so a codec that wrote a u8 is
+  // seen. The codec writes any row's count; only a cemetery's is ever raised.
+  house.graves = 301;
+  house.plot_radius_m = 14.25F;  // save 181: its own plot, not the type's
   // The top of the phase enum, being insulated (save format 44).
   house.construction.phase = core::ConstructionPhase::kInsulating;
   house.construction.target_level = house.level;
@@ -498,6 +523,13 @@ core::WorldState MakeWorld() {
   herd.fed_days_in_a_row = 3;      // save 142: off its «never hungry» default
   herd.fed_share = 0.625F;         // save 71: a third short of the ration, not its default 1
   herd.autumn_slaughter_done = 1;  // save 76: this October's slaughter done
+  // Save 170 (#1056 C1.1): a milk leg half carried, unlike numbers.
+  herd.leg_days_remaining = 0.375F;
+  herd.leg_days_written = 0.75F;
+  herd.leg_days_priced = 0.875F;
+  herd.leg_to = core::Vec2{8800.5F, 9250.25F};
+  herd.leg_resource = core::ResourceId{1};
+  herd.leg_on_foot = 1;  // save 172 (#1056 C1.3): on foot, off its default
   // Save 138: a horse of it at its worker's yard, waiting for his shift.
   herd.wait = core::WaitRecord(
       core::WaitKind::kHorseAtWorkersYard,
@@ -716,10 +748,30 @@ core::WorldState MakeWorld() {
   world.horse_lamp.last_painted_day = 205;
   world.horse_lamp.teams_short[1] = 3;
   world.horse_lamp.teams_short[13] = 7;
+  // A settlement (save 173; #1089): every field off its default, so a codec
+  // that dropped or swapped one is seen.
+  {
+    core::SettlementRow village;
+    village.centre = core::Vec2{.x = 812.5F, .y = 940.25F};
+    village.gong = core::UnitId{7};
+    village.formed_day = 96;
+    village.gong_moved_day = 140;
+    village.merge_with = core::SettlementId{3};
+    village.split_pending = 1;
+    village.name = 4;
+    core::AppendRow(world.settlements, village);
+  }
   // The migrants turned away (save 148): a day and two counts apart.
   world.arrivals_turned_away.last_day = 300;
   world.arrivals_turned_away.per_day[2] = 1;
   world.arrivals_turned_away.per_day[44] = 3;
+  // The clamps' rot (save 176): a day and two gram counts apart, one past
+  // four bytes, so a codec that wrote a u32 is seen.
+  world.clamp_rot.last_day = 301;
+  world.clamp_rot.per_day[3] = 5'000'000'123;
+  world.clamp_rot.per_day[45] = 70'000;
+  // The dead waiting for a grave (save 180, #1199): past one byte.
+  world.burials_waiting = 258;
   // The jobs' runs of mornings with no hand (save 149): two, every id and
   // count off its default, the second one said.
   world.unmanned_runs.resize(2);
@@ -752,8 +804,17 @@ core::WorldState MakeWorld() {
   task.urgent_since = 3'333;
   task.unserved_light_hours = 7;  // save 142: the lamp's clock off its nought
   task.over_fields = true;        // save 158 (#734)
+  task.threshold_days = 11;       // save 171 (#1056 C1.2)
   task.drained_on_foot = 0.5F;    // save 155: who drained the seam, the two apart
   task.drained_by_cart = 1.25F;
+  // Save 177 (#1056 C3): the trip's facts and the carried pair, each apart.
+  task.trip_terms = core::TaskTripTerms{.load_point = core::Vec2{.x = 123.0F, .y = 456.0F},
+                                        .trip_hours = 2.5F,
+                                        .trip_loaded_hours = 1.5F,
+                                        .cart_load = 1'800'000,
+                                        .grams_left = 7'200'000};
+  task.carried_by = core::LogisticsTaskId{9};
+  task.carried_share = 0.375F;
   core::AppendRow(world.logistics_tasks, task);
   // The groom's plan of the day (save format 136): one cart, two legs, a rider
   // on the first — every field off its default, the two ticks apart.
@@ -765,16 +826,23 @@ core::WorldState MakeWorld() {
   plan_cart.people_cart = true;
   plan_cart.legs.push_back(core::CartLeg{.from = core::Vec2{.x = 10.0F, .y = 20.0F},
                                          .to = core::Vec2{.x = 30.0F, .y = 40.0F},
-                                         .task = core::LogisticsTaskId{0},
-                                         .resource = core::ResourceId{2},  // save 155
+                                         .task = core::LogisticsTaskId{8},  // save 179: a load's
+                                         .loaded = 1,                       // save 179: a back load
+                                         .resource = core::ResourceId{2},   // save 155
                                          .depart = 7'057,
                                          .arrive = 7'059,
+                                         .depart_minute = 77,   // save 178 (T1)
+                                         .arrive_minute = 191,  // save 178
+                                         .back_load = 1,        // save 179 (ruling 4)
                                          .riders = {core::ResidentId{3}}});
   plan_cart.legs.push_back(core::CartLeg{.from = core::Vec2{.x = 30.0F, .y = 40.0F},
                                          .to = core::Vec2{.x = 50.0F, .y = 60.0F},
                                          .task = core::LogisticsTaskId{4},
                                          .depart = 7'061,
                                          .arrive = 7'063,
+                                         .depart_minute = 300,  // save 178
+                                         .arrive_minute = 301,
+                                         .kept_in_chain = 1,  // save 178: kept in the chain
                                          .riders = {}});
   world.groom_plan.carts.push_back(plan_cart);
   // A carrier on foot (save format 137, B4b): one load leg, no riders.
@@ -790,7 +858,10 @@ core::WorldState MakeWorld() {
                                            .carried = 20'000,
                                            .depart = 7'058,
                                            .arrive = 7'062,
-                                           .riders = {}});
+                                           .depart_minute = 129,  // save 178
+                                           .arrive_minute = 362,
+                                           .riders = {},
+                                           .pooled_task = core::LogisticsTaskId{6}});  // save 177
   world.groom_plan.carts.push_back(plan_walker);
 
   // A couple waiting for a free house (save format 35).
@@ -981,6 +1052,17 @@ core::WorldState MakeWorld() {
   world.traction_watch.work_grain_short = 700;
   world.traction_watch.week_harnessed[2] = 5.0F;
   world.traction_watch.week_horse_backed[2] = 4.0F;
+  // Save 167 (#1040): the thin year by the field plan, off nought, and the
+  // closed book's team request (the current one's stays nought).
+  world.traction_watch.oat_short_by_plan = 1;
+  world.traction_watch.by_plan_stop_given = 1;
+  world.traction_watch.by_plan_lit_today = 1;
+  world.traction_watch.plan_oat_ha = 7.5F;
+  world.traction_watch.plan_oat_expected = 6'375'000;
+  world.traction_watch.plan_team_need = 31'000'000;
+  world.ledger.closed.team_work_oat_requested = 29'000'000;
+  world.ledger.closed.manure_carted = 89'000'000;  // save 176
+  world.ledger.closed.manure_late = 12'000'000;    // save 176
   // The closed year's adult head-days by livestock kind (save 127): NOT
   // empty, since empty is what a codec that forgot them would read back.
   world.ledger.closed.adult_head_days = Amounts({0, 1'880});
@@ -990,6 +1072,12 @@ core::WorldState MakeWorld() {
   // off its default, so a codec that shifts one column onto its neighbour,
   // or one source onto the next, cannot round-trip clean.
   world.ledger.closed.cart_trips = {12.5F, 0.25F, 3.0F};
+  // Save 177 (#1056 C3): U's whole trips paid, and the prints C3-g, C3-h.
+  world.ledger.closed.cart_trips_paid = {14.0F, 0.5F, 3.5F};
+  world.ledger.closed.cart_days_drawn = 4.5F;
+  world.ledger.closed.cart_days_fallback = 0.75F;
+  world.ledger.closed.cart_trips_pooled = 2.0F;
+  world.ledger.closed.cart_trips_back = 1.0F;
   world.ledger.closed.cart_off_road_m = {1500.0F, 20.0F, 90.0F};
   world.ledger.closed.cart_off_road_worst_m = {220.0F, 80.0F, 30.0F};
   world.ledger.closed.cart_trips_off_road = {6.0F, 0.25F, 2.0F};
@@ -1309,6 +1397,9 @@ core::WorldState MakeWitnessWorld() {
   witness.horse_lamp.teams_short[19] = 2;
   witness.arrivals_turned_away.last_day = 290;  // save 148
   witness.arrivals_turned_away.per_day[5] = 4;
+  witness.clamp_rot.last_day = 291;  // save 176
+  witness.clamp_rot.per_day[7] = 9'000;
+  witness.burials_waiting = 3;      // save 180
   witness.unmanned_runs.resize(1);  // save 149
   witness.unmanned_runs[0].kind = core::WorkKind::kHerdCare;
   witness.unmanned_runs[0].herd = core::HerdId{2};
@@ -1394,6 +1485,9 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"chairman.hay_cut_dry_work_days", U16(world.chairman.hay_cut_dry_work_days)});
   chunks.push_back({"chairman.hay_day_worked_month", U16(world.chairman.hay_day_worked_month)});
   chunks.push_back({"chairman.hay_cut_avral_days", U16(world.chairman.hay_cut_avral_days)});
+  // The rating's recovery owed (save 166, #1043).
+  chunks.push_back(
+      {"chairman.reputation_recovery_owed", U8(world.chairman.reputation_recovery_owed)});
 
   chunks.push_back({"traction_ration", F32(world.traction_ration)});
   // The team's two alarms' memory (save 109).
@@ -1407,11 +1501,25 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   for (const float days : world.traction_watch.week_horse_backed) {
     chunks.push_back({"traction_watch.week_horse_backed", F32(days)});
   }
+  // The thin year by the field plan (save 167, #1040).
+  const core::TractionWatch& by_plan = world.traction_watch;
+  chunks.push_back({"traction_watch.oat_short_by_plan", U8(by_plan.oat_short_by_plan)});
+  chunks.push_back({"traction_watch.by_plan_stop_given", U8(by_plan.by_plan_stop_given)});
+  chunks.push_back({"traction_watch.by_plan_lit_today", U8(by_plan.by_plan_lit_today)});
+  chunks.push_back({"traction_watch.by_plan_stop_today", U8(by_plan.by_plan_stop_today)});
+  chunks.push_back({"traction_watch.plan_oat_ha", F32(by_plan.plan_oat_ha)});
+  chunks.push_back({"traction_watch.plan_oat_expected",
+                    U64(static_cast<std::uint64_t>(by_plan.plan_oat_expected))});
+  chunks.push_back(
+      {"traction_watch.plan_team_need", U64(static_cast<std::uint64_t>(by_plan.plan_team_need))});
   AppendAmounts(chunks, "issue_norms", world.issue_norms);
   AppendAmounts(chunks, "plan.due", world.plan.due);
   AppendAmounts(chunks, "plan.delivered", world.plan.delivered);
   AppendAmounts(chunks, "plan.highest_due", world.plan.highest_due);                // save 127
   AppendAmounts(chunks, "plan.accumulation_limit", world.plan.accumulation_limit);  // save 62
+  AppendAmounts(chunks, "plan.requested", world.plan.requested);                    // save 163
+  AppendAmounts(chunks, "plan.draw_mark", world.plan.draw_mark);                    // save 164
+  AppendAmounts(chunks, "plan.draw_last_month", world.plan.draw_last_month);        // save 164
   // The milk cart's daily share and the deliveries outside any position (save 66).
   chunks.push_back(
       {"plan.milk_daily_share", U64(static_cast<std::uint64_t>(world.plan.milk_daily_share))});
@@ -1529,6 +1637,13 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   for (const std::uint8_t turned : world.arrivals_turned_away.per_day) {
     chunks.push_back({"arrivals_turned_away.per_day", U8(turned)});
   }
+  // Save 176: the clamps' rot - the last day, eight bytes a day.
+  chunks.push_back({"clamp_rot.last_day", U32(world.clamp_rot.last_day)});
+  for (const core::Grams grams : world.clamp_rot.per_day) {
+    chunks.push_back({"clamp_rot.per_day", U64(static_cast<std::uint64_t>(grams))});
+  }
+  // Save 180: the dead waiting for a grave, two bytes.
+  chunks.push_back({"burials_waiting", U16(world.burials_waiting)});
   // Save 149: the jobs' runs — a count, then each run's fields in order.
   chunks.push_back(
       {"unmanned_runs.count", U32(static_cast<std::uint32_t>(world.unmanned_runs.size()))});
@@ -1648,7 +1763,7 @@ struct RecordedSection {
 /// beside it (manual/setup/57-versioning.md). No deliberate change: the codec
 /// has begun writing something else, which is the whole reason these numbers
 /// are here. Either way the number moves WITH ITS REASON, in the same commit.
-constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
+constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // Save 82: +15 — the seventh dictionary, tree_species (count 2, «pine»
     // 6, «birch» 7); predicted before the build, held.
     // Save 92: +2 — the map roads' dictionary, empty in this fixture's
@@ -1738,7 +1853,26 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // other section unmoved before the build, held (the STRUCT's size was the
     // miss: 88, not 84); the hash read off the first build. And the avral's
     // days on the cut, a third u16, the fixture's 3: 848 -> 850, predicted.
-    {"world", 850, 0xcc5481c2f4d58613ULL},
+    // Save 163 (stage В5): the plan's standing request to the district, one
+    // amounts vector, the fixture's one resource: 850 -> 876 - read off the
+    // build, NOT predicted before it (the miss is named).
+    // Save 164 (the plan-short lamp): the stores' draw mark and the last
+    // month's draw, two amounts vectors of the fixture's one resource each,
+    // +26 apiece as the request's: 876 -> 928, predicted before the build;
+    // the hash read off it.
+    // Save 166 (#1043): the rating's recovery owed, a byte: 928 -> 929,
+    // predicted before the build and held; the hash read off it.
+    // Save 167 (#1040): the thin year by the field plan, four u8, a float, two
+    // Grams: 929 -> 953, predicted before the build and held; the hash read
+    // off it.
+    // Save 176 (#1005; 170 on its old base): the clamps' rot, a u32 day and 48
+    // Grams: 953 -> 1341,
+    // predicted (+388) before the build and held; the hash read off it.
+    // Save 180 (#1199): burials_waiting, a u16 - predicted 1341 -> 1343 before
+    // the build and held; the hash read off it.
+    // (Save 182, C2 option 2, adds nothing to this block: C2.2's three
+    // TractionWatch fields went with C2.2's pricing.)
+    {"world", 1343, 0x990b9373c6d9137eULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -1798,7 +1932,11 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // debt, the given, the barrack byte; two families: predicted 322 -> 372
     // before the build and held. Save 160: +1 a family - the year-end
     // share-outs seen: predicted 372 -> 374 before the build and held.
-    {"families", 374, 0xee1167074b644d3fULL},
+    // Save 168 (#1046): the trudodni ring (12 i32) and the own food (2 f32), 56
+    // bytes a family, two families: 374 -> 486, predicted before the build and
+    // held; the hash read off it. Save 169: the ring leaves, -48 a family:
+    // predicted 486 -> 390 before the build and held; the hash read off it.
+    {"families", 390, 0x8deb60c70a8cfe4ULL},
     // Save 84: +36 — the harvest by parts' laid share (4) and grams (8), 12
     // a row, three rows; predicted before the build and held. Then the first
     // row given non-zero values: the size held at 305, the hash moved.
@@ -1831,7 +1969,10 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // Save 153: +8 a field — haul_to, the load's receiver; 371 -> 395, held.
     // Save 162 (stage В4): +8 a field — the straw lying at the field;
     // 395 -> 419 predicted (three fields) and held; the hash read off the build.
-    {"fields", 419, 0xb53348527e0000c8ULL},
+    // Save 176 (#1056 C2): +28 a field — the winter's dose (the heap's id, two
+    // Grams, two floats); 419 -> 503 predicted (three fields) and held; the
+    // hash read off the build with the first field's dose set off its default.
+    {"fields", 503, 0x30bff7c53005949cULL},
     // Save 67: +27 — the store's emptying byte and the perevalka's two floats,
     // three units; predicted before the fields were added, and held.
     // Save 74: +1 a unit — the house held for a specialist; three units, +3,
@@ -1866,7 +2007,21 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // Save 158 (#734): +3 a site block - the floor's idle days and the day's
     // switch; three units' open blocks and the one put aside: predicted 727 ->
     // 739 before the build and held; the hash read off it.
-    {"units", 739, 0x67e0700070104640ULL},
+    // Save 165 (stage В6 part 3): +2 a site block - the idle days a mowing
+    // held; three units' open blocks and the one put aside, +8: 739 -> 747 as
+    // the arity's note predicted; the hash read off it.
+    // Save 171 (#1056 C1.2): the rick's supply, +23 a unit on three units:
+    // predicted +21 a unit (747 -> 810) before the build and MISSED by two -
+    // the resource's def id is two bytes and my sum took it as one; 816, the
+    // hash read off it.
+    // Save 173 (#1089): the unit's settlement and outlying flag, +5 a unit on
+    // three units: predicted 816 -> 831 before the build and held; the hash
+    // read off it.
+    // Save 180 (#1199): the graves, a u16 a unit on three units - predicted
+    // 831 -> 837 before the build and held; the hash read off it.
+    // Save 181: a unit's own plot radius, a float a unit on three units -
+    // predicted 837 -> 849 before the build and held; the hash read off it.
+    {"units", 849, 0xbeb3984389dfb475ULL},
     // Save 71: +4 — fed_share, one herd; predicted before the field, held.
     // Save 91: +8 — the adult age band, two floats, one herd; predicted
     // 71 -> 79 with every other section unmoved before the build.
@@ -1879,7 +2034,13 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // 137 before the build, held.
     // Save 142 (0.37.192): +2 — the fed days in a row, a u16; predicted 137
     // -> 139 before the build, held.
-    {"herds", 139, 0x3d3f578d92ae347aULL},
+    // Save 170 (#1056 C1.1): +18 a herd - the milk leg's two floats, its
+    // receiver (8) and resource (2); one herd: predicted 139 -> 157 before the
+    // build and held. Then +4, the evening's estimate (leg_days_priced):
+    // predicted 157 -> 161 and held; the hash read off it.
+    // Save 172 (#1056 C1.3): +1 - the leg on foot; predicted 161 -> 162
+    // before the build and held; the hash read off it.
+    {"herds", 162, 0x2fbb997e65965dd2ULL},
     // 2026-09-16, save 48: +6 bytes, one for each of the six orders — the
     // bought head's sex. The witness named the section, the delta and the
     // offset without being asked, which is what it was rewritten for this
@@ -1958,7 +2119,8 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // Save 98: +9 — own_carts and the carting seam's two floats on the one
     // cart of the fixture; predicted 44 -> 53 before the build, held.
     // Save 153: +8 a lot — haul_to; 53 -> 61, held.
-    {"limit_deliveries", 61, 0x3103a4220a1bf577ULL},
+    // Save 163 (stage В5): +1 a lot — the outbound byte; 61 -> 62, held.
+    {"limit_deliveries", 62, 0xa025d8f08bda4065ULL},
     // 2026-09-16, save 48: the stock bought and still on its way. A section of
     // its own beside the carts, because a head rides nothing.
     {"livestock_arrivals", 24, 0x216b896caae651cbULL},
@@ -1991,12 +2153,35 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // before the build, held.
     // Save 158 (#734): +1 - «важнее полевых работ»; predicted 59 -> 60 before
     // the build and held; the hash read off it.
-    {"logistics_tasks", 60, 0xc8326b41d2ef53eULL},
+    // Save 170 (#1056 C1.1): +4 - the milk leg's herd id; predicted 60 -> 64
+    // before the build and held; the hash read off it.
+    // Save 171 (#1056 C1.2): +1 - the rick's threshold; predicted 64 -> 65
+    // before the build and held; the hash read off it.
+    // Save 174 (#1099): +1 - why level 0; predicted 65 -> 66 before the build
+    // and held; the hash read off it.
+    // Save 177 (#1056 C3): the trip's facts (a Vec2, two floats, two Grams)
+    // and the carried pair (an id, a float). Predicted 66 -> 110 before the
+    // build - a MISS: the sum was written «+44» with one float counted twice;
+    // it is 8 + 4 + 4 + 8 + 8 + 4 + 4 = 40, 66 -> 106. The hash read off it.
+    {"logistics_tasks", 106, 0x59996d89af9b302eULL},
+    // Save 173 (#1089): the settlements - the table's next id and count, one
+    // row's id and 27 bytes of fields: predicted 39 before the build and
+    // held; the hash read off it.
+    {"settlements", 39, 0x7aff2d53ece52e1eULL},
     // Save 136 (B3): the groom's plan — 10 of day, flags and count, 9 of the
     // cart, 44 of the first leg (one rider), 40 of the second. Predicted 103
     // before the build, held; the hash read off the build.
     // Save 153: +1 a leg — the loaded byte; three legs, 154 -> 157, held.
-    {"groom_plan", 195, 0xb2217ae0f1c0b873ULL},  // save 155: 2 partners, 3 legs' loads
+    // Save 175 (SL): +1 a leg — the sledge byte; three legs, 195 -> 198,
+    // predicted before the build and held.
+    // Save 177 (#1056 C3): +4 a leg, the pooled leg's second task - three legs,
+    // 198 -> 210, predicted before the build and held; the hash read off it.
+    // Save 178 (#1056 C3, T1): +5 a leg, two minutes and the kept byte - three
+    // legs, 210 -> 225, predicted before the build and held; the hash read off it.
+    // Save 179 (#1056 C3, ruling 4): +1 a leg, the back-load byte (and the first
+    // leg now loaded) - three legs, 225 -> 228, predicted before the build and
+    // held; the hash read off it.
+    {"groom_plan", 228, 0x644f5687c4977757ULL},  // save 155: 2 partners, 3 legs' loads
     // 2026-09-17, save 52: +56 bytes over the two books — the nine yearly
     // inputs the readiness index asks of a year and the year did not keep
     // (ledger_state.h): satisfaction's sum and count, able-bodied
@@ -2114,7 +2299,23 @@ constexpr std::array<RecordedSection, 25> kRecordedPayload = {{
     // Save 162 (stage В4): the cart book's sixth source, the stands' logs - one
     // entry in eight arrays (6 floats, 2 Grams), 40 bytes a book: 2912 -> 2992
     // predicted and held; the hash read off the build.
-    {"ledger", 2992, 0x175cb13794ce38b8ULL},
+    // Save 163 (stage В5): delivered_own, an empty amounts vector in each of
+    // the two books: 2992 -> 2996; the hash read off the build.
+    // Save 166 (#1043): the rating's year by its writers, 24 bytes a book (four
+    // floats, two u16, a float): 2996 -> 3044, predicted before the build and
+    // held; the hash read off it.
+    // Save 167 (#1040): the team's work-oat request, a Grams a book: 3044 ->
+    // 3060, predicted before the build and held; the hash read off it.
+    // Save 170 (#1005): spoiled_in_clamps, an empty amounts vector a book:
+    // 3060 -> 3064 - predicted as «one amounts vector a book» without its
+    // bytes; measured two a book (the empty vector's count); the hash read
+    // off it.
+    // Save 177 (#1056 C3): +40 a book - six floats by source and four floats;
+    // 3064 -> 3144, predicted before the build and held; the hash read off it.
+    // Save 182 (#1056 C2 option 2, re-bumped behind C3 and 0.37.317): manure
+    // carted and late, two Grams a book: 3144 -> 3176, predicted before the
+    // build and held; the hash read off it.
+    {"ledger", 3176, 0xc1a498d316e8612dULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -2483,11 +2684,27 @@ int main() {
       Expect(loaded.horse_lamp.last_painted_day == 205 && loaded.horse_lamp.teams_short[1] == 3 &&
                  loaded.horse_lamp.teams_short[13] == 7 && loaded.horse_lamp.teams_short[0] == 0,
              "the horse lamp's year comes back, day and bytes in place (save 147)");
+  failures += Expect(
+      loaded.settlements.rows.size() == 1 && loaded.settlements.row_ids[0].value == 1 &&
+          loaded.settlements.rows[0].centre.x == 812.5F &&
+          loaded.settlements.rows[0].centre.y == 940.25F &&
+          loaded.settlements.rows[0].gong.value == 7 &&
+          loaded.settlements.rows[0].formed_day == 96 &&
+          loaded.settlements.rows[0].gong_moved_day == 140 &&
+          loaded.settlements.rows[0].merge_with.value == 3 &&
+          loaded.settlements.rows[0].split_pending == 1 && loaded.settlements.rows[0].name == 4,
+      "the settlement comes back, every field in place (save 173)");
   failures += Expect(loaded.arrivals_turned_away.last_day == 300 &&
                          loaded.arrivals_turned_away.per_day[2] == 1 &&
                          loaded.arrivals_turned_away.per_day[44] == 3 &&
                          loaded.arrivals_turned_away.per_day[0] == 0,
                      "the migrants turned away come back, day and counts in place (save 148)");
+  failures +=
+      Expect(loaded.clamp_rot.last_day == 301 && loaded.clamp_rot.per_day[3] == 5'000'000'123 &&
+                 loaded.clamp_rot.per_day[45] == 70'000 && loaded.clamp_rot.per_day[0] == 0,
+             "the clamps' rot comes back, day and grams in place (save 170)");
+  failures += Expect(loaded.burials_waiting == 258,
+                     "the dead waiting for a grave come back, all of them (save 180)");
   failures += Expect(loaded.unmanned_runs.size() == 2 &&
                          loaded.unmanned_runs[0].kind == core::WorkKind::kPlowing &&
                          loaded.unmanned_runs[0].field.value == 3 &&
@@ -2631,8 +2848,12 @@ int main() {
                    back.cart_store_off_road_m == sent.cart_store_off_road_m &&
                    back.cart_store_off_road_worst_m == sent.cart_store_off_road_worst_m &&
                    back.cart_grams == sent.cart_grams &&
-                   back.cart_grams_off_road == sent.cart_grams_off_road,
-               "the produce cart's six columns survive, source by source (save 96)");
+                   back.cart_grams_off_road == sent.cart_grams_off_road &&
+                   back.cart_trips_paid == sent.cart_trips_paid && back.cart_days_drawn == 4.5F &&
+                   back.cart_days_fallback == 0.75F && back.cart_trips_pooled == 2.0F &&
+                   back.cart_trips_back == 1.0F,
+               "the produce cart's six columns survive, source by source (save 96), and the "
+               "drawn trip's five (save 177)");
     failures += Expect(back.hauled_on_foot == sent.hauled_on_foot &&
                            back.hauled_by_cart == sent.hauled_by_cart &&
                            back.log_pair_trips == 1.5F && back.log_pair_days == 2 &&
@@ -2713,6 +2934,13 @@ int main() {
                      "the herd's yesterday's cold place comes back (save 120)");
   failures += Expect(!loaded.herds.rows.empty() && loaded.herds.rows[0].fed_days_in_a_row == 3,
                      "the herd's fed days in a row come back (save 142)");
+  failures += Expect(
+      !loaded.herds.rows.empty() && loaded.herds.rows[0].leg_days_remaining == 0.375F &&
+          loaded.herds.rows[0].leg_days_written == 0.75F &&
+          loaded.herds.rows[0].leg_days_priced == 0.875F &&
+          loaded.herds.rows[0].leg_to.x == 8800.5F && loaded.herds.rows[0].leg_to.y == 9250.25F &&
+          loaded.herds.rows[0].leg_resource.value == 1 && loaded.herds.rows[0].leg_on_foot == 1,
+      "the herd's milk leg comes back, and on foot (save 170, 172)");
   failures += Expect(AmountAt(loaded.ledger.closed.herd_hay_eaten, 1) == 9 &&
                          AmountAt(loaded.ledger.closed.herd_feed_short, 0) == 6 &&
                          loaded.ledger.closed.herd_feed_short.size() == 1 &&
@@ -2723,6 +2951,16 @@ int main() {
                          loaded.traction_watch.week_harnessed[2] == 5.0F &&
                          loaded.traction_watch.week_horse_backed[2] == 4.0F,
                      "the team's two alarms' memory comes back (save 109)");
+  failures += Expect(loaded.traction_watch.oat_short_by_plan == 1 &&
+                         loaded.traction_watch.by_plan_stop_given == 1 &&
+                         loaded.traction_watch.by_plan_lit_today == 1 &&
+                         loaded.traction_watch.by_plan_stop_today == 0 &&
+                         loaded.traction_watch.plan_oat_ha == 7.5F &&
+                         loaded.traction_watch.plan_oat_expected == 6'375'000 &&
+                         loaded.traction_watch.plan_team_need == 31'000'000 &&
+                         loaded.ledger.closed.team_work_oat_requested == 29'000'000 &&
+                         loaded.ledger.current.team_work_oat_requested == 0,
+                     "the oat lamp's thin year and the book's team request come back (save 167)");
   failures += Expect(AmountAt(loaded.ledger.closed.adult_head_days, 1) == 1'880 &&
                          loaded.ledger.current.adult_head_days.empty(),
                      "the closed year's adult head-days come back by kind, the open year's "
@@ -2760,6 +2998,17 @@ int main() {
   failures +=
       Expect(loaded.fields.rows[0].stand_summers == 4 && loaded.fields.rows[1].stand_summers == 0,
              "the grass stand's summer comes back (save 146)");
+  {
+    const core::ManureDoseSeam& dose = loaded.fields.rows[0].manure_dose;
+    failures +=
+        Expect(dose.from.value == 2 && dose.booked == 150'000'000 && dose.due == 61'000'000 &&
+                   dose.days_remaining == 1.5F && dose.days_written == 2.25F &&
+                   loaded.fields.rows[1].manure_dose.booked == 0 &&
+                   loaded.ledger.closed.manure_carted == 89'000'000 &&
+                   loaded.ledger.closed.manure_late == 12'000'000 &&
+                   loaded.ledger.current.manure_carted == 0,
+               "a field's winter dose and the book's manure carted and late come back (save 176)");
+  }
   // AND WHETHER ANYBODY EVER TOLD THE FIELD WHAT TO GROW, which the three
   // crop slots beside it cannot say: an empty slot in a chain that exists is
   // a fallow year, and the same emptiness in a field nobody assigned is
@@ -2810,6 +3059,10 @@ int main() {
                          loaded.families.rows[0].satisfaction_year == 47.75F &&
                          loaded.families.rows[1].satisfaction_year == core::kNotYetRemembered,
                      "the look's memory comes back, and «not yet» comes back not yet (save 113)");
+  failures += Expect(loaded.families.rows[0].own_kcal_today == 1250.5F &&
+                         loaded.families.rows[0].own_kcal_mean == 980.25F &&
+                         loaded.families.rows[1].own_kcal_mean == 0.0F,
+                     "the hunger forecast's own food comes back (save 168)");
   failures += Expect(
       loaded.families.rows[0].season_category_kcal == world.families.rows[0].season_category_kcal &&
           loaded.families.rows[0].season_category_kcal[8] == 1.0F &&
@@ -2977,9 +3230,14 @@ int main() {
             back.origin == core::LogisticsOrigin::kPlayer && back.paused &&
             back.aged_from_day == 141 && back.urgent_since == 3'333 &&
             back.unserved_light_hours == 7 && back.over_fields && back.drained_on_foot == 0.5F &&
-            back.drained_by_cart == 1.25F,
+            back.drained_by_cart == 1.25F && back.threshold_days == 11 &&
+            back.trip_terms.load_point.x == 123.0F && back.trip_terms.load_point.y == 456.0F &&
+            back.trip_terms.trip_hours == 2.5F && back.trip_terms.trip_loaded_hours == 1.5F &&
+            back.trip_terms.cart_load == 1'800'000 && back.trip_terms.grams_left == 7'200'000 &&
+            back.carried_by.value == 9 && back.carried_share == 0.375F,
         "a task of the groom's logistics came back with its load, its two levels, its origin, "
-        "its pause, its two times, the lamp's clock and who drained it (save 135, 142, 155)");
+        "its pause, its two times, the lamp's clock, who drained it, the rick's threshold, "
+        "and the trip's facts with the carried pair (save 135, 142, 155, 171, 177)");
   }
   // Save 136. The two legs' ticks and places are apart, the rider on the
   // first only: a codec that swapped or dropped one is red here.
@@ -2993,7 +3251,7 @@ int main() {
             !back.carts[0].on_foot && back.carts[1].on_foot && !back.carts[1].people_cart &&
             back.carts[1].driver.value == 2 && back.carts[1].legs[0].task.value == 5 &&
             back.carts[1].legs[0].arrive == 7'062 && back.carts[0].legs[0].from.x == 10.0F &&
-            back.carts[0].legs[0].to.y == 40.0F && back.carts[0].legs[0].task.value == 0 &&
+            back.carts[0].legs[0].to.y == 40.0F && back.carts[0].legs[0].task.value == 8 &&
             back.carts[0].legs[0].depart == 7'057 && back.carts[0].legs[0].arrive == 7'059 &&
             back.carts[0].legs[0].riders.size() == 1 &&
             back.carts[0].legs[0].riders[0].value == 3 && back.carts[0].legs[1].task.value == 4 &&
@@ -3003,10 +3261,22 @@ int main() {
             back.carts[1].partner.value == 4 &&
             back.carts[0].partner.value == core::kInvalidEntityIdValue &&
             back.carts[1].legs[0].loaded == 1 && back.carts[1].legs[0].resource.value == 1 &&
-            back.carts[1].legs[0].carried == 20'000,
+            back.carts[1].legs[0].carried == 20'000 &&
+            back.carts[1].legs[0].pooled_task.value == 6 &&
+            back.carts[0].legs[0].pooled_task.value == core::kInvalidEntityIdValue &&
+            back.carts[0].legs[0].depart_minute == 77 &&
+            back.carts[0].legs[0].arrive_minute == 191 &&
+            back.carts[0].legs[1].depart_minute == 300 &&
+            back.carts[0].legs[1].arrive_minute == 301 &&
+            back.carts[0].legs[1].kept_in_chain == 1 && back.carts[0].legs[0].kept_in_chain == 0 &&
+            back.carts[1].legs[0].depart_minute == 129 &&
+            back.carts[1].legs[0].arrive_minute == 362 && back.carts[0].legs[0].loaded == 1 &&
+            back.carts[0].legs[0].back_load == 1 && back.carts[0].legs[1].back_load == 0,
         "the groom's plan came back with its day, its flags, its cart and both legs in order, "
-        "the rider on the first (save 136), the carrier on foot with his byte (save 137), and "
-        "the trips' resources, the walker's grams and his partner (save 155)");
+        "the rider on the first (save 136), the carrier on foot with his byte (save 137), "
+        "the trips' resources, the walker's grams and his partner (save 155), the pooled "
+        "leg's second load (save 177), the legs' minutes and kept byte (save 178), and the "
+        "loaded back leg (save 179)");
   }
   // Save 138: the waits — the passenger's and the herd's, every field, and
   // the first resident's absent wait stays absent.
@@ -3090,6 +3360,15 @@ int main() {
   failures += Expect(house_back.paused == 1, "a stopped unit resumes stopped");
   failures += Expect(house_back.dead == 1, "and a dead one resumes dead, not merely worn");
   failures += Expect(house_back.wear == 70.0F, "and its wear is its own number");
+  failures += Expect(
+      house_back.rick_supply.from.value == 21 && house_back.rick_supply.resource.value == 1 &&
+          house_back.rick_supply.days_remaining == 0.625F &&
+          house_back.rick_supply.days_written == 1.375F &&
+          house_back.rick_supply.grams == 2'250'000 && house_back.rick_supply.threshold_days == 9,
+      "a rick's supply resumes half carried, its sender and threshold (save 171)");
+  failures += Expect(house_back.graves == 301, "a unit's graves come back, past a byte (save 180)");
+  failures += Expect(house_back.plot_radius_m == 14.25F,
+                     "a unit's own plot radius comes back, not the type's (save 181)");
   failures += Expect(house_back.insulated == 1 &&
                          house_back.construction.phase == core::ConstructionPhase::kInsulating,
                      "and a warm house being insulated resumes warm and mid-insulation");

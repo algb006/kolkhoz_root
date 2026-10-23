@@ -14,6 +14,8 @@
 #include "core_common/land_state.h"
 #include "district_plan.h"
 #include "field_work.h"
+#include "milk_cart.h"
+#include "plan_due.h"
 #include "seed_room.h"
 
 namespace core {
@@ -230,7 +232,56 @@ float ChainHectares(const ProductionConfig& config,
   return grown_ha;
 }
 
-/// kPlanPositionShort (boss seq 89): on the year's last day, every position
+/// The tenth month's last day: two ordinary collections before the deadline's
+/// (the tenth's and the eleventh's), the latest the plan-short lamp may first
+/// light (district.md §4).
+constexpr std::uint32_t kPlanShortLatestFirstDay = kDaysPerYear - 1U - (2U * kDaysPerMonth);
+
+/// This year's harvest of `resource` is in the stores: something of it was
+/// harvested this year, no field of it is still to be reaped this year (a
+/// standing crop of it, but a winter crop sown this calendar year, which is
+/// next year's), and none of it lies reaped on a field. False for a
+/// resource no crop yields (milk): its lamp waits for the latest window.
+/// The run chairman's 1.1 rule (tests/run/common/delivery_policy.h) moved
+/// into the lamp the player reads.
+bool PositionHarvestIn(const ProductionConfig& config,
+                       const WorldState& world,
+                       ResourceId resource) {
+  bool yielded = false;
+  for (const CropDef& crop : config.crops) {
+    yielded = yielded || crop.resource.value == resource.value;
+  }
+  if (!yielded || resource.value >= world.ledger.current.harvest.size() ||
+      world.ledger.current.harvest[resource.value] <= 0) {
+    return false;
+  }
+  const SimDay today = world.calendar.day;
+  for (const FieldRow& field : world.fields.rows) {
+    if (field.reaped_grams > 0 && field.reaped_resource.value == resource.value) {
+      return false;
+    }
+    if (field.crop.value >= config.crops.size()) {
+      continue;
+    }
+    const CropDef& crop = config.crops[field.crop.value];
+    if (crop.resource.value != resource.value) {
+      continue;
+    }
+    if (field.phase == FieldPhase::kHarvest) {
+      return false;
+    }
+    const bool standing = field.phase == FieldPhase::kSowing || field.phase == FieldPhase::kGrowing;
+    const bool next_years = crop.is_winter && field.sown_day != kNeverSownDay &&
+                            field.sown_day / kDaysPerYear == today / kDaysPerYear;
+    if (standing && !next_years) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/// kPlanPositionShort (boss seq 89): from one district collection before the
+/// deadline's (stage В5) to the year's last day, every position
 /// the turn's delivery cannot bring to the met share. THE FORECAST ENTERS BY
 /// THE TURN'S OWN DOOR since 0.36.23 (boss-core-epoch1-resume [54]):
 /// delivered plus the least of owed and DeliverableAboveSeed — the heaps and
@@ -241,32 +292,69 @@ float ChainHectares(const ProductionConfig& config,
 void CollectPlanShortAlarms(const ProductionConfig& config,
                             const WorldState& world,
                             std::vector<Alarm>& alarms) {
-  // «ЗА СУТКИ ДО ПОВОРОТА ГОДА», the boss's word: the day the turn follows.
-  if (world.plan.announced == 0 || world.calendar.day % kDaysPerYear != kDaysPerYear - 1) {
+  // WHEN IT BURNS (district.md §4, corrected 17 October 2026; boss, the
+  // plan-short lamp [2]): from the first day the position's forecast is short
+  // once that crop's harvest of the year is in, and from two ordinary
+  // collections before the deadline at the latest - the tenth month's last
+  // day - whatever the harvest. Until 0.37.271 it burned from the eleventh
+  // month's last day only, the one collection left: in host's x3.57 arm 21 of
+  // 27 failed positions lit only then, 5 later, 1 never.
+  if (world.plan.announced == 0) {
     return;
   }
+  const bool latest_window = world.calendar.day % kDaysPerYear >= kPlanShortLatestFirstDay;
   for (std::uint32_t index = 0; index < world.plan.due.size(); ++index) {
     const Grams due = world.plan.due[index];
     if (due <= 0) {
       continue;
     }
-    const Grams delivered = index < world.plan.delivered.size() ? world.plan.delivered[index] : 0;
     const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
-    const Grams owed = due > delivered ? due - delivered : 0;
-    const Grams deliverable = DeliverableAboveSeed(config, world, resource, world.calendar.day);
-    const Grams shipped_at_turn = delivered + (deliverable < owed ? deliverable : owed);
+    if (!latest_window && !PositionHarvestIn(config, world, resource)) {
+      continue;
+    }
+    const Grams delivered = index < world.plan.delivered.size() ? world.plan.delivered[index] : 0;
+    // THE TURN's OWN ANSWER (TurnWillShip): the one function the turn acts
+    // on, read as of today - the seed still to be sown after today held, and
+    // what the stores will be drawn of before the turn taken off (the last
+    // month's draw; boss, the lamp thread [4]: the 1935 y2 potato of host's
+    // x3.57 arm stood 122.8 t above the seed on day 91, 118.5 t owed, and the
+    // village ate ~6.5 t of it before the turn - the lamp was dark and the
+    // position failed seed-bound). Not for milk: its cart is counted below.
+    // ONLY FROM THE LATEST WINDOW (econ's (c), the lamp thread [7]): the
+    // last month's draw over the whole autumn projected the harvest month's
+    // heavy issue and lit 40 of 144 canon village-years with nothing failing;
+    // over the last two ordinary collections it is right. Before doy 39 the
+    // bare forecast - a light there is a shortfall eating cannot explain.
+    const bool milk = index == config.milk_resource.value;
+    const Grams draw = milk || !latest_window ? 0 : StoresDrawToTheTurn(config, world, resource);
+    Grams shipped_at_turn =
+        delivered + TurnWillShip(config, world, resource, world.calendar.day, draw);
+    // THE MILK CART's COMING DAYS (0.37.269's pair: the lamp moved a
+    // collection earlier lit on milk in 144 of 144 village-years and the
+    // position was met in every one): the cart ships its share each evening
+    // to the turn, and the forecast counted none of it. The days AFTER today
+    // only - today's share is not promised by the morning's lamp - and none
+    // while a milk debt stands: the cart is already short of its share.
+    if (milk && world.plan.milk_debt == 0 && MilkPositionStands(config, world)) {
+      const auto days_after_today =
+          static_cast<Grams>(kDaysPerYear - 1U - world.calendar.day % kDaysPerYear);
+      shipped_at_turn += world.plan.milk_daily_share * days_after_today;
+    }
     if (PositionDelivered(config, due, shipped_at_turn)) {
       continue;
     }
-    const auto met_grams = static_cast<Grams>(
-        std::llround(static_cast<double>(due) * static_cast<double>(config.plan_met_share)));
     Alarm alarm;
     alarm.kind = AlarmKind::kPlanPositionShort;
     alarm.resource = resource;
-    // At least a gram: the share compares in float and the grams in double,
-    // and a position PositionDelivered calls short is never short by nought.
-    alarm.amount = std::max<Grams>(met_grams - shipped_at_turn, 1);
-    // The loss is the turn itself (raised on the year's last day: 0 or 1).
+    // N IS THE WHOLE REMAINING SHORTFALL (district.md §4): due less what the
+    // turn will ship, the draw to the turn included. Until 0.37.271 it was the
+    // met share's (0.99 of due) less a forecast blind to the draw: host's
+    // x3.57 arm read it at a median 0.63 of what remained short. At least a
+    // gram: the share compares in float and the grams in double.
+    alarm.amount = std::max<Grams>(due - shipped_at_turn, 1);
+    // The draw it took off, beside N (Alarm::short_grams).
+    alarm.short_grams = draw;
+    // The loss is the turn itself.
     alarm.days_to_loss = DaysToLossOf(DaysToPlanTurn(world));
     alarms.push_back(alarm);
   }
@@ -293,13 +381,16 @@ void CollectPlanShortAlarms(const ProductionConfig& config,
 /// that is the player's call.
 bool PositionCovered(const ProductionConfig& config,
                      const WorldState& world,
-                     const ProductionConfig::PlanPosition& position,
+                     std::size_t index,
                      std::uint32_t year,
                      SimDay as_of) {
+  const ProductionConfig::PlanPosition& position = config.plan_positions[index];
   const ResourceId produce = config.crops[position.crop.value].resource;
   const float grown_ha = ChainHectares(config, world, produce, year, as_of);
   const float priced_ha = year == 0 ? world.plan.worked_ha_last_year : NextPlanAreaHa(world, as_of);
-  const float owed_ha = priced_ha * position.area_share * config.plan_grain_share;
+  // The letter's own hectares (plan_due.h; #1036): split and band included.
+  const float owed_ha =
+      PlanPricedHectares(config, world, index, priced_ha, year, as_of) * config.plan_grain_share;
   return owed_ha > 0.0F ? grown_ha >= owed_ha : grown_ha > 0.0F;
 }
 
@@ -340,8 +431,7 @@ std::vector<CoverYears> CoveredPositions(const ProductionConfig& config, const W
       continue;
     }
     for (std::uint32_t year = 0; year < kChainYears; ++year) {
-      covered[index][year] =
-          PositionCovered(config, world, config.plan_positions[index], year, today);
+      covered[index][year] = PositionCovered(config, world, index, year, today);
     }
   }
   const auto produce_of = [&config](std::size_t index) {
@@ -376,8 +466,7 @@ std::vector<CoverYears> CoveredPositions(const ProductionConfig& config, const W
       owed_now = due > delivered ? due - delivered : 0;
     } else {
       for (const std::size_t index : positions) {
-        owed_now +=
-            PlanPositionGrams(config, config.plan_positions[index], world.plan.worked_ha_last_year);
+        owed_now += PlanDueGrams(config, world, index, world.plan.worked_ha_last_year, 0, today);
       }
     }
     const Grams claim_now = HeldForDeliveryGrams(config, produce, owed_now, days_to_turn);
@@ -411,7 +500,7 @@ std::vector<CoverYears> CoveredPositions(const ProductionConfig& config, const W
       if (covered[index][2]) {
         continue;
       }
-      const Grams owed = PlanPositionGrams(config, config.plan_positions[index], next_area);
+      const Grams owed = PlanDueGrams(config, world, index, next_area, 2, today);
       const Grams claim =
           HeldForDeliveryGrams(config, produce, owed, days_to_turn + (2 * kDaysPerYear));
       covered[index][2] = owed > 0 && stock >= claim;
@@ -446,10 +535,12 @@ Grams NextYearHarvestGrams(const ProductionConfig& config,
 /// resource into `to_come`: its heap; the crop in hand, if it ripens this
 /// year, at its own estimate; the chain's crop of this year not yet sown, at
 /// the table's yield on this field's soil, unless its slot is lost.
-void AddFieldHarvestToCome(const ProductionConfig& config,
-                           const FieldRow& field,
-                           SimDay today,
-                           ResourceAmounts& to_come) {
+/// The field's heap and its crop in hand (the file's StandingHarvestOf);
+/// true when a crop is in hand, which then is all the field will give.
+bool AddFieldHeapAndStanding(const ProductionConfig& config,
+                             const FieldRow& field,
+                             SimDay today,
+                             ResourceAmounts& to_come) {
   const auto add = [&to_come](ResourceId resource, Grams grams) {
     if (resource.value < to_come.size() && grams > 0) {
       to_come[resource.value] += grams;
@@ -466,6 +557,21 @@ void AddFieldHarvestToCome(const ProductionConfig& config,
     if (!(crop.is_winter && SownThisYear(field, field.crop, today))) {
       add(crop.resource, StandingYieldGrams(config, field, crop));
     }
+    return true;
+  }
+  return false;
+}
+
+void AddFieldHarvestToCome(const ProductionConfig& config,
+                           const FieldRow& field,
+                           SimDay today,
+                           ResourceAmounts& to_come) {
+  const auto add = [&to_come](ResourceId resource, Grams grams) {
+    if (resource.value < to_come.size() && grams > 0) {
+      to_come[resource.value] += grams;
+    }
+  };
+  if (AddFieldHeapAndStanding(config, field, today, to_come)) {
     return;
   }
   if (field.kind != LandKind::kArable || !HasRotation(field) || ReapedThisYear(field, today)) {
@@ -486,6 +592,45 @@ void AddFieldHarvestToCome(const ProductionConfig& config,
 }
 
 }  // namespace
+
+float PlannedChainHectares(const ProductionConfig& config,
+                           const WorldState& world,
+                           ResourceId produce,
+                           std::uint32_t year,
+                           SimDay as_of) {
+  return year < kChainYears ? ChainHectares(config, world, produce, year, as_of) : 0.0F;
+}
+
+Grams PlannedChainYieldGrams(const ProductionConfig& config,
+                             const WorldState& world,
+                             ResourceId produce,
+                             std::uint32_t year,
+                             SimDay as_of) {
+  if (year >= kChainYears) {
+    return 0;
+  }
+  Grams grams = 0;
+  for (const FieldRow& field : world.fields.rows) {
+    if (field.kind != LandKind::kArable || !HasRotation(field)) {
+      continue;
+    }
+    const CropId grown = CropInYear(config, field, year, as_of);
+    if (grown.value >= config.crops.size() || config.crops[grown.value].resource != produce ||
+        SlotLost(config, field, year, as_of)) {
+      continue;
+    }
+    // THE HARVEST'S OWN DOOR on the field as it will be sown: the whole
+    // field, on time, no season's stress yet - its soil is what remains.
+    FieldRow sown = field;
+    sown.crop = grown;
+    sown.sown_share = 1.0F;
+    sown.sown_day = kNeverSownDay;
+    sown.drought_stress = 0.0F;
+    sown.wet_stress = 0.0F;
+    grams += FieldYieldGrams(config, sown, config.crops[grown.value]);
+  }
+  return grams;
+}
 
 Grams NextYearUnpaidGrams(const ProductionConfig& config,
                           const WorldState& world,
@@ -532,10 +677,13 @@ Grams NextPlanOwedGrams(const ProductionConfig& config,
                         SimDay as_of) {
   Grams owed = 0;
   const float next_area = NextPlanAreaHa(world, as_of);
-  for (const ProductionConfig::PlanPosition& position : config.plan_positions) {
+  for (std::size_t index = 0; index < config.plan_positions.size(); ++index) {
+    const ProductionConfig::PlanPosition& position = config.plan_positions[index];
     if (PositionCounts(config, position) &&
         config.crops[position.crop.value].resource.value == resource.value) {
-      owed += PlanPositionGrams(config, position, next_area);
+      // Next year's letter as it will be priced (plan_due.h; #1036), at
+      // TODAY's band: the rating may move by the turn - a named limit.
+      owed += PlanDueGrams(config, world, index, next_area, 1, as_of);
     }
   }
   return owed;
@@ -572,6 +720,14 @@ ResourceAmounts TurnPlanSealOf(const ProductionConfig& config, const WorldState&
     }
   }
   return seal;
+}
+
+ResourceAmounts StandingHarvestOf(const ProductionConfig& config, const WorldState& world) {
+  ResourceAmounts standing(config.feed_values.size(), 0);
+  for (const FieldRow& field : world.fields.rows) {
+    AddFieldHeapAndStanding(config, field, world.calendar.day, standing);
+  }
+  return standing;
 }
 
 ResourceAmounts HarvestToComeThisYearOf(const ProductionConfig& config, const WorldState& world) {

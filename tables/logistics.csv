@@ -14,6 +14,15 @@ level_store_transfer,3
 # THE SUPPLY OF A WORKS (routing stage V2, 0.37.204): transport design §12's table of levels, «1 — Срок:
 # … материалы для стройки, которая стоит».
 level_site_supply,1
+# THE MILK LEG (#1056 C1.1; econ's stage C contract 574c366; boss, the #1056 thread [4]): the barn -> store milk,
+# level 0 - it sours in a day - and herd care, worked on a day off.
+level_milk_leg,0
+# A RICK'S SUPPLY (#1056 C1.2; econ's stage C contract 574c366): hay carted rick -> rick while a rick's herds' hay
+# stands below its threshold - level 2 by the contract; the urgent rule's level 0 is the job's, as a stack's.
+level_rick_supply,2
+# A FIELD'S WINTER DOSE (#1056 C2; econ logistics-all-on «C2»): manure carted heap -> field on sledge days until the
+# field's ploughing - level 3: it waits for every other load, and what the winter does not carry stays in the heap.
+level_manure_field,3
 # THE FLOOR UNDER A WORKS' SUPPLY (#734; transport design «Пол подвоза»; core_common/site_supply_floor.h): a
 # works whose supply brought nothing for this many WORKING days in a row is offered carters with horses ahead of
 # the field windows (behind level 0) - all such works together up to this share of the day's draught horses,
@@ -33,3 +42,11 @@ age_ordinary_days,4
 # rain or snow» is not modelled: the core's heap spoils the same in any weather — STUB core.
 urgent_spoil_share,0.10
 urgent_spoil_tonnes,1
+#
+# THE POOLED TRIP (#1056 C3, ruling 3; econ logistics-all-on «C3's four design rulings», 8607d0d): read only
+# under transport.csv cart_loaded trip_model 3 (the plan writes the price). A field heap's last part-load takes
+# another field's leftover when both fit one load and the way first heap -> second heap -> store is at most this
+# share longer than first heap -> store. STUB econ: her §C3 estimate puts the second field's detour at ~0.3-0.5 km
+# against a 1.6-2.1 km field-to-store run, 15-30 %. 0 pools nothing (C3-f's «lift off»). Return condition: pooled
+# trips under 5 % of field-heap trips in the median village - re-read from C3-h's printed detour distribution.
+pool_detour_share,0.25

@@ -32,6 +32,8 @@
 #include "core_common/logistics_state.h"
 #include "core_common/order_state.h"
 #include "core_common/state_table_ops.h"
+#include "core_common/unit_state.h"
+#include "core_common/work_seam.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
@@ -53,6 +55,9 @@ class SupplyPolicy {
       const std::optional<float> days = logistics->CellReal(row, column);
       floor_after_days_ = days ? static_cast<std::int64_t>(*days) : floor_after_days_;
     }
+    if (const core::ITable* const kinds = tables.FindTable("livestock")) {
+      horse_kind_ = kinds->FindRowByKey("horse");
+    }
   }
 
   /// @brief One day of the chairman's attention. Call once a day.
@@ -64,30 +69,48 @@ class SupplyPolicy {
     for (const core::LogisticsTaskRow& task : world.logistics_tasks.rows) {
       urgent_load = urgent_load || (task.level == core::LogisticsLevel::kUrgent && !task.paused);
     }
+    // The player's lamp, printed (its days lose the mowing's since save 165).
     for (const core::Alarm& alarm : alarms_) {
-      if (alarm.kind != core::AlarmKind::kSiteSupplyWaits) {
+      lamp_days_ += alarm.kind == core::AlarmKind::kSiteSupplyWaits ? 1U : 0U;
+    }
+    // THE BALANCE BOT READS THE FLOOR'S OWN COUNT, NOT THE LAMP (boss, the В6
+    // thread [12]: the bot measures the economy, the lamp is the player's):
+    // the works whose supply the floor reaches - the lamp's set until save 165,
+    // in its order - by ConstructionState::supply_idle_days whole.
+    const core::LivestockKindId horse =
+        horse_kind_ == core::kNoTableRow
+            ? core::LivestockKindId{}
+            : core::LivestockKindId{static_cast<std::uint16_t>(horse_kind_)};
+    if (!core::SettlementHasCarts(world, horse)) {
+      return;
+    }
+    for (std::uint32_t row = 0; row < world.logistics_tasks.rows.size(); ++row) {
+      const core::LogisticsTaskRow& task = world.logistics_tasks.rows[row];
+      if (task.load_kind != core::LogisticsLoadKind::kSiteSupply || task.paused) {
         continue;
       }
-      ++lamp_days_;
-      longest_wait_ = alarm.amount > longest_wait_ ? alarm.amount : longest_wait_;
-      if (alarm.advice != core::AlarmAdvice::kSupplyOverFields) {
+      const std::uint32_t unit_row = core::FindRow(world.units, task.unit);
+      if (unit_row == core::kNoRow) {
         continue;
       }
-      if (alarm.amount < floor_after_days_ + kDaysOnFloor) {
+      const core::ConstructionState& works = world.units.rows[unit_row].construction;
+      const auto idle = static_cast<std::int64_t>(works.supply_idle_days);
+      if (floor_after_days_ <= 0 || idle < floor_after_days_ || !core::AnythingAwaits(works)) {
+        continue;
+      }
+      ++floor_days_;
+      longest_wait_ = idle > longest_wait_ ? idle : longest_wait_;
+      if (task.over_fields || idle < floor_after_days_ + kDaysOnFloor) {
         continue;
       }
       if (urgent_load) {
         ++held_by_level_zero_;
         continue;
       }
-      const std::uint32_t row = core::FindRow(world.logistics_tasks, alarm.logistics_task);
-      if (row == core::kNoRow) {
-        continue;
-      }
       core::OrderRow order;
       order.kind = core::OrderKind::kSetLogisticsLevel;
-      order.logistics_task = alarm.logistics_task;
-      order.logistics_level = world.logistics_tasks.rows[row].base_level;
+      order.logistics_task = world.logistics_tasks.row_ids[row];
+      order.logistics_level = task.base_level;
       order.enable = 1;
       simulation.StageOrders(std::span<const core::OrderRow>(&order, 1), {});
       ++ordered_;
@@ -99,15 +122,18 @@ class SupplyPolicy {
     std::cout << run_name
               << ": FIXTURE DIFFERS FROM THE START CANON — the run's chairman puts a works' "
                  "supply «важнее полевых работ» (kSetLogisticsLevel with the switch) once the "
-                 "lamp site_supply_waits has stood "
+                 "works has stood on the supply's floor "
               << kDaysOnFloor
               << " working days past the floor's own trigger, on a morning no load stands at "
-                 "level 0 (#734; econ's rule)\n";
+                 "level 0 (#734; econ's rule) - by the floor's own count, not the lamp "
+                 "site_supply_waits (since save 165 the lamp leaves the mowing's days out; "
+                 "boss, the В6 thread [12])\n";
   }
 
   /// @brief What the fixture did, for the run to print at the end.
   void Report(std::string_view run_name) const {
-    std::cout << run_name << ": the supply's floor — site_supply_waits lit " << lamp_days_
+    std::cout << run_name << ": the supply's floor — on it " << floor_days_
+              << " works-days, the lamp site_supply_waits lit " << lamp_days_
               << " works-days, the longest wait " << longest_wait_
               << " working days with nothing delivered; «важнее полевых работ» ordered " << ordered_
               << " times, held back by a load at level 0 on " << held_by_level_zero_
@@ -130,6 +156,11 @@ class SupplyPolicy {
   std::int64_t floor_after_days_ = 4;
   std::uint32_t ordered_ = 0;
   std::uint32_t lamp_days_ = 0;
+  /// Works-days on the floor by its own count - the bot's set (until save 165
+  /// the lamp's own, and `lamp_days_` with it).
+  std::uint32_t floor_days_ = 0;
+  /// livestock.csv's `horse` row: the floor gives carters with horses only.
+  std::uint32_t horse_kind_ = core::kNoTableRow;
   std::uint32_t held_by_level_zero_ = 0;
   std::int64_t longest_wait_ = 0;
 };

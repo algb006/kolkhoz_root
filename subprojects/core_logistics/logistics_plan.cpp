@@ -23,11 +23,13 @@
 #include "core_common/road_graph.h"
 #include "core_common/road_route.h"
 #include "core_common/site_supply_queue.h"
+#include "core_common/spoilage.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/work_seam.h"
 #include "core_common/world_state.h"
 #include "leg_loads.h"
 #include "porter_pairs.h"
+#include "trip_pricing.h"
 
 namespace core {
 namespace {
@@ -51,9 +53,44 @@ struct OpenTask {
   /// kNoSupplyRank for every other load.
   std::uint32_t site_rank = kNoSupplyRank;
   SimDay aged_from_day = 0;
+  /// A field heap's shelf life on its field, game days (resources.csv
+  /// `spoil_days` x `field_heap_keeping_factor`); infinite for every load that
+  /// does not spoil and every other kind.
+  float shelf_days = std::numeric_limits<float>::infinity();
   Vec2 place;
   bool logs = false;  ///< carted by the log cart (a stand's logs, the district's lot)
+  /// A load priced ON FOOT - a milk leg whose walk holds the day's trips
+  /// (HerdRow::leg_on_foot): no cart's chain takes it (#1117).
+  bool walked = false;
 };
+
+/// A field heap's shelf life on its field (OpenTask::shelf_days).
+float ShelfDaysOf(const LogisticsConfig& config,
+                  const WorldState& world,
+                  const LogisticsTaskRow& task) {
+  if (task.load_kind != LogisticsLoadKind::kFieldHeap) {
+    return std::numeric_limits<float>::infinity();
+  }
+  const std::uint32_t row = FindRow(world.fields, task.field);
+  if (row == kNoRow) {
+    return std::numeric_limits<float>::infinity();
+  }
+  const ResourceId resource = world.fields.rows[row].reaped_resource;
+  // THE THIRD LEVER (#1056 C3; econ, boss-econ-c3-body-pair [21]): loose hay
+  // has no shelf in resources.csv, so it read «keeps for ever» and went LAST
+  // among a level's heaps, while it weathers every night it lies (#1015). Under
+  // the planned model its shelf is its nightly loss (spoilage.h), so the heaps
+  // of a level go hay, potato (120 d), grain (600 d) when hay weathers.
+  if (resource.value == config.hay_resource.value && resource.value != kInvalidDefIdValue &&
+      PlanPricesCarts(config, world)) {
+    const auto month = static_cast<std::uint32_t>(world.calendar.date.month);
+    return HayHeapShelfDays(config.hay_weathering_by_season[HayWeatheringSeason(month)]);
+  }
+  const float days =
+      resource.value < config.spoil_days.size() ? config.spoil_days[resource.value] : 0.0F;
+  // One home with labour's weighing against the snow (#1099; spoilage.h).
+  return FieldHeapShelfDays(days, config.field_heap_keeping_factor);
+}
 
 /// The open tasks — not paused, a seam left — by level, the longest waiting
 /// first, then the row: the plan's order, repeatable.
@@ -86,17 +123,33 @@ std::vector<OpenTask> OpenTasks(const LogisticsConfig& config, const WorldState&
       // the harvest's carting.
       cold_first = unit_row != kNoRow && WorksHouseAColdHerd(config.cold_housing, world, unit_row);
     }
+    bool walked = false;
+    if (task.load_kind == LogisticsLoadKind::kMilkLeg) {
+      const std::uint32_t herd_row = FindRow(world.herds, task.herd);
+      walked = herd_row != kNoRow && world.herds.rows[herd_row].leg_on_foot != 0;
+    }
     open.push_back(OpenTask{.row = row,
                             .level = static_cast<std::uint8_t>(task.level),
                             .cold_first = cold_first,
                             .site_rank = site_rank,
                             .aged_from_day = task.aged_from_day,
+                            .shelf_days = ShelfDaysOf(config, world, task),
                             .place = place,
-                            .logs = logs});
+                            .logs = logs,
+                            .walked = walked});
   }
   std::ranges::stable_sort(open, [](const OpenTask& left, const OpenTask& right) {
     if (left.level != right.level) {
       return left.level < right.level;
+    }
+    // WHAT SPOILS SOONEST FIRST, inside the level (#1056 C4.2 (a); econ's
+    // contract §C4.2; boss, the #1056 thread after [23]): a field heap of the
+    // shorter shelf life on its field goes ahead - the potatoes before the
+    // grain on the days both stand - in the morning plan and every re-plan
+    // alike, one order for both doors. Two heaps of one resource tie: the rot
+    // is memoryless (spoilage.h), so their order cannot change what rots.
+    if (left.shelf_days != right.shelf_days) {
+      return left.shelf_days < right.shelf_days;
     }
     if (left.cold_first != right.cold_first) {
       return left.cold_first;
@@ -151,7 +204,9 @@ std::vector<std::uint32_t> CartChain(
   if (first != kNoRow) {
     chain.push_back(first);
   }
-  const float hours_per_km = static_cast<float>(kClockScale) / config.harness_speed_kmh;
+  // SL: the chain's reach at the day's own gear (the sledge on snow).
+  const float hours_per_km =
+      static_cast<float>(kClockScale) / CartGearToday(world, CartSpecsOf(config)).empty_kmh;
   for (std::uint32_t level = 0; level < kLogisticsLevelCount; ++level) {
     const std::vector<std::uint32_t>& ring = rings[level];
     if (ring.empty()) {
@@ -161,7 +216,12 @@ std::vector<std::uint32_t> CartChain(
     ++turn[level];
     for (std::uint32_t step = 0; step < ring.size() && chain.size() < kMaxChainLoads; ++step) {
       const OpenTask& next = open[ring[(start + step) % ring.size()]];
-      if (next.row == first) {
+      // A LOAD PRICED ON FOOT IS NO CART'S (#1117; boss, the #1056 thread
+      // [119]): the milk leg's cans are carried by the walkers its price
+      // sent, and a cart chaining it drew a trip no milk rode - 3 290 cart
+      // plan-hours on the canon's year 1 - and moved the timetable riders
+      // and passengers read.
+      if (next.row == first || next.walked) {
         continue;
       }
       // THE REACH: the ride from the cart's first load within the road
@@ -245,6 +305,29 @@ Tick TickAt(SimDay day, float hours) {
   return (static_cast<Tick>(day) * kTicksPerDay) + HourOfDayMoment(hours);
 }
 
+/// The minute of the moment `hours` from the day's midnight (CartLeg's
+/// depart_minute and arrive_minute, T1): the plan's clock unfloored.
+std::uint16_t MinuteAt(float hours) {
+  const long minutes = std::lround(static_cast<double>(hours) * 60.0);
+  return static_cast<std::uint16_t>(std::clamp(minutes, 0L, 65'535L));
+}
+
+/// THE LEG'S TIMES, TICKS AND MINUTES TOGETHER (#1056 C3, T1): every leg of
+/// the plan is timed here, so no leg carries a tick without its minute.
+CartLeg Timed(CartLeg leg, SimDay day, float from_hours, float to_hours) {
+  leg.depart = TickAt(day, from_hours);
+  leg.arrive = TickAt(day, to_hours);
+  leg.depart_minute = MinuteAt(from_hours);
+  leg.arrive_minute = MinuteAt(to_hours);
+  return leg;
+}
+
+/// A leg's arrival moved to `hours` (the clock's carting ends): tick and minute.
+void ArriveAt(CartLeg& leg, SimDay day, float hours) {
+  leg.arrive = TickAt(day, hours);
+  leg.arrive_minute = MinuteAt(hours);
+}
+
 /// The hour of its day a tick begins at, as hours from midnight.
 float HoursOfTick(Tick tick) {
   return static_cast<float>(tick % kTicksPerDay);
@@ -268,6 +351,29 @@ float RideHours(
   return RideKm(world, mover, task, from, to) * mover.hours_per_km;
 }
 
+/// THE PRICE'S FACTS (#1056 C3; core_common/trip_terms.h): the trip terms of a
+/// task a cart prices at whole trips - written only under the planned model
+/// (trip_terms_writer.h) - or nullptr: no terms, or a carrier on foot, whose
+/// trips are his back's and keep the walk's drawing.
+const TaskTripTerms* PlannedTerms(const Mover& mover, const LogisticsTaskRow& task) {
+  return !mover.on_foot && task.trip_terms.trip_hours > 0.0F ? &task.trip_terms : nullptr;
+}
+
+/// Where the mover rides to cart `task`: the price's load point when the task
+/// has one (a field heap's HEAP POINT, ruling 2 - not the field's centre),
+/// else the work's place (work_seam.h, WorkPlaceOf). `place` is left as it
+/// came when neither knows one.
+void LoadPlaceOf(const WorldState& world,
+                 const Mover& mover,
+                 const LogisticsTaskRow& task,
+                 Vec2& place) {
+  if (const TaskTripTerms* const terms = PlannedTerms(mover, task)) {
+    place = terms->load_point;
+    return;
+  }
+  WorkPlaceOf(world, HaulingWorkOf(task), place);
+}
+
 /// A load leg of no length at `hours`: a load of the chain the clock did not
 /// send the mover to — carted by others before it came, or past the evening.
 /// It stays in the legs IN ITS PLACE OF THE CHAIN, because the clock is an
@@ -282,12 +388,15 @@ void KeepInTheChain(const WorldState& world,
   const LogisticsTaskRow& task = world.logistics_tasks.rows[task_row];
   Vec2 place = mover.at;
   WorkPlaceOf(world, HaulingWorkOf(task), place);
-  plan.carts[mover.cart].legs.push_back(CartLeg{.from = place,
-                                                .to = place,
-                                                .task = world.logistics_tasks.row_ids[task_row],
-                                                .depart = TickAt(day, hours),
-                                                .arrive = TickAt(day, hours),
-                                                .riders = {}});
+  plan.carts[mover.cart].legs.push_back(
+      Timed(CartLeg{.from = place,
+                    .to = place,
+                    .task = world.logistics_tasks.row_ids[task_row],
+                    .kept_in_chain = 1U,
+                    .riders = {}},
+            day,
+            hours,
+            hours));
 }
 
 /// Sends the mover on to the next load of its chain with carting left, or
@@ -310,7 +419,7 @@ void GoOn(const WorldState& world,
       // village of 0.37.180's canon (core-legsprobe2, late_h).
       const LogisticsTaskRow& candidate = world.logistics_tasks.rows[next];
       Vec2 place = mover.at;
-      WorkPlaceOf(world, HaulingWorkOf(candidate), place);
+      LoadPlaceOf(world, mover, candidate, place);
       const float there = RideHours(world, mover, &candidate, mover.at, place);
       const float back = RideHours(world, mover, &candidate, place, mover.home);
       if (hours + there + kStepHours + back < sunset) {
@@ -323,12 +432,11 @@ void GoOn(const WorldState& world,
   }
   if (mover.next >= mover.chain.size()) {
     const float ride = RideHours(world, mover, nullptr, mover.at, mover.home);
-    legs.push_back(CartLeg{.from = mover.at,
-                           .to = mover.home,
-                           .task = LogisticsTaskId{},
-                           .depart = TickAt(day, hours),
-                           .arrive = TickAt(day, hours + ride),
-                           .riders = {}});
+    legs.push_back(
+        Timed(CartLeg{.from = mover.at, .to = mover.home, .task = LogisticsTaskId{}, .riders = {}},
+              day,
+              hours,
+              hours + ride));
     mover.phase = Mover::Phase::kDone;
     return;
   }
@@ -339,15 +447,14 @@ void GoOn(const WorldState& world,
   ++mover.next;
   const LogisticsTaskRow& task = world.logistics_tasks.rows[mover.task];
   Vec2 place = mover.at;
-  WorkPlaceOf(world, HaulingWorkOf(task), place);
+  LoadPlaceOf(world, mover, task, place);
   mover.ride_left = RideHours(world, mover, &task, mover.at, place);
   mover.ride_home = RideHours(world, mover, &task, place, mover.home);
-  legs.push_back(CartLeg{.from = mover.at,
-                         .to = place,
-                         .task = LogisticsTaskId{},
-                         .depart = TickAt(day, hours),
-                         .arrive = TickAt(day, hours + mover.ride_left),
-                         .riders = {}});
+  legs.push_back(
+      Timed(CartLeg{.from = mover.at, .to = place, .task = LogisticsTaskId{}, .riders = {}},
+            day,
+            hours,
+            hours + mover.ride_left));
   mover.at = place;
   mover.phase = Mover::Phase::kRiding;
 }
@@ -376,11 +483,23 @@ bool BeginTrips(const WorldState& world, Mover& mover) {
   mover.trips = true;
   mover.load = mover.at;
   mover.receiver = receiver;
-  // THE LOADED HALF AT THE LOADED PACE (#570, 2a), the way back at the
-  // empty one — as the seam is priced (haul.h, RateOverKm).
-  mover.trip_loaded_hours = one_way_km * mover.loaded_hours_per_km;
-  mover.trip_empty_hours = one_way_km * mover.hours_per_km;
   mover.ride_home = RideHours(world, mover, &task, receiver, mover.home);
+  // THE PRICE's OWN TRIP (#1056 C3; trip_terms.h): under the planned model the
+  // halves are the ones the seam was priced by - the road bed, the gear and the
+  // heap point included (ruling 2) - so a whole trip drawn drains a whole trip
+  // priced, and the drawn trips ARE the price.
+  if (const TaskTripTerms* const terms = PlannedTerms(mover, task)) {
+    mover.trip_loaded_hours = terms->trip_loaded_hours;
+    const float empty = terms->trip_hours - terms->trip_loaded_hours;
+    mover.trip_empty_hours = empty > 0.0F ? empty : 0.0F;
+    return true;
+  }
+  // THE LOADED HALF AT THE LOADED PACE (#570, 2a), the way back at the
+  // empty one — as the seam is priced (haul.h, RateOverKm). The loaded half
+  // carries the loading at its start and the unloading at its end (#844):
+  // the same two pauses RateOverKm adds, so the plan and the seam agree.
+  mover.trip_loaded_hours = (one_way_km * mover.loaded_hours_per_km) + (2.0F * kLoadingPauseHours);
+  mover.trip_empty_hours = one_way_km * mover.hours_per_km;
   return true;
 }
 
@@ -388,16 +507,185 @@ bool BeginTrips(const WorldState& world, Mover& mover) {
 /// way back, empty.
 void PushTripHalf(
     const WorldState& world, GroomPlan& plan, Mover& mover, SimDay day, float hours, bool loaded) {
-  plan.carts[mover.cart].legs.push_back(CartLeg{
-      .from = loaded ? mover.load : mover.receiver,
-      .to = loaded ? mover.receiver : mover.load,
-      .task = world.logistics_tasks.row_ids[mover.task],
-      .loaded = static_cast<std::uint8_t>(loaded ? 1U : 0U),
-      .depart = TickAt(day, hours),
-      .arrive = TickAt(day, hours + (loaded ? mover.trip_loaded_hours : mover.trip_empty_hours)),
-      .riders = {}});
+  plan.carts[mover.cart].legs.push_back(
+      Timed(CartLeg{.from = loaded ? mover.load : mover.receiver,
+                    .to = loaded ? mover.receiver : mover.load,
+                    .task = world.logistics_tasks.row_ids[mover.task],
+                    .loaded = static_cast<std::uint8_t>(loaded ? 1U : 0U),
+                    .riders = {}},
+            day,
+            hours,
+            hours + (loaded ? mover.trip_loaded_hours : mover.trip_empty_hours)));
   mover.loaded_half = loaded;
   mover.half_left = loaded ? mover.trip_loaded_hours : mover.trip_empty_hours;
+}
+
+/// THE LOADED HALF, OR A POOLED ONE (#1056 C3 body 5, ruling 3): a field
+/// heap's LAST trip under the planned model, a part-load, takes a second
+/// field's whole leftover when one fits the same load and lies on the way
+/// (trip_pricing.h, PoolPartnerOf): loaded to the second heap, loaded on to the
+/// receiver, both legs naming the second load (CartLeg::pooled_task), at the
+/// first load's priced paces (PooledTripOf). The second load is the clock's
+/// no more - no other cart rides to it today. Any other trip: PushTripHalf.
+void PushLoadedHalf(const LogisticsConfig& config,
+                    const WorldState& world,
+                    std::vector<float>& remaining,
+                    GroomPlan& plan,
+                    Mover& mover,
+                    SimDay day,
+                    float hours) {
+  const LogisticsTaskRow& task = world.logistics_tasks.rows[mover.task];
+  const TaskTripTerms* const terms = PlannedTerms(mover, task);
+  const bool last_trip =
+      terms != nullptr && config.standard_day_hours > 0.0F &&
+      remaining[mover.task] <= (terms->trip_hours / config.standard_day_hours) * 1.0001F;
+  if (!last_trip || task.load_kind != LogisticsLoadKind::kFieldHeap) {
+    PushTripHalf(world, plan, mover, day, hours, /*loaded=*/true);
+    return;
+  }
+  const std::uint32_t trips = WholeTripsFor(terms->grams_left, terms->cart_load);
+  const Grams leftover =
+      trips == 0 ? 0 : terms->grams_left - (static_cast<Grams>(trips - 1U) * terms->cart_load);
+  // ONE POOL A LOAD A DAY ((iii) lifted): a heap of several trips may now be a
+  // second, and its own carts keep carting it, so neither load of a pool may
+  // be in another pool today - its last part-load would ride twice.
+  const auto pooled_today = [&plan](LogisticsTaskId id) {
+    return std::ranges::any_of(plan.carts, [id](const CartPlan& cart) {
+      return std::ranges::any_of(cart.legs, [id](const CartLeg& leg) {
+        const bool backed = leg.back_load != 0 && leg.task.value == id.value;  // ruling 4
+        return backed || (leg.pooled_task.value != kInvalidEntityIdValue &&
+                          (leg.pooled_task.value == id.value || leg.task.value == id.value));
+      });
+    });
+  };
+  const std::uint32_t second =
+      pooled_today(world.logistics_tasks.row_ids[mover.task])
+          ? kNoRow
+          : PoolPartnerOf(config, world, mover.task, leftover, mover.receiver, remaining);
+  PooledTrip pooled;
+  if (second == kNoRow || pooled_today(world.logistics_tasks.row_ids[second]) ||
+      !PooledTripOf(world,
+                    *terms,
+                    world.logistics_tasks.rows[second].trip_terms.load_point,
+                    mover.receiver,
+                    pooled)) {
+    PushTripHalf(world, plan, mover, day, hours, /*loaded=*/true);
+    return;
+  }
+  const Vec2 second_load = world.logistics_tasks.rows[second].trip_terms.load_point;
+  const LogisticsTaskId second_id = world.logistics_tasks.row_ids[second];
+  std::vector<CartLeg>& legs = plan.carts[mover.cart].legs;
+  legs.push_back(Timed(CartLeg{.from = mover.load,
+                               .to = second_load,
+                               .task = world.logistics_tasks.row_ids[mover.task],
+                               .loaded = 1U,
+                               .riders = {},
+                               .pooled_task = second_id},
+                       day,
+                       hours,
+                       hours + pooled.to_second_hours));
+  legs.push_back(Timed(CartLeg{.from = second_load,
+                               .to = mover.receiver,
+                               .task = world.logistics_tasks.row_ids[mover.task],
+                               .loaded = 1U,
+                               .riders = {},
+                               .pooled_task = second_id},
+                       day,
+                       hours + pooled.to_second_hours,
+                       hours + pooled.to_second_hours + pooled.to_receiver_hours));
+  // The clock's carting of the second goes by its last part-load's share; its
+  // whole loads stay for its own carts ((iii) lifted). Until then the second
+  // was a heap of one trip, carted whole, and its clock went to nought.
+  const TaskTripTerms& second_terms = world.logistics_tasks.rows[second].trip_terms;
+  const std::uint32_t second_trips = WholeTripsFor(second_terms.grams_left, second_terms.cart_load);
+  const Grams second_leftover =
+      second_trips == 0 ? 0
+                        : second_terms.grams_left -
+                              (static_cast<Grams>(second_trips - 1U) * second_terms.cart_load);
+  remaining[second] *= second_terms.grams_left > 0
+                           ? 1.0F - (static_cast<float>(second_leftover) /
+                                     static_cast<float>(second_terms.grams_left))
+                           : 0.0F;
+  mover.loaded_half = true;
+  mover.half_left = pooled.to_second_hours + pooled.to_receiver_hours;
+}
+
+/// THE BACK LOAD (#1056 C3, ruling 4; trip_pricing.h, BackLoadOf): at its
+/// receiver, its load delivered, a cart going back to its own load takes
+/// another task's load on the way instead of the way back empty - a ride to
+/// that load, its loaded leg to its receiver (`back_load`), and the ride on to
+/// its own load, named its own task. Only when all of it and its next round
+/// fit the light, and the back task is in no pool today nor another cart's
+/// back load. Returns whether it was drawn.
+bool PushBackLoad(const LogisticsConfig& config,
+                  const WorldState& world,
+                  std::vector<float>& remaining,
+                  GroomPlan& plan,
+                  Mover& mover,
+                  SimDay day,
+                  float hours,
+                  float sunset) {
+  if (mover.on_foot) {
+    return false;
+  }
+  const std::uint32_t back =
+      BackLoadOf(config, world, mover.task, mover.receiver, mover.load, remaining);
+  if (back == kNoRow) {
+    return false;
+  }
+  const LogisticsTaskRow& task = world.logistics_tasks.rows[back];
+  const LogisticsTaskId back_id = world.logistics_tasks.row_ids[back];
+  const ResidentId driver = plan.carts[mover.cart].driver;
+  const bool carried_elsewhere = std::ranges::any_of(plan.carts, [&](const CartPlan& cart) {
+    return std::ranges::any_of(cart.legs, [&](const CartLeg& leg) {
+      const bool pooled =
+          leg.pooled_task.value != kInvalidEntityIdValue &&
+          (leg.pooled_task.value == back_id.value || leg.task.value == back_id.value);
+      const bool backed = leg.back_load != 0 && leg.task.value == back_id.value &&
+                          cart.driver.value != driver.value;
+      return pooled || backed;
+    });
+  });
+  Vec2 back_receiver;
+  if (carried_elsewhere || !WorkReceiverOf(world, HaulingWorkOf(task), back_receiver)) {
+    return false;
+  }
+  const Vec2 back_load = task.trip_terms.load_point;
+  const float to_it = RideHours(world, mover, &task, mover.receiver, back_load);
+  const float carried = task.trip_terms.trip_loaded_hours;
+  const float on_home = RideHours(world, mover, nullptr, back_receiver, mover.load);
+  if (!(hours + to_it + carried + on_home + mover.trip_loaded_hours + mover.ride_home < sunset)) {
+    return false;
+  }
+  std::vector<CartLeg>& legs = plan.carts[mover.cart].legs;
+  legs.push_back(Timed(
+      CartLeg{.from = mover.receiver, .to = back_load, .task = LogisticsTaskId{}, .riders = {}},
+      day,
+      hours,
+      hours + to_it));
+  legs.push_back(Timed(CartLeg{.from = back_load,
+                               .to = back_receiver,
+                               .task = back_id,
+                               .loaded = 1U,
+                               .back_load = 1U,
+                               .riders = {}},
+                       day,
+                       hours + to_it,
+                       hours + to_it + carried));
+  legs.push_back(Timed(CartLeg{.from = back_receiver,
+                               .to = mover.load,
+                               .task = world.logistics_tasks.row_ids[mover.task],
+                               .riders = {}},
+                       day,
+                       hours + to_it + carried,
+                       hours + to_it + carried + on_home));
+  // The clock carts one of its trips.
+  if (config.standard_day_hours > 0.0F) {
+    remaining[back] -= task.trip_terms.trip_hours / config.standard_day_hours;
+  }
+  mover.loaded_half = false;
+  mover.half_left = to_it + carried + on_home;
+  return true;
 }
 
 /// One step of a mover on its trips: the seam drains at the norm, as at the
@@ -406,7 +694,8 @@ void PushTripHalf(
 /// light — on from there (the next load, or home); else back. At the load:
 /// the load carted — on from there; the next trip not fitting the light —
 /// home from there; else loaded again.
-void StepTrips(const WorldState& world,
+void StepTrips(const LogisticsConfig& config,
+               const WorldState& world,
                std::vector<float>& remaining,
                GroomPlan& plan,
                Mover& mover,
@@ -419,7 +708,7 @@ void StepTrips(const WorldState& world,
     return;
   }
   const float now = hours + kStepHours;
-  plan.carts[mover.cart].legs.back().arrive = TickAt(day, now);
+  ArriveAt(plan.carts[mover.cart].legs.back(), day, now);
   const bool carted = !(remaining[mover.task] > 0.0F);
   if (mover.loaded_half) {
     mover.at = mover.receiver;
@@ -428,6 +717,9 @@ void StepTrips(const WorldState& world,
     if (carted || !round_fits) {
       mover.trips = false;
       GoOn(world, remaining, plan, mover, day, now, sunset, /*evening=*/!carted);
+      return;
+    }
+    if (PushBackLoad(config, world, remaining, plan, mover, day, now, sunset)) {
       return;
     }
     PushTripHalf(world, plan, mover, day, now, /*loaded=*/false);
@@ -439,7 +731,7 @@ void StepTrips(const WorldState& world,
     GoOn(world, remaining, plan, mover, day, now, sunset, /*evening=*/!carted);
     return;
   }
-  PushTripHalf(world, plan, mover, day, now, /*loaded=*/true);
+  PushLoadedHalf(config, world, remaining, plan, mover, day, now);
 }
 
 /// THE CLOCK (B4b): every mover steps through the day together, so two carts
@@ -448,7 +740,8 @@ void StepTrips(const WorldState& world,
 /// the evening — the ride home no longer fits the light — sends it home from
 /// where it is. The seam itself is not touched: this is the estimate the legs'
 /// ticks are written from (logistics_state.h).
-void RunTheClock(const WorldState& world,
+void RunTheClock(const LogisticsConfig& config,
+                 const WorldState& world,
                  std::vector<float> remaining,
                  GroomPlan& plan,
                  std::vector<Mover>& movers,
@@ -475,7 +768,7 @@ void RunTheClock(const WorldState& world,
         case Mover::Phase::kRiding:
           mover.ride_left -= kStepHours;
           if (mover.ride_left <= 0.0F) {
-            legs.back().arrive = TickAt(day, hours);
+            ArriveAt(legs.back(), day, hours);
             mover.phase = Mover::Phase::kCarting;
             if (BeginTrips(world, mover)) {
               // A TRIP THE LIGHT CANNOT FINISH IS NOT BEGUN: there, and home
@@ -484,29 +777,30 @@ void RunTheClock(const WorldState& world,
                 GoOn(world, remaining, plan, mover, day, hours, window.sunset, /*evening=*/true);
                 break;
               }
-              PushTripHalf(world, plan, mover, day, hours, /*loaded=*/true);
+              PushLoadedHalf(config, world, remaining, plan, mover, day, hours);
               break;
             }
-            legs.push_back(CartLeg{.from = mover.at,
-                                   .to = mover.at,
-                                   .task = world.logistics_tasks.row_ids[mover.task],
-                                   .depart = TickAt(day, hours),
-                                   .arrive = TickAt(day, hours),
-                                   .riders = {}});
+            legs.push_back(Timed(CartLeg{.from = mover.at,
+                                         .to = mover.at,
+                                         .task = world.logistics_tasks.row_ids[mover.task],
+                                         .riders = {}},
+                                 day,
+                                 hours,
+                                 hours));
           }
           break;
         case Mover::Phase::kCarting:
           if (mover.trips) {
-            StepTrips(world, remaining, plan, mover, day, hours, window.sunset);
+            StepTrips(config, world, remaining, plan, mover, day, hours, window.sunset);
             break;
           }
           if (hours + kStepHours + mover.ride_home >= window.sunset) {
-            legs.back().arrive = TickAt(day, hours);
+            ArriveAt(legs.back(), day, hours);
             GoOn(world, remaining, plan, mover, day, hours, window.sunset, /*evening=*/true);
             break;
           }
           remaining[mover.task] -= mover.drain;
-          legs.back().arrive = TickAt(day, hours + kStepHours);
+          ArriveAt(legs.back(), day, hours + kStepHours);
           if (!(remaining[mover.task] > 0.0F)) {
             GoOn(world, remaining, plan, mover, day, hours + kStepHours, window.sunset);
           }
@@ -524,7 +818,7 @@ void RunTheClock(const WorldState& world,
       if (mover.phase == Mover::Phase::kRiding) {
         // The load it was riding to: in the chain, not reached; the way is
         // cut short at sunset.
-        plan.carts[mover.cart].legs.back().arrive = TickAt(day, window.sunset);
+        ArriveAt(plan.carts[mover.cart].legs.back(), day, window.sunset);
         KeepInTheChain(world, plan, mover, mover.task, day, window.sunset);
       }
       GoOn(world, remaining, plan, mover, day, window.sunset, window.sunset, /*evening=*/true);
@@ -563,8 +857,11 @@ GroomPlan BuildGroomPlan(const LogisticsConfig& config,
     remaining[task.row] = *WorkSeamOf(world, HaulingWorkOf(world.logistics_tasks.rows[task.row]));
   }
   const DayWindow window = SolarWindow(world.weather.daylight_hours);
-  const float harness_hours_per_km = static_cast<float>(kClockScale) / config.harness_speed_kmh;
-  const float loaded_hours_per_km = static_cast<float>(kClockScale) / config.loaded_speed_kmh;
+  // THE CART OR THE SLEDGE (SL; cart_gear.h): the day's gear, chosen at the
+  // stable for the whole day - the sledge's 8 km/h both ways on snow.
+  const CartGear gear = CartGearToday(world, CartSpecsOf(config));
+  const float harness_hours_per_km = static_cast<float>(kClockScale) / gear.empty_kmh;
+  const float loaded_hours_per_km = static_cast<float>(kClockScale) / gear.loaded_kmh;
   const float walk_hours_per_km = static_cast<float>(kClockScale) / config.walk_speed_kmh;
   const float cart_drain = kStepHours / config.standard_day_hours;
   // A WALKER'S STEP BY HIS LOAD'S FORM (#671; porter_pairs.h).
@@ -606,18 +903,16 @@ GroomPlan BuildGroomPlan(const LogisticsConfig& config,
         }
       }
       CartPlan cart{.driver = driver, .people_cart = true, .on_foot = false, .legs = {}};
-      cart.legs.push_back(CartLeg{.from = start,
-                                  .to = place,
-                                  .task = LogisticsTaskId{},
-                                  .depart = TickAt(plan.day, sets_out),
-                                  .arrive = TickAt(plan.day, sets_out + ride),
-                                  .riders = crew});
-      cart.legs.push_back(CartLeg{.from = place,
-                                  .to = start,
-                                  .task = LogisticsTaskId{},
-                                  .depart = TickAt(plan.day, window.sunset - ride),
-                                  .arrive = TickAt(plan.day, window.sunset),
-                                  .riders = std::move(crew)});
+      cart.legs.push_back(
+          Timed(CartLeg{.from = start, .to = place, .task = LogisticsTaskId{}, .riders = crew},
+                plan.day,
+                sets_out,
+                sets_out + ride));
+      cart.legs.push_back(Timed(
+          CartLeg{.from = place, .to = start, .task = LogisticsTaskId{}, .riders = std::move(crew)},
+          plan.day,
+          window.sunset - ride,
+          window.sunset));
       plan.carts.push_back(std::move(cart));
       continue;
     }
@@ -710,7 +1005,7 @@ GroomPlan BuildGroomPlan(const LogisticsConfig& config,
       waiting[first] = kNobody;
     }
   }
-  RunTheClock(world, remaining, plan, movers, window);
+  RunTheClock(config, world, remaining, plan, movers, window);
   // THE RIDERS (B4b): whoever the labour hour seated this morning on a
   // driver's cart rides its first leg. ONCE (0.37.186): a re-plan keeps a
   // begun first leg with its riders (above), and until then this loop wrote
@@ -750,6 +1045,14 @@ GroomPlan BuildGroomPlan(const LogisticsConfig& config,
                                              stands && leg.depart != leg.arrive
                                          ? 1U
                                          : 0U;
+    }
+  }
+  // THE SLEDGE ON THE LEG (SL; CartLeg::sledge, save 175): every horse cart of
+  // a snow day, the people's cart too (one vehicle, transport §16); a carrier
+  // on foot has none.
+  for (CartPlan& cart : plan.carts) {
+    for (CartLeg& leg : cart.legs) {
+      leg.sledge = gear.sledge && !cart.on_foot ? 1U : 0U;
     }
   }
   return plan;
@@ -887,10 +1190,12 @@ void SeatEveningRiders(const LogisticsConfig& config,
     }
   }
   const float walk_hours_per_km = static_cast<float>(kClockScale) / config.walk_speed_kmh;
-  const float harness_hours_per_km = static_cast<float>(kClockScale) / config.harness_speed_kmh;
+  // SL: the riders ride the day's gear (the sledge on snow).
+  const CartGear gear = CartGearToday(current, CartSpecsOf(config));
+  const float harness_hours_per_km = static_cast<float>(kClockScale) / gear.empty_kmh;
   // A loaded leg rides at the loaded pace (#570, 2a): the rider's ride home
   // on a loaded trip is that much longer.
-  const float loaded_hours_per_km = static_cast<float>(kClockScale) / config.loaded_speed_kmh;
+  const float loaded_hours_per_km = static_cast<float>(kClockScale) / gear.loaded_kmh;
   const float walk_hours_per_metre =
       walk_hours_per_km * OffRoadWeightOf(current, TravelMode::kWalk) / 1000.0F;
   const std::shared_ptr<const RoadIndex> roads = RoadIndexOf(current);

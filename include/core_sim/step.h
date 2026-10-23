@@ -391,6 +391,12 @@ class ISimulation {
   /// @note Called between steps on the sim thread. A pure read.
   virtual PlanBook OfficePlan() const = 0;
 
+  /// @brief What a goods loan of `borrowed` grams books as owed back, the
+  /// mark-up included. Fans out to core_production, which owns the loan; the
+  /// bare engine, which lends nothing, answers 0.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual Grams GoodsLoanAmountBack(Grams borrowed) const = 0;
+
   /// @brief The office's limit window (office_views.h, LimitBook). Fans out
   /// to core_production, which owns the catalogue; the bare engine answers
   /// the points alone.

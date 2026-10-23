@@ -25,11 +25,14 @@ kolkhoz_add_module(core_common
     home_reach.cpp
     horse_yard_road.cpp
     haul.cpp
+    trip_terms.cpp
+    cart_gear.cpp
     load_resource.cpp
     hauled_book.cpp
     logistics_rules.cpp
     cold_housing.cpp
     cargo_form.cpp
+    cemetery_rules.cpp
     wait_state.cpp
     plot.cpp
     spoilage.cpp

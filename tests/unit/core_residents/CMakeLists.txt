@@ -1,5 +1,5 @@
 kolkhoz_add_unit_test(core_residents main.cpp barter_checks.cpp advance_checks.cpp
-    crowded_barrack_checks.cpp)
+    crowded_barrack_checks.cpp hunger_forecast_checks.cpp burial_checks.cpp)
 
 # The exchange, the food configuration and the vitals window are internal
 # seams of the module (family_exchange.h, food_config.h, vitals.h); their

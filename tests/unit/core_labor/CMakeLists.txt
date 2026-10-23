@@ -12,6 +12,7 @@ kolkhoz_add_unit_test(core_labor
     stuck_state_checks.cpp
     cart_load_checks.cpp
     hay_cart_rank_checks.cpp
+    manure_last_checks.cpp
     people_cart_checks.cpp
     care_reprice_checks.cpp
     groom_plan_checks.cpp

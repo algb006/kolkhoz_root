@@ -31,6 +31,7 @@
 #include <system_error>
 #include <vector>
 
+#include "core_catalog/cart_specs_catalog.h"
 #include "core_catalog/definitions.h"
 #include "core_catalog/porter_catalog.h"
 #include "core_catalog/road_rules_catalog.h"
@@ -45,6 +46,7 @@
 #include "core_tables/stub_tables.h"
 #include "core_tables/tables.h"
 #include "district_plan.h"
+#include "plan_due.h"
 
 namespace core {
 namespace {
@@ -466,16 +468,34 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
       {"feed_light_margin_days", &farming.feed_light_margin_days, 0.0F, 1000.0F},
       {"traction_hungry_factor", &farming.traction_hungry_factor, 0.0F, 1.0F},
       {"traction_full_ration_share", &farming.traction_full_ration_share, 0.01F, 1.0F},
+      {"light_work_oat_share", &farming.light_work_oat_share, 0.0F, 1.0F},
+      {"oat_short_plan_margin", &farming.oat_short_plan_margin, 0.0F, 10.0F},
+      {"team_need_first_year_working_days",
+       &farming.team_need_first_year_working_days,
+       0.0F,
+       366.0F},
+      {"milk_at_barn", &farming.milk_at_barn, 0.0F, 1.0F},
+      {"rick_supply", &farming.rick_supply, 0.0F, 1.0F},
+      {"rick_threshold_add_days", &farming.rick_threshold_add_days, 0.0F, 48.0F},
+      {"manure_fertility_mark", &farming.manure_fertility_mark, 0.0F, 100.0F},
+      {"manure_late_spread_free", &farming.manure_late_spread_free, 0.0F, 1.0F},
       {"seed_light_margin_share", &farming.seed_light_margin_share, 0.0F, 10.0F},
       {"unfed_death_percent_per_day", &farming.unfed_death_percent_per_day, 0.0F, 100.0F},
       {"juvenile_feed_factor", &farming.juvenile_feed_factor, 0.0F, 1.0F},
       {"reserve_feed_factor", &farming.reserve_feed_factor, 0.0F, 1.0F},
       {"plough_window_days", &farming.plough_window_days, 1.0F, 48.0F},
       {"plough_floor_margin", &farming.plough_floor_margin, 1.0F, 10.0F},
+      {"mow_crew_per_meadow", &farming.mow_crew_per_meadow, 1.0F, 200.0F},
+      {"harvest_cart_t_per_team_day", &farming.harvest_cart_t_per_team_day, 0.1F, 100.0F},
       {"milk_floor_margin", &farming.milk_floor_margin, 1.0F, 10.0F},
       {"early_snow_share", &farming.early_snow_share, 0.0F, 1.0F},
       {"reaping_days_per_hand_light_hour", &farming.reaping_days_per_hand_light_hour, 0.001F, 1.0F},
       {"perennial_first_cut_days", &farming.perennial_first_cut_days, 0.0F, 48.0F},
+      {"hay_weathering_summer", &farming.hay_weathering_by_season[0], 0.0F, 1.0F},
+      {"hay_weathering_autumn", &farming.hay_weathering_by_season[1], 0.0F, 1.0F},
+      {"hay_weathering_winter", &farming.hay_weathering_by_season[2], 0.0F, 1.0F},
+      {"hay_weathering_spring", &farming.hay_weathering_by_season[3], 0.0F, 1.0F},
+      {"clamp_rot_lamp_t", &farming.clamp_rot_lamp_t, 0.0F, 10000.0F},
       // BOTH HALVES OF BILLETING MOVED TO world_params.csv on 2026-09-16 and
       // are read by ParseProductionWorldParams below. They used to be split:
       // the yield factor here, the yard's places there — and the reason the
@@ -1155,7 +1175,7 @@ bool ParseMeadowKinds(const ITable& table, FarmingConfig& farming, std::string& 
 /// AT ALL: until 2026-09-16 this module took every number off its own
 /// hand-written tables, and the two halves of billeting are what brought it
 /// here. The next world constant lands in the same place.
-constexpr std::array<std::string_view, 31> kProductionWorldParamKeys = {
+constexpr std::array<std::string_view, 30> kProductionWorldParamKeys = {
     "billet_heads_per_yard",
     "billet_yield_factor",
     "school_year_start_month",
@@ -1186,11 +1206,14 @@ constexpr std::array<std::string_view, 31> kProductionWorldParamKeys = {
     "livestock_cold_step_warm_night",
     "livestock_freezing_counter",
     "livestock_freezing_loss_share_day",
-    "feed_draught_first",
+    // Slot 26 held `feed_draught_first` until 0.37.301: the feeding order's
+    // switch of econ's pair of 1 October, a refused rule's leftover (econ
+    // logistics-all-on; boss, the #1056 thread [66]). The last key took the
+    // slot, so that the indices below did not move.
+    "barrack_poultry_heads_per_family",
     "livestock_cold_first_month",
     "livestock_cold_last_month",
-    "herd_hunger_episode_fed_days",
-    "barrack_poultry_heads_per_family"};
+    "herd_hunger_episode_fed_days"};
 
 /// THE SCHOOL YEAR IS READ HERE AS WELL AS BY THE SCHOOL, and that is a
 /// second READER, not a second home: the months live in world_params.csv and
@@ -1210,7 +1233,6 @@ bool ParseProductionWorldParams(const ITable& world,
                                 float& district_center_km,
                                 std::string& error) {
   float school_from = static_cast<float>(farming.school_year_start_month) + 1.0F;
-  float draught_first = farming.feed_draught_first ? 1.0F : 0.0F;
   float school_to = static_cast<float>(farming.school_year_end_month) + 1.0F;
   float cold_from = static_cast<float>(farming.cold_first_month) + 1.0F;
   float cold_to = static_cast<float>(farming.cold_last_month) + 1.0F;
@@ -1317,10 +1339,13 @@ bool ParseProductionWorldParams(const ITable& world,
       ScalarKnob{.key = kProductionWorldParamKeys[25],
                  .value = &farming.freezing_loss_share_day,
                  .range = Range{.low = 0.0F, .high = 1.0F}},
-      // THE FEEDING ORDER'S SWITCH (econ's pair; 0.37.63): 0 or 1.
+      // THE BARRACK'S HENHOUSE, A FAMILY'S SHARE (0.37.205; boss and econ, the
+      // C2 thread [25]-[27]): the adult birds a family keeps there
+      // (herd_system.cpp, PlaceSurplusHead). Nought: none. In slot 26 since
+      // 0.37.301 (the feeding order's switch went).
       ScalarKnob{.key = kProductionWorldParamKeys[26],
-                 .value = &draught_first,
-                 .range = Range{.low = 0.0F, .high = 1.0F}},
+                 .value = &barrack_poultry_heads,
+                 .range = Range{.low = 0.0F, .high = 100.0F}},
       // THE COLD'S SEASON (0.37.69): human months in the table, from zero here.
       ScalarKnob{.key = kProductionWorldParamKeys[27], .value = &cold_from, .range = months},
       ScalarKnob{.key = kProductionWorldParamKeys[28], .value = &cold_to, .range = months},
@@ -1329,13 +1354,7 @@ bool ParseProductionWorldParams(const ITable& world,
       // a herd's hunger is said again (herd_system.cpp, kHerdWentHungry).
       ScalarKnob{.key = kProductionWorldParamKeys[29],
                  .value = &hunger_episode_fed_days,
-                 .range = Range{.low = 2.0F, .high = 8.0F}},
-      // THE BARRACK'S HENHOUSE, A FAMILY'S SHARE (0.37.205; boss and econ, the
-      // C2 thread [25]-[27]): the adult birds a family keeps there
-      // (herd_system.cpp, PlaceSurplusHead). Nought: none.
-      ScalarKnob{.key = kProductionWorldParamKeys[30],
-                 .value = &barrack_poultry_heads,
-                 .range = Range{.low = 0.0F, .high = 100.0F}}};
+                 .range = Range{.low = 2.0F, .high = 8.0F}}};
   if (!ReadKnobs(world, "world_params", knobs, error)) {
     return false;
   }
@@ -1345,7 +1364,6 @@ bool ParseProductionWorldParams(const ITable& world,
   farming.cold_last_month = static_cast<std::uint8_t>(cold_to - 1.0F);
   farming.school_year_start_month = static_cast<std::uint8_t>(school_from - 1.0F);
   farming.school_year_end_month = static_cast<std::uint8_t>(school_to - 1.0F);
-  farming.feed_draught_first = draught_first >= 0.5F;
   return true;
 }
 
@@ -1354,6 +1372,9 @@ std::span<const std::string_view> ProductionWorldParamKeys() {
 }
 
 bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, std::string& error) {
+  if (!ReadSledgeSpecs(tables, config.sledge, error)) {  // SL: the sledge
+    return false;
+  }
   if (const ITable* const world = tables.FindTable("world_params")) {
     if (!ParseProductionWorldParams(*world,
                                     config.farming,
@@ -1363,6 +1384,15 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
                                     config.road_access_m,
                                     config.district_center_km,
                                     error)) {
+      return false;
+    }
+    // THE OWN-DELIVERY BONUS's SHARE (routing stage В5; econ's (a)): no row,
+    // the default 0 stands (production_config.h: its return condition).
+    if (!OptionalValue(*world,
+                       "own_delivery_bonus_share",
+                       Range{.low = 0.0F, .high = 1.0F},
+                       config.own_delivery_bonus_share,
+                       error)) {
       return false;
     }
   }
@@ -1560,6 +1590,24 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
       error = "campaign: plan_failed_reputation: " + error;
       return false;
     }
+    // The rating earned beyond the plan (#1043): steps of the same scale.
+    const std::array<std::pair<const char*, float*>, 3> beyond = {{
+        {"plan_overfulfil_reputation_per_tier", &config.plan_overfulfil_reputation_per_tier},
+        {"plan_overfulfil_reputation_max", &config.plan_overfulfil_reputation_max},
+        {"district_visit_clean_reputation", &config.district_visit_clean_reputation},
+    }};
+    for (const auto& [key, value] : beyond) {
+      if (!CellOrDefault(*campaign,
+                         campaign->FindRowByKey(key),
+                         value_col,
+                         Range{.low = 0.0F, .high = kMetricMax},
+                         *value,
+                         *value,
+                         error)) {
+        error = std::string("campaign: ") + key + ": " + error;
+        return false;
+      }
+    }
     float percent = 0.0F;
     if (!CellOrDefault(*campaign,
                        campaign->FindRowByKey("plan_grain_share_percent"),
@@ -1670,6 +1718,10 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
   if (!ParseFirstPlan(tables, config, error)) {
     return false;
   }
+  // The split by the sown mix and the rating's band (plan_due.h; #1036).
+  if (!ParsePlanDue(tables, config, error)) {
+    return false;
+  }
   config.manure_resource = ResourceByKey(resources, "manure");
   config.hay_resource = ResourceByKey(resources, "hay");
   config.green_mass_resource = ResourceByKey(resources, "green_mass");
@@ -1681,9 +1733,12 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
   config.hide_resource = ResourceByKey(resources, "hide");
   config.pelt_resource = ResourceByKey(resources, "mink_pelt");
   config.down_resource = ResourceByKey(resources, "down");
+  config.potato_resource = ResourceByKey(resources, "potato");
+  config.vegetables_resource = ResourceByKey(resources, "vegetables");
   config.compost_heap_type = UnitTypeByKey(unit_types, "manure_pile");
   config.church_store_type = UnitTypeByKey(unit_types, "church_store");
   config.clamp_type = UnitTypeByKey(unit_types, "clamp");
+  config.vegetable_store_type = UnitTypeByKey(unit_types, "vegetable_store");
   // The stable is not a unit of its own: it is the SECOND step of the
   // kolkhoz yard (boss 2026-08-30), and foals come only under its roof
   // (livestock design §5). The type is resolved here; whether one is BUILT
@@ -1753,13 +1808,14 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
       return false;
     }
     config.cart_load_kg = tonnes * scale * 1000.0F;
-    // THE CART TRIP's MODEL (routing stage В4; cart_trips.h): 0, 1 or 2.
+    // THE CART TRIP's MODEL (routing stage В4; cart_trips.h): 0, 1, 2, or
+    // since C3 3, the plan writing the price (CartTripModel::kPlanned).
     float model = 0.0F;
     const std::uint32_t model_col = transport->FindColumn("trip_model");
     if (model_col != kNoTableColumn && !CellOrDefault(*transport,
                                                       transport->FindRowByKey("cart_loaded"),
                                                       model_col,
-                                                      Range{.low = 0.0F, .high = 2.0F},
+                                                      Range{.low = 0.0F, .high = 3.0F},
                                                       0.0F,
                                                       model,
                                                       error)) {
@@ -1797,6 +1853,13 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
                        Range{.low = 0.0F, .high = static_cast<float>(kDaysPerYear)},
                        1.0F,
                        config.hay_cart_urgent_days,
+                       error) ||
+        !CellOrDefault(*labor,
+                       labor->FindRowByKey("walker_min_trips_per_day"),
+                       value_col,
+                       Range{.low = 0.0F, .high = 24.0F},
+                       2.0F,
+                       config.walker_min_trips_per_day,
                        error)) {
       error = "labor: " + error;
       return false;

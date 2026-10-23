@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "core_common/calendar.h"
+#include "core_common/day_off.h"
 #include "core_common/event_state.h"
 #include "core_common/herd_state.h"
 #include "core_common/quantities.h"
@@ -16,8 +17,10 @@
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 #include "feed_home.h"
+#include "herd_forecast.h"
 #include "herd_system.h"
 #include "production_config.h"
+#include "rick_supply.h"
 
 namespace {
 
@@ -237,5 +240,151 @@ int CheckEachFarmEatsFromItsOwnRick() {
                      "feed home: a kilogram's remainder from the far rick is not a far-rick day");
   failures +=
       Expect(for_a_fifth == 1, "feed home: a fifth of the day from the far rick is a far-rick day");
+  return failures;
+}
+
+int CheckARickIsSuppliedFromAnother() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  core::ProductionConfig config;
+  if (Expect(tables != nullptr && core::ParseProductionConfig(*tables, config, error),
+             "rick supply: the shipped tables parse") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  const core::ResourceId hay = config.hay_resource;
+  const std::size_t resources = config.feed_values.size();
+  // The two farms of the check above, January: the team's rick empty, the
+  // cattle yard's holding 50 t for ten cows.
+  core::WorldState world;
+  world.calendar.tick = 0;
+  core::RefreshCalendarCaches(world.calendar);
+  const std::uint32_t cattle =
+      AddUnit(world, *tables, "cattle_yard", {.x = 0.0F, .y = 0.0F}, resources);
+  const std::uint32_t cattle_rick =
+      AddUnit(world, *tables, "hay_stack", {.x = 50.0F, .y = 0.0F}, resources);
+  const std::uint32_t team =
+      AddUnit(world, *tables, "horse_yard", {.x = 2000.0F, .y = 0.0F}, resources);
+  const std::uint32_t team_rick =
+      AddUnit(world, *tables, "hay_stack", {.x = 2050.0F, .y = 0.0F}, resources);
+  AddHerd(world, *tables, "cow", cattle);
+  AddHerd(world, *tables, "horse", team);
+  HayOf(world, cattle_rick, hay) = 50 * kTonne;
+
+  // THE SWITCH OFF (farming.csv rick_supply 0, as shipped): no rick has a supply.
+  core::WorldState off = world;
+  config.farming.rick_supply = 0.0F;
+  core::PriceRickSupply(config, off);
+  failures +=
+      Expect(off.units.rows[team_rick].rick_supply.from.value == core::kInvalidEntityIdValue,
+             "rick supply: with the switch off no rick is supplied");
+
+  // THE SWITCH ON: the empty rick is supplied from the full one, against the
+  // urgent horizon plus the contract's seven days.
+  config.farming.rick_supply = 1.0F;
+  core::PriceRickSupply(config, world);
+  const core::RickSupplySeam& seam = world.units.rows[team_rick].rick_supply;
+  const std::uint32_t threshold =
+      core::UrgentHayHorizonDays(world, static_cast<std::uint32_t>(config.hay_cart_urgent_days)) +
+      static_cast<std::uint32_t>(config.farming.rick_threshold_add_days);
+  std::cout << "  rick supply: the team's rick priced " << seam.grams / 1000 << " kg from row "
+            << (seam.from.value == world.units.row_ids[cattle_rick].value ? cattle_rick : 99U)
+            << ", " << seam.days_remaining << " cart-days, threshold " << +seam.threshold_days
+            << " days\n";
+  failures +=
+      Expect(seam.from.value == world.units.row_ids[cattle_rick].value &&
+                 seam.resource.value == hay.value && seam.grams > 0 && seam.grams < 50 * kTonne &&
+                 seam.days_remaining > 0.0F && seam.days_written == seam.days_remaining &&
+                 seam.threshold_days == threshold,
+             "rick supply: the empty rick is priced hay from the full one, by its threshold");
+  failures +=
+      Expect(world.units.rows[cattle_rick].rick_supply.from.value == core::kInvalidEntityIdValue,
+             "rick supply: the full rick is not supplied");
+  failures += Expect(core::RickSupplyStands(world.units.rows[team_rick]),
+                     "rick supply: the team's rick's supply stands for the labour");
+
+  // THE SETTLE: half the seam drained moves half the hay, rick to rick, and
+  // no gram is lost or made on the way.
+  core::RickSupplySeam& open = world.units.rows[team_rick].rick_supply;
+  const core::Grams priced = open.grams;
+  open.days_remaining = open.days_written / 2.0F;
+  core::SettleRickSupply(config, world);
+  const core::Grams moved = HayOf(world, team_rick, hay);
+  std::cout << "  rick supply: half the seam drained moved " << moved / 1000 << " kg of "
+            << priced / 1000 << '\n';
+  failures += Expect(moved > (priced * 49) / 100 && moved < (priced * 51) / 100 &&
+                         HayOf(world, cattle_rick, hay) + moved == 50 * kTonne &&
+                         world.units.rows[team_rick].rick_supply.grams == priced - moved,
+                     "rick supply: half the seam drained moves half the hay, none lost");
+
+  // THE SENDER KEEPS ITS OWN: a cattle rick with a day's hay spares nothing,
+  // and nobody is supplied.
+  core::WorldState poor = world;
+  HayOf(poor, cattle_rick, hay) = kTonne / 4;
+  HayOf(poor, team_rick, hay) = 0;
+  core::PriceRickSupply(config, poor);
+  failures +=
+      Expect(poor.units.rows[team_rick].rick_supply.from.value == core::kInvalidEntityIdValue,
+             "rick supply: a sender short itself spares nothing");
+
+  // THE WINDOWS END AT THE CUT (#1096, gate W7; econ rick-window-to-the-cut):
+  // with a meadow in the village, on a day the lamp's horizon is shorter than
+  // the threshold, the empty rick is priced against that horizon; the same
+  // day with no meadow keeps the full threshold; the next morning the window
+  // is read again from the next horizon.
+  core::WorldState mown = world;
+  HayOf(mown, team_rick, hay) = 0;
+  HayOf(mown, cattle_rick, hay) = 50 * kTonne;
+  open = core::RickSupplySeam{};
+  core::FieldRow meadow;
+  meadow.kind = core::LandKind::kMeadow;
+  meadow.area_ga = 10.0F;
+  meadow.center = core::Vec2{.x = 1000.0F, .y = 500.0F};
+  core::AppendRow(mown.fields, meadow);
+  const auto horizon_on = [&config](core::WorldState& at, core::SimDay day) {
+    at.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(at.calendar);
+    return static_cast<std::uint32_t>(
+        core::ForecastHerdFeed(config, at, false, core::FeedHorizon::kNearestScythes).horizon_days);
+  };
+  core::SimDay near_cut = 0;
+  std::uint32_t horizon = 0;
+  for (core::SimDay day = 0; day < core::kDaysPerYear && near_cut == 0; ++day) {
+    horizon = horizon_on(mown, day);
+    near_cut = horizon > 1 && horizon < threshold ? day : 0;
+  }
+  // The threshold of THAT day: the urgent horizon moves with the calendar.
+  const std::uint32_t threshold_then =
+      core::UrgentHayHorizonDays(mown, static_cast<std::uint32_t>(config.hay_cart_urgent_days)) +
+      static_cast<std::uint32_t>(config.farming.rick_threshold_add_days);
+  core::PriceRickSupply(config, mown);
+  const core::RickSupplySeam at_cut = mown.units.rows[team_rick].rick_supply;  // a copy
+  core::WorldState unmown = world;
+  HayOf(unmown, team_rick, hay) = 0;
+  HayOf(unmown, cattle_rick, hay) = 50 * kTonne;
+  horizon_on(unmown, near_cut);
+  core::PriceRickSupply(config, unmown);
+  const core::RickSupplySeam no_cut = unmown.units.rows[team_rick].rick_supply;
+  const std::uint32_t next_horizon = horizon_on(mown, near_cut + 1);
+  const std::uint32_t next_threshold =
+      core::UrgentHayHorizonDays(mown, static_cast<std::uint32_t>(config.hay_cart_urgent_days)) +
+      static_cast<std::uint32_t>(config.farming.rick_threshold_add_days);
+  core::PriceRickSupply(config, mown);
+  const std::uint32_t next_window = mown.units.rows[team_rick].rick_supply.threshold_days;
+  std::cout << "  rick supply: day " << near_cut << ", the cut " << horizon
+            << " days away — window with a meadow " << +at_cut.threshold_days << ", without "
+            << +no_cut.threshold_days << "; the next morning " << next_window << " (horizon "
+            << next_horizon << ")\n";
+  failures += Expect(near_cut > 0 && horizon < threshold_then &&
+                         at_cut.from.value != core::kInvalidEntityIdValue &&
+                         at_cut.threshold_days == horizon,
+                     "rick supply (W7): with a meadow the window stops at the cut");
+  failures += Expect(
+      no_cut.from.value != core::kInvalidEntityIdValue && no_cut.threshold_days == threshold_then,
+      "rick supply (W7): a rick no cut refills keeps its full threshold");
+  failures += Expect(next_window == std::min(next_threshold, next_horizon) && next_window > 0,
+                     "rick supply (W7): the next morning the window is read from the next "
+                     "horizon");
   return failures;
 }

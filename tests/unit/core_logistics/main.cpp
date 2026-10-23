@@ -1,6 +1,7 @@
 // unit_core_logistics: the groom's tasks of carting (routing stage B, B2;
 // core_logistics/logistics_tasks.h, logistics_config.h).
 
+#include <cmath>
 #include <cstdint>
 #include <iostream>
 #include <string>
@@ -147,6 +148,23 @@ int TestAgeing() {
   }
   failures += Expect(world.logistics_tasks.rows[0].level == core::LogisticsLevel::kBackground,
                      "ageing: a paused task does not age");
+  // A WINTER DOSE NEVER AGES (#1056 C2 option 2): last in the winter queue,
+  // behind the logs and the supply, however long it waits. The church's
+  // transfer beside it, unpaused, ages as before - the rule names the kind.
+  world.logistics_tasks.rows[0].paused = false;
+  world.logistics_tasks.rows[0].aged_from_day = 50;
+  core::LogisticsTaskRow dose;
+  dose.load_kind = core::LogisticsLoadKind::kManureField;
+  dose.base_level = core::LogisticsLevel::kBackground;
+  dose.level = core::LogisticsLevel::kBackground;
+  dose.aged_from_day = 50;
+  core::AppendRow(world.logistics_tasks, dose);
+  core::TaskDayCount winter;
+  core::AgeAndRaise(config, world, 80, static_cast<core::Tick>(80) * 24U, winter);
+  failures += Expect(world.logistics_tasks.rows[1].level == core::LogisticsLevel::kBackground &&
+                         world.logistics_tasks.rows[0].level == core::LogisticsLevel::kTerm,
+                     "ageing: a winter manure dose 30 days unserved stays background (the "
+                     "human's «последним в очереди»); the transfer beside it is a term");
   return failures;
 }
 
@@ -784,6 +802,51 @@ int TestTheReplan() {
   bool calm_replanned = true;
   day_of(false, calm_replanned, calm);
   failures += Expect(!calm_replanned, "re-plan: nothing changed, nothing re-planned");
+  // A HEAP REAPED IN THE DAY (#1056 C4, writer (3)): at hour 10 a third
+  // field's heap appears - its task is made and the plan drawn again. Its
+  // pair: the same heap growing at hour 11, its task standing - no re-plan.
+  {
+    core::FieldRow field;
+    field.kind = core::LandKind::kArable;
+    field.center = core::Vec2{.x = 900.0F, .y = 0.0F};
+    field.reaped_grams = 500'000;
+    field.reaped_resource = core::ResourceId{0};
+    field.haul_days_remaining = 0.5F;
+    core::AppendRow(calm.fields, field);
+    calm.heap_born = true;  // as production's PutOnHeap marks a heap born (world_state.h)
+    const std::size_t tasks_before = calm.logistics_tasks.rows.size();
+    calm.calendar.tick = (3 * core::kTicksPerDay) + 10;
+    const bool new_heap = system->Replan(calm);
+    failures += Expect(new_heap && calm.logistics_tasks.rows.size() == tasks_before + 1,
+                       "re-plan: a heap reaped in the day gets its task and re-plans the day");
+    calm.fields.rows.back().reaped_grams = 900'000;
+    calm.calendar.tick = (3 * core::kTicksPerDay) + 11;
+    failures +=
+        Expect(!system->Replan(calm) && calm.logistics_tasks.rows.size() == tasks_before + 1,
+               "re-plan: a heap growing under its task re-plans nothing");
+    // EVERY CART LOADED (#1056 C4; SomeCartFree): a fourth heap at hour 12
+    // with every goods cart on a loaded leg from 11 to 14 gets its task, and
+    // the day is not re-planned for it - no cart could take it.
+    core::WorldState held = calm;
+    for (core::CartPlan& cart : held.groom_plan.carts) {
+      core::CartLeg leg;
+      leg.loaded = 1;
+      leg.depart = (3 * core::kTicksPerDay) + 11;
+      leg.arrive = (3 * core::kTicksPerDay) + 14;
+      cart.legs = {leg};
+    }
+    core::FieldRow fourth = field;
+    fourth.center = core::Vec2{.x = 1'200.0F, .y = 0.0F};
+    core::AppendRow(held.fields, fourth);
+    held.heap_born = true;
+    held.groom_plan.stale = false;
+    const std::size_t held_before = held.logistics_tasks.rows.size();
+    held.calendar.tick = (3 * core::kTicksPerDay) + 12;
+    failures += Expect(!held.groom_plan.carts.empty() && !system->Replan(held) &&
+                           held.logistics_tasks.rows.size() == held_before + 1,
+                       "re-plan: a heap reaped with every cart loaded gets its task and re-plans "
+                       "nothing");
+  }
   return failures;
 }
 
@@ -983,6 +1046,28 @@ int TestTheTripsAndTheEvening() {
   failures +=
       Expect(loaded_form == core::CargoForm::kRick && way_back_form == core::CargoForm::kNone,
              "trips: the door names the loaded leg a rick and the way back nought");
+  // KEPT IN THE CHAIN BY ITS MARKER (#1056 C3, T1; save 178): a load of the
+  // chain the cart never carted draws no cargo (the Fable review of 11 October
+  // 2026, item 9), while a carting at the load floored to no ticks - under an
+  // hour - draws its load. Until T1 both were «depart == arrive».
+  core::CartLeg at_load{};
+  for (const core::CartPlan& cart : hay.groom_plan.carts) {
+    for (const core::CartLeg& leg : cart.legs) {
+      if (cart.driver.value == hay_day.carter.value && leg.loaded != 0) {
+        at_load = leg;
+      }
+    }
+  }
+  at_load.loaded = 0;
+  at_load.to = at_load.from;
+  at_load.riders.clear();
+  at_load.arrive = at_load.depart;
+  core::CartLeg kept = at_load;
+  kept.kept_in_chain = 1U;
+  failures += Expect(core::LegCargoForm(config, hay, kept) == core::CargoForm::kNone &&
+                         core::LegCargoForm(config, hay, at_load) == core::CargoForm::kRick,
+                     "trips: a load kept in the chain draws no cargo; a carting at the load "
+                     "under an hour, no ticks long, draws its rick");
   const core::WorkAssignment& hay_feller =
       hay.residents.rows[core::FindRow(hay.residents, hay_day.feller)].work;
   failures += Expect(hay_feller.rides_home_with.value == hay_day.carter.value &&
@@ -1008,6 +1093,584 @@ int TestTheTripsAndTheEvening() {
              "whole walk written, the refusal counted");
   failures += Expect(hay_feller.travel_home_hours < log_feller.travel_home_hours - 0.1F,
                      "evening: the ride home is shorter than the walk by the plan's own margin");
+  return failures;
+}
+
+/// THE DRAWN TRIP IS THE PRICED ONE (#1056 C3 body 3/6; trip_terms.h): a field's
+/// heap whose task carries the price's facts - the heap point 100 m nearer the
+/// receiver than the field's centre, a round trip of 3 h with a loaded half of
+/// 2 h, 1.5 t at 750 kg a cart, the seam two whole trips (0.6 cart-days of a
+/// 10 h day) - is drawn from the heap point, its loaded halves 2 h each, and
+/// two of them: the trips priced. The pair: the same heap with no facts is
+/// drawn from the field's centre at the plan's own paces, as before C3.
+int TestThePlannedTrips() {
+  int failures = 0;
+  const test::FakeTable resources{{"key", "cargo_form", "is_fuel"}, {{"hay", "rick", "0"}}};
+  const test::FakeTable transport{{"key", "seats"}, {{"cart_loaded", "2"}}};
+  const test::FakeTable horses{{"key"}, {{"horse"}}};
+  const test::FakeTableSet tables{
+      {{"resources", &resources}, {"transport", &transport}, {"livestock", &horses}}};
+  const auto system = core::CreateLogisticsSystem(tables, core::StubTables::kAllowed);
+  if (Expect(system != nullptr, "planned trips: the system assembles") != 0) {
+    return 1;
+  }
+  const core::Vec2 centre{.x = 1'200.0F, .y = 0.0F};
+  const core::Vec2 heap_point{.x = 1'100.0F, .y = 0.0F};
+  const core::Vec2 receiver{.x = 200.0F, .y = 0.0F};
+
+  struct Drawn {
+    std::uint32_t loaded = 0;      // loaded legs from where the load lies to the receiver
+    bool from_heap_point = false;  // every loaded leg starts at the heap point
+    bool two_hours = true;         // every loaded leg spans 2 ticks
+    bool rode_to = false;          // an empty leg rode to the heap point
+  };
+
+  const auto draw = [&](bool facts) {
+    core::WorldState world;
+    world.weather.daylight_hours = 12.0F;
+    world.calendar.day = 3;
+    core::FieldRow field;
+    field.kind = core::LandKind::kArable;
+    field.center = centre;
+    field.reaped_grams = 1'500'000;
+    field.reaped_resource = core::ResourceId{0};
+    field.haul_days_remaining = 0.6F;
+    field.haul_to = receiver;
+    core::ResidentRow carter;
+    carter.work.kind = core::WorkKind::kHauling;
+    carter.work.rides_horse = 1;
+    carter.work.field = core::AppendRow(world.fields, field);
+    core::UnitRow house;
+    house.position = core::Vec2{.x = 0.0F, .y = 0.0F};
+    const core::UnitId house_id = core::AppendRow(world.units, house);
+    core::FamilyRow household;
+    household.house = house_id;
+    const core::FamilyId family = core::AppendRow(world.families, household);
+    world.units.rows[0].household = family;
+    carter.family = family;
+    const core::ResidentId driver = core::AppendRow(world.residents, carter);
+    StableTheTeam(world);
+    world.calendar.tick = 3 * core::kTicksPerDay;
+    system->RunTasks(world, world);
+    if (facts && !world.logistics_tasks.rows.empty()) {
+      core::TaskTripTerms& terms = world.logistics_tasks.rows[0].trip_terms;
+      terms.load_point = heap_point;
+      terms.trip_hours = 3.0F;
+      terms.trip_loaded_hours = 2.0F;
+      terms.cart_load = 750'000;
+      terms.grams_left = 1'500'000;
+    }
+    world.calendar.tick = (3 * core::kTicksPerDay) + 1;
+    system->BuildPlan(world);
+    Drawn drawn;
+    for (const core::CartPlan& cart : world.groom_plan.carts) {
+      if (cart.driver.value != driver.value) {
+        continue;
+      }
+      for (const core::CartLeg& leg : cart.legs) {
+        drawn.rode_to = drawn.rode_to || (leg.task.value == core::kInvalidEntityIdValue &&
+                                          leg.to.x == heap_point.x && leg.to.y == heap_point.y);
+        if (leg.loaded == 0 || leg.to.x != receiver.x) {
+          continue;
+        }
+        ++drawn.loaded;
+        drawn.from_heap_point = (drawn.loaded == 1 || drawn.from_heap_point) &&
+                                leg.from.x == heap_point.x && leg.from.y == heap_point.y;
+        drawn.two_hours = drawn.two_hours && leg.arrive - leg.depart == 2;
+      }
+    }
+    return drawn;
+  };
+  const Drawn planned = draw(true);
+  const Drawn before = draw(false);
+  std::cout << "  planned trips: " << planned.loaded << " loaded legs, from the heap point "
+            << planned.from_heap_point << ", 2 h each " << planned.two_hours
+            << "; without the facts " << before.loaded << " legs, from the heap point "
+            << before.from_heap_point << '\n';
+  failures +=
+      Expect(planned.rode_to && planned.from_heap_point && planned.two_hours && planned.loaded == 2,
+             "planned trips: ridden to the heap point, two whole trips priced, each "
+             "loaded half the price's 2 h");
+  failures += Expect(before.loaded > 0 && !before.from_heap_point && !before.rode_to,
+                     "planned trips: without the facts the heap is drawn from the field's "
+                     "centre, as before C3");
+  return failures;
+}
+
+/// THE PLAN WRITES THE PRICE (#1056 C3 body 4/6; trip_pricing.h,
+/// PriceTasksFromPlan): under transport's trip_model 3 a heap of 6 t at 750 kg
+/// a cart (eight whole trips of 3 h, the evening's fallback 2.4 cart-days of a
+/// 10 h day) and one cart with twelve hours of light: the morning's plan draws
+/// what the light holds and the seam is rewritten as the drawn trips' hours
+/// plus the whole trips of the rest - both halves of it, remaining and
+/// written - and the year's book splits them (C3-g). The same world at
+/// trip_model 0 leaves the evening's seam as it was.
+int TestThePlanWritesThePrice() {
+  int failures = 0;
+  const auto price = [](const char* model,
+                        float& seam,
+                        float& written,
+                        float& drawn_days,
+                        float& fallback_days,
+                        float trip_hours = 3.0F) {
+    const test::FakeTable resources{{"key", "cargo_form", "is_fuel"}, {{"hay", "rick", "0"}}};
+    const test::FakeTable transport{{"key", "seats", "trip_model"}, {{"cart_loaded", "2", model}}};
+    const test::FakeTable horses{{"key"}, {{"horse"}}};
+    const test::FakeTableSet tables{
+        {{"resources", &resources}, {"transport", &transport}, {"livestock", &horses}}};
+    const auto system = core::CreateLogisticsSystem(tables, core::StubTables::kAllowed);
+    if (system == nullptr) {
+      return false;
+    }
+    core::WorldState world;
+    world.weather.daylight_hours = 12.0F;
+    world.calendar.day = 3;
+    core::FieldRow field;
+    field.kind = core::LandKind::kArable;
+    field.center = core::Vec2{.x = 1'200.0F, .y = 0.0F};
+    field.reaped_grams = 6'000'000;
+    field.reaped_resource = core::ResourceId{0};
+    field.haul_days_remaining = 2.4F;
+    field.haul_days_written = 2.4F;
+    field.haul_to = core::Vec2{.x = 200.0F, .y = 0.0F};
+    core::ResidentRow carter;
+    carter.work.kind = core::WorkKind::kHauling;
+    carter.work.rides_horse = 1;
+    carter.work.field = core::AppendRow(world.fields, field);
+    core::UnitRow house;
+    const core::UnitId house_id = core::AppendRow(world.units, house);
+    core::FamilyRow household;
+    household.house = house_id;
+    const core::FamilyId family = core::AppendRow(world.families, household);
+    world.units.rows[0].household = family;
+    carter.family = family;
+    core::AppendRow(world.residents, carter);
+    StableTheTeam(world);
+    world.calendar.tick = 3 * core::kTicksPerDay;
+    system->RunTasks(world, world);
+    if (world.logistics_tasks.rows.empty()) {
+      return false;
+    }
+    core::TaskTripTerms& terms = world.logistics_tasks.rows[0].trip_terms;
+    terms.load_point = core::Vec2{.x = 1'100.0F, .y = 0.0F};
+    terms.trip_hours = trip_hours;
+    terms.trip_loaded_hours = trip_hours * 2.0F / 3.0F;
+    terms.cart_load = 750'000;
+    terms.grams_left = 6'000'000;
+    world.calendar.tick = (3 * core::kTicksPerDay) + 1;
+    system->BuildPlan(world);
+    seam = world.fields.rows[0].haul_days_remaining;
+    written = world.fields.rows[0].haul_days_written;
+    // The day's book is written at sunrise, hour 6 of twelve hours' light ((ii')).
+    world.calendar.tick = (3 * core::kTicksPerDay) + 6;
+    system->Replan(world);
+    drawn_days = world.ledger.current.cart_days_drawn;
+    fallback_days = world.ledger.current.cart_days_fallback;
+    return true;
+  };
+  float seam = 0.0F;
+  float written = 0.0F;
+  float drawn_days = 0.0F;
+  float fallback_days = 0.0F;
+  const bool planned = price("3", seam, written, drawn_days, fallback_days);
+  std::cout << "  the plan's price: seam " << seam << " (written " << written << "), drawn "
+            << drawn_days << " + fallback " << fallback_days << " cart-days\n";
+  const float trips = drawn_days / 0.3F;
+  failures += Expect(planned && drawn_days > 0.0F && fallback_days > 0.0F &&
+                         std::fabs(trips - std::round(trips)) < 1.0e-3F &&
+                         std::fabs(seam - (drawn_days + fallback_days)) < 1.0e-5F &&
+                         seam == written && std::fabs(seam - 2.4F) < 1.0e-4F,
+                     "the plan's price: whole trips drawn plus the rest's whole trips, both halves "
+                     "of the seam, the book split - eight trips in all");
+  float off_seam = 0.0F;
+  float off_written = 0.0F;
+  float off_drawn = 0.0F;
+  float off_fallback = 0.0F;
+  const bool off = price("0", off_seam, off_written, off_drawn, off_fallback);
+  failures += Expect(
+      off && off_seam == 2.4F && off_written == 2.4F && off_drawn == 0.0F && off_fallback == 0.0F,
+      "the plan's price: at trip_model 0 the evening's seam stands, nothing booked");
+  // L3 (#1056 C3; core-boss-oats-b-pair [131]): a load whose round trip (84 h)
+  // outlasts the day's light (12 h) is never drawn, and the plan writes no
+  // price for it - the evening's seam stands under the planned model too.
+  float far_seam = 0.0F;
+  float far_written = 0.0F;
+  float far_drawn = 0.0F;
+  float far_fallback = 0.0F;
+  const bool far = price("3", far_seam, far_written, far_drawn, far_fallback, 84.0F);
+  std::cout << "  the plan's price, a round trip of 84 h: seam " << far_seam << " (written "
+            << far_written << ")\n";
+  failures += Expect(far && far_seam == 2.4F && far_written == 2.4F,
+                     "the plan's price (L3): a load past the day's light keeps the evening's seam");
+  return failures;
+}
+
+/// TWO FIELDS' LEFTOVERS IN ONE TRIP (#1056 C3 body 5, ruling 3; econ's gate
+/// C3-e): heap A, 1 t at 750 kg a cart - its last trip a 250 kg part-load -
+/// and one cart on it; a second heap B on the way to the same receiver. B of
+/// 400 kg fits the part-load: A's last trip goes A -> B -> receiver, both legs
+/// naming B, B pays its share by grams and is carried by A, the book counts one
+/// pooled trip. The pairs: B of 600 kg does not fit (250 + 600 > 750), and a B
+/// off the way (the detour above 25 %) is not taken - no pool in either.
+int TestTheFieldsPooled() {
+  int failures = 0;
+
+  struct Pool {
+    bool pooled_legs = false;  // a loaded leg names B as its pooled load
+    bool carried = false;      // B carried by A, its share of the seam above nought
+    float second_seam = -1.0F;
+    float trips_pooled = 0.0F;
+  };
+
+  const auto run = [](core::Grams second_grams, core::Vec2 second_at) {
+    const test::FakeTable resources{{"key", "cargo_form", "is_fuel"}, {{"hay", "rick", "0"}}};
+    const test::FakeTable transport{{"key", "seats", "trip_model"}, {{"cart_loaded", "2", "3"}}};
+    const test::FakeTable horses{{"key"}, {{"horse"}}};
+    const test::FakeTableSet tables{
+        {{"resources", &resources}, {"transport", &transport}, {"livestock", &horses}}};
+    Pool pool;
+    const auto system = core::CreateLogisticsSystem(tables, core::StubTables::kAllowed);
+    if (system == nullptr) {
+      return pool;
+    }
+    const core::Vec2 receiver{.x = 200.0F, .y = 0.0F};
+    core::WorldState world;
+    world.weather.daylight_hours = 12.0F;
+    world.calendar.day = 3;
+    const auto heap = [&world, &receiver](core::Vec2 at, core::Grams grams, float seam) {
+      core::FieldRow field;
+      field.kind = core::LandKind::kArable;
+      field.center = at;
+      field.reaped_grams = grams;
+      field.reaped_resource = core::ResourceId{0};
+      field.haul_days_remaining = seam;
+      field.haul_days_written = seam;
+      field.haul_to = receiver;
+      return core::AppendRow(world.fields, field);
+    };
+    const core::FieldId first = heap(core::Vec2{.x = 1'200.0F, .y = 0.0F}, 1'000'000, 0.6F);
+    const core::FieldId second = heap(second_at, second_grams, 0.3F);
+    core::ResidentRow carter;
+    carter.work.kind = core::WorkKind::kHauling;
+    carter.work.rides_horse = 1;
+    carter.work.field = first;
+    core::UnitRow house;
+    const core::UnitId house_id = core::AppendRow(world.units, house);
+    core::FamilyRow household;
+    household.house = house_id;
+    const core::FamilyId family = core::AppendRow(world.families, household);
+    world.units.rows[0].household = family;
+    carter.family = family;
+    core::AppendRow(world.residents, carter);
+    StableTheTeam(world);
+    world.calendar.tick = 3 * core::kTicksPerDay;
+    system->RunTasks(world, world);
+    for (core::LogisticsTaskRow& task : world.logistics_tasks.rows) {
+      const std::uint32_t row = core::FindRow(world.fields, task.field);
+      if (row == core::kNoRow) {
+        continue;
+      }
+      core::TaskTripTerms& terms = task.trip_terms;
+      terms.load_point = world.fields.rows[row].center;
+      terms.trip_hours = 3.0F;
+      terms.trip_loaded_hours = 2.0F;
+      terms.cart_load = 750'000;
+      terms.grams_left = world.fields.rows[row].reaped_grams;
+    }
+    world.calendar.tick = (3 * core::kTicksPerDay) + 1;
+    system->BuildPlan(world);
+    world.calendar.tick = (3 * core::kTicksPerDay) + 6;  // sunrise: the day's book ((ii'))
+    system->Replan(world);
+    const core::LogisticsTaskRow* a = TaskOfField(world, first);
+    const core::LogisticsTaskRow* b = TaskOfField(world, second);
+    if (a == nullptr || b == nullptr) {
+      return pool;
+    }
+    core::LogisticsTaskId b_id;
+    core::LogisticsTaskId a_id;
+    for (std::uint32_t row = 0; row < world.logistics_tasks.rows.size(); ++row) {
+      if (&world.logistics_tasks.rows[row] == b) {
+        b_id = world.logistics_tasks.row_ids[row];
+      }
+      if (&world.logistics_tasks.rows[row] == a) {
+        a_id = world.logistics_tasks.row_ids[row];
+      }
+    }
+    for (const core::CartPlan& cart : world.groom_plan.carts) {
+      for (const core::CartLeg& leg : cart.legs) {
+        pool.pooled_legs = pool.pooled_legs || leg.pooled_task.value == b_id.value;
+      }
+    }
+    pool.carried = b->carried_by.value == a_id.value && b->carried_share > 0.0F;
+    pool.second_seam = world.fields.rows[core::FindRow(world.fields, second)].haul_days_remaining;
+    pool.trips_pooled = world.ledger.current.cart_trips_pooled;
+    return pool;
+  };
+  const Pool fits = run(400'000, core::Vec2{.x = 700.0F, .y = 50.0F});
+  const Pool too_big = run(600'000, core::Vec2{.x = 700.0F, .y = 50.0F});
+  const Pool off_the_way = run(400'000, core::Vec2{.x = 1'100.0F, .y = 1'500.0F});
+  // (iii) LIFTED (core-boss-oats-b-pair [110]): B of 1.15 t - one whole load
+  // and a last part-load of 400 kg - is a partner too; its part-load rides in
+  // A's last trip, and its whole load stays its own, priced as any heap's.
+  const Pool two_trips = run(1'150'000, core::Vec2{.x = 700.0F, .y = 50.0F});
+  std::cout << "  pooled: fits - legs " << fits.pooled_legs << ", carried " << fits.carried
+            << ", B's seam " << fits.second_seam << ", trips pooled " << fits.trips_pooled
+            << "; too big - legs " << too_big.pooled_legs << "; off the way - legs "
+            << off_the_way.pooled_legs << "; B of two trips - legs " << two_trips.pooled_legs
+            << ", carried " << two_trips.carried << ", B's seam " << two_trips.second_seam << '\n';
+  failures += Expect(two_trips.pooled_legs && two_trips.carried && two_trips.trips_pooled == 1.0F &&
+                         two_trips.second_seam > fits.second_seam + 0.2F,
+                     "pooled ((iii) lifted): a heap of two trips lends its last part-load to the "
+                     "pool, and its seam holds its own whole load beside its share");
+  failures += Expect(fits.pooled_legs && fits.carried && fits.second_seam > 0.0F &&
+                         fits.second_seam < 0.3F && fits.trips_pooled == 1.0F,
+                     "pooled: a second heap that fits the last part-load and lies on the way rides "
+                     "it, carried, its share of the trip by grams, one pooled trip booked");
+  failures += Expect(!too_big.pooled_legs && !too_big.carried && too_big.trips_pooled == 0.0F,
+                     "pooled: a second heap that does not fit the part-load is not pooled");
+  failures +=
+      Expect(!off_the_way.pooled_legs && !off_the_way.carried && off_the_way.trips_pooled == 0.0F,
+             "pooled: a second heap off the way (detour above 25 %) is not pooled");
+  return failures;
+}
+
+/// THE BACK LOAD (#1056 C3, ruling 4; econ's gate C3-e; M2 step 2b): heap A,
+/// 1 t at 750 kg a cart, its receiver at 200 m east, one cart on it, horse
+/// or on foot; heap B of one cart load lies by A's receiver, and B's own
+/// receiver by A's heap - so at A's receiver the cart takes B back instead of
+/// the way back empty: B's loaded leg is a back load, B is carried by A and
+/// pays its leg's share, the book counts it. The pairs: B's receiver far west
+/// (the detour saves nothing) and a carrier on foot - no back load.
+int TestTheBackLoad() {
+  int failures = 0;
+
+  struct Back {
+    bool back_leg = false;  // a loaded leg of B marked back_load
+    bool carried = false;   // B carried by A, its share above nought
+    float b_seam = -1.0F;
+    float trips_back = 0.0F;
+    bool seats_riders = false;  // the back leg's form seats evening riders (SeatEveningRiders)
+  };
+
+  const auto run = [](core::Vec2 b_receiver, bool on_foot, std::uint16_t b_resource) {
+    const test::FakeTable resources{{"key", "cargo_form", "is_fuel"},
+                                    {{"hay", "rick", "0"}, {"manure", "manure", "0"}}};
+    const test::FakeTable transport{{"key", "seats", "trip_model"}, {{"cart_loaded", "2", "3"}}};
+    const test::FakeTable horses{{"key"}, {{"horse"}}};
+    const test::FakeTableSet tables{
+        {{"resources", &resources}, {"transport", &transport}, {"livestock", &horses}}};
+    Back back;
+    const auto system = core::CreateLogisticsSystem(tables, core::StubTables::kAllowed);
+    core::LogisticsConfig config;
+    std::string error;
+    if (system == nullptr || !core::ParseLogisticsConfig(tables, config, error)) {
+      return back;
+    }
+    core::WorldState world;
+    world.weather.daylight_hours = 12.0F;
+    world.calendar.day = 3;
+    const auto heap =
+        [&world](
+            core::Vec2 at, core::Grams grams, float seam, core::Vec2 to, std::uint16_t resource) {
+          core::FieldRow field;
+          field.kind = core::LandKind::kArable;
+          field.center = at;
+          field.reaped_grams = grams;
+          field.reaped_resource = core::ResourceId{resource};
+          field.haul_days_remaining = seam;
+          field.haul_days_written = seam;
+          field.haul_to = to;
+          return core::AppendRow(world.fields, field);
+        };
+    const core::FieldId a = heap(core::Vec2{.x = 1'200.0F, .y = 0.0F},
+                                 1'000'000,
+                                 0.6F,
+                                 core::Vec2{.x = 200.0F, .y = 0.0F},
+                                 0);
+    const core::FieldId b =
+        heap(core::Vec2{.x = 250.0F, .y = 50.0F}, 750'000, 0.3F, b_receiver, b_resource);
+    core::ResidentRow carter;
+    carter.work.kind = core::WorkKind::kHauling;
+    carter.work.rides_horse = on_foot ? 0U : 1U;
+    carter.work.field = a;
+    core::UnitRow house;
+    const core::UnitId house_id = core::AppendRow(world.units, house);
+    core::FamilyRow household;
+    household.house = house_id;
+    const core::FamilyId family = core::AppendRow(world.families, household);
+    world.units.rows[0].household = family;
+    carter.family = family;
+    core::AppendRow(world.residents, carter);
+    StableTheTeam(world);
+    world.calendar.tick = 3 * core::kTicksPerDay;
+    system->RunTasks(world, world);
+    for (core::LogisticsTaskRow& task : world.logistics_tasks.rows) {
+      const std::uint32_t row = core::FindRow(world.fields, task.field);
+      if (row == core::kNoRow) {
+        continue;
+      }
+      core::TaskTripTerms& terms = task.trip_terms;
+      terms.load_point = world.fields.rows[row].center;
+      terms.trip_hours = 3.0F;
+      terms.trip_loaded_hours = 2.0F;
+      terms.cart_load = 750'000;
+      terms.grams_left = world.fields.rows[row].reaped_grams;
+    }
+    world.calendar.tick = (3 * core::kTicksPerDay) + 1;
+    system->BuildPlan(world);
+    world.calendar.tick = (3 * core::kTicksPerDay) + 6;  // sunrise: the day's book
+    system->Replan(world);
+    const core::LogisticsTaskRow* a_task = TaskOfField(world, a);
+    const core::LogisticsTaskRow* b_task = TaskOfField(world, b);
+    if (a_task == nullptr || b_task == nullptr) {
+      return back;
+    }
+    core::LogisticsTaskId a_id;
+    core::LogisticsTaskId b_id;
+    for (std::uint32_t row = 0; row < world.logistics_tasks.rows.size(); ++row) {
+      if (&world.logistics_tasks.rows[row] == a_task) {
+        a_id = world.logistics_tasks.row_ids[row];
+      }
+      if (&world.logistics_tasks.rows[row] == b_task) {
+        b_id = world.logistics_tasks.row_ids[row];
+      }
+    }
+    for (const core::CartPlan& cart : world.groom_plan.carts) {
+      for (const core::CartLeg& leg : cart.legs) {
+        if (leg.back_load != 0 && leg.task.value == b_id.value) {
+          back.back_leg = true;
+          // The evening's seating asks the loaded leg's form alone (logistics_plan.cpp,
+          // SeatEveningRiders: CargoFormSeatsRiders(LegCargoForm(...))).
+          back.seats_riders = core::CargoFormSeatsRiders(core::LegCargoForm(config, world, leg));
+        }
+      }
+    }
+    back.carried = b_task->carried_by.value == a_id.value && b_task->carried_share > 0.0F;
+    back.b_seam = world.fields.rows[core::FindRow(world.fields, b)].haul_days_remaining;
+    back.trips_back = world.ledger.current.cart_trips_back;
+    return back;
+  };
+  const Back taken = run(core::Vec2{.x = 1'150.0F, .y = 0.0F}, false, 0);
+  const Back far_west = run(core::Vec2{.x = -800.0F, .y = 0.0F}, false, 0);
+  const Back walker = run(core::Vec2{.x = 1'150.0F, .y = 0.0F}, true, 0);
+  const Back manure = run(core::Vec2{.x = 1'150.0F, .y = 0.0F}, false, 1);
+  // C3-e (boss [112]): riders on a back leg by its form - the hay's rick
+  // seats them, manure refuses them.
+  failures += Expect(taken.seats_riders && manure.back_leg && !manure.seats_riders,
+                     "back load: its leg seats riders by its load's form - a rick of hay seats "
+                     "them, manure does not");
+  std::cout << "  back load: taken - leg " << taken.back_leg << ", carried " << taken.carried
+            << ", B's seam " << taken.b_seam << ", trips back " << taken.trips_back
+            << "; far west - leg " << far_west.back_leg << "; on foot - leg " << walker.back_leg
+            << '\n';
+  failures +=
+      Expect(taken.back_leg && taken.carried && taken.b_seam > 0.0F && taken.trips_back >= 1.0F,
+             "back load: a load by the receiver whose own receiver lies by the cart's heap "
+             "is taken back, carried by the cart's task, its share priced, booked");
+  failures += Expect(!far_west.back_leg && !far_west.carried && far_west.trips_back == 0.0F,
+                     "back load: one whose detour saves no empty road is not taken");
+  failures += Expect(!walker.back_leg && walker.trips_back == 0.0F,
+                     "back load: a carrier on foot takes no back load");
+  return failures;
+}
+
+/// THE PRICE IS THE PLAN THE DAY CARTS BY (#1056 C3 (ii'); core-boss-oats-b-pair
+/// [82]-[83]): a 6 t heap priced at the hour-1 plan of ONE cart; a second
+/// carter joins, and the re-plan at hour 2 - before sunrise at 6 - prices
+/// again, so the day's book at sunrise counts the drawn trips of TWO carts
+/// (more than the one cart's of the day without the re-plan). And a re-plan
+/// after sunrise, with the seam drained to 1.0 meanwhile, leaves the seam as
+/// the carting left it.
+int TestThePriceBeforeTheCarting() {
+  int failures = 0;
+  const test::FakeTable resources{{"key", "cargo_form", "is_fuel"}, {{"hay", "rick", "0"}}};
+  const test::FakeTable transport{{"key", "seats", "trip_model"}, {{"cart_loaded", "2", "3"}}};
+  const test::FakeTable horses{{"key"}, {{"horse"}}};
+  const test::FakeTableSet tables{
+      {{"resources", &resources}, {"transport", &transport}, {"livestock", &horses}}};
+
+  struct Day {
+    float booked_drawn = -1.0F;
+    float seam_after = -1.0F;
+  };
+
+  const auto run = [&tables](bool second_carter, bool late_replan) {
+    Day out;
+    const auto system = core::CreateLogisticsSystem(tables, core::StubTables::kAllowed);
+    if (system == nullptr) {
+      return out;
+    }
+    core::WorldState world;
+    world.weather.daylight_hours = 12.0F;  // sunrise at hour 6
+    world.calendar.day = 3;
+    core::FieldRow field;
+    field.kind = core::LandKind::kArable;
+    field.center = core::Vec2{.x = 1'200.0F, .y = 0.0F};
+    field.reaped_grams = 6'000'000;
+    field.reaped_resource = core::ResourceId{0};
+    field.haul_days_remaining = 2.4F;
+    field.haul_days_written = 2.4F;
+    field.haul_to = core::Vec2{.x = 200.0F, .y = 0.0F};
+    const core::FieldId heap = core::AppendRow(world.fields, field);
+    core::UnitRow house;
+    const core::UnitId house_id = core::AppendRow(world.units, house);
+    core::FamilyRow household;
+    household.house = house_id;
+    const core::FamilyId family = core::AppendRow(world.families, household);
+    world.units.rows[0].household = family;
+    const auto carter = [&world, family, heap]() {
+      core::ResidentRow row;
+      row.family = family;
+      row.work.kind = core::WorkKind::kHauling;
+      row.work.rides_horse = 1;
+      row.work.field = heap;
+      core::AppendRow(world.residents, row);
+    };
+    carter();
+    StableTheTeam(world);
+    world.calendar.tick = 3 * core::kTicksPerDay;
+    system->RunTasks(world, world);
+    if (world.logistics_tasks.rows.empty()) {
+      return out;
+    }
+    core::TaskTripTerms& terms = world.logistics_tasks.rows[0].trip_terms;
+    terms.load_point = core::Vec2{.x = 1'100.0F, .y = 0.0F};
+    terms.trip_hours = 3.0F;
+    terms.trip_loaded_hours = 2.0F;
+    terms.cart_load = 750'000;
+    terms.grams_left = 6'000'000;
+    world.calendar.tick = (3 * core::kTicksPerDay) + 1;
+    system->BuildPlan(world);
+    if (second_carter) {
+      carter();
+      world.groom_plan.stale = true;
+      world.calendar.tick = (3 * core::kTicksPerDay) + 2;
+      system->Replan(world);
+    }
+    world.calendar.tick = (3 * core::kTicksPerDay) + 6;  // sunrise: the day's book
+    system->Replan(world);
+    out.booked_drawn = world.ledger.current.cart_days_drawn;
+    if (late_replan) {
+      world.fields.rows[0].haul_days_remaining = 1.0F;  // the morning's carting drained it
+      world.fields.rows[0].haul_days_written = 1.0F;
+      world.groom_plan.stale = true;
+      world.calendar.tick = (3 * core::kTicksPerDay) + 8;
+      system->Replan(world);
+    }
+    out.seam_after = world.fields.rows[0].haul_days_remaining;
+    return out;
+  };
+  const Day one = run(false, false);
+  const Day two = run(true, true);
+  std::cout << "  the price before the carting: booked drawn one cart " << one.booked_drawn
+            << ", two carts by the hour-2 re-plan " << two.booked_drawn
+            << "; the seam after a re-plan at hour 8 " << two.seam_after << '\n';
+  failures += Expect(one.booked_drawn > 0.0F && two.booked_drawn > one.booked_drawn,
+                     "(ii'): a re-plan before sunrise prices again, and the day's book counts the "
+                     "plan the day carts by - two carts' trips, not the hour-1 plan's one");
+  failures +=
+      Expect(two.seam_after == 1.0F,
+             "(ii'): a re-plan after the carting began leaves the seam as the carting left it");
   return failures;
 }
 
@@ -1353,6 +2016,47 @@ int TestTheLateLoadsLamp() {
   ordinary.logistics_tasks.rows[0].level = core::LogisticsLevel::kOrdinary;
   at(ordinary, ten, hours, said);
   failures += Expect(hours == -1 && said == 0, "late loads: an ordinary task — no lamp");
+  // THE WIDE ALARM (#1056 C1.2; «буферы падают ниже порогов»): a rick's
+  // supply at its own level 2, its rick below the threshold and owed a day's
+  // carting - the lamp after an hour of light unserved, and NO interrupting
+  // event. Its pair is the ordinary heap above: no lamp.
+  {
+    core::WorldState rick_world;
+    rick_world.weather.daylight_hours = 12.0F;
+    core::UnitRow sender;
+    const core::UnitId sender_id = core::AppendRow(rick_world.units, sender);
+    core::UnitRow rick;
+    rick.level = 1;
+    rick.rick_supply.from = sender_id;
+    rick.rick_supply.resource = core::ResourceId{0};
+    rick.rick_supply.grams = 2'000'000;
+    rick.rick_supply.days_remaining = 1.0F;
+    rick.rick_supply.days_written = 1.0F;
+    rick.rick_supply.threshold_days = 9;
+    const core::UnitId rick_id = core::AppendRow(rick_world.units, rick);
+    core::LogisticsTaskRow supply;
+    supply.load_kind = core::LogisticsLoadKind::kRickSupply;
+    supply.unit = rick_id;
+    supply.level = core::LogisticsLevel::kOrdinary;
+    core::AppendRow(rick_world.logistics_tasks, supply);
+    rick_world.calendar.tick = ten;
+    system->SayLateLoads(rick_world);
+    std::vector<core::Alarm> alarms;
+    system->CollectAlarms(rick_world, alarms);
+    std::int64_t rick_hours = -1;
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kLogisticsLate) {
+        rick_hours = alarm.amount;
+      }
+    }
+    std::uint32_t rick_said = 0;
+    for (const core::SimEvent& event : rick_world.step_events) {
+      rick_said += event.kind == core::EventKind::kUrgentLoadWaits ? 1U : 0U;
+    }
+    failures += Expect(rick_hours == 1 && rick_said == 0,
+                       "late loads: a rick's supply below its threshold at level 2, an hour "
+                       "unserved — the wide lamp, and no interrupting event");
+  }
   // CARTED FOR TODAY (0.37.194; boss, the logistics thread [129]): the heap's
   // seam drained to nought, its grams still on the field until the day's
   // last tick — nobody is needed, so no hour counts, and a clock that had run
@@ -1480,6 +2184,146 @@ int TestTheWayHomeFitsTheLight() {
   return failures;
 }
 
+/// WHAT SPOILS SOONEST FIRST (#1056 C4.2 (a); logistics_plan.cpp, OpenTasks):
+/// a cart done with its own small heap goes on to the next of its level - a
+/// grain heap (keeps for ever) first in the table and a potato heap (ten days)
+/// after it, at the same distance on either side. It goes to the potatoes. Its
+/// pair: the potatoes keeping for ever too - the table's order, the grain.
+int TestTheSoonestSpoiledFirst() {
+  int failures = 0;
+  const auto next_heap = [](float potato_spoil_days) {
+    core::LogisticsConfig config;
+    config.spoil_days = {0.0F, potato_spoil_days};
+    core::WorldState world;
+    world.weather.daylight_hours = 12.0F;
+    const auto heap_at = [&world](float east_m, std::uint16_t resource, float days) {
+      core::FieldRow field;
+      field.kind = core::LandKind::kArable;
+      field.center = core::Vec2{.x = east_m, .y = 0.0F};
+      field.reaped_grams = 1'000'000;
+      field.reaped_resource = core::ResourceId{resource};
+      field.haul_days_remaining = days;
+      return core::AppendRow(world.fields, field);
+    };
+    const core::FieldId own = heap_at(50.0F, 0, 0.05F);
+    const core::FieldId grain = heap_at(1'000.0F, 0, 0.5F);
+    const core::FieldId potato = heap_at(-1'000.0F, 1, 0.5F);
+    core::TaskDayCount count;
+    core::SyncTasks(config, world, 0, count);
+    core::UnitRow house;
+    const core::UnitId house_id = core::AppendRow(world.units, house);
+    core::FamilyRow household;
+    household.house = house_id;
+    const core::FamilyId family = core::AppendRow(world.families, household);
+    world.units.rows[0].household = family;
+    core::ResidentRow carter;
+    carter.family = family;
+    carter.work.kind = core::WorkKind::kHauling;
+    carter.work.field = own;
+    carter.work.rides_horse = 1;
+    core::AppendRow(world.residents, carter);
+    core::LogisticsTally tally;
+    const core::GroomPlan plan = core::BuildGroomPlan(config, world, tally);
+    if (plan.carts.size() != 1) {
+      return core::FieldId{};
+    }
+    for (const core::CartLeg& leg : plan.carts[0].legs) {
+      const std::uint32_t row = core::FindRow(world.logistics_tasks, leg.task);
+      if (row == core::kNoRow) {
+        continue;
+      }
+      const core::FieldId field = world.logistics_tasks.rows[row].field;
+      if (field.value == grain.value || field.value == potato.value) {
+        return field;  // the first other heap the chain reaches
+      }
+    }
+    (void)potato;
+    return core::FieldId{};
+  };
+  const core::FieldId spoiling = next_heap(10.0F);
+  const core::FieldId keeping = next_heap(0.0F);
+  std::cout << "  plan, soonest spoiled first: next heap with the potatoes spoiling "
+            << spoiling.value << ", keeping " << keeping.value << '\n';
+  // Field ids: own 1, grain 2, potato 3 (AppendRow's ids, from one).
+  failures += Expect(spoiling.value == 3,
+                     "plan: the potato heap that spoils goes ahead of the grain that keeps");
+  failures += Expect(keeping.value == 2,
+                     "plan: and with both keeping for ever, the table's order - the grain");
+  return failures;
+}
+
+/// A MILK LEG PRICED ON FOOT IS IN NO CART'S CHAIN (#1117; boss, the #1056
+/// thread [119]): a cart on its heap 100 m out, a barn 150 m out holding a
+/// herd's leg. Priced on foot (HerdRow::leg_on_foot 1) the cart's chain
+/// leaves it to the walkers; the same leg priced by cart is chained, as any
+/// load in reach - the pair that says the rule is the price's.
+int TestAWalkedLegIsNoCartsLoad() {
+  int failures = 0;
+  const auto chained = [](std::uint8_t on_foot) {
+    core::LogisticsConfig config;
+    config.horse_kind = core::LivestockKindId{0};
+    core::WorldState world;
+    world.weather.daylight_hours = 12.0F;
+    core::FieldRow field;
+    field.kind = core::LandKind::kArable;
+    field.center = core::Vec2{.x = 100.0F, .y = 0.0F};
+    field.reaped_grams = 1'000'000;
+    field.reaped_resource = core::ResourceId{0};
+    field.haul_days_remaining = 0.2F;
+    const core::FieldId heap = core::AppendRow(world.fields, field);
+    core::UnitRow house;
+    const core::UnitId house_id = core::AppendRow(world.units, house);
+    core::FamilyRow household;
+    household.house = house_id;
+    const core::FamilyId family = core::AppendRow(world.families, household);
+    world.units.rows[0].household = family;
+    core::UnitRow barn;
+    barn.position = core::Vec2{.x = 150.0F, .y = 0.0F};
+    barn.level = 1;
+    const core::UnitId barn_id = core::AppendRow(world.units, barn);
+    core::HerdRow horses;
+    horses.kind = core::LivestockKindId{0};
+    horses.adult_count = 2;
+    horses.unit = barn_id;
+    horses.leg_resource = core::ResourceId{1};
+    horses.leg_days_remaining = 0.5F;
+    horses.leg_on_foot = on_foot;
+    const core::HerdId herd = core::AppendRow(world.herds, horses);
+    core::TaskDayCount count;
+    core::SyncTasks(config, world, 0, count);
+    core::ResidentRow carter;
+    carter.family = family;
+    carter.work.kind = core::WorkKind::kHauling;
+    carter.work.field = heap;
+    carter.work.rides_horse = 1;
+    const core::ResidentId driver = core::AppendRow(world.residents, carter);
+    core::LogisticsTally tally;
+    const core::GroomPlan plan = core::BuildGroomPlan(config, world, tally);
+    bool milk_in_chain = false;
+    bool cart_found = false;
+    for (const core::CartPlan& cart : plan.carts) {
+      if (cart.driver.value != driver.value || cart.on_foot) {
+        continue;
+      }
+      cart_found = true;
+      for (const core::CartLeg& leg : cart.legs) {
+        const std::uint32_t row = core::FindRow(world.logistics_tasks, leg.task);
+        milk_in_chain = milk_in_chain || (row != core::kNoRow &&
+                                          world.logistics_tasks.rows[row].herd.value == herd.value);
+      }
+    }
+    return cart_found ? (milk_in_chain ? 1 : 0) : -1;
+  };
+  const int walked = chained(1);
+  const int carted = chained(0);
+  std::cout << "  plan: a milk leg in the cart's chain - priced on foot " << walked << ", by cart "
+            << carted << '\n';
+  failures += Expect(walked == 0, "plan: a milk leg priced on foot is in no cart's chain");
+  failures +=
+      Expect(carted == 1, "plan: the same leg priced by cart is chained, as any load in reach");
+  return failures;
+}
+
 }  // namespace
 
 // The carriers on foot in the plan (porter_plan_checks.cpp; #671).
@@ -1495,13 +2339,20 @@ int main() {
   failures += TestThePlansChains();
   failures += TestTheCargoForm();
   failures += TestTheWayHomeFitsTheLight();
+  failures += TestTheSoonestSpoiledFirst();
   failures += TestTheReplan();
   failures += TestNoLogisticsBeforeTheYard();
   failures += TestTheTripsAndTheEvening();
+  failures += TestThePlannedTrips();
+  failures += TestThePlanWritesThePrice();
+  failures += TestTheFieldsPooled();
+  failures += TestTheBackLoad();
+  failures += TestThePriceBeforeTheCarting();
   failures += TestTheChairmansDoors();
   failures += TestTheLateLoadsLamp();
   failures += TestTheDayOffHeldTheLoad();
   failures += TestThePortersPlan();
+  failures += TestAWalkedLegIsNoCartsLoad();
   if (failures == 0) {
     std::cout << "unit_core_logistics: all checks passed\n";
   }

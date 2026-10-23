@@ -315,6 +315,92 @@ int CheckCarterOnFoot() {
                        "three walkers");
   }
 
+  // A MILK LEG WALKED BY CHOICE WANTS NO CART (MR.2; boss, the #1056 thread
+  // [109]): its seam is in walker-days, so its three can-carriers read as
+  // three cart-days pulled by hand and lit «too few horses». Priced on foot
+  // (HerdRow::leg_on_foot) none counts; the same leg priced by cart, with no
+  // rider, counts its walkers as before - the pair that says the rule is the
+  // leg's choice, not the walkers'.
+  {
+    const auto milk_leg = [](std::uint8_t on_foot, std::uint16_t horses) {
+      core::WorldState world = Village(3, horses);
+      core::HerdRow cows;
+      cows.kind = core::LivestockKindId{1};
+      cows.adult_count = 10;
+      cows.leg_days_remaining = 3.0F;
+      cows.leg_on_foot = on_foot;
+      const core::HerdId herd = core::AppendRow(world.herds, cows);
+      for (core::ResidentRow& person : world.residents.rows) {
+        person.work.kind = core::WorkKind::kHauling;
+        person.work.herd = herd;
+        person.work.rides_horse = 0;
+      }
+      return core::CountHarness(world, core::LivestockKindId{0});
+    };
+    const core::HarnessCount walked = milk_leg(1, 1);
+    const core::HarnessCount carted = milk_leg(0, 1);
+    // NO HORSE IN THE VILLAGE (boss, [110]): the walk is for want of one.
+    const core::HarnessCount horseless = milk_leg(1, 0);
+    std::cout << "  carter on foot, the milk leg: harnessed walked " << walked.harnessed
+              << ", carted " << carted.harnessed << ", walked with no horse " << horseless.harnessed
+              << '\n';
+    failures += Expect(horseless.harnessed == 3,
+                       "carter on foot, the milk leg: with no grown horse the leg's three walkers "
+                       "count - they walk for want of one");
+    failures +=
+        Expect(walked.harnessed == 0 && walked.in_traces == 0,
+               "carter on foot, the milk leg: a leg priced on foot counts none of its three "
+               "can-carriers as harness");
+    failures += Expect(carted.harnessed == 3,
+                       "carter on foot, the milk leg: the same leg priced by cart counts its three "
+                       "walkers as the carts it wanted");
+  }
+
+  // A WINTER MANURE DOSE WAITS FOR A FREE HORSE (#1056 C2; boss, the C2 pair
+  // thread [17]): the last windowless cart, so its walkers are the plan's
+  // order of work, not a team too small - counted, they lit «too few horses»
+  // in the novice's first winter and it bought 25 horses. The pair: a reaped
+  // heap of the same three cart-days still counts its three walkers.
+  {
+    const auto field_load = [](bool dose, std::uint16_t horses) {
+      core::WorldState world = Village(3, horses);
+      core::FieldId field;
+      if (dose) {
+        core::FieldRow row;
+        row.center = core::Vec2{.x = 500.0F, .y = 0.0F};
+        row.area_ga = 10.0F;
+        row.phase = core::FieldPhase::kIdle;
+        row.manure_dose.from = world.units.row_ids[0];
+        row.manure_dose.due = 1;
+        row.manure_dose.days_remaining = 3.0F;
+        field = core::AppendRow(world.fields, row);
+      } else {
+        field = AddHeap(world, 3.0F);
+      }
+      for (core::ResidentRow& person : world.residents.rows) {
+        person.work.kind = core::WorkKind::kHauling;
+        person.work.field = field;
+        person.work.rides_horse = 0;
+      }
+      return core::CountHarness(world, core::LivestockKindId{0});
+    };
+    const core::HarnessCount dose = field_load(true, 1);
+    const core::HarnessCount heap = field_load(false, 1);
+    const core::HarnessCount horseless = field_load(true, 0);
+    std::cout << "  carter on foot, the dose: harnessed dose " << dose.harnessed << ", heap "
+              << heap.harnessed << ", dose with no horse " << horseless.harnessed << '\n';
+    failures +=
+        Expect(dose.harnessed == 0 && dose.in_traces == 0,
+               "carter on foot, the dose: a winter dose's three walkers count as no harness");
+    failures += Expect(heap.harnessed == 3,
+                       "carter on foot, the dose: a reaped heap of the same three cart-days counts "
+                       "its three walkers");
+    failures +=
+        Expect(horseless.harnessed == 3,
+               "carter on foot, the dose: with no grown horse the dose's walkers count - they "
+               "walk for want of one");
+  }
+
   // A WALKER GOES ONLY WHERE A DAY GIVES TWO TRIPS (0.37.109; labor.csv
   // walker_min_trips_per_day): with twelve hours of light a heap a kilometre
   // out is 2.4 hours one way and two and a half trips — he goes; a heap a

@@ -37,6 +37,16 @@ HaulRate RateToward(const ProductionConfig& config,
                     TravelMode cart_mode = TravelMode::kCart,
                     ResourceId carried = ResourceId{});
 
+/// @brief The rate of carrying `carried` on foot from `from` to `destination`
+///        today, whether or not a horse is free (#1056 C1.3, the milk leg):
+///        the walk's way, pace and the back's load by the resource's form
+///        (haul.h, WalkerLoadGrams) - RateToward's own carrier on foot.
+HaulRate WalkRateToward(const ProductionConfig& config,
+                        const WorldState& world,
+                        Vec2 from,
+                        Vec2 destination,
+                        ResourceId carried);
+
 /// @brief Books what a produce cart brought in today on the year's cart
 ///        columns (YearLedger::cart_trips and its siblings): the trips are
 ///        the grams over the cart's load, each one loaded way off the road
@@ -47,6 +57,21 @@ void BookCartRun(const ProductionConfig& config,
                  CartLoadSource source,
                  const HaulRate& rate,
                  Grams moved);
+
+/// @brief U's NUMERATOR (#1056 C3; YearLedger::cart_trips_paid): the whole
+///        trips a cart's seam PAID for what it brought in - the cart-days
+///        drained and turned into grams (`drained_days`, the drain times the
+///        share the door took), times the norm day's hours, over the load's
+///        round trip. Booked beside BookCartRun's fluid trips of the same
+///        grams, so U = paid ÷ fluid reads the whole-trip price against the
+///        gram's; the fallback's trips are in it, as econ's ruling 1 asks.
+///        Nothing for a carrier on foot, a log cart, or no drain.
+/// @note Side effect: the current year's ledger.
+void BookPaidTrips(const ProductionConfig& config,
+                   WorldState& current,
+                   CartLoadSource source,
+                   const HaulRate& rate,
+                   float drained_days);
 
 }  // namespace core
 

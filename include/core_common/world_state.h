@@ -35,6 +35,7 @@
 #include "core_common/alarm_state.h"
 #include "core_common/barter_state.h"
 #include "core_common/calendar.h"
+#include "core_common/clamp_rot_state.h"
 #include "core_common/district_car_state.h"
 #include "core_common/district_visit_state.h"
 #include "core_common/event_state.h"
@@ -56,6 +57,7 @@
 #include "core_common/road_rules.h"
 #include "core_common/road_state.h"
 #include "core_common/road_work_state.h"
+#include "core_common/settlement_state.h"
 #include "core_common/specialist_state.h"
 #include "core_common/timber_state.h"
 #include "core_common/turned_away_state.h"
@@ -582,6 +584,14 @@ struct ChairmanState {
   /// 2026): named every day of the first summer's cut, it took 6-8 points of
   /// rest from the villages that followed it.
   std::uint16_t hay_cut_avral_days = 0;
+
+  /// THE RATING'S RECOVERY OWED (save 166; #1043; boss on econ's estimate,
+  /// the #1043 pair thread [7]): 1 - a plan year failed or a visit found a
+  /// discrepancy, and the next clean visit gives its recovery step
+  /// (district_reputation.h, StepReputationForCleanVisit), then clears it.
+  /// A clean visit with nothing owed gives nothing: two regular visits a
+  /// year at +1 carried a plan-only village to 82-88 by year 12.
+  std::uint8_t reputation_recovery_owed = 0;
 };
 
 /// @brief Why the district calls the chairman «на ковёр» (district-trip.md
@@ -726,6 +736,27 @@ struct PlanState {
   /// the rest seized (district_visit.cpp; 0.36.21). Save 62. The plan
   /// board shows it beside the stock, so the seizure can be foreseen.
   ResourceAmounts accumulation_limit;
+
+  /// THE STANDING REQUEST TO THE DISTRICT's CART (routing stage В5, save 163;
+  /// core_production district_carts.h): what the chairman asked the district
+  /// to collect beyond the deadline's own delivery, by resource, grams. The
+  /// district collects on the month's last day what of it lies in the stores
+  /// (a mud day slips the collection to the next month); kDeliverPlan by the
+  /// district raises it. Dense by ResourceId; emptied at the turn.
+  ResourceAmounts requested;
+
+  /// THE STORES' DRAW, a month at a time (the plan-short lamp; boss, the
+  /// lamp thread [4]; save 164): the year's book's cumulative NON-ROT draw of
+  /// each resource out of the stores - issued, ration, feed, processed, stolen
+  /// (the rot is the shelf-life model's, econ's (e2′)) - as it stood on the
+  /// last month's last evening, and the month's draw it closed, grams. The
+  /// lamp's forecast subtracts the eating to the turn (district_plan.h,
+  /// StoresDrawToTheTurn): until save 164 it counted as
+  /// shippable the potato the village ate before the turn (1935 y2 of host's
+  /// x3.57 arm: ~6.5 t eaten from day 91, the lamp dark, the position
+  /// seed-bound). The mark is reset with the book at the turn.
+  ResourceAmounts draw_mark;
+  ResourceAmounts draw_last_month;
 
   /// THE MILK CART'S SHARE OF A DAY (district §9 «Молоко — в плане с
   /// первого года»; register 231; boss seq 98 and 113; save 66), grams: the
@@ -1041,6 +1072,15 @@ struct WorldState {
   /// then builds one on the spot).
   std::shared_ptr<const RoadIndex> road_index;
 
+  /// A FIELD HEAP WAS BORN since the groom's last scan for heaps with no task
+  /// (#1056 C4; core_logistics logistics_tasks.h, AppendNewHeapTasks): set
+  /// where a heap is laid from nothing (production, PutOnHeap and the
+  /// straw's turn), cleared by the scan. The scan was every re-plan hour, a
+  /// full LoadsOf against the tasks - 1.05 s of 9.5 in the canon's step
+  /// clock. DERIVED and NOT SAVED: true in a fresh or loaded world, so the
+  /// first re-plan hour scans once, and a scan finds the same heaps in both.
+  bool heap_born = true;
+
   /// The quiet trades out tonight (crime design §9); SAVED.
   /// night_trade_state.h.
   NightOutingTable night_outings;
@@ -1086,6 +1126,17 @@ struct WorldState {
   /// no free house and no barrack place, read by the lamp «жилья не хватает»
   /// (kHousingShort, its condition (c)). SAVED (save 148).
   TurnedAwayYear arrivals_turned_away;
+
+  /// THE SETTLEMENTS (settlement_state.h; #1089): derived by core_world's
+  /// settlement step from the dwellings; the start village is id 1 for ever.
+  /// SAVED.
+  SettlementTable settlements;
+
+  /// POTATO AND VEGETABLES ROTTED IN CLAMPS a day over the last year
+  /// (clamp_rot_state.h; #1005): written by core_production's SpoilStores at
+  /// the day's last tick, read by the lamp «В буртах сгнило N т»
+  /// (kClampRot). SAVED (save 176; 170 on its old base, never released).
+  ClampRotYear clamp_rot;
 
   /// THE JOBS' RUNS OF MORNINGS WITH NO HAND (unmanned_run_state.h): written
   /// by labour's morning allocation, read by it to say kWorkGotNoHands on a
@@ -1133,6 +1184,15 @@ struct WorldState {
   /// forecast the session stands again on every load; a run of years is a
   /// fact the campaign accumulated and a save must carry.
   ReadinessState readiness;
+
+  /// THE DEAD WAITING FOR A GRAVE (#1199; social.md «Два кладбища»: «игра
+  /// останавливается, пока председатель не выделит новый участок»); SAVED
+  /// (save 180). Raised by core_residents' demography sub-step for a death in
+  /// the village when no built cemetery has room; emptied into the first
+  /// cemetery with room, in the same sub-step. While it is above 0 the game
+  /// is stopped: BurialHeld (cemetery_rules.h) is the door the layer's clock
+  /// reads. No grave is lost.
+  std::uint16_t burials_waiting = 0;
 
   /// This step's outbox (project phase 2, the boundary): what happened,
   /// for the presentation. Cleared by the step engine after the copy,

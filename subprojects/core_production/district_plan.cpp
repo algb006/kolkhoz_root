@@ -14,12 +14,17 @@
 #include "core_common/emit_event.h"
 #include "core_common/land_state.h"
 #include "core_common/ledger_state.h"
+#include "core_common/limit_state.h"
 #include "core_common/order_state.h"
 #include "core_common/quantities.h"
 #include "core_common/spoilage.h"
+#include "core_common/state_table_ops.h"
+#include "district_carts.h"
+#include "district_reputation.h"
 #include "district_visit.h"
 #include "herd_system.h"
 #include "milk_cart.h"
+#include "plan_due.h"
 #include "seed_room.h"
 #include "stock_ops.h"
 
@@ -52,23 +57,141 @@ SimDay SeedDayAtTheTurn(const WorldState& current) {
   return current.calendar.day > 0 ? current.calendar.day - 1 : 0;
 }
 
-Grams DeliverableAboveSeed(const ProductionConfig& config,
-                           const WorldState& current,
-                           ResourceId resource,
-                           SimDay seed_as_of) {
+Grams DeliverableForPlan(const ProductionConfig& config,
+                         const WorldState& current,
+                         ResourceId resource,
+                         SimDay seed_as_of,
+                         bool with_heaps) {
+  // ONE SEED RULE FOR EVERY READER OF THE PLAN (district.md §4, corrected
+  // 17 October 2026; boss, the plan-short lamp [2]): what is still to be sown
+  // after the reading day is held, read by the lamp, the collection and the
+  // turn alike, each on its own day. Until 0.37.271 the rule stood in two
+  // copies, the stores' door and the heaps' door.
   const std::vector<Grams> need = SeedHeldToSowing(config, current, seed_as_of);
   const Grams seed_need = resource.value < need.size() ? need[resource.value] : 0;
   const auto& unsealed = current.unsealed.by_fund[static_cast<std::size_t>(FundKind::kSeed)];
   const Grams opened = AmountOf(unsealed, resource);
   const Grams held_for_seed = seed_need > opened ? seed_need - opened : 0;
-  Grams lying = 0;
-  for (const FieldRow& field : current.fields.rows) {
-    if (field.reaped_resource.value == resource.value && field.reaped_grams > 0) {
-      lying += field.reaped_grams;
+  Grams available = TakeableGrams(current, config, resource);
+  // THE HEAPS DO NOT FREE THE STORES' SEED (stage В5): a door that takes from
+  // the stores alone reads them alone - 10 t in the barn against 8 t of seed
+  // beside a 20 t heap is 2 t for the stores' door, 22 t for the turn's.
+  if (with_heaps) {
+    for (const FieldRow& field : current.fields.rows) {
+      if (field.reaped_resource.value == resource.value && field.reaped_grams > 0) {
+        available += field.reaped_grams;
+      }
     }
   }
-  const Grams available = lying + TakeableGrams(current, config, resource);
   return available > held_for_seed ? available - held_for_seed : 0;
+}
+
+Grams DeliverableAboveSeed(const ProductionConfig& config,
+                           const WorldState& current,
+                           ResourceId resource,
+                           SimDay seed_as_of) {
+  return DeliverableForPlan(config, current, resource, seed_as_of, true);
+}
+
+Grams DeliverableFromStores(const ProductionConfig& config,
+                            const WorldState& current,
+                            ResourceId resource,
+                            SimDay seed_as_of) {
+  return DeliverableForPlan(config, current, resource, seed_as_of, false);
+}
+
+namespace {
+
+/// The book's cumulative NON-ROT draw of one resource out of the stores:
+/// issued, ration, feed, processed, stolen. The rot is the rot model's
+/// (StoresDrawToTheTurn), not a rate (econ's (e2′), the lamp thread [13]).
+Grams StoresDrawn(const YearLedger& book, std::uint32_t index) {
+  const auto at = [index](const ResourceAmounts& amounts) {
+    return index < amounts.size() ? amounts[index] : 0;
+  };
+  return at(book.issued) + at(book.ration) + at(book.feed) + at(book.processed) + at(book.stolen);
+}
+
+/// The month so far stands for the rate once it has this many settled
+/// evenings (econ's (e2′)): the tenth month's third, doy 39's morning.
+constexpr Grams kMonthSoFarEvenings = 3;
+
+}  // namespace
+
+Grams StoresDrawToTheTurn(const ProductionConfig& config,
+                          const WorldState& current,
+                          ResourceId resource) {
+  const std::uint32_t index = resource.value;
+  if (index >= current.plan.draw_last_month.size()) {
+    return 0;
+  }
+  const SimDay day_of_year = current.calendar.day % kDaysPerYear;
+  // The days left to the turn, today's included: the lamp is read in the
+  // morning, before today's issue and feed.
+  const auto days_left = static_cast<Grams>(kDaysPerYear - day_of_year);
+  // THE EATING (econ's (e2′), the lamp thread [13]): the non-rot draw of the
+  // month so far per settled evening once it has three, else the last closed
+  // month's. Until then the rate took the rot in and the faster of the two:
+  // October's first three evenings, the clamps' fresh rot among them, lit 17
+  // of 144 canon village-years with nothing failing (917baa66); and the last
+  // closed month alone was September's 0.26 t of potato on doy 39 (1934 y3 of
+  // host's x3.57 arm lit only on doy 40).
+  const auto month_days = static_cast<Grams>(kDaysPerMonth);
+  Grams eaten = current.plan.draw_last_month[index] * days_left / month_days;
+  const auto evenings = static_cast<Grams>(day_of_year % kDaysPerMonth);
+  if (evenings >= kMonthSoFarEvenings && index < current.plan.draw_mark.size()) {
+    const Grams drawn = StoresDrawn(current.ledger.current, index);
+    const Grams mark = current.plan.draw_mark[index];
+    const Grams so_far = drawn > mark ? drawn - mark : 0;
+    eaten = so_far * days_left / evenings;
+  }
+  // THE ROT TO THE TURN by the store's own model (spoilage.h; the shelf life
+  // HeldForDeliveryGrams reads): what lies today, kept day by day to the
+  // turn, loses the rest. Neither extrapolated from a month nor dropped.
+  const float shelf_days =
+      index < config.spoil_days.size() ? config.spoil_days[index] * config.keeping_factor : 0.0F;
+  Grams rot = 0;
+  if (shelf_days > 1.0F) {
+    const Grams stored = TakeableGrams(current, config, resource);
+    const double kept =
+        std::pow(1.0 - (1.0 / static_cast<double>(shelf_days)), static_cast<double>(days_left));
+    rot = GramsFromFloat(static_cast<float>(static_cast<double>(stored) * (1.0 - kept)));
+  }
+  return eaten + rot;
+}
+
+Grams TurnWillShip(const ProductionConfig& config,
+                   const WorldState& current,
+                   ResourceId resource,
+                   SimDay seed_as_of,
+                   Grams draw_to_turn) {
+  const std::uint32_t index = resource.value;
+  if (index >= current.plan.due.size()) {
+    return 0;
+  }
+  const Grams delivered = index < current.plan.delivered.size() ? current.plan.delivered[index] : 0;
+  const Grams owed = current.plan.due[index] > delivered ? current.plan.due[index] - delivered : 0;
+  const Grams deliverable = DeliverableAboveSeed(config, current, resource, seed_as_of);
+  const Grams left = deliverable > draw_to_turn ? deliverable - draw_to_turn : 0;
+  return std::min(owed, left);
+}
+
+void MarkStoresDraw(WorldState& current) {
+  const SimDay day_of_year = current.calendar.day % kDaysPerYear;
+  if (day_of_year % kDaysPerMonth != kDaysPerMonth - 1U) {
+    return;
+  }
+  const std::size_t size = current.plan.due.size();
+  current.plan.draw_mark.resize(size, 0);
+  current.plan.draw_last_month.resize(size, 0);
+  for (std::uint32_t index = 0; index < size; ++index) {
+    const Grams drawn = StoresDrawn(current.ledger.current, index);
+    const Grams mark = current.plan.draw_mark[index];
+    current.plan.draw_last_month[index] = drawn > mark ? drawn - mark : 0;
+    // THE BOOK CLOSES AT THE TURN after this evening: its next count starts
+    // at nought, and so does the mark.
+    current.plan.draw_mark[index] = day_of_year == kDaysPerYear - 1U ? 0 : drawn;
+  }
 }
 
 /// The year's delivery: what the plan asked for leaves the stores and is
@@ -91,8 +214,7 @@ void DeliverPlan(const ProductionConfig& config, WorldState& current) {
   }
   for (std::uint32_t index = 0; index < current.plan.due.size(); ++index) {
     const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
-    const Grams owed = std::min(current.plan.due[index] - current.plan.delivered[index],
-                                DeliverableAboveSeed(config, current, resource, seed_as_of));
+    const Grams owed = TurnWillShip(config, current, resource, seed_as_of, 0);
     if (owed <= 0) {
       continue;
     }
@@ -148,6 +270,7 @@ void TakePlanDebtFromFields(const ProductionConfig& config,
     }
     current.plan.delivered[index] += taken;
     AddLedgerAmount(current.ledger.current.delivered, resource, taken);
+    LowerPlanRequest(current, resource, taken);
     SimEvent& event =
         EmitEvent(current, EventKind::kDistrictTookFromField, EventSeverity::kNotable);
     event.resource = resource;
@@ -384,8 +507,8 @@ void AnnounceMilkPosition(const ProductionConfig& config, WorldState& current) {
   AddToStock(current.plan.due, config.milk_resource, share * days_to_turn);
 }
 
-/// A gram of `resource` in grams of grain, as the overfulfilment weighs it
-/// (PlanOverfulfilGrainTonnes): 0 when the tables carry no weight for it.
+}  // namespace
+
 double GrainPerGram(const ProductionConfig& config, ResourceId resource) {
   if (!(config.limit.overfulfil_grain_kcal_per_gram > 0.0F) ||
       resource.value >= config.food_kcal_per_gram.size()) {
@@ -394,6 +517,8 @@ double GrainPerGram(const ProductionConfig& config, ResourceId resource) {
   return static_cast<double>(config.food_kcal_per_gram[resource.value]) /
          static_cast<double>(config.limit.overfulfil_grain_kcal_per_gram);
 }
+
+namespace {
 
 /// What the winter crop standing in the ground on the letter's day gives at
 /// its yield: every field of `crop` in kGrowing, its area × the crop's full
@@ -424,13 +549,16 @@ Grams StandingWinterGrams(const WorldState& current, const CropDef& crop, CropId
 void MoveWinterShortfall(const ProductionConfig& config, WorldState& current) {
   double moved_grain = 0.0;
   double spring_grain = 0.0;
-  for (const ProductionConfig::PlanPosition& position : config.plan_positions) {
+  const float area = current.plan.worked_ha_last_year;
+  const SimDay today = current.calendar.day;
+  for (std::size_t index = 0; index < config.plan_positions.size(); ++index) {
+    const ProductionConfig::PlanPosition& position = config.plan_positions[index];
     if (position.crop.value >= config.crops.size()) {
       continue;
     }
     const CropDef& crop = config.crops[position.crop.value];
     const double grain = GrainPerGram(config, crop.resource);
-    const Grams norm = PlanPositionGrams(config, position, current.plan.worked_ha_last_year);
+    const Grams norm = PlanDueGrams(config, current, index, area, 0, today);
     if (!crop.is_winter) {
       spring_grain += static_cast<double>(norm) * grain;
       continue;
@@ -444,13 +572,14 @@ void MoveWinterShortfall(const ProductionConfig& config, WorldState& current) {
   if (!(moved_grain > 0.0) || !(spring_grain > 0.0)) {
     return;  // nothing to move, or nothing to move it to: the positions stand
   }
-  for (const ProductionConfig::PlanPosition& position : config.plan_positions) {
+  for (std::size_t index = 0; index < config.plan_positions.size(); ++index) {
+    const ProductionConfig::PlanPosition& position = config.plan_positions[index];
     if (position.crop.value >= config.crops.size()) {
       continue;
     }
     const CropDef& crop = config.crops[position.crop.value];
     const double grain = GrainPerGram(config, crop.resource);
-    const Grams norm = PlanPositionGrams(config, position, current.plan.worked_ha_last_year);
+    const Grams norm = PlanDueGrams(config, current, index, area, 0, today);
     if (!crop.is_winter) {
       if (grain > 0.0) {
         const double share = static_cast<double>(norm) * grain / spring_grain;
@@ -559,7 +688,8 @@ void AnnouncePlan(const ProductionConfig& config, WorldState& current) {
   // first spring — and year 1 failed whatever the play: seeds 1933 and 1936
   // failed it on every run. The share is a STUB (campaign.csv).
   const bool first_year = current.calendar.day < kDaysPerYear;
-  for (const ProductionConfig::PlanPosition& position : config.plan_positions) {
+  for (std::size_t index = 0; index < config.plan_positions.size(); ++index) {
+    const ProductionConfig::PlanPosition& position = config.plan_positions[index];
     if (position.crop.value >= config.crops.size()) {
       continue;
     }
@@ -576,14 +706,46 @@ void AnnouncePlan(const ProductionConfig& config, WorldState& current) {
                                   static_cast<double>(config.first_plan_start_stock_share))));
       continue;
     }
-    AddToStock(current.plan.due,
-               crop.resource,
-               PlanPositionGrams(config, position, current.plan.worked_ha_last_year));
+    // One home for the figure (plan_due.h; #1036): the split by the sown mix
+    // and the rating's band, both off by default.
+    AddToStock(
+        current.plan.due,
+        crop.resource,
+        PlanDueGrams(
+            config, current, index, current.plan.worked_ha_last_year, 0, current.calendar.day));
   }
-  if (!first_year) {
+  // The split prices the winter crop that STANDS already: moving «the
+  // lacking» on top would ask it twice (the #1036 contract (iv)).
+  if (!first_year && !config.plan_split_by_sown_mix) {
     // The first year asks by the start stock and has no winter crop to ask:
     // «winter rye cannot stand in the first spring» (above).
     MoveWinterShortfall(config, current);
+  }
+  // AND THE PLAYER IS STILL TOLD (0.37.278; boss on host's finding, the #1036
+  // thread [9]): under the split a winter crop priced below its fixed share
+  // went to the crops that stand - the same move by another arithmetic - and
+  // the January letter says it, kPlanWinterMoved, as MoveWinterShortfall did.
+  // Until 0.37.278 the split moved it in silence and the event never fired.
+  if (!first_year && config.plan_split_by_sown_mix) {
+    const float band = PlanBandFactor(config, current);
+    for (std::size_t index = 0; index < config.plan_positions.size(); ++index) {
+      const ProductionConfig::PlanPosition& position = config.plan_positions[index];
+      if (position.crop.value >= config.crops.size() ||
+          !config.crops[position.crop.value].is_winter) {
+        continue;
+      }
+      const auto fixed =
+          static_cast<Grams>(std::llround(static_cast<double>(PlanPositionGrams(
+                                              config, position, current.plan.worked_ha_last_year)) *
+                                          static_cast<double>(band)));
+      const Grams split = PlanDueGrams(
+          config, current, index, current.plan.worked_ha_last_year, 0, current.calendar.day);
+      if (fixed > split) {
+        SimEvent& event = EmitEvent(current, EventKind::kPlanWinterMoved, EventSeverity::kNotable);
+        event.resource = config.crops[position.crop.value].resource;
+        event.amount = fixed - split;
+      }
+    }
   }
   AnnounceMilkPosition(config, current);
   // THE HIGHEST POSITION EVER NAMED, by resource (PlanState::highest_due;
@@ -768,9 +930,17 @@ void JudgePlan(const ProductionConfig& config, WorldState& current) {
     // through the bands take years of nothing happening — the band table
     // of district design §5 is read off this number, so the number has
     // to mean what the table says it means.
-    const float moved = current.chairman.raikom_reputation + step;
+    const float reputation_before = current.chairman.raikom_reputation;
+    const float moved = reputation_before + step;
     current.chairman.raikom_reputation =
         moved < kMetricMin ? kMetricMin : (moved > kMetricMax ? kMetricMax : moved);
+    // The rating's year by its writers (save 166; #1043): the verdict's share;
+    // a failed year owes the next clean visit's recovery.
+    current.ledger.current.reputation_plan_step +=
+        current.chairman.raikom_reputation - reputation_before;
+    if (!met) {
+      OweReputationRecovery(current);
+    }
     SimEvent& judged = EmitEvent(
         current, met ? EventKind::kPlanMet : EventKind::kPlanFailed, EventSeverity::kNotable);
     judged.amount = met ? current.plan.met_years_in_a_row : current.plan.failed_years_in_a_row;
@@ -825,6 +995,21 @@ void JudgePlan(const ProductionConfig& config, WorldState& current) {
   // And its debt: whatever was still owed was short in the verdict above,
   // and the debt does not carry over the turn (the human's «вариант с долгом»).
   current.plan.milk_debt = 0;
+  // And the standing request (stage В5): it named goods against this figure,
+  // and the deadline's collection above carried what was still owed.
+  current.plan.requested.assign(current.plan.requested.size(), 0);
+  // And an own delivery not carted to the end: what it still held lay in the
+  // stores, and the deadline's delivery above took it. Left standing, the row
+  // would cart next spring's grain against a figure not yet named.
+  std::vector<LimitDeliveryId> outgoing;
+  for (std::uint32_t row = 0; row < current.limit_deliveries.rows.size(); ++row) {
+    if (current.limit_deliveries.rows[row].outbound != 0) {
+      outgoing.push_back(current.limit_deliveries.row_ids[row]);
+    }
+  }
+  for (const LimitDeliveryId id : outgoing) {
+    RemoveRow(current.limit_deliveries, id);
+  }
   // The unsealings go with the year they were an emergency of. Carried
   // over, they would quietly become a lower fund instead of a decision
   // somebody took on a particular hungry winter.

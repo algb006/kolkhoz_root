@@ -47,7 +47,7 @@
 ///     it back: at zero the level moves and the recipe is consumed, or the
 ///     row is removed. The labor sub-step drains it; the two modules never
 ///     call each other (manual/65-labor-model.md §2);
-///   * emits kUnitBuilt and kUnitDemolished into the step's outbox
+///   * emits kUnitWorksStarted, kUnitBuilt and kUnitDemolished into the step's outbox
 ///     (event_state.h); the order events themselves are the events slot's,
 ///     which sweeps terminal rows (order_state.h);
 ///   * WEAR (project phase 2, task A5; manual/73-wear-and-repair.md): at
@@ -167,7 +167,7 @@ class IConstructionSystem {
   /// @note Writes UnitRow::construction, level, stock and wear of the units
   /// it works on; appends a unit row per kBuildUnit; removes the row of a
   /// finished demolition and of a collapsed old house; moves order rows to
-  /// kDone / kRefused; appends kUnitBuilt / kUnitDemolished / kUnitRepaired
+  /// kDone / kRefused; appends kUnitWorksStarted / kUnitBuilt / kUnitDemolished / kUnitRepaired
   /// / kUnitCollapsed to the outbox. Reads residents (a house's household,
   /// who works where today) and herds (what stands where). Writes ONE field
   /// of another module's row and says so: a collapse clears

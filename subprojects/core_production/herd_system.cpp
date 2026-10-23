@@ -31,9 +31,11 @@
 #include "livestock_homes.h"
 #include "night_pasture.h"
 #include "plan_alarms.h"
+#include "production_alarms.h"
 #include "seed_room.h"
 #include "stable_horses.h"
 #include "stock_ops.h"
+#include "team_oat_plan.h"
 
 namespace core {
 namespace {
@@ -74,6 +76,7 @@ HerdPlace PlaceOf(WorldState& world, const ProductionConfig& config, const HerdR
   const std::uint32_t family_row = FindRow(world.families, herd.household);
   if (family_row != kNoRow) {
     place.pantry = &world.families.rows[family_row].pantry;
+    place.family = &world.families.rows[family_row];
   }
   return place;
 }
@@ -427,28 +430,37 @@ std::vector<std::uint16_t> BilletHerds(const WorldState& world, std::vector<floa
 }
 
 /// The rows in the order the herd day walks them (RunHerdDay): the rows'
-/// own, or with `feed_draught_first` the kolkhoz's horse herds first.
-std::vector<std::uint32_t> HerdWalkOrder(const ProductionConfig& config, const WorldState& world) {
+/// own. The draught-first switch of econ's pair (0.37.63) went in 0.37.301:
+/// a refused rule's leftover, its world_params key read by nobody since.
+std::vector<std::uint32_t> HerdWalkOrder(const ProductionConfig& /*config*/,
+                                         const WorldState& world) {
   const auto herds = static_cast<std::uint32_t>(world.herds.rows.size());
   std::vector<std::uint32_t> walk;
   walk.reserve(herds);
-  const auto draught = [&](const HerdRow& herd) {
-    return herd.household_owned == 0 && herd.kind.value == config.horse_kind.value;
-  };
-  if (config.farming.feed_draught_first) {
-    for (std::uint32_t row = 0; row < herds; ++row) {
-      if (draught(world.herds.rows[row])) {
-        walk.push_back(row);
-      }
-    }
-  }
   for (std::uint32_t row = 0; row < herds; ++row) {
-    if (!config.farming.feed_draught_first || !draught(world.herds.rows[row])) {
-      walk.push_back(row);
-    }
+    walk.push_back(row);
   }
   return walk;
 }
+
+/// The day's two shares of the team in the traces, 0..1 each (WorkingShare).
+struct TeamShares {
+  /// Horses in traces over the adult horses: the room of every work-only
+  /// link but the oats.
+  float work = 0.0F;
+
+  /// The same with a light horse (a cart, a sledge) counted at farming.csv
+  /// `light_work_oat_share`: the oats link's room and the work ration's own
+  /// (boss, the #1056 thread [160]: a light day fed as its work needs is a
+  /// 1.0, so the lamp reports no shortage the rule itself makes).
+  float oats = 0.0F;
+
+  /// Horses in traces at HEAVY work today - the plough, the harrow, a
+  /// meadow's mower (CountHarness: in_traces less light_in_traces). The only
+  /// days the ration slows any work (RescaleHorseWorkForRation), and so the
+  /// only ones «упряжь на сене» counts (WatchTheTeam; econ §4l).
+  std::uint32_t heavy_in_traces = 0;
+};
 
 /// @brief Share of the draught animals that went out to work today, 0..1.
 ///
@@ -478,10 +490,19 @@ std::vector<std::uint32_t> HerdWalkOrder(const ProductionConfig& config, const W
 ///        count. Answered even in a village with no horse: its carters on
 ///        foot are harnessed work pulled by hand, and the share is then nil
 ///        rather than unmeasured.
-float WorkingShare(const WorldState& world,
-                   const ProductionConfig& config,
-                   float* horse_backed_days = nullptr,
-                   float* harnessed_days = nullptr) {
+/// @param lamp_harnessed_days Optional out: `harnessed_days` as «лошадей не
+///        хватает» reads it - a milk leg walked by choice wants no horse
+///        (CountHarness's horse-kind form; MR.2a). The mechanisation share
+///        keeps `harnessed_days`, where a can carried on foot is still hand
+///        work (boss, the #1056 thread [113]: two doors to one count split).
+/// @return The day's two shares of the team (TeamShares): the work share
+///         every work-only link but the oats reads, and the oats' share with
+///         a light horse counted at its fraction.
+TeamShares WorkingShare(const WorldState& world,
+                        const ProductionConfig& config,
+                        float* horse_backed_days = nullptr,
+                        float* harnessed_days = nullptr,
+                        float* lamp_harnessed_days = nullptr) {
   // THE OUT-PARAMS ARE ANSWERED ON EVERY PATH, including the two that give
   // up early. The numerator was left untouched there once, and the doc's
   // "stays at nothing" was then a promise kept by the CALLER's initialiser —
@@ -508,11 +529,19 @@ float WorkingShare(const WorldState& world,
     const std::uint32_t released = excess < harness.releasable ? excess : harness.releasable;
     *harnessed_days = static_cast<float>(harness.harnessed - released);
   }
+  if (lamp_harnessed_days != nullptr) {
+    // The same release off the lamp's own count: in_traces and releasable are
+    // one in both forms, only the walkers by choice differ.
+    const HarnessCount lamp = CountHarness(world, config.horse_kind);
+    const std::uint32_t excess = lamp.in_traces > horses ? lamp.in_traces - horses : 0U;
+    const std::uint32_t released = excess < lamp.releasable ? excess : lamp.releasable;
+    *lamp_harnessed_days = static_cast<float>(lamp.harnessed - released);
+  }
   if (config.horse_kind.value == kInvalidDefIdValue) {
-    return 0.0F;
+    return {};
   }
   if (horses == 0) {
-    return 0.0F;  // no horses, no traction, and the out-param already says so
+    return {};  // no horses, no traction, and the out-param already says so
   }
   // THE ASSIGNMENT, NOT THE HOURS ALREADY WORKED. The condition here asked
   // `worked_norm_days_today > 0` until 2026-09-12 and was therefore false
@@ -527,14 +556,77 @@ float WorkingShare(const WorldState& world,
   // the hours are the wrong one. Found while wiring the mechanisation share,
   // which reads the same quantity and would have shipped as a constant nil.
   const std::uint32_t working = harness.in_traces;
-  const float share = static_cast<float>(working) / static_cast<float>(horses);
+  // LIGHT WORK EATS LESS OATS (the human, «Сначала овёс»; econ winter-team-
+  // oats-2026-10-20 §A, 02ef5e1; boss, the #1056 thread [148]): a horse in a
+  // cart or a sledge counts at farming.csv `light_work_oat_share` of a horse
+  // at the plough, the harrow or the mower. ONE FACTOR ON ONE LINK: the
+  // oats' share alone carries it (TeamOatLink, RunFeeding), so there is no
+  // second allowance; the oats a light horse-day loses it does not eat at all
+  // (LightDaySpared), hay does not refill them. The assignment-days below stay
+  // one a harness: a light horse is still a horse in traces.
+  //
+  // THE OATS ONLY, NOT EVERY CONCENTRATE (econ winter-team-oats-2026-10-20
+  // §4d, 4b569b7; boss, the #1056 thread [158]): the first cut scaled every
+  // work-only link, and in y1's oat-less January a light day halved the
+  // barley's room (243 -> 122 units, seed 1931), so hay took the rest; the
+  // novice's team ate hay for barley from August and the cows went short in
+  // the spring (Feb-Jun short 155 -> 235 t, [159]). No rung holds barley for
+  // the plough, so halving it protected nothing.
+  const float light = static_cast<float>(std::min(harness.light_in_traces, working));
+  const float weighted =
+      static_cast<float>(working) - (light * (1.0F - config.farming.light_work_oat_share));
+  const float work = static_cast<float>(working) / static_cast<float>(horses);
+  const float oats = weighted / static_cast<float>(horses);
   if (horse_backed_days != nullptr) {
     // Assignment-days: one per harness held today, and what the horses can
     // carry is the lesser of the two counts. Both halves of the ratio are
     // one count, the same unit, taken at the same hour, by the same module.
     *horse_backed_days = static_cast<float>(working < horses ? working : horses);
   }
-  return share < 1.0F ? share : 1.0F;
+  return TeamShares{.work = std::min(work, 1.0F),
+                    .oats = std::min(oats, 1.0F),
+                    .heavy_in_traces = working - std::min(harness.light_in_traces, working)};
+}
+
+/// The horse's oats link: the team's first work-only, non-reserve row of
+/// feed_links.csv (row order is the priority). ONE HOME for the plough's hold
+/// (PloughFeedHoldOf) and the light share's one link (RunFeeding).
+/// @return nullptr if the roster has no horse or the horse no work feed.
+const FeedLinkDef* TeamOatLink(const ProductionConfig& config) {
+  if (config.horse_kind.value == kInvalidDefIdValue) {
+    return nullptr;
+  }
+  for (const FeedLinkDef& link : config.feed_links) {
+    if (link.kind.value == config.horse_kind.value && link.work_only != 0 && link.reserve == 0) {
+      return &link;
+    }
+  }
+  return nullptr;
+}
+
+/// Feed units of the team's `need_units` a light day spares (econ winter-
+/// team-oats-2026-10-20 §4e, H, 81db8b5; boss, the #1056 thread [161]): a
+/// carting horse eats LESS, not the same units in a cheaper form - «carting at
+/// a walk about 3-4 kg» against 6-8 at field work. Without it the oats' lost
+/// half was refilled with hay, and the novice's cows went short in the spring
+/// (y2 Feb-Jun 155 -> 235 t, [159]).
+///
+/// THE WORK PART IS THE WORK RATION: the horse's need has no upkeep/work
+/// split in livestock.csv, so the part above upkeep is read as the work
+/// ration's own room, need x traction_full_ration_share for a horse in the
+/// traces (core's reading, [162]). A light horse keeps `light_work_oat_share`
+/// of it; its upkeep stays whole.
+/// @return 0 for any kind but the horse, or with no light horse out today.
+float LightDaySpared(const ProductionConfig& config,
+                     LivestockKindId kind,
+                     float need_units,
+                     const TeamShares& shares) {
+  if (kind.value != config.horse_kind.value || TeamOatLink(config) == nullptr) {
+    return 0.0F;
+  }
+  const float light_part = shares.work - shares.oats;
+  return light_part > 0.0F ? need_units * light_part * config.farming.traction_full_ration_share
+                           : 0.0F;
 }
 
 /// @brief The two running sums whose quotient is the day's traction ration:
@@ -577,8 +669,9 @@ float FeedLinkRoom(const FeedLinkDef& link, float need_units, float working_shar
 /// fodder grain before bread grain — and nothing is sorted here: the order
 /// arrives from the design db and sorting it again would put the canon in
 /// two places.
-/// @param working_share What WorkingShare said today; scales the cap of the
-///        work-only feeds and nothing else.
+/// @param shares What WorkingShare said today: `oats` scales the cap of the
+///        horse's oats link (TeamOatLink) and the work ration's room, `work`
+///        the cap of every other work-only feed, and nothing else.
 /// @param work Optional out, two running sums whose quotient is the traction
 ///        ration: what the work-only feeds COULD have covered under their
 ///        caps, and what they actually did. Hay keeps a horse alive and
@@ -595,6 +688,11 @@ float FeedLinkRoom(const FeedLinkDef& link, float need_units, float working_shar
 ///        comes out inverted, lands above one, and the clamp pins it to
 ///        "fully fed" — the most flattering possible wrong answer. Named
 ///        fields cannot be swapped silently.
+/// @param spared_units The part of `need_units` a light day spares (LightDaySpared):
+///        the herd eats `need_units - spared_units`, while every link's room
+///        and the work ration's room stay sized on the whole `need_units`, so
+///        the oats' lost half is spared and not refilled by hay. 0 for every
+///        kind but the team.
 /// @return The day's feeding: the share of the need it covered, 0..1 (boss
 ///         seq 171 А: hunger is a share, not a yes-or-no). 1 when there is
 ///         no need.
@@ -602,10 +700,12 @@ float RunFeeding(const ProductionConfig& config,
                  LivestockKindId kind_id,
                  const HerdPlace& place,
                  float need_units,
-                 float working_share,
+                 const TeamShares& shares,
+                 float spared_units,
                  WorldState& world,
                  WorkRation* work = nullptr) {
-  if (!(need_units > 0.0F)) {
+  const float eats = need_units - std::max(spared_units, 0.0F);
+  if (!(need_units > 0.0F) || !(eats > 0.0F)) {
     return 1.0F;
   }
   float covered = 0.0F;
@@ -624,8 +724,9 @@ float RunFeeding(const ProductionConfig& config,
   for (const FeedLinkDef& link : config.feed_links) {
     has_work_feed = has_work_feed || (link.kind.value == kind_id.value && link.work_only != 0);
   }
+  const FeedLinkDef* const oat_link = TeamOatLink(config);
   for (const FeedLinkDef& link : config.feed_links) {
-    if (covered >= need_units) {
+    if (covered >= eats) {
       break;
     }
     if (link.kind.value != kind_id.value || link.resource.value >= config.feed_values.size()) {
@@ -635,8 +736,9 @@ float RunFeeding(const ProductionConfig& config,
     if (!(value > 0.0F)) {
       continue;
     }
-    const float room = FeedLinkRoom(link, need_units, working_share);
-    float take_units = need_units - covered;
+    const float room =
+        FeedLinkRoom(link, need_units, &link == oat_link ? shares.oats : shares.work);
+    float take_units = eats - covered;
     take_units = take_units < room ? take_units : room;
     if (!(take_units > 0.0F)) {
       continue;
@@ -679,14 +781,18 @@ float RunFeeding(const ProductionConfig& config,
     // carried the whole settlement's keep while the numerator carried the
     // horses' oats, and the ration read a third of what it was. The bug is
     // invisible in the quotient: it just looks like a poorly fed farm.
-    const float full = need_units * working_share * config.farming.traction_full_ration_share;
+    //
+    // AT THE OATS' SHARE (boss, the #1056 thread [160]): a light day's work
+    // ration is the light horse's, so a cart horse fed its half of the oats
+    // reads 1.0 and «упряжь на сене» lights no shortage the rule itself made.
+    const float full = need_units * shares.oats * config.farming.traction_full_ration_share;
     work->room += full;
     work->covered += work_covered < full ? work_covered : full;
     work->gram_loss += work_gram_loss;
   }
   // A hair of tolerance: the need is a float and the take is integer grams,
   // so an exactly-fed herd can land a milligram short of its own norm.
-  const float share = std::min(1.0F, (covered + kFeedToleranceUnits) / need_units);
+  const float share = std::min(1.0F, (covered + kFeedToleranceUnits) / eats);
   // THE NEED LEFT UNCOVERED, priced in hay (save 108; ledger_state.h,
   // herd_feed_short): the kolkhoz herds only, as the hay above, and on
   // exactly the days the share says hungry — one test for both, so the two
@@ -697,18 +803,23 @@ float RunFeeding(const ProductionConfig& config,
     AddLedgerKindGrams(
         world.ledger.current.herd_feed_short,
         kind_id,
-        KilogramsToGrams((need_units - covered) / config.feed_values[config.hay_resource.value]));
+        KilogramsToGrams((eats - covered) / config.feed_values[config.hay_resource.value]));
   }
   return share;
 }
 
 /// THE TEAM'S TWO ALARMS' MEMORY, written once a day after the walk
-/// (herd_state.h, TractionWatch; save 109). `work` is the walk's work ration,
-/// the two days the herd day booked into the mechanisation share.
+/// (herd_state.h, TractionWatch; save 109). `work` is the walk's work ration;
+/// `horse_backed_days` the mechanisation share's numerator, `harnessed_days`
+/// the LAMP's own denominator - a milk leg walked by choice left out, which
+/// the share keeps (WorkingShare's lamp_harnessed_days; MR.2a, [113]).
+/// `heavy_in_traces` today's horses at the plough, the harrow or the mower
+/// (TeamShares): a day without them neither counts nor clears the streak.
 void WatchTheTeam(const ProductionConfig& config,
                   const WorkRation& work,
                   float horse_backed_days,
                   float harnessed_days,
+                  std::uint32_t heavy_in_traces,
                   WorldState& current) {
   TractionWatch& watch = current.traction_watch;
   // «УПРЯЖЬ НА СЕНЕ»: a working day short of the full work ration adds a day
@@ -727,12 +838,43 @@ void WatchTheTeam(const ProductionConfig& config,
     team_left = team_left || (herd.household_owned == 0 &&
                               herd.kind.value == config.horse_kind.value && herd.adult_count > 0);
   }
+  // THE BY-PLAN LAMP'S DAY (#1040; team_oat_plan.h): rewritten every day,
+  // nought unless today is a short field-work day of a thin year.
+  watch.by_plan_lit_today = 0;
+  watch.by_plan_stop_today = 0;
+  bool short_today = false;
+  // THE WINTER'S FIRST DAY PUTS THE STREAK OUT (econ's ruling on L2, boss,
+  // core-boss-oats-b-pair [16]): the winter has no heavy work, so a streak
+  // standing on 1 December is an autumn's lamp the winter cannot answer. The
+  // day's own work below may start a new one.
+  if (current.calendar.season == Season::kWinter && IsFirstDayOfSeason(current.calendar.day)) {
+    watch.short_ration_days = 0;
+    watch.work_grain_short = 0;
+  }
   if (!team_left) {
     watch.short_ration_days = 0;
     watch.work_grain_short = 0;
   } else if (work.room > 0.0F) {
+    // THE TEAM'S REQUEST OF THE YEAR (#1040; YearLedger::
+    // team_work_oat_requested): the room is in FEED UNITS, booked in grams of
+    // the work feed by its feed value - the next year's need.
+    current.ledger.current.team_work_oat_requested += TeamWorkFeedGrams(config, work.room);
     const float short_units = work.room - work.covered;
-    if (short_units > work.gram_loss + kFeedToleranceUnits) {
+    short_today = short_units > work.gram_loss + kFeedToleranceUnits;
+    // ONLY A SHORT HEAVY DAY ADDS TO THE STREAK (econ winter-team-oats-2026-
+    // 10-20 §4l, d1b8960; boss, core-boss-oats-b-pair [9]): the lamp says
+    // «the ploughing goes slower», and the ration slows the plough, the
+    // harrow and the mower alone - hauling is never scaled by it ([149]). A
+    // short carting-only day neither adds nor clears, as a day nobody works:
+    // under the plough-first ladder every lean winter would otherwise burn it
+    // on a consequence it does not have. ANY FULL DAY PUTS IT OUT, carting
+    // included (econ's (a), boss [16]): the first cut cleared only on a full
+    // heavy day, and an August streak then stood through the autumn's fed
+    // carting into February (L2 red, canon 48 and novice 92 raised winter
+    // days, [15]). The by-plan lamp below reads short_today and a field-work
+    // day of its own, untouched.
+    const bool heavy_day = heavy_in_traces > 0;
+    if (heavy_day && short_today) {
       if (watch.short_ration_days < std::numeric_limits<std::uint16_t>::max()) {
         ++watch.short_ration_days;
       }
@@ -746,7 +888,7 @@ void WatchTheTeam(const ProductionConfig& config,
           break;
         }
       }
-    } else {
+    } else if (!short_today) {
       watch.short_ration_days = 0;
       watch.work_grain_short = 0;
     }
@@ -756,6 +898,17 @@ void WatchTheTeam(const ProductionConfig& config,
   const std::uint32_t slot = current.calendar.day % kHarnessWeekDays;
   watch.week_harnessed[slot] = harnessed_days;
   watch.week_horse_backed[slot] = horse_backed_days;
+  // THE THIN YEAR BY THE FIELD PLAN (#1040; econ's contract §3): lit on a
+  // field-work day the ration fell short with the streak at the lamp's
+  // threshold; the year's first such day is the one stop.
+  if (watch.oat_short_by_plan != 0 && short_today && watch.short_ration_days >= kTeamOnHayDays &&
+      IsFieldWorkDay(config, current)) {
+    watch.by_plan_lit_today = 1;
+    if (watch.by_plan_stop_given == 0) {
+      watch.by_plan_stop_given = 1;
+      watch.by_plan_stop_today = 1;
+    }
+  }
 }
 
 /// What the day's produce is multiplied by. Three leaks, all of them the
@@ -1182,6 +1335,19 @@ ResourceAmounts HerdFeedAllowance(const ProductionConfig& config, const WorldSta
   return FeedAllowance(config, world, PloughingToday(world));
 }
 
+Grams HeldAboveSeedAndPlan(const ProductionConfig& config,
+                           const WorldState& world,
+                           ResourceId resource) {
+  if (resource.value == kInvalidDefIdValue) {
+    return 0;
+  }
+  const HerdHolds holds = HerdHoldsOf(config, world, PloughingToday(world));
+  const Grams left = UnreservedEverywhere(world, resource);
+  const Grams seed_and_plan =
+      resource.value < holds.seed_and_plan.size() ? holds.seed_and_plan[resource.value] : 0;
+  return left > seed_and_plan ? left - seed_and_plan : 0;
+}
+
 ResourceAmounts HerdFeedInFunds(const ProductionConfig& config, const WorldState& world) {
   // The stores fill the ladder from its bottom rung up: the seed and the
   // plan, the plough's oats (no order opens them), next year's hold. What
@@ -1243,7 +1409,9 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
   const std::vector<std::uint16_t> billet = BilletHerds(current, RoofRoom(current, config));
   float horse_backed_days = 0.0F;
   float harnessed_days = 0.0F;
-  const float working_share = WorkingShare(current, config, &horse_backed_days, &harnessed_days);
+  float lamp_harnessed_days = 0.0F;
+  const TeamShares shares =
+      WorkingShare(current, config, &horse_backed_days, &harnessed_days, &lamp_harnessed_days);
   // BOTH HALVES OF THE MECHANISATION SHARE, here and only here (epochs
   // design §6; ledger_state.h). The denominator was booked by core_labor for
   // one afternoon, from delivered norm-days — a different unit at a
@@ -1290,9 +1458,7 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
   // (feed_allowance, the stores' own stock), and a herd walked earlier eats
   // first. The rows' order it was, and nobody chose it — «коровы первыми» was
   // an accident of the start's rows (boss-core-start-no-yards [21]).
-  // world_params `feed_draught_first` 1 walks the kolkhoz's draught herds
-  // first, the rest in row order behind them; 0 is the rows' order as before.
-  // A switch for econ's pair, not a rule of the design (0.37.63).
+  // (The draught-first switch of 0.37.63 went in 0.37.301.)
   const std::vector<std::uint32_t> walk = HerdWalkOrder(config, current);
   for (const std::uint32_t row : walk) {
     HerdRow& herd = current.herds.rows[row];
@@ -1354,15 +1520,16 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
     // starving on an empty manger — the flag says the store is not their
     // source, not that they eat nothing.
     const bool self_fed = herd.household_owned != 0 && kind.household_self_fed != 0;
-    herd.fed_share =
-        self_fed ? 1.0F
-                 : RunFeeding(config,
-                              herd.kind,
-                              place,
-                              FeedNeedUnits(config, kind, herd, month, grazing_tonight(herd.kind)),
-                              working_share,
-                              current,
-                              &work);
+    const float need = FeedNeedUnits(config, kind, herd, month, grazing_tonight(herd.kind));
+    herd.fed_share = self_fed ? 1.0F
+                              : RunFeeding(config,
+                                           herd.kind,
+                                           place,
+                                           need,
+                                           shares,
+                                           LightDaySpared(config, herd.kind, need, shares),
+                                           current,
+                                           &work);
     // THE DAY IT ATE FROM A FAR RICK WITH NO ROAD (EventKind::
     // kHerdAteFromFarRick; feed_home.h, form (b)'s instrument), once a herd a
     // day: its own unit and its rick were out of a bound feed and another
@@ -1461,7 +1628,9 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
     const float ration = work.covered / work.room;
     current.traction_ration = ration < 1.0F ? ration : 1.0F;
   }
-  WatchTheTeam(config, work, horse_backed_days, harnessed_days, current);
+  // The lamp reads its own count (MR.2a; boss, [113]), the ledger the old.
+  WatchTheTeam(
+      config, work, horse_backed_days, lamp_harnessed_days, shares.heavy_in_traces, current);
   for (const HerdRow& gift : gifts) {
     AppendRow(current.herds, gift);
   }
@@ -1586,13 +1755,7 @@ PloughFeedHold PloughFeedHoldOf(const ProductionConfig& config, const WorldState
       config.horse_kind.value >= config.livestock.size()) {
     return hold;
   }
-  const FeedLinkDef* oats = nullptr;
-  for (const FeedLinkDef& link : config.feed_links) {
-    if (link.kind.value == config.horse_kind.value && link.work_only != 0 && link.reserve == 0) {
-      oats = &link;
-      break;
-    }
-  }
+  const FeedLinkDef* const oats = TeamOatLink(config);
   if (oats == nullptr) {
     return hold;
   }

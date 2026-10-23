@@ -47,6 +47,7 @@
 #include <cstdint>
 #include <optional>
 
+#include "core_common/geometry.h"
 #include "core_common/ids.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table.h"
@@ -234,6 +235,32 @@ struct HerdRow {
   /// (stage 6). Zero for household-standing herds (see @file).
   float care_days_remaining = 0.0F;
 
+  // -- the milk leg (#1056 C1.1; logistics_state.h, kMilkLeg; save 170) ----
+
+  /// Cart-days of the barn -> store leg left today: written after the
+  /// milking from the milk the barn holds (production, FarmingConfig::
+  /// milk_at_barn), drained by the hauling on it, nought with no switch.
+  float leg_days_remaining = 0.0F;
+
+  /// What `leg_days_remaining` was written at, for the settle's share done.
+  float leg_days_written = 0.0F;
+
+  /// The day's leg as the milking priced it: the evening writes tomorrow's
+  /// estimate from it, so the morning's placement sees a leg to crew.
+  float leg_days_priced = 0.0F;
+
+  /// The leg's receiver: the store the village keeps milk in.
+  Vec2 leg_to;
+
+  /// The resource the leg carts (the milk); invalid with no leg.
+  ResourceId leg_resource;
+
+  /// 1 when the leg is carried ON FOOT, the cans in hand (#1056 C1.3; econ's
+  /// §C1.3 (ii-b); save 172): the leg was priced at a walker's trip and its
+  /// job asks no horse. 0 - by cart, only where the standard day holds fewer
+  /// walks than labor.csv `walker_min_trips_per_day` (milk_cart.cpp).
+  std::uint8_t leg_on_foot = 0;
+
   /// THE WAIT A HEAD OF IT STANDS IN (save 138; architecture §7ж³; routing
   /// stage B, B6): a riding horse spending the night at its worker's yard
   /// (wait_state.h, kHorseAtWorkersYard). The herd is the agent: the core
@@ -282,6 +309,44 @@ struct TractionWatch {
 
   /// Of them, the horse-backed ones (its numerator).
   std::array<float, kHarnessWeekDays> week_horse_backed = {};
+
+  // «ОВСА ПОСЕЯНО МАЛО» — THE THIN YEAR BY THE FIELD PLAN (#1040; econ's
+  // contract oat-lamp-thin-year-contract-2026-10-17.md, e4b0188 / c31d460;
+  // boss, the #1040 thread [2], [4]). Read once on 1 January by the
+  // production year start (team_oat_plan.h, ReadTheTeamsOatPlan), after the
+  // chain has moved: this year's oat slot at its fields' own yield, plus
+  // the oat in store above the seed and the plan, against the closed year's
+  // team request.
+  // ONE DEVIATION FROM THE CONTRACT, named: the need is the herd day's own
+  // work-ration REQUEST (YearLedger::team_work_oat_requested), not
+  // YearLedger::feed's oat and barley - pigs eat both (feed_links.csv), so
+  // `feed` would count their keep as the team's.
+
+  /// 1 when this year's oat by the field plan falls short of the team's need
+  /// by more than the margin (oat_short_plan_margin): the oat lamp then
+  /// lights on short field-work days only, one stop a year.
+  std::uint8_t oat_short_by_plan = 0;
+
+  /// 1 once this year's one stop has been given (reset on 1 January).
+  std::uint8_t by_plan_stop_given = 0;
+
+  /// TODAY'S VERDICT of the by-plan lamp, written by the herd day every day
+  /// (herd_system.cpp, WatchTheTeam) and read by the alarms: 1 on a
+  /// field-work day the team's work ration was short (with the streak at
+  /// kTeamOnHayDays), 0 on every other day.
+  std::uint8_t by_plan_lit_today = 0;
+
+  /// 1 on the one day of the year the by-plan lamp is a stop (its first lit
+  /// day), 0 on every other.
+  std::uint8_t by_plan_stop_today = 0;
+
+  /// The line's three numbers, as of 1 January (team_on_hay.by_plan.text's
+  /// {oat_ha}, {expected_t}, {need_t}): this year's oat slot in hectares, its
+  /// expected grams at its fields' own yield (PlannedChainYieldGrams), and the
+  /// team's need in grams of oat.
+  float plan_oat_ha = 0.0F;
+  Grams plan_oat_expected = 0;
+  Grams plan_team_need = 0;
 
   // NO HARNESS PEAK HERE (0.37.141). 0.37.140's contract carried one — the
   // most horses a day held under work that cannot wait, this year's and the

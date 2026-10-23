@@ -63,7 +63,27 @@ struct PlotRules {
   /// the same convention as construction_config.h, and for the same
   /// reason: a wrong edge is worse than no edge.
   float map_side_m = 0.0F;
+
+  /// By UnitTypeId value, 1 for a type whose body YIELDS its place (#1089,
+  /// the fire gong; unit_types.csv `yields_place`): skipped by PlotOverlaps,
+  /// so it never shifts another unit's plot - the settlement step moves it
+  /// instead. Empty: no type yields (the yielding body's own placement asks
+  /// with it empty, so it avoids every body).
+  std::span<const std::uint8_t> yields_by_type;
 };
+
+/// @brief A standing unit's plot radius: its own (UnitRow::plot_radius_m, the
+///        old cemetery's 14 m) when set, else its type's from `radius_by_type`
+///        (boss, boss-core-epoch1-resume [25]: «a plot that holds 40 and blocks
+///        130 would be two truths about one fence»).
+/// @return 0 for a type outside the span with no radius of its own.
+[[nodiscard]] inline float PlotRadiusOf(const UnitRow& unit,
+                                        std::span<const float> radius_by_type) {
+  if (unit.plot_radius_m > 0.0F) {
+    return unit.plot_radius_m;
+  }
+  return unit.type.value < radius_by_type.size() ? radius_by_type[unit.type.value] : 0.0F;
+}
 
 /// @brief Whether a plot of `radius` centred on `place` would overlap the
 /// plot of any unit already standing.

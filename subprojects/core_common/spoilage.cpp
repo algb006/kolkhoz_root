@@ -4,6 +4,9 @@
 
 #include <cmath>
 #include <cstddef>
+#include <limits>
+
+#include "core_common/calendar.h"
 
 namespace core {
 
@@ -17,6 +20,25 @@ Grams RotMarginGrams(Grams held, float spoil_days, std::uint32_t days) {
       std::pow(1.0 - (1.0 / static_cast<double>(spoil_days)), static_cast<double>(days));
   return GramsFromFloat(
       static_cast<float>(static_cast<double>(held) / kept_share - static_cast<double>(held)));
+}
+
+float FieldHeapShelfDays(float spoil_days, float keeping_factor) {
+  return spoil_days > 0.0F ? spoil_days * keeping_factor : std::numeric_limits<float>::infinity();
+}
+
+std::uint32_t HayWeatheringSeason(std::uint32_t month) {
+  if (month == 11U || month < 2U) {
+    return 2U;  // winter
+  }
+  if (month < 5U) {
+    return 3U;  // spring
+  }
+  return month < 8U ? 0U : 1U;  // summer, autumn
+}
+
+float HayHeapShelfDays(float season_share) {
+  const float share_a_day = season_share / static_cast<float>(kDaysPerMonth);
+  return share_a_day > 0.0F ? 1.0F / share_a_day : std::numeric_limits<float>::infinity();
 }
 
 Grams SpoiledToday(Grams held, float spoil_days, float keeping_factor) {

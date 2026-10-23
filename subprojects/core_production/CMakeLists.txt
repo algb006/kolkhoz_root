@@ -9,6 +9,7 @@ kolkhoz_add_module(core_production
     production_config.cpp
     field_haul.cpp
     cart_trips.cpp
+    trip_terms_writer.cpp
     feed_home.cpp
     haul_ways.cpp
     supply_haul.cpp
@@ -19,13 +20,18 @@ kolkhoz_add_module(core_production
     herd_forecast.cpp
     herd_life.cpp
     herd_system.cpp
+    manure_cart.cpp
     milk_cart.cpp
+    rick_supply.cpp
     goods_loan.cpp
+    clamp_rot_lamp.cpp
     livestock_homes.cpp
     stable_horses.cpp
     night_pasture.cpp
     production_alarms.cpp
     plan_alarms.cpp
+    plan_due.cpp
+    team_oat_plan.cpp
     seed_room.cpp
     stock_lights.cpp
     timber_felling.cpp
@@ -37,10 +43,12 @@ kolkhoz_add_module(core_production
     demolition_stock.cpp
     district_car.cpp
     district_trip.cpp
+    district_carts.cpp
     district_limit.cpp
     mts_column.cpp
     district_visit.cpp
     district_plan.cpp
+    district_reputation.cpp
     production_orders.cpp
     field_removal.cpp)
 

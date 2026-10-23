@@ -246,9 +246,16 @@ class IProductionSystem {
   /// @brief The plan window off `completed` (office_views.h, PlanBook): every
   /// produce with a figure, by resource row, each with the turn's own
   /// PositionDelivered on what is shipped so far; the deadline the next
-  /// year's first day.
+  /// year's first day; the trial's run and its threshold; every resource
+  /// owed back or borrowed this year.
   /// @note Called between steps on the sim thread. A pure read.
   virtual PlanBook OfficePlan(const WorldState& completed) const = 0;
+
+  /// @brief What a goods loan of `borrowed` grams books as owed back, the
+  /// mark-up included (goods_loan.h GoodsLoanWithMarkup) — the order's
+  /// preview and the debt are one computation.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual Grams GoodsLoanAmountBack(Grams borrowed) const = 0;
 
   /// @brief The limit window off `completed` (office_views.h, LimitBook): the
   /// points left, every lot of the catalogue with its price and LotOrderable's
@@ -399,6 +406,29 @@ class IProductionSystem {
   /// @note A pure read; called by residents in the decisions slot (phase 3)
   /// and between steps for the ration alarm.
   virtual ResourceAmounts HarvestToComeThisYear(const WorldState& world) const = 0;
+
+  /// @brief The harvest standing in the fields now and the heaps lying at
+  /// them, by produce (#1046 (b), econ §7.2; boss, the #1046 thread [12]): per
+  /// field, its heap, and the crop in hand at the harvest's own estimate
+  /// (StandingYieldGrams) unless it is a winter crop sown this autumn. Dense
+  /// by ResourceId.
+  ///
+  /// Exposed for the hunger lamp's forecast (core_residents,
+  /// hunger_forecast.h): the issue a position's harvest inside the horizon
+  /// will share from its day.
+  /// @note A pure read; called by residents between steps (the alarms).
+  virtual ResourceAmounts StandingHarvest(const WorldState& world) const = 0;
+
+  /// @brief Whether the residents' issue, ration and advance may take from
+  /// `unit` (#1056 C1.1 (b); boss, the #1056 thread [6]-[7]): ONE rule for
+  /// «what can be taken» with production's takers (stock_ops.h, IsTakenFrom:
+  /// built and a store of goods). Under farming.csv `milk_at_barn` 0 every
+  /// unit answers yes, as the residents read before 0.37.298 - measured on
+  /// the base: none of their grams came from a non-store in 117
+  /// village-years.
+  /// @note A pure read; called by residents in the decisions slot and between
+  /// steps.
+  virtual bool IsIssueSource(const UnitRow& unit) const = 0;
 };
 
 /// @brief Creates the production subsystem.

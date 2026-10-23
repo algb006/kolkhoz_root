@@ -30,10 +30,12 @@
 #include <cstdlib>
 #include <future>
 #include <iostream>
+#include <optional>
 #include <streambuf>
 #include <string>
 #include <vector>
 
+#include "../common/accepted_reds.h"
 #include "../common/advance_write_off_tally.h"
 #include "../common/births_herd_tally.h"
 #include "../common/building_chairman.h"
@@ -181,6 +183,15 @@ struct Trajectory {
   std::array<std::uint32_t, run::TransitionPolicy::kConditions> unmet_after_residents_days = {};
   /// Days walked in Epoch I: what the two above are counted against.
   std::uint32_t epoch_one_days = 0;
+  /// THE DOOR HELD FOR NO NAMED REASON (#776's E3; boss, the E3 thread [2]):
+  /// Epoch I days, after the residents' condition was first met, on which
+  /// «юниты на уровне» stood unmet and the upgrade policy found no reason for
+  /// the unit below the era's level that day (upgrade_policy.h,
+  /// Held::unexplained). The one
+  /// condition whose hold the runs attribute; the others are states (the
+  /// residents, the winters, the board's wear, the social objects standing)
+  /// and their gaps are printed, not gated.
+  std::uint32_t unexplained_sole_hold_days = 0;
   /// WHAT SHUTS THE TWO STANDING BLOCKS (boss-core-epoch1-queue [18]): from
   /// the first day each was met, the Epoch I days it stood shut, and on those
   /// days, by unit type row, the kolkhoz types below the era's level and the
@@ -623,6 +634,8 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
       // calls the rest silence (event_journal's own header says the same).
       // `AdvanceDays(1)` IS this loop — the order of `builder.RunDay` after
       // the day is untouched, and the bands below are the proof.
+      // The upgrade policy's unexplained days before today's (E3, #776).
+      const std::uint32_t unexplained_before = builder.upgrades.held().unexplained;
       LiveOneDay(
           *simulation, builder.upgrades, out, births_herd_on, &hay_day_off, &advance_write_offs);
       builder.RunDay(*simulation);
@@ -640,6 +653,18 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
         const int sole = builder.transition.SoleHoldout(today);
         if (sole >= 0) {
           ++out.sole_holdout_days[static_cast<std::size_t>(sole)];
+        }
+        // THE UNITS HOLD THE DOOR, AND FOR NO NAMED REASON (E3, #776): a day in
+        // the window E3 always read - the residents' condition met, the units
+        // below the era's level - on which the upgrade policy named no reason.
+        // NOT «the units ALONE» (SoleHoldout): in sixteen villages the units
+        // were the sole holdout on 0 days (the residents or the board always
+        // beside them), and that gate stayed green under its own fault with
+        // 800-1 000 unexplained days a village - a gate that could not fire.
+        constexpr std::size_t kUnitsCondition = 6;
+        if (out.condition_first_met_day[kResidentsConditionIndex] >= 0 && !met[kUnitsCondition] &&
+            builder.upgrades.held().unexplained > unexplained_before) {
+          ++out.unexplained_sole_hold_days;
         }
         if (out.condition_first_met_day[kResidentsConditionIndex] >= 0) {
           for (std::size_t condition = 0; condition < met.size(); ++condition) {
@@ -969,6 +994,9 @@ int main(int argc, char** argv) {
       sequential = true;
     } else if (argument == "--no-planting") {
       g_no_planting = true;
+    } else if (argument == "--social-before-1064") {
+      run::g_social_s1 = false;  // the social-objects chairman before #1064's two rules
+      run::g_social_s2 = false;
     } else if (argument == "--epoch-one-forever") {
       g_epoch_one_forever = true;
     } else if (argument == "--horses-half") {
@@ -1006,6 +1034,14 @@ int main(int argc, char** argv) {
     std::cout << "population_curve: CONTROL ARM — --horses-half: every horse herd halved on day "
                  "0, adults and young alike; the bands below are read on the whole team, so "
                  "their verdict is printed, not trusted\n";
+  }
+  if (!run::g_social_s1 || !run::g_social_s2) {
+    std::cout << "population_curve: CONTROL ARM — #1064's rules OFF:"
+              << (run::g_social_s1 ? "" : " S1 (a house waits by the UNMET need)")
+              << (run::g_social_s2 ? ""
+                                   : " S2 (a site of any phase short on 12 of 24 days stops "
+                                     "holding)")
+              << "; the run's social-objects chairman differs from the declaration above\n";
   }
   if (g_seed_offset != 0) {
     std::cout << "population_curve: NOT THE CANONICAL SAMPLE — --seed-offset=" << g_seed_offset
@@ -1312,12 +1348,34 @@ int main(int argc, char** argv) {
     return std::to_string(hundredths / 100) + (hundredths % 100 < 10 ? ".0" : ".") +
            std::to_string(hundredths % 100);
   };
-  const std::string mean_claim = "E1: the mean door is " + two_places(kEraMeanFloor) + " to " +
-                                 two_places(kEraMeanCeiling) +
-                                 " (earlier stops for the human) — now " + two_places(door_mean);
-  failures +=
-      run::Expect(!doors.empty() && door_mean >= kEraMeanFloor && door_mean <= kEraMeanCeiling,
-                  mean_claim.c_str());
+  // THE HUMAN'S ACCEPTED PRICE IS A LINE THE CHECK READS (accepted_reds.h;
+  // boss, core-boss-oats-b-pair [26]): below the floor but within the
+  // accepted value less its SE the cell passes and says so; below that it is
+  // red as before and names the line it broke; back inside the band it asks
+  // for the line to be dropped. The band's constants above are not touched.
+  const std::optional<run::AcceptedRed> accepted =
+      run::FindAcceptedRed("population_curve", "E1 mean door");
+  const bool inside_band =
+      !doors.empty() && door_mean >= kEraMeanFloor && door_mean <= kEraMeanCeiling;
+  const bool within_accepted = !doors.empty() && accepted.has_value() &&
+                               door_mean < kEraMeanFloor &&
+                               door_mean >= accepted->value - accepted->se;
+  std::string mean_claim = "E1: the mean door is " + two_places(kEraMeanFloor) + " to " +
+                           two_places(kEraMeanCeiling) + " (earlier stops for the human) — now " +
+                           two_places(door_mean);
+  if (accepted.has_value() && inside_band) {
+    std::cout << "population_curve: E1 accepted red no longer needed — drop the line ("
+              << run::kAcceptedRedsPath << ", " << accepted->date << ", " << accepted->tree
+              << ")\n";
+  } else if (within_accepted) {
+    std::cout << "population_curve: E1 ACCEPTED RED (" << accepted->word << "; " << accepted->date
+              << ", tree " << accepted->tree << "): accepted " << two_places(accepted->value)
+              << ", SE " << two_places(accepted->se) << ", now " << two_places(door_mean) << '\n';
+  } else if (accepted.has_value()) {
+    mean_claim += " — below the accepted line too (" + two_places(accepted->value) + " less SE " +
+                  two_places(accepted->se) + ", " + accepted->date + ", " + accepted->tree + ")";
+  }
+  failures += run::Expect(inside_band || within_accepted, mean_claim.c_str());
   const std::string spread_claim =
       "E2: at least " + std::to_string(kEraSpreadAtLeast) + " of " + std::to_string(kSeeds.size()) +
       " doors inside " + two_places(kEraSpreadFloor) + " to " + two_places(kEraSpreadCeiling) +
@@ -1369,10 +1427,53 @@ int main(int argc, char** argv) {
                     std::to_string(walk.unmet_after_residents_days[longest]) +
                     " days unmet (every condition, days:" + hand + ");";
   }
+  // E3 GATES A DOOR DEFECT, NOT THE GAP (#776; boss, the E3 thread [2], on
+  // core's finding). It gated «no door more than a year after the residents'
+  // condition» until 0.37.284, and that number is the difference of two dates
+  // that BOTH move with any world change: the base's own gaps ran 0.3-0.98
+  // years against the 1.0 threshold, so the red set floated - green on
+  // 0.37.275-276, red on 278-281 by one village with three different holds,
+  // red by a later door (1932, 1934 on В6 part 3) and by EARLIER residents
+  // (1938; 1941 on 0.37.278). Every red's hold had a named cause, UNEXPLAINED
+  // 0. Now the gate is the defect a slow but honest world cannot produce: the
+  // days, after the residents, «юниты на уровне» held the door with no reason the upgrade
+  // policy could name. The gap is printed LOUD, every village over a year on
+  // its own line with its last blocker - a balance question for econ, kept
+  // visible, not gated.
+  std::cout << "population_curve: E3 GAP (printed, not gated): gap > 1 y: " << doors_late << " of "
+            << walks.size() << '\n';
+  if (!late_holders.empty()) {
+    std::cout << "population_curve: E3 GAP villages:" << late_holders << '\n';
+  }
+  std::uint32_t unexplained_holds = 0;
+  std::string unexplained_where;
+  for (std::size_t walk_index = 0; walk_index < walks.size(); ++walk_index) {
+    const std::uint32_t days = walks[walk_index].unexplained_sole_hold_days;
+    unexplained_holds += days;
+    if (days > 0) {
+      unexplained_where +=
+          " seed " + std::to_string(kSeeds[walk_index]) + ": " + std::to_string(days) + " days;";
+    }
+  }
+  std::uint32_t units_unmet_days = 0;
+  for (const Trajectory& walk : walks) {
+    units_unmet_days += walk.unmet_after_residents_days[6];
+  }
   const std::string late_claim =
-      "E3: no door opens more than a year after the residents' condition was first met — now " +
-      std::to_string(doors_late) + (late_holders.empty() ? "" : " (" + late_holders + ")");
-  failures += run::Expect(doors_late == 0, late_claim.c_str());
+      "E3: after the residents' condition is met, the door is never held by a unit below the "
+      "era's level for no named reason — now " +
+      std::to_string(unexplained_holds) + " days (of " + std::to_string(units_unmet_days) +
+      " days the units stood unmet after the residents)" +
+      (unexplained_where.empty() ? "" : " (" + unexplained_where + ")");
+  failures += run::Expect(unexplained_holds == 0, late_claim.c_str());
+  // THE GUARD IS THIN, and says so every run (boss, the E3 thread [4]): it
+  // reads only the window above, which on 0.37.284's world held 53 unit-unmet
+  // days after the residents in all sixteen villages; its own fault (the
+  // next rung's shortfall left unattributed) reached 14 days in one village.
+  // A defect that blanks a cause OUTSIDE that window passes it silently.
+  std::cout << "population_curve: E3 GUARD's window (its limit): " << units_unmet_days
+            << " days the units stood unmet after the residents, in " << walks.size()
+            << " villages - an unexplained hold outside this window is not seen\n";
   failures += run::Expect(median_year14 <= 800, "and not exploding by year 14");
   // A STANDING GATE, «no cow dies of cold» (#712; boss, 12 October 2026): the
   // canon's warm rule went dead with the one-site queue (#595) and nothing

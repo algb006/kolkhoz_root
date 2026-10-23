@@ -142,6 +142,13 @@ enum class CartTripModel : std::uint8_t {
   kFluid = 0,        ///< F: grams ÷ load × round trip - today.
   kWhole = 1,        ///< W: whole trips, no consolidation.
   kWholeRouted = 2,  ///< WR: whole trips and the routes.
+  /// P (#1056 C3; core_common/trip_terms.h): THE PLAN WRITES THE PRICE.
+  /// Production prices a cart's seam at whole trips, as W (the FALLBACK, the
+  /// evening's), and writes each task's TaskTripTerms; the groom's plan draws
+  /// whole trips from them, pools field heaps and takes back loads, and
+  /// rewrites the seam from its drawn trips at the morning and every re-plan.
+  /// The tours of WR are not this model's: PlanSupplyTours stays WR's.
+  kPlanned = 3,
 };
 
 /// @brief THE ONE DOOR OF A LOAD's PRICE, cart-days: `grams` carried at

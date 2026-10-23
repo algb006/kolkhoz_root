@@ -24,6 +24,7 @@
 #include "feed_home.h"
 #include "field_haul.h"
 #include "herd_cold.h"
+#include "manure_cart.h"
 #include "production_config.h"
 #include "stock_ops.h"
 
@@ -53,6 +54,9 @@ Grams PutOnHeap(WorldState& current, FieldRow& field, ResourceId resource, Grams
   const Grams heap_before = field.reaped_grams;
   field.reaped_grams += laid;
   field.reaped_resource = resource;
+  // A heap born from nothing: the groom's next re-plan hour looks for its task
+  // (world_state.h, heap_born; #1056 C4).
+  current.heap_born = current.heap_born || (heap_before <= 0 && laid > 0);
   return heap_before;
 }
 
@@ -662,6 +666,11 @@ void OpenPlowing(const ProductionConfig& config,
   // fallow's turn), so a manured field gave the same crop and the manure fed
   // the next one: on the canon the fallow's May manure reached the oats after
   // the rye it was ploughed in for (econ, fallow-chain.md §6.2).
+  //
+  // THE WINTER'S DOSE IS CLOSED BY THIS FURROW (#1056 C2; manure_cart.h):
+  // what is not on the field yet stays in the heap and is counted late, and
+  // the furrow pays by what arrived.
+  CancelLateManure(config, current, field);
   if (field.manure_applied != 0 && field.manure_booked == 0) {
     const float share = static_cast<float>(field.manure_applied) / 100.0F;
     const auto dose =

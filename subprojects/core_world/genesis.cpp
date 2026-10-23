@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -26,8 +27,10 @@
 #include "core_catalog/world_conventions.h"
 #include "core_common/body.h"
 #include "core_common/calendar.h"
+#include "core_common/cemetery_rules.h"
 #include "core_common/herd_age_band.h"
 #include "core_common/ledger_state.h"
+#include "core_common/plot.h"
 #include "core_common/random.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
@@ -36,6 +39,7 @@
 #include "core_residents/residents_system.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
+#include "settlement_rules.h"
 #include "start_elder.h"
 #include "start_layout.h"
 #include "start_literacy.h"
@@ -85,7 +89,7 @@ std::int32_t BirthDayForAge(float age_years, float life_speedup, RngState& rng) 
 /// the list the assembly is handed and the list actually read cannot be two
 /// lists: they are the same array. A second copy written out beside the
 /// reader would be correct on the day it was written and mute ever after.
-constexpr std::array<std::string_view, 27> kGenesisWorldParamKeys = {
+constexpr std::array<std::string_view, 28> kGenesisWorldParamKeys = {
     "body_height_male_m",
     "body_height_female_m",
     "body_height_sigma_frac",
@@ -136,7 +140,16 @@ constexpr std::array<std::string_view, 27> kGenesisWorldParamKeys = {
     "sportiness_start_age_min",
     "sportiness_start_age_max",
     "sportiness_start_min",
-    "sportiness_start_max"};
+    "sportiness_start_max",
+    // THE OLD CEMETERY's GRAVES (#1199; social.md «Два кладбища»): its plot's
+    // capacity is the plot's area over this, and the start fills fill_pct of
+    // it. A SECOND READER of the row: core_residents lays the graves after.
+    "cemetery_m2_per_grave"};
+
+/// Where the cemetery's key sits in the list above.
+constexpr std::size_t kCemeteryM2PerGraveKey = 27;
+static_assert(kGenesisWorldParamKeys[kCemeteryM2PerGraveKey] == "cemetery_m2_per_grave",
+              "the cemetery key moved out from under its index");
 
 /// Where the founders' sportiness keys begin in the list above.
 constexpr std::size_t kStartSportinessKeyFirst = 23;
@@ -1006,9 +1019,14 @@ void PlaceStartLayout(WorldState& world,
       if (type.value == kInvalidDefIdValue) {
         continue;  // a type the core's tables do not carry: nothing to place
       }
-      placed.emplace_back(
-          row.key,
-          PlaceUnit(world, type, row.place.x, row.place.y, row.start_wear_pct, row.start_dead));
+      const UnitId unit =
+          PlaceUnit(world, type, row.place.x, row.place.y, row.start_wear_pct, row.start_dead);
+      // ITS OWN PLOT, where the layout gives one (the old cemetery's 14 m;
+      // UnitRow::plot_radius_m): what it holds and what it blocks.
+      if (row.plot_radius_m > 0.0F) {
+        world.units.rows[FindRow(world.units, unit)].plot_radius_m = row.plot_radius_m;
+      }
+      placed.emplace_back(row.key, unit);
       continue;
     }
     if (row.kind == LayoutKind::kMeadow) {
@@ -1045,6 +1063,62 @@ void PlaceStartLayout(WorldState& world,
       // every respect, and marked only so its removal can say which it was.
       world.fields.rows[FindRow(world.fields, field)].start_reserve = 1;
     }
+  }
+}
+
+/// @brief world_params cemetery_m2_per_grave, or the source default with a
+///        line when the table cannot give it (cemetery_rules.h).
+float ReadCemeteryM2PerGrave(const ITableSet& tables) {
+  float m2 = kCemeteryM2PerGraveDefault;
+  const ITable* const world = tables.FindTable("world_params");
+  if (world == nullptr) {
+    return m2;
+  }
+  const std::array<ScalarKnob, 1> rows = {
+      ScalarKnob{.key = kGenesisWorldParamKeys[kCemeteryM2PerGraveKey],
+                 .value = &m2,
+                 .range = Range{.low = kCemeteryM2PerGraveMin, .high = kCemeteryM2PerGraveMax}}};
+  std::string trouble;
+  if (!ReadKnobs(*world, "world_params", rows, trouble)) {
+    LogError("genesis: " + trouble + " — the source's 15 m² a grave is used");
+    return kCemeteryM2PerGraveDefault;
+  }
+  return m2;
+}
+
+/// @brief THE OLD CEMETERY STARTS HALF FULL (#1199; social.md «Половина на
+/// старте»): a cemetery row's fill_pct of its plot's capacity, as graves.
+/// Every other type keeps none, whatever its row says (start_layout.cpp
+/// warns of a fill on a row that is not a unit).
+void SeedStartGraves(WorldState& world,
+                     const StartLayout& layout,
+                     const std::vector<std::pair<std::string_view, UnitId>>& placed,
+                     const ITable* unit_types,
+                     const Definitions& definitions,
+                     float m2_per_grave) {
+  const UnitTypeId cemetery = TypeByKey(unit_types, kCemeteryTypeKey);
+  if (cemetery.value == kInvalidDefIdValue ||
+      cemetery.value >= definitions.units.plot_radius_m.size()) {
+    return;
+  }
+  for (const StartLayoutRow& row : layout.rows) {
+    if (row.kind != LayoutKind::kUnit || row.fill_pct < 0.0F) {
+      continue;
+    }
+    const auto found =
+        std::ranges::find_if(placed, [&row](const auto& entry) { return entry.first == row.key; });
+    if (found == placed.end()) {
+      continue;
+    }
+    const std::uint32_t unit = FindRow(world.units, found->second);
+    if (unit == kNoRow || world.units.rows[unit].type.value != cemetery.value) {
+      continue;
+    }
+    // Its own plot where the layout gives one, else the type's (plot.h).
+    const std::uint16_t capacity = CemeteryCapacityGraves(
+        PlotRadiusOf(world.units.rows[unit], definitions.units.plot_radius_m), m2_per_grave);
+    world.units.rows[unit].graves = static_cast<std::uint16_t>(
+        std::lround(static_cast<double>(capacity) * static_cast<double>(row.fill_pct) / 100.0));
   }
 }
 
@@ -1426,6 +1500,7 @@ bool BuildStartEconomy(WorldState& world,
                    definitions.map_side_m,
                    start_land_keys,
                    placed);
+  SeedStartGraves(world, scene, placed, unit_types, definitions, ReadCemeteryM2PerGrave(tables));
   // THE ROADS, the map's network with the layout's wear on it (0.36.0).
   std::string road_error;
   if (!PlaceMapRoads(tables, scene, world, road_error)) {
@@ -1652,6 +1727,18 @@ bool BuildStartEconomy(WorldState& world,
   }
   PlaceHerds(world, tables, stock_yard, holdings);
   PutYardsStartHay(world, tables, resources);
+  // THE START VILLAGE (#1089; settlement_rules.h): one settlement, id 1 for
+  // ever, the start layout's gong its own, every unit its member.
+  SettlementConfig settlement_config;
+  std::string settlement_error;
+  if (!ReadSettlementConfig(tables, settlement_config, settlement_error)) {
+    LogError("genesis: " + settlement_error);
+    if (error != nullptr) {
+      *error = settlement_error;
+    }
+    return false;
+  }
+  SeedStartSettlement(settlement_config, world);
   return true;
 }
 

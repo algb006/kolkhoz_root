@@ -85,6 +85,23 @@ struct PlanLine {
   bool met = false;
 };
 
+/// @brief One resource of the district's goods loan on the year's book
+/// (labor-payment.md §6.1: «в книге года — „к возврату {M}“»).
+struct LoanLine {
+  /// The resource lent and owed back in kind.
+  ResourceId resource;
+
+  /// Owed back at the year's turn, grams, AS THE TURN WILL TAKE THEM: the
+  /// mark-up included (PlanState::goods_loan_owed), a carried debt with the
+  /// mark-up of every turn it crossed. The book's «к возврату {M}».
+  Grams owed = 0;
+
+  /// Borrowed this year, grams as borrowed, no mark-up
+  /// (PlanState::goods_loan_taken): one loan a resource a year, so a
+  /// nonzero figure says this year's loan of it is spent.
+  Grams taken_this_year = 0;
+};
+
 /// @brief The plan window: the year's positions and their term.
 struct PlanBook {
   /// Whether the district has spoken this year (PlanState::announced): a
@@ -100,6 +117,23 @@ struct PlanBook {
   /// milk shipped with no position (PlanState::delivered_outside) is not a
   /// position and is not listed.
   std::vector<PlanLine> positions;
+
+  /// THE TRIAL'S COUNT (epochs.md «Под суд»: «Планы сорваны подряд: N из
+  /// M»): the economic years in a row closed kFailed, as the last turn left
+  /// it — a met year zeroes it, a year failed only by the snow leaves it
+  /// standing (FailedOnlyBySnow). Read with announced false too: the run
+  /// outlives the spring.
+  std::uint8_t failed_years_in_a_row = 0;
+
+  /// The M of the count: the run the turn raises kPlanTrialDue at
+  /// (campaign.csv plan_failed_years_to_trial), one number for every avatar
+  /// (boss, core-boss-984 seq 2). 0 for a table-less world.
+  std::uint8_t failed_years_to_trial = 0;
+
+  /// Every resource owed back or borrowed this year, by resource row; empty
+  /// with no loan. Listed with announced false too: a debt outlives the
+  /// spring.
+  std::vector<LoanLine> loans;
 };
 
 /// @brief One lot of the district's catalogue as the window lists it.

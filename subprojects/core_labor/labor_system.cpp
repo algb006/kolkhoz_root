@@ -73,6 +73,7 @@
 #include "core_tables/tables.h"
 #include "labor_config.h"
 #include "labor_day.h"
+#include "placement_rank.h"
 #include "posts.h"
 #include "rush.h"
 #include "work_orders.h"
@@ -1758,6 +1759,65 @@ class LaborSystem final : public ILaborSystem {
         job.harnessed = DraughtHorses(current) > 0;
         jobs.push_back(job);
       }
+      // A RICK'S SUPPLY FROM ANOTHER RICK (#1056 C1.2; econ's stage C
+      // contract 574c366): priced by production's evening while the rick's
+      // herds' hay stands below its threshold (unit_state.h, RickSupplySeam).
+      // Level 2, windowless - the common queue; LEVEL 0 UNDER TODAY'S URGENT
+      // RULE, the stack's own (below, in the field loop): the rick short
+      // within the days a cart can still mend is carted ahead of all work.
+      // The carter's place is the rick it comes from, where he loads.
+      std::optional<std::vector<ShortRickUnit>> ricks_short;
+      for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
+        const UnitRow& unit = current.units.rows[row];
+        if (!RickSupplyStands(unit) || !(unit.rick_supply.days_remaining > 0.0F)) {
+          continue;
+        }
+        const std::uint32_t from_row = FindRow(current.units, unit.rick_supply.from);
+        if (from_row == kNoRow) {
+          continue;
+        }
+        AssignmentJob job;
+        job.kind = WorkKind::kHauling;
+        job.unit = current.units.row_ids[row];
+        job.position = current.units.rows[from_row].position;
+        job.work_days_remaining = unit.rick_supply.days_remaining;
+        job.harnessed = DraughtHorses(current) > 0;
+        if (!ricks_short.has_value()) {
+          ricks_short.emplace();
+          if (config_.short_ricks && config_.hay_cart_urgent_days > 0) {
+            *ricks_short = config_.short_ricks(
+                current, UrgentHayHorizonDays(current, config_.hay_cart_urgent_days));
+          }
+        }
+        job.logistics_urgent =
+            std::ranges::any_of(*ricks_short, [&job](const ShortRickUnit& short_rick) {
+              return short_rick.rick.value == job.unit.value;
+            });
+        jobs.push_back(job);
+      }
+      // A FIELD'S WINTER DOSE FROM THE HEAP (#1056 C2; manure_state.h):
+      // priced by production's evening on a sledge day only, so a seam with
+      // days in it is a snow day's job. Level 3, windowless - the common
+      // queue, after every other load. The carter's place is the heap, where
+      // he loads.
+      for (std::uint32_t row = 0; row < current.fields.rows.size(); ++row) {
+        const FieldRow& field = current.fields.rows[row];
+        if (!ManureDoseStands(field) || !(field.manure_dose.days_remaining > 0.0F)) {
+          continue;
+        }
+        const std::uint32_t heap_row = FindRow(current.units, field.manure_dose.from);
+        if (heap_row == kNoRow) {
+          continue;
+        }
+        AssignmentJob job;
+        job.kind = WorkKind::kHauling;
+        job.field = current.fields.row_ids[row];
+        job.position = current.units.rows[heap_row].position;
+        job.work_days_remaining = field.manure_dose.days_remaining;
+        job.harnessed = DraughtHorses(current) > 0;
+        job.manure_dose = true;  // the last winter cart (assignment.cpp's key)
+        jobs.push_back(job);
+      }
       // THE TIMBER LOT AT THE DISTRICT CENTRE (decision 279, 0.36.17): the
       // village's own carts fetch it, WINDOWLESS since 0.36.18 — below the
       // fallow for this autumn's rye (parcel 233: it yields to every job with
@@ -1773,8 +1833,11 @@ class LaborSystem final : public ILaborSystem {
       // district's road begins (road_route.h, DistrictExitPoint).
       for (std::uint32_t row = 0; row < current.limit_deliveries.rows.size(); ++row) {
         const LimitDeliveryRow& lot = current.limit_deliveries.rows[row];
+        // IN THE MUD NOBODY GOES TO THE DISTRICT (routing stage В5; district §4,
+        // «не проходит ни свой транспорт, ни районный»): no own cart is offered
+        // for a lot coming in or the plan's delivery going out on a mud day.
         if (lot.own_carts == 0 || lot.arrive_day > current.calendar.day ||
-            !(lot.haul_days_remaining > 0.0F)) {
+            !(lot.haul_days_remaining > 0.0F) || current.weather.mud) {
           continue;
         }
         AssignmentJob job;
@@ -1800,6 +1863,30 @@ class LaborSystem final : public ILaborSystem {
       // Undone barn work expires tonight: an open window with nothing left in
       // it, which is what a zero under kDays means and the one honest use of
       // that zero (deadline.h).
+      job.window = DeadlineInDays(0);
+      jobs.push_back(job);
+    }
+    // THE MILK LEG (#1056 C1.1; boss, the #1056 thread [4]: «carrying the milk
+    // away is part of milking»): the barn's milk to its store, OUTSIDE the
+    // day-off guard as herd care is - on the same carts and hands as any
+    // hauling, estimated by production's evening for the next morning's
+    // placement and re-priced after the milking (herd_state.h,
+    // leg_days_remaining). Its window closes tonight: the milk sours by the
+    // morning.
+    for (std::uint32_t row = 0; row < current.herds.rows.size(); ++row) {
+      const HerdRow& herd = current.herds.rows[row];
+      Vec2 position;
+      if (!(herd.leg_days_remaining > 0.0F) || !HerdPosition(current, herd, position)) {
+        continue;
+      }
+      AssignmentJob job;
+      job.kind = WorkKind::kHauling;
+      job.herd = current.herds.row_ids[row];
+      job.position = position;
+      job.work_days_remaining = herd.leg_days_remaining;
+      // ON FOOT, the cans in hand (#1056 C1.3; herd_state.h, leg_on_foot):
+      // no horse is asked where production priced a walk.
+      job.harnessed = herd.leg_on_foot == 0 && DraughtHorses(current) > 0;
       job.window = DeadlineInDays(0);
       jobs.push_back(job);
     }
@@ -1879,6 +1966,10 @@ class LaborSystem final : public ILaborSystem {
     work.extraction_site = job.extraction_site;
     work.limit_delivery = job.limit_delivery;
     work.unit = job.unit;
+    // THE MILK LEG'S HERD (#1056 C1.1): without it the leg's job matched no
+    // task, so its level 0 never marked it urgent (MarkTheUrgentLoads) - the
+    // first arm's 28 / 15 / 24 % left in the barn in March, May and October.
+    work.herd = job.herd;
     return work;
   }
 
@@ -1964,12 +2055,12 @@ class LaborSystem final : public ILaborSystem {
     if (!SettlementHasCarts(current, config_.horse_kind)) {
       return 1.0F;
     }
-    return LogPairShareOfCartDay(
-        config_.porter,
-        CartLoadGrams(config_.porter, config_.cart_load_kg, config_.porter.log),
-        HoursPerKm(config_, WorkKind::kHarvest),
-        HoursPerKm(config_, WorkKind::kPlowing),
-        static_cast<float>(kClockScale) / config_.loaded_speed_kmh);
+    const CartGear gear = CartGearToday(current, CartSpecsOf(config_));  // SL
+    return LogPairShareOfCartDay(config_.porter,
+                                 CartLoadGrams(config_.porter, gear.load_kg, config_.porter.log),
+                                 HoursPerKm(config_, WorkKind::kHarvest),
+                                 static_cast<float>(kClockScale) / gear.empty_kmh,
+                                 static_cast<float>(kClockScale) / gear.loaded_kmh);
   }
 
   /// WHETHER THIS HAND IS ONE OF A PAIR UNDER A LOG THIS HOUR (#671): asked of
@@ -2062,12 +2153,51 @@ class LaborSystem final : public ILaborSystem {
     });
   }
 
-  static void MarkTheUrgentLoads(const WorldState& current, std::vector<AssignmentJob>& jobs) {
+  /// THE STANDING CROP BEFORE A HEAP THAT KEEPS (#1099; farming design rule
+  /// 2, «в два шага»; econ standing-crop-before-keeping-heap-2026-10-19): on
+  /// a day a ripe crop stands with work left (a reaping with grams at risk,
+  /// the meadow cut aside), a heap urgent by its own rot is no loss deadline
+  /// above the reaping's while its shelf outlasts rule 5's snow edge
+  /// (early_snow_last_day) - the snow takes the crop and not the heap.
+  /// AND ITS CARTING IS STEP TWO (rule 2: «возка» is named among the works
+  /// without a loss deadline): its window goes too. The first pair read it:
+  /// with the level gone the heap still kept HaulWindow, a kDays window on
+  /// the reaping's own tier 0, and its carters stood beside the diggers (420
+  /// noons on the canon, 940 on the novice). True when the heap on `field`
+  /// keeps past the snow edge while a ripe crop stands.
+  [[nodiscard]] bool HeapKeepsPastTheSnow(const WorldState& current,
+                                          FieldId field,
+                                          bool ripe_crop_stands) const {
+    if (!ripe_crop_stands) {
+      return false;
+    }
+    const std::uint32_t row = FindRow(current.fields, field);
+    if (row == kNoRow || current.fields.rows[row].kind != LandKind::kArable ||
+        current.fields.rows[row].reaped_grams <= 0) {
+      return false;
+    }
+    const ResourceId resource = current.fields.rows[row].reaped_resource;
+    const float shelf = resource.value < config_.heap_shelf_days.size()
+                            ? config_.heap_shelf_days[resource.value]
+                            : std::numeric_limits<float>::infinity();
+    const auto today = static_cast<float>(current.calendar.day % kDaysPerYear);
+    return !(today + shelf < static_cast<float>(config_.early_snow_last_day));
+  }
+
+  void MarkTheUrgentLoads(const WorldState& current, std::vector<AssignmentJob>& jobs) const {
+    const bool ripe_crop_stands = std::ranges::any_of(jobs, [](const AssignmentJob& job) {
+      return job.kind == WorkKind::kHarvest && job.grams_at_risk > 0 && !IsMeadowCut(job);
+    });
     for (AssignmentJob& job : jobs) {
       if (job.kind != WorkKind::kHauling) {
         continue;
       }
       const WorkAssignment work = HaulingWorkOfJob(job);
+      const bool keeps = job.field.value != kInvalidEntityIdValue &&
+                         HeapKeepsPastTheSnow(current, job.field, ripe_crop_stands);
+      if (keeps) {
+        job.window = DeadlineNotApplicable();  // step two (rule 2), below the reaping
+      }
       for (const LogisticsTaskRow& task : current.logistics_tasks.rows) {
         if (!WorkServesTask(work, task)) {
           continue;
@@ -2075,8 +2205,12 @@ class LaborSystem final : public ILaborSystem {
         // One task a load: its level and the chairman's «важнее полевых
         // работ» (#734; LogisticsTaskRow::over_fields) are read together.
         // A stack came urgent by the stores' hay (CollectJobs) and stays so
-        // whatever its task's row says this morning.
-        job.logistics_urgent = job.logistics_urgent || task.level == LogisticsLevel::kUrgent;
+        // whatever its task's row says this morning. A heap urgent by its
+        // own rot that keeps past the snow is not (#1099); the player's level
+        // 0 and a hungry herd's are, whatever the shelf.
+        const bool rot_gives_way = keeps && task.urgent_by == LogisticsUrgentBy::kSpoil;
+        job.logistics_urgent =
+            job.logistics_urgent || (task.level == LogisticsLevel::kUrgent && !rot_gives_way);
         job.over_fields = task.over_fields && job.supplies_works;
         break;
       }
@@ -2512,19 +2646,10 @@ class LaborSystem final : public ILaborSystem {
     return locked;
   }
 
-  /// Adult kolkhoz horses, wherever they stand: the shared draught pool of
-  /// the day (a horse at a private yard is still a kolkhoz horse).
+  /// Adult kolkhoz horses, wherever they stand (work_seam.h, DraughtHorsesOf:
+  /// one home with the logistics' lamp since 0.37.276).
   std::uint32_t DraughtHorses(const WorldState& current) const {
-    if (config_.horse_kind.value == kInvalidDefIdValue) {
-      return 0;
-    }
-    std::uint32_t horses = 0;
-    for (const HerdRow& herd : current.herds.rows) {
-      if (herd.kind.value == config_.horse_kind.value) {
-        horses += herd.adult_count;
-      }
-    }
-    return horses;
+    return DraughtHorsesOf(current, config_.horse_kind);
   }
 
   AssignmentParams DayParams(const WorldState& current) const {
@@ -2554,6 +2679,7 @@ class LaborSystem final : public ILaborSystem {
     params.placement_level = config_.placement_level;
     params.walker_share_of_cart_day = WalkerShareToday(current);
     params.walker_min_trips_per_day = config_.walker_min_trips_per_day;
+    params.carter_min_trips_per_day = config_.carter_min_trips_per_day;
     params.people_cart_seats = config_.people_cart_seats;
     params.people_cart_min_walk_hours = config_.people_cart_min_walk_hours;
     return params;
@@ -2575,11 +2701,12 @@ class LaborSystem final : public ILaborSystem {
     // The cart's load by the same resource (0.37.252): labour's share of a
     // cart-day and logistics' (porter_pairs.cpp) ask one function, or a
     // walker with hay would be paid against a cart heavier than hay's.
+    const CartGear gear = CartGearToday(current, CartSpecsOf(config_));  // SL
     return WalkerShareOfCartDay(WalkerLoadGrams(config_.porter, carried),
-                                CartLoadGrams(config_.porter, config_.cart_load_kg, carried),
+                                CartLoadGrams(config_.porter, gear.load_kg, carried),
                                 HoursPerKm(config_, WorkKind::kHarvest),
-                                HoursPerKm(config_, WorkKind::kPlowing),
-                                static_cast<float>(kClockScale) / config_.loaded_speed_kmh);
+                                static_cast<float>(kClockScale) / gear.empty_kmh,
+                                static_cast<float>(kClockScale) / gear.loaded_kmh);
   }
 
   // -- the working hour ----------------------------------------------------
@@ -2765,6 +2892,12 @@ class LaborSystem final : public ILaborSystem {
       if (delivered <= 0.0F) {
         continue;  // the job is done for today; he stands about, unpaid
       }
+      // A HELD LOAD IS DRAINED BY ITS CARTERS' HOURS, under the planned model
+      // too (#1056 C3, M2; core-boss-oats-b-pair [110]). «The plan is the
+      // carting» - the drain by the cart plan's legs - was built and measured
+      // on wip/c3 in five steps (step 1, S1', T1, the ride to the load, M1) and
+      // stopped by its rule: hay rot +80 % canon at best, the plan's carts the
+      // cap on the placement's crowd (core-boss-oats-b-pair [87]-[109]).
       const float seam_before = *seam;
       *seam -= delivered * seam_share;
       if (*seam < 0.0F) {
@@ -2779,6 +2912,14 @@ class LaborSystem final : public ILaborSystem {
       // load's task, split into grams by production's settle.
       if (kind == WorkKind::kHauling) {
         NoteHaulDrain(current, resident.work, seam_before - *seam, resident.work.rides_horse == 0);
+        // AND THE LOADS HIS CART CARRIES ALONG (#1056 C3, ruling 3; work_seam.h,
+        // CoDrainCarriedTasks): a pooled second field drains with his seam.
+        if (resident.work.rides_horse != 0) {
+          const std::uint32_t own = TaskRowOfWork(current, resident.work);
+          if (own != kNoRow) {
+            CoDrainCarriedTasks(current, current.logistics_tasks.row_ids[own], seam_before - *seam);
+          }
+        }
       }
       // AND HE IS PAID BY WHAT HE CARRIED, NOT BY HIS HOURS (0.37.109; boss, 2
       // October 2026; labor.csv walker_norm_kg_per_day): the day's trips —
@@ -2915,6 +3056,11 @@ class LaborSystem final : public ILaborSystem {
   ///        nearest loads of his level, logistics_plan.h). His horse, his road
   ///        and his day's pay stay: the way between two loads is the empty
   ///        half of the new load's first trip, priced in its seam (0.37.139).
+  ///        Since 0.37.312 a site whose works still await is not «carted» at
+  ///        its leg change: it lets him go on only to its own level or above.
+  ///        Off a site he still follows down the levels: «never to a
+  ///        lower level» was tried and left the heaps in the field at the
+  ///        frost (+15 % canon; core-boss-oats-b-pair [55]).
   ///        With no plan for today, no chain, or no load left, nothing
   ///        changes.
   static void FollowThePlan(WorldState& current, std::uint32_t row) {
@@ -2925,6 +3071,32 @@ class LaborSystem final : public ILaborSystem {
     const float* const seam = WorkSeamOf(current, work);
     if (seam != nullptr && *seam > 0.0F) {
       return;  // still carting his load
+    }
+    // A SITE'S SEAM IS ITS FRONT LEG'S ALONE (unit_state.h, supply_days_
+    // remaining): it stands empty the hour one leg is carted and the next is
+    // not yet written, while the works still await the rest. That hour is not
+    // «carted». Until 0.37.312 it read as carted, and at a house's leg changes
+    // two of its three carters followed their chains to level-3 manure doses:
+    // the house waited 1.79 t of clay through the spring's field days and
+    // stood five days late (boss, core-boss-oats-b-pair [52]-[53]). The task
+    // stands till tomorrow's hour 0 even when its load is gone (logistics_
+    // system.cpp, SyncTasks); no task names it, nothing holds him.
+    const std::uint32_t own_row = TaskRowOfWork(current, work);
+    // And it lets him go on only to a load of its own level or a more urgent
+    // one: to the same-level heaps he goes as before - the meadows' hay the
+    // site's carters fetch, which rots every night it lies (holding him there
+    // too cost hay +6 % rot canon, +9 % novice; core-boss-oats-b-pair [59]).
+    bool site_holds = false;
+    std::uint8_t site_level = 0;
+    if (own_row != kNoRow) {
+      const LogisticsTaskRow& own = current.logistics_tasks.rows[own_row];
+      if (own.load_kind == LogisticsLoadKind::kSiteSupply) {
+        const std::uint32_t site = FindRow(current.units, own.unit);
+        if (site != kNoRow && AnythingAwaits(current.units.rows[site].construction)) {
+          site_holds = true;
+          site_level = static_cast<std::uint8_t>(own.level);
+        }
+      }
     }
     const ResidentId driver = current.residents.row_ids[row];
     for (const CartPlan& cart : current.groom_plan.carts) {
@@ -2937,6 +3109,18 @@ class LaborSystem final : public ILaborSystem {
           continue;  // its load was carted and its task ended
         }
         const LogisticsTaskRow& task = current.logistics_tasks.rows[task_row];
+        if (site_holds && static_cast<std::uint8_t>(task.level) > site_level) {
+          continue;
+        }
+        // MANURE IS THE LAST WINTER CART ((b′); the human's option 2, «logs,
+        // supply, lots and ricks first»; econ's page ae1166b): no carter goes
+        // down to a field's dose while a load of levels 0-2 stands with
+        // carting left and nobody on it. Until (b′) the chain took them to the
+        // doses after their own load, and the stand logs waited the winter
+        // (logs y2 -25 % canon on 317's tree; boss-econ-c2-on-317 [1]).
+        if (task.load_kind == LogisticsLoadKind::kManureField && HigherLoadWaits(current)) {
+          continue;
+        }
         const float* const next = WorkSeamOf(current, HaulingWorkOf(task));
         if (next != nullptr && *next > 0.0F) {
           RetargetWork(work, task);
@@ -2945,6 +3129,31 @@ class LaborSystem final : public ILaborSystem {
       }
       return;
     }
+  }
+
+  /// @brief Whether a load above the manure doses waits for a carter: a task
+  ///        of levels 0-2, not a dose, with carting left (its seam above
+  ///        nought) and no resident hauling on it this hour ((b′)).
+  static bool HigherLoadWaits(const WorldState& current) {
+    constexpr std::uint8_t kLastLevelAboveManure = 2;
+    for (std::uint32_t task_row = 0; task_row < current.logistics_tasks.rows.size(); ++task_row) {
+      const LogisticsTaskRow& task = current.logistics_tasks.rows[task_row];
+      if (task.load_kind == LogisticsLoadKind::kManureField ||
+          static_cast<std::uint8_t>(task.level) > kLastLevelAboveManure) {
+        continue;
+      }
+      const float* const seam = WorkSeamOf(current, HaulingWorkOf(task));
+      if (seam == nullptr || !(*seam > 0.0F)) {
+        continue;
+      }
+      const bool served = std::ranges::any_of(current.residents.rows, [&](const ResidentRow& r) {
+        return r.work.kind == WorkKind::kHauling && TaskRowOfWork(current, r.work) == task_row;
+      });
+      if (!served) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /// The seam this assignment drains — core_common/work_seam.h, shared with

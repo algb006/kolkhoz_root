@@ -37,13 +37,37 @@ namespace core {
 /// with the rot of its wait (HeldForDeliveryGrams) — the measure the goods
 /// loan keeps by. A slot already lost does not count (question
 /// 278; boss-core-epoch1-resume [98]), and a chain that stands before its
-/// first season is read by the year its first slot is grown in. On the
-/// year's last day, also kPlanPositionShort for every position that
+/// first season is read by the year its first slot is grown in. From the
+/// eleventh month's last day (one district collection before the deadline's,
+/// stage В5) to the year's last day, also kPlanPositionShort for every position that
 /// delivered plus takeable (TakeableGrams) will not bring to the met share.
 /// @param alarms Appended to; never cleared.
 void CollectPlanAlarms(const ProductionConfig& config,
                        const WorldState& world,
                        std::vector<Alarm>& alarms);
+
+/// @brief Hectares of arable whose chain grows `produce` in chain year `year`
+///        (0 this, 1 next, 2 the one after), as of `as_of`, less the slots
+///        already lost - the lamps' own count, by produce. The plan's split
+///        by the sown mix reads it (#1036; plan_due.h). 0 past year 2.
+float PlannedChainHectares(const ProductionConfig& config,
+                           const WorldState& world,
+                           ResourceId produce,
+                           std::uint32_t year,
+                           SimDay as_of);
+
+/// @brief Grams of `produce` the same fields PlannedChainHectares counts
+///        will yield by the harvest's own door (field_work.h, FieldYieldGrams)
+///        with each field's fertility as it stands, sown whole and on time and
+///        no season's stress yet (#1040; boss, the #1040 thread [5]: the oat
+///        lamp's «expected» is what the harvest brings, not the table's
+///        neutral-fertility yield x ha). The weather is the one thing it
+///        cannot know.
+Grams PlannedChainYieldGrams(const ProductionConfig& config,
+                             const WorldState& world,
+                             ResourceId produce,
+                             std::uint32_t year,
+                             SimDay as_of);
 
 /// @brief Grams of `resource` NEXT year's own harvest will not pay of what
 /// next year needs out of it (0.37.2; boss-core-epoch1-queue [52]-[54]): the
@@ -92,6 +116,16 @@ ResourceAmounts TurnPlanSealOf(const ProductionConfig& config, const WorldState&
 /// below nought — the plan and the seed are not paid by the same grain.
 /// Dense by ResourceId.
 ResourceAmounts HarvestToComeThisYearOf(const ProductionConfig& config, const WorldState& world);
+
+/// @brief The harvest standing in the fields now, and the heaps lying at
+/// them, by produce (IProductionSystem::StandingHarvest; #1046 (b), econ
+/// §7.2, boss seq 12): per field, its heap (not in any store, so in no
+/// free remainder), and the crop in hand at the harvest's own estimate
+/// (StandingYieldGrams: FieldYieldGrams on the field's soil and season, of
+/// the part not yet laid) unless it is a winter crop sown this autumn. The
+/// first two terms of HarvestToComeThisYearOf, without the slots still to
+/// be sown and without the seed. Dense by ResourceId.
+ResourceAmounts StandingHarvestOf(const ProductionConfig& config, const WorldState& world);
 
 }  // namespace core
 

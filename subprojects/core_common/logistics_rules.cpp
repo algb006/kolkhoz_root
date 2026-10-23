@@ -19,6 +19,9 @@ bool WorkServesTask(const WorkAssignment& work, const LogisticsTaskRow& task) {
   }
   switch (task.load_kind) {
     case LogisticsLoadKind::kFieldHeap:
+    // A field's winter dose (#1056 C2): the same address - a field never has
+    // both at once (land_state.h, ManureDoseStands).
+    case LogisticsLoadKind::kManureField:
       return work.field.value == task.field.value;
     case LogisticsLoadKind::kStandLogs:
       return work.stand.value == task.stand.value;
@@ -28,7 +31,10 @@ bool WorkServesTask(const WorkAssignment& work, const LogisticsTaskRow& task) {
       return work.limit_delivery.value == task.limit_delivery.value;
     case LogisticsLoadKind::kStoreTransfer:
     case LogisticsLoadKind::kSiteSupply:
+    case LogisticsLoadKind::kRickSupply:  // the receiving rick (#1056 C1.2)
       return work.unit.value == task.unit.value;
+    case LogisticsLoadKind::kMilkLeg:
+      return work.herd.value == task.herd.value;
     case LogisticsLoadKind::kLogisticsLoadKindCount:
       break;
   }
@@ -45,6 +51,7 @@ void RetargetWork(WorkAssignment& work, const LogisticsTaskRow& task) {
   work.road_work = RoadWorkId{};
   switch (task.load_kind) {
     case LogisticsLoadKind::kFieldHeap:
+    case LogisticsLoadKind::kManureField:
       work.field = task.field;
       break;
     case LogisticsLoadKind::kStandLogs:
@@ -58,7 +65,13 @@ void RetargetWork(WorkAssignment& work, const LogisticsTaskRow& task) {
       break;
     case LogisticsLoadKind::kStoreTransfer:
     case LogisticsLoadKind::kSiteSupply:
+    case LogisticsLoadKind::kRickSupply:
       work.unit = task.unit;
+      break;
+    case LogisticsLoadKind::kMilkLeg:
+      // A hauling on a herd is its milk leg (labor_state.h: `herd` names a
+      // kHerdCare herd otherwise).
+      work.herd = task.herd;
       break;
     case LogisticsLoadKind::kLogisticsLoadKindCount:
       break;

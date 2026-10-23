@@ -21,6 +21,7 @@
 
 #include "../../common/fake_tables.h"
 #include "cart_trips_checks.h"
+#include "clamp_rot_checks.h"
 #include "core_catalog/seed_norm_catalog.h"
 #include "core_common/alarm_state.h"
 #include "core_common/away_in_district.h"
@@ -43,8 +44,10 @@
 #include "core_tables/tables.h"
 #include "demolition_stock.h"
 #include "district_car.h"
+#include "district_carts_checks.h"
 #include "district_limit.h"
 #include "district_plan.h"
+#include "district_reputation_checks.h"
 #include "district_trip.h"
 #include "district_visit.h"
 #include "extraction_digging.h"
@@ -54,6 +57,7 @@
 #include "goods_loan.h"
 #include "grass_stand_checks.h"
 #include "harvest_advice_checks.h"
+#include "hay_weathering_checks.h"
 #include "heap_lamp_checks.h"
 #include "herd_cold.h"
 #include "herd_death_checks.h"
@@ -63,11 +67,14 @@
 #include "herd_system.h"
 #include "hourly_carting_checks.h"
 #include "livestock_homes.h"
+#include "manure_cart.h"
+#include "manure_cart_checks.h"
 #include "meadow_hay_checks.h"
 #include "milk_cart.h"
 #include "night_pasture.h"
 #include "perennial_cut_checks.h"
 #include "plan_alarms.h"
+#include "plan_due_checks.h"
 #include "processing_shops.h"
 #include "production_alarms.h"
 #include "production_config.h"
@@ -80,8 +87,10 @@
 #include "stock_lights.h"
 #include "stock_ops.h"
 #include "store_keeping_checks.h"
+#include "team_oat_plan_checks.h"
 #include "timber_felling.h"
 #include "timber_planting.h"
+#include "trip_terms_writer_checks.h"
 #include "unit_production.h"
 
 static_assert(std::is_abstract_v<core::IProductionSystem>, "IProductionSystem is a contract");
@@ -529,6 +538,37 @@ int CheckTheHerdHayForecast() {
   failures += Expect(far(to_first_scythes).short_ahead,
                      "hay forecast, the long look, year 2: 290 kg reach the first scythes and "
                      "not the day the new hay is in a store - short");
+  // THE LONG LOOK IN YEAR 1 TOO (#1113): the horse's question stopped at the
+  // first scythes in year 1 and asked only whether the start's rick carried
+  // one more head to day 24. Now it keeps its year (to day 80: next year's
+  // scythes and eight), the cut priced from the grass standing. The 100 kg
+  // that reach day 24 with no meadow are short on day 25; beside a meadow of
+  // 400 kg standing, landing over days 24-27, they carry four heads to day 80.
+  {
+    core::WorldState first = MakeHerdWorld(100.0F);
+    AddHerd(first, 0, 4, 2, true);
+    const core::HerdFeedForecast no_meadow = far(first);
+    failures +=
+        Expect(no_meadow.short_ahead && no_meadow.days_ahead == 25 && no_meadow.horizon_days == 80,
+               "hay forecast, the long look, year 1 (#1113): no meadow, 100 kg - short on "
+               "day 25 of an 80-day look, not silent at the first scythes");
+    core::ProductionConfig meadowed = config;
+    meadowed.farming.meadow_yield_kg_per_ha = 400.0F;
+    core::FieldRow meadow;
+    meadow.kind = core::LandKind::kMeadow;
+    meadow.area_ga = 1.0F;
+    meadow.phase = core::FieldPhase::kGrowing;
+    meadow.last_mown_day = core::kNeverMownDay;
+    AppendRow(first.fields, meadow);
+    failures +=
+        Expect(!core::ForecastHerdFeed(meadowed, first, false, core::FeedHorizon::kNextYearsScythes)
+                    .short_ahead,
+               "hay forecast, the long look, year 1 (#1113): 400 kg of grass standing "
+               "land over the cut and carry four heads to day 80 - not short");
+    failures += Expect(!yellow(first).has_value(),
+                       "hay lamp, year 1: the nearest look still stops at the first scythes (б) - "
+                       "100 kg reach day 24, no yellow");
+  }
   // THE LAMP LOOKS TO THE NEAREST FIRST SCYTHES (FeedHorizon::kNearestScythes;
   // boss, econ-boss-hay-term-2026-10-01 [7]; 0.37.96). On 1 January of year
   // 2 that is day 24: the 100 kg the long look calls short on day 25 reach
@@ -1261,6 +1301,9 @@ int CheckTheForecastAdvice() {
   {
     core::ProductionConfig team = config;
     team.limit.lots.clear();
+    // The plough's floor alone, as these numbers were written (0.37.142):
+    // #1069's harrow and the plan's other windows have their own check below.
+    team.farming.harrow_days_per_ha = 0.0F;
     team.horse_kind = core::LivestockKindId{1};
     team.livestock[1].feed_units_per_game_day = 1.0F;
     team.livestock[1].births_per_game_year = 0.0F;
@@ -1296,6 +1339,45 @@ int CheckTheForecastAdvice() {
     failures += Expect(floors.plough_teams == 1 && floors.horses_kept == 2,
                        "forecast advice, the floors: 5.6 ha of the plan's base are one team in "
                        "the window, and two horses kept with the margin");
+    // THE PLAN'S PEAK (#1069; herd_floors.h, peak_teams): the harrow in the
+    // plough's window - 5.6 ha x (10 + 3)/7 over 8 days, TWO teams in the
+    // spring - and the meadow cut, one horse a meadow at work: two meadows of
+    // 30 ha are 60 x 8/7 / 18 = 3.8 team-days in June-July's 8 days, ONE
+    // horse; the spring stays the peak, three kept. Ten meadows of 200 ha
+    // want 16 and are capped at their ten: the peak moves to June, 14 kept.
+    {
+      core::ProductionConfig with_harrow = team;
+      with_harrow.farming.harrow_days_per_ha = 3.0F / 7.0F;
+      core::WorldState fields = village_of(170.0F, 4, 4, 2.0F);
+      const auto meadow = [](core::WorldState& world, float ha) {
+        core::FieldRow field;
+        field.kind = core::LandKind::kMeadow;
+        field.area_ga = ha;
+        core::AppendRow(world.fields, field);
+      };
+      meadow(fields, 30.0F);
+      meadow(fields, 30.0F);
+      const core::HerdFloors spring = core::HerdFloorsOf(with_harrow, fields);
+      core::WorldState wide = village_of(170.0F, 4, 4, 2.0F);
+      for (int index = 0; index < 10; ++index) {
+        meadow(wide, 200.0F);
+      }
+      const core::HerdFloors june = core::HerdFloorsOf(with_harrow, wide);
+      std::cout << "  floors by the plan's peak: spring " << spring.peak_teams << " teams in month "
+                << +spring.peak_month << " (cut " << spring.peak_cut_teams << "), kept "
+                << spring.horses_kept << "; ten wide meadows " << june.peak_teams << " in month "
+                << +june.peak_month << ", kept " << june.horses_kept << '\n';
+      failures += Expect(spring.plough_teams == 2 && spring.peak_teams == 2.0 &&
+                             spring.peak_month == with_harrow.farming.fallow_plow_month &&
+                             spring.horses_kept == 3,
+                         "floors by the peak: the harrow joins the plough in its window - two "
+                         "teams, the spring the peak, three kept");
+      failures += Expect(june.peak_cut_teams == 10.0 &&
+                             june.peak_month == with_harrow.farming.meadow_cut_month &&
+                             june.horses_kept == 14,
+                         "floors by the peak: ten wide meadows - the cut capped at its ten "
+                         "meadows is the peak, in June, fourteen kept");
+    }
     // Two cows' yields due, times 1.25: 2.5 - three cows kept.
     failures += Expect(floors.cows_kept == 3,
                        "forecast advice, the floors: a position of two cows' yields keeps three "
@@ -2323,10 +2405,60 @@ int CheckTheCartHorseEatsOats() {
   failures += Expect(harness.in_traces == 3 && harness.harnessed == 4,
                      "the harness: two carters on horses and the meadow's one in the traces, the "
                      "carter on foot harnessed too — 3 of 4 (the felling is neither)");
+  failures += Expect(harness.light_in_traces == 2,
+                     "the light work: the two carters on horses, not the meadow's mower");
+  {
+    core::WorldState ploughing = world;
+    core::ResidentRow ploughman;
+    ploughman.work.kind = core::WorkKind::kPlowing;
+    AppendRow(ploughing.residents, ploughman);
+    const core::HarnessCount with_plough = core::CountHarness(ploughing);
+    failures += Expect(with_plough.in_traces == 4 && with_plough.light_in_traces == 2,
+                       "a ploughman is in the traces at the full share: heavy work (O8)");
+  }
+  // THE WORLD BEFORE THE LIGHT SHARE (farming.csv light_work_oat_share 1):
+  // until «Сначала овёс» this check read the three quarters with the shipped
+  // config; the carts' horses still eat the wage, at the light share now.
+  core::WorldState before = world;
+  core::ProductionConfig full = config;
+  full.farming.light_work_oat_share = 1.0F;
+  core::RunHerdDay(full, before);
+  failures += Expect(before.units.rows[0].stock[1] == 100 * kKilo - (3 * kKilo / 2),
+                     "at the full share three horses of four in the traces take three quarters of "
+                     "the oats — the carts' horses eat the wage too");
   core::RunHerdDay(config, world);
-  failures += Expect(world.units.rows[0].stock[1] == 100 * kKilo - (3 * kKilo / 2),
-                     "three horses of four in the traces take three quarters of the oats — the "
-                     "carts' horses eat the wage too");
+  failures += Expect(world.units.rows[0].stock[1] == 100 * kKilo - kKilo,
+                     "at the light share 0.5 the two cart horses count as one: (1 + 2 x 0.5) of "
+                     "four take half the oats, the mower's horse its full share (O8)");
+  failures += Expect(world.traction_ration >= 0.999F,
+                     "and the work ration reads full: its room is the light horse's too, so 1 kg "
+                     "of oats over a room of (4 x 0.5 x 0.5) is 1.0, not 0.67 (boss, the #1056 "
+                     "thread [160])");
+  failures +=
+      Expect(world.units.rows[0].stock[0] == 100 * kKilo - (5 * kKilo / 2) &&
+                 world.herds.rows[0].unfed_days == 0.0F,
+             "H: the two light horses spare a quarter of their work part, 4 x (3/4 - 1/2) "
+             "x 0.5 = 0.5 units, so the team eats 3.5 - 1 kg oats and 2.5 kg hay, not 3: the "
+             "oats' lost half is not refilled with hay, and the team is fed (econ §4e)");
+  {
+    // THE OATS ONLY (econ §4d; boss [158]): with no oats in the barn the team
+    // takes barley, and barley's room stays at the full work share - 3 horses
+    // of 4 x 0.5 x 4 units = 1.5 kg, not the light 1 kg the first cut took,
+    // whose other half was the cows' hay.
+    core::ProductionConfig barley = config;
+    barley.feed_values = {1.0F, 1.0F, 1.0F};
+    barley.feed_links.insert(barley.feed_links.begin() + 1,
+                             core::FeedLinkDef{.kind = core::LivestockKindId{0},
+                                               .resource = core::ResourceId{2},
+                                               .max_share = 0.5F,
+                                               .work_only = 1});
+    core::WorldState lean = world;
+    lean.units.rows[0].stock[1] = 0;
+    lean.units.rows[0].stock[2] = 100 * kKilo;
+    core::RunHerdDay(barley, lean);
+    failures += Expect(lean.units.rows[0].stock[2] == 100 * kKilo - (3 * kKilo / 2),
+                       "barley stays at the full work share on a light day: 1.5 kg, not 1");
+  }
   failures += Expect(world.ledger.current.horse_backed_assignment_days == 3.0F &&
                          world.ledger.current.harnessed_assignment_days == 4.0F,
                      "the traction share is booked off the same count: 3 horse-backed of 4 "
@@ -2422,6 +2554,64 @@ int CheckTheTeamOnHayAndTooFewHorses() {
       Expect(on_hay.has_value() && on_hay->amount == 3 * kKilo && on_hay->resource.value == 1 &&
                  on_hay->herd.value == world.herds.row_ids[0].value,
              "on hay: lit on the third working day, 3 kg of oats short, the team's row");
+  {
+    // L1 - ONLY A HEAVY DAY MOVES THE STREAK (econ §4l; boss, core-boss-oats-b-
+    // pair [9]): the lamp's «the ploughing goes slower» is true of the plough,
+    // the harrow and the mower alone. Two carters on horses, no ploughman.
+    const auto carting = [&config](core::WorldState state, std::uint32_t number, core::Grams oats) {
+      for (core::ResidentRow& hand : state.residents.rows) {
+        hand.work.kind = core::WorkKind::kHauling;
+        hand.work.rides_horse = 1;
+      }
+      state.units.rows[0].stock[1] = oats;
+      state.calendar.tick = static_cast<core::Tick>(number) * core::kTicksPerDay;
+      core::RefreshCalendarCaches(state.calendar);
+      core::RunHerdDay(config, state);
+      return state;
+    };
+    const core::WorldState short_carting = carting(world, 5, 0);
+    failures += Expect(short_carting.traction_watch.short_ration_days == 3 &&
+                           short_carting.traction_watch.work_grain_short == 3 * kKilo &&
+                           lit(short_carting, core::AlarmKind::kTeamOnHay).has_value(),
+                       "L1: a short carting-only day neither adds to the streak nor puts it out: "
+                       "3 days, 3 kg, still lit");
+    const core::WorldState full_carting = carting(world, 5, 100 * kKilo);
+    failures +=
+        Expect(full_carting.traction_watch.short_ration_days == 0 &&
+                   full_carting.traction_watch.work_grain_short == 0 &&
+                   !lit(full_carting, core::AlarmKind::kTeamOnHay).has_value(),
+               "L1: a full carting-only day puts it out - any full day does (econ's (a), "
+               "boss [16]; the first cut kept it, and an August streak stood into February)");
+    // THE WINTER'S FIRST DAY PUTS IT OUT (boss [16]): 1 December (day 44 of
+    // the year), the streak standing and nobody at work - cleared; the day
+    // before, the same day keeps it.
+    core::WorldState november = world;
+    core::WorldState december = world;
+    for (core::ResidentRow& hand : november.residents.rows) {
+      hand.work.kind = core::WorkKind::kNone;
+    }
+    december.residents.rows = november.residents.rows;
+    november.calendar.tick = static_cast<core::Tick>(43) * core::kTicksPerDay;
+    december.calendar.tick = static_cast<core::Tick>(44) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(november.calendar);
+    core::RefreshCalendarCaches(december.calendar);
+    core::RunHerdDay(config, november);
+    core::RunHerdDay(config, december);
+    failures += Expect(november.traction_watch.short_ration_days == 3 &&
+                           december.traction_watch.short_ration_days == 0 &&
+                           december.traction_watch.work_grain_short == 0,
+                       "L1: the winter's first day puts the streak out (1 Dec: 0), the autumn's "
+                       "last idle day keeps it (30 Nov: 3)");
+    core::WorldState full_heavy = world;
+    full_heavy.units.rows[0].stock[1] = 100 * kKilo;
+    full_heavy.calendar.tick = static_cast<core::Tick>(5) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(full_heavy.calendar);
+    core::RunHerdDay(config, full_heavy);
+    failures += Expect(full_heavy.traction_watch.short_ration_days == 0 &&
+                           full_heavy.traction_watch.work_grain_short == 0 &&
+                           !lit(full_heavy, core::AlarmKind::kTeamOnHay).has_value(),
+                       "L1: the first full plough day puts it out");
+  }
   // THE LAMP WHEN THE OATS ARE NOT THERE (0.37.20; boss [36]): no oat in the
   // barn — red; the same streak beside 100 kg in the barn (held, say, for the
   // plough by rule) stands with no lamp.
@@ -2555,6 +2745,40 @@ int CheckTheTeamOnHayAndTooFewHorses() {
   failures +=
       Expect(buy.has_value() && buy->lamp == 1 && buy->resource.value == core::kInvalidDefIdValue,
              "too few horses, a tonne cut last year: the lamp, no resource, as before");
+  // THE LAMP'S DAY IN YEAR 1 BEFORE THE FIRST CUT (#1113; boss, core-boss-
+  // oats-b-pair [38]): the path no world of 0.37.310 reaches since MR.2a (G4:
+  // 0 flips), driven here. Day 10, the cut from day 20 (June). Before #1113
+  // the question stopped at day 20: 10 stall days x 5 kg = 50 kg of the 100
+  // lying - «buy», the lamp. Now it keeps its year (to next year's scythes
+  // and eight, day 76): 66 days are short - the hay named, no lamp. Beside a
+  // meadow of a hectare standing (1.5 t, landing over the cut) it carries the
+  // year - the lamp again: the cut is priced from the grass standing.
+  {
+    core::WorldState first_spring = week;
+    first_spring.herds.rows[0].adult_count = 4;
+    first_spring.herds.rows[0].adult_male_count = 2;
+    first_spring.calendar.tick = static_cast<core::Tick>(10) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(first_spring.calendar);
+    const core::HerdFeedForecast long_look =
+        core::ForecastHerdFeed(with_hay, first_spring, true, core::FeedHorizon::kNextYearsScythes);
+    const std::optional<core::Alarm> no_grass = advice(first_spring);
+    failures += Expect(long_look.horizon_days == 66 && no_grass.has_value() &&
+                           no_grass->lamp == 0 && no_grass->resource.value == 0,
+                       "too few horses, year 1 day 10, before the first cut (#1113): the long look "
+                       "keeps its year (66 days, not 10 to the scythes) - short, the hay named, "
+                       "no lamp");
+    core::FieldRow standing_meadow;
+    standing_meadow.kind = core::LandKind::kMeadow;
+    standing_meadow.area_ga = 1.0F;
+    standing_meadow.phase = core::FieldPhase::kGrowing;
+    standing_meadow.last_mown_day = core::kNeverMownDay;
+    AppendRow(first_spring.fields, standing_meadow);
+    const std::optional<core::Alarm> grass = advice(first_spring);
+    failures += Expect(
+        grass.has_value() && grass->lamp == 1 && grass->resource.value == core::kInvalidDefIdValue,
+        "too few horses, year 1 day 10 (#1113): a hectare of grass standing, "
+        "priced as the cut to come, carries one more horse - the lamp");
+  }
   return failures;
 }
 
@@ -4832,10 +5056,10 @@ int CheckTheStarvingHerdNamesItsCause() {
   return failures;
 }
 
-/// THE FEEDING ORDER'S SWITCH (0.37.63; boss-core-start-no-yards [21]-[23],
-/// econ's pair): hay for ten heads a day, ten cows in the first row and ten
-/// horses in the second. The rows' order feeds the cows and leaves the team
-/// short; `feed_draught_first` feeds the team and leaves the cows short.
+/// THE FEEDING ORDER (0.37.63; its draught-first switch went in 0.37.301,
+/// a refused rule's leftover): hay for ten heads a day, ten cows in the first
+/// row and ten horses in the second. The rows' order feeds the cows and
+/// leaves the team short.
 int CheckTheFeedingOrderSwitch() {
   int failures = 0;
   core::ProductionConfig config = MakeHerdConfig();
@@ -4846,21 +5070,15 @@ int CheckTheFeedingOrderSwitch() {
   config.feed_links.push_back(
       core::FeedLinkDef{.kind = core::LivestockKindId{1}, .resource = core::ResourceId{0}});
   SetLivestockHead(config.unit_types[0], 100.0F);
-  const auto fed = [&](bool draught_first) {
-    config.farming.feed_draught_first = draught_first;
-    core::WorldState world = MakeHerdWorld(10.0F);
-    AddHerd(world, 0, 10, 5, true);
-    AddHerd(world, 1, 10, 5, true);
-    core::RunHerdDay(config, world);
-    return std::pair<float, float>{world.herds.rows[0].fed_share, world.herds.rows[1].fed_share};
-  };
-  const auto [cows_rows, horses_rows] = fed(false);
-  const auto [cows_first, horses_first] = fed(true);
-  std::cout << "  feeding order: rows — cows " << cows_rows << ", horses " << horses_rows
-            << "; draught first — cows " << cows_first << ", horses " << horses_first << "\n";
-  failures +=
-      Expect(cows_rows == 1.0F && horses_rows < 1.0F && horses_first == 1.0F && cows_first < 1.0F,
-             "feeding order: the rows feed the cows first, the switch the team");
+  core::WorldState world = MakeHerdWorld(10.0F);
+  AddHerd(world, 0, 10, 5, true);
+  AddHerd(world, 1, 10, 5, true);
+  core::RunHerdDay(config, world);
+  const float cows_rows = world.herds.rows[0].fed_share;
+  const float horses_rows = world.herds.rows[1].fed_share;
+  std::cout << "  feeding order: rows — cows " << cows_rows << ", horses " << horses_rows << "\n";
+  failures += Expect(cows_rows == 1.0F && horses_rows < 1.0F,
+                     "feeding order: the rows' order feeds the cows first");
   return failures;
 }
 
@@ -5139,13 +5357,15 @@ int CheckTheColdLadderParses() {
                      "cold ladder: the pen cold, the barn warm; the horse yard's open rung cold, "
                      "the stable of rung 2 warm");
   // And the places the same export gave the first rungs: the start's 41
-  // head of cattle fit the pen, the sixteen horses their yard.
+  // head of cattle fit the pen, the sixteen horses their yard. The barn's 80
+  // since MR.2 (econ's cow places for the milk room; boss, the #1056 thread
+  // [103]: L2 80 places / 7 t, L3 100 / 9 t; it was 60).
   failures +=
       Expect(cattle != nullptr && cattle->LivestockCapacityHeadAt(1) == 48.0F &&
-                 cattle->LivestockCapacityHeadAt(2) == 60.0F && horses != nullptr &&
+                 cattle->LivestockCapacityHeadAt(2) == 80.0F && horses != nullptr &&
                  horses->LivestockCapacityHeadAt(1) == 20.0F &&
                  horses->LivestockCapacityHeadAt(2) == 60.0F,
-             "yards: the pen holds 48 and the barn 60; the horse yard 20 and the stable 60");
+             "yards: the pen holds 48 and the barn 80; the horse yard 20 and the stable 60");
   const core::FarmingConfig& farming = config.farming;
   failures +=
       Expect(farming.cold_step_night == 1.0F && farming.cold_step_still_frost == 2.0F &&
@@ -7545,14 +7765,20 @@ int CheckTheCarryToTheHeap() {
   const auto near = [](float got, float want) {
     return got > want * 0.999F && got < want * 1.001F;
   };
+  // THE PAUSES (#844, 0.37.302): every round trip below also pays the loading
+  // and the unloading, 0.125 h, which does not grow with the way.
+  const float pauses = 2.0F * core::kLoadingPauseHours;
   const float on_foot = core::CarryToHeapDays(config, world, field, ten_tonnes);
-  failures += Expect(near(on_foot, 23.898F),
-                     "carry: 10 t to the heap at the edge on foot, 23.90 days beyond the norm");
+  failures += Expect(near(on_foot, 23.898F * (0.4780F + pauses) / 0.4780F),
+                     "carry: 10 t to the heap at the edge on foot, 30.15 days beyond the norm "
+                     "(23.90 before the pauses)");
   core::FieldRow big = field;
   big.area_ga = 40.0F;
   const float big_on_foot = core::CarryToHeapDays(config, world, big, 4 * ten_tonnes);
-  failures += Expect(near(big_on_foot, 8.0F * on_foot),
-                     "carry: four times the field and the crop, eight times the days");
+  failures +=
+      Expect(near(big_on_foot, 4.0F * on_foot * ((2.0F * 0.4780F) + pauses) / (0.4780F + pauses)),
+             "carry: four times the field and the crop, 7.2 times the days (eight "
+             "before the pauses: the way doubles, the pauses do not)");
   core::HerdRow horses;
   horses.kind = core::LivestockKindId{0};
   horses.adult_count = 2;
@@ -7560,9 +7786,10 @@ int CheckTheCarryToTheHeap() {
   const float by_cart = core::CarryToHeapDays(config, world, field, ten_tonnes);
   // 0.553 days until 0.37.229, with the round trip at the trot both ways; the
   // loaded half at 9 km/h makes the round 2.333/2 of it (#570, 2a).
-  failures +=
-      Expect(near(by_cart, 0.5532F * (1.0F + (4.0F / 3.0F)) / 2.0F),
-             "carry: with a horse, a cart's 750 kg: 0.645 days (the loaded half at 9 km/h)");
+  const float cart_road = 0.4149F * (1.0F + (4.0F / 3.0F)) / 2.0F;
+  failures += Expect(near(by_cart, 0.5532F * (cart_road + pauses) / 0.4149F),
+                     "carry: with a horse, a cart's 750 kg: 0.812 days (the loaded half at 9 "
+                     "km/h, and the pauses)");
   core::FieldRow meadow = field;
   meadow.kind = core::LandKind::kMeadow;
   failures += Expect(core::CarryToHeapDays(config, world, meadow, ten_tonnes) == 0.0F &&
@@ -9342,6 +9569,14 @@ int CheckThePlanIsJudgedAtTheYearsTurn() {
       }
     }
     failures += Expect(position_count > 0, "campaign.csv names the plan's positions");
+    // AND THE PLAN'S WEIGHT, the district's own figure on the total (#1043;
+    // plan_due.h, PlanBandFactor: the band × plan_total_factor; the band is
+    // 1.0 at the start's rating), read off the same table as the shares.
+    const std::uint32_t weight_row = campaign->FindRowByKey("plan_total_factor");
+    if (weight_row != core::kNoTableRow) {
+      expected *=
+          std::stod(std::string(campaign->CellText(weight_row, campaign->FindColumn("value"))));
+    }
     failures += Expect(static_cast<double>(asked) > expected * 0.99 &&
                            static_cast<double>(asked) < expected * 1.01,
                        "and the norm is the district's positions on last year's ten hectares — "
@@ -9524,11 +9759,16 @@ int CheckUnworkedGroundDoesNotRecover() {
   failures += Expect(current.fields.rows[1].fertility == 10.0F,
                      "and ground nobody has told anything KEEPS what it has — it is not resting "
                      "fallow, it is land the plough has never touched (defect D5)");
-  failures += Expect(current.fields.rows[0].manure_applied > 0,
-                     "the winter's manure plan gives the fallow field its dose");
-  failures += Expect(current.fields.rows[1].manure_applied == 0,
-                     "and none of it to ground that is never ploughed, which would simply lose "
-                     "it — the poorest-first queue would otherwise hand it the lot");
+  // BOOKED, NOT SPREAD, since #1056 C2 (manure_cart.h): until then this read
+  // manure_applied > 0 at the turn - the heap's gift with no haul. The dose
+  // now waits in the heap for the winter's sledges; the guard under test is
+  // the same: who is dealt a dose at all.
+  failures += Expect(current.fields.rows[0].manure_dose.booked > 0,
+                     "the winter's manure plan books the fallow field its dose");
+  failures += Expect(
+      current.fields.rows[1].manure_dose.booked == 0 && current.fields.rows[1].manure_applied == 0,
+      "and none of it to ground that is never ploughed, which would simply lose "
+      "it — the poorest-first queue would otherwise hand it the lot");
   return failures;
 }
 
@@ -11005,12 +11245,29 @@ int CheckTheHeapsManurePaysItsFurrow() {
   failures += Expect(world.fields.rows[1].fertility == rested,
                      "manure's furrow: the bare fallow rests by 6 alone — its manure was paid "
                      "by its May furrow, not again at the turn");
+  // BOOKED AT THE TURN, CARTED ON THE WINTER'S SLEDGES (#1056 C2): until then
+  // the turn spread both doses at once (manure_applied 100, the heap 0 here).
+  // The turn books them; the winter's carting is driven through the settle
+  // below, as the labour hour would drain it, and the furrow checks after it
+  // read what they always read.
+  failures += Expect(world.fields.rows[1].manure_dose.booked == dose &&
+                         world.fields.rows[2].manure_dose.booked == dose &&
+                         world.fields.rows[2].manure_applied == 0 &&
+                         world.fields.rows[2].fertility == 60.0F &&
+                         core::StockOf(world.units.rows[0].stock, manure) == 2 * dose,
+                     "manure's furrow: the heap books a full dose each to the plain ground and "
+                     "the fallow's idle ground, and keeps both until the sledges come");
+  for (const std::uint32_t row : {1U, 2U}) {
+    world.fields.rows[row].manure_dose.days_written = 1.0F;
+    world.fields.rows[row].manure_dose.days_remaining = 0.0F;  // the whole carting drained
+  }
+  core::SettleManureDoses(parsed, world);
   failures += Expect(
       world.fields.rows[1].manure_applied == 100 && world.fields.rows[1].manure_booked == 0 &&
           world.fields.rows[2].manure_applied == 100 && world.fields.rows[2].manure_booked == 0 &&
-          world.fields.rows[2].fertility == 60.0F,
-      "manure's furrow: the heap deals a full dose each to the plain ground and "
-      "the fallow's idle ground, unpaid until a furrow turns it in");
+          world.fields.rows[2].fertility == 60.0F && world.ledger.current.manure_carted == 2 * dose,
+      "manure's furrow: carted, a full dose each lies on the plain ground and the fallow's "
+      "idle ground, unpaid until a furrow turns it in");
   failures += Expect(core::StockOf(world.units.rows[0].stock, manure) == 0,
                      "manure's furrow: and the heap is spent on exactly those two doses");
   failures += Expect(world.fields.rows[3].fertility == 60.0F &&
@@ -13044,6 +13301,97 @@ int CheckTheMilkCart() {
   const float tonnes = core::PlanOverfulfilGrainTonnes(config, outside);
   failures += Expect(tonnes > 0.639F && tonnes < 0.641F,
                      "milk: what went with no position counts over the plan, in grain");
+
+  // THE MILK LEG (#1056 C1.1; milk_cart.h, PriceMilkLegs / SettleMilkLegs):
+  // under farming.csv milk_at_barn the milk lies in a barn that is no store
+  // (a type with no storage), and the leg carries it to the store that takes
+  // milk. 50 kg in the barn, a store 400 m off.
+  {
+    core::ProductionConfig leg_config = config;
+    leg_config.unit_types.resize(2);
+    SetLivestockHead(leg_config.unit_types[1], 10.0F);
+    // The store houses no livestock (MR.2): the leg's receiver is never a yard.
+    SetLivestockHead(leg_config.unit_types[0], 0.0F);
+    leg_config.farming.milk_at_barn = 1.0F;
+    core::WorldState barn_world = MakeHerdWorld(0.0F);
+    barn_world.units.rows[0].level = 1;
+    barn_world.units.rows[0].position = core::Vec2{8000.0F, 9000.0F};
+    core::UnitRow barn;
+    barn.type = core::UnitTypeId{1};
+    barn.level = 1;
+    barn.position = core::Vec2{8400.0F, 9000.0F};
+    barn.stock.assign(3, 0);
+    barn.stock[1] = 50 * kKilo;
+    const core::UnitId barn_id = AppendRow(barn_world.units, barn);
+    const core::HerdId cows = AddHerd(barn_world, 0, 10, 2, true);
+    barn_world.herds.rows[core::FindRow(barn_world.herds, cows)].unit = barn_id;
+    core::PriceMilkLegs(leg_config, barn_world);
+    const core::HerdRow& priced = barn_world.herds.rows[core::FindRow(barn_world.herds, cows)];
+    failures +=
+        Expect(priced.leg_resource.value == milk.value && priced.leg_days_remaining > 0.0F &&
+                   priced.leg_days_written == priced.leg_days_remaining && priced.leg_to.x != 0.0F,
+               "milk leg: the barn's 50 kg are priced as cart-days to the store that "
+               "takes milk");
+    // ON FOOT, THE CANS IN HAND (#1056 C1.3): 400 m holds every walk the
+    // day asks, so no horse is asked. Its pair: a threshold no walk meets -
+    // the cart.
+    failures +=
+        Expect(priced.leg_on_foot == 1, "milk leg: a near store is walked to, cans in hand");
+    {
+      core::ProductionConfig far_config = leg_config;
+      far_config.walker_min_trips_per_day = 1000.0F;
+      core::WorldState far_world = barn_world;
+      core::PriceMilkLegs(far_config, far_world);
+      const core::HerdRow& carted = far_world.herds.rows[core::FindRow(far_world.herds, cows)];
+      failures += Expect(carted.leg_on_foot == 0 && carted.leg_days_remaining > 0.0F,
+                         "milk leg: where the day holds too few walks, the cart");
+    }
+    // The whole leg drained by its carters: the evening's settle carries it.
+    barn_world.herds.rows[core::FindRow(barn_world.herds, cows)].leg_days_remaining = 0.0F;
+    core::SettleMilkLegs(leg_config, barn_world, true);
+    failures +=
+        Expect(barn_world.units.rows[1].stock[1] == 0 && StoreOf(barn_world, 1) == 50 * kKilo,
+               "milk leg: drained whole, the 50 kg go barn -> store by the store's door");
+    // TOMORROW'S LEG IS WRITTEN TONIGHT at today's price, for the morning's
+    // placement to see (the first arm left 21-28 % in the barn on working days).
+    {
+      const core::HerdRow& tonight = barn_world.herds.rows[core::FindRow(barn_world.herds, cows)];
+      failures += Expect(
+          tonight.leg_days_remaining == tonight.leg_days_priced && tonight.leg_days_priced > 0.0F,
+          "milk leg: the evening writes tomorrow's leg at today's price");
+    }
+    // THE LEG ON THE MILKED HERD (#1117 item 3): a herd that gives no milk
+    // (kind 1) stands first in the barn, the cows second - the leg is the
+    // cows'; the cows gone, the barn's leftover stays on the first herd.
+    {
+      core::WorldState shared = MakeHerdWorld(0.0F);
+      shared.units.rows[0].level = 1;
+      shared.units.rows[0].position = core::Vec2{8000.0F, 9000.0F};
+      const core::UnitId stable = AppendRow(shared.units, barn);
+      const core::HerdId dry = AddHerd(shared, 1, 6, 1, true);
+      const core::HerdId milked = AddHerd(shared, 0, 10, 2, true);
+      shared.herds.rows[core::FindRow(shared.herds, dry)].unit = stable;
+      shared.herds.rows[core::FindRow(shared.herds, milked)].unit = stable;
+      core::PriceMilkLegs(leg_config, shared);
+      const bool on_cows =
+          shared.herds.rows[core::FindRow(shared.herds, milked)].leg_days_remaining > 0.0F &&
+          !(shared.herds.rows[core::FindRow(shared.herds, dry)].leg_days_remaining > 0.0F);
+      failures +=
+          Expect(on_cows, "milk leg: in a barn shared with a dry herd the leg is the cows'");
+      shared.herds.rows[core::FindRow(shared.herds, milked)].unit = shared.units.row_ids[0];
+      core::PriceMilkLegs(leg_config, shared);
+      failures +=
+          Expect(shared.herds.rows[core::FindRow(shared.herds, dry)].leg_days_remaining > 0.0F,
+                 "milk leg: the cows gone, the barn's leftover leg stays on its first herd");
+    }
+    // No switch: no leg, whatever the barn holds.
+    barn_world.units.rows[1].stock[1] = 50 * kKilo;
+    core::PriceMilkLegs(config, barn_world);
+    failures +=
+        Expect(barn_world.herds.rows[core::FindRow(barn_world.herds, cows)].leg_resource.value ==
+                   core::kInvalidDefIdValue,
+               "milk leg: with milk_at_barn 0 no herd has a leg");
+  }
   return failures;
 }
 
@@ -14106,15 +14454,19 @@ int CheckMudSeason() {
   const core::HaulRate dry = core::FieldHaulRate(config, world, field);
   world.weather.road_beds.condition[kDirt] = core::RoadCondition::kMud;
   const core::HaulRate muddy = core::FieldHaulRate(config, world, field);
-  failures += Expect(dry.round_trip_hours > 0.0F &&
-                         std::fabs(muddy.round_trip_hours - (2.0F * dry.round_trip_hours)) <
-                             1e-3F * dry.round_trip_hours,
-                     "in the mud a cart's round trip to the same store takes twice as long");
+  // THE BED STRETCHES THE ROAD, NOT THE PAUSES (#844, 0.37.302): the loading
+  // and the unloading take their 0.125 h on any bed.
+  const float pauses = 2.0F * core::kLoadingPauseHours;
+  const float dry_road = dry.round_trip_hours - pauses;
+  failures += Expect(dry_road > 0.0F && std::fabs(muddy.round_trip_hours - pauses -
+                                                  (2.0F * dry_road)) < 1e-3F * dry.round_trip_hours,
+                     "in the mud a cart's road to the same store takes twice as long");
   world.weather.road_beds.condition[kDirt] = core::RoadCondition::kWet;
   const core::HaulRate wet = core::FieldHaulRate(config, world, field);
-  failures += Expect(std::fabs(wet.round_trip_hours - (dry.round_trip_hours / 0.8F)) <
-                         1e-3F * dry.round_trip_hours,
-                     "on a wet bed after rain it takes 1 / 0.8 as long (road_wet_factor_dirt)");
+  failures += Expect(
+      std::fabs(wet.round_trip_hours - pauses - (dry_road / 0.8F)) < 1e-3F * dry.round_trip_hours,
+      "on a wet bed after rain its road takes 1 / 0.8 as long "
+      "(road_wet_factor_dirt)");
   world.weather.road_beds.condition[kDirt] = core::RoadCondition::kFrozen;
   const core::HaulRate frozen = core::FieldHaulRate(config, world, field);
   failures += Expect(frozen.round_trip_hours < dry.round_trip_hours,
@@ -15061,6 +15413,12 @@ int CheckTheGoodsLoan() {
           core::AmountOf(world.plan.goods_loan_taken, core::ResourceId{0}) == 10 * kTonne &&
           core::AmountOf(world.ledger.current.goods_loan_taken, core::ResourceId{0}) == 10 * kTonne,
       "loan: owed 12 t with the markup, taken and booked 10 t");
+  // THE PREVIEW IS THE BOOKING (#984): the order window's «вернуть {M}» is
+  // GoodsLoanWithMarkup of what the order lends, and the debt the order booked
+  // is the same figure to the gram.
+  failures += Expect(core::GoodsLoanWithMarkup(config, 10 * kTonne) ==
+                         core::AmountOf(world.plan.goods_loan_owed, core::ResourceId{0}),
+                     "loan: the order's preview of the amount back is the debt it books");
   failures += Expect(core::TakeGoodsLoan(config, world, loan(core::ResourceId{0}, kTonne)) ==
                          core::OrderRefusal::kRuleForbids,
                      "loan: one a resource a year — the second is refused");
@@ -15637,12 +15995,237 @@ int CheckAWinterCropTheChainCannotSow() {
   return failures;
 }
 
-/// kPlanPositionUncovered (boss, 2026-09-13): a district position that no
-/// chain grows in one of its three years stands as an alarm naming the
-/// produce and the year, and goes out once any chain grows it then. By
-/// produce, so a second crop of the same produce covers it; fallow and
-/// unassigned ground cover nothing.
-/// kPlanPositionShort (boss seq 89): on the year's last day, a position the
+/// THE DRAW TO THE TURN (boss, the lamp thread [4]; econ's (e2′), [13]):
+/// 1935 y2's potato of host's x3.57 arm in small - 122.8 t in the barn on the
+/// last collection's morning (doy 43), 118.5 t owed, the month's three
+/// settled evenings eating 3.9 t (1.3 t an evening). Five days to the turn,
+/// today's included, eat 6.5 t: the turn ships 116.3 t, the lamp lights with
+/// the whole 2.2 t and names the 6.5 t drawn beside it. And the month's draw
+/// is closed by the book, the rot left to the shelf-life model.
+int CheckThePlanShortCountsTheDrawToTheTurn() {
+  int failures = 0;
+  constexpr core::Grams kKg = 1'000;
+  core::ProductionConfig config;
+  config.unit_types.resize(1);
+  config.unit_types[0].level_storage_capacity_kg = {1'000'000.0F};
+  core::WorldState world;
+  core::UnitRow barn;
+  barn.type = core::UnitTypeId{0};
+  barn.level = 1;
+  barn.stock = {122'800 * kKg};
+  core::AppendRow(world.units, barn);
+  world.plan.announced = 1;
+  world.plan.due = {118'500 * kKg};
+  world.plan.delivered = {0};
+  world.plan.draw_last_month = {5'200 * kKg};
+  world.plan.draw_mark = {0};
+  world.ledger.current.issued = {3'900 * kKg};
+  world.calendar.day = core::kDaysPerYear - 1 - core::kDaysPerMonth;  // doy 43
+  std::vector<core::Alarm> alarms;
+  core::CollectPlanAlarms(config, world, alarms);
+  const core::Alarm* lamp = nullptr;
+  for (const core::Alarm& alarm : alarms) {
+    lamp = alarm.kind == core::AlarmKind::kPlanPositionShort ? &alarm : lamp;
+  }
+  failures +=
+      Expect(lamp != nullptr && lamp->amount == 2'200 * kKg && lamp->short_grams == 6'500 * kKg,
+             "plan short, the draw: 122.8 t above seed less 6.5 t eaten to the turn ships "
+             "116.3 t of 118.5 - lit with the whole 2.2 t, the 6.5 t named beside it");
+  world.ledger.current.issued = {0};
+  alarms.clear();
+  core::CollectPlanAlarms(config, world, alarms);
+  bool lit = false;
+  for (const core::Alarm& alarm : alarms) {
+    lit = lit || alarm.kind == core::AlarmKind::kPlanPositionShort;
+  }
+  failures += Expect(!lit,
+                     "plan short, the draw: with no draw the stores cover it - dark (the "
+                     "1935 lamp until 0.37.271)");
+  // ECON's (c), the lamp thread [7]: the draw only from the latest window. A
+  // crop yields the potato and its harvest is in, so the lamp may burn early
+  // - but before doy 39 the bare forecast covers 118.5 t with 122.8 t: dark.
+  // On doy 39 nine days of 1.3 t eat 11.7 t: lit with 118.5 - 111.1 = 7.4 t.
+  config.crops.resize(1);
+  config.crops[0].resource = core::ResourceId{0};
+  world.ledger.current.harvest = {130'000 * kKg};
+  world.ledger.current.issued = {3'900 * kKg};
+  const auto first_lit = [&config, &world](core::SimDay day) {
+    world.calendar.day = day;
+    std::vector<core::Alarm> found;
+    core::CollectPlanAlarms(config, world, found);
+    for (const core::Alarm& alarm : found) {
+      if (alarm.kind == core::AlarmKind::kPlanPositionShort) {
+        return alarm.amount;
+      }
+    }
+    return std::int64_t{0};
+  };
+  const core::SimDay latest = core::kDaysPerYear - 1 - (2 * core::kDaysPerMonth);
+  failures += Expect(first_lit(latest - 1) == 0 && first_lit(latest) == 7'400 * kKg,
+                     "plan short, the draw (c): before the latest window the bare forecast, dark; "
+                     "from it the draw over the days left, lit with the whole shortfall");
+  config.crops.clear();
+  world.ledger.current.harvest.clear();
+  world.calendar.day = core::kDaysPerYear - 1 - core::kDaysPerMonth;
+  // The month's draw: the book issued 4 t by the eleventh month's last
+  // evening against a 1 t mark - a 3 t month, the 2 t rotted not in it; the
+  // year's last evening closes it and sets the mark back to nought.
+  world.ledger.current.issued = {4'000 * kKg};
+  world.ledger.current.spoiled = {2'000 * kKg};
+  world.plan.draw_mark = {1'000 * kKg};
+  core::MarkStoresDraw(world);
+  failures +=
+      Expect(world.plan.draw_last_month[0] == 3'000 * kKg && world.plan.draw_mark[0] == 4'000 * kKg,
+             "plan short, the draw: a month's last evening closes the month's non-rot draw "
+             "from the book");
+  world.calendar.day = core::kDaysPerYear - 2;
+  world.ledger.current.issued = {9'000 * kKg};
+  core::MarkStoresDraw(world);
+  failures += Expect(world.plan.draw_last_month[0] == 3'000 * kKg,
+                     "plan short, the draw: another evening of the month closes nothing");
+  world.calendar.day = core::kDaysPerYear - 1;
+  core::MarkStoresDraw(world);
+  failures += Expect(world.plan.draw_last_month[0] == 5'000 * kKg && world.plan.draw_mark[0] == 0,
+                     "plan short, the draw: the year's last evening closes the month and the mark "
+                     "goes to nought with the book");
+  // THE MONTH SO FAR FROM ITS THIRD EVENING (econ's (e2′); the lamp thread
+  // [9], 1934 y3): on doy 39's morning the month's three settled evenings
+  // ate 2.4 t against a 1 t mark - 0.8 t an evening, nine days 7.2 t -
+  // whatever the last closed month did (0.26 t or 9 t).
+  world.calendar.day = core::kDaysPerYear - 1 - (2 * core::kDaysPerMonth);
+  world.plan.draw_last_month = {260 * kKg};
+  world.plan.draw_mark = {1'000 * kKg};
+  world.ledger.current.issued = {3'400 * kKg};
+  world.ledger.current.spoiled = {50'000 * kKg};  // the rot is not a rate
+  failures += Expect(core::StoresDrawToTheTurn(config, world, core::ResourceId{0}) == 7'200 * kKg,
+                     "plan short, the draw: from the month's third evening its own non-rot "
+                     "eating stands for the rate");
+  world.plan.draw_last_month = {9'000 * kKg};
+  failures += Expect(core::StoresDrawToTheTurn(config, world, core::ResourceId{0}) == 7'200 * kKg,
+                     "plan short, the draw: even when the last closed month ate faster");
+  // Before the third evening (doy 37, one evening): the last closed month,
+  // 9 t over four days, eleven days 24.75 t.
+  world.calendar.day = (9 * core::kDaysPerMonth) + 1;
+  failures += Expect(core::StoresDrawToTheTurn(config, world, core::ResourceId{0}) == 24'750 * kKg,
+                     "plan short, the draw: before the month's third evening the last closed one");
+  // THE ROT BY THE SHELF-LIFE MODEL: a 100-day shelf, 122.8 t in the barn,
+  // nothing eaten this month, nine days to the turn: 122.8 x (1 - 0.99^9) =
+  // 10.62 t.
+  config.spoil_days = {100.0F};
+  config.keeping_factor = 1.0F;
+  world.calendar.day = core::kDaysPerYear - 1 - (2 * core::kDaysPerMonth);
+  world.ledger.current.issued = {1'000 * kKg};
+  const core::Grams rot = core::StoresDrawToTheTurn(config, world, core::ResourceId{0});
+  failures += Expect(rot > 10'610 * kKg && rot < 10'630 * kKg,
+                     "plan short, the draw: the stores' rot to the turn by their own shelf life");
+  return failures;
+}
+
+/// boss's 9b case (district.md §4, 17 October 2026): «a position short by the
+/// forecast before the last two ordinary collections lights with the whole
+/// remaining shortfall; a position the stores cover stays dark» - and it
+/// lights only once its crop's harvest of the year is in.
+int CheckThePlanShortLightsOnceTheHarvestIsIn() {
+  int failures = 0;
+  constexpr core::Grams kTonne = 1'000'000;
+  core::ProductionConfig config;
+  config.unit_types.resize(1);
+  config.unit_types[0].level_storage_capacity_kg = {100'000.0F};
+  config.crops.resize(2);
+  config.crops[0].resource = core::ResourceId{0};  // rye
+  config.crops[1].resource = core::ResourceId{1};  // potato
+  core::WorldState world;
+  core::UnitRow barn;
+  barn.type = core::UnitTypeId{0};
+  barn.level = 1;
+  barn.stock = {5 * kTonne, 3 * kTonne};
+  core::AppendRow(world.units, barn);
+  world.plan.announced = 1;
+  world.plan.due = {10 * kTonne, 2 * kTonne};
+  world.plan.delivered = {4 * kTonne, 0};
+  core::FieldRow rye;
+  rye.kind = core::LandKind::kArable;
+  rye.crop = core::CropId{0};
+  rye.phase = core::FieldPhase::kGrowing;
+  core::AppendRow(world.fields, rye);
+  const auto lit = [&config, &world](core::SimDay day) {
+    world.calendar.day = day;
+    std::vector<core::Alarm> alarms;
+    core::CollectPlanAlarms(config, world, alarms);
+    std::vector<std::pair<std::uint16_t, std::int64_t>> found;
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kPlanPositionShort) {
+        found.emplace_back(alarm.resource.value, alarm.amount);
+      }
+    }
+    return found;
+  };
+  using Short = std::pair<std::uint16_t, std::int64_t>;
+  // August (doy 30): the rye still stands this year - dark, short or not.
+  const core::SimDay august = 7 * core::kDaysPerMonth + 2;
+  failures += Expect(lit(august).empty(),
+                     "plan short, 9b: a crop still standing this year lights nothing before the "
+                     "latest window");
+  // The rye is in: harvested this year, the field idle. 4 + 5 = 9 of 10 - lit
+  // in August with the whole 1 t; the potato (3 t stored against 2 t due) is
+  // covered and its crop never harvested this year: dark.
+  world.fields.rows[0].phase = core::FieldPhase::kIdle;
+  world.ledger.current.harvest = {6 * kTonne, 0};
+  failures += Expect(lit(august) == std::vector<Short>{Short{std::uint16_t{0}, kTonne}},
+                     "plan short, 9b: once the harvest is in, a position the forecast finds short "
+                     "lights at once with the whole remaining shortfall");
+  // A heap of rye still on a field: the harvest is not in.
+  world.fields.rows[0].reaped_grams = kTonne / 2;
+  world.fields.rows[0].reaped_resource = core::ResourceId{0};
+  failures += Expect(lit(august).empty(),
+                     "plan short, 9b: rye lying reaped on a field is a harvest not yet in");
+  world.fields.rows[0].reaped_grams = 0;
+  world.fields.rows[0].reaped_resource = core::ResourceId{};
+  // The stores cover it: dark.
+  world.units.rows[0].stock[0] = 6 * kTonne;
+  failures += Expect(lit(august).empty(), "plan short, 9b: a position the stores cover stays dark");
+  return failures;
+}
+
+/// kPlanPositionShort on milk: the cart's shares of the days after today count
+/// toward the turn (0.37.269's pair: lit on milk in 144 of 144 village-years,
+/// every one met), unless a milk debt says the cart is already short.
+int CheckThePlanShortCountsTheMilkCartsComingDays() {
+  int failures = 0;
+  constexpr core::Grams kTonne = 1'000'000;
+  core::ProductionConfig config;
+  config.milk_resource = core::ResourceId{0};
+  core::WorldState world;
+  world.plan.announced = 1;
+  world.plan.due = {10 * kTonne};
+  world.plan.delivered = {8 * kTonne};
+  world.plan.milk_daily_share = kTonne / 2;
+  const auto milk_short = [&config, &world](core::SimDay day) {
+    world.calendar.day = day;
+    std::vector<core::Alarm> alarms;
+    core::CollectPlanAlarms(config, world, alarms);
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kPlanPositionShort) {
+        return true;
+      }
+    }
+    return false;
+  };
+  // The eleventh month's last day: four days after it, 2 t to come, 10 of 10.
+  const core::SimDay first = core::kDaysPerYear - 1 - core::kDaysPerMonth;
+  failures += Expect(!milk_short(first),
+                     "plan short, milk: the cart's coming days make the position whole");
+  // The year's last day: no day after it, 8 of 10 with nothing in the stores.
+  failures += Expect(milk_short(core::kDaysPerYear - 1),
+                     "plan short, milk: no day left for the cart, the position is short");
+  world.plan.milk_debt = kTonne / 4;
+  failures +=
+      Expect(milk_short(first), "plan short, milk: a standing debt counts none of the cart's days");
+  return failures;
+}
+
+/// kPlanPositionShort (boss seq 89): from one district collection before the
+/// deadline's (stage В5) to the year's last day, a position the
 /// turn's delivery cannot bring to the met share, with the grams it lacks.
 int CheckAShortPlanPositionIsAnAlarmOnTheLastDay() {
   int failures = 0;
@@ -15681,15 +16264,24 @@ int CheckAShortPlanPositionIsAnAlarmOnTheLastDay() {
     return found;
   };
   using Short = std::pair<std::uint16_t, std::int64_t>;
-  // Rye: 4 delivered + 5 in the barn = 9 of the 9.9 that is met: 0.9 t short.
-  // Potato: nothing anywhere, 1.98 t short. The third is delivered in full.
-  const std::vector<Short> expected = {Short{std::uint16_t{0}, std::int64_t{900'000}},
-                                       Short{std::uint16_t{1}, std::int64_t{1'980'000}}};
+  // THE WHOLE REMAINING SHORTFALL (district.md §4, 17 October 2026): rye 4
+  // delivered + 5 in the barn = 9 of 10 due, 1 t short; potato nothing
+  // anywhere, 2 t short. The third is delivered in full. (Until 0.37.271 the
+  // met share's: 0.9 and 1.98 t.)
+  const std::vector<Short> expected = {Short{std::uint16_t{0}, std::int64_t{1'000'000}},
+                                       Short{std::uint16_t{1}, std::int64_t{2'000'000}}};
   failures += Expect(shorts(core::kDaysPerYear - 1) == expected,
                      "plan short: on the year's last day each position the stores cannot make "
-                     "whole is named with the grams it lacks");
-  failures += Expect(shorts(core::kDaysPerYear - 2).empty() && shorts(0).empty(),
-                     "plan short: not on any other day — the boss's «за сутки до поворота»");
+                     "whole is named with the whole grams it lacks");
+  // No crop in this world yields the positions, so no harvest is ever «in»:
+  // the lamp burns from its latest window - two ordinary collections before
+  // the deadline's, the tenth month's last day - and every day after it.
+  const core::SimDay latest = core::kDaysPerYear - 1 - (2 * core::kDaysPerMonth);
+  failures += Expect(shorts(latest) == expected && shorts(core::kDaysPerYear - 2) == expected,
+                     "plan short: lit from two ordinary collections before the deadline's at the "
+                     "latest");
+  failures += Expect(shorts(latest - 1).empty() && shorts(0).empty(),
+                     "plan short: not before that window with no harvest in, nor after the turn");
   failures += Expect(shorts((2 * core::kDaysPerYear) - 1) == expected,
                      "plan short: and on the last day of every year, not only the first");
   // 9.9 t of rye in reach is met at 0.99: the alarm goes out.
@@ -15749,6 +16341,11 @@ int CheckAShortPlanPositionIsAnAlarmOnTheLastDay() {
   return failures;
 }
 
+/// kPlanPositionUncovered (boss, 2026-09-13): a district position that no
+/// chain grows in one of its three years stands as an alarm naming the
+/// produce and the year, and goes out once any chain grows it then. By
+/// produce, so a second crop of the same produce covers it; fallow and
+/// unassigned ground cover nothing.
 int CheckAnUncoveredPlanPositionIsAnAlarm() {
   int failures = 0;
   core::ProductionConfig config;
@@ -16451,6 +17048,9 @@ int main() {
   failures += CheckALostSlotIsAnUncoveredPosition();
   failures += CheckAWinterCropTheChainCannotSow();
   failures += CheckAShortPlanPositionIsAnAlarmOnTheLastDay();
+  failures += CheckThePlanShortCountsTheMilkCartsComingDays();
+  failures += CheckThePlanShortLightsOnceTheHarvestIsIn();
+  failures += CheckThePlanShortCountsTheDrawToTheTurn();
   failures += CheckAnUnsownFieldLetsItsCropGoAtTheTurn();
   failures += CheckTheReapingGate();
   failures += CheckFelling();
@@ -16604,7 +17204,11 @@ int main() {
   failures += CheckTheCartOfTheCompressedYear();
   failures += CheckMeadowHayLiesAtTheMeadow();
   failures += CheckEachFarmEatsFromItsOwnRick();
+  failures += CheckARickIsSuppliedFromAnother();
+  failures += CheckManureIsCartedOnSledges();
   failures += CheckWholeTripsAndTheRoutes();
+  failures += CheckTheTripsFacts();
+  failures += CheckWhoseTransportToTheDistrict();
   failures += CheckTheCartingReachesTheStoreInItsHour();
   failures += CheckTheHeapLampIsRedOnlyWhenItSpoils();
   failures += CheckTheSeedLampIsNotAFalseAlarm();
@@ -16612,6 +17216,11 @@ int main() {
   failures += CheckTheHandSupplyGoesOneResourceATrip();
   failures += CheckTheSupplyCountsItsIdleDays();
   failures += CheckTheStoresKeepByTheirRoof();
+  failures += CheckTheHayWeathersOnTheField();
+  failures += CheckTheClampRotAndItsLamp();
+  failures += CheckThePlanDue();
+  failures += CheckTheTeamsOatPlan();
+  failures += CheckTheRatingBeyondThePlan();
   failures += CheckAStarvedKolkhozHerdDoesNotInterruptAgain();
   failures += CheckThePerennialsCut();
   failures += CheckTheGrassStandsAge();

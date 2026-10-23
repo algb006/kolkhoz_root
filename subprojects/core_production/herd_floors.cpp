@@ -1,6 +1,7 @@
 #include "herd_floors.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -11,6 +12,7 @@
 #include "core_common/land_state.h"
 #include "core_common/ledger_state.h"
 #include "core_common/quantities.h"
+#include "plan_alarms.h"
 
 namespace core {
 namespace {
@@ -40,6 +42,123 @@ std::int64_t LeastNotShort(std::int64_t low, std::int64_t high, ShortWith short_
   return high;
 }
 
+/// The plan's peak month of teams (HerdFloors::peak_teams).
+struct PlanPeak {
+  double teams = 0.0;
+  std::uint8_t month = 0;
+  double spring = 0.0;
+  double cut = 0.0;
+  double carts = 0.0;
+};
+
+/// THE PLAN'S WINDOWS BY MONTH, SUMMED (#1069; econ's horse-floor-plan-peak
+/// §1): the July cut and the July rye's carts need horses on the same days,
+/// so a month's terms add up, and the floor is the largest month.
+/// `spring_teams` is the plough's and the harrow's (HerdFloorsOf).
+PlanPeak PlanPeakTeams(const ProductionConfig& config,
+                       const WorldState& world,
+                       double spring_teams) {
+  constexpr std::size_t kMonths = 12;
+  std::array<double, kMonths> spring{};
+  std::array<double, kMonths> cut{};
+  std::array<double, kMonths> carts{};
+  const SimDay today = world.calendar.day;
+  // THE SPRING in the first sowing month of the plan's spring crops this
+  // year; with none planned, the earliest any spring crop may be sown.
+  std::uint8_t spring_month = kMonths;
+  std::uint8_t earliest = kMonths;
+  for (const CropDef& crop : config.crops) {
+    if (crop.is_winter) {
+      continue;
+    }
+    earliest = std::min(earliest, crop.sow_from_month);
+    if (PlannedChainHectares(config, world, crop.resource, 0, today) > 0.0F) {
+      spring_month = std::min(spring_month, crop.sow_from_month);
+    }
+  }
+  spring_month = spring_month < kMonths ? spring_month : earliest;
+  // A table set with no spring crop at all (a hand-built world): the fallow's
+  // plough month - the spring is never dropped from the floor for want of one.
+  if (spring_month >= kMonths) {
+    spring_month = std::min<std::uint8_t>(config.farming.fallow_plow_month, kMonths - 1U);
+  }
+  spring[spring_month] = spring_teams;
+  // THE MEADOW CUT: one horse a meadow at work (time design §7, «косилка одна
+  // на бригаду»), a meadow's work its ha x the mowing norm over the crew on
+  // it; the teams the cut's window needs, never more than the meadows.
+  const std::uint8_t cut_from = config.farming.meadow_cut_month;
+  const std::uint8_t cut_to = std::max(config.farming.meadow_cut_month_end, cut_from);
+  const double cut_days = static_cast<double>((cut_to - cut_from + 1U) * kDaysPerMonth);
+  double meadow_days = 0.0;
+  std::int64_t meadows = 0;
+  for (const FieldRow& field : world.fields.rows) {
+    if (field.kind != LandKind::kArable) {
+      meadow_days += static_cast<double>(field.area_ga) *
+                     static_cast<double>(config.farming.meadow_mow_days_per_ha) /
+                     static_cast<double>(config.farming.mow_crew_per_meadow);
+      ++meadows;
+    }
+  }
+  const double cut_teams = cut_days > 0.0 ? std::min(std::ceil((meadow_days / cut_days) - kHair),
+                                                     static_cast<double>(meadows))
+                                          : 0.0;
+  for (std::uint8_t month = cut_from; month <= cut_to && month < kMonths; ++month) {
+    cut[month] = cut_teams;
+  }
+  // THE HARVEST'S CARTS, a crop's produce at a time: the plan's tonnes this
+  // year over the measured cart rate, in its harvest months - or in its
+  // heap's keeping days where those are fewer (transport §9: the heap waits
+  // in the field and spoils).
+  std::vector<std::uint16_t> seen;
+  for (const CropDef& first : config.crops) {
+    if (first.resource.value == kInvalidDefIdValue ||
+        std::ranges::find(seen, first.resource.value) != seen.end()) {
+      continue;
+    }
+    seen.push_back(first.resource.value);
+    std::uint8_t from = first.harvest_from_month;
+    std::uint8_t to = first.harvest_to_month;
+    for (const CropDef& crop : config.crops) {
+      if (crop.resource.value == first.resource.value) {
+        from = std::min(from, crop.harvest_from_month);
+        to = std::max(to, crop.harvest_to_month);
+      }
+    }
+    const double tonnes =
+        static_cast<double>(PlannedChainYieldGrams(config, world, first.resource, 0, today)) /
+        1.0e6;
+    if (!(tonnes > 0.0) || !(config.farming.harvest_cart_t_per_team_day > 0.0F) || to < from) {
+      continue;
+    }
+    double days = static_cast<double>((to - from + 1U) * kDaysPerMonth);
+    const double keeps = first.resource.value < config.spoil_days.size()
+                             ? static_cast<double>(config.spoil_days[first.resource.value]) *
+                                   static_cast<double>(config.keeping_factor) *
+                                   static_cast<double>(config.farming.field_heap_keeping_factor)
+                             : 0.0;
+    if (keeps > 0.0 && keeps < days) {
+      days = keeps;
+    }
+    const double teams =
+        tonnes / static_cast<double>(config.farming.harvest_cart_t_per_team_day) / days;
+    for (std::uint8_t month = from; month <= to && month < kMonths; ++month) {
+      carts[month] += teams;
+    }
+  }
+  PlanPeak peak;
+  for (std::size_t month = 0; month < kMonths; ++month) {
+    const double sum = spring[month] + cut[month] + carts[month];
+    if (sum > peak.teams) {
+      peak = PlanPeak{.teams = sum,
+                      .month = static_cast<std::uint8_t>(month),
+                      .spring = spring[month],
+                      .cut = cut[month],
+                      .carts = carts[month]};
+    }
+  }
+  return peak;
+}
+
 }  // namespace
 
 LivestockKindId MilkKind(const ProductionConfig& config) {
@@ -67,16 +186,21 @@ HerdFloors HerdFloorsOf(const ProductionConfig& config, const WorldState& world)
   }
   const double window = static_cast<double>(config.farming.plough_window_days);
   if (window > 0.0) {
-    const double team_days = base_ha * static_cast<double>(config.farming.plow_days_per_ha);
+    const double team_days = base_ha * (static_cast<double>(config.farming.plow_days_per_ha) +
+                                        static_cast<double>(config.farming.harrow_days_per_ha));
     // Rounded up off floats: a hair above a whole number is that number,
     // not the next — 5.6 ha x 10/7 over 8 days is ONE team, and came out
     // 1.0000001 and two in this function's first check.
     floors.plough_teams = static_cast<std::int64_t>(std::ceil((team_days / window) - kHair));
-    floors.horses_kept = static_cast<std::int64_t>(
-        std::ceil((static_cast<double>(floors.plough_teams) *
-                   static_cast<double>(config.farming.plough_floor_margin)) -
-                  kHair));
   }
+  const PlanPeak peak = PlanPeakTeams(config, world, static_cast<double>(floors.plough_teams));
+  floors.peak_teams = peak.teams;
+  floors.peak_month = peak.month;
+  floors.peak_spring_teams = peak.spring;
+  floors.peak_cut_teams = peak.cut;
+  floors.peak_cart_teams = peak.carts;
+  floors.horses_kept = static_cast<std::int64_t>(
+      std::ceil((peak.teams * static_cast<double>(config.farming.plough_floor_margin)) - kHair));
   // THE MILK: the highest position ever named, not this year's — this year's
   // follows the herd down, and a floor read off it followed it too.
   const std::size_t milk = config.milk_resource.value;

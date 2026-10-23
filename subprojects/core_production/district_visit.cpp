@@ -12,6 +12,8 @@
 #include "core_common/ids.h"
 #include "core_common/ledger_state.h"
 #include "core_common/state_table_ops.h"
+#include "district_carts.h"
+#include "district_reputation.h"
 #include "district_trip.h"
 #include "stock_ops.h"
 
@@ -171,6 +173,7 @@ Grams SeizeAboveLimit(const ProductionConfig& config, WorldState& current) {
       const Grams paid = TakeFromStorage(current, config, resource, to_debt);
       current.plan.delivered[index] += paid;
       AddLedgerAmount(current.ledger.current.delivered, resource, paid);
+      LowerPlanRequest(current, resource, paid);
     }
     const Grams rest = surplus - to_debt;
     if (rest <= 0) {
@@ -182,8 +185,10 @@ Grams SeizeAboveLimit(const ProductionConfig& config, WorldState& current) {
   }
   if (seized > 0) {
     // «Репутация вниз» (district §9), once a seizure, whatever it took.
+    const float before = current.chairman.raikom_reputation;
     current.chairman.raikom_reputation =
         std::max(0.0F, current.chairman.raikom_reputation - config.limit.seizure_reputation_loss);
+    BookReputationLoss(current, before);  // the rating's year by its writers (save 166)
   }
   return seized;
 }
@@ -233,6 +238,12 @@ void ArriveDistrictVisits(const ProductionConfig& config, WorldState& current) {
     }
     if (outcome.found == DistrictVisitFinding::kDiscrepancy) {
       SummonChairman(config, current, SummonCause::kAuditDiscrepancy);
+      OweReputationRecovery(current);  // the next clean visit's recovery (#1043)
+    }
+    // A CLEAN VISIT RECOVERS (#1043; district_reputation.h): only while a
+    // recovery is owed, whatever called the visit.
+    if (outcome.found == DistrictVisitFinding::kNone) {
+      StepReputationForCleanVisit(config, current);
     }
     const bool extraordinary = visit.kind == DistrictVisitKind::kExtraordinary;
     SimEvent& event =

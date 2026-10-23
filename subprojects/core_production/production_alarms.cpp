@@ -31,6 +31,7 @@
 #include "herd_system.h"
 #include "seed_room.h"
 #include "stock_ops.h"
+#include "team_oat_plan.h"
 
 namespace core {
 namespace {
@@ -317,7 +318,9 @@ bool LoanTakenThisYear(const WorldState& world, ResourceId seed) {
 /// of `seed`: on the road, or at the gate with a part not yet stored.
 bool LoanOnTheRoad(const WorldState& world, ResourceId seed) {
   return std::ranges::any_of(world.limit_deliveries.rows, [seed](const LimitDeliveryRow& cart) {
-    return cart.lot.value == kInvalidDefIdValue && AmountOf(cart.goods, seed) > 0;
+    // The plan's own delivery has no lot either, and goes the other way (В5).
+    return cart.lot.value == kInvalidDefIdValue && cart.outbound == 0 &&
+           AmountOf(cart.goods, seed) > 0;
   });
 }
 
@@ -644,7 +647,22 @@ void CollectTeamAlarms(const ProductionConfig& config,
   }
   const std::uint32_t team = FirstTeamRow(config, world);
   const TractionWatch& watch = world.traction_watch;
-  if (watch.short_ration_days >= kTeamOnHayDays && team != kNoRow) {
+  // THE THIN YEAR BY THE FIELD PLAN (#1040; team_oat_plan.h): the herd day's
+  // verdict decides the day, not the streak - lit on a short field-work day,
+  // a stop once a year, the cause and its door named.
+  const bool by_plan = watch.oat_short_by_plan != 0;
+  if (by_plan && watch.by_plan_lit_today != 0 && team != kNoRow) {
+    Alarm on_hay;
+    on_hay.kind = AlarmKind::kTeamOnHay;
+    on_hay.herd = world.herds.row_ids[team];
+    on_hay.resource = TeamWorkFeed(config);
+    on_hay.amount = watch.work_grain_short;
+    on_hay.lamp = watch.by_plan_stop_today;
+    on_hay.advice = AlarmAdvice::kSowMoreOat;
+    on_hay.logistics_task = TaskHoldingMostTeams(world);
+    alarms.push_back(on_hay);
+  }
+  if (!by_plan && watch.short_ration_days >= kTeamOnHayDays && team != kNoRow) {
     Alarm on_hay;
     on_hay.kind = AlarmKind::kTeamOnHay;
     on_hay.herd = world.herds.row_ids[team];

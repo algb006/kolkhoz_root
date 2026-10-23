@@ -31,6 +31,7 @@
 #include "core_common/resident_state.h"
 #include "core_common/road_state.h"
 #include "core_common/road_work_state.h"
+#include "core_common/settlement_state.h"
 #include "core_common/specialist_state.h"
 #include "core_common/timber_state.h"
 #include "core_common/unit_state.h"
@@ -104,6 +105,10 @@ BarterTripRow ReadBarterTripRow(LoadSource& source);
 /// the levels and the origin are range-checked.
 void WriteLogisticsTaskRow(SaveSink& sink, const LogisticsTaskRow& row);
 LogisticsTaskRow ReadLogisticsTaskRow(LoadSource& source);
+
+/// @brief A settlement's row (save 173; #1089, settlement_state.h).
+void WriteSettlementRow(SaveSink& sink, const SettlementRow& row);
+SettlementRow ReadSettlementRow(LoadSource& source);
 
 /// The groom's plan of the day (save 136; routing stage B, B3): the day, the
 /// two flags, the carts with their legs and riders.

@@ -78,8 +78,10 @@ static_assert(AggregateArity<WeatherState>() == 14,
 static_assert(sizeof(ChairmanState) == 88, "ChairmanState changed — update the codec");
 // And the avral's days on the cut, a third u16 beside them: predicted 88
 // unmoved (into the tail's padding) and twenty-six fields; two more bytes in
-// the codec.
-static_assert(AggregateArity<ChairmanState>() == 26,
+// the codec. Save 166 (#1043): the rating's recovery owed, a byte after them:
+// predicted 88 unmoved (the tail's padding) and twenty-seven fields; one byte
+// in the codec.
+static_assert(AggregateArity<ChairmanState>() == 27,
               "ChairmanState gained or lost a field — update the codec and VERSION_SAVE");
 // PLANSTATE HAD NO TRIPWIRE AT ALL until 2026-09-12, and it was the only
 // serialized block without one: six blocks go into the save, five were
@@ -105,9 +107,15 @@ static_assert(AggregateArity<ChairmanState>() == 26,
 // + 32 and 14 fields, predicted before the build.
 // Save 127 (0.37.140): the highest position ever named, a seventh amounts
 // vector — 7 x amounts + 32 and 15 fields, predicted before the build.
-static_assert(sizeof(PlanState) == (7 * kAmountsSize) + 32,
+// Save 163 (stage В5): the standing request to the district's cart, an eighth
+// amounts vector — 8 x amounts + 32 and 16 fields, predicted before the build
+// (the contract's own-delivery fields went to LimitDeliveryRow instead).
+// Save 164 (the plan-short lamp): the stores' draw mark and the last month's
+// draw, two amounts vectors — 10 x amounts + 32 and 18 fields, predicted
+// before the build.
+static_assert(sizeof(PlanState) == (10 * kAmountsSize) + 32,
               "PlanState changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<PlanState>() == 15,
+static_assert(AggregateArity<PlanState>() == 18,
               "PlanState gained or lost a field — update the codec and VERSION_SAVE");
 // THE CONTAINER ITSELF, and it was the one thing here without a guard.
 // Seventeen asserts below watch the BLOCKS of a world and not one watched the
@@ -201,10 +209,12 @@ static_assert(AggregateArity<SportMonth>() == 2,
 // world block beside the traction ration.
 // Save 127 (0.37.140) put the harness peak here, two u16 — 80 and six
 // fields; save 128 (0.37.141) took it out unwritten — 72 and four again,
-// predicted before the build.
-static_assert(sizeof(TractionWatch) == 72,
+// predicted before the build. Save 167 (#1040): the thin year by the field
+// plan - four u8, a float, two Grams after the week - predicted 72 -> 96 and
+// eleven fields before the build; on the wire +24.
+static_assert(sizeof(TractionWatch) == 96,
               "TractionWatch changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<TractionWatch>() == 4,
+static_assert(AggregateArity<TractionWatch>() == 11,
               "TractionWatch gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(kHarnessWeekDays == 7, "the harness week's length is written — VERSION_SAVE");
 // 2026-09-30, save 118: the named characters (the former elder), 40 —
@@ -259,7 +269,26 @@ static_assert(sizeof(UnmannedRunRow) == 36,
               "UnmannedRunRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<UnmannedRunRow>() == 10,
               "UnmannedRunRow gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<WorldState>() == 49,
+// #1056 C4: `heap_born`, the fiftieth - DERIVED and NOT WRITTEN, as
+// `road_index` (world_state.h): a loaded world starts it true and the first
+// re-plan hour scans once, finding what an unbroken run's scan finds. No save
+// number for a member the stream does not carry.
+// Save 173 (#1089): the settlements, the fifty-first - a table of its own
+// section («settlements», after the logistics tasks), not this block's.
+// Save 176 (#1005; 170 on its old base, never released): the potato and
+// vegetables rotted in clamps a day over the last year, the fifty-second - a
+// day and forty-eight Grams after the migrants turned away. Predicted before
+// the build: ClampRotYear 392 bytes (4, 4 of padding, 384) and two fields; the
+// section «world» +388, every other section unmoved but the books'
+// (save_ledger.cpp).
+static_assert(sizeof(ClampRotYear) == 392,
+              "ClampRotYear changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<ClampRotYear>() == 2,
+              "ClampRotYear gained or lost a field — update the codec and VERSION_SAVE");
+// Save 180 (#1199): burials_waiting, the fifty-third - a u16 after the clamps'
+// rot; the section «world» +2, every other section unmoved but the units'
+// (+2 a unit, UnitRow::graves).
+static_assert(AggregateArity<WorldState>() == 53,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 
@@ -489,6 +518,7 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteU16(world.chairman.hay_cut_dry_work_days);
   out.WriteU16(world.chairman.hay_day_worked_month);
   out.WriteU16(world.chairman.hay_cut_avral_days);
+  out.WriteU8(world.chairman.reputation_recovery_owed);  // save 166 (#1043)
 
   out.WriteFloat(world.traction_ration);
   // The team's two alarms' memory (save 109).
@@ -500,6 +530,14 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   for (const float days : world.traction_watch.week_horse_backed) {
     out.WriteFloat(days);
   }
+  // The thin year by the field plan (save 167; #1040).
+  out.WriteU8(world.traction_watch.oat_short_by_plan);
+  out.WriteU8(world.traction_watch.by_plan_stop_given);
+  out.WriteU8(world.traction_watch.by_plan_lit_today);
+  out.WriteU8(world.traction_watch.by_plan_stop_today);
+  out.WriteFloat(world.traction_watch.plan_oat_ha);
+  out.WriteI64(world.traction_watch.plan_oat_expected);
+  out.WriteI64(world.traction_watch.plan_team_need);
   // The chairman's issue norms (save 57, kSetIssueNorm), through the
   // resource dictionary like every amounts vector; empty until his first
   // order, and empty round-trips as empty.
@@ -508,6 +546,9 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   sink.WriteAmounts(DefKind::kResource, world.plan.delivered);
   sink.WriteAmounts(DefKind::kResource, world.plan.highest_due);         // save 127
   sink.WriteAmounts(DefKind::kResource, world.plan.accumulation_limit);  // save 62
+  sink.WriteAmounts(DefKind::kResource, world.plan.requested);           // save 163 (В5)
+  sink.WriteAmounts(DefKind::kResource, world.plan.draw_mark);           // save 164
+  sink.WriteAmounts(DefKind::kResource, world.plan.draw_last_month);     // save 164
   // The milk cart's daily share and what went with no position (save 66).
   out.WriteI64(world.plan.milk_daily_share);
   out.WriteI64(world.plan.milk_debt);  // save 85: the milk with debt
@@ -606,6 +647,13 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   for (const std::uint8_t turned : world.arrivals_turned_away.per_day) {
     out.WriteU8(turned);
   }
+  // The clamps' rot (save 170): the last day, then the grams a day.
+  out.WriteU32(world.clamp_rot.last_day);
+  for (const Grams grams : world.clamp_rot.per_day) {
+    out.WriteI64(grams);
+  }
+  // The dead waiting for a grave (#1199; save 180).
+  out.WriteU16(world.burials_waiting);
   // The jobs' runs of mornings with no hand (save 149): a count, then each
   // run's kind, its seven subject ids, its mornings and whether it was said.
   out.WriteU32(static_cast<std::uint32_t>(world.unmanned_runs.size()));
@@ -707,6 +755,8 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->chairman.hay_cut_dry_work_days = in.ReadU16();  // save 161
   world->chairman.hay_day_worked_month = in.ReadU16();
   world->chairman.hay_cut_avral_days = in.ReadU16();
+  world->chairman.reputation_recovery_owed = static_cast<std::uint8_t>(
+      source.ReadEnumValue(0, 1, "the rating's recovery owed"));  // save 166 (#1043)
 
   world->traction_ration = in.ReadFloat();
   world->traction_watch.short_ration_days = in.ReadU16();  // save 109
@@ -719,6 +769,23 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   }
   for (float& days : world->traction_watch.week_horse_backed) {
     days = in.ReadFloat();
+  }
+  // The thin year by the field plan (save 167; #1040).
+  TractionWatch& by_plan = world->traction_watch;
+  by_plan.oat_short_by_plan =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "the oat short by the field plan"));
+  by_plan.by_plan_stop_given =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "the by-plan oat stop given"));
+  by_plan.by_plan_lit_today =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "the by-plan oat lamp today"));
+  by_plan.by_plan_stop_today =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "the by-plan oat stop today"));
+  by_plan.plan_oat_ha = in.ReadFloat();
+  by_plan.plan_oat_expected = in.ReadI64();
+  by_plan.plan_team_need = in.ReadI64();
+  if (!(by_plan.plan_oat_ha >= 0.0F) || by_plan.plan_oat_expected < 0 ||
+      by_plan.plan_team_need < 0) {
+    source.Fail("the team's oat plan of the year is negative or not a number");
   }
   for (std::uint32_t day = 0; day < kHarnessWeekDays; ++day) {
     const float harnessed = world->traction_watch.week_harnessed[day];
@@ -735,6 +802,9 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->plan.delivered = source.ReadAmounts(DefKind::kResource);
   world->plan.highest_due = source.ReadAmounts(DefKind::kResource);  // save 127
   world->plan.accumulation_limit = source.ReadAmounts(DefKind::kResource);
+  world->plan.requested = source.ReadAmounts(DefKind::kResource);        // save 163
+  world->plan.draw_mark = source.ReadAmounts(DefKind::kResource);        // save 164
+  world->plan.draw_last_month = source.ReadAmounts(DefKind::kResource);  // save 164
   world->plan.milk_daily_share = in.ReadI64();
   world->plan.milk_debt = in.ReadI64();
   // A NEGATIVE SHARE OR DEBT IS NO STATE the simulation makes (the debt is
@@ -850,6 +920,18 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   for (std::uint8_t& turned : world->arrivals_turned_away.per_day) {
     turned = in.ReadU8();
   }
+  // The clamps' rot (save 170): any day is a day; a gram count is not
+  // negative.
+  world->clamp_rot.last_day = in.ReadU32();
+  for (Grams& grams : world->clamp_rot.per_day) {
+    grams = in.ReadI64();
+    if (grams < 0) {
+      source.Fail("the clamps' rot of a day is negative");
+      return;
+    }
+  }
+  // The dead waiting for a grave (#1199; save 180): any count is a count.
+  world->burials_waiting = in.ReadU16();
   // The jobs' runs of mornings with no hand (save 149): a count asked of the
   // bytes left first, each kind and flag by its range.
   constexpr std::size_t kSavedUnmannedRunBytes = 32;

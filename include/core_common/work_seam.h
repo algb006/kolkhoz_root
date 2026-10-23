@@ -17,6 +17,10 @@
 #ifndef CORE_COMMON_WORK_SEAM_H_
 #define CORE_COMMON_WORK_SEAM_H_
 
+#include <array>
+#include <cstdint>
+
+#include "core_common/alarm_state.h"
 #include "core_common/geometry.h"
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
@@ -60,6 +64,30 @@ const float* WorkSeamOf(const WorldState& world, const WorkAssignment& work);
 /// @brief The same seam, writable. Sequential callers only — the labour
 ///        sub-step drains it hourly in row order.
 float* WorkSeamOf(WorldState& world, const WorkAssignment& work);
+
+/// @brief THE SEAM's WRITTEN TWIN (#1056 C3; trip_pricing.h): for a hauling
+///        work, the value its seam was last written at (the field's, stand's,
+///        site's, store's and lot's haul_days_written, the works'
+///        supply_days_written, the milk leg's leg_days_written, the rick's
+///        days_written) - the pair production's conversion reads as «drained =
+///        written − remaining». Found from WorkSeamOf's own answer, so the
+///        roster of seams stays one.
+/// @return nullptr for any other work, or when WorkSeamOf has no seam.
+float* WorkSeamWrittenOf(WorldState& world, const WorkAssignment& work);
+
+/// @brief THE CARRIED LOADS DRAIN WITH THEIR CARRIER (#1056 C3, rulings 3-4;
+///        core_common/trip_terms.h): after the labour hour drains `drained`
+///        cart-days off the seam of task `carrier`, every open task carried
+///        along it today (LogisticsTaskRow::carried_by == carrier) drains
+///        `drained` × its carried_share off its own seam, floored at 0 - a
+///        pooled field's leftover and a back load move with the cart that takes
+///        them, and their grams follow their own seams through production's
+///        conversion as any load's do. The «who drained» notes
+///        (drained_by_cart) are written for them as for the carrier.
+/// @return The cart-days drained off the carried seams together (the
+///         instrument's C3-d sum); 0 when nothing is carried.
+/// @threading SINGLE_THREADED — the labour sub-step, beside the carrier's drain.
+float CoDrainCarriedTasks(WorldState& world, LogisticsTaskId carrier, float drained);
 
 /// @brief Where the work of this assignment is done: the field's centre, the
 ///        site, the unit the herd stands at, or a timber stand's loading point.
@@ -166,7 +194,10 @@ struct HarnessCount {
   /// chairman buys horses on — and sink the mechanisation share the era's
   /// readiness reads. In a settlement with no horse the seam is in a
   /// walker's days and holds every walker the queue sent: they all count, as
-  /// before.
+  /// before. In the horse-kind form (the lamp's) a load priced on foot BY
+  /// CHOICE - a milk leg whose walk holds the day's trips (HerdRow::
+  /// leg_on_foot) - wants no cart and counts none of its walkers (MR.2;
+  /// «мало лошадей» is a shortage of draught power).
   std::uint32_t harnessed = 0;
 
   /// The part of `in_traces` the morning's release takes off when the herd
@@ -176,6 +207,14 @@ struct HarnessCount {
   /// release takes off the driver and leaves the work: the crew walks, the
   /// mowers go on with scythes.
   std::uint32_t releasable = 0;
+
+  /// The part of `in_traces` in LIGHT work (the human, «Сначала овёс»; econ
+  /// winter-team-oats-2026-10-20 §A; boss, the #1056 thread [148]): every
+  /// carter on a horse, and the horse of a cart that carries a crew - a
+  /// brigade's, a people's. Not the ploughmen, the harrowers or a meadow's
+  /// mower: they are the heavy work. The herd day sizes the work oats by it
+  /// (herd_system.cpp, WorkingShare; farming.csv `light_work_oat_share`).
+  std::uint32_t light_in_traces = 0;
 };
 
 /// @brief Counts the harness off the day's assignments.
@@ -186,6 +225,25 @@ struct HarnessCount {
 /// the plough and the harrow alone, and a horse in a cart was neither in the
 /// traction nor in the oats (econ, horse-traction.md), though the placement
 /// takes it out of the pool «exactly as ploughing does».
+///
+/// THE WALKERS OF A JOB MADE UNHARNESSED WHILE THE VILLAGE HAD HORSES - a
+/// milk leg priced on foot (HerdRow::leg_on_foot) - are left out of
+/// `harnessed` only when `horse_kind` is given and SettlementHasCarts holds
+/// (MR.2; boss, the #1056 thread [109], [110]); so are the walkers of a
+/// field's winter manure dose, the last windowless cart, which waits for a
+/// free horse by the plan's order (#1056 C2; boss, the C2 pair [17]). The last pass's porters and
+/// log pairs walk for want of a horse and stay counted. THE LAMP's form only
+/// («лошадей не хватает» asks whether draught power is missing): the
+/// mechanisation share asks how much is done by hand and reads the
+/// one-argument form, where a can carried on foot by choice is hand work
+/// ([113]).
+/// @param horse_kind The livestock row of the horse; invalid (the one-argument
+///        form) counts every walker as before - the mechanisation share, and
+///        the readers of `in_traces` and `releasable`, which the rule does not
+///        touch.
+HarnessCount CountHarness(const WorldState& world, LivestockKindId horse_kind);
+
+/// @brief CountHarness with no horse kind: every walker counted as before.
 HarnessCount CountHarness(const WorldState& world);
 
 /// @brief Whether the settlement owns a grown kolkhoz horse at all — and so a
@@ -203,6 +261,24 @@ HarnessCount CountHarness(const WorldState& world);
 /// @param horse_kind The livestock row of the horse; an invalid id answers
 ///        false.
 bool SettlementHasCarts(const WorldState& world, LivestockKindId horse_kind);
+
+/// @brief THE GROOM'S HORSES BY WHAT HOLDS THEM, as the placements stand
+///        (stage В6; registry №310; alarm_state.h, CartUse): every horse
+///        CountHarness puts in the traces, classed by its work - the plough
+///        and harrow, a carter on a horse by his load (a meadow's hay, a
+///        works' supply, a field's heap, any other), a crew's cart (a meadow's
+///        mower, a reaping or sowing brigade, the people's cart) - and the
+///        rest of the adult kolkhoz horses (`draught_horses`) as kFree, never
+///        below nought. The classes sum to the larger of the two.
+std::array<std::uint16_t, kCartUseCount> HorsesByUse(const WorldState& world,
+                                                     std::uint32_t draught_horses);
+
+/// @brief Adult kolkhoz horses, wherever they stand: the day's shared draught
+///        pool (a horse at a private yard is still a kolkhoz horse). ONE HOME
+///        for the labour's pool and the logistics' lamp (stage В6); it lived
+///        in core_labor alone (LaborSystem::DraughtHorses) until 0.37.276.
+/// @return 0 for an invalid `horse_kind`.
+std::uint32_t DraughtHorsesOf(const WorldState& world, LivestockKindId horse_kind);
 
 /// @brief A rick whose farm's herds will be out of the feeds it is the home
 ///        of soon (routing stage В3, step two; core_production's

@@ -44,6 +44,8 @@
 #ifndef CORE_COMMON_ALARM_STATE_H_
 #define CORE_COMMON_ALARM_STATE_H_
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <span>
 
@@ -150,6 +152,15 @@ enum class AlarmKind : std::uint8_t {
   /// treatment (boss, 2026-09-03). A month on the ration is itself the
   /// open statement that the farm is not feeding its people.
   /// Subject: `family`.
+  /// THE YELLOW STAGE (#1046; econ forecast-lamp-2026-09-30; hunger_forecast.h):
+  /// one more alarm of this kind, a FORECAST, raised when at least
+  /// kHungerLampShare of the families with members will run short within the
+  /// horizon - `family` the first of them, `amount` how many, `days_to_loss`
+  /// the days to the first short day (so PaintAlarms paints it yellow past
+  /// alarm_red_within_days), `forecast_month` that day's month; `advice`
+  /// kUnsealFund (`advice_resource`, `advice_amount`) while food lies in a
+  /// fund, else kLowerIssueNorm while the chairman's norm stands above the
+  /// default, else kNone.
   kFamilyGoingHungry,
 
   // -- sites: core_construction ------------------------------------------------
@@ -502,15 +513,23 @@ enum class AlarmKind : std::uint8_t {
 
   /// «УПРЯЖЬ НА СЕНЕ» (0.37.8, save 109; boss-core-epoch1-queue [84], [90];
   /// econ canon-horses-oats.md §3): the team's work ration has been short of
-  /// full for `kTeamOnHayDays` working days in a row — the horses pull on
-  /// hay, and the ploughing goes slower (WorldState::traction_ration). Goes
-  /// out on the first working day of the full ration, or when the team is
-  /// gone; a day nobody works keeps it standing. On a carting day the
+  /// full for `kTeamOnHayDays` HEAVY working days in a row (the plough, the
+  /// harrow, a meadow's mower in traces) — the horses pull on hay, and the
+  /// ploughing goes slower (WorldState::traction_ration). Goes out on any
+  /// working day of the full ration, carting included, on the winter's first
+  /// day, or when the team is gone; a day nobody works, and a short
+  /// carting-only day, keep it standing (econ winter-team-oats-2026-10-20
+  /// §4l: hauling is never slowed by the ration; boss, core-boss-oats-b-pair
+  /// [16]). On a carting day the
   /// plough's oats are held by rule (FeedAllowance, PloughFeedHold), so it
   /// can stand beside oats in the barn that are the plough's. OATS, NOT HAY: a team
   /// short of hay is kHerdStarving. Subject: `herd`, the first row of the
   /// kolkhoz's horses; `resource` the horse's first work-only feed (oats);
   /// `amount` the grams of it the streak lacked (TractionWatch).
+  /// IN THE THIN YEAR BY THE FIELD PLAN (#1040; TractionWatch::
+  /// oat_short_by_plan): raised only on a short field-work day
+  /// (TractionWatch::by_plan_lit_today), `lamp` 1 on the year's first such
+  /// day and 0 after, `advice` kSowMoreOat with its door in `logistics_task`.
   kTeamOnHay,
 
   /// «ЛОШАДЕЙ НЕ ХВАТАЕТ» (0.37.8, save 109; boss [67], [90]; econ
@@ -675,6 +694,23 @@ enum class AlarmKind : std::uint8_t {
   /// kDeclareDayWorking (since 0.37.190; kNone in 0.37.189, before the door
   /// existed); on a working day kNone — the move is more drivers, which the
   /// core does not name. Collected by core_logistics (logistics_system.h).
+  /// AND IT SAYS WHERE THE HORSES ARE (stage В6; the human's word of 12
+  /// October 2026, registry №310): `carts_by_use`, the groom's horses by what
+  /// holds them at the hour - «подвод сегодня 3 из 5 — две на сене». For
+  /// Epoch I this lamp with its cause IS «Логистика не успевает»; THE WIDER
+  /// «задачи копятся, буферы падают ниже порогов» came with the supply by
+  /// threshold (#1056 C1.2; boss, the В6 thread [2]): a rick's supply
+  /// (kRickSupply, standing only while its rick is below its threshold)
+  /// lights it at ANY level by the same clock of unserved working light -
+  /// without the interrupting event, which stays level 0's. The task's kind
+  /// names the cause.
+  ///
+  /// «НЕТ ТОВАРА НА СКЛАДЕ» (transport §12's other alarm) IS NOT A KIND OF ITS
+  /// OWN (boss, the В6 thread [2]): the tasks whose sender can stand empty
+  /// are the works' supply and the farm's feed, and their lamps say it -
+  /// kSiteWithoutMaterials for the supply, kHerdHayShortAhead and
+  /// kHerdStarving for the feed. Every other task carries its cargo by
+  /// definition (a heap, logs, a dig, a store emptied, the district's lot).
   kLogisticsLate,
 
   /// «ЖИЛЬЯ НЕ ХВАТАЕТ» — ONE LAMP FOR THE WHOLE SHORTAGE OF HOMES (task 433;
@@ -710,12 +746,31 @@ enum class AlarmKind : std::uint8_t {
   /// its task not paused. A STATE on the floor's own trigger: lit the morning
   /// the floor begins to give the supply carters, out when the recipe is on
   /// the site. Subject: `unit` - the works; `logistics_task` its supply's task
-  /// (the door's subject); `amount` those idle days. Yellow always: no dated
+  /// (the door's subject); `amount` those idle days. SINCE SAVE 165 (stage
+  /// В6 part 3) LESS THE DAYS A MOWING HELD (site_supply_floor.h,
+  /// SupplyWaitLampLit, SupplyLampDays): the floor still gives its carters
+  /// on the idle days whole; the lamp does not light a June works because the
+  /// meadow took its carters. The run's chairman reads the floor's own count,
+  /// not this lamp (supply_policy.h). Yellow always: no dated
   /// loss (days_to_loss as kHousingShort's). `lamp` 1: the chairman has a
   /// move - `advice` kSupplyOverFields while the task does not carry the
   /// switch already, kNone once it does. Proposed registry key
   /// `site_supply_waits` (boss's vocabulary). Collected by core_logistics.
   kSiteSupplyWaits,
+
+  /// «В БУРТАХ СГНИЛО N Т» (#1005, #1068; econ's clamp-rot-lamp-2026-10-17
+  /// §4c; production design §1a: the clamp is the first year's place, the
+  /// vegetable store the long one). A STATE: lit from the first day of May
+  /// to the day before the potato's harvest window opens while the potato
+  /// and vegetables rotted IN CLAMPS over the last year (WorldState::
+  /// clamp_rot) reach farming.csv `clamp_rot_lamp_t`, and no vegetable store
+  /// stands, is staked or has works open. Subject: `resource` - the potato;
+  /// `amount` those grams. `days_to_loss` the days to the potato's harvest
+  /// window, when the new crop goes into the clamps again: yellow, red
+  /// within alarm_red_within_days. `lamp` 1, not interrupting; `advice`
+  /// kBuildStore, `advice_unit_type` the vegetable store. Proposed registry
+  /// key `clamp_rot` (boss's vocabulary). Collected by core_production.
+  kClampRot,
 
   // Appended by later tasks and phases: children out of school, sewage.
   // Named so the numbering is planned, not discovered.
@@ -916,6 +971,24 @@ enum class AlarmAdvice : std::uint8_t {
   /// returns with an advance-issue door, boss 14 October 2026.)
   kDeliverAbovePlan,
 
+  /// THE OAT IS SHORT BY THE FIELD PLAN - «посейте больше овса на будущий
+  /// год» (#1040; econ's oat-lamp contract, e4b0188; proposed dictionary key
+  /// `sow_more_oat`). Named by kTeamOnHay in a year TractionWatch reads thin
+  /// by the plan (oat_short_by_plan): the why and the what-next are
+  /// information - the line's numbers are TractionWatch::plan_oat_ha,
+  /// plan_oat_expected, plan_team_need - and the DOOR is the carting that
+  /// holds the teams: kSetLogisticsLevel on `task`, the logistics task with
+  /// the most horse carts in today's plan, to lower it. No such task: `task`
+  /// invalid, no move («упряжь уже вся на поле»).
+  kSowMoreOat,
+
+  /// LOWER THE ISSUE NORM - «снизить норму выдачи» (#1046; dictionary
+  /// `lower_issue_norm`). Named by kFamilyGoingHungry's yellow stage only
+  /// while the chairman has raised a norm above its default (issue_norm.h):
+  /// the door is kSetIssueNorm of `advice_resource` back toward the default.
+  /// No raised norm: not named.
+  kLowerIssueNorm,
+
   /// NOT A MOVE: the count, so a consumer can static_assert its mirror.
   kAlarmAdviceCount,
 };
@@ -938,6 +1011,29 @@ enum class AlarmColour : std::uint8_t {
   /// NOT A COLOUR: the count, so a consumer can static_assert its mirror.
   kAlarmColourCount,
 };
+
+/// @brief WHAT HOLDS EACH OF THE GROOM'S HORSES at the hour a lamp reads it
+/// (routing stage В6; transport design §12, «„Логистика не успевает"
+/// называет причину»; the human's word of 12 October 2026, registry №310):
+/// the breakdown kLogisticsLate carries in Alarm::carts_by_use. A horse IS a
+/// cart in the core (labor_state.h), so a horse without harness is not a
+/// state - the design's «лошадей без упряжи» returns with a harness/cart
+/// inventory (boss, the В6 thread [2]). Seam words: the enumerators' snake
+/// case. Appended, never renumbered.
+enum class CartUse : std::uint8_t {
+  kHay = 0,      ///< On the meadows: a mower out, or hay carted.
+  kSiteSupply,   ///< At the works: a supply carted to a site.
+  kFields,       ///< On the arable: a field's heap carted, a reaping or sowing brigade's cart.
+  kPlough,       ///< In the plough or the harrow.
+  kPeoplesCart,  ///< Carrying hands to a walking work (the people's cart).
+  kOtherLoad,    ///< Any other load: logs, a dig, a store emptied, the district's lot.
+  kFree,         ///< In the pool: no placement holds it.
+
+  /// NOT A USE: the count, so a consumer can static_assert its mirror.
+  kCartUseCount,
+};
+
+inline constexpr std::size_t kCartUseCount = static_cast<std::size_t>(CartUse::kCartUseCount);
 
 /// @brief One standing condition. Which fields are meaningful is fixed by
 /// the kind (see AlarmKind); the rest are invalid / zero. Two alarms with
@@ -965,7 +1061,9 @@ struct Alarm {
 
   /// kLogisticsLate: the groom's task whose load waits (logistics_state.h).
   /// kSiteSupplyWaits: the works' supply task, the subject of its advice's
-  /// door. Invalid for every other kind. Not in the save, as `lamp`.
+  /// door. kTeamOnHay with kSowMoreOat: the task with the most horse carts
+  /// today, the door's subject (#1040). Invalid for every other kind. Not in
+  /// the save, as `lamp`.
   LogisticsTaskId logistics_task;
 
   /// Grams, heads — the kind says which. 0 when the kind has no number.
@@ -1011,6 +1109,12 @@ struct Alarm {
   /// inherits the days of the alarm that lights it. Saturates at 0xFFFF.
   /// @note Not in the save, as `lamp`.
   std::uint16_t days_to_loss = 0;
+
+  /// kFamilyGoingHungry's YELLOW stage only (#1046): the 0-based calendar
+  /// month of the first day a family under threat runs short - the line's
+  /// «{month}: хлеба не хватит на N семей». 0 on every other alarm, where it
+  /// is not read. Not in the save, as `lamp`.
+  std::uint8_t forecast_month = 0;
 
   /// kGoodsLoanOwed only: the campaign year (counted from 1, as
   /// CalendarState::date.year) whose harvest the debt is repaid from at the
@@ -1082,7 +1186,12 @@ struct Alarm {
   /// `days_ahead` («сена до 12 марта»). Every uncovered fodder unit of the
   /// days forecast over the hay's feed value. The heads in `amount` stay for
   /// the ladder's own use and are not the line to show: they read seventy in
-  /// a village with nothing wrong. 0 for every other kind.
+  /// a village with nothing wrong.
+  /// kPlanPositionShort (0.37.271; boss, the lamp thread [4]): THE STORES'
+  /// EXPECTED DRAW TO THE TURN the forecast took off, grams - the last
+  /// month's draw over the days left (PlanState::draw_last_month), printed
+  /// beside `amount`, the whole shortfall it is part of.
+  /// 0 for every other kind.
   /// @note Not in the save, as `lamp`.
   std::int64_t short_grams = 0;
 
@@ -1174,6 +1283,16 @@ struct Alarm {
   std::int64_t hand_over_horses = 0;
   std::int64_t below_floor_stock = 0;
   std::int64_t below_floor_horses = 0;
+
+  /// kLogisticsLate (routing stage В6; registry №310): THE GROOM'S HORSES BY
+  /// WHAT HOLDS THEM at the hour the lamp is collected, by CartUse - the
+  /// lamp's line «подвод сегодня 3 из 5 — две на сене». The sum is the
+  /// adult kolkhoz horses (work_seam.h, HorsesByUse); kFree is what no
+  /// placement holds. ZEROS ON A DAY OFF: nobody is placed, the cause is the
+  /// day off - the line reads «выходной: подводы стоят» with `advice`
+  /// kDeclareDayWorking (boss, the В6 thread). Zeros for every other kind.
+  /// @note Not in the save, as `lamp`.
+  std::array<std::uint16_t, kCartUseCount> carts_by_use{};
 };
 
 /// @brief The subject id of an alarm as one number, for ordering: the id

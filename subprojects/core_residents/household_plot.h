@@ -42,6 +42,22 @@ void RunHouseholdPlot(const FoodConfig& config,
                       WorldState& current,
                       std::uint32_t family_item);
 
+/// @brief The family's garden harvest ahead (#1046 (c); boss, the #1046
+/// thread [17], arm C): whole days from today to the last day of the garden's
+/// month, when HarvestGarden pays, and its kcal at the season's attention so
+/// far - the same yields and ratio the harvest will use, read without paying.
+struct GardenAhead {
+  std::int32_t days = -1;  ///< -1: no garden (a barrack)
+  float kcal = 0.0F;
+};
+
+/// @brief The garden ahead of `family` from `world`'s day (GardenAhead). A
+/// pure read; the attention still to come this season is not counted, so a
+/// garden read before its growing months reads nought.
+GardenAhead ForecastGarden(const FoodConfig& config,
+                           const WorldState& world,
+                           const FamilyRow& family);
+
 }  // namespace core
 
 #endif  // CORE_RESIDENTS_HOUSEHOLD_PLOT_H_

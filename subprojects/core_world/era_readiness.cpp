@@ -194,6 +194,10 @@ ReadinessCatalog ReadReadinessCatalog(const ITableSet& tables, Epoch era) {
   const std::uint32_t era_column = types->FindColumn("era");
   const std::uint32_t era_norm_column = types->FindColumn("era_norm");
   const std::uint32_t one_family_column = types->FindColumn("one_family");
+  // ITS LEVEL IS THE PLAYER's CHOICE (boss [36]): a table without the column
+  // frees nothing.
+  const std::uint32_t level_free_column = types->FindColumn("level_free");
+  catalog.level_free_by_type.assign(types->RowCount(), 0);
   // Same off-by-one as the threshold above and the same cure: unit_types.csv's
   // `era` column is the human number. With the `+ 1` this list held Era II's
   // social objects in an Era I world, so "0 of 6 ever marked" was counted over
@@ -209,6 +213,10 @@ ReadinessCatalog ReadReadinessCatalog(const ITableSet& tables, Epoch era) {
                                                        : types->CellInteger(row, one_family_column);
     if (!one_family.has_value() || *one_family == 0) {
       catalog.kolkhoz_types.push_back(id);
+    }
+    if (level_free_column != kNoTableColumn) {
+      const std::optional<std::int64_t> free = types->CellInteger(row, level_free_column);
+      catalog.level_free_by_type[row] = free.has_value() && *free != 0 ? 1U : 0U;
     }
     // THE LIST IS THE TABLE'S `era_norm` COLUMN (boss-core-epoch1-resume [84];
     // 0.36.35): a row with era_norm = 1 of the era asked counts toward that
@@ -280,6 +288,16 @@ std::uint8_t RequiredUnitLevel(const ReadinessCatalog& catalog,
                                Epoch era,
                                const WorldState& world) {
   if (type.value >= catalog.rung_eras.size()) {
+    return 0;
+  }
+  // ITS LEVEL IS THE PLAYER's CHOICE, not the era's (level_free; boss [36]):
+  // the era asks no rung of it. ONE HOME for both readers, the at-level block
+  // and the run chairman's upgrades (upgrade_policy.h) - a skip in the block
+  // alone left the run raising the cemetery for 70 t of logs it no longer
+  // needed. Until 0.37.317 a new cemetery marked at the old one's 90 % held
+  // seed 1940's Epoch II door for 118 days.
+  if (type.value < catalog.level_free_by_type.size() &&
+      catalog.level_free_by_type[type.value] != 0) {
     return 0;
   }
   // Up from the first rung and stopping at the first the era has not opened
@@ -513,6 +531,8 @@ TransitionBlocks StandingBlocks(const ReadinessCatalog& catalog, const WorldStat
           return true;
         }
         // AT THE LEVEL THIS ERA REQUIRES — the highest rung it has opened —
+        // and none for a type whose level is free (the cemetery; level_free,
+        // read inside RequiredUnitLevel) —
         // and nothing above it. Seventy-seven types of a hundred and eleven
         // carry a single rung, and nineteen of the fifty buildings a village
         // stands have their second rung in a LATER era; asking either for a

@@ -31,6 +31,7 @@
 #include "core_common/calendar.h"
 #include "core_common/geometry.h"
 #include "core_common/ids.h"
+#include "core_common/manure_state.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table.h"
 
@@ -620,6 +621,11 @@ struct FieldRow {
   /// with no window).
   std::uint8_t autumn_furrowing = 0;
 
+  /// THE WINTER'S DOSE FROM THE HEAP (#1056 C2, save 176; manure_state.h):
+  /// booked at the year's turn, carted on sledge days until this field's
+  /// ploughing opens, cancelled into the heap if it is not all here by then.
+  ManureDoseSeam manure_dose;
+
   /// THE DAY THIS FIELD'S CROP WAS LAST REAPED — whole, so the field went back
   /// to kIdle — or kNeverReapedDay (2026-09-15, boss parcel 421).
   ///
@@ -757,6 +763,18 @@ struct FieldRow {
 ///       being true.
 inline bool HasRotation(const FieldRow& field) {
   return field.rotation_assigned != 0;
+}
+
+/// @brief Whether `field`'s winter dose is a hauling work NOW (#1056 C2;
+/// manure_state.h): a dose is booked with part of it due, and no reaped heap
+/// lies on the field. One hauling work names one field, and the heap is
+/// asked first (it rots, the manure does not): every reader that resolves
+/// «hauling on a field» to the reaped heap stays right while one lies there,
+/// and the dose waits for it (work_seam.cpp, load_resource.cpp,
+/// logistics_tasks.cpp).
+inline bool ManureDoseStands(const FieldRow& field) {
+  return field.manure_dose.from.value != kInvalidEntityIdValue && field.manure_dose.due > 0 &&
+         field.reaped_grams == 0;
 }
 
 /// @brief This year's slot is a winter crop that was NOT sown in its autumn

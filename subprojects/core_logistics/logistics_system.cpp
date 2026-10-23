@@ -6,10 +6,12 @@
 #include "core_logistics/logistics_system.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -35,6 +37,7 @@
 #include "logistics_config.h"
 #include "logistics_plan.h"
 #include "logistics_tasks.h"
+#include "trip_pricing.h"
 
 namespace core {
 namespace {
@@ -42,6 +45,38 @@ namespace {
 /// The carts there are against the carts the plan planned: a carter on a horse
 /// (a goods cart) or a driver of a people's cart, by id and kind. A carrier on
 /// foot is not asked — his chain is his placement's load and the near ones.
+bool CartsChanged(const WorldState& world, const GroomPlan& plan);
+
+/// Whether some goods cart of the plan could take a new load at `now`: it
+/// stands idle (no leg under way and none ahead of it) or is on an EMPTY leg
+/// (a ride or a trip's way back). A cart on its loaded leg, or between a ride
+/// that brought it to a load and the loaded leg that leaves it (loading), is
+/// held: a re-plan could change nothing of its day (#1056 C4; boss, the
+/// #1056 thread after [29]).
+bool SomeCartFree(const GroomPlan& plan, Tick now) {
+  for (const CartPlan& cart : plan.carts) {
+    if (cart.on_foot || cart.people_cart) {
+      continue;
+    }
+    bool held = false;
+    for (std::size_t index = 0; index < cart.legs.size(); ++index) {
+      const CartLeg& leg = cart.legs[index];
+      const bool under_way = leg.depart <= now && now < leg.arrive;
+      // Loading: arrived by the previous leg, the loaded leg not yet gone.
+      const bool loading =
+          leg.loaded != 0 && now < leg.depart && index > 0 && cart.legs[index - 1].arrive <= now;
+      if ((under_way && leg.loaded != 0) || loading) {
+        held = true;
+        break;
+      }
+    }
+    if (!held) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool CartsChanged(const WorldState& world, const GroomPlan& plan) {
   std::size_t there = 0;
   for (std::uint32_t row = 0; row < world.residents.rows.size(); ++row) {
@@ -98,14 +133,23 @@ bool CartedToday(const WorldState& world, const LogisticsTaskRow& task) {
   return seam == nullptr || !(*seam > 0.0F);
 }
 
+/// Whether the lamp's clock runs on `task`: a task of level 0, AND A RICK'S
+/// SUPPLY AT ANY LEVEL - the wide alarm, «буферы падают ниже порогов» (#1056
+/// C1.2; alarm_state.h, kLogisticsLate): such a task stands only while its
+/// rick is below its threshold, so its wait is a buffer under its threshold
+/// that the carts do not mend. Not paused, either.
+bool LampClockRuns(const LogisticsTaskRow& task) {
+  return !task.paused && (task.level == LogisticsLevel::kUrgent ||
+                          task.load_kind == LogisticsLoadKind::kRickSupply);
+}
+
 /// kLogisticsLate's condition: a task of level 0, not paused, its clock of
 /// unserved working light at kLateAfterHours or more (LogisticsTaskRow::
 /// unserved_light_hours, kept by SayLateLoads every hour). Until 0.37.192 the
 /// clock was the tick it entered level 0, and the lamp lit at night over a
 /// load carted all day.
 bool WaitsLate(const LogisticsTaskRow& task) {
-  return task.level == LogisticsLevel::kUrgent && !task.paused &&
-         task.unserved_light_hours >= kLateAfterHours;
+  return LampClockRuns(task) && task.unserved_light_hours >= kLateAfterHours;
 }
 
 void SettleTaskOrder(OrderRow& order, OrderRefusal refusal) {
@@ -150,6 +194,8 @@ OrderRefusal SetTaskLevel(WorldState& current, const OrderRow& order) {
       order.logistics_level == LogisticsLevel::kUrgent && task.level != LogisticsLevel::kUrgent;
   task.base_level = order.logistics_level;
   task.level = order.logistics_level;
+  task.urgent_by = order.logistics_level == LogisticsLevel::kUrgent ? LogisticsUrgentBy::kPlayer
+                                                                    : LogisticsUrgentBy::kNone;
   task.aged_from_day = current.calendar.day;
   if (raised_to_urgent) {
     task.urgent_since = current.calendar.tick;
@@ -214,6 +260,15 @@ class LogisticsSystem final : public ILogisticsSystem {
       return tally;
     }
     current.groom_plan = BuildGroomPlan(config_, current, tally);
+    // AND THE PRICE FROM THE DRAWING (#1056 C3; trip_pricing.h): under the
+    // planned model the morning's trips become each cart task's seam - and so
+    // do a re-plan's while nothing is carted yet today (Replan, (ii')). A
+    // re-plan AFTER the carting began does not price, a deviation from the
+    // contract named: it draws from loads already partly carted while the
+    // facts are last evening's, so its trips would price what is gone; the
+    // last price before sunrise stands to the evening, which writes the facts
+    // and the fallback anew.
+    PriceTasksFromPlan(config_, current, PriceMode::kWrite);
     // AND THE EVENING (F3 (B); logistics_plan.h): who rides home on which
     // leg, and every morning rider's own way home.
     SeatEveningRiders(config_, current, current.groom_plan, tally);
@@ -241,13 +296,47 @@ class LogisticsSystem final : public ILogisticsSystem {
         !Stabled(current)) {
       return false;
     }
+    // THE DAY's PRICE IS THE PLAN THE DAY CARTS BY (#1056 C3 (ii');
+    // core-boss-oats-b-pair [82]-[83]): every re-plan BEFORE the carting
+    // begins prices again (below); at the hour it begins the day's columns are
+    // booked once, from the plan as it then stands. Until (ii') only the
+    // morning's plan priced, and on most harvest mornings the hour-1 top-up
+    // gave carts that re-planned the day at hour 2, unpriced.
+    const std::uint32_t hour = HourFromTick(current.calendar.tick);
+    const std::uint32_t sunrise = SunriseHour(current.weather.daylight_hours);
+    if (hour == sunrise) {
+      PriceTasksFromPlan(config_, current, PriceMode::kBook);
+    }
     plan.stale = plan.stale || CartsChanged(current, plan);
+    // AND A HEAP REAPED IN THE DAY (#1056 C4, writer (3)): its task is made
+    // now and the plan drawn again with it. Until C4 tasks changed at hour 0
+    // alone, and a heap reaped at noon waited for tomorrow's plan. The road
+    // index rebuilt in the day (writer (2)) sets `stale` where it is rebuilt
+    // (road_laying.cpp). Still one re-plan an hour.
+    // Scanned only when a heap was born since the last scan (world_state.h,
+    // heap_born): the full scan every re-plan hour cost 1.05 s of the canon's
+    // 9.5 s step-clock rise.
+    if (current.heap_born) {
+      current.heap_born = false;
+      // The heap's task is made whatever the carts do (the next plan has it);
+      // the day is re-planned for it only while some cart could take it -
+      // idle or on an empty leg (SomeCartFree). Every re-plan for a new heap
+      // with every cart loading or loaded changed nothing, and cost the
+      // slot's ~14 ms (the #1056 thread [29]).
+      if (AppendNewHeapTasks(config_, current, current.calendar.day) > 0 &&
+          SomeCartFree(plan, current.calendar.tick)) {
+        plan.stale = true;
+      }
+    }
     if (!plan.stale && !plan.urgent_pending) {
       return false;
     }
     LogisticsTally tally;
     const GroomPlan earlier = plan;
     plan = BuildGroomPlan(config_, current, tally, &earlier);
+    if (hour < sunrise) {
+      PriceTasksFromPlan(config_, current, PriceMode::kWrite);  // nothing carted yet today
+    }
     // The evening is re-seated from the new legs (F3 (B)). AN APPROXIMATION,
     // NAMED: a worker's hours away were booked at his first hour with the
     // morning plan's way home; a re-plan moves his end of day, not that book.
@@ -279,16 +368,29 @@ class LogisticsSystem final : public ILogisticsSystem {
     // (TodayMayBeDeclaredWorking).
     const AlarmAdvice advice =
         TodayMayBeDeclaredWorking(state) ? AlarmAdvice::kDeclareDayWorking : AlarmAdvice::kNone;
+    // AND WHERE THE HORSES ARE (stage В6; registry №310): one breakdown an
+    // hour, the same for every late load of it (work_seam.h, HorsesByUse) -
+    // ON A WORKING DAY ONLY. On a day off nobody is placed and every horse
+    // reads free: the cause is the day off, and its line is the day off and
+    // the advice (boss, the В6 thread; transport §12 «Выходной»). Measured
+    // before: 125 of 137 sampled late lamps fell on the calendar's Sunday.
+    const bool day_off = IsDayOffIn(state, state.calendar.day);
+    std::optional<std::array<std::uint16_t, kCartUseCount>> horses;
     for (std::uint32_t row = 0; row < state.logistics_tasks.rows.size(); ++row) {
       const LogisticsTaskRow& task = state.logistics_tasks.rows[row];
       if (!WaitsLate(task)) {
         continue;
+      }
+      if (!horses) {
+        horses = day_off ? std::array<std::uint16_t, kCartUseCount>{}
+                         : HorsesByUse(state, DraughtHorsesOf(state, config_.horse_kind));
       }
       Alarm alarm;
       alarm.kind = AlarmKind::kLogisticsLate;
       alarm.logistics_task = state.logistics_tasks.row_ids[row];
       alarm.amount = static_cast<std::int64_t>(task.unserved_light_hours);
       alarm.advice = advice;
+      alarm.carts_by_use = *horses;
       out.push_back(alarm);
     }
     CollectSupplyWaits(state, out);
@@ -310,15 +412,17 @@ class LogisticsSystem final : public ILogisticsSystem {
         continue;
       }
       const std::uint32_t unit_row = FindRow(state.units, task.unit);
+      // THE MOWING'S DAYS ARE NOT THE WORKS' WAIT (stage В6 part 3; save 165):
+      // lit on the lamp's days, not the floor's (site_supply_floor.h).
       if (unit_row == kNoRow ||
-          !OnSupplyFloor(config_.supply_floor, state.units.rows[unit_row].construction)) {
+          !SupplyWaitLampLit(config_.supply_floor, state.units.rows[unit_row].construction)) {
         continue;
       }
       Alarm alarm;
       alarm.kind = AlarmKind::kSiteSupplyWaits;
       alarm.unit = task.unit;
       alarm.logistics_task = state.logistics_tasks.row_ids[row];
-      alarm.amount = state.units.rows[unit_row].construction.supply_idle_days;
+      alarm.amount = SupplyLampDays(state.units.rows[unit_row].construction);
       alarm.lamp = 1;
       alarm.days_to_loss = DaysToLossOf(std::numeric_limits<std::int64_t>::max());
       alarm.advice = task.over_fields ? AlarmAdvice::kNone : AlarmAdvice::kSupplyOverFields;
@@ -363,8 +467,7 @@ class LogisticsSystem final : public ILogisticsSystem {
                        hour < SunsetHour(current.weather.daylight_hours);
     for (std::uint32_t row = 0; row < current.logistics_tasks.rows.size(); ++row) {
       LogisticsTaskRow& task = current.logistics_tasks.rows[row];
-      if (task.level != LogisticsLevel::kUrgent || task.paused || Served(current, task) ||
-          CartedToday(current, task)) {
+      if (!LampClockRuns(task) || Served(current, task) || CartedToday(current, task)) {
         task.unserved_light_hours = 0;
         continue;
       }
@@ -374,7 +477,9 @@ class LogisticsSystem final : public ILogisticsSystem {
       if (task.unserved_light_hours < std::numeric_limits<std::uint16_t>::max()) {
         ++task.unserved_light_hours;
       }
-      if (task.unserved_light_hours != kLateAfterHours) {
+      // The interrupting word is level 0's alone: a buffer under its
+      // threshold lights the lamp and stops no fast-forward (#1056 C1.2).
+      if (task.unserved_light_hours != kLateAfterHours || task.level != LogisticsLevel::kUrgent) {
         continue;
       }
       const std::int64_t packed =
@@ -385,7 +490,10 @@ class LogisticsSystem final : public ILogisticsSystem {
       event.amount = packed;
       // AND WHY NOBODY CAME, ON A DAY OFF (task 427, item 3; event_state.h,
       // kDayOffHeldUrgentLoad): the allocator offers no carting that day.
-      if (IsDayOffIn(current, current.calendar.day)) {
+      // The milk leg is herd care, worked on a day off (#1056 C1.1): a day
+      // off holds nothing of it.
+      if (IsDayOffIn(current, current.calendar.day) &&
+          task.load_kind != LogisticsLoadKind::kMilkLeg) {
         SayDayOffHeld(current, current.logistics_tasks.rows[row], packed);
       }
     }
@@ -425,7 +533,15 @@ class LogisticsSystem final : public ILogisticsSystem {
       // senders, one a leg, and the task is the works' own — the word names
       // the works that waits for them.
       case LogisticsLoadKind::kSiteSupply:
+      case LogisticsLoadKind::kRickSupply:  // the rick that waits for its hay
         held.unit = task.unit;
+        break;
+      case LogisticsLoadKind::kMilkLeg:  // never held by a day off (above)
+        held.herd = task.herd;
+        break;
+      case LogisticsLoadKind::kManureField:  // the field that waits for its dose (#1056 C2)
+        held.field = task.field;
+        held.resource = config_.manure_resource;
         break;
       case LogisticsLoadKind::kLogisticsLoadKindCount:
         break;

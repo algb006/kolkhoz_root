@@ -41,6 +41,7 @@
 #include "core_common/ids.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table.h"
+#include "core_common/trip_terms.h"
 
 namespace core {
 
@@ -88,6 +89,25 @@ enum class LogisticsLoadKind : std::uint8_t {
   /// until the order is over — one hauling work names one unit. Seam key
   /// `site_supply`.
   kSiteSupply,
+  /// THE MILK LEG (#1056 C1.1; econ's stage C contract 574c366; boss, the
+  /// #1056 thread [4], [7]): a kolkhoz herd's milk carted from its barn
+  /// (the herd's unit stock) to the store the village keeps milk in, every
+  /// day the barn holds it - herd care, so worked on rest days. Addressed by
+  /// `herd`; its seam is HerdRow::leg_days_remaining. Seam key `milk_leg`.
+  kMilkLeg,
+  /// A RICK'S SUPPLY (#1056 C1.2; econ's stage C contract 574c366): hay
+  /// carted from another rick to the rick named in `unit`, while its herds'
+  /// hay stands below its threshold (UnitRow::rick_supply; the task's
+  /// `threshold_days`). Level 2 by its kind; the urgent rule's level 0 is the
+  /// job's, as for a meadow's stack (labor_system.cpp). Seam key `rick_supply`.
+  kRickSupply,
+  /// A FIELD'S WINTER DOSE (#1056 C2; econ logistics-all-on «C2»; boss, the
+  /// #1056 thread [66], [136]): manure carted from the heap to the field
+  /// named in `field`, on sledge days only, until the field's ploughing
+  /// opens (manure_state.h; ManureDoseStands: never while a reaped heap lies
+  /// on the field). Level 3 by its kind; its seam is FieldRow::manure_dose.
+  /// Seam key `manure_field`.
+  kManureField,
   kLogisticsLoadKindCount,  ///< NOT A KIND: the count.
 };
 
@@ -101,6 +121,22 @@ enum class LogisticsOrigin : std::uint8_t {
   kLogisticsOriginCount,
 };
 
+/// @brief WHY A TASK STANDS AT LEVEL 0 (#1099, save 174; econ
+/// standing-crop-before-keeping-heap-2026-10-19): labour keeps a load above
+/// every window only for some reasons. A heap urgent by its own rot gives way
+/// to a standing crop whose snow comes before the heap's shelf ends; the
+/// player's order and a hungry herd never do.
+enum class LogisticsUrgentBy : std::uint8_t {
+  kNone = 0,  ///< Not at level 0.
+  kSpoil,     ///< A field heap that rots by tomorrow's share (HeapSpoils).
+  kHunger,    ///< A feed heap while a kolkhoz herd is hungry.
+  kPlayer,    ///< The chairman's level 0 (base_level kUrgent).
+  kAged,      ///< Level 0 by its kind's own level or its days waiting (AgedLevel).
+
+  /// NOT A REASON: the count, for the codecs' range.
+  kLogisticsUrgentByCount,
+};
+
 /// @brief One task of the groom's logistics.
 struct LogisticsTaskRow {
   LogisticsLoadKind load_kind = LogisticsLoadKind::kLogisticsLoadKindCount;
@@ -111,6 +147,12 @@ struct LogisticsTaskRow {
   ExtractionSiteId extraction_site;
   LimitDeliveryId limit_delivery;
   UnitId unit;
+  /// kMilkLeg: the herd row the barn's leg is written on (save 170) - the
+  /// barn's first MILKED kolkhoz herd: the cows' while they stand billeted in
+  /// the stable with the horses (milk_cart.cpp, «ONE LEG A BARN»; #1117). The
+  /// milk is the barn's; on the day the cows leave for their yard the
+  /// leftover's leg stays on the barn's first herd, of any kind.
+  HerdId herd;
 
   /// The level the task has now (raised by ageing or by a threat).
   LogisticsLevel level = LogisticsLevel::kOrdinary;
@@ -135,7 +177,8 @@ struct LogisticsTaskRow {
 
   /// THE LAMP'S CLOCK (kLogisticsLate; save 142, 0.37.192; boss, the
   /// logistics thread [113]-[114]): the game hours of WORKING LIGHT this task
-  /// has stood at level 0 with nobody on it, since it was last served — an
+  /// has stood at level 0 - or, a rick's supply, at any level (#1056 C1.2,
+  /// the wide alarm) - with nobody on it, since it was last served — an
   /// hour of light unserved adds one, an hour served sets it to nought, a task
   /// below level 0 keeps nought. Night hours add nothing: nobody carts by
   /// night, and a lamp lit over a load carted all day, because its carters
@@ -152,6 +195,16 @@ struct LogisticsTaskRow {
   /// later starts a plain one. Sits in the padding after the lamp's clock.
   bool over_fields = false;
 
+  /// THE RICK'S THRESHOLD (#1056 C1.2, save 171): for kRickSupply, the days
+  /// of its herds' hay the rick was priced against (UnitRow::rick_supply,
+  /// threshold_days), copied as the task is synced; 0 for every other kind.
+  /// Sits in the padding after over_fields.
+  std::uint8_t threshold_days = 0;
+
+  /// Why `level` is kUrgent this day (#1099, save 174), written beside it by
+  /// the morning's ageing (logistics_tasks.cpp); kNone below level 0.
+  LogisticsUrgentBy urgent_by = LogisticsUrgentBy::kNone;
+
   /// WHO DRAINED THE LOAD'S SEAM since its last settle (#671's instrument;
   /// save 155): the seam units carriers on foot and carts took off it, added
   /// by the labour hour as it drains (hauled_book.h, NoteHaulDrain) and spent
@@ -162,6 +215,24 @@ struct LogisticsTaskRow {
   /// seam, so the grams follow the units whatever they are.
   float drained_on_foot = 0.0F;
   float drained_by_cart = 0.0F;
+
+  /// THE TRIP'S FACTS (#1056 C3; core_common/trip_terms.h): written by
+  /// production's evening for every open task a cart prices, read by the
+  /// groom's plan, which draws whole trips from them and writes the task's
+  /// seam (CartTripModel::kPlanned). All zero under every other model, on
+  /// foot, and for a task the evening has not priced yet.
+  TaskTripTerms trip_terms = TaskTripTerms{};
+
+  /// CARRIED ALONG ANOTHER TASK'S TRIPS today (C3, rulings 3-4): the task
+  /// whose cart takes this load too - a field heap's leftover pooled into
+  /// another field's last load, or a back load on another load's way home.
+  /// Invalid when the load goes by its own trips. Written by the plan.
+  LogisticsTaskId carried_by = LogisticsTaskId{};
+
+  /// What THIS task's seam drains for each cart-day the carrier's seam drains
+  /// (work_seam.h, CoDrainCarriedTasks): this task's priced share of the
+  /// shared legs over the carrier's own drawn cart-days. 0 when not carried.
+  float carried_share = 0.0F;
 };
 
 /// @brief One leg of a cart's day (B4b; TRIPS since stage В, F3 (A)). A goods
@@ -191,6 +262,19 @@ struct LogisticsTaskRow {
 /// a load half carried, haul.h), and the trips are cut from the seam's span
 /// by the round trip the seam was priced at. What is carted does not change
 /// by F3 (its gate: tonnes per village-year row for row).
+///
+/// SINCE C3 THE DRAWN TRIPS ARE THE PRICE (CartTripModel::kPlanned;
+/// core_common/trip_terms.h): the plan draws WHOLE trips from the task's
+/// TaskTripTerms (a cart's load each, the price's own round trip and heap
+/// point) and writes the task's seam from them. Two more legs it may draw:
+///   * a POOLED trip (ruling 3): a field heap's last part-load takes another
+///     field's leftover on the way to the store - the leg from the first heap
+///     to the second is the first task's, loaded; the leg from the second to
+///     the store carries both, `pooled_task` naming the second;
+///   * a BACK LOAD (ruling 4): at a receiver, instead of the way back empty,
+///     a loaded leg of another task whose load lies near - an ordinary loaded
+///     leg of that task on this cart's chain.
+/// Under every other model the trips are drawn as before and price nothing.
 struct CartLeg {
   /// Where the leg starts and ends (the horse yard, the house, a load, a
   /// load's receiver, the work of a people's cart).
@@ -205,6 +289,12 @@ struct CartLeg {
   /// 1 while the cart carries the task's load on this leg (from the load to
   /// its receiver); 0 on a ride and on a trip's way back. Save 153.
   std::uint8_t loaded = 0;
+
+  /// 1 when the cart went out as a SLEDGE (SL; transport design §16 «Телега
+  /// и сани — одно и то же имущество, меняющее обличье по наличию снега… на
+  /// стоянке во дворе конюшни»): the day it left the stable lay under snow
+  /// (core_common/cart_gear.h, SledgeDay). The layer's visual; save 175.
+  std::uint8_t sledge = 0;
 
   /// THE TRIP'S ONE RESOURCE (#671, porter_leg.h; save 155 with the
   /// implementation): for a carrier on foot, the one resource his back holds
@@ -232,6 +322,30 @@ struct CartLeg {
   Tick depart = 0;
   Tick arrive = 0;
 
+  /// THE SAME MOMENTS TO THE MINUTE (#1056 C3, T1; save 178): minutes from the
+  /// midnight of the plan's day, as the plan's clock had them before the ticks
+  /// floored them to the hour. Until T1 a half of 0.6 h begun at 8.2 h was the
+  /// leg 8->8, no time at all: about a tenth of a day's legs had no ticks and
+  /// a third were stretched by a quarter hour or more (core-boss-oats-b-pair
+  /// [104]). No reader in the core drains by them since M2 (the labour drains
+  /// a held load by its carters' hours; [110]). The floored ticks stay for every
+  /// reader that counts hours. CollectPorterLegs (leg_loads.h) still sends
+  /// the ticks and has no reader in the layer yet (ue, 21 October 2026): the
+  /// reader to come takes these minutes.
+  std::uint16_t depart_minute = 0;
+  std::uint16_t arrive_minute = 0;
+
+  /// 1 on a load of the chain the cart never carted, kept in its place with
+  /// no time on it (KeepInTheChain; save 178). Until T1 «no time» was read as
+  /// depart == arrive, which a real trip floored to the hour also is.
+  std::uint8_t kept_in_chain = 0;
+
+  /// 1 on a BACK LOAD's loaded leg (#1056 C3, ruling 4; save 179): another
+  /// task's load taken at a receiver instead of the way back empty
+  /// (trip_pricing.h, BackLoadOf). Its task pays the leg's share, not a whole
+  /// trip of its own, and drains with the carrier's seam (carried_by).
+  std::uint8_t back_load = 0;
+
   /// Who rides this leg beside the driver — seated at `from` or on the way —
   /// within the cart's seats (transport.csv `seats`: the goods cart's bench
   /// two, the people's cart six): the passengers the labour hour seated this
@@ -242,6 +356,11 @@ struct CartLeg {
   /// seats riders (CargoFormSeatsRiders: not logs, manure or the live), a
   /// ride home always.
   std::vector<ResidentId> riders;
+
+  /// THE SECOND LOAD OF A POOLED LEG (#1056 C3, ruling 3): on the loaded leg
+  /// from the second field's heap to the store, the second field's task
+  /// beside `task`; invalid on every other leg. The layer shows both loads.
+  LogisticsTaskId pooled_task = LogisticsTaskId{};
 };
 
 /// @brief One cart's day: a horse of the pool and its driver.

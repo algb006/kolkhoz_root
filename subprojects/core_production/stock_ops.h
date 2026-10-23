@@ -320,6 +320,15 @@ inline bool NumberedStoreAccepts(const UnitRow& unit,
          NumberedStoreTakes(unit, config, resource);
 }
 
+/// @brief A herd's OWN MILK ROOM (MR.1): the unit the herd stands in is a
+///        built numbered store that takes milk - the cattle yard's room
+///        (resource_stores milk -> cattle_yard milk_room). A herd billeted
+///        in sheds has none: its milk waits in the barn for the leg.
+inline bool IsOwnMilkRoom(const UnitRow& herd_unit, const ProductionConfig& config) {
+  return config.milk_resource.value != kInvalidDefIdValue &&
+         NumberedStoreAccepts(herd_unit, config, config.milk_resource);
+}
+
 /// @brief Whether the door's SECOND pass takes `resource` here: a built
 /// outline the player drew that is this resource's home (IsHomeOf) — the
 /// haystack for the hay. No ceiling: the contour is its size.

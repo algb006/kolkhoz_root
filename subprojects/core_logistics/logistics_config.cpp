@@ -8,6 +8,7 @@
 #include <string_view>
 #include <utility>
 
+#include "core_catalog/cart_specs_catalog.h"
 #include "core_catalog/cold_housing_catalog.h"
 #include "core_catalog/porter_catalog.h"
 #include "core_catalog/supply_floor_catalog.h"
@@ -32,6 +33,9 @@ bool ParseLevels(const ITable& table, LogisticsConfig& config, std::string& erro
       "level_district_lot",
       "level_store_transfer",
       "level_site_supply",
+      "level_milk_leg",
+      "level_rick_supply",
+      "level_manure_field",
   };
   for (std::uint32_t kind = 0; kind < kLogisticsLoadKindCount; ++kind) {
     float level = static_cast<float>(config.default_level[kind]);
@@ -45,7 +49,7 @@ bool ParseLevels(const ITable& table, LogisticsConfig& config, std::string& erro
 }
 
 bool ParseKnobs(const ITable& table, LogisticsConfig& config, std::string& error) {
-  const std::array<ScalarKnob, 4> knobs = {{
+  const std::array<ScalarKnob, 5> knobs = {{
       ScalarKnob{
           .key = "age_background_days", .value = &config.age_background_days, .range = kAgeRange},
       ScalarKnob{
@@ -55,6 +59,9 @@ bool ParseKnobs(const ITable& table, LogisticsConfig& config, std::string& error
       ScalarKnob{.key = "urgent_spoil_tonnes",
                  .value = &config.urgent_spoil_tonnes,
                  .range = Range{.low = 0.0F, .high = 1000.0F}},
+      // #1056 C3, ruling 3: the pooled trip's detour (STUB econ 0.25).
+      ScalarKnob{
+          .key = "pool_detour_share", .value = &config.pool_detour_share, .range = Range::Unit()},
   }};
   for (const ScalarKnob& knob : knobs) {
     if (!OptionalValue(table, knob.key, knob.range, *knob.value, error)) {
@@ -122,6 +129,9 @@ bool ParseResources(const ITable& resources, LogisticsConfig& config, std::strin
 }  // namespace
 
 bool ParseLogisticsConfig(const ITableSet& tables, LogisticsConfig& config, std::string& error) {
+  if (!ReadSledgeSpecs(tables, config.sledge, error)) {  // SL: the sledge
+    return false;
+  }
   if (const ITable* const logistics = tables.FindTable("logistics")) {
     if (!ParseLevels(*logistics, config, error) || !ParseKnobs(*logistics, config, error)) {
       return false;
@@ -135,6 +145,13 @@ bool ParseLogisticsConfig(const ITableSet& tables, LogisticsConfig& config, std:
     const std::uint32_t log_row = resources->FindRowByKey("log");
     config.log_resource =
         log_row == kNoTableRow ? ResourceId{} : DefIdFromRow<ResourceIdTag>(log_row);
+    const std::uint32_t hay_row = resources->FindRowByKey("hay");
+    config.hay_resource =
+        hay_row == kNoTableRow ? ResourceId{} : DefIdFromRow<ResourceIdTag>(hay_row);
+    // A field's winter dose (kDayOffHeldUrgentLoad's resource; #1056 C2).
+    const std::uint32_t manure_row = resources->FindRowByKey("manure");
+    config.manure_resource =
+        manure_row == kNoTableRow ? ResourceId{} : DefIdFromRow<ResourceIdTag>(manure_row);
   }
   // THE PLAN'S REACH (B3): labour's cells, labour's ranges (labor_config.cpp).
   // THE PLAN'S CLOCK (B4b): the same cells, the same ranges.
@@ -192,6 +209,20 @@ bool ParseLogisticsConfig(const ITableSet& tables, LogisticsConfig& config, std:
       return false;
     }
     config.cart_passenger_seats = static_cast<std::uint32_t>(seats);
+    // THE CART TRIP's MODEL (#1056 C3): production's cell and range
+    // (production_config.cpp, cart_trip_model) - 3 is the plan writing the
+    // price. One switch, two readers.
+    float model = static_cast<float>(config.cart_trip_model);
+    if (!OptionalCell(*transport,
+                      transport->FindRowByKey("cart_loaded"),
+                      transport->FindColumn("trip_model"),
+                      Range{.low = 0.0F, .high = 3.0F},
+                      model,
+                      error)) {
+      PrefixError("transport", "trip_model", error);
+      return false;
+    }
+    config.cart_trip_model = static_cast<std::uint8_t>(model);
   }
   if (const ITable* const livestock = tables.FindTable("livestock")) {
     config.horse_kind = DefIdFromRow<LivestockKindIdTag>(livestock->FindRowByKey("horse"));
@@ -216,6 +247,24 @@ bool ParseLogisticsConfig(const ITableSet& tables, LogisticsConfig& config, std:
                        error)) {
       PrefixError("world_params", "field_heap_keeping_factor", error);
       return false;
+    }
+  }
+  // THE HAY's NIGHTLY LOSS (#1056 C3, the third lever): production's cells
+  // and ranges (production_config.cpp, hay_weathering_*). One cell, two readers.
+  if (const ITable* const farming = tables.FindTable("farming")) {
+    constexpr std::array<const char*, 4> kSeasons = {"hay_weathering_summer",
+                                                     "hay_weathering_autumn",
+                                                     "hay_weathering_winter",
+                                                     "hay_weathering_spring"};
+    for (std::size_t season = 0; season < kSeasons.size(); ++season) {
+      if (!OptionalValue(*farming,
+                         kSeasons[season],
+                         Range{.low = 0.0F, .high = 1.0F},
+                         config.hay_weathering_by_season[season],
+                         error)) {
+        PrefixError("farming", kSeasons[season], error);
+        return false;
+      }
     }
   }
   return ReadPorterRules(tables, config.porter, error) &&

@@ -58,6 +58,31 @@ namespace core {
 /// @return Grams lost today, never more than `held`.
 Grams SpoiledToday(Grams held, float spoil_days, float keeping_factor);
 
+/// @brief A field heap's shelf in game days: `spoil_days` x the heap's
+///        keeping factor, or infinity when the resource keeps for ever (0).
+///
+/// ONE HOME for two doors (#1099): logistics orders its heaps by it (#1056
+/// C4.2, ShelfDaysOf) and labour weighs a rotting heap's shelf against a
+/// standing crop's snow (MarkTheUrgentLoads). Each reads the same two cells
+/// (resources.csv spoil_days, world_params field_heap_keeping_factor).
+float FieldHeapShelfDays(float spoil_days, float keeping_factor);
+
+/// @brief The season whose share of loose hay weathers in month `month`
+///        (calendar month index 0..11): 0 summer, 1 autumn, 2 winter, 3
+///        spring - the index of farming.csv's hay_weathering_summer, _autumn,
+///        _winter, _spring.
+///
+/// ONE HOME for two doors (#1056 C3, the third lever): production weathers
+/// the heap by it (field_haul.cpp, SpoilFieldHeaps) and logistics orders the
+/// heaps by the nightly loss it gives (logistics_plan.cpp, ShelfDaysOf).
+std::uint32_t HayWeatheringSeason(std::uint32_t month);
+
+/// @brief A loose hay heap's shelf in game days by its nightly loss: the
+///        month's share over the month's days, as 1 / that daily share;
+///        infinity when the season weathers none. Comparable with
+///        FieldHeapShelfDays, whose daily share is 1 / shelf.
+float HayHeapShelfDays(float season_share);
+
 /// @brief The ROT MARGIN: grams to hold beyond `held` so that `held` is
 /// still there after `days` of SpoiledToday's daily share —
 /// held / (1 − 1/spoil_days)^days − held.

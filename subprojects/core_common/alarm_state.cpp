@@ -64,6 +64,8 @@ std::uint32_t AlarmSubjectValue(const Alarm& alarm) {
     // The book's «засеем меньше»: the registry's subject is the seed
     // (alarms.csv `seed_area_short`; 0.37.43).
     case AlarmKind::kSeedAreaShort:
+    // The clamps' rot: the potato (proposed `clamp_rot`; #1005).
+    case AlarmKind::kClampRot:
       return alarm.resource.value;
     case AlarmKind::kFamilyGoingHungry:
     // The oldest waiting couple's family, or the family on the brink; 0 when
@@ -136,6 +138,7 @@ bool IsElderAdvice(AlarmKind kind) {
     case AlarmKind::kLogisticsLate:
     case AlarmKind::kHousingShort:
     case AlarmKind::kSiteSupplyWaits:
+    case AlarmKind::kClampRot:
       return false;
   }
   return false;

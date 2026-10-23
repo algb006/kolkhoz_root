@@ -1,17 +1,25 @@
 kolkhoz_add_unit_test(core_production
     main.cpp
     cart_trips_checks.cpp
+    trip_terms_writer_checks.cpp
+    district_carts_checks.cpp
     feed_home_checks.cpp
     grass_stand_checks.cpp
     harvest_advice_checks.cpp
     heap_lamp_checks.cpp
     herd_death_checks.cpp
     hourly_carting_checks.cpp
+    manure_cart_checks.cpp
     meadow_hay_checks.cpp
     perennial_cut_checks.cpp
+    plan_due_checks.cpp
+    district_reputation_checks.cpp
     seed_lamp_checks.cpp
     site_supply_checks.cpp
-    store_keeping_checks.cpp)
+    store_keeping_checks.cpp
+    hay_weathering_checks.cpp
+    clamp_rot_checks.cpp
+    team_oat_plan_checks.cpp)
 
 # The herd day and the parsed configuration are internal seams of the module
 # (herd_system.h, production_config.h); the tests feed the structs directly,

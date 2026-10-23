@@ -248,7 +248,13 @@ struct YearLedger {
   /// WHAT THE CARRIERS BROUGHT IN (0.36.5; econ, boss-econ-roads-balance [4]
   /// item 5в): what the haul took off the field heaps, the timber stands and
   /// the dig sites into the stores. Beside `harvest` it separates "brought
-  /// in" from "rotted in the heap" — the heap's rot is in lost_no_room.
+  /// in" from what else left the heap: its nightly rot in `spoiled`
+  /// (field_haul.cpp, SpoilFieldHeaps), the district's take of the plan off
+  /// it in `delivered` (district_plan.cpp, TakePlanDebtFromFields), last
+  /// year's other crop written off under a new one in `lost_no_room`
+  /// (PutOnHeap). Until 0.37.289 this said «the heap's rot is in
+  /// lost_no_room», stale since the heaps rot through SpoilFieldHeaps, and
+  /// host's potato book read 30-80 t a year as «unread» by it (#1005).
   /// Save 94.
   ResourceAmounts hauled_to_stores;
 
@@ -372,6 +378,13 @@ struct YearLedger {
 
   Grams manure_plowed_in = 0;
 
+  /// #1056 C2 (save 176; manure_cart.h): manure carted heap -> field on the
+  /// winter's sledges, and the booked doses cancelled back into the heap
+  /// because a field's ploughing opened before they were all on it (gate
+  /// M-g's late count).
+  Grams manure_carted = 0;
+  Grams manure_late = 0;
+
   // -- kolkhoz herds -------------------------------------------------------
   /// Milk, eggs, wool, manure from the kolkhoz herds into the stores.
   ResourceAmounts herd_produce;
@@ -410,6 +423,9 @@ struct YearLedger {
 
   // -- district ------------------------------------------------------------
   ResourceAmounts delivered;  ///< Shipped against the plan.
+  /// Of `delivered`, what the village's OWN carts carried (routing stage В5,
+  /// save 163): the share the own-delivery bonus is read by (district §4).
+  ResourceAmounts delivered_own;
 
   /// WHAT THE DISTRICT ASKED, by position, written by the plan's judge at
   /// the turn before it clears the figure (econ's audit M12, Л1; boss, seq
@@ -454,12 +470,21 @@ struct YearLedger {
   /// 89). What stays owed is PlanState::goods_loan_owed, which carries on.
   ResourceAmounts goods_loan_repaid;
 
-  /// What went bad in a store or a larder over the year, by resource
-  /// (task A4; transport design §10). A separate column from `lost_no_room`
+  /// What went bad over the year, by resource (task A4; transport design
+  /// §10). THREE writers: the units' stores at the day's last tick, the
+  /// families' larders the next day, and the field heaps every night
+  /// (SpoilFieldHeaps) - one column, not split by where it rotted. A
+  /// separate column from `lost_no_room`
   /// because they are different failures with different cures: lost_no_room is
   /// a barn too small, spoiled is a barn too slow. Nothing vanishes without
   /// a line — the same rule that gave lost_no_room its column.
   ResourceAmounts spoiled;
+
+  /// OF `spoiled`, what rotted in a clamp, by resource (#1005; save 176):
+  /// not another loss, the clamp's share of it, booked by the same writer
+  /// (SpoilStores) on the same grams. The lamp «В буртах сгнило N т» reads
+  /// these grams by day off WorldState::clamp_rot, not this column.
+  ResourceAmounts spoiled_in_clamps;
 
   /// WHAT WENT INTO A BUILDING (boss seq 165; save 70): the recipe of a
   /// finished level, a repair's spare parts, an insulation's straw — taken
@@ -565,6 +590,25 @@ struct YearLedger {
   /// the haul that rests on the forbidden driving is a mass, not a count.
   std::array<Grams, kCartLoadSourceCountValue> cart_grams = {};
   std::array<Grams, kCartLoadSourceCountValue> cart_grams_off_road = {};
+
+  // -- THE DRAWN TRIP IS THE PRICE (#1056 C3; core_common/trip_terms.h): U, as
+  // a column (econ's §C3), and its two prints C3-g and C3-h. Written only
+  // under CartTripModel::kPlanned; nought under every other model.
+  /// WHOLE TRIPS PAID, by source: the cart-days the labour drained off a
+  /// cart's seam, × the norm day's hours ÷ the load's round trip, booked by
+  /// production's conversion beside `cart_trips` (BookCartRun). U = their sum ÷
+  /// `cart_trips`'s sum (the fluid trips of the same grams) - the fallback's
+  /// trips counted in it, as econ's ruling 1 asks.
+  std::array<float, kCartLoadSourceCountValue> cart_trips_paid = {};
+  /// C3-g: the cart-days the plan wrote from its drawn trips, and the
+  /// fallback's (whole trips of what it did not reach), the day's last plan
+  /// summed over the year (trip_pricing.h, PriceTasksFromPlan).
+  float cart_days_drawn = 0.0F;
+  float cart_days_fallback = 0.0F;
+  /// C3-h: the day's last plan's pooled trips (two fields' leftovers in one
+  /// load) and back loads, summed over the year.
+  float cart_trips_pooled = 0.0F;
+  float cart_trips_back = 0.0F;
 
   // -- WHO CARRIED IT: backs and carts (#671; save 155 with the
   // implementation). Transport design §2's return condition reads the share
@@ -858,6 +902,41 @@ struct YearLedger {
   float zyab_ha_dec1 = 0.0F;
 
   std::uint16_t zyab_fields_dec1 = 0;
+
+  /// THE RATING'S YEAR BY ITS WRITERS (save 166; #1043; boss, the #1043
+  /// thread [6]: «name the source by a print») - each the points it moved
+  /// chairman.raikom_reputation by, after the scale's clamp:
+  /// - `reputation_plan_step`: the plan's verdict (JudgePlan), met or failed;
+  /// - `reputation_tier_step`: the overfulfilment's tiers (district_reputation.h);
+  /// - `reputation_visit_step`: the clean visits' recovery steps;
+  /// - `reputation_losses`: the seizure and the plan trade, as a positive
+  ///   number taken off.
+  /// And their grounds: `reputation_tiers_reached` (0..3) and
+  /// `reputation_own_overfulfil_t` (the grain-and-potato over-tonnes the
+  /// tiers were read off, the lent grain taken out), booked at the turn
+  /// whatever the cells; `reputation_clean_visits` (every visit that found
+  /// nothing, stepped or not).
+  float reputation_plan_step = 0.0F;
+
+  float reputation_tier_step = 0.0F;
+
+  float reputation_visit_step = 0.0F;
+
+  float reputation_losses = 0.0F;
+
+  std::uint16_t reputation_clean_visits = 0;
+
+  std::uint16_t reputation_tiers_reached = 0;
+
+  float reputation_own_overfulfil_t = 0.0F;
+
+  /// THE TEAM'S WORK-OAT REQUEST OF THE YEAR, grams of oat (save 167; #1040;
+  /// econ's oat-lamp contract §1): every working day's work-ration room of
+  /// the kolkhoz team (herd_system.cpp, WatchTheTeam) — fed and short in one
+  /// — converted from FEED UNITS by the oat's feed value. The closed book's
+  /// figure is next year's team need (team_oat_plan.h). Not `feed`'s oat and
+  /// barley: pigs eat both (feed_links.csv), so `feed` counts their keep.
+  Grams team_work_oat_requested = 0;
 };
 
 /// @brief The two books of the world: the year being written and the last

@@ -218,7 +218,9 @@ MeadowMarkAnswer PreviewMeadowMark(const MeadowMarkGround& ground,
   if (flood_share > kDryShareMax && flood_share < kFloodplainShareMin) {
     return Refused(MeadowMarkRefusal::kMixedFloodplain, position, flood_share);
   }
-  const PlotRules rules{.radius_by_type = ground.plot_radius_m, .map_side_m = ground.map_side_m};
+  const PlotRules rules{.radius_by_type = ground.plot_radius_m,
+                        .map_side_m = ground.map_side_m,
+                        .yields_by_type = {}};
   if (PlotOverlaps(world.units, rules, position, radius, UnitId{})) {
     return Refused(MeadowMarkRefusal::kUnit, position, flood_share);
   }

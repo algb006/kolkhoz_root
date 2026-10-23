@@ -67,6 +67,54 @@ Grams DeliverableAboveSeed(const ProductionConfig& config,
                            ResourceId resource,
                            SimDay seed_as_of);
 
+/// @brief Grams of `resource` a delivery from the STORES alone may take,
+/// leaving the next sowing's seed in them - the heaps not counted against
+/// the seed (stage В5: the district's monthly collection and the own
+/// delivery take from the stores, not from the fields).
+/// @param seed_as_of See SeedHeldToSowing.
+Grams DeliverableFromStores(const ProductionConfig& config,
+                            const WorldState& current,
+                            ResourceId resource,
+                            SimDay seed_as_of);
+
+/// @brief THE ONE SEED RULE both doors above are: the stores (and, with
+///        `with_heaps`, the fields' heaps) less what is still to be sown after
+///        `seed_as_of` (district.md §4, corrected 17 October 2026). Each reader
+///        passes its own day: the lamp and the collection today, the turn
+///        SeedDayAtTheTurn.
+Grams DeliverableForPlan(const ProductionConfig& config,
+                         const WorldState& current,
+                         ResourceId resource,
+                         SimDay seed_as_of,
+                         bool with_heaps);
+
+/// @brief What the turn's delivery ships of `resource`'s position, read as
+///        of `seed_as_of`: the least of what is owed and DeliverableAboveSeed
+///        less `draw_to_turn`. The ONE answer the turn (DeliverPlan, draw 0:
+///        its own day) acts on and the plan-short lamp forecasts by (draw:
+///        StoresDrawToTheTurn). 0 for a resource with no position.
+Grams TurnWillShip(const ProductionConfig& config,
+                   const WorldState& current,
+                   ResourceId resource,
+                   SimDay seed_as_of,
+                   Grams draw_to_turn);
+
+/// @brief The stores' expected draw of `resource` from this morning to the
+///        turn, grams (econ's (e2′), the lamp thread [13]): the EATING - the
+///        non-rot draw of this month so far per settled evening once it has
+///        three, else the last closed month's (PlanState::draw_last_month) -
+///        over the days left, today's included, PLUS the ROT of what lies in
+///        the stores today to the turn by the shelf-life model. An ESTIMATE.
+Grams StoresDrawToTheTurn(const ProductionConfig& config,
+                          const WorldState& current,
+                          ResourceId resource);
+
+/// @brief On each month's last evening, closes the month's draw out of the
+///        stores (PlanState::draw_mark, draw_last_month) from the year's
+///        book; on the year's last evening the mark goes back to nought with
+///        the book. Does nothing on another day. Call once a day, evening.
+void MarkStoresDraw(WorldState& current);
+
 /// @brief «Сдать сейчас» (kDeliverPlan; econ's audit M2, Л1): what is still
 /// owed of one position — or of every position when `only` is invalid —
 /// leaves the stores now, as much as the stores hold, and is added to
@@ -134,6 +182,12 @@ bool PlanWasMet(const ProductionConfig& config, const WorldState& current);
 /// position's produce instead, and a position with no start stock asks
 /// nothing (ProductionConfig::first_plan_start_stock_share).
 void AnnouncePlan(const ProductionConfig& config, WorldState& current);
+
+/// @brief A gram of `resource` in grams of grain, as the overfulfilment weighs
+///        it (PlanOverfulfilGrainTonnes) and the winter crop's move to the
+///        spring positions does: 0 when the tables carry no weight for it.
+///        ONE HOME with the split's total (plan_due.h; 0.37.278).
+double GrainPerGram(const ProductionConfig& config, ResourceId resource);
 
 /// @brief One position's spring figure off `worked_ha`: a normal yield on its
 /// share of the area, times the plan's share — AnnouncePlan's rule, in one

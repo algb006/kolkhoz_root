@@ -6,12 +6,17 @@
 #include "core_common/work_seam.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
+#include "core_common/hauled_book.h"
+#include "core_common/logistics_rules.h"
 #include "core_common/module_rules.h"
 #include "core_common/state_table_ops.h"
+#include "core_common/unit_state.h"
 
 namespace core {
 
@@ -46,6 +51,12 @@ const float* WorkSeamOf(const WorldState& world, const WorkAssignment& work) {
     }
     return &unit.production_days_remaining;
   }
+  // THE MILK LEG (#1056 C1.1; logistics_state.h, kMilkLeg): a hauling on a
+  // herd carts its barn's milk to the milk's store - the herd's own leg seam.
+  if (work.kind == WorkKind::kHauling && work.herd.value != kInvalidEntityIdValue) {
+    const std::uint32_t row = FindRow(world.herds, work.herd);
+    return row == kNoRow ? nullptr : &world.herds.rows[row].leg_days_remaining;
+  }
   // THE PEREVALKA (kEmptyStore; 2026-09-19): carting out of a store being
   // emptied drains the unit's own carting seam — only while the order
   // stands and its carrying is not paused (emptying 1, not 2).
@@ -62,9 +73,12 @@ const float* WorkSeamOf(const WorldState& world, const WorkAssignment& work) {
     // have materials awaiting drains its supply seam — not while it is paused
     // (construction design §6). A store being emptied is carted OUT first:
     // one hauling work names one unit, and the order above is the chairman's.
-    return unit.emptying == 0 && unit.paused == 0 && AnythingAwaits(unit.construction)
-               ? &unit.construction.supply_days_remaining
-               : nullptr;
+    if (unit.emptying == 0 && unit.paused == 0 && AnythingAwaits(unit.construction)) {
+      return &unit.construction.supply_days_remaining;
+    }
+    // A RICK'S SUPPLY FROM ANOTHER RICK (#1056 C1.2; unit_state.h,
+    // RickSupplySeam): asked after the two above.
+    return RickSupplyStands(unit) ? &unit.rick_supply.days_remaining : nullptr;
   }
   // A TIMBER LOT AT THE DISTRICT CENTRE (decision 279, 0.36.17): carting
   // drains the lot's own carting seam while anything of it waits there.
@@ -127,8 +141,13 @@ const float* WorkSeamOf(const WorldState& world, const WorkAssignment& work) {
     // on the strength of a comment claiming the two could never overlap —
     // and the canon's own rotation overlapped them in the same step. What
     // ends the haul is the load being gone, not a phase changing under it.
-    return world.fields.rows[row].reaped_grams > 0 ? &world.fields.rows[row].haul_days_remaining
-                                                   : nullptr;
+    const FieldRow& field = world.fields.rows[row];
+    if (field.reaped_grams > 0) {
+      return &field.haul_days_remaining;
+    }
+    // THE WINTER'S DOSE (#1056 C2): asked after the reaped heap, by the same
+    // predicate every other door reads (land_state.h, ManureDoseStands).
+    return ManureDoseStands(field) ? &field.manure_dose.days_remaining : nullptr;
   }
   if (KindOfPhase(world.fields.rows[row].phase) != work.kind) {
     return nullptr;  // production has moved the field on since the morning
@@ -137,7 +156,10 @@ const float* WorkSeamOf(const WorldState& world, const WorkAssignment& work) {
 }
 
 bool WorkPlaceOf(const WorldState& world, const WorkAssignment& work, Vec2& place) {
-  if (work.kind == WorkKind::kHerdCare) {
+  // The herd's barn, for its care and for its milk leg (#1056 C1.1: a
+  // hauling on a herd is loaded at the barn).
+  if (work.kind == WorkKind::kHerdCare ||
+      (work.kind == WorkKind::kHauling && work.herd.value != kInvalidEntityIdValue)) {
     const std::uint32_t herd_row = FindRow(world.herds, work.herd);
     if (herd_row == kNoRow) {
       return false;
@@ -169,6 +191,14 @@ bool WorkPlaceOf(const WorldState& world, const WorkAssignment& work, Vec2& plac
     const bool supplying =
         work.kind == WorkKind::kHauling && unit.emptying == 0 && AnythingAwaits(unit.construction);
     place = supplying ? unit.construction.supply_from : unit.position;
+    // A rick's supply is loaded at the rick it comes from (#1056 C1.2).
+    if (work.kind == WorkKind::kHauling && !supplying && RickSupplyStands(unit)) {
+      const std::uint32_t from_row = FindRow(world.units, unit.rick_supply.from);
+      if (from_row == kNoRow) {
+        return false;
+      }
+      place = world.units.rows[from_row].position;
+    }
     return true;
   }
   if (work.stand.value != kInvalidEntityIdValue) {
@@ -200,7 +230,18 @@ bool WorkPlaceOf(const WorldState& world, const WorkAssignment& work, Vec2& plac
   if (row == kNoRow) {
     return false;
   }
-  place = world.fields.rows[row].center;
+  const FieldRow& field = world.fields.rows[row];
+  // A field's winter dose is loaded at its heap (#1056 C2), as a rick's
+  // supply at its sender.
+  if (work.kind == WorkKind::kHauling && ManureDoseStands(field)) {
+    const std::uint32_t heap_row = FindRow(world.units, field.manure_dose.from);
+    if (heap_row == kNoRow) {
+      return false;
+    }
+    place = world.units.rows[heap_row].position;
+    return true;
+  }
+  place = field.center;
   return true;
 }
 
@@ -334,7 +375,13 @@ TravelMode WorkTravelMode(const WorldState& world, const WorkAssignment& work) {
 }
 
 HarnessCount CountHarness(const WorldState& world) {
+  return CountHarness(world, LivestockKindId{});
+}
+
+HarnessCount CountHarness(const WorldState& world, LivestockKindId horse_kind) {
   HarnessCount count;
+  // With no grown horse every job walks for want of one (boss, [110]).
+  const bool horses_kept = SettlementHasCarts(world, horse_kind);
 
   // The loads being carted, by their seam: riders and walkers apart, so the
   // walkers count only as far as the load wanted a cart (work_seam.h).
@@ -342,6 +389,13 @@ HarnessCount CountHarness(const WorldState& world) {
     const float* seam = nullptr;
     std::uint32_t riders = 0;
     std::uint32_t walkers = 0;
+    /// The load was priced ON FOOT by the carrier's choice - a milk leg whose
+    /// walk holds the day's trips (HerdRow::leg_on_foot): it wants no cart.
+    bool walked_by_choice = false;
+    /// The load is a field's winter manure dose: the last windowless cart,
+    /// which waits for a free horse by the plan's own order (assignment.cpp,
+    /// AssignmentJob::manure_dose) - its walkers are not a team too small.
+    bool waits_for_a_free_horse = false;
   };
 
   std::vector<Load> loads;
@@ -357,13 +411,26 @@ HarnessCount CountHarness(const WorldState& world) {
       const float* const seam = WorkSeamOf(world, work);
       auto load = std::ranges::find_if(loads, [seam](const Load& one) { return one.seam == seam; });
       if (load == loads.end()) {
-        loads.push_back(Load{.seam = seam});
+        bool walked_by_choice = false;
+        if (horses_kept && work.herd.value != kInvalidEntityIdValue) {
+          const std::uint32_t herd_row = FindRow(world.herds, work.herd);
+          walked_by_choice = herd_row != kNoRow && world.herds.rows[herd_row].leg_on_foot != 0;
+        }
+        bool dose = false;
+        if (horses_kept && seam != nullptr && work.field.value != kInvalidEntityIdValue) {
+          const std::uint32_t field_row = FindRow(world.fields, work.field);
+          dose = field_row != kNoRow &&
+                 seam == &world.fields.rows[field_row].manure_dose.days_remaining;
+        }
+        loads.push_back(Load{
+            .seam = seam, .walked_by_choice = walked_by_choice, .waits_for_a_free_horse = dose});
         load = loads.end() - 1;
       }
       if (work.rides_horse != 0) {
         ++count.in_traces;
         ++count.releasable;
         ++count.harnessed;
+        ++count.light_in_traces;  // a cart or a sledge: light work
         ++load->riders;
       } else {
         ++load->walkers;
@@ -381,12 +448,34 @@ HarnessCount CountHarness(const WorldState& world) {
       ++count.in_traces;
       ++count.harnessed;
       ++count.releasable;
+      // A crew's cart is light work; a MEADOW'S MOWER is not (the mowing
+      // machine is field work, econ §A: «plough, harrow, mower stay full»).
+      bool mower = false;
+      if (work.kind == WorkKind::kHarvest) {
+        const std::uint32_t field_row = FindRow(world.fields, work.field);
+        mower = field_row != kNoRow && world.fields.rows[field_row].kind == LandKind::kMeadow;
+      }
+      count.light_in_traces += mower ? 0U : 1U;
     }
   }
   // THE WALKERS, AS FAR AS THE LOAD WANTED A CART (0.37.105): the seam's
   // norm-days beyond one a rider — a cart-day each while the settlement has
   // carts, a walker's day each while it has none, and then they all count.
+  // A LOAD WALKED BY CHOICE WANTS NO CART (MR.2's trace; boss, the #1056
+  // thread [109]: «Мало лошадей» is «нехватка тягла», time design): the milk
+  // leg priced at a walker's trip is in walker-days, so every can-carrier
+  // read as a cart-day pulled by hand - 6 670 noon walkers in the novice's
+  // year 1 against the base's 476 - lit «too few horses», and the novice
+  // bought ~120 horses that ate year 2's hay.
+  // NOR DOES A DOSE WAITING FOR A FREE HORSE (#1056 C2; boss, the C2 pair
+  // thread [16], [17]): the dose is the last windowless cart, so its walkers
+  // are the plan's order of work. Counted, they lit the lamp on 15 days in 10
+  // novice villages in y1's January and 54 in 21 in February, where the base
+  // lit none, and the novice bought 25 horses that ate y2's spring hay.
   for (const Load& load : loads) {
+    if (load.walked_by_choice || load.waits_for_a_free_horse) {
+      continue;
+    }
     std::uint32_t wanted = load.walkers;  // a load with no seam left to read: as before
     if (load.seam != nullptr) {
       const float beyond = *load.seam - static_cast<float>(load.riders);
@@ -395,6 +484,77 @@ HarnessCount CountHarness(const WorldState& world) {
     count.harnessed += load.walkers < wanted ? load.walkers : wanted;
   }
   return count;
+}
+
+std::array<std::uint16_t, kCartUseCount> HorsesByUse(const WorldState& world,
+                                                     std::uint32_t draught_horses) {
+  std::array<std::uint32_t, kCartUseCount> held{};
+  const auto add = [&held](CartUse use) { ++held[static_cast<std::size_t>(use)]; };
+  const auto on_meadow = [&world](FieldId field) {
+    const std::uint32_t row = FindRow(world.fields, field);
+    if (row == kNoRow) {
+      return false;
+    }
+    const LandKind land = world.fields.rows[row].kind;
+    return land == LandKind::kMeadow || land == LandKind::kFloodplainMeadow;
+  };
+  // THE SAME HORSES CountHarness PUTS IN THE TRACES (above), classed: one a
+  // ploughman or harrower, one a carter on a horse, one a crew's cart on its
+  // driver.
+  for (const ResidentRow& person : world.residents.rows) {
+    const WorkAssignment& work = person.work;
+    if (IsHorseWork(work.kind)) {
+      add(CartUse::kPlough);
+      continue;
+    }
+    if (work.rides_horse == 0) {
+      continue;
+    }
+    if (work.kind == WorkKind::kHauling) {
+      if (work.field.value != kInvalidEntityIdValue) {
+        add(on_meadow(work.field) ? CartUse::kHay : CartUse::kFields);
+        continue;
+      }
+      const std::uint32_t unit =
+          work.unit.value != kInvalidEntityIdValue ? FindRow(world.units, work.unit) : kNoRow;
+      const bool supply = unit != kNoRow && world.units.rows[unit].emptying == 0 &&
+                          AnythingAwaits(world.units.rows[unit].construction);
+      add(supply ? CartUse::kSiteSupply : CartUse::kOtherLoad);
+      continue;
+    }
+    if (work.kind == WorkKind::kHarvest || work.kind == WorkKind::kSowing) {
+      add(work.kind == WorkKind::kHarvest && on_meadow(work.field) ? CartUse::kHay
+                                                                   : CartUse::kFields);
+      continue;
+    }
+    if (TakesThePeoplesCart(work.kind)) {
+      add(CartUse::kPeoplesCart);
+    }
+  }
+  std::uint32_t in_use = 0;
+  for (const std::uint32_t count : held) {
+    in_use += count;
+  }
+  held[static_cast<std::size_t>(CartUse::kFree)] =
+      draught_horses > in_use ? draught_horses - in_use : 0U;
+  std::array<std::uint16_t, kCartUseCount> out{};
+  for (std::size_t use = 0; use < kCartUseCount; ++use) {
+    out[use] = static_cast<std::uint16_t>(std::min<std::uint32_t>(held[use], 0xFFFFU));
+  }
+  return out;
+}
+
+std::uint32_t DraughtHorsesOf(const WorldState& world, LivestockKindId horse_kind) {
+  if (horse_kind.value == kInvalidDefIdValue) {
+    return 0;
+  }
+  std::uint32_t horses = 0;
+  for (const HerdRow& herd : world.herds.rows) {
+    if (herd.kind.value == horse_kind.value) {
+      horses += herd.adult_count;
+    }
+  }
+  return horses;
 }
 
 bool SettlementHasCarts(const WorldState& world, LivestockKindId horse_kind) {
@@ -414,6 +574,72 @@ float* WorkSeamOf(WorldState& world, const WorkAssignment& work) {
   return const_cast<float*>(WorkSeamOf(static_cast<const WorldState&>(world), work));
 }
 
+float* WorkSeamWrittenOf(WorldState& world, const WorkAssignment& work) {
+  float* const seam = WorkSeamOf(world, work);
+  if (seam == nullptr || work.kind != WorkKind::kHauling) {
+    return nullptr;
+  }
+  // The row the seam lies on, by its address: one roster (WorkSeamOf's), and
+  // here only each remaining cell's written twin beside it.
+  if (const std::uint32_t row = FindRow(world.herds, work.herd); row != kNoRow) {
+    HerdRow& herd = world.herds.rows[row];
+    return seam == &herd.leg_days_remaining ? &herd.leg_days_written : nullptr;
+  }
+  if (const std::uint32_t row = FindRow(world.units, work.unit); row != kNoRow) {
+    UnitRow& unit = world.units.rows[row];
+    if (seam == &unit.haul_days_remaining) {
+      return &unit.haul_days_written;
+    }
+    if (seam == &unit.construction.supply_days_remaining) {
+      return &unit.construction.supply_days_written;
+    }
+    return seam == &unit.rick_supply.days_remaining ? &unit.rick_supply.days_written : nullptr;
+  }
+  if (const std::uint32_t row = FindRow(world.limit_deliveries, work.limit_delivery);
+      row != kNoRow) {
+    LimitDeliveryRow& lot = world.limit_deliveries.rows[row];
+    return seam == &lot.haul_days_remaining ? &lot.haul_days_written : nullptr;
+  }
+  if (const std::uint32_t row = FindRow(world.stands, work.stand); row != kNoRow) {
+    TimberStandRow& stand = world.stands.rows[row];
+    return seam == &stand.haul_days_remaining ? &stand.haul_days_written : nullptr;
+  }
+  if (const std::uint32_t row = FindRow(world.extraction_sites, work.extraction_site);
+      row != kNoRow) {
+    ExtractionSiteRow& site = world.extraction_sites.rows[row];
+    return seam == &site.haul_days_remaining ? &site.haul_days_written : nullptr;
+  }
+  if (const std::uint32_t row = FindRow(world.fields, work.field); row != kNoRow) {
+    FieldRow& field = world.fields.rows[row];
+    return seam == &field.haul_days_remaining ? &field.haul_days_written : nullptr;
+  }
+  return nullptr;
+}
+
+float CoDrainCarriedTasks(WorldState& world, LogisticsTaskId carrier, float drained) {
+  if (!(drained > 0.0F) || carrier.value == kInvalidEntityIdValue) {
+    return 0.0F;
+  }
+  float total = 0.0F;
+  for (std::uint32_t row = 0; row < world.logistics_tasks.rows.size(); ++row) {
+    const LogisticsTaskRow& task = world.logistics_tasks.rows[row];
+    if (task.carried_by.value != carrier.value || !(task.carried_share > 0.0F)) {
+      continue;
+    }
+    const WorkAssignment carried = HaulingWorkOf(task);
+    float* const seam = WorkSeamOf(world, carried);
+    if (seam == nullptr || !(*seam > 0.0F)) {
+      continue;
+    }
+    const float take = std::min(*seam, drained * task.carried_share);
+    *seam -= take;
+    total += take;
+    // Who drained it, for production's settle (hauled_book.h): the carrier's cart.
+    NoteHaulDrain(world, carried, take, /*on_foot=*/false);
+  }
+  return total;
+}
+
 // THE TRIP'S RECEIVER (stage В, F3 (A)): the `haul_to` production wrote with
 // the load's seam (field_haul.cpp), or the works itself for its supply. A
 // point at the map's origin is a receiver never written: no store stands in
@@ -431,15 +657,22 @@ bool WorkReceiverOf(const WorldState& world, const WorkAssignment& work, Vec2& r
     receiver = point;
     return true;
   };
+  // The milk leg (#1056 C1.1): the milk's store production wrote with the seam.
+  if (work.herd.value != kInvalidEntityIdValue) {
+    const std::uint32_t row = FindRow(world.herds, work.herd);
+    return row != kNoRow && written(world.herds.rows[row].leg_to);
+  }
   if (work.unit.value != kInvalidEntityIdValue) {
     const std::uint32_t row = FindRow(world.units, work.unit);
     if (row == kNoRow) {
       return false;
     }
     const UnitRow& unit = world.units.rows[row];
-    // A works' supply goes to the works; a store being emptied, to its store.
-    return unit.emptying == 0 && AnythingAwaits(unit.construction) ? written(unit.position)
-                                                                   : written(unit.haul_to);
+    // A works' supply goes to the works, and a rick's supply to the rick
+    // (#1056 C1.2); a store being emptied, to its store.
+    return (unit.emptying == 0 && AnythingAwaits(unit.construction)) || RickSupplyStands(unit)
+               ? written(unit.position)
+               : written(unit.haul_to);
   }
   if (work.stand.value != kInvalidEntityIdValue) {
     const std::uint32_t row = FindRow(world.stands, work.stand);
@@ -455,7 +688,12 @@ bool WorkReceiverOf(const WorldState& world, const WorkAssignment& work, Vec2& r
   }
   if (work.field.value != kInvalidEntityIdValue) {
     const std::uint32_t row = FindRow(world.fields, work.field);
-    return row != kNoRow && written(world.fields.rows[row].haul_to);
+    if (row == kNoRow) {
+      return false;
+    }
+    // A winter dose goes to the field itself (#1056 C2).
+    const FieldRow& field = world.fields.rows[row];
+    return ManureDoseStands(field) ? written(field.center) : written(field.haul_to);
   }
   return false;
 }

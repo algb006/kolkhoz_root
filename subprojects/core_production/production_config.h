@@ -29,6 +29,7 @@
 #include "core_catalog/processing_catalog.h"
 #include "core_catalog/timber_catalog.h"
 #include "core_common/calendar.h"
+#include "core_common/cart_gear.h"
 #include "core_common/haul.h"
 #include "core_common/ids.h"
 #include "core_common/meadow_mark.h"
@@ -476,11 +477,42 @@ struct FarmingConfig {
 
   float plough_floor_margin = 1.33F;
 
+  /// THE FLOOR'S OTHER WINDOWS (#1069; econ's horse-floor-plan-peak-
+  /// 2026-10-19 (8789ff6), option (b); boss, the #1056 thread after [21]):
+  /// the meadow cut takes one horse a meadow at work, and a meadow's work is
+  /// its ha × meadow_mow_days_per_ha over the crew on it - `mow_crew_per_
+  /// meadow`; the harvest's carts are the plan's tonnes over
+  /// `harvest_cart_t_per_team_day`. BOTH STUB, MEASURED ONCE on the base
+  /// (wip/1056 24f385be, canon 9 x 5 and novice 27 x 4): the crew 18 is the
+  /// median at hour 12 over 2 336 meadow job-days (quartiles 8-25); the rate
+  /// 3.74 t is the median of cart t / cart team-days by crop source a
+  /// village-year over 761 rows (quartiles 2.84-5.10) - the t every cart
+  /// source of the crop, the team-days its field heaps' alone, assigned light
+  /// hours / 10. RE-MEASURE when the cart pricing or the load or speed tables
+  /// change (econ). Not a live rate: a closed year's would rise with a hungry
+  /// team.
+  float mow_crew_per_meadow = 18.0F;
+  float harvest_cart_t_per_team_day = 3.74F;
+
   float milk_floor_margin = 1.25F;
 
   float manure_norm_kg_per_ha = 20000.0F;
 
   float manure_fertility_bonus = 6.0F;
+
+  /// #1056 C2: the dose goes to the fields BELOW this fertility, nearest by
+  /// road from the heap first (manure_cart.h BookManureDoses). farming.csv
+  /// `manure_fertility_mark`, STUB 70 (boss, the #1056 thread [136]).
+  float manure_fertility_mark = 70.0F;
+
+  /// #1056 C2's FREE SPREAD OF THE LATE REMAINDER (econ's page ae1166b, way
+  /// (2); boss, boss-core-c2-pair [1]): 1 - what a winter's carts did not take
+  /// of a field's dose goes onto it free from the heap at its ploughing,
+  /// counted as manure_late; 0 - it stays in the heap. farming.csv
+  /// `manure_late_spread_free`, optional, STUB 1. ITS RETURN: the carted share
+  /// (carted / (carted + late)) at least 90 % in the median canon village,
+  /// which needs horse-hours Epoch I lacks - more horses, or Epoch II's MTS.
+  float manure_late_spread_free = 1.0F;
 
   float fallow_recovery = 6.0F;
 
@@ -704,6 +736,54 @@ struct FarmingConfig {
   /// a design decision can reach it.
   float traction_full_ration_share = 0.5F;
 
+  /// farming.csv `light_work_oat_share` (the human, «Сначала овёс»; econ
+  /// winter-team-oats-2026-10-20 §A): a horse in a cart or a sledge draws
+  /// this share of a heavy horse-day's work oats, and keeps this share of the
+  /// work part of its need - the rest is spared, not refilled with hay
+  /// (herd_system.cpp, WorkingShare and LightDaySpared; econ §4d-§4e). Barley
+  /// and the other concentrates stay at the full work share. STUB 0.5, by the
+  /// period's norms (field work 6-8 kg of oats a horse-day, carting at a walk
+  /// 3-4 kg); 1 is the world before it.
+  float light_work_oat_share = 0.5F;
+
+  /// THE THIN YEAR BY THE FIELD PLAN (#1040; econ's oat-lamp contract §1;
+  /// farming.csv): the year's oat - the slot's fields at their own yield
+  /// plus the oat in store above the seed and the plan on 1 January - short
+  /// of the team's need
+  /// times this share. STUB 0.8, econ's.
+  float oat_short_plan_margin = 0.8F;
+
+  /// Year 1's team need, which has no closed year: the start team's heads at
+  /// a full work ration times these working days (econ §1, host's ≈ 31 t).
+  /// STUB 39, econ's (CLAUDE.md §9: ~39 working days a year in Epoch I).
+  float team_need_first_year_working_days = 39.0F;
+
+  /// THE MILK LEG (#1056 C1.1; econ's stage C contract 574c366; boss, the
+  /// #1056 thread [4], [7]; farming.csv `milk_at_barn`): 1 - the kolkhoz
+  /// herds' milk goes into the barn's own stock, the district's cart takes
+  /// its share there, and the rest reaches the store the village keeps milk
+  /// in only by the barn -> store leg (herd care, worked on rest days); 0 -
+  /// the milk goes straight to that store, as before 0.37.298.
+  /// STUB 0 (#1070; boss, the #1056 thread after [18]): THE LEG DOES NOT SHIP.
+  /// Carted, its 9 170 year-1 horse-hours went unfed by the oat plan (team
+  /// short-ration village-days +23 %, novice 27 x 3); on foot (C1.3) a
+  /// 1.4-1.8 km leg is ~7.7 game hours a round trip, under two trips a day,
+  /// and the yards' milk fell 24 %. RETURNS WHEN (iii): the food yard becomes
+  /// milk's store, near the cattle yard in the reference layout - decided
+  /// with #1061's layout re-measure - and the leg's pair is run again.
+  float milk_at_barn = 0.0F;
+
+  /// THE RICK'S SUPPLY (#1056 C1.2; econ's stage C contract 574c366;
+  /// farming.csv `rick_supply`, `rick_threshold_add_days`): 1 - a rick whose
+  /// herds' hay falls below its threshold within the threshold's days is
+  /// supplied by cart from the rick with the most hay to spare
+  /// (rick_supply.h); 0 - no rick is supplied but by the meadows' stacks, as
+  /// before 0.37.301. The threshold: the urgent check's horizon
+  /// (UrgentHayHorizonDays) plus `rick_threshold_add_days` - STUB 7, the
+  /// contract's. STUB 0 until the pair says otherwise.
+  float rick_supply = 0.0F;
+  float rick_threshold_add_days = 7.0F;
+
   /// The pasture season, 0-based months inclusive: outside it a head takes
   /// nothing from the grass and its whole norm comes out of the stores.
   /// ASSUMPTION — the design names summer grazing but no month band.
@@ -751,12 +831,6 @@ struct FarmingConfig {
   /// second home — core_production does not depend on core_time, and the
   /// value lives in the one table both read.
   float still_frost_c = -12.0F;
-
-  /// world_params `feed_draught_first` (0/1, boss's d567729b; econ's pair of
-  /// the feeding order, boss-core-start-no-yards [21]-[23]): the herd day
-  /// walks — and so feeds — the kolkhoz's horse herds before the rest. 0,
-  /// the default, is the rows' order. A switch, not a rule of the design.
-  bool feed_draught_first = false;
 
   /// THE COLD COUNTS IN THE CALENDAR'S WINTER ONLY (world_params
   /// `livestock_cold_first_month`, `livestock_cold_last_month`, 12 and 2,
@@ -888,6 +962,21 @@ struct FarmingConfig {
   /// are grown before the window shuts (fields and crops §3, «укосами каждое
   /// лето»). STUB core, econ's number: 4, one game month.
   float perennial_first_cut_days = 4.0F;
+
+  /// farming.csv `hay_weathering_{summer,autumn,winter,spring}` (#1015; econ's
+  /// meadow-hay-weathering-2026-10-17 §2; farming.md «Сено в валках на лугу
+  /// портится, пока лежит»): the share of a field's heap of hay lost a GAME
+  /// MONTH while it lies, by season - Jun-Aug, Sep-Nov, Dec-Feb, Mar-May -
+  /// applied a day at a time (the month's share over its days). In a rick or a
+  /// barn: nought. STUB, econ's numbers 0 / 0.10 / 0.03 / 0.10; all nought
+  /// is the world before it.
+  std::array<float, 4> hay_weathering_by_season = {0.0F, 0.0F, 0.0F, 0.0F};
+
+  /// farming.csv `clamp_rot_lamp_t` (#1005; econ's clamp-rot-lamp §4c): the
+  /// tonnes of potato and vegetables rotted in clamps over the last year at
+  /// which the lamp «В буртах сгнило N т» lights. STUB, econ's provisional
+  /// 12; the writer's first print sets it before the pair.
+  float clamp_rot_lamp_t = 12.0F;
 
   /// THE LIFE OF A SOWN GRASS STAND (grass_stand.csv; 0.37.212): one row a
   /// summer of the stand, counted from the summer it was sown; the LAST row
@@ -1094,6 +1183,11 @@ struct ProductionConfig {
 
   ResourceId down_resource;  ///< resources.csv "down" row.
 
+  /// resources.csv "potato" and "vegetables": what the clamp-rot lamp counts
+  /// (#1005; clamp_rot_state.h).
+  ResourceId potato_resource;
+  ResourceId vegetables_resource;
+
   UnitTypeId compost_heap_type;  ///< unit_types.csv "compost_heap".
 
   /// The two stores kEmptyStore empties (start §5; registers 214 and 233):
@@ -1101,6 +1195,10 @@ struct ProductionConfig {
   /// hold the store leak open while they hold raw material.
   UnitTypeId church_store_type;
   UnitTypeId clamp_type;
+
+  /// unit_types.csv "vegetable_store": the long answer the clamp-rot lamp
+  /// names (#1005).
+  UnitTypeId vegetable_store_type;
 
   /// resources.csv `theft`, dense by ResourceId: 2 eager, 1 some, 0 none or
   /// not yet written. The perevalka carries what is stolen more readily
@@ -1153,12 +1251,32 @@ struct ProductionConfig {
   /// simplification, not an oversight.
   float cart_load_kg = 750.0F;
 
+  /// THE SLEDGE (SL; core_common/cart_gear.h): transport.csv `sledge`. The
+  /// goods-carting readers take the day's gear through CartGearToday with
+  /// CartSpecsOf(config) - on a snow day the sledge's pace and load; the cart
+  /// fields above stay the cart's one home, and the people's cart and the
+  /// ride to work read them directly.
+  SledgeSpecs sledge;
+
   /// THE CART TRIP's MODEL (routing stage В4; cart_trips.h, CartTripModel):
   /// transport.csv `trip_model` on the `cart_loaded` row - 0 the fluid (a
   /// load pays its fraction of a round trip; the shipped value until econ's
-  /// gates and boss's word), 1 whole trips, 2 whole trips and the routes. No
-  /// column, or an empty cell: 0.
+  /// gates and boss's word), 1 whole trips, 2 whole trips and the routes, 3
+  /// the plan writing the price (#1056 C3; core_common/trip_terms.h). No
+  /// column, or an empty cell: 0. The logistics config reads the same cell
+  /// (LogisticsConfig::cart_trip_model): one switch, two readers.
   std::uint8_t cart_trip_model = 0;
+
+  /// THE OWN-DELIVERY BONUS's SHARE (routing stage В5; district §4; econ's
+  /// (a)): world_params.csv `own_delivery_bonus_share` - the share of the
+  /// points own-carted tonnes earned that a year adds (district_carts.h,
+  /// OwnDeliveryBonusPoints). No row: 0 - the design's release condition
+  /// («если „всегда свой" ничего не стоит, надбавка в 0», district §4): in
+  /// the pair of 17 October 2026 arm O (always own carts) lost no harvest
+  /// against arm D in 0 of 36 village-years (boss-core-v5-gate [10]). RETURN
+  /// CONDITION: a later base on which O loses harvest (lost ha, snow, no
+  /// room) against D in >= 1/3 of village-years - then econ's 0.1.
+  float own_delivery_bonus_share = 0.0F;
 
   /// What a back carries by the load's form, and the terms of logs by two
   /// (core_common/haul.h, PorterRules; core_catalog/porter_catalog.h) - the
@@ -1208,6 +1326,13 @@ struct ProductionConfig {
   /// (day_off.h, UrgentHayHorizonDays; feed_home.h, RickForLoadAt). The cell
   /// has one home, the table; labour's reader is LaborConfig's.
   float hay_cart_urgent_days = 1.0F;
+
+  /// labor.csv `walker_min_trips_per_day`, read here too (#1056 C1.3): the
+  /// milk leg goes on foot unless the standard day holds fewer round trips
+  /// of the walk than this (milk_cart.cpp, PriceMilkLegs) - the same cell
+  /// the placement's last pass asks of a walker (assignment.h). One home,
+  /// the table.
+  float walker_min_trips_per_day = 2.0F;
 
   // -- shelf life (task A4; transport design §10) --------------------------
   /// Game days a resource keeps, by ResourceId — resources.csv `spoil_days`,
@@ -1271,6 +1396,22 @@ struct ProductionConfig {
   /// what tells that apart from a year the district asked nothing of.
   std::vector<PlanPosition> plan_positions;
 
+  /// THE SPLIT FOLLOWS THE CROPS SOWN (#1036; district.md «Раскладка по
+  /// культурам — по плану сева этого года»; econ's plan-by-sown-mix §2a):
+  /// when set, the grain total stays on the worked ha and the positions'
+  /// shares of it follow the year's planned sowing (plan_due.h). campaign.csv
+  /// `plan_split_by_sown_mix` 0/1; the canon's table sets 1 since 0.37.275
+  /// (host's pair: the total equal to the base in 287 of 288 village-years,
+  /// no new failure). False here only for the table-less worlds of the units.
+  bool plan_split_by_sown_mix = false;
+
+  /// THE SIZE FOLLOWS THE DISTRICT RATING (#1036 (b); the human's word of 4
+  /// October, «Делай»): the factor on the grain total by
+  /// chairman.raikom_reputation's band, 0-20, 21-40, 41-60, 61-80, 81-100.
+  /// campaign.csv `plan_band_factor_0_20` ... `_81_100`; STUBs, 1.0 until
+  /// the pair (econ's arm: 0.9/1.0/1.0/1.1/1.2), never tuned after it.
+  std::array<float, 5> plan_band_factor = {1.0F, 1.0F, 1.0F, 1.0F, 1.0F};
+
   /// THE FIRST PLAN IS OFF THE START STOCK, NOT OFF THE ARABLE (boss, parcel
   /// 399; district design §9, "Первый план считается от стартового запаса").
   /// The start's arable is derelict — nobody ploughs 160 ha in the first year
@@ -1328,6 +1469,25 @@ struct ProductionConfig {
 
   float plan_failed_reputation = -8.0F;
 
+  /// THE RATING EARNED BEYOND THE PLAN (#1043; district.md «Рейтинг райкома
+  /// упирается в потолок»): the step a year's own overfulfilment gives per
+  /// tier it REACHES (the limit's three tiers: any tonne over, past
+  /// overfulfil_tier1_t, past tier1 + tier2), capped by
+  /// `plan_overfulfil_reputation_max`; and the step a district visit that
+  /// finds nothing gives, whatever called it. campaign.csv
+  /// `plan_overfulfil_reputation_per_tier` (0), `plan_overfulfil_reputation_max`
+  /// (3), `district_visit_clean_reputation` (0): today's world until host's
+  /// pair (its arm: 1, 3, 1, with plan_met_reputation 1).
+  float plan_overfulfil_reputation_per_tier = 0.0F;
+  float plan_overfulfil_reputation_max = 3.0F;
+  float district_visit_clean_reputation = 0.0F;
+
+  /// THE PLAN'S WEIGHT (#1043): the factor on the grain total beside the
+  /// rating's band (plan_due.h, PlanBandFactor - one product). campaign.csv
+  /// `plan_total_factor`; 1.0 until host's pair (×1.6 / ×2.0), never tuned
+  /// after it.
+  float plan_total_factor = 1.0F;
+
   /// Timber design §8a: the stands and the felling numbers (2026-09-13).
   TimberCatalog timber;
 
@@ -1373,6 +1533,15 @@ struct ProductionConfig {
   /// The chairman's trip to the district in numbers (boss seq 206).
   DistrictTripCatalog district_trip;
 };
+
+/// @brief The cart's and the sledge's numbers of this config (SL; cart_gear.h).
+inline CartSpecs CartSpecsOf(const ProductionConfig& config) {
+  return CartSpecs{.cart_empty_kmh = config.harness_speed_kmh,
+                   .cart_loaded_kmh = config.loaded_speed_kmh,
+                   .cart_load_kg = config.cart_load_kg,
+                   .sledge_kmh = config.sledge.kmh,
+                   .sledge_load_kg = config.sledge.load_kg};
+}
 
 /// @brief Parses every table core_production reads into `config`.
 /// @param error Receives a human-readable message on failure.

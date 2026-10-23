@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "core_common/cart_gear.h"
 #include "core_common/herd_state.h"
 #include "core_common/labor_state.h"
 #include "core_common/logistics_rules.h"
@@ -27,6 +28,7 @@ struct LoadAddress {
 LoadAddress AddressOf(const LogisticsTaskRow& task) {
   switch (task.load_kind) {
     case LogisticsLoadKind::kFieldHeap:
+    case LogisticsLoadKind::kManureField:
       return {task.load_kind, task.field.value};
     case LogisticsLoadKind::kStandLogs:
       return {task.load_kind, task.stand.value};
@@ -36,7 +38,10 @@ LoadAddress AddressOf(const LogisticsTaskRow& task) {
       return {task.load_kind, task.limit_delivery.value};
     case LogisticsLoadKind::kStoreTransfer:
     case LogisticsLoadKind::kSiteSupply:
+    case LogisticsLoadKind::kRickSupply:
       return {task.load_kind, task.unit.value};
+    case LogisticsLoadKind::kMilkLeg:
+      return {task.load_kind, task.herd.value};
     case LogisticsLoadKind::kLogisticsLoadKindCount:
       break;
   }
@@ -63,7 +68,10 @@ std::vector<LoadAddress> LoadsOf(const WorldState& world) {
   }
   for (std::uint32_t row = 0; row < world.limit_deliveries.rows.size(); ++row) {
     const LimitDeliveryRow& lot = world.limit_deliveries.rows[row];
-    if (lot.own_carts != 0 && lot.haul_days_remaining > 0.0F) {
+    // THE MUD CLOSES THE DISTRICT's ROAD to own carts both ways (routing stage
+    // В5): the labour's offer of the same job asks it too (labor_system.cpp) -
+    // asked at one door only, the other sent carters through the mud.
+    if (lot.own_carts != 0 && lot.haul_days_remaining > 0.0F && !world.weather.mud) {
       loads.push_back({LogisticsLoadKind::kDistrictLot, world.limit_deliveries.row_ids[row].value});
     }
   }
@@ -81,6 +89,34 @@ std::vector<LoadAddress> LoadsOf(const WorldState& world) {
   for (const std::uint32_t row : SiteSupplyOrder(world)) {
     loads.push_back({LogisticsLoadKind::kSiteSupply, world.units.row_ids[row].value});
   }
+  // THE MILK LEG (#1056 C1.1): one task a milked kolkhoz herd, standing while
+  // the herd has a leg at all - keyed on the herd, not on today's milk, which
+  // the herd day lays in the barn after this hour-0 sync.
+  for (std::uint32_t row = 0; row < world.herds.rows.size(); ++row) {
+    if (world.herds.rows[row].leg_resource.value != kInvalidDefIdValue) {
+      loads.push_back({LogisticsLoadKind::kMilkLeg, world.herds.row_ids[row].value});
+    }
+  }
+  // A RICK'S SUPPLY (#1056 C1.2): one task a receiving rick while its supply
+  // stands, by the labour's own condition (unit_state.h, RickSupplyStands).
+  for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+    const UnitRow& unit = world.units.rows[row];
+    if (RickSupplyStands(unit) && unit.rick_supply.grams > 0) {
+      loads.push_back({LogisticsLoadKind::kRickSupply, world.units.row_ids[row].value});
+    }
+  }
+  // A FIELD'S WINTER DOSE (#1056 C2): one task a field while its dose stands
+  // (land_state.h, ManureDoseStands) AND SNOW LIES - the dose goes by sledge
+  // only (manure_state.h), so on a bare day there is no load to cart: a task
+  // standing there would age past its level all summer and light the late
+  // lamp over work nobody may do.
+  if (SledgeDay(world)) {
+    for (std::uint32_t row = 0; row < world.fields.rows.size(); ++row) {
+      if (ManureDoseStands(world.fields.rows[row])) {
+        loads.push_back({LogisticsLoadKind::kManureField, world.fields.row_ids[row].value});
+      }
+    }
+  }
   return loads;
 }
 
@@ -93,6 +129,7 @@ LogisticsTaskRow TaskFor(const LogisticsConfig& config, const LoadAddress& load,
   task.load_kind = load.kind;
   switch (load.kind) {
     case LogisticsLoadKind::kFieldHeap:
+    case LogisticsLoadKind::kManureField:
       task.field = FieldId{load.id};
       break;
     case LogisticsLoadKind::kStandLogs:
@@ -106,7 +143,11 @@ LogisticsTaskRow TaskFor(const LogisticsConfig& config, const LoadAddress& load,
       break;
     case LogisticsLoadKind::kStoreTransfer:
     case LogisticsLoadKind::kSiteSupply:
+    case LogisticsLoadKind::kRickSupply:
       task.unit = UnitId{load.id};
+      break;
+    case LogisticsLoadKind::kMilkLeg:
+      task.herd = HerdId{load.id};
       break;
     case LogisticsLoadKind::kLogisticsLoadKindCount:
       break;
@@ -115,6 +156,8 @@ LogisticsTaskRow TaskFor(const LogisticsConfig& config, const LoadAddress& load,
   task.base_level =
       kind < config.default_level.size() ? config.default_level[kind] : LogisticsLevel::kOrdinary;
   task.level = task.base_level;
+  task.urgent_by =
+      task.level == LogisticsLevel::kUrgent ? LogisticsUrgentBy::kAged : LogisticsUrgentBy::kNone;
   task.origin = LogisticsOrigin::kAuto;
   task.aged_from_day = today;
   return task;
@@ -208,6 +251,33 @@ void SyncTasks(const LogisticsConfig& config,
       ++count.made;
     }
   }
+  // THE RICK'S THRESHOLD, copied as it was priced (#1056 C1.2): a second
+  // home that stores the value, bound to the rick's row every sync.
+  for (LogisticsTaskRow& task : current.logistics_tasks.rows) {
+    if (task.load_kind != LogisticsLoadKind::kRickSupply) {
+      continue;
+    }
+    const std::uint32_t row = FindRow(current.units, task.unit);
+    task.threshold_days = row != kNoRow ? current.units.rows[row].rick_supply.threshold_days : 0;
+  }
+}
+
+std::uint32_t AppendNewHeapTasks(const LogisticsConfig& config, WorldState& current, SimDay today) {
+  std::uint32_t made = 0;
+  for (const LoadAddress& load : LoadsOf(current)) {
+    if (load.kind != LogisticsLoadKind::kFieldHeap) {
+      continue;
+    }
+    bool tasked = false;
+    for (const LogisticsTaskRow& task : current.logistics_tasks.rows) {
+      tasked = tasked || Same(AddressOf(task), load);
+    }
+    if (!tasked) {
+      AppendRow(current.logistics_tasks, TaskFor(config, load, today));
+      ++made;
+    }
+  }
+  return made;
 }
 
 void MarkServed(WorldState& current, SimDay today, TaskDayCount& count) {
@@ -234,10 +304,19 @@ void AgeAndRaise(const LogisticsConfig& config,
     if (task.paused && task.aged_from_day < today) {
       ++task.aged_from_day;
     }
+    // A WINTER DOSE NEVER AGES (#1056 C2 option 2; the human, «1 - 2»: «считать
+    // рейс только временем лошадей — последним в очереди зимней возки»): it
+    // stays at its background level behind the logs and the supply. Aged, it
+    // would stand with the logs after six days and ahead of them after ten.
+    const bool ages = task.load_kind != LogisticsLoadKind::kManureField;
     const float days =
-        today > task.aged_from_day ? static_cast<float>(today - task.aged_from_day) : 0.0F;
+        ages && today > task.aged_from_day ? static_cast<float>(today - task.aged_from_day) : 0.0F;
     const LogisticsLevel was = task.level;
     LogisticsLevel level = AgedLevel(config, task.base_level, days);
+    // WHY LEVEL 0 (#1099, save 174): written beside the level, the last
+    // reason below winning - the player's over the rot, as the level itself.
+    LogisticsUrgentBy urgent_by =
+        level == LogisticsLevel::kUrgent ? LogisticsUrgentBy::kAged : LogisticsUrgentBy::kNone;
     // RAISED BY AGEING TODAY: the days crossed a step's line today.
     if (days >= 1.0F && AgedLevel(config, task.base_level, days - 1.0F) != level) {
       ++count.aged_up;
@@ -248,9 +327,11 @@ void AgeAndRaise(const LogisticsConfig& config,
         const FieldRow& field = current.fields.rows[row];
         if (HeapSpoils(config, field)) {
           level = LogisticsLevel::kUrgent;
+          urgent_by = LogisticsUrgentBy::kSpoil;
           ++count.urgent_by_spoil;
         } else if (hungry && HeapIsFeed(config, field)) {
           level = LogisticsLevel::kUrgent;
+          urgent_by = LogisticsUrgentBy::kHunger;
           ++count.urgent_by_hunger;
         }
       }
@@ -262,6 +343,7 @@ void AgeAndRaise(const LogisticsConfig& config,
     // The player's level 0 stays (base_level kUrgent, B7).
     if (task.base_level == LogisticsLevel::kUrgent) {
       level = LogisticsLevel::kUrgent;
+      urgent_by = LogisticsUrgentBy::kPlayer;
     }
     // A RAISED SITE'S SUPPLY KEEPS ITS OWN LEVEL (#709's pair; boss, 12
     // October 2026; transport design §12: a carter's request closes «на месте
@@ -282,6 +364,7 @@ void AgeAndRaise(const LogisticsConfig& config,
       task.urgent_since = now;
     }
     task.level = level;
+    task.urgent_by = urgent_by;
   }
 }
 

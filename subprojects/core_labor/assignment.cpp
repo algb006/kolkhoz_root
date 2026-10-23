@@ -101,9 +101,23 @@ constexpr std::uint8_t KindPriority(WorkKind kind) {
   return 12;
 }
 
+/// A job's rank by its kind - and THE MILK LEG RANKS AS HERD CARE (#1056
+/// C1.1; boss, the #1056 thread [4] and [9]: «the milk leg IS herd care, so
+/// it ranks as herd care in the morning placement too»): a hauling on a herd
+/// (labor_state.h, WorkAssignment::herd) takes herd care's 0. The first arm
+/// ranked it as hauling (6) and left 28 / 15 / 24 % of the milk in the barn
+/// in March, May and October, the field months.
+constexpr std::uint8_t JobPriority(const AssignmentJob& job) {
+  if (job.kind == WorkKind::kHauling && job.herd.value != kInvalidEntityIdValue) {
+    return KindPriority(WorkKind::kHerdCare);
+  }
+  return KindPriority(job.kind);
+}
+
 /// The stable identity of a job's target, for deterministic tie-breaks.
 constexpr std::uint32_t TargetIdValue(const AssignmentJob& job) {
-  if (job.kind == WorkKind::kHerdCare) {
+  // The barn's care and its milk leg (#1056 C1.1) target the herd.
+  if (job.kind == WorkKind::kHerdCare || job.herd.value != kInvalidEntityIdValue) {
     return job.herd.value;
   }
   // The perevalka carries out of a unit (kEmptyStore): its target is the unit.
@@ -302,8 +316,8 @@ std::vector<std::uint32_t> OrderJobs(const std::vector<AssignmentJob>& jobs,
         a.window.days != b.window.days) {
       return a.window.days < b.window.days;
     }
-    if (KindPriority(a.kind) != KindPriority(b.kind)) {
-      return KindPriority(a.kind) < KindPriority(b.kind);
+    if (JobPriority(a) != JobPriority(b)) {
+      return JobPriority(a) < JobPriority(b);
     }
     // THE STACKED HAY IS THE LAST OF ITS KIND (0.37.132; AssignmentJob::
     // stacked_hay): a KEY for every job, like the zyab's above — only a
@@ -311,6 +325,20 @@ std::vector<std::uint32_t> OrderJobs(const std::vector<AssignmentJob>& jobs,
     // dig's load here and yields to each. Windowless and unkeyed (0.37.128)
     // the hay went before them: the logs came in December instead of the
     // autumn and the building of years 1-3 fell from 368 man-days to 278.
+    // MANURE IS THE LAST WINTER CART (#1056 C2; AssignmentJob::manure_dose;
+    // the human's option 2): a KEY for every job, asked before the stacked
+    // hay's so a dose yields to the hay too. Unkeyed, a dose and a stand's logs
+    // tied down to the targets' bare ids, and the doses took every horse on the
+    // y2 January mornings while the logs lay (logs y2 -25 % canon).
+    // STUB (#1056 C2, econ boss-core-c2-pair [20]; boss [21]): the key does
+    // not hold the novice's y3 winter - its stand-log horse hours fell 16 885
+    // -> 9 901 against the base's while the doses ran 116 913, logs y3 -9.7 %
+    // (1.4 SE). Which door lets a dose take a log horse then is not printed.
+    // Returns when logs or supply pass 2 SE in a later pair (canon 9 x 6 is
+    // the first check): then the y3 winter placements' trace and their cure.
+    if (a.manure_dose != b.manure_dose) {
+      return b.manure_dose;
+    }
     if (a.stacked_hay != b.stacked_hay) {
       return b.stacked_hay;
     }
@@ -409,9 +437,27 @@ bool ConsiderCandidate(const AssignmentJob& job,
                                ? params.yard_walk_hours[candidate.home_slot]
                                : travel;
   // The road limit is a game rule, not accountant quality.
-  if (travel > params.travel_limit_hours ||
-      !RoadLeavesAWorkingDay(
-          light_road, params.window_hours, params.travel_limit_hours, params.min_usable_hours)) {
+  // A WORKS' DIRECT LEG IS JUDGED BY ITS TRIPS (#1213; boss, boss-core-c2-pair
+  // [54]; econ [55]): a carter whose day is the ride is not «too far» from the
+  // ride. The walker's rule below asks what work the road leaves, and on the
+  // forest legs it turned every candidate away - 1 268 of 1 880 short
+  // mornings on host's canon, with 200 hands and 11 horses left over - while
+  // four sites on one stand waited two years and seed 1933's door came at
+  // 14.65. The day is the standard one or the light where shorter, as the
+  // walker's trips are counted. A trip of two days drains its seam by the
+  // hours, so the books carry it; the plan keeps no cart on the road overnight
+  // (boss-core-c2-pair seq 56).
+  if (job.log_cart && job.supplies_works && params.carter_min_trips_per_day > 0.0F) {
+    const float trip_day = std::min(params.standard_day_hours, params.window_hours);
+    if (travel > 0.0F && trip_day / (2.0F * travel) < params.carter_min_trips_per_day) {
+      refused_by_road = true;
+      return false;
+    }
+  } else if (travel > params.travel_limit_hours ||
+             !RoadLeavesAWorkingDay(light_road,
+                                    params.window_hours,
+                                    params.travel_limit_hours,
+                                    params.min_usable_hours)) {
     refused_by_road = true;
     return false;
   }
@@ -977,7 +1023,8 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
                                  .shortfall = &shortfall,
                                  .cart_today = &cart_today,
                                  .mowers_walk = &mowers_walk,
-                                 .released = &released},
+                                 .released = &released,
+                                 .horses_left = horses_left},
                       *diagnosis);
   }
   return result;

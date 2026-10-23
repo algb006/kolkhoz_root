@@ -50,6 +50,7 @@
 #include "core_world/era_readiness.h"
 #include "core_world/road_tools.h"
 #include "core_world/watchdog.h"
+#include "settlement_rules.h"
 #include "start_elder.h"
 #include "start_literacy.h"
 #include "wait_rules.h"
@@ -57,6 +58,17 @@
 namespace core {
 
 namespace {
+
+/// The settlement step's config (#1089), a refusal logged: a table set with
+/// no `class` column still runs, the settlements never growing past the seed.
+SettlementConfig SettlementConfigOf(const ITableSet& tables) {
+  SettlementConfig config;
+  std::string error;
+  if (!ReadSettlementConfig(tables, config, error)) {
+    LogError("world: " + error);
+  }
+  return config;
+}
 
 /// The composite decisions slot (phase 3): the subsystems' sequential
 /// sub-steps in the fixed order of manual/54-modules.md §3 — assignments,
@@ -256,11 +268,13 @@ class EventsSlot final : public ISequentialPhase {
              ReadinessCatalog readiness,
              float food_variety_categories,
              float life_speedup,
-             AlarmSources alarm_sources)
+             AlarmSources alarm_sources,
+             SettlementConfig settlements)
       : kcal_per_gram_(std::move(kcal_per_gram)),
         readiness_(std::move(readiness)),
         food_variety_categories_(food_variety_categories),
         life_speedup_(life_speedup),
+        settlements_(std::move(settlements)),
         alarm_sources_(alarm_sources),
         watchdog_(CreateWatchdog(CreateWaitRules())) {}
 
@@ -288,6 +302,11 @@ class EventsSlot final : public ISequentialPhase {
     ConsumeTransitionOrders(readiness_, current);
     // The day's red check (hour 0), over the step's finished world.
     SayLampsTurnedRed(current);
+    // THE SETTLEMENTS, at the day's last tick (#1089; settlement_rules.h):
+    // after every writer of houses and families has written the day.
+    if (HourFromTick(current.calendar.tick) + 1U == kTicksPerDay) {
+      RunSettlementDay(settlements_, current);
+    }
     SweepOrderBook(current);
     RotateLedger(current);
   }
@@ -518,6 +537,9 @@ class EventsSlot final : public ISequentialPhase {
   float life_speedup_ = 1.0F;
 
   /// The lamps' sources for the daily red check (SayLampsTurnedRed).
+  /// The settlement step's config (#1089), read off the tables once.
+  SettlementConfig settlements_;
+
   AlarmSources alarm_sources_;
 
   /// @brief THE LAMPS THAT TURNED RED (the lamp colour's interrupt; boss, the
@@ -662,7 +684,8 @@ class StandardSimulation final : public ISimulation {
                                   .production = production_.get(),
                                   .construction = construction_.get(),
                                   .logistics = logistics_.get(),
-                                  .red_within_days = alarm_red_within_days}) {
+                                  .red_within_days = alarm_red_within_days},
+                     SettlementConfigOf(*config.tables)) {
     const StepPhaseSet phases{
         .time_and_weather = &time_->TimeAndWeatherPhase(),
         .needs = &residents_->NeedsPhase(),
@@ -754,6 +777,10 @@ class StandardSimulation final : public ISimulation {
 
   PlanBook OfficePlan() const override {
     return production_->OfficePlan(engine_->CompletedState());
+  }
+
+  Grams GoodsLoanAmountBack(Grams borrowed) const override {
+    return production_->GoodsLoanAmountBack(borrowed);
   }
 
   LimitBook OfficeLimit() const override {
@@ -1119,6 +1146,16 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       // not pay, and the fields' forecast is production's.
       [estimate](const WorldState& world) {
         return estimate == nullptr ? ResourceAmounts{} : estimate->HarvestToComeThisYear(world);
+      },
+      // AND THE HARVEST STANDING NOW, which the hunger lamp's forecast reads
+      // (#1046 (b); boss, the #1046 thread [12]) - production's.
+      [estimate](const WorldState& world) {
+        return estimate == nullptr ? ResourceAmounts{} : estimate->StandingHarvest(world);
+      },
+      // AND WHICH UNITS THE ISSUE MAY TAKE FROM (#1056 C1.1 (b)): one rule
+      // with production's takers.
+      [estimate](const UnitRow& unit) {
+        return estimate == nullptr || estimate->IsIssueSource(unit);
       });
   // THE ROAD TOOLS (delivery 7b, 7c): the map's obstacles, the road levels'
   // prices, the plot radii — one object, and construction is handed its
@@ -1227,6 +1264,8 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       //   declared ahead of its reader; the assembly reads it below since the
       //   lamp colour's delivery.)
       known.emplace_back(kAlarmRedWithinDaysKey);
+      //   (`feed_draught_first` stood here in 0.37.301, read by nobody once its
+      //   switch went; the base dropped the key in boss's export of 19 October.)
       //   (`billet_household_milk_share` stood here from 0.37.65 to 0.37.69,
       //   declared a delivery ahead of the billet milk's reader. The human
       //   cancelled the billet's new rules on 2026-10-01 — «Постой отменяем»

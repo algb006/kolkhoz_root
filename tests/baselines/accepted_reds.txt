@@ -1,0 +1,6 @@
+# The suite's accepted reds (tests/run/common/accepted_reds.h; boss, core-boss-oats-b-pair [26]).
+# A line is the human's accepted price of ONE cell below its gate. The check passes within value - SE,
+# is red below it, and asks to drop the line once the cell is back inside its gate. The gates themselves
+# are never changed here.
+# run|cell|accepted value|SE|date|tree commit|the human's word and its question
+population_curve|E1 mean door|11.06|0.16|2026-10-23|63fac073|the human, 23 Oct, «1.2. ваша рекомендация» to boss's question on #1209 (boss-core-epoch1-resume [40]): accept the mean Epoch II door 11.06 as the price of «the cemetery's level is the player's choice» (level_free: the run's chairman no longer raises the old cemetery in the first week), replacing the 21 Oct line 11.41 (SE 0.25, 24c6ed36); SE 0.16 measured over the 16 doors of 63fac073, the corridor unchanged

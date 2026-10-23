@@ -19,6 +19,7 @@
 #include "core_common/logistics_state.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/timber_state.h"
+#include "core_common/unit_state.h"
 #include "core_common/world_state.h"
 #include "core_labor/labor_system.h"
 #include "core_tables/tables.h"
@@ -147,6 +148,159 @@ std::pair<bool, bool> TheCartAfterItsLoad(core::ILaborSystem& labor, bool plan_o
   return {after.kind == core::WorkKind::kHauling && after.rides_horse != 0 &&
               after.stand.value == next.value,
           after.stand.value == carted.value};
+}
+
+/// One case of TheDrainByTheLegs.
+struct DrainCase {
+  std::uint32_t hour = 9;    ///< the hour run
+  float trip_hours = 3.0F;   ///< the load's facts (0: no facts)
+  bool on_foot = false;      ///< a carrier on foot, not a carter on a horse
+  bool leg_names_it = true;  ///< the loaded leg 8-10 is of his load; else of no load
+  bool chain_other = false;  ///< a leg of the other stand's logs at 14-16
+  bool stale = false;        ///< the plan is stale (a re-plan pending)
+  bool short_trip = false;   ///< instead: rides 7:00-8:12, carts 8:12-8:48, home to 10:00
+};
+
+/// THE PLAN IS THE CARTING (#1056 C3 step 1, S1'; core-boss-oats-b-pair
+/// [87]-[96]): a stand's logs with trip facts and one carter on a horse whose
+/// cart today rides out 6-7, carts 8-10 and rides home 11-13. Returns what
+/// the hour run did.
+struct DrainSeen {
+  float drained = 0.0F;     ///< the seam drained, cart-days
+  bool stale = false;       ///< the plan is stale after the hour
+  float paid = 0.0F;        ///< the carter's norm-days paid today
+  float rest_spent = 0.0F;  ///< the rest the hour took from him
+  bool holds_load = false;  ///< still hauling his load, on his horse
+  bool on_other = false;    ///< hauling the other stand's logs
+};
+
+DrainSeen TheDrainByTheLegs(core::ILaborSystem& labor, const DrainCase& c) {
+  core::WorldState world = Village(1);
+  const core::TimberStandId stand = StandAt(world, 1000.0F, 1.0F);
+  const core::TimberStandId elsewhere = StandAt(world, 1500.0F, 1.0F);
+  const core::LogisticsTaskId task = LogsTask(world, stand, core::LogisticsLevel::kTerm);
+  const core::LogisticsTaskId other = LogsTask(world, elsewhere, core::LogisticsLevel::kTerm);
+  core::TaskTripTerms& terms = world.logistics_tasks.rows[0].trip_terms;
+  terms.trip_hours = c.trip_hours;
+  terms.trip_loaded_hours = c.trip_hours * 0.6F;
+  terms.cart_load = 750'000;
+  terms.grams_left = 1'000'000;
+  core::WorkAssignment& work = world.residents.rows[0].work;
+  work.kind = core::WorkKind::kHauling;
+  work.stand = stand;
+  work.rides_horse = c.on_foot ? 0U : 1U;
+  world.groom_plan.day = kWorkingDay;
+  world.groom_plan.stale = c.stale;
+  core::CartPlan cart;
+  cart.driver = world.residents.row_ids[0];
+  cart.on_foot = c.on_foot;
+  // Timed as the plan times them (T1, save 178): the minute, and the tick
+  // that holds it.
+  const auto leg = [](core::LogisticsTaskId of,
+                      std::uint8_t loaded,
+                      std::uint16_t depart_minute,
+                      std::uint16_t arrive_minute) {
+    const core::Tick day_start = static_cast<core::Tick>(kWorkingDay) * core::kTicksPerDay;
+    return core::CartLeg{.from = core::Vec2{},
+                         .to = core::Vec2{},
+                         .task = of,
+                         .loaded = loaded,
+                         .depart = day_start + (depart_minute / 60U),
+                         .arrive = day_start + (arrive_minute / 60U),
+                         .depart_minute = depart_minute,
+                         .arrive_minute = arrive_minute,
+                         .riders = {}};
+  };
+  const core::LogisticsTaskId carted = c.leg_names_it ? task : core::LogisticsTaskId{};
+  if (c.short_trip) {
+    cart.legs.push_back(leg(core::LogisticsTaskId{}, 0U, 420, 492));
+    cart.legs.push_back(leg(carted, 1U, 492, 528));
+    cart.legs.push_back(leg(core::LogisticsTaskId{}, 0U, 528, 600));
+  } else {
+    cart.legs.push_back(leg(core::LogisticsTaskId{}, 0U, 360, 420));
+    cart.legs.push_back(leg(carted, 1U, 480, 600));
+    cart.legs.push_back(leg(core::LogisticsTaskId{}, 0U, 660, 780));
+  }
+  if (c.chain_other) {
+    cart.legs.push_back(leg(other, 1U, 840, 960));
+  }
+  world.groom_plan.carts.push_back(cart);
+  const float rest_was = world.residents.rows[0].rest;
+  RunHour(labor, world, c.hour);
+  const float left = world.stands.rows[core::FindRow(world.stands, stand)].haul_days_remaining;
+  const core::ResidentRow& carter = world.residents.rows[0];
+  const bool hauling = carter.work.kind == core::WorkKind::kHauling;
+  return {.drained = 1.0F - left,
+          .stale = world.groom_plan.stale,
+          .paid = carter.work.worked_norm_days_today,
+          .rest_spent = rest_was - carter.rest,
+          .holds_load =
+              hauling && carter.work.stand.value == stand.value && carter.work.rides_horse != 0,
+          .on_other = hauling && carter.work.stand.value == elsewhere.value};
+}
+
+/// What the carter leaves at hour 3 in TheCartAtAChange.
+struct LeftLoad {
+  bool site = false;         ///< a site's supply (else stand A's logs, carted out)
+  bool site_awaits = false;  ///< the site's works still await a leg (its seam empty)
+  core::LogisticsLevel next = core::LogisticsLevel::kTerm;  ///< stand B's task's level
+};
+
+/// THE SITE'S LEG CHANGE (0.37.312; boss, core-boss-oats-b-pair [52]-[56]):
+/// the carter on a horse, his load at level 1 with its seam empty, and today's
+/// plan chaining him on to stand B. A site's seam is its front leg's alone:
+/// empty at a leg change while the works still await, he stays if B is less
+/// urgent than the site, and goes on to B at the site's level or above (the
+/// hay the site's carters fetch on main; [59]); nothing awaiting, he goes on -
+/// until 0.37.312 he rode for B in every case. Off a site he still goes on to
+/// B whatever its level: «never down the levels» was tried and left the heaps
+/// in the field at the frost ([55]). Returns whether he rides for B after
+/// hour 3.
+bool TheCartAtAChange(core::ILaborSystem& labor, const LeftLoad& left) {
+  core::WorldState world = Village(1);
+  const core::TimberStandId next = StandAt(world, 1500.0F, 1.0F);
+  core::LogisticsTaskRow own;
+  own.level = core::LogisticsLevel::kTerm;
+  own.base_level = core::LogisticsLevel::kTerm;
+  core::WorkAssignment& work = world.residents.rows[0].work;
+  work.kind = core::WorkKind::kHauling;
+  work.rides_horse = 1;
+  if (left.site) {
+    core::UnitRow site;
+    site.position = core::Vec2{.x = 800.0F, .y = 0.0F};
+    site.level = 0;
+    site.construction.phase = core::ConstructionPhase::kDelivering;
+    site.construction.target_level = 1;
+    if (left.site_awaits) {
+      site.construction.awaiting.assign(1, 1'000'000);  // a leg's tonne still at its sender
+    }
+    const core::UnitId site_id = core::AppendRow(world.units, site);
+    own.load_kind = core::LogisticsLoadKind::kSiteSupply;
+    own.unit = site_id;
+    world.residents.rows[0].work.unit = site_id;
+  } else {
+    const core::TimberStandId carted = StandAt(world, 1000.0F, 0.0F);
+    own.load_kind = core::LogisticsLoadKind::kStandLogs;
+    own.stand = carted;
+    world.residents.rows[0].work.stand = carted;
+  }
+  const core::LogisticsTaskId own_task = core::AppendRow(world.logistics_tasks, own);
+  const core::LogisticsTaskId next_task = LogsTask(world, next, left.next);
+  world.groom_plan.day = kWorkingDay;
+  core::CartPlan cart;
+  cart.driver = world.residents.row_ids[0];
+  for (const core::LogisticsTaskId task : {own_task, next_task}) {
+    cart.legs.push_back(core::CartLeg{.from = core::Vec2{},
+                                      .to = core::Vec2{},
+                                      .task = task,
+                                      .depart = 0,
+                                      .arrive = 0,
+                                      .riders = {}});
+  }
+  world.groom_plan.carts.push_back(cart);
+  RunHour(labor, world, 3);
+  const core::WorkAssignment& after = world.residents.rows[0].work;
+  return after.kind == core::WorkKind::kHauling && after.stand.value == next.value;
 }
 
 /// The task of a field's heap, at a level.
@@ -411,9 +565,48 @@ int CheckTheGroomsPlan() {
                      "chain, on his horse");
   failures +=
       Expect(!stale_followed && stale_stays, "groom's plan: a plan of yesterday moves nobody");
+  const bool site_left = TheCartAtAChange(
+      *labor, {.site = true, .site_awaits = true, .next = core::LogisticsLevel::kBackground});
+  const bool site_level = TheCartAtAChange(*labor, {.site = true, .site_awaits = true});
+  const bool site_done =
+      TheCartAtAChange(*labor, {.site = true, .next = core::LogisticsLevel::kBackground});
+  const bool down = TheCartAtAChange(*labor, {.next = core::LogisticsLevel::kBackground});
+  const bool level = TheCartAtAChange(*labor, {});
+  const bool up = TheCartAtAChange(*labor, {.next = core::LogisticsLevel::kUrgent});
+  std::cout << "  groom's plan, a site's leg change: a site awaiting - rides on to level 3 "
+            << site_left << ", to its own level " << site_level << ", nothing awaiting "
+            << site_done << "; to level 3 " << down << ", level 1 " << level << ", level 0 " << up
+            << '\n';
+  failures +=
+      Expect(!site_left && site_level && site_done,
+             "groom's plan: a site whose works still await keeps its carter from a lower "
+             "load at a leg change - to its own level he goes, and nothing awaiting, to any");
+  failures +=
+      Expect(down && level && up,
+             "groom's plan: a carter whose load is carted follows his chain to the next load "
+             "at any level - down to level 3 too");
   failures += Expect(TheWalkerAfterHisHeap(*labor),
                      "groom's plan: a carrier on foot whose heap is carted goes on to the near "
                      "heap of his chain, on foot");
+  // A HELD LOAD DRAINS BY ITS CARTERS' HOURS, PRICED OR NOT (#1056 C3, M2;
+  // core-boss-oats-b-pair [110]): «the plan is the carting», the drain by the
+  // plan's legs, was measured on wip/c3 and stopped. A carter on a priced
+  // load drains it on his leg, riding home and undrawn alike, as he would a
+  // load with no trip facts - and keeps it.
+  const DrainSeen on_leg = TheDrainByTheLegs(*labor, {});
+  const DrainSeen riding = TheDrainByTheLegs(*labor, {.hour = 12});
+  const DrainSeen undrawn = TheDrainByTheLegs(*labor, {.leg_names_it = false});
+  const DrainSeen no_facts = TheDrainByTheLegs(*labor, {.trip_hours = 0.0F});
+  const DrainSeen no_facts_12 = TheDrainByTheLegs(*labor, {.hour = 12, .trip_hours = 0.0F});
+  std::cout << "  a priced load by the hours: on a leg " << on_leg.drained << ", riding home "
+            << riding.drained << ", undrawn " << undrawn.drained << "; no facts "
+            << no_facts.drained << " / " << no_facts_12.drained << '\n';
+  failures += Expect(on_leg.drained > 0.0F && on_leg.drained == no_facts.drained &&
+                         undrawn.drained == no_facts.drained &&
+                         riding.drained == no_facts_12.drained && riding.drained > 0.0F &&
+                         on_leg.holds_load && undrawn.holds_load && riding.holds_load,
+                     "(M2) a priced load drains by its carter's hours wherever the plan has his "
+                     "cart, as a load with no facts, and he keeps it");
   const auto [raised_logs, raised_ploughs] = TheHorseAfterARaise(*labor, true);
   const auto [kept_logs, kept_ploughs] = TheHorseAfterARaise(*labor, false);
   std::cout << "  groom's plan, a raise after the morning: logs ride " << raised_logs

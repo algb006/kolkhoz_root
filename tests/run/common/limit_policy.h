@@ -56,6 +56,7 @@
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
+#include "delivery_policy.h"
 #include "hay_answer.h"
 #include "hay_day_off_policy.h"
 #include "rise_watch.h"
@@ -64,7 +65,7 @@ namespace run {
 
 class LimitPolicy {
  public:
-  explicit LimitPolicy(const core::ITableSet& tables) : hay_(tables) {
+  explicit LimitPolicy(const core::ITableSet& tables) : hay_(tables), delivery_(tables) {
     std::string error;
     ready_ = core::ParseLimitCatalog(tables, catalog_, error) && !catalog_.lots.empty();
     ReadCosts(tables);
@@ -129,7 +130,12 @@ class LimitPolicy {
                  "(district design §1; boss, 2026-09-13 and 2026-09-24); and TAKES THE "
                  "DISTRICT'S SEED LOAN for the shortfall seed_short names, ten days before the "
                  "seed's sowing window, once a resource a year (boss, boss-core-epoch1-5 seq 15)\n";
+    DeliveryPolicy::Declare(run);
   }
+
+  /// @brief Whose transport carries the plan from now on (DeliveryPolicy::SetMode;
+  ///        host's novice: the district always).
+  void SetDeliveryMode(std::string_view run, RunDeliveryMode mode) { delivery_.SetMode(run, mode); }
 
   /// @brief Counts the step the chairman's yard waits to take (rise_watch.h).
   void SetRiseWatch(RiseWatch watch) { rise_watch_ = std::move(watch); }
@@ -162,6 +168,10 @@ class LimitPolicy {
     // acts only in the day's first hour: a run whose day ends elsewhere
     // answers nothing here, and says how many it answered in its report.
     hay_morning_.RunStep(simulation);
+    // THE PLAN's DELIVERY AND WHOSE TRANSPORT (delivery_policy.h; stage В5):
+    // in every run that runs the district's policy, by the rule of diverging
+    // run worlds.
+    delivery_.RunDay(simulation);
     // THE HAY'S YELLOW, ANSWERED (hay_answer.h; 0.37.64): the rush on the cut,
     // the heads the lamp names handed to the district, a lot of feed on its
     // «buy feed» (0.37.142). Its own orders and cooldown, before the lots': a
@@ -200,6 +210,7 @@ class LimitPolicy {
               << (hold_timber_while_logs_lie_ ? " — the timber lot was held back on those\n"
                                               : " — the timber lot was NOT held back on those\n");
     hay_.Report(run);
+    delivery_.Report(run);
     std::cout << run << ": the hay lamp's advice over " << advice_.yellow_days
               << " yellow days — the cut " << advice_.cut_days
               << " (WITH NO MEADOW LEFT TO HURRY ON " << advice_.cut_refused_days
@@ -906,6 +917,7 @@ class LimitPolicy {
   HayAnswer hay_;
   /// The morning's answer: the day off worked, the avral lifted.
   HayDayOffPolicy hay_morning_;
+  DeliveryPolicy delivery_;
   bool hold_timber_while_logs_lie_ = true;
   std::uint32_t days_logs_lay_ = 0;
   std::uint32_t days_watched_ = 0;

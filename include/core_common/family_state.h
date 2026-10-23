@@ -228,6 +228,20 @@ struct FamilyRow {
   /// zero at the economic year's turn (labor-payment design §3).
   TrudodniHundredths trudodni_redeemed = 0;
 
+  // -- the hunger lamp's yellow stage (#1046; econ forecast-lamp-2026-09-30
+  // §2; boss, the #1046 thread [2]) -------------------------------------------
+
+  /// The kcal the family's OWN food brought into its pantry today: the plot
+  /// and the yard, the nets, the forest's basket - not the issue. Written by
+  /// those writers (core_residents), folded into `own_kcal_mean` and cleared
+  /// at the day's end. Save 168.
+  float own_kcal_today = 0.0F;
+
+  /// Its exponential mean, kcal a day, time constant 7 days. A NAMED
+  /// DEVIATION from econ's «the last 7 days' mean» (boss, the #1046 thread
+  /// [2]): one float, not a ring. Save 168.
+  float own_kcal_mean = 0.0F;
+
   /// SATISFACTION OVER THE LAST YEAR, 0..100, or kNotYetRemembered (save 113;
   /// live signals design §6; boss-core-epoch1-queue-2026-09-29 [14] (1);
   /// 0.37.17): a year's exponential mean of `satisfaction`, stepped once a

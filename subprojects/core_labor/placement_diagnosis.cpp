@@ -10,13 +10,61 @@
 #include "placement_rank.h"
 
 namespace core {
+namespace {
+
+// The ride's cart for job `job_index`, as the people's cart pass would give
+// it: the work rides on it.
+AssignmentJob AsRiddenToday(const AssignmentJob& job) {
+  AssignmentJob ridden = job;
+  ridden.cart_out = true;
+  return ridden;
+}
+
+// A ride's work the horses ran out on (placement_diagnosis.h, #1034).
+void RelabelHorselessRides(const PlacedPlan& plan,
+                           std::vector<std::optional<JobShortfall>>& shortfall) {
+  if (plan.horses_left > 0) {
+    return;  // a horse was left: the road, not the horses, held it
+  }
+  const std::vector<AssignmentJob>& jobs = *plan.jobs;
+  const std::vector<AssignmentCandidate>& candidates = *plan.candidates;
+  const std::vector<std::uint32_t>& result = *plan.result;
+  for (std::uint32_t job_index = 0; job_index < jobs.size(); ++job_index) {
+    if (!shortfall[job_index] || *shortfall[job_index] != JobShortfall::kRoad ||
+        !TakesThePeoplesCart(jobs[job_index].kind) || (*plan.cart_today)[job_index] != 0) {
+      continue;
+    }
+    bool manned = false;
+    bool a_ride_sends_one = false;
+    const AssignmentJob ridden = AsRiddenToday(jobs[job_index]);
+    for (std::uint32_t index = 0; index < candidates.size(); ++index) {
+      if (result[index] == job_index) {
+        manned = true;
+        break;
+      }
+      RankedPick pick;
+      bool by_road = false;
+      a_ride_sends_one =
+          a_ride_sends_one ||
+          (result[index] == kNoJobAssigned &&
+           ConsiderCandidate(
+               ridden, job_index, candidates[index], index, *plan.params, pick, by_road));
+    }
+    if (!manned && a_ride_sends_one) {
+      shortfall[job_index] = JobShortfall::kNoHorse;
+    }
+  }
+}
+
+}  // namespace
 
 void DiagnosePlacement(const PlacedPlan& plan, PlacementDiagnosis& diagnosis) {
   const std::vector<AssignmentJob>& jobs = *plan.jobs;
   const std::vector<AssignmentCandidate>& candidates = *plan.candidates;
   const AssignmentParams& params = *plan.params;
-  const std::vector<std::optional<JobShortfall>>& shortfall = *plan.shortfall;
-  diagnosis.shortfall = shortfall;
+  diagnosis.shortfall = *plan.shortfall;
+  RelabelHorselessRides(plan, diagnosis.shortfall);
+  const std::vector<std::optional<JobShortfall>>& shortfall = diagnosis.shortfall;
   diagnosis.idle.assign(candidates.size(), std::nullopt);
   diagnosis.moved_off_care = *plan.released;
   // Each idle person asked of every job left short, the first reason in
@@ -45,7 +93,10 @@ void DiagnosePlacement(const PlacedPlan& plan, PlacementDiagnosis& diagnosis) {
       // people's cart or the meadow's mower went, on foot where the mower
       // did not.
       AssignmentJob job = jobs[job_index];
-      job.cart_out = (*plan.cart_today)[job_index] != 0;
+      // A ride's work filed kNoHorse is judged by the ride it lacked (#1034).
+      job.cart_out =
+          (*plan.cart_today)[job_index] != 0 ||
+          (*shortfall[job_index] == JobShortfall::kNoHorse && TakesThePeoplesCart(job.kind));
       job.harnessed = job.harnessed && (*plan.mowers_walk)[job_index] == 0;
       RankedPick pick;
       bool by_road = false;
@@ -55,6 +106,15 @@ void DiagnosePlacement(const PlacedPlan& plan, PlacementDiagnosis& diagnosis) {
           here = IdleReason::kNoHorse;
         } else if (*shortfall[job_index] == JobShortfall::kCrewCap) {
           here = IdleReason::kCrewCap;
+        } else if (*shortfall[job_index] == JobShortfall::kRoad) {
+          // THE QUEUE SAID THE WAY (#994; boss [2], [8]): its fill turned every
+          // hand away by the road, and a replay that judges him fit judged him
+          // by a transport the fill did not (probe/994: 400 of 400 kUnexplained
+          // pairs of seed 1933's year 8 were felling stands the queue had
+          // marked kRoad, replayed with cart_today 1; probe/994c: 46 200 such
+          // person-days Feb-June in nine villages' 16 years). The queue's
+          // verdict is the one filed.
+          here = IdleReason::kRoad;
         } else if (job.harnessed && !IsMeadowCut(job)) {
           // A carter left over with no horse is judged on foot (the queue's
           // own rule); the mower is not. LIMIT: whether a horse was still

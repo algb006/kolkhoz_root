@@ -49,6 +49,7 @@
 namespace core {
 
 class ITableSet;  // Defined in core_tables.
+struct UnitRow;   // Defined in core_common/unit_state.h.
 
 /// @brief Food category for the family variety mask (metrics design §8):
 /// the mask bit index of FamilyRow::food_variety_mask. The roster is the
@@ -413,6 +414,25 @@ struct FoodConfig {
   /// core_production on the same terms as `fodder_fund` above. Empty: the
   /// rung holds the whole owed.
   std::function<ResourceAmounts(const WorldState&)> harvest_to_come;
+
+  /// The harvest standing in the fields and the heaps at them, by ResourceId
+  /// (IProductionSystem::StandingHarvest; #1046 (b), econ §7.2): what a
+  /// position's harvest inside the hunger forecast's horizon will bring. A
+  /// CALL INTO core_production on the same terms as `fodder_fund` above.
+  /// Empty: the forecast has no harvest term.
+  std::function<ResourceAmounts(const WorldState&)> standing_harvest;
+
+  /// Whether the issue, the ration and the advance may take from a unit
+  /// (IProductionSystem::IsIssueSource; #1056 C1.1 (b): one rule for «what
+  /// can be taken» with production's takers). A CALL INTO core_production on
+  /// the same terms as `fodder_fund` above. Empty: every unit.
+  std::function<bool(const UnitRow&)> issue_source;
+
+  /// Which inflow terms the hunger forecast adds, as bits (LifeConfig::
+  /// hunger_forecast_terms, copied at the assembly): 1 the harvest, 4 the
+  /// gardens, 8 the crop net of the funds below. Bit 2, the milk (arm BM),
+  /// left with 0.37.295 (boss, the #1046 thread [17]).
+  std::uint8_t forecast_terms = 13;
 
   /// THE POSITION THE DISTRICT'S CART TAKES DAILY (district §9; register
   /// 231; boss seq 113): milk, by its resources.csv key. The plan does NOT

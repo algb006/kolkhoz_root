@@ -53,6 +53,23 @@ inline bool OnSupplyFloor(const SupplyFloorRules& rules, const ConstructionState
          AnythingAwaits(works);
 }
 
+/// @brief THE LAMP'S DAYS (save 165; stage В6 part 3): the idle working days
+///        less those a mowing held (ConstructionState::supply_mowing_days) -
+///        what kSiteSupplyWaits reads and says. The floor reads the idle days
+///        whole (OnSupplyFloor).
+inline std::uint16_t SupplyLampDays(const ConstructionState& works) {
+  return works.supply_mowing_days < works.supply_idle_days
+             ? static_cast<std::uint16_t>(works.supply_idle_days - works.supply_mowing_days)
+             : std::uint16_t{0};
+}
+
+/// @brief Whether «подвоз на стройку ждёт» is lit for this works: on the floor
+///        (OnSupplyFloor) AND its lamp days (SupplyLampDays) at the floor's
+///        own days - a June works the mowing held is on the floor and dark.
+inline bool SupplyWaitLampLit(const SupplyFloorRules& rules, const ConstructionState& works) {
+  return OnSupplyFloor(rules, works) && SupplyLampDays(works) >= rules.after_days;
+}
+
 /// @brief The carters with horses the works on the floor may take together
 ///        this morning: `share` of the draught horses, rounded down, and at
 ///        least one while there is a horse at all.

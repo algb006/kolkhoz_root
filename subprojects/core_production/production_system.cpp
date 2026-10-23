@@ -32,7 +32,9 @@
 #include <string_view>
 #include <vector>
 
+#include "clamp_rot_lamp.h"
 #include "core_common/calendar.h"
+#include "core_common/cart_gear.h"
 #include "core_common/emit_event.h"
 #include "core_common/haul.h"
 #include "core_common/ledger_state.h"
@@ -45,8 +47,10 @@
 #include "core_tables/tables.h"
 #include "demolition_stock.h"
 #include "district_car.h"
+#include "district_carts.h"
 #include "district_limit.h"
 #include "district_plan.h"
+#include "district_reputation.h"
 #include "district_trip.h"
 #include "district_visit.h"
 #include "extraction_digging.h"
@@ -58,6 +62,7 @@
 #include "herd_cold.h"
 #include "herd_forecast.h"
 #include "herd_system.h"
+#include "manure_cart.h"
 #include "meadow_orders.h"
 #include "milk_cart.h"
 #include "night_pasture.h"
@@ -66,9 +71,11 @@
 #include "production_alarms.h"
 #include "production_config.h"
 #include "production_orders.h"
+#include "rick_supply.h"
 #include "seed_room.h"
 #include "stock_lights.h"
 #include "stock_ops.h"
+#include "team_oat_plan.h"
 #include "timber_felling.h"
 #include "timber_planting.h"
 #include "unit_production.h"
@@ -269,7 +276,8 @@ class ProductionSystem final : public IProductionSystem {
       // The first winter's plan: genesis hands over a heap and a January, and
       // day zero is no year's turn for the daily bookkeeping below. Without
       // this the inherited 250 t lay untouched through the whole first year.
-      PlanManure(current);
+      // Booked for the winter's sledges since #1056 C2 (manure_cart.h).
+      BookManureDoses(config_, current);
       // The first year's limit was granted here until 0.37.78; it is the
       // start's now (SettleStartYear), so the district's window answers on
       // the first morning, before any step.
@@ -288,6 +296,9 @@ class ProductionSystem final : public IProductionSystem {
     // does the same and writes tomorrow's demand.
     if (HourFromTick(current.calendar.tick) + 1U < kTicksPerDay) {
       DeliverCartedLoads(config_, current);
+      SettleMilkLegs(config_, current, false);
+      SettleRickSupply(config_, current);
+      SettleManureDoses(config_, current);
     }
     // THE CUT'S DRY WORKING DAY, for the hay lamp's pace (lever 1;
     // herd_forecast.h) - COUNTED AT NOON, not at the day's last tick: a day
@@ -306,11 +317,34 @@ class ProductionSystem final : public IProductionSystem {
       SettleSiteHauling(config_, current);
       // And the perevalka out of a store being emptied (field_haul.h).
       SettleStoreEmptying(config_, current);
+      // And the milk leg's last hour, and its close (#1056 C1.1).
+      SettleMilkLegs(config_, current, true);
       // And the materials on their way to the sites (routing stage V2).
       SettleSiteSupply(config_, current, true);
       // And the timber lots the village fetches from the district centre
-      // (decision 279, 0.36.17; field_haul.h).
+      // (decision 279, 0.36.17; field_haul.h) - and since В5 any lot by own
+      // carts and the plan's own delivery going out.
       SettleDistrictLotHauling(config_, current);
+      // And the ricks' supply rick -> rick: the day's last hour, then
+      // tomorrow's price - after every carting into a rick above (#1056 C1.2;
+      // rick_supply.h), for the next morning's placement.
+      SettleRickSupply(config_, current);
+      PriceRickSupply(config_, current);
+      // And the fields' winter doses heap -> field: the last hour, then
+      // tomorrow's price, on a sledge day only (#1056 C2; manure_cart.h) -
+      // and on a sledge day the bookings first: from the first snow after
+      // the harvest, November-December too (boss, the #1056 thread [140]).
+      SettleManureDoses(config_, current);
+      if (SledgeDay(current)) {
+        BookManureDoses(config_, current);
+      }
+      PriceManureDoses(config_, current);
+      // THE DISTRICT's CART FOR THE PLAN (routing stage В5; district_carts.h):
+      // the month's last day collects the standing request, a mud day slips it.
+      SettleDistrictCollection(config_, current);
+      // And the month's draw out of the stores, for the plan-short lamp's
+      // forecast (district_plan.h, MarkStoresDraw; save 164).
+      MarkStoresDraw(current);
       // And what a unit being taken down held (demolition_stock.h) — before
       // the shops, so the manor's firewood reaches the smokehouse tonight.
       SettleDemolitionStock(config_, current);
@@ -454,6 +488,9 @@ class ProductionSystem final : public IProductionSystem {
     RunHerdDay(config_, current);
     RescaleHorseWorkForRation(config_, traction_ration_was, cold_draught_was, current);
     ShipMilkShare(config_, current);
+    // And the barn -> store leg of what the cart left (#1056 C1.1): priced
+    // now, offered from the hour-1 top-up, carried through the day.
+    PriceMilkLegs(config_, current);
     // After the herd day: its slaughter and cull are in the stores, and the
     // smokehouse asks for them this morning (processing_shops.h).
     OpenSameDayShops(config_, current);
@@ -490,7 +527,24 @@ class ProductionSystem final : public IProductionSystem {
       line.met = PositionDelivered(config_, due, line.delivered);
       book.positions.push_back(line);
     }
+    book.failed_years_in_a_row = completed.plan.failed_years_in_a_row;
+    book.failed_years_to_trial = config_.plan_failed_years_to_trial;
+    const std::size_t loan_rows =
+        std::max(completed.plan.goods_loan_owed.size(), completed.plan.goods_loan_taken.size());
+    for (std::size_t index = 0; index < loan_rows; ++index) {
+      LoanLine loan;
+      loan.resource = DefIdFromIndex<ResourceIdTag>(static_cast<std::uint32_t>(index));
+      loan.owed = AmountOf(completed.plan.goods_loan_owed, loan.resource);
+      loan.taken_this_year = AmountOf(completed.plan.goods_loan_taken, loan.resource);
+      if (loan.owed > 0 || loan.taken_this_year > 0) {
+        book.loans.push_back(loan);
+      }
+    }
     return book;
+  }
+
+  Grams GoodsLoanAmountBack(Grams borrowed) const override {
+    return GoodsLoanWithMarkup(config_, borrowed);
   }
 
   void SettleStartYear(WorldState& start) const override { GrantFirstLimitYear(config_, start); }
@@ -518,6 +572,11 @@ class ProductionSystem final : public IProductionSystem {
     }
     const auto today = static_cast<std::uint32_t>(completed.calendar.day);
     for (const LimitDeliveryRow& cart : completed.limit_deliveries.rows) {
+      if (cart.outbound != 0) {
+        // The plan's own delivery is not on its way TO the village (stage
+        // В5); the window has no line for it yet - a named gap.
+        continue;
+      }
       book.on_the_way.push_back(LimitCartLine{.lot = cart.lot,
                                               .arrive_day = cart.arrive_day,
                                               .arrived = cart.arrive_day <= today,
@@ -582,6 +641,14 @@ class ProductionSystem final : public IProductionSystem {
     return HarvestToComeThisYearOf(config_, world);
   }
 
+  ResourceAmounts StandingHarvest(const WorldState& world) const override {
+    return StandingHarvestOf(config_, world);
+  }
+
+  bool IsIssueSource(const UnitRow& unit) const override {
+    return config_.farming.milk_at_barn < 0.5F || IsTakenFrom(unit, config_);
+  }
+
   void CollectStockForecast(const WorldState& completed,
                             std::vector<StockForecast>& lights) const override {
     lights.push_back(FeedLight(config_, completed));
@@ -604,6 +671,7 @@ class ProductionSystem final : public IProductionSystem {
     CollectSeedRoomAlarms(config_, completed, alarms);
     CollectMilkDebtAlarms(config_, completed, alarms);
     CollectGoodsLoanAlarms(config_, completed, alarms);
+    CollectClampRotAlarms(config_, completed, alarms);
     CollectSowingAlarms(config_, completed, alarms);
     CollectGatherAlarms(config_, completed, alarms);
     CollectHerdAlarms(config_, completed, alarms);
@@ -658,6 +726,10 @@ class ProductionSystem final : public IProductionSystem {
     // Read before JudgePlan hands the next year's plan down over this one.
     const bool plan_fully_met = PlanFullyDelivered(config_, current);
     const float overfulfil_tonnes = PlanOverfulfilGrainTonnes(config_, current);
+    // The rating earned beyond the plan, its own year's (district_reputation.h;
+    // #1043): read off this year's dues and deliveries, so before JudgePlan
+    // hands the next plan down; off until its cells are set, booked always.
+    StepReputationBeyondPlan(config_, current);
     JudgePlan(config_, current);
     SummonIfTheYearFailed(config_, current);
     TurnLimitYear(config_, current, plan_fully_met, overfulfil_tonnes);
@@ -808,7 +880,13 @@ class ProductionSystem final : public IProductionSystem {
       // loss became fact; it is said on the first of November now
       // (SayLostWinterSlots), the day the late window closes.
     }
-    PlanManure(current);
+    // The winter's doses, booked for the sledges (#1056 C2; manure_cart.h):
+    // until C2 the whole heap was spread here at once, with no haul.
+    BookManureDoses(config_, current);
+    // THE OAT LAMP'S YEAR (#1040; team_oat_plan.h): after the chain has moved
+    // (this year's slot) and before the books rotate (the closing year's
+    // team request is still `current`).
+    ReadTheTeamsOatPlan(config_, current);
   }
 
   /// Whether a perennial standing in its window may be cut today: not cut
@@ -929,101 +1007,6 @@ class ProductionSystem final : public IProductionSystem {
       if (in_window && cut_today) {
         OpenPhase(config_, current, field, FieldPhase::kHarvest);
       }
-    }
-  }
-
-  /// THE WINTER'S MANURE PLAN, made at the year's turn: the heap is dealt out
-  /// in full doses to the fields that will be ploughed this year, POOREST
-  /// FIELD FIRST, until it runs out. What the herd makes during the year
-  /// waits for next winter's plan.
-  ///
-  /// It used to be first come, first served at the plough: a field took a
-  /// full dose if the heap held one that morning, or nothing. The field sheet
-  /// of the fifth reconciliation pass showed what that does — the twenty-one
-  /// hectare potato field never once qualified in thirty years, because its
-  /// dose is 420 t and the heap never holds that, while the ten-hectare field
-  /// next to it was manured twenty-seven years out of thirty and stood at a
-  /// hundred. The canon's "a hectare gets manure every four or five years"
-  /// is a rotation of the manure. NOT a player's decision and not a stub for
-  /// one: "the manure norm is a number, not a decision" (farming design §9,
-  /// closed), and a yearly allocation of the heap across the fields is the
-  /// agronomist's work — the very micromanagement the game removes epoch by
-  /// epoch. The player's lever in this loop is how much livestock to keep.
-  void PlanManure(WorldState& current) const {
-    const std::uint32_t heap = FindUnitRowOfType(current, config_.compost_heap_type);
-    if (heap == kNoRow) {
-      return;
-    }
-    Grams held = StockOf(current.units.rows[heap].stock, config_.manure_resource);
-    std::vector<std::uint32_t> candidates;
-    for (std::uint32_t row = 0; row < current.fields.rows.size(); ++row) {
-      const FieldRow& field = current.fields.rows[row];
-      // Ploughed this year: idle arable with a rotation, whether a crop is in
-      // the slot or it is fallow. A winter crop already standing was manured
-      // when IT was ploughed, last autumn.
-      //
-      // THE ROTATION TEST IS HALF OF ONE FIX AND NOT A SECOND ONE. Ground
-      // nobody has told anything is never ploughed, so manure spread on it
-      // is never turned in — it would simply be gone. It was safe here only
-      // by accident until 2026-09-12: the same missing guard in the year's
-      // fertility recovery had run the weeds up to a hundred points, which
-      // put them at the BACK of the poorest-first queue below. Repair that
-      // and they become the poorest land on the farm, and the first two
-      // years' manure goes into the burdock. The analysis said so before it
-      // happened; the two lines are one repair.
-      // THE QUESTION IS "WILL THIS GROUND BE WORKED", NOT "DOES IT HAVE A
-      // CHAIN", and those were the same question only until a field could skip
-      // a year (boss's decision of 2026-09-13).
-      //
-      // `HasRotation` asks whether the chairman has EVER told this field what
-      // to grow. That answered the right question while the only fields
-      // without a chain were the derelict ninety hectares nobody had claimed.
-      // The moment a chairman could withdraw a chain from ground he means to
-      // go on working — which is what he does when the spring will not fit —
-      // the two came apart: such a field fell out of the manure plan, grew
-      // poorer, and so was chosen to be dropped again the next year. A circle
-      // the gate made itself.
-      //
-      // Agronomy says the same thing: manure goes under the sowing to come,
-      // and a field that has rested a year is the FIRST candidate, not the
-      // last.
-      //
-      // Land never cropped stays out, and the test tells it apart on its own:
-      // the derelict ground has never been sown, so it has no sowing day.
-      const bool will_be_worked = HasRotation(field) || field.sown_day != kNeverSownDay;
-      if (field.kind == LandKind::kArable && field.phase == FieldPhase::kIdle &&
-          field.manure_applied == 0 && will_be_worked) {
-        candidates.push_back(row);
-      }
-    }
-    // Poorest first; equal fertility keeps row order, so the plan is the
-    // same on every machine.
-    std::stable_sort(candidates.begin(), candidates.end(), [&](std::uint32_t a, std::uint32_t b) {
-      return current.fields.rows[a].fertility < current.fields.rows[b].fertility;
-    });
-    for (const std::uint32_t row : candidates) {
-      if (held <= 0) {
-        break;
-      }
-      FieldRow& field = current.fields.rows[row];
-      const auto dose = GramsFromKilograms(config_.farming.manure_norm_kg_per_ha * field.area_ga);
-      if (dose <= 0) {
-        continue;
-      }
-      // A PARTIAL DOSE IS A DOSE. The poorest field takes what the heap has,
-      // up to its full norm, and its bonus scales with the share it got.
-      // Whole doses or nothing meant the biggest field could never be
-      // manured at all: 420 t for twenty-one hectares, and a herd of twenty
-      // cows makes 250 a year.
-      const Grams given = held < dose ? held : dose;
-      held -= given;
-      AddToStock(current.units.rows[heap].stock, config_.manure_resource, -given);
-      const float share = static_cast<float>(given) / static_cast<float>(dose);
-      field.manure_applied = static_cast<std::uint8_t>(share * 100.0F + 0.5F);
-      if (field.manure_applied == 0) {
-        field.manure_applied = 1;  // a dribble still counts as touched
-      }
-      field.manure_booked = 0;  // a new dose: its furrow books it (0.37.10)
     }
   }
 

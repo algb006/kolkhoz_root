@@ -21,6 +21,7 @@
 #include <string_view>
 #include <utility>
 
+#include "core_catalog/cart_specs_catalog.h"
 #include "core_catalog/porter_catalog.h"
 #include "core_catalog/supply_floor_catalog.h"
 #include "core_catalog/table_value.h"
@@ -28,6 +29,7 @@
 #include "core_common/calendar.h"
 #include "core_common/crop_calendar.h"
 #include "core_common/haul.h"
+#include "core_common/spoilage.h"
 #include "core_tables/tables.h"
 
 namespace core {
@@ -627,16 +629,60 @@ bool ParseCropWindows(const ITable& table,
   return true;
 }
 
+/// A field heap's shelf by resource (#1099): the cells logistics reads for
+/// C4.2's order, by the same rules (logistics_config.cpp ParseResources; its
+/// keeping factor's range) - an empty spoil_days keeps for ever.
+bool ParseHeapShelves(const ITableSet& tables, LaborConfig& config, std::string& error) {
+  const ITable* const resources = tables.FindTable("resources");
+  if (resources == nullptr) {
+    return true;
+  }
+  float keeping = 0.33F;
+  if (const ITable* const world = tables.FindTable("world_params")) {
+    if (!OptionalValue(*world,
+                       "field_heap_keeping_factor",
+                       Range{.low = 0.01F, .high = 1.0F},
+                       keeping,
+                       error)) {
+      PrefixError("world_params", "field_heap_keeping_factor", error);
+      return false;
+    }
+  }
+  const std::uint32_t days_column = resources->FindColumn("spoil_days");
+  config.heap_shelf_days.assign(resources->RowCount(), 0.0F);
+  for (std::uint32_t row = 0; row < resources->RowCount(); ++row) {
+    float days = 0.0F;
+    if (!CellOrDefault(*resources,
+                       row,
+                       days_column,
+                       Range{.low = 0.0F, .high = 100000.0F},
+                       0.0F,
+                       days,
+                       error)) {
+      PrefixError("resources", "spoil_days", error);
+      return false;
+    }
+    config.heap_shelf_days[row] = FieldHeapShelfDays(days, keeping);
+  }
+  return true;
+}
+
 }  // namespace
 
 bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string& error) {
   if (!ReadPorterRules(tables, config.porter, error) ||
-      !ReadSupplyFloorRules(tables, config.supply_floor, error)) {
+      !ReadSupplyFloorRules(tables, config.supply_floor, error) ||
+      !ReadSledgeSpecs(tables, config.sledge, error)) {  // SL: the sledge
     return false;
   }
   if (const ITable* labor = tables.FindTable("labor")) {
     if (!ParseScalars(*labor, config, error) || !ParseEfficiencyKnobs(*labor, config, error) ||
         !ParseEducationFactors(*labor, config, error) ||
+        !OptionalValue(*labor,
+                       "carter_min_trips_per_day",
+                       Range{.low = 0.0F, .high = 100.0F},
+                       config.carter_min_trips_per_day,
+                       error) ||
         !ParseWorkKindRates(*labor, config, error)) {
       return false;
     }
@@ -711,7 +757,8 @@ bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string&
   if (const ITable* professions = tables.FindTable("professions")) {
     config.groom_post = DefIdFromRow<ProfessionIdTag>(professions->FindRowByKey(kGroomPostKey));
   }
-  return ParseTimberCatalog(tables, config.timber, error) &&
+  return ParseHeapShelves(tables, config, error) &&
+         ParseTimberCatalog(tables, config.timber, error) &&
          ParseProcessingCatalog(tables, config.processing, error) &&
          ParseExtractionCatalog(tables, config.extraction, error) &&
          ReadColdHousing(tables, config.cold_housing, error);

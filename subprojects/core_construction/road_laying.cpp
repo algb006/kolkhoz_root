@@ -186,6 +186,16 @@ std::optional<RoadOperation> UpgradeOf(RoadSurface target) {
   }
 }
 
+/// THE ROADS CHANGED IN THE DAY: the index rebuilt, and the groom's plan made
+/// stale (#1056 C4, writer (2); econ's stage C contract «Piece C4»): its legs
+/// were drawn over the old network, and the next hour's re-plan (logistics_
+/// system.cpp, Replan; one an hour) draws them over the new one. Until C4 a
+/// road finished at noon was driven only from the next morning's plan.
+void RebuildRoadIndex(WorldState& current) {
+  current.road_index = BuildRoadIndex(current.roads);
+  current.groom_plan.stale = true;
+}
+
 }  // namespace
 
 RoadWorkCatalog ReadRoadWorkCatalog(const ITableSet& tables,
@@ -273,7 +283,7 @@ OrderRefusal LayRoad(const RoadTracer& trace,
     }
   }
   const RoadId laid = AppendRow(current.roads, road);
-  current.road_index = BuildRoadIndex(current.roads);
+  RebuildRoadIndex(current);
   order.road = laid;
   SimEvent& event = EmitEvent(current, EventKind::kRoadLaid, EventSeverity::kNotable);
   event.road = laid;
@@ -361,7 +371,7 @@ OrderRefusal DemolishRoad(const RoadSelector& select,
     }
   }
   WriteCut(current, row, road_id, cut, std::nullopt, RoadWorkId{});
-  current.road_index = BuildRoadIndex(current.roads);
+  RebuildRoadIndex(current);
   SimEvent& event = EmitEvent(current, EventKind::kRoadDemolished, EventSeverity::kNotable);
   event.road = road_id;
   event.order = order_id;
@@ -472,7 +482,7 @@ void SettleRoadWorks(WorldState& current) {
       WriteCut(current, row, road_id, cut, std::nullopt, work_id);
     }
     RemoveRow(current.road_works, work_id);
-    current.road_index = BuildRoadIndex(current.roads);
+    RebuildRoadIndex(current);
     SimEvent& finished = EmitEvent(current, EventKind::kRoadWorkFinished, EventSeverity::kNotable);
     finished.road = now;
     finished.amount =

@@ -34,6 +34,7 @@
 #include "core_catalog/definitions.h"
 #include "core_common/body.h"
 #include "core_common/calendar.h"
+#include "core_common/family_food_watch.h"
 #include "core_common/plot.h"
 #include "core_common/quantities.h"
 #include "core_common/random.h"
@@ -49,6 +50,7 @@
 #include "household_plot.h"
 #include "housing.h"
 #include "housing_ladder.h"
+#include "hunger_forecast.h"
 #include "issue_norm.h"
 #include "life_config.h"
 #include "specialist_arrival.h"
@@ -313,6 +315,13 @@ class ResidentsSystem final : public IResidentsSystem {
       alarm.lamp = village_hungry ? 1U : 0U;
       alarms.push_back(alarm);
     }
+    // THE YELLOW STAGE (#1046; hunger_forecast.h): the same lamp's forecast,
+    // while the village is not hungry yet - the red says the rest.
+    // STUB (boss, the #1046 thread [20]): deferred behind world_params
+    // `hunger_forecast_lit` 0 - hunger_forecast.h names the return condition.
+    if (!village_hungry && config_.hunger_forecast_lit) {
+      CollectHungerForecast(completed, alarms);
+    }
     // FOOD LOCKED IN THE FUNDS (I6): only while somebody is at the threshold
     // — food in a fund beside a fed village is a fund doing its job.
     if (hungry.empty()) {
@@ -329,6 +338,43 @@ class ResidentsSystem final : public IResidentsSystem {
       alarm.lamp = village_hungry ? 1U : 0U;
       alarms.push_back(alarm);
     }
+  }
+
+  /// The hunger lamp's yellow stage (#1046): one alarm of kFamilyGoingHungry
+  /// when the families under threat are at least the red's share - the first
+  /// of them its subject, their count, the days and month of the first short
+  /// day, the advice by the ladder: food in a fund, else a chairman's norm.
+  void CollectHungerForecast(const WorldState& completed, std::vector<Alarm>& alarms) const {
+    const HungerForecast forecast =
+        ForecastHunger(food_, completed, config_.life_speedup, config_.hunger_forecast_share);
+    if (forecast.under_threat.empty() ||
+        static_cast<float>(forecast.under_threat.size()) <
+            kHungerLampShare * static_cast<float>(forecast.families_with_members)) {
+      return;
+    }
+    Alarm alarm;
+    alarm.kind = AlarmKind::kFamilyGoingHungry;
+    alarm.family = forecast.under_threat.front();
+    alarm.amount = static_cast<std::int64_t>(forecast.under_threat.size());
+    alarm.days_to_loss = forecast.days_to_first_short;
+    alarm.forecast_month = static_cast<std::uint8_t>(
+        DateFromDay(completed.calendar.day + forecast.days_to_first_short).month);
+    alarm.lamp = 1;
+    const std::vector<std::pair<ResourceId, Grams>> locked = LockedRationFood(food_, completed);
+    if (!locked.empty()) {
+      alarm.advice = AlarmAdvice::kUnsealFund;
+      alarm.advice_resource = locked.front().first;
+      alarm.advice_amount = locked.front().second;
+    } else {
+      for (const IssueNormLine& line : IssueNorms(completed)) {
+        if (line.basis == IssueNormBasis::kChairman && line.grams_per_trudoden > 0) {
+          alarm.advice = AlarmAdvice::kLowerIssueNorm;
+          alarm.advice_resource = line.resource;
+          break;
+        }
+      }
+    }
+    alarms.push_back(alarm);
   }
 
   bool AnyoneGoingHungry(const WorldState& completed) const {
@@ -375,7 +421,7 @@ class ResidentsSystem final : public IResidentsSystem {
     need.village_need_kcal_per_day =
         SettlementDailyNeedKilograms(food_, config_.life_speedup, completed) *
         static_cast<float>(kGramsPerKilogram) * food_.consumption.grain_reference_kcal_per_gram;
-    need.free_grams = FreeIssueStock(completed, SealedFunds(food_, completed), resource);
+    need.free_grams = FreeIssueStock(food_, completed, SealedFunds(food_, completed), resource);
     need.free_kcal = static_cast<float>(need.free_grams) * food_.resources[index].kcal_per_gram;
     return need;
   }
@@ -465,6 +511,11 @@ class ResidentsSystem final : public IResidentsSystem {
     if (current.calendar.day == previous.calendar.day) {
       return;  // daily work, self-gated to day boundaries
     }
+    // THE HUNGER FORECAST'S MEMORY CLOSES YESTERDAY (#1046; family_food_watch.h):
+    // its own food folds into the mean.
+    for (FamilyRow& family : current.families.rows) {
+      CloseFamilyFoodDay(family);
+    }
     // The structural work — who dies, leaves, is born, marries, arrives,
     // and who gets a roof — lives in demography.cpp. What is left here is
     // the two things that follow from it and are not it: the family's
@@ -531,7 +582,9 @@ std::unique_ptr<IResidentsSystem> CreateResidentsSystem(
     std::function<ResourceAmounts(const WorldState&)> next_year_hold,
     std::function<std::int32_t(const WorldState&, ResourceId)> days_to_harvest_of,
     std::function<ResourceAmounts(const WorldState&)> turn_plan_seal,
-    std::function<ResourceAmounts(const WorldState&)> harvest_to_come) {
+    std::function<ResourceAmounts(const WorldState&)> harvest_to_come,
+    std::function<ResourceAmounts(const WorldState&)> standing_harvest,
+    std::function<bool(const UnitRow&)> issue_source) {
   // THE DEFAULTS ARE LEGITIMATE AND THEIR SILENCE WAS NOT
   // (core_tables/stub_tables.h). A caller that has not said it wants
   // this module's documented defaults is refused by name, so that a
@@ -591,6 +644,9 @@ std::unique_ptr<IResidentsSystem> CreateResidentsSystem(
   food.days_to_harvest_of = std::move(days_to_harvest_of);
   food.turn_plan_seal = std::move(turn_plan_seal);
   food.harvest_to_come = std::move(harvest_to_come);
+  food.standing_harvest = std::move(standing_harvest);
+  food.issue_source = std::move(issue_source);
+  food.forecast_terms = life.hunger_forecast_terms;
   // The cold metric is not "zero cold", it is "cold is not counted": phase 1
   // has neither firewood nor unit heating (plan §11), so ResidentRow::cold
   // never moves. Said out loud at world creation so that a run showing

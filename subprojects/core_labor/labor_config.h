@@ -36,6 +36,7 @@
 #include "core_catalog/processing_catalog.h"
 #include "core_catalog/timber_catalog.h"
 #include "core_common/calendar.h"
+#include "core_common/cart_gear.h"
 #include "core_common/haul.h"
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
@@ -280,6 +281,12 @@ struct LaborConfig {
   float early_snow_share = 0.10F;
   std::uint32_t early_snow_last_day = kDaysPerYear - 1U;
 
+  /// A field heap's shelf in game days, by ResourceId (#1099;
+  /// FieldHeapShelfDays over resources.csv `spoil_days` and world_params
+  /// `field_heap_keeping_factor`, the cells logistics reads for C4.2's
+  /// order); infinity keeps for ever. Empty: no heap rots, nothing weighed.
+  std::vector<float> heap_shelf_days;
+
   /// farming.csv `reaping_days_per_hand_light_hour` — the count of the
   /// reaping's rate for a village with no unfinished reaping day in this
   /// year's book nor in the last (core_common/reaping_pace.h, ReapingCrewOf;
@@ -498,6 +505,11 @@ struct LaborConfig {
   /// A cart's load, kg (transport.csv cart_loaded, load_tonnes).
   float cart_load_kg = 750.0F;
 
+  /// THE SLEDGE (SL; core_common/cart_gear.h): transport.csv `sledge`; the
+  /// goods hauling's paces and load on a snow day, through CartGearToday with
+  /// CartSpecsOf(config).
+  SledgeSpecs sledge;
+
   /// PASSENGERS ON A CART (transport design §11, «Подвода возит и груз, и
   /// людей»; routing stage A, 0.37.162): the bench of the goods cart
   /// (transport.csv cart_loaded `seats`, the driver not counted) and the
@@ -542,6 +554,17 @@ struct LaborConfig {
   /// (econ/manual/proposals/walker-carry-norm-2026-10-02.md): with the norm
   /// below it keeps a walker's day at half a trudoden's norm or more.
   float walker_min_trips_per_day = 2.0F;
+
+  /// labor.csv `carter_min_trips_per_day`, optional (#1213; boss, boss-core-c2-
+  /// pair [54]): a carter on a works' DIRECT leg (logs straight off a stand,
+  /// AssignmentJob::log_cart) is sent where the standard day - or the day's
+  /// light where shorter - holds this many round trips of his ride, instead
+  /// of the walker's road rule (travel_limit_hours, min_usable_hours): his
+  /// day IS the ride. STUB 0.5, the number is econ's. 0 turns the rule off and
+  /// the old road rule judges the leg. 0.5 = a round trip inside two working
+  /// days (econ, boss-core-c2-pair [55]: 1933's stand is 7.9-9.7 game hours
+  /// one way at 0.75 km a game hour, about 0.5-0.63 trips a standard day).
+  float carter_min_trips_per_day = 0.5F;
 
   /// labor.csv `walker_norm_kg_per_day` (0.37.109): the carrying norm — a
   /// walker's day is paid as what he carried over this, never above one;
@@ -637,6 +660,15 @@ struct LaborConfig {
   /// that will house a herd facing the cold go first among the construction.
   ColdHousing cold_housing;
 };
+
+/// @brief The cart's and the sledge's numbers of this config (SL; cart_gear.h).
+inline CartSpecs CartSpecsOf(const LaborConfig& config) {
+  return CartSpecs{.cart_empty_kmh = config.harness_speed_kmh,
+                   .cart_loaded_kmh = config.loaded_speed_kmh,
+                   .cart_load_kg = config.cart_load_kg,
+                   .sledge_kmh = config.sledge.kmh,
+                   .sledge_load_kg = config.sledge.load_kg};
+}
 
 /// @brief Fills `config` from the table set.
 /// @return false with `error` set when a PRESENT table is malformed; a

@@ -9,7 +9,8 @@ kolkhoz_add_module(core_logistics
     logistics_config.cpp
     logistics_plan.cpp
     logistics_system.cpp
-    logistics_tasks.cpp)
+    logistics_tasks.cpp
+    trip_pricing.cpp)
 
 target_link_libraries(core_logistics
     PUBLIC core_common

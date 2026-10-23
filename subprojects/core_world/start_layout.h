@@ -98,6 +98,17 @@ struct StartLayoutRow {
   /// an answer (start design §4).
   float start_wear_pct = -1.0F;
 
+  /// HOW FULL THE UNIT STARTS, 0..100 % of its capacity (start_layout
+  /// fill_pct; #1199): the old cemetery's half (social.md «Половина на
+  /// старте»), as graves of its plot's capacity (cemetery_rules.h). Minus
+  /// one is no word, as with the wear. Read by nobody until #1199.
+  float fill_pct = -1.0F;
+
+  /// THE UNIT's OWN PLOT RADIUS, metres (start_layout plot_radius_m, the last
+  /// column; design.db 82740e87): the old cemetery's 14 m. Minus one or an
+  /// empty cell is none: the type's circle (UnitRow::plot_radius_m).
+  float plot_radius_m = -1.0F;
+
   /// The unit stands and does not work at all until it is restored.
   ///
   /// NOT WEAR, and that is the whole reason it is a second field: wear

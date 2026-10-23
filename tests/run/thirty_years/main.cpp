@@ -649,6 +649,11 @@ int main(int argc, char** argv) {
   run::BuildingChairman::WireStartGates(yard, fixture, houses, sawmill);
   run::BuildingChairman::WireSchoolGate(school, sawmill);
   run::BuildingChairman::WireSawGate(office, sawmill);
+  // And the first pen's warm ahead of every other works, as BuildingChairman
+  // wires it (warm_hold.h; MR.2's «L2 in the first wave»).
+  const run::WarmHold warm_hold(*world.tables);
+  run::WarmHold::Declare();
+  run::BuildingChairman::WireWarmHold(warm_hold, sawmill, yard, fixture, houses, school, office);
   run::BuildingChairman::WireRiseWatches(yard, felling, limit, digging);
   run::BuildingChairman::WirePenWatch(yard, fixture, felling, digging);
   sawmill.KeepBoardReserve(g_saw_reserve);
@@ -1261,7 +1266,8 @@ int main(int argc, char** argv) {
   // A thing on the ground is not a neighbouring household: a plot fences the
   // land off from other PLOTS, not from every object standing on it.
   const core::PlotRules plot_rules{.radius_by_type = definitions.units.plot_radius_m,
-                                   .map_side_m = definitions.Plots().map_side_m};
+                                   .map_side_m = definitions.Plots().map_side_m,
+                                   .yields_by_type = {}};
   const std::span<const float> plot_radii = definitions.units.plot_radius_m;
   const std::span<const float> keep_out_radii = definitions.units.keep_out_radius_m;
   std::uint32_t overlapping = 0;

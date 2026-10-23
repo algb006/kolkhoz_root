@@ -728,7 +728,17 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
   // runs that many days into next year's cut - on its first day the herds
   // still eat the old hay.
   SimDay horizon_end = cut_from + kDaysPerYear + config.farming.hay_new_cut_in_store_days;
-  if (first_year && today <= this_cut_end && !pace.known) {
+  // THE HORSE BOUGHT TO STAY LOOKS PAST YEAR 1's FIRST CUT TOO (#1113; boss,
+  // tasks.db, cure (a)): year 1 stopped every reader at the first scythes, so
+  // the kTooFewHorses «hay first» test asked only whether the start's rick
+  // carried today's herds and one more horse to ~day 22, and the novice
+  // bought ~120 horses on it in year 1 (MR.2's trace, wip/mr 3afc1f89). The
+  // long question now keeps its year, with the cut it has no book for priced
+  // from the grass standing on the meadows (HayStandingOnMeadows): a CEILING,
+  // so it errs toward yes. The yellow lamp's nearest horizon keeps option (б).
+  const bool first_year_long_look = first_year && today <= this_cut_end && !pace.known &&
+                                    horizon == FeedHorizon::kNextYearsScythes;
+  if (first_year && today <= this_cut_end && !pace.known && !first_year_long_look) {
     horizon_end = today < cut_from ? cut_from : today;
   } else if (horizon == FeedHorizon::kNearestScythes && today < cut_from) {
     // This year's scythes, and the same days into their cut: one horizon from
@@ -743,13 +753,18 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
   // from the first day of the meadows' cut month to the end of the cut, as
   // the mowing lays it (LayMownShare). Landed whole on the cut's last day it
   // lit the yellow in every January of 0.37.57's first pair: the start's hay
-  // is sized to the first scythes (day 22). Year 1 expects none (above).
+  // is sized to the first scythes (day 22). Year 1 expects none (above), save
+  // the horse's long look, which takes the grass standing (#1113).
   // By the pace where it is known; else, from year 2, last year's book as
   // before (the days before the cut and its first dry working day).
-  const Grams expected_cut =
-      pace.known
-          ? pace.hay_to_come
-          : (!first_year && today <= this_cut_end ? ExpectedCutStillToCome(config, world) : 0);
+  Grams expected_cut = 0;
+  if (pace.known) {
+    expected_cut = pace.hay_to_come;
+  } else if (first_year_long_look) {
+    expected_cut = HayStandingOnMeadows(config, world);
+  } else if (!first_year && today <= this_cut_end) {
+    expected_cut = ExpectedCutStillToCome(config, world);
+  }
   const std::uint32_t cut_first_day = today <= cut_from ? cut_from - today : 0U;
   const std::uint32_t cut_last_day = today <= this_cut_end ? this_cut_end - today : 0U;
   const float cut_kg_a_day =
@@ -813,6 +828,9 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
   // them (a lot with nowhere to go is refused at the door — kNowhereToStore).
   std::vector<std::pair<std::uint32_t, std::vector<float>>> landings;
   for (const LimitDeliveryRow& cart : world.limit_deliveries.rows) {
+    if (cart.outbound != 0) {
+      continue;  // the plan's own delivery leaves the village (stage В5)
+    }
     std::vector<float> goods(held_kg.size(), 0.0F);
     bool any = false;
     for (std::size_t resource = 0; resource < cart.goods.size() && resource < goods.size();

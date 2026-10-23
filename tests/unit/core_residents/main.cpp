@@ -28,6 +28,7 @@
 #include "alcoholism.h"
 #include "appearance_memory.h"
 #include "barter_checks.h"
+#include "burial_checks.h"
 #include "core_common/calendar.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table_ops.h"
@@ -45,6 +46,7 @@
 #include "household_plot.h"
 #include "housing.h"
 #include "housing_ladder.h"
+#include "hunger_forecast_checks.h"
 #include "issue_norm.h"
 #include "life_config.h"
 #include "membership.h"
@@ -4916,6 +4918,7 @@ int main() {
   failures += CheckLockedRationFood();
   failures += CheckSamogonPurchase();
   failures += CheckBarter();
+  failures += CheckBurial();
   failures += CheckNoWeddingIntoABarrackAndTheCrowdedBarrack();
   failures += CheckTheNewHouseholdsAdvance();
   failures += CheckVitals();
@@ -4940,6 +4943,7 @@ int main() {
   failures += CheckTheWinterCountsTheHeapAbovePlan();
   failures += CheckTheLooksMemory();
   failures += CheckTakeNightTrader();
+  failures += CheckTheHungerForecast();
   if (system != nullptr) {
     failures += CheckOldAgeTakesTheOld(*system);
     failures += CheckTheElderIsSparedByAge(*system);

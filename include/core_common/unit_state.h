@@ -337,6 +337,39 @@ struct ConstructionState {
   /// 158): the day's memory `supply_idle_days` is settled from, cleared by the
   /// evening that reads it.
   std::uint8_t supply_moved_today = 0;
+
+  /// THE DAYS OF `supply_idle_days` A MOWING HELD (save 165; stage В6 part 3,
+  /// boss, the В6 thread [10]-[12]; transport design «Подвоз к стройке»: «дни,
+  /// когда покос забрал возчиков, не идут в срок стройки»): of the idle
+  /// evenings counted, those on which a meadow's cut was open in its window
+  /// (supply_haul.cpp, MowingHoldsTheCarters). THE LAMP's reading only: the
+  /// floor and its carters read `supply_idle_days` whole, so scheduling is
+  /// 0.37.276's; kSiteSupplyWaits lights on the difference
+  /// (site_supply_floor.h, SupplyLampDays). Never above `supply_idle_days`,
+  /// reset with it.
+  std::uint16_t supply_mowing_days = 0;
+};
+
+/// @brief A RICK'S SUPPLY FROM ANOTHER RICK (#1056 C1.2; econ's stage C
+/// contract 574c366; logistics_state.h, kRickSupply; save 171): written on
+/// the RECEIVING rick by production's evening (core_production rick_supply.h)
+/// when its herds' hay falls below its threshold, drained by the hauling on
+/// that unit, settled hourly by moving hay from `from` into this rick. All
+/// nought and `from` invalid when no supply stands.
+struct RickSupplySeam {
+  /// The rick the hay is carted from.
+  UnitId from;
+  /// The feed carted (hay: the one feed a rick is short of, feed_home.cpp).
+  ResourceId resource;
+  /// Game man-days of carting left today, and what the last settle wrote
+  /// (the perevalka's two, UnitRow::haul_days_remaining / written).
+  float days_remaining = 0.0F;
+  float days_written = 0.0F;
+  /// The hay still to cart, grams: the evening's price less what was moved.
+  Grams grams = 0;
+  /// The threshold it was priced against, days of its herds' hay: the urgent
+  /// check's horizon + farming.csv `rick_threshold_add_days` (STUB 7).
+  std::uint8_t threshold_days = 0;
 };
 
 /// @brief Whether any material of the works still awaits its carting
@@ -356,6 +389,17 @@ struct UnitRow {
   UnitTypeId type;
 
   Vec2 position;
+
+  /// THE SETTLEMENT THE UNIT BELONGS TO (#1089; settlement_state.h): sticky
+  /// for an inhabited dwelling - set at its first inhabited day, changed only
+  /// by a merge or a split; for every other unit the settlement whose
+  /// dwellings are nearest, written daily. Invalid until the first step.
+  /// SAVED.
+  SettlementId settlement;
+
+  /// An inhabited dwelling of its settlement standing as an OUTLYING yard:
+  /// beyond kJoinMetres of the rest, too few to form its own (V4). SAVED.
+  std::uint8_t outlying = 0;
 
   /// Unit level, 1-based on the type's own ladder (unit rules design §11:
   /// the first level IS the built unit). LEVEL 0 MEANS "NOT BUILT": a
@@ -543,7 +587,35 @@ struct UnitRow {
   /// what the workers did from what the raw material allowed. Same contract
   /// as FieldRow::haul_days_written.
   float production_days_written = 0.0F;
+
+  /// A rick's supply from another rick (#1056 C1.2; save 171): see the type.
+  RickSupplySeam rick_supply;
+
+  /// THE GRAVES A CEMETERY HOLDS (#1199; social.md «Заполнение — метрика
+  /// юнита»; save 180). 0 for every other type. Set at the start from
+  /// start_layout fill_pct of the plot's capacity (cemetery_rules.h); +1
+  /// for each resident who dies in the village, laid by core_residents'
+  /// demography sub-step (slot 3) and by the save's load. Never above the
+  /// capacity: a death with no room waits in WorldState::burials_waiting.
+  std::uint16_t graves = 0;
+
+  /// THE UNIT's OWN PLOT RADIUS, metres; 0 = its type's (unit_types
+  /// plot_radius_m) (boss, boss-core-epoch1-resume [23], [25]; design.db
+  /// 82740e87). Set only by genesis, from start_layout's plot_radius_m (the
+  /// old cemetery's 14 m), and by the save's load (save 181). ONE TRUTH FOR
+  /// ONE FENCE: what the plot holds (CemeteryCapacityGraves) and what it
+  /// blocks (PlotOverlaps) both read it through PlotRadiusOf (plot.h).
+  float plot_radius_m = 0.0F;
 };
+
+/// @brief Whether `unit` is supplied from another rick NOW (#1056 C1.2): a
+/// supply stands, and the unit is neither emptied nor a works' receiver -
+/// one hauling work names one unit, and those two are asked first
+/// (work_seam.cpp).
+inline bool RickSupplyStands(const UnitRow& unit) {
+  return unit.emptying == 0 && unit.rick_supply.from.value != kInvalidEntityIdValue &&
+         !AnythingAwaits(unit.construction);
+}
 
 /// @brief The units table type used by WorldState.
 using UnitTable = StateTable<UnitId, UnitRow>;

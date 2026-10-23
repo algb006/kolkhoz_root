@@ -66,6 +66,22 @@ ResourceId TaskLoadResource(const WorldState& world, const LogisticsTaskRow& tas
       const ResourceAmounts* const front = FrontLegOf(world, task);
       return front != nullptr ? MostGramsOf(*front) : ResourceId{};
     }
+    case LogisticsLoadKind::kMilkLeg: {
+      const std::uint32_t row = FindRow(world.herds, task.herd);
+      return row != kNoRow ? world.herds.rows[row].leg_resource : ResourceId{};
+    }
+    case LogisticsLoadKind::kRickSupply: {
+      const std::uint32_t row = FindRow(world.units, task.unit);
+      return row != kNoRow ? world.units.rows[row].rick_supply.resource : ResourceId{};
+    }
+    case LogisticsLoadKind::kManureField: {
+      // The heap's own load (#1056 C2): the manure_pile keeps nothing else.
+      const std::uint32_t field = FindRow(world.fields, task.field);
+      const std::uint32_t heap =
+          field != kNoRow ? FindRow(world.units, world.fields.rows[field].manure_dose.from)
+                          : kNoRow;
+      return heap != kNoRow ? MostGramsOf(world.units.rows[heap].stock) : ResourceId{};
+    }
     case LogisticsLoadKind::kLogisticsLoadKindCount:
       break;
   }
@@ -93,7 +109,12 @@ ResourceId WalkerLoadResourceOfWork(const WorldState& world,
   }
   LogisticsTaskRow as_task;
   if (work.field.value != kInvalidEntityIdValue) {
-    as_task.load_kind = LogisticsLoadKind::kFieldHeap;
+    // The reaped heap first; the winter dose only while no heap lies there
+    // (#1056 C2; land_state.h, ManureDoseStands).
+    const std::uint32_t row = FindRow(world.fields, work.field);
+    as_task.load_kind = row != kNoRow && ManureDoseStands(world.fields.rows[row])
+                            ? LogisticsLoadKind::kManureField
+                            : LogisticsLoadKind::kFieldHeap;
     as_task.field = work.field;
   } else if (work.stand.value != kInvalidEntityIdValue) {
     as_task.load_kind = LogisticsLoadKind::kStandLogs;
@@ -104,13 +125,20 @@ ResourceId WalkerLoadResourceOfWork(const WorldState& world,
   } else if (work.limit_delivery.value != kInvalidEntityIdValue) {
     as_task.load_kind = LogisticsLoadKind::kDistrictLot;
     as_task.limit_delivery = work.limit_delivery;
+  } else if (work.herd.value != kInvalidEntityIdValue) {
+    // A hauling on a herd is its milk leg (#1056 C1.1).
+    as_task.load_kind = LogisticsLoadKind::kMilkLeg;
+    as_task.herd = work.herd;
   } else if (work.unit.value != kInvalidEntityIdValue) {
-    // A unit being emptied is carted out first (work_seam.cpp); otherwise
-    // the hauling on a unit is its works' supply.
+    // A unit being emptied is carted out first (work_seam.cpp); then its
+    // works' supply; then a rick's supply from another rick (#1056 C1.2).
     const std::uint32_t row = FindRow(world.units, work.unit);
-    as_task.load_kind = row != kNoRow && world.units.rows[row].emptying != 0
-                            ? LogisticsLoadKind::kStoreTransfer
-                            : LogisticsLoadKind::kSiteSupply;
+    as_task.load_kind = LogisticsLoadKind::kSiteSupply;
+    if (row != kNoRow && world.units.rows[row].emptying != 0) {
+      as_task.load_kind = LogisticsLoadKind::kStoreTransfer;
+    } else if (row != kNoRow && RickSupplyStands(world.units.rows[row])) {
+      as_task.load_kind = LogisticsLoadKind::kRickSupply;
+    }
     as_task.unit = work.unit;
   } else {
     return ResourceId{};

@@ -11,6 +11,7 @@
 #include "core_common/haul.h"
 #include "core_common/road_route.h"
 #include "core_common/state_table_ops.h"
+#include "core_common/trip_terms.h"
 #include "core_common/unit_state.h"
 #include "core_common/work_seam.h"
 #include "field_haul.h"
@@ -83,15 +84,17 @@ struct CartPace {
 
 CartPace PaceOf(const ProductionConfig& config, const WorldState& world) {
   const float bed = HaulBedFactor(config, world.weather);
-  const float empty_kmh = config.harness_speed_kmh * bed;
-  const float loaded_kmh = config.loaded_speed_kmh * bed;
+  const CartGear gear = CartGearToday(world, CartSpecsOf(config));  // SL: the sledge on snow
+  const float empty_kmh = gear.empty_kmh * bed;
+  const float loaded_kmh = gear.loaded_kmh * bed;
   return CartPace{
       .empty = empty_kmh > 0.0F ? static_cast<float>(kClockScale) / empty_kmh : 0.0F,
       .loaded = loaded_kmh > 0.0F ? static_cast<float>(kClockScale) / loaded_kmh : 0.0F};
 }
 
 /// One trip's hours over the stops in order: loaded out and between, empty
-/// back (RateOverKm's floor kept).
+/// back; one loading pause at the start and an unloading pause at every stop
+/// (#844, kLoadingPauseHours).
 float TourHours(const WorldState& world,
                 TravelMode mode,
                 const CartPace& pace,
@@ -108,10 +111,11 @@ float TourHours(const WorldState& world,
   if (empty_km != nullptr) {
     *empty_km = back;
   }
-  const float hours = loaded_km * pace.loaded + back * pace.empty;
-  // The round trip's floor is haul.cpp's own (asked, not copied).
-  const float floor = RateOverKm(0.0F, 0.0F, 0.0F, 0).round_trip_hours;
-  return hours >= floor ? hours : floor;
+  const float road = loaded_km * pace.loaded + back * pace.empty;
+  // THE PAUSES, NOT A FLOOR (#844): until 0.37.302 the tour took haul.cpp's
+  // 0.25 h floor; now a loading and an unloading at each stop, on the road.
+  const float stops_paused = static_cast<float>(stops.empty() ? 1U : stops.size());
+  return (road > 0.0F ? road : 0.0F) + (kLoadingPauseHours * (1.0F + stops_paused));
 }
 
 }  // namespace
@@ -128,8 +132,9 @@ float CartDaysFor(const ProductionConfig& config, Grams grams, const HaulRate& r
     return 0.0F;
   }
   // WHOLE TRIPS: a cart leaves with what lies, up to its load, and comes back
-  // (the round trip holds the empty return).
-  const std::int64_t trips = (grams + rate.load - 1) / rate.load;
+  // (the round trip holds the empty return). One home with C3's fallback
+  // (trip_terms.h, WholeTripsFor).
+  const std::uint32_t trips = WholeTripsFor(grams, rate.load);
   return static_cast<float>(trips) * rate.round_trip_hours / config.standard_day_hours;
 }
 
@@ -221,7 +226,7 @@ std::vector<CartTour> PlanSupplyTours(const ProductionConfig& config, const Worl
       left.erase(left.begin() + static_cast<std::ptrdiff_t>(first_index));
       const Grams capacity = CartLoadGrams(
           config.porter,
-          config.cart_load_kg,
+          CartGearToday(world, CartSpecsOf(config)).load_kg,  // SL: the sledge's load on snow
           DefIdFromIndex<ResourceIdTag>(static_cast<std::uint32_t>(first.first_resource)));
       CartTour tour;
       tour.from = group.from;
