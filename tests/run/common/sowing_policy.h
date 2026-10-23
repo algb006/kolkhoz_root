@@ -144,7 +144,8 @@ class SowingPolicy {
       std::cout
           << "sowing_policy: he answered " << answered_
           << " plan alarms by putting the missing crop onto the best fields of that year, and "
-          << unanswered_ << " found no field to take it\n";
+          << unanswered_ << " found no field to take it; " << refused_small_
+          << " answers stand short of the due plus next year's seed (#1222)\n";
     }
     std::cout << "sowing_policy: THE GIVING BACK IS A PROSTHETIC, NOT A DECISION — the order book "
                  "has no verb for \"do not sow this field THIS year\". kSetRotation with empty "
@@ -165,11 +166,15 @@ class SowingPolicy {
     }
     const std::uint32_t resource_col = crops->FindColumn("resource");
     const std::uint32_t winter_col = crops->FindColumn("is_winter");
+    const std::uint32_t yield_col = crops->FindColumn("yield_kg_per_ha");
+    const std::uint32_t seed_col = crops->FindColumn("sowing_norm_kg_per_ha");
     crop_of_resource_.assign(resources->RowCount(), core::CropId{});
     winter_crop_.assign(crops->RowCount(), 0);
     for (std::uint32_t row = 0; row < crops->RowCount(); ++row) {
       const std::optional<float> winter = crops->CellReal(row, winter_col);
       winter_crop_[row] = winter.has_value() && *winter > 0.0F ? 1U : 0U;
+      crop_yield_kg_per_ha_.push_back(crops->CellReal(row, yield_col).value_or(0.0F));
+      crop_seed_kg_per_ha_.push_back(crops->CellReal(row, seed_col).value_or(0.0F));
       const std::uint32_t resource = resources->FindRowByKey(crops->CellText(row, resource_col));
       if (resource < crop_of_resource_.size() &&
           crop_of_resource_[resource].value == core::kInvalidDefIdValue) {
@@ -240,6 +245,26 @@ class SowingPolicy {
            plan_grain_share_;
   }
 
+  /// Hectares whose table yield is the seed the rung will hold of `resource`'s
+  /// crop for the year after `year` (#1222): the crop's sowing norm over the
+  /// hectares growing it then, after today's orders, ÷ its yield. The chain
+  /// holds three years, so the last year's answer reads its own year again.
+  float SeedHectares(const core::WorldState& world,
+                     const std::vector<std::uint32_t>& fields,
+                     const std::vector<core::OrderRow>& orders,
+                     std::uint32_t resource,
+                     std::size_t year) const {
+    const core::CropId crop =
+        resource < crop_of_resource_.size() ? crop_of_resource_[resource] : core::CropId{};
+    if (crop.value >= crop_yield_kg_per_ha_.size() || !(crop_yield_kg_per_ha_[crop.value] > 0.0F)) {
+      return 0.0F;
+    }
+    const std::size_t next = year + 1 < 3 ? year + 1 : year;
+    const float seed_kg =
+        crop_seed_kg_per_ha_[crop.value] * GrownHectares(world, fields, orders, resource, next);
+    return seed_kg / crop_yield_kg_per_ha_[crop.value];
+  }
+
   /// Hectares whose chain (after today's orders) grows `resource` in `year`.
   float GrownHectares(const core::WorldState& world,
                       const std::vector<std::uint32_t>& fields,
@@ -287,11 +312,19 @@ class SowingPolicy {
       }
       const auto year = static_cast<std::size_t>(alarm.amount);
       const std::uint32_t wanted = alarm.resource.value;
+      // THE FIELD MUST CARRY ITS SEED TOO (#1222; boss, boss-core-c2-pair
+      // [85]): the hectares the district's rate asks only cover the due, and the
+      // seed rung holds next year's seed of the crop first. 0.37.321's
+      // thirty_years y23 sowed a 630 kg-seed rye field whose 2 934 kg could not
+      // carry the 2 520 kg rung plus the 1 789 kg due it priced. So the answer
+      // takes the due's hectares plus those whose table yield is next year's
+      // seed.
       const float owed_ha = OwedHectares(world, fields, wanted, year);
+      const float target_ha = owed_ha + SeedHectares(world, fields, orders, wanted, year);
       bool placed_any = false;
       for (int pass = 0; pass < 2; ++pass) {
         for (const std::uint32_t row : fields) {
-          if (GrownHectares(world, fields, orders, wanted, year) >= owed_ha &&
+          if (GrownHectares(world, fields, orders, wanted, year) >= target_ha &&
               (owed_ha > 0.0F || placed_any)) {
             break;
           }
@@ -315,6 +348,13 @@ class SowingPolicy {
           SetChain(world, orders, row, chain);
           placed_any = true;
         }
+      }
+      // Short of the seed's hectares with every field tried: counted, not
+      // withdrawn - a position with no field still owes its due, and a short
+      // field gives more of it than none.
+      if (placed_any && owed_ha > 0.0F &&
+          GrownHectares(world, fields, orders, wanted, year) < target_ha) {
+        ++refused_small_;
       }
       ++(placed_any ? answered_ : unanswered_);
     }
@@ -352,6 +392,11 @@ class SowingPolicy {
   std::vector<std::uint32_t> plan_resources_;
   std::uint32_t answered_ = 0;
   std::uint32_t unanswered_ = 0;
+  /// #1222: answers that tried every field and still stand short of the due
+  /// plus next year's seed.
+  std::uint32_t refused_small_ = 0;
+  std::vector<float> crop_yield_kg_per_ha_;
+  std::vector<float> crop_seed_kg_per_ha_;
 
   /// A chain taken away, and the field it came from.
   struct Borrowed {
