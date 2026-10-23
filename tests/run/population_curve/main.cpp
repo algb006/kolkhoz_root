@@ -659,6 +659,32 @@ void TraceBathhouse(const run::TransitionPolicy& transition,
                 << static_cast<double>(leg.unpriced) / 1000.0;
     }
     std::cout << '\n';
+    // Probe 4c: the sites' queue ahead of it and behind - each site's type,
+    // phase, start day, raised, front leg (from, way), its carters today.
+    const std::vector<std::uint32_t> order = core::SiteSupplyOrder(today);
+    std::cout << "BQ,seed=" << out.seed << ",year=" << year
+              << ",month=" << (day % core::kDaysPerYear) / core::kDaysPerMonth + 1
+              << ",sites=" << order.size();
+    for (std::uint32_t rank = 0; rank < order.size(); ++rank) {
+      const core::UnitRow& queued = today.units.rows[order[rank]];
+      const core::ConstructionState& works = queued.construction;
+      std::uint32_t carters = 0;
+      for (const core::ResidentRow& person : today.residents.rows) {
+        carters += person.work.unit.value == today.units.row_ids[order[rank]].value &&
+                           person.work.kind == core::WorkKind::kHauling
+                       ? 1U
+                       : 0U;
+      }
+      std::cout << " | " << rank << ' '
+                << (queued.type.value < out.unit_type_keys.size()
+                        ? out.unit_type_keys[queued.type.value]
+                        : std::to_string(queued.type.value))
+                << " phase " << static_cast<int>(works.phase) << " since " << works.supply_since_day
+                << " raised " << static_cast<int>(works.raised) << " front " << works.supply_from.x
+                << '/' << works.supply_from.y << " way " << static_cast<int>(works.supply_log_way)
+                << " left " << works.supply_days_remaining << " carters " << carters;
+    }
+    std::cout << '\n';
     std::cout << "BT,seed=" << out.seed << ",year=" << year
               << ",month=" << (day % core::kDaysPerYear) / core::kDaysPerMonth + 1
               << ",level=" << static_cast<int>(unit.level) << ",era_level="
