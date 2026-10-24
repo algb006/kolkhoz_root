@@ -127,6 +127,9 @@ alcohol_loss_married,0.5,core
 alcohol_loss_sober,1,core
 alcohol_epoch1_cap,60,core
 alcohol_sober_months_min,2,core
+alcohol_samogon_mood,5,core
+alcohol_samogon_mood_above,20,core
+alcohol_samogon_mood_to,40,core
 mts_column_ha_limit,70,core
 mts_column_ha_per_work_day,10,core
 mts_column_spring_from_month,3,core
