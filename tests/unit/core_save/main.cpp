@@ -1917,7 +1917,9 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // 1353 in the codec's comment before the build, and held.
     // Save 185 (#635): the paths' four counters, three u8 and a u16 -
     // predicted 1353 -> 1358 before the build, and held.
-    {"world", 1358, 0x1fde168e29426233ULL},
+    // Save 186 (#637): the crafts' latch, P3's flag and the met years in
+    // all - predicted 1358 -> 1362 before the build, and held.
+    {"world", 1362, 0xde2e61298d8baa60ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2360,7 +2362,9 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // Save 182 (#1056 C2 option 2, re-bumped behind C3 and 0.37.317): manure
     // carted and late, two Grams a book: 3144 -> 3176, predicted before the
     // build and held; the hash read off it.
-    {"ledger", 3184, 0x3a80c0a95958d19dULL},  // save 183: trudodni_by_post, +4 a book
+    // save 183: trudodni_by_post, +4 a book; save 186: boards_sawn_m3, +4 a
+    // book, two books - predicted 3184 -> 3192, and held.
+    {"ledger", 3192, 0x668d6d3eda6c088dULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
