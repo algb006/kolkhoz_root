@@ -58,6 +58,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <iostream>
 #include <limits>
 #include <optional>
@@ -234,7 +235,16 @@ class FallowPolicy {
     for (const core::UnitRow& unit : world.units.rows) {
       house_sites += unit.type.value == house_type_ && unit.level == 0 && unit.dead == 0 ? 1U : 0U;
     }
-    const bool built = house_type_ != core::kNoTableRow && !lamp_lit && house_sites == 0;
+    // THE LAMP-ONLY ARM (boss, core-boss-725-fallow [56]; a measurement for the
+    // human, not a rule): KOLKHOZ_FALLOW_HOUSES=lamp drops the «no house site»
+    // half, which the literal arm found standing at every moment it held (2 of
+    // 99 moments built, y4-y14).
+    static const bool lamp_only = [] {
+      const char* const value = std::getenv("KOLKHOZ_FALLOW_HOUSES");
+      return value != nullptr && std::string_view(value) == "lamp";
+    }();
+    const bool built =
+        house_type_ != core::kNoTableRow && !lamp_lit && (lamp_only || house_sites == 0);
     ++planning_years_;
     houses_built_years_ += built ? 1U : 0U;
     std::cout << "fallow_policy: year " << year << " houses " << (built ? "BUILT" : "short")
