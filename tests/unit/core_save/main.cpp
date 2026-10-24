@@ -1951,7 +1951,9 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // all - predicted 1358 -> 1362 before the build, and held.
     // Save 187 (#636): the eye's four fields (+14) and its lamp ages (a
     // count +4, one lamp +8) - predicted 1362 -> 1388 before the build, held.
-    {"world", 1388, 0xad73272308fbf7c8ULL},
+    // Save 188 (#1241): the children's complaint season, a u32 - predicted
+    // 1388 -> 1392 before the build, held.
+    {"world", 1392, 0xc69cfcbd99c174cfULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -1991,7 +1993,9 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // Save 153 (0.37.227, F3's contract): +8 a resident — travel_home_hours
     // and rides_home_with; predicted 505 -> 521 before the build, held.
     // Save 156 (#709): +2 a resident — the work's two day flags; 521 -> 525.
-    {"residents", 525, 0x441759c5f8dd30b8ULL},
+    // Save 188 (#1241): mood_base, +4 a resident, two - predicted 525 -> 533,
+    // held.
+    {"residents", 533, 0x3ccbafc8e4dac02eULL},
     // 2026-09-18, save 57: +2 — ration_granted, one byte per family of two.
     // Save 60: +2 — a yard's dry months, one byte per family of two.
     // Save 65: families +8 (overwork_penalty, two yards), fields +6 (the avral's
@@ -2015,7 +2019,9 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // bytes a family, two families: 374 -> 486, predicted before the build and
     // held; the hash read off it. Save 169: the ring leaves, -48 a family:
     // predicted 486 -> 390 before the build and held; the hash read off it.
-    {"families", 390, 0x8deb60c70a8cfe4ULL},
+    // Save 188 (#1241): the sugar's byte and float, +5 a family, two -
+    // predicted 390 -> 400, held.
+    {"families", 400, 0xde157b9dd2725e8dULL},
     // Save 84: +36 — the harvest by parts' laid share (4) and grams (8), 12
     // a row, three rows; predicted before the build and held. Then the first
     // row given non-zero values: the size held at 305, the hash moved.
