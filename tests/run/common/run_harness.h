@@ -102,10 +102,14 @@ struct Simulation {
 ///        village — which is what happened on 2026-09-05 and cost a day. A
 ///        run that deliberately ships a two-table directory to measure the
 ///        CLOCK says kAllowed and says why.
+/// @param avatar_key The chairman New Game would choose (#634/#635; a key of
+///        avatars.csv, the run's `--avatar=KEY`); empty, the canon: no
+///        avatar.
 inline Simulation Start(std::uint64_t seed,
                         std::uint32_t worker_count = 1,
                         std::string_view tables_dir = "tables",
-                        core::StubTables stubs = core::StubTables::kRefused) {
+                        core::StubTables stubs = core::StubTables::kRefused,
+                        std::string_view avatar_key = {}) {
   Simulation started;
   std::string error;
   started.tables = core::LoadTableSet(tables_dir, &error);
@@ -119,6 +123,7 @@ inline Simulation Start(std::uint64_t seed,
   config.world_seed = seed;
   config.worker_count = worker_count;
   config.stub_tables = stubs;
+  config.avatar_key = std::string(avatar_key);
   started.simulation = core::CreateStandardSimulation(config);
   if (started.simulation == nullptr) {
     std::cout << "FAIL: the simulation did not assemble\n";

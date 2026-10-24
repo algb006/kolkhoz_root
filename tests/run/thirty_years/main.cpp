@@ -106,6 +106,11 @@ bool g_free_materials = false;
 /// the canonical set, so no gate binds on a doctored table set.
 std::string g_tables_dir = "tables";
 
+/// --avatar=KEY: the chairman New Game would choose (#635; avatars.csv). An
+/// avatar's paths move the village, so a run with one is out of the
+/// canonical set; empty, the canon.
+std::string g_avatar_key;
+
 /// `--saw-reserve` and `--house-sites=<n>`: the chairman's arms P1 and P2 of
 /// boss's parcel 314 — the saw keeps boards in hand for a granary and three
 /// houses, and up to n house sites stand at once. Measurement arms; like
@@ -479,6 +484,9 @@ int main(int argc, char** argv) {
     if (argument.starts_with("--tables=")) {
       g_tables_dir = std::string(argument.substr(std::string_view("--tables=").size()));
     }
+    if (argument.starts_with("--avatar=")) {
+      g_avatar_key = std::string(argument.substr(std::string_view("--avatar=").size()));
+    }
   }
   // THE GATES BIND ON THE CANONICAL RUN AND NOWHERE ELSE. A band measured
   // for thirty years of one seed says nothing about five years of another,
@@ -486,8 +494,9 @@ int main(int argc, char** argv) {
   // the simulation.
   g_canonical_run = g_seed == kSeed && g_years == kYears && !g_free_materials &&
                     g_tables_dir == "tables" && !g_saw_reserve && g_house_sites == 3 &&
-                    !g_saw_by_anyone && g_fallow_by_eaters;
-  run::Simulation world = run::Start(g_seed, 1, g_tables_dir);
+                    !g_saw_by_anyone && g_fallow_by_eaters && g_avatar_key.empty();
+  run::Simulation world =
+      run::Start(g_seed, 1, g_tables_dir, core::StubTables::kRefused, g_avatar_key);
   if (!world) {
     return 1;
   }
