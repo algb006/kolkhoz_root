@@ -334,3 +334,11 @@ eye_rung_3_years,2.1,core
 eye_rung_4_years,3.5,core
 eye_rung_5_years,5,core
 grass_stand_yield_ceiling,1.25,core
+sugar_complaint_dry_months,2,core
+sugar_complaint_from_month,3,core
+sugar_dry_share,0.5,core
+sugar_kg_per_resident_year,1,core
+sugar_mood_with,2,core
+sugar_mood_with_child,4,core
+sugar_mood_without,-2,core
+sugar_mood_without_child,-4,core
