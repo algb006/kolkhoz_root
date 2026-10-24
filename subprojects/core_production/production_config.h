@@ -992,6 +992,14 @@ struct FarmingConfig {
 
   std::vector<GrassStandSummer> grass_stand;
 
+  /// THE SOWN STAND'S CEILING, × its crop's table yield (#376; world_params
+  /// `grass_stand_yield_ceiling`, econ's STUB 1.25: timothy 2.5, clover 2.75
+  /// t a hectare, so a sown stand is not poorer than a wild floodplain
+  /// meadow). Fertility lifts a stand's yield up to it, never above; the
+  /// summer's factor applies on top. 1 with no row - the table yield is the
+  /// ceiling, as since 0.37.212.
+  float grass_stand_yield_ceiling = 1.0F;
+
   /// farming.csv `reaping_days_per_hand_light_hour` — 0.042: norm-days a
   /// village reaps for each hand that could reap, an hour of the day's light.
   /// The count of the reaping reads it only while neither this year's book

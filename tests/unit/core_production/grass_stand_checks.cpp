@@ -105,6 +105,19 @@ int CheckTheYield() {
   failures += Expect(yield(kOldGrass, 100.0F, 2) == 44000 && yield(kOldGrass, 50.0F, 5) == 22000,
                      "grass stand, the pair: a perennial without the mark is lifted by rich "
                      "ground and has no age");
+  // THE CEILING RAISED (#376, world_params grass_stand_yield_ceiling 1.25):
+  // rich ground lifts the stand to 1.25 of the table and stops there; neutral
+  // ground is untouched; the summer's factor applies on top.
+  core::ProductionConfig raised = config;
+  raised.farming.grass_stand_yield_ceiling = 1.25F;
+  const auto raised_yield = [&](float fertility, std::uint8_t summer) {
+    const core::FieldRow field = Stand(kClover, fertility, summer);
+    return Kilograms(core::FieldYieldGrams(raised, field, raised.crops[kClover.value]));
+  };
+  failures += Expect(raised_yield(100.0F, 2) == 27500 && raised_yield(60.0F, 2) == 26400 &&
+                         raised_yield(50.0F, 2) == 22000 && raised_yield(100.0F, 4) == 19250,
+                     "grass stand, ceiling 1.25: fertility 100 gives 27.5 t, not 44 nor 22; 60 "
+                     "gives its own 26.4; neutral ground 22; the fourth summer 0.7 of 27.5");
   // No table: no age, and the ceiling still stands.
   core::ProductionConfig no_life = config;
   no_life.farming.grass_stand.clear();

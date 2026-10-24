@@ -1175,7 +1175,7 @@ bool ParseMeadowKinds(const ITable& table, FarmingConfig& farming, std::string& 
 /// AT ALL: until 2026-09-16 this module took every number off its own
 /// hand-written tables, and the two halves of billeting are what brought it
 /// here. The next world constant lands in the same place.
-constexpr std::array<std::string_view, 30> kProductionWorldParamKeys = {
+constexpr std::array<std::string_view, 31> kProductionWorldParamKeys = {
     "billet_heads_per_yard",
     "billet_yield_factor",
     "school_year_start_month",
@@ -1213,7 +1213,8 @@ constexpr std::array<std::string_view, 30> kProductionWorldParamKeys = {
     "barrack_poultry_heads_per_family",
     "livestock_cold_first_month",
     "livestock_cold_last_month",
-    "herd_hunger_episode_fed_days"};
+    "herd_hunger_episode_fed_days",
+    "grass_stand_yield_ceiling"};
 
 /// THE SCHOOL YEAR IS READ HERE AS WELL AS BY THE SCHOOL, and that is a
 /// second READER, not a second home: the months live in world_params.csv and
@@ -1354,7 +1355,13 @@ bool ParseProductionWorldParams(const ITable& world,
       // a herd's hunger is said again (herd_system.cpp, kHerdWentHungry).
       ScalarKnob{.key = kProductionWorldParamKeys[29],
                  .value = &hunger_episode_fed_days,
-                 .range = Range{.low = 2.0F, .high = 8.0F}}};
+                 .range = Range{.low = 2.0F, .high = 8.0F}},
+      // A SOWN STAND'S CEILING over its table yield (#376; econ on 0.37.212's
+      // pair: a sown stand must not yield less than a wild floodplain meadow,
+      // 2.5 t a hectare). No row: 1, the table is the ceiling, as 0.37.212.
+      ScalarKnob{.key = kProductionWorldParamKeys[30],
+                 .value = &farming.grass_stand_yield_ceiling,
+                 .range = Range{.low = 1.0F, .high = 2.0F}}};
   if (!ReadKnobs(world, "world_params", knobs, error)) {
     return false;
   }

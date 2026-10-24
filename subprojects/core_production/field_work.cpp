@@ -345,10 +345,12 @@ Grams FieldYieldGrams(const ProductionConfig& config, const FieldRow& field, con
   // At most 100 however far a paid dose lifts the row before its harvest
   // settles the cap (0.37.13; SoilFertility).
   float soil_factor = SoilFertility(field) / config.farming.fertility_neutral;
-  // A SOWN GRASS STAND (0.37.212): the table's yield is its ceiling, and the
-  // stand's summer scales it (field_work.h).
+  // A SOWN GRASS STAND (0.37.212): the table's yield × the ceiling (#376;
+  // 1 until 0.37.325) caps it, and the stand's summer scales it
+  // (field_work.h).
   if (crop.stand_ages) {
-    soil_factor = std::min(soil_factor, 1.0F) * GrassStandOfSummer(config, field).yield_factor;
+    soil_factor = std::min(soil_factor, config.farming.grass_stand_yield_ceiling) *
+                  GrassStandOfSummer(config, field).yield_factor;
   }
   // The sum of the two, capped exactly where the single number was.
   const float stress_total = field.drought_stress + field.wet_stress;
