@@ -65,6 +65,12 @@ int CheckTheShippedTable() {
     }
     failures +=
         Expect(right, "avatar door: each shipped key gives its sign's reputation and factors");
+    // «Страда без выходных» starts off for the student alone (#635), on for
+    // every other avatar - the struct's default.
+    const bool harvest_on = world.chairman.harvest_without_days_off == 1;
+    failures += Expect(harvest_on == (row.key != "student"),
+                       "avatar door: the harvest standing order starts off for the student and "
+                       "on for every other");
   }
   return failures;
 }

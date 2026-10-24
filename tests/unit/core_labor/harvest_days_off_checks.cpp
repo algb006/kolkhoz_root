@@ -177,6 +177,46 @@ int TestTheChairmanSwitchesIt() {
   return failures;
 }
 
+/// THE STUDENT'S CLOSED YEARS (#635; boss, core-boss-635-avatar-paths [5]
+/// (1)): the standing order would work the harvest Sunday his years 1-2
+/// forbid, so it starts off for him (ApplyStartAvatar, core_world's check)
+/// and its switch refuses it; his Sunday stays a day off. In year 3 it is
+/// his to turn on. The pair is the neutral chairman above, whose Sunday is
+/// worked under the order he starts with.
+int TestTheStudentsHarvestKeepsItsDaysOff() {
+  int failures = 0;
+  core::LaborConfig config;
+  core::AvatarDef student;
+  student.key = "student";
+  student.day_off_working_closed_years = 2;
+  config.avatars = {student};
+  const auto switch_on = [&config](core::WorldState& world) {
+    core::OrderRow order;
+    order.kind = core::OrderKind::kHarvestWithoutDaysOff;
+    order.status = core::OrderStatus::kPending;
+    order.enable = 1;
+    const core::OrderId id = core::AppendRow(world.orders, order);
+    core::ReadRushOrders(config, world);
+    const core::OrderRow& read = world.orders.rows[core::FindRow(world.orders, id)];
+    return read.status == core::OrderStatus::kDone ? core::OrderRefusal::kNone : read.refusal;
+  };
+  core::WorldState year_one = HarvestWorld(6);
+  year_one.chairman.avatar = core::AvatarId{0};
+  year_one.chairman.harvest_without_days_off = 0;  // as his start leaves it
+  failures +=
+      Expect(switch_on(year_one) == core::OrderRefusal::kRuleForbids &&
+                 year_one.chairman.harvest_without_days_off == 0 && core::IsDayOffIn(year_one, 6),
+             "days off, student: the harvest order is refused in year 1 and his harvest "
+             "Sunday stays a day off");
+  core::WorldState year_three = HarvestWorld((2U * core::kDaysPerYear) + 6U);
+  year_three.chairman.avatar = core::AvatarId{0};
+  year_three.chairman.harvest_without_days_off = 0;
+  failures += Expect(switch_on(year_three) == core::OrderRefusal::kNone &&
+                         year_three.chairman.harvest_without_days_off == 1,
+                     "days off, student: in year 3 the harvest order is his to turn on");
+  return failures;
+}
+
 }  // namespace
 
 int CheckHarvestDaysOff() {
@@ -187,5 +227,6 @@ int CheckHarvestDaysOff() {
   failures += TestAHolidayIsNeverWorked();
   failures += TestADayAheadIsJudgedByToday();
   failures += TestTheChairmanSwitchesIt();
+  failures += TestTheStudentsHarvestKeepsItsDaysOff();
   return failures;
 }

@@ -145,8 +145,19 @@ OrderRefusal CancelDayOff(const LaborConfig& config, WorldState& current, const 
 /// kHarvestWithoutDaysOff): the standing order's byte, and a refusal for a
 /// switch that already stands as asked. The range before the narrowing, as
 /// above: a pending row loaded from a save comes past the boundary's shape.
-OrderRefusal SwitchHarvestWithoutDaysOff(WorldState& current, const OrderRow& order) {
+OrderRefusal SwitchHarvestWithoutDaysOff(const LaborConfig& config,
+                                         WorldState& current,
+                                         const OrderRow& order) {
   if (order.enable > 1 || current.chairman.harvest_without_days_off == order.enable) {
+    return OrderRefusal::kRuleForbids;
+  }
+  // THE STUDENT'S CLOSED YEARS (#635; boss, core-boss-635-avatar-paths [5]
+  // (1)): the standing order works a harvest day off, which his years 1-N
+  // forbid; it is off from his start (ApplyStartAvatar) and not turned on.
+  const std::uint8_t closed_years =
+      AvatarOf(config.avatars, current.chairman.avatar).day_off_working_closed_years;
+  // By the day's year, as DayOffMayBeDeclaredWorking counts it.
+  if (order.enable == 1 && (current.calendar.day / kDaysPerYear) + 1U <= closed_years) {
     return OrderRefusal::kRuleForbids;
   }
   current.chairman.harvest_without_days_off = order.enable;
@@ -165,7 +176,7 @@ void ReadRushOrders(const LaborConfig& config, WorldState& current) {
     } else if (order.kind == OrderKind::kCancelDayOff) {
       Settle(order, CancelDayOff(config, current, order));
     } else if (order.kind == OrderKind::kHarvestWithoutDaysOff) {
-      Settle(order, SwitchHarvestWithoutDaysOff(current, order));
+      Settle(order, SwitchHarvestWithoutDaysOff(config, current, order));
     }
   }
 }
