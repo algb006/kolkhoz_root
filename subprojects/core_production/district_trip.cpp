@@ -182,7 +182,10 @@ OrderRefusal OrderTradePlan(const ProductionConfig& config,
   // the year-1 window a run has before the player's April included.
   const AvatarDef& avatar = AvatarOf(config.avatars, chairman.avatar);
   const bool swap = order.rotation_year0.value != kInvalidDefIdValue;
-  if (avatar.plan_trade_closed || (swap && date.year <= 1U + avatar.crop_swap_closed_bargains)) {
+  // (A path a key does not have is 0 and closes nothing: «year <= 1 + 0»
+  // shut every chairman's swap of year 1 on the first unit run.)
+  if (avatar.plan_trade_closed || (swap && avatar.crop_swap_closed_bargains > 0 &&
+                                   date.year <= 1U + avatar.crop_swap_closed_bargains)) {
     return OrderRefusal::kRuleForbids;
   }
   if (chairman.raikom_reputation < trip.plan_trade_min_reputation) {

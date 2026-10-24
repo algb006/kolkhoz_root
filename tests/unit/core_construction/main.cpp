@@ -3218,7 +3218,9 @@ int TestTheWorkersWorkshopsAtHalfLabour() {
     site.construction.target_level = 1;
     const core::UnitId id = core::AppendRow(world.units, site);
     core::UnitRow& placed = world.units.rows[core::FindRow(world.units, id)];
-    for (const core::MaterialShortfall& line : system->MaterialsShortFor(world, id)) {
+    const std::vector<core::MaterialShortfall> lines = system->MaterialsShortFor(world, id);
+    std::cout << "  workshops site: " << lines.size() << " recipe lines short at the mark\n";
+    for (const core::MaterialShortfall& line : lines) {
       if (placed.stock.size() <= line.resource.value) {
         placed.stock.resize(line.resource.value + 1U, 0);
       }
@@ -3227,6 +3229,9 @@ int TestTheWorkersWorkshopsAtHalfLabour() {
     placed.construction.phase = core::ConstructionPhase::kDelivering;
     Run(*system, world, 5);
     const core::UnitRow& after = world.units.rows[core::FindRow(world.units, id)];
+    std::cout << "  workshops site after the hour: phase "
+              << static_cast<int>(after.construction.phase) << ", level "
+              << static_cast<int>(after.level) << '\n';
     return after.construction.phase == core::ConstructionPhase::kBuilding
                ? after.construction.labor_days_total
                : -1.0F;

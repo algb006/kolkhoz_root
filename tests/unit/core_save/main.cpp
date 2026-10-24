@@ -1906,7 +1906,9 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // TractionWatch fields went with C2.2's pricing.)
     // Save 184 (#634): the avatar's u16 and two floats - predicted 1343 ->
     // 1353 in the codec's comment before the build, and held.
-    {"world", 1353, 0x5ad3da682b837917ULL},
+    // Save 185 (#635): the paths' four counters, three u8 and a u16 -
+    // predicted 1353 -> 1358 before the build, and held.
+    {"world", 1358, 0x1fde168e29426233ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
