@@ -1783,7 +1783,10 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // 6, «birch» 7); predicted before the build, held.
     // Save 92: +2 — the map roads' dictionary, empty in this fixture's
     // tables (a u16 count). Predicted before the build, held.
-    {"dictionaries", 160, 0xefef7308b1995f8bULL},
+    // Save 184 (#634): +20 — the ninth dictionary, avatars (count 2,
+    // «promoted» 10, «dealer» 8). NOT predicted before the build: read off
+    // the first run, which matches the save-82 form.
+    {"dictionaries", 180, 0xfac808c01f0bd2f2ULL},
     // 2026-09-17, save 49: +10 bytes — the night pasture's standing order,
     // its first night and the camp's two floats.
     // 2026-09-17, save 50: +5 — four bytes for every limit point ever
@@ -1887,7 +1890,9 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // the build and held; the hash read off it.
     // (Save 182, C2 option 2, adds nothing to this block: C2.2's three
     // TractionWatch fields went with C2.2's pricing.)
-    {"world", 1343, 0x990b9373c6d9137eULL},
+    // Save 184 (#634): the avatar's u16 and two floats - predicted 1343 ->
+    // 1353 in the codec's comment before the build, and held.
+    {"world", 1353, 0x5ad3da682b837917ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:

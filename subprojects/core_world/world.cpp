@@ -1027,7 +1027,8 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
   if (!RequireTables(*config.tables,
                      config.stub_tables,
                      "world",
-                     {"campaign",
+                     {"avatars",  // #634: read on a key, refused absent like every table read
+                      "campaign",
                       "construction",
                       "crops",
                       "difficulty",
