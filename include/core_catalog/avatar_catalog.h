@@ -56,8 +56,13 @@ struct AvatarDef {
   /// series rest, no satisfaction penalty (the old fighter: 6). rush.cpp.
   std::uint8_t free_cancelled_days_off_per_year = 0;
 
-  /// The workshops' level-1 site's labour days × this (the worker: 0.5).
+  /// The workshops' level-1 site's labour days × this (the worker: 0.5; his
+  /// Epoch II line since 0.37.328 - no bot builds workshops).
   float workshops_l1_labor_factor = 1.0F;
+
+  /// The sawmill's man-days a board m³ × this (the worker: 0.67, «saws at
+  /// ×1.5»; avatars.md «Пути», P5 since 0.37.328). unit_production.cpp.
+  float sawing_days_factor = 1.0F;
 };
 
 /// @brief Reads tables/avatars.csv into `avatars`, row order = AvatarId.

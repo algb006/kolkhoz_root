@@ -12392,6 +12392,39 @@ int CheckSawing() {
   failures += Expect(near(world.units.rows[2].production_days_remaining, 0.825F),
                      "sawing: tomorrow's demand is what the six logs left can give");
 
+  // -- THE WORKER SAWS AT ×1.5 (#635, P5 since 0.37.328) ----------------------
+  // avatars.csv sawing_days_factor 0.67: the same ten logs ask 0.67 of the
+  // man-days, and the same 0.55 man-days saw 1 / 0.67 of the boards. The pair
+  // is the neutral chairman above: 1.375 and 330 kg.
+  {
+    core::ProductionConfig sawyer = config;
+    core::AvatarDef worker;
+    worker.key = "worker";
+    worker.sawing_days_factor = 0.67F;
+    sawyer.avatars = {worker};
+    core::WorldState shop;
+    shop.chairman.avatar = core::AvatarId{0};
+    core::UnitRow full = store;
+    full.stock.assign(2, 0);
+    full.stock[0] = 10 * kLog;
+    core::AppendRow(shop.units, full);
+    const core::UnitId shop_yard = core::AppendRow(shop.units, yard);
+    core::UnitRow mill = sawmill;
+    mill.parent = shop_yard;
+    core::AppendRow(shop.units, mill);
+    core::SettleUnitProduction(sawyer, shop);
+    failures += Expect(near(shop.units.rows[2].production_days_remaining, 1.375F * 0.67F),
+                       "sawing, worker: the ten logs ask 0.67 of the neutral's man-days");
+    shop.units.rows[2].production_days_remaining -= 0.55F;
+    core::SettleUnitProduction(sawyer, shop);
+    const auto worker_boards = static_cast<double>(shop.units.rows[0].stock[1]);
+    const double ratio = worker_boards / static_cast<double>(boards);
+    std::cout << "  sawing, worker: " << worker_boards / 1000.0
+              << " kg of boards for 0.55 man-days (" << ratio << " of the neutral's)\n";
+    failures += Expect(ratio > (1.0 / 0.67) - 0.005 && ratio < (1.0 / 0.67) + 0.005,
+                       "sawing, worker: the same man-days saw 1 / 0.67 of the neutral's boards");
+  }
+
   // -- WEAR TAKES ITS SHARE OF WHAT THE SAME WORK TURNS OUT ------------------
   // Unit rules §15: a production unit's output falls with its wear. Until
   // 2026-09-17 it did not, anywhere — the contract of unit_state.h declared

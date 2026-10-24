@@ -45,12 +45,12 @@ namespace {
 void SawWhatWasWorked(const TimberCatalog& timber,
                       const ProductionConfig& config,
                       WorldState& current,
-                      float worked_days) {
-  if (!(worked_days > 0.0F) || !(timber.sawing_days_per_board_m3 > 0.0F) ||
-      timber.board_grams_per_m3 <= 0) {
+                      float worked_days,
+                      float days_per_m3) {
+  if (!(worked_days > 0.0F) || !(days_per_m3 > 0.0F) || timber.board_grams_per_m3 <= 0) {
     return;
   }
-  const float wanted_m3 = worked_days / timber.sawing_days_per_board_m3;
+  const float wanted_m3 = worked_days / days_per_m3;
   const Grams logs_taken =
       TakeFromStorage(current, config, timber.log_resource, LogGramsForBoardM3(timber, wanted_m3));
   const float sawn_m3 = std::min(BoardM3FromLogGrams(timber, logs_taken), wanted_m3);
@@ -68,7 +68,8 @@ void SawWhatWasWorked(const TimberCatalog& timber,
 /// lying there make, no more than the room the boards could go into.
 float SawingDemandDays(const TimberCatalog& timber,
                        const ProductionConfig& config,
-                       const WorldState& current) {
+                       const WorldState& current,
+                       float days_per_m3) {
   if (timber.board_grams_per_m3 <= 0) {
     return 0.0F;
   }
@@ -76,7 +77,7 @@ float SawingDemandDays(const TimberCatalog& timber,
       BoardM3FromLogGrams(timber, HeldEverywhere(current, timber.log_resource));
   const Grams room = ReceivableRoom(config, current, timber.board_resource);
   const float room_m3 = static_cast<float>(room) / static_cast<float>(timber.board_grams_per_m3);
-  return std::min(from_logs_m3, room_m3) * timber.sawing_days_per_board_m3;
+  return std::min(from_logs_m3, room_m3) * days_per_m3;
 }
 
 }  // namespace
@@ -88,6 +89,11 @@ void SettleUnitProduction(const ProductionConfig& config, WorldState& current) {
       timber.board_resource.value == kInvalidDefIdValue) {
     return;
   }
+  // THE WORKER SAWS AT ×1.5 (#635, P5 since 0.37.328; avatars.csv
+  // sawing_days_factor 0.67): one rate for what was sawn and for tomorrow's
+  // demand, so the two never price a board differently.
+  const float days_per_m3 = timber.sawing_days_per_board_m3 *
+                            AvatarOf(config.avatars, current.chairman.avatar).sawing_days_factor;
   for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
     if (current.units.rows[row].type.value != timber.sawmill_type.value) {
       continue;
@@ -98,10 +104,13 @@ void SettleUnitProduction(const ProductionConfig& config, WorldState& current) {
     const float written = current.units.rows[row].production_days_written;
     const float remaining = current.units.rows[row].production_days_remaining;
     const float worked = written > remaining ? written - remaining : 0.0F;
-    SawWhatWasWorked(
-        timber, config, current, worked * WearOutputFactor(config, current.units.rows[row]));
+    SawWhatWasWorked(timber,
+                     config,
+                     current,
+                     worked * WearOutputFactor(config, current.units.rows[row]),
+                     days_per_m3);
     const float demand = UnitCanWork(current, current.units.rows[row])
-                             ? SawingDemandDays(timber, config, current)
+                             ? SawingDemandDays(timber, config, current, days_per_m3)
                              : 0.0F;
     current.units.rows[row].production_days_remaining = demand;
     current.units.rows[row].production_days_written = demand;

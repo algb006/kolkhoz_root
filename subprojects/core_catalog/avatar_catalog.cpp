@@ -135,6 +135,12 @@ bool ReadAvatars(const ITableSet& tables, std::vector<AvatarDef>& avatars, std::
                     "workshops_l1_labor_factor",
                     Range{.low = 0.0F, .high = 10.0F},
                     avatar.workshops_l1_labor_factor,
+                    error) ||
+        !ReadFactor(*table,
+                    row,
+                    "sawing_days_factor",
+                    Range{.low = 0.1F, .high = 10.0F},
+                    avatar.sawing_days_factor,
                     error)) {
       return false;
     }
