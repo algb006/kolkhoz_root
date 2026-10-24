@@ -3,6 +3,7 @@
 #include "sugar_checks.h"
 
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <iostream>
 
@@ -22,8 +23,8 @@ int Expect(bool condition, const char* label) {
   return 0;
 }
 
-bool Near(double value, double expected) {
-  return std::abs(value - expected) < 0.01;
+bool Near(float value, float expected) {
+  return std::abs(value - expected) < 0.01F;
 }
 
 constexpr core::ResourceId kSugar{0};
@@ -48,7 +49,7 @@ core::WorldState Village(double sugar_kg, double honey_kg) {
     core::AppendRow(world.families, family);
   }
   world.families.rows[0].pantry[kHoney.value] = static_cast<core::Grams>(honey_kg * 1000.0);
-  for (int index = 0; index < 4; ++index) {
+  for (std::size_t index = 0; index < 4; ++index) {
     core::ResidentRow person;
     person.family = world.families.row_ids[index / 2];
     person.birth_day = -static_cast<std::int32_t>(30U * core::kDaysPerYear / 4U);
@@ -74,32 +75,32 @@ int CheckTheSugar() {
   core::WorldState full = Village(10.0, 0.0);
   core::IssueSugarMonth(config, kLife, full);
   failures += Expect(full.units.rows[0].stock[kSugar.value] == 6000 &&
-                         Near(full.families.rows[0].sugar_share, 1.0) &&
-                         Near(full.residents.rows[0].mood, 62.0),
+                         Near(full.families.rows[0].sugar_share, 1.0F) &&
+                         Near(full.residents.rows[0].mood, 62.0F),
                      "sugar: a full month eats the need by eaters and gives +2");
 
   // HALF THE SUGAR: a neutral month (econ's linear term), and the store empty.
   core::WorldState half = Village(2.0, 0.0);
   core::IssueSugarMonth(config, kLife, half);
   failures += Expect(half.units.rows[0].stock[kSugar.value] == 0 &&
-                         Near(half.families.rows[1].sugar_share, 0.5) &&
-                         Near(half.residents.rows[3].mood, 60.0),
+                         Near(half.families.rows[1].sugar_share, 0.5F) &&
+                         Near(half.residents.rows[3].mood, 60.0F),
                      "sugar: half the need shared by need is a neutral month, the store emptied");
 
   // NONE: −2, and the month is dry.
   core::WorldState none = Village(0.0, 0.0);
   core::IssueSugarMonth(config, kLife, none);
-  failures +=
-      Expect(Near(none.residents.rows[0].mood, 58.0) && none.families.rows[0].sugar_dry_months == 1,
-             "sugar: no sugar is −2 and a dry month");
+  failures += Expect(
+      Near(none.residents.rows[0].mood, 58.0F) && none.families.rows[0].sugar_dry_months == 1,
+      "sugar: no sugar is −2 and a dry month");
 
   // HONEY FIRST: family 0's 2 kg of honey covers it; the store's 2 kg go to
   // family 1 whole - both full.
   core::WorldState honey = Village(2.0, 2.0);
   core::IssueSugarMonth(config, kLife, honey);
   failures += Expect(honey.families.rows[0].pantry[kHoney.value] == 0 &&
-                         Near(honey.families.rows[0].sugar_share, 1.0) &&
-                         Near(honey.families.rows[1].sugar_share, 1.0) &&
+                         Near(honey.families.rows[0].sugar_share, 1.0F) &&
+                         Near(honey.families.rows[1].sugar_share, 1.0F) &&
                          honey.units.rows[0].stock[kSugar.value] == 0,
                      "sugar: the pantry's honey counts first, the store covers the rest");
 
@@ -108,7 +109,7 @@ int CheckTheSugar() {
   child.residents.rows[1].birth_day = 0;  // born on day 0: a child
   core::IssueSugarMonth(config, kLife, child);
   failures +=
-      Expect(Near(child.residents.rows[1].mood, 64.0) && Near(child.residents.rows[0].mood, 62.0),
+      Expect(Near(child.residents.rows[1].mood, 64.0F) && Near(child.residents.rows[0].mood, 62.0F),
              "sugar: a child takes +4 of a full month, an adult +2");
 
   // ONLY ON A MONTH'S FIRST DAY.

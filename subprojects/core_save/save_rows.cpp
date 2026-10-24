@@ -131,9 +131,10 @@ static_assert(AggregateArity<ResidentRow>() == 56,
 // it from 0.37.292 - predicted 224 -> 176 + amounts and 38 fields before the
 // build; on the wire -48 a family.
 // Save 188 (#1241): sugar_dry_months (u8) and sugar_share (float) at the
-// tail - predicted 176 -> 184 + amounts and 40 fields before the build; on the
-// wire +5 a family.
-static_assert(sizeof(FamilyRow) == 184 + kAmountsSize,
+// tail - predicted 176 -> 184 + amounts and 40 fields before the build, and
+// the size MISSED: 176 + amounts, unmoved - the row's tail padding held the
+// byte and the float (the fields held). On the wire +5 a family.
+static_assert(sizeof(FamilyRow) == 176 + kAmountsSize,
               "FamilyRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 57: ration_granted, the yard's ration decision — 19 fields;
 // the size is read off the build below, not guessed.
