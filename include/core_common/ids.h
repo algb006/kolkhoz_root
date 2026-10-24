@@ -297,6 +297,13 @@ struct TreeSpeciesIdTag {};
 /// by key, like every definition id.
 using TreeSpeciesId = DefId<TreeSpeciesIdTag>;
 
+struct AvatarIdTag {};
+
+/// @brief Row of tables/avatars.csv — the chairman the player chose at New
+/// Game (avatars.md; #634, 09 #309). Saved by key, like every definition id;
+/// invalid when no avatar was chosen (tools, runs, tests).
+using AvatarId = DefId<AvatarIdTag>;
+
 }  // namespace core
 
 #endif  // CORE_COMMON_IDS_H_

@@ -592,6 +592,23 @@ struct ChairmanState {
   /// A clean visit with nothing owed gives nothing: two regular visits a
   /// year at +1 carried a plan-only village to 82-88 by year 12.
   std::uint8_t reputation_recovery_owed = 0;
+
+  /// THE AVATAR (save 184; #634, avatars.md «Пути»; 09 #309): the row of
+  /// tables/avatars.csv New Game chose, set once at genesis
+  /// (ApplyStartAvatar). Invalid: no avatar — the world every run and test
+  /// starts in, with the start reputation 50 and neutral factors below.
+  AvatarId avatar;
+
+  /// The avatar's crime modifier as it was at genesis (avatars.csv
+  /// crime_modifier: the old fighter's −20, else 0). DORMANT, STUB: no
+  /// reader until crime is built; kept in the world so a save carries what
+  /// the chairman was born with whatever a later table says.
+  float crime_modifier = 0.0F;
+
+  /// The avatar's electrification threshold factor at genesis (avatars.csv:
+  /// the promoted man's 0.75, else 1). DORMANT, STUB: no reader until
+  /// electrification is built.
+  float electrification_threshold_factor = 1.0F;
 };
 
 /// @brief Why the district calls the chairman «на ковёр» (district-trip.md

@@ -47,9 +47,10 @@ enum class DefKind : std::uint8_t {
   /// tables/roads.csv, one entry a ROAD in the order its key first appears
   /// (core_catalog/map_roads.h), not a row a point; RoadRow::map_road (save 92).
   kMapRoad,
+  kAvatar,  ///< tables/avatars.csv; ChairmanState::avatar (save 184, #634).
 };
 
-inline constexpr std::uint32_t kDefKindCount = 8;
+inline constexpr std::uint32_t kDefKindCount = 9;
 
 /// @brief The tables/ file name backing a kind: "resources", "crops"...
 const char* DefTableName(DefKind kind);

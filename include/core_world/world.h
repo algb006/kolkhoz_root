@@ -88,6 +88,23 @@ WorldState CreateStartWorld(const ITableSet& tables,
 /// @return A view of a static array; valid for the life of the program.
 std::span<const std::string_view> GenesisWorldParamKeys();
 
+/// @brief Sets the chairman New Game chose on a freshly built start world:
+///        `world.chairman.avatar`, its start `raikom_reputation` and its two
+///        dormant factors, from the tables/avatars.csv row whose key is
+///        `avatar_key` (#634; avatars.md «Пути»: «++» 61 … «−−» 41, the sign
+///        read as a number by the export).
+/// @param world      A world CreateStartWorld returned, before its first step.
+/// @param tables     Balance tables; used during the call only.
+/// @param avatar_key Empty: nothing is changed and the call succeeds.
+/// @param error      Where the refusal's sentence goes; may be nullptr.
+/// @return false when the key is not empty and no row of avatars.csv carries
+///         it, or the table is absent or malformed; `world` is then
+///         untouched. Side effect on success: the four fields above.
+bool ApplyStartAvatar(WorldState& world,
+                      const ITableSet& tables,
+                      std::string_view avatar_key,
+                      std::string* error);
+
 /// @brief Everything CreateStandardSimulation needs.
 struct StandardSimulationConfig {
   /// Balance tables; non-owning — the caller keeps them alive for the whole
@@ -96,6 +113,15 @@ struct StandardSimulationConfig {
 
   /// Campaign seed for CreateStartWorld and every derived random draw.
   std::uint64_t world_seed = 0;
+
+  /// THE AVATAR NEW GAME CHOSE (#634; Shell §3 «`avatar` — ключ из таблицы
+  /// `avatar`»): a `key` of tables/avatars.csv, one of the eight seam words.
+  /// Empty — no avatar: the start reputation stays 50 and the chairman's
+  /// avatar is invalid, which is what every run and test starts in. An
+  /// unknown key is a REFUSAL, logged by name (ApplyStartAvatar): the design
+  /// has no default chairman, and a misspelt seam word must not be served
+  /// one.
+  std::string avatar_key;
 
   /// 0 = one worker per hardware core minus one; 1 = the mandatory
   /// verification mode. Results are identical for every value — that is the
