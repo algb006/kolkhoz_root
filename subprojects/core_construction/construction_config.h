@@ -518,6 +518,16 @@ bool ParseConstructionConfig(const ITableSet& tables,
                              ConstructionConfig& config,
                              std::string& error);
 
+/// @brief The labour days a site of `type` opens for `level` with
+///        `labor_days` the level's own: × the avatar's
+///        workshops_l1_labor_factor for the workshops' first level (#635, the
+///        worker's 0.5), the level's own for everything else.
+float OpeningLaborDays(const ConstructionConfig& config,
+                       AvatarId avatar,
+                       UnitTypeId type,
+                       std::uint8_t level,
+                       float labor_days);
+
 /// @brief The insulation job a unit of `type` standing at `level` would be,
 ///        by unit rules §16's derivation. Eligible is heated OR with room
 ///        for animals — nothing else, a housing type included; of the

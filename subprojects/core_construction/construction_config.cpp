@@ -899,6 +899,17 @@ std::span<const std::string_view> ConstructionWorldParamKeys() {
   return kConstructionWorldParamKeys;
 }
 
+float OpeningLaborDays(const ConstructionConfig& config,
+                       AvatarId avatar,
+                       UnitTypeId type,
+                       std::uint8_t level,
+                       float labor_days) {
+  if (type.value == config.workshops_type.value && type.value != kInvalidDefIdValue && level == 1) {
+    return labor_days * AvatarOf(config.avatars, avatar).workshops_l1_labor_factor;
+  }
+  return labor_days;
+}
+
 bool ParseConstructionConfig(const ITableSet& tables,
                              StubTables stubs,
                              ConstructionConfig& config,
