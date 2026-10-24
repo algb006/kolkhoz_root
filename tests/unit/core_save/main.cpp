@@ -176,7 +176,8 @@ core::WorldState MakeWorld() {
   world.chairman.eye_talk_season_seen = 6;
   world.chairman.eye_crisis_gained = 0.15F;
   world.chairman.eye_crisis_year = 4;
-  world.chairman.last_talk_season = 5;  // save 69: a talk had, not nought
+  world.chairman.sugar_complaint_season = 9;  // save 188 (#1241)
+  world.chairman.last_talk_season = 5;        // save 69: a talk had, not nought
   // Save 77: away on a summons, a trip of his own before, a trade had.
   world.chairman.away_from_tick = 2'000;
   world.chairman.away_until_tick = 2'012;
@@ -233,6 +234,7 @@ core::WorldState MakeWorld() {
   first.night_trade = core::NightTrade::kHunter;  // the top of the enum, save format 39
   first.distiller_supplied_month = 7;             // save 59: not nought, so a lost read shows
   first.samogon_ml = 12'500;                      // save 122: twelve and a half litres held
+  first.mood_base = 57.5F;                        // save 188 (#1241): off the mood
   first.school = core::UnitId{6};                 // a pupil, save format 41
   first.days_worked_this_month = 3;               // the month's work, save format 43
   first.talk_until_day = 140;                     // talked into sport, save 69
@@ -334,7 +336,9 @@ core::WorldState MakeWorld() {
   rich.advance_debt = 7'300'000;
   rich.advance_given = 11'900'000;
   rich.formed_in_barrack = 1;
-  rich.advance_turns = 1;  // save 160
+  rich.advance_turns = 1;     // save 160
+  rich.sugar_dry_months = 3;  // save 188 (#1241)
+  rich.sugar_share = 0.25F;
   core::AppendRow(world.families, rich);
   core::FamilyRow bare;  // empty pantry: the vector must stay empty
   core::AppendRow(world.families, bare);
@@ -1362,6 +1366,7 @@ core::WorldState MakeWitnessWorld() {
   witness.chairman.eye_talk_season_seen = 2;
   witness.chairman.eye_crisis_gained = 0.05F;
   witness.chairman.eye_crisis_year = 1;
+  witness.chairman.sugar_complaint_season = 2;
 
   witness.traction_ration = 0.75F;
   // The team's two alarms' memory (save 109): every slot different, so a
@@ -1540,6 +1545,7 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"chairman.eye_talk_season_seen", U32(world.chairman.eye_talk_season_seen)});
   chunks.push_back({"chairman.eye_crisis_gained", F32(world.chairman.eye_crisis_gained)});
   chunks.push_back({"chairman.eye_crisis_year", U16(world.chairman.eye_crisis_year)});
+  chunks.push_back({"chairman.sugar_complaint_season", U32(world.chairman.sugar_complaint_season)});
 
   chunks.push_back({"traction_ration", F32(world.traction_ration)});
   // The team's two alarms' memory (save 109).
@@ -2851,6 +2857,10 @@ int main() {
           loaded.chairman.hay_cut_dry_work_days == 5 &&  // save 161
           loaded.chairman.hay_day_worked_month == 6 && loaded.chairman.hay_cut_avral_days == 3 &&
           loaded.families.rows[0].advance_turns == 1 &&
+          loaded.families.rows[0].sugar_dry_months == 3 &&  // save 188 (#1241)
+          loaded.families.rows[0].sugar_share == 0.25F &&
+          loaded.residents.rows[0].mood_base == 57.5F &&
+          loaded.chairman.sugar_complaint_season == 9 &&
           loaded.families.rows[1].advance_turns == 0 &&
           loaded.ledger.current.advance_written_off_ended == 0 &&
           loaded.families.rows[1].formed_day == core::kNotFormedInPlay &&
