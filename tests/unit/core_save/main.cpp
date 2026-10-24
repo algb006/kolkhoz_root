@@ -1943,7 +1943,9 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // predicted 1353 -> 1358 before the build, and held.
     // Save 186 (#637): the crafts' latch, P3's flag and the met years in
     // all - predicted 1358 -> 1362 before the build, and held.
-    {"world", 1362, 0xde2e61298d8baa60ULL},
+    // Save 187 (#636): the eye's four fields (+14) and its lamp ages (a
+    // count +4, one lamp +8) - predicted 1362 -> 1388 before the build, held.
+    {"world", 1388, 0xad73272308fbf7c8ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
