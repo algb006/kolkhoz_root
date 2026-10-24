@@ -11,9 +11,9 @@
 ///
 /// THE RULE, once a day after the day's steps:
 ///   * eligible: a man (the door judges his age), no talk running
-///     (talk_until_day), alcoholism above the drinking rule's line - food.csv
-///     plot_drinker_alcoholism_threshold, 50, read off the table (boss [2]
-///     (a): crime's threshold has no reader in the core);
+///     (talk_until_day), alcoholism above 20, crime §6's band edge (econ,
+///     core-boss-1240-sugar-buy [14]; it was food.csv's plot line, 50, which
+///     on 0.94 found a man above it in 5 village-years of 90);
 ///   * the most drinking eligible man not set aside is asked;
 ///   * THE DOOR JUDGES THE PLACE (a stadium or the reading hut in reach,
 ///     kNowhereToGo) and the season (kOncePerSeason); the run copies neither
@@ -50,18 +50,10 @@ namespace run {
 /// @brief Orders the season's talk to the most drinking man who can go.
 class SportTalkPolicy {
  public:
-  /// @brief Reads the drinking rule's line off the core's own row (food.csv
-  ///        plot_drinker_alcoholism_threshold, 50; boss [2] (a)), so the run
-  ///        and the household plot judge «a drinker» by one number.
-  explicit SportTalkPolicy(const core::ITableSet& tables) {
-    if (const core::ITable* const food = tables.FindTable("food")) {
-      const std::uint32_t row = food->FindRowByKey("plot_drinker_alcoholism_threshold");
-      const std::uint32_t column = food->FindColumn("value");
-      if (row != core::kNoTableRow && column != core::kNoTableColumn) {
-        drinker_line_ = food->CellReal(row, column).value_or(drinker_line_);
-      }
-    }
-  }
+  /// @brief The talk's line is crime §6's band edge, 20 (econ, core-boss-1240-
+  ///        sugar-buy [14]): the household plot's 50 found a man above it in
+  ///        5 village-years of 90 on 0.94, and the talk was idle.
+  explicit SportTalkPolicy(const core::ITableSet& /*tables*/) {}
 
   /// @brief A season's days: three months of four.
   static constexpr core::SimDay kSeasonDays = 3U * core::kDaysPerMonth;
@@ -213,7 +205,9 @@ class SportTalkPolicy {
   }
 
  private:
-  float drinker_line_ = 50.0F;
+  /// The bot's own number, a run rule's and not the core's (crime §6, «20-40
+  /// выпивает»); econ moves it.
+  float drinker_line_ = 20.0F;
   core::ResidentId asked_;
   float asked_alcoholism_ = 0.0F;
   std::uint32_t asked_season_ = 0;
