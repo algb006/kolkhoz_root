@@ -1,0 +1,13 @@
+# generated from db/design.db — do not edit by hand
+# one row per avatar the New Game screen offers; `key` is the seam word the layer sends as avatar_key, and an unknown key is the core's REFUSAL, not a default
+# start_reputation is the Райком sign read as a number (avatars.md «Пути»): applied once at genesis
+# crime_modifier and electrification_threshold_factor are DORMANT: no core reader until crime and electrification are built (STUB)
+key,start_reputation,crime_modifier,electrification_threshold_factor
+villager,45,0,1
+worker,50,0,1
+student,50,0,1
+ex_chairman,45,0,1
+promoted,61,0,0.75
+old_fighter,55,-20,1
+dealer,41,0,1
+acting,45,0,1

@@ -98,6 +98,8 @@ void WriteTableSet(const std::filesystem::path& root, const std::vector<std::str
   // The seventh (save 82): the tree species, named by key in a planting
   // order and on a planting stand.
   WriteTableFile(root / "tree_species.csv", {"pine", "birch"}, "plantable");
+  // The ninth (save 184, #634): the avatar, named by key on the chairman.
+  WriteTableFile(root / "avatars.csv", {"promoted", "dealer"}, "start_reputation");
 }
 
 core::ResourceAmounts Amounts(std::initializer_list<core::Grams> values) {
@@ -158,7 +160,12 @@ core::WorldState MakeWorld() {
   world.chairman.days_off_cancelled_in_a_row = 2;
   world.chairman.cancelled_day_off = 55;
   world.chairman.place_after_declaring = 1;  // save 141: the declared day's placement owed
-  world.chairman.last_talk_season = 5;       // save 69: a talk had, not nought
+  // Save 184 (#634): the avatar, row 1 («dealer»), and the two dormant
+  // factors off their defaults so a codec that swaps them cannot pass.
+  world.chairman.avatar = core::AvatarId{1};
+  world.chairman.crime_modifier = -20.0F;
+  world.chairman.electrification_threshold_factor = 0.75F;
+  world.chairman.last_talk_season = 5;  // save 69: a talk had, not nought
   // Save 77: away on a summons, a trip of his own before, a trade had.
   world.chairman.away_from_tick = 2'000;
   world.chairman.away_until_tick = 2'012;
@@ -1327,6 +1334,9 @@ core::WorldState MakeWitnessWorld() {
   witness.chairman.away_summoned = 1;
   witness.chairman.pencil_pending = 1;
   witness.chairman.harvest_without_days_off = 0;
+  witness.chairman.avatar = core::AvatarId{0};  // save 184 (#634): «promoted»
+  witness.chairman.crime_modifier = 7.5F;
+  witness.chairman.electrification_threshold_factor = 0.5F;
 
   witness.traction_ration = 0.75F;
   // The team's two alarms' memory (save 109): every slot different, so a
@@ -1488,6 +1498,11 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   // The rating's recovery owed (save 166, #1043).
   chunks.push_back(
       {"chairman.reputation_recovery_owed", U8(world.chairman.reputation_recovery_owed)});
+  // The avatar by key and its two dormant factors (save 184, #634).
+  chunks.push_back({"chairman.avatar", U16(world.chairman.avatar.value)});
+  chunks.push_back({"chairman.crime_modifier", F32(world.chairman.crime_modifier)});
+  chunks.push_back({"chairman.electrification_threshold_factor",
+                    F32(world.chairman.electrification_threshold_factor)});
 
   chunks.push_back({"traction_ration", F32(world.traction_ration)});
   // The team's two alarms' memory (save 109).
@@ -2665,6 +2680,10 @@ int main() {
       Expect(loaded.weather.road_beds.condition == world.weather.road_beds.condition &&
                  loaded.weather.road_beds.wet_days_left == world.weather.road_beds.wet_days_left,
              "and each bed's condition and wet days survive, bed by bed (save 95)");
+  failures +=
+      Expect(loaded.chairman.avatar.value == 1 && loaded.chairman.crime_modifier == -20.0F &&
+                 loaded.chairman.electrification_threshold_factor == 0.75F,
+             "the avatar came back by its key, with its two dormant factors (save 184)");
   failures += Expect(loaded.chairman.horses_stabled == 1,
                      "and the milestone that cannot be undone came back set");
   failures += Expect(loaded.chairman.ration_auto == 0,

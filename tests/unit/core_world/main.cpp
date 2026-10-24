@@ -19,6 +19,7 @@
 
 #include "../../common/fake_tables.h"
 #include "advice_checks.h"
+#include "avatar_checks.h"
 #include "chairman_transport_checks.h"
 #include "core_catalog/definitions.h"
 #include "core_catalog/extraction_catalog.h"
@@ -2936,6 +2937,7 @@ int main() {
   failures += CheckReadinessShape();
   failures += CheckTheWatchdog();
   failures += CheckTheSettlements();
+  failures += CheckTheAvatarDoor();
   failures += CheckEveryAdviceIsTaken();
   failures += CheckBaseConventions();
   failures += CheckIceRowsAssemble();

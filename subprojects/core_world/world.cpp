@@ -1321,6 +1321,13 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
   if (!layout_error.empty()) {
     return nullptr;
   }
+  // THE CHAIRMAN NEW GAME CHOSE (#634): his start reputation before the
+  // start year settles its limit points off it; an unknown key refuses.
+  std::string avatar_error;
+  if (!ApplyStartAvatar(start, *config.tables, config.avatar_key, &avatar_error)) {
+    LogError(avatar_error);
+    return nullptr;
+  }
   // THE START'S DERIVED FAMILY METRICS, before the first tick (0.37.23;
   // boss-core-layers-doors-2026-09-29 [4]): genesis draws the components,
   // and the satisfaction they make read the struct's 55 until the first day.

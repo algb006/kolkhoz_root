@@ -48,6 +48,8 @@ const char* DefTableName(DefKind kind) {
       return "tree_species";
     case DefKind::kMapRoad:
       return "roads";
+    case DefKind::kAvatar:
+      return "avatars";
   }
   return "unknown";
 }
