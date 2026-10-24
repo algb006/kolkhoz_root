@@ -313,6 +313,13 @@ struct FamilyRow {
   /// taken out as a stub; population_curve's seed 1941 then showed it fire
   /// inside 33 years, which was its own return condition.
   std::uint8_t advance_turns = 0;
+
+  /// THE SUGAR (save 188; #1241, metrics.md «Сахар — малая радость»): the
+  /// months in a row the family got under sugar_dry_share of its need, for
+  /// the children's complaint, and the share of its need it got at the last
+  /// month's issue, 0..1, for the view and the mood term.
+  std::uint8_t sugar_dry_months = 0;
+  float sugar_share = 0.0F;
 };
 
 /// @brief FamilyRow::formed_day of a row of the genesis: no day of the game.

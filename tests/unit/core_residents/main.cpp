@@ -54,6 +54,7 @@
 #include "night_trade.h"
 #include "schooling.h"
 #include "specialist_arrival.h"
+#include "sugar_checks.h"
 #include "vitals.h"
 #include "year_metrics.h"
 
@@ -5020,6 +5021,7 @@ int main() {
   failures += CheckSamogonPurchase();
   failures += CheckBarter();
   failures += CheckBurial();
+  failures += CheckTheSugar();
   failures += CheckNoWeddingIntoABarrackAndTheCrowdedBarrack();
   failures += CheckTheNewHouseholdsAdvance();
   failures += CheckVitals();

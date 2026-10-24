@@ -420,6 +420,7 @@ ResidentRow RollPerson(RngState& rng,
   person.ideology = DrawInRange(rng, 30.0F, 70.0F);
   person.health = DrawInRange(rng, 60.0F, 90.0F) - (age_years > 55.0F ? 15.0F : 0.0F);
   person.mood = DrawInRange(rng, 50.0F, 70.0F);
+  person.mood_base = person.mood;  // #1241: the mood without its terms
   // A BAND AND NOT ONE FIGURE, and the reason is the day the first filth
   // disease arrives: with everybody starting on the same number they would
   // all cross the threshold on the same morning, and «первая болезнь от

@@ -541,6 +541,9 @@ class ResidentsSystem final : public IResidentsSystem {
       // year's membership left outside the organizations.
       AssignNightTrades(config_.night_trade, config_.life_speedup, current, false);
     }
+    // THE MONTH'S SUGAR TO THE PEOPLE FIRST (#1241; sugar_issue.h): «Сперва
+    // людям, потом ночь самогонщика» - what it leaves is the still's.
+    IssueSugarMonth(config_.sugar, config_.life_speedup, current);
     // The stores' month first — the dry month and the distillers' replacement
     // (night_trade.h) — then the month's drinking, over the month the labor
     // day close has just finished counting (alcoholism.h).

@@ -645,6 +645,10 @@ struct ChairmanState {
   /// at world_params eye_missed_crisis_cap_per_year.
   float eye_crisis_gained = 0.0F;
   std::uint16_t eye_crisis_year = 0;
+
+  /// THE CHILDREN'S COMPLAINT's last talk season, plus one (save 188; #1241):
+  /// «не чаще раза в сезон на село» - 0 when none has been said.
+  std::uint32_t sugar_complaint_season = 0;
 };
 
 /// @brief Why the district calls the chairman «на ковёр» (district-trip.md

@@ -89,7 +89,9 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // Save 156 (#709): the work's two day flags (+4 in WorkAssignment) —
 // predicted 320 -> 328 before the build; MISSED: 320, measured - the four
 // bytes fell into padding the row already had after the work.
-static_assert(sizeof(ResidentRow) == 320,
+// Save 188 (#1241): mood_base, a float after mood - predicted 320 -> 328
+// before the build (a float before the 8-aligned work), 56 fields.
+static_assert(sizeof(ResidentRow) == 328,
               "ResidentRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 59: distiller_supplied_month, a distiller's supplied month
 // (crime §7, register 206) — 43 fields; the size is read off the build.
@@ -97,7 +99,7 @@ static_assert(sizeof(ResidentRow) == 320,
 // Save 79: away_until_day, _hour, _walk_hours, _reason — 50. Save 105:
 // idle_reason — 51. Save 113: satiety_year and satiety_childhood — 53.
 // Save 122: samogon_ml — 54.
-static_assert(AggregateArity<ResidentRow>() == 55,
+static_assert(AggregateArity<ResidentRow>() == 56,
               "ResidentRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-14: first_meal_eaten landed in padding beside food_variety_mask; the
 // size stayed 56 + amounts and the field count went to 16. The same day the
@@ -128,7 +130,10 @@ static_assert(AggregateArity<ResidentRow>() == 55,
 // Save 169 (#1046, boss's thread [20]): the trudodni ring leaves, nothing read
 // it from 0.37.292 - predicted 224 -> 176 + amounts and 38 fields before the
 // build; on the wire -48 a family.
-static_assert(sizeof(FamilyRow) == 176 + kAmountsSize,
+// Save 188 (#1241): sugar_dry_months (u8) and sugar_share (float) at the
+// tail - predicted 176 -> 184 + amounts and 40 fields before the build; on the
+// wire +5 a family.
+static_assert(sizeof(FamilyRow) == 184 + kAmountsSize,
               "FamilyRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 57: ration_granted, the yard's ration decision — 19 fields;
 // the size is read off the build below, not guessed.
@@ -138,7 +143,7 @@ static_assert(sizeof(FamilyRow) == 176 + kAmountsSize,
 // Save 75: in_barrack and hunger_alarm_lit — 27 fields. Save 113:
 // satisfaction_year — 28. Save 124: season_category_kcal and
 // season_need_kcal — 30.
-static_assert(AggregateArity<FamilyRow>() == 38,
+static_assert(AggregateArity<FamilyRow>() == 40,
               "FamilyRow gained or lost a field — update the codec and VERSION_SAVE");
 // FieldRow took LandKind into a padding byte it already had, so sizeof did
 // NOT move — the one case the tripwire of manual/67-save-format.md §7 cannot
@@ -736,6 +741,7 @@ void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
   // Personal cleanliness (health design §3, save format 51).
   out.WriteFloat(row.hygiene);
   out.WriteFloat(row.mood);
+  out.WriteFloat(row.mood_base);  // save 188 (#1241)
 
   out.WriteU8(static_cast<std::uint8_t>(row.work.kind));
   out.WriteU8(row.work.rides_horse);  // save 88: the carter's horse (labor_state.h)
@@ -828,6 +834,7 @@ ResidentRow ReadResidentRow(LoadSource& source) {
   row.cold = in.ReadFloat();
   row.hygiene = in.ReadFloat();
   row.mood = in.ReadFloat();
+  row.mood_base = in.ReadFloat();  // save 188 (#1241)
 
   row.work.kind = static_cast<WorkKind>(source.ReadEnumValue(0, kMaxWorkKind, "work kind"));
   row.work.rides_horse = source.ReadEnumValue(0, 1, "the carter's horse mark");
@@ -1016,7 +1023,9 @@ void WriteFamilyRow(SaveSink& sink, const FamilyRow& row) {
   out.WriteI64(row.advance_debt);
   out.WriteI64(row.advance_given);
   out.WriteU8(row.formed_in_barrack);
-  out.WriteU8(row.advance_turns);  // save 160
+  out.WriteU8(row.advance_turns);     // save 160
+  out.WriteU8(row.sugar_dry_months);  // save 188 (#1241)
+  out.WriteFloat(row.sugar_share);
 }
 
 FamilyRow ReadFamilyRow(LoadSource& source) {
@@ -1087,7 +1096,9 @@ FamilyRow ReadFamilyRow(LoadSource& source) {
   row.advance_given = in.ReadI64();
   row.formed_in_barrack =
       static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "family formed in a barrack"));
-  row.advance_turns = in.ReadU8();  // save 160
+  row.advance_turns = in.ReadU8();     // save 160
+  row.sugar_dry_months = in.ReadU8();  // save 188 (#1241)
+  row.sugar_share = in.ReadFloat();
   if (row.earned_since_formed < 0 || row.advance_debt < 0 || row.advance_given < row.advance_debt) {
     source.Fail("a family's advance is negative or owes more than it was given");
   }

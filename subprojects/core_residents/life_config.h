@@ -42,6 +42,7 @@
 #include "night_trade.h"
 #include "schooling.h"
 #include "sport.h"
+#include "sugar_issue.h"
 
 namespace core {
 
@@ -307,6 +308,10 @@ struct LifeConfig {
 
   /// The sports field and sportiness (sport.h; register 223).
   SportConfig sport;
+
+  /// The month's sugar, its mood and the children's complaint (sugar_issue.h;
+  /// #1241).
+  SugarIssueConfig sugar;
 
   /// The graves and the game's stop for one (burial.h; #1199).
   BurialConfig burial;

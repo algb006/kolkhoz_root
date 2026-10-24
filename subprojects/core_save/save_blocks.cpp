@@ -93,7 +93,9 @@ static_assert(sizeof(ChairmanState) == 128, "ChairmanState changed — update th
 // the codec. Save 166 (#1043): the rating's recovery owed, a byte after them:
 // predicted 88 unmoved (the tail's padding) and twenty-seven fields; one byte
 // in the codec.
-static_assert(AggregateArity<ChairmanState>() == 40,
+// Save 188 (#1241): sugar_complaint_season, a u32 at 124 - predicted 128
+// unmoved (the tail's padding) and 41 fields; four bytes in the codec.
+static_assert(AggregateArity<ChairmanState>() == 41,
               "ChairmanState gained or lost a field — update the codec and VERSION_SAVE");
 // PLANSTATE HAD NO TRIPWIRE AT ALL until 2026-09-12, and it was the only
 // serialized block without one: six blocks go into the save, five were
@@ -554,6 +556,7 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteU32(world.chairman.eye_talk_season_seen);
   out.WriteFloat(world.chairman.eye_crisis_gained);
   out.WriteU16(world.chairman.eye_crisis_year);
+  out.WriteU32(world.chairman.sugar_complaint_season);  // save 188 (#1241)
 
   out.WriteFloat(world.traction_ration);
   // The team's two alarms' memory (save 109).
@@ -817,6 +820,7 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->chairman.eye_talk_season_seen = in.ReadU32();
   world->chairman.eye_crisis_gained = in.ReadFloat();
   world->chairman.eye_crisis_year = in.ReadU16();
+  world->chairman.sugar_complaint_season = in.ReadU32();  // save 188 (#1241)
 
   world->traction_ration = in.ReadFloat();
   world->traction_watch.short_ration_days = in.ReadU16();  // save 109

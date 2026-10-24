@@ -842,6 +842,15 @@ enum class EventKind : std::uint8_t {
   /// clock may run again. Key `burials_laid`.
   kBurialsLaid,
 
+  /// «ДЕТИ ПРОСЯТ СЛАДКОГО» (#1241; metrics.md «Сахар — малая радость»):
+  /// a family has had under `sugar_dry_share` of its sugar for
+  /// `sugar_complaint_dry_months` months in a row - its child under 16
+  /// complains (its eldest when it has none). Not before game month
+  /// `sugar_complaint_from_month`, at most once a season a village. `family`
+  /// the family. Routine: a live signal at the house and the store, not a
+  /// stop. Key `children_ask_sweets`.
+  kChildrenAskSweets,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

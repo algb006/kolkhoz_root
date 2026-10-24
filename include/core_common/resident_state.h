@@ -198,7 +198,20 @@ struct ResidentRow {
   /// first of them decides a village's output. Whoever fills it in re-reads
   /// the labour curve with it, rather than discovering afterwards that the
   /// farm's productivity acquired a new driver.
+  ///
+  /// THE MARK CAME OFF IN #1241 (save 188; metrics.md «Сахар — малая
+  /// радость»; boss, core-boss-sugar-issue [2] (b)): mood = mood_base + the
+  /// month's sugar term (sugar_issue.h), written at each month's issue. The
+  /// labour curve was re-read with it (the #1241 pair; econ's arithmetic:
+  /// ±2 mood is ±0.6 % of a day's output). The six other inputs metrics §2
+  /// names are more terms beside the sugar's, when they come.
   Metric mood = 60.0F;
+
+  /// MOOD WITHOUT ITS TERMS (save 188; #1241): genesis's 50-70 draw for the
+  /// founders. STUB for everyone born or arriving after genesis: the struct's
+  /// 60, as mood was for them before (boss, core-boss-sugar-issue [5]; the
+  /// newcomers' draw is its own item later).
+  Metric mood_base = 60.0F;
 
   // -- today's work (labor_state.h; stage 5) -------------------------------
   /// Written only by the labor sub-step of the decisions slot: assigned in
