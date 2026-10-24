@@ -25,6 +25,7 @@
 #include "cemetery_policy.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
+#include "distiller_policy.h"
 #include "extraction_policy.h"
 #include "fallow_policy.h"
 #include "felling_policy.h"
@@ -77,7 +78,8 @@ class BuildingChairman {
         cemetery(tables),
         warm_hold(tables),
         fallow(tables),
-        sport_talk(tables) {
+        sport_talk(tables),
+        distiller(tables) {
     WireStartGates(yard, fixture, houses, sawmill);
     WireSchoolGate(school, sawmill);
     WireSawGate(office, sawmill);
@@ -268,7 +270,13 @@ class BuildingChairman {
     SuggestedRoadsPolicy::Declare(run_name);
     TransitionPolicy::Declare(run_name);
     CemeteryPolicy::Declare(run_name);
+    DistillerPolicy::Declare(run_name);
   }
+
+  /// @brief What the chairman hears in one step: the night's theft reports
+  /// (#1250). Call after EVERY step - a run that calls RunDay alone never
+  /// hears them, and its distiller rule takes nobody (its DT line says so).
+  void WatchStep(const core::WorldState& world) { distiller.WatchStep(world); }
 
   /// @brief One day of the chairman's attention. Call once a day, after the
   /// day's steps.
@@ -305,6 +313,9 @@ class BuildingChairman {
     if (sport_talk_on) {
       sport_talk.RunDay(simulation);
     }
+    // The distiller a theft report names, and the watchman at the leak
+    // (#1250; distiller_policy.h). Its reports come from WatchStep.
+    distiller.RunDay(simulation);
     sawmill.RunDay(simulation);
     limit.RunDay(simulation);
     night_pasture.RunDay(simulation);
@@ -406,6 +417,9 @@ class BuildingChairman {
   /// Whether RunDay calls `sport_talk` (#1238): on in every run; a control
   /// arm turns it off.
   bool sport_talk_on = true;
+  /// The distiller taken and the leak watched (#1250); `distiller.Enable`
+  /// is the control arm's switch.
+  DistillerPolicy distiller;
 };
 
 }  // namespace run

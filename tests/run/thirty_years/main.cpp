@@ -30,6 +30,7 @@
 #include "../common/brakes_tally.h"
 #include "../common/building_chairman.h"
 #include "../common/chairman_clock.h"
+#include "../common/distiller_policy.h"
 #include "../common/extraction_policy.h"
 #include "../common/fallow_policy.h"
 #include "../common/felling_policy.h"
@@ -151,6 +152,11 @@ bool g_sugar_buy = true;
 /// The season's talk to the drinker (sport_talk_policy.h, #1238): on and part
 /// of the canonical set; --no-sport-talk is the control arm.
 bool g_sport_talk = true;
+
+/// The run's chairman takes the distiller a theft report names and watches
+/// the leak (distiller_policy.h, #1250): on and part of the canonical set;
+/// --no-catch-distiller is the control arm.
+bool g_catch_distiller = true;
 
 constexpr std::uint64_t kSeed = 1929;
 std::uint64_t g_seed = kSeed;
@@ -487,6 +493,7 @@ int main(int argc, char** argv) {
     g_fallow_by_eaters = g_fallow_by_eaters && argument != "--no-fallow-by-eaters";
     g_sugar_buy = g_sugar_buy && argument != "--no-sugar-buy";
     g_sport_talk = g_sport_talk && argument != "--no-sport-talk";
+    g_catch_distiller = g_catch_distiller && argument != "--no-catch-distiller";
     if (argument.starts_with("--house-sites=")) {
       g_house_sites = static_cast<std::uint32_t>(std::strtoul(
           std::string(argument.substr(std::string_view("--house-sites=").size())).c_str(),
@@ -507,7 +514,7 @@ int main(int argc, char** argv) {
   g_canonical_run = g_seed == kSeed && g_years == kYears && !g_free_materials &&
                     g_tables_dir == "tables" && !g_saw_reserve && g_house_sites == 3 &&
                     !g_saw_by_anyone && g_fallow_by_eaters && g_sugar_buy && g_avatar_key.empty() &&
-                    g_sport_talk;
+                    g_sport_talk && g_catch_distiller;
   run::Simulation world =
       run::Start(g_seed, 1, g_tables_dir, core::StubTables::kRefused, g_avatar_key);
   if (!world) {
@@ -665,6 +672,11 @@ int main(int argc, char** argv) {
   run::SowingPolicy layout(13, 42, false, world.tables.get());
   run::FallowPolicy fallow(*world.tables);
   run::SportTalkPolicy sport_talk(*world.tables);
+  run::DistillerPolicy distiller(*world.tables);
+  distiller.Enable(g_catch_distiller);
+  if (g_catch_distiller) {
+    run::DistillerPolicy::Declare("thirty_years");
+  }
   if (g_fallow_by_eaters) {
     run::FallowPolicy::Declare("thirty_years");
   }
@@ -735,6 +747,7 @@ int main(int argc, char** argv) {
           tick_cost.CountStep(world.State());
         }
         departures.CountStep(world.State());
+        distiller.WatchStep(world.State());  // the night's theft reports (#1250)
         if (tick == core::kTicksPerDay / 2) {
           brakes.CountDay(*world.simulation);  // the working day's middle
           hauls.CountNoon(*world.simulation);
@@ -767,6 +780,7 @@ int main(int argc, char** argv) {
       if (g_sport_talk) {
         chairman.Time("sport_talk", [&] { sport_talk.RunDay(sim); });
       }
+      chairman.Time("distiller", [&] { distiller.RunDay(sim); });
       chairman.Time("layout", [&] { layout.AnswerPlanAlarmsOnly(sim); });
       chairman.Time("digging", [&] { digging.RunDay(sim); });
       chairman.Time("roads", [&] { roads.RunDay(sim); });
