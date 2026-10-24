@@ -39,6 +39,7 @@
 #include "sawmill_policy.h"
 #include "school_policy.h"
 #include "social_objects_policy.h"
+#include "sport_talk_policy.h"
 #include "stand_renewal_policy.h"
 #include "suggested_roads_policy.h"
 #include "supply_policy.h"
@@ -75,7 +76,8 @@ class BuildingChairman {
         transition(tables),
         cemetery(tables),
         warm_hold(tables),
-        fallow(tables) {
+        fallow(tables),
+        sport_talk(tables) {
     WireStartGates(yard, fixture, houses, sawmill);
     WireSchoolGate(school, sawmill);
     WireSawGate(office, sawmill);
@@ -299,6 +301,10 @@ class BuildingChairman {
     if (fallow_by_eaters) {
       fallow.RunDay(simulation);
     }
+    // The season's talk to the drinker (#1238; sport_talk_policy.h).
+    if (sport_talk_on) {
+      sport_talk.RunDay(simulation);
+    }
     sawmill.RunDay(simulation);
     limit.RunDay(simulation);
     night_pasture.RunDay(simulation);
@@ -396,6 +402,10 @@ class BuildingChairman {
   /// first pair's gates green (core-boss-725-fallow [58], [59]); a run's
   /// control arm turns it off.
   bool fallow_by_eaters = true;
+  SportTalkPolicy sport_talk;
+  /// Whether RunDay calls `sport_talk` (#1238): on in every run; a control
+  /// arm turns it off.
+  bool sport_talk_on = true;
 };
 
 }  // namespace run
