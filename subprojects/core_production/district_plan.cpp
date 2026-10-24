@@ -924,6 +924,9 @@ void JudgePlan(const ProductionConfig& config, WorldState& current) {
     }
     current.plan.met_years_in_a_row =
         met ? static_cast<std::uint8_t>(current.plan.met_years_in_a_row + 1U) : 0U;
+    if (met && current.plan.met_years_total < 0xFFFFU) {
+      ++current.plan.met_years_total;  // #637: the crafts' gate reads it
+    }
     const float step = met ? config.plan_met_reputation : config.plan_failed_reputation;
     // Clamped to the metric's own scale, both ends. A reputation that
     // walked past 100 on a run of good years would make the fall back

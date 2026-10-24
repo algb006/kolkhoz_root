@@ -59,6 +59,7 @@ bool ApplyStartAvatar(WorldState& world,
   world.chairman.raikom_reputation = row.start_reputation;
   world.chairman.crime_modifier = row.crime_modifier;
   world.chairman.electrification_threshold_factor = row.electrification_threshold_factor;
+  world.chairman.sees_theft_same_day = row.sees_theft_same_day ? 1U : 0U;  // P3, dormant
   // «СТРАДА БЕЗ ВЫХОДНЫХ» IS A DAY OFF DECLARED WORKING TOO (boss, core-boss-
   // 635-avatar-paths [5] (1)): an avatar with closed day-off years starts
   // with the standing order off, and its switch refuses it in those years

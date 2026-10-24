@@ -3200,6 +3200,68 @@ int TestTheDeadMillIsNotRestored() {
 /// the first draft of this check (phase 0, level 1, no crew), which is not
 /// understood yet and is named in #635's delivery; the pair measures the
 /// workshops' opening year instead.
+/// THE CRAFTS' GATE (#637; unlocks §3): on the shipped tables the apiary is
+/// refused kGateClosed to a village with no met plan year and reputation 50;
+/// a met year opens it, reputation 55 opens it, the villager's key opens it
+/// on day 1, and once open it stays open when reputation falls back (the
+/// latch). The fishery, gate `era`, is open to all - the pair.
+int TestTheCraftsGate() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  if (Expect(tables != nullptr, "the shipped tables load") != 0) {
+    return 1;
+  }
+  const auto system = core::CreateConstructionSystem(*tables, core::StubTables::kRefused);
+  const core::ITable* const unit_types = tables->FindTable("unit_types");
+  const core::ITable* const avatars = tables->FindTable("avatars");
+  if (Expect(system != nullptr && unit_types != nullptr && avatars != nullptr,
+             "the shipped tables build a construction system and carry avatars") != 0) {
+    return 1;
+  }
+  const auto type_of = [&](const char* key) {
+    return static_cast<std::uint16_t>(unit_types->FindRowByKey(key));
+  };
+  const auto gate_closed = [&](core::WorldState& world, const char* key) {
+    const core::OrderId order = Issue(world, BuildOrder(type_of(key), 6000.0F, 6000.0F));
+    Run(*system, world, 0);
+    return RefusalOf(world, order) == core::OrderRefusal::kGateClosed;
+  };
+  core::WorldState plain;
+  plain.chairman.raikom_reputation = 50.0F;
+  failures += Expect(gate_closed(plain, "apiary") && plain.chairman.crafts_gate_opened == 0,
+                     "crafts' gate: no met year and reputation 50 - the apiary is refused");
+  core::WorldState plain_fish;
+  plain_fish.chairman.raikom_reputation = 50.0F;
+  failures += Expect(!gate_closed(plain_fish, "fishery"),
+                     "crafts' gate, the pair: the fishery (gate era) is open to the same village");
+  core::WorldState met;
+  met.chairman.raikom_reputation = 50.0F;
+  met.plan.met_years_total = 1;
+  failures += Expect(!gate_closed(met, "hunting_lodge"),
+                     "crafts' gate: a plan year once met opens the hunting lodge");
+  core::WorldState trusted;
+  trusted.chairman.raikom_reputation = 55.0F;
+  failures += Expect(!gate_closed(trusted, "apiary") && trusted.chairman.crafts_gate_opened == 1,
+                     "crafts' gate: reputation 55 opens the apiary, and latches");
+  trusted.chairman.raikom_reputation = 40.0F;
+  failures += Expect(!gate_closed(trusted, "apiary"),
+                     "crafts' gate: latched, it stays open when the reputation falls to 40");
+  core::WorldState villager;
+  villager.chairman.raikom_reputation = 45.0F;
+  villager.chairman.avatar =
+      core::AvatarId{static_cast<std::uint16_t>(avatars->FindRowByKey("villager"))};
+  failures += Expect(!gate_closed(villager, "apiary"),
+                     "crafts' gate: the villager opens it on day 1, his own key");
+  core::WorldState worker;
+  worker.chairman.raikom_reputation = 50.0F;
+  worker.chairman.avatar =
+      core::AvatarId{static_cast<std::uint16_t>(avatars->FindRowByKey("worker"))};
+  failures +=
+      Expect(gate_closed(worker, "apiary"), "crafts' gate: the worker's key does not open it");
+  return failures;
+}
+
 int TestTheWorkersWorkshopsAtHalfLabour() {
   int failures = 0;
   std::string error;
@@ -3542,6 +3604,7 @@ int main() {
   failures += TestTheStinkZoneGrowsAndGoesOut();
   failures += TestTheShippedStartHasNoHouseInAStinkZone();
   failures += TestTheWorkersWorkshopsAtHalfLabour();
+  failures += TestTheCraftsGate();
   if (failures == 0) {
     std::cout << "unit_core_construction: marking, building, upgrading, refusals and demolition\n";
   }

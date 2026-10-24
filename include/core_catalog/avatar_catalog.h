@@ -63,6 +63,13 @@ struct AvatarDef {
   /// The sawmill's man-days a board m³ × this (the worker: 0.67, «saws at
   /// ×1.5»; avatars.md «Пути», P5 since 0.37.328). unit_production.cpp.
   float sawing_days_factor = 1.0F;
+
+  /// The crafts' gate (apiary, hunting lodge) is open from day 1 (the
+  /// villager; #637, unlocks §3: «его собственный ключ, а не обход ворот»).
+  bool opens_gated_crafts = false;
+
+  /// DORMANT (P3, the dealer): copied at genesis; no reader until crime.
+  bool sees_theft_same_day = false;
 };
 
 /// @brief Reads tables/avatars.csv into `avatars`, row order = AvatarId.

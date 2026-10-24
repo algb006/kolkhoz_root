@@ -61,6 +61,26 @@ bool ReadFactor(const ITable& table,
   return true;
 }
 
+/// A 0/1 column: blank or absent reads false; anything else than 0 or 1 is a
+/// table error.
+bool ReadFlag(const ITable& table,
+              std::uint32_t row,
+              std::string_view column_name,
+              bool& value,
+              std::string& error) {
+  float read = value ? 1.0F : 0.0F;
+  if (!ReadFactor(table, row, column_name, Range{.low = 0.0F, .high = 1.0F}, read, error)) {
+    return false;
+  }
+  if (read != 0.0F && read != 1.0F) {
+    error = std::string(kTable) + " row " + std::to_string(row) + " " + std::string(column_name) +
+            ": 0 or 1";
+    return false;
+  }
+  value = read == 1.0F;
+  return true;
+}
+
 }  // namespace
 
 bool ReadAvatars(const ITableSet& tables, std::vector<AvatarDef>& avatars, std::string& error) {
@@ -149,6 +169,10 @@ bool ReadAvatars(const ITableSet& tables, std::vector<AvatarDef>& avatars, std::
       return false;
     }
     avatar.plan_trade_closed = closed == 1.0F;
+    if (!ReadFlag(*table, row, "opens_gated_crafts", avatar.opens_gated_crafts, error) ||
+        !ReadFlag(*table, row, "sees_theft_same_day", avatar.sees_theft_same_day, error)) {
+      return false;
+    }
     avatars.push_back(std::move(avatar));
   }
   return true;

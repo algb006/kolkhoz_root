@@ -170,7 +170,9 @@ core::WorldState MakeWorld() {
   world.chairman.free_plan_trades_epoch = 1;
   world.chairman.free_days_off_used = 4;
   world.chairman.free_days_off_year = 3;
-  world.chairman.last_talk_season = 5;  // save 69: a talk had, not nought
+  world.chairman.crafts_gate_opened = 1;   // save 186 (#637): the latch
+  world.chairman.sees_theft_same_day = 1;  // save 186: P3, dormant
+  world.chairman.last_talk_season = 5;     // save 69: a talk had, not nought
   // Save 77: away on a summons, a trip of his own before, a trade had.
   world.chairman.away_from_tick = 2'000;
   world.chairman.away_until_tick = 2'012;
@@ -212,6 +214,7 @@ core::WorldState MakeWorld() {
   world.plan.announced = 1;
   world.plan.worked_ha_last_year = 70.0F;
   world.plan.met_years_in_a_row = 5;
+  world.plan.met_years_total = 9;  // save 186 (#637): more than the series
   world.vitals.life_expectancy_years = 61.75F;
   world.vitals.satiety_year_means = {71.5F, 68.25F, 0.1F + 0.2F};
   world.vitals.satiety_running_days = 19;
@@ -1346,6 +1349,8 @@ core::WorldState MakeWitnessWorld() {
   witness.chairman.free_plan_trades_epoch = 2;
   witness.chairman.free_days_off_used = 5;
   witness.chairman.free_days_off_year = 7;
+  witness.chairman.crafts_gate_opened = 1;
+  witness.chairman.sees_theft_same_day = 0;
 
   witness.traction_ration = 0.75F;
   // The team's two alarms' memory (save 109): every slot different, so a
@@ -1371,6 +1376,7 @@ core::WorldState MakeWitnessWorld() {
   witness.plan.last_verdict = core::PlanVerdict::kFailed;
   witness.plan.failed_years_in_a_row = 2;
   witness.plan.met_years_in_a_row = 5;
+  witness.plan.met_years_total = 11;
   witness.plan.announced = 1;
   witness.plan.worked_ha_last_year = 70.0F;
   witness.plan.worked_ha_this_year = 12.5F;
@@ -1517,6 +1523,8 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"chairman.free_plan_trades_epoch", U8(world.chairman.free_plan_trades_epoch)});
   chunks.push_back({"chairman.free_days_off_used", U8(world.chairman.free_days_off_used)});
   chunks.push_back({"chairman.free_days_off_year", U16(world.chairman.free_days_off_year)});
+  chunks.push_back({"chairman.crafts_gate_opened", U8(world.chairman.crafts_gate_opened)});
+  chunks.push_back({"chairman.sees_theft_same_day", U8(world.chairman.sees_theft_same_day)});
 
   chunks.push_back({"traction_ration", F32(world.traction_ration)});
   // The team's two alarms' memory (save 109).
@@ -1559,6 +1567,7 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"plan.last_verdict", Enum8(world.plan.last_verdict)});
   chunks.push_back({"plan.failed_years_in_a_row", U8(world.plan.failed_years_in_a_row)});
   chunks.push_back({"plan.met_years_in_a_row", U8(world.plan.met_years_in_a_row)});
+  chunks.push_back({"plan.met_years_total", U16(world.plan.met_years_total)});
   chunks.push_back({"plan.announced", U8(world.plan.announced)});
   chunks.push_back({"plan.worked_ha_last_year", F32(world.plan.worked_ha_last_year)});
   chunks.push_back({"plan.worked_ha_this_year", F32(world.plan.worked_ha_this_year)});
@@ -3134,6 +3143,9 @@ int main() {
   failures +=
       Expect(loaded.plan.worked_ha_last_year > 69.9F && loaded.plan.worked_ha_last_year < 70.1F,
              "and so does the area next spring's norm is computed from");
+  failures += Expect(loaded.plan.met_years_total == 9 && loaded.chairman.crafts_gate_opened == 1 &&
+                         loaded.chairman.sees_theft_same_day == 1,
+                     "the crafts' gate's met years, its latch and P3's flag came back (save 186)");
   failures += Expect(loaded.plan.met_years_in_a_row == 5,
                      "and the run of met ones, which is a different number");
   // The unsealing, field by field: an order kind whose payload is three new

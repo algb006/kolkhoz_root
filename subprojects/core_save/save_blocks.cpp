@@ -81,13 +81,16 @@ static_assert(AggregateArity<WeatherState>() == 14,
 // Save 185 (#635): the paths' four counters, three u8 at 100-102 and a u16 at
 // 104 - predicted 112 (padded to eight) and thirty-four fields; five bytes in
 // the codec.
+// Save 186 (#637): the crafts' latch and P3's flag, two u8 at 106-107 -
+// predicted 112 unmoved (the tail's padding) and thirty-six fields; two
+// bytes in the codec.
 static_assert(sizeof(ChairmanState) == 112, "ChairmanState changed — update the codec");
 // And the avral's days on the cut, a third u16 beside them: predicted 88
 // unmoved (into the tail's padding) and twenty-six fields; two more bytes in
 // the codec. Save 166 (#1043): the rating's recovery owed, a byte after them:
 // predicted 88 unmoved (the tail's padding) and twenty-seven fields; one byte
 // in the codec.
-static_assert(AggregateArity<ChairmanState>() == 34,
+static_assert(AggregateArity<ChairmanState>() == 36,
               "ChairmanState gained or lost a field — update the codec and VERSION_SAVE");
 // PLANSTATE HAD NO TRIPWIRE AT ALL until 2026-09-12, and it was the only
 // serialized block without one: six blocks go into the save, five were
@@ -119,9 +122,13 @@ static_assert(AggregateArity<ChairmanState>() == 34,
 // Save 164 (the plan-short lamp): the stores' draw mark and the last month's
 // draw, two amounts vectors — 10 x amounts + 32 and 18 fields, predicted
 // before the build.
-static_assert(sizeof(PlanState) == (10 * kAmountsSize) + 32,
+// Save 186 (#637): the met years in all, a u16 after the series' byte -
+// predicted 10 x amounts + 40 (the u16 aligns past a pad byte and pushes the
+// two floats by four, the tail padded to eight) and 19 fields; two bytes in
+// the codec.
+static_assert(sizeof(PlanState) == (10 * kAmountsSize) + 40,
               "PlanState changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<PlanState>() == 18,
+static_assert(AggregateArity<PlanState>() == 19,
               "PlanState gained or lost a field — update the codec and VERSION_SAVE");
 // THE CONTAINER ITSELF, and it was the one thing here without a guard.
 // Seventeen asserts below watch the BLOCKS of a world and not one watched the
@@ -534,6 +541,8 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteU8(world.chairman.free_plan_trades_epoch);
   out.WriteU8(world.chairman.free_days_off_used);
   out.WriteU16(world.chairman.free_days_off_year);
+  out.WriteU8(world.chairman.crafts_gate_opened);   // save 186 (#637): the latch
+  out.WriteU8(world.chairman.sees_theft_same_day);  // save 186: P3, dormant
 
   out.WriteFloat(world.traction_ration);
   // The team's two alarms' memory (save 109).
@@ -573,6 +582,7 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteU8(static_cast<std::uint8_t>(world.plan.last_verdict));
   out.WriteU8(world.plan.failed_years_in_a_row);
   out.WriteU8(world.plan.met_years_in_a_row);
+  out.WriteU16(world.plan.met_years_total);  // save 186 (#637)
   // WHETHER THE DISTRICT HAS SPOKEN THIS YEAR, and the area its next figure
   // will be computed from. Lose the first and a loaded campaign cannot tell
   // "asked for nothing" from "was never asked"; lose the second and the
@@ -779,6 +789,10 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->chairman.free_plan_trades_epoch = in.ReadU8();
   world->chairman.free_days_off_used = in.ReadU8();
   world->chairman.free_days_off_year = in.ReadU16();
+  world->chairman.crafts_gate_opened = static_cast<std::uint8_t>(
+      source.ReadEnumValue(0, 1, "the crafts' gate latch"));  // save 186 (#637)
+  world->chairman.sees_theft_same_day =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "the dealer's theft flag"));
 
   world->traction_ration = in.ReadFloat();
   world->traction_watch.short_ration_days = in.ReadU16();  // save 109
@@ -854,6 +868,7 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
       static_cast<PlanVerdict>(source.ReadEnumValue(0, kMaxPlanVerdict, "plan verdict"));
   world->plan.failed_years_in_a_row = in.ReadU8();
   world->plan.met_years_in_a_row = in.ReadU8();
+  world->plan.met_years_total = in.ReadU16();  // save 186 (#637)
   world->plan.announced = in.ReadU8() != 0 ? 1U : 0U;
   world->plan.worked_ha_last_year = in.ReadFloat();
   world->plan.worked_ha_this_year = in.ReadFloat();

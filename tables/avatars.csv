@@ -3,12 +3,12 @@
 # start_reputation is the Райком sign read as a number (avatars.md «Пути»): applied once at genesis
 # crime_modifier and electrification_threshold_factor are DORMANT: no core reader until crime and electrification are built (STUB)
 # the six path columns (#635) are read LIVE by the existing doors; a neutral value (0, or 1 for the factor) leaves today's world; the numbers are econ's STUBs from avatars.md «Пути» P5/P6/P8
-key,start_reputation,crime_modifier,electrification_threshold_factor,free_plan_trades_per_epoch,plan_trade_closed,crop_swap_closed_bargains,day_off_working_closed_years,free_cancelled_days_off_per_year,workshops_l1_labor_factor,sawing_days_factor
-villager,45,0,1,0,0,0,0,0,1,1
-worker,50,0,1,0,0,2,0,0,0.5,0.67
-student,50,0,1,3,0,0,2,0,1,1
-ex_chairman,45,0,1,0,0,0,0,0,1,1
-promoted,61,0,0.75,0,0,0,0,0,1,1
-old_fighter,55,-20,1,0,1,0,0,6,1,1
-dealer,41,0,1,0,0,0,0,0,1,1
-acting,45,0,1,0,0,0,0,0,1,1
+key,start_reputation,crime_modifier,electrification_threshold_factor,free_plan_trades_per_epoch,plan_trade_closed,crop_swap_closed_bargains,day_off_working_closed_years,free_cancelled_days_off_per_year,workshops_l1_labor_factor,sawing_days_factor,opens_gated_crafts,sees_theft_same_day,eye_growth_factor
+villager,45,0,1,0,0,0,0,0,1,1,1,0,2
+worker,50,0,1,0,0,2,0,0,0.5,0.67,0,0,1.5
+student,50,0,1,3,0,0,2,0,1,1,0,0,0.7
+ex_chairman,45,0,1,0,0,0,0,0,1,1,0,0,2
+promoted,61,0,0.75,0,0,0,0,0,1,1,0,0,0.5
+old_fighter,55,-20,1,0,1,0,0,6,1,1,0,0,0.7
+dealer,41,0,1,0,0,0,0,0,1,1,0,1,1.5
+acting,45,0,1,0,0,0,0,0,1,1,0,0,1.5

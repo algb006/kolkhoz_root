@@ -341,6 +341,7 @@ class ConstructionSystem final : public IConstructionSystem {
       // deliveries walk the rows it is no longer in (task A5).
       AgeUnits(current);
       RunFires(current);
+      LatchCraftsGate(current);  // #637: a day the condition holds opens it
       core::MoveStinkZones(config_, current);
       DeliverMaterials(current);
       // The road works whose labour was done yesterday take their surface
@@ -782,7 +783,8 @@ class ConstructionSystem final : public IConstructionSystem {
     if (type.player_built == 0 || type.levels.empty()) {
       return OrderRefusal::kRuleForbids;
     }
-    if (!GateIsOpen(type.gate, type.era, current.epoch) ||
+    LatchCraftsGate(current);
+    if (!GateIsOpen(type.gate, type.era, current) ||
         !RungRequirementMet(current,
                             config_.definitions.units.RungRequires(
                                 DefIdFromRow<UnitTypeIdTag>(type_row), std::uint8_t{1}))) {
@@ -1364,10 +1366,32 @@ class ConstructionSystem final : public IConstructionSystem {
 
   // -- the world's own facts -------------------------------------------------
 
-  static bool GateIsOpen(UnitGate gate, std::uint8_t era, Epoch epoch) {
+  /// THE CRAFTS' GATE'S CONDITION TODAY (#637; unlocks §3): a plan year
+  /// closed kMet at least once, the district's reputation at its threshold,
+  /// or the avatar's own key (the villager's opens_gated_crafts).
+  bool CraftsGateHolds(const WorldState& world) const {
+    return world.plan.met_years_total > 0 ||
+           world.chairman.raikom_reputation >= config_.crafts_gate_reputation ||
+           AvatarOf(config_.avatars, world.chairman.avatar).opens_gated_crafts;
+  }
+
+  /// THE LATCH (boss, core-boss-637-crafts-gate [2] (a)): a gate once open
+  /// stays open - a reputation that falls back under the threshold does not
+  /// shut the door a met year or a good season opened.
+  void LatchCraftsGate(WorldState& current) const {
+    if (current.chairman.crafts_gate_opened == 0 && CraftsGateHolds(current)) {
+      current.chairman.crafts_gate_opened = 1;
+    }
+  }
+
+  bool GateIsOpen(UnitGate gate, std::uint8_t era, const WorldState& world) const {
+    const Epoch epoch = world.epoch;
     switch (gate) {
       case UnitGate::kEra:
         return era <= static_cast<std::uint8_t>(epoch);
+      case UnitGate::kPlanOrReputation:
+        return era <= static_cast<std::uint8_t>(epoch) &&
+               (world.chairman.crafts_gate_opened != 0 || CraftsGateHolds(world));
       case UnitGate::kStart:
         return false;  // stands from day one; there is nothing to build
       case UnitGate::kEvent:

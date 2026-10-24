@@ -46,6 +46,11 @@ enum class UnitGate : std::uint8_t {
   kEvent,    ///< A way-of-life event. Closed in the core until phase III.
   kQuest,    ///< A quest. Closed until phase III.
   kUnit,     ///< A predecessor on the map. Closed until phase III.
+  /// A plan year closed or the district's reputation at
+  /// `crafts_gate_reputation` (unlocks §3; #637): the apiary and the hunting
+  /// lodge. LATCHED once open (ChairmanState::crafts_gate_opened); an avatar
+  /// with avatars.csv opens_gated_crafts (the villager) has it from day 1.
+  kPlanOrReputation,
 };
 
 /// One material line of one level's recipe, already in grams.
@@ -424,6 +429,12 @@ struct ConstructionConfig {
   /// workshops_l1_labor_factor (the worker's 0.5; avatars.md «Пути», P5).
   UnitTypeId workshops_type;
   std::vector<AvatarDef> avatars;
+
+  /// THE CRAFTS' GATE (UnitGate::kPlanOrReputation; #637, unlocks §3): the
+  /// district's reputation that opens it, world_params
+  /// crafts_gate_reputation, STUB 55. 101 with no row: only a met plan year
+  /// or the avatar's key opens it.
+  float crafts_gate_reputation = 101.0F;
 
   /// How near its centre some field must lie for a field camp, in metres —
   /// "близко к полям" (MTS design §1; boss, parcel 449; STUB).

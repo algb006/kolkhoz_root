@@ -1261,6 +1261,21 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       //   this hour together. Declared before its export arrives, so the
       //   export does not stop the assembly.
       known.emplace_back("player_entry_hour");
+      //   THE MASTER'S EYE's keys (#636; boss, core-boss-636-master-eye [4]):
+      //   exported with #637's, read by 0.37.330's metric. Declared a delivery
+      //   ahead of their reader, so the export does not stop the assembly; the
+      //   list goes when the reader declares its own.
+      for (const std::string_view eye_key : {"eye_rung_1_years",
+                                             "eye_rung_2_years",
+                                             "eye_rung_3_years",
+                                             "eye_rung_4_years",
+                                             "eye_rung_5_years",
+                                             "eye_per_talk",
+                                             "eye_per_missed_crisis",
+                                             "eye_missed_crisis_days",
+                                             "eye_missed_crisis_cap_per_year"}) {
+        known.emplace_back(eye_key);
+      }
       //   (`alarm_red_within_days` stood here from 0.37.62 to 0.37.194,
       //   declared ahead of its reader; the assembly reads it below since the
       //   lamp colour's delivery.)

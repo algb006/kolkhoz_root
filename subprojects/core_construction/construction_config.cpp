@@ -106,6 +106,9 @@ UnitGate GateFromText(std::string_view text, bool& known) {
   if (text == "unit") {
     return UnitGate::kUnit;
   }
+  if (text == "plan_or_reputation") {
+    return UnitGate::kPlanOrReputation;
+  }
   known = false;
   return UnitGate::kEra;
 }
@@ -884,11 +887,12 @@ bool CheckPlots(const ITable& unit_types, const ConstructionConfig& config, std:
 }
 
 /// The world_params.csv keys this subsystem reads.
-constexpr std::array<std::string_view, 4> kConstructionWorldParamKeys = {
+constexpr std::array<std::string_view, 5> kConstructionWorldParamKeys = {
     "field_camp_field_reach_m",
     "fire_base_chance_per_unit_year",
     "fire_frost_factor",
-    "fire_grace_days"};
+    "fire_grace_days",
+    "crafts_gate_reputation"};
 
 /// Past it the cell is a typo: ten times the map's side (CLAUDE.md §9).
 constexpr float kMostCampReachM = 120000.0F;
@@ -1038,7 +1042,7 @@ bool ParseConstructionConfig(const ITableSet& tables,
   }
   if (const ITable* const world = tables.FindTable("world_params")) {
     float grace_days = static_cast<float>(config.fire_grace_days);
-    const std::array<ScalarKnob, 4> world_knobs = {
+    const std::array<ScalarKnob, 5> world_knobs = {
         ScalarKnob{.key = ConstructionWorldParamKeys()[0],
                    .value = &config.field_camp_field_reach_m,
                    .range = Range{.low = 0.0F, .high = kMostCampReachM}},
@@ -1059,7 +1063,12 @@ bool ParseConstructionConfig(const ITableSet& tables,
                    .range = Range{.low = 1.0F, .high = 10.0F}},
         ScalarKnob{.key = ConstructionWorldParamKeys()[3],
                    .value = &grace_days,
-                   .range = Range{.low = 0.0F, .high = 100000.0F}}};
+                   .range = Range{.low = 0.0F, .high = 100000.0F}},
+        // The crafts' gate (#637; unlocks §3): the district's reputation that
+        // opens the apiary and the hunting lodge, STUB 55.
+        ScalarKnob{.key = ConstructionWorldParamKeys()[4],
+                   .value = &config.crafts_gate_reputation,
+                   .range = Range{.low = 0.0F, .high = 100.0F}}};
     if (!ReadKnobs(*world, "world_params", world_knobs, error)) {
       return false;
     }

@@ -624,6 +624,15 @@ struct ChairmanState {
   /// starts the count anew. 0 = no year yet.
   std::uint8_t free_days_off_used = 0;
   std::uint16_t free_days_off_year = 0;
+
+  /// THE CRAFTS' GATE, LATCHED (save 186; #637, unlocks §3): 1 once a plan
+  /// year closed, the reputation reached crafts_gate_reputation or the
+  /// avatar's key opened it; never back to 0 (construction_system.cpp).
+  std::uint8_t crafts_gate_opened = 0;
+
+  /// DORMANT (save 186; #635/#637, P3; avatars.csv sees_theft_same_day, the
+  /// dealer's 1): copied at genesis; no reader until crime is built.
+  std::uint8_t sees_theft_same_day = 0;
 };
 
 /// @brief Why the district calls the chairman «на ковёр» (district-trip.md
@@ -847,6 +856,10 @@ struct PlanState {
   /// "раз в несколько лет район решает" names no period and a period
   /// invented here would be a mechanic invented here.
   std::uint8_t met_years_in_a_row = 0;
+
+  /// EVERY YEAR THAT CLOSED kMet, never reset (save 186; #637): «закрыт год
+  /// плана» of the crafts' gate (unlocks §3) — the series above forgets.
+  std::uint16_t met_years_total = 0;
 
   /// WHETHER THE DISTRICT HAS NAMED A FIGURE THIS YEAR, 0 or 1 — and it is a
   /// fact of its own because a zero tonnage cannot carry it.
