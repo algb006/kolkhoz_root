@@ -633,6 +633,18 @@ struct ChairmanState {
   /// DORMANT (save 186; #635/#637, P3; avatars.csv sees_theft_same_day, the
   /// dealer's 1): copied at genesis; no reader until crime is built.
   std::uint8_t sees_theft_same_day = 0;
+
+  // THE MASTER'S EYE (save 187; #636, role-lines §15): «years of attention»,
+  // grown each day by time in office, the sport talks and the crises
+  // overlooked, × the avatar's eye_growth_factor (core_world/master_eye.h).
+  float master_eye = 0.0F;
+  /// The talk season the eye has learned from (last_talk_season's value it
+  /// saw; a new one is a talk).
+  std::uint32_t eye_talk_season_seen = 0;
+  /// The overlooked crises' gain in calendar year `eye_crisis_year`, capped
+  /// at world_params eye_missed_crisis_cap_per_year.
+  float eye_crisis_gained = 0.0F;
+  std::uint16_t eye_crisis_year = 0;
 };
 
 /// @brief Why the district calls the chairman «на ковёр» (district-trip.md
@@ -1158,6 +1170,21 @@ struct WorldState {
   /// red and out between two checks is never here. SAVED (save 143): a game
   /// loaded mid-day must not say again what it said at its last hour 0.
   std::vector<RedLamp> red_lamps;
+
+  /// THE MASTER'S EYE's MEMORY OF THE RED LAMPS (save 187; #636, role-lines
+  /// §15 «Кризисы, которые проглядел»): each lamp of `red_lamps` with the
+  /// days it has been red in a row and whether its episode has taught the
+  /// eye yet (once per lighting episode, econ). Rebuilt at every daily check
+  /// in red_lamps' own sorted order; a lamp gone out leaves it.
+  struct EyeLampAge {
+    RedLamp lamp;
+    std::uint16_t days = 0;
+    std::uint8_t counted = 0;
+
+    friend bool operator==(const EyeLampAge&, const EyeLampAge&) = default;
+  };
+
+  std::vector<EyeLampAge> eye_lamp_ages;
 
   /// THE LAMP «ЛОШАДЕЙ НЕ ХВАТАЕТ» OF THE LAST YEAR, as the same hour-0 check
   /// painted it (horse_lamp_memory.h): the days it was lit and their «teams

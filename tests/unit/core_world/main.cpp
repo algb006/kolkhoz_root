@@ -40,6 +40,7 @@
 #include "core_world/era_readiness.h"
 #include "core_world/road_tools.h"
 #include "core_world/world.h"
+#include "master_eye_checks.h"
 #include "settlement_checks.h"
 #include "start_literacy.h"
 #include "watchdog_checks.h"
@@ -2938,6 +2939,7 @@ int main() {
   failures += CheckTheWatchdog();
   failures += CheckTheSettlements();
   failures += CheckTheAvatarDoor();
+  failures += CheckTheMastersEye();
   failures += CheckEveryAdviceIsTaken();
   failures += CheckBaseConventions();
   failures += CheckIceRowsAssemble();

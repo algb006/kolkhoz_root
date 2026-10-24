@@ -84,13 +84,16 @@ static_assert(AggregateArity<WeatherState>() == 14,
 // Save 186 (#637): the crafts' latch and P3's flag, two u8 at 106-107 -
 // predicted 112 unmoved (the tail's padding) and thirty-six fields; two
 // bytes in the codec.
-static_assert(sizeof(ChairmanState) == 112, "ChairmanState changed — update the codec");
+// Save 187 (#636): the eye - a float at 108, a u32 at 112, a float at 116, a
+// u16 at 120 - predicted 128 (padded to eight) and forty fields; fourteen
+// bytes in the codec.
+static_assert(sizeof(ChairmanState) == 128, "ChairmanState changed — update the codec");
 // And the avral's days on the cut, a third u16 beside them: predicted 88
 // unmoved (into the tail's padding) and twenty-six fields; two more bytes in
 // the codec. Save 166 (#1043): the rating's recovery owed, a byte after them:
 // predicted 88 unmoved (the tail's padding) and twenty-seven fields; one byte
 // in the codec.
-static_assert(AggregateArity<ChairmanState>() == 36,
+static_assert(AggregateArity<ChairmanState>() == 40,
               "ChairmanState gained or lost a field — update the codec and VERSION_SAVE");
 // PLANSTATE HAD NO TRIPWIRE AT ALL until 2026-09-12, and it was the only
 // serialized block without one: six blocks go into the save, five were
@@ -302,7 +305,9 @@ static_assert(AggregateArity<ClampRotYear>() == 2,
 // Save 180 (#1199): burials_waiting, the fifty-third - a u16 after the clamps'
 // rot; the section «world» +2, every other section unmoved but the units'
 // (+2 a unit, UnitRow::graves).
-static_assert(AggregateArity<WorldState>() == 53,
+// Save 187 (#636): eye_lamp_ages, the fifty-fourth - after the red lamps, a
+// count and 8 bytes a lamp (kind, subject, days, counted).
+static_assert(AggregateArity<WorldState>() == 54,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 
@@ -544,6 +549,11 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteU16(world.chairman.free_days_off_year);
   out.WriteU8(world.chairman.crafts_gate_opened);   // save 186 (#637): the latch
   out.WriteU8(world.chairman.sees_theft_same_day);  // save 186: P3, dormant
+  // Save 187 (#636): the master's eye and its three memories.
+  out.WriteFloat(world.chairman.master_eye);
+  out.WriteU32(world.chairman.eye_talk_season_seen);
+  out.WriteFloat(world.chairman.eye_crisis_gained);
+  out.WriteU16(world.chairman.eye_crisis_year);
 
   out.WriteFloat(world.traction_ration);
   // The team's two alarms' memory (save 109).
@@ -662,6 +672,15 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   for (const RedLamp& lamp : world.red_lamps) {
     out.WriteU8(static_cast<std::uint8_t>(lamp.kind));
     out.WriteU32(lamp.subject);
+  }
+  // The eye's lamp ages (save 187, #636): a count, then each lamp, its days
+  // in a row and whether its episode has taught the eye.
+  out.WriteU32(static_cast<std::uint32_t>(world.eye_lamp_ages.size()));
+  for (const WorldState::EyeLampAge& age : world.eye_lamp_ages) {
+    out.WriteU8(static_cast<std::uint8_t>(age.lamp.kind));
+    out.WriteU32(age.lamp.subject);
+    out.WriteU16(age.days);
+    out.WriteU8(age.counted);
   }
   // The horse lamp's year (save 147): its last painted day, then a byte a day.
   out.WriteU32(world.horse_lamp.last_painted_day);
@@ -794,6 +813,10 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
       source.ReadEnumValue(0, 1, "the crafts' gate latch"));  // save 186 (#637)
   world->chairman.sees_theft_same_day =
       static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "the dealer's theft flag"));
+  world->chairman.master_eye = in.ReadFloat();  // save 187 (#636)
+  world->chairman.eye_talk_season_seen = in.ReadU32();
+  world->chairman.eye_crisis_gained = in.ReadFloat();
+  world->chairman.eye_crisis_year = in.ReadU16();
 
   world->traction_ration = in.ReadFloat();
   world->traction_watch.short_ration_days = in.ReadU16();  // save 109
@@ -946,6 +969,31 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
       return;
     }
     world->red_lamps.push_back(lamp);
+  }
+  // The eye's lamp ages (save 187, #636): sorted and unrepeated like the
+  // lamps, for the same reason - the daily walk merges two sorted lists.
+  constexpr std::size_t kSavedEyeLampBytes = 8;
+  const std::uint32_t aged = in.ReadU32();
+  if (static_cast<std::size_t>(aged) * kSavedEyeLampBytes > in.Remaining()) {
+    source.Fail("the eye's lamp ages name more lamps than the bytes left");
+    return;
+  }
+  world->eye_lamp_ages.clear();
+  world->eye_lamp_ages.reserve(aged);
+  for (std::uint32_t index = 0; index < aged && source.Valid(); ++index) {
+    WorldState::EyeLampAge age;
+    age.lamp.kind = static_cast<AlarmKind>(source.ReadEnumValue(
+        1,
+        static_cast<std::uint8_t>(static_cast<std::uint8_t>(AlarmKind::kAlarmKindCount) - 1U),
+        "an eye lamp's kind"));
+    age.lamp.subject = in.ReadU32();
+    age.days = in.ReadU16();
+    age.counted = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "an eye lamp's count"));
+    if (!world->eye_lamp_ages.empty() && !(world->eye_lamp_ages.back().lamp < age.lamp)) {
+      source.Fail("the eye's lamp ages are out of order or repeated");
+      return;
+    }
+    world->eye_lamp_ages.push_back(age);
   }
   // The horse lamp's year (save 147): any day is a day, and so is «never»;
   // a byte a day of the year, any count of teams.

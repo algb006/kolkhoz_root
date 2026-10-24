@@ -79,6 +79,7 @@
 #include "core_common/ids.h"
 #include "core_common/issue_norm_view.h"
 #include "core_common/labor_state.h"
+#include "core_common/master_eye_view.h"
 #include "core_common/material_shortfall.h"
 #include "core_common/meadow_mark.h"
 #include "core_common/office_views.h"
@@ -335,6 +336,12 @@ class ISimulation {
   /// @note NOT PURE, for ActivityOf's reason. The default answers the empty
   ///       view (both ids invalid).
   virtual ElderView Elder() const { return {}; }
+
+  /// @brief «Хозяйский глаз» as the office reads it (master_eye_view.h;
+  ///        #636): the metric, the rung it has opened, the thresholds.
+  /// @note NOT PURE, for ActivityOf's reason. The default answers the empty
+  ///       view (0 years, rung 0).
+  virtual MasterEyeView MasterEye() const { return {}; }
 
   /// @brief Whether the chairman's horse stands at the hitching post, and why
   /// (chairman_transport_view.h; «Нет ресурса — нет транспорта»).

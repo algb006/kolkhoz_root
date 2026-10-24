@@ -11,6 +11,7 @@ kolkhoz_add_module(core_world
     chairman_transport.cpp
     era_readiness.cpp
     genesis.cpp
+    master_eye.cpp
     road_tools.cpp
     start_avatar.cpp
     start_elder.cpp

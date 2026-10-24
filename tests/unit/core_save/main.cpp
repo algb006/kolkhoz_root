@@ -172,7 +172,11 @@ core::WorldState MakeWorld() {
   world.chairman.free_days_off_year = 3;
   world.chairman.crafts_gate_opened = 1;   // save 186 (#637): the latch
   world.chairman.sees_theft_same_day = 1;  // save 186: P3, dormant
-  world.chairman.last_talk_season = 5;     // save 69: a talk had, not nought
+  world.chairman.master_eye = 2.25F;       // save 187 (#636): the eye and its memories
+  world.chairman.eye_talk_season_seen = 6;
+  world.chairman.eye_crisis_gained = 0.15F;
+  world.chairman.eye_crisis_year = 4;
+  world.chairman.last_talk_season = 5;  // save 69: a talk had, not nought
   // Save 77: away on a summons, a trip of his own before, a trade had.
   world.chairman.away_from_tick = 2'000;
   world.chairman.away_until_tick = 2'012;
@@ -758,6 +762,9 @@ core::WorldState MakeWorld() {
   // and the subjects apart, so a codec that swapped the pair is seen.
   world.red_lamps = {{.kind = core::AlarmKind::kSeedShort, .subject = 7},
                      {.kind = core::AlarmKind::kLogisticsLate, .subject = 0x01020304}};
+  // The eye's lamp ages (save 187, #636): one, its days and count off nought.
+  world.eye_lamp_ages = {
+      {.lamp = {.kind = core::AlarmKind::kSeedShort, .subject = 7}, .days = 5, .counted = 1}};
   // The horse lamp's year (save 147): a painted day off nought and two
   // slots apart, so a codec that read the bytes shifted is seen.
   world.horse_lamp.last_painted_day = 205;
@@ -1351,6 +1358,10 @@ core::WorldState MakeWitnessWorld() {
   witness.chairman.free_days_off_year = 7;
   witness.chairman.crafts_gate_opened = 1;
   witness.chairman.sees_theft_same_day = 0;
+  witness.chairman.master_eye = 0.75F;  // save 187
+  witness.chairman.eye_talk_season_seen = 2;
+  witness.chairman.eye_crisis_gained = 0.05F;
+  witness.chairman.eye_crisis_year = 1;
 
   witness.traction_ration = 0.75F;
   // The team's two alarms' memory (save 109): every slot different, so a
@@ -1525,6 +1536,10 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"chairman.free_days_off_year", U16(world.chairman.free_days_off_year)});
   chunks.push_back({"chairman.crafts_gate_opened", U8(world.chairman.crafts_gate_opened)});
   chunks.push_back({"chairman.sees_theft_same_day", U8(world.chairman.sees_theft_same_day)});
+  chunks.push_back({"chairman.master_eye", F32(world.chairman.master_eye)});
+  chunks.push_back({"chairman.eye_talk_season_seen", U32(world.chairman.eye_talk_season_seen)});
+  chunks.push_back({"chairman.eye_crisis_gained", F32(world.chairman.eye_crisis_gained)});
+  chunks.push_back({"chairman.eye_crisis_year", U16(world.chairman.eye_crisis_year)});
 
   chunks.push_back({"traction_ration", F32(world.traction_ration)});
   // The team's two alarms' memory (save 109).
@@ -1664,6 +1679,15 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   for (const core::RedLamp& lamp : world.red_lamps) {
     chunks.push_back({"red_lamps.kind", U8(static_cast<std::uint8_t>(lamp.kind))});
     chunks.push_back({"red_lamps.subject", U32(lamp.subject)});
+  }
+  // Save 187 (#636): the eye's lamp ages.
+  chunks.push_back(
+      {"eye_lamp_ages.count", U32(static_cast<std::uint32_t>(world.eye_lamp_ages.size()))});
+  for (const core::WorldState::EyeLampAge& age : world.eye_lamp_ages) {
+    chunks.push_back({"eye_lamp_ages.kind", U8(static_cast<std::uint8_t>(age.lamp.kind))});
+    chunks.push_back({"eye_lamp_ages.subject", U32(age.lamp.subject)});
+    chunks.push_back({"eye_lamp_ages.days", U16(age.days)});
+    chunks.push_back({"eye_lamp_ages.counted", U8(age.counted)});
   }
   // Save 147: the horse lamp's year — its last painted day, a byte a day.
   chunks.push_back({"horse_lamp.last_painted_day", U32(world.horse_lamp.last_painted_day)});
@@ -2737,6 +2761,12 @@ int main() {
                          loaded.red_lamps[1].kind == core::AlarmKind::kLogisticsLate &&
                          loaded.red_lamps[1].subject == 0x01020304,
                      "the red lamps of the last daily check come back, in order (save 143)");
+  failures += Expect(
+      loaded.eye_lamp_ages.size() == 1 && loaded.eye_lamp_ages[0].days == 5 &&
+          loaded.eye_lamp_ages[0].counted == 1 && loaded.eye_lamp_ages[0].lamp.subject == 7 &&
+          loaded.chairman.master_eye == 2.25F && loaded.chairman.eye_talk_season_seen == 6 &&
+          loaded.chairman.eye_crisis_gained == 0.15F && loaded.chairman.eye_crisis_year == 4,
+      "the master's eye and its lamp ages come back (save 187)");
   failures +=
       Expect(loaded.horse_lamp.last_painted_day == 205 && loaded.horse_lamp.teams_short[1] == 3 &&
                  loaded.horse_lamp.teams_short[13] == 7 && loaded.horse_lamp.teams_short[0] == 0,

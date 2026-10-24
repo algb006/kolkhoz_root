@@ -50,6 +50,7 @@
 #include "core_world/era_readiness.h"
 #include "core_world/road_tools.h"
 #include "core_world/watchdog.h"
+#include "master_eye.h"
 #include "settlement_rules.h"
 #include "start_elder.h"
 #include "start_literacy.h"
@@ -68,6 +69,30 @@ SettlementConfig SettlementConfigOf(const ITableSet& tables) {
     LogError("world: " + error);
   }
   return config;
+}
+
+/// The master's eye's rules (#636): a malformed row is logged and the
+/// documented numbers stand, as the settlement's config does.
+MasterEyeRules MasterEyeRulesOf(const ITableSet& tables) {
+  MasterEyeRules rules;
+  std::string error;
+  if (!ReadMasterEyeRules(tables, rules, error)) {
+    LogError("world: " + error);
+    rules = MasterEyeRules{};
+  }
+  return rules;
+}
+
+/// The avatars' rows for the eye's speed (the other modules' configs refuse
+/// a malformed table; here it is logged and read as none).
+std::vector<AvatarDef> AvatarsOf(const ITableSet& tables) {
+  std::vector<AvatarDef> avatars;
+  std::string error;
+  if (!ReadAvatars(tables, avatars, error)) {
+    LogError("world: " + error);
+    avatars.clear();
+  }
+  return avatars;
 }
 
 /// The composite decisions slot (phase 3): the subsystems' sequential
@@ -269,18 +294,28 @@ class EventsSlot final : public ISequentialPhase {
              float food_variety_categories,
              float life_speedup,
              AlarmSources alarm_sources,
-             SettlementConfig settlements)
+             SettlementConfig settlements,
+             MasterEyeRules eye_rules,
+             std::vector<AvatarDef> avatars)
       : kcal_per_gram_(std::move(kcal_per_gram)),
         readiness_(std::move(readiness)),
         food_variety_categories_(food_variety_categories),
         life_speedup_(life_speedup),
         settlements_(std::move(settlements)),
+        eye_rules_(eye_rules),
+        avatars_(std::move(avatars)),
         alarm_sources_(alarm_sources),
         watchdog_(CreateWatchdog(CreateWaitRules())) {}
 
   /// The era's catalog the transition is judged by — read by the office's
   /// «куда я иду» (EraReadiness), so the view and the order share one.
   const ReadinessCatalog& Readiness() const { return readiness_; }
+
+  /// The master's eye's rules and the avatars (#636): the daily growth here
+  /// and the office's door (MasterEye) read the same ones.
+  const MasterEyeRules& EyeRules() const { return eye_rules_; }
+
+  std::span<const AvatarDef> Avatars() const { return avatars_; }
 
   void RunSequential(const WorldState& previous, WorldState& current) override {
     FoldPantryFlows(previous, current);
@@ -302,6 +337,11 @@ class EventsSlot final : public ISequentialPhase {
     ConsumeTransitionOrders(readiness_, current);
     // The day's red check (hour 0), over the step's finished world.
     SayLampsTurnedRed(current);
+    // THE MASTER'S EYE (#636; master_eye.h): the day in office, a talk, the
+    // red lamps just painted - once a day, after the check it reads.
+    if (HourFromTick(current.calendar.tick) == 0) {
+      GrowMasterEye(eye_rules_, avatars_, current);
+    }
     // THE SETTLEMENTS, at the day's last tick (#1089; settlement_rules.h):
     // after every writer of houses and families has written the day.
     if (HourFromTick(current.calendar.tick) + 1U == kTicksPerDay) {
@@ -540,6 +580,9 @@ class EventsSlot final : public ISequentialPhase {
   /// The settlement step's config (#1089), read off the tables once.
   SettlementConfig settlements_;
 
+  MasterEyeRules eye_rules_;
+  std::vector<AvatarDef> avatars_;
+
   AlarmSources alarm_sources_;
 
   /// @brief THE LAMPS THAT TURNED RED (the lamp colour's interrupt; boss, the
@@ -685,7 +728,9 @@ class StandardSimulation final : public ISimulation {
                                   .construction = construction_.get(),
                                   .logistics = logistics_.get(),
                                   .red_within_days = alarm_red_within_days},
-                     SettlementConfigOf(*config.tables)) {
+                     SettlementConfigOf(*config.tables),
+                     MasterEyeRulesOf(*config.tables),
+                     AvatarsOf(*config.tables)) {
     const StepPhaseSet phases{
         .time_and_weather = &time_->TimeAndWeatherPhase(),
         .needs = &residents_->NeedsPhase(),
@@ -802,6 +847,10 @@ class StandardSimulation final : public ISimulation {
   }
 
   ElderView Elder() const override { return ElderViewOf(engine_->CompletedState()); }
+
+  MasterEyeView MasterEye() const override {
+    return MasterEyeOf(events_slot_.EyeRules(), events_slot_.Avatars(), engine_->CompletedState());
+  }
 
   ChairmanTransportView ChairmanTransport() const override {
     return ChairmanTransportOf(engine_->CompletedState(), horse_kind_);
@@ -1261,21 +1310,11 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       //   this hour together. Declared before its export arrives, so the
       //   export does not stop the assembly.
       known.emplace_back("player_entry_hour");
-      //   THE MASTER'S EYE's keys (#636; boss, core-boss-636-master-eye [4]):
-      //   exported with #637's, read by 0.37.330's metric. Declared a delivery
-      //   ahead of their reader, so the export does not stop the assembly; the
-      //   list goes when the reader declares its own.
-      for (const std::string_view eye_key : {"eye_rung_1_years",
-                                             "eye_rung_2_years",
-                                             "eye_rung_3_years",
-                                             "eye_rung_4_years",
-                                             "eye_rung_5_years",
-                                             "eye_per_talk",
-                                             "eye_per_missed_crisis",
-                                             "eye_missed_crisis_days",
-                                             "eye_missed_crisis_cap_per_year"}) {
-        known.emplace_back(eye_key);
-      }
+      //   THE MASTER'S EYE's keys (#636; master_eye.h), declared by their
+      //   reader since 0.37.330 (0.37.329 carried them as a list here, a
+      //   delivery ahead of it).
+      const std::span<const std::string_view> from_eye = MasterEyeWorldParamKeys();
+      known.insert(known.end(), from_eye.begin(), from_eye.end());
       //   (`alarm_red_within_days` stood here from 0.37.62 to 0.37.194,
       //   declared ahead of its reader; the assembly reads it below since the
       //   lamp colour's delivery.)

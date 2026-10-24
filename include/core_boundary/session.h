@@ -144,6 +144,7 @@
 #include "core_common/geometry.h"
 #include "core_common/ids.h"
 #include "core_common/issue_norm_view.h"
+#include "core_common/master_eye_view.h"
 #include "core_common/material_shortfall.h"
 #include "core_common/office_views.h"
 #include "core_common/order_state.h"
@@ -779,6 +780,14 @@ class ISession {
   /// @note Between steps; the answer describes State(). Both ids invalid
   ///       when the world has no elder, or he has died.
   virtual ElderView Elder() const = 0;
+
+  /// @brief «Хозяйский глаз» (master_eye_view.h; #636, role-lines §15): the
+  ///        metric in years of attention, the rung 0-5 it has opened by
+  ///        itself and the thresholds. The layer shows rung n when `rung` ≥ n
+  ///        OR the branch's perk n is bought — the perk is the layer's half.
+  /// @note Between steps; the answer describes State() and moves once a
+  ///       game day, at hour 0.
+  virtual MasterEyeView MasterEye() const = 0;
 
   /// @brief «Нет ресурса — нет транспорта» (chairman_transport_view.h;
   ///        camera-and-visuals.md): whether the chairman's horse stands at

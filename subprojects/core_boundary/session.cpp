@@ -505,6 +505,8 @@ class Session final : public ISession {
 
   ElderView Elder() const override { return simulation_->Elder(); }
 
+  MasterEyeView MasterEye() const override { return simulation_->MasterEye(); }
+
   ChairmanTransportView ChairmanTransport() const override {
     return simulation_->ChairmanTransport();
   }

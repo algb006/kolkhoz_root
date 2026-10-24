@@ -70,6 +70,10 @@ struct AvatarDef {
 
   /// DORMANT (P3, the dealer): copied at genesis; no reader until crime.
   bool sees_theft_same_day = false;
+
+  /// The master's eye's speed (#636; the master_eye sign as a number:
+  /// «++» 2, «+» 1.5, «0»/«—» 1, «−» 0.7, «−−» 0.5). core_world/master_eye.h.
+  float eye_growth_factor = 1.0F;
 };
 
 /// @brief Reads tables/avatars.csv into `avatars`, row order = AvatarId.
