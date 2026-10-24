@@ -1141,6 +1141,40 @@ int TestRoadBlockedIsBooked() {
   return failures;
 }
 
+/// THE DAY OFF WITH LEISURE (#830; leisure.md §6): an idle man's Sunday gives
+/// +8 in February and +15 in June, the summer's nature being free; a man away
+/// from the village on that June Sunday gets the ordinary +8.
+int TestLeisureDayOff() {
+  int failures = 0;
+  const test::FakeTable labor_table({"key", "value"},
+                                    {{"rest_recovery_day_off", "8"},
+                                     {"rest_recovery_day_off_leisure", "15"},
+                                     {"leisure_from_month", "5"},
+                                     {"leisure_to_month", "9"}});
+  const test::FakeTableSet tables("labor", labor_table);
+  const auto labor = core::CreateLaborSystem(tables, core::StubTables::kAllowed);
+  if (labor == nullptr) {
+    return Expect(false, "factory yields a system");
+  }
+  DayWorld day(1);  // day 0 a Monday: Sundays are 6, 13, 20...
+  const auto gained_on = [&day, &labor](std::uint32_t game_day) {
+    day.world.residents.rows[0].rest = 50.0F;
+    day.RunDay(*labor, game_day);
+    return day.world.residents.rows[0].rest - 50.0F;
+  };
+  const float february = gained_on(6);  // month 1
+  const float june = gained_on(20);     // month 5
+  day.world.residents.rows[0].away_until_day = 30;
+  const float june_away = gained_on(27);  // month 6, away
+  std::cout << "leisure day off: February +" << february << ", June +" << june << ", June away +"
+            << june_away << '\n';
+  failures += Expect(std::abs(february - 8.0F) < 0.01F, "leisure: a February Sunday gives +8");
+  failures += Expect(std::abs(june - 15.0F) < 0.01F, "leisure: a June Sunday gives +15");
+  failures += Expect(std::abs(june_away - 8.0F) < 0.01F,
+                     "leisure: a man away from the village on a summer Sunday gets +8");
+  return failures;
+}
+
 int TestWalkOffPaysAndStops() {
   int failures = 0;
   const test::FakeTableSet tables;
@@ -4771,6 +4805,7 @@ int main() {
   failures += TestTheWayHomeIsHisOwn();
   failures += TestRoadBlockedIsBooked();
   failures += TestWalkOffPaysAndStops();
+  failures += TestLeisureDayOff();
   failures += TestASpentManIsNotSent();
   failures += TestBarnRunsOnTheDayOff();
   failures += TestRainStopsTheSowingAndTheReaping();

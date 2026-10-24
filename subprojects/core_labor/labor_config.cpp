@@ -244,6 +244,28 @@ bool ParseEducationFactors(const ITable& table, LaborConfig& config, std::string
   return true;
 }
 
+/// The day off with leisure (#830; leisure.md §6): its rest and its months,
+/// human 1..12 in the file, 0-based in the config. Optional: a set without
+/// the rows keeps the day off at rest_recovery_day_off all year.
+bool ParseLeisureDayOff(const ITable& table, LaborConfig& config, std::string& error) {
+  config.rest_recovery_day_off_leisure = config.rest_recovery_day_off;
+  auto from = static_cast<float>(config.leisure_from_month) + 1.0F;
+  auto to = static_cast<float>(config.leisure_to_month) + 1.0F;
+  if (!OptionalValue(table,
+                     "rest_recovery_day_off_leisure",
+                     Range{.low = 0.0F, .high = 100.0F},
+                     config.rest_recovery_day_off_leisure,
+                     error) ||
+      !OptionalValue(table, "leisure_from_month", Range{.low = 1.0F, .high = 12.0F}, from, error) ||
+      !OptionalValue(table, "leisure_to_month", Range{.low = 1.0F, .high = 12.0F}, to, error)) {
+    PrefixError("labor", "rest_recovery_day_off_leisure", error);
+    return false;
+  }
+  config.leisure_from_month = static_cast<std::uint8_t>(from - 1.0F);
+  config.leisure_to_month = static_cast<std::uint8_t>(to - 1.0F);
+  return true;
+}
+
 /// One row per work kind, in the order of the WorkKind enum (kNone has no
 /// row: nobody is paid for idling).
 bool ParseWorkKindRates(const ITable& table, LaborConfig& config, std::string& error) {
@@ -712,7 +734,7 @@ bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string&
                        Range{.low = 0.0F, .high = 5.0F},
                        config.post_floor_trudodni,
                        error) ||
-        !ParseWorkKindRates(*labor, config, error)) {
+        !ParseLeisureDayOff(*labor, config, error) || !ParseWorkKindRates(*labor, config, error)) {
       return false;
     }
   }

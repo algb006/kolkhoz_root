@@ -49,6 +49,12 @@ sleep_hours,8,,
 # на этом уровне и ниже работник уходит домой сам (Общие правила юнитов §8)
 rest_walkoff_threshold,10,,
 rest_recovery_day_off,8,,
+# STUB, econ: выходной с досугом — летом природа бесплатна (Досуг §6; #830,
+# econ workers-rest-slides §4a): +15 вместо +8 в месяцы досуга; уехавший из
+# села в этот день получает обычные +8
+rest_recovery_day_off_leisure,15,,
+leisure_from_month,5,,
+leisure_to_month,9,,
 rest_recovery_idle_day,4,,
 # здоровье −1 в неделю ниже порога «вымотан»
 health_loss_per_spent_day,0.142857,,

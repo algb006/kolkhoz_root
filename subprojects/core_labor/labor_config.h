@@ -613,8 +613,22 @@ struct LaborConfig {
   float rest_walkoff_threshold = 10.0F;
 
   /// Rest recovered by a full day off, metric points (decision 107: +8; the
-  /// +15 with leisure and +20 on a holiday wait for clubs and events).
+  /// +20 on a holiday waits for events).
   float rest_recovery_day_off = 8.0F;
+
+  /// THE DAY OFF WITH LEISURE (#830; leisure.md §6, «летом природа
+  /// бесплатна»; econ workers-rest-slides §4a): a whole day off in the
+  /// leisure months gives this in place of rest_recovery_day_off - bathing,
+  /// fishing, the forest cost nothing. labor.csv
+  /// rest_recovery_day_off_leisure, STUB 15; equal to rest_recovery_day_off
+  /// when the row is absent. A resident away from the village that day
+  /// (away_until_day) gets the ordinary day off's.
+  float rest_recovery_day_off_leisure = 8.0F;
+
+  /// The leisure months, 0-based, inclusive (labor.csv leisure_from_month /
+  /// leisure_to_month, human May-September).
+  std::uint8_t leisure_from_month = 4;
+  std::uint8_t leisure_to_month = 8;
 
   /// Rest recovered by a working day spent at home without an order.
   float rest_recovery_idle_day = 4.0F;

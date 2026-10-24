@@ -3325,8 +3325,8 @@ class LaborSystem final : public ILaborSystem {
     for (ResidentRow& resident : current.residents.rows) {
       // The daily rest balance of decision 107: a day worked is the drain
       // already charged hour by hour and nothing back; a day at home on a
-      // working day is worth +4, a whole day off +8. (The +15 with leisure
-      // and the +20 of a holiday wait for clubs and events.)
+      // working day is worth +4, a whole day off +8 - and +15 in the leisure
+      // months (#830, below). (The +20 of a holiday waits for events.)
       const bool worked = resident.work.hours_away_today > 0.0F;
       // The month's worked days, read and cleared by the drinking's month
       // turn (core_residents/alcoholism.h). Held at the byte's top, which a
@@ -3342,7 +3342,19 @@ class LaborSystem final : public ILaborSystem {
       // 0.35.11 a man past his limit is not sent at all.
       const bool walked_off = worked && resident.rest <= config_.rest_walkoff_threshold;
       if (!worked || walked_off) {
-        resident.rest += day_off ? config_.rest_recovery_day_off : config_.rest_recovery_idle_day;
+        // THE DAY OFF WITH LEISURE (#830; leisure.md §6): in the leisure
+        // months the summer's nature is free and a day off gives +15, not +8.
+        // A year of level work without leisure ran 41 x (-2) + 7 x (+8) = -26
+        // (the design's own sum), and core's ten-year print found 10-26 % of
+        // the worker-days tired from year 4. A man away from the village has
+        // none of it and keeps the ordinary day off.
+        const bool leisure = day_off && resident.away_until_day == 0 &&
+                             MonthInRange(static_cast<std::uint8_t>(current.calendar.date.month),
+                                          config_.leisure_from_month,
+                                          config_.leisure_to_month);
+        resident.rest += leisure   ? config_.rest_recovery_day_off_leisure
+                         : day_off ? config_.rest_recovery_day_off
+                                   : config_.rest_recovery_idle_day;
         resident.rest = resident.rest > kMetricMax ? kMetricMax : resident.rest;
       }
       // Living under the spent threshold costs health, a point a week
