@@ -42,7 +42,14 @@
 ///     follows barley's August harvest from year 2. At most one block a year,
 ///     never taken back. A block is three derelict fields; the first is the
 ///     three nearest a standing grain store (granary or church store), the
-///     second the rest.
+///     second the rest;
+///   * AND ONLY WHEN THE HOUSES ARE BUILT (the human, 24 October 2026: «Только
+///     когда дома построены», tasks.db #1373; econ, the page's «24 October»):
+///     the lamp «жилья не хватает» out and no house site at level 0, read at
+///     the same moment (HousesBuilt). A block once open stays open; a new one
+///     waits again whenever the houses are short. The rule that gave the
+///     block's spring the house teams (31888cc1) and the plan-trade door for
+///     its seed (86b36ead) were dropped with that word and are not here.
 
 #ifndef TESTS_RUN_COMMON_FALLOW_POLICY_H_
 #define TESTS_RUN_COMMON_FALLOW_POLICY_H_
@@ -60,6 +67,7 @@
 #include <vector>
 
 #include "core_catalog/seed_norm_catalog.h"
+#include "core_common/alarm_state.h"
 #include "core_common/calendar.h"
 #include "core_common/fund_ladder.h"
 #include "core_common/land_state.h"
@@ -84,7 +92,8 @@ class FallowPolicy {
                  "derelict ground three fields (45 ha) at a time, one block a year at most, when "
                  "next year's food per eater falls under the village's need (#725; econ "
                  "fields-grow-with-eaters); chain barley -> rye_winter -> oat, the opening "
-                 "year's three fields on barley, oat, barley, no potato; the "
+                 "year's three fields on barley, oat, barley, no potato; only when the "
+                 "houses are built (the housing-short lamp out, no house site open); the "
                  "forecast takes off the due at the worked ha the turn prices on; oat and pea "
                  "count nought as food (the meal does not eat them)\n";
   }
@@ -113,6 +122,7 @@ class FallowPolicy {
     const double forecast = ForecastFoodKcal(world);
     const double need = NeedKcal(simulation, world);
     const std::uint32_t year = world.ledger.closed.year + 1U;
+    const bool houses_built = HousesBuilt(simulation, world, year);
     std::cout << "fallow_policy: year " << year << " forecast "
               << std::llround(forecast / kKcalPerGcal) << " Gcal of food against a need of "
               << std::llround(need / kKcalPerGcal) << " Gcal";
@@ -121,6 +131,11 @@ class FallowPolicy {
       return;
     }
     std::cout << " - SHORT\n";
+    if (!houses_built) {
+      std::cout << "fallow_policy: year " << year << " block " << opened_blocks_ + 1U
+                << " HELD: the houses are not built\n";
+      return;
+    }
     if (kPlanGuardOn && !BlockKeepsThePlan(world, NextBlockFields(world))) {
       std::cout << "fallow_policy: year " << year << " block " << opened_blocks_ + 1U
                 << " HELD by the plan guard\n";
@@ -141,6 +156,18 @@ class FallowPolicy {
       std::cout << ' ' << year;
     }
     std::cout << (opened_in_year_.empty() ? " none" : "") << '\n';
+    // THE HOUSES-FIRST INSTRUMENT SHOUTS (econ, fields-grow-with-eaters «24
+    // October»): a condition that almost never holds stops the fallow while
+    // the blocks' count reads as the rule's choice.
+    std::cout << "fallow_policy: houses built at " << houses_built_years_ << " of "
+              << planning_years_ << " planning moments";
+    if (planning_years_ == 0) {
+      std::cout << " - NOT MEASURED: no planning moment was read\n";
+    } else if (houses_built_years_ * 10U < planning_years_) {
+      std::cout << " - UNDER 10 %: THE FALLOW HAS EFFECTIVELY STOPPED\n";
+    } else {
+      std::cout << '\n';
+    }
     for (const auto& [year, tonnes] : block_potato_seed_t_) {
       std::cout << "fallow_policy: year " << year << " block potato seed taken " << tonnes
                 << " t\n";
@@ -188,6 +215,34 @@ class FallowPolicy {
     double seed_kg_per_ha = 0.0;
   };
 
+  /// THE HOUSES ARE BUILT (the human, 24 October 2026: «Только когда дома
+  /// построены», tasks.db #1373; econ's measurable form, fields-grow-with-
+  /// eaters «24 October» §1): the lamp «жилья не хватает» is out - through
+  /// the alarm door the player reads, CollectAlarms - and no wooden_house
+  /// site stands at level 0, marked, in delivery or building. Read and
+  /// printed at every planning moment, whatever the food says, so the
+  /// condition's village-years are counted where the rule could not act.
+  bool HousesBuilt(const core::ISimulation& simulation,
+                   const core::WorldState& world,
+                   std::uint32_t year) {
+    alarms_.clear();
+    simulation.CollectAlarms(alarms_);
+    const bool lamp_lit = std::ranges::any_of(alarms_, [](const core::Alarm& alarm) {
+      return alarm.kind == core::AlarmKind::kHousingShort;
+    });
+    std::uint32_t house_sites = 0;
+    for (const core::UnitRow& unit : world.units.rows) {
+      house_sites += unit.type.value == house_type_ && unit.level == 0 && unit.dead == 0 ? 1U : 0U;
+    }
+    const bool built = house_type_ != core::kNoTableRow && !lamp_lit && house_sites == 0;
+    ++planning_years_;
+    houses_built_years_ += built ? 1U : 0U;
+    std::cout << "fallow_policy: year " << year << " houses " << (built ? "BUILT" : "short")
+              << " (lamp " << (lamp_lit ? "lit" : "out") << ", house sites at level 0 "
+              << house_sites << ")\n";
+    return built;
+  }
+
   void ReadTables(const core::ITableSet& tables) {
     const core::ITable* const crops = tables.FindTable("crops");
     const core::ITable* const resources = tables.FindTable("resources");
@@ -225,6 +280,7 @@ class FallowPolicy {
         grain_stores_.push_back(row);
       }
     }
+    house_type_ = types->FindRowByKey("wooden_house");
     const std::array<std::string_view, 3> chain_keys = {"barley", "rye_winter", "oat"};
     for (std::size_t slot = 0; slot < chain_keys.size(); ++slot) {
       const std::uint32_t row = crops->FindRowByKey(chain_keys[slot]);
@@ -700,6 +756,13 @@ class FallowPolicy {
   std::vector<CropRow> crops_;
   std::vector<float> eaten_kcal_per_gram_;
   std::vector<std::uint32_t> grain_stores_;
+  /// unit_types' wooden_house row: a site of it at level 0 holds a block.
+  std::uint32_t house_type_ = core::kNoTableRow;
+  /// The village-years the planning moment read, and of them those whose
+  /// houses were built (the instrument of the houses-first rule).
+  std::uint32_t planning_years_ = 0;
+  std::uint32_t houses_built_years_ = 0;
+  std::vector<core::Alarm> alarms_;
   std::array<core::CropId, 3> chain_{};
   std::uint32_t potato_resource_ = core::kNoTableRow;
   /// By resource: some crop of the table yields it (a position priced by ha).
