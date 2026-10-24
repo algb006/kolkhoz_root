@@ -143,6 +143,22 @@ class SportTalkPolicy {
                        world.residents.rows[row].talk_until_day >= today;
     if (!taken) {
       ++refused_year_;
+      // THE DOOR'S OWN REASON, off the order's row (#1238's first pair read
+      // kNowhereToGo by inference, not by print).
+      bool read = false;
+      for (const core::OrderRow& order : world.orders.rows) {
+        if (order.kind == core::OrderKind::kTalkToSport && order.resident.value == man.value &&
+            order.status == core::OrderStatus::kRefused) {
+          read = true;
+          refused_nowhere_ += order.refusal == core::OrderRefusal::kNowhereToGo ? 1U : 0U;
+          refused_season_ += order.refusal == core::OrderRefusal::kOncePerSeason ? 1U : 0U;
+          refused_other_ += order.refusal != core::OrderRefusal::kNowhereToGo &&
+                                    order.refusal != core::OrderRefusal::kOncePerSeason
+                                ? 1U
+                                : 0U;
+        }
+      }
+      refused_unread_ += read ? 0U : 1U;
       set_aside_until_[man.value] = today + kSeasonDays;
       return;
     }
@@ -186,13 +202,20 @@ class SportTalkPolicy {
       return;
     }
     closed_day_ = today;
-    std::printf("STY,y=%u,taken=%u,refused=%u,eligible_max=%u%s\n",
-                today / core::kDaysPerYear,
-                taken_year_,
-                refused_year_,
-                eligible_year_max_,
-                eligible_year_max_ == 0 ? ",NOT MEASURED: no eligible man" : "");
+    std::printf(
+        "STY,y=%u,taken=%u,refused=%u,nowhere_to_go=%u,once_per_season=%u,other=%u,"
+        "reason_unread=%u,eligible_max=%u%s\n",
+        today / core::kDaysPerYear,
+        taken_year_,
+        refused_year_,
+        refused_nowhere_,
+        refused_season_,
+        refused_other_,
+        refused_unread_,
+        eligible_year_max_,
+        eligible_year_max_ == 0 ? ",NOT MEASURED: no eligible man" : "");
     taken_year_ = refused_year_ = eligible_year_max_ = 0;
+    refused_nowhere_ = refused_season_ = refused_other_ = refused_unread_ = 0;
   }
 
  public:
@@ -222,6 +245,10 @@ class SportTalkPolicy {
   std::uint32_t eligible_year_max_ = 0;
   std::uint32_t taken_year_ = 0;
   std::uint32_t refused_year_ = 0;
+  std::uint32_t refused_nowhere_ = 0;
+  std::uint32_t refused_season_ = 0;
+  std::uint32_t refused_other_ = 0;
+  std::uint32_t refused_unread_ = 0;
   std::uint32_t fell_ = 0;
   std::uint32_t did_not_fall_ = 0;
 };
