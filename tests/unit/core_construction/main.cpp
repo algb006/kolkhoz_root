@@ -3219,16 +3219,6 @@ int TestTheWorkersWorkshopsAtHalfLabour() {
   const core::UnitTypeId workshops{
       static_cast<std::uint16_t>(unit_types->FindRowByKey("workshops"))};
   const core::UnitTypeId barn{static_cast<std::uint16_t>(unit_types->FindRowByKey("granary"))};
-  // THE LEVEL ITSELF, printed (the finding of [5] (3)): what the shipped
-  // ladder holds for the workshops' first level.
-  if (workshops.value < config.types.size() && !config.types[workshops.value].levels.empty()) {
-    const auto& first = config.types[workshops.value].levels[0];
-    std::cout << "  workshops level 1 on the shipped tables: labor_days " << first.labor_days
-              << " (game days), is_marking " << static_cast<int>(first.is_marking)
-              << ", recipe lines " << first.recipe.size() << '\n';
-  } else {
-    std::cout << "  workshops level 1 on the shipped tables: NO LADDER\n";
-  }
   const core::AvatarId worker{static_cast<std::uint16_t>(avatars->FindRowByKey("worker"))};
   const core::AvatarId student{static_cast<std::uint16_t>(avatars->FindRowByKey("student"))};
   failures += Expect(core::OpeningLaborDays(config, worker, workshops, 1, 120.0F) == 60.0F,
