@@ -60,6 +60,7 @@
 #include "hay_answer.h"
 #include "hay_day_off_policy.h"
 #include "rise_watch.h"
+#include "sugar_buy_rule.h"
 
 namespace run {
 
@@ -69,6 +70,7 @@ class LimitPolicy {
     std::string error;
     ready_ = core::ParseLimitCatalog(tables, catalog_, error) && !catalog_.lots.empty();
     ReadCosts(tables);
+    sugar_.Read(tables, catalog_);
     const core::ITable* const resources = tables.FindTable("resources");
     if (resources != nullptr) {
       log_ = resources->FindRowByKey("log");
@@ -130,6 +132,12 @@ class LimitPolicy {
                  "(district design §1; boss, 2026-09-13 and 2026-09-24); and TAKES THE "
                  "DISTRICT'S SEED LOAN for the shortfall seed_short names, ten days before the "
                  "seed's sowing window, once a resource a year (boss, boss-core-epoch1-5 seq 15)\n";
+    std::cout << run
+              << ": FIXTURE DIFFERS FROM THE START CANON — the run's chairman BUYS the "
+                 "district's sugar lots the day the sugar in store and on its way is under 3 "
+                 "months' issue: the next 12 months' issue rounded up to whole lots, after the "
+                 "team and before a site's material (#1240; econ, core-boss-1238 [5]); "
+                 "--no-sugar-buy is the control\n";
     DeliveryPolicy::Declare(run);
   }
 
@@ -160,6 +168,7 @@ class LimitPolicy {
     CountWaits(world);
     days_logs_lay_ += OwnLogsLie(world) ? 1U : 0U;
     ++days_watched_;
+    sugar_.Watch(world);
     // THE HAY LAMP'S MORNING MOVES, ANSWERED IN EVERY RUN THAT ANSWERS ITS
     // EVENING ONES (hay_day_off_policy.h; 0.37.250): the day off declared
     // working and the avral lifted. Until this line only population_curve
@@ -193,17 +202,22 @@ class LimitPolicy {
       --cooldown_;
       return;
     }
-    core::OrderRow order;
-    if (!NextOrder(world, order)) {
+    std::vector<core::OrderRow> orders;
+    NextOrders(world, orders);
+    if (orders.empty()) {
       return;
     }
-    simulation.StageOrders(std::span<const core::OrderRow>(&order, 1), {});
-    ++bought_;
+    simulation.StageOrders(orders, {});
+    bought_ += static_cast<std::uint32_t>(orders.size());
     cooldown_ = kCooldownDays;
   }
 
+  /// @brief The control arm of #1240 (--no-sugar-buy): no sugar lot.
+  void BuySugar(bool buy) { sugar_.Enable(buy); }
+
   /// @brief The points of every closed year, and what the policy bought.
   void Report(const char* run) const {
+    sugar_.Report(run);
     std::cout << run << ": the run's chairman bought " << bought_ << " limit lots and asked for "
               << loans_ << " seed loans (a refused ask is asked again the next day); his own "
               << "logs lay felled on " << days_logs_lay_ << " days of " << days_watched_
@@ -885,10 +899,39 @@ class LimitPolicy {
     return true;
   }
 
-  bool NextOrder(const core::WorldState& world, core::OrderRow& order) const {
+  /// The day's orders: the team, else the sugar's lots (#1240: after feed and
+  /// horses, econ's order), else a building site's material.
+  void NextOrders(const core::WorldState& world, std::vector<core::OrderRow>& orders) {
+    core::OrderRow order;
     if (BuyBackTheTeam(world, order)) {
-      return true;  // before anything a building site wants: the plough first
+      orders.push_back(order);  // before anything a building site wants: the plough first
+      return;
     }
+    // THE SUGAR'S LOTS ALL AT ONCE, as many as the points cover: the rule
+    // asks a year's issue, and the cooldown would space a year's need into
+    // three weeks of one lot each while the stores stand under the floor.
+    const std::uint32_t wanted = sugar_.LotsWanted(world);
+    const std::uint32_t lot = sugar_.Lot();
+    if (wanted > 0 && lot < catalog_.lots.size() && catalog_.lots[lot].points > 0) {
+      const auto affordable =
+          static_cast<std::uint32_t>(world.limit.points / catalog_.lots[lot].points);
+      for (std::uint32_t index = 0; index < std::min(wanted, affordable); ++index) {
+        core::OrderRow sugar;
+        sugar.kind = core::OrderKind::kOrderLimitLot;
+        sugar.lot = core::LimitLotId{static_cast<std::uint16_t>(lot)};
+        orders.push_back(sugar);
+        sugar_.Bought();
+      }
+      if (!orders.empty()) {
+        return;
+      }
+    }
+    if (NextOrder(world, order)) {
+      orders.push_back(order);
+    }
+  }
+
+  bool NextOrder(const core::WorldState& world, core::OrderRow& order) const {
     const std::uint32_t missing = MissingMaterial(world, SurplusCoversTimber(world));
     if (missing == core::kNoTableRow) {
       return false;
@@ -919,6 +962,8 @@ class LimitPolicy {
   HayDayOffPolicy hay_morning_;
   DeliveryPolicy delivery_;
   bool hold_timber_while_logs_lie_ = true;
+  /// The run chairman's sugar (#1240).
+  SugarBuyRule sugar_;
   std::uint32_t days_logs_lay_ = 0;
   std::uint32_t days_watched_ = 0;
   std::uint32_t bought_ = 0;

@@ -142,6 +142,11 @@ bool g_tick_cost = false;
 /// (--fallow-by-eaters is still read, as a no-op).
 bool g_fallow_by_eaters = true;
 
+/// The run's chairman buys the district's sugar for what people eat
+/// (sugar_buy_rule.h, #1240; the human, 24 October 2026: «Бот покупает
+/// сахар»). On, and part of the canonical set; --no-sugar-buy is the control.
+bool g_sugar_buy = true;
+
 constexpr std::uint64_t kSeed = 1929;
 std::uint64_t g_seed = kSeed;
 
@@ -475,6 +480,7 @@ int main(int argc, char** argv) {
     g_saw_by_anyone = g_saw_by_anyone || argument == "--saw-by-anyone";
     g_tick_cost = g_tick_cost || argument == "--tick-cost";
     g_fallow_by_eaters = g_fallow_by_eaters && argument != "--no-fallow-by-eaters";
+    g_sugar_buy = g_sugar_buy && argument != "--no-sugar-buy";
     if (argument.starts_with("--house-sites=")) {
       g_house_sites = static_cast<std::uint32_t>(std::strtoul(
           std::string(argument.substr(std::string_view("--house-sites=").size())).c_str(),
@@ -494,7 +500,7 @@ int main(int argc, char** argv) {
   // the simulation.
   g_canonical_run = g_seed == kSeed && g_years == kYears && !g_free_materials &&
                     g_tables_dir == "tables" && !g_saw_reserve && g_house_sites == 3 &&
-                    !g_saw_by_anyone && g_fallow_by_eaters && g_avatar_key.empty();
+                    !g_saw_by_anyone && g_fallow_by_eaters && g_sugar_buy && g_avatar_key.empty();
   run::Simulation world =
       run::Start(g_seed, 1, g_tables_dir, core::StubTables::kRefused, g_avatar_key);
   if (!world) {
@@ -608,6 +614,7 @@ int main(int argc, char** argv) {
   // every run (boss, boss-core-epoch1-3 seq 12), said here because the
   // plan's known gap below comes of it.
   limit.BuyTimberInEmergency(true);
+  limit.BuySugar(g_sugar_buy);
   run::LimitPolicy::Declare("thirty_years");
   // And the two verbs the runs had never said: a standing work order and a
   // pause (orders_policy.h). A verb the run does not say is not checked by
