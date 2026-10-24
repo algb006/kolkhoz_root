@@ -176,10 +176,12 @@ constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
 // predicted 1192 -> 1200 + 43 A (the odd i32 rounds the struct to its 8) and
 // 141 fields before the build; the fields held, the size MISSED: 1192 + 43 A,
 // unmoved - the i32 took the padding after trudodni_burned. On the wire +4 a
-// book.
-static_assert(sizeof(YearLedger) == 1192 + (43 * kAmountsSize) + kBuiltInRowsSize,
+// book. Save 186 (the boards sawn, #635's read): a fifth float after the four
+// areas, before an 8-aligned Grams - predicted 1192 -> 1200 (the float and
+// four bytes of pad) and 142 fields before the build; on the wire +4 a book.
+static_assert(sizeof(YearLedger) == 1200 + (43 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 141,
+static_assert(AggregateArity<YearLedger>() == 142,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(BuiltInRow) == 16 && AggregateArity<BuiltInRow>() == 3,
               "BuiltInRow changed — update its codec and VERSION_SAVE");
@@ -268,6 +270,7 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteFloat(book.area_harvested_ha);
   out.WriteFloat(book.area_lost_ha);
   out.WriteFloat(book.area_manured_ha);
+  out.WriteFloat(book.boards_sawn_m3);  // save 186
   out.WriteI64(book.manure_plowed_in);
   out.WriteI64(book.manure_carted);  // save 182 (#1056 C2)
   out.WriteI64(book.manure_late);    // save 182 (#1056 C2)
@@ -477,6 +480,7 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.area_harvested_ha = in.ReadFloat();
   book.area_lost_ha = in.ReadFloat();
   book.area_manured_ha = in.ReadFloat();
+  book.boards_sawn_m3 = in.ReadFloat();  // save 186
   book.manure_plowed_in = in.ReadI64();
   book.manure_carted = in.ReadI64();  // save 182 (#1056 C2)
   book.manure_late = in.ReadI64();    // save 182 (#1056 C2)

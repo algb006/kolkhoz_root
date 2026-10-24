@@ -376,6 +376,12 @@ struct YearLedger {
 
   float area_manured_ha = 0.0F;
 
+  /// THE SAWMILL'S BOARDS of the year, m³ sawn into the stores (save 186;
+  /// econ via boss, #635's P5 read: «faster sawing from less sawing» needs
+  /// the boards beside the sawing days). Booked by unit_production.cpp at
+  /// the door, what the stores took; boards sent back as logs are not sawn.
+  float boards_sawn_m3 = 0.0F;
+
   Grams manure_plowed_in = 0;
 
   /// #1056 C2 (save 176; manure_cart.h): manure carted heap -> field on the

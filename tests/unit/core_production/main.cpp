@@ -12391,6 +12391,8 @@ int CheckSawing() {
                      "sawing: and put their boards into it — 0.55 m3 at 600 kg");
   failures += Expect(near(world.units.rows[2].production_days_remaining, 0.825F),
                      "sawing: tomorrow's demand is what the six logs left can give");
+  failures += Expect(near(world.ledger.current.boards_sawn_m3, 0.55F),
+                     "sawing: the year's book takes the 0.55 m3 the store took (save 186)");
 
   // -- THE WORKER SAWS AT ×1.5 (#635, P5 since 0.37.328) ----------------------
   // avatars.csv sawing_days_factor 0.67: the same ten logs ask 0.67 of the

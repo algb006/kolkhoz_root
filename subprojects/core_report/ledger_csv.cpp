@@ -344,6 +344,7 @@ void EmitSheet(ColumnWriter& out, const WorldState& state, const ITableSet& tabl
   // -- land ----------------------------------------------------------------
   out.Number("area_sown_ha", book.area_sown_ha);
   out.Number("area_harvested_ha", book.area_harvested_ha);
+  out.Number("boards_sawn_m3", book.boards_sawn_m3);
   out.Number("area_lost_ha", book.area_lost_ha);
   out.Number("area_manured_ha", book.area_manured_ha);
   out.Mass("manure_plowed_in", book.manure_plowed_in);

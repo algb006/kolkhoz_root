@@ -123,10 +123,11 @@ static_assert(AggregateArity<ChairmanState>() == 36,
 // draw, two amounts vectors — 10 x amounts + 32 and 18 fields, predicted
 // before the build.
 // Save 186 (#637): the met years in all, a u16 after the series' byte -
-// predicted 10 x amounts + 40 (the u16 aligns past a pad byte and pushes the
-// two floats by four, the tail padded to eight) and 19 fields; two bytes in
-// the codec.
-static_assert(sizeof(PlanState) == (10 * kAmountsSize) + 40,
+// predicted 10 x amounts + 40 and MISSED: the build says + 32 unmoved. The
+// four bytes of tail padding the struct already carried to its eight took the
+// u16 and its pad byte; the prediction forgot that padding. 19 fields held;
+// two bytes in the codec.
+static_assert(sizeof(PlanState) == (10 * kAmountsSize) + 32,
               "PlanState changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<PlanState>() == 19,
               "PlanState gained or lost a field — update the codec and VERSION_SAVE");

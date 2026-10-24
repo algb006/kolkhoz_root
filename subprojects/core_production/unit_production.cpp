@@ -56,6 +56,10 @@ void SawWhatWasWorked(const TimberCatalog& timber,
   const float sawn_m3 = std::min(BoardM3FromLogGrams(timber, logs_taken), wanted_m3);
   const Grams boards = GramsFromFloat(sawn_m3 * static_cast<float>(timber.board_grams_per_m3));
   const Grams placed = DeliverToStores(current, config, timber.board_resource, boards);
+  // THE BOOK OF BOARDS (save 186): what the stores took, in m³ - the board a
+  // full store sends back as logs was never sawn.
+  current.ledger.current.boards_sawn_m3 +=
+      static_cast<float>(placed) / static_cast<float>(timber.board_grams_per_m3);
   if (placed >= boards || boards <= 0) {
     return;
   }
