@@ -49,6 +49,7 @@
 #include "../common/seam_zero_tally.h"
 #include "../common/session_cost.h"
 #include "../common/sowing_policy.h"
+#include "../common/sport_talk_policy.h"
 #include "../common/supply_policy.h"
 #include "../common/tick_cost.h"
 #include "../common/timber_chain_tally.h"
@@ -146,6 +147,10 @@ bool g_fallow_by_eaters = true;
 /// (sugar_buy_rule.h, #1240; the human, 24 October 2026: «Бот покупает
 /// сахар»). On, and part of the canonical set; --no-sugar-buy is the control.
 bool g_sugar_buy = true;
+
+/// The season's talk to the drinker (sport_talk_policy.h, #1238): on and part
+/// of the canonical set; --no-sport-talk is the control arm.
+bool g_sport_talk = true;
 
 constexpr std::uint64_t kSeed = 1929;
 std::uint64_t g_seed = kSeed;
@@ -481,6 +486,7 @@ int main(int argc, char** argv) {
     g_tick_cost = g_tick_cost || argument == "--tick-cost";
     g_fallow_by_eaters = g_fallow_by_eaters && argument != "--no-fallow-by-eaters";
     g_sugar_buy = g_sugar_buy && argument != "--no-sugar-buy";
+    g_sport_talk = g_sport_talk && argument != "--no-sport-talk";
     if (argument.starts_with("--house-sites=")) {
       g_house_sites = static_cast<std::uint32_t>(std::strtoul(
           std::string(argument.substr(std::string_view("--house-sites=").size())).c_str(),
@@ -500,7 +506,8 @@ int main(int argc, char** argv) {
   // the simulation.
   g_canonical_run = g_seed == kSeed && g_years == kYears && !g_free_materials &&
                     g_tables_dir == "tables" && !g_saw_reserve && g_house_sites == 3 &&
-                    !g_saw_by_anyone && g_fallow_by_eaters && g_sugar_buy && g_avatar_key.empty();
+                    !g_saw_by_anyone && g_fallow_by_eaters && g_sugar_buy && g_avatar_key.empty() &&
+                    g_sport_talk;
   run::Simulation world =
       run::Start(g_seed, 1, g_tables_dir, core::StubTables::kRefused, g_avatar_key);
   if (!world) {
@@ -657,6 +664,7 @@ int main(int argc, char** argv) {
   // ripening figures are unused in this mode.
   run::SowingPolicy layout(13, 42, false, world.tables.get());
   run::FallowPolicy fallow(*world.tables);
+  run::SportTalkPolicy sport_talk(*world.tables);
   if (g_fallow_by_eaters) {
     run::FallowPolicy::Declare("thirty_years");
   }
@@ -755,6 +763,9 @@ int main(int argc, char** argv) {
       // first day is in the chains the mark reads on the second.
       if (g_fallow_by_eaters) {
         chairman.Time("fallow", [&] { fallow.RunDay(sim); });
+      }
+      if (g_sport_talk) {
+        chairman.Time("sport_talk", [&] { sport_talk.RunDay(sim); });
       }
       chairman.Time("layout", [&] { layout.AnswerPlanAlarmsOnly(sim); });
       chairman.Time("digging", [&] { digging.RunDay(sim); });
@@ -1232,6 +1243,9 @@ int main(int argc, char** argv) {
   insulation.Report(state, "thirty_years");
   if (g_fallow_by_eaters) {
     fallow.Report(state);
+  }
+  if (g_sport_talk) {
+    sport_talk.Report();
   }
   supply.Report("thirty_years");
   std::cout << "thirty_years: layout — " << layout.Answered() << " plan alarms answered, "
