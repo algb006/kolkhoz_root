@@ -15,6 +15,7 @@
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
 #include "core_common/quantities.h"
+#include "core_common/yard_hay_year.h"
 
 namespace core {
 namespace {
@@ -120,6 +121,25 @@ float SeasonRatio(const FamilyRow& family) {
 /// season's attention nor the kolkhoz's hours scale it. A yard with nobody of
 /// adult age mows nothing. It is carried in a month before the garden and
 /// does NOT reset the season's accumulators.
+///
+/// IT MOWS FOR THE YOUNG IT EXPECTS TOO (#859; econ, yard-hay-expected-young
+/// 2026-10-19; household-farming.md «Двор косит и на будущий приплод»): the
+/// hay was mown for the heads of one August day, the spring's kids were born
+/// after it and ate the same stack, and seed 1931 y3 kept 2 adults and 1-3
+/// kids at nought feed for fifteen days with one death - a family punished
+/// for a litter it could neither foresee nor answer. The young are the
+/// year's births the herd day would give its females (births_per_game_year x
+/// litter_heads), none for a kind that needs a sire and has none, each counted
+/// at what it eats from the stack before the next mowing
+/// (FoodConfig::yard_young_hay_share; a whole head's year doubled the mowing,
+/// core-boss-859-yard-hay [6]).
+///
+/// AND IT MOWS ONLY UP TO THE NEED (#1216; household-farming.md «Двор
+/// докашивает до нормы»; boss, core-boss-859-yard-hay [8]): the hay still in
+/// the pantry counts toward the year, so the yard mows max(0, need - left).
+/// Every yard mowed a whole norm on top of what it had, nothing spoils or
+/// sells the yards' hay, and on 0.37.320's nine villages the pantries held
+/// 3.5 years of mowing by y16 (9 328 t against 2 691 t mown).
 void MowHay(const FoodConfig& config,
             const WorldState& current,
             FamilyId id,
@@ -128,16 +148,40 @@ void MowHay(const FoodConfig& config,
   if (yard.adults == 0) {
     return;
   }
-  std::uint32_t heads = 0;
+  float heads = 0.0F;
   for (const HerdRow& herd : current.herds.rows) {
-    if (herd.household_owned != 0 && herd.household.value == id.value &&
-        herd.kind.value < config.hay_eating_kinds.size() &&
-        config.hay_eating_kinds[herd.kind.value] != 0) {
-      heads += static_cast<std::uint32_t>(herd.adult_count) + herd.juvenile_count;
+    if (herd.household_owned == 0 || herd.household.value != id.value ||
+        herd.kind.value >= config.hay_eating_kinds.size() ||
+        config.hay_eating_kinds[herd.kind.value] == 0) {
+      continue;
     }
+    heads += static_cast<float>(herd.adult_count) + static_cast<float>(herd.juvenile_count);
+    const std::uint16_t kind = herd.kind.value;
+    if (kind >= config.yard_young_per_female_year.size()) {
+      continue;
+    }
+    if (config.yard_young_need_a_sire[kind] != 0 && herd.adult_male_count == 0) {
+      continue;
+    }
+    const auto females = static_cast<float>(config.yard_kind_sexed[kind] != 0
+                                                ? herd.adult_count - herd.adult_male_count
+                                                : herd.adult_count);
+    heads += females * config.yard_young_per_female_year[kind] *
+             (kind < config.yard_young_hay_share.size() ? config.yard_young_hay_share[kind] : 0.0F);
   }
-  AddToPantry(
-      family, config.hay_resource, config.plot.yard_hay_kg_per_head * static_cast<float>(heads));
+  const ResourceId hay = config.hay_resource;
+  const float left_kg =
+      hay.value < family.pantry.size()
+          ? static_cast<float>(family.pantry[hay.value]) / static_cast<float>(kGramsPerKilogram)
+          : 0.0F;
+  // WITH THE MEASURED YEAR'S MARGIN (#859 §3g; yard_hay_year.h kYardHayMargin):
+  // mown to exactly heads x the norm, nearly every small yard ran dry for the
+  // last 1-4 days before the mowing (p859e2: 2 716 underfed noons in 781
+  // episodes, the norm 4 % short of the measured year).
+  const float need_kg = config.plot.yard_hay_kg_per_head * heads * kYardHayMargin;
+  if (need_kg > left_kg) {
+    AddToPantry(family, hay, need_kg - left_kg);
+  }
 }
 
 /// The garden pays out on the last day of its month, so that the whole month

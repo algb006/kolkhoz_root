@@ -522,6 +522,13 @@ bool ParseLifeConfig(const ITableSet& tables, LifeConfig& config, std::string& e
       return false;
     }
   }
+  // The dowry's kept resource (#859): a set without the row gives none.
+  if (const ITable* resources = tables.FindTable("resources")) {
+    const std::uint32_t hay = resources->FindRowByKey("hay");
+    if (hay != kNoTableRow) {
+      config.dowry_keeps = ResourceId{static_cast<std::uint16_t>(hay)};
+    }
+  }
   // THE ONE ROW THIS MODULE READS FROM THE WEATHER'S TABLE, and it is read
   // rather than copied for the reason the table itself gives one comment
   // above it: +25 is three facts in this project, two of which happen to

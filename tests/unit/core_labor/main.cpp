@@ -1141,6 +1141,40 @@ int TestRoadBlockedIsBooked() {
   return failures;
 }
 
+/// THE DAY OFF WITH LEISURE (#830; leisure.md §6): an idle man's Sunday gives
+/// +8 in February and +15 in June, the summer's nature being free; a man away
+/// from the village on that June Sunday gets the ordinary +8.
+int TestLeisureDayOff() {
+  int failures = 0;
+  const test::FakeTable labor_table({"key", "value"},
+                                    {{"rest_recovery_day_off", "8"},
+                                     {"rest_recovery_day_off_leisure", "15"},
+                                     {"leisure_from_month", "5"},
+                                     {"leisure_to_month", "9"}});
+  const test::FakeTableSet tables("labor", labor_table);
+  const auto labor = core::CreateLaborSystem(tables, core::StubTables::kAllowed);
+  if (labor == nullptr) {
+    return Expect(false, "factory yields a system");
+  }
+  DayWorld day(1);  // day 0 a Monday: Sundays are 6, 13, 20...
+  const auto gained_on = [&day, &labor](std::uint32_t game_day) {
+    day.world.residents.rows[0].rest = 50.0F;
+    day.RunDay(*labor, game_day);
+    return day.world.residents.rows[0].rest - 50.0F;
+  };
+  const float february = gained_on(6);  // month 1
+  const float june = gained_on(20);     // month 5
+  day.world.residents.rows[0].away_until_day = 30;
+  const float june_away = gained_on(27);  // month 6, away
+  std::cout << "leisure day off: February +" << february << ", June +" << june << ", June away +"
+            << june_away << '\n';
+  failures += Expect(std::abs(february - 8.0F) < 0.01F, "leisure: a February Sunday gives +8");
+  failures += Expect(std::abs(june - 15.0F) < 0.01F, "leisure: a June Sunday gives +15");
+  failures += Expect(std::abs(june_away - 8.0F) < 0.01F,
+                     "leisure: a man away from the village on a summer Sunday gets +8");
+  return failures;
+}
+
 int TestWalkOffPaysAndStops() {
   int failures = 0;
   const test::FakeTableSet tables;
@@ -1865,6 +1899,68 @@ int TestAppointmentTakesEffectAtTheDayClose() {
              "a dismissal empties the post at the close of its own day");
   failures += Expect(post.Order(release).status == core::OrderStatus::kDone,
                      "and is an order like any other");
+  std::filesystem::remove_all(root);
+  return failures;
+}
+
+/// A SITTING POST AND A POST WHOSE UNIT'S WORK IS NOT IN THE CORE ARE PAID BY
+/// THE DAY (#789; labor-payment §2, registry 317): a watchman (sits_post,
+/// grade 0.5) at the horse yard and a cook (no grade: follows his unit) at a
+/// barn with no herd and no module. Nobody else works, so the day's mean is
+/// nought and each takes the floor, 0.3 - 60 hundredths a day booked under
+/// the posts. The pair: the same two with no post are paid nothing. NOT
+/// TESTED here, named: the teacher's grade by pupils.
+int TestPostsPaidByTheDay() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_labor_post_pay";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "unit_types.csv") << "key\nhorse_yard\ncow_barn\n";
+  std::ofstream(root / "professions.csv")
+      << "key,min_education,min_age,max_age,gender,single_post,era,shift,sits_post,post_grade,"
+         "grade_load\n"
+         "watchman,any,16,,any,0,,workday,1,0.5,\n"
+         "cook,any,16,,any,0,,workday,0,,\n";
+  std::ofstream(root / "unit_staff.csv") << "unit,profession,level,slots\n"
+                                            "horse_yard,watchman,,1\n"
+                                            "cow_barn,cook,,1\n";
+  std::ofstream(root / "livestock.csv") << "key,care_days_per_real_year\nhorse,40\ncow,32\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto labor =
+      tables == nullptr ? nullptr : core::CreateLaborSystem(*tables, core::StubTables::kAllowed);
+  if (Expect(labor != nullptr, "post pay: the tables build a labor system") != 0) {
+    std::cout << error << '\n';
+    return 1;
+  }
+  const auto booked = [&labor](bool appointed) {
+    PostWorld post(2);
+    if (appointed) {
+      post.Issue(post.Appoint(0, post.yard, 0));
+      post.Issue(post.Appoint(1, post.barn, 1));
+    }
+    post.RunDay(*labor, 1);  // the appointments take effect at this close
+    const core::TrudodniHundredths before = post.world().ledger.current.trudodni_by_post;
+    const core::TrudodniHundredths account_before =
+        post.world().families.rows.empty() ? 0 : post.world().families.rows[0].trudodni_account;
+    post.RunDay(*labor, 2);
+    const core::TrudodniHundredths account_after =
+        post.world().families.rows.empty() ? 0 : post.world().families.rows[0].trudodni_account;
+    return std::pair<core::TrudodniHundredths, core::TrudodniHundredths>{
+        post.world().ledger.current.trudodni_by_post - before, account_after - account_before};
+  };
+  const auto [posts_day, family_day] = booked(true);
+  const auto [none_posts, none_family] = booked(false);
+  std::cout << "  post pay: a day of the watchman and the cook books " << posts_day
+            << " hundredths under the posts, the family's account +" << family_day
+            << "; with no posts " << none_posts << " / " << none_family << '\n';
+  failures += Expect(posts_day == 60,
+                     "post pay: the watchman and the cook each take the floor 0.3 on a day "
+                     "nobody else worked - 60 hundredths under the posts");
+  failures += Expect(family_day == 60, "post pay: and the family's account grows by the same");
+  failures += Expect(none_posts == 0 && none_family == 0,
+                     "post pay: the same two with no post are paid nothing");
   std::filesystem::remove_all(root);
   return failures;
 }
@@ -4709,6 +4805,7 @@ int main() {
   failures += TestTheWayHomeIsHisOwn();
   failures += TestRoadBlockedIsBooked();
   failures += TestWalkOffPaysAndStops();
+  failures += TestLeisureDayOff();
   failures += TestASpentManIsNotSent();
   failures += TestBarnRunsOnTheDayOff();
   failures += TestRainStopsTheSowingAndTheReaping();
@@ -4735,6 +4832,7 @@ int main() {
   failures += TestTheRaisedSiteGoesFirstInItsTier();
   failures += TestPostTablesParse();
   failures += TestAppointmentTakesEffectAtTheDayClose();
+  failures += TestPostsPaidByTheDay();
   failures += TestAppointmentRefusals();
   failures += TestLandThatCannotCarryTheWork();
   failures += TestFallowBeforeWinterRyeHasTheRyesWindow();

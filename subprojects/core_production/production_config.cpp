@@ -1498,6 +1498,19 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
       !ParseFoodCalories(*resources, *food, config.food_kcal_per_gram, error)) {
     return false;
   }
+  if (food != nullptr) {
+    auto mow_month = static_cast<float>(config.hay_harvest_month) + 1.0F;
+    if (!OptionalValue(*food,
+                       "yard_hay_kg_per_head",
+                       Range{.low = 0.0F, .high = 100000.0F},
+                       config.yard_hay_kg_per_head,
+                       error) ||
+        !OptionalValue(
+            *food, "hay_harvest_month", Range{.low = 1.0F, .high = 12.0F}, mow_month, error)) {
+      return false;
+    }
+    config.hay_harvest_month = static_cast<std::uint8_t>(mow_month - 1.0F);
+  }
   if (const ITable* feed_links = tables.FindTable("feed_links")) {
     if (!ParseFeedLinks(*feed_links, livestock, resources, config.feed_links, error)) {
       return false;

@@ -1152,6 +1152,14 @@ struct ProductionConfig {
   /// column, so the two readings cannot tell different calories.
   std::vector<float> food_kcal_per_gram;
 
+  /// food.csv `yard_hay_kg_per_head` and `hay_harvest_month` (0-based), read
+  /// here a second time for one question: the hay a head given away past the
+  /// yard's keep carries (CarryHayShare, #859) - its own need to the next
+  /// mowing, by the norm the yard mows by (core_residents PlotConfig, the
+  /// first home). The defaults are that home's.
+  float yard_hay_kg_per_head = 1080.0F;
+  std::uint8_t hay_harvest_month = 7;  ///< August.
+
   /// Feeding-order rows in file (= priority) order; see FeedLinkDef.
   std::vector<FeedLinkDef> feed_links;
 

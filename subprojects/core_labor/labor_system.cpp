@@ -1044,6 +1044,12 @@ class LaborSystem final : public ILaborSystem {
           OffWork(resident, current.calendar.tick)) {
         continue;  // no post, or its holder is in the district or waits for its car
       }
+      // A SITTING POST IS ITS OWN DAY (#789; labor-payment §2, «На другую
+      // работу не ставят»): the watchman does not saw at the sawmill, the
+      // storekeeper does not smoke meat - paid at the day's close instead.
+      if (SitsPost(resident)) {
+        continue;
+      }
       for (std::uint32_t row = 0; row < current.herds.rows.size(); ++row) {
         const HerdRow& herd = current.herds.rows[row];
         if (herd.unit.value != resident.post.unit.value || herd.care_days_remaining <= 0.0F) {
@@ -1083,8 +1089,8 @@ class LaborSystem final : public ILaborSystem {
     }
     for (ResidentRow& resident : current.residents.rows) {
       if (resident.post.profession.value == kInvalidDefIdValue ||
-          OffWork(resident, current.calendar.tick)) {
-        continue;  // no post, or its holder is off work (district_car.h)
+          OffWork(resident, current.calendar.tick) || SitsPost(resident)) {
+        continue;  // no post, its holder is off work (district_car.h), or it sits (#789)
       }
       if (resident.work.kind == WorkKind::kNone) {
         PutOnModuleWork(current, resident, places_taken);
@@ -1148,6 +1154,40 @@ class LaborSystem final : public ILaborSystem {
         }
         resident.work = work;
         ++places_taken[row];
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Whether the resident holds a sitting post (ProfessionDef::sits_post;
+  /// #789): never on a module or a herd, paid by the day at the close.
+  bool SitsPost(const ResidentRow& resident) const {
+    const std::uint16_t post = resident.post.profession.value;
+    return post != kInvalidDefIdValue && post < config_.professions.size() &&
+           config_.professions[post].sits_post != 0;
+  }
+
+  /// Whether the post's unit is one whose work the core counts (#789;
+  /// labor-payment §2, «Остальные должности идут за своим юнитом»): a herd
+  /// stands at it, or a module of it has places (the sawmill, a shop). A
+  /// holder of such a unit with no work this morning is released to the
+  /// day's list; one whose unit has none of either is a post whose work the
+  /// design has and the core not yet - paid the sitting rate at grade 1.0, a
+  /// STUB until the unit gets its work.
+  bool UnitKeepsWork(const WorldState& current, UnitId post_unit) const {
+    if (post_unit.value == kInvalidEntityIdValue) {
+      return false;
+    }
+    for (const HerdRow& herd : current.herds.rows) {
+      if (herd.unit.value == post_unit.value) {
+        return true;
+      }
+    }
+    for (const UnitRow& unit : current.units.rows) {
+      if (unit.parent.value == post_unit.value &&
+          std::max(UnitWorkPlaces(config_.timber, unit.type),
+                   ProcessingPlaces(config_.processing, unit.type)) > 0) {
         return true;
       }
     }
@@ -2565,10 +2605,20 @@ class LaborSystem final : public ILaborSystem {
       // does not touch him. An evening or bath-day post leaves his day to the
       // list like anybody's (post_shift.h; the human's word of 2026-09-14,
       // "днём оба в наряде").
+      // AND A POST WHOSE UNIT HAS NO WORK FOR HIM THIS MORNING IS RELEASED TO
+      // THE LIST FOR THE DAY (#789; labor-payment §2: «Работа в юните бывает,
+      // но сегодня её нет — отпущен в общий список на весь день»): a holder
+      // of a working unit the morning left idle (AssignPostHolders runs
+      // first). A sitting post, or a post whose unit's work the core does not
+      // count yet, stays off the list and is paid at the close.
       if (resident.post.profession.value != kInvalidDefIdValue &&
           (resident.post.profession.value >= config_.professions.size() ||
            PostHoldsTheDay(config_.professions[resident.post.profession.value].shift))) {
-        continue;
+        const bool released = !SitsPost(resident) && resident.work.kind == WorkKind::kNone &&
+                              UnitKeepsWork(current, resident.post.unit);
+        if (!released) {
+          continue;
+        }
       }
       const bool first_year = current.calendar.date.year == 0;
       // PAST HIS LIMIT HE STAYS HOME (units rules §8: "Решает сам работник —
@@ -3170,18 +3220,113 @@ class LaborSystem final : public ILaborSystem {
 
   // -- the day's close -----------------------------------------------------
 
+  /// THE POSTS PAID BY THE DAY (#789; labor-payment §2, registry 317): rows
+  /// of the residents whose post holds the day and is a sitting post, or a
+  /// post of a unit whose work the core does not count yet (UnitKeepsWork
+  /// false) left with no work. Every day, Sundays and winter too («день
+  /// идёт всегда»); not a holder away in the district.
+  std::vector<std::uint32_t> PostsPaidByTheDay(const WorldState& current) const {
+    std::vector<std::uint32_t> rows;
+    for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
+      const ResidentRow& resident = current.residents.rows[row];
+      const std::uint16_t post = resident.post.profession.value;
+      if (post == kInvalidDefIdValue || post >= config_.professions.size() ||
+          !PostHoldsTheDay(config_.professions[post].shift) ||
+          OffWork(resident, current.calendar.tick)) {
+        continue;
+      }
+      const bool stub_unit = !SitsPost(resident) && resident.work.kind == WorkKind::kNone &&
+                             !UnitKeepsWork(current, resident.post.unit);
+      if (SitsPost(resident) || stub_unit) {
+        rows.push_back(row);
+      }
+    }
+    return rows;
+  }
+
+  /// The post's grade today: post_grade for a sitting post, the teacher's by
+  /// his pupils (min(grade, 1 + pupils per teacher / pupils_per_teacher)),
+  /// and 1.0 for a post paid as a STUB until its unit's work is in the core.
+  float PostGradeToday(const WorldState& current, const ResidentRow& resident) const {
+    if (!SitsPost(resident)) {
+      return 1.0F;
+    }
+    const ProfessionDef& post = config_.professions[resident.post.profession.value];
+    const float grade = post.post_grade > 0.0F ? post.post_grade : 1.0F;
+    if (post.grade_by_pupils == 0 || config_.pupils_per_teacher <= 0.0F) {
+      return grade;
+    }
+    std::uint32_t pupils = 0;
+    std::uint32_t teachers = 0;
+    for (const ResidentRow& other : current.residents.rows) {
+      pupils += other.school.value == resident.post.unit.value ? 1U : 0U;
+      const std::uint16_t profession = other.post.profession.value;
+      teachers += other.post.unit.value == resident.post.unit.value &&
+                          profession < config_.professions.size() &&
+                          config_.professions[profession].grade_by_pupils != 0
+                      ? 1U
+                      : 0U;
+    }
+    const float per_teacher =
+        teachers > 0 ? static_cast<float>(pupils) / static_cast<float>(teachers) : 0.0F;
+    return std::min(grade, 1.0F + (per_teacher / config_.pupils_per_teacher));
+  }
+
+  /// Pays the day's posts (#789): grade x the day's mean trudodni per able
+  /// adult - `earned_today` over every Employable resident, the idle ones
+  /// counted - at least post_floor_trudodni and at most the grade, credited
+  /// as any day's pay is and booked in trudodni_by_post.
+  void PayPostsByTheDay(WorldState& current,
+                        const std::vector<std::uint32_t>& rows,
+                        TrudodniHundredths earned_today) const {
+    if (rows.empty()) {
+      return;
+    }
+    std::uint32_t able = 0;
+    for (const ResidentRow& resident : current.residents.rows) {
+      able += Employable(current, resident) ? 1U : 0U;
+    }
+    const float mean = able > 0 ? static_cast<float>(earned_today) /
+                                      static_cast<float>(kTrudodniScale) / static_cast<float>(able)
+                                : 0.0F;
+    for (const std::uint32_t row : rows) {
+      const ResidentRow& resident = current.residents.rows[row];
+      const float grade = PostGradeToday(current, resident);
+      const float floor = std::min(config_.post_floor_trudodni, grade);
+      const float trudodni = std::clamp(grade * mean, floor, grade);
+      const std::uint32_t family_row = FindRow(current.families, resident.family);
+      if (family_row == kNoRow || !(trudodni > 0.0F)) {
+        continue;
+      }
+      const auto hundredths =
+          static_cast<TrudodniHundredths>(std::lround(trudodni * kTrudodniScale));
+      FamilyRow& family = current.families.rows[family_row];
+      family.trudodni_account += hundredths;
+      if (family.formed_day != kNotFormedInPlay) {
+        family.earned_since_formed += hundredths;
+      }
+      current.ledger.current.trudodni_accrued += hundredths;
+      current.ledger.current.trudodni_by_day[current.calendar.day % kDaysPerYear] += hundredths;
+      current.ledger.current.trudodni_by_post += hundredths;
+    }
+  }
+
   void CloseDay(WorldState& current) const {
+    // The posts paid by the day are named before PayDay clears the day's work.
+    const std::vector<std::uint32_t> paid_posts = PostsPaidByTheDay(current);
+    const TrudodniHundredths accrued_before = current.ledger.current.trudodni_accrued;
     for (ResidentRow& resident : current.residents.rows) {
       if (resident.work.kind != WorkKind::kNone) {
         PayDay(current, resident);
       }
     }
+    PayPostsByTheDay(current, paid_posts, current.ledger.current.trudodni_accrued - accrued_before);
     const bool day_off = IsDayOffIn(current, current.calendar.day);
     for (ResidentRow& resident : current.residents.rows) {
       // The daily rest balance of decision 107: a day worked is the drain
       // already charged hour by hour and nothing back; a day at home on a
-      // working day is worth +4, a whole day off +8. (The +15 with leisure
-      // and the +20 of a holiday wait for clubs and events.)
+      // working day is worth +4, a whole day off +8 - and +15 in the leisure
+      // months (#830, below). (The +20 of a holiday waits for events.)
       const bool worked = resident.work.hours_away_today > 0.0F;
       // The month's worked days, read and cleared by the drinking's month
       // turn (core_residents/alcoholism.h). Held at the byte's top, which a
@@ -3197,7 +3342,19 @@ class LaborSystem final : public ILaborSystem {
       // 0.35.11 a man past his limit is not sent at all.
       const bool walked_off = worked && resident.rest <= config_.rest_walkoff_threshold;
       if (!worked || walked_off) {
-        resident.rest += day_off ? config_.rest_recovery_day_off : config_.rest_recovery_idle_day;
+        // THE DAY OFF WITH LEISURE (#830; leisure.md §6): in the leisure
+        // months the summer's nature is free and a day off gives +15, not +8.
+        // A year of level work without leisure ran 41 x (-2) + 7 x (+8) = -26
+        // (the design's own sum), and core's ten-year print found 10-26 % of
+        // the worker-days tired from year 4. A man away from the village has
+        // none of it and keeps the ordinary day off.
+        const bool leisure = day_off && resident.away_until_day == 0 &&
+                             MonthInRange(static_cast<std::uint8_t>(current.calendar.date.month),
+                                          config_.leisure_from_month,
+                                          config_.leisure_to_month);
+        resident.rest += leisure   ? config_.rest_recovery_day_off_leisure
+                         : day_off ? config_.rest_recovery_day_off
+                                   : config_.rest_recovery_idle_day;
         resident.rest = resident.rest > kMetricMax ? kMetricMax : resident.rest;
       }
       // Living under the spent threshold costs health, a point a week

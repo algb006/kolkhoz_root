@@ -39,6 +39,7 @@
 #include "core_common/state_table_ops.h"
 #include "core_common/work_seam.h"
 #include "core_common/world_state.h"
+#include "core_common/yard_hay_year.h"
 #include "core_log/log.h"
 #include "core_production/production_system.h"
 #include "core_tables/tables.h"
@@ -3699,6 +3700,24 @@ int CheckYardOffspringReplaces() {
     failures += Expect(carried == kHay / 3 && kept == kHay - (kHay / 3),
                        "yard young, the gift: the head goes with its share of the yard's hay - "
                        "a third of 900 kg - and the village's hay is what it was");
+    // BUT NEVER MORE THAN ITS OWN NEED TO THE NEXT MOWING (#859; econ,
+    // core-boss-859-yard-hay [13]): at a norm of 48 kg a head-year a head
+    // needs at most 48 kg x the yard's margin (kYardHayMargin, §3g) to any
+    // mowing, so it leaves with that, not a third.
+    core::ProductionConfig needy = giving;
+    needy.yard_hay_kg_per_head = 48.0F;
+    Yard small = yard_with(2, 0.2F, 0.2F, 0, 1);
+    small.world.families.rows[0].pantry[0] = kHay;
+    AppendRow(small.world.families, neighbour);
+    RunHerdDays(needy, small.world, kDays);
+    const core::Grams small_carried = small.world.families.rows[1].pantry[0];
+    const auto most = static_cast<core::Grams>(48.0F * core::kYardHayMargin *
+                                               static_cast<float>(core::kGramsPerKilogram)) +
+                      1;
+    failures += Expect(small_carried > 0 && small_carried <= most &&
+                           small.world.families.rows[0].pantry[0] + small_carried == kHay,
+                       "yard young, the gift: the head carries its own need to the mowing, "
+                       "capped below its share, and the village's hay is what it was");
   }
   return failures;
 }

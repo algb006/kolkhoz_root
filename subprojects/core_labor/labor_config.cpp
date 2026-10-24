@@ -244,6 +244,28 @@ bool ParseEducationFactors(const ITable& table, LaborConfig& config, std::string
   return true;
 }
 
+/// The day off with leisure (#830; leisure.md §6): its rest and its months,
+/// human 1..12 in the file, 0-based in the config. Optional: a set without
+/// the rows keeps the day off at rest_recovery_day_off all year.
+bool ParseLeisureDayOff(const ITable& table, LaborConfig& config, std::string& error) {
+  config.rest_recovery_day_off_leisure = config.rest_recovery_day_off;
+  auto from = static_cast<float>(config.leisure_from_month) + 1.0F;
+  auto to = static_cast<float>(config.leisure_to_month) + 1.0F;
+  if (!OptionalValue(table,
+                     "rest_recovery_day_off_leisure",
+                     Range{.low = 0.0F, .high = 100.0F},
+                     config.rest_recovery_day_off_leisure,
+                     error) ||
+      !OptionalValue(table, "leisure_from_month", Range{.low = 1.0F, .high = 12.0F}, from, error) ||
+      !OptionalValue(table, "leisure_to_month", Range{.low = 1.0F, .high = 12.0F}, to, error)) {
+    PrefixError("labor", "rest_recovery_day_off_leisure", error);
+    return false;
+  }
+  config.leisure_from_month = static_cast<std::uint8_t>(from - 1.0F);
+  config.leisure_to_month = static_cast<std::uint8_t>(to - 1.0F);
+  return true;
+}
+
 /// One row per work kind, in the order of the WorkKind enum (kNone has no
 /// row: nobody is paid for idling).
 bool ParseWorkKindRates(const ITable& table, LaborConfig& config, std::string& error) {
@@ -478,6 +500,9 @@ bool ParseProfessions(const ITable& table, LaborConfig& config, std::string& err
   const std::uint32_t gender_column = table.FindColumn("gender");
   const std::uint32_t single_column = table.FindColumn("single_post");
   const std::uint32_t shift_column = table.FindColumn("shift");
+  const std::uint32_t sits_column = table.FindColumn("sits_post");
+  const std::uint32_t grade_column = table.FindColumn("post_grade");
+  const std::uint32_t load_column = table.FindColumn("grade_load");
   config.professions.assign(table.RowCount(), ProfessionDef{});
   for (std::uint32_t row = 0; row < table.RowCount(); ++row) {
     ProfessionDef& post = config.professions[row];
@@ -516,6 +541,27 @@ bool ParseProfessions(const ITable& table, LaborConfig& config, std::string& err
       return false;
     }
     post.single_post = static_cast<std::uint8_t>(single);
+    // THE POST'S PAY (#789; labor-payment §2, registry 317): sits_post, its
+    // grade, and a grade earned by pupils. An empty grade is a post that
+    // follows its unit.
+    float sits = 0.0F;
+    if (!OptionalCell(table, row, sits_column, Range{.low = 0.0F, .high = 1.0F}, sits, error) ||
+        !OptionalCell(
+            table, row, grade_column, Range{.low = 0.0F, .high = 5.0F}, post.post_grade, error)) {
+      PrefixError("professions", table.CellText(row, 0), error);
+      return false;
+    }
+    post.sits_post = static_cast<std::uint8_t>(sits);
+    if (load_column != kNoTableColumn) {
+      const std::string_view load = table.CellText(row, load_column);
+      if (load == "pupils") {
+        post.grade_by_pupils = 1;
+      } else if (!load.empty()) {
+        error = "grade_load '" + std::string(load) + "' is not pupils";
+        PrefixError("professions", table.CellText(row, 0), error);
+        return false;
+      }
+    }
   }
   return true;
 }
@@ -683,7 +729,22 @@ bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string&
                        Range{.low = 0.0F, .high = 100.0F},
                        config.carter_min_trips_per_day,
                        error) ||
-        !ParseWorkKindRates(*labor, config, error)) {
+        !OptionalValue(*labor,
+                       "post_floor_trudodni",
+                       Range{.low = 0.0F, .high = 5.0F},
+                       config.post_floor_trudodni,
+                       error) ||
+        !ParseLeisureDayOff(*labor, config, error) || !ParseWorkKindRates(*labor, config, error)) {
+      return false;
+    }
+  }
+  if (const ITable* const world = tables.FindTable("world_params")) {
+    if (!OptionalValue(*world,
+                       "teacher_pupils_per_teacher",
+                       Range{.low = 1.0F, .high = 500.0F},
+                       config.pupils_per_teacher,
+                       error)) {
+      PrefixError("world_params", "teacher_pupils_per_teacher", error);
       return false;
     }
   }

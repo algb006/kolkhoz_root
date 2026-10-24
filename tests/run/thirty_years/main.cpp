@@ -25,6 +25,7 @@
 #include <string_view>
 #include <vector>
 
+#include "../common/accepted_reds.h"
 #include "../common/book_balance.h"
 #include "../common/brakes_tally.h"
 #include "../common/building_chairman.h"
@@ -1067,9 +1068,29 @@ int main(int argc, char** argv) {
     // reserve for the rye debt were delivered. A gap left standing after it
     // closed is a guard that cannot turn red; the closing change is bisected
     // as its own line (#690).
-    failures += run::Expect(plan_failed_years == 0,
+    //
+    // AN ACCEPTED RED, READ AS A LINE (accepted_reds.h; boss, boss-core-c2-pair
+    // [85]): 0.37.321's y23 rye failure is the run bot's layout, not the pay -
+    // at or below the accepted count the cell passes and says so, above it it
+    // is red naming the line, and at 0 it asks for the line to be dropped.
+    const std::optional<run::AcceptedRed> accepted_failures =
+        run::FindAcceptedRed("thirty_years", "plan failed years");
+    if (plan_failed_years == 0 && accepted_failures.has_value()) {
+      std::cout << "thirty_years: plan failed years accepted red no longer needed — drop the line ("
+                << run::kAcceptedRedsPath << ", " << accepted_failures->date << ", "
+                << accepted_failures->tree << ")\n";
+    }
+    const bool within_accepted = accepted_failures.has_value() && plan_failed_years > 0 &&
+                                 static_cast<double>(plan_failed_years) <= accepted_failures->value;
+    if (within_accepted) {
+      std::cout << "thirty_years: plan failed in " << plan_failed_years << " years — ACCEPTED RED ("
+                << run::kAcceptedRedsPath << ", " << accepted_failures->date << ", "
+                << accepted_failures->tree << ")\n";
+    }
+    failures += run::Expect(plan_failed_years == 0 || within_accepted,
                             "the floor meets the district's plan in all thirty years — until "
-                            "drought (register 226) makes it failable again");
+                            "drought (register 226) makes it failable again (or within its "
+                            "accepted red)");
   } else {
     std::cout << "gate: not the canonical run (seed " << g_seed << ", " << g_years
               << " years) — the canon band is printed and not asserted\n";

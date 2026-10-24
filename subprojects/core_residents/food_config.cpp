@@ -26,6 +26,7 @@
 #include "core_common/ids.h"
 #include "core_common/order_state.h"
 #include "core_common/quantities.h"
+#include "core_common/yard_hay_year.h"
 #include "core_tables/tables.h"
 
 namespace core {
@@ -417,6 +418,88 @@ ResourceId ResourceByKey(const ITable* resources, std::string_view key) {
   return DefIdFromRow<ResourceIdTag>(resources->FindRowByKey(key));
 }
 
+/// The farming.csv months and the juvenile factor the herd day feeds by, read
+/// here a second time for the yard's young (#859): the defaults are the herd
+/// day's own (core_production FarmingConfig), so a set without farming.csv
+/// answers as the shipped file does.
+struct HerdFeedGround {
+  YardHayYear year;
+  std::uint8_t birth_from_month = 2;  ///< March.
+  std::uint8_t birth_to_month = 4;    ///< Inclusive: May.
+  float juvenile_feed_factor = 0.5F;
+};
+
+bool ReadHerdFeedGround(const ITableSet& tables, HerdFeedGround& ground, std::string& error) {
+  const ITable* const farming = tables.FindTable("farming");
+  if (farming == nullptr) {
+    return true;
+  }
+
+  struct MonthKnob {
+    std::string_view key;
+    std::uint8_t* month;
+  };
+
+  const std::array<MonthKnob, 4> months = {{
+      {.key = "pasture_from_month", .month = &ground.year.pasture_from_month},
+      {.key = "pasture_to_month", .month = &ground.year.pasture_to_month},
+      {.key = "birth_from_month", .month = &ground.birth_from_month},
+      {.key = "birth_to_month", .month = &ground.birth_to_month},
+  }};
+  for (const MonthKnob& knob : months) {
+    auto human = static_cast<float>(*knob.month) + 1.0F;
+    if (!OptionalValue(*farming, knob.key, Range{.low = 1.0F, .high = 12.0F}, human, error)) {
+      PrefixError("farming", knob.key, error);
+      return false;
+    }
+    *knob.month = static_cast<std::uint8_t>(human - 1.0F);
+  }
+  if (!OptionalValue(*farming,
+                     "juvenile_feed_factor",
+                     Range{.low = 0.0F, .high = 1.0F},
+                     ground.juvenile_feed_factor,
+                     error)) {
+    PrefixError("farming", "juvenile_feed_factor", error);
+    return false;
+  }
+  return true;
+}
+
+/// Fills FoodConfig::yard_young_hay_share by livestock.csv row: a kind with
+/// no young expected in a yard (yard_young_per_female_year 0) shares 0.
+bool ReadYoungHayShares(const ITableSet& tables,
+                        const ITable& livestock,
+                        FoodConfig& config,
+                        std::string* error) {
+  HerdFeedGround ground;
+  ground.year.mow_month = config.plot.hay_harvest_month;
+  std::string message;
+  if (!ReadHerdFeedGround(tables, ground, message)) {
+    if (error != nullptr) {
+      *error = message;
+    }
+    return false;
+  }
+  config.yard_young_hay_share.assign(livestock.RowCount(), 0.0F);
+  const std::uint32_t coverage = livestock.FindColumn("pasture_coverage_summer");
+  const std::uint32_t newborn = livestock.FindColumn("newborn_game_months");
+  const std::uint32_t adult = livestock.FindColumn("adult_from_game_months");
+  for (std::uint32_t row = 0; row < livestock.RowCount(); ++row) {
+    if (!(config.yard_young_per_female_year[row] > 0.0F)) {
+      continue;
+    }
+    config.yard_young_hay_share[row] =
+        YoungStackShare(ground.year,
+                        livestock.CellReal(row, coverage).value_or(0.0F),
+                        ground.birth_from_month,
+                        ground.birth_to_month,
+                        livestock.CellReal(row, newborn).value_or(0.0F),
+                        livestock.CellReal(row, adult).value_or(0.0F),
+                        ground.juvenile_feed_factor);
+  }
+  return true;
+}
+
 }  // namespace
 
 FoodConfig ParseFoodConfig(const ITableSet& tables, std::string* error) {
@@ -504,6 +587,31 @@ FoodConfig ParseFoodConfig(const ITableSet& tables, std::string* error) {
         return FoodConfig{};
       }
       config.hay_eating_kinds[kind_row] = 1;
+    }
+    // THE YOUNG THE YARD EXPECTS (#859): read where the hay kinds are, by the
+    // same row. A column the table lacks reads as nought - no young expected.
+    config.yard_young_per_female_year.assign(livestock->RowCount(), 0.0F);
+    config.yard_kind_sexed.assign(livestock->RowCount(), 0);
+    config.yard_young_need_a_sire.assign(livestock->RowCount(), 0);
+    const std::uint32_t births = livestock->FindColumn("births_per_game_year");
+    const std::uint32_t litter = livestock->FindColumn("litter_heads");
+    const std::uint32_t cap = livestock->FindColumn("household_cap_heads");
+    const std::uint32_t sexed = livestock->FindColumn("sexed");
+    const std::uint32_t males = livestock->FindColumn("males_share");
+    for (std::uint32_t row = 0; row < livestock->RowCount(); ++row) {
+      const float per_year = livestock->CellReal(row, births).value_or(0.0F);
+      const float heads = livestock->CellReal(row, litter).value_or(0.0F);
+      const float yard_cap = livestock->CellReal(row, cap).value_or(0.0F);
+      if (per_year > 0.0F && heads > 0.0F && yard_cap > 0.0F) {
+        config.yard_young_per_female_year[row] = per_year * heads;
+      }
+      const bool sexed_kind = livestock->CellReal(row, sexed).value_or(0.0F) > 0.0F;
+      const bool keeps_sires = livestock->CellReal(row, males).value_or(0.0F) > 0.0F;
+      config.yard_kind_sexed[row] = sexed_kind ? 1U : 0U;
+      config.yard_young_need_a_sire[row] = sexed_kind && keeps_sires ? 1U : 0U;
+    }
+    if (!ReadYoungHayShares(tables, *livestock, config, error)) {
+      return FoodConfig{};
     }
   }
   return config;
