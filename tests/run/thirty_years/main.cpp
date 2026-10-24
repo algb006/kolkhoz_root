@@ -130,10 +130,12 @@ bool g_saw_by_anyone = false;
 /// canonical set the way a doctored table set does.
 bool g_tick_cost = false;
 
-/// --fallow-by-eaters: the run's chairman ploughs the derelict ground as the
-/// eaters grow (fallow_policy.h, #725). An arm of a pair until its gates are
-/// read, so it takes the run out of the canonical set.
-bool g_fallow_by_eaters = false;
+/// The run's chairman ploughs the derelict ground as the eaters grow, only
+/// when the houses are built (fallow_policy.h, #725; the human's «1», 24
+/// October 2026). On since 0.37.324 and part of the canonical set;
+/// --no-fallow-by-eaters is the control arm and takes the run out of it
+/// (--fallow-by-eaters is still read, as a no-op).
+bool g_fallow_by_eaters = true;
 
 constexpr std::uint64_t kSeed = 1929;
 std::uint64_t g_seed = kSeed;
@@ -467,7 +469,7 @@ int main(int argc, char** argv) {
     g_saw_reserve = g_saw_reserve || argument == "--saw-reserve";
     g_saw_by_anyone = g_saw_by_anyone || argument == "--saw-by-anyone";
     g_tick_cost = g_tick_cost || argument == "--tick-cost";
-    g_fallow_by_eaters = g_fallow_by_eaters || argument == "--fallow-by-eaters";
+    g_fallow_by_eaters = g_fallow_by_eaters && argument != "--no-fallow-by-eaters";
     if (argument.starts_with("--house-sites=")) {
       g_house_sites = static_cast<std::uint32_t>(std::strtoul(
           std::string(argument.substr(std::string_view("--house-sites=").size())).c_str(),
@@ -484,7 +486,7 @@ int main(int argc, char** argv) {
   // the simulation.
   g_canonical_run = g_seed == kSeed && g_years == kYears && !g_free_materials &&
                     g_tables_dir == "tables" && !g_saw_reserve && g_house_sites == 3 &&
-                    !g_saw_by_anyone && !g_fallow_by_eaters;
+                    !g_saw_by_anyone && g_fallow_by_eaters;
   run::Simulation world = run::Start(g_seed, 1, g_tables_dir);
   if (!world) {
     return 1;

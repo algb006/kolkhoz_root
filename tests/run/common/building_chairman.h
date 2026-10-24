@@ -293,8 +293,9 @@ class BuildingChairman {
     // A sown grass stand that has lived its life is ploughed up and sown anew
     // (0.37.212; stand_renewal_policy.h).
     stand_renewal.RunDay(simulation);
-    // The derelict ground as the eaters grow (#725; fallow_policy.h): an arm
-    // of a pair until its gates are read, so off unless a run turns it on.
+    // The derelict ground as the eaters grow, only when the houses are built
+    // (#725; fallow_policy.h; the human's «1», 24 October 2026): on in every
+    // run since 0.37.324.
     if (fallow_by_eaters) {
       fallow.RunDay(simulation);
     }
@@ -391,8 +392,10 @@ class BuildingChairman {
   CemeteryPolicy cemetery;
   WarmHold warm_hold;
   FallowPolicy fallow;
-  /// Whether RunDay calls `fallow` (#725): false until the pair's gates read.
-  bool fallow_by_eaters = false;
+  /// Whether RunDay calls `fallow` (#725): true since 0.37.324, the houses-
+  /// first pair's gates green (core-boss-725-fallow [58], [59]); a run's
+  /// control arm turns it off.
+  bool fallow_by_eaters = true;
 };
 
 }  // namespace run
