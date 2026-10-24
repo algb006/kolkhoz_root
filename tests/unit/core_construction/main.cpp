@@ -3229,6 +3229,38 @@ int TestTheWorkersWorkshopsAtHalfLabour() {
   } else {
     std::cout << "  workshops level 1 on the shipped tables: NO LADDER\n";
   }
+  // THE SHORTCUT ITSELF, on two types (the finding of [5] (3)): a site of
+  // `key` marked by hand, its recipe placed on it, one hour's look.
+  {
+    const auto system = core::CreateConstructionSystem(*tables, core::StubTables::kRefused);
+    for (const char* const key : {"workshops", "granary"}) {
+      core::WorldState world;
+      core::UnitRow site;
+      site.type = core::UnitTypeId{static_cast<std::uint16_t>(unit_types->FindRowByKey(key))};
+      site.construction.phase = core::ConstructionPhase::kMarked;
+      site.construction.target_level = 1;
+      const core::UnitId id = core::AppendRow(world.units, site);
+      const std::vector<core::MaterialShortfall> lines = system->MaterialsShortFor(world, id);
+      core::UnitRow& placed = world.units.rows[core::FindRow(world.units, id)];
+      for (const core::MaterialShortfall& line : lines) {
+        if (placed.stock.size() <= line.resource.value) {
+          placed.stock.resize(line.resource.value + 1U, 0);
+        }
+        placed.stock[line.resource.value] = line.needed;
+      }
+      placed.construction.phase = core::ConstructionPhase::kDelivering;
+      const core::WorldState before = world;
+      Run(*system, world, 5);
+      const core::UnitRow& after = world.units.rows[core::FindRow(world.units, id)];
+      std::cout << "  shortcut " << key << ": " << lines.size() << " lines; after the hour phase "
+                << static_cast<int>(after.construction.phase) << " level "
+                << static_cast<int>(after.level) << " labour "
+                << after.construction.labor_days_total << "/"
+                << after.construction.labor_days_remaining << "; events "
+                << world.step_events.size() << '\n';
+      (void)before;
+    }
+  }
   const core::AvatarId worker{static_cast<std::uint16_t>(avatars->FindRowByKey("worker"))};
   const core::AvatarId student{static_cast<std::uint16_t>(avatars->FindRowByKey("student"))};
   failures += Expect(core::OpeningLaborDays(config, worker, workshops, 1, 120.0F) == 60.0F,
