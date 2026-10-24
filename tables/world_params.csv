@@ -323,3 +323,4 @@ hunger_forecast_share,0.9,core
 hunger_forecast_terms,13,core
 hunger_forecast_lit,0,core
 cemetery_m2_per_grave,15,core
+grass_stand_yield_ceiling,1.25,core
