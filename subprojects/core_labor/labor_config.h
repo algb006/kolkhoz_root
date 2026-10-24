@@ -31,6 +31,7 @@
 #include <string_view>
 #include <vector>
 
+#include "core_catalog/avatar_catalog.h"
 #include "core_catalog/cold_housing_catalog.h"
 #include "core_catalog/extraction_catalog.h"
 #include "core_catalog/processing_catalog.h"
@@ -700,6 +701,10 @@ struct LaborConfig {
   /// The cold-housing rule's data (core_common/cold_housing.h): the works
   /// that will house a herd facing the cold go first among the construction.
   ColdHousing cold_housing;
+
+  /// The avatars' rows (avatars.csv; #635): the day-off door's closed years
+  /// and the free cancelled days, read live by the chairman's avatar.
+  std::vector<AvatarDef> avatars;
 };
 
 /// @brief The cart's and the sledge's numbers of this config (SL; cart_gear.h).

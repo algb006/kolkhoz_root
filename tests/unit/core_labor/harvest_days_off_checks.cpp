@@ -10,6 +10,7 @@
 #include "core_common/order_state.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
+#include "labor_config.h"
 #include "rush.h"
 
 namespace {
@@ -153,7 +154,7 @@ core::OrderRefusal Switch(core::WorldState& world, std::uint8_t enable) {
   order.status = core::OrderStatus::kPending;
   order.enable = enable;
   const core::OrderId id = core::AppendRow(world.orders, order);
-  core::ReadRushOrders(world);
+  core::ReadRushOrders(core::LaborConfig{}, world);
   const core::OrderRow& read = world.orders.rows[core::FindRow(world.orders, id)];
   return read.status == core::OrderStatus::kDone ? core::OrderRefusal::kNone : read.refusal;
 }

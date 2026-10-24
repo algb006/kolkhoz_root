@@ -78,13 +78,16 @@ static_assert(AggregateArity<WeatherState>() == 14,
 // Save 184 (#634): the avatar (a u16 DefId) after the recovery byte and two
 // floats - predicted 104 (88 + u16 at 88, the floats at 92 and 96, padded to
 // eight) and thirty fields; ten bytes in the codec.
-static_assert(sizeof(ChairmanState) == 104, "ChairmanState changed — update the codec");
+// Save 185 (#635): the paths' four counters, three u8 at 100-102 and a u16 at
+// 104 - predicted 112 (padded to eight) and thirty-four fields; five bytes in
+// the codec.
+static_assert(sizeof(ChairmanState) == 112, "ChairmanState changed — update the codec");
 // And the avral's days on the cut, a third u16 beside them: predicted 88
 // unmoved (into the tail's padding) and twenty-six fields; two more bytes in
 // the codec. Save 166 (#1043): the rating's recovery owed, a byte after them:
 // predicted 88 unmoved (the tail's padding) and twenty-seven fields; one byte
 // in the codec.
-static_assert(AggregateArity<ChairmanState>() == 30,
+static_assert(AggregateArity<ChairmanState>() == 34,
               "ChairmanState gained or lost a field — update the codec and VERSION_SAVE");
 // PLANSTATE HAD NO TRIPWIRE AT ALL until 2026-09-12, and it was the only
 // serialized block without one: six blocks go into the save, five were
@@ -526,6 +529,11 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   sink.WriteDefId(DefKind::kAvatar, world.chairman.avatar.value);
   out.WriteFloat(world.chairman.crime_modifier);
   out.WriteFloat(world.chairman.electrification_threshold_factor);
+  // Save 185 (#635): the paths' counters.
+  out.WriteU8(world.chairman.free_plan_trades_used);
+  out.WriteU8(world.chairman.free_plan_trades_epoch);
+  out.WriteU8(world.chairman.free_days_off_used);
+  out.WriteU16(world.chairman.free_days_off_year);
 
   out.WriteFloat(world.traction_ration);
   // The team's two alarms' memory (save 109).
@@ -767,6 +775,10 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->chairman.avatar = AvatarId{source.ReadDefId(DefKind::kAvatar)};  // save 184 (#634)
   world->chairman.crime_modifier = in.ReadFloat();
   world->chairman.electrification_threshold_factor = in.ReadFloat();
+  world->chairman.free_plan_trades_used = in.ReadU8();  // save 185 (#635)
+  world->chairman.free_plan_trades_epoch = in.ReadU8();
+  world->chairman.free_days_off_used = in.ReadU8();
+  world->chairman.free_days_off_year = in.ReadU16();
 
   world->traction_ration = in.ReadFloat();
   world->traction_watch.short_ration_days = in.ReadU16();  // save 109

@@ -95,7 +95,10 @@ std::uint32_t UrgentHayHorizonDays(const WorldState& world, std::uint32_t urgent
 /// advice the door would refuse today is not given (0.37.121's rule).
 /// The hole of 19.09 stays shut by it: a day already declared or cancelled is
 /// no longer a day off, so it cannot be declared twice.
-bool TodayMayBeDeclaredWorking(const WorldState& world);
+/// @param closed_years The chairman's avatar's path (avatars.csv
+///        day_off_working_closed_years, the student's 2; 0 for every other):
+///        no day off of years 1..closed_years may be declared working.
+bool TodayMayBeDeclaredWorking(const WorldState& world, std::uint8_t closed_years);
 
 /// @brief THE DOOR's QUESTION FOR ANY DAY (#852): whether `day` is a day off
 /// this world keeps that the door would take on its own morning - a day off
@@ -103,9 +106,10 @@ bool TodayMayBeDeclaredWorking(const WorldState& world);
 /// not a holiday. TodayMayBeDeclaredWorking is this of today; the hay lamp
 /// asks it of today AND of the day off it dates (fodder_advice.cpp), so a
 /// dated advice is never a holiday the door will refuse on that morning.
-/// WHERE THE AVATAR's CLOSED YEARS GO (#635: the Student may not declare a
-/// day off working in years 1-2): HERE, and the door and the lamp both obey.
-bool DayOffMayBeDeclaredWorking(const WorldState& world, SimDay day);
+/// THE AVATAR's CLOSED YEARS (#635: the Student may not declare a day off
+/// working in years 1-2) are HERE, and the door and the lamp both obey:
+/// `closed_years` as TodayMayBeDeclaredWorking's, judged by `day`'s year.
+bool DayOffMayBeDeclaredWorking(const WorldState& world, SimDay day, std::uint8_t closed_years);
 
 }  // namespace core
 

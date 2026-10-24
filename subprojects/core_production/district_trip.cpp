@@ -176,6 +176,15 @@ OrderRefusal OrderTradePlan(const ProductionConfig& config,
   }
   ChairmanState& chairman = current.chairman;
   const DistrictTripCatalog& trip = config.district_trip;
+  // THE AVATAR'S BARGAIN (#635; avatars.md «Пути»): the old fighter has none
+  // («Торга о плане у него нет»), and the worker may not swap a crop in his
+  // first bargains («не понимает земли») - counted by the calendar's year,
+  // the year-1 window a run has before the player's April included.
+  const AvatarDef& avatar = AvatarOf(config.avatars, chairman.avatar);
+  const bool swap = order.rotation_year0.value != kInvalidDefIdValue;
+  if (avatar.plan_trade_closed || (swap && date.year <= 1U + avatar.crop_swap_closed_bargains)) {
+    return OrderRefusal::kRuleForbids;
+  }
   if (chairman.raikom_reputation < trip.plan_trade_min_reputation) {
     return OrderRefusal::kReputationTooLow;
   }
@@ -184,7 +193,7 @@ OrderRefusal OrderTradePlan(const ProductionConfig& config,
     return OrderRefusal::kNoSuchSubject;
   }
   float cost = trip.plan_trade_percent_rep_cost;
-  if (order.rotation_year0.value != kInvalidDefIdValue) {
+  if (swap) {
     if (order.rotation_year0.value >= config.crops.size() ||
         !ReplacePosition(config, current, position, config.crops[order.rotation_year0.value])) {
       return OrderRefusal::kNoSuchSubject;
@@ -192,6 +201,15 @@ OrderRefusal OrderTradePlan(const ProductionConfig& config,
     cost = trip.plan_trade_swap_rep_cost;
   } else {
     MovePosition(config, current, position, order.amount);
+  }
+  // The student's first three bargains of an epoch cost nothing
+  // (FreePlanTradesLeft is the preview's number too).
+  if (FreePlanTradesLeft(avatar, chairman, current.epoch) > 0) {
+    const auto epoch = static_cast<std::uint8_t>(current.epoch);
+    chairman.free_plan_trades_used = static_cast<std::uint8_t>(
+        (chairman.free_plan_trades_epoch == epoch ? chairman.free_plan_trades_used : 0) + 1);
+    chairman.free_plan_trades_epoch = epoch;
+    cost = 0.0F;
   }
   const float before = chairman.raikom_reputation;
   chairman.raikom_reputation = std::max(0.0F, chairman.raikom_reputation - cost);

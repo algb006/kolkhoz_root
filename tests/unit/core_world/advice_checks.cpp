@@ -796,7 +796,7 @@ int CheckTheDayOff(const Fixture& fixture) {
   core::WorldState world = fixture.genesis;
   for (std::uint32_t day = 1; day < core::kDaysPerYear; ++day) {
     SetDay(world, day);
-    if (core::TodayMayBeDeclaredWorking(world)) {
+    if (core::TodayMayBeDeclaredWorking(world, 0)) {
       break;
     }
   }
@@ -837,7 +837,7 @@ int CheckTheHayDayOff(const Fixture& fixture) {
   std::uint32_t found = 0;
   for (std::uint32_t day = kFirst; day <= kLast && found == 0; ++day) {
     SetDay(world, day);
-    if (core::TodayMayBeDeclaredWorking(world)) {
+    if (core::TodayMayBeDeclaredWorking(world, 0)) {
       found = day;
     }
   }

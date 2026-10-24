@@ -22,6 +22,7 @@
 #include <string>
 #include <vector>
 
+#include "core_catalog/avatar_catalog.h"
 #include "core_catalog/district_trip_catalog.h"
 #include "core_catalog/district_visit_catalog.h"
 #include "core_catalog/extraction_catalog.h"
@@ -1548,6 +1549,10 @@ struct ProductionConfig {
 
   /// The chairman's trip to the district in numbers (boss seq 206).
   DistrictTripCatalog district_trip;
+
+  /// The avatars' rows (avatars.csv; #635): the bargain's and the hay lamp's
+  /// paths, read live by the chairman's avatar (AvatarOf).
+  std::vector<AvatarDef> avatars;
 };
 
 /// @brief The cart's and the sledge's numbers of this config (SL; cart_gear.h).

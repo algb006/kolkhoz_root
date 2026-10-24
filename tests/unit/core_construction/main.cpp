@@ -7,6 +7,7 @@
 // and a test that needs tables/ on disk stops being a unit test.
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
@@ -23,6 +24,7 @@
 #include "../../common/fake_tables.h"
 #include "construction_config.h"
 #include "core_common/day_off.h"
+#include "core_common/material_shortfall.h"
 #include "core_common/module_rules.h"
 #include "core_common/order_state.h"
 #include "core_common/quantities.h"
@@ -3190,6 +3192,56 @@ int TestTheDeadMillIsNotRestored() {
   return failures;
 }
 
+/// THE WORKER'S WORKSHOPS (#635; avatars.md «Пути», P5): on the shipped
+/// tables a level-1 workshops site whose recipe is on hand opens 60 labour
+/// days for the worker and the table's 120 for a chairman with no avatar.
+int TestTheWorkersWorkshopsAtHalfLabour() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  if (Expect(tables != nullptr, "the shipped tables load") != 0) {
+    return 1;
+  }
+  const auto system = core::CreateConstructionSystem(*tables, core::StubTables::kRefused);
+  const core::ITable* const unit_types = tables->FindTable("unit_types");
+  const core::ITable* const avatars = tables->FindTable("avatars");
+  if (Expect(system != nullptr && unit_types != nullptr && avatars != nullptr,
+             "the shipped tables build a construction system and carry avatars") != 0) {
+    return 1;
+  }
+  const auto opened_days = [&](core::AvatarId avatar) {
+    core::WorldState world;
+    world.chairman.avatar = avatar;
+    core::UnitRow site;
+    site.type = core::UnitTypeId{static_cast<std::uint16_t>(unit_types->FindRowByKey("workshops"))};
+    site.construction.phase = core::ConstructionPhase::kMarked;
+    site.construction.target_level = 1;
+    const core::UnitId id = core::AppendRow(world.units, site);
+    core::UnitRow& placed = world.units.rows[core::FindRow(world.units, id)];
+    for (const core::MaterialShortfall& line : system->MaterialsShortFor(world, id)) {
+      if (placed.stock.size() <= line.resource.value) {
+        placed.stock.resize(line.resource.value + 1U, 0);
+      }
+      placed.stock[line.resource.value] = line.needed;
+    }
+    placed.construction.phase = core::ConstructionPhase::kDelivering;
+    Run(*system, world, 5);
+    const core::UnitRow& after = world.units.rows[core::FindRow(world.units, id)];
+    return after.construction.phase == core::ConstructionPhase::kBuilding
+               ? after.construction.labor_days_total
+               : -1.0F;
+  };
+  const float neutral = opened_days(core::AvatarId{});
+  const float worker =
+      opened_days(core::AvatarId{static_cast<std::uint16_t>(avatars->FindRowByKey("worker"))});
+  std::cout << "  workshops level 1 labour days: no avatar " << neutral << ", worker " << worker
+            << '\n';
+  failures += Expect(neutral > 0.0F && worker > 0.0F && std::abs(worker - neutral * 0.5F) < 0.01F,
+                     "workshops: the worker's level-1 site opens half the labour of a chairman "
+                     "with no avatar");
+  return failures;
+}
+
 int TestTheShippedStartHasNoHouseInAStinkZone() {
   int failures = 0;
   std::string error;
@@ -3498,6 +3550,7 @@ int main() {
   failures += TestTheStinkField();
   failures += TestTheStinkZoneGrowsAndGoesOut();
   failures += TestTheShippedStartHasNoHouseInAStinkZone();
+  failures += TestTheWorkersWorkshopsAtHalfLabour();
   if (failures == 0) {
     std::cout << "unit_core_construction: marking, building, upgrading, refusals and demolition\n";
   }

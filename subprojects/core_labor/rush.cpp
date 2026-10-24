@@ -91,8 +91,12 @@ OrderRefusal DeclareRush(WorldState& current, const OrderRow& order) {
   return OrderRefusal::kNone;
 }
 
-OrderRefusal CancelDayOff(WorldState& current, const OrderRow& order) {
+OrderRefusal CancelDayOff(const LaborConfig& config, WorldState& current, const OrderRow& order) {
   const SimDay today = current.calendar.day;
+  // THE STUDENT'S CLOSED YEARS (#635; avatars.md «Пути»): no day off of years
+  // 1..N is worked on his order, today's or the next week's.
+  const std::uint8_t closed_years =
+      AvatarOf(config.avatars, current.chairman.avatar).day_off_working_closed_years;
   ChairmanState& chairman = current.chairman;
   // TODAY, DECLARED WORKING (`enable` 1; routing stage B, B8's door; boss, the
   // logistics thread [103]): the lamp «Логистика не успевает» on a day off
@@ -107,7 +111,7 @@ OrderRefusal CancelDayOff(WorldState& current, const OrderRow& order) {
     return OrderRefusal::kRuleForbids;
   }
   if (order.enable == 1) {
-    if (!TodayMayBeDeclaredWorking(current)) {
+    if (!TodayMayBeDeclaredWorking(current, closed_years)) {
       return OrderRefusal::kRuleForbids;
     }
     chairman.cancelled_day_off = today;
@@ -127,6 +131,9 @@ OrderRefusal CancelDayOff(WorldState& current, const OrderRow& order) {
     // рабочим объявить нельзя… Игра просто не даёт такой возможности»).
     if (IsDayOff(weekday, current.epoch) &&
         HolidayOn(day, current.calendar.day_zero_weekday, current.epoch) == Holiday::kNone) {
+      if ((day / kDaysPerYear) + 1U <= closed_years) {
+        return OrderRefusal::kRuleForbids;
+      }
       chairman.cancelled_day_off = day;
       return OrderRefusal::kNone;
     }
@@ -148,7 +155,7 @@ OrderRefusal SwitchHarvestWithoutDaysOff(WorldState& current, const OrderRow& or
 
 }  // namespace
 
-void ReadRushOrders(WorldState& current) {
+void ReadRushOrders(const LaborConfig& config, WorldState& current) {
   for (OrderRow& order : current.orders.rows) {
     if (order.status != OrderStatus::kPending) {
       continue;
@@ -156,7 +163,7 @@ void ReadRushOrders(WorldState& current) {
     if (order.kind == OrderKind::kDeclareRush) {
       Settle(order, DeclareRush(current, order));
     } else if (order.kind == OrderKind::kCancelDayOff) {
-      Settle(order, CancelDayOff(current, order));
+      Settle(order, CancelDayOff(config, current, order));
     } else if (order.kind == OrderKind::kHarvestWithoutDaysOff) {
       Settle(order, SwitchHarvestWithoutDaysOff(current, order));
     }
@@ -191,7 +198,14 @@ void BookRushAtPay(const LaborConfig& config, WorldState& current, ResidentRow& 
   }
   float penalty = config.rush_satisfaction_per_step_day *
                   static_cast<float>(RushStepOf(current, resident.work));
-  if (IsCancelledDayOff(current)) {
+  // THE OLD FIGHTER'S SIX (#635; avatars.md «Пути»): the year's first N
+  // cancelled days off carry neither the series' rest nor the satisfaction.
+  // FreeDaysOffLeft counts the days already LIVED; today's is booked at
+  // CloseRushDay, so every worker of the day reads the same answer.
+  const bool free_day = FreeDaysOffLeft(AvatarOf(config.avatars, current.chairman.avatar),
+                                        current.chairman,
+                                        current.calendar.date.year) > 0;
+  if (IsCancelledDayOff(current) && !free_day) {
     const float series_rest = config.day_off_cancel_rest_per_series *
                               static_cast<float>(current.chairman.days_off_cancelled_in_a_row);
     resident.rest = resident.rest > series_rest ? resident.rest - series_rest : 0.0F;
@@ -203,9 +217,16 @@ void BookRushAtPay(const LaborConfig& config, WorldState& current, ResidentRow& 
   }
 }
 
-void CloseRushDay(WorldState& current) {
+void CloseRushDay(const LaborConfig& config, WorldState& current) {
   if (IsCancelledDayOff(current)) {
-    current.chairman.cancelled_day_off = 0;  // lived, and spent
+    ChairmanState& chairman = current.chairman;
+    const std::uint16_t year = current.calendar.date.year;
+    if (FreeDaysOffLeft(AvatarOf(config.avatars, chairman.avatar), chairman, year) > 0) {
+      chairman.free_days_off_used = static_cast<std::uint8_t>(
+          (chairman.free_days_off_year == year ? chairman.free_days_off_used : 0) + 1);
+      chairman.free_days_off_year = year;
+    }
+    chairman.cancelled_day_off = 0;  // lived, and spent
   } else if (IsDayOffIn(current, current.calendar.day)) {
     current.chairman.days_off_cancelled_in_a_row = 0;  // a day off taken breaks the series
   }

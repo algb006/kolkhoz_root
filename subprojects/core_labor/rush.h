@@ -42,7 +42,9 @@ namespace core {
 ///     is a day off and no holiday (TodayMayBeDeclaredWorking); the day
 ///     starts at the next hour's placement (ChairmanState::
 ///     place_after_declaring). Refused kRuleForbids otherwise.
-void ReadRushOrders(WorldState& current);
+///   * either, kRuleForbids when the day falls in the avatar's closed years
+///     (avatars.csv day_off_working_closed_years; #635, the student's 1-2).
+void ReadRushOrders(const LaborConfig& config, WorldState& current);
 
 /// @brief The share an avral adds to this assignment's work: step ×
 /// `rush_step_percent` / 100, or 0 when its field or site stands under none
@@ -60,12 +62,15 @@ void StandDownRushes(WorldState& current);
 /// avral, `rush_satisfaction_per_step_day` × step to his family's
 /// overwork_penalty; on the cancelled day off, `day_off_cancel_rest_per_series`
 /// × its number in the series off his rest and `day_off_cancel_satisfaction`
-/// to his family. Nothing for a man who delivered nothing.
+/// to his family. Nothing for a man who delivered nothing. Neither the rest
+/// nor the satisfaction on one of the avatar's free cancelled days (#635,
+/// FreeDaysOffLeft > 0: the old fighter's six a year); the series counts on.
 void BookRushAtPay(const LaborConfig& config, WorldState& current, ResidentRow& resident);
 
-/// @brief The day's close: the cancelled day, once lived, is spent; a day
-/// off actually taken breaks the series.
-void CloseRushDay(WorldState& current);
+/// @brief The day's close: the cancelled day, once lived, is spent — one of
+/// the avatar's free days of the year if any is left (ChairmanState::
+/// free_days_off_*); a day off actually taken breaks the series.
+void CloseRushDay(const LaborConfig& config, WorldState& current);
 
 }  // namespace core
 

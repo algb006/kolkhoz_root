@@ -165,6 +165,11 @@ core::WorldState MakeWorld() {
   world.chairman.avatar = core::AvatarId{1};
   world.chairman.crime_modifier = -20.0F;
   world.chairman.electrification_threshold_factor = 0.75F;
+  // Save 185 (#635): the paths' counters, each its own number.
+  world.chairman.free_plan_trades_used = 2;
+  world.chairman.free_plan_trades_epoch = 1;
+  world.chairman.free_days_off_used = 4;
+  world.chairman.free_days_off_year = 3;
   world.chairman.last_talk_season = 5;  // save 69: a talk had, not nought
   // Save 77: away on a summons, a trip of his own before, a trade had.
   world.chairman.away_from_tick = 2'000;
@@ -1337,6 +1342,10 @@ core::WorldState MakeWitnessWorld() {
   witness.chairman.avatar = core::AvatarId{0};  // save 184 (#634): «promoted»
   witness.chairman.crime_modifier = 7.5F;
   witness.chairman.electrification_threshold_factor = 0.5F;
+  witness.chairman.free_plan_trades_used = 1;  // save 185 (#635)
+  witness.chairman.free_plan_trades_epoch = 2;
+  witness.chairman.free_days_off_used = 5;
+  witness.chairman.free_days_off_year = 7;
 
   witness.traction_ration = 0.75F;
   // The team's two alarms' memory (save 109): every slot different, so a
@@ -1503,6 +1512,11 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"chairman.crime_modifier", F32(world.chairman.crime_modifier)});
   chunks.push_back({"chairman.electrification_threshold_factor",
                     F32(world.chairman.electrification_threshold_factor)});
+  // The paths' counters (save 185, #635).
+  chunks.push_back({"chairman.free_plan_trades_used", U8(world.chairman.free_plan_trades_used)});
+  chunks.push_back({"chairman.free_plan_trades_epoch", U8(world.chairman.free_plan_trades_epoch)});
+  chunks.push_back({"chairman.free_days_off_used", U8(world.chairman.free_days_off_used)});
+  chunks.push_back({"chairman.free_days_off_year", U16(world.chairman.free_days_off_year)});
 
   chunks.push_back({"traction_ration", F32(world.traction_ration)});
   // The team's two alarms' memory (save 109).
@@ -2689,6 +2703,10 @@ int main() {
       Expect(loaded.chairman.avatar.value == 1 && loaded.chairman.crime_modifier == -20.0F &&
                  loaded.chairman.electrification_threshold_factor == 0.75F,
              "the avatar came back by its key, with its two dormant factors (save 184)");
+  failures += Expect(
+      loaded.chairman.free_plan_trades_used == 2 && loaded.chairman.free_plan_trades_epoch == 1 &&
+          loaded.chairman.free_days_off_used == 4 && loaded.chairman.free_days_off_year == 3,
+      "the avatar's paths' counters came back, each its own number (save 185)");
   failures += Expect(loaded.chairman.horses_stabled == 1,
                      "and the milestone that cannot be undone came back set");
   failures += Expect(loaded.chairman.ration_auto == 0,

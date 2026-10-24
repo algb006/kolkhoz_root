@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 
+#include "core_catalog/avatar_catalog.h"
 #include "core_common/cargo_form.h"
 #include "core_common/cart_gear.h"
 #include "core_common/cold_housing.h"
@@ -156,6 +157,10 @@ struct LogisticsConfig {
   /// The cold-housing rule's data (core_common/cold_housing.h): a works that
   /// will house a herd facing the cold goes first among the supply.
   ColdHousing cold_housing;
+
+  /// The avatars' rows (avatars.csv; #635): the «declare the day working»
+  /// advice asks the door's own question, the avatar's closed years in it.
+  std::vector<AvatarDef> avatars;
 };
 
 /// @brief The cart's and the sledge's numbers of this config (SL; cart_gear.h).

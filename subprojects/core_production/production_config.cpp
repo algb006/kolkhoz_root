@@ -1960,7 +1960,8 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
          ParseExtractionCatalog(tables, config.extraction, error) &&
          ParseLimitCatalog(tables, config.limit, error) &&
          ParseDistrictVisitCatalog(tables, config.district_visits, error) &&
-         ParseDistrictTripCatalog(tables, config.district_trip, error);
+         ParseDistrictTripCatalog(tables, config.district_trip, error) &&
+         ReadAvatars(tables, config.avatars, error);
 }
 
 }  // namespace core

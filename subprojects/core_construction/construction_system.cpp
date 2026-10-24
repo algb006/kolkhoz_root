@@ -1279,8 +1279,16 @@ class ConstructionSystem final : public IConstructionSystem {
         site.construction.phase = ConstructionPhase::kBuilding;
         // Frozen at the start: "invested 40 of 120" must read the same after
         // a balance edit mid-build (71-construction.md §4).
-        site.construction.labor_days_total = step->labor_days;
-        site.construction.labor_days_remaining = step->labor_days;
+        float labor_days = step->labor_days;
+        // THE WORKER'S WORKSHOPS (#635; avatars.md «Пути», P5): their first
+        // level at the avatar's factor, 0.5 for him, 1 for every other.
+        if (site.type.value == config_.workshops_type.value &&
+            site.construction.target_level == 1) {
+          labor_days *=
+              AvatarOf(config_.avatars, current.chairman.avatar).workshops_l1_labor_factor;
+        }
+        site.construction.labor_days_total = labor_days;
+        site.construction.labor_days_remaining = labor_days;
         if (site.construction.labor_days_remaining <= 0.0F) {
           CompleteBuild(current, current.units.row_ids[row], site);
         }

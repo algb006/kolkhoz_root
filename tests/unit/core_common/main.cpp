@@ -3154,11 +3154,18 @@ int main() {
     // declared working, May Day may not - the door and the lamp ask this one.
     core::WorldState plain;
     plain.calendar.day_zero_weekday = monday;
-    failures += Expect(core::DayOffMayBeDeclaredWorking(plain, 6) &&
-                           !core::DayOffMayBeDeclaredWorking(plain, 16) &&
-                           !core::DayOffMayBeDeclaredWorking(plain, 17),
+    failures += Expect(core::DayOffMayBeDeclaredWorking(plain, 6, 0) &&
+                           !core::DayOffMayBeDeclaredWorking(plain, 16, 0) &&
+                           !core::DayOffMayBeDeclaredWorking(plain, 17, 0),
                        "day off: a Sunday may be declared working; May Day and a working day may "
                        "not");
+    // THE STUDENT'S CLOSED YEARS (#635): two closed years shut year 1's
+    // Sunday 6 and open year 3's Sunday 104; the pair is the neutral 0.
+    failures += Expect(!core::DayOffMayBeDeclaredWorking(plain, 6, 2) &&
+                           core::DayOffMayBeDeclaredWorking(plain, 104, 2) &&
+                           core::DayOffMayBeDeclaredWorking(plain, 104, 0),
+                       "day off: the avatar's closed years shut years 1-2's Sundays and not "
+                       "year 3's");
   }
   failures += TestDaylightCurve();
   failures += TestRainStopsWork();

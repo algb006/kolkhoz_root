@@ -242,7 +242,7 @@ class LaborSystem final : public ILaborSystem {
     ReadWorkOrders(config_, current);
     // The avral and the cancelled day off, read LAST for the same reason
     // (rush.h): declared today, they act from the next hour or the next day.
-    ReadRushOrders(current);
+    ReadRushOrders(config_, current);
   }
 
   bool CanBeOrdered(const WorldState& state, ResidentId resident) const override {
@@ -3365,7 +3365,7 @@ class LaborSystem final : public ILaborSystem {
       }
       resident.work = WorkAssignment{};
     }
-    CloseRushDay(current);
+    CloseRushDay(config_, current);
   }
 
   /// Turns a day of delivered norm-days into trudodni on the FAMILY account

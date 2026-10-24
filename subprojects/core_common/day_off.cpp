@@ -79,13 +79,14 @@ bool IsDayOffIn(const WorldState& world, SimDay day) {
   return true;
 }
 
-bool DayOffMayBeDeclaredWorking(const WorldState& world, SimDay day) {
-  return IsDayOffIn(world, day) &&
+bool DayOffMayBeDeclaredWorking(const WorldState& world, SimDay day, std::uint8_t closed_years) {
+  const std::uint32_t year = (day / kDaysPerYear) + 1U;
+  return year > closed_years && IsDayOffIn(world, day) &&
          HolidayOn(day, world.calendar.day_zero_weekday, world.epoch) == Holiday::kNone;
 }
 
-bool TodayMayBeDeclaredWorking(const WorldState& world) {
-  return DayOffMayBeDeclaredWorking(world, world.calendar.day);
+bool TodayMayBeDeclaredWorking(const WorldState& world, std::uint8_t closed_years) {
+  return DayOffMayBeDeclaredWorking(world, world.calendar.day, closed_years);
 }
 
 }  // namespace core

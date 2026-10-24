@@ -13997,6 +13997,61 @@ int CheckDistrictTrip() {
   january.chairman.away_until_tick = january.calendar.tick + 10;
   failures += Expect(core::OrderTradePlan(config, january, down) == core::OrderRefusal::kNone,
                      "plan: in January, with the letter in hand, the bargain is open");
+  // THE AVATARS' BARGAINS (#635; avatars.md «Пути»): the student's first
+  // three of an epoch are free, the old fighter has none, the worker swaps no
+  // crop in his first two bargains (by the calendar's year, so years 1-3) and
+  // his ±10 % stays open. The pair of every line is the neutral chairman
+  // above: five and six of reputation.
+  {
+    core::ProductionConfig paths = config;
+    core::AvatarDef student;
+    student.key = "student";
+    student.free_plan_trades_per_epoch = 3;
+    core::AvatarDef fighter;
+    fighter.key = "old_fighter";
+    fighter.plan_trade_closed = true;
+    core::AvatarDef worker;
+    worker.key = "worker";
+    worker.crop_swap_closed_bargains = 2;
+    paths.avatars = {student, fighter, worker};
+    core::WorldState free_trade = march();
+    free_trade.chairman.avatar = core::AvatarId{0};
+    failures += Expect(
+        core::OrderTradePlan(paths, free_trade, down) == core::OrderRefusal::kNone &&
+            free_trade.chairman.raikom_reputation == 50.0F &&
+            free_trade.chairman.free_plan_trades_used == 1 &&
+            core::FreePlanTradesLeft(paths.avatars[0], free_trade.chairman, free_trade.epoch) == 2,
+        "plan, student: his first bargain costs nothing, two free are left");
+    core::WorldState spent = march();
+    spent.chairman.avatar = core::AvatarId{0};
+    spent.chairman.free_plan_trades_used = 3;
+    spent.chairman.free_plan_trades_epoch = static_cast<std::uint8_t>(spent.epoch);
+    failures += Expect(core::OrderTradePlan(paths, spent, down) == core::OrderRefusal::kNone &&
+                           spent.chairman.raikom_reputation == 45.0F,
+                       "plan, student: the fourth of the epoch costs the five of everyone");
+    core::WorldState fighting = march();
+    fighting.chairman.avatar = core::AvatarId{1};
+    failures +=
+        Expect(core::OrderTradePlan(paths, fighting, down) == core::OrderRefusal::kRuleForbids &&
+                   fighting.chairman.raikom_reputation == 50.0F,
+               "plan, old fighter: «Торга о плане у него нет», refused and nothing paid");
+    core::WorldState working = march();
+    working.chairman.avatar = core::AvatarId{2};
+    failures +=
+        Expect(core::OrderTradePlan(paths, working, swap) == core::OrderRefusal::kRuleForbids,
+               "plan, worker: no crop swap in his first bargains");
+    core::WorldState working_down = march();
+    working_down.chairman.avatar = core::AvatarId{2};
+    failures += Expect(core::OrderTradePlan(paths, working_down, down) == core::OrderRefusal::kNone,
+                       "plan, worker: his ±10 % stays open");
+    core::WorldState year_four = march();
+    year_four.chairman.avatar = core::AvatarId{2};
+    at(year_four, (3U * core::kDaysPerYear) + 1U, 9);
+    year_four.chairman.away_from_tick = year_four.calendar.tick - 1;
+    year_four.chairman.away_until_tick = year_four.calendar.tick + 10;
+    failures += Expect(core::OrderTradePlan(paths, year_four, swap) == core::OrderRefusal::kNone,
+                       "plan, worker: in year 4 his swap opens");
+  }
 
   // -- the reputation crossing «на карандаше» -------------------------------------
   core::WorldState before;

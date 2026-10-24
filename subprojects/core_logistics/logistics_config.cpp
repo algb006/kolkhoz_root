@@ -269,7 +269,8 @@ bool ParseLogisticsConfig(const ITableSet& tables, LogisticsConfig& config, std:
   }
   return ReadPorterRules(tables, config.porter, error) &&
          ReadSupplyFloorRules(tables, config.supply_floor, error) &&
-         ReadColdHousing(tables, config.cold_housing, error);
+         ReadColdHousing(tables, config.cold_housing, error) &&
+         ReadAvatars(tables, config.avatars, error);
 }
 
 }  // namespace core

@@ -609,6 +609,21 @@ struct ChairmanState {
   /// the promoted man's 0.75, else 1). DORMANT, STUB: no reader until
   /// electrification is built.
   float electrification_threshold_factor = 1.0F;
+
+  // THE AVATAR'S PATHS' COUNTERS (save 185; #635): the paths themselves are
+  // read live off avatars.csv (core_catalog/avatar_catalog.h); these say how
+  // much of a path this chairman has used.
+
+  /// Free plan bargains used in the epoch `free_plan_trades_epoch` (the
+  /// student's three; district_trip.cpp). A new epoch starts the count anew.
+  std::uint8_t free_plan_trades_used = 0;
+  std::uint8_t free_plan_trades_epoch = 0;
+
+  /// Cancelled days off lived without their price in the calendar year
+  /// `free_days_off_year` (the old fighter's six; rush.cpp). Another year
+  /// starts the count anew. 0 = no year yet.
+  std::uint8_t free_days_off_used = 0;
+  std::uint16_t free_days_off_year = 0;
 };
 
 /// @brief Why the district calls the chairman «на ковёр» (district-trip.md

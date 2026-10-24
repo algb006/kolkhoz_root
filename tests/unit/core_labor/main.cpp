@@ -3873,6 +3873,12 @@ int TestTheAvralAndTheCancelledDayOff() {
   std::ofstream(root / "crops.csv") << "key,sow_to_month,harvest_to_month,is_winter\n"
                                        "oat,5,9,0\n";
   std::ofstream(root / "livestock.csv") << "key,care_days_per_year\nhorse,0\n";
+  // The avatars' paths (#635): row 0 the old fighter's six free cancelled
+  // days, row 1 the student's two closed years. A chairman with no avatar —
+  // every block below but the last two — reads the neutral row.
+  std::ofstream(root / "avatars.csv")
+      << "key,start_reputation,free_cancelled_days_off_per_year,day_off_working_closed_years\n"
+         "old_fighter,55,6,0\nstudent,50,0,2\n";
   std::string error;
   const auto tables = core::LoadTableSet(root.string(), &error);
   const auto labor =
@@ -4013,6 +4019,50 @@ int TestTheAvralAndTheCancelledDayOff() {
     }
     failures += Expect(day.world.chairman.days_off_cancelled_in_a_row == 0,
                        "day off: a Sunday actually taken breaks the series");
+  }
+  // THE OLD FIGHTER'S SIX (#635): the same cancelled Sunday as above, its
+  // price gone - the rest lost is a working day's, as Saturday's, and the
+  // family pays nothing; the year's count says one used. The pair is the
+  // block above: +4 and 1.0.
+  {
+    DayWorld day(1);
+    day.world.chairman.avatar = core::AvatarId{0};
+    oat_field(day);
+    core::OrderRow cancel;
+    cancel.kind = core::OrderKind::kCancelDayOff;
+    cancel.status = core::OrderStatus::kPending;
+    core::AppendRow(day.world.orders, cancel);
+    for (std::uint32_t game_day = 3; game_day <= 4; ++game_day) {
+      day.RunDay(*labor, game_day);
+    }
+    const auto rest_lost_on = [&day, &labor](std::uint32_t game_day) {
+      const float before = day.world.residents.rows[0].rest;
+      day.RunDay(*labor, game_day);
+      return before - day.world.residents.rows[0].rest;
+    };
+    const float saturday = rest_lost_on(5);
+    const float sunday = rest_lost_on(6);
+    failures += Expect(sunday > saturday - 0.01F && sunday < saturday + 0.01F &&
+                           day.world.families.rows[0].overwork_penalty < 0.001F &&
+                           day.world.chairman.free_days_off_used == 1 &&
+                           day.world.chairman.free_days_off_year == 1,
+                       "day off, old fighter: his cancelled Sunday costs a working day's rest and "
+                       "nothing to the family; one of his six is used");
+  }
+  // THE STUDENT'S CLOSED YEARS (#635): no Sunday of years 1-2 is cancelled
+  // on his order; the pair is the first block above, which is taken.
+  {
+    DayWorld day(1);
+    day.world.chairman.avatar = core::AvatarId{1};
+    core::OrderRow cancel;
+    cancel.kind = core::OrderKind::kCancelDayOff;
+    cancel.status = core::OrderStatus::kPending;
+    const core::OrderId id = core::AppendRow(day.world.orders, cancel);
+    day.RunDay(*labor, 3);
+    failures += Expect(day.world.orders.rows[core::FindRow(day.world.orders, id)].refusal ==
+                               core::OrderRefusal::kRuleForbids &&
+                           day.world.chairman.cancelled_day_off == 0,
+                       "day off, student: a Sunday of year 1 is not cancelled on his order");
   }
   {
     // Day 16 is May Day; with day 0 a Friday it falls on a Sunday.

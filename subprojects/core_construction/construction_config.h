@@ -28,6 +28,7 @@
 #include <string>
 #include <vector>
 
+#include "core_catalog/avatar_catalog.h"
 #include "core_catalog/definitions.h"
 #include "core_common/ids.h"
 #include "core_common/quantities.h"
@@ -417,6 +418,12 @@ struct ConstructionConfig {
   /// unit_types.csv "field_camp": the unit field_camp.h places. Invalid = the
   /// table set has none, and no plot is checked as a camp.
   UnitTypeId field_camp_type;
+
+  /// unit_types.csv "workshops" and the avatars' rows (#635): a level-1
+  /// workshops site starts its labour at × the avatar's
+  /// workshops_l1_labor_factor (the worker's 0.5; avatars.md «Пути», P5).
+  UnitTypeId workshops_type;
+  std::vector<AvatarDef> avatars;
 
   /// How near its centre some field must lie for a field camp, in metres —
   /// "близко к полям" (MTS design §1; boss, parcel 449; STUB).

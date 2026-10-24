@@ -95,12 +95,19 @@ bool AvralStandsOnAMeadowsCut(const WorldState& world) {
   });
 }
 
+/// The chairman's avatar's closed day-off years (avatars.csv; #635): the
+/// door's own number, so the lamp never names a day the door refuses.
+std::uint8_t ClosedDayOffYears(const ProductionConfig& config, const WorldState& world) {
+  return AvatarOf(config.avatars, world.chairman.avatar).day_off_working_closed_years;
+}
+
 }  // namespace
 
 bool DayOffWorthWorkingForTheCut(const ProductionConfig& config,
                                  const WorldState& world,
                                  const HerdFeedForecast& forecast) {
-  return forecast.short_ahead && forecast.by_pace && TodayMayBeDeclaredWorking(world) &&
+  return forecast.short_ahead && forecast.by_pace &&
+         TodayMayBeDeclaredWorking(world, ClosedDayOffYears(config, world)) &&
          world.weather.precipitation != Precipitation::kRain && AMeadowIsInItsCut(config, world) &&
          world.chairman.hay_day_worked_month != MonthCodeOf(world.calendar.day);
 }
@@ -119,7 +126,7 @@ SimDay DayOffAheadForTheCut(const ProductionConfig& config,
   for (SimDay day = today + 1U; day <= month_end; ++day) {
     // THE DOOR's OWN QUESTION OF THAT DAY (#852): a holiday is a day off the
     // door will refuse on its morning, and a dated advice must not name it.
-    if (DayOffMayBeDeclaredWorking(world, day)) {
+    if (DayOffMayBeDeclaredWorking(world, day, ClosedDayOffYears(config, world))) {
       return day;
     }
   }
@@ -141,8 +148,10 @@ bool AvralMayBeNamedOnTheCut(const ProductionConfig& config, const WorldState& w
   // A HOLIDAY IS NOT SUCH A DAY (#852): the door refuses it, the day-off rung
   // does not name it, and counted here it shut the avral's rung behind a move
   // nobody may make - the lamp lit with nothing to say.
+  // The student's closed years (#635) leave no such day: his avral's rung
+  // opens where another chairman's day-off rung would stand.
   for (SimDay day = today; day <= month_end; ++day) {
-    if (DayOffMayBeDeclaredWorking(world, day)) {
+    if (DayOffMayBeDeclaredWorking(world, day, ClosedDayOffYears(config, world))) {
       return false;
     }
   }

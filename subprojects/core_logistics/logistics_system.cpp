@@ -367,7 +367,10 @@ class LogisticsSystem final : public ILogisticsSystem {
     // door would take it today, one question with the door
     // (TodayMayBeDeclaredWorking).
     const AlarmAdvice advice =
-        TodayMayBeDeclaredWorking(state) ? AlarmAdvice::kDeclareDayWorking : AlarmAdvice::kNone;
+        TodayMayBeDeclaredWorking(
+            state, AvatarOf(config_.avatars, state.chairman.avatar).day_off_working_closed_years)
+            ? AlarmAdvice::kDeclareDayWorking
+            : AlarmAdvice::kNone;
     // AND WHERE THE HORSES ARE (stage В6; registry №310): one breakdown an
     // hour, the same for every late load of it (work_seam.h, HorsesByUse) -
     // ON A WORKING DAY ONLY. On a day off nobody is placed and every horse

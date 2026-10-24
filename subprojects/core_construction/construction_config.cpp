@@ -1019,6 +1019,12 @@ bool ParseConstructionConfig(const ITableSet& tables,
   config.old_house_type = DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("old_house"));
   // The MTS column's camp and how near the fields it stands (field_camp.h).
   config.field_camp_type = DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("field_camp"));
+  // The worker's workshops at half labour (#635; avatars.csv
+  // workshops_l1_labor_factor): the type and the avatars' rows.
+  config.workshops_type = DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("workshops"));
+  if (!ReadAvatars(tables, config.avatars, error)) {
+    return false;
+  }
   if (const ITable* const world = tables.FindTable("world_params")) {
     float grace_days = static_cast<float>(config.fire_grace_days);
     const std::array<ScalarKnob, 4> world_knobs = {
