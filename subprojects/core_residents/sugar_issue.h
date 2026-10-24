@@ -57,7 +57,9 @@ std::span<const std::string_view> SugarIssueWorldParamKeys();
 bool ParseSugarIssueConfig(const ITableSet& tables, SugarIssueConfig& config, std::string& error);
 
 /// @brief The month's issue, the mood and the complaint, on a month's first
-///        day (day % kDaysPerMonth == 0); any other day does nothing.
+///        day (day % kDaysPerMonth == 0); any other day does nothing. With no
+///        sugar row every mood is reset to mood_base, as the month's mood is
+///        composed here and the moonshine's term is added after it (#1253).
 /// Side effects: the stores' sugar and the pantries' honey taken, every
 /// resident's mood written, FamilyRow::sugar_share and sugar_dry_months,
 /// ChairmanState::sugar_complaint_season, kChildrenAskSweets.

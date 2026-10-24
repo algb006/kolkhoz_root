@@ -4341,6 +4341,56 @@ int CheckAlcoholism() {
 
 /// THE INHERITANCE (crime §2, Epoch I; boss seq 151): a son coming of age
 /// today takes (father − 40) × 0.3, 0..12; nobody else is touched.
+/// THE MOONSHINE'S MOOD (#1253; crime §6, «21–40 Выпивает: Довольство +5»):
+/// + samogon_mood to a man in 21-40 who GOT his litre this month, and to no
+/// one else. No raw material is named, so only the distiller's own yard -
+/// which pays nobody - gets litres; a man of another yard asks and cannot pay.
+int CheckSamogonMood() {
+  int failures = 0;
+  const core::AlcoholismConfig config;  // +5 in (20, 40], the design's numbers
+  const core::NightTradeConfig night;
+  const core::SportConfig sport;
+  constexpr float kSpeedup = 4.0F;
+  constexpr core::SimDay kJanuaryFirst = core::kDaysPerYear;
+  constexpr std::int32_t kAdultBirth = -192;  // 20 bio years at day 48
+
+  core::WorldState world;
+  const core::FamilyId own_yard = AppendRow(world.families, core::FamilyRow{});
+  const core::FamilyId other_yard = AppendRow(world.families, core::FamilyRow{});
+  const auto add = [&world](core::FamilyId family, float alcoholism) {
+    core::ResidentRow man;
+    man.sex = core::Sex::kMale;
+    man.birth_day = kAdultBirth;
+    man.family = family;
+    man.alcoholism = alcoholism;
+    man.mood = 60.0F;
+    man.mood_base = 60.0F;
+    return AppendRow(world.residents, man);
+  };
+  const core::ResidentId distiller = add(own_yard, 0.0F);
+  const core::ResidentId drinker = add(own_yard, 30.0F);  // 21-40, gets his litre
+  const core::ResidentId heavy = add(own_yard, 45.0F);    // gets it, above the band
+  const core::ResidentId asker = add(other_yard, 30.0F);  // in the band, cannot pay
+  const auto row_of = [&world](core::ResidentId id) -> core::ResidentRow& {
+    return world.residents.rows[FindRow(world.residents, id)];
+  };
+  row_of(distiller).night_trade = core::NightTrade::kDistiller;
+  row_of(distiller).samogon_ml = 100000;
+
+  world.calendar.tick = static_cast<core::Tick>(kJanuaryFirst) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(world.calendar);
+  core::TurnAlcoholismMonth(config, night, sport, kSpeedup, world);
+  failures += Expect(row_of(drinker).mood == 65.0F,
+                     "samogon mood: a man of 21-40 who got his litre takes +5 for the month");
+  failures += Expect(row_of(heavy).mood == 60.0F,
+                     "samogon mood: above 40 his litre gives no extra (that band's costs)");
+  failures += Expect(row_of(asker).mood == 60.0F,
+                     "samogon mood: a man who asked and got nothing takes nothing");
+  failures += Expect(row_of(distiller).samogon_ml < 100000,
+                     "samogon mood: the distiller's own yard drank of his litres (the fixture)");
+  return failures;
+}
+
 int CheckAlcoholismInheritance() {
   int failures = 0;
   constexpr float kSpeedup = 4.0F;  // 12 days a biological year
@@ -5041,6 +5091,7 @@ int main() {
   failures += CheckSchooling();
   failures += CheckRawMaterialLeak();
   failures += CheckAlcoholism();
+  failures += CheckSamogonMood();
   failures += CheckAlcoholismInheritance();
   failures += CheckTheSportsField();
   failures += CheckTheWinterCountsTheHeapAbovePlan();

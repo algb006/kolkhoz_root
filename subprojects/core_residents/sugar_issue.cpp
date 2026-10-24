@@ -95,7 +95,16 @@ float SugarMoodTerm(const SugarIssueConfig& config, float share, bool child) {
 
 void IssueSugarMonth(const SugarIssueConfig& config, float life_speedup, WorldState& current) {
   const SimDay day = current.calendar.day;
-  if (day % kDaysPerMonth != 0 || config.sugar.value == kInvalidDefIdValue) {
+  if (day % kDaysPerMonth != 0) {
+    return;
+  }
+  // THE MONTH'S MOOD IS COMPOSED HERE EVERY MONTH, sugar or none: the
+  // moonshine's +5 (#1253, alcoholism.cpp) lands on top of it after, and a
+  // month that did not recompose would carry last month's +5 into this one.
+  if (config.sugar.value == kInvalidDefIdValue) {
+    for (ResidentRow& person : current.residents.rows) {
+      person.mood = person.mood_base;
+    }
     return;
   }
   // THE NEED, BY EATERS: a family's members this morning.

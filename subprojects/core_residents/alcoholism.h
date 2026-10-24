@@ -76,6 +76,13 @@ struct AlcoholismConfig {
   float inherit_threshold = 40.0F;       ///< `alcohol_inherit_threshold`, the father's
   float inherit_factor = 0.3F;           ///< `alcohol_inherit_factor`
   float inherit_max = 12.0F;             ///< `alcohol_inherit_max`
+  /// THE MOONSHINE'S MOOD (#1253; crime §6, «21–40 Выпивает: Довольство
+  /// +5»; econ, core-boss-1250 [3]): + this to a man's mood in a month he got
+  /// his litre while his alcoholism was in (above, to]. STUB, the design's
+  /// number; 41-60 has no extra (that band's costs are the design's).
+  float samogon_mood = 5.0F;         ///< `alcohol_samogon_mood`
+  float samogon_mood_above = 20.0F;  ///< `alcohol_samogon_mood_above`
+  float samogon_mood_to = 40.0F;     ///< `alcohol_samogon_mood_to`
 };
 
 /// @brief The world_params.csv keys this file reads.

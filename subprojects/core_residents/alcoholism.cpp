@@ -19,7 +19,7 @@ namespace core {
 namespace {
 
 /// The world_params.csv keys, in the order of the knob list in the parse.
-constexpr std::array<std::string_view, 14> kAlcoholismWorldParamKeys = {
+constexpr std::array<std::string_view, 17> kAlcoholismWorldParamKeys = {
     "alcohol_adult_from_years",
     "alcohol_gain_with_distiller",
     "alcohol_gain_winter_idle",
@@ -33,7 +33,10 @@ constexpr std::array<std::string_view, 14> kAlcoholismWorldParamKeys = {
     "alcohol_epoch1_cap",
     "alcohol_inherit_threshold",
     "alcohol_inherit_factor",
-    "alcohol_inherit_max"};
+    "alcohol_inherit_max",
+    "alcohol_samogon_mood",
+    "alcohol_samogon_mood_above",
+    "alcohol_samogon_mood_to"};
 
 /// Past this the inheritance factor is a typo: more than the father's own
 /// excess, ten times over.
@@ -80,20 +83,20 @@ constexpr double kMillilitresPerLitre = 1000.0;
 /// pays for. Who got nothing paid nothing. Until 0.37.72 the family paid 3
 /// or 8 kg a month to any distiller «supplied» that month, whatever he had
 /// brewed, and a distiller's yard gathered a tonne of the village's grain a
-/// year.
-void BuySamogon(const NightTradeConfig& night,
-                WorldState& current,
-                std::uint32_t buyer_row,
-                std::uint32_t distiller_row,
-                float alcoholism,
-                double share) {
+/// year. Returns the millilitres he got (the moonshine's mood reads it, #1253).
+std::uint32_t BuySamogon(const NightTradeConfig& night,
+                         WorldState& current,
+                         std::uint32_t buyer_row,
+                         std::uint32_t distiller_row,
+                         float alcoholism,
+                         double share) {
   const double asked = SamogonAskedMl(night, alcoholism) * share;
   const std::uint32_t payer = FindRow(current.families, current.residents.rows[buyer_row].family);
   const std::uint32_t seller =
       FindRow(current.families, current.residents.rows[distiller_row].family);
   ResidentRow& distiller = current.residents.rows[distiller_row];
   if (!(asked > 0.0) || payer == kNoRow || seller == kNoRow) {
-    return;
+    return 0;
   }
   // What the litres asked would cost, and what the pantry can pay of it.
   const double price_grams =
@@ -112,12 +115,12 @@ void BuySamogon(const NightTradeConfig& night,
   const auto got =
       std::min(static_cast<std::uint32_t>(std::floor(asked * covered)), distiller.samogon_ml);
   if (got == 0) {
-    return;
+    return 0;
   }
   distiller.samogon_ml -= got;
   current.ledger.current.samogon_sold_ml += got;
   if (!pays) {
-    return;
+    return got;
   }
   Grams owed = static_cast<Grams>(std::llround(static_cast<double>(got) * price_grams));
   for (const ResourceId raw : night.raw_material) {
@@ -138,6 +141,7 @@ void BuySamogon(const NightTradeConfig& night,
     AddLedgerAmount(current.ledger.current.samogon_paid, raw, paid);
     owed -= paid;
   }
+  return got;
 }
 
 /// «ЕСТЬ САМОГОН» IS A YARD'S (register 207): a distiller HOLDING samogon at
@@ -276,6 +280,11 @@ bool ParseAlcoholismConfig(const ITableSet& tables, AlcoholismConfig& config, st
        .value = &config.inherit_factor,
        .range = {.low = 0.0F, .high = kInheritFactorMax}},
       {.key = kAlcoholismWorldParamKeys[13], .value = &config.inherit_max, .range = points},
+      {.key = kAlcoholismWorldParamKeys[14],
+       .value = &config.samogon_mood,
+       .range = {.low = 0.0F, .high = 20.0F}},
+      {.key = kAlcoholismWorldParamKeys[15], .value = &config.samogon_mood_above, .range = points},
+      {.key = kAlcoholismWorldParamKeys[16], .value = &config.samogon_mood_to, .range = points},
   }};
   return ReadKnobs(*world, "world_params", knobs, error);
 }
@@ -350,8 +359,16 @@ void TurnAlcoholismMonth(const AlcoholismConfig& config,
       const float before = person.alcoholism;
       // THE PURCHASE, by the band of the month that closed — what he drank in
       // it is what his family pays for (register 205).
-      if (distiller != kNoRow) {
-        BuySamogon(night, current, row, distiller, before, share_of[distiller]);
+      const std::uint32_t got_ml =
+          distiller != kNoRow
+              ? BuySamogon(night, current, row, distiller, before, share_of[distiller])
+              : 0U;
+      // THE MOONSHINE'S MOOD (#1253; crime §6, «21–40 Выпивает: Довольство
+      // +5»), by the band he drank in: on top of this month's mood, which the
+      // sugar issue has just composed afresh from mood_base, so it lasts the
+      // month and is not carried into the next.
+      if (got_ml > 0 && before > config.samogon_mood_above && before <= config.samogon_mood_to) {
+        person.mood = std::min(person.mood + config.samogon_mood, kMetricMax);
       }
       const float change = MonthChange(config,
                                        current,

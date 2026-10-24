@@ -112,6 +112,16 @@ int CheckTheSugar() {
       Expect(Near(child.residents.rows[1].mood, 64.0F) && Near(child.residents.rows[0].mood, 62.0F),
              "sugar: a child takes +4 of a full month, an adult +2");
 
+  // NO SUGAR ROW: the month's mood is still composed - back to mood_base, so
+  // the moonshine's +5 laid on top last month is not carried (#1253).
+  core::WorldState bare = Village(10.0, 0.0);
+  bare.residents.rows[0].mood = 65.0F;
+  core::SugarIssueConfig no_sugar = config;
+  no_sugar.sugar = core::ResourceId{};
+  core::IssueSugarMonth(no_sugar, kLife, bare);
+  failures += Expect(Near(bare.residents.rows[0].mood, 60.0F),
+                     "sugar: with no sugar row the month's mood is reset to mood_base");
+
   // ONLY ON A MONTH'S FIRST DAY.
   core::WorldState midmonth = Village(10.0, 0.0);
   midmonth.calendar.day = 2;
