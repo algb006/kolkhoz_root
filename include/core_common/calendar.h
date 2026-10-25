@@ -260,6 +260,16 @@ constexpr Date DateFromDay(SimDay day) {
   };
 }
 
+/// @brief The calendar month of `day` as a tag: year × 12 + month, plus one,
+///        so nought means never. The one home of the formula: the
+///        distiller's supply month (SupplyMonthTag) and the family's
+///        drinking occasions (FamilyRow::drink_occasion_month) read it.
+constexpr std::uint32_t MonthTagOfDay(SimDay day) {
+  const Date date = DateFromDay(day);
+  return (static_cast<std::uint32_t>(date.year) * kMonthsPerYear) +
+         static_cast<std::uint32_t>(date.month) + 1U;
+}
+
 /// @brief Weekday of a day. The week runs independently of months: it is
 /// plain modulo-7 from the campaign's day-zero weekday.
 constexpr Weekday WeekdayFromDay(SimDay day, Weekday day_zero_weekday) {

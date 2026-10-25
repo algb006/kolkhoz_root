@@ -134,7 +134,10 @@ static_assert(AggregateArity<ResidentRow>() == 56,
 // tail - predicted 176 -> 184 + amounts and 40 fields before the build, and
 // the size MISSED: 176 + amounts, unmoved - the row's tail padding held the
 // byte and the float (the fields held). On the wire +5 a family.
-static_assert(sizeof(FamilyRow) == 176 + kAmountsSize,
+// Save 189 (#1262): drink_occasion_month and shock_month (u32 each) at the
+// tail - predicted 176 -> 184 + amounts and 42 fields before the build; on
+// the wire +8 a family.
+static_assert(sizeof(FamilyRow) == 184 + kAmountsSize,
               "FamilyRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 57: ration_granted, the yard's ration decision — 19 fields;
 // the size is read off the build below, not guessed.
@@ -144,7 +147,7 @@ static_assert(sizeof(FamilyRow) == 176 + kAmountsSize,
 // Save 75: in_barrack and hunger_alarm_lit — 27 fields. Save 113:
 // satisfaction_year — 28. Save 124: season_category_kcal and
 // season_need_kcal — 30.
-static_assert(AggregateArity<FamilyRow>() == 40,
+static_assert(AggregateArity<FamilyRow>() == 42,
               "FamilyRow gained or lost a field — update the codec and VERSION_SAVE");
 // FieldRow took LandKind into a padding byte it already had, so sizeof did
 // NOT move — the one case the tripwire of manual/67-save-format.md §7 cannot
@@ -1027,6 +1030,8 @@ void WriteFamilyRow(SaveSink& sink, const FamilyRow& row) {
   out.WriteU8(row.advance_turns);     // save 160
   out.WriteU8(row.sugar_dry_months);  // save 188 (#1241)
   out.WriteFloat(row.sugar_share);
+  out.WriteU32(row.drink_occasion_month);  // save 189 (#1262)
+  out.WriteU32(row.shock_month);
 }
 
 FamilyRow ReadFamilyRow(LoadSource& source) {
@@ -1100,6 +1105,8 @@ FamilyRow ReadFamilyRow(LoadSource& source) {
   row.advance_turns = in.ReadU8();     // save 160
   row.sugar_dry_months = in.ReadU8();  // save 188 (#1241)
   row.sugar_share = in.ReadFloat();
+  row.drink_occasion_month = in.ReadU32();  // save 189 (#1262)
+  row.shock_month = in.ReadU32();
   if (row.earned_since_formed < 0 || row.advance_debt < 0 || row.advance_given < row.advance_debt) {
     source.Fail("a family's advance is negative or owes more than it was given");
   }

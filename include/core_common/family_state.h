@@ -320,6 +320,19 @@ struct FamilyRow {
   /// month's issue, 0..1, for the view and the mood term.
   std::uint8_t sugar_dry_months = 0;
   float sugar_share = 0.0F;
+
+  /// THE DRINKING OCCASIONS (save 189; #1262, crime §6 «Традиция, компания и
+  /// потрясения»): the supply-month tag (SupplyMonthTag) of the family's last
+  /// wedding or wake (a death in it), 0 for none — the month's turn gives its
+  /// men and the men of the yards within `rise_wedding_wake_reach_m` the
+  /// wedding's rise once; and the tag of its last shock (a death in it, or
+  /// its house fallen), 0 for none — the turns closing that month and the
+  /// next `rise_shock_months` - 1 give its men `rise_shock`. Tags, not a
+  /// counter, so a writer needs no number of the rule. Written by demography
+  /// (the wedding, the death) and by core_construction's Collapse (the
+  /// house), beside `house` and `lost_house_position`.
+  std::uint32_t drink_occasion_month = 0;
+  std::uint32_t shock_month = 0;
 };
 
 /// @brief FamilyRow::formed_day of a row of the genesis: no day of the game.

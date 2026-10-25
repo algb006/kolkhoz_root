@@ -339,6 +339,8 @@ core::WorldState MakeWorld() {
   rich.advance_turns = 1;     // save 160
   rich.sugar_dry_months = 3;  // save 188 (#1241)
   rich.sugar_share = 0.25F;
+  rich.drink_occasion_month = 97;  // save 189 (#1262)
+  rich.shock_month = 96;
   core::AppendRow(world.families, rich);
   core::FamilyRow bare;  // empty pantry: the vector must stay empty
   core::AppendRow(world.families, bare);
@@ -2020,8 +2022,10 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // held; the hash read off it. Save 169: the ring leaves, -48 a family:
     // predicted 486 -> 390 before the build and held; the hash read off it.
     // Save 188 (#1241): the sugar's byte and float, +5 a family, two -
-    // predicted 390 -> 400, held.
-    {"families", 400, 0xde157b9dd2725e8dULL},
+    // predicted 390 -> 400, held. Save 189 (#1262): the drinking occasion's
+    // and the shock's month tags, +8 a family, two - predicted 400 -> 416,
+    // held; the hash read off it.
+    {"families", 416, 0x361a688ff0f01ca4ULL},
     // Save 84: +36 — the harvest by parts' laid share (4) and grams (8), 12
     // a row, three rows; predicted before the build and held. Then the first
     // row given non-zero values: the size held at 305, the hash moved.
@@ -2865,6 +2869,8 @@ int main() {
           loaded.families.rows[0].advance_turns == 1 &&
           loaded.families.rows[0].sugar_dry_months == 3 &&  // save 188 (#1241)
           loaded.families.rows[0].sugar_share == 0.25F &&
+          loaded.families.rows[0].drink_occasion_month == 97 &&  // save 189 (#1262)
+          loaded.families.rows[0].shock_month == 96 &&
           loaded.residents.rows[0].mood_base == 57.5F &&
           loaded.chairman.sugar_complaint_season == 9 &&
           loaded.families.rows[1].advance_turns == 0 &&

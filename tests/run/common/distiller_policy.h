@@ -22,9 +22,10 @@
 ///     settlement mean, read at each month's turn): no man is taken - there
 ///     is no name - and a watchman goes to the unguarded store that holds the
 ///     most raw material, the leak a player can see without a name;
-///   * THE CATCH ALWAYS SUCCEEDS (B): the core runs have no night-catch rule
-///     (host_script/night_catch.h judges it in the game), so this is the
-///     catch at the design's maximum, an upper bound, and the run says so;
+///   * THE CATCH SUCCEEDS AT kCatchChance (#1262 (1); econ's drink-stays-a-
+///     decision, boss 25 October 2026): host's night-catch chance is STUB 0.4
+///     an attempt (host_script/night_catch.h judges it in the game). Until
+///     #1262 it always succeeded, the design's maximum, an upper bound;
 ///   * A WATCHMAN is a sober adult (alcoholism ≤ night_sober_keeper_max) with
 ///     no post: a drinking one is as good as none (night_trade.cpp).
 /// THE INSTRUMENT: the DT line a closed year - takes ordered and taken, the
@@ -47,6 +48,7 @@
 #include "core_common/event_state.h"
 #include "core_common/ids.h"
 #include "core_common/order_state.h"
+#include "core_common/random.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/unit_state.h"
 #include "core_common/world_state.h"
@@ -138,11 +140,21 @@ class DistillerPolicy {
     std::vector<core::OrderRow> orders;
     if (report_.heard && month != took_month_) {
       took_month_ = month;
-      core::OrderRow take;
-      take.kind = core::OrderKind::kTakeNightTrader;
-      take.resident = report_.man;
-      orders.push_back(take);
-      asked_ = report_.man;
+      // THE CATCH FAILS SOMETIMES (#1262 (1)): a night's attempt succeeds at
+      // kCatchChance, drawn from the world's seed, the day and the man, so a
+      // run is the same run every time. A missed man stays in his trade; the
+      // watchman is posted all the same, and the next report tries again.
+      const float draw =
+          core::CounterHashUnitFloat(world.world_seed, today, report_.man.value, kCatchSalt);
+      if (draw < kCatchChance) {
+        core::OrderRow take;
+        take.kind = core::OrderKind::kTakeNightTrader;
+        take.resident = report_.man;
+        orders.push_back(take);
+        asked_ = report_.man;
+      } else {
+        ++missed_year_;
+      }
       ++takes_year_;
       AppointAt(world, GuardOf(world, report_.store), orders, appointed_on_take_year_);
       report_ = Report{};
@@ -163,8 +175,9 @@ class DistillerPolicy {
                  "a sugar theft report names, at most one a month, and posts a sober watchman at "
                  "the store he took from; when the village's drinking rises two months running he "
                  "posts one at the unguarded store holding the most raw material. The catch "
-                 "always succeeds: an UPPER BOUND, no night-catch rule in core runs (#1250; "
-                 "econ, core-boss-1250-distiller-rule [3]); --no-catch-distiller is the control\n";
+                 "succeeds at 0.4 an attempt (STUB, host's night-catch chance; #1262), a missed "
+                 "man stays in his trade (#1250; econ, core-boss-1250-distiller-rule [3]); "
+                 "--no-catch-distiller is the control\n";
   }
 
  private:
@@ -172,6 +185,10 @@ class DistillerPolicy {
       "rye", "wheat", "barley", "oat", "potato", "sugar"};
   static constexpr float kAdultYears = 16.0F;
   static constexpr std::uint32_t kNever = 0xFFFFFFFFU;
+  /// host's night-catch chance an attempt, STUB (#1262; econ's proposal).
+  static constexpr float kCatchChance = 0.4F;
+  /// The catch's own stream position: no other draw of the run reads it.
+  static constexpr std::uint64_t kCatchSalt = 0x1262CA7CU;
 
   struct Report {
     bool heard = false;
@@ -281,18 +298,19 @@ class DistillerPolicy {
       posts += person.post.profession.value == watchman_.value ? 1U : 0U;
     }
     std::printf(
-        "DT,y=%u,reports=%u,takes=%u,taken=%u,rises_acted=%u,watch_on_take=%u,watch_on_rise=%u,"
-        "watch_posts_held=%u%s\n",
+        "DT,y=%u,reports=%u,takes=%u,missed=%u,taken=%u,rises_acted=%u,watch_on_take=%u,"
+        "watch_on_rise=%u,watch_posts_held=%u%s\n",
         today / core::kDaysPerYear,
         reports_year_,
         takes_year_,
+        missed_year_,
         taken_year_,
         rises_year_,
         appointed_on_take_year_,
         appointed_on_rise_year_,
         posts,
         reports_year_ == 0 && rises_year_ == 0 ? ",NOT MEASURED: no report and no rise heard" : "");
-    reports_year_ = takes_year_ = taken_year_ = rises_year_ = 0;
+    reports_year_ = takes_year_ = taken_year_ = rises_year_ = missed_year_ = 0;
     appointed_on_take_year_ = appointed_on_rise_year_ = 0;
   }
 
@@ -313,6 +331,7 @@ class DistillerPolicy {
   std::uint32_t rises_ = 0;
   std::uint32_t reports_year_ = 0;
   std::uint32_t takes_year_ = 0;
+  std::uint32_t missed_year_ = 0;
   std::uint32_t taken_year_ = 0;
   std::uint32_t rises_year_ = 0;
   std::uint32_t appointed_on_take_year_ = 0;

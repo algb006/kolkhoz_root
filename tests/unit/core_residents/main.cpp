@@ -25,6 +25,7 @@
 
 #include "../../common/fake_tables.h"
 #include "advance_checks.h"
+#include "alcohol_rise_checks.h"
 #include "alcoholism.h"
 #include "appearance_memory.h"
 #include "barter_checks.h"
@@ -5100,6 +5101,7 @@ int main() {
   failures += CheckBarter();
   failures += CheckBurial();
   failures += CheckTheSugar();
+  failures += CheckTheDrinkingRaisers();
   failures += CheckNoWeddingIntoABarrackAndTheCrowdedBarrack();
   failures += CheckTheNewHouseholdsAdvance();
   failures += CheckVitals();

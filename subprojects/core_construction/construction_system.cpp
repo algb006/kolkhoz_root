@@ -559,8 +559,9 @@ class ConstructionSystem final : public IConstructionSystem {
   /// household it sheltered is left without a house on purpose: the roof is
   /// the demography sub-step's job the next day (housing design §20: a free
   /// house, or a tent on the old plot in the warm season, or leaving).
-  /// Clearing the family's `house` and writing where it stood are the two
-  /// fields of another module's row this subsystem writes, and the contract
+  /// Clearing the family's `house`, writing where it stood and its shock's
+  /// month (#1262) are the three fields of another module's row this
+  /// subsystem writes, and the contract
   /// says so (family_state.h, lost_house_position).
   void Collapse(WorldState& current, UnitId unit) {
     const std::uint32_t row = FindRow(current.units, unit);
@@ -574,6 +575,9 @@ class ConstructionSystem final : public IConstructionSystem {
     if (family_row != kNoRow) {
       current.families.rows[family_row].house = UnitId{};
       current.families.rows[family_row].lost_house_position = stood_at;
+      // THE SHOCK OF A LOST HOUSE (#1262; crime §6 «потеря дома»), the third
+      // field of the family's row this subsystem writes (family_state.h).
+      current.families.rows[family_row].shock_month = MonthTagOfDay(current.calendar.day);
     }
     SimEvent& fell = EmitEvent(current, EventKind::kUnitCollapsed, EventSeverity::kNotable);
     fell.unit = unit;

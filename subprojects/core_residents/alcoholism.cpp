@@ -19,7 +19,7 @@ namespace core {
 namespace {
 
 /// The world_params.csv keys, in the order of the knob list in the parse.
-constexpr std::array<std::string_view, 17> kAlcoholismWorldParamKeys = {
+constexpr std::array<std::string_view, 23> kAlcoholismWorldParamKeys = {
     "alcohol_adult_from_years",
     "alcohol_gain_with_distiller",
     "alcohol_gain_winter_idle",
@@ -36,11 +36,20 @@ constexpr std::array<std::string_view, 17> kAlcoholismWorldParamKeys = {
     "alcohol_inherit_max",
     "alcohol_samogon_mood",
     "alcohol_samogon_mood_above",
-    "alcohol_samogon_mood_to"};
+    "alcohol_samogon_mood_to",
+    "alcohol_rise_wedding_wake",
+    "alcohol_rise_wedding_wake_reach_m",
+    "alcohol_rise_strada_end",
+    "alcohol_rise_strada_end_month",
+    "alcohol_rise_shock",
+    "alcohol_rise_shock_months"};
 
 /// Past this the inheritance factor is a typo: more than the father's own
 /// excess, ten times over.
 constexpr float kInheritFactorMax = 10.0F;
+
+/// The map's diagonal, a little over: a wedding's reach beyond it is a typo.
+constexpr float kFarthestRiseReachM = 20000.0F;
 
 /// The width of a band (crime design §6: 0-20, 20-40, 40-60, 60-80, 80-100).
 constexpr float kBandWidth = 20.0F;
@@ -169,6 +178,45 @@ std::vector<std::uint32_t> TurnYardSuppliers(const NightTradeConfig& night, Worl
   return supplier;
 }
 
+/// THE RAISERS NO WATCH STOPS (#1262; crime §6 «Традиция, компания и
+/// потрясения»), per family row, for the month that closed (`closed_tag`,
+/// SupplyMonthTag): the wedding's or wake's rise where the family, or a yard
+/// within `rise_wedding_wake_reach_m` of its own, had one in that month; and
+/// the shock's rise in the `rise_shock_months` turns from its month on. The
+/// strada's end is the turn's, not a family's, and is added by the caller.
+std::vector<float> TurnFamilyRises(const AlcoholismConfig& config,
+                                   std::uint32_t closed_tag,
+                                   const WorldState& current) {
+  const std::size_t count = current.families.rows.size();
+  std::vector<Vec2> yard(count);
+  std::vector<std::uint32_t> occasions;
+  for (std::uint32_t family = 0; family < count; ++family) {
+    const FamilyRow& row = current.families.rows[family];
+    const std::uint32_t house = FindRow(current.units, row.house);
+    yard[family] = house != kNoRow ? current.units.rows[house].position : row.lost_house_position;
+    if (row.drink_occasion_month != 0 && row.drink_occasion_month == closed_tag) {
+      occasions.push_back(family);
+    }
+  }
+  std::vector<float> rise(count, 0.0F);
+  for (std::uint32_t family = 0; family < count; ++family) {
+    // ONCE, however many weddings and wakes are near: the row names the
+    // month's table, not a count of glasses.
+    const bool near_occasion = std::ranges::any_of(occasions, [&](std::uint32_t other) {
+      return other == family ||
+             std::hypot(yard[other].x - yard[family].x, yard[other].y - yard[family].y) <=
+                 config.rise_wedding_wake_reach_m;
+    });
+    rise[family] += near_occasion ? config.rise_wedding_wake : 0.0F;
+    const std::uint32_t shock = current.families.rows[family].shock_month;
+    if (shock != 0 && closed_tag >= shock &&
+        static_cast<float>(closed_tag - shock) < config.rise_shock_months) {
+      rise[family] += config.rise_shock;
+    }
+  }
+  return rise;
+}
+
 /// THE SETTLEMENT'S ALCOHOLISM (crime §6, «Алкоголизм села»; register 207):
 /// the mean of its men after the month's turn, and a crossing of the 20 or
 /// the 40 line either way is news. Kept, so the next turn knows which side it
@@ -285,8 +333,28 @@ bool ParseAlcoholismConfig(const ITableSet& tables, AlcoholismConfig& config, st
        .range = {.low = 0.0F, .high = 20.0F}},
       {.key = kAlcoholismWorldParamKeys[15], .value = &config.samogon_mood_above, .range = points},
       {.key = kAlcoholismWorldParamKeys[16], .value = &config.samogon_mood_to, .range = points},
+      {.key = kAlcoholismWorldParamKeys[17], .value = &config.rise_wedding_wake, .range = points},
+      {.key = kAlcoholismWorldParamKeys[18],
+       .value = &config.rise_wedding_wake_reach_m,
+       .range = {.low = 0.0F, .high = kFarthestRiseReachM}},
+      {.key = kAlcoholismWorldParamKeys[19], .value = &config.rise_strada_end, .range = points},
+      {.key = kAlcoholismWorldParamKeys[20],
+       .value = &config.rise_strada_end_month,
+       .range = {.low = 1.0F, .high = static_cast<float>(kMonthsPerYear)}},
+      {.key = kAlcoholismWorldParamKeys[21], .value = &config.rise_shock, .range = points},
+      {.key = kAlcoholismWorldParamKeys[22],
+       .value = &config.rise_shock_months,
+       .range = {.low = 0.0F, .high = static_cast<float>(kMonthsPerYear)}},
   }};
-  return ReadKnobs(*world, "world_params", knobs, error);
+  if (!ReadKnobs(*world, "world_params", knobs, error)) {
+    return false;
+  }
+  if (config.rise_strada_end_month != std::floor(config.rise_strada_end_month) ||
+      config.rise_shock_months != std::floor(config.rise_shock_months)) {
+    error = "world_params: alcohol_rise_strada_end_month or alcohol_rise_shock_months is not whole";
+    return false;
+  }
+  return true;
 }
 
 int AlcoholismBand(float alcoholism) {
@@ -308,6 +376,11 @@ void TurnAlcoholismMonth(const AlcoholismConfig& config,
   const std::uint32_t month_index = ((day / kDaysPerMonth) + kMonthsPerYear - 1U) % kMonthsPerYear;
   const bool winter = IsWinterMonth(static_cast<Month>(month_index));
   const std::vector<std::uint32_t> supplier = TurnYardSuppliers(night, current);
+  const std::vector<float> family_rise = TurnFamilyRises(config, SupplyMonthTag(day - 1U), current);
+  // THE STRADA'S END (#1262): the turn that closes its month, every man.
+  const float strada_rise = static_cast<float>(month_index + 1U) == config.rise_strada_end_month
+                                ? config.rise_strada_end
+                                : 0.0F;
   const bool field_month = SportMonthCounted(sport, current);
   // WHAT IS ASKED OF EACH DISTILLER THIS MONTH, by the men of the yards he
   // supplies, against the litres he holds: short of it they share by the
@@ -378,7 +451,9 @@ void TurnAlcoholismMonth(const AlcoholismConfig& config,
                                        winter && !hut_reached,
                                        field_loss,
                                        sportiness_loss);
-      person.alcoholism = std::clamp(before + change, kMetricMin, config.epoch1_cap);
+      // ON TOP OF THE MONTH'S RULES (#1262): no distiller, no theft needed.
+      const float raised = strada_rise + (family != kNoRow ? family_rise[family] : 0.0F);
+      person.alcoholism = std::clamp(before + change + raised, kMetricMin, config.epoch1_cap);
       const int band = AlcoholismBand(person.alcoholism);
       if (band != AlcoholismBand(before)) {
         SimEvent& crossed =

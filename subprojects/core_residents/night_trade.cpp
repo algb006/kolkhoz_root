@@ -314,9 +314,7 @@ bool YardOf(const WorldState& current, const ResidentRow& person, Vec2& yard) {
 }
 
 std::uint32_t SupplyMonthTag(SimDay day) {
-  const Date date = DateFromDay(day);
-  return (static_cast<std::uint32_t>(date.year) * kMonthsPerYear) +
-         static_cast<std::uint32_t>(date.month) + 1U;
+  return MonthTagOfDay(day);
 }
 
 double SamogonAskedMl(const NightTradeConfig& config, float alcoholism) {

@@ -62,6 +62,16 @@ Metric BlendInclination(RngState& rng,
   return parents_mid * parent_pull + DrawInRange(rng, 0.0F, 100.0F) * (1.0F - parent_pull);
 }
 
+/// A WEDDING OR A WAKE in `family` this month (#1262; crime §6 «Традиция»):
+/// the month's turn gives its men, and the men of the yards near it, the
+/// tradition's rise (alcoholism.cpp TurnFamilyRises). No family row, no mark.
+void MarkWeddingOrWake(WorldState& current, FamilyId family) {
+  const std::uint32_t row = FindRow(current.families, family);
+  if (row != kNoRow) {
+    current.families.rows[row].drink_occasion_month = MonthTagOfDay(current.calendar.day);
+  }
+}
+
 }  // namespace
 
 // DropFamilyIfEmpty and RemoveResident are demography.h's: the housing ladder
@@ -275,6 +285,16 @@ void RunDeaths(const LifeConfig& config, WorldState& current, SimDay day) {
       died.resident = id;
       if (row != kNoRow) {
         died.family = current.residents.rows[row].family;
+      }
+    }
+    // THE WAKE AND THE SHOCK (#1262; crime §6, boss 26 October 2026: a death
+    // is both): the family's drinking occasion and its shock, this month.
+    if (row != kNoRow) {
+      const FamilyId family = current.residents.rows[row].family;
+      MarkWeddingOrWake(current, family);
+      const std::uint32_t family_row = FindRow(current.families, family);
+      if (family_row != kNoRow) {
+        current.families.rows[family_row].shock_month = MonthTagOfDay(current.calendar.day);
       }
     }
     // THE GRAVE, in the oldest cemetery with room (#1199; burial.h). After the
@@ -793,6 +813,7 @@ void Wed(WorldState& current,
   wedding.resident = bride_id;
   wedding.family = home;
   current.ledger.current.weddings += 1;
+  MarkWeddingOrWake(current, home);
   // THE YOUNGER ONES COME ALONG (0.37.156): the yard the elder brother or
   // sister leaves goes into the new one whole — its people, then its larder,
   // its earned trudodni and its herds by the named heir.
@@ -836,6 +857,7 @@ void WedIntoYard(WorldState& current,
   wedding.resident = bride_id;
   wedding.family = home;
   current.ledger.current.weddings += 1;
+  MarkWeddingOrWake(current, home);
   DropFamilyIfEmpty(current, mover_was);
 }
 
