@@ -177,11 +177,21 @@ class FixturePolicy {
   ///        set NextOrder waits on before it marks the next («nothing new
   ///        until it stands»). A site that starves holds the farm's whole
   ///        queue, the first pen included (BarrackPolicy asks this).
+  /// @brief Whether `type` is one of the farm's own site kinds: the ones the
+  ///        queue starts and waits on. ONE LIST for FarmSiteOpen and the
+  ///        starting loop of NextOrder: c8656936 marked sugar's food_store and
+  ///        neither list knew it, so the mark was never started (host,
+  ///        host-core-1262-food-store-unstarted [1]: a mark at y5 on 9 seeds
+  ///        of 9).
+  bool IsFarmSiteType(core::UnitTypeId type) const {
+    return type.value == granary_.value || type.value == cattle_.value ||
+           type.value == granary_yard_.value || type.value == food_store_.value ||
+           type.value == clamp_.value || type.value == sugar_store_.value;
+  }
+
   bool FarmSiteOpen(const core::WorldState& world) const {
     for (const core::UnitRow& unit : world.units.rows) {
-      const bool ours = unit.type.value == granary_.value || unit.type.value == cattle_.value ||
-                        unit.type.value == granary_yard_.value ||
-                        unit.type.value == food_store_.value || unit.type.value == clamp_.value;
+      const bool ours = IsFarmSiteType(unit.type);
       if (ours && unit.level == 0 && unit.dead == 0) {
         return true;
       }
@@ -769,9 +779,7 @@ class FixturePolicy {
     // - the first pen's site aside (above).
     for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
       const core::UnitRow& unit = world.units.rows[row];
-      const bool ours = unit.type.value == granary_.value || unit.type.value == cattle_.value ||
-                        unit.type.value == granary_yard_.value ||
-                        unit.type.value == food_store_.value || unit.type.value == clamp_.value;
+      const bool ours = IsFarmSiteType(unit.type);
       if (!ours || unit.level != 0 || (first_pen && unit.type.value == cattle_.value)) {
         continue;
       }
