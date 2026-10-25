@@ -138,15 +138,26 @@ inline bool StoresGoods(const UnitRow& unit, const ProductionConfig& config) {
   return unit.level > 0 && StorageCapacityGrams(unit, config) != 0;
 }
 
+/// @brief Whether `resource` is a food (kcal per gram above nought): what
+/// kEmptyStore's order is about, and nothing else (start §5).
+inline bool IsFoodResource(const ProductionConfig& config, ResourceId resource) {
+  return resource.value < config.food_kcal_per_gram.size() &&
+         config.food_kcal_per_gram[resource.value] > 0.0F;
+}
+
 /// @brief Whether an outline store is the home of `resource`: the row of
 /// resource_stores.csv that names its type (boss, parcel 268), empty or not.
 /// A table set without that table keeps the rule the core had before it —
 /// where the resource already lies (STUB for hand-built worlds).
 inline bool IsHomeOf(const UnitRow& unit, const ProductionConfig& config, ResourceId resource) {
-  // A STORE BEING EMPTIED IS NOBODY'S HOME (kEmptyStore; start §5): every
-  // delivery asks this predicate or NumberedStoreTakes, and neither says yes
-  // for it. Taking from it is untouched — IsTakenFrom does not ask here.
-  if (unit.emptying != 0) {
+  // A STORE BEING EMPTIED IS NOBODY'S HOME FOR FOOD (kEmptyStore; start §5,
+  // «церковь перестаёт принимать еду… приказ про еду»): every delivery asks
+  // this predicate or NumberedStoreTakes, and neither says yes for a food.
+  // Until #1254 it said no for EVERY resource, so a church being emptied took
+  // no glass either - and glass has no other home before a build yard - and
+  // the bot's upgrades stood short of glass in 8 villages of 16. Taking from
+  // it is untouched — IsTakenFrom does not ask here.
+  if (unit.emptying != 0 && IsFoodResource(config, resource)) {
     return false;
   }
   if (config.resource_stores_read == 0) {
@@ -175,7 +186,7 @@ inline bool IsHomeOf(const UnitRow& unit, const ProductionConfig& config, Resour
 inline bool NumberedStoreTakes(const UnitRow& unit,
                                const ProductionConfig& config,
                                ResourceId resource) {
-  return unit.emptying == 0 &&
+  return (unit.emptying == 0 || !IsFoodResource(config, resource)) &&
          (config.resource_stores_read == 0 || IsHomeOf(unit, config, resource));
 }
 

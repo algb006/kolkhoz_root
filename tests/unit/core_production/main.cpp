@@ -13115,17 +13115,18 @@ int CheckTheChurchStoreIsEmptied() {
   constexpr core::Grams kTonne = 1'000'000;
   const core::ResourceId rye{0};
   const core::ResourceId potato{1};
+  const core::ResourceId glass{2};  // no food: the order is not about it (#1254)
   core::ProductionConfig config;
   config.unit_types.resize(2);  // 0 the church store, 1 a granary
   SetStorageKg(config.unit_types[0], 60'000.0F);
   SetStorageKg(config.unit_types[1], 4'000.0F);  // 4 t: room runs out
   config.resource_stores_read = 1;
-  config.unit_types[0].home_of = {rye, potato};
+  config.unit_types[0].home_of = {rye, potato, glass};  // glass's only home
   config.unit_types[1].home_of = {rye, potato};
   config.church_store_type = core::UnitTypeId{0};
-  config.food_kcal_per_gram = {3.3F, 0.77F};
-  config.spoil_days = {600.0F, 120.0F};  // the potato spoils first
-  config.theft_rank = {2, 1};
+  config.food_kcal_per_gram = {3.3F, 0.77F, 0.0F};
+  config.spoil_days = {600.0F, 120.0F, 0.0F};  // the potato spoils first
+  config.theft_rank = {2, 1, 0};
   config.standard_day_hours = 10.0F;
   core::WorldState world;
   core::UnitRow church;
@@ -13163,7 +13164,13 @@ int CheckTheChurchStoreIsEmptied() {
   core::DeliverToStores(world, config, rye, kTonne);
   failures += Expect(core::AmountOf(world.units.rows[0].stock, rye) == 10 * kTonne &&
                          core::AmountOf(world.units.rows[1].stock, rye) == kTonne,
-                     "empty store: the church accepts no delivery");
+                     "empty store: the church accepts no delivery of food");
+  // BUT IT STAYS GLASS'S HOME (#1254; start §5, «приказ про еду»): until
+  // then an emptying church refused every resource, and glass, with no other
+  // home, had nowhere to land - the bot's upgrades stood short of it.
+  core::DeliverToStores(world, config, glass, 50'000);
+  failures += Expect(core::AmountOf(world.units.rows[0].stock, glass) == 50'000,
+                     "empty store: an emptying church still takes what is not food");
   // A whole day's carrying done: what has room goes, the potato first.
   // The granary has 3 t left for both.
   world.units.rows[0].haul_days_written = 4.0F;
@@ -13172,6 +13179,8 @@ int CheckTheChurchStoreIsEmptied() {
   failures += Expect(core::AmountOf(world.units.rows[1].stock, potato) == 3 * kTonne &&
                          core::AmountOf(world.units.rows[0].stock, rye) == 10 * kTonne,
                      "empty store: the spoiling potato is carried before the rye");
+  failures += Expect(core::AmountOf(world.units.rows[0].stock, glass) == 50'000,
+                     "empty store: the perevalka carries food only, the glass stays");
   failures += Expect(world.units.rows[0].haul_days_remaining == 0.0F,
                      "empty store: with no room left, no carrying is asked for");
   // Room again, and a pause: nothing is asked for, the order stands — and

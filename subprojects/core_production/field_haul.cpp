@@ -672,7 +672,9 @@ namespace {
 std::vector<std::uint32_t> EmptyingOrder(const ProductionConfig& config, const UnitRow& unit) {
   std::vector<std::uint32_t> order;
   for (std::uint32_t index = 0; index < unit.stock.size(); ++index) {
-    if (unit.stock[index] > 0) {
+    // FOOD ONLY (start §5, «перевозит лежащее… приказ про еду»): until #1254
+    // the boards and the glass went too, out of the one home glass has.
+    if (unit.stock[index] > 0 && IsFoodResource(config, DefIdFromIndex<ResourceIdTag>(index))) {
       order.push_back(index);
     }
   }
