@@ -15,9 +15,12 @@
 ///
 /// THE RULE: once a food yard stands (level ≥ 1, the guarded store the
 /// design names), each standing church store or clamp that holds raw
-/// material and is not already emptying gets kEmptyStore (enable 1). The
-/// door decides the rest: it refuses with no store that accepts food, and
-/// carries by its own order (start §5: the shortest shelf life first, then
+/// material and is not already emptying gets kEmptyStore (enable 1) - once
+/// every food lying in it has another standing home (resource_stores.csv
+/// `storage`: the grain the food yard's granary, sugar its food store, potato
+/// a clamp or the vegetable store), as a good player waits for the granary
+/// before he shuts the church to the harvest. The door decides the rest: it refuses with no store
+/// that accepts food, and carries by its own order (start §5: the shortest shelf life first, then
 /// what is stolen more readily) on the carts and hands of every haul. An
 /// emptying store accepts no delivery, so the district's sugar lots (#1240)
 /// land in the stores that accept it. A refused order is asked again after
@@ -57,11 +60,38 @@ class StoreEmptyingPolicy {
       clamp_ = types->FindRowByKey("clamp");
       food_yard_ = types->FindRowByKey("food_yard");
     }
-    if (const core::ITable* const resources = tables.FindTable("resources")) {
+    const core::ITable* const resources = tables.FindTable("resources");
+    if (resources != nullptr) {
       for (const std::string_view key : kRawMaterial) {
         const std::uint32_t row = resources->FindRowByKey(key);
         if (row != core::kNoTableRow) {
           raw_.push_back(core::ResourceId{static_cast<std::uint16_t>(row)});
+        }
+      }
+      const std::uint32_t kcal = resources->FindColumn("kcal_per_gram");
+      food_.assign(resources->RowCount(), 0);
+      for (std::uint32_t row = 0; row < resources->RowCount() && kcal != core::kNoTableColumn;
+           ++row) {
+        food_[row] = resources->CellReal(row, kcal).value_or(0.0F) > 0.0F ? 1 : 0;
+      }
+    }
+    // THE FOOD'S OTHER HOMES (resource_stores.csv `storage`, the unit type
+    // that holds it): rye, oat, wheat and barley in the food yard's GRANARY,
+    // sugar in its food store, potato in a clamp or the vegetable store.
+    const core::ITable* const types = tables.FindTable("unit_types");
+    const core::ITable* const homes = tables.FindTable("resource_stores");
+    if (resources != nullptr && types != nullptr && homes != nullptr) {
+      homes_.resize(resources->RowCount());
+      const std::uint32_t resource_col = homes->FindColumn("resource");
+      const std::uint32_t storage_col = homes->FindColumn("storage");
+      for (std::uint32_t row = 0; row < homes->RowCount(); ++row) {
+        if (resource_col == core::kNoTableColumn || storage_col == core::kNoTableColumn) {
+          break;
+        }
+        const std::uint32_t resource = resources->FindRowByKey(homes->CellText(row, resource_col));
+        const std::uint32_t type = types->FindRowByKey(homes->CellText(row, storage_col));
+        if (resource < homes_.size() && type != core::kNoTableRow && type != church_) {
+          homes_[resource].push_back(type);
         }
       }
     }
@@ -88,6 +118,16 @@ class StoreEmptyingPolicy {
       const core::UnitRow& unit = world.units.rows[row];
       const bool eligible = unit.type.value == church_ || unit.type.value == clamp_;
       if (!eligible || unit.level == 0 || unit.emptying != 0 || !HoldsRaw(unit)) {
+        continue;
+      }
+      // NOT BEFORE EVERY FOOD IN IT HAS ANOTHER HOME (#1254's trace, seed
+      // 1940): the design lets the order go early at its price («урожай,
+      // которому некуда лечь, стоит на току»), and a bot that gave it with a
+      // food yard but no granary left the rye and oat harvest homeless - the
+      // seed went to nought, the seed loan was refused kNowhereToStore, and
+      // with no grain there was no straw to build with for 28 years.
+      if (!EveryFoodHasAnotherHome(world, row)) {
+        ++held_no_home_year_;
         continue;
       }
       const std::uint32_t id = world.units.row_ids[row].value;
@@ -134,6 +174,35 @@ class StoreEmptyingPolicy {
     return false;
   }
 
+  /// Whether each food lying in the store at `row` has a standing store of
+  /// one of its home types elsewhere, not being emptied itself.
+  bool EveryFoodHasAnotherHome(const core::WorldState& world, std::uint32_t row) const {
+    const core::UnitRow& store = world.units.rows[row];
+    for (std::uint32_t resource = 0; resource < store.stock.size(); ++resource) {
+      if (store.stock[resource] <= 0 || resource >= food_.size() || food_[resource] == 0) {
+        continue;
+      }
+      if (resource >= homes_.size()) {
+        return false;  // no home named anywhere: nowhere to carry it
+      }
+      bool housed = false;
+      for (std::uint32_t other = 0; other < world.units.rows.size() && !housed; ++other) {
+        const core::UnitRow& unit = world.units.rows[other];
+        if (other == row || unit.level == 0 || unit.emptying != 0 ||
+            unit.construction.phase != core::ConstructionPhase::kNone) {
+          continue;
+        }
+        for (const std::uint32_t type : homes_[resource]) {
+          housed = housed || unit.type.value == type;
+        }
+      }
+      if (!housed) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   bool HoldsRaw(const core::UnitRow& unit) const {
     for (const core::ResourceId resource : raw_) {
       if (core::UnreservedOf(unit, resource) > 0) {
@@ -163,14 +232,15 @@ class StoreEmptyingPolicy {
     for (const core::UnitRow& unit : world.units.rows) {
       emptying += unit.emptying != 0 ? 1U : 0U;
     }
-    std::printf("ES,y=%u,asked=%u,took=%u,refused=%u,emptying=%u%s\n",
+    std::printf("ES,y=%u,asked=%u,took=%u,refused=%u,held_no_home_days=%u,emptying=%u%s\n",
                 today / core::kDaysPerYear,
                 asked_year_,
                 took_year_,
                 refused_year_,
+                held_no_home_year_,
                 emptying,
                 yard_seen_year_ ? "" : ",NOT MEASURED: no food yard stood");
-    asked_year_ = took_year_ = refused_year_ = 0;
+    asked_year_ = took_year_ = refused_year_ = held_no_home_year_ = 0;
     yard_seen_year_ = false;
   }
 
@@ -186,6 +256,9 @@ class StoreEmptyingPolicy {
   std::uint32_t asked_year_ = 0;
   std::uint32_t took_year_ = 0;
   std::uint32_t refused_year_ = 0;
+  std::uint32_t held_no_home_year_ = 0;
+  std::vector<std::uint8_t> food_;
+  std::vector<std::vector<std::uint32_t>> homes_;
 };
 
 }  // namespace run
