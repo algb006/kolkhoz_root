@@ -24,6 +24,7 @@
 #ifndef TESTS_RUN_COMMON_FIXTURE_POLICY_H_
 #define TESTS_RUN_COMMON_FIXTURE_POLICY_H_
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <iostream>
@@ -84,6 +85,13 @@ class FixturePolicy {
                      ParentTypeOf(tables, roof_.store_key).value == granary_yard_.value;
     clamp_ = TypeByKey(tables, "clamp");
     church_ = TypeByKey(tables, "church_store");
+    sugar_store_ = TypeByKey(tables, "food_store");
+    if (const core::ITable* const resources = tables.FindTable("resources")) {
+      const std::uint32_t row = resources->FindRowByKey("sugar");
+      if (row != core::kNoTableRow) {
+        sugar_ = core::ResourceId{static_cast<std::uint16_t>(row)};
+      }
+    }
     ReadGranaryKeeps(tables);
     std::string error;
     core::LoadDefinitions(tables, core::StubTables::kAllowed, definitions_, error);
@@ -830,6 +838,20 @@ class FixturePolicy {
         RoofedHarvestGrams(world) > 0) {
       return MarkClamp(world, order);
     }
+    // SUGAR'S OWN STORE, THE FOOD YARD'S food_store MODULE, as soon as the
+    // village holds sugar (boss, core-boss-1250 [46]; the human's 2 October
+    // word, the bots build optimally). Until 0.37.334 no run ever built it:
+    // the bot's sugar (#1240) came by the district's cart into the church,
+    // its only store (a food yard is a plot and stores nothing), so the
+    // church's emptying could not shut it out and its unwatched sugar opened
+    // every leak month there was - 131 lots, 40 t over y3-y10 on 18 villages,
+    // the door print cs2.
+    if (sugar_store_.value != core::kInvalidDefIdValue && Rows(world, sugar_store_) == 0 &&
+        granary_yard_.value != core::kInvalidDefIdValue && VillageHoldsSugar(world)) {
+      order.kind = core::OrderKind::kBuildUnit;
+      order.unit_type = sugar_store_;
+      return MarkOnYard(world, order);
+    }
     // THE LONG STORE (crop_roof.h: the vegetable store since 0.37.217), until
     // its room and the church's hold this year's harvest: the store standing
     // is raised to its next level before another is staked (resources design
@@ -1049,6 +1071,26 @@ class FixturePolicy {
   core::UnitTypeId food_store_;
 
   core::UnitTypeId church_;
+
+  /// The food yard's `food_store` module: sugar's store by resource_stores.csv
+  /// (sugar -> food_yard / food_store), and nobody else's since 0.37.217.
+  core::UnitTypeId sugar_store_;
+  core::ResourceId sugar_;
+
+  /// Whether some sugar lies in a store or waits on the district's cart.
+  bool VillageHoldsSugar(const core::WorldState& world) const {
+    if (sugar_.value == core::kInvalidDefIdValue) {
+      return false;
+    }
+    const auto holds = [this](const core::ResourceAmounts& amounts) {
+      return sugar_.value < amounts.size() && amounts[sugar_.value] > 0;
+    };
+    return std::ranges::any_of(world.units.rows,
+                               [&holds](const core::UnitRow& unit) { return holds(unit.stock); }) ||
+           std::ranges::any_of(
+               world.limit_deliveries.rows,
+               [&holds](const core::LimitDeliveryRow& lot) { return holds(lot.goods); });
+  }
 
   /// The clamp: the field store of potatoes and vegetables, an outline.
   core::UnitTypeId clamp_;
