@@ -305,7 +305,8 @@ class FixturePolicy {
                  "run has nobody to decide on them (boss, 2026-09-03); and a CLAMP by the "
                  "fields before the first reaping, with the LONG STORE of the clamp's crops - "
                  "the vegetable store, raised to its second level before another is staked - "
-                 "under this year's potatoes and vegetables (boss, parcel 419; #756)\n";
+                 "under this year's potatoes and vegetables (boss, parcel 419; #756), the FIRST "
+                 "one staked at once, before the church is emptied (econ's (A), #1254)\n";
   }
 
   /// @brief What the fixture actually did, for the run to print at the end.
@@ -838,9 +839,18 @@ class FixturePolicy {
     // and WAITED FOR when it is not: a second plot would wait for the same
     // boards.
     const std::uint32_t raise = StoreToRaise(world);
+    // THE FIRST ONE IN YEAR 1, before the church is emptied (econ's (A); boss,
+    // core-boss-1250 [24]): the church counted as the potatoes' room, so the
+    // long store rose only when a harvest outgrew it, and the church - the
+    // potato's only other home - could never be emptied: its potato held the
+    // night leak open and every distiller taken was replaced (#1254's pair,
+    // leak-closed months 0). The first is staked at the elder's point as soon
+    // as the clamp stands; the next by the room, as before.
+    const bool first_long_store = Rows(world, food_store_) == 0;
     const bool wants_food_store =
         food_store_.value != core::kInvalidDefIdValue &&
-        RoofedHarvestGrams(world) > RoofedRoomGrams(world) && !StoreBeingRaised(world) &&
+        (first_long_store || RoofedHarvestGrams(world) > RoofedRoomGrams(world)) &&
+        !StoreBeingRaised(world) &&
         (raise != core::kNoRow ? store_raise_in_hand_ : Rows(world, food_store_) < kMaxOfEach);
     if (wants_food_store && !(last_ordered_food_store_ && (wants_granary || wants_cattle))) {
       last_ordered_food_store_ = true;
