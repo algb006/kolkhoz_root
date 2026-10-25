@@ -576,6 +576,50 @@ namespace {
 
 constexpr double kMillilitresPerLitre = 1000.0;
 
+/// A night's still load by the recipe (crime §7, «Механика»): litres of the
+/// grain mash, then of the potato mash with the sugar the grain left, in
+/// whole millilitres, within `weight_left` grams of carrying. Sugar is in
+/// both, so with none open there is no load at all.
+struct StillLoad {
+  double grain_litres = 0.0;
+  double potato_litres = 0.0;
+  double sugar_g = 0.0;       ///< Grams of sugar a litre.
+  double weight_left = 0.0;   ///< Carrying left after the load, grams.
+  double heavier_ml_g = 0.0;  ///< Grams a millilitre of the heavier mash.
+};
+
+StillLoad LoadByRecipe(const NightTradeConfig& config,
+                       double sugar_open,
+                       double grain_open,
+                       double potato_open) {
+  const auto per_litre = [](float kilograms) {
+    return static_cast<double>(GramsFromKilograms(kilograms));
+  };
+  StillLoad load;
+  load.sugar_g = per_litre(config.sugar_kg_per_litre);
+  const double grain_g = per_litre(config.grain_kg_per_litre);
+  const double potato_g = per_litre(config.potato_kg_per_litre);
+  load.weight_left = static_cast<double>(GramsFromKilograms(config.distiller_raw_kg));
+  load.heavier_ml_g = (load.sugar_g + std::max(grain_g, potato_g)) / kMillilitresPerLitre;
+  double sugar_left = sugar_open;
+  const auto litres_of = [&](double base_open, double base_g) {
+    if (!(load.sugar_g > 0.0) || !(base_g > 0.0)) {
+      return 0.0;
+    }
+    const double litres = std::min({sugar_left / load.sugar_g,
+                                    base_open / base_g,
+                                    load.weight_left / (load.sugar_g + base_g)});
+    const double whole =
+        std::floor(std::max(litres, 0.0) * kMillilitresPerLitre) / kMillilitresPerLitre;
+    sugar_left -= whole * load.sugar_g;
+    load.weight_left -= whole * (load.sugar_g + base_g);
+    return whole;
+  };
+  load.grain_litres = litres_of(grain_open, grain_g);
+  load.potato_litres = litres_of(potato_open, potato_g);
+  return load;
+}
+
 /// THE SEALED FUNDS ARE NOT HIS (boss seq 18, econ plan-700 §3). Until
 /// 0.34.37 he took from under a construction's reserve and no other: the
 /// plan's rye went into the still on moonlit nights — 1.1-1.2 t a year
@@ -608,6 +652,28 @@ Grams OpenToHim(const NightTradeConfig& config,
     }
   }
   return std::min(open, AboveFunds(sealed, current, raw));
+}
+
+/// The load a distiller could carry tonight from what is open to him: the
+/// sugar, the grain of every kind, the potato (OpenToHim), by the recipe.
+StillLoad OpenLoad(const NightTradeConfig& config,
+                   std::span<const Grams> sealed,
+                   const WorldState& current) {
+  const bool sugar_known =
+      config.sugar.value != kInvalidDefIdValue && config.sugar_kg_per_litre > 0.0F;
+  const double sugar_open =
+      sugar_known ? static_cast<double>(OpenToHim(config, sealed, current, config.sugar)) : 0.0;
+  double grain_open = 0.0;
+  for (const ResourceId raw : config.raw_material) {
+    if (raw.value != config.sugar.value && raw.value != config.potato.value) {
+      grain_open += static_cast<double>(OpenToHim(config, sealed, current, raw));
+    }
+  }
+  const double potato_open =
+      config.potato.value != kInvalidDefIdValue
+          ? static_cast<double>(OpenToHim(config, sealed, current, config.potato))
+          : 0.0;
+  return LoadByRecipe(config, sugar_open, grain_open, potato_open);
 }
 
 /// Carries up to `wanted` of `raw` off those stores, in row order, and books
@@ -672,42 +738,12 @@ Grams StealRawMaterial(const NightTradeConfig& config,
               DistillerDemandMl(config, current, distiller_row)) {
     return 0;
   }
-  const auto per_litre = [](float kilograms) {
-    return static_cast<double>(GramsFromKilograms(kilograms));
-  };
-  const double sugar_g = per_litre(config.sugar_kg_per_litre);
-  const double grain_g = per_litre(config.grain_kg_per_litre);
-  const double potato_g = per_litre(config.potato_kg_per_litre);
-  const bool is_valid = config.sugar.value != kInvalidDefIdValue && sugar_g > 0.0;
-  double weight_left = static_cast<double>(GramsFromKilograms(config.distiller_raw_kg));
-  double sugar_left =
-      is_valid ? static_cast<double>(OpenToHim(config, sealed, current, config.sugar)) : 0.0;
-  double grain_open = 0.0;
-  for (const ResourceId raw : config.raw_material) {
-    if (raw.value != config.sugar.value && raw.value != config.potato.value) {
-      grain_open += static_cast<double>(OpenToHim(config, sealed, current, raw));
-    }
-  }
-  const double potato_open =
-      config.potato.value != kInvalidDefIdValue
-          ? static_cast<double>(OpenToHim(config, sealed, current, config.potato))
-          : 0.0;
-  // Grain first, then potato with the sugar the grain left: whole
-  // millilitres, so the grams below are the recipe's and no more.
-  const auto litres_of = [&](double base_open, double base_g) {
-    if (!(sugar_g > 0.0) || !(base_g > 0.0)) {
-      return 0.0;
-    }
-    const double litres =
-        std::min({sugar_left / sugar_g, base_open / base_g, weight_left / (sugar_g + base_g)});
-    const double whole =
-        std::floor(std::max(litres, 0.0) * kMillilitresPerLitre) / kMillilitresPerLitre;
-    sugar_left -= whole * sugar_g;
-    weight_left -= whole * (sugar_g + base_g);
-    return whole;
-  };
-  const double grain_litres = litres_of(grain_open, grain_g);
-  const double potato_litres = litres_of(potato_open, potato_g);
+  const StillLoad load = OpenLoad(config, sealed, current);
+  const double sugar_g = load.sugar_g;
+  const double grain_g = static_cast<double>(GramsFromKilograms(config.grain_kg_per_litre));
+  const double potato_g = static_cast<double>(GramsFromKilograms(config.potato_kg_per_litre));
+  const double grain_litres = load.grain_litres;
+  const double potato_litres = load.potato_litres;
   const double litres = grain_litres + potato_litres;
   Grams taken = 0;
   UnitId first_sugar_store;
@@ -845,7 +881,7 @@ void RunNightOutings(const NightTradeConfig& config, const FoodConfig& food, Wor
   // night of it found a store of grain or potato open. Asked at the hour out
   // of every night, moonlit or not — the watch stands or does not every
   // night, not only on the distillers' one.
-  if (hour == config.hour_out && VillageLeakOpen(config, current)) {
+  if (hour == config.hour_out && VillageLeakOpen(config, SealedFunds(food, current), current)) {
     current.night_theft.leak_open_this_month = 1;
   }
   // THE EVENING SALE (register 206: «Продажа — вечером»): every supplied
@@ -898,16 +934,19 @@ bool ApplyStartNightTrades(const ITableSet& tables,
   return true;
 }
 
-bool VillageLeakOpen(const NightTradeConfig& config, const WorldState& current) {
-  for (std::uint32_t unit_row = 0; unit_row < current.units.rows.size(); ++unit_row) {
-    const UnitRow& unit = current.units.rows[unit_row];
-    const bool holds_raw = std::ranges::any_of(
-        config.raw_material, [&unit](ResourceId raw) { return UnreservedOf(unit, raw) > 0; });
-    if (holds_raw && !StoreLeakClosed(config, current, unit_row)) {
-      return true;
-    }
-  }
-  return false;
+bool VillageLeakOpen(const NightTradeConfig& config,
+                     std::span<const Grams> sealed,
+                     const WorldState& current) {
+  // ONE STILL-BATCH OR NONE (register 206; boss 26 October 2026, crime §6
+  // «Выход самогонщика», core-boss-1250 [39]): the leak is open only where a
+  // whole night's load (`distiller_raw_kg`) lies unguarded by the still's own
+  // recipe, sugar included. Until then any gram of grain or potato in an
+  // unwatched store opened it: the church's 0.1-0.3 t of homeless food,
+  // without a gram of sugar, held it open for good, and every distiller taken
+  // was replaced with nothing to brew. The same load as the theft's
+  // (OpenLoad), so the rule and the night cannot disagree.
+  const StillLoad load = OpenLoad(config, sealed, current);
+  return load.grain_litres + load.potato_litres > 0.0 && load.weight_left < load.heavier_ml_g;
 }
 
 void TurnNightTheftMonth(const NightTradeConfig& config, float life_speedup, WorldState& current) {

@@ -72,8 +72,9 @@ struct NightTheftTally {
   // FamilyRow::dry_months. A village-wide count beside it would be the same
   // rule with two answers.
 
-  /// 0/1: on some day of the month counted by `month_index` a store holding
-  /// grain or potato stood with its leak OPEN (StoreLeakClosed false). The
+  /// 0/1: on some night of the month counted by `month_index` a whole still
+  /// load lay unguarded by the recipe, sugar included (VillageLeakOpen; until
+  /// 0.37.334 any grain or potato in an unwatched store set it). The
   /// month's turn reads it — «утечка села закрыта» only if it stayed 0 all
   /// month — and clears it. Save 60.
   std::uint8_t leak_open_this_month = 0;

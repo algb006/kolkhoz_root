@@ -3646,6 +3646,34 @@ int CheckRawMaterialLeak() {
   failures +=
       Expect(core::StoreLeakClosed(config, world, 1) && !core::StoreLeakClosed(config, world, 0),
              "leak: a sober watchman closes his store, an unwatched one is open");
+  // ONE STILL-BATCH OR NONE (register 206; boss 26 October 2026): the open
+  // store's 30 kg of grain and 20 kg of sugar make 20 litres, 40 kg - short
+  // of the 50 kg night's load, so the VILLAGE's leak stays closed; 60 kg of
+  // grain make the whole load (25 litres) and open it; a tonne of grain with
+  // no sugar open feeds no still; and the watched store's tonnage never
+  // counts. Before the rule any grain in an unwatched store opened it.
+  {
+    failures += Expect(!core::VillageLeakOpen(config, {}, world),
+                       "leak: 40 kg of the recipe's load lying open is below one still-batch, "
+                       "and the village's leak stays closed");
+    core::WorldState batch = world;
+    batch.units.rows[FindRow(batch.units, open_id)].stock[0] = 60 * kKilo;
+    failures += Expect(core::VillageLeakOpen(config, {}, batch),
+                       "leak: a whole 50 kg load by the recipe lying open opens the village's "
+                       "leak");
+    core::WorldState sugarless = batch;
+    sugarless.units.rows[FindRow(sugarless.units, open_id)].stock[0] = 1000 * kKilo;
+    sugarless.units.rows[FindRow(sugarless.units, open_id)].stock[1] = 0;
+    failures += Expect(!core::VillageLeakOpen(config, {}, sugarless),
+                       "leak: a tonne of grain with no sugar open feeds no still - the leak is "
+                       "closed though the store is unwatched");
+    // 160 kg of grain in the village, 130 sealed: 30 kg above the funds is
+    // his, 20 litres, 40 kg - short again.
+    const std::vector<core::Grams> sealed = {130 * kKilo, 0};
+    failures += Expect(!core::VillageLeakOpen(config, sealed, batch),
+                       "leak: grain under the village's sealed funds is not his, and with it "
+                       "the load falls short");
+  }
   const auto complaints_said = [&world] {
     std::uint32_t said = 0;
     for (const core::SimEvent& event : world.step_events) {

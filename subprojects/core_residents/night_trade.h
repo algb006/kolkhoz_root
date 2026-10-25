@@ -192,9 +192,17 @@ void AssignNightTrades(const NightTradeConfig& config,
                        WorldState& current,
                        bool with_distillers);
 
-/// @brief Is some store holding grain or potato standing with its leak open
-///        (StoreLeakClosed false)?
-bool VillageLeakOpen(const NightTradeConfig& config, const WorldState& current);
+/// @brief Does a whole still-batch lie unguarded tonight (register 206; boss
+///        26 October 2026)? True only when the stores whose leak stands open
+///        (StoreLeakClosed false) hold, above the sealed funds, a full
+///        night's load (`distiller_raw_kg`) by the still's recipe, SUGAR
+///        INCLUDED — the very load StealRawMaterial would carry. Grain with
+///        no sugar open, or a remainder below one load, feeds no still and
+///        leaves the leak closed.
+/// @param sealed SealedFunds of the night, as the theft reads them.
+bool VillageLeakOpen(const NightTradeConfig& config,
+                     std::span<const Grams> sealed,
+                     const WorldState& current);
 
 /// @brief The month's turn of the stores' leak (register 206), for the month
 ///        that closed: kStoreLeakClosedDryMonth when its leak stayed closed
