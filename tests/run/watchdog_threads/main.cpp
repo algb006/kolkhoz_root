@@ -98,6 +98,7 @@ std::optional<Count> RunAYear(std::uint32_t workers) {
   };
   for (std::uint32_t tick = 0; tick < kYears * core::kTicksPerYear; ++tick) {
     simulation.AdvanceStep();
+    builder.WatchStep(simulation.CompletedState());  // the night's theft reports (#1250)
     const core::WorldState& now = simulation.CompletedState();
     if (now.ledger.closed.year != booked_year) {
       book(now.ledger.closed);

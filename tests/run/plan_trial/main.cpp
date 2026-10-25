@@ -311,7 +311,9 @@ Verdict Play(const BadPlay& play, std::uint64_t seed, std::uint32_t trial_thresh
   std::uint8_t failed_before = 0;
   for (std::uint32_t year = 0; year < kYears; ++year) {
     for (std::uint32_t day = 0; day < core::kDaysPerYear; ++day) {
-      run::AdvanceDays(*started, 1);
+      // Every step heard: the night's theft reports (#1250).
+      run::AdvanceDays(
+          *started, 1, [&builder](const core::WorldState& state) { builder.WatchStep(state); });
       builder.RunDay(*started.simulation);
       if (play.obvious_chairman) {
         chairman.RunDay(*started.simulation);

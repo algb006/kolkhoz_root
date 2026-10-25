@@ -138,6 +138,17 @@ inline void AdvanceDays(core::ISimulation& simulation, std::uint32_t days) {
   }
 }
 
+/// @brief Advances whole game days, handing every step's completed state to
+///        `on_step` - the outbox is cleared each step, so a listener the day
+///        does not call hears only the last tick (#1250's theft reports).
+template <class OnStep>
+void AdvanceDays(core::ISimulation& simulation, std::uint32_t days, OnStep&& on_step) {
+  for (std::uint32_t tick = 0; tick < days * core::kTicksPerDay; ++tick) {
+    simulation.AdvanceStep();
+    on_step(simulation.CompletedState());
+  }
+}
+
 /// @brief Advances one game year (48 days).
 inline void AdvanceYear(core::ISimulation& simulation) {
   AdvanceDays(simulation, core::kDaysPerYear);

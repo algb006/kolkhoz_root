@@ -296,6 +296,7 @@ int CensusOfSeed(std::uint64_t seed, bool last, std::array<std::uint64_t, kNames
     orders.RunDay(*world.simulation);
     for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
       world->AdvanceStep();
+      builder.WatchStep(world.State());  // the night's theft reports (#1250)
       const core::WorldState& state = world.State();
       for (std::uint32_t row = 0; row < state.residents.rows.size(); ++row) {
         const core::ResidentActivityState answer = core::ActivityOfResident(state, row, rules);

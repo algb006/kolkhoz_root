@@ -373,11 +373,17 @@ void LiveOneDay(core::ISimulation& simulation,
                 Trajectory& out,
                 run::BirthsHerdTally* births_herd = nullptr,
                 run::HayDayOffPolicy* hay_day_off = nullptr,
-                run::AdvanceWriteOffTally* write_offs = nullptr) {
+                run::AdvanceWriteOffTally* write_offs = nullptr,
+                run::BuildingChairman* chairman = nullptr) {
   bool hot_at_any_tick = false;
   const core::UnitId awaiting = upgrades.Awaiting();
   for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
     simulation.AdvanceStep();
+    // The night's theft reports reach the chairman's distiller rule (#1250):
+    // until then this run never called WatchStep, and its rule heard nothing.
+    if (chairman != nullptr) {
+      chairman->WatchStep(simulation.CompletedState());
+    }
     // The hay lamp's «объявить день рабочим» is the day off's own morning
     // (hay_day_off_policy.h): asked after every step, answered in the first.
     if (hay_day_off != nullptr) {
@@ -636,8 +642,13 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
       // the day is untouched, and the bands below are the proof.
       // The upgrade policy's unexplained days before today's (E3, #776).
       const std::uint32_t unexplained_before = builder.upgrades.held().unexplained;
-      LiveOneDay(
-          *simulation, builder.upgrades, out, births_herd_on, &hay_day_off, &advance_write_offs);
+      LiveOneDay(*simulation,
+                 builder.upgrades,
+                 out,
+                 births_herd_on,
+                 &hay_day_off,
+                 &advance_write_offs,
+                 &builder);
       builder.RunDay(*simulation);
       timber.CountDay(simulation->CompletedState());
       // What held the transition TODAY, by the order's own door.
