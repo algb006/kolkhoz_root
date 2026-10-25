@@ -42,6 +42,7 @@
 #include "social_objects_policy.h"
 #include "sport_talk_policy.h"
 #include "stand_renewal_policy.h"
+#include "store_emptying_policy.h"
 #include "suggested_roads_policy.h"
 #include "supply_policy.h"
 #include "transition_policy.h"
@@ -79,7 +80,8 @@ class BuildingChairman {
         warm_hold(tables),
         fallow(tables),
         sport_talk(tables),
-        distiller(tables) {
+        distiller(tables),
+        emptying(tables) {
     WireStartGates(yard, fixture, houses, sawmill);
     WireSchoolGate(school, sawmill);
     WireSawGate(office, sawmill);
@@ -271,6 +273,7 @@ class BuildingChairman {
     TransitionPolicy::Declare(run_name);
     CemeteryPolicy::Declare(run_name);
     DistillerPolicy::Declare(run_name);
+    StoreEmptyingPolicy::Declare(run_name);
   }
 
   /// @brief What the chairman hears in one step: the night's theft reports
@@ -316,6 +319,9 @@ class BuildingChairman {
     // The distiller a theft report names, and the watchman at the leak
     // (#1250; distiller_policy.h). Its reports come from WatchStep.
     distiller.RunDay(simulation);
+    // The church store and the clamps emptied into the guarded food yard
+    // (#1254; store_emptying_policy.h): the leak's only close by design.
+    emptying.RunDay(simulation);
     sawmill.RunDay(simulation);
     limit.RunDay(simulation);
     night_pasture.RunDay(simulation);
@@ -420,6 +426,9 @@ class BuildingChairman {
   /// The distiller taken and the leak watched (#1250); `distiller.Enable`
   /// is the control arm's switch.
   DistillerPolicy distiller;
+  /// The unguarded stores emptied (#1254); `emptying.Enable` is the control
+  /// arm's switch.
+  StoreEmptyingPolicy emptying;
 };
 
 }  // namespace run

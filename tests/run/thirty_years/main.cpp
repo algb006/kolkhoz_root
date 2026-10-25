@@ -51,6 +51,7 @@
 #include "../common/session_cost.h"
 #include "../common/sowing_policy.h"
 #include "../common/sport_talk_policy.h"
+#include "../common/store_emptying_policy.h"
 #include "../common/supply_policy.h"
 #include "../common/tick_cost.h"
 #include "../common/timber_chain_tally.h"
@@ -157,6 +158,11 @@ bool g_sport_talk = true;
 /// the leak (distiller_policy.h, #1250): on and part of the canonical set;
 /// --no-catch-distiller is the control arm.
 bool g_catch_distiller = true;
+
+/// The run's chairman empties the church store and the clamps into the
+/// guarded food yard (store_emptying_policy.h, #1254): on and part of the
+/// canonical set; --no-empty-stores is the control arm.
+bool g_empty_stores = true;
 
 constexpr std::uint64_t kSeed = 1929;
 std::uint64_t g_seed = kSeed;
@@ -494,6 +500,7 @@ int main(int argc, char** argv) {
     g_sugar_buy = g_sugar_buy && argument != "--no-sugar-buy";
     g_sport_talk = g_sport_talk && argument != "--no-sport-talk";
     g_catch_distiller = g_catch_distiller && argument != "--no-catch-distiller";
+    g_empty_stores = g_empty_stores && argument != "--no-empty-stores";
     if (argument.starts_with("--house-sites=")) {
       g_house_sites = static_cast<std::uint32_t>(std::strtoul(
           std::string(argument.substr(std::string_view("--house-sites=").size())).c_str(),
@@ -514,7 +521,7 @@ int main(int argc, char** argv) {
   g_canonical_run = g_seed == kSeed && g_years == kYears && !g_free_materials &&
                     g_tables_dir == "tables" && !g_saw_reserve && g_house_sites == 3 &&
                     !g_saw_by_anyone && g_fallow_by_eaters && g_sugar_buy && g_avatar_key.empty() &&
-                    g_sport_talk && g_catch_distiller;
+                    g_sport_talk && g_catch_distiller && g_empty_stores;
   run::Simulation world =
       run::Start(g_seed, 1, g_tables_dir, core::StubTables::kRefused, g_avatar_key);
   if (!world) {
@@ -672,6 +679,11 @@ int main(int argc, char** argv) {
   run::SowingPolicy layout(13, 42, false, world.tables.get());
   run::FallowPolicy fallow(*world.tables);
   run::SportTalkPolicy sport_talk(*world.tables);
+  run::StoreEmptyingPolicy emptying(*world.tables);
+  emptying.Enable(g_empty_stores);
+  if (g_empty_stores) {
+    run::StoreEmptyingPolicy::Declare("thirty_years");
+  }
   run::DistillerPolicy distiller(*world.tables);
   distiller.Enable(g_catch_distiller);
   if (g_catch_distiller) {
@@ -781,6 +793,7 @@ int main(int argc, char** argv) {
         chairman.Time("sport_talk", [&] { sport_talk.RunDay(sim); });
       }
       chairman.Time("distiller", [&] { distiller.RunDay(sim); });
+      chairman.Time("emptying", [&] { emptying.RunDay(sim); });
       chairman.Time("layout", [&] { layout.AnswerPlanAlarmsOnly(sim); });
       chairman.Time("digging", [&] { digging.RunDay(sim); });
       chairman.Time("roads", [&] { roads.RunDay(sim); });
