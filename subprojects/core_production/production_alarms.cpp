@@ -144,7 +144,16 @@ Grams SpendRoom(const ProductionConfig& config,
 /// NOT HeapAbovePlanDebt ITSELF, named: that one sums every heap and cannot
 /// leave out the troubled ones; the subtraction of the plan's debt is its
 /// rule, written here a second time over a narrower sum.
-Grams SeedInSoundHeaps(const WorldState& world, ResourceId seed) {
+///
+/// AND A HEAP WITH NOWHERE TO GO IS NOT SEED IN HAND (#1254's trace; boss,
+/// core-boss-1250 [21]): when no store of the village takes the seed, the heap
+/// is a loss in progress. Counted, it kept the lamp dark for a year and a half
+/// in seed 1940 while 4.35 t of homeless rye rotted on the fields, and the
+/// lamp lit only when the heap was gone.
+Grams SeedInSoundHeaps(const ProductionConfig& config, const WorldState& world, ResourceId seed) {
+  if (!SomeStoreAccepts(world, config, seed)) {
+    return 0;
+  }
   Grams lying = 0;
   for (std::uint32_t row = 0; row < world.fields.rows.size(); ++row) {
     const FieldRow& field = world.fields.rows[row];
@@ -183,7 +192,7 @@ Grams SeedShortfall(const ProductionConfig& config,
   // seed loan is sized by this alarm, and sized on the bare norm it arrived a
   // week before the window and the rot took the difference back.
   const Grams need = SeedNeedWithRot(config, world, resource, bare);
-  const Grams have = HeldEverywhere(world, resource) + SeedInSoundHeaps(world, resource);
+  const Grams have = HeldEverywhere(world, resource) + SeedInSoundHeaps(config, world, resource);
   if (have >= need) {
     return 0;
   }

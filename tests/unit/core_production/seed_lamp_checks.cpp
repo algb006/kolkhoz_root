@@ -19,6 +19,7 @@
 #include "core_tables/tables.h"
 #include "production_alarms.h"
 #include "production_config.h"
+#include "stock_ops.h"
 
 namespace {
 
@@ -60,9 +61,22 @@ void SetDay(core::WorldState& world, std::uint32_t day) {
 }
 
 /// A standing store holding `grams` of `resource` and nothing else.
-void PutInTheBarn(core::WorldState& world, core::ResourceId resource, core::Grams grams) {
+void PutInTheBarn(const core::ProductionConfig& config,
+                  core::WorldState& world,
+                  core::ResourceId resource,
+                  core::Grams grams) {
   core::UnitRow barn;
   barn.level = 1;
+  // A REAL STORE OF THE RESOURCE, by the tables: a heap counts as seed only
+  // while some store would take it (#1254's trace), and a type-less barn was
+  // no store at all.
+  for (std::uint32_t type = 0; type < config.unit_types.size(); ++type) {
+    barn.type = core::UnitTypeId{static_cast<std::uint16_t>(type)};
+    if (core::StoresGoods(barn, config) && core::StorageCapacityGrams(barn, config) > 0 &&
+        core::TypeIsHomeOf(barn, config, resource)) {
+      break;
+    }
+  }
   barn.stock.assign(static_cast<std::size_t>(resource.value) + 1U, 0);
   barn.stock[resource.value] = grams;
   world.units.rows.clear();
@@ -96,7 +110,7 @@ int CheckTheClosingDay(const core::ProductionConfig& config, core::ResourceId ba
   // this day and the same barn read some 8 % short — a red lamp over a field
   // sown two days later.
   SetDay(world, 20);
-  PutInTheBarn(world, barley, bare + (bare / 50));
+  PutInTheBarn(config, world, barley, bare + (bare / 50));
   {
     std::vector<core::Alarm> alarms;
     core::CollectFieldAlarms(config, world, alarms);
@@ -106,7 +120,7 @@ int CheckTheClosingDay(const core::ProductionConfig& config, core::ResourceId ba
   }
   // Half the seed, the window still open (day 14): the lamp, red.
   SetDay(world, 14);
-  PutInTheBarn(world, barley, bare / 2);
+  PutInTheBarn(config, world, barley, bare / 2);
   {
     std::vector<core::Alarm> alarms;
     core::CollectFieldAlarms(config, world, alarms);
@@ -147,7 +161,7 @@ int CheckTheReapedHeap(const core::ProductionConfig& config, core::ResourceId ry
   const core::FieldId id = core::AppendRow(world.fields, sowing);
   const core::Grams bare =
       core::GramsFromKilograms(config.crops[crop.value].sowing_norm_kg_per_ha * sowing.area_ga);
-  PutInTheBarn(world, rye, 0);
+  PutInTheBarn(config, world, rye, 0);
   {
     std::vector<core::Alarm> alarms;
     core::CollectFieldAlarms(config, world, alarms);

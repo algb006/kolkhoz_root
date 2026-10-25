@@ -5987,6 +5987,29 @@ int CheckSeedHeldFieldByField() {
   failures += Expect(lamp_of(0) == 1,
                      "seed short, the lamp: the potato, the next sowing, "
                      "short of it all, lights it");
+  // A HEAP COUNTS ONLY WHERE A STORE WOULD TAKE IT (#1254's trace, seed 1940):
+  // 30 t of potato lying in a heap cover the 25 t while the store stands; with
+  // no store standing to take it, the heap is a loss in progress and the
+  // potato is short again.
+  {
+    core::WorldState heaped = spring_then_rye;
+    core::FieldRow heap;
+    heap.reaped_grams = 30 * kTonne;
+    heap.reaped_resource = core::ResourceId{0};
+    core::AppendRow(heaped.fields, heap);
+    std::vector<core::Alarm> with_store;
+    core::CollectFieldAlarms(config, heaped, with_store);
+    const auto potato_short = [](const std::vector<core::Alarm>& list) {
+      return std::ranges::count_if(list, [](const core::Alarm& alarm) {
+        return alarm.kind == core::AlarmKind::kSeedShort && alarm.resource.value == 0;
+      });
+    };
+    heaped.units.rows[0].level = 0;  // the store is gone: nowhere to cart the heap
+    std::vector<core::Alarm> without_store;
+    core::CollectFieldAlarms(config, heaped, without_store);
+    failures += Expect(potato_short(with_store) == 0 && potato_short(without_store) == 1,
+                       "seed short: a heap is seed only while some store would take it");
+  }
   // And a shortfall of 2 % of the potato's own need is the rot's arithmetic,
   // not a loss (kSeedShortLampShare, 5 %); 10 % lights it. The need with its
   // rot is read off the alarm at an empty store (the whole of it short).
