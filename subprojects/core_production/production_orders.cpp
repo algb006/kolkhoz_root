@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <optional>
 
 #include "core_common/calendar.h"
 #include "core_common/emit_event.h"
@@ -393,13 +394,40 @@ OrderRefusal SetRotation(const ProductionConfig& config,
   return OrderRefusal::kNone;
 }
 
+/// @brief The first food lying in the store at `row` that no other standing
+///        store takes in (NumberedStoreTakes), or nothing.
+std::optional<ResourceId> FoodWithNoOtherHome(const ProductionConfig& config,
+                                              const WorldState& current,
+                                              std::uint32_t row) {
+  const UnitRow& store = current.units.rows[row];
+  for (std::uint32_t index = 0; index < store.stock.size(); ++index) {
+    const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
+    if (store.stock[index] <= 0 || !IsFoodResource(config, resource)) {
+      continue;
+    }
+    bool housed = false;
+    for (std::uint32_t other = 0; other < current.units.rows.size() && !housed; ++other) {
+      const UnitRow& unit = current.units.rows[other];
+      housed =
+          other != row && StoresGoods(unit, config) && NumberedStoreTakes(unit, config, resource);
+    }
+    if (!housed) {
+      return resource;
+    }
+  }
+  return std::nullopt;
+}
+
 /// @brief «Освободить склад» (kEmptyStore; start §5; registers 214, 233).
 /// @return kNoSuchSubject for no such unit; kNotEligible for anything but the
 ///         church store or a clamp; kRuleForbids to empty with no other built
-///         store that takes a food, or to cancel an order that does not stand.
+///         store that takes a food, or to cancel an order that does not stand;
+///         kNoHomeForFood while a food it holds has no other standing home,
+///         that food written to `*unstorable`.
 OrderRefusal EmptyStore(const ProductionConfig& config,
                         WorldState& current,
-                        const OrderRow& order) {
+                        const OrderRow& order,
+                        ResourceId* unstorable) {
   const std::uint32_t row = FindRow(current.units, order.unit);
   if (row == kNoRow) {
     return OrderRefusal::kNoSuchSubject;
@@ -433,6 +461,16 @@ OrderRefusal EmptyStore(const ProductionConfig& config,
   }
   if (!somewhere) {
     return OrderRefusal::kRuleForbids;
+  }
+  // EVERY FOOD IT HOLDS HAS ANOTHER HOME (#1254's trace; kNoHomeForFood): a
+  // food no other standing store takes would stand homeless the moment this
+  // one stops taking it - the harvest of a village with a food yard and no
+  // granary lay with nowhere to go, its seed ran out, and the seed loan had
+  // no store to land in. The order is refused, and the first such food is
+  // named on the order for its refusal event.
+  if (const std::optional<ResourceId> homeless = FoodWithNoOtherHome(config, current, row)) {
+    *unstorable = *homeless;
+    return OrderRefusal::kNoHomeForFood;
   }
   current.units.rows[row].emptying = 1;
   return OrderRefusal::kNone;
@@ -583,7 +621,7 @@ void ConsumeProductionOrders(const ProductionConfig& config, WorldState& current
             RequestPlanDelivery(config, current, order.resource, order.amount, order.enable != 0));
         break;
       case OrderKind::kEmptyStore:
-        Settle(order, EmptyStore(config, current, order));
+        Settle(order, EmptyStore(config, current, order, &order.resource));
         break;
       case OrderKind::kTripToDistrict:
         Settle(order, OrderTripToDistrict(config, current));

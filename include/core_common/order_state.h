@@ -1339,6 +1339,16 @@ enum class OrderRefusal : std::uint8_t {
   /// Seam key `not_restorable`.
   kNotRestorable,
 
+  /// kEmptyStore on a store holding a FOOD that no other standing store takes
+  /// in (NumberedStoreTakes, the delivery's own rule): the grain with no
+  /// granary yet. The store keeps it and keeps taking it - an order given
+  /// that early left a village's harvest homeless, its seed at nought and the
+  /// seed loan refused kNowhereToStore for good («a planning mistake does not
+  /// cost the game»; boss, #1254's trace, core-boss-1250 [19]-[20]). The
+  /// refused order's event names the first such food in `resource`. Seam key
+  /// `no_home_for_food`.
+  kNoHomeForFood,
+
   /// NOT A VALUE, and never written to a save or read from one: the
   /// codecs range-check 0..kOrderRefusalCount-1 and this is what they check against.
   /// Values are appended BEFORE it — that is the whole rule, and it is a

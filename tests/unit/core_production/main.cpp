@@ -13153,6 +13153,17 @@ int CheckTheChurchStoreIsEmptied() {
   core::UnitRow granary;
   granary.type = core::UnitTypeId{1};
   const core::UnitId granary_id = core::AppendRow(world.units, granary);
+  // A FOOD WITH NO OTHER HOME KEEPS THE CHURCH (#1254's trace): a granary
+  // that takes the rye but not the potato - the order is refused, naming the
+  // potato, and the church goes on taking it.
+  config.unit_types[1].home_of = {rye};
+  const core::OrderId homeless = issue(church_id, 1);
+  core::ConsumeProductionOrders(config, world);
+  const core::OrderRow& homeless_row = world.orders.rows[core::FindRow(world.orders, homeless)];
+  failures += Expect(answer(homeless) == core::OrderRefusal::kNoHomeForFood &&
+                         homeless_row.resource == potato && world.units.rows[0].emptying == 0,
+                     "empty store: refused while a food it holds has no other standing home");
+  config.unit_types[1].home_of = {rye, potato};
   const core::OrderId wrong = issue(granary_id, 1);
   const core::OrderId ordered = issue(church_id, 1);
   core::ConsumeProductionOrders(config, world);
