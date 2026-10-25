@@ -113,14 +113,14 @@ Grams ReceivableRoom(const ProductionConfig& config, const WorldState& world, Re
       // door refused it, and by year six the farm had stopped ploughing to
       // do nothing but carry grain into a closed door. That is the exact
       // failure SettleHauling's own comment says it exists to prevent.
-      if (IsHomeOf(unit, config, resource)) {
+      if (IsHomeOf(world, unit, config, resource)) {
         return free_here;  // the haystack, the hay's home, empty or not
       }
       continue;
     }
     // A numbered store counts only for what it takes in — the door's own
     // question (NumberedStoreTakes, DeliverToStores).
-    if (!NumberedStoreTakes(unit, config, resource)) {
+    if (!NumberedStoreTakes(world, unit, config, resource)) {
       continue;
     }
     // In grams of this resource, as the door counts it (DeliverToStores).
@@ -389,7 +389,7 @@ HaulRate FieldHaulRate(const ProductionConfig& config,
     const UnitRow& unit = world.units.rows[row];
     if (StoresGoods(unit, config) && StorageCapacityGrams(unit, config) > 0 &&
         field.reaped_resource.value != kInvalidDefIdValue &&
-        NumberedStoreTakes(unit, config, field.reaped_resource)) {
+        NumberedStoreTakes(world, unit, config, field.reaped_resource)) {
       store_row = row;
     }
   }
@@ -427,7 +427,7 @@ HaulRate StandHaulRate(const ProductionConfig& config,
   for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
     const UnitRow& unit = world.units.rows[row];
     if (StoresGoods(unit, config) && StorageCapacityGrams(unit, config) < 0 &&
-        IsHomeOf(unit, config, config.timber.log_resource)) {
+        IsHomeOf(world, unit, config, config.timber.log_resource)) {
       destination_row = row;
       break;
     }
@@ -473,7 +473,7 @@ HaulRate SiteHaulRate(const ProductionConfig& config,
   for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
     const UnitRow& unit = world.units.rows[row];
     if (StoresGoods(unit, config) && StorageCapacityGrams(unit, config) < 0 &&
-        IsHomeOf(unit, config, site.resource)) {
+        IsHomeOf(world, unit, config, site.resource)) {
       destination_row = row;
       break;
     }
@@ -669,12 +669,17 @@ namespace {
 /// What leaves an emptied store first (start §5, «сначала то что портится и
 /// то что воруют»): the shortest shelf life — nought, «keeps for ever», is
 /// the longest — then what is stolen more readily, then row order.
-std::vector<std::uint32_t> EmptyingOrder(const ProductionConfig& config, const UnitRow& unit) {
+std::vector<std::uint32_t> EmptyingOrder(const ProductionConfig& config,
+                                         const WorldState& world,
+                                         const UnitRow& unit) {
   std::vector<std::uint32_t> order;
   for (std::uint32_t index = 0; index < unit.stock.size(); ++index) {
-    // FOOD ONLY (start §5, «перевозит лежащее… приказ про еду»): until #1254
-    // the boards and the glass went too, out of the one home glass has.
-    if (unit.stock[index] > 0 && IsFoodResource(config, DefIdFromIndex<ResourceIdTag>(index))) {
+    // THE FOOD THE ORDER SHUTS OUT, AND ONLY IT (start §5, «приказ про еду»,
+    // «Еда без другого дома остаётся в церкви»; EmptyingShutsOut): until #1254
+    // the boards and the glass went too, and so did a food with no other
+    // home - the grain before its granary - which then had nowhere to land.
+    if (unit.stock[index] > 0 &&
+        EmptyingShutsOut(world, unit, config, DefIdFromIndex<ResourceIdTag>(index))) {
       order.push_back(index);
     }
   }
@@ -705,7 +710,7 @@ void SettleStoreEmptying(const ProductionConfig& config, WorldState& current, bo
     if (unit.emptying == 0) {
       continue;
     }
-    const std::vector<std::uint32_t> order = EmptyingOrder(config, unit);
+    const std::vector<std::uint32_t> order = EmptyingOrder(config, current, unit);
     // What has somewhere to go today: each resource up to the room that
     // takes it (the emptied unit is nobody's home, stock_ops.h).
     const auto movable = [&config, &current, &unit, &order]() {
@@ -725,7 +730,8 @@ void SettleStoreEmptying(const ProductionConfig& config, WorldState& current, bo
       Vec2 destination = unit.position;
       for (const UnitRow& other : current.units.rows) {
         if (!order.empty() && StoresGoods(other, config) &&
-            NumberedStoreTakes(other, config, DefIdFromIndex<ResourceIdTag>(order.front()))) {
+            NumberedStoreTakes(
+                current, other, config, DefIdFromIndex<ResourceIdTag>(order.front()))) {
           destination = other.position;
           break;
         }
@@ -836,7 +842,7 @@ HaulRate DistrictLotHaulRate(const ProductionConfig& config,
   for (std::uint32_t row = 0; logs && row < world.units.rows.size(); ++row) {
     const UnitRow& unit = world.units.rows[row];
     if (StoresGoods(unit, config) && StorageCapacityGrams(unit, config) < 0 &&
-        IsHomeOf(unit, config, config.timber.log_resource)) {
+        IsHomeOf(world, unit, config, config.timber.log_resource)) {
       destination_row = row;
       break;
     }

@@ -31,7 +31,7 @@ namespace {
 std::uint32_t MilkLegReceiverRow(const ProductionConfig& config, const WorldState& world) {
   for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
     const UnitRow& unit = world.units.rows[row];
-    if (!NumberedStoreAccepts(unit, config, config.milk_resource) ||
+    if (!NumberedStoreAccepts(world, unit, config, config.milk_resource) ||
         unit.type.value >= config.unit_types.size()) {
       continue;
     }

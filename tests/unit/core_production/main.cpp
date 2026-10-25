@@ -13153,16 +13153,32 @@ int CheckTheChurchStoreIsEmptied() {
   core::UnitRow granary;
   granary.type = core::UnitTypeId{1};
   const core::UnitId granary_id = core::AppendRow(world.units, granary);
-  // A FOOD WITH NO OTHER HOME KEEPS THE CHURCH (#1254's trace): a granary
-  // that takes the rye but not the potato - the order is refused, naming the
-  // potato, and the church goes on taking it.
+  // A FOOD WITH NO OTHER HOME STAYS IN THE CHURCH (start §5, «Еда без другого
+  // дома остаётся в церкви»; #1254's trace): a granary that takes the rye but
+  // not the potato - the order stands, the potato is named kept, the church
+  // goes on taking potato and gives the rye up.
   config.unit_types[1].home_of = {rye};
-  const core::OrderId homeless = issue(church_id, 1);
+  world.step_events.clear();
+  const core::OrderId partial = issue(church_id, 1);
   core::ConsumeProductionOrders(config, world);
-  const core::OrderRow& homeless_row = world.orders.rows[core::FindRow(world.orders, homeless)];
-  failures += Expect(answer(homeless) == core::OrderRefusal::kNoHomeForFood &&
-                         homeless_row.resource == potato && world.units.rows[0].emptying == 0,
-                     "empty store: refused while a food it holds has no other standing home");
+  std::uint32_t kept_potato = 0;
+  std::uint32_t kept_other = 0;
+  for (const core::SimEvent& event : world.step_events) {
+    if (event.kind == core::EventKind::kStoreKeepsFood) {
+      (event.resource == potato && event.unit == church_id ? kept_potato : kept_other) += 1;
+    }
+  }
+  failures += Expect(answer(partial) == core::OrderRefusal::kNone &&
+                         world.units.rows[0].emptying == 1 && kept_potato == 1 && kept_other == 0,
+                     "empty store: accepted, the homeless potato named kept, the rye not");
+  core::DeliverToStores(world, config, potato, kTonne);
+  failures += Expect(core::AmountOf(world.units.rows[0].stock, potato) == 6 * kTonne,
+                     "empty store: the church still takes the food with no other home");
+  const core::OrderId undo = issue(church_id, 0);
+  core::ConsumeProductionOrders(config, world);
+  failures += Expect(answer(undo) == core::OrderRefusal::kNone && world.units.rows[0].emptying == 0,
+                     "empty store: the partial order is cancelled like any other");
+  world.units.rows[0].stock[potato.value] = 5 * kTonne;  // back to the fixture's start
   config.unit_types[1].home_of = {rye, potato};
   const core::OrderId wrong = issue(granary_id, 1);
   const core::OrderId ordered = issue(church_id, 1);
