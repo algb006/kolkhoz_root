@@ -851,6 +851,14 @@ enum class EventKind : std::uint8_t {
   /// stop. Key `children_ask_sweets`.
   kChildrenAskSweets,
 
+  /// unit, resource — «Освободить склад» was accepted, but this FOOD stays in
+  /// the store: no other standing store takes it (start §5, «Еда без другого
+  /// дома остаётся в церкви»; the player's line «Зерну некуда: амбара нет»,
+  /// rpg words it; boss, core-boss-1250 [21]). One per such food, the day the
+  /// order is accepted; the store keeps taking it, and it leaves once its home
+  /// stands. kNotable. Seam key `store_keeps_food`.
+  kStoreKeepsFood,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

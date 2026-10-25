@@ -135,10 +135,11 @@ Grams RoomApartFrom(const ProductionConfig& config,
                     ResourceId other) {
   Grams room = 0;
   for (const UnitRow& unit : world.units.rows) {
-    if (HomeOutlineAccepts(unit, config, seed)) {
+    if (HomeOutlineAccepts(world, unit, config, seed)) {
       return kUnbounded;
     }
-    if (!NumberedStoreAccepts(unit, config, seed) || NumberedStoreAccepts(unit, config, other)) {
+    if (!NumberedStoreAccepts(world, unit, config, seed) ||
+        NumberedStoreAccepts(world, unit, config, other)) {
       continue;
     }
     room += GramsFitting(config.processing, seed, FreeRoomGrams(unit, config));
@@ -154,7 +155,8 @@ Grams RoomShared(const ProductionConfig& config,
                  ResourceId other) {
   Grams room = 0;
   for (const UnitRow& unit : world.units.rows) {
-    if (NumberedStoreAccepts(unit, config, seed) && NumberedStoreAccepts(unit, config, other)) {
+    if (NumberedStoreAccepts(world, unit, config, seed) &&
+        NumberedStoreAccepts(world, unit, config, other)) {
       room += GramsFitting(config.processing, other, FreeRoomGrams(unit, config));
     }
   }
@@ -163,13 +165,14 @@ Grams RoomShared(const ProductionConfig& config,
 
 /// Whether a numbered store takes any seed other than `resource` that has a
 /// booking — a store the heap should fill only after the others.
-bool TakesBookedSeed(const UnitRow& unit,
+bool TakesBookedSeed(const WorldState& world,
+                     const UnitRow& unit,
                      const ProductionConfig& config,
                      ResourceId resource,
                      const std::vector<Grams>& booked) {
   for (std::uint32_t index = 0; index < booked.size(); ++index) {
     const ResourceId seed = DefIdFromIndex<ResourceIdTag>(index);
-    if (booked[index] > 0 && seed != resource && NumberedStoreAccepts(unit, config, seed)) {
+    if (booked[index] > 0 && seed != resource && NumberedStoreAccepts(world, unit, config, seed)) {
       return true;
     }
   }
@@ -321,8 +324,8 @@ Grams DeliverHeapToStores(WorldState& world,
     if (placed >= amount) {
       break;
     }
-    if (!NumberedStoreAccepts(unit, config, resource) ||
-        TakesBookedSeed(unit, config, resource, booked)) {
+    if (!NumberedStoreAccepts(world, unit, config, resource) ||
+        TakesBookedSeed(world, unit, config, resource, booked)) {
       continue;
     }
     const Grams room = GramsFitting(config.processing, resource, FreeRoomGrams(unit, config));

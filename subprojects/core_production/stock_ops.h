@@ -149,17 +149,7 @@ inline bool IsFoodResource(const ProductionConfig& config, ResourceId resource) 
 /// resource_stores.csv that names its type (boss, parcel 268), empty or not.
 /// A table set without that table keeps the rule the core had before it —
 /// where the resource already lies (STUB for hand-built worlds).
-inline bool IsHomeOf(const UnitRow& unit, const ProductionConfig& config, ResourceId resource) {
-  // A STORE BEING EMPTIED IS NOBODY'S HOME FOR FOOD (kEmptyStore; start §5,
-  // «церковь перестаёт принимать еду… приказ про еду»): every delivery asks
-  // this predicate or NumberedStoreTakes, and neither says yes for a food.
-  // Until #1254 it said no for EVERY resource, so a church being emptied took
-  // no glass either - and glass has no other home before a build yard - and
-  // the bot's upgrades stood short of glass in 8 villages of 16. Taking from
-  // it is untouched — IsTakenFrom does not ask here.
-  if (unit.emptying != 0 && IsFoodResource(config, resource)) {
-    return false;
-  }
+inline bool TypeIsHomeOf(const UnitRow& unit, const ProductionConfig& config, ResourceId resource) {
   if (config.resource_stores_read == 0) {
     return StockOf(unit.stock, resource) > 0;
   }
@@ -174,6 +164,49 @@ inline bool IsHomeOf(const UnitRow& unit, const ProductionConfig& config, Resour
   return false;
 }
 
+/// @brief Whether another standing store, not itself being emptied, is a home
+///        of `resource` by its type.
+inline bool AnotherStoreIsHomeOf(const WorldState& world,
+                                 const UnitRow& self,
+                                 const ProductionConfig& config,
+                                 ResourceId resource) {
+  for (const UnitRow& other : world.units.rows) {
+    if (&other != &self && other.emptying == 0 && StoresGoods(other, config) &&
+        TypeIsHomeOf(other, config, resource)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// @brief Whether a store under «Освободить склад» shuts `resource` out: a
+///        FOOD that another standing store is a home of (start §5, «Еда без
+///        другого дома остаётся в церкви»; boss, core-boss-1250 [21]).
+/// EVERY DELIVERY ASKS THIS through IsHomeOf or NumberedStoreTakes. Until #1254
+/// an emptying store refused EVERY resource, so a church being emptied took no
+/// glass - which has no other home before a build yard - and the bot's
+/// upgrades stood short of glass in 8 villages of 16; and it refused a food
+/// with no other home, so a village with a food yard and no granary had its
+/// harvest homeless, its seed at nought and the seed loan refused for want of
+/// a store (seed 1940). A food keeps its church until its granary stands, and
+/// leaves it then. Taking from it is untouched — IsTakenFrom does not ask here.
+inline bool EmptyingShutsOut(const WorldState& world,
+                             const UnitRow& unit,
+                             const ProductionConfig& config,
+                             ResourceId resource) {
+  return unit.emptying != 0 && IsFoodResource(config, resource) &&
+         AnotherStoreIsHomeOf(world, unit, config, resource);
+}
+
+/// @brief IsHomeOf for a unit of `world`: its type's home (TypeIsHomeOf), unless
+///        an emptying order shuts the resource out (EmptyingShutsOut).
+inline bool IsHomeOf(const WorldState& world,
+                     const UnitRow& unit,
+                     const ProductionConfig& config,
+                     ResourceId resource) {
+  return !EmptyingShutsOut(world, unit, config, resource) && TypeIsHomeOf(unit, config, resource);
+}
+
 /// @brief Whether a NUMBERED store takes `resource` in: the resource's home by
 /// resource_stores.csv. A table set without that table keeps the phase-1 pool
 /// — any numbered store takes anything.
@@ -183,11 +216,12 @@ inline bool IsHomeOf(const UnitRow& unit, const ProductionConfig& config, Resour
 /// hay, straw, logs and clay from any field or pile, and a potato harvest
 /// counted granary room as its own: 143 t of potatoes and 150 t of hay lay in
 /// granaries while the table said granaries keep grain.
-inline bool NumberedStoreTakes(const UnitRow& unit,
+inline bool NumberedStoreTakes(const WorldState& world,
+                               const UnitRow& unit,
                                const ProductionConfig& config,
                                ResourceId resource) {
-  return (unit.emptying == 0 || !IsFoodResource(config, resource)) &&
-         (config.resource_stores_read == 0 || IsHomeOf(unit, config, resource));
+  return !EmptyingShutsOut(world, unit, config, resource) &&
+         (config.resource_stores_read == 0 || TypeIsHomeOf(unit, config, resource));
 }
 
 /// @brief First unit able to store goods; kNoRow if none. Phase-1 routing:
@@ -317,7 +351,8 @@ inline Grams FreeRoomGrams(const UnitRow& unit, const ProductionConfig& config) 
 /// room aside: a built numbered store that takes it. One home for the door
 /// and for the limit lot's question «is there anywhere at all» (boss seq
 /// 156) — two copies of the test would part the day one gained a reason.
-inline bool NumberedStoreAccepts(const UnitRow& unit,
+inline bool NumberedStoreAccepts(const WorldState& world,
+                                 const UnitRow& unit,
                                  const ProductionConfig& config,
                                  ResourceId resource) {
   // A NUMBERED store, and the test says so itself. It has always had to:
@@ -328,26 +363,31 @@ inline bool NumberedStoreAccepts(const UnitRow& unit,
   // and the by-plot flag, and it now carries the whole weight, because
   // StoresGoods counts outlines.
   return StoresGoods(unit, config) && StorageCapacityGrams(unit, config) >= 0 &&
-         NumberedStoreTakes(unit, config, resource);
+         NumberedStoreTakes(world, unit, config, resource);
 }
 
 /// @brief A herd's OWN MILK ROOM (MR.1): the unit the herd stands in is a
 ///        built numbered store that takes milk - the cattle yard's room
 ///        (resource_stores milk -> cattle_yard milk_room). A herd billeted
 ///        in sheds has none: its milk waits in the barn for the leg.
+/// No world: a herd's unit is never under «Освободить склад» (only the church
+/// store and a clamp are), so the type's rule is the whole answer.
 inline bool IsOwnMilkRoom(const UnitRow& herd_unit, const ProductionConfig& config) {
-  return config.milk_resource.value != kInvalidDefIdValue &&
-         NumberedStoreAccepts(herd_unit, config, config.milk_resource);
+  return config.milk_resource.value != kInvalidDefIdValue && herd_unit.emptying == 0 &&
+         StoresGoods(herd_unit, config) && StorageCapacityGrams(herd_unit, config) >= 0 &&
+         (config.resource_stores_read == 0 ||
+          TypeIsHomeOf(herd_unit, config, config.milk_resource));
 }
 
 /// @brief Whether the door's SECOND pass takes `resource` here: a built
 /// outline the player drew that is this resource's home (IsHomeOf) — the
 /// haystack for the hay. No ceiling: the contour is its size.
-inline bool HomeOutlineAccepts(const UnitRow& unit,
+inline bool HomeOutlineAccepts(const WorldState& world,
+                               const UnitRow& unit,
                                const ProductionConfig& config,
                                ResourceId resource) {
   return unit.level != 0 && StorageCapacityGrams(unit, config) < 0 &&
-         IsHomeOf(unit, config, resource);
+         IsHomeOf(world, unit, config, resource);
 }
 
 /// @brief Whether some unit of the village would take `resource` through
@@ -355,9 +395,9 @@ inline bool HomeOutlineAccepts(const UnitRow& unit,
 inline bool SomeStoreAccepts(const WorldState& world,
                              const ProductionConfig& config,
                              ResourceId resource) {
-  return std::ranges::any_of(world.units.rows, [&config, resource](const UnitRow& unit) {
-    return NumberedStoreAccepts(unit, config, resource) ||
-           HomeOutlineAccepts(unit, config, resource);
+  return std::ranges::any_of(world.units.rows, [&world, &config, resource](const UnitRow& unit) {
+    return NumberedStoreAccepts(world, unit, config, resource) ||
+           HomeOutlineAccepts(world, unit, config, resource);
   });
 }
 
@@ -387,7 +427,7 @@ inline Grams DeliverToStores(WorldState& world,
   Grams placed = 0;
   for (std::uint32_t row = 0; row < world.units.rows.size() && placed < amount; ++row) {
     UnitRow& unit = world.units.rows[row];
-    if (!NumberedStoreAccepts(unit, config, resource)) {
+    if (!NumberedStoreAccepts(world, unit, config, resource)) {
       continue;
     }
     // In grams of THIS resource: half-room sauerkraut fits twice its room.
@@ -421,7 +461,7 @@ inline Grams DeliverToStores(WorldState& world,
     UnitRow& unit = world.units.rows[row];
     // Not built, a numbered store the first pass has seen, or an outline
     // that is not this resource's home.
-    if (!HomeOutlineAccepts(unit, config, resource)) {
+    if (!HomeOutlineAccepts(world, unit, config, resource)) {
       continue;
     }
     placed += AddToStock(unit.stock, resource, amount - placed);

@@ -422,8 +422,8 @@ void LayReapedShare(const ProductionConfig& config, WorldState& current, FieldRo
     // В4 it landed in that rick by no road the hour it was cut. With no rick
     // standing it goes through the store door, as before.
     const bool a_rick_stands =
-        std::ranges::any_of(current.units.rows, [&config](const UnitRow& unit) {
-          return unit.dead == 0 && HomeOutlineAccepts(unit, config, config.straw_resource);
+        std::ranges::any_of(current.units.rows, [&current, &config](const UnitRow& unit) {
+          return unit.dead == 0 && HomeOutlineAccepts(current, unit, config, config.straw_resource);
         });
     Grams straw_placed = 0;
     if (a_rick_stands) {

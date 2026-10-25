@@ -286,9 +286,10 @@ std::uint8_t HayCutEndMonth(const ProductionConfig& config) {
 /// Whether a delivery of `resource` would find room through the door today:
 /// a numbered store that takes it with room left, or an outline that does.
 bool StoreHasRoomFor(const ProductionConfig& config, const WorldState& world, ResourceId resource) {
-  return std::ranges::any_of(world.units.rows, [&config, resource](const UnitRow& unit) {
-    return (NumberedStoreAccepts(unit, config, resource) && FreeRoomGrams(unit, config) > 0) ||
-           HomeOutlineAccepts(unit, config, resource);
+  return std::ranges::any_of(world.units.rows, [&world, &config, resource](const UnitRow& unit) {
+    return (NumberedStoreAccepts(world, unit, config, resource) &&
+            FreeRoomGrams(unit, config) > 0) ||
+           HomeOutlineAccepts(world, unit, config, resource);
   });
 }
 

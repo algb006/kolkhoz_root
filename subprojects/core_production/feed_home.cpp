@@ -467,7 +467,7 @@ std::uint32_t RickForLoadAt(const ProductionConfig& config,
   std::uint32_t count = 0;
   for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
     const UnitRow& unit = world.units.rows[row];
-    if (unit.dead == 0 && HomeOutlineAccepts(unit, config, resource)) {
+    if (unit.dead == 0 && HomeOutlineAccepts(world, unit, config, resource)) {
       only = row;
       ++count;
     }
@@ -500,7 +500,7 @@ std::uint32_t RickForLoadAt(const ProductionConfig& config,
   float nearest_km = std::numeric_limits<float>::max();
   for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
     const UnitRow& unit = world.units.rows[row];
-    if (unit.dead != 0 || !HomeOutlineAccepts(unit, config, resource)) {
+    if (unit.dead != 0 || !HomeOutlineAccepts(world, unit, config, resource)) {
       continue;
     }
     const float km = RoadKm(world, mode, from, unit.position);
@@ -547,7 +547,8 @@ std::uint32_t RickForLoadAt(const ProductionConfig& config,
       float widest_km = std::numeric_limits<float>::max();
       for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
         const UnitRow& unit = world.units.rows[row];
-        if (row == nearest || unit.dead != 0 || !HomeOutlineAccepts(unit, config, resource)) {
+        if (row == nearest || unit.dead != 0 ||
+            !HomeOutlineAccepts(world, unit, config, resource)) {
           continue;
         }
         const std::uint32_t gap = gap_of(row);
@@ -606,7 +607,7 @@ std::uint32_t HeapRickRow(const ProductionConfig& config,
   std::uint32_t count = 0;
   for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
     const UnitRow& unit = world.units.rows[row];
-    if (unit.dead != 0 || !HomeOutlineAccepts(unit, config, resource)) {
+    if (unit.dead != 0 || !HomeOutlineAccepts(world, unit, config, resource)) {
       continue;
     }
     if (unit.position.x == field.haul_to.x && unit.position.y == field.haul_to.y) {
@@ -631,7 +632,7 @@ void ChooseRickForHeap(const ProductionConfig& config,
   std::uint32_t count = 0;
   bool stands = false;
   for (const UnitRow& unit : world.units.rows) {
-    if (unit.dead != 0 || !HomeOutlineAccepts(unit, config, field.reaped_resource)) {
+    if (unit.dead != 0 || !HomeOutlineAccepts(world, unit, config, field.reaped_resource)) {
       continue;
     }
     ++count;

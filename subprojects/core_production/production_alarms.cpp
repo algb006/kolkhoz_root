@@ -64,8 +64,8 @@ std::vector<Grams> NumberedRoomByRow(const ProductionConfig& config, const World
 bool SomeHomeOutlineAccepts(const WorldState& world,
                             const ProductionConfig& config,
                             ResourceId resource) {
-  return std::ranges::any_of(world.units.rows, [&config, resource](const UnitRow& unit) {
-    return HomeOutlineAccepts(unit, config, resource);
+  return std::ranges::any_of(world.units.rows, [&world, &config, resource](const UnitRow& unit) {
+    return HomeOutlineAccepts(world, unit, config, resource);
   });
 }
 
@@ -90,7 +90,7 @@ Grams SpendRoom(const ProductionConfig& config,
   }
   Grams left = claim;
   for (std::size_t row = 0; row < room.size() && left > 0; ++row) {
-    if (room[row] <= 0 || !NumberedStoreAccepts(world.units.rows[row], config, resource)) {
+    if (room[row] <= 0 || !NumberedStoreAccepts(world, world.units.rows[row], config, resource)) {
       continue;
     }
     const Grams taken = left < room[row] ? left : room[row];
@@ -868,7 +868,8 @@ void LightStoreFullLamps(const ProductionConfig& config,
     for (const Alarm& other : alarms) {
       const bool refusal =
           other.kind == AlarmKind::kHarvestWillNotFit || other.kind == AlarmKind::kSeedHasNoRoom;
-      if (refusal && row != kNoRow && IsHomeOf(world.units.rows[row], config, other.resource)) {
+      if (refusal && row != kNoRow &&
+          IsHomeOf(world, world.units.rows[row], config, other.resource)) {
         refused = true;
         days = std::min(days, other.days_to_loss);
       }

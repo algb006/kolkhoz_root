@@ -269,12 +269,12 @@ Grams RoomAfterTaking(const ProductionConfig& config,
     }
     const Grams capacity = StorageCapacityGrams(unit, config);
     if (capacity < 0) {
-      if (IsHomeOf(unit, config, output)) {
+      if (IsHomeOf(world, unit, config, output)) {
         return std::numeric_limits<Grams>::max();  // an outline: no ceiling
       }
       continue;
     }
-    if (!NumberedStoreTakes(unit, config, output)) {
+    if (!NumberedStoreTakes(world, unit, config, output)) {
       continue;
     }
     const Grams used = RoomUsed(unit.stock, config) - freed;

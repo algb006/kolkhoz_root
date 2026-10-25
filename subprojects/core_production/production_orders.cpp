@@ -397,6 +397,8 @@ OrderRefusal SetRotation(const ProductionConfig& config,
 /// @return kNoSuchSubject for no such unit; kNotEligible for anything but the
 ///         church store or a clamp; kRuleForbids to empty with no other built
 ///         store that takes a food, or to cancel an order that does not stand.
+///         Accepted, it emits kStoreKeepsFood for each food it holds that no
+///         other standing store takes - that food stays.
 OrderRefusal EmptyStore(const ProductionConfig& config,
                         WorldState& current,
                         const OrderRow& order) {
@@ -428,13 +430,30 @@ OrderRefusal EmptyStore(const ProductionConfig& config,
     }
     for (std::uint32_t index = 0; index < config.food_kcal_per_gram.size() && !somewhere; ++index) {
       somewhere = config.food_kcal_per_gram[index] > 0.0F &&
-                  NumberedStoreTakes(store, config, DefIdFromIndex<ResourceIdTag>(index));
+                  NumberedStoreTakes(current, store, config, DefIdFromIndex<ResourceIdTag>(index));
     }
   }
   if (!somewhere) {
     return OrderRefusal::kRuleForbids;
   }
   current.units.rows[row].emptying = 1;
+  // A FOOD WITH NO OTHER HOME STAYS (start §5, «Еда без другого дома
+  // остаётся в церкви»; #1254's trace): the store keeps taking it and the
+  // perevalka leaves it (EmptyingShutsOut), and the player is told which,
+  // once, now - the grain before its granary. Until then the order shut it
+  // out too: a village with a food yard and no granary had its harvest
+  // homeless, its seed at nought and the seed loan refused for want of a
+  // store (seed 1940).
+  const UnitRow& emptied = current.units.rows[row];
+  for (std::uint32_t index = 0; index < emptied.stock.size(); ++index) {
+    const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
+    if (emptied.stock[index] > 0 && IsFoodResource(config, resource) &&
+        !EmptyingShutsOut(current, emptied, config, resource)) {
+      SimEvent& kept = EmitEvent(current, EventKind::kStoreKeepsFood, EventSeverity::kNotable);
+      kept.unit = order.unit;
+      kept.resource = resource;
+    }
+  }
   return OrderRefusal::kNone;
 }
 
