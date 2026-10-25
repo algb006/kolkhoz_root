@@ -138,6 +138,7 @@ int main(int argc, char** argv) {
   for (std::uint32_t day = 0; day < kYears * core::kDaysPerYear; ++day) {
     for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
       started->AdvanceStep();
+      builder.WatchStep(started.State());  // the night's theft reports (#1250)
       if (tick != core::kTicksPerDay / 2) {
         continue;
       }

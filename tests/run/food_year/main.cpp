@@ -556,6 +556,7 @@ Outcome RunYears(const std::filesystem::path& tables_root,
       static_cast<std::uint32_t>(simulation->CompletedState().residents.rows.size());
   for (std::uint32_t tick = 0; tick < years * core::kTicksPerYear; ++tick) {
     simulation->AdvanceStep();
+    builder.WatchStep(simulation->CompletedState());  // the night's theft reports (#1250)
     const core::WorldState& day = simulation->CompletedState();
     // THE FUND TALLY IS READ EVERY TICK, and everything below it once a day.
     // It stood with the daily work at first and lost a day at every year's

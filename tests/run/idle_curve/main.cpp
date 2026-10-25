@@ -488,6 +488,7 @@ int main(int argc, char** argv) {
       }
       for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
         world->AdvanceStep();
+        builder.WatchStep(world.State());  // the night's theft reports (#1250)
       }
       const core::WorldState& state = world.State();
       const auto today = static_cast<std::int32_t>(state.calendar.day);
@@ -711,6 +712,7 @@ int main(int argc, char** argv) {
       }
       for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
         world->AdvanceStep();
+        builder.WatchStep(world.State());  // the night's theft reports (#1250)
         const core::WorldState& state = world.State();
         bool lived_in_house = false;
         for (const core::UnitRow& unit : state.units.rows) {
