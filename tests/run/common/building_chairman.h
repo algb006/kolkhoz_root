@@ -82,6 +82,12 @@ class BuildingChairman {
         sport_talk(tables),
         distiller(tables),
         emptying(tables) {
+    if (const core::ITable* const professions = tables.FindTable("professions")) {
+      const std::uint32_t row = professions->FindRowByKey("watchman");
+      if (row != core::kNoTableRow) {
+        watchman_profession = core::ProfessionId{static_cast<std::uint16_t>(row)};
+      }
+    }
     WireStartGates(yard, fixture, houses, sawmill);
     WireSchoolGate(school, sawmill);
     WireSawGate(office, sawmill);
@@ -316,9 +322,21 @@ class BuildingChairman {
     if (sport_talk_on) {
       sport_talk.RunDay(simulation);
     }
+    // THE RELAPSE ARM (#1262; econ, boss-econ-1262-reach-1026 [6]): from
+    // `relapse_from_year` on, the chairman lets the watch go - every
+    // watchman dismissed each day, nobody taken, nobody posted - and drink
+    // must come back (men's mean above 3 by y8). 0 = off, the canon.
+    const bool relapsed =
+        relapse_from_year > 0 &&
+        simulation.CompletedState().calendar.day / core::kDaysPerYear + 1U >= relapse_from_year;
+    if (relapsed) {
+      DismissTheWatch(simulation);
+    }
     // The distiller a theft report names, and the watchman at the leak
     // (#1250; distiller_policy.h). Its reports come from WatchStep.
-    distiller.RunDay(simulation);
+    if (!relapsed) {
+      distiller.RunDay(simulation);
+    }
     // The church store and the clamps emptied into the guarded food yard
     // (#1254; store_emptying_policy.h): the leak's only close by design.
     emptying.RunDay(simulation);
@@ -367,7 +385,9 @@ class BuildingChairman {
       upgrades.ReadAtSubject(simulation);
       upgrades.RunDay(simulation, farm_first);
     }
-    watchman.RunDay(simulation);
+    if (!relapsed) {
+      watchman.RunDay(simulation);
+    }
     insulation.RunDay(simulation);
     // «Важнее полевых работ» for a supply the floor does not reach (#734).
     supply.RunDay(simulation);
@@ -375,6 +395,25 @@ class BuildingChairman {
     // The elder's suggested roads with the first new building beside each
     // (suggested_roads_policy.h, #423).
     roads.RunDay(simulation);
+  }
+
+  /// @brief The relapse arm's dismissal: a kDismiss for every resident on a
+  ///        night-watch post (the watchman profession by the tables).
+  void DismissTheWatch(core::ISimulation& simulation) const {
+    const core::WorldState& world = simulation.CompletedState();
+    std::vector<core::OrderRow> orders;
+    for (std::uint32_t row = 0; row < world.residents.rows.size(); ++row) {
+      if (watchman_profession.value != core::kInvalidDefIdValue &&
+          world.residents.rows[row].post.profession.value == watchman_profession.value) {
+        core::OrderRow dismiss;
+        dismiss.kind = core::OrderKind::kDismiss;
+        dismiss.resident = world.residents.row_ids[row];
+        orders.push_back(dismiss);
+      }
+    }
+    if (!orders.empty()) {
+      simulation.StageOrders(orders, {});
+    }
   }
 
   /// A couple waiting for a house, or a family with no roof of its own.
@@ -423,6 +462,12 @@ class BuildingChairman {
   /// Whether RunDay calls `sport_talk` (#1238): on in every run; a control
   /// arm turns it off.
   bool sport_talk_on = true;
+  /// The relapse arm's first year (#1262; econ's boss-econ-1262-reach-1026
+  /// [6]): from it the watch is dismissed and neither the distiller rule nor
+  /// the watchman's runs. 0, the canon: never. A run sets it from its flags.
+  std::uint32_t relapse_from_year = 0;
+  /// The watchman's profession, for the relapse's dismissal.
+  core::ProfessionId watchman_profession;
   /// The distiller taken and the leak watched (#1250); `distiller.Enable`
   /// is the control arm's switch.
   DistillerPolicy distiller;
