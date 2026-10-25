@@ -32,6 +32,7 @@
 #include "core_common/ledger_state.h"
 #include "core_common/plot.h"
 #include "core_common/random.h"
+#include "core_common/start_drinking.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
 #include "core_construction/construction_system.h"
@@ -163,18 +164,6 @@ static_assert(kGenesisWorldParamKeys[kStartDrinkingKeyFirst] == "alcohol_start_m
                   kGenesisWorldParamKeys[kStartDrinkingKeyFirst + 7] == "alcohol_start_sick_health",
               "the drinking village's keys moved out from under their index");
 
-/// The drinking village's numbers (econ's §2.1; STUB, boss seq 121).
-struct StartDrinking {
-  float married_min = 15.0F;
-  float married_max = 35.0F;
-  float single_min = 25.0F;
-  float single_max = 45.0F;
-  float idle_min = 35.0F;
-  float idle_max = 55.0F;
-  float idle_age = 55.0F;     ///< «старик»: this many biological years and over
-  float sick_health = 50.0F;  ///< «больной»: health below this
-};
-
 /// Reads the drinking village's numbers; a table without them keeps the
 /// documented figures above.
 StartDrinking ReadStartDrinking(const ITableSet& tables) {
@@ -283,18 +272,14 @@ void SeedStartDrinking(const StartDrinking& start,
     if (person.sex != Sex::kMale || age < adult_years) {
       continue;
     }
-    float low = start.single_min;
-    float high = start.single_max;
-    if (age >= start.idle_age || person.health < start.sick_health) {
-      low = start.idle_min;
-      high = start.idle_max;
-    } else if (person.spouse.value != kInvalidEntityIdValue) {
-      low = start.married_min;
-      high = start.married_max;
-    }
     const float draw =
-        CounterHashUnitFloat(world_seed, 0, world.residents.row_ids[row].value, 0x414C4300ULL);
-    person.alcoholism = (low + (draw * (high - low))) * kNormalDifficultyScale;
+        CounterHashUnitFloat(world_seed, 0, world.residents.row_ids[row].value, kStartDrinkingSalt);
+    // The band's one home since #1262 (start_drinking.h): the arrivals draw
+    // in it too.
+    person.alcoholism =
+        StartingAlcoholism(
+            start, age, person.health, person.spouse.value != kInvalidEntityIdValue, draw) *
+        kNormalDifficultyScale;
   }
 }
 

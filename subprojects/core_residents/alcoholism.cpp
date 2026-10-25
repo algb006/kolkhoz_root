@@ -12,6 +12,7 @@
 #include "core_catalog/table_value.h"
 #include "core_common/calendar.h"
 #include "core_common/emit_event.h"
+#include "core_common/random.h"
 #include "core_common/state_table_ops.h"
 #include "core_tables/tables.h"
 
@@ -19,7 +20,7 @@ namespace core {
 namespace {
 
 /// The world_params.csv keys, in the order of the knob list in the parse.
-constexpr std::array<std::string_view, 22> kAlcoholismWorldParamKeys = {
+constexpr std::array<std::string_view, 30> kAlcoholismWorldParamKeys = {
     "alcohol_adult_from_years",
     "alcohol_gain_with_distiller",
     "alcohol_gain_winter_idle",
@@ -41,7 +42,17 @@ constexpr std::array<std::string_view, 22> kAlcoholismWorldParamKeys = {
     "alcohol_rise_strada_end",
     "alcohol_rise_strada_end_month",
     "alcohol_rise_shock",
-    "alcohol_rise_shock_months"};
+    "alcohol_rise_shock_months",
+    // The founders' bands, read here for the arrivals too (#1262); genesis
+    // reads the same rows for the founders.
+    "alcohol_start_married_min",
+    "alcohol_start_married_max",
+    "alcohol_start_single_min",
+    "alcohol_start_single_max",
+    "alcohol_start_idle_min",
+    "alcohol_start_idle_max",
+    "alcohol_start_idle_age",
+    "alcohol_start_sick_health"};
 
 /// Past this the inheritance factor is a typo: more than the father's own
 /// excess, ten times over.
@@ -357,6 +368,16 @@ bool ParseAlcoholismConfig(const ITableSet& tables, AlcoholismConfig& config, st
       {.key = kAlcoholismWorldParamKeys[21],
        .value = &config.rise_shock_months,
        .range = {.low = 0.0F, .high = static_cast<float>(kMonthsPerYear)}},
+      {.key = kAlcoholismWorldParamKeys[22], .value = &config.start.married_min, .range = points},
+      {.key = kAlcoholismWorldParamKeys[23], .value = &config.start.married_max, .range = points},
+      {.key = kAlcoholismWorldParamKeys[24], .value = &config.start.single_min, .range = points},
+      {.key = kAlcoholismWorldParamKeys[25], .value = &config.start.single_max, .range = points},
+      {.key = kAlcoholismWorldParamKeys[26], .value = &config.start.idle_min, .range = points},
+      {.key = kAlcoholismWorldParamKeys[27], .value = &config.start.idle_max, .range = points},
+      {.key = kAlcoholismWorldParamKeys[28],
+       .value = &config.start.idle_age,
+       .range = {.low = 0.0F, .high = kOldestYears}},
+      {.key = kAlcoholismWorldParamKeys[29], .value = &config.start.sick_health, .range = points},
   }};
   if (!ReadKnobs(*world, "world_params", knobs, error)) {
     return false;
@@ -499,6 +520,26 @@ void InheritAlcoholismDay(const AlcoholismConfig& config, float life_speedup, Wo
                              : 0.0F;
     son.alcoholism = std::clamp(excess * config.inherit_factor, kMetricMin, config.inherit_max);
   }
+}
+
+void SeedArrivalDrinking(const AlcoholismConfig& config,
+                         float life_speedup,
+                         std::uint64_t world_seed,
+                         SimDay day,
+                         std::uint32_t id,
+                         ResidentRow& person) {
+  const float age = BiologicalAgeYears(life_speedup, person.birth_day, day);
+  if (person.sex != Sex::kMale || age < config.adult_from_years) {
+    return;
+  }
+  // The founders' salt (start_drinking.h) with the arrival's day, so a
+  // founder and a newcomer of one id never share a draw.
+  const float draw = CounterHashUnitFloat(world_seed, day, id, kStartDrinkingSalt);
+  person.alcoholism = std::clamp(
+      StartingAlcoholism(
+          config.start, age, person.health, person.spouse.value != kInvalidEntityIdValue, draw),
+      kMetricMin,
+      config.epoch1_cap);
 }
 
 }  // namespace core

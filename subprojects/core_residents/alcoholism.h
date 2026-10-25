@@ -51,6 +51,7 @@
 #include <string>
 #include <string_view>
 
+#include "core_common/start_drinking.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 #include "night_trade.h"
@@ -91,7 +92,27 @@ struct AlcoholismConfig {
   float rise_strada_end_month = 10.0F;  ///< `alcohol_rise_strada_end_month`, 1..12
   float rise_shock = 2.0F;              ///< `alcohol_rise_shock`, a month
   float rise_shock_months = 2.0F;       ///< `alcohol_rise_shock_months`
+  /// The bands an ARRIVAL's past is drawn in (#1262; boss 26 October 2026,
+  /// crime §6 «Приезжие приходят со своим прошлым», STUB): the founders'.
+  StartDrinking start;
 };
+
+/// @brief An arrival's drinking past (#1262; crime §6 «Приезжие приходят со
+///        своим прошлым», boss 26 October 2026, STUB): a man of
+///        `adult_from_years` and over who comes to live in the village - a
+///        migrant or a specialist - gets his class's starting alcoholism
+///        (StartDrinking), drawn by the counter hash of the world seed, the
+///        day and his id, so the arrival moves no other draw. A woman and a
+///        boy are untouched. Until #1262 every arrival came at nought, and a
+///        guarded village took in sober men only.
+/// @pre `person` is filled (sex, birth_day, health, spouse) and `id` is the
+///      row id he is or will be appended under.
+void SeedArrivalDrinking(const AlcoholismConfig& config,
+                         float life_speedup,
+                         std::uint64_t world_seed,
+                         SimDay day,
+                         std::uint32_t id,
+                         ResidentRow& person);
 
 /// @brief The world_params.csv keys this file reads.
 std::span<const std::string_view> AlcoholismWorldParamKeys();

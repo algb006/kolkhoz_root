@@ -177,6 +177,13 @@ void Arrive(const LifeConfig& config,
   if (specialist.post.unit.value == kInvalidEntityIdValue) {
     specialist.post.profession = ProfessionId{};  // the two are set and cleared together
   }
+  // His past comes with him too (#1262; alcoholism.h SeedArrivalDrinking).
+  SeedArrivalDrinking(config.alcoholism,
+                      config.life_speedup,
+                      current.world_seed,
+                      current.calendar.day,
+                      current.residents.next_id_value,
+                      specialist);
   const ResidentId id = AppendRow(current.residents, specialist);
 
   SimEvent& arrived = EmitEvent(current, EventKind::kSpecialistArrived, EventSeverity::kNotable);

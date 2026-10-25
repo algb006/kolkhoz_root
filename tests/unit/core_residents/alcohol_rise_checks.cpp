@@ -99,8 +99,42 @@ core::FamilyRow& Family(Village& village, core::FamilyId id) {
 
 }  // namespace
 
-int CheckTheDrinkingRaisers() {
+/// ARRIVALS COME WITH THEIR PAST (#1262; crime §6 «Приезжие приходят со своим
+/// прошлым», boss 26 October 2026): a single man in the single band, a married
+/// one in the married band, an old one in the idle band; a woman and a boy at
+/// nought; the same draw twice.
+int CheckTheArrivalsPast() {
   int failures = 0;
+  const core::AlcoholismConfig config;
+  constexpr core::SimDay kDay = 3U * core::kDaysPerYear;
+  const auto arrive = [&](core::Sex sex, float age_years, bool married, std::uint32_t id) {
+    core::ResidentRow person;
+    person.sex = sex;
+    person.birth_day =
+        static_cast<std::int32_t>(kDay) -
+        static_cast<std::int32_t>(age_years / kSpeedup * static_cast<float>(core::kDaysPerYear));
+    person.spouse = married ? core::ResidentId{1} : core::ResidentId{};
+    core::SeedArrivalDrinking(config, kSpeedup, 1931U, kDay, id, person);
+    return person.alcoholism;
+  };
+  const float single = arrive(core::Sex::kMale, 30.0F, false, 7);
+  const float married = arrive(core::Sex::kMale, 30.0F, true, 8);
+  const float old = arrive(core::Sex::kMale, 60.0F, false, 9);
+  failures +=
+      Expect(single >= config.start.single_min && single < config.start.single_max &&
+                 married >= config.start.married_min && married < config.start.married_max &&
+                 old >= config.start.idle_min && old < config.start.idle_max,
+             "arrivals: a man comes in his class's band - single, married, idle");
+  failures += Expect(arrive(core::Sex::kFemale, 30.0F, false, 10) == 0.0F &&
+                         arrive(core::Sex::kMale, 12.0F, false, 11) == 0.0F,
+                     "arrivals: a woman and a boy come at nought");
+  failures += Expect(arrive(core::Sex::kMale, 30.0F, false, 7) == single,
+                     "arrivals: the draw is the counter hash's, the same twice");
+  return failures;
+}
+
+int CheckTheDrinkingRaisers() {
+  int failures = CheckTheArrivalsPast();
   const core::AlcoholismConfig config;  // the row's numbers: 3 to kin, 2 in October, 2 x 2
   const Village quiet = MakeVillage();
   const std::uint32_t january = core::MonthTagOfDay(kFebruaryFirst - 1U);

@@ -1040,6 +1040,15 @@ void RunMigration(const LifeConfig& config, WorldState& current, SimDay day) {
     migrant.stamina = DrawInRange(current.rng, 20.0F, 80.0F);
     migrant.optimism = DrawInRange(current.rng, 20.0F, 80.0F);
     migrant.ideology = DrawInRange(current.rng, 30.0F, 70.0F);
+    // HIS PAST COMES WITH HIM (#1262; crime §6 «Приезжие приходят со своим
+    // прошлым»): the founders' band, by the counter hash, under the id he is
+    // appended with - no draw of the stream moves.
+    SeedArrivalDrinking(config.alcoholism,
+                        config.life_speedup,
+                        current.world_seed,
+                        day,
+                        current.residents.next_id_value,
+                        migrant);
     const ResidentId migrant_id = AppendRow(current.residents, migrant);
     SimEvent& arrived = EmitEvent(current, EventKind::kResidentArrived, EventSeverity::kNotable);
     arrived.resident = migrant_id;
