@@ -86,12 +86,11 @@ struct AlcoholismConfig {
   /// THE RAISERS NO WATCH STOPS (#1262; crime §6 «Традиция, компания и
   /// потрясения», boss 25 October 2026 by econ's drink-stays-a-decision;
   /// STUB, not measured): a wedding or a wake, the strada's end, a shock.
-  float rise_wedding_wake = 3.0F;             ///< `alcohol_rise_wedding_wake`, once
-  float rise_wedding_wake_reach_m = 1000.0F;  ///< `alcohol_rise_wedding_wake_reach_m`
-  float rise_strada_end = 2.0F;               ///< `alcohol_rise_strada_end`, once
-  float rise_strada_end_month = 10.0F;        ///< `alcohol_rise_strada_end_month`, 1..12
-  float rise_shock = 2.0F;                    ///< `alcohol_rise_shock`, a month
-  float rise_shock_months = 2.0F;             ///< `alcohol_rise_shock_months`
+  float rise_wedding_wake = 3.0F;       ///< `alcohol_rise_wedding_wake`, once, the family and kin
+  float rise_strada_end = 2.0F;         ///< `alcohol_rise_strada_end`, once
+  float rise_strada_end_month = 10.0F;  ///< `alcohol_rise_strada_end_month`, 1..12
+  float rise_shock = 2.0F;              ///< `alcohol_rise_shock`, a month
+  float rise_shock_months = 2.0F;       ///< `alcohol_rise_shock_months`
 };
 
 /// @brief The world_params.csv keys this file reads.

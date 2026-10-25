@@ -324,7 +324,7 @@ struct FamilyRow {
   /// THE DRINKING OCCASIONS (save 189; #1262, crime §6 «Традиция, компания и
   /// потрясения»): the supply-month tag (SupplyMonthTag) of the family's last
   /// wedding or wake (a death in it), 0 for none — the month's turn gives its
-  /// men and the men of the yards within `rise_wedding_wake_reach_m` the
+  /// men and its kin's (the parents' and the children's yards) the
   /// wedding's rise once; and the tag of its last shock (a death in it, or
   /// its house fallen), 0 for none — the turns closing that month and the
   /// next `rise_shock_months` - 1 give its men `rise_shock`. Tags, not a

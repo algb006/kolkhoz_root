@@ -19,7 +19,7 @@ namespace core {
 namespace {
 
 /// The world_params.csv keys, in the order of the knob list in the parse.
-constexpr std::array<std::string_view, 23> kAlcoholismWorldParamKeys = {
+constexpr std::array<std::string_view, 22> kAlcoholismWorldParamKeys = {
     "alcohol_adult_from_years",
     "alcohol_gain_with_distiller",
     "alcohol_gain_winter_idle",
@@ -38,7 +38,6 @@ constexpr std::array<std::string_view, 23> kAlcoholismWorldParamKeys = {
     "alcohol_samogon_mood_above",
     "alcohol_samogon_mood_to",
     "alcohol_rise_wedding_wake",
-    "alcohol_rise_wedding_wake_reach_m",
     "alcohol_rise_strada_end",
     "alcohol_rise_strada_end_month",
     "alcohol_rise_shock",
@@ -47,9 +46,6 @@ constexpr std::array<std::string_view, 23> kAlcoholismWorldParamKeys = {
 /// Past this the inheritance factor is a typo: more than the father's own
 /// excess, ten times over.
 constexpr float kInheritFactorMax = 10.0F;
-
-/// The map's diagonal, a little over: a wedding's reach beyond it is a typo.
-constexpr float kFarthestRiseReachM = 20000.0F;
 
 /// The width of a band (crime design §6: 0-20, 20-40, 40-60, 60-80, 80-100).
 constexpr float kBandWidth = 20.0F;
@@ -180,34 +176,53 @@ std::vector<std::uint32_t> TurnYardSuppliers(const NightTradeConfig& night, Worl
 
 /// THE RAISERS NO WATCH STOPS (#1262; crime §6 «Традиция, компания и
 /// потрясения»), per family row, for the month that closed (`closed_tag`,
-/// SupplyMonthTag): the wedding's or wake's rise where the family, or a yard
-/// within `rise_wedding_wake_reach_m` of its own, had one in that month; and
-/// the shock's rise in the `rise_shock_months` turns from its month on. The
-/// strada's end is the turn's, not a family's, and is added by the caller.
+/// SupplyMonthTag): the wedding's or wake's rise where the family, or its KIN
+/// — the yards of its members' parents and of its members' children — had
+/// one in that month; and the shock's rise in the `rise_shock_months` turns
+/// from its month on. The strada's end is the turn's, not a family's, and is
+/// added by the caller.
+///
+/// KIN, NOT A RADIUS (boss 26 October 2026, crime §6 by cure (b),
+/// core-boss-1250 [43]): with «the yards within 1000 m» the start village's
+/// every yard stood within reach of every wedding and wake, so 38-66 % of
+/// the months gave every man +3 and the men's mean held at 18-25 to the
+/// tenth year. A parent or child who is dead or gone has no row and brings
+/// no yard.
 std::vector<float> TurnFamilyRises(const AlcoholismConfig& config,
                                    std::uint32_t closed_tag,
                                    const WorldState& current) {
   const std::size_t count = current.families.rows.size();
-  std::vector<Vec2> yard(count);
-  std::vector<std::uint32_t> occasions;
+  std::vector<std::uint8_t> occasion(count, 0);
   for (std::uint32_t family = 0; family < count; ++family) {
-    const FamilyRow& row = current.families.rows[family];
-    const std::uint32_t house = FindRow(current.units, row.house);
-    yard[family] = house != kNoRow ? current.units.rows[house].position : row.lost_house_position;
-    if (row.drink_occasion_month != 0 && row.drink_occasion_month == closed_tag) {
-      occasions.push_back(family);
+    const std::uint32_t tag = current.families.rows[family].drink_occasion_month;
+    occasion[family] = tag != 0 && tag == closed_tag ? 1U : 0U;
+  }
+  const auto family_of = [&current](ResidentId id) {
+    const std::uint32_t row = FindRow(current.residents, id);
+    return row != kNoRow ? FindRow(current.families, current.residents.rows[row].family) : kNoRow;
+  };
+  // ONCE, however many weddings and wakes touch a yard: the row names the
+  // month's table, not a count of glasses.
+  std::vector<std::uint8_t> touched = occasion;
+  for (const ResidentRow& person : current.residents.rows) {
+    const std::uint32_t own = FindRow(current.families, person.family);
+    if (own == kNoRow) {
+      continue;
+    }
+    for (const ResidentId parent : {person.mother, person.father}) {
+      const std::uint32_t theirs = family_of(parent);
+      if (theirs == kNoRow) {
+        continue;
+      }
+      // A child's yard at its parents' occasion, and the parents' yard at
+      // the child's.
+      touched[own] |= occasion[theirs];
+      touched[theirs] |= occasion[own];
     }
   }
   std::vector<float> rise(count, 0.0F);
   for (std::uint32_t family = 0; family < count; ++family) {
-    // ONCE, however many weddings and wakes are near: the row names the
-    // month's table, not a count of glasses.
-    const bool near_occasion = std::ranges::any_of(occasions, [&](std::uint32_t other) {
-      return other == family ||
-             std::hypot(yard[other].x - yard[family].x, yard[other].y - yard[family].y) <=
-                 config.rise_wedding_wake_reach_m;
-    });
-    rise[family] += near_occasion ? config.rise_wedding_wake : 0.0F;
+    rise[family] += touched[family] != 0 ? config.rise_wedding_wake : 0.0F;
     const std::uint32_t shock = current.families.rows[family].shock_month;
     if (shock != 0 && closed_tag >= shock &&
         static_cast<float>(closed_tag - shock) < config.rise_shock_months) {
@@ -334,15 +349,12 @@ bool ParseAlcoholismConfig(const ITableSet& tables, AlcoholismConfig& config, st
       {.key = kAlcoholismWorldParamKeys[15], .value = &config.samogon_mood_above, .range = points},
       {.key = kAlcoholismWorldParamKeys[16], .value = &config.samogon_mood_to, .range = points},
       {.key = kAlcoholismWorldParamKeys[17], .value = &config.rise_wedding_wake, .range = points},
-      {.key = kAlcoholismWorldParamKeys[18],
-       .value = &config.rise_wedding_wake_reach_m,
-       .range = {.low = 0.0F, .high = kFarthestRiseReachM}},
-      {.key = kAlcoholismWorldParamKeys[19], .value = &config.rise_strada_end, .range = points},
-      {.key = kAlcoholismWorldParamKeys[20],
+      {.key = kAlcoholismWorldParamKeys[18], .value = &config.rise_strada_end, .range = points},
+      {.key = kAlcoholismWorldParamKeys[19],
        .value = &config.rise_strada_end_month,
        .range = {.low = 1.0F, .high = static_cast<float>(kMonthsPerYear)}},
-      {.key = kAlcoholismWorldParamKeys[21], .value = &config.rise_shock, .range = points},
-      {.key = kAlcoholismWorldParamKeys[22],
+      {.key = kAlcoholismWorldParamKeys[20], .value = &config.rise_shock, .range = points},
+      {.key = kAlcoholismWorldParamKeys[21],
        .value = &config.rise_shock_months,
        .range = {.low = 0.0F, .high = static_cast<float>(kMonthsPerYear)}},
   }};

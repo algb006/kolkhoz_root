@@ -136,7 +136,6 @@ alcohol_rise_shock_months,2,core
 alcohol_rise_strada_end,2,core
 alcohol_rise_strada_end_month,10,core
 alcohol_rise_wedding_wake,3,core
-alcohol_rise_wedding_wake_reach_m,1000,core
 mts_column_ha_per_work_day,10,core
 mts_column_spring_from_month,3,core
 mts_column_spring_to_month,5,core

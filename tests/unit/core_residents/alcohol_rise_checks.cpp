@@ -32,16 +32,20 @@ constexpr std::int32_t kAdultBirth = -192;  // 20 biological years and over from
 constexpr core::SimDay kFebruaryFirst = core::kDaysPerYear + core::kDaysPerMonth;
 constexpr core::SimDay kNovemberFirst = core::kDaysPerYear + 10U * core::kDaysPerMonth;
 
-/// Three yards in a row: the wedding's at 0 m, a neighbour at 600 m, a far
-/// one at 2000 m; a man in each, a woman in the first, nobody drinking yet.
+/// Four yards: the wedding's; his father's (kin, 2 km off); his grown son's
+/// (kin, 2 km off the other way); and a stranger's at the very same spot as
+/// the wedding's. A man in each, a woman in the first, nobody drinking yet.
+/// The distances say the rule is KIN, not a radius (boss 26 October 2026).
 struct Village {
   core::WorldState world;
   core::FamilyId wedding_yard;
-  core::FamilyId near_yard;
-  core::FamilyId far_yard;
+  core::FamilyId near_yard;  ///< the parents' yard
+  core::FamilyId son_yard;
+  core::FamilyId far_yard;  ///< the stranger's, next door
   core::ResidentId wedding_man;
-  core::ResidentId near_man;
-  core::ResidentId far_man;
+  core::ResidentId near_man;  ///< his father
+  core::ResidentId son_man;
+  core::ResidentId far_man;  ///< the stranger
   core::ResidentId woman;
 };
 
@@ -58,20 +62,23 @@ Village MakeVillage() {
     return AppendRow(world.families, family);
   };
   village.wedding_yard = yard_at(0.0F);
-  village.near_yard = yard_at(600.0F);
-  village.far_yard = yard_at(2000.0F);
-  const auto add = [&world](core::Sex sex, core::FamilyId family) {
+  village.near_yard = yard_at(2000.0F);
+  village.son_yard = yard_at(-2000.0F);
+  village.far_yard = yard_at(0.0F);
+  const auto add = [&world](core::Sex sex, core::FamilyId family, core::ResidentId father) {
     core::ResidentRow person;
     person.sex = sex;
     person.birth_day = kAdultBirth;
     person.family = family;
+    person.father = father;
     person.alcoholism = 10.0F;
     return AppendRow(world.residents, person);
   };
-  village.wedding_man = add(core::Sex::kMale, village.wedding_yard);
-  village.near_man = add(core::Sex::kMale, village.near_yard);
-  village.far_man = add(core::Sex::kMale, village.far_yard);
-  village.woman = add(core::Sex::kFemale, village.wedding_yard);
+  village.near_man = add(core::Sex::kMale, village.near_yard, core::ResidentId{});
+  village.wedding_man = add(core::Sex::kMale, village.wedding_yard, village.near_man);
+  village.son_man = add(core::Sex::kMale, village.son_yard, village.wedding_man);
+  village.far_man = add(core::Sex::kMale, village.far_yard, core::ResidentId{});
+  village.woman = add(core::Sex::kFemale, village.wedding_yard, core::ResidentId{});
   return village;
 }
 
@@ -94,13 +101,14 @@ core::FamilyRow& Family(Village& village, core::FamilyId id) {
 
 int CheckTheDrinkingRaisers() {
   int failures = 0;
-  const core::AlcoholismConfig config;  // the row's numbers: 3, 1000 m, 2 in October, 2 x 2
+  const core::AlcoholismConfig config;  // the row's numbers: 3 to kin, 2 in October, 2 x 2
   const Village quiet = MakeVillage();
   const std::uint32_t january = core::MonthTagOfDay(kFebruaryFirst - 1U);
 
-  // A WEDDING IN JANUARY, read at its turn: +3 to its yard's man and to the
-  // man 600 m off, nothing to the one 2 km off, the woman held at 0; against
-  // the same village with no wedding, so every other rule cancels.
+  // A WEDDING IN JANUARY, read at its turn: +3 to its yard's man, to his
+  // father's yard and to his son's, 2 km off each; nothing to the stranger
+  // next door; the woman held at 0. Against the same village with no
+  // wedding, so every other rule cancels.
   {
     Village wedding = quiet;
     Family(wedding, wedding.wedding_yard).drink_occasion_month = january;
@@ -110,23 +118,37 @@ int CheckTheDrinkingRaisers() {
     };
     failures += Expect(Near(rise(wedding.wedding_man), config.rise_wedding_wake) &&
                            Near(rise(wedding.near_man), config.rise_wedding_wake) &&
+                           Near(rise(wedding.son_man), config.rise_wedding_wake) &&
                            Near(rise(wedding.far_man), 0.0F) &&
                            Turned(wedding, kFebruaryFirst, config, wedding.woman) == 0.0F,
-                       "raisers: a wedding's month gives +3 to its yard's men and the men within "
-                       "1000 m, nothing beyond, and a woman stays at 0");
+                       "raisers: a wedding's month gives +3 to its yard's men and its kin's (the "
+                       "parents' and the children's yards, however far), nothing to a stranger "
+                       "next door, and a woman stays at 0");
+    // The kin's occasion reaches back: the father's wake raises the son.
+    Village wake = quiet;
+    Family(wake, wake.near_yard).drink_occasion_month = january;
+    failures += Expect(Near(Turned(wake, kFebruaryFirst, config, wake.wedding_man) -
+                                Turned(quiet, kFebruaryFirst, config, wake.wedding_man),
+                            config.rise_wedding_wake) &&
+                           Near(Turned(wake, kFebruaryFirst, config, wake.son_man) -
+                                    Turned(quiet, kFebruaryFirst, config, wake.son_man),
+                                0.0F),
+                       "raisers: a parent's wake raises the children's yard, and not the "
+                       "grandchildren's");
     // ONCE: a wedding of December is not read at January's turn.
     Village stale = quiet;
     Family(stale, stale.wedding_yard).drink_occasion_month = january - 1U;
     failures += Expect(Near(Turned(stale, kFebruaryFirst, config, stale.wedding_man),
                             Turned(quiet, kFebruaryFirst, config, quiet.wedding_man)),
                        "raisers: a wedding is read at its own month's turn and never again");
-    // Two occasions near one yard still give the one rise.
+    // Two occasions touching one yard still give the one rise.
     Village two = wedding;
     Family(two, two.near_yard).drink_occasion_month = january;
     failures += Expect(Near(Turned(two, kFebruaryFirst, config, two.near_man) -
                                 Turned(quiet, kFebruaryFirst, config, two.near_man),
                             config.rise_wedding_wake),
-                       "raisers: two weddings near a yard give its men the tradition's rise once");
+                       "raisers: two weddings touching a yard give its men the tradition's rise "
+                       "once");
   }
 
   // A SHOCK IN JANUARY: +2 at January's turn and at February's, none at
