@@ -674,10 +674,12 @@ std::vector<std::uint32_t> EmptyingOrder(const ProductionConfig& config,
                                          const UnitRow& unit) {
   std::vector<std::uint32_t> order;
   for (std::uint32_t index = 0; index < unit.stock.size(); ++index) {
-    // THE FOOD THE ORDER SHUTS OUT, AND ONLY IT (start §5, «приказ про еду»,
-    // «Еда без другого дома остаётся в церкви»; EmptyingShutsOut): until #1254
-    // the boards and the glass went too, and so did a food with no other
-    // home - the grain before its granary - which then had nowhere to land.
+    // WHAT THE ORDER SHUTS OUT, AND ONLY IT (start §5; EmptyingShutsOut):
+    // whatever has another standing home, food or not (boss 26 October 2026,
+    // core-boss-1250 [48]; from #1254 to 0.37.334 food only, so the sugar
+    // stayed). Until #1254 the boards and the glass went too, and so did a
+    // food with no other home - the grain before its granary - which then
+    // had nowhere to land.
     if (unit.stock[index] > 0 &&
         EmptyingShutsOut(world, unit, config, DefIdFromIndex<ResourceIdTag>(index))) {
       order.push_back(index);

@@ -13221,6 +13221,22 @@ int CheckTheChurchStoreIsEmptied() {
   core::DeliverToStores(world, config, glass, 50'000);
   failures += Expect(core::AmountOf(world.units.rows[0].stock, glass) == 50'000,
                      "empty store: an emptying church still takes what is not food");
+  // NOT FOOD, BUT WITH ANOTHER HOME, LEAVES TOO (boss 26 October 2026,
+  // start §5 rewritten, core-boss-1250 [48]): sugar has no kcal and was no
+  // food, so the bot's sugar kept coming into an emptying church with the
+  // food store standing. On a copy: the granary made glass's home as well,
+  // the glass goes past the church to it, and the perevalka would carry it.
+  {
+    core::ProductionConfig homed = config;
+    homed.unit_types[1].home_of = {rye, potato, glass};
+    core::WorldState copy = world;
+    core::DeliverToStores(copy, homed, glass, 30'000);
+    failures += Expect(core::AmountOf(copy.units.rows[0].stock, glass) == 50'000 &&
+                           core::AmountOf(copy.units.rows[1].stock, glass) == 30'000 &&
+                           core::EmptyingShutsOut(copy, copy.units.rows[0], homed, glass),
+                       "empty store: a resource that is no food but has another standing home is "
+                       "shut out of the emptying church and goes to its home");
+  }
   // A whole day's carrying done: what has room goes, the potato first.
   // The granary has 3 t left for both.
   world.units.rows[0].haul_days_written = 4.0F;
@@ -13230,7 +13246,8 @@ int CheckTheChurchStoreIsEmptied() {
                          core::AmountOf(world.units.rows[0].stock, rye) == 10 * kTonne,
                      "empty store: the spoiling potato is carried before the rye");
   failures += Expect(core::AmountOf(world.units.rows[0].stock, glass) == 50'000,
-                     "empty store: the perevalka carries food only, the glass stays");
+                     "empty store: the perevalka carries what has another home, and the "
+                     "homeless glass stays");
   failures += Expect(world.units.rows[0].haul_days_remaining == 0.0F,
                      "empty store: with no room left, no carrying is asked for");
   // Room again, and a pause: nothing is asked for, the order stands — and

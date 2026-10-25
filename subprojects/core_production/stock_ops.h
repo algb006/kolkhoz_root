@@ -179,23 +179,29 @@ inline bool AnotherStoreIsHomeOf(const WorldState& world,
   return false;
 }
 
-/// @brief Whether a store under «Освободить склад» shuts `resource` out: a
-///        FOOD that another standing store is a home of (start §5, «Еда без
-///        другого дома остаётся в церкви»; boss, core-boss-1250 [21]).
+/// @brief Whether a store under «Освободить склад» shuts `resource` out: ANY
+///        resource another standing store is a home of (start §5 as boss
+///        rewrote it on 26 October 2026, core-boss-1250 [48]: grain to the
+///        granary, potatoes and vegetables to the vegetable store, other food
+///        and sugar to the yard's food store, glass and the rest to their own
+///        store if it stands; what has no such home the church keeps taking).
 /// EVERY DELIVERY ASKS THIS through IsHomeOf or NumberedStoreTakes. Until #1254
 /// an emptying store refused EVERY resource, so a church being emptied took no
 /// glass - which has no other home before a build yard - and the bot's
 /// upgrades stood short of glass in 8 villages of 16; and it refused a food
 /// with no other home, so a village with a food yard and no granary had its
 /// harvest homeless, its seed at nought and the seed loan refused for want of
-/// a store (seed 1940). A food keeps its church until its granary stands, and
-/// leaves it then. Taking from it is untouched — IsTakenFrom does not ask here.
+/// a store (seed 1940). The other home alone carries both reasons. FROM #1254
+/// TO 0.37.334 IT ASKED FOR A FOOD as well, and sugar, which has no row in
+/// food.csv, was no food: the bot's sugar kept coming into the church under
+/// its order with the food store standing, and its unwatched sugar held the
+/// night leak open (the door print cs4, core-boss-1250 [48]). Taking from it
+/// is untouched — IsTakenFrom does not ask here.
 inline bool EmptyingShutsOut(const WorldState& world,
                              const UnitRow& unit,
                              const ProductionConfig& config,
                              ResourceId resource) {
-  return unit.emptying != 0 && IsFoodResource(config, resource) &&
-         AnotherStoreIsHomeOf(world, unit, config, resource);
+  return unit.emptying != 0 && AnotherStoreIsHomeOf(world, unit, config, resource);
 }
 
 /// @brief IsHomeOf for a unit of `world`: its type's home (TypeIsHomeOf), unless
