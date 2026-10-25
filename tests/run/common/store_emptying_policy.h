@@ -75,23 +75,32 @@ class StoreEmptyingPolicy {
         food_[row] = resources->CellReal(row, kcal).value_or(0.0F) > 0.0F ? 1 : 0;
       }
     }
-    // THE FOOD'S OTHER HOMES (resource_stores.csv `storage`, the unit type
-    // that holds it): rye, oat, wheat and barley in the food yard's GRANARY,
-    // sugar in its food store, potato in a clamp or the vegetable store.
+    // THE FOOD'S OTHER HOMES, by the core's own rule (production_config.cpp:
+    // a resource_stores row makes BOTH its `unit` and its `storage` a home):
+    // the grain the food yard and its granary, sugar, meat and salt the food
+    // yard and its food store, potato a clamp or the vegetable store. The
+    // first cut read `storage` alone, so meat and sugar waited for a food
+    // store module no bot builds while the food yard itself stood their home,
+    // and the church was never emptied (#1254, 0.37.333's pair).
     const core::ITable* const types = tables.FindTable("unit_types");
     const core::ITable* const homes = tables.FindTable("resource_stores");
     if (resources != nullptr && types != nullptr && homes != nullptr) {
       homes_.resize(resources->RowCount());
       const std::uint32_t resource_col = homes->FindColumn("resource");
-      const std::uint32_t storage_col = homes->FindColumn("storage");
       for (std::uint32_t row = 0; row < homes->RowCount(); ++row) {
-        if (resource_col == core::kNoTableColumn || storage_col == core::kNoTableColumn) {
+        if (resource_col == core::kNoTableColumn) {
           break;
         }
         const std::uint32_t resource = resources->FindRowByKey(homes->CellText(row, resource_col));
-        const std::uint32_t type = types->FindRowByKey(homes->CellText(row, storage_col));
-        if (resource < homes_.size() && type != core::kNoTableRow && type != church_) {
-          homes_[resource].push_back(type);
+        for (const std::string_view column :
+             {std::string_view("unit"), std::string_view("storage")}) {
+          const std::uint32_t col = homes->FindColumn(column);
+          const std::uint32_t type = col == core::kNoTableColumn
+                                         ? core::kNoTableRow
+                                         : types->FindRowByKey(homes->CellText(row, col));
+          if (resource < homes_.size() && type != core::kNoTableRow && type != church_) {
+            homes_[resource].push_back(type);
+          }
         }
       }
     }
