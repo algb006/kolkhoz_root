@@ -724,7 +724,11 @@ void WriteLedger(SaveSink& sink, const LedgerState& ledger) {
     out.WriteU32(year.residents);
     out.WriteFloat(year.fertility);
     out.WriteI64(year.harvest_kcal);
-    sink.WriteAmounts(DefKind::kResource, year.harvest);  // save 192 (#1292)
+    sink.WriteAmounts(DefKind::kResource, year.harvest);              // save 192 (#1292)
+    for (std::uint32_t month = 0; month < kMonthsPerYear; ++month) {  // save 194 (#1292)
+      out.WriteFloat(year.team_work_share[month]);
+      out.WriteFloat(year.team_oats_share[month]);
+    }
   }
 }
 
@@ -745,7 +749,11 @@ LedgerState ReadLedger(LoadSource& source) {
     year.residents = in.ReadU32();
     year.fertility = in.ReadFloat();
     year.harvest_kcal = in.ReadI64();
-    year.harvest = source.ReadAmounts(DefKind::kResource);  // save 192 (#1292)
+    year.harvest = source.ReadAmounts(DefKind::kResource);            // save 192 (#1292)
+    for (std::uint32_t month = 0; month < kMonthsPerYear; ++month) {  // save 194 (#1292)
+      year.team_work_share[month] = in.ReadFloat();
+      year.team_oats_share[month] = in.ReadFloat();
+    }
     ledger.chronicle.push_back(year);
   }
   return ledger;

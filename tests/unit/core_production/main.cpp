@@ -846,27 +846,39 @@ int CheckTheForecastHorseEatsItsWorkGrain() {
   // need is the herd day's need less LightDaySpared, not the whole need.
   {
     config.farming.traction_full_ration_share = 0.4F;
-    const auto horses = [&config](float work, float oats) {
+    // Three closed years on the wall (save 194), oldest first, each with the
+    // light share (work - oats) given; the spare is the LOWER of the last
+    // year's and the three years' mean.
+    const auto horses = [&config](std::array<float, 3> light_by_year) {
       core::WorldState world = MakeHerdWorld(1000.0F);
       world.units.rows[0].stock.resize(4, 0);
       AddHerd(world, 0, 4, 2, true);
-      world.calendar.tick = static_cast<core::Tick>(core::kDaysPerYear) * core::kTicksPerDay;  // y2
+      world.calendar.tick =
+          static_cast<core::Tick>(4U * core::kDaysPerYear) * core::kTicksPerDay;  // y5
       core::RefreshCalendarCaches(world.calendar);
-      for (std::uint32_t month = 0; month < core::kMonthsPerYear; ++month) {
-        world.ledger.closed.team_work_share_sum[month] = work * 4.0F;
-        world.ledger.closed.team_oats_share_sum[month] = oats * 4.0F;
-        world.ledger.closed.team_share_days[month] = 4;
+      for (const float light_share : light_by_year) {
+        core::ChronicleYear row;
+        for (std::uint32_t month = 0; month < core::kMonthsPerYear; ++month) {
+          row.team_work_share[month] = light_share;
+          row.team_oats_share[month] = 0.0F;
+        }
+        world.ledger.chronicle.push_back(row);
       }
       return core::ForecastHerdFeed(config, world, false, core::FeedHorizon::kNearestScythes)
           .need_units;
     };
-    const float no_traces = horses(0.0F, 0.0F);
-    const float light = horses(1.0F, 0.5F);
-    std::cout << "  the forecast's horse, a light year: need " << light << " units against "
-              << no_traces << " with nobody in the traces\n";
-    failures += Expect(light > 0.0F && light < no_traces * 0.9F,
+    const float no_traces = horses({0.0F, 0.0F, 0.0F});
+    const float steady = horses({0.5F, 0.5F, 0.5F});
+    const float lighter_last = horses({0.0F, 0.0F, 0.5F});  // last year 0.5, the mean 0.17
+    std::cout << "  the forecast's horse, light years: need " << steady << " (0.5 three years), "
+              << lighter_last << " (0.5 last year, the mean 0.17) against " << no_traces
+              << " with nobody in the traces\n";
+    failures += Expect(steady > 0.0F && steady < no_traces * 0.9F,
                        "the forecast's horse: a light day spares part of its need, by the herd "
-                       "day's own LightDaySpared at last year's shares");
+                       "day's own LightDaySpared");
+    failures += Expect(lighter_last > steady && lighter_last < no_traces,
+                       "the forecast's horse: a light year after two heavy ones spares by the "
+                       "three years' mean, the lower - not by last year's alone");
   }
   return failures;
 }

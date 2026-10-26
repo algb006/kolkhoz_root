@@ -557,7 +557,13 @@ class EventsSlot final : public ISequentialPhase {
       kcal = kcal > 0.0 ? kMaxHarvestKcal : 0.0;
     }
     row.harvest_kcal = static_cast<std::int64_t>(kcal);
-    row.harvest = current.ledger.closed.harvest;  // save 192 (#1292)
+    row.harvest = current.ledger.closed.harvest;                      // save 192 (#1292)
+    for (std::uint32_t month = 0; month < kMonthsPerYear; ++month) {  // save 194 (#1292)
+      const YearLedger& book = current.ledger.closed;
+      const auto days = static_cast<float>(book.team_share_days[month]);
+      row.team_work_share[month] = days > 0.0F ? book.team_work_share_sum[month] / days : 0.0F;
+      row.team_oats_share[month] = days > 0.0F ? book.team_oats_share_sum[month] / days : 0.0F;
+    }
     current.ledger.chronicle.push_back(row);
   }
 

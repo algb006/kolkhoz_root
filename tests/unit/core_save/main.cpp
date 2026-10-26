@@ -1154,6 +1154,9 @@ core::WorldState MakeWorld() {
        .harvest_kcal = 39'250'000,
        .harvest = Amounts({41'000'000, 0, 0, 0, 0, 7'500'000})},
   };
+  // save 194 (#1292): the team's shares by month ride the rows.
+  world.ledger.chronicle[1].team_work_share[3] = 0.625F;
+  world.ledger.chronicle[1].team_oats_share[3] = 0.25F;
   world.ledger.current.year = 0;
   world.ledger.current.births = 1;
   world.ledger.current.limit_points_granted = 350;
@@ -2459,7 +2462,10 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // (one empty): 3192 -> 3294. NOT predicted before the build - read off it.
     // Save 193 (#1292): the team's work share by month, +120 a book, two
     // books: 3294 -> 3534, predicted before the build and held.
-    {"ledger", 3534, 0x595a6ce07dbdbb2eULL},
+    // Save 194 (#1292): each chronicle row's team work and oats shares by
+    // month, two float[12], three rows: 3534 -> 3822, predicted before the
+    // build and held.
+    {"ledger", 3822, 0x3334c5b67115e0c9ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -3322,7 +3328,9 @@ int main() {
       loaded.ledger.chronicle[2].harvest_kcal == 39'250'000 &&
       loaded.ledger.chronicle[0].harvest.empty() &&
       loaded.ledger.chronicle[1].harvest == world.ledger.chronicle[1].harvest &&
-      loaded.ledger.chronicle[2].harvest == world.ledger.chronicle[2].harvest;
+      loaded.ledger.chronicle[2].harvest == world.ledger.chronicle[2].harvest &&
+      loaded.ledger.chronicle[1].team_work_share[3] == 0.625F &&
+      loaded.ledger.chronicle[1].team_oats_share[3] == 0.25F;
   failures += Expect(wall_intact, "and the office wall came back whole, in order");
 
   // The order book: a campaign saved with an order waiting resumes with it

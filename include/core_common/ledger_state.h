@@ -1034,6 +1034,16 @@ struct ChronicleYear {
   /// years' mean (econ, core-boss-1289-herd-plan [40]); `closed` is one year,
   /// and the mean needed the three.
   ResourceAmounts harvest;
+
+  /// THE TEAM'S WORK AND OATS SHARES BY MONTH, the closed year's means (save
+  /// 194, #1292): YearLedger's team_*_share_sum over team_share_days as it
+  /// rotated, 0 for a month with no day. The herd forecast spares a horse's
+  /// light day at the LOWER of last year's spare and the three closed years'
+  /// mean (econ, core-boss-1289-herd-plan [67]): on last year's alone, a year
+  /// whose team worked harder than the last was credited hay it did not spare
+  /// - 1931 y5's forecast ended +9.6 % optimistic, before a hungry year.
+  std::array<float, kMonthsPerYear> team_work_share{};
+  std::array<float, kMonthsPerYear> team_oats_share{};
 };
 
 /// @brief The wall: one row per closed year, oldest first.

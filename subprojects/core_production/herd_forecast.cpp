@@ -221,6 +221,13 @@ std::vector<std::pair<std::uint32_t, std::vector<float>>> ScheduledHarvestFeed(
 struct MonthShares {
   float work = 0.0F;
   float oats = 0.0F;
+  /// The light day's share (work - oats) the forecast spares by: the LOWER of
+  /// last year's and the mean of the three closed years (econ, core-boss-1289-
+  /// herd-plan [67]). STUB: nought until three closed years carry the shares
+  /// (save 194) - no hay spared, the side that keeps a short year lit; econ's
+  /// norm calendar for those years is not built. Return when: a pair shows the
+  /// years 2-4 fed lit above K2's share for want of the spare.
+  float light = 0.0F;
 };
 
 /// THE TEAM'S WORK SHARE BY MONTH, AS THE FORECAST FEEDS IT (#1292; econ,
@@ -240,6 +247,22 @@ std::array<MonthShares, kMonthsPerYear> TeamSharesByMonth(const WorldState& worl
     if (days > 0.0F) {
       shares[month].work = book.team_work_share_sum[month] / days;
       shares[month].oats = book.team_oats_share_sum[month] / days;
+    }
+  }
+  // The light share: the lower of last year's and the three closed years' mean.
+  constexpr std::size_t kBookYears = 3;
+  const Chronicle& wall = world.ledger.chronicle;
+  if (wall.size() >= kBookYears) {
+    for (std::uint32_t month = 0; month < kMonthsPerYear; ++month) {
+      float sum = 0.0F;
+      for (std::size_t back = 1; back <= kBookYears; ++back) {
+        const ChronicleYear& year = wall[wall.size() - back];
+        sum += std::max(0.0F, year.team_work_share[month] - year.team_oats_share[month]);
+      }
+      const ChronicleYear& last = wall.back();
+      const float last_light =
+          std::max(0.0F, last.team_work_share[month] - last.team_oats_share[month]);
+      shares[month].light = std::min(last_light, sum / static_cast<float>(kBookYears));
     }
   }
   return shares;
@@ -600,8 +623,7 @@ bool StoredHayShortWithin(const ProductionConfig& config,
           FeedNeedUnits(config, config.livestock[herd.kind.value], herd, month, grazing);
       // The light day's spared part, as the herd day eats (#1292; LightDaySparedFor).
       const float units =
-          whole - LightDaySparedFor(
-                      config, herd.kind, whole, team_shares[month].work, team_shares[month].oats);
+          whole - LightDaySparedFor(config, herd.kind, whole, team_shares[month].light, 0.0F);
       if (units > 0.0F) {
         needs.push_back(FeedDayNeed{.kind = herd.kind, .units = units});
       }
@@ -1175,8 +1197,7 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
       // world's horses ate 5-40 % less with no hunger. At last year's shares by
       // month (TeamSharesByMonth), the work grain's own book.
       const float units =
-          whole - LightDaySparedFor(
-                      config, herd.kind, whole, team_shares[month].work, team_shares[month].oats);
+          whole - LightDaySparedFor(config, herd.kind, whole, team_shares[month].light, 0.0F);
       if (units > 0.0F) {
         needs.push_back(FeedDayNeed{.kind = herd.kind, .units = units});
         needs_of.push_back(index);
