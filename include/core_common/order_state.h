@@ -967,6 +967,19 @@ enum class OrderKind : std::uint8_t {
   /// core_construction.
   kRaiseSite,
 
+  /// THE HERD PLAN, «держать не больше N голов» (#1289; livestock.md «План
+  /// стада»; registry 319): `herd` names a kolkhoz herd, `amount` its N -
+  /// from then a birth comes only while the herd's heads are under N
+  /// (HerdRow::plan_heads), ON TOP OF the share under the roof. Changed on
+  /// any day; it takes no head away - a herd above its N shrinks by age and
+  /// hand-over alone. `amount` kNoHerdPlan clears the plan back to «not
+  /// set». N below the milk plan's cows, the spring teams or two is
+  /// ACCEPTED: the window says it, the order does not refuse it. Refusals:
+  /// kNoSuchSubject (no such herd), kNotEligible (a yard's own herd),
+  /// kNoRoomForStock (N above the herd's places, HerdPlaces - «отказ
+  /// один»). Seam key `set_herd_plan`. Consumer: core_production.
+  kSetHerdPlan,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).

@@ -297,6 +297,12 @@ bool ShapeIsValid(const OrderRow& order) {
       // it and whether it is already as asked is the consumer's.
       return has_unit && order.enable <= 1 && !has_resident && !has_field && !has_herd &&
              !has_stand && !has_site;
+    case OrderKind::kSetHerdPlan:
+      // A herd and an N of whole heads - nought is a plan («приплода не
+      // будет»), kNoHerdPlan clears it - and no other subject (#1289).
+      // Whether N fits under the herd's places is the consumer's verdict.
+      return has_herd && order.amount >= 0 && order.amount <= kNoHerdPlan && !has_resident &&
+             !has_unit && !has_field && !has_stand && !has_site;
     case OrderKind::kPauseLogisticsTask:
       // The task and a switch that is a switch.
       return order.logistics_task.value != kInvalidEntityIdValue && order.enable <= 1 &&
@@ -508,6 +514,8 @@ class Session final : public ISession {
   MasterEyeView MasterEye() const override { return simulation_->MasterEye(); }
 
   WeekLabourView WeekLabourBook() const override { return simulation_->WeekLabourBook(); }
+
+  std::vector<HerdPlanLine> HerdPlans() const override { return simulation_->HerdPlans(); }
 
   ChairmanTransportView ChairmanTransport() const override {
     return simulation_->ChairmanTransport();

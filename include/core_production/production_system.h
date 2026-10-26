@@ -60,6 +60,7 @@
 #include "core_common/calendar.h"
 #include "core_common/early_snow.h"
 #include "core_common/grass_stand_view.h"
+#include "core_common/herd_plan_view.h"
 #include "core_common/meadow_mark.h"
 #include "core_common/office_views.h"
 #include "core_common/quantities.h"
@@ -250,6 +251,12 @@ class IProductionSystem {
   /// owed back or borrowed this year.
   /// @note Called between steps on the sim thread. A pure read.
   virtual PlanBook OfficePlan(const WorldState& completed) const = 0;
+
+  /// @brief The herd window's plan lines off `completed` (herd_plan_view.h;
+  ///        #1289), one per kolkhoz herd in row order: heads, places, the
+  ///        plan. «Сена на» and the warnings are the body's (STUB).
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual std::vector<HerdPlanLine> HerdPlans(const WorldState& completed) const = 0;
 
   /// @brief What a goods loan of `borrowed` grams books as owed back, the
   /// mark-up included (goods_loan.h GoodsLoanWithMarkup) — the order's

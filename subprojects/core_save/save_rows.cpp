@@ -367,8 +367,12 @@ static_assert(AggregateArity<SettlementRow>() == 7,
 // Save 172 (#1056 C1.3): leg_on_foot, a byte after leg_resource - predicted
 // into the word the ResourceId opened, 176 unmoved and 36 fields, +1 a herd on
 // the wire, before the build.
-static_assert(sizeof(HerdRow) == 176, "HerdRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<HerdRow>() == 36,
+// Save 191 (#1289): plan_heads, a u16 after leg_on_foot - predicted into the
+// same word, 176 unmoved and 37 fields, +2 a herd on the wire, before the
+// build; the size MISSED: 184 - the byte after leg_on_foot was the word's last
+// padding, and the optional wait behind it is 8-aligned (the fields held).
+static_assert(sizeof(HerdRow) == 184, "HerdRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<HerdRow>() == 37,
               "HerdRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-13: the felling mark — a stand id and a volume — took the order row
 // from 64 to 72 and the assignment's stand from 24 to 28 (and the resident
@@ -1617,6 +1621,7 @@ void WriteHerdRow(SaveSink& sink, const HerdRow& row) {
   WriteVec2(out, row.leg_to);
   sink.WriteDefId(DefKind::kResource, row.leg_resource.value);
   out.WriteU8(row.leg_on_foot);  // save 172 (#1056 C1.3)
+  out.WriteU16(row.plan_heads);  // save 191 (#1289)
   WriteWait(out, row.wait);      // save 138
 }
 
@@ -1664,6 +1669,7 @@ HerdRow ReadHerdRow(LoadSource& source) {
   row.leg_to = ReadVec2(in);
   row.leg_resource = ResourceId{source.ReadDefId(DefKind::kResource)};
   row.leg_on_foot = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "milk leg on foot"));
+  row.plan_heads = in.ReadU16();  // save 191 (#1289): any count, or kNoHerdPlan
   if (!(row.leg_days_remaining >= 0.0F) || !(row.leg_days_written >= 0.0F) ||
       !(row.leg_days_priced >= 0.0F)) {
     source.Fail("a herd's milk leg is negative or not a number");

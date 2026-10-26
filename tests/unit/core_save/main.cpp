@@ -555,6 +555,7 @@ core::WorldState MakeWorld() {
   herd.leg_to = core::Vec2{8800.5F, 9250.25F};
   herd.leg_resource = core::ResourceId{1};
   herd.leg_on_foot = 1;  // save 172 (#1056 C1.3): on foot, off its default
+  herd.plan_heads = 37;  // save 191 (#1289): a plan, off its «not set» default
   // Save 138: a horse of it at its worker's yard, waiting for his shift.
   herd.wait = core::WaitRecord(
       core::WaitKind::kHorseAtWorkersYard,
@@ -2156,7 +2157,9 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // predicted 157 -> 161 and held; the hash read off it.
     // Save 172 (#1056 C1.3): +1 - the leg on foot; predicted 161 -> 162
     // before the build and held; the hash read off it.
-    {"herds", 162, 0x2fbb997e65965dd2ULL},
+    // Save 191 (#1289): +2 - the herd plan's u16; predicted 162 -> 164 before
+    // the build and held; the hash read off it.
+    {"herds", 164, 0x4b734a2288f0ca83ULL},
     // 2026-09-16, save 48: +6 bytes, one for each of the six orders — the
     // bought head's sex. The witness named the section, the delta and the
     // offset without being asked, which is what it was rewritten for this
@@ -2223,7 +2226,10 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // Save 154 (0.37.232, #595): kRaiseSite became the top OrderKind — same
     // 818 bytes, the hash moved; NOT predicted before the build (the ninth
     // time; the units section's +3 was predicted, this one the test found).
-    {"orders", 818, 0x9610fff945ef0326ULL},
+    // Save 191 (#1289): kSetHerdPlan became the top OrderKind — same 818
+    // bytes, the hash moved; NOT predicted before the build (the tenth time;
+    // the herds' +2 was predicted, this one the test found).
+    {"orders", 818, 0x664a5fc973a921b9ULL},
     // Save 82: the fixture's first stand, a birch planting — 8 -> 67 (its id
     // 4, the old fields 41, species 2, hectares 4, two days 8); predicted,
     // held.
@@ -3083,7 +3089,8 @@ int main() {
           loaded.herds.rows[0].leg_days_written == 0.75F &&
           loaded.herds.rows[0].leg_days_priced == 0.875F &&
           loaded.herds.rows[0].leg_to.x == 8800.5F && loaded.herds.rows[0].leg_to.y == 9250.25F &&
-          loaded.herds.rows[0].leg_resource.value == 1 && loaded.herds.rows[0].leg_on_foot == 1,
+          loaded.herds.rows[0].leg_resource.value == 1 && loaded.herds.rows[0].leg_on_foot == 1 &&
+          loaded.herds.rows[0].plan_heads == 37,
       "the herd's milk leg comes back, and on foot (save 170, 172)");
   failures += Expect(AmountAt(loaded.ledger.closed.herd_hay_eaten, 1) == 9 &&
                          AmountAt(loaded.ledger.closed.herd_feed_short, 0) == 6 &&

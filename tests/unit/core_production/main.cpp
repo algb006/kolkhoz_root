@@ -65,6 +65,7 @@
 #include "herd_floors.h"
 #include "herd_forecast.h"
 #include "herd_life.h"
+#include "herd_plan_checks.h"
 #include "herd_system.h"
 #include "hourly_carting_checks.h"
 #include "livestock_homes.h"
@@ -17407,6 +17408,7 @@ int main() {
   failures += CheckTheTeamsOatPlan();
   failures += CheckTheRatingBeyondThePlan();
   failures += CheckAStarvedKolkhozHerdDoesNotInterruptAgain();
+  failures += CheckTheHerdPlan();
   failures += CheckThePerennialsCut();
   failures += CheckTheGrassStandsAge();
 

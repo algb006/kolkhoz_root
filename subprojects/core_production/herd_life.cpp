@@ -451,6 +451,14 @@ void RunBirths(const ProductionConfig& config,
   if (!in_birth_season) {
     return;
   }
+  // THE HERD PLAN (#1289; livestock.md «План стада»): on a day the herd's
+  // heads stand at or over the chairman's N, no birth comes - and nothing
+  // accrues toward one (boss, core-boss-1289 [2] C: «лишний» calf is lost,
+  // not banked, so raising N brings no burst). ON TOP OF the share under the
+  // roof below; with no plan set the gate is not there at all.
+  if (herd.plan_heads != kNoHerdPlan && TotalHeads(herd) >= herd.plan_heads) {
+    return;
+  }
   const auto females = static_cast<float>(kind.sexed != 0 ? herd.adult_count - herd.adult_male_count
                                                           : herd.adult_count);
   if (!(females > 0.0F) || !(kind.births_per_game_year > 0.0F)) {

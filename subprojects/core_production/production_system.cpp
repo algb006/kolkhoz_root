@@ -61,7 +61,9 @@
 #include "goods_loan.h"
 #include "herd_cold.h"
 #include "herd_forecast.h"
+#include "herd_life.h"
 #include "herd_system.h"
+#include "livestock_homes.h"
 #include "manure_cart.h"
 #include "meadow_orders.h"
 #include "milk_cart.h"
@@ -508,6 +510,26 @@ class ProductionSystem final : public IProductionSystem {
   DeliveryTerm LimitDeliveryTerm(const WorldState& completed) const override {
     const std::uint32_t base = LimitBaseDeliveryDays(config_, completed);
     return DeliveryTerm{.days_min = base, .days_max = base + config_.limit.delivery_delay_days_max};
+  }
+
+  std::vector<HerdPlanLine> HerdPlans(const WorldState& completed) const override {
+    std::vector<HerdPlanLine> lines;
+    for (std::uint32_t row = 0; row < completed.herds.rows.size(); ++row) {
+      const HerdRow& herd = completed.herds.rows[row];
+      if (herd.household_owned != 0 || herd.household.value != kInvalidEntityIdValue) {
+        continue;  // a yard's own herd has no plan of the chairman's
+      }
+      HerdPlanLine line;
+      line.herd = completed.herds.row_ids[row];
+      line.kind = herd.kind;
+      line.heads = TotalHeads(herd);
+      line.places = HerdPlaces(config_, completed, row);
+      line.plan_set = herd.plan_heads != kNoHerdPlan;
+      line.plan = line.plan_set ? herd.plan_heads : line.places;
+      // «Сена на», «по норме» and the three warnings: #1289's body (STUB).
+      lines.push_back(line);
+    }
+    return lines;
   }
 
   PlanBook OfficePlan(const WorldState& completed) const override {

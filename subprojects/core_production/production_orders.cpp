@@ -21,6 +21,7 @@
 #include "field_work.h"
 #include "goods_loan.h"
 #include "herd_system.h"
+#include "livestock_homes.h"
 #include "meadow_orders.h"
 #include "night_pasture.h"
 #include "stock_ops.h"
@@ -393,6 +394,31 @@ OrderRefusal SetRotation(const ProductionConfig& config,
   return OrderRefusal::kNone;
 }
 
+/// @brief «План стада» (kSetHerdPlan; #1289; livestock.md «План стада»): the
+///        kolkhoz herd's N, or kNoHerdPlan to clear it.
+/// @return kNoSuchSubject for no such herd; kNotEligible for a yard's own
+///         herd; kNoRoomForStock for an N above the herd's places
+///         (HerdPlaces) - «отказ один: N больше мест». N under the floors is
+///         accepted (the window says it).
+OrderRefusal SetHerdPlan(const ProductionConfig& config,
+                         WorldState& current,
+                         const OrderRow& order) {
+  const std::uint32_t row = FindRow(current.herds, order.herd);
+  if (row == kNoRow) {
+    return OrderRefusal::kNoSuchSubject;
+  }
+  HerdRow& herd = current.herds.rows[row];
+  if (herd.household_owned != 0 || herd.household.value != kInvalidEntityIdValue) {
+    return OrderRefusal::kNotEligible;
+  }
+  const auto wanted = static_cast<std::uint16_t>(order.amount);
+  if (wanted != kNoHerdPlan && wanted > HerdPlaces(config, current, row)) {
+    return OrderRefusal::kNoRoomForStock;
+  }
+  herd.plan_heads = wanted;
+  return OrderRefusal::kNone;
+}
+
 /// @brief «Освободить склад» (kEmptyStore; start §5; registers 214, 233).
 /// @return kNoSuchSubject for no such unit; kNotEligible for anything but the
 ///         church store or a clamp; kRuleForbids to empty with no other built
@@ -592,6 +618,9 @@ void ConsumeProductionOrders(const ProductionConfig& config, WorldState& current
         break;
       case OrderKind::kHandStock:
         Settle(order, OrderHandStock(config, current, order));
+        break;
+      case OrderKind::kSetHerdPlan:
+        Settle(order, SetHerdPlan(config, current, order));
         break;
       case OrderKind::kDeliverPlan:
         // WHOSE TRANSPORT (routing stage В5; district_carts.h): the district's

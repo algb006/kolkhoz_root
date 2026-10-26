@@ -29,6 +29,17 @@ namespace core {
 /// @return -1 for a kind with no house (LivestockDef::home_unit invalid).
 float HomePlacesFree(const ProductionConfig& config, const WorldState& world, LivestockKindId kind);
 
+/// @brief The herd plan's ceiling, «N не больше мест под крышей» (#1289;
+///        livestock.md «План стада»; boss, core-boss-1289 [2] B): the places
+///        of the herd's unit type - its own unit's, or its kind's house while
+///        it has none - summed over every standing unit of the type, less
+///        the heads of the OTHER kolkhoz herds standing there: the room
+///        BilletHerds spends. Whole heads, never below nought.
+/// @param herd_row The herd's row in world.herds.
+std::uint16_t HerdPlaces(const ProductionConfig& config,
+                         const WorldState& world,
+                         std::uint32_t herd_row);
+
 /// @brief Puts every kolkhoz herd that stands under no roof into its kind's
 ///        house, the first standing unit of the type with a free place. A herd
 ///        larger than the free places moves in all the same, and the rest of it

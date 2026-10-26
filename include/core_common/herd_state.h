@@ -55,6 +55,10 @@
 
 namespace core {
 
+/// @brief HerdRow::plan_heads while the chairman has set no herd plan (#1289):
+///        no plan gate; the window reads the herd's places.
+inline constexpr std::uint16_t kNoHerdPlan = 0xFFFFU;
+
 /// @brief One herd of one kind in one place. Plain data.
 struct HerdRow {
   /// Row of tables/livestock.csv: cow, horse, sheep, pig, chicken, duck.
@@ -260,6 +264,16 @@ struct HerdRow {
   /// job asks no horse. 0 - by cart, only where the standard day holds fewer
   /// walks than labor.csv `walker_min_trips_per_day` (milk_cart.cpp).
   std::uint8_t leg_on_foot = 0;
+
+  /// THE HERD PLAN, «держать не больше N голов» (#1289; livestock.md «План
+  /// стада»; registry 319; save 191): a birth comes only while the herd's
+  /// heads - newborns, juveniles and adults, all under the roof and all
+  /// eating hay - are under it (herd_life.cpp RunBirths), ON TOP OF the
+  /// share under the roof of 1 October 2026; a birth it stops is lost, not
+  /// banked. kNoHerdPlan while the chairman has not set it: then no plan
+  /// gate at all, the game as before, and the window reads the places.
+  /// Written by kSetHerdPlan alone.
+  std::uint16_t plan_heads = kNoHerdPlan;
 
   /// THE WAIT A HEAD OF IT STANDS IN (save 138; architecture §7ж³; routing
   /// stage B, B6): a riding horse spending the night at its worker's yard

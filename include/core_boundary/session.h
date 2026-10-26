@@ -142,6 +142,7 @@
 #include "core_common/elder_view.h"
 #include "core_common/event_state.h"
 #include "core_common/geometry.h"
+#include "core_common/herd_plan_view.h"
 #include "core_common/ids.h"
 #include "core_common/issue_norm_view.h"
 #include "core_common/master_eye_view.h"
@@ -800,6 +801,16 @@ class ISession {
   /// @note Between steps; the answer describes State() and moves once a
   ///       week, at Sunday's close.
   virtual WeekLabourView WeekLabourBook() const = 0;
+
+  /// @brief «План стада» for the herd window (herd_plan_view.h; #1289,
+  ///        livestock.md «План стада — "держать не больше N голов"»): per
+  ///        kolkhoz herd its heads, places, the plan («держим», the places
+  ///        while not set), and - from #1289's body - «сена на», «по норме»
+  ///        and the three warnings. The plan is a gate ON TOP OF the share
+  ///        under the roof (1 October 2026), not the old «free place» rule.
+  ///        Set by the order kSetHerdPlan.
+  /// @note Between steps; the answer describes State().
+  virtual std::vector<HerdPlanLine> HerdPlans() const = 0;
 
   /// @brief «Нет ресурса — нет транспорта» (chairman_transport_view.h;
   ///        camera-and-visuals.md): whether the chairman's horse stands at

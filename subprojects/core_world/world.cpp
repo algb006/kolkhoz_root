@@ -860,6 +860,10 @@ class StandardSimulation final : public ISimulation {
     return WeekLabourViewOf(engine_->CompletedState().labour_week);
   }
 
+  std::vector<HerdPlanLine> HerdPlans() const override {
+    return production_->HerdPlans(engine_->CompletedState());
+  }
+
   std::vector<BarterYardLine> BarterDryLines() const override {
     return residents_->BarterDryLines(engine_->CompletedState());
   }

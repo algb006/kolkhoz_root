@@ -76,6 +76,7 @@
 #include "core_common/delivery_term.h"
 #include "core_common/elder_view.h"
 #include "core_common/grass_stand_view.h"
+#include "core_common/herd_plan_view.h"
 #include "core_common/ids.h"
 #include "core_common/issue_norm_view.h"
 #include "core_common/labor_state.h"
@@ -348,6 +349,11 @@ class ISimulation {
   ///        calendar week's man-days by who placed them and on the plot.
   /// @note NOT PURE, for ActivityOf's reason. The default answers «not yet».
   virtual WeekLabourView WeekLabourBook() const { return {}; }
+
+  /// @brief The herd window's plan lines (herd_plan_view.h; #1289), one per
+  ///        kolkhoz herd. Fans out to core_production.
+  /// @note NOT PURE, for ActivityOf's reason. The default answers no line.
+  virtual std::vector<HerdPlanLine> HerdPlans() const { return {}; }
 
   /// @brief Whether the chairman's horse stands at the hitching post, and why
   /// (chairman_transport_view.h; «Нет ресурса — нет транспорта»).

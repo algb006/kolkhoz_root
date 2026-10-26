@@ -8,6 +8,7 @@ kolkhoz_add_unit_test(core_production
     harvest_advice_checks.cpp
     heap_lamp_checks.cpp
     herd_death_checks.cpp
+    herd_plan_checks.cpp
     hourly_carting_checks.cpp
     manure_cart_checks.cpp
     meadow_hay_checks.cpp
