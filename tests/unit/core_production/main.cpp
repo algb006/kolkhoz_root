@@ -734,6 +734,62 @@ int CheckTheShippedFeedingOrder() {
   return failures;
 }
 
+/// THE HARVEST'S FEED STILL TO COME (#1292): the forecast lands the straw a
+/// harvest will bring by the book - the lower of last year's and the closed
+/// years' mean, less what is harvested already - on the last day of its
+/// crop's window; and with no book (year 1, or chronicle rows that carry no
+/// harvest, as every row a 191 world wrote would) it lands nothing.
+int CheckTheHarvestFeedStillToCome() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.hay_resource = core::ResourceId{0};
+  // A fourth resource, straw, a feed the herd eats after its hay.
+  config.feed_values = {1.0F, 0.0F, 0.0F, 1.0F};
+  config.feed_links.push_back(core::FeedLinkDef{
+      .kind = core::LivestockKindId{0}, .resource = core::ResourceId{3}, .reserve = 0});
+  config.straw_resource = core::ResourceId{3};
+  core::CropDef crop;
+  crop.resource = core::ResourceId{3};
+  crop.harvest_from_month = 1;
+  crop.harvest_to_month = 1;  // the window ends on the year's day 7
+  config.crops = {crop};
+  const auto village = [](const std::vector<core::ResourceAmounts>& years) {
+    core::WorldState world = MakeHerdWorld(10.0F);  // 10 kg of hay: short within days
+    world.units.rows[0].stock.resize(4, 0);
+    AddHerd(world, 0, 4, 2, true);
+    world.calendar.tick = static_cast<core::Tick>(core::kDaysPerYear) * core::kTicksPerDay;  // y2
+    core::RefreshCalendarCaches(world.calendar);
+    for (const core::ResourceAmounts& harvest : years) {
+      core::ChronicleYear row;
+      row.harvest = harvest;
+      world.ledger.chronicle.push_back(row);
+    }
+    world.ledger.current.harvest.assign(4, 0);
+    return world;
+  };
+  const auto look = [&config](const core::WorldState& world) {
+    return core::ForecastHerdFeed(config, world, false, core::FeedHorizon::kNearestScythes);
+  };
+  constexpr core::Grams kTen = 10 * core::kGramsPerKilogram;
+  const core::HerdFeedForecast none = look(village({}));
+  const core::HerdFeedForecast empty_rows = look(village({{}, {}}));
+  // Two closed years, 20 kg and 10 kg of straw: the mean 15, last year 10 - the lower, 10.
+  const core::HerdFeedForecast booked = look(village({{0, 0, 0, 2 * kTen}, {0, 0, 0, kTen}}));
+  const core::HerdFeedForecast more = look(village({{0, 0, 0, 2 * kTen}, {0, 0, 0, 2 * kTen}}));
+  std::cout << "  harvest feed to come: covered " << none.covered_units << " with no book, "
+            << empty_rows.covered_units << " with empty rows, " << booked.covered_units
+            << " on a book of 20 and 10 kg, " << more.covered_units << " on 20 and 20 kg (need "
+            << none.need_units << ")\n";
+  failures += Expect(empty_rows.covered_units == none.covered_units &&
+                         empty_rows.short_hay_grams == none.short_hay_grams,
+                     "harvest feed: chronicle rows that carry no harvest are no book - year 1's "
+                     "rule, nothing lands");
+  failures +=
+      Expect(booked.covered_units > none.covered_units && more.covered_units > booked.covered_units,
+             "harvest feed: the book's straw lands, at the lower of last year and the mean");
+  return failures;
+}
+
 /// THE HAY LAMP BY THE CUT'S PACE (lever 1; 0.37.250; contract core-boss-
 /// lever1-hay-pace-contract-2026-10-13): inside the cut, from its second dry
 /// working day, the hay to come is the mowers' pace over the dry working days
@@ -17344,6 +17400,7 @@ int main() {
   failures += CheckTheHerdHayForecast();
   failures += CheckTheForecastAdvice();
   failures += CheckTheHayLampByTheCutsPace();
+  failures += CheckTheHarvestFeedStillToCome();
   failures += CheckTheShippedFeedingOrder();
   failures += CheckTheHerdsMilkGoesToItsHome();
   failures += CheckTheHerdDoesNotEatThePlan();

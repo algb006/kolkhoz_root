@@ -1015,6 +1015,14 @@ struct ChronicleYear {
   /// spent on linen. The sheet measures food off the arable, and that is the
   /// whole of what it measures.
   std::int64_t harvest_kcal = 0;
+
+  /// THE YEAR'S HARVEST BY RESOURCE, grams, dense by ResourceId: the closed
+  /// book's `harvest` as it rotated (save 192, #1292). The herd forecast
+  /// counts the feed a harvest still to come will bring - straw, the grain
+  /// the herds may eat - at the LOWER of last year's and the three closed
+  /// years' mean (econ, core-boss-1289-herd-plan [40]); `closed` is one year,
+  /// and the mean needed the three.
+  ResourceAmounts harvest;
 };
 
 /// @brief The wall: one row per closed year, oldest first.

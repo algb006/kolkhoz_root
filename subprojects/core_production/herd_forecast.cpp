@@ -146,6 +146,76 @@ Grams ExpectedCutStillToCome(const ProductionConfig& config, const WorldState& w
   return expected > laid ? expected - laid : 0;
 }
 
+/// THE HARVEST'S FEED STILL TO COME (#1292; econ, core-boss-1289-herd-plan
+/// [40]), kilograms by resource and the day it lands, as offsets from today
+/// up to `horizon_days`: for each feed but hay, the book's harvest - the
+/// LOWER of last year's and the mean of up to three closed years (the
+/// chronicle's rows that carry a harvest, save 192) - less what this year has
+/// harvested already, of which the herds may eat what the holds ladder leaves
+/// (HerdFeedFromIncome). It lands on the last day of its crop's harvest
+/// window this year; straw on the latest window of the crops that leave it.
+/// No book - year 1, or a chronicle whose rows carry no harvest - no income.
+/// Not counted: lots not yet ordered, any purchase still to be decided.
+std::vector<std::pair<std::uint32_t, std::vector<float>>> ScheduledHarvestFeed(
+    const ProductionConfig& config, const WorldState& world, std::uint32_t horizon_days) {
+  std::vector<std::pair<std::uint32_t, std::vector<float>>> landings;
+  /// The book's years: econ's «the three-year mean».
+  constexpr std::size_t kBookYears = 3;
+  std::vector<const ResourceAmounts*> book;
+  for (auto year = world.ledger.chronicle.rbegin();
+       year != world.ledger.chronicle.rend() && book.size() < kBookYears;
+       ++year) {
+    if (!year->harvest.empty()) {
+      book.push_back(&year->harvest);
+    }
+  }
+  if (book.empty()) {
+    return landings;
+  }
+  const SimDay today = world.calendar.day;
+  const SimDay year_start = today - (today % kDaysPerYear);
+  // The last day of each resource's harvest window this year: its crop's for
+  // a grain, the latest straw-leaving crop's for the straw.
+  std::vector<SimDay> lands_on(config.feed_values.size(), 0);
+  for (const CropDef& crop : config.crops) {
+    const SimDay window_end =
+        year_start + ((static_cast<SimDay>(crop.harvest_to_month) + 1U) * kDaysPerMonth) - 1U;
+    if (crop.resource.value < lands_on.size()) {
+      lands_on[crop.resource.value] = std::max(lands_on[crop.resource.value], window_end);
+    }
+    if (crop.straw_ratio > 0.0F && config.straw_resource.value < lands_on.size()) {
+      lands_on[config.straw_resource.value] =
+          std::max(lands_on[config.straw_resource.value], window_end);
+    }
+  }
+  for (std::size_t resource = 0; resource < config.feed_values.size(); ++resource) {
+    if (resource == config.hay_resource.value || !(config.feed_values[resource] > 0.0F) ||
+        lands_on[resource] < today || lands_on[resource] - today >= horizon_days) {
+      continue;
+    }
+    const auto of = [resource](const ResourceAmounts& amounts) {
+      return resource < amounts.size() ? amounts[resource] : Grams{0};
+    };
+    Grams sum = 0;
+    for (const ResourceAmounts* year : book) {
+      sum += of(*year);
+    }
+    const Grams mean = sum / static_cast<Grams>(book.size());
+    const Grams expected = std::min(of(*book.front()), mean);
+    const Grams harvested = of(world.ledger.current.harvest);
+    const Grams to_come = expected > harvested ? expected - harvested : 0;
+    const Grams eaten =
+        HerdFeedFromIncome(config, world, DefIdFromIndex<ResourceIdTag>(resource), to_come);
+    if (eaten <= 0) {
+      continue;
+    }
+    std::vector<float> goods(config.feed_values.size(), 0.0F);
+    goods[resource] = static_cast<float>(eaten) / static_cast<float>(kGramsPerKilogram);
+    landings.emplace_back(lands_on[resource] - today, std::move(goods));
+  }
+  return landings;
+}
+
 /// The hay still standing as grass on the meadows, grams: the uncut share of
 /// every meadow in its cut, and a meadow the cut's months will still open
 /// this year, whole.
@@ -947,6 +1017,15 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
     if (any) {
       landings.emplace_back(purchase->land_day, std::move(goods));
     }
+  }
+  // AND THE HARVEST STILL TO COME, WHAT THE HERDS MAY EAT OF IT (#1292; econ,
+  // core-boss-1289-herd-plan [40]): the straw and the grain the stores will
+  // take before the horizon ends, by the book, landing on the last day of
+  // each crop's window. Without it the forecast fed the herds from today's
+  // grain and straw alone, and the year's barley, oats and straw - about 24k
+  // fodder units in a fed lit village-year - came in unseen.
+  for (const auto& [day, goods] : ScheduledHarvestFeed(config, world, horizon_days)) {
+    landings.emplace_back(day, goods);
   }
 
   // The night pasture's conditions by month, once: they walk the residents.

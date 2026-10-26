@@ -215,6 +215,18 @@ Grams HeldAboveSeedAndPlan(const ProductionConfig& config,
                            const WorldState& world,
                            ResourceId resource);
 
+/// @brief The grams of `resource` the herds could eat of `income` grams more
+///        lying unreserved in the stores: what the ladder HerdFeedAllowance
+///        holds back - the seed and the plan, the plough's oats, next year's
+///        hold - leaves of it, today's holds over today's stores plus the
+///        income. No rot margin. The herd forecast lands a harvest still to
+///        come by it (#1292; econ, core-boss-1289-herd-plan [40]: «less seed
+///        and the plan's due»).
+Grams HerdFeedFromIncome(const ProductionConfig& config,
+                         const WorldState& world,
+                         ResourceId resource,
+                         Grams income);
+
 /// @brief What lies in the stores of each resource and is shut from the
 /// herds by a FUND THE CHAIRMAN CAN UNSEAL, grams, dense by ResourceId: the
 /// stock unreserved in every unit, filling the herds' ladder from the bottom

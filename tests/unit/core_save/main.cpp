@@ -1134,9 +1134,19 @@ core::WorldState MakeWorld() {
   // survives. A campaign is fifty years of these, and they are the one
   // history the simulation cannot rederive.
   world.ledger.chronicle = {
-      {.year = 1, .residents = 80, .fertility = 55.5F, .harvest_kcal = 41'000'000},
-      {.year = 2, .residents = 93, .fertility = 54.25F, .harvest_kcal = 48'500'000},
-      {.year = 3, .residents = 88, .fertility = 56.0F, .harvest_kcal = 39'250'000},
+      // save 192 (#1292): the year's harvest by resource rides each row; the
+      // first row's is empty, a row with no book.
+      {.year = 1, .residents = 80, .fertility = 55.5F, .harvest_kcal = 41'000'000, .harvest = {}},
+      {.year = 2,
+       .residents = 93,
+       .fertility = 54.25F,
+       .harvest_kcal = 48'500'000,
+       .harvest = Amounts({40'000'000, 4'000'000, 0, 0, 0, 0})},
+      {.year = 3,
+       .residents = 88,
+       .fertility = 56.0F,
+       .harvest_kcal = 39'250'000,
+       .harvest = Amounts({41'000'000, 0, 0, 0, 0, 7'500'000})},
   };
   world.ledger.current.year = 0;
   world.ledger.current.births = 1;
@@ -2439,7 +2449,9 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // build and held; the hash read off it.
     // save 183: trudodni_by_post, +4 a book; save 186: boards_sawn_m3, +4 a
     // book, two books - predicted 3184 -> 3192, and held.
-    {"ledger", 3192, 0x668d6d3eda6c088dULL},
+    // Save 192 (#1292): each chronicle row's harvest by resource, three rows
+    // (one empty): 3192 -> 3294. NOT predicted before the build - read off it.
+    {"ledger", 3294, 0x16d206b7ec5aabc8ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -3293,7 +3305,10 @@ int main() {
       loaded.ledger.chronicle.size() == 3 && loaded.ledger.chronicle[0].year == 1 &&
       loaded.ledger.chronicle[2].year == 3 && loaded.ledger.chronicle[1].residents == 93 &&
       loaded.ledger.chronicle[1].fertility == 54.25F &&
-      loaded.ledger.chronicle[2].harvest_kcal == 39'250'000;
+      loaded.ledger.chronicle[2].harvest_kcal == 39'250'000 &&
+      loaded.ledger.chronicle[0].harvest.empty() &&
+      loaded.ledger.chronicle[1].harvest == world.ledger.chronicle[1].harvest &&
+      loaded.ledger.chronicle[2].harvest == world.ledger.chronicle[2].harvest;
   failures += Expect(wall_intact, "and the office wall came back whole, in order");
 
   // The order book: a campaign saved with an order waiting resumes with it

@@ -557,6 +557,7 @@ class EventsSlot final : public ISequentialPhase {
       kcal = kcal > 0.0 ? kMaxHarvestKcal : 0.0;
     }
     row.harvest_kcal = static_cast<std::int64_t>(kcal);
+    row.harvest = current.ledger.closed.harvest;  // save 192 (#1292)
     current.ledger.chronicle.push_back(row);
   }
 

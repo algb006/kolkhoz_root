@@ -1370,6 +1370,23 @@ Grams HeldAboveSeedAndPlan(const ProductionConfig& config,
   return left > seed_and_plan ? left - seed_and_plan : 0;
 }
 
+Grams HerdFeedFromIncome(const ProductionConfig& config,
+                         const WorldState& world,
+                         ResourceId resource,
+                         Grams income) {
+  if (resource.value == kInvalidDefIdValue || income <= 0) {
+    return 0;
+  }
+  const HerdHolds holds = HerdHoldsOf(config, world, PloughingToday(world));
+  const std::size_t index = resource.value;
+  const Grams held = index < holds.seed_and_plan.size()
+                         ? holds.seed_and_plan[index] + holds.plough[index] + holds.next_year[index]
+                         : 0;
+  const Grams left = UnreservedEverywhere(world, resource);
+  const auto free_of = [held](Grams grams) { return grams > held ? grams - held : 0; };
+  return free_of(left + income) - free_of(left);
+}
+
 ResourceAmounts HerdFeedInFunds(const ProductionConfig& config, const WorldState& world) {
   // The stores fill the ladder from its bottom rung up: the seed and the
   // plan, the plough's oats (no order opens them), next year's hold. What
