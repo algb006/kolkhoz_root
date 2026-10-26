@@ -841,6 +841,33 @@ int CheckTheForecastHorseEatsItsWorkGrain() {
   failures += Expect(worked.second == 2.5F && worked.first == 7.5F,
                      "the forecast's horse: on a working day it eats its oats by the herd day's "
                      "room (need x max_share x the oats share) and that much less hay");
+  // AND A LIGHT DAY SPARES PART OF ITS NEED (#1292): with last year's book
+  // saying the month's horses worked light (work 1.0, oats 0.5), the forecast's
+  // need is the herd day's need less LightDaySpared, not the whole need.
+  {
+    config.farming.traction_full_ration_share = 0.4F;
+    const auto horses = [&config](float work, float oats) {
+      core::WorldState world = MakeHerdWorld(1000.0F);
+      world.units.rows[0].stock.resize(4, 0);
+      AddHerd(world, 0, 4, 2, true);
+      world.calendar.tick = static_cast<core::Tick>(core::kDaysPerYear) * core::kTicksPerDay;  // y2
+      core::RefreshCalendarCaches(world.calendar);
+      for (std::uint32_t month = 0; month < core::kMonthsPerYear; ++month) {
+        world.ledger.closed.team_work_share_sum[month] = work * 4.0F;
+        world.ledger.closed.team_oats_share_sum[month] = oats * 4.0F;
+        world.ledger.closed.team_share_days[month] = 4;
+      }
+      return core::ForecastHerdFeed(config, world, false, core::FeedHorizon::kNearestScythes)
+          .need_units;
+    };
+    const float no_traces = horses(0.0F, 0.0F);
+    const float light = horses(1.0F, 0.5F);
+    std::cout << "  the forecast's horse, a light year: need " << light << " units against "
+              << no_traces << " with nobody in the traces\n";
+    failures += Expect(light > 0.0F && light < no_traces * 0.9F,
+                       "the forecast's horse: a light day spares part of its need, by the herd "
+                       "day's own LightDaySpared at last year's shares");
+  }
   return failures;
 }
 

@@ -1353,6 +1353,17 @@ bool PloughingToday(const WorldState& world) {
 
 }  // namespace
 
+float LightDaySparedFor(const ProductionConfig& config,
+                        LivestockKindId kind,
+                        float need_units,
+                        float work_share,
+                        float oats_share) {
+  TeamShares shares;
+  shares.work = work_share;
+  shares.oats = oats_share;
+  return LightDaySpared(config, kind, need_units, shares);
+}
+
 float FeedLinkRoomFor(const FeedLinkDef& link,
                       const ProductionConfig& config,
                       float need_units,

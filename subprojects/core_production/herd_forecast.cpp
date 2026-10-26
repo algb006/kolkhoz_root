@@ -596,8 +596,12 @@ bool StoredHayShortWithin(const ProductionConfig& config,
         continue;  // a family herd eats from its family's pantry, as in the forecast
       }
       const bool grazing = herd.kind.value != config.horse_kind.value || team_out;
-      const float units =
+      const float whole =
           FeedNeedUnits(config, config.livestock[herd.kind.value], herd, month, grazing);
+      // The light day's spared part, as the herd day eats (#1292; LightDaySparedFor).
+      const float units =
+          whole - LightDaySparedFor(
+                      config, herd.kind, whole, team_shares[month].work, team_shares[month].oats);
       if (units > 0.0F) {
         needs.push_back(FeedDayNeed{.kind = herd.kind, .units = units});
       }
@@ -1164,7 +1168,15 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
       row.adult_count = RoundHeads(herd.adults);
       row.juvenile_count = RoundHeads(herd.juveniles);
       const bool grazing = herd.kind.value != config.horse_kind.value || team_out;
-      const float units = FeedNeedUnits(config, kind, row, month, grazing);
+      const float whole = FeedNeedUnits(config, kind, row, month, grazing);
+      // A LIGHT DAY SPARES PART OF THE HORSE'S NEED (#1292; core [64]): the herd
+      // day feeds need - LightDaySpared («a carting horse eats LESS») and is fed
+      // in full by it; the forecast fed the whole need, and on fed years the
+      // world's horses ate 5-40 % less with no hunger. At last year's shares by
+      // month (TeamSharesByMonth), the work grain's own book.
+      const float units =
+          whole - LightDaySparedFor(
+                      config, herd.kind, whole, team_shares[month].work, team_shares[month].oats);
       if (units > 0.0F) {
         needs.push_back(FeedDayNeed{.kind = herd.kind, .units = units});
         needs_of.push_back(index);

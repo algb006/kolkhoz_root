@@ -222,6 +222,18 @@ Grams HeldAboveSeedAndPlan(const ProductionConfig& config,
 ///        every other link by its max_share alone. The herd forecast drains
 ///        by it (#1292), so the projection's horse eats its working-day grain
 ///        as the herd day's does, and that much less hay.
+/// @brief The feed units of a horse's `need_units` a light day spares, at the
+///        day's work and oats shares: the herd day's own LightDaySpared («a
+///        carting horse eats LESS»), 0 for any other kind. The herd forecast
+///        takes it off its horses' need at last year's shares by month
+///        (#1292): its horses ate their whole need every day, and on fed
+///        years the world's ate 5-40 % less with no hunger.
+float LightDaySparedFor(const ProductionConfig& config,
+                        LivestockKindId kind,
+                        float need_units,
+                        float work_share,
+                        float oats_share);
+
 float FeedLinkRoomFor(const FeedLinkDef& link,
                       const ProductionConfig& config,
                       float need_units,
