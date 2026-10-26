@@ -5661,10 +5661,30 @@ int CheckTheMeadowLaysItsHayAsItIsMown() {
   };
   const core::Grams season =
       core::KilogramsToGrams(config.farming.meadow_yield_kg_per_ha * meadow.area_ga);
+  // THE HAY IN FLIGHT (#1292): before the day's lay, the half mown since the
+  // morning is in no book - HayMownNotYetLaid names it - and the lay moves
+  // exactly that into the harvest: laid + in flight is the share mown, and
+  // with the grass standing the morning's whole.
+  const core::Grams in_flight = core::HayMownNotYetLaid(config, world, world.fields.rows[0]);
   core::LayMownShare(config, world, world.fields.rows[0]);
   failures +=
       Expect(hay_booked(world) == season / 2 && world.ledger.current.area_harvested_ha == 5.0F,
              "meadow by parts: mown to its half, half the season's hay is booked, 5 ha");
+  failures += Expect(
+      in_flight == season / 2 && core::HayMownNotYetLaid(config, world, world.fields.rows[0]) == 0,
+      "meadow by parts: the half mown before the lay is the hay in flight, and "
+      "the lay leaves none in flight");
+  {
+    core::WorldState noon = world;  // mown on to three quarters since the lay, nothing laid
+    noon.fields.rows[0].work_days_remaining = total_days * 0.25F;
+    const core::Grams flying = core::HayMownNotYetLaid(config, noon, noon.fields.rows[0]);
+    const core::Grams standing = season / 4;
+    std::cout << "  meadow at noon: laid " << hay_booked(noon) << " g + in flight " << flying
+              << " g + standing " << standing << " g against the season " << season << " g\n";
+    failures += Expect(hay_booked(noon) + flying + standing == season,
+                       "meadow at noon: laid + in flight + standing is the morning's whole - no "
+                       "hour of the mowing reads as hay lost");
+  }
   core::LayMownShare(config, world, world.fields.rows[0]);
   failures +=
       Expect(hay_booked(world) == season / 2, "meadow by parts: the same share is not laid twice");

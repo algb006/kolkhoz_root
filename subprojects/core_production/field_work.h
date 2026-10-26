@@ -382,6 +382,17 @@ void LayReapedShare(const ProductionConfig& config, WorldState& current, FieldRo
 ///        Called at the day's turn beside LayReapedShare, and by MowMeadow for the last of it.
 void LayMownShare(const ProductionConfig& config, WorldState& current, FieldRow& field);
 
+/// @brief The hay a meadow's crew has mown since the last lay and that
+///        LayMownShare will lay at the next day's turn, grams: by the same
+///        share and rate. Mid-day it is in no other book - gone from the grass
+///        standing, not yet laid, not in a heap - and the herd forecast counts
+///        it with the cut (#1292: the lamp's noon read lost one day's cut,
+///        61-87 t in a fed village-year, on every working cut day). 0 on
+///        arable land or a meadow not being mown.
+Grams HayMownNotYetLaid(const ProductionConfig& config,
+                        const WorldState& world,
+                        const FieldRow& field);
+
 /// @brief The snow takes what still STANDS of an unreaped annual (farming
 /// design §6): the share the reaping has cut is laid into the heap first
 /// (LayReapedShare), the rest — StandingYieldGrams — goes to lost_to_snow,

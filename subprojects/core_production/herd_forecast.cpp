@@ -18,6 +18,7 @@
 #include "core_common/resident_state.h"
 #include "core_common/state_table_ops.h"
 #include "district_limit.h"
+#include "field_work.h"
 #include "herd_floors.h"
 #include "herd_life.h"
 #include "herd_system.h"
@@ -1013,6 +1014,26 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
   const auto standing_heads = static_cast<std::int64_t>(std::ceil(standing));
 
   std::vector<float> held_kg = HerdFeedHeldKg(config, world);
+  // AND THE HAY MOWN TODAY, NOT YET LAID (#1292; boss, core-boss-1289-herd-
+  // plan [48]): gone from the grass standing since the morning, laid into the
+  // meadow's heap only at the day's turn (LayMownShare), so at the lamp's
+  // noon read it was in no term - one day's cut, 61-87 t in a fed village-
+  // year, on every working cut day. It joins the heap tonight, so it counts
+  // as the heap does: above the plan's debt (HeapAbovePlanDebt).
+  if (config.hay_resource.value < held_kg.size()) {
+    Grams in_flight = 0;
+    for (const FieldRow& field : world.fields.rows) {
+      in_flight += HayMownNotYetLaid(config, world, field);
+    }
+    if (in_flight > 0) {
+      const Grams heaps = HeapGrams(world, config.hay_resource);
+      const Grams owed = PlanOwedGrams(world, config.hay_resource);
+      const auto above = [owed](Grams grams) { return grams > owed ? grams - owed : 0; };
+      held_kg[config.hay_resource.value] +=
+          static_cast<float>(above(heaps + in_flight) - above(heaps)) /
+          static_cast<float>(kGramsPerKilogram);
+    }
+  }
   const std::vector<std::uint8_t> peoples_foods = PeoplesFoods(config, world);
   // The feed lots on the road land on their day, where a store would take
   // them (a lot with nowhere to go is refused at the door — kNowhereToStore).

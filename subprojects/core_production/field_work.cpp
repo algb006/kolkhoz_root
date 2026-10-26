@@ -97,6 +97,50 @@ void PriceHeapCarting(const ProductionConfig& config,
 
 }  // namespace
 
+namespace {
+
+/// The share of a meadow's season mown so far, off the labour: what
+/// LayMownShare lays to and HayMownNotYetLaid reads (one rule).
+float MownShareNow(const ProductionConfig& config, const WorldState& world, const FieldRow& field) {
+  const float phase_days = PhaseTotalDays(config, world, field);
+  float cut = phase_days > 0.0F ? 1.0F - (field.work_days_remaining / phase_days) : 1.0F;
+  cut = cut < 0.0F ? 0.0F : (cut > 1.0F ? 1.0F : cut);
+  if (field.work_days_remaining <= 0.0F) {
+    cut = 1.0F;  // mown through: the last of it, whatever the arithmetic says
+  }
+  return cut;
+}
+
+/// The hay of the share mown since the last lay, grams, as LayMownShare lays
+/// it: the land's rate for the WHOLE season - which is why one cut a year is
+/// not a simplification, the second cut is inside the number (farming.csv,
+/// meadow_yield_kg_per_ha) - and the last lay takes exactly what is left, so
+/// the season lays to the gram.
+Grams MownHayFor(const ProductionConfig& config, const FieldRow& field, float cut) {
+  const float share = cut - field.harvest_laid_share;
+  if (!(share > 0.0F)) {
+    return 0;
+  }
+  const float rate = field.kind == LandKind::kFloodplainMeadow
+                         ? config.farming.meadow_floodplain_yield_kg_per_ha
+                         : config.farming.meadow_yield_kg_per_ha;
+  const Grams hay_total = KilogramsToGrams(rate * field.area_ga);
+  return cut >= 1.0F
+             ? (hay_total > field.harvest_laid_grams ? hay_total - field.harvest_laid_grams : 0)
+             : GramsFromFloat(static_cast<float>(hay_total) * share);
+}
+
+}  // namespace
+
+Grams HayMownNotYetLaid(const ProductionConfig& config,
+                        const WorldState& world,
+                        const FieldRow& field) {
+  if (field.kind == LandKind::kArable || field.phase != FieldPhase::kHarvest) {
+    return 0;
+  }
+  return MownHayFor(config, field, MownShareNow(config, world, field));
+}
+
 void LayMownShare(const ProductionConfig& config, WorldState& current, FieldRow& field) {
   if (field.kind == LandKind::kArable || field.phase != FieldPhase::kHarvest) {
     return;
@@ -107,28 +151,12 @@ void LayMownShare(const ProductionConfig& config, WorldState& current, FieldRow&
   // mown, and on host's seed 7 thirty tonnes waited from October to December
   // behind 0.29 man-days left on one meadow — the wintering's feed days read
   // 17 against 20, the hay cut but not in the book.
-  const float phase_days = PhaseTotalDays(config, current, field);
-  float cut = phase_days > 0.0F ? 1.0F - (field.work_days_remaining / phase_days) : 1.0F;
-  cut = cut < 0.0F ? 0.0F : (cut > 1.0F ? 1.0F : cut);
-  if (field.work_days_remaining <= 0.0F) {
-    cut = 1.0F;  // mown through: the last of it, whatever the arithmetic says
-  }
+  const float cut = MownShareNow(config, current, field);
   const float share = cut - field.harvest_laid_share;
   if (!(share > 0.0F)) {
     return;
   }
-  // The land's own rate for the WHOLE season, which is why one cut a year is
-  // not a simplification: the second cut is inside the number (farming.csv,
-  // meadow_yield_kg_per_ha).
-  const float rate = field.kind == LandKind::kFloodplainMeadow
-                         ? config.farming.meadow_floodplain_yield_kg_per_ha
-                         : config.farming.meadow_yield_kg_per_ha;
-  const Grams hay_total = KilogramsToGrams(rate * field.area_ga);
-  // The last lay takes exactly what is left, so the season lays to the gram.
-  const Grams hay =
-      cut >= 1.0F
-          ? (hay_total > field.harvest_laid_grams ? hay_total - field.harvest_laid_grams : 0)
-          : GramsFromFloat(static_cast<float>(hay_total) * share);
+  const Grams hay = MownHayFor(config, field, cut);
   field.harvest_laid_share = cut;
   field.harvest_laid_grams += hay;
   current.ledger.current.area_harvested_ha += field.area_ga * share;
