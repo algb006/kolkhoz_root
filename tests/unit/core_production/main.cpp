@@ -986,6 +986,63 @@ int CheckTheHayLampByTheCutsPace() {
     std::cout << "  hay pace by the mower-day: 5 kg a mower-day - crew 4: " << grown_pace
               << " kg a day, crew 1: " << thinned_pace
               << ", nobody now (last crew 2): " << idle_pace << "\n";
+    // THE CREW AHEAD GROWS BY THE SPRING WORKS ENDING (#1308, econ's (e)): 4
+    // hands sowing a field with 8 norm-days left end it on the second working
+    // day (today counted whole) and mow from the next working day; 4 hands on
+    // 40 norm-days end past the cut and join nothing.
+    const auto sowing = [&crewed](float norm_days) {
+      core::WorldState world = crewed(2, 2, 4.0F);
+      core::FieldRow field;
+      field.kind = core::LandKind::kArable;
+      field.phase = core::FieldPhase::kSowing;
+      field.work_days_remaining = norm_days;
+      AppendRow(world.fields, field);
+      for (int i = 0; i < 4; ++i) {
+        core::ResidentRow hand;
+        hand.birth_day = -1000;
+        hand.work.kind = core::WorkKind::kSowing;
+        hand.work.field = world.fields.row_ids.back();
+        AppendRow(world.residents, hand);
+      }
+      return world;
+    };
+    const core::WorldState soon = sowing(8.0F);
+    const core::SpringHands freed = core::SpringHandsFreed(config, soon, cut_end);
+    core::SimDay second_working = today;
+    for (int working = 0; working < 1;) {
+      ++second_working;
+      working += core::IsDayOffIn(soon, second_working) ? 0 : 1;
+    }
+    core::SimDay join = second_working + 1U;
+    while (join <= cut_end && core::IsDayOffIn(soon, join)) {
+      ++join;
+    }
+    float joined_total = 0.0F;
+    for (const float hands : freed.by_day) {
+      joined_total += hands;
+    }
+    const bool joins_in_cut = join <= cut_end;
+    failures += Expect(
+        freed.able == 6.0F &&
+            (joins_in_cut ? freed.by_day[join - today] == 4.0F && joined_total == 4.0F
+                          : joined_total == 0.0F),
+        "hay pace: the sowers' 4 hands join the meadows the working day after their field's 8 "
+        "norm-days end at their crew - and the grown alive bound the crew");
+    const core::SpringHands late = core::SpringHandsFreed(config, sowing(40.0F), cut_end);
+    float late_total = 0.0F;
+    for (const float hands : late.by_day) {
+      late_total += hands;
+    }
+    failures +=
+        Expect(late_total == 0.0F,
+               "hay pace: a sowing whose norm-days run past the cut frees no hands into it");
+    std::cout << "  hay pace, the crew ahead: 4 sowers join on day " << join << " (cut ends "
+              << cut_end << "); short " << look(soon).short_hay_grams / kKilo << " kg with them, "
+              << look(crewed(2, 2, 4.0F)).short_hay_grams / kKilo << " kg without\n";
+    failures += Expect(
+        !joins_in_cut || look(soon).short_hay_grams < look(crewed(2, 2, 4.0F)).short_hay_grams,
+        "hay pace: the hands the sowing frees into the cut are hay the forecast "
+        "counts");
     failures += Expect(grown_pace == 20.0F && thinned_pace == 5.0F && idle_pace == 10.0F,
                        "hay pace: the pace is tonnes a mower-day times today's crew - up with a "
                        "growing crew, down the day mowers leave, the last noon's crew when "

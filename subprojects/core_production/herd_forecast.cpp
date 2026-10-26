@@ -310,7 +310,56 @@ struct CutPace {
   Grams hay_to_come = 0;     ///< min(grass standing, pace x dry working days left).
   float kg_a_day = 0.0F;     ///< The pace: the year's hay laid over the days counted.
   float dry_days_left = 0;   ///< The dry working days left, by the calendar and the climate.
+  float crew = 0.0F;         ///< The meadows' crew the pace is read at (kg_a_day is its).
 };
+
+}  // namespace
+
+SpringHands SpringHandsFreed(const ProductionConfig& config,
+                             const WorldState& world,
+                             SimDay this_cut_end) {
+  const SimDay today = world.calendar.day;
+  SpringHands out;
+  out.by_day.assign(this_cut_end >= today ? this_cut_end - today + 2U : 1U, 0.0F);
+  std::vector<float> hands(world.fields.rows.size(), 0.0F);
+  for (const ResidentRow& person : world.residents.rows) {
+    out.able += BiologicalAgeYears(config.farming.life_speedup, person.birth_day, today) >=
+                        config.farming.adult_age_years
+                    ? 1.0F
+                    : 0.0F;
+    const WorkKind kind = person.work.kind;
+    if (kind != WorkKind::kPlowing && kind != WorkKind::kHarrowing && kind != WorkKind::kSowing) {
+      continue;
+    }
+    const std::uint32_t row = FindRow(world.fields, person.work.field);
+    if (row != kNoRow) {
+      hands[row] += 1.0F;
+    }
+  }
+  for (std::uint32_t row = 0; row < hands.size(); ++row) {
+    if (!(hands[row] > 0.0F)) {
+      continue;
+    }
+    // Working days of this crew left on the field, today's counted whole.
+    float left = world.fields.rows[row].work_days_remaining / hands[row];
+    SimDay day = today;
+    while (left > 1.0F && day < this_cut_end) {
+      ++day;
+      left -= IsDayOffIn(world, day) ? 0.0F : 1.0F;
+    }
+    // They mow from the next working day.
+    SimDay join = day + 1U;
+    while (join <= this_cut_end && IsDayOffIn(world, join)) {
+      ++join;
+    }
+    if (join <= this_cut_end) {
+      out.by_day[join - today] += hands[row];
+    }
+  }
+  return out;
+}
+
+namespace {
 
 /// @brief THE CUT'S PACE (econ's four-levers §2a, as boss ruled it on 13
 ///        October 2026): the hay this year's cut has laid over the dry
@@ -373,6 +422,7 @@ CutPace PaceOfTheCut(const ProductionConfig& config,
     }
     pace.known = true;
     pace.prior = true;
+    pace.crew = mowers;
     pace.kg_a_day = static_cast<float>(standing) / static_cast<float>(kGramsPerKilogram) /
                     norm_days_left * mowers;
   } else {
@@ -407,6 +457,7 @@ CutPace PaceOfTheCut(const ProductionConfig& config,
         world.chairman.hay_cut_mower_days -
         (today_counted && crew_now > 0 ? static_cast<float>(crew_now) : 0.0F);
     const std::uint16_t crew = crew_now > 0 ? crew_now : world.chairman.hay_cut_crew;
+    pace.crew = static_cast<float>(crew);
     if (mower_days_before > 0.0F && crew > 0) {
       pace.kg_a_day = laid_kg / mower_days_before * static_cast<float>(crew);
     } else {
@@ -417,16 +468,45 @@ CutPace PaceOfTheCut(const ProductionConfig& config,
       pace.kg_a_day = laid_kg / static_cast<float>(days_before > 0 ? days_before : 1U);
     }
   }
+  // THE CREW AHEAD GROWS BY THE SPRING WORKS ENDING (#1308, econ's (e), boss
+  // core-boss-1289-herd-plan [79]): year 1's cut opens while ploughing,
+  // harrowing and sowing still hold the hands (1936: 8 mowers on the first
+  // noon, 44 on the sixth; the villages that never rushed grew the same), and
+  // a crew read as today's for the whole cut lit the lamp on six fed first
+  // noons. Each spring field's hands join the meadows the working day after
+  // its norm-days end at its crew. Bounded by the mowing's own cap - the
+  // assignment fills a meadow's job only up to its norm-days left
+  // (assignment.cpp), there is no share of the cut - and by the grown alive.
+  const auto [hands_by_day, able] = SpringHandsFreed(config, world, this_cut_end);
+  float meadow_norm_left = 0.0F;
+  for (const FieldRow& field : world.fields.rows) {
+    if (field.kind != LandKind::kArable && field.phase == FieldPhase::kHarvest &&
+        field.work_days_remaining > 0.0F) {
+      meadow_norm_left += field.work_days_remaining;
+    }
+  }
+  const float kg_a_mower_day = pace.crew > 0.0F ? pace.kg_a_day / pace.crew : 0.0F;
+  float joined = 0.0F;
+  float norm_left_ahead = meadow_norm_left - pace.crew;  // today's crew mows a norm-day each
+  float kg_ahead = 0.0F;
   // The dry working days left are a DRAW, not a mean: beside their expected
   // count, the variance of the draw - each day dry with its own share.
   float dry_variance = 0.0F;
   for (SimDay day = today + 1U; day <= this_cut_end; ++day) {
+    joined += hands_by_day[day - today];
     if (!IsDayOffIn(world, day)) {
       const float share = config.rain_day_shares[day % kDaysPerYear];
       const float wet = share < 0.0F ? 0.0F : (share > 1.0F ? 1.0F : share);
       pace.dry_days_left += 1.0F - wet;
       dry_variance += wet * (1.0F - wet);
+      const float crew_t = std::max(
+          0.0F, std::min({pace.crew + joined, able, std::max(norm_left_ahead, pace.crew)}));
+      kg_ahead += kg_a_mower_day * crew_t * (1.0F - wet);
+      norm_left_ahead -= crew_t * (1.0F - wet);
     }
+  }
+  if (!(kg_a_mower_day > 0.0F)) {
+    kg_ahead = pace.kg_a_day * pace.dry_days_left;  // no crew to scale: the day's pace, as before
   }
   // AND THE REST OF TODAY (#1292 (b); boss, core-boss-1289-herd-plan [49]):
   // the days above are tomorrow's on; today's mowing so far is the hay in
@@ -444,7 +524,7 @@ CutPace PaceOfTheCut(const ProductionConfig& config,
         0.0F,
         pace.kg_a_day - static_cast<float>(mown_today) / static_cast<float>(kGramsPerKilogram));
   }
-  const Grams by_pace = GramsFromKilograms(pace.kg_a_day * pace.dry_days_left + today_left_kg);
+  const Grams by_pace = GramsFromKilograms(kg_ahead + today_left_kg);
   pace.hay_to_come = by_pace < standing ? by_pace : standing;
   // THE GRASS IS THE BOUND ONLY IF A POOR DRAW OF THE WEATHER STILL MOWS IT
   // THROUGH (econ's four-levers §2h-2i; boss, 13 October 2026): the pace over
@@ -455,8 +535,10 @@ CutPace PaceOfTheCut(const ProductionConfig& config,
   // one small enough for June (1.5) did not save that village. (With no
   // grass counted at all there is no bound to speak of.)
   const float poor_draw_days = pace.dry_days_left - std::sqrt(dry_variance);
+  // The poor draw takes its share of the crew-grown hay too.
+  const float poor_share = pace.dry_days_left > 0.0F ? poor_draw_days / pace.dry_days_left : 0.0F;
   pace.grass_bound = standing > 0 && poor_draw_days > 0.0F &&
-                     GramsFromKilograms(pace.kg_a_day * poor_draw_days + today_left_kg) >= standing;
+                     GramsFromKilograms(kg_ahead * poor_share + today_left_kg) >= standing;
   return pace;
 }
 

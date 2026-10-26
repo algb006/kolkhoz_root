@@ -361,6 +361,23 @@ void SettleHayCutDay(const ProductionConfig& config, WorldState& current);
 ///        off declared working places at the hour it is declared).
 std::uint16_t MeadowMowersNow(const WorldState& world);
 
+/// The hands the spring works free into the cut (#1308, econ's (e)).
+struct SpringHands {
+  /// [k]: the hands joining the meadows on day today + k - their field's
+  /// norm-days end the working day before. Sized to the cut's end + 1.
+  std::vector<float> by_day;
+  /// The grown residents alive: the crew's bound.
+  float able = 0.0F;
+};
+
+/// @brief The hands on ploughing, harrowing and sowing now, each field's
+///        joining the cut the working day after its norm-days end at its
+///        crew (a hand does a norm-day a working day; today counted whole).
+///        Fields whose work ends after `this_cut_end` join nothing.
+SpringHands SpringHandsFreed(const ProductionConfig& config,
+                             const WorldState& world,
+                             SimDay this_cut_end);
+
 /// The hour of the day SettleHayCutDay is called at.
 inline constexpr std::uint32_t kHayCutDayCountedAtHour = 12;
 
