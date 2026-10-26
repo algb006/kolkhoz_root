@@ -38,6 +38,11 @@ struct HerdPlanLine {
   /// `hay_for_known` false.
   std::uint16_t hay_for = 0;
   bool hay_for_known = false;
+  /// «Сена на» with the other milk-kind and horse herds at their FLOOR (every
+  /// other kind at its plan): econ's order of the hay, «to the floors of both
+  /// herds first, then to the horses» (core-boss-1289 [10] (2)). The run's
+  /// bot sizes the horses on it; the window shows `hay_for`.
+  std::uint16_t hay_for_others_at_floor = 0;
   /// «по норме»: `hay_for` counted on the mowing norm, not the village's own
   /// cut (the first year before the mowing). STUB until the body.
   bool hay_for_by_norm = false;

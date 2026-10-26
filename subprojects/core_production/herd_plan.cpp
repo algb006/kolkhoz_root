@@ -53,6 +53,28 @@ bool FedAt(const ProductionConfig& config,
   return !ForecastHerdFeed(config, what_if, false, FeedHorizon::kWindowByNorm).short_ahead;
 }
 
+/// The most heads of the herd in `row`, up to `top`, the hay feeds with the
+/// rest of `what_if` as it stands - by halving; 0 when it is short even at
+/// nought (the others alone go short).
+std::uint16_t HayFor(const ProductionConfig& config,
+                     WorldState& what_if,
+                     std::uint32_t row,
+                     std::uint16_t top) {
+  if (FedAt(config, what_if, row, top)) {
+    return top;
+  }
+  std::uint16_t fed = 0;
+  if (!FedAt(config, what_if, row, 0)) {
+    return 0;
+  }
+  std::uint16_t hungry = top;
+  while (hungry > fed + 1U) {
+    const auto middle = static_cast<std::uint16_t>((fed + hungry) / 2U);
+    (FedAt(config, what_if, row, middle) ? fed : hungry) = middle;
+  }
+  return fed;
+}
+
 }  // namespace
 
 HerdPlanLine HerdPlanLineOf(const ProductionConfig& config,
@@ -69,6 +91,16 @@ HerdPlanLine HerdPlanLineOf(const ProductionConfig& config,
   line.places = HerdPlaces(config, world, herd_row);
   line.plan_set = herd.plan_heads != kNoHerdPlan;
   line.plan = line.plan_set ? herd.plan_heads : line.places;
+  const HerdFloors floors = HerdFloorsOf(config, world);
+  const LivestockKindId milk_kind = MilkKind(config);
+  const auto floor_of = [&config, &floors, milk_kind](const HerdRow& of) -> std::int64_t {
+    return of.kind.value == milk_kind.value           ? floors.cows_kept
+           : of.kind.value == config.horse_kind.value ? floors.horses_kept
+                                                      : -1;  // a kind with no floor
+  };
+  // The search runs to the larger of the places and the heads: the window
+  // asks what the hay would feed, and the places cap the plan, not the hay.
+  const std::uint16_t top = std::max(line.places, line.heads);
   // «СЕНА НА»: every other kolkhoz herd at its own plan, then the halving.
   WorldState what_if = world;
   for (std::uint32_t row = 0; row < what_if.herds.rows.size(); ++row) {
@@ -78,23 +110,27 @@ HerdPlanLine HerdPlanLineOf(const ProductionConfig& config,
       ScaleHerdHeads(other, other.plan_heads);
     }
   }
-  // The search runs to the larger of the places and the heads: the window
-  // asks what the hay would feed, and the places cap the plan, not the hay.
-  const std::uint16_t top = std::max(line.places, line.heads);
-  std::uint16_t fed = 0;
-  if (FedAt(config, what_if, herd_row, top)) {
-    fed = top;
-  } else if (FedAt(config, what_if, herd_row, 0)) {
-    // fed at 0, hungry at top: the largest fed count between them.
-    std::uint16_t hungry = top;
-    while (hungry > fed + 1U) {
-      const auto middle = static_cast<std::uint16_t>((fed + hungry) / 2U);
-      (FedAt(config, what_if, herd_row, middle) ? fed : hungry) = middle;
+  line.hay_for = HayFor(config, what_if, herd_row, top);
+  line.hay_for_known = true;
+  // AND WITH THE OTHERS AT THEIR FLOORS (econ, core-boss-1289 [10] (2): «the
+  // hay to the floors of both herds first, then to the horses»): the milk
+  // kind's and the horses' other herds at their floor, every other kind at
+  // its plan. The run's bot sizes the horses on it; a what-if, no plan set.
+  WorldState at_floors = world;
+  for (std::uint32_t row = 0; row < at_floors.herds.rows.size(); ++row) {
+    HerdRow& other = at_floors.herds.rows[row];
+    if (row == herd_row || other.household_owned != 0) {
+      continue;
+    }
+    const std::int64_t floor = floor_of(other);
+    const std::int64_t cap = floor >= 0                        ? floor
+                             : other.plan_heads != kNoHerdPlan ? other.plan_heads
+                                                               : TotalHeads(other);
+    if (TotalHeads(other) > cap) {
+      ScaleHerdHeads(other, static_cast<std::uint16_t>(cap));
     }
   }
-  // Short even at nought: the others' plans alone go short, nothing is left.
-  line.hay_for = fed;
-  line.hay_for_known = true;
+  line.hay_for_others_at_floor = HayFor(config, at_floors, herd_row, top);
   // «ПО НОРМЕ»: year 1 before its cut opens - the cut is econ's norm formula
   // then (FeedHorizon::kWindowByNorm, NormCutYearOne; boss, core-boss-1289
   // [9] 4), not a cut of the village's own. From the cut's second dry working
@@ -103,10 +139,9 @@ HerdPlanLine HerdPlanLineOf(const ProductionConfig& config,
       world.calendar.day < kDaysPerYear &&
       world.calendar.day < static_cast<SimDay>(config.farming.meadow_cut_month) * kDaysPerMonth;
   // THE THREE WARNINGS (the words are rpg's).
-  const HerdFloors floors = HerdFloorsOf(config, world);
-  const bool milk = herd.kind.value == MilkKind(config).value;
+  const bool milk = herd.kind.value == milk_kind.value;
   const bool horse = herd.kind.value == config.horse_kind.value;
-  const std::int64_t floor = milk ? floors.cows_kept : horse ? floors.horses_kept : 0;
+  const std::int64_t floor = std::max<std::int64_t>(floor_of(herd), 0);
   line.floor_heads =
       static_cast<std::uint16_t>(std::clamp<std::int64_t>(floor, 0, kNoHerdPlan - 1));
   line.below_milk_floor = milk && static_cast<std::int64_t>(line.plan) < floor;

@@ -7,10 +7,10 @@
 ///
 /// THE RULE (the row, STUB econ): N = «сена на», not above the places and
 /// not below the floor - the hay goes first to both floors, then to the
-/// horses up to their places, the rest to the cows. As three evenings: every
-/// other herd to its floor; the horses on the rest; the others on what the
-/// horses leave. Once a year. The bot reads the office's own
-/// door (ISimulation::HerdPlans), as the player reads the window.
+/// horses up to their places, the rest to the cows. As two evenings: the
+/// horses on the hay with the others at their floor (a what-if of the door,
+/// no plan set for it); the others on what the horses leave. Once a year. The bot reads the
+/// office's own door (ISimulation::HerdPlans), as the player reads the window.
 ///
 /// THE CUT IS OVER on the first day of the month after farming.csv
 /// `meadow_cut_month_end` (the core keeps no «cut closed» flag; boss's
@@ -65,24 +65,25 @@ class HerdPlanPolicy {
     if (!after_cut || year == set_year_) {
       return;
     }
-    // THREE EVENINGS (econ, core-boss-1289 [10] (2): «the hay to the floors
-    // of both herds first, then to the horses up to their places, the rest
-    // to the cows»): the other herds to their floor; the horses on what that
-    // leaves; the others on what the horses leave. Until then the horses
-    // were sized against the cows at their places and fell to their floor -
-    // spring «no horse» +2-3 SE in the first pair.
-    const std::uint8_t stage = floors_year_ != year ? 0 : horses_year_ != year ? 1 : 2;
+    // TWO EVENINGS IN THE ORDER OF THE HAY (econ, core-boss-1289 [10] (2):
+    // «the hay to the floors of both herds first, then to the horses up to
+    // their places, the rest to the cows»): the horses on «сена на» with the
+    // others at their floor (HerdPlanLine::hay_for_others_at_floor, a what-if
+    // of the door); the others on what the horses leave. Its first form sized
+    // the horses against the cows at their places (spring «no horse» +2-3
+    // SE); its second set the cows' plan to their floor for a day - the hay's
+    // answer then handed the cows down to it (milk -16…-18 %, the second pair).
+    const std::uint8_t stage = horses_year_ != year ? 1 : 2;
     std::vector<core::OrderRow> orders;
     for (const core::HerdPlanLine& line : simulation.HerdPlans()) {
       const bool horse = line.kind.value == horse_;
       if (horse != (stage == 1) || !line.hay_for_known) {
         continue;
       }
-      // The floor, then «сена на» - not above the places, not below the floor.
+      // «Сена на» - not above the places, not below the floor.
+      const std::uint16_t hay = stage == 1 ? line.hay_for_others_at_floor : line.hay_for;
       const std::uint16_t n =
-          stage == 0 ? std::min<std::uint16_t>(line.places, line.floor_heads)
-                     : std::min<std::uint16_t>(
-                           line.places, std::max<std::uint16_t>(line.hay_for, line.floor_heads));
+          std::min<std::uint16_t>(line.places, std::max<std::uint16_t>(hay, line.floor_heads));
       if (line.plan_set && line.plan == n) {
         continue;
       }
@@ -91,14 +92,12 @@ class HerdPlanPolicy {
       order.herd = line.herd;
       order.amount = n;
       orders.push_back(order);
-      set_this_year_ += stage == 0 ? 0U : 1U;
+      ++set_this_year_;
     }
     if (!orders.empty()) {
       simulation.StageOrders(orders, {});
     }
-    if (stage == 0) {
-      floors_year_ = year;
-    } else if (stage == 1) {
+    if (stage == 1) {
       horses_year_ = year;
     } else {
       set_year_ = year;
@@ -111,7 +110,6 @@ class HerdPlanPolicy {
   static constexpr std::uint32_t kNever = 0xFFFFFFFFU;
   std::uint32_t cut_end_month_ = 7;
   std::uint32_t horse_ = kNever;
-  std::uint32_t floors_year_ = kNever;
   std::uint32_t horses_year_ = kNever;
   std::uint32_t set_year_ = kNever;
   std::uint32_t set_this_year_ = 0;
