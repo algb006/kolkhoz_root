@@ -912,6 +912,11 @@ int CheckTheHayLampByTheCutsPace() {
     meadow.phase = core::FieldPhase::kHarvest;
     meadow.harvest_work_days = 10.0F;
     meadow.work_days_remaining = 8.0F;  // a fifth mown: 20 kg laid, 80 standing
+    // The field's own book of that fifth, as LayMownShare keeps it (#1308): the
+    // pace now reads laid + in flight, and a field that said nothing laid read
+    // the ledger's 20 kg as in flight a second time.
+    meadow.harvest_laid_share = 0.2F;
+    meadow.harvest_laid_grams = 20 * core::kGramsPerKilogram;
     AppendRow(world.fields, meadow);
     world.ledger.current.harvest = {20 * core::kGramsPerKilogram};
     world.chairman.hay_cut_dry_work_days = dry_days;
@@ -934,10 +939,15 @@ int CheckTheHayLampByTheCutsPace() {
             << " kg a day, dry working days left " << paced.dry_work_days_left << " (calendar "
             << working_left << "), horizon " << paced.horizon_days << " days, short "
             << paced.short_hay_grams / kKilo << " kg of hay\n";
+  // THE DAYS BEFORE TODAY (#1308): the second dry working day is counted this
+  // morning and its hay is not laid until tonight, so the 20 kg are the FIRST
+  // day's - 20 kg a day. Until 0.37.340 this read 10 (20 kg over both days),
+  // the lag that halved year 1's small crews.
   failures += Expect(
-      paced.by_pace && paced.pace_kg_a_day == 10.0F && paced.dry_work_days_left == working_left,
+      paced.by_pace && paced.pace_kg_a_day == 20.0F && paced.dry_work_days_left == working_left,
       "hay pace: from the cut's second dry working day the forecast reads the "
-      "pace - 10 kg a day - over the working days the calendar leaves");
+      "pace - the hay laid before today over the dry working days before today, 20 kg a day - "
+      "over the working days the calendar leaves");
   // The need runs hay_new_cut_in_store_days into NEXT year's cut: four heads, 4 kg a day.
   const auto horizon = static_cast<std::uint16_t>(cut_from + core::kDaysPerYear +
                                                   config.farming.hay_new_cut_in_store_days - today);
@@ -950,7 +960,9 @@ int CheckTheHayLampByTheCutsPace() {
     world.ledger.current.harvest = {0};
     return look(world);
   };
-  const float to_come_kg = working_left * 10.0F;
+  // The days left at 20 kg, and today's whole day too: nothing of it mown at
+  // this hour-0 read, so the afternoon term carries a day's pace (1cf8f6ae).
+  const float to_come_kg = (working_left + 1.0F) * 20.0F;
   const core::HerdFeedForecast same_hay = in_store_instead(100.0F + to_come_kg);
   failures += Expect(paced.horizon_days == horizon && paced.short_ahead && same_hay.by_pace &&
                          same_hay.pace_kg_a_day == 0.0F &&
@@ -1220,6 +1232,33 @@ int CheckTheHayLampByTheCutsPace() {
     failures += Expect(gap <= kKilo,
                        "hay pace: noon reads the hay the morning read - the morning's mowing in "
                        "flight and the afternoon's still to come, no hour of the day lost");
+  }
+  // AND THE LAST DAY (#1308, econ [71]): today's mowing all but completes the
+  // stand; the pace must not promise more than the grass - the forecast reads
+  // as the same world with all of it laid.
+  {
+    core::WorldState last = village(today, 100.0F, 2);
+    last.fields.rows.back().harvest_laid_share = 0.2F;
+    last.fields.rows.back().harvest_laid_grams = 20 * kKilo;
+    last.fields.rows.back().work_days_remaining = 0.001F;  // in flight: the other 80 kg
+    last.weather.precipitation = core::Precipitation::kNone;
+    core::WorldState all_laid = village(today, 180.0F, 2);  // the 80 kg in the store instead
+    all_laid.fields.rows.back().harvest_laid_share = 1.0F;
+    all_laid.fields.rows.back().harvest_laid_grams = 100 * kKilo;
+    all_laid.fields.rows.back().work_days_remaining = 0.001F;
+    all_laid.ledger.current.harvest = {100 * kKilo};
+    all_laid.weather.precipitation = core::Precipitation::kNone;
+    const core::HerdFeedForecast at_last = look(last);
+    const core::HerdFeedForecast laid_all = look(all_laid);
+    std::cout << "  hay pace, the last day: short " << at_last.short_hay_grams / kKilo
+              << " kg with the last 80 kg in flight, " << laid_all.short_hay_grams / kKilo
+              << " kg with them in the store\n";
+    const core::Grams gap = at_last.short_hay_grams > laid_all.short_hay_grams
+                                ? at_last.short_hay_grams - laid_all.short_hay_grams
+                                : laid_all.short_hay_grams - at_last.short_hay_grams;
+    failures += Expect(gap <= kKilo,
+                       "hay pace: on the cut's last day the pace promises no grass that is not "
+                       "standing - the hay in flight reads as the hay laid");
   }
   const core::HerdFeedForecast stale = look(cut_opens(9));
   const core::HerdFeedForecast fresh = look(cut_opens(0));

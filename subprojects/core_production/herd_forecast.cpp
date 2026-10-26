@@ -380,9 +380,24 @@ CutPace PaceOfTheCut(const ProductionConfig& config,
                     norm_days_left * mowers;
   } else {
     pace.known = true;
+    // THE SAME DAYS ABOVE AND BELOW (#1308; econ, core-boss-1289-herd-plan
+    // [71]): `worked` counts today from the morning, and today's mowing lies
+    // in flight until the next day's turn lays it - so the pace took n days of
+    // work over n - 1 days of hay, half the crew's on the cut's second day
+    // (1936 y1: 21.7 t / 2 = 10.8 t a day against 21.7 laid), and year 1's
+    // small crews, pace-bound, lit the lamp on fed springs.
+    // Read as the days BEFORE today on both sides: the hay laid by the last
+    // turn over the dry working days before today. Today's own mowing is the
+    // hay in flight and today's afternoon, counted beside it (bbe4fceb,
+    // 1cf8f6ae). (laid + in flight) / worked, econ's form, is the same at the
+    // day's end and half a day short at noon.
     const Grams laid = AmountOf(world.ledger.current.harvest, config.hay_resource);
+    const bool today_counted =
+        !IsDayOffIn(world, today) && world.weather.precipitation != Precipitation::kRain;
+    const std::uint16_t days_before =
+        today_counted ? static_cast<std::uint16_t>(worked - 1U) : worked;
     pace.kg_a_day = static_cast<float>(laid) / static_cast<float>(kGramsPerKilogram) /
-                    static_cast<float>(worked);
+                    static_cast<float>(days_before > 0 ? days_before : 1U);
   }
   // The dry working days left are a DRAW, not a mean: beside their expected
   // count, the variance of the draw - each day dry with its own share.
