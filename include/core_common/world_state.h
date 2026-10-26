@@ -590,7 +590,8 @@ struct ChairmanState {
   /// cure (d), boss core-boss-1289-herd-plan [73]): the residents on a
   /// meadow's harvest when SettleHayCutDay last counted a dry working day.
   /// The pace's crew for the days ahead - a rainy noon places nobody and does
-  /// not reset it. Reset the morning the cut opens.
+  /// not reset it; a dry working noon with nobody on the meadows sets it to
+  /// nought (a cut walked off). Reset the morning the cut opens.
   std::uint16_t hay_cut_crew = 0;
 
   /// THE MOWER-DAYS THIS YEAR'S HAY CUT HAS WORKED (save 195; #1308): each

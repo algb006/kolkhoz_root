@@ -981,8 +981,77 @@ int CheckTheHayLampByTheCutsPace() {
     const float grown_pace = look(crewed(4, 2, 4.0F)).pace_kg_a_day;
     // 2. Mowers go to the harvest: one left, the pace drops the same day.
     const float thinned_pace = look(crewed(1, 2, 4.0F)).pace_kg_a_day;
-    // 3. Nobody on the meadows now (rain, a day off): the last counted crew.
+    // 3. Nobody on the meadows now, read before the day's placement: the last counted crew.
     const float idle_pace = look(crewed(0, 2, 4.0F)).pace_kg_a_day;
+    // 4. Nobody on the meadows at a DRY WORKING noon: the cut walked off
+    //    (1939 y1, core [84]) - no pace, whatever the last crew was; in the
+    //    rain the last crew stands.
+    {
+      core::WorldState walked_off = crewed(0, 2, 4.0F);
+      walked_off.calendar.tick += core::kHayCutDayCountedAtHour;  // a tick is an hour
+      core::RefreshCalendarCaches(walked_off.calendar);
+      walked_off.weather.precipitation = core::Precipitation::kNone;
+      core::WorldState rained = walked_off;
+      rained.weather.precipitation = core::Precipitation::kRain;
+      const float off_pace = look(walked_off).pace_kg_a_day;
+      const float rain_pace = look(rained).pace_kg_a_day;
+      std::cout << "  hay pace, an empty noon: dry working " << off_pace << " kg a day, rain "
+                << rain_pace << "\n";
+      failures +=
+          Expect(core::IsDayOffIn(walked_off, today) || (off_pace == 0.0F && rain_pace == 10.0F),
+                 "hay pace: a dry working noon with nobody on the meadows reads no pace - the "
+                 "cut walked off - and a rainy one keeps the last crew");
+      // 5. Hour 1, the top-up's own hour: no «empty» verdict yet.
+      core::WorldState top_up = walked_off;
+      top_up.calendar.tick -= core::kHayCutDayCountedAtHour - 1U;
+      core::RefreshCalendarCaches(top_up.calendar);
+      failures +=
+          Expect(look(top_up).pace_kg_a_day == 10.0F,
+                 "hay pace: a read at the top-up's hour gives no «empty» verdict - the last "
+                 "crew stands until the day's placement is done");
+      // 2. A declared day off: the first day off of the cut's days after its
+      //    first (the first reads the prior), at noon.
+      bool day_off_seen = false;
+      for (core::SimDay day = cut_from + 1U; day <= cut_end; ++day) {
+        core::WorldState off = crewed(0, 2, 4.0F);
+        off.calendar.tick =
+            static_cast<core::Tick>(day) * core::kTicksPerDay + core::kHayCutDayCountedAtHour;
+        core::RefreshCalendarCaches(off.calendar);
+        off.weather.precipitation = core::Precipitation::kNone;
+        if (!core::IsDayOffIn(off, day)) {
+          continue;
+        }
+        std::cout << "  hay pace, a day off (day " << day
+                  << ") with nobody on the meadows: " << look(off).pace_kg_a_day
+                  << " kg a day, by pace " << look(off).by_pace << "\n";
+        failures += Expect(look(off).pace_kg_a_day > 0.0F,
+                           "hay pace: a day off with nobody on the meadows keeps the last crew");
+        day_off_seen = true;
+        break;
+      }
+      if (!day_off_seen) {
+        // STUB: the fixture's cut (4 days) holds no day off after its first,
+        // so this unit measures nothing; it says so instead of passing.
+        std::cout << "  hay pace, a day off with nobody on the meadows: NOT MEASURED - no day off "
+                     "in the fixture's cut days "
+                  << cut_from + 1U << "-" << cut_end << "\n";
+      }
+      // 4. The next working noon with 20 placed reads 20 - nought does not stick.
+      core::WorldState back = walked_off;
+      back.chairman.hay_cut_crew = 20;           // this noon's count, as SettleHayCutDay books it
+      back.chairman.hay_cut_mower_days = 24.0F;  // the 4 before today and today's 20
+      for (int i = 0; i < 20; ++i) {
+        core::ResidentRow hand;
+        hand.birth_day = -1000;
+        hand.work.kind = core::WorkKind::kHarvest;
+        hand.work.field = back.fields.row_ids.front();
+        AppendRow(back.residents, hand);
+      }
+      std::cout << "  hay pace, a crew placed again: " << look(back).pace_kg_a_day << " kg a day\n";
+      failures += Expect(core::IsDayOffIn(back, today) || look(back).pace_kg_a_day == 100.0F,
+                         "hay pace: after a cut walked off, a crew placed again is the crew - 20 "
+                         "mowers at 5 kg a mower-day");
+    }
     std::cout << "  hay pace by the mower-day: 5 kg a mower-day - crew 4: " << grown_pace
               << " kg a day, crew 1: " << thinned_pace
               << ", nobody now (last crew 2): " << idle_pace << "\n";

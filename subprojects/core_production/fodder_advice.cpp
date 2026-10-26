@@ -177,13 +177,13 @@ void SettleHayCutDay(const ProductionConfig& config, WorldState& current) {
       current.weather.precipitation != Precipitation::kRain &&
       current.chairman.hay_cut_dry_work_days < std::numeric_limits<std::uint16_t>::max()) {
     ++current.chairman.hay_cut_dry_work_days;
-    // The day's crew (#1308): a dry working noon with nobody on the meadows
-    // keeps the last crew for the pace ahead, and adds no mower-day.
+    // The day's crew (#1308): a counted noon is a dry working one, so its
+    // crew is the cut's crew ahead - nought included: a cut walked off stays
+    // walked off through the rain that follows, until a crew is placed again
+    // (econ, boss-econ-1308-year1-pace [10]).
     const std::uint16_t crew = MeadowMowersNow(current);
-    if (crew > 0) {
-      current.chairman.hay_cut_crew = crew;
-      current.chairman.hay_cut_mower_days += static_cast<float>(crew);
-    }
+    current.chairman.hay_cut_crew = crew;
+    current.chairman.hay_cut_mower_days += static_cast<float>(crew);
   }
   // THE DAY OFF WORKED ON THE LAMP'S ADVICE: today was the chairman's
   // cancelled day off, and the cut's pace was short this evening - the

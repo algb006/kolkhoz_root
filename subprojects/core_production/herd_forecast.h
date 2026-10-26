@@ -378,6 +378,11 @@ SpringHands SpringHandsFreed(const ProductionConfig& config,
                              const WorldState& world,
                              SimDay this_cut_end);
 
+/// The first hour after the day's placement (hour 0) and its top-up (hour 1):
+/// from it on, nobody on the meadows on a dry working day is the day's crew,
+/// not a placement still to come (#1308).
+inline constexpr std::uint32_t kHayPlacementDoneAtHour = 2;
+
 /// The hour of the day SettleHayCutDay is called at.
 inline constexpr std::uint32_t kHayCutDayCountedAtHour = 12;
 

@@ -311,6 +311,7 @@ struct CutPace {
   float kg_a_day = 0.0F;     ///< The pace: the year's hay laid over the days counted.
   float dry_days_left = 0;   ///< The dry working days left, by the calendar and the climate.
   float crew = 0.0F;         ///< The meadows' crew the pace is read at (kg_a_day is its).
+  float kg_a_mower_day = 0;  ///< The rate a mower-day; 0 where only a calendar pace is known.
 };
 
 }  // namespace
@@ -423,8 +424,9 @@ CutPace PaceOfTheCut(const ProductionConfig& config,
     pace.known = true;
     pace.prior = true;
     pace.crew = mowers;
-    pace.kg_a_day = static_cast<float>(standing) / static_cast<float>(kGramsPerKilogram) /
-                    norm_days_left * mowers;
+    pace.kg_a_mower_day =
+        static_cast<float>(standing) / static_cast<float>(kGramsPerKilogram) / norm_days_left;
+    pace.kg_a_day = pace.kg_a_mower_day * mowers;
   } else {
     pace.known = true;
     // THE SAME DAYS ABOVE AND BELOW (#1308; econ, core-boss-1289-herd-plan
@@ -456,10 +458,27 @@ CutPace PaceOfTheCut(const ProductionConfig& config,
     const float mower_days_before =
         world.chairman.hay_cut_mower_days -
         (today_counted && crew_now > 0 ? static_cast<float>(crew_now) : 0.0F);
-    const std::uint16_t crew = crew_now > 0 ? crew_now : world.chairman.hay_cut_crew;
+    // AN EMPTY DRY WORKING NOON IS A CUT WALKED OFF, NOT RAIN (#1308, core
+    // [84]): the last counted crew stands only for rain, a day off, or a read
+    // before the day's placement (hour 0; the top-up places at hour 1). 1939
+    // y1 left 98 norm-days on its meadows from d27, the hands hauling and
+    // building on dry d29, and the forecast read the last crew, 44 - the lamp
+    // dark over a cut the bot had left, and the next spring hungry.
+    // «Empty» is a verdict only after the bot's placement hours - the
+    // morning's at hour 0 and the top-up's at hour 1 (labor_system.cpp
+    // RunAssignmentDecisions) - and only on a day the mowing is placed at
+    // all: the same flags the assignment reads, the rest calendar with its
+    // declared days off (IsDayOffIn) and the rain (econ, boss-econ-1308-
+    // year1-pace [10]).
+    const bool placed_today = HourFromTick(world.calendar.tick) >= kHayPlacementDoneAtHour &&
+                              !IsDayOffIn(world, today) &&
+                              world.weather.precipitation != Precipitation::kRain;
+    const std::uint16_t crew =
+        crew_now > 0 || placed_today ? crew_now : world.chairman.hay_cut_crew;
     pace.crew = static_cast<float>(crew);
-    if (mower_days_before > 0.0F && crew > 0) {
-      pace.kg_a_day = laid_kg / mower_days_before * static_cast<float>(crew);
+    if (mower_days_before > 0.0F) {
+      pace.kg_a_mower_day = laid_kg / mower_days_before;
+      pace.kg_a_day = pace.kg_a_mower_day * static_cast<float>(crew);
     } else {
       // No mower-day booked before today (nobody stood at the counted
       // noons): the calendar days.
@@ -485,7 +504,7 @@ CutPace PaceOfTheCut(const ProductionConfig& config,
       meadow_norm_left += field.work_days_remaining;
     }
   }
-  const float kg_a_mower_day = pace.crew > 0.0F ? pace.kg_a_day / pace.crew : 0.0F;
+  const float kg_a_mower_day = pace.kg_a_mower_day;
   float joined = 0.0F;
   float norm_left_ahead = meadow_norm_left - pace.crew;  // today's crew mows a norm-day each
   float kg_ahead = 0.0F;
