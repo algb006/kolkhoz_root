@@ -196,7 +196,11 @@ CutPace PaceOfTheCut(const ProductionConfig& config,
   constexpr std::uint16_t kFirstPaceDay = 2;
   CutPace pace;
   const SimDay today = world.calendar.day;
-  const std::uint16_t worked = world.chairman.hay_cut_dry_work_days;
+  // ON THE CUT'S FIRST DAY THE COUNT IS NOUGHT (#1292): SettleHayCutDay
+  // starts it anew only that evening, and the lamp's noon read took last
+  // cut's days as this one's - 0 kg over four days, a pace of nought on a
+  // full meadow, the lamp lit on 62 of 63 first cut days (core's print).
+  const std::uint16_t worked = today == cut_from ? 0 : world.chairman.hay_cut_dry_work_days;
   if (today < cut_from || today > this_cut_end || config.hay_resource.value == kInvalidDefIdValue) {
     return pace;
   }

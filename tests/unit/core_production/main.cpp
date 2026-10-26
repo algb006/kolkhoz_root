@@ -1033,6 +1033,33 @@ int CheckTheHayLampByTheCutsPace() {
   failures += Expect(opening.chairman.hay_cut_dry_work_days == 1,
                      "hay pace: the day the cut opens the count starts anew - last year's nine "
                      "are gone, today is the first");
+  // AND BEFORE THAT EVENING (#1292): the lamp reads at noon, before the
+  // count is settled. On the cut's first morning, with nothing laid and the
+  // meadow full, last year's nine must read as nought - the prior - and not
+  // as a pace of 0 kg over nine days, which lit the lamp on 62 of 63 first
+  // cut days in core's #1292 print.
+  const auto cut_opens = [&village, cut_from](std::uint16_t dry_days) {
+    core::WorldState world = village(cut_from, 100.0F, dry_days);
+    world.ledger.current.harvest = {0};
+    world.fields.rows.back().work_days_remaining = 10.0F;  // nothing mown yet
+    for (int grown = 0; grown < 10; ++grown) {             // the prior's grown residents
+      core::ResidentRow hand;
+      hand.birth_day = -1000;
+      AppendRow(world.residents, hand);
+    }
+    return world;
+  };
+  const core::HerdFeedForecast stale = look(cut_opens(9));
+  const core::HerdFeedForecast fresh = look(cut_opens(0));
+  std::cout << "  hay pace: the cut's first morning, last year's nine dry days standing - pace "
+            << stale.pace_kg_a_day << " kg a day, short " << stale.short_hay_grams / kKilo
+            << " kg; with the count at nought - pace " << fresh.pace_kg_a_day << ", short "
+            << fresh.short_hay_grams / kKilo << " kg\n";
+  failures += Expect(fresh.pace_kg_a_day > 0.0F && stale.pace_kg_a_day == fresh.pace_kg_a_day &&
+                         stale.short_ahead == fresh.short_ahead &&
+                         stale.short_hay_grams == fresh.short_hay_grams,
+                     "hay pace: on the cut's first morning a count left from last year's cut "
+                     "reads as nought - the prior's pace, not 0 kg a day");
   return failures;
 }
 
