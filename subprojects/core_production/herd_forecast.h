@@ -355,6 +355,12 @@ SimDay DayOffAheadForTheCut(const ProductionConfig& config,
 ///      today's cancelled day - the day's close lets it go.
 void SettleHayCutDay(const ProductionConfig& config, WorldState& current);
 
+/// @brief The residents placed on a meadow's (non-arable field's) harvest now:
+///        the cut's crew as the bot stands it - at noon, the day's whole
+///        placement (the morning's at hour 0, the top-up's at hour 1; a day
+///        off declared working places at the hour it is declared).
+std::uint16_t MeadowMowersNow(const WorldState& world);
+
 /// The hour of the day SettleHayCutDay is called at.
 inline constexpr std::uint32_t kHayCutDayCountedAtHour = 12;
 

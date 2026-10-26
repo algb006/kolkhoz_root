@@ -358,18 +358,15 @@ CutPace PaceOfTheCut(const ProductionConfig& config,
     if (!(norm_days_left > 0.0F)) {
       return pace;
     }
-    float mowers = 0.0F;
+    // The day's whole placement (#1308, econ's (a)): at the lamp's noon read
+    // the morning's and the top-up's are both on the meadows.
+    auto mowers = static_cast<float>(MeadowMowersNow(world));
     float grown = 0.0F;
     for (const ResidentRow& person : world.residents.rows) {
       grown += BiologicalAgeYears(config.farming.life_speedup, person.birth_day, today) >=
                        config.farming.adult_age_years
                    ? 1.0F
                    : 0.0F;
-      if (person.work.kind != WorkKind::kHarvest) {
-        continue;
-      }
-      const std::uint32_t row = FindRow(world.fields, person.work.field);
-      mowers += row != kNoRow && world.fields.rows[row].kind != LandKind::kArable ? 1.0F : 0.0F;
     }
     if (!(mowers > 0.0F)) {
       mowers = config.farming.hay_prior_mower_share * grown;
@@ -391,13 +388,34 @@ CutPace PaceOfTheCut(const ProductionConfig& config,
     // hay in flight and today's afternoon, counted beside it (bbe4fceb,
     // 1cf8f6ae). (laid + in flight) / worked, econ's form, is the same at the
     // day's end and half a day short at noon.
-    const Grams laid = AmountOf(world.ledger.current.harvest, config.hay_resource);
-    const bool today_counted =
-        !IsDayOffIn(world, today) && world.weather.precipitation != Precipitation::kRain;
-    const std::uint16_t days_before =
-        today_counted ? static_cast<std::uint16_t>(worked - 1U) : worked;
-    pace.kg_a_day = static_cast<float>(laid) / static_cast<float>(kGramsPerKilogram) /
-                    static_cast<float>(days_before > 0 ? days_before : 1U);
+    const float laid_kg =
+        static_cast<float>(AmountOf(world.ledger.current.harvest, config.hay_resource)) /
+        static_cast<float>(kGramsPerKilogram);
+    // Today is in the count only from SettleHayCutDay's noon on.
+    const bool today_counted = HourFromTick(world.calendar.tick) >= kHayCutDayCountedAtHour &&
+                               !IsDayOffIn(world, today) &&
+                               world.weather.precipitation != Precipitation::kRain;
+    const std::uint16_t crew_now = MeadowMowersNow(world);
+    // TONNES A MOWER-DAY TIMES THE CREW (#1308, econ's (d), boss [73]): year
+    // 1's crew grows through its cut (1936: 8, 16, 38, 44 at noon), and the
+    // pace a calendar day read the mean of the small early crews - 27 t a
+    // day on d22 against the 35 the grown crew laid. The rate over the
+    // mower-days before today follows the crew up as it grows and down as
+    // mowers go to the harvest. The crew ahead is today's, or the last
+    // counted noon's when nobody stands on the meadows now (rain, a day off).
+    const float mower_days_before =
+        world.chairman.hay_cut_mower_days -
+        (today_counted && crew_now > 0 ? static_cast<float>(crew_now) : 0.0F);
+    const std::uint16_t crew = crew_now > 0 ? crew_now : world.chairman.hay_cut_crew;
+    if (mower_days_before > 0.0F && crew > 0) {
+      pace.kg_a_day = laid_kg / mower_days_before * static_cast<float>(crew);
+    } else {
+      // No mower-day booked before today (nobody stood at the counted
+      // noons): the calendar days.
+      const std::uint16_t days_before =
+          today_counted ? static_cast<std::uint16_t>(worked - 1U) : worked;
+      pace.kg_a_day = laid_kg / static_cast<float>(days_before > 0 ? days_before : 1U);
+    }
   }
   // The dry working days left are a DRAW, not a mean: beside their expected
   // count, the variance of the draw - each day dry with its own share.
@@ -560,6 +578,21 @@ void ProjectHerdDay(const ProductionConfig& config, std::uint8_t month, Projecte
 }
 
 }  // namespace
+
+std::uint16_t MeadowMowersNow(const WorldState& world) {
+  std::uint16_t mowers = 0;
+  for (const ResidentRow& person : world.residents.rows) {
+    if (person.work.kind != WorkKind::kHarvest) {
+      continue;
+    }
+    const std::uint32_t row = FindRow(world.fields, person.work.field);
+    if (row != kNoRow && world.fields.rows[row].kind != LandKind::kArable &&
+        mowers < std::numeric_limits<std::uint16_t>::max()) {
+      ++mowers;
+    }
+  }
+  return mowers;
+}
 
 float ForecastHerdHeads(const ProductionConfig& config,
                         const WorldState& world,

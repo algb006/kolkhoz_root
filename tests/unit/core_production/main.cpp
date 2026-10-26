@@ -939,15 +939,58 @@ int CheckTheHayLampByTheCutsPace() {
             << " kg a day, dry working days left " << paced.dry_work_days_left << " (calendar "
             << working_left << "), horizon " << paced.horizon_days << " days, short "
             << paced.short_hay_grams / kKilo << " kg of hay\n";
-  // THE DAYS BEFORE TODAY (#1308): the second dry working day is counted this
-  // morning and its hay is not laid until tonight, so the 20 kg are the FIRST
-  // day's - 20 kg a day. Until 0.37.340 this read 10 (20 kg over both days),
-  // the lag that halved year 1's small crews.
+  // At hour 0 today is not yet counted (SettleHayCutDay counts it at noon):
+  // the two dry working days are both before today - 10 kg a day.
   failures += Expect(
-      paced.by_pace && paced.pace_kg_a_day == 20.0F && paced.dry_work_days_left == working_left,
+      paced.by_pace && paced.pace_kg_a_day == 10.0F && paced.dry_work_days_left == working_left,
       "hay pace: from the cut's second dry working day the forecast reads the "
-      "pace - the hay laid before today over the dry working days before today, 20 kg a day - "
+      "pace - the hay laid before today over the dry working days before today, 10 kg a day - "
       "over the working days the calendar leaves");
+  // THE DAYS BEFORE TODAY (#1308): at noon the second dry working day is
+  // counted and its hay is not laid until tonight, so the 20 kg are the FIRST
+  // day's - 20 kg a day. ac831f77 read 10 here (20 kg over both days), the lag
+  // that halved year 1's small crews; and it took today off the count at
+  // hour 0 too, before noon had counted it.
+  {
+    core::WorldState noon = village(today, 100.0F, 2);
+    noon.calendar.tick += core::kHayCutDayCountedAtHour;  // a tick is an hour
+    core::RefreshCalendarCaches(noon.calendar);
+    noon.weather.precipitation = core::Precipitation::kNone;
+    failures += Expect(core::IsDayOffIn(noon, today) || look(noon).pace_kg_a_day == 20.0F,
+                       "hay pace: at noon the day counted this noon is taken off - the hay laid "
+                       "before today over the one dry working day before today, 20 kg a day");
+  }
+  // TONNES A MOWER-DAY TIMES THE CREW (#1308, econ's (d)): 20 kg laid over 4
+  // mower-days before today (2 mowers, then 2) is 5 kg a mower-day.
+  {
+    const auto crewed = [&village, today](
+                            std::uint16_t crew_now, std::uint16_t last_crew, float mower_days) {
+      core::WorldState world = village(today, 100.0F, 2);
+      world.chairman.hay_cut_crew = last_crew;
+      world.chairman.hay_cut_mower_days = mower_days;
+      for (std::uint16_t i = 0; i < crew_now; ++i) {
+        core::ResidentRow hand;
+        hand.birth_day = -1000;
+        hand.work.kind = core::WorkKind::kHarvest;
+        hand.work.field = world.fields.row_ids.back();
+        AppendRow(world.residents, hand);
+      }
+      return world;
+    };
+    // 1. The crew grows 2 to 4: the rate holds, the pace is the rate times 4.
+    const float grown_pace = look(crewed(4, 2, 4.0F)).pace_kg_a_day;
+    // 2. Mowers go to the harvest: one left, the pace drops the same day.
+    const float thinned_pace = look(crewed(1, 2, 4.0F)).pace_kg_a_day;
+    // 3. Nobody on the meadows now (rain, a day off): the last counted crew.
+    const float idle_pace = look(crewed(0, 2, 4.0F)).pace_kg_a_day;
+    std::cout << "  hay pace by the mower-day: 5 kg a mower-day - crew 4: " << grown_pace
+              << " kg a day, crew 1: " << thinned_pace
+              << ", nobody now (last crew 2): " << idle_pace << "\n";
+    failures += Expect(grown_pace == 20.0F && thinned_pace == 5.0F && idle_pace == 10.0F,
+                       "hay pace: the pace is tonnes a mower-day times today's crew - up with a "
+                       "growing crew, down the day mowers leave, the last noon's crew when "
+                       "nobody stands on the meadows");
+  }
   // The need runs hay_new_cut_in_store_days into NEXT year's cut: four heads, 4 kg a day.
   const auto horizon = static_cast<std::uint16_t>(cut_from + core::kDaysPerYear +
                                                   config.farming.hay_new_cut_in_store_days - today);
@@ -960,9 +1003,9 @@ int CheckTheHayLampByTheCutsPace() {
     world.ledger.current.harvest = {0};
     return look(world);
   };
-  // The days left at 20 kg, and today's whole day too: nothing of it mown at
+  // The days left at 10 kg, and today's whole day too: nothing of it mown at
   // this hour-0 read, so the afternoon term carries a day's pace (1cf8f6ae).
-  const float to_come_kg = (working_left + 1.0F) * 20.0F;
+  const float to_come_kg = (working_left + 1.0F) * 10.0F;
   const core::HerdFeedForecast same_hay = in_store_instead(100.0F + to_come_kg);
   failures += Expect(paced.horizon_days == horizon && paced.short_ahead && same_hay.by_pace &&
                          same_hay.pace_kg_a_day == 0.0F &&

@@ -87,7 +87,10 @@ static_assert(AggregateArity<WeatherState>() == 14,
 // Save 187 (#636): the eye - a float at 108, a u32 at 112, a float at 116, a
 // u16 at 120 - predicted 128 (padded to eight) and forty fields; fourteen
 // bytes in the codec.
-static_assert(sizeof(ChairmanState) == 128, "ChairmanState changed — update the codec");
+// Save 195 (#1308): the cut's crew, a u16 at 86, and its mower-days, a float
+// at 88 - measured 136 (the float pushed the tail past 128) and 43 fields;
+// six bytes in the codec.
+static_assert(sizeof(ChairmanState) == 136, "ChairmanState changed — update the codec");
 // And the avral's days on the cut, a third u16 beside them: predicted 88
 // unmoved (into the tail's padding) and twenty-six fields; two more bytes in
 // the codec. Save 166 (#1043): the rating's recovery owed, a byte after them:
@@ -95,7 +98,7 @@ static_assert(sizeof(ChairmanState) == 128, "ChairmanState changed — update th
 // in the codec.
 // Save 188 (#1241): sugar_complaint_season, a u32 at 124 - predicted 128
 // unmoved (the tail's padding) and 41 fields; four bytes in the codec.
-static_assert(AggregateArity<ChairmanState>() == 41,
+static_assert(AggregateArity<ChairmanState>() == 43,
               "ChairmanState gained or lost a field — update the codec and VERSION_SAVE");
 // PLANSTATE HAD NO TRIPWIRE AT ALL until 2026-09-12, and it was the only
 // serialized block without one: six blocks go into the save, five were
@@ -542,6 +545,9 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteU16(world.chairman.hay_cut_dry_work_days);
   out.WriteU16(world.chairman.hay_day_worked_month);
   out.WriteU16(world.chairman.hay_cut_avral_days);
+  // Save 195 (#1308): the cut's crew and its mower-days.
+  out.WriteU16(world.chairman.hay_cut_crew);
+  out.WriteFloat(world.chairman.hay_cut_mower_days);
   out.WriteU8(world.chairman.reputation_recovery_owed);  // save 166 (#1043)
   // Save 184 (#634): the avatar by key, and its two dormant factors.
   sink.WriteDefId(DefKind::kAvatar, world.chairman.avatar.value);
@@ -815,6 +821,8 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->chairman.hay_cut_dry_work_days = in.ReadU16();  // save 161
   world->chairman.hay_day_worked_month = in.ReadU16();
   world->chairman.hay_cut_avral_days = in.ReadU16();
+  world->chairman.hay_cut_crew = in.ReadU16();  // save 195 (#1308)
+  world->chairman.hay_cut_mower_days = in.ReadFloat();
   world->chairman.reputation_recovery_owed = static_cast<std::uint8_t>(
       source.ReadEnumValue(0, 1, "the rating's recovery owed"));          // save 166 (#1043)
   world->chairman.avatar = AvatarId{source.ReadDefId(DefKind::kAvatar)};  // save 184 (#634)

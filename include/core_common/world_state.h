@@ -586,6 +586,20 @@ struct ChairmanState {
   /// rest from the villages that followed it.
   std::uint16_t hay_cut_avral_days = 0;
 
+  /// THE CREW ON THE MEADOWS AT THE LAST COUNTED NOON (save 195; #1308, econ's
+  /// cure (d), boss core-boss-1289-herd-plan [73]): the residents on a
+  /// meadow's harvest when SettleHayCutDay last counted a dry working day.
+  /// The pace's crew for the days ahead - a rainy noon places nobody and does
+  /// not reset it. Reset the morning the cut opens.
+  std::uint16_t hay_cut_crew = 0;
+
+  /// THE MOWER-DAYS THIS YEAR'S HAY CUT HAS WORKED (save 195; #1308): each
+  /// counted dry working day adds its noon crew (hay_cut_crew). THE CUT'S PACE
+  /// is tonnes per mower-day over these, times the crew: year 1's crew grows
+  /// 8 to 44 through its cut (1936), and the pace a calendar day read the
+  /// mean of the small early crews. Reset the morning the cut opens.
+  float hay_cut_mower_days = 0.0F;
+
   /// THE RATING'S RECOVERY OWED (save 166; #1043; boss on econ's estimate,
   /// the #1043 pair thread [7]): 1 - a plan year failed or a visit found a
   /// discrepancy, and the next clean visit gives its recovery step
