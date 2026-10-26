@@ -790,6 +790,46 @@ int CheckTheHarvestFeedStillToCome() {
   return failures;
 }
 
+/// THE FORECAST'S HORSE EATS ITS WORK GRAIN (#1292): DrainFeedDay draws a
+/// work-only link by the herd day's own room (FeedLinkRoomFor) at the day's
+/// shares, toward the same need, so the horse eats that much less hay; with
+/// the shares at nought - nobody in the traces - the link carries nothing,
+/// as before.
+int CheckTheForecastHorseEatsItsWorkGrain() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.hay_resource = core::ResourceId{0};
+  config.horse_kind = core::LivestockKindId{0};
+  config.feed_values = {1.0F, 0.0F, 0.0F, 1.0F};
+  // The horse's oats first in its row order, work-only, half its need at most.
+  config.feed_links.insert(config.feed_links.begin(),
+                           core::FeedLinkDef{.kind = core::LivestockKindId{0},
+                                             .resource = core::ResourceId{3},
+                                             .reserve = 0,
+                                             .max_share = 0.5F,
+                                             .work_only = 1});
+  const std::vector<std::uint8_t> nobodys_food(4, 0);
+  const std::vector<core::FeedDayNeed> needs = {{.kind = core::LivestockKindId{0}, .units = 10.0F}};
+  const auto day_of = [&config, &nobodys_food, &needs](float work, float oats) {
+    std::vector<float> held = {100.0F, 0.0F, 0.0F, 100.0F};
+    std::vector<float> covered;
+    core::DrainFeedDay(config, nobodys_food, needs, held, covered, work, oats);
+    return std::pair<float, float>{100.0F - held[0], 100.0F - held[3]};
+  };
+  const auto idle = day_of(0.0F, 0.0F);
+  const auto worked = day_of(1.0F, 0.5F);
+  std::cout << "  the forecast's horse: idle day hay " << idle.first << " oats " << idle.second
+            << "; a working day at oats share 0.5 hay " << worked.first << " oats " << worked.second
+            << "\n";
+  failures += Expect(idle.first == 10.0F && idle.second == 0.0F,
+                     "the forecast's horse: with nobody in the traces its work grain carries "
+                     "nothing - the whole need is hay");
+  failures += Expect(worked.second == 2.5F && worked.first == 7.5F,
+                     "the forecast's horse: on a working day it eats its oats by the herd day's "
+                     "room (need x max_share x the oats share) and that much less hay");
+  return failures;
+}
+
 /// THE HAY LAMP BY THE CUT'S PACE (lever 1; 0.37.250; contract core-boss-
 /// lever1-hay-pace-contract-2026-10-13): inside the cut, from its second dry
 /// working day, the hay to come is the mowers' pace over the dry working days
@@ -17401,6 +17441,7 @@ int main() {
   failures += CheckTheForecastAdvice();
   failures += CheckTheHayLampByTheCutsPace();
   failures += CheckTheHarvestFeedStillToCome();
+  failures += CheckTheForecastHorseEatsItsWorkGrain();
   failures += CheckTheShippedFeedingOrder();
   failures += CheckTheHerdsMilkGoesToItsHome();
   failures += CheckTheHerdDoesNotEatThePlan();

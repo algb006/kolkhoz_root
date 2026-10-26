@@ -216,6 +216,34 @@ std::vector<std::pair<std::uint32_t, std::vector<float>>> ScheduledHarvestFeed(
   return landings;
 }
 
+/// The team's work shares of one forecast month: TeamShares' `work` and `oats`.
+struct MonthShares {
+  float work = 0.0F;
+  float oats = 0.0F;
+};
+
+/// THE TEAM'S WORK SHARE BY MONTH, AS THE FORECAST FEEDS IT (#1292; econ,
+/// core-boss-1289-herd-plan [46], option (b)): last year's book's month - the
+/// herd day's own TeamShares summed over the month's days, over the days.
+/// STUB: a month the closed book has no day of (year 1, a book before save
+/// 193) reads nought - the work grain carries nothing, as before #1292, and
+/// the horses' need is hay: the side that keeps a short year lit. Econ's
+/// year-1 fallback, (c) the norm calendar's work months, is not built. Return
+/// when: a year-1 pair shows the fed lit village-years of year 1 above K2's
+/// share, the only year this stub reads.
+std::array<MonthShares, kMonthsPerYear> TeamSharesByMonth(const WorldState& world) {
+  std::array<MonthShares, kMonthsPerYear> shares{};
+  const YearLedger& book = world.ledger.closed;
+  for (std::uint32_t month = 0; month < kMonthsPerYear; ++month) {
+    const auto days = static_cast<float>(book.team_share_days[month]);
+    if (days > 0.0F) {
+      shares[month].work = book.team_work_share_sum[month] / days;
+      shares[month].oats = book.team_oats_share_sum[month] / days;
+    }
+  }
+  return shares;
+}
+
 /// The hay still standing as grass on the meadows, grams: the uncut share of
 /// every meadow in its cut, and a meadow the cut's months will still open
 /// this year, whole.
@@ -534,6 +562,7 @@ bool StoredHayShortWithin(const ProductionConfig& config,
     }
   }
   const std::vector<std::uint8_t> peoples_foods = PeoplesFoods(config, world);
+  const std::array<MonthShares, kMonthsPerYear> team_shares = TeamSharesByMonth(world);
   std::vector<FeedDayNeed> needs;
   std::vector<float> covered;
   for (std::uint32_t day = 0; day < days; ++day) {
@@ -551,7 +580,13 @@ bool StoredHayShortWithin(const ProductionConfig& config,
         needs.push_back(FeedDayNeed{.kind = herd.kind, .units = units});
       }
     }
-    DrainFeedDay(config, peoples_foods, needs, held_kg, covered);
+    DrainFeedDay(config,
+                 peoples_foods,
+                 needs,
+                 held_kg,
+                 covered,
+                 team_shares[month].work,
+                 team_shares[month].oats);
     // SHORT: the hay is out AND a herd that eats it is not fed in full. The
     // hay out alone is not it — the stores holding exactly the days asked
     // feed the last day whole — and a herd underfed with hay still in store
@@ -574,7 +609,9 @@ void DrainFeedDay(const ProductionConfig& config,
                   const std::vector<std::uint8_t>& peoples_foods,
                   std::span<const FeedDayNeed> needs,
                   std::vector<float>& held_kg,
-                  std::vector<float>& covered) {
+                  std::vector<float>& covered,
+                  float work_share,
+                  float oats_share) {
   covered.assign(needs.size(), 0.0F);
   for (std::size_t index = 0; index < needs.size(); ++index) {
     const FeedDayNeed& herd = needs[index];
@@ -588,11 +625,12 @@ void DrainFeedDay(const ProductionConfig& config,
       if (link.kind.value != herd.kind.value || link.resource.value >= held_kg.size()) {
         continue;
       }
-      // Work-only feeds are the horse's WAGE, not its keep (boss, Q2): in a
-      // forecast nobody is in the traces, so they carry nothing.
-      if (link.work_only != 0) {
-        continue;
-      }
+      // Work-only feeds are the horse's WAGE, not its keep (boss, Q2), and the
+      // herd day feeds them FIRST on a working day, at the day's work share,
+      // toward the same need (RunFeeding): the horse eats that much less hay.
+      // The forecast skipped them - nobody was in its traces - and fed the
+      // horses' whole need from hay (#1292). Their room is the herd day's
+      // own now (FeedLinkRoomFor) at the shares the caller gives the day.
       if (link.reserve != 0 && link.resource.value < peoples_foods.size() &&
           peoples_foods[link.resource.value] != 0) {
         continue;  // the people's food: the feeding refuses it to a reserve link
@@ -602,7 +640,7 @@ void DrainFeedDay(const ProductionConfig& config,
       if (!(value > 0.0F)) {
         continue;
       }
-      const float ceiling = herd.units * link.max_share;
+      const float ceiling = FeedLinkRoomFor(link, config, herd.units, work_share, oats_share);
       float take_units = herd.units - got;
       take_units = take_units < ceiling ? take_units : ceiling;
       const float available_units = held_kg[link.resource.value] * value;
@@ -1040,6 +1078,7 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
   std::vector<std::size_t> needs_of;  // index into `herds` per need
   std::vector<float> covered;
   std::vector<float> held_before;
+  const std::array<MonthShares, kMonthsPerYear> team_shares = TeamSharesByMonth(world);
   for (std::uint32_t day = 0; day < horizon_days; ++day) {
     const auto month = static_cast<std::uint8_t>(DateFromDay(today + day).month);
     if (cut_kg_a_day > 0.0F && day >= cut_first_day && day <= cut_last_day &&
@@ -1082,7 +1121,13 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
     // every absent feed read «out on day 0», and the cows short of hay on day
     // 60 were said short of silage they never held).
     held_before = held_kg;
-    DrainFeedDay(config, peoples_foods, needs, held_kg, covered);
+    DrainFeedDay(config,
+                 peoples_foods,
+                 needs,
+                 held_kg,
+                 covered,
+                 team_shares[month].work,
+                 team_shares[month].oats);
     for (std::size_t resource = 0; resource < held_kg.size(); ++resource) {
       if (out_day[resource] == kNeverOut && held_before[resource] >= kOutKg &&
           held_kg[resource] < kOutKg) {

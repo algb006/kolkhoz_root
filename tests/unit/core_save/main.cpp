@@ -1079,6 +1079,12 @@ core::WorldState MakeWorld() {
   // two books, so a reader that drops it or swaps the books fails.
   world.ledger.closed.harnessed_assignment_days = 17.5F;
   world.ledger.current.harnessed_assignment_days = 2.25F;
+  // save 193 (#1292): the team's work share by month - May and the last month.
+  world.ledger.closed.team_work_share_sum[4] = 2.5F;
+  world.ledger.closed.team_oats_share_sum[4] = 3.0F;
+  world.ledger.closed.team_share_days[4] = 4;
+  world.ledger.current.team_work_share_sum[11] = 0.75F;
+  world.ledger.current.team_share_days[11] = 3;
   // Save 108: the herds' hay and their need uncovered, by kind — two lengths
   // in the closed book, empty in the current one, so a reader that swaps
   // the columns or the books fails.
@@ -2451,7 +2457,9 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // book, two books - predicted 3184 -> 3192, and held.
     // Save 192 (#1292): each chronicle row's harvest by resource, three rows
     // (one empty): 3192 -> 3294. NOT predicted before the build - read off it.
-    {"ledger", 3294, 0x16d206b7ec5aabc8ULL},
+    // Save 193 (#1292): the team's work share by month, +120 a book, two
+    // books: 3294 -> 3534, predicted before the build and held.
+    {"ledger", 3534, 0x595a6ce07dbdbb2eULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -2997,6 +3005,12 @@ int main() {
                  loaded.ledger.closed.offered_job_days == 11 &&
                  loaded.ledger.closed.candidate_person_days == 13,
              "why not placed survives, reason by reason and kind by kind (save 102)");
+  failures += Expect(loaded.ledger.closed.team_work_share_sum[4] == 2.5F &&
+                         loaded.ledger.closed.team_oats_share_sum[4] == 3.0F &&
+                         loaded.ledger.closed.team_share_days[4] == 4 &&
+                         loaded.ledger.current.team_work_share_sum[11] == 0.75F &&
+                         loaded.ledger.current.team_share_days[11] == 3,
+                     "the team's work share by month came back in both books (save 193)");
   failures += Expect(loaded.ledger.closed.harnessed_assignment_days == 17.5F &&
                          loaded.ledger.current.harnessed_assignment_days == 2.25F,
                      "the traction's denominator survives in both books (save 107)");

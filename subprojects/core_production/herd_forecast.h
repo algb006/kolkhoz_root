@@ -77,11 +77,17 @@ std::vector<float> HerdFeedHeldKg(const ProductionConfig& config, const WorldSta
 ///        link refused the people's food (PeoplesFoods), a reserve feed at the
 ///        reserve factor.
 /// @param covered Written: the units each need got, index by index.
+/// @param work_share, oats_share The day's work shares of the team, as the
+///        herd day's TeamShares: a work-only link's room is the herd feeding's
+///        own (FeedLinkRoomFor). 0 - every caller's day with nobody in the
+///        traces - leaves the work-only links nothing, as before #1292.
 void DrainFeedDay(const ProductionConfig& config,
                   const std::vector<std::uint8_t>& peoples_foods,
                   std::span<const FeedDayNeed> needs,
                   std::vector<float>& held_kg,
-                  std::vector<float>& covered);
+                  std::vector<float>& covered,
+                  float work_share = 0.0F,
+                  float oats_share = 0.0F);
 
 /// @brief How far the fodder's forecast looks (0.37.95; boss, econ-boss-hay-
 ///        term-2026-10-01 [7]).

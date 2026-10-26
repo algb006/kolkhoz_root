@@ -1353,6 +1353,14 @@ bool PloughingToday(const WorldState& world) {
 
 }  // namespace
 
+float FeedLinkRoomFor(const FeedLinkDef& link,
+                      const ProductionConfig& config,
+                      float need_units,
+                      float work_share,
+                      float oats_share) {
+  return FeedLinkRoom(link, need_units, &link == TeamOatLink(config) ? oats_share : work_share);
+}
+
 ResourceAmounts HerdFeedAllowance(const ProductionConfig& config, const WorldState& world) {
   return FeedAllowance(config, world, PloughingToday(world));
 }
@@ -1451,6 +1459,16 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
   float lamp_harnessed_days = 0.0F;
   const TeamShares shares =
       WorkingShare(current, config, &horse_backed_days, &harnessed_days, &lamp_harnessed_days);
+  // The day's shares into the month's book (#1292, save 193): the forecast's
+  // horses eat their work grain by last year's month.
+  if (month < kMonthsPerYear) {
+    YearLedger& book = current.ledger.current;
+    book.team_work_share_sum[month] += shares.work;
+    book.team_oats_share_sum[month] += shares.oats;
+    if (book.team_share_days[month] < std::numeric_limits<std::uint16_t>::max()) {
+      ++book.team_share_days[month];
+    }
+  }
   // BOTH HALVES OF THE MECHANISATION SHARE, here and only here (epochs
   // design §6; ledger_state.h). The denominator was booked by core_labor for
   // one afternoon, from delivered norm-days — a different unit at a

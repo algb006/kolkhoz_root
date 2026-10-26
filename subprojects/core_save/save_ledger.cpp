@@ -179,9 +179,13 @@ constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
 // book. Save 186 (the boards sawn, #635's read): a fifth float after the four
 // areas, before an 8-aligned Grams - predicted 1192 -> 1200 (the float and
 // four bytes of pad) and 142 fields before the build; on the wire +4 a book.
-static_assert(sizeof(YearLedger) == 1200 + (43 * kAmountsSize) + kBuiltInRowsSize,
+// Save 193 (#1292, the team's work share by month): two float[12] and a
+// u16[12] after harnessed_assignment_days - predicted 1200 -> 1320 (120 bytes,
+// the float before them and its pad unchanged) and 145 fields before the
+// build; on the wire +120 a book.
+static_assert(sizeof(YearLedger) == 1320 + (43 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 142,
+static_assert(AggregateArity<YearLedger>() == 145,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(BuiltInRow) == 16 && AggregateArity<BuiltInRow>() == 3,
               "BuiltInRow changed — update its codec and VERSION_SAVE");
@@ -388,6 +392,13 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteU8(book.winter_cover_taken);
   // The traction's denominator (save 107).
   out.WriteFloat(book.harnessed_assignment_days);
+  // The team's work share by month (save 193, #1292): twelve sums of each
+  // share, twelve day counts.
+  for (std::uint32_t month = 0; month < kMonthsPerYear; ++month) {
+    out.WriteFloat(book.team_work_share_sum[month]);
+    out.WriteFloat(book.team_oats_share_sum[month]);
+    out.WriteU16(book.team_share_days[month]);
+  }
   // The herds' hay and their need uncovered, by kind (save 108), against the
   // livestock dictionary.
   sink.WriteAmounts(DefKind::kLivestock, book.herd_hay_eaten);
@@ -644,6 +655,11 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.winter_days_dec1 = in.ReadU16();
   book.winter_cover_taken = in.ReadU8();
   book.harnessed_assignment_days = in.ReadFloat();
+  for (std::uint32_t month = 0; month < kMonthsPerYear; ++month) {  // save 193 (#1292)
+    book.team_work_share_sum[month] = in.ReadFloat();
+    book.team_oats_share_sum[month] = in.ReadFloat();
+    book.team_share_days[month] = in.ReadU16();
+  }
   book.herd_hay_eaten = source.ReadAmounts(DefKind::kLivestock);   // save 108
   book.herd_feed_short = source.ReadAmounts(DefKind::kLivestock);  // save 108
   for (const ResourceAmounts* column : {&book.herd_hay_eaten, &book.herd_feed_short}) {

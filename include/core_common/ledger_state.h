@@ -880,6 +880,17 @@ struct YearLedger {
   /// (econ, horse-traction.md).
   float harnessed_assignment_days = 0.0F;
 
+  /// THE TEAM'S WORK SHARE BY MONTH (save 193, #1292; econ, core-boss-1289-
+  /// herd-plan [46], option (b)): the herd day's own TeamShares summed over
+  /// the month's days - `work` (horses in traces over the adults) and `oats`
+  /// (the same with a light horse at its share) - and the days summed. The
+  /// herd forecast feeds its horses' work-only grain by last year's month,
+  /// as RunFeeding feeds it by the day's; it skipped that grain and fed the
+  /// whole need from hay, about 42 t a fed village-year over-drawn.
+  std::array<float, kMonthsPerYear> team_work_share_sum{};
+  std::array<float, kMonthsPerYear> team_oats_share_sum{};
+  std::array<std::uint16_t, kMonthsPerYear> team_share_days{};
+
   /// THE KOLKHOZ HERDS' HAY BY KIND, grams, dense by LivestockKindId (save
   /// 108; boss-core-epoch1-queue [78], [84]): what each kind took of
   /// `feed`'s hay (ProductionConfig::hay_resource). A ResourceAmounts for its

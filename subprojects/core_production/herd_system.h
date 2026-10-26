@@ -215,6 +215,19 @@ Grams HeldAboveSeedAndPlan(const ProductionConfig& config,
                            const WorldState& world,
                            ResourceId resource);
 
+/// @brief The feed units `link` may cover of a day's `need_units`: the herd
+///        feeding's own room rule (RunFeeding's FeedLinkRoom), a work-only
+///        link scaled by the day's work share - the team's oats link by
+///        `oats_share`, every other work-only link by `work_share` - and
+///        every other link by its max_share alone. The herd forecast drains
+///        by it (#1292), so the projection's horse eats its working-day grain
+///        as the herd day's does, and that much less hay.
+float FeedLinkRoomFor(const FeedLinkDef& link,
+                      const ProductionConfig& config,
+                      float need_units,
+                      float work_share,
+                      float oats_share);
+
 /// @brief The grams of `resource` the herds could eat of `income` grams more
 ///        lying unreserved in the stores: what the ladder HerdFeedAllowance
 ///        holds back - the seed and the plan, the plough's oats, next year's
