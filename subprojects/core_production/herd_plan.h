@@ -9,7 +9,9 @@
 ///
 /// «СЕНА НА» IS THE HAY LAMP'S FORECAST TURNED INSIDE OUT, so the window and
 /// the lamp cannot part: the most heads of the herd that ForecastHerdFeed,
-/// to the lamp's own horizon (FeedHorizon::kNearestScythes), feeds with no
+/// to the lamp's own horizon (FeedHorizon::kWindowByNorm: the lamp's
+/// kNearestScythes, except year 1 before its cut - there to next year's
+/// scythes with the cut by econ's norm, «по норме»), feeds with no
 /// day short - every OTHER kolkhoz herd held at its own plan («одно число на
 /// стадо, каждое — при плане другого»), this herd's births stopping at the
 /// heads asked (the plan gate, which the forecast now reads too). Fewer heads

@@ -11,6 +11,7 @@
 #include "core_common/state_table_ops.h"
 #include "core_common/unit_state.h"
 #include "core_common/world_state.h"
+#include "herd_floors.h"
 #include "herd_forecast.h"
 #include "herd_life.h"
 #include "herd_plan.h"
@@ -173,6 +174,18 @@ int CheckTheHerdPlan() {
     failures += Expect(core::ForecastHerdHeads(free.config, free.world, free.cows, 3) > 10.5F &&
                            core::ForecastHerdHeads(held.config, held.world, held.cows, 3) < 10.5F,
                        "herd plan: the forecast's calves stop at the plan as RunBirths's do");
+  }
+  // THE ADVICE READS THE PLAN (econ, core-boss-1289 [10] (3)): the heads
+  // above N are named first, and with the hay then enough (no feed roster
+  // here: nothing is short) they are the whole advice; no plan, no heads.
+  {
+    Farm farm = MakeFarm();
+    const core::HandOverAdvice none = core::LeastHeadsToHandOver(farm.config, farm.world);
+    Herd(farm, farm.cows).plan_heads = 6;
+    const core::HandOverAdvice above = core::LeastHeadsToHandOver(farm.config, farm.world);
+    failures += Expect(none.stock + none.horses == 0 && above.stock == 4 && above.horses == 0,
+                       "herd plan: «сдать головы» names the heads above N first, and a herd at "
+                       "its N is not told to hand over");
   }
   // THE WINDOW'S LINE: places and the plan's default, «сена на» known (with no
   // feed roster nothing is short, so the search ends at its top), no births

@@ -273,6 +273,50 @@ CutPace PaceOfTheCut(const ProductionConfig& config,
   return pace;
 }
 
+/// THE YEAR-1 CUT BY THE NORM, for the herd window before the first cut
+/// (#1289; FeedHorizon::kWindowByNorm; econ, core-boss-1289 [7]: «the norm's
+/// t a mower-day × the mowers the village can place × the window's dry
+/// working days»): the pace's own PRIOR (PaceOfTheCut, before its second dry
+/// working day) read before any meadow is open - the norm's hay a mower-day
+/// is the grass standing over the meadows' norm-days (area × meadow_mow_days_
+/// per_ha), the mowers FarmingConfig::hay_prior_mower_share of the grown,
+/// the dry working days the window's expected count - and never more than
+/// the grass standing.
+Grams NormCutYearOne(const ProductionConfig& config,
+                     const WorldState& world,
+                     SimDay cut_from,
+                     SimDay cut_end) {
+  const Grams standing = HayStandingOnMeadows(config, world);
+  float norm_days = 0.0F;
+  for (const FieldRow& field : world.fields.rows) {
+    if (field.kind != LandKind::kArable) {
+      norm_days += config.farming.meadow_mow_days_per_ha * field.area_ga;
+    }
+  }
+  if (standing <= 0 || !(norm_days > 0.0F)) {
+    return 0;
+  }
+  const SimDay today = world.calendar.day;
+  float grown = 0.0F;
+  for (const ResidentRow& person : world.residents.rows) {
+    grown += BiologicalAgeYears(config.farming.life_speedup, person.birth_day, today) >=
+                     config.farming.adult_age_years
+                 ? 1.0F
+                 : 0.0F;
+  }
+  const float mowers = config.farming.hay_prior_mower_share * grown;
+  float dry_days = 0.0F;
+  for (SimDay day = cut_from; day <= cut_end; ++day) {
+    if (!IsDayOffIn(world, day)) {
+      const float share = config.rain_day_shares[day % kDaysPerYear];
+      dry_days += 1.0F - std::clamp(share, 0.0F, 1.0F);
+    }
+  }
+  const float kg_a_mower_day =
+      static_cast<float>(standing) / static_cast<float>(kGramsPerKilogram) / norm_days;
+  return std::min(standing, GramsFromKilograms(kg_a_mower_day * mowers * dry_days));
+}
+
 /// THE MONTH THE CUT ENDS (static review of 0.37.57): the later of the
 /// meadows' cut month and the last harvest month of a crop that gives hay
 /// (clover and timothy, June-August) — last year's hay in the book is both,
@@ -748,9 +792,16 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
   // so it errs toward yes. The yellow lamp's nearest horizon keeps option (б).
   const bool first_year_long_look = first_year && today <= this_cut_end && !pace.known &&
                                     horizon == FeedHorizon::kNextYearsScythes;
-  if (first_year && today <= this_cut_end && !pace.known && !first_year_long_look) {
+  // THE WINDOW'S YEAR 1 BEFORE ITS CUT (#1289; kWindowByNorm): to next year's
+  // scythes with this year's cut by the norm. Every other case of the
+  // window's horizon reads as the lamp's.
+  const bool window_norm =
+      horizon == FeedHorizon::kWindowByNorm && first_year && today < cut_from && !pace.known;
+  if (first_year && today <= this_cut_end && !pace.known && !first_year_long_look && !window_norm) {
     horizon_end = today < cut_from ? cut_from : today;
-  } else if (horizon == FeedHorizon::kNearestScythes && today < cut_from) {
+  } else if ((horizon == FeedHorizon::kNearestScythes ||
+              (horizon == FeedHorizon::kWindowByNorm && !window_norm)) &&
+             today < cut_from) {
     // This year's scythes, and the same days into their cut: one horizon from
     // either side of the year's turn. (Year 1 before its first cut is the
     // branch above and stops on the first scythes: it has no book to promise
@@ -770,6 +821,8 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
   Grams expected_cut = 0;
   if (pace.known) {
     expected_cut = pace.hay_to_come;
+  } else if (window_norm) {
+    expected_cut = NormCutYearOne(config, world, cut_from, this_cut_end);
   } else if (first_year_long_look) {
     expected_cut = HayStandingOnMeadows(config, world);
   } else if (!first_year && today <= this_cut_end) {

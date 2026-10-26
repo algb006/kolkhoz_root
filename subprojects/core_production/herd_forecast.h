@@ -99,6 +99,18 @@ enum class FeedHorizon : std::uint8_t {
   /// horizon until 0.37.96 — from 1 January a year and a half and two
   /// calvings on.
   kNextYearsScythes,
+
+  /// THE HERD WINDOW'S «СЕНА НА» (#1289; livestock.md «План стада», «Первый
+  /// год до покоса — число считается по норме косьбы»; boss, core-boss-1289
+  /// [9] 4): kNearestScythes in every case but one - YEAR 1 BEFORE ITS CUT,
+  /// where the lamp stops at the first scythes (option (б), it has no book)
+  /// and the window asks how many heads this year's cut will feed by the
+  /// norm: the horizon runs to next year's scythes, and the cut ahead is
+  /// econ's norm formula (NormCutYearOne). The one place the window and the
+  /// lamp ask different questions, by the row: the lamp «does what lies reach
+  /// the scythes», the window «what will the cut feed». Before this, «сена
+  /// на» read the places in 18 of 18 villages in May of year 1 (core-norm1).
+  kWindowByNorm,
 };
 
 /// @brief A purchase of feed the forecast is asked to count as made today

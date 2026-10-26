@@ -12,6 +12,8 @@
 #include "core_common/land_state.h"
 #include "core_common/ledger_state.h"
 #include "core_common/quantities.h"
+#include "herd_life.h"
+#include "herd_plan.h"
 #include "plan_alarms.h"
 
 namespace core {
@@ -236,7 +238,44 @@ HerdFloors HerdFloorsOf(const ProductionConfig& config, const WorldState& world)
   return floors;
 }
 
+namespace {
+
+HandOverAdvice LeastHeadsAboveTheFloors(const ProductionConfig& config, const WorldState& world);
+
+}  // namespace
+
 HandOverAdvice LeastHeadsToHandOver(const ProductionConfig& config, const WorldState& world) {
+  // THE HEADS ABOVE THE PLANS FIRST (#1289; livestock.md «План стада»:
+  // «Совет "сдать головы" называет головы сверх N первыми»; econ, core-boss-
+  // 1289 [10] (3)). Every kolkhoz herd above its N is counted down to it; if
+  // the hay then feeds them all, those heads are the whole advice - a herd at
+  // or under its N is not told to hand over. Still short, the floors' ladder
+  // runs on the herds at their plans, and its heads are added. Until then the
+  // advice never read the plan, and named heads in 63 of 63 village-years of
+  // the first #1289 pair.
+  WorldState at_plans = world;
+  HandOverAdvice above;
+  for (HerdRow& herd : at_plans.herds.rows) {
+    if (herd.household_owned != 0 || herd.plan_heads == kNoHerdPlan ||
+        TotalHeads(herd) <= herd.plan_heads) {
+      continue;
+    }
+    const std::int64_t over = TotalHeads(herd) - herd.plan_heads;
+    (herd.kind.value == config.horse_kind.value ? above.horses : above.stock) += over;
+    ScaleHerdHeads(herd, herd.plan_heads);
+  }
+  if (above.horses + above.stock == 0) {
+    return LeastHeadsAboveTheFloors(config, world);
+  }
+  HandOverAdvice rest = LeastHeadsAboveTheFloors(config, at_plans);
+  rest.horses += above.horses;
+  rest.stock += above.stock;
+  return rest;
+}
+
+namespace {
+
+HandOverAdvice LeastHeadsAboveTheFloors(const ProductionConfig& config, const WorldState& world) {
   HandOverAdvice advice;
   const auto short_without = [&config, &world](const HeadsHandedOver& handed) {
     return ForecastHerdFeed(config, world, false, FeedHorizon::kNearestScythes, nullptr, &handed)
@@ -319,5 +358,7 @@ HandOverAdvice LeastHeadsToHandOver(const ProductionConfig& config, const WorldS
   advice.below_floor_horses = handed.horses - advice.horses;
   return advice;
 }
+
+}  // namespace
 
 }  // namespace core

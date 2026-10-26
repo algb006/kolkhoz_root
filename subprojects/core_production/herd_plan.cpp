@@ -50,7 +50,7 @@ bool FedAt(const ProductionConfig& config,
   HerdRow& herd = what_if.herds.rows[row];
   ScaleHerdHeads(herd, heads);
   herd.plan_heads = heads;
-  return !ForecastHerdFeed(config, what_if, false, FeedHorizon::kNearestScythes).short_ahead;
+  return !ForecastHerdFeed(config, what_if, false, FeedHorizon::kWindowByNorm).short_ahead;
 }
 
 }  // namespace
@@ -95,13 +95,13 @@ HerdPlanLine HerdPlanLineOf(const ProductionConfig& config,
   // Short even at nought: the others' plans alone go short, nothing is left.
   line.hay_for = fed;
   line.hay_for_known = true;
-  // «ПО НОРМЕ»: year 1 before its cut closes - the forecast reads the
-  // mowing's norm then, not a cut of the village's own (herd_forecast.h,
-  // «YEAR 1, WITH NO BOOK»). STUB: econ's formula of the first year.
-  const HerdFeedForecast today =
-      ForecastHerdFeed(config, world, false, FeedHorizon::kNearestScythes);
+  // «ПО НОРМЕ»: year 1 before its cut opens - the cut is econ's norm formula
+  // then (FeedHorizon::kWindowByNorm, NormCutYearOne; boss, core-boss-1289
+  // [9] 4), not a cut of the village's own. From the cut's second dry working
+  // day the pace reads the village's own mowing.
   line.hay_for_by_norm =
-      world.calendar.day < kDaysPerYear && world.calendar.day <= today.cut_end_day;
+      world.calendar.day < kDaysPerYear &&
+      world.calendar.day < static_cast<SimDay>(config.farming.meadow_cut_month) * kDaysPerMonth;
   // THE THREE WARNINGS (the words are rpg's).
   const HerdFloors floors = HerdFloorsOf(config, world);
   const bool milk = herd.kind.value == MilkKind(config).value;
