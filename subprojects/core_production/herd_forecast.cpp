@@ -1134,6 +1134,18 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
         }
       }
     }
+    // TODAY IS FED ALREADY (#1292; core [62], boss [63]): the herd day runs at
+    // the day's first tick, so a state read past it - the lamp at noon, the
+    // herd plan's evening - holds the stores AFTER today's feeding, and day
+    // 0's drain ate today a second time: one day of the herds' need on the
+    // pessimistic side, about 2 % of the horizon's. Today's landings still land.
+    // STUB at the day's first hour: a state at hour 0 does not say whether its
+    // herd day has run (the run's completed state has, a world built for a
+    // question has not), so it keeps day 0. Return when: a reader at hour 0
+    // is found that the lamp's answer acts on.
+    if (day == 0 && HourFromTick(world.calendar.tick) >= 1U) {
+      continue;
+    }
     const bool team_out = month < team_out_in.size() && team_out_in[month] != 0;
     needs.clear();
     needs_of.clear();

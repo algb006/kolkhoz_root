@@ -480,6 +480,20 @@ int CheckTheHerdHayForecast() {
              "scythes, the hay named (not the silage behind it), four heads, no lamp; no meadow "
              "stands in its cut and the district sells no feed - fewer heads advised, not the "
              "cut (0.37.93)");
+  // AND READ AT NOON THE SAME DAY (#1292): the herd day ran at the first tick,
+  // today is fed, and the forecast does not feed it again - the 80 kg reach a
+  // day further: short on day 21, not 20.
+  {
+    core::WorldState noon = lean;
+    noon.calendar.tick += 12;
+    core::RefreshCalendarCaches(noon.calendar);
+    const std::optional<core::Alarm> at_noon = yellow(noon);
+    std::cout << "  hay forecast, year 1, at noon: short on day "
+              << (at_noon.has_value() ? static_cast<int>(at_noon->days_ahead) : -1) << "\n";
+    failures += Expect(at_noon.has_value() && at_noon->days_ahead == 21,
+                       "hay forecast at noon: today was fed at the day's first tick and is not fed "
+                       "again - short a day later than the hour-0 read");
+  }
   core::WorldState reaches = MakeHerdWorld(100.0F);
   AddHerd(reaches, 0, 4, 2, true);
   failures += Expect(!yellow(reaches).has_value(),
