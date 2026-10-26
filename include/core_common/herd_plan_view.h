@@ -47,6 +47,11 @@ struct HerdPlanLine {
   bool below_milk_floor = false;
   bool below_teams = false;
   bool no_births = false;
+  /// The floor's own number, for the window's words («меньше, чем нужно плану
+  /// молока (26)», «весной не хватит упряжек (нужно 18)»): the milk plan's
+  /// cows for the milk kind, the spring's horses for the horse, 0 for every
+  /// other kind (HerdFloors).
+  std::uint16_t floor_heads = 0;
 };
 
 }  // namespace core

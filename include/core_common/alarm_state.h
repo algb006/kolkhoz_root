@@ -1284,6 +1284,15 @@ struct Alarm {
   std::int64_t below_floor_stock = 0;
   std::int64_t below_floor_horses = 0;
 
+  /// kHerdHayShortAhead with kReduceHerd named: THE HEADS ABOVE THEIR HERD'S
+  /// PLAN (#1289; livestock.md «План стада»: «Совет "сдать головы" называет
+  /// головы сверх N первыми»), summed over the kolkhoz herds whose chairman
+  /// set a plan - the heads the plan says the village does not keep, named
+  /// before the floors' steps above. A count beside them, not one of them:
+  /// the door (kHandStock) still takes a herd's oldest. 0 for every other
+  /// advice and kind, and with no plan set. Not in the save, as `lamp`.
+  std::int64_t above_plan = 0;
+
   /// kLogisticsLate (routing stage В6; registry №310): THE GROOM'S HORSES BY
   /// WHAT HOLDS THEM at the hour the lamp is collected, by CartUse - the
   /// lamp's line «подвод сегодня 3 из 5 — две на сене». The sum is the

@@ -30,6 +30,7 @@
 #include "fallow_policy.h"
 #include "felling_policy.h"
 #include "fixture_policy.h"
+#include "herd_plan_policy.h"
 #include "house_policy.h"
 #include "insulation_policy.h"
 #include "limit_policy.h"
@@ -71,6 +72,7 @@ class BuildingChairman {
         social(tables),
         upgrades(tables),
         watchman(tables),
+        herd_plan(tables),
         insulation(tables),
         supply(tables),
         digging(tables),
@@ -341,6 +343,8 @@ class BuildingChairman {
     // (#1254; store_emptying_policy.h): the leak's only close by design.
     emptying.RunDay(simulation);
     sawmill.RunDay(simulation);
+    // The herds' plans before the limit's hay answer reads the lamp (#1289).
+    herd_plan.RunDay(simulation);
     limit.RunDay(simulation);
     night_pasture.RunDay(simulation);
     repairs.RunDay(simulation);
@@ -446,6 +450,8 @@ class BuildingChairman {
   SocialObjectsPolicy social;
   UpgradePolicy upgrades;
   WatchmanPolicy watchman;
+  /// The herds' plans, the evening the cut is over (#1289; herd_plan_policy.h).
+  HerdPlanPolicy herd_plan;
   InsulationPolicy insulation;
   SupplyPolicy supply;
   ExtractionPolicy digging;

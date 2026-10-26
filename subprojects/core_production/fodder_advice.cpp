@@ -493,6 +493,16 @@ void CollectHerdForecastAlarms(const ProductionConfig& config,
   alarm.hand_over_horses = advice.hand_over_horses;
   alarm.below_floor_stock = advice.below_floor_stock;
   alarm.below_floor_horses = advice.below_floor_horses;
+  // THE HEADS ABOVE THE PLANS FIRST (#1289): named whenever the advice asks
+  // for heads at all.
+  if (alarm.advice == AlarmAdvice::kReduceHerd || alarm.advice_more == AlarmAdvice::kReduceHerd) {
+    for (const HerdRow& herd : world.herds.rows) {
+      if (herd.household_owned == 0 && herd.plan_heads != kNoHerdPlan &&
+          TotalHeads(herd) > herd.plan_heads) {
+        alarm.above_plan += TotalHeads(herd) - herd.plan_heads;
+      }
+    }
+  }
   alarm.lamp = 0;
   alarms.push_back(alarm);
 }

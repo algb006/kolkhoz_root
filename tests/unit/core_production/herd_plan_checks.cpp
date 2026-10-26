@@ -11,7 +11,9 @@
 #include "core_common/state_table_ops.h"
 #include "core_common/unit_state.h"
 #include "core_common/world_state.h"
+#include "herd_forecast.h"
 #include "herd_life.h"
+#include "herd_plan.h"
 #include "livestock_homes.h"
 #include "production_config.h"
 #include "production_orders.h"
@@ -148,6 +150,44 @@ int CheckTheHerdPlan() {
                        "herd plan: with no plan, or N above the heads, the herd calves");
     failures += Expect(BornInADay(at) == 0U && Herd(at, at.cows).birth_progress == carry_before,
                        "herd plan: at its N the herd calves nought and banks nothing");
+  }
+  // THE BODY. The what-if's scaling keeps the cohorts' proportions and a sire.
+  {
+    core::HerdRow herd;
+    herd.adult_count = 20;
+    herd.adult_male_count = 2;
+    herd.juvenile_count = 10;
+    herd.newborn_count = 10;
+    core::ScaleHerdHeads(herd, 20);
+    failures += Expect(core::TotalHeads(herd) == 20U && herd.adult_count == 10U &&
+                           herd.juvenile_count == 5U && herd.adult_male_count == 1U,
+                       "herd plan: the what-if scales a herd's cohorts in proportion, sires kept");
+  }
+  // THE FORECAST READS THE PLAN (the lamp and the window cannot part): over
+  // a calving band the projected heads grow with no plan, and stand at N
+  // with one.
+  {
+    Farm free = MakeFarm();
+    Farm held = MakeFarm();
+    Herd(held, held.cows).plan_heads = 10;
+    failures += Expect(core::ForecastHerdHeads(free.config, free.world, free.cows, 3) > 10.5F &&
+                           core::ForecastHerdHeads(held.config, held.world, held.cows, 3) < 10.5F,
+                       "herd plan: the forecast's calves stop at the plan as RunBirths's do");
+  }
+  // THE WINDOW'S LINE: places and the plan's default, «сена на» known (with no
+  // feed roster nothing is short, so the search ends at its top), no births
+  // under two.
+  {
+    Farm farm = MakeFarm();
+    const std::uint32_t row = core::FindRow(farm.world.herds, farm.cows);
+    const core::HerdPlanLine open = core::HerdPlanLineOf(farm.config, farm.world, row);
+    Herd(farm, farm.cows).plan_heads = 1;
+    const core::HerdPlanLine tight = core::HerdPlanLineOf(farm.config, farm.world, row);
+    failures += Expect(open.heads == 10U && open.places == 55U && open.plan == 55U &&
+                           !open.plan_set && open.hay_for_known && open.hay_for == 55U &&
+                           !open.no_births && tight.plan_set && tight.plan == 1U && tight.no_births,
+                       "herd plan: the line reads heads, places, the plan or its default, «сена "
+                       "на», and «no births» under two");
   }
   return failures;
 }

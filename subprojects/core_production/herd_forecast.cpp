@@ -47,6 +47,11 @@ struct ProjectedHerd {
   /// The day, as an offset from today, the herd is in the village from: 0
   /// for a herd that stands, the arrival for a lot of stock on its way.
   std::uint32_t from_day = 0;
+  /// THE HERD PLAN (#1289; HerdRow::plan_heads): no birth on a forecast day
+  /// the projected heads stand at or over it, as RunBirths gates the real
+  /// one - else the lamp and the window would count calves the plan stops.
+  /// Negative: no plan.
+  float plan_heads = -1.0F;
 };
 
 std::uint16_t RoundHeads(float heads) {
@@ -314,6 +319,8 @@ ProjectedHerd ProjectHerd(const ProductionConfig& config,
   projected.births_per_female_band_day =
       BirthsPerFemaleBandDay(config, kind, herd.kind, herd, stable_built);
   projected.males = kind.sexed != 0 ? static_cast<float>(herd.adult_male_count) : 0.0F;
+  projected.plan_heads =
+      herd.plan_heads != kNoHerdPlan ? static_cast<float>(herd.plan_heads) : -1.0F;
   return projected;
 }
 
@@ -322,7 +329,9 @@ ProjectedHerd ProjectHerd(const ProductionConfig& config,
 void ProjectHerdDay(const ProductionConfig& config, std::uint8_t month, ProjectedHerd& herd) {
   const LivestockDef& kind = config.livestock[herd.kind.value];
   MatureOneDay(kind, herd);
-  if (herd.births_per_female_band_day > 0.0F &&
+  const bool at_plan =
+      herd.plan_heads >= 0.0F && herd.adults + herd.juveniles + herd.newborns >= herd.plan_heads;
+  if (herd.births_per_female_band_day > 0.0F && !at_plan &&
       MonthInRange(month, config.farming.birth_from_month, config.farming.birth_to_month)) {
     (kind.newborn_game_months > 0.0F ? herd.newborns : herd.juveniles) +=
         std::max(0.0F, herd.adults - herd.males) * herd.births_per_female_band_day;
