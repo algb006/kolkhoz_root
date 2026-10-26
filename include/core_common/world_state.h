@@ -64,6 +64,7 @@
 #include "core_common/unit_state.h"
 #include "core_common/unmanned_run_state.h"
 #include "core_common/wedding_state.h"
+#include "core_common/week_labour.h"
 
 namespace core {
 
@@ -1189,6 +1190,12 @@ struct WorldState {
   };
 
   std::vector<EyeLampAge> eye_lamp_ages;
+
+  /// THE WEEK'S LABOUR BOOK (#647; week_labour.h; office.md §15): man-days by
+  /// who placed them and on the household plot, the running calendar week
+  /// and the last closed one. Written by core_labor at the day's close. Save
+  /// 190.
+  WeekLabourBook labour_week;
 
   /// THE LAMP «ЛОШАДЕЙ НЕ ХВАТАЕТ» OF THE LAST YEAR, as the same hour-0 check
   /// painted it (horse_lamp_memory.h): the days it was lit and their «teams

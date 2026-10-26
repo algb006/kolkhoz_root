@@ -154,6 +154,7 @@
 #include "core_common/resident_activity.h"
 #include "core_common/stink.h"
 #include "core_common/supply_estimate.h"
+#include "core_common/week_labour.h"
 #include "core_common/world_junction.h"
 #include "core_common/world_state.h"
 #include "core_sim/step.h"
@@ -788,6 +789,17 @@ class ISession {
   /// @note Between steps; the answer describes State() and moves once a
   ///       game day, at hour 0.
   virtual MasterEyeView MasterEye() const = 0;
+
+  /// @brief «Строка недели: кто расставлял людей» (week_labour.h; #647,
+  ///        office.md §15, registry №310 P3): the last CLOSED calendar week
+  ///        (Monday to Sunday, not aligned with the month), in man-days -
+  ///        ordered by the clerk (0 while the core has no clerk, #589),
+  ///        ordered on the chairman's path, and on the household plot (the
+  ///        able-bodied on a working day with no kolkhoz work or post).
+  ///        `known` is false before the first week has closed.
+  /// @note Between steps; the answer describes State() and moves once a
+  ///       week, at Sunday's close.
+  virtual WeekLabourView WeekLabourBook() const = 0;
 
   /// @brief «Нет ресурса — нет транспорта» (chairman_transport_view.h;
   ///        camera-and-visuals.md): whether the chairman's horse stands at

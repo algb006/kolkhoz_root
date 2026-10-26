@@ -856,6 +856,10 @@ class StandardSimulation final : public ISimulation {
     return ChairmanTransportOf(engine_->CompletedState(), horse_kind_);
   }
 
+  WeekLabourView WeekLabourBook() const override {
+    return WeekLabourViewOf(engine_->CompletedState().labour_week);
+  }
+
   std::vector<BarterYardLine> BarterDryLines() const override {
     return residents_->BarterDryLines(engine_->CompletedState());
   }

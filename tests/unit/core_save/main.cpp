@@ -814,6 +814,12 @@ core::WorldState MakeWorld() {
   world.unmanned_runs[1].road_work = core::RoadWorkId{8};
   world.unmanned_runs[1].days = 4;
   world.unmanned_runs[1].said = 1;
+  // The week's labour book (save 190, #647).
+  world.labour_week.last_closed = {.first_day = 77U,
+                                   .ordered_by_clerk_tenths = 3U,
+                                   .ordered_by_chairman_tenths = 1230U,
+                                   .home_plot_tenths = 410U};
+  world.labour_week.closed_known = 1;
   // A task of the groom's logistics (save format 135): every field off its
   // default, the five ids apart and the two levels apart, so a codec that
   // swapped a pair is seen.
@@ -1447,6 +1453,16 @@ core::WorldState MakeWitnessWorld() {
   witness.unmanned_runs[0].kind = core::WorkKind::kHerdCare;
   witness.unmanned_runs[0].herd = core::HerdId{2};
   witness.unmanned_runs[0].days = 1;
+  // The week's labour book (save 190): every field its own value.
+  witness.labour_week.running = {.first_day = 293U,
+                                 .ordered_by_clerk_tenths = 5U,
+                                 .ordered_by_chairman_tenths = 640U,
+                                 .home_plot_tenths = 130U};
+  witness.labour_week.last_closed = {.first_day = 286U,
+                                     .ordered_by_clerk_tenths = 7U,
+                                     .ordered_by_chairman_tenths = 900U,
+                                     .home_plot_tenths = 210U};
+  witness.labour_week.closed_known = 1;
   return witness;
 }
 
@@ -1729,6 +1745,15 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
     chunks.push_back({"unmanned_runs.days", U16(run.days)});
     chunks.push_back({"unmanned_runs.said", U8(run.said)});
   }
+  // The week's labour book (save 190, #647): the running week, the closed one.
+  for (const core::WeekLabourSums* sums :
+       {&world.labour_week.running, &world.labour_week.last_closed}) {
+    chunks.push_back({"labour_week.first_day", U32(sums->first_day)});
+    chunks.push_back({"labour_week.clerk", U32(sums->ordered_by_clerk_tenths)});
+    chunks.push_back({"labour_week.chairman", U32(sums->ordered_by_chairman_tenths)});
+    chunks.push_back({"labour_week.home_plot", U32(sums->home_plot_tenths)});
+  }
+  chunks.push_back({"labour_week.closed_known", U8(world.labour_week.closed_known)});
   return chunks;
 }
 
@@ -1954,8 +1979,10 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // Save 187 (#636): the eye's four fields (+14) and its lamp ages (a
     // count +4, one lamp +8) - predicted 1362 -> 1388 before the build, held.
     // Save 188 (#1241): the children's complaint season, a u32 - predicted
-    // 1388 -> 1392 before the build, held.
-    {"world", 1392, 0xc69cfcbd99c174cfULL},
+    // 1388 -> 1392 before the build, held. Save 190 (#647): the week's
+    // labour book, two weeks of four u32 and a byte - predicted 1392 -> 1425
+    // before the build, held; the hash read off it.
+    {"world", 1425, 0x23b65257460f27cdULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2808,6 +2835,12 @@ int main() {
       Expect(loaded.clamp_rot.last_day == 301 && loaded.clamp_rot.per_day[3] == 5'000'000'123 &&
                  loaded.clamp_rot.per_day[45] == 70'000 && loaded.clamp_rot.per_day[0] == 0,
              "the clamps' rot comes back, day and grams in place (save 170)");
+  failures += Expect(loaded.labour_week.last_closed.first_day == 77U &&
+                         loaded.labour_week.last_closed.ordered_by_clerk_tenths == 3U &&
+                         loaded.labour_week.last_closed.ordered_by_chairman_tenths == 1230U &&
+                         loaded.labour_week.last_closed.home_plot_tenths == 410U &&
+                         loaded.labour_week.closed_known == 1,
+                     "the week's labour book comes back, every sum in place (save 190)");
   failures += Expect(loaded.burials_waiting == 258,
                      "the dead waiting for a grave come back, all of them (save 180)");
   failures += Expect(loaded.unmanned_runs.size() == 2 &&

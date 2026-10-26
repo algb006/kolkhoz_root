@@ -1116,6 +1116,42 @@ int TestWholeWorkingDay() {
   return failures;
 }
 
+/// THE WEEK'S LABOUR BOOK (#647; week_labour.h; office.md §15): three adults,
+/// a field to work, Monday to Sunday. Every working day books each adult once
+/// - on the chairman's line while placed (the core has no clerk: 0 on the
+/// clerk's), on the plot's while not - Sunday books nothing and closes the
+/// week, and nothing is closed before it.
+int TestTheWeekLabourBook() {
+  int failures = 0;
+  const test::FakeTableSet tables;
+  const auto labor = core::CreateLaborSystem(tables, core::StubTables::kAllowed);
+  DayWorld week(3);
+  week.AddField(core::FieldPhase::kSowing, 100.0F, core::Vec2{.x = 200.0F, .y = 0.0F});
+  for (std::uint32_t day = 0; day < 6; ++day) {
+    week.RunDay(*labor, day);
+  }
+  const core::WeekLabourBook& book = week.world.labour_week;
+  failures += Expect(book.closed_known == 0 && core::WeekLabourViewOf(book).known == false,
+                     "week book: nothing is closed before Sunday's close");
+  const std::uint32_t saturday_sum =
+      book.running.ordered_by_chairman_tenths + book.running.home_plot_tenths;
+  week.RunDay(*labor, 6);  // Sunday: a day off, and the week's close
+  const core::WeekLabourView view = core::WeekLabourViewOf(book);
+  failures += Expect(saturday_sum == 3U * 6U * 10U && book.last_closed.ordered_by_chairman_tenths +
+                                                              book.last_closed.home_plot_tenths ==
+                                                          saturday_sum,
+                     "week book: six working days book each adult once a day, Sunday nothing");
+  failures += Expect(view.known && view.week_first_day == 0 && view.ordered_by_clerk_md == 0.0F &&
+                         view.ordered_by_chairman_md > 0.0F,
+                     "week book: Sunday closes the week from day 0; the field's work is the "
+                     "chairman's, the clerk's line is nought while the core has no clerk");
+  failures +=
+      Expect(book.running.first_day == 7U && book.running.ordered_by_chairman_tenths == 0U &&
+                 book.running.home_plot_tenths == 0U,
+             "week book: the next week runs from Monday, empty");
+  return failures;
+}
+
 /// econ's instrument б through the whole working day (0.36.5): the morning's
 /// plan books a job-day the road stopped, by kind, once a day — a field 20 km
 /// out is the road's; one 200 m out is not.
@@ -4854,6 +4890,7 @@ int main() {
   failures += TestTheRainIsTheIdlesReason();
   failures += TestTheWayHomeIsHisOwn();
   failures += TestRoadBlockedIsBooked();
+  failures += TestTheWeekLabourBook();
   failures += TestWalkOffPaysAndStops();
   failures += TestLeisureDayOff();
   failures += TestASpentManIsNotSent();

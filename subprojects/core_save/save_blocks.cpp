@@ -309,7 +309,10 @@ static_assert(AggregateArity<ClampRotYear>() == 2,
 // (+2 a unit, UnitRow::graves).
 // Save 187 (#636): eye_lamp_ages, the fifty-fourth - after the red lamps, a
 // count and 8 bytes a lamp (kind, subject, days, counted).
-static_assert(AggregateArity<WorldState>() == 54,
+// Save 190 (#647): labour_week, the fifty-fifth - after the unmanned runs, two
+// weeks of four u32 and a byte; the section «world» +33, predicted before the
+// build.
+static_assert(AggregateArity<WorldState>() == 55,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 
@@ -717,6 +720,15 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
     out.WriteU16(run.days);
     out.WriteU8(run.said);
   }
+  // The week's labour book (#647; save 190): the running week, the last
+  // closed one, and whether one has closed.
+  for (const WeekLabourSums* sums : {&world.labour_week.running, &world.labour_week.last_closed}) {
+    out.WriteU32(sums->first_day);
+    out.WriteU32(sums->ordered_by_clerk_tenths);
+    out.WriteU32(sums->ordered_by_chairman_tenths);
+    out.WriteU32(sums->home_plot_tenths);
+  }
+  out.WriteU8(world.labour_week.closed_known);
 }
 
 void ReadWorldBlocks(LoadSource& source, WorldState* world) {
@@ -1049,6 +1061,16 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
     run.said = source.ReadEnumValue(0, 1, "an unmanned run's said flag");
     world->unmanned_runs.push_back(run);
   }
+  // The week's labour book (#647; save 190): any day is a day, any count a
+  // count; the flag by its range.
+  for (WeekLabourSums* sums : {&world->labour_week.running, &world->labour_week.last_closed}) {
+    sums->first_day = in.ReadU32();
+    sums->ordered_by_clerk_tenths = in.ReadU32();
+    sums->ordered_by_chairman_tenths = in.ReadU32();
+    sums->home_plot_tenths = in.ReadU32();
+  }
+  world->labour_week.closed_known =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "the week book's closed flag"));
 }
 
 }  // namespace core

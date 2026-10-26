@@ -3311,7 +3311,37 @@ class LaborSystem final : public ILaborSystem {
     }
   }
 
+  /// THE WEEK'S LABOUR BOOK (#647; week_labour.h; office.md §15, «Строка
+  /// недели»): today's placements read before the day's work is cleared. A
+  /// working day books 10 tenths for every resident on a work or a post -
+  /// all on the chairman's line while the core has no clerk (boss,
+  /// core-boss-647 [2]: «без учётчика M = 0») - and 10 for every Employable
+  /// one on neither, the hours that go to the household plot. A day off
+  /// books nothing. The week closes at Sunday's close.
+  void BookWeekLabour(WorldState& current) const {
+    constexpr std::uint32_t kDayTenths = 10;
+    // The first week's first day is the campaign's day 0, the sums' default.
+    WeekLabourBook& book = current.labour_week;
+    if (!IsDayOffIn(current, current.calendar.day)) {
+      for (const ResidentRow& resident : current.residents.rows) {
+        const bool on_kolkhoz_work = resident.work.kind != WorkKind::kNone ||
+                                     resident.post.profession.value != kInvalidDefIdValue;
+        if (on_kolkhoz_work) {
+          book.running.ordered_by_chairman_tenths += kDayTenths;
+        } else if (Employable(current, resident)) {
+          book.running.home_plot_tenths += kDayTenths;
+        }
+      }
+    }
+    if (current.calendar.weekday == Weekday::kSunday) {
+      book.last_closed = book.running;
+      book.closed_known = 1;
+      book.running = WeekLabourSums{.first_day = current.calendar.day + 1U};
+    }
+  }
+
   void CloseDay(WorldState& current) const {
+    BookWeekLabour(current);
     // The posts paid by the day are named before PayDay clears the day's work.
     const std::vector<std::uint32_t> paid_posts = PostsPaidByTheDay(current);
     const TrudodniHundredths accrued_before = current.ledger.current.trudodni_accrued;

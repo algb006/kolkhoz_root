@@ -507,6 +507,8 @@ class Session final : public ISession {
 
   MasterEyeView MasterEye() const override { return simulation_->MasterEye(); }
 
+  WeekLabourView WeekLabourBook() const override { return simulation_->WeekLabourBook(); }
+
   ChairmanTransportView ChairmanTransport() const override {
     return simulation_->ChairmanTransport();
   }

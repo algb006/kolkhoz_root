@@ -91,6 +91,7 @@
 #include "core_common/stink.h"
 #include "core_common/stock_forecast.h"
 #include "core_common/supply_estimate.h"
+#include "core_common/week_labour.h"
 #include "core_common/world_junction.h"
 #include "core_common/world_state.h"
 
@@ -342,6 +343,11 @@ class ISimulation {
   /// @note NOT PURE, for ActivityOf's reason. The default answers the empty
   ///       view (0 years, rung 0).
   virtual MasterEyeView MasterEye() const { return {}; }
+
+  /// @brief The office's week line (week_labour.h; #647): the last closed
+  ///        calendar week's man-days by who placed them and on the plot.
+  /// @note NOT PURE, for ActivityOf's reason. The default answers «not yet».
+  virtual WeekLabourView WeekLabourBook() const { return {}; }
 
   /// @brief Whether the chairman's horse stands at the hitching post, and why
   /// (chairman_transport_view.h; «Нет ресурса — нет транспорта»).
