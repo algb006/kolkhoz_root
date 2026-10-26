@@ -367,7 +367,23 @@ CutPace PaceOfTheCut(const ProductionConfig& config,
       dry_variance += wet * (1.0F - wet);
     }
   }
-  const Grams by_pace = GramsFromKilograms(pace.kg_a_day * pace.dry_days_left);
+  // AND THE REST OF TODAY (#1292 (b); boss, core-boss-1289-herd-plan [49]):
+  // the days above are tomorrow's on; today's mowing so far is the hay in
+  // flight (HayMownNotYetLaid, counted beside the stores), and what the crew
+  // still lays before the evening is a day's pace less that, on a working day
+  // the rain has not stopped. Without it the lamp's noon read had no hay of
+  // the afternoon - the second half of the hole bbe4fceb closed.
+  float today_left_kg = 0.0F;
+  if (!IsDayOffIn(world, today) && world.weather.precipitation != Precipitation::kRain) {
+    Grams mown_today = 0;
+    for (const FieldRow& field : world.fields.rows) {
+      mown_today += HayMownNotYetLaid(config, world, field);
+    }
+    today_left_kg = std::max(
+        0.0F,
+        pace.kg_a_day - static_cast<float>(mown_today) / static_cast<float>(kGramsPerKilogram));
+  }
+  const Grams by_pace = GramsFromKilograms(pace.kg_a_day * pace.dry_days_left + today_left_kg);
   pace.hay_to_come = by_pace < standing ? by_pace : standing;
   // THE GRASS IS THE BOUND ONLY IF A POOR DRAW OF THE WEATHER STILL MOWS IT
   // THROUGH (econ's four-levers §2h-2i; boss, 13 October 2026): the pace over
@@ -379,7 +395,7 @@ CutPace PaceOfTheCut(const ProductionConfig& config,
   // grass counted at all there is no bound to speak of.)
   const float poor_draw_days = pace.dry_days_left - std::sqrt(dry_variance);
   pace.grass_bound = standing > 0 && poor_draw_days > 0.0F &&
-                     GramsFromKilograms(pace.kg_a_day * poor_draw_days) >= standing;
+                     GramsFromKilograms(pace.kg_a_day * poor_draw_days + today_left_kg) >= standing;
   return pace;
 }
 

@@ -1145,6 +1145,29 @@ int CheckTheHayLampByTheCutsPace() {
     }
     return world;
   };
+  // AND THE DAY'S AFTERNOON (#1292 (b)): at noon of the cut's second day the
+  // crew has mown 6 kg since the lay; the forecast counts them in flight and
+  // the rest of the day's 10 kg pace still to come, so it sees the hay the
+  // morning saw - morning and noon short by the same kilograms.
+  {
+    core::WorldState morning = village(today, 100.0F, 2);
+    morning.fields.rows.back().harvest_laid_share = 0.2F;
+    morning.fields.rows.back().harvest_laid_grams = 20 * kKilo;
+    morning.weather.precipitation = core::Precipitation::kNone;
+    morning.chairman.cancelled_day_off = today;  // a working day whatever the calendar says
+    core::WorldState noon = morning;
+    noon.fields.rows.back().work_days_remaining = 7.4F;  // 0.6 norm-days, 6 kg, mown since
+    const core::HerdFeedForecast at_morning = look(morning);
+    const core::HerdFeedForecast at_noon = look(noon);
+    std::cout << "  hay pace, the day's afternoon: short " << at_morning.short_hay_grams / kKilo
+              << " kg in the morning, " << at_noon.short_hay_grams / kKilo << " kg at noon\n";
+    const core::Grams gap = at_morning.short_hay_grams > at_noon.short_hay_grams
+                                ? at_morning.short_hay_grams - at_noon.short_hay_grams
+                                : at_noon.short_hay_grams - at_morning.short_hay_grams;
+    failures += Expect(gap <= kKilo,
+                       "hay pace: noon reads the hay the morning read - the morning's mowing in "
+                       "flight and the afternoon's still to come, no hour of the day lost");
+  }
   const core::HerdFeedForecast stale = look(cut_opens(9));
   const core::HerdFeedForecast fresh = look(cut_opens(0));
   std::cout << "  hay pace: the cut's first morning, last year's nine dry days standing - pace "
