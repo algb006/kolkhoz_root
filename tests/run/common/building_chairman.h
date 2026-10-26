@@ -345,6 +345,7 @@ class BuildingChairman {
     sawmill.RunDay(simulation);
     // The herds' plans before the limit's hay answer reads the lamp (#1289).
     herd_plan.RunDay(simulation);
+    limit.HoldHandOverForPlans(herd_plan.Holding());
     limit.RunDay(simulation);
     night_pasture.RunDay(simulation);
     repairs.RunDay(simulation);

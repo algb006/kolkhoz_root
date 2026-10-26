@@ -150,7 +150,10 @@ class HayAnswer {
       if (yellow->advice == core::AlarmAdvice::kBuyFeed && catalog != nullptr) {
         BuyFeed(simulation, *catalog, yellow->advice_resource, yellow->advice_amount, orders);
       }
-      if (heads_advised) {
+      // NOT WHILE THE CHAIRMAN IS SETTING THE HERDS' PLANS (#1289; herd_plan_
+      // policy.h): its evenings set plans in steps, and a plan of the first
+      // step read as the advice's would hand over heads the last step keeps.
+      if (heads_advised && !plans_being_set_) {
         HandOver(world, *yellow, orders);
       }
     }
@@ -186,7 +189,12 @@ class HayAnswer {
     }
   }
 
+  /// @brief Holds the hand-over while the herds' plans are being set (#1289).
+  void HoldHandOverForPlans(bool hold) { plans_being_set_ = hold; }
+
  private:
+  bool plans_being_set_ = false;
+
   struct Kind {
     bool horse = false;
     bool cow = false;

@@ -215,6 +215,10 @@ class LimitPolicy {
   /// @brief The control arm of #1240 (--no-sugar-buy): no sugar lot.
   void BuySugar(bool buy) { sugar_.Enable(buy); }
 
+  /// @brief Holds the hay's hand-over while the herds' plans are being set
+  ///        (#1289; HayAnswer::HoldHandOverForPlans).
+  void HoldHandOverForPlans(bool hold) { hay_.HoldHandOverForPlans(hold); }
+
   /// @brief The points of every closed year, and what the policy bought.
   void Report(const char* run) const {
     sugar_.Report(run);

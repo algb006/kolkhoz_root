@@ -19,6 +19,7 @@
 #define TESTS_RUN_COMMON_HERD_PLAN_POLICY_H_
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <vector>
@@ -62,26 +63,39 @@ class HerdPlanPolicy {
     const std::uint32_t year = day / core::kDaysPerYear;
     // The month after the cut's last (meadow_cut_month_end is 1-based).
     const bool after_cut = static_cast<std::uint32_t>(world.calendar.date.month) == cut_end_month_;
+    // The hold of the hay's hand-over ends the evening after the last step:
+    // its orders apply in the next day's steps.
+    holding_ = holding_ && !(year == set_year_ && day > set_day_);
     if (!after_cut || year == set_year_) {
       return;
     }
-    // TWO EVENINGS IN THE ORDER OF THE HAY (econ, core-boss-1289 [10] (2):
-    // «the hay to the floors of both herds first, then to the horses up to
-    // their places, the rest to the cows»): the horses on «сена на» with the
-    // others at their floor (HerdPlanLine::hay_for_others_at_floor, a what-if
-    // of the door); the others on what the horses leave. Its first form sized
-    // the horses against the cows at their places (spring «no horse» +2-3
-    // SE); its second set the cows' plan to their floor for a day - the hay's
-    // answer then handed the cows down to it (milk -16…-18 %, the second pair).
-    const std::uint8_t stage = horses_year_ != year ? 1 : 2;
+    // THREE EVENINGS IN THE ORDER OF THE HAY (econ, core-boss-1289 [14]):
+    // both floors first; the horses up to floor × 1.33 (on «сена на» with the
+    // others at their floor, HerdPlanLine::hay_for_others_at_floor); the cows
+    // and every other herd up to their places on what that leaves; then the
+    // horses with what is left. Its forms before: the horses against the cows
+    // at their places (spring «no horse» +2-3 SE); the cows' plan set to their
+    // floor for a day (the hay's answer handed them down to it, milk -17 %);
+    // the horses up to their places (47-55 of 60, milk -12…-15 %, the third
+    // pair). The hay's hand-over is held through the three evenings, as a
+    // plan of an early step is not the chairman's last word.
+    holding_ = true;
+    const std::uint8_t stage = horses_year_ != year ? 1 : others_year_ != year ? 2 : 3;
     std::vector<core::OrderRow> orders;
     for (const core::HerdPlanLine& line : simulation.HerdPlans()) {
       const bool horse = line.kind.value == horse_;
-      if (horse != (stage == 1) || !line.hay_for_known) {
+      if (horse != (stage != 2) || !line.hay_for_known) {
         continue;
       }
-      // «Сена на» - not above the places, not below the floor.
-      const std::uint16_t hay = stage == 1 ? line.hay_for_others_at_floor : line.hay_for;
+      const auto need = static_cast<std::uint16_t>(
+          std::ceil(static_cast<double>(line.floor_heads) * kHorseNeedOverFloor));
+      // Not above the places, not below the floor.
+      std::uint16_t hay = line.hay_for;
+      if (stage == 1) {
+        hay = std::min<std::uint16_t>(line.hay_for_others_at_floor, need);
+      } else if (stage == 3) {
+        hay = std::max<std::uint16_t>(line.plan, line.hay_for);
+      }
       const std::uint16_t n =
           std::min<std::uint16_t>(line.places, std::max<std::uint16_t>(hay, line.floor_heads));
       if (line.plan_set && line.plan == n) {
@@ -99,19 +113,31 @@ class HerdPlanPolicy {
     }
     if (stage == 1) {
       horses_year_ = year;
+    } else if (stage == 2) {
+      others_year_ = year;
     } else {
       set_year_ = year;
+      set_day_ = day;
       std::printf("HP,y=%u,plans_set=%u\n", year + 1U, set_this_year_);
       set_this_year_ = 0;
     }
   }
 
+  /// @brief Whether the hay's hand-over waits for the plans (the three
+  ///        evenings and the day their last orders apply).
+  bool Holding() const { return holding_; }
+
  private:
   static constexpr std::uint32_t kNever = 0xFFFFFFFFU;
+  /// econ's «horses up to floor × 1.33» (core-boss-1289 [14]).
+  static constexpr double kHorseNeedOverFloor = 1.33;
   std::uint32_t cut_end_month_ = 7;
   std::uint32_t horse_ = kNever;
   std::uint32_t horses_year_ = kNever;
+  std::uint32_t others_year_ = kNever;
   std::uint32_t set_year_ = kNever;
+  core::SimDay set_day_ = 0;
+  bool holding_ = false;
   std::uint32_t set_this_year_ = 0;
   bool on_ = true;
 };
