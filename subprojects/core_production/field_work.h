@@ -393,6 +393,18 @@ Grams HayMownNotYetLaid(const ProductionConfig& config,
                         const WorldState& world,
                         const FieldRow& field);
 
+/// @brief The hay a LEY still holds this year, grams: an arable field whose crop
+///        is a hay crop (clover, timothy), its FieldYieldGrams less the share
+///        reaped while it is in its reaping, whole while it grows with this
+///        year's window ahead and no reaping of it closed this year. The herd
+///        forecast counts it beside the meadows' grass (#1292; econ, core-boss-
+///        1289-herd-plan [57]: «the ley's hay as a crop standing beside the
+///        meadows»): it was in no term, about 28 t of a fed village-year's cut.
+///        0 for any other field.
+Grams LeyHayStanding(const ProductionConfig& config,
+                     const WorldState& world,
+                     const FieldRow& field);
+
 /// @brief The snow takes what still STANDS of an unreaped annual (farming
 /// design §6): the share the reaping has cut is laid into the heap first
 /// (LayReapedShare), the rest — StandingYieldGrams — goes to lost_to_snow,

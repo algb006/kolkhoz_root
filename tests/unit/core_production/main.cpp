@@ -5708,6 +5708,38 @@ int CheckTheMeadowLaysItsHayAsItIsMown() {
                        "meadow at noon: laid + in flight + standing is the morning's whole - no "
                        "hour of the mowing reads as hay lost");
   }
+  // A LEY'S HAY (#1292): a clover field of the rotation, reaped to its half
+  // since the last lay - standing, in flight and then laid, by the same share,
+  // to the field's whole. Skipped as arable, it was in no term of the forecast.
+  {
+    std::uint32_t clover = 0;
+    while (clover < config.crops.size() &&
+           config.crops[clover].resource.value != config.hay_resource.value) {
+      ++clover;
+    }
+    core::WorldState ley_world = world;
+    ley_world.fields.rows.clear();
+    ley_world.fields.row_ids.clear();
+    core::FieldRow ley;
+    ley.kind = core::LandKind::kArable;
+    ley.area_ga = 5.0F;
+    ley.crop = core::CropId{static_cast<std::uint16_t>(clover)};
+    ley.phase = core::FieldPhase::kHarvest;
+    ley.harvest_work_days = 4.0F;
+    ley.work_days_remaining = 2.0F;
+    core::AppendRow(ley_world.fields, ley);
+    const core::FieldRow& row = ley_world.fields.rows[0];
+    const core::Grams whole =
+        core::FieldYieldGrams(config, row, config.crops[clover < config.crops.size() ? clover : 0]);
+    const core::Grams standing = core::LeyHayStanding(config, ley_world, row);
+    const core::Grams flying = core::HayMownNotYetLaid(config, ley_world, row);
+    std::cout << "  a ley at its half: standing " << standing << " g + in flight " << flying
+              << " g against its whole " << whole << " g\n";
+    failures += Expect(clover < config.crops.size() && whole > 0 && standing + flying == whole &&
+                           standing == whole / 2,
+                       "a ley's hay: the clover field reaped to its half stands half and has half "
+                       "in flight - its whole, as the meadow's grass reads");
+  }
   core::LayMownShare(config, world, world.fields.rows[0]);
   failures +=
       Expect(hay_booked(world) == season / 2, "meadow by parts: the same share is not laid twice");

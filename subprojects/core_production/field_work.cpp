@@ -135,10 +135,55 @@ Grams MownHayFor(const ProductionConfig& config, const FieldRow& field, float cu
 Grams HayMownNotYetLaid(const ProductionConfig& config,
                         const WorldState& world,
                         const FieldRow& field) {
-  if (field.kind == LandKind::kArable || field.phase != FieldPhase::kHarvest) {
+  if (field.phase != FieldPhase::kHarvest) {
     return 0;
   }
-  return MownHayFor(config, field, MownShareNow(config, world, field));
+  if (field.kind != LandKind::kArable) {
+    return MownHayFor(config, field, MownShareNow(config, world, field));
+  }
+  // A LEY'S HAY, reaped since the last lay (#1292; econ, core-boss-1289-herd-
+  // plan [57]): the arable's hay crop is reaped as any crop, by LayReapedShare's
+  // share of FieldYieldGrams, and the same day's turn lays it.
+  if (field.crop.value >= config.crops.size() ||
+      config.crops[field.crop.value].resource.value != config.hay_resource.value) {
+    return 0;
+  }
+  const float cut = MownShareNow(config, world, field);
+  const float share = cut - field.harvest_laid_share;
+  if (!(share > 0.0F)) {
+    return 0;
+  }
+  const Grams whole = FieldYieldGrams(config, field, config.crops[field.crop.value]);
+  return cut >= 1.0F ? (whole > field.harvest_laid_grams ? whole - field.harvest_laid_grams : 0)
+                     : GramsFromFloat(static_cast<float>(whole) * share);
+}
+
+Grams LeyHayStanding(const ProductionConfig& config,
+                     const WorldState& world,
+                     const FieldRow& field) {
+  if (field.kind != LandKind::kArable || field.crop.value >= config.crops.size()) {
+    return 0;
+  }
+  const CropDef& crop = config.crops[field.crop.value];
+  if (crop.resource.value != config.hay_resource.value) {
+    return 0;
+  }
+  const Grams whole = FieldYieldGrams(config, field, crop);
+  if (field.phase == FieldPhase::kHarvest) {
+    // What the reaping has not yet cut: the share standing, by the same measure.
+    const float cut = MownShareNow(config, world, field);
+    return GramsFromFloat(static_cast<float>(whole) * (1.0F - cut));
+  }
+  // Growing, and still to be reaped this year: its window is ahead and no
+  // reaping of it closed this year yet.
+  const SimDay today = world.calendar.day;
+  const bool reaped_this_year = field.reaped_day != kNeverReapedDay &&
+                                field.reaped_day / kDaysPerYear == today / kDaysPerYear;
+  if (field.phase == FieldPhase::kGrowing && !reaped_this_year &&
+      static_cast<std::uint32_t>(world.calendar.date.month) <= crop.harvest_to_month) {
+    return whole;
+  }
+  return 0;
 }
 
 void LayMownShare(const ProductionConfig& config, WorldState& current, FieldRow& field) {

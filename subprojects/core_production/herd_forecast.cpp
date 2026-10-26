@@ -253,6 +253,11 @@ Grams HayStandingOnMeadows(const ProductionConfig& config, const WorldState& wor
   Grams standing = 0;
   for (const FieldRow& field : world.fields.rows) {
     if (field.kind == LandKind::kArable) {
+      // A LEY'S HAY STANDS BESIDE THE MEADOWS (#1292; econ, core-boss-1289-
+      // herd-plan [57]): clover and timothy in the rotation, reaped in the
+      // same window by the same crews. Skipped here until then, about 28 t of
+      // a fed village-year's cut was in no term of the forecast.
+      standing += LeyHayStanding(config, world, field);
       continue;
     }
     const float rate = field.kind == LandKind::kFloodplainMeadow
