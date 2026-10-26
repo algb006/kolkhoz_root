@@ -2106,6 +2106,29 @@ int CheckCohortFlows() {
                        "a herd above the top of its lifespan band loses heads to age");
   }
 
+  // AND THE FORECAST LOSES THEM TOO (#1292): the heads it carries ahead go by
+  // the herd day's own expectation of old age (ExpectedAgeDeathsPerDay). It
+  // kept every adult to the next cut - a herd of 42 cows fed 42 while age took
+  // 11 - and the lamp read the spring short where the herds were fed.
+  {
+    core::ProductionConfig old_age = MakeHerdConfig();
+    old_age.livestock[0].life_game_years_min = 1.0F;
+    old_age.livestock[0].life_game_years_max = 2.0F;
+    core::WorldState world = MakeHerdWorld(100000.0F);
+    const core::HerdId id = AddHerd(world, 0, 40, 20, true);
+    core::HerdRow& aged = world.herds.rows[FindRow(world.herds, id)];
+    aged.adult_age_game_years_total = 40.0F * 3.0F;
+    aged.adult_age_min_game_years = 3.0F;
+    aged.adult_age_max_game_years = 3.0F;
+    const float per_day = core::ExpectedAgeDeathsPerDay(old_age.livestock[0], aged);
+    const float ahead = core::ForecastHerdHeads(old_age, world, id, 10);
+    std::cout << "  forecast and old age: " << per_day << " heads a day by the herd day's "
+              << "expectation; the forecast carries " << ahead << " of 40 ten days on\n";
+    failures += Expect(per_day > 0.0F && ahead < 40.0F - 5.0F * per_day,
+                       "the forecast loses its herd's heads to old age by the herd day's own "
+                       "expectation, not carries every adult ahead");
+  }
+
   // THE YOUNG BOUGHT BESIDE AN OLD ONE DO NOT DIE WITH IT (save 103; boss-
   // core-epoch1-resume [81]): one horse of 7.9 and ten of 1.0 in one row, a
   // lifespan of 6 to 8. The old one reaches the top in days and dies; the ten

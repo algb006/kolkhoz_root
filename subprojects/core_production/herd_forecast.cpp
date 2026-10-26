@@ -52,6 +52,13 @@ struct ProjectedHerd {
   /// one - else the lamp and the window would count calves the plan stops.
   /// Negative: no plan.
   float plan_heads = -1.0F;
+  /// THE OLD ONES GO IN THE FORECAST TOO (#1292; econ's rule, the thread
+  /// core-boss-1289-herd-plan [36]): the share of the adults old age takes a
+  /// day, by the herd day's own expectation (ExpectedAgeDeathsPerDay) on the
+  /// herd as it stands today, held over the horizon. Without it a herd of 42
+  /// cows was fed 42 to the next cut while age took 11, and the lamp read
+  /// next spring 13-34 % short where the herds were fed.
+  float age_deaths_per_adult_day = 0.0F;
 };
 
 std::uint16_t RoundHeads(float heads) {
@@ -369,14 +376,22 @@ ProjectedHerd ProjectHerd(const ProductionConfig& config,
   projected.males = kind.sexed != 0 ? static_cast<float>(herd.adult_male_count) : 0.0F;
   projected.plan_heads =
       herd.plan_heads != kNoHerdPlan ? static_cast<float>(herd.plan_heads) : -1.0F;
+  projected.age_deaths_per_adult_day =
+      herd.adult_count > 0
+          ? ExpectedAgeDeathsPerDay(kind, herd) / static_cast<float>(herd.adult_count)
+          : 0.0F;
   return projected;
 }
 
-/// One forecast day of a herd, in the herd day's order: the maturing, then
-/// the day's births inside the calving band.
+/// One forecast day of a herd, in the herd day's order (RunHerdDay): the
+/// maturing, the old ones going, then the day's births inside the band.
 void ProjectHerdDay(const ProductionConfig& config, std::uint8_t month, ProjectedHerd& herd) {
   const LivestockDef& kind = config.livestock[herd.kind.value];
   MatureOneDay(kind, herd);
+  // Age takes from the adults, the sires in proportion (TakeOldestAdults).
+  const float aged = herd.adults * herd.age_deaths_per_adult_day;
+  herd.males -= herd.adults > 0.0F ? herd.males * (aged / herd.adults) : 0.0F;
+  herd.adults -= aged;
   const bool at_plan =
       herd.plan_heads >= 0.0F && herd.adults + herd.juveniles + herd.newborns >= herd.plan_heads;
   if (herd.births_per_female_band_day > 0.0F && !at_plan &&

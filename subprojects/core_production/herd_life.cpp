@@ -538,15 +538,9 @@ std::uint16_t TakeOldestAdults(const LivestockDef& kind, HerdRow& herd, std::uin
 /// at the lower end and certain at the upper one, averaged over the ages the
 /// herd holds (AverageAgeHazard). The draw is the world's sequential RNG, so
 /// a replay lands on the same animals.
-void RunAgeDeaths(const LivestockDef& kind, HerdRow& herd, HerdId herd_id, WorldState& world) {
-  if (herd.adult_count == 0) {
-    return;
-  }
-  const auto adults = static_cast<float>(herd.adult_count);
-  herd.adult_age_game_years_total += adults / static_cast<float>(kDaysPerYear);
-  AgeAdultAgeBand(herd, 1.0F / static_cast<float>(kDaysPerYear));
-  if (!(kind.life_game_years_max > 0.0F)) {
-    return;  // a kind whose lifespan the table does not name does not age out
+float ExpectedAgeDeathsPerDay(const LivestockDef& kind, const HerdRow& herd) {
+  if (herd.adult_count == 0 || !(kind.life_game_years_max > 0.0F)) {
+    return 0.0F;
   }
   // OVER THE AGES THE HERD HOLDS (herd_age_band.h; boss, core-boss-epoch1-6
   // [3] line 1; 0.35.16): its youngest to its oldest head. No head dies of
@@ -567,7 +561,20 @@ void RunAgeDeaths(const LivestockDef& kind, HerdRow& herd, HerdId herd_id, World
                                                                         kind.life_game_years_min,
                                                                         kind.life_game_years_max);
   }
-  const float expected = heads_per_year / static_cast<float>(kDaysPerYear);
+  return heads_per_year / static_cast<float>(kDaysPerYear);
+}
+
+void RunAgeDeaths(const LivestockDef& kind, HerdRow& herd, HerdId herd_id, WorldState& world) {
+  if (herd.adult_count == 0) {
+    return;
+  }
+  const auto adults = static_cast<float>(herd.adult_count);
+  herd.adult_age_game_years_total += adults / static_cast<float>(kDaysPerYear);
+  AgeAdultAgeBand(herd, 1.0F / static_cast<float>(kDaysPerYear));
+  if (!(kind.life_game_years_max > 0.0F)) {
+    return;  // a kind whose lifespan the table does not name does not age out
+  }
+  const float expected = ExpectedAgeDeathsPerDay(kind, herd);
   auto dead = static_cast<std::uint16_t>(expected);
   if (NextRandomUnitFloat(world.rng) < expected - static_cast<float>(dead)) {
     dead = static_cast<std::uint16_t>(dead + 1);

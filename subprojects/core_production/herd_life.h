@@ -257,6 +257,12 @@ float MeanAdultAgeYears(const HerdRow& herd);
 /// finding in other costumes.
 std::uint16_t TakeOldestAdults(const LivestockDef& kind, HerdRow& herd, std::uint16_t wanted);
 
+/// @brief The heads a day old age takes from the herd as it stands: the
+///        expectation RunAgeDeaths draws its day's deaths from, band by band.
+///        0 for a kind whose lifespan the table does not name. The forecast
+///        projects its herds' losses by it (#1292).
+float ExpectedAgeDeathsPerDay(const LivestockDef& kind, const HerdRow& herd);
+
 /// @brief One day's deaths of old age, spread over the lifespan band.
 void RunAgeDeaths(const LivestockDef& kind, HerdRow& herd, HerdId herd_id, WorldState& world);
 
