@@ -1402,8 +1402,25 @@ Grams HerdFeedFromIncome(const ProductionConfig& config,
                          ? holds.seed_and_plan[index] + holds.plough[index] + holds.next_year[index]
                          : 0;
   const Grams left = UnreservedEverywhere(world, resource);
-  const auto free_of = [held](Grams grams) { return grams > held ? grams - held : 0; };
-  return free_of(left + income) - free_of(left);
+  // THE PLAN RUNG GROWS WITH THE INCOME (#1312; econ, boss-econ-1312-horse-
+  // grain [2]-[4]; boss core-boss-1289-herd-plan [93]): it holds the owed
+  // only «as far as the crop lies in the stores» (PlanRungGrams), so before
+  // the harvest lands the plan's oats were in no hold, and the income was
+  // the horses' whole - 1934 y5 delivered 5.1 t of its oats harvest to the
+  // district, and the forecast's horses ate it. Once the income lies in the
+  // stores the rung holds the owed up to it: what is owed above today's rung
+  // comes off the income first.
+  const std::vector<SeedNorm> seed_norms = SeedNormsOf(config);
+  const ResourceAmounts seed_rung = SeedRungLeft(world, seed_norms, config.feed_values.size());
+  const Grams seed_part = index < seed_rung.size() ? seed_rung[index] : 0;
+  const Grams rung_now = PlanRungGrams(world, index, config.milk_resource, seed_part);
+  const Grams owed = PlanOwedGrams(world, resource);
+  const Grams rung_after =
+      std::min(owed, left + income > seed_part ? left + income - seed_part : 0);
+  const Grams held_after = held + (rung_after > rung_now ? rung_after - rung_now : 0);
+  const auto free_of = [](Grams grams, Grams hold) { return grams > hold ? grams - hold : 0; };
+  const Grams eaten = free_of(left + income, held_after) - free_of(left, held);
+  return eaten > 0 ? eaten : 0;
 }
 
 ResourceAmounts HerdFeedInFunds(const ProductionConfig& config, const WorldState& world) {

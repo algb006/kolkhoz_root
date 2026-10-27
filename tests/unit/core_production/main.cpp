@@ -2133,6 +2133,34 @@ int CheckTheHerdDoesNotEatThePlan() {
     failures += Expect(StoreOf(world, 0) == 98 * kKilo,
                        "before the reaping the carry-over holds the debt, the herd eats above it");
   }
+  // THE INCOME PAYS THE PLAN FIRST (#1312; econ, boss-econ-1312-horse-grain
+  // [2]-[4]): 98 kg owed, 20 kg in the store (the rung holds those 20), 100
+  // kg of harvest to come. Once it lies in the store the rung holds the whole
+  // 98, so the herds' share of the income is 120 - 98 = 22 kg - until
+  // 0.37.341 it was the whole 100. With the plan met, the whole income.
+  {
+    core::WorldState owing = MakeHerdWorld(20.0F);
+    owing.plan.due.assign(1, 98 * kKilo);
+    owing.plan.announced = 1;  // the district's letter is in (PlanOwedGrams reads nought before it)
+    const core::Grams share =
+        core::HerdFeedFromIncome(config, owing, core::ResourceId{0}, 100 * kKilo);
+    core::WorldState met = owing;
+    met.plan.delivered.assign(1, 98 * kKilo);
+    const core::Grams met_share =
+        core::HerdFeedFromIncome(config, met, core::ResourceId{0}, 100 * kKilo);
+    core::WorldState held_already = MakeHerdWorld(100.0F);
+    held_already.plan.due.assign(1, 98 * kKilo);
+    held_already.plan.announced = 1;
+    const core::Grams held_share =
+        core::HerdFeedFromIncome(config, held_already, core::ResourceId{0}, 50 * kKilo);
+    std::cout << "  the income's herd share: owed above the store " << share / kKilo
+              << " kg of 100, the plan met " << met_share / kKilo << " kg, the owed held already "
+              << held_share / kKilo << " kg of 50\n";
+    failures +=
+        Expect(share == 22 * kKilo && met_share == 100 * kKilo && held_share == 50 * kKilo,
+               "the plan's owed above today's rung comes off the income before the herds - "
+               "22 kg of 100; with the plan met, or the owed held already, the income whole");
+  }
   // And with more carried over than owed, the herd eats in full above it.
   {
     core::WorldState world = MakeHerdWorld(100.0F);
