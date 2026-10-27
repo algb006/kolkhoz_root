@@ -171,6 +171,11 @@ struct PloughFeedHold {
   /// Grams held today; nought outside the window below.
   Grams grams = 0;
 
+  /// The rung's size whether or not today is in its window: what the
+  /// ploughing season's horse-days take at full work (#1312, the herd
+  /// forecast's ploughing-day release).
+  Grams season_grams = 0;
+
   /// Horse-days of ploughing and harrowing it is sized for: the last closed
   /// book's man-days of the two (one horse a ploughman), or in the first
   /// year, which has no book, the arable under chains at the ploughing and
@@ -247,10 +252,14 @@ float FeedLinkRoomFor(const FeedLinkDef& link,
 ///        income. No rot margin. The herd forecast lands a harvest still to
 ///        come by it (#1292; econ, core-boss-1289-herd-plan [40]: «less seed
 ///        and the plan's due»).
+/// @param turn_held_out When given, receives the grams of the income held for
+///        the window's turn (next year's plan and the next sowing's seed, arm
+///        A′) - what a ploughing day may release to the team.
 Grams HerdFeedFromIncome(const ProductionConfig& config,
                          const WorldState& world,
                          ResourceId resource,
-                         Grams income);
+                         Grams income,
+                         Grams* turn_held_out = nullptr);
 
 /// @brief What lies in the stores of each resource and is shut from the
 /// herds by a FUND THE CHAIRMAN CAN UNSEAL, grams, dense by ResourceId: the

@@ -2219,13 +2219,16 @@ int CheckTheHerdDoesNotEatThePlan() {
     core::AppendRow(world.fields, next_year);
     const core::Grams seed =
         core::NextSowingSeedGrams(seeded, world, core::ResourceId{0}, world.calendar.day);
+    core::Grams turn_held = -1;
     const core::Grams share =
-        core::HerdFeedFromIncome(seeded, world, core::ResourceId{0}, 100 * kKilo);
+        core::HerdFeedFromIncome(seeded, world, core::ResourceId{0}, 100 * kKilo, &turn_held);
     std::cout << "  the next sowing's seed: " << seed / kKilo << " kg; the herds' share of 100 kg "
-              << "to come: " << share / kKilo << " kg\n";
-    failures += Expect(seed == 20 * kKilo && share == 80 * kKilo,
+              << "to come: " << share / kKilo << " kg, held for the turn " << turn_held / kKilo
+              << " kg\n";
+    failures += Expect(seed == 20 * kKilo && share == 80 * kKilo && turn_held == 20 * kKilo,
                        "the rotation's next sowing (2 ha at 10 kg) is held off the income before "
-                       "the herds: 80 kg of 100");
+                       "the herds: 80 kg of 100, and the 20 held are named as the turn's - what a "
+                       "ploughing day may give the team back");
   }
   return failures;
 }

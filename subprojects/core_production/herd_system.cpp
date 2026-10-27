@@ -1392,7 +1392,11 @@ Grams HeldAboveSeedAndPlan(const ProductionConfig& config,
 Grams HerdFeedFromIncome(const ProductionConfig& config,
                          const WorldState& world,
                          ResourceId resource,
-                         Grams income) {
+                         Grams income,
+                         Grams* turn_held_out) {
+  if (turn_held_out != nullptr) {
+    *turn_held_out = 0;
+  }
   if (resource.value == kInvalidDefIdValue || income <= 0) {
     return 0;
   }
@@ -1436,6 +1440,12 @@ Grams HerdFeedFromIncome(const ProductionConfig& config,
   const Grams held_after = held + (rung_after > rung_now ? rung_after - rung_now : 0) + turn_growth;
   const auto free_of = [](Grams grams, Grams hold) { return grams > hold ? grams - hold : 0; };
   const Grams eaten = free_of(left + income, held_after) - free_of(left, held);
+  if (turn_held_out != nullptr) {
+    // What the turn's hold actually took off this income: the share without it, less the share.
+    const Grams without_turn =
+        free_of(left + income, held_after - turn_growth) - free_of(left, held);
+    *turn_held_out = without_turn > eaten ? without_turn - std::max<Grams>(eaten, 0) : 0;
+  }
   return eaten > 0 ? eaten : 0;
 }
 
@@ -1910,8 +1920,9 @@ PloughFeedHold PloughFeedHoldOf(const ProductionConfig& config, const WorldState
   // no more than the full work ration's share, at the oats' value.
   const float need = config.livestock[config.horse_kind.value].feed_units_per_game_day;
   const float share = std::min(oats->max_share, config.farming.traction_full_ration_share);
+  hold.season_grams = KilogramsToGrams(hold.horse_days * need * share / value);
   if (hold.held) {
-    hold.grams = KilogramsToGrams(hold.horse_days * need * share / value);
+    hold.grams = hold.season_grams;
   }
   return hold;
 }

@@ -205,8 +205,37 @@ std::vector<std::pair<std::uint32_t, std::vector<float>>> ScheduledHarvestFeed(
     const Grams expected = std::min(of(*book.front()), mean);
     const Grams harvested = of(world.ledger.current.harvest);
     const Grams to_come = expected > harvested ? expected - harvested : 0;
-    const Grams eaten =
-        HerdFeedFromIncome(config, world, DefIdFromIndex<ResourceIdTag>(resource), to_come);
+    Grams turn_held = 0;
+    const Grams eaten = HerdFeedFromIncome(
+        config, world, DefIdFromIndex<ResourceIdTag>(resource), to_come, &turn_held);
+    // THE PLOUGH EATS INTO THE TURN'S HOLD ON ITS DAYS (#1312, the rebuilt
+    // A′; econ, boss-econ-1312-horse-grain [10], boss [103] and after): the
+    // herd day lets the plough team eat next year's rung on a ploughing day
+    // as far as its own rung (HerdHoldsOf, «THE PLOUGH STANDS ABOVE NEXT
+    // YEAR'S HOLD»), and 1934's team ate 2.15 t of the oats held for y6 on
+    // d248-252. A′ held them away from the horses all window - about 6 t of
+    // oats too pessimistic every spring. The turn's hold of the team's oats
+    // comes back on next spring's first sowing day, up to the plough's rung
+    // (PloughFeedHold::season_grams). NAMED: it lands in the herds' stock,
+    // not on the team's link alone; the canon's only other oat eaters (pigs,
+    // poultry) are not kolkhoz herds in these runs.
+    const PloughFeedHold plough = PloughFeedHoldOf(config, world);
+    if (turn_held > 0 && plough.resource.value == resource) {
+      SimDay spring = kDaysPerYear;
+      for (const CropDef& crop : config.crops) {
+        if (!crop.is_winter) {
+          spring =
+              std::min<SimDay>(spring, static_cast<SimDay>(crop.sow_from_month) * kDaysPerMonth);
+        }
+      }
+      const SimDay release_day = year_start + kDaysPerYear + spring;
+      const Grams release = std::min(turn_held, plough.season_grams);
+      if (release > 0 && release_day > today && release_day - today < horizon_days) {
+        std::vector<float> back(config.feed_values.size(), 0.0F);
+        back[resource] = static_cast<float>(release) / static_cast<float>(kGramsPerKilogram);
+        landings.emplace_back(release_day - today, std::move(back));
+      }
+    }
     if (eaten <= 0) {
       continue;
     }
