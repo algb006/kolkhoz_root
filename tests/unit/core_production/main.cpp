@@ -2198,6 +2198,35 @@ int CheckTheHerdDoesNotEatThePlan() {
                        "a harvest to come that pays the plan frees the carry to the people, not "
                        "to the herd: it eats the two above the 98 owed");
   }
+  // THE NEXT SOWING'S SEED COMES OFF THE INCOME (#1312 arm A′): a field of 2
+  // ha whose chain grows the crop next year, sown at 10 kg/ha, takes 20 kg of
+  // the 100 kg to come before the herds - unless its seed is held already.
+  {
+    core::ProductionConfig seeded = MakeHerdConfig();
+    core::CropDef crop;
+    crop.resource = core::ResourceId{0};
+    crop.yield_kg_per_ha = 100.0F;
+    crop.sowing_norm_kg_per_ha = 10.0F;
+    seeded.crops = {crop};
+    core::WorldState world = MakeHerdWorld(0.0F);
+    core::FieldRow next_year;
+    next_year.kind = core::LandKind::kArable;
+    next_year.area_ga = 2.0F;
+    next_year.rotation_year0 = core::CropId{};
+    next_year.rotation_year1 = core::CropId{0};
+    next_year.rotation_year2 = core::CropId{};
+    next_year.rotation_assigned = 1;
+    core::AppendRow(world.fields, next_year);
+    const core::Grams seed =
+        core::NextSowingSeedGrams(seeded, world, core::ResourceId{0}, world.calendar.day);
+    const core::Grams share =
+        core::HerdFeedFromIncome(seeded, world, core::ResourceId{0}, 100 * kKilo);
+    std::cout << "  the next sowing's seed: " << seed / kKilo << " kg; the herds' share of 100 kg "
+              << "to come: " << share / kKilo << " kg\n";
+    failures += Expect(seed == 20 * kKilo && share == 80 * kKilo,
+                       "the rotation's next sowing (2 ha at 10 kg) is held off the income before "
+                       "the herds: 80 kg of 100");
+  }
   return failures;
 }
 

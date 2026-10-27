@@ -1417,7 +1417,23 @@ Grams HerdFeedFromIncome(const ProductionConfig& config,
   const Grams owed = PlanOwedGrams(world, resource);
   const Grams rung_after =
       std::min(owed, left + income > seed_part ? left + income - seed_part : 0);
-  const Grams held_after = held + (rung_after > rung_now ? rung_after - rung_now : 0);
+  // AND WHAT THE WINDOW'S TURN WILL HOLD (#1312 arm A′; econ, boss-econ-1312-
+  // horse-grain [8]; core [99]): this year's plan stood held whole by the
+  // carry-over on the canon (1934 d212: 5.36 t of oats, 5.11 owed, all
+  // held), and arm A moved nothing. What grew through the window was next
+  // year's plan, announced at the turn (y6's 3.55 t of oats), and the next
+  // sowing's seed (1.89 t of oats sown out of it) - neither in today's ladder,
+  // so the forecast's horses ate them. Next year's plan by the district's own
+  // rule ahead (NextPlanOwedGrams, what the turn seals) and the rotation's next
+  // sowing (NextSowingSeedGrams), less what today's next-year hold and seed
+  // rung already keep of them.
+  const SimDay today = world.calendar.day;
+  const Grams turn_need = NextPlanOwedGrams(config, world, resource, today) +
+                          NextSowingSeedGrams(config, world, resource, today);
+  const Grams kept_for_it =
+      seed_part + (index < holds.next_year.size() ? holds.next_year[index] : 0);
+  const Grams turn_growth = turn_need > kept_for_it ? turn_need - kept_for_it : 0;
+  const Grams held_after = held + (rung_after > rung_now ? rung_after - rung_now : 0) + turn_growth;
   const auto free_of = [](Grams grams, Grams hold) { return grams > hold ? grams - hold : 0; };
   const Grams eaten = free_of(left + income, held_after) - free_of(left, held);
   return eaten > 0 ? eaten : 0;

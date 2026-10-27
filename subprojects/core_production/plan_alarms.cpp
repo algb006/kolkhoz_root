@@ -671,6 +671,33 @@ Grams NextYearUnpaidGrams(const ProductionConfig& config,
   return needed > harvest ? needed - harvest : 0;
 }
 
+Grams NextSowingSeedGrams(const ProductionConfig& config,
+                          const WorldState& world,
+                          ResourceId resource,
+                          SimDay as_of) {
+  // The year-1 slot of NextYearUnpaidGrams' own loop (which counts year 2's):
+  // the crop next year's sowing puts in, a field whose seed is already held
+  // counted once.
+  const std::vector<SeedNorm> seed_norms = SeedNormsOf(config);
+  const SeedHold seed_held = SeedHeldByField(world, seed_norms, config.feed_values.size(), as_of);
+  float seed_kg = 0.0F;
+  for (std::size_t row = 0; row < world.fields.rows.size(); ++row) {
+    const FieldRow& field = world.fields.rows[row];
+    if (field.kind != LandKind::kArable || !HasRotation(field)) {
+      continue;
+    }
+    const bool seed_already_held = row < seed_held.by_field_row.size() &&
+                                   seed_held.by_field_row[row] > 0 &&
+                                   seed_held.seed_of_row[row].value == resource.value;
+    const CropId next = CropInYear(config, field, 1, as_of);
+    if (!seed_already_held && next.value < config.crops.size() &&
+        config.crops[next.value].resource.value == resource.value) {
+      seed_kg += config.crops[next.value].sowing_norm_kg_per_ha * field.area_ga;
+    }
+  }
+  return GramsFromKilograms(seed_kg);
+}
+
 Grams NextPlanOwedGrams(const ProductionConfig& config,
                         const WorldState& world,
                         ResourceId resource,

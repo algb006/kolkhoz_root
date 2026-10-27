@@ -1309,6 +1309,19 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
         }
       }
     }
+    // THE STORES' ROT, A DAY AT A TIME (#1312 arm A′; econ, boss-econ-1312-
+    // horse-grain [8]): the grain the herds may eat rots at the stores' own
+    // daily share (SpoiledToday's 1 / (spoil_days x keeping_factor)); left
+    // out, 1934 y5's 0.75 t of oats rotted in the world and fed the forecast's
+    // horses. The hay is not rotted here: its loss stands in the cut's own
+    // terms, and is named open (about 5.6 t a window in the world).
+    for (std::size_t resource = 0; resource < held_kg.size() && resource < config.spoil_days.size();
+         ++resource) {
+      const float shelf = config.spoil_days[resource] * config.keeping_factor;
+      if (resource != config.hay_resource.value && shelf > 1.0F && held_kg[resource] > 0.0F) {
+        held_kg[resource] -= held_kg[resource] / shelf;
+      }
+    }
     // TODAY IS FED ALREADY (#1292; core [62], boss [63]): the herd day runs at
     // the day's first tick, so a state read past it - the lamp at noon, the
     // herd plan's evening - holds the stores AFTER today's feeding, and day

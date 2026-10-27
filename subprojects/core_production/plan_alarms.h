@@ -84,6 +84,18 @@ Grams NextYearUnpaidGrams(const ProductionConfig& config,
                           ResourceId resource,
                           SimDay as_of);
 
+/// @brief Grams of `resource` the rotation's NEXT sowing of it will take: every
+///        arable field whose chain grows a crop of it next year, at the crop's
+///        sowing norm, less the fields whose seed SeedHeldByField already
+///        holds (#1312 arm A′; econ, boss-econ-1312-horse-grain [8]: the seed
+///        rung «without its window»). The rotation as it is set today. No rot
+///        margin.
+/// @param as_of The day `next year` is counted from.
+Grams NextSowingSeedGrams(const ProductionConfig& config,
+                          const WorldState& world,
+                          ResourceId resource,
+                          SimDay as_of);
+
 /// @brief Grams of `resource` next year's district positions will ask: each
 /// position of it priced off the area next spring's figure will be
 /// (NextPlanAreaHa), as the January letter prices it. No rot margin. The
