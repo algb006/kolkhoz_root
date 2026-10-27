@@ -1161,6 +1161,15 @@ struct ProductionConfig {
   /// column, so the two readings cannot tell different calories.
   std::vector<float> food_kcal_per_gram;
 
+  /// Dense by ResourceId: 1 where the distribution's DEFAULT bundle issues
+  /// the resource - food.csv `issue_kg_per_trudoden` above nought, the same
+  /// cell issue_norm.cpp reads («not in the default bundle: nought»). Read
+  /// here for one question (#1312 arm B; econ, boss-econ-1312-horse-grain
+  /// [6], [8]): which grain the herd forecast must count as the people's from
+  /// the day its income lands. The chairman's own norms (WorldState
+  /// issue_norms) stand over it (IssuedToPeopleNow).
+  std::vector<std::uint8_t> issue_default_position;
+
   /// food.csv `yard_hay_kg_per_head` and `hay_harvest_month` (0-based), read
   /// here a second time for one question: the hay a head given away past the
   /// yard's keep carries (CarryHayShare, #859) - its own need to the next

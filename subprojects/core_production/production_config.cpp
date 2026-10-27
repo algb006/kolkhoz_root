@@ -1027,6 +1027,41 @@ bool ParseFoodCalories(const ITable& resources,
   return true;
 }
 
+/// The distribution's default bundle, dense by the resources' rows
+/// (ProductionConfig::issue_default_position): a food row's
+/// `issue_kg_per_trudoden` above nought.
+bool ParseIssueDefaultPositions(const ITable& resources,
+                                const ITable& food,
+                                std::vector<std::uint8_t>& positions,
+                                std::string& error) {
+  constexpr float kMostIssueKg = 1000.0F;
+  const std::uint32_t key_column = resources.FindColumn("key");
+  const std::uint32_t issue_column = food.FindColumn("issue_kg_per_trudoden");
+  positions.assign(resources.RowCount(), 0);
+  if (key_column == kNoTableColumn || issue_column == kNoTableColumn) {
+    return true;
+  }
+  for (std::uint32_t row = 0; row < resources.RowCount(); ++row) {
+    const std::uint32_t food_row = food.FindRowByKey(resources.CellText(row, key_column));
+    if (food_row == kNoTableRow) {
+      continue;
+    }
+    float kg = 0.0F;
+    if (!CellOrDefault(food,
+                       food_row,
+                       issue_column,
+                       Range{.low = 0.0F, .high = kMostIssueKg},
+                       0.0F,
+                       kg,
+                       error)) {
+      error = "food: issue_kg_per_trudoden: " + error;
+      return false;
+    }
+    positions[row] = kg > 0.0F ? 1U : 0U;
+  }
+  return true;
+}
+
 /// The feeding order. ROW ORDER IS THE PRIORITY (design db feed_link.sort):
 /// staple before reserve, own feed before bought concentrate, fodder grain
 /// before bread grain. Nothing is sorted here — sorting would duplicate the
@@ -1503,6 +1538,10 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
   const ITable* const food = tables.FindTable("food");
   if (resources != nullptr && food != nullptr &&
       !ParseFoodCalories(*resources, *food, config.food_kcal_per_gram, error)) {
+    return false;
+  }
+  if (resources != nullptr && food != nullptr &&
+      !ParseIssueDefaultPositions(*resources, *food, config.issue_default_position, error)) {
     return false;
   }
   if (food != nullptr) {

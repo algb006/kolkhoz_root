@@ -1230,7 +1230,9 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
           static_cast<float>(kGramsPerKilogram);
     }
   }
-  const std::vector<std::uint8_t> peoples_foods = PeoplesFoods(config, world);
+  // Not const: a grain the distribution issues turns the people's food on the
+  // day its income lands (below, #1312 arm B).
+  std::vector<std::uint8_t> peoples_foods = PeoplesFoods(config, world);
   // The feed lots on the road land on their day, where a store would take
   // them (a lot with nowhere to go is refused at the door — kNowhereToStore).
   std::vector<std::pair<std::uint32_t, std::vector<float>>> landings;
@@ -1306,6 +1308,21 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
       if (landing_day == day) {
         for (std::size_t resource = 0; resource < goods.size(); ++resource) {
           held_kg[resource] += goods[resource];
+          // THE PEOPLE'S GRAIN FROM ITS LANDING (#1312 arm B; econ, boss-econ-
+          // 1312-horse-grain [6], [8]): 1932 y6's barley was not the people's
+          // food at the cut's first day (d260) and was from the harvest's
+          // first issue (d271); the forecast read the door once and fed the
+          // horses 8.4 t of it through their reserve link, while 13.1 t went
+          // out issued. A grain the bundle issues today turns the people's
+          // food the day its income lands. STUB of the full door (the
+          // contract, core [98] option 1): the issued tonnes do not leave the
+          // stock here, since no cow link reads a people's grain today.
+          // Return when: a cow link names a people's grain, or the refused-
+          // barley print exceeds 2 t in a year that gained a light.
+          if (goods[resource] > 0.0F && resource < peoples_foods.size() &&
+              IssuedToPeopleNow(config, world, DefIdFromIndex<ResourceIdTag>(resource))) {
+            peoples_foods[resource] = 1;
+          }
         }
       }
     }

@@ -1805,6 +1805,16 @@ ResourceAmounts NextYearHold(const ProductionConfig& config, const WorldState& w
   return hold;
 }
 
+bool IssuedToPeopleNow(const ProductionConfig& config,
+                       const WorldState& world,
+                       ResourceId resource) {
+  const std::size_t index = resource.value;
+  if (index < world.issue_norms.size() && world.issue_norms[index] != kIssueNormByDefault) {
+    return world.issue_norms[index] > 0;
+  }
+  return index < config.issue_default_position.size() && config.issue_default_position[index] != 0;
+}
+
 std::vector<std::uint8_t> PeoplesFoods(const ProductionConfig& config, const WorldState& world) {
   std::vector<std::uint8_t> foods(config.feed_values.size(), 0);
   for (std::size_t index = 0; index < foods.size(); ++index) {

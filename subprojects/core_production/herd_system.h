@@ -151,6 +151,17 @@ ResourceAmounts NextYearHold(const ProductionConfig& config, const WorldState& w
 /// ate 22.5 t of the 24.5 - the rule held 8 % of what it meant to (boss [73]).
 std::vector<std::uint8_t> PeoplesFoods(const ProductionConfig& config, const WorldState& world);
 
+/// @brief Whether the distribution issues `resource` as the bundle stands
+///        today (#1312 arm B; econ, boss-econ-1312-horse-grain [6], [8]): the
+///        chairman's own norm where he set one (WorldState::issue_norms above
+///        nought; nought takes it out), else the default bundle
+///        (ProductionConfig::issue_default_position). The herd forecast counts
+///        such a grain as the people's food from the day its income lands, as
+///        PeoplesFoods will from the day its first issue is booked.
+bool IssuedToPeopleNow(const ProductionConfig& config,
+                       const WorldState& world,
+                       ResourceId resource);
+
 /// @brief The ploughing's oats, held from the team's other work (0.37.2;
 /// boss-core-epoch1-queue [59]-[60], (а); resources design §6: the fodder
 /// fund is kept «from the team that will plough»).

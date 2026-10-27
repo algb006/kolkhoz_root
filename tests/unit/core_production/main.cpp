@@ -2170,6 +2170,25 @@ int CheckTheHerdDoesNotEatThePlan() {
                        "a harvest to come that pays the plan frees the carry to the people, not "
                        "to the herd: it eats the two above the 98 owed");
   }
+  // THE DISTRIBUTION'S BUNDLE AS IT STANDS (#1312 arm B): a grain of the
+  // default bundle is the people's; the chairman's nought takes it out, his
+  // own norm puts one in.
+  {
+    core::ProductionConfig bundle = MakeHerdConfig();
+    bundle.issue_default_position.assign(2, 0);
+    bundle.issue_default_position[0] = 1;
+    core::WorldState world = MakeHerdWorld(0.0F);
+    const bool by_default = core::IssuedToPeopleNow(bundle, world, core::ResourceId{0});
+    const bool other = core::IssuedToPeopleNow(bundle, world, core::ResourceId{1});
+    world.issue_norms.assign(2, core::kIssueNormByDefault);
+    world.issue_norms[0] = 0;
+    world.issue_norms[1] = 500;
+    const bool chairman_out = core::IssuedToPeopleNow(bundle, world, core::ResourceId{0});
+    const bool chairman_in = core::IssuedToPeopleNow(bundle, world, core::ResourceId{1});
+    failures += Expect(by_default && !other && !chairman_out && chairman_in,
+                       "the bundle as it stands: the default's grain is the people's, the "
+                       "chairman's nought takes it out and his norm puts another in");
+  }
   return failures;
 }
 
