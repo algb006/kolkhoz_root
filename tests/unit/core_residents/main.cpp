@@ -55,6 +55,7 @@
 #include "night_trade.h"
 #include "schooling.h"
 #include "specialist_arrival.h"
+#include "stream_split_checks.h"
 #include "sugar_checks.h"
 #include "vitals.h"
 #include "year_metrics.h"
@@ -5112,6 +5113,7 @@ int main() {
   failures += CheckHousingShortLamp();
   failures += CheckTheOfficeRungHousesNobody();
   failures += CheckTwins();
+  failures += CheckDrawsAreKeyedByResident();
   failures += CheckRooflessLadder();
   failures += CheckBarrack();
   failures += CheckHungerAlarmHysteresis();
