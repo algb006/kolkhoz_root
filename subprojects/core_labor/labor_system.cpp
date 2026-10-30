@@ -2683,13 +2683,22 @@ class LaborSystem final : public ILaborSystem {
       // every tomorrow as well.
       return locked;
     }
-    for (const HerdRow& herd : current.herds.rows) {
+    // THE HOST IS THE YARD'S FIRST ADULT BY ID (#1347): by row it was
+    // whoever the table had last moved, and the instrument's reversed world
+    // locked the other man of three start yards on day 0 (kr1347: residents
+    // 22, 24, 26 against 47, 48, 49 - one hauled, the other stood for a horse).
+    const std::vector<std::uint32_t> residents_by_id = RowsById(current.residents);
+    for (const std::uint32_t herd_row : RowsById(current.herds)) {
+      const HerdRow& herd = current.herds.rows[herd_row];
       if (herd.kind.value != config_.horse_kind.value ||
           herd.household.value == kInvalidEntityIdValue) {
         continue;
       }
       std::uint16_t left = herd.adult_count;
-      for (std::uint32_t row = 0; row < current.residents.rows.size() && left > 0; ++row) {
+      for (const std::uint32_t row : residents_by_id) {
+        if (left == 0) {
+          break;
+        }
         const ResidentRow& resident = current.residents.rows[row];
         const float age = BiologicalAgeYears(config_, resident.birth_day, current.calendar.day);
         if (resident.family.value == herd.household.value && age >= config_.adult_age_years &&
