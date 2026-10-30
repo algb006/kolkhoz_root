@@ -28,9 +28,11 @@
 #include <algorithm>
 #include <cstdint>
 #include <limits>
+#include <vector>
 
 #include "core_common/ids.h"
 #include "core_common/quantities.h"
+#include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
 #include "production_config.h"
 
@@ -235,7 +237,13 @@ inline bool NumberedStoreTakes(const WorldState& world,
 /// the door (DeliverToStores) refuses above the ceiling and the remainder is
 /// the caller's business, not a line in a log.
 inline std::uint32_t FindStorageRow(const WorldState& world, const ProductionConfig& config) {
+  // THE FIRST BY ID, not by row (#1347): the row order is whoever the table
+  // last moved into a removed slot.
+  std::uint32_t found = kNoRow;
   for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+    if (found != kNoRow && world.units.row_ids[row].value > world.units.row_ids[found].value) {
+      continue;
+    }
     // A NUMBER TO CLAMP AGAINST, and this function has to say so itself now.
     // TakeFromStorage's note has always stated the rule — "a delivery needs a
     // destination with a number to clamp against, so FindStorageRow asks for
@@ -246,10 +254,10 @@ inline std::uint32_t FindStorageRow(const WorldState& world, const ProductionCon
     // settlement's delivery destination.
     if (StorageCapacityGrams(world.units.rows[row], config) > 0 &&
         StoresGoods(world.units.rows[row], config)) {
-      return row;
+      found = row;
     }
   }
-  return kNoRow;
+  return found;
 }
 
 /// @brief First unit that houses livestock; kNoRow if none.
@@ -263,14 +271,18 @@ inline std::uint32_t FindStorageRow(const WorldState& world, const ProductionCon
 /// §3 D1). A stock yard is not a "storing" unit: its table capacity is in
 /// HEADS, which is exactly why FindStorageRow does not find it.
 inline std::uint32_t FindStockYardRow(const WorldState& world, const ProductionConfig& config) {
+  std::uint32_t found = kNoRow;  // the first by id (#1347)
   for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+    if (found != kNoRow && world.units.row_ids[row].value > world.units.row_ids[found].value) {
+      continue;
+    }
     const UnitRow& unit = world.units.rows[row];
     if (unit.level > 0 && unit.type.value < config.unit_types.size() &&
         config.unit_types[unit.type.value].LivestockCapacityHeadAt(unit.level) > 0.0F) {
-      return row;
+      found = row;
     }
   }
-  return kNoRow;
+  return found;
 }
 
 /// @brief First unit of the given type; kNoRow if none. An invalid type
@@ -280,12 +292,16 @@ inline std::uint32_t FindUnitRowOfType(const WorldState& world, UnitTypeId type)
   if (type.value == kInvalidDefIdValue) {
     return kNoRow;
   }
+  std::uint32_t found = kNoRow;  // the first by id (#1347)
   for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+    if (found != kNoRow && world.units.row_ids[row].value > world.units.row_ids[found].value) {
+      continue;
+    }
     if (world.units.rows[row].level > 0 && world.units.rows[row].type.value == type.value) {
-      return row;
+      found = row;
     }
   }
-  return kNoRow;
+  return found;
 }
 
 /// @brief What the settlement holds of one resource, anywhere a taker would
@@ -408,7 +424,7 @@ inline bool SomeStoreAccepts(const WorldState& world,
 }
 
 /// @brief THE DOOR. Puts up to `amount` grams of `resource` into the
-/// settlement's stores, in row order, none of them above its capacity;
+/// settlement's stores, in id order, none of them above its capacity;
 /// returns what actually went in.
 ///
 /// Every delivery to a store goes through here (task A3,
@@ -431,7 +447,13 @@ inline Grams DeliverToStores(WorldState& world,
     return 0;
   }
   Grams placed = 0;
-  for (std::uint32_t row = 0; row < world.units.rows.size() && placed < amount; ++row) {
+  // IN ID ORDER, both passes (#1347): which store fills first decides which
+  // stays short, and the row order is whoever the table last moved.
+  const std::vector<std::uint32_t> by_id = RowsById(world.units);
+  for (const std::uint32_t row : by_id) {
+    if (placed >= amount) {
+      break;
+    }
     UnitRow& unit = world.units.rows[row];
     if (!NumberedStoreAccepts(world, unit, config, resource)) {
       continue;
@@ -463,7 +485,10 @@ inline Grams DeliverToStores(WorldState& world,
   // task A4 gives goods a route, this is the narrowest way to keep the
   // ceiling from inventing losses the design never described. Second pass
   // and not first: the numbered stores are still the settlement's stores.
-  for (std::uint32_t row = 0; row < world.units.rows.size() && placed < amount; ++row) {
+  for (const std::uint32_t row : by_id) {
+    if (placed >= amount) {
+      break;
+    }
     UnitRow& unit = world.units.rows[row];
     // Not built, a numbered store the first pass has seen, or an outline
     // that is not this resource's home.
@@ -506,7 +531,7 @@ inline Grams TakeableGrams(const WorldState& world,
 }
 
 /// @brief Takes up to `wanted` grams of `resource` from anywhere the
-/// settlement keeps it, in row order; returns what was actually taken.
+/// settlement keeps it, in id order; returns what was actually taken.
 ///
 /// TAKING IS WIDER THAN DELIVERING, and deliberately so. A delivery needs a
 /// destination with a number to clamp against, so FindStorageRow asks for a
@@ -523,7 +548,10 @@ inline Grams TakeFromStorage(WorldState& world,
                              ResourceId resource,
                              Grams wanted) {
   Grams taken = 0;
-  for (std::uint32_t row = 0; row < world.units.rows.size() && taken < wanted; ++row) {
+  for (const std::uint32_t row : RowsById(world.units)) {  // which store is drained: by id (#1347)
+    if (taken >= wanted) {
+      break;
+    }
     UnitRow& unit = world.units.rows[row];
     if (!IsTakenFrom(unit, config)) {
       continue;
