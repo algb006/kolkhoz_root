@@ -38,9 +38,8 @@ core::LifeConfig Config() {
   config.mortality_old_percent_per_year = 60.0F;
   config.fertility_from_years = 16.0F;
   config.fertility_to_years = 46.0F;
-  // NO MIGRANTS: the stranger's house, freed when he dies, took one in, who
-  // married a widow and bore (mother 41, day 30) - the world moving, not the
-  // draw, and the check asks about the draw.
+  // No migrants: a house freed by a death would take one in, and the check
+  // asks about the draw, not the world.
   config.migration_per_year = 0.0F;
   for (core::EpochDemography& epoch : config.epochs) {
     epoch.children_per_family = 18.0F;
@@ -99,7 +98,7 @@ Fates Live(Arm arm) {
   core::ResidentId stranger{};
   if (arm == Arm::kOneMoreRow) {
     // His own death draw sits between the village's deaths and its births in
-    // the day, so on one stream every birth after it was re-dealt. A widower
+    // the day, so on one stream every birth after it was re-dealt. He lives
     // in his OWN house: roofless, the ladder lodged him with a family, and
     // that family's day moved by the world, not by the draw.
     core::UnitRow house;
@@ -114,7 +113,9 @@ Fates Live(Arm arm) {
     core::ResidentRow old;
     old.family = family_id;
     old.sex = core::Sex::kMale;
-    old.birth_day = -2000;
+    // A BOY, NOT A WIDOWER: as a bachelor he was a groom, and a widow who
+    // married him bore (mother 41, day 30) - the world moving, not the draw.
+    old.birth_day = -60;
     old.satiety = 80.0F;
     old.health = 80.0F;
     stranger = AppendRow(world.residents, old);
