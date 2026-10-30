@@ -479,6 +479,7 @@ bool ConsiderCandidate(const AssignmentJob& job,
   pick = RankedPick{
       .candidate_index = candidate_index,
       .resident_row = candidate.resident_row,
+      .queue_place = candidate.queue_place,
       .daily_norm = daily_norm,
       .score = score,
       .prefer = horse_work && candidate.horse_locked && params.placement_level >= 1,
@@ -506,10 +507,12 @@ std::vector<RankedPick> RankCandidates(const AssignmentJob& job,
     }
     road_refused += by_road ? 1U : 0U;
   }
-  // The rotated tiebreaker (assignment.h): row plus the day, modulo the
-  // roster. Without it the queue is the birth order and never advances.
-  const auto turn = [&params](std::uint32_t row) {
-    return params.roster == 0 ? row : (row + params.rotation) % params.roster;
+  // The rotated tiebreaker (assignment.h): the place in id order plus the
+  // day, modulo the roster. Without the day the queue never advances; on the
+  // row instead of the place (until #1347) it was whoever the table had last
+  // moved, and a reversed table placed other men on day 1.
+  const auto turn = [&params](std::uint32_t place) {
+    return params.roster == 0 ? place : (place + params.rotation) % params.roster;
   };
   std::ranges::sort(picks, [&turn](const RankedPick& left, const RankedPick& right) {
     if (left.prefer != right.prefer) {
@@ -518,7 +521,7 @@ std::vector<RankedPick> RankCandidates(const AssignmentJob& job,
     if (left.score != right.score) {
       return left.score > right.score;
     }
-    return turn(left.resident_row) < turn(right.resident_row);
+    return turn(left.queue_place) < turn(right.queue_place);
   });
   return picks;
 }

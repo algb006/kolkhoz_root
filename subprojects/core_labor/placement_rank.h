@@ -27,6 +27,9 @@ struct RankedPick {
 
   std::uint32_t resident_row = 0;
 
+  /// AssignmentCandidate::queue_place: what ties break on (#1347).
+  std::uint32_t queue_place = 0;
+
   /// Norm man-days this worker would deliver on this job today.
   float daily_norm = 0.0F;
 

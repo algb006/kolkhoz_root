@@ -49,9 +49,9 @@ std::uint32_t RepriceCare(const CareRepricePlan& plan) {
       RankedPick pick;
       bool by_road = false;
       const AssignmentParams& params = *plan.params;
-      const std::uint32_t row = candidates[index].resident_row;
+      const std::uint32_t place = candidates[index].queue_place;  // #1347: not the row
       CareHand hand{.candidate_index = index,
-                    .turn = params.roster == 0 ? row : (row + params.rotation) % params.roster,
+                    .turn = params.roster == 0 ? place : (place + params.rotation) % params.roster,
                     .drives = drives};
       if (ConsiderCandidate(judged, job_index, candidates[index], index, params, pick, by_road)) {
         hand.norm = pick.daily_norm;

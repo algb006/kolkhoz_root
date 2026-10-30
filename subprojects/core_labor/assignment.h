@@ -326,6 +326,11 @@ struct AssignmentCandidate {
   /// Row index in the current residents table; echoed back in the result.
   std::uint32_t resident_row = 0;
 
+  /// His place in the residents' id order (0 the oldest id): what ties
+  /// break on (#1347). NOT the row: RemoveRow moves the last row into a
+  /// removed one's slot, so the row is whoever the table last moved.
+  std::uint32_t queue_place = 0;
+
   Vec2 home;  ///< Where the day starts and ends; drives travel time.
 
   /// Expected norm-days delivered over a full standard day at this
@@ -607,7 +612,8 @@ int PlacementTier(const AssignmentJob& job);
 ///                   SavedPerHandDay, then target id — never by input
 ///                   position).
 /// @param candidates The workforce; order irrelevant likewise (ties break
-///                   by resident_row, the stable identity).
+///                   by queue_place, the place in id order; #1347: the row
+///                   this said was «the stable identity» is not).
 /// @param params     The day's parameters.
 /// @param rides_horse Optional, per candidate: 1 when his placement took a
 ///                   horse out of the pool (a ploughman or harrower always;

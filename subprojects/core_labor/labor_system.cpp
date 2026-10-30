@@ -2594,7 +2594,12 @@ class LaborSystem final : public ILaborSystem {
     const float aging_from = AgingFromYears(config_, current);
     std::vector<AssignmentCandidate> candidates;
     candidates.reserve(current.residents.rows.size());
-    for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
+    // IN ID ORDER, and the place in it is what ties break on (#1347): the
+    // list was walked in row order and the tie broken by the row, so a
+    // reversed table put other men to work on the first morning.
+    const std::vector<std::uint32_t> by_id = RowsById(current.residents);
+    for (std::uint32_t place = 0; place < by_id.size(); ++place) {
+      const std::uint32_t row = by_id[place];
       const ResidentRow& resident = current.residents.rows[row];
       Vec2 home;
       if (!Employable(current, resident) || !HomePosition(current, resident.family, home)) {
@@ -2644,6 +2649,7 @@ class LaborSystem final : public ILaborSystem {
       }
       AssignmentCandidate candidate;
       candidate.resident_row = row;
+      candidate.queue_place = place;
       candidate.home = home;
       // Ranked before any work is chosen, so the sober factor is the general
       // one: the three spared works (AlcoholSparesWork) are spared where the
