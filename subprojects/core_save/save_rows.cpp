@@ -93,8 +93,9 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // before the build (a float before the 8-aligned work), 56 fields.
 // Save 196 (#1310): draw_key, a u32 after spouse - predicted 328 -> 336
 // before the build (sex and the signed birth day each move a word on, the
-// row aligns to 8), 57 fields.
-static_assert(sizeof(ResidentRow) == 336,
+// row aligns to 8). A MISS, named: the build measured 328 - the word fell
+// into padding the row already had; the field count, 57, caught it.
+static_assert(sizeof(ResidentRow) == 328,
               "ResidentRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 59: distiller_supplied_month, a distiller's supplied month
 // (crime §7, register 206) — 43 fields; the size is read off the build.
