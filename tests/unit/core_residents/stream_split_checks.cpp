@@ -208,6 +208,24 @@ void PrintDifferences(const char* arm, const Fates& base, const Fates& other) {
     std::cout << "    base: " << (in_base == base.morning.end() ? "-" : in_base->second) << '\n'
               << "    here: " << (here == other.morning.end() ? "-" : here->second) << '\n';
   };
+  // THE FIRST MORNING THAT DIFFERS, by day, then id: where the arms parted.
+  for (core::SimDay day = 1; day <= kDays; ++day) {
+    bool printed = false;
+    for (const auto& [key, line] : base.morning) {
+      if (key.second != day) {
+        continue;
+      }
+      const auto here = other.morning.find(key);
+      if (here != other.morning.end() && here->second != line) {
+        std::cout << "  " << arm << ": first parted on day " << day << ", resident " << key.first
+                  << "\n    base: " << line << "\n    here: " << here->second << '\n';
+        printed = true;
+      }
+    }
+    if (printed) {
+      break;
+    }
+  }
   for (const auto& birth : base.born) {
     if (!other.born.contains(birth)) {
       std::cout << "  " << arm << ": mother " << birth.first << " bore on day " << birth.second
