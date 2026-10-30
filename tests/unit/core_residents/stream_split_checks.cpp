@@ -27,7 +27,7 @@ int Expect(bool condition, const char* label) {
 }
 
 constexpr std::uint32_t kCouples = 24;
-constexpr SimDay kDays = 40;
+constexpr core::SimDay kDays = 40;
 
 core::LifeConfig Config() {
   core::LifeConfig config;
@@ -45,8 +45,7 @@ core::LifeConfig Config() {
   return config;
 }
 
-/// The village: kCouples households of a wife and a husband, then one old
-/// bachelor at the end (the resident the row-order arm removes).
+/// The village: kCouples households of a wife and a husband.
 core::WorldState Village() {
   core::WorldState world;
   world.world_seed = 1938;
@@ -66,7 +65,7 @@ core::WorldState Village() {
     core::ResidentRow wife;
     wife.family = family_id;
     wife.sex = core::Sex::kFemale;
-    wife.birth_day = -300 - static_cast<SimDay>(i);
+    wife.birth_day = -300 - static_cast<std::int32_t>(i);
     wife.satiety = 80.0F;
     wife.health = 80.0F;
     const core::ResidentId wife_id = AppendRow(world.residents, wife);
@@ -80,8 +79,8 @@ core::WorldState Village() {
 }
 
 struct Fates {
-  std::map<std::uint64_t, SimDay> died;             // resident id -> the day gone
-  std::set<std::pair<std::uint64_t, SimDay>> born;  // (mother id, day)
+  std::map<std::uint64_t, core::SimDay> died;             // resident id -> the day gone
+  std::set<std::pair<std::uint64_t, core::SimDay>> born;  // (mother id, day)
 };
 
 enum class Arm : std::uint8_t {
@@ -107,7 +106,7 @@ Fates Live(Arm arm) {
     alive.insert(id.value);
   }
   Fates fates;
-  for (SimDay day = 1; day <= kDays; ++day) {
+  for (core::SimDay day = 1; day <= kDays; ++day) {
     world.calendar.tick = static_cast<std::uint64_t>(day) * core::kTicksPerDay;
     core::RefreshCalendarCaches(world.calendar);
     if (arm == Arm::kExtraDraw) {
@@ -118,7 +117,8 @@ Fates Live(Arm arm) {
     for (std::uint32_t row = 0; row < world.residents.rows.size(); ++row) {
       const std::uint64_t id = world.residents.row_ids[row].value;
       now.insert(id);
-      if (!alive.contains(id) && world.residents.rows[row].birth_day == world.calendar.day) {
+      if (!alive.contains(id) &&
+          world.residents.rows[row].birth_day == static_cast<std::int32_t>(world.calendar.day)) {
         fates.born.insert({world.residents.rows[row].mother.value, world.calendar.day});
       }
     }
