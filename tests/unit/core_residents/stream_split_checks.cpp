@@ -7,6 +7,7 @@
 #include <iostream>
 #include <map>
 #include <set>
+#include <string>
 #include <utility>
 
 #include "core_common/calendar.h"
@@ -84,7 +85,24 @@ core::WorldState Village() {
 struct Fates {
   std::map<std::uint64_t, core::SimDay> died;             // resident id -> the day gone
   std::set<std::pair<std::uint64_t, core::SimDay>> born;  // (mother id, day)
+  // Each first-village resident's morning, so a moved fate prints its why.
+  std::map<std::pair<std::uint64_t, core::SimDay>, std::string> morning;
 };
+
+std::string Morning(const core::WorldState& world, std::uint32_t row) {
+  const core::ResidentRow& person = world.residents.rows[row];
+  const std::uint32_t family_row = FindRow(world.families, person.family);
+  std::string line = "spouse " + std::to_string(person.spouse.value) + " family " +
+                     std::to_string(person.family.value) + " health " +
+                     std::to_string(person.health);
+  if (family_row != core::kNoRow) {
+    const core::FamilyRow& family = world.families.rows[family_row];
+    line += " satisfaction " + std::to_string(family.satisfaction) + " satiety_year " +
+            std::to_string(family.satiety_year_mean) + " house " +
+            std::to_string(family.house.value);
+  }
+  return line;
+}
 
 enum class Arm : std::uint8_t {
   kBase,
@@ -131,6 +149,9 @@ Fates Live(Arm arm) {
     if (arm == Arm::kExtraDraw) {
       core::NextRandomBits(world.rng);
     }
+    for (std::uint32_t row = 0; row < world.residents.rows.size(); ++row) {
+      fates.morning[{world.residents.row_ids[row].value, day}] = Morning(world, row);
+    }
     core::RunDemographyDay(config, world);
     std::set<std::uint64_t> now;
     for (std::uint32_t row = 0; row < world.residents.rows.size(); ++row) {
@@ -175,10 +196,17 @@ void PrintDifferences(const char* arm, const Fates& base, const Fates& other) {
                 << " here and lived in the base\n";
     }
   }
+  const auto mornings = [&](std::uint64_t id, core::SimDay day) {
+    const auto in_base = base.morning.find({id, day});
+    const auto here = other.morning.find({id, day});
+    std::cout << "    base: " << (in_base == base.morning.end() ? "-" : in_base->second) << '\n'
+              << "    here: " << (here == other.morning.end() ? "-" : here->second) << '\n';
+  };
   for (const auto& birth : base.born) {
     if (!other.born.contains(birth)) {
       std::cout << "  " << arm << ": mother " << birth.first << " bore on day " << birth.second
                 << " in the base only\n";
+      mornings(birth.first, birth.second);
     }
   }
   for (const auto& birth : other.born) {
