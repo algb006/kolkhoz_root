@@ -154,6 +154,36 @@ Fates Live(Arm arm) {
   return fates;
 }
 
+/// Every fate the two arms disagree on, by resident and day: a red line names
+/// WHO moved, not only that something did.
+void PrintDifferences(const char* arm, const Fates& base, const Fates& other) {
+  for (const auto& [id, day] : base.died) {
+    const auto it = other.died.find(id);
+    if (it == other.died.end() || it->second != day) {
+      std::cout << "  " << arm << ": resident " << id << " died on day " << day << " in the base, "
+                << (it == other.died.end() ? 0U : it->second) << " here (0 = lived)\n";
+    }
+  }
+  for (const auto& [id, day] : other.died) {
+    if (!base.died.contains(id)) {
+      std::cout << "  " << arm << ": resident " << id << " died on day " << day
+                << " here and lived in the base\n";
+    }
+  }
+  for (const auto& birth : base.born) {
+    if (!other.born.contains(birth)) {
+      std::cout << "  " << arm << ": mother " << birth.first << " bore on day " << birth.second
+                << " in the base only\n";
+    }
+  }
+  for (const auto& birth : other.born) {
+    if (!base.born.contains(birth)) {
+      std::cout << "  " << arm << ": mother " << birth.first << " bore on day " << birth.second
+                << " here only\n";
+    }
+  }
+}
+
 }  // namespace
 
 /// THE STREAM IS NOT A COIN ANY MORE (#1310; #1303). Until 0.37.341 every
@@ -167,6 +197,10 @@ int CheckDrawsAreKeyedByResident() {
   const Fates base = Live(Arm::kBase);
   const Fates extra = Live(Arm::kExtraDraw);
   const Fates more = Live(Arm::kOneMoreRow);
+  std::cout << "  keyed draws: base " << base.died.size() << " deaths, " << base.born.size()
+            << " births in " << kDays << " days\n";
+  PrintDifferences("one extra draw", base, extra);
+  PrintDifferences("one resident more", base, more);
   failures += Expect(!base.died.empty() && !base.born.empty(),
                      "keyed draws: the base village has deaths and births to compare");
   failures += Expect(extra.died == base.died && extra.born == base.born,
