@@ -2788,7 +2788,10 @@ class LaborSystem final : public ILaborSystem {
   /// seam must always drain it in the same order.
   void RunHour(WorldState& current, std::uint32_t hour) const {
     const DayWindow window = SolarWindow(current.weather.daylight_hours);
-    for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
+    // THE HOUR GOES BY ID (#1347): the workers drain one seam each, and the
+    // last one is clamped to what is left, so the order decides whose hour is
+    // short (kj1347: two carters' rest parted on day 2 at noon).
+    for (const std::uint32_t row : RowsById(current.residents)) {
       const WorkKind kind = current.residents.rows[row].work.kind;
       if (kind == WorkKind::kNone) {
         continue;

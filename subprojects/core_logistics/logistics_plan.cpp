@@ -874,7 +874,9 @@ GroomPlan BuildGroomPlan(const LogisticsConfig& config,
   const bool stabled = HorseYardPositionOf(world, config.horse_kind, yard);
 
   std::vector<Mover> movers;
-  for (std::uint32_t row = 0; row < world.residents.rows.size(); ++row) {
+  // THE MOVERS IN ID ORDER (#1347): their chains are dealt in this order, and
+  // the row order was whoever the table had last moved.
+  for (const std::uint32_t row : RowsById(world.residents)) {
     const ResidentRow& person = world.residents.rows[row];
     const WorkAssignment& work = person.work;
     Vec2 house;
