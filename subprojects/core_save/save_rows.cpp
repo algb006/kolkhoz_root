@@ -91,7 +91,10 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // bytes fell into padding the row already had after the work.
 // Save 188 (#1241): mood_base, a float after mood - predicted 320 -> 328
 // before the build (a float before the 8-aligned work), 56 fields.
-static_assert(sizeof(ResidentRow) == 328,
+// Save 196 (#1310): draw_key, a u32 after spouse - predicted 328 -> 336
+// before the build (sex and the signed birth day each move a word on, the
+// row aligns to 8), 57 fields.
+static_assert(sizeof(ResidentRow) == 336,
               "ResidentRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 59: distiller_supplied_month, a distiller's supplied month
 // (crime §7, register 206) — 43 fields; the size is read off the build.
@@ -99,7 +102,7 @@ static_assert(sizeof(ResidentRow) == 328,
 // Save 79: away_until_day, _hour, _walk_hours, _reason — 50. Save 105:
 // idle_reason — 51. Save 113: satiety_year and satiety_childhood — 53.
 // Save 122: samogon_ml — 54.
-static_assert(AggregateArity<ResidentRow>() == 56,
+static_assert(AggregateArity<ResidentRow>() == 57,
               "ResidentRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-14: first_meal_eaten landed in padding beside food_variety_mask; the
 // size stayed 56 + amounts and the field count went to 16. The same day the
@@ -739,6 +742,7 @@ void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
   WriteEntityId(out, row.mother);
   WriteEntityId(out, row.father);
   WriteEntityId(out, row.spouse);
+  out.WriteU32(row.draw_key);  // save 196 (#1310)
   out.WriteU8(static_cast<std::uint8_t>(row.sex));
   out.WriteI32(row.birth_day);
 
@@ -833,6 +837,7 @@ ResidentRow ReadResidentRow(LoadSource& source) {
   row.mother = ReadEntityId<ResidentId>(in);
   row.father = ReadEntityId<ResidentId>(in);
   row.spouse = ReadEntityId<ResidentId>(in);
+  row.draw_key = in.ReadU32();  // save 196 (#1310)
   row.sex = static_cast<Sex>(source.ReadEnumValue(0, kMaxSex, "resident sex"));
   row.birth_day = in.ReadI32();
 

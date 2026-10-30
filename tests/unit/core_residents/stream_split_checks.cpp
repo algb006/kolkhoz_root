@@ -87,6 +87,10 @@ struct Fates {
   std::set<std::pair<std::uint64_t, core::SimDay>> born;  // (mother id, day)
   // Each first-village resident's morning, so a moved fate prints its why.
   std::map<std::pair<std::uint64_t, core::SimDay>, std::string> morning;
+  // Every draw key ever seen, with the id it belongs to, and how many times
+  // two ids shared one (the key must be unique; boss [5]).
+  std::map<std::uint32_t, std::uint64_t> key_owner;
+  std::uint32_t key_collisions = 0;
 };
 
 std::string Morning(const core::WorldState& world, std::uint32_t row) {
@@ -157,6 +161,12 @@ Fates Live(Arm arm) {
     }
     for (std::uint32_t row = 0; row < world.residents.rows.size(); ++row) {
       fates.morning[{world.residents.row_ids[row].value, day}] = Morning(world, row);
+      const std::uint32_t key =
+          core::DrawKeyOf(world.residents.rows[row], world.residents.row_ids[row]);
+      const auto [it, fresh] = fates.key_owner.emplace(key, world.residents.row_ids[row].value);
+      if (!fresh && it->second != world.residents.row_ids[row].value) {
+        ++fates.key_collisions;
+      }
     }
     core::RunDemographyDay(config, world);
     std::set<std::uint64_t> now;
@@ -258,8 +268,12 @@ int CheckDrawsAreKeyedByResident() {
             << " births in " << kDays << " days\n";
   PrintDifferences("one extra draw", base, extra);
   PrintDifferences("one resident more", base, more);
+  std::cout << "  keyed draws: " << base.key_owner.size() << " draw keys, " << base.key_collisions
+            << " shared by two residents\n";
   failures += Expect(!base.died.empty() && !base.born.empty(),
                      "keyed draws: the base village has deaths and births to compare");
+  failures += Expect(base.key_owner.size() > 2 * kCouples && base.key_collisions == 0,
+                     "keyed draws: every resident, born ones too, has a draw key of his own");
   failures += Expect(extra.died == base.died && extra.born == base.born,
                      "keyed draws: one extra draw off the world's stream moves no death and no "
                      "birth");
