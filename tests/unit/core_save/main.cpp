@@ -2051,7 +2051,9 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // Save 156 (#709): +2 a resident — the work's two day flags; 521 -> 525.
     // Save 188 (#1241): mood_base, +4 a resident, two - predicted 525 -> 533,
     // held.
-    {"residents", 533, 0x3ccbafc8e4dac02eULL},
+    // Save 196 (#1310): draw_key, +4 a resident, two - predicted 533 -> 541
+    // (written after the build's first red, which measured it: 541).
+    {"residents", 541, 0xbab7b4173a312daeULL},
     // 2026-09-18, save 57: +2 — ration_granted, one byte per family of two.
     // Save 60: +2 — a yard's dry months, one byte per family of two.
     // Save 65: families +8 (overwork_penalty, two yards), fields +6 (the avral's
