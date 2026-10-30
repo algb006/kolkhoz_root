@@ -282,7 +282,9 @@ void GoOut(const NightTradeConfig& config, const FoodConfig& food, WorldState& c
           break;  // STUB: no old forest in reach — he stays home tonight
         }
         const auto square = static_cast<std::size_t>(
-            NightUnitFloat(current, current.residents.row_ids[row].value, kHuntSquareSalt) *
+            NightUnitFloat(current,
+                           DrawKeyOf(current.residents.rows[row], current.residents.row_ids[row]),
+                           kHuntSquareSalt) *
             static_cast<float>(in_reach.size()));
         RecordOuting(current,
                      row,
@@ -318,8 +320,9 @@ void ComeBack(const NightTradeConfig& config, WorldState& current) {
       AddCatchToPantry(family, config.fish, fish_each);
       AddLedgerAmount(current.ledger.current.night_catch, config.fish, fish_each);
     } else if (outing.trade == NightTrade::kHunter &&
-               NightUnitFloat(current, outing.resident.value, kHuntCatchSalt) <
-                   config.hunt_success_chance) {
+               NightUnitFloat(current,
+                              DrawKeyOf(current.residents.rows[row], outing.resident),
+                              kHuntCatchSalt) < config.hunt_success_chance) {
       AddCatchToPantry(family, config.meat, game);
       AddLedgerAmount(current.ledger.current.night_catch, config.meat, game);
     }
