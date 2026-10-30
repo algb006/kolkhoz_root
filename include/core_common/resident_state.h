@@ -128,6 +128,14 @@ struct ResidentRow {
 
   ResidentId spouse;  ///< Invalid = unmarried or widowed.
 
+  /// THE KEY THIS PERSON'S DRAWS ARE TAKEN UNDER (#1310; save 196): 0 = the
+  /// id itself (the starting generation); a newborn's is a hash of the
+  /// mother's key, the birth day and the twin's place, a newcomer's of his day
+  /// and place in it. Not the id: a child's id counts every birth before it
+  /// in the village, so one birth more anywhere re-dealt every later child's
+  /// death, wedding and twin. Read through DrawKeyOf.
+  std::uint32_t draw_key = 0;
+
   Sex sex = Sex::kFemale;
 
   /// Day of birth in campaign days — SIGNED: the starting generation was
@@ -475,6 +483,12 @@ struct ResidentRow {
 
 /// @brief The residents table type used by WorldState.
 using ResidentTable = StateTable<ResidentId, ResidentRow>;
+
+/// @brief The key a resident's keyed draws are taken under (ResidentRow::
+/// draw_key): the stored key, or the id for the starting generation (0).
+constexpr std::uint32_t DrawKeyOf(const ResidentRow& person, ResidentId id) {
+  return person.draw_key != 0 ? person.draw_key : id.value;
+}
 
 }  // namespace core
 

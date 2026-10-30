@@ -72,6 +72,24 @@ std::uint32_t NewcomerKey(const WorldState& current,
       CounterHashBits(current.world_seed, static_cast<std::uint64_t>(day), entity, salt) >> 32U);
 }
 
+/// @brief The draw key of the resident at `row` (resident_state.h DrawKeyOf).
+std::uint32_t DrawKeyAt(const WorldState& current, std::uint32_t row) {
+  return DrawKeyOf(current.residents.rows[row], current.residents.row_ids[row]);
+}
+
+constexpr std::uint64_t kChildKeySalt = 0x4368694BULL;    // "ChiK"
+constexpr std::uint64_t kMigrantKeySalt = 0x4D69674BULL;  // "MigK"
+
+/// @brief A newborn's draw key (ResidentRow::draw_key): the mother's key, the
+/// birth day and the child's place among twins (0 the first, 1 the second).
+/// Never 0, which reads as «the id».
+std::uint32_t ChildDrawKey(std::uint32_t mother_key, SimDay day, std::uint32_t twin_place) {
+  const auto key = static_cast<std::uint32_t>(
+      CounterHashBits(mother_key, static_cast<std::uint64_t>(day), twin_place, kChildKeySalt) >>
+      32U);
+  return key != 0 ? key : 1U;
+}
+
 /// @brief A private generator for an event that draws several numbers (a
 /// newborn, a migrant), seeded from its key; the world's stream is untouched.
 RngState KeyedGenerator(const WorldState& current,
@@ -319,8 +337,7 @@ void RunDeaths(const LifeConfig& config, WorldState& current, SimDay day) {
     const float daily_chance = percent_per_year / 100.0F / static_cast<float>(kDaysPerYear);
     const bool spared = current.residents.row_ids[row] == current.named.elder &&
                         current.calendar.date.year <= config.elder_spared_through_year;
-    if (KeyedUnitFloat(current, day, current.residents.row_ids[row].value, kDeathSalt) <
-            daily_chance &&
+    if (KeyedUnitFloat(current, day, DrawKeyAt(current, row), kDeathSalt) < daily_chance &&
         !spared) {
       dead.push_back(current.residents.row_ids[row]);
     }
@@ -376,8 +393,7 @@ void RunOutflow(const LifeConfig& config,
     const float age = BiologicalAgeYears(config.life_speedup, resident.birth_day, day);
     const bool working_age = age >= config.adult_age_years && age < config.mortality_age_old_years;
     if (working_age && resident.spouse.value == kInvalidEntityIdValue &&
-        KeyedUnitFloat(current, day, current.residents.row_ids[row].value, kOutflowSalt) <
-            daily_chance) {
+        KeyedUnitFloat(current, day, DrawKeyAt(current, row), kOutflowSalt) < daily_chance) {
       leaving.push_back(current.residents.row_ids[row]);
     }
   }
@@ -455,27 +471,28 @@ void MaybeBearTwin(const LifeConfig& config,
                    SimDay day,
                    const ResidentRow& mother,
                    const ResidentRow& father,
-                   ResidentId mother_id,
+                   std::uint32_t mother_key,
                    ResidentId first_id) {
-  // Keyed by the MOTHER and the day (#1310), not by the first child's id,
-  // which counts every birth before hers in the village.
+  // Keyed by the MOTHER's draw key and the day (#1310), not by the first
+  // child's id, which counts every birth before hers in the village.
   const std::uint64_t seed = current.world_seed;
-  if (!(CounterHashUnitFloat(seed, day, mother_id.value, kTwinsSalt) < config.twins_share)) {
+  if (!(CounterHashUnitFloat(seed, day, mother_key, kTwinsSalt) < config.twins_share)) {
     return;
   }
-  RngState rng = SeedRngState(CounterHashBits(seed, day, mother_id.value, kTwinGeneratorSalt),
-                              mother_id.value);
+  RngState rng =
+      SeedRngState(CounterHashBits(seed, day, mother_key, kTwinGeneratorSalt), mother_key);
   if (NextRandomUnitFloat(rng) * 100.0F < epoch.child_mortality_percent) {
     return;  // the second did not live: a single birth, for the village
   }
   const std::uint32_t first_row = FindRow(current.residents, first_id);
   const ResidentRow first = current.residents.rows[first_row];
-  const bool identical = CounterHashUnitFloat(seed, day, mother_id.value, kIdenticalSalt) <
-                         config.identical_twins_share;
+  const bool identical =
+      CounterHashUnitFloat(seed, day, mother_key, kIdenticalSalt) < config.identical_twins_share;
   ResidentRow child;
   child.family = first.family;
   child.mother = first.mother;
   child.father = first.father;
+  child.draw_key = ChildDrawKey(mother_key, day, 1);
   child.sex = identical ? first.sex : DrawNewbornSex(config, current, rng, day);
   child.birth_day = first.birth_day;
   // «Различимы только одеждой и характером»: the character is its own.
@@ -490,7 +507,7 @@ void MaybeBearTwin(const LifeConfig& config,
     child.build_deviation = first.build_deviation;
   } else {
     RollBodyFromParents(seed,
-                        NewcomerKey(current, day, mother_id.value, kTwinBodySalt),
+                        NewcomerKey(current, day, mother_key, kTwinBodySalt),
                         config.body,
                         mother,
                         father,
@@ -540,9 +557,8 @@ void RunBirths(const LifeConfig& config,
         family_row == kNoRow
             ? 1.0F
             : BirthMultiplier(config, current.families.rows[family_row].satisfaction);
-    const bool drawn =
-        KeyedUnitFloat(current, day, current.residents.row_ids[row].value, kBirthSalt) <
-        daily_chance * multiplier;
+    const bool drawn = KeyedUnitFloat(current, day, DrawKeyAt(current, row), kBirthSalt) <
+                       daily_chance * multiplier;
     if (drawn && !BirthsStopped(config, current, resident)) {
       mothers.push_back(row);
     }
@@ -551,8 +567,7 @@ void RunBirths(const LifeConfig& config,
     // Child mortality applies at birth, off-screen (tone design §4;
     // reference run does the same). The child's draws come off a generator
     // keyed by the mother and the day (#1310).
-    RngState rng =
-        KeyedGenerator(current, day, current.residents.row_ids[mother_row].value, kNewbornSalt);
+    RngState rng = KeyedGenerator(current, day, DrawKeyAt(current, mother_row), kNewbornSalt);
     if (NextRandomUnitFloat(rng) * 100.0F < epoch.child_mortality_percent) {
       continue;
     }
@@ -563,6 +578,8 @@ void RunBirths(const LifeConfig& config,
     child.family = mother.family;
     child.mother = current.residents.row_ids[mother_row];
     child.father = mother.spouse;
+    const std::uint32_t mother_key = DrawKeyAt(current, mother_row);
+    child.draw_key = ChildDrawKey(mother_key, day, 0);
     child.sex = DrawNewbornSex(config, current, rng, day);
     child.birth_day = static_cast<std::int32_t>(day);
     // Born-with inclinations: random with a weak parental pull
@@ -583,7 +600,7 @@ void RunBirths(const LifeConfig& config,
     // did exactly that, and the balance runs caught it by losing truancy and
     // a slice of the year's labour.
     RollBodyFromParents(current.world_seed,
-                        NewcomerKey(current, day, child.mother.value, kNewbornBodySalt),
+                        NewcomerKey(current, day, mother_key, kNewbornBodySalt),
                         config.body,
                         mother,
                         father,
@@ -601,7 +618,7 @@ void RunBirths(const LifeConfig& config,
     // skips some of them, and a birth nobody survived is not a birth the
     // village saw.
     current.ledger.current.births += 1;
-    MaybeBearTwin(config, current, epoch, day, mother, father, child.mother, child_id);
+    MaybeBearTwin(config, current, epoch, day, mother, father, mother_key, child_id);
   }
 }
 
@@ -1023,8 +1040,7 @@ void RunMarriages(const LifeConfig& config, WorldState& current, SimDay day) {
         WaitsForHouse(current, current.residents.row_ids[bride_row])) {
       continue;
     }
-    if (KeyedUnitFloat(current, day, current.residents.row_ids[bride_row].value, kWeddingSalt) >=
-        daily_chance) {
+    if (KeyedUnitFloat(current, day, DrawKeyAt(current, bride_row), kWeddingSalt) >= daily_chance) {
       continue;
     }
     const ResidentId bride_id = current.residents.row_ids[bride_row];
@@ -1117,6 +1133,12 @@ void RunMigration(const LifeConfig& config, WorldState& current, SimDay day) {
     const std::uint32_t newcomer_key =
         NewcomerKey(current, day, static_cast<std::uint64_t>(arrival), kMigrantPastSalt);
     RollBody(current.world_seed, newcomer_key, config.body, migrant);
+    // His own draws from here on (ResidentRow::draw_key). The place in the
+    // day counts the day's arrivals, the turned-away included, so a migrant
+    // turned away earlier in the day does not move a later one's key.
+    const std::uint32_t migrant_key =
+        NewcomerKey(current, day, static_cast<std::uint64_t>(arrival), kMigrantKeySalt);
+    migrant.draw_key = migrant_key != 0 ? migrant_key : 1U;
     const float age = DrawInRange(rng, config.marriage_age_years, config.fertility_to_years);
     migrant.birth_day =
         static_cast<std::int32_t>(day) -

@@ -179,6 +179,9 @@ void Arrive(const LifeConfig& config,
   // to be given, which counts every birth before his.
   const auto newcomer_key = static_cast<std::uint32_t>(NextRandomBits(rng));
   RollBody(current.world_seed, newcomer_key, config.body, specialist);
+  // His own draws from here on (ResidentRow::draw_key; #1310); never 0.
+  const auto draw_key = static_cast<std::uint32_t>(NextRandomBits(rng));
+  specialist.draw_key = draw_key != 0 ? draw_key : 1U;
   const float age =
       kSpecialistAgeFrom + (NextRandomUnitFloat(rng) * (kSpecialistAgeTo - kSpecialistAgeFrom));
   specialist.birth_day =
