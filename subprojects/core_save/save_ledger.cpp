@@ -183,9 +183,12 @@ constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
 // u16[12] after harnessed_assignment_days - predicted 1200 -> 1320 (120 bytes,
 // the float before them and its pad unchanged) and 145 fields before the
 // build; on the wire +120 a book.
-static_assert(sizeof(YearLedger) == 1320 + (43 * kAmountsSize) + kBuiltInRowsSize,
+// Save 197 (#1205, the births' hard stops): four u32 after weddings -
+// predicted 1320 -> 1336 (16 bytes on a word's edge, the rest moves whole)
+// and 149 fields before the build; on the wire +16 a book.
+static_assert(sizeof(YearLedger) == 1336 + (43 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 145,
+static_assert(AggregateArity<YearLedger>() == 149,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(BuiltInRow) == 16 && AggregateArity<BuiltInRow>() == 3,
               "BuiltInRow changed — update its codec and VERSION_SAVE");
@@ -233,6 +236,10 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteU32(book.arrivals);
   out.WriteU32(book.departures);
   out.WriteU32(book.weddings);
+  out.WriteU32(book.births_drawn);            // save 197 (#1205)
+  out.WriteU32(book.births_stopped_health);   // save 197
+  out.WriteU32(book.births_stopped_away);     // save 197
+  out.WriteU32(book.births_stopped_satiety);  // save 197
 
   out.WriteFloat(book.satiety_day_mean_sum);
   out.WriteU32(book.satiety_days);
@@ -428,6 +435,10 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.arrivals = in.ReadU32();
   book.departures = in.ReadU32();
   book.weddings = in.ReadU32();
+  book.births_drawn = in.ReadU32();            // save 197 (#1205)
+  book.births_stopped_health = in.ReadU32();   // save 197
+  book.births_stopped_away = in.ReadU32();     // save 197
+  book.births_stopped_satiety = in.ReadU32();  // save 197
 
   book.satiety_day_mean_sum = in.ReadFloat();
   book.satiety_days = in.ReadU32();

@@ -154,6 +154,21 @@ struct YearLedger {
 
   std::uint32_t weddings = 0;
 
+  // -- the births' hard stops (#1205; save 197) -------------------------------
+  /// Wives whose birth draw fell under the day's chance; each is then either
+  /// stopped by one cause below or goes on to the child-mortality draw.
+  std::uint32_t births_drawn = 0;
+
+  /// Drawn and stopped: the mother's health under the stop (decision 106).
+  std::uint32_t births_stopped_health = 0;
+
+  /// Drawn and stopped: the mother away in the district (hospital and the
+  /// like) - the birth waits for her return.
+  std::uint32_t births_stopped_away = 0;
+
+  /// Drawn and stopped: the family's year satiety under the stop.
+  std::uint32_t births_stopped_satiety = 0;
+
   // -- satiety, the settlement's daily mean -----------------------------------
   /// Sum of the daily settlement mean satiety and the days summed: the
   /// year's mean is the quotient. Same fold that feeds VitalsState; kept

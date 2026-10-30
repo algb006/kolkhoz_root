@@ -435,18 +435,50 @@ float BirthMultiplier(const LifeConfig& config, Metric satisfaction) {
 /// prohibition it says "this season forbids children" rather than "this
 /// hunger does", and it closed the village from July to November every
 /// year. Health needs no such care because health is already slow.
-bool BirthsStopped(const LifeConfig& config, const WorldState& current, const ResidentRow& mother) {
+/// Which hard stop holds a drawn birth, if any (#1205: the year's book counts
+/// each). Away first: a mother in the district's hospital is also under the
+/// health stop, and the book names her absence, the cause the design gives.
+enum class BirthStop : std::uint8_t { kNone, kAway, kHealth, kSatiety };
+
+BirthStop BirthStoppedBy(const LifeConfig& config,
+                         const WorldState& current,
+                         const ResidentRow& mother) {
   const BirthConditionsConfig& births = config.birth_conditions;
   // AWAY, THE BIRTH WAITS FOR HER RETURN (boss, boss-core-epoch1-2 seq 1,
   // answer 5), said here and not left to the hospital's health lying below
   // the health stop: that held only while hospital_return_health and the
   // reasons for going away happened to agree with it.
-  if (mother.health < births.mother_health_stop || AwayInDistrict(mother, current.calendar.tick)) {
-    return true;
+  if (AwayInDistrict(mother, current.calendar.tick)) {
+    return BirthStop::kAway;
+  }
+  if (mother.health < births.mother_health_stop) {
+    return BirthStop::kHealth;
   }
   const std::uint32_t family_row = FindRow(current.families, mother.family);
-  return family_row != kNoRow &&
-         current.families.rows[family_row].satiety_year_mean < births.satiety_stop;
+  if (family_row != kNoRow &&
+      current.families.rows[family_row].satiety_year_mean < births.satiety_stop) {
+    return BirthStop::kSatiety;
+  }
+  return BirthStop::kNone;
+}
+
+/// Books one drawn birth and its stop in the year's book; true when stopped.
+bool BookDrawnBirth(BirthStop stop, YearLedger& book) {
+  book.births_drawn += 1;
+  switch (stop) {
+    case BirthStop::kAway:
+      book.births_stopped_away += 1;
+      return true;
+    case BirthStop::kHealth:
+      book.births_stopped_health += 1;
+      return true;
+    case BirthStop::kSatiety:
+      book.births_stopped_satiety += 1;
+      return true;
+    case BirthStop::kNone:
+      break;
+  }
+  return false;
 }
 
 /// The counter-hash salts of the twins' draws (life cycle §4).
@@ -559,7 +591,8 @@ void RunBirths(const LifeConfig& config,
             : BirthMultiplier(config, current.families.rows[family_row].satisfaction);
     const bool drawn = KeyedUnitFloat(current, day, DrawKeyAt(current, row), kBirthSalt) <
                        daily_chance * multiplier;
-    if (drawn && !BirthsStopped(config, current, resident)) {
+    if (drawn &&
+        !BookDrawnBirth(BirthStoppedBy(config, current, resident), current.ledger.current)) {
       mothers.push_back(row);
     }
   }
@@ -1164,6 +1197,10 @@ void RunMigration(const LifeConfig& config, WorldState& current, SimDay day) {
 
 // RunHygiene, declared in demography.h, lives in hygiene.cpp since 0.37.156
 // (this file's size).
+
+float BirthMultiplierOf(const LifeConfig& config, Metric satisfaction) {
+  return BirthMultiplier(config, satisfaction);
+}
 
 void RunDemographyDay(const LifeConfig& config, WorldState& current) {
   const SimDay day = current.calendar.day;

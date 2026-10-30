@@ -41,6 +41,16 @@ namespace core {
 ///        removed, so no reference into its tables survives this call.
 void RunDemographyDay(const LifeConfig& config, WorldState& current);
 
+/// @brief The birth rate's multiplier for a household of this satisfaction
+///        (decision 106's bands, life.csv): the very function RunBirths reads.
+///
+/// A door for instruments (#1205): a probe that recomputed the bands from the
+/// table would agree with any error in them.
+/// @param config The life configuration; not written.
+/// @param satisfaction The family's satisfaction, 0..100.
+/// @return The band's multiplier, 0 or more.
+float BirthMultiplierOf(const LifeConfig& config, Metric satisfaction);
+
 /// @brief One day of personal cleanliness (health design §3): it falls with
 ///        time, twice as fast on dirty work, faster still above +25, and a
 ///        STANDING bathhouse gives back. Crossing

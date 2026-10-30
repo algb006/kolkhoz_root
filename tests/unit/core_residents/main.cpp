@@ -29,6 +29,7 @@
 #include "alcoholism.h"
 #include "appearance_memory.h"
 #include "barter_checks.h"
+#include "birth_stop_checks.h"
 #include "burial_checks.h"
 #include "core_common/calendar.h"
 #include "core_common/quantities.h"
@@ -5114,6 +5115,7 @@ int main() {
   failures += CheckTheOfficeRungHousesNobody();
   failures += CheckTwins();
   failures += CheckDrawsAreKeyedByResident();
+  failures += CheckTheBirthStopsAreBooked();
   failures += CheckRooflessLadder();
   failures += CheckBarrack();
   failures += CheckHungerAlarmHysteresis();
