@@ -164,10 +164,20 @@ void Arrive(const LifeConfig& config,
 
   ResidentRow specialist;
   specialist.family = family;
-  specialist.sex = NextRandomUnitFloat(current.rng) < 0.5F ? Sex::kMale : Sex::kFemale;
+  // KEYED BY THE POST HE COMES TO AND THE DAY (#1310), not dealt off the
+  // world's stream: a draw more elsewhere moves neither his sex nor his age.
+  constexpr std::uint64_t kSpecialistSalt = 0x53706543ULL;  // "SpeC"
+  const std::uint64_t post_key =
+      (static_cast<std::uint64_t>(arrival.profession.value) << 32U) | arrival.unit.value;
+  RngState rng = SeedRngState(CounterHashBits(current.world_seed,
+                                              static_cast<std::uint64_t>(current.calendar.day),
+                                              post_key,
+                                              kSpecialistSalt),
+                              post_key);
+  specialist.sex = NextRandomUnitFloat(rng) < 0.5F ? Sex::kMale : Sex::kFemale;
   RollBody(current.world_seed, current.residents.next_id_value, config.body, specialist);
-  const float age = kSpecialistAgeFrom +
-                    (NextRandomUnitFloat(current.rng) * (kSpecialistAgeTo - kSpecialistAgeFrom));
+  const float age =
+      kSpecialistAgeFrom + (NextRandomUnitFloat(rng) * (kSpecialistAgeTo - kSpecialistAgeFrom));
   specialist.birth_day =
       static_cast<std::int32_t>(current.calendar.day) -
       static_cast<std::int32_t>(age / config.life_speedup * static_cast<float>(kDaysPerYear));

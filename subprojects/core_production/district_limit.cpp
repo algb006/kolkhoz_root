@@ -137,16 +137,19 @@ std::uint32_t LimitBaseDeliveryDays(const ProductionConfig& config, const WorldS
 std::uint32_t LimitCartArriveDay(const ProductionConfig& config,
                                  const WorldState& current,
                                  const OrderRow& order) {
-  // THE DELAY IS DETERMINED BY THE WORLD, NOT RANDOM: the world's generator
-  // state at this moment and the order's own tick pick it, so the same
-  // campaign delivers the same lot on the same day on one worker and on many
-  // (determinism, CLAUDE.md §10). It is the CURRENT state, not the campaign's
-  // seed: any system that draws more or fewer numbers earlier in the tick
-  // moves the day a later order's cart arrives. That is deterministic and is
-  // not a promise that an unrelated change keeps the day (delivery analysis,
+  // THE DELAY IS KEYED BY THE ORDER (#1310): the campaign's seed, the order's
+  // tick, its kind and its resource pick it, so the same campaign delivers the
+  // same lot on the same day on one worker and on many (determinism,
+  // CLAUDE.md §10), and a draw more elsewhere in the day no longer moves the
+  // day a cart arrives. Until 0.37.341 it was folded off the world's CURRENT
+  // generator state, which any other draw moved (delivery analysis,
   // RACE-001 / UB-002, 2026-09-14).
   const std::uint32_t spread = config.limit.delivery_delay_days_max + 1U;
-  RngState rng = SeedRngState(current.rng.state ^ order.issued_tick, kDeliveryDelayStream);
+  const std::uint64_t order_key =
+      (static_cast<std::uint64_t>(order.kind) << 16U) | order.resource.value;
+  RngState rng = SeedRngState(
+      CounterHashBits(current.world_seed, order.issued_tick, order_key, kDeliveryDelayStream),
+      kDeliveryDelayStream);
   const std::uint32_t delay = NextRandomBelow(rng, spread);
   return static_cast<std::uint32_t>(current.calendar.day) + LimitBaseDeliveryDays(config, current) +
          delay;
