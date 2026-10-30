@@ -95,10 +95,24 @@ Fates Live(Arm arm) {
   core::ResidentId stranger{};
   if (arm == Arm::kOneMoreRow) {
     // His own death draw sits between the village's deaths and its births in
-    // the day, so on one stream every birth after it was re-dealt.
+    // the day, so on one stream every birth after it was re-dealt. A widower
+    // in his OWN house: roofless, the ladder lodged him with a family, and
+    // that family's day moved by the world, not by the draw.
+    core::UnitRow house;
+    house.level = 1;
+    const core::UnitId house_id = AppendRow(world.units, house);
+    core::FamilyRow family;
+    family.house = house_id;
+    family.satisfaction = 60.0F;
+    family.satiety_year_mean = 80.0F;
+    const core::FamilyId family_id = AppendRow(world.families, family);
+    world.units.rows.back().household = family_id;
     core::ResidentRow old;
+    old.family = family_id;
     old.sex = core::Sex::kMale;
     old.birth_day = -2000;
+    old.satiety = 80.0F;
+    old.health = 80.0F;
     stranger = AppendRow(world.residents, old);
   }
   std::set<std::uint64_t> alive;
