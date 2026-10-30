@@ -576,7 +576,14 @@ void RunAgeDeaths(const LivestockDef& kind, HerdRow& herd, HerdId herd_id, World
   }
   const float expected = ExpectedAgeDeathsPerDay(kind, herd);
   auto dead = static_cast<std::uint16_t>(expected);
-  if (NextRandomUnitFloat(world.rng) < expected - static_cast<float>(dead)) {
+  // THE FRACTION IS KEYED BY THE HERD AND THE DAY (#1310): until 0.37.341 it
+  // drew off the world's stream, and the herd plan's (#1289) extra or missing
+  // draw re-dealt every resident's death and birth after it.
+  constexpr std::uint64_t kHerdAgeDeathSalt = 0x48657244ULL;  // "HerD"
+  if (CounterHashUnitFloat(world.world_seed,
+                           static_cast<std::uint64_t>(world.calendar.day),
+                           herd_id.value,
+                           kHerdAgeDeathSalt) < expected - static_cast<float>(dead)) {
     dead = static_cast<std::uint16_t>(dead + 1);
   }
   // THE OLD ONES GO, the sires go in proportion, and the summed age follows

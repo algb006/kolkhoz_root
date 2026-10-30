@@ -66,7 +66,13 @@ bool DrawCampPlace(WorldState& current, Vec2& place) {
   if (meadows == 0) {
     return false;
   }
-  RngState rng = SeedRngState(current.rng.state, kNightPastureStream);
+  // Keyed by the seed and the day it is drawn (#1310), no longer folded off
+  // the world's current generator state, which any other draw moved.
+  RngState rng = SeedRngState(CounterHashBits(current.world_seed,
+                                              static_cast<std::uint64_t>(current.calendar.day),
+                                              meadows,
+                                              kNightPastureStream),
+                              kNightPastureStream);
   const std::uint32_t chosen = NextRandomBelow(rng, meadows);
   std::uint32_t seen = 0;
   for (const FieldRow& field : current.fields.rows) {
