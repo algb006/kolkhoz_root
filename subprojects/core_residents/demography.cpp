@@ -55,6 +55,23 @@ float KeyedUnitFloat(const WorldState& current,
   return CounterHashUnitFloat(current.world_seed, static_cast<std::uint64_t>(day), entity, salt);
 }
 
+constexpr std::uint64_t kNewbornBodySalt = 0x4E624264ULL;  // "NbBd"
+constexpr std::uint64_t kTwinBodySalt = 0x54774264ULL;     // "TwBd"
+constexpr std::uint64_t kMigrantPastSalt = 0x4D675073ULL;  // "MgPs"
+
+/// @brief The 32-bit key a newcomer's counter-hashed figure and past are
+/// rolled under (body.h, alcoholism.h). NOT the id he is about to be given:
+/// that id counts every birth and arrival before his in the village, so one
+/// child more anywhere re-dealt every later newcomer's figure, drinking and
+/// twin (#1310's guard found it as mother 15's birth of day 36).
+std::uint32_t NewcomerKey(const WorldState& current,
+                          SimDay day,
+                          std::uint64_t entity,
+                          std::uint64_t salt) {
+  return static_cast<std::uint32_t>(
+      CounterHashBits(current.world_seed, static_cast<std::uint64_t>(day), entity, salt) >> 32U);
+}
+
 /// @brief A private generator for an event that draws several numbers (a
 /// newborn, a migrant), seeded from its key; the world's stream is untouched.
 RngState KeyedGenerator(const WorldState& current,
@@ -427,7 +444,7 @@ constexpr std::uint64_t kTwinGeneratorSalt = 0x54774752ULL;  // "TwGR"
 /// ребёнка нет»; the same child mortality, drawn for this one on its own.
 ///
 /// THE WORLD'S GENERATOR IS NOT TOUCHED. The draws come off a counter hash
-/// keyed by the first child's id, and the second child's own draws off a
+/// keyed by the mother and the day, and the second child's own draws off a
 /// generator seeded from it (random.h), so a world without twins is the
 /// same world bit for bit — `current.rng` would have rerolled every later
 /// decision of every campaign, twins or not, which is what the body's roll
@@ -438,19 +455,22 @@ void MaybeBearTwin(const LifeConfig& config,
                    SimDay day,
                    const ResidentRow& mother,
                    const ResidentRow& father,
+                   ResidentId mother_id,
                    ResidentId first_id) {
+  // Keyed by the MOTHER and the day (#1310), not by the first child's id,
+  // which counts every birth before hers in the village.
   const std::uint64_t seed = current.world_seed;
-  if (!(CounterHashUnitFloat(seed, day, first_id.value, kTwinsSalt) < config.twins_share)) {
+  if (!(CounterHashUnitFloat(seed, day, mother_id.value, kTwinsSalt) < config.twins_share)) {
     return;
   }
-  RngState rng =
-      SeedRngState(CounterHashBits(seed, day, first_id.value, kTwinGeneratorSalt), first_id.value);
+  RngState rng = SeedRngState(CounterHashBits(seed, day, mother_id.value, kTwinGeneratorSalt),
+                              mother_id.value);
   if (NextRandomUnitFloat(rng) * 100.0F < epoch.child_mortality_percent) {
     return;  // the second did not live: a single birth, for the village
   }
   const std::uint32_t first_row = FindRow(current.residents, first_id);
   const ResidentRow first = current.residents.rows[first_row];
-  const bool identical = CounterHashUnitFloat(seed, day, first_id.value, kIdenticalSalt) <
+  const bool identical = CounterHashUnitFloat(seed, day, mother_id.value, kIdenticalSalt) <
                          config.identical_twins_share;
   ResidentRow child;
   child.family = first.family;
@@ -469,7 +489,12 @@ void MaybeBearTwin(const LifeConfig& config,
     child.height_deviation = first.height_deviation;
     child.build_deviation = first.build_deviation;
   } else {
-    RollBodyFromParents(seed, current.residents.next_id_value, config.body, mother, father, child);
+    RollBodyFromParents(seed,
+                        NewcomerKey(current, day, mother_id.value, kTwinBodySalt),
+                        config.body,
+                        mother,
+                        father,
+                        child);
   }
   child.twin = first_id;
   child.identical_twin = identical ? 1U : 0U;
@@ -552,13 +577,17 @@ void RunBirths(const LifeConfig& config,
     child.satiety = 70.0F;
     child.health = DrawInRange(rng, 70.0F, 95.0F);
     // THE FIGURE TAKES AFTER THE PARENTS and costs the RNG stream nothing:
-    // it is a counter hash keyed by the id this child is ABOUT to be given
-    // (core_common/body.h). Drawing it from `current.rng` would reroll every
+    // it is a counter hash keyed by the mother and the day (NewcomerKey;
+    // core_common/body.h). Drawing it from `current.rng` would reroll every
     // later decision of the world, which is not a theory — the first version
     // did exactly that, and the balance runs caught it by losing truancy and
     // a slice of the year's labour.
-    RollBodyFromParents(
-        current.world_seed, current.residents.next_id_value, config.body, mother, father, child);
+    RollBodyFromParents(current.world_seed,
+                        NewcomerKey(current, day, child.mother.value, kNewbornBodySalt),
+                        config.body,
+                        mother,
+                        father,
+                        child);
     const ResidentId child_id = AppendRow(current.residents, child);
     // Said out loud where it happens. Until 2026-09-05 this line and the
     // three below it were silent: a hundred and seventy-three children were
@@ -572,7 +601,7 @@ void RunBirths(const LifeConfig& config,
     // skips some of them, and a birth nobody survived is not a birth the
     // village saw.
     current.ledger.current.births += 1;
-    MaybeBearTwin(config, current, epoch, day, mother, father, child_id);
+    MaybeBearTwin(config, current, epoch, day, mother, father, child.mother, child_id);
   }
 }
 
@@ -1075,7 +1104,9 @@ void RunMigration(const LifeConfig& config, WorldState& current, SimDay day) {
     migrant.sex = DrawNewbornSex(config, current, rng, day);
     // A MIGRANT HAS NO PARENTS HERE, so his figure is an independent draw,
     // like a founder's. Same counter hash, same cost to the stream: none.
-    RollBody(current.world_seed, current.residents.next_id_value, config.body, migrant);
+    const std::uint32_t newcomer_key =
+        NewcomerKey(current, day, static_cast<std::uint64_t>(arrival), kMigrantPastSalt);
+    RollBody(current.world_seed, newcomer_key, config.body, migrant);
     const float age = DrawInRange(rng, config.marriage_age_years, config.fertility_to_years);
     migrant.birth_day =
         static_cast<std::int32_t>(day) -
@@ -1085,14 +1116,10 @@ void RunMigration(const LifeConfig& config, WorldState& current, SimDay day) {
     migrant.optimism = DrawInRange(rng, 20.0F, 80.0F);
     migrant.ideology = DrawInRange(rng, 30.0F, 70.0F);
     // HIS PAST COMES WITH HIM (#1262; crime §6 «Приезжие приходят со своим
-    // прошлым»): the founders' band, by the counter hash, under the id he is
-    // appended with - no draw of the stream moves.
-    SeedArrivalDrinking(config.alcoholism,
-                        config.life_speedup,
-                        current.world_seed,
-                        day,
-                        current.residents.next_id_value,
-                        migrant);
+    // прошлым»): the founders' band, by the counter hash, under his newcomer
+    // key - no draw of the stream moves, and no birth before his re-deals it.
+    SeedArrivalDrinking(
+        config.alcoholism, config.life_speedup, current.world_seed, day, newcomer_key, migrant);
     const ResidentId migrant_id = AppendRow(current.residents, migrant);
     SimEvent& arrived = EmitEvent(current, EventKind::kResidentArrived, EventSeverity::kNotable);
     arrived.resident = migrant_id;

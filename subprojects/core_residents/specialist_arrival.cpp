@@ -175,7 +175,10 @@ void Arrive(const LifeConfig& config,
                                               kSpecialistSalt),
                               post_key);
   specialist.sex = NextRandomUnitFloat(rng) < 0.5F ? Sex::kMale : Sex::kFemale;
-  RollBody(current.world_seed, current.residents.next_id_value, config.body, specialist);
+  // His figure and past are keyed by the post too, not by the id he is about
+  // to be given, which counts every birth before his.
+  const auto newcomer_key = static_cast<std::uint32_t>(NextRandomBits(rng));
+  RollBody(current.world_seed, newcomer_key, config.body, specialist);
   const float age =
       kSpecialistAgeFrom + (NextRandomUnitFloat(rng) * (kSpecialistAgeTo - kSpecialistAgeFrom));
   specialist.birth_day =
@@ -192,7 +195,7 @@ void Arrive(const LifeConfig& config,
                       config.life_speedup,
                       current.world_seed,
                       current.calendar.day,
-                      current.residents.next_id_value,
+                      newcomer_key,
                       specialist);
   const ResidentId id = AppendRow(current.residents, specialist);
 
