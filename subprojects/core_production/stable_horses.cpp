@@ -77,9 +77,15 @@ void StableHorses(const ProductionConfig& config, WorldState& current) {
     team.adult_age_game_years_total += herd.adult_age_game_years_total;
     emptied.push_back(current.herds.row_ids[row]);
   }
+  // THE TEAM IS HELD BY ID ACROSS THE REMOVALS: RemoveRow moves the last row
+  // into each removed slot, and the team, the lowest id, may be that last row
+  // (#1347: in the reversed world it was, and its stale row index read past
+  // the table on day 2).
+  const HerdId team_id = gathered == kNoRow ? HerdId{} : current.herds.row_ids[gathered];
   for (const HerdId id : emptied) {
     RemoveRow(current.herds, id);
   }
+  gathered = team_id.value == kInvalidEntityIdValue ? kNoRow : FindRow(current.herds, team_id);
   // THE SIRE COUNT IS COMPOSED HERE, and since 2026-09-16 it has to be. This
   // used to be left to the herd day, which re-derived the count for every row
   // every morning; that re-derive is gone, because it also erased the sex of
