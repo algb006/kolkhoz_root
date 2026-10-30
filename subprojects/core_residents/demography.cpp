@@ -997,15 +997,25 @@ void RunWeddingQueue(const LifeConfig& config, WorldState& current) {
 }
 
 void RunMarriages(const LifeConfig& config, WorldState& current, SimDay day) {
-  // Brides draw the daily chance in row order; the groom is the first
+  // Brides draw the daily chance in id order; the groom is the first
   // eligible bachelor who is not close kin. THE HOUSING GATE HOLDS
   // (life-cycle §12, "a wedding takes place only when a free house is ready
   // for the couple"): with a free house the couple marries at once, unless
   // older couples are waiting for one — the queue goes first; without, it
   // joins the queue and looks for nobody else. Until 2026-09-14 a house was
   // raised from nothing here instead (boss, parcel 257).
+  // IN ID ORDER, NOT ROW ORDER (#1310): a death moves the table's last row
+  // into the dead one's slot, so «the first eligible bachelor» by row was
+  // whoever happened to be appended last - one resident more in the table
+  // married a widow to another widower, and her births moved (the guard's
+  // mother 15, day 36). Ids are issued once and never reused.
   const float daily_chance = config.marriage_chance_percent_per_day / 100.0F;
-  for (std::uint32_t bride_row = 0; bride_row < current.residents.rows.size(); ++bride_row) {
+  std::vector<std::uint32_t> by_id(current.residents.rows.size());
+  std::iota(by_id.begin(), by_id.end(), 0U);
+  std::sort(by_id.begin(), by_id.end(), [&current](std::uint32_t left, std::uint32_t right) {
+    return current.residents.row_ids[left].value < current.residents.row_ids[right].value;
+  });
+  for (const std::uint32_t bride_row : by_id) {
     if (current.residents.rows[bride_row].sex != Sex::kFemale ||
         current.residents.rows[bride_row].spouse.value != kInvalidEntityIdValue ||
         BiologicalAgeYears(config.life_speedup, current.residents.rows[bride_row].birth_day, day) <
@@ -1018,7 +1028,7 @@ void RunMarriages(const LifeConfig& config, WorldState& current, SimDay day) {
       continue;
     }
     const ResidentId bride_id = current.residents.row_ids[bride_row];
-    for (std::uint32_t groom_row = 0; groom_row < current.residents.rows.size(); ++groom_row) {
+    for (const std::uint32_t groom_row : by_id) {
       const ResidentRow& groom = current.residents.rows[groom_row];
       const ResidentId groom_id = current.residents.row_ids[groom_row];
       const bool eligible =
