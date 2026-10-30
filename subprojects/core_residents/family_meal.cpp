@@ -9,6 +9,7 @@
 #include "family_meal.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -65,6 +66,11 @@ float FamilyNeedKcal(const FoodConfig& config,
     if (resident.family.value != id.value || AwayInDistrict(resident, current.calendar.tick)) {
       continue;
     }
+    // THE INVARIANT, CHECKED (#1347, boss [2]): a survey read this line as
+    // another person's flag after a removal; the comment above says the
+    // buffers' rows match here. A Debug build (every run) stops if they do not.
+    assert(row >= previous.residents.rows.size() ||
+           previous.residents.row_ids[row].value == current.residents.row_ids[row].value);
     const bool heavy = row < previous.residents.rows.size() &&
                        WorkedHeavy(config.consumption, previous.residents.rows[row]);
     kilograms += DailyNeedKilograms(
