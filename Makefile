@@ -133,6 +133,7 @@ check-tests:
 	@python3 scripts/check_plan_positions.py
 	@python3 scripts/event_sites.py
 	@python3 scripts/wait_kinds.py
+	@python3 scripts/check_world_stream.py
 	@python3 scripts/check_manual_paths.py
 
 # MSVC's C4244 inside std::pair / std::tuple, seen on Linux (0.37.279-284 broke the host's MSVC Debug build

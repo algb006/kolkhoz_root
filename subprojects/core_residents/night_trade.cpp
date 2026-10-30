@@ -27,6 +27,29 @@
 namespace core {
 namespace {
 
+// THE NIGHT'S DRAWS ARE KEYED (#1310): by the seed, the day, the man (or the
+// trade's slot) and the site, so a draw more elsewhere in the day moves no
+// fisher's spot, no hunter's square and no keeper's choice.
+constexpr std::uint64_t kFishingSpotSalt = 0x46697348ULL;  // "FisH"
+constexpr std::uint64_t kHuntSquareSalt = 0x48756E53ULL;   // "HunS"
+constexpr std::uint64_t kHuntCatchSalt = 0x48756E43ULL;    // "HunC"
+constexpr std::uint64_t kKeeperSalt = 0x4B656550ULL;       // "KeeP"
+
+float NightUnitFloat(const WorldState& current, std::uint64_t entity, std::uint64_t salt) {
+  return CounterHashUnitFloat(
+      current.world_seed, static_cast<std::uint64_t>(current.calendar.day), entity, salt);
+}
+
+/// A private generator for one keeper's choice: the trade and its slot key it.
+RngState KeeperGenerator(const WorldState& current, NightTrade trade, std::uint32_t slot) {
+  const std::uint64_t entity = (static_cast<std::uint64_t>(trade) << 32U) | slot;
+  return SeedRngState(CounterHashBits(current.world_seed,
+                                      static_cast<std::uint64_t>(current.calendar.day),
+                                      entity,
+                                      kKeeperSalt),
+                      entity);
+}
+
 /// The world_params.csv keys, in the order of the knob list in the parse.
 /// `night_watchman_theft_cut` left it on 2026-09-18 (the leak is closed or
 /// open, not cut) and stands in kNightTradeKnownKeys below, known and not
@@ -236,8 +259,9 @@ void GoOut(const NightTradeConfig& config, const FoodConfig& food, WorldState& c
           break;
         }
         if (!fishing_spot_drawn) {
-          const auto spot = static_cast<std::size_t>(
-              NextRandomUnitFloat(current.rng) * static_cast<float>(config.fishing_spots.size()));
+          const auto spot =
+              static_cast<std::size_t>(NightUnitFloat(current, 0, kFishingSpotSalt) *
+                                       static_cast<float>(config.fishing_spots.size()));
           fishing_spot = config.fishing_spots[spot < config.fishing_spots.size()
                                                   ? spot
                                                   : config.fishing_spots.size() - 1U];
@@ -257,8 +281,9 @@ void GoOut(const NightTradeConfig& config, const FoodConfig& food, WorldState& c
         if (in_reach.empty()) {
           break;  // STUB: no old forest in reach — he stays home tonight
         }
-        const auto square = static_cast<std::size_t>(NextRandomUnitFloat(current.rng) *
-                                                     static_cast<float>(in_reach.size()));
+        const auto square = static_cast<std::size_t>(
+            NightUnitFloat(current, current.residents.row_ids[row].value, kHuntSquareSalt) *
+            static_cast<float>(in_reach.size()));
         RecordOuting(current,
                      row,
                      in_reach[square < in_reach.size() ? square : in_reach.size() - 1U],
@@ -293,7 +318,8 @@ void ComeBack(const NightTradeConfig& config, WorldState& current) {
       AddCatchToPantry(family, config.fish, fish_each);
       AddLedgerAmount(current.ledger.current.night_catch, config.fish, fish_each);
     } else if (outing.trade == NightTrade::kHunter &&
-               NextRandomUnitFloat(current.rng) < config.hunt_success_chance) {
+               NightUnitFloat(current, outing.resident.value, kHuntCatchSalt) <
+                   config.hunt_success_chance) {
       AddCatchToPantry(family, config.meat, game);
       AddLedgerAmount(current.ledger.current.night_catch, config.meat, game);
     }
@@ -807,7 +833,7 @@ namespace {
 
 /// One distiller drawn among the free men, weighted by drinking; false when
 /// there is nobody to draw.
-bool DrawDistiller(float life_speedup, WorldState& current) {
+bool DrawDistiller(float life_speedup, WorldState& current, std::uint32_t slot) {
   const std::vector<std::uint32_t> men =
       FreeMen(current, life_speedup, kAdultYears, kOldestYears, FamilyId{});
   std::vector<float> weights;
@@ -815,7 +841,8 @@ bool DrawDistiller(float life_speedup, WorldState& current) {
   for (const std::uint32_t row : men) {
     weights.push_back(1.0F + current.residents.rows[row].alcoholism);
   }
-  const std::uint32_t chosen = DrawWeighted(current.rng, men, weights);
+  RngState rng = KeeperGenerator(current, NightTrade::kDistiller, slot);
+  const std::uint32_t chosen = DrawWeighted(rng, men, weights);
   if (chosen == kNoRow) {
     return false;
   }
@@ -836,7 +863,7 @@ void AssignNightTrades(const NightTradeConfig& config,
   for (std::uint32_t kept = CountKeepers(current, NightTrade::kDistiller);
        with_distillers && kept < config.distillers_max;
        ++kept) {
-    if (!DrawDistiller(life_speedup, current)) {
+    if (!DrawDistiller(life_speedup, current, kept)) {
       break;
     }
   }
@@ -848,7 +875,8 @@ void AssignNightTrades(const NightTradeConfig& config,
         partner_yard = person.family;
       }
     }
-    const std::uint32_t chosen = DrawEqual(current.rng,
+    RngState rng = KeeperGenerator(current, NightTrade::kNetFisher, kept);
+    const std::uint32_t chosen = DrawEqual(rng,
                                            FreeMen(current,
                                                    life_speedup,
                                                    config.fisher_age_from_years,
@@ -861,7 +889,8 @@ void AssignNightTrades(const NightTradeConfig& config,
   }
   // The hunter, alone.
   if (CountKeepers(current, NightTrade::kHunter) == 0U) {
-    const std::uint32_t chosen = DrawEqual(current.rng,
+    RngState rng = KeeperGenerator(current, NightTrade::kHunter, 0);
+    const std::uint32_t chosen = DrawEqual(rng,
                                            FreeMen(current,
                                                    life_speedup,
                                                    config.hunter_age_from_years,
@@ -978,7 +1007,7 @@ void TurnNightTheftMonth(const NightTradeConfig& config, float life_speedup, Wor
   } else if (leak_open && static_cast<float>(closed_tag - tally.distiller_short_since) >=
                               config.distiller_replace_months) {
     for (std::uint32_t filled = kept; filled < config.distillers_max; ++filled) {
-      if (!DrawDistiller(life_speedup, current)) {
+      if (!DrawDistiller(life_speedup, current, filled)) {
         break;
       }
     }

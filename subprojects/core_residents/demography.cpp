@@ -32,6 +32,39 @@ float DrawInRange(RngState& rng, float low, float high) {
   return low + NextRandomUnitFloat(rng) * (high - low);
 }
 
+// THE DRAWS ARE KEYED, NOT DEALT (#1310, #1273, #1303). Until 0.37.341 every
+// death, departure, birth and wedding drew off `current.rng` in row order, so
+// one draw more anywhere earlier in the day - the herd plan's (#1289) - or one
+// row more in the table re-dealt WHO died and WHO bore from then on: seed 1938
+// y3 d9 buried resident 12 in one arm and 13 in the other, and every A/B pair
+// differed by that coin (2.4 SE of false population signal in #1254 and
+// #1310). Now a resident's fate on a day is a counter hash of the seed, the
+// day, the resident and the site, as the twins' was already.
+constexpr std::uint64_t kDeathSalt = 0x44656144ULL;    // "DeaD"
+constexpr std::uint64_t kOutflowSalt = 0x4F75744CULL;  // "OutL"
+constexpr std::uint64_t kBirthSalt = 0x42697254ULL;    // "BirT"
+constexpr std::uint64_t kNewbornSalt = 0x4E65574BULL;  // "NeWB"
+constexpr std::uint64_t kWeddingSalt = 0x57656444ULL;  // "WedD"
+constexpr std::uint64_t kMigrantSalt = 0x4D696752ULL;  // "MigR"
+
+/// @brief The keyed draw: uniform in [0, 1) from (seed, day, entity, salt).
+float KeyedUnitFloat(const WorldState& current,
+                     SimDay day,
+                     std::uint64_t entity,
+                     std::uint64_t salt) {
+  return CounterHashUnitFloat(current.world_seed, static_cast<std::uint64_t>(day), entity, salt);
+}
+
+/// @brief A private generator for an event that draws several numbers (a
+/// newborn, a migrant), seeded from its key; the world's stream is untouched.
+RngState KeyedGenerator(const WorldState& current,
+                        SimDay day,
+                        std::uint64_t entity,
+                        std::uint64_t salt) {
+  return SeedRngState(
+      CounterHashBits(current.world_seed, static_cast<std::uint64_t>(day), entity, salt), entity);
+}
+
 /// @brief Rolls a newborn's sex with the self-correcting draw (life-cycle
 /// §6): the probability leans toward the sex under-represented among the
 /// rising generation, so a small village cannot drift into a lasting skew.
@@ -269,7 +302,9 @@ void RunDeaths(const LifeConfig& config, WorldState& current, SimDay day) {
     const float daily_chance = percent_per_year / 100.0F / static_cast<float>(kDaysPerYear);
     const bool spared = current.residents.row_ids[row] == current.named.elder &&
                         current.calendar.date.year <= config.elder_spared_through_year;
-    if (NextRandomUnitFloat(current.rng) < daily_chance && !spared) {
+    if (KeyedUnitFloat(current, day, current.residents.row_ids[row].value, kDeathSalt) <
+            daily_chance &&
+        !spared) {
       dead.push_back(current.residents.row_ids[row]);
     }
   }
@@ -324,7 +359,8 @@ void RunOutflow(const LifeConfig& config,
     const float age = BiologicalAgeYears(config.life_speedup, resident.birth_day, day);
     const bool working_age = age >= config.adult_age_years && age < config.mortality_age_old_years;
     if (working_age && resident.spouse.value == kInvalidEntityIdValue &&
-        NextRandomUnitFloat(current.rng) < daily_chance) {
+        KeyedUnitFloat(current, day, current.residents.row_ids[row].value, kOutflowSalt) <
+            daily_chance) {
       leaving.push_back(current.residents.row_ids[row]);
     }
   }
@@ -472,22 +508,27 @@ void RunBirths(const LifeConfig& config,
       continue;
     }
     // Decision 106: conditions scale the rate and hunger stops it outright.
-    // The draw is taken either way so that the RNG sequence does not depend
-    // on how many households happen to be hungry — determinism first.
+    // The draw is keyed by the wife (#1310), so how many households happen
+    // to be hungry moves no one else's.
     const std::uint32_t family_row = FindRow(current.families, resident.family);
     const float multiplier =
         family_row == kNoRow
             ? 1.0F
             : BirthMultiplier(config, current.families.rows[family_row].satisfaction);
-    const bool drawn = NextRandomUnitFloat(current.rng) < daily_chance * multiplier;
+    const bool drawn =
+        KeyedUnitFloat(current, day, current.residents.row_ids[row].value, kBirthSalt) <
+        daily_chance * multiplier;
     if (drawn && !BirthsStopped(config, current, resident)) {
       mothers.push_back(row);
     }
   }
   for (const std::uint32_t mother_row : mothers) {
     // Child mortality applies at birth, off-screen (tone design §4;
-    // reference run does the same).
-    if (NextRandomUnitFloat(current.rng) * 100.0F < epoch.child_mortality_percent) {
+    // reference run does the same). The child's draws come off a generator
+    // keyed by the mother and the day (#1310).
+    RngState rng =
+        KeyedGenerator(current, day, current.residents.row_ids[mother_row].value, kNewbornSalt);
+    if (NextRandomUnitFloat(rng) * 100.0F < epoch.child_mortality_percent) {
       continue;
     }
     const ResidentRow mother = current.residents.rows[mother_row];
@@ -497,19 +538,19 @@ void RunBirths(const LifeConfig& config,
     child.family = mother.family;
     child.mother = current.residents.row_ids[mother_row];
     child.father = mother.spouse;
-    child.sex = DrawNewbornSex(config, current, current.rng, day);
+    child.sex = DrawNewbornSex(config, current, rng, day);
     child.birth_day = static_cast<std::int32_t>(day);
     // Born-with inclinations: random with a weak parental pull
     // (ASSUMPTION on the pull strengths until playtests).
-    child.intellect = BlendInclination(current.rng, mother.intellect, father.intellect, 0.25F);
-    child.stamina = BlendInclination(current.rng, mother.stamina, father.stamina, 0.15F);
-    child.optimism = BlendInclination(current.rng, mother.optimism, father.optimism, 0.15F);
+    child.intellect = BlendInclination(rng, mother.intellect, father.intellect, 0.25F);
+    child.stamina = BlendInclination(rng, mother.stamina, father.stamina, 0.15F);
+    child.optimism = BlendInclination(rng, mother.optimism, father.optimism, 0.15F);
     // Ideology starts from the parents' and forms until 16 (metrics design
     // §2; membership.h, TurnIdeologyYear).
-    child.ideology = BirthIdeology(
-        config.membership, current.rng, mother, father_row == kNoRow ? nullptr : &father);
+    child.ideology =
+        BirthIdeology(config.membership, rng, mother, father_row == kNoRow ? nullptr : &father);
     child.satiety = 70.0F;
-    child.health = DrawInRange(current.rng, 70.0F, 95.0F);
+    child.health = DrawInRange(rng, 70.0F, 95.0F);
     // THE FIGURE TAKES AFTER THE PARENTS and costs the RNG stream nothing:
     // it is a counter hash keyed by the id this child is ABOUT to be given
     // (core_common/body.h). Drawing it from `current.rng` would reroll every
@@ -943,7 +984,8 @@ void RunMarriages(const LifeConfig& config, WorldState& current, SimDay day) {
         WaitsForHouse(current, current.residents.row_ids[bride_row])) {
       continue;
     }
-    if (NextRandomUnitFloat(current.rng) >= daily_chance) {
+    if (KeyedUnitFloat(current, day, current.residents.row_ids[bride_row].value, kWeddingSalt) >=
+        daily_chance) {
       continue;
     }
     const ResidentId bride_id = current.residents.row_ids[bride_row];
@@ -1027,19 +1069,21 @@ void RunMigration(const LifeConfig& config, WorldState& current, SimDay day) {
     if (!shared) {
       current.units.rows[house_row].household = migrant.family;
     }
-    migrant.sex = DrawNewbornSex(config, current, current.rng, day);
+    // Keyed by the day and the arrival's place in it (#1310): he has no id
+    // yet, and the next id moves with every birth.
+    RngState rng = KeyedGenerator(current, day, static_cast<std::uint64_t>(arrival), kMigrantSalt);
+    migrant.sex = DrawNewbornSex(config, current, rng, day);
     // A MIGRANT HAS NO PARENTS HERE, so his figure is an independent draw,
     // like a founder's. Same counter hash, same cost to the stream: none.
     RollBody(current.world_seed, current.residents.next_id_value, config.body, migrant);
-    const float age =
-        DrawInRange(current.rng, config.marriage_age_years, config.fertility_to_years);
+    const float age = DrawInRange(rng, config.marriage_age_years, config.fertility_to_years);
     migrant.birth_day =
         static_cast<std::int32_t>(day) -
         static_cast<std::int32_t>(age / config.life_speedup * static_cast<float>(kDaysPerYear));
-    migrant.intellect = DrawInRange(current.rng, 20.0F, 80.0F);
-    migrant.stamina = DrawInRange(current.rng, 20.0F, 80.0F);
-    migrant.optimism = DrawInRange(current.rng, 20.0F, 80.0F);
-    migrant.ideology = DrawInRange(current.rng, 30.0F, 70.0F);
+    migrant.intellect = DrawInRange(rng, 20.0F, 80.0F);
+    migrant.stamina = DrawInRange(rng, 20.0F, 80.0F);
+    migrant.optimism = DrawInRange(rng, 20.0F, 80.0F);
+    migrant.ideology = DrawInRange(rng, 30.0F, 70.0F);
     // HIS PAST COMES WITH HIM (#1262; crime §6 «Приезжие приходят со своим
     // прошлым»): the founders' band, by the counter hash, under the id he is
     // appended with - no draw of the stream moves.

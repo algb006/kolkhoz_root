@@ -480,8 +480,8 @@ class ConstructionSystem final : public IConstructionSystem {
   /// alike today — named here so the next reader does not go looking for the
   /// reason.
   ///
-  /// THE DRAW COMES FROM ITS OWN RNG STREAM, like the night pasture's camp.
-  /// A daily roll per building against the world's sequential generator would
+  /// THE DRAW IS A COUNTER HASH of the seed, the day and the unit (#1310). A
+  /// daily roll per building against the world's sequential generator would
   /// shift every later draw in the world, and every run would diverge from
   /// the reshuffling rather than from the fires.
   void RunFires(WorldState& current) {
@@ -496,15 +496,13 @@ class ConstructionSystem final : public IConstructionSystem {
     if (!(chance > 0.0F)) {
       return;
     }
-    // THE DAY IS IN THE SEED, and the acceptance is what found that it had to
-    // be. Seeded from the world's state alone, a DAILY draw repeats itself
-    // exactly whenever nothing else has moved the generator — the same
-    // buildings catch every morning, or none ever do. The night pasture's
-    // camp gets away without it because it is drawn ONCE in a campaign; a
-    // rule that rolls every day may not lean on other systems happening to
-    // advance the stream for it. Same fold as the district's delivery delay,
-    // for the same reason.
-    RngState rng = SeedRngState(current.rng.state ^ current.calendar.day, kFireStream);
+    // THE DAY IS IN THE KEY, and the acceptance is what found that it had to
+    // be: a daily draw seeded without it repeats itself — the same buildings
+    // catch every morning, or none ever do. KEYED BY THE UNIT TOO (#1310):
+    // until 0.37.341 the draws were dealt in row order off a fork of the
+    // world's current state, so a draw more elsewhere, or a unit more in the
+    // table, re-dealt which building burned.
+    const auto day_key = static_cast<std::uint64_t>(current.calendar.day);
     for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
       UnitRow& unit = current.units.rows[row];
       if (unit.level == 0 || unit.type.value >= config_.types.size()) {
@@ -519,7 +517,9 @@ class ConstructionSystem final : public IConstructionSystem {
       if (unit.paused != 0) {
         continue;  // nobody stokes a stopped building, as nothing wears it
       }
-      if (NextRandomUnitFloat(rng) >= chance) {
+      if (CounterHashUnitFloat(
+              current.world_seed, day_key, current.units.row_ids[row].value, kFireStream) >=
+          chance) {
         continue;
       }
       // THE SCAR NEVER REACHES THE TOP OF THE SCALE. AgeUnits collapses a
