@@ -57,7 +57,8 @@ Grams VillageStock(const FoodConfig& config, const WorldState& world, ResourceId
 }
 
 /// @brief Takes up to `wanted` grams out of the stocks the issue may take
-/// from, in row order.
+/// from, in id order (#1347: in row order the store drained first was
+/// whichever the table had last moved).
 /// @return What was actually taken; never more than lies there.
 Grams TakeFromUnits(const FoodConfig& config,
                     WorldState& world,
@@ -67,7 +68,8 @@ Grams TakeFromUnits(const FoodConfig& config,
     return 0;
   }
   Grams taken = 0;
-  for (UnitRow& unit : world.units.rows) {
+  for (const std::uint32_t row : RowsById(world.units)) {
+    UnitRow& unit = world.units.rows[row];
     if (taken >= wanted || unit.stock.size() <= resource.value || !IssueSource(config, unit)) {
       continue;
     }
@@ -482,7 +484,10 @@ void RunDistribution(const FoodConfig& config,
   const float redeemed_share =
       cover.wanted_kcal > 0.0F ? cover.covered_kcal / cover.wanted_kcal : 0.0F;
   bool issued_to_anyone = false;
-  for (FamilyRow& family : current.families.rows) {
+  // IN ID ORDER (#1347): the store shrinks as families are served, so the
+  // order is who is served whole.
+  for (const std::uint32_t served_row : RowsById(current.families)) {
+    FamilyRow& family = current.families.rows[served_row];
     const TrudodniHundredths outstanding = family.trudodni_account - family.trudodni_redeemed;
     if (outstanding <= 0) {
       continue;
@@ -572,7 +577,8 @@ void RunRation(const FoodConfig& config,
   const bool for_everyone = current.chairman.ration_auto != 0;
   const SimDay day = current.calendar.day;
   const auto days = static_cast<float>(config.distribution.period_days);
-  for (std::uint32_t row = 0; row < current.families.rows.size(); ++row) {
+  // IN ID ORDER (#1347): the free stock shrinks family by family.
+  for (const std::uint32_t row : RowsById(current.families)) {
     const FamilyId id = current.families.row_ids[row];
     if (!for_everyone && current.families.rows[row].ration_granted == 0) {
       continue;
@@ -627,7 +633,8 @@ void RunHouseholdAdvance(const FoodConfig& config,
   const SimDay day = current.calendar.day;
   std::vector<IssueNormLine> norms;  // resolved for the first eligible household only
   double bundle_eq = 0.0;            // grain-equivalent grams of one trudoden's bundle
-  for (std::uint32_t row = 0; row < current.families.rows.size(); ++row) {
+  // IN ID ORDER (#1347): the free remainder shrinks household by household.
+  for (const std::uint32_t row : RowsById(current.families)) {
     FamilyRow& family = current.families.rows[row];
     if (family.formed_day == kNotFormedInPlay) {
       continue;

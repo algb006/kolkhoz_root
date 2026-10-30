@@ -13,11 +13,34 @@
 #ifndef CORE_COMMON_STATE_TABLE_OPS_H_
 #define CORE_COMMON_STATE_TABLE_OPS_H_
 
+#include <algorithm>
 #include <cstdint>
+#include <numeric>
+#include <vector>
 
 #include "core_common/state_table.h"
 
 namespace core {
+
+/// @brief The table's row indices in id order: the order a loop that CHOOSES
+/// or SHARES a short supply walks (#1347).
+///
+/// Row order is no order: RemoveRow moves the last row into the removed
+/// one's slot, so after any removal it says who was appended last, and two
+/// worlds that differ by one entity order their rows differently. A loop
+/// that serves the first rows first in row order hands a store to whoever
+/// the table happened to put there; in id order it hands it to the oldest.
+/// Ids are issued once and never reused. A pure read; the indices are valid
+/// until the table's shape changes.
+template <typename IdT, typename RowT>
+std::vector<std::uint32_t> RowsById(const StateTable<IdT, RowT>& table) {
+  std::vector<std::uint32_t> rows(table.rows.size());
+  std::iota(rows.begin(), rows.end(), 0U);
+  std::sort(rows.begin(), rows.end(), [&table](std::uint32_t left, std::uint32_t right) {
+    return table.row_ids[left].value < table.row_ids[right].value;
+  });
+  return rows;
+}
 
 /// @brief Row index of `id`, or kNoRow if the id was never issued or the
 /// entity is gone. O(1).
