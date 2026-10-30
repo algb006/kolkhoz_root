@@ -168,7 +168,8 @@ std::vector<RickDays> DrainRicks(const ProductionConfig& config,
   // The pools are held by row, and a vector that grows moves them: reserved
   // for every unit a herd could name, twice (its farm and its rick).
   pools.reserve(world.herds.rows.size() * 2U);
-  for (std::uint32_t row = 0; row < world.herds.rows.size(); ++row) {
+  // IN ID ORDER (#1347): the herds drain the shared allowance in this order.
+  for (const std::uint32_t row : RowsById(world.herds)) {
     const HerdRow& herd = world.herds.rows[row];
     if (herd.household_owned != 0 || herd.kind.value >= config.livestock.size()) {
       continue;
@@ -387,7 +388,10 @@ BoundTake TakeBoundFeedAt(const ProductionConfig& config,
     take.from_far += got;
     left -= got;
   }
-  for (std::uint32_t row = 0; row < world.units.rows.size() && left > 0; ++row) {
+  for (const std::uint32_t row : RowsById(world.units)) {  // far ricks by id (#1347)
+    if (left <= 0) {
+      break;
+    }
     if (row == farm_row || row == rick_row || row == manger ||
         !IsRickToEatFrom(world.units.rows[row], config)) {
       continue;

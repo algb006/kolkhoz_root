@@ -405,21 +405,28 @@ std::vector<std::uint16_t> BilletHerds(const WorldState& world, std::vector<floa
       unit_rows[row] = unit_row;
     }
   }
-  for (std::uint32_t row = 0; row < herds; ++row) {
+  // IN ID ORDER, herds and roofs (#1347): two herds under one roof, and a
+  // herd looking for room under its type's other roofs, share what is left.
+  const std::vector<std::uint32_t> herds_by_id = RowsById(world.herds);
+  const std::vector<std::uint32_t> units_by_id = RowsById(world.units);
+  for (const std::uint32_t row : herds_by_id) {
     if (unit_rows[row] != kNoRow) {
       take(row, unit_rows[row]);
     }
   }
-  for (std::uint32_t row = 0; row < herds; ++row) {
+  for (const std::uint32_t row : herds_by_id) {
     const std::uint32_t own = unit_rows[row];
     if (own == kNoRow) {
       billeted[row] = AsHeads(left[row]);
       continue;
     }
     const UnitTypeId type = world.units.rows[own].type;
-    for (std::uint32_t unit_row = 0; unit_row < room.size() && left[row] > 0.0F; ++unit_row) {
-      if (unit_row != own && world.units.rows[unit_row].type.value == type.value &&
-          room[unit_row] > 0.0F) {
+    for (const std::uint32_t unit_row : units_by_id) {
+      if (left[row] <= 0.0F) {
+        break;
+      }
+      if (unit_row < room.size() && unit_row != own &&
+          world.units.rows[unit_row].type.value == type.value && room[unit_row] > 0.0F) {
         take(row, unit_row);
       }
     }
@@ -430,18 +437,14 @@ std::vector<std::uint16_t> BilletHerds(const WorldState& world, std::vector<floa
   return billeted;
 }
 
-/// The rows in the order the herd day walks them (RunHerdDay): the rows'
-/// own. The draught-first switch of econ's pair (0.37.63) went in 0.37.301:
-/// a refused rule's leftover, its world_params key read by nobody since.
+/// The rows in the order the herd day walks them (RunHerdDay): by id
+/// (#1347). A herd walked earlier eats first from the shared allowance and
+/// the stores, and the rows' own order was whoever the table had last moved
+/// (RemoveRow). The draught-first switch of econ's pair (0.37.63) went in
+/// 0.37.301: a refused rule's leftover, its world_params key read by nobody.
 std::vector<std::uint32_t> HerdWalkOrder(const ProductionConfig& /*config*/,
                                          const WorldState& world) {
-  const auto herds = static_cast<std::uint32_t>(world.herds.rows.size());
-  std::vector<std::uint32_t> walk;
-  walk.reserve(herds);
-  for (std::uint32_t row = 0; row < herds; ++row) {
-    walk.push_back(row);
-  }
-  return walk;
+  return RowsById(world.herds);
 }
 
 /// The day's two shares of the team in the traces, 0..1 each (WorkingShare).
