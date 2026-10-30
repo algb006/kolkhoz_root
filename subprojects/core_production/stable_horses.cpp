@@ -31,8 +31,12 @@ void StableHorses(const ProductionConfig& config, WorldState& current) {
       config.horse_kind.value == kInvalidDefIdValue) {
     return;
   }
+  // BY ID, the groom and the herds gathered (#1347): in row order the reversed
+  // world kept another herd's id for the team and merged in another order
+  // (kh1347: herd 2 stood in the base on day 3 and not in the reversed one).
   UnitId yard;
-  for (const ResidentRow& resident : current.residents.rows) {
+  for (const std::uint32_t resident_row : RowsById(current.residents)) {
+    const ResidentRow& resident = current.residents.rows[resident_row];
     if (resident.post.profession.value != config.groom_post.value) {
       continue;
     }
@@ -49,7 +53,7 @@ void StableHorses(const ProductionConfig& config, WorldState& current) {
   std::uint32_t gathered = kNoRow;
   std::uint32_t moved_heads = 0;
   std::vector<HerdId> emptied;
-  for (std::uint32_t row = 0; row < current.herds.rows.size(); ++row) {
+  for (const std::uint32_t row : RowsById(current.herds)) {
     HerdRow& herd = current.herds.rows[row];
     if (herd.kind.value != config.horse_kind.value || herd.household_owned != 0) {
       continue;  // a family's OWN horse is not the kolkhoz's to gather

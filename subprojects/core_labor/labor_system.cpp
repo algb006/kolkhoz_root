@@ -952,10 +952,13 @@ class LaborSystem final : public ILaborSystem {
     // what the plough and the goods carts left (assignment.h), and the top-up
     // lends their horses to its own queue (TopUpDay) — so the release takes
     // them back first, and the order «plough, carts, people» holds there too.
+    // THE LAST BY ID GIVES HIS HORSE BACK FIRST (#1347): by row it was the
+    // last row, whoever the table had last moved.
+    const std::vector<std::uint32_t> by_id = RowsById(current.residents);
     for (const bool peoples_pass : {true, false}) {
-      for (auto row = static_cast<std::uint32_t>(current.residents.rows.size());
-           row > 0 && in_traces > herd;
-           --row) {
+      for (auto place = static_cast<std::uint32_t>(by_id.size()); place > 0 && in_traces > herd;
+           --place) {
+        const std::uint32_t row = by_id[place - 1] + 1;  // the body below reads `row - 1`
         WorkAssignment& work = current.residents.rows[row - 1].work;
         const bool field_crew = work.kind == WorkKind::kHarvest || work.kind == WorkKind::kSowing;
         const bool peoples_cart = TakesThePeoplesCart(work.kind);
@@ -976,9 +979,9 @@ class LaborSystem final : public ILaborSystem {
       }
     }
     for (const bool timber_pass : {true, false}) {
-      for (auto row = static_cast<std::uint32_t>(current.residents.rows.size());
-           row > 0 && in_traces > herd;
-           --row) {
+      for (auto place = static_cast<std::uint32_t>(by_id.size()); place > 0 && in_traces > herd;
+           --place) {
+        const std::uint32_t row = by_id[place - 1] + 1;  // the body below reads `row - 1`
         WorkAssignment& work = current.residents.rows[row - 1].work;
         const bool carter_on_horse = work.kind == WorkKind::kHauling && work.rides_horse != 0;
         const bool timber_carter =
@@ -2107,7 +2110,7 @@ class LaborSystem final : public ILaborSystem {
   /// a carrier on foot whose works' next trip is a log. The works' own terms
   /// (LogLegOf), no cart on the same supply today - a carter with a horse
   /// takes the log, and the pairs stand - and A SECOND HAND: the on-foot
-  /// hands of this supply in row order go two by two, and the odd last one
+  /// hands of this supply in id order go two by two, and the odd last one
   /// stands. Stateless on purpose: the morning's pairs are not kept anywhere,
   /// and a hand whose load BECAME a log at noon is judged by the same rule.
   bool LogPairCarriesNow(const WorldState& current,
@@ -2130,7 +2133,11 @@ class LaborSystem final : public ILaborSystem {
         return false;  // a cart is on it
       }
       ++on_foot;
-      before += row < resident_row ? 1U : 0U;
+      // Before him BY ID (#1347), not by row: the pairs are the same pairs in
+      // a table whose rows a removal has moved.
+      before += current.residents.row_ids[row].value < current.residents.row_ids[resident_row].value
+                    ? 1U
+                    : 0U;
     }
     return before + 1U < on_foot || on_foot % 2U == 0U;
   }
