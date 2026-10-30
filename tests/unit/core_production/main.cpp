@@ -2590,6 +2590,11 @@ int CheckCohortFlows() {
     // given three years, which the young at 1.0 spend far from six.
     std::uint32_t days = 0;
     for (; days < 3U * core::kDaysPerYear; ++days) {
+      // THE DAY MOVES (#1310): the fraction's draw is keyed by the herd and
+      // the day, so a loop that never turned the calendar drew the same number
+      // three years running; on the shared stream it had moved by itself.
+      world.calendar.tick = static_cast<std::uint64_t>(days) * core::kTicksPerDay;
+      core::RefreshCalendarCaches(world.calendar);
       core::HerdRow& living = world.herds.rows[FindRow(world.herds, id)];
       core::RunAgeDeaths(lifespan.livestock[0], living, id, world);
       if (living.adult_count < 11) {
