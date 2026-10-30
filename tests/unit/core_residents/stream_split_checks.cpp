@@ -137,6 +137,12 @@ Fates Live(Arm arm) {
     old.satiety = 80.0F;
     old.health = 80.0F;
     stranger = AppendRow(world.residents, old);
+    // HE DOES NOT DIE: his house, freed, let a waiting couple marry at once
+    // and the queue went otherwise (mother 15 a wife in the base on day 36, a
+    // widow here) - the world moving, not the draw. The elder's sparing
+    // (year 1 is inside elder_spared_through_year) keeps him; his own death
+    // draw is still taken, which is the row the check is about.
+    world.named.elder = stranger;
   }
   std::set<std::uint64_t> alive;
   for (const core::ResidentId id : world.residents.row_ids) {
