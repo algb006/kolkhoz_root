@@ -2474,7 +2474,9 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // Save 194 (#1292): each chronicle row's team work and oats shares by
     // month, two float[12], three rows: 3534 -> 3822, predicted before the
     // build and held.
-    {"ledger", 3822, 0x3334c5b67115e0c9ULL},
+    // Save 197 (#1205): the births' four stop counters, +16 a book, two books:
+    // 3822 -> 3854, predicted before the build and held.
+    {"ledger", 3854, 0xac0c9b5c59328f49ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
