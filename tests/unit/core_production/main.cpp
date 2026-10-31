@@ -6319,6 +6319,91 @@ int CheckSeedLightMeasuresCoverage() {
   return failures;
 }
 
+/// THE LOST WINTER SLOT HOLDS NOTHING AT THE TURN (#1205 (s1); boss-core-1205-
+/// birth-prints [41], econ's YES): a winter rye begun — the field under the
+/// harrow for it — and past its window is held while the year runs (the crew
+/// may finish it late, question 278), and on the closing day, when the turn
+/// will let the harrow go, it is a lost slot and holds nothing. Known
+/// direction: the closing day, held 0; the pair: September, held. econ's
+/// guard: the field is not dropped from the fund - the morning after the turn,
+/// its rotation naming potato next, the potato is held. And 0.36.21's guard
+/// holds: a field that reaped its rye in July, idle at the closing day with
+/// potato next, holds the potato.
+int CheckLostWinterSlotHoldsNothingAtTheTurn() {
+  int failures = 0;
+  constexpr core::Grams kTonne = 1'000'000;
+  core::ProductionConfig config = MakeHerdConfig();
+  if (config.feed_values.size() < 2) {
+    config.feed_values.resize(2, 0.0F);
+  }
+  config.crops.resize(2);
+  core::CropDef& potato = config.crops[0];
+  potato.resource = core::ResourceId{0};
+  potato.sowing_norm_kg_per_ha = 2500.0F;
+  potato.sow_from_month = 3;
+  potato.sow_to_month = 4;
+  potato.harvest_from_month = 7;
+  potato.harvest_to_month = 8;
+  core::CropDef& rye = config.crops[1];
+  rye.resource = core::ResourceId{1};
+  rye.is_winter = true;
+  rye.sowing_norm_kg_per_ha = 200.0F;
+  rye.sow_from_month = 7;
+  rye.sow_to_month = 8;
+  rye.harvest_from_month = 6;
+  rye.harvest_to_month = 7;
+  const auto held_on = [&config](std::uint32_t day_of_year, const core::FieldRow& field) {
+    core::WorldState world = MakeHerdWorld(0.0F);
+    world.calendar.tick = static_cast<core::Tick>(day_of_year) * core::kTicksPerDay;
+    core::RefreshCalendarCaches(world.calendar);
+    core::AppendRow(world.fields, field);
+    return core::SeedHeldToSowing(config, world, world.calendar.day);
+  };
+  // 10 ha: potato this year (reaped), winter rye next (sown this autumn),
+  // potato the year after; the rye's harrowing begun.
+  core::FieldRow harrowed;
+  harrowed.kind = core::LandKind::kArable;
+  harrowed.area_ga = 10.0F;
+  harrowed.rotation_year0 = core::CropId{0};
+  harrowed.rotation_year1 = core::CropId{1};
+  harrowed.rotation_year2 = core::CropId{0};
+  harrowed.crop = core::CropId{1};
+  harrowed.phase = core::FieldPhase::kHarrowing;
+  const std::uint32_t closing = core::kDaysPerYear - 1U;
+  const std::uint32_t september = 8U * core::kDaysPerMonth;
+  const std::uint32_t october = 9U * core::kDaysPerMonth;
+  const std::vector<core::Grams> at_turn = held_on(closing, harrowed);
+  const std::vector<core::Grams> in_september = held_on(september, harrowed);
+  const std::vector<core::Grams> in_october = held_on(october, harrowed);
+  std::cout << "  lost winter slot: rye held at the closing day " << at_turn[1] << ", September "
+            << in_september[1] << ", October " << in_october[1] << '\n';
+  failures += Expect(at_turn.size() > 1 && at_turn[1] == 0,
+                     "seed held (s1): a winter rye begun and past its window holds nothing on the "
+                     "closing day - the turn lets the harrow go");
+  failures += Expect(in_september[1] == 2 * kTonne && in_october[1] == 2 * kTonne,
+                     "seed held (s1): the same rye is held in its window, and past it while the "
+                     "year runs (the crew may finish it late)");
+  // econ's guard: the morning after the turn, the rotation names potato next.
+  core::FieldRow turned;
+  turned.kind = core::LandKind::kArable;
+  turned.area_ga = 10.0F;
+  turned.rotation_year0 = core::CropId{0};
+  turned.rotation_year1 = core::CropId{1};
+  turned.phase = core::FieldPhase::kIdle;
+  failures += Expect(held_on(0, turned)[0] == 25 * kTonne,
+                     "seed held (s1): the field stays in the fund - after the turn its next "
+                     "crop's seed is held");
+  // 0.36.21's guard: rye reaped in July, idle at the closing day, potato next.
+  core::FieldRow reaped = turned;
+  reaped.rotation_year0 = core::CropId{1};
+  reaped.rotation_year1 = core::CropId{0};
+  reaped.reaped_day = 6U * core::kDaysPerMonth;
+  failures += Expect(held_on(closing, reaped)[0] == 25 * kTonne,
+                     "seed held (s1): a field that reaped its rye in July and is idle at the "
+                     "closing day holds next spring's potato (0.36.21's guard)");
+  return failures;
+}
+
 /// THE SEED HELD FROM THE PLAN IS COUNTED FIELD BY FIELD (0.36.21;
 /// boss-core-epoch1-resume [35]): a field's seed is held only when ITS sowing
 /// ends before the seed's next harvest. Known answers, a potato (sown by May,
@@ -17989,6 +18074,7 @@ int main() {
   failures += CheckFeedLightNeverRunsOut();
   failures += CheckSeedLightMeasuresCoverage();
   failures += CheckSeedHeldFieldByField();
+  failures += CheckLostWinterSlotHoldsNothingAtTheTurn();
   failures += CheckTheSeedNormsAreReadOnce();
   failures += CheckSeedLightAsksAboutTheNearestCampaign();
   failures += CheckFeedLightKeepsTheKindsApart();
