@@ -33,6 +33,7 @@
 #include <string_view>
 #include <vector>
 
+#include "core_common/calendar.h"
 #include "core_common/geometry.h"
 #include "core_common/order_state.h"
 #include "core_common/road_state.h"
@@ -90,7 +91,8 @@ class SuggestedRoadsPolicy {
     }
     std::vector<core::OrderRow> orders;
     for (Road& road : roads_) {
-      if (road.laid_day >= 0 || road.waypoints.size() < 2 || !NewUnitBeside(world, road)) {
+      if (road.laid_day >= 0 || road.waypoints.size() < 2 ||
+          (!NewUnitBeside(world, road) && !GroveLinkIsDue(world, road))) {
         continue;
       }
       road.laid_day = static_cast<std::int64_t>(world.calendar.day);
@@ -127,7 +129,8 @@ class SuggestedRoadsPolicy {
            "not in the start stands or is marked within "
         << kNearM
         << " m of it, at the dirt surface, free (#423; roads design §9; econ's plan "
-           "423-suggested-roads-plan-2026-10-11)\n";
+           "423-suggested-roads-plan-2026-10-11); a road into a grove on the first day of year "
+        << kGroveLinkYear << " (#1205 (r1'))\n";
   }
 
   /// @brief What the fixture did, for the run to print at the end.
@@ -144,6 +147,17 @@ class SuggestedRoadsPolicy {
  private:
   /// A new unit within this many metres of the road's drawn line lays it.
   static constexpr float kNearM = 60.0F;
+
+  /// THE FOREST'S TRACK IS LAID BY THE CALENDAR, NOT BY A BUILDING (#1205
+  /// (r1′); boss, boss-core-1205-birth-prints [47]; econ, econ-boss-1205-c33-
+  /// births [11]): no building stands beside a road into a grove, so the rule
+  /// above never laid it. A suggested road whose key names a grove is laid on
+  /// the first day of this game year - econ's «by y9-y10», the year the forest
+  /// inside the log cart's reach is below a few years of the felling's want on
+  /// the canon (rch1205: 1 288 m3 at y10, 390 at y14). Her other trigger, «the
+  /// stock inside the reach below three years of `wanted`», is NOT built: the
+  /// year stands for it, named.
+  static constexpr std::uint32_t kGroveLinkYear = 9;
 
   struct Road {
     std::string key;
@@ -174,6 +188,11 @@ class SuggestedRoadsPolicy {
       }
     }
     return false;
+  }
+
+  static bool GroveLinkIsDue(const core::WorldState& world, const Road& road) {
+    return road.key.find("_grove_") != std::string::npos &&
+           world.calendar.day >= (kGroveLinkYear - 1U) * core::kDaysPerYear;
   }
 
   std::vector<Road> roads_;
