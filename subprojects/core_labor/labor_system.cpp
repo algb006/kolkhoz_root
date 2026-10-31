@@ -305,7 +305,7 @@ class LaborSystem final : public ILaborSystem {
   }
 
   bool FellingCanBeManned(const WorldState& state, Vec2 place) const override {
-    return FellingCanBeMannedToday(state, place, ReachRuleOf(), DraughtHorses(state));
+    return FellingCanBeMannedToday(state, place, ReachRuleOf(), HorsesForARide(state));
   }
 
   void CollectAlarms(const WorldState& state, std::vector<Alarm>& out) const override {
@@ -583,6 +583,10 @@ class LaborSystem final : public ILaborSystem {
             ++book.short_job_days[kind][static_cast<std::size_t>(*diagnosis.shortfall[index])];
           }
         }
+        // What the plan left for a ride (#1205 (c1)): tomorrow's felling offer
+        // and the chairman's FellingCanBeManned ask it.
+        current.morning_horses_left = static_cast<std::uint16_t>(
+            std::min<std::uint32_t>(diagnosis.horses_for_rides, kMorningHorsesUnknown - 1U));
         BookLogPairs(jobs, plan, rides_horse, diagnosis, book);
         for (std::size_t index = 0; index < candidates.size(); ++index) {
           if (diagnosis.idle[index]) {
@@ -2722,6 +2726,17 @@ class LaborSystem final : public ILaborSystem {
   /// one home with the logistics' lamp since 0.37.276).
   std::uint32_t DraughtHorses(const WorldState& current) const {
     return DraughtHorsesOf(current, config_.horse_kind);
+  }
+
+  /// The horses a ride to a felling may count on (#1205 (c1)): those the last
+  /// morning plan left over, never more than stand today; before the first
+  /// plan, those that stand.
+  std::uint32_t HorsesForARide(const WorldState& current) const {
+    const std::uint32_t standing = DraughtHorses(current);
+    if (current.morning_horses_left == kMorningHorsesUnknown) {
+      return standing;
+    }
+    return std::min<std::uint32_t>(standing, current.morning_horses_left);
   }
 
   AssignmentParams DayParams(const WorldState& current) const {

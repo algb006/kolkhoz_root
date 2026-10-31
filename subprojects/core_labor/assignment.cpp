@@ -910,6 +910,10 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
   }
 
   // THE PEOPLE'S CARTS, from the horses the queue left (A3; assignment.h).
+  // What they had is what a ride to a felling had (#1205 (c1)) - counted
+  // before they take theirs, or a felling that took the last horse would
+  // refuse itself its own ride the next morning.
+  const std::uint32_t horses_for_rides = horses_left;
   GivePeoplesCarts(PeoplesCartPlan{.jobs = &jobs,
                                    .candidates = &candidates,
                                    .params = &params,
@@ -1046,6 +1050,7 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
                                  .released = &released,
                                  .horses_left = horses_left},
                       *diagnosis);
+    diagnosis->horses_for_rides = horses_for_rides;
   }
   return result;
 }

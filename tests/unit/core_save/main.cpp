@@ -805,6 +805,9 @@ core::WorldState MakeWorld() {
   world.clamp_rot.per_day[45] = 70'000;
   // The dead waiting for a grave (save 180, #1199): past one byte.
   world.burials_waiting = 258;
+  // The horses the last morning plan left (save 199, #1205 (c1)): past one
+  // byte and off the unknown sentinel.
+  world.morning_horses_left = 300;
   // The jobs' runs of mornings with no hand (save 149): two, every id and
   // count off its default, the second one said.
   world.unmanned_runs.resize(2);
@@ -1473,6 +1476,7 @@ core::WorldState MakeWitnessWorld() {
   witness.clamp_rot.last_day = 291;  // save 176
   witness.clamp_rot.per_day[7] = 9'000;
   witness.burials_waiting = 3;      // save 180
+  witness.morning_horses_left = 4;  // save 199
   witness.unmanned_runs.resize(1);  // save 149
   witness.unmanned_runs[0].kind = core::WorkKind::kHerdCare;
   witness.unmanned_runs[0].herd = core::HerdId{2};
@@ -1761,6 +1765,8 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   }
   // Save 180: the dead waiting for a grave, two bytes.
   chunks.push_back({"burials_waiting", U16(world.burials_waiting)});
+  // Save 199: the horses the last morning plan left, two bytes.
+  chunks.push_back({"morning_horses_left", U16(world.morning_horses_left)});
   // Save 149: the jobs' runs — a count, then each run's fields in order.
   chunks.push_back(
       {"unmanned_runs.count", U32(static_cast<std::uint32_t>(world.unmanned_runs.size()))});
@@ -2017,7 +2023,9 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // before the build, held; the hash read off it. Save 198 (#843): the
     // year's largest milking day and the lamp's heads' milk, two i64 -
     // predicted 1431 -> 1447 before the build, held; the hash read off it.
-    {"world", 1447, 0x35823e91b3d1c055ULL},
+    // Save 199 (#1205 (c1)): the horses the last morning plan left, a u16 -
+    // predicted 1447 -> 1449 before the build, held; the hash read off it.
+    {"world", 1449, 0xbbb9ed02b13f50a4ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2894,6 +2902,8 @@ int main() {
                      "the week's labour book comes back, every sum in place (save 190)");
   failures += Expect(loaded.burials_waiting == 258,
                      "the dead waiting for a grave come back, all of them (save 180)");
+  failures += Expect(loaded.morning_horses_left == 300,
+                     "the horses the last morning plan left come back (save 199)");
   failures += Expect(loaded.unmanned_runs.size() == 2 &&
                          loaded.unmanned_runs[0].kind == core::WorkKind::kPlowing &&
                          loaded.unmanned_runs[0].field.value == 3 &&

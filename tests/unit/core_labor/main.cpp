@@ -4459,16 +4459,24 @@ int TestFellingWaitsForTheLogCart() {
   // THE CHAIRMAN'S DOOR IS THE OFFERING'S OWN PREDICATE (0.37.208). On open
   // ground with no network (every weight 1): 3 km is 7.2 hours on foot — past
   // the limit of 6 — and 3 by the ride; 7 km is past the ride and the cart.
-  const auto door = [](float metres, std::uint16_t horses) {
-    const auto labor = LaborWithThePeoplesCart();
-    if (labor == nullptr) {
-      return false;
-    }
-    DayWorld day(2);
-    const core::HerdId team = day.AddUnitHerd(horses, 5.0F);
-    day.world.herds.rows[core::FindRow(day.world.herds, team)].kind = core::LivestockKindId{0};
-    return labor->FellingCanBeManned(day.world, core::Vec2{.x = metres, .y = 0.0F});
-  };
+  const auto door =
+      [](float metres, std::uint16_t horses, std::uint16_t left = core::kMorningHorsesUnknown) {
+        const auto labor = LaborWithThePeoplesCart();
+        if (labor == nullptr) {
+          return false;
+        }
+        DayWorld day(2);
+        const core::HerdId team = day.AddUnitHerd(horses, 5.0F);
+        day.world.herds.rows[core::FindRow(day.world.herds, team)].kind = core::LivestockKindId{0};
+        day.world.morning_horses_left = left;
+        return labor->FellingCanBeManned(day.world, core::Vec2{.x = metres, .y = 0.0F});
+      };
+  // THE DOOR ASKS WHAT THE PLAN LEFT (#1205 (c1)). Known direction: a horse
+  // stands, but yesterday's plan left none - «no» past the walk; the pair: it
+  // left one - «yes»; and within the walk no horse is asked either way.
+  failures += Expect(!door(3000.0F, 1, 0) && door(3000.0F, 1, 1) && door(1000.0F, 1, 0),
+                     "felling's door (c1): past the walk «no» when the last morning plan left no "
+                     "horse though one stands, «yes» when it left one; within the walk «yes»");
   failures += Expect(door(3000.0F, 1) && !door(7000.0F, 1),
                      "felling's door: «yes» past the walk while a ride reaches and a horse "
                      "stands in the pool; «no» past the ride");

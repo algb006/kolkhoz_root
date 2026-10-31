@@ -531,6 +531,11 @@ struct PlacementDiagnosis {
   /// this morning (care_reprice.h; #709) - placed again by the second pass or
   /// left free. The caller marks the day's assignment by it.
   std::vector<std::uint8_t> moved_off_care;
+
+  /// The draught horses the queue left for the people's carts this morning,
+  /// before they took theirs: what a ride to a felling had (#1205 (c1);
+  /// WorldState::morning_horses_left keeps it to the next morning).
+  std::uint32_t horses_for_rides = 0;
 };
 
 /// @brief Norm-days ONE hand is expected to deliver on `job` today: the mean,
