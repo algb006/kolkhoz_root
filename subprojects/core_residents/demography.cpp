@@ -901,8 +901,15 @@ WeddingPlan PlanWedding(const LifeConfig& config,
   // alone (below), and a widow with a grown son waited in the queue for a new
   // house the design never asked for. The bride's yard first, then the
   // groom's; a full house falls through to the rules below.
-  const bool hers_kept = KeepsAYardWithChildren(current, bride, bride, groom);
-  const bool his_kept = KeepsAYardWithChildren(current, groom, bride, groom);
+  // NOT WHERE THE OTHER'S LEAVING LEAVES HIS CHILDREN ALONE: that case is the
+  // rules' below (a widow and a widower each with a child alone wait), and the
+  // widow's yard is no answer to the widower's child.
+  const YardLeftBehind hers_left = WhatTheYardKeeps(config, current, bride, bride, groom, day);
+  const YardLeftBehind his_left = WhatTheYardKeeps(config, current, groom, bride, groom, day);
+  const bool hers_kept =
+      !his_left.children_alone && KeepsAYardWithChildren(current, bride, bride, groom);
+  const bool his_kept =
+      !hers_left.children_alone && KeepsAYardWithChildren(current, groom, bride, groom);
   if (hers_kept || his_kept) {
     const std::uint32_t bride_row = FindRow(current.residents, bride);
     const std::uint32_t groom_row = FindRow(current.residents, groom);

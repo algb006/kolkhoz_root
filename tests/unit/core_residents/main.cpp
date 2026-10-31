@@ -2321,13 +2321,20 @@ int CheckAWeddingLeavesNoChildAlone() {
     grown.world.residents.rows[FindRow(grown.world.residents, grown.widow)].birth_day = -45 * 12;
     grown.world.residents.rows[FindRow(grown.world.residents, grown.child)].birth_day = -20 * 12;
     grown.world.residents.rows[FindRow(grown.world.residents, grown.child)].sex = core::Sex::kMale;
-    RunUntilWedding(*system, grown.world);
+    // Day by day to HER wedding: RunUntilWedding waits for a new household,
+    // and a wedding into her yard makes none.
+    for (std::uint32_t day = 0; day < 3 * core::kDaysPerYear && !married(grown); ++day) {
+      RunDays(*system, grown.world, 1);
+    }
     std::uint32_t free_houses_taken = 0;
     for (const core::FamilyRow& family : grown.world.families.rows) {
       const std::uint32_t house = FindRow(grown.world.units, family.house);
       free_houses_taken +=
           house != core::kNoRow && grown.world.units.rows[house].type.value == 2U ? 1U : 0U;
     }
+    std::cout << "  the widow's rule: married " << married(grown) << ", husband at home "
+              << husband_at_home(grown) << ", free houses taken " << free_houses_taken << ", day "
+              << grown.world.calendar.day << '\n';
     failures += Expect(married(grown) && husband_at_home(grown) && free_houses_taken == 0,
                        "a wedding, the widow's rule in full: a widow with a grown son takes the "
                        "new husband into her own yard, and the free house stays free");
