@@ -407,6 +407,9 @@ class FixturePolicy {
   /// (BuildingChairman::SetWarmMovesOff).
   void SetWarmOff() { warm_off_ = true; }
 
+  /// @brief The cattle yard's type (unit_types.csv), for the arm's switch.
+  core::UnitTypeId CattleYardType() const { return cattle_; }
+
  private:
   bool warm_off_ = false;
 

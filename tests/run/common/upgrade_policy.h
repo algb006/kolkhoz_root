@@ -112,6 +112,12 @@ class UpgradePolicy {
   ///        buildings.
   /// @param farm_first The farm's own shortage has a site waiting: nothing is
   ///        raised today.
+  /// @brief #713's must-not arm: units of `type` are never raised by this
+  /// policy (BuildingChairman::SetWarmMovesOff: the cattle yard's level 2 is
+  /// its warm, and this policy raised it to the era's level on day 17 of the
+  /// arm's 1931 while the fixture's warm stood off).
+  void SkipType(core::UnitTypeId type) { skipped_type_ = type; }
+
   void RunDay(core::ISimulation& simulation, bool farm_first) {
     if (catalog_.kolkhoz_types.empty()) {
       return;
@@ -159,7 +165,8 @@ class UpgradePolicy {
     };
     for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
       const core::UnitRow& unit = world.units.rows[row];
-      if (unit.level == 0 || unit.dead != 0 || !Kolkhoz(unit.type)) {
+      if (unit.level == 0 || unit.dead != 0 || !Kolkhoz(unit.type) ||
+          unit.type.value == skipped_type_.value) {
         continue;
       }
       // At the level this era requires, or with no rung left that the era
@@ -424,6 +431,8 @@ class UpgradePolicy {
   }
 
  private:
+  core::UnitTypeId skipped_type_;
+
   /// The order placed today, as the unit stood when it was placed.
   struct Placed {
     core::UnitId unit;

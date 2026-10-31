@@ -292,13 +292,16 @@ class BuildingChairman {
   /// @brief #713'S MUST-NOT ARM (econ, boss-econ-713-1302-reads [3]): the
   /// chairman's warm moves switched off together - the houses' straw coat
   /// (insulation_policy.h), the first pen's warm (fixture_policy.h,
-  /// WarmFirst) and the hold for its materials (warm_hold.h). The cold gate
-  /// must turn red under it, or the gate cannot fail. NOT switched: the
-  /// upgrade policy's later raise of a cattle yard (upgrade_policy.h), named.
+  /// WarmFirst), the hold for its materials (warm_hold.h), and the upgrade
+  /// policy's raise of the cattle yard to the era's level, which IS the warm
+  /// (upgrade_policy.h; the arm's first draft left it on, and it warmed the
+  /// pen on day 17 - the arm read NOT MEASURED, 0 and 1 of 3). The cold gate
+  /// must turn red under it, or the gate cannot fail.
   void SetWarmMovesOff() {
     insulation.SetOff();
     fixture.SetWarmOff();
     warm_hold.SetOff();
+    upgrades.SkipType(fixture.CattleYardType());
   }
 
   /// @brief One day of the chairman's attention. Call once a day, after the
