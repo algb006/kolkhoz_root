@@ -1,6 +1,6 @@
 /// @file
-/// @brief The run's chairman fells the nearest stand when the village has
-/// fewer logs than one granary takes.
+/// @brief The run's chairman fells the nearest stand that holds the logs
+/// wanted (PickMarkStand) when the village has fewer logs than it needs.
 /// @threading SINGLE_THREADED
 /// Test-side code, driven from the thread that owns the simulation.
 ///
@@ -47,6 +47,74 @@
 
 namespace run {
 
+/// @brief One stand the chairman could mark today: where it is, and what a
+/// mark there would hold.
+struct MarkOffer {
+  std::uint32_t row = 0;
+
+  /// From the village centre, metres.
+  float distance_m = 0.0F;
+
+  /// The mark's volume: the wanted logs' timber, or what the stand has left.
+  float volume_m3 = 0.0F;
+
+  /// The logs that volume yields.
+  float logs = 0.0F;
+};
+
+/// A stand counts as FULL when its mark yields at least this share of the
+/// logs wanted (#1205 (a), boss [23]).
+inline constexpr float kFullMarkShare = 0.0F;
+
+/// @brief The offer to mark: the nearest FULL one (logs >= kFullMarkShare of
+/// `wanted_logs`), and only when none is full, the fullest (the nearer on a
+/// tie). offers.size() when there are none.
+///
+/// THE NEAREST CRUMB HELD THE VILLAGE (#1205 (a); boss [23], core [22]). The
+/// nearest manned stand won however little it held: from year 14 the marked
+/// stand held 7-10 m3 in every village of nine while 8 470 m3 stood over 97
+/// stands, and one mark at a time (`held`) kept the felling to that crumb -
+/// 0.3 fellers at noon, 27 t of logs a year, the houses waiting on logs.
+inline std::size_t PickMarkStand(std::span<const MarkOffer> offers, float wanted_logs) {
+  const float full_logs = wanted_logs * kFullMarkShare;
+  std::size_t nearest_full = offers.size();
+  std::size_t fullest = offers.size();
+  for (std::size_t i = 0; i < offers.size(); ++i) {
+    const MarkOffer& offer = offers[i];
+    if (offer.logs >= full_logs &&
+        (nearest_full == offers.size() || offer.distance_m < offers[nearest_full].distance_m)) {
+      nearest_full = i;
+    }
+    if (fullest == offers.size() || offer.logs > offers[fullest].logs ||
+        (offer.logs == offers[fullest].logs && offer.distance_m < offers[fullest].distance_m)) {
+      fullest = i;
+    }
+  }
+  return nearest_full != offers.size() ? nearest_full : fullest;
+}
+
+/// @brief What the felling policy did on its last day, for a probe to print.
+struct FellingDay {
+  enum class Outcome : std::uint8_t {
+    kNotRun,    ///< Not ready, or the day has not run.
+    kCooldown,  ///< Two days after a mark.
+    kMarkHeld,  ///< A marked stand's felling moves: no second mark.
+    kEnough,    ///< The logs in hand cover the wanted.
+    kNoStand,   ///< Short, and no stand could be marked.
+    kMarked,    ///< A stand was marked.
+  };
+
+  Outcome outcome = Outcome::kNotRun;
+
+  /// The logs wanted and held, in logs; 0 on a day that stopped before them.
+  float wanted_logs = 0.0F;
+
+  float held_logs = 0.0F;
+
+  /// The mark's volume on a kMarked day.
+  float marked_m3 = 0.0F;
+};
+
 class FellingPolicy {
  public:
   explicit FellingPolicy(const core::ITableSet& tables) {
@@ -66,7 +134,8 @@ class FellingPolicy {
   static void Declare(const char* run) {
     std::cout << run
               << ": FIXTURE DIFFERS FROM THE START CANON — the run's chairman FELLS the nearest "
-                 "stand when the village has fewer logs than one granary, the waiting sites and "
+                 "stand holding half the logs wanted (the fullest when none does; #1205 (a)) when "
+                 "the village has fewer logs than one granary, the waiting sites and "
                  "the next three houses take (timber design §8a; boss, 2026-09-13; ahead of the "
                  "queue since 10 October 2026)\n";
   }
@@ -87,6 +156,7 @@ class FellingPolicy {
   /// @param saw_log_grams The logs the saw needs for the boards the sites still
   ///        lack (SawmillPolicy::LogsForMissingBoards); 0 in a run with no saw.
   void RunDay(core::ISimulation& simulation, core::Grams saw_log_grams = 0) {
+    day_ = FellingDay{};
     if (!ready_) {
       return;
     }
@@ -101,9 +171,11 @@ class FellingPolicy {
     const bool held = AMovingMarkStands(world);
     if (cooldown_ > 0) {
       --cooldown_;
+      day_.outcome = FellingDay::Outcome::kCooldown;
       return;
     }
     if (held) {
+      day_.outcome = FellingDay::Outcome::kMarkHeld;
       return;
     }
     // LOGS IN HAND, and the logs already felled and lying count as in hand: a
@@ -167,7 +239,10 @@ class FellingPolicy {
                                   : 0;
     const core::Grams wanted = (static_cast<core::Grams>(granary_logs_) * catalog_.log_grams) +
                                owed + saw_log_grams + ahead;
+    day_.wanted_logs = static_cast<float>(wanted) / static_cast<float>(catalog_.log_grams);
+    day_.held_logs = static_cast<float>(logs) / static_cast<float>(catalog_.log_grams);
     if (logs >= wanted) {
+      day_.outcome = FellingDay::Outcome::kEnough;
       return;
     }
     // ONE FELLING, SIZED TO THE WHOLE SHORTFALL — the sites' logs and the
@@ -179,12 +254,18 @@ class FellingPolicy {
         static_cast<std::uint32_t>((wanted - logs + catalog_.log_grams - 1) / catalog_.log_grams);
     core::OrderRow order;
     if (!NearestMark(simulation, short_logs > granary_logs_ ? short_logs : granary_logs_, order)) {
+      day_.outcome = FellingDay::Outcome::kNoStand;
       return;
     }
     simulation.StageOrders(std::span<const core::OrderRow>(&order, 1), {});
+    day_.outcome = FellingDay::Outcome::kMarked;
+    day_.marked_m3 = order.volume_m3;
     ++marked_;
     cooldown_ = kCooldownDays;
   }
+
+  /// @brief What the last RunDay did.
+  const FellingDay& LastDay() const { return day_; }
 
   /// @brief What the policy did, for the run to print at the end.
   void Report(const char* run, const core::WorldState& world) const {
@@ -289,9 +370,7 @@ class FellingPolicy {
                    core::OrderRow& order) const {
     const core::WorldState& world = simulation.CompletedState();
     const core::Vec2 centre = Centre(world);
-    std::uint32_t best = core::kNoRow;
-    float best_distance = 0.0F;
-    float best_volume = 0.0F;
+    std::vector<MarkOffer> offers;
     for (std::uint32_t row = 0; row < world.stands.rows.size(); ++row) {
       const core::TimberStandRow& stand = world.stands.rows[row];
       // A GROWN PLANTING IS FELLED TOO, at its species' log share
@@ -335,19 +414,18 @@ class FellingPolicy {
       }
       const float dx = stand.position.x - centre.x;
       const float dy = stand.position.y - centre.y;
-      const float distance = std::sqrt((dx * dx) + (dy * dy));
-      if (best == core::kNoRow || distance < best_distance) {
-        best = row;
-        best_distance = distance;
-        best_volume = volume;
-      }
+      offers.push_back(MarkOffer{.row = row,
+                                 .distance_m = std::sqrt((dx * dx) + (dy * dy)),
+                                 .volume_m3 = volume,
+                                 .logs = volume * share / catalog_.log_m3});
     }
-    if (best == core::kNoRow) {
+    const std::size_t best = PickMarkStand(offers, static_cast<float>(logs));
+    if (best >= offers.size()) {
       return false;
     }
     order.kind = core::OrderKind::kMarkFelling;
-    order.stand = world.stands.row_ids[best];
-    order.volume_m3 = best_volume;
+    order.stand = world.stands.row_ids[offers[best].row];
+    order.volume_m3 = offers[best].volume_m3;
     return true;
   }
 
@@ -381,6 +459,8 @@ class FellingPolicy {
   std::uint32_t cooldown_ = 0;
 
   std::uint32_t marked_ = 0;
+
+  FellingDay day_;
 };
 
 }  // namespace run
