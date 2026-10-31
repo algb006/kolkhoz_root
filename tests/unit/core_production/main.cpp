@@ -13884,6 +13884,10 @@ int CheckTheMilkPlanHandOverGuard() {
   int failures = 0;
   core::ProductionConfig config = MakeHerdConfig();
   config.livestock[0].births_per_game_year = 0.0F;
+  // BY PROPORTION, NOT MALES FIRST: with the work-stock mark the two heads
+  // handed were both bulls and the milk stood still - the guard's first
+  // build read «lamp: 100 kg kept, 100 kg handed» on a setting, not a wire.
+  config.livestock[0].males_work = 0;
   config.hay_resource = core::ResourceId{0};
   config.farming.meadow_cut_month = 6;
   config.crops.resize(1);
@@ -13903,7 +13907,8 @@ int CheckTheMilkPlanHandOverGuard() {
   // A world, its hay (80 kg lights the lamp for four heads; a tonne does not),
   // and whether two heads are handed over; then the letter, the year's
   // largest day set to 200 kg.
-  const auto letter_after = [&config](float hay_kg, bool hand) {
+  int refused = 0;
+  const auto letter_after = [&config, &refused](float hay_kg, bool hand) {
     core::WorldState world = MakeHerdWorld(hay_kg);
     world.plan.highest_due = {0, 0};
     const core::HerdId herd = AddHerd(world, 0, 4, 2, true);
@@ -13912,7 +13917,7 @@ int CheckTheMilkPlanHandOverGuard() {
       order.kind = core::OrderKind::kHandStock;
       order.herd = herd;
       order.amount = 2;
-      (void)core::OrderHandStock(config, world, order);
+      refused += core::OrderHandStock(config, world, order) != core::OrderRefusal::kNone ? 1 : 0;
     }
     world.plan.milk_day_max_grams = 200 * core::kGramsPerKilogram;
     world.calendar.tick = 8 * static_cast<core::Tick>(core::kTicksPerDay);
@@ -13938,6 +13943,7 @@ int CheckTheMilkPlanHandOverGuard() {
   std::cout << "  milk guard: no lamp " << rich_kept / kKilo << " kg kept, " << rich_handed / kKilo
             << " kg handed; lamp " << lean_kept / kKilo << " kg kept, " << lean_handed / kKilo
             << " kg handed (shares a day)\n";
+  failures += Expect(refused == 0, "milk guard: both hand-overs were taken by the district's door");
   failures += Expect(rich_kept == 100 * kKilo && rich_handed == rich_kept,
                      "milk guard: with no lamp, a hand-over leaves next letter's share where the "
                      "world without it has it (the autumn exploit closed)");
