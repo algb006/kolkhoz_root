@@ -715,6 +715,34 @@ bool Walk(std::uint64_t seed,
                  &passed_over);
       builder.RunDay(*simulation);
       timber.CountDay(simulation->CompletedState());
+      // WHY THE FIRST PEN'S WARM WAS OR WAS NOT BUILT IN YEAR 1 (#713; boss,
+      // 1 November 2026): one line a day of years 1-2, until the pen stands
+      // warm - the month (the clay window is March-September), the pen's level
+      // and works, whether the chairman found the warm in hand (recipe in the
+      // village and the start gate open), the warms he ordered, the warm's
+      // hold (warm_hold.h) and what the recipe lacks (MaterialsShortFor).
+      if (year <= 2) {
+        const core::WorldState& now = simulation->CompletedState();
+        const std::uint32_t pen = builder.fixture.PenWaitingForWarm(now);
+        if (pen != core::kNoRow) {
+          const core::UnitRow& unit = now.units.rows[pen];
+          std::cout << "population_curve: WARM seed " << seed << " y" << year << " day " << day
+                    << " month " << static_cast<unsigned>(now.calendar.date.month) << " pen "
+                    << now.units.row_ids[pen].value << " level "
+                    << static_cast<unsigned>(unit.level) << " phase "
+                    << static_cast<unsigned>(unit.construction.phase) << " target "
+                    << static_cast<unsigned>(unit.construction.target_level) << " in_hand "
+                    << (builder.fixture.WarmBarnInHand() ? 1 : 0) << " ordered "
+                    << builder.fixture.WarmsOrdered() << " hold "
+                    << (builder.warm_hold.Holding(now) ? 1 : 0) << " short";
+          for (const core::MaterialShortfall& line :
+               simulation->MaterialsShortFor(now.units.row_ids[pen])) {
+            std::cout << ' ' << line.resource.value << ':' << line.needed / 1000 << '/'
+                      << line.held / 1000 << "kg";
+          }
+          std::cout << '\n';
+        }
+      }
       // What held the transition TODAY, by the order's own door.
       const core::WorldState& today = simulation->CompletedState();
       if (today.epoch == core::Epoch::kOne) {

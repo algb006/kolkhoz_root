@@ -389,6 +389,13 @@ class FixturePolicy {
   ///        the store's rules cannot fire.
   std::uint32_t RoofedCrops() const { return roof_.crops; }
 
+  /// @brief #713's why-print: whether today's day found the pen's warm in
+  /// hand (its recipe in the village and the start gate open), and how many
+  /// warms it has ordered so far.
+  bool WarmBarnInHand() const { return warm_barn_in_hand_; }
+
+  std::uint32_t WarmsOrdered() const { return warms_ordered_; }
+
   /// @brief Whether `key` is a store THIS policy builds: the clamp or the
   ///        long store of its crops. The guard is hard on these; a suggested
   ///        store of another policy's is that policy's to answer for.
