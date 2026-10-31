@@ -13874,6 +13874,79 @@ int CheckTheMilkPositionReadsTheYear() {
   return failures;
 }
 
+/// THE AUTUMN HAND-OVER WITH NO LAMP DOES NOT LOWER THE MILK PLAN (#843; boss,
+/// boss-core-843-guard-unit-1031 [1]; econ, econ-boss-pipeline-rows [3]): the
+/// exploit the rule closes, which no canon bot plays. A hand-over with no hay
+/// lamp leaves next letter's milk share where the same world without the
+/// hand-over has it; the same hand-over under the lamp lowers it by the
+/// handed milk. Both directions known: wired the wrong way, one of them fails.
+int CheckTheMilkPlanHandOverGuard() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.livestock[0].births_per_game_year = 0.0F;
+  config.hay_resource = core::ResourceId{0};
+  config.farming.meadow_cut_month = 6;
+  config.crops.resize(1);
+  config.plan_positions = {{.crop = core::CropId{0}, .area_share = 0.1F}};
+  config.plan_grain_share = 0.5F;
+  config.plan_milk_share = 0.5F;
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  const auto lit = [&config](const core::WorldState& world) {
+    std::vector<core::Alarm> alarms;
+    core::CollectHerdForecastAlarms(config, world, alarms);
+    return std::ranges::any_of(alarms, [](const core::Alarm& alarm) {
+      return alarm.kind == core::AlarmKind::kHerdHayShortAhead &&
+             (alarm.advice == core::AlarmAdvice::kReduceHerd ||
+              alarm.advice_more == core::AlarmAdvice::kReduceHerd);
+    });
+  };
+  // A world, its hay (80 kg lights the lamp for four heads; a tonne does not),
+  // and whether two heads are handed over; then the letter, the year's
+  // largest day set to 200 kg.
+  const auto letter_after = [&config](float hay_kg, bool hand) {
+    core::WorldState world = MakeHerdWorld(hay_kg);
+    world.plan.highest_due = {0, 0};
+    const core::HerdId herd = AddHerd(world, 0, 4, 2, true);
+    if (hand) {
+      core::OrderRow order;
+      order.kind = core::OrderKind::kHandStock;
+      order.herd = herd;
+      order.amount = 2;
+      (void)core::OrderHandStock(config, world, order);
+    }
+    world.plan.milk_day_max_grams = 200 * core::kGramsPerKilogram;
+    world.calendar.tick = 8 * static_cast<core::Tick>(core::kTicksPerDay);
+    core::RefreshCalendarCaches(world.calendar);
+    core::AnnouncePlan(config, world);
+    return world.plan.milk_daily_share;
+  };
+  {
+    core::WorldState lean = MakeHerdWorld(80.0F);
+    lean.plan.highest_due = {0, 0};
+    AddHerd(lean, 0, 4, 2, true);
+    core::WorldState rich = MakeHerdWorld(1.0e6F);
+    rich.plan.highest_due = {0, 0};
+    AddHerd(rich, 0, 4, 2, true);
+    failures += Expect(lit(lean) && !lit(rich),
+                       "milk guard: the setting holds - 80 kg lights the hay lamp with «hand heads "
+                       "over», a tonne does not");
+  }
+  const core::Grams rich_kept = letter_after(1.0e6F, false);
+  const core::Grams rich_handed = letter_after(1.0e6F, true);
+  const core::Grams lean_kept = letter_after(80.0F, false);
+  const core::Grams lean_handed = letter_after(80.0F, true);
+  std::cout << "  milk guard: no lamp " << rich_kept / kKilo << " kg kept, " << rich_handed / kKilo
+            << " kg handed; lamp " << lean_kept / kKilo << " kg kept, " << lean_handed / kKilo
+            << " kg handed (shares a day)\n";
+  failures += Expect(rich_kept == 100 * kKilo && rich_handed == rich_kept,
+                     "milk guard: with no lamp, a hand-over leaves next letter's share where the "
+                     "world without it has it (the autumn exploit closed)");
+  failures += Expect(lean_kept == 100 * kKilo && lean_handed < lean_kept,
+                     "milk guard, the pair: under the lamp the same hand-over lowers the share by "
+                     "the handed milk");
+  return failures;
+}
+
 /// THE MILK CART (district §9; register 231; boss seq 98 and 113): the
 /// position named off the kolkhoz's milking day, the day's share at the
 /// milking, the rest before the next one, the winter's milk outside any
@@ -17848,6 +17921,7 @@ int main() {
   failures += CheckDistrictTrip();
   failures += CheckTheMilkCart();
   failures += CheckTheMilkPositionReadsTheYear();
+  failures += CheckTheMilkPlanHandOverGuard();
   failures += CheckTheWinterCropMovesToTheSpring();
   failures += CheckTheChurchStoreIsEmptied();
   failures += CheckTheAccumulationLimit();
