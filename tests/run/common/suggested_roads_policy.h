@@ -22,6 +22,7 @@
 #ifndef TESTS_RUN_COMMON_SUGGESTED_ROADS_POLICY_H_
 #define TESTS_RUN_COMMON_SUGGESTED_ROADS_POLICY_H_
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -129,8 +130,8 @@ class SuggestedRoadsPolicy {
            "not in the start stands or is marked within "
         << kNearM
         << " m of it, at the dirt surface, free (#423; roads design §9; econ's plan "
-           "423-suggested-roads-plan-2026-10-11); a road into a grove on the first day of year "
-        << kGroveLinkYear << " (#1205 (r1'))\n";
+           "423-suggested-roads-plan-2026-10-11); "
+        << kGroveLinkKey << " on the first day of year " << kGroveLinkYear << " (#1205 (r1'))\n";
   }
 
   /// @brief What the fixture did, for the run to print at the end.
@@ -142,6 +143,16 @@ class SuggestedRoadsPolicy {
                 << road.drafts << " drafts);";
     }
     std::cout << '\n';
+    const auto grove =
+        std::ranges::find_if(roads_, [](const Road& road) { return road.key == kGroveLinkKey; });
+    std::cout << run_name << ": "
+              << (grove == roads_.end()
+                      ? std::string("grove link NOT FOUND (") + std::string(kGroveLinkKey) +
+                            " is not in suggested_roads.csv)"
+                      : (grove->laid_day >= 0
+                             ? "grove link laid day " + std::to_string(grove->laid_day)
+                             : std::string("grove link NOT LAID")))
+              << '\n';
   }
 
  private:
@@ -156,8 +167,11 @@ class SuggestedRoadsPolicy {
   /// inside the log cart's reach is below a few years of the felling's want on
   /// the canon (rch1205: 1 288 m3 at y10, 390 at y14). Her other trigger, «the
   /// stock inside the reach below three years of `wanted`», is NOT built: the
-  /// year stands for it, named.
+  /// year stands for it, named. ONE ROAD BY ITS KEY, not by a word in it
+  /// (boss): a later road whose key happened to say «grove» would be laid in
+  /// year 9 for no reason. A key missing from the table is said in the report.
   static constexpr std::uint32_t kGroveLinkYear = 9;
+  static constexpr std::string_view kGroveLinkKey = "suggested_road_grove_link";
 
   struct Road {
     std::string key;
@@ -191,7 +205,7 @@ class SuggestedRoadsPolicy {
   }
 
   static bool GroveLinkIsDue(const core::WorldState& world, const Road& road) {
-    return road.key.find("_grove_") != std::string::npos &&
+    return road.key == kGroveLinkKey &&
            world.calendar.day >= (kGroveLinkYear - 1U) * core::kDaysPerYear;
   }
 
