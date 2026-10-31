@@ -493,6 +493,9 @@ void LiveOneDay(core::ISimulation& simulation,
 /// `--no-planting`: the control arm of the planting measurement (0.34.41) —
 /// the building chairman without the one policy under test.
 bool g_no_planting = false;
+/// `--warm-hold=old`: #713 (w1′)'s pair base - the warm's hold as before the
+/// cure (WarmHold::UseOldRule).
+bool g_warm_hold_old = false;
 
 /// `--epoch-one-forever`: econ's branch (boss-core-epoch1-queue [34]) — the
 /// run's chairman never orders the transition, and the transition print runs
@@ -660,6 +663,9 @@ bool Walk(std::uint64_t seed,
   if (warm_off) {
     builder.SetWarmMovesOff();
   }
+  if (g_warm_hold_old) {
+    builder.warm_hold.UseOldRule();
+  }
   run::TimberFlowTally timber(*world.tables);
   run::PassedOverTally passed_over;
   // #713's straw doors and the arm's pen (below, in the day loop).
@@ -674,6 +680,10 @@ bool Walk(std::uint64_t seed,
   }
   std::array<core::Grams, 13> straw_book_before = {};
   core::Grams straw_stock_before = -1;
+  float w713_underfed = 0.0F;
+  std::uint32_t w713_hunger_deaths = 0;
+  core::Grams w713_straw_fed = 0;
+  std::array<std::uint32_t, 2> w713_houses = {};
   // econ's births and horses prints: the "forever" branch only.
   run::BirthsHerdTally births_herd(*world.tables);
   run::BirthsHerdTally* const births_herd_on = g_epoch_one_forever ? &births_herd : nullptr;
@@ -955,6 +965,24 @@ bool Walk(std::uint64_t seed,
       out.highest_unit_level = std::max(out.highest_unit_level, unit.level);
     }
     out.worst_season_variety = state.ledger.closed.worst_season_variety;
+    // #713 (w1′)'s pair, years 1-2 (boss, the birth-prints thread [57] and
+    // econ's notes): the herds' hunger beside the straw they ate, and the
+    // houses standing at each year's turn.
+    if (year <= 2) {
+      w713_underfed += state.ledger.closed.herd_hungry_head_days;
+      w713_hunger_deaths += state.ledger.closed.herd_deaths_hunger;
+      if (straw < state.ledger.closed.feed.size()) {
+        w713_straw_fed += state.ledger.closed.feed[straw];
+      }
+      std::uint32_t houses = 0;
+      if (const core::ITable* const types = world.tables->FindTable("unit_types")) {
+        const std::uint32_t house = types->FindRowByKey("wooden_house");
+        for (const core::UnitRow& unit : state.units.rows) {
+          houses += unit.type.value == house && unit.level > 0 && unit.dead == 0 ? 1U : 0U;
+        }
+      }
+      w713_houses[year - 1] = houses;
+    }
     // THE FROST'S TOLL (#712; #713's counter, econ, boss-econ-713-1302-reads
     // [3]): the closed year's herd_frozen over EVERY kind, a death counter
     // that no cull hides. Until #713 the cows' alone.
@@ -1061,6 +1089,21 @@ bool Walk(std::uint64_t seed,
                                        ? std::to_string(id.value)
                                        : std::string(types->CellText(id.value, key_column)));
     }
+  }
+  // #713 (w1′)'s pair line, one a village: the starts the warm's hold held
+  // back by type (the margin's price; WarmHold::HeldBack counts refused
+  // ANSWERS, a start asked again tomorrow counts again), the houses standing
+  // at the turns of y1 and y2, the herds' underfed head-days and hunger
+  // deaths of y1-y2, and the straw they ate.
+  if (years >= 2) {
+    std::cout << "population_curve: W713 seed " << seed << (warm_off ? " (warm off)" : "")
+              << " held_back_answers";
+    for (const auto& [type, count] : builder.warm_hold.HeldBack()) {
+      std::cout << ' ' << type << ':' << count;
+    }
+    std::cout << " houses_y1 " << w713_houses[0] << " houses_y2 " << w713_houses[1]
+              << " herd_underfed_head_days_y1y2 " << w713_underfed << " herd_hunger_deaths_y1y2 "
+              << w713_hunger_deaths << " straw_fed_y1y2_kg " << w713_straw_fed / 1000 << '\n';
   }
   out.timber = timber.years();
   out.passed_over_horse = passed_over.Longest(run::PassedOverTally::kHorse);
@@ -1184,6 +1227,8 @@ int main(int argc, char** argv) {
     const std::string_view argument(argv[index]);
     if (argument == "--sequential") {
       sequential = true;
+    } else if (argument == "--warm-hold=old") {
+      g_warm_hold_old = true;
     } else if (argument == "--no-planting") {
       g_no_planting = true;
     } else if (argument == "--social-before-1064") {

@@ -30,11 +30,13 @@
 
 #include <cstdint>
 #include <iostream>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "core_common/calendar.h"
 #include "core_common/herd_state.h"
 #include "core_common/quantities.h"
 #include "core_common/state_table_ops.h"
@@ -73,23 +75,64 @@ class WarmHold {
   /// SetWarmMovesOff).
   void SetOff() { off_ = true; }
 
+  /// @brief #713 (w1′)'s pair base: the hold as it stood before the cure -
+  /// each start against the morning's stock, no feed margin.
+  void UseOldRule() { old_rule_ = true; }
+
   /// @brief True when a start of `type` at `level` spares the warm (the rule).
   ///        The houses' exemption for a family waiting for a roof is the
   ///        wiring's (BuildingChairman): this answers for the materials alone.
+  ///
+  ///        START BY START, AND WITH THE FEED'S MARGIN (#713 (w1′); boss,
+  ///        boss-core-1205-birth-prints [56]-[57]): every start asked was
+  ///        measured against the morning's stock, so two or three starts of
+  ///        one day each passed and together took the straw below the warm -
+  ///        1937 y1 day 13, 22 t -> 6 t - and the hold kept the warm's grams to
+  ///        the gram while the herds' ration took grams of straw a day: 5 999
+  ///        of 6 000 kg, no warm in the clay window, 30 heads frozen at y2's
+  ///        start in 4 of 32 villages. Now a start this answer lets through
+  ///        is counted against today's later ones (an answer, not an order:
+  ///        a «yes» the policy does not act on still counts - the safe side),
+  ///        and the warm keeps, besides its recipe, the open year's daily feed
+  ///        of the resource times the days left in the clay window.
   bool SparesTheWarmFor(const core::WorldState& world,
                         core::UnitTypeId type,
                         std::uint8_t level) const {
     if (!Holding(world) || type.value == cattle_.value) {
       return true;
     }
-    for (const Cost& warm : warm_) {
+    if (old_rule_) {  // the pair's base: every start against the morning, no margin
+      for (const Cost& warm : warm_) {
+        const core::Grams takes = CostGrams(type, level, warm.resource);
+        if (takes > 0 && Held(world, warm.resource) - takes < warm.grams) {
+          ++held_back_[type.value];
+          return false;
+        }
+      }
+      return true;
+    }
+    if (world.calendar.day != promised_day_) {
+      promised_day_ = world.calendar.day;
+      promised_.assign(warm_.size(), 0);
+    }
+    for (std::size_t index = 0; index < warm_.size(); ++index) {
+      const Cost& warm = warm_[index];
       const core::Grams takes = CostGrams(type, level, warm.resource);
-      if (takes > 0 && Held(world, warm.resource) - takes < warm.grams) {
+      if (takes > 0 && Held(world, warm.resource) - promised_[index] - takes <
+                           warm.grams + FeedMargin(world, warm.resource)) {
+        ++held_back_[type.value];
         return false;
       }
     }
+    for (std::size_t index = 0; index < warm_.size(); ++index) {
+      promised_[index] += CostGrams(type, level, warm_[index].resource);
+    }
     return true;
   }
+
+  /// @brief The starts the hold refused, by unit_types row - the price of its
+  ///        margin, for the run to print.
+  const std::map<std::uint16_t, std::uint32_t>& HeldBack() const { return held_back_; }
 
   /// @brief True while the hold stands (the rule's three conditions).
   bool Holding(const core::WorldState& world) const {
@@ -118,6 +161,22 @@ class WarmHold {
 
  private:
   bool off_ = false;
+  bool old_rule_ = false;
+  mutable core::SimDay promised_day_ = 0xFFFFFFFFU;
+  mutable std::vector<core::Grams> promised_;
+  mutable std::map<std::uint16_t, std::uint32_t> held_back_;
+
+  /// The open year's daily draw of `resource` by the herds' ration out of the
+  /// stores, times the days left in the clay window (#713 (w1′)).
+  static core::Grams FeedMargin(const core::WorldState& world, core::ResourceId resource) {
+    const core::Grams fed = resource.value < world.ledger.current.feed.size()
+                                ? world.ledger.current.feed[resource.value]
+                                : 0;
+    const std::uint32_t day_of_year = world.calendar.day % core::kDaysPerYear;
+    const std::uint32_t window_end = (kClayLastMonth + 1U) * core::kDaysPerMonth;
+    const std::uint32_t days_left = window_end > day_of_year ? window_end - day_of_year : 0U;
+    return (fed / static_cast<core::Grams>(day_of_year + 1U)) * static_cast<core::Grams>(days_left);
+  }
 
   /// The clay months, 0-based (fixture_policy.h kClayWarmFirstMonth/LastMonth:
   /// March to September). Kept equal to the warm order's own window.
