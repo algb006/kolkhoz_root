@@ -680,6 +680,7 @@ bool Walk(std::uint64_t seed,
   }
   std::array<core::Grams, 13> straw_book_before = {};
   core::Grams straw_stock_before = -1;
+  std::unordered_map<std::uint32_t, std::uint8_t> phase_before;  // unit id -> works phase
   float w713_underfed = 0.0F;
   std::uint32_t w713_hunger_deaths = 0;
   core::Grams w713_straw_fed = 0;
@@ -814,6 +815,47 @@ bool Walk(std::uint64_t seed,
                       << '\n';
           }
           straw_stock_before = stock_now;
+        }
+        // WHO STARTED, AND WHICH GATE HELD THE WARM (#713 (ii); boss, the
+        // birth-prints thread [58]): every unit that went from pegs (or none)
+        // into works today, by type and target, beside the house rule's
+        // exemption of the day (BuildingChairman::FamilyWaitsForARoof: a
+        // couple in the wedding queue, or a family with no roof) with its two
+        // counts; and on a day the first pen waits, the two halves of its own
+        // start gate (HeldSawGate): the saw's boards and the warm's hold.
+        if (year == 1) {
+          std::uint32_t queue = static_cast<std::uint32_t>(now.wedding_waits.rows.size());
+          std::uint32_t roofless = 0;
+          for (const core::FamilyRow& family : now.families.rows) {
+            roofless += family.house.value == core::kInvalidEntityIdValue ? 1U : 0U;
+          }
+          for (std::uint32_t row = 0; row < now.units.rows.size(); ++row) {
+            const core::UnitRow& u = now.units.rows[row];
+            const std::uint32_t id = now.units.row_ids[row].value;
+            const auto phase = static_cast<std::uint8_t>(u.construction.phase);
+            const auto seen = phase_before.find(id);
+            const bool started =
+                phase > static_cast<std::uint8_t>(core::ConstructionPhase::kMarked) &&
+                (seen == phase_before.end() ||
+                 seen->second <= static_cast<std::uint8_t>(core::ConstructionPhase::kMarked));
+            if (started) {
+              std::cout << "population_curve: START" << (warm_off ? "-ARM" : "") << " seed " << seed
+                        << " y1 day " << day << " unit " << id << " type " << u.type.value
+                        << " level " << static_cast<unsigned>(u.level) << " target "
+                        << static_cast<unsigned>(u.construction.target_level) << " roof_wait "
+                        << (run::BuildingChairman::FamilyWaitsForARoof(now) ? 1 : 0)
+                        << " couples_waiting " << queue << " families_roofless " << roofless
+                        << '\n';
+            }
+            phase_before[id] = phase;
+          }
+          if (pen != core::kNoRow) {
+            const core::UnitTypeId cattle = now.units.rows[pen].type;
+            std::cout << "population_curve: PENGATE seed " << seed << " y1 day " << day
+                      << " boards " << (builder.sawmill.SparesBoardsFor(now, cattle, 2) ? 1 : 0)
+                      << " warm_hold "
+                      << (builder.warm_hold.SparesTheWarmFor(now, cattle, 2) ? 1 : 0) << '\n';
+          }
         }
         // THE ARM'S PEN, every day (#713's must-not arm: «find the other door
         // that still orders the warm»): the first cattle yard's level, works and
