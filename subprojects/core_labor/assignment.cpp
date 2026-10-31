@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <tuple>
 #include <vector>
 
 #include "care_reprice.h"
@@ -368,6 +369,22 @@ std::vector<std::uint32_t> OrderJobs(const std::vector<AssignmentJob>& jobs,
     }
     if (TargetIdValue(a) != TargetIdValue(b)) {
       return TargetIdValue(a) < TargetIdValue(b);
+    }
+    // THE WHOLE ADDRESS BEFORE THE INPUT POSITION (#1347): two jobs on one
+    // target (a field's heap and its strip, two loads of one works) fell to
+    // their place in the input, which CollectJobs builds in field and unit
+    // ROW order - a reversed table dealt the horse to another carter on day 3.
+    const auto address = [](const AssignmentJob& job) {
+      return std::make_tuple(static_cast<std::uint32_t>(job.kind),
+                             job.field.value,
+                             job.herd.value,
+                             job.unit.value,
+                             job.stand.value,
+                             job.extraction_site.value,
+                             job.limit_delivery.value);
+    };
+    if (address(a) != address(b)) {
+      return address(a) < address(b);
     }
     return left < right;
   });
