@@ -2014,8 +2014,10 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // labour book, two weeks of four u32 and a byte - predicted 1392 -> 1425
     // before the build, held; the hash read off it. Save 195 (#1308): the
     // cut's crew, a u16, and its mower-days, a float - predicted 1425 -> 1431
-    // before the build, held; the hash read off it.
-    {"world", 1431, 0x3be58032657b166ULL},
+    // before the build, held; the hash read off it. Save 198 (#843): the
+    // year's largest milking day and the lamp's heads' milk, two i64 -
+    // predicted 1431 -> 1447 before the build, held; the hash read off it.
+    {"world", 1447, 0x35823e91b3d1c055ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
