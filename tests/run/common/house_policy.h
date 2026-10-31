@@ -66,8 +66,18 @@ class HousePolicy {
   /// @brief The question asked before every start (start_gate.h).
   void SetStartGate(StartGate gate) { start_gate_ = std::move(gate); }
 
+  /// THE CANON'S HOUSE SITES AT ONCE: six (#1205 C2; econ, econ-boss-1205-c33-
+  /// births [3], boss's word in boss-core-1205-birth-prints [6]; P2's own
+  /// number, boss parcel 314). Three held the couples: from year 8 the wedding
+  /// queue grew 4 -> 76 by year 15 and the married share of fertile women fell
+  /// 0.94 -> 0.39 while the cap held 1 842 house-days (0.37.344's pair,
+  /// read_pb.py). This fixes the MEASURING bot, not the game: a player is never
+  /// capped. The one home of the number: thirty_years' default reads it, and
+  /// plan700's --house-sites only overrides it.
+  static constexpr std::uint32_t kCanonSitesAtOnce = 6;
+
   /// @brief How many house sites may stand marked or going up at once; 0 —
-  /// as many as are wanted (an arm; the default is three).
+  /// as many as are wanted (an arm; the default is kCanonSitesAtOnce).
   void SetSitesAtOnce(std::uint32_t sites) { sites_at_once_ = sites; }
 
   /// @brief One day of the chairman's attention. Call once a day.
@@ -325,8 +335,9 @@ class HousePolicy {
   /// lie uncarted on the stands (the log's chain, the same day). What the
   /// default by demand did do was take two runs out of their bands
   /// (population_curve's years, thirty_years_free-materials' cost of a day),
-  /// so three stays and the arm waits for the carting.
-  std::uint32_t sites_at_once_ = 3;
+  /// so a cap stays and the arm waits for the carting. The cap is six since
+  /// #1205 C2 (kCanonSitesAtOnce).
+  std::uint32_t sites_at_once_ = kCanonSitesAtOnce;
 
   static constexpr std::uint32_t kCooldownDays = 2;
 

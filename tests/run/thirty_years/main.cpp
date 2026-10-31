@@ -120,7 +120,7 @@ std::string g_avatar_key;
 /// --free-materials they take the run out of the canonical configuration.
 /// `--house-sites=0` — as many as are wanted (HousePolicy's arm of 0.37.98).
 bool g_saw_reserve = false;
-std::uint32_t g_house_sites = 3;
+std::uint32_t g_house_sites = run::HousePolicy::kCanonSitesAtOnce;  // #1205 C2: six
 
 /// `--saw-by-anyone`: arm R5 of boss's parcel 316 — adults saw by standing
 /// order up to the saw's places, and no craftsman is appointed.
@@ -519,9 +519,10 @@ int main(int argc, char** argv) {
   // and a check that fires there would be measuring the argument rather than
   // the simulation.
   g_canonical_run = g_seed == kSeed && g_years == kYears && !g_free_materials &&
-                    g_tables_dir == "tables" && !g_saw_reserve && g_house_sites == 3 &&
-                    !g_saw_by_anyone && g_fallow_by_eaters && g_sugar_buy && g_avatar_key.empty() &&
-                    g_sport_talk && g_catch_distiller && g_empty_stores;
+                    g_tables_dir == "tables" && !g_saw_reserve &&
+                    g_house_sites == run::HousePolicy::kCanonSitesAtOnce && !g_saw_by_anyone &&
+                    g_fallow_by_eaters && g_sugar_buy && g_avatar_key.empty() && g_sport_talk &&
+                    g_catch_distiller && g_empty_stores;
   run::Simulation world =
       run::Start(g_seed, 1, g_tables_dir, core::StubTables::kRefused, g_avatar_key);
   if (!world) {
