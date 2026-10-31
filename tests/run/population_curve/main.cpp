@@ -407,6 +407,39 @@ void LiveOneDay(core::ISimulation& simulation,
     if (births_herd != nullptr && tick == run::BirthsHerdTally::kSampleHour) {
       births_herd->SampleWork(state);
     }
+    // WHICH COWS DIE OF COLD, AND WHERE (#713's first step; boss, 1 November
+    // 2026): every frost death of the step, by seed, day and pen, and whether
+    // the pen stood warm - insulated, or a level whose type is a warm place
+    // (herd_cold.cpp, UnitIsWarmPlace: the level and the type's rung printed;
+    // the warm rung of a type is the table's, read beside it).
+    for (const core::SimEvent& event : state.step_events) {
+      if (event.kind != core::EventKind::kHerdFroze) {
+        continue;
+      }
+      const std::uint32_t herd_row = core::FindRow(state.herds, event.herd);
+      if (herd_row == core::kNoRow) {
+        continue;
+      }
+      const core::HerdRow& herd = state.herds.rows[herd_row];
+      const std::uint32_t unit_row = core::FindRow(state.units, herd.unit);
+      const core::UnitRow* const pen =
+          unit_row != core::kNoRow ? &state.units.rows[unit_row] : nullptr;
+      std::cout << "population_curve: FROZE seed " << out.seed << " y"
+                << (state.calendar.day / core::kDaysPerYear) + 1U << " day "
+                << state.calendar.day % core::kDaysPerYear << " h" << tick << " herd "
+                << event.herd.value << " kind " << herd.kind.value << " heads " << event.amount
+                << " left " << herd.adult_count << " billeted " << herd.billeted_count
+                << " cold_nights " << static_cast<unsigned>(herd.cold_nights) << " pen "
+                << herd.unit.value;
+      if (pen != nullptr) {
+        std::cout << " type " << pen->type.value << " level " << static_cast<unsigned>(pen->level)
+                  << " insulated " << static_cast<unsigned>(pen->insulated) << " construction "
+                  << static_cast<unsigned>(pen->construction.phase);
+      } else {
+        std::cout << " (no pen)";
+      }
+      std::cout << '\n';
+    }
     if (awaiting.value != core::kInvalidEntityIdValue) {
       for (const core::SimEvent& event : state.step_events) {
         if (event.kind == core::EventKind::kOrderRefused && event.unit.value == awaiting.value &&

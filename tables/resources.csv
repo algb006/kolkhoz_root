@@ -10,7 +10,7 @@
 # subtitle is the design gloss: what the row covers and what it does not
 # theft: how readily the thing is stolen from a store -- eager, some, none; empty means not yet described, which is NOT none. Exported 2026-09-19 for core's store emptying (registry 214/233): the cargo order and the samogon leak read one home instead of a list in code
 # space_factor: room one gram takes in a store against its mass; empty is 1. in_barrel: 1 = kept in the shared barrel pool (registry 240). Both read by core's processing shops since 0.34.5
-# load_share: the share of a cart's tonnage this load fills; empty is the whole cart. Hay 0.6, straw 0.45 (STUB econ). Read by core's CartLoadGrams since stage B3 (14 October 2026)
+# load_share: the share of a cart's tonnage this load fills; empty is the whole cart. Hay and straw are 1 since core 0.37.254. Read by core's CartLoadGrams since stage B3 (14 October 2026)
 key,title,measure,kg_per_unit,feed_value,kcal_per_gram,spoilage,spoil_days,subtitle,theft,space_factor,in_barrel,cargo_form,is_fuel,load_share
 rye,Рожь,t,1000,1.15,3.3,slow,600,хлебное зерно: мука и хлеб,eager,,0,bulk,0,
 wheat,Пшеница,t,1000,1.2,3.3,slow,600,"хлебное зерно, ценнее всего в сдаче; озимая и яровая идут в один ресурс",eager,,0,bulk,0,
