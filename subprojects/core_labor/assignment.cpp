@@ -686,199 +686,210 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
   // supply_floor) - there the carters WITH HORSES it may still take: the fill
   // stops when they are spent or the pool is dry, places nobody on foot and
   // writes no shortfall (the job's own place in the queue answers for it).
-  const auto fill_job =
-      [&](std::uint32_t job_index, const std::vector<std::uint8_t>* only, std::uint32_t* floor) {
-        const bool second_pass = only != nullptr;
-        const AssignmentJob& job = jobs[job_index];
-        if (floor != nullptr && (*floor == 0 || horses_left == 0)) {
-          return;
-        }
-        // A harnessed job takes a horse out of the day's pool exactly as
-        // ploughing does — which is what assignment.h has promised since the
-        // meadow cut was written, and what this line did not do until task A4
-        // came to rely on it. Without it the village could field an unlimited
-        // number of horse mowers, and hauling would have put a cart behind
-        // every carrier at once.
-        //
-        // EXCEPT THE MEADOW CUT, which takes ONE horse for the brigade (time design
-        // §7: "косилка одна на бригаду, а не всадник на косца"; boss, parcel 312).
-        // It took one a mower until 2026-09-14, and with no horse left it was not
-        // cut at all — while the rule below says a scythe is still work.
-        const bool meadow_cut = IsMeadowCut(job);
-        const bool horse_work = IsHorseWork(job.kind) || (job.harnessed && !meadow_cut);
-        // ONLY THE PLOUGH, THE HARROW AND THE LOT'S FETCH FROM THE DISTRICT
-        // (0.36.18) STOP FOR WANT OF A HORSE, as the rule below says (every
-        // other cart about the village is a back without one). Until 2026-09-15
-        // this skipped every harnessed job once the
-        // pool was empty, so the autumn ploughing took the last horse and the
-        // carts behind it were not offered at all: on seed 1936 the vegetables
-        // lay a day with 45 hands idle, and a December potato load went to the
-        // snow. A cart with no horse is a back.
-        if (StopsWithoutHorse(job, params) && horses_left == 0) {
-          if (job.work_days_remaining > 0.0F && !second_pass) {
-            shortfall[job_index] = JobShortfall::kNoHorse;
-          }
-          return;
-        }
-        // Fill until today's demand is covered: no more hands than the day can
-        // consume — the surplus idles and earns nothing (digest 2026-08-29
-        // §2.4: a trudoden is a work norm, not attendance). From what the job
-        // holds already: nought in the main pass, its crew in the second.
-        float expected_output = covered[job_index];
-        std::uint32_t placed = 0;
-        if (second_pass) {
-          placed = static_cast<std::uint32_t>(std::ranges::count(result, job_index));
-        }
-        std::uint32_t road_refused = 0;
-        // THE BRIGADE'S CART (AssignmentJob::brigade_cart; 0.37.89): one horse of
-        // the pool for the field, if one is left when the queue comes to it — and
-        // then everybody is judged by the ride. Taken when the first hand is
-        // placed, so a field nobody goes to holds no horse.
-        //
-        // THE MEADOW'S MOWER THE SAME WAY (routing stage A, A4; 0.37.168): taken
-        // with its first mower and written on him; with the pool dry the mowers
-        // are judged on foot and walk with scythes. Until 0.37.168 the horse left
-        // the pool before anybody was placed — a meadow nobody reached held one —
-        // and with none left the mowers were judged and sent by the ride all the
-        // same.
-        const bool takes_mower = meadow_cut && horses_left > 0 && !second_pass;
-        const bool takes_cart =
-            (job.brigade_cart && !job.cart_out && horses_left > 0 && !second_pass) || takes_mower;
-        AssignmentJob judged = job;
-        judged.cart_out = job.cart_out || takes_cart || (second_pass && cart_today[job_index] != 0);
-        if (meadow_cut && !takes_mower && (!second_pass || mowers_walk[job_index] != 0)) {
-          judged.harnessed = false;
-          mowers_walk[job_index] = 1U;
-        }
-        if (!second_pass) {
-          cart_today[job_index] = judged.cart_out ? 1U : 0U;
-        }
-        const std::vector<RankedPick> picks =
-            RankCandidates(judged, job_index, candidates, result, params, road_refused);
-        // THE JOB THE ROAD STOPPED (econ, boss-econ-roads-balance [4] item 5б):
-        // work left, nobody fit to take it, and free hands turned away by the
-        // road rule alone. A job nobody free could take for other reasons —
-        // every hand already placed, a horse lock — is not the road's.
-        if (road_blocked != nullptr && picks.empty() && road_refused > 0 &&
-            job.work_days_remaining > 0.0F && !second_pass && floor == nullptr) {
-          (*road_blocked)[job_index] = 1U;
-        }
-        // What stopped the filling, for the diagnosis; and the carters with no
-        // horse turned away on foot, who are the way's and not the hands'.
-        std::optional<JobShortfall> stopped;
-        std::uint32_t refused_on_foot = 0;
-        for (const RankedPick& pick : picks) {
-          if (expected_output >= job.work_days_remaining) {
-            break;
-          }
-          if (second_pass && (*only)[pick.candidate_index] == 0) {
-            continue;  // the second pass offers the released alone
-          }
-          // The job's own ceiling, where it has one: a build class's brigade
-          // caps a site regardless of how much work is left on it.
-          if (job.max_crew != 0 && placed >= job.max_crew) {
-            stopped = JobShortfall::kCrewCap;
-            break;
-          }
-          // The floor gives carters with horses and nobody else (#734).
-          if (floor != nullptr && (*floor == 0 || horses_left == 0)) {
-            break;
-          }
-          // A HORSE IS TAKEN IF ONE IS FREE. Whether its absence STOPS the work
-          // is a different question, and ploughing and harrowing answer it yes —
-          // those are IsHorseWork, and a man cannot pull a plough — and so, since
-          // 0.36.18, does the fetch of a timber lot from the district
-          // (StopsWithoutHorse). Mowing without a horse is a scythe, and carrying
-          // about the village without one is a back: slower, and still work.
-          //
-          // Measured, because the difference is not academic: while every
-          // harnessed job demanded an animal, the carts took all sixteen horses
-          // every day — hauling always outranked ploughing — and the farm opened
-          // its ploughing and then sent nobody to it, year after year.
-          bool took_horse = false;
-          float daily_norm = pick.daily_norm;
-          if (horse_work) {
-            if (horses_left > 0) {
-              --horses_left;
-              took_horse = true;
-            } else if (StopsWithoutHorse(job, params)) {
-              stopped = JobShortfall::kNoHorse;
-              // No horse, no plough (nor a lot fetched, nor a log carted): not
-              // done at all today. A heap's crew stops here too while the
-              // settlement has carts; the last pass below gives it the idle.
-              break;
-            } else {
-              // A CARTER WITH NO HORSE IS JUDGED ON FOOT (boss, boss-core-topup-
-              // horses seq 2): he was ranked by the ride, and until 0.34.51 he
-              // was sent by it too — 2.5 km out at the trot with every horse in
-              // the plough. The walk decides whether he may go and what his day
-              // is worth; too far to walk, and the next in the queue is asked.
-              AssignmentJob on_foot = job;
-              on_foot.harnessed = false;
-              RankedPick walking;
-              bool walk_refused_by_road = false;  // he was ranked: the job is not the road's
-              if (!ConsiderCandidate(on_foot,
-                                     job_index,
-                                     candidates[pick.candidate_index],
-                                     pick.candidate_index,
-                                     params,
-                                     walking,
-                                     walk_refused_by_road)) {
-                ++refused_on_foot;
-                continue;
-              }
-              daily_norm = walking.daily_norm;
-            }
-          }
-          // The first hand of a brigade whose cart goes out today drives it: the
-          // horse leaves the pool with him and is written on him alone.
-          const bool drives = takes_cart && placed == 0;
-          if (drives) {
-            --horses_left;
-          }
-          result[pick.candidate_index] = job_index;
-          if (rides_horse != nullptr) {
-            (*rides_horse)[pick.candidate_index] = took_horse || drives ? 1U : 0U;
-          }
-          expected_output += daily_norm;
-          ++placed;
-          if (floor != nullptr) {
-            --*floor;
-          }
-        }
-        covered[job_index] = expected_output;
-        if (floor != nullptr) {
-          return;
-        }
-        if (second_pass) {
-          // The second pass only closes a shortfall the main pass wrote; it never
-          // writes a new reason (the main pass's stands for the job).
-          if (expected_output >= job.work_days_remaining) {
-            shortfall[job_index].reset();
-          }
-          return;
-        }
-        if (expected_output < job.work_days_remaining) {
-          // THE WAY TURNED EVERYONE AWAY: nobody placed, and every free hand
-          // asked was refused by the road rule or, a carter with no horse, by
-          // the walk. Until the static review of 0.36.32 the walk's refusals
-          // fell to kNoHands here while the same hands idled kRoad or
-          // kNoDayLeft — two answers for one morning.
-          const bool turned_away_by_the_way =
-              placed == 0 && refused_on_foot == picks.size() && road_refused + refused_on_foot > 0;
-          if (stopped) {
-            shortfall[job_index] = stopped;
-          } else if (turned_away_by_the_way) {
-            shortfall[job_index] = JobShortfall::kRoad;
-          } else {
-            shortfall[job_index] = JobShortfall::kNoHands;
-          }
+  const auto fill_job = [&](std::uint32_t job_index,
+                            const std::vector<std::uint8_t>* only,
+                            std::uint32_t* floor) {
+    const bool second_pass = only != nullptr;
+    const AssignmentJob& job = jobs[job_index];
+    if (floor != nullptr && (*floor == 0 || horses_left == 0)) {
+      return;
+    }
+    // A harnessed job takes a horse out of the day's pool exactly as
+    // ploughing does — which is what assignment.h has promised since the
+    // meadow cut was written, and what this line did not do until task A4
+    // came to rely on it. Without it the village could field an unlimited
+    // number of horse mowers, and hauling would have put a cart behind
+    // every carrier at once.
+    //
+    // EXCEPT THE MEADOW CUT, which takes ONE horse for the brigade (time design
+    // §7: "косилка одна на бригаду, а не всадник на косца"; boss, parcel 312).
+    // It took one a mower until 2026-09-14, and with no horse left it was not
+    // cut at all — while the rule below says a scythe is still work.
+    const bool meadow_cut = IsMeadowCut(job);
+    const bool horse_work = IsHorseWork(job.kind) || (job.harnessed && !meadow_cut);
+    // #1205 (c2), an arm: the windowless hauling leaves the last horse for
+    // the people's carts while a site waits and a felling has work
+    // (AssignmentParams::hold_ride_horse). Not the logs off a stand or to
+    // a works, nor a load with its window: those carry the building.
+    const std::uint32_t held =
+        params.hold_ride_horse && job.kind == WorkKind::kHauling &&
+                job.window.kind == DeadlineKind::kNotApplicable && !job.logistics_urgent &&
+                !job.log_cart && !job.supplies_works && job.stand.value == kInvalidEntityIdValue
+            ? 1U
+            : 0U;
+    // ONLY THE PLOUGH, THE HARROW AND THE LOT'S FETCH FROM THE DISTRICT
+    // (0.36.18) STOP FOR WANT OF A HORSE, as the rule below says (every
+    // other cart about the village is a back without one). Until 2026-09-15
+    // this skipped every harnessed job once the
+    // pool was empty, so the autumn ploughing took the last horse and the
+    // carts behind it were not offered at all: on seed 1936 the vegetables
+    // lay a day with 45 hands idle, and a December potato load went to the
+    // snow. A cart with no horse is a back.
+    if (StopsWithoutHorse(job, params) && horses_left <= held) {
+      if (job.work_days_remaining > 0.0F && !second_pass) {
+        shortfall[job_index] = JobShortfall::kNoHorse;
+      }
+      return;
+    }
+    // Fill until today's demand is covered: no more hands than the day can
+    // consume — the surplus idles and earns nothing (digest 2026-08-29
+    // §2.4: a trudoden is a work norm, not attendance). From what the job
+    // holds already: nought in the main pass, its crew in the second.
+    float expected_output = covered[job_index];
+    std::uint32_t placed = 0;
+    if (second_pass) {
+      placed = static_cast<std::uint32_t>(std::ranges::count(result, job_index));
+    }
+    std::uint32_t road_refused = 0;
+    // THE BRIGADE'S CART (AssignmentJob::brigade_cart; 0.37.89): one horse of
+    // the pool for the field, if one is left when the queue comes to it — and
+    // then everybody is judged by the ride. Taken when the first hand is
+    // placed, so a field nobody goes to holds no horse.
+    //
+    // THE MEADOW'S MOWER THE SAME WAY (routing stage A, A4; 0.37.168): taken
+    // with its first mower and written on him; with the pool dry the mowers
+    // are judged on foot and walk with scythes. Until 0.37.168 the horse left
+    // the pool before anybody was placed — a meadow nobody reached held one —
+    // and with none left the mowers were judged and sent by the ride all the
+    // same.
+    const bool takes_mower = meadow_cut && horses_left > 0 && !second_pass;
+    const bool takes_cart =
+        (job.brigade_cart && !job.cart_out && horses_left > held && !second_pass) || takes_mower;
+    AssignmentJob judged = job;
+    judged.cart_out = job.cart_out || takes_cart || (second_pass && cart_today[job_index] != 0);
+    if (meadow_cut && !takes_mower && (!second_pass || mowers_walk[job_index] != 0)) {
+      judged.harnessed = false;
+      mowers_walk[job_index] = 1U;
+    }
+    if (!second_pass) {
+      cart_today[job_index] = judged.cart_out ? 1U : 0U;
+    }
+    const std::vector<RankedPick> picks =
+        RankCandidates(judged, job_index, candidates, result, params, road_refused);
+    // THE JOB THE ROAD STOPPED (econ, boss-econ-roads-balance [4] item 5б):
+    // work left, nobody fit to take it, and free hands turned away by the
+    // road rule alone. A job nobody free could take for other reasons —
+    // every hand already placed, a horse lock — is not the road's.
+    if (road_blocked != nullptr && picks.empty() && road_refused > 0 &&
+        job.work_days_remaining > 0.0F && !second_pass && floor == nullptr) {
+      (*road_blocked)[job_index] = 1U;
+    }
+    // What stopped the filling, for the diagnosis; and the carters with no
+    // horse turned away on foot, who are the way's and not the hands'.
+    std::optional<JobShortfall> stopped;
+    std::uint32_t refused_on_foot = 0;
+    for (const RankedPick& pick : picks) {
+      if (expected_output >= job.work_days_remaining) {
+        break;
+      }
+      if (second_pass && (*only)[pick.candidate_index] == 0) {
+        continue;  // the second pass offers the released alone
+      }
+      // The job's own ceiling, where it has one: a build class's brigade
+      // caps a site regardless of how much work is left on it.
+      if (job.max_crew != 0 && placed >= job.max_crew) {
+        stopped = JobShortfall::kCrewCap;
+        break;
+      }
+      // The floor gives carters with horses and nobody else (#734).
+      if (floor != nullptr && (*floor == 0 || horses_left == 0)) {
+        break;
+      }
+      // A HORSE IS TAKEN IF ONE IS FREE. Whether its absence STOPS the work
+      // is a different question, and ploughing and harrowing answer it yes —
+      // those are IsHorseWork, and a man cannot pull a plough — and so, since
+      // 0.36.18, does the fetch of a timber lot from the district
+      // (StopsWithoutHorse). Mowing without a horse is a scythe, and carrying
+      // about the village without one is a back: slower, and still work.
+      //
+      // Measured, because the difference is not academic: while every
+      // harnessed job demanded an animal, the carts took all sixteen horses
+      // every day — hauling always outranked ploughing — and the farm opened
+      // its ploughing and then sent nobody to it, year after year.
+      bool took_horse = false;
+      float daily_norm = pick.daily_norm;
+      if (horse_work) {
+        if (horses_left > held) {
+          --horses_left;
+          took_horse = true;
+        } else if (StopsWithoutHorse(job, params)) {
+          stopped = JobShortfall::kNoHorse;
+          // No horse, no plough (nor a lot fetched, nor a log carted): not
+          // done at all today. A heap's crew stops here too while the
+          // settlement has carts; the last pass below gives it the idle.
+          break;
         } else {
-          // Covered now, whatever an earlier visit wrote (the floor's place
-          // fills an «over fields» supply once and the queue comes to it again).
-          shortfall[job_index].reset();
+          // A CARTER WITH NO HORSE IS JUDGED ON FOOT (boss, boss-core-topup-
+          // horses seq 2): he was ranked by the ride, and until 0.34.51 he
+          // was sent by it too — 2.5 km out at the trot with every horse in
+          // the plough. The walk decides whether he may go and what his day
+          // is worth; too far to walk, and the next in the queue is asked.
+          AssignmentJob on_foot = job;
+          on_foot.harnessed = false;
+          RankedPick walking;
+          bool walk_refused_by_road = false;  // he was ranked: the job is not the road's
+          if (!ConsiderCandidate(on_foot,
+                                 job_index,
+                                 candidates[pick.candidate_index],
+                                 pick.candidate_index,
+                                 params,
+                                 walking,
+                                 walk_refused_by_road)) {
+            ++refused_on_foot;
+            continue;
+          }
+          daily_norm = walking.daily_norm;
         }
-      };
+      }
+      // The first hand of a brigade whose cart goes out today drives it: the
+      // horse leaves the pool with him and is written on him alone.
+      const bool drives = takes_cart && placed == 0;
+      if (drives) {
+        --horses_left;
+      }
+      result[pick.candidate_index] = job_index;
+      if (rides_horse != nullptr) {
+        (*rides_horse)[pick.candidate_index] = took_horse || drives ? 1U : 0U;
+      }
+      expected_output += daily_norm;
+      ++placed;
+      if (floor != nullptr) {
+        --*floor;
+      }
+    }
+    covered[job_index] = expected_output;
+    if (floor != nullptr) {
+      return;
+    }
+    if (second_pass) {
+      // The second pass only closes a shortfall the main pass wrote; it never
+      // writes a new reason (the main pass's stands for the job).
+      if (expected_output >= job.work_days_remaining) {
+        shortfall[job_index].reset();
+      }
+      return;
+    }
+    if (expected_output < job.work_days_remaining) {
+      // THE WAY TURNED EVERYONE AWAY: nobody placed, and every free hand
+      // asked was refused by the road rule or, a carter with no horse, by
+      // the walk. Until the static review of 0.36.32 the walk's refusals
+      // fell to kNoHands here while the same hands idled kRoad or
+      // kNoDayLeft — two answers for one morning.
+      const bool turned_away_by_the_way =
+          placed == 0 && refused_on_foot == picks.size() && road_refused + refused_on_foot > 0;
+      if (stopped) {
+        shortfall[job_index] = stopped;
+      } else if (turned_away_by_the_way) {
+        shortfall[job_index] = JobShortfall::kRoad;
+      } else {
+        shortfall[job_index] = JobShortfall::kNoHands;
+      }
+    } else {
+      // Covered now, whatever an earlier visit wrote (the floor's place
+      // fills an «over fields» supply once and the queue comes to it again).
+      shortfall[job_index].reset();
+    }
+  };
   // THE SUPPLY'S FLOOR, BETWEEN LEVEL 0 AND THE FIRST WINDOW (#734; core_common/
   // site_supply_floor.h; transport design «Пол подвоза»): a works' supply
   // stands on the windowless tier (#561), and from the day the spring's field
@@ -910,6 +921,10 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
   }
 
   // THE PEOPLE'S CARTS, from the horses the queue left (A3; assignment.h).
+  // What they had is what a ride to a felling had (#1205 (c1)) - counted
+  // before they take theirs, or a felling that took the last horse would
+  // refuse itself its own ride the next morning.
+  const std::uint32_t horses_for_rides = horses_left;
   GivePeoplesCarts(PeoplesCartPlan{.jobs = &jobs,
                                    .candidates = &candidates,
                                    .params = &params,
@@ -1046,6 +1061,7 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
                                  .released = &released,
                                  .horses_left = horses_left},
                       *diagnosis);
+    diagnosis->horses_for_rides = horses_for_rides;
   }
   return result;
 }

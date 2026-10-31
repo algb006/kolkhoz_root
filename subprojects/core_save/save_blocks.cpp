@@ -319,7 +319,9 @@ static_assert(AggregateArity<ClampRotYear>() == 2,
 // Save 190 (#647): labour_week, the fifty-fifth - after the unmanned runs, two
 // weeks of four u32 and a byte; the section «world» +33, predicted before the
 // build.
-static_assert(AggregateArity<WorldState>() == 55,
+// Save 199 (#1205 (c1)): morning_horses_left, the fifty-sixth - a u16 after
+// burials_waiting; the section «world» +2, predicted before the build.
+static_assert(AggregateArity<WorldState>() == 56,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 
@@ -717,6 +719,8 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   }
   // The dead waiting for a grave (#1199; save 180).
   out.WriteU16(world.burials_waiting);
+  // The horses the last morning plan left (#1205 (c1); save 199).
+  out.WriteU16(world.morning_horses_left);
   // The jobs' runs of mornings with no hand (save 149): a count, then each
   // run's kind, its seven subject ids, its mornings and whether it was said.
   out.WriteU32(static_cast<std::uint32_t>(world.unmanned_runs.size()));
@@ -1053,6 +1057,9 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   }
   // The dead waiting for a grave (#1199; save 180): any count is a count.
   world->burials_waiting = in.ReadU16();
+  // The horses the last morning plan left (#1205 (c1); save 199): any count is
+  // a count, kMorningHorsesUnknown among them.
+  world->morning_horses_left = in.ReadU16();
   // The jobs' runs of mornings with no hand (save 149): a count asked of the
   // bytes left first, each kind and flag by its range.
   constexpr std::size_t kSavedUnmannedRunBytes = 32;

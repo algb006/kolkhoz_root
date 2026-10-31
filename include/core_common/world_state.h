@@ -980,6 +980,10 @@ struct PlanState {
   float worked_ha_this_year = 0.0F;
 };
 
+/// WorldState::morning_horses_left before the first morning plan: no plan
+/// has answered yet, so a ride is judged by the horses that exist.
+inline constexpr std::uint16_t kMorningHorsesUnknown = 0xFFFFU;
+
 /// @brief The complete state of the simulated world at one step.
 /// Two instances exist at run time — read buffer and write buffer — and swap
 /// at the end of each step. A save is this struct serialized; a headless run
@@ -1310,6 +1314,17 @@ struct WorldState {
   /// is stopped: BurialHeld (cemetery_rules.h) is the door the layer's clock
   /// reads. No grave is lost.
   std::uint16_t burials_waiting = 0;
+
+  /// THE HORSES THE LAST MORNING PLAN LEFT (#1205 (c1); boss, boss-core-1205-
+  /// birth-prints [37]-[38]): the draught horses the queue left for the
+  /// people's carts (PlacementDiagnosis::horses_for_rides), written by core_labor
+  /// after each morning's plan; kMorningHorsesUnknown before the first. Read
+  /// by the felling's offer and FellingCanBeManned (home_reach.h): a far stand
+  /// is offered by the ride only while the last plan left a horse for it - the
+  /// offer asks what the plan asks, a day late. Until (c1) both asked «a horse
+  /// exists», and on 0.37.347 a felling stood offered with nobody sent on 85-95
+  /// % of its noons, its hands idle «no horse». SAVED (save 199).
+  std::uint16_t morning_horses_left = kMorningHorsesUnknown;
 
   /// This step's outbox (project phase 2, the boundary): what happened,
   /// for the presentation. Cleared by the step engine after the copy,

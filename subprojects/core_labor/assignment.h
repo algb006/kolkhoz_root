@@ -423,6 +423,12 @@ struct AssignmentParams {
   /// work consumes one from this shared pool; the pool caps those crews.
   std::uint32_t draught_horses = 0;
 
+  /// #1205 (c2), AN ARM (boss, boss-core-1205-birth-prints [38]): while a
+  /// building site waits marked and a felling mark has work left, the
+  /// windowless hauling may not take the pool's last horse - it stays for the
+  /// people's carts (GivePeoplesCarts), the felling's ride among them.
+  bool hold_ride_horse = false;
+
   /// THE FLOOR'S CARTERS (#734; core_common/site_supply_floor.h,
   /// SupplyFloorCarters): how many carters with horses the jobs marked
   /// `supply_floor` may take together ahead of the windows. 0 - no floor
@@ -531,6 +537,11 @@ struct PlacementDiagnosis {
   /// this morning (care_reprice.h; #709) - placed again by the second pass or
   /// left free. The caller marks the day's assignment by it.
   std::vector<std::uint8_t> moved_off_care;
+
+  /// The draught horses the queue left for the people's carts this morning,
+  /// before they took theirs: what a ride to a felling had (#1205 (c1);
+  /// WorldState::morning_horses_left keeps it to the next morning).
+  std::uint32_t horses_for_rides = 0;
 };
 
 /// @brief Norm-days ONE hand is expected to deliver on `job` today: the mean,
