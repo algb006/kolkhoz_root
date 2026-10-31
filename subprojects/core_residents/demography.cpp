@@ -856,11 +856,69 @@ bool YardHasRoomForOneMore(const LifeConfig& config, const WorldState& current, 
   return static_cast<float>(living + 1U) <= capacity;
 }
 
+/// @brief Whether `person` heads a standing yard with a child of his own living
+/// in it (C1′'s widow rule): his family has a built house, not a barrack, and
+/// someone there names him as mother or father. Any age of the child.
+bool KeepsAYardWithChildren(const WorldState& current,
+                            ResidentId person,
+                            ResidentId bride,
+                            ResidentId groom) {
+  const std::uint32_t person_row = FindRow(current.residents, person);
+  if (person_row == kNoRow) {
+    return false;
+  }
+  const FamilyId yard = current.residents.rows[person_row].family;
+  const std::uint32_t family_row = FindRow(current.families, yard);
+  if (family_row == kNoRow || current.families.rows[family_row].in_barrack != 0) {
+    return false;
+  }
+  const std::uint32_t house_row = FindRow(current.units, current.families.rows[family_row].house);
+  if (house_row == kNoRow || current.units.rows[house_row].level == 0) {
+    return false;  // a tent or a site is no yard to bring a spouse into
+  }
+  for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
+    const ResidentRow& resident = current.residents.rows[row];
+    const ResidentId id = current.residents.row_ids[row];
+    if (resident.family.value == yard.value && id.value != bride.value && id.value != groom.value &&
+        (resident.mother.value == person.value || resident.father.value == person.value)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 WeddingPlan PlanWedding(const LifeConfig& config,
                         const WorldState& current,
                         ResidentId bride,
                         ResidentId groom,
                         SimDay day) {
+  // THE WIDOW'S RULE IN FULL (#1205 C1′; life-cycle §5, «Вдове или вдовцу с
+  // детьми новый супруг приходит в их дом — новая семья не заводится, дом не
+  // нужен»; econ, econ-boss-1205-c33-births [4]; boss, boss-core-1205-birth-
+  // prints [11]): a widow or widower heading a standing yard with children of
+  // any age living there takes the new spouse in, if the house has room for
+  // one more. Until C1′ this ran only when the leaving would leave children
+  // alone (below), and a widow with a grown son waited in the queue for a new
+  // house the design never asked for. The bride's yard first, then the
+  // groom's; a full house falls through to the rules below.
+  const bool hers_kept = KeepsAYardWithChildren(current, bride, bride, groom);
+  const bool his_kept = KeepsAYardWithChildren(current, groom, bride, groom);
+  if (hers_kept || his_kept) {
+    const std::uint32_t bride_row = FindRow(current.residents, bride);
+    const std::uint32_t groom_row = FindRow(current.residents, groom);
+    if (hers_kept && bride_row != kNoRow &&
+        YardHasRoomForOneMore(config, current, current.residents.rows[bride_row].family)) {
+      WeddingPlan plan;
+      plan.home = WeddingHome::kIntoBridesYard;
+      return plan;
+    }
+    if (his_kept && groom_row != kNoRow &&
+        YardHasRoomForOneMore(config, current, current.residents.rows[groom_row].family)) {
+      WeddingPlan plan;
+      plan.home = WeddingHome::kIntoGroomsYard;
+      return plan;
+    }
+  }
   const YardLeftBehind hers = WhatTheYardKeeps(config, current, bride, bride, groom, day);
   const YardLeftBehind his = WhatTheYardKeeps(config, current, groom, bride, groom, day);
   WeddingPlan plan;

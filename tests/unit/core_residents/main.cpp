@@ -2310,6 +2310,28 @@ int CheckAWeddingLeavesNoChildAlone() {
         "a wedding: a couple in the queue whose bride has a child of her own "
         "marries into her yard, and leaves the queue");
   }
+  // THE WIDOW'S RULE IN FULL (#1205 C1′; life-cycle §5): a widow of forty-five
+  // with a GROWN son of twenty in her own house. Before C1′ the son was no
+  // child left alone, so she married out into the free house; now the new
+  // husband comes into HER yard and the free house stays free. Known direction:
+  // the free house is taken in the old rule and stays empty in the new.
+  {
+    Village grown = village(false);
+    // 12 days a biological year, as AddAdult counts.
+    grown.world.residents.rows[FindRow(grown.world.residents, grown.widow)].birth_day = -45 * 12;
+    grown.world.residents.rows[FindRow(grown.world.residents, grown.child)].birth_day = -20 * 12;
+    grown.world.residents.rows[FindRow(grown.world.residents, grown.child)].sex = core::Sex::kMale;
+    RunUntilWedding(*system, grown.world);
+    std::uint32_t free_houses_taken = 0;
+    for (const core::FamilyRow& family : grown.world.families.rows) {
+      const std::uint32_t house = FindRow(grown.world.units, family.house);
+      free_houses_taken +=
+          house != core::kNoRow && grown.world.units.rows[house].type.value == 2U ? 1U : 0U;
+    }
+    failures += Expect(married(grown) && husband_at_home(grown) && free_houses_taken == 0,
+                       "a wedding, the widow's rule in full: a widow with a grown son takes the "
+                       "new husband into her own yard, and the free house stays free");
+  }
 
   // AN ELDER BROTHER TAKES THE YOUNGER ALONG: a yard of a brother of twenty-
   // two and a sister of ten — their mother's number written, the mother gone
