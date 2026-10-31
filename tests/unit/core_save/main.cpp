@@ -202,7 +202,9 @@ core::WorldState MakeWorld() {
   // The milk cart (save 66): a daily share, and the winter's milk that went
   // with no position — both away from their empty defaults.
   world.plan.milk_daily_share = 250'000;
-  world.plan.milk_debt = 37'000;  // save 85, away from its default and from the share
+  world.plan.milk_debt = 37'000;            // save 85, away from its default and from the share
+  world.plan.milk_day_max_grams = 410'000;  // save 198 (#843): the year's largest day
+  world.plan.milk_handed_on_lamp_grams = 20'000;  // save 198: and the lamp's heads' milk
   world.plan.delivered_outside = Amounts({0, 0, 3'000'000});
   // Save 89: the goods loan owed (the markup in it) and taken this year.
   world.plan.goods_loan_owed = Amounts({0, 1'500'000});
@@ -1625,6 +1627,10 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back(
       {"plan.milk_daily_share", U64(static_cast<std::uint64_t>(world.plan.milk_daily_share))});
   chunks.push_back({"plan.milk_debt", U64(static_cast<std::uint64_t>(world.plan.milk_debt))});
+  chunks.push_back({"plan.milk_day_max_grams",  // save 198 (#843)
+                    U64(static_cast<std::uint64_t>(world.plan.milk_day_max_grams))});
+  chunks.push_back({"plan.milk_handed_on_lamp_grams",  // save 198 (#843)
+                    U64(static_cast<std::uint64_t>(world.plan.milk_handed_on_lamp_grams))});
   AppendAmounts(chunks, "plan.delivered_outside", world.plan.delivered_outside);
   AppendAmounts(chunks, "plan.goods_loan_owed", world.plan.goods_loan_owed);    // save 89
   AppendAmounts(chunks, "plan.goods_loan_taken", world.plan.goods_loan_taken);  // save 89
@@ -3113,6 +3119,9 @@ int main() {
                          AmountAt(loaded.plan.delivered_outside, 2) == 3'000'000,
                      "the milk cart's share and the winter's milk come back (save 66)");
   failures += Expect(loaded.plan.milk_debt == 37'000, "and the milk debt comes back (save 85)");
+  failures += Expect(
+      loaded.plan.milk_day_max_grams == 410'000 && loaded.plan.milk_handed_on_lamp_grams == 20'000,
+      "and the year's largest milking day and the lamp's heads' milk (save 198)");
   failures += Expect(AmountAt(loaded.plan.goods_loan_owed, 1) == 1'500'000 &&
                          AmountAt(loaded.plan.goods_loan_taken, 1) == 1'250'000 &&
                          AmountAt(loaded.ledger.closed.goods_loan_repaid, 2) == 900'000,
