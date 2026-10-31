@@ -13888,6 +13888,14 @@ int CheckTheMilkPlanHandOverGuard() {
   // handed were both bulls and the milk stood still - the guard's first
   // build read «lamp: 100 kg kept, 100 kg handed» on a setting, not a wire.
   config.livestock[0].males_work = 0;
+  // The district's door takes a head only against a livestock lot of the kind
+  // (the second build read «both hand-overs refused»; CheckWorkStockMales).
+  config.limit.lots.resize(1);
+  config.limit.lots[0].points = 100;
+  config.limit.lots[0].kind = core::LimitLotKind::kLivestock;
+  config.limit.lots[0].livestock = core::LivestockKindId{0};
+  config.limit.lots[0].head_count = 1;
+  config.limit.handover_share_adult = 0.55F;
   config.hay_resource = core::ResourceId{0};
   config.farming.meadow_cut_month = 6;
   config.crops.resize(1);
