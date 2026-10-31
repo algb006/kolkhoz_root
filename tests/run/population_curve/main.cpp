@@ -40,6 +40,7 @@
 #include "../common/births_herd_tally.h"
 #include "../common/building_chairman.h"
 #include "../common/hay_day_off_policy.h"
+#include "../common/passed_over_tally.h"
 #include "../common/run_harness.h"
 #include "../common/timber_flow_tally.h"
 #include "../common/transition_tally.h"
@@ -86,6 +87,9 @@ constexpr std::array<std::uint64_t, 16> kSeeds = {
     1931, 1932, 1933, 1934, 1935, 1936, 1937, 1938, 1939, 1940, 1941, 1942, 1943, 1944, 1945, 1946};
 
 constexpr std::uint32_t kYears = 33;
+/// #1355's return condition (econ 399d8d1 §1): a P99 passed-over run longer
+/// than this many working days buys the rotation's save field.
+constexpr std::uint32_t kPassedOverReturnDays = 8;
 
 /// The core's answers to the transition order, as slots of a tally: open,
 /// the seven refusals in the order's own order, and not eligible.
@@ -225,6 +229,10 @@ struct Trajectory {
   /// Cows the frost killed in the open pen, every closed year summed
   /// (YearLedger::herd_frozen; #712's standing gate).
   std::uint64_t cattle_frozen = 0;
+  /// Each passed-over resident's longest run of working days without a
+  /// horse / with the brigade full (passed_over_tally.h; #1355's trigger).
+  std::vector<std::uint32_t> passed_over_horse;
+  std::vector<std::uint32_t> passed_over_crew;
   /// The denominator beside the answer: how many units the village stands at
   /// the end, and how many of them have reached the level the transition
   /// asks. "Nought years open" says nothing about whether the shortfall is
@@ -599,6 +607,7 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
     builder.transition.Disable();
   }
   run::TimberFlowTally timber(*world.tables);
+  run::PassedOverTally passed_over;
   // econ's births and horses prints: the "forever" branch only.
   run::BirthsHerdTally births_herd(*world.tables);
   run::BirthsHerdTally* const births_herd_on = g_epoch_one_forever ? &births_herd : nullptr;
@@ -651,6 +660,7 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
                  &builder);
       builder.RunDay(*simulation);
       timber.CountDay(simulation->CompletedState());
+      passed_over.CountDay(simulation->CompletedState());
       // What held the transition TODAY, by the order's own door.
       const core::WorldState& today = simulation->CompletedState();
       if (today.epoch == core::Epoch::kOne) {
@@ -884,6 +894,8 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
     }
   }
   out.timber = timber.years();
+  out.passed_over_horse = passed_over.Longest(run::PassedOverTally::kHorse);
+  out.passed_over_crew = passed_over.Longest(run::PassedOverTally::kCrew);
   out.first_sawmill_day = timber.first_sawmill_day();
   out.planting_end = builder.planting.Summarize(final_state);
   out.transition_calendar_year = builder.transition.YearTaken();
@@ -1508,6 +1520,35 @@ int main(int argc, char** argv) {
                                 (frozen_where.empty() ? "" : " (" + frozen_where + ")"),
                             "host #710: the run chairman's warm rule, dead since the one-site "
                             "queue (#595)");
+  // A STANDING LINE, «who is served first» (#1355, parked; boss, the birth-
+  // prints thread [53] and his answer; econ 399d8d1 §1): the longest run of
+  // working days a resident stood passed over, P50 / P99 / max over every
+  // village's residents. Its RETURN CONDITION is P99 > 8 days: then the rule's
+  // save field (last_served_day) is bought. It shouts the condition itself.
+  for (const auto& [kind, pick] : {std::pair{"no horse", &Trajectory::passed_over_horse},
+                                   std::pair{"brigade full", &Trajectory::passed_over_crew}}) {
+    std::vector<std::uint32_t> runs;
+    for (const Trajectory& walk : walks) {
+      runs.insert(runs.end(), (walk.*pick).begin(), (walk.*pick).end());
+    }
+    std::ranges::sort(runs);
+    if (runs.empty()) {
+      std::cout << "population_curve: #1355 passed over («" << kind
+                << "»): NOT MEASURED - nobody in " << walks.size()
+                << " villages was ever passed over\n";
+      continue;
+    }
+    const std::uint32_t p50 = runs[runs.size() / 2];
+    const std::uint32_t p99 = runs[std::min(runs.size() - 1, (runs.size() * 99) / 100)];
+    std::cout << "population_curve: #1355 passed over («" << kind << "»), the longest run of "
+              << "working days a resident, " << runs.size() << " residents in " << walks.size()
+              << " villages: P50 " << p50 << ", P99 " << p99 << ", max " << runs.back()
+              << (p99 > kPassedOverReturnDays
+                      ? " - #1355's RETURN CONDITION IS MET (P99 > 8): the rotation's save "
+                        "field is due"
+                      : " (#1355 stays parked: P99 <= 8)")
+              << '\n';
+  }
   failures += run::KnownGap(median_year33 >= 1150,
                             "and lands in the canon's order of magnitude by year 33",
                             std::to_string(median_year33) + " against 1150");
