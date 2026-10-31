@@ -887,6 +887,43 @@ bool KeepsAYardWithChildren(const WorldState& current,
   return false;
 }
 
+/// @brief Whether `person` lives alone in a takeable house (C1″): the only
+/// member of his family, the family not in a barrack, its
+/// house a standing family house of the housing class that somebody may live
+/// on, not on the brink and not held for a specialist.
+bool LivesAloneInATakeableHouse(const LifeConfig& config,
+                                const WorldState& current,
+                                ResidentId person) {
+  const std::uint32_t person_row = FindRow(current.residents, person);
+  if (person_row == kNoRow) {
+    return false;
+  }
+  const FamilyId yard = current.residents.rows[person_row].family;
+  const std::uint32_t family_row = FindRow(current.families, yard);
+  if (family_row == kNoRow || current.families.rows[family_row].in_barrack != 0) {
+    return false;
+  }
+  const std::uint32_t house_row = FindRow(current.units, current.families.rows[family_row].house);
+  if (house_row == kNoRow) {
+    return false;
+  }
+  const UnitRow& house = current.units.rows[house_row];
+  const auto& housing = config.definitions.units.is_housing;
+  if (house.level == 0 || house.type.value >= housing.size() || housing[house.type.value] == 0 ||
+      config.definitions.units.HousesNobody(house.type, house.level) ||
+      ResidentsCapacity(config, house) > 0.0F || HouseOnTheBrink(config, house) ||
+      house.reserved_for_specialist != 0) {
+    return false;
+  }
+  for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
+    if (current.residents.rows[row].family.value == yard.value &&
+        current.residents.row_ids[row].value != person.value) {
+      return false;  // somebody else lives there - the couple's other half too
+    }
+  }
+  return true;
+}
+
 WeddingPlan PlanWedding(const LifeConfig& config,
                         const WorldState& current,
                         ResidentId bride,
@@ -925,6 +962,24 @@ WeddingPlan PlanWedding(const LifeConfig& config,
       plan.home = WeddingHome::kIntoGroomsYard;
       return plan;
     }
+  }
+  // A SINGLE LIVING ALONE BRINGS THE SPOUSE IN (#1205 C1″; econ, econ-boss-
+  // 1205-c33-births [9]; boss, boss-core-1205-birth-prints [32]): a bride or
+  // a groom living alone in a takeable house of her or his own weds into it -
+  // no new house, no slot in the queue. Until C1″ the couple waited for a
+  // free house while the single's own stood: on 0.37.347, nine villages, 36 %
+  // of the weddings of years 12-24 had a partner alone in such a house, and
+  // the house came free only on the wedding day. The bride's house first; not
+  // where the other's leaving leaves children alone (the rules below).
+  if (!his_left.children_alone && LivesAloneInATakeableHouse(config, current, bride)) {
+    WeddingPlan plan;
+    plan.home = WeddingHome::kIntoBridesYard;
+    return plan;
+  }
+  if (!hers_left.children_alone && LivesAloneInATakeableHouse(config, current, groom)) {
+    WeddingPlan plan;
+    plan.home = WeddingHome::kIntoGroomsYard;
+    return plan;
   }
   const YardLeftBehind hers = WhatTheYardKeeps(config, current, bride, bride, groom, day);
   const YardLeftBehind his = WhatTheYardKeeps(config, current, groom, bride, groom, day);

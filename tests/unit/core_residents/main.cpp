@@ -1713,7 +1713,7 @@ int CheckEmptiedYard(core::IResidentsSystem& system) {
   world.rng = core::SeedRngState(31, 0);
 
   // Two households of ONE — the shape a migrant arrives in, and the shape a
-  // widower is left in. When they marry each other, both yards empty.
+  // widower is left in. When they marry each other, the groom's yard empties.
   const core::FamilyId her_yard = AppendRow(world.families, core::FamilyRow{});
   const core::FamilyId his_yard = AppendRow(world.families, core::FamilyRow{});
   AddAdult(world, her_yard, core::Sex::kFemale, 22.0F);
@@ -1737,22 +1737,27 @@ int CheckEmptiedYard(core::IResidentsSystem& system) {
   free_house.position = core::Vec2{.x = 400.0F, .y = 0.0F};
   AppendRow(world.units, free_house);
 
-  // What the bride's yard holds: a larder, two goats and a month of trudodni.
-  const std::uint32_t her_row = FindRow(world.families, her_yard);
-  world.families.rows[her_row].pantry.assign(2, 0);
-  world.families.rows[her_row].pantry[1] = 400 * core::kGramsPerKilogram;
-  world.families.rows[her_row].trudodni_account = 1200;
+  // SINCE C1″ (#1205) THE BRIDE, ALONE IN HER OWN HOUSE, TAKES THE GROOM IN:
+  // her yard becomes the couple's and HIS empties. Until C1″ both emptied into
+  // the free house, and the goods below were the bride's; they are the groom's
+  // now, so that the yard that empties is still the one that holds them.
+  // What the groom's yard holds: a larder, two goats and a month of trudodni.
+  const std::uint32_t his_row = FindRow(world.families, his_yard);
+  world.families.rows[his_row].pantry.assign(2, 0);
+  world.families.rows[his_row].pantry[1] = 400 * core::kGramsPerKilogram;
+  world.families.rows[his_row].trudodni_account = 1200;
   core::HerdRow goats;
-  goats.household = her_yard;
+  goats.household = his_yard;
   goats.household_owned = 1;
   goats.adult_count = 2;
   AppendRow(world.herds, goats);
 
   RunDays(system, world, 30);
 
-  failures += Expect(FindRow(world.families, her_yard) == core::kNoRow &&
-                         FindRow(world.families, his_yard) == core::kNoRow,
-                     "a yard emptied by a wedding is struck off, not left on the books");
+  failures += Expect(FindRow(world.families, his_yard) == core::kNoRow &&
+                         FindRow(world.families, her_yard) != core::kNoRow,
+                     "a yard emptied by a wedding is struck off, not left on the books "
+                     "(the groom's; the bride's is the couple's since C1'')");
   // The invariant D4 is really about, and it survives the migrants who keep
   // arriving as households of one throughout: NOT ONE HOUSEHOLD IS EMPTY.
   std::uint32_t empty_yards = 0;
@@ -1775,7 +1780,7 @@ int CheckEmptiedYard(core::IResidentsSystem& system) {
                      "the larder went to the neighbours, to the gram");
   failures += Expect(earned >= 1200, "and so did what the yard had earned");
   failures += Expect(world.herds.rows.size() == 1 &&
-                         world.herds.rows[0].household.value != her_yard.value &&
+                         world.herds.rows[0].household.value != his_yard.value &&
                          world.herds.rows[0].household.value != core::kInvalidEntityIdValue,
                      "the goats stand in a living yard, the way a neighbour's gift arrives");
   return failures;
@@ -2338,6 +2343,54 @@ int CheckAWeddingLeavesNoChildAlone() {
     failures += Expect(married(grown) && husband_at_home(grown) && free_houses_taken == 0,
                        "a wedding, the widow's rule in full: a widow with a grown son takes the "
                        "new husband into her own yard, and the free house stays free");
+  }
+  // A SINGLE LIVING ALONE BRINGS THE SPOUSE IN (#1205 C1″): a woman of
+  // twenty-five alone in her own house, the grown bachelor next door, a free
+  // house. Known direction: before C1″ she married out into the free house;
+  // now the husband comes into HER house and the free house stays free. The
+  // pair: the same woman whose house is held for a specialist marries into
+  // the free house, as before.
+  for (const bool held_for_specialist : {false, true}) {
+    Village single;
+    single.world.world_seed = 12;
+    single.world.rng = core::SeedRngState(12, 0);
+    single.her_yard = AppendRow(single.world.families, core::FamilyRow{});
+    single.widow = AddAdult(single.world, single.her_yard, core::Sex::kFemale, 25.0F);
+    AddHouse(single.world, single.her_yard, core::Vec2{.x = 5000.0F, .y = 6000.0F});
+    AddParentsWithChild(single.world, core::Sex::kMale, core::Vec2{.x = 5200.0F, .y = 6000.0F});
+    {
+      core::UnitRow free_house;
+      free_house.type = core::UnitTypeId{2};  // wooden_house, nobody in it
+      free_house.position = core::Vec2{.x = 5400.0F, .y = 6000.0F};
+      AppendRow(single.world.units, free_house);
+    }
+    if (held_for_specialist) {
+      const std::uint32_t family_row = FindRow(single.world.families, single.her_yard);
+      const std::uint32_t house_row =
+          FindRow(single.world.units, single.world.families.rows[family_row].house);
+      single.world.units.rows[house_row].reserved_for_specialist = 1;
+    }
+    for (std::uint32_t day = 0; day < 3 * core::kDaysPerYear && !married(single); ++day) {
+      RunDays(*system, single.world, 1);
+    }
+    std::uint32_t free_houses_taken = 0;
+    for (const core::FamilyRow& family : single.world.families.rows) {
+      const std::uint32_t house = FindRow(single.world.units, family.house);
+      free_houses_taken +=
+          house != core::kNoRow && single.world.units.rows[house].type.value == 2U ? 1U : 0U;
+    }
+    std::cout << "  C1'' (held for a specialist " << held_for_specialist << "): married "
+              << married(single) << ", husband in her house " << husband_at_home(single)
+              << ", free houses taken " << free_houses_taken << '\n';
+    if (held_for_specialist) {
+      failures += Expect(married(single) && !husband_at_home(single) && free_houses_taken == 1,
+                         "a wedding, C1'': a single whose house is held for a specialist marries "
+                         "into the free house, as before");
+    } else {
+      failures += Expect(married(single) && husband_at_home(single) && free_houses_taken == 0,
+                         "a wedding, C1'': a single living alone in her takeable house takes "
+                         "the husband in, and the free house stays free");
+    }
   }
 
   // AN ELDER BROTHER TAKES THE YOUNGER ALONG: a yard of a brother of twenty-
