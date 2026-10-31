@@ -396,7 +396,13 @@ class FixturePolicy {
     return key == "clamp" || (!roof_.store_key.empty() && key == roof_.store_key);
   }
 
+  /// @brief #713's must-not arm: the pen's warm (level 2) is never ordered
+  /// (BuildingChairman::SetWarmMovesOff).
+  void SetWarmOff() { warm_off_ = true; }
+
  private:
+  bool warm_off_ = false;
+
   static constexpr std::uint32_t kCooldownDays = 4;
 
   void NoteStoreDays(const core::WorldState& world) {
@@ -579,7 +585,7 @@ class FixturePolicy {
   bool WarmFirst(const core::WorldState& world, core::OrderRow& order) const {
     const auto month_now = static_cast<std::uint32_t>(world.calendar.date.month);
     const bool clay_season = month_now >= kClayWarmFirstMonth && month_now <= kClayWarmLastMonth;
-    if (!warm_barn_in_hand_ || !clay_season) {
+    if (warm_off_ || !warm_barn_in_hand_ || !clay_season) {
       return false;
     }
     const std::uint32_t pen = PenToWarm(world);

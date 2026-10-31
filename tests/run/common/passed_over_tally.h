@@ -42,8 +42,21 @@ class PassedOverTally {
   enum Kind : std::uint8_t { kHorse = 0, kCrew = 1, kKinds = 2 };
 
   /// @brief Reads the day's morning plan off every resident. Call once a day,
-  /// after the day.
+  /// at noon, while the day's assignments stand.
   void CountDay(const core::WorldState& world) {
+    // PASSED OVER WHILE ANOTHER WAS SERVED (boss-core-1205-birth-prints [54]):
+    // a morning with no horse given to anybody passes every candidate over
+    // alike - that is the village's horse shortage, and no order of people
+    // changes it. The first draft counted it, and «no horse» read P99 31 days
+    // on 570410c3: scarcity, not the order. A «no horse» day counts only when a
+    // horse rode with somebody that morning (WorkAssignment::rides_horse). NOT
+    // asked: whether that horse went to the same kind of work the idle hand
+    // stood for - the plan does not book which job refused him, named.
+    // «Brigade full» needs no such test: a full brigade served others.
+    bool a_horse_was_given = false;
+    for (const core::ResidentRow& resident : world.residents.rows) {
+      a_horse_was_given = a_horse_was_given || resident.work.rides_horse != 0;
+    }
     for (std::uint32_t row = 0; row < world.residents.rows.size(); ++row) {
       const core::ResidentRow& resident = world.residents.rows[row];
       Runs& runs = runs_[world.residents.row_ids[row].value];
@@ -52,10 +65,14 @@ class PassedOverTally {
         continue;  // neither served nor passed over
       }
       const bool working = resident.work.kind != core::WorkKind::kNone;
-      const std::array<bool, kKinds> passed = {!working && (reason == core::IdleReason::kNoHorse ||
-                                                            reason == core::IdleReason::kHorseLock),
+      const bool horse_idle = !working && (reason == core::IdleReason::kNoHorse ||
+                                           reason == core::IdleReason::kHorseLock);
+      const std::array<bool, kKinds> passed = {horse_idle,
                                                !working && reason == core::IdleReason::kCrewCap};
       for (std::uint8_t kind = 0; kind < kKinds; ++kind) {
+        if (kind == kHorse && horse_idle && !a_horse_was_given) {
+          continue;  // nobody rode: the shortage's day, neither served nor passed over
+        }
         runs.now[kind] = passed[kind] ? runs.now[kind] + 1U : 0U;
         runs.longest[kind] = std::max(runs.longest[kind], runs.now[kind]);
       }

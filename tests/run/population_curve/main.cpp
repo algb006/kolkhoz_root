@@ -90,6 +90,10 @@ constexpr std::uint32_t kYears = 33;
 /// #1355's return condition (econ 399d8d1 §1): a P99 passed-over run longer
 /// than this many working days buys the rotation's save field.
 constexpr std::uint32_t kPassedOverReturnDays = 8;
+/// #713's must-not arm (econ, boss-econ-713-1302-reads [3]): the cold gate's
+/// own proof that it can fail, the warm moves off.
+constexpr std::size_t kWarmOffVillages = 3;
+constexpr std::uint32_t kWarmOffYears = 2;
 
 /// The core's answers to the transition order, as slots of a tally: open,
 /// the seven refusals in the order's own order, and not eligible.
@@ -382,7 +386,8 @@ void LiveOneDay(core::ISimulation& simulation,
                 run::BirthsHerdTally* births_herd = nullptr,
                 run::HayDayOffPolicy* hay_day_off = nullptr,
                 run::AdvanceWriteOffTally* write_offs = nullptr,
-                run::BuildingChairman* chairman = nullptr) {
+                run::BuildingChairman* chairman = nullptr,
+                run::PassedOverTally* passed_over = nullptr) {
   bool hot_at_any_tick = false;
   const core::UnitId awaiting = upgrades.Awaiting();
   for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
@@ -406,6 +411,11 @@ void LiveOneDay(core::ISimulation& simulation,
     // econ's work sample (births_herd_tally.h), once a day at noon.
     if (births_herd != nullptr && tick == run::BirthsHerdTally::kSampleHour) {
       births_herd->SampleWork(state);
+    }
+    // The morning plan's placements and reasons, read at noon while the day's
+    // assignments stand (#1355's passed-over line).
+    if (passed_over != nullptr && tick == run::BirthsHerdTally::kSampleHour) {
+      passed_over->CountDay(state);
     }
     // WHICH COWS DIE OF COLD, AND WHERE (#713's first step; boss, 1 November
     // 2026): every frost death of the step, by seed, day and pen, and whether
@@ -613,7 +623,15 @@ void CountStandingShut(const run::TransitionPolicy& transition,
   }
 }
 
-bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
+/// @param years How many years to live; the canon's kYears, fewer for #713's
+///        must-not arm.
+/// @param warm_off #713's must-not arm: the chairman's warm moves off
+///        (BuildingChairman::SetWarmMovesOff).
+bool Walk(std::uint64_t seed,
+          bool print_years,
+          Trajectory& out,
+          std::uint32_t years = kYears,
+          bool warm_off = false) {
   const run::Simulation world = run::Start(seed);
   if (!world) {
     return false;
@@ -638,6 +656,9 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
   }
   if (g_epoch_one_forever) {
     builder.transition.Disable();
+  }
+  if (warm_off) {
+    builder.SetWarmMovesOff();
   }
   run::TimberFlowTally timber(*world.tables);
   run::PassedOverTally passed_over;
@@ -671,7 +692,7 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
     }
   }
 
-  for (std::uint32_t year = 1; year <= kYears; ++year) {
+  for (std::uint32_t year = 1; year <= years; ++year) {
     if (g_horses_loss_year != 0 && year == g_horses_loss_year) {
       KeepHorsesShare(world, 1, 4, "--horses-loss-year", "at the start of the year");
     }
@@ -690,10 +711,10 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
                  births_herd_on,
                  &hay_day_off,
                  &advance_write_offs,
-                 &builder);
+                 &builder,
+                 &passed_over);
       builder.RunDay(*simulation);
       timber.CountDay(simulation->CompletedState());
-      passed_over.CountDay(simulation->CompletedState());
       // What held the transition TODAY, by the order's own door.
       const core::WorldState& today = simulation->CompletedState();
       if (today.epoch == core::Epoch::kOne) {
@@ -817,13 +838,11 @@ bool Walk(std::uint64_t seed, bool print_years, Trajectory& out) {
       out.highest_unit_level = std::max(out.highest_unit_level, unit.level);
     }
     out.worst_season_variety = state.ledger.closed.worst_season_variety;
-    // THE FROST'S TOLL ON THE COWS (#712): the closed year's, by the kind's key.
-    if (const core::ITable* const livestock = world.tables->FindTable("livestock")) {
-      const core::LivestockKindId cow =
-          core::DefIdFromRow<core::LivestockKindIdTag>(livestock->FindRowByKey("cow"));
-      if (cow.value < state.ledger.closed.herd_frozen.size()) {
-        out.cattle_frozen += static_cast<std::uint64_t>(state.ledger.closed.herd_frozen[cow.value]);
-      }
+    // THE FROST'S TOLL (#712; #713's counter, econ, boss-econ-713-1302-reads
+    // [3]): the closed year's herd_frozen over EVERY kind, a death counter
+    // that no cull hides. Until #713 the cows' alone.
+    for (const core::Grams heads : state.ledger.closed.herd_frozen) {
+      out.cattle_frozen += static_cast<std::uint64_t>(heads);
     }
     // THE COUNT BESIDE THE NUMBER, because the block tests both and yesterday
     // I blamed the count from an armchair. Which of the two shuts the gate is
@@ -1531,28 +1550,102 @@ int main(int argc, char** argv) {
             << " days the units stood unmet after the residents, in " << walks.size()
             << " villages - an unexplained hold outside this window is not seen\n";
   failures += run::Expect(median_year14 <= 800, "and not exploding by year 14");
-  // A STANDING GATE, «no cow dies of cold» (#712; boss, 12 October 2026): the
-  // canon's warm rule went dead with the one-site queue (#595) and nothing
-  // shouted - econ counted 8 cows frozen in 4 villages on 0.37.235. Red on the
-  // next change that kills the rule. A KNOWN GAP until host's bot side lands
-  // (#710), which closes it; then the assertion is restored.
+  // A STANDING GATE, «no head dies of cold» (#712; #713's terms, econ,
+  // boss-econ-713-1302-reads [3], accepted by boss): the closed years'
+  // herd_frozen over every kind, every village, 0. The canon's warm rule went
+  // dead with the one-site queue (#595) and nothing shouted. Until #713 a
+  // KNOWN GAP «until host #710 lands» - #710 closed on 0.37.238, and the gap's
+  // text outlived it while 0.37.349 froze 16 and 14 heads. Now an ACCEPTED
+  // RED BY PLACE (accepted_reds.txt, «cattle frozen, offset N»: the accepted
+  // total and «places SEED:HEADS ...» in its word): a head more anywhere, or
+  // any village not listed, is red; at 0 the line asks to be dropped.
   std::uint64_t cattle_frozen = 0;
   std::string frozen_where;
+  std::map<std::uint64_t, std::uint64_t> frozen_by_seed;
   for (std::size_t walk_index = 0; walk_index < walks.size(); ++walk_index) {
-    const std::uint64_t cows = walks[walk_index].cattle_frozen;
-    cattle_frozen += cows;
-    if (cows > 0) {
+    const std::uint64_t heads = walks[walk_index].cattle_frozen;
+    cattle_frozen += heads;
+    if (heads > 0) {
+      frozen_by_seed[walks[walk_index].seed] = heads;
       frozen_where +=
-          " seed " + std::to_string(walks[walk_index].seed) + ": " + std::to_string(cows) + ";";
+          " seed " + std::to_string(walks[walk_index].seed) + ": " + std::to_string(heads) + ";";
     }
   }
-  failures += run::KnownGap(cattle_frozen == 0,
-                            "no cow of the canon dies of cold in the open pen",
-                            std::to_string(cattle_frozen) + " cows frozen in " +
-                                std::to_string(walks.size()) + " villages" +
-                                (frozen_where.empty() ? "" : " (" + frozen_where + ")"),
-                            "host #710: the run chairman's warm rule, dead since the one-site "
-                            "queue (#595)");
+  {
+    const std::string cell = "cattle frozen, offset " + std::to_string(g_seed_offset);
+    const std::optional<run::AcceptedRed> cold_line =
+        run::FindAcceptedRed("population_curve", cell);
+    // The accepted places, parsed off the word: «places 1937:7 1938:9».
+    std::map<std::uint64_t, std::uint64_t> allowed;
+    if (cold_line.has_value()) {
+      const std::string& word = cold_line->word;
+      const std::size_t at = word.find("places ");
+      std::size_t pos = at == std::string::npos ? std::string::npos : at + 7;
+      while (pos != std::string::npos && pos < word.size()) {
+        char* end = nullptr;
+        const std::uint64_t seed = std::strtoull(word.c_str() + pos, &end, 10);
+        if (end == word.c_str() + pos || *end != ':') {
+          break;
+        }
+        const std::uint64_t heads = std::strtoull(end + 1, &end, 10);
+        allowed[seed] = heads;
+        pos = static_cast<std::size_t>(end - word.c_str());
+        while (pos < word.size() && word[pos] == ' ') {
+          ++pos;
+        }
+      }
+    }
+    std::string over;
+    for (const auto& [seed, heads] : frozen_by_seed) {
+      const auto it = allowed.find(seed);
+      if (it == allowed.end() || heads > it->second) {
+        over += " seed " + std::to_string(seed) + ": " + std::to_string(heads) + " (accepted " +
+                (it == allowed.end() ? std::string("none") : std::to_string(it->second)) + ");";
+      }
+    }
+    const std::string now = std::to_string(cattle_frozen) + " heads frozen in " +
+                            std::to_string(walks.size()) + " villages" +
+                            (frozen_where.empty() ? "" : " (" + frozen_where + ")");
+    if (cattle_frozen == 0 && cold_line.has_value()) {
+      std::cout << "population_curve: cold gate - accepted red no longer needed, drop the line ("
+                << run::kAcceptedRedsPath << ", " << cell << ")\n";
+    } else if (cattle_frozen > 0 && cold_line.has_value() && over.empty()) {
+      std::cout << "population_curve: cold gate ACCEPTED RED (" << cell << ", " << cold_line->date
+                << ", tree " << cold_line->tree << "): " << now << '\n';
+    }
+    const std::string claim = "no head of the canon dies of cold — now " + now +
+                              (over.empty() ? "" : " — past the accepted places:" + over);
+    failures +=
+        run::Expect(cattle_frozen == 0 || (cold_line.has_value() && over.empty()), claim.c_str());
+  }
+  // THE MUST-NOT ARM (#713's terms): the same fixture, 3 villages x 2 years,
+  // with the chairman's warm moves off (BuildingChairman::SetWarmMovesOff).
+  // At least 1 frozen head in at least 2 of the 3 villages, or the gate
+  // cannot fail and says NOT MEASURED - red for the gate, not green for the
+  // world. Its count printed beside the canon's.
+  {
+    std::uint32_t villages_frozen = 0;
+    std::uint64_t heads = 0;
+    std::string where;
+    for (std::size_t index = 0; index < kWarmOffVillages && index < kSeeds.size(); ++index) {
+      Trajectory arm;
+      if (!Walk(kSeeds[index] + g_seed_offset, false, arm, kWarmOffYears, true)) {
+        continue;
+      }
+      heads += arm.cattle_frozen;
+      villages_frozen += arm.cattle_frozen > 0 ? 1U : 0U;
+      where += " seed " + std::to_string(arm.seed) + ": " + std::to_string(arm.cattle_frozen) + ";";
+    }
+    std::cout << "population_curve: cold gate's must-not arm (warm moves off, " << kWarmOffVillages
+              << " villages x " << kWarmOffYears << " years): " << heads << " heads frozen, in "
+              << villages_frozen << " of " << kWarmOffVillages << " villages (" << where
+              << "); the canon's: " << cattle_frozen << '\n';
+    const std::string claim =
+        "the cold gate can fail: with the warm moves off >= 1 head freezes "
+        "in >= 2 of 3 villages — now " +
+        std::to_string(villages_frozen) + " of 3" + (villages_frozen >= 2 ? "" : " — NOT MEASURED");
+    failures += run::Expect(villages_frozen >= 2, claim.c_str());
+  }
   // A STANDING LINE, «who is served first» (#1355, parked; boss, the birth-
   // prints thread [53] and his answer; econ 399d8d1 §1): the longest run of
   // working days a resident stood passed over, P50 / P99 / max over every

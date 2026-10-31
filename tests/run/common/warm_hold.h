@@ -69,6 +69,10 @@ class WarmHold {
                  "#1056 thread [121])\n";
   }
 
+  /// @brief #713's must-not arm: the hold never stands (BuildingChairman::
+  /// SetWarmMovesOff).
+  void SetOff() { off_ = true; }
+
   /// @brief True when a start of `type` at `level` spares the warm (the rule).
   ///        The houses' exemption for a family waiting for a roof is the
   ///        wiring's (BuildingChairman): this answers for the materials alone.
@@ -89,7 +93,7 @@ class WarmHold {
 
   /// @brief True while the hold stands (the rule's three conditions).
   bool Holding(const core::WorldState& world) const {
-    if (cattle_.value == core::kInvalidDefIdValue || warm_.empty()) {
+    if (off_ || cattle_.value == core::kInvalidDefIdValue || warm_.empty()) {
       return false;
     }
     const auto month = static_cast<std::uint32_t>(world.calendar.date.month);
@@ -113,6 +117,8 @@ class WarmHold {
   }
 
  private:
+  bool off_ = false;
+
   /// The clay months, 0-based (fixture_policy.h kClayWarmFirstMonth/LastMonth:
   /// March to September). Kept equal to the warm order's own window.
   static constexpr std::uint32_t kClayFirstMonth = 2;

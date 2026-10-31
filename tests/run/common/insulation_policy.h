@@ -54,10 +54,14 @@ class InsulationPolicy {
     core::LoadDefinitions(tables, core::StubTables::kAllowed, definitions_, error);
   }
 
+  /// @brief #713's must-not arm: no straw coat is ordered
+  /// (BuildingChairman::SetWarmMovesOff).
+  void SetOff() { off_ = true; }
+
   /// @brief One day of the chairman's attention. Call once a day.
   void RunDay(core::ISimulation& simulation) {
     const core::WorldState& world = simulation.CompletedState();
-    if (straw_.value == core::kInvalidDefIdValue) {
+    if (off_ || straw_.value == core::kInvalidDefIdValue) {
       return;
     }
     const auto month = static_cast<std::uint32_t>(world.calendar.date.month);
@@ -127,6 +131,8 @@ class InsulationPolicy {
   }
 
  private:
+  bool off_ = false;
+
   /// October to November, 0-based by core::Month (0 = January): AFTER the
   /// harvest. The first cut began in August, and its crews — a hundred and
   /// fifty houses of two man-days — came off the fields in the reaping months:

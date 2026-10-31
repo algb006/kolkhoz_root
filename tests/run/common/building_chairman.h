@@ -289,6 +289,18 @@ class BuildingChairman {
   /// hears them, and its distiller rule takes nobody (its DT line says so).
   void WatchStep(const core::WorldState& world) { distiller.WatchStep(world); }
 
+  /// @brief #713'S MUST-NOT ARM (econ, boss-econ-713-1302-reads [3]): the
+  /// chairman's warm moves switched off together - the houses' straw coat
+  /// (insulation_policy.h), the first pen's warm (fixture_policy.h,
+  /// WarmFirst) and the hold for its materials (warm_hold.h). The cold gate
+  /// must turn red under it, or the gate cannot fail. NOT switched: the
+  /// upgrade policy's later raise of a cattle yard (upgrade_policy.h), named.
+  void SetWarmMovesOff() {
+    insulation.SetOff();
+    fixture.SetWarmOff();
+    warm_hold.SetOff();
+  }
+
   /// @brief One day of the chairman's attention. Call once a day, after the
   /// day's steps.
   void RunDay(core::ISimulation& simulation) {
