@@ -231,16 +231,20 @@ SeedHold SeedHeldByField(const WorldState& world,
   // not "given by August's oats". A crop whose table names no reaping month
   // gives no harvest to wait for.
   std::vector<std::int32_t> harvest_in(held.size(), kNever);
+  // THE CLOSING DAY (#1205 (s1)): the turn lets go every preparation still
+  // unsown (field_work.cpp, the turn's let-go of a plough or a harrow).
+  const bool closing_day = as_of % kDaysPerYear == kDaysPerYear - 1U;
   // One sowing of `field`: its window's end in months and the month it is
-  // reaped, which is a harvest of its seed too.
+  // reaped, which is a harvest of its seed too. Returns true when it is a
+  // begun sowing past its window on the closing day: a lost slot, held nothing.
   const auto add_sowing =
       [&](const FieldRow& field, std::uint32_t row, const NextSowing& next, bool after) {
         if (next.crop.value >= seed_norms_by_crop.size()) {
-          return;
+          return false;
         }
         const SeedNorm& norm = seed_norms_by_crop[next.crop.value];
         if (!(norm.sowing_norm_kg_per_ha > 0.0F) || norm.resource.value >= held.size()) {
-          return;
+          return false;
         }
         // A crop whose table names no last sowing month is sown by its slot's
         // year's end at the latest: held until then.
@@ -272,13 +276,25 @@ SeedHold SeedHeldByField(const WorldState& world,
             field.crop.value == next.crop.value &&
             (field.phase == FieldPhase::kPlowing || field.phase == FieldPhase::kHarrowing ||
              field.phase == FieldPhase::kSowing);
+        // BUT NOT ON THE CLOSING DAY (#1205 (s1); econ, econ-boss-1205-c33-
+        // births; boss, boss-core-1205-birth-prints [41]): the turn lets an
+        // unsown preparation go, so a begun sowing past its window is a lost
+        // slot then and holds nothing - resources §6 holds the seed of next
+        // year's rotation, and this slot is not in it. Until (s1) the turn
+        // held it: on 0.37.347's novice, 1952 y8, five rye fields still under
+        // the harrow in December held 10.5 t against a 10.2 t store, and the
+        // plan's turn shipped nothing of 1.3 t owed.
         if (begun && sow_end < 1) {
+          if (closing_day) {
+            return true;
+          }
           sow_end = 1;
         }
         if (reaping_known && sow_end > 0 && reaped_in >= 0) {
           harvest_in[norm.resource.value] = std::min(harvest_in[norm.resource.value], reaped_in);
         }
         sowings.push_back(Sowing{.norm = &norm, .row = row, .sow_end = sow_end, .after = after});
+        return false;
       };
   for (std::uint32_t row = 0; row < world.fields.rows.size(); ++row) {
     const FieldRow& field = world.fields.rows[row];
@@ -304,7 +320,14 @@ SeedHold SeedHeldByField(const WorldState& world,
     const bool year0_winter = field.rotation_year0.value < seed_norms_by_crop.size() &&
                               seed_norms_by_crop[field.rotation_year0.value].is_winter;
     const NextSowing next = NextSowingOf(field, as_of, year0_winter);
-    add_sowing(field, row, next, false);
+    // THE LOST SLOT FREES ITS SEED, NOT THE FIELD (econ's guard on (s1)): only
+    // this sowing goes; whatever crop the field is given next is read by the
+    // same rule from the day it is assigned (the turn's rotation, or the
+    // chairman's), and the winter crop after a spring one is no business of a
+    // winter slot.
+    if (add_sowing(field, row, next, false)) {
+      continue;
+    }
     // AND THE WINTER CROP AFTER THE NEXT SPRING SOWING (resources design §6,
     // «назначенный севооборот»; boss-core-epoch1-queue-2026-09-29 [7];
     // 0.37.13): a chain whose next sowing is a spring crop of slot k and whose
