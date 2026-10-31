@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <vector>
 
 #include "core_common/calendar.h"
 #include "core_common/emit_event.h"
@@ -14,7 +15,9 @@
 #include "core_common/random.h"
 #include "core_common/state_table_ops.h"
 #include "district_carts.h"
+#include "herd_forecast.h"
 #include "herd_life.h"
+#include "herd_system.h"
 #include "livestock_homes.h"
 #include "stock_ops.h"
 
@@ -532,6 +535,22 @@ OrderRefusal OrderHandStock(const ProductionConfig& config,
   // to hand over, so a chairman shedding stock sheds these — and the order
   // names no head because a head is not an entity in this model.
   std::int32_t points = 0;
+  // ON THE LAMP'S WORD, the milk the heads take with them (#843; PlanState::
+  // milk_handed_on_lamp_grams): asked of the core's own lamp at the hour the
+  // order is consumed - kHerdHayShortAhead standing with kReduceHerd. STUB,
+  // named: a chairman who hands heads over while the lamp is lit, for his own
+  // reasons, is counted as heeding it; the order's own mark is not built.
+  bool on_lamps_word = false;
+  {
+    std::vector<Alarm> alarms;
+    CollectHerdForecastAlarms(config, current, alarms);
+    on_lamps_word = std::ranges::any_of(alarms, [](const Alarm& alarm) {
+      return alarm.kind == AlarmKind::kHerdHayShortAhead &&
+             (alarm.advice == AlarmAdvice::kReduceHerd ||
+              alarm.advice_more == AlarmAdvice::kReduceHerd);
+    });
+  }
+  const Grams milk_before = on_lamps_word ? KolkhozMilkDayGrams(config, current) : 0;
   const bool old_herd = MeanAdultAgeYears(herd) >= kind.life_game_years_min;
   // The horses' young above what the herd keeps, first (the order above).
   const std::uint16_t newborns_taken_first = TakeFromCohort(herd.newborn_count, newborns_first);
@@ -561,6 +580,11 @@ OrderRefusal OrderHandStock(const ProductionConfig& config,
             HandoverPoints(lot->points, config.limit.handover_share_newborn);
 
   const auto gone = static_cast<std::uint32_t>(adults_gone + juveniles_gone + newborns_gone);
+  if (on_lamps_word) {
+    const Grams milk_after = KolkhozMilkDayGrams(config, current);
+    current.plan.milk_handed_on_lamp_grams +=
+        milk_before > milk_after ? milk_before - milk_after : 0;
+  }
   // THE BOOK IS NOT TOUCHED, AND THAT IS DELIBERATE. `limit_points_granted`
   // means "what the district granted for this year" — it is SET at the year's
   // turn, not accumulated — so adding a sale's proceeds to it would be two

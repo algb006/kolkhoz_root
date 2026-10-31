@@ -488,6 +488,10 @@ class ProductionSystem final : public IProductionSystem {
     const float cold_draught_was = ColdDraughtFactor(config_, current);
     RunHerdDay(config_, current);
     RescaleHorseWorkForRation(config_, traction_ration_was, cold_draught_was, current);
+    // THE YEAR'S LARGEST MILKING DAY, raised after the herd day gave today's
+    // (#843; PlanState::milk_day_max_grams): the next letter's base.
+    current.plan.milk_day_max_grams =
+        std::max(current.plan.milk_day_max_grams, KolkhozMilkDayGrams(config_, current));
     ShipMilkShare(config_, current);
     // And the barn -> store leg of what the cart left (#1056 C1.1): priced
     // now, offered from the hour-1 top-up, carried through the day.

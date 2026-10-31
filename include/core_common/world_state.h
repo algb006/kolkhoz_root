@@ -849,6 +849,25 @@ struct PlanState {
   /// over the turn and is cleared with the share.
   Grams milk_debt = 0;
 
+  /// THE YEAR'S LARGEST MILKING DAY OF THE KOLKHOZ'S HERDS (#843; district
+  /// §9, «Молоко — в плане с первого года», the human's word of 31 October
+  /// 2026 «Черновик по молоку одобряю, делай»; save 198), grams: raised each
+  /// day by KolkhozMilkDayGrams, read and cleared by the next letter (it comes
+  /// at the turn). One day of the letter set the plan before; cows handed over in
+  /// the autumn lowered it, and the new year's young went over it.
+  Grams milk_day_max_grams = 0;
+
+  /// THE MILK OF THE HEADS HANDED ON THE LAMP'S WORD this year (#843; save
+  /// 198), grams a day: each hand-over consumed while kHerdHayShortAhead
+  /// stands with the advice kReduceHerd books the herds' milking day before
+  /// it less the day after. The letter takes it off the year's largest day:
+  /// a chairman who heeded the lamp is not planned for cows he has not got.
+  /// STUB, named: it cannot tell a chairman who hands heads over while the
+  /// lamp is lit, for his own reasons, from one who heeds it - he is counted
+  /// as heeding it. The order's own mark «answered the advice» (the office's
+  /// lamp buttons) is the cure, not built. Read and cleared by the letter.
+  Grams milk_handed_on_lamp_grams = 0;
+
   /// WHAT WENT TO THE DISTRICT WITH NO POSITION TO GO AGAINST, by resource
   /// (district §1; boss seq 113; save 66): the winter's milk, from the turn
   /// to the spring's figure, left after the issue and carted all the same.

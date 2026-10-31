@@ -13831,6 +13831,49 @@ int CheckTheChurchStoreIsEmptied() {
   return failures;
 }
 
+/// THE MILK POSITION OFF THE CLOSING YEAR (#843; district §9; the human's word
+/// of 31 October 2026 «Черновик по молоку одобряю, делай»): the base is the
+/// year's largest milking day less the milk of the heads handed on the lamp's
+/// word, and the first letter, with no year behind it, reads the day. Known
+/// directions: a peak above today raises the share, a hand-over on the lamp
+/// takes its milk off, and the letter starts both counters again.
+int CheckTheMilkPositionReadsTheYear() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.crops.resize(1);
+  config.plan_positions = {{.crop = core::CropId{0}, .area_share = 0.1F}};
+  config.plan_grain_share = 0.5F;
+  config.plan_milk_share = 0.5F;
+  core::WorldState world = MakeHerdWorld(0.0F);
+  AddHerd(world, 0, 10, 2, true);  // eight cows milking, 80 kg a day today
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  world.calendar.tick = 8 * static_cast<core::Tick>(core::kTicksPerDay);
+  core::RefreshCalendarCaches(world.calendar);
+  const auto letter = [&config](core::WorldState state, core::Grams peak, core::Grams handed) {
+    state.plan.milk_day_max_grams = peak;
+    state.plan.milk_handed_on_lamp_grams = handed;
+    core::AnnouncePlan(config, state);
+    return state;
+  };
+  const core::WorldState first = letter(world, 0, 0);
+  const core::WorldState peaked = letter(world, 120 * kKilo, 0);
+  const core::WorldState heeded = letter(world, 120 * kKilo, 20 * kKilo);
+  const core::WorldState over = letter(world, 120 * kKilo, 200 * kKilo);
+  failures += Expect(first.plan.milk_daily_share == 40 * kKilo,
+                     "milk plan: the first letter, no year behind it, reads the day (80 kg x 0.5)");
+  failures += Expect(peaked.plan.milk_daily_share == 60 * kKilo,
+                     "milk plan: the year's largest day, 120 kg, not today's 80 - x 0.5");
+  failures +=
+      Expect(heeded.plan.milk_daily_share == 50 * kKilo,
+             "milk plan: the heads handed on the lamp take their 20 kg off the largest day");
+  failures += Expect(over.plan.milk_daily_share == 0,
+                     "milk plan: never below nought when the lamp's heads outweigh the year's day");
+  failures +=
+      Expect(heeded.plan.milk_day_max_grams == 0 && heeded.plan.milk_handed_on_lamp_grams == 0,
+             "milk plan: the letter starts both counters again");
+  return failures;
+}
+
 /// THE MILK CART (district §9; register 231; boss seq 98 and 113): the
 /// position named off the kolkhoz's milking day, the day's share at the
 /// milking, the rest before the next one, the winter's milk outside any
@@ -17804,6 +17847,7 @@ int main() {
   failures += CheckDemolitionStockWaits();
   failures += CheckDistrictTrip();
   failures += CheckTheMilkCart();
+  failures += CheckTheMilkPositionReadsTheYear();
   failures += CheckTheWinterCropMovesToTheSpring();
   failures += CheckTheChurchStoreIsEmptied();
   failures += CheckTheAccumulationLimit();

@@ -135,9 +135,13 @@ static_assert(AggregateArity<ChairmanState>() == 43,
 // four bytes of tail padding the struct already carried to its eight took the
 // u16 and its pad byte; the prediction forgot that padding. 19 fields held;
 // two bytes in the codec.
-static_assert(sizeof(PlanState) == (10 * kAmountsSize) + 32,
+// Save 198 (#843, the milk position's base): two Grams after milk_debt, the
+// year's largest milking day and the milk handed on the lamp - predicted
+// 10 x amounts + 32 -> + 48 (two 8-byte words) and 21 fields before the
+// build; on the wire +16.
+static_assert(sizeof(PlanState) == (10 * kAmountsSize) + 48,
               "PlanState changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<PlanState>() == 19,
+static_assert(AggregateArity<PlanState>() == 21,
               "PlanState gained or lost a field — update the codec and VERSION_SAVE");
 // THE CONTAINER ITSELF, and it was the one thing here without a guard.
 // Seventeen asserts below watch the BLOCKS of a world and not one watched the
@@ -598,7 +602,9 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   sink.WriteAmounts(DefKind::kResource, world.plan.draw_last_month);     // save 164
   // The milk cart's daily share and what went with no position (save 66).
   out.WriteI64(world.plan.milk_daily_share);
-  out.WriteI64(world.plan.milk_debt);  // save 85: the milk with debt
+  out.WriteI64(world.plan.milk_debt);                  // save 85: the milk with debt
+  out.WriteI64(world.plan.milk_day_max_grams);         // save 198 (#843)
+  out.WriteI64(world.plan.milk_handed_on_lamp_grams);  // save 198 (#843)
   sink.WriteAmounts(DefKind::kResource, world.plan.delivered_outside);
   sink.WriteAmounts(DefKind::kResource, world.plan.goods_loan_owed);   // save 89
   sink.WriteAmounts(DefKind::kResource, world.plan.goods_loan_taken);  // save 89
@@ -896,6 +902,11 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   // stores for a negative amount at the next milking, so the load refuses it.
   if (world->plan.milk_daily_share < 0 || world->plan.milk_debt < 0) {
     source.Fail("the milk cart's share or debt is negative");
+  }
+  world->plan.milk_day_max_grams = in.ReadI64();         // save 198 (#843)
+  world->plan.milk_handed_on_lamp_grams = in.ReadI64();  // save 198 (#843)
+  if (world->plan.milk_day_max_grams < 0 || world->plan.milk_handed_on_lamp_grams < 0) {
+    source.Fail("the year's largest milking day or the milk handed on the lamp is negative");
   }
   world->plan.delivered_outside = source.ReadAmounts(DefKind::kResource);
   world->plan.goods_loan_owed = source.ReadAmounts(DefKind::kResource);   // save 89

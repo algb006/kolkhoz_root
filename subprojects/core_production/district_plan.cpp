@@ -494,9 +494,23 @@ void AnnounceMilkPosition(const ProductionConfig& config, WorldState& current) {
   if (config.milk_resource.value == kInvalidDefIdValue || !(config.plan_milk_share > 0.0F)) {
     return;
   }
-  const auto share =
-      static_cast<Grams>(std::llround(static_cast<double>(KolkhozMilkDayGrams(config, current)) *
-                                      static_cast<double>(config.plan_milk_share)));
+  // THE BASE IS THE CLOSING YEAR'S LARGEST MILKING DAY, LESS THE MILK OF THE
+  // HEADS HANDED ON THE LAMP'S WORD (#843; district §9; the human's word of
+  // 31 October 2026, «Черновик по молоку одобряю, делай»). One day of the
+  // letter set it before: cows handed over in the autumn lowered the plan,
+  // and the new year's young went over it. The first letter has no closed
+  // year behind it and reads the day, as before. Both counters start again
+  // here, from letter to letter (the letter comes at the turn).
+  const Grams year_base =
+      current.plan.milk_day_max_grams > current.plan.milk_handed_on_lamp_grams
+          ? current.plan.milk_day_max_grams - current.plan.milk_handed_on_lamp_grams
+          : 0;
+  const Grams base =
+      current.plan.milk_day_max_grams > 0 ? year_base : KolkhozMilkDayGrams(config, current);
+  current.plan.milk_day_max_grams = 0;
+  current.plan.milk_handed_on_lamp_grams = 0;
+  const auto share = static_cast<Grams>(
+      std::llround(static_cast<double>(base) * static_cast<double>(config.plan_milk_share)));
   // THE MILK COUNTS FROM THE SPRING (boss seq 213): the letter comes in
   // January, and the position is still the milking days from the first day
   // of spring to the turn — the cart does not come in the winter.
