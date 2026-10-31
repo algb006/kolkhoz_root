@@ -64,7 +64,7 @@ struct MarkOffer {
 
 /// A stand counts as FULL when its mark yields at least this share of the
 /// logs wanted (#1205 (a), boss [23]).
-inline constexpr float kFullMarkShare = 0.0F;
+inline constexpr float kFullMarkShare = 0.5F;
 
 /// @brief The offer to mark: the nearest FULL one (logs >= kFullMarkShare of
 /// `wanted_logs`), and only when none is full, the fullest (the nearer on a
