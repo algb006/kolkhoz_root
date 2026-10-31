@@ -662,6 +662,18 @@ bool Walk(std::uint64_t seed,
   }
   run::TimberFlowTally timber(*world.tables);
   run::PassedOverTally passed_over;
+  // #713's straw doors and the arm's pen (below, in the day loop).
+  std::uint32_t straw = 0xFFFFFFFFU;
+  std::uint16_t cattle_yard_type = 0xFFFFU;
+  if (const core::ITable* const resources = world.tables->FindTable("resources")) {
+    straw = resources->FindRowByKey("straw");
+  }
+  if (const core::ITable* const types = world.tables->FindTable("unit_types")) {
+    const std::uint32_t row = types->FindRowByKey("cattle_yard");
+    cattle_yard_type = row == core::kNoTableRow ? 0xFFFFU : static_cast<std::uint16_t>(row);
+  }
+  std::array<core::Grams, 13> straw_book_before = {};
+  core::Grams straw_stock_before = -1;
   // econ's births and horses prints: the "forever" branch only.
   run::BirthsHerdTally births_herd(*world.tables);
   run::BirthsHerdTally* const births_herd_on = g_epoch_one_forever ? &births_herd : nullptr;
@@ -726,8 +738,9 @@ bool Walk(std::uint64_t seed,
         const std::uint32_t pen = builder.fixture.PenWaitingForWarm(now);
         if (pen != core::kNoRow) {
           const core::UnitRow& unit = now.units.rows[pen];
-          std::cout << "population_curve: WARM seed " << seed << " y" << year << " day " << day
-                    << " month " << static_cast<unsigned>(now.calendar.date.month) << " pen "
+          std::cout << "population_curve: " << (warm_off ? "WARM-ARM" : "WARM") << " seed " << seed
+                    << " y" << year << " day " << day << " month "
+                    << static_cast<unsigned>(now.calendar.date.month) << " pen "
                     << now.units.row_ids[pen].value << " level "
                     << static_cast<unsigned>(unit.level) << " phase "
                     << static_cast<unsigned>(unit.construction.phase) << " target "
@@ -741,6 +754,82 @@ bool Walk(std::uint64_t seed,
                       << line.held / 1000 << "kg";
           }
           std::cout << '\n';
+        }
+        // THE STRAW'S DOORS, DAY BY DAY (#713; boss, after core [55]): what took
+        // the straw, by the open book's own columns - today's increments - and
+        // where it lies: the built units, the sites, the yards' pantries.
+        if (straw != 0xFFFFFFFFU && straw != core::kNoTableRow) {
+          const core::YearLedger& book = now.ledger.current;
+          const std::array<std::pair<const char*, const core::ResourceAmounts*>, 13> doors = {{
+              {"feed", &book.feed},
+              {"yard_feed", &book.yard_feed},
+              {"built_in", &book.built_in},
+              {"spoiled", &book.spoiled},
+              {"processed", &book.processed},
+              {"made", &book.made},
+              {"bartered", &book.bartered},
+              {"stolen", &book.stolen},
+              {"issued", &book.issued},
+              {"harvest", &book.harvest},
+              {"hauled_to_stores", &book.hauled_to_stores},
+              {"seized", &book.seized},
+              {"delivered", &book.delivered},
+          }};
+          std::string moved;
+          for (std::size_t door = 0; door < doors.size(); ++door) {
+            const core::Grams now_grams =
+                straw < doors[door].second->size() ? (*doors[door].second)[straw] : 0;
+            const core::Grams was = straw_book_before[door];
+            const core::Grams step = now_grams >= was ? now_grams - was : now_grams;
+            straw_book_before[door] = now_grams;
+            if (step != 0) {
+              moved += std::string(" ") + doors[door].first + ":" + std::to_string(step / 1000);
+            }
+          }
+          core::Grams in_units = 0, on_sites = 0, in_pantries = 0;
+          for (const core::UnitRow& u : now.units.rows) {
+            if (straw < u.stock.size()) {
+              (u.level > 0 ? in_units : on_sites) += u.stock[straw];
+            }
+          }
+          for (const core::FamilyRow& f : now.families.rows) {
+            in_pantries += straw < f.pantry.size() ? f.pantry[straw] : 0;
+          }
+          const core::Grams stock_now = in_units + on_sites + in_pantries;
+          if (year == 1 && (!moved.empty() || stock_now != straw_stock_before)) {
+            std::cout << "population_curve: " << (warm_off ? "STRAW-ARM" : "STRAW") << " seed "
+                      << seed << " y" << year << " day " << day << " units " << in_units / 1000
+                      << " sites " << on_sites / 1000 << " pantries " << in_pantries / 1000
+                      << " kg; today's book (kg):" << (moved.empty() ? std::string(" none") : moved)
+                      << '\n';
+          }
+          straw_stock_before = stock_now;
+        }
+        // THE ARM'S PEN, every day (#713's must-not arm: «find the other door
+        // that still orders the warm»): the first cattle yard's level, works and
+        // target, and the herd's heads and billet, after its warm stands too.
+        if (warm_off) {
+          const core::WorldState& now_arm = simulation->CompletedState();
+          for (std::uint32_t row = 0; row < now_arm.units.rows.size(); ++row) {
+            const core::UnitRow& u = now_arm.units.rows[row];
+            if (u.type.value != cattle_yard_type) {
+              continue;
+            }
+            std::cout << "population_curve: PEN-ARM seed " << seed << " y" << year << " day " << day
+                      << " pen " << now_arm.units.row_ids[row].value << " level "
+                      << static_cast<unsigned>(u.level) << " phase "
+                      << static_cast<unsigned>(u.construction.phase) << " target "
+                      << static_cast<unsigned>(u.construction.target_level) << " insulated "
+                      << static_cast<unsigned>(u.insulated);
+            for (const core::HerdRow& h : now_arm.herds.rows) {
+              if (h.unit.value == now_arm.units.row_ids[row].value && h.household_owned == 0) {
+                std::cout << " herd heads " << h.adult_count << " billeted " << h.billeted_count
+                          << " cold_nights " << static_cast<unsigned>(h.cold_nights);
+              }
+            }
+            std::cout << '\n';
+            break;
+          }
         }
       }
       // What held the transition TODAY, by the order's own door.
