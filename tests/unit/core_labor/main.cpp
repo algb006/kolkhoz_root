@@ -51,6 +51,7 @@
 #include "manure_last_checks.h"
 #include "people_cart_checks.h"
 #include "posts.h"
+#include "ride_hold_checks.h"
 #include "stuck_state_checks.h"
 #include "supply_floor_checks.h"
 #include "top_up_checks.h"
@@ -4863,6 +4864,7 @@ int main() {
   failures += CheckHarvestOrder();
   failures += CheckHarvestDaysOff();
   failures += CheckBrigadeCart();
+  failures += CheckRideHold();
   failures += CheckTopUpAgainstWindowlessWork();
   failures += CheckCarterOnFoot();
   failures += CheckLogPairs();

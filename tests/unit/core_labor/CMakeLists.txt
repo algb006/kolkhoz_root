@@ -3,6 +3,7 @@ kolkhoz_add_unit_test(core_labor
     harvest_order_checks.cpp
     harvest_days_off_checks.cpp
     brigade_cart_checks.cpp
+    ride_hold_checks.cpp
     top_up_checks.cpp
     carter_on_foot_checks.cpp
     log_pair_checks.cpp

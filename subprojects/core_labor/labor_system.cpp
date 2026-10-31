@@ -2728,6 +2728,19 @@ class LaborSystem final : public ILaborSystem {
     return DraughtHorsesOf(current, config_.horse_kind);
   }
 
+  /// #1205 (c2), an arm: a building site stands marked - pegs in, its recipe
+  /// not yet in the village, since a site whose recipe is covered is started -
+  /// and a felling mark has work left. The felling's ride then keeps a horse
+  /// (AssignmentParams::hold_ride_horse).
+  static bool SiteWaitsAndAFellingHasWork(const WorldState& current) {
+    const bool site_waits = std::ranges::any_of(current.units.rows, [](const UnitRow& unit) {
+      return unit.level == 0 && unit.construction.phase == ConstructionPhase::kMarked;
+    });
+    return site_waits && std::ranges::any_of(current.stands.rows, [](const TimberStandRow& stand) {
+             return stand.marked_m3 > 0.0F && stand.work_days_remaining > 0.0F;
+           });
+  }
+
   /// The horses a ride to a felling may count on (#1205 (c1)): those the last
   /// morning plan left over, never more than stand today; before the first
   /// plan, those that stand.
@@ -2760,6 +2773,7 @@ class LaborSystem final : public ILaborSystem {
     params.min_usable_hours = config_.min_usable_hours;
     params.standard_day_hours = config_.standard_day_hours;
     params.draught_horses = DraughtHorses(current);
+    params.hold_ride_horse = SiteWaitsAndAFellingHasWork(current);
     // The floor under the works' supply (#734): the morning's, by the whole
     // team; the day's top-up deals none.
     params.supply_floor_carters = SupplyFloorCarters(config_.supply_floor, params.draught_horses);
