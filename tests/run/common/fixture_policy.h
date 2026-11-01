@@ -100,6 +100,14 @@ class FixturePolicy {
   /// @brief The question asked before every start (start_gate.h).
   void SetStartGate(StartGate gate) { start_gate_ = std::move(gate); }
 
+  /// @brief Whether the start gate the queue asks lets `type` at `level` start
+  ///        (the saw's boards and the warm's hold together; site_wait_tally.h).
+  bool StartGateOpen(const core::WorldState& world,
+                     core::UnitTypeId type,
+                     std::uint8_t level) const {
+    return GateOpen(start_gate_, world, type, level);
+  }
+
   /// @brief One day of the chairman's attention. Call once a day.
   void RunDay(core::ISimulation& simulation) {
     PauseSitesForThePen(simulation);

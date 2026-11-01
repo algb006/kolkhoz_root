@@ -42,6 +42,7 @@
 #include "../common/hay_day_off_policy.h"
 #include "../common/passed_over_tally.h"
 #include "../common/run_harness.h"
+#include "../common/site_wait_tally.h"
 #include "../common/timber_flow_tally.h"
 #include "../common/transition_tally.h"
 #include "core_common/calendar.h"
@@ -387,7 +388,8 @@ void LiveOneDay(core::ISimulation& simulation,
                 run::HayDayOffPolicy* hay_day_off = nullptr,
                 run::AdvanceWriteOffTally* write_offs = nullptr,
                 run::BuildingChairman* chairman = nullptr,
-                run::PassedOverTally* passed_over = nullptr) {
+                run::PassedOverTally* passed_over = nullptr,
+                run::SiteWaitTally* site_wait = nullptr) {
   bool hot_at_any_tick = false;
   const core::UnitId awaiting = upgrades.Awaiting();
   for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
@@ -416,6 +418,10 @@ void LiveOneDay(core::ISimulation& simulation,
     // assignments stand (#1355's passed-over line).
     if (passed_over != nullptr && tick == run::BirthsHerdTally::kSampleHour) {
       passed_over->CountDay(state);
+    }
+    // The sites' crews and the carts' tasks, at noon (#1285 G1's probe).
+    if (site_wait != nullptr && tick == run::BirthsHerdTally::kSampleHour) {
+      site_wait->CountNoon(state);
     }
     // WHICH COWS DIE OF COLD, AND WHERE (#713's first step; boss, 1 November
     // 2026): every frost death of the step, by seed, day and pen, and whether
@@ -680,6 +686,8 @@ bool Walk(std::uint64_t seed,
   }
   run::TimberFlowTally timber(*world.tables);
   run::PassedOverTally passed_over;
+  // What the farm's sites waited on, y1-y6 (#1285 G1's probe; boss [3]).
+  run::SiteWaitTally site_wait(*world.tables);
   // #713's straw doors and the arm's pen (below, in the day loop).
   std::uint32_t straw = 0xFFFFFFFFU;
   std::uint16_t cattle_yard_type = 0xFFFFU;
@@ -702,6 +710,7 @@ bool Walk(std::uint64_t seed,
   std::int64_t g1285_marked = -1, g1285_started = -1, g1285_stands = -1, g1285_store_stands = -1;
   std::int64_t g1285_church_last_grain = -1;
   core::Grams g1285_snow = 0, g1285_no_room = 0;
+  core::Grams g1285_snow_y4y6 = 0, g1285_no_room_y4y6 = 0;  // the long store's late years
   std::uint16_t g1285_granary = 0xFFFFU, g1285_church = 0xFFFFU, g1285_long_store = 0xFFFFU;
   std::vector<std::uint8_t> g1285_grain;
   std::vector<std::uint32_t> g1285_roofed;  // potato, vegetables: the long stores' crops
@@ -784,9 +793,14 @@ bool Walk(std::uint64_t seed,
                  &hay_day_off,
                  &advance_write_offs,
                  &builder,
-                 &passed_over);
+                 &passed_over,
+                 warm_off ? nullptr : &site_wait);
       builder.RunDay(*simulation);
       timber.CountDay(simulation->CompletedState());
+      if (!warm_off) {
+        site_wait.CountDay(
+            simulation->CompletedState(), *simulation, builder.fixture, builder.sawmill, year);
+      }
       // #1285's days (econ's gates, econ-boss-1285-granary-order [1]-[2]), years
       // 1-3: the first granary's mark, start and standing day, the church's last
       // day with grain, and the first long store's standing day.
@@ -1108,6 +1122,14 @@ bool Walk(std::uint64_t seed,
     }
     // (a′)'s wedding cost (boss [59]): births of y1-y3, and the wedding
     // queue's length and its longest wait in days at each of their turns.
+    if (year >= 4 && year <= run::SiteWaitTally::kLastYear) {
+      for (const std::uint32_t r : g1285_roofed) {
+        g1285_snow_y4y6 +=
+            r < state.ledger.closed.lost_to_snow.size() ? state.ledger.closed.lost_to_snow[r] : 0;
+        g1285_no_room_y4y6 +=
+            r < state.ledger.closed.lost_no_room.size() ? state.ledger.closed.lost_no_room[r] : 0;
+      }
+    }
     if (year <= 3) {
       for (const std::uint32_t r : g1285_roofed) {
         g1285_snow +=
@@ -1256,6 +1278,11 @@ bool Walk(std::uint64_t seed,
               << " church_last_grain_day " << g1285_church_last_grain << " long_store_stands "
               << g1285_store_stands << " potato_veg_lost_y1y3_kg snow " << g1285_snow / 1000
               << " no_room " << g1285_no_room / 1000 << '\n';
+    if (!warm_off) {
+      std::cout << "population_curve: G1285L seed " << seed << " potato_veg_lost_y4y6_kg snow "
+                << g1285_snow_y4y6 / 1000 << " no_room " << g1285_no_room_y4y6 / 1000 << '\n';
+      site_wait.Print(std::cout, seed);
+    }
   }
   out.timber = timber.years();
   out.passed_over_horse = passed_over.Longest(run::PassedOverTally::kHorse);
