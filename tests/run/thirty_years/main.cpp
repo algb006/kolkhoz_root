@@ -761,6 +761,8 @@ int main(int argc, char** argv) {
         }
         departures.CountStep(world.State());
         distiller.WatchStep(world.State());  // the night's theft reports (#1250)
+        // Step index 12 completes hour 13 (step t completes hour t + 1): the
+        // working day's middle, not «noon at 12».
         if (tick == core::kTicksPerDay / 2) {
           brakes.CountDay(*world.simulation);  // the working day's middle
           hauls.CountNoon(*world.simulation);

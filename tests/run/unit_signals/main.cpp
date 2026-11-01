@@ -139,6 +139,7 @@ int main(int argc, char** argv) {
     for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
       started->AdvanceStep();
       builder.WatchStep(started.State());  // the night's theft reports (#1250)
+      // Step index 12 is the state's hour 13 (step t completes hour t + 1).
       if (tick != core::kTicksPerDay / 2) {
         continue;
       }

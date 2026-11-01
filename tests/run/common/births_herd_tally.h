@@ -129,9 +129,12 @@ class BirthsHerdTally {
     ++current_.alarm_days;
   }
 
-  /// The hour of the day the work is sampled at: noon — the day's close
-  /// clears the placements (labor_system.cpp, CloseDay), so a sample taken
-  /// after the day would count nobody.
+  /// THE LOOP'S STEP INDEX the work is sampled at, NOT the hour: a day loop's
+  /// step of index t completes hour t + 1, so index 12 reads the state at
+  /// HOUR 13, early afternoon, with the day's work still standing (#1408's
+  /// kin; the evening's index 22 was hour 23, the close, and misled R1373).
+  /// Mid-day either way - the day's close clears the placements
+  /// (labor_system.cpp, CloseDay), so a sample after it would count nobody.
   static constexpr std::uint32_t kSampleHour = 12;
 
   /// @brief The day's work, sampled once, at kSampleHour; and on a day the

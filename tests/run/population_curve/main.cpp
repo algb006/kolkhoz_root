@@ -414,20 +414,22 @@ void LiveOneDay(core::ISimulation& simulation,
     if (write_offs != nullptr) {
       write_offs->CountStep(state);
     }
-    // econ's work sample (births_herd_tally.h), once a day at noon.
+    // THE «NOON» SAMPLES BELOW ARE AT HOUR 13: kSampleHour is the loop's step
+    // index 12, and step t completes hour t + 1 (births_herd_tally.h).
+    // econ's work sample (births_herd_tally.h), once a day at hour 13.
     if (births_herd != nullptr && tick == run::BirthsHerdTally::kSampleHour) {
       births_herd->SampleWork(state);
     }
-    // The morning plan's placements and reasons, read at noon while the day's
+    // The morning plan's placements and reasons, read at hour 13 while the day's
     // assignments stand (#1355's passed-over line).
     if (passed_over != nullptr && tick == run::BirthsHerdTally::kSampleHour) {
       passed_over->CountDay(state);
     }
-    // The sites' crews and the carts' tasks, at noon (#1285 G1's probe).
+    // The sites' crews and the carts' tasks, at hour 13 (#1285 G1's probe).
     if (site_wait != nullptr && tick == run::BirthsHerdTally::kSampleHour) {
       site_wait->CountNoon(state);
     }
-    // The outdoor adults of the morning at noon, their rest at hour 22 (#1373).
+    // The outdoor adults of the morning at hour 13, their rest at hour 22 (#1373).
     if (rest_tally != nullptr && tick == run::BirthsHerdTally::kSampleHour) {
       rest_tally->CountNoon(state);
     }

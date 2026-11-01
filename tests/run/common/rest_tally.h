@@ -10,7 +10,8 @@
 /// this is the same definition in the canon run, so the arms base / A / B are
 /// read in one world:
 ///   OUTDOOR - an adult (16+) whose MORNING order is outdoor work
-///   (core::IsOutdoorWork, host's list plus the road work) - read at noon;
+///   (core::IsOutdoorWork, host's list plus the road work) - read at the
+///   «noon» step, which is the state's hour 13 (births_herd_tally.h);
 ///   HIS REST - read at hour 22, his day's low (a walk-off is read after it).
 /// The mechanism's two weather counts ride along: the summer's hot and
 /// sultry afternoons (the heat price must have days to bite, or P1 reads

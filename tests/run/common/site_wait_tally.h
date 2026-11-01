@@ -89,7 +89,8 @@ class SiteWaitTally {
   }
 
   /// @brief Reads the crews on the sites and the carriers on their tasks.
-  ///        Call once a day, at noon, while the day's assignments stand.
+  ///        Call once a day, at the «noon» step - the state's hour 13
+  ///        (births_herd_tally.h, kSampleHour) - while the assignments stand.
   void CountNoon(const core::WorldState& world) {
     crew_.clear();
     carriers_.clear();

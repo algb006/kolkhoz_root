@@ -42,7 +42,8 @@ class PassedOverTally {
   enum Kind : std::uint8_t { kHorse = 0, kCrew = 1, kKinds = 2 };
 
   /// @brief Reads the day's morning plan off every resident. Call once a day,
-  /// at noon, while the day's assignments stand.
+  /// at the «noon» step - the state's hour 13 (births_herd_tally.h,
+  /// kSampleHour) - while the day's assignments stand.
   void CountDay(const core::WorldState& world) {
     // PASSED OVER WHILE ANOTHER WAS SERVED (boss-core-1205-birth-prints [54]):
     // a morning with no horse given to anybody passes every candidate over
