@@ -1,0 +1,17 @@
+# generated from db/map.db — do not edit by hand
+# metres from the map's SOUTH-WEST corner, x east, y north
+# WILD BATHING PLACES (leisure §4): the count pond's ready wild
+# beach and each river ford's bank, one point each — not road
+# targets. The lake has none by design (terrain «Песок у подхода
+# к реке»): its beach is the player's unit.
+place,x_m,y_m
+access_beach_count_pond,9472.0,9909.0
+access_ford_2550_n,2539.7,7213.6
+access_ford_2550_s,2560.3,7186.4
+access_ford_5150_n,5137.1,9261.0
+access_ford_5150_s,5162.9,9239.0
+access_ford_7550_n,7545.1,10067.3
+access_ford_7550_s,7554.9,10032.7
+access_ford_8900_n,8900.0,10193.0
+access_ford_8900_s,8900.0,10127.0
+
