@@ -3679,7 +3679,9 @@ std::unique_ptr<ILaborSystem> CreateLaborSystem(
                       "life",
                       "livestock",
                       "crops",
-                      "unit_staff"},
+                      "unit_staff",
+                      // #1373: the wild bathing places (boss's map export).
+                      "map_bathing"},
                      nullptr)) {
     return nullptr;
   }
