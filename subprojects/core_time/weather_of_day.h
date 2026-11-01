@@ -150,7 +150,9 @@ WeatherState WeatherOfDay(const SeasonTable& seasons, std::uint64_t world_seed, 
 ///        off gave no warm afternoon (warm_water_afternoon_c): then the first
 ///        such day off and the first warm working day of its own week swap
 ///        their weather - one swap a summer, a permutation, so the summer's
-///        temperature sum is unchanged to the degree. Pure, like WeatherOfDay.
+///        temperature sum is unchanged to the degree. Neither day of the pair
+///        is a heavy one, so «never two heavy days running» holds. Pure, like
+///        WeatherOfDay.
 /// @param epoch The days-off rule (IsDayOff) the summer is read under.
 SimDay BathingSundaySourceDay(const SeasonTable& seasons,
                               std::uint64_t world_seed,

@@ -362,13 +362,20 @@ SimDay BathingSundaySourceDay(const SeasonTable& seasons,
   const auto day_off = [&](SimDay d) {
     return IsDayOff(WeekdayFromDay(d, day_zero_weekday), epoch);
   };
+  // A HEAVY DAY DOES NOT MOVE: the generator's «never two heavy days running»
+  // (WeatherOfDay) holds of where the heavy days stand, and a heavy day off
+  // swapped onto a working day could stand beside another (weather_shape,
+  // 27bb5318). Only a pair with neither day heavy is swapped.
+  const auto heavy = [&](SimDay d) {
+    return WeatherOfDay(seasons, world_seed, d).sky == SkyStep::kHeavyPrecipitation;
+  };
   for (SimDay d = summer_from; d < summer_to; ++d) {
     if (day_off(d) && warm(d)) {
       return day;  // the summer has its warm day off: no swap
     }
   }
   for (SimDay rest = summer_from; rest < summer_to; ++rest) {
-    if (!day_off(rest)) {
+    if (!day_off(rest) || heavy(rest)) {
       continue;
     }
     // Its own week, Monday to Sunday, clipped to the summer.
@@ -376,7 +383,7 @@ SimDay BathingSundaySourceDay(const SeasonTable& seasons,
     const SimDay from = monday > summer_from ? monday : summer_from;
     const SimDay to = monday + kDaysPerWeek < summer_to ? monday + kDaysPerWeek : summer_to;
     for (SimDay d = from; d < to; ++d) {
-      if (!day_off(d) && warm(d)) {
+      if (!day_off(d) && warm(d) && !heavy(d)) {
         return day == rest ? d : (day == d ? rest : day);
       }
     }

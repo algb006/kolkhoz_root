@@ -843,11 +843,13 @@ int CheckStartRoads() {
     }
     return -1.0F;
   };
-  // THREE PATHS since the map's refresh of 10 October 2026 (roads.csv gained
-  // path_count_pond_beach beside path_backwater_shore and path_mouth_ford);
-  // two until then. The count is the map's, pinned here so a path that
-  // arrives with a wear or a surface is seen arriving.
-  failures += Expect(worn_as_laid && paths == 3 && wear_of("road_village_street") == 65.0F &&
+  // FOUR PATHS since boss's export of 1 November 2026 (#1373: roads.csv gained
+  // path_village_beach, the lake beach's path, econ's route round the fields);
+  // three since the map's refresh of 10 October 2026 (path_count_pond_beach
+  // beside path_backwater_shore and path_mouth_ford), two before. The count is
+  // the map's, pinned here so a path that arrives with a wear or a surface is
+  // seen arriving.
+  failures += Expect(worn_as_laid && paths == 4 && wear_of("road_village_street") == 65.0F &&
                          wear_of("trunk_road") == 35.0F,
                      "start roads: dirt and paths, the layout's wear on every stretch — the "
                      "street 65, the trunk 35, a path nothing");

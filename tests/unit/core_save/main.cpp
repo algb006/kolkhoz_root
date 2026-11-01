@@ -2069,7 +2069,10 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // held.
     // Save 196 (#1310): draw_key, +4 a resident, two - predicted 533 -> 541
     // (written after the build's first red, which measured it: 541).
-    {"residents", 541, 0xbab7b4173a312daeULL},
+    // Save 200 (#1373): rest_drained_today and heat_paid, +5 a resident, two -
+    // 541 -> 551, reckoned from the codec before the suite and held; the hash
+    // read off the first build.
+    {"residents", 551, 0xb6545dcfc09b1022ULL},
     // 2026-09-18, save 57: +2 — ration_granted, one byte per family of two.
     // Save 60: +2 — a yard's dry months, one byte per family of two.
     // Save 65: families +8 (overwork_penalty, two yards), fields +6 (the avral's
@@ -2492,7 +2495,9 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // build and held.
     // Save 197 (#1205): the births' four stop counters, +16 a book, two books:
     // 3822 -> 3854, predicted before the build and held.
-    {"ledger", 3854, 0xac0c9b5c59328f49ULL},
+    // Save 200 (#1373): the rest by its source, a u32[7], +28 a book, two
+    // books: 3854 -> 3910, predicted before the build and held.
+    {"ledger", 3910, 0x046663a2d3acee69ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
