@@ -65,10 +65,16 @@ class ITimeSystem {
   ///
   /// @param world_seed The campaign seed — the same one WorldState carries.
   /// @param day        Any day, including days ahead of the clock.
+  /// @param day_zero_weekday, epoch The calendar's days off, which the bathing
+  ///         Sunday's swap reads (#1373; weather_of_day.h, WeatherOfLivedDay):
+  ///         the forecast promises the weather the world will live.
   /// @return The day's phenomenon and wind band. A system built without a
   ///         weather table answers from its STUB seasons, the same ones the
   ///         phase would use.
-  virtual DayForecast WeatherOn(std::uint64_t world_seed, SimDay day) const = 0;
+  virtual DayForecast WeatherOn(std::uint64_t world_seed,
+                                SimDay day,
+                                Weekday day_zero_weekday,
+                                Epoch epoch) const = 0;
 
   /// @brief The last day of the year on which a standing crop is still safe
   /// from the snow — the day before the SEASONAL MEAN temperature falls to

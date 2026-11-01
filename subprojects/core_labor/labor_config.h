@@ -38,6 +38,7 @@
 #include "core_catalog/timber_catalog.h"
 #include "core_common/calendar.h"
 #include "core_common/cart_gear.h"
+#include "core_common/geometry.h"
 #include "core_common/haul.h"
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
@@ -633,6 +634,66 @@ struct LaborConfig {
 
   /// Rest recovered by a working day spent at home without an order.
   float rest_recovery_idle_day = 4.0F;
+
+  // -- the heat price (#1373; leisure.md §6 «Жаркие сутки») ----------------
+  /// The afternoon (mean + the day's swing) at or above which a day is hot,
+  /// and sultry: weather_params hot_afternoon_c and sultry_afternoon_c - the
+  /// hygiene's and the weather's own thresholds, one home.
+  float heat_hot_celsius = 25.0F;
+  float heat_sultry_celsius = 28.0F;
+
+  /// The day's rest drain is multiplied by these for an outdoor worker who
+  /// works an hour inside the hot window (labor.csv heat_drain_factor_hot /
+  /// _sultry, STUB 1.5 / 2). 1 when the rows are absent: no heat price.
+  float heat_drain_factor_hot = 1.0F;
+  float heat_drain_factor_sultry = 1.0F;
+
+  /// The hot window, game hours [from, to): labor.csv heat_from_hour /
+  /// heat_to_hour, STUB 13 / 17 (econ, day-phases-evening-signal §2.1).
+  std::uint32_t heat_from_hour = 13;
+  std::uint32_t heat_to_hour = 17;
+
+  // -- the rest's sources by reach (#1373; leisure.md §4, §6) --------------
+  /// The afternoon at or above which the water is warm (weather_params
+  /// warm_water_afternoon_c, STUB +20): the bathing after work and a day
+  /// off's water read it.
+  float warm_water_celsius = 20.0F;
+
+  /// Bathing after work on a warm day (labor.csv bathing_rest_beach /
+  /// bathing_rest_wild, STUB 3 / 1): a beach at level 1+ in reach, else a wild
+  /// place in reach. 0 when the rows are absent: no bathing.
+  float bathing_rest_beach = 0.0F;
+  float bathing_rest_wild = 0.0F;
+
+  /// The bathers whose bathing counts twice, ages inclusive (labor.csv
+  /// bathing_teen_from_age / _to_age / bathing_teen_factor, STUB 12 / 17 / 2).
+  float bathing_teen_from_age = 12.0F;
+  float bathing_teen_to_age = 17.0F;
+  float bathing_teen_factor = 1.0F;
+
+  /// The walk from the yard within which a beach, a wild place or the club
+  /// counts, effective metres by RoadKm on foot (labor.csv leisure_reach_m,
+  /// STUB 1000; boss G3). 0 when absent: the day off keeps the month window.
+  float leisure_reach_m = 0.0F;
+
+  /// A beach works only with a path to it (leisure §4, «Тропинка обязательна»):
+  /// the walk's last piece off the network, at the beach, is at most this -
+  /// world_params road_access_m, a unit's own road access (unit rules §12).
+  float beach_path_access_m = 10.0F;
+
+  /// A holiday's rest (labor.csv rest_recovery_holiday, design +20); equal to
+  /// the plain day off when the row is absent.
+  float rest_recovery_holiday = 8.0F;
+
+  /// The unit types that bathe and amuse (unit_types beach, culture_house);
+  /// invalid when the catalogue lacks them.
+  UnitTypeId beach_type;
+  UnitTypeId club_type;
+
+  /// THE WILD BATHING PLACES (map_bathing.csv place, x_m, y_m; boss G1, from
+  /// db/map.db): the sand at the river's approaches and the count pond's
+  /// ready beach. Empty when the table is absent - then no one bathes wild.
+  std::vector<Vec2> wild_bathing;
 
   /// Health lost per day while rest is under the spent threshold (decision
   /// 107: -1 a week in that zone).

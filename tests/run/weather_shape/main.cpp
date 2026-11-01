@@ -381,7 +381,8 @@ bool Measure(const std::string& tables_dir, core::StubTables stubs, Shape& shape
     // says so out loud — a copy of the rule would part from it on the first
     // edit to either, and nobody would notice until a forecast promised a
     // clear day and the storm came.
-    const core::DayForecast ahead = system->WeatherOn(g_seed, current.calendar.day);
+    const core::DayForecast ahead = system->WeatherOn(
+        g_seed, current.calendar.day, current.calendar.day_zero_weekday, current.epoch);
     if (ahead.sky != current.weather.sky || ahead.phenomenon != current.weather.phenomenon ||
         ahead.wind != current.weather.wind) {
       ++forecast_disagreements;

@@ -456,6 +456,65 @@ int CheckSkySteps(const std::filesystem::path& root) {
   return failures;
 }
 
+/// THE BATHING SUNDAY (#1373; leisure.md §6): over many summers of the STUB
+/// seasons, every summer whose days off had no warm afternoon and whose some
+/// week had a warm working day gets exactly one swapped pair - its first such
+/// day off now warm - and its afternoon sum is unchanged; a summer with a warm
+/// day off is untouched. The swap must FIRE on some summer, or the test says
+/// so: a rule the climate never triggers is a stub.
+int CheckBathingSunday() {
+  int failures = 0;
+  const core::SeasonTable seasons = core::DefaultSeasonTable();
+  constexpr core::SimDay kSummerFrom = 5 * core::kDaysPerMonth;
+  constexpr core::SimDay kSummerTo = 8 * core::kDaysPerMonth;
+  const float warm_c = seasons[2].warm_water_afternoon_celsius;
+  const auto afternoon = [](const core::WeatherState& weather) {
+    return weather.air_temperature_celsius + weather.temperature_swing_celsius;
+  };
+  std::uint32_t swapped_summers = 0;
+  std::uint32_t summers = 0;
+  for (std::uint64_t seed = 1; seed <= 60; ++seed) {
+    for (core::SimDay year = 0; year < 5; ++year) {
+      ++summers;
+      const core::SimDay from = (year * core::kDaysPerYear) + kSummerFrom;
+      const core::SimDay to = (year * core::kDaysPerYear) + kSummerTo;
+      float raw_sum = 0.0F;
+      float lived_sum = 0.0F;
+      std::uint32_t moved = 0;
+      bool warm_day_off_raw = false;
+      bool warm_day_off_lived = false;
+      for (core::SimDay day = from; day < to; ++day) {
+        const core::WeatherState raw = core::WeatherOfDay(seasons, seed, day);
+        const core::WeatherState lived =
+            core::WeatherOfLivedDay(seasons, seed, day, core::Weekday::kMonday, core::Epoch::kOne);
+        raw_sum += afternoon(raw);
+        lived_sum += afternoon(lived);
+        moved += afternoon(raw) != afternoon(lived) ? 1U : 0U;
+        const bool day_off =
+            core::IsDayOff(core::WeekdayFromDay(day, core::Weekday::kMonday), core::Epoch::kOne);
+        warm_day_off_raw = warm_day_off_raw || (day_off && afternoon(raw) >= warm_c);
+        warm_day_off_lived = warm_day_off_lived || (day_off && afternoon(lived) >= warm_c);
+        failures += Expect(raw.daylight_hours == lived.daylight_hours,
+                           "the bathing Sunday keeps each day's own daylight");
+      }
+      failures += Expect(std::fabs(raw_sum - lived_sum) < 0.001F,
+                         "the bathing Sunday adds not a degree to the summer");
+      if (warm_day_off_raw) {
+        failures += Expect(moved == 0, "a summer with a warm day off is not touched");
+      } else if (warm_day_off_lived) {
+        ++swapped_summers;
+        failures += Expect(moved == 2, "the bathing Sunday swaps exactly one pair of days");
+      } else {
+        failures += Expect(moved == 0, "with no warm working day in a day off's week, no swap");
+      }
+    }
+  }
+  std::cout << "unit_core_time: the bathing Sunday swapped " << swapped_summers << " of " << summers
+            << " summers\n";
+  failures += Expect(swapped_summers > 0, "the bathing Sunday fires on some summer (else a stub)");
+  return failures;
+}
+
 int main() {
   namespace fs = std::filesystem;
   int failures = 0;
@@ -795,7 +854,8 @@ int main() {
       bool all_still = true;
       bool heavy_blows = true;
       for (core::SimDay day = 0; day < 10 * core::kDaysPerYear; ++day) {
-        const core::DayForecast at = knobbed->WeatherOn(11, day);
+        const core::DayForecast at =
+            knobbed->WeatherOn(11, day, core::Weekday::kMonday, core::Epoch::kOne);
         // THE SHARE RULES STEPS 1–4 ONLY since 2026-09-18: step 5 blows by
         // its own rule — «сильные осадки и сильный ветер» — whatever the
         // share says, and a squall in a storm.
@@ -1226,6 +1286,7 @@ int main() {
   }
 
   failures += CheckSkySteps(root);
+  failures += CheckBathingSunday();
 
   fs::remove_all(root);
   if (failures == 0) {

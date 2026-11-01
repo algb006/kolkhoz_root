@@ -186,9 +186,12 @@ constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
 // Save 197 (#1205, the births' hard stops): four u32 after weddings -
 // predicted 1320 -> 1336 (16 bytes on a word's edge, the rest moves whole)
 // and 149 fields before the build; on the wire +16 a book.
-static_assert(sizeof(YearLedger) == 1336 + (43 * kAmountsSize) + kBuiltInRowsSize,
+// Save 200 (#1373, the rest by its source): a u32[7] after the births' stops -
+// predicted 1336 -> 1368 (28 bytes and a pad of four before the next
+// eight-aligned member) and 150 fields before the build; on the wire +28 a book.
+static_assert(sizeof(YearLedger) == 1368 + (43 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 149,
+static_assert(AggregateArity<YearLedger>() == 150,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(BuiltInRow) == 16 && AggregateArity<BuiltInRow>() == 3,
               "BuiltInRow changed — update its codec and VERSION_SAVE");
@@ -236,10 +239,13 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteU32(book.arrivals);
   out.WriteU32(book.departures);
   out.WriteU32(book.weddings);
-  out.WriteU32(book.births_drawn);            // save 197 (#1205)
-  out.WriteU32(book.births_stopped_health);   // save 197
-  out.WriteU32(book.births_stopped_away);     // save 197
-  out.WriteU32(book.births_stopped_satiety);  // save 197
+  out.WriteU32(book.births_drawn);                        // save 197 (#1205)
+  out.WriteU32(book.births_stopped_health);               // save 197
+  out.WriteU32(book.births_stopped_away);                 // save 197
+  out.WriteU32(book.births_stopped_satiety);              // save 197
+  for (const std::uint32_t days : book.rest_by_source) {  // save 200 (#1373)
+    out.WriteU32(days);
+  }
 
   out.WriteFloat(book.satiety_day_mean_sum);
   out.WriteU32(book.satiety_days);
@@ -435,10 +441,13 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.arrivals = in.ReadU32();
   book.departures = in.ReadU32();
   book.weddings = in.ReadU32();
-  book.births_drawn = in.ReadU32();            // save 197 (#1205)
-  book.births_stopped_health = in.ReadU32();   // save 197
-  book.births_stopped_away = in.ReadU32();     // save 197
-  book.births_stopped_satiety = in.ReadU32();  // save 197
+  book.births_drawn = in.ReadU32();                  // save 197 (#1205)
+  book.births_stopped_health = in.ReadU32();         // save 197
+  book.births_stopped_away = in.ReadU32();           // save 197
+  book.births_stopped_satiety = in.ReadU32();        // save 197
+  for (std::uint32_t& days : book.rest_by_source) {  // save 200 (#1373)
+    days = in.ReadU32();
+  }
 
   book.satiety_day_mean_sum = in.ReadFloat();
   book.satiety_days = in.ReadU32();

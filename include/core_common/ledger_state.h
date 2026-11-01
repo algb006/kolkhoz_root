@@ -54,6 +54,19 @@
 
 namespace core {
 
+/// @brief What credited a person-day's rest at the day's close, or made him
+///        pay the heat (#1373; leisure.md §4, §6): YearLedger::rest_by_source.
+enum class RestSource : std::uint8_t {
+  kBathBeach = 0,  ///< Bathed after work at a beach in reach (+3, teens ×2).
+  kBathWild,       ///< Bathed after work at a wild place only (+1).
+  kDayOffLeisure,  ///< A day off with water or the club in reach (+15).
+  kDayOffPlain,    ///< A day off without (+8), or away from the village.
+  kHoliday,        ///< A holiday (+20).
+  kHeatHot,        ///< An outdoor working day that paid the hot day's ×1.5.
+  kHeatSultry,     ///< An outdoor working day that paid the sultry day's ×2.
+};
+inline constexpr std::size_t kRestSourceCount = 7;
+
 /// @brief Where a cart's load came from (YearLedger::cart_trips and its
 ///        siblings, index = the enum value): the three places the core carts
 ///        produce from by TravelMode::kCart, and — since 0.36.17 — the
@@ -168,6 +181,11 @@ struct YearLedger {
 
   /// Drawn and stopped: the family's year satiety under the stop.
   std::uint32_t births_stopped_satiety = 0;
+
+  /// THE REST BY ITS SOURCE (#1373; save 200): person-days the day's close
+  /// credited by each source, and the person-days that paid the heat's
+  /// multiplier (RestSource). econ's mechanism print reads them.
+  std::array<std::uint32_t, kRestSourceCount> rest_by_source = {};
 
   // -- satiety, the settlement's daily mean -----------------------------------
   /// Sum of the daily settlement mean satiety and the days summed: the

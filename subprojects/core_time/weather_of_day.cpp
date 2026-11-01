@@ -340,4 +340,62 @@ bool MudOnDay(const SeasonTable& seasons, std::uint64_t world_seed, SimDay day) 
   return open;
 }
 
+SimDay BathingSundaySourceDay(const SeasonTable& seasons,
+                              std::uint64_t world_seed,
+                              SimDay day,
+                              Weekday day_zero_weekday,
+                              Epoch epoch) {
+  constexpr std::uint32_t kSummerFirstMonth = 5;  // June, 0-based (leisure §6: June-August)
+  constexpr std::uint32_t kSummerMonths = 3;
+  const SimDay year_start = day - (day % kDaysPerYear);
+  const SimDay summer_from = year_start + (kSummerFirstMonth * kDaysPerMonth);
+  const SimDay summer_to = summer_from + (kSummerMonths * kDaysPerMonth);  // exclusive
+  if (day < summer_from || day >= summer_to) {
+    return day;
+  }
+  const auto warm = [&](SimDay d) {
+    const WeatherState weather = WeatherOfDay(seasons, world_seed, d);
+    const SeasonWeather& season = SeasonOfDayOfYear(seasons, d % kDaysPerYear);
+    return weather.air_temperature_celsius + weather.temperature_swing_celsius >=
+           season.warm_water_afternoon_celsius;
+  };
+  const auto day_off = [&](SimDay d) {
+    return IsDayOff(WeekdayFromDay(d, day_zero_weekday), epoch);
+  };
+  for (SimDay d = summer_from; d < summer_to; ++d) {
+    if (day_off(d) && warm(d)) {
+      return day;  // the summer has its warm day off: no swap
+    }
+  }
+  for (SimDay rest = summer_from; rest < summer_to; ++rest) {
+    if (!day_off(rest)) {
+      continue;
+    }
+    // Its own week, Monday to Sunday, clipped to the summer.
+    const SimDay monday = rest - static_cast<SimDay>(WeekdayFromDay(rest, day_zero_weekday));
+    const SimDay from = monday > summer_from ? monday : summer_from;
+    const SimDay to = monday + kDaysPerWeek < summer_to ? monday + kDaysPerWeek : summer_to;
+    for (SimDay d = from; d < to; ++d) {
+      if (!day_off(d) && warm(d)) {
+        return day == rest ? d : (day == d ? rest : day);
+      }
+    }
+  }
+  return day;  // no warm day in any summer week with a day off: nothing to swap
+}
+
+WeatherState WeatherOfLivedDay(const SeasonTable& seasons,
+                               std::uint64_t world_seed,
+                               SimDay day,
+                               Weekday day_zero_weekday,
+                               Epoch epoch) {
+  const SimDay source = BathingSundaySourceDay(seasons, world_seed, day, day_zero_weekday, epoch);
+  if (source == day) {
+    return WeatherOfDay(seasons, world_seed, day);
+  }
+  WeatherState weather = WeatherOfDay(seasons, world_seed, source);
+  weather.daylight_hours = DaylightHoursOfDay(day);
+  return weather;
+}
+
 }  // namespace core

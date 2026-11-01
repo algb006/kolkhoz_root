@@ -22,6 +22,7 @@
 #include <string>
 
 #include "barrack_policy.h"
+#include "beach_policy.h"
 #include "cemetery_policy.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
@@ -77,6 +78,7 @@ class BuildingChairman {
         supply(tables),
         digging(tables),
         roads(tables),
+        beach(tables),
         transition(tables),
         cemetery(tables),
         warm_hold(tables),
@@ -106,6 +108,7 @@ class BuildingChairman {
     // The social objects ask the saw's question too: none of them is worth
     // the boards the sawmill itself is built of.
     social.SetStartGate(HeldSawGate(warm_hold, sawmill));
+    beach.SetStartGate(HeldSawGate(warm_hold, sawmill));
     upgrades.SetStartGate(HeldSawGate(warm_hold, sawmill));
     WireRiseWatches(yard, felling, limit, digging);
     WirePenWatch(yard, fixture, felling, digging);
@@ -286,6 +289,7 @@ class BuildingChairman {
     SupplyPolicy::Declare(run_name);
     ExtractionPolicy::Declare(run_name);
     SuggestedRoadsPolicy::Declare(run_name);
+    BeachPolicy::Declare(run_name);
     TransitionPolicy::Declare(run_name);
     CemeteryPolicy::Declare(run_name);
     DistillerPolicy::Declare(run_name);
@@ -423,6 +427,9 @@ class BuildingChairman {
     // The elder's suggested roads with the first new building beside each
     // (suggested_roads_policy.h, #423).
     roads.RunDay(simulation);
+    // The beach and its path, after the suggested roads so that a suggested
+    // path to it, when the map has one, is laid before the fallback asks.
+    beach.RunDay(simulation);
   }
 
   /// @brief The relapse arm's dismissal: a kDismiss for every resident on a
@@ -492,6 +499,8 @@ class BuildingChairman {
   SupplyPolicy supply;
   ExtractionPolicy digging;
   SuggestedRoadsPolicy roads;
+  /// The beach in year 1 and its path (#1373, econ's arm A; beach_policy.h).
+  BeachPolicy beach;
   TransitionPolicy transition;
   CemeteryPolicy cemetery;
   WarmHold warm_hold;

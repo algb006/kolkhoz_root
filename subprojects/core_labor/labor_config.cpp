@@ -266,6 +266,102 @@ bool ParseLeisureDayOff(const ITable& table, LaborConfig& config, std::string& e
   return true;
 }
 
+/// The heat price (#1373; leisure.md §6 «Жаркие сутки»): the two drain
+/// factors and the hot window. Optional: a set without the rows has no heat
+/// price (factors 1). The thresholds are read from weather_params below.
+bool ParseHeatPrice(const ITable& table, LaborConfig& config, std::string& error) {
+  auto from = static_cast<float>(config.heat_from_hour);
+  auto to = static_cast<float>(config.heat_to_hour);
+  if (!OptionalValue(table,
+                     "heat_drain_factor_hot",
+                     Range{.low = 1.0F, .high = 10.0F},
+                     config.heat_drain_factor_hot,
+                     error) ||
+      !OptionalValue(table,
+                     "heat_drain_factor_sultry",
+                     Range{.low = 1.0F, .high = 10.0F},
+                     config.heat_drain_factor_sultry,
+                     error) ||
+      !OptionalValue(table, "heat_from_hour", Range{.low = 0.0F, .high = 23.0F}, from, error) ||
+      !OptionalValue(table, "heat_to_hour", Range{.low = 1.0F, .high = 24.0F}, to, error)) {
+    PrefixError("labor", "heat_drain_factor_hot", error);
+    return false;
+  }
+  if (to <= from) {
+    error = "labor: heat_to_hour must be after heat_from_hour";
+    return false;
+  }
+  config.heat_from_hour = static_cast<std::uint32_t>(from);
+  config.heat_to_hour = static_cast<std::uint32_t>(to);
+  return true;
+}
+
+/// The rest's sources by reach (#1373; leisure.md §4, §6): the bathing after
+/// work, the teens' factor, the reach, the holiday - labor.csv, all optional;
+/// the beach and the club by their unit_types keys; the wild places from
+/// map_bathing.csv (boss G1), optional too.
+bool ParseLeisureReach(const ITable& labor,
+                       const ITableSet& tables,
+                       LaborConfig& config,
+                       std::string& error) {
+  config.rest_recovery_holiday = config.rest_recovery_day_off;
+  const Range points{.low = 0.0F, .high = 100.0F};
+  const Range ages{.low = 0.0F, .high = 100.0F};
+  if (!OptionalValue(labor, "bathing_rest_beach", points, config.bathing_rest_beach, error) ||
+      !OptionalValue(labor, "bathing_rest_wild", points, config.bathing_rest_wild, error) ||
+      !OptionalValue(labor, "bathing_teen_from_age", ages, config.bathing_teen_from_age, error) ||
+      !OptionalValue(labor, "bathing_teen_to_age", ages, config.bathing_teen_to_age, error) ||
+      !OptionalValue(labor,
+                     "bathing_teen_factor",
+                     Range{.low = 1.0F, .high = 10.0F},
+                     config.bathing_teen_factor,
+                     error) ||
+      !OptionalValue(labor,
+                     "leisure_reach_m",
+                     Range{.low = 0.0F, .high = 20000.0F},
+                     config.leisure_reach_m,
+                     error) ||
+      !OptionalValue(labor, "rest_recovery_holiday", points, config.rest_recovery_holiday, error)) {
+    PrefixError("labor", "bathing_rest_beach", error);
+    return false;
+  }
+  if (const ITable* const types = tables.FindTable("unit_types")) {
+    const std::uint32_t beach = types->FindRowByKey("beach");
+    const std::uint32_t club = types->FindRowByKey("culture_house");
+    config.beach_type = beach == kNoTableRow ? UnitTypeId{} : DefIdFromIndex<UnitTypeIdTag>(beach);
+    config.club_type = club == kNoTableRow ? UnitTypeId{} : DefIdFromIndex<UnitTypeIdTag>(club);
+  }
+  if (const ITable* const world = tables.FindTable("world_params")) {
+    if (!OptionalValue(*world,
+                       "road_access_m",
+                       Range{.low = 0.0F, .high = 1000.0F},
+                       config.beach_path_access_m,
+                       error)) {
+      PrefixError("world_params", "road_access_m", error);
+      return false;
+    }
+  }
+  config.wild_bathing.clear();
+  if (const ITable* const wild = tables.FindTable("map_bathing")) {
+    const std::uint32_t x_column = wild->FindColumn("x_m");
+    const std::uint32_t y_column = wild->FindColumn("y_m");
+    if (x_column == kNoTableColumn || y_column == kNoTableColumn) {
+      error = "map_bathing: needs x_m and y_m";
+      return false;
+    }
+    const Range metres{.low = 0.0F, .high = 100000.0F};
+    for (std::uint32_t row = 0; row < wild->RowCount(); ++row) {
+      Vec2 place;
+      if (!RequiredCell(*wild, "map_bathing", "x_m", row, x_column, metres, place.x, error) ||
+          !RequiredCell(*wild, "map_bathing", "y_m", row, y_column, metres, place.y, error)) {
+        return false;
+      }
+      config.wild_bathing.push_back(place);
+    }
+  }
+  return true;
+}
+
 /// One row per work kind, in the order of the WorkKind enum (kNone has no
 /// row: nobody is paid for idling).
 bool ParseWorkKindRates(const ITable& table, LaborConfig& config, std::string& error) {
@@ -734,7 +830,32 @@ bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string&
                        Range{.low = 0.0F, .high = 5.0F},
                        config.post_floor_trudodni,
                        error) ||
-        !ParseLeisureDayOff(*labor, config, error) || !ParseWorkKindRates(*labor, config, error)) {
+        !ParseLeisureDayOff(*labor, config, error) || !ParseHeatPrice(*labor, config, error) ||
+        !ParseLeisureReach(*labor, tables, config, error) ||
+        !ParseWorkKindRates(*labor, config, error)) {
+      return false;
+    }
+  }
+  // THE HEAT'S THRESHOLDS ARE THE WEATHER'S (#1373): one home with the
+  // hygiene and kHotAfternoon, so the hot day the labour pays is the hot day
+  // the world shows.
+  if (const ITable* const weather = tables.FindTable("weather_params")) {
+    if (!OptionalValue(*weather,
+                       "hot_afternoon_c",
+                       Range{.low = 0.0F, .high = 50.0F},
+                       config.heat_hot_celsius,
+                       error) ||
+        !OptionalValue(*weather,
+                       "sultry_afternoon_c",
+                       Range{.low = 0.0F, .high = 50.0F},
+                       config.heat_sultry_celsius,
+                       error) ||
+        !OptionalValue(*weather,
+                       "warm_water_afternoon_c",
+                       Range{.low = 0.0F, .high = 50.0F},
+                       config.warm_water_celsius,
+                       error)) {
+      PrefixError("weather_params", "hot_afternoon_c", error);
       return false;
     }
   }

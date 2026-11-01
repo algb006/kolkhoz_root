@@ -918,7 +918,9 @@ class StandardSimulation final : public ISimulation {
     const WorldState& completed = engine_->CompletedState();
     for (std::size_t ahead = 0; ahead < into.size(); ++ahead) {
       into[ahead] = time_->WeatherOn(completed.world_seed,
-                                     completed.calendar.day + static_cast<SimDay>(ahead) + 1U);
+                                     completed.calendar.day + static_cast<SimDay>(ahead) + 1U,
+                                     completed.calendar.day_zero_weekday,
+                                     completed.epoch);
     }
   }
 

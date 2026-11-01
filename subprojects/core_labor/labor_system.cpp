@@ -30,6 +30,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -62,6 +63,7 @@
 #include "core_common/reaping_pace.h"
 #include "core_common/reaping_road.h"
 #include "core_common/resident_state.h"
+#include "core_common/road_route.h"
 #include "core_common/site_supply_floor.h"
 #include "core_common/site_supply_queue.h"
 #include "core_common/state_table.h"
@@ -2796,6 +2798,98 @@ class LaborSystem final : public ILaborSystem {
                                 static_cast<float>(kClockScale) / gear.loaded_kmh);
   }
 
+  /// THE HEAT PRICE (#1373; leisure.md §6 «Жаркие сутки», econ day-phases-
+  /// evening-signal §2.1): the rest drain to add to this hour's `plain_drain`.
+  /// On a hot or sultry afternoon an outdoor worker who works an hour inside
+  /// the hot window pays the day's whole drain times the factor: at that
+  /// first hour the earlier hours' plain drain is charged its surcharge, and
+  /// every hour after it carries the factor too. A crew sent home before the
+  /// window pays the plain rate; a herd's care and a unit's own work are under
+  /// a roof. Writes the day's plain sum and the factor's tier on `work`.
+  float HeatSurcharge(const WorldState& current,
+                      WorkAssignment& work,
+                      WorkKind kind,
+                      std::uint32_t hour,
+                      float plain_drain) const {
+    const float before = work.rest_drained_today;
+    work.rest_drained_today += plain_drain;
+    if (work.heat_paid == 0) {
+      const float afternoon =
+          current.weather.air_temperature_celsius + current.weather.temperature_swing_celsius;
+      const std::uint8_t tier = afternoon >= config_.heat_sultry_celsius ? 2U
+                                : afternoon >= config_.heat_hot_celsius  ? 1U
+                                                                         : 0U;
+      const bool in_window = hour >= config_.heat_from_hour && hour < config_.heat_to_hour;
+      if (tier == 0 || !in_window || !IsOutdoorWork(kind)) {
+        return 0.0F;
+      }
+      work.heat_paid = tier;
+      const float factor = HeatFactor(work.heat_paid);
+      return (factor - 1.0F) * (before + plain_drain);
+    }
+    return (HeatFactor(work.heat_paid) - 1.0F) * plain_drain;
+  }
+
+  /// What a family's yard has within its walk (#1373): a beach at level 1+
+  /// with its path, a wild bathing place, the club at any level.
+  struct LeisureReach {
+    bool beach = false;
+    bool wild = false;
+    bool club = false;
+  };
+
+  /// THE LEISURE IN REACH OF A FAMILY'S YARD, once a day a family (#1373;
+  /// leisure.md §4, §6; boss G1-G3): each source within leisure_reach_m on
+  /// foot by RoadKm (the network, open ground weighed); a beach also needs
+  /// its path - the walk reaching it off the network by no more than
+  /// beach_path_access_m («Тропинка обязательна»). A family with no home
+  /// position has nothing in reach. `cache` holds the day's answers.
+  LeisureReach ReachOf(const WorldState& current,
+                       FamilyId family,
+                       std::unordered_map<std::uint32_t, LeisureReach>& cache) const {
+    const auto found = cache.find(family.value);
+    if (found != cache.end()) {
+      return found->second;
+    }
+    LeisureReach reach;
+    Vec2 home;
+    if (HomePositionOf(current, family, home)) {
+      const float reach_km = config_.leisure_reach_m / 1000.0F;
+      for (const UnitRow& unit : current.units.rows) {
+        if (unit.level == 0 || unit.dead != 0) {
+          continue;
+        }
+        const bool beach = config_.beach_type.value != kInvalidDefIdValue &&
+                           unit.type.value == config_.beach_type.value;
+        const bool club = config_.club_type.value != kInvalidDefIdValue &&
+                          unit.type.value == config_.club_type.value;
+        if ((beach && !reach.beach) || (club && !reach.club)) {
+          const RouteMeasure way = RoadMeasure(current, TravelMode::kWalk, home, unit.position);
+          if (way.effective_km <= reach_km) {
+            reach.beach =
+                reach.beach || (beach && way.off_road_end_m <= config_.beach_path_access_m);
+            reach.club = reach.club || club;
+          }
+        }
+      }
+      for (const Vec2& place : config_.wild_bathing) {
+        if (reach.wild) {
+          break;
+        }
+        reach.wild = RoadKm(current, TravelMode::kWalk, home, place) <= reach_km;
+      }
+    }
+    cache.emplace(family.value, reach);
+    return reach;
+  }
+
+  /// The drain factor of a heat tier (WorkAssignment::heat_paid).
+  float HeatFactor(std::uint8_t tier) const {
+    return tier == 2   ? config_.heat_drain_factor_sultry
+           : tier == 1 ? config_.heat_drain_factor_hot
+                       : 1.0F;
+  }
+
   // -- the working hour ----------------------------------------------------
 
   /// One hour of work for everybody who has an assignment and is inside his
@@ -3043,8 +3137,10 @@ class LaborSystem final : public ILaborSystem {
         paid = usable > 0.0F ? day_pay * (worked / usable) * (delivered / could_deliver) : 0.0F;
       }
       resident.work.worked_norm_days_today += paid;
-      const float drain =
+      const float plain_drain =
           RestDrain(config_, resident, kind, delivered / (1.0F + boost)) * (1.0F + (2.0F * boost));
+      const float drain =
+          plain_drain + HeatSurcharge(current, resident.work, kind, hour, plain_drain);
       resident.rest = resident.rest > drain ? resident.rest - drain : 0.0F;
       if (resident.rest <= config_.rest_walkoff_threshold) {
         // The critical fatigue limit (unit rules §8): his own decision, and
@@ -3392,6 +3488,13 @@ class LaborSystem final : public ILaborSystem {
     }
     PayPostsByTheDay(current, paid_posts, current.ledger.current.trudodni_accrued - accrued_before);
     const bool day_off = IsDayOffIn(current, current.calendar.day);
+    const bool holiday =
+        HolidayOn(current.calendar.day, current.calendar.day_zero_weekday, current.epoch) !=
+        Holiday::kNone;
+    const bool warm =
+        current.weather.air_temperature_celsius + current.weather.temperature_swing_celsius >=
+        config_.warm_water_celsius;
+    std::unordered_map<std::uint32_t, LeisureReach> reach_cache;
     for (ResidentRow& resident : current.residents.rows) {
       // The daily rest balance of decision 107: a day worked is the drain
       // already charged hour by hour and nothing back; a day at home on a
@@ -3411,21 +3514,61 @@ class LaborSystem final : public ILaborSystem {
       // him at or under the limit, and nobody else ends a day there: since
       // 0.35.11 a man past his limit is not sent at all.
       const bool walked_off = worked && resident.rest <= config_.rest_walkoff_threshold;
+      std::array<std::uint32_t, kRestSourceCount>& by_source =
+          current.ledger.current.rest_by_source;
+      if (worked && resident.work.heat_paid != 0) {
+        ++by_source[static_cast<std::size_t>(resident.work.heat_paid == 2 ? RestSource::kHeatSultry
+                                                                          : RestSource::kHeatHot)];
+      }
+      const bool at_home = resident.away_until_day == 0;
       if (!worked || walked_off) {
-        // THE DAY OFF WITH LEISURE (#830; leisure.md §6): in the leisure
-        // months the summer's nature is free and a day off gives +15, not +8.
-        // A year of level work without leisure ran 41 x (-2) + 7 x (+8) = -26
-        // (the design's own sum), and core's ten-year print found 10-26 % of
-        // the worker-days tired from year 4. A man away from the village has
-        // none of it and keeps the ordinary day off.
-        const bool leisure = day_off && resident.away_until_day == 0 &&
-                             MonthInRange(static_cast<std::uint8_t>(current.calendar.date.month),
-                                          config_.leisure_from_month,
-                                          config_.leisure_to_month);
-        resident.rest += leisure   ? config_.rest_recovery_day_off_leisure
-                         : day_off ? config_.rest_recovery_day_off
-                                   : config_.rest_recovery_idle_day;
+        float back = config_.rest_recovery_idle_day;
+        if (day_off && holiday && at_home) {
+          // THE HOLIDAY'S +20 (#1373; leisure.md §6, «Праздник +20»): until
+          // then the core gave a holiday the plain day off's +8.
+          back = config_.rest_recovery_holiday;
+          ++by_source[static_cast<std::size_t>(RestSource::kHoliday)];
+        } else if (day_off) {
+          // THE DAY OFF WITH LEISURE (#830, #1373; leisure.md §6): +15 where
+          // the family has its leisure in reach - water on a warm afternoon,
+          // or the club - and +8 where it has none (boss G3, G4: the forest,
+          // fishing and the rink are not read). Until #1373 every day off of
+          // May-September gave +15 whatever stood near; that month window is
+          // kept only for a table set without leisure_reach_m. A man away from
+          // the village has none of it and keeps the ordinary day off.
+          bool leisure = false;
+          if (at_home && config_.leisure_reach_m > 0.0F) {
+            const LeisureReach reach = ReachOf(current, resident.family, reach_cache);
+            leisure = reach.club || (warm && (reach.beach || reach.wild));
+          } else if (at_home) {
+            leisure = MonthInRange(static_cast<std::uint8_t>(current.calendar.date.month),
+                                   config_.leisure_from_month,
+                                   config_.leisure_to_month);
+          }
+          back = leisure ? config_.rest_recovery_day_off_leisure : config_.rest_recovery_day_off;
+          ++by_source[static_cast<std::size_t>(leisure ? RestSource::kDayOffLeisure
+                                                       : RestSource::kDayOffPlain)];
+        }
+        resident.rest += back;
         resident.rest = resident.rest > kMetricMax ? kMetricMax : resident.rest;
+      } else if (warm && at_home && config_.leisure_reach_m > 0.0F) {
+        // BATHING AFTER WORK (#1373; leisure.md §6, «Купание после работы»):
+        // on a warm afternoon a worker with a beach in reach bathes for +3, at
+        // a wild place only for +1; the teens twice (boss G5). A walk-off is a
+        // day at home above, and bathes not.
+        const LeisureReach reach = ReachOf(current, resident.family, reach_cache);
+        const float bath = reach.beach  ? config_.bathing_rest_beach
+                           : reach.wild ? config_.bathing_rest_wild
+                                        : 0.0F;
+        if (bath > 0.0F) {
+          const float age = BiologicalAgeYears(config_, resident.birth_day, current.calendar.day);
+          const bool teen =
+              age >= config_.bathing_teen_from_age && age < config_.bathing_teen_to_age + 1.0F;
+          resident.rest += teen ? bath * config_.bathing_teen_factor : bath;
+          resident.rest = resident.rest > kMetricMax ? kMetricMax : resident.rest;
+          ++by_source[static_cast<std::size_t>(reach.beach ? RestSource::kBathBeach
+                                                           : RestSource::kBathWild)];
+        }
       }
       // Living under the spent threshold costs health, a point a week
       // (decision 107). Nothing else in phase 1 punishes exhaustion.

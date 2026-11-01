@@ -107,6 +107,11 @@ struct SeasonWeather {
   /// EventKind::kHotAfternoon whatever the sky.
   float hot_afternoon_celsius = 25.0F;
 
+  /// Afternoon at or above which the water is WARM: everybody bathes (leisure
+  /// §4, «Тёплая … днём +20 и выше», STUB; weather_params
+  /// warm_water_afternoon_c). The bathing Sunday's swap reads it (#1373).
+  float warm_water_afternoon_celsius = 20.0F;
+
   /// Share of still or lightly windy dry days on steps 1–3 that fog over.
   float fog_share = 0.2F;
 
@@ -138,6 +143,34 @@ float SkySwingMultiplier(const SeasonWeather& season, SkyStep step);
 /// @note snow_cover_days and cover_since_leaf_fall are left at their
 /// defaults: they are history, carried by the phase (SnowCoverAfter).
 WeatherState WeatherOfDay(const SeasonTable& seasons, std::uint64_t world_seed, SimDay day);
+
+/// @brief THE BATHING SUNDAY (#1373; leisure.md §6, «Купальное воскресенье —
+///        одно за лето, гарантировано»): the day whose drawn weather `day`
+///        wears. Identity except in a summer (June-August) whose week's days
+///        off gave no warm afternoon (warm_water_afternoon_c): then the first
+///        such day off and the first warm working day of its own week swap
+///        their weather - one swap a summer, a permutation, so the summer's
+///        temperature sum is unchanged to the degree. Pure, like WeatherOfDay.
+/// @param epoch The days-off rule (IsDayOff) the summer is read under.
+SimDay BathingSundaySourceDay(const SeasonTable& seasons,
+                              std::uint64_t world_seed,
+                              SimDay day,
+                              Weekday day_zero_weekday,
+                              Epoch epoch);
+
+/// @brief The weather the world LIVES on `day`: WeatherOfDay of the bathing
+///        Sunday's source day, with `day`'s own daylight (the light is the
+///        calendar's, not the weather's). The phase and the forecast both ask
+///        this; the climate counts (rain and snow shares) ask WeatherOfDay,
+///        whose summer they read the same up to the swap's one pair of days.
+///        SO DO MudOnDay and SnowCoverAfter's history: on the swapped pair's
+///        two days of a summer they read the unswapped rain - a named seam,
+///        the summer's mud being the yesterday-rain rule's only reader there.
+WeatherState WeatherOfLivedDay(const SeasonTable& seasons,
+                               std::uint64_t world_seed,
+                               SimDay day,
+                               Weekday day_zero_weekday,
+                               Epoch epoch);
 
 /// @brief РАСПУТИЦА on `day` (WeatherState::mud; boss seq 186), from the
 /// days' own weather alone:

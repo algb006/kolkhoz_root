@@ -41,6 +41,7 @@
 #include "../common/building_chairman.h"
 #include "../common/hay_day_off_policy.h"
 #include "../common/passed_over_tally.h"
+#include "../common/rest_tally.h"
 #include "../common/run_harness.h"
 #include "../common/site_wait_tally.h"
 #include "../common/timber_flow_tally.h"
@@ -389,7 +390,8 @@ void LiveOneDay(core::ISimulation& simulation,
                 run::AdvanceWriteOffTally* write_offs = nullptr,
                 run::BuildingChairman* chairman = nullptr,
                 run::PassedOverTally* passed_over = nullptr,
-                run::SiteWaitTally* site_wait = nullptr) {
+                run::SiteWaitTally* site_wait = nullptr,
+                run::RestTally* rest_tally = nullptr) {
   bool hot_at_any_tick = false;
   const core::UnitId awaiting = upgrades.Awaiting();
   for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
@@ -422,6 +424,13 @@ void LiveOneDay(core::ISimulation& simulation,
     // The sites' crews and the carts' tasks, at noon (#1285 G1's probe).
     if (site_wait != nullptr && tick == run::BirthsHerdTally::kSampleHour) {
       site_wait->CountNoon(state);
+    }
+    // The outdoor adults of the morning at noon, their rest at hour 22 (#1373).
+    if (rest_tally != nullptr && tick == run::BirthsHerdTally::kSampleHour) {
+      rest_tally->CountNoon(state);
+    }
+    if (rest_tally != nullptr && tick == run::RestTally::kEveningHour) {
+      rest_tally->CountEvening(state);
     }
     // WHICH COWS DIE OF COLD, AND WHERE (#713's first step; boss, 1 November
     // 2026): every frost death of the step, by seed, day and pen, and whether
@@ -508,6 +517,9 @@ bool g_roof_exemption_old = false;
 /// `--granary-first=off`: #1285's pair base - the granary behind the long stores
 /// (FixturePolicy::SetGranaryFirstOff).
 bool g_granary_first_off = false;
+/// `--beach=off`: #1373's arm B - the rest set without the canon's beach
+/// (BeachPolicy::SetOff; econ, econ-boss-1373-rest-gates [1]).
+bool g_beach_off = false;
 
 /// `--epoch-one-forever`: econ's branch (boss-core-epoch1-queue [34]) — the
 /// run's chairman never orders the transition, and the transition print runs
@@ -684,8 +696,15 @@ bool Walk(std::uint64_t seed,
   if (g_granary_first_off) {
     builder.fixture.SetGranaryFirstOff();
   }
+  if (g_beach_off) {
+    builder.beach.SetOff();
+  }
   run::TimberFlowTally timber(*world.tables);
   run::PassedOverTally passed_over;
+  // The outdoor workers' summer rest by host's definition (#1373's gates).
+  run::RestTally rest_tally(*world.tables);
+  std::array<std::uint32_t, core::kRestSourceCount> r1373_sources = {};
+  std::uint32_t r1373_walk_offs = 0;
   // What the farm's sites waited on, y1-y6 (#1285 G1's probe; boss [3]).
   run::SiteWaitTally site_wait(*world.tables);
   // #713's straw doors and the arm's pen (below, in the day loop).
@@ -794,7 +813,8 @@ bool Walk(std::uint64_t seed,
                  &advance_write_offs,
                  &builder,
                  &passed_over,
-                 warm_off ? nullptr : &site_wait);
+                 warm_off ? nullptr : &site_wait,
+                 warm_off ? nullptr : &rest_tally);
       builder.RunDay(*simulation);
       timber.CountDay(simulation->CompletedState());
       if (!warm_off) {
@@ -1138,6 +1158,11 @@ bool Walk(std::uint64_t seed,
             r < state.ledger.closed.lost_no_room.size() ? state.ledger.closed.lost_no_room[r] : 0;
       }
       w713_births += state.ledger.closed.births;
+      // #1373: the rest by its source and the walk-offs, y1-y3.
+      for (std::size_t source = 0; source < core::kRestSourceCount; ++source) {
+        r1373_sources[source] += state.ledger.closed.rest_by_source[source];
+      }
+      r1373_walk_offs += state.ledger.closed.walk_offs;
       std::uint32_t longest = 0;
       for (const core::WeddingWaitRow& couple : state.wedding_waits.rows) {
         longest = std::max<std::uint32_t>(
@@ -1282,6 +1307,21 @@ bool Walk(std::uint64_t seed,
       std::cout << "population_curve: G1285L seed " << seed << " potato_veg_lost_y4y6_kg snow "
                 << g1285_snow_y4y6 / 1000 << " no_room " << g1285_no_room_y4y6 / 1000 << '\n';
       site_wait.Print(std::cout, seed);
+      // #1373's line (econ, econ-boss-1373-rest-gates [1]): June-August y1-y3,
+      // outdoor = host's definition; the rest by source are person-days of
+      // y1-y3 (core_common/ledger_state.h, RestSource).
+      std::cout << "population_curve: R1373 seed " << seed << (g_beach_off ? " (beach off)" : "")
+                << " outdoor_pd_JunAug " << rest_tally.PersonDays() << " below40 "
+                << rest_tally.Below40() << " below20 " << rest_tally.Below20() << " walk_offs_y1y3 "
+                << r1373_walk_offs << " hot_days " << rest_tally.HotDays() << " sultry_days "
+                << rest_tally.SultryDays() << " summer_rest_days " << rest_tally.RestDays()
+                << " warm_rest_days " << rest_tally.WarmRestDays() << " bath_beach "
+                << r1373_sources[0] << " bath_wild " << r1373_sources[1] << " dayoff_leisure "
+                << r1373_sources[2] << " dayoff_plain " << r1373_sources[3] << " holiday "
+                << r1373_sources[4] << " heat_hot_pd " << r1373_sources[5] << " heat_sultry_pd "
+                << r1373_sources[6] << " teen_pd_JunAug " << rest_tally.TeenDays()
+                << " teen_below40 " << rest_tally.TeenBelow40() << '\n';
+      builder.beach.Report("population_curve", seed);
     }
   }
   out.timber = timber.years();
@@ -1410,6 +1450,8 @@ int main(int argc, char** argv) {
       g_warm_hold_old = true;
     } else if (argument == "--granary-first=off") {
       g_granary_first_off = true;
+    } else if (argument == "--beach=off") {
+      g_beach_off = true;
     } else if (argument == "--roof-exemption=old") {
       g_roof_exemption_old = true;
     } else if (argument == "--no-planting") {

@@ -56,6 +56,26 @@ rest_recovery_day_off_leisure,15,,
 leisure_from_month,5,,
 leisure_to_month,9,,
 rest_recovery_idle_day,4,,
+# STUB, econ: цена жары (Досуг §6 «Жаркие сутки»; #1373): уличная бригада,
+# работавшая в жаркие часы, платит расход дня ×1,5 (послеполуденная ≥ hot_afternoon_c)
+# и ×2 в зной (≥ sultry_afternoon_c) — пороги в weather_params, один дом с гигиеной
+heat_drain_factor_hot,1.5,,
+heat_drain_factor_sultry,2,,
+heat_from_hour,13,,
+heat_to_hour,17,,
+# STUB, econ: отдых по досягаемости (Досуг §4, §6; #1373; boss G1-G5). Купание
+# после работы в тёплый день (послеполуденная ≥ weather_params warm_water_afternoon_c):
+# пляж ступени ≥ 1 с тропинкой в досягаемости +3, только дикое место (map_bathing) +1,
+# подросткам 12-17 вдвое. Выходной с досугом +15, если в досягаемости вода в тёплый
+# день или клуб (учреждение культуры любой ступени), иначе +8; окно май-сентябрь
+# этим заменено. Досягаемость — 1000 м пешком по сети от двора. Праздник +20
+bathing_rest_beach,3,,
+bathing_rest_wild,1,,
+bathing_teen_from_age,12,,
+bathing_teen_to_age,17,,
+bathing_teen_factor,2,,
+leisure_reach_m,1000,,
+rest_recovery_holiday,20,,
 # здоровье −1 в неделю ниже порога «вымотан»
 health_loss_per_spent_day,0.142857,,
 # ASSUMPTION: выносливость и спортивность смягчают слив, но не поднимают выработку

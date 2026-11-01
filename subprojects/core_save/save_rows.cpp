@@ -95,7 +95,9 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // before the build (sex and the signed birth day each move a word on, the
 // row aligns to 8). A MISS, named: the build measured 328 - the word fell
 // into padding the row already had; the field count, 57, caught it.
-static_assert(sizeof(ResidentRow) == 328,
+// Save 200 (#1373): the work grows 60 -> 68 and the row 328 -> 336,
+// predicted before the build.
+static_assert(sizeof(ResidentRow) == 336,
               "ResidentRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 59: distiller_supplied_month, a distiller's supplied month
 // (crime §7, register 206) — 43 fields; the size is read off the build.
@@ -416,14 +418,17 @@ static_assert(AggregateArity<OrderRow>() == 35,
 // fifteen fields, predicted before the fields were added.
 // Save 156 (#709): moved_off_care and released_home, two bytes after the last
 // id — 56 -> 60 and seventeen fields, predicted before the build.
-static_assert(sizeof(WorkAssignment) == 60,
+// Save 200 (#1373, the heat price): rest_drained_today and heat_paid - a
+// float at 60 and a byte at 64, 60 -> 68 and nineteen fields, predicted
+// before the build.
+static_assert(sizeof(WorkAssignment) == 68,
               "WorkAssignment changed — update the codec and VERSION_SAVE");
 // Save 88: rides_horse, a byte into the padding after `kind` — 32 still, 9
 // fields; predicted before the build.
 // Save 127 (0.37.140) put a second byte there, cannot_wait — thirteen
 // fields; save 128 (0.37.141) took it out unwritten — 44 still, twelve again.
 // Save 132: rides_cart_of — thirteen.
-static_assert(AggregateArity<WorkAssignment>() == 17,
+static_assert(AggregateArity<WorkAssignment>() == 19,
               "WorkAssignment gained or lost a field — update the codec and VERSION_SAVE");
 // Save 98: own_carts (a byte into the padding after the lot) and the two
 // floats of the carting seam — 8 -> 16 + A and 3 -> 6 fields, predicted before
@@ -773,6 +778,8 @@ void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
   WriteEntityId(out, row.work.rides_home_with);  // save 153: the cart home (F3)
   out.WriteU8(row.work.moved_off_care);          // save 156 (#709)
   out.WriteU8(row.work.released_home);
+  out.WriteFloat(row.work.rest_drained_today);  // save 200 (#1373, the heat price)
+  out.WriteU8(row.work.heat_paid);              // save 200
   // Save 105: the morning's idle reason (the office's workbook);
   // kIdleReasonCount — none — is a legal value.
   out.WriteU8(static_cast<std::uint8_t>(row.idle_reason));
@@ -868,6 +875,8 @@ ResidentRow ReadResidentRow(LoadSource& source) {
   row.work.moved_off_care =
       static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "moved off care"));  // save 156
   row.work.released_home = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "released home"));
+  row.work.rest_drained_today = in.ReadFloat();  // save 200 (#1373)
+  row.work.heat_paid = static_cast<std::uint8_t>(source.ReadEnumValue(0, 2, "heat paid"));
   row.idle_reason =
       static_cast<IdleReason>(source.ReadEnumValue(0, kIdleReasonNone, "idle reason"));
 

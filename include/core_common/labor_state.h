@@ -357,7 +357,33 @@ struct WorkAssignment {
   /// automatic - he goes home (#709; boss, 12 October 2026). The labour hour
   /// takes no more hours of him; his day's pay stands. For the day; save 156.
   std::uint8_t released_home = 0;
+
+  /// THE DAY'S REST DRAIN AT THE PLAIN RATE, metric points, summed hour by hour
+  /// (#1373, the heat price; leisure.md §6 «Жаркие сутки»): what the heat's
+  /// multiplier is laid on when he first works an hour of the hot window - the
+  /// day's drain is multiplied, not only the window's hours. For the day; save 200.
+  float rest_drained_today = 0.0F;
+
+  /// THE HEAT'S MULTIPLIER HE PAYS TODAY: 0 none, 1 hot (the afternoon at or
+  /// above weather_params hot_afternoon_c), 2 sultry (sultry_afternoon_c).
+  /// Set at his first worked hour inside the hot window (labor.csv
+  /// heat_from_hour .. heat_to_hour) at outdoor work, never lowered that day:
+  /// a crew sent home before the window pays the plain rate. For the day; save 200.
+  std::uint8_t heat_paid = 0;
 };
+
+/// @brief Whether `kind` is worked outdoors, under the sun: the field works,
+///        building, carting, felling, digging, planting and the road (#1373;
+///        host's «outdoor», host-boss-rest-print-1229 [1], plus the road work,
+///        which host's list did not name). The heat price (leisure.md §6) is laid
+///        on these only; a herd's care and a unit's own work are under a roof.
+constexpr bool IsOutdoorWork(WorkKind kind) {
+  return kind == WorkKind::kPlowing || kind == WorkKind::kHarrowing || kind == WorkKind::kSowing ||
+         kind == WorkKind::kHarvest || kind == WorkKind::kConstruction ||
+         kind == WorkKind::kHauling || kind == WorkKind::kFelling ||
+         kind == WorkKind::kExtraction || kind == WorkKind::kPlanting ||
+         kind == WorkKind::kRoadWork;
+}
 
 }  // namespace core
 

@@ -91,7 +91,13 @@ class TimeAndWeatherSlot final : public ISequentialPhase {
     // the same day writes the same values (frozen for the rest of the step).
     // The arithmetic lives in WeatherOfDay because the forecast asks the
     // same question about days ahead — one rule, one home.
-    current.weather = WeatherOfDay(seasons_, current.world_seed, current.calendar.day);
+    // THE BATHING SUNDAY (#1373): the weather the world lives, one permuted
+    // pair of days a summer at most (WeatherOfLivedDay).
+    current.weather = WeatherOfLivedDay(seasons_,
+                                        current.world_seed,
+                                        current.calendar.day,
+                                        current.calendar.day_zero_weekday,
+                                        current.epoch);
     // AND THE ONE THING THE DAY CANNOT DRAW FOR ITSELF: whether snow lies.
     // It carries over from yesterday, because that is what a cover IS — it
     // is on the ground because it fell and has not melted (world_state.h).
@@ -218,8 +224,12 @@ class TimeSystem final : public ITimeSystem {
 
   ISequentialPhase& TimeAndWeatherPhase() override { return phase_; }
 
-  DayForecast WeatherOn(std::uint64_t world_seed, SimDay day) const override {
-    const WeatherState weather = WeatherOfDay(seasons_, world_seed, day);
+  DayForecast WeatherOn(std::uint64_t world_seed,
+                        SimDay day,
+                        Weekday day_zero_weekday,
+                        Epoch epoch) const override {
+    const WeatherState weather =
+        WeatherOfLivedDay(seasons_, world_seed, day, day_zero_weekday, epoch);
     return DayForecast{.sky = weather.sky, .phenomenon = weather.phenomenon, .wind = weather.wind};
   }
 
@@ -458,6 +468,7 @@ bool ParseWeatherParams(const ITable& table, SeasonTable& seasons, std::string& 
       !number("sultry_afternoon_c", degrees, &knobs.sultry_afternoon_celsius) ||
       !number("snow_melt_c", degrees, &knobs.snow_melt_celsius) ||
       !number("hot_afternoon_c", degrees, &knobs.hot_afternoon_celsius) ||
+      !number("warm_water_afternoon_c", degrees, &knobs.warm_water_afternoon_celsius) ||
       !number("still_frost_c", degrees, &knobs.still_frost_celsius) ||
       !number("snow_below_c", degrees, &knobs.snow_below_celsius) ||
       !number("rain_above_c", degrees, &knobs.rain_above_celsius) ||
@@ -514,6 +525,7 @@ bool ParseWeatherParams(const ITable& table, SeasonTable& seasons, std::string& 
     season.sultry_afternoon_celsius = knobs.sultry_afternoon_celsius;
     season.snow_melt_celsius = knobs.snow_melt_celsius;
     season.hot_afternoon_celsius = knobs.hot_afternoon_celsius;
+    season.warm_water_afternoon_celsius = knobs.warm_water_afternoon_celsius;
     season.still_frost_celsius = knobs.still_frost_celsius;
     season.snow_below_celsius = knobs.snow_below_celsius;
     season.rain_above_celsius = knobs.rain_above_celsius;
