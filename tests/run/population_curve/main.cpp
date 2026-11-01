@@ -496,6 +496,9 @@ bool g_no_planting = false;
 /// `--warm-hold=old`: #713 (w1′)'s pair base - the warm's hold as before the
 /// cure (WarmHold::UseOldRule).
 bool g_warm_hold_old = false;
+/// `--roof-exemption=old`: #713 (a′)'s pair base - the houses' exemption from
+/// the warm's hold read as before (WarmHold::UseOldRoofRule).
+bool g_roof_exemption_old = false;
 
 /// `--epoch-one-forever`: econ's branch (boss-core-epoch1-queue [34]) — the
 /// run's chairman never orders the transition, and the transition print runs
@@ -666,6 +669,9 @@ bool Walk(std::uint64_t seed,
   if (g_warm_hold_old) {
     builder.warm_hold.UseOldRule();
   }
+  if (g_roof_exemption_old) {
+    builder.warm_hold.UseOldRoofRule();
+  }
   run::TimberFlowTally timber(*world.tables);
   run::PassedOverTally passed_over;
   // #713's straw doors and the arm's pen (below, in the day loop).
@@ -685,6 +691,8 @@ bool Walk(std::uint64_t seed,
   std::uint32_t w713_hunger_deaths = 0;
   core::Grams w713_straw_fed = 0;
   std::array<std::uint32_t, 2> w713_houses = {};
+  std::uint32_t w713_births = 0;
+  std::string w713_queue;
   // econ's births and horses prints: the "forever" branch only.
   run::BirthsHerdTally births_herd(*world.tables);
   run::BirthsHerdTally* const births_herd_on = g_epoch_one_forever ? &births_herd : nullptr;
@@ -1025,6 +1033,19 @@ bool Walk(std::uint64_t seed,
       }
       w713_houses[year - 1] = houses;
     }
+    // (a′)'s wedding cost (boss [59]): births of y1-y3, and the wedding
+    // queue's length and its longest wait in days at each of their turns.
+    if (year <= 3) {
+      w713_births += state.ledger.closed.births;
+      std::uint32_t longest = 0;
+      for (const core::WeddingWaitRow& couple : state.wedding_waits.rows) {
+        longest = std::max<std::uint32_t>(
+            longest, static_cast<std::uint32_t>(state.calendar.day - couple.since_day));
+      }
+      w713_queue += " y" + std::to_string(year) + ":" +
+                    std::to_string(state.wedding_waits.rows.size()) + "/" +
+                    std::to_string(longest) + "d";
+    }
     // THE FROST'S TOLL (#712; #713's counter, econ, boss-econ-713-1302-reads
     // [3]): the closed year's herd_frozen over EVERY kind, a death counter
     // that no cull hides. Until #713 the cows' alone.
@@ -1145,7 +1166,9 @@ bool Walk(std::uint64_t seed,
     }
     std::cout << " houses_y1 " << w713_houses[0] << " houses_y2 " << w713_houses[1]
               << " herd_underfed_head_days_y1y2 " << w713_underfed << " herd_hunger_deaths_y1y2 "
-              << w713_hunger_deaths << " straw_fed_y1y2_kg " << w713_straw_fed / 1000 << '\n';
+              << w713_hunger_deaths << " straw_fed_y1y2_kg " << w713_straw_fed / 1000
+              << " births_y1y3 " << w713_births << " wedding_queue/longest_wait"
+              << (w713_queue.empty() ? std::string(" none") : w713_queue) << '\n';
   }
   out.timber = timber.years();
   out.passed_over_horse = passed_over.Longest(run::PassedOverTally::kHorse);
@@ -1271,6 +1294,8 @@ int main(int argc, char** argv) {
       sequential = true;
     } else if (argument == "--warm-hold=old") {
       g_warm_hold_old = true;
+    } else if (argument == "--roof-exemption=old") {
+      g_roof_exemption_old = true;
     } else if (argument == "--no-planting") {
       g_no_planting = true;
     } else if (argument == "--social-before-1064") {

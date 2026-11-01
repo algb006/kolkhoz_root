@@ -247,8 +247,16 @@ class BuildingChairman {
     house_policy.SetStartGate([&hold, &sawmill_policy](const core::WorldState& world,
                                                        core::UnitTypeId type,
                                                        std::uint8_t level) {
+      // ONLY A HOUSEHOLD WITH NO ROOF SKIPS THE WARM'S HOLD (#713 (a′); boss,
+      // boss-core-1205-birth-prints [58]-[59]): design's exemption is «a family
+      // waiting for a roof». FamilyWaitsForARoof also counts a couple in the
+      // wedding queue, who live under a roof already; through it a wedding
+      // house carted the warm's straw away in 1938 (y1 day 17) and 2041 (day
+      // 15), and 15 heads froze. A wedding house now waits like any start.
+      const bool roofless =
+          hold.OldRoofRule() ? FamilyWaitsForARoof(world) : HouseholdWithoutARoof(world);
       return sawmill_policy.SparesBoardsFor(world, type, level) &&
-             (FamilyWaitsForARoof(world) || hold.SparesTheWarmFor(world, type, level));
+             (roofless || hold.SparesTheWarmFor(world, type, level));
     });
   }
 
@@ -443,6 +451,18 @@ class BuildingChairman {
     }
     for (const core::FamilyRow& family : world.families.rows) {
       if (family.house.value == core::kInvalidEntityIdValue) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// A household with no house of its own, or one living in a barrack - the
+  /// design's «family waiting for a roof» (#713 (a′)); NOT a couple in the
+  /// wedding queue, who live under their parents' roof.
+  static bool HouseholdWithoutARoof(const core::WorldState& world) {
+    for (const core::FamilyRow& family : world.families.rows) {
+      if (family.house.value == core::kInvalidEntityIdValue || family.in_barrack != 0) {
         return true;
       }
     }

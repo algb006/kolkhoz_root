@@ -79,6 +79,13 @@ class WarmHold {
   /// each start against the morning's stock, no feed margin.
   void UseOldRule() { old_rule_ = true; }
 
+  /// @brief #713 (a′)'s pair base: the houses' exemption read as before - a
+  /// couple in the wedding queue counts as waiting for a roof
+  /// (BuildingChairman::WireWarmHold reads it).
+  void UseOldRoofRule() { old_roof_rule_ = true; }
+
+  bool OldRoofRule() const { return old_roof_rule_; }
+
   /// @brief True when a start of `type` at `level` spares the warm (the rule).
   ///        The houses' exemption for a family waiting for a roof is the
   ///        wiring's (BuildingChairman): this answers for the materials alone.
@@ -162,6 +169,7 @@ class WarmHold {
  private:
   bool off_ = false;
   bool old_rule_ = false;
+  bool old_roof_rule_ = false;
   mutable core::SimDay promised_day_ = 0xFFFFFFFFU;
   mutable std::vector<core::Grams> promised_;
   mutable std::map<std::uint16_t, std::uint32_t> held_back_;
