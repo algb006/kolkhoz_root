@@ -39,6 +39,7 @@
 #include "../common/advance_write_off_tally.h"
 #include "../common/births_herd_tally.h"
 #include "../common/building_chairman.h"
+#include "../common/fed_tally.h"
 #include "../common/hay_day_off_policy.h"
 #include "../common/passed_over_tally.h"
 #include "../common/rest_tally.h"
@@ -391,7 +392,8 @@ void LiveOneDay(core::ISimulation& simulation,
                 run::BuildingChairman* chairman = nullptr,
                 run::PassedOverTally* passed_over = nullptr,
                 run::SiteWaitTally* site_wait = nullptr,
-                run::RestTally* rest_tally = nullptr) {
+                run::RestTally* rest_tally = nullptr,
+                run::FedTally* fed_tally = nullptr) {
   bool hot_at_any_tick = false;
   const core::UnitId awaiting = upgrades.Awaiting();
   for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
@@ -431,6 +433,10 @@ void LiveOneDay(core::ISimulation& simulation,
     }
     if (rest_tally != nullptr && tick == run::RestTally::kEveningHour) {
       rest_tally->CountEvening(state);
+    }
+    // The worker-days and output by satiety band, y1-y5 (#1411).
+    if (fed_tally != nullptr && tick == run::FedTally::kEveningHour) {
+      fed_tally->CountEvening(state);
     }
     // WHICH COWS DIE OF COLD, AND WHERE (#713's first step; boss, 1 November
     // 2026): every frost death of the step, by seed, day and pen, and whether
@@ -703,6 +709,8 @@ bool Walk(std::uint64_t seed,
   run::PassedOverTally passed_over;
   // The outdoor workers' summer rest by host's definition (#1373's gates).
   run::RestTally rest_tally(*world.tables);
+  // The worker-days by satiety band, y1-y5 (#1411's gates).
+  run::FedTally fed_tally;
   std::array<std::uint32_t, core::kRestSourceCount> r1373_sources = {};
   std::uint32_t r1373_walk_offs = 0;
   // What the farm's sites waited on, y1-y6 (#1285 G1's probe; boss [3]).
@@ -814,7 +822,8 @@ bool Walk(std::uint64_t seed,
                  &builder,
                  &passed_over,
                  warm_off ? nullptr : &site_wait,
-                 warm_off ? nullptr : &rest_tally);
+                 warm_off ? nullptr : &rest_tally,
+                 warm_off ? nullptr : &fed_tally);
       builder.RunDay(*simulation);
       timber.CountDay(simulation->CompletedState());
       if (!warm_off) {
@@ -1322,6 +1331,7 @@ bool Walk(std::uint64_t seed,
                 << r1373_sources[6] << " teen_pd_JunAug " << rest_tally.TeenDays()
                 << " teen_below40 " << rest_tally.TeenBelow40() << '\n';
       builder.beach.Report("population_curve", seed);
+      fed_tally.Print(std::cout, seed);
     }
   }
   out.timber = timber.years();

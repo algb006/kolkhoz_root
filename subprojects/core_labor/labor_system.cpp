@@ -2638,7 +2638,7 @@ class LaborSystem final : public ILaborSystem {
           continue;
         }
       }
-      const bool first_year = current.calendar.date.year == 0;
+      const bool first_year = IsFirstCampaignYear(current);
       // PAST HIS LIMIT HE STAYS HOME (units rules §8: "Решает сам работник —
       // не игрок и не учётчик", "Возвращается на следующий день, отдохнув").
       // Placed anyway until 0.35.11, he walked off in his first working hour,
@@ -3025,7 +3025,7 @@ class LaborSystem final : public ILaborSystem {
                                                   resident,
                                                   age,
                                                   AgingFromYears(config_, current),
-                                                  current.calendar.date.year == 0,
+                                                  IsFirstCampaignYear(current),
                                                   AlcoholSparesWork(resident.work));
       // THE AVRAL (unit rules §7; rush.h): the work delivers more by the
       // step, and the rest drains by twice the boost (leisure §6) — the

@@ -91,6 +91,14 @@ bool AlcoholSparesWork(const WorkAssignment& work);
 /// WorldState::vitals.
 float AgingFromYears(const LaborConfig& config, const WorldState& world);
 
+/// @brief Whether `world` lives the campaign's FIRST calendar year - the year
+///        of the fed factor's gentler floor (labor.csv
+///        satiety_factor_floor_first_year). CalendarDate::year is one-based
+///        (calendar.h, DateFromDay): until #1411 both callers asked
+///        `date.year == 0`, which is never true, and the first year's floor
+///        never acted.
+bool IsFirstCampaignYear(const WorldState& world);
+
 /// @brief A worker's output as a multiple of the reference worker's day:
 /// the product of the age, health, rest, mood, education, skill, fed and
 /// sober factors. Always >= 0.

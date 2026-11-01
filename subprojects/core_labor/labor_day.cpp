@@ -96,6 +96,10 @@ float AgingFromYears(const LaborConfig& config, const WorldState& world) {
   return threshold > 1.0F ? threshold : 1.0F;
 }
 
+bool IsFirstCampaignYear(const WorldState& world) {
+  return world.calendar.date.year <= 1;
+}
+
 float FedFactor(const EfficiencyFactors& factors, Metric satiety, bool first_year) {
   const float floor =
       first_year ? factors.satiety_factor_floor_first_year : factors.satiety_factor_floor;

@@ -20,6 +20,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -671,6 +672,31 @@ int TestReferenceWorkerDeliversOneNorm() {
       Expect(std::abs(core::ResidentEfficiency(config, hungry, 30.0F, kAgingFrom, true, false) -
                       (efficiency * 0.85F)) < 0.01F,
              "and 0.85 in the campaign's first year");
+  // THE FIRST YEAR AS THE CALENDAR SAYS IT (#1411; econ's P0): the line above
+  // passed `true` by hand, while both callers asked `date.year == 0` of a
+  // one-based year and never got it - the check shared the defect's seam.
+  // Asked through IsFirstCampaignYear on a calendar's own date, at satiety 25.
+  {
+    core::WorldState in_year;
+    hungry.satiety = 25.0F;
+    for (const auto& [day, floor, label] :
+         {std::tuple{core::SimDay{0}, 0.85F, "satiety 25 on the campaign's first day gives 0.85"},
+          std::tuple{core::SimDay{core::kDaysPerYear - 1},
+                     0.85F,
+                     "and on the first year's last day still 0.85"},
+          std::tuple{core::SimDay{core::kDaysPerYear},
+                     0.75F,
+                     "and from the second year's first day 0.75"}}) {
+      in_year.calendar.day = day;
+      in_year.calendar.date = core::DateFromDay(day);
+      failures += Expect(
+          std::abs(
+              core::ResidentEfficiency(
+                  config, hungry, 30.0F, kAgingFrom, core::IsFirstCampaignYear(in_year), false) -
+              (efficiency * floor)) < 0.01F,
+          label);
+    }
+  }
   core::ResidentRow drinker = reference;
   drinker.alcoholism = 50.0F;
   failures += Expect(std::abs(worth(drinker, 30.0F) - efficiency) < 0.01F,
