@@ -499,6 +499,9 @@ bool g_warm_hold_old = false;
 /// `--roof-exemption=old`: #713 (a′)'s pair base - the houses' exemption from
 /// the warm's hold read as before (WarmHold::UseOldRoofRule).
 bool g_roof_exemption_old = false;
+/// `--granary-first=off`: #1285's pair base - the granary behind the long stores
+/// (FixturePolicy::SetGranaryFirstOff).
+bool g_granary_first_off = false;
 
 /// `--epoch-one-forever`: econ's branch (boss-core-epoch1-queue [34]) — the
 /// run's chairman never orders the transition, and the transition print runs
@@ -672,6 +675,9 @@ bool Walk(std::uint64_t seed,
   if (g_roof_exemption_old) {
     builder.warm_hold.UseOldRoofRule();
   }
+  if (g_granary_first_off) {
+    builder.fixture.SetGranaryFirstOff();
+  }
   run::TimberFlowTally timber(*world.tables);
   run::PassedOverTally passed_over;
   // #713's straw doors and the arm's pen (below, in the day loop).
@@ -692,6 +698,41 @@ bool Walk(std::uint64_t seed,
   core::Grams w713_straw_fed = 0;
   std::array<std::uint32_t, 2> w713_houses = {};
   std::uint32_t w713_births = 0;
+  // #1285's days and the types they read (unit_types / resource_stores).
+  std::int64_t g1285_marked = -1, g1285_started = -1, g1285_stands = -1, g1285_store_stands = -1;
+  std::int64_t g1285_church_last_grain = -1;
+  core::Grams g1285_snow = 0, g1285_no_room = 0;
+  std::uint16_t g1285_granary = 0xFFFFU, g1285_church = 0xFFFFU, g1285_long_store = 0xFFFFU;
+  std::vector<std::uint8_t> g1285_grain;
+  std::vector<std::uint32_t> g1285_roofed;  // potato, vegetables: the long stores' crops
+  if (const core::ITable* const types = world.tables->FindTable("unit_types")) {
+    const auto row_of = [types](const char* key) {
+      const std::uint32_t row = types->FindRowByKey(key);
+      return row == core::kNoTableRow ? std::uint16_t{0xFFFFU} : static_cast<std::uint16_t>(row);
+    };
+    g1285_granary = row_of("granary");
+    g1285_church = row_of("church_store");
+    g1285_long_store = row_of("vegetable_store");
+  }
+  if (const core::ITable* const stores = world.tables->FindTable("resource_stores")) {
+    if (const core::ITable* const resources = world.tables->FindTable("resources")) {
+      g1285_grain.assign(resources->RowCount(), 0);
+      const std::uint32_t res_col = stores->FindColumn("resource");
+      const std::uint32_t storage_col = stores->FindColumn("storage");
+      for (std::uint32_t row = 0; row < stores->RowCount(); ++row) {
+        const std::uint32_t r = resources->FindRowByKey(stores->CellText(row, res_col));
+        if (r < g1285_grain.size() && stores->CellText(row, storage_col) == "granary") {
+          g1285_grain[r] = 1;
+        }
+      }
+      for (const char* key : {"potato", "vegetables"}) {
+        const std::uint32_t r = resources->FindRowByKey(key);
+        if (r != core::kNoTableRow) {
+          g1285_roofed.push_back(r);
+        }
+      }
+    }
+  }
   std::string w713_queue;
   // econ's births and horses prints: the "forever" branch only.
   run::BirthsHerdTally births_herd(*world.tables);
@@ -746,6 +787,38 @@ bool Walk(std::uint64_t seed,
                  &passed_over);
       builder.RunDay(*simulation);
       timber.CountDay(simulation->CompletedState());
+      // #1285's days (econ's gates, econ-boss-1285-granary-order [1]-[2]), years
+      // 1-3: the first granary's mark, start and standing day, the church's last
+      // day with grain, and the first long store's standing day.
+      if (year <= 3) {
+        const core::WorldState& now = simulation->CompletedState();
+        const std::int64_t day_now = static_cast<std::int64_t>(now.calendar.day);
+        bool church_grain = false;
+        for (const core::UnitRow& u : now.units.rows) {
+          const bool granary = u.type.value == g1285_granary;
+          if (granary && g1285_marked < 0) {
+            g1285_marked = day_now;
+          }
+          if (granary && g1285_started < 0 &&
+              u.construction.phase > core::ConstructionPhase::kMarked) {
+            g1285_started = day_now;
+          }
+          if (granary && u.level > 0 && g1285_stands < 0) {
+            g1285_stands = day_now;
+          }
+          if (u.type.value == g1285_long_store && u.level > 0 && g1285_store_stands < 0) {
+            g1285_store_stands = day_now;
+          }
+          if (u.type.value == g1285_church && u.level > 0) {
+            for (std::size_t r = 0; r < u.stock.size() && r < g1285_grain.size(); ++r) {
+              church_grain = church_grain || (g1285_grain[r] != 0 && u.stock[r] > 0);
+            }
+          }
+        }
+        if (church_grain) {
+          g1285_church_last_grain = day_now;
+        }
+      }
       // WHY THE FIRST PEN'S WARM WAS OR WAS NOT BUILT IN YEAR 1 (#713; boss,
       // 1 November 2026): one line a day of years 1-2, until the pen stands
       // warm - the month (the clay window is March-September), the pen's level
@@ -1036,6 +1109,12 @@ bool Walk(std::uint64_t seed,
     // (a′)'s wedding cost (boss [59]): births of y1-y3, and the wedding
     // queue's length and its longest wait in days at each of their turns.
     if (year <= 3) {
+      for (const std::uint32_t r : g1285_roofed) {
+        g1285_snow +=
+            r < state.ledger.closed.lost_to_snow.size() ? state.ledger.closed.lost_to_snow[r] : 0;
+        g1285_no_room +=
+            r < state.ledger.closed.lost_no_room.size() ? state.ledger.closed.lost_no_room[r] : 0;
+      }
       w713_births += state.ledger.closed.births;
       std::uint32_t longest = 0;
       for (const core::WeddingWaitRow& couple : state.wedding_waits.rows) {
@@ -1169,6 +1248,14 @@ bool Walk(std::uint64_t seed,
               << w713_hunger_deaths << " straw_fed_y1y2_kg " << w713_straw_fed / 1000
               << " births_y1y3 " << w713_births << " wedding_queue/longest_wait"
               << (w713_queue.empty() ? std::string(" none") : w713_queue) << '\n';
+    // #1285's line (days from the game's first, -1 = not within years 1-3; the
+    // church's empty day is the day after its last with grain).
+    std::cout << "population_curve: G1285 seed " << seed << (warm_off ? " (warm off)" : "")
+              << " g1_orders " << builder.fixture.GranaryFirstOrders() << " granary_marked "
+              << g1285_marked << " started " << g1285_started << " stands " << g1285_stands
+              << " church_last_grain_day " << g1285_church_last_grain << " long_store_stands "
+              << g1285_store_stands << " potato_veg_lost_y1y3_kg snow " << g1285_snow / 1000
+              << " no_room " << g1285_no_room / 1000 << '\n';
   }
   out.timber = timber.years();
   out.passed_over_horse = passed_over.Longest(run::PassedOverTally::kHorse);
@@ -1294,6 +1381,8 @@ int main(int argc, char** argv) {
       sequential = true;
     } else if (argument == "--warm-hold=old") {
       g_warm_hold_old = true;
+    } else if (argument == "--granary-first=off") {
+      g_granary_first_off = true;
     } else if (argument == "--roof-exemption=old") {
       g_roof_exemption_old = true;
     } else if (argument == "--no-planting") {

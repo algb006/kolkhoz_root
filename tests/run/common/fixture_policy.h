@@ -407,11 +407,37 @@ class FixturePolicy {
   /// (BuildingChairman::SetWarmMovesOff).
   void SetWarmOff() { warm_off_ = true; }
 
+  /// @brief #1285's pair base: G1 off, the granary in its old place behind
+  /// the long stores.
+  void SetGranaryFirstOff() { granary_first_ = false; }
+
+  /// @brief The orders G1 gave (its mechanism, for the run to print).
+  std::uint32_t GranaryFirstOrders() const { return granary_first_orders_; }
+
   /// @brief The cattle yard's type (unit_types.csv), for the arm's switch.
   core::UnitTypeId CattleYardType() const { return cattle_; }
 
  private:
   bool warm_off_ = false;
+  bool granary_first_ = true;
+  std::uint32_t granary_first_orders_ = 0;
+
+  /// Whether a church store holds any grain - a resource the granary keeps
+  /// (resource_stores.csv, granary_keeps_).
+  bool ChurchHoldsGrain(const core::WorldState& world) const {
+    for (const core::UnitRow& unit : world.units.rows) {
+      if (unit.type.value != church_.value || unit.level == 0) {
+        continue;
+      }
+      for (std::size_t resource = 0; resource < unit.stock.size(); ++resource) {
+        if (unit.stock[resource] > 0 && resource < granary_keeps_.size() &&
+            granary_keeps_[resource] != 0) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
 
   static constexpr std::uint32_t kCooldownDays = 4;
 
@@ -861,6 +887,23 @@ class FixturePolicy {
     if (clamp_.value != core::kInvalidDefIdValue && Rows(world, clamp_) == 0 &&
         RoofedHarvestGrams(world) > 0) {
       return MarkClamp(world, order);
+    }
+    // G1, THE GRANARY RIGHT AFTER THE CLAMP AND ITS YARD (#1285; econ, econ-
+    // boss-1285-granary-order [1]-[2], accepted by boss): while the church
+    // holds grain and no granary stands or is marked, the granary - on its
+    // food yard, which Mark stakes first - is the farm's next site, ahead of
+    // the long stores (the warm stays first, above). Behind them it waited
+    // three store sites in a row: 27 of 27 villages had a long store standing
+    // before the granary was marked (host-boss-1285-store-order [1]), marked
+    // on days 76-135, standing 95-174, and the church - the start's grain's
+    // only roof - emptied only after it. The long stores went first for the
+    // snow's loss (parcel 419), which the clamp, «one takes the whole crop»,
+    // now carries.
+    if (granary_first_ && granary_.value != core::kInvalidDefIdValue &&
+        Rows(world, granary_) == 0 && ChurchHoldsGrain(world)) {
+      last_ordered_cattle_ = false;
+      ++granary_first_orders_;
+      return Mark(world, granary_, order);
     }
     // SUGAR'S OWN STORE, THE FOOD YARD'S food_store MODULE, as soon as the
     // village holds sugar (boss, core-boss-1250 [46]; the human's 2 October
