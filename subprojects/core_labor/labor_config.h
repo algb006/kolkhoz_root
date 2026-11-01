@@ -681,9 +681,11 @@ struct LaborConfig {
   /// world_params road_access_m, a unit's own road access (unit rules §12).
   float beach_path_access_m = 10.0F;
 
-  /// A holiday's rest (labor.csv rest_recovery_holiday, design +20); equal to
-  /// the plain day off when the row is absent.
-  float rest_recovery_holiday = 8.0F;
+  /// A holiday's rest (labor.csv rest_recovery_holiday, design +20). NEGATIVE
+  /// when the row is absent: then a holiday is the day off it was before
+  /// #1373, May Day's +15 of the leisure window included (the rest-off arm of
+  /// #1373's pair found the plain +8 default moved that world).
+  float rest_recovery_holiday = -1.0F;
 
   /// The unit types that bathe and amuse (unit_types beach, culture_house);
   /// invalid when the catalogue lacks them.

@@ -304,7 +304,6 @@ bool ParseLeisureReach(const ITable& labor,
                        const ITableSet& tables,
                        LaborConfig& config,
                        std::string& error) {
-  config.rest_recovery_holiday = config.rest_recovery_day_off;
   const Range points{.low = 0.0F, .high = 100.0F};
   const Range ages{.low = 0.0F, .high = 100.0F};
   if (!OptionalValue(labor, "bathing_rest_beach", points, config.bathing_rest_beach, error) ||
@@ -840,23 +839,16 @@ bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string&
   // hygiene and kHotAfternoon, so the hot day the labour pays is the hot day
   // the world shows.
   if (const ITable* const weather = tables.FindTable("weather_params")) {
-    if (!OptionalValue(*weather,
-                       "hot_afternoon_c",
-                       Range{.low = 0.0F, .high = 50.0F},
-                       config.heat_hot_celsius,
-                       error) ||
-        !OptionalValue(*weather,
-                       "sultry_afternoon_c",
-                       Range{.low = 0.0F, .high = 50.0F},
-                       config.heat_sultry_celsius,
-                       error) ||
-        !OptionalValue(*weather,
-                       "warm_water_afternoon_c",
-                       Range{.low = 0.0F, .high = 50.0F},
-                       config.warm_water_celsius,
-                       error)) {
-      PrefixError("weather_params", "hot_afternoon_c", error);
-      return false;
+    // Each cell names itself when it is wrong (a prefix naming the first
+    // key for all three would send the reader to the wrong row).
+    for (const auto& [key, out] :
+         {std::pair{"hot_afternoon_c", &config.heat_hot_celsius},
+          std::pair{"sultry_afternoon_c", &config.heat_sultry_celsius},
+          std::pair{"warm_water_afternoon_c", &config.warm_water_celsius}}) {
+      if (!OptionalValue(*weather, key, Range{.low = 0.0F, .high = 50.0F}, *out, error)) {
+        PrefixError("weather_params", key, error);
+        return false;
+      }
     }
   }
   if (const ITable* const world = tables.FindTable("world_params")) {

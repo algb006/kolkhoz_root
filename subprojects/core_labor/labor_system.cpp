@@ -3523,7 +3523,7 @@ class LaborSystem final : public ILaborSystem {
       const bool at_home = resident.away_until_day == 0;
       if (!worked || walked_off) {
         float back = config_.rest_recovery_idle_day;
-        if (day_off && holiday && at_home) {
+        if (day_off && holiday && at_home && config_.rest_recovery_holiday >= 0.0F) {
           // THE HOLIDAY'S +20 (#1373; leisure.md §6, «Праздник +20»): until
           // then the core gave a holiday the plain day off's +8.
           back = config_.rest_recovery_holiday;
