@@ -431,11 +431,17 @@ void LiveOneDay(core::ISimulation& simulation,
     if (rest_tally != nullptr && tick == run::BirthsHerdTally::kSampleHour) {
       rest_tally->CountNoon(state);
     }
-    if (rest_tally != nullptr && tick == run::RestTally::kEveningHour) {
+    // BY THE STATE'S OWN HOUR, NOT THE LOOP'S INDEX (#1411): the step of index
+    // t completes hour t + 1, so index 22 is hour 23 - the day's close, its
+    // orders cleared and its rest credited. Read so until #1411, R1373 counted
+    // the rest after the bathing's +3 (host reads hour 22, before it) and F1411
+    // found no worker-day at all.
+    const std::uint32_t hour_now = core::HourFromTick(state.calendar.tick);
+    if (rest_tally != nullptr && hour_now == run::RestTally::kEveningHour) {
       rest_tally->CountEvening(state);
     }
     // The worker-days and output by satiety band, y1-y5 (#1411).
-    if (fed_tally != nullptr && tick == run::FedTally::kEveningHour) {
+    if (fed_tally != nullptr && hour_now == run::FedTally::kEveningHour) {
       fed_tally->CountEvening(state);
     }
     // WHICH COWS DIE OF COLD, AND WHERE (#713's first step; boss, 1 November
