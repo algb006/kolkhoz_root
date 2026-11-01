@@ -1331,7 +1331,11 @@ bool Walk(std::uint64_t seed,
   out.planting_end = builder.planting.Summarize(final_state);
   out.transition_calendar_year = builder.transition.YearTaken();
   out.year33 = static_cast<std::uint32_t>(final_state.residents.rows.size());
-  out.lived_years = static_cast<std::uint32_t>(final_state.calendar.date.year) + 1;
+  // THE YEARS COMPLETED: the last state is the first day of the next year, and
+  // CalendarDate::year is one-based, so 33 years lived read year 34 (#1410).
+  // Until then this added 1 and read 35, and «lived its thirty-three years»
+  // passed a walk two years short.
+  out.lived_years = static_cast<std::uint32_t>(final_state.calendar.date.year) - 1U;
   out.epoch = final_state.epoch;
 
   // Integrity after three decades of births, deaths, weddings and moves:

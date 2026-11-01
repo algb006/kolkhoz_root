@@ -56,7 +56,7 @@ class TransitionPolicy {
     const core::WorldState& world = simulation.CompletedState();
     if (world.epoch != core::Epoch::kOne) {
       if (year_taken_ == 0) {
-        year_taken_ = static_cast<std::uint16_t>(world.calendar.date.year + 1U);
+        year_taken_ = world.calendar.date.year;
       }
       return;
     }
@@ -124,7 +124,9 @@ class TransitionPolicy {
 
   /// @brief The campaign year the village was first seen in Epoch II,
   /// counted from 1 as the runs count them ("year 7"), or 0 when it never
-  /// went. The calendar counts from 0, hence the +1.
+  /// went. CalendarDate::year is already one-based (calendar.h, DateFromDay):
+  /// until #1410 this added 1 «for a calendar counted from 0», and every
+  /// «[calendar N]» print stood one year late.
   [[nodiscard]] std::uint16_t YearTaken() const { return year_taken_; }
 
   static void Declare(std::string_view run_name) {
