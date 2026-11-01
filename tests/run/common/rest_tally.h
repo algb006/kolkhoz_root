@@ -147,7 +147,9 @@ class RestTally {
  private:
   static bool InSummer(const core::WorldState& world) {
     const auto month = static_cast<std::uint32_t>(world.calendar.date.month);
-    return world.calendar.date.year < kYears && month >= kSummerFrom && month <= kSummerTo;
+    // CalendarDate::year is ONE-based (calendar.h, DateFromDay): until host's tie
+    // on 636eba31 (host-boss-1404 [1]) this read `< kYears` and counted y1-y2.
+    return world.calendar.date.year <= kYears && month >= kSummerFrom && month <= kSummerTo;
   }
 
   float life_speedup_ = 1.0F;
