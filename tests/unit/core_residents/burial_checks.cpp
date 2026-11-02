@@ -69,33 +69,67 @@ int CheckTheRules() {
                      "cemetery: the old one's 65 of 130 reads half full");
   failures += Expect(core::CemeteryFill(0, 0) == 1.0F,
                      "cemetery: a capacity of nought reads full, not empty");
+  failures +=
+      Expect(core::CemeteryFill(200, kFull) == 1.0F,
+             "cemetery: past its area it reads full, not over: the rows grow denser (#1367)");
   return failures;
 }
 
-// THE OLDEST WITH ROOM FIRST (boss [33], (α)): the old one fills to its end
-// though the new one stands nearer to every house; the new one takes the dead
-// only from then on. Until 0.37.317 the nearest took them, and in the run the
-// old one stopped at 37 of 41 the day the new one stood.
-int CheckTheOldestWithRoom() {
+/// A dead with a yard: a house at `x` in `settlement`, his family in it.
+core::ResidentId Dead(core::WorldState& world, float x, std::uint32_t settlement) {
+  core::UnitRow house;
+  house.type = core::UnitTypeId{1};
+  house.position = core::Vec2{.x = x, .y = 0.0F};
+  house.level = 1;
+  house.settlement = core::SettlementId{settlement};
+  const core::UnitId house_id = core::AppendRow(world.units, house);
+  core::FamilyRow family;
+  family.house = house_id;
+  const core::FamilyId family_id = core::AppendRow(world.families, family);
+  core::ResidentRow person;
+  person.family = family_id;
+  return core::AppendRow(world.residents, person);
+}
+
+/// THE NEAREST BY ROAD OF HIS OWN SETTLEMENT, ROOM NOT ASKED (#1367; social.md
+/// «Где хоронят», the human's word of 1 November 2026, #1564): the dead of a
+/// yard at x 10 is laid in the cemetery at x 0 though it is past its area, not
+/// in the older one at x 1000; and a nearer cemetery of another settlement
+/// loses to a farther one of his own.
+int CheckTheNearestByRoad() {
   int failures = 0;
   const core::BurialConfig config = Config();
   core::WorldState world;
-  const core::UnitId old_one = Place(world, 0, 1000.0F, 1, kFull - 1);  // marked first
-  const core::UnitId new_one = Place(world, 0, 0.0F, 1, 0);             // by the houses
-  const core::UnitId house = Place(world, 1, 10.0F, 1, 0);
-  failures += Expect(core::GraveCapacityOf(config, kRadii, world.units.rows[2]) == 0,
+  const core::UnitId old_one = Place(world, 0, 1000.0F, 1, 10);  // marked first
+  const core::UnitId near_full = Place(world, 0, 0.0F, 1, kFull);
+  world.units.rows[0].settlement = core::SettlementId{1};
+  world.units.rows[1].settlement = core::SettlementId{1};
+  const core::ResidentId dead = Dead(world, 10.0F, 1);
+  core::LayGraveOf(config, kRadii, world, dead);
+  failures += Expect(GravesOf(world, near_full) == kFull + 1 && GravesOf(world, old_one) == 10,
+                     "burial: the nearest by road takes the dead, its area passed - no room asked");
+  failures += Expect(world.burials_waiting == 0 && Count(world, core::EventKind::kBurialHeld) == 0,
+                     "burial: nobody waits and nothing fires");
+  core::WorldState two;
+  const core::UnitId other_settlement = Place(two, 0, 50.0F, 1, 0);
+  const core::UnitId own_settlement = Place(two, 0, 300.0F, 1, 0);
+  two.units.rows[0].settlement = core::SettlementId{2};
+  two.units.rows[1].settlement = core::SettlementId{1};
+  core::LayGraveOf(config, kRadii, two, Dead(two, 10.0F, 1));
+  failures += Expect(GravesOf(two, own_settlement) == 1 && GravesOf(two, other_settlement) == 0,
+                     "burial: his own settlement's cemetery, though another stands nearer");
+  return failures;
+}
+
+// A DEAD WITH NO YARD goes to the OLDEST built cemetery, found by its id, not
+// its row: a removal moves rows (state_table_ops.h).
+int CheckTheOldestWithoutAYard() {
+  int failures = 0;
+  const core::BurialConfig config = Config();
+  core::WorldState houses;
+  Place(houses, 1, 10.0F, 1, 0);
+  failures += Expect(core::GraveCapacityOf(config, kRadii, houses.units.rows[0]) == 0,
                      "burial: a house holds no graves");
-  core::LayGraveOf(config, kRadii, world, core::ResidentId{1});
-  failures += Expect(GravesOf(world, old_one) == kFull && GravesOf(world, new_one) == 0,
-                     "burial: the dead is laid in the oldest cemetery with room, not the nearest");
-  core::LayGraveOf(config, kRadii, world, core::ResidentId{2});
-  failures += Expect(GravesOf(world, old_one) == kFull && GravesOf(world, new_one) == 1,
-                     "burial: the old one full, the next dead goes to the new one");
-  failures += Expect(GravesOf(world, house) == 0 && world.burials_waiting == 0 &&
-                         Count(world, core::EventKind::kBurialHeld) == 0,
-                     "burial: with room somewhere, nobody waits and the game does not stop");
-  // THE ID, NOT THE ROW: a removal moves rows (state_table_ops.h), so the old
-  // one may come after the new one by row and must still be first.
   core::WorldState swapped;
   const core::UnitId first = Place(swapped, 0, 0.0F, 1, 0);
   const core::UnitId second = Place(swapped, 0, 500.0F, 1, 0);
@@ -109,23 +143,24 @@ int CheckTheOldestWithRoom() {
   return failures;
 }
 
+/// NO STOP (#1367; social.md «Остановки игры нет»): only a world with NO
+/// cemetery built - a marked plot is string and pegs - keeps a grave waiting,
+/// and even then the game runs: BurialHeld answers no, the event is notable.
 int CheckTheStop() {
   int failures = 0;
   const core::BurialConfig config = Config();
   core::WorldState world;
-  const core::UnitId full = Place(world, 0, 0.0F, 1, kFull);
   const core::UnitId marked = Place(world, 0, 500.0F, 0, 0);  // pegs and string
   core::LayGraveOf(config, kRadii, world, core::ResidentId{7});
-  failures += Expect(world.burials_waiting == 1 && core::BurialHeld(world),
-                     "burial: full everywhere, the grave waits and the game stops");
-  failures += Expect(GravesOf(world, full) == kFull && GravesOf(world, marked) == 0,
-                     "burial: no grave goes past a full cemetery or into a marked plot");
+  failures += Expect(world.burials_waiting == 1 && !core::BurialHeld(world),
+                     "burial: no cemetery built, the grave waits and the game does NOT stop");
+  failures += Expect(GravesOf(world, marked) == 0, "burial: no grave goes into a marked plot");
   const auto held = std::ranges::find_if(world.step_events, [](const core::SimEvent& event) {
     return event.kind == core::EventKind::kBurialHeld;
   });
   failures += Expect(held != world.step_events.end() && held->resident.value == 7 &&
-                         held->amount == 1 && held->severity == core::EventSeverity::kInterrupting,
-                     "burial: kBurialHeld names the dead and the waiting, and interrupts");
+                         held->amount == 1 && held->severity == core::EventSeverity::kNotable,
+                     "burial: kBurialHeld names the dead and the waiting, and does not interrupt");
   core::LayGraveOf(config, kRadii, world, core::ResidentId{8});
   core::LayWaitingGraves(config, kRadii, world);
   failures += Expect(world.burials_waiting == 2 && Count(world, core::EventKind::kBurialsLaid) == 0,
@@ -179,5 +214,6 @@ int CheckTheOwnPlot() {
 }  // namespace
 
 int CheckBurial() {
-  return CheckTheRules() + CheckTheOldestWithRoom() + CheckTheStop() + CheckTheOwnPlot();
+  return CheckTheRules() + CheckTheNearestByRoad() + CheckTheOldestWithoutAYard() + CheckTheStop() +
+         CheckTheOwnPlot();
 }

@@ -1,21 +1,22 @@
 /// @file
-/// @brief The graves: a death in the village laid in a cemetery with room,
-/// and the game's stop when none has any (#1199; cemetery_rules.h).
+/// @brief The graves: a death in the village laid in the nearest cemetery by
+/// road of the dead's settlement, room not asked (#1199, #1367; cemetery_rules.h).
 /// @threading SINGLE_THREADED
 /// Called from the demography sub-step of the sequential decisions slot
 /// (slot 3), the one writer of UnitRow::graves and
 /// WorldState::burials_waiting after genesis and the save's load.
 ///
 /// Design: social.md «Два кладбища» and «Заполнение — метрика юнита»
-/// (boss, boss-core-epoch1-resume [16]). The dead is laid in the OLDEST built
-/// cemetery with room, by its id (boss [33], (α): «новое размечается, когда
-/// старое кончится» - the old ground is used to the end, so its fill_100 is an
-/// event the player sees). Until 0.37.317 it was the nearest to the family's
-/// house, and the run showed the old one stopping at 37 of 41 the day a nearer
-/// new one stood. With none, he waits (burials_waiting) and kBurialHeld stops
-/// the game; the oldest with room takes the waiting graves, and kBurialsLaid
-/// says so. A death outside the village (the district's
-/// ambulance) never reaches here: it lays no grave.
+/// (boss, boss-core-epoch1-resume [16]), «Где хоронят» and «Ёмкость не
+/// ограничена» (#1367, the human's word of 1 November 2026, #1564). The dead
+/// is laid in the NEAREST built cemetery BY ROAD (RoadKm, on foot from his
+/// yard) of his own settlement; none of it - the nearest of any; no yard - the
+/// oldest by id. The room is NOT asked: past its area the rows grow denser.
+/// (0.37.317 to #1367: the oldest with room, boss [33] (α); before it, the
+/// nearest by straight line.) NO STOP: only a world with no cemetery built
+/// keeps graves waiting (burials_waiting, kBurialHeld notable); the first that
+/// stands takes them and kBurialsLaid says so. A death outside the village
+/// (the district's ambulance) never reaches here: it lays no grave.
 
 #ifndef CORE_RESIDENTS_BURIAL_H_
 #define CORE_RESIDENTS_BURIAL_H_
@@ -44,23 +45,25 @@ std::span<const std::string_view> BurialWorldParamKeys();
 /// @return false with `error` set on a value out of its range.
 bool ParseBurialConfig(const ITableSet& tables, BurialConfig& config, std::string& error);
 
-/// @brief The graves `unit` holds at most, by its type's plot
-///        (cemetery_rules.h); 0 for a row that is not a built cemetery.
+/// @brief The graves `unit`'s plot area holds (cemetery_rules.h) - the fill's
+///        divisor, not a limit since #1367; 0 for a row that is not a built
+///        cemetery.
 std::uint16_t GraveCapacityOf(const BurialConfig& config,
                               std::span<const float> plot_radius_m,
                               const UnitRow& unit);
 
 /// @brief Lays the grave of `dead`, who died in the village today: one grave
-///        in the oldest built cemetery with room. With none, the grave waits —
-///        burials_waiting rises and kBurialHeld fires (resident `dead`,
-///        amount the waiting).
+///        in the nearest built cemetery by road of his settlement (room not
+///        asked). With none built, the grave waits — burials_waiting rises and
+///        kBurialHeld fires as notable, no stop (resident `dead`, amount the
+///        waiting).
 void LayGraveOf(const BurialConfig& config,
                 std::span<const float> plot_radius_m,
                 WorldState& current,
                 ResidentId dead);
 
-/// @brief Lays the graves that wait, into the cemeteries with room, the
-///        oldest first; kBurialsLaid per cemetery that took any (unit, amount).
+/// @brief Lays the graves that wait, all into the oldest built cemetery;
+///        kBurialsLaid names it (unit, amount).
 ///        Nothing while none waits.
 void LayWaitingGraves(const BurialConfig& config,
                       std::span<const float> plot_radius_m,

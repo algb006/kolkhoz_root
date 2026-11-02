@@ -829,12 +829,12 @@ enum class EventKind : std::uint8_t {
   /// the type's (unit_types.csv plot_radius_m), not the level's.
   kUnitWorksStarted,
 
-  /// THE GAME STOPS FOR A GRAVE (#1199; social.md «Два кладбища»): somebody
-  /// died in the village and no built cemetery has room. `resident` the
-  /// dead, `amount` the dead now waiting (WorldState::burials_waiting).
-  /// Interrupting: the layer holds its clock while BurialHeld
-  /// (cemetery_rules.h) says so — a mandatory decision, the chairman's new
-  /// cemetery. Key `burial_held`.
+  /// A GRAVE WAITS (#1199; since #1367 no stop, social.md «Остановки игры
+  /// нет»): somebody died in the village and NO cemetery is built at all (the
+  /// capacity is unlimited since #1367, so a built one always takes him).
+  /// `resident` the dead, `amount` the dead now waiting
+  /// (WorldState::burials_waiting). Notable: BurialHeld (cemetery_rules.h)
+  /// answers no and the layer's clock runs. Key `burial_held`.
   kBurialHeld,
 
   /// THE WAITING DEAD ARE LAID (#1199): a cemetery with room took the graves

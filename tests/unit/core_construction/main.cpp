@@ -1028,6 +1028,17 @@ int TestDemolition(const core::ITableSet& tables) {
   world.herds.row_ids.clear();
   core::RebuildLookup(world.herds);
 
+  // A unit with a grave in it is for ever (#1367; social.md «Сноса нет»): the
+  // order is refused and the unit stands; with no grave the same unit goes on
+  // below as before.
+  world.units.rows[core::FindRow(world.units, store)].graves = 1;
+  const core::OrderId buried = Issue(world, UnitOrder(core::OrderKind::kDemolishUnit, store));
+  Run(*system, world, 0);
+  failures += Expect(RefusalOf(world, buried) == core::OrderRefusal::kNotEmpty &&
+                         core::FindRow(world.units, store) != core::kNoRow,
+                     "a cemetery with a grave in it is refused and stands (#1367)");
+  world.units.rows[core::FindRow(world.units, store)].graves = 0;
+
   // Build a barn to take down, then take it down: the stock leaves first.
   Issue(world, BuildOrder(kBarnType, 2000.0F, 2000.0F));
   Run(*system, world, 0);

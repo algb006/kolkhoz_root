@@ -1035,6 +1035,15 @@ class ConstructionSystem final : public IConstructionSystem {
     if (NeverDemolished(current.units.rows[row].type)) {
       return OrderRefusal::kRuleForbids;
     }
+    // A CEMETERY WITH A GRAVE IS FOR EVER (#1367; social.md «Сноса нет»: «новое
+    // можно убрать, пока на нём никого не похоронили … С этой минуты кладбище —
+    // навсегда»; the human's words of 1 November 2026, #1565, #1567). The start's
+    // old one holds graves from the first day, so it is never taken down. The
+    // day of assignment is the day of the grave in the core today (the grave is
+    // laid at the death, burial.h); #1084's funeral will part the two.
+    if (current.units.rows[row].graves > 0) {
+      return OrderRefusal::kNotEmpty;
+    }
     // Its modules, by id: taking one down may remove a row and move the rest.
     std::vector<UnitId> modules;
     for (std::uint32_t other = 0; other < current.units.rows.size(); ++other) {

@@ -15,15 +15,15 @@
 ///     number: π · 25² / 15 = 130 graves.
 ///   * THE OLD ONE STARTS HALF FULL: start_layout.csv fill_pct (50) of its
 ///     capacity. Until #1199 that column was read by nobody.
-///   * A DEATH IN THE VILLAGE LAYS ONE GRAVE in the oldest built cemetery
-///     with room (boss [33]; until 0.37.317 the nearest to the dead's home). A
-///     death outside the village (the district's ambulance) lays none.
-///   * FULL EVERYWHERE STOPS THE GAME: «Если кладбище переполнено, а
-///     покойник появился — игра останавливается, пока председатель не
-///     выделит новый участок». The death waits for a grave
-///     (WorldState::burials_waiting) and kBurialHeld fires. BurialHeld() is
-///     the door the layer's clock reads. The first cemetery with room takes
-///     every waiting grave, and kBurialsLaid fires. No grave is lost.
+///   * SINCE #1367 THE CAPACITY IS NOT A LIMIT (the human's word of 1 November
+///     2026, #1564): the area sets only how dense the rows look (CemeteryFill,
+///     0..1, full at the area's graves). A DEATH IN THE VILLAGE LAYS ONE GRAVE
+///     in the nearest cemetery BY ROAD of the dead's own settlement
+///     (social.md «Где хоронят»); until #1367 the oldest with room. A death
+///     outside the village (the district's ambulance) lays none.
+///   * NO STOP: BurialHeld() answers no. Only a world with no cemetery built at
+///     all counts its waiting graves (burials_waiting); the first that stands
+///     takes them, and kBurialsLaid fires. No grave is lost.
 
 #ifndef CORE_COMMON_CEMETERY_RULES_H_
 #define CORE_COMMON_CEMETERY_RULES_H_
@@ -57,9 +57,8 @@ inline constexpr std::string_view kCemeteryTypeKey = "cemetery";
 /// @return 1 for a capacity of 0 (a cemetery that can take nobody is full).
 [[nodiscard]] float CemeteryFill(std::uint16_t graves, std::uint16_t capacity);
 
-/// @brief THE GAME'S STOP: somebody has died and no cemetery has room
-///        (social.md). The layer holds its clock while this is true; the way
-///        out is the chairman's new cemetery, marked and started.
+/// @brief THE GAME'S STOP, RETIRED (#1367; social.md «Остановки игры нет»):
+///        always false. Kept as the layer's clock still asks it.
 [[nodiscard]] bool BurialHeld(const WorldState& world);
 
 }  // namespace core

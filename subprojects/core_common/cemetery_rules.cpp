@@ -22,11 +22,21 @@ float CemeteryFill(std::uint16_t graves, std::uint16_t capacity) {
   if (capacity == 0) {
     return 1.0F;
   }
-  return static_cast<float>(graves) / static_cast<float>(capacity);
+  // 0..1, the metric's own scale (social.md «Заполнение — метрика юнита,
+  // 0–100 %»): past its area a cemetery's rows grow denser in the same
+  // fill_100 frame (#1367), and the number stops at full.
+  const float fill = static_cast<float>(graves) / static_cast<float>(capacity);
+  return fill > 1.0F ? 1.0F : fill;
 }
 
 bool BurialHeld(const WorldState& world) {
-  return world.burials_waiting > 0;
+  // NO STOP SINCE #1367 (social.md «Остановки игры нет», the human's word of
+  // 1 November 2026, #1564): the capacity is unlimited, so no death waits for
+  // room. The door stays for the layer's clock and answers no; a world with no
+  // cemetery at all counts its waiting graves (burials_waiting) without
+  // stopping.
+  (void)world;
+  return false;
 }
 
 }  // namespace core
