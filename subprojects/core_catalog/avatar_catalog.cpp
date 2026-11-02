@@ -169,8 +169,9 @@ bool ReadAvatars(const ITableSet& tables, std::vector<AvatarDef>& avatars, std::
                     avatar.eye_growth_factor,
                     error) ||
         // The first build's paths (#1417, #1421): absent columns read neutral.
-        !ReadCount(
-            *table, row, "start_trained_milkmaids", 20.0F, avatar.start_trained_milkmaids, error) ||
+        // Временная's trained milkmaids left this release (econ's call,
+        // core-boss-1421-arms [9]: the path read flat; the yards' strada help
+        // replaces it after the release).
         !ReadFactor(*table,
                     row,
                     "limit_points_carry_share",

@@ -119,12 +119,11 @@ int CheckTheEmptyAndTheUnknown() {
   return failures;
 }
 
-/// THE ACTING CHAIRMAN'S THREE TRAINED MILKMAIDS (#1417; avatars.md l.184):
-/// the first three adult women by row holding no post get skill 75. Here the
-/// rows are: a man, an adult woman, a girl, a woman with a post, two adult
-/// women, a fourth adult woman - the trained are rows 1, 4 and 5. With one
-/// such woman only, one is trained and the start does not refuse.
-int CheckTheTrainedMilkmaids() {
+/// THE TRAINED MILKMAIDS LEFT THE RELEASE (econ's call, core-boss-1421-arms
+/// [9]: Временная's path read flat and is replaced by the yards' strada help).
+/// A table still carrying the old column trains nobody and is not refused: a
+/// stale overlay must not bring the path back.
+int CheckTheTrainedMilkmaidsAreGone() {
   int failures = 0;
   const test::FakeTable avatars({"key", "start_reputation", "start_trained_milkmaids"},
                                 {{"acting", "45", "3"}, {"dealer", "41", ""}});
@@ -156,27 +155,13 @@ int CheckTheTrainedMilkmaids() {
        {core::Sex::kFemale, kAdult}}};
   core::WorldState acting = start(village, 3);
   failures += Expect(core::ApplyStartAvatar(acting, tables, "acting", nullptr),
-                     "trained milkmaids: the acting chairman's start applies");
+                     "trained milkmaids gone: a table with the old column is not refused");
   std::string trained;
   for (const core::ResidentRow& person : acting.residents.rows) {
-    trained += person.skill_agriculture_earned == 75.0F ? '1' : '0';
+    trained += person.skill_agriculture_earned == 0.0F ? '0' : '1';
   }
-  failures += Expect(trained == "0100110",
-                     "trained milkmaids: the first three adult women holding no post get skill 75 "
-                     "- not the man, the girl, the posted woman or the fourth");
-  core::WorldState dealer = start(village, 3);
-  bool none = core::ApplyStartAvatar(dealer, tables, "dealer", nullptr);
-  for (const core::ResidentRow& person : dealer.residents.rows) {
-    none = none && person.skill_agriculture_earned == 0.0F;
-  }
-  failures += Expect(none, "trained milkmaids: a chairman with no such path trains nobody");
-  const std::array<std::pair<core::Sex, std::int32_t>, 2> small = {
-      {{core::Sex::kMale, kAdult}, {core::Sex::kFemale, kAdult}}};
-  core::WorldState few = start(small, 99);
-  failures +=
-      Expect(core::ApplyStartAvatar(few, tables, "acting", nullptr) &&
-                 few.residents.rows[1].skill_agriculture_earned == 75.0F,
-             "trained milkmaids: a start with one such woman trains her, and does not refuse");
+  failures += Expect(trained == "0000000",
+                     "trained milkmaids gone: the acting chairman's start trains nobody");
   return failures;
 }
 
@@ -207,7 +192,7 @@ int CheckTheAvatarDoor() {
   int failures = 0;
   failures += CheckTheShippedTable();
   failures += CheckTheEmptyAndTheUnknown();
-  failures += CheckTheTrainedMilkmaids();
+  failures += CheckTheTrainedMilkmaidsAreGone();
   failures += CheckTheAssembly();
   return failures;
 }
