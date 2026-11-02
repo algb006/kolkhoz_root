@@ -331,9 +331,9 @@ class BuildingChairman {
     // The transition first: it asks nothing of the day's work, and a door
     // that opened last night should not wait behind a day of building.
     transition.RunDay(simulation);
-    // The new cemetery before any building: the game stops for a grave
-    // (social.md), it costs nothing, and nothing else may hold it back
-    // (cemetery_policy.h).
+    // A cemetery before any building when none is built: the dead wait for
+    // one (since #1367 the game does not stop), it costs nothing, and nothing
+    // else may hold it back (cemetery_policy.h).
     cemetery.RunDay(simulation);
     fixture.RunDay(simulation);
     felling.RunDay(simulation, sawmill.LogsForMissingBoards(simulation.CompletedState()));

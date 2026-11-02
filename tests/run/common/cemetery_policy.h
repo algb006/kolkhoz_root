@@ -1,22 +1,19 @@
 /// @file
-/// @brief The new cemetery the run's chairman marks when the old one is
-/// nearly full (#1199's run line; boss, boss-core-epoch1-resume [23], [25]).
+/// @brief The cemetery the run's chairman marks when the world has none built
+/// (#1199's run line; boss, boss-core-epoch1-resume [23], [25]; since #1367
+/// core-boss-1421-arms [8]).
 /// @threading SINGLE_THREADED
 /// Test-side code, driven from the thread that owns the simulation.
 ///
-/// WHY THE RUN BUILDS THIS. With the old cemetery's own 14 m (41 graves) a run
-/// reaches a full cemetery inside 12 years, and the game's stop (BurialHeld,
-/// cemetery_rules.h) is the player's to answer: «игра останавливается, пока
-/// председатель не выделит новый участок» (social.md «Два кладбища»). A run has
-/// nobody to answer it, so the chairman marks one himself.
-///
-/// THE RULE (boss [25]): when the BUILT cemeteries hold ≥ 90 % of their graves
-/// together, or the first dead waits for a grave, whichever comes first, and
-/// no cemetery is marked or going up, mark one at the elder's point
-/// (suggestions.csv suggest_cemetery_new_01), else at the nearest free plot to
-/// the old one, and start it the next day. Its cost is nil (unit_levels
-/// cemetery 1: plot), so no recipe holds it. A run whose dead do wait names it
-/// in its report.
+/// WHY THE RUN BUILDS THIS. Until #1367 a full cemetery stopped the game for
+/// the player's new plot, and a run marked one at 90 % fill. Since #1367 the
+/// capacity is unlimited and there is no stop (social.md «Где хоронят»), so
+/// the fill trigger is dropped. What remains: a world with NO cemetery built
+/// (the canon's old one is never taken down, so the canon never meets it)
+/// keeps its dead waiting; the chairman marks one at the elder's point
+/// (suggestions.csv suggest_cemetery_new_01), else the nearest free plot, and
+/// starts it the next day. Its cost is nil (unit_levels cemetery 1: plot). A
+/// run whose dead do wait names it in its report.
 
 #ifndef TESTS_RUN_COMMON_CEMETERY_POLICY_H_
 #define TESTS_RUN_COMMON_CEMETERY_POLICY_H_
@@ -52,21 +49,9 @@ class CemeteryPolicy {
         types == nullptr ? core::kNoTableRow : types->FindRowByKey(core::kCemeteryTypeKey);
     cemetery_ = row == core::kNoTableRow ? core::UnitTypeId{}
                                          : core::UnitTypeId{static_cast<std::uint16_t>(row)};
-    if (const core::ITable* world = tables.FindTable("world_params")) {
-      const std::uint32_t key_row = world->FindRowByKey("cemetery_m2_per_grave");
-      const std::uint32_t value = world->FindColumn("value");
-      if (key_row != core::kNoTableRow && value != core::kNoTableColumn) {
-        if (const std::optional<float> m2 = world->CellReal(key_row, value)) {
-          m2_per_grave_ = *m2;
-        }
-      }
-    }
     std::string error;
     core::LoadDefinitions(tables, core::StubTables::kAllowed, definitions_, error);
   }
-
-  /// The built cemeteries' fill at which a new one is marked (boss [25]).
-  static constexpr float kMarkAtFill = 0.9F;
 
   /// @brief One day of the chairman's attention. Call once a day.
   void RunDay(core::ISimulation& simulation) {
@@ -74,10 +59,8 @@ class CemeteryPolicy {
       return;
     }
     const core::WorldState& world = simulation.CompletedState();
-    const std::span<const float> radii = definitions_.units.plot_radius_m;
     std::vector<core::OrderRow> orders;
-    std::uint32_t graves = 0;
-    std::uint32_t capacity = 0;
+    bool one_built = false;
     bool one_coming = false;
     for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
       const core::UnitRow& unit = world.units.rows[row];
@@ -95,15 +78,16 @@ class CemeteryPolicy {
         }
         continue;
       }
-      graves += unit.graves;
-      capacity += core::CemeteryCapacityGraves(core::PlotRadiusOf(unit, radii), m2_per_grave_);
+      one_built = true;
     }
     if (world.burials_waiting > 0) {
       ++held_days_;
     }
-    const bool nearly_full =
-        capacity == 0 || static_cast<float>(graves) >= kMarkAtFill * static_cast<float>(capacity);
-    if (!one_coming && cooldown_ == 0 && (nearly_full || world.burials_waiting > 0)) {
+    // NO FILL TRIGGER SINCE #1367 (boss, core-boss-1421-arms [8]): with no area
+    // limit a 90 % mark measured nothing the rule has, and a second cemetery
+    // kept by habit would make burial by road look tested where the player has
+    // one. Only a world with NO cemetery built gets one.
+    if (!one_coming && cooldown_ == 0 && (!one_built || world.burials_waiting > 0)) {
       core::OrderRow mark;
       mark.kind = core::OrderKind::kBuildUnit;
       mark.unit_type = cemetery_;
@@ -130,18 +114,18 @@ class CemeteryPolicy {
   /// @brief The fixture difference, in words, BEFORE the run measures.
   static void Declare(std::string_view run_name) {
     std::cout << run_name
-              << ": FIXTURE DIFFERS FROM THE START CANON — the run's chairman marks a NEW "
-                 "CEMETERY when the built ones hold 90 % of their graves or the first dead "
-                 "waits for a grave, on the elder's point first, and starts it the next day "
-                 "(social.md «Два кладбища»: the game stops for the player; boss, 22 October "
-                 "2026)\n";
+              << ": FIXTURE DIFFERS FROM THE START CANON — the run's chairman marks a "
+                 "CEMETERY only when none is built, on the elder's point first, and starts it "
+                 "the next day; since #1367 no fill trigger (capacity unlimited, burial at the "
+                 "nearest by road; boss, 2 November 2026)\n";
   }
 
   /// @brief What the fixture did, for the run to print at the end.
   void Report(std::string_view run_name) const {
     std::cout << run_name << ": cemeteries — marked " << marked_ << " (first on day "
               << first_mark_day_ << "), start orders " << started_ << "; days the dead waited "
-              << held_days_ << (held_days_ > 0 ? " — THE STOP FIRED IN A RUN" : "") << '\n';
+              << held_days_
+              << (held_days_ > 0 ? " — A RUN'S DEAD WAITED: NO CEMETERY WAS BUILT" : "") << '\n';
     suggested_.Report(run_name);
   }
 
@@ -160,7 +144,6 @@ class CemeteryPolicy {
   }
 
   core::UnitTypeId cemetery_;
-  float m2_per_grave_ = core::kCemeteryM2PerGraveDefault;
   core::Definitions definitions_;
   SuggestedPlaces suggested_;
   std::uint32_t marked_ = 0;
