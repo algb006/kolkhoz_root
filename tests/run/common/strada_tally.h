@@ -53,8 +53,17 @@ class StradaTally {
   /// K3's winter line (econ, econ-boss-1442-garden-price [1]).
   static constexpr float kWinterSatiety = 70.0F;
 
-  /// The tables are not read since spread (b): no adult is counted here.
-  explicit StradaTally(const core::ITableSet& /*tables*/) {}
+  /// Reads the garden's full-yield hours (food.csv plot_full_yield_hours), the
+  /// curve K2's in-world loss is read on.
+  explicit StradaTally(const core::ITableSet& tables) {
+    if (const core::ITable* const food = tables.FindTable("food")) {
+      const std::uint32_t row = food->FindRowByKey("plot_full_yield_hours");
+      const std::uint32_t column = food->FindColumn("value");
+      if (row != core::kNoTableRow && column != core::kNoTableColumn) {
+        full_yield_hours_ = static_cast<float>(food->CellReal(row, column).value_or(4.0F));
+      }
+    }
+  }
 
   /// @brief The strada's field and hay worker-days, at the state's hour 13.
   void CountNoon(const core::WorldState& world) {
@@ -134,13 +143,33 @@ class StradaTally {
       // harvest resets it to nought): its share of the full yield.
       if (row >= last_ratio_.size()) {
         last_ratio_.resize(world.families.rows.size(), -1.0F);
+        with_sum_.resize(world.families.rows.size(), 0.0);
+        without_sum_.resize(world.families.rows.size(), 0.0);
       }
       const float ratio = family.plot_ratio_days > 0
                               ? family.plot_ratio_sum / static_cast<float>(family.plot_ratio_days)
                               : -1.0F;
       if (ratio < 0.0F && last_ratio_[row] >= 0.0F && year <= kYears) {
-        harvests_.push_back(
-            {.year = year, .family = world.families.row_ids[row].value, .ratio = last_ratio_[row]});
+        // K2 IN ONE WORLD: the season's attention with the yards' help over
+        // the same season without it - the help's own price, free of the two
+        // arms' divergence (a family of the twin arm is another family by y2).
+        const double inworld =
+            without_sum_[row] > 0.0 ? 1.0 - with_sum_[row] / without_sum_[row] : 0.0;
+        harvests_.push_back({.year = year,
+                             .family = world.families.row_ids[row].value,
+                             .ratio = last_ratio_[row],
+                             .inworld_loss = static_cast<float>(inworld)});
+        with_sum_[row] = 0.0;
+        without_sum_[row] = 0.0;
+      }
+      if (ratio >= 0.0F && full_yield_hours_ > 0.0F) {
+        const bool gave = share > 0.0F && family.house.value != core::kInvalidEntityIdValue &&
+                          family.in_barrack == 0;
+        const double net = static_cast<double>(family.household_hours);
+        const double gross = gave ? net / (1.0 - static_cast<double>(held)) : net;
+        const double full = static_cast<double>(full_yield_hours_);
+        with_sum_[row] += net / full < 1.0 ? net / full : 1.0;
+        without_sum_[row] += gross / full < 1.0 ? gross / full : 1.0;
       }
       last_ratio_[row] = ratio;
     }
@@ -151,7 +180,7 @@ class StradaTally {
   void PrintHarvests(std::ostream& out, std::uint64_t seed) const {
     out << "population_curve: G1442 seed " << seed << " harvests";
     for (const Harvest& one : harvests_) {
-      out << ' ' << one.year << ':' << one.family << ':' << one.ratio;
+      out << ' ' << one.year << ':' << one.family << ':' << one.ratio << ':' << one.inworld_loss;
     }
     out << '\n';
   }
@@ -235,9 +264,12 @@ class StradaTally {
     std::uint32_t year = 0;
     std::uint32_t family = 0;
     float ratio = 0.0F;
+    float inworld_loss = 0.0F;
   };
 
   std::vector<float> last_ratio_;
+  std::vector<double> with_sum_, without_sum_;
+  float full_yield_hours_ = 4.0F;
   std::vector<Harvest> harvests_;
   std::uint32_t winter_old_family_days_ = 0, winter_old_below70_days_ = 0;
   std::uint32_t field_wd_ = 0, hay_wd_ = 0, herd_wd_ = 0;
