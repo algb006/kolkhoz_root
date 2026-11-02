@@ -1919,17 +1919,6 @@ int main(int argc, char** argv) {
                   two_places(accepted->se) + ", " + accepted->date + ", " + accepted->tree + ")";
   }
   failures += run::Expect(inside_band || within_accepted, mean_claim.c_str());
-  // THE PREVIOUS LINE, PRINTED BESIDE FOR ONE RELEASE (econ, econ-boss-s1-e1-line
-  // [1]: the line re-taken on 0.37.351; the old one is read, never checked).
-  if (const std::optional<run::AcceptedRed> previous =
-          run::FindAcceptedRed("population_curve", "E1 mean door, previous");
-      previous.has_value() && !doors.empty()) {
-    std::cout << "population_curve: E1 against the PREVIOUS line (" << previous->date << ", tree "
-              << previous->tree << ", not checked): passes at "
-              << two_places(previous->value - previous->se) << ", now " << two_places(door_mean)
-              << (door_mean >= previous->value - previous->se ? " - above it" : " - below it")
-              << '\n';
-  }
   const std::string spread_claim =
       "E2: at least " + std::to_string(kEraSpreadAtLeast) + " of " + std::to_string(kSeeds.size()) +
       " doors inside " + two_places(kEraSpreadFloor) + " to " + two_places(kEraSpreadCeiling) +
