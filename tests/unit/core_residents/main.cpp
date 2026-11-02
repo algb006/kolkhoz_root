@@ -1474,6 +1474,21 @@ int CheckPlot() {
     core::RunHouseholdPlot(config, 4.0F, world, 0);
     failures += Expect(world.families.rows[0].household_hours == 24.0F - 8.0F - 10.0F - 1.3F,
                        "a day out leaves the yard what the day actually left it");
+    // THE YARDS' STRADA HELP (#1442): the hours its adults gave the kolkhoz
+    // herds this morning come off the garden - a yard with a house only.
+    core::WorldState helped = world;
+    helped.ledger.current.yard_herd_hours_per_adult_today = 1.5F;
+    core::RunHouseholdPlot(config, 4.0F, helped, 0);
+    const float without_house = helped.families.rows[0].household_hours;
+    helped.families.rows[0].house = core::UnitId{1};
+    core::RunHouseholdPlot(config, 4.0F, helped, 0);
+    const float given =
+        world.families.rows[0].household_hours - helped.families.rows[0].household_hours;
+    std::cout << "plot: the yards' strada help took " << given << " h off a yard with a house\n";
+    failures += Expect(without_house == world.families.rows[0].household_hours,
+                       "plot: a yard without a house gives no hours to the herds");
+    failures += Expect(given >= 1.5F && std::fmod(given, 1.5F) < 0.001F,
+                       "plot: a yard with a house gives 1.5 h for each adult");
   }
 
   // A whole growing season at full attention pays the yard's whole yield.

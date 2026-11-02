@@ -2504,8 +2504,10 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // grain paid (i64), +16 a book, two books: 3910 -> 3942, predicted before
     // the build and held. Save 201 too (#1434): the rest days substituted and
     // self-worked (u32 each), +8 a book, two books: 3942 -> 3958, predicted
-    // before the build and held.
-    {"ledger", 3958, 0xcc3c8ad059ec4569ULL},
+    // before the build and held. Save 202 (#1442): the yards' herd care and
+    // the day's hours an adult (f32 each), +8 a book, two books: 3958 -> 3974,
+    // predicted before the build and held.
+    {"ledger", 3974, 0x8e17bfa3f6781269ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 

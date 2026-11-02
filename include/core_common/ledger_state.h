@@ -799,6 +799,15 @@ struct YearLedger {
   std::uint32_t herd_rest_days_substituted = 0;
   std::uint32_t herd_rest_days_self_worked = 0;
 
+  /// THE YARDS' STRADA HELP (#1442; avatars.md «Временная»; save 202): the
+  /// kolkhoz herds' care the yards took this year, man-days, paid in
+  /// trudodni at the herd care's rate; and TODAY's hours a yard's adult gave
+  /// for it, which the private plot takes off the yard's hours at hour 22
+  /// (household_plot.cpp). Written each morning by labour
+  /// (YardsTakeHerdCare), 0 outside the strada or with no such avatar.
+  float herd_care_by_yards = 0.0F;
+  float yard_herd_hours_per_adult_today = 0.0F;
+
   // -- what the era-readiness index needs and nothing else kept ------------
   //
   // FOUR QUANTITIES THE INDEX ASKS OF THE YEAR AND THE YEAR DID NOT KEEP

@@ -1283,6 +1283,9 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       known.insert(known.end(), from_visits.begin(), from_visits.end());
       const std::span<const std::string_view> from_trip = DistrictTripWorldParamKeys();
       known.insert(known.end(), from_trip.begin(), from_trip.end());
+      // The strada's months (#1442; labor_system.h).
+      const std::span<const std::string_view> from_labor = LaborWorldParamKeys();
+      known.insert(known.end(), from_labor.begin(), from_labor.end());
       const std::span<const std::string_view> from_production = ProductionWorldParamKeys();
       known.insert(known.end(), from_production.begin(), from_production.end());
       known.insert(known.end(), from_time.begin(), from_time.end());

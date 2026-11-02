@@ -30,10 +30,15 @@
 #include "core_common/crop_calendar.h"
 #include "core_common/haul.h"
 #include "core_common/spoilage.h"
+#include "core_labor/labor_system.h"
 #include "core_tables/tables.h"
 
 namespace core {
 namespace {
+
+/// The world_params keys this config declares (#1442; LaborWorldParamKeys).
+constexpr std::array<std::string_view, 2> kLaborWorldParamKeys = {"strada_first_month",
+                                                                  "strada_last_month"};
 
 /// The most seats transport.csv may name on one cart: a bound against a
 /// slipped digit, not a design number (the design's carts seat 2 and 6).
@@ -810,6 +815,10 @@ bool ParseHeapShelves(const ITableSet& tables, LaborConfig& config, std::string&
 
 }  // namespace
 
+std::span<const std::string_view> LaborWorldParamKeys() {
+  return kLaborWorldParamKeys;
+}
+
 bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string& error) {
   if (!ReadPorterRules(tables, config.porter, error) ||
       !ReadSupplyFloorRules(tables, config.supply_floor, error) ||
@@ -860,6 +869,18 @@ bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string&
       PrefixError("world_params", "teacher_pupils_per_teacher", error);
       return false;
     }
+    // The strada's months (#1442), 1-based in the table, 0-based here.
+    auto first = static_cast<float>(config.strada_first_month) + 1.0F;
+    auto last = static_cast<float>(config.strada_last_month) + 1.0F;
+    if (!OptionalValue(
+            *world, kLaborWorldParamKeys[0], Range{.low = 1.0F, .high = 12.0F}, first, error) ||
+        !OptionalValue(
+            *world, kLaborWorldParamKeys[1], Range{.low = 1.0F, .high = 12.0F}, last, error)) {
+      PrefixError("world_params", "strada_first_month / strada_last_month", error);
+      return false;
+    }
+    config.strada_first_month = static_cast<std::uint8_t>(first - 1.0F);
+    config.strada_last_month = static_cast<std::uint8_t>(last - 1.0F);
   }
   if (const ITable* transport = tables.FindTable("transport")) {
     if (!ParseSpeeds(*transport, config, error)) {

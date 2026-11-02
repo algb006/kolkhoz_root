@@ -197,6 +197,13 @@ bool ReadAvatars(const ITableSet& tables, std::vector<AvatarDef>& avatars, std::
                     "tool_life_factor",
                     Range{.low = 0.1F, .high = 10.0F},
                     avatar.tool_life_factor,
+                    error) ||
+        // The yards' strada help (#1442): a share of the care, 0..1.
+        !ReadFactor(*table,
+                    row,
+                    "strada_yard_herd_care_share",
+                    Range{.low = 0.0F, .high = 1.0F},
+                    avatar.strada_yard_herd_care_share,
                     error)) {
       return false;
     }

@@ -768,6 +768,15 @@ struct LaborConfig {
   /// The avatars' rows (avatars.csv; #635): the day-off door's closed years
   /// and the free cancelled days, read live by the chairman's avatar.
   std::vector<AvatarDef> avatars;
+
+  /// THE STRADA'S MONTHS, 0-based, inclusive (world_params.csv
+  /// strada_first_month / strada_last_month, 1-based there; #1442: farming.md's
+  /// calendar - hay in June, winter crops in July, spring crops in August;
+  /// boss, core-boss-yards-strada [2]). STUB 6..8. The window in which the
+  /// yards take a share of the kolkhoz herds' care (AvatarDef::
+  /// strada_yard_herd_care_share).
+  std::uint8_t strada_first_month = 5;
+  std::uint8_t strada_last_month = 7;
 };
 
 /// @brief The cart's and the sledge's numbers of this config (SL; cart_gear.h).

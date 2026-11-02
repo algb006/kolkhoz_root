@@ -104,6 +104,14 @@ struct AvatarDef {
   /// dealer: econ's Q5, 6 points a tonne, rye then barley, never below the
   /// seed step).
   bool lot_pays_grain = false;
+
+  /// THE YARDS' STRADA HELP (#1442; avatars.md «Временная»: «в страду до трети
+  /// ухода за стадом берут дворы — за трудодни»; boss, core-boss-yards-strada
+  /// [2], [3]): the share of each kolkhoz herd's daily care the yards take in
+  /// the strada's months (the acting chairman: 0.333), out of their plot
+  /// hours and paid in trudodni at the herd care's rate. A ceiling: the
+  /// yards' free hours cap it. labor_system.cpp, YardsTakeHerdCare.
+  float strada_yard_herd_care_share = 0.0F;
 };
 
 /// @brief Reads tables/avatars.csv into `avatars`, row order = AvatarId.

@@ -512,6 +512,7 @@ class LaborSystem final : public ILaborSystem {
     book.reaping_today_hours = 0.0F;
     book.reaping_today_hands = 0.0F;
     RefillHerdCare(current);
+    YardsTakeHerdCare(current);
     AssignPostHolders(current);
     // UB-001 fix: the accountant's placement is a BLOCK, not the body of the
     // function, because the chairman's orders below it must run on days the
@@ -1294,6 +1295,94 @@ class LaborSystem final : public ILaborSystem {
       herd.care_days_remaining = config_.care_days_per_year[herd.kind.value] *
                                  static_cast<float>(herd.adult_count) /
                                  static_cast<float>(kDaysPerYear);
+    }
+  }
+
+  /// THE YARDS' STRADA HELP (#1442; avatars.md «Временная»: «в страду до трети
+  /// ухода за стадом берут дворы — за трудодни»; boss, core-boss-yards-strada
+  /// [2], [3]): in the strada's months the yards take the avatar's share of
+  /// each kolkhoz herd's care, the morning after RefillHerdCare, so the posts
+  /// and the list see only the rest. «До трети» is a ceiling: the yards give
+  /// at most the plot hours they had yesterday (FamilyRow::household_hours,
+  /// written at hour 22), the rest stays a kolkhoz job. Every yard with a
+  /// house gives in proportion to its adults: the hours a yard adult gives
+  /// today go into the ledger (yard_herd_hours_per_adult_today), and the
+  /// private plot takes them off at hour 22. The care is DONE and paid: the
+  /// man-days are booked as trudodni at the herd care's rate on each yard's
+  /// account by its adults (econ-boss-1438-yards-paid [1]; no new rate, the
+  /// year's pot is divided by more trudodni).
+  void YardsTakeHerdCare(WorldState& current) const {
+    YearLedger& book = current.ledger.current;
+    // Yesterday's gift is added back to yesterday's net plot hours: the yards'
+    // capacity is their GROSS hours, or a day that took them all would leave
+    // the next with none and the help would come every other day.
+    const float yesterday_per_adult = book.yard_herd_hours_per_adult_today;
+    book.yard_herd_hours_per_adult_today = 0.0F;
+    const AvatarDef& avatar = AvatarOf(config_.avatars, current.chairman.avatar);
+    const auto month = static_cast<std::uint8_t>(current.calendar.date.month);
+    if (!(avatar.strada_yard_herd_care_share > 0.0F) || config_.standard_day_hours <= 0.0F ||
+        !MonthInRange(month, config_.strada_first_month, config_.strada_last_month)) {
+      return;
+    }
+    float need_days = 0.0F;
+    for (const HerdRow& herd : current.herds.rows) {
+      need_days += herd.care_days_remaining;
+    }
+    // Each yard with a house: its adults, and yesterday's plot hours.
+    std::vector<std::uint32_t> adults_by_family(current.families.rows.size(), 0);
+    std::uint32_t adults = 0;
+    for (const ResidentRow& resident : current.residents.rows) {
+      const std::uint32_t family = FindRow(current.families, resident.family);
+      if (family == kNoRow || current.families.rows[family].house.value == kInvalidEntityIdValue ||
+          current.families.rows[family].in_barrack != 0 ||  // a barrack has no garden
+          BiologicalAgeYears(config_, resident.birth_day, current.calendar.day) <
+              config_.adult_age_years) {
+        continue;
+      }
+      ++adults_by_family[family];
+      ++adults;
+    }
+    float free_hours = 0.0F;
+    for (std::uint32_t family = 0; family < current.families.rows.size(); ++family) {
+      if (adults_by_family[family] > 0) {
+        free_hours += current.families.rows[family].household_hours +
+                      yesterday_per_adult * static_cast<float>(adults_by_family[family]);
+      }
+    }
+    if (!(need_days > 0.0F) || adults == 0 || !(free_hours > 0.0F)) {
+      return;
+    }
+    const float wanted_hours =
+        avatar.strada_yard_herd_care_share * need_days * config_.standard_day_hours;
+    const float taken_hours = wanted_hours < free_hours ? wanted_hours : free_hours;
+    const float taken_days = taken_hours / config_.standard_day_hours;
+    const float keep = 1.0F - taken_days / need_days;
+    for (HerdRow& herd : current.herds.rows) {
+      herd.care_days_remaining *= keep;
+    }
+    book.herd_care_by_yards += taken_days;
+    book.yard_herd_hours_per_adult_today = taken_hours / static_cast<float>(adults);
+    // PAID, by the yard's adults, at the herd care's own rate.
+    const auto care_index = static_cast<std::uint32_t>(WorkKind::kHerdCare);
+    if (care_index >= config_.rates.size()) {
+      return;
+    }
+    const float days_per_adult = taken_days / static_cast<float>(adults);
+    for (std::uint32_t family = 0; family < current.families.rows.size(); ++family) {
+      if (adults_by_family[family] == 0) {
+        continue;
+      }
+      const float trudodni = config_.rates[care_index].trudodni_rate * days_per_adult *
+                             static_cast<float>(adults_by_family[family]);
+      const auto hundredths =
+          static_cast<TrudodniHundredths>(std::lround(trudodni * kTrudodniScale));
+      FamilyRow& row = current.families.rows[family];
+      row.trudodni_account += hundredths;
+      if (row.formed_day != kNotFormedInPlay) {
+        row.earned_since_formed += hundredths;
+      }
+      book.trudodni_accrued += hundredths;
+      book.trudodni_by_day[current.calendar.day % kDaysPerYear] += hundredths;
     }
   }
 

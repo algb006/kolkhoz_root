@@ -55,6 +55,8 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <span>
+#include <string_view>
 #include <vector>
 
 #include "core_common/alarm_state.h"
@@ -206,6 +208,11 @@ std::unique_ptr<ILaborSystem> CreateLaborSystem(
     std::function<bool(const WorldState&, std::uint32_t)> stored_hay_short = {},
     const SnowLainShares& snow_lain_shares = SnowLainShares{},
     std::function<std::vector<ShortRickUnit>(const WorldState&, std::uint32_t)> short_ricks = {});
+
+/// @brief The world_params.csv keys this module declares, for the assembly's
+/// declared-readers check (core_world/world.cpp): the strada's months
+/// (#1442), where the yards take a share of the herds' care.
+std::span<const std::string_view> LaborWorldParamKeys();
 
 }  // namespace core
 

@@ -46,6 +46,7 @@
 #include "../common/rest_tally.h"
 #include "../common/run_harness.h"
 #include "../common/site_wait_tally.h"
+#include "../common/strada_tally.h"
 #include "../common/substitute_tally.h"
 #include "../common/timber_flow_tally.h"
 #include "../common/transition_tally.h"
@@ -396,7 +397,8 @@ void LiveOneDay(core::ISimulation& simulation,
                 run::SiteWaitTally* site_wait = nullptr,
                 run::RestTally* rest_tally = nullptr,
                 run::FedTally* fed_tally = nullptr,
-                run::SubstituteTally* substitutes = nullptr) {
+                run::SubstituteTally* substitutes = nullptr,
+                run::StradaTally* strada = nullptr) {
   bool hot_at_any_tick = false;
   const core::UnitId awaiting = upgrades.Awaiting();
   for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
@@ -448,6 +450,10 @@ void LiveOneDay(core::ISimulation& simulation,
     if (substitutes != nullptr && tick == run::BirthsHerdTally::kSampleHour) {
       substitutes->CountNoon(state);
     }
+    // The strada's field and hay worker-days (#1442), at hour 13.
+    if (strada != nullptr && tick == run::BirthsHerdTally::kSampleHour) {
+      strada->CountNoon(state);
+    }
     // BY THE STATE'S OWN HOUR, NOT THE LOOP'S INDEX (#1411): the step of index
     // t completes hour t + 1, so index 22 is hour 23 - the day's close, its
     // orders cleared and its rest credited. Read so until #1411, R1373 counted
@@ -463,6 +469,10 @@ void LiveOneDay(core::ISimulation& simulation,
     }
     if (substitutes != nullptr && hour_now == run::RestTally::kEveningHour) {
       substitutes->CountEvening(state);
+    }
+    // The yards' plot hours after the plot of hour 22, and the old yards' hunger.
+    if (strada != nullptr && hour_now == run::StradaTally::kEveningHour) {
+      strada->CountEvening(state);
     }
     // WHICH COWS DIE OF COLD, AND WHERE (#713's first step; boss, 1 November
     // 2026): every frost death of the step, by seed, day and pen, and whether
@@ -746,6 +756,8 @@ bool Walk(std::uint64_t seed,
   run::AvatarBookTally avatar_book;
   // The stock's rest days, y1-y3 (#1434's canon pair).
   run::SubstituteTally substitutes(*world.tables);
+  // The strada's work and the yards' help, y1-y3 (#1442's pair).
+  run::StradaTally strada(*world.tables);
   std::array<std::uint32_t, core::kRestSourceCount> r1373_sources = {};
   std::uint32_t r1373_walk_offs = 0;
   // What the farm's sites waited on, y1-y6 (#1285 G1's probe; boss [3]).
@@ -859,12 +871,16 @@ bool Walk(std::uint64_t seed,
                  warm_off ? nullptr : &site_wait,
                  warm_off ? nullptr : &rest_tally,
                  warm_off ? nullptr : &fed_tally,
-                 warm_off ? nullptr : &substitutes);
+                 warm_off ? nullptr : &substitutes,
+                 warm_off ? nullptr : &strada);
       builder.RunDay(*simulation);
       timber.CountDay(simulation->CompletedState());
       avatar_book.CountDay(simulation->CompletedState());
       builder.milkmaids.CountDayEnd(simulation->CompletedState());
       substitutes.CountDayEnd(simulation->CompletedState());
+      if (!warm_off) {
+        strada.CountDayEnd(simulation->CompletedState());
+      }
       if (!warm_off) {
         site_wait.CountDay(
             simulation->CompletedState(), *simulation, builder.fixture, builder.sawmill, year);
@@ -1194,6 +1210,7 @@ bool Walk(std::uint64_t seed,
     avatar_book.CloseYear(state.ledger.closed, year);
     builder.milkmaids.CloseYear(state.ledger.closed, year);
     substitutes.CloseYear(state.ledger.closed, year);
+    strada.CloseYear(state.ledger.closed, year);
     if (year >= 4 && year <= run::SiteWaitTally::kLastYear) {
       for (const std::uint32_t r : g1285_roofed) {
         g1285_snow_y4y6 +=
@@ -1378,6 +1395,7 @@ bool Walk(std::uint64_t seed,
       avatar_book.Print(std::cout, seed);
       builder.milkmaids.Report("population_curve", seed);
       substitutes.Print(std::cout, seed);
+      strada.Print(std::cout, seed);
     }
   }
   out.timber = timber.years();
