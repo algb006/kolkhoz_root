@@ -37,8 +37,8 @@ namespace core {
 namespace {
 
 /// The world_params keys this config declares (#1442; LaborWorldParamKeys).
-constexpr std::array<std::string_view, 2> kLaborWorldParamKeys = {"strada_first_month",
-                                                                  "strada_last_month"};
+constexpr std::array<std::string_view, 3> kLaborWorldParamKeys = {
+    "strada_first_month", "strada_last_month", "yard_herd_garden_cap"};
 
 /// The most seats transport.csv may name on one cart: a bound against a
 /// slipped digit, not a design number (the design's carts seat 2 and 6).
@@ -881,6 +881,14 @@ bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string&
     }
     config.strada_first_month = static_cast<std::uint8_t>(first - 1.0F);
     config.strada_last_month = static_cast<std::uint8_t>(last - 1.0F);
+    if (!OptionalValue(*world,
+                       kLaborWorldParamKeys[2],
+                       Range{.low = 0.0F, .high = 1.0F},
+                       config.yard_herd_garden_cap,
+                       error)) {
+      PrefixError("world_params", "yard_herd_garden_cap", error);
+      return false;
+    }
   }
   if (const ITable* transport = tables.FindTable("transport")) {
     if (!ParseSpeeds(*transport, config, error)) {

@@ -777,6 +777,12 @@ struct LaborConfig {
   /// strada_yard_herd_care_share).
   std::uint8_t strada_first_month = 5;
   std::uint8_t strada_last_month = 7;
+
+  /// world_params.csv `yard_herd_garden_cap` (#1442; boss, core-boss-yards-
+  /// strada [15], (i)): the most of its own garden a yard gives the herds in
+  /// a day, 0..1. STUB ⅓: «до трети» on the garden's side as on the herd's;
+  /// what the yards cannot give stays kolkhoz care.
+  float yard_herd_garden_cap = 1.0F / 3.0F;
 };
 
 /// @brief The cart's and the sledge's numbers of this config (SL; cart_gear.h).

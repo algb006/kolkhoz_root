@@ -1434,8 +1434,8 @@ int TestRestDaySubstitute() {
 ///   core-boss-yards-strada [9]), and is paid by its hours: 0.08 and 0.04
 ///   trudodni.
 /// - February, or the neutral chairman in July: nothing.
-/// - The yards had 0.6 free hours yesterday: the take is capped at 0.06
-///   man-days, the whole of both gardens.
+/// - The yards had 0.6 free hours yesterday: the take is capped at a third of
+///   each garden (yard_herd_garden_cap, boss [15] (i)), 0.2 h = 0.02 man-days.
 int TestYardsStradaHelp() {
   int failures = 0;
   const test::FakeTable livestock({"key", "care_days_per_real_year"}, {{"calf", "120"}});
@@ -1488,9 +1488,10 @@ int TestYardsStradaHelp() {
                          neutral.families.rows[0].trudodni_account == 0,
                      "yards' strada help: none outside the strada, none for another chairman");
   const core::WorldState tight = morning(1, kJulyDay, 0.4F);  // 0.4 + 0.2 h
-  failures += Expect(std::abs(tight.ledger.current.herd_care_by_yards - 0.06F) < 0.001F &&
-                         tight.ledger.current.yard_herd_share_today == 1.0F,
-                     "yards' strada help: the yards give no more than their free hours");
+  failures +=
+      Expect(std::abs(tight.ledger.current.herd_care_by_yards - 0.02F) < 0.001F &&
+                 std::abs(tight.ledger.current.yard_herd_share_today - 1.0F / 3.0F) < 0.001F,
+             "yards' strada help: no yard gives more than a third of its own garden");
   return failures;
 }
 

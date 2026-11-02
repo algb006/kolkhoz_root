@@ -1302,8 +1302,9 @@ class LaborSystem final : public ILaborSystem {
   /// ухода за стадом берут дворы — за трудодни»; boss, core-boss-yards-strada
   /// [2], [3]): in the strada's months the yards take the avatar's share of
   /// each kolkhoz herd's care, the morning after RefillHerdCare, so the posts
-  /// and the list see only the rest. «До трети» is a ceiling: the yards give
-  /// at most their gross plot hours, the rest stays a kolkhoz job. EVERY YARD
+  /// and the list see only the rest. «До трети» is a ceiling on both sides:
+  /// the yards give at most yard_herd_garden_cap (⅓) of their gross plot
+  /// hours, the rest stays a kolkhoz job. EVERY YARD
   /// GIVES THE SAME SHARE OF ITS OWN GARDEN (boss, core-boss-yards-strada [9],
   /// (b): spread by plot hours, not by adults - by adults a yard whose
   /// adults all work for the kolkhoz gave its whole garden, 100 % in the first
@@ -1352,7 +1353,14 @@ class LaborSystem final : public ILaborSystem {
     }
     const float wanted_hours =
         avatar.strada_yard_herd_care_share * need_days * config_.standard_day_hours;
-    const float taken_hours = wanted_hours < gross_hours ? wanted_hours : gross_hours;
+    // NO YARD GIVES MORE THAN yard_herd_garden_cap OF ITS GARDEN (boss,
+    // core-boss-yards-strada [15], (i)): with one share for every yard the
+    // cap on a yard is the cap on the share; the rest stays kolkhoz care.
+    const float garden_hours = config_.yard_herd_garden_cap * gross_hours;
+    const float taken_hours = wanted_hours < garden_hours ? wanted_hours : garden_hours;
+    if (!(taken_hours > 0.0F)) {
+      return;
+    }
     const float taken_days = taken_hours / config_.standard_day_hours;
     const float keep = 1.0F - taken_days / need_days;
     for (HerdRow& herd : current.herds.rows) {
