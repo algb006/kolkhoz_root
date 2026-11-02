@@ -3,13 +3,18 @@
 #include "avatar_checks.h"
 
 #include <array>
+#include <cstdint>
 #include <iostream>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include "../../common/fake_tables.h"
+#include "core_common/calendar.h"
 #include "core_common/ids.h"
+#include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
@@ -114,6 +119,67 @@ int CheckTheEmptyAndTheUnknown() {
   return failures;
 }
 
+/// THE ACTING CHAIRMAN'S THREE TRAINED MILKMAIDS (#1417; avatars.md l.184):
+/// the first three adult women by row holding no post get skill 75. Here the
+/// rows are: a man, an adult woman, a girl, a woman with a post, two adult
+/// women, a fourth adult woman - the trained are rows 1, 4 and 5. With one
+/// such woman only, one is trained and the start does not refuse.
+int CheckTheTrainedMilkmaids() {
+  int failures = 0;
+  const test::FakeTable avatars({"key", "start_reputation", "start_trained_milkmaids"},
+                                {{"acting", "45", "3"}, {"dealer", "41", ""}});
+  const test::FakeTableSet tables("avatars", avatars);
+  constexpr std::int32_t kAdult = -30 * static_cast<std::int32_t>(core::kDaysPerYear);
+  constexpr std::int32_t kGirl = -5 * static_cast<std::int32_t>(core::kDaysPerYear);
+  const auto start = [&](std::span<const std::pair<core::Sex, std::int32_t>> people,
+                         std::size_t posted_row) {
+    core::WorldState world;
+    for (std::size_t index = 0; index < people.size(); ++index) {
+      core::ResidentRow person;
+      person.sex = people[index].first;
+      person.birth_day = people[index].second;
+      if (index == posted_row) {
+        person.post.profession = core::ProfessionId{0};
+        person.post.unit = core::UnitId{1};
+      }
+      core::AppendRow(world.residents, person);
+    }
+    return world;
+  };
+  const std::array<std::pair<core::Sex, std::int32_t>, 7> village = {
+      {{core::Sex::kMale, kAdult},
+       {core::Sex::kFemale, kAdult},
+       {core::Sex::kFemale, kGirl},
+       {core::Sex::kFemale, kAdult},
+       {core::Sex::kFemale, kAdult},
+       {core::Sex::kFemale, kAdult},
+       {core::Sex::kFemale, kAdult}}};
+  core::WorldState acting = start(village, 3);
+  failures += Expect(core::ApplyStartAvatar(acting, tables, "acting", nullptr),
+                     "trained milkmaids: the acting chairman's start applies");
+  std::string trained;
+  for (const core::ResidentRow& person : acting.residents.rows) {
+    trained += person.skill_agriculture_earned == 75.0F ? '1' : '0';
+  }
+  failures += Expect(trained == "0100110",
+                     "trained milkmaids: the first three adult women holding no post get skill 75 "
+                     "- not the man, the girl, the posted woman or the fourth");
+  core::WorldState dealer = start(village, 3);
+  bool none = core::ApplyStartAvatar(dealer, tables, "dealer", nullptr);
+  for (const core::ResidentRow& person : dealer.residents.rows) {
+    none = none && person.skill_agriculture_earned == 0.0F;
+  }
+  failures += Expect(none, "trained milkmaids: a chairman with no such path trains nobody");
+  const std::array<std::pair<core::Sex, std::int32_t>, 2> small = {
+      {{core::Sex::kMale, kAdult}, {core::Sex::kFemale, kAdult}}};
+  core::WorldState few = start(small, 99);
+  failures +=
+      Expect(core::ApplyStartAvatar(few, tables, "acting", nullptr) &&
+                 few.residents.rows[1].skill_agriculture_earned == 75.0F,
+             "trained milkmaids: a start with one such woman trains her, and does not refuse");
+  return failures;
+}
+
 int CheckTheAssembly() {
   int failures = 0;
   std::string error;
@@ -141,6 +207,7 @@ int CheckTheAvatarDoor() {
   int failures = 0;
   failures += CheckTheShippedTable();
   failures += CheckTheEmptyAndTheUnknown();
+  failures += CheckTheTrainedMilkmaids();
   failures += CheckTheAssembly();
   return failures;
 }

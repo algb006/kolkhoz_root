@@ -46,6 +46,7 @@
 #include <utility>
 #include <vector>
 
+#include "core_catalog/avatar_catalog.h"
 #include "core_catalog/limit_catalog.h"
 #include "core_common/alarm_state.h"
 #include "core_common/calendar.h"
@@ -69,6 +70,8 @@ class LimitPolicy {
   explicit LimitPolicy(const core::ITableSet& tables) : hay_(tables), delivery_(tables) {
     std::string error;
     ready_ = core::ParseLimitCatalog(tables, catalog_, error) && !catalog_.lots.empty();
+    std::string avatar_error;
+    core::ReadAvatars(tables, avatars_, avatar_error);  // the dealer's grain (#1421)
     ReadCosts(tables);
     sugar_.Read(tables, catalog_);
     const core::ITable* const resources = tables.FindTable("resources");
@@ -941,13 +944,32 @@ class LimitPolicy {
       return false;
     }
     const std::uint32_t best = CheapestLotCarrying(world, missing);
-    if (best == core::kNoTableRow || catalog_.lots[best].points > world.limit.points) {
+    if (best == core::kNoTableRow) {
+      return false;
+    }
+    // THE DEALER PAYS IN GRAIN WHEN HIS POINTS ARE SHORT (#1421; boss: «the
+    // run bot needs a rule for when it pays in grain»): the run's rule, named
+    // in the delivery. A grain-payable lot the points do not reach is ordered
+    // in grain by an avatar whose path opens it; the core refuses it
+    // kGrainShort when the stores lack the grain above the seed rung.
+    const bool short_of_points = catalog_.lots[best].points > world.limit.points;
+    const bool in_grain = short_of_points && catalog_.lots[best].grain_payable &&
+                          PaysInGrain(world) && catalog_.grain_points_per_tonne > 0.0F;
+    if (short_of_points && !in_grain) {
       return false;
     }
     order.kind = core::OrderKind::kOrderLimitLot;
     order.lot = core::LimitLotId{static_cast<std::uint16_t>(best)};
+    order.pay_in_grain = in_grain ? 1U : 0U;
     return true;
   }
+
+  /// Whether the run's avatar may pay a lot in grain (avatars.csv lot_pays_grain).
+  bool PaysInGrain(const core::WorldState& world) const {
+    return core::AvatarOf(avatars_, world.chairman.avatar).lot_pays_grain;
+  }
+
+  std::vector<core::AvatarDef> avatars_;
 
   core::LimitCatalog catalog_;
   std::vector<Cost> costs_;

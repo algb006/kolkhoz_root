@@ -1352,6 +1352,12 @@ enum class OrderRefusal : std::uint8_t {
   /// Seam key `not_restorable`.
   kNotRestorable,
 
+  /// kOrderLimitLot paid in grain (OrderRow::pay_in_grain; #1421, the
+  /// dealer's path): the granaries hold less grain above the seed rung than
+  /// the lot's price in grain (world_params limit_grain_points_per_tonne,
+  /// rye then barley). Nothing is taken. Seam key `grain_short`.
+  kGrainShort,
+
   /// NOT A VALUE, and never written to a save or read from one: the
   /// codecs range-check 0..kOrderRefusalCount-1 and this is what they check against.
   /// Values are appended BEFORE it — that is the whole rule, and it is a
@@ -1510,6 +1516,13 @@ struct OrderRow {
   /// the field is taken as 0 there rather than refused, because a value the
   /// order was never meant to carry is not the chairman making a mistake.
   std::uint8_t male = 0;
+
+  /// kOrderLimitLot of a GOODS lot: 0/1, pay it in grain instead of points
+  /// (#1421; avatars.md «Пути первой сборки», the dealer: «сдать сверх плана
+  /// или заплатить зерном»). READ ONLY WHEN THE AVATAR HAS lot_pays_grain AND
+  /// THE LOT IS grain_payable (limit_catalog.csv): tool_lot and steel_lot.
+  /// Elsewhere it is ignored, as `male` is on a batch.
+  std::uint8_t pay_in_grain = 0;
 
   /// kMarkExtraction: the site to dig on; the mass is `amount`, in grams.
   ExtractionSiteId extraction_site;

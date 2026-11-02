@@ -189,9 +189,14 @@ constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
 // Save 200 (#1373, the rest by its source): a u32[7] after the births' stops -
 // predicted 1336 -> 1368 (28 bytes and a pad of four before the next
 // eight-aligned member) and 150 fields before the build; on the wire +28 a book.
-static_assert(sizeof(YearLedger) == 1368 + (43 * kAmountsSize) + kBuiltInRowsSize,
+// Save 201 (#1417, the ex-chairman's carry): an i32 after limit_points_burned
+// - predicted 1368 -> 1376 and 151 fields before the build, held. Then
+// (#1421, the dealer's grain payment) a u32 and a Grams after it - predicted
+// 1376 -> 1392 (the u32, a pad of four, the eight-aligned i64) and 153 fields
+// before the build; on the wire +16 a book.
+static_assert(sizeof(YearLedger) == 1392 + (43 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 150,
+static_assert(AggregateArity<YearLedger>() == 153,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(BuiltInRow) == 16 && AggregateArity<BuiltInRow>() == 3,
               "BuiltInRow changed — update its codec and VERSION_SAVE");
@@ -392,6 +397,9 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteI32(book.limit_points_granted);
   out.WriteI32(book.limit_points_spent);
   out.WriteI32(book.limit_points_burned);
+  out.WriteI32(book.limit_points_carried);      // save 201 (#1417)
+  out.WriteU32(book.limit_lots_paid_in_grain);  // save 201 (#1421)
+  out.WriteI64(book.limit_grain_paid);
   out.WriteFloat(book.satisfaction_sum);
   out.WriteU32(book.satisfaction_samples);
   out.WriteFloat(book.able_bodied_days);
@@ -663,6 +671,9 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.limit_points_granted = in.ReadI32();
   book.limit_points_spent = in.ReadI32();
   book.limit_points_burned = in.ReadI32();
+  book.limit_points_carried = in.ReadI32();      // save 201 (#1417)
+  book.limit_lots_paid_in_grain = in.ReadU32();  // save 201 (#1421)
+  book.limit_grain_paid = in.ReadI64();
   book.satisfaction_sum = in.ReadFloat();
   book.satisfaction_samples = in.ReadU32();
   book.able_bodied_days = in.ReadFloat();

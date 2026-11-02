@@ -37,6 +37,7 @@
 
 #include "../common/accepted_reds.h"
 #include "../common/advance_write_off_tally.h"
+#include "../common/avatar_book_tally.h"
 #include "../common/births_herd_tally.h"
 #include "../common/building_chairman.h"
 #include "../common/fed_tally.h"
@@ -433,6 +434,10 @@ void LiveOneDay(core::ISimulation& simulation,
     if (rest_tally != nullptr && tick == run::BirthsHerdTally::kSampleHour) {
       rest_tally->CountNoon(state);
     }
+    // The acting chairman's trained women's year-1 days (#1417), at hour 13.
+    if (chairman != nullptr && tick == run::BirthsHerdTally::kSampleHour) {
+      chairman->milkmaids.CountNoon(state);
+    }
     // BY THE STATE'S OWN HOUR, NOT THE LOOP'S INDEX (#1411): the step of index
     // t completes hour t + 1, so index 22 is hour 23 - the day's close, its
     // orders cleared and its rest credited. Read so until #1411, R1373 counted
@@ -534,6 +539,10 @@ bool g_granary_first_off = false;
 /// `--beach=off`: #1373's arm B - the rest set without the canon's beach
 /// (BeachPolicy::SetOff; econ, econ-boss-1373-rest-gates [1]).
 bool g_beach_off = false;
+/// `--avatar=KEY`: the chairman New Game would choose (#1417, #1421; econ's
+/// arms, econ-boss-1427-avatar-gates [1]); empty, the canon: no avatar. An
+/// avatar's paths move the village, so its run is an arm, not the canon.
+std::string g_avatar_key;
 
 /// `--epoch-one-forever`: econ's branch (boss-core-epoch1-queue [34]) — the
 /// run's chairman never orders the transition, and the transition print runs
@@ -673,7 +682,8 @@ bool Walk(std::uint64_t seed,
           Trajectory& out,
           std::uint32_t years = kYears,
           bool warm_off = false) {
-  const run::Simulation world = run::Start(seed);
+  const run::Simulation world =
+      run::Start(seed, 1, "tables", core::StubTables::kRefused, g_avatar_key);
   if (!world) {
     return false;
   }
@@ -719,6 +729,8 @@ bool Walk(std::uint64_t seed,
   run::RestTally rest_tally(*world.tables);
   // The worker-days by satiety band, y1-y5 (#1411's gates).
   run::FedTally fed_tally;
+  // The limit book a year and the lots' order-to-arrival days (#1417, #1421).
+  run::AvatarBookTally avatar_book;
   std::array<std::uint32_t, core::kRestSourceCount> r1373_sources = {};
   std::uint32_t r1373_walk_offs = 0;
   // What the farm's sites waited on, y1-y6 (#1285 G1's probe; boss [3]).
@@ -834,6 +846,7 @@ bool Walk(std::uint64_t seed,
                  warm_off ? nullptr : &fed_tally);
       builder.RunDay(*simulation);
       timber.CountDay(simulation->CompletedState());
+      avatar_book.CountDay(simulation->CompletedState());
       if (!warm_off) {
         site_wait.CountDay(
             simulation->CompletedState(), *simulation, builder.fixture, builder.sawmill, year);
@@ -1159,6 +1172,8 @@ bool Walk(std::uint64_t seed,
     }
     // (a′)'s wedding cost (boss [59]): births of y1-y3, and the wedding
     // queue's length and its longest wait in days at each of their turns.
+    // The limit book's closed year, y1-y5 (#1417, #1421).
+    avatar_book.CloseYear(state.ledger.closed, year);
     if (year >= 4 && year <= run::SiteWaitTally::kLastYear) {
       for (const std::uint32_t r : g1285_roofed) {
         g1285_snow_y4y6 +=
@@ -1340,6 +1355,8 @@ bool Walk(std::uint64_t seed,
                 << " teen_below40 " << rest_tally.TeenBelow40() << '\n';
       builder.beach.Report("population_curve", seed);
       fed_tally.Print(std::cout, seed);
+      avatar_book.Print(std::cout, seed);
+      builder.milkmaids.Report("population_curve", seed);
     }
   }
   out.timber = timber.years();
@@ -1474,6 +1491,8 @@ int main(int argc, char** argv) {
       g_granary_first_off = true;
     } else if (argument == "--beach=off") {
       g_beach_off = true;
+    } else if (argument.starts_with("--avatar=")) {
+      g_avatar_key = std::string(argument.substr(std::string_view("--avatar=").size()));
     } else if (argument == "--roof-exemption=old") {
       g_roof_exemption_old = true;
     } else if (argument == "--no-planting") {

@@ -96,6 +96,11 @@ struct LimitLotDef {
   /// Whether the order names the sex. True for a single head of a kind that
   /// has one; false for a batch, which comes mixed.
   bool sex_choice = false;
+
+  /// The lot may be paid in grain by an avatar whose path opens it (#1421;
+  /// limit_catalog.csv `grain_payable`, 0/1, boss's design.db: tool_lot and
+  /// steel_lot). Absent or 0: points only.
+  bool grain_payable = false;
 };
 
 /// @brief The whole catalogue and the year's points knobs. Defaults are the
@@ -146,6 +151,16 @@ struct LimitCatalog {
   /// Days the district's cart takes, and the most it may be late by.
   std::uint32_t delivery_days = 2;
   std::uint32_t delivery_delay_days_max = 2;
+
+  /// THE GRAIN A POINT IS PAID IN (#1421, the dealer; econ's Q5: the
+  /// district's own selling rate, «5 т ячменя за 30 баллов», 6 points a
+  /// tonne): world_params limit_grain_points_per_tonne. 0 when absent: no lot
+  /// is paid in grain.
+  float grain_points_per_tonne = 0.0F;
+
+  /// The grains taken, in order (econ's Q5: rye, then barley), by their
+  /// resources.csv keys; the seed rung of each is never touched.
+  std::vector<ResourceId> grain_payment_order;
 
   // -- the district MTS's column (MTS design §1; boss, parcel 449; STUB) -----
 

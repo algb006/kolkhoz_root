@@ -35,6 +35,7 @@
 #include "house_policy.h"
 #include "insulation_policy.h"
 #include "limit_policy.h"
+#include "milkmaid_policy.h"
 #include "night_pasture_policy.h"
 #include "office_policy.h"
 #include "planting_policy.h"
@@ -79,6 +80,7 @@ class BuildingChairman {
         digging(tables),
         roads(tables),
         beach(tables),
+        milkmaids(tables),
         transition(tables),
         cemetery(tables),
         warm_hold(tables),
@@ -430,6 +432,7 @@ class BuildingChairman {
     // The beach and its path, after the suggested roads so that a suggested
     // path to it, when the map has one, is laid before the fallback asks.
     beach.RunDay(simulation);
+    milkmaids.RunDay(simulation);
   }
 
   /// @brief The relapse arm's dismissal: a kDismiss for every resident on a
@@ -501,6 +504,9 @@ class BuildingChairman {
   SuggestedRoadsPolicy roads;
   /// The beach in year 1 and its path (#1373, econ's arm A; beach_policy.h).
   BeachPolicy beach;
+  /// The acting chairman's trained women posted at the first cattle yard
+  /// (#1417; milkmaid_policy.h).
+  MilkmaidPolicy milkmaids;
   TransitionPolicy transition;
   CemeteryPolicy cemetery;
   WarmHold warm_hold;

@@ -66,9 +66,10 @@ namespace {
 /// the four points eight more floats, the road an EIGHTH entity id. And for
 /// road work (delivery 7e): the piece under work a NINTH entity id. And for
 /// the groom's tasks (B7's contract): the task a TENTH entity id, its level
-/// one more one-byte enum.
+/// one more one-byte enum. And for the dealer's grain payment (#1421, save
+/// 201): pay_in_grain, a third raw 0/1 byte beside `male`.
 constexpr std::size_t kOrderBytes =
-    5 + 8 + (7 * 4) + (8 * 2) + (4 * 4) + 8 + 2 + (2 + 1) + (8 * 4) + 4 + 4 + 4 + 1;
+    5 + 8 + (7 * 4) + (8 * 2) + (4 * 4) + 8 + 2 + (2 + 1) + (8 * 4) + 4 + 4 + 4 + 1 + 1;
 
 constexpr std::size_t kEntryBytes = 8 + 4 + 1 + kOrderBytes + 4;
 
@@ -107,8 +108,9 @@ static_assert(sizeof(OrderRow) == 144, "OrderRow changed — update the journal 
 /// under work, 33 fields and still 136 bytes — the id in the tail padding
 /// after the road, predicted before the build: only this wire could fire.
 /// B7's contract: the groom's task and its level, 35 fields and 144 bytes,
-/// predicted before the build.
-static_assert(AggregateArity<OrderRow>() == 35,
+/// predicted before the build. #1421: pay_in_grain, 36 fields and still 144
+/// bytes, predicted before the build.
+static_assert(AggregateArity<OrderRow>() == 36,
               "OrderRow gained or lost a field — recount kOrderBytes and update WriteOrder");
 
 constexpr std::uint8_t kMaxFundKind = static_cast<std::uint8_t>(FundKind::kFundKindCount) - 1;
@@ -278,6 +280,7 @@ void WriteOrder(Writer& out, const OrderRow& row) {
   // still 80 — so the size tripwire said nothing and only the arity one
   // fired, which is the exact case it was written for.
   out.U8(row.male);
+  out.U8(row.pay_in_grain);  // #1421, save 201
   // The ration's switch (kSetRation, 2026-09-18): the family, a seventh
   // entity id, and the 0/1 byte.
   out.U32(row.family.value);
@@ -337,6 +340,7 @@ OrderRow ReadOrder(Reader& in) {
   // the field is only ever tested `!= 0` — and that is exactly the kind of
   // "harmless today" the codec's tripwires exist to stop being told.
   row.male = in.EnumValue(1);
+  row.pay_in_grain = in.EnumValue(1);  // #1421, save 201
   row.family = FamilyId{in.U32()};
   row.enable = in.EnumValue(1);
   row.area_ha = in.Float();

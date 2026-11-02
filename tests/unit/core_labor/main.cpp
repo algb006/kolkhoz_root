@@ -1237,6 +1237,98 @@ int TestLeisureDayOff() {
   return failures;
 }
 
+/// THE DAY OFF AND THE BATH BY REACH (#1373, unit-tested late: 0.37.350 shipped
+/// them with no labor unit) AND THE VILLAGER'S PATHS (#1421). A club 300 m from
+/// the yard, a wild bathing place 300 m off:
+/// - a February Sunday with only the club in reach: +15 for the neutral
+///   chairman, +12 for the villager in years 1-2 (club_rest_factor 0.8), and +15
+///   for him in year 3;
+/// - a warm Sunday with water in reach: +15 for the villager in year 1 (the
+///   water's bypass);
+/// - a warm working day at a field next door with a wild place in reach: the
+///   villager's bath is the beach's +3 where the neutral's is +1 - the two
+///   worlds part by exactly 2.
+int TestLeisureByReach() {
+  int failures = 0;
+  const test::FakeTable labor_table({"key", "value"},
+                                    {{"rest_recovery_day_off", "8"},
+                                     {"rest_recovery_day_off_leisure", "15"},
+                                     {"leisure_reach_m", "1000"},
+                                     {"bathing_rest_beach", "3"},
+                                     {"bathing_rest_wild", "1"}});
+  const test::FakeTable types({"key"}, {{"house"}, {"culture_house"}, {"beach"}});
+  const test::FakeTable avatars(
+      {"key",
+       "start_reputation",
+       "club_rest_factor",
+       "club_rest_factor_years",
+       "wild_bath_as_beach"},
+      {{"neutral", "50", "", "", ""}, {"villager", "45", "0.8", "2", "1"}});
+  const test::FakeTable wild({"place", "x_m", "y_m"}, {{"ford", "0", "300"}});
+  const test::FakeTableSet tables({{"labor", &labor_table},
+                                   {"unit_types", &types},
+                                   {"avatars", &avatars},
+                                   {"map_bathing", &wild}});
+  const auto labor = core::CreateLaborSystem(tables, core::StubTables::kAllowed);
+  if (labor == nullptr) {
+    return Expect(false, "leisure by reach: the factory yields a system");
+  }
+  const auto village = [](std::uint16_t avatar, bool club) {
+    DayWorld day(1);
+    day.world.chairman.avatar = core::AvatarId{avatar};
+    if (club) {
+      core::UnitRow hut;
+      hut.type = core::UnitTypeId{1};
+      hut.level = 1;
+      hut.position = core::Vec2{.x = 300.0F, .y = 0.0F};
+      core::AppendRow(day.world.units, hut);
+    }
+    return day;
+  };
+  const auto sunday = [&labor](DayWorld& day, std::uint32_t game_day, float air) {
+    day.world.residents.rows[0].rest = 50.0F;
+    day.world.weather.air_temperature_celsius = air;
+    day.world.weather.temperature_swing_celsius = 0.0F;
+    day.RunDay(*labor, game_day);
+    return day.world.residents.rows[0].rest - 50.0F;
+  };
+  constexpr std::uint32_t kFebruarySunday = 6;  // day 0 a Monday; year 1, month 2
+  constexpr std::uint32_t kYear3Sunday = 104;   // 6 + 14 weeks, year 3
+  DayWorld neutral = village(0, true);
+  DayWorld villager = village(1, true);
+  const float club_neutral = sunday(neutral, kFebruarySunday, 0.0F);
+  const float club_villager = sunday(villager, kFebruarySunday, 0.0F);
+  const float club_villager_y3 = sunday(villager, kYear3Sunday, 0.0F);
+  DayWorld warm_villager = village(1, true);
+  const float water_villager = sunday(warm_villager, kFebruarySunday, 25.0F);
+  std::cout << "leisure by reach: club Sunday neutral +" << club_neutral << ", villager y1 +"
+            << club_villager << ", y3 +" << club_villager_y3 << ", warm with water +"
+            << water_villager << '\n';
+  failures += Expect(std::abs(club_neutral - 15.0F) < 0.01F,
+                     "leisure by reach: the club in reach gives a February Sunday +15");
+  failures += Expect(std::abs(club_villager - 12.0F) < 0.01F,
+                     "leisure by reach: the villager's club gives +12 in his first two years");
+  failures +=
+      Expect(std::abs(club_villager_y3 - 15.0F) < 0.01F, "leisure by reach: and +15 from year 3");
+  failures += Expect(std::abs(water_villager - 15.0F) < 0.01F,
+                     "leisure by reach: water in reach on a warm day gives him the full +15");
+  // The bath after work: one worker at a field 100 m off on a warm Monday.
+  const auto bathed = [&labor](std::uint16_t avatar) {
+    DayWorld day(1);
+    day.world.chairman.avatar = core::AvatarId{avatar};
+    day.world.weather.air_temperature_celsius = 25.0F;
+    day.AddField(core::FieldPhase::kSowing, 100.0F, core::Vec2{.x = 100.0F, .y = 0.0F});
+    day.RunDay(*labor, 1);
+    return day.world.residents.rows[0].rest;
+  };
+  const float apart = bathed(1) - bathed(0);
+  std::cout << "leisure by reach: the villager's bath over the neutral's +" << apart << '\n';
+  failures += Expect(std::abs(apart - 2.0F) < 0.01F,
+                     "leisure by reach: the villager bathes at the wild place as at a beach, +3 "
+                     "against +1");
+  return failures;
+}
+
 int TestWalkOffPaysAndStops() {
   int failures = 0;
   const test::FakeTableSet tables;
@@ -4927,6 +5019,7 @@ int main() {
   failures += TestTheWeekLabourBook();
   failures += TestWalkOffPaysAndStops();
   failures += TestLeisureDayOff();
+  failures += TestLeisureByReach();
   failures += TestASpentManIsNotSent();
   failures += TestBarnRunsOnTheDayOff();
   failures += TestRainStopsTheSowingAndTheReaping();

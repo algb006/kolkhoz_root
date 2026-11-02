@@ -74,6 +74,40 @@ struct AvatarDef {
   /// The master's eye's speed (#636; the master_eye sign as a number:
   /// «++» 2, «+» 1.5, «0»/«—» 1, «−» 0.7, «−−» 0.5). core_world/master_eye.h.
   float eye_growth_factor = 1.0F;
+
+  // -- the first build's paths (#1417, #1421; avatars.md «Пути первой сборки»;
+  //    econ's gates econ-boss-1427-avatar-gates [1]; STUB numbers) ----------
+
+  /// Women given the milkmaid post at genesis, trained (the acting chairman:
+  /// 3; skill_agriculture_earned 75, econ's Q1). core_world/genesis.
+  std::uint8_t start_trained_milkmaids = 0;
+
+  /// The share of the year's unspent limit points kept at the year's close,
+  /// floored (the ex-chairman: 0.333). Its debuff - the yearly audit at 10 %
+  /// and the extra information requests - is ACCEPTED AND NOT ENTERED
+  /// (avatars.md rows 178, 304; crime is outside the core).
+  float limit_points_carry_share = 0.0F;
+
+  /// A wild bathing place in reach credits the beach's bath (the villager).
+  bool wild_bath_as_beach = false;
+
+  /// The club's day-off rest × this in the campaign's first N years (the
+  /// villager: 0.8 for 2 years, «+12, а не +15»); water in reach still gives
+  /// the full day off. The club's evening has no rest credit in the core yet.
+  float club_rest_factor = 1.0F;
+  std::uint8_t club_rest_factor_years = 0;
+
+  /// A district goods lot's delivery days × this (the promoted: 0.5).
+  float lot_arrival_factor = 1.0F;
+
+  /// A tool's life × this (the worker: 1.33). STUB READER: no tool wears in
+  /// the core until #1361; read by no door today.
+  float tool_life_factor = 1.0F;
+
+  /// The tool and steel lots may be paid in grain at the district's rate (the
+  /// dealer: econ's Q5, 6 points a tonne, rye then barley, never below the
+  /// seed step).
+  bool lot_pays_grain = false;
 };
 
 /// @brief Reads tables/avatars.csv into `avatars`, row order = AvatarId.

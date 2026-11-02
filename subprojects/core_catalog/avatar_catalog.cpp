@@ -167,6 +167,35 @@ bool ReadAvatars(const ITableSet& tables, std::vector<AvatarDef>& avatars, std::
                     "eye_growth_factor",
                     Range{.low = 0.1F, .high = 10.0F},
                     avatar.eye_growth_factor,
+                    error) ||
+        // The first build's paths (#1417, #1421): absent columns read neutral.
+        !ReadCount(
+            *table, row, "start_trained_milkmaids", 20.0F, avatar.start_trained_milkmaids, error) ||
+        !ReadFactor(*table,
+                    row,
+                    "limit_points_carry_share",
+                    Range{.low = 0.0F, .high = 1.0F},
+                    avatar.limit_points_carry_share,
+                    error) ||
+        !ReadFactor(*table,
+                    row,
+                    "club_rest_factor",
+                    Range{.low = 0.0F, .high = 2.0F},
+                    avatar.club_rest_factor,
+                    error) ||
+        !ReadCount(
+            *table, row, "club_rest_factor_years", 100.0F, avatar.club_rest_factor_years, error) ||
+        !ReadFactor(*table,
+                    row,
+                    "lot_arrival_factor",
+                    Range{.low = 0.1F, .high = 10.0F},
+                    avatar.lot_arrival_factor,
+                    error) ||
+        !ReadFactor(*table,
+                    row,
+                    "tool_life_factor",
+                    Range{.low = 0.1F, .high = 10.0F},
+                    avatar.tool_life_factor,
                     error)) {
       return false;
     }
@@ -176,7 +205,9 @@ bool ReadAvatars(const ITableSet& tables, std::vector<AvatarDef>& avatars, std::
     }
     avatar.plan_trade_closed = closed == 1.0F;
     if (!ReadFlag(*table, row, "opens_gated_crafts", avatar.opens_gated_crafts, error) ||
-        !ReadFlag(*table, row, "sees_theft_same_day", avatar.sees_theft_same_day, error)) {
+        !ReadFlag(*table, row, "sees_theft_same_day", avatar.sees_theft_same_day, error) ||
+        !ReadFlag(*table, row, "wild_bath_as_beach", avatar.wild_bath_as_beach, error) ||
+        !ReadFlag(*table, row, "lot_pays_grain", avatar.lot_pays_grain, error)) {
       return false;
     }
     avatars.push_back(std::move(avatar));

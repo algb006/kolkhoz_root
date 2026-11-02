@@ -4,12 +4,16 @@
 // @threading SINGLE_THREADED
 // Called once from CreateStandardSimulation, before the first step.
 
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
 #include "core_catalog/avatar_catalog.h"
+#include "core_catalog/world_conventions.h"
+#include "core_common/calendar.h"
 #include "core_common/ids.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
@@ -22,6 +26,55 @@ void Refuse(std::string* error, std::string sentence) {
   if (error != nullptr) {
     *error = std::move(sentence);
   }
+}
+
+/// The acting chairman's skill (econ, core-boss-1417-1421-columns [3], Q1:
+/// «опытная», STUB) - skill_agriculture_earned has no other writer (#1424).
+constexpr float kTrainedMilkmaidSkill = 75.0F;
+
+/// THE ACTING CHAIRMAN'S THREE TRAINED MILKMAIDS (#1417; avatars.md l.184, as
+/// boss wrote it 2 Nov: no post before the yard): the first `count` adult
+/// women of the start by row, holding no post, get kTrainedMilkmaidSkill. The
+/// start has no cattle yard, the milkmaid post's only unit (unit_staff.csv),
+/// so the post is the player's move the day the yard stands. A start with
+/// fewer such women gives as many as it has.
+bool GiveTrainedMilkmaids(WorldState& world,
+                          const ITableSet& tables,
+                          std::uint8_t count,
+                          std::string* error) {
+  if (count == 0) {
+    return true;
+  }
+  std::optional<float> speedup;
+  std::string read_error;
+  if (!FindLifeSpeedup(tables, speedup, read_error)) {
+    Refuse(error, std::move(read_error));
+    return false;
+  }
+  float adult_years = 16.0F;
+  if (const ITable* const life = tables.FindTable("life")) {
+    const std::uint32_t row = life->FindRowByKey("adult_age_years");
+    const std::uint32_t column = life->FindColumn("value");
+    if (row != kNoTableRow && column != kNoTableColumn) {
+      adult_years = static_cast<float>(life->CellReal(row, column).value_or(adult_years));
+    }
+  }
+  std::uint8_t given = 0;
+  for (ResidentRow& resident : world.residents.rows) {
+    if (given == count) {
+      break;
+    }
+    const bool adult =
+        BiologicalAgeYears(speedup.value_or(1.0F), resident.birth_day, world.calendar.day) >=
+        adult_years;
+    if (resident.sex != Sex::kFemale || !adult ||
+        resident.post.profession.value != kInvalidDefIdValue) {
+      continue;
+    }
+    resident.skill_agriculture_earned = kTrainedMilkmaidSkill;
+    ++given;
+  }
+  return true;
 }
 
 }  // namespace
@@ -67,7 +120,7 @@ bool ApplyStartAvatar(WorldState& world,
   if (row.day_off_working_closed_years > 0) {
     world.chairman.harvest_without_days_off = 0;
   }
-  return true;
+  return GiveTrainedMilkmaids(world, tables, row.start_trained_milkmaids, error);
 }
 
 }  // namespace core

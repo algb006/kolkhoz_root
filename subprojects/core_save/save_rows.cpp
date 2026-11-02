@@ -404,7 +404,9 @@ static_assert(sizeof(OrderRow) == 144, "OrderRow changed — update the codec an
 // the arity check was worth its line.
 // Save 104 (7e): road_work, an entity id into the tail's padding after the
 // road — 136 still and 33 fields, predicted before the build.
-static_assert(AggregateArity<OrderRow>() == 35,
+// Save 201 (#1421): pay_in_grain, a byte beside `male` - predicted 144 still
+// (the padding after it) and 36 fields before the build.
+static_assert(AggregateArity<OrderRow>() == 36,
               "OrderRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 93: travel_hours, a float at the end — 36 and ten fields, predicted
 // before the field was added.
@@ -1748,6 +1750,7 @@ void WriteOrderRow(SaveSink& sink, const OrderRow& row) {
   // dictionary id: it is a fact about the order, not a name of anything in
   // the tables.
   out.WriteU8(row.male);
+  out.WriteU8(row.pay_in_grain);  // save 201 (#1421, the dealer's grain payment)
 
   // The ration's switch (kSetRation, 2026-09-18, save 57): the family and
   // the 0/1 byte.
@@ -1802,6 +1805,8 @@ OrderRow ReadOrderRow(LoadSource& source) {
   row.lot = LimitLotId{source.ReadDefId(DefKind::kLimitLot)};
   row.extraction_site = ReadEntityId<ExtractionSiteId>(in);
   row.male = in.ReadU8();
+  row.pay_in_grain =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "order grain payment"));  // save 201
   row.family = ReadEntityId<FamilyId>(in);
   row.enable = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "order ration switch"));
   row.road_kind = static_cast<RoadKind>(source.ReadEnumValue(

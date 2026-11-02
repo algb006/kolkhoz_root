@@ -3495,6 +3495,7 @@ class LaborSystem final : public ILaborSystem {
         current.weather.air_temperature_celsius + current.weather.temperature_swing_celsius >=
         config_.warm_water_celsius;
     std::unordered_map<std::uint32_t, LeisureReach> reach_cache;
+    const AvatarDef& avatar = AvatarOf(config_.avatars, current.chairman.avatar);
     for (ResidentRow& resident : current.residents.rows) {
       // The daily rest balance of decision 107: a day worked is the drain
       // already charged hour by hour and nothing back; a day at home on a
@@ -3537,15 +3538,28 @@ class LaborSystem final : public ILaborSystem {
           // kept only for a table set without leisure_reach_m. A man away from
           // the village has none of it and keeps the ordinary day off.
           bool leisure = false;
+          float leisure_factor = 1.0F;
           if (at_home && config_.leisure_reach_m > 0.0F) {
             const LeisureReach reach = ReachOf(current, resident.family, reach_cache);
-            leisure = reach.club || (warm && (reach.beach || reach.wild));
+            const bool water = warm && (reach.beach || reach.wild);
+            leisure = reach.club || water;
+            // THE VILLAGER'S CLUB (#1421; avatars.md l.192, «Клуб — городская
+            // вещь: в годы 1–2 выходной и вечер у клуба дают +12, а не +15.
+            // Обход — вода в пределах 1 000 м даёт те же +15»): the club alone
+            // credits the day off × club_rest_factor in the first years; water
+            // in reach gives the full day off. The club's evening has no rest
+            // credit in the core yet.
+            if (!water && reach.club &&
+                current.calendar.date.year <= avatar.club_rest_factor_years) {
+              leisure_factor = avatar.club_rest_factor;
+            }
           } else if (at_home) {
             leisure = MonthInRange(static_cast<std::uint8_t>(current.calendar.date.month),
                                    config_.leisure_from_month,
                                    config_.leisure_to_month);
           }
-          back = leisure ? config_.rest_recovery_day_off_leisure : config_.rest_recovery_day_off;
+          back = leisure ? config_.rest_recovery_day_off_leisure * leisure_factor
+                         : config_.rest_recovery_day_off;
           ++by_source[static_cast<std::size_t>(leisure ? RestSource::kDayOffLeisure
                                                        : RestSource::kDayOffPlain)];
         }
@@ -3557,9 +3571,12 @@ class LaborSystem final : public ILaborSystem {
         // a wild place only for +1; the teens twice (boss G5). A walk-off is a
         // day at home above, and bathes not.
         const LeisureReach reach = ReachOf(current, resident.family, reach_cache);
-        const float bath = reach.beach  ? config_.bathing_rest_beach
-                           : reach.wild ? config_.bathing_rest_wild
-                                        : 0.0F;
+        // THE VILLAGER'S WILD PLACE (#1421; avatars.csv wild_bath_as_beach):
+        // for him a wild place in reach bathes as a beach does.
+        const bool wild_as_beach = avatar.wild_bath_as_beach && reach.wild;
+        const float bath = (reach.beach || wild_as_beach) ? config_.bathing_rest_beach
+                           : reach.wild                   ? config_.bathing_rest_wild
+                                                          : 0.0F;
         if (bath > 0.0F) {
           const float age = BiologicalAgeYears(config_, resident.birth_day, current.calendar.day);
           const bool teen =

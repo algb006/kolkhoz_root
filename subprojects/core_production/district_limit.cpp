@@ -10,6 +10,7 @@
 
 #include "core_common/calendar.h"
 #include "core_common/emit_event.h"
+#include "core_common/fund_ladder.h"
 #include "core_common/herd_age_band.h"
 #include "core_common/horse_lamp_memory.h"
 #include "core_common/random.h"
@@ -19,6 +20,7 @@
 #include "herd_life.h"
 #include "herd_system.h"
 #include "livestock_homes.h"
+#include "seed_room.h"
 #include "stock_ops.h"
 
 namespace core {
@@ -126,6 +128,44 @@ OrderRefusal OrderMtsColumn(const ProductionConfig& config,
   return OrderRefusal::kNone;
 }
 
+/// THE DEALER'S GRAIN PAYMENT (#1421; econ's Q5): the lot's points over the
+/// district's rate (limit_grain_points_per_tonne) in grain, taken in the
+/// catalogue's order (rye, then barley) from what the stores hold ABOVE each
+/// grain's seed rung (fund_ladder.h, SeedRungLeft) - food and seed are not
+/// spent. Asked whole before anything is taken: short, kGrainShort and
+/// nothing moves.
+OrderRefusal PayLotInGrain(const ProductionConfig& config,
+                           WorldState& current,
+                           const LimitLotDef& def) {
+  const auto price = static_cast<Grams>(std::llround(
+      static_cast<double>(def.points) / static_cast<double>(config.limit.grain_points_per_tonne) *
+      static_cast<double>(kGramsPerTonne)));
+  const ResourceAmounts seed =
+      SeedRungLeft(current, SeedNormsOf(config), config.feed_values.size());
+  std::vector<Grams> free_by_grain;
+  Grams free_total = 0;
+  for (const ResourceId grain : config.limit.grain_payment_order) {
+    // What TakeFromStorage below can take, not what lies anywhere: counted
+    // through the same door as the taking, so a lot passed is a lot paid.
+    const Grams held = TakeableGrams(current, config, grain);
+    const Grams kept = grain.value < seed.size() ? seed[grain.value] : 0;
+    const Grams free = held > kept ? held - kept : 0;
+    free_by_grain.push_back(free);
+    free_total += free;
+  }
+  if (free_total < price) {
+    return OrderRefusal::kGrainShort;
+  }
+  Grams owed = price;
+  for (std::size_t index = 0; index < free_by_grain.size() && owed > 0; ++index) {
+    const Grams take = free_by_grain[index] < owed ? free_by_grain[index] : owed;
+    owed -= TakeFromStorage(current, config, config.limit.grain_payment_order[index], take);
+  }
+  current.ledger.current.limit_lots_paid_in_grain += 1;
+  current.ledger.current.limit_grain_paid += price - owed;
+  return OrderRefusal::kNone;
+}
+
 }  // namespace
 
 std::uint32_t LimitBaseDeliveryDays(const ProductionConfig& config, const WorldState& world) {
@@ -154,8 +194,17 @@ std::uint32_t LimitCartArriveDay(const ProductionConfig& config,
       CounterHashBits(current.world_seed, order.issued_tick, order_key, kDeliveryDelayStream),
       kDeliveryDelayStream);
   const std::uint32_t delay = NextRandomBelow(rng, spread);
-  return static_cast<std::uint32_t>(current.calendar.day) + LimitBaseDeliveryDays(config, current) +
-         delay;
+  // THE PROMOTED'S LOT ARRIVES SOONER (#1421; avatars.csv lot_arrival_factor,
+  // 0.5): the base days and the delay together × the factor, rounded, never
+  // below the next day. The draw is taken as before, so the keyed stream of
+  // every other avatar is the same.
+  const float factor = AvatarOf(config.avatars, current.chairman.avatar).lot_arrival_factor;
+  std::uint32_t days = LimitBaseDeliveryDays(config, current) + delay;
+  if (factor != 1.0F) {
+    const auto scaled = static_cast<std::uint32_t>(std::lround(static_cast<float>(days) * factor));
+    days = scaled > 0 ? scaled : 1U;
+  }
+  return static_cast<std::uint32_t>(current.calendar.day) + days;
 }
 
 OrderRefusal LotOrderable(const LimitCatalog& catalog, LimitLotId lot, Epoch epoch) {
@@ -297,13 +346,28 @@ OrderRefusal OrderLimitLot(const ProductionConfig& config,
   // THE DOOR'S QUESTION HAS ONE HOME (LimitLotRefusalToday; 0.37.122): the
   // room, the kind's house, the store and the points, in that order, asked
   // here before anything is spent — and by whoever advises a purchase.
-  const OrderRefusal refusal =
-      LimitLotRefusalToday(config, current, order.lot, current.limit.points, unstorable);
+  // PAID IN GRAIN (#1421; avatars.md «Пути первой сборки», the dealer:
+  // «сдать сверх плана или заплатить зерном»; econ's Q5): the order's own
+  // choice, read only for a grain-payable goods lot of an avatar whose path
+  // opens it. The points are then not asked, the rest of the door is.
+  const bool in_grain = order.pay_in_grain != 0 && def.grain_payable &&
+                        def.kind == LimitLotKind::kGoods &&
+                        AvatarOf(config.avatars, current.chairman.avatar).lot_pays_grain &&
+                        config.limit.grain_points_per_tonne > 0.0F;
+  const OrderRefusal refusal = LimitLotRefusalToday(
+      config, current, order.lot, in_grain ? def.points : current.limit.points, unstorable);
   if (refusal != OrderRefusal::kNone) {
     return refusal;
   }
-  current.limit.points -= def.points;
-  current.ledger.current.limit_points_spent += def.points;
+  if (in_grain) {
+    const OrderRefusal grain = PayLotInGrain(config, current, def);
+    if (grain != OrderRefusal::kNone) {
+      return grain;
+    }
+  } else {
+    current.limit.points -= def.points;
+    current.ledger.current.limit_points_spent += def.points;
+  }
 
   const std::uint32_t arrive_day = LimitCartArriveDay(config, current, order);
 
@@ -701,8 +765,19 @@ void TurnLimitYear(const ProductionConfig& config,
   // The closing year's book is still `current` here: the ledger turns in the
   // events slot, later in this same tick (core_world/world.cpp, RotateLedger),
   // which is also where the new year's grant is booked.
-  current.ledger.current.limit_points_burned += current.limit.points;
+  // THE EX-CHAIRMAN'S CARRY (#1417; avatars.md row 178, «до трети
+  // неистраченных баллов лимита переходит на следующий год»): that share of
+  // the unspent points, floored, is kept past the turn and the rest burns. Its
+  // debuff, the yearly audit at the 10 % threshold and the extra information
+  // requests, is ACCEPTED AND NOT ENTERED (avatars.md rows 178, 304; crime is
+  // outside the core) - boss, core-boss-1417-1421-columns [2], Q3.
+  const float share = AvatarOf(config.avatars, current.chairman.avatar).limit_points_carry_share;
+  const std::int32_t unspent = current.limit.points > 0 ? current.limit.points : 0;
+  const auto carried = static_cast<std::int32_t>(std::floor(static_cast<float>(unspent) * share));
+  current.ledger.current.limit_points_burned += unspent - carried;
+  current.ledger.current.limit_points_carried += carried;
   GrantYear(config, current, plan_fully_met, overfulfil_grain_tonnes);
+  current.limit.points += carried;  // after the grant, which sets the year's points anew
 }
 
 void RunEraEvents(const ProductionConfig& config, WorldState& current) {

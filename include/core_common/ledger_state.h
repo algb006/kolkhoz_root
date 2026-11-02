@@ -783,6 +783,16 @@ struct YearLedger {
   /// Points left unspent when this year closed and burnt with it.
   std::int32_t limit_points_burned = 0;
 
+  /// Points left unspent when this year closed and CARRIED into the next one
+  /// instead of burning (#1417, the ex-chairman's path, avatars.csv
+  /// limit_points_carry_share; save 201). Unspent = burned + carried.
+  std::int32_t limit_points_carried = 0;
+
+  /// Lots paid in grain this year, and the grain they took (#1421, the
+  /// dealer's path; OrderRow::pay_in_grain; save 201).
+  std::uint32_t limit_lots_paid_in_grain = 0;
+  Grams limit_grain_paid = 0;
+
   // -- what the era-readiness index needs and nothing else kept ------------
   //
   // FOUR QUANTITIES THE INDEX ASKS OF THE YEAR AND THE YEAR DID NOT KEEP

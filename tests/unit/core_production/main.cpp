@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "../../common/fake_tables.h"
+#include "avatar_paths_checks.h"
 #include "cart_trips_checks.h"
 #include "clamp_rot_checks.h"
 #include "core_catalog/seed_norm_catalog.h"
@@ -18174,6 +18175,7 @@ int main() {
   failures += CheckThePlanDue();
   failures += CheckTheTeamsOatPlan();
   failures += CheckTheRatingBeyondThePlan();
+  failures += CheckTheAvatarPathsOnTheLimit();
   failures += CheckAStarvedKolkhozHerdDoesNotInterruptAgain();
   failures += CheckTheHerdPlan();
   failures += CheckThePerennialsCut();

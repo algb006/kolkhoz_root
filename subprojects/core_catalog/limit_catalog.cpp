@@ -20,7 +20,7 @@ namespace {
 /// The first kPointKnobCount are whole points and days; the rest are the MTS
 /// column's (ReadMtsColumnKnobs), the handover shares, the electrification
 /// mark and the overfulfilment scale (ReadOverfulfilKnobs).
-constexpr std::array<std::string_view, 27> kLimitWorldParamKeys = {
+constexpr std::array<std::string_view, 28> kLimitWorldParamKeys = {
     "limit_base_points_lagging",
     "limit_base_points_average",
     "limit_base_points_strong",
@@ -66,9 +66,15 @@ constexpr std::array<std::string_view, 27> kLimitWorldParamKeys = {
     // THE OVERFULFILMENT'S DEDUCTION (boss seq 89, 2026-09-19): tonnes short
     // on positions not delivered weigh this many times the tonnes over.
     // Appended rather than set beside the scale so no index above moves.
-    "limit_overfulfil_shortfall_factor"};
+    "limit_overfulfil_shortfall_factor",
+    // THE GRAIN A POINT IS PAID IN (#1421, the dealer; econ's Q5): points a
+    // tonne. Appended, so no index above moves.
+    "limit_grain_points_per_tonne"};
 
 constexpr std::size_t kPointKnobCount = 7;
+
+/// Where the grain payment's rate stands in the list above.
+constexpr std::size_t kGrainRateKnob = 27;
 
 /// Where the four handover shares begin in the list above.
 constexpr std::size_t kHandoverKnobFirst = 13;
@@ -158,6 +164,16 @@ bool ReadLots(const ITable& table, LimitCatalog& catalog, std::string& error) {
       return false;
     }
     lot.era = static_cast<std::uint8_t>(*era);
+    // #1421: an absent column or a blank cell is points only.
+    const std::uint32_t grain_column = table.FindColumn("grain_payable");
+    if (grain_column != kNoTableColumn && !table.CellText(row, grain_column).empty()) {
+      const std::optional<std::int64_t> flag = table.CellInteger(row, grain_column);
+      if (!flag.has_value() || (*flag != 0 && *flag != 1)) {
+        error = prefix + "grain_payable is not 0 or 1";
+        return false;
+      }
+      lot.grain_payable = *flag == 1;
+    }
   }
   return true;
 }
@@ -526,6 +542,24 @@ bool ParseLimitCatalog(const ITableSet& tables, LimitCatalog& catalog, std::stri
         !ReadOverfulfilKnobs(*world, catalog, error) ||
         !ReadAccumulationKnobs(*world, catalog, error)) {
       return false;
+    }
+    const std::array<ScalarKnob, 1> grain_rate = {
+        ScalarKnob{.key = kLimitWorldParamKeys[kGrainRateKnob],
+                   .value = &catalog.grain_points_per_tonne,
+                   .range = Range{.low = 0.0F, .high = 1000.0F}}};
+    if (!ReadKnobs(*world, "world_params", grain_rate, error)) {
+      return false;
+    }
+  }
+  // THE GRAINS A POINT IS PAID IN, in econ's order (Q5, «рожь, потом
+  // ячмень»): resources.csv keys, a grain absent from the set skipped.
+  catalog.grain_payment_order.clear();
+  if (const ITable* const resources = tables.FindTable("resources")) {
+    for (const std::string_view key : {std::string_view("rye"), std::string_view("barley")}) {
+      const std::uint32_t row = resources->FindRowByKey(key);
+      if (row != kNoTableRow) {
+        catalog.grain_payment_order.push_back(DefIdFromIndex<ResourceIdTag>(row));
+      }
     }
   }
   const ITable* const lots = tables.FindTable("limit_catalog");
