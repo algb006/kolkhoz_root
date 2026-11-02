@@ -143,7 +143,10 @@ static_assert(AggregateArity<ResidentRow>() == 57,
 // Save 189 (#1262): drink_occasion_month and shock_month (u32 each) at the
 // tail - predicted 176 -> 184 + amounts and 42 fields before the build; on
 // the wire +8 a family.
-static_assert(sizeof(FamilyRow) == 184 + kAmountsSize,
+// Save 203 (#1442's window): plot_ratio_without_sum (float) and
+// yard_herd_trudodni (i32) at the tail - predicted 184 -> 192 + amounts and
+// 44 fields before the build; on the wire +8 a family.
+static_assert(sizeof(FamilyRow) == 192 + kAmountsSize,
               "FamilyRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 57: ration_granted, the yard's ration decision — 19 fields;
 // the size is read off the build below, not guessed.
@@ -153,7 +156,7 @@ static_assert(sizeof(FamilyRow) == 184 + kAmountsSize,
 // Save 75: in_barrack and hunger_alarm_lit — 27 fields. Save 113:
 // satisfaction_year — 28. Save 124: season_category_kcal and
 // season_need_kcal — 30.
-static_assert(AggregateArity<FamilyRow>() == 42,
+static_assert(AggregateArity<FamilyRow>() == 44,
               "FamilyRow gained or lost a field — update the codec and VERSION_SAVE");
 // FieldRow took LandKind into a padding byte it already had, so sizeof did
 // NOT move — the one case the tripwire of manual/67-save-format.md §7 cannot
@@ -1053,6 +1056,8 @@ void WriteFamilyRow(SaveSink& sink, const FamilyRow& row) {
   out.WriteFloat(row.sugar_share);
   out.WriteU32(row.drink_occasion_month);  // save 189 (#1262)
   out.WriteU32(row.shock_month);
+  out.WriteFloat(row.plot_ratio_without_sum);  // save 203 (#1442's window)
+  out.WriteI32(row.yard_herd_trudodni);
 }
 
 FamilyRow ReadFamilyRow(LoadSource& source) {
@@ -1128,6 +1133,11 @@ FamilyRow ReadFamilyRow(LoadSource& source) {
   row.sugar_share = in.ReadFloat();
   row.drink_occasion_month = in.ReadU32();  // save 189 (#1262)
   row.shock_month = in.ReadU32();
+  row.plot_ratio_without_sum = in.ReadFloat();  // save 203 (#1442's window)
+  row.yard_herd_trudodni = in.ReadI32();
+  if (!(row.plot_ratio_without_sum >= 0.0F) || row.yard_herd_trudodni < 0) {
+    source.Fail("a family's garden price or herd trudodni are negative or unreadable");
+  }
   if (row.earned_since_formed < 0 || row.advance_debt < 0 || row.advance_given < row.advance_debt) {
     source.Fail("a family's advance is negative or owes more than it was given");
   }

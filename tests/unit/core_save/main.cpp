@@ -2099,8 +2099,10 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // Save 188 (#1241): the sugar's byte and float, +5 a family, two -
     // predicted 390 -> 400, held. Save 189 (#1262): the drinking occasion's
     // and the shock's month tags, +8 a family, two - predicted 400 -> 416,
-    // held; the hash read off it.
-    {"families", 416, 0x361a688ff0f01ca4ULL},
+    // held; the hash read off it. Save 203 (#1442's window): the garden's
+    // without-help attention and the herd trudodni, +8 a family, two -
+    // predicted 416 -> 432, held.
+    {"families", 432, 0xc0e42641f4ccea44ULL},
     // Save 84: +36 — the harvest by parts' laid share (4) and grams (8), 12
     // a row, three rows; predicted before the build and held. Then the first
     // row given non-zero values: the size held at 305, the hash moved.

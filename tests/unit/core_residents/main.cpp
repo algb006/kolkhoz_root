@@ -1489,6 +1489,27 @@ int CheckPlot() {
                        "plot: a yard without a house gives no hours to the herds");
     failures += Expect(std::abs(kept - 0.75F * world.families.rows[0].household_hours) < 0.001F,
                        "plot: a yard with a house gives the day's share of its own hours");
+    // THE WINDOW'S PRICE (save 203): in a growing month the attention without
+    // the help is the gross hours' one, so 1 - with / without reads the
+    // share on the curve min(1, hours / 4 h): this yard's 4.7 gross hours sit
+    // above full yield, so the price is 1 - 3.525 / 4, not the share itself.
+    core::WorldState season = world;
+    season.families.rows[0].house = core::UnitId{1};
+    season.families.rows[0].plot_ratio_sum = 0.0F;
+    season.families.rows[0].plot_ratio_without_sum = 0.0F;
+    season.ledger.current.yard_herd_share_today = 0.25F;
+    SetClock(season, 20, kPlotHour);  // month 6 (July), inside the growing season
+    core::RunHouseholdPlot(config, 4.0F, season, 0);
+    const core::FamilyRow& yard = season.families.rows[0];
+    std::cout << "plot: the window's price with " << yard.plot_ratio_sum << " without "
+              << yard.plot_ratio_without_sum << '\n';
+    const float gross = world.families.rows[0].household_hours;
+    const float expected =
+        1.0F - std::min(1.0F, 0.75F * gross / 4.0F) / std::min(1.0F, gross / 4.0F);
+    failures += Expect(
+        yard.plot_ratio_without_sum > 0.0F &&
+            std::abs(1.0F - yard.plot_ratio_sum / yard.plot_ratio_without_sum - expected) < 0.001F,
+        "plot: the window's price reads the share on the attention curve");
   }
 
   // A whole growing season at full attention pays the yard's whole yield.

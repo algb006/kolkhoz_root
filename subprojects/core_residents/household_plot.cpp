@@ -193,6 +193,7 @@ void HarvestGarden(const FoodConfig& config, FamilyRow& family) {
   AddToPantry(family, config.potato_resource, config.plot.potato_kg_per_yard_year * ratio);
   AddToPantry(family, config.vegetables_resource, config.plot.vegetables_kg_per_yard_year * ratio);
   family.plot_ratio_sum = 0.0F;
+  family.plot_ratio_without_sum = 0.0F;
   family.plot_ratio_days = 0;
 }
 
@@ -222,6 +223,7 @@ void RunHouseholdPlot(const FoodConfig& config,
 
   const YardToday yard = SurveyYard(plot, life_speedup, current, id, day);
   family.household_hours = PlotHours(plot, yard, month);
+  const float gross_hours = family.household_hours;  // before the yards' help
   // THE YARDS' STRADA HELP (#1442; labor's YardsTakeHerdCare): the day's share
   // of every yard's gross plot hours went to the kolkhoz herds this morning,
   // the same share for every yard (boss, core-boss-yards-strada [9]).
@@ -238,6 +240,10 @@ void RunHouseholdPlot(const FoodConfig& config,
     const float ratio = family.household_hours / plot.full_yield_hours;
     family.plot_ratio_sum += ratio < 1.0F ? ratio : 1.0F;
     family.plot_ratio_days += 1;
+    // The same day as if no hours had gone to the herds: the window's price
+    // (FamilyRow::plot_ratio_without_sum, save 203).
+    const float without = gross_hours / plot.full_yield_hours;
+    family.plot_ratio_without_sum += without < 1.0F ? without : 1.0F;
   }
   if (current.calendar.date.day_in_month != kDaysPerMonth - 1U) {
     return;

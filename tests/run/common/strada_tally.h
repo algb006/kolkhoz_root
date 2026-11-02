@@ -207,11 +207,17 @@ class StradaTally {
         // arms' divergence (a family of the twin arm is another family by y2).
         const double inworld =
             without_sum_[row] > 0.0 ? 1.0 - with_sum_[row] / without_sum_[row] : 0.0;
+        // And MEASURED on the row (save 203): the evening before's sums and
+        // the yard's own herd trudodni, beside the run's estimates above.
+        const float measured_loss =
+            last_without_m_[row] > 0.0F ? 1.0F - last_with_m_[row] / last_without_m_[row] : 0.0F;
         harvests_.push_back({.year = year,
                              .family = world.families.row_ids[row].value,
                              .ratio = last_ratio_[row],
                              .inworld_loss = static_cast<float>(inworld),
-                             .yard_trudodni = static_cast<float>(yard_td_[row])});
+                             .yard_trudodni = static_cast<float>(yard_td_[row]),
+                             .measured_loss = measured_loss,
+                             .measured_trudodni = last_td_m_[row]});
         with_sum_[row] = 0.0;
         without_sum_[row] = 0.0;
         yard_td_[row] = 0.0;
@@ -226,6 +232,14 @@ class StradaTally {
         without_sum_[row] += gross / full < 1.0 ? gross / full : 1.0;
       }
       last_ratio_[row] = ratio;
+      if (row >= last_with_m_.size()) {
+        last_with_m_.resize(world.families.rows.size(), 0.0F);
+        last_without_m_.resize(world.families.rows.size(), 0.0F);
+        last_td_m_.resize(world.families.rows.size(), 0.0F);
+      }
+      last_with_m_[row] = family.plot_ratio_sum;
+      last_without_m_[row] = family.plot_ratio_without_sum;
+      last_td_m_[row] = static_cast<float>(family.yard_herd_trudodni) / 100.0F;
     }
   }
 
@@ -234,10 +248,11 @@ class StradaTally {
   void PrintHarvests(std::ostream& out, std::uint64_t seed) const {
     out << "population_curve: G1442 seed " << seed << " garden_full_kcal " << garden_full_kcal_
         << " kcal_per_trudoden y1/y2/y3 " << kcal_per_trudoden_[0] << '/' << kcal_per_trudoden_[1]
-        << '/' << kcal_per_trudoden_[2] << " harvests (year:family:ratio:inworld_loss:yard_td)";
+        << '/' << kcal_per_trudoden_[2]
+        << " harvests (year:family:ratio:inworld_loss:yard_td:measured_loss:measured_td)";
     for (const Harvest& one : harvests_) {
       out << ' ' << one.year << ':' << one.family << ':' << one.ratio << ':' << one.inworld_loss
-          << ':' << one.yard_trudodni;
+          << ':' << one.yard_trudodni << ':' << one.measured_loss << ':' << one.measured_trudodni;
     }
     out << '\n';
   }
@@ -331,6 +346,8 @@ class StradaTally {
     float ratio = 0.0F;
     float inworld_loss = 0.0F;
     float yard_trudodni = 0.0F;
+    float measured_loss = 0.0F;      // the row's 1 - with / without (save 203)
+    float measured_trudodni = 0.0F;  // the row's yard_herd_trudodni, trudodni
   };
 
   std::vector<float> last_ratio_;
@@ -341,6 +358,7 @@ class StradaTally {
   float care_rate_ = 1.0F;
   double prev_by_yards_ = 0.0;
   std::vector<double> yard_td_;
+  std::vector<float> last_with_m_, last_without_m_, last_td_m_;
   std::array<double, kYears> kcal_per_trudoden_ = {};
   std::vector<Harvest> harvests_;
   std::uint32_t winter_old_family_days_ = 0, winter_old_below70_days_ = 0;

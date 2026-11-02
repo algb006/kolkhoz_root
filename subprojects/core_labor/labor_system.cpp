@@ -1383,6 +1383,7 @@ class LaborSystem final : public ILaborSystem {
           static_cast<TrudodniHundredths>(std::lround(trudodni * kTrudodniScale));
       FamilyRow& row = current.families.rows[family];
       row.trudodni_account += hundredths;
+      row.yard_herd_trudodni += hundredths;  // the window's and econ's measure
       if (row.formed_day != kNotFormedInPlay) {
         row.earned_since_formed += hundredths;
       }

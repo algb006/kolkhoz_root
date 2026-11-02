@@ -1481,6 +1481,10 @@ int TestYardsStradaHelp() {
       july.families.rows[0].trudodni_account == 8 && july.families.rows[1].trudodni_account == 4,
       "yards' strada help: and each yard is paid by the hours it gave, at the herd "
       "care's rate");
+  failures += Expect(july.families.rows[0].yard_herd_trudodni == 8 &&
+                         july.families.rows[1].yard_herd_trudodni == 4,
+                     "yards' strada help: the yard's herd trudodni keep what the account got "
+                     "for the herds (save 203)");
   const core::WorldState february = morning(1, kFebruaryDay, 20.0F);
   const core::WorldState neutral = morning(0, kJulyDay, 20.0F);
   failures += Expect(february.ledger.current.herd_care_by_yards == 0.0F &&

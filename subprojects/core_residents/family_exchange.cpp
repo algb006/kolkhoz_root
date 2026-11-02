@@ -802,6 +802,7 @@ void BurnTrudodni(WorldState& current) {
     }
     family.trudodni_account = 0;
     family.trudodni_redeemed = 0;
+    family.yard_herd_trudodni = 0;  // part of the account (#1442's window)
   }
 }
 
