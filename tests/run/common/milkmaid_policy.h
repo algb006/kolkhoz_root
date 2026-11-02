@@ -28,8 +28,12 @@
 #include <string_view>
 #include <vector>
 
+#include "core_common/event_state.h"
+#include "core_common/herd_state.h"
 #include "core_common/labor_state.h"
+#include "core_common/ledger_state.h"
 #include "core_common/order_state.h"
+#include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
@@ -45,6 +49,10 @@ class MilkmaidPolicy {
     if (const core::ITable* const types = tables.FindTable("unit_types")) {
       const std::uint32_t row = types->FindRowByKey("cattle_yard");
       yard_ = row == core::kNoTableRow ? 0xFFFFU : static_cast<std::uint16_t>(row);
+    }
+    if (const core::ITable* const resources = tables.FindTable("resources")) {
+      const std::uint32_t row = resources->FindRowByKey("milk");
+      milk_ = row == core::kNoTableRow ? 0xFFFFU : static_cast<std::uint16_t>(row);
     }
     if (const core::ITable* const posts = tables.FindTable("professions")) {
       const std::uint32_t row = posts->FindRowByKey("milkmaid");
@@ -128,11 +136,51 @@ class MilkmaidPolicy {
     }
   }
 
+  /// @brief The trained women's walk-offs of years 1-3, by the step's events
+  ///        (a milkmaid's care is herd care, worked on days off too). Call
+  ///        after every step.
+  void CountStep(const core::WorldState& world) {
+    if (world.calendar.date.year > 3) {
+      return;
+    }
+    for (const core::SimEvent& event : world.step_events) {
+      if (event.kind != core::EventKind::kWalkOff) {
+        continue;
+      }
+      const std::uint32_t row = core::FindRow(world.residents, event.resident);
+      if (row != core::kNoRow &&
+          world.residents.rows[row].skill_agriculture_earned >= kTrainedSkill) {
+        ++trained_walk_offs_;
+      }
+    }
+  }
+
+  /// @brief econ's gate (econ-boss-1427 [1]): the herds' care left undone at
+  ///        each day's end of year 1, man-days summed. Call once a day.
+  void CountDayEnd(const core::WorldState& world) {
+    if (world.calendar.date.year != 1) {
+      return;
+    }
+    for (const core::HerdRow& herd : world.herds.rows) {
+      care_undone_md_ += static_cast<double>(herd.care_days_remaining);
+    }
+  }
+
+  /// @brief econ's gate: year 1's kolkhoz milk, from the closed book. Call at
+  ///        each year's turn.
+  void CloseYear(const core::YearLedger& closed, std::uint32_t year) {
+    if (year == 1 && milk_ != 0xFFFFU && milk_ < closed.herd_produce.size()) {
+      y1_milk_kg_ = closed.herd_produce[milk_] / 1000;
+    }
+  }
+
   /// @brief The line a village.
   void Report(std::string_view run_name, std::uint64_t seed) const {
     std::cout << run_name << ": M1417 seed " << seed << " trained " << trained_
               << " first_yard_stands " << stands_day_ << " all_posted " << posted_day_
               << " y1_herd_care_days " << care_days_ << " y1_other_work_days " << other_days_
+              << " y1_care_undone_md " << care_undone_md_ << " y1_milk_kg " << y1_milk_kg_
+              << " trained_walk_offs_y1y3 " << trained_walk_offs_
               << (trained_ == 0 ? " (no trained women: no avatar or not the acting chairman)" : "")
               << '\n';
   }
@@ -146,6 +194,10 @@ class MilkmaidPolicy {
   std::int64_t posted_day_ = -1;
   std::uint32_t care_days_ = 0;
   std::uint32_t other_days_ = 0;
+  std::uint16_t milk_ = 0xFFFFU;
+  double care_undone_md_ = 0.0;
+  std::int64_t y1_milk_kg_ = 0;
+  std::uint32_t trained_walk_offs_ = 0;
 };
 
 }  // namespace run

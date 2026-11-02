@@ -403,6 +403,7 @@ void LiveOneDay(core::ISimulation& simulation,
     // until then this run never called WatchStep, and its rule heard nothing.
     if (chairman != nullptr) {
       chairman->WatchStep(simulation.CompletedState());
+      chairman->milkmaids.CountStep(simulation.CompletedState());  // #1417
     }
     // The hay lamp's «объявить день рабочим» is the day off's own morning
     // (hay_day_off_policy.h): asked after every step, answered in the first.
@@ -847,6 +848,7 @@ bool Walk(std::uint64_t seed,
       builder.RunDay(*simulation);
       timber.CountDay(simulation->CompletedState());
       avatar_book.CountDay(simulation->CompletedState());
+      builder.milkmaids.CountDayEnd(simulation->CompletedState());
       if (!warm_off) {
         site_wait.CountDay(
             simulation->CompletedState(), *simulation, builder.fixture, builder.sawmill, year);
@@ -1174,6 +1176,7 @@ bool Walk(std::uint64_t seed,
     // queue's length and its longest wait in days at each of their turns.
     // The limit book's closed year, y1-y5 (#1417, #1421).
     avatar_book.CloseYear(state.ledger.closed, year);
+    builder.milkmaids.CloseYear(state.ledger.closed, year);
     if (year >= 4 && year <= run::SiteWaitTally::kLastYear) {
       for (const std::uint32_t r : g1285_roofed) {
         g1285_snow_y4y6 +=
