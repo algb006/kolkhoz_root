@@ -1303,21 +1303,28 @@ class LaborSystem final : public ILaborSystem {
   /// [2], [3]): in the strada's months the yards take the avatar's share of
   /// each kolkhoz herd's care, the morning after RefillHerdCare, so the posts
   /// and the list see only the rest. «До трети» is a ceiling: the yards give
-  /// at most the plot hours they had yesterday (FamilyRow::household_hours,
-  /// written at hour 22), the rest stays a kolkhoz job. Every yard with a
-  /// house gives in proportion to its adults: the hours a yard adult gives
-  /// today go into the ledger (yard_herd_hours_per_adult_today), and the
-  /// private plot takes them off at hour 22. The care is DONE and paid: the
-  /// man-days are booked as trudodni at the herd care's rate on each yard's
-  /// account by its adults (econ-boss-1438-yards-paid [1]; no new rate, the
-  /// year's pot is divided by more trudodni).
+  /// at most their gross plot hours, the rest stays a kolkhoz job. EVERY YARD
+  /// GIVES THE SAME SHARE OF ITS OWN GARDEN (boss, core-boss-yards-strada [9],
+  /// (b): spread by plot hours, not by adults - by adults a yard whose
+  /// adults all work for the kolkhoz gave its whole garden, 100 % in the first
+  /// pair): the day's share goes into the ledger (yard_herd_share_today), and
+  /// the private plot takes that share of its gross hours off at hour 22. The
+  /// care is DONE and paid: the man-days are booked as trudodni at the herd
+  /// care's rate on each yard's account in proportion to the hours it gave
+  /// (econ-boss-1438-yards-paid [1]; no new rate, the year's pot is divided
+  /// by more trudodni).
   void YardsTakeHerdCare(WorldState& current) const {
     YearLedger& book = current.ledger.current;
-    // Yesterday's gift is added back to yesterday's net plot hours: the yards'
-    // capacity is their GROSS hours, or a day that took them all would leave
-    // the next with none and the help would come every other day.
-    const float yesterday_per_adult = book.yard_herd_hours_per_adult_today;
-    book.yard_herd_hours_per_adult_today = 0.0F;
+    // THE YARDS' GROSS HOURS: yesterday's net plot hours (FamilyRow::
+    // household_hours, written at hour 22) over what yesterday's share left
+    // them. Read net, a day that took a share would leave the next a smaller
+    // base and the help would shrink day by day; at a share near the whole
+    // garden the division is held at kGrossShareCap (STUB) so a garden given
+    // whole still reads some base the next morning.
+    constexpr float kGrossShareCap = 0.95F;
+    const float yesterday_share =
+        book.yard_herd_share_today < kGrossShareCap ? book.yard_herd_share_today : kGrossShareCap;
+    book.yard_herd_share_today = 0.0F;
     const AvatarDef& avatar = AvatarOf(config_.avatars, current.chairman.avatar);
     const auto month = static_cast<std::uint8_t>(current.calendar.date.month);
     if (!(avatar.strada_yard_herd_care_share > 0.0F) || config_.standard_day_hours <= 0.0F ||
@@ -1328,52 +1335,42 @@ class LaborSystem final : public ILaborSystem {
     for (const HerdRow& herd : current.herds.rows) {
       need_days += herd.care_days_remaining;
     }
-    // Each yard with a house: its adults, and yesterday's plot hours.
-    std::vector<std::uint32_t> adults_by_family(current.families.rows.size(), 0);
-    std::uint32_t adults = 0;
-    for (const ResidentRow& resident : current.residents.rows) {
-      const std::uint32_t family = FindRow(current.families, resident.family);
-      if (family == kNoRow || current.families.rows[family].house.value == kInvalidEntityIdValue ||
-          current.families.rows[family].in_barrack != 0 ||  // a barrack has no garden
-          BiologicalAgeYears(config_, resident.birth_day, current.calendar.day) <
-              config_.adult_age_years) {
+    // Each yard with a house (a barrack has no garden): its gross plot hours.
+    std::vector<float> gross_by_family(current.families.rows.size(), 0.0F);
+    float gross_hours = 0.0F;
+    for (std::uint32_t family = 0; family < current.families.rows.size(); ++family) {
+      const FamilyRow& row = current.families.rows[family];
+      if (row.house.value == kInvalidEntityIdValue || row.in_barrack != 0 ||
+          !(row.household_hours > 0.0F)) {
         continue;
       }
-      ++adults_by_family[family];
-      ++adults;
+      gross_by_family[family] = row.household_hours / (1.0F - yesterday_share);
+      gross_hours += gross_by_family[family];
     }
-    float free_hours = 0.0F;
-    for (std::uint32_t family = 0; family < current.families.rows.size(); ++family) {
-      if (adults_by_family[family] > 0) {
-        free_hours += current.families.rows[family].household_hours +
-                      yesterday_per_adult * static_cast<float>(adults_by_family[family]);
-      }
-    }
-    if (!(need_days > 0.0F) || adults == 0 || !(free_hours > 0.0F)) {
+    if (!(need_days > 0.0F) || !(gross_hours > 0.0F)) {
       return;
     }
     const float wanted_hours =
         avatar.strada_yard_herd_care_share * need_days * config_.standard_day_hours;
-    const float taken_hours = wanted_hours < free_hours ? wanted_hours : free_hours;
+    const float taken_hours = wanted_hours < gross_hours ? wanted_hours : gross_hours;
     const float taken_days = taken_hours / config_.standard_day_hours;
     const float keep = 1.0F - taken_days / need_days;
     for (HerdRow& herd : current.herds.rows) {
       herd.care_days_remaining *= keep;
     }
     book.herd_care_by_yards += taken_days;
-    book.yard_herd_hours_per_adult_today = taken_hours / static_cast<float>(adults);
-    // PAID, by the yard's adults, at the herd care's own rate.
+    book.yard_herd_share_today = taken_hours / gross_hours;
+    // PAID, by the hours each yard gave, at the herd care's own rate.
     const auto care_index = static_cast<std::uint32_t>(WorkKind::kHerdCare);
     if (care_index >= config_.rates.size()) {
       return;
     }
-    const float days_per_adult = taken_days / static_cast<float>(adults);
     for (std::uint32_t family = 0; family < current.families.rows.size(); ++family) {
-      if (adults_by_family[family] == 0) {
+      if (!(gross_by_family[family] > 0.0F)) {
         continue;
       }
-      const float trudodni = config_.rates[care_index].trudodni_rate * days_per_adult *
-                             static_cast<float>(adults_by_family[family]);
+      const float trudodni = config_.rates[care_index].trudodni_rate * taken_days *
+                             (gross_by_family[family] / gross_hours);
       const auto hundredths =
           static_cast<TrudodniHundredths>(std::lround(trudodni * kTrudodniScale));
       FamilyRow& row = current.families.rows[family];

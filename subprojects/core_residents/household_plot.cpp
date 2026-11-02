@@ -222,14 +222,12 @@ void RunHouseholdPlot(const FoodConfig& config,
 
   const YardToday yard = SurveyYard(plot, life_speedup, current, id, day);
   family.household_hours = PlotHours(plot, yard, month);
-  // THE YARDS' STRADA HELP (#1442; labor's YardsTakeHerdCare): the hours its
-  // adults gave the kolkhoz herds this morning come off the yard's garden.
-  // Both sides count an adult from 16 (labor's adult_age_years, this table's
-  // plot_schoolchild_to_bio_years).
-  const float given =
-      current.ledger.current.yard_herd_hours_per_adult_today * static_cast<float>(yard.adults);
-  if (given > 0.0F && family.house.value != kInvalidEntityIdValue) {
-    family.household_hours = family.household_hours > given ? family.household_hours - given : 0.0F;
+  // THE YARDS' STRADA HELP (#1442; labor's YardsTakeHerdCare): the day's share
+  // of every yard's gross plot hours went to the kolkhoz herds this morning,
+  // the same share for every yard (boss, core-boss-yards-strada [9]).
+  const float share = current.ledger.current.yard_herd_share_today;
+  if (share > 0.0F && family.house.value != kInvalidEntityIdValue) {
+    family.household_hours *= share < 1.0F ? 1.0F - share : 0.0F;
   }
 
   // The garden's yield scales by the season's average attention: the daily

@@ -801,12 +801,13 @@ struct YearLedger {
 
   /// THE YARDS' STRADA HELP (#1442; avatars.md «Временная»; save 202): the
   /// kolkhoz herds' care the yards took this year, man-days, paid in
-  /// trudodni at the herd care's rate; and TODAY's hours a yard's adult gave
-  /// for it, which the private plot takes off the yard's hours at hour 22
-  /// (household_plot.cpp). Written each morning by labour
+  /// trudodni at the herd care's rate; and TODAY's share, 0..1, of every
+  /// yard's gross plot hours it costs, which the private plot takes off at
+  /// hour 22 (household_plot.cpp; the same share for every yard, boss,
+  /// core-boss-yards-strada [9]). Written each morning by labour
   /// (YardsTakeHerdCare), 0 outside the strada or with no such avatar.
   float herd_care_by_yards = 0.0F;
-  float yard_herd_hours_per_adult_today = 0.0F;
+  float yard_herd_share_today = 0.0F;
 
   // -- what the era-readiness index needs and nothing else kept ------------
   //

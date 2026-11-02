@@ -1396,6 +1396,7 @@ bool Walk(std::uint64_t seed,
       builder.milkmaids.Report("population_curve", seed);
       substitutes.Print(std::cout, seed);
       strada.Print(std::cout, seed);
+      strada.PrintHarvests(std::cout, seed);
     }
   }
   out.timber = timber.years();

@@ -26,6 +26,7 @@
 #ifndef TESTS_RUN_COMMON_STRADA_TALLY_H_
 #define TESTS_RUN_COMMON_STRADA_TALLY_H_
 
+#include <algorithm>
 #include <cstdint>
 #include <ostream>
 #include <vector>
@@ -49,16 +50,11 @@ class StradaTally {
   /// The old households' hunger line (core's STUB reading of econ's gate).
   static constexpr float kHungrySatiety = 40.0F;
   static constexpr std::uint32_t kEveningHour = 22;
+  /// K3's winter line (econ, econ-boss-1442-garden-price [1]).
+  static constexpr float kWinterSatiety = 70.0F;
 
-  explicit StradaTally(const core::ITableSet& tables) {
-    if (const core::ITable* const life = tables.FindTable("life")) {
-      const std::uint32_t column = life->FindColumn("value");
-      const std::uint32_t row = life->FindRowByKey("life_speedup");
-      if (row != core::kNoTableRow) {
-        speedup_ = static_cast<float>(life->CellReal(row, column).value_or(1.0F));
-      }
-    }
-  }
+  /// The tables are not read since spread (b): no adult is counted here.
+  explicit StradaTally(const core::ITableSet& /*tables*/) {}
 
   /// @brief The strada's field and hay worker-days, at the state's hour 13.
   void CountNoon(const core::WorldState& world) {
@@ -82,14 +78,13 @@ class StradaTally {
   ///        the yards' hours and the old households' hunger.
   void CountEvening(const core::WorldState& world) {
     const std::uint32_t year = world.calendar.date.year;
-    if (year < 1 || year > kYears) {
+    if (year < 1 || year > kYears + 1) {  // y4 for K3's last winter only
       return;
     }
     if (yard_given_.size() < world.families.rows.size()) {
       yard_given_.resize(world.families.rows.size(), 0.0);
       yard_gross_.resize(world.families.rows.size(), 0.0);
     }
-    std::vector<std::uint32_t> adults(world.families.rows.size(), 0);
     std::vector<float> satiety_sum(world.families.rows.size(), 0.0F);
     std::vector<std::uint32_t> members(world.families.rows.size(), 0);
     for (const core::ResidentRow& resident : world.residents.rows) {
@@ -99,31 +94,66 @@ class StradaTally {
       }
       ++members[family];
       satiety_sum[family] += resident.satiety;
-      if (core::BiologicalAgeYears(speedup_, resident.birth_day, world.calendar.day) >= 16.0F) {
-        ++adults[family];
-      }
     }
     const bool strada = InStrada(world);
-    const float per_adult = world.ledger.current.yard_herd_hours_per_adult_today;
+    // The day's share of every yard's gross plot hours (core's spread (b)):
+    // gross read back from the net as labour reads it (kGrossShareCap 0.95).
+    const float share = world.ledger.current.yard_herd_share_today;
+    const float held = share < 0.95F ? share : 0.95F;
+    const auto month = static_cast<std::uint32_t>(world.calendar.date.month);  // 0-based
+    // K3's winter after each strada: Oct-Dec of y1-y3 and Jan-Apr of y2-y4.
+    const bool winter = (month >= 9 && year <= kYears) || (month <= 3 && year >= 2);
     for (std::uint32_t row = 0; row < world.families.rows.size(); ++row) {
       const core::FamilyRow& family = world.families.rows[row];
       // OLD as host's plan700 FamilyIsOld (#1413's read; econ via boss,
       // core-boss-yards-strada [6]): formed at genesis or a game year before.
       const bool old = family.formed_day == core::kNotFormedInPlay ||
                        world.calendar.day >= family.formed_day + core::kDaysPerYear;
+      const float mean_satiety =
+          members[row] > 0 ? satiety_sum[row] / static_cast<float>(members[row]) : 100.0F;
       if (year <= 2 && old && members[row] > 0) {
         ++old_family_days_;
-        if (satiety_sum[row] / static_cast<float>(members[row]) < kHungrySatiety) {
+        if (mean_satiety < kHungrySatiety) {
           ++old_hungry_family_days_;
         }
       }
-      if (strada && family.house.value != core::kInvalidEntityIdValue && family.in_barrack == 0 &&
-          adults[row] > 0) {
-        const double given = static_cast<double>(per_adult) * adults[row];
-        yard_given_[row] += given;
-        yard_gross_[row] += static_cast<double>(family.household_hours) + given;
+      if (winter && old && members[row] > 0) {
+        ++winter_old_family_days_;
+        if (mean_satiety < kWinterSatiety) {
+          ++winter_old_below70_days_;
+        }
       }
+      if (strada && share > 0.0F && family.house.value != core::kInvalidEntityIdValue &&
+          family.in_barrack == 0 && family.household_hours > 0.0F) {
+        const double gross =
+            static_cast<double>(family.household_hours) / (1.0 - static_cast<double>(held));
+        yard_given_[row] += gross - static_cast<double>(family.household_hours);
+        yard_gross_[row] += gross;
+      }
+      // K1: the garden's season ratio of the evening before it pays (the
+      // harvest resets it to nought): its share of the full yield.
+      if (row >= last_ratio_.size()) {
+        last_ratio_.resize(world.families.rows.size(), -1.0F);
+      }
+      const float ratio = family.plot_ratio_days > 0
+                              ? family.plot_ratio_sum / static_cast<float>(family.plot_ratio_days)
+                              : -1.0F;
+      if (ratio < 0.0F && last_ratio_[row] >= 0.0F && year <= kYears) {
+        harvests_.push_back(
+            {.year = year, .family = world.families.row_ids[row].value, .ratio = last_ratio_[row]});
+      }
+      last_ratio_[row] = ratio;
     }
+  }
+
+  /// @brief The garden harvests as one line a village (K1, K2): «year:family
+  ///        :ratio» of each harvest, ratio = the share of the full yield.
+  void PrintHarvests(std::ostream& out, std::uint64_t seed) const {
+    out << "population_curve: G1442 seed " << seed << " harvests";
+    for (const Harvest& one : harvests_) {
+      out << ' ' << one.year << ':' << one.family << ':' << one.ratio;
+    }
+    out << '\n';
   }
 
   /// @brief The herds' care left undone at the day's end. Once a day.
@@ -155,6 +185,7 @@ class StradaTally {
     double share_sum = 0.0;
     double worst = 0.0;
     std::uint32_t yards = 0;
+    std::vector<double> shares;
     for (std::size_t row = 0; row < yard_gross_.size(); ++row) {
       if (yard_gross_[row] <= 0.0) {
         continue;
@@ -162,8 +193,14 @@ class StradaTally {
       const double share = yard_given_[row] / yard_gross_[row];
       share_sum += share;
       worst = share > worst ? share : worst;
+      shares.push_back(share);
       ++yards;
     }
+    std::sort(shares.begin(), shares.end());
+    const double p90 =
+        shares.empty() ? 0.0
+                       : shares[(shares.size() * 9) / 10 < shares.size() ? (shares.size() * 9) / 10
+                                                                         : shares.size() - 1];
     out << "population_curve: Y1442 seed " << seed << " strada_JunAug_y1y3 field_wd " << field_wd_
         << " hay_wd " << hay_wd_ << " herd_wd " << herd_wd_ << " herd_care_by_yards_md "
         << by_yards_md_ << " issued_kg_per_trudoden_y1y3 "
@@ -171,7 +208,9 @@ class StradaTally {
         << old_hungry_family_days_ << " of " << old_family_days_
         << " old family-days (mean satiety < " << kHungrySatiety << " at hour 22)"
         << " care_undone_md_y1y3 " << care_undone_md_ << " yards_plot_share_taken mean "
-        << (yards > 0 ? share_sum / yards : 0.0) << " worst " << worst << " yards " << yards;
+        << (yards > 0 ? share_sum / yards : 0.0) << " worst " << worst << " yards " << yards
+        << " p90 " << p90 << " winter_old_below70_family_days " << winter_old_below70_days_
+        << " of " << winter_old_family_days_ << " (Oct-Apr after each strada, y1-y3)";
     if (by_yards_md_ <= 0.0) {
       out << " — THE YARDS TOOK NO CARE (expected for a chairman without the path)";
     }
@@ -192,7 +231,15 @@ class StradaTally {
             world.fields.rows[row].kind == core::LandKind::kFloodplainMeadow);
   }
 
-  float speedup_ = 1.0F;
+  struct Harvest {
+    std::uint32_t year = 0;
+    std::uint32_t family = 0;
+    float ratio = 0.0F;
+  };
+
+  std::vector<float> last_ratio_;
+  std::vector<Harvest> harvests_;
+  std::uint32_t winter_old_family_days_ = 0, winter_old_below70_days_ = 0;
   std::uint32_t field_wd_ = 0, hay_wd_ = 0, herd_wd_ = 0;
   std::uint32_t old_hungry_family_days_ = 0;
   std::uint32_t old_family_days_ = 0;

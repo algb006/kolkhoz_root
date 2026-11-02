@@ -407,7 +407,7 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteU32(book.herd_rest_days_substituted);  // save 201 (#1434)
   out.WriteU32(book.herd_rest_days_self_worked);
   out.WriteFloat(book.herd_care_by_yards);  // save 202 (#1442)
-  out.WriteFloat(book.yard_herd_hours_per_adult_today);
+  out.WriteFloat(book.yard_herd_share_today);
   out.WriteFloat(book.satisfaction_sum);
   out.WriteU32(book.satisfaction_samples);
   out.WriteFloat(book.able_bodied_days);
@@ -685,7 +685,7 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.herd_rest_days_substituted = in.ReadU32();  // save 201 (#1434)
   book.herd_rest_days_self_worked = in.ReadU32();
   book.herd_care_by_yards = in.ReadFloat();  // save 202 (#1442)
-  book.yard_herd_hours_per_adult_today = in.ReadFloat();
+  book.yard_herd_share_today = in.ReadFloat();
   book.satisfaction_sum = in.ReadFloat();
   book.satisfaction_samples = in.ReadU32();
   book.able_bodied_days = in.ReadFloat();
