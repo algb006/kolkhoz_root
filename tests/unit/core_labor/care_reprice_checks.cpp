@@ -98,6 +98,35 @@ Day Run(std::uint32_t horses) {
   return day;
 }
 
+/// THE DRIVER BY THE HORSE YARD'S WAY (#1446, (i′)): a horse yard an hour's walk
+/// from the houses and 1 km from the care. The care wants 2.1: the main pass
+/// places five on foot (5 x 0.46 = 2.30), the cart carries them all. By a ride
+/// from his door the driver was worth 0.74 like the rest - 3.70, two come off,
+/// three stay (2.22). By his own way, an hour's walk and the km's ride, his day
+/// is (9.4 - 4.0) / 10 = 0.54 - 3.50: one comes off and four stay (2.76; a
+/// second off would leave 2.02, short).
+std::uint32_t OnCareWithAYard() {
+  core::AssignmentParams params = OctoberDay(1);
+  params.yard_walk_hours = {1.0F};
+  params.yard_ride_km = {1.0F, 0.3F};
+  std::vector<core::AssignmentJob> jobs = CareAndHarvest();
+  jobs[0].work_days_remaining = 2.1F;
+  std::vector<core::AssignmentCandidate> hands = Hands(8);
+  for (core::AssignmentCandidate& hand : hands) {
+    hand.home_slot = 0;  // the yard's walk is read by the home's slot
+  }
+  std::vector<std::uint8_t> rides;
+  std::vector<std::uint32_t> with;
+  core::PlacementDiagnosis diagnosis;
+  const std::vector<std::uint32_t> placed =
+      core::PlanDayAssignments(jobs, hands, params, &rides, nullptr, &diagnosis, &with);
+  std::uint32_t on_care = 0;
+  for (const std::uint32_t job : placed) {
+    on_care += job == 0 ? 1U : 0U;
+  }
+  return on_care;
+}
+
 }  // namespace
 
 int CheckTheCareReprice() {
@@ -113,5 +142,11 @@ int CheckTheCareReprice() {
   const Day walking = Run(0);
   failures += Expect(walking.on_care == 4 && walking.moved == 0 && walking.on_harvest == 4,
                      "no horse, no cart: the walkers' price stands and nobody moves");
+  const std::uint32_t on_care = OnCareWithAYard();
+  std::cout << "care re-pricing: with a horse yard, the care of 2.1 keeps " << on_care
+            << " hands\n";
+  failures += Expect(on_care == 4,
+                     "the driver is priced by the horse yard's way (#1446), so four stay on the "
+                     "care, not three");
   return failures;
 }
