@@ -350,3 +350,4 @@ sugar_mood_with,2,core
 sugar_mood_with_child,4,core
 sugar_mood_without,-2,core
 sugar_mood_without_child,-4,core
+limit_grain_points_per_tonne,6,core
