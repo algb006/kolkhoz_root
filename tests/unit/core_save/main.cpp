@@ -2276,7 +2276,10 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // Save 191 (#1289): kSetHerdPlan became the top OrderKind — same 818
     // bytes, the hash moved; NOT predicted before the build (the tenth time;
     // the herds' +2 was predicted, this one the test found).
-    {"orders", 818, 0x664a5fc973a921b9ULL},
+    // Save 201 (#1421): pay_in_grain, a byte an order, six orders - 818 -> 824,
+    // reckoned from the codec before the suite and held; the hash read off
+    // the build.
+    {"orders", 824, 0x6cde2175420cdbe8ULL},
     // Save 82: the fixture's first stand, a birch planting — 8 -> 67 (its id
     // 4, the old fields 41, species 2, hectares 4, two days 8); predicted,
     // held.
@@ -2497,7 +2500,10 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // 3822 -> 3854, predicted before the build and held.
     // Save 200 (#1373): the rest by its source, a u32[7], +28 a book, two
     // books: 3854 -> 3910, predicted before the build and held.
-    {"ledger", 3910, 0x046663a2d3acee69ULL},
+    // Save 201 (#1417, #1421): the carry (i32), the grain lots (u32) and the
+    // grain paid (i64), +16 a book, two books: 3910 -> 3942, predicted before
+    // the build and held.
+    {"ledger", 3942, 0x2b60b9fbf262a969ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
