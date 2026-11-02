@@ -1499,6 +1499,38 @@ int TestYardsStradaHelp() {
   return failures;
 }
 
+/// THE MONTH'S CARE COVERAGE (#1443): a calf with nobody to care for it - no
+/// resident at all - goes 1 -> 0.75 -> 0.5625 over two days (a 4-day mean);
+/// a herd whose day was all done stays at 1.
+int TestCareCoverage() {
+  int failures = 0;
+  const test::FakeTable livestock({"key", "care_days_per_real_year"}, {{"calf", "120"}});
+  const test::FakeTableSet tables("livestock", livestock);
+  const auto labor = core::CreateLaborSystem(tables, core::StubTables::kAllowed);
+  if (labor == nullptr) {
+    return Expect(false, "care coverage: the factory yields a system");
+  }
+  DayWorld day(0);
+  const core::HerdId herd = day.AddUnitHerd(1, 100.0F);
+  const std::uint32_t row = core::FindRow(day.world.herds, herd);
+  day.world.herds.rows[row].kind = core::LivestockKindId{0};
+  day.RunDay(*labor, 1);
+  const float after_one = day.world.herds.rows[row].care_coverage;
+  day.RunDay(*labor, 2);
+  const float after_two = day.world.herds.rows[row].care_coverage;
+  std::cout << "care coverage: nobody cares, " << after_one << " then " << after_two << '\n';
+  failures += Expect(std::abs(after_one - 0.75F) < 0.001F && std::abs(after_two - 0.5625F) < 0.001F,
+                     "care coverage: a day of no care takes a quarter of the month's mean");
+  DayWorld cared(3);
+  const core::HerdId kept = cared.AddUnitHerd(1, 100.0F);
+  cared.world.herds.rows[core::FindRow(cared.world.herds, kept)].kind = core::LivestockKindId{0};
+  cared.RunDay(*labor, 1);
+  failures +=
+      Expect(cared.world.herds.rows[core::FindRow(cared.world.herds, kept)].care_coverage == 1.0F,
+             "care coverage: a day all done keeps it whole");
+  return failures;
+}
+
 int TestWalkOffPaysAndStops() {
   int failures = 0;
   const test::FakeTableSet tables;
@@ -5192,6 +5224,7 @@ int main() {
   failures += TestLeisureByReach();
   failures += TestRestDaySubstitute();
   failures += TestYardsStradaHelp();
+  failures += TestCareCoverage();
   failures += TestASpentManIsNotSent();
   failures += TestBarnRunsOnTheDayOff();
   failures += TestRainStopsTheSowingAndTheReaping();

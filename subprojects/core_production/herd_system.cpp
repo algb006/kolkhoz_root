@@ -27,6 +27,7 @@
 #include "core_common/yard_hay_year.h"
 #include "district_plan.h"
 #include "feed_home.h"
+#include "herd_care.h"
 #include "herd_cold.h"
 #include "herd_life.h"
 #include "livestock_homes.h"
@@ -936,6 +937,10 @@ float YieldFactor(const ProductionConfig& config, const HerdRow& herd) {
   // warm and pay the billet's leak alone.
   if (herd.kind.value < config.livestock.size()) {
     factor *= ColdProduceFactor(config.livestock[herd.kind.value], herd);
+    // AND THE FOURTH, UNDONE CARE (#1443; «недоенная корова сбавляет
+    // молоко»): the month's care coverage on the kind's produce floor.
+    factor *= CareFactor(
+        config.farming, config.livestock[herd.kind.value].care_produce_floor, herd.care_coverage);
   }
   return factor;
 }

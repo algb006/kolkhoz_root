@@ -5,6 +5,7 @@ kolkhoz_add_unit_test(core_production
     district_carts_checks.cpp
     feed_home_checks.cpp
     grass_stand_checks.cpp
+    herd_care_checks.cpp
     harvest_advice_checks.cpp
     heap_lamp_checks.cpp
     herd_death_checks.cpp

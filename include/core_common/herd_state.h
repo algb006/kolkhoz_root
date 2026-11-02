@@ -235,9 +235,19 @@ struct HerdRow {
   /// Game man-days of barn work left today (stage 5). Refilled every morning
   /// by the labor sub-step from the kind's yearly care norm (real man-days
   /// / 7 / days per year x heads), drained by assigned kHerdCare workers.
-  /// Unmet care has no consequence yet — that STUB ties into feeding
-  /// (stage 6). Zero for household-standing herds (see @file).
+  /// Zero for household-standing herds (see @file). What is left at a day's
+  /// end is read into care_coverage (#1443).
   float care_days_remaining = 0.0F;
+
+  /// THE HERD'S CARE OVER THE LAST MONTH, 0..1 (#1443; econ, herd-care-undone-
+  /// 2026-11-02, the human's «Делать» #1623; save 204): a rolling mean, 4 game
+  /// days (one month) long, of the day's care done / care needed - one float,
+  /// so an exponential mean with a weight of 1/4 a day. Written by labour at
+  /// the day's close (the yards' strada share counts as done); read by
+  /// production: «недоенная корова сбавляет молоко, некормленая-нечищеная
+  /// лошадь тянет хуже» (YieldFactor, HorsePullFactor). 1 at genesis and for
+  /// a herd with no care to do. Nothing dies of it.
+  float care_coverage = 1.0F;
 
   // -- the milk leg (#1056 C1.1; logistics_state.h, kMilkLeg; save 170) ----
 

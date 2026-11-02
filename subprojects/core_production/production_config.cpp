@@ -609,6 +609,21 @@ bool ParseKindCold(const ITable& table, std::uint32_t row, LivestockDef& kind, s
                        Range{.low = 0, .high = 1},
                        1,
                        kind.freezing_draught_factor,
+                       error) &&
+         // «Недоуход» (#1443): the kind's floors, 1 where the column is empty.
+         CellOrDefault(table,
+                       row,
+                       table.FindColumn("care_produce_floor"),
+                       Range{.low = 0, .high = 1},
+                       1,
+                       kind.care_produce_floor,
+                       error) &&
+         CellOrDefault(table,
+                       row,
+                       table.FindColumn("care_draught_floor"),
+                       Range{.low = 0, .high = 1},
+                       1,
+                       kind.care_draught_floor,
                        error);
 }
 
@@ -1175,7 +1190,7 @@ bool ParseMeadowKinds(const ITable& table, FarmingConfig& farming, std::string& 
 /// AT ALL: until 2026-09-16 this module took every number off its own
 /// hand-written tables, and the two halves of billeting are what brought it
 /// here. The next world constant lands in the same place.
-constexpr std::array<std::string_view, 31> kProductionWorldParamKeys = {
+constexpr std::array<std::string_view, 33> kProductionWorldParamKeys = {
     "billet_heads_per_yard",
     "billet_yield_factor",
     "school_year_start_month",
@@ -1214,7 +1229,11 @@ constexpr std::array<std::string_view, 31> kProductionWorldParamKeys = {
     "livestock_cold_first_month",
     "livestock_cold_last_month",
     "herd_hunger_episode_fed_days",
-    "grass_stand_yield_ceiling"};
+    "grass_stand_yield_ceiling",
+    // The month's care coverage (#1443): full at and above the first, the
+    // kind's floor at and below the second.
+    "herd_care_full_coverage",
+    "herd_care_floor_coverage"};
 
 /// THE SCHOOL YEAR IS READ HERE AS WELL AS BY THE SCHOOL, and that is a
 /// second READER, not a second home: the months live in world_params.csv and
@@ -1361,7 +1380,13 @@ bool ParseProductionWorldParams(const ITable& world,
       // 2.5 t a hectare). No row: 1, the table is the ceiling, as 0.37.212.
       ScalarKnob{.key = kProductionWorldParamKeys[30],
                  .value = &farming.grass_stand_yield_ceiling,
-                 .range = Range{.low = 1.0F, .high = 2.0F}}};
+                 .range = Range{.low = 1.0F, .high = 2.0F}},
+      ScalarKnob{.key = kProductionWorldParamKeys[31],
+                 .value = &farming.herd_care_full_coverage,
+                 .range = Range{.low = 0.0F, .high = 1.0F}},
+      ScalarKnob{.key = kProductionWorldParamKeys[32],
+                 .value = &farming.herd_care_floor_coverage,
+                 .range = Range{.low = 0.0F, .high = 1.0F}}};
   if (!ReadKnobs(world, "world_params", knobs, error)) {
     return false;
   }

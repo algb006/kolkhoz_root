@@ -2207,8 +2207,9 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // Save 172 (#1056 C1.3): +1 - the leg on foot; predicted 161 -> 162
     // before the build and held; the hash read off it.
     // Save 191 (#1289): +2 - the herd plan's u16; predicted 162 -> 164 before
-    // the build and held; the hash read off it.
-    {"herds", 164, 0x4b734a2288f0ca83ULL},
+    // the build and held; the hash read off it. Save 204 (#1443): +4 - the
+    // month's care coverage, a float; predicted 164 -> 168, held.
+    {"herds", 168, 0xba5a6fbb93832070ULL},
     // 2026-09-16, save 48: +6 bytes, one for each of the six orders — the
     // bought head's sex. The witness named the section, the delta and the
     // offset without being asked, which is what it was rewritten for this

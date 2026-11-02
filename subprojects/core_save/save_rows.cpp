@@ -380,8 +380,12 @@ static_assert(AggregateArity<SettlementRow>() == 7,
 // same word, 176 unmoved and 37 fields, +2 a herd on the wire, before the
 // build; the size MISSED: 184 - the byte after leg_on_foot was the word's last
 // padding, and the optional wait behind it is 8-aligned (the fields held).
+// Save 204 (#1443): care_coverage, a float after care_days_remaining -
+// predicted 184 -> 192 and 38 fields before the build; on the wire +4 a herd.
+// The size MISSED: 184 unmoved - the float took a padding word the milk leg's
+// floats had left before the 8-aligned optional wait (the fields held).
 static_assert(sizeof(HerdRow) == 184, "HerdRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<HerdRow>() == 37,
+static_assert(AggregateArity<HerdRow>() == 38,
               "HerdRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-13: the felling mark — a stand id and a volume — took the order row
 // from 64 to 72 and the assignment's stand from 24 to 28 (and the resident
@@ -1641,6 +1645,7 @@ void WriteHerdRow(SaveSink& sink, const HerdRow& row) {
   out.WriteU8(row.cold_nights);            // save 120
   out.WriteU8(row.cold_place_yesterday);   // save 120
   out.WriteFloat(row.care_days_remaining);
+  out.WriteFloat(row.care_coverage);  // save 204 (#1443)
   // Save 170 (#1056 C1.1): the milk leg - its seam, written, receiver, resource.
   out.WriteFloat(row.leg_days_remaining);
   out.WriteFloat(row.leg_days_written);
@@ -1690,6 +1695,10 @@ HerdRow ReadHerdRow(LoadSource& source) {
   row.cold_nights = in.ReadU8();           // save 120
   row.cold_place_yesterday = in.ReadU8();  // save 120
   row.care_days_remaining = in.ReadFloat();
+  row.care_coverage = in.ReadFloat();  // save 204 (#1443)
+  if (!(row.care_coverage >= 0.0F && row.care_coverage <= 1.0F)) {
+    source.Fail("a herd's care coverage is outside 0..1 or unreadable");
+  }
   row.leg_days_remaining = in.ReadFloat();  // save 170 (#1056 C1.1)
   row.leg_days_written = in.ReadFloat();
   row.leg_days_priced = in.ReadFloat();

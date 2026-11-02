@@ -279,6 +279,13 @@ struct LivestockDef {
   /// «Мёрзнет»: the draught × this the day after a cold night (the horse
   /// 0.85); 1 for a kind the column leaves empty.
   float freezing_draught_factor = 1.0F;
+
+  /// «НЕДОУХОД» (#1443; econ, herd-care-undone-2026-11-02): the produce's
+  /// floor at a month's care coverage at or below the floor line (the cow
+  /// 0.6, other herds 0.8), and the draught's (the horse 0.85). 1 for a kind
+  /// the column leaves empty: no price of undone care.
+  float care_produce_floor = 1.0F;
+  float care_draught_floor = 1.0F;
 };
 
 /// @brief One feeding-order row (tables/feed_links.csv, question 133):
@@ -799,6 +806,13 @@ struct FarmingConfig {
   /// is paid for in leakage: this is the produce multiplier on the billeted
   /// share of the herd. ASSUMPTION.
   float billet_yield_factor = 0.6F;
+
+  /// THE MONTH'S CARE COVERAGE (#1443; econ, herd-care-undone-2026-11-02):
+  /// a herd's produce (and a team's draught) is whole at coverage at or
+  /// above `herd_care_full_coverage` and at the kind's floor at or below
+  /// `herd_care_floor_coverage`, linear between. world_params, STUB 0.9 / 0.5.
+  float herd_care_full_coverage = 0.9F;
+  float herd_care_floor_coverage = 0.5F;
 
   /// THE SECOND LEVER OF THE CATTLE YARD (livestock design §5; econ-boss-
   /// complexity-yards-groom [3]-[4]; world_params `herd_without_yard_yield_

@@ -3762,6 +3762,31 @@ class LaborSystem final : public ILaborSystem {
       resident.work = WorkAssignment{};
     }
     CloseRushDay(config_, current);
+    CloseHerdCare(current);
+  }
+
+  /// THE MONTH'S CARE COVERAGE (#1443; econ, herd-care-undone-2026-11-02, the
+  /// human's «Делать» #1623): today's care done over today's need, folded
+  /// into HerdRow::care_coverage as a 4-day (one month) exponential mean. The
+  /// need is the kind's norm RefillHerdCare filled this morning; what the
+  /// yards took in the strada (YardsTakeHerdCare) is care done. A herd with
+  /// no care to do today keeps its coverage.
+  void CloseHerdCare(WorldState& current) const {
+    constexpr float kMonthWeight = 1.0F / static_cast<float>(kDaysPerMonth);
+    for (HerdRow& herd : current.herds.rows) {
+      if (herd.unit.value == kInvalidEntityIdValue ||
+          herd.kind.value >= config_.care_days_per_year.size()) {
+        continue;
+      }
+      const float need = config_.care_days_per_year[herd.kind.value] *
+                         static_cast<float>(herd.adult_count) / static_cast<float>(kDaysPerYear);
+      if (!(need > 0.0F)) {
+        continue;
+      }
+      const float left = herd.care_days_remaining < need ? herd.care_days_remaining : need;
+      const float done = 1.0F - (left > 0.0F ? left : 0.0F) / need;
+      herd.care_coverage += (done - herd.care_coverage) * kMonthWeight;
+    }
   }
 
   /// Turns a day of delivered norm-days into trudodni on the FAMILY account

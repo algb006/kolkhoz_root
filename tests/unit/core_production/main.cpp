@@ -61,6 +61,7 @@
 #include "harvest_advice_checks.h"
 #include "hay_weathering_checks.h"
 #include "heap_lamp_checks.h"
+#include "herd_care_checks.h"
 #include "herd_cold.h"
 #include "herd_death_checks.h"
 #include "herd_floors.h"
@@ -18180,6 +18181,7 @@ int main() {
   failures += CheckTheHerdPlan();
   failures += CheckThePerennialsCut();
   failures += CheckTheGrassStandsAge();
+  failures += CheckUndoneHerdCare();
 
   if (failures == 0) {
     std::cout << "unit_core_production: all checks passed\n";

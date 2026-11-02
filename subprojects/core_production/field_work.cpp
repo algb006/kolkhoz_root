@@ -23,6 +23,7 @@
 #include "core_common/world_state.h"
 #include "feed_home.h"
 #include "field_haul.h"
+#include "herd_care.h"
 #include "herd_cold.h"
 #include "manure_cart.h"
 #include "production_config.h"
@@ -984,7 +985,9 @@ float TractionFactor(const ProductionConfig& config, float traction_ration) {
 }
 
 float HorsePullFactor(const ProductionConfig& config, const WorldState& world) {
-  return TractionFactor(config, world.traction_ration) * ColdDraughtFactor(config, world);
+  // And undone care (#1443; «некормленая-нечищеная лошадь тянет хуже»).
+  return TractionFactor(config, world.traction_ration) * ColdDraughtFactor(config, world) *
+         CareDraughtFactor(config, world);
 }
 
 void RescaleHorseWorkForRation(const ProductionConfig& config,
