@@ -56,7 +56,11 @@ class MilkmaidPolicy {
   /// @brief One day of the chairman's attention. Call once a day.
   void RunDay(core::ISimulation& simulation) {
     const core::WorldState& world = simulation.CompletedState();
-    if (world.calendar.day == 0 && trained_ == 0) {
+    // COUNTED ON THE FIRST DAY THE CHAIRMAN SEES, not on day 0: the run calls
+    // RunDay after each day's steps, so day 0 is never seen here, and the first
+    // draft counted nobody and posted nobody (a21acting, 15eb2922).
+    if (!counted_) {
+      counted_ = true;
       for (const core::ResidentRow& resident : world.residents.rows) {
         trained_ += resident.skill_agriculture_earned >= kTrainedSkill ? 1U : 0U;
       }
@@ -137,6 +141,7 @@ class MilkmaidPolicy {
   std::uint16_t yard_ = 0xFFFFU;
   core::ProfessionId milkmaid_;
   std::uint32_t trained_ = 0;
+  bool counted_ = false;
   std::int64_t stands_day_ = -1;
   std::int64_t posted_day_ = -1;
   std::uint32_t care_days_ = 0;
