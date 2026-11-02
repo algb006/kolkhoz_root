@@ -182,7 +182,11 @@ class SubstituteTally {
         << " worst_share_of_rest_days " << worst_share << " walk_offs holders " << holder_walk_offs_
         << " others " << other_walk_offs_ << " JunAug_pd holders " << holder_days_ << " below40 "
         << holder_below40_ << " others " << other_days_ << " below40 " << other_below40_
-        << " care_undone_md_y1y3 " << care_undone_md_;
+        << " care_undone_md_y1y3 "
+        << care_undone_md_
+        // The rest days a year (S1's 10 % divisor), for a reader of the
+        // rule's own substitutions per person (the node probe P1434).
+        << " rest_days_y1/y2/y3 " << rest_days_[0] << '/' << rest_days_[1] << '/' << rest_days_[2];
     if (rule_substituted_ == 0) {
       out << " — THE RULE SUBSTITUTED NO REST DAY (econ: red whatever else reads)";
     }

@@ -78,10 +78,6 @@ struct AvatarDef {
   // -- the first build's paths (#1417, #1421; avatars.md «Пути первой сборки»;
   //    econ's gates econ-boss-1427-avatar-gates [1]; STUB numbers) ----------
 
-  /// Women given the milkmaid post at genesis, trained (the acting chairman:
-  /// 3; skill_agriculture_earned 75, econ's Q1). core_world/genesis.
-  std::uint8_t start_trained_milkmaids = 0;
-
   /// The share of the year's unspent limit points kept at the year's close,
   /// floored (the ex-chairman: 0.333). Its debuff - the yearly audit at 10 %
   /// and the extra information requests - is ACCEPTED AND NOT ENTERED
