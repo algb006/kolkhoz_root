@@ -27,6 +27,7 @@
 #define TESTS_RUN_COMMON_STRADA_TALLY_H_
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <ostream>
 #include <vector>
@@ -56,11 +57,39 @@ class StradaTally {
   /// Reads the garden's full-yield hours (food.csv plot_full_yield_hours), the
   /// curve K2's in-world loss is read on.
   explicit StradaTally(const core::ITableSet& tables) {
-    if (const core::ITable* const food = tables.FindTable("food")) {
-      const std::uint32_t row = food->FindRowByKey("plot_full_yield_hours");
-      const std::uint32_t column = food->FindColumn("value");
+    const core::ITable* const food = tables.FindTable("food");
+    if (food == nullptr) {
+      return;
+    }
+    const std::uint32_t value = food->FindColumn("value");
+    const std::uint32_t kcal = food->FindColumn("kcal_per_gram");
+    const auto number = [&](const char* key, std::uint32_t column, float fallback) {
+      const std::uint32_t row = food->FindRowByKey(key);
+      return row == core::kNoTableRow || column == core::kNoTableColumn
+                 ? fallback
+                 : static_cast<float>(food->CellReal(row, column).value_or(fallback));
+    };
+    full_yield_hours_ = number("plot_full_yield_hours", value, 4.0F);
+    // The net-food print (econ, econ-boss-1442 via boss [16]): a garden at full
+    // yield in kcal, and every issued resource's kcal by its resource id.
+    garden_full_kcal_ = static_cast<double>(number("potato_kg_per_yard_year", value, 0.0F)) *
+                            1000.0 * static_cast<double>(number("potato", kcal, 0.0F)) +
+                        static_cast<double>(number("vegetables_kg_per_yard_year", value, 0.0F)) *
+                            1000.0 * static_cast<double>(number("vegetables", kcal, 0.0F));
+    if (const core::ITable* const resources = tables.FindTable("resources")) {
+      kcal_per_gram_.assign(resources->RowCount(), 0.0F);
+      for (std::uint32_t row = 0; row < food->RowCount(); ++row) {
+        const std::uint32_t resource = resources->FindRowByKey(food->CellText(row, 0));
+        if (resource < kcal_per_gram_.size() && kcal != core::kNoTableColumn) {
+          kcal_per_gram_[resource] = static_cast<float>(food->CellReal(row, kcal).value_or(0.0F));
+        }
+      }
+    }
+    if (const core::ITable* const labor = tables.FindTable("labor")) {
+      const std::uint32_t row = labor->FindRowByKey("herd_care");
+      const std::uint32_t column = labor->FindColumn("trudodni_rate");
       if (row != core::kNoTableRow && column != core::kNoTableColumn) {
-        full_yield_hours_ = static_cast<float>(food->CellReal(row, column).value_or(4.0F));
+        care_rate_ = static_cast<float>(labor->CellReal(row, column).value_or(1.0F));
       }
     }
   }
@@ -112,8 +141,31 @@ class StradaTally {
     const auto month = static_cast<std::uint32_t>(world.calendar.date.month);  // 0-based
     // K3's winter after each strada: Oct-Dec of y1-y3 and Jan-Apr of y2-y4.
     const bool winter = (month >= 9 && year <= kYears) || (month <= 3 && year >= 2);
+    // THE YARDS' TRUDODNI TODAY, by family (the net-food print): the day's
+    // man-days off the book's running sum, spread by today's gross hours as
+    // labour spreads them by yesterday's - an ESTIMATE, the core keeps no
+    // per-family figure. A book that turned since yesterday starts from nought.
+    const double by_yards = static_cast<double>(world.ledger.current.herd_care_by_yards);
+    const double day_md = by_yards >= prev_by_yards_ ? by_yards - prev_by_yards_ : by_yards;
+    prev_by_yards_ = by_yards;
+    if (yard_td_.size() < world.families.rows.size()) {
+      yard_td_.resize(world.families.rows.size(), 0.0);
+    }
+    double gross_all = 0.0;
+    const auto gross_of = [held](const core::FamilyRow& family) {
+      return family.house.value != core::kInvalidEntityIdValue && family.in_barrack == 0 &&
+                     family.household_hours > 0.0F
+                 ? static_cast<double>(family.household_hours) / (1.0 - static_cast<double>(held))
+                 : 0.0;
+    };
+    for (const core::FamilyRow& family : world.families.rows) {
+      gross_all += gross_of(family);
+    }
     for (std::uint32_t row = 0; row < world.families.rows.size(); ++row) {
       const core::FamilyRow& family = world.families.rows[row];
+      if (day_md > 0.0 && gross_all > 0.0) {
+        yard_td_[row] += day_md * static_cast<double>(care_rate_) * gross_of(family) / gross_all;
+      }
       // OLD as host's plan700 FamilyIsOld (#1413's read; econ via boss,
       // core-boss-yards-strada [6]): formed at genesis or a game year before.
       const bool old = family.formed_day == core::kNotFormedInPlay ||
@@ -158,9 +210,11 @@ class StradaTally {
         harvests_.push_back({.year = year,
                              .family = world.families.row_ids[row].value,
                              .ratio = last_ratio_[row],
-                             .inworld_loss = static_cast<float>(inworld)});
+                             .inworld_loss = static_cast<float>(inworld),
+                             .yard_trudodni = static_cast<float>(yard_td_[row])});
         with_sum_[row] = 0.0;
         without_sum_[row] = 0.0;
+        yard_td_[row] = 0.0;
       }
       if (ratio >= 0.0F && full_yield_hours_ > 0.0F) {
         const bool gave = share > 0.0F && family.house.value != core::kInvalidEntityIdValue &&
@@ -178,9 +232,12 @@ class StradaTally {
   /// @brief The garden harvests as one line a village (K1, K2): «year:family
   ///        :ratio» of each harvest, ratio = the share of the full yield.
   void PrintHarvests(std::ostream& out, std::uint64_t seed) const {
-    out << "population_curve: G1442 seed " << seed << " harvests";
+    out << "population_curve: G1442 seed " << seed << " garden_full_kcal " << garden_full_kcal_
+        << " kcal_per_trudoden y1/y2/y3 " << kcal_per_trudoden_[0] << '/' << kcal_per_trudoden_[1]
+        << '/' << kcal_per_trudoden_[2] << " harvests (year:family:ratio:inworld_loss:yard_td)";
     for (const Harvest& one : harvests_) {
-      out << ' ' << one.year << ':' << one.family << ':' << one.ratio << ':' << one.inworld_loss;
+      out << ' ' << one.year << ':' << one.family << ':' << one.ratio << ':' << one.inworld_loss
+          << ':' << one.yard_trudodni;
     }
     out << '\n';
   }
@@ -207,6 +264,14 @@ class StradaTally {
     }
     issued_kg_ += issued_kg;
     trudodni_ += static_cast<double>(closed.trudodni_accrued) / 100.0;
+    // The year's distribution in kcal a trudoden, every issued resource.
+    double kcal = 0.0;
+    for (std::size_t resource = 0; resource < closed.issued.size(); ++resource) {
+      const float per_gram = resource < kcal_per_gram_.size() ? kcal_per_gram_[resource] : 0.0F;
+      kcal += static_cast<double>(closed.issued[resource]) * static_cast<double>(per_gram);
+    }
+    const double trudodni = static_cast<double>(closed.trudodni_accrued) / 100.0;
+    kcal_per_trudoden_[year - 1] = trudodni > 0.0 ? kcal / trudodni : 0.0;
   }
 
   /// @brief The village's line.
@@ -265,11 +330,18 @@ class StradaTally {
     std::uint32_t family = 0;
     float ratio = 0.0F;
     float inworld_loss = 0.0F;
+    float yard_trudodni = 0.0F;
   };
 
   std::vector<float> last_ratio_;
   std::vector<double> with_sum_, without_sum_;
   float full_yield_hours_ = 4.0F;
+  double garden_full_kcal_ = 0.0;
+  std::vector<float> kcal_per_gram_;
+  float care_rate_ = 1.0F;
+  double prev_by_yards_ = 0.0;
+  std::vector<double> yard_td_;
+  std::array<double, kYears> kcal_per_trudoden_ = {};
   std::vector<Harvest> harvests_;
   std::uint32_t winter_old_family_days_ = 0, winter_old_below70_days_ = 0;
   std::uint32_t field_wd_ = 0, hay_wd_ = 0, herd_wd_ = 0;
