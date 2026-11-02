@@ -38,6 +38,7 @@
 #include "core_common/event_state.h"
 #include "core_common/herd_state.h"
 #include "core_common/labor_state.h"
+#include "core_common/ledger_state.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
@@ -138,6 +139,19 @@ class SubstituteTally {
     }
   }
 
+  /// @brief THE RULE'S OWN FIRINGS, from the closed book (YearLedger
+  ///        herd_rest_days_substituted / _self_worked), y1-y3. Call at each
+  ///        year's turn. The noon read above cannot tell the rule's substitute
+  ///        from the day's list sending free hands to care left over, which it
+  ///        did before #1434 too (a34old printed «substituted» on the old rule).
+  void CloseYear(const core::YearLedger& closed, std::uint32_t year) {
+    if (year < 1 || year > kYears) {
+      return;
+    }
+    rule_substituted_ += closed.herd_rest_days_substituted;
+    rule_self_worked_ += closed.herd_rest_days_self_worked;
+  }
+
   /// @brief The village's line.
   void Print(std::ostream& out, std::uint64_t seed) const {
     std::vector<std::uint32_t> counts;
@@ -159,17 +173,18 @@ class SubstituteTally {
             : counts[(counts.size() * 9) / 10 == counts.size() ? counts.size() - 1
                                                                : (counts.size() * 9) / 10];
     const std::uint32_t max = counts.empty() ? 0 : counts.back();
-    out << "population_curve: S1434 seed " << seed << " substituted g/m/o " << substituted_[kGroom]
-        << '/' << substituted_[kMilkmaid] << '/' << substituted_[kOtherPost]
-        << " self_worked g/m/o " << self_[kGroom] << '/' << self_[kMilkmaid] << '/'
-        << self_[kOtherPost] << " substitutes_person_years " << counts.size()
+    out << "population_curve: S1434 seed " << seed << " rule_substituted_y1y3 " << rule_substituted_
+        << " rule_self_worked_y1y3 " << rule_self_worked_ << " rest_day_care_by_non_holders g/m/o "
+        << substituted_[kGroom] << '/' << substituted_[kMilkmaid] << '/' << substituted_[kOtherPost]
+        << " by_holders g/m/o " << self_[kGroom] << '/' << self_[kMilkmaid] << '/'
+        << self_[kOtherPost] << " non_holder_carers_person_years " << counts.size()
         << " per_person_year mean " << mean << " p90 " << p90 << " max " << max
         << " worst_share_of_rest_days " << worst_share << " walk_offs holders " << holder_walk_offs_
         << " others " << other_walk_offs_ << " JunAug_pd holders " << holder_days_ << " below40 "
         << holder_below40_ << " others " << other_days_ << " below40 " << other_below40_
         << " care_undone_md_y1y3 " << care_undone_md_;
-    if (substituted_[kGroom] + substituted_[kMilkmaid] + substituted_[kOtherPost] == 0) {
-      out << " — NO REST DAY SUBSTITUTED (econ: red whatever else reads)";
+    if (rule_substituted_ == 0) {
+      out << " — THE RULE SUBSTITUTED NO REST DAY (econ: red whatever else reads)";
     }
     out << '\n';
   }
@@ -205,6 +220,7 @@ class SubstituteTally {
   std::uint32_t holder_walk_offs_ = 0, other_walk_offs_ = 0;
   std::uint32_t holder_days_ = 0, holder_below40_ = 0, other_days_ = 0, other_below40_ = 0;
   double care_undone_md_ = 0.0;
+  std::uint64_t rule_substituted_ = 0, rule_self_worked_ = 0;
 };
 
 }  // namespace run

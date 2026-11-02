@@ -1193,6 +1193,7 @@ bool Walk(std::uint64_t seed,
     // The limit book's closed year, y1-y5 (#1417, #1421).
     avatar_book.CloseYear(state.ledger.closed, year);
     builder.milkmaids.CloseYear(state.ledger.closed, year);
+    substitutes.CloseYear(state.ledger.closed, year);
     if (year >= 4 && year <= run::SiteWaitTally::kLastYear) {
       for (const std::uint32_t r : g1285_roofed) {
         g1285_snow_y4y6 +=
