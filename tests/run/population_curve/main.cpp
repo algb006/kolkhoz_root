@@ -46,6 +46,7 @@
 #include "../common/rest_tally.h"
 #include "../common/run_harness.h"
 #include "../common/site_wait_tally.h"
+#include "../common/substitute_tally.h"
 #include "../common/timber_flow_tally.h"
 #include "../common/transition_tally.h"
 #include "core_common/calendar.h"
@@ -394,7 +395,8 @@ void LiveOneDay(core::ISimulation& simulation,
                 run::PassedOverTally* passed_over = nullptr,
                 run::SiteWaitTally* site_wait = nullptr,
                 run::RestTally* rest_tally = nullptr,
-                run::FedTally* fed_tally = nullptr) {
+                run::FedTally* fed_tally = nullptr,
+                run::SubstituteTally* substitutes = nullptr) {
   bool hot_at_any_tick = false;
   const core::UnitId awaiting = upgrades.Awaiting();
   for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
@@ -404,6 +406,9 @@ void LiveOneDay(core::ISimulation& simulation,
     if (chairman != nullptr) {
       chairman->WatchStep(simulation.CompletedState());
       chairman->milkmaids.CountStep(simulation.CompletedState());  // #1417
+    }
+    if (substitutes != nullptr) {
+      substitutes->CountStep(simulation.CompletedState());  // #1434
     }
     // The hay lamp's «объявить день рабочим» is the day off's own morning
     // (hay_day_off_policy.h): asked after every step, answered in the first.
@@ -439,6 +444,10 @@ void LiveOneDay(core::ISimulation& simulation,
     if (chairman != nullptr && tick == run::BirthsHerdTally::kSampleHour) {
       chairman->milkmaids.CountNoon(state);
     }
+    // The stock's rest days (#1434), at hour 13.
+    if (substitutes != nullptr && tick == run::BirthsHerdTally::kSampleHour) {
+      substitutes->CountNoon(state);
+    }
     // BY THE STATE'S OWN HOUR, NOT THE LOOP'S INDEX (#1411): the step of index
     // t completes hour t + 1, so index 22 is hour 23 - the day's close, its
     // orders cleared and its rest credited. Read so until #1411, R1373 counted
@@ -451,6 +460,9 @@ void LiveOneDay(core::ISimulation& simulation,
     // The worker-days and output by satiety band, y1-y5 (#1411).
     if (fed_tally != nullptr && hour_now == run::FedTally::kEveningHour) {
       fed_tally->CountEvening(state);
+    }
+    if (substitutes != nullptr && hour_now == run::RestTally::kEveningHour) {
+      substitutes->CountEvening(state);
     }
     // WHICH COWS DIE OF COLD, AND WHERE (#713's first step; boss, 1 November
     // 2026): every frost death of the step, by seed, day and pen, and whether
@@ -732,6 +744,8 @@ bool Walk(std::uint64_t seed,
   run::FedTally fed_tally;
   // The limit book a year and the lots' order-to-arrival days (#1417, #1421).
   run::AvatarBookTally avatar_book;
+  // The stock's rest days, y1-y3 (#1434's canon pair).
+  run::SubstituteTally substitutes(*world.tables);
   std::array<std::uint32_t, core::kRestSourceCount> r1373_sources = {};
   std::uint32_t r1373_walk_offs = 0;
   // What the farm's sites waited on, y1-y6 (#1285 G1's probe; boss [3]).
@@ -844,11 +858,13 @@ bool Walk(std::uint64_t seed,
                  &passed_over,
                  warm_off ? nullptr : &site_wait,
                  warm_off ? nullptr : &rest_tally,
-                 warm_off ? nullptr : &fed_tally);
+                 warm_off ? nullptr : &fed_tally,
+                 warm_off ? nullptr : &substitutes);
       builder.RunDay(*simulation);
       timber.CountDay(simulation->CompletedState());
       avatar_book.CountDay(simulation->CompletedState());
       builder.milkmaids.CountDayEnd(simulation->CompletedState());
+      substitutes.CountDayEnd(simulation->CompletedState());
       if (!warm_off) {
         site_wait.CountDay(
             simulation->CompletedState(), *simulation, builder.fixture, builder.sawmill, year);
@@ -1360,6 +1376,7 @@ bool Walk(std::uint64_t seed,
       fed_tally.Print(std::cout, seed);
       avatar_book.Print(std::cout, seed);
       builder.milkmaids.Report("population_curve", seed);
+      substitutes.Print(std::cout, seed);
     }
   }
   out.timber = timber.years();

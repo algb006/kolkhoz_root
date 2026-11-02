@@ -793,6 +793,12 @@ struct YearLedger {
   std::uint32_t limit_lots_paid_in_grain = 0;
   Grams limit_grain_paid = 0;
 
+  /// A post holder's herd care on a rest day (#1434; leisure.md «Скот в
+  /// выходной — подменой»; save 201): taken by a free adult substitute, or -
+  /// none free - worked by the holder himself, a cancelled rest day. Herd-days.
+  std::uint32_t herd_rest_days_substituted = 0;
+  std::uint32_t herd_rest_days_self_worked = 0;
+
   // -- what the era-readiness index needs and nothing else kept ------------
   //
   // FOUR QUANTITIES THE INDEX ASKS OF THE YEAR AND THE YEAR DID NOT KEEP

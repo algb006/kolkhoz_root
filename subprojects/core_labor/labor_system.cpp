@@ -1064,9 +1064,28 @@ class LaborSystem final : public ILaborSystem {
         if (herd.unit.value != resident.post.unit.value || herd.care_days_remaining <= 0.0F) {
           continue;
         }
-        resident.work.kind = WorkKind::kHerdCare;
-        resident.work.herd = current.herds.row_ids[row];
-        resident.work.travel_hours = -1.0F;
+        // THE STOCK ON A REST DAY BY A SUBSTITUTE (#1434; leisure.md «Скот в
+        // выходной — подменой», boss's decision of 24 September 2026): the
+        // holder has the same day off as everybody, and the herd's care goes
+        // to a free adult - the one with the most rest, so the substitutes
+        // rotate. None free: the holder goes out himself, a cancelled rest day
+        // with its cost, booked at the day's close.
+        WorkAssignment& care = resident.work;
+        if (day_off) {
+          const std::uint32_t substitute = FreeSubstitute(current);
+          if (substitute != kNoRow) {
+            WorkAssignment& stand_in = current.residents.rows[substitute].work;
+            stand_in.kind = WorkKind::kHerdCare;
+            stand_in.herd = current.herds.row_ids[row];
+            stand_in.travel_hours = -1.0F;
+            ++current.ledger.current.herd_rest_days_substituted;
+            break;
+          }
+          ++current.ledger.current.herd_rest_days_self_worked;
+        }
+        care.kind = WorkKind::kHerdCare;
+        care.herd = current.herds.row_ids[row];
+        care.travel_hours = -1.0F;
         break;
       }
       if (resident.work.kind != WorkKind::kNone || day_off) {
@@ -1074,6 +1093,34 @@ class LaborSystem final : public ILaborSystem {
       }
       PutOnModuleWork(current, resident, places_taken);
     }
+  }
+
+  /// Whether a herd stands at `unit` (#1434: its holder's rest day).
+  static bool UnitHasHerd(const WorldState& current, UnitId unit) {
+    return std::ranges::any_of(
+        current.herds.rows, [unit](const HerdRow& herd) { return herd.unit.value == unit.value; });
+  }
+
+  /// A rest day's substitute for a post holder's herd care (#1434): an adult
+  /// with no post and no order this morning, not off work, the one with the
+  /// MOST REST (boss [4]: the substitutes rotate, so nobody becomes a new
+  /// permanent herdsman); ties by row. kNoRow when nobody is free.
+  std::uint32_t FreeSubstitute(const WorldState& current) const {
+    std::uint32_t best = kNoRow;
+    for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
+      const ResidentRow& resident = current.residents.rows[row];
+      if (resident.post.profession.value != kInvalidDefIdValue ||
+          resident.work.kind != WorkKind::kNone || resident.away_until_day != 0 ||
+          OffWork(resident, current.calendar.tick) ||
+          BiologicalAgeYears(config_, resident.birth_day, current.calendar.day) <
+              config_.adult_age_years) {
+        continue;
+      }
+      if (best == kNoRow || resident.rest > current.residents.rows[best].rest) {
+        best = row;
+      }
+    }
+    return best;
   }
 
   /// THE WORK THAT OPENED AFTER THE MORNING, for the post holders (boss,
@@ -2632,7 +2679,13 @@ class LaborSystem final : public ILaborSystem {
       if (resident.post.profession.value != kInvalidDefIdValue &&
           (resident.post.profession.value >= config_.professions.size() ||
            PostHoldsTheDay(config_.professions[resident.post.profession.value].shift))) {
-        const bool released = !SitsPost(resident) && resident.work.kind == WorkKind::kNone &&
+        // A HERD'S HOLDER RESTS ON HIS REST DAY (#1434; leisure.md «человек
+        // по наряду отдыхает»): substituted this morning, he is not released
+        // to the day's list - the list would send him back to his own herd.
+        const bool rests =
+            IsDayOffIn(current, current.calendar.day) && UnitHasHerd(current, resident.post.unit);
+        const bool released = !rests && !SitsPost(resident) &&
+                              resident.work.kind == WorkKind::kNone &&
                               UnitKeepsWork(current, resident.post.unit);
         if (!released) {
           continue;
@@ -3522,6 +3575,24 @@ class LaborSystem final : public ILaborSystem {
                                                                           : RestSource::kHeatHot)];
       }
       const bool at_home = resident.away_until_day == 0;
+      // THE HOLDER WHO WORKED HIS OWN REST DAY (#1434; leisure.md «Подменного
+      // нет — скотник выходит сам, и это отменённый выходной с его ценой»):
+      // the series' first step of the cancelled day off and its satisfaction,
+      // as rush.cpp books a day off declared working (BookRushAtPay). Taken
+      // only where no substitute was free (AssignPostHolders). Asked by the
+      // day's hours, not the order: PayDay has cleared the order by now, and a
+      // holder out on a rest day is out on his herd's care alone (a sitting post
+      // and the modules do not work a rest day).
+      if (day_off && worked && !walked_off &&
+          resident.post.profession.value != kInvalidDefIdValue) {
+        resident.rest = resident.rest > config_.day_off_cancel_rest_per_series
+                            ? resident.rest - config_.day_off_cancel_rest_per_series
+                            : 0.0F;
+        const std::uint32_t family_row = FindRow(current.families, resident.family);
+        if (family_row != kNoRow) {
+          current.families.rows[family_row].overwork_penalty += config_.day_off_cancel_satisfaction;
+        }
+      }
       if (!worked || walked_off) {
         float back = config_.rest_recovery_idle_day;
         if (day_off && holiday && at_home && config_.rest_recovery_holiday >= 0.0F) {

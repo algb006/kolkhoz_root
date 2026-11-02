@@ -194,9 +194,11 @@ constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
 // (#1421, the dealer's grain payment) a u32 and a Grams after it - predicted
 // 1376 -> 1392 (the u32, a pad of four, the eight-aligned i64) and 153 fields
 // before the build; on the wire +16 a book.
-static_assert(sizeof(YearLedger) == 1392 + (43 * kAmountsSize) + kBuiltInRowsSize,
+// (#1434, the stock's rest day) two u32 after the grain paid - predicted 1392
+// -> 1400 and 155 fields before the build; on the wire +8 a book.
+static_assert(sizeof(YearLedger) == 1400 + (43 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 153,
+static_assert(AggregateArity<YearLedger>() == 155,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(BuiltInRow) == 16 && AggregateArity<BuiltInRow>() == 3,
               "BuiltInRow changed — update its codec and VERSION_SAVE");
@@ -400,6 +402,8 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteI32(book.limit_points_carried);      // save 201 (#1417)
   out.WriteU32(book.limit_lots_paid_in_grain);  // save 201 (#1421)
   out.WriteI64(book.limit_grain_paid);
+  out.WriteU32(book.herd_rest_days_substituted);  // save 201 (#1434)
+  out.WriteU32(book.herd_rest_days_self_worked);
   out.WriteFloat(book.satisfaction_sum);
   out.WriteU32(book.satisfaction_samples);
   out.WriteFloat(book.able_bodied_days);
@@ -674,6 +678,8 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.limit_points_carried = in.ReadI32();      // save 201 (#1417)
   book.limit_lots_paid_in_grain = in.ReadU32();  // save 201 (#1421)
   book.limit_grain_paid = in.ReadI64();
+  book.herd_rest_days_substituted = in.ReadU32();  // save 201 (#1434)
+  book.herd_rest_days_self_worked = in.ReadU32();
   book.satisfaction_sum = in.ReadFloat();
   book.satisfaction_samples = in.ReadU32();
   book.able_bodied_days = in.ReadFloat();

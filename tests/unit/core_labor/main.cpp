@@ -1329,6 +1329,101 @@ int TestLeisureByReach() {
   return failures;
 }
 
+/// THE STOCK ON A REST DAY BY A SUBSTITUTE (#1434; leisure.md «Скот в выходной
+/// — подменой»): a herd 100 m off, its post holder resident 0.
+/// - Sunday with free adults: the holder rests, the most rested free adult
+///   takes the care (rotation), the ledger counts one substitution.
+/// - Sunday with nobody free: the holder works, at the cancelled day off's cost.
+/// - Monday: the holder works his care; nobody substitutes.
+int TestRestDaySubstitute() {
+  int failures = 0;
+  // A KIND WITH CARE: the herd's care is refilled each morning from the kind's
+  // row (RefillHerdCare), and a herd of no kind gets none - which is why the
+  // barn checks above pass on nought. 3 650 real days a year is the column's
+  // ceiling, so four head's care outlasts the day. day_off_cancel_rest_per_
+  // series is the config's default, 4.
+  // A second kind with a small care (one head: 120 / 7 / 48 ≈ 0.36 man-days a
+  // day), so one hand covers it and the rotation's pick is the only hand on it.
+  const test::FakeTable livestock({"key", "care_days_per_real_year"},
+                                  {{"cow", "3650"}, {"calf", "120"}});
+  const test::FakeTableSet tables("livestock", livestock);
+  const auto labor = core::CreateLaborSystem(tables, core::StubTables::kAllowed);
+  if (labor == nullptr) {
+    return Expect(false, "rest-day substitute: the factory yields a system");
+  }
+  const auto village = [](std::uint32_t adults, std::uint16_t kind = 0) {
+    DayWorld day(adults);
+    const core::HerdId herd = day.AddUnitHerd(kind == 0 ? 4 : 1, 100.0F);
+    core::HerdRow& cows = day.world.herds.rows[core::FindRow(day.world.herds, herd)];
+    cows.kind = core::LivestockKindId{kind};
+    const core::UnitId barn = cows.unit;
+    day.world.residents.rows[0].post.profession = core::ProfessionId{0};
+    day.world.residents.rows[0].post.unit = barn;
+    return day;
+  };
+  constexpr std::uint32_t kSunday = 6;
+  constexpr std::uint32_t kMonday = 7;
+  // WHO CARED FOR THE HERD AT ANY HOUR OF THE DAY: four head's care may be
+  // done by mid-morning, and its hand released (#709), so one hour's look
+  // would miss it.
+  const auto care_at_noon = [&labor](DayWorld& day, std::uint32_t game_day) {
+    std::vector<bool> caring(day.world.residents.rows.size(), false);
+    for (std::uint32_t hour = 0; hour < core::kTicksPerDay; ++hour) {
+      day.world.calendar.tick = (static_cast<core::Tick>(game_day) * core::kTicksPerDay) + hour;
+      core::RefreshCalendarCaches(day.world.calendar);
+      const core::WorldState previous = day.world;
+      labor->RunAssignmentDecisions(previous, day.world);
+      for (std::size_t row = 0; row < caring.size(); ++row) {
+        caring[row] =
+            caring[row] || day.world.residents.rows[row].work.kind == core::WorkKind::kHerdCare;
+      }
+    }
+    return caring;
+  };
+  DayWorld rotation = village(3, 1);
+  rotation.world.residents.rows[1].rest = 60.0F;
+  rotation.world.residents.rows[2].rest = 80.0F;
+  const std::vector<bool> sunday = care_at_noon(rotation, kSunday);
+  std::cout << "rest-day substitute: Sunday's care by holder / rest 60 / rest 80: " << sunday[0]
+            << ' ' << sunday[1] << ' ' << sunday[2] << '\n';
+  // THE DAY'S POOL ALSO SENDS free hands to care left over, on a rest day as
+  // before #1434: the substitute is the first hand, not the only one. So the
+  // check is the holder resting and the most rested one caring, both ways.
+  failures += Expect(sunday.size() == 3 && !sunday[0] && sunday[2],
+                     "rest-day substitute: on Sunday the holder rests and the MOST RESTED free "
+                     "adult takes the care");
+  DayWorld flipped = village(3, 1);
+  flipped.world.residents.rows[1].rest = 80.0F;
+  flipped.world.residents.rows[2].rest = 60.0F;
+  const std::vector<bool> other = care_at_noon(flipped, kSunday);
+  failures += Expect(other.size() == 3 && !other[0] && other[1],
+                     "rest-day substitute: rest the other way round, the other one stands in");
+  failures += Expect(rotation.world.ledger.current.herd_rest_days_substituted == 1 &&
+                         rotation.world.ledger.current.herd_rest_days_self_worked == 0,
+                     "rest-day substitute: the book counts one substituted rest day");
+  DayWorld alone = village(1);
+  alone.world.residents.rows[0].rest = 70.0F;
+  const std::vector<bool> alone_sunday = care_at_noon(alone, kSunday);
+  const float alone_rest = alone.world.residents.rows[0].rest;
+  DayWorld alone_monday = village(1);
+  alone_monday.world.residents.rows[0].rest = 70.0F;
+  care_at_noon(alone_monday, kMonday);
+  const float monday_rest = alone_monday.world.residents.rows[0].rest;
+  std::cout << "rest-day substitute: the lone holder's rest after Sunday " << alone_rest
+            << ", after Monday " << monday_rest << '\n';
+  failures += Expect(alone_sunday.size() == 1 && alone_sunday[0] &&
+                         alone.world.ledger.current.herd_rest_days_self_worked == 1,
+                     "rest-day substitute: nobody free, the holder works his Sunday, booked");
+  failures += Expect(std::abs((monday_rest - alone_rest) - 4.0F) < 0.01F,
+                     "rest-day substitute: and pays the cancelled day off's 4 over a working day");
+  DayWorld weekday = village(3);
+  const std::vector<bool> monday = care_at_noon(weekday, kMonday);
+  failures += Expect(monday.size() == 3 && monday[0] &&
+                         weekday.world.ledger.current.herd_rest_days_substituted == 0,
+                     "rest-day substitute: on a working day the holder works and nobody stands in");
+  return failures;
+}
+
 int TestWalkOffPaysAndStops() {
   int failures = 0;
   const test::FakeTableSet tables;
@@ -5020,6 +5115,7 @@ int main() {
   failures += TestWalkOffPaysAndStops();
   failures += TestLeisureDayOff();
   failures += TestLeisureByReach();
+  failures += TestRestDaySubstitute();
   failures += TestASpentManIsNotSent();
   failures += TestBarnRunsOnTheDayOff();
   failures += TestRainStopsTheSowingAndTheReaping();
