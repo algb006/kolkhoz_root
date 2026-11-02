@@ -76,8 +76,20 @@ int CheckTheDraught() {
   return failures;
 }
 
+/// NO COLD START (econ's condition via boss, boss-core-1446-herd-allocation
+/// [3]): a new herd - genesis, a gift, a lot bought, a founded one; every
+/// path builds a fresh HerdRow - starts at coverage 1, so its first day pays
+/// no unearned milk cut.
+int CheckANewHerdStartsWhole() {
+  const core::FarmingConfig farming;
+  const core::HerdRow fresh;
+  return Expect(
+      fresh.care_coverage == 1.0F && core::CareFactor(farming, 0.6F, fresh.care_coverage) == 1.0F,
+      "undone care: a new herd starts at coverage 1, factor 1 on its first day");
+}
+
 }  // namespace
 
 int CheckUndoneHerdCare() {
-  return CheckTheCurve() + CheckTheDraught();
+  return CheckTheCurve() + CheckTheDraught() + CheckANewHerdStartsWhole();
 }
