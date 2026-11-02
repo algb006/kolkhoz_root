@@ -57,6 +57,11 @@ class StradaTally {
   /// Reads the garden's full-yield hours (food.csv plot_full_yield_hours), the
   /// curve K2's in-world loss is read on.
   explicit StradaTally(const core::ITableSet& tables) {
+    // The kolkhoz herds' milk y1-y3 (econ's S4 on #1446; the closed book's
+    // herd_produce, as M1417 reads y1).
+    if (const core::ITable* const resources = tables.FindTable("resources")) {
+      milk_ = resources->FindRowByKey("milk");
+    }
     const core::ITable* const food = tables.FindTable("food");
     if (food == nullptr) {
       return;
@@ -273,6 +278,9 @@ class StradaTally {
       return;
     }
     by_yards_md_ += static_cast<double>(closed.herd_care_by_yards);
+    if (milk_ < closed.herd_produce.size()) {
+      milk_kg_ += static_cast<double>(closed.herd_produce[milk_]) / 1000.0;
+    }
     double issued_kg = 0.0;
     for (const core::Grams grams : closed.issued) {
       issued_kg += static_cast<double>(grams) / 1000.0;
@@ -316,10 +324,11 @@ class StradaTally {
         << (trudodni_ > 0.0 ? issued_kg_ / trudodni_ : 0.0) << " old_hungry_family_days_y1y2 "
         << old_hungry_family_days_ << " of " << old_family_days_
         << " old family-days (mean satiety < " << kHungrySatiety << " at hour 22)"
-        << " care_undone_md_y1y3 " << care_undone_md_ << " yards_plot_share_taken mean "
-        << (yards > 0 ? share_sum / yards : 0.0) << " worst " << worst << " yards " << yards
-        << " p90 " << p90 << " winter_old_below70_family_days " << winter_old_below70_days_
-        << " of " << winter_old_family_days_ << " (Oct-Apr after each strada, y1-y3)";
+        << " care_undone_md_y1y3 " << care_undone_md_ << " milk_kg_y1y3 " << milk_kg_
+        << " yards_plot_share_taken mean " << (yards > 0 ? share_sum / yards : 0.0) << " worst "
+        << worst << " yards " << yards << " p90 " << p90 << " winter_old_below70_family_days "
+        << winter_old_below70_days_ << " of " << winter_old_family_days_
+        << " (Oct-Apr after each strada, y1-y3)";
     if (by_yards_md_ <= 0.0) {
       out << " — THE YARDS TOOK NO CARE (expected for a chairman without the path)";
     }
@@ -369,6 +378,8 @@ class StradaTally {
   double by_yards_md_ = 0.0;
   double issued_kg_ = 0.0;
   double trudodni_ = 0.0;
+  std::uint32_t milk_ = core::kNoTableRow;
+  double milk_kg_ = 0.0;
   std::vector<double> yard_given_;
   std::vector<double> yard_gross_;
 };
