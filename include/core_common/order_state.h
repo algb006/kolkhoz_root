@@ -981,9 +981,10 @@ enum class OrderKind : std::uint8_t {
   kSetHerdPlan,
 
   /// THE CHAIRMAN GOES TO A FUNERAL (#1084; funeral_state.h; social.md «Как
-  /// идут похороны», the invitation's «Пойти»): `funeral` the funeral. The
+  /// идут похороны», the invitation's «Пойти»): `amount` the funeral's id, as
+  /// the invitation (kFuneralInvitation) names it - no field of its own. The
   /// core books «went»; the session carries him there - the core never
-  /// moves the chairman. Accepted until the burial day's ceremony.
+  /// moves the chairman. Accepted until the burial day ends.
   /// Refusals: kNoSuchSubject (no such funeral, or it is over), kRuleForbids
   /// (answered already). Seam key `attend_funeral`. Consumer: core_residents
   /// (funeral_rules.h, TakeAttendOrders).

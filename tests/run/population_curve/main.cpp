@@ -41,6 +41,7 @@
 #include "../common/births_herd_tally.h"
 #include "../common/building_chairman.h"
 #include "../common/fed_tally.h"
+#include "../common/funeral_tally.h"
 #include "../common/hay_day_off_policy.h"
 #include "../common/passed_over_tally.h"
 #include "../common/rest_tally.h"
@@ -758,6 +759,8 @@ bool Walk(std::uint64_t seed,
   run::SubstituteTally substitutes(*world.tables);
   // The strada's work and the yards' help, y1-y3 (#1442's pair).
   run::StradaTally strada(*world.tables);
+  // The funerals, y1-y6 (#1084's pair).
+  run::FuneralTally funerals;
   std::array<std::uint32_t, core::kRestSourceCount> r1373_sources = {};
   std::uint32_t r1373_walk_offs = 0;
   // What the farm's sites waited on, y1-y6 (#1285 G1's probe; boss [3]).
@@ -878,6 +881,7 @@ bool Walk(std::uint64_t seed,
       avatar_book.CountDay(simulation->CompletedState());
       builder.milkmaids.CountDayEnd(simulation->CompletedState());
       substitutes.CountDayEnd(simulation->CompletedState());
+      funerals.CountDayEnd(simulation->CompletedState());
       if (!warm_off) {
         strada.CountDayEnd(simulation->CompletedState());
       }
@@ -1211,6 +1215,7 @@ bool Walk(std::uint64_t seed,
     builder.milkmaids.CloseYear(state.ledger.closed, year);
     substitutes.CloseYear(state.ledger.closed, year);
     strada.CloseYear(state.ledger.closed, year);
+    funerals.CloseYear(state.ledger.closed, year);
     if (year >= 4 && year <= run::SiteWaitTally::kLastYear) {
       for (const std::uint32_t r : g1285_roofed) {
         g1285_snow_y4y6 +=
@@ -1398,6 +1403,7 @@ bool Walk(std::uint64_t seed,
       strada.Print(std::cout, seed);
       strada.PrintHarvests(std::cout, seed);
       strada.PrintCoverage(std::cout, seed);
+      funerals.Print(std::cout, seed);
       // The warm works unfinished on a cold night, and the crew's builders
       // (warm_crew.h; boss, core-boss-1084-funeral-body [7]).
       std::cout << "population_curve: WARMLATE seed " << seed << " late_warm_works "

@@ -166,8 +166,13 @@ class FamilyMetricsPhase final : public IParallelPhase {
       // no component it belongs to.
       // AND LODGING, the same way (housing §20; boss seq 199): two families
       // in one house, both of them (family_state.h, lodging_penalty).
-      const float after_overwork = capped - family.overwork_penalty - family.lodging_penalty;
-      family.satisfaction = after_overwork > 0.0F ? after_overwork : 0.0F;
+      // AND THE FUNERAL'S TERM (#1084; family_state.h), signed, while it lasts.
+      const float funeral = current.calendar.day < family.funeral_satisfaction_until
+                                ? family.funeral_satisfaction
+                                : 0.0F;
+      const float after_overwork =
+          capped - family.overwork_penalty - family.lodging_penalty + funeral;
+      family.satisfaction = std::clamp(after_overwork, 0.0F, 100.0F);
     }
   }
 
@@ -493,6 +498,9 @@ class ResidentsSystem final : public IResidentsSystem {
     // The chairman's talk, in whatever hour it came (sport.h).
     ConsumeTalkOrders(
         config_.sport, config_.alcoholism.adult_from_years, config_.life_speedup, current);
+    // The chairman's «Пойти» to a funeral, in whatever hour it came
+    // (funeral_rules.h; #1084).
+    TakeAttendOrders(current);
     // And the ration's switch before the exchange below reads it: a switch
     // given this hour is the rule of this day's ration.
     ConsumeRationOrders(current);
@@ -554,6 +562,10 @@ class ResidentsSystem final : public IResidentsSystem {
     // starts from his father's share, not from what the turn just gave a boy
     // it already counted a man (alcoholism.h).
     InheritAlcoholismDay(config_.alcoholism, config_.life_speedup, current);
+    // THE FUNERALS' DAY (#1084; funeral_rules.h): yesterday's burials close
+    // and the grief and the chairman's presence go into the mood - after the
+    // month's mood is composed (the sugar) and the moonshine's on top of it.
+    RunFuneralDay(config_.funeral, current);
     // And today's weather at the field, counted in the month that opens
     // (sport.h) — after the turn, which read and cleared the one that closed.
     CountSportDay(config_.sport, current);

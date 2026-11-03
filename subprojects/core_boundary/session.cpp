@@ -304,9 +304,11 @@ bool ShapeIsValid(const OrderRow& order) {
       return has_herd && order.amount >= 0 && order.amount <= kNoHerdPlan && !has_resident &&
              !has_unit && !has_field && !has_stand && !has_site;
     case OrderKind::kAttendFuneral:
-      // STUB until the funeral's body lands (#1084): the order's funeral id
-      // field comes with its codec there; until then the shape is refused.
-      return false;
+      // The funeral's id in `amount`, as the invitation names it (#1084;
+      // order_state.h), and no other subject. Whether it is still open is
+      // the consumer's verdict (funeral_rules.h, TakeAttendOrders).
+      return order.amount > 0 && order.amount <= static_cast<Grams>(UINT32_MAX) && !has_resident &&
+             !has_herd && !has_unit && !has_field && !has_stand && !has_site;
     case OrderKind::kPauseLogisticsTask:
       // The task and a switch that is a switch.
       return order.logistics_task.value != kInvalidEntityIdValue && order.enable <= 1 &&

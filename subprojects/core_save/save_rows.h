@@ -22,6 +22,7 @@
 #include "core_common/district_visit_state.h"
 #include "core_common/extraction_state.h"
 #include "core_common/family_state.h"
+#include "core_common/funeral_state.h"
 #include "core_common/herd_state.h"
 #include "core_common/land_state.h"
 #include "core_common/limit_state.h"
@@ -109,6 +110,14 @@ LogisticsTaskRow ReadLogisticsTaskRow(LoadSource& source);
 /// @brief A settlement's row (save 173; #1089, settlement_state.h).
 void WriteSettlementRow(SaveSink& sink, const SettlementRow& row);
 SettlementRow ReadSettlementRow(LoadSource& source);
+
+/// @brief A funeral's row (save 205; #1084, funeral_state.h): the dead and
+///        their households (parallel, one count), the settlement, the
+///        cemetery, the burial day, loud, the chairman's answer, the party
+///        and its kin count. Counts are asked of the bytes left; the answer
+///        and loud are range-checked; kin_count must not exceed the party.
+void WriteFuneralRow(SaveSink& sink, const FuneralRow& row);
+FuneralRow ReadFuneralRow(LoadSource& source);
 
 /// The groom's plan of the day (save 136; routing stage B, B3): the day, the
 /// two flags, the carts with their legs and riders.

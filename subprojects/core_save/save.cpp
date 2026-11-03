@@ -78,6 +78,7 @@ constexpr const char* kSectionRoadWorks = "road_works";
 constexpr const char* kSectionBarterTrips = "barter_trips";
 constexpr const char* kSectionLogisticsTasks = "logistics_tasks";
 constexpr const char* kSectionSettlements = "settlements";
+constexpr const char* kSectionFunerals = "funerals";  // save 205 (#1084)
 constexpr const char* kSectionGroomPlan = "groom_plan";
 
 /// Puts every map road's axis back from tables/roads.csv after the section
@@ -460,6 +461,11 @@ std::vector<std::byte> EncodeWorld(const WorldState& world,
   WriteTable(sink, world.settlements, WriteSettlementRow);
   CloseSection(out, length_offset);
 
+  // The funerals (save format 205; #1084, funeral_state.h).
+  length_offset = OpenSection(out);
+  WriteTable(sink, world.funerals, WriteFuneralRow);
+  CloseSection(out, length_offset);
+
   // The groom's plan of the day (save format 136; routing stage B, B3).
   length_offset = OpenSection(out);
   WriteGroomPlan(sink, world.groom_plan);
@@ -603,7 +609,8 @@ bool DecodeWorld(std::span<const std::byte> bytes,
       !read_table_section(kSectionRoadWorks, &loaded.road_works, ReadRoadWorkRow) ||
       !read_table_section(kSectionBarterTrips, &loaded.barter_trips, ReadBarterTripRow) ||
       !read_table_section(kSectionLogisticsTasks, &loaded.logistics_tasks, ReadLogisticsTaskRow) ||
-      !read_table_section(kSectionSettlements, &loaded.settlements, ReadSettlementRow)) {
+      !read_table_section(kSectionSettlements, &loaded.settlements, ReadSettlementRow) ||
+      !read_table_section(kSectionFunerals, &loaded.funerals, ReadFuneralRow)) {
     return false;
   }
   {
