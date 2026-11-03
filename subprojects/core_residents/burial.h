@@ -57,10 +57,14 @@ std::uint16_t GraveCapacityOf(const BurialConfig& config,
 ///        asked). With none built, the grave waits — burials_waiting rises and
 ///        kBurialHeld fires as notable, no stop (resident `dead`, amount the
 ///        waiting).
+/// @param funeral_cemetery The cemetery his funeral goes to (#1084,
+///        funeral_rules.h): the grave is laid there when it is a built
+///        cemetery; invalid - his own nearest, as above.
 void LayGraveOf(const BurialConfig& config,
                 std::span<const float> plot_radius_m,
                 WorldState& current,
-                ResidentId dead);
+                ResidentId dead,
+                UnitId funeral_cemetery);
 
 /// @brief Lays the graves that wait, all into the oldest built cemetery;
 ///        kBurialsLaid names it (unit, amount).

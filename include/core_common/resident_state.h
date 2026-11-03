@@ -221,6 +221,19 @@ struct ResidentRow {
   /// newcomers' draw is its own item later).
   Metric mood_base = 60.0F;
 
+  /// THE FUNERAL'S MOOD TERM (#1084; social.md «Горе», «Председатель — по
+  /// приглашению»): grief (-10), the chairman's presence (+10) or absence
+  /// (-8), each fading linearly to nought over its days. `funeral_mood_amount`
+  /// is the term on `funeral_mood_day`; a new effect stacks as what is left
+  /// plus the new, fading from that day (STUB: one fade, not one a source).
+  /// `funeral_mood_applied` is what this term put into `mood` and has not
+  /// taken back - the month's recomposition from mood_base drops it, and the
+  /// funeral step puts the whole term back that day. Written only by the
+  /// funeral step (funeral_rules.h). SAVED (save 205).
+  float funeral_mood_amount = 0.0F;
+  SimDay funeral_mood_day = 0;
+  float funeral_mood_applied = 0.0F;
+
   // -- today's work (labor_state.h; stage 5) -------------------------------
   /// Written only by the labor sub-step of the decisions slot: assigned in
   /// the morning, drained hourly, closed out at day end. kind == kNone means

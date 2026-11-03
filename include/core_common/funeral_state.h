@@ -40,6 +40,9 @@ inline constexpr float kNeighbourMetres = 300.0F;
 /// At most one LOUD burial day in this many game days (STUB).
 inline constexpr std::uint32_t kLoudEveryDays = 14;
 
+/// WorldState::last_loud_burial_day before any loud funeral.
+inline constexpr SimDay kNoLoudBurialDay = 0xFFFFFFFFU;
+
 /// @brief The chairman and this funeral.
 enum class FuneralChairman : std::uint8_t {
   kInvited = 0,           ///< Asked; no answer yet.
@@ -66,6 +69,11 @@ struct FuneralRow {
 
   /// The burial day: the death day + 1.
   SimDay burial_day = 0;
+
+  /// The procession's road, one way on foot (RoadKm kWalk), from the first
+  /// dead's house to the cemetery, set at the opening: the house's family may
+  /// be gone by the burial day. 0 with no cemetery or no house.
+  float road_km = 0.0F;
 
   /// The invitation is loud (a named character, a child, a household's last
   /// adult, within the loud cap).

@@ -23,6 +23,7 @@ kolkhoz_add_module(core_common
     road_pieces.cpp
     road_cut.cpp
     home_reach.cpp
+    funeral_reads.cpp
     horse_yard_road.cpp
     haul.cpp
     trip_terms.cpp

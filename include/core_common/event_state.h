@@ -862,9 +862,8 @@ enum class EventKind : std::uint8_t {
   /// A FUNERAL TOMORROW, THE CHAIRMAN INVITED (#1084; funeral_state.h): the
   /// feed's «Завтра хоронят {name}. [Пойти]». `amount` the funeral's id,
   /// `resident` its first dead. kInterrupting when loud, kNotable when quiet.
-  /// Key `funeral_invitation`.
-  /// @no_emit the #1084 contract (save 205): raised by the funeral's body
-  /// (OpenFunerals), which is not built yet; the site lands with it.
+  /// `family` its first household. Key `funeral_invitation`. Raised by
+  /// OpenFunerals (funeral_rules.h) the death day.
   kFuneralInvitation,
 
   // Reserved for project phase 3 and appended by it: fire, epoch change,

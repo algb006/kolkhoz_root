@@ -126,9 +126,19 @@ std::uint16_t GraveCapacityOf(const BurialConfig& config,
 void LayGraveOf(const BurialConfig& config,
                 std::span<const float> plot_radius_m,
                 WorldState& current,
-                ResidentId dead) {
+                ResidentId dead,
+                UnitId funeral_cemetery) {
   (void)plot_radius_m;  // the room is not asked since #1367; the fill reads it
-  const std::uint32_t best = NearestCemetery(config, current, dead);
+  // THE FUNERAL'S CEMETERY when it names one (#1084; boss,
+  // core-boss-1084-funeral-body [2]): the dead are buried where they were
+  // carried. A built cemetery of the type only; otherwise his own nearest.
+  std::uint32_t best = FindRow(current.units, funeral_cemetery);
+  if (best != kNoRow && !TakesAGrave(config, current.units.rows[best])) {
+    best = kNoRow;
+  }
+  if (best == kNoRow) {
+    best = NearestCemetery(config, current, dead);
+  }
   if (best != kNoRow) {
     UnitRow& cemetery = current.units.rows[best];
     if (cemetery.graves < std::numeric_limits<std::uint16_t>::max()) {

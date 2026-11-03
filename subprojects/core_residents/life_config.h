@@ -38,6 +38,7 @@
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
 #include "core_common/world_state.h"
+#include "funeral_rules.h"
 #include "membership.h"
 #include "night_trade.h"
 #include "schooling.h"
@@ -315,6 +316,10 @@ struct LifeConfig {
 
   /// The graves and the game's stop for one (burial.h; #1199).
   BurialConfig burial;
+
+  /// The funerals (funeral_rules.h; #1084): the cemetery type is the
+  /// burial's, the ages are this config's own (filled after the parse).
+  FuneralConfig funeral;
 
   float life_speedup = 4.0F;
 
