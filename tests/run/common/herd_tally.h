@@ -69,6 +69,17 @@ bool IsPigKnife(Kind kind) {
   }
 }
 
+/// @brief A herd row's inherited mark, 0 in a tree before #1374 has none (a
+///        template, so the requires-test is not a hard error).
+template <typename Row>
+unsigned InheritedMarkOf(const Row& row) {
+  if constexpr (requires { row.inherited; }) {
+    return static_cast<unsigned>(row.inherited);
+  } else {
+    return 0U;
+  }
+}
+
 template <typename Book>
 const core::ResourceAmounts& YoungCulledColumn(const Book& book) {
   if constexpr (requires { book.herd_young_culled; }) {
@@ -302,7 +313,7 @@ class HerdTally {
           const std::uint32_t id = world.herds.row_ids[row].value;
           line += " [" + std::to_string(id) + ' ' + std::to_string(herd.adult_count) + '/' +
                   std::to_string(herd.juvenile_count) + '/' + std::to_string(herd.newborn_count) +
-                  " inh " + std::to_string(herd.inherited);
+                  " inh " + std::to_string(InheritedMarkOf(herd));
           const auto was = std::ranges::find_if(
               yesterday_, [id](const HerdYesterday& entry) { return entry.id == id; });
           line += was == yesterday_.end()
