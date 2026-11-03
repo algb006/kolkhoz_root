@@ -1069,6 +1069,13 @@ struct FarmingConfig {
   /// six adults, which is not a few.
   float sow_keep_min = 3.0F;
 
+  /// THE PIG'S FORMER FEMALE SHARE, used only to convert the two knobs above
+  /// from sows into heads (#1374; econ, econ-boss-1374-sows-1427-close [1]):
+  /// the herd has no sex any more, but the autumn keeps the sows WITH their
+  /// boars, so the heads kept are the sows over this share, rounded up
+  /// (herd_life.cpp, PigsKeptHeads). (0, 1].
+  float sow_keep_female_share = 0.9F;
+
   /// The calving season, 0-based months inclusive. Births are once a game
   /// year in their own season (canon of the yearly cycle); livestock.csv
   /// gives the yearly rate but names no month, so the band is ASSUMPTION and

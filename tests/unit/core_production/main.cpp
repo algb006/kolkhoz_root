@@ -2646,15 +2646,19 @@ int CheckTheYoungCullIsSaid() {
 }
 
 /// A FEW HEADS, NOT ONE (boss, boss-core-epoch1-5 seq 45, option б; 0.35.5;
-/// rewritten for #1374: heads, no boar kept beside them): six adults, a keep
-/// share of 0.25 — the share alone keeps one head. With sow_keep_min 3 the
-/// slaughter leaves three; with 0 it leaves the share's one.
+/// #1374: the keep is written in sows and kept in heads, sows over the pig's
+/// former female share 0.9, rounded up - the sows and their boars): six
+/// adults, a keep share of 0.25 — the share alone keeps one sow. With
+/// sow_keep_min 3 the slaughter leaves ⌈3/0.9⌉ = 4 heads; with 0 it leaves
+/// ⌈1/0.9⌉ = 2 - 0.37.360's numbers (three sows and the boar; one and the
+/// boar), which the body's first cut, reading sows as heads, lost.
 int CheckTheAutumnKeepsAFewSows() {
   int failures = 0;
-  const auto kept = [](float least) {
+  const auto kept = [](float least, float female_share = 0.9F) {
     core::ProductionConfig config = MakeHerdConfig();
     config.farming.sow_keep_share = 0.25F;
     config.farming.sow_keep_min = least;
+    config.farming.sow_keep_female_share = female_share;
     core::WorldState world = MakeHerdWorld(1000.0F);  // room for the meat
     AddHerd(world, 1, 6, 1, true);
     world.calendar.tick = static_cast<core::Tick>(9U * core::kDaysPerMonth) * core::kTicksPerDay;
@@ -2664,8 +2668,13 @@ int CheckTheAutumnKeepsAFewSows() {
   };
   const std::uint16_t with_floor = kept(3.0F);
   const std::uint16_t by_share = kept(0.0F);
-  failures += Expect(with_floor == 3, "sows: six adults keep three heads through the winter");
-  failures += Expect(by_share == 1, "sows: with no floor the share keeps one head");
+  failures +=
+      Expect(with_floor == 4,
+             "sows: six adults keep three sows' heads through the winter - four, as 0.37.360");
+  failures += Expect(by_share == 2, "sows: with no floor the share keeps one sow's heads - two");
+  // The conversion goes through the knob: a female share of 1 keeps the sows
+  // as heads (the body's first cut), so the 4 above is the knob's work.
+  failures += Expect(kept(3.0F, 1.0F) == 3, "sows: a female share of 1 keeps the three as heads");
   return failures;
 }
 
@@ -2681,12 +2690,12 @@ int CheckAutumnPigs() {
   core::RunHerdDay(config, world);
   const core::HerdRow& herd = world.herds.rows[0];
   failures += Expect(herd.juvenile_count == 0, "the autumn takes the whole fattening stock");
-  // #1374: the share's half of eight adults - four heads; the boar kept beside
-  // the sows went with the sex.
-  failures += Expect(herd.adult_count == 4, "and leaves the breeding heads");
+  // #1374: the share's half of eight adults - four sows, ⌈4/0.9⌉ = 5 heads,
+  // 0.37.360's four sows and the boar.
+  failures += Expect(herd.adult_count == 5, "and leaves the breeding heads");
   failures += Expect(StoreOf(world, 2) > 0, "the slaughter pays out in meat");
   // SAID AND BOOKED BY KIND (boss, boss-core-epoch1-5 seq 43 and 45; 0.35.3):
-  // six fattening pigs and four adults, ten heads, kind 1.
+  // six fattening pigs and three adults, nine heads, kind 1.
   std::vector<core::SimEvent> slaughter;
   for (const core::SimEvent& event : world.step_events) {
     if (event.kind == core::EventKind::kHerdAutumnSlaughter) {
@@ -2694,12 +2703,12 @@ int CheckAutumnPigs() {
     }
   }
   failures += Expect(
-      slaughter.size() == 1 && slaughter[0].herd.value == id.value && slaughter[0].amount == 10 &&
-          core::AmountOf(world.ledger.current.herd_autumn_slaughtered, core::ResourceId{1}) == 10,
-      "the autumn slaughter is said with its ten heads and booked by kind");
+      slaughter.size() == 1 && slaughter[0].herd.value == id.value && slaughter[0].amount == 9 &&
+          core::AmountOf(world.ledger.current.herd_autumn_slaughtered, core::ResourceId{1}) == 9,
+      "the autumn slaughter is said with its nine heads and booked by kind");
 
   // THE SLAUGHTER WAITS FOR ROOM (boss, host-econ-shops seq 26). The same
-  // herd: ten heads to go, 500 kg of meat; the store has 100 kg of room.
+  // herd: nine heads to go, 450 kg of meat; the store has 100 kg of room.
   const auto october_day = [](core::WorldState& at, std::uint32_t day_in_month) {
     at.calendar.tick =
         static_cast<core::Tick>((9U * core::kDaysPerMonth) + day_in_month) * core::kTicksPerDay;
@@ -2723,9 +2732,9 @@ int CheckAutumnPigs() {
   // slaughter's turn, which is growth, not a slaughter.
   failures +=
       Expect(waits.herds.rows[0].juvenile_count > 0 && StoreOf(waits, 2) == 0 &&
-                 waiting != alarms.end() && waiting->amount == 400 * core::kGramsPerKilogram,
-             "with 100 kg of room for 500 kg of meat the slaughter waits, and says it "
-             "lacks room for 400 kg");
+                 waiting != alarms.end() && waiting->amount == 350 * core::kGramsPerKilogram,
+             "with 100 kg of room for 450 kg of meat the slaughter waits, and says it "
+             "lacks room for 350 kg");
   // ITS DAYS TO THE LOSS (the lamp colour, 0.37.194): the month's last day
   // takes it whatever the room — three days off on October's first.
   failures += Expect(waiting != alarms.end() && waiting->days_to_loss == 3,
@@ -2734,16 +2743,16 @@ int CheckAutumnPigs() {
   october_day(waits, 1);
   core::RunHerdDay(config, waits);
   // #1374: two days of the herd's own maturing before it lift the adults to
-  // ten, so the share keeps five and nine heads go - 450 kg (the old sows and
-  // boar read the same numbers by another road).
+  // ten, so the share keeps five sows - ⌈5/0.9⌉ = 6 heads - and eight heads
+  // go, 400 kg (four adults and four juveniles).
   failures +=
-      Expect(waits.herds.rows[0].juvenile_count == 0 && waits.herds.rows[0].adult_count == 5 &&
-                 StoreOf(waits, 2) == 450 * core::kGramsPerKilogram &&
+      Expect(waits.herds.rows[0].juvenile_count == 0 && waits.herds.rows[0].adult_count == 6 &&
+                 StoreOf(waits, 2) == 400 * core::kGramsPerKilogram &&
                  waits.herds.rows[0].autumn_slaughter_done == 1,
              "the first October day with room it happens, all the meat in the store");
   october_day(waits, 2);
   core::RunHerdDay(config, waits);
-  failures += Expect(waits.herds.rows[0].adult_count == 5,
+  failures += Expect(waits.herds.rows[0].adult_count == 6,
                      "and once: the next day the kept sows are not slaughtered in their turn");
   alarms.clear();
   core::CollectHerdAlarms(config, waits, alarms);

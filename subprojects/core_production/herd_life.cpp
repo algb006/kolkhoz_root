@@ -9,6 +9,7 @@
 #include "herd_life.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 
 #include "core_common/calendar.h"
@@ -556,21 +557,30 @@ void RunHungerDeaths(const ProductionConfig& config,
 /// The heads the autumn keeps: the share of the adults, and never fewer than
 /// sow_keep_min while the herd has that many (boss, boss-core-epoch1-5 seq 45,
 /// option б; 0.35.5). ONE HOME for the slaughter and for the meat it is sized
-/// by (AutumnSlaughterMeatShort). Since #1374 heads, not sows: the sires the
-/// autumn kept beside them went with the sex.
-std::uint16_t SowsKept(const ProductionConfig& config, const HerdRow& herd) {
+/// by (AutumnSlaughterMeatShort).
+/// HEADS, CONVERTED FROM SOWS (#1374; econ, econ-boss-1374-sows-1427-close
+/// [1]): sow_keep_share and sow_keep_min are written in sows, and the herd
+/// keeps the sows together with their boars, so the sows are divided by the
+/// pig's former female share (sow_keep_female_share) and rounded up. The
+/// body's first cut read the sows as heads, and the boars that the autumn
+/// kept beside them were lost: about a tenth of the pig births, a double
+/// conversion.
+std::uint16_t PigsKeptHeads(const ProductionConfig& config, const HerdRow& herd) {
   const std::uint16_t by_share =
       AsHeads(static_cast<float>(herd.adult_count) * config.farming.sow_keep_share);
   const std::uint16_t floor = AsHeads(config.farming.sow_keep_min);
   const std::uint16_t least = herd.adult_count < floor ? herd.adult_count : floor;
-  return by_share > least ? by_share : least;
+  const std::uint16_t sows = by_share > least ? by_share : least;
+  const float heads = std::ceil(static_cast<float>(sows) / config.farming.sow_keep_female_share);
+  return heads < static_cast<float>(herd.adult_count) ? static_cast<std::uint16_t>(heads)
+                                                      : herd.adult_count;
 }
 
 std::uint16_t AutumnSlaughterHeads(const ProductionConfig& config,
                                    const LivestockDef& kind,
                                    const HerdRow& herd) {
   (void)kind;  // the sires' share it read went with #1374
-  const std::uint16_t keep = SowsKept(config, herd);
+  const std::uint16_t keep = PigsKeptHeads(config, herd);
   const std::uint16_t adults = herd.adult_count > keep ? herd.adult_count - keep : 0;
   return static_cast<std::uint16_t>(herd.juvenile_count + adults);
 }
@@ -620,7 +630,7 @@ void RunAutumnSlaughter(const ProductionConfig& config,
     return;
   }
   herd.autumn_slaughter_done = 1;
-  const std::uint16_t keep = SowsKept(config, herd);
+  const std::uint16_t keep = PigsKeptHeads(config, herd);
   std::uint16_t gone = TakeHeads(herd.juvenile_count, herd.juvenile_count);
   if (herd.adult_count > keep) {
     const auto surplus = static_cast<std::uint16_t>(herd.adult_count - keep);
