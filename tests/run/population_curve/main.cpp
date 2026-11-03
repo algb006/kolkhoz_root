@@ -1397,6 +1397,7 @@ bool Walk(std::uint64_t seed,
       substitutes.Print(std::cout, seed);
       strada.Print(std::cout, seed);
       strada.PrintHarvests(std::cout, seed);
+      strada.PrintCoverage(std::cout, seed);
     }
   }
   out.timber = timber.years();

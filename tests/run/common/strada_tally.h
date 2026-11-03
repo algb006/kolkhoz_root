@@ -62,6 +62,13 @@ class StradaTally {
     if (const core::ITable* const resources = tables.FindTable("resources")) {
       milk_ = resources->FindRowByKey("milk");
     }
+    if (const core::ITable* const livestock = tables.FindTable("livestock")) {
+      cow_ = livestock->FindRowByKey("cow");
+      horse_ = livestock->FindRowByKey("horse");
+    }
+    for (auto& months : coverage_min_) {
+      months.fill(1.0F);
+    }
     const core::ITable* const food = tables.FindTable("food");
     if (food == nullptr) {
       return;
@@ -267,9 +274,43 @@ class StradaTally {
     if (world.calendar.date.year < 1 || world.calendar.date.year > kYears) {
       return;
     }
+    const auto month =
+        static_cast<std::size_t>(((world.calendar.date.year - 1) * 12) +
+                                 static_cast<std::uint32_t>(world.calendar.date.month));
     for (const core::HerdRow& herd : world.herds.rows) {
       care_undone_md_ += static_cast<double>(herd.care_days_remaining);
+      // P0, THE CARE COVERAGE CENSUS (#1443; econ's gate): the kolkhoz cows'
+      // and horses' month mean (HerdRow::care_coverage) at each day's end.
+      if (herd.household_owned != 0 || herd.unit.value == core::kInvalidEntityIdValue) {
+        continue;
+      }
+      const int which = herd.kind.value == cow_ ? 0 : (herd.kind.value == horse_ ? 1 : -1);
+      if (which < 0 || month >= coverage_min_[0].size()) {
+        continue;
+      }
+      auto& c = coverage_[static_cast<std::size_t>(which)];
+      c[0] += 1.0;
+      c[1] += static_cast<double>(herd.care_coverage);
+      c[2] += herd.care_coverage < 0.9F ? 1.0 : 0.0;
+      float& low = coverage_min_[static_cast<std::size_t>(which)][month];
+      low = herd.care_coverage < low ? herd.care_coverage : low;
     }
+  }
+
+  /// @brief P0's line (#1443): the cows' and horses' coverage y1-y3 - herd-days,
+  ///        mean, herd-days under 0.9, and each month's lowest.
+  void PrintCoverage(std::ostream& out, std::uint64_t seed) const {
+    out << "population_curve: C1443 seed " << seed;
+    const char* names[2] = {"cows", "horses"};
+    for (std::size_t which = 0; which < 2; ++which) {
+      const auto& c = coverage_[which];
+      out << ' ' << names[which] << " herd_days " << c[0] << " mean "
+          << (c[0] > 0.0 ? c[1] / c[0] : 1.0) << " under09 " << c[2] << " month_min";
+      for (const float low : coverage_min_[which]) {
+        out << ' ' << low;
+      }
+    }
+    out << '\n';
   }
 
   /// @brief The closed year's book, y1-y3. Call at each year's turn.
@@ -384,6 +425,10 @@ class StradaTally {
   std::uint32_t milk_ = core::kNoTableRow;
   double milk_kg_ = 0.0;
   std::uint64_t unexplained_ = 0;
+  std::uint32_t cow_ = core::kNoTableRow;
+  std::uint32_t horse_ = core::kNoTableRow;
+  std::array<std::array<double, 3>, 2> coverage_ = {};
+  std::array<std::array<float, 36>, 2> coverage_min_ = {{{}, {}}};
   std::vector<double> yard_given_;
   std::vector<double> yard_gross_;
 };
