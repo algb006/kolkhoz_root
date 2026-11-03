@@ -31,6 +31,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <ostream>
+#include <utility>
 #include <vector>
 
 #include "core_common/calendar.h"
@@ -93,6 +94,15 @@ class HerdTally {
     }
     if (const core::ITable* const resources = tables.FindTable("resources")) {
       milk_row_ = resources->FindRowByKey("milk");
+      // The yard's food in kcal (econ's beside-gate, boss [14]): milk, meat
+      // and eggs by resources.csv's own kcal_per_gram.
+      const std::uint32_t kcal = resources->FindColumn("kcal_per_gram");
+      for (const char* key : {"milk", "meat", "egg"}) {
+        const std::uint32_t row = resources->FindRowByKey(key);
+        if (row != core::kNoTableRow && kcal != core::kNoTableColumn) {
+          food_rows_.push_back({row, resources->CellReal(row, kcal).value_or(0.0F)});
+        }
+      }
     }
   }
 
@@ -216,9 +226,14 @@ class HerdTally {
     for (std::size_t index = 0; index < kKinds; ++index) {
       young_culled_[index] += At(YoungCulledColumn(closed), kind_rows_[index]);
       autumn_[index] += At(closed.herd_autumn_slaughtered, kind_rows_[index]);
+      surplus_[index] += At(closed.herd_surplus_slaughtered, kind_rows_[index]);
     }
     milk_g_ += At(closed.herd_produce, milk_row_);
     yard_milk_g_ += At(closed.yard_produce, milk_row_);  // Y3
+    for (const auto& [row, kcal_per_gram] : food_rows_) {
+      yard_food_kcal_ +=
+          static_cast<double>(At(closed.yard_produce, row)) * static_cast<double>(kcal_per_gram);
+    }
     for (const core::Grams grams : closed.herd_hay_eaten) {
       hay_g_ += grams;
     }
@@ -234,6 +249,10 @@ class HerdTally {
         for (std::size_t index = 0; index < kKinds; ++index) {
           if (herd.kind.value == kind_rows_[index]) {
             heads_[turn][index][herd.household_owned != 0 ? 1 : 0] += herd.adult_count;
+            // The yards keeping the kind (any head), econ's goat carrier.
+            const std::uint32_t total = static_cast<std::uint32_t>(herd.adult_count) +
+                                        herd.juvenile_count + herd.newborn_count;
+            yards_keeping_[turn][index] += herd.household_owned != 0 && total > 0 ? 1U : 0U;
           }
         }
       }
@@ -266,7 +285,16 @@ class HerdTally {
     }
     out << " U_end";
     out << " Y1_mixed_yard_days " << mixed_yard_days_ << " Y1_mixed_yards_max " << mixed_yards_max_
-        << " Y3_yard_milk_t_y1y6 " << static_cast<double>(yard_milk_g_) / 1e6;
+        << " Y3_yard_milk_t_y1y6 " << static_cast<double>(yard_milk_g_) / 1e6
+        << " Y3b_yard_food_Mkcal_y1y6 " << yard_food_kcal_ / 1e6;
+    for (const std::size_t index : {kPig, std::size_t{4}}) {
+      const char* const key = kKindKeys[index];
+      out << ' ' << key << "_surplus_knifed_y1y6 " << surplus_[index];
+      for (std::size_t turn = 0; turn < kTurns.size(); ++turn) {
+        out << ' ' << key << "_yards_keeping_y" << kTurns[turn] << ' '
+            << yards_keeping_[turn][index];
+      }
+    }
     std::int64_t knifed_y1y3 = 0;
     for (std::uint32_t year = 0; year < 3; ++year) {
       knifed_y1y3 += yard_pig_knifed_[year];
@@ -325,6 +353,10 @@ class HerdTally {
   std::uint32_t mixed_yards_max_ = 0;
   std::array<std::uint64_t, core::kDaysPerYear> unexplained_by_day_ = {};
   core::Grams yard_milk_g_ = 0;
+  std::vector<std::pair<std::uint32_t, float>> food_rows_;
+  double yard_food_kcal_ = 0.0;
+  std::array<core::Grams, kKinds> surplus_ = {};
+  std::array<std::array<std::uint32_t, kKinds>, kTurns.size()> yards_keeping_ = {};
   std::array<std::int64_t, kYears> yard_pig_knifed_ = {};
   std::array<std::uint32_t, kKinds> max_yard_adults_ = {};
   std::array<std::uint32_t, kKinds> max_yard_heads_ = {};
