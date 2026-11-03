@@ -50,6 +50,7 @@
 #include "supply_policy.h"
 #include "transition_policy.h"
 #include "upgrade_policy.h"
+#include "warm_crew.h"
 #include "warm_hold.h"
 #include "watchman_policy.h"
 #include "yard_policy.h"
@@ -84,6 +85,7 @@ class BuildingChairman {
         transition(tables),
         cemetery(tables),
         warm_hold(tables),
+        warm_crew(tables),
         fallow(tables),
         sport_talk(tables),
         distiller(tables),
@@ -274,6 +276,10 @@ class BuildingChairman {
   static void Declare(const std::string& run_name) {
     FixturePolicy::Declare();
     WarmHold::Declare();
+    std::cout << "FIXTURE DIFFERS FROM THE START CANON — the run's chairman puts standing "
+                 "builders (kAssignWork) on every works that will house a freezing kolkhoz herd "
+                 "while it is in its labour phase, up to its need, and releases them when it "
+                 "ends (warm_crew.h; the frozen cows of seed 2044, 3 November 2026)\n";
     FellingPolicy::Declare(run_name.c_str());
     PlantingPolicy::Declare(run_name);
     StandRenewalPolicy::Declare(run_name);
@@ -336,6 +342,9 @@ class BuildingChairman {
     // else may hold it back (cemetery_policy.h).
     cemetery.RunDay(simulation);
     fixture.RunDay(simulation);
+    // The warm works' hands, right after the fixture orders them: ahead of
+    // the strada's harvest for the day or two they take (warm_crew.h).
+    warm_crew.RunDay(simulation);
     felling.RunDay(simulation, sawmill.LogsForMissingBoards(simulation.CompletedState()));
     // The forest after the felling: a zone a year, from the first spring
     // (boss, boss-core-epoch1-3 seq 18 and 25).
@@ -510,6 +519,9 @@ class BuildingChairman {
   TransitionPolicy transition;
   CemeteryPolicy cemetery;
   WarmHold warm_hold;
+  /// The warm works' standing builders in its labour phase (warm_crew.h;
+  /// the frozen cows of seed 2044, 3 November 2026).
+  WarmCrew warm_crew;
   FallowPolicy fallow;
   /// Whether RunDay calls `fallow` (#725): true since 0.37.324, the houses-
   /// first pair's gates green (core-boss-725-fallow [58], [59]); a run's
