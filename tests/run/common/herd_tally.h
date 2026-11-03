@@ -31,6 +31,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <ostream>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -205,6 +206,51 @@ class HerdTally {
     }
     mixed_yard_days_ += mixed_today;
     mixed_yards_max_ = std::max(mixed_yards_max_, mixed_today);
+    // Y1'S PLACE (#1374's p76: 37 mixed yard-days a village after the
+    // inheritance cure): the day a yard first holds two stock kinds, each of
+    // its herds with its row's yesterday - a new row, or the family and heads
+    // it had - so the path that mixed it is named, not guessed.
+    std::vector<std::uint32_t> mixed_now;
+    for (const Yard& yard : yards) {
+      if (std::popcount(yard.kinds_mask) < 2) {
+        continue;
+      }
+      mixed_now.push_back(yard.family);
+      if (std::ranges::find(mixed_yesterday_, yard.family) != mixed_yesterday_.end() ||
+          mixed_log_.size() >= kMixedLogLines) {
+        continue;
+      }
+      std::string line = "y" + std::to_string(year) + "d" +
+                         std::to_string(world.calendar.day % core::kDaysPerYear) + " family " +
+                         std::to_string(yard.family) + (core::FindRow(world.families, core::FamilyId{yard.family}) == core::kNoRow ? " GONE" : "");
+      for (std::uint32_t row = 0; row < world.herds.rows.size(); ++row) {
+        const core::HerdRow& herd = world.herds.rows[row];
+        if (herd.household_owned == 0 || herd.household.value != yard.family) {
+          continue;
+        }
+        const std::uint32_t id = world.herds.row_ids[row].value;
+        line += " [" + std::to_string(id) + " k" + std::to_string(herd.kind.value) + ' ' +
+                std::to_string(herd.adult_count) + '/' + std::to_string(herd.juvenile_count) + '/' +
+                std::to_string(herd.newborn_count);
+        const auto was = std::ranges::find_if(
+            yesterday_, [id](const HerdYesterday& entry) { return entry.id == id; });
+        line += was == yesterday_.end()
+                    ? std::string(" NEW")
+                    : " was f" + std::to_string(was->family) + " h" + std::to_string(was->heads);
+        line += ']';
+      }
+      mixed_log_.push_back(line);
+    }
+    mixed_yesterday_ = std::move(mixed_now);
+    yesterday_.clear();
+    for (std::uint32_t row = 0; row < world.herds.rows.size(); ++row) {
+      const core::HerdRow& herd = world.herds.rows[row];
+      yesterday_.push_back(HerdYesterday{
+          .id = world.herds.row_ids[row].value,
+          .family = herd.household.value,
+          .heads = static_cast<std::uint32_t>(herd.adult_count) + herd.juvenile_count +
+                   herd.newborn_count});
+    }
     // kUnexplained («fit, free, wanted - and not placed: must stay nought»)
     // head-days by the day of the year, y1-y6 (boss, core-boss-1374 [12]:
     // pen 55's builders read it on y1 day 47, the year's last day).
@@ -382,6 +428,9 @@ class HerdTally {
       out << " — " << years_closed_ << " OF " << kYears << " YEARS CLOSED (NOT MEASURED)";
     }
     out << '\n';
+    for (const std::string& line : mixed_log_) {
+      out << "population_curve: Y1PLACE seed " << seed << ' ' << line << '\n';
+    }
   }
 
  private:
@@ -405,6 +454,15 @@ class HerdTally {
   std::uint32_t mixed_yards_max_ = 0;
   std::array<std::uint64_t, core::kDaysPerYear> unexplained_by_day_ = {};
   std::vector<std::pair<std::uint32_t, std::uint32_t>> near_short_;  ///< type<<16|res, days
+  struct HerdYesterday {
+    std::uint32_t id = 0;
+    std::uint32_t family = 0;
+    std::uint32_t heads = 0;
+  };
+  static constexpr std::size_t kMixedLogLines = 12;
+  std::vector<HerdYesterday> yesterday_;
+  std::vector<std::uint32_t> mixed_yesterday_;
+  std::vector<std::string> mixed_log_;
   core::Grams yard_milk_g_ = 0;
   std::vector<std::pair<std::uint32_t, float>> food_rows_;
   double yard_food_kcal_ = 0.0;
