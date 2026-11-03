@@ -892,6 +892,7 @@ bool Walk(std::uint64_t seed,
       substitutes.CountDayEnd(simulation->CompletedState());
       funerals.CountDayEnd(simulation->CompletedState());
       herds.CountDayEnd(simulation->CompletedState());
+      herds.CountNearShort(*simulation);
       if (!warm_off) {
         strada.CountDayEnd(simulation->CompletedState());
       }
