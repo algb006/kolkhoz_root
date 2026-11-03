@@ -25,7 +25,8 @@ def villages(folder):
             match = LINE.search(line)
             if not match:
                 continue
-            words = match.group(2).split(" — ")[0].split()
+            text = re.sub(r" U_by_day.*? U_end", "", match.group(2).split(" — ")[0])
+            words = text.split()
             values = {}
             for index in range(0, len(words) - 1, 2):
                 try:

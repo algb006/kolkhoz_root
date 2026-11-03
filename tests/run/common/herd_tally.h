@@ -33,9 +33,12 @@
 #include <ostream>
 #include <vector>
 
+#include "core_common/calendar.h"
 #include "core_common/event_state.h"
 #include "core_common/herd_state.h"
+#include "core_common/labor_state.h"
 #include "core_common/ledger_state.h"
+#include "core_common/resident_state.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
@@ -188,6 +191,14 @@ class HerdTally {
     }
     mixed_yard_days_ += mixed_today;
     mixed_yards_max_ = std::max(mixed_yards_max_, mixed_today);
+    // kUnexplained («fit, free, wanted - and not placed: must stay nought»)
+    // head-days by the day of the year, y1-y6 (boss, core-boss-1374 [12]:
+    // pen 55's builders read it on y1 day 47, the year's last day).
+    for (const core::ResidentRow& person : world.residents.rows) {
+      if (person.idle_reason == core::IdleReason::kUnexplained) {
+        ++unexplained_by_day_[world.calendar.day % core::kDaysPerYear];
+      }
+    }
   }
 
   /// @brief The closed year's book, y1-y6.
@@ -243,6 +254,17 @@ class HerdTally {
     }
     out << " strada_horse_days_y1y6 " << strada_total;
     // econ's yard gates Y1-Y4 (econ-boss-1374-yard-pig [1]).
+    std::uint64_t unexplained = 0;
+    for (const std::uint64_t heads : unexplained_by_day_) {
+      unexplained += heads;
+    }
+    out << " U_unexplained_head_days_y1y6 " << unexplained << " U_by_day";
+    for (std::uint32_t day = 0; day < core::kDaysPerYear; ++day) {
+      if (unexplained_by_day_[day] != 0) {
+        out << ' ' << day << ':' << unexplained_by_day_[day];
+      }
+    }
+    out << " U_end";
     out << " Y1_mixed_yard_days " << mixed_yard_days_ << " Y1_mixed_yards_max " << mixed_yards_max_
         << " Y3_yard_milk_t_y1y6 " << static_cast<double>(yard_milk_g_) / 1e6;
     std::int64_t knifed_y1y3 = 0;
@@ -301,6 +323,7 @@ class HerdTally {
   float last_horse_days_ = 0.0F;
   std::uint64_t mixed_yard_days_ = 0;
   std::uint32_t mixed_yards_max_ = 0;
+  std::array<std::uint64_t, core::kDaysPerYear> unexplained_by_day_ = {};
   core::Grams yard_milk_g_ = 0;
   std::array<std::int64_t, kYears> yard_pig_knifed_ = {};
   std::array<std::uint32_t, kKinds> max_yard_adults_ = {};
