@@ -1821,8 +1821,31 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
   // The lamp reads its own count (MR.2a; boss, [113]), the ledger the old.
   WatchTheTeam(
       config, work, horse_backed_days, lamp_harnessed_days, shares.heavy_in_traces, current);
+  // ONE ROW A KIND A YARD (#1374's p78, Y2PLACE: seed 1945's family 1 held
+  // two pig rows, 2 + 1 adults against the yard's cap of 2, the cap being a
+  // row's): a yard whose row of the kind stood empty was «stockless» and its
+  // gift came as a new row beside the empty one, which an inheritance then
+  // refilled. A gift lands in the yard's existing row of its kind, empty or
+  // not, and only a yard with none gets a new row.
   for (const HerdRow& gift : gifts) {
-    AppendRow(current.herds, gift);
+    std::uint32_t into = kNoRow;
+    for (std::uint32_t row = 0; row < current.herds.rows.size() && into == kNoRow; ++row) {
+      const HerdRow& theirs = current.herds.rows[row];
+      if (theirs.household_owned != 0 && theirs.household.value == gift.household.value &&
+          theirs.kind.value == gift.kind.value) {
+        into = row;
+      }
+    }
+    if (into == kNoRow) {
+      AppendRow(current.herds, gift);
+      continue;
+    }
+    HerdRow& flock = current.herds.rows[into];
+    MergeAdultAgeBand(flock, flock.adult_count, gift);
+    flock.adult_count = static_cast<std::uint16_t>(flock.adult_count + gift.adult_count);
+    flock.juvenile_count = static_cast<std::uint16_t>(flock.juvenile_count + gift.juvenile_count);
+    flock.newborn_count = static_cast<std::uint16_t>(flock.newborn_count + gift.newborn_count);
+    flock.adult_age_game_years_total += gift.adult_age_game_years_total;
   }
 }
 

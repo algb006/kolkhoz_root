@@ -4305,6 +4305,34 @@ int CheckYardOffspringReplaces() {
                        "yard young, the gift: the head carries its own need to the mowing, "
                        "capped below its share, and the village's hay is what it was");
   }
+  // ONE ROW A KIND A YARD (#1374's p78, Y2PLACE seed 1945: a yard with an
+  // emptied row of the kind took its gift as a second row, and an
+  // inheritance refilled the first - 3 adults against a cap of 2). The
+  // neighbour keeps an EMPTY row of the kind: the gift lands in it.
+  {
+    Yard yard = yard_with(2, 0.2F, 0.2F, 0, 1);
+    core::FamilyRow neighbour;
+    neighbour.pantry.assign(3, 0);
+    const core::FamilyId next_door = AppendRow(yard.world.families, neighbour);
+    core::HerdRow emptied;
+    emptied.kind = core::LivestockKindId{2};
+    emptied.household = next_door;
+    emptied.household_owned = 1;
+    AppendRow(yard.world.herds, emptied);
+    RunHerdDays(config, yard.world, kDays);
+    std::uint32_t rows_next_door = 0;
+    std::uint32_t heads_next_door = 0;
+    for (const core::HerdRow& herd : yard.world.herds.rows) {
+      if (herd.household.value == next_door.value && herd.kind.value == 2) {
+        ++rows_next_door;
+        heads_next_door += herd.adult_count + herd.juvenile_count;
+      }
+    }
+    failures +=
+        Expect(rows_next_door == 1 && heads_next_door == 1 && knifed(yard.world) == 0,
+               "yard young, the gift: a yard with an emptied row of the kind takes the head "
+               "into that row, not a second one");
+  }
   return failures;
 }
 
