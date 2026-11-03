@@ -808,6 +808,9 @@ core::WorldState MakeWorld() {
     funeral.chairman = core::FuneralChairman::kWent;
     funeral.party = {core::ResidentId{11}, core::ResidentId{12}, core::ResidentId{13}};
     funeral.kin_count = 2;
+    funeral.carts = 2;
+    funeral.seated = 3;
+    funeral.man_days = 1.5F;
     core::AppendRow(world.funerals, funeral);
   }
   world.last_loud_burial_day = 97;
@@ -2379,8 +2382,10 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // Save 205 (#1084): the funerals - next id and count (8), one row's id
     // (4), its row 58 (4 + two dead x 8, settlement, cemetery, burial day and
     // road 16, loud and answer 2, 4 + three party x 4, kin 4): predicted 70
-    // before the build; the hash read off it.
-    {"funerals", 70, 0x5e4ae908f6022cfaULL},
+    // before the build and held; the hash read off it. Then the burial
+    // morning's carts (u8), seated (u16) and man-days (f32): predicted 70 ->
+    // 77 before the build.
+    {"funerals", 77, 0x829937c68e446b7aULL},
     // Save 136 (B3): the groom's plan — 10 of day, flags and count, 9 of the
     // cart, 44 of the first leg (one rider), 40 of the second. Predicted 103
     // before the build, held; the hash read off the build.
@@ -2955,7 +2960,8 @@ int main() {
           loaded.funerals.rows[0].chairman == core::FuneralChairman::kWent &&
           loaded.funerals.rows[0].party.size() == 3 &&
           loaded.funerals.rows[0].party[2].value == 13 && loaded.funerals.rows[0].kin_count == 2 &&
-          loaded.last_loud_burial_day == 97,
+          loaded.funerals.rows[0].carts == 2 && loaded.funerals.rows[0].seated == 3 &&
+          loaded.funerals.rows[0].man_days == 1.5F && loaded.last_loud_burial_day == 97,
       "the funeral and the loud cap's day come back, every field in place (save 205)");
   failures += Expect(loaded.arrivals_turned_away.last_day == 300 &&
                          loaded.arrivals_turned_away.per_day[2] == 1 &&

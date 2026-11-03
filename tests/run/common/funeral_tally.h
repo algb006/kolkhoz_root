@@ -31,12 +31,13 @@ class FuneralTally {
  public:
   static constexpr std::uint32_t kYears = 6;
 
-  /// @brief Every funeral opened since the last call, by its id.
+  /// @brief Every funeral whose burial day has come, once, by its id: at the
+  ///        burial day's end its morning's carts and man-days are written.
   void CountDayEnd(const core::WorldState& world) {
     const std::uint32_t year = world.calendar.date.year;
     for (std::uint32_t row = 0; row < world.funerals.rows.size(); ++row) {
       const std::uint32_t id = world.funerals.row_ids[row].value;
-      if (id <= last_id_) {
+      if (id <= last_id_ || world.funerals.rows[row].burial_day > world.calendar.day) {
         continue;
       }
       last_id_ = std::max(last_id_, id);
@@ -49,6 +50,11 @@ class FuneralTally {
       kin_.push_back(funeral.kin_count);
       neighbours_.push_back(static_cast<std::uint32_t>(funeral.party.size()) - funeral.kin_count);
       road_km_ += static_cast<double>(funeral.road_km);
+      carts_ += funeral.carts;
+      seated_ += funeral.seated;
+      party_total_ += static_cast<std::uint32_t>(funeral.party.size());
+      man_days_ += static_cast<double>(funeral.man_days);
+      on_working_day_ += funeral.man_days > 0.0F ? 1U : 0U;
       loud_by_year_[year - 1] += funeral.loud;
       if (funeral.cemetery.value == core::kInvalidEntityIdValue) {
         ++no_cemetery_;
@@ -99,7 +105,13 @@ class FuneralTally {
         << (party.empty() ? 0U : *std::ranges::max_element(party)) << " road_km_mean "
         << (funerals_ > 0 ? road_km_ / funerals_ : 0.0) << " loud_y1y6 " << loud
         << " loud_max_year " << loud_max << " no_cemetery " << no_cemetery_
-        << " idle_funeral_pd_y1y3 " << idle_y1y3_ << " graves_end_y6 " << graves_;
+        << " idle_funeral_pd_y1y3 " << idle_y1y3_ << " graves_end_y6 " << graves_
+        << " carts_per_funeral " << (funerals_ > 0 ? static_cast<double>(carts_) / funerals_ : 0.0)
+        << " seated_share "
+        << (party_total_ > 0 ? static_cast<double>(seated_) / party_total_ : 0.0)
+        << " man_days_per_working_funeral "
+        << (on_working_day_ > 0 ? man_days_ / on_working_day_ : 0.0) << " working_day_funerals "
+        << on_working_day_;
     if (funerals_ == 0) {
       out << " — NO FUNERAL OPENED y1-y6: the step is off or no one died (NOT MEASURED)";
     }
@@ -118,6 +130,11 @@ class FuneralTally {
   std::uint32_t idle_y1y3_ = 0;
   std::uint32_t book_deaths_ = 0;
   std::uint32_t graves_ = 0;
+  std::uint32_t carts_ = 0;
+  std::uint32_t seated_ = 0;
+  std::uint32_t party_total_ = 0;
+  double man_days_ = 0.0;
+  std::uint32_t on_working_day_ = 0;
 };
 
 }  // namespace run

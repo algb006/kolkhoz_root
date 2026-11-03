@@ -85,6 +85,19 @@ struct FuneralRow {
   /// the neighbours (at the cemetery and back); `kin_count` splits them.
   std::vector<ResidentId> party;
   std::uint32_t kin_count = 0;
+
+  /// THE BURIAL MORNING'S CARTS (social.md «Как добираются»; written by the
+  /// labour's morning, core_labor, the burial day only): the horses given -
+  /// the coffin's goods cart and the people's carts - and the party members
+  /// seated on them; the rest walk. 0 before the burial morning.
+  std::uint8_t carts = 0;
+  std::uint16_t seated = 0;
+
+  /// The working day the burial cost, in man-days of the working adults it
+  /// kept off (the kin's whole day, a neighbour's procession share), written
+  /// by the same morning; 0 on a day off (social.md «Похороны в выходной
+  /// работы не отнимают»). The print's «walk's man-days a funeral».
+  float man_days = 0.0F;
 };
 
 using FuneralTable = StateTable<FuneralId, FuneralRow>;
