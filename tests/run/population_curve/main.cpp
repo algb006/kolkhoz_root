@@ -1407,8 +1407,9 @@ bool Walk(std::uint64_t seed,
       // The warm works unfinished on a cold night, and the crew's builders
       // (warm_crew.h; boss, core-boss-1084-funeral-body [7]).
       std::cout << "population_curve: WARMLATE seed " << seed << " late_warm_works "
-                << builder.warm_crew.LateWorks() << " crew_sent " << builder.warm_crew.SentTotal()
-                << '\n';
+                << builder.warm_crew.LateWorks() << " freezing_warm_works "
+                << builder.warm_crew.FreezingWorks() << " crew_sent "
+                << builder.warm_crew.SentTotal() << '\n';
     }
   }
   out.timber = timber.years();
