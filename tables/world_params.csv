@@ -353,4 +353,4 @@ sugar_mood_without_child,-4,core
 limit_grain_points_per_tonne,6,core
 strada_first_month,6,core
 strada_last_month,8,core
-yard_herd_garden_cap,0.333,core
+yard_herd_garden_cap,0.25,core
