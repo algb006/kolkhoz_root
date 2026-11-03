@@ -363,6 +363,11 @@ void RunBirths(const ProductionConfig& config,
   if (!(adults > 0.0F) || !(per_head > 0.0F)) {
     return;
   }
+  // DIAGNOSTIC ARM, NOT FOR MAIN (#1374 pair p75): the yards' pigs breed
+  // nothing, as 0.37.360's pair base measured (0 births in 32 villages).
+  if (herd.household_owned != 0 && kind_id.value == config.pig_kind.value) {
+    return;
+  }
   // The yearly rate falls inside the calving band, not across the year: the
   // total for the year is what the balance eats, and the season is canon.
   const auto band_days = static_cast<float>(
