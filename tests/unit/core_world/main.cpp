@@ -782,6 +782,10 @@ int CheckStartCemetery() {
                      "start cemetery: one old cemetery on its own 14 m, 21 of its 41 graves taken");
   failures += Expect(graves_elsewhere == 0 && start.burials_waiting == 0,
                      "start cemetery: no other unit holds a grave and nobody waits");
+  // THE OPEN BOOK SAYS ITS YEAR (#1446): year 1 at genesis, not the 0 that
+  // left a reader blind to the turn's reset.
+  failures +=
+      Expect(start.ledger.current.year == 1, "start ledger: the first open book says year 1");
   return failures;
 }
 

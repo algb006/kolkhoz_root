@@ -152,8 +152,12 @@ inline constexpr std::size_t kCartLoadSourceCountValue =
 ///                             production decisions — the only writer
 struct YearLedger {
   /// Campaign year these counters belong to, counted from 1. Written when
-  /// the book is closed; 0 in `current` and in a `closed` book that was
-  /// never closed (the first year of a run).
+  /// the book is OPENED - at genesis and at each year's rotation (#1446:
+  /// until then it was written only at the close and read 0 in `current`, so
+  /// a reader keying a running counter by the book's year could not see the
+  /// turn's reset - host's deltas wrapped, and the run's haul_tally compared
+  /// 0 with 0). 0 in a `closed` book that was never closed (the first year of
+  /// a run).
   std::uint16_t year = 0;
 
   // -- people ---------------------------------------------------------------
