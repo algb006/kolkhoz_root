@@ -79,6 +79,16 @@ struct HerdRow {
   /// family's pantry and its milk and eggs land there.
   std::uint8_t household_owned = 0;
 
+  /// 1: a household herd that moved into its heir's yard when its family
+  /// ended (demography.cpp, DropFamilyIfEmpty) and was not merged into a
+  /// flock of its kind there. The next herd day reads it and clears it
+  /// (herd_system.cpp, WalkOutInherited): if the yard already keeps another
+  /// `stock` kind, THE HEIR KEEPS HIS OWN KIND and every head of this one
+  /// goes to a stockless neighbour or to meat, as the young over the cap do
+  /// (#1374; boss, the thread core-boss-1374 [8]; econ's Y1: no yard holds
+  /// two kinds of stock). Save 206.
+  std::uint8_t inherited = 0;
+
   std::uint16_t newborn_count = 0;
 
   std::uint16_t juvenile_count = 0;

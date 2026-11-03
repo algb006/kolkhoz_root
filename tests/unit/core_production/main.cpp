@@ -3974,6 +3974,89 @@ int CheckElectrification() {
   return failures;
 }
 
+/// THE INHERITED SECOND KIND LEAVES THE YARD (#1374; boss, the thread
+/// core-boss-1374 [8]: «the heir keeps his own kind; the inherited kind goes
+/// to a stockless neighbour, or else to meat»; econ's Y1: no yard holds two
+/// kinds of stock). Two `stock` kinds, no births: the heir keeps three of
+/// kind 2; a herd of two of kind 3 came to the yard with its family's end
+/// (marked `inherited`, as DropFamilyIfEmpty marks it). One stockless
+/// neighbour takes one head (a yard is offered once a day); the other head
+/// is meat. The same herd in a yard with no other stock stays.
+int CheckAnInheritedSecondKindLeavesTheYard() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.livestock.resize(4);
+  for (const std::size_t index : {std::size_t{2}, std::size_t{3}}) {
+    core::LivestockDef& kind = config.livestock[index];
+    kind.newborn_game_months = 1.0F;
+    kind.adult_from_game_months = 2.0F;
+    kind.life_game_years_min = 30.0F;
+    kind.life_game_years_max = 40.0F;
+    kind.births_per_adult_head = 0.0F;
+    kind.meat_kg_per_head = 10.0F;
+    kind.household_self_fed = 1;
+    kind.household_cap_heads = 3.0F;
+    kind.household_group = 1;
+  }
+  const auto make = [](bool heir_keeps_stock) {
+    core::WorldState world = MakeHerdWorld(0.0F);
+    core::FamilyRow family;
+    family.pantry.assign(3, 0);
+    const core::FamilyId heir = AppendRow(world.families, family);
+    AppendRow(world.families, family);  // the stockless neighbour
+    core::HerdRow own;
+    own.kind = core::LivestockKindId{2};
+    own.household = heir;
+    own.household_owned = 1;
+    own.adult_count = heir_keeps_stock ? 3 : 0;
+    own.adult_age_game_years_total = 3.0F;
+    core::WidenAdultAgeBand(own, 0, own.adult_count, 1.0F, 1.0F);
+    AppendRow(world.herds, own);
+    core::HerdRow came = own;
+    came.kind = core::LivestockKindId{3};
+    came.adult_count = 2;
+    came.adult_age_game_years_total = 2.0F;
+    came.inherited = 1;
+    AppendRow(world.herds, came);
+    return world;
+  };
+  const auto heads_of =
+      [](const core::WorldState& world, std::uint16_t kind, std::uint32_t family) {
+        std::uint32_t heads = 0;
+        for (const core::HerdRow& herd : world.herds.rows) {
+          heads += herd.kind.value == kind && herd.household.value == family
+                       ? static_cast<std::uint32_t>(herd.adult_count) + herd.juvenile_count +
+                             herd.newborn_count
+                       : 0U;
+        }
+        return heads;
+      };
+  {
+    core::WorldState world = make(true);
+    const std::uint32_t heir = world.families.row_ids[0].value;
+    const std::uint32_t neighbour = world.families.row_ids[1].value;
+    RunHerdDays(config, world, 1);
+    const core::ResourceAmounts& knifed = world.ledger.current.herd_surplus_slaughtered;
+    failures += Expect(heads_of(world, 3, heir) == 0 && heads_of(world, 2, heir) == 3,
+                       "inherited second kind: the heir keeps his own three, none of the two "
+                       "that came");
+    failures += Expect(heads_of(world, 3, neighbour) == 1 && knifed.size() > 3 && knifed[3] == 1,
+                       "inherited second kind: one head to the stockless neighbour, the other "
+                       "to meat (a yard is offered once a day)");
+    failures +=
+        Expect(world.herds.rows[1].inherited == 0, "inherited second kind: the mark clears");
+  }
+  {
+    core::WorldState world = make(false);
+    const std::uint32_t heir = world.families.row_ids[0].value;
+    RunHerdDays(config, world, 1);
+    failures +=
+        Expect(heads_of(world, 3, heir) == 2 && world.herds.rows[1].inherited == 0,
+               "inherited into a yard with no other stock: the herd stays, the mark clears");
+  }
+  return failures;
+}
+
 /// THE YARD'S OFFSPRING REPLACES, IT DOES NOT ADD (0.37.78; household design
 /// §2, «Приплод»; econ's acceptance of 0.37.70): a kind a yard may keep
 /// three of, living 2.5 years at the least, so an adult is old from 1.5; no
@@ -18029,6 +18112,7 @@ int main() {
   failures += CheckStableGate();
   failures += CheckNightPasture();
   failures += CheckYardOffspringReplaces();
+  failures += CheckAnInheritedSecondKindLeavesTheYard();
   failures += CheckWorkStockMales();
   failures += CheckHorsesOrderAtTheDoor();
   failures += CheckHandingStockBack();

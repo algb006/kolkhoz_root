@@ -392,9 +392,12 @@ static_assert(AggregateArity<SettlementRow>() == 7,
 // floats had left before the 8-aligned optional wait (the fields held).
 // Save 206 (#1374): adult_male_count (u16) leaves - predicted 184 unmoved (a
 // u16 inside the run of u16 counts, the later 8-aligned members keep their
-// place) and 37 fields before the build; on the wire -2 a herd.
+// place) and 37 fields before the build; on the wire -2 a herd. Then, in the
+// same save 206 (not yet released): `inherited` (u8) after household_owned -
+// predicted 184 unmoved (the padding byte before newborn_count's u16) and 38
+// fields, +1 a herd on the wire, before the build.
 static_assert(sizeof(HerdRow) == 184, "HerdRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<HerdRow>() == 37,
+static_assert(AggregateArity<HerdRow>() == 38,
               "HerdRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-13: the felling mark — a stand id and a volume — took the order row
 // from 64 to 72 and the assignment's stand from 24 to 28 (and the resident
@@ -1640,6 +1643,7 @@ void WriteHerdRow(SaveSink& sink, const HerdRow& row) {
   WriteEntityId(out, row.unit);
   WriteEntityId(out, row.household);
   out.WriteU8(row.household_owned);
+  out.WriteU8(row.inherited);  // save 206 (#1374)
 
   out.WriteU16(row.newborn_count);
   out.WriteU16(row.juvenile_count);
@@ -1687,6 +1691,7 @@ HerdRow ReadHerdRow(LoadSource& source) {
   row.unit = ReadEntityId<UnitId>(in);
   row.household = ReadEntityId<FamilyId>(in);
   row.household_owned = in.ReadU8();
+  row.inherited = in.ReadU8();  // save 206 (#1374)
 
   row.newborn_count = in.ReadU16();
   row.juvenile_count = in.ReadU16();

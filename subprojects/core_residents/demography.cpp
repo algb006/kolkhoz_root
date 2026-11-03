@@ -241,6 +241,11 @@ void DropFamilyIfEmpty(WorldState& current, FamilyId family, FamilyId heir_named
       }
       if (into == kNoRow) {
         herd.household = home;
+        // A SECOND KIND IN THE HEIR'S YARD IS THE HERD DAY'S TO SETTLE (#1374;
+        // boss [8]): the heir keeps his own kind, and the inherited one goes
+        // to a stockless neighbour or to meat - production's paths, which
+        // this module does not reach, so the herd is marked here.
+        herd.inherited = 1;
         continue;
       }
       HerdRow& flock = current.herds.rows[into];

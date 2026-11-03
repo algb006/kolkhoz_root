@@ -1336,6 +1336,91 @@ void PlaceSurplusHead(const ProductionConfig& config,
   }
 }
 
+/// Whether a household herd's yard keeps a `stock` kind other than the
+/// herd's own, with heads, in a herd not itself waiting as inherited.
+bool YardKeepsAnotherStock(const ProductionConfig& config,
+                           const WorldState& world,
+                           std::uint32_t row) {
+  const HerdRow& herd = world.herds.rows[row];
+  for (std::uint32_t other = 0; other < world.herds.rows.size(); ++other) {
+    const HerdRow& theirs = world.herds.rows[other];
+    if (other == row || theirs.household_owned == 0 || theirs.inherited != 0 ||
+        theirs.household.value != herd.household.value || theirs.kind.value == herd.kind.value ||
+        theirs.kind.value >= config.livestock.size() || TotalHeads(theirs) == 0) {
+      continue;
+    }
+    if (config.livestock[theirs.kind.value].household_group == 1U) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// THE INHERITED SECOND KIND GOES (#1374; boss, the thread core-boss-1374
+/// [8]; econ's Y1: no yard holds two kinds of stock). A family that ended
+/// left its herds to its heir (demography.cpp, DropFamilyIfEmpty), which
+/// marks a herd it could not merge into a flock of its kind. Here, before
+/// the walk: a marked `stock` herd in a yard that keeps another `stock` kind
+/// sends every head out - THE HEIR KEEPS HIS OWN KIND - each to a stockless
+/// neighbour (GiveToNeighbour, a grown head as grown, a young one as young)
+/// or, with no such yard, to meat, booked as the cap's surplus is. Two
+/// inherited kinds in a stockless yard: the first in row order stays. The
+/// mark is cleared on every marked herd, kept or not. The herd's row stays,
+/// empty, as an empty yard herd does.
+void WalkOutInherited(const ProductionConfig& config,
+                      GiftQueues& queues,
+                      std::vector<HerdRow>& pending,
+                      WorldState& world) {
+  for (std::uint32_t row = 0; row < world.herds.rows.size(); ++row) {
+    if (world.herds.rows[row].inherited == 0) {
+      continue;
+    }
+    world.herds.rows[row].inherited = 0;
+    HerdRow& herd = world.herds.rows[row];
+    if (herd.household_owned == 0 || herd.kind.value >= config.livestock.size() ||
+        TotalHeads(herd) == 0) {
+      continue;
+    }
+    const LivestockDef& kind = config.livestock[herd.kind.value];
+    if (kind.household_group != 1U || !YardKeepsAnotherStock(config, world, row)) {
+      continue;
+    }
+    const HerdPlace place = PlaceOf(world, config, herd);
+    const HerdId herd_id = world.herds.row_ids[row];
+    std::uint32_t slaughtered = 0;
+    const auto send = [&](bool grown, float age) {
+      if (GiveToNeighbour(queues, pending, herd, kind, grown, age)) {
+        CarryHayShare(config, place, herd, pending.back().household, world);
+        return;
+      }
+      world.ledger.current.herd_culled += 1;
+      ++slaughtered;
+      Slaughter(config, kind, place, 1, world);
+    };
+    while (herd.adult_count > 0) {
+      const float age = CutOldestFromAdultAgeBand(herd, herd.adult_count, 1);
+      herd.adult_count = static_cast<std::uint16_t>(herd.adult_count - 1);
+      herd.adult_age_game_years_total = std::max(0.0F, herd.adult_age_game_years_total - age);
+      send(true, age);
+    }
+    while (herd.juvenile_count > 0) {
+      herd.juvenile_count = static_cast<std::uint16_t>(herd.juvenile_count - 1);
+      send(false, 0.0F);
+    }
+    while (herd.newborn_count > 0) {
+      herd.newborn_count = static_cast<std::uint16_t>(herd.newborn_count - 1);
+      send(false, 0.0F);
+    }
+    herd.adult_age_game_years_total = 0.0F;
+    if (slaughtered > 0) {
+      AddLedgerHeads(world.ledger.current.herd_surplus_slaughtered, herd.kind, slaughtered);
+      SimEvent& event = EmitEvent(world, EventKind::kHerdSurplusSlaughtered);
+      event.herd = herd_id;
+      event.amount = static_cast<std::int64_t>(slaughtered);
+    }
+  }
+}
+
 /// Whether the plough or the harrow is out today: the day the ploughing's
 /// oats are the plough's to eat (FeedAllowance). One reading for the herd day
 /// and the feed light (HerdFeedAllowance).
@@ -1570,6 +1655,7 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
   const std::vector<std::uint8_t> peoples_foods = PeoplesFoods(config, current);
   std::vector<HerdRow> gifts;  // appended after the walk; see GiveToNeighbour
   GiftQueues queues = CollectGiftQueues(current, config);
+  WalkOutInherited(config, queues, gifts, current);  // #1374: no yard keeps two kinds of stock
   // THE ORDER OF THE WALK IS THE ORDER OF THE FEEDING: the stores are shared
   // (feed_allowance, the stores' own stock), and a herd walked earlier eats
   // first. The rows' order it was, and nobody chose it — «коровы первыми» was
