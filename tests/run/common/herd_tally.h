@@ -25,14 +25,20 @@
 #ifndef TESTS_RUN_COMMON_HERD_TALLY_H_
 #define TESTS_RUN_COMMON_HERD_TALLY_H_
 
+#include <algorithm>
 #include <array>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <ostream>
+#include <vector>
 
+#include "core_common/calendar.h"
 #include "core_common/event_state.h"
 #include "core_common/herd_state.h"
+#include "core_common/labor_state.h"
 #include "core_common/ledger_state.h"
+#include "core_common/resident_state.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
@@ -41,6 +47,21 @@ namespace run {
 
 /// @brief The young-cull column of a closed book, whichever name its tree
 ///        gives it (a template, so the requires-test is not a hard error).
+/// @brief Whether a kind is one of a yard pig's knives: the autumn, the
+///        surplus over the cap, and the young cull - kHerdYoungCulled in the
+///        body's tree, kHerdMalesCulled before it (a template over the enum,
+///        so the requires-test is not a hard error).
+template <typename Kind>
+bool IsPigKnife(Kind kind) {
+  if constexpr (requires { Kind::kHerdYoungCulled; }) {
+    return kind == Kind::kHerdAutumnSlaughter || kind == Kind::kHerdSurplusSlaughtered ||
+           kind == Kind::kHerdYoungCulled;
+  } else {
+    return kind == Kind::kHerdAutumnSlaughter || kind == Kind::kHerdSurplusSlaughtered ||
+           kind == Kind::kHerdMalesCulled;
+  }
+}
+
 template <typename Book>
 const core::ResourceAmounts& YoungCulledColumn(const Book& book) {
   if constexpr (requires { book.herd_young_culled; }) {
@@ -57,6 +78,10 @@ class HerdTally {
   static constexpr std::size_t kPig = 2;
   static constexpr std::array<const char*, kKinds> kKindKeys = {
       "cow", "sheep", "pig", "horse", "goat"};
+  /// The decided yard ceilings in adult heads, econ's Y2 (boss [8]: the 1
+  /// October start yards decide - a pig yard of two, three goats; the design
+  /// text fixed in 4979b9652); sheep and horse stand in no yard.
+  static constexpr std::array<std::uint32_t, kKinds> kDecidedCap = {1, 0xFFFF, 2, 0xFFFF, 3};
   /// The turns whose adult heads are printed.
   static constexpr std::array<std::uint32_t, 3> kTurns = {3, 5, 6};
 
@@ -78,6 +103,15 @@ class HerdTally {
       return;
     }
     for (const core::SimEvent& event : world.step_events) {
+      if (IsPigKnife(event.kind)) {
+        // Y4 (econ): the yards' pigs that went to meat, heads, by year.
+        const std::uint32_t knifed = core::FindRow(world.herds, event.herd);
+        if (knifed != core::kNoRow && world.herds.rows[knifed].household_owned != 0 &&
+            world.herds.rows[knifed].kind.value == kind_rows_[kPig]) {
+          yard_pig_knifed_[year - 1] += event.amount;
+        }
+        continue;
+      }
       if (event.kind != core::EventKind::kHerdBorn) {
         continue;
       }
@@ -109,6 +143,62 @@ class HerdTally {
     if (year >= 1 && year <= kYears && month >= 5 && month <= 7) {
       strada_horse_days_[year - 1] += static_cast<double>(grown);
     }
+    if (year < 1 || year > kYears) {
+      return;
+    }
+
+    // Y1 and Y2 (econ, econ-boss-1374-yard-pig [1]): by yard, the `stock`
+    // kinds it holds (any head) and its adults of cow, pig, goat.
+    struct Yard {
+      std::uint32_t family = 0;
+      std::uint32_t kinds_mask = 0;
+      std::array<std::uint32_t, kKinds> adults = {};
+      std::array<std::uint32_t, kKinds> heads = {};
+    };
+
+    std::vector<Yard> yards;
+    for (const core::HerdRow& herd : world.herds.rows) {
+      const std::uint32_t total =
+          static_cast<std::uint32_t>(herd.adult_count) + herd.juvenile_count + herd.newborn_count;
+      if (herd.household_owned == 0 || total == 0) {
+        continue;
+      }
+      std::size_t kind = kKinds;
+      for (std::size_t index = 0; index < kKinds; ++index) {
+        kind = herd.kind.value == kind_rows_[index] ? index : kind;
+      }
+      if (kind == kKinds) {
+        continue;  // poultry and the rest: not `stock`
+      }
+      auto found = std::ranges::find_if(
+          yards, [&](const Yard& yard) { return yard.family == herd.household.value; });
+      if (found == yards.end()) {
+        yards.push_back(Yard{.family = herd.household.value});
+        found = yards.end() - 1;
+      }
+      found->kinds_mask |= 1U << kind;
+      found->adults[kind] += herd.adult_count;
+      found->heads[kind] += total;
+    }
+    std::uint32_t mixed_today = 0;
+    for (const Yard& yard : yards) {
+      mixed_today += std::popcount(yard.kinds_mask) >= 2 ? 1U : 0U;
+      for (std::size_t index = 0; index < kKinds; ++index) {
+        max_yard_adults_[index] = std::max(max_yard_adults_[index], yard.adults[index]);
+        max_yard_heads_[index] = std::max(max_yard_heads_[index], yard.heads[index]);
+        over_decided_cap_yard_days_[index] += yard.adults[index] > kDecidedCap[index] ? 1U : 0U;
+      }
+    }
+    mixed_yard_days_ += mixed_today;
+    mixed_yards_max_ = std::max(mixed_yards_max_, mixed_today);
+    // kUnexplained («fit, free, wanted - and not placed: must stay nought»)
+    // head-days by the day of the year, y1-y6 (boss, core-boss-1374 [12]:
+    // pen 55's builders read it on y1 day 47, the year's last day).
+    for (const core::ResidentRow& person : world.residents.rows) {
+      if (person.idle_reason == core::IdleReason::kUnexplained) {
+        ++unexplained_by_day_[world.calendar.day % core::kDaysPerYear];
+      }
+    }
   }
 
   /// @brief The closed year's book, y1-y6.
@@ -128,6 +218,7 @@ class HerdTally {
       autumn_[index] += At(closed.herd_autumn_slaughtered, kind_rows_[index]);
     }
     milk_g_ += At(closed.herd_produce, milk_row_);
+    yard_milk_g_ += At(closed.yard_produce, milk_row_);  // Y3
     for (const core::Grams grams : closed.herd_hay_eaten) {
       hay_g_ += grams;
     }
@@ -162,6 +253,32 @@ class HerdTally {
       out << " strada_horse_days_y" << year + 1 << ' ' << strada_horse_days_[year];
     }
     out << " strada_horse_days_y1y6 " << strada_total;
+    // econ's yard gates Y1-Y4 (econ-boss-1374-yard-pig [1]).
+    std::uint64_t unexplained = 0;
+    for (const std::uint64_t heads : unexplained_by_day_) {
+      unexplained += heads;
+    }
+    out << " U_unexplained_head_days_y1y6 " << unexplained << " U_by_day";
+    for (std::uint32_t day = 0; day < core::kDaysPerYear; ++day) {
+      if (unexplained_by_day_[day] != 0) {
+        out << ' ' << day << ':' << unexplained_by_day_[day];
+      }
+    }
+    out << " U_end";
+    out << " Y1_mixed_yard_days " << mixed_yard_days_ << " Y1_mixed_yards_max " << mixed_yards_max_
+        << " Y3_yard_milk_t_y1y6 " << static_cast<double>(yard_milk_g_) / 1e6;
+    std::int64_t knifed_y1y3 = 0;
+    for (std::uint32_t year = 0; year < 3; ++year) {
+      knifed_y1y3 += yard_pig_knifed_[year];
+    }
+    out << " Y4_yard_pigs_knifed_y1y3 " << knifed_y1y3 << " Y4_yard_pork_by_y3 "
+        << (knifed_y1y3 > 0 ? 1 : 0);
+    for (const std::size_t index : {std::size_t{0}, kPig, std::size_t{4}}) {
+      const char* const key = kKindKeys[index];
+      out << " Y2_" << key << "_yard_adults_max " << max_yard_adults_[index] << " Y2_" << key
+          << "_yard_heads_max " << max_yard_heads_[index] << " Y2_" << key
+          << "_yard_days_over_decided " << over_decided_cap_yard_days_[index];
+    }
     for (std::size_t index = 0; index < kKinds; ++index) {
       const char* const key = kKindKeys[index];
       std::int64_t born = 0;
@@ -204,6 +321,14 @@ class HerdTally {
   std::uint64_t deaths_hunger_ = 0;
   std::int64_t unknown_births_ = 0;
   float last_horse_days_ = 0.0F;
+  std::uint64_t mixed_yard_days_ = 0;
+  std::uint32_t mixed_yards_max_ = 0;
+  std::array<std::uint64_t, core::kDaysPerYear> unexplained_by_day_ = {};
+  core::Grams yard_milk_g_ = 0;
+  std::array<std::int64_t, kYears> yard_pig_knifed_ = {};
+  std::array<std::uint32_t, kKinds> max_yard_adults_ = {};
+  std::array<std::uint32_t, kKinds> max_yard_heads_ = {};
+  std::array<std::uint64_t, kKinds> over_decided_cap_yard_days_ = {};
   std::array<double, kYears> strada_horse_days_ = {};
   core::Grams frozen_ = 0;
   std::array<std::array<std::int64_t, kYears>, kKinds> born_ = {};
