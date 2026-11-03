@@ -39,9 +39,13 @@
 #include "core_common/herd_state.h"
 #include "core_common/labor_state.h"
 #include "core_common/ledger_state.h"
+#include "core_common/material_shortfall.h"
+#include "core_common/quantities.h"
 #include "core_common/resident_state.h"
 #include "core_common/state_table_ops.h"
+#include "core_common/unit_state.h"
 #include "core_common/world_state.h"
+#include "core_sim/step.h"
 #include "core_tables/tables.h"
 
 namespace run {
@@ -211,6 +215,45 @@ class HerdTally {
     }
   }
 
+  /// @brief THE NEAR-SHORT RECIPES (boss, core-boss-1374 [16]: the warm hold's
+  ///        margin rounded to 0 and seed 2035's warm read short by 19 g for
+  ///        twelve days): every day, every unit a start could open (the two
+  ///        cases MaterialsShortFor answers), each recipe line short by less
+  ///        than a kilogram - counted in days by the unit's type and the line's
+  ///        resource. A line held at «need − ε» for days names a hold or a
+  ///        margin that cannot fire.
+  void CountNearShort(const core::ISimulation& simulation) {
+    const core::WorldState& world = simulation.CompletedState();
+    const std::uint32_t year = world.calendar.date.year;
+    if (year < 1 || year > kYears) {
+      return;
+    }
+    for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+      const core::UnitRow& unit = world.units.rows[row];
+      const bool marked = unit.construction.phase == core::ConstructionPhase::kMarked;
+      const bool standing = unit.construction.phase == core::ConstructionPhase::kNone &&
+                            unit.level > 0 && unit.dead == 0;
+      if (!marked && !standing) {
+        continue;
+      }
+      for (const core::MaterialShortfall& line :
+           simulation.MaterialsShortFor(world.units.row_ids[row])) {
+        const core::Grams gap = line.needed - line.held;
+        if (gap > 0 && gap < core::kGramsPerKilogram) {
+          const std::uint32_t key = (static_cast<std::uint32_t>(unit.type.value) << 16U) |
+                                    static_cast<std::uint32_t>(line.resource.value);
+          auto found = std::ranges::find_if(near_short_,
+                                            [&](const auto& entry) { return entry.first == key; });
+          if (found == near_short_.end()) {
+            near_short_.emplace_back(key, 0U);
+            found = near_short_.end() - 1;
+          }
+          ++found->second;
+        }
+      }
+    }
+  }
+
   /// @brief The closed year's book, y1-y6.
   void CloseYear(const core::YearLedger& closed, std::uint32_t year) {
     if (year < 1 || year > kYears) {
@@ -284,6 +327,15 @@ class HerdTally {
       }
     }
     out << " U_end";
+    std::uint64_t near_days = 0;
+    for (const auto& entry : near_short_) {
+      near_days += entry.second;
+    }
+    out << " EPS_near_short_line_days_y1y6 " << near_days << " EPS_list";
+    for (const auto& [key, days] : near_short_) {
+      out << ' ' << "type" << (key >> 16U) << "/res" << (key & 0xFFFFU) << ':' << days;
+    }
+    out << " EPS_end";
     out << " Y1_mixed_yard_days " << mixed_yard_days_ << " Y1_mixed_yards_max " << mixed_yards_max_
         << " Y3_yard_milk_t_y1y6 " << static_cast<double>(yard_milk_g_) / 1e6
         << " Y3b_yard_food_Mkcal_y1y6 " << yard_food_kcal_ / 1e6;
@@ -352,6 +404,7 @@ class HerdTally {
   std::uint64_t mixed_yard_days_ = 0;
   std::uint32_t mixed_yards_max_ = 0;
   std::array<std::uint64_t, core::kDaysPerYear> unexplained_by_day_ = {};
+  std::vector<std::pair<std::uint32_t, std::uint32_t>> near_short_;  ///< type<<16|res, days
   core::Grams yard_milk_g_ = 0;
   std::vector<std::pair<std::uint32_t, float>> food_rows_;
   double yard_food_kcal_ = 0.0;
