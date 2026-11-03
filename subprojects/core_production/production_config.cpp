@@ -509,6 +509,7 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
       {"pig_slaughter_month", &pig_month, 1.0F, 12.0F},
       {"sow_keep_share", &farming.sow_keep_share, 0.0F, 1.0F},
       {"sow_keep_min", &farming.sow_keep_min, 0.0F, 100.0F},
+      {"sow_keep_female_share", &farming.sow_keep_female_share, 0.01F, 1.0F},
       {"repeat_penalty_max_years", &farming.repeat_penalty_max_years, 0.0F, 250.0F},
       {"fertility_floor", &farming.fertility_floor, 0.0F, 100.0F},
       {"meadow_mow_days_per_ha", &mow_days, 0.0F, 1000.0F},
