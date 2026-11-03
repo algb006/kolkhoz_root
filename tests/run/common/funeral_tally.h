@@ -23,13 +23,24 @@
 
 #include "core_common/labor_state.h"
 #include "core_common/ledger_state.h"
+#include "core_common/work_seam.h"
 #include "core_common/world_state.h"
+#include "core_tables/tables.h"
 
 namespace run {
 
 class FuneralTally {
  public:
   static constexpr std::uint32_t kYears = 6;
+
+  explicit FuneralTally(const core::ITableSet& tables) {
+    if (const core::ITable* const kinds = tables.FindTable("livestock")) {
+      const std::uint32_t row = kinds->FindRowByKey("horse");
+      if (row != core::kNoTableRow) {
+        horse_kind_ = core::LivestockKindId{static_cast<std::uint16_t>(row)};
+      }
+    }
+  }
 
   /// @brief Every funeral whose burial day has come, once, by its id: at the
   ///        burial day's end its morning's carts and man-days are written.
@@ -54,6 +65,23 @@ class FuneralTally {
       seated_ += funeral.seated;
       party_total_ += static_cast<std::uint32_t>(funeral.party.size());
       man_days_ += static_cast<double>(funeral.man_days);
+      // THE TIGHTEST MORNING (boss, core-boss-1084-funeral-body [10]): the
+      // draught horses standing at the burial day's end less the carts the
+      // funeral took, against its party. GROUND: the day's END count, not the
+      // morning's free pool (level-0 loads are not subtracted here), so it
+      // reads the margin from above.
+      if (horse_kind_.value != core::kInvalidDefIdValue) {
+        const auto standing = static_cast<std::int64_t>(core::DraughtHorsesOf(world, horse_kind_));
+        const std::int64_t spare = standing - static_cast<std::int64_t>(funeral.carts);
+        if (!tight_seen_ || spare < tight_spare_) {
+          tight_seen_ = true;
+          tight_spare_ = spare;
+          tight_standing_ = standing;
+          tight_party_ = static_cast<std::uint32_t>(funeral.party.size());
+          tight_carts_ = funeral.carts;
+        }
+      }
+      walked_ += static_cast<std::uint32_t>(funeral.party.size()) - funeral.seated;
       on_working_day_ += funeral.man_days > 0.0F ? 1U : 0U;
       loud_by_year_[year - 1] += funeral.loud;
       if (funeral.cemetery.value == core::kInvalidEntityIdValue) {
@@ -111,7 +139,9 @@ class FuneralTally {
         << (party_total_ > 0 ? static_cast<double>(seated_) / party_total_ : 0.0)
         << " man_days_per_working_funeral "
         << (on_working_day_ > 0 ? man_days_ / on_working_day_ : 0.0) << " working_day_funerals "
-        << on_working_day_;
+        << on_working_day_ << " walked " << walked_ << " tight_spare "
+        << (tight_seen_ ? tight_spare_ : -1) << " tight_standing " << tight_standing_
+        << " tight_party " << tight_party_ << " tight_carts " << tight_carts_;
     if (funerals_ == 0) {
       out << " — NO FUNERAL OPENED y1-y6: the step is off or no one died (NOT MEASURED)";
     }
@@ -135,6 +165,13 @@ class FuneralTally {
   std::uint32_t party_total_ = 0;
   double man_days_ = 0.0;
   std::uint32_t on_working_day_ = 0;
+  core::LivestockKindId horse_kind_;
+  std::uint32_t walked_ = 0;
+  bool tight_seen_ = false;
+  std::int64_t tight_spare_ = 0;
+  std::int64_t tight_standing_ = 0;
+  std::uint32_t tight_party_ = 0;
+  std::uint32_t tight_carts_ = 0;
 };
 
 }  // namespace run
