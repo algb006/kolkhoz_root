@@ -273,6 +273,46 @@ class HerdTally {
       mixed_log_.push_back(line);
     }
     mixed_yesterday_ = std::move(mixed_now);
+    // Y2'S PLACE (#1374's p78: seed 1945, a pig yard at 3 adults for 11
+    // days, cap 2): the day a yard first holds more adults of a kind than the
+    // decided cap, its rows of that kind with their yesterday.
+    std::vector<std::uint32_t> over_now;
+    for (const Yard& yard : yards) {
+      for (std::size_t index = 0; index < kKinds; ++index) {
+        if (yard.adults[index] <= kDecidedCap[index]) {
+          continue;
+        }
+        const std::uint32_t key = (yard.family << 3U) | static_cast<std::uint32_t>(index);
+        over_now.push_back(key);
+        if (std::ranges::find(over_yesterday_, key) != over_yesterday_.end() ||
+            over_log_.size() >= kMixedLogLines) {
+          continue;
+        }
+        std::string line = "y" + std::to_string(year) + "d" +
+                           std::to_string(world.calendar.day % core::kDaysPerYear) + " family " +
+                           std::to_string(yard.family) + " kind " + kKindKeys[index] + " adults " +
+                           std::to_string(yard.adults[index]);
+        for (std::uint32_t row = 0; row < world.herds.rows.size(); ++row) {
+          const core::HerdRow& herd = world.herds.rows[row];
+          if (herd.household_owned == 0 || herd.household.value != yard.family ||
+              herd.kind.value != kind_rows_[index]) {
+            continue;
+          }
+          const std::uint32_t id = world.herds.row_ids[row].value;
+          line += " [" + std::to_string(id) + ' ' + std::to_string(herd.adult_count) + '/' +
+                  std::to_string(herd.juvenile_count) + '/' + std::to_string(herd.newborn_count) +
+                  " inh " + std::to_string(herd.inherited);
+          const auto was = std::ranges::find_if(
+              yesterday_, [id](const HerdYesterday& entry) { return entry.id == id; });
+          line += was == yesterday_.end()
+                      ? std::string(" NEW")
+                      : " was f" + std::to_string(was->family) + " h" + std::to_string(was->heads);
+          line += ']';
+        }
+        over_log_.push_back(line);
+      }
+    }
+    over_yesterday_ = std::move(over_now);
     yesterday_.clear();
     for (std::uint32_t row = 0; row < world.herds.rows.size(); ++row) {
       const core::HerdRow& herd = world.herds.rows[row];
@@ -475,6 +515,9 @@ class HerdTally {
     for (const std::string& line : mixed_log_) {
       out << "population_curve: Y1PLACE seed " << seed << ' ' << line << '\n';
     }
+    for (const std::string& line : over_log_) {
+      out << "population_curve: Y2PLACE seed " << seed << ' ' << line << '\n';
+    }
   }
 
  private:
@@ -509,6 +552,8 @@ class HerdTally {
   std::vector<HerdYesterday> yesterday_;
   std::vector<std::uint32_t> mixed_yesterday_;
   std::vector<std::string> mixed_log_;
+  std::vector<std::uint32_t> over_yesterday_;
+  std::vector<std::string> over_log_;
   float horse_rate_ = 0.0F;
   std::array<std::int64_t, kYears> horse_handed_ = {};
   std::array<std::uint64_t, kYears> horse_billeted_band_days_ = {};
