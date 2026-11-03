@@ -539,9 +539,14 @@ class LaborSystem final : public ILaborSystem {
     for (ResidentRow& resident : current.residents.rows) {
       resident.idle_reason = IdleReason::kIdleReasonCount;
     }
+    // THE BURIAL MORNING'S CARTS (#1084; social.md «Как добираются»): the
+    // funerals buried today ask the morning's horses at level 1 - after the
+    // level-0 loads, before every field job - and seat their party.
+    const FuneralSeats seats = SeatFuneralParties(current, jobs);
     std::vector<std::uint32_t> resting;
     std::vector<std::uint32_t> mourning;
     std::vector<AssignmentCandidate> candidates = CollectCandidates(current, &resting, &mourning);
+    BookFuneralManDays(current, mourning, candidates, day_off_today);
     book.idle_person_days[static_cast<std::size_t>(IdleReason::kResting)] +=
         static_cast<std::uint32_t>(resting.size());
     for (const std::uint32_t row : resting) {
@@ -589,6 +594,9 @@ class LaborSystem final : public ILaborSystem {
         std::vector<std::uint32_t> rides_cart_with;
         PlacementDiagnosis diagnosis;
         AssignmentParams params = DayParams(current);
+        // The funeral's horses are off the day's plan (STUB: the whole day,
+        // not the procession's hours).
+        params.draught_horses -= std::min(params.draught_horses, seats.horses);
         MeasureRoads(current, jobs, candidates, params);
         const std::vector<std::uint32_t> plan = PlanDayAssignments(
             jobs, candidates, params, &rides_horse, &road_blocked, &diagnosis, &rides_cart_with);
@@ -2755,6 +2763,110 @@ class LaborSystem final : public ILaborSystem {
   /// on the resident), a count before. The rest test stands last for that: a
   /// mirror of the list's tests kept apart from it missed the efficiency drop
   /// (static review of 0.36.32).
+  /// The burial morning's seats (#1084): the horses given. Who rides is the
+  /// party's first FuneralRow::seated (seated in the party's order).
+  struct FuneralSeats {
+    std::uint32_t horses = 0;
+  };
+
+  /// Whether `id` rides to `funeral`: he is among its first `seated`.
+  static bool SeatedAt(const FuneralRow& funeral, ResidentId id) {
+    const std::size_t limit = std::min<std::size_t>(funeral.seated, funeral.party.size());
+    for (std::size_t place = 0; place < limit; ++place) {
+      if (funeral.party[place] == id) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// THE FUNERAL'S CARTS (social.md «Как добираются»: «Гроб и двое — на
+  /// телеге с грузом, остальные по шесть на людской телеге; кто не
+  /// поместился — пешком… свободной нет — идут пешком, день похорон не
+  /// сдвигается»): each funeral buried today, in its row order, asks the
+  /// morning's horses at level 1 - the horses left after one for each level-0
+  /// load (STUB: a horse a load) - one horse a cart: the coffin's cart seats
+  /// two, every people's cart people_cart_seats; kin first, then the
+  /// neighbours. Writes the funeral's carts and seated.
+  FuneralSeats SeatFuneralParties(WorldState& current,
+                                  const std::vector<AssignmentJob>& jobs) const {
+    FuneralSeats seats;
+    std::uint32_t urgent = 0;
+    for (const AssignmentJob& job : jobs) {
+      urgent += job.logistics_urgent ? 1U : 0U;
+    }
+    const std::uint32_t standing = DraughtHorses(current);
+    std::uint32_t free = standing > urgent ? standing - urgent : 0U;
+    const std::uint32_t per_cart = std::max<std::uint32_t>(config_.people_cart_seats, 1U);
+    for (FuneralRow& funeral : current.funerals.rows) {
+      if (funeral.burial_day != current.calendar.day) {
+        continue;
+      }
+      std::uint32_t walking = static_cast<std::uint32_t>(funeral.party.size());
+      std::uint32_t carts = 0;
+      std::uint32_t seated = 0;
+      if (walking > 0 && free > 0) {
+        const std::uint32_t coffin = std::min<std::uint32_t>(walking, 2U);
+        seated += coffin;
+        walking -= coffin;
+        ++carts;
+        --free;
+      }
+      while (walking > 0 && free > 0) {
+        const std::uint32_t load = std::min(walking, per_cart);
+        seated += load;
+        walking -= load;
+        ++carts;
+        --free;
+      }
+      funeral.carts = static_cast<std::uint8_t>(std::min<std::uint32_t>(carts, UINT8_MAX));
+      funeral.seated = static_cast<std::uint16_t>(std::min<std::uint32_t>(seated, UINT16_MAX));
+      seats.horses += carts;
+    }
+    return seats;
+  }
+
+  /// A neighbour's procession, in hours: on the people's cart when seated,
+  /// on foot otherwise (funeral_reads.h).
+  float FuneralHoursOf(const FuneralRow& funeral, bool seated) const {
+    const float speed = seated ? config_.loaded_speed_kmh : config_.walk_speed_kmh;
+    return speed > 0.0F ? FuneralNeighbourHours(funeral, static_cast<float>(kClockScale) / speed)
+                        : kFuneralCeremonyHours;
+  }
+
+  /// THE BURIAL'S WORKING DAY (#1084; the print's «man-days a funeral»): the
+  /// kin booked kFuneral this morning, a day each, and each neighbour on the
+  /// list his procession's share of a standard day. Nought on a day off.
+  void BookFuneralManDays(WorldState& current,
+                          const std::vector<std::uint32_t>& mourning,
+                          const std::vector<AssignmentCandidate>& candidates,
+                          bool day_off) const {
+    if (day_off || current.funerals.rows.empty()) {
+      return;
+    }
+    for (const std::uint32_t row : mourning) {
+      bool kin = false;
+      const std::uint32_t funeral = FuneralOfToday(current, current.residents.row_ids[row], kin);
+      if (funeral != kNoRow) {
+        current.funerals.rows[funeral].man_days += 1.0F;
+      }
+    }
+    if (config_.standard_day_hours <= 0.0F) {
+      return;
+    }
+    for (const AssignmentCandidate& candidate : candidates) {
+      const ResidentId id = current.residents.row_ids[candidate.resident_row];
+      bool kin = false;
+      const std::uint32_t funeral = FuneralOfToday(current, id, kin);
+      if (funeral == kNoRow || kin) {
+        continue;
+      }
+      FuneralRow& row = current.funerals.rows[funeral];
+      row.man_days +=
+          std::min(1.0F, FuneralHoursOf(row, SeatedAt(row, id)) / config_.standard_day_hours);
+    }
+  }
+
   std::vector<AssignmentCandidate> CollectCandidates(
       const WorldState& current,
       std::vector<std::uint32_t>* resting = nullptr,
@@ -2846,10 +2958,10 @@ class LaborSystem final : public ILaborSystem {
           ResidentEfficiency(config_, resident, age, aging_from, first_year, false);
       // A NEIGHBOUR'S HOURS AT THE FUNERAL come off his day (STUB: by his
       // efficiency, the share of a standard day the procession took).
-      if (funeral != kNoRow && config_.standard_day_hours > 0.0F && config_.walk_speed_kmh > 0.0F) {
-        const float hours =
-            FuneralNeighbourHours(current.funerals.rows[funeral],
-                                  static_cast<float>(kClockScale) / config_.walk_speed_kmh);
+      // On the people's cart when the morning seated him (SeatFuneralParties).
+      if (funeral != kNoRow && config_.standard_day_hours > 0.0F) {
+        const FuneralRow& at = current.funerals.rows[funeral];
+        const float hours = FuneralHoursOf(at, SeatedAt(at, current.residents.row_ids[row]));
         candidate.efficiency *= std::max(0.0F, 1.0F - hours / config_.standard_day_hours);
       }
       candidate.rest = resident.rest;

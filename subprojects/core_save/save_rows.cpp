@@ -2211,8 +2211,9 @@ SettlementRow ReadSettlementRow(LoadSource& source) {
 
 // Save 205 (#1084): a funeral on the wire is 4 + 8 a dead (the resident and
 // his household), 4 the settlement, 4 the cemetery, 4 the burial day, 4 the
-// road, the loud and the answer bytes, 4 + 4 a party member, 4 the kin count.
-static_assert(AggregateArity<FuneralRow>() == 10,
+// road, the loud and the answer bytes, 4 + 4 a party member, 4 the kin count;
+// 1 the carts, 2 the seated, 4 the man-days.
+static_assert(AggregateArity<FuneralRow>() == 13,
               "FuneralRow gained or lost a field — update the codec and VERSION_SAVE");
 constexpr std::uint8_t kMaxFuneralChairman =
     static_cast<std::uint8_t>(FuneralChairman::kFuneralChairmanCount) - 1;
@@ -2235,6 +2236,9 @@ void WriteFuneralRow(SaveSink& sink, const FuneralRow& row) {
     WriteEntityId(out, member);
   }
   out.WriteU32(row.kin_count);
+  out.WriteU8(row.carts);
+  out.WriteU16(row.seated);
+  out.WriteFloat(row.man_days);
 }
 
 FuneralRow ReadFuneralRow(LoadSource& source) {
@@ -2273,6 +2277,12 @@ FuneralRow ReadFuneralRow(LoadSource& source) {
   row.kin_count = in.ReadU32();
   if (source.Valid() && row.kin_count > row.party.size()) {
     source.Fail("a funeral's kin count exceeds its party");
+  }
+  row.carts = in.ReadU8();
+  row.seated = in.ReadU16();
+  row.man_days = in.ReadFloat();
+  if (source.Valid() && (row.seated > row.party.size() || !(row.man_days >= 0.0F))) {
+    source.Fail("a funeral's seated exceed its party, or its man-days are negative");
   }
   return row;
 }
