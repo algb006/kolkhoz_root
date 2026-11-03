@@ -52,6 +52,15 @@ class WarmCrew {
   explicit WarmCrew(const core::ITableSet& tables) {
     std::string error;
     ready_ = core::ReadColdHousing(tables, cold_, error);
+    if (const core::ITable* const world = tables.FindTable("world_params")) {
+      const std::uint32_t row = world->FindRowByKey("livestock_freezing_counter");
+      const std::uint32_t column = world->FindColumn("value");
+      if (row != core::kNoTableRow && column != core::kNoTableColumn) {
+        const float value =
+            world->CellReal(row, column).value_or(static_cast<float>(freezing_counter_));
+        freezing_counter_ = value >= 1.0F ? static_cast<std::uint32_t>(value) : 1U;
+      }
+    }
   }
 
   /// @brief #1084's base arm of the cure: the crew never stands.
@@ -132,13 +141,33 @@ class WarmCrew {
   /// @brief The builders this crew has sent in all (the run's own line).
   std::uint32_t SentTotal() const { return sent_total_; }
 
-  /// @brief Boss's question of the whole guard: the warm works (any home of a
-  ///        freezing kind, under works) that were still unfinished on a day
-  ///        their kind's kolkhoz herd counted a cold night - each works once.
+  /// @brief The coarse count: the warm works (any home of a freezing kind,
+  ///        under works) still unfinished on a day their kind's kolkhoz herd
+  ///        counted a cold night («мёрзнет», cold_nights 1+) - each works once.
+  ///        Says yes in nearly every village: the first autumn's level 2
+  ///        waits for its materials while the cows count cold nights.
   std::uint32_t LateWorks() const { return static_cast<std::uint32_t>(late_.size()); }
 
-  /// @brief Every day, off or on: marks the late warm works (LateWorks).
+  /// @brief Boss's question of the whole guard, on the freezing stage
+  ///        (core-boss-1084-funeral-body [11]): the warm works still
+  ///        unfinished on a day their kind's herd stood at «замерзает»
+  ///        (cold_nights >= world_params livestock_freezing_counter) - each
+  ///        works once. The gap to LateWorks is what «мёрзнет» costs with no
+  ///        death.
+  std::uint32_t FreezingWorks() const { return static_cast<std::uint32_t>(freezing_.size()); }
+
+  /// @brief Every day, off or on: marks the late and the freezing warm works.
   void ObserveLate(const core::WorldState& world) {
+    ObserveAt(world, 1U, late_);
+    ObserveAt(world, freezing_counter_, freezing_);
+  }
+
+ private:
+  /// Marks into `marked` each warm works under works on a day its kind's
+  /// kolkhoz herd's cold_nights reach `threshold`.
+  void ObserveAt(const core::WorldState& world,
+                 std::uint32_t threshold,
+                 std::vector<std::uint32_t>& marked) const {
     for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
       const core::UnitRow& unit = world.units.rows[row];
       if (unit.dead != 0 || (unit.construction.phase != core::ConstructionPhase::kDelivering &&
@@ -146,15 +175,15 @@ class WarmCrew {
         continue;
       }
       const std::uint32_t id = world.units.row_ids[row].value;
-      if (std::ranges::find(late_, id) != late_.end()) {
+      if (std::ranges::find(marked, id) != marked.end()) {
         continue;
       }
       for (const core::HerdRow& herd : world.herds.rows) {
         const std::size_t kind = herd.kind.value;
         if (herd.household_owned == 0 && kind < cold_.home_by_kind.size() &&
             kind < cold_.freezes_by_kind.size() && cold_.freezes_by_kind[kind] != 0 &&
-            cold_.home_by_kind[kind].value == unit.type.value && herd.cold_nights > 0) {
-          late_.push_back(id);
+            cold_.home_by_kind[kind].value == unit.type.value && herd.cold_nights >= threshold) {
+          marked.push_back(id);
           break;
         }
       }
@@ -214,6 +243,8 @@ class WarmCrew {
   std::vector<core::ResidentId> sent_;
   std::uint32_t sent_total_ = 0;
   std::vector<std::uint32_t> late_;
+  std::vector<std::uint32_t> freezing_;
+  std::uint32_t freezing_counter_ = 6;  // world_params livestock_freezing_counter
 };
 
 }  // namespace run

@@ -41,6 +41,7 @@
 #include "core_common/event_state.h"
 #include "core_common/extraction_state.h"
 #include "core_common/family_state.h"
+#include "core_common/funeral_state.h"
 #include "core_common/herd_state.h"
 #include "core_common/horse_lamp_memory.h"
 #include "core_common/land_state.h"
@@ -1252,6 +1253,15 @@ struct WorldState {
   /// settlement step from the dwellings; the start village is id 1 for ever.
   /// SAVED.
   SettlementTable settlements;
+
+  /// THE FUNERALS (funeral_state.h; #1084): opened by core_residents' funeral
+  /// step the death day, closed at the burial day's end. SAVED (save 205).
+  FuneralTable funerals;
+
+  /// The burial day of the last LOUD funeral (kLoudEveryDays' memory), or
+  /// kNoLoudBurialDay. A row goes at its close, so the cap's memory lives
+  /// here. SAVED with the funerals (save 205).
+  SimDay last_loud_burial_day = kNoLoudBurialDay;
 
   /// POTATO AND VEGETABLES ROTTED IN CLAMPS a day over the last year
   /// (clamp_rot_state.h; #1005): written by core_production's SpoilStores at

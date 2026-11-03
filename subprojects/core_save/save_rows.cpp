@@ -97,7 +97,10 @@ constexpr std::size_t kAmountsSize = sizeof(ResourceAmounts);
 // into padding the row already had; the field count, 57, caught it.
 // Save 200 (#1373): the work grows 60 -> 68 and the row 328 -> 336,
 // predicted before the build.
-static_assert(sizeof(ResidentRow) == 336,
+// Save 205 (#1084): the funeral's mood term, two floats and a u32 after
+// mood_base - predicted 336 -> 352 (12 bytes, the row aligns to 8) and 60
+// fields before the build.
+static_assert(sizeof(ResidentRow) == 352,
               "ResidentRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 59: distiller_supplied_month, a distiller's supplied month
 // (crime §7, register 206) — 43 fields; the size is read off the build.
@@ -105,7 +108,7 @@ static_assert(sizeof(ResidentRow) == 336,
 // Save 79: away_until_day, _hour, _walk_hours, _reason — 50. Save 105:
 // idle_reason — 51. Save 113: satiety_year and satiety_childhood — 53.
 // Save 122: samogon_ml — 54.
-static_assert(AggregateArity<ResidentRow>() == 57,
+static_assert(AggregateArity<ResidentRow>() == 60,
               "ResidentRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-14: first_meal_eaten landed in padding beside food_variety_mask; the
 // size stayed 56 + amounts and the field count went to 16. The same day the
@@ -146,7 +149,10 @@ static_assert(AggregateArity<ResidentRow>() == 57,
 // Save 203 (#1442's window): plot_ratio_without_sum (float) and
 // yard_herd_trudodni (i32) at the tail - predicted 184 -> 192 + amounts and
 // 44 fields before the build; on the wire +8 a family.
-static_assert(sizeof(FamilyRow) == 192 + kAmountsSize,
+// Save 205 (#1084): the funeral's satisfaction term (float) and its last day
+// (u32) after lodging_penalty - predicted 192 -> 200 + amounts and 46 fields
+// before the build; on the wire +8 a family.
+static_assert(sizeof(FamilyRow) == 200 + kAmountsSize,
               "FamilyRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 57: ration_granted, the yard's ration decision — 19 fields;
 // the size is read off the build below, not guessed.
@@ -156,7 +162,7 @@ static_assert(sizeof(FamilyRow) == 192 + kAmountsSize,
 // Save 75: in_barrack and hunger_alarm_lit — 27 fields. Save 113:
 // satisfaction_year — 28. Save 124: season_category_kcal and
 // season_need_kcal — 30.
-static_assert(AggregateArity<FamilyRow>() == 44,
+static_assert(AggregateArity<FamilyRow>() == 46,
               "FamilyRow gained or lost a field — update the codec and VERSION_SAVE");
 // FieldRow took LandKind into a padding byte it already had, so sizeof did
 // NOT move — the one case the tripwire of manual/67-save-format.md §7 cannot
@@ -768,7 +774,10 @@ void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
   // Personal cleanliness (health design §3, save format 51).
   out.WriteFloat(row.hygiene);
   out.WriteFloat(row.mood);
-  out.WriteFloat(row.mood_base);  // save 188 (#1241)
+  out.WriteFloat(row.mood_base);             // save 188 (#1241)
+  out.WriteFloat(row.funeral_mood_amount);   // save 205 (#1084)
+  out.WriteU32(row.funeral_mood_day);        // save 205
+  out.WriteFloat(row.funeral_mood_applied);  // save 205
 
   out.WriteU8(static_cast<std::uint8_t>(row.work.kind));
   out.WriteU8(row.work.rides_horse);  // save 88: the carter's horse (labor_state.h)
@@ -864,7 +873,10 @@ ResidentRow ReadResidentRow(LoadSource& source) {
   row.cold = in.ReadFloat();
   row.hygiene = in.ReadFloat();
   row.mood = in.ReadFloat();
-  row.mood_base = in.ReadFloat();  // save 188 (#1241)
+  row.mood_base = in.ReadFloat();             // save 188 (#1241)
+  row.funeral_mood_amount = in.ReadFloat();   // save 205 (#1084)
+  row.funeral_mood_day = in.ReadU32();        // save 205
+  row.funeral_mood_applied = in.ReadFloat();  // save 205
 
   row.work.kind = static_cast<WorkKind>(source.ReadEnumValue(0, kMaxWorkKind, "work kind"));
   row.work.rides_horse = source.ReadEnumValue(0, 1, "the carter's horse mark");
@@ -1025,8 +1037,10 @@ void WriteFamilyRow(SaveSink& sink, const FamilyRow& row) {
   out.WriteU32(row.asked_day);
   out.WriteU32(row.lodged_in.value);
   out.WriteFloat(row.lodging_penalty);
-  out.WriteU8(row.in_barrack);        // save 75
-  out.WriteU8(row.hunger_alarm_lit);  // save 75
+  out.WriteFloat(row.funeral_satisfaction);      // save 205 (#1084)
+  out.WriteU32(row.funeral_satisfaction_until);  // save 205
+  out.WriteU8(row.in_barrack);                   // save 75
+  out.WriteU8(row.hunger_alarm_lit);             // save 75
 
   out.WriteFloat(row.household_hours);
   out.WriteFloat(row.plot_ratio_sum);
@@ -1087,6 +1101,8 @@ FamilyRow ReadFamilyRow(LoadSource& source) {
   row.asked_day = in.ReadU32();
   row.lodged_in.value = in.ReadU32();
   row.lodging_penalty = in.ReadFloat();
+  row.funeral_satisfaction = in.ReadFloat();      // save 205 (#1084)
+  row.funeral_satisfaction_until = in.ReadU32();  // save 205
   row.in_barrack = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "family in a barrack"));
   row.hunger_alarm_lit =
       static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "family's hunger alarm lit"));
@@ -2190,6 +2206,84 @@ SettlementRow ReadSettlementRow(LoadSource& source) {
   row.merge_with = ReadEntityId<SettlementId>(in);
   row.split_pending = source.ReadEnumValue(0, 1, "a settlement's split pending");
   row.name = in.ReadU16();
+  return row;
+}
+
+// Save 205 (#1084): a funeral on the wire is 4 + 8 a dead (the resident and
+// his household), 4 the settlement, 4 the cemetery, 4 the burial day, 4 the
+// road, the loud and the answer bytes, 4 + 4 a party member, 4 the kin count;
+// 1 the carts, 2 the seated, 4 the man-days.
+static_assert(AggregateArity<FuneralRow>() == 13,
+              "FuneralRow gained or lost a field — update the codec and VERSION_SAVE");
+constexpr std::uint8_t kMaxFuneralChairman =
+    static_cast<std::uint8_t>(FuneralChairman::kFuneralChairmanCount) - 1;
+
+void WriteFuneralRow(SaveSink& sink, const FuneralRow& row) {
+  ByteWriter& out = sink.Out();
+  out.WriteU32(static_cast<std::uint32_t>(row.deceased.size()));
+  for (std::size_t index = 0; index < row.deceased.size(); ++index) {
+    WriteEntityId(out, row.deceased[index]);
+    WriteEntityId(out, index < row.households.size() ? row.households[index] : FamilyId{});
+  }
+  WriteEntityId(out, row.settlement);
+  WriteEntityId(out, row.cemetery);
+  out.WriteU32(row.burial_day);
+  out.WriteFloat(row.road_km);
+  out.WriteU8(row.loud);
+  out.WriteU8(static_cast<std::uint8_t>(row.chairman));
+  out.WriteU32(static_cast<std::uint32_t>(row.party.size()));
+  for (const ResidentId member : row.party) {
+    WriteEntityId(out, member);
+  }
+  out.WriteU32(row.kin_count);
+  out.WriteU8(row.carts);
+  out.WriteU16(row.seated);
+  out.WriteFloat(row.man_days);
+}
+
+FuneralRow ReadFuneralRow(LoadSource& source) {
+  ByteReader& in = source.In();
+  FuneralRow row;
+  const std::uint32_t dead = in.ReadU32();
+  if (static_cast<std::size_t>(dead) * 8U > in.Remaining()) {
+    source.Fail("a funeral's dead are longer than the bytes left");
+    return row;
+  }
+  row.deceased.reserve(dead);
+  row.households.reserve(dead);
+  for (std::uint32_t index = 0; index < dead && source.Valid(); ++index) {
+    row.deceased.push_back(ReadEntityId<ResidentId>(in));
+    row.households.push_back(ReadEntityId<FamilyId>(in));
+  }
+  row.settlement = ReadEntityId<SettlementId>(in);
+  row.cemetery = ReadEntityId<UnitId>(in);
+  row.burial_day = in.ReadU32();
+  row.road_km = in.ReadFloat();
+  if (source.Valid() && !(row.road_km >= 0.0F)) {
+    source.Fail("a funeral's road is negative or not a number");
+  }
+  row.loud = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "a funeral's loud flag"));
+  row.chairman = static_cast<FuneralChairman>(
+      source.ReadEnumValue(0, kMaxFuneralChairman, "a funeral's chairman answer"));
+  const std::uint32_t party = in.ReadU32();
+  if (static_cast<std::size_t>(party) * 4U > in.Remaining()) {
+    source.Fail("a funeral's party is longer than the bytes left");
+    return row;
+  }
+  row.party.reserve(party);
+  for (std::uint32_t index = 0; index < party && source.Valid(); ++index) {
+    row.party.push_back(ReadEntityId<ResidentId>(in));
+  }
+  row.kin_count = in.ReadU32();
+  if (source.Valid() && row.kin_count > row.party.size()) {
+    source.Fail("a funeral's kin count exceeds its party");
+  }
+  row.carts = in.ReadU8();
+  row.seated = in.ReadU16();
+  row.man_days = in.ReadFloat();
+  if (source.Valid() && (row.seated > row.party.size() || !(row.man_days >= 0.0F))) {
+    source.Fail("a funeral's seated exceed its party, or its man-days are negative");
+  }
   return row;
 }
 

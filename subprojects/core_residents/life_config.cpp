@@ -574,6 +574,10 @@ bool ParseLifeConfig(const ITableSet& tables, LifeConfig& config, std::string& e
         DefIdFromRow<ProfessionIdTag>(professions->FindRowByKey("primary_teacher"));
     config.librarian_post = DefIdFromRow<ProfessionIdTag>(professions->FindRowByKey("librarian"));
   }
+  // THE FUNERALS (#1084): the burial's cemetery type and this config's ages.
+  config.funeral.cemetery_type = config.burial.cemetery_type;
+  config.funeral.adult_age_years = config.adult_age_years;
+  config.funeral.life_speedup = config.life_speedup;
   return true;
 }
 

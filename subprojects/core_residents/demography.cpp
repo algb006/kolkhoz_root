@@ -342,7 +342,12 @@ void RunDeaths(const LifeConfig& config, WorldState& current, SimDay day) {
       dead.push_back(current.residents.row_ids[row]);
     }
   }
-  for (const ResidentId id : dead) {
+  // THE FUNERALS (#1084; funeral_rules.h), while every dead's row and kin are
+  // still here: one a settlement, buried tomorrow, and the cemetery each grave
+  // goes to.
+  const std::vector<UnitId> laid_in = OpenFunerals(config.funeral, current, dead);
+  for (std::size_t index = 0; index < dead.size(); ++index) {
+    const ResidentId id = dead[index];
     // BEFORE the row goes: afterwards there is no family left to name, and
     // an event that says only "somebody died" is a line the player cannot
     // act on. The two ways out of the village are announced at their own
@@ -366,10 +371,10 @@ void RunDeaths(const LifeConfig& config, WorldState& current, SimDay day) {
         current.families.rows[family_row].shock_month = MonthTagOfDay(current.calendar.day);
       }
     }
-    // THE GRAVE, in the oldest cemetery with room (#1199; burial.h). After the
+    // THE GRAVE, in his funeral's cemetery (#1084; burial.h). After the
     // event's fields: laying may emit, and a reference into the outbox would
     // dangle.
-    LayGraveOf(config.burial, config.definitions.units.plot_radius_m, current, id);
+    LayGraveOf(config.burial, config.definitions.units.plot_radius_m, current, id, laid_in[index]);
     RemoveResident(current, id);
   }
   current.ledger.current.deaths += static_cast<std::uint32_t>(dead.size());

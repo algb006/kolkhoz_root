@@ -44,6 +44,7 @@
 #include "core_common/emit_event.h"
 #include "core_common/event_state.h"
 #include "core_common/family_state.h"
+#include "core_common/funeral_reads.h"
 #include "core_common/geometry.h"
 #include "core_common/haul.h"
 #include "core_common/hauled_book.h"
@@ -538,12 +539,28 @@ class LaborSystem final : public ILaborSystem {
     for (ResidentRow& resident : current.residents.rows) {
       resident.idle_reason = IdleReason::kIdleReasonCount;
     }
+    // THE BURIAL MORNING'S CARTS (#1084; social.md «Как добираются»): the
+    // funerals buried today ask the morning's horses at level 1 - after the
+    // level-0 loads, before every field job - and seat their party.
+    const FuneralSeats seats = SeatFuneralParties(current, jobs);
     std::vector<std::uint32_t> resting;
-    std::vector<AssignmentCandidate> candidates = CollectCandidates(current, &resting);
+    std::vector<std::uint32_t> mourning;
+    std::vector<AssignmentCandidate> candidates = CollectCandidates(current, &resting, &mourning);
+    BookFuneralManDays(current, mourning, candidates, day_off_today);
     book.idle_person_days[static_cast<std::size_t>(IdleReason::kResting)] +=
         static_cast<std::uint32_t>(resting.size());
     for (const std::uint32_t row : resting) {
       current.residents.rows[row].idle_reason = IdleReason::kResting;
+    }
+    // THE FUNERAL'S KIN (#1084): off the day, their own reason, not «no work».
+    // The book counts the working days only: a burial on a day off costs no
+    // work (social.md «Нерабочий день»; econ's S2), though the kin are at it.
+    if (!day_off_today) {
+      book.idle_person_days[static_cast<std::size_t>(IdleReason::kFuneral)] +=
+          static_cast<std::uint32_t>(mourning.size());
+    }
+    for (const std::uint32_t row : mourning) {
+      current.residents.rows[row].idle_reason = IdleReason::kFuneral;
     }
     book.candidate_person_days += static_cast<std::uint32_t>(candidates.size());
     const bool rain_holds = RainHoldsFieldWork(current);
@@ -577,6 +594,9 @@ class LaborSystem final : public ILaborSystem {
         std::vector<std::uint32_t> rides_cart_with;
         PlacementDiagnosis diagnosis;
         AssignmentParams params = DayParams(current);
+        // The funeral's horses are off the day's plan (STUB: the whole day,
+        // not the procession's hours).
+        params.draught_horses -= std::min(params.draught_horses, seats.horses);
         MeasureRoads(current, jobs, candidates, params);
         const std::vector<std::uint32_t> plan = PlanDayAssignments(
             jobs, candidates, params, &rides_horse, &road_blocked, &diagnosis, &rides_cart_with);
@@ -2743,8 +2763,114 @@ class LaborSystem final : public ILaborSystem {
   /// on the resident), a count before. The rest test stands last for that: a
   /// mirror of the list's tests kept apart from it missed the efficiency drop
   /// (static review of 0.36.32).
+  /// The burial morning's seats (#1084): the horses given. Who rides is the
+  /// party's first FuneralRow::seated (seated in the party's order).
+  struct FuneralSeats {
+    std::uint32_t horses = 0;
+  };
+
+  /// Whether `id` rides to `funeral`: he is among its first `seated`.
+  static bool SeatedAt(const FuneralRow& funeral, ResidentId id) {
+    const std::size_t limit = std::min<std::size_t>(funeral.seated, funeral.party.size());
+    for (std::size_t place = 0; place < limit; ++place) {
+      if (funeral.party[place] == id) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// THE FUNERAL'S CARTS (social.md «Как добираются»: «Гроб и двое — на
+  /// телеге с грузом, остальные по шесть на людской телеге; кто не
+  /// поместился — пешком… свободной нет — идут пешком, день похорон не
+  /// сдвигается»): each funeral buried today, in its row order, asks the
+  /// morning's horses at level 1 - the horses left after one for each level-0
+  /// load (STUB: a horse a load) - one horse a cart: the coffin's cart seats
+  /// two, every people's cart people_cart_seats; kin first, then the
+  /// neighbours. Writes the funeral's carts and seated.
+  FuneralSeats SeatFuneralParties(WorldState& current,
+                                  const std::vector<AssignmentJob>& jobs) const {
+    FuneralSeats seats;
+    std::uint32_t urgent = 0;
+    for (const AssignmentJob& job : jobs) {
+      urgent += job.logistics_urgent ? 1U : 0U;
+    }
+    const std::uint32_t standing = DraughtHorses(current);
+    std::uint32_t free = standing > urgent ? standing - urgent : 0U;
+    const std::uint32_t per_cart = std::max<std::uint32_t>(config_.people_cart_seats, 1U);
+    for (FuneralRow& funeral : current.funerals.rows) {
+      if (funeral.burial_day != current.calendar.day) {
+        continue;
+      }
+      std::uint32_t walking = static_cast<std::uint32_t>(funeral.party.size());
+      std::uint32_t carts = 0;
+      std::uint32_t seated = 0;
+      if (walking > 0 && free > 0) {
+        const std::uint32_t coffin = std::min<std::uint32_t>(walking, 2U);
+        seated += coffin;
+        walking -= coffin;
+        ++carts;
+        --free;
+      }
+      while (walking > 0 && free > 0) {
+        const std::uint32_t load = std::min(walking, per_cart);
+        seated += load;
+        walking -= load;
+        ++carts;
+        --free;
+      }
+      funeral.carts = static_cast<std::uint8_t>(std::min<std::uint32_t>(carts, UINT8_MAX));
+      funeral.seated = static_cast<std::uint16_t>(std::min<std::uint32_t>(seated, UINT16_MAX));
+      seats.horses += carts;
+    }
+    return seats;
+  }
+
+  /// A neighbour's procession, in hours: on the people's cart when seated,
+  /// on foot otherwise (funeral_reads.h).
+  float FuneralHoursOf(const FuneralRow& funeral, bool seated) const {
+    const float speed = seated ? config_.loaded_speed_kmh : config_.walk_speed_kmh;
+    return speed > 0.0F ? FuneralNeighbourHours(funeral, static_cast<float>(kClockScale) / speed)
+                        : kFuneralCeremonyHours;
+  }
+
+  /// THE BURIAL'S WORKING DAY (#1084; the print's «man-days a funeral»): the
+  /// kin booked kFuneral this morning, a day each, and each neighbour on the
+  /// list his procession's share of a standard day. Nought on a day off.
+  void BookFuneralManDays(WorldState& current,
+                          const std::vector<std::uint32_t>& mourning,
+                          const std::vector<AssignmentCandidate>& candidates,
+                          bool day_off) const {
+    if (day_off || current.funerals.rows.empty()) {
+      return;
+    }
+    for (const std::uint32_t row : mourning) {
+      bool kin = false;
+      const std::uint32_t funeral = FuneralOfToday(current, current.residents.row_ids[row], kin);
+      if (funeral != kNoRow) {
+        current.funerals.rows[funeral].man_days += 1.0F;
+      }
+    }
+    if (config_.standard_day_hours <= 0.0F) {
+      return;
+    }
+    for (const AssignmentCandidate& candidate : candidates) {
+      const ResidentId id = current.residents.row_ids[candidate.resident_row];
+      bool kin = false;
+      const std::uint32_t funeral = FuneralOfToday(current, id, kin);
+      if (funeral == kNoRow || kin) {
+        continue;
+      }
+      FuneralRow& row = current.funerals.rows[funeral];
+      row.man_days +=
+          std::min(1.0F, FuneralHoursOf(row, SeatedAt(row, id)) / config_.standard_day_hours);
+    }
+  }
+
   std::vector<AssignmentCandidate> CollectCandidates(
-      const WorldState& current, std::vector<std::uint32_t>* resting = nullptr) const {
+      const WorldState& current,
+      std::vector<std::uint32_t>* resting = nullptr,
+      std::vector<std::uint32_t>* mourning = nullptr) const {
     const std::vector<bool> horse_locked = MarkHorseHosts(current);
     const float aging_from = AgingFromYears(config_, current);
     std::vector<AssignmentCandidate> candidates;
@@ -2808,6 +2934,19 @@ class LaborSystem final : public ILaborSystem {
         }
         continue;
       }
+      // AT A FUNERAL TODAY (#1084; funeral_reads.h; social.md «Нерабочий
+      // день»): the kin and the household are off the whole day (kFuneral,
+      // booked by the caller); a neighbour walks there and back and then
+      // works what is left of the day.
+      bool funeral_kin = false;
+      const std::uint32_t funeral =
+          FuneralOfToday(current, current.residents.row_ids[row], funeral_kin);
+      if (funeral != kNoRow && funeral_kin) {
+        if (mourning != nullptr) {
+          mourning->push_back(row);
+        }
+        continue;
+      }
       AssignmentCandidate candidate;
       candidate.resident_row = row;
       candidate.queue_place = place;
@@ -2817,6 +2956,14 @@ class LaborSystem final : public ILaborSystem {
       // work is delivered, below, and not in who comes first to the list.
       candidate.efficiency =
           ResidentEfficiency(config_, resident, age, aging_from, first_year, false);
+      // A NEIGHBOUR'S HOURS AT THE FUNERAL come off his day (STUB: by his
+      // efficiency, the share of a standard day the procession took).
+      // On the people's cart when the morning seated him (SeatFuneralParties).
+      if (funeral != kNoRow && config_.standard_day_hours > 0.0F) {
+        const FuneralRow& at = current.funerals.rows[funeral];
+        const float hours = FuneralHoursOf(at, SeatedAt(at, current.residents.row_ids[row]));
+        candidate.efficiency *= std::max(0.0F, 1.0F - hours / config_.standard_day_hours);
+      }
       candidate.rest = resident.rest;
       candidate.skill = FieldSkillBlend(config_, resident);
       candidate.horse_locked = horse_locked[row];
@@ -3688,7 +3835,11 @@ class LaborSystem final : public ILaborSystem {
           current.families.rows[family_row].overwork_penalty += config_.day_off_cancel_satisfaction;
         }
       }
-      if (!worked || walked_off) {
+      // THE FUNERAL'S KIN (#1084; social.md «Горе»: «Отдых родни в день
+      // похорон не растёт и не падает — это не досуг»): the morning booked
+      // them kFuneral; their rest stands, and they do not bathe.
+      const bool mourning = !worked && resident.idle_reason == IdleReason::kFuneral;
+      if (!mourning && (!worked || walked_off)) {
         float back = config_.rest_recovery_idle_day;
         if (day_off && holiday && at_home && config_.rest_recovery_holiday >= 0.0F) {
           // THE HOLIDAY'S +20 (#1373; leisure.md §6, «Праздник +20»): until
@@ -3731,7 +3882,7 @@ class LaborSystem final : public ILaborSystem {
         }
         resident.rest += back;
         resident.rest = resident.rest > kMetricMax ? kMetricMax : resident.rest;
-      } else if (warm && at_home && config_.leisure_reach_m > 0.0F) {
+      } else if (!mourning && warm && at_home && config_.leisure_reach_m > 0.0F) {
         // BATHING AFTER WORK (#1373; leisure.md §6, «Купание после работы»):
         // on a warm afternoon a worker with a beach in reach bathes for +3, at
         // a wild place only for +1; the teens twice (boss G5). A walk-off is a

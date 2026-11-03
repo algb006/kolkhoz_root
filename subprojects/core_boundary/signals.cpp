@@ -7,6 +7,7 @@
 #include "core_common/away_in_district.h"
 #include "core_common/calendar.h"
 #include "core_common/day_window.h"
+#include "core_common/funeral_reads.h"
 #include "core_common/geometry.h"
 #include "core_common/labor_state.h"
 #include "core_common/state_table_ops.h"
@@ -242,6 +243,22 @@ ResidentWhereabouts DeriveWhereabouts(const BoundaryConfig& config,
 
   const DayWindow window = SolarWindow(world.weather.daylight_hours);
   const bool in_shift = InsideDaylight(HourFromTick(world.calendar.tick), window);
+  // AT A FUNERAL (#1084; funeral_reads.h; social.md «Где житель»): the party,
+  // kin and neighbours, from sunrise to midday on the burial day - then the
+  // kin are at home (the wake) and a neighbour at his work. STUB: the
+  // procession's hours as the morning, not its road (the layer's walk speed
+  // is labour's, not the boundary's).
+  {
+    bool kin = false;
+    const std::uint32_t funeral = FuneralOfToday(world, resident, kin);
+    const float hour = static_cast<float>(HourFromTick(world.calendar.tick));
+    if (funeral != kNoRow && hour >= window.sunrise && hour < kFuneralBackByHour) {
+      where.place = Whereabouts::kAtFuneral;
+      where.unit = world.funerals.rows[funeral].cemetery;
+      where.to = UnitPosition(world, where.unit);
+      return where;
+    }
+  }
   // A POST HOLDER IN HIS POST'S SHIFT stands at his post, as DeriveUnitSignals
   // counts him there (post_shift.h).
   const bool at_post =

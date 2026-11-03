@@ -794,6 +794,26 @@ core::WorldState MakeWorld() {
     village.name = 4;
     core::AppendRow(world.settlements, village);
   }
+  // A funeral (save 205; #1084): two dead, a party of three with two kin,
+  // every field off its default.
+  {
+    core::FuneralRow funeral;
+    funeral.deceased = {core::ResidentId{5}, core::ResidentId{6}};
+    funeral.households = {core::FamilyId{2}, core::FamilyId{3}};
+    funeral.settlement = core::SettlementId{1};
+    funeral.cemetery = core::UnitId{9};
+    funeral.burial_day = 97;
+    funeral.road_km = 1.25F;
+    funeral.loud = 1;
+    funeral.chairman = core::FuneralChairman::kWent;
+    funeral.party = {core::ResidentId{11}, core::ResidentId{12}, core::ResidentId{13}};
+    funeral.kin_count = 2;
+    funeral.carts = 2;
+    funeral.seated = 3;
+    funeral.man_days = 1.5F;
+    core::AppendRow(world.funerals, funeral);
+  }
+  world.last_loud_burial_day = 97;
   // The migrants turned away (save 148): a day and two counts apart.
   world.arrivals_turned_away.last_day = 300;
   world.arrivals_turned_away.per_day[2] = 1;
@@ -1475,9 +1495,10 @@ core::WorldState MakeWitnessWorld() {
   witness.arrivals_turned_away.per_day[5] = 4;
   witness.clamp_rot.last_day = 291;  // save 176
   witness.clamp_rot.per_day[7] = 9'000;
-  witness.burials_waiting = 3;      // save 180
-  witness.morning_horses_left = 4;  // save 199
-  witness.unmanned_runs.resize(1);  // save 149
+  witness.burials_waiting = 3;        // save 180
+  witness.morning_horses_left = 4;    // save 199
+  witness.last_loud_burial_day = 77;  // save 205
+  witness.unmanned_runs.resize(1);    // save 149
   witness.unmanned_runs[0].kind = core::WorkKind::kHerdCare;
   witness.unmanned_runs[0].herd = core::HerdId{2};
   witness.unmanned_runs[0].days = 1;
@@ -1767,6 +1788,7 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"burials_waiting", U16(world.burials_waiting)});
   // Save 199: the horses the last morning plan left, two bytes.
   chunks.push_back({"morning_horses_left", U16(world.morning_horses_left)});
+  chunks.push_back({"last_loud_burial_day", U32(world.last_loud_burial_day)});  // save 205
   // Save 149: the jobs' runs — a count, then each run's fields in order.
   chunks.push_back(
       {"unmanned_runs.count", U32(static_cast<std::uint32_t>(world.unmanned_runs.size()))});
@@ -1895,7 +1917,7 @@ struct RecordedSection {
 /// beside it (manual/setup/57-versioning.md). No deliberate change: the codec
 /// has begun writing something else, which is the whole reason these numbers
 /// are here. Either way the number moves WITH ITS REASON, in the same commit.
-constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
+constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // Save 82: +15 — the seventh dictionary, tree_species (count 2, «pine»
     // 6, «birch» 7); predicted before the build, held.
     // Save 92: +2 — the map roads' dictionary, empty in this fixture's
@@ -2025,7 +2047,9 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // predicted 1431 -> 1447 before the build, held; the hash read off it.
     // Save 199 (#1205 (c1)): the horses the last morning plan left, a u16 -
     // predicted 1447 -> 1449 before the build, held; the hash read off it.
-    {"world", 1449, 0xbbb9ed02b13f50a4ULL},
+    // Save 205 (#1084): the last loud burial day, a u32 - predicted 1449 ->
+    // 1453 before the build; the hash read off it.
+    {"world", 1453, 0x3957b06973cf4b33ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2072,7 +2096,13 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // Save 200 (#1373): rest_drained_today and heat_paid, +5 a resident, two -
     // 541 -> 551, reckoned from the codec before the suite and held; the hash
     // read off the first build.
-    {"residents", 551, 0xb6545dcfc09b1022ULL},
+    // Save 205 (#1084 contract, re-laid on 0.37.357): IdleReason gains
+    // kFuneral before its count, and a resident's «no reason» is the count -
+    // the same 551 bytes, the sentinel's byte one higher; predicted before
+    // the build, the hash read off it. Save 205 (#1084 body): the funeral's
+    // mood term, two floats and a u32, +12 a resident, two - predicted 551
+    // -> 575 before the build.
+    {"residents", 575, 0x67c39a2be173ce8fULL},
     // 2026-09-18, save 57: +2 — ration_granted, one byte per family of two.
     // Save 60: +2 — a yard's dry months, one byte per family of two.
     // Save 65: families +8 (overwork_penalty, two yards), fields +6 (the avral's
@@ -2101,8 +2131,10 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // and the shock's month tags, +8 a family, two - predicted 400 -> 416,
     // held; the hash read off it. Save 203 (#1442's window): the garden's
     // without-help attention and the herd trudodni, +8 a family, two -
-    // predicted 416 -> 432, held.
-    {"families", 432, 0xc0e42641f4ccea44ULL},
+    // predicted 416 -> 432, held. Save 205 (#1084): the funeral's
+    // satisfaction term and its last day, +8 a family, two - predicted 432 ->
+    // 448 before the build.
+    {"families", 448, 0xbbcfabcda35473a4ULL},
     // Save 84: +36 — the harvest by parts' laid share (4) and grams (8), 12
     // a row, three rows; predicted before the build and held. Then the first
     // row given non-zero values: the size held at 305, the hash moved.
@@ -2282,7 +2314,11 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // Save 201 (#1421): pay_in_grain, a byte an order, six orders - 818 -> 824,
     // reckoned from the codec before the suite and held; the hash read off
     // the build.
-    {"orders", 824, 0x6cde2175420cdbe8ULL},
+    // Save 205 (#1084 contract, re-laid on 0.37.357): if the fixture's «last
+    // order kind» is the top OrderKind, it is now kAttendFuneral - the same
+    // 824 bytes, the kind's byte one higher; predicted before the build, the
+    // hash read off it.
+    {"orders", 824, 0xce4beb3622117b63ULL},
     // Save 82: the fixture's first stand, a birch planting — 8 -> 67 (its id
     // 4, the old fields 41, species 2, hectares 4, two days 8); predicted,
     // held.
@@ -2343,6 +2379,13 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // row's id and 27 bytes of fields: predicted 39 before the build and
     // held; the hash read off it.
     {"settlements", 39, 0x7aff2d53ece52e1eULL},
+    // Save 205 (#1084): the funerals - next id and count (8), one row's id
+    // (4), its row 58 (4 + two dead x 8, settlement, cemetery, burial day and
+    // road 16, loud and answer 2, 4 + three party x 4, kin 4): predicted 70
+    // before the build and held; the hash read off it. Then the burial
+    // morning's carts (u8), seated (u16) and man-days (f32): predicted 70 ->
+    // 77 before the build.
+    {"funerals", 77, 0x829937c68e446b7aULL},
     // Save 136 (B3): the groom's plan — 10 of day, flags and count, 9 of the
     // cart, 44 of the first leg (one rider), 40 of the second. Predicted 103
     // before the build, held; the hash read off the build.
@@ -2510,7 +2553,10 @@ constexpr std::array<RecordedSection, 26> kRecordedPayload = {{
     // before the build and held. Save 202 (#1442): the yards' herd care and
     // the day's hours an adult (f32 each), +8 a book, two books: 3958 -> 3974,
     // predicted before the build and held.
-    {"ledger", 3974, 0x8e17bfa3f6781269ULL},
+    // Save 205 (#1084 contract, re-laid on 0.37.357): idle_person_days gains
+    // the kFuneral cell, a u32 a book, two books: 3974 -> 3982, predicted
+    // before the build; the hash read off it.
+    {"ledger", 3982, 0x357db32cc103a269ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -2903,6 +2949,20 @@ int main() {
           loaded.settlements.rows[0].merge_with.value == 3 &&
           loaded.settlements.rows[0].split_pending == 1 && loaded.settlements.rows[0].name == 4,
       "the settlement comes back, every field in place (save 173)");
+  failures += Expect(
+      loaded.funerals.rows.size() == 1 && loaded.funerals.rows[0].deceased.size() == 2 &&
+          loaded.funerals.rows[0].deceased[1].value == 6 &&
+          loaded.funerals.rows[0].households[0].value == 2 &&
+          loaded.funerals.rows[0].households[1].value == 3 &&
+          loaded.funerals.rows[0].settlement.value == 1 &&
+          loaded.funerals.rows[0].cemetery.value == 9 && loaded.funerals.rows[0].burial_day == 97 &&
+          loaded.funerals.rows[0].road_km == 1.25F && loaded.funerals.rows[0].loud == 1 &&
+          loaded.funerals.rows[0].chairman == core::FuneralChairman::kWent &&
+          loaded.funerals.rows[0].party.size() == 3 &&
+          loaded.funerals.rows[0].party[2].value == 13 && loaded.funerals.rows[0].kin_count == 2 &&
+          loaded.funerals.rows[0].carts == 2 && loaded.funerals.rows[0].seated == 3 &&
+          loaded.funerals.rows[0].man_days == 1.5F && loaded.last_loud_burial_day == 97,
+      "the funeral and the loud cap's day come back, every field in place (save 205)");
   failures += Expect(loaded.arrivals_turned_away.last_day == 300 &&
                          loaded.arrivals_turned_away.per_day[2] == 1 &&
                          loaded.arrivals_turned_away.per_day[44] == 3 &&

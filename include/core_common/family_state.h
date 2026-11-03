@@ -162,6 +162,15 @@ struct FamilyRow {
   /// Written by the housing ladder at the day's start. Save 74.
   float lodging_penalty = 0.0F;
 
+  /// THE FUNERAL'S SATISFACTION TERM (#1084; social.md «Председатель — по
+  /// приглашению»): +3 for the chairman's presence, -3 for his absence from a
+  /// loud one, on the dead's household until `funeral_satisfaction_until`
+  /// (the burial day + a month), then nought. Added to the aggregate like the
+  /// two penalties above (residents_system.cpp). Written only by the funeral
+  /// step (funeral_rules.h). SAVED (save 205).
+  float funeral_satisfaction = 0.0F;
+  SimDay funeral_satisfaction_until = 0;
+
   /// 1 while the family's `house` is a barrack (housing §9): a roof shared
   /// with other families, with no yard — no garden, no animals of its own
   /// (its herds went to the kolkhoz when it moved in; boss seq 197). Every

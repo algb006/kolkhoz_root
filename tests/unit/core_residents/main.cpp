@@ -46,6 +46,7 @@
 #include "family_exchange.h"
 #include "family_meal.h"
 #include "food_config.h"
+#include "funeral_checks.h"
 #include "household_plot.h"
 #include "housing.h"
 #include "housing_ladder.h"
@@ -5220,6 +5221,7 @@ int main() {
   failures += CheckSamogonPurchase();
   failures += CheckBarter();
   failures += CheckBurial();
+  failures += CheckFunerals();
   failures += CheckTheSugar();
   failures += CheckTheDrinkingRaisers();
   failures += CheckNoWeddingIntoABarrackAndTheCrowdedBarrack();
