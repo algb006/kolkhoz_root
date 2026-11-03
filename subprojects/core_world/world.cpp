@@ -678,6 +678,8 @@ class EventsSlot final : public ISequentialPhase {
     current.ledger.closed = std::move(current.ledger.current);
     current.ledger.closed.year = ended;
     current.ledger.current = YearLedger{};
+    // The open book says the year it collects (#1446; ledger_state.h, `year`).
+    current.ledger.current.year = static_cast<std::uint16_t>(current.calendar.date.year);
     // THE NEW YEAR'S LIMIT GRANT, booked in the book it belongs to. Production
     // made it earlier in this very tick, at its year start, while `current`
     // was still the closing year's book (core_production/district_limit.h).

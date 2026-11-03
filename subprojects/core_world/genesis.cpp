@@ -1744,6 +1744,8 @@ WorldState CreateStartWorld(const ITableSet& tables,
   world.rng = SeedRngState(world_seed, kWorldRngStream);
   world.calendar.day_zero_weekday = CampaignDayZeroWeekday(tables);
   RefreshCalendarCaches(world.calendar);
+  // The first open book says its year (#1446; ledger_state.h, `year`).
+  world.ledger.current.year = static_cast<std::uint16_t>(world.calendar.date.year);
 
   // Value validation (UB-002): the float-to-uint cast of a negative or huge
   // table value is UB — validate before casting, fall back loudly.

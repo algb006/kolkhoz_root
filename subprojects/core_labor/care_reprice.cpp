@@ -46,6 +46,15 @@ std::uint32_t RepriceCare(const CareRepricePlan& plan) {
       // BY HIS OWN WAY: riding when a cart of today carries him, on foot if not.
       AssignmentJob judged = job;
       judged.cart_out = (*plan.cart_today)[job_index] != 0 && (drives || seated);
+      // AND THE DRIVER BY THE HORSE YARD'S WAY (#1446; boss, boss-core-1446-
+      // herd-allocation [11], (i′) by hours): the hour takes a hand who holds a
+      // horse on foot to the horse yard first and on from it (horse_yard_road.h,
+      // WorkRoadHours), as the lone rider is judged (people_cart.cpp,
+      // RiderHasADay). Priced by a ride from his door he was worth 1.6-1.8 the
+      // hours he gave the herd: the canon's drivers on a short herd-day worked
+      // 3.0-4.1 h of the 5.6-6.7 priced, one way 3.1 h against the walkers'
+      // 1.7-1.9 (core's probe p46k5, 16 villages, y1-y3).
+      judged.harnessed = judged.harnessed || drives;
       RankedPick pick;
       bool by_road = false;
       const AssignmentParams& params = *plan.params;

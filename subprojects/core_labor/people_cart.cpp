@@ -151,6 +151,29 @@ void GivePeoplesCarts(const PeoplesCartPlan& plan) {
         if (plan.rides_horse != nullptr) {
           (*plan.rides_horse)[index] = 1U;
         }
+        // A JOINED DRIVER IS COUNTED BY THE HORSE YARD'S WAY (#1446, (i′)): he
+        // was seated by the ride from his door (joined_norm above), and the
+        // hour takes him to the horse yard on foot first. His cover is his
+        // own way's norm, as the lone rider's day is judged (RiderHasADay).
+        const bool joined_here = std::ranges::any_of(
+            joined, [index](const FarHand& hand) { return hand.candidate_index == index; });
+        if (joined_here) {
+          AssignmentJob by_the_yard = riding;
+          by_the_yard.harnessed = true;
+          RankedPick ride;
+          RankedPick yard;
+          bool refused = false;
+          const float ride_norm =
+              ConsiderCandidate(riding, job_index, candidates[index], index, params, ride, refused)
+                  ? ride.daily_norm
+                  : 0.0F;
+          const float yard_norm =
+              ConsiderCandidate(
+                  by_the_yard, job_index, candidates[index], index, params, yard, refused)
+                  ? yard.daily_norm
+                  : 0.0F;
+          (*plan.covered)[job_index] += yard_norm - ride_norm;
+        }
       } else if (plan.rides_cart_with != nullptr) {
         (*plan.rides_cart_with)[index] = driver;
       }
