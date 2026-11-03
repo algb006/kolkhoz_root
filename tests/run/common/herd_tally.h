@@ -82,6 +82,7 @@ class HerdTally {
   static constexpr std::uint32_t kYears = 6;
   static constexpr std::size_t kKinds = 5;
   static constexpr std::size_t kPig = 2;
+  static constexpr std::size_t kHorse = 3;
   static constexpr std::array<const char*, kKinds> kKindKeys = {
       "cow", "sheep", "pig", "horse", "goat"};
   /// The decided yard ceilings in adult heads, econ's Y2 (boss [8]: the 1
@@ -95,6 +96,11 @@ class HerdTally {
     if (const core::ITable* const kinds = tables.FindTable("livestock")) {
       for (std::size_t index = 0; index < kKinds; ++index) {
         kind_rows_[index] = kinds->FindRowByKey(kKindKeys[index]);
+      }
+      // The horse's per-head foal rate, for the foals the roof forgoes.
+      const std::uint32_t rate = kinds->FindColumn("births_per_adult_head");
+      if (rate != core::kNoTableColumn && kind_rows_[kHorse] != core::kNoTableRow) {
+        horse_rate_ = kinds->CellReal(kind_rows_[kHorse], rate).value_or(0.0F);
       }
     }
     if (const core::ITable* const resources = tables.FindTable("resources")) {
@@ -118,6 +124,15 @@ class HerdTally {
       return;
     }
     for (const core::SimEvent& event : world.step_events) {
+      // The horses handed back to the district for points (econ via boss:
+      // where the foals above the places go).
+      if (event.kind == core::EventKind::kStockHandedOver) {
+        const std::uint32_t handed = core::FindRow(world.herds, event.herd);
+        if (handed != core::kNoRow && world.herds.rows[handed].kind.value == kind_rows_[kHorse]) {
+          horse_handed_[year - 1] += event.amount;
+        }
+        continue;
+      }
       if (IsPigKnife(event.kind)) {
         // Y4 (econ): the yards' pigs that went to meat, heads, by year.
         const std::uint32_t knifed = core::FindRow(world.herds, event.herd);
@@ -202,6 +217,19 @@ class HerdTally {
         max_yard_adults_[index] = std::max(max_yard_adults_[index], yard.adults[index]);
         max_yard_heads_[index] = std::max(max_yard_heads_[index], yard.heads[index]);
         over_decided_cap_yard_days_[index] += yard.adults[index] > kDecidedCap[index] ? 1U : 0U;
+      }
+    }
+    // THE FOALS THE ROOF FORGOES (econ via boss, after 0.93): a billeted
+    // kolkhoz horse does not foal (herd_life.cpp, CalvingRoofShare), so in
+    // the calving band (farming.csv birth_from..to_month, Mar-May) each
+    // billeted head-day is the per-head rate over the band's days unborn.
+    // AN ESTIMATE, by the rule's own arithmetic; the stable's foaling window
+    // and the hunger gate are not in it.
+    if (month >= 2 && month <= 4) {
+      for (const core::HerdRow& herd : world.herds.rows) {
+        if (herd.household_owned == 0 && herd.kind.value == kind_rows_[kHorse]) {
+          horse_billeted_band_days_[year - 1] += herd.billeted_count;
+        }
       }
     }
     mixed_yard_days_ += mixed_today;
@@ -384,6 +412,20 @@ class HerdTally {
       out << ' ' << "type" << (key >> 16U) << "/res" << (key & 0xFFFFU) << ':' << days;
     }
     out << " EPS_end";
+    // Where the horse's foals above the places go, by year (econ via boss).
+    constexpr double kBandDays = 3.0 * core::kDaysPerMonth;
+    double forgone = 0.0;
+    std::int64_t handed = 0;
+    for (std::uint32_t year = 0; year < kYears; ++year) {
+      const double unborn = static_cast<double>(horse_billeted_band_days_[year]) *
+                            static_cast<double>(horse_rate_) / kBandDays;
+      forgone += unborn;
+      handed += horse_handed_[year];
+      out << " HF_y" << year + 1 << "_born " << born_[kHorse][year] << " HF_y" << year + 1
+          << "_handed " << horse_handed_[year] << " HF_y" << year + 1 << "_billeted_band_hd "
+          << horse_billeted_band_days_[year] << " HF_y" << year + 1 << "_unborn_est " << unborn;
+    }
+    out << " HF_handed_y1y6 " << handed << " HF_unborn_est_y1y6 " << forgone;
     out << " Y1_mixed_yard_days " << mixed_yard_days_ << " Y1_mixed_yards_max " << mixed_yards_max_
         << " Y3_yard_milk_t_y1y6 " << static_cast<double>(yard_milk_g_) / 1e6
         << " Y3b_yard_food_Mkcal_y1y6 " << yard_food_kcal_ / 1e6;
@@ -467,6 +509,9 @@ class HerdTally {
   std::vector<HerdYesterday> yesterday_;
   std::vector<std::uint32_t> mixed_yesterday_;
   std::vector<std::string> mixed_log_;
+  float horse_rate_ = 0.0F;
+  std::array<std::int64_t, kYears> horse_handed_ = {};
+  std::array<std::uint64_t, kYears> horse_billeted_band_days_ = {};
   core::Grams yard_milk_g_ = 0;
   std::vector<std::pair<std::uint32_t, float>> food_rows_;
   double yard_food_kcal_ = 0.0;
