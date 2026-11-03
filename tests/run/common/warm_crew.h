@@ -20,7 +20,8 @@
 /// the layout and the queue well). Every morning, for each works in
 /// kBuilding whose type is the home of a freezing kind (cold_housing_catalog.h)
 /// with a kolkhoz herd of that kind standing: standing kAssignWork orders on
-/// it up to min(max crew, the whole man-days left rounded up); when its works
+/// it up to the works' max crew (until #1374's pair: min(max crew, the
+/// man-days left rounded up), which starved a winter works); when its works
 /// end, every standing order on it is released. The player's own lever
 /// (order_state.h kAssignWork), at the cost of the strada's hands for the
 /// day or two the works take.
@@ -29,7 +30,6 @@
 #define TESTS_RUN_COMMON_WARM_CREW_H_
 
 #include <algorithm>
-#include <cmath>
 #include <cstdint>
 #include <span>
 #include <string>
@@ -102,9 +102,15 @@ class WarmCrew {
         continue;
       }
       const core::UnitRow& unit = world.units.rows[row];
-      const auto need = std::min<std::uint32_t>(
-          unit.construction.max_crew,
-          static_cast<std::uint32_t>(std::ceil(unit.construction.labor_days_remaining)));
+      // THE WORKS' WHOLE CREW, NOT THE MAN-DAYS LEFT (#1374's pair, seed 2035
+      // pen 55; boss, core-boss-1374 [9]): the need was min(max crew, the
+      // man-days left rounded up), which reads a head as a whole man-day a
+      // day. In winter a head closes a fraction of one: pen 55's level 2
+      // reached its labour phase on y1 day 39 (November), its own ten closed
+      // 1.98 of 4.29, the crew then stood at the five sent for the 4.29, and
+      // they closed 0.15-0.27 a day in December - it stood warm on y2 day 2,
+      // and two cows froze on y2 days 1-2. The works' own limit is the cap.
+      const std::uint32_t need = unit.construction.max_crew;
       std::uint32_t standing = 0;
       for (const core::OrderRow& order : world.orders.rows) {
         standing +=
