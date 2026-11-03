@@ -281,6 +281,9 @@ class StradaTally {
     if (milk_ < closed.herd_produce.size()) {
       milk_kg_ += static_cast<double>(closed.herd_produce[milk_]) / 1000.0;
     }
+    // #1446's defect 3: the plan's own «must stay nought» idle, y1-y3.
+    unexplained_ +=
+        closed.idle_person_days[static_cast<std::size_t>(core::IdleReason::kUnexplained)];
     double issued_kg = 0.0;
     for (const core::Grams grams : closed.issued) {
       issued_kg += static_cast<double>(grams) / 1000.0;
@@ -325,10 +328,10 @@ class StradaTally {
         << old_hungry_family_days_ << " of " << old_family_days_
         << " old family-days (mean satiety < " << kHungrySatiety << " at hour 22)"
         << " care_undone_md_y1y3 " << care_undone_md_ << " milk_kg_y1y3 " << milk_kg_
-        << " yards_plot_share_taken mean " << (yards > 0 ? share_sum / yards : 0.0) << " worst "
-        << worst << " yards " << yards << " p90 " << p90 << " winter_old_below70_family_days "
-        << winter_old_below70_days_ << " of " << winter_old_family_days_
-        << " (Oct-Apr after each strada, y1-y3)";
+        << " idle_unexplained_pd_y1y3 " << unexplained_ << " yards_plot_share_taken mean "
+        << (yards > 0 ? share_sum / yards : 0.0) << " worst " << worst << " yards " << yards
+        << " p90 " << p90 << " winter_old_below70_family_days " << winter_old_below70_days_
+        << " of " << winter_old_family_days_ << " (Oct-Apr after each strada, y1-y3)";
     if (by_yards_md_ <= 0.0) {
       out << " — THE YARDS TOOK NO CARE (expected for a chairman without the path)";
     }
@@ -380,6 +383,7 @@ class StradaTally {
   double trudodni_ = 0.0;
   std::uint32_t milk_ = core::kNoTableRow;
   double milk_kg_ = 0.0;
+  std::uint64_t unexplained_ = 0;
   std::vector<double> yard_given_;
   std::vector<double> yard_gross_;
 };
