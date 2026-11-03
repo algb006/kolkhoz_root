@@ -760,7 +760,7 @@ bool Walk(std::uint64_t seed,
   // The strada's work and the yards' help, y1-y3 (#1442's pair).
   run::StradaTally strada(*world.tables);
   // The funerals, y1-y6 (#1084's pair).
-  run::FuneralTally funerals;
+  run::FuneralTally funerals(*world.tables);
   std::array<std::uint32_t, core::kRestSourceCount> r1373_sources = {};
   std::uint32_t r1373_walk_offs = 0;
   // What the farm's sites waited on, y1-y6 (#1285 G1's probe; boss [3]).
