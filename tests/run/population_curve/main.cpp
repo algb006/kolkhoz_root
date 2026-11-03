@@ -400,7 +400,8 @@ void LiveOneDay(core::ISimulation& simulation,
                 run::RestTally* rest_tally = nullptr,
                 run::FedTally* fed_tally = nullptr,
                 run::SubstituteTally* substitutes = nullptr,
-                run::StradaTally* strada = nullptr) {
+                run::StradaTally* strada = nullptr,
+                run::HerdTally* herds = nullptr) {
   bool hot_at_any_tick = false;
   const core::UnitId awaiting = upgrades.Awaiting();
   for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
@@ -410,6 +411,10 @@ void LiveOneDay(core::ISimulation& simulation,
     if (chairman != nullptr) {
       chairman->WatchStep(simulation.CompletedState());
       chairman->milkmaids.CountStep(simulation.CompletedState());  // #1417
+    }
+    // The step's births by kind (#1374's pair, herd_tally.h).
+    if (herds != nullptr) {
+      herds->CountStep(simulation.CompletedState());
     }
     if (substitutes != nullptr) {
       substitutes->CountStep(simulation.CompletedState());  // #1434
@@ -878,13 +883,15 @@ bool Walk(std::uint64_t seed,
                  warm_off ? nullptr : &rest_tally,
                  warm_off ? nullptr : &fed_tally,
                  warm_off ? nullptr : &substitutes,
-                 warm_off ? nullptr : &strada);
+                 warm_off ? nullptr : &strada,
+                 &herds);
       builder.RunDay(*simulation);
       timber.CountDay(simulation->CompletedState());
       avatar_book.CountDay(simulation->CompletedState());
       builder.milkmaids.CountDayEnd(simulation->CompletedState());
       substitutes.CountDayEnd(simulation->CompletedState());
       funerals.CountDayEnd(simulation->CompletedState());
+      herds.CountDayEnd(simulation->CompletedState());
       if (!warm_off) {
         strada.CountDayEnd(simulation->CompletedState());
       }
