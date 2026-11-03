@@ -242,6 +242,34 @@ struct LivestockDef {
   /// does not part with. Absent from the table — 0, every kind as before.
   std::uint8_t males_work = 0;
 
+  // -- #1374, HERDS WITHOUT SEX (livestock.md «Пола у скота нет»; the human's
+  // «Да» of 1 November 2026; econ boss-econ-370-840-drafts [2]; boss,
+  // core-boss-1374-no-sex-contract [2]). CONTRACT: these four come with the
+  // body; `sexed`, `males_share`, `males_work`, `births_per_game_year`,
+  // `litter_heads` and `milk_l_per_year` above and below GO with it. --------
+
+  /// Newborns a GAME year per ADULT HEAD under a roof, in the season
+  /// (livestock.csv `births_per_adult_head`): the old per-female rate x the
+  /// litter x the old female share (1 - males_share; horse 1/2, every colt
+  /// kept) - cow 0.96, sheep 1.44, pig 7.2, horse 0.50, mink 3.0, goat 2.0. THE
+  /// FEMALE SHARE IS ALREADY IN IT: no path multiplies by a share again.
+  float births_per_adult_head = 0.0F;
+
+  /// The same for a YARD's own herd (`household_births_per_adult_head`):
+  /// blank - the kind's. Pig 4.0, so a yard's pair farrows one litter of 8 as
+  /// a yard's sow did.
+  float household_births_per_adult_head = 0.0F;
+
+  /// The share of each season's maturing young sent to meat
+  /// (`young_cull_share`): cow, sheep, pig, goat, mink 0.5 («половина идёт на
+  /// мясо»); horse 0 («у лошадей забоя нет»); blank - nought. A fraction is
+  /// carried, not rounded away (HerdRow::cull_progress).
+  float young_cull_share = 0.0F;
+
+  /// Litres a game year per ADULT HEAD (`milk_l_per_adult_head`): cow 1488
+  /// (1550 x 0.96, the canon's milk flat), goat 600.
+  float milk_l_per_adult_head = 0.0F;
+
   // -- produce: per adult head per game year, or per head at slaughter -----
   /// Milk is in LITRES in the table and roughly a kilogram a litre in the
   /// store (quantities.h); parsing does not convert, the flow does.

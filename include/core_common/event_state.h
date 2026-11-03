@@ -536,7 +536,9 @@ enum class EventKind : std::uint8_t {
 
   /// Young males over the herd's one sire went to meat as they matured
   /// (herd_life.cpp, RunMaturation). herd; amount = heads. kRoutine. Seam
-  /// key `herd_males_culled`.
+  /// key `herd_males_culled`. DEPRECATED with #1374's body (livestock.md
+  /// «Пола у скота нет»): never raised after it; kHerdYoungCulled says the
+  /// cull. The value stays - a key is never renamed.
   kHerdMalesCulled,
 
   /// A yard held more of a group than its cap and no neighbour took the rest:
@@ -865,6 +867,14 @@ enum class EventKind : std::uint8_t {
   /// `family` its first household. Key `funeral_invitation`. Raised by
   /// OpenFunerals (funeral_rules.h) the death day.
   kFuneralInvitation,
+
+  /// THE YOUNG CULLED (#1374; livestock.md «Пола у скота нет»: «Из подросших
+  /// за сезон половина идёт на мясо»): `herd`, `amount` the heads of the
+  /// season's maturing young sent to meat (LivestockDef::young_cull_share).
+  /// kRoutine. Seam key `herd_young_culled`. Replaces kHerdMalesCulled.
+  /// @no_emit the #1374 contract (save 206): raised by its body (herd_life.cpp,
+  /// RunMaturation), not built yet.
+  kHerdYoungCulled,
 
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on

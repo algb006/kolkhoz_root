@@ -89,6 +89,10 @@ struct HerdRow {
   /// Males among adult_count, for the breeding rule (boss summary 2026-08-29
   /// §2.2: offspring needs an adult male present). Always 0 for sexless
   /// kinds (poultry); genesis and transfers keep it <= adult_count.
+  /// GOES with #1374's body (livestock.md «Пола у скота нет»; save 206): a
+  /// herd is heads, births come from every adult under a roof
+  /// (LivestockDef::births_per_adult_head), the young cull reuses
+  /// cull_progress below.
   std::uint16_t adult_male_count = 0;
 
   /// THE FED DAYS IN A ROW (save 142, 0.37.192; boss, the logistics thread

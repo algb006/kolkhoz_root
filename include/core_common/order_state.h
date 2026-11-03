@@ -1241,7 +1241,9 @@ enum class OrderRefusal : std::uint8_t {
 
   /// kHandStock: the herd's last breeding male, and handing him over would
   /// leave the village with a herd that cannot breed and no way back but
-  /// buying one. Seam key `last_sire`.
+  /// buying one. Seam key `last_sire`. DEPRECATED with #1374's body: never
+  /// produced after it (livestock.md: «сдать можно любую голову»); the value
+  /// stays.
   ///
   /// THE MIRROR OF A GUARD THE PURCHASE ALREADY HAS. The district asks which
   /// sex when it sells a head, and the design says why in as many words:
@@ -1525,6 +1527,9 @@ struct OrderRow {
   /// piglets, chicks — comes mixed, and nobody chooses the sex of ten chicks;
   /// the field is taken as 0 there rather than refused, because a value the
   /// order was never meant to carry is not the chairman making a mistake.
+  /// GOES with #1374's body (livestock.md «Лот района»: «Пол не
+  /// спрашивается: голова есть голова»; save 206); seam word `male`
+  /// DEPRECATED.
   std::uint8_t male = 0;
 
   /// kOrderLimitLot of a GOODS lot: 0/1, pay it in grain instead of points
