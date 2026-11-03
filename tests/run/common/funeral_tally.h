@@ -82,6 +82,16 @@ class FuneralTally {
         }
       }
       walked_ += static_cast<std::uint32_t>(funeral.party.size()) - funeral.seated;
+      // THE CHAIRMAN AT THE LOUD ONES (#1459), at the burial day's end - before
+      // the close settles «missed» or «excused»: kin and households each answer
+      // touches (presence +10 mood / +3 satisfaction; absence -8 / -3).
+      if (funeral.loud != 0) {
+        const bool went = funeral.chairman == core::FuneralChairman::kWent;
+        (went ? loud_went_ : loud_not_went_) += 1;
+        (went ? kin_present_ : kin_absent_) += funeral.kin_count;
+        (went ? households_present_ : households_absent_) +=
+            static_cast<std::uint32_t>(funeral.households.size());
+      }
       on_working_day_ += funeral.man_days > 0.0F ? 1U : 0U;
       loud_by_year_[year - 1] += funeral.loud;
       if (funeral.cemetery.value == core::kInvalidEntityIdValue) {
@@ -141,7 +151,10 @@ class FuneralTally {
         << (on_working_day_ > 0 ? man_days_ / on_working_day_ : 0.0) << " working_day_funerals "
         << on_working_day_ << " walked " << walked_ << " tight_spare "
         << (tight_seen_ ? tight_spare_ : -1) << " tight_standing " << tight_standing_
-        << " tight_party " << tight_party_ << " tight_carts " << tight_carts_;
+        << " tight_party " << tight_party_ << " tight_carts " << tight_carts_ << " loud_went "
+        << loud_went_ << " loud_not_went " << loud_not_went_ << " kin_present " << kin_present_
+        << " kin_absent " << kin_absent_ << " households_present " << households_present_
+        << " households_absent " << households_absent_;
     if (funerals_ == 0) {
       out << " — NO FUNERAL OPENED y1-y6: the step is off or no one died (NOT MEASURED)";
     }
@@ -172,6 +185,12 @@ class FuneralTally {
   std::int64_t tight_standing_ = 0;
   std::uint32_t tight_party_ = 0;
   std::uint32_t tight_carts_ = 0;
+  std::uint32_t loud_went_ = 0;
+  std::uint32_t loud_not_went_ = 0;
+  std::uint32_t kin_present_ = 0;
+  std::uint32_t kin_absent_ = 0;
+  std::uint32_t households_present_ = 0;
+  std::uint32_t households_absent_ = 0;
 };
 
 }  // namespace run

@@ -31,6 +31,7 @@
 #include "fallow_policy.h"
 #include "felling_policy.h"
 #include "fixture_policy.h"
+#include "funeral_policy.h"
 #include "herd_plan_policy.h"
 #include "house_policy.h"
 #include "insulation_policy.h"
@@ -276,6 +277,7 @@ class BuildingChairman {
   static void Declare(const std::string& run_name) {
     FixturePolicy::Declare();
     WarmHold::Declare();
+    FuneralPolicy::Declare();
     std::cout << "FIXTURE DIFFERS FROM THE START CANON — the run's chairman puts standing "
                  "builders (kAssignWork) on every works that will house a freezing kolkhoz herd "
                  "while it is in its labour phase, up to its need, and releases them when it "
@@ -345,6 +347,8 @@ class BuildingChairman {
     // The warm works' hands, right after the fixture orders them: ahead of
     // the strada's harvest for the day or two they take (warm_crew.h).
     warm_crew.RunDay(simulation);
+    // The chairman at the loud funerals (#1459; funeral_policy.h).
+    funeral_visits.RunDay(simulation);
     felling.RunDay(simulation, sawmill.LogsForMissingBoards(simulation.CompletedState()));
     // The forest after the felling: a zone a year, from the first spring
     // (boss, boss-core-epoch1-3 seq 18 and 25).
@@ -522,6 +526,8 @@ class BuildingChairman {
   /// The warm works' standing builders in its labour phase (warm_crew.h;
   /// the frozen cows of seed 2044, 3 November 2026).
   WarmCrew warm_crew;
+  /// «Пойти» on every loud funeral (#1459; funeral_policy.h).
+  FuneralPolicy funeral_visits;
   FallowPolicy fallow;
   /// Whether RunDay calls `fallow` (#725): true since 0.37.324, the houses-
   /// first pair's gates green (core-boss-725-fallow [58], [59]); a run's
