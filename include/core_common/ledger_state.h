@@ -960,7 +960,7 @@ struct YearLedger {
   /// THE KOLKHOZ HERDS' HAY BY KIND, grams, dense by LivestockKindId (save
   /// 108; boss-core-epoch1-queue [78], [84]): what each kind took of
   /// `feed`'s hay (ProductionConfig::hay_resource). A ResourceAmounts for its
-  /// dense int64 shape, as herd_males_culled. Summed over the kinds it is
+  /// dense int64 shape, as herd_young_culled. Summed over the kinds it is
   /// `feed` at the hay, to the gram; a family's goat eats out of the pantry
   /// (`yard_feed`) and is in neither.
   ResourceAmounts herd_hay_eaten;
@@ -1147,7 +1147,7 @@ inline void AddLedgerAmount(ResourceAmounts& column, ResourceId resource, Grams 
 }
 
 /// @brief Adds heads under `kind` to a by-kind column of the book, growing
-/// the dense vector as it goes (herd_males_culled and its siblings).
+/// the dense vector as it goes (herd_young_culled and its siblings).
 inline void AddLedgerHeads(ResourceAmounts& column, LivestockKindId kind, std::uint32_t heads) {
   if (kind.value == kInvalidDefIdValue || heads == 0) {
     return;

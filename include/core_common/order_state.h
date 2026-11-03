@@ -476,8 +476,7 @@ enum class OrderKind : std::uint8_t {
   /// THE HEAD LEAVES AT ONCE: no cart, no waiting, unlike the purchase whose
   /// head takes days to come. The asymmetry is the design's and deliberate.
   ///
-  /// Refusals of its own: kLastSire (the herd's last breeding male stays),
-  /// kNoSuchSubject (no such herd), kNotEligible (a yard's own animal is not
+  /// Refusals of its own: kNoSuchSubject (no such herd), kNotEligible (a yard's own animal is not
   /// the chairman's to sell, and a kind the district takes only by the batch
   /// has no per-head price).
   ///
@@ -1253,9 +1252,9 @@ enum class OrderRefusal : std::uint8_t {
   /// another is not an exit, so the way back carries the same guard as the
   /// way in.
   ///
-  /// It refuses only the LAST one: a herd with two sires may hand one over,
-  /// and a kind the table gives no males at all (`males_share == 0`, the
-  /// goat) never meets this refusal, because it has no sire to be the last.
+  /// It refused only the LAST one: a herd with two sires could hand one over,
+  /// and a kind the table gave no males at all (the goat) never met this
+  /// refusal, because it had no sire to be the last.
   kLastSire,
 
   // THE SEVEN REFUSALS OF kAdvanceEra (2026-09-18), one per unmet condition,

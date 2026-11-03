@@ -548,7 +548,7 @@ enum class EventKind : std::uint8_t {
   /// key `herd_surplus_slaughtered`.
   kHerdSurplusSlaughtered,
 
-  /// The autumn pig slaughter took all but the sows and the sire
+  /// The autumn pig slaughter took all but the kept heads (SowsKept)
   /// (herd_life.cpp, RunAutumnSlaughter). herd; amount = heads. kNotable.
   /// Seam key `herd_autumn_slaughter`.
   kHerdAutumnSlaughter,

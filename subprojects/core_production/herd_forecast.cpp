@@ -968,7 +968,7 @@ HeadClass ClassOf(const ProductionConfig& config, LivestockKindId cow, Livestock
 }
 
 /// Takes `wanted` heads off one cohort of the herds of a class, herd by herd
-/// in row order; the sires of a sexed kind go in proportion to its adults.
+/// in row order.
 /// Returns the heads still wanted.
 float TakeCohort(const ProductionConfig& config,
                  LivestockKindId cow,

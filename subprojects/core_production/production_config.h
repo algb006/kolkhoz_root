@@ -1054,7 +1054,7 @@ struct FarmingConfig {
   float adult_age_years = 16.0F;
 
   /// The month the autumn pig slaughter falls in, 0-based. Everything but
-  /// the sows and the sire goes to meat then (livestock design §6).
+  /// the kept heads (SowsKept) goes to meat then (livestock design §6).
   std::uint8_t pig_slaughter_month = 9;  ///< October.
 
   /// Share of the adult pigs kept over the winter as sows. The design names

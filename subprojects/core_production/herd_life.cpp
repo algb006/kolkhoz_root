@@ -266,9 +266,9 @@ void RunMaturation(const ProductionConfig& config,
   }
 }
 
-/// Offspring. Three gates, and every one of them is canon: an adult male for
-/// a sexed kind, a roof (horses need a stable, which phase 1 does not have),
-/// and the calving season; ROOM under the roof is a share, not a gate — the
+/// Offspring. Two gates, and both are canon: a roof (horses need a stable,
+/// which phase 1 does not have) and the calving season (the third, an adult
+/// male for a sexed kind, left with #1374); ROOM under the roof is a share, not a gate — the
 /// heads on billet do not calve and the rest do (CalvingRoofShare; 0.37.62).
 /// @param book The year's ledger. Passed rather than the whole world: this
 /// function has no business reaching anywhere else in the state, and the
@@ -473,11 +473,9 @@ void RunAgeDeaths(const LivestockDef& kind, HerdRow& herd, HerdId herd_id, World
                            kHerdAgeDeathSalt) < expected - static_cast<float>(dead)) {
     dead = static_cast<std::uint16_t>(dead + 1);
   }
-  // THE OLD ONES GO, the sires go in proportion, and the summed age follows
-  // them — all three in TakeOldestAdults, which the district's hand-over
-  // calls for the same reason. Old age is no respecter of sex, and this used
-  // to take EVERY death out of the males and then throw the result away for
-  // a re-derive.
+  // THE OLD ONES GO and the summed age follows them — both in
+  // TakeOldestAdults, which the district's hand-over calls for the same
+  // reason.
   const std::uint16_t gone = TakeOldestAdults(kind, herd, dead);
   if (gone == 0) {
     return;

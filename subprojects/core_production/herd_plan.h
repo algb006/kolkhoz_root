@@ -40,8 +40,7 @@ HerdPlanLine HerdPlanLineOf(const ProductionConfig& config,
                             std::uint32_t herd_row);
 
 /// @brief Scales a herd's cohorts to `heads` whole heads in their present
-///        proportions (adults, juveniles, the rest newborns; the sires with
-///        the adults, at least one kept while there were any). An empty herd
+///        proportions (adults, juveniles, the rest newborns). An empty herd
 ///        grows adults. For the forecast's what-if alone: no real herd moves.
 void ScaleHerdHeads(HerdRow& herd, std::uint16_t heads);
 

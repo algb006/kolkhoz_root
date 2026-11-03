@@ -25,16 +25,16 @@
 /// THE OFFSPRING BY THE SAME RULE, NOT BY THE SAME DOOR (boss [85] q. 2,
 /// [86] p. 2): running the herd day's own RunBirths and RunMaturation on a
 /// copy of the world every step would cost a world a step. The forecast reads
-/// the same numbers of livestock.csv and farming.csv and the same four gates
-/// — the calving band, a billeted herd, a hungry herd, a kind that keeps
-/// sires with none, a horse with no stable — as herd_life.cpp does; a test
+/// the same numbers of livestock.csv and farming.csv and the same gates
+/// — the calving band, a billeted herd, a hungry herd, a horse with no
+/// stable (the sire gate left with #1374) — as herd_life.cpp does; a test
 /// holds the two to one head a herd on a year of a fixture, a billeted herd
 /// included (0.37.57). Deaths are NOT forecast: the need is the larger for it,
 /// and a forecast that over-predicts the need lights early, the safe side.
-/// The cull of young males IS forecast since 0.37.95 (MatureOneDay) — this
-/// paragraph said «deaths and culls are not» until 0.37.209 — and a kind
-/// whose males are work stock (LivestockDef::males_work) keeps them all, in
-/// the forecast as in the herd.
+/// The young cull IS forecast since 0.37.95 (MatureOneDay) — this
+/// paragraph said «deaths and culls are not» until 0.37.209 — at the kind's
+/// young_cull_share since #1374 (0 for the horse), in the forecast as in the
+/// herd.
 #ifndef CORE_PRODUCTION_HERD_FORECAST_H_
 #define CORE_PRODUCTION_HERD_FORECAST_H_
 
@@ -260,8 +260,7 @@ struct HerdFeedForecast {
 ///        the road — «what would the forecast say AFTER this lot».
 /// @param handed Heads counted as handed over today (HeadsHandedOver;
 ///        0.37.137), or nullptr: «what would the forecast say WITHOUT these
-///        heads». The sires go in proportion to the adults, as the hand-over's
-///        door takes them.
+///        heads».
 /// @return short_ahead false with no kolkhoz herd, no feed roster or no
 ///         horizon.
 HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
@@ -273,8 +272,8 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
 
 /// @brief The heads a standing kolkhoz herd will have `days` days from today
 ///        by the forecast's own projection (births by RunBirths's rule and
-///        gates, the maturing by the kind's months, the young males the herd
-///        has no room for culled as they grow up; no deaths). THE CULL IS IN
+///        gates, the maturing by the kind's months, the kind's young_cull_share
+///        culled as they grow up; no deaths). THE CULL IS IN
 ///        since 0.37.57: this line said «no deaths, no culls» until 0.37.95,
 ///        and on 1 October 2026 it was read as the code and sent to boss as
 ///        the cause of the lamp's number; the check «a cow herd's year and a

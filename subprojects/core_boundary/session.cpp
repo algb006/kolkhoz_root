@@ -240,9 +240,9 @@ bool ShapeIsValid(const OrderRow& order) {
       // (routing stage В5: 1 own carts, 0 the district's) - a switch.
       return order.lot.value != kInvalidDefIdValue && order.enable <= 1;
     case OrderKind::kHandStock:
-      // A herd and a head count above nothing. Which heads go, what they
-      // fetch and whether the last sire is among them all change with the
-      // day, so they are the consumer's verdict (order_state.h). The COUNT
+      // A herd and a head count above nothing. Which heads go and what they
+      // fetch change with the day, so they are the consumer's verdict
+      // (order_state.h; the last-sire refusal left with #1374). The COUNT
       // is the boundary's business because a hand-over of nought heads is a
       // malformed row and not a decision anybody made.
       return has_herd && order.amount > 0;
