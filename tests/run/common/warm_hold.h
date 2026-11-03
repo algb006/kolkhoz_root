@@ -183,7 +183,15 @@ class WarmHold {
     const std::uint32_t day_of_year = world.calendar.day % core::kDaysPerYear;
     const std::uint32_t window_end = (kClayLastMonth + 1U) * core::kDaysPerMonth;
     const std::uint32_t days_left = window_end > day_of_year ? window_end - day_of_year : 0U;
-    return (fed / static_cast<core::Grams>(day_of_year + 1U)) * static_cast<core::Grams>(days_left);
+    // MULTIPLIED FIRST, ROUNDED UP (#1374's pair, seed 2035; econ via boss
+    // [16]): the mean day's draw was divided out first, in whole grams, so a
+    // ration that took 16 g of straw in 18 days read 0 g a day and the margin
+    // was 0 - a start took the heap to 5 999 981 g of the warm's 6 000 000,
+    // and the warm stood unordered from y1 day 18 to 30. Any draw at all now
+    // keeps a margin, rounded up to the gram (seed 2035, day 17: 16 g over 18
+    // days, 19 days left -> 17 g, and the 3 t start that day is refused).
+    const auto days = static_cast<core::Grams>(day_of_year + 1U);
+    return ((fed * static_cast<core::Grams>(days_left)) + days - 1) / days;
   }
 
   /// The clay months, 0-based (fixture_policy.h kClayWarmFirstMonth/LastMonth:
