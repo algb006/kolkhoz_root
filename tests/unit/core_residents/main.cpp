@@ -51,6 +51,7 @@
 #include "housing.h"
 #include "housing_ladder.h"
 #include "hunger_forecast_checks.h"
+#include "inheritance_checks.h"
 #include "issue_norm.h"
 #include "life_config.h"
 #include "membership.h"
@@ -5215,6 +5216,7 @@ int main() {
   failures += CheckBurial();
   failures += CheckFunerals();
   failures += CheckTheSugar();
+  failures += CheckTheYardsInheritance();
   failures += CheckTheDrinkingRaisers();
   failures += CheckNoWeddingIntoABarrackAndTheCrowdedBarrack();
   failures += CheckTheNewHouseholdsAdvance();
