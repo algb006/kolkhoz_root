@@ -1587,29 +1587,21 @@ int CheckPlot() {
     // AND FOR THE YOUNG IT EXPECTS (#859), each at what it eats before the
     // next mowing: the goats' kind brings 2 young a doe a year with no buck
     // needed, a young eating a quarter of a head's year, so two does and a
-    // kid mow for 3 + 2 x 2 x 0.25 heads. A kind that needs a sire mows for
-    // no young while it has none, and for its females' once it has one: 3
-    // adults, 1 of them a male, 2 young at a half.
-    mowing.yard_young_per_female_year = {0.0F, 2.0F, 1.0F};
+    // kid mow for 3 + 2 x 2 x 0.25 heads. #1374: every adult HEAD brings its
+    // kind's young - no sire asked, no female counted (the two cases «no
+    // young with no sire» and «one young a female with a sire» were removed
+    // with their rule; the case below holds every head breeding).
+    mowing.yard_young_per_head_year = {0.0F, 2.0F, 1.0F};
     mowing.yard_young_hay_share = {0.0F, 0.25F, 0.5F};
-    mowing.yard_kind_sexed = {0, 0, 1};
-    mowing.yard_young_need_a_sire = {0, 0, 1};
     mowing.hay_eating_kinds = {0, 1, 1};
     core::WorldState litter = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
     add_herd(litter, 1, 2, 1);
     failures += Expect(mown_for(run_august(litter), 4.0F),
                        "the yard mows for the four kids its two does will bring, at their share");
-    core::WorldState no_sire = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
-    add_herd(no_sire, 2, 3, 0);
-    failures +=
-        Expect(mown_for(run_august(no_sire), 3.0F),
-               "a kind that breeds only with a sire expects no young while the yard has none");
-    core::WorldState with_sire = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
-    add_herd(with_sire, 2, 3, 0);
-    with_sire.herds.rows[0].adult_male_count = 1;
-    failures +=
-        Expect(mown_for(run_august(with_sire), 4.0F),
-               "with a sire it expects one young a female: 3 adults, 1 a male, 2 young at a half");
+    core::WorldState every_head = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
+    add_herd(every_head, 2, 3, 0);
+    failures += Expect(mown_for(run_august(every_head), 4.5F),
+                       "every adult head brings young: 3 adults, 3 young at a half (#1374)");
 
     // ONLY UP TO THE NEED (#1216): the hay still in the pantry counts. Three
     // heads with 1 000 kg left mow up to 3 x 1 188 = 3 564 kg in all; a

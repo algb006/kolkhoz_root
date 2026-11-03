@@ -128,8 +128,8 @@ float SeasonRatio(const FamilyRow& family) {
 /// after it and ate the same stack, and seed 1931 y3 kept 2 adults and 1-3
 /// kids at nought feed for fifteen days with one death - a family punished
 /// for a litter it could neither foresee nor answer. The young are the
-/// year's births the herd day would give its females (births_per_game_year x
-/// litter_heads), none for a kind that needs a sire and has none, each counted
+/// year's births the herd day would give its adults (#1374: the per-head
+/// rate, the yard's own where the table names one), each counted
 /// at what it eats from the stack before the next mowing
 /// (FoodConfig::yard_young_hay_share; a whole head's year doubled the mowing,
 /// core-boss-859-yard-hay [6]).
@@ -157,16 +157,11 @@ void MowHay(const FoodConfig& config,
     }
     heads += static_cast<float>(herd.adult_count) + static_cast<float>(herd.juvenile_count);
     const std::uint16_t kind = herd.kind.value;
-    if (kind >= config.yard_young_per_female_year.size()) {
+    if (kind >= config.yard_young_per_head_year.size()) {
       continue;
     }
-    if (config.yard_young_need_a_sire[kind] != 0 && herd.adult_male_count == 0) {
-      continue;
-    }
-    const auto females = static_cast<float>(config.yard_kind_sexed[kind] != 0
-                                                ? herd.adult_count - herd.adult_male_count
-                                                : herd.adult_count);
-    heads += females * config.yard_young_per_female_year[kind] *
+    // Every adult head breeds (#1374): no sire is asked, no female counted.
+    heads += static_cast<float>(herd.adult_count) * config.yard_young_per_head_year[kind] *
              (kind < config.yard_young_hay_share.size() ? config.yard_young_hay_share[kind] : 0.0F);
   }
   const ResourceId hay = config.hay_resource;

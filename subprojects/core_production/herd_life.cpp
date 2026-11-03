@@ -109,77 +109,10 @@ std::uint16_t AsHeads(float value) {
   return value > 65000.0F ? 65000U : static_cast<std::uint16_t>(value);
 }
 
-/// @brief How many adults the herd keeps as males. A SHARE, not a count:
-/// "one bull" stops being right the moment the herd grows. A herd whose
-/// share is zero keeps no sire at all and therefore never breeds — which is
-/// the goat's case, and correct: a yard keeps two does and borrows a buck,
-/// and phase 1 does not model the borrowing. A herd with a positive share
-/// always keeps at least one, or it could never breed again.
-std::uint16_t TargetMales(const LivestockDef& kind, std::uint16_t adults) {
-  if (kind.sexed == 0 || adults == 0 || !(kind.males_share > 0.0F)) {
-    return 0;
-  }
-  // AND NO "AT LEAST ONE" SINCE 2026-09-16 (boss, parcel 20). The floor was
-  // right while heads could only be BORN — a herd that could never keep a
-  // sire could never breed again, and nothing outside the herd could mend
-  // that. The district's livestock window is that something: a farm with no
-  // producer orders one, and it is the chairman's move to make.
-  //
-  // THE FLOOR WAS ALSO TAKING THE OTHER HALF OF HIS CHOICE. The order carries
-  // the sex of the head bought, and while this returned one for any herd with
-  // adults, a bought mare became a stallion by the next morning. Measured:
-  // the way out of a dead team needs a stallion AND a mare, and with the
-  // floor in place asking for either changed nothing at all.
-  const auto wanted = AsHeads((static_cast<float>(adults) * kind.males_share) + 0.5F);
-  return wanted < adults ? wanted : adults;
-}
-
-/// @brief The sires left after `gone` adults leave a herd of `adults_before`,
-///        in proportion, rounded to the nearest head and never above the
-///        survivors.
-///
-/// WHY PROPORTION AND NOT A RE-DERIVE. The male count is a CARRIED quantity
-/// since 2026-09-16: births add to it, purchases add exactly what was bought,
-/// and nothing recomputes it from the herd's size — because recomputing is
-/// what erased the chairman's choice every morning. A carried count needs the
-/// losses taken out of it honestly, or the two numbers drift apart: taking
-/// every death out of the females leaves the last survivor of a dying herd
-/// always male, and taking none out leaves a herd starved down to two adults
-/// carrying a male count from its fat years — which is the exact bug the
-/// re-derive at the hunger path was written to prevent, and the reason it
-/// cannot simply be deleted.
-std::uint16_t MalesAfterLoss(std::uint16_t males, std::uint16_t adults_before, std::uint16_t gone) {
-  if (males == 0 || gone == 0 || adults_before == 0) {
-    return males;
-  }
-  if (gone >= adults_before) {
-    return 0;
-  }
-  const auto left = static_cast<std::uint16_t>(adults_before - gone);
-  const float share = static_cast<float>(males) / static_cast<float>(adults_before);
-  const auto kept = AsHeads((static_cast<float>(left) * share) + 0.5F);
-  return kept < left ? kept : left;
-}
-
-std::uint16_t MalesAfterHandOver(const LivestockDef& kind,
-                                 std::uint16_t males,
-                                 std::uint16_t adults_before,
-                                 std::uint16_t gone) {
-  if (kind.males_work == 0 || gone >= adults_before) {
-    return MalesAfterLoss(males, adults_before, gone);
-  }
-  // The males first, one head at a time, while the herd left would still
-  // hold its sire share.
-  std::uint16_t males_first = 0;
-  while (males_first < gone && males_first < males &&
-         static_cast<std::uint16_t>(males - males_first - 1U) >=
-             TargetMales(kind, static_cast<std::uint16_t>(adults_before - males_first - 1U))) {
-    ++males_first;
-  }
-  return MalesAfterLoss(static_cast<std::uint16_t>(males - males_first),
-                        static_cast<std::uint16_t>(adults_before - males_first),
-                        static_cast<std::uint16_t>(gone - males_first));
-}
+// THE SIRES WENT WITH #1374 (livestock.md «Пола у скота нет»): TargetMales,
+// MalesAfterLoss and MalesAfterHandOver kept a carried male count honest
+// through births, losses and hand-overs; a herd is heads now, and a loss or a
+// hand-over takes heads, the oldest first where the age band decides.
 
 std::uint16_t TotalHeads(const HerdRow& herd) {
   return static_cast<std::uint16_t>(herd.newborn_count + herd.juvenile_count + herd.adult_count);
@@ -276,11 +209,9 @@ void Slaughter(const ProductionConfig& config,
       world, config, place, config.down_resource, KilogramsToGrams(kind.down_kg_per_head * count));
 }
 
-/// Newborn -> juvenile -> adult, as two fractional streams. Half of what
-/// reaches adulthood is male, and the herd keeps only its share of sires:
-/// the surplus is the "males beyond the one sire" case of the structural
-/// slaughter, and it carries its own fraction so that no head is lost to
-/// rounding.
+/// Newborn -> juvenile -> adult, as two fractional streams, and the young
+/// cull off what matured (#1374), which carries its own fraction so that no
+/// head is lost to rounding.
 void RunMaturation(const ProductionConfig& config,
                    const LivestockDef& kind,
                    const HerdPlace& place,
@@ -309,57 +240,26 @@ void RunMaturation(const ProductionConfig& config,
   WidenAdultAgeBand(herd, herd.adult_count, grown, entry_age, entry_age);
   herd.adult_count = static_cast<std::uint16_t>(herd.adult_count + grown);
   herd.adult_age_game_years_total += static_cast<float>(grown) * entry_age;
-  const std::uint16_t males_target = TargetMales(kind, herd.adult_count);
-  if (kind.sexed == 0) {
-    herd.adult_male_count = 0;
+  // THE YOUNG CULL (#1374; livestock.md «Пола у скота нет»: «Из подросших за
+  // сезон половина идёт на мясо… У лошадей забоя нет»): the kind's
+  // young_cull_share of what matured goes to meat, through the carried
+  // stream, so no head is lost to rounding - a share of 0 (the horse, the
+  // poultry) culls nothing. Until #1374 the cull was the young MALES over the
+  // herd's sire share, half of what matured less the sires kept.
+  if (!(kind.young_cull_share > 0.0F)) {
     return;
   }
-  // A KIND WHOSE MALES ARE WORK STOCK KEEPS THEM ALL (LivestockDef::
-  // males_work; 0.37.209; Livestock design: «Работают и кобылы, и жеребцы»).
-  // Half of what matures is male, as for every kind — counted through the
-  // same carried stream the cull draws from, so no head is lost to rounding —
-  // and they join the adults COUNTED AS MALES: a colt counted a mare would
-  // foal (RunBirths takes the females as adults less males). Nothing is
-  // culled, booked or said. Until 0.37.209 the horse kept one sire to
-  // fourteen like a cow and the other colts vanished with no carcass — 312 in
-  // nine villages by year 5, against 398 horses standing.
-  if (kind.males_work != 0) {
-    const std::uint16_t young_males =
-        DrawFlow(herd.cull_progress, static_cast<float>(grown) * 0.5F);
-    herd.adult_male_count = static_cast<std::uint16_t>(std::min<std::uint32_t>(
-        herd.adult_male_count + std::min(young_males, grown), herd.adult_count));
-    return;
-  }
-  const auto room_for_males = static_cast<float>(
-      males_target > herd.adult_male_count ? males_target - herd.adult_male_count : 0);
   const std::uint16_t culled =
-      DrawFlow(herd.cull_progress, (static_cast<float>(grown) * 0.5F) - room_for_males);
-  // THE SIRES THE HERD KEEPS OFF WHAT MATURED, added rather than re-derived:
-  // as many as the share leaves room for, and the cull below takes the rest
-  // to meat. Half of what grows up is male by nature, and a herd keeps only
-  // its share of them.
-  const auto kept = static_cast<std::uint16_t>(
-      std::min(static_cast<float>(grown), room_for_males < 0.0F ? 0.0F : room_for_males));
-  herd.adult_male_count = static_cast<std::uint16_t>(herd.adult_male_count + kept);
+      DrawFlow(herd.cull_progress, static_cast<float>(grown) * kind.young_cull_share);
   const std::uint16_t gone = TakeHeads(herd.adult_count, culled);
-  // THE CULL TAKES MALES THE COUNT NEVER HELD, so nothing comes out of it
-  // here. The draw above is `grown * 0.5 - room_for_males`: the young males
-  // the herd had no room for, which is exactly the ones `kept` did not add.
-  //
-  // Subtracting `gone` from the sires was this block's first draft and the
-  // measurement caught it in one run: with a team of two the share leaves
-  // room for no sire at all, so `kept` was nil while `gone` was one — and the
-  // stallion the chairman had just BOUGHT was culled as surplus. Twelve years
-  // later the run showed three horses and no sire among them.
-  herd.adult_male_count = std::min(herd.adult_male_count, herd.adult_count);
   if (gone > 0) {
     herd.adult_age_game_years_total -=
         static_cast<float>(gone) * kind.adult_from_game_months / static_cast<float>(kMonthsPerYear);
     world.ledger.current.herd_culled += gone;
     // SAID, AND BOOKED BY KIND (boss, boss-core-epoch1-5 seq 43 and 45;
     // 0.35.3): until then the cull wrote herd_culled alone and said nothing.
-    AddLedgerHeads(world.ledger.current.herd_males_culled, herd.kind, gone);
-    SimEvent& event = EmitEvent(world, EventKind::kHerdMalesCulled);
+    AddLedgerHeads(world.ledger.current.herd_young_culled, herd.kind, gone);
+    SimEvent& event = EmitEvent(world, EventKind::kHerdYoungCulled);
     event.herd = herd_id;
     event.amount = static_cast<std::int64_t>(gone);
     Slaughter(config, kind, place, gone, world);
@@ -425,16 +325,9 @@ void RunBirths(const ProductionConfig& config,
     // years on nine seeds. A day short of the ration adds no birth progress.
     return;
   }
-  // A sire is required only of a kind that KEEPS sires. `males_share == 0`
-  // says the table does not model males for this kind at all — the goat is
-  // the case: two does at a yard and the buck is somebody else's business,
-  // which is why the canon gives a yard "two goats" and never a billy. With
-  // the share read as a plain "sexed" flag the yards' goats could never
-  // breed, and they died out just as surely as when breeding was blocked
-  // outright (manual/balance/69-reconciliation.md §7).
-  if (kind.sexed != 0 && kind.males_share > 0.0F && herd.adult_male_count == 0) {
-    return;
-  }
+  // NO SIRE IS ASKED (#1374; livestock.md «Одна голова под крышей тоже
+  // приносит приплод»): until then a sexed kind with no adult male bred
+  // nothing.
   if (kind_id.value == config.horse_kind.value && !stable_built) {
     // No stable, no foals (livestock design §5). Until the yard reaches its
     // second step the team only ages — and since ploughing is horse work,
@@ -459,9 +352,14 @@ void RunBirths(const ProductionConfig& config,
   if (herd.plan_heads != kNoHerdPlan && TotalHeads(herd) >= herd.plan_heads) {
     return;
   }
-  const auto females = static_cast<float>(kind.sexed != 0 ? herd.adult_count - herd.adult_male_count
-                                                          : herd.adult_count);
-  if (!(females > 0.0F) || !(kind.births_per_game_year > 0.0F)) {
+  // EVERY ADULT HEAD (#1374): the per-head rate already holds the old female
+  // share (LivestockDef::births_per_adult_head); a yard's herd reads its own
+  // where the table names one (the pig's pair: one litter, as a yard's sow).
+  const auto adults = static_cast<float>(herd.adult_count);
+  const float per_head = herd.household_owned != 0 && kind.household_births_per_adult_head > 0.0F
+                             ? kind.household_births_per_adult_head
+                             : kind.births_per_adult_head;
+  if (!(adults > 0.0F) || !(per_head > 0.0F)) {
     return;
   }
   // The yearly rate falls inside the calving band, not across the year: the
@@ -475,8 +373,7 @@ void RunBirths(const ProductionConfig& config,
   // space» — and with the start's cattle yard gone (0.37.58) every newcomer's
   // herd stood wholly billeted with no calves until the yard's barn held
   // all of it: the 24-place pen under 39 cows gave none at all.
-  const float rate =
-      CalvingRoofShare(herd) * females * kind.births_per_game_year * kind.litter_heads / band_days;
+  const float rate = CalvingRoofShare(herd) * adults * per_head / band_days;
   const std::uint16_t born = DrawFlow(herd.birth_progress, rate);
   if (born == 0) {
     return;
@@ -521,16 +418,6 @@ std::uint16_t TakeOldestAdults(const LivestockDef& kind, HerdRow& herd, std::uin
   herd.adult_age_game_years_total = herd.adult_age_game_years_total < youngest_possible
                                         ? youngest_possible
                                         : herd.adult_age_game_years_total;
-  // The sires go in proportion with the rest, and A PROPORTION CAN ROUND THE
-  // LAST ONE AWAY: three adults with one sire losing two keep one adult and
-  // no sire. Whoever needs a sire KEPT must therefore ask MalesAfterLoss
-  // BEFORE calling and refuse on its answer — which is what the district's
-  // hand-over does (OrderRefusal::kLastSire). This comment used to say the
-  // refusal was raised "by name rather than by arithmetic here", which read
-  // as a guarantee this function gives and does not: the refusal it named was
-  // testing how many heads were ASKED FOR, and the rounding happens on what
-  // is LEFT.
-  herd.adult_male_count = MalesAfterLoss(herd.adult_male_count, before, gone);
   return gone;
 }
 
@@ -662,41 +549,30 @@ void RunHungerDeaths(const ProductionConfig& config,
   } else if (adults_gone > 0) {
     herd.adult_age_game_years_total = 0.0F;
   }
-  // Hunger takes the sires in proportion too, and THE REASON THIS LINE EXISTS
-  // AT ALL is the one the re-derive here used to give: a herd starved down to
-  // one or two adults and then rescued must not keep a male count from its
-  // fat years, or "females" comes out non-positive and it gives no milk and
-  // bears nothing, for ever. Proportion answers that as well as the re-derive
-  // did — and unlike the re-derive it does not also erase what the chairman
-  // bought.
-  herd.adult_male_count = MalesAfterLoss(herd.adult_male_count,
-                                         static_cast<std::uint16_t>(herd.adult_count + adults_gone),
-                                         adults_gone);
 }
 
-/// The autumn pig slaughter (livestock design §6): everything but the sows
-/// and the sire goes to meat. How many sows the herd keeps is the one number
-/// the design does not name, so it is a table knob — ASSUMPTION, and the
-/// balance run is what will move it.
-/// The sows the autumn keeps: the share of the adults, and never fewer than
-/// sow_keep_min while the herd has that many females (boss, boss-core-epoch1-5
-/// seq 45, option б; 0.35.5). ONE HOME for the slaughter and for the meat it
-/// is sized by (AutumnSlaughterMeatShort), which used to compute it twice.
+/// The autumn pig slaughter (livestock design §6): everything but the
+/// breeding stock goes to meat. How many the herd keeps is the one number the
+/// design does not name, so it is a table knob — ASSUMPTION, and the balance
+/// run is what will move it.
+/// The heads the autumn keeps: the share of the adults, and never fewer than
+/// sow_keep_min while the herd has that many (boss, boss-core-epoch1-5 seq 45,
+/// option б; 0.35.5). ONE HOME for the slaughter and for the meat it is sized
+/// by (AutumnSlaughterMeatShort). Since #1374 heads, not sows: the sires the
+/// autumn kept beside them went with the sex.
 std::uint16_t SowsKept(const ProductionConfig& config, const HerdRow& herd) {
   const std::uint16_t by_share =
       AsHeads(static_cast<float>(herd.adult_count) * config.farming.sow_keep_share);
-  const std::uint16_t females =
-      herd.adult_count > herd.adult_male_count ? herd.adult_count - herd.adult_male_count : 0;
   const std::uint16_t floor = AsHeads(config.farming.sow_keep_min);
-  const std::uint16_t least = females < floor ? females : floor;
+  const std::uint16_t least = herd.adult_count < floor ? herd.adult_count : floor;
   return by_share > least ? by_share : least;
 }
 
 std::uint16_t AutumnSlaughterHeads(const ProductionConfig& config,
                                    const LivestockDef& kind,
                                    const HerdRow& herd) {
-  const std::uint16_t sows = SowsKept(config, herd);
-  const std::uint16_t keep = static_cast<std::uint16_t>(sows + TargetMales(kind, herd.adult_count));
+  (void)kind;  // the sires' share it read went with #1374
+  const std::uint16_t keep = SowsKept(config, herd);
   const std::uint16_t adults = herd.adult_count > keep ? herd.adult_count - keep : 0;
   return static_cast<std::uint16_t>(herd.juvenile_count + adults);
 }
@@ -746,19 +622,13 @@ void RunAutumnSlaughter(const ProductionConfig& config,
     return;
   }
   herd.autumn_slaughter_done = 1;
-  const std::uint16_t sows = SowsKept(config, herd);
-  const std::uint16_t males = TargetMales(kind, herd.adult_count);
-  const auto keep = static_cast<std::uint16_t>(sows + males);
+  const std::uint16_t keep = SowsKept(config, herd);
   std::uint16_t gone = TakeHeads(herd.juvenile_count, herd.juvenile_count);
   if (herd.adult_count > keep) {
     const auto surplus = static_cast<std::uint16_t>(herd.adult_count - keep);
     const float mean = herd.adult_age_game_years_total / static_cast<float>(herd.adult_count);
     gone = static_cast<std::uint16_t>(gone + TakeHeads(herd.adult_count, surplus));
     herd.adult_age_game_years_total -= static_cast<float>(surplus) * mean;
-    // The autumn slaughter keeps `males` sires BY NAME — the design says
-    // everything but the sows and the sire goes to meat — so the survivors
-    // are that number, not a proportion of what stood before.
-    herd.adult_male_count = std::min(males, herd.adult_count);
   }
   world.ledger.current.herd_culled += gone;
   if (gone > 0) {

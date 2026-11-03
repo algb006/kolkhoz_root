@@ -292,7 +292,6 @@ std::vector<KindHeads> CountHeads(const WorldState& state, std::size_t kinds) {
       continue;
     }
     kind.adult += herd.adult_count;
-    kind.male += herd.adult_male_count;
     kind.juvenile += herd.juvenile_count;
     kind.newborn += herd.newborn_count;
     kind.billeted += herd.billeted_count;
@@ -502,6 +501,8 @@ void EmitSheet(ColumnWriter& out, const WorldState& state, const ITableSet& tabl
   for (std::size_t kind = 0; kind < livestock.size(); ++kind) {
     const std::string prefix = "herd_" + livestock[kind];
     out.Integer(prefix + "_adult", heads[kind].adult);
+    // DEPRECATED since #1374 (no sex): always 0, kept so the columns after it
+    // hold their places for a positional reader.
     out.Integer(prefix + "_male", heads[kind].male);
     out.Integer(prefix + "_juvenile", heads[kind].juvenile);
     out.Integer(prefix + "_newborn", heads[kind].newborn);
@@ -509,8 +510,10 @@ void EmitSheet(ColumnWriter& out, const WorldState& state, const ITableSet& tabl
     out.Integer("yard_" + livestock[kind] + "_head", heads[kind].yard);
     // The year's removals of the kind by cause (save 90): the book's by-kind
     // heads, where herd_culled above is their sum over every kind.
-    out.Integer(prefix + "_males_culled",
-                static_cast<std::uint64_t>(AmountAt(book.herd_males_culled, kind)));
+    // #1374: the young cull in the males' cull's place (the same slot of the
+    // book, widened: a share of every season's maturing young).
+    out.Integer(prefix + "_young_culled",
+                static_cast<std::uint64_t>(AmountAt(book.herd_young_culled, kind)));
     out.Integer(prefix + "_surplus_slaughtered",
                 static_cast<std::uint64_t>(AmountAt(book.herd_surplus_slaughtered, kind)));
     out.Integer(prefix + "_autumn_slaughtered",

@@ -631,7 +631,6 @@ void KeepHorsesShare(const run::Simulation& world,
     take(herd.adult_count, adults_to_take);
     take(herd.juvenile_count, juveniles_to_take);
     take(herd.newborn_count, newborns_to_take);
-    herd.adult_male_count = std::min(herd.adult_male_count, herd.adult_count);
     // The mean age of the adults is kept: the total follows the head.
     herd.adult_age_game_years_total = adults_before == 0
                                           ? 0.0F

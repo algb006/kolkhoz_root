@@ -93,10 +93,6 @@ struct LimitLotDef {
   /// What age they arrive at: stock grown, poultry young.
   LivestockArrivalStage arrives_stage = LivestockArrivalStage::kAdultStart;
 
-  /// Whether the order names the sex. True for a single head of a kind that
-  /// has one; false for a batch, which comes mixed.
-  bool sex_choice = false;
-
   /// The lot may be paid in grain by an avatar whose path opens it (#1421;
   /// limit_catalog.csv `grain_payable`, 0/1, boss's design.db: tool_lot and
   /// steel_lot). Absent or 0: points only.

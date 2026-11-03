@@ -539,6 +539,8 @@ enum class EventKind : std::uint8_t {
   /// key `herd_males_culled`. DEPRECATED with #1374's body (livestock.md
   /// «Пола у скота нет»): never raised after it; kHerdYoungCulled says the
   /// cull. The value stays - a key is never renamed.
+  /// @no_emit deprecated with #1374: the sires and their cull went; the young
+  /// cull is kHerdYoungCulled.
   kHerdMalesCulled,
 
   /// A yard held more of a group than its cap and no neighbour took the rest:
@@ -871,9 +873,8 @@ enum class EventKind : std::uint8_t {
   /// THE YOUNG CULLED (#1374; livestock.md «Пола у скота нет»: «Из подросших
   /// за сезон половина идёт на мясо»): `herd`, `amount` the heads of the
   /// season's maturing young sent to meat (LivestockDef::young_cull_share).
-  /// kRoutine. Seam key `herd_young_culled`. Replaces kHerdMalesCulled.
-  /// @no_emit the #1374 contract (save 206): raised by its body (herd_life.cpp,
-  /// RunMaturation), not built yet.
+  /// kRoutine. Seam key `herd_young_culled`. Replaces kHerdMalesCulled. Raised
+  /// by RunMaturation (herd_life.cpp).
   kHerdYoungCulled,
 
   // Reserved for project phase 3 and appended by it: fire, epoch change,

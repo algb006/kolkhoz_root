@@ -54,8 +54,7 @@ std::uint16_t HatchedInADay(bool in_barrack) {
   core::ProductionConfig config;
   config.livestock.resize(1);
   core::LivestockDef& hen = config.livestock[0];
-  hen.births_per_game_year = 4.0F;
-  hen.litter_heads = 1.0F;
+  hen.births_per_adult_head = 4.0F;  // #1374: the old rate x litter
   hen.household_cap_heads = 12.0F;
   config.farming.birth_from_month = 0;
   config.farming.birth_to_month = 0;

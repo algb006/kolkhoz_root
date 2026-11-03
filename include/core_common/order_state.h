@@ -1517,20 +1517,9 @@ struct OrderRow {
   /// kOrderLimitLot: the catalogue row to buy.
   LimitLotId lot;
 
-  /// kOrderLimitLot on a LIVESTOCK lot: 0/1, whether the head is to arrive
-  /// male. The chairman's choice and not a draw — livestock design: «При
-  /// заказе у райкома пол выбирается. Иначе хозяйство могло бы остаться без
-  /// производителя и без всякого способа это исправить — а безвыходных
-  /// ситуаций мы не делаем.»
-  ///
-  /// READ ONLY WHEN THE LOT ASKS FOR IT (LimitLotDef::sex_choice). A batch —
-  /// piglets, chicks — comes mixed, and nobody chooses the sex of ten chicks;
-  /// the field is taken as 0 there rather than refused, because a value the
-  /// order was never meant to carry is not the chairman making a mistake.
-  /// GOES with #1374's body (livestock.md «Лот района»: «Пол не
-  /// спрашивается: голова есть голова»; save 206); seam word `male`
-  /// DEPRECATED.
-  std::uint8_t male = 0;
+  // (`male`, the sex of a head bought on a livestock lot, left with #1374,
+  // save 206 - livestock.md «Лот района»: «Пол не спрашивается: голова есть
+  // голова»; the seam word `male` is DEPRECATED.)
 
   /// kOrderLimitLot of a GOODS lot: 0/1, pay it in grain instead of points
   /// (#1421; avatars.md «Пути первой сборки», the dealer: «сдать сверх плана
