@@ -29,12 +29,7 @@ void ScaleHerdHeads(HerdRow& herd, std::uint16_t heads) {
   const std::uint16_t adults = std::min<std::uint16_t>(scaled(herd.adult_count), heads);
   const std::uint16_t juveniles = std::min<std::uint16_t>(
       scaled(herd.juvenile_count), static_cast<std::uint16_t>(heads - adults));
-  const std::uint16_t males =
-      herd.adult_male_count > 0 && adults > 0
-          ? std::clamp<std::uint16_t>(scaled(herd.adult_male_count), 1, adults)
-          : std::uint16_t{0};
   herd.adult_count = adults;
-  herd.adult_male_count = males;
   herd.juvenile_count = juveniles;
   herd.newborn_count = static_cast<std::uint16_t>(heads - adults - juveniles);
 }

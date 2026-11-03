@@ -945,13 +945,13 @@ float YieldFactor(const ProductionConfig& config, const HerdRow& herd) {
   return factor;
 }
 
-/// One herd's milk of a day at `factor`: the females only, a litre a
-/// kilogram (quantities.h). ONE HOME for what the herd gives and what the
-/// plan asks of it (KolkhozMilkDayGrams).
+/// One herd's milk of a day at `factor`: every adult head at the per-head
+/// litres (#1374; milk_l_per_adult_head already holds the old female share),
+/// a litre a kilogram (quantities.h). ONE HOME for what the herd gives and
+/// what the plan asks of it (KolkhozMilkDayGrams).
 Grams HerdMilkDayGrams(const LivestockDef& kind, const HerdRow& herd, float factor) {
-  const auto females = static_cast<float>(kind.sexed != 0 ? herd.adult_count - herd.adult_male_count
-                                                          : herd.adult_count);
-  return KilogramsToGrams(kind.milk_l_per_year * females * factor /
+  const auto adults = static_cast<float>(herd.adult_count);
+  return KilogramsToGrams(kind.milk_l_per_adult_head * adults * factor /
                           static_cast<float>(kDaysPerYear));
 }
 
@@ -1093,7 +1093,6 @@ bool GiveToNeighbour(GiftQueues& queues,
     gift.household_owned = 1;
     if (grown) {
       gift.adult_count = 1;
-      gift.adult_male_count = TargetMales(kind, 1);
       gift.adult_age_game_years_total = age_years;
       WidenAdultAgeBand(gift, 0, 1, age_years, age_years);
     } else {
@@ -1256,7 +1255,6 @@ bool SettleBarrackStock(const ProductionConfig& config,
   event.herd = herd_id;
   event.amount = static_cast<std::int64_t>(heads);
   herd.adult_count = 0;
-  herd.adult_male_count = 0;
   herd.juvenile_count = 0;
   herd.newborn_count = 0;
   herd.adult_age_game_years_total = 0.0F;
@@ -1328,7 +1326,6 @@ void PlaceSurplusHead(const ProductionConfig& config,
       CarryHayShare(config, place, herd, pending.back().household, world);
     }
   }
-  herd.adult_male_count = TargetMales(kind, herd.adult_count);
   // SAID, AND BOOKED BY KIND (boss, boss-core-epoch1-5 seq 43 and 45; 0.35.3):
   // the heads the knife took here wrote herd_culled alone and said nothing.
   if (slaughtered > 0) {
@@ -1596,19 +1593,7 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
       }
       head_days[herd.kind.value] += herd.adult_count;
     }
-    // THE SIRE COUNT IS A THING THE HERD REMEMBERS, and this line used to say
-    // the opposite: it re-derived the count from the herd's size every single
-    // day. That was true while heads could only be born. Since the district
-    // sells stock it is false and expensive — a head bought as a mare became
-    // a stallion by the next morning, and the chairman's choice of sex, which
-    // the design promises him, had no consequence whatever (boss, parcel 20).
-    //
-    // What is left here is the INVARIANT and nothing else: sires never stand
-    // above adults, and a sexless kind has none. Every path that changes the
-    // adults — maturation, the cull, age, hunger, the autumn slaughter —
-    // carries the sires with it at its own site, where what happened is known.
-    herd.adult_male_count =
-        kind.sexed == 0 ? 0U : std::min(herd.adult_male_count, herd.adult_count);
+    // (The sires' invariant stood here until #1374: a herd is heads.)
     // The barrack's one rule, before the herd's place is asked: a herd that
     // goes to the kolkhoz here eats the kolkhoz's fodder from this day.
     SettleBarrackStock(config, kind, herd, current.herds.row_ids[row], current);

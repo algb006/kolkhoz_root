@@ -196,13 +196,12 @@ bool ReadLivestockLots(const ITableSet& tables,
   const std::uint32_t kind_column = stock.FindColumn("livestock");
   const std::uint32_t head_column = stock.FindColumn("head_count");
   const std::uint32_t stage_column = stock.FindColumn("arrives_stage");
-  const std::uint32_t sex_column = stock.FindColumn("sex_choice");
+  // (`sex_choice` went with #1374: «Пол не спрашивается».)
   if (kinds == nullptr || lot_column == kNoTableColumn || kind_column == kNoTableColumn ||
-      head_column == kNoTableColumn || stage_column == kNoTableColumn ||
-      sex_column == kNoTableColumn) {
+      head_column == kNoTableColumn || stage_column == kNoTableColumn) {
     error =
         "limit_lot_livestock: needs livestock.csv and the columns lot, livestock, head_count, "
-        "arrives_stage, sex_choice";
+        "arrives_stage";
     return false;
   }
   for (std::uint32_t row = 0; row < stock.RowCount(); ++row) {
@@ -231,12 +230,6 @@ bool ReadLivestockLots(const ITableSet& tables,
               "' is neither 'adult_start' nor 'young'";
       return false;
     }
-    const std::optional<std::int64_t> sex = stock.CellInteger(row, sex_column);
-    if (!sex.has_value() || *sex < 0 || *sex > 1) {
-      error = prefix + "sex_choice is not 0 or 1";
-      return false;
-    }
-    lot.sex_choice = *sex == 1;
     if (stock.CellText(row, head_column).empty()) {
       continue;  // not written yet: the lot cannot be ordered, and that is all
     }

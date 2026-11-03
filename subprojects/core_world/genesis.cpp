@@ -636,7 +636,6 @@ void AddHerd(WorldState& world,
              RngState& rng,
              std::string_view key,
              std::uint16_t adults,
-             std::uint16_t males,
              UnitId unit,
              FamilyId household,
              bool household_owned,
@@ -651,7 +650,6 @@ void AddHerd(WorldState& world,
   herd.household = household;
   herd.household_owned = household_owned ? 1U : 0U;
   herd.adult_count = adults;
-  herd.adult_male_count = males;
   const float adult_from_years = LivestockValue(livestock, row, "adult_from_game_months", 0.0F) /
                                  static_cast<float>(kMonthsPerYear);
   float oldest = LivestockValue(livestock, row, "life_game_years_max", adult_from_years);
@@ -821,14 +819,12 @@ void PlaceHerds(WorldState& world,
     return;
   }
   RngState& rng = world.rng;
-  // Two bulls to 37 cows is the 4% the design keeps; without a sire the barn
-  // could never grow, and growing it is the whole first-epoch arc.
+  // Thirty-nine head (#1374: heads, no bulls among them).
   AddHerd(world,
           *livestock,
           rng,
           "cow",
           39,
-          2,
           stock_yard,
           FamilyId{},
           false,
@@ -841,7 +837,6 @@ void PlaceHerds(WorldState& world,
             rng,
             "horse",
             1,
-            0,
             UnitId{},
             world.families.row_ids[yard],
             false,
@@ -862,14 +857,13 @@ void PlaceHerds(WorldState& world,
       continue;  // a yard nobody lives in keeps no animals
     }
     if (holding.goats > 0) {
-      AddHerd(world, *livestock, rng, "goat", holding.goats, 0, UnitId{}, home, true);
+      AddHerd(world, *livestock, rng, "goat", holding.goats, UnitId{}, home, true);
     }
     if (holding.chickens > 0) {
-      AddHerd(world, *livestock, rng, "chicken", holding.chickens, 0, UnitId{}, home, true);
+      AddHerd(world, *livestock, rng, "chicken", holding.chickens, UnitId{}, home, true);
     }
     if (holding.pigs > 0) {
-      // A sow and a boar, or it is not a herd: one male of any pigs kept.
-      AddHerd(world, *livestock, rng, "pig", holding.pigs, 1, UnitId{}, home, true);
+      AddHerd(world, *livestock, rng, "pig", holding.pigs, UnitId{}, home, true);
     }
   }
   BilletStartHerds(world, tables);
