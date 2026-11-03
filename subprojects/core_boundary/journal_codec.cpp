@@ -68,8 +68,10 @@ namespace {
 /// the groom's tasks (B7's contract): the task a TENTH entity id, its level
 /// one more one-byte enum. And for the dealer's grain payment (#1421, save
 /// 201): pay_in_grain, a third raw 0/1 byte beside `male`.
+/// #1374 (save 206): `male` left, so the raw 0/1 bytes are `enable` and
+/// pay_in_grain - one byte fewer.
 constexpr std::size_t kOrderBytes =
-    5 + 8 + (7 * 4) + (8 * 2) + (4 * 4) + 8 + 2 + (2 + 1) + (8 * 4) + 4 + 4 + 4 + 1 + 1;
+    5 + 8 + (7 * 4) + (8 * 2) + (4 * 4) + 8 + 2 + (2 + 1) + (8 * 4) + 4 + 4 + 4 + 1;
 
 constexpr std::size_t kEntryBytes = 8 + 4 + 1 + kOrderBytes + 4;
 
@@ -109,8 +111,9 @@ static_assert(sizeof(OrderRow) == 144, "OrderRow changed — update the journal 
 /// after the road, predicted before the build: only this wire could fire.
 /// B7's contract: the groom's task and its level, 35 fields and 144 bytes,
 /// predicted before the build. #1421: pay_in_grain, 36 fields and still 144
-/// bytes, predicted before the build.
-static_assert(AggregateArity<OrderRow>() == 36,
+/// bytes, predicted before the build. #1374: `male` leaves, 35 fields and
+/// still 144 bytes, predicted before the build.
+static_assert(AggregateArity<OrderRow>() == 35,
               "OrderRow gained or lost a field — recount kOrderBytes and update WriteOrder");
 
 constexpr std::uint8_t kMaxFundKind = static_cast<std::uint8_t>(FundKind::kFundKindCount) - 1;
@@ -274,12 +277,8 @@ void WriteOrder(Writer& out, const OrderRow& row) {
   out.U16(row.lot.value);
   // The extraction mark (kMarkExtraction, 2026-09-14), the sixth entity id.
   out.U32(row.extraction_site.value);
-  // The sex of a bought head (kOrderLimitLot on a livestock lot, 2026-09-16),
-  // the one raw byte that is not an enum: counted into kOrderBytes by hand
-  // like all the rest. It landed in the row's PADDING — sizeof(OrderRow) is
-  // still 80 — so the size tripwire said nothing and only the arity one
-  // fired, which is the exact case it was written for.
-  out.U8(row.male);
+  // (The sex of a bought head, a raw byte since 2026-09-16, left with #1374,
+  // save 206.)
   out.U8(row.pay_in_grain);  // #1421, save 201
   // The ration's switch (kSetRation, 2026-09-18): the family, a seventh
   // entity id, and the 0/1 byte.
@@ -333,13 +332,8 @@ OrderRow ReadOrder(Reader& in) {
   row.volume_m3 = in.Float();
   row.lot = LimitLotId{in.U16()};
   row.extraction_site = ExtractionSiteId{in.U32()};
-  // RANGE-CHECKED LIKE ITS SIBLINGS, and it was the one 0/1 byte here that
-  // was not. `kind`, `status`, `refusal` and `fund` all come through
-  // EnumValue; `male` came through a bare U8, so a journal carrying 7 in that
-  // byte replayed as a valid order instead of a refused read. Harmless while
-  // the field is only ever tested `!= 0` — and that is exactly the kind of
-  // "harmless today" the codec's tripwires exist to stop being told.
-  row.male = in.EnumValue(1);
+  // (`male` read here until #1374, save 206.) Range-checked like its
+  // siblings: a 0/1 byte through EnumValue.
   row.pay_in_grain = in.EnumValue(1);  // #1421, save 201
   row.family = FamilyId{in.U32()};
   row.enable = in.EnumValue(1);

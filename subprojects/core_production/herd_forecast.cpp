@@ -36,15 +36,12 @@ struct ProjectedHerd {
   float adults = 0.0F;
   float juveniles = 0.0F;
   float newborns = 0.0F;
-  /// Heads a day A FEMALE brings while the calving band stands and the gates
-  /// hold; 0 when any gate is shut (herd_life.cpp, RunBirths). The gates are
-  /// today's: a herd billeted or hungry today calves in no forecast day.
-  float births_per_female_band_day = 0.0F;
-  /// The adult males (a sexed kind): the females are the rest, and the young
-  /// grown up in the forecast calve with them (static review of 0.37.57 — a
-  /// rate frozen at today's females under-counted next year's band, the
-  /// unsafe side). 0 for an unsexed kind, whose adults all breed.
-  float males = 0.0F;
+  /// Heads a day AN ADULT HEAD brings while the calving band stands and the
+  /// gates hold; 0 when any gate is shut (herd_life.cpp, RunBirths). The gates
+  /// are today's: a herd billeted or hungry today calves in no forecast day.
+  /// Since #1374 every adult calves, at the per-head rate (the males this
+  /// forecast carried went with the sex).
+  float births_per_head_band_day = 0.0F;
   /// The day, as an offset from today, the herd is in the village from: 0
   /// for a herd that stands, the arrival for a lot of stock on its way.
   std::uint32_t from_day = 0;
@@ -68,34 +65,32 @@ std::uint16_t RoundHeads(float heads) {
 }
 
 /// THE BIRTHS' GATES, as RunBirths reads them (herd_life.cpp): a hungry
-/// herd, a kind that keeps sires with none, a horse with no stable — any
-/// shut gate, no offspring; and the billet as a SHARE, CalvingRoofShare, the
-/// same home RunBirths reads (0.37.62). The share is today's, held over the
-/// whole horizon: the forecast does not guess when the chairman will raise
-/// the barn. The daily rate a female inside the band as RunBirths draws it
-/// (its rate is females × this).
-float BirthsPerFemaleBandDay(const ProductionConfig& config,
-                             const LivestockDef& kind,
-                             LivestockKindId kind_id,
-                             const HerdRow& herd,
-                             bool stable_built) {
+/// herd, a horse with no stable — any shut gate, no offspring; and the billet
+/// as a SHARE, CalvingRoofShare, the same home RunBirths reads (0.37.62). The
+/// share is today's, held over the whole horizon: the forecast does not guess
+/// when the chairman will raise the barn. The daily rate an adult head inside
+/// the band as RunBirths draws it (its rate is adults × this; #1374: the
+/// per-head rate, a yard's own where the table names one).
+float BirthsPerHeadBandDay(const ProductionConfig& config,
+                           const LivestockDef& kind,
+                           LivestockKindId kind_id,
+                           const HerdRow& herd,
+                           bool stable_built) {
   if (herd.fed_share < config.farming.calving_fed_share_floor) {
-    return 0.0F;
-  }
-  if (kind.sexed != 0 && kind.males_share > 0.0F && herd.adult_male_count == 0) {
     return 0.0F;
   }
   if (kind_id.value == config.horse_kind.value && !stable_built) {
     return 0.0F;
   }
-  if (!(kind.births_per_game_year > 0.0F)) {
+  const float per_head = herd.household_owned != 0 && kind.household_births_per_adult_head > 0.0F
+                             ? kind.household_births_per_adult_head
+                             : kind.births_per_adult_head;
+  if (!(per_head > 0.0F)) {
     return 0.0F;
   }
   const auto band_days = static_cast<float>(
       (config.farming.birth_to_month - config.farming.birth_from_month + 1U) * kDaysPerMonth);
-  return band_days > 0.0F
-             ? CalvingRoofShare(herd) * kind.births_per_game_year * kind.litter_heads / band_days
-             : 0.0F;
+  return band_days > 0.0F ? CalvingRoofShare(herd) * per_head / band_days : 0.0F;
 }
 
 /// The heads' day of growing up, as RunMaturation flows them: newborns into
@@ -115,21 +110,11 @@ void MatureOneDay(const LivestockDef& kind, ProjectedHerd& herd) {
     const float grown_juveniles = herd.juveniles / juvenile_days;
     herd.juveniles -= grown_juveniles;
     herd.adults += grown_juveniles;
-    // AND THE YOUNG MALES THE HERD HAS NO ROOM FOR GO TO MEAT AS THEY GROW
-    // (RunMaturation): half of what grows is male, the herd keeps its share
-    // of sires, the rest is culled. Kept out of the forecast at first, it
-    // carried a kolkhoz herd's bull calves for a year (0.37.57's pair).
-    if (kind.sexed != 0 && kind.males_work != 0) {
-      // A kind whose males are work stock keeps them all (RunMaturation;
-      // 0.37.209): half of what grows is male, none is culled.
-      herd.males += grown_juveniles * 0.5F;
-    } else if (kind.sexed != 0) {
-      const auto target = static_cast<float>(TargetMales(kind, RoundHeads(herd.adults)));
-      const float room = target > herd.males ? target - herd.males : 0.0F;
-      const float culled = std::max(0.0F, grown_juveniles * 0.5F - room);
-      herd.males += std::min(grown_juveniles, room);
-      herd.adults -= culled;
-    }
+    // AND THE YOUNG CULL GOES TO MEAT AS THEY GROW (RunMaturation; #1374):
+    // the kind's young_cull_share of what grows. Kept out of the forecast at
+    // first, the old male cull carried a kolkhoz herd's bull calves for a year
+    // (0.37.57's pair).
+    herd.adults -= grown_juveniles * kind.young_cull_share;
   }
 }
 
@@ -677,9 +662,8 @@ ProjectedHerd ProjectHerd(const ProductionConfig& config,
   projected.juveniles = static_cast<float>(herd.juvenile_count);
   projected.newborns = static_cast<float>(herd.newborn_count);
   const LivestockDef& kind = config.livestock[herd.kind.value];
-  projected.births_per_female_band_day =
-      BirthsPerFemaleBandDay(config, kind, herd.kind, herd, stable_built);
-  projected.males = kind.sexed != 0 ? static_cast<float>(herd.adult_male_count) : 0.0F;
+  projected.births_per_head_band_day =
+      BirthsPerHeadBandDay(config, kind, herd.kind, herd, stable_built);
   projected.plan_heads =
       herd.plan_heads != kNoHerdPlan ? static_cast<float>(herd.plan_heads) : -1.0F;
   projected.age_deaths_per_adult_day =
@@ -694,16 +678,15 @@ ProjectedHerd ProjectHerd(const ProductionConfig& config,
 void ProjectHerdDay(const ProductionConfig& config, std::uint8_t month, ProjectedHerd& herd) {
   const LivestockDef& kind = config.livestock[herd.kind.value];
   MatureOneDay(kind, herd);
-  // Age takes from the adults, the sires in proportion (TakeOldestAdults).
+  // Age takes from the adults (TakeOldestAdults).
   const float aged = herd.adults * herd.age_deaths_per_adult_day;
-  herd.males -= herd.adults > 0.0F ? herd.males * (aged / herd.adults) : 0.0F;
   herd.adults -= aged;
   const bool at_plan =
       herd.plan_heads >= 0.0F && herd.adults + herd.juveniles + herd.newborns >= herd.plan_heads;
-  if (herd.births_per_female_band_day > 0.0F && !at_plan &&
+  if (herd.births_per_head_band_day > 0.0F && !at_plan &&
       MonthInRange(month, config.farming.birth_from_month, config.farming.birth_to_month)) {
     (kind.newborn_game_months > 0.0F ? herd.newborns : herd.juveniles) +=
-        std::max(0.0F, herd.adults - herd.males) * herd.births_per_female_band_day;
+        std::max(0.0F, herd.adults) * herd.births_per_head_band_day;
   }
 }
 
@@ -1002,21 +985,6 @@ float TakeCohort(const ProductionConfig& config,
     }
     float& cohort = adults ? herd.adults : herd.juveniles;
     const float gone = std::min(cohort, wanted);
-    if (adults && cohort > 0.0F) {
-      // AS THE DOOR TAKES THEM (herd_life.h, MalesAfterHandOver; 0.37.209): a
-      // kind whose males are work stock gives its males first, down to its
-      // sire share of the adults left; the rest, and every other kind, in
-      // proportion.
-      float males_first = 0.0F;
-      if (herd.kind.value < config.livestock.size() &&
-          config.livestock[herd.kind.value].males_work != 0) {
-        const float sires = config.livestock[herd.kind.value].males_share * (cohort - gone);
-        males_first = std::clamp(herd.males - sires, 0.0F, gone);
-      }
-      const float after_males = cohort - males_first;
-      herd.males =
-          after_males > 0.0F ? (herd.males - males_first) * ((cohort - gone) / after_males) : 0.0F;
-    }
     cohort -= gone;
     wanted -= gone;
   }

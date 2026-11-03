@@ -637,7 +637,10 @@ bool ParseLivestock(const ITable& table, std::vector<LivestockDef>& livestock, s
 
   // The unit trap of production_config.h in table form: feed and care are
   // REAL rates, ages are GAME units with the x4 acceleration already in them.
-  constexpr std::array<Column, 18> kColumns = {{{"sexed", 1, 0, 1},
+  // #1374 (livestock.md «Пола у скота нет»): births and milk by the ADULT
+  // HEAD, the young cull's share; the sex columns went (sexed, males_share,
+  // males_work, births_per_game_year, litter_heads, milk_l_per_year).
+  constexpr std::array<Column, 17> kColumns = {{{"household_births_per_adult_head", 0, 0, 100},
                                                 {"household_only", 0, 0, 1},
                                                 {"kolkhoz_only", 0, 0, 1},
                                                 {"feed_units_per_real_day", 0, 0, 1000},
@@ -646,10 +649,9 @@ bool ParseLivestock(const ITable& table, std::vector<LivestockDef>& livestock, s
                                                 {"adult_from_game_months", 0, 0, 600},
                                                 {"life_game_years_min", 0, 0, 100},
                                                 {"life_game_years_max", 0, 0, 100},
-                                                {"births_per_game_year", 0, 0, 100},
-                                                {"litter_heads", 1, 0, 100},
-                                                {"males_share", 0, 0, 1},
-                                                {"milk_l_per_year", 0, 0, 1e5F},
+                                                {"births_per_adult_head", 0, 0, 100},
+                                                {"young_cull_share", 0, 0, 1},
+                                                {"milk_l_per_adult_head", 0, 0, 1e5F},
                                                 {"egg_kg_per_year", 0, 0, 1e5F},
                                                 {"wool_kg_per_year", 0, 0, 1e5F},
                                                 {"manure_kg_per_year", 0, 0, 1e6F},
@@ -681,7 +683,7 @@ bool ParseLivestock(const ITable& table, std::vector<LivestockDef>& livestock, s
       }
     }
     LivestockDef& kind = livestock[row];
-    kind.sexed = static_cast<std::uint8_t>(values[0]);
+    kind.household_births_per_adult_head = values[0];
     kind.household_only = static_cast<std::uint8_t>(values[1]);
     kind.kolkhoz_only = static_cast<std::uint8_t>(values[2]);
     // REAL fodder units a day -> GAME day: a game year holds 365 real days
@@ -692,15 +694,14 @@ bool ParseLivestock(const ITable& table, std::vector<LivestockDef>& livestock, s
     kind.adult_from_game_months = values[6];
     kind.life_game_years_min = values[7];
     kind.life_game_years_max = values[8];
-    kind.births_per_game_year = values[9];
-    kind.litter_heads = values[10];
-    kind.males_share = values[11];
-    kind.milk_l_per_year = values[12];
-    kind.egg_kg_per_year = values[13];
-    kind.wool_kg_per_year = values[14];
-    kind.manure_kg_per_year = values[15];
-    kind.meat_kg_per_head = values[16];
-    kind.hide_pieces_per_head = values[17];
+    kind.births_per_adult_head = values[9];
+    kind.young_cull_share = values[10];
+    kind.milk_l_per_adult_head = values[11];
+    kind.egg_kg_per_year = values[12];
+    kind.wool_kg_per_year = values[13];
+    kind.manure_kg_per_year = values[14];
+    kind.meat_kg_per_head = values[15];
+    kind.hide_pieces_per_head = values[16];
     float self_fed = 0.0F;
     if (!CellOrDefault(table,
                        row,
@@ -733,19 +734,6 @@ bool ParseLivestock(const ITable& table, std::vector<LivestockDef>& livestock, s
       error = "livestock: " + error;
       return false;
     }
-    // `males_work` (0.37.209): absent or empty - 0, the kind as before.
-    float males_work = 0.0F;
-    if (!CellOrDefault(table,
-                       row,
-                       table.FindColumn("males_work"),
-                       Range{.low = 0, .high = 1},
-                       0,
-                       males_work,
-                       error)) {
-      error = "livestock: " + error;
-      return false;
-    }
-    kind.males_work = static_cast<std::uint8_t>(males_work);
     const std::string_view group =
         group_col == kNoTableColumn ? std::string_view{} : table.CellText(row, group_col);
     kind.household_group = group == "stock" ? 1U : (group == "bird" ? 2U : 0U);

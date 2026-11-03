@@ -454,7 +454,10 @@ struct YearLedger {
   /// and 45; save 90): heads, dense by LivestockKindId — a ResourceAmounts
   /// only for its dense int64 shape, saved against the livestock dictionary.
   /// herd_culled above stays their sum.
-  ResourceAmounts herd_males_culled;         ///< Young males over the sire, at maturing.
+  /// The young culled at maturing, by kind (#1374: the kind's
+  /// young_cull_share of what matured; until then the young males over the
+  /// sire share - the same slot, widened).
+  ResourceAmounts herd_young_culled;
   ResourceAmounts herd_surplus_slaughtered;  ///< Over a yard's cap, no neighbour to take them.
   ResourceAmounts herd_autumn_slaughtered;   ///< The autumn pig slaughter.
   /// The frost's toll in the open pen, by kind (kHerdFroze; save 119). Not

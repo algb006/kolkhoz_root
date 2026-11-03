@@ -382,10 +382,7 @@ OrderRefusal OrderLimitLot(const ProductionConfig& config,
     bought.head_count = def.head_count;
     bought.arrive_day = arrive_day;
     bought.stage = def.arrives_stage;
-    // The sex is the chairman's where the lot asks for it and nothing where
-    // it does not: a batch comes mixed, and a `male` set on an order that was
-    // never meant to carry one is dropped rather than refused.
-    bought.male = def.sex_choice ? order.male : std::uint8_t{0};
+    // (The sex the chairman chose went with #1374: «Пол не спрашивается».)
     AppendRow(current.livestock_arrivals, bought);
     return OrderRefusal::kNone;
   }
@@ -531,24 +528,8 @@ OrderRefusal OrderHandStock(const ProductionConfig& config,
   if (TotalHeads(herd) == 0) {
     return OrderRefusal::kNoSuchSubject;
   }
-  // A HERD IS NOT LEFT WITH ADULTS AND NO SIRE. The purchase asks which sex
-  // precisely so the farm cannot be left without a producer and no way to fix
-  // it; a way out of one dead end that opens the way into another is not a
-  // way out at all.
-  //
-  // ASKED OF WHAT WOULD BE LEFT, not of how many were asked for, and that is
-  // a repair. The first cut refused only when `wanted >= adult_count`, on the
-  // reasoning that the whole adult cohort going is the case to catch. It is
-  // not: the sires go in PROPORTION (MalesAfterLoss), so a herd of three
-  // adults with one sire, asked for two, keeps one adult and rounds its only
-  // sire away — one animal left, unable to breed, and no refusal raised. That
-  // is exactly the trap the word exists for, and it lay in the gap between
-  // the guard and the arithmetic it was guarding.
-  //
-  // EMPTYING THE HERD OF ADULTS IS ALLOWED. A farm with no herd of a kind has
-  // made a visible decision and the district sells that kind by the head; a
-  // farm left with mares and no stallion has made an invisible one. The trap
-  // is the second, and it is the second this refuses.
+  // (The «no herd left with adults and no sire» refusal stood here until
+  // #1374: with no sex a single head under a roof breeds.)
   //
   // THE HORSES' ORDER (econ's rule «the base does not breed horses for
   // points», econ/manual/proposals/horses-not-bred-for-points-2026-10-10.md
@@ -584,16 +565,8 @@ OrderRefusal OrderHandStock(const ProductionConfig& config,
       return OrderRefusal::kRuleForbids;
     }
   }
-  const std::uint16_t adults_left = static_cast<std::uint16_t>(herd.adult_count - adults_going);
-  // BY THE TAKE'S OWN ARITHMETIC (herd_life.h, MalesAfterHandOver; 0.37.209):
-  // a kind whose males are work stock gives its males first, down to its
-  // sire share, and only then by proportion.
-  const std::uint16_t males_before = herd.adult_male_count;
-  const std::uint16_t adults_before = herd.adult_count;
-  if (kind.sexed != 0 && kind.males_share > 0.0F && males_before > 0 && adults_left > 0 &&
-      MalesAfterHandOver(kind, males_before, adults_before, adults_going) == 0) {
-    return OrderRefusal::kLastSire;
-  }
+  // NO «LAST SIRE» REFUSAL SINCE #1374 (livestock.md: «Строки „последнего
+  // производителя не сдают“ больше нет: сдать можно любую голову»).
   // THE OLDEST FIRST, cohort by cohort: adults from the old end, then the
   // juveniles, then the newborns. An old head is dearer to keep and cheaper
   // to hand over, so a chairman shedding stock sheds these — and the order
@@ -620,11 +593,6 @@ OrderRefusal OrderHandStock(const ProductionConfig& config,
   const std::uint16_t newborns_taken_first = TakeFromCohort(herd.newborn_count, newborns_first);
   const std::uint16_t juveniles_taken_first = TakeFromCohort(herd.juvenile_count, juveniles_first);
   const std::uint16_t adults_gone = TakeOldestAdults(kind, herd, horses ? adults_going : wanted);
-  // WHO OF THE ADULTS WENT, BY SEX (0.37.209): TakeOldestAdults takes the
-  // sires out in proportion, as every loss does; the door's own order is
-  // MalesAfterHandOver's — the same function the refusal above asked. For a
-  // kind whose males are not work stock the two are one number.
-  herd.adult_male_count = MalesAfterHandOver(kind, males_before, adults_before, adults_gone);
   points += static_cast<std::int32_t>(adults_gone) *
             HandoverPoints(
                 lot->points,
@@ -705,8 +673,6 @@ void ArriveLivestock(const ProductionConfig& config, WorldState& current) {
     } else {
       const std::uint16_t adults_before = herd.adult_count;
       herd.adult_count = static_cast<std::uint16_t>(herd.adult_count + arrival.head_count);
-      herd.adult_male_count = static_cast<std::uint16_t>(
-          herd.adult_male_count + (arrival.male != 0 ? arrival.head_count : 0));
       // AND THE AGE, WHICH IS THE WHOLE OF "в начале взрослого возраста".
       // A head entered at age nil would be a free extra lifetime bought for
       // the same seventy points, and the age total is what the death draw

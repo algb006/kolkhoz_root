@@ -146,10 +146,6 @@ struct LivestockDef {
   /// hens 0.35, pigs and mink 0.
   float pasture_coverage_summer = 0.0F;
 
-  /// 0/1: the kind has sexes; breeding then needs an adult male present.
-  /// Poultry is sexless and has no newborn rung.
-  std::uint8_t sexed = 1;
-
   /// 0/1: the kind lives only at family yards (goats) or only at kolkhoz
   /// units (sheep). Both zero = either place.
   std::uint8_t household_only = 0;
@@ -220,33 +216,11 @@ struct LivestockDef {
 
   float life_game_years_max = 0.0F;
 
-  /// Litters per adult female per GAME year — once a year, in its season,
-  /// which is the canon of the yearly cycle.
-  float births_per_game_year = 0.0F;
-
-  float litter_heads = 1.0F;  ///< Newborns per litter.
-
-  /// Share of the adults kept as males; a sexed herd always keeps at least
-  /// one sire. Males beyond the share are slaughtered — a share, not a
-  /// count, because "one bull" stops being right as the herd grows.
-  float males_share = 0.0F;
-
-  /// THE KIND's MALES ARE WORK STOCK (livestock.csv `males_work`; 0.37.209;
-  /// Livestock design, the harness row: «В упряжке пол не решает ничего.
-  /// Работают и кобылы, и жеребцы» — the horse). A young male of such a kind
-  /// JOINS THE HERD at maturing, counted a male, where every other sexed
-  /// kind keeps `males_share` of them and sends the rest to meat; and the
-  /// district's door takes such a herd's MALES FIRST while it keeps its sire
-  /// share, then the oldest (district_limit.h, OrderHandStock). `males_share`
-  /// stays what it says for breeding and for the door: the sires the herd
-  /// does not part with. Absent from the table — 0, every kind as before.
-  std::uint8_t males_work = 0;
-
   // -- #1374, HERDS WITHOUT SEX (livestock.md «Пола у скота нет»; the human's
   // «Да» of 1 November 2026; econ boss-econ-370-840-drafts [2]; boss,
-  // core-boss-1374-no-sex-contract [2]). CONTRACT: these four come with the
-  // body; `sexed`, `males_share`, `males_work`, `births_per_game_year`,
-  // `litter_heads` and `milk_l_per_year` above and below GO with it. --------
+  // core-boss-1374-no-sex-contract [2]): a herd is heads. `sexed`,
+  // `males_share`, `males_work`, `births_per_game_year`, `litter_heads` and
+  // `milk_l_per_year` went; the yearly season stays the canon's cycle. ------
 
   /// Newborns a GAME year per ADULT HEAD under a roof, in the season
   /// (livestock.csv `births_per_adult_head`): the old per-female rate x the
@@ -271,9 +245,8 @@ struct LivestockDef {
   float milk_l_per_adult_head = 0.0F;
 
   // -- produce: per adult head per game year, or per head at slaughter -----
-  /// Milk is in LITRES in the table and roughly a kilogram a litre in the
-  /// store (quantities.h); parsing does not convert, the flow does.
-  float milk_l_per_year = 0.0F;
+  /// (Milk: milk_l_per_adult_head above - LITRES in the table and roughly a
+  /// kilogram a litre in the store, quantities.h; the flow converts.)
 
   float egg_kg_per_year = 0.0F;
 

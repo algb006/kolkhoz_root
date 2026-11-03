@@ -186,14 +186,8 @@ struct LivestockArrivalRow {
 
   LivestockArrivalStage stage = LivestockArrivalStage::kAdultStart;
 
-  /// 0/1: whether the head arrives male, and it is THE CHAIRMAN'S CHOICE at
-  /// the order, not a draw (livestock design: «При заказе у райкома пол
-  /// выбирается. Иначе хозяйство могло бы остаться без производителя и без
-  /// всякого способа это исправить — а безвыходных ситуаций мы не делаем»).
-  ///
-  /// Always 0 for a lot whose `sex_choice` is 0 — a batch of chicks or
-  /// piglets arrives mixed, and nobody chooses the sex of ten chicks.
-  std::uint8_t male = 0;
+  // (`male`, the chairman's choice of sex, left with #1374, save 206:
+  // livestock.md «Лот района»: «Пол не спрашивается: голова есть голова».)
 };
 
 /// @brief Every head on its way, in the order the lots were bought.
