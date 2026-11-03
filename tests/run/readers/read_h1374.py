@@ -75,7 +75,55 @@ def main():
         verdict = "PAST 2 SE" if red else (still or "within")
         print(f"{key:28} {mean_base:10.2f} {mean_body:10.2f} {mean:9.2f} {se:8.2f} {n_se:6.1f} {trim:9.2f}  "
               f"{verdict}")
+    variety_gate(base, body, common)
     return 0
+
+
+def paired(base, body, common, base_key, body_key, needs):
+    """Paired body[body_key] - base[base_key] over villages where both `needs` keys are > 0."""
+    diffs = [body[v][body_key] - base[v][base_key] for v in common
+             if base[v].get(needs[0], 0) > 0 and body[v].get(needs[1], 0) > 0
+             and base_key in base[v] and body_key in body[v]]
+    if len(diffs) < 3:
+        return None
+    mean = sum(diffs) / len(diffs)
+    se = math.sqrt(sum((d - mean) ** 2 for d in diffs) / (len(diffs) - 1) / len(diffs))
+    cut = sorted(diffs)[2:-2] if len(diffs) > 6 else sorted(diffs)
+    trim = sum(cut) / len(cut)
+    trim_se = math.sqrt(sum((d - trim) ** 2 for d in cut) / max(1, len(cut) - 1) / len(cut))
+    movers = sorted((d for d in diffs if abs(d) > 0.05), key=abs, reverse=True)[:4]
+    return mean, se, trim, trim_se, len(diffs), movers
+
+
+def variety_gate(base, body, common):
+    """econ's variety gate on Y3's trade-off (boss [25] and after): the family-seasons that END under 5 categories
+    (the value the satiety ceiling reads), the pig yards of the body against the goat yards of the base, and
+    village-wide. RED if the mean OR the trimmed mean is past 2 SE. The family-days under 5 print beside it."""
+    if not any("V_all_seasons_below5_share" in base[v] for v in common):
+        print("VARIETY GATE: NOT MEASURED - no V_ fields in these runs")
+        return
+    print("VARIETY GATE (econ): seasons ENDING under 5 categories, share; RED if mean OR trimmed past 2 SE")
+    rows = (
+        ("pig yards (body) vs goat yards (base), seasons", "V_goat_seasons_below5_share",
+         "V_pig_seasons_below5_share", ("V_goat_seasons", "V_pig_seasons"), True),
+        ("village-wide, seasons", "V_all_seasons_below5_share", "V_all_seasons_below5_share",
+         ("V_none_family_days", "V_none_family_days"), True),
+        ("pig yards (body) vs goat yards (base), family-days", "V_goat_days_below5_share",
+         "V_pig_days_below5_share", ("V_goat_family_days", "V_pig_family_days"), False),
+        ("village-wide, family-days", "V_all_days_below5_share", "V_all_days_below5_share",
+         ("V_none_family_days", "V_none_family_days"), False),
+    )
+    for title, base_key, body_key, needs, is_gate in rows:
+        got = paired(base, body, common, base_key, body_key, needs)
+        if got is None:
+            print(f"  {title}: NOT MEASURED (under 3 villages with both)")
+            continue
+        mean, se, trim, trim_se, n, movers = got
+        red = (se > 0 and abs(mean) > 2 * se) or (trim_se > 0 and abs(trim) > 2 * trim_se)
+        role = ("GATE: " + ("RED" if red else "GREEN")) if is_gate else "diagnosis, not a gate"
+        print(f"  {title}: diff {mean:+.4f} SE {se:.4f} ({mean / se if se else 0:+.1f} SE), trimmed {trim:+.4f} "
+              f"SE {trim_se:.4f}, n {n}, movers {', '.join(f'{d:+.3f}' for d in movers) or 'none'}  {role}")
+    print("  RULE: if the seasons are GREEN and the family-days RED, read it as a slower season start, not a loss.")
 
 
 if __name__ == "__main__":

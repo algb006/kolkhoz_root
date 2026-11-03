@@ -37,6 +37,7 @@
 
 #include "core_common/calendar.h"
 #include "core_common/event_state.h"
+#include "core_common/family_state.h"
 #include "core_common/herd_state.h"
 #include "core_common/labor_state.h"
 #include "core_common/ledger_state.h"
@@ -273,6 +274,77 @@ class HerdTally {
       mixed_log_.push_back(line);
     }
     mixed_yesterday_ = std::move(mixed_now);
+    // Y2'S PLACE (#1374's p78: seed 1945, a pig yard at 3 adults for 11
+    // days, cap 2): the day a yard first holds more adults of a kind than the
+    // decided cap, its rows of that kind with their yesterday.
+    std::vector<std::uint32_t> over_now;
+    for (const Yard& yard : yards) {
+      for (std::size_t index = 0; index < kKinds; ++index) {
+        if (yard.adults[index] <= kDecidedCap[index]) {
+          continue;
+        }
+        const std::uint32_t key = (yard.family << 3U) | static_cast<std::uint32_t>(index);
+        over_now.push_back(key);
+        if (std::ranges::find(over_yesterday_, key) != over_yesterday_.end() ||
+            over_log_.size() >= kMixedLogLines) {
+          continue;
+        }
+        std::string line = "y" + std::to_string(year) + "d" +
+                           std::to_string(world.calendar.day % core::kDaysPerYear) + " family " +
+                           std::to_string(yard.family) + " kind " + kKindKeys[index] + " adults " +
+                           std::to_string(yard.adults[index]);
+        for (std::uint32_t row = 0; row < world.herds.rows.size(); ++row) {
+          const core::HerdRow& herd = world.herds.rows[row];
+          if (herd.household_owned == 0 || herd.household.value != yard.family ||
+              herd.kind.value != kind_rows_[index]) {
+            continue;
+          }
+          const std::uint32_t id = world.herds.row_ids[row].value;
+          line += " [" + std::to_string(id) + ' ' + std::to_string(herd.adult_count) + '/' +
+                  std::to_string(herd.juvenile_count) + '/' + std::to_string(herd.newborn_count) +
+                  " inh " + std::to_string(herd.inherited);
+          const auto was = std::ranges::find_if(
+              yesterday_, [id](const HerdYesterday& entry) { return entry.id == id; });
+          line += was == yesterday_.end()
+                      ? std::string(" NEW")
+                      : " was f" + std::to_string(was->family) + " h" + std::to_string(was->heads);
+          line += ']';
+        }
+        over_log_.push_back(line);
+      }
+    }
+    over_yesterday_ = std::move(over_now);
+    // THE YARDS' FOOD VARIETY (econ's gate on Y3's trade-off, boss [25]): by
+    // the yard's stock today - pig, goat, neither - the family-days whose
+    // season's eaten categories (FamilyRow::food_variety_mask) count under
+    // kVarietyNorm, and the seasons that END under it (the mask's popcount on
+    // the day before it falls: the value the satiety ceiling reads).
+    for (std::uint32_t row = 0; row < world.families.rows.size(); ++row) {
+      const std::uint32_t family = world.families.row_ids[row].value;
+      std::size_t yard_class = kNeither;
+      for (const Yard& yard : yards) {
+        if (yard.family == family) {
+          yard_class = yard.heads[kPig] > 0 ? kPigYard : (yard.heads[4] > 0 ? kGoatYard : kNeither);
+        }
+      }
+      const std::uint16_t mask = world.families.rows[row].food_variety_mask;
+      const int count = std::popcount(mask);
+      ++family_days_[yard_class];
+      family_days_below_[yard_class] += count < kVarietyNorm ? 1U : 0U;
+      auto last = std::ranges::find_if(
+          last_variety_, [family](const FamilyVariety& entry) { return entry.family == family; });
+      if (last == last_variety_.end()) {
+        last_variety_.push_back(
+            FamilyVariety{.family = family, .mask = mask, .yard_class = yard_class});
+        continue;
+      }
+      if (count < std::popcount(last->mask)) {  // the season turned: yesterday's was its end
+        ++seasons_[last->yard_class];
+        seasons_below_[last->yard_class] += std::popcount(last->mask) < kVarietyNorm ? 1U : 0U;
+      }
+      last->mask = mask;
+      last->yard_class = yard_class;
+    }
     yesterday_.clear();
     for (std::uint32_t row = 0; row < world.herds.rows.size(); ++row) {
       const core::HerdRow& herd = world.herds.rows[row];
@@ -412,6 +484,36 @@ class HerdTally {
       out << ' ' << "type" << (key >> 16U) << "/res" << (key & 0xFFFFU) << ':' << days;
     }
     out << " EPS_end";
+    // econ's variety gate: per yard class, family-days and seasons under 5.
+    const std::array<const char*, 3> classes = {"pig", "goat", "none"};
+    std::uint64_t all_days = 0;
+    std::uint64_t all_below = 0;
+    std::uint64_t all_seasons = 0;
+    std::uint64_t all_seasons_below = 0;
+    for (std::size_t c = 0; c < classes.size(); ++c) {
+      out << " V_" << classes[c] << "_family_days " << family_days_[c] << " V_" << classes[c]
+          << "_days_below5 " << family_days_below_[c] << " V_" << classes[c]
+          << "_days_below5_share "
+          << (family_days_[c] > 0 ? static_cast<double>(family_days_below_[c]) /
+                                        static_cast<double>(family_days_[c])
+                                  : 0.0)
+          << " V_" << classes[c] << "_seasons " << seasons_[c] << " V_" << classes[c]
+          << "_seasons_below5 " << seasons_below_[c] << " V_" << classes[c]
+          << "_seasons_below5_share "
+          << (seasons_[c] > 0
+                  ? static_cast<double>(seasons_below_[c]) / static_cast<double>(seasons_[c])
+                  : 0.0);
+      all_days += family_days_[c];
+      all_below += family_days_below_[c];
+      all_seasons += seasons_[c];
+      all_seasons_below += seasons_below_[c];
+    }
+    out << " V_all_days_below5_share "
+        << (all_days > 0 ? static_cast<double>(all_below) / static_cast<double>(all_days) : 0.0)
+        << " V_all_seasons_below5_share "
+        << (all_seasons > 0
+                ? static_cast<double>(all_seasons_below) / static_cast<double>(all_seasons)
+                : 0.0);
     // Where the horse's foals above the places go, by year (econ via boss).
     constexpr double kBandDays = 3.0 * core::kDaysPerMonth;
     double forgone = 0.0;
@@ -475,6 +577,9 @@ class HerdTally {
     for (const std::string& line : mixed_log_) {
       out << "population_curve: Y1PLACE seed " << seed << ' ' << line << '\n';
     }
+    for (const std::string& line : over_log_) {
+      out << "population_curve: Y2PLACE seed " << seed << ' ' << line << '\n';
+    }
   }
 
  private:
@@ -509,6 +614,24 @@ class HerdTally {
   std::vector<HerdYesterday> yesterday_;
   std::vector<std::uint32_t> mixed_yesterday_;
   std::vector<std::string> mixed_log_;
+  std::vector<std::uint32_t> over_yesterday_;
+  std::vector<std::string> over_log_;
+  static constexpr std::size_t kPigYard = 0;
+  static constexpr std::size_t kGoatYard = 1;
+  static constexpr std::size_t kNeither = 2;
+  static constexpr int kVarietyNorm = 5;  ///< econ: the Epoch I category norm
+
+  struct FamilyVariety {
+    std::uint32_t family = 0;
+    std::uint16_t mask = 0;
+    std::size_t yard_class = 2;
+  };
+
+  std::vector<FamilyVariety> last_variety_;
+  std::array<std::uint64_t, 3> family_days_ = {};
+  std::array<std::uint64_t, 3> family_days_below_ = {};
+  std::array<std::uint64_t, 3> seasons_ = {};
+  std::array<std::uint64_t, 3> seasons_below_ = {};
   float horse_rate_ = 0.0F;
   std::array<std::int64_t, kYears> horse_handed_ = {};
   std::array<std::uint64_t, kYears> horse_billeted_band_days_ = {};
