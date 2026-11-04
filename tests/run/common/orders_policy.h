@@ -189,8 +189,16 @@ class OrdersPolicy {
       return core::UnitId{};
     }
     const core::UnitRow& unit = world.units.rows[row];
-    return unit.level != 0 && unit.paused == 0 && unit.wear > 0.0F ? world.units.row_ids[row]
-                                                                   : core::UnitId{};
+    // AND NOT UNDER WORKS (0.37.364's suite, seed 0's three arms): with the warm
+    // ordered through the cooldown, the pen stood under its level-2 works on the
+    // stop day, the pause held THAT site 12 days, and the warm finished inside
+    // the settle - its wear reset to the new level's (0.185 -> 0.167), and «it
+    // wore again» read an upgrade. A roof under works is a site, not the
+    // wearing roof the question asks about; the policy waits until it stands.
+    const bool under_works = unit.construction.phase != core::ConstructionPhase::kNone;
+    return unit.level != 0 && unit.paused == 0 && unit.wear > 0.0F && !under_works
+               ? world.units.row_ids[row]
+               : core::UnitId{};
   }
 
   /// @brief The first kolkhoz herd with heads under its own roof. Its own
