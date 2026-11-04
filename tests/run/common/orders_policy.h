@@ -189,12 +189,10 @@ class OrdersPolicy {
       return core::UnitId{};
     }
     const core::UnitRow& unit = world.units.rows[row];
-    // AND NOT UNDER WORKS (0.37.364's suite, seed 0's three arms): with the warm
-    // ordered through the cooldown, the pen stood under its level-2 works on the
-    // stop day, the pause held THAT site 12 days, and the warm finished inside
-    // the settle - its wear reset to the new level's (0.185 -> 0.167), and «it
-    // wore again» read an upgrade. A roof under works is a site, not the
-    // wearing roof the question asks about; the policy waits until it stands.
+    // AND NOT UNDER WORKS (0.37.364): a roof under works is a site, not the
+    // wearing roof the question asks about. This alone did not hold seed 0's
+    // three arms - its warm was ordered the same day as the pause, so the pen
+    // was not yet under works when chosen; Settle's raise guard does that.
     const bool under_works = unit.construction.phase != core::ConstructionPhase::kNone;
     return unit.level != 0 && unit.paused == 0 && unit.wear > 0.0F && !under_works
                ? world.units.row_ids[row]
@@ -339,6 +337,7 @@ class OrdersPolicy {
       pause_took_ = unit.paused != 0;
       work_took_ = worker.work.kind == core::WorkKind::kHerdCare;
       wear_when_stopped_ = unit.wear;
+      level_when_stopped_ = unit.level;
       if (!pause_took_) {
         // Not a unit the pause stops: the next herd's roof is asked, and the
         // refusal is said in the report rather than failed on.
@@ -381,6 +380,16 @@ class OrdersPolicy {
       return;
     }
     const std::uint32_t unit_row = core::FindRow(world.units, unit_);
+    // RAISED AFTER IT WAS STARTED (0.37.364's suite, seed 0's three arms): with
+    // the warm ordered through the cooldown, the pen's level-2 works were
+    // ordered the day it was paused, held by the pause 12 days, and finished
+    // inside the settle (level 2 on day 33): its wear reset to the new level's
+    // (0.185 -> 0.167), and «it wore again» read an upgrade. Like a repair
+    // while it stood (Watch), a raise is another question: the next roof is asked.
+    if (unit_row != core::kNoRow && world.units.rows[unit_row].level != level_when_stopped_) {
+      Abandon("the unit was raised after it was started");
+      return;
+    }
     wear_when_started_ =
         unit_row == core::kNoRow ? wear_when_stopped_ : world.units.rows[unit_row].wear;
     released_ = true;
@@ -418,6 +427,8 @@ class OrdersPolicy {
   float wear_when_stopped_ = 0.0F;
 
   float wear_when_started_ = 0.0F;
+
+  std::uint8_t level_when_stopped_ = 0;
 
   bool pause_took_ = false;
 
