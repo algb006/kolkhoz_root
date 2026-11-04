@@ -144,6 +144,7 @@ class HerdTally {
     if (year < 1 || year > kYears) {
       return;
     }
+    CountStalls(world, year);
     for (const core::SimEvent& event : world.step_events) {
       // The horses handed back to the district for points (econ via boss:
       // where the foals above the places go).
@@ -448,6 +449,67 @@ class HerdTally {
     }
   }
 
+  /// @brief #1503's print (a works that opens during the day waited for the
+  ///        next morning beside idle hands): at the noon step (hour 13, the
+  ///        state of step 12), y1-y3 - the works in kBuilding with labour left,
+  ///        not paused, not stopped by winter, and nobody on it, on a day with
+  ///        an adult idle and none at a day off (STALL site-days); the idle by
+  ///        kNoHorse and the builders, head-days (the work mix); and every
+  ///        works' days from entering its labour phase to leaving it.
+  void CountStalls(const core::WorldState& world, std::uint32_t year) {
+    const core::Tick hour = world.calendar.tick % core::kTicksPerDay;
+    const std::uint32_t day = world.calendar.day;
+    // Days to finish: by the step, every phase change is seen.
+    for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+      const core::UnitRow& unit = world.units.rows[row];
+      const std::uint32_t id = world.units.row_ids[row].value;
+      const bool building = unit.construction.phase == core::ConstructionPhase::kBuilding &&
+                            unit.construction.labor_days_remaining > 0.0F;
+      auto open = std::ranges::find_if(building_since_,
+                                       [id](const auto& entry) { return entry.first == id; });
+      if (building && open == building_since_.end()) {
+        building_since_.emplace_back(id, day);
+      } else if (!building && open != building_since_.end()) {
+        if (year <= kStallYears) {
+          finish_days_ += static_cast<double>(day - open->second);
+          ++finished_works_;
+        }
+        building_since_.erase(open);
+      }
+    }
+    if (hour != 12 || year > kStallYears) {
+      return;
+    }
+    std::uint32_t idle = 0;
+    bool day_off = false;
+    for (const core::ResidentRow& person : world.residents.rows) {
+      if (person.work.kind == core::WorkKind::kNone &&
+          person.idle_reason != core::IdleReason::kIdleReasonCount) {
+        ++idle;
+        day_off = day_off || person.idle_reason == core::IdleReason::kDayOff;
+        no_horse_idle_head_days_ += person.idle_reason == core::IdleReason::kNoHorse ? 1U : 0U;
+      }
+      builder_head_days_ += person.work.kind == core::WorkKind::kConstruction ? 1U : 0U;
+    }
+    if (idle == 0 || day_off) {
+      return;
+    }
+    for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+      const core::UnitRow& unit = world.units.rows[row];
+      if (unit.construction.phase != core::ConstructionPhase::kBuilding ||
+          !(unit.construction.labor_days_remaining > 0.0F) || unit.paused != 0 || unit.dead != 0 ||
+          (world.calendar.season == core::Season::kWinter && unit.construction.winter_works == 0)) {
+        continue;
+      }
+      const core::UnitId id = world.units.row_ids[row];
+      const bool crewed = std::ranges::any_of(world.residents.rows, [id](const auto& person) {
+        return person.work.kind == core::WorkKind::kConstruction &&
+               person.work.unit.value == id.value;
+      });
+      stall_site_days_ += crewed ? 0U : 1U;
+    }
+  }
+
   /// @brief The closed year's book, y1-y6.
   void CloseYear(const core::YearLedger& closed, std::uint32_t year) {
     if (year < 1 || year > kYears) {
@@ -542,6 +604,11 @@ class HerdTally {
       out << ' ' << "type" << (key >> 16U) << "/res" << (key & 0xFFFFU) << ':' << days;
     }
     out << " EPS_end";
+    // #1503 (y1-y3, noon): the stalled works, the work mix, days to finish.
+    out << " S_stall_site_days_y1y3 " << stall_site_days_ << " S_no_horse_idle_head_days_y1y3 "
+        << no_horse_idle_head_days_ << " S_builder_head_days_y1y3 " << builder_head_days_
+        << " S_works_finished_y1y3 " << finished_works_ << " S_days_to_finish_mean_y1y3 "
+        << (finished_works_ > 0 ? finish_days_ / static_cast<double>(finished_works_) : 0.0);
     // econ's variety gate: per yard class, family-days and seasons under 5.
     const std::array<const char*, 3> classes = {"pig", "goat", "none"};
     std::uint64_t all_days = 0;
@@ -701,6 +768,13 @@ class HerdTally {
   std::vector<std::string> mixed_log_;
   std::vector<std::uint32_t> over_yesterday_;
   std::vector<std::string> over_log_;
+  static constexpr std::uint32_t kStallYears = 3;                        ///< #1503's print, y1-y3
+  std::vector<std::pair<std::uint32_t, std::uint32_t>> building_since_;  ///< unit id, day
+  std::uint64_t stall_site_days_ = 0;
+  std::uint64_t no_horse_idle_head_days_ = 0;
+  std::uint64_t builder_head_days_ = 0;
+  std::uint64_t finished_works_ = 0;
+  double finish_days_ = 0.0;
   static constexpr std::size_t kPigYard = 0;
   static constexpr std::size_t kGoatYard = 1;
   static constexpr std::size_t kNeither = 2;
