@@ -92,7 +92,8 @@ def paired(base, body, common, base_key, body_key, needs):
     trim = sum(cut) / len(cut)
     trim_se = math.sqrt(sum((d - trim) ** 2 for d in cut) / max(1, len(cut) - 1) / len(cut))
     movers = sorted((d for d in diffs if abs(d) > 0.05), key=abs, reverse=True)[:4]
-    return mean, se, trim, trim_se, len(diffs), movers
+    zeros = sum(1 for d in diffs if d == 0)
+    return mean, se, trim, trim_se, len(diffs), movers, zeros
 
 
 def variety_gate(base, body, common):
@@ -118,9 +119,16 @@ def variety_gate(base, body, common):
         if got is None:
             print(f"  {title}: NOT MEASURED (under 3 villages with both)")
             continue
-        mean, se, trim, trim_se, n, movers = got
-        red = (se > 0 and abs(mean) > 2 * se) or (trim_se > 0 and abs(trim) > 2 * trim_se)
+        mean, se, trim, trim_se, n, movers, zeros = got
+        # DEGENERATE (p81: 21 of 32 village diffs exactly 0, the trimmed mean +0.0000154 against an SE of about
+        # 1e-6): over a mostly-zero diff the trimmed SE is no spread at all and any rounding reads past 2 SE. When
+        # more than half the diffs are 0 the trimmed half is not judged; the mean is, and the line says so.
+        degenerate = zeros * 2 > n
+        red = (se > 0 and abs(mean) > 2 * se) or (
+            not degenerate and trim_se > 0 and abs(trim) > 2 * trim_se)
         role = ("GATE: " + ("RED" if red else "GREEN")) if is_gate else "diagnosis, not a gate"
+        if degenerate:
+            role += f" (DEGENERATE: {zeros} of {n} diffs are 0 - the trimmed mean is not judged)"
         print(f"  {title}: diff {mean:+.4f} SE {se:.4f} ({mean / se if se else 0:+.1f} SE), trimmed {trim:+.4f} "
               f"SE {trim_se:.4f}, n {n}, movers {', '.join(f'{d:+.3f}' for d in movers) or 'none'}  {role}")
     print("  RULE: if the seasons are GREEN and the family-days RED, read it as a slower season start, not a loss.")
