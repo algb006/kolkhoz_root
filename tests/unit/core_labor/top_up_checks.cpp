@@ -2,6 +2,7 @@
 
 #include "top_up_checks.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -322,6 +323,56 @@ LentHorses TheTopUpBorrowsThePeoplesCart(core::ILaborSystem& labor) {
 
 }  // namespace
 
+/// A WORKS THAT OPENS DURING THE DAY (#1503; host's bathing site): a village
+/// of `idle` adults with no work in the morning; at hour 9 a works enters its
+/// labour phase beside them (its delivery closed mid-morning) - one man-hour
+/// left, a crew of 4 allowed. Returns its crew after hour 9. The pair's other
+/// half: an adult the morning placed on another works (ten days of labour,
+/// already open at hour 0) is not moved to it.
+struct MiddayWorks {
+  std::uint32_t crew = 0;
+  bool builder_kept = false;
+};
+
+MiddayWorks AWorksOpensAtNine(core::ILaborSystem& labor, std::uint32_t adults, bool busy) {
+  core::WorldState world = Village(adults);
+  core::UnitId first_id;
+  if (busy) {
+    core::UnitRow first;
+    first.position = core::Vec2{.x = 0.0F, .y = 10.0F};
+    first.construction.phase = core::ConstructionPhase::kBuilding;
+    first.construction.labor_days_total = 10.0F;
+    first.construction.labor_days_remaining = 10.0F;
+    first.construction.max_crew = 8;
+    first.construction.winter_works = 1;
+    first_id = core::AppendRow(world.units, first);
+  }
+  RunHour(labor, world, 0);
+  RunHour(labor, world, 1);
+  core::UnitRow works;
+  works.position = core::Vec2{.x = 0.0F, .y = 30.0F};
+  works.construction.phase = core::ConstructionPhase::kBuilding;
+  works.construction.labor_days_total = 0.142857F;
+  works.construction.labor_days_remaining = 0.142857F;
+  works.construction.max_crew = 4;
+  works.construction.winter_works = 1;
+  const core::UnitId works_id = core::AppendRow(world.units, works);
+  for (std::uint32_t hour = 2; hour <= 9; ++hour) {
+    RunHour(labor, world, hour);
+  }
+  MiddayWorks out;
+  for (const core::ResidentRow& person : world.residents.rows) {
+    out.crew += person.work.kind == core::WorkKind::kConstruction &&
+                        person.work.unit.value == works_id.value
+                    ? 1U
+                    : 0U;
+  }
+  out.builder_kept = !busy || std::ranges::all_of(world.residents.rows, [&first_id](const auto& p) {
+    return p.work.kind == core::WorkKind::kConstruction && p.work.unit.value == first_id.value;
+  });
+  return out;
+}
+
 int CheckTopUpAgainstWindowlessWork() {
   int failures = 0;
   const auto labor = Labor("unit_core_labor_top_up_windowless");
@@ -393,5 +444,17 @@ int CheckTopUpAgainstWindowlessWork() {
   failures += Expect(lent.log_riders == 1 && lent.peoples_carts == 1,
                      "top-up, the people's cart: a second load at hour 1 takes no horse - the "
                      "barn's cart keeps it and its crew their ride, the second load waits");
+  // A WORKS THAT OPENS DURING THE DAY (#1503): until then it stood to the next
+  // morning beside the idle (host's bathing site, three days).
+  const MiddayWorks idle_only = AWorksOpensAtNine(*labor, 2, false);
+  const MiddayWorks busy = AWorksOpensAtNine(*labor, 2, true);
+  std::cout << "  top-up, a works opened at hour 9: crew " << idle_only.crew
+            << "; with both hands placed on another works at hour 0: crew " << busy.crew
+            << ", they stay " << (busy.builder_kept ? 1 : 0) << '\n';
+  failures += Expect(idle_only.crew >= 1,
+                     "top-up, a works opened at hour 9: the morning's idle go to it the same day");
+  failures += Expect(busy.crew == 0 && busy.builder_kept,
+                     "top-up, a works opened at hour 9: hands the morning placed keep their work "
+                     "(one work a day)");
   return failures;
 }

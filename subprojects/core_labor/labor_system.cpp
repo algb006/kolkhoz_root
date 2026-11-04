@@ -221,6 +221,18 @@ class LaborSystem final : public ILaborSystem {
       book.cart_hours_saved += tally.hours_saved;
       book.waits_made[static_cast<std::size_t>(WaitKind::kPassengerAwaitsCart)] += tally.waits_made;
     }
+    // A WORKS THAT OPENS DURING THE DAY GETS THE DAY'S IDLE (#1503; host's
+    // bathing site, one man-hour left, three days unstaffed; the canon's 657
+    // site-days of a works that entered kBuilding after the hour-1 top-up and
+    // stood beside idle hands until the morning, 0.37.361 y1-y3, 32 villages).
+    // The placement runs at hour 0 and the top-up at hour 1; a delivery that
+    // closes later left its works to the next morning. From hour 2, when an
+    // uncrewed works in its labour phase stands and somebody is idle, the
+    // top-up runs again - for the UNPLACED alone (#633: it never re-places a
+    // placed hand), so a hand placed now has it as his one work of the day.
+    if (hour >= 2 && UncrewedWorksBesideIdleHands(current)) {
+      TopUpDay(current);
+    }
     RunHour(current, hour);
     // After the hour: a work the hour ended takes its wait with it.
     ClearPassengerWaits(current, hour + 1U >= kTicksPerDay);
@@ -760,6 +772,36 @@ class LaborSystem final : public ILaborSystem {
       }
       return;
     }
+  }
+
+  /// @brief Whether a works stands in its labour phase with nobody on it
+  ///        while some resident the morning left idle is still idle (#1503):
+  ///        the gate of the day's later top-ups. Cheap first: no idle, no walk.
+  static bool UncrewedWorksBesideIdleHands(const WorldState& current) {
+    const bool someone_idle =
+        std::ranges::any_of(current.residents.rows, [](const ResidentRow& person) {
+          return person.work.kind == WorkKind::kNone &&
+                 person.idle_reason != IdleReason::kIdleReasonCount;
+        });
+    if (!someone_idle) {
+      return false;
+    }
+    for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
+      const UnitRow& unit = current.units.rows[row];
+      if (unit.construction.phase != ConstructionPhase::kBuilding ||
+          !(unit.construction.labor_days_remaining > 0.0F) || unit.paused != 0 ||
+          WinterStopsSite(current.calendar.season, unit.construction.winter_works)) {
+        continue;
+      }
+      const UnitId id = current.units.row_ids[row];
+      const bool crewed = std::ranges::any_of(current.residents.rows, [id](const ResidentRow& p) {
+        return p.work.kind == WorkKind::kConstruction && p.work.unit.value == id.value;
+      });
+      if (!crewed) {
+        return true;
+      }
+    }
+    return false;
   }
 
   void TopUpDay(WorldState& current) const {
