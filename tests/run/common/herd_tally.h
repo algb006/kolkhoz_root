@@ -120,6 +120,15 @@ class HerdTally {
       // The yard's food in kcal (econ's beside-gate, boss [14]): milk, meat
       // and eggs by resources.csv's own kcal_per_gram.
       const std::uint32_t kcal = resources->FindColumn("kcal_per_gram");
+      // #1505's milk check: every resource with a kcal, for the yards' own food
+      // against what the families ate (household-farming §1: the yards cover 59 %).
+      for (std::uint32_t row = 0; kcal != core::kNoTableColumn && row < resources->RowCount();
+           ++row) {
+        const float per_gram = resources->CellReal(row, kcal).value_or(0.0F);
+        if (per_gram > 0.0F) {
+          kcal_rows_.emplace_back(row, per_gram);
+        }
+      }
       for (const char* key : {"milk", "meat", "egg"}) {
         const std::uint32_t row = resources->FindRowByKey(key);
         if (row != core::kNoTableRow && kcal != core::kNoTableColumn) {
@@ -333,9 +342,13 @@ class HerdTally {
     for (std::uint32_t row = 0; row < world.families.rows.size(); ++row) {
       const std::uint32_t family = world.families.row_ids[row].value;
       std::size_t yard_class = kNeither;
+      std::uint32_t stock_mask = 0;
+      std::uint32_t goat_adults = 0;
       for (const Yard& yard : yards) {
         if (yard.family == family) {
           yard_class = yard.heads[kPig] > 0 ? kPigYard : (yard.heads[4] > 0 ? kGoatYard : kNeither);
+          stock_mask = yard.kinds_mask;
+          goat_adults = yard.adults[4];
         }
       }
       const std::uint16_t mask = world.families.rows[row].food_variety_mask;
@@ -345,16 +358,38 @@ class HerdTally {
       auto last = std::ranges::find_if(
           last_variety_, [family](const FamilyVariety& entry) { return entry.family == family; });
       if (last == last_variety_.end()) {
-        last_variety_.push_back(
-            FamilyVariety{.family = family, .mask = mask, .yard_class = yard_class});
+        last_variety_.push_back(FamilyVariety{.family = family,
+                                              .mask = mask,
+                                              .yard_class = yard_class,
+                                              .stock_mask = stock_mask,
+                                              .goat_adults = goat_adults});
         continue;
       }
       if (count < std::popcount(last->mask)) {  // the season turned: yesterday's was its end
         ++seasons_[last->yard_class];
         seasons_below_[last->yard_class] += std::popcount(last->mask) < kVarietyNorm ? 1U : 0U;
+        // #1505: the goat yards' seasons by the goats they held (1, 2, 3+ adults).
+        if (last->yard_class == kGoatYard) {
+          const std::size_t bucket = std::min<std::uint32_t>(last->goat_adults, 3U);
+          ++goat_seasons_by_heads_[bucket];
+          goat_seasons_below_by_heads_[bucket] +=
+              std::popcount(last->mask) < kVarietyNorm ? 1U : 0U;
+        }
+      }
+      // #1505: who takes a stockless yard - the day a yard that kept no stock
+      // keeps a kind, that kind, by the month (0-based).
+      if (last->stock_mask == 0 && stock_mask != 0) {
+        const auto month_now = static_cast<std::uint32_t>(world.calendar.date.month) % 12U;
+        for (std::size_t index = 0; index < kKinds; ++index) {
+          if ((stock_mask & (1U << index)) != 0) {
+            ++yard_takers_[index][month_now];
+          }
+        }
       }
       last->mask = mask;
       last->yard_class = yard_class;
+      last->stock_mask = stock_mask;
+      last->goat_adults = goat_adults;
     }
     yesterday_.clear();
     for (std::uint32_t row = 0; row < world.herds.rows.size(); ++row) {
@@ -435,6 +470,18 @@ class HerdTally {
     for (const auto& [row, kcal_per_gram] : food_rows_) {
       yard_food_kcal_ +=
           static_cast<double>(At(closed.yard_produce, row)) * static_cast<double>(kcal_per_gram);
+    }
+    // #1505's milk check: the yards' own food (their herds' produce and their
+    // gardens) against everything the families ate, in kcal.
+    for (const auto& [row, kcal_per_gram] : kcal_rows_) {
+      const auto per_gram = static_cast<double>(kcal_per_gram);
+      yard_own_kcal_ += (static_cast<double>(At(closed.yard_produce, row)) +
+                         static_cast<double>(At(closed.plot_harvest, row))) *
+                        per_gram;
+      eaten_kcal_ += static_cast<double>(At(closed.eaten, row)) * per_gram;
+      if (row == milk_row_) {
+        yard_milk_kcal_ += static_cast<double>(At(closed.yard_produce, row)) * per_gram;
+      }
     }
     for (const core::Grams grams : closed.herd_hay_eaten) {
       hay_g_ += grams;
@@ -525,6 +572,33 @@ class HerdTally {
         << (all_seasons > 0
                 ? static_cast<double>(all_seasons_below) / static_cast<double>(all_seasons)
                 : 0.0);
+    // #1505 (boss [3]): the goat yards' seasons ending under 5 by the goats
+    // they held; who takes a stockless yard, by kind and month; and econ's milk
+    // check - the yards' own food over what the families ate, y1-y6 (the
+    // design's yard cover is 59 %, household-farming §1). GROUND of the cover:
+    // kcal of yard_produce + plot_harvest over kcal of `eaten`; the plot's hay
+    // has no kcal and is not in it.
+    for (std::size_t bucket = 1; bucket < goat_seasons_by_heads_.size(); ++bucket) {
+      const std::uint32_t seasons = goat_seasons_by_heads_[bucket];
+      out << " G_goat" << bucket << (bucket == 3 ? "plus" : "") << "_seasons " << seasons
+          << " G_goat" << bucket << (bucket == 3 ? "plus" : "") << "_below5_share "
+          << (seasons > 0 ? static_cast<double>(goat_seasons_below_by_heads_[bucket]) /
+                                static_cast<double>(seasons)
+                          : 0.0);
+    }
+    for (const std::size_t index : {std::size_t{0}, kPig, std::size_t{4}}) {
+      std::uint32_t taken = 0;
+      for (const std::uint32_t count : yard_takers_[index]) {
+        taken += count;
+      }
+      out << " T_" << kKindKeys[index] << "_took_stockless_y1y6 " << taken;
+    }
+    out << " T_by_month";
+    for (std::uint32_t month = 0; month < 12; ++month) {
+      out << " m" << month << ':' << yard_takers_[kPig][month] << '/' << yard_takers_[4][month];
+    }
+    out << " T_end M_yard_cover_share " << (eaten_kcal_ > 0.0 ? yard_own_kcal_ / eaten_kcal_ : 0.0)
+        << " M_yard_milk_share " << (eaten_kcal_ > 0.0 ? yard_milk_kcal_ / eaten_kcal_ : 0.0);
     // Where the horse's foals above the places go, by year (econ via boss).
     constexpr double kBandDays = 3.0 * core::kDaysPerMonth;
     double forgone = 0.0;
@@ -636,7 +710,17 @@ class HerdTally {
     std::uint32_t family = 0;
     std::uint16_t mask = 0;
     std::size_t yard_class = 2;
+    std::uint32_t stock_mask = 0;   ///< the stock kinds (kKindKeys bits) it kept yesterday
+    std::uint32_t goat_adults = 0;  ///< its goat adults yesterday
   };
+
+  std::array<std::array<std::uint32_t, 12>, kKinds> yard_takers_ = {};  ///< #1505, by kind, month
+  std::array<std::uint32_t, 4> goat_seasons_by_heads_ = {};             ///< #1505, 0..3+ adults
+  std::array<std::uint32_t, 4> goat_seasons_below_by_heads_ = {};
+  double yard_own_kcal_ = 0.0;  ///< milk check: the yards' own food (yard produce + garden)
+  double yard_milk_kcal_ = 0.0;
+  double eaten_kcal_ = 0.0;                                 ///< everything the families ate
+  std::vector<std::pair<std::uint32_t, float>> kcal_rows_;  ///< every resource with kcal
 
   std::vector<FamilyVariety> last_variety_;
   std::array<std::uint64_t, 3> family_days_ = {};
