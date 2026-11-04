@@ -1922,17 +1922,32 @@ int main(int argc, char** argv) {
   // accepted value less its SE the cell passes and says so; below that it is
   // red as before and names the line it broke; back inside the band it asks
   // for the line to be dropped. The band's constants above are not touched.
+  // ONE LINE A SEED OFFSET (#1503's re-take on 64 villages; boss, core-boss-
+  // 1503-midday-site [6], econ's riders [7]): a 16-village run's mean scatters
+  // by its own sample (sd 0.71 a village, ~0.18 the run) more than the 0.06
+  // step margin, so each offset keeps its own line - a drift guard inside ONE
+  // world. A line whose value is «-» names an offset MEASURED and NOT LINED:
+  // it prints and gates nothing. No line at all is a red gate, as before.
+  const std::string line_cell = "E1 mean door, offset " + std::to_string(g_seed_offset);
   const std::optional<run::AcceptedRed> accepted =
-      run::FindAcceptedRed("population_curve", "E1 mean door");
+      run::FindAcceptedRed("population_curve", line_cell);
+  const bool not_lined = accepted.has_value() && accepted->value == 0.0 && accepted->se == 0.0;
+  if (not_lined) {
+    std::cout << "population_curve: E1 NOT LINED (" << line_cell << "): mean door "
+              << two_places(door_mean) << " - measured, no line, no gate (" << accepted->date
+              << ", tree " << accepted->tree << ")\n";
+  }
   const bool inside_band =
       !doors.empty() && door_mean >= kEraMeanFloor && door_mean <= kEraMeanCeiling;
-  const bool within_accepted = !doors.empty() && accepted.has_value() &&
+  const bool within_accepted = !doors.empty() && accepted.has_value() && !not_lined &&
                                door_mean < kEraMeanFloor &&
                                door_mean >= accepted->value - accepted->se;
   std::string mean_claim = "E1: the mean door is " + two_places(kEraMeanFloor) + " to " +
                            two_places(kEraMeanCeiling) + " (earlier stops for the human) — now " +
                            two_places(door_mean);
-  if (accepted.has_value() && inside_band) {
+  if (not_lined) {
+    // measured, not gated: the claim is not asked
+  } else if (accepted.has_value() && inside_band) {
     std::cout << "population_curve: E1 accepted red no longer needed — drop the line ("
               << run::kAcceptedRedsPath << ", " << accepted->date << ", " << accepted->tree
               << ")\n";
@@ -1944,7 +1959,7 @@ int main(int argc, char** argv) {
     mean_claim += " — below the accepted line too (" + two_places(accepted->value) + " less SE " +
                   two_places(accepted->se) + ", " + accepted->date + ", " + accepted->tree + ")";
   }
-  failures += run::Expect(inside_band || within_accepted, mean_claim.c_str());
+  failures += run::Expect(not_lined || inside_band || within_accepted, mean_claim.c_str());
   const std::string spread_claim =
       "E2: at least " + std::to_string(kEraSpreadAtLeast) + " of " + std::to_string(kSeeds.size()) +
       " doors inside " + two_places(kEraSpreadFloor) + " to " + two_places(kEraSpreadCeiling) +
