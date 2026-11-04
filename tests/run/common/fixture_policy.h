@@ -113,14 +113,21 @@ class FixturePolicy {
     PauseSitesForThePen(simulation);
     CountWaitStreaks(simulation.CompletedState());
     NoteStoreDays(simulation.CompletedState());
-    if (cooldown_ > 0) {
+    // THE COOLDOWN DOES NOT STAND BEFORE THE FIRST PEN'S WARM (boss, the #1503
+    // thread [10]): it returned before the warm's recipe was looked at, so in
+    // o300's seed 2237 the harvest's straw came in on the first day of the last
+    // clay month, the cooldown of an order the day before covered that whole
+    // month with in_hand stale at 0, the window closed unordered, and 7 cows
+    // froze in y2. The cooldown now spaces the queue's other orders only: the
+    // recipe is read every day and the warm is asked through it.
+    const bool cooling = cooldown_ > 0;
+    if (cooling) {
       --cooldown_;
-      return;
     }
     const core::WorldState& world = simulation.CompletedState();
     // A MARK THAT LEFT NO ROW WAS REFUSED — crowding, most often. Counted per
     // type so a run can say whether its buildings wait on materials or on room.
-    if (marked_type_.value != core::kInvalidDefIdValue) {
+    if (!cooling && marked_type_.value != core::kInvalidDefIdValue) {
       if (Rows(world, marked_type_) <= rows_before_mark_) {
         ++(marked_type_.value == cattle_.value ? cattle_refused_ : other_refused_);
         // The elder's point refused once is refused for good: the next pen
@@ -148,7 +155,7 @@ class FixturePolicy {
                                     food_store_,
                                     static_cast<std::uint8_t>(world.units.rows[store].level + 1U));
     core::OrderRow order;
-    if (!NextOrder(world, order)) {
+    if (cooling ? !WarmFirst(world, order) : !NextOrder(world, order)) {
       return;
     }
     if (order.kind == core::OrderKind::kBuildUnit) {
