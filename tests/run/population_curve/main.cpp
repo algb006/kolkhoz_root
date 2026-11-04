@@ -154,6 +154,13 @@ struct Trajectory {
   /// the ensemble line in main() for why the number is printed and not
   /// banded.
   std::uint32_t first_disease_day = 0;
+  /// The first day a bathhouse of THIS village stood at level 1 or above, if
+  /// one ever did: hygiene's only riser (hygiene.cpp), so a village whose
+  /// bathhouse stands before anyone crosses is kept clean by design, not by a
+  /// dead mechanism (#1503 thread [13]; o300's seed 2236).
+  std::optional<std::uint32_t> first_bathhouse_day;
+  /// The bathhouse's unit_types row, kNoTableRow when the tables have none.
+  std::uint32_t bathhouse_type = core::kNoTableRow;
   /// Days hot enough for the heat surcharge before that crossing. Zero means
   /// the surcharge and the dirty-work multiplier have never once met in the
   /// same day, which is a different statement from "the heat is small".
@@ -527,6 +534,15 @@ void LiveOneDay(core::ISimulation& simulation,
         }
       }
     }
+    if (!out.first_bathhouse_day.has_value() && out.bathhouse_type != core::kNoTableRow) {
+      for (const core::UnitRow& unit : state.units.rows) {
+        if (static_cast<std::uint32_t>(unit.type.value) == out.bathhouse_type && unit.level >= 1 &&
+            unit.dead == 0) {
+          out.first_bathhouse_day = static_cast<std::uint32_t>(state.calendar.day);
+          break;
+        }
+      }
+    }
     if (out.first_disease_day != 0) {
       continue;
     }
@@ -781,6 +797,7 @@ bool Walk(std::uint64_t seed,
   if (const core::ITable* const types = world.tables->FindTable("unit_types")) {
     const std::uint32_t row = types->FindRowByKey("cattle_yard");
     cattle_yard_type = row == core::kNoTableRow ? 0xFFFFU : static_cast<std::uint16_t>(row);
+    out.bathhouse_type = types->FindRowByKey("bathhouse");
   }
   std::array<core::Grams, 13> straw_book_before = {};
   core::Grams straw_stock_before = -1;
@@ -2281,9 +2298,20 @@ int main(int argc, char** argv) {
   // itself and says nothing about any day, deliberately; this is the other
   // half of that division.
   std::vector<std::uint32_t> first_days;
+  // KEPT CLEAN BY A BATHHOUSE IN TIME, OR NEITHER (#1503 thread [13]; o300's
+  // seed 2236, whose bathhouse stood about y2 day 6 with the lowest hygiene
+  // at 29.4 against 25): the bathhouse is now built by the fixture, so a
+  // village that never crosses is the design's own case when its bathhouse
+  // stood before any crossing, and a dead mechanism only when it had none.
+  std::vector<std::pair<std::uint64_t, std::uint32_t>> kept_clean;  // seed, day
+  std::vector<std::uint64_t> without_either;
   for (const Trajectory& walk : walks) {
     if (walk.first_disease_day != 0) {
       first_days.push_back(walk.first_disease_day);
+    } else if (walk.first_bathhouse_day.has_value()) {
+      kept_clean.emplace_back(walk.seed, *walk.first_bathhouse_day);
+    } else {
+      without_either.push_back(walk.seed);
     }
   }
   // THE SIZE OF THE SET BESIDE THE ANSWER. "None of the nine ever crossed"
@@ -2291,8 +2319,10 @@ int main(int argc, char** argv) {
   // count a minimum over an empty sample prints as silence — and, worse,
   // passes the year assertion below for having nothing to judge. So the
   // count is asserted FIRST, and it is a real claim rather than a
-  // formality: no fixture builds a bathhouse, hygiene has no other riser,
-  // so every village must reach the threshold inside thirty-three years.
+  // formality: hygiene has no riser but the bathhouse, so every village
+  // without one standing in time must reach the threshold inside
+  // thirty-three years. (Written when no fixture built a bathhouse; the
+  // fixture builds it now, hence the kept-clean count beside it.)
   std::cout << "population_curve: first filth disease — " << first_days.size() << " of "
             << kSeeds.size() << " villages crossed the threshold";
   if (!first_days.empty()) {
@@ -2301,6 +2331,15 @@ int main(int argc, char** argv) {
     std::cout << ", EARLIEST day " << earliest << " (year "
               << (earliest + core::kDaysPerYear - 1) / core::kDaysPerYear << "), latest day "
               << latest;
+  }
+  std::cout << "; " << kept_clean.size()
+            << " kept clean by a bathhouse standing before any crossing";
+  for (const auto& [kept_seed, kept_day] : kept_clean) {
+    std::cout << " (seed " << kept_seed << ", day " << kept_day << ")";
+  }
+  std::cout << "; " << without_either.size() << " without either";
+  for (const std::uint64_t lost_seed : without_either) {
+    std::cout << " (seed " << lost_seed << ")";
   }
   std::cout << '\n';
 
@@ -2859,8 +2898,8 @@ int main(int argc, char** argv) {
                     : static_cast<float>(sum.days_to_finish) / static_cast<float>(sum.finished))
             << '\n';
 
-  failures += run::Expect(first_days.size() == kSeeds.size(),
-                          "every one of the nine villages reached the filth threshold at all");
+  failures += run::Expect(without_either.empty() && !first_days.empty(),
+                          "every village without a bathhouse in time reached the filth threshold");
   failures += run::Expect(
       !first_days.empty() && *std::ranges::min_element(first_days) > core::kDaysPerYear,
       "and not one of them did so in the FIRST year — the design wants the bathhouse buildable "
