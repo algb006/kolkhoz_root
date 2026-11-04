@@ -43,6 +43,7 @@
 #include "../common/fed_tally.h"
 #include "../common/funeral_tally.h"
 #include "../common/hay_day_off_policy.h"
+#include "../common/herd_tally.h"
 #include "../common/passed_over_tally.h"
 #include "../common/rest_tally.h"
 #include "../common/run_harness.h"
@@ -399,7 +400,8 @@ void LiveOneDay(core::ISimulation& simulation,
                 run::RestTally* rest_tally = nullptr,
                 run::FedTally* fed_tally = nullptr,
                 run::SubstituteTally* substitutes = nullptr,
-                run::StradaTally* strada = nullptr) {
+                run::StradaTally* strada = nullptr,
+                run::HerdTally* herds = nullptr) {
   bool hot_at_any_tick = false;
   const core::UnitId awaiting = upgrades.Awaiting();
   for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
@@ -409,6 +411,10 @@ void LiveOneDay(core::ISimulation& simulation,
     if (chairman != nullptr) {
       chairman->WatchStep(simulation.CompletedState());
       chairman->milkmaids.CountStep(simulation.CompletedState());  // #1417
+    }
+    // The step's births by kind (#1374's pair, herd_tally.h).
+    if (herds != nullptr) {
+      herds->CountStep(simulation.CompletedState());
     }
     if (substitutes != nullptr) {
       substitutes->CountStep(simulation.CompletedState());  // #1434
@@ -631,7 +637,6 @@ void KeepHorsesShare(const run::Simulation& world,
     take(herd.adult_count, adults_to_take);
     take(herd.juvenile_count, juveniles_to_take);
     take(herd.newborn_count, newborns_to_take);
-    herd.adult_male_count = std::min(herd.adult_male_count, herd.adult_count);
     // The mean age of the adults is kept: the total follows the head.
     herd.adult_age_game_years_total = adults_before == 0
                                           ? 0.0F
@@ -761,6 +766,8 @@ bool Walk(std::uint64_t seed,
   run::StradaTally strada(*world.tables);
   // The funerals, y1-y6 (#1084's pair).
   run::FuneralTally funerals(*world.tables);
+  // The herds, y1-y6 (#1374's pair: herds without sex).
+  run::HerdTally herds(*world.tables);
   std::array<std::uint32_t, core::kRestSourceCount> r1373_sources = {};
   std::uint32_t r1373_walk_offs = 0;
   // What the farm's sites waited on, y1-y6 (#1285 G1's probe; boss [3]).
@@ -875,13 +882,16 @@ bool Walk(std::uint64_t seed,
                  warm_off ? nullptr : &rest_tally,
                  warm_off ? nullptr : &fed_tally,
                  warm_off ? nullptr : &substitutes,
-                 warm_off ? nullptr : &strada);
+                 warm_off ? nullptr : &strada,
+                 &herds);
       builder.RunDay(*simulation);
       timber.CountDay(simulation->CompletedState());
       avatar_book.CountDay(simulation->CompletedState());
       builder.milkmaids.CountDayEnd(simulation->CompletedState());
       substitutes.CountDayEnd(simulation->CompletedState());
       funerals.CountDayEnd(simulation->CompletedState());
+      herds.CountDayEnd(simulation->CompletedState());
+      herds.CountNearShort(*simulation);
       if (!warm_off) {
         strada.CountDayEnd(simulation->CompletedState());
       }
@@ -1216,6 +1226,8 @@ bool Walk(std::uint64_t seed,
     substitutes.CloseYear(state.ledger.closed, year);
     strada.CloseYear(state.ledger.closed, year);
     funerals.CloseYear(state.ledger.closed, year);
+    herds.CloseYear(state.ledger.closed, year);
+    herds.CountTurn(state, year);
     if (year >= 4 && year <= run::SiteWaitTally::kLastYear) {
       for (const std::uint32_t r : g1285_roofed) {
         g1285_snow_y4y6 +=
@@ -1404,6 +1416,7 @@ bool Walk(std::uint64_t seed,
       strada.PrintHarvests(std::cout, seed);
       strada.PrintCoverage(std::cout, seed);
       funerals.Print(std::cout, seed);
+      herds.Print(std::cout, seed);
       // The warm works unfinished on a cold night, and the crew's builders
       // (warm_crew.h; boss, core-boss-1084-funeral-body [7]).
       std::cout << "population_curve: WARMLATE seed " << seed << " late_warm_works "

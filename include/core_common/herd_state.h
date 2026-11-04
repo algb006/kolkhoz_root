@@ -79,6 +79,16 @@ struct HerdRow {
   /// family's pantry and its milk and eggs land there.
   std::uint8_t household_owned = 0;
 
+  /// 1: a household herd that moved into its heir's yard when its family
+  /// ended (demography.cpp, DropFamilyIfEmpty) and was not merged into a
+  /// flock of its kind there. The next herd day reads it and clears it
+  /// (herd_system.cpp, WalkOutInherited): if the yard already keeps another
+  /// `stock` kind, THE HEIR KEEPS HIS OWN KIND and every head of this one
+  /// goes to a stockless neighbour or to meat, as the young over the cap do
+  /// (#1374; boss, the thread core-boss-1374 [8]; econ's Y1: no yard holds
+  /// two kinds of stock). Save 206.
+  std::uint8_t inherited = 0;
+
   std::uint16_t newborn_count = 0;
 
   std::uint16_t juvenile_count = 0;
@@ -86,10 +96,10 @@ struct HerdRow {
   /// The only count that produces anything (mobs canon).
   std::uint16_t adult_count = 0;
 
-  /// Males among adult_count, for the breeding rule (boss summary 2026-08-29
-  /// §2.2: offspring needs an adult male present). Always 0 for sexless
-  /// kinds (poultry); genesis and transfers keep it <= adult_count.
-  std::uint16_t adult_male_count = 0;
+  // (adult_male_count, the sires among the adults, left with #1374, save 206
+  // - livestock.md «Пола у скота нет»: a herd is heads, births come from
+  // every adult under a roof, LivestockDef::births_per_adult_head; the young
+  // cull carries its fraction in cull_progress below.)
 
   /// THE FED DAYS IN A ROW (save 142, 0.37.192; boss, the logistics thread
   /// [113]-[117]): days the herd was fed in full, counted to the hunger that
@@ -119,10 +129,10 @@ struct HerdRow {
   /// Accumulated fractional births (adult females x kind birth rate).
   float birth_progress = 0.0F;
 
-  /// Accumulated fractional heads culled as surplus males. Half of what
-  /// matures is male and the herd keeps only its share of sires, so the cull
-  /// is a fractional flow like the rest and needs its own carry — without
-  /// it, a herd that matures one head a day would never cull anyone.
+  /// Accumulated fractional heads of the young cull (#1374: the kind's
+  /// young_cull_share of what matures; until then the surplus males). A
+  /// fractional flow like the rest needs its own carry — without it, a herd
+  /// that matures one head a day would never cull anyone.
   float cull_progress = 0.0F;
 
   /// Accumulated fractional heads owed to hunger. Death is a flow like the

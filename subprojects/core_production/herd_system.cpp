@@ -945,13 +945,13 @@ float YieldFactor(const ProductionConfig& config, const HerdRow& herd) {
   return factor;
 }
 
-/// One herd's milk of a day at `factor`: the females only, a litre a
-/// kilogram (quantities.h). ONE HOME for what the herd gives and what the
-/// plan asks of it (KolkhozMilkDayGrams).
+/// One herd's milk of a day at `factor`: every adult head at the per-head
+/// litres (#1374; milk_l_per_adult_head already holds the old female share),
+/// a litre a kilogram (quantities.h). ONE HOME for what the herd gives and
+/// what the plan asks of it (KolkhozMilkDayGrams).
 Grams HerdMilkDayGrams(const LivestockDef& kind, const HerdRow& herd, float factor) {
-  const auto females = static_cast<float>(kind.sexed != 0 ? herd.adult_count - herd.adult_male_count
-                                                          : herd.adult_count);
-  return KilogramsToGrams(kind.milk_l_per_year * females * factor /
+  const auto adults = static_cast<float>(herd.adult_count);
+  return KilogramsToGrams(kind.milk_l_per_adult_head * adults * factor /
                           static_cast<float>(kDaysPerYear));
 }
 
@@ -1093,7 +1093,6 @@ bool GiveToNeighbour(GiftQueues& queues,
     gift.household_owned = 1;
     if (grown) {
       gift.adult_count = 1;
-      gift.adult_male_count = TargetMales(kind, 1);
       gift.adult_age_game_years_total = age_years;
       WidenAdultAgeBand(gift, 0, 1, age_years, age_years);
     } else {
@@ -1256,7 +1255,6 @@ bool SettleBarrackStock(const ProductionConfig& config,
   event.herd = herd_id;
   event.amount = static_cast<std::int64_t>(heads);
   herd.adult_count = 0;
-  herd.adult_male_count = 0;
   herd.juvenile_count = 0;
   herd.newborn_count = 0;
   herd.adult_age_game_years_total = 0.0F;
@@ -1328,7 +1326,6 @@ void PlaceSurplusHead(const ProductionConfig& config,
       CarryHayShare(config, place, herd, pending.back().household, world);
     }
   }
-  herd.adult_male_count = TargetMales(kind, herd.adult_count);
   // SAID, AND BOOKED BY KIND (boss, boss-core-epoch1-5 seq 43 and 45; 0.35.3):
   // the heads the knife took here wrote herd_culled alone and said nothing.
   if (slaughtered > 0) {
@@ -1336,6 +1333,91 @@ void PlaceSurplusHead(const ProductionConfig& config,
     SimEvent& event = EmitEvent(world, EventKind::kHerdSurplusSlaughtered);
     event.herd = herd_id;
     event.amount = static_cast<std::int64_t>(slaughtered);
+  }
+}
+
+/// Whether a household herd's yard keeps a `stock` kind other than the
+/// herd's own, with heads, in a herd not itself waiting as inherited.
+bool YardKeepsAnotherStock(const ProductionConfig& config,
+                           const WorldState& world,
+                           std::uint32_t row) {
+  const HerdRow& herd = world.herds.rows[row];
+  for (std::uint32_t other = 0; other < world.herds.rows.size(); ++other) {
+    const HerdRow& theirs = world.herds.rows[other];
+    if (other == row || theirs.household_owned == 0 || theirs.inherited != 0 ||
+        theirs.household.value != herd.household.value || theirs.kind.value == herd.kind.value ||
+        theirs.kind.value >= config.livestock.size() || TotalHeads(theirs) == 0) {
+      continue;
+    }
+    if (config.livestock[theirs.kind.value].household_group == 1U) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// THE INHERITED SECOND KIND GOES (#1374; boss, the thread core-boss-1374
+/// [8]; econ's Y1: no yard holds two kinds of stock). A family that ended
+/// left its herds to its heir (demography.cpp, DropFamilyIfEmpty), which
+/// marks a herd it could not merge into a flock of its kind. Here, before
+/// the walk: a marked `stock` herd in a yard that keeps another `stock` kind
+/// sends every head out - THE HEIR KEEPS HIS OWN KIND - each to a stockless
+/// neighbour (GiveToNeighbour, a grown head as grown, a young one as young)
+/// or, with no such yard, to meat, booked as the cap's surplus is. Two
+/// inherited kinds in a stockless yard: the first in row order stays. The
+/// mark is cleared on every marked herd, kept or not. The herd's row stays,
+/// empty, as an empty yard herd does.
+void WalkOutInherited(const ProductionConfig& config,
+                      GiftQueues& queues,
+                      std::vector<HerdRow>& pending,
+                      WorldState& world) {
+  for (std::uint32_t row = 0; row < world.herds.rows.size(); ++row) {
+    if (world.herds.rows[row].inherited == 0) {
+      continue;
+    }
+    world.herds.rows[row].inherited = 0;
+    HerdRow& herd = world.herds.rows[row];
+    if (herd.household_owned == 0 || herd.kind.value >= config.livestock.size() ||
+        TotalHeads(herd) == 0) {
+      continue;
+    }
+    const LivestockDef& kind = config.livestock[herd.kind.value];
+    if (kind.household_group != 1U || !YardKeepsAnotherStock(config, world, row)) {
+      continue;
+    }
+    const HerdPlace place = PlaceOf(world, config, herd);
+    const HerdId herd_id = world.herds.row_ids[row];
+    std::uint32_t slaughtered = 0;
+    const auto send = [&](bool grown, float age) {
+      if (GiveToNeighbour(queues, pending, herd, kind, grown, age)) {
+        CarryHayShare(config, place, herd, pending.back().household, world);
+        return;
+      }
+      world.ledger.current.herd_culled += 1;
+      ++slaughtered;
+      Slaughter(config, kind, place, 1, world);
+    };
+    while (herd.adult_count > 0) {
+      const float age = CutOldestFromAdultAgeBand(herd, herd.adult_count, 1);
+      herd.adult_count = static_cast<std::uint16_t>(herd.adult_count - 1);
+      herd.adult_age_game_years_total = std::max(0.0F, herd.adult_age_game_years_total - age);
+      send(true, age);
+    }
+    while (herd.juvenile_count > 0) {
+      herd.juvenile_count = static_cast<std::uint16_t>(herd.juvenile_count - 1);
+      send(false, 0.0F);
+    }
+    while (herd.newborn_count > 0) {
+      herd.newborn_count = static_cast<std::uint16_t>(herd.newborn_count - 1);
+      send(false, 0.0F);
+    }
+    herd.adult_age_game_years_total = 0.0F;
+    if (slaughtered > 0) {
+      AddLedgerHeads(world.ledger.current.herd_surplus_slaughtered, herd.kind, slaughtered);
+      SimEvent& event = EmitEvent(world, EventKind::kHerdSurplusSlaughtered);
+      event.herd = herd_id;
+      event.amount = static_cast<std::int64_t>(slaughtered);
+    }
   }
 }
 
@@ -1573,6 +1655,7 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
   const std::vector<std::uint8_t> peoples_foods = PeoplesFoods(config, current);
   std::vector<HerdRow> gifts;  // appended after the walk; see GiveToNeighbour
   GiftQueues queues = CollectGiftQueues(current, config);
+  WalkOutInherited(config, queues, gifts, current);  // #1374: no yard keeps two kinds of stock
   // THE ORDER OF THE WALK IS THE ORDER OF THE FEEDING: the stores are shared
   // (feed_allowance, the stores' own stock), and a herd walked earlier eats
   // first. The rows' order it was, and nobody chose it — «коровы первыми» was
@@ -1596,19 +1679,7 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
       }
       head_days[herd.kind.value] += herd.adult_count;
     }
-    // THE SIRE COUNT IS A THING THE HERD REMEMBERS, and this line used to say
-    // the opposite: it re-derived the count from the herd's size every single
-    // day. That was true while heads could only be born. Since the district
-    // sells stock it is false and expensive — a head bought as a mare became
-    // a stallion by the next morning, and the chairman's choice of sex, which
-    // the design promises him, had no consequence whatever (boss, parcel 20).
-    //
-    // What is left here is the INVARIANT and nothing else: sires never stand
-    // above adults, and a sexless kind has none. Every path that changes the
-    // adults — maturation, the cull, age, hunger, the autumn slaughter —
-    // carries the sires with it at its own site, where what happened is known.
-    herd.adult_male_count =
-        kind.sexed == 0 ? 0U : std::min(herd.adult_male_count, herd.adult_count);
+    // (The sires' invariant stood here until #1374: a herd is heads.)
     // The barrack's one rule, before the herd's place is asked: a herd that
     // goes to the kolkhoz here eats the kolkhoz's fodder from this day.
     SettleBarrackStock(config, kind, herd, current.herds.row_ids[row], current);
@@ -1750,8 +1821,31 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
   // The lamp reads its own count (MR.2a; boss, [113]), the ledger the old.
   WatchTheTeam(
       config, work, horse_backed_days, lamp_harnessed_days, shares.heavy_in_traces, current);
+  // ONE ROW A KIND A YARD (#1374's p78, Y2PLACE: seed 1945's family 1 held
+  // two pig rows, 2 + 1 adults against the yard's cap of 2, the cap being a
+  // row's): a yard whose row of the kind stood empty was «stockless» and its
+  // gift came as a new row beside the empty one, which an inheritance then
+  // refilled. A gift lands in the yard's existing row of its kind, empty or
+  // not, and only a yard with none gets a new row.
   for (const HerdRow& gift : gifts) {
-    AppendRow(current.herds, gift);
+    std::uint32_t into = kNoRow;
+    for (std::uint32_t row = 0; row < current.herds.rows.size() && into == kNoRow; ++row) {
+      const HerdRow& theirs = current.herds.rows[row];
+      if (theirs.household_owned != 0 && theirs.household.value == gift.household.value &&
+          theirs.kind.value == gift.kind.value) {
+        into = row;
+      }
+    }
+    if (into == kNoRow) {
+      AppendRow(current.herds, gift);
+      continue;
+    }
+    HerdRow& flock = current.herds.rows[into];
+    MergeAdultAgeBand(flock, flock.adult_count, gift);
+    flock.adult_count = static_cast<std::uint16_t>(flock.adult_count + gift.adult_count);
+    flock.juvenile_count = static_cast<std::uint16_t>(flock.juvenile_count + gift.juvenile_count);
+    flock.newborn_count = static_cast<std::uint16_t>(flock.newborn_count + gift.newborn_count);
+    flock.adult_age_game_years_total += gift.adult_age_game_years_total;
   }
 }
 

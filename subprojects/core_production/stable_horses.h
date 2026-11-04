@@ -41,8 +41,8 @@ namespace core {
 /// @pre Called once per day boundary, from the sequential decisions slot,
 ///      BEFORE billeting — a horse that arrives today needs a place under
 ///      the roof today, and billeting is what counts the places.
-/// @post The sire count of the merged herd is NOT set here: it is a herd
-///       invariant re-derived by the walk that follows in RunHerdDay.
+/// @post The merged herd is heads alone: a herd keeps no sire count since
+///       #1374 (livestock.md «Пола у скота нет»).
 void StableHorses(const ProductionConfig& config, WorldState& current);
 
 }  // namespace core

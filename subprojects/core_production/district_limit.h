@@ -147,10 +147,9 @@ void ArriveLimitDeliveries(const ProductionConfig& config, WorldState& current);
 /// first morning (herd_system.cpp, BilletHerds), and it costs yield rather
 /// than the animal.
 ///
-/// WHAT IT ADDS TO. kAdultStart goes to `adult_count`, to
-/// `adult_male_count` when `male`, and adds the kind's adult-entry age to
-/// `adult_age_game_years_total`. kYoung goes to `newborn_count` and climbs
-/// the cohort ladder from there.
+/// WHAT IT ADDS TO. kAdultStart goes to `adult_count` and adds the kind's
+/// adult-entry age to `adult_age_game_years_total` (#1374: no sex). kYoung goes to `newborn_count`
+/// and climbs the cohort ladder from there.
 ///
 /// @pre Runs in the production sub-step of the sequential decisions slot,
 ///      after ArriveLimitDeliveries and before the herd day, so a head that

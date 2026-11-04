@@ -390,6 +390,12 @@ static_assert(AggregateArity<SettlementRow>() == 7,
 // predicted 184 -> 192 and 38 fields before the build; on the wire +4 a herd.
 // The size MISSED: 184 unmoved - the float took a padding word the milk leg's
 // floats had left before the 8-aligned optional wait (the fields held).
+// Save 206 (#1374): adult_male_count (u16) leaves - predicted 184 unmoved (a
+// u16 inside the run of u16 counts, the later 8-aligned members keep their
+// place) and 37 fields before the build; on the wire -2 a herd. Then, in the
+// same save 206 (not yet released): `inherited` (u8) after household_owned -
+// predicted 184 unmoved (the padding byte before newborn_count's u16) and 38
+// fields, +1 a herd on the wire, before the build.
 static_assert(sizeof(HerdRow) == 184, "HerdRow changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<HerdRow>() == 38,
               "HerdRow gained or lost a field — update the codec and VERSION_SAVE");
@@ -419,7 +425,9 @@ static_assert(sizeof(OrderRow) == 144, "OrderRow changed — update the codec an
 // road — 136 still and 33 fields, predicted before the build.
 // Save 201 (#1421): pay_in_grain, a byte beside `male` - predicted 144 still
 // (the padding after it) and 36 fields before the build.
-static_assert(AggregateArity<OrderRow>() == 36,
+// Save 206 (#1374): `male` leaves - predicted 144 unmoved (a byte out of the
+// padding) and 35 fields before the build; on the wire -1 an order.
+static_assert(AggregateArity<OrderRow>() == 35,
               "OrderRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 93: travel_hours, a float at the end — 36 and ten fields, predicted
 // before the field was added.
@@ -461,7 +469,9 @@ static_assert(sizeof(LivestockArrivalRow) == 16,
 // a third such field would change the wire and leave sizeof exactly where it
 // is. That is the case the size alone cannot see, and the order row proved it
 // twice over on the very day this row was written.
-static_assert(AggregateArity<LivestockArrivalRow>() == 6,
+// Save 206 (#1374): `male` leaves - predicted 16 unmoved and 5 fields before
+// the build; on the wire -1 a row.
+static_assert(AggregateArity<LivestockArrivalRow>() == 5,
               "LivestockArrivalRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 163: 7 -> 8 (outbound) - the arity was not named with the size's
 // prediction, a miss in the inventory, caught by this tripwire.
@@ -1633,11 +1643,12 @@ void WriteHerdRow(SaveSink& sink, const HerdRow& row) {
   WriteEntityId(out, row.unit);
   WriteEntityId(out, row.household);
   out.WriteU8(row.household_owned);
+  out.WriteU8(row.inherited);  // save 206 (#1374)
 
   out.WriteU16(row.newborn_count);
   out.WriteU16(row.juvenile_count);
   out.WriteU16(row.adult_count);
-  out.WriteU16(row.adult_male_count);
+  // (adult_male_count left the row with #1374, save 206.)
   out.WriteU16(row.fed_days_in_a_row);  // save 142
 
   out.WriteFloat(row.newborn_progress);
@@ -1680,11 +1691,11 @@ HerdRow ReadHerdRow(LoadSource& source) {
   row.unit = ReadEntityId<UnitId>(in);
   row.household = ReadEntityId<FamilyId>(in);
   row.household_owned = in.ReadU8();
+  row.inherited = in.ReadU8();  // save 206 (#1374)
 
   row.newborn_count = in.ReadU16();
   row.juvenile_count = in.ReadU16();
   row.adult_count = in.ReadU16();
-  row.adult_male_count = in.ReadU16();
   row.fed_days_in_a_row = in.ReadU16();  // save 142
 
   row.newborn_progress = in.ReadFloat();
@@ -1781,10 +1792,8 @@ void WriteOrderRow(SaveSink& sink, const OrderRow& row) {
   // The extraction mark (kMarkExtraction, 2026-09-14); its mass is `amount`.
   WriteEntityId(out, row.extraction_site);
 
-  // The sex of a head bought on the limit (2026-09-16). A raw byte and not a
-  // dictionary id: it is a fact about the order, not a name of anything in
-  // the tables.
-  out.WriteU8(row.male);
+  // (The sex of a head bought on the limit left the order with #1374, save
+  // 206: «Пол не спрашивается».)
   out.WriteU8(row.pay_in_grain);  // save 201 (#1421, the dealer's grain payment)
 
   // The ration's switch (kSetRation, 2026-09-18, save 57): the family and
@@ -1839,7 +1848,6 @@ OrderRow ReadOrderRow(LoadSource& source) {
   row.species = TreeSpeciesId{source.ReadDefId(DefKind::kTreeSpecies)};
   row.lot = LimitLotId{source.ReadDefId(DefKind::kLimitLot)};
   row.extraction_site = ReadEntityId<ExtractionSiteId>(in);
-  row.male = in.ReadU8();
   row.pay_in_grain =
       static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "order grain payment"));  // save 201
   row.family = ReadEntityId<FamilyId>(in);
@@ -2010,7 +2018,6 @@ void WriteLivestockArrivalRow(SaveSink& sink, const LivestockArrivalRow& row) {
   out.WriteU16(row.head_count);
   out.WriteU32(row.arrive_day);
   out.WriteU8(static_cast<std::uint8_t>(row.stage));
-  out.WriteU8(row.male);
 }
 
 LivestockArrivalRow ReadLivestockArrivalRow(LoadSource& source) {
@@ -2022,7 +2029,6 @@ LivestockArrivalRow ReadLivestockArrivalRow(LoadSource& source) {
   row.arrive_day = in.ReadU32();
   row.stage = static_cast<LivestockArrivalStage>(
       source.ReadEnumValue(0, kMaxLivestockArrivalStage, "livestock arrival stage"));
-  row.male = in.ReadU8();
   return row;
 }
 

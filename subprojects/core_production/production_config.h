@@ -146,10 +146,6 @@ struct LivestockDef {
   /// hens 0.35, pigs and mink 0.
   float pasture_coverage_summer = 0.0F;
 
-  /// 0/1: the kind has sexes; breeding then needs an adult male present.
-  /// Poultry is sexless and has no newborn rung.
-  std::uint8_t sexed = 1;
-
   /// 0/1: the kind lives only at family yards (goats) or only at kolkhoz
   /// units (sheep). Both zero = either place.
   std::uint8_t household_only = 0;
@@ -220,32 +216,37 @@ struct LivestockDef {
 
   float life_game_years_max = 0.0F;
 
-  /// Litters per adult female per GAME year — once a year, in its season,
-  /// which is the canon of the yearly cycle.
-  float births_per_game_year = 0.0F;
+  // -- #1374, HERDS WITHOUT SEX (livestock.md «Пола у скота нет»; the human's
+  // «Да» of 1 November 2026; econ boss-econ-370-840-drafts [2]; boss,
+  // core-boss-1374-no-sex-contract [2]): a herd is heads. `sexed`,
+  // `males_share`, `males_work`, `births_per_game_year`, `litter_heads` and
+  // `milk_l_per_year` went; the yearly season stays the canon's cycle. ------
 
-  float litter_heads = 1.0F;  ///< Newborns per litter.
+  /// Newborns a GAME year per ADULT HEAD under a roof, in the season
+  /// (livestock.csv `births_per_adult_head`): the old per-female rate x the
+  /// litter x the old female share (1 - males_share; horse 1/2, every colt
+  /// kept) - cow 0.96, sheep 1.44, pig 7.2, horse 0.50, mink 3.0, goat 2.0. THE
+  /// FEMALE SHARE IS ALREADY IN IT: no path multiplies by a share again.
+  float births_per_adult_head = 0.0F;
 
-  /// Share of the adults kept as males; a sexed herd always keeps at least
-  /// one sire. Males beyond the share are slaughtered — a share, not a
-  /// count, because "one bull" stops being right as the herd grows.
-  float males_share = 0.0F;
+  /// The same for a YARD's own herd (`household_births_per_adult_head`):
+  /// blank - the kind's. Pig 4.0, so a yard's pair farrows one litter of 8 as
+  /// a yard's sow did.
+  float household_births_per_adult_head = 0.0F;
 
-  /// THE KIND's MALES ARE WORK STOCK (livestock.csv `males_work`; 0.37.209;
-  /// Livestock design, the harness row: «В упряжке пол не решает ничего.
-  /// Работают и кобылы, и жеребцы» — the horse). A young male of such a kind
-  /// JOINS THE HERD at maturing, counted a male, where every other sexed
-  /// kind keeps `males_share` of them and sends the rest to meat; and the
-  /// district's door takes such a herd's MALES FIRST while it keeps its sire
-  /// share, then the oldest (district_limit.h, OrderHandStock). `males_share`
-  /// stays what it says for breeding and for the door: the sires the herd
-  /// does not part with. Absent from the table — 0, every kind as before.
-  std::uint8_t males_work = 0;
+  /// The share of each season's maturing young sent to meat
+  /// (`young_cull_share`): cow, sheep, pig, goat, mink 0.5 («половина идёт на
+  /// мясо»); horse 0 («у лошадей забоя нет»); blank - nought. A fraction is
+  /// carried, not rounded away (HerdRow::cull_progress).
+  float young_cull_share = 0.0F;
+
+  /// Litres a game year per ADULT HEAD (`milk_l_per_adult_head`): cow 1488
+  /// (1550 x 0.96, the canon's milk flat), goat 600.
+  float milk_l_per_adult_head = 0.0F;
 
   // -- produce: per adult head per game year, or per head at slaughter -----
-  /// Milk is in LITRES in the table and roughly a kilogram a litre in the
-  /// store (quantities.h); parsing does not convert, the flow does.
-  float milk_l_per_year = 0.0F;
+  /// (Milk: milk_l_per_adult_head above - LITRES in the table and roughly a
+  /// kilogram a litre in the store, quantities.h; the flow converts.)
 
   float egg_kg_per_year = 0.0F;
 
@@ -1053,7 +1054,7 @@ struct FarmingConfig {
   float adult_age_years = 16.0F;
 
   /// The month the autumn pig slaughter falls in, 0-based. Everything but
-  /// the sows and the sire goes to meat then (livestock design §6).
+  /// the kept heads (SowsKept) goes to meat then (livestock design §6).
   std::uint8_t pig_slaughter_month = 9;  ///< October.
 
   /// Share of the adult pigs kept over the winter as sows. The design names
@@ -1067,6 +1068,13 @@ struct FarmingConfig {
   /// sows» and leaves the number to polish; the share alone kept one sow of
   /// six adults, which is not a few.
   float sow_keep_min = 3.0F;
+
+  /// THE PIG'S FORMER FEMALE SHARE, used only to convert the two knobs above
+  /// from sows into heads (#1374; econ, econ-boss-1374-sows-1427-close [1]):
+  /// the herd has no sex any more, but the autumn keeps the sows WITH their
+  /// boars, so the heads kept are the sows over this share, rounded up
+  /// (herd_life.cpp, PigsKeptHeads). (0, 1].
+  float sow_keep_female_share = 0.9F;
 
   /// The calving season, 0-based months inclusive. Births are once a game
   /// year in their own season (canon of the yearly cycle); livestock.csv

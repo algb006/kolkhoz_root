@@ -454,7 +454,10 @@ struct YearLedger {
   /// and 45; save 90): heads, dense by LivestockKindId — a ResourceAmounts
   /// only for its dense int64 shape, saved against the livestock dictionary.
   /// herd_culled above stays their sum.
-  ResourceAmounts herd_males_culled;         ///< Young males over the sire, at maturing.
+  /// The young culled at maturing, by kind (#1374: the kind's
+  /// young_cull_share of what matured; until then the young males over the
+  /// sire share - the same slot, widened).
+  ResourceAmounts herd_young_culled;
   ResourceAmounts herd_surplus_slaughtered;  ///< Over a yard's cap, no neighbour to take them.
   ResourceAmounts herd_autumn_slaughtered;   ///< The autumn pig slaughter.
   /// The frost's toll in the open pen, by kind (kHerdFroze; save 119). Not
@@ -957,7 +960,7 @@ struct YearLedger {
   /// THE KOLKHOZ HERDS' HAY BY KIND, grams, dense by LivestockKindId (save
   /// 108; boss-core-epoch1-queue [78], [84]): what each kind took of
   /// `feed`'s hay (ProductionConfig::hay_resource). A ResourceAmounts for its
-  /// dense int64 shape, as herd_males_culled. Summed over the kinds it is
+  /// dense int64 shape, as herd_young_culled. Summed over the kinds it is
   /// `feed` at the hay, to the gram; a family's goat eats out of the pantry
   /// (`yard_feed`) and is in neither.
   ResourceAmounts herd_hay_eaten;
@@ -1144,7 +1147,7 @@ inline void AddLedgerAmount(ResourceAmounts& column, ResourceId resource, Grams 
 }
 
 /// @brief Adds heads under `kind` to a by-kind column of the book, growing
-/// the dense vector as it goes (herd_males_culled and its siblings).
+/// the dense vector as it goes (herd_young_culled and its siblings).
 inline void AddLedgerHeads(ResourceAmounts& column, LivestockKindId kind, std::uint32_t heads) {
   if (kind.value == kInvalidDefIdValue || heads == 0) {
     return;

@@ -45,9 +45,7 @@ Farm MakeFarm() {
   farm.config.livestock.resize(1);
   core::LivestockDef& cow = farm.config.livestock[0];
   cow.home_unit = core::UnitTypeId{0};
-  cow.sexed = 0;  // no sire to keep in this world: the gate under test alone
-  cow.births_per_game_year = 48.0F;
-  cow.litter_heads = 1.0F;
+  cow.births_per_adult_head = 48.0F;  // #1374: every head calves, no sire asked
   farm.config.farming.birth_from_month = 0;
   farm.config.farming.birth_to_month = 0;
   const auto yard = [&farm] {
@@ -152,17 +150,17 @@ int CheckTheHerdPlan() {
     failures += Expect(BornInADay(at) == 0U && Herd(at, at.cows).birth_progress == carry_before,
                        "herd plan: at its N the herd calves nought and banks nothing");
   }
-  // THE BODY. The what-if's scaling keeps the cohorts' proportions and a sire.
+  // THE BODY. The what-if's scaling keeps the cohorts' proportions (#1374:
+  // rewritten - its «sires kept» half went with the sires).
   {
     core::HerdRow herd;
     herd.adult_count = 20;
-    herd.adult_male_count = 2;
     herd.juvenile_count = 10;
     herd.newborn_count = 10;
     core::ScaleHerdHeads(herd, 20);
-    failures += Expect(core::TotalHeads(herd) == 20U && herd.adult_count == 10U &&
-                           herd.juvenile_count == 5U && herd.adult_male_count == 1U,
-                       "herd plan: the what-if scales a herd's cohorts in proportion, sires kept");
+    failures += Expect(
+        core::TotalHeads(herd) == 20U && herd.adult_count == 10U && herd.juvenile_count == 5U,
+        "herd plan: the what-if scales a herd's cohorts in proportion");
   }
   // THE FORECAST READS THE PLAN (the lamp and the window cannot part): over
   // a calving band the projected heads grow with no plan, and stand at N

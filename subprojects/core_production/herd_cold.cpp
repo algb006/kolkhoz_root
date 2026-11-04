@@ -153,13 +153,12 @@ void RunFrostDeaths(const ProductionConfig& config,
   if (gone == 0) {
     return;
   }
-  // The age total and the sires follow the loss in proportion, as hunger's
-  // (herd_life.cpp, RunHungerDeaths): the frost takes no age and no sex.
+  // The age total follows the loss in proportion, as hunger's (herd_life.cpp,
+  // RunHungerDeaths): the frost takes no age.
   const float mean = herd.adult_age_game_years_total / static_cast<float>(before);
   herd.adult_age_game_years_total =
       herd.adult_count == 0 ? 0.0F
                             : herd.adult_age_game_years_total - (static_cast<float>(gone) * mean);
-  herd.adult_male_count = MalesAfterLoss(herd.adult_male_count, before, gone);
   AddLedgerHeads(book.herd_frozen, herd.kind, gone);
   SimEvent& event = EmitEvent(world, EventKind::kHerdFroze);
   event.herd = herd_id;

@@ -476,8 +476,7 @@ enum class OrderKind : std::uint8_t {
   /// THE HEAD LEAVES AT ONCE: no cart, no waiting, unlike the purchase whose
   /// head takes days to come. The asymmetry is the design's and deliberate.
   ///
-  /// Refusals of its own: kLastSire (the herd's last breeding male stays),
-  /// kNoSuchSubject (no such herd), kNotEligible (a yard's own animal is not
+  /// Refusals of its own: kNoSuchSubject (no such herd), kNotEligible (a yard's own animal is not
   /// the chairman's to sell, and a kind the district takes only by the batch
   /// has no per-head price).
   ///
@@ -1241,7 +1240,9 @@ enum class OrderRefusal : std::uint8_t {
 
   /// kHandStock: the herd's last breeding male, and handing him over would
   /// leave the village with a herd that cannot breed and no way back but
-  /// buying one. Seam key `last_sire`.
+  /// buying one. Seam key `last_sire`. DEPRECATED with #1374's body: never
+  /// produced after it (livestock.md: «сдать можно любую голову»); the value
+  /// stays.
   ///
   /// THE MIRROR OF A GUARD THE PURCHASE ALREADY HAS. The district asks which
   /// sex when it sells a head, and the design says why in as many words:
@@ -1251,9 +1252,9 @@ enum class OrderRefusal : std::uint8_t {
   /// another is not an exit, so the way back carries the same guard as the
   /// way in.
   ///
-  /// It refuses only the LAST one: a herd with two sires may hand one over,
-  /// and a kind the table gives no males at all (`males_share == 0`, the
-  /// goat) never meets this refusal, because it has no sire to be the last.
+  /// It refused only the LAST one: a herd with two sires could hand one over,
+  /// and a kind the table gave no males at all (the goat) never met this
+  /// refusal, because it had no sire to be the last.
   kLastSire,
 
   // THE SEVEN REFUSALS OF kAdvanceEra (2026-09-18), one per unmet condition,
@@ -1515,17 +1516,9 @@ struct OrderRow {
   /// kOrderLimitLot: the catalogue row to buy.
   LimitLotId lot;
 
-  /// kOrderLimitLot on a LIVESTOCK lot: 0/1, whether the head is to arrive
-  /// male. The chairman's choice and not a draw — livestock design: «При
-  /// заказе у райкома пол выбирается. Иначе хозяйство могло бы остаться без
-  /// производителя и без всякого способа это исправить — а безвыходных
-  /// ситуаций мы не делаем.»
-  ///
-  /// READ ONLY WHEN THE LOT ASKS FOR IT (LimitLotDef::sex_choice). A batch —
-  /// piglets, chicks — comes mixed, and nobody chooses the sex of ten chicks;
-  /// the field is taken as 0 there rather than refused, because a value the
-  /// order was never meant to carry is not the chairman making a mistake.
-  std::uint8_t male = 0;
+  // (`male`, the sex of a head bought on a livestock lot, left with #1374,
+  // save 206 - livestock.md «Лот района»: «Пол не спрашивается: голова есть
+  // голова»; the seam word `male` is DEPRECATED.)
 
   /// kOrderLimitLot of a GOODS lot: 0/1, pay it in grain instead of points
   /// (#1421; avatars.md «Пути первой сборки», the dealer: «сдать сверх плана

@@ -310,7 +310,7 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteU32(book.herd_culled);
   // The same removals by cause and by kind (save 90), against the livestock
   // dictionary: a reordered livestock.csv reads back by key.
-  sink.WriteAmounts(DefKind::kLivestock, book.herd_males_culled);
+  sink.WriteAmounts(DefKind::kLivestock, book.herd_young_culled);  // the slot of save 90's males
   sink.WriteAmounts(DefKind::kLivestock, book.herd_surplus_slaughtered);
   sink.WriteAmounts(DefKind::kLivestock, book.herd_autumn_slaughtered);
   sink.WriteAmounts(DefKind::kLivestock, book.herd_frozen);  // save 119
@@ -539,11 +539,11 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.herd_deaths_age = in.ReadU32();
   book.herd_deaths_hunger = in.ReadU32();
   book.herd_culled = in.ReadU32();
-  book.herd_males_culled = source.ReadAmounts(DefKind::kLivestock);         // save 90
+  book.herd_young_culled = source.ReadAmounts(DefKind::kLivestock);         // save 90's slot
   book.herd_surplus_slaughtered = source.ReadAmounts(DefKind::kLivestock);  // save 90
   book.herd_autumn_slaughtered = source.ReadAmounts(DefKind::kLivestock);   // save 90
   book.herd_frozen = source.ReadAmounts(DefKind::kLivestock);               // save 119
-  for (const ResourceAmounts* column : {&book.herd_males_culled,
+  for (const ResourceAmounts* column : {&book.herd_young_culled,
                                         &book.herd_surplus_slaughtered,
                                         &book.herd_autumn_slaughtered,
                                         &book.herd_frozen}) {

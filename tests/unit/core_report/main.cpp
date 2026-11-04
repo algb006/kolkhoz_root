@@ -132,7 +132,6 @@ int main() {
   core::HerdRow cows;
   cows.kind = core::LivestockKindId{0};
   cows.adult_count = 39;
-  cows.adult_male_count = 2;
   cows.billeted_count = 4;
   core::AppendRow(state.herds, cows);
   core::HerdRow yard_goats;
@@ -190,9 +189,10 @@ int main() {
                      "the stores and the pantries are summed over the village");
 
   // Herds: the kolkhoz rungs apart from what stands in the yards.
-  failures += Expect(cell("herd_cow_adult") == "39" && cell("herd_cow_male") == "2" &&
+  // #1374: the `_male` column is kept for its place and always 0.
+  failures += Expect(cell("herd_cow_adult") == "39" && cell("herd_cow_male") == "0" &&
                          cell("herd_cow_billeted") == "4",
-                     "a kolkhoz herd fills its rung columns");
+                     "a kolkhoz herd fills its rung columns, the deprecated male column 0");
   failures += Expect(cell("yard_goat_head") == "3" && cell("herd_goat_adult") == "0",
                      "a yard herd is counted apart, all rungs together");
 

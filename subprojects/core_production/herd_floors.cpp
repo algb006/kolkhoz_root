@@ -167,8 +167,8 @@ LivestockKindId MilkKind(const ProductionConfig& config) {
   LivestockKindId best;
   float most = 0.0F;
   for (std::size_t index = 0; index < config.livestock.size(); ++index) {
-    if (config.livestock[index].milk_l_per_year > most) {
-      most = config.livestock[index].milk_l_per_year;
+    if (config.livestock[index].milk_l_per_adult_head > most) {
+      most = config.livestock[index].milk_l_per_adult_head;
       best = DefIdFromIndex<LivestockKindIdTag>(index);
     }
   }

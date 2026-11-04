@@ -537,7 +537,6 @@ core::WorldState MakeWorld() {
   herd.kind = core::LivestockKindId{0};
   herd.unit = core::UnitId{1};
   herd.adult_count = 39;
-  herd.adult_male_count = 2;
   herd.billeted_count = 4;
   herd.adult_age_game_years_total = 137.5F;
   herd.adult_age_min_game_years = 1.25F;  // save 91: the band, away from its zero defaults
@@ -625,8 +624,7 @@ core::WorldState MakeWorld() {
   // the writer's side changes the recorded hash, the reader's side changes
   // nothing at all. This is the same blind spot the world block had until
   // this morning, one field further down, and one non-zero value is the whole
-  // cure.
-  refused.male = 1;
+  // cure. (Its `male`, save 48's byte, left with #1374.)
   // The ration's switch (save 57): a family and a 1, for the same reason.
   refused.family = core::FamilyId{2};
   refused.enable = 1;
@@ -670,7 +668,6 @@ core::WorldState MakeWorld() {
   bought.head_count = 3;
   bought.arrive_day = 133;
   bought.stage = core::LivestockArrivalStage::kYoung;
-  bought.male = 1;
   core::AppendRow(world.livestock_arrivals, bought);
 
   // A specialist on the road (save format 34): the post through the
@@ -2240,8 +2237,11 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // before the build and held; the hash read off it.
     // Save 191 (#1289): +2 - the herd plan's u16; predicted 162 -> 164 before
     // the build and held; the hash read off it. Save 204 (#1443): +4 - the
-    // month's care coverage, a float; predicted 164 -> 168, held.
-    {"herds", 168, 0xba5a6fbb93832070ULL},
+    // month's care coverage, a float; predicted 164 -> 168, held. Save 206
+    // (#1374): -2 - adult_male_count leaves, one herd; predicted 168 -> 166
+    // before the build. Then +1, the same save 206: the inherited mark (u8);
+    // predicted 166 -> 167 before the build and held; the hash read off it.
+    {"herds", 167, 0xa932a64d98b01a92ULL},
     // 2026-09-16, save 48: +6 bytes, one for each of the six orders — the
     // bought head's sex. The witness named the section, the delta and the
     // offset without being asked, which is what it was rewritten for this
@@ -2317,8 +2317,9 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // Save 205 (#1084 contract, re-laid on 0.37.357): if the fixture's «last
     // order kind» is the top OrderKind, it is now kAttendFuneral - the same
     // 824 bytes, the kind's byte one higher; predicted before the build, the
-    // hash read off it.
-    {"orders", 824, 0xce4beb3622117b63ULL},
+    // hash read off it. Save 206 (#1374): `male` leaves, a byte an order, six
+    // orders - predicted 824 -> 818 before the build.
+    {"orders", 818, 0xa72e56450b8bb598ULL},
     // Save 82: the fixture's first stand, a birch planting — 8 -> 67 (its id
     // 4, the old fields 41, species 2, hectares 4, two days 8); predicted,
     // held.
@@ -2333,8 +2334,9 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // Save 163 (stage В5): +1 a lot — the outbound byte; 61 -> 62, held.
     {"limit_deliveries", 62, 0xa025d8f08bda4065ULL},
     // 2026-09-16, save 48: the stock bought and still on its way. A section of
-    // its own beside the carts, because a head rides nothing.
-    {"livestock_arrivals", 24, 0x216b896caae651cbULL},
+    // its own beside the carts, because a head rides nothing. Save 206
+    // (#1374): `male` leaves, one row - predicted 24 -> 23 before the build.
+    {"livestock_arrivals", 23, 0x51ae2de788567388ULL},
     {"specialist_arrivals", 22, 0x11b22bab116fbc84ULL},
     {"wedding_waits", 24, 0x3ce63fbbccfcbd4aULL},
     // Save 153: +8 a site — haul_to; 63 -> 71, held.
@@ -3398,10 +3400,7 @@ int main() {
   failures += Expect(unseal_back.fund == core::FundKind::kSeed, "and names the fund it opened");
   failures += Expect(unseal_back.resource.value == 2, "and the resource taken out of it");
   failures += Expect(unseal_back.amount == 640'000, "and the figure the chairman named");
-  // The bought head's sex (save 48), asserted on the READER's side: the
-  // recorded payload proves only that the byte was written.
-  failures += Expect(loaded.orders.rows[3].male == 1,
-                     "the sex the chairman chose for a head comes back off the save");
+  // (The bought head's sex, save 48, was removed with its field, #1374.)
   failures += Expect(loaded.orders.rows[3].family.value == 2 && loaded.orders.rows[3].enable == 1,
                      "the ration order's family and switch come back off the save (save 57)");
   failures += Expect(loaded.orders.rows[3].road_kind == core::RoadKind::kPath &&
@@ -3420,8 +3419,8 @@ int main() {
                        "a bought head comes back knowing its lot and its kind");
     failures += Expect(head.head_count == 3 && head.arrive_day == 133,
                        "and how many head there are and the day they stand in the village");
-    failures += Expect(head.stage == core::LivestockArrivalStage::kYoung && head.male == 1,
-                       "and the age it arrives at and the sex that was chosen");
+    failures += Expect(head.stage == core::LivestockArrivalStage::kYoung,
+                       "and the age it arrives at (#1374: no sex)");
   }
   failures +=
       Expect(loaded.unsealed.by_fund[static_cast<std::size_t>(core::FundKind::kSeed)][2] == 640'000,

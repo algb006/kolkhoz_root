@@ -241,9 +241,21 @@ void DropFamilyIfEmpty(WorldState& current, FamilyId family, FamilyId heir_named
       }
       if (into == kNoRow) {
         herd.household = home;
+        // A SECOND KIND IN THE HEIR'S YARD IS THE HERD DAY'S TO SETTLE (#1374;
+        // boss [8]): the heir keeps his own kind, and the inherited one goes
+        // to a stockless neighbour or to meat - production's paths, which
+        // this module does not reach, so the herd is marked here.
+        herd.inherited = 1;
         continue;
       }
       HerdRow& flock = current.herds.rows[into];
+      // AN EMPTY FLOCK IS NOT THE HEIR'S OWN KIND (#1374's p76, Y1PLACE: eight
+      // of eight first-mixed yards were an heir's emptied row of the second
+      // kind refilled by this merge, unmarked): a row with no head is a kind
+      // the yard no longer keeps, so the merged herd is marked as one moved.
+      if (flock.adult_count == 0 && flock.juvenile_count == 0 && flock.newborn_count == 0) {
+        flock.inherited = 1;
+      }
       MergeAdultAgeBand(flock, flock.adult_count, herd);
       flock.adult_count = static_cast<std::uint16_t>(flock.adult_count + herd.adult_count);
       flock.juvenile_count = static_cast<std::uint16_t>(flock.juvenile_count + herd.juvenile_count);

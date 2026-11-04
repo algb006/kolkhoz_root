@@ -282,7 +282,6 @@ int main(int argc, char** argv) {
       herd.newborn_count = 0;
       herd.juvenile_count = 0;
       herd.adult_count = 0;
-      herd.adult_male_count = 0;
       herd.newborn_progress = 0.0F;
       herd.juvenile_progress = 0.0F;
       herd.birth_progress = 0.0F;
@@ -854,17 +853,16 @@ int main(int argc, char** argv) {
       const std::uint32_t horses_kind =
           kinds == nullptr ? core::kNoTableRow : kinds->FindRowByKey("horse");
       std::uint32_t adults = 0;
-      std::uint32_t sires = 0;
       std::uint32_t young = 0;
       for (const core::HerdRow& herd : done.herds.rows) {
         if (horses_kind == core::kNoTableRow || herd.kind.value != horses_kind) {
           continue;
         }
         adults += herd.adult_count;
-        sires += herd.adult_male_count;
         young += static_cast<std::uint32_t>(herd.newborn_count) + herd.juvenile_count;
       }
-      std::cout << " | лошадей " << adults << "/" << sires << " жеребцов, молодняк " << young;
+      // (The stallions' count beside the adults went with #1374.)
+      std::cout << " | лошадей " << adults << ", молодняк " << young;
       constexpr std::uint32_t kTeam = 2;
       if (team_back_year < 0 && adults >= kTeam) {
         team_back_year = static_cast<std::int32_t>(year + 1);
@@ -1092,8 +1090,7 @@ int main(int argc, char** argv) {
     if (horse_row == core::kNoTableRow || herd.kind.value != horse_row) {
       continue;
     }
-    std::cout << "idle_curve: табун " << row << " — взрослых " << herd.adult_count << ", из них "
-              << "жеребцов " << herd.adult_male_count << ", молодняк "
+    std::cout << "idle_curve: табун " << row << " — взрослых " << herd.adult_count << ", молодняк "
               << (herd.newborn_count + herd.juvenile_count) << ", на постое " << herd.billeted_count
               << ", при дворе " << (herd.household.value != core::kInvalidEntityIdValue ? 1 : 0)
               << ", у юнита " << (herd.unit.value != core::kInvalidEntityIdValue ? 1 : 0) << '\n';
@@ -1359,19 +1356,18 @@ int main(int argc, char** argv) {
     if (const core::ITable* const roster = world.tables->FindTable("livestock")) {
       for (std::uint32_t kind_row = 0; kind_row < roster->RowCount(); ++kind_row) {
         std::uint32_t herd_adults = 0;
-        std::uint32_t herd_sires = 0;
         for (const core::HerdRow& herd : last.herds.rows) {
           if (herd.kind.value != kind_row) {
             continue;
           }
           herd_adults += herd.adult_count;
-          herd_sires += herd.adult_male_count;
         }
         if (herd_adults == 0) {
           continue;
         }
+        // (The males among them went with #1374.)
         std::cout << "idle_curve: двенадцатый год — " << roster->CellText(kind_row, 0) << ": "
-                  << herd_adults << " взрослых, из них самцов " << herd_sires << '\n';
+                  << herd_adults << " взрослых\n";
       }
     }
   }

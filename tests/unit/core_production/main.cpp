@@ -139,20 +139,18 @@ core::ProductionConfig MakeHerdConfig() {
   config.livestock.resize(2);
   core::LivestockDef& cow = config.livestock[0];
   cow.feed_units_per_game_day = 1.0F;
-  cow.sexed = 1;
-  cow.males_share = 0.5F;
+  // #1374: the old fixture's sexed cow (males_share 0.5, a birth and 480 l a
+  // year per female) as per-head numbers at its female share 1/2.
   cow.newborn_game_months = 1.0F;     // 4 game days on the newborn rung
   cow.adult_from_game_months = 2.0F;  // and 4 more as a juvenile
   cow.life_game_years_min = 100.0F;   // old age is out of the way unless asked
   cow.life_game_years_max = 100.0F;
-  cow.births_per_game_year = 1.0F;
-  cow.litter_heads = 1.0F;
-  cow.milk_l_per_year = 480.0F;  // 10 litres a game day per female
+  cow.births_per_adult_head = 0.5F;
+  cow.young_cull_share = 0.5F;
+  cow.milk_l_per_adult_head = 240.0F;  // 5 litres a game day per adult head
   cow.meat_kg_per_head = 100.0F;
   core::LivestockDef& pig = config.livestock[1];
   pig.feed_units_per_game_day = 0.0F;
-  pig.sexed = 1;
-  pig.males_share = 0.1F;
   pig.adult_from_game_months = 1.0F;
   pig.life_game_years_min = 100.0F;
   pig.life_game_years_max = 100.0F;
@@ -199,10 +197,10 @@ core::HerdId AddHerd(core::WorldState& world,
                      std::uint16_t adults,
                      std::uint16_t males,
                      bool at_unit) {
+  (void)males;  // #1374: a herd is heads; the old callers' sire count is unread
   core::HerdRow herd;
   herd.kind = core::LivestockKindId{kind};
   herd.adult_count = adults;
-  herd.adult_male_count = males;
   if (at_unit) {
     herd.unit = world.units.row_ids[0];
   }
@@ -237,8 +235,8 @@ void RunHerdDays(const core::ProductionConfig& config,
 int CheckTheForecastOffspring() {
   int failures = 0;
   core::ProductionConfig config = MakeHerdConfig();
-  config.livestock[0].births_per_game_year = 12.0F;
-  config.livestock[0].newborn_game_months = 24.0F;  // no maturing in the window
+  config.livestock[0].births_per_adult_head = 6.0F;  // #1374: 12 a female x 1/2
+  config.livestock[0].newborn_game_months = 24.0F;   // no maturing in the window
   config.livestock[0].adult_from_game_months = 48.0F;
   SetLivestockHead(config.unit_types[0], 1000.0F);  // no billet from the calves
   constexpr std::uint32_t kDays = 20;
@@ -283,8 +281,8 @@ int CheckTheForecastOffspring() {
   // side (the need the larger, the yellow the earlier), so the band is one
   // head below and a tenth above.
   core::ProductionConfig growing = config;
-  growing.livestock[0].births_per_game_year = 3.0F;
-  growing.livestock[0].sexed = 0;
+  growing.livestock[0].births_per_adult_head = 3.0F;
+  growing.livestock[0].young_cull_share = 0.0F;  // #1374: the old unsexed kind culled none
   growing.livestock[0].newborn_game_months = 1.0F;
   growing.livestock[0].adult_from_game_months = 2.0F;
   core::WorldState grows = MakeHerdWorld(100000.0F);
@@ -308,10 +306,9 @@ int CheckTheForecastOffspring() {
   // and culled. MEASURED before the lamp was touched, to learn whether the
   // forecast's herd outgrows the real one.
   core::ProductionConfig cows = MakeHerdConfig();
-  cows.livestock[0].males_share = 0.04F;
   cows.livestock[0].newborn_game_months = 2.0F;
   cows.livestock[0].adult_from_game_months = 8.0F;
-  cows.livestock[0].births_per_game_year = 1.0F;
+  cows.livestock[0].births_per_adult_head = 0.96F;  // #1374: livestock.csv's cow
   cows.farming.birth_from_month = 2;
   cows.farming.birth_to_month = 4;
   SetLivestockHead(cows.unit_types[0], 1000.0F);
@@ -342,7 +339,7 @@ int CheckTheFoalingCountsFromTheStabling() {
   core::ProductionConfig config = MakeHerdConfig();
   config.horse_kind = core::LivestockKindId{0};
   config.stable_type = core::UnitTypeId{0};
-  config.livestock[0].births_per_game_year = 1.0F;
+  config.livestock[0].births_per_adult_head = 1.0F;
   config.farming.birth_from_month = 2;
   config.farming.birth_to_month = 4;
   SetLivestockHead(config.unit_types[0], 1000.0F);
@@ -378,7 +375,7 @@ int CheckTheFoalingCountsFromTheStabling() {
 int CheckTheStoredHayAgainstTheDaysAhead() {
   int failures = 0;
   core::ProductionConfig config = MakeHerdConfig();
-  config.livestock[0].births_per_game_year = 0.0F;
+  config.livestock[0].births_per_adult_head = 0.0F;
   config.hay_resource = core::ResourceId{0};
   const auto short_within = [&config](float hay_kg, std::uint32_t days) {
     core::WorldState world = MakeHerdWorld(hay_kg);
@@ -448,7 +445,7 @@ int CheckTheStoredHayAgainstTheDaysAhead() {
 int CheckTheHerdHayForecast() {
   int failures = 0;
   core::ProductionConfig config = MakeHerdConfig();
-  config.livestock[0].births_per_game_year = 0.0F;
+  config.livestock[0].births_per_adult_head = 0.0F;
   config.hay_resource = core::ResourceId{0};
   config.farming.meadow_cut_month = 6;  // July: days 24-27 of each year
   // A second feed behind the hay, which no store holds (static review of
@@ -643,7 +640,7 @@ int CheckTheHerdHayForecast() {
   // horizon's end its calves are grown and unfed too — the number told is
   // the four that stand, not the herd to come.
   core::ProductionConfig calving = config;
-  calving.livestock[0].births_per_game_year = 12.0F;
+  calving.livestock[0].births_per_adult_head = 12.0F;
   core::WorldState hungry = MakeHerdWorld(0.0F);
   AddHerd(hungry, 0, 4, 2, true);
   year_two(hungry, 30);
@@ -1467,7 +1464,7 @@ int CheckTheForecastAdvice() {
   // rest; the cut in July — year 1 looks to day 24. A lot of the district's:
   // 40 kg of compound feed for 10 points, landing on the cart's latest day,
   // the fourth.
-  config.livestock[0].births_per_game_year = 0.0F;
+  config.livestock[0].births_per_adult_head = 0.0F;
   config.farming.meadow_cut_month = 6;
   config.feed_links = {
       core::FeedLinkDef{.kind = core::LivestockKindId{0},
@@ -1717,7 +1714,7 @@ int CheckTheForecastAdvice() {
     team.farming.harrow_days_per_ha = 0.0F;
     team.horse_kind = core::LivestockKindId{1};
     team.livestock[1].feed_units_per_game_day = 1.0F;
-    team.livestock[1].births_per_game_year = 0.0F;
+    team.livestock[1].births_per_adult_head = 0.0F;
     team.feed_links.push_back(core::FeedLinkDef{
         .kind = core::LivestockKindId{1}, .resource = core::ResourceId{0}, .reserve = 0});
     // The milk position, in cows' yields of the closed year: 0 names none
@@ -2613,16 +2610,16 @@ int CheckCohortFlows() {
   return failures;
 }
 
-/// THE MALES' CULL IS SAID AND BOOKED BY KIND (boss, boss-core-epoch1-5 seq
-/// 43 and 45; 0.35.3): a pig herd of one sire and a dozen young, walked a
-/// quarter. The heads the cull takes are the kHerdMalesCulled events' sum, the
-/// by-kind column, and — no other removal running — herd_culled itself.
-int CheckTheMalesCullIsSaid() {
+/// THE YOUNG CULL IS SAID AND BOOKED BY KIND (boss, boss-core-epoch1-5 seq
+/// 43 and 45; 0.35.3; rewritten for #1374 from the males' cull): a pig herd of
+/// two adults and a dozen young at a cull share of 0.5, walked a quarter. The
+/// heads the cull takes are the kHerdYoungCulled events' sum, the by-kind
+/// column, and — no other removal running — herd_culled itself.
+int CheckTheYoungCullIsSaid() {
   int failures = 0;
-  const core::ProductionConfig config = MakeHerdConfig();
+  core::ProductionConfig config = MakeHerdConfig();
+  config.livestock[1].young_cull_share = 0.5F;
   core::WorldState world = MakeHerdWorld(1.0e5F);
-  // The pig (kind 1, a sire share of 0.1): the cow's 0.5 leaves room for
-  // every young male and culls none, which is what the first draft measured.
   const core::HerdId id = AddHerd(world, 1, 2, 1, true);
   world.herds.rows[FindRow(world.herds, id)].juvenile_count = 12;
   std::int64_t said = 0;
@@ -2632,43 +2629,52 @@ int CheckTheMalesCullIsSaid() {
     world.step_events.clear();
     core::RunHerdDay(config, world);
     for (const core::SimEvent& event : world.step_events) {
-      if (event.kind == core::EventKind::kHerdMalesCulled && event.herd.value == id.value) {
+      if (event.kind == core::EventKind::kHerdYoungCulled && event.herd.value == id.value) {
         said += event.amount;
       }
     }
   }
   const core::Grams booked =
-      core::AmountOf(world.ledger.current.herd_males_culled, core::ResourceId{1});
+      core::AmountOf(world.ledger.current.herd_young_culled, core::ResourceId{1});
   failures += Expect(said > 0 && booked == said &&
                          static_cast<core::Grams>(world.ledger.current.herd_culled) == said,
-                     "the males' cull is said, booked by kind, and is all of herd_culled");
+                     "the young cull is said, booked by kind, and is all of herd_culled");
+  // AND HALF OF WHAT MATURED, carried (#1374): the twelve juveniles grown in
+  // the quarter, half to meat - the fraction across days, not rounded away.
+  failures += Expect(said == 6, "the young cull takes half of the twelve that matured");
   return failures;
 }
 
-/// A FEW SOWS, NOT ONE (boss, boss-core-epoch1-5 seq 45, option б; 0.35.5):
-/// six adults with one boar, a sow share of 0.25 — the share alone keeps one
-/// sow and the boar. With sow_keep_min 3 the slaughter leaves three females
-/// and the boar; with 0 it leaves the share's one.
+/// A FEW HEADS, NOT ONE (boss, boss-core-epoch1-5 seq 45, option б; 0.35.5;
+/// #1374: the keep is written in sows and kept in heads, sows over the pig's
+/// former female share 0.9, rounded up - the sows and their boars): six
+/// adults, a keep share of 0.25 — the share alone keeps one sow. With
+/// sow_keep_min 3 the slaughter leaves ⌈3/0.9⌉ = 4 heads; with 0 it leaves
+/// ⌈1/0.9⌉ = 2 - 0.37.360's numbers (three sows and the boar; one and the
+/// boar), which the body's first cut, reading sows as heads, lost.
 int CheckTheAutumnKeepsAFewSows() {
   int failures = 0;
-  const auto kept = [](float least) {
+  const auto kept = [](float least, float female_share = 0.9F) {
     core::ProductionConfig config = MakeHerdConfig();
     config.farming.sow_keep_share = 0.25F;
     config.farming.sow_keep_min = least;
+    config.farming.sow_keep_female_share = female_share;
     core::WorldState world = MakeHerdWorld(1000.0F);  // room for the meat
     AddHerd(world, 1, 6, 1, true);
     world.calendar.tick = static_cast<core::Tick>(9U * core::kDaysPerMonth) * core::kTicksPerDay;
     core::RefreshCalendarCaches(world.calendar);
     core::RunHerdDay(config, world);
-    const core::HerdRow& herd = world.herds.rows[0];
-    return std::pair<std::uint16_t, std::uint16_t>{herd.adult_count, herd.adult_male_count};
+    return world.herds.rows[0].adult_count;
   };
-  const auto [with_floor, boars] = kept(3.0F);
-  const auto [by_share, boars_share] = kept(0.0F);
-  failures += Expect(with_floor == 4 && boars == 1,
-                     "sows: six adults and a boar keep three sows and the boar through the winter");
-  failures += Expect(by_share == 2 && boars_share == 1,
-                     "sows: with no floor the share keeps one sow and the boar, as before");
+  const std::uint16_t with_floor = kept(3.0F);
+  const std::uint16_t by_share = kept(0.0F);
+  failures +=
+      Expect(with_floor == 4,
+             "sows: six adults keep three sows' heads through the winter - four, as 0.37.360");
+  failures += Expect(by_share == 2, "sows: with no floor the share keeps one sow's heads - two");
+  // The conversion goes through the knob: a female share of 1 keeps the sows
+  // as heads (the body's first cut), so the 4 above is the knob's work.
+  failures += Expect(kept(3.0F, 1.0F) == 3, "sows: a female share of 1 keeps the three as heads");
   return failures;
 }
 
@@ -2684,7 +2690,9 @@ int CheckAutumnPigs() {
   core::RunHerdDay(config, world);
   const core::HerdRow& herd = world.herds.rows[0];
   failures += Expect(herd.juvenile_count == 0, "the autumn takes the whole fattening stock");
-  failures += Expect(herd.adult_count == 5, "and leaves the sows and the boar");
+  // #1374: the share's half of eight adults - four sows, ⌈4/0.9⌉ = 5 heads,
+  // 0.37.360's four sows and the boar.
+  failures += Expect(herd.adult_count == 5, "and leaves the breeding heads");
   failures += Expect(StoreOf(world, 2) > 0, "the slaughter pays out in meat");
   // SAID AND BOOKED BY KIND (boss, boss-core-epoch1-5 seq 43 and 45; 0.35.3):
   // six fattening pigs and three adults, nine heads, kind 1.
@@ -2734,14 +2742,17 @@ int CheckAutumnPigs() {
   waits.units.rows[0].stock[0] -= 1000 * core::kGramsPerKilogram;  // the hay went out
   october_day(waits, 1);
   core::RunHerdDay(config, waits);
+  // #1374: two days of the herd's own maturing before it lift the adults to
+  // ten, so the share keeps five sows - ⌈5/0.9⌉ = 6 heads - and eight heads
+  // go, 400 kg (four adults and four juveniles).
   failures +=
-      Expect(waits.herds.rows[0].juvenile_count == 0 && waits.herds.rows[0].adult_count == 5 &&
-                 StoreOf(waits, 2) == 450 * core::kGramsPerKilogram &&
+      Expect(waits.herds.rows[0].juvenile_count == 0 && waits.herds.rows[0].adult_count == 6 &&
+                 StoreOf(waits, 2) == 400 * core::kGramsPerKilogram &&
                  waits.herds.rows[0].autumn_slaughter_done == 1,
              "the first October day with room it happens, all the meat in the store");
   october_day(waits, 2);
   core::RunHerdDay(config, waits);
-  failures += Expect(waits.herds.rows[0].adult_count == 5,
+  failures += Expect(waits.herds.rows[0].adult_count == 6,
                      "and once: the next day the kept sows are not slaughtered in their turn");
   alarms.clear();
   core::CollectHerdAlarms(config, waits, alarms);
@@ -3176,7 +3187,6 @@ int CheckTheTeamOnHayAndTooFewHorses() {
   }
   const std::uint16_t before_loss = gone.traction_watch.short_ration_days;
   gone.herds.rows[0].adult_count = 0;
-  gone.herds.rows[0].adult_male_count = 0;
   gone.calendar.tick = static_cast<core::Tick>(22) * core::kTicksPerDay;
   core::RefreshCalendarCaches(gone.calendar);
   core::RunHerdDay(config, gone);
@@ -3206,7 +3216,6 @@ int CheckTheTeamOnHayAndTooFewHorses() {
                        "too few horses: the lamp is yellow, no loss within any horizon");
   }
   week.herds.rows[0].adult_count = 0;
-  week.herds.rows[0].adult_male_count = 0;
   const std::optional<core::Alarm> none_left = lit(week, core::AlarmKind::kTooFewHorses);
   failures += Expect(none_left.has_value() && none_left->herd.value == core::kInvalidEntityIdValue,
                      "too few horses: with no horse left it still burns, its subject invalid");
@@ -3220,7 +3229,6 @@ int CheckTheTeamOnHayAndTooFewHorses() {
   with_hay.hay_resource = core::ResourceId{0};
   core::WorldState short_week = week;
   short_week.herds.rows[0].adult_count = 4;
-  short_week.herds.rows[0].adult_male_count = 2;
   const auto advice = [&with_hay](const core::WorldState& state) {
     std::vector<core::Alarm> alarms;
     core::CollectHerdAlarms(with_hay, state, alarms);
@@ -3255,7 +3263,6 @@ int CheckTheTeamOnHayAndTooFewHorses() {
   {
     core::WorldState first_spring = week;
     first_spring.herds.rows[0].adult_count = 4;
-    first_spring.herds.rows[0].adult_male_count = 2;
     first_spring.calendar.tick = static_cast<core::Tick>(10) * core::kTicksPerDay;
     core::RefreshCalendarCaches(first_spring.calendar);
     const core::HerdFeedForecast long_look =
@@ -3834,7 +3841,6 @@ int CheckMangerReach() {
   core::HerdRow herd;
   herd.kind = core::LivestockKindId{0};
   herd.adult_count = 4;
-  herd.adult_male_count = 2;
   herd.unit = barn;
   AppendRow(world.herds, herd);
   core::RunHerdDay(config, world);
@@ -3968,6 +3974,89 @@ int CheckElectrification() {
   return failures;
 }
 
+/// THE INHERITED SECOND KIND LEAVES THE YARD (#1374; boss, the thread
+/// core-boss-1374 [8]: «the heir keeps his own kind; the inherited kind goes
+/// to a stockless neighbour, or else to meat»; econ's Y1: no yard holds two
+/// kinds of stock). Two `stock` kinds, no births: the heir keeps three of
+/// kind 2; a herd of two of kind 3 came to the yard with its family's end
+/// (marked `inherited`, as DropFamilyIfEmpty marks it). One stockless
+/// neighbour takes one head (a yard is offered once a day); the other head
+/// is meat. The same herd in a yard with no other stock stays.
+int CheckAnInheritedSecondKindLeavesTheYard() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.livestock.resize(4);
+  for (const std::size_t index : {std::size_t{2}, std::size_t{3}}) {
+    core::LivestockDef& kind = config.livestock[index];
+    kind.newborn_game_months = 1.0F;
+    kind.adult_from_game_months = 2.0F;
+    kind.life_game_years_min = 30.0F;
+    kind.life_game_years_max = 40.0F;
+    kind.births_per_adult_head = 0.0F;
+    kind.meat_kg_per_head = 10.0F;
+    kind.household_self_fed = 1;
+    kind.household_cap_heads = 3.0F;
+    kind.household_group = 1;
+  }
+  const auto make = [](bool heir_keeps_stock) {
+    core::WorldState world = MakeHerdWorld(0.0F);
+    core::FamilyRow family;
+    family.pantry.assign(3, 0);
+    const core::FamilyId heir = AppendRow(world.families, family);
+    AppendRow(world.families, family);  // the stockless neighbour
+    core::HerdRow own;
+    own.kind = core::LivestockKindId{2};
+    own.household = heir;
+    own.household_owned = 1;
+    own.adult_count = heir_keeps_stock ? 3 : 0;
+    own.adult_age_game_years_total = 3.0F;
+    core::WidenAdultAgeBand(own, 0, own.adult_count, 1.0F, 1.0F);
+    AppendRow(world.herds, own);
+    core::HerdRow came = own;
+    came.kind = core::LivestockKindId{3};
+    came.adult_count = 2;
+    came.adult_age_game_years_total = 2.0F;
+    came.inherited = 1;
+    AppendRow(world.herds, came);
+    return world;
+  };
+  const auto heads_of =
+      [](const core::WorldState& world, std::uint16_t kind, std::uint32_t family) {
+        std::uint32_t heads = 0;
+        for (const core::HerdRow& herd : world.herds.rows) {
+          heads += herd.kind.value == kind && herd.household.value == family
+                       ? static_cast<std::uint32_t>(herd.adult_count) + herd.juvenile_count +
+                             herd.newborn_count
+                       : 0U;
+        }
+        return heads;
+      };
+  {
+    core::WorldState world = make(true);
+    const std::uint32_t heir = world.families.row_ids[0].value;
+    const std::uint32_t neighbour = world.families.row_ids[1].value;
+    RunHerdDays(config, world, 1);
+    const core::ResourceAmounts& knifed = world.ledger.current.herd_surplus_slaughtered;
+    failures += Expect(heads_of(world, 3, heir) == 0 && heads_of(world, 2, heir) == 3,
+                       "inherited second kind: the heir keeps his own three, none of the two "
+                       "that came");
+    failures += Expect(heads_of(world, 3, neighbour) == 1 && knifed.size() > 3 && knifed[3] == 1,
+                       "inherited second kind: one head to the stockless neighbour, the other "
+                       "to meat (a yard is offered once a day)");
+    failures +=
+        Expect(world.herds.rows[1].inherited == 0, "inherited second kind: the mark clears");
+  }
+  {
+    core::WorldState world = make(false);
+    const std::uint32_t heir = world.families.row_ids[0].value;
+    RunHerdDays(config, world, 1);
+    failures +=
+        Expect(heads_of(world, 3, heir) == 2 && world.herds.rows[1].inherited == 0,
+               "inherited into a yard with no other stock: the herd stays, the mark clears");
+  }
+  return failures;
+}
+
 /// THE YARD'S OFFSPRING REPLACES, IT DOES NOT ADD (0.37.78; household design
 /// §2, «Приплод»; econ's acceptance of 0.37.70): a kind a yard may keep
 /// three of, living 2.5 years at the least, so an adult is old from 1.5; no
@@ -3977,12 +4066,11 @@ int CheckYardOffspringReplaces() {
   core::ProductionConfig config = MakeHerdConfig();
   config.livestock.resize(3);
   core::LivestockDef& goat = config.livestock[2];
-  goat.sexed = 0;
   goat.newborn_game_months = 1.0F;
   goat.adult_from_game_months = 2.0F;
   goat.life_game_years_min = 2.5F;
   goat.life_game_years_max = 30.0F;  // nobody dies of age in the window
-  goat.births_per_game_year = 0.0F;
+  goat.births_per_adult_head = 0.0F;
   goat.meat_kg_per_head = 10.0F;
   goat.household_self_fed = 1;
   goat.household_cap_heads = 3.0F;
@@ -4217,41 +4305,64 @@ int CheckYardOffspringReplaces() {
                        "yard young, the gift: the head carries its own need to the mowing, "
                        "capped below its share, and the village's hay is what it was");
   }
+  // ONE ROW A KIND A YARD (#1374's p78, Y2PLACE seed 1945: a yard with an
+  // emptied row of the kind took its gift as a second row, and an
+  // inheritance refilled the first - 3 adults against a cap of 2). The
+  // neighbour keeps an EMPTY row of the kind: the gift lands in it.
+  {
+    Yard yard = yard_with(2, 0.2F, 0.2F, 0, 1);
+    core::FamilyRow neighbour;
+    neighbour.pantry.assign(3, 0);
+    const core::FamilyId next_door = AppendRow(yard.world.families, neighbour);
+    core::HerdRow emptied;
+    emptied.kind = core::LivestockKindId{2};
+    emptied.household = next_door;
+    emptied.household_owned = 1;
+    AppendRow(yard.world.herds, emptied);
+    RunHerdDays(config, yard.world, kDays);
+    std::uint32_t rows_next_door = 0;
+    std::uint32_t heads_next_door = 0;
+    for (const core::HerdRow& herd : yard.world.herds.rows) {
+      if (herd.household.value == next_door.value && herd.kind.value == 2) {
+        ++rows_next_door;
+        heads_next_door += herd.adult_count + herd.juvenile_count;
+      }
+    }
+    failures +=
+        Expect(rows_next_door == 1 && heads_next_door == 1 && knifed(yard.world) == 0,
+               "yard young, the gift: a yard with an emptied row of the kind takes the head "
+               "into that row, not a second one");
+  }
   return failures;
 }
 
-/// A KIND WHOSE MALES ARE WORK STOCK (LivestockDef::males_work; 0.37.209;
-/// Livestock design: «Работают и кобылы, и жеребцы»): its young males join
-/// the herd at maturing, counted as males, and nothing is culled; and the
-/// district's door takes its MALES FIRST while the herd keeps its sire
-/// share, then the oldest in proportion. The pair of each: the same kind
-/// without the mark culls and gives by proportion, as before.
+/// THE HORSE IS NOT CULLED (#1374; livestock.md «Пола у скота нет»: «У
+/// лошадей забоя нет: каждый жеребёнок вырастает в рабочую лошадь»;
+/// rewritten from 0.37.209's work-stock males): a kind of young_cull_share 0
+/// keeps every head that matures and culls nothing; the pair - the same kind
+/// at a share of 0.5 - sends half to meat, said. The forecast grows the herd
+/// the same way. (The door's «males first while the sire share is kept» and
+/// MalesAfterHandOver were removed with their rule; the door's own order -
+/// the oldest first, the horses' young first - stays in the horses' order
+/// check below.)
 int CheckWorkStockMales() {
   int failures = 0;
   core::ProductionConfig config = MakeHerdConfig();
   core::LivestockDef& horse = config.livestock[0];
-  horse.males_share = 0.07F;  // a sire to about fourteen
-  horse.births_per_game_year = 0.0F;
-  config.limit.lots.resize(1);
-  config.limit.lots[0].points = 100;
-  config.limit.lots[0].kind = core::LimitLotKind::kLivestock;
-  config.limit.lots[0].livestock = core::LivestockKindId{0};
-  config.limit.lots[0].head_count = 1;
-  config.limit.handover_share_adult = 0.55F;
+  horse.births_per_adult_head = 0.0F;
 
-  // -- the maturing: twenty adults with one sire, eight young growing up ------
+  // -- the maturing: twenty adults, eight young growing up --------------------
   struct Grown {
     std::uint16_t adults = 0;
-    std::uint16_t males = 0;
     std::uint16_t young = 0;
     std::uint32_t culled = 0;
     std::uint32_t said = 0;
   };
 
-  const auto mature = [&config](std::uint8_t males_work) {
-    config.livestock[0].males_work = males_work;
+  const auto mature = [&config](float cull_share) {
+    config.livestock[0].young_cull_share = cull_share;
     core::WorldState world = MakeHerdWorld(1000.0F);
-    const core::HerdId id = AddHerd(world, 0, 20, 1, true);
+    const core::HerdId id = AddHerd(world, 0, 20, 0, true);
     core::HerdRow& herd = world.herds.rows[0];
     herd.juvenile_count = 8;
     const core::HerdPlace place{};
@@ -4259,89 +4370,42 @@ int CheckWorkStockMales() {
       core::RunMaturation(config, config.livestock[0], place, herd, id, world);
     }
     Grown grown{.adults = herd.adult_count,
-                .males = herd.adult_male_count,
                 .young = herd.juvenile_count,
                 .culled = world.ledger.current.herd_culled};
     for (const core::SimEvent& event : world.step_events) {
-      grown.said += event.kind == core::EventKind::kHerdMalesCulled ? 1U : 0U;
+      grown.said += event.kind == core::EventKind::kHerdYoungCulled ? 1U : 0U;
     }
     return grown;
   };
-  const Grown kept = mature(1);
-  const Grown culled = mature(0);
-  std::cout
-      << "  work-stock males, eight young maturing beside twenty adults with one sire: kept — "
-      << kept.adults << " adults, " << kept.males << " males, culled " << kept.culled
-      << "; without the mark — " << culled.adults << " adults, " << culled.males
-      << " males, culled " << culled.culled << '\n';
-  failures += Expect(kept.young == 0 && kept.adults == 28 && kept.males == 5,
-                     "work-stock males: all eight young join the adults, the four males of them "
-                     "counted as males beside the sire");
-  failures += Expect(kept.culled == 0 && kept.said == 0,
-                     "work-stock males: nothing is culled and no cull is said");
-  failures += Expect(culled.young == 0 && culled.adults == 25 && culled.males == 2 &&
-                         culled.culled == 3 && culled.said > 0,
-                     "work-stock males, the pair: without the mark the herd keeps its share — one "
-                     "sire more — and three young males go to meat, said");
+  const Grown kept = mature(0.0F);
+  const Grown culled = mature(0.5F);
+  std::cout << "  the horse, eight young maturing beside twenty adults: share 0 - " << kept.adults
+            << " adults, culled " << kept.culled << "; share 0.5 - " << culled.adults
+            << " adults, culled " << culled.culled << '\n';
+  failures += Expect(kept.young == 0 && kept.adults == 28 && kept.culled == 0 && kept.said == 0,
+                     "the horse: all eight young join the adults, nothing culled and nothing said");
+  failures +=
+      Expect(culled.young == 0 && culled.adults == 24 && culled.culled == 4 && culled.said > 0,
+             "the pair: at a cull share of 0.5 half the eight go to meat, said");
 
   // -- and the forecast grows the herd the same way ---------------------------
-  const auto forecast = [&config](std::uint8_t males_work) {
-    config.livestock[0].males_work = males_work;
+  const auto forecast = [&config](float cull_share) {
+    config.livestock[0].young_cull_share = cull_share;
     core::WorldState world = MakeHerdWorld(1000.0F);
-    const core::HerdId id = AddHerd(world, 0, 20, 1, true);
+    const core::HerdId id = AddHerd(world, 0, 20, 0, true);
     world.herds.rows[0].juvenile_count = 8;
     return core::ForecastHerdHeads(config, world, id, 60);
   };
-  const float forecast_kept = forecast(1);
-  const float forecast_culled = forecast(0);
-  std::cout << "  work-stock males, the forecast of the same herd sixty days on: kept "
-            << forecast_kept << " heads, without the mark " << forecast_culled << '\n';
+  const float forecast_kept = forecast(0.0F);
+  const float forecast_culled = forecast(0.5F);
+  std::cout << "  the horse, the forecast of the same herd sixty days on: share 0 " << forecast_kept
+            << " heads, share 0.5 " << forecast_culled << '\n';
   failures += Expect(std::abs(forecast_kept - 28.0F) <= 1.0F,
-                     "work-stock males: the forecast keeps every young male, within a head of "
-                     "the herd's own twenty-eight");
-  failures += Expect(std::abs(forecast_culled - 25.0F) <= 1.0F,
-                     "work-stock males, the pair: without the mark the forecast culls, within a "
-                     "head of the herd's own twenty-five");
-
-  // -- the door: males first while the sire share is kept, then by proportion --
-  const auto hand =
-      [&config](
-          std::uint8_t males_work, std::uint16_t adults, std::uint16_t males, std::int64_t heads) {
-        config.livestock[0].males_work = males_work;
-        core::WorldState world = MakeHerdWorld(1000.0F);
-        const core::HerdId id = AddHerd(world, 0, adults, males, true);
-        core::OrderRow order;
-        order.kind = core::OrderKind::kHandStock;
-        order.herd = id;
-        order.amount = heads;
-        const core::OrderRefusal refusal = core::OrderHandStock(config, world, order);
-        return std::array<int, 3>{static_cast<int>(refusal),
-                                  static_cast<int>(world.herds.rows[0].adult_count),
-                                  static_cast<int>(world.herds.rows[0].adult_male_count)};
-      };
-  const int taken = static_cast<int>(core::OrderRefusal::kNone);
-  // Twelve mares and twelve males, six handed: all six are males — eighteen
-  // left keep their one sire five times over.
-  failures += Expect(hand(1, 24, 12, 6) == std::array<int, 3>{taken, 18, 6},
-                     "work-stock males at the door: of twelve mares and twelve males six handed "
-                     "are six males — the mares stay");
-  failures += Expect(hand(0, 24, 12, 6) == std::array<int, 3>{taken, 18, 9},
-                     "work-stock males at the door, the pair: without the mark the six go by "
-                     "proportion — three males, three females");
-  // Seventeen mares and three males, six handed: two males go first (the
-  // third is the sire of the eighteen left), then four by proportion — the
-  // sire stays among fourteen.
-  failures += Expect(hand(1, 20, 3, 6) == std::array<int, 3>{taken, 14, 1},
-                     "work-stock males at the door: the males go first only down to the sire "
-                     "share — of three, two; the sire stays with the fourteen left");
-  // And the helper says what the door did, for the refusal that asks it.
-  config.livestock[0].males_work = 0;
-  const std::uint16_t by_proportion = core::MalesAfterHandOver(config.livestock[0], 12, 24, 6);
-  config.livestock[0].males_work = 1;
-  const std::uint16_t males_first = core::MalesAfterHandOver(config.livestock[0], 12, 24, 6);
-  failures += Expect(by_proportion == 9 && males_first == 6,
-                     "work-stock males: the door's arithmetic is one function for the refusal and "
-                     "the take");
+                     "the horse: the forecast keeps every young head, within a head of the herd's "
+                     "own twenty-eight");
+  failures += Expect(std::abs(forecast_culled - 24.0F) <= 1.0F,
+                     "the pair: the forecast culls half, within a head of the herd's own "
+                     "twenty-four");
   return failures;
 }
 
@@ -4466,39 +4530,23 @@ int CheckHandingStockBack() {
                        "price");
   }
 
-  // -- a herd is not left with adults and no sire ---------------------------
+  // -- any head may go (#1374; livestock.md: «Строки „последнего
+  // производителя не сдают“ больше нет: сдать можно любую голову») -------
   //
-  // THE CASE THAT MATTERS IS THE ONE THE FIRST CUT MISSED, and it is first
-  // here for that reason. The sires go in PROPORTION when adults leave, so a
-  // partial take can round the only sire away while animals are still
-  // standing: three adults with one sire, asked for two, kept one adult and
-  // no sire and raised no refusal. The first guard tested how many heads were
-  // ASKED FOR; the rounding happens on what is LEFT.
+  // The kLastSire refusal and its two cases («a take that would round the
+  // last sire away is refused», «a take that leaves a sire is allowed») were
+  // removed with their rule. Rewritten: the same take of two of three goes
+  // through, and the one head left still breeds (CheckOneHeadBreeds).
   {
     core::WorldState world = MakeHerdWorld(1000.0F);
     const core::HerdId herd = AddHerd(world, 0, 3, 1, true);
-    failures += Expect(hand(world, herd, 2) == core::OrderRefusal::kLastSire,
-                       "hand stock: a partial take that would round the last sire away is "
-                       "refused");
-    failures += Expect(world.herds.rows[0].adult_count == 3 &&
-                           world.herds.rows[0].adult_male_count == 1 && world.limit.points == 0,
-                       "and a refusal costs the village nothing");
-  }
-  // A take that leaves a sire standing goes through: the refusal is narrow
-  // enough to be an exit and not a second cage.
-  {
-    core::WorldState world = MakeHerdWorld(1000.0F);
-    const core::HerdId herd = AddHerd(world, 0, 3, 2, true);
-    failures += Expect(hand(world, herd, 2) == core::OrderRefusal::kNone,
-                       "hand stock: a take that leaves a sire behind is allowed");
-    failures +=
-        Expect(world.herds.rows[0].adult_count == 1 && world.herds.rows[0].adult_male_count == 1,
-               "and the herd it leaves can still breed");
+    failures += Expect(
+        hand(world, herd, 2) == core::OrderRefusal::kNone && world.herds.rows[0].adult_count == 1,
+        "hand stock: two of three go, no «last sire» refusal (#1374)");
   }
   // EMPTYING THE HERD OF ADULTS IS ALLOWED, and that is a decision and not a
   // trap: a farm with no herd of a kind has made a visible choice and the
-  // district sells that kind by the head. The invisible one — mares and no
-  // stallion — is what the refusal above is for.
+  // district sells that kind by the head.
   {
     core::WorldState world = MakeHerdWorld(1000.0F);
     const core::HerdId herd = AddHerd(world, 0, 3, 1, true);
@@ -4681,7 +4729,7 @@ int CheckAgeSpread() {
   config.milk_resource = core::ResourceId{};
   config.livestock[0].life_game_years_min = 3.0F;
   config.livestock[0].life_game_years_max = 4.0F;
-  config.livestock[0].births_per_game_year = 0.0F;  // ageing alone, no calves
+  config.livestock[0].births_per_adult_head = 0.0F;  // ageing alone, no calves
 
   const auto survivors_after = [&](float youngest, float oldest, std::uint32_t years) {
     core::WorldState world = MakeHerdWorld(100000.0F);
@@ -5582,8 +5630,8 @@ int CheckTheFeedingOrderSwitch() {
   core::ProductionConfig config = MakeHerdConfig();
   config.horse_kind = core::LivestockKindId{1};
   config.livestock[1].feed_units_per_game_day = 1.0F;
-  config.livestock[1].births_per_game_year = 0.0F;
-  config.livestock[0].births_per_game_year = 0.0F;
+  config.livestock[1].births_per_adult_head = 0.0F;
+  config.livestock[0].births_per_adult_head = 0.0F;
   config.feed_links.push_back(
       core::FeedLinkDef{.kind = core::LivestockKindId{1}, .resource = core::ResourceId{0}});
   SetLivestockHead(config.unit_types[0], 100.0F);
@@ -5615,7 +5663,7 @@ int CheckTheColdLadder() {
   int failures = 0;
   core::ProductionConfig config = MakeHerdConfig();
   core::LivestockDef& cow = config.livestock[0];
-  cow.births_per_game_year = 0.0F;
+  cow.births_per_adult_head = 0.0F;
   cow.freezes_in_cold_place = 1;
   cow.cold_night_cold_place_c = -5.0F;
   cow.freezes_in_warm_place = 1;
@@ -9072,10 +9120,8 @@ int CheckHorsesComeInWhenAGroomIsAppointed() {
         team.unit.value == yard_id.value && team.household.value == core::kInvalidEntityIdValue,
         "standing at the yard now, and at nobody's household");
     failures += Expect(team.adult_count == 15, "with every head of the three that came in");
-    // The sire count is a herd invariant and must be RE-DERIVED, not summed:
-    // three lone herds were each their own stallion.
-    failures += Expect(team.adult_male_count < 15,
-                       "and one team of mares and sires, not fifteen stallions");
+    // («One team of mares and sires, not fifteen stallions» was removed with
+    // the sires, #1374.)
   }
 
   // -- and only once ------------------------------------------------------
@@ -9090,45 +9136,36 @@ int CheckHorsesComeInWhenAGroomIsAppointed() {
   return failures;
 }
 
-/// A TEAM STABLED LATE STILL HAS ITS STALLION (boss, boss-core-epoch1-5 seq
-/// 22, option б): at the horse's share of 0.07 the rounding gave none below
-/// eight heads. The pair: four mares come in with a stallion; one head stays
-/// one head.
+/// EVERY HEAD BREEDS, AND THE RATE IS PER HEAD ONCE (#1374; livestock.md
+/// «Одна голова под крышей тоже приносит приплод»; econ's units and boss's
+/// guard, core-boss-1374-no-sex-contract [2]). Replaces «a team stabled late
+/// still has its stallion» (removed with the sires): one head under a roof
+/// calves in its seasons; two heads breed; and eight heads at 0.5 a head a
+/// year bring about four a year - not two, which a path multiplying by a
+/// female share AGAIN would give.
 int CheckAStabledTeamOfTwoOrMoreHasAStallion() {
   int failures = 0;
-  core::ProductionConfig config = MakeHerdConfig();
-  config.horse_kind = core::LivestockKindId{0};  // "cow" plays the horse here
-  config.groom_post = core::ProfessionId{3};
-  config.livestock[0].males_share = 0.07F;  // the horse's share (livestock.csv)
-  const auto sires_after_stabling = [&config](std::uint16_t lone_heads) {
-    core::WorldState world;
-    core::UnitRow yard;
-    yard.level = 2;
-    const core::UnitId yard_id = core::AppendRow(world.units, yard);
-    core::FamilyRow household;
-    const core::FamilyId family = core::AppendRow(world.families, household);
-    // The start's team: lone heads billeted one a yard, none of them a sire.
-    for (std::uint16_t head = 0; head < lone_heads; ++head) {
-      core::HerdRow horse;
-      horse.kind = config.horse_kind;
-      horse.household = family;
-      horse.adult_count = 1;
-      horse.adult_age_game_years_total = 5.0F;
-      core::AppendRow(world.herds, horse);
-    }
-    core::ResidentRow groom;
-    groom.family = family;
-    groom.post.profession = config.groom_post;
-    groom.post.unit = yard_id;
-    core::AppendRow(world.residents, groom);
-    core::StableHorses(config, world);
-    return world.herds.rows.empty() ? 0xFFFFU : world.herds.rows[0].adult_male_count;
+  const auto born = [](std::uint16_t heads, std::uint32_t years) {
+    core::ProductionConfig config = MakeHerdConfig();
+    config.livestock[0].newborn_game_months = 240.0F;  // no maturing in the window
+    config.livestock[0].adult_from_game_months = 480.0F;
+    SetLivestockHead(config.unit_types[0], 1000.0F);
+    core::WorldState world = MakeHerdWorld(1.0e7F);
+    AddHerd(world, 0, heads, 0, true);
+    RunHerdDays(config, world, years * core::kDaysPerYear);
+    return world.herds.rows.empty() ? 0U
+                                    : static_cast<std::uint32_t>(world.herds.rows[0].newborn_count);
   };
-  failures +=
-      Expect(sires_after_stabling(4) == 1, "four lone heads stabled: the team has its stallion");
-  failures += Expect(sires_after_stabling(1) == 0, "one head stabled: no pair, no stallion");
-  failures += Expect(sires_after_stabling(16) == 1,
-                     "sixteen heads: the share's own one, not a second on top");
+  const std::uint32_t one = born(1, 3);
+  const std::uint32_t two = born(2, 2);
+  const std::uint32_t eight = born(8, 1);
+  std::cout << "  births at 0.5 a head a year: one head in three years " << one
+            << ", two in two years " << two << ", eight in a year " << eight << '\n';
+  failures += Expect(one >= 1, "one head under a roof brings young in its seasons - no sire asked");
+  failures += Expect(two >= 1, "two heads breed");
+  failures += Expect(eight >= 3 && eight <= 4,
+                     "eight heads at 0.5 a head bring about four a year: the female share is in "
+                     "the rate once, not twice");
   return failures;
 }
 
@@ -9154,11 +9191,11 @@ int CheckTheTeamWithoutARoofSaysSo() {
   std::filesystem::create_directories(root);
   std::ofstream(root / "resources.csv") << "key,feed_value\nhay,1\n";
   std::ofstream(root / "livestock.csv")
-      << "key,sexed,kolkhoz_only,household_only,feed_units_per_real_day,care_days_per_real_year,"
+      << "key,kolkhoz_only,household_only,feed_units_per_real_day,care_days_per_real_year,"
          "pasture_coverage_summer,newborn_game_months,adult_from_game_months,life_game_years_min,"
-         "life_game_years_max,births_per_game_year,litter_heads,males_share\n"
-         "horse,1,1,0,10,22,0.5,2,12,6,8,1,1,0.07\n"
-         "cow,1,0,0,10,22,0.5,2,12,6,8,1,1,0.07\n";
+         "life_game_years_max,births_per_adult_head\n"
+         "horse,1,0,10,22,0.5,2,12,6,8,0.5\n"
+         "cow,0,0,10,22,0.5,2,12,6,8,0.96\n";
   std::ofstream(root / "unit_types.csv")
       << "key,storage_capacity_t,capacity_by_plot\nhorse_yard,0,0\n";
   std::string error;
@@ -13932,7 +13969,8 @@ int CheckTheMilkPositionReadsTheYear() {
   config.plan_grain_share = 0.5F;
   config.plan_milk_share = 0.5F;
   core::WorldState world = MakeHerdWorld(0.0F);
-  AddHerd(world, 0, 10, 2, true);  // eight cows milking, 80 kg a day today
+  config.livestock[0].milk_l_per_adult_head = 384.0F;  // #1374: 8 l a head a day
+  AddHerd(world, 0, 10, 2, true);                      // ten cows milking, 80 kg a day today
   constexpr core::Grams kKilo = core::kGramsPerKilogram;
   world.calendar.tick = 8 * static_cast<core::Tick>(core::kTicksPerDay);
   core::RefreshCalendarCaches(world.calendar);
@@ -13970,11 +14008,9 @@ int CheckTheMilkPositionReadsTheYear() {
 int CheckTheMilkPlanHandOverGuard() {
   int failures = 0;
   core::ProductionConfig config = MakeHerdConfig();
-  config.livestock[0].births_per_game_year = 0.0F;
-  // BY PROPORTION, NOT MALES FIRST: with the work-stock mark the two heads
-  // handed were both bulls and the milk stood still - the guard's first
-  // build read «lamp: 100 kg kept, 100 kg handed» on a setting, not a wire.
-  config.livestock[0].males_work = 0;
+  config.livestock[0].births_per_adult_head = 0.0F;
+  // (The «by proportion, not males first» setting stood here until #1374:
+  // every head gives milk now.)
   // The district's door takes a head only against a livestock lot of the kind
   // (the second build read «both hand-overs refused»; CheckWorkStockMales).
   config.limit.lots.resize(1);
@@ -14062,7 +14098,9 @@ int CheckTheMilkCart() {
   config.plan_grain_share = 0.5F;
   config.plan_milk_share = 0.5F;
   core::WorldState world = MakeHerdWorld(0.0F);
-  // Ten kolkhoz cows, two of them bulls: eight milk 10 litres a day, 80 kg.
+  // Ten kolkhoz cows at 8 litres a day a head, 80 kg (#1374: every adult
+  // head milks; until then eight cows and two bulls at 10).
+  config.livestock[0].milk_l_per_adult_head = 384.0F;
   AddHerd(world, 0, 10, 2, true);
   // And a household's cow, whose milk is the household's.
   const core::HerdId yard = AddHerd(world, 0, 5, 0, false);
@@ -15618,7 +15656,6 @@ int CheckDistrictLimit() {
   limit.lots[5] = lot(70, 1, core::LimitLotKind::kLivestock, {});
   limit.lots[5].livestock = core::LivestockKindId{0};
   limit.lots[5].head_count = 1;
-  limit.lots[5].sex_choice = true;
   const auto orderable = [&limit](std::uint16_t lot) {
     return core::LotOrderable(limit, core::LimitLotId{lot}, core::Epoch::kOne);
   };
@@ -15730,7 +15767,6 @@ int CheckDistrictLimit() {
   core::OrderRow buy;
   buy.kind = core::OrderKind::kOrderLimitLot;
   buy.lot = core::LimitLotId{5};
-  buy.male = 1;
   failures +=
       Expect(core::OrderLimitLot(config, world, buy) == core::OrderRefusal::kNoRoomForStock &&
                  world.limit.points == 200 && world.livestock_arrivals.rows.empty(),
@@ -15753,11 +15789,10 @@ int CheckDistrictLimit() {
   const bool bought = world.livestock_arrivals.rows.size() == 1;
   const core::LivestockArrivalRow coming =
       bought ? world.livestock_arrivals.rows[0] : core::LivestockArrivalRow{};
-  failures +=
-      Expect(bought && coming.kind.value == 0 && coming.head_count == 1 && coming.male == 1 &&
-                 coming.stage == core::LivestockArrivalStage::kAdultStart,
-             "stock: the head travels knowing its kind, its number, its age and the sex "
-             "the chairman asked for");
+  failures += Expect(bought && coming.kind.value == 0 && coming.head_count == 1 &&
+                         coming.stage == core::LivestockArrivalStage::kAdultStart,
+                     "stock: the head travels knowing its kind, its number and its age (#1374: no "
+                     "sex asked)");
   failures += Expect(bought && coming.arrive_day >= world.calendar.day + 2 &&
                          coming.arrive_day <= world.calendar.day + 4,
                      "stock: and it is due in the district's own days — the same pair of knobs the "
@@ -15774,10 +15809,9 @@ int CheckDistrictLimit() {
   world.calendar.day += 1;
   core::ArriveLivestock(config, world);
   const bool stands = world.herds.rows.size() == 1;
-  failures +=
-      Expect(stands && world.herds.rows[0].adult_count == 1 &&
-                 world.herds.rows[0].adult_male_count == 1 && world.livestock_arrivals.rows.empty(),
-             "stock: on its day a herd is founded with the head in it, and the row leaves");
+  failures += Expect(
+      stands && world.herds.rows[0].adult_count == 1 && world.livestock_arrivals.rows.empty(),
+      "stock: on its day a herd is founded with the head in it, and the row leaves");
   // THE AGE IS THE WHOLE OF «в начале взрослого возраста»: a head entered at
   // nil would be a free extra lifetime bought for the same seventy points,
   // and the age total is what the death draw reads.
@@ -18089,7 +18123,7 @@ int main() {
   failures += CheckBilletingAndProduce();
   failures += CheckCohortFlows();
   failures += CheckAutumnPigs();
-  failures += CheckTheMalesCullIsSaid();
+  failures += CheckTheYoungCullIsSaid();
   failures += CheckTheAutumnKeepsAFewSows();
   failures += CheckSelfFedYard();
   failures += CheckWorkOnlyFeed();
@@ -18106,6 +18140,7 @@ int main() {
   failures += CheckStableGate();
   failures += CheckNightPasture();
   failures += CheckYardOffspringReplaces();
+  failures += CheckAnInheritedSecondKindLeavesTheYard();
   failures += CheckWorkStockMales();
   failures += CheckHorsesOrderAtTheDoor();
   failures += CheckHandingStockBack();

@@ -42,10 +42,10 @@ std::uint32_t MilkLegReceiverRow(const ProductionConfig& config, const WorldStat
   return kNoRow;
 }
 
-/// Whether a kind gives milk (livestock.csv milk_l_per_year).
+/// Whether a kind gives milk (livestock.csv milk_l_per_adult_head; #1374).
 bool KindGivesMilk(const ProductionConfig& config, LivestockKindId kind) {
   return kind.value < config.livestock.size() &&
-         config.livestock[kind.value].milk_l_per_year > 0.0F;
+         config.livestock[kind.value].milk_l_per_adult_head > 0.0F;
 }
 
 /// True when `herd` gives no milk and another kolkhoz herd that does stands in

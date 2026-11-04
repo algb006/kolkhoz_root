@@ -862,25 +862,17 @@ class LimitPolicy {
       return false;
     }
     std::uint32_t adults = 0;
-    std::uint32_t sires = 0;
     for (const core::HerdRow& herd : world.herds.rows) {
       adults += herd.kind.value == horse_kind_ ? herd.adult_count : 0U;
-      sires += herd.kind.value == horse_kind_ ? herd.adult_male_count : 0U;
     }
     if (adults >= kTeamFloor) {
       return false;  // a pair stands; the herd takes it from here
     }
     // Counting what is already on its way, so the cooldown does not buy the
-    // same pair three times over while the first two are still coming.
-    // AND THE SIRES ON THEIR WAY (#714's pair, 12 October 2026): the sire
-    // ordered first was still coming when the second order was asked, so
-    // «sires == 0» held twice and the district brought two stallions - on
-    // the free yard of day 1 both orders went out in year 1, and the pair
-    // that was to begin a team could never foal. Until then the yard's own
-    // works spaced the two orders and the second found the stallion landed.
+    // same pair three times over while the first two are still coming. (The
+    // sires on their way were counted too until #1374: no sex.)
     for (const core::LivestockArrivalRow& coming : world.livestock_arrivals.rows) {
       adults += coming.kind.value == horse_kind_ ? coming.head_count : 0U;
-      sires += coming.kind.value == horse_kind_ && coming.male != 0 ? coming.head_count : 0U;
     }
     if (adults >= kTeamFloor) {
       return false;
@@ -890,19 +882,7 @@ class LimitPolicy {
     }
     order.kind = core::OrderKind::kOrderLimitLot;
     order.lot = core::LimitLotId{static_cast<std::uint16_t>(horse_lot_)};
-    // THE SIRE FIRST, THEN THE MARE — what a chairman would ask for, and the
-    // design's own reason for the choice existing at all: «иначе хозяйство
-    // могло бы остаться без производителя и без всякого способа это
-    // исправить».
-    //
-    // IT CHANGES NOTHING TODAY and is written this way on purpose. The herd
-    // day rewrites adult_male_count to TargetMales() every day and
-    // TargetMales never returns nil while there are adults, so the first
-    // bought head is a stallion whatever the order says. The day that
-    // insurance is lifted (boss, parcel 17) this line is already right — and
-    // it has to be, because measured with the insurance simply switched off,
-    // a pair of MARES never foals and the team stood at two for twelve years.
-    order.male = sires == 0 ? 1U : 0U;
+    // (The sire first, then the mare, until #1374: «Пол не спрашивается».)
     return true;
   }
 
