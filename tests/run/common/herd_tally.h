@@ -482,10 +482,15 @@ class HerdTally {
     }
     std::uint32_t idle = 0;
     bool day_off = false;
+    std::array<std::uint32_t, kIdleReasons> idle_by_reason = {};
     for (const core::ResidentRow& person : world.residents.rows) {
       if (person.work.kind == core::WorkKind::kNone &&
           person.idle_reason != core::IdleReason::kIdleReasonCount) {
         ++idle;
+        const auto reason = static_cast<std::size_t>(person.idle_reason);
+        if (reason < kIdleReasons) {
+          ++idle_by_reason[reason];
+        }
         day_off = day_off || person.idle_reason == core::IdleReason::kDayOff;
         no_horse_idle_head_days_ += person.idle_reason == core::IdleReason::kNoHorse ? 1U : 0U;
       }
@@ -507,6 +512,13 @@ class HerdTally {
                person.work.unit.value == id.value;
       });
       stall_site_days_ += crewed ? 0U : 1U;
+      // THE STALL'S IDLE BY REASON (boss [4]: «not placeable» as a count): the
+      // idle adults beside each stalled site-day, by IdleReason.
+      if (!crewed) {
+        for (std::size_t reason = 0; reason < kIdleReasons; ++reason) {
+          stall_idle_by_reason_[reason] += idle_by_reason[reason];
+        }
+      }
     }
   }
 
@@ -609,6 +621,22 @@ class HerdTally {
         << no_horse_idle_head_days_ << " S_builder_head_days_y1y3 " << builder_head_days_
         << " S_works_finished_y1y3 " << finished_works_ << " S_days_to_finish_mean_y1y3 "
         << (finished_works_ > 0 ? finish_days_ / static_cast<double>(finished_works_) : 0.0);
+    // The idle beside the stalled site-days, head-days by IdleReason (boss [4]).
+    static constexpr std::array<const char*, 12> kReasonNames = {"no_open_work",
+                                                                 "day_off",
+                                                                 "work_covered",
+                                                                 "no_horse",
+                                                                 "crew_cap",
+                                                                 "road",
+                                                                 "horse_lock",
+                                                                 "no_day_left",
+                                                                 "resting",
+                                                                 "unexplained",
+                                                                 "rain",
+                                                                 "funeral"};
+    for (std::size_t reason = 0; reason < kReasonNames.size(); ++reason) {
+      out << " S_stall_idle_" << kReasonNames[reason] << ' ' << stall_idle_by_reason_[reason];
+    }
     // econ's variety gate: per yard class, family-days and seasons under 5.
     const std::array<const char*, 3> classes = {"pig", "goat", "none"};
     std::uint64_t all_days = 0;
@@ -768,7 +796,9 @@ class HerdTally {
   std::vector<std::string> mixed_log_;
   std::vector<std::uint32_t> over_yesterday_;
   std::vector<std::string> over_log_;
-  static constexpr std::uint32_t kStallYears = 3;                        ///< #1503's print, y1-y3
+  static constexpr std::uint32_t kStallYears = 3;  ///< #1503's print, y1-y3
+  static constexpr std::size_t kIdleReasons = 16;  ///< above IdleReason's count; an index guard
+  std::array<std::uint64_t, kIdleReasons> stall_idle_by_reason_ = {};
   std::vector<std::pair<std::uint32_t, std::uint32_t>> building_since_;  ///< unit id, day
   std::uint64_t stall_site_days_ = 0;
   std::uint64_t no_horse_idle_head_days_ = 0;
