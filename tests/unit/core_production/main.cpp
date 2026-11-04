@@ -4057,6 +4057,63 @@ int CheckAnInheritedSecondKindLeavesTheYard() {
   return failures;
 }
 
+/// THE GOAT FIRST (#1507; household-farming.md «Сначала коза», the human's
+/// «Козу делать»): a pig yard and a goat yard each hold one adult over their
+/// cap, the pig's row first in the walk, and the village has one stockless
+/// yard. Before #1507 the walk's order gave it the piglet; now the kid takes
+/// it and the piglet, with no stockless yard left, is meat.
+int CheckTheGoatIsOfferedFirst() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.livestock.resize(4);
+  for (const std::size_t index : {std::size_t{2}, std::size_t{3}}) {
+    core::LivestockDef& kind = config.livestock[index];
+    kind.newborn_game_months = 1.0F;
+    kind.adult_from_game_months = 2.0F;
+    kind.life_game_years_min = 30.0F;
+    kind.life_game_years_max = 40.0F;
+    kind.births_per_adult_head = 0.0F;
+    kind.meat_kg_per_head = 10.0F;
+    kind.household_self_fed = 1;
+    kind.household_cap_heads = 2.0F;
+    kind.household_group = 1;
+  }
+  config.livestock[3].milk_l_per_adult_head = 600.0F;  // kind 3 gives milk: the goat
+  core::WorldState world = MakeHerdWorld(0.0F);
+  core::FamilyRow family;
+  family.pantry.assign(3, 0);
+  const core::FamilyId pig_yard = AppendRow(world.families, family);
+  const core::FamilyId goat_yard = AppendRow(world.families, family);
+  const core::FamilyId stockless = AppendRow(world.families, family);
+  for (const auto& [kind, yard] :
+       {std::pair{std::uint16_t{2}, pig_yard}, std::pair{std::uint16_t{3}, goat_yard}}) {
+    core::HerdRow herd;
+    herd.kind = core::LivestockKindId{kind};
+    herd.household = yard;
+    herd.household_owned = 1;
+    herd.adult_count = 3;  // one over the cap of 2
+    herd.adult_age_game_years_total = 3.0F;
+    core::WidenAdultAgeBand(herd, 0, 3, 1.0F, 1.0F);
+    AppendRow(world.herds, herd);
+  }
+  RunHerdDays(config, world, 1);
+  std::uint32_t kids = 0;
+  std::uint32_t piglets = 0;
+  for (const core::HerdRow& herd : world.herds.rows) {
+    if (herd.household.value != stockless.value) {
+      continue;
+    }
+    (herd.kind.value == 3 ? kids : piglets) += herd.adult_count + herd.juvenile_count;
+  }
+  const core::ResourceAmounts& knifed = world.ledger.current.herd_surplus_slaughtered;
+  failures +=
+      Expect(kids == 1 && piglets == 0,
+             "goat first: the stockless yard takes the kid, though the pig's row walks first");
+  failures += Expect(knifed.size() > 2 && knifed[2] == 1 && (knifed.size() <= 3 || knifed[3] == 0),
+                     "goat first: the piglet, with no stockless yard left, is meat; no kid is");
+  return failures;
+}
+
 /// THE YARD'S OFFSPRING REPLACES, IT DOES NOT ADD (0.37.78; household design
 /// §2, «Приплод»; econ's acceptance of 0.37.70): a kind a yard may keep
 /// three of, living 2.5 years at the least, so an adult is old from 1.5; no
@@ -18141,6 +18198,7 @@ int main() {
   failures += CheckNightPasture();
   failures += CheckYardOffspringReplaces();
   failures += CheckAnInheritedSecondKindLeavesTheYard();
+  failures += CheckTheGoatIsOfferedFirst();
   failures += CheckWorkStockMales();
   failures += CheckHorsesOrderAtTheDoor();
   failures += CheckHandingStockBack();

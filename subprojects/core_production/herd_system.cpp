@@ -1262,11 +1262,28 @@ bool SettleBarrackStock(const ProductionConfig& config,
   return true;
 }
 
+/// A head waiting for the walk's end to be offered a stockless yard (#1507).
+struct DeferredGift {
+  HerdId herd;
+  float age = 0.0F;
+  bool grown = true;
+};
+
+/// THE MILK KINDS FIRST (#1507; household-farming.md «Сначала коза», the
+/// human's «Козу делать», 4 November 2026): a stockless yard offered a kid and
+/// a piglet on one day takes the kid - the goat is the poor man's cow, the
+/// pig's meat the yard already has from its hens. Read from the table, not a
+/// kind's name: a `stock` kind that gives no milk waits for the walk's end.
+bool WaitsForMilkKinds(const LivestockDef& kind) {
+  return kind.household_group == 1U && !(kind.milk_l_per_adult_head > 0.0F);
+}
+
 void PlaceSurplusHead(const ProductionConfig& config,
                       const LivestockDef& kind,
                       const HerdPlace& place,
                       GiftQueues& queues,
                       std::vector<HerdRow>& pending,
+                      std::vector<DeferredGift>& deferred,
                       HerdRow& herd,
                       HerdId herd_id,
                       std::uint16_t adults_before,
@@ -1317,7 +1334,13 @@ void PlaceSurplusHead(const ProductionConfig& config,
     herd.adult_age_game_years_total =
         herd.adult_age_game_years_total < youngest ? youngest : herd.adult_age_game_years_total;
     // A yard that keeps nothing of this group takes it, free; and if there
-    // is no such yard, it is meat.
+    // is no such yard, it is meat. A NON-MILK STOCK HEAD WAITS FOR THE WALK'S
+    // END (#1507, household-farming «Сначала коза»): the milk kinds are
+    // offered the day's stockless yards first.
+    if (!in_barrack && WaitsForMilkKinds(kind)) {
+      deferred.push_back(DeferredGift{.herd = herd_id, .age = age, .grown = true});
+      continue;
+    }
     if (in_barrack || !GiveToNeighbour(queues, pending, herd, kind, true, age)) {
       world.ledger.current.herd_culled += 1;
       ++slaughtered;
@@ -1370,6 +1393,7 @@ bool YardKeepsAnotherStock(const ProductionConfig& config,
 void WalkOutInherited(const ProductionConfig& config,
                       GiftQueues& queues,
                       std::vector<HerdRow>& pending,
+                      std::vector<DeferredGift>& deferred,
                       WorldState& world) {
   for (std::uint32_t row = 0; row < world.herds.rows.size(); ++row) {
     if (world.herds.rows[row].inherited == 0) {
@@ -1389,6 +1413,10 @@ void WalkOutInherited(const ProductionConfig& config,
     const HerdId herd_id = world.herds.row_ids[row];
     std::uint32_t slaughtered = 0;
     const auto send = [&](bool grown, float age) {
+      if (WaitsForMilkKinds(kind)) {  // #1507: after the walk, the milk kinds first
+        deferred.push_back(DeferredGift{.herd = herd_id, .age = age, .grown = grown});
+        return;
+      }
       if (GiveToNeighbour(queues, pending, herd, kind, grown, age)) {
         CarryHayShare(config, place, herd, pending.back().household, world);
         return;
@@ -1418,6 +1446,47 @@ void WalkOutInherited(const ProductionConfig& config,
       event.herd = herd_id;
       event.amount = static_cast<std::int64_t>(slaughtered);
     }
+  }
+}
+
+/// THE WAITING HEADS AFTER THE WALK (#1507): each non-milk stock head the
+/// day's cap pass or inheritance sent out is offered the stockless yards the
+/// milk kinds left - a grown head as grown, a young one as young - in the
+/// order it waited; with none left, it is meat, booked as the cap's surplus
+/// is (by kind, kHerdSurplusSlaughtered a herd).
+void PlaceDeferredGifts(const ProductionConfig& config,
+                        GiftQueues& queues,
+                        std::vector<HerdRow>& pending,
+                        const std::vector<DeferredGift>& deferred,
+                        WorldState& world) {
+  std::vector<std::pair<HerdId, std::uint32_t>> knifed;  // herd, heads
+  for (const DeferredGift& gift : deferred) {
+    const std::uint32_t row = FindRow(world.herds, gift.herd);
+    if (row == kNoRow || world.herds.rows[row].kind.value >= config.livestock.size()) {
+      continue;
+    }
+    const HerdRow& herd = world.herds.rows[row];
+    const LivestockDef& kind = config.livestock[herd.kind.value];
+    const HerdPlace place = PlaceOf(world, config, herd);
+    if (GiveToNeighbour(queues, pending, herd, kind, gift.grown, gift.age)) {
+      CarryHayShare(config, place, herd, pending.back().household, world);
+      continue;
+    }
+    world.ledger.current.herd_culled += 1;
+    Slaughter(config, kind, place, 1, world);
+    AddLedgerHeads(world.ledger.current.herd_surplus_slaughtered, herd.kind, 1);
+    auto found = std::ranges::find_if(
+        knifed, [&gift](const auto& entry) { return entry.first.value == gift.herd.value; });
+    if (found == knifed.end()) {
+      knifed.emplace_back(gift.herd, 1U);
+    } else {
+      ++found->second;
+    }
+  }
+  for (const auto& [herd_id, heads] : knifed) {
+    SimEvent& event = EmitEvent(world, EventKind::kHerdSurplusSlaughtered);
+    event.herd = herd_id;
+    event.amount = static_cast<std::int64_t>(heads);
   }
 }
 
@@ -1655,7 +1724,8 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
   const std::vector<std::uint8_t> peoples_foods = PeoplesFoods(config, current);
   std::vector<HerdRow> gifts;  // appended after the walk; see GiveToNeighbour
   GiftQueues queues = CollectGiftQueues(current, config);
-  WalkOutInherited(config, queues, gifts, current);  // #1374: no yard keeps two kinds of stock
+  std::vector<DeferredGift> deferred;  // #1507: the non-milk heads, after the walk
+  WalkOutInherited(config, queues, gifts, deferred, current);  // #1374: one stock kind a yard
   // THE ORDER OF THE WALK IS THE ORDER OF THE FEEDING: the stores are shared
   // (feed_allowance, the stores' own stock), and a herd walked earlier eats
   // first. The rows' order it was, and nobody chose it — «коровы первыми» was
@@ -1772,7 +1842,8 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
     const std::uint16_t adults_before = herd.adult_count;
     RunMaturation(config, kind, place, herd, herd_id, current);
     if (herd.household_owned != 0) {
-      PlaceSurplusHead(config, kind, place, queues, gifts, herd, herd_id, adults_before, current);
+      PlaceSurplusHead(
+          config, kind, place, queues, gifts, deferred, herd, herd_id, adults_before, current);
     }
     // The calving band is the WALK's to read: it owns the calendar, and
     // herd_life.h owns the animal. Handed down as a bare bool, exactly as
@@ -1821,6 +1892,7 @@ void RunHerdDay(const ProductionConfig& config, WorldState& current) {
   // The lamp reads its own count (MR.2a; boss, [113]), the ledger the old.
   WatchTheTeam(
       config, work, horse_backed_days, lamp_harnessed_days, shares.heavy_in_traces, current);
+  PlaceDeferredGifts(config, queues, gifts, deferred, current);  // #1507, after the milk kinds
   // ONE ROW A KIND A YARD (#1374's p78, Y2PLACE: seed 1945's family 1 held
   // two pig rows, 2 + 1 adults against the yard's cap of 2, the cap being a
   // row's): a yard whose row of the kind stood empty was «stockless» and its
