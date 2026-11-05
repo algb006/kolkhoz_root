@@ -1,0 +1,192 @@
+/// @file
+/// @brief #1566's instrument: crime left unfought - which Epoch I ending's
+/// trigger fires, and in what year; what drink costs. One line a village-year
+/// (years 1..kYears), read at the year's close, and one line of first years.
+/// @threading SINGLE_THREADED
+/// Test-side code, driven once a day from the thread that owns the simulation.
+///
+/// econ's prints (econ-boss-1566-crime-unfought [1] §4), by the core's own doors:
+///   * «Под суд», failed plans: PlanState::failed_years_in_a_row against the
+///     campaign's plan_failed_years_to_trial (kPlanTrialDue's condition; the
+///     trial itself is the presentation's);
+///   * «Под суд», herd hunger: the closed year's herd_deaths_hunger against the
+///     kolkhoz's heads at the year's close, the share and whether it reached
+///     kHerdHungerTrialShare (epochs §8: 14 %);
+///   * «Правление сгорело»: in Epoch I a fire is always put out (event_state.h,
+///     kFireBroke), so the ending cannot fire: printed as such;
+///   * «Село кончилось»: residents at the year's close - the core holds no
+///     threshold for it, printed as such;
+///   * drink: the adult men's alcoholism mean and the shares at >= 20/40/60,
+///     the distillers (NightTrade::kDistiller) living, samogon brewed (ml),
+///     sugar stolen (g);
+///   * its price: worker-days of adult men at work, weighted by the SoberFactor
+///     loss as alcoholism.h's scale reads (1.0 to 50, falling to 0.8 at 60) -
+///     RECOMPUTED here from the scale, not the labor system's own number;
+///   * the plan: the closed year's verdict.
+
+#ifndef TESTS_RUN_COMMON_CRIME_TALLY_H_
+#define TESTS_RUN_COMMON_CRIME_TALLY_H_
+
+#include <algorithm>
+#include <cstdint>
+#include <optional>
+#include <ostream>
+#include <sstream>
+#include <string>
+
+#include "core_common/calendar.h"
+#include "core_common/event_state.h"
+#include "core_common/resident_state.h"
+#include "core_common/state_table_ops.h"
+#include "core_common/world_state.h"
+#include "core_tables/tables.h"
+
+namespace run {
+
+class CrimeTally {
+ public:
+  static constexpr std::uint32_t kYears = 16;
+  /// epochs §8: a year whose herd hunger deaths reach this share of the herd.
+  static constexpr double kHerdHungerTrialShare = 0.14;
+  /// The adult man's biological age (life-cycle design): drink is counted on him.
+  static constexpr float kAdultYears = 16.0F;
+
+  CrimeTally(const core::ITableSet& tables, std::uint64_t seed) : seed_(seed) {
+    if (const core::ITable* const life = tables.FindTable("life")) {
+      const std::uint32_t row = life->FindRowByKey("life_speedup");
+      const std::uint32_t value = life->FindColumn("value");
+      if (row != core::kNoTableRow && value != core::kNoTableColumn) {
+        speedup_ = life->CellReal(row, value).value_or(speedup_);
+      }
+    }
+    if (const core::ITable* const resources = tables.FindTable("resources")) {
+      sugar_ = resources->FindRowByKey("sugar");
+    }
+    if (const core::ITable* const campaign = tables.FindTable("campaign")) {
+      const std::uint32_t row = campaign->FindRowByKey("plan_failed_years_to_trial");
+      const std::uint32_t value = campaign->FindColumn("value");
+      if (row != core::kNoTableRow && value != core::kNoTableColumn) {
+        trial_after_ = static_cast<std::uint32_t>(campaign->CellInteger(row, value).value_or(0));
+      }
+    }
+  }
+
+  /// @brief One closed day: the drink's price, and on the year's last day
+  ///        the year's line.
+  void CountDay(const core::WorldState& world) {
+    const std::uint32_t year = (world.calendar.day / core::kDaysPerYear) + 1U;
+    if (year > kYears) {
+      return;
+    }
+    for (const core::ResidentRow& person : world.residents.rows) {
+      if (person.sex != core::Sex::kMale || person.work.kind == core::WorkKind::kNone ||
+          core::BiologicalAgeYears(speedup_, person.birth_day, world.calendar.day) < kAdultYears) {
+        continue;
+      }
+      ++worked_;
+      sober_loss_ += SoberLoss(person.alcoholism);
+    }
+    if (world.calendar.day % core::kDaysPerYear != core::kDaysPerYear - 1U) {
+      return;
+    }
+    CloseYear(world, year);
+  }
+
+  /// @brief The village's lines: one a year read, then the first years.
+  void Print(std::ostream& out, std::uint64_t seed) const {
+    out << lines_.str();
+    out << "population_curve: CRIME1566 seed " << seed << " first_trial_due_year "
+        << (trial_year_ ? std::to_string(*trial_year_) : std::string("none"))
+        << " first_herd_hunger_14pct_year "
+        << (hunger_year_ ? std::to_string(*hunger_year_) : std::string("none"))
+        << " (failed plans reach " << trial_after_ << ", read on the year's last day)"
+        << " max_failed_in_a_row " << max_failed_
+        << " board_burned: cannot fire (Epoch I fires are always put out, event_state.h)"
+        << " village_ended: no threshold in the core" << '\n';
+  }
+
+ private:
+  /// alcoholism.h's scale: output 1.0 to 50, falling to 0.8 at 60.
+  static double SoberLoss(float alcoholism) {
+    constexpr float kFrom = 50.0F;
+    constexpr float kTo = 60.0F;
+    constexpr double kLossAtTo = 0.2;
+    const float over = std::clamp((alcoholism - kFrom) / (kTo - kFrom), 0.0F, 1.0F);
+    return static_cast<double>(over) * kLossAtTo;
+  }
+
+  void CloseYear(const core::WorldState& world, std::uint32_t year) {
+    std::uint32_t men = 0;
+    double drink = 0.0;
+    std::uint32_t over20 = 0;
+    std::uint32_t over40 = 0;
+    std::uint32_t over60 = 0;
+    std::uint32_t distillers = 0;
+    for (const core::ResidentRow& person : world.residents.rows) {
+      distillers += person.night_trade == core::NightTrade::kDistiller ? 1U : 0U;
+      if (person.sex != core::Sex::kMale ||
+          core::BiologicalAgeYears(speedup_, person.birth_day, world.calendar.day) < kAdultYears) {
+        continue;
+      }
+      ++men;
+      drink += static_cast<double>(person.alcoholism);
+      over20 += person.alcoholism >= 20.0F ? 1U : 0U;
+      over40 += person.alcoholism >= 40.0F ? 1U : 0U;
+      over60 += person.alcoholism >= 60.0F ? 1U : 0U;
+    }
+    std::uint64_t heads = 0;
+    for (const core::HerdRow& herd : world.herds.rows) {
+      if (herd.household_owned == 0) {
+        heads += herd.adult_count + herd.juvenile_count + herd.newborn_count;
+      }
+    }
+    // The year's book is the CURRENT one on its last day (it closes at the turn).
+    const core::YearLedger& book = world.ledger.current;
+    const std::uint32_t hunger = book.herd_deaths_hunger;
+    const double hunger_share =
+        heads + hunger == 0 ? 0.0
+                            : static_cast<double>(hunger) / static_cast<double>(heads + hunger);
+    if (hunger_share >= kHerdHungerTrialShare && !hunger_year_) {
+      hunger_year_ = year;
+    }
+    max_failed_ = std::max<std::uint32_t>(max_failed_, world.plan.failed_years_in_a_row);
+    // The trial's CONDITION as kPlanTrialDue raises it: the count reaches the
+    // campaign's limit. The year is the one whose close the count is read at -
+    // on its last day the closing year's verdict is not in yet, so a year's
+    // failure shows on the next year's line (said in the print's key).
+    if (trial_after_ > 0 && world.plan.failed_years_in_a_row >= trial_after_ && !trial_year_) {
+      trial_year_ = year;
+    }
+    const core::Grams sugar =
+        sugar_ != core::kNoTableRow && sugar_ < book.stolen.size() ? book.stolen[sugar_] : 0;
+    const auto share = [men](std::uint32_t count) {
+      return men == 0 ? 0.0 : static_cast<double>(count) / static_cast<double>(men);
+    };
+    lines_ << "population_curve: CRIME1566Y seed " << seed_ << " year " << year << " residents "
+           << world.residents.rows.size() << " men " << men << " drink_mean "
+           << (men == 0 ? 0.0 : drink / men) << " share_ge20 " << share(over20) << " share_ge40 "
+           << share(over40) << " share_ge60 " << share(over60) << " distillers " << distillers
+           << " samogon_brewed_ml " << book.samogon_brewed_ml << " sugar_stolen_g " << sugar
+           << " sober_loss_man_days " << sober_loss_ << " men_worked_days " << worked_
+           << " failed_in_a_row " << static_cast<unsigned>(world.plan.failed_years_in_a_row)
+           << " plan_verdict " << static_cast<unsigned>(world.plan.last_verdict)
+           << " herd_hunger_deaths " << hunger << " herd_hunger_share " << hunger_share << '\n';
+    sober_loss_ = 0.0;
+    worked_ = 0;
+  }
+
+  std::uint64_t seed_ = 0;
+  float speedup_ = 4.0F;
+  std::uint32_t sugar_ = core::kNoTableRow;
+  std::uint32_t trial_after_ = 0;
+  std::optional<std::uint32_t> trial_year_;
+  std::optional<std::uint32_t> hunger_year_;
+  std::uint32_t max_failed_ = 0;
+  double sober_loss_ = 0.0;
+  std::uint64_t worked_ = 0;
+  std::ostringstream lines_;
+};
+
+}  // namespace run
+
+#endif  // TESTS_RUN_COMMON_CRIME_TALLY_H_

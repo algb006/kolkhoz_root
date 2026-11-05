@@ -40,6 +40,7 @@
 #include "../common/avatar_book_tally.h"
 #include "../common/births_herd_tally.h"
 #include "../common/building_chairman.h"
+#include "../common/crime_tally.h"
 #include "../common/fed_tally.h"
 #include "../common/funeral_tally.h"
 #include "../common/hay_day_off_policy.h"
@@ -585,6 +586,10 @@ bool g_granary_first_off = false;
 /// `--beach=off`: #1373's arm B - the rest set without the canon's beach
 /// (BeachPolicy::SetOff; econ, econ-boss-1373-rest-gates [1]).
 bool g_beach_off = false;
+/// `NO_ANTICRIME=1` in the environment, or `--no-anticrime`: #1566's arm - the
+/// chairman fights no crime (the wiring in Walk says what is off). The
+/// environment form is the one host's harness and the node scripts pass.
+bool g_no_anticrime = false;
 /// `--avatar=KEY`: the chairman New Game would choose (#1417, #1421; econ's
 /// arms, econ-boss-1427-avatar-gates [1]); empty, the canon: no avatar. An
 /// avatar's paths move the village, so its run is an arm, not the canon.
@@ -768,6 +773,15 @@ bool Walk(std::uint64_t seed,
   if (g_beach_off) {
     builder.beach.SetOff();
   }
+  // NO_ANTICRIME=1 (#1566; econ-boss-1566-crime-unfought [1] §4): the chairman
+  // fights no crime - DistillerPolicy off (no kTakeNightTrader, no watchman
+  // from it), no sugar purchase (#1240), no talks to drinkers (#1238); the
+  // leisure and the reading hut stay, as they are not anti-crime.
+  if (g_no_anticrime) {
+    builder.distiller.Enable(false);
+    builder.limit.BuySugar(false);
+    builder.sport_talk_on = false;
+  }
   run::TimberFlowTally timber(*world.tables);
   run::PassedOverTally passed_over;
   // The outdoor workers' summer rest by host's definition (#1373's gates).
@@ -784,6 +798,8 @@ bool Walk(std::uint64_t seed,
   run::FuneralTally funerals(*world.tables);
   // The herds, y1-y6 (#1374's pair: herds without sex).
   run::HerdTally herds(*world.tables);
+  // Crime left unfought - the endings' triggers and drink's price (#1566).
+  run::CrimeTally crime(*world.tables, seed);
   std::array<std::uint32_t, core::kRestSourceCount> r1373_sources = {};
   std::uint32_t r1373_walk_offs = 0;
   // What the farm's sites waited on, y1-y6 (#1285 G1's probe; boss [3]).
@@ -909,6 +925,7 @@ bool Walk(std::uint64_t seed,
       funerals.CountDayEnd(simulation->CompletedState());
       herds.CountDayEnd(simulation->CompletedState());
       herds.CountNearShort(*simulation);
+      crime.CountDay(simulation->CompletedState());
       if (!warm_off) {
         strada.CountDayEnd(simulation->CompletedState());
       }
@@ -1434,6 +1451,7 @@ bool Walk(std::uint64_t seed,
       strada.PrintCoverage(std::cout, seed);
       funerals.Print(std::cout, seed);
       herds.Print(std::cout, seed);
+      crime.Print(std::cout, seed);
       // The warm works unfinished on a cold night, and the crew's builders
       // (warm_crew.h; boss, core-boss-1084-funeral-body [7]).
       std::cout << "population_curve: WARMLATE seed " << seed << " late_warm_works "
@@ -1574,6 +1592,8 @@ int main(int argc, char** argv) {
       g_granary_first_off = true;
     } else if (argument == "--beach=off") {
       g_beach_off = true;
+    } else if (argument == "--no-anticrime") {
+      g_no_anticrime = true;
     } else if (argument.starts_with("--avatar=")) {
       g_avatar_key = std::string(argument.substr(std::string_view("--avatar=").size()));
     } else if (argument == "--roof-exemption=old") {
@@ -1600,6 +1620,15 @@ int main(int argc, char** argv) {
     } else {
       probe_seed = std::strtoull(argv[index], nullptr, 10);
     }
+  }
+  if (const char* const anticrime = std::getenv("NO_ANTICRIME");
+      anticrime != nullptr && std::string_view(anticrime) == "1") {
+    g_no_anticrime = true;
+  }
+  if (g_no_anticrime) {
+    std::cout << "population_curve: ARM — NO_ANTICRIME (#1566): no distiller taken, no watchman "
+                 "posted for one, no sugar bought, no talks to drinkers; leisure and the "
+                 "reading hut stay\n";
   }
   if (g_no_planting) {
     std::cout << "population_curve: CONTROL ARM — --no-planting: the building chairman "
