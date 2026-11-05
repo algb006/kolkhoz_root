@@ -222,6 +222,9 @@ class LimitPolicy {
   ///        (#1289; HayAnswer::HoldHandOverForPlans).
   void HoldHandOverForPlans(bool hold) { hay_.HoldHandOverForPlans(hold); }
 
+  /// @brief The hay answer's cow hand-overs (#1570's print).
+  const std::vector<HayAnswer::HandLog>& HayHandLogs() const { return hay_.HandLogs(); }
+
   /// @brief The points of every closed year, and what the policy bought.
   void Report(const char* run) const {
     sugar_.Report(run);

@@ -162,6 +162,20 @@ class HayAnswer {
     }
   }
 
+  /// #1570: one cow hand-over the lamp's answer ordered - the day, the cows,
+  /// and the forecast it answered (kHerdHayShortAhead's heads short on its
+  /// worst day, the feed that runs out first, the days to that loss).
+  struct HandLog {
+    core::SimDay day = 0;
+    std::int64_t cows = 0;
+    std::int64_t short_heads = 0;
+    core::ResourceId first_short;
+    std::int64_t days_to_loss = 0;
+  };
+
+  /// @brief Every cow hand-over the answer ordered, in order (#1570's print).
+  const std::vector<HandLog>& HandLogs() const { return hand_log_; }
+
   /// @brief What the answer did, for a run to print.
   void Report(std::string_view run_name) const {
     std::cout << run_name << ": the hay's yellow stood " << yellow_days_
@@ -353,6 +367,13 @@ class HayAnswer {
         static_cast<std::uint64_t>(std::max<std::int64_t>(0, yellow.hand_over_horses));
     const std::int64_t horses = Hand(world, IsHorse, yellow.hand_over_horses, orders);
     const std::int64_t cows = Hand(world, IsCow, yellow.hand_over_stock, orders);
+    if (cows > 0) {
+      hand_log_.push_back(HandLog{.day = world.calendar.day,
+                                  .cows = cows,
+                                  .short_heads = yellow.amount,
+                                  .first_short = yellow.resource,
+                                  .days_to_loss = yellow.days_to_loss});
+    }
     horses_handed_ += static_cast<std::uint64_t>(horses);
     cows_handed_ += static_cast<std::uint64_t>(cows);
     year.horses_handed += static_cast<std::uint64_t>(horses);
@@ -384,6 +405,8 @@ class HayAnswer {
   std::uint64_t horses_handed_ = 0;
 
   std::uint64_t cows_handed_ = 0;
+
+  std::vector<HandLog> hand_log_;
 };
 
 }  // namespace run

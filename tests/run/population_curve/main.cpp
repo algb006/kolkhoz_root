@@ -42,6 +42,7 @@
 #include "../common/building_chairman.h"
 #include "../common/fed_tally.h"
 #include "../common/funeral_tally.h"
+#include "../common/hand_over_tally.h"
 #include "../common/hay_day_off_policy.h"
 #include "../common/herd_tally.h"
 #include "../common/passed_over_tally.h"
@@ -784,6 +785,8 @@ bool Walk(std::uint64_t seed,
   run::FuneralTally funerals(*world.tables);
   // The herds, y1-y6 (#1374's pair: herds without sex).
   run::HerdTally herds(*world.tables);
+  // Every cow handed y2-y3: the door, the forecast, came true (#1570, boss [32]).
+  run::HandOverTally hand_overs(*world.tables);
   std::array<std::uint32_t, core::kRestSourceCount> r1373_sources = {};
   std::uint32_t r1373_walk_offs = 0;
   // What the farm's sites waited on, y1-y6 (#1285 G1's probe; boss [3]).
@@ -909,6 +912,9 @@ bool Walk(std::uint64_t seed,
       funerals.CountDayEnd(simulation->CompletedState());
       herds.CountDayEnd(simulation->CompletedState());
       herds.CountNearShort(*simulation);
+      hand_overs.CountDay(simulation->CompletedState(),
+                          builder.limit.HayHandLogs(),
+                          herds.CowsHandedInYear(simulation->CompletedState().calendar.date.year));
       if (!warm_off) {
         strada.CountDayEnd(simulation->CompletedState());
       }
@@ -1435,6 +1441,7 @@ bool Walk(std::uint64_t seed,
       funerals.Print(std::cout, seed);
       herds.Print(std::cout, seed);
       herds.PrintCowFlows(std::cout, seed);  // #1570
+      hand_overs.Print(std::cout, seed);
       // The warm works unfinished on a cold night, and the crew's builders
       // (warm_crew.h; boss, core-boss-1084-funeral-body [7]).
       std::cout << "population_curve: WARMLATE seed " << seed << " late_warm_works "
