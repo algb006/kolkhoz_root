@@ -603,6 +603,12 @@ class HerdTally {
     }
   }
 
+  /// @brief The kolkhoz cows handed to the district so far in `year`
+  ///        (1-based, up to kYears; 0 outside), for a day's difference.
+  std::int64_t CowsHandedInYear(std::uint32_t year) const {
+    return year >= 1 && year <= kYears ? cow_years_[year - 1].handed : 0;
+  }
+
   /// @brief #1570's line: the kolkhoz cows' flows a year, y1-kYears -
   ///        «COW1570 seed S y1 adults_close A heads_close H born B young_culled
   ///        Y handed D surplus_slaughtered S autumn_slaughtered U died X froze F
