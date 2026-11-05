@@ -775,11 +775,14 @@ bool Walk(std::uint64_t seed,
   }
   // NO_ANTICRIME=1 (#1566; econ-boss-1566-crime-unfought [1] §4): the chairman
   // fights no crime - DistillerPolicy off (no kTakeNightTrader, no watchman
-  // from it), no sugar purchase (#1240), no talks to drinkers (#1238); the
-  // leisure and the reading hut stay, as they are not anti-crime.
+  // from it), no talks to drinkers (#1238); the leisure and the reading hut
+  // stay, as they are not anti-crime. THE SUGAR PURCHASE (#1240) STAYS TOO
+  // (boss, the #1503 thread after [29]): its first form turned it off, and the
+  // arm drank LESS than the canon - no sugar in the village, nothing to steal,
+  // samogon 0 from y3 - since the sugar is the distillers' supply, not a
+  // lever against them; the spec had misfiled it.
   if (g_no_anticrime) {
     builder.distiller.Enable(false);
-    builder.limit.BuySugar(false);
     builder.sport_talk_on = false;
   }
   run::TimberFlowTally timber(*world.tables);
@@ -1627,7 +1630,7 @@ int main(int argc, char** argv) {
   }
   if (g_no_anticrime) {
     std::cout << "population_curve: ARM — NO_ANTICRIME (#1566): no distiller taken, no watchman "
-                 "posted for one, no sugar bought, no talks to drinkers; leisure and the "
+                 "posted for one, no talks to drinkers; the sugar still bought, leisure and the "
                  "reading hut stay\n";
   }
   if (g_no_planting) {
