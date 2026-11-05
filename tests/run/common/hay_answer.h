@@ -153,7 +153,7 @@ class HayAnswer {
       // NOT WHILE THE CHAIRMAN IS SETTING THE HERDS' PLANS (#1289; herd_plan_
       // policy.h): its evenings set plans in steps, and a plan of the first
       // step read as the advice's would hand over heads the last step keeps.
-      if (heads_advised && !plans_being_set_) {
+      if (heads_advised && !plans_being_set_ && !hand_over_off_) {
         HandOver(world, *yellow, orders);
       }
     }
@@ -206,7 +206,13 @@ class HayAnswer {
   /// @brief Holds the hand-over while the herds' plans are being set (#1289).
   void HoldHandOverForPlans(bool hold) { plans_being_set_ = hold; }
 
+  /// @brief #1570's counterfactual arm (--hay-hand-over=off): the lamp's
+  ///        «reduce herd» is never answered, so whether the herds it named
+  ///        would have gone short can be read. Off by default: the canon hands.
+  void SetHandOverOff(bool off) { hand_over_off_ = off; }
+
  private:
+  bool hand_over_off_ = false;
   bool plans_being_set_ = false;
 
   struct Kind {

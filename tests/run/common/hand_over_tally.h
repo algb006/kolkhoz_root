@@ -74,6 +74,10 @@ class HandOverTally {
         short_now >= last_short_ ? short_now - last_short_ : short_now;  // the year's turn
     last_short_ = short_now;
     short_by_day_[world.calendar.day] = grown;
+    if (InYears(world)) {
+      short_total_ += grown;
+      short_days_ += grown > 0 ? 1U : 0U;
+    }
     for (; seen_ < logs.size(); ++seen_) {
       const HayAnswer::HandLog& log = logs[seen_];
       if (!InYears(world)) {
@@ -124,7 +128,12 @@ class HandOverTally {
     }
     out << "population_curve: HAND1570SUM seed " << seed << " y" << kFirstYear << "-y" << kLastYear
         << " cows_handed_by_hay " << by_hay << " cows_handed_by_other " << by_other
-        << " hay_hand_overs " << snaps_.size() << " came_true " << came_true << '\n';
+        << " hay_hand_overs " << snaps_.size() << " came_true "
+        << came_true
+        // THE MEASURE'S OWN LIFE: the cows' need left uncovered over y2-y3 at
+        // all, so «came_true 0» reads either «never short» or «short elsewhere».
+        << " cows_fed_short_y2y3_g " << short_total_ << " cows_short_days_y2y3 " << short_days_
+        << '\n';
   }
 
  private:
@@ -160,6 +169,8 @@ class HandOverTally {
   std::map<core::SimDay, core::Grams> short_by_day_;
   core::Grams last_short_ = 0;
   std::int64_t last_handed_ = 0;
+  core::Grams short_total_ = 0;
+  std::uint32_t short_days_ = 0;
   std::size_t seen_ = 0;
   std::vector<Snapshot> snaps_;
 };
