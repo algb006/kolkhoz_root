@@ -47,6 +47,7 @@
 #include "../common/passed_over_tally.h"
 #include "../common/rest_tally.h"
 #include "../common/run_harness.h"
+#include "../common/seed_lamp_tally.h"
 #include "../common/site_wait_tally.h"
 #include "../common/strada_tally.h"
 #include "../common/substitute_tally.h"
@@ -784,6 +785,8 @@ bool Walk(std::uint64_t seed,
   run::FuneralTally funerals(*world.tables);
   // The herds, y1-y6 (#1374's pair: herds without sex).
   run::HerdTally herds(*world.tables);
+  // Does the «seed short» lamp cry wolf (#1394; host #1393)?
+  run::SeedLampTally seed_lamp(*world.tables);
   std::array<std::uint32_t, core::kRestSourceCount> r1373_sources = {};
   std::uint32_t r1373_walk_offs = 0;
   // What the farm's sites waited on, y1-y6 (#1285 G1's probe; boss [3]).
@@ -909,6 +912,7 @@ bool Walk(std::uint64_t seed,
       funerals.CountDayEnd(simulation->CompletedState());
       herds.CountDayEnd(simulation->CompletedState());
       herds.CountNearShort(*simulation);
+      seed_lamp.CountDay(*simulation);
       if (!warm_off) {
         strada.CountDayEnd(simulation->CompletedState());
       }
@@ -1434,6 +1438,7 @@ bool Walk(std::uint64_t seed,
       strada.PrintCoverage(std::cout, seed);
       funerals.Print(std::cout, seed);
       herds.Print(std::cout, seed);
+      seed_lamp.Print(std::cout, seed);
       // The warm works unfinished on a cold night, and the crew's builders
       // (warm_crew.h; boss, core-boss-1084-funeral-body [7]).
       std::cout << "population_curve: WARMLATE seed " << seed << " late_warm_works "
