@@ -54,6 +54,7 @@
 #include "warm_crew.h"
 #include "warm_hold.h"
 #include "watchman_policy.h"
+#include "write_off_policy.h"
 #include "yard_policy.h"
 
 namespace run {
@@ -384,6 +385,8 @@ class BuildingChairman {
     // The church store and the clamps emptied into the guarded food yard
     // (#1254; store_emptying_policy.h): the leak's only close by design.
     emptying.RunDay(simulation);
+    // The audit's remark answered by a write-off (#1568; write_off_policy.h).
+    write_off.RunDay(simulation);
     sawmill.RunDay(simulation);
     // The herds' plans before the limit's hay answer reads the lamp (#1289).
     herd_plan.RunDay(simulation);
@@ -549,6 +552,9 @@ class BuildingChairman {
   /// The unguarded stores emptied (#1254); `emptying.Enable` is the control
   /// arm's switch.
   StoreEmptyingPolicy emptying;
+  /// The book's shortage written off after the audit's remark (#1568);
+  /// `write_off.Enable(false)` is the arm without it.
+  WriteOffPolicy write_off;
 };
 
 }  // namespace run

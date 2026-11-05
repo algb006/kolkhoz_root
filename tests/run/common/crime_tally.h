@@ -66,6 +66,10 @@ class CrimeTally {
     if (const core::ITable* const resources = tables.FindTable("resources")) {
       sugar_ = resources->FindRowByKey("sugar");
     }
+    if (const core::ITable* const types = tables.FindTable("unit_types")) {
+      church_store_ = types->FindRowByKey("church_store");
+      clamp_ = types->FindRowByKey("clamp");
+    }
     if (const core::ITable* const campaign = tables.FindTable("campaign")) {
       const std::uint32_t row = campaign->FindRowByKey("plan_failed_years_to_trial");
       const std::uint32_t value = campaign->FindColumn("value");
@@ -212,9 +216,22 @@ class CrimeTally {
     }
     core::Grams gap = 0;
     core::Grams real = 0;
+    // THE GAP BY STORE (boss [41]): the church's store, the clamps, the rest.
+    core::Grams gap_church = 0;
+    core::Grams gap_clamp = 0;
+    core::Grams gap_other = 0;
     for (const core::UnitRow& unit : world.units.rows) {
+      core::Grams here = 0;
       for (const core::Grams grams : unit.book_gap) {
-        gap += grams;
+        here += grams;
+      }
+      gap += here;
+      if (unit.type.value == church_store_) {
+        gap_church += here;
+      } else if (unit.type.value == clamp_) {
+        gap_clamp += here;
+      } else {
+        gap_other += here;
       }
       if (!unit.book_gap.empty()) {
         for (std::size_t resource = 0; resource < unit.book_gap.size(); ++resource) {
@@ -226,12 +243,21 @@ class CrimeTally {
     for (const core::Grams grams : book.written_off) {
       written += grams;
     }
+    // LINK 2'S OWN GRAMS, read alone (boss [41]): the night theft and the
+    // collusion, checked against the book's gap growth of the year (its
+    // write-offs added back). The ledger's `stolen` of every kind but sugar
+    // also carries the distillers' raw grain (night_trade's own theft), so it
+    // is printed under its own name and never compared.
     const core::Grams split = stolen_night_g_ + stolen_collusion_g_;
-    lines_ << " truant_man_days " << book.truant_man_days << " food_stolen_kg "
-           << food_stolen / 1000 << " by_night_kg " << stolen_night_g_ / 1000 << " by_collusion_kg "
-           << stolen_collusion_g_ / 1000 << (split == food_stolen ? "" : " SPLIT_UNREAD")
-           << " book_gap_kg " << gap / 1000 << " real_in_gapped_stores_kg " << real / 1000
-           << " audits " << book.audits << " audit_remarks " << book.audit_remarks
+    const core::Grams gap_grown = gap - last_gap_ + written;
+    last_gap_ = gap;
+    lines_ << " truant_man_days " << book.truant_man_days << " ledger_stolen_not_sugar_kg "
+           << food_stolen / 1000 << " link2_by_night_kg " << stolen_night_g_ / 1000
+           << " link2_by_collusion_kg " << stolen_collusion_g_ / 1000
+           << (split == gap_grown ? "" : " LINK2_SPLIT_UNREAD") << " book_gap_kg " << gap / 1000
+           << " gap_church_kg " << gap_church / 1000 << " gap_clamps_kg " << gap_clamp / 1000
+           << " gap_other_stores_kg " << gap_other / 1000 << " real_in_gapped_stores_kg "
+           << real / 1000 << " audits " << book.audits << " audit_remarks " << book.audit_remarks
            << " audit_shortage_permille " << world.audit.shortage_permille << " audit_trial_due "
            << static_cast<unsigned>(world.audit.trial_due) << " written_off_kg " << written / 1000
            << " drunk_fires " << book.drunk_fires << '\n';
@@ -251,6 +277,9 @@ class CrimeTally {
   std::optional<std::uint32_t> trial_year_;
   std::optional<std::uint32_t> hunger_year_;
   std::optional<std::uint32_t> audit_trial_year_;  ///< #1568: kAuditTrialDue's year
+  std::uint32_t church_store_ = core::kNoTableRow;
+  std::uint32_t clamp_ = core::kNoTableRow;
+  core::Grams last_gap_ = 0;
   core::Grams stolen_night_g_ = 0;
   core::Grams stolen_collusion_g_ = 0;
   std::optional<std::uint32_t> below40_year_;

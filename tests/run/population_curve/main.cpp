@@ -595,6 +595,9 @@ bool g_beach_off = false;
 /// chairman fights no crime (the wiring in Walk says what is off). The
 /// environment form is the one host's harness and the node scripts pass.
 bool g_no_anticrime = false;
+/// `--no-write-off`: #1568's arm - the run chairman never writes the book's
+/// shortage off after the audit's remark (WriteOffPolicy off).
+bool g_no_write_off = false;
 /// `--avatar=KEY`: the chairman New Game would choose (#1417, #1421; econ's
 /// arms, econ-boss-1427-avatar-gates [1]); empty, the canon: no avatar. An
 /// avatar's paths move the village, so its run is an arm, not the canon.
@@ -789,6 +792,9 @@ bool Walk(std::uint64_t seed,
   if (g_no_anticrime) {
     builder.distiller.Enable(false);
     builder.sport_talk_on = false;
+  }
+  if (g_no_write_off) {
+    builder.write_off.Enable(false);
   }
   run::TimberFlowTally timber(*world.tables);
   run::PassedOverTally passed_over;
@@ -1601,6 +1607,8 @@ int main(int argc, char** argv) {
       g_granary_first_off = true;
     } else if (argument == "--beach=off") {
       g_beach_off = true;
+    } else if (argument == "--no-write-off") {
+      g_no_write_off = true;
     } else if (argument == "--no-anticrime") {
       g_no_anticrime = true;
     } else if (argument.starts_with("--avatar=")) {
