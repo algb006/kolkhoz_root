@@ -11,8 +11,11 @@
 /// WHAT DECIDES, in boss's numbers (assigned, not measured), for every MAN of
 /// 16 and older, at the first day of the month, of the month that closed —
 /// a woman has no such metric and stays at 0 (boss, 2026-09-18):
-///   * up +0.65 when a distiller holding samogon stands within reach of HIS
-///     yard at the turn (the supply; NearestDistiller, register 207);
+///   * up `alcohol_gain_with_distiller` when a distiller holding samogon
+///     stands within reach of HIS yard at the turn (the supply;
+///     NearestDistiller, register 207): 0.94 in the tables since #1248 (25 Oct
+///     2026); the 0.65 below is seq 150's measure, the default of a world with
+///     no tables only - read as the live value, it misled #1568's proposal;
 ///   * up +0.5 in a winter month (December to February) for one who had not a
 ///     single day of work in it (idleness and winter) — unless an open
 ///     reading hut is within his reach (sport.h);
@@ -61,7 +64,8 @@ namespace core {
 
 /// @brief The drinking numbers (world_params.csv). Defaults are boss's
 /// figures of parcel 364 with econ's three halves (seq 130) and the supply
-/// measured to 0.65 (seq 150), kept for a world with no tables.
+/// measured to 0.65 (seq 150), kept for a world with no tables. NOT THE LIVE
+/// VALUES: the tables carry their own (the supply 0.94 since #1248).
 struct AlcoholismConfig {
   float adult_from_years = 16.0F;        ///< `alcohol_adult_from_years`
   float gain_with_distiller = 0.65F;     ///< `alcohol_gain_with_distiller`

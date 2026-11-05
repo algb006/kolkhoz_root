@@ -70,6 +70,15 @@ class CrimeTally {
       church_store_ = types->FindRowByKey("church_store");
       clamp_ = types->FindRowByKey("clamp");
     }
+    // THE DISTILLER'S RAISER AS THE RUN READS IT (#1568 (d); boss [42]): the
+    // tables' value, not alcoholism.h's no-tables default.
+    if (const core::ITable* const params = tables.FindTable("world_params")) {
+      const std::uint32_t row = params->FindRowByKey("alcohol_gain_with_distiller");
+      const std::uint32_t value = params->FindColumn("value");
+      if (row != core::kNoTableRow && value != core::kNoTableColumn) {
+        distiller_raiser_ = params->CellReal(row, value).value_or(-1.0F);
+      }
+    }
     if (const core::ITable* const campaign = tables.FindTable("campaign")) {
       const std::uint32_t row = campaign->FindRowByKey("plan_failed_years_to_trial");
       const std::uint32_t value = campaign->FindColumn("value");
@@ -123,6 +132,9 @@ class CrimeTally {
         << " (failed plans reach " << trial_after_ << ", read on the year's last day)"
         << " max_failed_in_a_row " << max_failed_
         << " board_burned: NOT MEASURABLE (Epoch I fires are always put out, event_state.h)"
+        << " alcohol_gain_with_distiller "
+        << (distiller_raiser_ < 0.0F ? std::string("NOT IN THE TABLES")
+                                     : std::to_string(distiller_raiser_))
         << " first_audit_trial_due_year "
         << (audit_trial_year_ ? std::to_string(*audit_trial_year_) : std::string("none"))
         << " village_ended: NOT MEASURABLE (no trigger in the core, #1569)"
@@ -277,6 +289,7 @@ class CrimeTally {
   std::optional<std::uint32_t> trial_year_;
   std::optional<std::uint32_t> hunger_year_;
   std::optional<std::uint32_t> audit_trial_year_;  ///< #1568: kAuditTrialDue's year
+  float distiller_raiser_ = -1.0F;
   std::uint32_t church_store_ = core::kNoTableRow;
   std::uint32_t clamp_ = core::kNoTableRow;
   core::Grams last_gap_ = 0;
