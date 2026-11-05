@@ -348,6 +348,7 @@ void RunStoreAudit(const FoodTheftConfig& config, WorldState& current) {
       unit.book_gap.clear();
       unit.book_window.clear();
       unit.book_window_month = 0;
+      unit.book_seen = unit.stock;  // the book sees the stock it accepts
       for (const ResourceId food : config.food) {
         recorded += unit.level > 0 && unit.dead == 0 ? AmountOf(unit.stock, food) : 0;
       }
@@ -440,9 +441,7 @@ void RunStoreAudit(const FoodTheftConfig& config, WorldState& current) {
   remark.resource = worst_food;
 }
 
-void RunBookReceipts(const FoodTheftConfig& config,
-                     const WorldState& previous,
-                     WorldState& current) {
+void RunBookReceipts(const FoodTheftConfig& config, WorldState& current) {
   if (!config.on || current.audit.books_accepted == 0) {
     return;
   }
@@ -452,14 +451,15 @@ void RunBookReceipts(const FoodTheftConfig& config,
     if (unit.level == 0 || unit.dead != 0) {
       continue;
     }
-    const std::uint32_t before = FindRow(previous.units, current.units.row_ids[row]);
-    const UnitRow* const was = before == kNoRow ? nullptr : &previous.units.rows[before];
+    // FIRST LOOK: what it holds is what the book saw, not a receipt.
+    const bool first = unit.book_seen.empty();
     for (const ResourceId food : config.food) {
       const Grams now = AmountOf(unit.stock, food);
-      const Grams then = was == nullptr ? 0 : AmountOf(was->stock, food);
-      if (now > then) {
-        AddAmount(WindowMonth(config, unit, month).received, food, now - then);
+      const Grams seen = AmountOf(unit.book_seen, food);
+      if (!first && now > seen) {
+        AddAmount(WindowMonth(config, unit, month).received, food, now - seen);
       }
+      AddAmount(unit.book_seen, food, now - seen);
     }
   }
 }

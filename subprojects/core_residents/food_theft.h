@@ -111,13 +111,12 @@ void RunFoodTheft(const FoodTheftConfig& config,
 void RunStoreAudit(const FoodTheftConfig& config, WorldState& current);
 
 /// @brief The book window's receipts (#1568 (b)): every rise of a store's
-///        stock of a food kind since the previous step, into this month's
-///        `received`. An issue and a receipt in one hour net out - the
-///        approximation named in the contract. Call once a step, after the
-///        acceptance; does nothing with `config.on` false.
-void RunBookReceipts(const FoodTheftConfig& config,
-                     const WorldState& previous,
-                     WorldState& current);
+///        stock of a food kind over what the book last saw
+///        (UnitRow::book_seen), into this month's `received`. An issue and a
+///        receipt between two looks net out - the approximation named in the
+///        contract. Call once a step, after the acceptance; does nothing with
+///        `config.on` false.
+void RunBookReceipts(const FoodTheftConfig& config, WorldState& current);
 
 /// @brief Answers this step's kWriteOffShortage orders (order_state.h).
 void TakeWriteOffOrders(const FoodTheftConfig& config, WorldState& current);

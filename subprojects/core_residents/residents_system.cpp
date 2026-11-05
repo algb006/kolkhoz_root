@@ -512,7 +512,7 @@ class ResidentsSystem final : public IResidentsSystem {
     // the write-offs given this hour, the night's theft in the distillers'
     // hour out, the district's audit at its day's first step.
     TakeWriteOffOrders(config_.food_theft, current);
-    RunBookReceipts(config_.food_theft, previous, current);
+    RunBookReceipts(config_.food_theft, current);
     RunFoodTheft(config_.food_theft, config_.night_trade, config_.life_speedup, current);
     RunStoreAudit(config_.food_theft, current);
     // The exchange's dry count in the counter's own hour — after the day's

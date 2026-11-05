@@ -447,6 +447,12 @@ struct UnitRow {
   std::vector<BookMonth> book_window;
   std::uint32_t book_window_month = 0;
 
+  /// The food stock the book last saw (#1568 (b)): a receipt is a rise from
+  /// it. Its own and not the previous step's state - the residents' slot runs
+  /// before the step's production, so that state equals this one there, and
+  /// the first form read every receipt as nought. Empty with the link off.
+  ResourceAmounts book_seen;
+
   /// The site block (see ConstructionState). All zeros for a unit that is
   /// simply standing, which is most units most of the time.
   ConstructionState construction;

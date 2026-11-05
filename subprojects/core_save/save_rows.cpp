@@ -320,7 +320,9 @@ static_assert(AggregateArity<RickSupplySeam>() == 6,
 // BookMonth and a u32 after the gap - predicted before the build: + the
 // u32 with its pad, 168 -> 176, the vector counted apart below, 28 fields -
 // held; on the wire +8 a unit when empty.
-static_assert(sizeof(UnitRow) == 176 + (4 * kAmountsSize) + sizeof(std::vector<SupplyLeg>) +
+// And book_seen, a ResourceAmounts after the window's month - predicted 176 and
+// 5 amounts, 29 fields.
+static_assert(sizeof(UnitRow) == 176 + (5 * kAmountsSize) + sizeof(std::vector<SupplyLeg>) +
                                      sizeof(std::vector<BookMonth>) +
                                      sizeof(std::optional<ConstructionState>),
               "UnitRow changed — update the codec and VERSION_SAVE");
@@ -350,7 +352,7 @@ static_assert(AggregateArity<ConstructionState>() == 22,
 // Save 181 (#1199's plot): plot_radius_m, a float after the graves - 25 fields,
 // predicted before the build: sizeof unmoved at 168 (the u16 at 160 and the
 // float at 164 share the slot), the units section +4 a unit.
-static_assert(AggregateArity<UnitRow>() == 28,
+static_assert(AggregateArity<UnitRow>() == 29,
               "UnitRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 173 (#1089): the settlement's row - predicted 28 bytes (Vec2 8, four
 // u32-sized fields 16, a byte, a byte of padding, a u16) and 7 fields, before
@@ -1557,6 +1559,7 @@ void WriteUnitRow(SaveSink& sink, const UnitRow& row) {
     sink.WriteAmounts(DefKind::kResource, month.received);
   }
   out.WriteU32(row.book_window_month);
+  sink.WriteAmounts(DefKind::kResource, row.book_seen);
   WriteConstructionBlock(sink, row.construction);
   // The works put aside for the winter (#715, save 157): a byte, then the
   // block when it is there.
@@ -1624,6 +1627,7 @@ UnitRow ReadUnitRow(LoadSource& source) {
     }
   }
   row.book_window_month = in.ReadU32();
+  row.book_seen = source.ReadAmounts(DefKind::kResource);
   row.construction = ReadConstructionBlock(source);
   // Save 157 (#715): the works put aside for the winter.
   if (source.ReadEnumValue(0, 1, "suspended works") != 0) {

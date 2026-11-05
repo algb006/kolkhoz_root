@@ -163,6 +163,22 @@ int CheckFoodTheft() {
         Expect(acts == 1 && before.audit.books_accepted == 1 && before.ledger.current.audits <= 1,
                "act: signed once, on its month of y1 - and no audit before it");
   }
+  // THE RECEIPTS (#1568 (b)): a rise over what the book last saw, and the first
+  // look is no receipt. The first form compared with the previous step's state,
+  // which in the residents' slot is the same, and read every receipt as nought.
+  {
+    core::WorldState seen = Village(0.0F, false);
+    core::RunBookReceipts(on, seen);  // the first look: 50 t seen, none received
+    seen.units.rows[0].stock[0] += 5 * kTonne;
+    core::RunBookReceipts(on, seen);
+    core::Grams received = 0;
+    for (const core::BookMonth& month : seen.units.rows[0].book_window) {
+      received += core::AmountOf(month.received, kRye);
+    }
+    std::cout << "  receipts: " << received << " g received after a rise of 5 t\n";
+    failures += Expect(received == 5 * kTonne,
+                       "receipts: a rise of 5 t over the book's last look is 5 t received");
+  }
   // THE AUDIT PER POSITION, over the window (#1568 (b)): 1 t lost of 10 t
   // received in y2's first month - 10 %. The year's first audit gives the
   // remark, never the trigger; the second, the trigger.

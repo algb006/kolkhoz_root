@@ -1688,6 +1688,13 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
       {"night_theft.distiller_short_since", U32(world.night_theft.distiller_short_since)});
   chunks.push_back(
       {"night_theft.settlement_alcoholism", F32(world.night_theft.settlement_alcoholism)});
+  // The district's store audit (#1568, save 207).
+  chunks.push_back({"audit.next_day[0]", U32(world.audit.next_day[0])});
+  chunks.push_back({"audit.next_day[1]", U32(world.audit.next_day[1])});
+  chunks.push_back({"audit.shortage_permille", U16(world.audit.shortage_permille)});
+  chunks.push_back({"audit.remarked", U8(world.audit.remarked)});
+  chunks.push_back({"audit.trial_due", U8(world.audit.trial_due)});
+  chunks.push_back({"audit.books_accepted", U8(world.audit.books_accepted)});
   // The sports field's month (save 68).
   chunks.push_back({"sport_month.open_days", U8(world.sport_month.open_days)});
   chunks.push_back({"sport_month.downpour_yesterday", U8(world.sport_month.downpour_yesterday)});
@@ -2046,7 +2053,10 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // predicted 1447 -> 1449 before the build, held; the hash read off it.
     // Save 205 (#1084): the last loud burial day, a u32 - predicted 1449 ->
     // 1453 before the build; the hash read off it.
-    {"world", 1453, 0x3957b06973cf4b33ULL},
+    // Save 207 (#1568): +13 - the store audit's two u32, a u16 and three
+    // bytes after the night theft; predicted (+12, then +1 for the act's
+    // byte) before the build, held.
+    {"world", 1466, 0x9fd820f559b72d5bULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2216,7 +2226,12 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // 831 -> 837 before the build and held; the hash read off it.
     // Save 181: a unit's own plot radius, a float a unit on three units -
     // predicted 837 -> 849 before the build and held; the hash read off it.
-    {"units", 849, 0xbeb3984389dfb475ULL},
+    // Save 207 (#1568): +36 - 12 a unit for the fixture's three: the book's
+    // gap and its last look (an empty amounts vector each, a u16 count), the
+    // window's count and month (two u32). Read off the run against the
+    // prediction «+8 a unit when empty» made for the window alone; the two
+    // amounts vectors were not in it.
+    {"units", 885, 0x5a14470869629c15ULL},
     // Save 71: +4 — fed_share, one herd; predicted before the field, held.
     // Save 91: +8 — the adult age band, two floats, one herd; predicted
     // 71 -> 79 with every other section unmoved before the build.
@@ -2319,7 +2334,9 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // 824 bytes, the kind's byte one higher; predicted before the build, the
     // hash read off it. Save 206 (#1374): `male` leaves, a byte an order, six
     // orders - predicted 824 -> 818 before the build.
-    {"orders", 818, 0xa72e56450b8bb598ULL},
+    // Save 207 (#1568): same length, new hash - the fixture's «last order
+    // kind» (kOrderKindCount - 1) is now kWriteOffShortage.
+    {"orders", 818, 0xff822200a07d5a0fULL},
     // Save 82: the fixture's first stand, a birch planting — 8 -> 67 (its id
     // 4, the old fields 41, species 2, hectares 4, two days 8); predicted,
     // held.
@@ -2558,7 +2575,10 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // Save 205 (#1084 contract, re-laid on 0.37.357): idle_person_days gains
     // the kFuneral cell, a u32 a book, two books: 3974 -> 3982, predicted
     // before the build; the hash read off it.
-    {"ledger", 3982, 0x357db32cc103a269ULL},
+    // Save 207 (#1568): +40 - 20 a book for the fixture's two: written_off
+    // and stolen_before_acceptance (empty amounts, a u16 count each) and four
+    // u32; predicted before the build, held.
+    {"ledger", 4022, 0x2fea3d1c4135da99ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 

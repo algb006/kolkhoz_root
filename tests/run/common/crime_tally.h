@@ -270,7 +270,8 @@ class CrimeTally {
     // also carries the distillers' raw grain (night_trade's own theft), so it
     // is printed under its own name and never compared.
     const core::Grams split = stolen_night_g_ + stolen_collusion_g_;
-    const core::Grams gap_grown = gap - last_gap_ + written;
+    // The theft before the act of acceptance went to its own line, not the book.
+    const core::Grams gap_grown = gap - last_gap_ + written + BeforeAct(book);
     last_gap_ = gap;
     lines_ << " truant_man_days " << book.truant_man_days << " ledger_stolen_not_sugar_kg "
            << food_stolen / 1000 << " link2_by_night_kg " << stolen_night_g_ / 1000
