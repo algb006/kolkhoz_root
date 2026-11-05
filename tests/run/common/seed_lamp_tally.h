@@ -5,8 +5,11 @@
 /// @threading SINGLE_THREADED
 /// Test-side code, driven once a day from the thread that owns the simulation.
 ///
-/// host #1393 read 128 of 135 village-years lit for barley and 0 short sowings
-/// on its runs; the lamp counts held seed and reaped heaps against the next
+/// host #1393 read «128 of 135 village-years lit for barley, 0 short sowings» -
+/// CORRECTED (boss, 5 Nov; host's K rerun on 0.37.366): that counted the days a
+/// barley kSeedShort FORECAST stood (the alarm, at most 10 kg), not its lamp;
+/// this tally, which reads alarm.lamp, found the lamp lit in about 2 of 162
+/// (#1394 held: not a defect). The lamp counts held seed and reaped heaps against the next
 /// sowing's need and never the crop still standing (production_alarms.cpp,
 /// SeedShortfall). An episode is a run of lit days on one field; it CAME TRUE
 /// when the field's next sowing closed short (FieldRow::sown_share below
