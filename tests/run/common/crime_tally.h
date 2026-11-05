@@ -101,8 +101,8 @@ class CrimeTally {
         << (hunger_year_ ? std::to_string(*hunger_year_) : std::string("none"))
         << " (failed plans reach " << trial_after_ << ", read on the year's last day)"
         << " max_failed_in_a_row " << max_failed_
-        << " board_burned: cannot fire (Epoch I fires are always put out, event_state.h)"
-        << " village_ended: no threshold in the core" << '\n';
+        << " board_burned: NOT MEASURABLE (Epoch I fires are always put out, event_state.h)"
+        << " village_ended: NOT MEASURABLE (no trigger in the core, #1569)" << '\n';
   }
 
  private:
