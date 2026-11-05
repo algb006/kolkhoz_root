@@ -731,7 +731,14 @@ float RunFeeding(const ProductionConfig& config,
   }
   const FeedLinkDef* const oat_link = TeamOatLink(config);
   for (const FeedLinkDef& link : config.feed_links) {
-    if (covered >= eats) {
+    // FED WITHIN THE SHARE'S OWN TOLERANCE, NOT TO THE GRAM (0.37.366; the
+    // feeding residue, #1374's pair and o300 seed 2237): the take is whole
+    // grams of the staple, so a herd its staple fed in full stood a sub-gram
+    // short of `eats`, and the walk went on to the next row for it - a reserve
+    // straw drawing 1-3 g a day, every day, which held the straw a recipe
+    // needed at 5 999.98 kg of 6 t. The share below already calls that herd
+    // fed (kFeedToleranceUnits); the walk now stops where the share does.
+    if (covered + kFeedToleranceUnits >= eats) {
       break;
     }
     if (link.kind.value != kind_id.value || link.resource.value >= config.feed_values.size()) {

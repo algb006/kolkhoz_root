@@ -2101,6 +2101,40 @@ int CheckTheHerdDoesNotEatTheSeed() {
   return failures;
 }
 
+/// THE STAPLE FEEDS IN FULL AND THE RESERVE IS NOT TOUCHED (0.37.366; the
+/// feeding residue): hay worth 0.45 a kilogram covers three units in
+/// 6 666 whole grams, 0.0003 units short of the need - inside the share's
+/// tolerance, so the herd is fed; until 0.37.366 the walk went on to the
+/// reserve straw for that residue and drew a few grams of it every day.
+int CheckTheStapleResidueTakesNoReserve() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.livestock[0].feed_units_per_game_day = 1.0F;
+  config.feed_values = {0.45F, 0.0F, 0.0F, 0.2F};
+  config.feed_links = {
+      core::FeedLinkDef{
+          .kind = core::LivestockKindId{0}, .resource = core::ResourceId{0}, .reserve = 0},
+      core::FeedLinkDef{
+          .kind = core::LivestockKindId{0}, .resource = core::ResourceId{3}, .reserve = 1}};
+  core::WorldState world = MakeHerdWorld(1000.0F);
+  world.units.rows[0].stock.resize(4, 0);
+  constexpr core::Grams kStraw = 6000 * core::kGramsPerKilogram;
+  world.units.rows[0].stock[3] = kStraw;
+  AddHerd(world, 0, 3, 0, true);
+  const core::Grams hay_before = StoreOf(world, 0);
+  core::RunHerdDay(config, world);
+  const core::Grams straw_taken = kStraw - StoreOf(world, 3);
+  std::cout << "  staple residue: hay taken " << hay_before - StoreOf(world, 0)
+            << " g, straw taken " << straw_taken << " g, unfed days "
+            << world.herds.rows[0].unfed_days << '\n';
+  failures += Expect(hay_before - StoreOf(world, 0) > 0, "staple residue: the herd ate its hay");
+  failures +=
+      Expect(straw_taken == 0,
+             "staple residue: a herd its hay fed within the tolerance takes no reserve straw");
+  failures += Expect(world.herds.rows[0].unfed_days == 0.0F, "staple residue: and is fed");
+  return failures;
+}
+
 /// THE HERDS STAY BELOW THE PLAN RESERVE (resources design §6; boss,
 /// 2026-09-13): grain this year's reaping has set aside for the district is
 /// not fodder, and a herd that finds only that grain goes hungry.
@@ -18156,6 +18190,7 @@ int main() {
   failures += CheckTheShippedFeedingOrder();
   failures += CheckTheHerdsMilkGoesToItsHome();
   failures += CheckTheHerdDoesNotEatThePlan();
+  failures += CheckTheStapleResidueTakesNoReserve();
   failures += CheckTheHerdDoesNotEatNextYear();
   failures += CheckTheHerdDoesNotEatTheSeed();
   failures += CheckFeedCaps();
