@@ -77,6 +77,19 @@ class CrimeTally {
 
   /// @brief One closed day: the drink's price, and on the year's last day
   ///        the year's line.
+  /// @brief Every step: #1568 link 2's split, night theft against collusion
+  ///        (boss [39]), by kFoodStolen's `family` (1 = collusion). Checked at
+  ///        the year's close against the ledger's `stolen` of the same kinds:
+  ///        SPLIT_UNREAD when they part (the first form read the day's last
+  ///        step only and missed every theft, 232 of 232 village-years).
+  void CountStep(const core::WorldState& world) {
+    for (const core::SimEvent& event : world.step_events) {
+      if (event.kind == core::EventKind::kFoodStolen) {
+        (event.family.value == 1 ? stolen_collusion_g_ : stolen_night_g_) += event.amount;
+      }
+    }
+  }
+
   void CountDay(const core::WorldState& world) {
     const std::uint32_t year = (world.calendar.day / core::kDaysPerYear) + 1U;
     if (year > kYears) {
@@ -89,15 +102,6 @@ class CrimeTally {
       }
       ++worked_;
       sober_loss_ += SoberLoss(person.alcoholism);
-    }
-    // #1568 LINK 2'S SPLIT, night theft against collusion (boss [39]): read off
-    // the day's LAST step's events - the theft runs in the night trades' hour
-    // out, 23, the day's last. Checked against the ledger's `stolen` growth of
-    // the same kinds: a theft in another hour prints as unsplit, not as nought.
-    for (const core::SimEvent& event : world.step_events) {
-      if (event.kind == core::EventKind::kFoodStolen) {
-        (event.family.value == 1 ? stolen_collusion_g_ : stolen_night_g_) += event.amount;
-      }
     }
     if (world.calendar.day % core::kDaysPerYear != core::kDaysPerYear - 1U) {
       return;

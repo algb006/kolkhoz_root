@@ -409,7 +409,8 @@ void LiveOneDay(core::ISimulation& simulation,
                 run::FedTally* fed_tally = nullptr,
                 run::SubstituteTally* substitutes = nullptr,
                 run::StradaTally* strada = nullptr,
-                run::HerdTally* herds = nullptr) {
+                run::HerdTally* herds = nullptr,
+                run::CrimeTally* crime = nullptr) {
   bool hot_at_any_tick = false;
   const core::UnitId awaiting = upgrades.Awaiting();
   for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
@@ -423,6 +424,10 @@ void LiveOneDay(core::ISimulation& simulation,
     // The step's births by kind (#1374's pair, herd_tally.h).
     if (herds != nullptr) {
       herds->CountStep(simulation.CompletedState());
+    }
+    // #1568's theft split, night against collusion, by the step's events.
+    if (crime != nullptr) {
+      crime->CountStep(simulation.CompletedState());
     }
     if (substitutes != nullptr) {
       substitutes->CountStep(simulation.CompletedState());  // #1434
@@ -919,7 +924,8 @@ bool Walk(std::uint64_t seed,
                  warm_off ? nullptr : &fed_tally,
                  warm_off ? nullptr : &substitutes,
                  warm_off ? nullptr : &strada,
-                 &herds);
+                 &herds,
+                 &crime);
       builder.RunDay(*simulation);
       timber.CountDay(simulation->CompletedState());
       avatar_book.CountDay(simulation->CompletedState());
