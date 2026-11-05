@@ -34,6 +34,7 @@ constexpr core::ResourceId kRye{0};
 core::WorldState Village(float alcoholism, bool watched) {
   core::WorldState world;
   world.world_seed = 1931;
+  world.audit.books_accepted = 1;  // after the act; the act's own check sets 0
   core::UnitRow store;
   store.level = 1;
   store.stock.assign(1, 50 * kTonne);
@@ -137,14 +138,47 @@ int CheckFoodTheft() {
         Expect(canon.units.rows[0].stock[0] == 50 * kTonne && canon.units.rows[0].book_gap.empty(),
                "food theft: with crime_food_theft_on 0 nothing moves - the canon");
   }
-  // THE AUDIT: 40 t real and a gap of 10 t - 20 % short. The year's first
-  // audit gives the remark, never the trigger; the second, the trigger.
+  // THE ACT OF ACCEPTANCE (#1568 (a)): before it the theft is «до приёмки»,
+  // not in the book; on its day every book is set to the real stock.
+  {
+    core::WorldState before = Village(45.0F, false);
+    before.audit.books_accepted = 0;
+    ToTheftHour(night, before);
+    core::RunFoodTheft(on, night, kSpeedup, before);
+    failures += Expect(before.units.rows[0].book_gap.empty() &&
+                           core::AmountOf(before.ledger.current.stolen_before_acceptance, kRye) ==
+                               25 * core::kGramsPerKilogram,
+                       "act: a theft before the act is the former management's, not the book's");
+    std::uint32_t acts = 0;
+    for (std::uint32_t day = 0; day < core::kDaysPerYear; ++day) {
+      before.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
+      core::RefreshCalendarCaches(before.calendar);
+      before.step_events.clear();
+      core::RunStoreAudit(on, before);
+      acts += Count(before, core::EventKind::kBooksAccepted);
+    }
+    std::cout << "  act: signed " << acts << " time(s) in y1; audits after it "
+              << before.ledger.current.audits << " (the half's day may fall before it)\n";
+    failures +=
+        Expect(acts == 1 && before.audit.books_accepted == 1 && before.ledger.current.audits <= 1,
+               "act: signed once, on its month of y1 - and no audit before it");
+  }
+  // THE AUDIT PER POSITION, over the window (#1568 (b)): 1 t lost of 10 t
+  // received in y2's first month - 10 %. The year's first audit gives the
+  // remark, never the trigger; the second, the trigger.
   core::WorldState audited = Village(0.0F, false);
+  audited.audit.books_accepted = 1;
   audited.units.rows[0].stock.assign(1, 40 * kTonne);
-  audited.units.rows[0].book_gap.assign(1, 10 * kTonne);
+  audited.units.rows[0].book_gap.assign(1, 1 * kTonne);
+  audited.units.rows[0].book_window.assign(on.window_months, core::BookMonth{});
+  constexpr std::uint32_t kY2FirstMonth = core::kDaysPerYear / core::kDaysPerMonth;
+  audited.units.rows[0].book_window[kY2FirstMonth % on.window_months].lost.assign(1, kTonne);
+  audited.units.rows[0].book_window[kY2FirstMonth % on.window_months].received.assign(1,
+                                                                                      10 * kTonne);
+  audited.units.rows[0].book_window_month = kY2FirstMonth + 1U;
   std::uint32_t remarks = 0;
   std::uint32_t triggers = 0;
-  for (std::uint32_t day = 0; day < core::kDaysPerYear; ++day) {
+  for (std::uint32_t day = core::kDaysPerYear; day < 2U * core::kDaysPerYear; ++day) {
     audited.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
     core::RefreshCalendarCaches(audited.calendar);
     audited.step_events.clear();
@@ -152,8 +186,8 @@ int CheckFoodTheft() {
     remarks += Count(audited, core::EventKind::kAuditRemark);
     triggers += Count(audited, core::EventKind::kAuditTrialDue);
   }
-  std::cout << "  audit: a year at 20 % short - " << audited.ledger.current.audits << " audits, "
-            << remarks << " remark, " << triggers << " trigger\n";
+  std::cout << "  audit: a year at 10 % of receipts lost - " << audited.ledger.current.audits
+            << " audits, " << remarks << " remark, " << triggers << " trigger\n";
   failures += Expect(audited.ledger.current.audits == 2, "audit: two a year");
   failures += Expect(remarks == 1 && triggers == 1,
                      "audit: the first gives the remark, the second the «Под суд» condition");
@@ -167,8 +201,8 @@ int CheckFoodTheft() {
   core::TakeWriteOffOrders(on, audited);
   failures += Expect(audited.units.rows[0].book_gap.empty() && audited.audit.remarked == 0,
                      "write-off: the book set to the real stock, the remark withdrawn");
-  failures += Expect(core::AmountOf(audited.ledger.current.written_off, kRye) == 10 * kTonne,
-                     "write-off: the 10 t booked as written off");
+  failures += Expect(core::AmountOf(audited.ledger.current.written_off, kRye) == 1 * kTonne,
+                     "write-off: the 1 t booked as written off");
   failures +=
       Expect(audited.chairman.raikom_reputation < before, "write-off: the district is paid");
   return failures;

@@ -146,6 +146,15 @@ class CrimeTally {
 
  private:
   /// alcoholism.h's scale: output 1.0 to 50, falling to 0.8 at 60.
+  /// The year's link 2 theft «до приёмки» (#1568 (a)), every kind.
+  static core::Grams BeforeAct(const core::YearLedger& book) {
+    core::Grams total = 0;
+    for (const core::Grams grams : book.stolen_before_acceptance) {
+      total += grams;
+    }
+    return total;
+  }
+
   static double SoberLoss(float alcoholism) {
     constexpr float kFrom = 50.0F;
     constexpr float kTo = 60.0F;
@@ -272,7 +281,9 @@ class CrimeTally {
            << real / 1000 << " audits " << book.audits << " audit_remarks " << book.audit_remarks
            << " audit_shortage_permille " << world.audit.shortage_permille << " audit_trial_due "
            << static_cast<unsigned>(world.audit.trial_due) << " written_off_kg " << written / 1000
-           << " drunk_fires " << book.drunk_fires << '\n';
+           << " drunk_fires " << book.drunk_fires << " books_accepted "
+           << static_cast<unsigned>(world.audit.books_accepted) << " stolen_before_acceptance_kg "
+           << BeforeAct(book) / 1000 << '\n';
     if (world.audit.trial_due != 0 && !audit_trial_year_) {
       audit_trial_year_ = year;
     }

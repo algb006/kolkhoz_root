@@ -1035,6 +1035,10 @@ struct YearLedger {
   /// resource (link 2d).
   ResourceAmounts written_off;
 
+  /// Link 2's theft before the act of acceptance (#1568 (a)), by resource:
+  /// the former management's loss, «до приёмки», never audited.
+  ResourceAmounts stolen_before_acceptance;
+
   /// Man-days a placed drinker did not come out (link 1, truancy).
   std::uint32_t truant_man_days = 0;
 

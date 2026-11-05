@@ -24,10 +24,16 @@
 ///     gets a writer;
 ///   * 2c the book - theft lowers `stock` and raises `book_gap` by the same
 ///     grams; nothing else writes book_gap;
-///   * 2d the audit - audits_per_year a year, one in each half on a counter-
-///     hash day, compares recorded (stock + book_gap) with real on every
-///     position of at least audit_min_recorded_t: under audit_remark_share
-///     kAuditClean; at or over it kAuditRemark (audit_remark_reputation); at
+///   * (a) the act of acceptance (econ's separation proposal, boss [42]) - on
+///     audit_book_opens_month of year 1 every book is set to the real stock
+///     (kBooksAccepted); before it the theft is «до приёмки»
+///     (YearLedger::stolen_before_acceptance) and no audit is held;
+///   * 2d/(b) the audit - audits_per_year a year, one in each half on a
+///     counter-hash day, reads every store-kind position over its window
+///     (UnitRow::book_window, audit_window_months): its losses over its
+///     receipts, positions under audit_min_receipts_t of receipts not read;
+///     the worst position decides: under audit_remark_share kAuditClean; at
+///     or over it kAuditRemark (audit_remark_reputation); at
 ///     audit_trial_share or over AFTER a remark, kAuditTrialDue (once); a
 ///     first audit at the trial share gives the remark, never the trigger.
 ///   * the write-off - kWriteOffShortage clears a store's book_gap into
@@ -64,11 +70,15 @@ struct FoodTheftConfig {
   float collusion_share_month = 0.02F;        ///< `collusion_share_month`
   float collusion_keeper_alcoholism = 20.0F;  ///< `collusion_keeper_alcoholism`
   std::uint32_t audits_per_year = 2;          ///< `audits_per_year`
-  float audit_min_recorded_t = 1.0F;          ///< `audit_min_recorded_t`
-  float audit_remark_share = 0.10F;           ///< `audit_remark_share`
-  float audit_trial_share = 0.20F;            ///< `audit_trial_share`
-  float audit_remark_reputation = -5.0F;      ///< `audit_remark_reputation`
-  float write_off_reputation = -10.0F;        ///< `write_off_reputation`
+  float audit_remark_share = 0.05F;           ///< `audit_remark_share`
+  float audit_trial_share = 0.10F;            ///< `audit_trial_share`
+  /// The act of acceptance's month of year 1, 0-based (`audit_book_opens_month`,
+  /// human 1-based in the table; STUB 10, October).
+  std::uint32_t book_opens_month = 9;
+  std::uint32_t window_months = 24;       ///< `audit_window_months`
+  float min_receipts_t = 2.0F;            ///< `audit_min_receipts_t`
+  float audit_remark_reputation = -5.0F;  ///< `audit_remark_reputation`
+  float write_off_reputation = -10.0F;    ///< `write_off_reputation`
   /// The food a thief takes, in the order he takes it: the grains and the
   /// potato (resources.csv rows); empty when the tables name none.
   std::vector<ResourceId> food;
@@ -99,6 +109,15 @@ void RunFoodTheft(const FoodTheftConfig& config,
 /// reads every store's book and raises its verdict. Call once a step; acts
 /// at the day's first step only, and not at all with `config.on` false.
 void RunStoreAudit(const FoodTheftConfig& config, WorldState& current);
+
+/// @brief The book window's receipts (#1568 (b)): every rise of a store's
+///        stock of a food kind since the previous step, into this month's
+///        `received`. An issue and a receipt in one hour net out - the
+///        approximation named in the contract. Call once a step, after the
+///        acceptance; does nothing with `config.on` false.
+void RunBookReceipts(const FoodTheftConfig& config,
+                     const WorldState& previous,
+                     WorldState& current);
 
 /// @brief Answers this step's kWriteOffShortage orders (order_state.h).
 void TakeWriteOffOrders(const FoodTheftConfig& config, WorldState& current);

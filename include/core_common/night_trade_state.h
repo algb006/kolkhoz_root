@@ -112,6 +112,11 @@ struct AuditState {
 
   /// 0/1: kAuditTrialDue has been raised (once; the condition of «Под суд»).
   std::uint8_t trial_due = 0;
+
+  /// 0/1: the act of acceptance has been signed (#1568 (a); kBooksAccepted):
+  /// until then link 2's theft is the former management's, booked «до
+  /// приёмки» (YearLedger::stolen_before_acceptance) and never audited.
+  std::uint8_t books_accepted = 0;
 };
 
 }  // namespace core

@@ -383,6 +383,13 @@ inline bool AnythingAwaits(const ConstructionState& works) {
   return false;
 }
 
+/// @brief One month of a store's book window (#1568 (b); UnitRow::book_window):
+/// what went missing unbooked and what came in, by resource. SAVED (save 207).
+struct BookMonth {
+  ResourceAmounts lost;
+  ResourceAmounts received;
+};
+
 /// @brief One unit. Plain data; behavior comes from the type's table row.
 struct UnitRow {
   /// Row of tables/unit_types.csv: barn, warehouse, well, house, heap...
@@ -429,6 +436,16 @@ struct UnitRow {
   /// write-off (kWriteOffShortage) clears it. Empty with
   /// `crime_food_theft_on` 0, so the canon never writes or reads it.
   ResourceAmounts book_gap;
+
+  /// THE BOOK'S WINDOW (#1568 (b); econ's separation proposal, boss [42]):
+  /// the last `audit_window_months` game months of this store, a ring indexed
+  /// by month (year x 12 + month) modulo its length - each month's unbooked
+  /// losses (link 2's theft and collusion) and receipts (every rise of the
+  /// stock from one step to the next), by resource. The audit reads losses ÷
+  /// receipts a position. `book_window_month` is the month the ring was last
+  /// written, + 1 (0 = never). Empty with the link off.
+  std::vector<BookMonth> book_window;
+  std::uint32_t book_window_month = 0;
 
   /// The site block (see ConstructionState). All zeros for a unit that is
   /// simply standing, which is most units most of the time.

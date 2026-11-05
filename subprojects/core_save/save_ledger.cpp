@@ -201,9 +201,11 @@ constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
 // Save 207 (#1568, the crime links): a ResourceAmounts (written_off) and four
 // u32 after the team's oat request - predicted 1408 -> 1424 and 44 amounts,
 // 162 fields, before the build; on the wire +16 and one amounts vector a book.
-static_assert(sizeof(YearLedger) == 1424 + (44 * kAmountsSize) + kBuiltInRowsSize,
+// Then (#1568 (a), the same composition) stolen_before_acceptance, a
+// ResourceAmounts after written_off - predicted 1424 and 45 amounts, 163 fields.
+static_assert(sizeof(YearLedger) == 1424 + (45 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 162,
+static_assert(AggregateArity<YearLedger>() == 163,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(BuiltInRow) == 16 && AggregateArity<BuiltInRow>() == 3,
               "BuiltInRow changed — update its codec and VERSION_SAVE");
@@ -450,6 +452,7 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteI64(book.team_work_oat_requested);
   // The crime links (#1568, save 207).
   sink.WriteAmounts(DefKind::kResource, book.written_off);
+  sink.WriteAmounts(DefKind::kResource, book.stolen_before_acceptance);  // #1568 (a)
   out.WriteU32(book.truant_man_days);
   out.WriteU32(book.audits);
   out.WriteU32(book.audit_remarks);
@@ -754,6 +757,7 @@ YearLedger ReadYearLedger(LoadSource& source) {
   }
   // The crime links (#1568, save 207).
   book.written_off = source.ReadAmounts(DefKind::kResource);
+  book.stolen_before_acceptance = source.ReadAmounts(DefKind::kResource);  // #1568 (a)
   book.truant_man_days = in.ReadU32();
   book.audits = in.ReadU32();
   book.audit_remarks = in.ReadU32();

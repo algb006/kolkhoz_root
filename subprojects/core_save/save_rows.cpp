@@ -316,7 +316,12 @@ static_assert(AggregateArity<RickSupplySeam>() == 6,
 // Save 207 (#1568, the book's gap): a ResourceAmounts after the stock -
 // predicted before the build: +1 kAmountsSize (168 unmoved, 4 amounts), 26
 // fields; on the wire one amounts vector a unit (its count, 4 bytes, when empty).
-static_assert(sizeof(UnitRow) == 168 + (4 * kAmountsSize) + sizeof(std::vector<SupplyLeg>) +
+// Then (#1568 (b), the same composition) the book's window: a vector of
+// BookMonth and a u32 after the gap - predicted before the build: + the
+// u32 with its pad, 168 -> 176, the vector counted apart below, 28 fields -
+// held; on the wire +8 a unit when empty.
+static_assert(sizeof(UnitRow) == 176 + (4 * kAmountsSize) + sizeof(std::vector<SupplyLeg>) +
+                                     sizeof(std::vector<BookMonth>) +
                                      sizeof(std::optional<ConstructionState>),
               "UnitRow changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(std::optional<ConstructionState>) == sizeof(ConstructionState) + 8,
@@ -345,7 +350,7 @@ static_assert(AggregateArity<ConstructionState>() == 22,
 // Save 181 (#1199's plot): plot_radius_m, a float after the graves - 25 fields,
 // predicted before the build: sizeof unmoved at 168 (the u16 at 160 and the
 // float at 164 share the slot), the units section +4 a unit.
-static_assert(AggregateArity<UnitRow>() == 26,
+static_assert(AggregateArity<UnitRow>() == 28,
               "UnitRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 173 (#1089): the settlement's row - predicted 28 bytes (Vec2 8, four
 // u32-sized fields 16, a byte, a byte of padding, a u16) and 7 fields, before
@@ -1545,6 +1550,13 @@ void WriteUnitRow(SaveSink& sink, const UnitRow& row) {
   WriteEntityId(out, row.household);
   sink.WriteAmounts(DefKind::kResource, row.stock);
   sink.WriteAmounts(DefKind::kResource, row.book_gap);  // save 207 (#1568)
+  // The book's window (#1568 (b), save 207): a count, then each month's two.
+  out.WriteU32(static_cast<std::uint32_t>(row.book_window.size()));
+  for (const BookMonth& month : row.book_window) {
+    sink.WriteAmounts(DefKind::kResource, month.lost);
+    sink.WriteAmounts(DefKind::kResource, month.received);
+  }
+  out.WriteU32(row.book_window_month);
   WriteConstructionBlock(sink, row.construction);
   // The works put aside for the winter (#715, save 157): a byte, then the
   // block when it is there.
@@ -1599,6 +1611,19 @@ UnitRow ReadUnitRow(LoadSource& source) {
   row.household = ReadEntityId<FamilyId>(in);
   row.stock = source.ReadAmounts(DefKind::kResource);
   row.book_gap = source.ReadAmounts(DefKind::kResource);  // save 207 (#1568)
+  // The book's window: a store keeps at most a campaign's months of it.
+  constexpr std::uint32_t kMostBookMonths = 1200;
+  const std::uint32_t months = in.ReadU32();
+  if (months > kMostBookMonths) {
+    source.Fail("a unit's book window is longer than a campaign");
+  } else {
+    row.book_window.resize(months);
+    for (BookMonth& month : row.book_window) {
+      month.lost = source.ReadAmounts(DefKind::kResource);
+      month.received = source.ReadAmounts(DefKind::kResource);
+    }
+  }
+  row.book_window_month = in.ReadU32();
   row.construction = ReadConstructionBlock(source);
   // Save 157 (#715): the works put aside for the winter.
   if (source.ReadEnumValue(0, 1, "suspended works") != 0) {

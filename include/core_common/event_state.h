@@ -905,6 +905,13 @@ enum class EventKind : std::uint8_t {
   /// kPlanTrialDue. kInterrupting. Key `audit_trial_due`.
   kAuditTrialDue,
 
+  /// THE ACT OF ACCEPTANCE (#1568 (a)): the new chairman takes the stores'
+  /// books on audit_book_opens_month of year 1 - every book set to its real
+  /// stock; from here a shortage is his. `amount` the recorded grams of the
+  /// food kinds that day. Once. kNotable. Seam key `books_accepted` (the
+  /// line «Склады приняты: по книге {x} т. Дальше недостача — ваша»).
+  kBooksAccepted,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.
