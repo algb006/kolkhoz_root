@@ -50,6 +50,10 @@ class CrimeTally {
   static constexpr double kHerdHungerTrialShare = 0.14;
   /// The adult man's biological age (life-cycle design): drink is counted on him.
   static constexpr float kAdultYears = 16.0F;
+  /// #1569's candidate thresholds for «Село кончилось» (boss; the value is
+  /// econ's to propose): the year-turn residents against each.
+  static constexpr std::uint32_t kBelowLow = 40;
+  static constexpr std::uint32_t kBelowHigh = 50;
 
   CrimeTally(const core::ITableSet& tables, std::uint64_t seed) : seed_(seed) {
     if (const core::ITable* const life = tables.FindTable("life")) {
@@ -102,7 +106,11 @@ class CrimeTally {
         << " (failed plans reach " << trial_after_ << ", read on the year's last day)"
         << " max_failed_in_a_row " << max_failed_
         << " board_burned: NOT MEASURABLE (Epoch I fires are always put out, event_state.h)"
-        << " village_ended: NOT MEASURABLE (no trigger in the core, #1569)" << '\n';
+        << " village_ended: NOT MEASURABLE (no trigger in the core, #1569)"
+        << " min_year_turn_residents " << min_residents_ << " first_year_below_50 "
+        << (below50_year_ ? std::to_string(*below50_year_) : std::string("none"))
+        << " first_year_below_40 "
+        << (below40_year_ ? std::to_string(*below40_year_) : std::string("none")) << '\n';
   }
 
  private:
@@ -162,6 +170,16 @@ class CrimeTally {
     const auto share = [men](std::uint32_t count) {
       return men == 0 ? 0.0 : static_cast<double>(count) / static_cast<double>(men);
     };
+    // #1569's two candidate thresholds (boss: the year-turn population against
+    // 40 and 50; the ending's producer is host's script, the core prints).
+    const auto residents = static_cast<std::uint32_t>(world.residents.rows.size());
+    min_residents_ = std::min(min_residents_, residents);
+    if (residents < kBelowLow && !below40_year_) {
+      below40_year_ = year;
+    }
+    if (residents < kBelowHigh && !below50_year_) {
+      below50_year_ = year;
+    }
     lines_ << "population_curve: CRIME1566Y seed " << seed_ << " year " << year << " residents "
            << world.residents.rows.size() << " men " << men << " drink_mean "
            << (men == 0 ? 0.0 : drink / men) << " share_ge20 " << share(over20) << " share_ge40 "
@@ -181,6 +199,9 @@ class CrimeTally {
   std::uint32_t trial_after_ = 0;
   std::optional<std::uint32_t> trial_year_;
   std::optional<std::uint32_t> hunger_year_;
+  std::optional<std::uint32_t> below40_year_;
+  std::optional<std::uint32_t> below50_year_;
+  std::uint32_t min_residents_ = UINT32_MAX;
   std::uint32_t max_failed_ = 0;
   double sober_loss_ = 0.0;
   std::uint64_t worked_ = 0;
