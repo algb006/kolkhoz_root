@@ -111,6 +111,9 @@ class HerdTally {
   static constexpr std::array<std::uint32_t, 3> kTurns = {3, 5, 6};
 
   explicit HerdTally(const core::ITableSet& tables) {
+    if (const core::ITable* const types = tables.FindTable("unit_types")) {
+      cattle_yard_type_ = types->FindRowByKey("cattle_yard");
+    }
     if (const core::ITable* const kinds = tables.FindTable("livestock")) {
       for (std::size_t index = 0; index < kKinds; ++index) {
         kind_rows_[index] = kinds->FindRowByKey(kKindKeys[index]);
@@ -154,6 +157,7 @@ class HerdTally {
       return;
     }
     CountStalls(world, year);
+    CountCowFlows(world, year);
     for (const core::SimEvent& event : world.step_events) {
       // The horses handed back to the district for points (econ via boss:
       // where the foals above the places go).
@@ -211,6 +215,9 @@ class HerdTally {
     }
     if (year < 1 || year > kYears) {
       return;
+    }
+    if (world.calendar.day % core::kDaysPerYear == core::kDaysPerYear - 1U) {
+      CloseCowYear(world, year);
     }
 
     // Y1 and Y2 (econ, econ-boss-1374-yard-pig [1]): by yard, the `stock`
@@ -596,6 +603,25 @@ class HerdTally {
     }
   }
 
+  /// @brief #1570's line: the kolkhoz cows' flows a year, y1-kYears -
+  ///        «COW1570 seed S y1 adults_close A heads_close H born B young_culled
+  ///        Y handed D surplus_slaughtered S autumn_slaughtered U died X froze F
+  ///        yards Y yard_places P | y2 ...». yards / yard_places are the cattle
+  ///        yards standing at level >= 1 and their head places at the close.
+  void PrintCowFlows(std::ostream& out, std::uint64_t seed) const {
+    out << "population_curve: COW1570 seed " << seed;
+    for (std::uint32_t year = 0; year < kYears; ++year) {
+      const CowYear& y = cow_years_[year];
+      out << (year == 0 ? " y" : " | y") << year + 1 << " adults_close " << y.adults_close
+          << " heads_close " << y.heads_close << " born " << y.born << " young_culled "
+          << y.young_culled << " handed " << y.handed << " surplus_slaughtered "
+          << y.surplus_slaughtered << " autumn_slaughtered " << y.autumn_slaughtered << " died "
+          << y.died << " froze " << y.froze << " yards " << y.yards << " yard_places "
+          << y.yard_places;
+    }
+    out << '\n';
+  }
+
   /// @brief The village's line.
   void Print(std::ostream& out, std::uint64_t seed) const {
     out << "population_curve: H1374 seed " << seed << " years " << years_closed_ << " births_y1y6 "
@@ -783,6 +809,89 @@ class HerdTally {
   static core::Grams At(const core::ResourceAmounts& column, std::uint32_t row) {
     return row < column.size() ? column[row] : 0;
   }
+
+  /// #1570: a year of the kolkhoz cows' flows.
+  struct CowYear {
+    std::uint64_t adults_close = 0;
+    std::uint64_t heads_close = 0;
+    std::int64_t born = 0;
+    std::int64_t young_culled = 0;
+    std::int64_t handed = 0;
+    std::int64_t surplus_slaughtered = 0;
+    std::int64_t autumn_slaughtered = 0;
+    std::int64_t died = 0;
+    std::int64_t froze = 0;
+    std::uint32_t yards = 0;
+    std::uint32_t yard_places = 0;  ///< The standing cattle yards' levels, summed.
+  };
+
+  /// The step's events of a kolkhoz cow herd, by kind of flow.
+  void CountCowFlows(const core::WorldState& world, std::uint32_t year) {
+    const std::uint32_t cow = kind_rows_[0];
+    if (cow == core::kNoTableRow) {
+      return;
+    }
+    CowYear& y = cow_years_[year - 1];
+    for (const core::SimEvent& event : world.step_events) {
+      const std::uint32_t row = core::FindRow(world.herds, event.herd);
+      if (row == core::kNoRow || world.herds.rows[row].household_owned != 0 ||
+          world.herds.rows[row].kind.value != cow) {
+        continue;
+      }
+      switch (event.kind) {
+        case core::EventKind::kHerdBorn:
+          y.born += event.amount;
+          break;
+        case core::EventKind::kHerdYoungCulled:
+          y.young_culled += event.amount;
+          break;
+        case core::EventKind::kStockHandedOver:
+          y.handed += event.amount;
+          break;
+        case core::EventKind::kHerdSurplusSlaughtered:
+          y.surplus_slaughtered += event.amount;
+          break;
+        case core::EventKind::kHerdAutumnSlaughter:
+          y.autumn_slaughtered += event.amount;
+          break;
+        case core::EventKind::kHerdDied:
+          y.died += event.amount;
+          break;
+        case core::EventKind::kHerdFroze:
+          y.froze += event.amount;
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
+  /// The year's close: the kolkhoz cows standing and the cattle yards.
+  void CloseCowYear(const core::WorldState& world, std::uint32_t year) {
+    const std::uint32_t cow = kind_rows_[0];
+    CowYear& y = cow_years_[year - 1];
+    y.adults_close = 0;
+    y.heads_close = 0;
+    for (const core::HerdRow& herd : world.herds.rows) {
+      if (herd.household_owned == 0 && herd.kind.value == cow) {
+        y.adults_close += herd.adult_count;
+        y.heads_close +=
+            static_cast<std::uint64_t>(herd.adult_count) + herd.juvenile_count + herd.newborn_count;
+      }
+    }
+    y.yards = 0;
+    y.yard_places = 0;
+    for (const core::UnitRow& unit : world.units.rows) {
+      if (cattle_yard_type_ != core::kNoTableRow && unit.type.value == cattle_yard_type_ &&
+          unit.level >= 1 && unit.dead == 0) {
+        ++y.yards;
+        y.yard_places += unit.level;
+      }
+    }
+  }
+
+  std::array<CowYear, kYears> cow_years_{};
+  std::uint32_t cattle_yard_type_ = core::kNoTableRow;
 
   std::array<std::uint32_t, kKinds> kind_rows_ = {core::kNoTableRow,
                                                   core::kNoTableRow,
