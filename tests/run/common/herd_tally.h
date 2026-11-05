@@ -561,7 +561,8 @@ class HerdTally {
       surplus_[index] += At(closed.herd_surplus_slaughtered, kind_rows_[index]);
     }
     milk_g_ += At(closed.herd_produce, milk_row_);
-    yard_milk_g_ += At(closed.yard_produce, milk_row_);  // Y3
+    cow_years_[year - 1].milk_g = At(closed.herd_produce, milk_row_);  // #1570, by year
+    yard_milk_g_ += At(closed.yard_produce, milk_row_);                // Y3
     for (const auto& [row, kcal_per_gram] : food_rows_) {
       yard_food_kcal_ +=
           static_cast<double>(At(closed.yard_produce, row)) * static_cast<double>(kcal_per_gram);
@@ -623,7 +624,7 @@ class HerdTally {
           << y.young_culled << " handed " << y.handed << " surplus_slaughtered "
           << y.surplus_slaughtered << " autumn_slaughtered " << y.autumn_slaughtered << " died "
           << y.died << " froze " << y.froze << " yards " << y.yards << " yard_places "
-          << y.yard_places;
+          << y.yard_places << " milk_t " << static_cast<double>(y.milk_g) / 1e6;
     }
     out << '\n';
   }
@@ -829,6 +830,7 @@ class HerdTally {
     std::int64_t froze = 0;
     std::uint32_t yards = 0;
     std::uint32_t yard_places = 0;  ///< The standing cattle yards' levels, summed.
+    core::Grams milk_g = 0;         ///< The kolkhoz herds' milk, the closed year's book.
   };
 
   /// The step's events of a kolkhoz cow herd, by kind of flow.

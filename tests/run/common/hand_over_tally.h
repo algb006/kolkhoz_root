@@ -19,6 +19,7 @@
 #define TESTS_RUN_COMMON_HAND_OVER_TALLY_H_
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <map>
 #include <ostream>
@@ -74,6 +75,13 @@ class HandOverTally {
         short_now >= last_short_ ? short_now - last_short_ : short_now;  // the year's turn
     last_short_ = short_now;
     short_by_day_[world.calendar.day] = grown;
+    // THE HAY LEFT AT THE SPRING TURN, y1-y3 (boss [35]): the first day of May,
+    // when the pasture opens - what the winter left, in the game's own terms.
+    const std::uint32_t year = (world.calendar.day / core::kDaysPerYear) + 1U;
+    if (year <= kSpringYears &&
+        world.calendar.day % core::kDaysPerYear == kSpringMonth * core::kDaysPerMonth) {
+      spring_hay_[year - 1] = Held(world, hay_);
+    }
     if (InYears(world)) {
       short_total_ += grown;
       short_days_ += grown > 0 ? 1U : 0U;
@@ -132,8 +140,11 @@ class HandOverTally {
         << came_true
         // THE MEASURE'S OWN LIFE: the cows' need left uncovered over y2-y3 at
         // all, so «came_true 0» reads either «never short» or «short elsewhere».
-        << " cows_fed_short_y2y3_g " << short_total_ << " cows_short_days_y2y3 " << short_days_
-        << '\n';
+        << " cows_fed_short_y2y3_g " << short_total_ << " cows_short_days_y2y3 " << short_days_;
+    for (std::uint32_t year = 0; year < kSpringYears; ++year) {
+      out << " hay_kg_may_y" << year + 1 << ' ' << spring_hay_[year] / 1000;
+    }
+    out << '\n';
   }
 
  private:
@@ -169,6 +180,9 @@ class HandOverTally {
   std::map<core::SimDay, core::Grams> short_by_day_;
   core::Grams last_short_ = 0;
   std::int64_t last_handed_ = 0;
+  static constexpr std::uint32_t kSpringYears = 3;
+  static constexpr std::uint32_t kSpringMonth = 4;  ///< May, 0-based.
+  std::array<core::Grams, kSpringYears> spring_hay_ = {};
   core::Grams short_total_ = 0;
   std::uint32_t short_days_ = 0;
   std::size_t seen_ = 0;
