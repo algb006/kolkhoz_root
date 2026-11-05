@@ -97,6 +97,12 @@ class HerdTally {
   static constexpr std::size_t kHorse = 3;
   static constexpr std::array<const char*, kKinds> kKindKeys = {
       "cow", "sheep", "pig", "horse", "goat"};
+  /// The kinds the per-kind lines above leave out, printed by their births
+  /// only (0.37.364's pair: births_y1y6 +10.2 a village, of which the five
+  /// kinds above held +1.3 and the rest was in no line).
+  static constexpr std::size_t kOtherKinds = 3;
+  static constexpr std::array<const char*, kOtherKinds> kOtherKindKeys = {
+      "chicken", "duck", "mink"};
   /// The decided yard ceilings in adult heads, econ's Y2 (boss [8]: the 1
   /// October start yards decide - a pig yard of two, three goats; the design
   /// text fixed in 4979b9652); sheep and horse stand in no yard.
@@ -108,6 +114,9 @@ class HerdTally {
     if (const core::ITable* const kinds = tables.FindTable("livestock")) {
       for (std::size_t index = 0; index < kKinds; ++index) {
         kind_rows_[index] = kinds->FindRowByKey(kKindKeys[index]);
+      }
+      for (std::size_t index = 0; index < kOtherKinds; ++index) {
+        other_kind_rows_[index] = kinds->FindRowByKey(kOtherKindKeys[index]);
       }
       // The horse's per-head foal rate, for the foals the roof forgoes.
       const std::uint32_t rate = kinds->FindColumn("births_per_adult_head");
@@ -176,6 +185,11 @@ class HerdTally {
       for (std::size_t index = 0; index < kKinds; ++index) {
         if (kind == kind_rows_[index]) {
           born_[index][year - 1] += event.amount;
+        }
+      }
+      for (std::size_t index = 0; index < kOtherKinds; ++index) {
+        if (kind == other_kind_rows_[index]) {
+          other_born_[index] += event.amount;
         }
       }
     }
@@ -750,6 +764,9 @@ class HerdTally {
             << key << "_yards_y" << kTurns[turn] << ' ' << heads_[turn][index][1];
       }
     }
+    for (std::size_t index = 0; index < kOtherKinds; ++index) {
+      out << ' ' << kOtherKindKeys[index] << "_born_y1y6 " << other_born_[index];
+    }
     if (years_closed_ != kYears) {
       out << " — " << years_closed_ << " OF " << kYears << " YEARS CLOSED (NOT MEASURED)";
     }
@@ -772,6 +789,9 @@ class HerdTally {
                                                   core::kNoTableRow,
                                                   core::kNoTableRow,
                                                   core::kNoTableRow};
+  std::array<std::uint32_t, kOtherKinds> other_kind_rows_ = {
+      core::kNoTableRow, core::kNoTableRow, core::kNoTableRow};
+  std::array<std::int64_t, kOtherKinds> other_born_ = {};
   std::uint32_t milk_row_ = core::kNoTableRow;
   std::uint32_t years_closed_ = 0;
   std::uint64_t births_ = 0;
