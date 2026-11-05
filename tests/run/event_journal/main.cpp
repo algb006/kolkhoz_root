@@ -150,6 +150,16 @@ const char* KindName(core::EventKind kind) {
       return "funeral_invitation";
     case core::EventKind::kHerdYoungCulled:
       return "herd_young_culled";
+    case core::EventKind::kTruants:  // #1568
+      return "truants";
+    case core::EventKind::kFoodStolen:
+      return "food_stolen";
+    case core::EventKind::kAuditClean:
+      return "audit_clean";
+    case core::EventKind::kAuditRemark:
+      return "audit_remark";
+    case core::EventKind::kAuditTrialDue:
+      return "audit_trial_due";
     case core::EventKind::kElectrificationUnlocked:
       return "electrification_unlocked";
     case core::EventKind::kFireBroke:
