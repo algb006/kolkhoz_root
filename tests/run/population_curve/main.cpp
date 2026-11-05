@@ -586,6 +586,15 @@ bool g_granary_first_off = false;
 /// `--beach=off`: #1373's arm B - the rest set without the canon's beach
 /// (BeachPolicy::SetOff; econ, econ-boss-1373-rest-gates [1]).
 bool g_beach_off = false;
+/// `--seed-loans=off`: #1394's arm - the chairman takes no seed loan on the
+/// «seed short» lamp (LimitPolicy::TakeSeedLoans), so whether its episodes
+/// come true unanswered can be read (econ's gate, boss [23]).
+bool g_seed_loans_off = false;
+/// `--seed-control`: #1394's known-direction control - every gram of barley
+/// held in the village's units is emptied 20 days before year 2's barley
+/// window opens; the lamp must light before that window closes in every
+/// village (SeedLampTally::SetControl prints SLCONTROL; boss [23]).
+bool g_seed_control = false;
 /// `--avatar=KEY`: the chairman New Game would choose (#1417, #1421; econ's
 /// arms, econ-boss-1427-avatar-gates [1]); empty, the canon: no avatar. An
 /// avatar's paths move the village, so its run is an arm, not the canon.
@@ -669,6 +678,66 @@ void KeepHorsesShare(const run::Simulation& world,
   world.simulation->ResetWorld(halved);
   std::cout << "population_curve: " << flag << " — adult horses " << before << " -> " << after
             << ' ' << when << '\n';
+}
+
+/// #1394's control (`--seed-control`): the seed emptied, the day it is, and
+/// the window whose lamp must answer it - absolute days.
+struct SeedControl {
+  core::ResourceId resource;
+  std::uint32_t empty_day = 0;
+  std::uint32_t window_opens = 0;
+  std::uint32_t window_closes = 0;
+};
+
+/// Year 2's window of `crop_key` from crops.csv (months 1-based there) and its
+/// seed resource; the seed is emptied 20 days before the window opens.
+/// nullopt when the tables do not name the crop or its months.
+std::optional<SeedControl> SeedControlFor(const core::ITableSet& tables,
+                                          std::string_view crop_key) {
+  const core::ITable* const crops = tables.FindTable("crops");
+  const core::ITable* const resources = tables.FindTable("resources");
+  if (crops == nullptr || resources == nullptr) {
+    return std::nullopt;
+  }
+  const std::uint32_t row = crops->FindRowByKey(crop_key);
+  const std::uint32_t from = crops->FindColumn("sow_from_month");
+  const std::uint32_t to = crops->FindColumn("sow_to_month");
+  const std::uint32_t seed = crops->FindColumn("resource");
+  if (row == core::kNoTableRow || from == core::kNoTableColumn || to == core::kNoTableColumn ||
+      seed == core::kNoTableColumn) {
+    return std::nullopt;
+  }
+  const std::optional<float> first = crops->CellReal(row, from);
+  const std::optional<float> last = crops->CellReal(row, to);
+  const std::uint32_t resource = resources->FindRowByKey(crops->CellText(row, seed));
+  if (!first || !last || *first < 1.0F || resource == core::kNoTableRow) {
+    return std::nullopt;
+  }
+  constexpr std::uint32_t kLeadDays = 20;
+  SeedControl control;
+  control.resource = core::ResourceId{static_cast<std::uint16_t>(resource)};
+  control.window_opens =
+      core::kDaysPerYear + ((static_cast<std::uint32_t>(*first) - 1U) * core::kDaysPerMonth);
+  control.window_closes =
+      core::kDaysPerYear + (static_cast<std::uint32_t>(*last) * core::kDaysPerMonth);
+  control.empty_day = control.window_opens - kLeadDays;
+  return control;
+}
+
+/// Empties every unit's stock of `resource` (the control's one move on the
+/// world; a node of the run, never the canon).
+void EmptySeedStock(const run::Simulation& world, core::ResourceId resource, std::uint64_t seed) {
+  core::WorldState emptied = world.State();
+  core::Grams taken = 0;
+  for (core::UnitRow& unit : emptied.units.rows) {
+    if (resource.value < unit.stock.size()) {
+      taken += unit.stock[resource.value];
+      unit.stock[resource.value] = 0;
+    }
+  }
+  world.simulation->ResetWorld(emptied);
+  std::cout << "population_curve: SLCONTROL seed " << seed << " emptied " << taken / 1000
+            << " kg of resource " << resource.value << " on day " << emptied.calendar.day << '\n';
 }
 
 /// `--seed-offset=N`: every seed of kSeeds moved by N — a SECOND sample of
@@ -769,6 +838,9 @@ bool Walk(std::uint64_t seed,
   if (g_beach_off) {
     builder.beach.SetOff();
   }
+  if (g_seed_loans_off) {
+    builder.limit.TakeSeedLoans(false);
+  }
   run::TimberFlowTally timber(*world.tables);
   run::PassedOverTally passed_over;
   // The outdoor workers' summer rest by host's definition (#1373's gates).
@@ -787,6 +859,15 @@ bool Walk(std::uint64_t seed,
   run::HerdTally herds(*world.tables);
   // Does the «seed short» lamp cry wolf (#1394; host #1393)?
   run::SeedLampTally seed_lamp(*world.tables);
+  const std::optional<SeedControl> seed_control =
+      g_seed_control ? SeedControlFor(*world.tables, "barley") : std::nullopt;
+  if (seed_control) {
+    seed_lamp.SetControl(
+        seed_control->resource.value, seed_control->empty_day, seed_control->window_closes);
+  } else if (g_seed_control) {
+    std::cout << "population_curve: SLCONTROL seed " << seed
+              << " NOT MEASURED: the tables name no barley window\n";
+  }
   std::array<std::uint32_t, core::kRestSourceCount> r1373_sources = {};
   std::uint32_t r1373_walk_offs = 0;
   // What the farm's sites waited on, y1-y6 (#1285 G1's probe; boss [3]).
@@ -882,6 +963,9 @@ bool Walk(std::uint64_t seed,
       KeepHorsesShare(world, 1, 4, "--horses-loss-year", "at the start of the year");
     }
     for (std::uint32_t day = 0; day < core::kDaysPerYear; ++day) {
+      if (seed_control && ((year - 1U) * core::kDaysPerYear) + day == seed_control->empty_day) {
+        EmptySeedStock(world, seed_control->resource, seed);
+      }
       // THE DAY IS WALKED TICK BY TICK AND NOT BY AdvanceDays, for one
       // reason: the outbox is cleared every step, so a loop that advances a
       // whole day and reads the events afterwards sees the last tick and
@@ -1579,6 +1663,10 @@ int main(int argc, char** argv) {
       g_granary_first_off = true;
     } else if (argument == "--beach=off") {
       g_beach_off = true;
+    } else if (argument == "--seed-loans=off") {
+      g_seed_loans_off = true;
+    } else if (argument == "--seed-control") {
+      g_seed_control = true;
     } else if (argument.starts_with("--avatar=")) {
       g_avatar_key = std::string(argument.substr(std::string_view("--avatar=").size()));
     } else if (argument == "--roof-exemption=old") {

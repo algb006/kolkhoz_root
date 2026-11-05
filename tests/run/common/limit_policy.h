@@ -159,6 +159,11 @@ class LimitPolicy {
   /// there, econ's to read.
   void BuyTimberInEmergency(bool buy) { timber_emergency_ = buy; }
 
+  /// @brief Whether the chairman takes the district's seed loan on the
+  ///        «seed short» lamp (on by default). Off is #1394's arm: the lamp
+  ///        left unanswered, so whether its episodes come true can be read.
+  void TakeSeedLoans(bool take) { seed_loans_ = take; }
+
   /// @brief Whether the timber lot is held back while the village's own logs
   /// lie felled at a stand (0.37.107). ON in every run by default, by the
   /// rule of diverging run worlds; a run that turns it off says so.
@@ -197,7 +202,9 @@ class LimitPolicy {
     hay_.RunDay(simulation, alarms, ready_ ? &catalog_ : nullptr);
     WatchTheLampsAdvice(simulation, alarms);
     // The loan needs no catalogue and no points: before the lots' gate.
-    StageSeedLoans(simulation, world, alarms);
+    if (seed_loans_) {
+      StageSeedLoans(simulation, world, alarms);
+    }
     if (!ready_) {
       return;
     }
@@ -402,6 +409,8 @@ class LimitPolicy {
   std::unordered_map<std::uint32_t, std::uint32_t> waited_days_;
 
   bool timber_emergency_ = true;
+
+  bool seed_loans_ = true;
 
   /// Adult draught head the run buys back up to, and no further: a pair, the
   /// design's own condition for a foal.
