@@ -79,6 +79,7 @@
 #include "placement_rank.h"
 #include "posts.h"
 #include "rush.h"
+#include "truancy.h"
 #include "work_orders.h"
 
 namespace core {
@@ -557,7 +558,16 @@ class LaborSystem final : public ILaborSystem {
     const FuneralSeats seats = SeatFuneralParties(current, jobs);
     std::vector<std::uint32_t> resting;
     std::vector<std::uint32_t> mourning;
-    std::vector<AssignmentCandidate> candidates = CollectCandidates(current, &resting, &mourning);
+    std::vector<std::uint32_t> truant;
+    std::vector<AssignmentCandidate> candidates =
+        CollectCandidates(current, &resting, &mourning, &truant);
+    // THE DAY'S TRUANTS (#1568 link 1): booked on a working day as the
+    // funeral's kin are, one event a day with their number.
+    if (!truant.empty() && !day_off_today) {
+      book.truant_man_days += static_cast<std::uint32_t>(truant.size());
+      SimEvent& truants = EmitEvent(current, EventKind::kTruants, EventSeverity::kNotable);
+      truants.amount = static_cast<std::int64_t>(truant.size());
+    }
     BookFuneralManDays(current, mourning, candidates, day_off_today);
     book.idle_person_days[static_cast<std::size_t>(IdleReason::kResting)] +=
         static_cast<std::uint32_t>(resting.size());
@@ -2912,7 +2922,8 @@ class LaborSystem final : public ILaborSystem {
   std::vector<AssignmentCandidate> CollectCandidates(
       const WorldState& current,
       std::vector<std::uint32_t>* resting = nullptr,
-      std::vector<std::uint32_t>* mourning = nullptr) const {
+      std::vector<std::uint32_t>* mourning = nullptr,
+      std::vector<std::uint32_t>* truant = nullptr) const {
     const std::vector<bool> horse_locked = MarkHorseHosts(current);
     const float aging_from = AgingFromYears(config_, current);
     std::vector<AssignmentCandidate> candidates;
@@ -2986,6 +2997,15 @@ class LaborSystem final : public ILaborSystem {
       if (funeral != kNoRow && funeral_kin) {
         if (mourning != nullptr) {
           mourning->push_back(row);
+        }
+        continue;
+      }
+      // THE DRINKER WHO DOES NOT COME OUT (#1568 link 1; truancy.h): off the
+      // list the whole day, every list of it (the draw is the day's own), so a
+      // top-up never places him; his place stays empty, his trudoden unearned.
+      if (TruantToday(config_, current, row)) {
+        if (truant != nullptr) {
+          truant->push_back(row);
         }
         continue;
       }

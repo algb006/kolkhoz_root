@@ -313,7 +313,10 @@ static_assert(AggregateArity<RickSupplySeam>() == 6,
 // before the first build (this tripwire caught it); predicted after it: the
 // seam's 32 bytes keep their own tail padding, so the u16 starts a new 8-byte
 // slot at the row's end, 160 -> 168. On the wire +2 a unit.
-static_assert(sizeof(UnitRow) == 168 + (3 * kAmountsSize) + sizeof(std::vector<SupplyLeg>) +
+// Save 207 (#1568, the book's gap): a ResourceAmounts after the stock -
+// predicted before the build: +1 kAmountsSize (168 unmoved, 4 amounts), 26
+// fields; on the wire one amounts vector a unit (its count, 4 bytes, when empty).
+static_assert(sizeof(UnitRow) == 168 + (4 * kAmountsSize) + sizeof(std::vector<SupplyLeg>) +
                                      sizeof(std::optional<ConstructionState>),
               "UnitRow changed — update the codec and VERSION_SAVE");
 static_assert(sizeof(std::optional<ConstructionState>) == sizeof(ConstructionState) + 8,
@@ -342,7 +345,7 @@ static_assert(AggregateArity<ConstructionState>() == 22,
 // Save 181 (#1199's plot): plot_radius_m, a float after the graves - 25 fields,
 // predicted before the build: sizeof unmoved at 168 (the u16 at 160 and the
 // float at 164 share the slot), the units section +4 a unit.
-static_assert(AggregateArity<UnitRow>() == 25,
+static_assert(AggregateArity<UnitRow>() == 26,
               "UnitRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 173 (#1089): the settlement's row - predicted 28 bytes (Vec2 8, four
 // u32-sized fields 16, a byte, a byte of padding, a u16) and 7 fields, before
@@ -1541,6 +1544,7 @@ void WriteUnitRow(SaveSink& sink, const UnitRow& row) {
   out.WriteU8(row.level);
   WriteEntityId(out, row.household);
   sink.WriteAmounts(DefKind::kResource, row.stock);
+  sink.WriteAmounts(DefKind::kResource, row.book_gap);  // save 207 (#1568)
   WriteConstructionBlock(sink, row.construction);
   // The works put aside for the winter (#715, save 157): a byte, then the
   // block when it is there.
@@ -1594,6 +1598,7 @@ UnitRow ReadUnitRow(LoadSource& source) {
   row.level = in.ReadU8();
   row.household = ReadEntityId<FamilyId>(in);
   row.stock = source.ReadAmounts(DefKind::kResource);
+  row.book_gap = source.ReadAmounts(DefKind::kResource);  // save 207 (#1568)
   row.construction = ReadConstructionBlock(source);
   // Save 157 (#715): the works put aside for the winter.
   if (source.ReadEnumValue(0, 1, "suspended works") != 0) {

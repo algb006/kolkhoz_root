@@ -18,6 +18,7 @@
 #ifndef CORE_COMMON_NIGHT_TRADE_STATE_H_
 #define CORE_COMMON_NIGHT_TRADE_STATE_H_
 
+#include <array>
 #include <cstdint>
 
 #include "core_common/geometry.h"
@@ -89,6 +90,28 @@ struct NightTheftTally {
   /// after each month's turn (crime §6, «Алкоголизм села»; register 207).
   /// The report prints it; crossing 20 or 40 either way is an event. Save 60.
   float settlement_alcoholism = 0.0F;
+};
+
+/// @brief The district's store audit (#1568 link 2d; crime §7, §11; shadow.md
+/// «Ревизия приходит внезапно, один-два раза в год»; econ's spec of 5 Nov
+/// 2026): when it comes next, what the last one found, and whether the
+/// mandatory remark has been given before a trigger may be. SAVED (save 207).
+/// Written only while `crime_food_theft_on`; all zero with the link off.
+struct AuditState {
+  /// The absolute day of each year-half's audit, drawn at the half's start;
+  /// 0 = not drawn yet. One a half (`audits_per_year` 2).
+  std::array<std::uint32_t, 2> next_day = {0, 0};
+
+  /// The last audit's shortage, per mille of the recorded stock it read.
+  std::uint16_t shortage_permille = 0;
+
+  /// 0/1: a «Замечание ревизии» has been given in this campaign since the
+  /// last write-off - the condition for kAuditTrialDue (a first audit at
+  /// 20 % or more gives the remark, never the trigger: spec §6's red flag).
+  std::uint8_t remarked = 0;
+
+  /// 0/1: kAuditTrialDue has been raised (once; the condition of «Под суд»).
+  std::uint8_t trial_due = 0;
 };
 
 }  // namespace core

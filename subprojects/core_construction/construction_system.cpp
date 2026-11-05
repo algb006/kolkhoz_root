@@ -52,6 +52,8 @@ constexpr float kMaxRepairPieces = 1e9F;
 /// building never shifts the draws of any other system of the world — the
 /// same reason the night pasture's camp has one (night_pasture.cpp).
 constexpr std::uint64_t kFireStream = 0x4649524553ULL;  // "FIRES"
+/// #1568 link 4's own stream: a drunk fire moves no other draw.
+constexpr std::uint64_t kDrunkFireStream = 0x4452554E4BULL;  // "DRUNK"
 
 /// What a fire adds to a building's wear, on the 0..100 scale. A third of the
 /// scale: enough that a repair is worth ordering and the loss is felt, far
@@ -341,6 +343,7 @@ class ConstructionSystem final : public IConstructionSystem {
       // deliveries walk the rows it is no longer in (task A5).
       AgeUnits(current);
       RunFires(current);
+      RunDrunkFires(current);    // #1568 link 4; a no-op with crime_drunk_fire_on 0
       LatchCraftsGate(current);  // #637: a day the condition holds opens it
       core::MoveStinkZones(config_, current);
       DeliverMaterials(current);
@@ -484,6 +487,76 @@ class ConstructionSystem final : public IConstructionSystem {
   /// daily roll per building against the world's sequential generator would
   /// shift every later draw in the world, and every run would diverge from
   /// the reshuffling rather than from the fires.
+  /// #1568 LINK 4, THE DRUNK-NEGLIGENCE FIRE (construction_config.h): a man of
+  /// drunk_fire_from_alcoholism or more sets his own house alight with the
+  /// month's chance taken a day; the settlement's season allows at most
+  /// drunk_fires_per_season_max (counted against the year's book, season by
+  /// season). Never the farm office, never a unit that does not burn; the
+  /// fire is RunFires' scar, and kFireBroke carries the cause in `amount` (1).
+  /// Its own counter-hash stream, so no other draw moves.
+  void RunDrunkFires(WorldState& current) {
+    if (!config_.drunk_fire_on ||
+        static_cast<std::uint32_t>(current.calendar.day) < config_.fire_grace_days) {
+      return;
+    }
+    constexpr std::uint32_t kMonthsASeason = 3;
+    constexpr float kAlcoholismCap = 60.0F;
+    const std::uint32_t month_of_year = (current.calendar.day % kDaysPerYear) / kDaysPerMonth;
+    const auto allowed =
+        static_cast<std::uint32_t>(static_cast<float>(month_of_year / kMonthsASeason + 1U) *
+                                   config_.drunk_fires_per_season_max);
+    YearLedger& book = current.ledger.current;
+    if (book.drunk_fires >= allowed) {
+      return;
+    }
+    const float span = kAlcoholismCap - config_.drunk_fire_from_alcoholism;
+    for (std::uint32_t row = 0; row < current.residents.rows.size(); ++row) {
+      const ResidentRow& person = current.residents.rows[row];
+      if (person.sex != Sex::kMale || person.alcoholism < config_.drunk_fire_from_alcoholism) {
+        continue;
+      }
+      const float over =
+          span > 0.0F
+              ? std::clamp(
+                    (person.alcoholism - config_.drunk_fire_from_alcoholism) / span, 0.0F, 1.0F)
+              : 1.0F;
+      const float month = config_.drunk_fire_chance_month_at_from +
+                          (over * (config_.drunk_fire_chance_month_at_cap -
+                                   config_.drunk_fire_chance_month_at_from));
+      const float day_chance = month / static_cast<float>(kDaysPerMonth);
+      if (CounterHashUnitFloat(current.world_seed,
+                               static_cast<std::uint64_t>(current.calendar.day),
+                               current.residents.row_ids[row].value,
+                               kDrunkFireStream) >= day_chance) {
+        continue;
+      }
+      // HIS HOUSE: the family's own (FamilyRow::house).
+      const std::uint32_t family = FindRow(current.families, person.family);
+      const std::uint32_t unit_row =
+          family == kNoRow ? kNoRow : FindRow(current.units, current.families.rows[family].house);
+      if (unit_row == kNoRow) {
+        continue;
+      }
+      UnitRow& unit = current.units.rows[unit_row];
+      if (unit.level == 0 || unit.type.value >= config_.types.size() ||
+          config_.types[unit.type.value].burns == 0 ||
+          unit.type.value == config_.farm_office_type.value) {
+        continue;
+      }
+      if (!core::TypeIsOldHouse(config_, unit.type)) {
+        const float scarred = unit.wear + kFireWearScar;
+        const float ceiling = kWearScale - 1.0F;
+        unit.wear = std::max(unit.wear, std::min(scarred, ceiling));
+      }
+      ++book.drunk_fires;
+      SimEvent& fire = EmitEvent(current, EventKind::kFireBroke, EventSeverity::kInterrupting);
+      fire.unit = current.units.row_ids[unit_row];
+      fire.resident = current.residents.row_ids[row];
+      fire.amount = 1;  // the cause: drunk negligence
+      return;           // one a day at most; the season's cap above
+    }
+  }
+
   void RunFires(WorldState& current) {
     // The grace period of difficulty design §3 — «в начале партии их нет».
     if (static_cast<std::uint32_t>(current.calendar.day) < config_.fire_grace_days) {

@@ -46,6 +46,7 @@
 #include "family_exchange.h"
 #include "family_meal.h"
 #include "food_config.h"
+#include "food_theft_checks.h"
 #include "funeral_checks.h"
 #include "household_plot.h"
 #include "housing.h"
@@ -5245,6 +5246,7 @@ int main() {
   failures += CheckTheWinterCountsTheHeapAbovePlan();
   failures += CheckTheLooksMemory();
   failures += CheckTakeNightTrader();
+  failures += CheckFoodTheft();  // #1568 link 2
   failures += CheckTheHungerForecast();
   if (system != nullptr) {
     failures += CheckOldAgeTakesTheOld(*system);

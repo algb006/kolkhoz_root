@@ -1190,6 +1190,10 @@ struct WorldState {
   /// SAVED. night_trade_state.h.
   NightTheftTally night_theft;
 
+  /// The district's store audit (#1568 link 2d); SAVED (save 207).
+  /// night_trade_state.h.
+  AuditState audit;
+
   /// The yards' walks to the barter counter this evening (needs design §6);
   /// SAVED (save 121). barter_state.h.
   BarterTripTable barter_trips;

@@ -508,6 +508,12 @@ class ResidentsSystem final : public IResidentsSystem {
     // The night trades go out and come back in their own hours, not at the
     // day's turn (night_trade.h).
     RunNightOutings(config_.night_trade, food_, current);
+    // #1568 link 2 (food_theft.h; each a no-op with crime_food_theft_on 0):
+    // the write-offs given this hour, the night's theft in the distillers'
+    // hour out, the district's audit at its day's first step.
+    TakeWriteOffOrders(config_.food_theft, current);
+    RunFoodTheft(config_.food_theft, config_.night_trade, config_.life_speedup, current);
+    RunStoreAudit(config_.food_theft, current);
     // The exchange's dry count in the counter's own hour — after the day's
     // milk and catch, before the dinner that eats the perishable first: what
     // the yards would exchange today, and the fact «жителям есть что менять»

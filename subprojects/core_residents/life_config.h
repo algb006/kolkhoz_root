@@ -38,6 +38,7 @@
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
 #include "core_common/world_state.h"
+#include "food_theft.h"
 #include "funeral_rules.h"
 #include "membership.h"
 #include "night_trade.h"
@@ -297,6 +298,10 @@ struct LifeConfig {
 
   /// The night trades (night_trade.h; boss, parcel 346).
   NightTradeConfig night_trade;
+
+  /// #1568 link 2: theft for one's own table, the book and the audit
+  /// (food_theft.h; off by default).
+  FoodTheftConfig food_theft;
 
   /// The yards' exchange at the barter counter (barter.h).
   BarterConfig barter;

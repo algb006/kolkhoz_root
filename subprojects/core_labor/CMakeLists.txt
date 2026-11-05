@@ -14,6 +14,7 @@ kolkhoz_add_module(core_labor
     placement_diagnosis.cpp
     posts.cpp
     rush.cpp
+    truancy.cpp
     work_orders.cpp)
 
 target_link_libraries(core_labor

@@ -1027,6 +1027,24 @@ struct YearLedger {
   /// figure is next year's team need (team_oat_plan.h). Not `feed`'s oat and
   /// barley: pigs eat both (feed_links.csv), so `feed` counts their keep.
   Grams team_work_oat_requested = 0;
+
+  // -- the crime links (#1568; save 207; econ's spec of 5 Nov 2026) ----------
+  // Written only while their switch is on; zero in the canon.
+
+  /// Grams the chairman wrote off a store's book (kWriteOffShortage), by
+  /// resource (link 2d).
+  ResourceAmounts written_off;
+
+  /// Man-days a placed drinker did not come out (link 1, truancy).
+  std::uint32_t truant_man_days = 0;
+
+  /// The district's store audits of the year, and how many gave a remark.
+  std::uint32_t audits = 0;
+
+  std::uint32_t audit_remarks = 0;
+
+  /// Fires broken by drunk negligence (link 4).
+  std::uint32_t drunk_fires = 0;
 };
 
 /// @brief The two books of the world: the year being written and the last

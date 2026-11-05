@@ -783,6 +783,16 @@ struct LaborConfig {
   /// a day, 0..1. STUB ⅓: «до трети» on the garden's side as on the herd's;
   /// what the yards cannot give stays kolkhoz care.
   float yard_herd_garden_cap = 1.0F / 3.0F;
+
+  /// #1568 LINK 1, TRUANCY (crime §6 «Прогулы — своя дверь… тоже начинается
+  /// с 50»; econ's spec of 5 Nov 2026, STUBs): world_params
+  /// `crime_truancy_on` (0 = off, the canon), `truancy_from_alcoholism` and
+  /// `truancy_share_at_cap`. A man of 16+ at or over the threshold stays home
+  /// on a working day with a chance rising linearly from 0 there to the share
+  /// at Epoch I's cap of 60 (truancy.h, TruantToday).
+  bool truancy_on = false;
+  float truancy_from_alcoholism = 50.0F;
+  float truancy_share_at_cap = 0.10F;
 };
 
 /// @brief The cart's and the sledge's numbers of this config (SL; cart_gear.h).

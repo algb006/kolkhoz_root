@@ -325,7 +325,10 @@ static_assert(AggregateArity<ClampRotYear>() == 2,
 // section («funerals», after the settlements); last_loud_burial_day, the
 // fifty-eighth - a u32 after morning_horses_left; the section «world» +4,
 // predicted before the build.
-static_assert(AggregateArity<WorldState>() == 58,
+// Save 207 (#1568): the store audit, the fifty-ninth - two u32, a u16 and two
+// bytes after the night theft's tally; the section «world» +12, predicted
+// before the build.
+static_assert(AggregateArity<WorldState>() == 59,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 
@@ -653,6 +656,12 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteU8(world.night_theft.leak_open_this_month);
   out.WriteU32(world.night_theft.distiller_short_since);
   out.WriteFloat(world.night_theft.settlement_alcoholism);
+  // The district's store audit (#1568, save 207).
+  out.WriteU32(world.audit.next_day[0]);
+  out.WriteU32(world.audit.next_day[1]);
+  out.WriteU16(world.audit.shortage_permille);
+  out.WriteU8(world.audit.remarked);
+  out.WriteU8(world.audit.trial_due);
   // The sports field's month (save 68): its open days and yesterday's downpour.
   out.WriteU8(world.sport_month.open_days);
   out.WriteU8(world.sport_month.downpour_yesterday);
@@ -960,6 +969,11 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
       static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "the month's open leak"));
   world->night_theft.distiller_short_since = in.ReadU32();
   world->night_theft.settlement_alcoholism = in.ReadFloat();
+  world->audit.next_day[0] = in.ReadU32();  // save 207 (#1568)
+  world->audit.next_day[1] = in.ReadU32();
+  world->audit.shortage_permille = in.ReadU16();
+  world->audit.remarked = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "audit remarked"));
+  world->audit.trial_due = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "audit trial due"));
   world->sport_month.open_days = in.ReadU8();
   world->sport_month.downpour_yesterday =
       static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "downpour yesterday"));

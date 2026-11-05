@@ -2149,6 +2149,84 @@ int TestCapacityNeedsALadder() {
 /// is what this check first was: the assembly refuses if ANY of the five
 /// refuses, so damaging one guard is masked by the other four. A guard has
 /// to name its own subject.
+/// #1568 LINK 4's tables: BuildTables' five and a world_params turning the
+/// drunk fire on at certainty a month (a quarter a day).
+class DrunkFireTables final : public core::ITableSet {
+ public:
+  DrunkFireTables(const core::ITableSet& base, bool on) : base_(base), on_(on) {}
+
+  const core::ITable* FindTable(std::string_view name) const override {
+    return name == "world_params" ? &(on_ ? world_on_ : world_off_) : base_.FindTable(name);
+  }
+
+  std::uint32_t TableCount() const override { return 6; }
+
+  std::string_view TableName(std::uint32_t /*index*/) const override { return {}; }
+
+ private:
+  const core::ITableSet& base_;
+  bool on_;
+  test::FakeTable world_on_{{"key", "value"},
+                            {{"crime_drunk_fire_on", "1"},
+                             {"drunk_fire_chance_month_at_from", "1"},
+                             {"drunk_fire_chance_month_at_cap", "1"}}};
+  test::FakeTable world_off_{{"key", "value"}, {{"crime_drunk_fire_on", "0"}}};
+};
+
+/// #1568 LINK 4 (construction_system.cpp, RunDrunkFires): a drinker of 40+
+/// sets his own house alight; never a unit that does not burn; at most one a
+/// settlement a season; nothing with the switch off.
+int TestDrunkFire(const core::ITableSet& tables) {
+  int failures = 0;
+  const auto run = [&tables](bool on, std::uint16_t house_type, float alcoholism) {
+    const DrunkFireTables with(tables, on);
+    std::unique_ptr<core::IConstructionSystem> system =
+        core::CreateConstructionSystem(with, core::StubTables::kAllowed);
+    core::WorldState world;
+    world.world_seed = 1931;
+    core::UnitRow house;
+    house.type = core::UnitTypeId{house_type};
+    house.level = 1;
+    const core::UnitId house_id = core::AppendRow(world.units, house);
+    core::FamilyRow family;
+    family.house = house_id;
+    const core::FamilyId family_id = core::AppendRow(world.families, family);
+    core::ResidentRow man;
+    man.sex = core::Sex::kMale;
+    man.alcoholism = alcoholism;
+    man.family = family_id;
+    core::AppendRow(world.residents, man);
+    std::uint32_t drunk = 0;
+    std::uint32_t at_season_one = 0;
+    // A whole year from day 48 (the grace period's end), season by season.
+    for (std::uint32_t day = 48; day < 96 && system != nullptr; ++day) {
+      world.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
+      core::RefreshCalendarCaches(world.calendar);
+      world.step_events.clear();
+      const core::WorldState previous = world;
+      system->RunConstructionDecisions(previous, world);
+      for (const core::SimEvent& event : world.step_events) {
+        if (event.kind == core::EventKind::kFireBroke && event.amount == 1) {
+          ++drunk;
+          at_season_one += day < 48 + 12 ? 1U : 0U;
+        }
+      }
+    }
+    return std::pair<std::uint32_t, std::uint32_t>{drunk, at_season_one};
+  };
+  const auto [barn, barn_first] = run(true, kBarnType, 60.0F);
+  std::cout << "  drunk fire: a man at 60 in a barn-house, a year - " << barn << " fires, "
+            << barn_first << " in the first season\n";
+  failures += Expect(barn >= 1 && barn <= 4, "drunk fire: he sets his house alight, <= 1 a season");
+  failures += Expect(barn_first <= 1, "drunk fire: at most one in a season");
+  failures += Expect(run(true, 0, 60.0F).first == 0,
+                     "drunk fire: a unit that does not burn (the church's stand-in) never");
+  failures += Expect(run(true, kBarnType, 39.0F).first == 0, "drunk fire: a man under 40 never");
+  failures += Expect(run(false, kBarnType, 60.0F).first == 0,
+                     "drunk fire: with crime_drunk_fire_on 0 never - the canon");
+  return failures;
+}
+
 /// FIRE (construction_system.cpp, RunFires; fire design; quest_e1_13). The
 /// Epoch I fire is a STUB over the design's promise that people usually put
 /// one out in time: it scars a building and never destroys one.
@@ -3601,6 +3679,7 @@ int main() {
   failures += TestWearGrows(tables);
   failures += TestWearDeadline(tables);
   failures += TestFire(tables);
+  failures += TestDrunkFire(tables);  // #1568 link 4
   failures += TestWearCeilingAndCollapse(tables);
   failures += TestRepair(tables);
   failures += TestUpgradeHeals(tables);

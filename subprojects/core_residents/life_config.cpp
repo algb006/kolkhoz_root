@@ -545,6 +545,7 @@ bool ParseLifeConfig(const ITableSet& tables, LifeConfig& config, std::string& e
   }
   if (!ParseMembershipConfig(tables, config.membership, error) ||
       !ParseNightTradeConfig(tables, config.night_trade, error) ||
+      !ParseFoodTheftConfig(tables, config.food_theft, error) ||
       !ParseBarterConfig(tables, config.barter, error) ||
       !ParseSchoolingConfig(tables, config.schooling, error) ||
       !ParseAlcoholismConfig(tables, config.alcoholism, error) ||
@@ -591,6 +592,8 @@ std::span<const std::string_view> LifeWorldParamKeys() {
     keys.insert(keys.end(), membership.begin(), membership.end());
     const std::span<const std::string_view> night = NightTradeWorldParamKeys();
     keys.insert(keys.end(), night.begin(), night.end());
+    const std::span<const std::string_view> theft = FoodTheftWorldParamKeys();
+    keys.insert(keys.end(), theft.begin(), theft.end());
     const std::span<const std::string_view> school = SchoolingWorldParamKeys();
     keys.insert(keys.end(), school.begin(), school.end());
     const std::span<const std::string_view> drinking = AlcoholismWorldParamKeys();

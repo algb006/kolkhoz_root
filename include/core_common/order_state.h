@@ -989,6 +989,16 @@ enum class OrderKind : std::uint8_t {
   /// (funeral_rules.h, TakeAttendOrders).
   kAttendFuneral,
 
+  /// WRITE OFF A STORE'S SHORTAGE (#1568 link 2d; econ's spec «Списать
+  /// недостачу»): `unit` the store; its book is set to its real stock
+  /// (UnitRow::book_gap cleared, the grams booked in YearLedger::written_off)
+  /// at write_off_reputation, and the audit's remark is withdrawn
+  /// (AuditState::remarked 0) - the player buys time and pays the district.
+  /// Refusals: kNoSuchSubject (no such unit), kRuleForbids (nothing to write
+  /// off, or crime_food_theft_on 0). Seam key `write_off_shortage`. Consumer:
+  /// core_residents (food_theft.h).
+  kWriteOffShortage,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).

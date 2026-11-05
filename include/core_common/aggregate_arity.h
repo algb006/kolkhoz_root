@@ -73,7 +73,9 @@ constexpr std::size_t CountUpwards() {
   // year's samogon brewed and sold) and the count fell to nought again: 128.
   // 2026-10-18 the book reached its 131st field (save 166, the rating's year
   // by its writers; #1043) and the count fell to nought a third time: 160.
-  if constexpr (Count > 160) {
+  // 2026-11-05 the book reached its 162nd (save 207, the crime links; #1568)
+  // and it fell to nought a fourth time: 192.
+  if constexpr (Count > 192) {
     return 0;  // a struct wider than this is a design problem, not a codec one
   } else if constexpr (FitsArity<T, std::make_index_sequence<Count + 1>>::value) {
     return CountUpwards<T, Count + 1>();

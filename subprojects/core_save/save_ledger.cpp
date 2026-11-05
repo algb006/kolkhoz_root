@@ -198,9 +198,12 @@ constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
 // -> 1400 and 155 fields before the build; on the wire +8 a book.
 // Save 202 (#1442, the yards' strada help): two floats after the rest days -
 // predicted 1400 -> 1408 and 157 fields before the build; on the wire +8 a book.
-static_assert(sizeof(YearLedger) == 1408 + (43 * kAmountsSize) + kBuiltInRowsSize,
+// Save 207 (#1568, the crime links): a ResourceAmounts (written_off) and four
+// u32 after the team's oat request - predicted 1408 -> 1424 and 44 amounts,
+// 162 fields, before the build; on the wire +16 and one amounts vector a book.
+static_assert(sizeof(YearLedger) == 1424 + (44 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 157,
+static_assert(AggregateArity<YearLedger>() == 162,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(BuiltInRow) == 16 && AggregateArity<BuiltInRow>() == 3,
               "BuiltInRow changed — update its codec and VERSION_SAVE");
@@ -445,6 +448,12 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteFloat(book.reputation_own_overfulfil_t);
   // The team's work-oat request of the year (save 167; #1040).
   out.WriteI64(book.team_work_oat_requested);
+  // The crime links (#1568, save 207).
+  sink.WriteAmounts(DefKind::kResource, book.written_off);
+  out.WriteU32(book.truant_man_days);
+  out.WriteU32(book.audits);
+  out.WriteU32(book.audit_remarks);
+  out.WriteU32(book.drunk_fires);
 }
 
 YearLedger ReadYearLedger(LoadSource& source) {
@@ -743,6 +752,12 @@ YearLedger ReadYearLedger(LoadSource& source) {
   if (book.team_work_oat_requested < 0) {
     source.Fail("the book's team work-oat request is negative");
   }
+  // The crime links (#1568, save 207).
+  book.written_off = source.ReadAmounts(DefKind::kResource);
+  book.truant_man_days = in.ReadU32();
+  book.audits = in.ReadU32();
+  book.audit_remarks = in.ReadU32();
+  book.drunk_fires = in.ReadU32();
   return book;
 }
 

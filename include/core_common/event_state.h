@@ -877,6 +877,34 @@ enum class EventKind : std::uint8_t {
   /// by RunMaturation (herd_life.cpp).
   kHerdYoungCulled,
 
+  // -- the crime links (#1568; save 207; econ's spec of 5 Nov 2026) ----------
+  // Raised only while their switch is on (world_params crime_*_on).
+
+  /// THE DAY'S TRUANTS (link 1; crime §6 «Прогулы»): `amount` the placed men
+  /// of alcoholism at or above truancy_from_alcoholism who did not come out
+  /// today. One event a day, not one a man. kNotable. Seam key `truants`.
+  kTruants,
+
+  /// FOOD STOLEN (link 2a/2b; crime §7 «Утечка»): `resident` the thief (or
+  /// the colluding storekeeper), `unit` the store, `resource` what, `amount`
+  /// grams; `family` 1 when by collusion, 0 by night theft. kNotable. Seam
+  /// key `food_stolen`.
+  kFoodStolen,
+
+  /// THE DISTRICT'S AUDIT (link 2d), each with `amount` the shortage in per
+  /// mille of the recorded stock it read: found nothing worth a remark (under
+  /// audit_remark_share), kRoutine, key `audit_clean`;
+  kAuditClean,
+
+  /// gave «Замечание ревизии» (from audit_remark_share; or at audit_trial_share
+  /// and over when no remark came before), kNotable, key `audit_remark`;
+  kAuditRemark,
+
+  /// found audit_trial_share or more after a remark: the CONDITION of «Под
+  /// суд» (epochs §8), raised once - the core stops here, as with
+  /// kPlanTrialDue. kInterrupting. Key `audit_trial_due`.
+  kAuditTrialDue,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

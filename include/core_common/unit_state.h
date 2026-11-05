@@ -421,6 +421,15 @@ struct UnitRow {
   /// yet (sized on first delivery).
   ResourceAmounts stock;
 
+  /// THE BOOK'S GAP (#1568 link 2c; save 207): grams stolen from this unit
+  /// since its last write-off, by resource. The store's RECORDED stock is
+  /// `stock + book_gap` - theft lowers only `stock`, every other writer
+  /// (issue, sale, spoilage) moves the two together by leaving this alone.
+  /// The audit reads the shortage as book_gap / (stock + book_gap); the
+  /// write-off (kWriteOffShortage) clears it. Empty with
+  /// `crime_food_theft_on` 0, so the canon never writes or reads it.
+  ResourceAmounts book_gap;
+
   /// The site block (see ConstructionState). All zeros for a unit that is
   /// simply standing, which is most units most of the time.
   ConstructionState construction;

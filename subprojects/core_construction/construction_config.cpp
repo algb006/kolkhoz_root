@@ -887,12 +887,18 @@ bool CheckPlots(const ITable& unit_types, const ConstructionConfig& config, std:
 }
 
 /// The world_params.csv keys this subsystem reads.
-constexpr std::array<std::string_view, 5> kConstructionWorldParamKeys = {
+constexpr std::array<std::string_view, 11> kConstructionWorldParamKeys = {
     "field_camp_field_reach_m",
     "fire_base_chance_per_unit_year",
     "fire_frost_factor",
     "fire_grace_days",
-    "crafts_gate_reputation"};
+    "crafts_gate_reputation",
+    "crime_drunk_fire_on",
+    "drunk_fire_from_alcoholism",
+    "drunk_fire_chance_month_at_from",
+    "drunk_fire_chance_month_at_cap",
+    "drunk_fires_per_season_max",
+    "drunk_fire_rick_reach_m"};
 
 /// Past it the cell is a typo: ten times the map's side (CLAUDE.md §9).
 constexpr float kMostCampReachM = 120000.0F;
@@ -1032,6 +1038,8 @@ bool ParseConstructionConfig(const ITableSet& tables,
     config.log_resource = DefIdFromRow<ResourceIdTag>(log_row);
   }
   config.old_house_type = DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("old_house"));
+  config.farm_office_type =
+      DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("farm_office"));  // #1568 link 4
   // The MTS column's camp and how near the fields it stands (field_camp.h).
   config.field_camp_type = DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("field_camp"));
   // The worker's workshops at half labour (#635; avatars.csv
@@ -1042,7 +1050,9 @@ bool ParseConstructionConfig(const ITableSet& tables,
   }
   if (const ITable* const world = tables.FindTable("world_params")) {
     float grace_days = static_cast<float>(config.fire_grace_days);
-    const std::array<ScalarKnob, 5> world_knobs = {
+    float drunk_on = config.drunk_fire_on ? 1.0F : 0.0F;
+    const Range drunk_chance{.low = 0.0F, .high = 1.0F};
+    const std::array<ScalarKnob, 11> world_knobs = {
         ScalarKnob{.key = ConstructionWorldParamKeys()[0],
                    .value = &config.field_camp_field_reach_m,
                    .range = Range{.low = 0.0F, .high = kMostCampReachM}},
@@ -1068,11 +1078,31 @@ bool ParseConstructionConfig(const ITableSet& tables,
         // opens the apiary and the hunting lodge, STUB 55.
         ScalarKnob{.key = ConstructionWorldParamKeys()[4],
                    .value = &config.crafts_gate_reputation,
-                   .range = Range{.low = 0.0F, .high = 100.0F}}};
+                   .range = Range{.low = 0.0F, .high = 100.0F}},
+        // #1568 link 4 (construction_config.h).
+        ScalarKnob{.key = ConstructionWorldParamKeys()[5],
+                   .value = &drunk_on,
+                   .range = Range{.low = 0.0F, .high = 1.0F}},
+        ScalarKnob{.key = ConstructionWorldParamKeys()[6],
+                   .value = &config.drunk_fire_from_alcoholism,
+                   .range = Range{.low = 0.0F, .high = 60.0F}},
+        ScalarKnob{.key = ConstructionWorldParamKeys()[7],
+                   .value = &config.drunk_fire_chance_month_at_from,
+                   .range = drunk_chance},
+        ScalarKnob{.key = ConstructionWorldParamKeys()[8],
+                   .value = &config.drunk_fire_chance_month_at_cap,
+                   .range = drunk_chance},
+        ScalarKnob{.key = ConstructionWorldParamKeys()[9],
+                   .value = &config.drunk_fires_per_season_max,
+                   .range = Range{.low = 0.0F, .high = 12.0F}},
+        ScalarKnob{.key = ConstructionWorldParamKeys()[10],
+                   .value = &config.drunk_fire_rick_reach_m,
+                   .range = Range{.low = 0.0F, .high = kMostCampReachM}}};
     if (!ReadKnobs(*world, "world_params", world_knobs, error)) {
       return false;
     }
     config.fire_grace_days = static_cast<std::uint32_t>(grace_days);
+    config.drunk_fire_on = drunk_on >= 0.5F;
   }
   // What an insulation job is delivered and spends (unit rules §16).
   config.straw_resource = ResourceId{};

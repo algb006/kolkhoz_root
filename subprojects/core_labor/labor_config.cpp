@@ -37,8 +37,12 @@ namespace core {
 namespace {
 
 /// The world_params keys this config declares (#1442; LaborWorldParamKeys).
-constexpr std::array<std::string_view, 3> kLaborWorldParamKeys = {
-    "strada_first_month", "strada_last_month", "yard_herd_garden_cap"};
+constexpr std::array<std::string_view, 6> kLaborWorldParamKeys = {"strada_first_month",
+                                                                  "strada_last_month",
+                                                                  "yard_herd_garden_cap",
+                                                                  "crime_truancy_on",
+                                                                  "truancy_from_alcoholism",
+                                                                  "truancy_share_at_cap"};
 
 /// The most seats transport.csv may name on one cart: a bound against a
 /// slipped digit, not a design number (the design's carts seat 2 and 6).
@@ -889,6 +893,24 @@ bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string&
       PrefixError("world_params", "yard_herd_garden_cap", error);
       return false;
     }
+    // #1568 link 1, truancy (labor_config.h).
+    auto truancy_on = config.truancy_on ? 1.0F : 0.0F;
+    if (!OptionalValue(
+            *world, kLaborWorldParamKeys[3], Range{.low = 0.0F, .high = 1.0F}, truancy_on, error) ||
+        !OptionalValue(*world,
+                       kLaborWorldParamKeys[4],
+                       Range{.low = 0.0F, .high = 60.0F},
+                       config.truancy_from_alcoholism,
+                       error) ||
+        !OptionalValue(*world,
+                       kLaborWorldParamKeys[5],
+                       Range{.low = 0.0F, .high = 1.0F},
+                       config.truancy_share_at_cap,
+                       error)) {
+      PrefixError("world_params", "crime_truancy_on / truancy_*", error);
+      return false;
+    }
+    config.truancy_on = truancy_on >= 0.5F;
   }
   if (const ITable* transport = tables.FindTable("transport")) {
     if (!ParseSpeeds(*transport, config, error)) {

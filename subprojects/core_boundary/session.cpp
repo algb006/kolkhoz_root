@@ -303,6 +303,10 @@ bool ShapeIsValid(const OrderRow& order) {
       // Whether N fits under the herd's places is the consumer's verdict.
       return has_herd && order.amount >= 0 && order.amount <= kNoHerdPlan && !has_resident &&
              !has_unit && !has_field && !has_stand && !has_site;
+    case OrderKind::kWriteOffShortage:
+      // The store in `unit`, nothing else (#1568; order_state.h). Whether it
+      // has a gap to write off is the consumer's verdict (food_theft.h).
+      return has_unit && !has_resident && !has_herd && !has_field && !has_stand && !has_site;
     case OrderKind::kAttendFuneral:
       // The funeral's id in `amount`, as the invitation names it (#1084;
       // order_state.h), and no other subject. Whether it is still open is

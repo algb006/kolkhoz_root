@@ -25,6 +25,7 @@ kolkhoz_add_module(core_residents
     sugar_issue.cpp
     burial.cpp
     funeral_rules.cpp
+    food_theft.cpp
     night_trade.cpp
     barter.cpp
     schooling.cpp

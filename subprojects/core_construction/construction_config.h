@@ -505,6 +505,29 @@ struct ConstructionConfig {
   /// period gates the wolves, the droughts and the murrain, so whoever
   /// brings difficulty brings those too (boss, parcel 110).
   std::uint32_t fire_grace_days = 48;
+
+  /// #1568 LINK 4, THE DRUNK-NEGLIGENCE FIRE (fire.md §1 «Пьяная
+  /// неосторожность»; the human, #1725: «алкоголик поджечь может», «правление
+  /// от этого врядли сгорит»; econ's spec of 5 Nov 2026, STUBs): world_params
+  /// `crime_drunk_fire_on` (0 = off, the canon); a man of
+  /// `drunk_fire_from_alcoholism` or more sets his house (or, with none, his
+  /// workplace of the day) alight with a chance a month rising from
+  /// `drunk_fire_chance_month_at_from` there to `drunk_fire_chance_month_at_cap`
+  /// at Epoch I's cap of 60, taken a day as a month's share; at most
+  /// `drunk_fires_per_season_max` a settlement a season. Never the farm office,
+  /// never a unit that does not burn (the church). The fire is the stub's
+  /// scar, as every fire in Epoch I. STUB: `drunk_fire_rick_reach_m` (a rick
+  /// within reach of his house) is read and not used - the rick has no wear
+  /// for the scar to take (RunFires' own edge).
+  bool drunk_fire_on = false;
+  float drunk_fire_from_alcoholism = 40.0F;
+  float drunk_fire_chance_month_at_from = 0.002F;
+  float drunk_fire_chance_month_at_cap = 0.01F;
+  float drunk_fires_per_season_max = 1.0F;
+  float drunk_fire_rick_reach_m = 300.0F;
+  /// The farm office's unit type (unit_types.csv `farm_office`): never set
+  /// alight by link 4. Invalid when the tables have none.
+  UnitTypeId farm_office_type;
 };
 
 /// @brief Reads the five tables into `config` — and, since task A5, the
