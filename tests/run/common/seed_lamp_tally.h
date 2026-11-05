@@ -59,6 +59,16 @@ class SeedLampTally {
     }
   }
 
+  /// @brief #1394's control: `resource` was emptied on `from_day`; the first
+  ///        day before `to_day` (absolute) a lamp of it is lit is printed as
+  ///        SLCONTROL, or NOT LIT.
+  void SetControl(std::uint16_t resource, std::uint32_t from_day, std::uint32_t to_day) {
+    control_ = true;
+    control_resource_ = resource;
+    control_from_ = from_day;
+    control_to_ = to_day;
+  }
+
   /// @brief One closed day: the day's alarms and the fields' sowings.
   void CountDay(const core::ISimulation& simulation) {
     const core::WorldState& world = simulation.CompletedState();
@@ -78,6 +88,10 @@ class SeedLampTally {
         continue;
       }
       lit_today[row] = true;
+      if (control_ && control_first_lit_ < 0 && alarm.resource.value == control_resource_ &&
+          world.calendar.day >= control_from_ && world.calendar.day < control_to_) {
+        control_first_lit_ = static_cast<std::int64_t>(world.calendar.day);
+      }
       Seed& seed = seeds_[alarm.resource.value];
       ++seed.lit_days;
       seed.lit_years |= 1U << (year - 1U);
@@ -138,6 +152,16 @@ class SeedLampTally {
           << "_lit_after_loan_days " << line.lit_after_loan_days;
     }
     out << '\n';
+    if (control_) {
+      out << "population_curve: SLCONTROL seed " << seed << " resource " << control_resource_
+          << " emptied day " << control_from_ << " window closes day " << control_to_;
+      if (control_first_lit_ < 0) {
+        out << " NOT LIT\n";
+      } else {
+        out << " lit day " << control_first_lit_ << " (+" << control_first_lit_ - control_from_
+            << " days)\n";
+      }
+    }
   }
 
  private:
@@ -171,6 +195,11 @@ class SeedLampTally {
   std::map<std::uint16_t, Seed> seeds_;
   std::vector<Field> fields_;
   std::vector<core::Alarm> alarms_;
+  bool control_ = false;
+  std::uint16_t control_resource_ = 0;
+  std::uint32_t control_from_ = 0;
+  std::uint32_t control_to_ = 0;
+  std::int64_t control_first_lit_ = -1;
 };
 
 }  // namespace run
