@@ -606,6 +606,7 @@ std::string g_avatar_key;
 /// `--walkers=N`: at most N villages walk at once (7 Nov 2026: the job's
 /// booked threads). Default KOLKHOZ_WALKERS from the environment, else every
 /// seed at once as before.
+bool g_walkers_named = std::getenv("KOLKHOZ_WALKERS") != nullptr;
 std::size_t g_walkers = [] {
   const char* const from_env = std::getenv("KOLKHOZ_WALKERS");
   return from_env != nullptr ? static_cast<std::size_t>(std::strtoul(from_env, nullptr, 10))
@@ -1611,6 +1612,7 @@ int main(int argc, char** argv) {
     if (argument == "--sequential") {
       sequential = true;
     } else if (argument.starts_with("--walkers=")) {
+      g_walkers_named = true;
       g_walkers = static_cast<std::size_t>(
           std::strtoul(std::string(argument.substr(std::string_view("--walkers=").size())).c_str(),
                        nullptr,
@@ -1732,6 +1734,16 @@ int main(int argc, char** argv) {
     WalkPages::WriteTo(index);
     walked_well[index] = Walk(kSeeds[index] + g_seed_offset, index == 0, walked[index]) ? 1 : 0;
   };
+  const std::size_t walkers =
+      sequential ? std::size_t{1} : std::clamp<std::size_t>(g_walkers, 1, kSeeds.size());
+  // THE GUARD (boss, 7 Nov): the count is printed on every run, and a run
+  // that named no bound says so loudly - the leak was silent for weeks.
+  std::cout << "population_curve: walkers " << walkers << " of " << kSeeds.size()
+            << " seeds at once"
+            << (g_walkers_named || sequential
+                    ? ""
+                    : " - WALKERS NOT BOUNDED: no --walkers, no KOLKHOZ_WALKERS")
+            << '\n';
   std::cout.flush();
   std::cerr.flush();
   pages.Open();
@@ -1745,7 +1757,6 @@ int main(int argc, char** argv) {
     // the job declared - 4-booked node jobs ran at 1 000-1 400 % CPU beside
     // production. `--walkers=N` (or KOLKHOZ_WALKERS) bounds them; each
     // walker takes the next seed. The pages keep the text the same.
-    const std::size_t walkers = std::clamp<std::size_t>(g_walkers, 1, kSeeds.size());
     std::atomic<std::size_t> next{0};
     const auto walker = [&next, &walk_one]() {
       for (std::size_t index = next.fetch_add(1); index < kSeeds.size();
