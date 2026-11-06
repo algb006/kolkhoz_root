@@ -260,7 +260,9 @@ class LimitPolicy {
               << advice_.below_floor_only_days << ", «HAND OVER» WITH NO HEAD IN IT "
               << advice_.empty_hand_over_days << " (must be nought), NO ADVICE "
               << advice_.none_days << " (must be nought), no advice INSIDE AN OPEN CUT "
-              << advice_.none_in_open_cut_days << " (allowed since 0.37.250), a day off to "
+              << advice_.none_in_open_cut_days << " (allowed since 0.37.250), no advice WITHIN THE "
+              << "TOLERANCE " << advice_.none_tolerated_days
+              << " (by design since #1573), a day off to "
               << "declare working " << advice_.day_working_days << " (of them dated ahead "
               << advice_.day_working_dated_days << "), the avral to lift " << advice_.lift_rush_days
               << "; the run's chairman declared " << hay_morning_.Ordered()
@@ -601,6 +603,11 @@ class LimitPolicy {
           // question.
           if (alarm.below_floor_stock + alarm.below_floor_horses > 0) {
             ++advice_.below_floor_only_days;
+          } else if (alarm.advice_tolerated != 0) {
+            // SILENT BY DESIGN (#1573, rung 3's tolerance: a few short days
+            // and no death name no move). Counted apart, as the open cut is;
+            // thirty_years' first run with the rows read it as a defect.
+            ++advice_.none_tolerated_days;
           } else {
             const core::WorldState& world = simulation.CompletedState();
             const auto month = static_cast<std::uint32_t>(world.calendar.date.month);
@@ -669,6 +676,7 @@ class LimitPolicy {
     std::uint32_t reduce_days = 0;
     std::uint32_t reduce_more_days = 0;
     std::uint32_t none_days = 0;
+    std::uint32_t none_tolerated_days = 0;
     std::uint32_t none_in_open_cut_days = 0;   ///< Lit with no move inside an open cut (allowed).
     std::uint32_t day_working_days = 0;        ///< «объявить день рабочим», today's or dated.
     std::uint32_t day_working_dated_days = 0;  ///< Of them, a later day's.

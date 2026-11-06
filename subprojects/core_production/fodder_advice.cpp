@@ -400,6 +400,7 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
     // same rung, dated.
     if (forecast.grass_bound) {
       if (HandOverTolerated(config, forecast)) {
+        advice.tolerated = true;
         return advice;
       }
       const HandOverAdvice heads = LeastHeadsToHandOver(config, world);
@@ -467,9 +468,10 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
   // no move - «a few short days in a late spring is what a farmer feeds
   // through» (econ §3). NOR THE DEAR FEED BELOW: a purchase over the cheap
   // rung's price for those days is the dearest cure for the least harm.
-  // ASSUMPTION core, #1573: the design says only «heads only if»; the rungs
-  // below are read as closed with it.
+  // The rungs below closed with it: core's reading of «heads only if»,
+  // confirmed by boss on 7 November 2026 (core-boss-1573-hay-rungs [2]).
   if (HandOverTolerated(config, forecast)) {
+    advice.tolerated = true;
     return advice;
   }
   const HandOverAdvice heads = LeastHeadsToHandOver(config, world);
@@ -585,6 +587,7 @@ void CollectHerdForecastAlarms(const ProductionConfig& config,
   alarm.hand_over_horses = advice.hand_over_horses;
   alarm.below_floor_stock = advice.below_floor_stock;
   alarm.below_floor_horses = advice.below_floor_horses;
+  alarm.advice_tolerated = advice.tolerated ? 1U : 0U;
   // THE HEADS ABOVE THE PLANS FIRST (#1289): named whenever the advice asks
   // for heads at all.
   if (alarm.advice == AlarmAdvice::kReduceHerd || alarm.advice_more == AlarmAdvice::kReduceHerd) {

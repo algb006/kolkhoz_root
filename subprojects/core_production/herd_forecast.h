@@ -438,6 +438,9 @@ struct FodderAdvice {
   std::int64_t hand_over_horses = 0;
   std::int64_t below_floor_stock = 0;
   std::int64_t below_floor_horses = 0;
+  /// #1573: no move named because of the heads rung's tolerance
+  /// (Alarm::advice_tolerated).
+  bool tolerated = false;
 };
 
 /// @brief THE LADDER OF THE HAY LAMP'S ADVICE (0.37.121; boss, host-boss-pin-

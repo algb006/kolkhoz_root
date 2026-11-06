@@ -1752,14 +1752,17 @@ int CheckTheForecastAdvice() {
                        "#1573 the forecast counts its short days: 88 kg - two, 72 kg - six, and "
                        "no death in eight");
     const core::Alarm tolerated = lamp_of(ladder, two_days);
-    failures += Expect(tolerated.kind == core::AlarmKind::kHerdHayShortAhead &&
-                           tolerated.advice == core::AlarmAdvice::kNone &&
-                           tolerated.hand_over_stock == 0 && tolerated.below_floor_stock == 0,
-                       "#1573 the tolerance: two short days and no death - the lamp is lit and "
-                       "names no head");
+    failures +=
+        Expect(tolerated.kind == core::AlarmKind::kHerdHayShortAhead &&
+                   tolerated.advice == core::AlarmAdvice::kNone && tolerated.hand_over_stock == 0 &&
+                   tolerated.below_floor_stock == 0 && tolerated.advice_tolerated == 1,
+               "#1573 the tolerance: two short days and no death - the lamp is lit, "
+               "names no head, and says the silence is the tolerance's");
     const core::Alarm named = lamp_of(ladder, six_days);
-    failures += Expect(named.advice == core::AlarmAdvice::kReduceHerd && named.hand_over_stock == 1,
-                       "#1573 the tolerance's pair: six short days - a head is named");
+    failures += Expect(named.advice == core::AlarmAdvice::kReduceHerd &&
+                           named.hand_over_stock == 1 && named.advice_tolerated == 0,
+                       "#1573 the tolerance's pair: six short days - a head is named, not "
+                       "tolerated");
     // A DEATH INSIDE THE TOLERANCE STILL NAMES THE HEADS: death after one
     // unfed day, and the two short days in a row pass it.
     core::ProductionConfig frail = ladder;
