@@ -28,11 +28,13 @@
 #define TESTS_RUN_COMMON_CRIME_TALLY_H_
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <ostream>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "core_common/calendar.h"
 #include "core_common/event_state.h"
@@ -69,6 +71,28 @@ class CrimeTally {
     if (const core::ITable* const types = tables.FindTable("unit_types")) {
       church_store_ = types->FindRowByKey("church_store");
       clamp_ = types->FindRowByKey("clamp");
+      // The night posts by unit type, as food_theft.cpp reads them (R2).
+      const core::ITable* const staff = tables.FindTable("unit_staff");
+      const core::ITable* const professions = tables.FindTable("professions");
+      if (staff != nullptr && professions != nullptr) {
+        guardable_.assign(types->RowCount(), 0);
+        const std::uint32_t unit_col = staff->FindColumn("unit");
+        const std::uint32_t profession_col = staff->FindColumn("profession");
+        const std::uint32_t shift_col = professions->FindColumn("shift");
+        for (std::uint32_t row = 0; row < staff->RowCount(); ++row) {
+          if (unit_col == core::kNoTableColumn || profession_col == core::kNoTableColumn ||
+              shift_col == core::kNoTableColumn) {
+            break;
+          }
+          const std::uint32_t profession =
+              professions->FindRowByKey(staff->CellText(row, profession_col));
+          const std::uint32_t type = types->FindRowByKey(staff->CellText(row, unit_col));
+          if (profession != core::kNoTableRow && type != core::kNoTableRow &&
+              professions->CellText(profession, shift_col) == "night") {
+            guardable_[type] = 1;
+          }
+        }
+      }
     }
     // THE DISTILLER'S RAISER AS THE RUN READS IT (#1568 (d); boss [42]): the
     // tables' value, not alcoholism.h's no-tables default.
@@ -97,8 +121,29 @@ class CrimeTally {
   ///        step only and missed every theft, 232 of 232 village-years).
   void CountStep(const core::WorldState& world) {
     for (const core::SimEvent& event : world.step_events) {
+      if (event.kind == core::EventKind::kAuditUnguardedLeak) {
+        ++unguarded_leaks_;  // round 2 (R2): the lever line's count a year
+      }
       if (event.kind == core::EventKind::kFoodStolen) {
         (event.family.value == 1 ? stolen_collusion_g_ : stolen_night_g_) += event.amount;
+        // ROUND 2's PRINT: link 2's theft by store kind (econ's G3 reads the
+        // guardable ones) - the church, the clamps, a store a watchman can be
+        // posted at (its type's or its parent's night post), any other.
+        const std::uint32_t row = core::FindRow(world.units, event.unit);
+        std::size_t kind = kTheftOther;
+        if (row != core::kNoRow) {
+          const core::UnitRow& unit = world.units.rows[row];
+          const std::uint32_t parent = core::FindRow(world.units, unit.parent);
+          if (unit.type.value == church_store_) {
+            kind = kTheftChurch;
+          } else if (unit.type.value == clamp_) {
+            kind = kTheftClamp;
+          } else if (Guardable(unit.type.value) ||
+                     (parent != core::kNoRow && Guardable(world.units.rows[parent].type.value))) {
+            kind = kTheftGuardable;
+          }
+        }
+        theft_by_kind_[kind] += event.amount;
       }
     }
   }
@@ -284,7 +329,13 @@ class CrimeTally {
            << static_cast<unsigned>(world.audit.trial_due) << " written_off_kg " << written / 1000
            << " drunk_fires " << book.drunk_fires << " books_accepted "
            << static_cast<unsigned>(world.audit.books_accepted) << " stolen_before_acceptance_kg "
-           << BeforeAct(book) / 1000 << '\n';
+           << BeforeAct(book) / 1000 << " theft_church_kg " << theft_by_kind_[kTheftChurch] / 1000
+           << " theft_clamps_kg " << theft_by_kind_[kTheftClamp] / 1000 << " theft_guardable_kg "
+           << theft_by_kind_[kTheftGuardable] / 1000 << " theft_other_kg "
+           << theft_by_kind_[kTheftOther] / 1000 << " unguarded_leak_reports " << unguarded_leaks_
+           << '\n';
+    theft_by_kind_ = {};
+    unguarded_leaks_ = 0;
     if (world.audit.trial_due != 0 && !audit_trial_year_) {
       audit_trial_year_ = year;
     }
@@ -304,6 +355,18 @@ class CrimeTally {
   float distiller_raiser_ = -1.0F;
   std::uint32_t church_store_ = core::kNoTableRow;
   std::uint32_t clamp_ = core::kNoTableRow;
+  static constexpr std::size_t kTheftChurch = 0;
+  static constexpr std::size_t kTheftClamp = 1;
+  static constexpr std::size_t kTheftGuardable = 2;
+  static constexpr std::size_t kTheftOther = 3;
+  std::array<core::Grams, 4> theft_by_kind_ = {};
+  std::uint32_t unguarded_leaks_ = 0;
+  std::vector<std::uint8_t> guardable_;
+
+  bool Guardable(std::uint32_t type) const {
+    return type < guardable_.size() && guardable_[type] != 0;
+  }
+
   core::Grams last_gap_ = 0;
   core::Grams stolen_night_g_ = 0;
   core::Grams stolen_collusion_g_ = 0;

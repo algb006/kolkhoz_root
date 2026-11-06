@@ -912,6 +912,15 @@ enum class EventKind : std::uint8_t {
   /// line «Склады приняты: по книге {x} т. Дальше недостача — ваша»).
   kBooksAccepted,
 
+  /// THE LEAK FROM A STORE NO WATCHMAN CAN BE POSTED AT (#1568 round 2, R2;
+  /// econ's crime-separation-2, crime.md §1 p. 6): at an audit with
+  /// audit_guarded_stores_only, the church's and the clamps' unbooked losses
+  /// over the window are reported, never audited - `amount` their grams,
+  /// `unit` the store that lost most, `resource` its food. Only when > 0.
+  /// kNotable. Seam key `audit_unguarded_leak` (the line «утечка из
+  /// церкви / бурта: {x} т — перевезите под охрану»).
+  kAuditUnguardedLeak,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

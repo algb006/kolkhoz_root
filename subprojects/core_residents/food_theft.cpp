@@ -23,7 +23,7 @@ namespace core {
 namespace {
 
 /// The world_params keys link 2 reads, in ParseFoodTheftConfig's order.
-constexpr std::array<std::string_view, 15> kFoodTheftWorldParamKeys = {
+constexpr std::array<std::string_view, 18> kFoodTheftWorldParamKeys = {
     "crime_food_theft_on",
     "food_theft_from_alcoholism",
     "food_theft_kg_per_thief_month",
@@ -38,7 +38,10 @@ constexpr std::array<std::string_view, 15> kFoodTheftWorldParamKeys = {
     "audit_remark_reputation",
     "write_off_reputation",
     "audit_window_months",
-    "audit_min_receipts_t"};
+    "audit_min_receipts_t",
+    "audit_book_opens_year",
+    "audit_guarded_stores_only",
+    "audit_trial_after_act_months"};
 
 /// The food a thief takes for his table, in this order (crime §7: grain and
 /// potato, not only sugar).
@@ -55,6 +58,21 @@ constexpr double kPerMille = 1000.0;
 
 /// The raikom's reputation's scale (world_state.h, ChairmanState).
 constexpr float kReputationMax = 100.0F;
+
+/// R2: whether a night watchman can be posted at this store - its type's
+/// unit_staff row, or its parent unit's for a module (StoreLeakClosed's rule
+/// of the watch).
+bool StoreGuardable(const FoodTheftConfig& config, const WorldState& current, std::uint32_t row) {
+  const auto guarded_type = [&config](UnitTypeId type) {
+    return type.value < config.guardable_type.size() && config.guardable_type[type.value] != 0;
+  };
+  const UnitRow& unit = current.units.rows[row];
+  if (guarded_type(unit.type)) {
+    return true;
+  }
+  const std::uint32_t parent = FindRow(current.units, unit.parent);
+  return parent != kNoRow && guarded_type(current.units.rows[parent].type);
+}
 
 /// Adds `grams` (may be negative) to one resource of a dense vector, growing it.
 void AddAmount(ResourceAmounts& amounts, ResourceId resource, Grams grams) {
@@ -177,6 +195,9 @@ bool ParseFoodTheftConfig(const ITableSet& tables, FoodTheftConfig& config, std:
     auto audits = static_cast<float>(config.audits_per_year);
     auto opens = static_cast<float>(config.book_opens_month) + 1.0F;
     auto window = static_cast<float>(config.window_months);
+    auto opens_year = static_cast<float>(config.book_opens_year) + 1.0F;
+    auto guarded_only = config.guarded_stores_only ? 1.0F : 0.0F;
+    auto after_act = static_cast<float>(config.trial_after_act_months);
     const Range share{.low = 0.0F, .high = 1.0F};
     const Range alcoholism{.low = 0.0F, .high = 60.0F};
     const Range reputation{.low = -100.0F, .high = 0.0F};
@@ -220,10 +241,20 @@ bool ParseFoodTheftConfig(const ITableSet& tables, FoodTheftConfig& config, std:
         {.key = kFoodTheftWorldParamKeys[14],
          .value = &config.min_receipts_t,
          .range = {.low = 0.0F, .high = 1000.0F}},
+        {.key = kFoodTheftWorldParamKeys[15],
+         .value = &opens_year,
+         .range = {.low = 1.0F, .high = 100.0F}},
+        {.key = kFoodTheftWorldParamKeys[16], .value = &guarded_only, .range = share},
+        {.key = kFoodTheftWorldParamKeys[17],
+         .value = &after_act,
+         .range = {.low = 0.0F, .high = 1200.0F}},
     }};
     if (!ReadKnobs(*world, "world_params", knobs, error)) {
       return false;
     }
+    config.book_opens_year = static_cast<std::uint32_t>(opens_year) - 1U;
+    config.guarded_stores_only = guarded_only >= 0.5F;
+    config.trial_after_act_months = static_cast<std::uint32_t>(after_act);
     config.on = on >= 0.5F;
     config.audits_per_year = static_cast<std::uint32_t>(audits);
     config.book_opens_month = static_cast<std::uint32_t>(opens) - 1U;
@@ -235,6 +266,29 @@ bool ParseFoodTheftConfig(const ITableSet& tables, FoodTheftConfig& config, std:
       const std::uint32_t row = resources->FindRowByKey(key);
       if (row != kNoTableRow) {
         config.food.push_back(ResourceId{static_cast<std::uint16_t>(row)});
+      }
+    }
+  }
+  // R2's GUARDABLE STORES: a unit type unit_staff.csv gives a night post.
+  config.guardable_type.clear();
+  const ITable* const types = tables.FindTable("unit_types");
+  const ITable* const staff = tables.FindTable("unit_staff");
+  const ITable* const professions = tables.FindTable("professions");
+  if (types != nullptr && staff != nullptr && professions != nullptr) {
+    config.guardable_type.assign(types->RowCount(), 0);
+    const std::uint32_t unit_col = staff->FindColumn("unit");
+    const std::uint32_t profession_col = staff->FindColumn("profession");
+    const std::uint32_t shift_col = professions->FindColumn("shift");
+    if (unit_col != kNoTableColumn && profession_col != kNoTableColumn &&
+        shift_col != kNoTableColumn) {
+      for (std::uint32_t row = 0; row < staff->RowCount(); ++row) {
+        const std::uint32_t profession =
+            professions->FindRowByKey(staff->CellText(row, profession_col));
+        const std::uint32_t type = types->FindRowByKey(staff->CellText(row, unit_col));
+        if (profession != kNoTableRow && type != kNoTableRow &&
+            professions->CellText(profession, shift_col) == "night") {
+          config.guardable_type[type] = 1;
+        }
       }
     }
   }
@@ -340,7 +394,9 @@ void RunStoreAudit(const FoodTheftConfig& config, WorldState& current) {
   // the first day after it the link is on), every book is set to the real
   // stock - the gap and the window cleared - and the shortage is his from here.
   if (audit.books_accepted == 0) {
-    if (day < config.book_opens_month * kDaysPerMonth) {
+    // R1 (round 2): of the campaign year book_opens_year - y2's harvest close
+    // in the table, so the take-over years' theft stays «до приёмки».
+    if (day < (config.book_opens_year * kDaysPerYear) + (config.book_opens_month * kDaysPerMonth)) {
       return;
     }
     Grams recorded = 0;
@@ -354,6 +410,7 @@ void RunStoreAudit(const FoodTheftConfig& config, WorldState& current) {
       }
     }
     audit.books_accepted = 1;
+    audit.accepted_day = day;
     SimEvent& act = EmitEvent(current, EventKind::kBooksAccepted, EventSeverity::kNotable);
     act.amount = recorded;
   }
@@ -380,12 +437,33 @@ void RunStoreAudit(const FoodTheftConfig& config, WorldState& current) {
   double share = 0.0;
   UnitId worst_unit;
   ResourceId worst_food;
+  Grams unguarded_lost = 0;
+  Grams unguarded_worst = 0;
+  UnitId unguarded_unit;
+  ResourceId unguarded_food;
   for (std::uint32_t row = 0; row < current.units.rows.size(); ++row) {
     UnitRow& unit = current.units.rows[row];
     if (unit.level == 0 || unit.dead != 0 || unit.book_window.empty()) {
       continue;
     }
     AdvanceWindow(config, unit, month);
+    // R2 (round 2): a store no watchman can be posted at is reported, not
+    // audited - the lever is «move it under guard», not the district's court.
+    if (config.guarded_stores_only && !StoreGuardable(config, current, row)) {
+      for (const ResourceId food : config.food) {
+        Grams lost = 0;
+        for (const BookMonth& slot : unit.book_window) {
+          lost += AmountOf(slot.lost, food);
+        }
+        unguarded_lost += lost;
+        if (lost > unguarded_worst) {
+          unguarded_worst = lost;
+          unguarded_unit = current.units.row_ids[row];
+          unguarded_food = food;
+        }
+      }
+      continue;
+    }
     for (const ResourceId food : config.food) {
       Grams lost = 0;
       Grams received = 0;
@@ -403,6 +481,12 @@ void RunStoreAudit(const FoodTheftConfig& config, WorldState& current) {
         worst_food = food;
       }
     }
+  }
+  if (unguarded_lost > 0) {
+    SimEvent& leak = EmitEvent(current, EventKind::kAuditUnguardedLeak, EventSeverity::kNotable);
+    leak.amount = unguarded_lost;
+    leak.unit = unguarded_unit;
+    leak.resource = unguarded_food;
   }
   YearLedger& book = current.ledger.current;
   ++book.audits;
@@ -422,7 +506,11 @@ void RunStoreAudit(const FoodTheftConfig& config, WorldState& current) {
   // THE TRIGGER ONLY AFTER A REMARK (spec §6): a first audit at the trial
   // share gives the remark - the shortage must be readable before it hangs
   // the chairman.
-  if (amount >= trial_pm && audit.remarked != 0) {
+  // R3 (round 2): and not before trial_after_act_months since the act - the
+  // levers' time; such an audit at the trial share gives the remark again.
+  const bool levers_had_time =
+      day >= audit.accepted_day + (config.trial_after_act_months * kDaysPerMonth);
+  if (amount >= trial_pm && audit.remarked != 0 && levers_had_time) {
     if (audit.trial_due == 0) {
       audit.trial_due = 1;
       SimEvent& trial = EmitEvent(current, EventKind::kAuditTrialDue, EventSeverity::kInterrupting);

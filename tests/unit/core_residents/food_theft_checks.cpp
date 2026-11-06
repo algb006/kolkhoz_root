@@ -2,6 +2,7 @@
 
 #include "food_theft_checks.h"
 
+#include <array>
 #include <cstdint>
 #include <iostream>
 
@@ -208,6 +209,91 @@ int CheckFoodTheft() {
   failures += Expect(remarks == 1 && triggers == 1,
                      "audit: the first gives the remark, the second the «Под суд» condition");
   failures += Expect(audited.audit.trial_due == 1, "audit: the condition stands");
+  // ROUND 2 (econ's crime-separation-2, boss 7 Nov): the same world, a year of
+  // y2's audits, under R2 and R3 - each with its pair.
+  {
+    const auto leaking = [&on]() {
+      core::WorldState world = Village(0.0F, false);
+      world.audit.books_accepted = 1;
+      world.units.rows[0].type = core::UnitTypeId{0};  // R2 asks the type
+      world.units.rows[0].stock.assign(1, 40 * kTonne);
+      world.units.rows[0].book_gap.assign(1, 1 * kTonne);
+      world.units.rows[0].book_window.assign(on.window_months, core::BookMonth{});
+      world.units.rows[0].book_window[kY2FirstMonth % on.window_months].lost.assign(1, kTonne);
+      world.units.rows[0].book_window[kY2FirstMonth % on.window_months].received.assign(
+          1, 10 * kTonne);
+      world.units.rows[0].book_window_month = kY2FirstMonth + 1U;
+      return world;
+    };
+
+    struct Year {
+      std::uint32_t remarks = 0;
+      std::uint32_t triggers = 0;
+      std::uint32_t leaks = 0;
+    };
+
+    const auto y2 = [](const core::FoodTheftConfig& config, core::WorldState world) {
+      Year year;
+      for (std::uint32_t day = core::kDaysPerYear; day < 2U * core::kDaysPerYear; ++day) {
+        world.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
+        core::RefreshCalendarCaches(world.calendar);
+        world.step_events.clear();
+        core::RunStoreAudit(config, world);
+        year.remarks += Count(world, core::EventKind::kAuditRemark);
+        year.triggers += Count(world, core::EventKind::kAuditTrialDue);
+        year.leaks += Count(world, core::EventKind::kAuditUnguardedLeak);
+      }
+      return year;
+    };
+    // R3: the act signed on y2's first day, 12 months asked - both of y2's
+    // audits give the remark, neither the trigger.
+    core::FoodTheftConfig r3 = On();
+    r3.trial_after_act_months = 12;
+    core::WorldState late_act = leaking();
+    late_act.audit.accepted_day = core::kDaysPerYear;
+    const Year waited = y2(r3, late_act);
+    core::WorldState early_act = leaking();
+    early_act.audit.accepted_day = 0;
+    const Year in_time = y2(r3, early_act);
+    std::cout << "  round 2, R3: act on y2's first day - " << waited.remarks << " remarks, "
+              << waited.triggers << " triggers; act on y1's - " << in_time.triggers << '\n';
+    failures += Expect(waited.remarks == 2 && waited.triggers == 0,
+                       "R3: within 12 months of the act no trigger - the remark again");
+    failures += Expect(in_time.triggers == 1,
+                       "R3's pair: 12 months past the act, a remark before - the trigger");
+    // R2: the store's type has no night post - reported, never audited.
+    core::FoodTheftConfig r2 = On();
+    r2.guarded_stores_only = true;
+    r2.guardable_type = {0};
+    const Year unguarded = y2(r2, leaking());
+    r2.guardable_type = {1};
+    const Year guarded = y2(r2, leaking());
+    std::cout << "  round 2, R2: unguardable store - " << unguarded.remarks << " remarks, "
+              << unguarded.leaks << " leak reports; guardable - " << guarded.remarks << " remark, "
+              << guarded.triggers << " trigger\n";
+    failures += Expect(unguarded.remarks == 0 && unguarded.triggers == 0 && unguarded.leaks == 2,
+                       "R2: a store no watchman can be posted at - no remark, no trigger, its "
+                       "leak reported at each audit");
+    failures += Expect(guarded.remarks == 1 && guarded.triggers == 1 && guarded.leaks == 0,
+                       "R2's pair: a guardable store - audited as before");
+    // R1: the act of year 2 - none in y1, one in y2.
+    core::FoodTheftConfig r1 = On();
+    r1.book_opens_year = 1;
+    core::WorldState taking_over = Village(0.0F, false);
+    taking_over.audit.books_accepted = 0;
+    std::array<std::uint32_t, 2> acts = {0, 0};
+    for (std::uint32_t day = 0; day < 2U * core::kDaysPerYear; ++day) {
+      taking_over.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
+      core::RefreshCalendarCaches(taking_over.calendar);
+      taking_over.step_events.clear();
+      core::RunStoreAudit(r1, taking_over);
+      acts[day / core::kDaysPerYear] += Count(taking_over, core::EventKind::kBooksAccepted);
+    }
+    failures += Expect(acts[0] == 0 && acts[1] == 1 &&
+                           taking_over.audit.accepted_day ==
+                               core::kDaysPerYear + (r1.book_opens_month * core::kDaysPerMonth),
+                       "R1: the act in y2 - none in y1, one on its month of y2, its day kept");
+  }
   // THE WRITE-OFF clears the book and withdraws the remark.
   core::OrderRow order;
   order.kind = core::OrderKind::kWriteOffShortage;

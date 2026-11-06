@@ -1695,6 +1695,7 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"audit.remarked", U8(world.audit.remarked)});
   chunks.push_back({"audit.trial_due", U8(world.audit.trial_due)});
   chunks.push_back({"audit.books_accepted", U8(world.audit.books_accepted)});
+  chunks.push_back({"audit.accepted_day", U32(world.audit.accepted_day)});
   // The sports field's month (save 68).
   chunks.push_back({"sport_month.open_days", U8(world.sport_month.open_days)});
   chunks.push_back({"sport_month.downpour_yesterday", U8(world.sport_month.downpour_yesterday)});
@@ -2056,7 +2057,7 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // Save 207 (#1568): +13 - the store audit's two u32, a u16 and three
     // bytes after the night theft; predicted (+12, then +1 for the act's
     // byte) before the build, held.
-    {"world", 1466, 0x9fd820f559b72d5bULL},
+    {"world", 1470, 0xa43851da4197e61bULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:

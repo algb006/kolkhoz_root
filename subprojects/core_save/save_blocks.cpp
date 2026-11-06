@@ -663,6 +663,7 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteU8(world.audit.remarked);
   out.WriteU8(world.audit.trial_due);
   out.WriteU8(world.audit.books_accepted);  // #1568 (a)
+  out.WriteU32(world.audit.accepted_day);   // #1568 round 2 (R3)
   // The sports field's month (save 68): its open days and yesterday's downpour.
   out.WriteU8(world.sport_month.open_days);
   out.WriteU8(world.sport_month.downpour_yesterday);
@@ -977,6 +978,7 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->audit.trial_due = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "audit trial due"));
   world->audit.books_accepted =
       static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "the books accepted"));
+  world->audit.accepted_day = in.ReadU32();
   world->sport_month.open_days = in.ReadU8();
   world->sport_month.downpour_yesterday =
       static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "downpour yesterday"));

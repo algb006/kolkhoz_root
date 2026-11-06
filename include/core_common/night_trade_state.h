@@ -117,6 +117,10 @@ struct AuditState {
   /// until then link 2's theft is the former management's, booked «до
   /// приёмки» (YearLedger::stolen_before_acceptance) and never audited.
   std::uint8_t books_accepted = 0;
+
+  /// The absolute day the act was signed (#1568 round 2, R3: the trigger
+  /// waits audit_trial_after_act_months from it); 0 before the act.
+  std::uint32_t accepted_day = 0;
 };
 
 }  // namespace core

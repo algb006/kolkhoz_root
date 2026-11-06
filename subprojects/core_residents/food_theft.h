@@ -79,6 +79,22 @@ struct FoodTheftConfig {
   float min_receipts_t = 2.0F;            ///< `audit_min_receipts_t`
   float audit_remark_reputation = -5.0F;  ///< `audit_remark_reputation`
   float write_off_reputation = -10.0F;    ///< `write_off_reputation`
+  /// ROUND 2 (econ's crime-separation-2-2026-11-07.md, boss 7 Nov; crime.md
+  /// §1 p. 6). Each default is round 1's rule; the tables' rows turn it on.
+  /// R1: the act's campaign year, 0-based (`audit_book_opens_year`, human
+  /// 1-based; STUB 2 - y2's harvest close).
+  std::uint32_t book_opens_year = 0;
+  /// R2: only stores a night watchman can be posted at are audited
+  /// (`audit_guarded_stores_only`); the others' losses are reported apart
+  /// (kAuditUnguardedLeak), never a remark or a trial.
+  bool guarded_stores_only = false;
+  /// R3: the trigger needs this many months since the act beside the earlier
+  /// remark (`audit_trial_after_act_months`; STUB 12).
+  std::uint32_t trial_after_act_months = 0;
+  /// By UnitTypeId: 1 when unit_staff.csv gives the type a post of a night
+  /// shift (professions.csv `shift` night - the watchman). A module is
+  /// guarded by its parent's, as StoreLeakClosed reads the watch.
+  std::vector<std::uint8_t> guardable_type;
   /// The food a thief takes, in the order he takes it: the grains and the
   /// potato (resources.csv rows); empty when the tables name none.
   std::vector<ResourceId> food;
