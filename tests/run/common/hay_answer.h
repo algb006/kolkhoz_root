@@ -139,6 +139,15 @@ class HayAnswer {
         yellow->advice == core::AlarmAdvice::kGranaryForFeed) {
       YearOf(world).feed_advice_days += 1;
     }
+    // #1573: «buy feed» with no head beside it (the cheap rung, or the feed
+    // rung with nobody above the floors), and the lit days with no move.
+    if (yellow->advice == core::AlarmAdvice::kBuyFeed &&
+        yellow->advice_more == core::AlarmAdvice::kNone) {
+      YearOf(world).buy_no_heads_days += 1;
+    }
+    if (yellow->advice == core::AlarmAdvice::kNone) {
+      YearOf(world).no_move_days += 1;
+    }
     std::vector<core::OrderRow> orders;
     if (yellow->advice == core::AlarmAdvice::kCutHay) {
       RushTheCut(world, orders);
@@ -203,6 +212,21 @@ class HayAnswer {
     }
   }
 
+  /// @brief #1573's answer line, a village: «F1573A seed S | y1 yellow Y
+  ///        buy_no_heads B no_move N feed_lots L feed_points P cows_handed C
+  ///        horses_handed H | y2 ...», y1-`years`.
+  void PrintFeedRung(std::ostream& out, std::uint64_t seed, std::uint32_t years) const {
+    out << "population_curve: F1573A seed " << seed;
+    for (std::uint32_t year = 0; year < years; ++year) {
+      const YearCount count = year < years_.size() ? years_[year] : YearCount{};
+      out << " | y" << year + 1 << " yellow " << count.yellow_days << " buy_no_heads "
+          << count.buy_no_heads_days << " no_move " << count.no_move_days << " feed_lots "
+          << count.feed_lots << " feed_points " << count.feed_points << " cows_handed "
+          << count.cows_handed << " horses_handed " << count.horses_handed;
+    }
+    out << '\n';
+  }
+
   /// @brief Holds the hand-over while the herds' plans are being set (#1289).
   void HoldHandOverForPlans(bool hold) { plans_being_set_ = hold; }
 
@@ -225,6 +249,11 @@ class HayAnswer {
     std::uint32_t below_floor_days = 0;
     std::uint32_t feed_advice_days = 0;
     std::uint32_t feed_lots = 0;
+    /// #1573: the points of the feed lots ordered (the door may still refuse
+    /// one: ordered, not spent), the «buy, no head» days, the no-move days.
+    std::uint32_t feed_points = 0;
+    std::uint32_t buy_no_heads_days = 0;
+    std::uint32_t no_move_days = 0;
     std::uint64_t horses_handed = 0;
     std::uint64_t cows_handed = 0;
     /// The horses the advice named on the days looked at, handed or not.
@@ -359,6 +388,7 @@ class HayAnswer {
         orders.push_back(order);
         ++feed_lots_;
         YearOf(simulation.CompletedState()).feed_lots += 1;
+        YearOf(simulation.CompletedState()).feed_points += static_cast<std::uint32_t>(line.points);
       }
       return;
     }

@@ -228,6 +228,11 @@ class LimitPolicy {
   /// @brief The hay answer's cow hand-overs (#1570's print).
   const std::vector<HayAnswer::HandLog>& HayHandLogs() const { return hay_.HandLogs(); }
 
+  /// @brief #1573's answer line (HayAnswer::PrintFeedRung).
+  void PrintHayFeedRung(std::ostream& out, std::uint64_t seed, std::uint32_t years) const {
+    hay_.PrintFeedRung(out, seed, years);
+  }
+
   /// @brief The points of every closed year, and what the policy bought.
   void Report(const char* run) const {
     sugar_.Report(run);
