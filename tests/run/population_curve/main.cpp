@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -595,6 +596,14 @@ bool g_hay_hand_over_off = false;
 /// arms, econ-boss-1427-avatar-gates [1]); empty, the canon: no avatar. An
 /// avatar's paths move the village, so its run is an arm, not the canon.
 std::string g_avatar_key;
+/// `--walkers=N`: at most N villages walk at once (7 Nov 2026: the job's
+/// booked threads). Default KOLKHOZ_WALKERS from the environment, else every
+/// seed at once as before.
+std::size_t g_walkers = [] {
+  const char* const from_env = std::getenv("KOLKHOZ_WALKERS");
+  return from_env != nullptr ? static_cast<std::size_t>(std::strtoul(from_env, nullptr, 10))
+                             : std::size_t{16};
+}();
 
 /// `--epoch-one-forever`: econ's branch (boss-core-epoch1-queue [34]) — the
 /// run's chairman never orders the transition, and the transition print runs
@@ -1589,6 +1598,11 @@ int main(int argc, char** argv) {
     const std::string_view argument(argv[index]);
     if (argument == "--sequential") {
       sequential = true;
+    } else if (argument.starts_with("--walkers=")) {
+      g_walkers = static_cast<std::size_t>(
+          std::strtoul(std::string(argument.substr(std::string_view("--walkers=").size())).c_str(),
+                       nullptr,
+                       10));
     } else if (argument == "--warm-hold=old") {
       g_warm_hold_old = true;
     } else if (argument == "--granary-first=off") {
@@ -1703,9 +1717,22 @@ int main(int argc, char** argv) {
       walk_one(index);
     }
   } else {
+    // NO MORE WALKERS THAN THE JOB BOOKED (7 Nov 2026; boss, the human asking
+    // who loaded the server): a thread a seed was sixteen threads whatever
+    // the job declared - 4-booked node jobs ran at 1 000-1 400 % CPU beside
+    // production. `--walkers=N` (or KOLKHOZ_WALKERS) bounds them; each
+    // walker takes the next seed. The pages keep the text the same.
+    const std::size_t walkers = std::clamp<std::size_t>(g_walkers, 1, kSeeds.size());
+    std::atomic<std::size_t> next{0};
+    const auto walker = [&next, &walk_one]() {
+      for (std::size_t index = next.fetch_add(1); index < kSeeds.size();
+           index = next.fetch_add(1)) {
+        walk_one(index);
+      }
+    };
     std::vector<std::future<void>> pending;
-    for (std::size_t index = 0; index < kSeeds.size(); ++index) {
-      pending.push_back(std::async(std::launch::async, walk_one, index));
+    for (std::size_t index = 0; index < walkers; ++index) {
+      pending.push_back(std::async(std::launch::async, walker));
     }
     for (std::future<void>& one : pending) {
       one.get();
