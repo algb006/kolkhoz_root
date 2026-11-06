@@ -121,6 +121,17 @@ class CrimeTally {
   ///        step only and missed every theft, 232 of 232 village-years).
   void CountStep(const core::WorldState& world) {
     for (const core::SimEvent& event : world.step_events) {
+      // THE AUDITS BY THEIR EVENTS (7 Nov 2026): an audit gives clean, a
+      // remark or the trial (none once the trial is due) - more such events
+      // in a year than its book's `audits` is an audit the book lost.
+      if (event.kind == core::EventKind::kAuditClean ||
+          event.kind == core::EventKind::kAuditRemark ||
+          event.kind == core::EventKind::kAuditTrialDue) {
+        ++audit_events_;
+        // The audit's shortage (the events' `amount`, per mille of the worst
+        // guardable position) - an audit after the trial is due says none.
+        shortages_ += (shortages_.empty() ? "" : ",") + std::to_string(event.amount);
+      }
       if (event.kind == core::EventKind::kAuditUnguardedLeak) {
         ++unguarded_leaks_;  // round 2 (R2): the lever line's count a year
       }
@@ -333,9 +344,13 @@ class CrimeTally {
            << " theft_clamps_kg " << theft_by_kind_[kTheftClamp] / 1000 << " theft_guardable_kg "
            << theft_by_kind_[kTheftGuardable] / 1000 << " theft_other_kg "
            << theft_by_kind_[kTheftOther] / 1000 << " unguarded_leak_reports " << unguarded_leaks_
-           << '\n';
+           << " audit_events " << audit_events_
+           << (audit_events_ > book.audits ? " AUDITS_UNBOOKED" : "") << " shortage_permille_list "
+           << (shortages_.empty() ? std::string("-") : shortages_) << '\n';
     theft_by_kind_ = {};
     unguarded_leaks_ = 0;
+    audit_events_ = 0;
+    shortages_.clear();
     if (world.audit.trial_due != 0 && !audit_trial_year_) {
       audit_trial_year_ = year;
     }
@@ -361,6 +376,9 @@ class CrimeTally {
   static constexpr std::size_t kTheftOther = 3;
   std::array<core::Grams, 4> theft_by_kind_ = {};
   std::uint32_t unguarded_leaks_ = 0;
+  std::uint32_t audit_events_ = 0;
+  /// Each audit's shortage this year, per mille, comma-joined (boss's (2)).
+  std::string shortages_;
   std::vector<std::uint8_t> guardable_;
 
   bool Guardable(std::uint32_t type) const {

@@ -384,7 +384,8 @@ void RunFoodTheft(const FoodTheftConfig& config,
 }
 
 void RunStoreAudit(const FoodTheftConfig& config, WorldState& current) {
-  if (!config.on || config.audits_per_year == 0 || HourFromTick(current.calendar.tick) != 0) {
+  if (!config.on || config.audits_per_year == 0 ||
+      HourFromTick(current.calendar.tick) != kStoreAuditHour) {
     return;
   }
   const std::uint32_t day = current.calendar.day;

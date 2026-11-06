@@ -84,6 +84,11 @@ void ToTheftHour(const core::NightTradeConfig& night, core::WorldState& world) {
   core::RefreshCalendarCaches(world.calendar);
 }
 
+/// The audit's own step of `day` (food_theft.h, kStoreAuditHour).
+core::Tick AuditTick(std::uint32_t day) {
+  return (static_cast<core::Tick>(day) * core::kTicksPerDay) + core::kStoreAuditHour;
+}
+
 std::uint32_t Count(const core::WorldState& world, core::EventKind kind) {
   std::uint32_t count = 0;
   for (const core::SimEvent& event : world.step_events) {
@@ -152,7 +157,7 @@ int CheckFoodTheft() {
                        "act: a theft before the act is the former management's, not the book's");
     std::uint32_t acts = 0;
     for (std::uint32_t day = 0; day < core::kDaysPerYear; ++day) {
-      before.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
+      before.calendar.tick = AuditTick(day);
       core::RefreshCalendarCaches(before.calendar);
       before.step_events.clear();
       core::RunStoreAudit(on, before);
@@ -196,7 +201,7 @@ int CheckFoodTheft() {
   std::uint32_t remarks = 0;
   std::uint32_t triggers = 0;
   for (std::uint32_t day = core::kDaysPerYear; day < 2U * core::kDaysPerYear; ++day) {
-    audited.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
+    audited.calendar.tick = AuditTick(day);
     core::RefreshCalendarCaches(audited.calendar);
     audited.step_events.clear();
     core::RunStoreAudit(on, audited);
@@ -235,7 +240,7 @@ int CheckFoodTheft() {
     const auto y2 = [](const core::FoodTheftConfig& config, core::WorldState world) {
       Year year;
       for (std::uint32_t day = core::kDaysPerYear; day < 2U * core::kDaysPerYear; ++day) {
-        world.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
+        world.calendar.tick = AuditTick(day);
         core::RefreshCalendarCaches(world.calendar);
         world.step_events.clear();
         core::RunStoreAudit(config, world);
@@ -283,7 +288,7 @@ int CheckFoodTheft() {
     taking_over.audit.books_accepted = 0;
     std::array<std::uint32_t, 2> acts = {0, 0};
     for (std::uint32_t day = 0; day < 2U * core::kDaysPerYear; ++day) {
-      taking_over.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
+      taking_over.calendar.tick = AuditTick(day);
       core::RefreshCalendarCaches(taking_over.calendar);
       taking_over.step_events.clear();
       core::RunStoreAudit(r1, taking_over);
@@ -293,6 +298,41 @@ int CheckFoodTheft() {
                            taking_over.audit.accepted_day ==
                                core::kDaysPerYear + (r1.book_opens_month * core::kDaysPerMonth),
                        "R1: the act in y2 - none in y1, one on its month of y2, its day kept");
+  }
+  // NO AUDIT AT HOUR 0 (7 Nov 2026; food_theft.h, kStoreAuditHour): the
+  // year's ledger turns later in hour 0's step, and an audit of a year's
+  // first day fell out of both years' books. Every hour of 200 seeds' years:
+  // two audits a year, none of them at hour 0.
+  {
+    std::uint32_t odd = 0;
+    std::uint32_t at_midnight = 0;
+    std::uint32_t years = 0;
+    for (std::uint64_t seed = 1; seed <= 200; ++seed) {
+      core::WorldState world = Village(0.0F, false);
+      world.world_seed = seed;
+      world.audit.books_accepted = 1;
+      for (std::uint32_t year = 2; year < 16; ++year) {
+        const std::uint32_t before = world.ledger.current.audits;
+        for (std::uint32_t day = year * core::kDaysPerYear; day < (year + 1U) * core::kDaysPerYear;
+             ++day) {
+          for (std::uint32_t hour = 0; hour < core::kTicksPerDay; ++hour) {
+            world.calendar.tick = (static_cast<core::Tick>(day) * core::kTicksPerDay) + hour;
+            core::RefreshCalendarCaches(world.calendar);
+            const std::uint32_t was = world.ledger.current.audits;
+            world.step_events.clear();
+            core::RunStoreAudit(on, world);
+            at_midnight += hour == 0 && world.ledger.current.audits != was ? 1U : 0U;
+          }
+        }
+        odd += world.ledger.current.audits - before != 2 ? 1U : 0U;
+        ++years;
+      }
+    }
+    std::cout << "  audit hour: " << odd << " of " << years << " seed-years with other than two "
+              << "audits, " << at_midnight << " audits at hour 0\n";
+    failures += Expect(odd == 0 && at_midnight == 0 && years == 2800,
+                       "audit: two a year on every seed, and none at hour 0 - the hour the "
+                       "year's ledger turns in");
   }
   // THE WRITE-OFF clears the book and withdraws the remark.
   core::OrderRow order;

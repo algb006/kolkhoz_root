@@ -121,9 +121,16 @@ void RunFoodTheft(const FoodTheftConfig& config,
                   float life_speedup,
                   WorldState& current);
 
+/// @brief The hour of the day the audit acts (draws its half's day, holds it).
+/// NOT HOUR 0 (7 Nov 2026): the year's ledger turns in the events slot, after
+/// this residents' slot, in the same step - an audit at hour 0 of a year's
+/// first day was booked in the closing year's book after its year line was
+/// read, and fell out of both (17 of 448 village-years of round 2's arms).
+inline constexpr std::uint32_t kStoreAuditHour = 1;
+
 /// @brief The district's audit (2d): draws each year-half's day, and on it
 /// reads every store's book and raises its verdict. Call once a step; acts
-/// at the day's first step only, and not at all with `config.on` false.
+/// at kStoreAuditHour only, and not at all with `config.on` false.
 void RunStoreAudit(const FoodTheftConfig& config, WorldState& current);
 
 /// @brief The book window's receipts (#1568 (b)): every rise of a store's
