@@ -452,10 +452,28 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
       return ForecastHerdFeed(config, world, false, FeedHorizon::kNearestScythes, &bought, nullptr)
           .short_ahead;
     };
-    const FeedPurchase all_kept = MaximalFeedPurchase(config, world, nullptr);
-    if (all_kept.any && !short_after_kept(all_kept)) {
-      const FeedPurchase cheapest = LeastClosingPurchase(config, world, all_kept, short_after_kept);
-      if (cheapest.points <= config.farming.hay_feed_before_heads_points) {
+    // THE LARGEST PURCHASE WITHIN THE PRICE FIRST, with no forecast (7 Nov
+    // 2026: thirty_years' session day cost 2.10 s against main's 1.65 s when
+    // the rung halved down from the year's largest purchase, a forecast a
+    // probe, at every refresh). The lots are taken in one order, so each
+    // purchase is the one before it and a lot more: if the dearest within
+    // the price does not close the shortage, no cheaper one does, and one
+    // forecast says so.
+    const auto within_price = [&config](const FeedPurchase& purchase) {
+      return purchase.any && purchase.points <= config.farming.hay_feed_before_heads_points;
+    };
+    FeedPurchase affordable = MaximalFeedPurchase(config, world, nullptr, 1U);
+    if (within_price(affordable)) {
+      for (std::uint32_t lots = 2;; ++lots) {
+        FeedPurchase more = MaximalFeedPurchase(config, world, nullptr, lots);
+        if (!within_price(more) || more.lots <= affordable.lots) {
+          break;
+        }
+        affordable = std::move(more);
+      }
+      if (!short_after_kept(affordable)) {
+        const FeedPurchase cheapest =
+            LeastClosingPurchase(config, world, affordable, short_after_kept);
         advice.advice = AlarmAdvice::kBuyFeed;
         NameTheFeedBought(config, cheapest, advice);
         return advice;
