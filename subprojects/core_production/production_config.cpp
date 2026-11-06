@@ -462,6 +462,8 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
   float mow_days = farming.meadow_mow_days_per_ha * kRealDaysPerGameDay;
   auto new_hay_days = static_cast<float>(farming.hay_new_cut_in_store_days);
   auto avral_days = static_cast<float>(farming.hay_avral_days_a_cut);
+  auto feed_before_heads = static_cast<float>(farming.hay_feed_before_heads_points);
+  auto handover_min_days = static_cast<float>(farming.hay_handover_min_short_days);
   const auto knobs = std::to_array<Knob>({
       {"unfed_produce_factor", &farming.unfed_produce_factor, 0.0F, 1.0F},
       {"unfed_death_after_days", &farming.unfed_death_after_days, 0.0F, 1000.0F},
@@ -518,6 +520,9 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
       {"hay_new_cut_in_store_days", &new_hay_days, 0.0F, static_cast<float>(kDaysPerYear)},
       {"hay_avral_days_a_cut", &avral_days, 0.0F, static_cast<float>(kDaysPerYear)},
       {"hay_pace_short_share", &farming.hay_pace_short_share, 0.0F, 10.0F},
+      {"hay_feed_before_heads_points", &feed_before_heads, 0.0F, 100000.0F},
+      {"hay_handover_min_short_days", &handover_min_days, 0.0F, static_cast<float>(kDaysPerYear)},
+      {"hay_handover_dose_share", &farming.hay_handover_dose_share, 0.01F, 1.0F},
       {"hay_prior_mower_share", &farming.hay_prior_mower_share, 0.0F, 1.0F},
       {"fallow_plow_month", &fallow_month, 1.0F, 12.0F},
       {"birth_from_month", &birth_from, 1.0F, 12.0F},
@@ -546,6 +551,8 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
   farming.meadow_mow_days_per_ha = mow_days / kRealDaysPerGameDay;
   farming.hay_new_cut_in_store_days = static_cast<std::uint32_t>(new_hay_days);
   farming.hay_avral_days_a_cut = static_cast<std::uint32_t>(avral_days);
+  farming.hay_feed_before_heads_points = static_cast<std::int32_t>(feed_before_heads);
+  farming.hay_handover_min_short_days = static_cast<std::uint32_t>(handover_min_days);
 
   farming.birth_from_month = static_cast<std::uint8_t>(birth_from - 1.0F);
   farming.birth_to_month = static_cast<std::uint8_t>(birth_to - 1.0F);

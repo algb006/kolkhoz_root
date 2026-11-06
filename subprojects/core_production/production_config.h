@@ -589,6 +589,27 @@ struct FarmingConfig {
   /// (ChairmanState::hay_cut_avral_days). STUB econ, four-levers §2c.
   std::uint32_t hay_avral_days_a_cut = 4;
 
+  /// THE CHEAP-FEED RUNG (#1573; Livestock design, the hay lamp's ladder,
+  /// rung 2): the hay lamp names «buy feed, keep the heads» when the least
+  /// purchase closing the shortage with no head handed costs no more than
+  /// this many of the year's points. 0: the rung is off. STUB econ: the
+  /// table's 60. THE DEFAULTS OF THESE THREE ARE THE LADDER BEFORE #1573 (no
+  /// cheap rung, no tolerance, the whole dose): a world without the table's
+  /// rows - the unit fixtures, the pair's base - keeps the old advice.
+  std::int32_t hay_feed_before_heads_points = 0;
+
+  /// The heads rung's tolerance (#1573, rung 3): no head is named while the
+  /// forecast is short on this many days or fewer and no head dies of it
+  /// (HerdFeedForecast::short_days, death_ahead). 0: any short day. STUB
+  /// econ: the table's 3.
+  std::uint32_t hay_handover_min_short_days = 0;
+
+  /// The heads rung's dose (#1573, rung 3): one advice names no more than
+  /// this share of the least heads that feed the rest, rounded up, each
+  /// class apart; the forecast is read again next evening. 1.0: the least
+  /// that feed the rest, whole. STUB econ: the table's 0.5.
+  float hay_handover_dose_share = 1.0F;
+
   /// THE PRIOR FOR THE CUT'S PACE before its second dry working day, while
   /// no mower is placed yet: this share of the grown residents is taken as
   /// the mowers (herd_forecast.cpp, PaceOfTheCut). STUB econ, four-levers §2c.

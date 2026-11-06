@@ -184,6 +184,17 @@ struct HerdFeedForecast {
   /// Whole game days from today to the first such day (0: today).
   std::uint16_t days_ahead = 0;
 
+  /// The days before the horizon on which some kolkhoz herd is not fed in
+  /// full, counted (#1573: the hay lamp names no heads while they are
+  /// FarmingConfig::hay_handover_min_short_days or fewer and no head dies).
+  std::uint16_t short_days = 0;
+
+  /// Whether some herd's run of unfed days in a row - from its row's count
+  /// today, one more a short forecast day, nought a fed one - passes
+  /// FarmingConfig::unfed_death_after_days before the horizon: the day
+  /// RunHungerDeaths starts to take heads (#1573).
+  bool death_ahead = false;
+
   /// The days forecast, by the FeedHorizon asked.
   std::uint16_t horizon_days = 0;
 

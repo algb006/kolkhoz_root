@@ -57,6 +57,9 @@ struct ProjectedHerd {
   /// cows was fed 42 to the next cut while age took 11, and the lamp read
   /// next spring 13-34 % short where the herds were fed.
   float age_deaths_per_adult_day = 0.0F;
+  /// The herd's unfed days in a row today (HerdRow::unfed_days; #1573): the
+  /// forecast's hunger run starts from it. 0 for a head not yet come.
+  float unfed_days = 0.0F;
 };
 
 std::uint16_t RoundHeads(float heads) {
@@ -1165,6 +1168,7 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
       continue;  // a family herd eats from its family's pantry, not the farm's
     }
     ProjectedHerd projected = ProjectHerd(config, world, row, stable_built);
+    projected.unfed_days = herd.unfed_days;
     if (!horse_added && herd.kind.value == config.horse_kind.value) {
       projected.adults += 1.0F;
       horse_added = true;
@@ -1292,6 +1296,15 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
   std::vector<std::size_t> needs_of;  // index into `herds` per need
   std::vector<float> covered;
   std::vector<float> held_before;
+  // THE HUNGER'S RUN BY HERD (#1573): each herd's unfed days in a row, from
+  // its row's count today (HerdRow::unfed_days), one more a short forecast
+  // day and nought a fed one - RunHungerDeaths' own count, so the forecast
+  // says «a head dies» exactly when the run passes unfed_death_after_days.
+  std::vector<float> unfed_run(herds.size(), 0.0F);
+  for (std::size_t index = 0; index < herds.size(); ++index) {
+    unfed_run[index] = herds[index].unfed_days;
+  }
+  std::vector<std::uint8_t> short_today(herds.size(), 0);
   const std::array<MonthShares, kMonthsPerYear> team_shares = TeamSharesByMonth(world);
   for (std::uint32_t day = 0; day < horizon_days; ++day) {
     const auto month = static_cast<std::uint8_t>(DateFromDay(today + day).month);
@@ -1381,6 +1394,7 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
       }
     }
     float unfed_heads = 0.0F;
+    std::fill(short_today.begin(), short_today.end(), std::uint8_t{0});
     for (std::size_t index = 0; index < needs.size(); ++index) {
       forecast.need_units += needs[index].units;
       forecast.covered_units +=
@@ -1388,6 +1402,7 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
       if (covered[index] + kFedSlackUnits >= needs[index].units) {
         continue;
       }
+      short_today[needs_of[index]] = 1;
       short_units += needs[index].units - covered[index];
       const ProjectedHerd& herd = herds[needs_of[index]];
       unfed_heads += (needs[index].units - covered[index]) / needs[index].units * HeadsOf(herd);
@@ -1414,6 +1429,24 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
     }
     const auto heads = static_cast<std::int64_t>(std::ceil(unfed_heads));
     forecast.heads_short = heads > forecast.heads_short ? heads : forecast.heads_short;
+    bool day_short = false;
+    for (std::size_t index = 0; index < herds.size(); ++index) {
+      if (day < herds[index].from_day) {
+        continue;
+      }
+      if (short_today[index] == 0) {
+        unfed_run[index] = 0.0F;
+        continue;
+      }
+      day_short = true;
+      unfed_run[index] += 1.0F;
+      if (unfed_run[index] > config.farming.unfed_death_after_days) {
+        forecast.death_ahead = true;
+      }
+    }
+    if (day_short && forecast.short_days < 0xFFFFU) {
+      ++forecast.short_days;
+    }
   }
   // NEVER MORE HEADS THAN STAND TODAY (0.37.96; boss, econ-boss-hay-term
   // [7] (б)): the calves to come are in the need above, and a chairman told
