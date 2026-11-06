@@ -590,14 +590,22 @@ bool g_beach_off = false;
 /// arms, econ-boss-1427-avatar-gates [1]); empty, the canon: no avatar. An
 /// avatar's paths move the village, so its run is an arm, not the canon.
 std::string g_avatar_key;
+
 /// `--walkers=N`: at most N villages walk at once (7 Nov 2026: the job's
-/// booked threads). Default KOLKHOZ_WALKERS from the environment, else every
-/// seed at once as before.
-bool g_walkers_named = std::getenv("KOLKHOZ_WALKERS") != nullptr;
+/// booked threads). Until then every seed walked at once, whatever was booked.
+/// WITH NO NUMBER ASKED, ONE (boss, 7 Nov: close the door, not shout after it):
+/// --walkers, then KOLKHOZ_WALKERS (a job's), then KOLKHOZ_WALKERS_SUITE (the
+/// ctest property, beside its PROCESSORS), else a single walker.
+const char* WalkersFromEnvironment() {
+  const char* const job = std::getenv("KOLKHOZ_WALKERS");
+  return job != nullptr ? job : std::getenv("KOLKHOZ_WALKERS_SUITE");
+}
+
+bool g_walkers_named = WalkersFromEnvironment() != nullptr;
 std::size_t g_walkers = [] {
-  const char* const from_env = std::getenv("KOLKHOZ_WALKERS");
+  const char* const from_env = WalkersFromEnvironment();
   return from_env != nullptr ? static_cast<std::size_t>(std::strtoul(from_env, nullptr, 10))
-                             : std::size_t{16};
+                             : std::size_t{1};
 }();
 
 /// `--epoch-one-forever`: econ's branch (boss-core-epoch1-queue [34]) — the
@@ -1696,7 +1704,7 @@ int main(int argc, char** argv) {
             << " seeds at once"
             << (g_walkers_named || sequential
                     ? ""
-                    : " - WALKERS NOT BOUNDED: no --walkers, no KOLKHOZ_WALKERS")
+                    : " - no number asked (--walkers, KOLKHOZ_WALKERS): ONE at a time")
             << '\n';
   std::cout.flush();
   std::cerr.flush();
