@@ -39,6 +39,7 @@ class HayTraceTally {
   HayTraceTally(const core::ITableSet& tables, std::uint64_t seed) : seed_(seed) {
     if (const core::ITable* const resources = tables.FindTable("resources")) {
       hay_ = resources->FindRowByKey("hay");
+      straw_ = resources->FindRowByKey("straw");
     }
     if (const core::ITable* const kinds = tables.FindTable("livestock")) {
       for (std::uint32_t row = 0; row < kinds->RowCount(); ++row) {
@@ -115,6 +116,11 @@ class HayTraceTally {
     day_feed_eaten_ = rise(sum(book.feed), last_feed_eaten_);
     day_feed_short_ = rise(sum(book.herd_feed_short), last_feed_short_);
     day_cut_ = rise(hay_ < book.harvest.size() ? book.harvest[hay_] : 0, last_cut_);
+    // The straw: what the threshing lays (harvest) and the herds eat (feed),
+    // today - a feed whose INCOME after today the forecast may not count.
+    day_straw_laid_ =
+        rise(straw_ < book.harvest.size() ? book.harvest[straw_] : 0, last_straw_laid_);
+    day_straw_eaten_ = rise(straw_ < book.feed.size() ? book.feed[straw_] : 0, last_straw_eaten_);
     unfed_herds_ = 0;
     max_unfed_days_ = 0.0F;
     for (const core::HerdRow& herd : now.herds.rows) {
@@ -159,7 +165,9 @@ class HayTraceTally {
         << day_hay_eaten_ / core::kGramsPerKilogram << " feed_eaten_today_kg "
         << day_feed_eaten_ / core::kGramsPerKilogram << " feed_short_today_kg "
         << day_feed_short_ / core::kGramsPerKilogram << " hay_cut_today_kg "
-        << day_cut_ / core::kGramsPerKilogram << " handed_today " << day_handed_
+        << day_cut_ / core::kGramsPerKilogram << " straw_laid_today_kg "
+        << day_straw_laid_ / core::kGramsPerKilogram << " straw_eaten_today_kg "
+        << day_straw_eaten_ / core::kGramsPerKilogram << " handed_today " << day_handed_
         << " unfed_herds_now " << unfed_herds_ << " max_unfed_days " << max_unfed_days_
         << " died_today";
     if (day_deaths_.empty()) {
@@ -194,6 +202,11 @@ class HayTraceTally {
   core::Grams last_feed_short_ = 0;
   core::Grams day_cut_ = 0;
   core::Grams last_cut_ = 0;
+  std::uint32_t straw_ = core::kNoTableRow;
+  core::Grams day_straw_laid_ = 0;
+  core::Grams last_straw_laid_ = 0;
+  core::Grams day_straw_eaten_ = 0;
+  core::Grams last_straw_eaten_ = 0;
   std::int64_t day_handed_ = 0;
   std::uint32_t unfed_herds_ = 0;
   float max_unfed_days_ = 0.0F;
