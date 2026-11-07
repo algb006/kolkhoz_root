@@ -41,6 +41,7 @@
 #include "../common/avatar_book_tally.h"
 #include "../common/births_herd_tally.h"
 #include "../common/building_chairman.h"
+#include "../common/day_zero_tally.h"
 #include "../common/env_value.h"
 #include "../common/fed_tally.h"
 #include "../common/feed_rung_tally.h"
@@ -827,6 +828,8 @@ bool Walk(std::uint64_t seed,
   run::HorseTailTally horse_tail(*world.tables);
   // #1586's trace of the hay lamp, y1 m6 - y2 m6, for KOLKHOZ_HAY_TRACE_SEEDS.
   const run::HayTraceTally hay_trace(seed);
+  // #1580's probe: what hour 0 of a year's first day books into the closing year.
+  run::DayZeroTally day_zero;
   std::array<std::uint32_t, core::kRestSourceCount> r1373_sources = {};
   std::uint32_t r1373_walk_offs = 0;
   // What the farm's sites waited on, y1-y6 (#1285 G1's probe; boss [3]).
@@ -959,6 +962,7 @@ bool Walk(std::uint64_t seed,
       feed_rung.CountDayEnd(simulation->CompletedState());
       horse_tail.CountDayEnd(*simulation);
       hay_trace.CountDayEnd(*simulation, std::cout);
+      day_zero.CountDayEnd(simulation->CompletedState());
       if (!warm_off) {
         strada.CountDayEnd(simulation->CompletedState());
       }
@@ -1489,6 +1493,7 @@ bool Walk(std::uint64_t seed,
       feed_rung.Print(std::cout, seed);                                             // #1573
       builder.limit.PrintHayFeedRung(std::cout, seed, run::FeedRungTally::kYears);  // #1573
       horse_tail.Print(std::cout, seed);  // #1573's horse tail
+      day_zero.Print(std::cout, seed);    // #1580's probe
       builder.limit.PrintHayHorseTail(std::cout, seed, run::HorseTailTally::kYears);
       // The warm works unfinished on a cold night, and the crew's builders
       // (warm_crew.h; boss, core-boss-1084-funeral-body [7]).
