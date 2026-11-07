@@ -836,6 +836,13 @@ struct FarmingConfig {
   float herd_care_full_coverage = 0.9F;
   float herd_care_floor_coverage = 0.5F;
 
+  /// #1586 (i) (econ, econ-boss-1586-cure-choice; world_params
+  /// `milk_floor_norm_first_year`): until a year has closed, the milk floor is
+  /// milk_floor_margin x the plan's milk ÷ the milk kind's NORM yield
+  /// (LivestockDef::milk_l_per_adult_head), in place of «every cow kept».
+  /// Off: today's rule. The plan not yet named still keeps every cow.
+  bool milk_floor_norm_first_year = false;
+
   /// THE SECOND LEVER OF THE CATTLE YARD (livestock design §5; econ-boss-
   /// complexity-yards-groom [3]-[4]; world_params `herd_without_yard_yield_
   /// factor`, 0): from the day the player enters, a kolkhoz herd with no

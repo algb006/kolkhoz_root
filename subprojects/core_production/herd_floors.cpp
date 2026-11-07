@@ -225,12 +225,24 @@ HerdFloors HerdFloorsOf(const ProductionConfig& config, const WorldState& world)
   }
   const Grams cow_days = DenseAt(world.ledger.closed.adult_head_days, cow.value);
   const Grams milked = DenseAt(world.ledger.closed.herd_produce, milk);
-  if (cow_days <= 0 || milked <= 0) {
+  double yield_a_cow = 0.0;
+  if (cow_days > 0 && milked > 0) {
+    yield_a_cow = static_cast<double>(milked) * static_cast<double>(kDaysPerYear) /
+                  static_cast<double>(cow_days);
+  } else if (config.farming.milk_floor_norm_first_year && cow.value < config.livestock.size() &&
+             config.livestock[cow.value].milk_l_per_adult_head > 0.0F) {
+    // #1586 (i): NO YEAR CLOSED YET - the norm's yield, a litre a kilogram
+    // (quantities.h), the same formula as from year 2. Until then (and still
+    // with the switch off) every cow was kept, and in year 1's autumn the hay
+    // lamp's ladder had nobody above any floor: «granary» its only move for
+    // four months on the canon's 1931 / 2031 / 2044 (#1586's trace).
+    yield_a_cow =
+        static_cast<double>(GramsFromKilograms(config.livestock[cow.value].milk_l_per_adult_head));
+  }
+  if (!(yield_a_cow > 0.0)) {
     floors.cows_kept = std::numeric_limits<std::int64_t>::max();
     return floors;
   }
-  const double yield_a_cow = static_cast<double>(milked) * static_cast<double>(kDaysPerYear) /
-                             static_cast<double>(cow_days);
   floors.cows_kept =
       static_cast<std::int64_t>(std::ceil((static_cast<double>(config.farming.milk_floor_margin) *
                                            static_cast<double>(due) / yield_a_cow) -

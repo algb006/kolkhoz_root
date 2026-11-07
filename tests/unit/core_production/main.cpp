@@ -1914,6 +1914,28 @@ int CheckTheForecastAdvice() {
                        "forecast advice, the milk floor with no closed year: a position named "
                        "and no yield to read - every cow is kept, and the one that must go is "
                        "below the floor");
+    // #1586 (i): THE SAME WORLD WITH milk_floor_norm_first_year ON - the norm's
+    // yield until a year closes. A tonne's position (due -1 -> 1e6 g), a norm
+    // of a tonne a cow a year: 1.25 x 1 / 1 -> 2 cows kept, two above.
+    {
+      core::ProductionConfig norm = team;
+      norm.farming.milk_floor_norm_first_year = true;
+      norm.livestock[0].milk_l_per_adult_head = 1000.0F;
+      core::ProductionConfig norm_off = norm;
+      norm_off.farming.milk_floor_norm_first_year = false;
+      const core::HerdFloors on = core::HerdFloorsOf(norm, village_of(130.0F, 4, 4, -1.0F));
+      const core::HerdFloors off = core::HerdFloorsOf(norm_off, village_of(130.0F, 4, 4, -1.0F));
+      std::cout << "  #1586 (i) the y1 milk floor by the norm: " << on.cows_kept << " kept (off: "
+                << (off.cows_kept == std::numeric_limits<std::int64_t>::max()
+                        ? std::string("every")
+                        : std::to_string(off.cows_kept))
+                << ")\n";
+      failures += Expect(on.cows_kept == 2,
+                         "#1586 (i): no closed year, the norm's yield - 1.25 x a tonne's position "
+                         "over a tonne a cow keeps two cows");
+      failures += Expect(off.cows_kept == std::numeric_limits<std::int64_t>::max(),
+                         "#1586 (i)'s pair: the switch off - every cow kept, as before");
+    }
     // THE ADVICE FOLLOWED PUTS THE LAMP OUT, AND ONE HEAD FEWER DOES NOT
     // (the second half of the guard of the lamp's advice: executable was
     // asked since 0.37.122, sufficient and least were not). The heads go as
