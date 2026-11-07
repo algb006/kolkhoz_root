@@ -66,6 +66,7 @@
 #include "core_common/world_state.h"
 #include "core_construction/construction_system.h"
 #include "core_report/ledger_csv.h"
+#include "core_save/save.h"
 #include "core_sim/step.h"
 
 namespace {
@@ -1181,6 +1182,17 @@ int main(int argc, char** argv) {
   // construction's alarms cost ~0.13 s a collection, twenty-four a day in the
   // game, a cost no run saw. Two game days of a session over the run's last
   // world, the costliest held to the same budget.
+  // THE LAST WORLD TO A FILE when KOLKHOZ_SAVE_LAST names one (7 Nov 2026):
+  // the refresh's cost is profiled on it by tests/run/alarm_cost, which a
+  // thirty-year run under a profiler could never reach.
+  if (const char* const save_last = std::getenv("KOLKHOZ_SAVE_LAST")) {
+    std::string save_error;
+    std::cout << "thirty_years: the last world "
+              << (core::SaveWorldToFile(world.State(), *world.tables, save_last, &save_error)
+                      ? std::string("saved to ") + save_last
+                      : "NOT SAVED: " + save_error)
+              << '\n';
+  }
   const run::SessionDayCost session_day =
       run::SessionDaySeconds(*world.tables, g_seed, world.State(), kSessionDays);
   std::cout << "gate: a game day through the session at year " << g_years << " ("
