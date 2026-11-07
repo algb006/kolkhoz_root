@@ -101,6 +101,59 @@ std::uint8_t ClosedDayOffYears(const ProductionConfig& config, const WorldState&
   return AvatarOf(config.avatars, world.chairman.avatar).day_off_working_closed_years;
 }
 
+/// THE LEAST LOTS THAT CLOSE THE SHORTAGE, found by halving (more feed never
+/// feeds fewer): `maximal` itself when it is the least, or the purchase of
+/// fewer lots taken in the same order. `short_after` answers whether the
+/// herds are still short after a purchase; `maximal` must close it.
+template <typename ShortAfter>
+FeedPurchase LeastClosingPurchase(const ProductionConfig& config,
+                                  const WorldState& world,
+                                  const FeedPurchase& maximal,
+                                  ShortAfter short_after) {
+  std::uint32_t low = 0;  // short with this many lots
+  std::uint32_t high = maximal.lots;
+  while (high - low > 1) {
+    const std::uint32_t middle = low + ((high - low) / 2U);
+    (short_after(MaximalFeedPurchase(config, world, nullptr, middle)) ? low : high) = middle;
+  }
+  return high < maximal.lots ? MaximalFeedPurchase(config, world, nullptr, high) : maximal;
+}
+
+/// The feed a purchase brings most of, by feed units, and its grams: the
+/// lamp names one (Alarm::advice_resource, advice_amount).
+void NameTheFeedBought(const ProductionConfig& config,
+                       const FeedPurchase& purchase,
+                       FodderAdvice& advice) {
+  float most_units = 0.0F;
+  for (std::size_t resource = 0; resource < purchase.goods_kg.size(); ++resource) {
+    const float units = purchase.goods_kg[resource] * config.feed_values[resource];
+    if (units > most_units) {
+      most_units = units;
+      advice.advice_resource = DefIdFromIndex<ResourceIdTag>(resource);
+      advice.advice_amount = GramsFromKilograms(purchase.goods_kg[resource]);
+    }
+  }
+}
+
+/// THE DOSE OF ONE ADVICE (#1573; FarmingConfig::hay_handover_dose_share):
+/// of the least heads that feed the rest, this share, ROUNDED UP - one head
+/// above the floors is still named, not rounded to none.
+std::int64_t HandOverDose(const ProductionConfig& config, std::int64_t least) {
+  if (least <= 0) {
+    return 0;
+  }
+  const double dosed = std::ceil(static_cast<double>(least) *
+                                 static_cast<double>(config.farming.hay_handover_dose_share));
+  return std::clamp(static_cast<std::int64_t>(dosed), std::int64_t{1}, least);
+}
+
+/// Whether the shortage is within the heads rung's tolerance (#1573;
+/// FarmingConfig::hay_handover_min_short_days): short on that many forecast
+/// days or fewer, and no head dying of it - no head is named.
+bool HandOverTolerated(const ProductionConfig& config, const HerdFeedForecast& forecast) {
+  return !forecast.death_ahead && forecast.short_days <= config.farming.hay_handover_min_short_days;
+}
+
 }  // namespace
 
 bool DayOffWorthWorkingForTheCut(const ProductionConfig& config,
@@ -260,11 +313,16 @@ UnitTypeId StoreTypeOrItsParent(const ProductionConfig& config,
 
 FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
                                  const WorldState& world,
-                                 const HerdFeedForecast& forecast) {
+                                 const HerdFeedForecast& forecast,
+                                 const std::vector<float>* held) {
   FodderAdvice advice;
   if (!forecast.short_ahead) {
     return advice;
   }
+  // ONE STOCK FOR EVERY PROBE BELOW (herd_forecast.h, ForecastHerdFeed's `held`).
+  const std::vector<float> own =
+      held != nullptr ? std::vector<float>{} : HerdFeedHeldKg(config, world);
+  const std::vector<float>& stock = held != nullptr ? *held : own;
   // 1. THE CUT IS A MOVE ONLY WHILE A MEADOW STANDS IN IT (the harvest rule
   // 3, part А; boss, econ-boss-hay-term-2026-10-01 [2]; 0.37.93). Until then
   // the hay's advice was the cut on every day of the year, and a meadow that
@@ -343,12 +401,18 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
     // true is the ladder's own «сдать головы», DATED to the day after the
     // cut's last - the day the lower rungs open by the calendar. No head is
     // named below the floors here; with none above them the lamp names none.
+    // The heads rung's tolerance and dose hold here too (#1573): it is the
+    // same rung, dated.
     if (forecast.grass_bound) {
-      const HandOverAdvice heads = LeastHeadsToHandOver(config, world);
+      if (HandOverTolerated(config, forecast)) {
+        advice.tolerated = true;
+        return advice;
+      }
+      const HandOverAdvice heads = LeastHeadsToHandOver(config, world, &stock);
       if (heads.stock + heads.horses > 0) {
         advice.advice = AlarmAdvice::kReduceHerd;
-        advice.hand_over_stock = heads.stock;
-        advice.hand_over_horses = heads.horses;
+        advice.hand_over_stock = HandOverDose(config, heads.stock);
+        advice.hand_over_horses = HandOverDose(config, heads.horses);
         advice.advice_day = forecast.cut_end_day + 1U;
       }
       return advice;
@@ -376,10 +440,72 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
   // five horses and nineteen cows besides»: bought feed keeping heads the
   // farm has no work or plan for. The floors say what the farm needs; what
   // stands above them goes first, and bought feed is for what is needed.
-  const HandOverAdvice heads = LeastHeadsToHandOver(config, world);
-  advice.hand_over_stock = heads.stock;
-  advice.hand_over_horses = heads.horses;
-  const std::int64_t above = heads.stock + heads.horses;
+  //
+  // 2. BUT A CHEAP PURCHASE GOES BEFORE THE HEADS (#1573; boss, 5 November
+  // 2026, on econ's hay-lamp-feed-before-cows-2026-11-05.md; Livestock
+  // design, the ladder's rung 2): the least purchase that closes the
+  // shortage WITH NO HEAD HANDED, when it costs no more than
+  // FarmingConfig::hay_feed_before_heads_points of the year's points (the
+  // door counts only the points there are). «Buy 10 t, keep the cows», no
+  // head named. On the counterfactual pair of #1570 a kolkhoz obeying the
+  // lamp handed 35 cows a village over years 2-3 for a shortage one lot
+  // closed; one that kept them lost 4.4 days of feed and 0.6 of a head, and
+  // milked 16 % more. A dear shortage - 2 October's 26 lots - still goes to
+  // the heads.
+  if (config.farming.hay_feed_before_heads_points > 0) {
+    const auto short_after_kept = [&config, &world, &stock](const FeedPurchase& bought) {
+      return ForecastHerdFeed(
+                 config, world, false, FeedHorizon::kNearestScythes, &bought, nullptr, &stock)
+          .short_ahead;
+    };
+    // THE LARGEST PURCHASE WITHIN THE PRICE FIRST, with no forecast (7 Nov
+    // 2026: thirty_years' session day cost 2.10 s against main's 1.65 s when
+    // the rung halved down from the year's largest purchase, a forecast a
+    // probe, at every refresh). The lots are taken in one order, so each
+    // purchase is the one before it and a lot more: if the dearest within
+    // the price does not close the shortage, no cheaper one does, and one
+    // forecast says so.
+    const auto within_price = [&config](const FeedPurchase& purchase) {
+      return purchase.any && purchase.points <= config.farming.hay_feed_before_heads_points;
+    };
+    FeedPurchase affordable = MaximalFeedPurchase(config, world, nullptr, 1U);
+    if (within_price(affordable)) {
+      for (std::uint32_t lots = 2;; ++lots) {
+        FeedPurchase more = MaximalFeedPurchase(config, world, nullptr, lots);
+        if (!within_price(more) || more.lots <= affordable.lots) {
+          break;
+        }
+        affordable = std::move(more);
+      }
+      if (!short_after_kept(affordable)) {
+        const FeedPurchase cheapest =
+            LeastClosingPurchase(config, world, affordable, short_after_kept);
+        advice.advice = AlarmAdvice::kBuyFeed;
+        NameTheFeedBought(config, cheapest, advice);
+        return advice;
+      }
+    }
+  }
+  // 3. THE HEADS, NOT FOR A FEW SHORT DAYS (#1573, rung 3's tolerance): with
+  // the forecast short on hay_handover_min_short_days days or fewer and no
+  // head dying of it, the lamp stays lit with its days and tonnes and names
+  // no move - «a few short days in a late spring is what a farmer feeds
+  // through» (econ §3). NOR THE DEAR FEED BELOW: a purchase over the cheap
+  // rung's price for those days is the dearest cure for the least harm.
+  // The rungs below closed with it: core's reading of «heads only if»,
+  // confirmed by boss on 7 November 2026 (core-boss-1573-hay-rungs [2]).
+  if (HandOverTolerated(config, forecast)) {
+    advice.tolerated = true;
+    return advice;
+  }
+  const HandOverAdvice heads = LeastHeadsToHandOver(config, world, &stock);
+  // THE DOSE (#1573): no more than hay_handover_dose_share of them in one
+  // advice, rounded up; the forecast is read again next evening, and a lot
+  // or a cut may yet make the rest needless. The purchase below is still
+  // counted with ALL of them gone.
+  advice.hand_over_stock = HandOverDose(config, heads.stock);
+  advice.hand_over_horses = HandOverDose(config, heads.horses);
+  const std::int64_t above = advice.hand_over_stock + advice.hand_over_horses;
   // «HAND OVER» IS NAMED ONLY WITH A HEAD IN IT (0.37.143; host, host-boss-
   // pin-0-37-133-2026-10-02 [43]). On 0.37.142 a herd at its floors got
   // kReduceHerd with nought and nought — as the first move here, and as the
@@ -399,33 +525,17 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
   // AFTER WHICH THE HERDS ARE STILL SHORT IS NOT NAMED AT ALL (boss [138]):
   // «buy 27 lots and hand over all the same» is advice it harms to follow.
   const HeadsHandedOver gone{.horses = heads.horses, .cows = heads.stock, .other = 0};
-  const auto short_after = [&config, &world, &gone](const FeedPurchase& bought) {
-    return ForecastHerdFeed(config, world, false, FeedHorizon::kNearestScythes, &bought, &gone)
+  const auto short_after = [&config, &world, &gone, &stock](const FeedPurchase& bought) {
+    return ForecastHerdFeed(
+               config, world, false, FeedHorizon::kNearestScythes, &bought, &gone, &stock)
         .short_ahead;
   };
   bool blocked_by_store = false;
   FeedPurchase purchase = MaximalFeedPurchase(config, world, &blocked_by_store);
   if (purchase.any && !short_after(purchase)) {
-    std::uint32_t low = 0;  // short with this many lots: none is the floors exhausted
-    std::uint32_t high = purchase.lots;
-    while (high - low > 1) {
-      const std::uint32_t middle = low + ((high - low) / 2U);
-      (short_after(MaximalFeedPurchase(config, world, nullptr, middle)) ? low : high) = middle;
-    }
-    if (high < purchase.lots) {
-      purchase = MaximalFeedPurchase(config, world, nullptr, high);
-    }
+    purchase = LeastClosingPurchase(config, world, purchase, short_after);
     advice.advice = AlarmAdvice::kBuyFeed;
-    // The feed it brings most of, by feed units: the lamp names one.
-    float most_units = 0.0F;
-    for (std::size_t resource = 0; resource < purchase.goods_kg.size(); ++resource) {
-      const float units = purchase.goods_kg[resource] * config.feed_values[resource];
-      if (units > most_units) {
-        most_units = units;
-        advice.advice_resource = DefIdFromIndex<ResourceIdTag>(resource);
-        advice.advice_amount = GramsFromKilograms(purchase.goods_kg[resource]);
-      }
-    }
+    NameTheFeedBought(config, purchase, advice);
     // The heads above the floors go all the same — the purchase is counted
     // with them gone.
     if (above > 0) {
@@ -464,8 +574,10 @@ void CollectHerdForecastAlarms(const ProductionConfig& config,
                                std::vector<Alarm>& alarms) {
   // TO THE NEAREST FIRST SCYTHES (0.37.96): the yellow speaks of a shortage
   // this side of the next cut and of none beyond it.
-  const HerdFeedForecast forecast =
-      ForecastHerdFeed(config, world, false, FeedHorizon::kNearestScythes);
+  // ONE STOCK FOR THE LAMP AND ITS LADDER (ForecastHerdFeed's `held`).
+  const std::vector<float> stock = HerdFeedHeldKg(config, world);
+  const HerdFeedForecast forecast = ForecastHerdFeed(
+      config, world, false, FeedHorizon::kNearestScythes, nullptr, nullptr, &stock);
   if (!forecast.short_ahead) {
     return;
   }
@@ -489,7 +601,7 @@ void CollectHerdForecastAlarms(const ProductionConfig& config,
   alarm.amount = forecast.heads_short;
   alarm.days_ahead = forecast.days_ahead;
   alarm.days_to_loss = forecast.days_ahead;
-  const FodderAdvice advice = AdviseOnShortFodder(config, world, forecast);
+  const FodderAdvice advice = AdviseOnShortFodder(config, world, forecast, &stock);
   alarm.advice = advice.advice;
   alarm.advice_resource = advice.advice_resource;
   alarm.advice_amount = advice.advice_amount;
@@ -502,6 +614,7 @@ void CollectHerdForecastAlarms(const ProductionConfig& config,
   alarm.hand_over_horses = advice.hand_over_horses;
   alarm.below_floor_stock = advice.below_floor_stock;
   alarm.below_floor_horses = advice.below_floor_horses;
+  alarm.advice_tolerated = advice.tolerated ? 1U : 0U;
   // THE HEADS ABOVE THE PLANS FIRST (#1289): named whenever the advice asks
   // for heads at all.
   if (alarm.advice == AlarmAdvice::kReduceHerd || alarm.advice_more == AlarmAdvice::kReduceHerd) {

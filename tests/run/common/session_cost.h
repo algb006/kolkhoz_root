@@ -7,16 +7,20 @@
 #ifndef KOLKHOZ_TESTS_RUN_COMMON_SESSION_COST_H_
 #define KOLKHOZ_TESTS_RUN_COMMON_SESSION_COST_H_
 
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "core_boundary/session.h"
 #include "core_common/calendar.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
+#include "table_override.h"
 
 namespace run {
 
@@ -27,6 +31,19 @@ struct SessionDayCost {
   double worst_day_seconds = 0.0;
   /// Their mean.
   double mean_day_seconds = 0.0;
+  /// THE REFRESH BY ITS PARTS (7 Nov 2026: #1573's session day cost 2.20 s
+  /// against main's 1.68 s with the steps alike, and core's first named cause
+  /// was wrong): each of the session's collections asked a day's 24 times
+  /// over the state as given, seconds; and the alarm kinds lit on it.
+  double alarms_seconds = 0.0;
+  double porters_seconds = 0.0;
+  double stock_lights_seconds = 0.0;
+  double weather_seconds = 0.0;
+  std::string alarm_kinds;
+  /// The alarms' 24 collections over the SAME state with #1573's three rows
+  /// set off (table_override.h), and how many of the rows the tables had.
+  double alarms_rows_off_seconds = 0.0;
+  std::size_t rows_overridden = 0;
 };
 
 /// @brief Steps `days` game days of a session over a copy of `state` and times each.
@@ -45,6 +62,55 @@ inline SessionDayCost SessionDaySeconds(const core::ITableSet& tables,
     return cost;
   }
   simulation->ResetWorld(state);
+  {
+    const auto timed = [](auto&& collect) {
+      const auto began = std::chrono::steady_clock::now();
+      for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
+        collect();
+      }
+      return std::chrono::duration<double>(std::chrono::steady_clock::now() - began).count();
+    };
+    std::vector<core::Alarm> alarms;
+    cost.alarms_seconds = timed([&] {
+      alarms.clear();
+      simulation->CollectAlarms(alarms);
+    });
+    std::vector<core::PorterLeg> legs;
+    cost.porters_seconds = timed([&] {
+      legs.clear();
+      simulation->CollectPorterLegs(legs);
+    });
+    std::vector<core::StockForecast> lights;
+    cost.stock_lights_seconds = timed([&] {
+      lights.clear();
+      simulation->CollectStockForecast(lights);
+    });
+    std::array<core::DayForecast, 3> weather{};
+    cost.weather_seconds = timed([&] { simulation->CollectWeatherForecast(weather); });
+    for (const core::Alarm& alarm : alarms) {
+      cost.alarm_kinds +=
+          (cost.alarm_kinds.empty() ? "" : ",") + std::to_string(static_cast<int>(alarm.kind));
+    }
+    // THE SAME WORLD WITH #1573's ROWS OFF (the ladder before #1573): the
+    // world's cost and the code's told apart. A tree without the rows
+    // overrides none and says so.
+    const OverriddenTableSet rows_off(tables,
+                                      "farming",
+                                      {{"hay_feed_before_heads_points", "0"},
+                                       {"hay_handover_min_short_days", "0"},
+                                       {"hay_handover_dose_share", "1.0"}});
+    cost.rows_overridden = rows_off.Overridden();
+    core::StandardSimulationConfig off_config = config;
+    off_config.tables = &rows_off;
+    std::unique_ptr<core::ISimulation> off = core::CreateStandardSimulation(off_config);
+    if (off != nullptr) {
+      off->ResetWorld(state);
+      cost.alarms_rows_off_seconds = timed([&] {
+        alarms.clear();
+        off->CollectAlarms(alarms);
+      });
+    }
+  }
   core::SessionConfig session_config;
   session_config.tables = &tables;
   session_config.simulation = std::move(simulation);

@@ -161,6 +161,29 @@ class CrimeTally {
 
   void CountDay(const core::WorldState& world) {
     const std::uint32_t year = (world.calendar.day / core::kDaysPerYear) + 1U;
+    // #1580 (c): THE BOOK'S FIELDS FROM `closed` AT THE TURN - the open book
+    // on the year's last day (CRIME1566Y below) lacks day 0's hour-0 writes,
+    // which the core books into the closing year. CRIME1566Y keeps its state
+    // read on the last day (the plan's failures «show on the next year's
+    // line», as its key says); CRIME1566B carries the book.
+    if (world.calendar.day % core::kDaysPerYear == 0 && year >= 2 && year - 1U <= kYears) {
+      const core::YearLedger& closed = world.ledger.closed;
+      core::Grams stolen = 0;
+      for (std::size_t resource = 0; resource < closed.stolen.size(); ++resource) {
+        stolen += resource == sugar_ ? 0 : closed.stolen[resource];
+      }
+      core::Grams written = 0;
+      for (const core::Grams grams : closed.written_off) {
+        written += grams;
+      }
+      lines_ << "population_curve: CRIME1566B seed " << seed_ << " year " << year - 1U
+             << " (books shifted one day: day 0 in the closing year, #1580) truant_man_days "
+             << closed.truant_man_days << " ledger_stolen_not_sugar_kg " << stolen / 1000
+             << " audits " << closed.audits << " audit_remarks " << closed.audit_remarks
+             << " written_off_kg " << written / 1000 << " drunk_fires " << closed.drunk_fires
+             << " stolen_before_acceptance_kg " << BeforeAct(closed) / 1000
+             << " herd_deaths_hunger " << closed.herd_deaths_hunger << '\n';
+    }
     if (year > kYears) {
       return;
     }
@@ -245,6 +268,8 @@ class CrimeTally {
       }
     }
     // The year's book is the CURRENT one on its last day (it closes at the turn).
+    // IT LACKS DAY 0's HOUR-0 WRITES (#1580): read the book's fields on
+    // CRIME1566B, taken from `closed` at the turn.
     const core::YearLedger& book = world.ledger.current;
     const std::uint32_t hunger = book.herd_deaths_hunger;
     const double hunger_share =

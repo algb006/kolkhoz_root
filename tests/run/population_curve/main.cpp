@@ -42,10 +42,14 @@
 #include "../common/births_herd_tally.h"
 #include "../common/building_chairman.h"
 #include "../common/crime_tally.h"
+#include "../common/env_value.h"
 #include "../common/fed_tally.h"
+#include "../common/feed_rung_tally.h"
 #include "../common/funeral_tally.h"
+#include "../common/hand_over_tally.h"
 #include "../common/hay_day_off_policy.h"
 #include "../common/herd_tally.h"
+#include "../common/horse_tail_tally.h"
 #include "../common/passed_over_tally.h"
 #include "../common/rest_tally.h"
 #include "../common/run_harness.h"
@@ -411,7 +415,8 @@ void LiveOneDay(core::ISimulation& simulation,
                 run::SubstituteTally* substitutes = nullptr,
                 run::StradaTally* strada = nullptr,
                 run::HerdTally* herds = nullptr,
-                run::CrimeTally* crime = nullptr) {
+                run::CrimeTally* crime = nullptr,
+                run::HorseTailTally* horse_tail = nullptr) {
   bool hot_at_any_tick = false;
   const core::UnitId awaiting = upgrades.Awaiting();
   for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
@@ -429,6 +434,9 @@ void LiveOneDay(core::ISimulation& simulation,
     // #1568's theft split, night against collusion, by the step's events.
     if (crime != nullptr) {
       crime->CountStep(simulation.CompletedState());
+    }
+    if (horse_tail != nullptr) {
+      horse_tail->CountStep(simulation.CompletedState());  // #1573's horse tail
     }
     if (substitutes != nullptr) {
       substitutes->CountStep(simulation.CompletedState());  // #1434
@@ -599,6 +607,10 @@ bool g_no_anticrime = false;
 /// `--no-write-off`: #1568's arm - the run chairman never writes the book's
 /// shortage off after the audit's remark (WriteOffPolicy off).
 bool g_no_write_off = false;
+/// `--hay-hand-over=off`: #1570's counterfactual - the hay lamp's «reduce
+/// herd» left unanswered (LimitPolicy::HayHandOverOff), so a run can say
+/// whether the herds it named would have gone short.
+bool g_hay_hand_over_off = false;
 /// `--avatar=KEY`: the chairman New Game would choose (#1417, #1421; econ's
 /// arms, econ-boss-1427-avatar-gates [1]); empty, the canon: no avatar. An
 /// avatar's paths move the village, so its run is an arm, not the canon.
@@ -609,16 +621,17 @@ std::string g_avatar_key;
 /// WITH NO NUMBER ASKED, ONE (boss, 7 Nov: close the door, not shout after it):
 /// --walkers, then KOLKHOZ_WALKERS (a job's), then KOLKHOZ_WALKERS_SUITE (the
 /// ctest property, beside its PROCESSORS), else a single walker.
-const char* WalkersFromEnvironment() {
-  const char* const job = std::getenv("KOLKHOZ_WALKERS");
-  return job != nullptr ? job : std::getenv("KOLKHOZ_WALKERS_SUITE");
+std::optional<std::string> WalkersFromEnvironment() {
+  std::optional<std::string> job = run::EnvValue("KOLKHOZ_WALKERS");
+  return job.has_value() ? job : run::EnvValue("KOLKHOZ_WALKERS_SUITE");
 }
 
-bool g_walkers_named = WalkersFromEnvironment() != nullptr;
+bool g_walkers_named = WalkersFromEnvironment().has_value();
 std::size_t g_walkers = [] {
-  const char* const from_env = WalkersFromEnvironment();
-  return from_env != nullptr ? static_cast<std::size_t>(std::strtoul(from_env, nullptr, 10))
-                             : std::size_t{1};
+  const std::optional<std::string> from_env = WalkersFromEnvironment();
+  return from_env.has_value()
+             ? static_cast<std::size_t>(std::strtoul(from_env->c_str(), nullptr, 10))
+             : std::size_t{1};
 }();
 
 /// `--epoch-one-forever`: econ's branch (boss-core-epoch1-queue [34]) — the
@@ -814,6 +827,9 @@ bool Walk(std::uint64_t seed,
   if (g_no_write_off) {
     builder.write_off.Enable(false);
   }
+  if (g_hay_hand_over_off) {
+    builder.limit.HayHandOverOff(true);
+  }
   run::TimberFlowTally timber(*world.tables);
   run::PassedOverTally passed_over;
   // The outdoor workers' summer rest by host's definition (#1373's gates).
@@ -832,6 +848,12 @@ bool Walk(std::uint64_t seed,
   run::HerdTally herds(*world.tables);
   // Crime left unfought - the endings' triggers and drink's price (#1566).
   run::CrimeTally crime(*world.tables, seed);
+  // Every cow handed y2-y3: the door, the forecast, came true (#1570, boss [32]).
+  run::HandOverTally hand_overs(*world.tables);
+  // #1573's book (econ's gates S1-S2, P2, the y2 meadow): feed_rung_tally.h.
+  run::FeedRungTally feed_rung(*world.tables);
+  // #1573's horse tail y1-y30 (econ, econ-boss-1573-horse-tail [1]): horse_tail_tally.h.
+  run::HorseTailTally horse_tail(*world.tables);
   std::array<std::uint32_t, core::kRestSourceCount> r1373_sources = {};
   std::uint32_t r1373_walk_offs = 0;
   // What the farm's sites waited on, y1-y6 (#1285 G1's probe; boss [3]).
@@ -949,7 +971,8 @@ bool Walk(std::uint64_t seed,
                  warm_off ? nullptr : &substitutes,
                  warm_off ? nullptr : &strada,
                  &herds,
-                 &crime);
+                 &crime,
+                 &horse_tail);
       builder.RunDay(*simulation);
       timber.CountDay(simulation->CompletedState());
       avatar_book.CountDay(simulation->CompletedState());
@@ -959,6 +982,11 @@ bool Walk(std::uint64_t seed,
       herds.CountDayEnd(simulation->CompletedState());
       herds.CountNearShort(*simulation);
       crime.CountDay(simulation->CompletedState());
+      hand_overs.CountDay(simulation->CompletedState(),
+                          builder.limit.HayHandLogs(),
+                          herds.CowsHandedInYear(simulation->CompletedState().calendar.date.year));
+      feed_rung.CountDayEnd(simulation->CompletedState());
+      horse_tail.CountDayEnd(*simulation);
       if (!warm_off) {
         strada.CountDayEnd(simulation->CompletedState());
       }
@@ -1485,6 +1513,12 @@ bool Walk(std::uint64_t seed,
       funerals.Print(std::cout, seed);
       herds.Print(std::cout, seed);
       crime.Print(std::cout, seed);
+      herds.PrintCowFlows(std::cout, seed);  // #1570
+      hand_overs.Print(std::cout, seed);
+      feed_rung.Print(std::cout, seed);                                             // #1573
+      builder.limit.PrintHayFeedRung(std::cout, seed, run::FeedRungTally::kYears);  // #1573
+      horse_tail.Print(std::cout, seed);  // #1573's horse tail
+      builder.limit.PrintHayHorseTail(std::cout, seed, run::HorseTailTally::kYears);
       // The warm works unfinished on a cold night, and the crew's builders
       // (warm_crew.h; boss, core-boss-1084-funeral-body [7]).
       std::cout << "population_curve: WARMLATE seed " << seed << " late_warm_works "
@@ -1629,6 +1663,8 @@ int main(int argc, char** argv) {
       g_warm_hold_old = true;
     } else if (argument == "--granary-first=off") {
       g_granary_first_off = true;
+    } else if (argument == "--hay-hand-over=off") {
+      g_hay_hand_over_off = true;
     } else if (argument == "--beach=off") {
       g_beach_off = true;
     } else if (argument == "--no-write-off") {
@@ -1662,8 +1698,8 @@ int main(int argc, char** argv) {
       probe_seed = std::strtoull(argv[index], nullptr, 10);
     }
   }
-  if (const char* const anticrime = std::getenv("NO_ANTICRIME");
-      anticrime != nullptr && std::string_view(anticrime) == "1") {
+  // Through run::EnvValue: MSVC refuses std::getenv (C4996 under /WX).
+  if (run::EnvValue("NO_ANTICRIME") == std::optional<std::string>("1")) {
     g_no_anticrime = true;
   }
   if (g_no_anticrime) {

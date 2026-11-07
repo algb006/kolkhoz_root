@@ -31,6 +31,7 @@
 #include "../common/building_chairman.h"
 #include "../common/chairman_clock.h"
 #include "../common/distiller_policy.h"
+#include "../common/env_value.h"
 #include "../common/extraction_policy.h"
 #include "../common/fallow_policy.h"
 #include "../common/felling_policy.h"
@@ -66,6 +67,7 @@
 #include "core_common/world_state.h"
 #include "core_construction/construction_system.h"
 #include "core_report/ledger_csv.h"
+#include "core_save/save.h"
 #include "core_sim/step.h"
 
 namespace {
@@ -1181,6 +1183,17 @@ int main(int argc, char** argv) {
   // construction's alarms cost ~0.13 s a collection, twenty-four a day in the
   // game, a cost no run saw. Two game days of a session over the run's last
   // world, the costliest held to the same budget.
+  // THE LAST WORLD TO A FILE when KOLKHOZ_SAVE_LAST names one (7 Nov 2026):
+  // the refresh's cost is profiled on it by tests/run/alarm_cost, which a
+  // thirty-year run under a profiler could never reach.
+  if (const std::optional<std::string> save_last = run::EnvValue("KOLKHOZ_SAVE_LAST")) {
+    std::string save_error;
+    std::cout << "thirty_years: the last world "
+              << (core::SaveWorldToFile(world.State(), *world.tables, *save_last, &save_error)
+                      ? "saved to " + *save_last
+                      : "NOT SAVED: " + save_error)
+              << '\n';
+  }
   const run::SessionDayCost session_day =
       run::SessionDaySeconds(*world.tables, g_seed, world.State(), kSessionDays);
   std::cout << "gate: a game day through the session at year " << g_years << " ("
@@ -1190,6 +1203,16 @@ int main(int argc, char** argv) {
             << kDayBudgetSeconds << " s"
             << (session_day.measured ? "" : " - NOT MEASURED: the session did not assemble")
             << '\n';
+  std::cout
+      << "thirty_years: the session's refresh by its parts, 24 collections over the run's last "
+         "world, s: alarms "
+      << session_day.alarms_seconds << ", porters " << session_day.porters_seconds
+      << ", stock lights " << session_day.stock_lights_seconds << ", weather "
+      << session_day.weather_seconds << "; alarm kinds lit "
+      << (session_day.alarm_kinds.empty() ? std::string("none") : session_day.alarm_kinds)
+      << "; alarms over the same world with #1573's rows OFF "
+      << session_day.alarms_rows_off_seconds << " (rows overridden " << session_day.rows_overridden
+      << " of 3)\n";
   failures += run::Expect(session_day.measured && session_day.worst_day_seconds > 0.0,
                           "the session's day was actually timed");
   failures += run::Expect(session_day.worst_day_seconds <= kDayBudgetSeconds,

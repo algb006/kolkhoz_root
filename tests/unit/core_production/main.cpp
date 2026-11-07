@@ -1698,6 +1698,83 @@ int CheckTheForecastAdvice() {
                        "forecast advice: and two to hand over - the 40 kg of hay feed two heads "
                        "to the scythes beside their compound feed");
   }
+  // #1573: THE CHEAP-FEED RUNG, THE TOLERANCE AND THE DOSE (Livestock design,
+  // the ladder's rungs 2 and 3; boss, 5 November 2026). The worlds above run
+  // the defaults - the ladder before #1573; here the table's values.
+  {
+    core::ProductionConfig ladder = config;
+    ladder.farming.hay_feed_before_heads_points = 60;
+    ladder.farming.hay_handover_min_short_days = 3;
+    ladder.farming.hay_handover_dose_share = 0.5F;
+    const auto lamp_of = [](const core::ProductionConfig& with, const core::WorldState& world) {
+      std::vector<core::Alarm> alarms;
+      core::CollectHerdForecastAlarms(with, world, alarms);
+      return alarms.empty() ? core::Alarm{} : alarms[0];
+    };
+    // RUNG 2: the world where a cow above the floors went before the lot
+    // (above) - one lot of 10 points closes the shortage with every cow kept.
+    core::WorldState world = village(80.0F, 1, 0.0F);
+    world.limit.points = 10;
+    const core::Alarm cheap = lamp_of(ladder, world);
+    failures +=
+        Expect(cheap.advice == core::AlarmAdvice::kBuyFeed && cheap.advice_amount == kLotGrams &&
+                   cheap.hand_over_stock == 0 && cheap.advice_more == core::AlarmAdvice::kNone,
+               "#1573 rung 2: one lot of 10 points closes it with no head handed - buy "
+               "forty kilograms, keep the cows, no head named");
+    // ITS PAIR: the cap under the lot's price - the cow goes again, no feed.
+    core::ProductionConfig dear = ladder;
+    dear.farming.hay_feed_before_heads_points = 9;
+    const core::Alarm over = lamp_of(dear, world);
+    failures += Expect(over.advice == core::AlarmAdvice::kReduceHerd && over.hand_over_stock == 1 &&
+                           over.advice_amount == 0,
+                       "#1573 rung 2's pair: the least lot costs 10 against a cap of 9 - the "
+                       "cow above the floors is named, as before");
+    // RUNG 3, THE DOSE: an empty store, no feed sold - the least heads are
+    // all four (above), half of them named: two.
+    const core::Alarm dosed = lamp_of(ladder, village(0.0F, kNoGranary, 0.0F));
+    failures += Expect(dosed.advice == core::AlarmAdvice::kReduceHerd && dosed.hand_over_stock == 2,
+                       "#1573 the dose: four least heads, half named in one advice - two");
+    const core::Alarm one = lamp_of(ladder, village(80.0F, kNoGranary, 0.0F));
+    failures += Expect(one.advice == core::AlarmAdvice::kReduceHerd && one.hand_over_stock == 1,
+                       "#1573 the dose rounds up: one least head is still named, not none");
+    // RUNG 3, THE TOLERANCE: four heads eat 4 kg a day to day 24 (96 kg).
+    // 88 kg feed them 22 days - two short; 72 kg feed 18 - six short.
+    const core::WorldState two_days = village(88.0F, kNoGranary, 0.0F);
+    const core::WorldState six_days = village(72.0F, kNoGranary, 0.0F);
+    const core::HerdFeedForecast two_read =
+        core::ForecastHerdFeed(ladder, two_days, false, core::FeedHorizon::kNearestScythes);
+    const core::HerdFeedForecast six_read =
+        core::ForecastHerdFeed(ladder, six_days, false, core::FeedHorizon::kNearestScythes);
+    std::cout << "  #1573 tolerance: 88 kg short " << two_read.short_days << " days (death "
+              << two_read.death_ahead << "), 72 kg short " << six_read.short_days << " days\n";
+    failures += Expect(two_read.short_ahead && two_read.short_days == 2 && !two_read.death_ahead &&
+                           six_read.short_days == 6,
+                       "#1573 the forecast counts its short days: 88 kg - two, 72 kg - six, and "
+                       "no death in eight");
+    const core::Alarm tolerated = lamp_of(ladder, two_days);
+    failures +=
+        Expect(tolerated.kind == core::AlarmKind::kHerdHayShortAhead &&
+                   tolerated.advice == core::AlarmAdvice::kNone && tolerated.hand_over_stock == 0 &&
+                   tolerated.below_floor_stock == 0 && tolerated.advice_tolerated == 1,
+               "#1573 the tolerance: two short days and no death - the lamp is lit, "
+               "names no head, and says the silence is the tolerance's");
+    const core::Alarm named = lamp_of(ladder, six_days);
+    failures += Expect(named.advice == core::AlarmAdvice::kReduceHerd &&
+                           named.hand_over_stock == 1 && named.advice_tolerated == 0,
+                       "#1573 the tolerance's pair: six short days - a head is named, not "
+                       "tolerated");
+    // A DEATH INSIDE THE TOLERANCE STILL NAMES THE HEADS: death after one
+    // unfed day, and the two short days in a row pass it.
+    core::ProductionConfig frail = ladder;
+    frail.farming.unfed_death_after_days = 1.0F;
+    const core::HerdFeedForecast frail_read =
+        core::ForecastHerdFeed(frail, two_days, false, core::FeedHorizon::kNearestScythes);
+    const core::Alarm dying = lamp_of(frail, two_days);
+    failures += Expect(frail_read.death_ahead && dying.advice == core::AlarmAdvice::kReduceHerd &&
+                           dying.hand_over_stock == 1,
+                       "#1573 the tolerance holds no head that dies: two short days that kill - "
+                       "a head is named");
+  }
   // THE ORDER IS BY FLOORS (0.37.142; Livestock design §6; herd_floors.h):
   // the horses above the ploughing's floor, then the cows above the milk
   // plan's, and what is below them named apart. Until then «the stock before

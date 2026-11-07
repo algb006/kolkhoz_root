@@ -1293,6 +1293,13 @@ struct Alarm {
   /// advice and kind, and with no plan set. Not in the save, as `lamp`.
   std::int64_t above_plan = 0;
 
+  /// kHerdHayShortAhead: 1 when the ladder named no move BECAUSE OF THE
+  /// TOLERANCE (#1573; livestock.md, rung 3: no head - and no dearer feed -
+  /// while the forecast is short on hay_handover_min_short_days or fewer and
+  /// no head dies of it). The lamp is lit and silent by design; a layer can
+  /// say «перетерпим». 0 otherwise. Not in the save, as `lamp`.
+  std::uint8_t advice_tolerated = 0;
+
   /// kLogisticsLate (routing stage В6; registry №310): THE GROOM'S HORSES BY
   /// WHAT HOLDS THEM at the hour the lamp is collected, by CartUse - the
   /// lamp's line «подвод сегодня 3 из 5 — две на сене». The sum is the

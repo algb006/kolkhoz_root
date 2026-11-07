@@ -184,6 +184,17 @@ struct HerdFeedForecast {
   /// Whole game days from today to the first such day (0: today).
   std::uint16_t days_ahead = 0;
 
+  /// The days before the horizon on which some kolkhoz herd is not fed in
+  /// full, counted (#1573: the hay lamp names no heads while they are
+  /// FarmingConfig::hay_handover_min_short_days or fewer and no head dies).
+  std::uint16_t short_days = 0;
+
+  /// Whether some herd's run of unfed days in a row - from its row's count
+  /// today, one more a short forecast day, nought a fed one - passes
+  /// FarmingConfig::unfed_death_after_days before the horizon: the day
+  /// RunHungerDeaths starts to take heads (#1573).
+  bool death_ahead = false;
+
   /// The days forecast, by the FeedHorizon asked.
   std::uint16_t horizon_days = 0;
 
@@ -261,6 +272,13 @@ struct HerdFeedForecast {
 /// @param handed Heads counted as handed over today (HeadsHandedOver;
 ///        0.37.137), or nullptr: «what would the forecast say WITHOUT these
 ///        heads».
+/// @param held HerdFeedHeldKg(config, world) computed by the caller, or
+///        nullptr to compute it here. THE LADDER'S PROBES SHARE ONE (7 Nov
+///        2026): it walked every unit's stock once a probe and was 90 % of a
+///        forecast's cost, and the hay lamp asks a dozen forecasts of one
+///        world (#1573's time gate). The stock does not depend on the heads,
+///        so `handed`'s and a herd-scaled copy's probes may pass the
+///        original world's.
 /// @return short_ahead false with no kolkhoz herd, no feed roster or no
 ///         horizon.
 HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
@@ -268,7 +286,8 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
                                   bool one_more_horse,
                                   FeedHorizon horizon = FeedHorizon::kNextYearsScythes,
                                   const FeedPurchase* purchase = nullptr,
-                                  const HeadsHandedOver* handed = nullptr);
+                                  const HeadsHandedOver* handed = nullptr,
+                                  const std::vector<float>* held = nullptr);
 
 /// @brief The heads a standing kolkhoz herd will have `days` days from today
 ///        by the forecast's own projection (births by RunBirths's rule and
@@ -427,6 +446,9 @@ struct FodderAdvice {
   std::int64_t hand_over_horses = 0;
   std::int64_t below_floor_stock = 0;
   std::int64_t below_floor_horses = 0;
+  /// #1573: no move named because of the heads rung's tolerance
+  /// (Alarm::advice_tolerated).
+  bool tolerated = false;
 };
 
 /// @brief THE LADDER OF THE HAY LAMP'S ADVICE (0.37.121; boss, host-boss-pin-
@@ -479,9 +501,12 @@ struct FodderAdvice {
 /// @param forecast The short forecast the lamp read (its heads_short is the
 ///        number before any move).
 /// @return All fields none and nought for a forecast that is not short.
+/// @param held HerdFeedHeldKg of `world` for every probe (ForecastHerdFeed's
+///        `held`), or nullptr to compute it once here.
 FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
                                  const WorldState& world,
-                                 const HerdFeedForecast& forecast);
+                                 const HerdFeedForecast& forecast,
+                                 const std::vector<float>* held = nullptr);
 
 /// @brief Whether the hay IN THE STORES is below what the kolkhoz herds will
 ///        eat of it in the next `days` days (IProductionSystem::
