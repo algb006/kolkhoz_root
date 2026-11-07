@@ -1190,6 +1190,13 @@ int main(int argc, char** argv) {
             << kDayBudgetSeconds << " s"
             << (session_day.measured ? "" : " - NOT MEASURED: the session did not assemble")
             << '\n';
+  std::cout
+      << "thirty_years: the session's refresh by its parts, 24 collections over the run's last "
+         "world, s: alarms "
+      << session_day.alarms_seconds << ", porters " << session_day.porters_seconds
+      << ", stock lights " << session_day.stock_lights_seconds << ", weather "
+      << session_day.weather_seconds << "; alarm kinds lit "
+      << (session_day.alarm_kinds.empty() ? std::string("none") : session_day.alarm_kinds) << '\n';
   failures += run::Expect(session_day.measured && session_day.worst_day_seconds > 0.0,
                           "the session's day was actually timed");
   failures += run::Expect(session_day.worst_day_seconds <= kDayBudgetSeconds,
