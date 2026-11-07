@@ -31,6 +31,7 @@
 #include "../common/building_chairman.h"
 #include "../common/chairman_clock.h"
 #include "../common/distiller_policy.h"
+#include "../common/env_value.h"
 #include "../common/extraction_policy.h"
 #include "../common/fallow_policy.h"
 #include "../common/felling_policy.h"
@@ -1185,11 +1186,11 @@ int main(int argc, char** argv) {
   // THE LAST WORLD TO A FILE when KOLKHOZ_SAVE_LAST names one (7 Nov 2026):
   // the refresh's cost is profiled on it by tests/run/alarm_cost, which a
   // thirty-year run under a profiler could never reach.
-  if (const char* const save_last = std::getenv("KOLKHOZ_SAVE_LAST")) {
+  if (const std::optional<std::string> save_last = run::EnvValue("KOLKHOZ_SAVE_LAST")) {
     std::string save_error;
     std::cout << "thirty_years: the last world "
-              << (core::SaveWorldToFile(world.State(), *world.tables, save_last, &save_error)
-                      ? std::string("saved to ") + save_last
+              << (core::SaveWorldToFile(world.State(), *world.tables, *save_last, &save_error)
+                      ? "saved to " + *save_last
                       : "NOT SAVED: " + save_error)
               << '\n';
   }

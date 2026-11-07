@@ -41,6 +41,7 @@
 #include "../common/avatar_book_tally.h"
 #include "../common/births_herd_tally.h"
 #include "../common/building_chairman.h"
+#include "../common/env_value.h"
 #include "../common/fed_tally.h"
 #include "../common/feed_rung_tally.h"
 #include "../common/funeral_tally.h"
@@ -607,16 +608,17 @@ std::string g_avatar_key;
 /// WITH NO NUMBER ASKED, ONE (boss, 7 Nov: close the door, not shout after it):
 /// --walkers, then KOLKHOZ_WALKERS (a job's), then KOLKHOZ_WALKERS_SUITE (the
 /// ctest property, beside its PROCESSORS), else a single walker.
-const char* WalkersFromEnvironment() {
-  const char* const job = std::getenv("KOLKHOZ_WALKERS");
-  return job != nullptr ? job : std::getenv("KOLKHOZ_WALKERS_SUITE");
+std::optional<std::string> WalkersFromEnvironment() {
+  std::optional<std::string> job = run::EnvValue("KOLKHOZ_WALKERS");
+  return job.has_value() ? job : run::EnvValue("KOLKHOZ_WALKERS_SUITE");
 }
 
-bool g_walkers_named = WalkersFromEnvironment() != nullptr;
+bool g_walkers_named = WalkersFromEnvironment().has_value();
 std::size_t g_walkers = [] {
-  const char* const from_env = WalkersFromEnvironment();
-  return from_env != nullptr ? static_cast<std::size_t>(std::strtoul(from_env, nullptr, 10))
-                             : std::size_t{1};
+  const std::optional<std::string> from_env = WalkersFromEnvironment();
+  return from_env.has_value()
+             ? static_cast<std::size_t>(std::strtoul(from_env->c_str(), nullptr, 10))
+             : std::size_t{1};
 }();
 
 /// `--epoch-one-forever`: econ's branch (boss-core-epoch1-queue [34]) — the
