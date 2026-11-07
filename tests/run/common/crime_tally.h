@@ -315,7 +315,8 @@ class CrimeTally {
            // trial.lua's - it divides by the year-end heads plus the starved,
            // the court by the start plus the inflow; a herd handed over in the
            // year halves this divisor and raises the share.
-           << " (share of year-end kolkhoz heads + the starved, NOT trial.lua's start + inflow)";
+           // ONE key-value pair: the readers zip the line in pairs.
+           << " herd_hunger_share_divisor year_end_heads+starved_NOT_trial.lua's_start+inflow";
     // #1568's links (econ's spec §5 prints): truancy, theft by split, the book
     // against the real stock, the audits and the write-offs, the drunk fires.
     core::Grams food_stolen = 0;
