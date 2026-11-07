@@ -15,20 +15,35 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <map>
 #include <set>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "core_common/calendar.h"
+#include "core_common/event_state.h"
 #include "core_common/hay_lamp_trace.h"
+#include "core_common/quantities.h"
+#include "core_common/state_table_ops.h"
+#include "core_common/world_state.h"
 #include "core_sim/step.h"
+#include "core_tables/tables.h"
 #include "env_value.h"
 
 namespace run {
 
 class HayTraceTally {
  public:
-  explicit HayTraceTally(std::uint64_t seed) : seed_(seed) {
+  HayTraceTally(const core::ITableSet& tables, std::uint64_t seed) : seed_(seed) {
+    if (const core::ITable* const resources = tables.FindTable("resources")) {
+      hay_ = resources->FindRowByKey("hay");
+    }
+    if (const core::ITable* const kinds = tables.FindTable("livestock")) {
+      for (std::uint32_t row = 0; row < kinds->RowCount(); ++row) {
+        kind_keys_.emplace_back(kinds->CellText(row, 0));
+      }
+    }
     if (const std::optional<std::string> seeds = EnvValue("KOLKHOZ_HAY_TRACE_SEEDS")) {
       std::stringstream list(*seeds);
       std::string item;
@@ -40,7 +55,45 @@ class HayTraceTally {
     }
   }
 
-  void CountDayEnd(const core::ISimulation& simulation, std::ostream& out) const {
+  /// @brief Every step: the day's hunger deaths of the kolkhoz herds by kind
+  ///        (kHerdDied, not routine: the hunger's own severity), boss's added
+  ///        column of #1586 (i)'s pair.
+  void CountStep(const core::WorldState& world) {
+    if (!on_) {
+      return;
+    }
+    for (const core::SimEvent& event : world.step_events) {
+      if (event.kind != core::EventKind::kHerdDied ||
+          event.severity == core::EventSeverity::kRoutine) {
+        continue;
+      }
+      const std::uint32_t row = core::FindRow(world.herds, event.herd);
+      if (row == core::kNoRow || world.herds.rows[row].household_owned != 0) {
+        continue;
+      }
+      day_deaths_[world.herds.rows[row].kind.value] += event.amount;
+    }
+  }
+
+  void CountDayEnd(const core::ISimulation& simulation, std::ostream& out) {
+    if (!on_) {
+      return;
+    }
+    // The day's heap hay hauled into the stores (the book's hauled_to_stores
+    // of hay, today's rise), and the day's deaths; both start the next day at
+    // nought. The book's turn resets its sum, so a fall reads as the new year's.
+    const core::WorldState& now = simulation.CompletedState();
+    const core::Grams hauled_sum = hay_ < now.ledger.current.hauled_to_stores.size()
+                                       ? now.ledger.current.hauled_to_stores[hay_]
+                                       : 0;
+    day_hauled_ = hauled_sum >= last_hauled_ ? hauled_sum - last_hauled_ : hauled_sum;
+    last_hauled_ = hauled_sum;
+    PrintDay(simulation, out);
+    day_deaths_.clear();
+  }
+
+ private:
+  void PrintDay(const core::ISimulation& simulation, std::ostream& out) const {
     if (!on_) {
       return;
     }
@@ -65,16 +118,31 @@ class HayTraceTally {
         << t.horses_kept << " cows " << t.cows << '/' << t.cows_kept << " points " << t.points
         << " advice " << static_cast<int>(t.advice) << " heads " << t.hand_over_stock << '/'
         << t.hand_over_horses << " below " << t.below_floor_stock << '/' << t.below_floor_horses
-        << " rungs";
+        << " heap_hauled_today_kg " << day_hauled_ / core::kGramsPerKilogram << " died_today";
+    if (day_deaths_.empty()) {
+      out << " -";
+    }
+    for (const auto& [kind, heads] : day_deaths_) {
+      out << ' ' << KindKey(kind) << ':' << heads;
+    }
+    out << " rungs";
     for (const core::HayRungStep& step : t.rungs) {
       out << ' ' << static_cast<int>(step.reason) << ':' << step.value;
     }
     out << '\n';
   }
 
- private:
+  std::string KindKey(std::uint32_t kind) const {
+    return kind < kind_keys_.size() ? kind_keys_[kind] : std::to_string(kind);
+  }
+
   std::uint64_t seed_ = 0;
   bool on_ = false;
+  std::uint32_t hay_ = core::kNoTableRow;
+  std::vector<std::string> kind_keys_;
+  std::map<std::uint32_t, std::int64_t> day_deaths_;
+  core::Grams day_hauled_ = 0;
+  core::Grams last_hauled_ = 0;
 };
 
 }  // namespace run

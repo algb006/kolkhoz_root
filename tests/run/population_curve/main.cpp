@@ -418,7 +418,8 @@ void LiveOneDay(core::ISimulation& simulation,
                 run::StradaTally* strada = nullptr,
                 run::HerdTally* herds = nullptr,
                 run::CrimeTally* crime = nullptr,
-                run::HorseTailTally* horse_tail = nullptr) {
+                run::HorseTailTally* horse_tail = nullptr,
+                run::HayTraceTally* hay_trace = nullptr) {
   bool hot_at_any_tick = false;
   const core::UnitId awaiting = upgrades.Awaiting();
   for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
@@ -439,6 +440,9 @@ void LiveOneDay(core::ISimulation& simulation,
     }
     if (horse_tail != nullptr) {
       horse_tail->CountStep(simulation.CompletedState());  // #1573's horse tail
+    }
+    if (hay_trace != nullptr) {
+      hay_trace->CountStep(simulation.CompletedState());  // #1586's day deaths
     }
     if (substitutes != nullptr) {
       substitutes->CountStep(simulation.CompletedState());  // #1434
@@ -864,7 +868,7 @@ bool Walk(std::uint64_t seed,
   // #1573's horse tail y1-y30 (econ, econ-boss-1573-horse-tail [1]): horse_tail_tally.h.
   run::HorseTailTally horse_tail(*world.tables);
   // #1586's trace of the hay lamp, y1 m6 - y2 m6, for KOLKHOZ_HAY_TRACE_SEEDS.
-  const run::HayTraceTally hay_trace(seed);
+  run::HayTraceTally hay_trace(*world.tables, seed);
   // #1580's probe: what hour 0 of a year's first day books into the closing year.
   run::DayZeroTally day_zero;
   std::array<std::uint32_t, core::kRestSourceCount> r1373_sources = {};
@@ -985,7 +989,8 @@ bool Walk(std::uint64_t seed,
                  warm_off ? nullptr : &strada,
                  &herds,
                  &crime,
-                 &horse_tail);
+                 &horse_tail,
+                 &hay_trace);
       builder.RunDay(*simulation);
       timber.CountDay(simulation->CompletedState());
       avatar_book.CountDay(simulation->CompletedState());
