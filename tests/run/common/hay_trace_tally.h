@@ -40,6 +40,9 @@ class HayTraceTally {
     if (const core::ITable* const resources = tables.FindTable("resources")) {
       hay_ = resources->FindRowByKey("hay");
       straw_ = resources->FindRowByKey("straw");
+      for (std::uint32_t row = 0; row < resources->RowCount(); ++row) {
+        resource_keys_.emplace_back(resources->CellText(row, 0));
+      }
     }
     if (const core::ITable* const kinds = tables.FindTable("livestock")) {
       for (std::uint32_t row = 0; row < kinds->RowCount(); ++row) {
@@ -121,6 +124,13 @@ class HayTraceTally {
     day_straw_laid_ =
         rise(straw_ < book.harvest.size() ? book.harvest[straw_] : 0, last_straw_laid_);
     day_straw_eaten_ = rise(straw_ < book.feed.size() ? book.feed[straw_] : 0, last_straw_eaten_);
+    // EVERY FEED THE HERDS ATE TODAY, by resource (the straw read 0: the
+    // non-hay 56 t a month was something else).
+    last_feed_by_.resize(book.feed.size(), 0);
+    day_feed_by_.assign(book.feed.size(), 0);
+    for (std::size_t resource = 0; resource < book.feed.size(); ++resource) {
+      day_feed_by_[resource] = rise(book.feed[resource], last_feed_by_[resource]);
+    }
     unfed_herds_ = 0;
     max_unfed_days_ = 0.0F;
     for (const core::HerdRow& herd : now.herds.rows) {
@@ -169,7 +179,21 @@ class HayTraceTally {
         << day_straw_laid_ / core::kGramsPerKilogram << " straw_eaten_today_kg "
         << day_straw_eaten_ / core::kGramsPerKilogram << " handed_today " << day_handed_
         << " unfed_herds_now " << unfed_herds_ << " max_unfed_days " << max_unfed_days_
-        << " died_today";
+        << " fed_by";
+    bool any_feed = false;
+    for (std::size_t resource = 0; resource < day_feed_by_.size(); ++resource) {
+      if (day_feed_by_[resource] > 0) {
+        out << ' '
+            << (resource < resource_keys_.size() ? resource_keys_[resource]
+                                                 : std::to_string(resource))
+            << ':' << day_feed_by_[resource] / core::kGramsPerKilogram;
+        any_feed = true;
+      }
+    }
+    if (!any_feed) {
+      out << " -";
+    }
+    out << " died_today";
     if (day_deaths_.empty()) {
       out << " -";
     }
@@ -203,6 +227,9 @@ class HayTraceTally {
   core::Grams day_cut_ = 0;
   core::Grams last_cut_ = 0;
   std::uint32_t straw_ = core::kNoTableRow;
+  std::vector<std::string> resource_keys_;
+  std::vector<core::Grams> day_feed_by_;
+  std::vector<core::Grams> last_feed_by_;
   core::Grams day_straw_laid_ = 0;
   core::Grams last_straw_laid_ = 0;
   core::Grams day_straw_eaten_ = 0;
