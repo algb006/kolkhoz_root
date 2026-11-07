@@ -369,7 +369,7 @@ audit_window_months,24,core
 audits_per_year,2,core
 collusion_keeper_alcoholism,20,core
 collusion_share_month,0.02,core
-crime_drunk_fire_on,1,core
+crime_drunk_fire_on,0,core
 crime_food_theft_on,1,core
 crime_truancy_on,1,core
 drunk_fire_chance_month_at_cap,0.01,core
