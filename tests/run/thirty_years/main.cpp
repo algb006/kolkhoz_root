@@ -1196,7 +1196,10 @@ int main(int argc, char** argv) {
       << session_day.alarms_seconds << ", porters " << session_day.porters_seconds
       << ", stock lights " << session_day.stock_lights_seconds << ", weather "
       << session_day.weather_seconds << "; alarm kinds lit "
-      << (session_day.alarm_kinds.empty() ? std::string("none") : session_day.alarm_kinds) << '\n';
+      << (session_day.alarm_kinds.empty() ? std::string("none") : session_day.alarm_kinds)
+      << "; alarms over the same world with #1573's rows OFF "
+      << session_day.alarms_rows_off_seconds << " (rows overridden " << session_day.rows_overridden
+      << " of 3)\n";
   failures += run::Expect(session_day.measured && session_day.worst_day_seconds > 0.0,
                           "the session's day was actually timed");
   failures += run::Expect(session_day.worst_day_seconds <= kDayBudgetSeconds,

@@ -20,6 +20,7 @@
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
+#include "table_override.h"
 
 namespace run {
 
@@ -39,6 +40,10 @@ struct SessionDayCost {
   double stock_lights_seconds = 0.0;
   double weather_seconds = 0.0;
   std::string alarm_kinds;
+  /// The alarms' 24 collections over the SAME state with #1573's three rows
+  /// set off (table_override.h), and how many of the rows the tables had.
+  double alarms_rows_off_seconds = 0.0;
+  std::size_t rows_overridden = 0;
 };
 
 /// @brief Steps `days` game days of a session over a copy of `state` and times each.
@@ -85,6 +90,25 @@ inline SessionDayCost SessionDaySeconds(const core::ITableSet& tables,
     for (const core::Alarm& alarm : alarms) {
       cost.alarm_kinds +=
           (cost.alarm_kinds.empty() ? "" : ",") + std::to_string(static_cast<int>(alarm.kind));
+    }
+    // THE SAME WORLD WITH #1573's ROWS OFF (the ladder before #1573): the
+    // world's cost and the code's told apart. A tree without the rows
+    // overrides none and says so.
+    const OverriddenTableSet rows_off(tables,
+                                      "farming",
+                                      {{"hay_feed_before_heads_points", "0"},
+                                       {"hay_handover_min_short_days", "0"},
+                                       {"hay_handover_dose_share", "1.0"}});
+    cost.rows_overridden = rows_off.Overridden();
+    core::StandardSimulationConfig off_config = config;
+    off_config.tables = &rows_off;
+    std::unique_ptr<core::ISimulation> off = core::CreateStandardSimulation(off_config);
+    if (off != nullptr) {
+      off->ResetWorld(state);
+      cost.alarms_rows_off_seconds = timed([&] {
+        alarms.clear();
+        off->CollectAlarms(alarms);
+      });
     }
   }
   core::SessionConfig session_config;
