@@ -111,6 +111,7 @@ class HorseTailTally {
   /// floors.
   void CountDayEnd(const core::ISimulation& simulation) {
     const core::WorldState& world = simulation.CompletedState();
+    CountTurn(world);
     const std::uint32_t year = (world.calendar.day / core::kDaysPerYear) + 1U;
     if (year > kYears) {
       return;
@@ -161,10 +162,6 @@ class HorseTailTally {
                           : std::max<std::int64_t>(y.cow_floor, line.floor_heads);
       }
     }
-    const core::YearLedger& book = world.ledger.current;
-    y.hay_cut_g = hay_ < book.harvest.size() ? book.harvest[hay_] : 0;
-    y.horse_hay_g = horse_ < book.herd_hay_eaten.size() ? book.herd_hay_eaten[horse_] : 0;
-    y.milk_g = milk_ < book.herd_produce.size() ? book.herd_produce[milk_] : 0;
     const core::Grams due = milk_ < world.plan.due.size() ? world.plan.due[milk_] : 0;
     const core::Grams delivered =
         milk_ < world.plan.delivered.size() ? world.plan.delivered[milk_] : 0;
@@ -174,11 +171,29 @@ class HorseTailTally {
     // deaths of every herd, yards' included, beside the kolkhoz's own above.
     y.hay_due_g = hay_ < world.plan.due.size() ? world.plan.due[hay_] : 0;
     y.hay_delivered_g = hay_ < world.plan.delivered.size() ? world.plan.delivered[hay_] : 0;
+  }
+
+  /// @brief THE YEAR'S BOOK FROM `closed` AT THE TURN (#1580 (c); boss,
+  ///        core-boss-1580-ledger-hour0 [2]): the open book on the year's
+  ///        last day lacks day 0's herd day, which the core books into the
+  ///        closing year (the ledger turns after it in the same step). The
+  ///        closed book carries it - shifted one day, said in the print.
+  void CountTurn(const core::WorldState& world) {
+    const std::uint32_t year = (world.calendar.day / core::kDaysPerYear) + 1U;
+    if (world.calendar.day % core::kDaysPerYear != 0 || year < 2 || year - 2U >= kYears) {
+      return;
+    }
+    Year& y = years_[year - 2U];
+    const core::YearLedger& book = world.ledger.closed;
+    y.hay_cut_g = hay_ < book.harvest.size() ? book.harvest[hay_] : 0;
+    y.horse_hay_g = horse_ < book.herd_hay_eaten.size() ? book.herd_hay_eaten[horse_] : 0;
+    y.milk_g = milk_ < book.herd_produce.size() ? book.herd_produce[milk_] : 0;
     y.book_hunger = book.herd_deaths_hunger;
   }
 
   void Print(std::ostream& out, std::uint64_t seed) const {
-    out << "population_curve: HORSE1573 seed " << seed;
+    out << "population_curve: HORSE1573 seed " << seed
+        << " (books shifted one day: day 0 in the closing year, #1580)";
     for (std::uint32_t year = 0; year < kYears; ++year) {
       const Year& y = years_[year];
       out << " | y" << year + 1;
