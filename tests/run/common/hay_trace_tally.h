@@ -12,6 +12,7 @@
 ///        the day's chairman, at the evening's state.
 /// @threading SINGLE_THREADED - the run's own loop.
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
@@ -73,6 +74,11 @@ class HayTraceTally {
       }
       day_deaths_[world.herds.rows[row].kind.value] += event.amount;
     }
+    for (const core::SimEvent& event : world.step_events) {
+      if (event.kind == core::EventKind::kStockHandedOver) {
+        day_handed_ += event.amount;  // the bot's hand-overs that fed the rest
+      }
+    }
   }
 
   void CountDayEnd(const core::ISimulation& simulation, std::ostream& out) {
@@ -88,8 +94,38 @@ class HayTraceTally {
                                        : 0;
     day_hauled_ = hauled_sum >= last_hauled_ ? hauled_sum - last_hauled_ : hauled_sum;
     last_hauled_ = hauled_sum;
+    // THE DAY'S ACTUALS (boss: «the forecast's short days and death day vs actual
+    // unfed days / deaths, and what fed the herd that the forecast did not
+    // count»): the book's rises today - the herds' hay eaten, all feed eaten,
+    // the feed they went short, the hay cut - and the herds unfed tonight.
+    const auto rise = [](core::Grams now_sum, core::Grams& last) {
+      const core::Grams today = now_sum >= last ? now_sum - last : now_sum;
+      last = now_sum;
+      return today;
+    };
+    const auto sum = [](const core::ResourceAmounts& amounts) {
+      core::Grams total = 0;
+      for (const core::Grams grams : amounts) {
+        total += grams;
+      }
+      return total;
+    };
+    const core::YearLedger& book = now.ledger.current;
+    day_hay_eaten_ = rise(sum(book.herd_hay_eaten), last_hay_eaten_);
+    day_feed_eaten_ = rise(sum(book.feed), last_feed_eaten_);
+    day_feed_short_ = rise(sum(book.herd_feed_short), last_feed_short_);
+    day_cut_ = rise(hay_ < book.harvest.size() ? book.harvest[hay_] : 0, last_cut_);
+    unfed_herds_ = 0;
+    max_unfed_days_ = 0.0F;
+    for (const core::HerdRow& herd : now.herds.rows) {
+      if (herd.household_owned == 0 && herd.unfed_days > 0.0F) {
+        ++unfed_herds_;
+        max_unfed_days_ = std::max(max_unfed_days_, herd.unfed_days);
+      }
+    }
     PrintDay(simulation, out);
     day_deaths_.clear();
+    day_handed_ = 0;
   }
 
  private:
@@ -118,7 +154,14 @@ class HayTraceTally {
         << t.horses_kept << " cows " << t.cows << '/' << t.cows_kept << " points " << t.points
         << " advice " << static_cast<int>(t.advice) << " heads " << t.hand_over_stock << '/'
         << t.hand_over_horses << " below " << t.below_floor_stock << '/' << t.below_floor_horses
-        << " heap_hauled_today_kg " << day_hauled_ / core::kGramsPerKilogram << " died_today";
+        << " heap_hauled_today_kg " << day_hauled_ / core::kGramsPerKilogram << " need_u_a_day "
+        << (t.horizon_days > 0 ? t.need_units / t.horizon_days : 0.0F) << " hay_eaten_today_kg "
+        << day_hay_eaten_ / core::kGramsPerKilogram << " feed_eaten_today_kg "
+        << day_feed_eaten_ / core::kGramsPerKilogram << " feed_short_today_kg "
+        << day_feed_short_ / core::kGramsPerKilogram << " hay_cut_today_kg "
+        << day_cut_ / core::kGramsPerKilogram << " handed_today " << day_handed_
+        << " unfed_herds_now " << unfed_herds_ << " max_unfed_days " << max_unfed_days_
+        << " died_today";
     if (day_deaths_.empty()) {
       out << " -";
     }
@@ -143,6 +186,17 @@ class HayTraceTally {
   std::map<std::uint32_t, std::int64_t> day_deaths_;
   core::Grams day_hauled_ = 0;
   core::Grams last_hauled_ = 0;
+  core::Grams day_hay_eaten_ = 0;
+  core::Grams last_hay_eaten_ = 0;
+  core::Grams day_feed_eaten_ = 0;
+  core::Grams last_feed_eaten_ = 0;
+  core::Grams day_feed_short_ = 0;
+  core::Grams last_feed_short_ = 0;
+  core::Grams day_cut_ = 0;
+  core::Grams last_cut_ = 0;
+  std::int64_t day_handed_ = 0;
+  std::uint32_t unfed_herds_ = 0;
+  float max_unfed_days_ = 0.0F;
 };
 
 }  // namespace run
