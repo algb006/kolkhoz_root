@@ -236,8 +236,10 @@ HerdFloors HerdFloorsOf(const ProductionConfig& config, const WorldState& world)
     // with the switch off) every cow was kept, and in year 1's autumn the hay
     // lamp's ladder had nobody above any floor: «granary» its only move for
     // four months on the canon's 1931 / 2031 / 2044 (#1586's trace).
+    // (i-soft): the norm ÷ its prior divisor (1 the norm; econ's soft arm 1.25).
     yield_a_cow =
-        static_cast<double>(GramsFromKilograms(config.livestock[cow.value].milk_l_per_adult_head));
+        static_cast<double>(GramsFromKilograms(config.livestock[cow.value].milk_l_per_adult_head)) /
+        static_cast<double>(std::max(1.0F, config.farming.milk_floor_norm_prior_divisor));
   }
   if (!(yield_a_cow > 0.0)) {
     floors.cows_kept = std::numeric_limits<std::int64_t>::max();

@@ -1186,7 +1186,7 @@ bool ParseMeadowKinds(const ITable& table, FarmingConfig& farming, std::string& 
 /// AT ALL: until 2026-09-16 this module took every number off its own
 /// hand-written tables, and the two halves of billeting are what brought it
 /// here. The next world constant lands in the same place.
-constexpr std::array<std::string_view, 34> kProductionWorldParamKeys = {
+constexpr std::array<std::string_view, 35> kProductionWorldParamKeys = {
     "billet_heads_per_yard",
     "billet_yield_factor",
     "school_year_start_month",
@@ -1231,7 +1231,9 @@ constexpr std::array<std::string_view, 34> kProductionWorldParamKeys = {
     "herd_care_full_coverage",
     "herd_care_floor_coverage",
     // #1586 (i): the y1 milk floor from the plan and the norm yield (0: off).
-    "milk_floor_norm_first_year"};
+    "milk_floor_norm_first_year",
+    // #1586 (i-soft): the norm yield's divisor for that floor (1: the norm).
+    "milk_floor_norm_first_year_prior_divisor"};
 
 /// THE SCHOOL YEAR IS READ HERE AS WELL AS BY THE SCHOOL, and that is a
 /// second READER, not a second home: the months live in world_params.csv and
@@ -1388,7 +1390,10 @@ bool ParseProductionWorldParams(const ITable& world,
                  .range = Range{.low = 0.0F, .high = 1.0F}},
       ScalarKnob{.key = kProductionWorldParamKeys[33],
                  .value = &milk_norm_first_year,
-                 .range = Range{.low = 0.0F, .high = 1.0F}}};
+                 .range = Range{.low = 0.0F, .high = 1.0F}},
+      ScalarKnob{.key = kProductionWorldParamKeys[34],
+                 .value = &farming.milk_floor_norm_prior_divisor,
+                 .range = Range{.low = 1.0F, .high = 5.0F}}};
   if (!ReadKnobs(world, "world_params", knobs, error)) {
     return false;
   }

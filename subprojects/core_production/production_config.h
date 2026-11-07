@@ -843,6 +843,12 @@ struct FarmingConfig {
   /// Off: today's rule. The plan not yet named still keeps every cow.
   bool milk_floor_norm_first_year = false;
 
+  /// #1586 (i-soft) (econ, econ-boss-1586-cure-choice [3]; world_params
+  /// `milk_floor_norm_first_year_prior_divisor`, STUB 1.25): that floor reads
+  /// the norm yield ÷ this - a lower yield, a higher floor, fewer cows named in
+  /// year 1. 1: the norm itself, (i)'s first arm. Read only with the switch on.
+  float milk_floor_norm_prior_divisor = 1.0F;
+
   /// THE SECOND LEVER OF THE CATTLE YARD (livestock design §5; econ-boss-
   /// complexity-yards-groom [3]-[4]; world_params `herd_without_yard_yield_
   /// factor`, 0): from the day the player enters, a kolkhoz herd with no

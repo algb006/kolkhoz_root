@@ -1949,6 +1949,12 @@ int CheckTheForecastAdvice() {
                          "over a tonne a cow keeps two cows");
       failures += Expect(off.cows_kept == std::numeric_limits<std::int64_t>::max(),
                          "#1586 (i)'s pair: the switch off - every cow kept, as before");
+      // (i-soft): the norm ÷ 2 - half a tonne a cow, 1.25 x 1 / 0.5 -> 3 kept.
+      core::ProductionConfig soft = norm;
+      soft.farming.milk_floor_norm_prior_divisor = 2.0F;
+      const core::HerdFloors softer = core::HerdFloorsOf(soft, village_of(130.0F, 4, 4, -1.0F));
+      failures += Expect(softer.cows_kept == 3,
+                         "#1586 (i-soft): the norm's yield over its divisor 2 - three cows kept");
     }
     // THE ADVICE FOLLOWED PUTS THE LAMP OUT, AND ONE HEAD FEWER DOES NOT
     // (the second half of the guard of the lamp's advice: executable was
