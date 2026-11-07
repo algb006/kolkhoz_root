@@ -515,6 +515,10 @@ class ProductionSystem final : public IProductionSystem {
     return DeliveryTerm{.days_min = base, .days_max = base + config_.limit.delivery_delay_days_max};
   }
 
+  HayLampTrace HayLampToday(const WorldState& completed) const override {
+    return TraceHayLamp(config_, completed);
+  }
+
   std::vector<HerdPlanLine> HerdPlans(const WorldState& completed) const override {
     std::vector<HerdPlanLine> lines;
     for (std::uint32_t row = 0; row < completed.herds.rows.size(); ++row) {

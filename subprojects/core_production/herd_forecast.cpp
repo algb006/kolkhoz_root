@@ -1464,6 +1464,7 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
   forecast.cut_end_day = this_cut_end;
   forecast.pace_kg_a_day = pace.kg_a_day;
   forecast.dry_work_days_left = pace.dry_days_left;
+  forecast.cut_to_come = expected_cut;
   return forecast;
 }
 

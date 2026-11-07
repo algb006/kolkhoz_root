@@ -47,6 +47,7 @@
 #include "../common/funeral_tally.h"
 #include "../common/hand_over_tally.h"
 #include "../common/hay_day_off_policy.h"
+#include "../common/hay_trace_tally.h"
 #include "../common/herd_tally.h"
 #include "../common/horse_tail_tally.h"
 #include "../common/passed_over_tally.h"
@@ -824,6 +825,8 @@ bool Walk(std::uint64_t seed,
   run::FeedRungTally feed_rung(*world.tables);
   // #1573's horse tail y1-y30 (econ, econ-boss-1573-horse-tail [1]): horse_tail_tally.h.
   run::HorseTailTally horse_tail(*world.tables);
+  // #1586's trace of the hay lamp, y1 m6 - y2 m6, for KOLKHOZ_HAY_TRACE_SEEDS.
+  const run::HayTraceTally hay_trace(seed);
   std::array<std::uint32_t, core::kRestSourceCount> r1373_sources = {};
   std::uint32_t r1373_walk_offs = 0;
   // What the farm's sites waited on, y1-y6 (#1285 G1's probe; boss [3]).
@@ -955,6 +958,7 @@ bool Walk(std::uint64_t seed,
                           herds.CowsHandedInYear(simulation->CompletedState().calendar.date.year));
       feed_rung.CountDayEnd(simulation->CompletedState());
       horse_tail.CountDayEnd(*simulation);
+      hay_trace.CountDayEnd(*simulation, std::cout);
       if (!warm_off) {
         strada.CountDayEnd(simulation->CompletedState());
       }

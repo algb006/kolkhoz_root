@@ -1758,6 +1758,20 @@ int CheckTheForecastAdvice() {
                    tolerated.below_floor_stock == 0 && tolerated.advice_tolerated == 1,
                "#1573 the tolerance: two short days and no death - the lamp is lit, "
                "names no head, and says the silence is the tolerance's");
+    // #1586's TRACE: the same worlds, the rungs as the ladder asked them.
+    const auto last_rung = [](const core::HayLampTrace& trace) {
+      return trace.rungs.empty() ? core::HayRungReason::kReasonCount : trace.rungs.back().reason;
+    };
+    const core::HayLampTrace traced_tolerance = core::TraceHayLamp(ladder, two_days);
+    const core::HayLampTrace traced_cheap = core::TraceHayLamp(ladder, world);
+    failures += Expect(traced_tolerance.traced && traced_tolerance.short_days == 2 &&
+                           last_rung(traced_tolerance) == core::HayRungReason::kTolerated &&
+                           traced_tolerance.advice == core::AlarmAdvice::kNone,
+                       "#1586 trace: the tolerance's world ends on the tolerance, two short days");
+    failures += Expect(last_rung(traced_cheap) == core::HayRungReason::kCheapTaken &&
+                           traced_cheap.rungs.back().value == 10 &&
+                           traced_cheap.advice == core::AlarmAdvice::kBuyFeed,
+                       "#1586 trace's pair: the cheap world ends on the cheap rung, 10 points");
     const core::Alarm named = lamp_of(ladder, six_days);
     failures += Expect(named.advice == core::AlarmAdvice::kReduceHerd &&
                            named.hand_over_stock == 1 && named.advice_tolerated == 0,
