@@ -598,6 +598,10 @@ bool g_beach_off = false;
 /// herd» left unanswered (LimitPolicy::HayHandOverOff), so a run can say
 /// whether the herds it named would have gone short.
 bool g_hay_hand_over_off = false;
+/// `--herd-evening3=off`: #1584's arm (econ, econ-boss-1584-herd-surplus [1]
+/// §3) - the herd plan's third evening («the horses with what is left»)
+/// orders nothing (HerdPlanPolicy::SetEveningThreeOff).
+bool g_herd_evening3_off = false;
 /// `--avatar=KEY`: the chairman New Game would choose (#1417, #1421; econ's
 /// arms, econ-boss-1427-avatar-gates [1]); empty, the canon: no avatar. An
 /// avatar's paths move the village, so its run is an arm, not the canon.
@@ -798,6 +802,9 @@ bool Walk(std::uint64_t seed,
   }
   if (g_beach_off) {
     builder.beach.SetOff();
+  }
+  if (g_herd_evening3_off) {
+    builder.herd_plan.SetEveningThreeOff(true);
   }
   if (g_hay_hand_over_off) {
     builder.limit.HayHandOverOff(true);
@@ -1630,6 +1637,8 @@ int main(int argc, char** argv) {
       g_warm_hold_old = true;
     } else if (argument == "--granary-first=off") {
       g_granary_first_off = true;
+    } else if (argument == "--herd-evening3=off") {
+      g_herd_evening3_off = true;
     } else if (argument == "--hay-hand-over=off") {
       g_hay_hand_over_off = true;
     } else if (argument == "--beach=off") {

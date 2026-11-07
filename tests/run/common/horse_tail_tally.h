@@ -35,7 +35,9 @@
 #include "core_common/calendar.h"
 #include "core_common/event_state.h"
 #include "core_common/herd_plan_view.h"
+#include "core_common/resident_state.h"
 #include "core_common/state_table_ops.h"
+#include "core_common/unit_state.h"
 #include "core_common/world_state.h"
 #include "core_sim/step.h"
 #include "core_tables/tables.h"
@@ -45,6 +47,13 @@ namespace run {
 class HorseTailTally {
  public:
   static constexpr std::uint32_t kYears = 30;
+  static constexpr std::uint32_t kNoonHour = 12;
+  static constexpr std::uint32_t kApril = 3;  ///< 0-based months
+  static constexpr std::uint32_t kMay = 4;
+  static constexpr std::uint32_t kAugust = 7;
+  static constexpr std::uint32_t kOctober = 9;
+  /// HerdPlanLine::floor_heads at or above this is «every cow kept», not a floor.
+  static constexpr std::uint16_t kEveryCowKept = 65534;
 
   explicit HorseTailTally(const core::ITableSet& tables) {
     if (const core::ITable* const kinds = tables.FindTable("livestock")) {
@@ -57,11 +66,30 @@ class HorseTailTally {
     }
   }
 
-  /// @brief Every step: the hunger's deaths by kind.
+  /// @brief Every step: the hunger's deaths by kind; at noon the «no horse»
+  ///        idle (#1584's R4: spring = April-May, hauling = August-October).
   void CountStep(const core::WorldState& world) {
     const std::uint32_t year = world.calendar.date.year;
     if (year < 1 || year > kYears) {
       return;
+    }
+    if (core::HourFromTick(world.calendar.tick) == kNoonHour) {
+      const auto month = static_cast<std::uint32_t>(world.calendar.date.month);
+      const bool spring = month == kApril || month == kMay;
+      const bool hauling = month >= kAugust && month <= kOctober;
+      if (spring || hauling) {
+        Year& y = years_[year - 1];
+        for (const core::ResidentRow& person : world.residents.rows) {
+          const bool working = person.work.kind != core::WorkKind::kNone;
+          const bool idle = !working && person.idle_reason != core::IdleReason::kIdleReasonCount;
+          if (!working && !idle) {
+            continue;
+          }
+          const bool no_horse = idle && person.idle_reason == core::IdleReason::kNoHorse;
+          (spring ? y.spring_heads : y.haul_heads) += 1;
+          (spring ? y.spring_no_horse : y.haul_no_horse) += no_horse ? 1U : 0U;
+        }
+      }
     }
     for (const core::SimEvent& event : world.step_events) {
       if (event.kind != core::EventKind::kHerdDied ||
@@ -99,6 +127,18 @@ class HorseTailTally {
     }
     y.horse_short_days += horse_short ? 1U : 0U;
     y.cow_short_days += cow_short ? 1U : 0U;
+    // #1584's R1: the hay left at April's end (its last day's close), the
+    // stores' unreserved hay in every standing unit.
+    if (static_cast<std::uint32_t>(world.calendar.date.month) == kApril &&
+        world.calendar.date.day_in_month == core::kDaysPerMonth - 1U && hay_ != core::kNoTableRow) {
+      core::Grams held = 0;
+      for (const core::UnitRow& unit : world.units.rows) {
+        if (unit.level > 0) {
+          held += core::UnreservedOf(unit, core::ResourceId{static_cast<std::uint16_t>(hay_)});
+        }
+      }
+      y.hay_april_end_g = held;
+    }
     if (world.calendar.day % core::kDaysPerYear != core::kDaysPerYear - 1U) {
       return;
     }
@@ -114,7 +154,11 @@ class HorseTailTally {
       if (line.kind.value == horse_) {
         y.horse_floor = std::max<std::int64_t>(y.horse_floor, line.floor_heads);
       } else if (line.kind.value == cow_) {
-        y.cow_floor = std::max<std::int64_t>(y.cow_floor, line.floor_heads);
+        // «EVERY COW KEPT» (no closed year to read a yield from) is a sentinel,
+        // not a floor (boss [10] (5): it was averaged in): printed as -1.
+        y.cow_floor = line.floor_heads >= kEveryCowKept
+                          ? -1
+                          : std::max<std::int64_t>(y.cow_floor, line.floor_heads);
       }
     }
     const core::YearLedger& book = world.ledger.current;
@@ -125,6 +169,12 @@ class HorseTailTally {
     const core::Grams delivered =
         milk_ < world.plan.delivered.size() ? world.plan.delivered[milk_] : 0;
     y.milk_met = due <= 0 ? -1 : (delivered >= due ? 1 : 0);
+    // #1584: R7, hay as a plan position (due and delivered at the year's
+    // last day, 0 / 0 when the district names none), and the book's hunger
+    // deaths of every herd, yards' included, beside the kolkhoz's own above.
+    y.hay_due_g = hay_ < world.plan.due.size() ? world.plan.due[hay_] : 0;
+    y.hay_delivered_g = hay_ < world.plan.delivered.size() ? world.plan.delivered[hay_] : 0;
+    y.book_hunger = book.herd_deaths_hunger;
   }
 
   void Print(std::ostream& out, std::uint64_t seed) const {
@@ -143,7 +193,13 @@ class HorseTailTally {
           << static_cast<double>(y.hay_cut_g) / 1e6 << " horse_hay_t "
           << static_cast<double>(y.horse_hay_g) / 1e6 << " milk_t "
           << static_cast<double>(y.milk_g) / 1e6 << " milk_met "
-          << (y.milk_met < 0 ? std::string("-") : std::to_string(y.milk_met));
+          << (y.milk_met < 0 ? std::string("-") : std::to_string(y.milk_met)) << " other_hunger "
+          << y.other_hunger << " book_hunger_all_herds " << y.book_hunger << " hay_april_end_t "
+          << static_cast<double>(y.hay_april_end_g) / 1e6 << " hay_due_t "
+          << static_cast<double>(y.hay_due_g) / 1e6 << " hay_delivered_t "
+          << static_cast<double>(y.hay_delivered_g) / 1e6 << " spring_no_horse "
+          << y.spring_no_horse << " spring_heads " << y.spring_heads << " haul_no_horse "
+          << y.haul_no_horse << " haul_heads " << y.haul_heads;
     }
     out << '\n';
   }
@@ -161,6 +217,14 @@ class HorseTailTally {
     std::int64_t horse_hunger = 0;
     std::int64_t cow_hunger = 0;
     std::int64_t other_hunger = 0;
+    std::uint32_t book_hunger = 0;
+    core::Grams hay_april_end_g = 0;
+    core::Grams hay_due_g = 0;
+    core::Grams hay_delivered_g = 0;
+    std::uint64_t spring_heads = 0;
+    std::uint64_t spring_no_horse = 0;
+    std::uint64_t haul_heads = 0;
+    std::uint64_t haul_no_horse = 0;
     core::Grams hay_cut_g = 0;
     core::Grams horse_hay_g = 0;
     core::Grams milk_g = 0;

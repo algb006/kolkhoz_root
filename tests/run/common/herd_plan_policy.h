@@ -96,6 +96,12 @@ class HerdPlanPolicy {
       } else if (stage == 3) {
         hay = std::max<std::uint16_t>(line.plan, line.hay_for);
       }
+      // #1584's arm (--herd-evening3=off; econ, econ-boss-1584-herd-surplus
+      // [1] §3): no third evening - the horses stay at evening 1's floor x
+      // 1.33, the leftover hay stays in the stores.
+      if (stage == 3 && evening_three_off_) {
+        continue;
+      }
       const std::uint16_t n =
           std::min<std::uint16_t>(line.places, std::max<std::uint16_t>(hay, line.floor_heads));
       if (line.plan_set && line.plan == n) {
@@ -127,6 +133,10 @@ class HerdPlanPolicy {
   ///        evenings and the day their last orders apply).
   bool Holding() const { return holding_; }
 
+  /// @brief #1584's arm: the third evening («the horses with what is left»)
+  ///        orders nothing. Off by default: the canon keeps it.
+  void SetEveningThreeOff(bool off) { evening_three_off_ = off; }
+
  private:
   static constexpr std::uint32_t kNever = 0xFFFFFFFFU;
   /// econ's «horses up to floor × 1.33» (core-boss-1289 [14]).
@@ -138,6 +148,7 @@ class HerdPlanPolicy {
   std::uint32_t set_year_ = kNever;
   core::SimDay set_day_ = 0;
   bool holding_ = false;
+  bool evening_three_off_ = false;
   std::uint32_t set_this_year_ = 0;
   bool on_ = true;
 };
