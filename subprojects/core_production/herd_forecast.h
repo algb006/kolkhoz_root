@@ -43,6 +43,7 @@
 #include <vector>
 
 #include "core_common/alarm_state.h"
+#include "core_common/hay_lamp_trace.h"
 #include "core_common/ids.h"
 #include "core_common/quantities.h"
 #include "core_common/world_state.h"
@@ -238,6 +239,9 @@ struct HerdFeedForecast {
   SimDay cut_end_day = 0;
   float pace_kg_a_day = 0.0F;
   float dry_work_days_left = 0.0F;
+  /// The cut still to come the forecast lands before the horizon, grams
+  /// (#1586's trace: one of its terms).
+  Grams cut_to_come = 0;
 };
 
 /// @brief The kolkhoz herds' fodder from today to the first scythes the
@@ -506,7 +510,13 @@ struct FodderAdvice {
 FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
                                  const WorldState& world,
                                  const HerdFeedForecast& forecast,
-                                 const std::vector<float>* held = nullptr);
+                                 const std::vector<float>* held = nullptr,
+                                 std::vector<HayRungStep>* rungs = nullptr);
+
+/// @brief The hay lamp's day laid open (hay_lamp_trace.h; #1586): the
+///        forecast's terms to the lamp's horizon, the floors, and each rung
+///        AdviseOnShortFodder asked (its `rungs`). A diagnostic read.
+HayLampTrace TraceHayLamp(const ProductionConfig& config, const WorldState& world);
 
 /// @brief Whether the hay IN THE STORES is below what the kolkhoz herds will
 ///        eat of it in the next `days` days (IProductionSystem::

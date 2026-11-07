@@ -314,9 +314,17 @@ UnitTypeId StoreTypeOrItsParent(const ProductionConfig& config,
 FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
                                  const WorldState& world,
                                  const HerdFeedForecast& forecast,
-                                 const std::vector<float>* held) {
+                                 const std::vector<float>* held,
+                                 std::vector<HayRungStep>* rungs) {
   FodderAdvice advice;
+  // #1586's trace: each rung asked, in order, when the caller keeps one.
+  const auto note = [rungs](HayRungReason reason, std::int64_t value = 0) {
+    if (rungs != nullptr) {
+      rungs->push_back(HayRungStep{.reason = reason, .value = value});
+    }
+  };
   if (!forecast.short_ahead) {
+    note(HayRungReason::kNotShort);
     return advice;
   }
   // ONE STOCK FOR EVERY PROBE BELOW (herd_forecast.h, ForecastHerdFeed's `held`).
@@ -350,6 +358,7 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
   if (AvralStandsOnAMeadowsCut(world) &&
       world.chairman.hay_cut_avral_days >= config.farming.hay_avral_days_a_cut) {
     advice.advice = AlarmAdvice::kLiftRush;
+    note(HayRungReason::kAvralLifted);
     return advice;
   }
   // THE CUT'S MOVES ARE NAMED ONLY WHILE THE PACE IS THE BOUND (econ's
@@ -367,6 +376,7 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
   const bool pace_is_the_bound = !forecast.grass_bound;
   if (pace_is_the_bound && DayOffWorthWorkingForTheCut(config, world, forecast)) {
     advice.advice = AlarmAdvice::kDeclareDayWorking;
+    note(HayRungReason::kDayOffWorked);
     return advice;
   }
   // 1. THE AVRAL ON THE CUT - ONLY AFTER THE MONTH'S DAY OFF, AND FOR A FEW
@@ -379,6 +389,7 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
   if (pace_is_the_bound && AvralMayBeNamedOnTheCut(config, world)) {
     advice.advice = AlarmAdvice::kCutHay;
     advice.advice_field = MeadowToHurry(world);
+    note(HayRungReason::kAvralNamed);
     return advice;
   }
   // WHILE A CUT IS OPEN AND GRASS STILL STANDS IN IT, THE LAMP NAMES ONLY THE
@@ -397,6 +408,7 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
   // October 2026, on arm 3: 45-79 village-days a summer lit with no move at
   // all): the move is that day's own morning, and the lamp says so.
   if (GrassStandsInAnOpenCut(config, world)) {
+    note(HayRungReason::kGrassInOpenCut);
     // THE GRASS IS THE BOUND AND THE HAY IS STILL SHORT: the move that is
     // true is the ladder's own «сдать головы», DATED to the day after the
     // cut's last - the day the lower rungs open by the calendar. No head is
@@ -406,9 +418,11 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
     if (forecast.grass_bound) {
       if (HandOverTolerated(config, forecast)) {
         advice.tolerated = true;
+        note(HayRungReason::kTolerated, forecast.short_days);
         return advice;
       }
       const HandOverAdvice heads = LeastHeadsToHandOver(config, world, &stock);
+      note(HayRungReason::kHeadsNamed, heads.stock + heads.horses);
       if (heads.stock + heads.horses > 0) {
         advice.advice = AlarmAdvice::kReduceHerd;
         advice.hand_over_stock = HandOverDose(config, heads.stock);
@@ -452,6 +466,9 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
   // closed; one that kept them lost 4.4 days of feed and 0.6 of a head, and
   // milked 16 % more. A dear shortage - 2 October's 26 lots - still goes to
   // the heads.
+  if (config.farming.hay_feed_before_heads_points <= 0) {
+    note(HayRungReason::kCheapOff);
+  }
   if (config.farming.hay_feed_before_heads_points > 0) {
     const auto short_after_kept = [&config, &world, &stock](const FeedPurchase& bought) {
       return ForecastHerdFeed(
@@ -482,8 +499,12 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
             LeastClosingPurchase(config, world, affordable, short_after_kept);
         advice.advice = AlarmAdvice::kBuyFeed;
         NameTheFeedBought(config, cheapest, advice);
+        note(HayRungReason::kCheapTaken, cheapest.points);
         return advice;
       }
+      note(HayRungReason::kCheapNotClosing, affordable.points);
+    } else {
+      note(HayRungReason::kCheapNoLot, affordable.any ? affordable.points : 0);
     }
   }
   // 3. THE HEADS, NOT FOR A FEW SHORT DAYS (#1573, rung 3's tolerance): with
@@ -496,6 +517,7 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
   // confirmed by boss on 7 November 2026 (core-boss-1573-hay-rungs [2]).
   if (HandOverTolerated(config, forecast)) {
     advice.tolerated = true;
+    note(HayRungReason::kTolerated, forecast.short_days);
     return advice;
   }
   const HandOverAdvice heads = LeastHeadsToHandOver(config, world, &stock);
@@ -513,6 +535,7 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
   // order in it, which no guard of «a move the door refuses» could catch —
   // the door is never asked. With nobody above the floors the ladder goes on
   // to the feed, and ends at «no move» with the remainder below the floors.
+  note(HayRungReason::kHeadsNamed, above);
   if (above > 0 && heads.below_floor_stock + heads.below_floor_horses == 0) {
     advice.advice = AlarmAdvice::kReduceHerd;
     return advice;
@@ -536,6 +559,7 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
     purchase = LeastClosingPurchase(config, world, purchase, short_after);
     advice.advice = AlarmAdvice::kBuyFeed;
     NameTheFeedBought(config, purchase, advice);
+    note(HayRungReason::kFeedLeast, purchase.points);
     // The heads above the floors go all the same — the purchase is counted
     // with them gone.
     if (above > 0) {
@@ -554,6 +578,7 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
   if (!purchase.any && blocked_by_store) {
     advice.advice = AlarmAdvice::kGranaryForFeed;
     advice.advice_unit_type = FeedStoreTypeToBuild(config, world);
+    note(HayRungReason::kGranary);
     if (above > 0) {
       advice.advice_more = AlarmAdvice::kReduceHerd;
       advice.amount_more = above;
@@ -566,7 +591,57 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
   // stands in its own pair, and the chairman is told what the floors cost,
   // not told to hand over nought.
   advice.advice = above > 0 ? AlarmAdvice::kReduceHerd : AlarmAdvice::kNone;
+  note(HayRungReason::kBelowFloorOnly, advice.below_floor_stock + advice.below_floor_horses);
   return advice;
+}
+
+HayLampTrace TraceHayLamp(const ProductionConfig& config, const WorldState& world) {
+  HayLampTrace trace;
+  if (config.hay_resource.value >= config.feed_values.size() || config.livestock.empty()) {
+    return trace;
+  }
+  trace.traced = true;
+  const std::vector<float> stock = HerdFeedHeldKg(config, world);
+  const HerdFeedForecast forecast = ForecastHerdFeed(
+      config, world, false, FeedHorizon::kNearestScythes, nullptr, nullptr, &stock);
+  trace.short_ahead = forecast.short_ahead;
+  trace.days_ahead = forecast.days_ahead;
+  trace.horizon_days = forecast.horizon_days;
+  trace.short_days = forecast.short_days;
+  trace.death_ahead = forecast.death_ahead;
+  const ResourceAmounts allowance = HerdFeedAllowance(config, world);
+  const std::size_t hay = config.hay_resource.value;
+  trace.store_hay_kg = hay < allowance.size() ? static_cast<float>(allowance[hay]) /
+                                                    static_cast<float>(kGramsPerKilogram)
+                                              : 0.0F;
+  trace.heap_hay_counted_kg = static_cast<float>(HeapAbovePlanDebt(world, config.hay_resource)) /
+                              static_cast<float>(kGramsPerKilogram);
+  trace.cut_to_come_kg =
+      static_cast<float>(forecast.cut_to_come) / static_cast<float>(kGramsPerKilogram);
+  trace.need_units = forecast.need_units;
+  trace.covered_units = forecast.covered_units;
+  trace.short_hay_kg =
+      static_cast<float>(forecast.short_hay_grams) / static_cast<float>(kGramsPerKilogram);
+  const HerdFloors floors = HerdFloorsOf(config, world);
+  const LivestockKindId cow = MilkKind(config);
+  for (const HerdRow& herd : world.herds.rows) {
+    if (herd.household_owned != 0) {
+      continue;
+    }
+    trace.horses += herd.kind.value == config.horse_kind.value ? herd.adult_count : 0;
+    trace.cows += herd.kind.value == cow.value ? herd.adult_count : 0;
+  }
+  trace.horses_kept = floors.horses_kept;
+  trace.cows_kept =
+      floors.cows_kept == std::numeric_limits<std::int64_t>::max() ? -1 : floors.cows_kept;
+  trace.points = world.limit.points;
+  const FodderAdvice advice = AdviseOnShortFodder(config, world, forecast, &stock, &trace.rungs);
+  trace.advice = advice.advice;
+  trace.hand_over_stock = advice.hand_over_stock;
+  trace.hand_over_horses = advice.hand_over_horses;
+  trace.below_floor_stock = advice.below_floor_stock;
+  trace.below_floor_horses = advice.below_floor_horses;
+  return trace;
 }
 
 void CollectHerdForecastAlarms(const ProductionConfig& config,

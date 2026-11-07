@@ -76,6 +76,7 @@
 #include "core_common/delivery_term.h"
 #include "core_common/elder_view.h"
 #include "core_common/grass_stand_view.h"
+#include "core_common/hay_lamp_trace.h"
 #include "core_common/herd_plan_view.h"
 #include "core_common/ids.h"
 #include "core_common/issue_norm_view.h"
@@ -354,6 +355,12 @@ class ISimulation {
   ///        kolkhoz herd. Fans out to core_production.
   /// @note NOT PURE, for ActivityOf's reason. The default answers no line.
   virtual std::vector<HerdPlanLine> HerdPlans() const { return {}; }
+
+  /// @brief The hay lamp's day laid open (hay_lamp_trace.h; #1586): the
+  ///        forecast's terms, the floors, each rung the ladder asked and why.
+  ///        A DIAGNOSTIC door for runs; the game reads the alarm, not this.
+  /// @note NOT PURE, for ActivityOf's reason. The default answers «not traced».
+  virtual HayLampTrace HayLampToday() const { return {}; }
 
   /// @brief Whether the chairman's horse stands at the hitching post, and why
   /// (chairman_transport_view.h; «Нет ресурса — нет транспорта»).

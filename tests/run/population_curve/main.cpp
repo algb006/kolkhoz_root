@@ -42,12 +42,14 @@
 #include "../common/births_herd_tally.h"
 #include "../common/building_chairman.h"
 #include "../common/crime_tally.h"
+#include "../common/day_zero_tally.h"
 #include "../common/env_value.h"
 #include "../common/fed_tally.h"
 #include "../common/feed_rung_tally.h"
 #include "../common/funeral_tally.h"
 #include "../common/hand_over_tally.h"
 #include "../common/hay_day_off_policy.h"
+#include "../common/hay_trace_tally.h"
 #include "../common/herd_tally.h"
 #include "../common/horse_tail_tally.h"
 #include "../common/passed_over_tally.h"
@@ -611,6 +613,10 @@ bool g_no_write_off = false;
 /// herd» left unanswered (LimitPolicy::HayHandOverOff), so a run can say
 /// whether the herds it named would have gone short.
 bool g_hay_hand_over_off = false;
+/// `--herd-evening3=off`: #1584's arm (econ, econ-boss-1584-herd-surplus [1]
+/// §3) - the herd plan's third evening («the horses with what is left»)
+/// orders nothing (HerdPlanPolicy::SetEveningThreeOff).
+bool g_herd_evening3_off = false;
 /// `--avatar=KEY`: the chairman New Game would choose (#1417, #1421; econ's
 /// arms, econ-boss-1427-avatar-gates [1]); empty, the canon: no avatar. An
 /// avatar's paths move the village, so its run is an arm, not the canon.
@@ -827,6 +833,9 @@ bool Walk(std::uint64_t seed,
   if (g_no_write_off) {
     builder.write_off.Enable(false);
   }
+  if (g_herd_evening3_off) {
+    builder.herd_plan.SetEveningThreeOff(true);
+  }
   if (g_hay_hand_over_off) {
     builder.limit.HayHandOverOff(true);
   }
@@ -854,6 +863,10 @@ bool Walk(std::uint64_t seed,
   run::FeedRungTally feed_rung(*world.tables);
   // #1573's horse tail y1-y30 (econ, econ-boss-1573-horse-tail [1]): horse_tail_tally.h.
   run::HorseTailTally horse_tail(*world.tables);
+  // #1586's trace of the hay lamp, y1 m6 - y2 m6, for KOLKHOZ_HAY_TRACE_SEEDS.
+  const run::HayTraceTally hay_trace(seed);
+  // #1580's probe: what hour 0 of a year's first day books into the closing year.
+  run::DayZeroTally day_zero;
   std::array<std::uint32_t, core::kRestSourceCount> r1373_sources = {};
   std::uint32_t r1373_walk_offs = 0;
   // What the farm's sites waited on, y1-y6 (#1285 G1's probe; boss [3]).
@@ -987,6 +1000,8 @@ bool Walk(std::uint64_t seed,
                           herds.CowsHandedInYear(simulation->CompletedState().calendar.date.year));
       feed_rung.CountDayEnd(simulation->CompletedState());
       horse_tail.CountDayEnd(*simulation);
+      hay_trace.CountDayEnd(*simulation, std::cout);
+      day_zero.CountDayEnd(simulation->CompletedState());
       if (!warm_off) {
         strada.CountDayEnd(simulation->CompletedState());
       }
@@ -1518,6 +1533,7 @@ bool Walk(std::uint64_t seed,
       feed_rung.Print(std::cout, seed);                                             // #1573
       builder.limit.PrintHayFeedRung(std::cout, seed, run::FeedRungTally::kYears);  // #1573
       horse_tail.Print(std::cout, seed);  // #1573's horse tail
+      day_zero.Print(std::cout, seed);    // #1580's probe
       builder.limit.PrintHayHorseTail(std::cout, seed, run::HorseTailTally::kYears);
       // The warm works unfinished on a cold night, and the crew's builders
       // (warm_crew.h; boss, core-boss-1084-funeral-body [7]).
@@ -1663,6 +1679,8 @@ int main(int argc, char** argv) {
       g_warm_hold_old = true;
     } else if (argument == "--granary-first=off") {
       g_granary_first_off = true;
+    } else if (argument == "--herd-evening3=off") {
+      g_herd_evening3_off = true;
     } else if (argument == "--hay-hand-over=off") {
       g_hay_hand_over_off = true;
     } else if (argument == "--beach=off") {

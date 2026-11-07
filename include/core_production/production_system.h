@@ -60,6 +60,7 @@
 #include "core_common/calendar.h"
 #include "core_common/early_snow.h"
 #include "core_common/grass_stand_view.h"
+#include "core_common/hay_lamp_trace.h"
 #include "core_common/herd_plan_view.h"
 #include "core_common/meadow_mark.h"
 #include "core_common/office_views.h"
@@ -257,6 +258,11 @@ class IProductionSystem {
   ///        plan. «Сена на» and the warnings are the body's (STUB).
   /// @note Called between steps on the sim thread. A pure read.
   virtual std::vector<HerdPlanLine> HerdPlans(const WorldState& completed) const = 0;
+
+  /// @brief The hay lamp's day off `completed`, laid open (hay_lamp_trace.h; #1586).
+  /// @note Called between steps on the sim thread. A pure read. The default
+  ///       answers «not traced», so a fake production system need not know it.
+  virtual HayLampTrace HayLampToday(const WorldState& /*completed*/) const { return {}; }
 
   /// @brief What a goods loan of `borrowed` grams books as owed back, the
   /// mark-up included (goods_loan.h GoodsLoanWithMarkup) — the order's

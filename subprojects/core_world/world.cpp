@@ -869,6 +869,10 @@ class StandardSimulation final : public ISimulation {
     return WeekLabourViewOf(engine_->CompletedState().labour_week);
   }
 
+  HayLampTrace HayLampToday() const override {
+    return production_->HayLampToday(engine_->CompletedState());
+  }
+
   std::vector<HerdPlanLine> HerdPlans() const override {
     return production_->HerdPlans(engine_->CompletedState());
   }
