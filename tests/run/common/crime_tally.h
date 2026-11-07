@@ -309,7 +309,13 @@ class CrimeTally {
            << " sober_loss_man_days " << sober_loss_ << " men_worked_days " << worked_
            << " failed_in_a_row " << static_cast<unsigned>(world.plan.failed_years_in_a_row)
            << " plan_verdict " << static_cast<unsigned>(world.plan.last_verdict)
-           << " herd_hunger_deaths " << hunger << " herd_hunger_share " << hunger_share;
+           << " herd_hunger_deaths " << hunger << " herd_hunger_share "
+           << hunger_share
+           // host, host-boss-core-1581-dieoff-instruments [1]: THIS SHARE IS NOT
+           // trial.lua's - it divides by the year-end heads plus the starved,
+           // the court by the start plus the inflow; a herd handed over in the
+           // year halves this divisor and raises the share.
+           << " (share of year-end kolkhoz heads + the starved, NOT trial.lua's start + inflow)";
     // #1568's links (econ's spec §5 prints): truancy, theft by split, the book
     // against the real stock, the audits and the write-offs, the drunk fires.
     core::Grams food_stolen = 0;
