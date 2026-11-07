@@ -148,6 +148,17 @@ class HayAnswer {
     if (yellow->advice == core::AlarmAdvice::kNone) {
       YearOf(world).no_move_days += 1;
     }
+    // #1573's horse tail (econ [1] §3.3): the lit day by what it named - the
+    // tolerance's silence, a feed move, heads.
+    if (yellow->advice_tolerated != 0) {
+      YearOf(world).tolerated_days += 1;
+    } else if (yellow->advice == core::AlarmAdvice::kBuyFeed ||
+               yellow->advice == core::AlarmAdvice::kGranaryForFeed) {
+      YearOf(world).feed_move_days += 1;
+    }
+    if (heads_advised) {
+      YearOf(world).heads_days += 1;
+    }
     std::vector<core::OrderRow> orders;
     if (yellow->advice == core::AlarmAdvice::kCutHay) {
       RushTheCut(world, orders);
@@ -227,6 +238,23 @@ class HayAnswer {
     out << '\n';
   }
 
+  /// @brief #1573's horse tail, the lamp's half (econ [1] §3.2-3.4): «HAY1573T seed S | y1 yellow Y
+  ///        tolerated T feed_move F heads H horses_first A horses_behind_feed B feed_lots L
+  ///        feed_points P cows_handed C | y2 ...», y1-`years`.
+  void PrintHorseTail(std::ostream& out, std::uint64_t seed, std::uint32_t years) const {
+    out << "population_curve: HAY1573T seed " << seed;
+    for (std::uint32_t year = 0; year < years; ++year) {
+      const YearCount count = year < years_.size() ? years_[year] : YearCount{};
+      out << " | y" << year + 1 << " yellow " << count.yellow_days << " tolerated "
+          << count.tolerated_days << " feed_move " << count.feed_move_days << " heads "
+          << count.heads_days << " horses_first " << count.horses_handed_first
+          << " horses_behind_feed " << count.horses_handed_behind_feed << " feed_lots "
+          << count.feed_lots << " feed_points " << count.feed_points << " cows_handed "
+          << count.cows_handed;
+    }
+    out << '\n';
+  }
+
   /// @brief Holds the hand-over while the herds' plans are being set (#1289).
   void HoldHandOverForPlans(bool hold) { plans_being_set_ = hold; }
 
@@ -254,6 +282,14 @@ class HayAnswer {
     std::uint32_t feed_points = 0;
     std::uint32_t buy_no_heads_days = 0;
     std::uint32_t no_move_days = 0;
+    /// #1573's horse tail: lit days inside the tolerance, with a feed move,
+    /// with heads named (first or behind the feed); horses handed by the
+    /// heads rung named first, and behind a feed move.
+    std::uint32_t tolerated_days = 0;
+    std::uint32_t feed_move_days = 0;
+    std::uint32_t heads_days = 0;
+    std::uint64_t horses_handed_first = 0;
+    std::uint64_t horses_handed_behind_feed = 0;
     std::uint64_t horses_handed = 0;
     std::uint64_t cows_handed = 0;
     /// The horses the advice named on the days looked at, handed or not.
@@ -414,6 +450,9 @@ class HayAnswer {
     cows_handed_ += static_cast<std::uint64_t>(cows);
     year.horses_handed += static_cast<std::uint64_t>(horses);
     year.cows_handed += static_cast<std::uint64_t>(cows);
+    (yellow.advice == core::AlarmAdvice::kReduceHerd ? year.horses_handed_first
+                                                     : year.horses_handed_behind_feed) +=
+        static_cast<std::uint64_t>(horses);
   }
 
   /// By LivestockKindId.
