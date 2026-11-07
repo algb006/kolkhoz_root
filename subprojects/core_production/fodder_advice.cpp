@@ -313,11 +313,16 @@ UnitTypeId StoreTypeOrItsParent(const ProductionConfig& config,
 
 FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
                                  const WorldState& world,
-                                 const HerdFeedForecast& forecast) {
+                                 const HerdFeedForecast& forecast,
+                                 const std::vector<float>* held) {
   FodderAdvice advice;
   if (!forecast.short_ahead) {
     return advice;
   }
+  // ONE STOCK FOR EVERY PROBE BELOW (herd_forecast.h, ForecastHerdFeed's `held`).
+  const std::vector<float> own =
+      held != nullptr ? std::vector<float>{} : HerdFeedHeldKg(config, world);
+  const std::vector<float>& stock = held != nullptr ? *held : own;
   // 1. THE CUT IS A MOVE ONLY WHILE A MEADOW STANDS IN IT (the harvest rule
   // 3, part А; boss, econ-boss-hay-term-2026-10-01 [2]; 0.37.93). Until then
   // the hay's advice was the cut on every day of the year, and a meadow that
@@ -403,7 +408,7 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
         advice.tolerated = true;
         return advice;
       }
-      const HandOverAdvice heads = LeastHeadsToHandOver(config, world);
+      const HandOverAdvice heads = LeastHeadsToHandOver(config, world, &stock);
       if (heads.stock + heads.horses > 0) {
         advice.advice = AlarmAdvice::kReduceHerd;
         advice.hand_over_stock = HandOverDose(config, heads.stock);
@@ -448,8 +453,9 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
   // milked 16 % more. A dear shortage - 2 October's 26 lots - still goes to
   // the heads.
   if (config.farming.hay_feed_before_heads_points > 0) {
-    const auto short_after_kept = [&config, &world](const FeedPurchase& bought) {
-      return ForecastHerdFeed(config, world, false, FeedHorizon::kNearestScythes, &bought, nullptr)
+    const auto short_after_kept = [&config, &world, &stock](const FeedPurchase& bought) {
+      return ForecastHerdFeed(
+                 config, world, false, FeedHorizon::kNearestScythes, &bought, nullptr, &stock)
           .short_ahead;
     };
     // THE LARGEST PURCHASE WITHIN THE PRICE FIRST, with no forecast (7 Nov
@@ -492,7 +498,7 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
     advice.tolerated = true;
     return advice;
   }
-  const HandOverAdvice heads = LeastHeadsToHandOver(config, world);
+  const HandOverAdvice heads = LeastHeadsToHandOver(config, world, &stock);
   // THE DOSE (#1573): no more than hay_handover_dose_share of them in one
   // advice, rounded up; the forecast is read again next evening, and a lot
   // or a cut may yet make the rest needless. The purchase below is still
@@ -519,8 +525,9 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
   // AFTER WHICH THE HERDS ARE STILL SHORT IS NOT NAMED AT ALL (boss [138]):
   // «buy 27 lots and hand over all the same» is advice it harms to follow.
   const HeadsHandedOver gone{.horses = heads.horses, .cows = heads.stock, .other = 0};
-  const auto short_after = [&config, &world, &gone](const FeedPurchase& bought) {
-    return ForecastHerdFeed(config, world, false, FeedHorizon::kNearestScythes, &bought, &gone)
+  const auto short_after = [&config, &world, &gone, &stock](const FeedPurchase& bought) {
+    return ForecastHerdFeed(
+               config, world, false, FeedHorizon::kNearestScythes, &bought, &gone, &stock)
         .short_ahead;
   };
   bool blocked_by_store = false;
@@ -567,8 +574,10 @@ void CollectHerdForecastAlarms(const ProductionConfig& config,
                                std::vector<Alarm>& alarms) {
   // TO THE NEAREST FIRST SCYTHES (0.37.96): the yellow speaks of a shortage
   // this side of the next cut and of none beyond it.
-  const HerdFeedForecast forecast =
-      ForecastHerdFeed(config, world, false, FeedHorizon::kNearestScythes);
+  // ONE STOCK FOR THE LAMP AND ITS LADDER (ForecastHerdFeed's `held`).
+  const std::vector<float> stock = HerdFeedHeldKg(config, world);
+  const HerdFeedForecast forecast = ForecastHerdFeed(
+      config, world, false, FeedHorizon::kNearestScythes, nullptr, nullptr, &stock);
   if (!forecast.short_ahead) {
     return;
   }
@@ -592,7 +601,7 @@ void CollectHerdForecastAlarms(const ProductionConfig& config,
   alarm.amount = forecast.heads_short;
   alarm.days_ahead = forecast.days_ahead;
   alarm.days_to_loss = forecast.days_ahead;
-  const FodderAdvice advice = AdviseOnShortFodder(config, world, forecast);
+  const FodderAdvice advice = AdviseOnShortFodder(config, world, forecast, &stock);
   alarm.advice = advice.advice;
   alarm.advice_resource = advice.advice_resource;
   alarm.advice_amount = advice.advice_amount;

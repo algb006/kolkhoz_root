@@ -240,11 +240,20 @@ HerdFloors HerdFloorsOf(const ProductionConfig& config, const WorldState& world)
 
 namespace {
 
-HandOverAdvice LeastHeadsAboveTheFloors(const ProductionConfig& config, const WorldState& world);
+HandOverAdvice LeastHeadsAboveTheFloors(const ProductionConfig& config,
+                                        const WorldState& world,
+                                        const std::vector<float>& held);
 
 }  // namespace
 
-HandOverAdvice LeastHeadsToHandOver(const ProductionConfig& config, const WorldState& world) {
+HandOverAdvice LeastHeadsToHandOver(const ProductionConfig& config,
+                                    const WorldState& world,
+                                    const std::vector<float>* held) {
+  // THE STOCK IS THE SAME FOR EVERY PROBE (herd_forecast.h, ForecastHerdFeed's
+  // `held`): the heads scaled to the plans below move no store.
+  const std::vector<float> own =
+      held != nullptr ? std::vector<float>{} : HerdFeedHeldKg(config, world);
+  const std::vector<float>& stock = held != nullptr ? *held : own;
   // THE HEADS ABOVE THE PLANS FIRST (#1289; livestock.md «План стада»:
   // «Совет "сдать головы" называет головы сверх N первыми»; econ, core-boss-
   // 1289 [10] (3)). Every kolkhoz herd above its N is counted down to it; if
@@ -265,9 +274,9 @@ HandOverAdvice LeastHeadsToHandOver(const ProductionConfig& config, const WorldS
     ScaleHerdHeads(herd, herd.plan_heads);
   }
   if (above.horses + above.stock == 0) {
-    return LeastHeadsAboveTheFloors(config, world);
+    return LeastHeadsAboveTheFloors(config, world, stock);
   }
-  HandOverAdvice rest = LeastHeadsAboveTheFloors(config, at_plans);
+  HandOverAdvice rest = LeastHeadsAboveTheFloors(config, at_plans, stock);
   rest.horses += above.horses;
   rest.stock += above.stock;
   return rest;
@@ -275,10 +284,13 @@ HandOverAdvice LeastHeadsToHandOver(const ProductionConfig& config, const WorldS
 
 namespace {
 
-HandOverAdvice LeastHeadsAboveTheFloors(const ProductionConfig& config, const WorldState& world) {
+HandOverAdvice LeastHeadsAboveTheFloors(const ProductionConfig& config,
+                                        const WorldState& world,
+                                        const std::vector<float>& held) {
   HandOverAdvice advice;
-  const auto short_without = [&config, &world](const HeadsHandedOver& handed) {
-    return ForecastHerdFeed(config, world, false, FeedHorizon::kNearestScythes, nullptr, &handed)
+  const auto short_without = [&config, &world, &held](const HeadsHandedOver& handed) {
+    return ForecastHerdFeed(
+               config, world, false, FeedHorizon::kNearestScythes, nullptr, &handed, &held)
         .short_ahead;
   };
   HeadsHandedOver handed;

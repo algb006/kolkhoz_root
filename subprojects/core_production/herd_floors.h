@@ -37,6 +37,7 @@
 #define CORE_PRODUCTION_HERD_FLOORS_H_
 
 #include <cstdint>
+#include <vector>
 
 #include "core_common/ids.h"
 #include "core_common/world_state.h"
@@ -125,7 +126,11 @@ struct HandOverAdvice {
 ///         leaving brings — it cannot be, with none left) every head is
 ///         named, the floors' share in the first pair and the rest in the
 ///         second.
-HandOverAdvice LeastHeadsToHandOver(const ProductionConfig& config, const WorldState& world);
+/// @param held HerdFeedHeldKg of `world`, shared by every probe (herd_forecast.h,
+///        ForecastHerdFeed's `held`), or nullptr to compute it once here.
+HandOverAdvice LeastHeadsToHandOver(const ProductionConfig& config,
+                                    const WorldState& world,
+                                    const std::vector<float>* held = nullptr);
 
 }  // namespace core
 

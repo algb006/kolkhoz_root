@@ -1052,7 +1052,8 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
                                   bool one_more_horse,
                                   FeedHorizon horizon,
                                   const FeedPurchase* purchase,
-                                  const HeadsHandedOver* handed) {
+                                  const HeadsHandedOver* handed,
+                                  const std::vector<float>* held) {
   HerdFeedForecast forecast;
   if (config.livestock.empty() || config.feed_values.empty()) {
     return forecast;
@@ -1210,7 +1211,7 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
   }
   const auto standing_heads = static_cast<std::int64_t>(std::ceil(standing));
 
-  std::vector<float> held_kg = HerdFeedHeldKg(config, world);
+  std::vector<float> held_kg = held != nullptr ? *held : HerdFeedHeldKg(config, world);
   // AND THE HAY MOWN TODAY, NOT YET LAID (#1292; boss, core-boss-1289-herd-
   // plan [48]): gone from the grass standing since the morning, laid into the
   // meadow's heap only at the day's turn (LayMownShare), so at the lamp's

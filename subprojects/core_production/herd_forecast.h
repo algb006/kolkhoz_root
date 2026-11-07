@@ -272,6 +272,13 @@ struct HerdFeedForecast {
 /// @param handed Heads counted as handed over today (HeadsHandedOver;
 ///        0.37.137), or nullptr: «what would the forecast say WITHOUT these
 ///        heads».
+/// @param held HerdFeedHeldKg(config, world) computed by the caller, or
+///        nullptr to compute it here. THE LADDER'S PROBES SHARE ONE (7 Nov
+///        2026): it walked every unit's stock once a probe and was 90 % of a
+///        forecast's cost, and the hay lamp asks a dozen forecasts of one
+///        world (#1573's time gate). The stock does not depend on the heads,
+///        so `handed`'s and a herd-scaled copy's probes may pass the
+///        original world's.
 /// @return short_ahead false with no kolkhoz herd, no feed roster or no
 ///         horizon.
 HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
@@ -279,7 +286,8 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
                                   bool one_more_horse,
                                   FeedHorizon horizon = FeedHorizon::kNextYearsScythes,
                                   const FeedPurchase* purchase = nullptr,
-                                  const HeadsHandedOver* handed = nullptr);
+                                  const HeadsHandedOver* handed = nullptr,
+                                  const std::vector<float>* held = nullptr);
 
 /// @brief The heads a standing kolkhoz herd will have `days` days from today
 ///        by the forecast's own projection (births by RunBirths's rule and
@@ -493,9 +501,12 @@ struct FodderAdvice {
 /// @param forecast The short forecast the lamp read (its heads_short is the
 ///        number before any move).
 /// @return All fields none and nought for a forecast that is not short.
+/// @param held HerdFeedHeldKg of `world` for every probe (ForecastHerdFeed's
+///        `held`), or nullptr to compute it once here.
 FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
                                  const WorldState& world,
-                                 const HerdFeedForecast& forecast);
+                                 const HerdFeedForecast& forecast,
+                                 const std::vector<float>* held = nullptr);
 
 /// @brief Whether the hay IN THE STORES is below what the kolkhoz herds will
 ///        eat of it in the next `days` days (IProductionSystem::
