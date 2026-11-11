@@ -37,6 +37,7 @@
 #include <vector>
 
 #include "core_common/calendar.h"
+#include "core_common/day_off.h"
 #include "core_common/event_state.h"
 #include "core_common/resident_state.h"
 #include "core_common/state_table_ops.h"
@@ -143,6 +144,9 @@ class CrimeTally {
       if (event.kind == core::EventKind::kAuditUnguardedLeak) {
         ++unguarded_leaks_;  // round 2 (R2): the lever line's count a year
       }
+      if (event.kind == core::EventKind::kTruants) {
+        truants_today_ += event.amount;  // the day's truants, for the share below
+      }
       if (event.kind == core::EventKind::kFoodStolen) {
         (event.family.value == 1 ? stolen_collusion_g_ : stolen_night_g_) += event.amount;
         // ROUND 2's PRINT: link 2's theft by store kind (econ's G3 reads the
@@ -198,14 +202,25 @@ class CrimeTally {
     if (year > kYears) {
       return;
     }
+    std::uint64_t placed_today = 0;
     for (const core::ResidentRow& person : world.residents.rows) {
       if (person.sex != core::Sex::kMale || person.work.kind == core::WorkKind::kNone ||
           core::BiologicalAgeYears(speedup_, person.birth_day, world.calendar.day) < kAdultYears) {
         continue;
       }
       ++worked_;
+      ++placed_today;
       sober_loss_ += SoberLoss(person.alcoholism);
     }
+    // TRUANCY AS A SHARE OF THE WORKING MEN (boss, #1566 [5], 11 Nov 2026):
+    // working days only, the day's truants over the truants + the men placed -
+    // men_worked_days above counts every day and leaves the truants out, so
+    // truant_man_days over it is NOT a share of a man's days.
+    if (!core::IsDayOffIn(world, world.calendar.day)) {
+      truant_working_ += truants_today_;
+      working_men_days_ += placed_today + truants_today_;
+    }
+    truants_today_ = 0;
     if (world.calendar.day % core::kDaysPerYear != core::kDaysPerYear - 1U) {
       return;
     }
@@ -405,7 +420,11 @@ class CrimeTally {
            << real / 1000 << " audits " << book.audits << " audit_remarks " << book.audit_remarks
            << " audit_shortage_permille " << world.audit.shortage_permille << " audit_trial_due "
            << static_cast<unsigned>(world.audit.trial_due) << " written_off_kg " << written / 1000
-           << " drunk_fires " << book.drunk_fires << " books_accepted "
+           << " drunk_fires " << book.drunk_fires << " truant_share_of_working_men "
+           << (working_men_days_ == 0
+                   ? 0.0
+                   : static_cast<double>(truant_working_) / static_cast<double>(working_men_days_))
+           << " working_men_days " << working_men_days_ << " books_accepted "
            << static_cast<unsigned>(world.audit.books_accepted) << " stolen_before_acceptance_kg "
            << BeforeAct(book) / 1000 << " theft_church_kg " << theft_by_kind_[kTheftChurch] / 1000
            << " theft_clamps_kg " << theft_by_kind_[kTheftClamp] / 1000 << " theft_guardable_kg "
@@ -425,6 +444,8 @@ class CrimeTally {
     stolen_collusion_g_ = 0;
     sober_loss_ = 0.0;
     worked_ = 0;
+    truant_working_ = 0;
+    working_men_days_ = 0;
   }
 
   std::uint64_t seed_ = 0;
@@ -462,6 +483,9 @@ class CrimeTally {
   std::uint32_t max_failed_ = 0;
   double sober_loss_ = 0.0;
   std::uint64_t worked_ = 0;
+  std::uint64_t truants_today_ = 0;     ///< kTruants' amount, this day
+  std::uint64_t truant_working_ = 0;    ///< the year's truants, working days
+  std::uint64_t working_men_days_ = 0;  ///< truants + men placed, working days
   std::ostringstream lines_;
 };
 
