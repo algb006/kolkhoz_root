@@ -48,6 +48,8 @@ namespace run {
 class CrimeTally {
  public:
   static constexpr std::uint32_t kYears = 16;
+  /// econ's print 2 (#1566, 11 Nov): the plan by position, years 1..6.
+  static constexpr std::uint32_t kPlanYears = 6;
   /// epochs §8: a year whose herd hunger deaths reach this share of the herd.
   static constexpr double kHerdHungerTrialShare = 0.14;
   /// The adult man's biological age (life-cycle design): drink is counted on him.
@@ -67,6 +69,12 @@ class CrimeTally {
     }
     if (const core::ITable* const resources = tables.FindTable("resources")) {
       sugar_ = resources->FindRowByKey("sugar");
+      // PLAN1566's position names, by ResourceId (= the resources table's row).
+      const std::uint32_t key = resources->FindColumn("key");
+      for (std::uint32_t row = 0; key != core::kNoTableColumn && row < resources->RowCount();
+           ++row) {
+        resource_keys_.emplace_back(resources->CellText(row, key));
+      }
     }
     if (const core::ITable* const types = tables.FindTable("unit_types")) {
       church_store_ = types->FindRowByKey("church_store");
@@ -183,6 +191,9 @@ class CrimeTally {
              << " written_off_kg " << written / 1000 << " drunk_fires " << closed.drunk_fires
              << " stolen_before_acceptance_kg " << BeforeAct(closed) / 1000
              << " herd_deaths_hunger " << closed.herd_deaths_hunger << '\n';
+      if (year - 1U <= kPlanYears) {
+        PrintPlanPositions(closed, year - 1U);
+      }
     }
     if (year > kYears) {
       return;
@@ -217,6 +228,7 @@ class CrimeTally {
         << " first_audit_trial_due_year "
         << (audit_trial_year_ ? std::to_string(*audit_trial_year_) : std::string("none"))
         << " village_ended: NOT MEASURABLE (no trigger in the core, #1569)"
+        << " no_salt: NOT MEASURABLE (no trigger in the core)"
         << " min_year_turn_residents " << min_residents_ << " first_year_below_50 "
         << (below50_year_ ? std::to_string(*below50_year_) : std::string("none"))
         << " first_year_below_40 "
@@ -232,6 +244,36 @@ class CrimeTally {
       total += grams;
     }
     return total;
+  }
+
+  /// @brief #1566 (2026-11-11) econ's print 2: the closed year's plan by
+  ///        position, from the judge's own columns of the closed book
+  ///        (YearLedger::plan_due / plan_delivered, written at the turn AFTER
+  ///        the turn's DeliverPlan - the last day's PlanState misses that
+  ///        shipment). kg; short = due - delivered, 0 when met.
+  void PrintPlanPositions(const core::YearLedger& closed, std::uint32_t year) {
+    lines_ << "population_curve: PLAN1566 seed " << seed_ << " year " << year;
+    std::uint32_t positions = 0;
+    std::uint32_t short_positions = 0;
+    for (std::size_t resource = 0; resource < closed.plan_due.size(); ++resource) {
+      const core::Grams due = closed.plan_due[resource];
+      if (due == 0) {
+        continue;
+      }
+      const core::Grams delivered =
+          resource < closed.plan_delivered.size() ? closed.plan_delivered[resource] : 0;
+      const core::Grams owed = delivered >= due ? 0 : due - delivered;
+      ++positions;
+      short_positions += owed > 0 ? 1U : 0U;
+      lines_ << ' '
+             << (resource < resource_keys_.size() ? resource_keys_[resource]
+                                                  : "resource" + std::to_string(resource))
+             << ":due_kg=" << due / 1000 << ",delivered_kg=" << delivered / 1000
+             << ",short_kg=" << owed / 1000;
+    }
+    // An empty plan is printed as such, not as a met one.
+    lines_ << " positions " << positions << " short_positions " << short_positions
+           << (positions == 0 ? " NO_PLAN_POSITIONS" : "") << '\n';
   }
 
   static double SoberLoss(float alcoholism) {
@@ -405,6 +447,7 @@ class CrimeTally {
   /// Each audit's shortage this year, per mille, comma-joined (boss's (2)).
   std::string shortages_;
   std::vector<std::uint8_t> guardable_;
+  std::vector<std::string> resource_keys_;  ///< by ResourceId, PLAN1566's names
 
   bool Guardable(std::uint32_t type) const {
     return type < guardable_.size() && guardable_[type] != 0;
