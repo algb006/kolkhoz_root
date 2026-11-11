@@ -201,7 +201,7 @@ void RunSaltDay(const SaltIssueConfig& config, WorldState& current) {
     return;
   }
   const std::vector<std::uint32_t> members = MembersByFamily(current);
-  const double norm = config.norm_g_per_eater_day;
+  const auto norm = static_cast<double>(config.norm_g_per_eater_day);
   const double substitute_g = static_cast<double>(config.substitute_kg_per_eater_day) * 1000.0;
   for (std::size_t row = 0; row < current.families.rows.size(); ++row) {
     FamilyRow& family = current.families.rows[row];

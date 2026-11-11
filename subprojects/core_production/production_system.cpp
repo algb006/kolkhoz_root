@@ -661,7 +661,7 @@ class ProductionSystem final : public IProductionSystem {
     }
     constexpr double kSubstituteGramsAnEaterDay = 1000.0;  // health §4: 1 kg an eater-day
     const double eaters = static_cast<double>(completed.residents.rows.size());
-    const double norm = config_.farming.salt_norm_g_per_eater_day;
+    const auto norm = static_cast<double>(config_.farming.salt_norm_g_per_eater_day);
     if (eaters > 0.0 && norm > 0.0) {
       const double eater_days =
           (static_cast<double>(view.salt_held) / norm) +
