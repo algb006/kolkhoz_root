@@ -565,6 +565,8 @@ class Session final : public ISession {
     return simulation_->GrassStandOf(field);
   }
 
+  SaltView SaltToday() const override { return simulation_->SaltToday(); }
+
   RoadPieces SelectRoadPieces(const RoadSelection& selection,
                               RoadOperation operation) const override {
     return simulation_->SelectRoadPieces(selection, operation);

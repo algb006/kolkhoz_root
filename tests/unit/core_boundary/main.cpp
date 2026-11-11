@@ -165,6 +165,8 @@ class ScriptedSimulation final : public core::ISimulation {
 
   core::GrassStandView GrassStandOf(core::FieldId /*field*/) const override { return {}; }
 
+  core::SaltView SaltToday() const override { return {}; }
+
   /// No works and no carts here: nothing to cart.
   core::SupplyEstimate SupplyEstimateFor(core::UnitId /*unit*/) const override { return {}; }
 

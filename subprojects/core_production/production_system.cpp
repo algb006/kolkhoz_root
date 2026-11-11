@@ -633,6 +633,11 @@ class ProductionSystem final : public IProductionSystem {
     return GrassStandOn(config_, completed, field);
   }
 
+  /// STUB (#1630 (A), 12 Nov 2026): the door stands, the salt need does not
+  /// - no eater eats salt, no family keeps a count - so `measured` false.
+  /// Return when: #1630 (B) lands the need, the issue and the count.
+  SaltView SaltToday(const WorldState& /*completed*/) const override { return {}; }
+
   Grams StandingCropGrams(const WorldState& /*world*/, const FieldRow& field) const override {
     if (field.crop.value >= config_.crops.size()) {
       return 0;

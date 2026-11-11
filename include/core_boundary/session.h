@@ -973,6 +973,14 @@ class ISession {
   /// @note Between steps; the answer describes State().
   virtual GrassStandView GrassStandOf(FieldId field) const = 0;
 
+  /// @brief The village's salt (ISimulation::SaltToday; core_common/
+  ///        salt_view.h; #1630 (A)): salt and substitutes held, the table's
+  ///        days at the norm (the lamp «Соли на столе на N суток»), families
+  ///        by step of the salt hunger, and the days of «Без соли»'s run.
+  ///        STUB until #1630 (B): `measured` false - say «not measured».
+  /// @note Between steps; the answer describes State().
+  virtual SaltView SaltToday() const = 0;
+
   /// @brief The pieces a drag along a laid road selects for `operation`,
   ///        snapped to whole pieces, each in or out and why, and the
   ///        operation's estimate (ISimulation::SelectRoadPieces).
