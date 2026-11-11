@@ -164,6 +164,8 @@ const char* KindName(core::EventKind kind) {
       return "books_accepted";
     case core::EventKind::kAuditUnguardedLeak:
       return "audit_unguarded_leak";
+    case core::EventKind::kSaltEndingDue:
+      return "salt_ending_due";
     case core::EventKind::kElectrificationUnlocked:
       return "electrification_unlocked";
     case core::EventKind::kFireBroke:

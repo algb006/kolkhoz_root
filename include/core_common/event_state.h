@@ -921,6 +921,19 @@ enum class EventKind : std::uint8_t {
   /// церкви / бурта: {x} т — перевезите под охрану»).
   kAuditUnguardedLeak,
 
+  /// «БЕЗ СОЛИ» - THE CONDITION OF THE FIFTH ENDING (epochs §8 «Отдельный исход
+  /// — «Без соли»»; health §4 «Солевой голод»; the human, 1 Oct 2026: «Это
+  /// пятый конец партии»; #1630): at least half the families on the salt
+  /// hunger's stage 4 eight days running, raised once - the core stops here,
+  /// as with kPlanTrialDue; the ending is host's script. kInterrupting. Seam
+  /// key `salt_ending_due`.
+  /// STUB (#1630 (S), 11 Nov 2026): no producer - the need is not in the core
+  /// (no eater eats salt, no family's count, no stages); (A) the contract, (B)
+  /// the need and stages, (C) this condition, in boss's order.
+  /// @no_emit STUB #1630: no producer - the salt need is not in the core yet;
+  /// (C) raises it from the families' stage-4 count.
+  kSaltEndingDue,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.

@@ -125,3 +125,4 @@ kAuditRemark,1,
 kAuditTrialDue,1,
 kBooksAccepted,1,
 kAuditUnguardedLeak,1,
+kSaltEndingDue,0,STUB #1630: no producer - the salt need is not in the core yet;
