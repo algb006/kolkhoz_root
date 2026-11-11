@@ -126,7 +126,17 @@ class SaltTally {
     lines_ << " lots " << rule.LotsIn(year) << " would_borrow_months " << rule.WouldBorrowIn(year)
            << " salt_points " << static_cast<std::int64_t>(rule.LotsIn(year)) * rule.Points()
            << " grant " << book.limit_points_granted << " need_on " << (rule.NeedOn() ? 1 : 0)
-           << " buy_on " << (rule.On() ? 1 : 0) << '\n';
+           << " buy_on "
+           << (rule.On() ? 1 : 0)
+           // THE YEAR BOOK'S PEOPLE (econ's F1, boss 12 Nov): births and the
+           // births a stop cancelled, by stop; weddings; deaths - the core's
+           // only resident death cause is the age bands (RunDeaths, #1302);
+           // departures; arrivals.
+           << " births " << book.births << " births_drawn " << book.births_drawn
+           << " stopped_health " << book.births_stopped_health << " stopped_away "
+           << book.births_stopped_away << " stopped_satiety " << book.births_stopped_satiety
+           << " weddings " << book.weddings << " deaths_age " << book.deaths << " departures "
+           << book.departures << " arrivals " << book.arrivals << '\n';
     family_days_ = {};
   }
 

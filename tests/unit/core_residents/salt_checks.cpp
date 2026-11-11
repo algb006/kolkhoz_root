@@ -133,11 +133,18 @@ int CheckTheSalt() {
   failures += Expect(
       std::fabs(dry.residents.rows[0].mood - 52.0F) < 0.01F && core::SaltMoodTerm(on, 1) == -4.0F,
       "salt: the month's mood -8 from step 2, -4 on step 1");
+  // THE FLOOR: step 3 takes health to 45 and no lower; one below keeps his own.
+  dry.residents.rows[0].health = 45.5F;
+  dry.residents.rows[1].health = 30.0F;
+  core::RunSaltDay(on, dry);
+  failures += Expect(std::fabs(dry.residents.rows[0].health - 45.0F) < 0.01F &&
+                         std::fabs(dry.residents.rows[1].health - 30.0F) < 0.01F,
+                     "salt: step 3 stops at the health floor 45; below it nothing is taken");
   // RECOVERY: a met day takes two off.
   dry.families.rows[0].pantry[kSalt.value] = 250;
   core::RunSaltDay(on, dry);
   failures +=
-      Expect(dry.families.rows[0].salt_hunger_days == 10.0F && dry.families.rows[0].salt_step == 2,
-             "salt: a met day takes two days off the count (12 -> 10, step 2)");
+      Expect(dry.families.rows[0].salt_hunger_days == 11.0F && dry.families.rows[0].salt_step == 2,
+             "salt: a met day takes two days off the count (13 -> 11, step 2)");
   return failures;
 }

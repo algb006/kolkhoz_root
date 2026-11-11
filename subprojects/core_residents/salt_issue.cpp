@@ -21,7 +21,7 @@
 namespace core {
 namespace {
 
-constexpr std::array<std::string_view, 10> kSaltIssueWorldParamKeys = {
+constexpr std::array<std::string_view, 11> kSaltIssueWorldParamKeys = {
     "salt_need_on",
     "salt_norm_g_per_eater_day",
     "salt_substitute_kg_per_eater_day",
@@ -31,6 +31,7 @@ constexpr std::array<std::string_view, 10> kSaltIssueWorldParamKeys = {
     "salt_mood_step1",
     "salt_mood_step2",
     "salt_health_loss_step3",
+    "salt_health_floor_step3",
     "salt_count_recovery"};
 
 Grams& PantrySlot(FamilyRow& family, ResourceId resource) {
@@ -107,6 +108,9 @@ bool ParseSaltIssueConfig(const ITableSet& tables, SaltIssueConfig& config, std:
          .value = &config.health_loss_step3,
          .range = {.low = 0.0F, .high = 100.0F}},
         {.key = kSaltIssueWorldParamKeys[9],
+         .value = &config.health_floor_step3,
+         .range = {.low = 0.0F, .high = 100.0F}},
+        {.key = kSaltIssueWorldParamKeys[10],
          .value = &config.count_recovery,
          .range = {.low = 0.0F, .high = 100.0F}},
     }};
@@ -233,7 +237,12 @@ void RunSaltDay(const SaltIssueConfig& config, WorldState& current) {
   for (ResidentRow& person : current.residents.rows) {
     const std::uint32_t row = FindRow(current.families, person.family);
     if (row != kNoRow && current.families.rows[row].salt_step >= 3U) {
-      person.health = std::clamp(person.health - config.health_loss_step3, kMetricMin, kMetricMax);
+      // DOWN TO THE FLOOR, NO LOWER; one already under it keeps his own.
+      if (person.health > config.health_floor_step3) {
+        person.health =
+            std::max(config.health_floor_step3,
+                     std::clamp(person.health - config.health_loss_step3, kMetricMin, kMetricMax));
+      }
     }
   }
 }

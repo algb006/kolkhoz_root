@@ -26,7 +26,7 @@
 ///     (C)'s). Its price: the month's mood salt_mood_step1 / salt_mood_step2
 ///     (step 3 keeps step 2's), labour's output factor from step 2
 ///     (core_labor, efficiency_salt_weak_factor), health -salt_health_loss_
-///     step3 a day a member on step 3.
+///     step3 a day a member on step 3, down to salt_health_floor_step3.
 /// OFF (salt_need_on 0, the default with no row): nothing is issued or eaten,
 /// the count and the step stay 0.
 
@@ -54,10 +54,15 @@ struct SaltIssueConfig {
   float mood_step1 = -4.0F;                  ///< `salt_mood_step1`
   float mood_step2 = -8.0F;                  ///< `salt_mood_step2` (step 3 keeps it)
   float health_loss_step3 = 1.0F;            ///< `salt_health_loss_step3`, a day
-  float count_recovery = 2.0F;               ///< `salt_count_recovery`, days off a met day
-  ResourceId salt;                           ///< resources.csv `salt`
-  ResourceId salted_fish;                    ///< resources.csv `salted_fish`
-  ResourceId salted_meat;                    ///< resources.csv `salted_meat`
+  /// `salt_health_floor_step3` (econ, econ-boss-1630-b-read [1]-[3]; health §4
+  /// step 3, STUB): step 3 takes health down to here and no lower; a member
+  /// already below keeps his own. Without it step 3 held every mother under
+  /// the birth stop for as long as it lasted (B2: births -748 in 2 villages).
+  float health_floor_step3 = 45.0F;
+  float count_recovery = 2.0F;  ///< `salt_count_recovery`, days off a met day
+  ResourceId salt;              ///< resources.csv `salt`
+  ResourceId salted_fish;       ///< resources.csv `salted_fish`
+  ResourceId salted_meat;       ///< resources.csv `salted_meat`
 };
 
 /// @brief The world_params keys this file reads, for the assembly's union.
