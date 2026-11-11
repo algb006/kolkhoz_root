@@ -109,6 +109,10 @@ Grams PicklingReserve(const ProductionConfig& config,
 /// Batches of `pickling` its inputs in the stores allow: the main input
 /// above the fresh reserve when `main_too`, and every other input (the
 /// grocery's salt) always. Never below zero.
+Grams SaltTableReserve(const ProductionConfig& config,
+                       const WorldState& world,
+                       ResourceId resource);  // «стол раньше бочки», below
+
 double PicklingBatchesStocked(const ProductionConfig& config,
                               const WorldState& world,
                               const ProcessingRecipe& pickling,
@@ -120,6 +124,7 @@ double PicklingBatchesStocked(const ProductionConfig& config,
     if (line == 0) {
       available -= PicklingReserve(config, world, input.resource);
     }
+    available -= SaltTableReserve(config, world, input.resource);  // #1630 (B)
     const double by = available > 0 && input.grams > 0
                           ? static_cast<double>(available) / static_cast<double>(input.grams)
                           : 0.0;
@@ -205,6 +210,23 @@ struct Limit {
   }
 };
 
+/// «СТОЛ РАНЬШЕ БОЧКИ» (#1630 (B); health §4 «Числа»): with the salt need on,
+/// the salting and the pickling take the stores' salt only above this many
+/// grams - salt_table_reserve_months of the village's table at its residents
+/// today. 0 for any other input, or with the need off.
+Grams SaltTableReserve(const ProductionConfig& config,
+                       const WorldState& world,
+                       ResourceId resource) {
+  if (!config.farming.salt_need_on || resource.value != config.salt_resource.value ||
+      resource.value == kInvalidDefIdValue) {
+    return 0;
+  }
+  const double grams = static_cast<double>(config.farming.salt_norm_g_per_eater_day) *
+                       static_cast<double>(world.residents.rows.size()) * kDaysPerMonth *
+                       static_cast<double>(config.farming.salt_table_reserve_months);
+  return static_cast<Grams>(std::llround(grams));
+}
+
 /// The inputs' bound; sets `has_work` from the main input (the first line;
 /// the cooperage's work is its want, set by the caller).
 void LimitByInputs(const ProductionConfig& config,
@@ -221,6 +243,7 @@ void LimitByInputs(const ProductionConfig& config,
     if (recipe.rule == ProcessingRule::kCooperage) {
       available -= OwedToSites(config, world, input.resource);
     }
+    available -= SaltTableReserve(config, world, input.resource);
     const double by = available > 0 && input.grams > 0
                           ? static_cast<double>(available) / static_cast<double>(input.grams)
                           : 0.0;

@@ -539,6 +539,11 @@ class ResidentsSystem final : public IResidentsSystem {
     RunDemographyDay(config_, current);
     RunSpecialistArrivals(config_, current);
     RunFamilyExchange(food_, config_.life_speedup, current);
+    // THE SALT (#1630 (B); salt_issue.h): on a month's first day the stores'
+    // salt to the yards, then every day the norm eaten and the count kept -
+    // before the vitals, so a step 3 day's health loss is the day's.
+    IssueSaltMonth(config_.salt, current);
+    RunSaltDay(config_.salt, current);
     AccumulateVitals(config_, food_.satiety.health_loss_satiety_threshold, current);
     // The year's book, after the exchange has moved the food and before the
     // turn below can close it: the satisfaction sampled is yesterday's
@@ -560,6 +565,8 @@ class ResidentsSystem final : public IResidentsSystem {
     // THE MONTH'S SUGAR TO THE PEOPLE FIRST (#1241; sugar_issue.h): «Сперва
     // людям, потом ночь самогонщика» - what it leaves is the still's.
     IssueSugarMonth(config_.sugar, config_.life_speedup, current);
+    // The salt's step on the month's mood the sugar has just composed.
+    SaltMoodMonth(config_.salt, current);
     // The stores' month first — the dry month and the distillers' replacement
     // (night_trade.h) — then the month's drinking, over the month the labor
     // day close has just finished counting (alcoholism.h).

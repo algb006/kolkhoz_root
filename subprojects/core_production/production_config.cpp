@@ -1186,7 +1186,7 @@ bool ParseMeadowKinds(const ITable& table, FarmingConfig& farming, std::string& 
 /// AT ALL: until 2026-09-16 this module took every number off its own
 /// hand-written tables, and the two halves of billeting are what brought it
 /// here. The next world constant lands in the same place.
-constexpr std::array<std::string_view, 33> kProductionWorldParamKeys = {
+constexpr std::array<std::string_view, 36> kProductionWorldParamKeys = {
     "billet_heads_per_yard",
     "billet_yield_factor",
     "school_year_start_month",
@@ -1229,7 +1229,12 @@ constexpr std::array<std::string_view, 33> kProductionWorldParamKeys = {
     // The month's care coverage (#1443): full at and above the first, the
     // kind's floor at and below the second.
     "herd_care_full_coverage",
-    "herd_care_floor_coverage"};
+    "herd_care_floor_coverage",
+    // #1630 (B): the salt need's switch and norm (residents' too, a second
+    // READER), and the table's reserve the salting may not take.
+    "salt_need_on",
+    "salt_norm_g_per_eater_day",
+    "salt_table_reserve_months"};
 
 /// THE SCHOOL YEAR IS READ HERE AS WELL AS BY THE SCHOOL, and that is a
 /// second READER, not a second home: the months live in world_params.csv and
@@ -1254,6 +1259,7 @@ bool ParseProductionWorldParams(const ITable& world,
   float cold_to = static_cast<float>(farming.cold_last_month) + 1.0F;
   float hunger_episode_fed_days = static_cast<float>(farming.hunger_episode_fed_days);
   auto barrack_poultry_heads = static_cast<float>(farming.barrack_poultry_heads);
+  float salt_on = farming.salt_need_on ? 1.0F : 0.0F;
   const Range months{.low = 1.0F, .high = static_cast<float>(kMonthsPerYear)};
   const std::array<ScalarKnob, kProductionWorldParamKeys.size()> knobs = {
       ScalarKnob{.key = kProductionWorldParamKeys[0],
@@ -1382,10 +1388,20 @@ bool ParseProductionWorldParams(const ITable& world,
                  .range = Range{.low = 0.0F, .high = 1.0F}},
       ScalarKnob{.key = kProductionWorldParamKeys[32],
                  .value = &farming.herd_care_floor_coverage,
-                 .range = Range{.low = 0.0F, .high = 1.0F}}};
+                 .range = Range{.low = 0.0F, .high = 1.0F}},
+      ScalarKnob{.key = kProductionWorldParamKeys[33],
+                 .value = &salt_on,
+                 .range = Range{.low = 0.0F, .high = 1.0F}},
+      ScalarKnob{.key = kProductionWorldParamKeys[34],
+                 .value = &farming.salt_norm_g_per_eater_day,
+                 .range = Range{.low = 0.0F, .high = 1000.0F}},
+      ScalarKnob{.key = kProductionWorldParamKeys[35],
+                 .value = &farming.salt_table_reserve_months,
+                 .range = Range{.low = 0.0F, .high = 24.0F}}};
   if (!ReadKnobs(world, "world_params", knobs, error)) {
     return false;
   }
+  farming.salt_need_on = salt_on >= 0.5F;
   farming.barrack_poultry_heads = static_cast<std::uint16_t>(barrack_poultry_heads);
   farming.hunger_episode_fed_days = static_cast<std::uint16_t>(hunger_episode_fed_days);
   farming.cold_first_month = static_cast<std::uint8_t>(cold_from - 1.0F);
@@ -1765,6 +1781,10 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
   }
   config.manure_resource = ResourceByKey(resources, "manure");
   config.hay_resource = ResourceByKey(resources, "hay");
+  // #1630 (B): the salt and its substitutes, for the table's reserve and SaltToday.
+  config.salt_resource = ResourceByKey(resources, "salt");
+  config.salted_fish_resource = ResourceByKey(resources, "salted_fish");
+  config.salted_meat_resource = ResourceByKey(resources, "salted_meat");
   config.green_mass_resource = ResourceByKey(resources, "green_mass");
   config.straw_resource = ResourceByKey(resources, "straw");
   config.milk_resource = ResourceByKey(resources, "milk");

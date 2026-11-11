@@ -57,6 +57,7 @@
 #include "life_config.h"
 #include "membership.h"
 #include "night_trade.h"
+#include "salt_checks.h"
 #include "schooling.h"
 #include "specialist_arrival.h"
 #include "stream_split_checks.h"
@@ -5217,6 +5218,7 @@ int main() {
   failures += CheckBurial();
   failures += CheckFunerals();
   failures += CheckTheSugar();
+  failures += CheckTheSalt();  // #1630 (B)
   failures += CheckTheYardsInheritance();
   failures += CheckTheDrinkingRaisers();
   failures += CheckNoWeddingIntoABarrackAndTheCrowdedBarrack();

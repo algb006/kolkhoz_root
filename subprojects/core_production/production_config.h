@@ -836,6 +836,16 @@ struct FarmingConfig {
   float herd_care_full_coverage = 0.9F;
   float herd_care_floor_coverage = 0.5F;
 
+  /// THE SALT NEED as production reads it (#1630 (B); world_params
+  /// `salt_need_on`, `salt_norm_g_per_eater_day` - the residents' rows, read
+  /// a second time - and `salt_table_reserve_months`): «стол раньше бочки»,
+  /// the salting and the pickling take the stores' salt only above this many
+  /// months of the village's table (residents × norm); and SaltToday's table
+  /// days. Off: no reserve, SaltToday `measured` false. STUB econ: 3 months.
+  bool salt_need_on = false;
+  float salt_norm_g_per_eater_day = 125.0F;
+  float salt_table_reserve_months = 3.0F;
+
   /// THE SECOND LEVER OF THE CATTLE YARD (livestock design §5; econ-boss-
   /// complexity-yards-groom [3]-[4]; world_params `herd_without_yard_yield_
   /// factor`, 0): from the day the player enters, a kolkhoz herd with no
@@ -1227,6 +1237,12 @@ struct ProductionConfig {
   ResourceId green_mass_resource;
 
   ResourceId straw_resource;  ///< resources.csv "straw" row: the grain's by-product.
+
+  /// resources.csv `salt`, `salted_fish`, `salted_meat` (#1630 (B)): the
+  /// table's reserve and SaltToday. Invalid: none in the tables.
+  ResourceId salt_resource;
+  ResourceId salted_fish_resource;
+  ResourceId salted_meat_resource;
 
   // -- stage 6: where herd produce lands (invalid = kind yields none) ------
   ResourceId milk_resource;  ///< resources.csv "milk" row.

@@ -345,6 +345,8 @@ core::WorldState MakeWorld() {
   rich.sugar_share = 0.25F;
   rich.drink_occasion_month = 97;  // save 189 (#1262)
   rich.shock_month = 96;
+  rich.salt_hunger_days = 9.5F;  // save 208 (#1630 (B))
+  rich.salt_step = 2;
   core::AppendRow(world.families, rich);
   core::FamilyRow bare;  // empty pantry: the vector must stay empty
   core::AppendRow(world.families, bare);
@@ -2141,8 +2143,10 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // without-help attention and the herd trudodni, +8 a family, two -
     // predicted 416 -> 432, held. Save 205 (#1084): the funeral's
     // satisfaction term and its last day, +8 a family, two - predicted 432 ->
-    // 448 before the build.
-    {"families", 448, 0xbbcfabcda35473a4ULL},
+    // 448 before the build. Save 208 (#1630 (B)): the days without salt and
+    // the salt step, +5 a family, two - predicted 448 -> 458 before the
+    // build; the hash read off it.
+    {"families", 458, 0xbbcfabcda35473a4ULL},
     // Save 84: +36 — the harvest by parts' laid share (4) and grams (8), 12
     // a row, three rows; predicted before the build and held. Then the first
     // row given non-zero values: the size held at 305, the hash moved.
@@ -3051,35 +3055,36 @@ int main() {
       "a yard granted the ration comes back granted, and one not granted, not");
   failures +=
       Expect(loaded.families.rows[0].dry_months == 4, "a yard's dry months come back (save 60)");
-  failures +=
-      Expect(loaded.families.rows[0].formed_day == 131 &&
-                 loaded.families.rows[0].earned_since_formed == 245 &&
-                 loaded.families.rows[0].advance_debt == 7'300'000 &&
-                 loaded.families.rows[0].advance_given == 11'900'000 &&
-                 loaded.families.rows[0].formed_in_barrack == 1 &&
-                 loaded.ledger.closed.advance_written_off_ended == 71'000 &&
-                 loaded.ledger.closed.advance_written_off_turns == 12'500 &&
-                 loaded.chairman.hay_cut_dry_work_days == 5 &&  // save 161
-                 loaded.chairman.hay_day_worked_month == 6 &&
-                 loaded.chairman.hay_cut_avral_days == 3 && loaded.chairman.hay_cut_crew == 16 &&
-                 loaded.chairman.hay_cut_mower_days == 24.0F &&  // save 195
-                 loaded.families.rows[0].advance_turns == 1 &&
-                 loaded.families.rows[0].sugar_dry_months == 3 &&  // save 188 (#1241)
-                 loaded.families.rows[0].sugar_share == 0.25F &&
-                 loaded.families.rows[0].drink_occasion_month == 97 &&  // save 189 (#1262)
-                 loaded.families.rows[0].shock_month == 96 &&
-                 loaded.residents.rows[0].mood_base == 57.5F &&
-                 loaded.chairman.sugar_complaint_season == 9 &&
-                 loaded.families.rows[1].advance_turns == 0 &&
-                 loaded.ledger.current.advance_written_off_ended == 0 &&
-                 loaded.families.rows[1].formed_day == core::kNotFormedInPlay &&
-                 loaded.families.rows[1].advance_debt == 0 &&
-                 loaded.ledger.closed.advance == world.ledger.closed.advance &&
-                 loaded.ledger.closed.advance_repaid == 640'000 &&
-                 loaded.ledger.current.advance.empty() && loaded.ledger.current.advance_repaid == 0,
-             "a new household's advance comes back - the day formed, the trudodni since, "
-             "the debt, the given, the barrack - and the book's advance and repaid, the "
-             "closed year's apart from the open one's (save 159, #170)");
+  failures += Expect(
+      loaded.families.rows[0].formed_day == 131 &&
+          loaded.families.rows[0].earned_since_formed == 245 &&
+          loaded.families.rows[0].advance_debt == 7'300'000 &&
+          loaded.families.rows[0].advance_given == 11'900'000 &&
+          loaded.families.rows[0].formed_in_barrack == 1 &&
+          loaded.ledger.closed.advance_written_off_ended == 71'000 &&
+          loaded.ledger.closed.advance_written_off_turns == 12'500 &&
+          loaded.chairman.hay_cut_dry_work_days == 5 &&  // save 161
+          loaded.chairman.hay_day_worked_month == 6 && loaded.chairman.hay_cut_avral_days == 3 &&
+          loaded.chairman.hay_cut_crew == 16 &&
+          loaded.chairman.hay_cut_mower_days == 24.0F &&  // save 195
+          loaded.families.rows[0].advance_turns == 1 &&
+          loaded.families.rows[0].sugar_dry_months == 3 &&  // save 188 (#1241)
+          loaded.families.rows[0].sugar_share == 0.25F &&
+          loaded.families.rows[0].drink_occasion_month == 97 &&  // save 189 (#1262)
+          loaded.families.rows[0].shock_month == 96 &&
+          loaded.families.rows[0].salt_hunger_days == 9.5F &&  // save 208 (#1630 (B))
+          loaded.families.rows[0].salt_step == 2 && loaded.residents.rows[0].mood_base == 57.5F &&
+          loaded.chairman.sugar_complaint_season == 9 &&
+          loaded.families.rows[1].advance_turns == 0 &&
+          loaded.ledger.current.advance_written_off_ended == 0 &&
+          loaded.families.rows[1].formed_day == core::kNotFormedInPlay &&
+          loaded.families.rows[1].advance_debt == 0 &&
+          loaded.ledger.closed.advance == world.ledger.closed.advance &&
+          loaded.ledger.closed.advance_repaid == 640'000 && loaded.ledger.current.advance.empty() &&
+          loaded.ledger.current.advance_repaid == 0,
+      "a new household's advance comes back - the day formed, the trudodni since, "
+      "the debt, the given, the barrack - and the book's advance and repaid, the "
+      "closed year's apart from the open one's (save 159, #170)");
   failures += Expect(loaded.wedding_waits.rows.size() == 1 &&
                          loaded.wedding_waits.rows[0].bride.value == 7 &&
                          loaded.wedding_waits.rows[0].groom.value == 9 &&

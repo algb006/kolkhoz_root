@@ -633,10 +633,43 @@ class ProductionSystem final : public IProductionSystem {
     return GrassStandOn(config_, completed, field);
   }
 
-  /// STUB (#1630 (A), 12 Nov 2026): the door stands, the salt need does not
-  /// - no eater eats salt, no family keeps a count - so `measured` false.
-  /// Return when: #1630 (B) lands the need, the issue and the count.
-  SaltView SaltToday(const WorldState& /*completed*/) const override { return {}; }
+  /// #1630 (B): the stores' and the pantries' salt and substitutes, the
+  /// table's days at the norm (a substitute's kilogram one eater-day, health
+  /// §4), the families by the step the residents set. `measured` false with
+  /// the need off. half_on_edge_days stays 0: step 4 and its run are (C)'s.
+  SaltView SaltToday(const WorldState& completed) const override {
+    SaltView view;
+    if (!config_.farming.salt_need_on || config_.salt_resource.value == kInvalidDefIdValue) {
+      return view;
+    }
+    view.measured = true;
+    const auto add = [](const ResourceAmounts& stock, ResourceId resource, Grams& into) {
+      if (resource.value != kInvalidDefIdValue && resource.value < stock.size()) {
+        into += stock[resource.value];
+      }
+    };
+    for (const UnitRow& unit : completed.units.rows) {
+      add(unit.stock, config_.salt_resource, view.salt_held);
+      add(unit.stock, config_.salted_fish_resource, view.substitutes_held);
+      add(unit.stock, config_.salted_meat_resource, view.substitutes_held);
+    }
+    for (const FamilyRow& family : completed.families.rows) {
+      add(family.pantry, config_.salt_resource, view.salt_held);
+      add(family.pantry, config_.salted_fish_resource, view.substitutes_held);
+      add(family.pantry, config_.salted_meat_resource, view.substitutes_held);
+      ++view.families_by_step[std::min<std::size_t>(family.salt_step, kSaltHungerSteps - 1U)];
+    }
+    constexpr double kSubstituteGramsAnEaterDay = 1000.0;  // health §4: 1 kg an eater-day
+    const double eaters = static_cast<double>(completed.residents.rows.size());
+    const double norm = config_.farming.salt_norm_g_per_eater_day;
+    if (eaters > 0.0 && norm > 0.0) {
+      const double eater_days =
+          (static_cast<double>(view.salt_held) / norm) +
+          (static_cast<double>(view.substitutes_held) / kSubstituteGramsAnEaterDay);
+      view.table_days_left = static_cast<float>(eater_days / eaters);
+    }
+    return view;
+  }
 
   Grams StandingCropGrams(const WorldState& /*world*/, const FieldRow& field) const override {
     if (field.crop.value >= config_.crops.size()) {
