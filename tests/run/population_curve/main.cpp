@@ -43,6 +43,7 @@
 #include "../common/building_chairman.h"
 #include "../common/crime_tally.h"
 #include "../common/day_zero_tally.h"
+#include "../common/district_material_wait_tally.h"
 #include "../common/env_value.h"
 #include "../common/fed_tally.h"
 #include "../common/feed_rung_tally.h"
@@ -869,6 +870,8 @@ bool Walk(std::uint64_t seed,
   run::HorseTailTally horse_tail(*world.tables);
   // #1586's trace of the hay lamp, y1 m6 - y2 m6, for KOLKHOZ_HAY_TRACE_SEEDS.
   run::HayTraceTally hay_trace(*world.tables, seed);
+  // #1441 T0: sites waiting on the district's steel, tools, glass, roofing.
+  run::DistrictMaterialWaitTally district_waits(*world.tables, seed);
   // #1580's probe: what hour 0 of a year's first day books into the closing year.
   run::DayZeroTally day_zero;
   std::array<std::uint32_t, core::kRestSourceCount> r1373_sources = {};
@@ -1006,6 +1009,7 @@ bool Walk(std::uint64_t seed,
       feed_rung.CountDayEnd(simulation->CompletedState());
       horse_tail.CountDayEnd(*simulation);
       hay_trace.CountDayEnd(*simulation, std::cout);
+      district_waits.CountDayEnd(*simulation);
       day_zero.CountDayEnd(simulation->CompletedState());
       if (!warm_off) {
         strada.CountDayEnd(simulation->CompletedState());
@@ -1533,6 +1537,7 @@ bool Walk(std::uint64_t seed,
       funerals.Print(std::cout, seed);
       herds.Print(std::cout, seed);
       crime.Print(std::cout, seed);
+      district_waits.Print(std::cout);       // #1441 T0
       herds.PrintCowFlows(std::cout, seed);  // #1570
       hand_overs.Print(std::cout, seed);
       feed_rung.Print(std::cout, seed);                                             // #1573
