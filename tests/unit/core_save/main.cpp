@@ -2145,8 +2145,8 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // satisfaction term and its last day, +8 a family, two - predicted 432 ->
     // 448 before the build. Save 208 (#1630 (B)): the days without salt and
     // the salt step, +5 a family, two - predicted 448 -> 458 before the
-    // build; the hash read off it.
-    {"families", 458, 0xbbcfabcda35473a4ULL},
+    // build, held; the hash read off it (s1630b2).
+    {"families", 458, 0x9dce69255409e9bbULL},
     // Save 84: +36 — the harvest by parts' laid share (4) and grams (8), 12
     // a row, three rows; predicted before the build and held. Then the first
     // row given non-zero values: the size held at 305, the hash moved.
