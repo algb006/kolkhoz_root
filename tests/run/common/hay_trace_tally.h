@@ -119,6 +119,18 @@ class HayTraceTally {
     day_feed_eaten_ = rise(sum(book.feed), last_feed_eaten_);
     day_feed_short_ = rise(sum(book.herd_feed_short), last_feed_short_);
     day_cut_ = rise(hay_ < book.harvest.size() ? book.harvest[hay_] : 0, last_cut_);
+    // #1606's heaps print (boss, 11 Nov): the heaps tonight and the hay rotted
+    // today - the reader takes the heaps' own rot as yesterday's heaps + cut -
+    // hauled - tonight's heaps, and checks it against the book's spoiled.
+    day_hay_spoiled_ = rise(hay_ < book.spoiled.size() ? book.spoiled[hay_] : 0, last_hay_spoiled_);
+    heap_hay_ = 0;
+    heap_fields_ = 0;
+    for (const core::FieldRow& field : now.fields.rows) {
+      if (field.reaped_grams > 0 && field.reaped_resource.value == hay_) {
+        heap_hay_ += field.reaped_grams;
+        ++heap_fields_;
+      }
+    }
     // The straw: what the threshing lays (harvest) and the herds eat (feed),
     // today - a feed whose INCOME after today the forecast may not count.
     day_straw_laid_ =
@@ -207,6 +219,8 @@ class HayTraceTally {
     // #1606: the forecast's need over the horizon by kind, its projected
     // head-days, and today's real heads - kind:need_u/head_days/heads_today;
     // last on the line, so the readers of the fields before it stand.
+    out << " heaps hay_on_heaps_kg " << heap_hay_ / core::kGramsPerKilogram << " heap_fields "
+        << heap_fields_ << " hay_spoiled_today_kg " << day_hay_spoiled_ / core::kGramsPerKilogram;
     out << " by_kind";
     for (std::size_t kind = 0; kind < t.heads_today_by_kind.size(); ++kind) {
       const float need = kind < t.need_units_by_kind.size() ? t.need_units_by_kind[kind] : 0.0F;
@@ -247,6 +261,10 @@ class HayTraceTally {
   core::Grams day_straw_eaten_ = 0;
   core::Grams last_straw_eaten_ = 0;
   std::int64_t day_handed_ = 0;
+  core::Grams day_hay_spoiled_ = 0;  ///< the book's spoiled hay today (stores + heaps)
+  core::Grams last_hay_spoiled_ = 0;
+  core::Grams heap_hay_ = 0;       ///< hay lying on the field heaps tonight (HeapGrams)
+  std::uint32_t heap_fields_ = 0;  ///< fields with a hay heap tonight
   std::uint32_t unfed_herds_ = 0;
   float max_unfed_days_ = 0.0F;
 };
