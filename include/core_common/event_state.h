@@ -39,6 +39,8 @@
 #ifndef CORE_COMMON_EVENT_STATE_H_
 #define CORE_COMMON_EVENT_STATE_H_
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -950,6 +952,28 @@ enum class EventKind : std::uint8_t {
   /// reason looks like tidiness and works like a hole.
   kEventKindCount,
 };
+
+/// @brief THE ENDING CONDITIONS (host's request, 12 Nov 2026; boss-host-
+///        epoch1-resume [4]): the kinds at which the core STOPS and the host's
+///        script must open an Epoch I ending - «Под суд» by the plan and by the
+///        audit, «Без соли». Machine-readable, so a consumer's guard «every
+///        condition has a handler» reads this list and not a comment's wording
+///        (host's rules missed kAuditTrialDue for a whole pin).
+///        NOT HERE because no event exists for them: «Под суд» by the herd's
+///        hunger (14 %, epochs §8: the core keeps no event; a reader counts
+///        herd_deaths_hunger), «Село кончилось» (#1569, no trigger), «Правление
+///        сгорело» (#1574, no producer). Epoch II's door is the era's own.
+inline constexpr std::array<EventKind, 3> kEndingConditionEventKinds = {
+    EventKind::kPlanTrialDue,
+    EventKind::kAuditTrialDue,
+    EventKind::kSaltEndingDue,
+};
+
+/// EVERY NEW KIND IS CLASSIFIED: appending a kind fails here until its author
+/// has asked «is it an ending's condition?», added it above if so, and raised
+/// this count - the list cannot fall behind the enum silently.
+static_assert(static_cast<std::size_t>(EventKind::kEventKindCount) == 122,
+              "a new EventKind: classify it in kEndingConditionEventKinds, then raise this count");
 
 /// @brief One thing that happened. Plain data, no text: the presentation
 /// composes the sentence from the ids and the string tables. Every id that
