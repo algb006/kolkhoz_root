@@ -93,17 +93,19 @@ class HayTraceTally {
     // of hay, today's rise), and the day's deaths; both start the next day at
     // nought. The book's turn resets its sum, so a fall reads as the new year's.
     const core::WorldState& now = simulation.CompletedState();
-    const core::Grams hauled_sum = hay_ < now.ledger.current.hauled_to_stores.size()
-                                       ? now.ledger.current.hauled_to_stores[hay_]
-                                       : 0;
-    day_hauled_ = hauled_sum >= last_hauled_ ? hauled_sum - last_hauled_ : hauled_sum;
-    last_hauled_ = hauled_sum;
     // THE DAY'S ACTUALS (boss: «the forecast's short days and death day vs actual
     // unfed days / deaths, and what fed the herd that the forecast did not
     // count»): the book's rises today - the herds' hay eaten, all feed eaten,
     // the feed they went short, the hay cut - and the herds unfed tonight.
-    const auto rise = [](core::Grams now_sum, core::Grams& last) {
-      const core::Grams today = now_sum >= last ? now_sum - last : now_sum;
+    // ON THE TURN'S DAY (day 0 of a year) the book was reset at hour 0 AFTER
+    // that hour's writes went into the closing year (#1580): today's rise is
+    // the closed book's tail above yesterday's reading plus the new book. Until
+    // 11 Nov a fall read as «the new year's» alone, and the heaps lost 6-8 t
+    // UNNAMED on every turn (fedbyh, all on day 48).
+    const bool turn_day = now.calendar.day > 0 && now.calendar.day % core::kDaysPerYear == 0;
+    const auto rise = [turn_day](core::Grams now_sum, core::Grams closed_sum, core::Grams& last) {
+      const core::Grams today = turn_day ? now_sum + (closed_sum > last ? closed_sum - last : 0)
+                                         : (now_sum >= last ? now_sum - last : now_sum);
       last = now_sum;
       return today;
     };
@@ -114,15 +116,28 @@ class HayTraceTally {
       }
       return total;
     };
+    const auto of = [](const core::ResourceAmounts& amounts, std::uint32_t resource) {
+      return resource < amounts.size() ? amounts[resource] : core::Grams{0};
+    };
     const core::YearLedger& book = now.ledger.current;
-    day_hay_eaten_ = rise(sum(book.herd_hay_eaten), last_hay_eaten_);
-    day_feed_eaten_ = rise(sum(book.feed), last_feed_eaten_);
-    day_feed_short_ = rise(sum(book.herd_feed_short), last_feed_short_);
-    day_cut_ = rise(hay_ < book.harvest.size() ? book.harvest[hay_] : 0, last_cut_);
-    // #1606's heaps print (boss, 11 Nov): the heaps tonight and the hay rotted
-    // today - the reader takes the heaps' own rot as yesterday's heaps + cut -
-    // hauled - tonight's heaps, and checks it against the book's spoiled.
-    day_hay_spoiled_ = rise(hay_ < book.spoiled.size() ? book.spoiled[hay_] : 0, last_hay_spoiled_);
+    const core::YearLedger& closed = now.ledger.closed;
+    day_hauled_ =
+        rise(of(book.hauled_to_stores, hay_), of(closed.hauled_to_stores, hay_), last_hauled_);
+    day_hay_eaten_ = rise(sum(book.herd_hay_eaten), sum(closed.herd_hay_eaten), last_hay_eaten_);
+    day_feed_eaten_ = rise(sum(book.feed), sum(closed.feed), last_feed_eaten_);
+    day_feed_short_ =
+        rise(sum(book.herd_feed_short), sum(closed.herd_feed_short), last_feed_short_);
+    day_cut_ = rise(of(book.harvest, hay_), of(closed.harvest, hay_), last_cut_);
+    // #1606's heaps print (boss, 11 Nov): the heaps tonight and every door that
+    // takes hay off them today - haul, rot (the book's spoiled: stores + heaps),
+    // written off for no room, the district's take - and what is left UNNAMED:
+    // yesterday's heaps + cut - those doors - tonight's heaps.
+    day_hay_spoiled_ = rise(of(book.spoiled, hay_), of(closed.spoiled, hay_), last_hay_spoiled_);
+    day_hay_no_room_ =
+        rise(of(book.lost_no_room, hay_), of(closed.lost_no_room, hay_), last_hay_no_room_);
+    day_hay_delivered_ =
+        rise(of(book.delivered, hay_), of(closed.delivered, hay_), last_hay_delivered_);
+    const core::Grams heap_yesterday = heap_hay_;
     heap_hay_ = 0;
     heap_fields_ = 0;
     for (const core::FieldRow& field : now.fields.rows) {
@@ -131,17 +146,22 @@ class HayTraceTally {
         ++heap_fields_;
       }
     }
+    heap_unnamed_ = heaps_seen_ ? heap_yesterday + day_cut_ - day_hauled_ - day_hay_spoiled_ -
+                                      day_hay_no_room_ - day_hay_delivered_ - heap_hay_
+                                : 0;
+    heaps_seen_ = true;
     // The straw: what the threshing lays (harvest) and the herds eat (feed),
     // today - a feed whose INCOME after today the forecast may not count.
-    day_straw_laid_ =
-        rise(straw_ < book.harvest.size() ? book.harvest[straw_] : 0, last_straw_laid_);
-    day_straw_eaten_ = rise(straw_ < book.feed.size() ? book.feed[straw_] : 0, last_straw_eaten_);
+    day_straw_laid_ = rise(of(book.harvest, straw_), of(closed.harvest, straw_), last_straw_laid_);
+    day_straw_eaten_ = rise(of(book.feed, straw_), of(closed.feed, straw_), last_straw_eaten_);
     // EVERY FEED THE HERDS ATE TODAY, by resource (the straw read 0: the
     // non-hay 56 t a month was something else).
     last_feed_by_.resize(book.feed.size(), 0);
     day_feed_by_.assign(book.feed.size(), 0);
     for (std::size_t resource = 0; resource < book.feed.size(); ++resource) {
-      day_feed_by_[resource] = rise(book.feed[resource], last_feed_by_[resource]);
+      day_feed_by_[resource] = rise(book.feed[resource],
+                                    of(closed.feed, static_cast<std::uint32_t>(resource)),
+                                    last_feed_by_[resource]);
     }
     unfed_herds_ = 0;
     max_unfed_days_ = 0.0F;
@@ -220,7 +240,20 @@ class HayTraceTally {
     // head-days, and today's real heads - kind:need_u/head_days/heads_today;
     // last on the line, so the readers of the fields before it stand.
     out << " heaps hay_on_heaps_kg " << heap_hay_ / core::kGramsPerKilogram << " heap_fields "
-        << heap_fields_ << " hay_spoiled_today_kg " << day_hay_spoiled_ / core::kGramsPerKilogram;
+        << heap_fields_ << " hay_spoiled_today_kg "
+        << day_hay_spoiled_ / core::kGramsPerKilogram
+        // THE HEAPS' DOORS (econ's #1606 leak print): every writer that lowers a
+        // FieldRow's reaped_grams (grep, 11 Nov: field_haul.cpp haul and rot,
+        // field_work.cpp PutOnHeap's no-room write-off, district_plan.cpp the
+        // plan's take, mts_column.cpp the MTS carry - not booked by resource,
+        // so it falls into the remainder). No herd eats from a heap and no thief
+        // takes from one: no writer exists, printed as 0 «no door».
+        << " heap_out hauled " << day_hauled_ / core::kGramsPerKilogram << " rotted_booked "
+        << day_hay_spoiled_ / core::kGramsPerKilogram << " no_room "
+        << day_hay_no_room_ / core::kGramsPerKilogram << " plan_take "
+        << day_hay_delivered_ / core::kGramsPerKilogram
+        << " eaten_from_heap 0 stolen 0 (no door) UNNAMED "
+        << heap_unnamed_ / core::kGramsPerKilogram;
     out << " by_kind";
     for (std::size_t kind = 0; kind < t.heads_today_by_kind.size(); ++kind) {
       const float need = kind < t.need_units_by_kind.size() ? t.need_units_by_kind[kind] : 0.0F;
@@ -263,6 +296,12 @@ class HayTraceTally {
   std::int64_t day_handed_ = 0;
   core::Grams day_hay_spoiled_ = 0;  ///< the book's spoiled hay today (stores + heaps)
   core::Grams last_hay_spoiled_ = 0;
+  core::Grams day_hay_no_room_ = 0;  ///< lost_no_room's hay today (PutOnHeap's write-off)
+  core::Grams last_hay_no_room_ = 0;
+  core::Grams day_hay_delivered_ = 0;  ///< delivered's hay today (the district's take)
+  core::Grams last_hay_delivered_ = 0;
+  core::Grams heap_unnamed_ = 0;  ///< what left the heaps by no booked door today
+  bool heaps_seen_ = false;
   core::Grams heap_hay_ = 0;       ///< hay lying on the field heaps tonight (HeapGrams)
   std::uint32_t heap_fields_ = 0;  ///< fields with a hay heap tonight
   std::uint32_t unfed_herds_ = 0;
