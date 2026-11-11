@@ -14,10 +14,16 @@
 # (p73arm2 vs l1568a, 32 villages) -0.043 SE 0.051, trimmed -0.010 SE 0.029, GREEN; o100 fell under its line (10.53
 # against 10.62 - 0.06). The 64 doors on e81094ec (l1568a o0/o100, l1568b o200/o300): o0 10.704 (median 10.729), o100
 # 10.531 (10.562), o200 10.648 (10.594), o300 10.876 (10.823); all 64: mean 10.690, median 10.688, sd 0.717.
-population_curve|E1 mean door, offset 0|10.70|0.06|2026-11-07|e81094ec|boss, #1568's re-take with the links on: o0's 16 doors on e81094ec, mean 10.704; the margin unchanged (0.06); passes at 10.64.
-population_curve|E1 mean door, offset 100|10.53|0.06|2026-11-07|e81094ec|boss, as offset 0: o100's 16 doors on e81094ec, mean 10.531; passes at 10.47. Replaces de806053's 10.62.
-population_curve|E1 mean door, offset 200|-|-|2026-11-07|e81094ec|boss: MEASURED, NOT LINED - o200's 16 doors on e81094ec, mean 10.648.
-population_curve|E1 mean door, offset 300|-|-|2026-11-07|e81094ec|boss: MEASURED, NOT LINED - o300's 16 doors on e81094ec, mean 10.876.
+# RE-TAKEN on the link-4-off tree 4dd4ee66, 8 Nov 2026 (the human, #1782 «Выключить звено 4»; boss's export:
+# crime_drunk_fire_on 0, start_layout's meadow_04): paired against 0.37.368 (l1568a vs l4a, 32 villages) -0.033 SE
+# 0.062, trimmed -0.018 SE 0.011, GREEN; o0 fell under its line (10.59 against 10.70 - 0.06). The 64 doors on
+# 4dd4ee66 (l4a o0/o100, l4b o200/o300): o0 10.587 (median 10.500), o100 10.582 (10.573), o200 10.665 (10.583),
+# o300 10.911 (11.010); all 64: mean 10.687, median 10.667, sd 0.724.
+population_curve|E1 mean door, offset 0|10.59|0.06|2026-11-08|4dd4ee66|boss, the link-4-off re-take: o0's 16 doors on 4dd4ee66, mean 10.587; the margin unchanged (0.06); passes at 10.53. Replaces e81094ec's 10.70.
+population_curve|E1 mean door, offset 100|10.58|0.06|2026-11-08|4dd4ee66|boss, as offset 0: o100's 16 doors on 4dd4ee66, mean 10.582; passes at 10.52. Replaces e81094ec's 10.53.
+population_curve|E1 mean door, offset 200|-|-|2026-11-08|4dd4ee66|boss: MEASURED, NOT LINED - o200's 16 doors on 4dd4ee66, mean 10.665.
+population_curve|E1 mean door, offset 300|-|-|2026-11-08|4dd4ee66|boss: MEASURED, NOT LINED - o300's 16 doors on 4dd4ee66, mean 10.911.
+# (was, e81094ec) o0 10.70, o100 10.53 (|0.06); o200 10.648, o300 10.876 measured.
 # THE #1573 LINES (de806053), read by nothing since #1568:
 # RE-TAKEN on #1573's release tree, 7 Nov 2026 (boss, core-boss-1573-hay-rungs [10] and his YES before it): the step -
 # the hay lamp's cheap-feed rung, tolerance and dose (econ signed; livestock.md 877abc9a3) - was ACCEPTED and paired
