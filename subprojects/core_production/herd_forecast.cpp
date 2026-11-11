@@ -16,6 +16,7 @@
 #include "core_common/module_rules.h"
 #include "core_common/quantities.h"
 #include "core_common/resident_state.h"
+#include "core_common/spoilage.h"
 #include "core_common/state_table_ops.h"
 #include "district_limit.h"
 #include "field_work.h"
@@ -726,6 +727,55 @@ float ForecastHerdHeads(const ProductionConfig& config,
   return projected.adults + projected.juveniles + projected.newborns;
 }
 
+/// THE FIELD HEAPS' HAY THAT WILL REACH A STORE, grams (#1606's cure; econ's
+/// L1-L4, econ-boss-1606-heap-cure-gates [1] §2). The heaps lie in the open and
+/// rot by the share of hay_weathering_by_season a day (field_haul.cpp,
+/// SpoilFieldHeaps), while the carters take them at the village's pace: hauled
+/// at R a day and rotting at r of what lies, a heap H gives the stores
+/// (R / r) ln(1 + r H / R) before it is gone. R is MEASURED: this year's hay
+/// hauled into the stores over the days since the meadows' cut began; outside
+/// the cut, last year's over its cut window. THE CANON'S TRACE: the heaps it
+/// counted lost 16-38 t, 15-22 %, on the field (fedbyh/fedbyl, booked rot).
+/// NAMED SIMPLIFICATIONS: one rot share for the whole haul (today's season's),
+/// one pace for every heap, no new cut laid on the heaps meanwhile (that cut is
+/// the forecast's own income, counted apart). STUB when no haul is measured
+/// (no hay hauled this year nor last): the whole heap, as before the cure.
+Grams ExpectedHeapHayGrams(const ProductionConfig& config, const WorldState& world) {
+  const Grams heaps = HeapAbovePlanDebt(world, config.hay_resource);
+  if (heaps <= 0) {
+    return 0;
+  }
+  const auto month = static_cast<std::uint32_t>(world.calendar.date.month);
+  const double rot_a_day =
+      static_cast<double>(config.farming.hay_weathering_by_season[HayWeatheringSeason(month)]) /
+      static_cast<double>(kDaysPerMonth);
+  if (!(rot_a_day > 0.0)) {
+    return heaps;
+  }
+  const SimDay today = world.calendar.day;
+  const SimDay year_start = today - (today % kDaysPerYear);
+  const SimDay cut_from =
+      year_start + (static_cast<SimDay>(config.farming.meadow_cut_month) * kDaysPerMonth);
+  const SimDay cut_end =
+      year_start + ((static_cast<SimDay>(HayCutEndMonth(config)) + 1U) * kDaysPerMonth);
+  const Grams hauled_now = AmountOf(world.ledger.current.hauled_to_stores, config.hay_resource);
+  double rate = 0.0;  // grams a day
+  if (today > cut_from && hauled_now > 0) {
+    rate = static_cast<double>(hauled_now) / static_cast<double>(today - cut_from);
+  } else {
+    const Grams hauled_last = AmountOf(world.ledger.closed.hauled_to_stores, config.hay_resource);
+    if (hauled_last > 0 && cut_end > cut_from) {
+      rate = static_cast<double>(hauled_last) / static_cast<double>(cut_end - cut_from);
+    }
+  }
+  if (!(rate > 0.0)) {
+    return heaps;  // STUB: no haul measured - the whole heap, as before
+  }
+  const double reach =
+      (rate / rot_a_day) * std::log1p(rot_a_day * static_cast<double>(heaps) / rate);
+  return std::min(heaps, static_cast<Grams>(std::llround(reach)));
+}
+
 std::vector<float> HerdFeedHeldKg(const ProductionConfig& config, const WorldState& world) {
   const ResourceAmounts allowance = HerdFeedAllowance(config, world);
   std::vector<float> held_kg(config.feed_values.size(), 0.0F);
@@ -737,9 +787,11 @@ std::vector<float> HerdFeedHeldKg(const ProductionConfig& config, const WorldSta
         static_cast<float>(allowance[resource]) / static_cast<float>(kGramsPerKilogram);
   }
   if (config.hay_resource.value < held_kg.size()) {
+    const Grams heaps = config.farming.hay_heaps_expected_value
+                            ? ExpectedHeapHayGrams(config, world)
+                            : HeapAbovePlanDebt(world, config.hay_resource);
     held_kg[config.hay_resource.value] +=
-        static_cast<float>(HeapAbovePlanDebt(world, config.hay_resource)) /
-        static_cast<float>(kGramsPerKilogram);
+        static_cast<float>(heaps) / static_cast<float>(kGramsPerKilogram);
   }
   return held_kg;
 }
@@ -1401,6 +1453,11 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
           held_kg[resource] < kOutKg) {
         out_day[resource] = day;
       }
+    }
+    // #1606's gate A1: the hay the forecast expects held at each day's end.
+    if (config.hay_resource.value < held_kg.size()) {
+      forecast.hay_held_kg_by_day.resize(horizon_days, -1.0F);
+      forecast.hay_held_kg_by_day[day] = held_kg[config.hay_resource.value];
     }
     float unfed_heads = 0.0F;
     std::fill(short_today.begin(), short_today.end(), std::uint8_t{0});

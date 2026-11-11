@@ -67,9 +67,19 @@ struct FeedDayNeed {
 /// @brief What the kolkhoz herds may eat, in KILOGRAMS by resource: the herd
 ///        feeding's own door (HerdFeedAllowance — the stores less every rung
 ///        the herds stay below) and the hay lying reaped in the fields above
-///        the plan's debt (HeapAbovePlanDebt). The feed light's and the
-///        forecast's stores, one reading for both.
+///        the plan's debt (HeapAbovePlanDebt) - or, with
+///        FarmingConfig::hay_heaps_expected_value, what of them will reach a
+///        store (ExpectedHeapHayGrams). The feed light's and the forecast's
+///        stores, one reading for both.
 std::vector<float> HerdFeedHeldKg(const ProductionConfig& config, const WorldState& world);
+
+/// @brief #1606's cure: the field heaps' hay above the plan's debt that will
+///        reach a store, grams - hauled at the measured pace (this year's hay
+///        hauled since the cut began; else last year's over its cut window)
+///        while rotting at today's weathering share: (R / r) ln(1 + r H / R).
+/// @return The whole heap when no rot is set or no haul is measured (STUB);
+///         never more than the heap.
+Grams ExpectedHeapHayGrams(const ProductionConfig& config, const WorldState& world);
 
 /// @brief One day of feeding drained off `held_kg` by the herd feeding's own
 ///        order and ceilings: per need, its kind's links in order, a link's
@@ -231,6 +241,11 @@ struct HerdFeedForecast {
   /// or as units a head. Indexed by kind; empty when nothing was projected.
   std::vector<float> need_units_by_kind;
   std::vector<float> head_days_by_kind;
+  /// #1606's gate A1 (econ): the hay (kg, stores and counted heaps) the
+  /// forecast expects held at the end of each day of the horizon, by the
+  /// day's offset from today; -1 for a day it did not drain (day 0 after its
+  /// feeding). Read against what the world holds when that day comes.
+  std::vector<float> hay_held_kg_by_day;
 
   /// The cut's pace, where the forecast read the cut by it (inside this
   /// year's cut from its second dry working day): the hay laid a dry working

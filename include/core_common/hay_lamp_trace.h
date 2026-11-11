@@ -72,6 +72,9 @@ struct HayLampTrace {
   std::vector<float> need_units_by_kind;
   std::vector<float> head_days_by_kind;
   std::vector<std::int64_t> heads_today_by_kind;
+  /// #1606's gate A1: the forecast's expected hay held (kg) at each day's end,
+  /// by offset from today; -1 a day not drained.
+  std::vector<float> hay_held_kg_by_day;
 
   // THE FLOORS (herd_floors.h): the adults standing and those kept.
   std::int64_t horses = 0;

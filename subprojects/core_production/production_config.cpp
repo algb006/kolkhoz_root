@@ -1186,7 +1186,7 @@ bool ParseMeadowKinds(const ITable& table, FarmingConfig& farming, std::string& 
 /// AT ALL: until 2026-09-16 this module took every number off its own
 /// hand-written tables, and the two halves of billeting are what brought it
 /// here. The next world constant lands in the same place.
-constexpr std::array<std::string_view, 35> kProductionWorldParamKeys = {
+constexpr std::array<std::string_view, 36> kProductionWorldParamKeys = {
     "billet_heads_per_yard",
     "billet_yield_factor",
     "school_year_start_month",
@@ -1233,7 +1233,9 @@ constexpr std::array<std::string_view, 35> kProductionWorldParamKeys = {
     // #1586 (i): the y1 milk floor from the plan and the norm yield (0: off).
     "milk_floor_norm_first_year",
     // #1586 (i-soft): the norm yield's divisor for that floor (1: the norm).
-    "milk_floor_norm_first_year_prior_divisor"};
+    "milk_floor_norm_first_year_prior_divisor",
+    // #1606's cure: the hay forecast's field heaps at expected value (0: off).
+    "hay_heaps_expected_value"};
 
 /// THE SCHOOL YEAR IS READ HERE AS WELL AS BY THE SCHOOL, and that is a
 /// second READER, not a second home: the months live in world_params.csv and
@@ -1259,6 +1261,7 @@ bool ParseProductionWorldParams(const ITable& world,
   float hunger_episode_fed_days = static_cast<float>(farming.hunger_episode_fed_days);
   auto barrack_poultry_heads = static_cast<float>(farming.barrack_poultry_heads);
   float milk_norm_first_year = farming.milk_floor_norm_first_year ? 1.0F : 0.0F;
+  float heaps_expected = farming.hay_heaps_expected_value ? 1.0F : 0.0F;
   const Range months{.low = 1.0F, .high = static_cast<float>(kMonthsPerYear)};
   const std::array<ScalarKnob, kProductionWorldParamKeys.size()> knobs = {
       ScalarKnob{.key = kProductionWorldParamKeys[0],
@@ -1393,11 +1396,15 @@ bool ParseProductionWorldParams(const ITable& world,
                  .range = Range{.low = 0.0F, .high = 1.0F}},
       ScalarKnob{.key = kProductionWorldParamKeys[34],
                  .value = &farming.milk_floor_norm_prior_divisor,
-                 .range = Range{.low = 1.0F, .high = 5.0F}}};
+                 .range = Range{.low = 1.0F, .high = 5.0F}},
+      ScalarKnob{.key = kProductionWorldParamKeys[35],
+                 .value = &heaps_expected,
+                 .range = Range{.low = 0.0F, .high = 1.0F}}};
   if (!ReadKnobs(world, "world_params", knobs, error)) {
     return false;
   }
   farming.milk_floor_norm_first_year = milk_norm_first_year >= 0.5F;
+  farming.hay_heaps_expected_value = heaps_expected >= 0.5F;
   farming.barrack_poultry_heads = static_cast<std::uint16_t>(barrack_poultry_heads);
   farming.hunger_episode_fed_days = static_cast<std::uint16_t>(hunger_episode_fed_days);
   farming.cold_first_month = static_cast<std::uint8_t>(cold_from - 1.0F);

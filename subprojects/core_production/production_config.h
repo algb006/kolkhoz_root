@@ -849,6 +849,14 @@ struct FarmingConfig {
   /// year 1. 1: the norm itself, (i)'s first arm. Read only with the switch on.
   float milk_floor_norm_prior_divisor = 1.0F;
 
+  /// #1606's cure (econ's gates, econ-boss-1606-heap-cure-gates [1] §2;
+  /// world_params `hay_heaps_expected_value`): the hay forecast counts the
+  /// field heaps at what will reach a store - net of their rot until hauled at
+  /// the village's measured haul rate (ExpectedHeapHayKg) - in place of their
+  /// whole tonnes. Off: today's count. The canon's trace lost 16-38 t, 15-22 %
+  /// of the heaps it counted, on the field (fedbyh/fedbyl).
+  bool hay_heaps_expected_value = false;
+
   /// THE SECOND LEVER OF THE CATTLE YARD (livestock design §5; econ-boss-
   /// complexity-yards-groom [3]-[4]; world_params `herd_without_yard_yield_
   /// factor`, 0): from the day the player enters, a kolkhoz herd with no

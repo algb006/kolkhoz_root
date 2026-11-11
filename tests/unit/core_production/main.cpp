@@ -60,6 +60,7 @@
 #include "grass_stand_checks.h"
 #include "harvest_advice_checks.h"
 #include "hay_weathering_checks.h"
+#include "heap_expected_checks.h"
 #include "heap_lamp_checks.h"
 #include "herd_care_checks.h"
 #include "herd_cold.h"
@@ -18419,6 +18420,7 @@ int main() {
   failures += CheckTheSupplyCountsItsIdleDays();
   failures += CheckTheStoresKeepByTheirRoof();
   failures += CheckTheHayWeathersOnTheField();
+  failures += CheckTheHeapsCountAtExpectedValue();  // #1606's cure
   failures += CheckTheClampRotAndItsLamp();
   failures += CheckThePlanDue();
   failures += CheckTheTeamsOatPlan();
