@@ -43,6 +43,7 @@
 #include "../common/building_chairman.h"
 #include "../common/crime_tally.h"
 #include "../common/day_zero_tally.h"
+#include "../common/dealer_p0_tally.h"
 #include "../common/district_material_wait_tally.h"
 #include "../common/env_value.h"
 #include "../common/fed_tally.h"
@@ -51,6 +52,7 @@
 #include "../common/hand_over_tally.h"
 #include "../common/hay_day_off_policy.h"
 #include "../common/hay_trace_tally.h"
+#include "../common/heap_cure_a1_tally.h"
 #include "../common/herd_tally.h"
 #include "../common/horse_tail_tally.h"
 #include "../common/passed_over_tally.h"
@@ -872,6 +874,10 @@ bool Walk(std::uint64_t seed,
   run::HayTraceTally hay_trace(*world.tables, seed);
   // #1441 T0: sites waiting on the district's steel, tools, glass, roofing.
   run::DistrictMaterialWaitTally district_waits(*world.tables, seed);
+  // #1441's Dealer path, econ's P0: the first guardable store, the plan rye's days.
+  run::DealerP0Tally dealer_p0(*world.tables, seed);
+  // #1606's gate A1: the forecast's hay on the eve of the cut against the world's.
+  run::HeapCureA1Tally heap_a1(*world.tables, seed);
   // #1580's probe: what hour 0 of a year's first day books into the closing year.
   run::DayZeroTally day_zero;
   std::array<std::uint32_t, core::kRestSourceCount> r1373_sources = {};
@@ -1010,6 +1016,8 @@ bool Walk(std::uint64_t seed,
       horse_tail.CountDayEnd(*simulation);
       hay_trace.CountDayEnd(*simulation, std::cout);
       district_waits.CountDayEnd(*simulation);
+      dealer_p0.CountDayEnd(simulation->CompletedState());
+      heap_a1.CountDayEnd(*simulation);
       day_zero.CountDayEnd(simulation->CompletedState());
       if (!warm_off) {
         strada.CountDayEnd(simulation->CompletedState());
@@ -1538,6 +1546,8 @@ bool Walk(std::uint64_t seed,
       herds.Print(std::cout, seed);
       crime.Print(std::cout, seed);
       district_waits.Print(std::cout);       // #1441 T0
+      dealer_p0.Print(std::cout);            // #1441 P0
+      heap_a1.Print(std::cout);              // #1606 A1
       herds.PrintCowFlows(std::cout, seed);  // #1570
       hand_overs.Print(std::cout, seed);
       feed_rung.Print(std::cout, seed);                                             // #1573
