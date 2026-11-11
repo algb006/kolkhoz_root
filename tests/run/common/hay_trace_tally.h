@@ -204,6 +204,18 @@ class HayTraceTally {
     for (const core::HayRungStep& step : t.rungs) {
       out << ' ' << static_cast<int>(step.reason) << ':' << step.value;
     }
+    // #1606: the forecast's need over the horizon by kind, its projected
+    // head-days, and today's real heads - kind:need_u/head_days/heads_today;
+    // last on the line, so the readers of the fields before it stand.
+    out << " by_kind";
+    for (std::size_t kind = 0; kind < t.heads_today_by_kind.size(); ++kind) {
+      const float need = kind < t.need_units_by_kind.size() ? t.need_units_by_kind[kind] : 0.0F;
+      const float head_days = kind < t.head_days_by_kind.size() ? t.head_days_by_kind[kind] : 0.0F;
+      if (need > 0.0F || t.heads_today_by_kind[kind] > 0) {
+        out << ' ' << KindKey(static_cast<std::uint32_t>(kind)) << ':' << need << '/' << head_days
+            << '/' << t.heads_today_by_kind[kind];
+      }
+    }
     out << '\n';
   }
 

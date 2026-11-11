@@ -65,6 +65,13 @@ struct HayLampTrace {
   float need_units = 0.0F;
   float covered_units = 0.0F;
   float short_hay_kg = 0.0F;
+  /// #1606: need_units by LivestockKindId, the projected head-days (adults +
+  /// juveniles) over the horizon, and today's real kolkhoz heads (adults +
+  /// juveniles) by kind - the trace compares the projection with the days
+  /// as they come.
+  std::vector<float> need_units_by_kind;
+  std::vector<float> head_days_by_kind;
+  std::vector<std::int64_t> heads_today_by_kind;
 
   // THE FLOORS (herd_floors.h): the adults standing and those kept.
   std::int64_t horses = 0;

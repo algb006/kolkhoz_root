@@ -1374,6 +1374,14 @@ HerdFeedForecast ForecastHerdFeed(const ProductionConfig& config,
       if (units > 0.0F) {
         needs.push_back(FeedDayNeed{.kind = herd.kind, .units = units});
         needs_of.push_back(index);
+        // #1606's trace: the same need by kind, and the heads it was asked of.
+        if (forecast.need_units_by_kind.size() < config.livestock.size()) {
+          forecast.need_units_by_kind.resize(config.livestock.size(), 0.0F);
+          forecast.head_days_by_kind.resize(config.livestock.size(), 0.0F);
+        }
+        forecast.need_units_by_kind[herd.kind.value] += units;
+        forecast.head_days_by_kind[herd.kind.value] +=
+            static_cast<float>(row.adult_count) + static_cast<float>(row.juvenile_count);
       }
     }
     // A FEED RUNS OUT when the day's drain takes it from held to nothing: a

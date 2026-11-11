@@ -225,6 +225,13 @@ struct HerdFeedForecast {
   float need_units = 0.0F;
   float covered_units = 0.0F;
 
+  /// #1606's trace (11 Nov 2026): need_units split by LivestockKindId, and the
+  /// projected head-days (adults + juveniles, the rows the need is asked of)
+  /// over the same days - so a need above the eating can be named as heads
+  /// or as units a head. Indexed by kind; empty when nothing was projected.
+  std::vector<float> need_units_by_kind;
+  std::vector<float> head_days_by_kind;
+
   /// The cut's pace, where the forecast read the cut by it (inside this
   /// year's cut from its second dry working day): the hay laid a dry working
   /// day, kilograms, and the dry working days it counts ahead. 0 and 0

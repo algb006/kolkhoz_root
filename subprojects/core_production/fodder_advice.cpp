@@ -622,6 +622,14 @@ HayLampTrace TraceHayLamp(const ProductionConfig& config, const WorldState& worl
   trace.covered_units = forecast.covered_units;
   trace.short_hay_kg =
       static_cast<float>(forecast.short_hay_grams) / static_cast<float>(kGramsPerKilogram);
+  trace.need_units_by_kind = forecast.need_units_by_kind;
+  trace.head_days_by_kind = forecast.head_days_by_kind;
+  trace.heads_today_by_kind.assign(config.livestock.size(), 0);
+  for (const HerdRow& herd : world.herds.rows) {
+    if (herd.household_owned == 0 && herd.kind.value < config.livestock.size()) {
+      trace.heads_today_by_kind[herd.kind.value] += herd.adult_count + herd.juvenile_count;
+    }
+  }
   const HerdFloors floors = HerdFloorsOf(config, world);
   const LivestockKindId cow = MilkKind(config);
   for (const HerdRow& herd : world.herds.rows) {
