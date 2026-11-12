@@ -43,6 +43,7 @@
 #include "repair_policy.h"
 #include "sawmill_policy.h"
 #include "school_policy.h"
+#include "smokehouse_policy.h"
 #include "social_objects_policy.h"
 #include "sport_talk_policy.h"
 #include "stand_renewal_policy.h"
@@ -77,6 +78,7 @@ class BuildingChairman {
         social(tables),
         upgrades(tables),
         watchman(tables),
+        smokehouse(tables),
         herd_plan(tables),
         insulation(tables),
         supply(tables),
@@ -438,6 +440,9 @@ class BuildingChairman {
     if (!relapsed) {
       watchman.RunDay(simulation);
     }
+    // #1644: the smokehouse at a rolling year's 1 t of meat and fish spoiled
+    // (its tally counts every day; it orders only with its arm on).
+    smokehouse.RunDay(simulation);
     insulation.RunDay(simulation);
     // «Важнее полевых работ» for a supply the floor does not reach (#734).
     supply.RunDay(simulation);
@@ -512,6 +517,8 @@ class BuildingChairman {
   SocialObjectsPolicy social;
   UpgradePolicy upgrades;
   WatchmanPolicy watchman;
+  /// The smokehouse and its master (#1644; smokehouse_policy.h). Off by default.
+  SmokehousePolicy smokehouse;
   /// The herds' plans, the evening the cut is over (#1289; herd_plan_policy.h).
   HerdPlanPolicy herd_plan;
   InsulationPolicy insulation;

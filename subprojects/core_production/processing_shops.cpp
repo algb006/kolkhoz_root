@@ -113,6 +113,19 @@ Grams SaltTableReserve(const ProductionConfig& config,
                        const WorldState& world,
                        ResourceId resource);  // «стол раньше бочки», below
 
+/// Whether a recipe takes salt among its inputs (#1644: those go first).
+bool TakesSalt(const ProductionConfig& config, const ProcessingRecipe& recipe) {
+  if (config.salt_resource.value == kInvalidDefIdValue) {
+    return false;
+  }
+  for (const ProcessingAmount& input : recipe.inputs) {
+    if (input.resource.value == config.salt_resource.value) {
+      return true;
+    }
+  }
+  return false;
+}
+
 double PicklingBatchesStocked(const ProductionConfig& config,
                               const WorldState& world,
                               const ProcessingRecipe& pickling,
@@ -444,17 +457,27 @@ void SettleProcessing(const ProductionConfig& config, WorldState& current) {
     const float remaining = current.units.rows[row].production_days_remaining;
     double left = written > remaining ? static_cast<double>(written - remaining) : 0.0;
     const float wear = WearOutputFactor(config, current.units.rows[row]);
-    for (const ProcessingRecipe& recipe : catalog.recipes) {
-      if (recipe.unit_type.value != type.value || !(left > 0.0)) {
-        continue;
+    // SALT FIRST, THE REST AFTER (#1644; econ's smokehouse page (2)): a shop's
+    // day goes first to its recipes that take salt - the salting keeps more
+    // food than the smoking (0.85 / 0.80 against 0.60 / 0.45) and its barrel
+    // closes the table's salt norm - and the salt they may take is only what
+    // stands above the table's reserve (SaltTableReserve in LimitByInputs), so
+    // «salt while the salt is above the reserve, smoke otherwise» needs no
+    // second rule. Then the rest, in the catalogue's order, as before.
+    for (const bool salt_pass : {true, false}) {
+      for (const ProcessingRecipe& recipe : catalog.recipes) {
+        if (recipe.unit_type.value != type.value || !(left > 0.0) ||
+            TakesSalt(config, recipe) != salt_pass) {
+          continue;
+        }
+        const Availability can = Available(config, current, recipe);
+        const double days = std::min(left, can.batches * static_cast<double>(recipe.labor_days));
+        if (!(days > 0.0)) {
+          continue;
+        }
+        left -= days;
+        WorkBatches(config, current, recipe, days / static_cast<double>(recipe.labor_days), wear);
       }
-      const Availability can = Available(config, current, recipe);
-      const double days = std::min(left, can.batches * static_cast<double>(recipe.labor_days));
-      if (!(days > 0.0)) {
-        continue;
-      }
-      left -= days;
-      WorkBatches(config, current, recipe, days / static_cast<double>(recipe.labor_days), wear);
     }
     double demand = 0.0;
     if (UnitCanWork(current, current.units.rows[row])) {
@@ -539,21 +562,25 @@ bool ShopStands(const ProductionConfig& config,
   alarm.kind = AlarmKind::kProcessingStopped;
   alarm.unit = world.units.row_ids[row];
   bool can_work = false;
-  for (const ProcessingRecipe& recipe : config.processing.recipes) {
-    if (recipe.unit_type.value != unit.type.value) {
-      continue;
+  // In the day's own order (#1644): the salt's recipes first, then the rest.
+  for (const bool salt_pass : {true, false}) {
+    for (const ProcessingRecipe& recipe : config.processing.recipes) {
+      if (recipe.unit_type.value != unit.type.value || TakesSalt(config, recipe) != salt_pass) {
+        continue;
+      }
+      const Availability can = Available(config, world, recipe);
+      can_work = can_work || can.batches > kNoBatch;
+      if (can.missing.value == kInvalidDefIdValue) {
+        continue;
+      }
+      const bool is_output = std::ranges::any_of(
+          recipe.outputs,
+          [&can](const ProcessingAmount& out) { return out.resource.value == can.missing.value; });
+      alarm.resource = can.missing;
+      alarm.stop_reason =
+          is_output ? ProcessingStopReason::kNoRoom : ProcessingStopReason::kShortOf;
+      return true;  // one per shop: the first recipe that stands says why
     }
-    const Availability can = Available(config, world, recipe);
-    can_work = can_work || can.batches > kNoBatch;
-    if (can.missing.value == kInvalidDefIdValue) {
-      continue;
-    }
-    const bool is_output = std::ranges::any_of(recipe.outputs, [&can](const ProcessingAmount& out) {
-      return out.resource.value == can.missing.value;
-    });
-    alarm.resource = can.missing;
-    alarm.stop_reason = is_output ? ProcessingStopReason::kNoRoom : ProcessingStopReason::kShortOf;
-    return true;  // one per shop: the first recipe that stands says why
   }
   if (!can_work) {
     return false;

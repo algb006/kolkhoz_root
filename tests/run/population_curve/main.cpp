@@ -612,6 +612,8 @@ bool g_no_write_off = false;
 bool g_no_salt_buy = false;
 /// #1630 (C)'s arm C3: the salt sees no points, only the loan buys it.
 bool g_salt_points_zero = false;
+/// #1644's arm: the run's chairman puts up and staffs the smokehouse.
+bool g_smokehouse = false;
 /// `--hay-hand-over=off`: #1570's counterfactual - the hay lamp's «reduce
 /// herd» left unanswered (LimitPolicy::HayHandOverOff), so a run can say
 /// whether the herds it named would have gone short.
@@ -834,6 +836,10 @@ bool Walk(std::uint64_t seed,
   }
   if (g_no_salt_buy) {
     builder.limit.BuySalt(false);  // #1630 (B)'s arm B2, (C)'s C2: no lot, no loan
+  }
+  if (g_smokehouse) {
+    builder.smokehouse.Enable(true);  // #1644's arm
+    builder.smokehouse.Declare("population_curve");
   }
   if (g_salt_points_zero) {
     builder.limit.SaltPointsZero(true);  // #1630 (C)'s arm C3: the loan only
@@ -1527,8 +1533,9 @@ bool Walk(std::uint64_t seed,
       funerals.Print(std::cout, seed);
       herds.Print(std::cout, seed);
       crime.Print(std::cout, seed);
-      salt.Print(std::cout);                 // #1630 (B)
-      herds.PrintCowFlows(std::cout, seed);  // #1570
+      salt.Print(std::cout);                      // #1630 (B)
+      builder.smokehouse.Print(std::cout, seed);  // #1644
+      herds.PrintCowFlows(std::cout, seed);       // #1570
       hand_overs.Print(std::cout, seed);
       feed_rung.Print(std::cout, seed);                                             // #1573
       builder.limit.PrintHayFeedRung(std::cout, seed, run::FeedRungTally::kYears);  // #1573
@@ -1686,6 +1693,8 @@ int main(int argc, char** argv) {
       g_no_salt_buy = true;
     } else if (argument == "--salt-points-zero") {
       g_salt_points_zero = true;
+    } else if (argument == "--smokehouse") {
+      g_smokehouse = true;
     } else if (argument == "--no-write-off") {
       g_no_write_off = true;
     } else if (argument == "--no-anticrime") {

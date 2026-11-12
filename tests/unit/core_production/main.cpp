@@ -14731,6 +14731,51 @@ int CheckProcessingShops() {
   failures += Expect(slaughter.units.rows[2].production_days_written == 2.0F,
                      "shops: the smokehouse knows no season — two tonnes of meat, two days");
 
+  // -- #1644: SALT FIRST, while the salt stands above the table's reserve ---------
+  {
+    const core::ResourceId salt{10};
+    const core::ResourceId salted{11};
+    core::ProductionConfig salting_config = config;
+    salting_config.salt_resource = salt;
+    core::ProcessingRecipe salting;
+    salting.key = "salting_meat";
+    salting.unit_type = core::UnitTypeId{2};
+    salting.labor_days = 1.0F;
+    salting.inputs = {{.resource = meat, .grams = kTonne},
+                      {.resource = salt, .grams = 100 * kKilo}};
+    salting.outputs = {{.resource = salted, .grams = 850 * kKilo}};
+    // The smoking first in the catalogue, as production.csv has it.
+    salting_config.processing.recipes = {pickling, smoking, salting, cooperage};
+    salting_config.processing.space_factor.assign(12, 1.0F);
+    salting_config.processing.in_barrel.assign(12, 0);
+    const auto one_day = [&](bool need_on, core::Grams salt_held) {
+      core::ProductionConfig run = salting_config;
+      run.farming.salt_need_on = need_on;
+      core::WorldState world = make_world(kJanuary);
+      core::AddToStock(world.units.rows[0].stock, meat, 2 * kTonne);
+      core::AddToStock(world.units.rows[0].stock, firewood, kTonne);
+      core::AddToStock(world.units.rows[0].stock, salt, salt_held);
+      for (int index = 0; index < 80; ++index) {
+        core::AppendRow(world.residents, core::ResidentRow{});
+      }
+      world.units.rows[2].production_days_written = 1.0F;  // one man-day worked
+      world.units.rows[2].production_days_remaining = 0.0F;
+      core::SettleProcessing(run, world);
+      return std::pair{core::AmountOf(world.units.rows[0].stock, salted),
+                       core::AmountOf(world.units.rows[0].stock, smoked)};
+    };
+    const auto [salted_plenty, smoked_plenty] = one_day(false, kTonne);
+    failures +=
+        Expect(salted_plenty == 850 * kKilo && smoked_plenty == 0,
+               "shops (#1644): a smokehouse day goes to the salting first - 1 t of meat "
+               "salted (850 kg), none smoked, though the smoking is first in the catalogue");
+    // The need on: 80 eaters x 125 g x 4 days x 3 months = 120 kg reserved; 150 kg
+    // held leaves 30 kg - under a batch's 100 kg, so the day goes to the smoking.
+    const auto [salted_short, smoked_short] = one_day(true, 150 * kKilo);
+    failures += Expect(salted_short == 0 && smoked_short == 600 * kKilo,
+                       "shops (#1644): the salt at the table's reserve - the day smokes (600 kg)");
+  }
+
   // -- the cooperage -------------------------------------------------------------
   core::WorldState cooper = make_world(kOctober);
   core::AddToStock(cooper.units.rows[0].stock, board, 2 * kTonne);
