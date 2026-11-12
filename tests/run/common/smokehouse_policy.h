@@ -325,6 +325,16 @@ class SmokehousePolicy {
     // the shop can take, the yards' pantries it cannot; the shop's asked days;
     // the days a resident worked in it; whether a food_master holds the yard.
     ++days_;
+    // THE BIRTHS' MULTIPLIER'S INPUT (decision 106: satisfaction scales the
+    // draw; the arms lost births drawn, not stopped ones): the families'
+    // satisfaction and its two live components, and the lodged families.
+    for (const core::FamilyRow& family : world.families.rows) {
+      satisfaction_sum_ += static_cast<double>(family.satisfaction);
+      satiety_comp_sum_ += static_cast<double>(family.component_satiety);
+      rest_comp_sum_ += static_cast<double>(family.component_rest);
+      lodged_family_days_ += family.lodged_in.value != core::kInvalidEntityIdValue ? 1U : 0U;
+      ++family_days_;
+    }
     store_meat_sum_ += Of(StockOf(world), meat_) + Of(StockOf(world), fish_);
     for (const core::FamilyRow& family : world.families.rows) {
       pantry_meat_sum_ += Of(family.pantry, meat_) + Of(family.pantry, fish_);
@@ -693,6 +703,9 @@ class SmokehousePolicy {
            // K5's DOOR (boss seq 24; 374's canon lost births and weddings):
            // the births' draws and stops (#1205), the weddings, and the boards
            // gone into houses against all boards built in.
+           << " satisfaction_x100 " << MeanX100(satisfaction_sum_) << " satiety_comp_x100 "
+           << MeanX100(satiety_comp_sum_) << " rest_comp_x100 " << MeanX100(rest_comp_sum_)
+           << " lodged_family_days " << lodged_family_days_ << " family_days " << family_days_
            << " births " << book.births << " births_drawn " << book.births_drawn
            << " births_stopped_health " << book.births_stopped_health << " births_stopped_away "
            << book.births_stopped_away << " births_stopped_satiety " << book.births_stopped_satiety
@@ -729,6 +742,11 @@ class SmokehousePolicy {
     days_ = 0;
     store_meat_sum_ = 0;
     pantry_meat_sum_ = 0;
+    satisfaction_sum_ = 0.0;
+    satiety_comp_sum_ = 0.0;
+    rest_comp_sum_ = 0.0;
+    lodged_family_days_ = 0;
+    family_days_ = 0;
     demand_days_ = 0;
     worked_days_ = 0;
     master_held_days_ = 0;
@@ -807,6 +825,17 @@ class SmokehousePolicy {
   core::Grams last_salt_advance_ = 0;
   core::Grams last_salt_in_carts_ = 0;
   std::int64_t days_ = 0;
+  double satisfaction_sum_ = 0.0;
+  double satiety_comp_sum_ = 0.0;
+  double rest_comp_sum_ = 0.0;
+  std::uint32_t lodged_family_days_ = 0;
+  std::uint32_t family_days_ = 0;
+
+  /// A family-day mean × 100, as an integer (the year lines carry integers).
+  std::int64_t MeanX100(double sum) const {
+    return family_days_ > 0 ? std::llround(100.0 * sum / static_cast<double>(family_days_)) : -1;
+  }
+
   core::Grams store_meat_sum_ = 0;
   core::Grams pantry_meat_sum_ = 0;
   std::uint32_t demand_days_ = 0;
