@@ -127,6 +127,10 @@ class SmokehousePolicy {
   /// @brief K5's decomposition (boss seq 24): the arm without the cooper
   ///        (no workshops, no farm_craftsman for them), and the arm without
   ///        the food stores (none with the smokehouse, none on «no room»).
+  /// @brief ARM d6 (econ seq 29, boss seq 30): the smokehouse from y3, the
+  ///        second food store only while the housing lamp shows no queue.
+  void FromYear3(bool on) { from_y3_ = on; }
+
   void Parts(bool cooper, bool stores, bool master, bool salt) {
     cooper_on_ = cooper;
     stores_on_ = stores;
@@ -165,6 +169,11 @@ class SmokehousePolicy {
     if (!on_ || !triggered_) {
       return;
     }
+    // ARM d6 (econ seq 29, boss seq 30): nothing marked before y3 - after the
+    // act of acceptance; y1-y2 spoilage is the take-over years'.
+    if (from_y3_ && world.calendar.day < 2U * core::kDaysPerYear) {
+      return;
+    }
     if (cooldown_ > 0) {
       --cooldown_;
       return;
@@ -196,7 +205,8 @@ class SmokehousePolicy {
         << Opt(barrel_short_day_) << " room_short_day " << Opt(room_short_day_)
         << " store_marked_day " << Opt(store_marked_day_) << " store_built_day "
         << Opt(store_built_day_) << " stores_asked " << stores_asked_ << " stores_built "
-        << stores_built_ << " holders" << (holders_.str().empty() ? " -" : holders_.str()) << '\n';
+        << stores_built_ << " store_held_for_housing_days " << store_held_for_housing_days_
+        << " holders" << (holders_.str().empty() ? " -" : holders_.str()) << '\n';
   }
 
  private:
@@ -373,6 +383,10 @@ class SmokehousePolicy {
     }
     std::vector<core::Alarm> alarms;
     simulation.CollectAlarms(alarms);
+    // d6: the housing lamp's queue today (a second food store waits on it).
+    housing_short_today_ = std::ranges::any_of(alarms, [](const core::Alarm& alarm) {
+      return alarm.kind == core::AlarmKind::kHousingShort;
+    });
     const core::UnitId shop = world.units.row_ids[house];
     for (const core::Alarm& alarm : alarms) {
       if (alarm.kind == core::AlarmKind::kProcessingStopped && alarm.unit.value == shop.value) {
@@ -539,6 +553,12 @@ class SmokehousePolicy {
       if (!store_built_day_) {
         store_built_day_ = world.calendar.day;
       }
+    }
+    // ARM d6: a store on «no room» only while the housing lamp shows no queue
+    // (the with-smokehouse store is asked at its mark, before this).
+    if (from_y3_ && housing_short_today_ && stores_asked_ > 0) {
+      ++store_held_for_housing_days_;
+      return false;
     }
     if (!room_wanted_) {
       return false;
@@ -802,6 +822,9 @@ class SmokehousePolicy {
   bool cooper_on_ = true;
   bool stores_on_ = true;
   bool master_on_ = true;
+  bool from_y3_ = false;
+  bool housing_short_today_ = false;
+  std::uint32_t store_held_for_housing_days_ = 0;
   bool salt_on_ = true;
   std::vector<std::uint32_t> holders_seen_;
   std::ostringstream holders_;

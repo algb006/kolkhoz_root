@@ -622,6 +622,8 @@ bool g_smokehouse_stores = true;
 /// boss seq 26: no food_master (4); no salt above the reserve (5).
 bool g_smokehouse_master = true;
 bool g_smokehouse_salt = true;
+/// arm d6 (econ seq 29): the smokehouse from y3, the second store only with no housing queue.
+bool g_smokehouse_from_y3 = false;
 /// `--hay-hand-over=off`: #1570's counterfactual - the hay lamp's «reduce
 /// herd» left unanswered (LimitPolicy::HayHandOverOff), so a run can say
 /// whether the herds it named would have gone short.
@@ -848,6 +850,7 @@ bool Walk(std::uint64_t seed,
   builder.smokehouse.Enable(g_smokehouse);  // #1644: the arm --smokehouse; off in the canon
   builder.smokehouse.Parts(
       g_smokehouse_cooper, g_smokehouse_stores, g_smokehouse_master, g_smokehouse_salt);
+  builder.smokehouse.FromYear3(g_smokehouse_from_y3);
   builder.smokehouse.Declare("population_curve");
   if (g_salt_points_zero) {
     builder.limit.SaltPointsZero(true);  // #1630 (C)'s arm C3: the loan only
@@ -1711,6 +1714,8 @@ int main(int argc, char** argv) {
       g_smokehouse_master = false;  // boss seq 26, arm (4)
     } else if (argument == "--smokehouse-no-salt") {
       g_smokehouse_salt = false;  // boss seq 26, arm (5)
+    } else if (argument == "--smokehouse-from-y3") {
+      g_smokehouse_from_y3 = true;  // econ seq 29 / boss seq 30, arm d6
     } else if (argument == "--no-write-off") {
       g_no_write_off = true;
     } else if (argument == "--no-anticrime") {
