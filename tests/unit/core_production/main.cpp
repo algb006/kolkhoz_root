@@ -14769,9 +14769,11 @@ int CheckProcessingShops() {
         Expect(salted_plenty == 850 * kKilo && smoked_plenty == 0,
                "shops (#1644): a smokehouse day goes to the salting first - 1 t of meat "
                "salted (850 kg), none smoked, though the smoking is first in the catalogue");
-    // The need on: 80 eaters x 125 g x 4 days x 3 months = 120 kg reserved; 150 kg
-    // held leaves 30 kg - under a batch's 100 kg, so the day goes to the smoking.
-    const auto [salted_short, smoked_short] = one_day(true, 150 * kKilo);
+    // The need on: 80 eaters x 125 g x 4 days x 3 months = 120 kg reserved; 120 kg
+    // held leaves none for the barrel, so the day goes to the smoking. (The first
+    // form held 150 kg and expected no salting: the 30 kg above the reserve make
+    // 0.3 of a batch - batches are fractional - and the suite said so.)
+    const auto [salted_short, smoked_short] = one_day(true, 120 * kKilo);
     failures += Expect(salted_short == 0 && smoked_short == 600 * kKilo,
                        "shops (#1644): the salt at the table's reserve - the day smokes (600 kg)");
   }
