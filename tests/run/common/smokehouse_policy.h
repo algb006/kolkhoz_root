@@ -16,7 +16,8 @@
 ///     FixturePolicy's to put up;
 ///   * the order «salt first while salt is above the table's reserve, smoke the
 ///     rest» is the CORE's (processing_shops.cpp), not this rule's.
-/// OFF unless asked (--smokehouse, #1644's arm), until econ reads the pair.
+/// ON IN THE CANON since 0.37.374 (boss seq 17: the reference chairman puts the
+/// smokehouse up); --no-smokehouse is the arm that turns it off.
 /// Prints SMOKE1644 a village-year (K1-K7) and once a village.
 
 #ifndef TESTS_RUN_COMMON_SMOKEHOUSE_POLICY_H_
@@ -124,9 +125,16 @@ class SmokehousePolicy {
 
   /// @brief The fixture difference, BEFORE the run measures.
   void Declare(std::string_view run_name) const {
-    if (on_) {
+    if (!on_) {
       std::cout << run_name
-                << ": ARM — --smokehouse (#1644): at 1 t of meat and fish spoiled in a rolling "
+                << ": ARM — --no-smokehouse (#1644): the run's chairman puts up no smokehouse, "
+                   "no food store or workshops for it, and buys no salt for its barrels\n";
+      return;
+    }
+    {
+      std::cout << run_name
+                << ": the canon's smokehouse (#1644, on since 0.37.374): at 1 t of meat and fish "
+                   "spoiled in a rolling "
                    "year the run's chairman marks the smokehouse on the food yard and appoints a "
                    "food_master there; once it stands, the workshops on the utility yard and a "
                    "farm_craftsman there (the cooper, §8а «Под засолку»); a food_store at the "
@@ -670,7 +678,7 @@ class SmokehousePolicy {
   }
 
   static constexpr float kAdultYears = 16.0F;
-  bool on_ = false;
+  bool on_ = true;  // the canon's (0.37.374, boss seq 17)
   bool triggered_ = false;
   std::uint32_t cooldown_ = 0;
   std::uint32_t candidate_ = 0;
