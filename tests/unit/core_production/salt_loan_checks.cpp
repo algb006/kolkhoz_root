@@ -32,8 +32,11 @@ int Expect(bool condition, const char* label) {
   return 0;
 }
 
-/// Ten residents in one family, one store holding `salt_g` of salt.
-core::WorldState Village(const core::ProductionConfig& config, core::Grams salt_g) {
+/// Ten residents in one family, one church store (salt's house in
+/// resource_stores.csv) holding `salt_g` of salt.
+core::WorldState Village(const core::ProductionConfig& config,
+                         core::UnitTypeId church,
+                         core::Grams salt_g) {
   core::WorldState world;
   world.calendar.day = 60;
   core::FamilyRow family;
@@ -44,6 +47,7 @@ core::WorldState Village(const core::ProductionConfig& config, core::Grams salt_
     core::AppendRow(world.residents, person);
   }
   core::UnitRow store;
+  store.type = church;
   store.level = 1;
   store.stock.assign(config.salt_resource.value + 1U, 0);
   store.stock[config.salt_resource.value] = salt_g;
@@ -67,7 +71,10 @@ int CheckTheSaltLoan() {
                      "the shipped tables turn the need on; the loan costs 10 x 1.2 = 12 points");
 
   // THE LAMP: 6 kg for 10 eaters = 4.8 days - lit, days to «пресно» 8 (red).
-  core::WorldState low = Village(config, 6'000);
+  const core::ITable* const types = tables->FindTable("unit_types");
+  const core::UnitTypeId church{static_cast<std::uint16_t>(
+      types != nullptr ? types->FindRowByKey("church_store") : core::kNoTableRow)};
+  core::WorldState low = Village(config, church, 6'000);
   low.limit.points = 5;
   std::vector<core::Alarm> alarms;
   core::CollectSaltAlarms(config, low, alarms);
@@ -80,7 +87,7 @@ int CheckTheSaltLoan() {
   failures += Expect(lamp && advice,
                      "4.8 days of table: the lamp at 8 days to «пресно», the elder's loan line");
   // A full store: no lamp.
-  core::WorldState full = Village(config, 100'000);
+  core::WorldState full = Village(config, church, 100'000);
   std::vector<core::Alarm> none;
   core::CollectSaltAlarms(config, full, none);
   failures += Expect(none.empty(), "80 days of table: no lamp");

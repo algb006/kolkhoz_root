@@ -1698,6 +1698,13 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"audit.trial_due", U8(world.audit.trial_due)});
   chunks.push_back({"audit.books_accepted", U8(world.audit.books_accepted)});
   chunks.push_back({"audit.accepted_day", U32(world.audit.accepted_day)});
+  // The salt watch (#1630 (C), save 209).
+  chunks.push_back({"salt.half_on_edge_days", U16(world.salt.half_on_edge_days)});
+  chunks.push_back({"salt.ending_raised", U8(world.salt.ending_raised)});
+  chunks.push_back({"salt.letter_year", U16(world.salt.letter_year)});
+  chunks.push_back({"salt.loan_year", U16(world.salt.loan_year)});
+  chunks.push_back(
+      {"salt.loan_points_owed", U32(static_cast<std::uint32_t>(world.salt.loan_points_owed))});
   // The sports field's month (save 68).
   chunks.push_back({"sport_month.open_days", U8(world.sport_month.open_days)});
   chunks.push_back({"sport_month.downpour_yesterday", U8(world.sport_month.downpour_yesterday)});
