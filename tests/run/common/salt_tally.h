@@ -62,6 +62,15 @@ class SaltTally {
   void CountDayEnd(const core::ISimulation& simulation, const SaltBuyRule& rule) {
     const core::WorldState& world = simulation.CompletedState();
     const core::SimDay day = world.calendar.day;
+    // THE YEAR'S FUND AFTER THE TURN (econ's E3b): the points at the end of a
+    // year's first day - the grant, the carried points, less the salt loans'
+    // debt taken at the limit's turn. Printed on that year's line.
+    if (day % core::kDaysPerYear == 0) {
+      fund_start_ = world.limit.points;
+      if (day == 0) {
+        year_fund_start_ = fund_start_;  // year 1 has no closing line before it
+      }
+    }
     // #1630 (C): the ending, the letters, the «Село кончилось» candidate, the
     // lamp's colour by the same door the layer reads (SaltToday).
     if (world.salt.ending_raised != 0 && !ending_day_) {
@@ -190,11 +199,12 @@ class SaltTally {
            << " deaths_salt " << book.deaths_salt << " departures_salt " << book.departures_salt
            << " salt_loans " << book.salt_loans << " loans_asked " << rule.LoansIn(year)
            << " lamp_yellow_days " << yellow_days_ << " lamp_red_days " << red_days_ << " letters "
-           << letters_year_ << '\n';
+           << letters_year_ << " fund_start " << year_fund_start_ << '\n';
     family_days_ = {};
     yellow_days_ = 0;
     red_days_ = 0;
     letters_year_ = 0;
+    year_fund_start_ = fund_start_;  // the year now opening: its line prints it
   }
 
   std::uint64_t seed_ = 0;
@@ -222,6 +232,8 @@ class SaltTally {
   std::uint32_t letters_year_ = 0;
   std::uint32_t yellow_days_ = 0;
   std::uint32_t red_days_ = 0;
+  std::int32_t fund_start_ = 0;       ///< points at the end of the latest year's first day
+  std::int32_t year_fund_start_ = 0;  ///< the closing line's year's own
   std::ostringstream lines_;
 };
 

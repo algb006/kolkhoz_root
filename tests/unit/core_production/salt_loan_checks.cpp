@@ -117,6 +117,19 @@ int CheckTheSaltLoan() {
                  low.salt.loan_points_owed == 12 && low.ledger.current.salt_loans == 1 &&
                  second == core::OrderRefusal::kRuleForbids,
              "the loan brings the lot on the district's cart, owes 12, once a year");
+  // A YEAR OF THE TABLE (econ's (a)): 400 eaters x 6 kg = 2.4 t -> 3 lots.
+  core::WorldState big = Village(config, church, 6'000);
+  for (int index = 0; index < 390; ++index) {
+    core::ResidentRow person;
+    person.family = big.families.row_ids[0];
+    core::AppendRow(big.residents, person);
+  }
+  const std::size_t big_carts = big.limit_deliveries.rows.size();
+  failures += Expect(core::SaltLoanLots(config, big) == 3 &&
+                         core::TakeSaltLoan(config, big, loan) == core::OrderRefusal::kNone &&
+                         big.limit_deliveries.rows.size() == big_carts + 3U &&
+                         big.salt.loan_points_owed == 36,
+                     "400 eaters: the loan brings 3 lots (a year's table), owes 36 points");
   // THE TURN: the 12 come off the new grant.
   low.limit.points = 300;
   core::TakeSaltLoanPointsAtTurn(low);

@@ -945,7 +945,8 @@ enum class EventKind : std::uint8_t {
   /// THE DISTRICT'S LETTER OFFERING THE SALT LOAN (#1630 (C), econ's
   /// salt-ending-c §4): at a year's first lamp «Соли на столе на N суток»
   /// while the points do not buy the salt lot; once a year. `amount` the
-  /// loan's price in points (the lot's x (1 + goods_loan_markup)). kNotable.
+  /// salt lots the loan would bring - a year of every eater's table (econ's
+  /// (a), econ-boss-1630-c-loan; health §4) - at 12 points a lot. kNotable.
   /// Seam key `salt_loan_offered` (the letter «Соли у вас на два месяца.
   /// Район может дать лот в долг»).
   kSaltLoanOffered,

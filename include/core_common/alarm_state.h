@@ -792,7 +792,7 @@ enum class AlarmKind : std::uint8_t {
   /// red, no loan was taken this year and the points do not buy the lot.
   /// The elder's advice (lamp 0); the «once a month» is the layer's, as for
   /// every elder's line. Subject `resource` the salt; `amount` the loan's
-  /// price in points. Proposed registry key `salt_loan_advice`. Collected by
+  /// price in points (its lots x 12). Proposed registry key `salt_loan_advice`. Collected by
   /// core_production.
   kSaltLoanAdvice,
 

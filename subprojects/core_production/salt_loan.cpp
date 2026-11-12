@@ -111,6 +111,23 @@ std::int32_t SaltLoanPoints(const ProductionConfig& config) {
                   (1.0 + static_cast<double>(config.goods_loan_markup))));
 }
 
+std::uint32_t SaltLoanLots(const ProductionConfig& config, const WorldState& world) {
+  const LimitLotId lot = SaltLotOf(config);
+  if (lot.value >= config.limit.lots.size()) {
+    return 0;
+  }
+  const ResourceAmounts& goods = config.limit.lots[lot.value].goods;
+  const Grams lot_salt =
+      config.salt_resource.value < goods.size() ? goods[config.salt_resource.value] : Grams{0};
+  if (lot_salt <= 0) {
+    return 0;
+  }
+  const double year_g = static_cast<double>(config.farming.salt_norm_g_per_eater_day) *
+                        static_cast<double>(world.residents.rows.size()) * kDaysPerYear;
+  const double lots = std::ceil(year_g / static_cast<double>(lot_salt));
+  return static_cast<std::uint32_t>(std::max(1.0, lots));
+}
+
 void CollectSaltAlarms(const ProductionConfig& config,
                        const WorldState& world,
                        std::vector<Alarm>& alarms) {
@@ -144,7 +161,7 @@ void CollectSaltAlarms(const ProductionConfig& config,
     Alarm line;
     line.kind = AlarmKind::kSaltLoanAdvice;
     line.resource = config.salt_resource;
-    line.amount = SaltLoanPoints(config);
+    line.amount = static_cast<std::int64_t>(SaltLoanLots(config, world)) * SaltLoanPoints(config);
     line.lamp = 0;
     alarms.push_back(line);
   }
@@ -165,7 +182,7 @@ void RunSaltLetterDay(const ProductionConfig& config, WorldState& current) {
   }
   current.salt.letter_year = static_cast<std::uint16_t>(year);
   SimEvent& letter = EmitEvent(current, EventKind::kSaltLoanOffered, EventSeverity::kNotable);
-  letter.amount = SaltLoanPoints(config);
+  letter.amount = SaltLoanLots(config, current);  // the lots the loan would bring
 }
 
 OrderRefusal TakeSaltLoan(const ProductionConfig& config,
@@ -186,13 +203,20 @@ OrderRefusal TakeSaltLoan(const ProductionConfig& config,
   }
   OrderRow carried = order;
   carried.lot = lot;
-  LimitDeliveryRow cart;
-  cart.lot = lot;
-  cart.arrive_day = LimitCartArriveDay(config, current, carried);
-  cart.goods = def.goods;
-  AppendRow(current.limit_deliveries, cart);
+  // A YEAR OF THE TABLE (econ's (a)): the lots of every eater's year, one
+  // cart each, on the district's day. NAMED: the door above asked the room
+  // for one lot, not for all of them.
+  const std::uint32_t lots = SaltLoanLots(config, current);
+  const std::uint32_t arrive_day = LimitCartArriveDay(config, current, carried);
+  for (std::uint32_t index = 0; index < lots; ++index) {
+    LimitDeliveryRow cart;
+    cart.lot = lot;
+    cart.arrive_day = arrive_day;
+    cart.goods = def.goods;
+    AppendRow(current.limit_deliveries, cart);
+  }
   current.salt.loan_year = static_cast<std::uint16_t>(year);
-  current.salt.loan_points_owed += SaltLoanPoints(config);
+  current.salt.loan_points_owed += static_cast<std::int32_t>(lots) * SaltLoanPoints(config);
   ++current.ledger.current.salt_loans;
   return OrderRefusal::kNone;
 }

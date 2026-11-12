@@ -38,6 +38,13 @@ LimitLotId SaltLotOf(const ProductionConfig& config);
 ///        rounded; 0 with no salt lot.
 std::int32_t SaltLoanPoints(const ProductionConfig& config);
 
+/// @brief The salt loan's lots today (econ's (a), econ-boss-1630-c-loan [1]-[2];
+///        health §4): a year of every eater's table - ceil(residents x
+///        salt_norm_g_per_eater_day x the year's days ÷ the lot's salt) - at
+///        least one; 0 with no salt lot. The loan's price is this x
+///        SaltLoanPoints.
+std::uint32_t SaltLoanLots(const ProductionConfig& config, const WorldState& world);
+
 /// @brief The lamp kSaltTableShort while the table's days fall under twice
 ///        salt_step1_days or a family stands on a step; the elder's
 ///        kSaltLoanAdvice while that lamp would be red, no loan was taken this
