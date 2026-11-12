@@ -25,10 +25,12 @@
 #include <array>
 #include <cstdint>
 #include <iostream>
+#include <map>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "core_catalog/world_conventions.h"
 #include "core_common/calendar.h"
@@ -96,6 +98,7 @@ class SmokehousePolicy {
   void RunDay(core::ISimulation& simulation) {
     const core::WorldState& world = simulation.CompletedState();
     CountDay(world);
+    CountStops(simulation, world);
     if (!on_ || !triggered_) {
       return;
     }
@@ -230,6 +233,28 @@ class SmokehousePolicy {
     }
   }
 
+  /// THE SHOP'S OWN WORD WHY IT STANDS (kProcessingStopped on the smokehouse:
+  /// short of a resource, no room for one, or too far), counted by resource a
+  /// year - the second read of #1644 (the shop asked no work from y10 with
+  /// ~200 kg of meat in the stores).
+  void CountStops(const core::ISimulation& simulation, const core::WorldState& world) {
+    const std::uint32_t house = FindOfType(world, smokehouse_);
+    if (house == core::kNoRow || world.units.rows[house].level == 0) {
+      return;
+    }
+    std::vector<core::Alarm> alarms;
+    simulation.CollectAlarms(alarms);
+    const core::UnitId shop = world.units.row_ids[house];
+    for (const core::Alarm& alarm : alarms) {
+      if (alarm.kind == core::AlarmKind::kProcessingStopped && alarm.unit.value == shop.value) {
+        const char* why = alarm.stop_reason == core::ProcessingStopReason::kNoRoom    ? "room"
+                          : alarm.stop_reason == core::ProcessingStopReason::kShortOf ? "short"
+                                                                                      : "far";
+        ++stops_[std::string(why) + "_r" + std::to_string(alarm.resource.value)];
+      }
+    }
+  }
+
   /// Every store's stock summed, by resource.
   core::ResourceAmounts StockOf(const core::WorldState& world) const {
     core::ResourceAmounts sum;
@@ -326,7 +351,12 @@ class SmokehousePolicy {
            << (days_ > 0 ? store_meat_sum_ / days_ / 1000 : 0) << " pantry_meatfish_mean_kg "
            << (days_ > 0 ? pantry_meat_sum_ / days_ / 1000 : 0) << " shop_asked_days "
            << demand_days_ << " shop_worked_days " << worked_days_ << " master_held_days "
-           << master_held_days_ << " days " << days_ << '\n';
+           << master_held_days_ << " days " << days_ << " stops";
+    for (const auto& [why, count] : stops_) {
+      lines_ << ' ' << why << ':' << count;
+    }
+    lines_ << (stops_.empty() ? " -" : "") << '\n';
+    stops_.clear();
     under_reserve_days_ = 0;
     firewood_low_.reset();
     days_ = 0;
@@ -367,6 +397,7 @@ class SmokehousePolicy {
   std::uint32_t demand_days_ = 0;
   std::uint32_t worked_days_ = 0;
   std::uint32_t master_held_days_ = 0;
+  std::map<std::string, std::uint32_t> stops_;  ///< «room_rN» / «short_rN» / «far_rN» days
   std::optional<core::Grams> firewood_low_;
   std::optional<core::SimDay> trigger_day_;
   std::optional<core::SimDay> marked_day_;
