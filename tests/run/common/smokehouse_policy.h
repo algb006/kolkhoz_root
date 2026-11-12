@@ -206,6 +206,42 @@ class SmokehousePolicy {
     if (house != core::kNoRow && world.units.rows[house].level > 0 && !built_day_) {
       built_day_ = day;
     }
+    // WHERE THE MEAT LIES AND WHO WORKS IT (#1644's first read: the arm salted
+    // 0.2-1.1 t a year and spoiled 96 % of the base): the stores' meat and fish
+    // the shop can take, the yards' pantries it cannot; the shop's asked days;
+    // the days a resident worked in it; whether a food_master holds the yard.
+    ++days_;
+    store_meat_sum_ += Of(StockOf(world), meat_) + Of(StockOf(world), fish_);
+    for (const core::FamilyRow& family : world.families.rows) {
+      pantry_meat_sum_ += Of(family.pantry, meat_) + Of(family.pantry, fish_);
+    }
+    if (house != core::kNoRow) {
+      const core::UnitRow& shop = world.units.rows[house];
+      demand_days_ += shop.production_days_written > 0.0F ? 1U : 0U;
+      const core::UnitId shop_id = world.units.row_ids[house];
+      bool worked = false;
+      bool held = false;
+      for (const core::ResidentRow& person : world.residents.rows) {
+        worked = worked || person.work.unit.value == shop_id.value;
+        held = held || person.post.profession.value == master_;
+      }
+      worked_days_ += worked ? 1U : 0U;
+      master_held_days_ += held ? 1U : 0U;
+    }
+  }
+
+  /// Every store's stock summed, by resource.
+  core::ResourceAmounts StockOf(const core::WorldState& world) const {
+    core::ResourceAmounts sum;
+    for (const core::UnitRow& unit : world.units.rows) {
+      if (sum.size() < unit.stock.size()) {
+        sum.resize(unit.stock.size(), 0);
+      }
+      for (std::size_t resource = 0; resource < unit.stock.size(); ++resource) {
+        sum[resource] += unit.stock[resource];
+      }
+    }
+    return sum;
   }
 
   bool NextOrder(const core::WorldState& world, core::OrderRow& order) {
@@ -286,9 +322,19 @@ class SmokehousePolicy {
            << " salt_to_barrels_kg " << Of(book.processed, salt_) / 1000 << " firewood_to_shops_kg "
            << Of(book.processed, firewood_) / 1000 << " firewood_lowest_kg "
            << (firewood_low_ ? *firewood_low_ / 1000 : -1) << " days_salting_under_reserve "
-           << under_reserve_days_ << '\n';
+           << under_reserve_days_ << " store_meatfish_mean_kg "
+           << (days_ > 0 ? store_meat_sum_ / days_ / 1000 : 0) << " pantry_meatfish_mean_kg "
+           << (days_ > 0 ? pantry_meat_sum_ / days_ / 1000 : 0) << " shop_asked_days "
+           << demand_days_ << " shop_worked_days " << worked_days_ << " master_held_days "
+           << master_held_days_ << " days " << days_ << '\n';
     under_reserve_days_ = 0;
     firewood_low_.reset();
+    days_ = 0;
+    store_meat_sum_ = 0;
+    pantry_meat_sum_ = 0;
+    demand_days_ = 0;
+    worked_days_ = 0;
+    master_held_days_ = 0;
   }
 
   static constexpr float kAdultYears = 16.0F;
@@ -315,6 +361,12 @@ class SmokehousePolicy {
   core::Grams last_spoiled_ = 0;
   core::Grams last_salt_in_ = 0;
   std::uint32_t under_reserve_days_ = 0;
+  std::int64_t days_ = 0;
+  core::Grams store_meat_sum_ = 0;
+  core::Grams pantry_meat_sum_ = 0;
+  std::uint32_t demand_days_ = 0;
+  std::uint32_t worked_days_ = 0;
+  std::uint32_t master_held_days_ = 0;
   std::optional<core::Grams> firewood_low_;
   std::optional<core::SimDay> trigger_day_;
   std::optional<core::SimDay> marked_day_;
