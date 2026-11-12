@@ -129,8 +129,9 @@ class SmokehousePolicy {
                 << ": ARM — --smokehouse (#1644): at 1 t of meat and fish spoiled in a rolling "
                    "year the run's chairman marks the smokehouse on the food yard and appoints a "
                    "food_master there; once it stands, the workshops on the utility yard and a "
-                   "farm_craftsman there (the cooper, §8а «Под засолку»); on the shop's «no room» "
-                   "one more food_store at the yard; the salt buyer adds the salting's salt above "
+                   "farm_craftsman there (the cooper, §8а «Под засолку»); a food_store at the "
+                   "yard with the smokehouse, and one more on the shop's «no room»; the salt buyer "
+                   "adds the salting's salt above "
                    "the table's reserve\n";
     }
   }
@@ -406,6 +407,10 @@ class SmokehousePolicy {
       order.position = world.units.rows[yard].position;
       if (!marked_day_) {
         marked_day_ = world.calendar.day;
+        // (iv), boss seq 15: the food store is asked WITH the smokehouse - in
+        // k1h/k1i all 32 villages had «no room» in y2, and a store asked on
+        // it stood only in y3.
+        room_wanted_ = true;
       }
       return true;
     }
