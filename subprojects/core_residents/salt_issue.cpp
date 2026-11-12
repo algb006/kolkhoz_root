@@ -21,7 +21,7 @@
 namespace core {
 namespace {
 
-constexpr std::array<std::string_view, 11> kSaltIssueWorldParamKeys = {
+constexpr std::array<std::string_view, 18> kSaltIssueWorldParamKeys = {
     "salt_need_on",
     "salt_norm_g_per_eater_day",
     "salt_substitute_kg_per_eater_day",
@@ -32,7 +32,15 @@ constexpr std::array<std::string_view, 11> kSaltIssueWorldParamKeys = {
     "salt_mood_step2",
     "salt_health_loss_step3",
     "salt_health_floor_step3",
-    "salt_count_recovery"};
+    "salt_count_recovery",
+    // #1630 (C): step 4 «край», its deaths, the family's leaving, the ending.
+    "salt_step4_days",
+    "salt_edge_death_share_day",
+    "salt_edge_child_years",
+    "salt_edge_elder_years",
+    "salt_edge_leave_days",
+    "salt_edge_village_share",
+    "salt_edge_series_days"};
 
 Grams& PantrySlot(FamilyRow& family, ResourceId resource) {
   if (family.pantry.size() <= resource.value) {
@@ -113,13 +121,29 @@ bool ParseSaltIssueConfig(const ITableSet& tables, SaltIssueConfig& config, std:
         {.key = kSaltIssueWorldParamKeys[10],
          .value = &config.count_recovery,
          .range = {.low = 0.0F, .high = 100.0F}},
+        {.key = kSaltIssueWorldParamKeys[11], .value = &config.step4_days, .range = days},
+        {.key = kSaltIssueWorldParamKeys[12],
+         .value = &config.edge_death_share,
+         .range = {.low = 0.0F, .high = 1.0F}},
+        {.key = kSaltIssueWorldParamKeys[13],
+         .value = &config.edge_child_years,
+         .range = {.low = 0.0F, .high = 120.0F}},
+        {.key = kSaltIssueWorldParamKeys[14],
+         .value = &config.edge_elder_years,
+         .range = {.low = 0.0F, .high = 120.0F}},
+        {.key = kSaltIssueWorldParamKeys[15], .value = &config.edge_leave_days, .range = days},
+        {.key = kSaltIssueWorldParamKeys[16],
+         .value = &config.edge_village_share,
+         .range = {.low = 0.0F, .high = 1.0F}},
+        {.key = kSaltIssueWorldParamKeys[17], .value = &config.edge_series_days, .range = days},
     }};
     if (!ReadKnobs(*world, "world_params", knobs, error)) {
       return false;
     }
     config.on = on >= 0.5F;
-    if (!(config.step1_days <= config.step2_days && config.step2_days <= config.step3_days)) {
-      error = "world_params salt_step1_days <= salt_step2_days <= salt_step3_days does not hold";
+    if (!(config.step1_days <= config.step2_days && config.step2_days <= config.step3_days &&
+          config.step3_days <= config.step4_days)) {
+      error = "world_params salt_step1_days <= step2 <= step3 <= step4 does not hold";
       return false;
     }
   }
@@ -127,6 +151,9 @@ bool ParseSaltIssueConfig(const ITableSet& tables, SaltIssueConfig& config, std:
 }
 
 std::uint8_t SaltStepOf(const SaltIssueConfig& config, float days_without) {
+  if (days_without >= config.step4_days) {
+    return 4U;
+  }
   if (days_without >= config.step3_days) {
     return 3U;
   }

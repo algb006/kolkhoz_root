@@ -58,6 +58,7 @@
 #include "core_common/road_rules.h"
 #include "core_common/road_state.h"
 #include "core_common/road_work_state.h"
+#include "core_common/salt_state.h"
 #include "core_common/settlement_state.h"
 #include "core_common/specialist_state.h"
 #include "core_common/timber_state.h"
@@ -1193,6 +1194,10 @@ struct WorldState {
   /// The district's store audit (#1568 link 2d); SAVED (save 207).
   /// night_trade_state.h.
   AuditState audit;
+
+  /// The salt watch: «Без соли»'s run and latch, the letter, the loan
+  /// (#1630 (C)); SAVED (save 209). salt_state.h.
+  SaltState salt;
 
   /// The yards' walks to the barter counter this evening (needs design §6);
   /// SAVED (save 121). barter_state.h.

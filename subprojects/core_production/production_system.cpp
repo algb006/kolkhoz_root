@@ -73,6 +73,7 @@
 #include "production_config.h"
 #include "production_orders.h"
 #include "rick_supply.h"
+#include "salt_loan.h"
 #include "seed_room.h"
 #include "stock_lights.h"
 #include "stock_ops.h"
@@ -256,6 +257,8 @@ class ProductionSystem final : public IProductionSystem {
     // so a felling done yesterday is not counted as a mark standing.
     if (HourFromTick(current.calendar.tick) == 0U) {
       ReleaseUnreachableMarks(config_, current);
+      // The district's salt-loan letter, at the dawn (#1630 (C); salt_loan.h).
+      RunSaltLetterDay(config_, current);
     }
     // And a planting finished this hour is planted this hour
     // (timber_planting.h).
@@ -633,42 +636,10 @@ class ProductionSystem final : public IProductionSystem {
     return GrassStandOn(config_, completed, field);
   }
 
-  /// #1630 (B): the stores' and the pantries' salt and substitutes, the
-  /// table's days at the norm (a substitute's kilogram one eater-day, health
-  /// §4), the families by the step the residents set. `measured` false with
-  /// the need off. half_on_edge_days stays 0: step 4 and its run are (C)'s.
+  /// #1630 (B)-(C): one reading of the village's salt (salt_loan.h,
+  /// SaltViewOf) for the door, the lamp and the letter.
   SaltView SaltToday(const WorldState& completed) const override {
-    SaltView view;
-    if (!config_.farming.salt_need_on || config_.salt_resource.value == kInvalidDefIdValue) {
-      return view;
-    }
-    view.measured = true;
-    const auto add = [](const ResourceAmounts& stock, ResourceId resource, Grams& into) {
-      if (resource.value != kInvalidDefIdValue && resource.value < stock.size()) {
-        into += stock[resource.value];
-      }
-    };
-    for (const UnitRow& unit : completed.units.rows) {
-      add(unit.stock, config_.salt_resource, view.salt_held);
-      add(unit.stock, config_.salted_fish_resource, view.substitutes_held);
-      add(unit.stock, config_.salted_meat_resource, view.substitutes_held);
-    }
-    for (const FamilyRow& family : completed.families.rows) {
-      add(family.pantry, config_.salt_resource, view.salt_held);
-      add(family.pantry, config_.salted_fish_resource, view.substitutes_held);
-      add(family.pantry, config_.salted_meat_resource, view.substitutes_held);
-      ++view.families_by_step[std::min<std::size_t>(family.salt_step, kSaltHungerSteps - 1U)];
-    }
-    constexpr double kSubstituteGramsAnEaterDay = 1000.0;  // health §4: 1 kg an eater-day
-    const double eaters = static_cast<double>(completed.residents.rows.size());
-    const auto norm = static_cast<double>(config_.farming.salt_norm_g_per_eater_day);
-    if (eaters > 0.0 && norm > 0.0) {
-      const double eater_days =
-          (static_cast<double>(view.salt_held) / norm) +
-          (static_cast<double>(view.substitutes_held) / kSubstituteGramsAnEaterDay);
-      view.table_days_left = static_cast<float>(eater_days / eaters);
-    }
-    return view;
+    return SaltViewOf(config_, completed);
   }
 
   Grams StandingCropGrams(const WorldState& /*world*/, const FieldRow& field) const override {
@@ -727,6 +698,7 @@ class ProductionSystem final : public IProductionSystem {
     CollectMilkDebtAlarms(config_, completed, alarms);
     CollectGoodsLoanAlarms(config_, completed, alarms);
     CollectClampRotAlarms(config_, completed, alarms);
+    CollectSaltAlarms(config_, completed, alarms);  // #1630 (C)
     CollectSowingAlarms(config_, completed, alarms);
     CollectGatherAlarms(config_, completed, alarms);
     CollectHerdAlarms(config_, completed, alarms);

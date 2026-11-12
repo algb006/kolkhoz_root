@@ -354,6 +354,18 @@ void RunDeaths(const LifeConfig& config, WorldState& current, SimDay day) {
       dead.push_back(current.residents.row_ids[row]);
     }
   }
+  BuryTheDead(config, current, dead, DeathCause::kAge);
+}
+
+}  // namespace
+
+void BuryTheDead(const LifeConfig& config,
+                 WorldState& current,
+                 const std::vector<ResidentId>& dead,
+                 DeathCause cause) {
+  if (dead.empty()) {
+    return;
+  }
   // THE FUNERALS (#1084; funeral_rules.h), while every dead's row and kin are
   // still here: one a settlement, buried tomorrow, and the cemetery each grave
   // goes to.
@@ -369,6 +381,7 @@ void RunDeaths(const LifeConfig& config, WorldState& current, SimDay day) {
     {
       SimEvent& died = EmitEvent(current, EventKind::kResidentDied, EventSeverity::kNotable);
       died.resident = id;
+      died.amount = static_cast<std::int64_t>(cause);  // #1630 (C): the cause code
       if (row != kNoRow) {
         died.family = current.residents.rows[row].family;
       }
@@ -390,7 +403,12 @@ void RunDeaths(const LifeConfig& config, WorldState& current, SimDay day) {
     RemoveResident(current, id);
   }
   current.ledger.current.deaths += static_cast<std::uint32_t>(dead.size());
+  if (cause == DeathCause::kSalt) {
+    current.ledger.current.deaths_salt += static_cast<std::uint32_t>(dead.size());
+  }
 }
+
+namespace {
 
 /// Epoch-III outflow (demography design; reference run): the young and
 /// single leave. ASSUMPTION: only unmarried working-age residents go —

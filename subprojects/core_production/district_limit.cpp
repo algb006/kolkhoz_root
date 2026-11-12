@@ -20,6 +20,7 @@
 #include "herd_life.h"
 #include "herd_system.h"
 #include "livestock_homes.h"
+#include "salt_loan.h"
 #include "seed_room.h"
 #include "stock_ops.h"
 
@@ -744,6 +745,8 @@ void TurnLimitYear(const ProductionConfig& config,
   current.ledger.current.limit_points_carried += carried;
   GrantYear(config, current, plan_fully_met, overfulfil_grain_tonnes);
   current.limit.points += carried;  // after the grant, which sets the year's points anew
+  // THE SALT LOANS' POINTS (#1630 (C); salt_loan.h): off the year just granted.
+  TakeSaltLoanPointsAtTurn(current);
 }
 
 void RunEraEvents(const ProductionConfig& config, WorldState& current) {

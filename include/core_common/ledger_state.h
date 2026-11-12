@@ -1049,6 +1049,17 @@ struct YearLedger {
 
   /// Fires broken by drunk negligence (link 4).
   std::uint32_t drunk_fires = 0;
+
+  // -- the salt's step 4 and its loan (#1630 (C); save 209) ------------------
+  /// Of `deaths`, the salt's (DeathCause::kSalt): children and elders of the
+  /// families on step 4 «край».
+  std::uint32_t deaths_salt = 0;
+
+  /// Of `departures`, the families that left for the salt (their members).
+  std::uint32_t departures_salt = 0;
+
+  /// The district's salt loans taken this year (one at most, by the rule).
+  std::uint32_t salt_loans = 0;
 };
 
 /// @brief The two books of the world: the year being written and the last

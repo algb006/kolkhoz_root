@@ -1186,7 +1186,7 @@ bool ParseMeadowKinds(const ITable& table, FarmingConfig& farming, std::string& 
 /// AT ALL: until 2026-09-16 this module took every number off its own
 /// hand-written tables, and the two halves of billeting are what brought it
 /// here. The next world constant lands in the same place.
-constexpr std::array<std::string_view, 36> kProductionWorldParamKeys = {
+constexpr std::array<std::string_view, 37> kProductionWorldParamKeys = {
     "billet_heads_per_yard",
     "billet_yield_factor",
     "school_year_start_month",
@@ -1234,7 +1234,9 @@ constexpr std::array<std::string_view, 36> kProductionWorldParamKeys = {
     // READER), and the table's reserve the salting may not take.
     "salt_need_on",
     "salt_norm_g_per_eater_day",
-    "salt_table_reserve_months"};
+    "salt_table_reserve_months",
+    // #1630 (C): step 1's count - the salt lamp's days to the first «пресно».
+    "salt_step1_days"};
 
 /// THE SCHOOL YEAR IS READ HERE AS WELL AS BY THE SCHOOL, and that is a
 /// second READER, not a second home: the months live in world_params.csv and
@@ -1397,7 +1399,10 @@ bool ParseProductionWorldParams(const ITable& world,
                  .range = Range{.low = 0.0F, .high = 1000.0F}},
       ScalarKnob{.key = kProductionWorldParamKeys[35],
                  .value = &farming.salt_table_reserve_months,
-                 .range = Range{.low = 0.0F, .high = 24.0F}}};
+                 .range = Range{.low = 0.0F, .high = 24.0F}},
+      ScalarKnob{.key = kProductionWorldParamKeys[36],
+                 .value = &farming.salt_step1_days,
+                 .range = Range{.low = 0.0F, .high = 1000.0F}}};
   if (!ReadKnobs(world, "world_params", knobs, error)) {
     return false;
   }

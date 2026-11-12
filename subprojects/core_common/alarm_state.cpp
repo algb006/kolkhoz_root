@@ -66,6 +66,9 @@ std::uint32_t AlarmSubjectValue(const Alarm& alarm) {
     case AlarmKind::kSeedAreaShort:
     // The clamps' rot: the potato (proposed `clamp_rot`; #1005).
     case AlarmKind::kClampRot:
+    // The salt's lamp and the elder's loan line: the salt (#1630 (C)).
+    case AlarmKind::kSaltTableShort:
+    case AlarmKind::kSaltLoanAdvice:
       return alarm.resource.value;
     case AlarmKind::kFamilyGoingHungry:
     // The oldest waiting couple's family, or the family on the brink; 0 when
@@ -100,7 +103,9 @@ bool IsElderAdvice(AlarmKind kind) {
   switch (kind) {
     case AlarmKind::kMeadowUncutBeforeSnow:
     case AlarmKind::kSowingWindowClosing:
+    case AlarmKind::kSaltLoanAdvice:
       return true;
+    case AlarmKind::kSaltTableShort:
     case AlarmKind::kNone:
     case AlarmKind::kAlarmKindCount:
     case AlarmKind::kStoreFull:

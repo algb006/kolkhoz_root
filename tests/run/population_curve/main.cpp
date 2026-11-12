@@ -610,6 +610,8 @@ bool g_no_anticrime = false;
 bool g_no_write_off = false;
 /// #1630 (B)'s arm B2: the bot buys no salt (the instrument's known direction).
 bool g_no_salt_buy = false;
+/// #1630 (C)'s arm C3: the salt sees no points, only the loan buys it.
+bool g_salt_points_zero = false;
 /// `--hay-hand-over=off`: #1570's counterfactual - the hay lamp's «reduce
 /// herd» left unanswered (LimitPolicy::HayHandOverOff), so a run can say
 /// whether the herds it named would have gone short.
@@ -831,7 +833,10 @@ bool Walk(std::uint64_t seed,
     builder.write_off.Enable(false);
   }
   if (g_no_salt_buy) {
-    builder.limit.BuySalt(false);  // #1630 (B)'s arm B2
+    builder.limit.BuySalt(false);  // #1630 (B)'s arm B2, (C)'s C2: no lot, no loan
+  }
+  if (g_salt_points_zero) {
+    builder.limit.SaltPointsZero(true);  // #1630 (C)'s arm C3: the loan only
   }
   if (g_hay_hand_over_off) {
     builder.limit.HayHandOverOff(true);
@@ -990,7 +995,7 @@ bool Walk(std::uint64_t seed,
       herds.CountDayEnd(simulation->CompletedState());
       herds.CountNearShort(*simulation);
       crime.CountDay(simulation->CompletedState());
-      salt.CountDayEnd(simulation->CompletedState(), builder.limit.SaltRule());
+      salt.CountDayEnd(*simulation, builder.limit.SaltRule());
       hand_overs.CountDay(simulation->CompletedState(),
                           builder.limit.HayHandLogs(),
                           herds.CowsHandedInYear(simulation->CompletedState().calendar.date.year));
@@ -1679,6 +1684,8 @@ int main(int argc, char** argv) {
       g_beach_off = true;
     } else if (argument == "--no-salt-buy") {
       g_no_salt_buy = true;
+    } else if (argument == "--salt-points-zero") {
+      g_salt_points_zero = true;
     } else if (argument == "--no-write-off") {
       g_no_write_off = true;
     } else if (argument == "--no-anticrime") {

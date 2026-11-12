@@ -53,6 +53,7 @@
 #include "hunger_forecast.h"
 #include "issue_norm.h"
 #include "life_config.h"
+#include "salt_edge.h"
 #include "specialist_arrival.h"
 #include "vitals.h"
 #include "year_metrics.h"
@@ -544,6 +545,9 @@ class ResidentsSystem final : public IResidentsSystem {
     // before the vitals, so a step 3 day's health loss is the day's.
     IssueSaltMonth(config_.salt, current);
     RunSaltDay(config_.salt, current);
+    // Step 4 «край»: the ending's run, its deaths, the families that leave
+    // (#1630 (C); salt_edge.h).
+    RunSaltEdgeDay(config_, current);
     AccumulateVitals(config_, food_.satiety.health_loss_satiety_threshold, current);
     // The year's book, after the exchange has moved the food and before the
     // turn below can close it: the satisfaction sampled is yesterday's

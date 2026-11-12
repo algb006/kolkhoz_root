@@ -84,6 +84,7 @@
 #include "production_config.h"
 #include "production_orders.h"
 #include "run_production_day.h"
+#include "salt_loan_checks.h"
 #include "seed_lamp_checks.h"
 #include "seed_room.h"
 #include "site_supply_checks.h"
@@ -18377,6 +18378,7 @@ int main() {
   failures += CheckTheSupplyCountsItsIdleDays();
   failures += CheckTheStoresKeepByTheirRoof();
   failures += CheckTheHayWeathersOnTheField();
+  failures += CheckTheSaltLoan();  // #1630 (C)
   failures += CheckTheClampRotAndItsLamp();
   failures += CheckThePlanDue();
   failures += CheckTheTeamsOatPlan();

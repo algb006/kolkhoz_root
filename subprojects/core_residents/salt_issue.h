@@ -51,9 +51,21 @@ struct SaltIssueConfig {
   float step1_days = 4.0F;                   ///< `salt_step1_days`
   float step2_days = 8.0F;                   ///< `salt_step2_days`
   float step3_days = 12.0F;                  ///< `salt_step3_days`
-  float mood_step1 = -4.0F;                  ///< `salt_mood_step1`
-  float mood_step2 = -8.0F;                  ///< `salt_mood_step2` (step 3 keeps it)
-  float health_loss_step3 = 1.0F;            ///< `salt_health_loss_step3`, a day
+  /// #1630 (C), econ's salt-ending-c §1 (health §4, 1 Oct): 4 «край» from
+  /// this count; children under edge_child_years and elders from
+  /// edge_elder_years die edge_death_share a day; a family leaves after
+  /// edge_leave_days on it; the village's «Без соли» when edge_village_share
+  /// of its families stand on it edge_series_days running.
+  float step4_days = 20.0F;         ///< `salt_step4_days`
+  float edge_death_share = 0.01F;   ///< `salt_edge_death_share_day`
+  float edge_child_years = 7.0F;    ///< `salt_edge_child_years`, biological
+  float edge_elder_years = 60.0F;   ///< `salt_edge_elder_years`, biological
+  float edge_leave_days = 8.0F;     ///< `salt_edge_leave_days`
+  float edge_village_share = 0.5F;  ///< `salt_edge_village_share`
+  float edge_series_days = 8.0F;    ///< `salt_edge_series_days`
+  float mood_step1 = -4.0F;         ///< `salt_mood_step1`
+  float mood_step2 = -8.0F;         ///< `salt_mood_step2` (step 3 keeps it)
+  float health_loss_step3 = 1.0F;   ///< `salt_health_loss_step3`, a day
   /// `salt_health_floor_step3` (econ, econ-boss-1630-b-read [1]-[3]; health §4
   /// step 3, STUB): step 3 takes health down to here and no lower; a member
   /// already below keeps his own. Without it step 3 held every mother under

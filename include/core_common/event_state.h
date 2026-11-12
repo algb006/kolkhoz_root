@@ -67,7 +67,7 @@ enum class EventKind : std::uint8_t {
 
   // -- people: the demography sub-step of the decisions slot -------------
   kResidentBorn,     ///< resident, family.
-  kResidentDied,     ///< resident, family; amount = cause code of the emitter.
+  kResidentDied,     ///< resident, family; amount = DeathCause (below).
   kResidentArrived,  ///< resident, family — a migrant who came to stay.
   kResidentLeft,     ///< resident, family — the outflow.
   kWedding,          ///< resident (the bride), family (the couple's household:
@@ -932,9 +932,23 @@ enum class EventKind : std::uint8_t {
   /// STUB (#1630 (S), 11 Nov 2026): no producer - the need is not in the core
   /// (no eater eats salt, no family's count, no stages); (A) the contract, (B)
   /// the need and stages, (C) this condition, in boss's order.
-  /// @no_emit STUB #1630: no producer - the salt need is not in the core yet;
-  /// (C) raises it from the families' stage-4 count.
+  /// Raised by core_residents' RunSaltEdgeDay (salt_issue.cpp, #1630 (C)).
   kSaltEndingDue,
+
+  /// A FAMILY LEFT FOR THE SALT (#1630 (C); health §4 step 4, econ's
+  /// salt-ending-c §1: after salt_edge_leave_days on step 4 «край»): `family`,
+  /// `amount` its members. Each member then raises kResidentLeft. Not
+  /// kFamilyLeftForNoHouse: the books do not mix the two. kInterrupting. Seam
+  /// key `family_left_for_salt`.
+  kFamilyLeftForSalt,
+
+  /// THE DISTRICT'S LETTER OFFERING THE SALT LOAN (#1630 (C), econ's
+  /// salt-ending-c §4): at a year's first lamp «Соли на столе на N суток»
+  /// while the points do not buy the salt lot; once a year. `amount` the
+  /// loan's price in points (the lot's x (1 + goods_loan_markup)). kNotable.
+  /// Seam key `salt_loan_offered` (the letter «Соли у вас на два месяца.
+  /// Район может дать лот в долг»).
+  kSaltLoanOffered,
 
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
@@ -951,6 +965,16 @@ enum class EventKind : std::uint8_t {
   /// (boss, 2026-09-04). Narrowing a rule by a property that was not its
   /// reason looks like tidiness and works like a hole.
   kEventKindCount,
+};
+
+/// @brief Why a resident died: kResidentDied's `amount` (#1630 (C), econ's
+///        salt-ending-c §1 - a cause of its own, so the books and the prints
+///        split the salt's deaths from the age bands'). Values are appended
+///        before kDeathCauseCount and never renumbered.
+enum class DeathCause : std::uint8_t {
+  kAge = 0,  ///< RunDeaths' age bands (the only cause until 0.37.372).
+  kSalt,     ///< The salt hunger's step 4 «край»: children and elders.
+  kDeathCauseCount,
 };
 
 /// @brief THE ENDING CONDITIONS (host's request, 12 Nov 2026; boss-host-
@@ -972,7 +996,7 @@ inline constexpr std::array<EventKind, 3> kEndingConditionEventKinds = {
 /// EVERY NEW KIND IS CLASSIFIED: appending a kind fails here until its author
 /// has asked «is it an ending's condition?», added it above if so, and raised
 /// this count - the list cannot fall behind the enum silently.
-static_assert(static_cast<std::size_t>(EventKind::kEventKindCount) == 122,
+static_assert(static_cast<std::size_t>(EventKind::kEventKindCount) == 124,
               "a new EventKind: classify it in kEndingConditionEventKinds, then raise this count");
 
 /// @brief One thing that happened. Plain data, no text: the presentation

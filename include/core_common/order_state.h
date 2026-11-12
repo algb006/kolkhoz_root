@@ -999,6 +999,16 @@ enum class OrderKind : std::uint8_t {
   /// core_residents (food_theft.h).
   kWriteOffShortage,
 
+  /// TAKE THE DISTRICT'S SALT LOAN (#1630 (C); econ's salt-ending-c §5;
+  /// health §4 «Соль в долг у района»): no subject. One salt lot comes on the
+  /// district's cart as a bought one would; its price - the lot's points x
+  /// (1 + goods_loan_markup), 12 - is taken off the next year's grant by
+  /// itself (SaltState::loan_points_owed). Once a year; reputation untouched.
+  /// Refusals: kRuleForbids (the salt need off, no salt lot in the catalogue,
+  /// a loan already taken this year). Seam key `take_salt_loan`. Consumer:
+  /// core_production (salt_loan.h).
+  kTakeSaltLoan,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).

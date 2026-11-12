@@ -166,6 +166,10 @@ const char* KindName(core::EventKind kind) {
       return "audit_unguarded_leak";
     case core::EventKind::kSaltEndingDue:
       return "salt_ending_due";
+    case core::EventKind::kFamilyLeftForSalt:
+      return "family_left_for_salt";
+    case core::EventKind::kSaltLoanOffered:
+      return "salt_loan_offered";
     case core::EventKind::kElectrificationUnlocked:
       return "electrification_unlocked";
     case core::EventKind::kFireBroke:

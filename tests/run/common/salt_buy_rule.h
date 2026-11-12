@@ -74,27 +74,47 @@ class SaltBuyRule {
 
   /// @brief Whether a salt lot is asked today (and books it, or the «would
   ///        borrow» when the points do not cover it).
-  bool WantsLot(const core::WorldState& world) {
+  /// @brief What the rule asks today: nothing, the lot (by points), or the
+  ///        district's salt loan (#1630 (C): the lot wanted, the points short,
+  ///        no loan this year).
+  enum class Ask : std::uint8_t { kNothing, kLot, kLoan };
+
+  Ask WhatToday(const core::WorldState& world) {
     if (!on_ || !need_on_ || lot_ == core::kNoTableRow || points_ <= 0) {
-      return false;
+      return Ask::kNothing;
     }
     const std::uint32_t month = world.calendar.day / core::kDaysPerMonth;
     if (last_month_ && *last_month_ == month) {
-      return false;
+      return Ask::kNothing;
     }
     const double table_month = norm_g_ * static_cast<double>(world.residents.rows.size()) *
                                static_cast<double>(core::kDaysPerMonth);
     if (static_cast<double>(SaltHeldAndComing(world)) >= reserve_months_ * table_month) {
-      return false;
+      return Ask::kNothing;
     }
     last_month_ = month;
     const std::uint32_t year = (world.calendar.day / core::kDaysPerYear) + 1U;
-    if (world.limit.points < points_) {
+    // THE ARM C3 (--salt-points-zero): the points are spent elsewhere first -
+    // the salt never finds them, only the loan buys it.
+    const std::int32_t points = points_zero_ ? 0 : world.limit.points;
+    if (points < points_) {
+      if (world.salt.loan_year != year) {
+        ++loans_[year];
+        return Ask::kLoan;
+      }
       ++would_borrow_[year];
-      return false;
+      return Ask::kNothing;
     }
     ++lots_[year];
-    return true;
+    return Ask::kLot;
+  }
+
+  /// @brief The arm C3: the salt sees no points (the loan its only door).
+  void PointsZero(bool on) { points_zero_ = on; }
+
+  [[nodiscard]] std::uint32_t LoansIn(std::uint32_t year) const {
+    const auto it = loans_.find(year);
+    return it == loans_.end() ? 0U : it->second;
   }
 
   [[nodiscard]] std::uint32_t Lot() const { return lot_; }
@@ -142,6 +162,8 @@ class SaltBuyRule {
   std::optional<std::uint32_t> last_month_;
   std::map<std::uint32_t, std::uint32_t> lots_;
   std::map<std::uint32_t, std::uint32_t> would_borrow_;
+  std::map<std::uint32_t, std::uint32_t> loans_;
+  bool points_zero_ = false;
 };
 
 }  // namespace run

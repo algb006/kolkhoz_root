@@ -223,6 +223,10 @@ class LimitPolicy {
   /// @brief The arm B2 of #1630 (B) (--no-salt-buy): no salt lot.
   void BuySalt(bool buy) { salt_.Enable(buy); }
 
+  /// @brief The arm C3 of #1630 (C) (--salt-points-zero): the salt sees no
+  ///        points, so only the loan brings it.
+  void SaltPointsZero(bool on) { salt_.PointsZero(on); }
+
   /// @brief The salt rule, read-only, for the run's SALT1630 print.
   [[nodiscard]] const SaltBuyRule& SaltRule() const { return salt_; }
 
@@ -927,11 +931,18 @@ class LimitPolicy {
       return;
     }
     // THE SALT BEFORE THE SUGAR (#1630 (B)): a food nobody lives without.
-    if (salt_.WantsLot(world)) {
+    const SaltBuyRule::Ask salt_ask = salt_.WhatToday(world);
+    if (salt_ask == SaltBuyRule::Ask::kLot) {
       core::OrderRow salt;
       salt.kind = core::OrderKind::kOrderLimitLot;
       salt.lot = core::LimitLotId{static_cast<std::uint16_t>(salt_.Lot())};
       orders.push_back(salt);
+      return;
+    }
+    if (salt_ask == SaltBuyRule::Ask::kLoan) {
+      core::OrderRow loan;  // #1630 (C): the district's salt loan, no subject
+      loan.kind = core::OrderKind::kTakeSaltLoan;
+      orders.push_back(loan);
       return;
     }
     // THE SUGAR'S LOTS ALL AT ONCE, as many as the points cover: the rule

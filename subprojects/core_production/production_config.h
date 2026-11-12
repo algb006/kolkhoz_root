@@ -845,6 +845,9 @@ struct FarmingConfig {
   bool salt_need_on = false;
   float salt_norm_g_per_eater_day = 125.0F;
   float salt_table_reserve_months = 3.0F;
+  /// `salt_step1_days` (the residents' row, read a second time; #1630 (C)):
+  /// the salt lamp's days to the first «пресно» = the table's days + this.
+  float salt_step1_days = 4.0F;
 
   /// THE SECOND LEVER OF THE CATTLE YARD (livestock design §5; econ-boss-
   /// complexity-yards-groom [3]-[4]; world_params `herd_without_yard_yield_

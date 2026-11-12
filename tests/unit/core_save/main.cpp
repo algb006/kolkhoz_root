@@ -2059,7 +2059,10 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // Save 207 (#1568): +13 - the store audit's two u32, a u16 and three
     // bytes after the night theft; predicted (+12, then +1 for the act's
     // byte) before the build, held.
-    {"world", 1470, 0xa43851da4197e61bULL},
+    // Save 209 (#1630 (C)): +11 - the salt watch, three u16, a byte and an
+    // i32 after the store audit; predicted 1470 -> 1481 before the build;
+    // the hash read off it.
+    {"world", 1481, 0xa43851da4197e61bULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2583,7 +2586,10 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // Save 207 (#1568): +40 - 20 a book for the fixture's two: written_off
     // and stolen_before_acceptance (empty amounts, a u16 count each) and four
     // u32; predicted before the build, held.
-    {"ledger", 4022, 0x2fea3d1c4135da99ULL},
+    // Save 209 (#1630 (C)): +24 - three u32 a book (salt deaths, salt
+    // departures, salt loans), two books; predicted 4022 -> 4046 before the
+    // build; the hash read off it.
+    {"ledger", 4046, 0x2fea3d1c4135da99ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 

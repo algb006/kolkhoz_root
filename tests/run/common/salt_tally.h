@@ -25,6 +25,7 @@
 #define TESTS_RUN_COMMON_SALT_TALLY_H_
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <optional>
 #include <ostream>
@@ -32,7 +33,9 @@
 #include <string>
 
 #include "core_common/calendar.h"
+#include "core_common/salt_view.h"
 #include "core_common/world_state.h"
+#include "core_sim/step.h"
 #include "core_tables/tables.h"
 #include "salt_buy_rule.h"
 
@@ -41,7 +44,7 @@ namespace run {
 class SaltTally {
  public:
   static constexpr std::uint32_t kYears = 16;
-  static constexpr std::size_t kSteps = 4;  // 0..3; step 4 is #1630 (C)'s
+  static constexpr std::size_t kSteps = 5;  // 0..4 (step 4 «край», #1630 (C))
 
   SaltTally(const core::ITableSet& tables, std::uint64_t seed) : seed_(seed) {
     if (const core::ITable* const resources = tables.FindTable("resources")) {
@@ -56,8 +59,46 @@ class SaltTally {
     }
   }
 
-  void CountDayEnd(const core::WorldState& world, const SaltBuyRule& rule) {
+  void CountDayEnd(const core::ISimulation& simulation, const SaltBuyRule& rule) {
+    const core::WorldState& world = simulation.CompletedState();
     const core::SimDay day = world.calendar.day;
+    // #1630 (C): the ending, the letters, the «Село кончилось» candidate, the
+    // lamp's colour by the same door the layer reads (SaltToday).
+    if (world.salt.ending_raised != 0 && !ending_day_) {
+      ending_day_ = day;
+    }
+    if (world.salt.letter_year != last_letter_year_) {
+      last_letter_year_ = world.salt.letter_year;
+      ++letters_year_;
+      if (!first_letter_day_) {
+        first_letter_day_ = day;
+      }
+    }
+    if (world.residents.rows.size() < kVillageEndedCandidate && !below40_day_) {
+      below40_day_ = day;
+    }
+    const core::SaltView view = simulation.SaltToday();
+    if (view.measured) {
+      bool on_step = false;
+      for (std::size_t step = 1; step < view.families_by_step.size(); ++step) {
+        on_step = on_step || view.families_by_step[step] > 0;
+      }
+      // The lamp's own rule (salt_loan.cpp): days to the first «пресно» =
+      // floor(N) + 4, 0 on a step; lit under 12, red at 8 and under.
+      const double to_complaint =
+          on_step ? 0.0 : std::floor(static_cast<double>(view.table_days_left)) + kStep1Days;
+      if (to_complaint <= 2.0 * kStep1Days) {
+        ++red_days_;
+        if (!first_red_day_) {
+          first_red_day_ = day;
+        }
+      } else if (to_complaint < 3.0 * kStep1Days) {
+        ++yellow_days_;
+        if (!first_yellow_day_) {
+          first_yellow_day_ = day;
+        }
+      }
+    }
     const std::uint32_t year = (day / core::kDaysPerYear) + 1U;
     if (day % core::kDaysPerYear == 0 && year >= 2 && year - 1U <= kYears) {
       CloseYear(world, rule, year - 1U);
@@ -89,7 +130,10 @@ class SaltTally {
         << " first_step2_day " << Day(2) << " first_step3_day " << Day(3) << " lodge_salt_start_kg "
         << (lodge_start_ ? *lodge_start_ / 1000 : -1) << " lodge_salt_drawn_day "
         << (lodge_drawn_day_ ? std::to_string(*lodge_drawn_day_) : std::string("never"))
-        << (lodge_type_ == core::kNoTableRow ? " LODGE_NOT_IN_THE_TABLES" : "") << '\n';
+        << (lodge_type_ == core::kNoTableRow ? " LODGE_NOT_IN_THE_TABLES" : "")
+        << " first_step4_day " << Day(4) << " ending_day " << Opt(ending_day_) << " below40_day "
+        << Opt(below40_day_) << " first_yellow_day " << Opt(first_yellow_day_) << " first_red_day "
+        << Opt(first_red_day_) << " first_letter_day " << Opt(first_letter_day_) << '\n';
   }
 
  private:
@@ -105,6 +149,10 @@ class SaltTally {
       }
     }
     return salt;
+  }
+
+  static std::string Opt(const std::optional<core::SimDay>& day) {
+    return day ? std::to_string(*day) : std::string("never");
   }
 
   std::string Day(std::size_t step) const {
@@ -135,9 +183,18 @@ class SaltTally {
            << " births " << book.births << " births_drawn " << book.births_drawn
            << " stopped_health " << book.births_stopped_health << " stopped_away "
            << book.births_stopped_away << " stopped_satiety " << book.births_stopped_satiety
-           << " weddings " << book.weddings << " deaths_age " << book.deaths << " departures "
-           << book.departures << " arrivals " << book.arrivals << '\n';
+           << " weddings " << book.weddings << " deaths_age " << book.deaths - book.deaths_salt
+           << " departures " << book.departures << " arrivals "
+           << book.arrivals
+           // #1630 (C): the salt's doors, its loans and the fund they cost.
+           << " deaths_salt " << book.deaths_salt << " departures_salt " << book.departures_salt
+           << " salt_loans " << book.salt_loans << " loans_asked " << rule.LoansIn(year)
+           << " lamp_yellow_days " << yellow_days_ << " lamp_red_days " << red_days_ << " letters "
+           << letters_year_ << '\n';
     family_days_ = {};
+    yellow_days_ = 0;
+    red_days_ = 0;
+    letters_year_ = 0;
   }
 
   std::uint64_t seed_ = 0;
@@ -152,6 +209,19 @@ class SaltTally {
   std::optional<core::Grams> lodge_start_;
   core::Grams last_lodge_ = 0;
   std::optional<core::SimDay> lodge_drawn_day_;
+  /// #1569's lower candidate for «Село кончилось» (the core has no trigger).
+  static constexpr std::size_t kVillageEndedCandidate = 40;
+  /// salt_step1_days' default (the lamp's days to the first «пресно»).
+  static constexpr double kStep1Days = 4.0;
+  std::optional<core::SimDay> ending_day_;
+  std::optional<core::SimDay> below40_day_;
+  std::optional<core::SimDay> first_yellow_day_;
+  std::optional<core::SimDay> first_red_day_;
+  std::optional<core::SimDay> first_letter_day_;
+  std::uint16_t last_letter_year_ = 0;
+  std::uint32_t letters_year_ = 0;
+  std::uint32_t yellow_days_ = 0;
+  std::uint32_t red_days_ = 0;
   std::ostringstream lines_;
 };
 
