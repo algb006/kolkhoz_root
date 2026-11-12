@@ -127,9 +127,11 @@ class SmokehousePolicy {
   /// @brief K5's decomposition (boss seq 24): the arm without the cooper
   ///        (no workshops, no farm_craftsman for them), and the arm without
   ///        the food stores (none with the smokehouse, none on «no room»).
-  void Parts(bool cooper, bool stores) {
+  void Parts(bool cooper, bool stores, bool master, bool salt) {
     cooper_on_ = cooper;
     stores_on_ = stores;
+    master_on_ = master;  // arm (4), boss seq 26: no food_master appointed
+    salt_on_ = salt;      // arm (5), boss seq 26: no salt bought above the reserve
   }
 
   [[nodiscard]] bool On() const { return on_; }
@@ -194,7 +196,7 @@ class SmokehousePolicy {
         << Opt(barrel_short_day_) << " room_short_day " << Opt(room_short_day_)
         << " store_marked_day " << Opt(store_marked_day_) << " store_built_day "
         << Opt(store_built_day_) << " stores_asked " << stores_asked_ << " stores_built "
-        << stores_built_ << '\n';
+        << stores_built_ << " holders" << (holders_.str().empty() ? " -" : holders_.str()) << '\n';
   }
 
  private:
@@ -441,10 +443,15 @@ class SmokehousePolicy {
       return true;
     }
     const core::UnitId yard_id = world.units.row_ids[yard];
-    for (const core::ResidentRow& person : world.residents.rows) {
+    for (std::uint32_t row = 0; row < world.residents.rows.size(); ++row) {
+      const core::ResidentRow& person = world.residents.rows[row];
       if (person.post.profession.value == master_ && person.post.unit.value == yard_id.value) {
+        NoteHolder(world, row, "master");
         return false;  // held
       }
+    }
+    if (!master_on_) {
+      return false;  // the decomposition's arm (4): the shop stands unmanned
     }
     const std::uint32_t candidate = NextCandidate(world);
     if (candidate == core::kNoRow) {
@@ -602,14 +609,30 @@ class SmokehousePolicy {
   /// stores' rot of the last game month (what it would have salted).
   core::Grams SaltForTheStores(const core::WorldState& world) const {
     const std::uint32_t house = FindOfType(world, smokehouse_);
-    if (house == core::kNoRow || world.units.rows[house].level == 0) {
-      return 0;
+    if (!salt_on_ || house == core::kNoRow || world.units.rows[house].level == 0) {
+      return 0;  // arm (5): no salt above the reserve - the shop takes what the table leaves
     }
     const core::ResourceAmounts stock = StockOf(world);
     const double meat = static_cast<double>(Of(stock, meat_) + store_rot_last_month_[0]);
     const double fish = static_cast<double>(Of(stock, fish_) + store_rot_last_month_[1]);
     return static_cast<core::Grams>(
         std::llround((meat * salt_per_meat_) + (fish * salt_per_fish_)));
+  }
+
+  /// WHO HOLDS THE POST (boss seq 26: «a young unmarried adult taken off the
+  /// marriage path is my first suspect»): each new holder once, as found the
+  /// day after the appointment - age, sex, married or not.
+  void NoteHolder(const core::WorldState& world, std::uint32_t row, const char* post) {
+    const std::uint32_t id = world.residents.row_ids[row].value;
+    if (std::ranges::find(holders_seen_, id) != holders_seen_.end()) {
+      return;
+    }
+    holders_seen_.push_back(id);
+    const core::ResidentRow& person = world.residents.rows[row];
+    const float age = core::BiologicalAgeYears(life_speedup_, person.birth_day, world.calendar.day);
+    holders_ << ' ' << post << ":y" << (world.calendar.day / core::kDaysPerYear) + 1U << ":a"
+             << static_cast<int>(age) << ':' << (person.sex == core::Sex::kFemale ? 'f' : 'm')
+             << ':' << (person.spouse.value != core::kInvalidEntityIdValue ? "wed" : "single");
   }
 
   /// Boards gone into buildings of `type` in a book (built_in_by_type).
@@ -760,6 +783,10 @@ class SmokehousePolicy {
   std::uint32_t house_ = core::kNoTableRow;
   bool cooper_on_ = true;
   bool stores_on_ = true;
+  bool master_on_ = true;
+  bool salt_on_ = true;
+  std::vector<std::uint32_t> holders_seen_;
+  std::ostringstream holders_;
   bool room_wanted_ = false;
   std::uint32_t stores_built_ = 0;
   std::optional<std::uint32_t> stores_at_start_;

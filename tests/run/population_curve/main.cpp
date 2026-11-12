@@ -619,6 +619,9 @@ bool g_smokehouse = false;
 /// K5's decomposition (boss seq 24), with --smokehouse: no cooper / no stores.
 bool g_smokehouse_cooper = true;
 bool g_smokehouse_stores = true;
+/// boss seq 26: no food_master (4); no salt above the reserve (5).
+bool g_smokehouse_master = true;
+bool g_smokehouse_salt = true;
 /// `--hay-hand-over=off`: #1570's counterfactual - the hay lamp's «reduce
 /// herd» left unanswered (LimitPolicy::HayHandOverOff), so a run can say
 /// whether the herds it named would have gone short.
@@ -843,7 +846,8 @@ bool Walk(std::uint64_t seed,
     builder.limit.BuySalt(false);  // #1630 (B)'s arm B2, (C)'s C2: no lot, no loan
   }
   builder.smokehouse.Enable(g_smokehouse);  // #1644: the arm --smokehouse; off in the canon
-  builder.smokehouse.Parts(g_smokehouse_cooper, g_smokehouse_stores);
+  builder.smokehouse.Parts(
+      g_smokehouse_cooper, g_smokehouse_stores, g_smokehouse_master, g_smokehouse_salt);
   builder.smokehouse.Declare("population_curve");
   if (g_salt_points_zero) {
     builder.limit.SaltPointsZero(true);  // #1630 (C)'s arm C3: the loan only
@@ -1703,6 +1707,10 @@ int main(int argc, char** argv) {
       g_smokehouse_cooper = false;  // boss seq 24, arm (1)
     } else if (argument == "--smokehouse-no-stores") {
       g_smokehouse_stores = false;  // boss seq 24, arm (2)
+    } else if (argument == "--smokehouse-no-master") {
+      g_smokehouse_master = false;  // boss seq 26, arm (4)
+    } else if (argument == "--smokehouse-no-salt") {
+      g_smokehouse_salt = false;  // boss seq 26, arm (5)
     } else if (argument == "--no-write-off") {
       g_no_write_off = true;
     } else if (argument == "--no-anticrime") {
