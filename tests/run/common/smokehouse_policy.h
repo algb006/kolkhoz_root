@@ -22,6 +22,7 @@
 #ifndef TESTS_RUN_COMMON_SMOKEHOUSE_POLICY_H_
 #define TESTS_RUN_COMMON_SMOKEHOUSE_POLICY_H_
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <iostream>
@@ -362,6 +363,20 @@ class SmokehousePolicy {
         }
       }
     }
+    // THE COOPER'S OWN WORD WHY IT STANDS (k1h: a village made 0-8 barrels a
+    // year y13-y16 with the smokehouse short of them): «cooper_short_rN» etc.
+    const std::uint32_t workshops = FindOfType(world, workshops_);
+    if (workshops != core::kNoRow && world.units.rows[workshops].level > 0) {
+      const core::UnitId cooper = world.units.row_ids[workshops];
+      for (const core::Alarm& alarm : alarms) {
+        if (alarm.kind == core::AlarmKind::kProcessingStopped && alarm.unit.value == cooper.value) {
+          const char* why = alarm.stop_reason == core::ProcessingStopReason::kNoRoom    ? "room"
+                            : alarm.stop_reason == core::ProcessingStopReason::kShortOf ? "short"
+                                                                                        : "far";
+          ++stops_[std::string("cooper_") + why + "_r" + std::to_string(alarm.resource.value)];
+        }
+      }
+    }
   }
 
   /// Every store's stock summed, by resource.
@@ -438,9 +453,29 @@ class SmokehousePolicy {
         food_store_ == core::kNoTableRow) {
       return false;
     }
+    // A food_store site that appears after the rule's mark is the rule's.
     for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
       const core::UnitRow& unit = world.units.rows[row];
-      if (unit.type.value != food_store_ || unit.level > 0) {
+      const std::uint32_t id = world.units.row_ids[row].value;
+      if (unit.type.value != food_store_ ||
+          std::ranges::find(known_stores_, id) != known_stores_.end()) {
+        continue;
+      }
+      known_stores_.push_back(id);
+      if (store_mark_pending_ && unit.level == 0) {
+        own_store_sites_.push_back(id);
+        store_mark_pending_ = false;
+      }
+    }
+    // ONLY ITS OWN SITE (k1h): the canon raises a food_store of its own, and a
+    // rule that waited on that site asked its store a year late - y2's «no
+    // room» was answered in y3 in 13 villages. So the rule sees through the
+    // site it marked, not the canon's.
+    for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+      const core::UnitRow& unit = world.units.rows[row];
+      if (unit.type.value != food_store_ || unit.level > 0 ||
+          std::ranges::find(own_store_sites_, world.units.row_ids[row].value) ==
+              own_store_sites_.end()) {
         continue;
       }
       if (unit.construction.phase != core::ConstructionPhase::kMarked) {
@@ -470,6 +505,7 @@ class SmokehousePolicy {
     order.kind = core::OrderKind::kBuildUnit;
     order.unit_type = core::UnitTypeId{static_cast<std::uint16_t>(food_store_)};
     order.position = world.units.rows[yard].position;
+    store_mark_pending_ = true;
     ++stores_asked_;
     if (!store_marked_day_) {
       store_marked_day_ = world.calendar.day;
@@ -670,6 +706,9 @@ class SmokehousePolicy {
   bool room_wanted_ = false;
   std::uint32_t stores_built_ = 0;
   std::optional<std::uint32_t> stores_at_start_;
+  std::vector<std::uint32_t> known_stores_;
+  std::vector<std::uint32_t> own_store_sites_;
+  bool store_mark_pending_ = false;
   std::uint32_t stores_asked_ = 0;
   std::optional<core::SimDay> barrel_short_day_;
   std::optional<core::SimDay> room_short_day_;
