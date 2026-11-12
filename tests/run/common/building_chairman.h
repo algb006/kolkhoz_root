@@ -443,6 +443,9 @@ class BuildingChairman {
     // #1644: the smokehouse at a rolling year's 1 t of meat and fish spoiled
     // (its tally counts every day; it orders only with its arm on).
     smokehouse.RunDay(simulation);
+    // #1644 (b): its salting's salt rides above the table's reserve, read by
+    // the limit's salt buyer the next day (the limit ran earlier today).
+    limit.SaltExtraNeed(smokehouse.SaltExtraNeed());
     insulation.RunDay(simulation);
     // «Важнее полевых работ» for a supply the floor does not reach (#734).
     supply.RunDay(simulation);

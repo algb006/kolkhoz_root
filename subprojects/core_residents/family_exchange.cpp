@@ -888,12 +888,19 @@ void RunFamilyExchange(const FoodConfig& config, float life_speedup, WorldState&
   // issue norms came out BETTER than keeping them — and that inversion is
   // what sent me looking.
   if (!config.spoil_days.empty()) {
+    // The pantries' rot goes to `spoiled` and, the same grams, to its
+    // pantries' share (#1644 K2'): the stores' rot is the rest.
+    ResourceAmounts pantry_lost;
     for (FamilyRow& family : current.families.rows) {
       if (family.pantry.empty()) {
         continue;
       }
-      SpoilAmounts(
-          family.pantry, config.spoil_days, config.keeping_factor, current.ledger.current.spoiled);
+      SpoilAmounts(family.pantry, config.spoil_days, config.keeping_factor, pantry_lost);
+    }
+    for (std::size_t resource = 0; resource < pantry_lost.size(); ++resource) {
+      const ResourceId id = DefIdFromIndex<ResourceIdTag>(resource);
+      AddLedgerAmount(current.ledger.current.spoiled, id, pantry_lost[resource]);
+      AddLedgerAmount(current.ledger.current.spoiled_in_pantries, id, pantry_lost[resource]);
     }
   }
   const SimDay day = current.calendar.day;

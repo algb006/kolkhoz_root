@@ -181,21 +181,67 @@ Grams SauerkrautToBarrel(const ProductionConfig& config,
 /// added the smoked goods held to the need, as §8а then read — and they are
 /// already in barrels, so they took the free ones as well and counted twice
 /// (boss seq 13 rewrote the line).
+///
+/// UNDER THE SALTING (production units §8а «Под засолку», boss 12 November
+/// 2026, #1644): while a shop that salts into barrels stands built, the meat
+/// and fish in the kolkhoz stores ÷ the barrel's capacity join the need, all
+/// year round - without it the smokehouse stood from year 9-10, when the
+/// start barrels wore out. «Above the fresh issue»: the shops settle after
+/// the day's issue, so what lies in the stores then is already above it. The
+/// two needs are summed against one pool of free barrels (my reading: both
+/// fill the same barrels, as the smoked goods already in them do).
+double SaltingBarrelsNeeded(const ProductionConfig& config, const WorldState& world) {
+  const ProcessingCatalog& catalog = config.processing;
+  if (catalog.barrel_capacity_grams <= 0) {
+    return 0.0;
+  }
+  std::vector<std::uint32_t> mains;
+  for (const ProcessingRecipe& recipe : catalog.recipes) {
+    if (recipe.inputs.empty() || !TakesSalt(config, recipe)) {
+      continue;
+    }
+    const bool to_barrel = std::ranges::any_of(recipe.outputs, [&](const ProcessingAmount& out) {
+      return InBarrel(catalog, out.resource);
+    });
+    const bool shop_stands = std::ranges::any_of(world.units.rows, [&](const UnitRow& unit) {
+      return unit.type.value == recipe.unit_type.value && unit.level > 0;
+    });
+    const std::uint32_t main = recipe.inputs.front().resource.value;
+    if (to_barrel && shop_stands && std::ranges::find(mains, main) == mains.end()) {
+      mains.push_back(main);
+    }
+  }
+  Grams grams = 0;
+  for (const std::uint32_t main : mains) {
+    grams += TakeableGrams(world, config, DefIdFromIndex<ResourceIdTag>(main));
+  }
+  return std::ceil(static_cast<double>(grams) / static_cast<double>(catalog.barrel_capacity_grams));
+}
+
 double CooperageWant(const ProductionConfig& config,
                      const WorldState& world,
                      const ProcessingRecipe& cooperage) {
   const ProcessingCatalog& catalog = config.processing;
+  if (catalog.barrel_capacity_grams <= 0 || cooperage.outputs.empty() ||
+      catalog.barrel_grams <= 0) {
+    return 0.0;
+  }
   const ProcessingRecipe* const pickling = FindRule(catalog, ProcessingRule::kPickling);
-  if (pickling == nullptr || catalog.barrel_capacity_grams <= 0 || cooperage.outputs.empty() ||
-      catalog.barrel_grams <= 0 || pickling->inputs.empty() || pickling->outputs.empty() ||
-      !MonthInRange(static_cast<std::uint8_t>(world.calendar.date.month),
-                    catalog.cooperage_from_month,
-                    catalog.cooperage_to_month)) {
+  const bool pickling_season = pickling != nullptr && !pickling->inputs.empty() &&
+                               !pickling->outputs.empty() &&
+                               MonthInRange(static_cast<std::uint8_t>(world.calendar.date.month),
+                                            catalog.cooperage_from_month,
+                                            catalog.cooperage_to_month);
+  const double salting = SaltingBarrelsNeeded(config, world);
+  if (!pickling_season && !(salting > 0.0)) {
     return 0.0;
   }
   const double capacity = static_cast<double>(catalog.barrel_capacity_grams);
   const double needed =
-      std::ceil(static_cast<double>(SauerkrautToBarrel(config, world, *pickling)) / capacity);
+      (pickling_season
+           ? std::ceil(static_cast<double>(SauerkrautToBarrel(config, world, *pickling)) / capacity)
+           : 0.0) +
+      salting;
   const double free = std::floor(static_cast<double>(BarrelRoomFree(config, world)) / capacity);
   const double barrels_per_batch = static_cast<double>(cooperage.outputs.front().grams) /
                                    static_cast<double>(catalog.barrel_grams);

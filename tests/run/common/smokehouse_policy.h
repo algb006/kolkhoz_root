@@ -32,6 +32,7 @@
 #include <string_view>
 #include <vector>
 
+#include "core_catalog/processing_catalog.h"
 #include "core_catalog/world_conventions.h"
 #include "core_common/calendar.h"
 #include "core_common/order_state.h"
@@ -64,6 +65,11 @@ class SmokehousePolicy {
     salted_fish_ = row_of("resources", "salted_fish");
     smoked_meat_ = row_of("resources", "smoked_meat");
     smoked_fish_ = row_of("resources", "smoked_fish");
+    barrel_ = row_of("resources", "barrel");
+    board_ = row_of("resources", "board");
+    workshops_ = row_of("unit_types", "workshops");
+    utility_yard_ = row_of("unit_types", "utility_yard");
+    craftsman_ = row_of("professions", "farm_craftsman");
     life_speedup_ = core::LifeSpeedupOr(tables, life_speedup_);
     if (const core::ITable* const world = tables.FindTable("world_params")) {
       const std::uint32_t column = world->FindColumn("value");
@@ -78,7 +84,37 @@ class SmokehousePolicy {
       read("salt_norm_g_per_eater_day", norm_g_);
       read("salt_table_reserve_months", reserve_months_);
     }
+    // THE SALT A GRAM OF MEAT OR FISH TAKES (#1644 (b)): the salting recipes'
+    // salt over their main input, per batch, from the core's own catalogue.
+    core::ProcessingCatalog catalog;
+    std::string error;
+    if (salt_ != core::kNoTableRow && core::ParseProcessingCatalog(tables, catalog, error)) {
+      barrel_grams_ = catalog.barrel_grams;
+      for (const core::ProcessingRecipe& recipe : catalog.recipes) {
+        if (recipe.inputs.size() < 2 || recipe.inputs.front().grams <= 0) {
+          continue;
+        }
+        for (const core::ProcessingAmount& input : recipe.inputs) {
+          if (input.resource.value != salt_) {
+            continue;
+          }
+          const double per_gram =
+              static_cast<double>(input.grams) / static_cast<double>(recipe.inputs.front().grams);
+          if (recipe.inputs.front().resource.value == meat_) {
+            salt_per_meat_ = per_gram;
+          } else if (recipe.inputs.front().resource.value == fish_) {
+            salt_per_fish_ = per_gram;
+          }
+        }
+      }
+    }
   }
+
+  /// @brief The salt the smokehouse wants above the table's reserve (#1644
+  ///        (b), boss seq 2): while the shop stands and the arm is on, the
+  ///        salt to salt the stores' meat and fish now held and the stores'
+  ///        rot of the last game month; 0 otherwise. Read by the salt buyer.
+  [[nodiscard]] core::Grams SaltExtraNeed() const { return salt_extra_need_g_; }
 
   void Enable(bool on) { on_ = on; }
 
@@ -90,7 +126,9 @@ class SmokehousePolicy {
       std::cout << run_name
                 << ": ARM — --smokehouse (#1644): at 1 t of meat and fish spoiled in a rolling "
                    "year the run's chairman marks the smokehouse on the food yard and appoints a "
-                   "food_master there\n";
+                   "food_master there; at its first «short of barrel» it marks the workshops on "
+                   "the utility yard and appoints a farm_craftsman there (the cooper, §8а «Под "
+                   "засолку»); the salt buyer adds the salting's salt above the table's reserve\n";
     }
   }
 
@@ -99,6 +137,8 @@ class SmokehousePolicy {
     const core::WorldState& world = simulation.CompletedState();
     CountDay(world);
     CountStops(simulation, world);
+    salt_extra_need_g_ = on_ ? SaltForTheStores(world) : 0;
+    salt_extra_max_g_ = std::max(salt_extra_max_g_, salt_extra_need_g_);
     if (!on_ || !triggered_) {
       return;
     }
@@ -107,7 +147,7 @@ class SmokehousePolicy {
       return;
     }
     core::OrderRow order;
-    if (!NextOrder(world, order)) {
+    if (!NextOrder(world, order) && !(barrel_triggered_ && NextCooperOrder(world, order))) {
       return;
     }
     simulation.StageOrders(std::span<const core::OrderRow>(&order, 1), {});
@@ -124,7 +164,11 @@ class SmokehousePolicy {
     out << "population_curve: SMOKE1644 seed " << seed << " arm " << (on_ ? 1 : 0)
         << " trigger_day " << Opt(trigger_day_) << " smokehouse_marked_day " << Opt(marked_day_)
         << " smokehouse_built_day " << Opt(built_day_) << " master_day " << Opt(master_day_)
-        << " no_hand_days " << no_hand_days_ << " no_yard_days " << no_yard_days_ << '\n';
+        << " no_hand_days " << no_hand_days_ << " no_yard_days " << no_yard_days_
+        << " barrel_trigger_day " << Opt(barrel_trigger_day_) << " workshops_marked_day "
+        << Opt(workshops_marked_day_) << " workshops_built_day " << Opt(workshops_built_day_)
+        << " cooper_day " << Opt(cooper_day_) << " no_utility_yard_days " << no_utility_yard_days_
+        << " no_cooper_hand_days " << no_cooper_hand_days_ << '\n';
   }
 
  private:
@@ -180,11 +224,19 @@ class SmokehousePolicy {
     const core::Grams salt_in =
         Rise(world, Of(book.processed, salt_), Of(closed.processed, salt_), last_salt_in_);
     // THE ROLLING YEAR, by game month.
+    const core::Grams store_meat =
+        Rise(world, StoreRot(book, meat_), StoreRot(closed, meat_), last_store_rot_[0]);
+    const core::Grams store_fish =
+        Rise(world, StoreRot(book, fish_), StoreRot(closed, fish_), last_store_rot_[1]);
     const std::uint32_t month = day / core::kDaysPerMonth;
     if (month != month_) {
       month_ = month;
       months_[month % months_.size()] = 0;
+      store_rot_last_month_ = store_rot_month_;
+      store_rot_month_ = {0, 0};
     }
+    store_rot_month_[0] += store_meat;
+    store_rot_month_[1] += store_fish;
     months_[month % months_.size()] += spoiled;
     core::Grams rolling = 0;
     for (const core::Grams grams : months_) {
@@ -198,8 +250,18 @@ class SmokehousePolicy {
     // table's reserve (residents x norm x the month's days x the months).
     const double reserve = norm_g_ * static_cast<double>(world.residents.rows.size()) *
                            core::kDaysPerMonth * reserve_months_;
-    if (salt_in > 0 && static_cast<double>(Held(world, salt_)) < reserve) {
+    // The count reads the stock at the NEXT dawn against that dawn's residents,
+    // so a shop that drew exactly to the reserve reads red after a birth or a
+    // later salt user of the day: the deficit is printed (its largest a year,
+    // kg) and the days it passed one day's table (residents x norm) counted
+    // apart - those a counter's lag cannot explain.
+    const double held_salt = static_cast<double>(Held(world, salt_));
+    if (salt_in > 0 && held_salt < reserve) {
       ++under_reserve_days_;
+      const double deficit = reserve - held_salt;
+      under_reserve_max_g_ = std::max(under_reserve_max_g_, deficit);
+      const double day_table = norm_g_ * static_cast<double>(world.residents.rows.size());
+      under_reserve_past_day_ += deficit > day_table ? 1U : 0U;
     }
     const core::Grams firewood = Held(world, firewood_);
     if (!firewood_low_ || firewood < *firewood_low_) {
@@ -251,6 +313,11 @@ class SmokehousePolicy {
                           : alarm.stop_reason == core::ProcessingStopReason::kShortOf ? "short"
                                                                                       : "far";
         ++stops_[std::string(why) + "_r" + std::to_string(alarm.resource.value)];
+        if (alarm.stop_reason == core::ProcessingStopReason::kShortOf &&
+            alarm.resource.value == barrel_ && !barrel_triggered_) {
+          barrel_triggered_ = true;
+          barrel_trigger_day_ = world.calendar.day;
+        }
       }
     }
   }
@@ -315,6 +382,85 @@ class SmokehousePolicy {
     return true;
   }
 
+  /// THE COOPER (§8а «Под засолку», boss seq 6): the workshops on the utility
+  /// yard, then a farm_craftsman appointed there for them - one more than the
+  /// yard held when the workshops stood, and again whenever it falls under.
+  bool NextCooperOrder(const core::WorldState& world, core::OrderRow& order) {
+    const std::uint32_t yard = FindOfType(world, utility_yard_);
+    if (yard == core::kNoRow || world.units.rows[yard].level == 0) {
+      ++no_utility_yard_days_;
+      return false;
+    }
+    const std::uint32_t shop = FindOfType(world, workshops_);
+    if (shop == core::kNoRow) {
+      order.kind = core::OrderKind::kBuildUnit;
+      order.unit_type = core::UnitTypeId{static_cast<std::uint16_t>(workshops_)};
+      order.position = world.units.rows[yard].position;
+      if (!workshops_marked_day_) {
+        workshops_marked_day_ = world.calendar.day;
+      }
+      return true;
+    }
+    const core::UnitRow& site = world.units.rows[shop];
+    if (site.level == 0) {
+      if (site.construction.phase != core::ConstructionPhase::kMarked) {
+        return false;  // delivering or building
+      }
+      order.kind = core::OrderKind::kStartBuild;
+      order.unit = world.units.row_ids[shop];
+      return true;
+    }
+    const core::UnitId yard_id = world.units.row_ids[yard];
+    std::uint32_t held = 0;
+    for (const core::ResidentRow& person : world.residents.rows) {
+      held += person.post.profession.value == craftsman_ && person.post.unit.value == yard_id.value
+                  ? 1U
+                  : 0U;
+    }
+    if (!craftsmen_wanted_) {
+      if (!workshops_built_day_) {
+        workshops_built_day_ = world.calendar.day;
+      }
+      craftsmen_wanted_ = held + 1U;
+    }
+    if (held >= *craftsmen_wanted_) {
+      return false;
+    }
+    const std::uint32_t candidate = NextCandidate(world);
+    if (candidate == core::kNoRow) {
+      ++no_cooper_hand_days_;
+      return false;
+    }
+    order.kind = core::OrderKind::kAppoint;
+    order.resident = world.residents.row_ids[candidate];
+    order.unit = yard_id;
+    order.profession = core::ProfessionId{static_cast<std::uint16_t>(craftsman_)};
+    if (!cooper_day_) {
+      cooper_day_ = world.calendar.day;
+    }
+    return true;
+  }
+
+  /// THE SALTING'S SALT (#1644 (b)): while the smokehouse stands built, the
+  /// salt its recipes take for the stores' meat and fish now held and for the
+  /// stores' rot of the last game month (what it would have salted).
+  core::Grams SaltForTheStores(const core::WorldState& world) const {
+    const std::uint32_t house = FindOfType(world, smokehouse_);
+    if (house == core::kNoRow || world.units.rows[house].level == 0) {
+      return 0;
+    }
+    const core::ResourceAmounts stock = StockOf(world);
+    const double meat = static_cast<double>(Of(stock, meat_) + store_rot_last_month_[0]);
+    const double fish = static_cast<double>(Of(stock, fish_) + store_rot_last_month_[1]);
+    return static_cast<core::Grams>(
+        std::llround((meat * salt_per_meat_) + (fish * salt_per_fish_)));
+  }
+
+  /// The stores' rot of `resource` in a book: all of it but the pantries'.
+  static core::Grams StoreRot(const core::YearLedger& book, std::uint32_t resource) {
+    return Of(book.spoiled, resource) - Of(book.spoiled_in_pantries, resource);
+  }
+
   /// An adult with no post, a different one each time the last did not take.
   std::uint32_t NextCandidate(const core::WorldState& world) {
     const std::uint32_t skip = candidate_++;
@@ -347,17 +493,33 @@ class SmokehousePolicy {
            << " salt_to_barrels_kg " << Of(book.processed, salt_) / 1000 << " firewood_to_shops_kg "
            << Of(book.processed, firewood_) / 1000 << " firewood_lowest_kg "
            << (firewood_low_ ? *firewood_low_ / 1000 : -1) << " days_salting_under_reserve "
-           << under_reserve_days_ << " store_meatfish_mean_kg "
-           << (days_ > 0 ? store_meat_sum_ / days_ / 1000 : 0) << " pantry_meatfish_mean_kg "
-           << (days_ > 0 ? pantry_meat_sum_ / days_ / 1000 : 0) << " shop_asked_days "
-           << demand_days_ << " shop_worked_days " << worked_days_ << " master_held_days "
-           << master_held_days_ << " days " << days_ << " stops";
+           << under_reserve_days_ << " under_reserve_max_kg "
+           << static_cast<std::int64_t>(under_reserve_max_g_ / 1000.0)
+           << " under_reserve_past_day_table " << under_reserve_past_day_
+           << " meatfish_pantry_spoiled_kg "
+           << (Of(book.spoiled_in_pantries, meat_) + Of(book.spoiled_in_pantries, fish_)) / 1000
+           << " meatfish_store_spoiled_kg "
+           << (Of(book.spoiled, meat_) + Of(book.spoiled, fish_) -
+               Of(book.spoiled_in_pantries, meat_) - Of(book.spoiled_in_pantries, fish_)) /
+                  1000
+           << " salt_extra_max_kg " << salt_extra_max_g_ / 1000 << " barrels_made "
+           << (barrel_ != core::kNoTableRow && barrel_grams_ > 0
+                   ? Of(book.made, barrel_) / barrel_grams_
+                   : -1)
+           << " boards_to_barrels_kg " << Of(book.processed, board_) / 1000
+           << " store_meatfish_mean_kg " << (days_ > 0 ? store_meat_sum_ / days_ / 1000 : 0)
+           << " pantry_meatfish_mean_kg " << (days_ > 0 ? pantry_meat_sum_ / days_ / 1000 : 0)
+           << " shop_asked_days " << demand_days_ << " shop_worked_days " << worked_days_
+           << " master_held_days " << master_held_days_ << " days " << days_ << " stops";
     for (const auto& [why, count] : stops_) {
       lines_ << ' ' << why << ':' << count;
     }
     lines_ << (stops_.empty() ? " -" : "") << '\n';
     stops_.clear();
     under_reserve_days_ = 0;
+    under_reserve_max_g_ = 0.0;
+    salt_extra_max_g_ = 0;
+    under_reserve_past_day_ = 0;
     firewood_low_.reset();
     days_ = 0;
     store_meat_sum_ = 0;
@@ -391,6 +553,29 @@ class SmokehousePolicy {
   core::Grams last_spoiled_ = 0;
   core::Grams last_salt_in_ = 0;
   std::uint32_t under_reserve_days_ = 0;
+  std::uint32_t barrel_ = core::kNoTableRow;
+  std::uint32_t board_ = core::kNoTableRow;
+  std::uint32_t workshops_ = core::kNoTableRow;
+  std::uint32_t utility_yard_ = core::kNoTableRow;
+  std::uint32_t craftsman_ = core::kNoTableRow;
+  core::Grams barrel_grams_ = 0;
+  double salt_per_meat_ = 0.0;
+  double salt_per_fish_ = 0.0;
+  core::Grams salt_extra_need_g_ = 0;
+  core::Grams salt_extra_max_g_ = 0;
+  std::array<core::Grams, 2> last_store_rot_{0, 0};
+  std::array<core::Grams, 2> store_rot_month_{0, 0};
+  std::array<core::Grams, 2> store_rot_last_month_{0, 0};
+  bool barrel_triggered_ = false;
+  std::optional<core::SimDay> barrel_trigger_day_;
+  std::optional<core::SimDay> workshops_marked_day_;
+  std::optional<core::SimDay> workshops_built_day_;
+  std::optional<core::SimDay> cooper_day_;
+  std::optional<std::uint32_t> craftsmen_wanted_;
+  std::uint32_t no_utility_yard_days_ = 0;
+  std::uint32_t no_cooper_hand_days_ = 0;
+  double under_reserve_max_g_ = 0.0;
+  std::uint32_t under_reserve_past_day_ = 0;
   std::int64_t days_ = 0;
   core::Grams store_meat_sum_ = 0;
   core::Grams pantry_meat_sum_ = 0;

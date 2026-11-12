@@ -508,6 +508,25 @@ int CheckExchange() {
                        "with the guard off the same stores do cover the basket");
   }
 
+  // THE PANTRIES' SHARE OF THE ROT (#1644 K2'; save 210): 100 kg in a pantry
+  // that loses a 480th a day, no issue that day - what left the pantry is in
+  // `spoiled` and, the same grams, in `spoiled_in_pantries`.
+  {
+    core::FoodConfig rotting = config;
+    rotting.spoil_days.assign(4, 0.0F);
+    rotting.spoil_days[0] = 480.0F;
+    rotting.distribution.period_days = 0;
+    core::WorldState world = MakeExchangeWorld(0.0F, 0.0F, 0, 70.0F);
+    world.families.rows[0].pantry.resize(4, 0);
+    world.families.rows[0].pantry[0] = 100 * kKilo;
+    core::RunFamilyExchange(rotting, 4.0F, world);
+    const core::Grams gone = (100 * kKilo) - PantryOf(world, 0);
+    const core::YearLedger& book = world.ledger.current;
+    failures += Expect(gone > 0 && !book.spoiled.empty() && book.spoiled[0] == gone &&
+                           !book.spoiled_in_pantries.empty() && book.spoiled_in_pantries[0] == gone,
+                       "the pantry's rot is booked in spoiled and in its pantries' share alike");
+  }
+
   // THE PLAN RESERVE HOLDS ITS ROT UNTIL THE DELIVERY (boss, parcel 434): 90 kg
   // of the plan reaped, a grain that loses a 480th a day, 48 days to the
   // year's turn — the reserve keeps 90 / (479/480)^48 = 99.5 kg, so of the

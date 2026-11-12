@@ -230,6 +230,9 @@ class LimitPolicy {
   /// @brief The salt rule, read-only, for the run's SALT1630 print.
   [[nodiscard]] const SaltBuyRule& SaltRule() const { return salt_; }
 
+  /// @brief Salt wanted above the table's reserve (#1644 (b)); see SaltBuyRule.
+  void SaltExtraNeed(core::Grams grams) { salt_.ExtraNeed(grams); }
+
   /// @brief Holds the hay's hand-over while the herds' plans are being set
   ///        (#1289; HayAnswer::HoldHandOverForPlans).
   void HoldHandOverForPlans(bool hold) { hay_.HoldHandOverForPlans(hold); }

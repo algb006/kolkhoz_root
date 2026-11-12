@@ -1060,6 +1060,12 @@ struct YearLedger {
 
   /// The district's salt loans taken this year (one at most, by the rule).
   std::uint32_t salt_loans = 0;
+
+  /// OF `spoiled`, what rotted in the families' pantries, by resource (#1644
+  /// K2'; save 210): not another loss, the pantries' share of it, booked by
+  /// the same writer (family_exchange.cpp) on the same grams - so the stores'
+  /// rot, the pool a shop can reach, is `spoiled` minus this.
+  ResourceAmounts spoiled_in_pantries;
 };
 
 /// @brief The two books of the world: the year being written and the last

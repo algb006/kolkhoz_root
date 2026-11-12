@@ -89,7 +89,9 @@ class SaltBuyRule {
     }
     const double table_month = norm_g_ * static_cast<double>(world.residents.rows.size()) *
                                static_cast<double>(core::kDaysPerMonth);
-    if (static_cast<double>(SaltHeldAndComing(world)) >= reserve_months_ * table_month) {
+    // #1644 (b): the smokehouse's salting need rides above the table's reserve.
+    if (static_cast<double>(SaltHeldAndComing(world)) >=
+        (reserve_months_ * table_month) + static_cast<double>(extra_need_g_)) {
       return Ask::kNothing;
     }
     last_month_ = month;
@@ -108,6 +110,10 @@ class SaltBuyRule {
     ++lots_[year];
     return Ask::kLot;
   }
+
+  /// @brief Salt wanted above the table's reserve today (#1644 (b): the
+  ///        smokehouse's salting, SmokehousePolicy::SaltExtraNeed); 0 is none.
+  void ExtraNeed(core::Grams grams) { extra_need_g_ = grams > 0 ? grams : 0; }
 
   /// @brief The arm C3: the salt sees no points (the loan its only door).
   void PointsZero(bool on) { points_zero_ = on; }
@@ -164,6 +170,7 @@ class SaltBuyRule {
   std::map<std::uint32_t, std::uint32_t> would_borrow_;
   std::map<std::uint32_t, std::uint32_t> loans_;
   bool points_zero_ = false;
+  core::Grams extra_need_g_ = 0;
 };
 
 }  // namespace run

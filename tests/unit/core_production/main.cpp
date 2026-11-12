@@ -14776,6 +14776,28 @@ int CheckProcessingShops() {
     const auto [salted_short, smoked_short] = one_day(true, 120 * kKilo);
     failures += Expect(salted_short == 0 && smoked_short == 600 * kKilo,
                        "shops (#1644): the salt at the table's reserve - the day smokes (600 kg)");
+
+    // §8а «Под засолку» (boss 12 November 2026): in May - out of the cooper's
+    // July-December - 2 t of meat in the stores want 20 barrels of salting,
+    // 10 are free: the cooper asks 10. With the smokehouse not built it asks
+    // none (the need is the standing shop's).
+    core::ProductionConfig barrels_config = salting_config;
+    barrels_config.processing.in_barrel[salted.value] = 1;
+    const auto cooper_in_may = [&](std::uint8_t smokehouse_level) {
+      core::WorldState world = make_world(4 * core::kDaysPerMonth);
+      core::AddToStock(world.units.rows[0].stock, meat, 2 * kTonne);
+      core::AddToStock(world.units.rows[0].stock, board, 2 * kTonne);
+      core::AddToStock(world.units.rows[0].stock, steel, kTonne);
+      core::TakeFromStorage(world, barrels_config, barrel, 140 * 15 * kKilo);  // ten left
+      world.units.rows[2].level = smokehouse_level;
+      core::SettleProcessing(barrels_config, world);
+      return world.units.rows[3].production_days_written / 0.125F;  // in barrels
+    };
+    const float asked_standing = cooper_in_may(1);
+    const float asked_unbuilt = cooper_in_may(0);
+    failures += Expect(std::fabs(asked_standing - 10.0F) < 1e-3F && asked_unbuilt == 0.0F,
+                       "shops (#1644): under the salting the cooper works in May - 20 barrels "
+                       "of meat, 10 free, 10 asked; none with the smokehouse unbuilt");
   }
 
   // -- the cooperage -------------------------------------------------------------

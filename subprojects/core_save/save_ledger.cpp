@@ -207,9 +207,13 @@ constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
 // predicted 1424 -> 1436 and 166 fields before the build, and the size MISSED:
 // 1440 - the struct's alignment pads the twelve bytes to sixteen (the fields
 // held). On the wire +12 a book.
-static_assert(sizeof(YearLedger) == 1440 + (45 * kAmountsSize) + kBuiltInRowsSize,
+// Save 210 (#1644 K2', the pantries' rot): spoiled_in_pantries, a 46th amounts
+// vector at the tail - predicted 1440 + 46 A (the vector takes the tail's four
+// pad bytes' slot) and 167 fields before the build; on the wire one amounts
+// vector a book.
+static_assert(sizeof(YearLedger) == 1440 + (46 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 166,
+static_assert(AggregateArity<YearLedger>() == 167,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(BuiltInRow) == 16 && AggregateArity<BuiltInRow>() == 3,
               "BuiltInRow changed — update its codec and VERSION_SAVE");
@@ -464,6 +468,7 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteU32(book.deaths_salt);  // save 209 (#1630 (C))
   out.WriteU32(book.departures_salt);
   out.WriteU32(book.salt_loans);
+  sink.WriteAmounts(DefKind::kResource, book.spoiled_in_pantries);  // save 210 (#1644)
 }
 
 YearLedger ReadYearLedger(LoadSource& source) {
@@ -774,6 +779,16 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.salt_loans = in.ReadU32();
   if (book.deaths_salt > book.deaths || book.departures_salt > book.departures) {
     source.Fail("the book's salt deaths or departures exceed all the year's");
+  }
+  book.spoiled_in_pantries = source.ReadAmounts(DefKind::kResource);  // save 210 (#1644)
+  for (std::size_t resource = 0; resource < book.spoiled_in_pantries.size(); ++resource) {
+    const Grams of_all = resource < book.spoiled.size() ? book.spoiled[resource] : 0;
+    const Grams in_clamps =
+        resource < book.spoiled_in_clamps.size() ? book.spoiled_in_clamps[resource] : 0;
+    if (book.spoiled_in_pantries[resource] < 0 ||
+        book.spoiled_in_pantries[resource] + in_clamps > of_all) {
+      source.Fail("the book's pantry rot is negative or more than all the rot");
+    }
   }
   return book;
 }
