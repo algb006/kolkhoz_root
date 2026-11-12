@@ -68,6 +68,7 @@ class SmokehousePolicy {
     barrel_ = row_of("resources", "barrel");
     board_ = row_of("resources", "board");
     workshops_ = row_of("unit_types", "workshops");
+    food_store_ = row_of("unit_types", "food_store");
     utility_yard_ = row_of("unit_types", "utility_yard");
     craftsman_ = row_of("professions", "farm_craftsman");
     life_speedup_ = core::LifeSpeedupOr(tables, life_speedup_);
@@ -126,9 +127,10 @@ class SmokehousePolicy {
       std::cout << run_name
                 << ": ARM — --smokehouse (#1644): at 1 t of meat and fish spoiled in a rolling "
                    "year the run's chairman marks the smokehouse on the food yard and appoints a "
-                   "food_master there; at its first «short of barrel» it marks the workshops on "
-                   "the utility yard and appoints a farm_craftsman there (the cooper, §8а «Под "
-                   "засолку»); the salt buyer adds the salting's salt above the table's reserve\n";
+                   "food_master there; once it stands, the workshops on the utility yard and a "
+                   "farm_craftsman there (the cooper, §8а «Под засолку»); on the shop's «no room» "
+                   "one more food_store at the yard; the salt buyer adds the salting's salt above "
+                   "the table's reserve\n";
     }
   }
 
@@ -147,7 +149,8 @@ class SmokehousePolicy {
       return;
     }
     core::OrderRow order;
-    if (!NextOrder(world, order) && !(barrel_triggered_ && NextCooperOrder(world, order))) {
+    if (!NextOrder(world, order) && !NextStoreOrder(world, order) &&
+        !(barrel_triggered_ && NextCooperOrder(world, order))) {
       return;
     }
     simulation.StageOrders(std::span<const core::OrderRow>(&order, 1), {});
@@ -168,7 +171,11 @@ class SmokehousePolicy {
         << " barrel_trigger_day " << Opt(barrel_trigger_day_) << " workshops_marked_day "
         << Opt(workshops_marked_day_) << " workshops_built_day " << Opt(workshops_built_day_)
         << " cooper_day " << Opt(cooper_day_) << " no_utility_yard_days " << no_utility_yard_days_
-        << " no_cooper_hand_days " << no_cooper_hand_days_ << '\n';
+        << " no_cooper_hand_days " << no_cooper_hand_days_ << " barrel_short_day "
+        << Opt(barrel_short_day_) << " room_short_day " << Opt(room_short_day_)
+        << " store_marked_day " << Opt(store_marked_day_) << " store_built_day "
+        << Opt(store_built_day_) << " stores_asked " << stores_asked_ << " stores_built "
+        << stores_built_ << '\n';
   }
 
  private:
@@ -325,6 +332,14 @@ class SmokehousePolicy {
     if (house == core::kNoRow || world.units.rows[house].level == 0) {
       return;
     }
+    // THE COOPER AHEAD OF THE WALL (boss seq 9, (i)): the workshops and their
+    // cooper go up when the smokehouse stands - k1e built them after the
+    // turn's wear had already left the shop without barrels (y9-y15). The
+    // cooper still works by §8а «Под засолку», only while barrels are short.
+    if (!barrel_triggered_) {
+      barrel_triggered_ = true;
+      barrel_trigger_day_ = world.calendar.day;
+    }
     std::vector<core::Alarm> alarms;
     simulation.CollectAlarms(alarms);
     const core::UnitId shop = world.units.row_ids[house];
@@ -335,9 +350,15 @@ class SmokehousePolicy {
                                                                                       : "far";
         ++stops_[std::string(why) + "_r" + std::to_string(alarm.resource.value)];
         if (alarm.stop_reason == core::ProcessingStopReason::kShortOf &&
-            alarm.resource.value == barrel_ && !barrel_triggered_) {
-          barrel_triggered_ = true;
-          barrel_trigger_day_ = world.calendar.day;
+            alarm.resource.value == barrel_ && !barrel_short_day_) {
+          barrel_short_day_ = world.calendar.day;
+        }
+        // (ii): the shop's output finds no room - one more food store.
+        if (alarm.stop_reason == core::ProcessingStopReason::kNoRoom) {
+          room_wanted_ = true;
+          if (!room_short_day_) {
+            room_short_day_ = world.calendar.day;
+          }
         }
       }
     }
@@ -406,6 +427,56 @@ class SmokehousePolicy {
   /// THE COOPER (§8а «Под засолку», boss seq 6): the workshops on the utility
   /// yard, then a farm_craftsman appointed there for them - one more than the
   /// yard held when the workshops stood, and again whenever it falls under.
+  /// THE FOOD STORE ON «NO ROOM» (boss seq 9, (ii)): k1e's smokehouse stood
+  /// in y2 with its salted meat finding no room - those goods keep only in the
+  /// food yard's food_store (resource_stores.csv), whose one level holds 60 t.
+  /// So on the shop's «no room» one more food_store goes up at the yard; a
+  /// raised site is seen through before another is asked.
+  bool NextStoreOrder(const core::WorldState& world, core::OrderRow& order) {
+    const std::uint32_t yard = FindOfType(world, yard_);
+    if (yard == core::kNoRow || world.units.rows[yard].level == 0 ||
+        food_store_ == core::kNoTableRow) {
+      return false;
+    }
+    for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+      const core::UnitRow& unit = world.units.rows[row];
+      if (unit.type.value != food_store_ || unit.level > 0) {
+        continue;
+      }
+      if (unit.construction.phase != core::ConstructionPhase::kMarked) {
+        return false;  // delivering or building
+      }
+      order.kind = core::OrderKind::kStartBuild;
+      order.unit = world.units.row_ids[row];
+      return true;
+    }
+    std::uint32_t stores = 0;
+    for (const core::UnitRow& unit : world.units.rows) {
+      stores += unit.type.value == food_store_ && unit.level > 0 ? 1U : 0U;
+    }
+    if (!stores_at_start_) {
+      stores_at_start_ = stores;  // the start's food stores are not the rule's
+    }
+    if (stores > *stores_at_start_ + stores_built_) {
+      stores_built_ = stores - *stores_at_start_;
+      if (!store_built_day_) {
+        store_built_day_ = world.calendar.day;
+      }
+    }
+    if (!room_wanted_) {
+      return false;
+    }
+    room_wanted_ = false;
+    order.kind = core::OrderKind::kBuildUnit;
+    order.unit_type = core::UnitTypeId{static_cast<std::uint16_t>(food_store_)};
+    order.position = world.units.rows[yard].position;
+    ++stores_asked_;
+    if (!store_marked_day_) {
+      store_marked_day_ = world.calendar.day;
+    }
+    return true;
+  }
+
   bool NextCooperOrder(const core::WorldState& world, core::OrderRow& order) {
     const std::uint32_t yard = FindOfType(world, utility_yard_);
     if (yard == core::kNoRow || world.units.rows[yard].level == 0) {
@@ -595,6 +666,15 @@ class SmokehousePolicy {
   std::optional<std::uint32_t> craftsmen_wanted_;
   std::uint32_t no_utility_yard_days_ = 0;
   std::uint32_t no_cooper_hand_days_ = 0;
+  std::uint32_t food_store_ = core::kNoTableRow;
+  bool room_wanted_ = false;
+  std::uint32_t stores_built_ = 0;
+  std::optional<std::uint32_t> stores_at_start_;
+  std::uint32_t stores_asked_ = 0;
+  std::optional<core::SimDay> barrel_short_day_;
+  std::optional<core::SimDay> room_short_day_;
+  std::optional<core::SimDay> store_marked_day_;
+  std::optional<core::SimDay> store_built_day_;
   std::uint32_t k3_red_days_ = 0;
   double k3_red_max_g_ = 0.0;
   std::uint32_t k3_unmeasured_days_ = 0;
