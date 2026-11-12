@@ -250,19 +250,40 @@ class SmokehousePolicy {
     // table's reserve (residents x norm x the month's days x the months).
     const double reserve = norm_g_ * static_cast<double>(world.residents.rows.size()) *
                            core::kDaysPerMonth * reserve_months_;
-    // The count reads the stock at the NEXT dawn against that dawn's residents,
-    // so a shop that drew exactly to the reserve reads red after a birth or a
-    // later salt user of the day: the deficit is printed (its largest a year,
-    // kg) and the days it passed one day's table (residents x norm) counted
-    // apart - those a counter's lag cannot explain.
+    // THAT RAW COUNT READS THE WRONG MOMENT (k1e: 345 days, deficits to 333 kg):
+    // the shops settle at the day's last tick, and the month's salt issue, the
+    // distribution and the ration take from the stores at the next day's
+    // boundary - after the shop, before this read. So the table eating its
+    // reserve read as a shop under it. K3 proper is the stock AT THE SHOP: this
+    // read's stock plus what the boundary handed out of the stores since
+    // (issued + ration + advance of salt), against the reserve at the previous
+    // read's residents (the shop's). A day a district cart with salt arrived
+    // also lands after the shop and would hide a dip: such a day is printed as
+    // not measured, never as green.
     const double held_salt = static_cast<double>(Held(world, salt_));
     if (salt_in > 0 && held_salt < reserve) {
       ++under_reserve_days_;
-      const double deficit = reserve - held_salt;
-      under_reserve_max_g_ = std::max(under_reserve_max_g_, deficit);
-      const double day_table = norm_g_ * static_cast<double>(world.residents.rows.size());
-      under_reserve_past_day_ += deficit > day_table ? 1U : 0U;
     }
+    const core::Grams handed_out =
+        Rise(world, Of(book.issued, salt_), Of(closed.issued, salt_), last_salt_issued_) +
+        Rise(world, Of(book.ration, salt_), Of(closed.ration, salt_), last_salt_ration_) +
+        Rise(world, Of(book.advance, salt_), Of(closed.advance, salt_), last_salt_advance_);
+    core::Grams in_carts = 0;
+    for (const core::LimitDeliveryRow& cart : world.limit_deliveries.rows) {
+      in_carts += Of(cart.goods, salt_);
+    }
+    const bool cart_arrived = in_carts < last_salt_in_carts_;
+    last_salt_in_carts_ = in_carts;
+    if (salt_in > 0 && last_reserve_g_ > 0.0) {
+      const double at_shop = held_salt + static_cast<double>(handed_out);
+      if (cart_arrived) {
+        ++k3_unmeasured_days_;
+      } else if (at_shop + 1.0 < last_reserve_g_) {
+        ++k3_red_days_;
+        k3_red_max_g_ = std::max(k3_red_max_g_, last_reserve_g_ - at_shop);
+      }
+    }
+    last_reserve_g_ = reserve;
     const core::Grams firewood = Held(world, firewood_);
     if (!firewood_low_ || firewood < *firewood_low_) {
       firewood_low_ = firewood;
@@ -493,10 +514,9 @@ class SmokehousePolicy {
            << " salt_to_barrels_kg " << Of(book.processed, salt_) / 1000 << " firewood_to_shops_kg "
            << Of(book.processed, firewood_) / 1000 << " firewood_lowest_kg "
            << (firewood_low_ ? *firewood_low_ / 1000 : -1) << " days_salting_under_reserve "
-           << under_reserve_days_ << " under_reserve_max_kg "
-           << static_cast<std::int64_t>(under_reserve_max_g_ / 1000.0)
-           << " under_reserve_past_day_table " << under_reserve_past_day_
-           << " meatfish_pantry_spoiled_kg "
+           << under_reserve_days_ << " k3_red_days " << k3_red_days_ << " k3_red_max_kg "
+           << static_cast<std::int64_t>(k3_red_max_g_ / 1000.0) << " k3_unmeasured_days "
+           << k3_unmeasured_days_ << " meatfish_pantry_spoiled_kg "
            << (Of(book.spoiled_in_pantries, meat_) + Of(book.spoiled_in_pantries, fish_)) / 1000
            << " meatfish_store_spoiled_kg "
            << (Of(book.spoiled, meat_) + Of(book.spoiled, fish_) -
@@ -517,9 +537,10 @@ class SmokehousePolicy {
     lines_ << (stops_.empty() ? " -" : "") << '\n';
     stops_.clear();
     under_reserve_days_ = 0;
-    under_reserve_max_g_ = 0.0;
+    k3_red_days_ = 0;
+    k3_red_max_g_ = 0.0;
+    k3_unmeasured_days_ = 0;
     salt_extra_max_g_ = 0;
-    under_reserve_past_day_ = 0;
     firewood_low_.reset();
     days_ = 0;
     store_meat_sum_ = 0;
@@ -574,8 +595,14 @@ class SmokehousePolicy {
   std::optional<std::uint32_t> craftsmen_wanted_;
   std::uint32_t no_utility_yard_days_ = 0;
   std::uint32_t no_cooper_hand_days_ = 0;
-  double under_reserve_max_g_ = 0.0;
-  std::uint32_t under_reserve_past_day_ = 0;
+  std::uint32_t k3_red_days_ = 0;
+  double k3_red_max_g_ = 0.0;
+  std::uint32_t k3_unmeasured_days_ = 0;
+  double last_reserve_g_ = 0.0;
+  core::Grams last_salt_issued_ = 0;
+  core::Grams last_salt_ration_ = 0;
+  core::Grams last_salt_advance_ = 0;
+  core::Grams last_salt_in_carts_ = 0;
   std::int64_t days_ = 0;
   core::Grams store_meat_sum_ = 0;
   core::Grams pantry_meat_sum_ = 0;
