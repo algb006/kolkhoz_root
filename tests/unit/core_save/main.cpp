@@ -2068,8 +2068,8 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // byte) before the build, held.
     // Save 209 (#1630 (C)): +11 - the salt watch, three u16, a byte and an
     // i32 after the store audit; predicted 1470 -> 1481 before the build;
-    // the hash read off it.
-    {"world", 1481, 0xa43851da4197e61bULL},
+    // held; the hash read off it (s1630c2).
+    {"world", 1481, 0x8ad320be3d064df3ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2350,8 +2350,9 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // hash read off it. Save 206 (#1374): `male` leaves, a byte an order, six
     // orders - predicted 824 -> 818 before the build.
     // Save 207 (#1568): same length, new hash - the fixture's «last order
-    // kind» (kOrderKindCount - 1) is now kWriteOffShortage.
-    {"orders", 818, 0xff822200a07d5a0fULL},
+    // kind» (kOrderKindCount - 1) is now kWriteOffShortage. Save 209 (#1630
+    // (C)): the same, kTakeSaltLoan - same length, the hash read off s1630c2.
+    {"orders", 818, 0x985351fa4f1b75d2ULL},
     // Save 82: the fixture's first stand, a birch planting — 8 -> 67 (its id
     // 4, the old fields 41, species 2, hectares 4, two days 8); predicted,
     // held.
@@ -2595,8 +2596,8 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // u32; predicted before the build, held.
     // Save 209 (#1630 (C)): +24 - three u32 a book (salt deaths, salt
     // departures, salt loans), two books; predicted 4022 -> 4046 before the
-    // build; the hash read off it.
-    {"ledger", 4046, 0x2fea3d1c4135da99ULL},
+    // build, held; the hash read off it (s1630c2).
+    {"ledger", 4046, 0x291b5f4d00b8ee9ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
