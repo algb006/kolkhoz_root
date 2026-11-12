@@ -73,6 +73,7 @@ class SmokehousePolicy {
     board_ = row_of("resources", "board");
     workshops_ = row_of("unit_types", "workshops");
     food_store_ = row_of("unit_types", "food_store");
+    house_ = row_of("unit_types", "wooden_house");
     utility_yard_ = row_of("unit_types", "utility_yard");
     craftsman_ = row_of("professions", "farm_craftsman");
     life_speedup_ = core::LifeSpeedupOr(tables, life_speedup_);
@@ -122,6 +123,14 @@ class SmokehousePolicy {
   [[nodiscard]] core::Grams SaltExtraNeed() const { return salt_extra_need_g_; }
 
   void Enable(bool on) { on_ = on; }
+
+  /// @brief K5's decomposition (boss seq 24): the arm without the cooper
+  ///        (no workshops, no farm_craftsman for them), and the arm without
+  ///        the food stores (none with the smokehouse, none on «no room»).
+  void Parts(bool cooper, bool stores) {
+    cooper_on_ = cooper;
+    stores_on_ = stores;
+  }
 
   [[nodiscard]] bool On() const { return on_; }
 
@@ -461,6 +470,9 @@ class SmokehousePolicy {
   /// So on the shop's «no room» one more food_store goes up at the yard; a
   /// raised site is seen through before another is asked.
   bool NextStoreOrder(const core::WorldState& world, core::OrderRow& order) {
+    if (!stores_on_) {
+      return false;  // the decomposition's arm (2)
+    }
     const std::uint32_t yard = FindOfType(world, yard_);
     if (yard == core::kNoRow || world.units.rows[yard].level == 0 ||
         food_store_ == core::kNoTableRow) {
@@ -527,6 +539,9 @@ class SmokehousePolicy {
   }
 
   bool NextCooperOrder(const core::WorldState& world, core::OrderRow& order) {
+    if (!cooper_on_) {
+      return false;  // the decomposition's arm (1)
+    }
     const std::uint32_t yard = FindOfType(world, utility_yard_);
     if (yard == core::kNoRow || world.units.rows[yard].level == 0) {
       ++no_utility_yard_days_;
@@ -597,6 +612,17 @@ class SmokehousePolicy {
         std::llround((meat * salt_per_meat_) + (fish * salt_per_fish_)));
   }
 
+  /// Boards gone into buildings of `type` in a book (built_in_by_type).
+  core::Grams BoardsInto(const core::YearLedger& book, std::uint32_t type) const {
+    core::Grams grams = 0;
+    for (const core::BuiltInRow& row : book.built_in_by_type) {
+      if (row.type.value == type && row.resource.value == board_) {
+        grams += row.grams;
+      }
+    }
+    return grams;
+  }
+
   /// The stores' rot of `resource` in a book: all of it but the pantries'.
   static core::Grams StoreRot(const core::YearLedger& book, std::uint32_t resource) {
     return Of(book.spoiled, resource) - Of(book.spoiled_in_pantries, resource);
@@ -641,7 +667,15 @@ class SmokehousePolicy {
            // meat (and fish) in herd_produce, the only writer of meat into a
            // store (herd_life.cpp DeliverProduce; the yards' goes to
            // yard_produce, fish reaches only the pantries).
-           << " meatfish_store_inflow_kg "
+           // K5's DOOR (boss seq 24; 374's canon lost births and weddings):
+           // the births' draws and stops (#1205), the weddings, and the boards
+           // gone into houses against all boards built in.
+           << " births " << book.births << " births_drawn " << book.births_drawn
+           << " births_stopped_health " << book.births_stopped_health << " births_stopped_away "
+           << book.births_stopped_away << " births_stopped_satiety " << book.births_stopped_satiety
+           << " weddings " << book.weddings << " boards_into_houses_kg "
+           << BoardsInto(book, house_) / 1000 << " boards_built_in_kg "
+           << Of(book.built_in, board_) / 1000 << " meatfish_store_inflow_kg "
            << (Of(book.herd_produce, meat_) + Of(book.herd_produce, fish_)) / 1000
            << " meatfish_pantry_spoiled_kg "
            << (Of(book.spoiled_in_pantries, meat_) + Of(book.spoiled_in_pantries, fish_)) / 1000
@@ -723,6 +757,9 @@ class SmokehousePolicy {
   std::uint32_t no_utility_yard_days_ = 0;
   std::uint32_t no_cooper_hand_days_ = 0;
   std::uint32_t food_store_ = core::kNoTableRow;
+  std::uint32_t house_ = core::kNoTableRow;
+  bool cooper_on_ = true;
+  bool stores_on_ = true;
   bool room_wanted_ = false;
   std::uint32_t stores_built_ = 0;
   std::optional<std::uint32_t> stores_at_start_;
