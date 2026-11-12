@@ -99,6 +99,7 @@ struct Keys {
   core::ProfessionId master;
   core::ResourceId vegetables;
   core::ResourceId grocery;
+  core::ResourceId salt;
   core::ResourceId barrel;
   core::ResourceId sauerkraut;
   core::UnitTypeId smokehouse;
@@ -174,6 +175,7 @@ Keys ReadKeys(const core::ITableSet& tables) {
           .master = RowOf<core::ProfessionIdTag>(tables, "professions", "food_master"),
           .vegetables = RowOf<core::ResourceIdTag>(tables, "resources", "vegetables"),
           .grocery = RowOf<core::ResourceIdTag>(tables, "resources", "grocery"),
+          .salt = RowOf<core::ResourceIdTag>(tables, "resources", "salt"),
           .barrel = RowOf<core::ResourceIdTag>(tables, "resources", "barrel"),
           .sauerkraut = RowOf<core::ResourceIdTag>(tables, "resources", "sauerkraut"),
           .smokehouse = RowOf<core::UnitTypeIdTag>(tables, "unit_types", "smokehouse"),
@@ -241,6 +243,11 @@ core::UnitId BuildShop(core::WorldState& world,
   store.parent = yard_id;
   Put(store, keys.vegetables, 40 * kTonne);
   Put(store, keys.grocery, kTonne / 2);
+  // THE SHOP'S SALT (0.37.371: the canon eats salt, #1630): the pickling's
+  // salt line drew on the start's 700 kg, which the table now eats and whose
+  // three months «стол раньше бочки» keeps from the shops - a tonne of the
+  // shop's own, so the pace measured is the master's, not the salt's.
+  Put(store, keys.salt, kTonne);
   Put(store, keys.barrel, 200 * kBarrelGrams);
   core::AppendRow(world.units, store);
   core::UnitRow shop;
@@ -257,7 +264,8 @@ core::UnitId BuildShop(core::WorldState& world,
             << " a food yard, its store and a sauerkraut shop stand whole "
             << std::sqrt((dx * dx) + (dy * dy)) << " m from the house of resident row "
             << master_row
-            << ", appointed food master; 40 t vegetables, 500 kg grocery, 200 barrels in the "
+            << ", appointed food master; 40 t vegetables, 500 kg grocery, 1 t salt, 200 barrels "
+               "in the "
                "store; the chairman's issue norm of 5 kg a trudoden on the vegetables and the "
                "sauerkraut (0.37.29)\n";
   return shop_id;
