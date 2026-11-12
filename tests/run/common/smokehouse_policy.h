@@ -623,7 +623,14 @@ class SmokehousePolicy {
            << (firewood_low_ ? *firewood_low_ / 1000 : -1) << " days_salting_under_reserve "
            << under_reserve_days_ << " k3_red_days " << k3_red_days_ << " k3_red_max_kg "
            << static_cast<std::int64_t>(k3_red_max_g_ / 1000.0) << " k3_unmeasured_days "
-           << k3_unmeasured_days_ << " meatfish_pantry_spoiled_kg "
+           << k3_unmeasured_days_
+           // K1' (econ seq 13): what ARRIVED in the stores - the kolkhoz herds'
+           // meat (and fish) in herd_produce, the only writer of meat into a
+           // store (herd_life.cpp DeliverProduce; the yards' goes to
+           // yard_produce, fish reaches only the pantries).
+           << " meatfish_store_inflow_kg "
+           << (Of(book.herd_produce, meat_) + Of(book.herd_produce, fish_)) / 1000
+           << " meatfish_pantry_spoiled_kg "
            << (Of(book.spoiled_in_pantries, meat_) + Of(book.spoiled_in_pantries, fish_)) / 1000
            << " meatfish_store_spoiled_kg "
            << (Of(book.spoiled, meat_) + Of(book.spoiled, fish_) -
