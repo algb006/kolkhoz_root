@@ -612,9 +612,10 @@ bool g_no_write_off = false;
 bool g_no_salt_buy = false;
 /// #1630 (C)'s arm C3: the salt sees no points, only the loan buys it.
 bool g_salt_points_zero = false;
-/// #1644: the canon's chairman puts up and staffs the smokehouse (on since
-/// 0.37.374); `--no-smokehouse` is the arm without it.
-bool g_smokehouse = true;
+/// #1644: the run's chairman puts up and staffs the smokehouse - the arm
+/// `--smokehouse`; the canon has it off (0.37.374 had it on; 0.37.375 took it
+/// back on K5's population red, boss seq 24).
+bool g_smokehouse = false;
 /// `--hay-hand-over=off`: #1570's counterfactual - the hay lamp's «reduce
 /// herd» left unanswered (LimitPolicy::HayHandOverOff), so a run can say
 /// whether the herds it named would have gone short.
@@ -838,7 +839,7 @@ bool Walk(std::uint64_t seed,
   if (g_no_salt_buy) {
     builder.limit.BuySalt(false);  // #1630 (B)'s arm B2, (C)'s C2: no lot, no loan
   }
-  builder.smokehouse.Enable(g_smokehouse);  // #1644: on in the canon, --no-smokehouse off
+  builder.smokehouse.Enable(g_smokehouse);  // #1644: the arm --smokehouse; off in the canon
   builder.smokehouse.Declare("population_curve");
   if (g_salt_points_zero) {
     builder.limit.SaltPointsZero(true);  // #1630 (C)'s arm C3: the loan only
@@ -1692,8 +1693,8 @@ int main(int argc, char** argv) {
       g_no_salt_buy = true;
     } else if (argument == "--salt-points-zero") {
       g_salt_points_zero = true;
-    } else if (argument == "--no-smokehouse") {
-      g_smokehouse = false;
+    } else if (argument == "--smokehouse") {
+      g_smokehouse = true;
     } else if (argument == "--no-write-off") {
       g_no_write_off = true;
     } else if (argument == "--no-anticrime") {
