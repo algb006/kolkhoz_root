@@ -1542,7 +1542,8 @@ bool Walk(std::uint64_t seed,
       builder.hay_arm.Print(std::cout, seed);     // #307
       herds.PrintCowFlows(std::cout, seed);       // #1570
       hand_overs.Print(std::cout, seed);
-      feed_rung.Print(std::cout, seed);                                             // #1573
+      builder.houses.PrintQueueLines(std::cout, seed);  // #1677: the queue by cause, short lines
+      feed_rung.Print(std::cout, seed);                 // #1573
       builder.limit.PrintHayFeedRung(std::cout, seed, run::FeedRungTally::kYears);  // #1573
       horse_tail.Print(std::cout, seed);  // #1573's horse tail
       builder.limit.PrintHayHorseTail(std::cout, seed, run::HorseTailTally::kYears);

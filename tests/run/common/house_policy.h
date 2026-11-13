@@ -123,6 +123,12 @@ class HousePolicy {
       // two lines counts under both.
       for (const core::MaterialShortfall& line : shortfall) {
         ++short_by_resource_[line.resource.value];
+        // By year too (#1677: the smokehouse's cost falls in y2-y3).
+        const std::size_t year = world.calendar.day / core::kDaysPerYear;
+        if (short_by_year_.size() <= year) {
+          short_by_year_.resize(year + 1);
+        }
+        ++short_by_year_[year][line.resource.value];
       }
       ++sites;
       // Pegs and string: marked, and started the day its recipe is covered —
@@ -274,6 +280,36 @@ class HousePolicy {
   /// @brief The queue by cause in four windows of years (debt (a)): site-days
   /// of marked houses by the rule that held them, and house-days wanted but
   /// not marked.
+  /// @brief The queue by cause and the short recipe lines, lines a reader takes
+  ///        (#1677, boss seq 2 item 5 and seq 3 item 1): HOUSEQ1677 a village-year -
+  ///        site-days going up / short of recipe / farm first / older site waits /
+  ///        saw gate / started, house-days unmarked by cap and cooldown - and
+  ///        HOUSESHORT1677 once a village: site-days short, by the recipe's line.
+  void PrintQueueLines(std::ostream& out, std::uint64_t seed) const {
+    for (std::size_t year = 0; year < years_.size(); ++year) {
+      const QueueTally& one = years_[year];
+      out << "population_curve: HOUSEQ1677 seed " << seed << " year " << year + 1 << " going_up "
+          << one.going_up << " short_of_recipe " << one.short_of_recipe << " farm_first "
+          << one.farm_first << " older_site_waits " << one.older_site_waits << " saw_gate "
+          << one.saw_gate << " started " << one.started << " cap_held " << one.cap_held
+          << " cooldown_held " << one.cooldown_held << '\n';
+    }
+    out << "population_curve: HOUSESHORT1677 seed " << seed;
+    for (const auto& [resource, days] : short_by_resource_) {
+      out << ' ' << (resource < resource_keys_.size() ? resource_keys_[resource] : "?") << ' '
+          << days;
+    }
+    out << (short_by_resource_.empty() ? " -" : "") << '\n';
+    for (std::size_t year = 0; year < short_by_year_.size(); ++year) {
+      out << "population_curve: HOUSESHORT1677 seed " << seed << " year " << year + 1;
+      for (const auto& [resource, days] : short_by_year_[year]) {
+        out << ' ' << (resource < resource_keys_.size() ? resource_keys_[resource] : "?") << ' '
+            << days;
+      }
+      out << (short_by_year_[year].empty() ? " -" : "") << '\n';
+    }
+  }
+
   void ReportQueue(std::string_view run_name) const {
     constexpr std::array<std::pair<std::uint32_t, std::uint32_t>, 4> kWindows = {
         {{1, 5}, {6, 10}, {11, 15}, {16, 30}}};
@@ -431,6 +467,8 @@ class HousePolicy {
 
   /// Site-days short, by ResourceId value; ordered so the report is stable.
   std::map<std::uint16_t, std::uint64_t> short_by_resource_;
+  /// The same, a map a year (index = year - 1; #1677).
+  std::vector<std::map<std::uint16_t, std::uint64_t>> short_by_year_;
 
   std::vector<std::string> resource_keys_;
 
