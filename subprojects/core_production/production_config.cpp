@@ -1186,7 +1186,7 @@ bool ParseMeadowKinds(const ITable& table, FarmingConfig& farming, std::string& 
 /// AT ALL: until 2026-09-16 this module took every number off its own
 /// hand-written tables, and the two halves of billeting are what brought it
 /// here. The next world constant lands in the same place.
-constexpr std::array<std::string_view, 37> kProductionWorldParamKeys = {
+constexpr std::array<std::string_view, 38> kProductionWorldParamKeys = {
     "billet_heads_per_yard",
     "billet_yield_factor",
     "school_year_start_month",
@@ -1236,7 +1236,9 @@ constexpr std::array<std::string_view, 37> kProductionWorldParamKeys = {
     "salt_norm_g_per_eater_day",
     "salt_table_reserve_months",
     // #1630 (C): step 1's count - the salt lamp's days to the first «пресно».
-    "salt_step1_days"};
+    "salt_step1_days",
+    // #1636: bought feed into the church store until its home stands (0: off).
+    "feed_into_church_until_granary"};
 
 /// THE SCHOOL YEAR IS READ HERE AS WELL AS BY THE SCHOOL, and that is a
 /// second READER, not a second home: the months live in world_params.csv and
@@ -1262,6 +1264,7 @@ bool ParseProductionWorldParams(const ITable& world,
   float hunger_episode_fed_days = static_cast<float>(farming.hunger_episode_fed_days);
   auto barrack_poultry_heads = static_cast<float>(farming.barrack_poultry_heads);
   float salt_on = farming.salt_need_on ? 1.0F : 0.0F;
+  float feed_into_church = farming.feed_into_church_until_granary ? 1.0F : 0.0F;
   const Range months{.low = 1.0F, .high = static_cast<float>(kMonthsPerYear)};
   const std::array<ScalarKnob, kProductionWorldParamKeys.size()> knobs = {
       ScalarKnob{.key = kProductionWorldParamKeys[0],
@@ -1402,11 +1405,15 @@ bool ParseProductionWorldParams(const ITable& world,
                  .range = Range{.low = 0.0F, .high = 24.0F}},
       ScalarKnob{.key = kProductionWorldParamKeys[36],
                  .value = &farming.salt_step1_days,
-                 .range = Range{.low = 0.0F, .high = 1000.0F}}};
+                 .range = Range{.low = 0.0F, .high = 1000.0F}},
+      ScalarKnob{.key = kProductionWorldParamKeys[37],
+                 .value = &feed_into_church,
+                 .range = Range{.low = 0.0F, .high = 1.0F}}};
   if (!ReadKnobs(world, "world_params", knobs, error)) {
     return false;
   }
   farming.salt_need_on = salt_on >= 0.5F;
+  farming.feed_into_church_until_granary = feed_into_church >= 0.5F;
   farming.barrack_poultry_heads = static_cast<std::uint16_t>(barrack_poultry_heads);
   farming.hunger_episode_fed_days = static_cast<std::uint16_t>(hunger_episode_fed_days);
   farming.cold_first_month = static_cast<std::uint8_t>(cold_from - 1.0F);
