@@ -17,7 +17,10 @@
 ///     meadow door's second form (kMarkMeadow on the field);
 ///   * A+B (--hay-arm=both): B marks a field on the year's first day and A
 ///     sets that same field to clover in October - one summer mown, then clover.
-/// Off unless asked; the canon has none of it.
+/// THE CANON MOWS (B) since 0.37.378 (the human, #1923, 13 Nov: «По сену на ваш выбор»; boss
+/// chose econ's option 1): B is every run's default; A and A+B stay arms; --hay-arm=off is the
+/// arm without it. The named miss: one village in 32 (2031) loses ~15 % of its rye over y6-y16
+/// when the grain base takes back B's fields - no yield rule for now.
 ///
 /// THE PRINT (HAY307, a village-year, base and arms alike - the gates W1, W2
 /// and the red lines are read off it): hay harvested and cut, milk made, adult
@@ -78,12 +81,15 @@ class HayArmPolicy {
 
   /// @brief The fixture difference, BEFORE the run measures.
   void Declare(std::string_view run_name) const {
+    if (mode_ == Mode::kMown) {
+      return;  // the canon (since 0.37.378)
+    }
     if (mode_ == Mode::kOff) {
+      std::cout << run_name << ": ARM — --hay-arm=off (#307): the run's chairman leaves the "
+                << "derelict fields unmown (the canon mows them since 0.37.378)\n";
       return;
     }
-    const char* what = mode_ == Mode::kClover ? "clover (A)"
-                       : mode_ == Mode::kMown ? "mown as it lies (B)"
-                                              : "mown, then clover (A+B)";
+    const char* what = mode_ == Mode::kClover ? "clover (A)" : "mown, then clover (A+B)";
     std::cout << run_name << ": ARM — --hay-arm (#307): one derelict field a year from y2, the "
               << "nearest the stock first, put to hay: " << what << '\n';
   }
@@ -268,7 +274,7 @@ class HayArmPolicy {
     clovered_this_year_ = 0;
   }
 
-  Mode mode_ = Mode::kOff;
+  Mode mode_ = Mode::kMown;  // the canon's since 0.37.378 (#1923)
   std::uint32_t clover_ = core::kNoTableRow;
   std::uint32_t cattle_yard_ = core::kNoTableRow;
   std::uint32_t barn_ = core::kNoTableRow;

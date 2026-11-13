@@ -617,7 +617,7 @@ bool g_salt_points_zero = false;
 /// back on K5's population red, boss seq 24).
 bool g_smokehouse = false;
 /// #307's hay arm: --hay-arm=clover (A) / mown (B) / both (A+B); off otherwise.
-run::HayArmPolicy::Mode g_hay_arm = run::HayArmPolicy::Mode::kOff;
+run::HayArmPolicy::Mode g_hay_arm = run::HayArmPolicy::Mode::kMown;  // canon since 0.37.378
 /// `--hay-hand-over=off`: #1570's counterfactual - the hay lamp's «reduce
 /// herd» left unanswered (LimitPolicy::HayHandOverOff), so a run can say
 /// whether the herds it named would have gone short.
@@ -1700,6 +1700,8 @@ int main(int argc, char** argv) {
       g_salt_points_zero = true;
     } else if (argument == "--smokehouse") {
       g_smokehouse = true;
+    } else if (argument == "--hay-arm=off") {
+      g_hay_arm = run::HayArmPolicy::Mode::kOff;  // #307: the canon without B
     } else if (argument == "--hay-arm=clover") {
       g_hay_arm = run::HayArmPolicy::Mode::kClover;  // #307 arm A
     } else if (argument == "--hay-arm=mown") {
