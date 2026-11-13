@@ -38,6 +38,7 @@
 
 #include "../common/accepted_reds.h"
 #include "../common/advance_write_off_tally.h"
+#include "../common/audit_1687_tally.h"
 #include "../common/avatar_book_tally.h"
 #include "../common/births_herd_tally.h"
 #include "../common/building_chairman.h"
@@ -885,6 +886,7 @@ bool Walk(std::uint64_t seed,
   run::SaltTally salt(*world.tables, seed);
   // Every cow handed y2-y3: the door, the forecast, came true (#1570, boss [32]).
   run::HandOverTally hand_overs(*world.tables);
+  run::Audit1687Tally audit1687(*world.tables, seed);  // #1687
   // #1573's book (econ's gates S1-S2, P2, the y2 meadow): feed_rung_tally.h.
   run::FeedRungTally feed_rung(*world.tables);
   // #1573's horse tail y1-y30 (econ, econ-boss-1573-horse-tail [1]): horse_tail_tally.h.
@@ -1022,6 +1024,7 @@ bool Walk(std::uint64_t seed,
                           builder.limit.HayHandLogs(),
                           herds.CowsHandedInYear(simulation->CompletedState().calendar.date.year));
       feed_rung.CountDayEnd(simulation->CompletedState());
+      audit1687.CountDayEnd(*simulation);  // #1687
       horse_tail.CountDayEnd(*simulation);
       if (!warm_off) {
         strada.CountDayEnd(simulation->CompletedState());
@@ -1556,6 +1559,7 @@ bool Walk(std::uint64_t seed,
       herds.PrintCowFlows(std::cout, seed);         // #1570
       hand_overs.Print(std::cout, seed);
       builder.houses.PrintQueueLines(std::cout, seed);  // #1677: the queue by cause, short lines
+      audit1687.Print(std::cout);                       // #1687
       feed_rung.Print(std::cout, seed);                 // #1573
       builder.limit.PrintHayFeedRung(std::cout, seed, run::FeedRungTally::kYears);  // #1573
       horse_tail.Print(std::cout, seed);  // #1573's horse tail
