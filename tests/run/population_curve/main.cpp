@@ -1711,6 +1711,7 @@ int main(int argc, char** argv) {
       g_smokehouse = true;
     } else if (argument == "--smokehouse-houses-first") {
       g_smokehouse_houses_first = true;  // #1677 shape (2)
+      g_houses_first = true;             // econ's arm is shape (2) ON TOP of #1658's raise rule
     } else if (argument == "--hay-arm=off") {
       g_hay_arm = run::HayArmPolicy::Mode::kOff;  // #307: the canon without B
     } else if (argument == "--hay-arm=clover") {
