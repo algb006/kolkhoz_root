@@ -274,6 +274,21 @@ class HousePolicy {
   /// @brief The queue by cause in four windows of years (debt (a)): site-days
   /// of marked houses by the rule that held them, and house-days wanted but
   /// not marked.
+  /// @brief The queue by cause, a line a village-year for a reader (#1677, boss
+  ///        seq 2 item 5): HOUSEQ1677 site-days going up / short of recipe /
+  ///        farm first / older site waits / saw gate / started, and house-days
+  ///        unmarked by the cap and the cooldown.
+  void PrintQueueLines(std::ostream& out, std::uint64_t seed) const {
+    for (std::size_t year = 0; year < years_.size(); ++year) {
+      const QueueTally& one = years_[year];
+      out << "population_curve: HOUSEQ1677 seed " << seed << " year " << year + 1 << " going_up "
+          << one.going_up << " short_of_recipe " << one.short_of_recipe << " farm_first "
+          << one.farm_first << " older_site_waits " << one.older_site_waits << " saw_gate "
+          << one.saw_gate << " started " << one.started << " cap_held " << one.cap_held
+          << " cooldown_held " << one.cooldown_held << '\n';
+    }
+  }
+
   void ReportQueue(std::string_view run_name) const {
     constexpr std::array<std::pair<std::uint32_t, std::uint32_t>, 4> kWindows = {
         {{1, 5}, {6, 10}, {11, 15}, {16, 30}}};

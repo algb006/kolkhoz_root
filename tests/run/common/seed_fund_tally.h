@@ -97,12 +97,16 @@ class SeedFundTally {
         }
       }
     }
-    // G2: the yards' own cows hungry in the first pasture month.
+    // G2, RE-DEFINED (boss seq 2 item 6): the thin cows «in the yards» are the
+    // KOLKHOZ herd quartered there (more heads than roof places), not family
+    // cows - y1's yards keep none. So: the kolkhoz's cows, in sheds and
+    // quartered alike (household_owned 0), hungry in the first pasture month.
+    // The first form read the families' cows and found none in 64 of 64.
     if (month == pasture_month_) {
       std::int64_t cows = 0;
       std::int64_t hungry = 0;
       for (const core::HerdRow& herd : world.herds.rows) {
-        if (herd.household_owned == 0 || herd.kind.value != cow_) {
+        if (herd.household_owned != 0 || herd.kind.value != cow_) {
           continue;
         }
         cows += herd.adult_count;
@@ -131,10 +135,10 @@ class SeedFundTally {
   void Print(std::ostream& out) const {
     out << "population_curve: SEED1681 seed " << seed_ << " g1_seed_kg_handed_below_fund "
         << g1_grams_ / 1000 << " g1_days " << g1_days_ << " spring_closes_month "
-        << spring_closes_month_ + 1U << " g2_yard_cows_hungry_max_pct "
+        << spring_closes_month_ + 1U << " g2_kolkhoz_cows_hungry_max_pct "
         << static_cast<int>(g2_max_ * 100.0 + 0.5) << " g2_mean_pct "
         << (g2_days_ > 0 ? static_cast<int>(g2_sum_ / g2_days_ * 100.0 + 0.5) : -1)
-        << " g2_yard_cows " << g2_cows_ << " g3_hungry_family_days_m1m3 " << g3_family_days_
+        << " g2_kolkhoz_cows " << g2_cows_ << " g3_hungry_family_days_m1m3 " << g3_family_days_
         << " g3_worst_day_families " << g3_worst_ << '\n';
   }
 
