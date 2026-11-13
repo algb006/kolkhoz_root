@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <iostream>
 #include <map>
@@ -89,6 +90,19 @@ class SmokehousePolicy {
       };
       read("salt_norm_g_per_eater_day", norm_g_);
       read("salt_table_reserve_months", reserve_months_);
+    }
+    // decision 106's satisfaction bands for the births' multiplier (life.csv).
+    if (const core::ITable* const life = tables.FindTable("life")) {
+      const std::uint32_t column = life->FindColumn("value");
+      for (std::size_t band = 0; band < band_bounds_.size(); ++band) {
+        const std::string key = "birth_satisfaction_bound_" + std::to_string(band + 1);
+        const std::uint32_t row = life->FindRowByKey(key);
+        if (row != core::kNoTableRow && column != core::kNoTableColumn) {
+          if (const std::optional<float> value = life->CellReal(row, column)) {
+            band_bounds_[band] = *value;
+          }
+        }
+      }
     }
     // THE SALT A GRAM OF MEAT OR FISH TAKES (#1644 (b)): the salting recipes'
     // salt over their main input, per batch, from the core's own catalogue.
@@ -340,6 +354,12 @@ class SmokehousePolicy {
     // satisfaction and its two live components, and the lodged families.
     for (const core::FamilyRow& family : world.families.rows) {
       satisfaction_sum_ += static_cast<double>(family.satisfaction);
+      std::size_t band = 0;
+      while (band < band_bounds_.size() && !(family.satisfaction < band_bounds_[band])) {
+        ++band;
+      }
+      ++band_days_[band];
+      near_top_edge_days_ += std::fabs(family.satisfaction - band_bounds_.back()) < 1.0F ? 1U : 0U;
       satiety_comp_sum_ += static_cast<double>(family.component_satiety);
       rest_comp_sum_ += static_cast<double>(family.component_rest);
       lodged_family_days_ += family.lodged_in.value != core::kInvalidEntityIdValue ? 1U : 0U;
@@ -726,12 +746,15 @@ class SmokehousePolicy {
            << " satisfaction_x100 " << MeanX100(satisfaction_sum_) << " satiety_comp_x100 "
            << MeanX100(satiety_comp_sum_) << " rest_comp_x100 " << MeanX100(rest_comp_sum_)
            << " lodged_family_days " << lodged_family_days_ << " family_days " << family_days_
-           << " births " << book.births << " births_drawn " << book.births_drawn
-           << " births_stopped_health " << book.births_stopped_health << " births_stopped_away "
-           << book.births_stopped_away << " births_stopped_satiety " << book.births_stopped_satiety
-           << " weddings " << book.weddings << " boards_into_houses_kg "
-           << BoardsInto(book, house_) / 1000 << " boards_built_in_kg "
-           << Of(book.built_in, board_) / 1000 << " meatfish_store_inflow_kg "
+           << " band0_days " << band_days_[0] << " band1_days " << band_days_[1] << " band2_days "
+           << band_days_[2] << " band3_days " << band_days_[3] << " band4_days " << band_days_[4]
+           << " near_top_edge_days " << near_top_edge_days_ << " births " << book.births
+           << " births_drawn " << book.births_drawn << " births_stopped_health "
+           << book.births_stopped_health << " births_stopped_away " << book.births_stopped_away
+           << " births_stopped_satiety " << book.births_stopped_satiety << " weddings "
+           << book.weddings << " boards_into_houses_kg " << BoardsInto(book, house_) / 1000
+           << " boards_built_in_kg " << Of(book.built_in, board_) / 1000
+           << " meatfish_store_inflow_kg "
            << (Of(book.herd_produce, meat_) + Of(book.herd_produce, fish_)) / 1000
            << " meatfish_pantry_spoiled_kg "
            << (Of(book.spoiled_in_pantries, meat_) + Of(book.spoiled_in_pantries, fish_)) / 1000
@@ -766,6 +789,8 @@ class SmokehousePolicy {
     satiety_comp_sum_ = 0.0;
     rest_comp_sum_ = 0.0;
     lodged_family_days_ = 0;
+    band_days_ = {};
+    near_top_edge_days_ = 0;
     family_days_ = 0;
     demand_days_ = 0;
     worked_days_ = 0;
@@ -852,6 +877,11 @@ class SmokehousePolicy {
   double satiety_comp_sum_ = 0.0;
   double rest_comp_sum_ = 0.0;
   std::uint32_t lodged_family_days_ = 0;
+  /// decision 106's bands (life.csv birth_satisfaction_bound_1..4; 30/45/60/75
+  /// there): family-days in each band, and within 1 point of the top edge.
+  std::array<float, 4> band_bounds_{30.0F, 45.0F, 60.0F, 75.0F};
+  std::array<std::uint32_t, 5> band_days_{};
+  std::uint32_t near_top_edge_days_ = 0;
   std::uint32_t family_days_ = 0;
 
   /// A family-day mean × 100, as an integer (the year lines carry integers).
