@@ -423,7 +423,8 @@ void LiveOneDay(core::ISimulation& simulation,
                 run::HerdTally* herds = nullptr,
                 run::CrimeTally* crime = nullptr,
                 run::HorseTailTally* horse_tail = nullptr,
-                run::HayTraceTally* hay_trace = nullptr) {
+                run::HayTraceTally* hay_trace = nullptr,
+                run::HeapCureA1Tally* heap_a1 = nullptr) {
   bool hot_at_any_tick = false;
   const core::UnitId awaiting = upgrades.Awaiting();
   for (std::uint32_t tick = 0; tick < core::kTicksPerDay; ++tick) {
@@ -447,6 +448,9 @@ void LiveOneDay(core::ISimulation& simulation,
     }
     if (hay_trace != nullptr) {
       hay_trace->CountStep(simulation.CompletedState());  // #1586's day deaths
+    }
+    if (heap_a1 != nullptr) {
+      heap_a1->CountStep(simulation.CompletedState());  // #1606 A1': hand-overs, feed lots
     }
     if (substitutes != nullptr) {
       substitutes->CountStep(simulation.CompletedState());  // #1434
@@ -1018,7 +1022,8 @@ bool Walk(std::uint64_t seed,
                  &herds,
                  &crime,
                  &horse_tail,
-                 &hay_trace);
+                 &hay_trace,
+                 &heap_a1);
       builder.RunDay(*simulation);
       timber.CountDay(simulation->CompletedState());
       avatar_book.CountDay(simulation->CompletedState());
