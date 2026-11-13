@@ -73,6 +73,7 @@ class SmokehousePolicy {
     board_ = row_of("resources", "board");
     workshops_ = row_of("unit_types", "workshops");
     food_store_ = row_of("unit_types", "food_store");
+    ReadRecipes(tables);
     utility_yard_ = row_of("unit_types", "utility_yard");
     craftsman_ = row_of("professions", "farm_craftsman");
     life_speedup_ = core::LifeSpeedupOr(tables, life_speedup_);
@@ -122,6 +123,12 @@ class SmokehousePolicy {
   [[nodiscard]] core::Grams SaltExtraNeed() const { return salt_extra_need_g_; }
 
   void Enable(bool on) { on_ = on; }
+
+  /// @brief #1677 shape (2) (econ seq 5, boss seq 6): the smokehouse, its food
+  ///        store and the workshops start only when the unbound stock, less the
+  ///        unbound need of every house site started or marked while a couple
+  ///        waits, covers their recipe on every line (--smokehouse-houses-first).
+  void WaitForHouses(bool on) { wait_for_houses_ = on; }
 
   [[nodiscard]] bool On() const { return on_; }
 
@@ -185,7 +192,8 @@ class SmokehousePolicy {
         << Opt(barrel_short_day_) << " room_short_day " << Opt(room_short_day_)
         << " store_marked_day " << Opt(store_marked_day_) << " store_built_day "
         << Opt(store_built_day_) << " stores_asked " << stores_asked_ << " stores_built "
-        << stores_built_ << '\n';
+        << stores_built_ << " held_for_houses_materials_days " << held_for_houses_materials_days_
+        << " first_materials_hold_day " << Opt(first_materials_hold_day_) << '\n';
   }
 
  private:
@@ -427,6 +435,9 @@ class SmokehousePolicy {
       if (site.construction.phase != core::ConstructionPhase::kMarked) {
         return false;  // delivering or building
       }
+      if (!MaterialsHold(world, smokehouse_)) {
+        return false;  // #1677 shape (2): the houses' materials first
+      }
       order.kind = core::OrderKind::kStartBuild;
       order.unit = world.units.row_ids[house];
       return true;
@@ -494,6 +505,9 @@ class SmokehousePolicy {
       if (unit.construction.phase != core::ConstructionPhase::kMarked) {
         return false;  // delivering or building
       }
+      if (!MaterialsHold(world, food_store_)) {
+        return false;  // #1677 shape (2): the houses' materials first
+      }
       order.kind = core::OrderKind::kStartBuild;
       order.unit = world.units.row_ids[row];
       return true;
@@ -546,6 +560,9 @@ class SmokehousePolicy {
     if (site.level == 0) {
       if (site.construction.phase != core::ConstructionPhase::kMarked) {
         return false;  // delivering or building
+      }
+      if (!MaterialsHold(world, workshops_)) {
+        return false;  // #1677 shape (2): the houses' materials first
       }
       order.kind = core::OrderKind::kStartBuild;
       order.unit = world.units.row_ids[shop];
@@ -600,6 +617,98 @@ class SmokehousePolicy {
   /// The stores' rot of `resource` in a book: all of it but the pantries'.
   static core::Grams StoreRot(const core::YearLedger& book, std::uint32_t resource) {
     return Of(book.spoiled, resource) - Of(book.spoiled_in_pantries, resource);
+  }
+
+  /// unit_level_cost.csv in grams (amount × the resource's kg_per_unit), by
+  /// (type, level); and which unit types are housing.
+  void ReadRecipes(const core::ITableSet& tables) {
+    std::vector<double> kg_per_unit;
+    std::vector<std::string> resource_keys;
+    if (const core::ITable* const resources = tables.FindTable("resources")) {
+      const std::uint32_t kg = resources->FindColumn("kg_per_unit");
+      for (std::uint32_t row = 0; row < resources->RowCount(); ++row) {
+        kg_per_unit.push_back(kg != core::kNoTableColumn
+                                  ? static_cast<double>(resources->CellReal(row, kg).value_or(0.0F))
+                                  : 0.0);
+      }
+    }
+    const core::ITable* const types = tables.FindTable("unit_types");
+    if (types != nullptr) {
+      const std::uint32_t klass = types->FindColumn("class");
+      for (std::uint32_t row = 0; row < types->RowCount(); ++row) {
+        is_house_.push_back(klass != core::kNoTableColumn &&
+                            types->CellText(row, klass) == std::string_view("housing"));
+      }
+    }
+    const core::ITable* const costs = tables.FindTable("unit_level_cost");
+    const core::ITable* const resources = tables.FindTable("resources");
+    if (costs == nullptr || types == nullptr || resources == nullptr) {
+      return;
+    }
+    const std::uint32_t unit = costs->FindColumn("unit");
+    const std::uint32_t level = costs->FindColumn("level");
+    const std::uint32_t resource = costs->FindColumn("resource");
+    const std::uint32_t amount = costs->FindColumn("amount");
+    for (std::uint32_t row = 0; row < costs->RowCount(); ++row) {
+      const std::uint32_t type = types->FindRowByKey(costs->CellText(row, unit));
+      const std::uint32_t res = resources->FindRowByKey(costs->CellText(row, resource));
+      const auto lvl = static_cast<std::uint32_t>(costs->CellInteger(row, level).value_or(0));
+      if (type == core::kNoTableRow || res == core::kNoTableRow || res >= kg_per_unit.size()) {
+        continue;
+      }
+      const double grams = static_cast<double>(costs->CellReal(row, amount).value_or(0.0F)) *
+                           kg_per_unit[res] * 1000.0;
+      recipes_[{type, lvl}].emplace_back(res, static_cast<core::Grams>(grams));
+    }
+  }
+
+  /// #1677 shape (2): whether the stock not bound to a site, less the unbound
+  /// need of the house sites started or marked while a couple waits, covers
+  /// `type`'s level-1 recipe on every line. Counts the held days.
+  bool MaterialsHold(const core::WorldState& world, std::uint32_t type) {
+    if (!wait_for_houses_) {
+      return true;
+    }
+    const auto recipe = recipes_.find({type, 1U});
+    if (recipe == recipes_.end()) {
+      return true;
+    }
+    std::map<std::uint32_t, core::Grams> house_need;
+    if (!world.wedding_waits.rows.empty()) {
+      for (const core::UnitRow& unit : world.units.rows) {
+        const bool pending = unit.construction.phase == core::ConstructionPhase::kMarked ||
+                             unit.construction.phase == core::ConstructionPhase::kDelivering;
+        if (!pending || unit.type.value >= is_house_.size() || !is_house_[unit.type.value]) {
+          continue;
+        }
+        const auto lines = recipes_.find({unit.type.value, unit.construction.target_level});
+        if (lines == recipes_.end()) {
+          continue;
+        }
+        for (const auto& [res, grams] : lines->second) {
+          const core::Grams on_site = Of(unit.stock, res);
+          house_need[res] += grams > on_site ? grams - on_site : 0;
+        }
+      }
+    }
+    for (const auto& [res, grams] : recipe->second) {
+      core::Grams free = 0;
+      for (const core::UnitRow& unit : world.units.rows) {
+        if (unit.construction.phase == core::ConstructionPhase::kNone) {
+          free += Of(unit.stock, res);  // a site's stock is bound to it
+        }
+      }
+      const auto need = house_need.find(res);
+      const core::Grams houses = need != house_need.end() ? need->second : 0;
+      if (free - houses < grams) {
+        ++held_for_houses_materials_days_;
+        if (!first_materials_hold_day_) {
+          first_materials_hold_day_ = world.calendar.day;
+        }
+        return false;
+      }
+    }
+    return true;
   }
 
   /// An adult with no post, a different one each time the last did not take.
@@ -678,7 +787,14 @@ class SmokehousePolicy {
   }
 
   static constexpr float kAdultYears = 16.0F;
-  bool on_ = false;  // off again in 0.37.375 (boss seq 24: K5 red on population)
+  bool on_ = false;               // off again in 0.37.375 (boss seq 24: K5 red on population)
+  bool wait_for_houses_ = false;  ///< #1677 shape (2)
+  std::vector<bool> is_house_;
+  std::map<std::pair<std::uint32_t, std::uint32_t>,
+           std::vector<std::pair<std::uint32_t, core::Grams>>>
+      recipes_;  ///< (type, level) -> (resource, grams)
+  std::uint32_t held_for_houses_materials_days_ = 0;
+  std::optional<core::SimDay> first_materials_hold_day_;
   bool triggered_ = false;
   std::uint32_t cooldown_ = 0;
   std::uint32_t candidate_ = 0;

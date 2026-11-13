@@ -616,6 +616,8 @@ bool g_salt_points_zero = false;
 /// `--smokehouse`; the canon has it off (0.37.374 had it on; 0.37.375 took it
 /// back on K5's population red, boss seq 24).
 bool g_smokehouse = false;
+/// #1677 shape (2): the smokehouse family starts only when the houses' materials are covered.
+bool g_smokehouse_houses_first = false;
 /// #307's hay arm: --hay-arm=clover (A) / mown (B) / both (A+B); off otherwise.
 run::HayArmPolicy::Mode g_hay_arm = run::HayArmPolicy::Mode::kMown;  // canon since 0.37.378
 /// #1677: house sites raised while a couple waits (--houses-first); off otherwise.
@@ -844,6 +846,7 @@ bool Walk(std::uint64_t seed,
     builder.limit.BuySalt(false);  // #1630 (B)'s arm B2, (C)'s C2: no lot, no loan
   }
   builder.smokehouse.Enable(g_smokehouse);  // #1644: the arm --smokehouse; off in the canon
+  builder.smokehouse.WaitForHouses(g_smokehouse_houses_first);  // #1677 shape (2)
   builder.smokehouse.Declare("population_curve");
   builder.hay_arm.SetMode(g_hay_arm);  // #307
   builder.hay_arm.Declare("population_curve");
@@ -1706,6 +1709,8 @@ int main(int argc, char** argv) {
       g_salt_points_zero = true;
     } else if (argument == "--smokehouse") {
       g_smokehouse = true;
+    } else if (argument == "--smokehouse-houses-first") {
+      g_smokehouse_houses_first = true;  // #1677 shape (2)
     } else if (argument == "--hay-arm=off") {
       g_hay_arm = run::HayArmPolicy::Mode::kOff;  // #307: the canon without B
     } else if (argument == "--hay-arm=clover") {
