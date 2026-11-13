@@ -145,6 +145,9 @@ class SmokehousePolicy {
   ///        second food store only while the housing lamp shows no queue.
   void FromYear3(bool on) { from_y3_ = on; }
 
+  /// @brief ARM d7: the rule orders nothing while a couple waits for a house.
+  void AfterHouses(bool on) { after_houses_ = on; }
+
   void Parts(bool cooper, bool stores, bool master, bool salt) {
     cooper_on_ = cooper;
     stores_on_ = stores;
@@ -188,6 +191,13 @@ class SmokehousePolicy {
     if (from_y3_ && world.calendar.day < 2U * core::kDaysPerYear) {
       return;
     }
+    // ARM d7 (core seq 37): no order while a couple waits for a house - the
+    // full rule's sites took the brigade in y2 (+43 % labour on other sites)
+    // and the couples' wait rose 20 %, the births following the households.
+    if (after_houses_ && !world.wedding_waits.rows.empty()) {
+      ++held_for_houses_days_;
+      return;
+    }
     if (cooldown_ > 0) {
       --cooldown_;
       return;
@@ -220,7 +230,8 @@ class SmokehousePolicy {
         << " store_marked_day " << Opt(store_marked_day_) << " store_built_day "
         << Opt(store_built_day_) << " stores_asked " << stores_asked_ << " stores_built "
         << stores_built_ << " store_held_for_housing_days " << store_held_for_housing_days_
-        << " holders" << (holders_.str().empty() ? " -" : holders_.str()) << '\n';
+        << " held_for_houses_days " << held_for_houses_days_ << " holders"
+        << (holders_.str().empty() ? " -" : holders_.str()) << '\n';
   }
 
  private:
@@ -884,6 +895,8 @@ class SmokehousePolicy {
   bool stores_on_ = true;
   bool master_on_ = true;
   bool from_y3_ = false;
+  bool after_houses_ = false;
+  std::uint32_t held_for_houses_days_ = 0;
   bool housing_short_today_ = false;
   std::uint32_t store_held_for_housing_days_ = 0;
   bool salt_on_ = true;
