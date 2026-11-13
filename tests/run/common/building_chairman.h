@@ -32,6 +32,7 @@
 #include "felling_policy.h"
 #include "fixture_policy.h"
 #include "funeral_policy.h"
+#include "hay_arm_policy.h"
 #include "herd_plan_policy.h"
 #include "house_policy.h"
 #include "insulation_policy.h"
@@ -91,6 +92,7 @@ class BuildingChairman {
         warm_hold(tables),
         warm_crew(tables),
         fallow(tables),
+        hay_arm(tables),
         sport_talk(tables),
         distiller(tables),
         emptying(tables) {
@@ -365,6 +367,10 @@ class BuildingChairman {
     if (fallow_by_eaters) {
       fallow.RunDay(simulation);
     }
+    // #307's hay arm: the derelict fields still free after the plan's base,
+    // put to hay (hay_arm_policy.h). Its tally counts every day; it orders
+    // only with its arm on.
+    hay_arm.RunDay(simulation);
     // The season's talk to the drinker (#1238; sport_talk_policy.h).
     if (sport_talk_on) {
       sport_talk.RunDay(simulation);
@@ -546,6 +552,8 @@ class BuildingChairman {
   /// first pair's gates green (core-boss-725-fallow [58], [59]); a run's
   /// control arm turns it off.
   bool fallow_by_eaters = true;
+  /// #307's hay arm (hay_arm_policy.h). Off unless asked (--hay-arm=...).
+  HayArmPolicy hay_arm;
   SportTalkPolicy sport_talk;
   /// Whether RunDay calls `sport_talk` (#1238): on in every run; a control
   /// arm turns it off.

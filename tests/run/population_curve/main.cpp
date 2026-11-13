@@ -616,6 +616,8 @@ bool g_salt_points_zero = false;
 /// `--smokehouse`; the canon has it off (0.37.374 had it on; 0.37.375 took it
 /// back on K5's population red, boss seq 24).
 bool g_smokehouse = false;
+/// #307's hay arm: --hay-arm=clover (A) / mown (B) / both (A+B); off otherwise.
+run::HayArmPolicy::Mode g_hay_arm = run::HayArmPolicy::Mode::kOff;
 /// `--hay-hand-over=off`: #1570's counterfactual - the hay lamp's «reduce
 /// herd» left unanswered (LimitPolicy::HayHandOverOff), so a run can say
 /// whether the herds it named would have gone short.
@@ -841,6 +843,8 @@ bool Walk(std::uint64_t seed,
   }
   builder.smokehouse.Enable(g_smokehouse);  // #1644: the arm --smokehouse; off in the canon
   builder.smokehouse.Declare("population_curve");
+  builder.hay_arm.SetMode(g_hay_arm);  // #307
+  builder.hay_arm.Declare("population_curve");
   if (g_salt_points_zero) {
     builder.limit.SaltPointsZero(true);  // #1630 (C)'s arm C3: the loan only
   }
@@ -1535,6 +1539,7 @@ bool Walk(std::uint64_t seed,
       crime.Print(std::cout, seed);
       salt.Print(std::cout);                      // #1630 (B)
       builder.smokehouse.Print(std::cout, seed);  // #1644
+      builder.hay_arm.Print(std::cout, seed);     // #307
       herds.PrintCowFlows(std::cout, seed);       // #1570
       hand_overs.Print(std::cout, seed);
       feed_rung.Print(std::cout, seed);                                             // #1573
@@ -1695,6 +1700,12 @@ int main(int argc, char** argv) {
       g_salt_points_zero = true;
     } else if (argument == "--smokehouse") {
       g_smokehouse = true;
+    } else if (argument == "--hay-arm=clover") {
+      g_hay_arm = run::HayArmPolicy::Mode::kClover;  // #307 arm A
+    } else if (argument == "--hay-arm=mown") {
+      g_hay_arm = run::HayArmPolicy::Mode::kMown;  // #307 arm B
+    } else if (argument == "--hay-arm=both") {
+      g_hay_arm = run::HayArmPolicy::Mode::kBoth;  // #307 arm A+B
     } else if (argument == "--no-write-off") {
       g_no_write_off = true;
     } else if (argument == "--no-anticrime") {
