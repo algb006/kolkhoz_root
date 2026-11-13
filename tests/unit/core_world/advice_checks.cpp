@@ -73,7 +73,9 @@ class WorldParamOverlay final : public core::ITableSet {
         rows.push_back(std::move(cells));
       }
     }
-    params_ = std::make_unique<test::FakeTable>(std::vector<std::string>{"key", "value", "owner"},
+    // world_params.csv's own header (key,value,reader): the assembly checks
+    // every row's reader, so a wrong third name refuses the world.
+    params_ = std::make_unique<test::FakeTable>(std::vector<std::string>{"key", "value", "reader"},
                                                 std::move(rows));
   }
 
