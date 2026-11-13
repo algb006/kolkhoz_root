@@ -34,6 +34,13 @@ enum class HayRungReason : std::uint8_t {
   kFeedLeast,        ///< the least lots that close it, beside the heads above (`value`: points)
   kGranary,          ///< a lot refused for want of a store alone: «finish the granary»
   kBelowFloorOnly,   ///< no purchase closes it: the remainder below the floors named, no move
+  // THE FULL PURCHASE THAT DOES NOT CLOSE (#1636, host-boss-1636-ladder-trace [1]): noted
+  // before kGranary / kBelowFloorOnly whenever rung 3 did not name kFeedLeast - trace only.
+  kFeedNotClosing,       ///< the maximal purchase leaves the herds short (`value`: its points)
+  kFeedNotClosingAny,    ///< whether that purchase carried any feed (`value`: 0 / 1)
+  kFeedNotClosingLots,   ///< its lots (`value`)
+  kFeedNotClosingLand,   ///< its latest landing day, days from today (`value`)
+  kFeedNotClosingShort,  ///< the forecast's short days after it, heads above gone (`value`)
   kReasonCount,
 };
 

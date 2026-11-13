@@ -568,6 +568,19 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
     }
     return advice;
   }
+  // THE FULL PURCHASE, FOR THE TRACE ONLY (#1636; host-boss-1636-ladder-trace
+  // [1]): with points unspent the trace could not tell an unbuyable purchase
+  // from one bought and still short. Noted when traced; no move changes.
+  if (rungs != nullptr) {
+    note(HayRungReason::kFeedNotClosing, purchase.points);
+    note(HayRungReason::kFeedNotClosingAny, purchase.any ? 1 : 0);
+    note(HayRungReason::kFeedNotClosingLots, purchase.lots);
+    note(HayRungReason::kFeedNotClosingLand, purchase.land_day);
+    note(HayRungReason::kFeedNotClosingShort,
+         ForecastHerdFeed(
+             config, world, false, FeedHorizon::kNearestScythes, &purchase, &gone, &stock)
+             .short_days);
+  }
   // NO PURCHASE CLOSES IT: what would have to go below the floors is named,
   // apart (Alarm::below_floor_stock, below_floor_horses).
   advice.below_floor_stock = heads.below_floor_stock;
