@@ -551,6 +551,7 @@ bool ParseLifeConfig(const ITableSet& tables, LifeConfig& config, std::string& e
       !ParseAlcoholismConfig(tables, config.alcoholism, error) ||
       !ParseSportConfig(tables, config.sport, error) ||
       !ParseSugarIssueConfig(tables, config.sugar, error) ||
+      !ParseSaltIssueConfig(tables, config.salt, error) ||
       !ParseBurialConfig(tables, config.burial, error)) {
     return false;
   }
@@ -602,6 +603,8 @@ std::span<const std::string_view> LifeWorldParamKeys() {
     keys.insert(keys.end(), sport.begin(), sport.end());
     const std::span<const std::string_view> sugar = SugarIssueWorldParamKeys();
     keys.insert(keys.end(), sugar.begin(), sugar.end());
+    const std::span<const std::string_view> salt = SaltIssueWorldParamKeys();
+    keys.insert(keys.end(), salt.begin(), salt.end());
     const std::span<const std::string_view> barter = BarterWorldParamKeys();
     keys.insert(keys.end(), barter.begin(), barter.end());
     const std::span<const std::string_view> burial = BurialWorldParamKeys();

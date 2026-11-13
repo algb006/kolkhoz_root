@@ -825,6 +825,8 @@ class StandardSimulation final : public ISimulation {
     return production_->GrassStandOf(engine_->CompletedState(), field);
   }
 
+  SaltView SaltToday() const override { return production_->SaltToday(engine_->CompletedState()); }
+
   bool FellingCanBeManned(Vec2 place) const override {
     return labor_->FellingCanBeManned(engine_->CompletedState(), place);
   }

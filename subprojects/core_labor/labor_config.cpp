@@ -145,7 +145,10 @@ bool ParseScalars(const ITable& table, LaborConfig& config, std::string& error) 
 bool ParseEfficiencyKnobs(const ITable& table, LaborConfig& config, std::string& error) {
   EfficiencyFactors& factors = config.efficiency;
   SkillBlend& skill = config.skill;
-  const std::array<ScalarKnob, 23> knobs = {{
+  const std::array<ScalarKnob, 24> knobs = {{
+      {.key = "efficiency_salt_weak_factor",
+       .value = &factors.salt_weak_factor,
+       .range = {.low = 0.0F, .high = 1.0F}},
       {.key = "efficiency_satiety_full",
        .value = &factors.satiety_full,
        .range = {.low = 0.0F, .high = 100.0F}},

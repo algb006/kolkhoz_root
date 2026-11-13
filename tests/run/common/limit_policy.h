@@ -61,6 +61,7 @@
 #include "hay_answer.h"
 #include "hay_day_off_policy.h"
 #include "rise_watch.h"
+#include "salt_buy_rule.h"
 #include "sugar_buy_rule.h"
 
 namespace run {
@@ -74,6 +75,7 @@ class LimitPolicy {
     core::ReadAvatars(tables, avatars_, avatar_error);  // the dealer's grain (#1421)
     ReadCosts(tables);
     sugar_.Read(tables, catalog_);
+    salt_.Read(tables, catalog_);
     const core::ITable* const resources = tables.FindTable("resources");
     if (resources != nullptr) {
       log_ = resources->FindRowByKey("log");
@@ -217,6 +219,19 @@ class LimitPolicy {
 
   /// @brief The control arm of #1240 (--no-sugar-buy): no sugar lot.
   void BuySugar(bool buy) { sugar_.Enable(buy); }
+
+  /// @brief The arm B2 of #1630 (B) (--no-salt-buy): no salt lot.
+  void BuySalt(bool buy) { salt_.Enable(buy); }
+
+  /// @brief The arm C3 of #1630 (C) (--salt-points-zero): the salt sees no
+  ///        points, so only the loan brings it.
+  void SaltPointsZero(bool on) { salt_.PointsZero(on); }
+
+  /// @brief The salt rule, read-only, for the run's SALT1630 print.
+  [[nodiscard]] const SaltBuyRule& SaltRule() const { return salt_; }
+
+  /// @brief Salt wanted above the table's reserve (#1644 (b)); see SaltBuyRule.
+  void SaltExtraNeed(core::Grams grams) { salt_.ExtraNeed(grams); }
 
   /// @brief Holds the hay's hand-over while the herds' plans are being set
   ///        (#1289; HayAnswer::HoldHandOverForPlans).
@@ -918,6 +933,21 @@ class LimitPolicy {
       orders.push_back(order);  // before anything a building site wants: the plough first
       return;
     }
+    // THE SALT BEFORE THE SUGAR (#1630 (B)): a food nobody lives without.
+    const SaltBuyRule::Ask salt_ask = salt_.WhatToday(world);
+    if (salt_ask == SaltBuyRule::Ask::kLot) {
+      core::OrderRow salt;
+      salt.kind = core::OrderKind::kOrderLimitLot;
+      salt.lot = core::LimitLotId{static_cast<std::uint16_t>(salt_.Lot())};
+      orders.push_back(salt);
+      return;
+    }
+    if (salt_ask == SaltBuyRule::Ask::kLoan) {
+      core::OrderRow loan;  // #1630 (C): the district's salt loan, no subject
+      loan.kind = core::OrderKind::kTakeSaltLoan;
+      orders.push_back(loan);
+      return;
+    }
     // THE SUGAR'S LOTS ALL AT ONCE, as many as the points cover: the rule
     // asks a year's issue, and the cooldown would space a year's need into
     // three weeks of one lot each while the stores stand under the floor.
@@ -994,6 +1024,8 @@ class LimitPolicy {
   bool hold_timber_while_logs_lie_ = true;
   /// The run chairman's sugar (#1240).
   SugarBuyRule sugar_;
+  /// The run chairman's salt (#1630 (B)).
+  SaltBuyRule salt_;
   std::uint32_t days_logs_lay_ = 0;
   std::uint32_t days_watched_ = 0;
   std::uint32_t bought_ = 0;

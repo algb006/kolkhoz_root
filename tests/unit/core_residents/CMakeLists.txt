@@ -1,5 +1,5 @@
 kolkhoz_add_unit_test(core_residents main.cpp barter_checks.cpp advance_checks.cpp
-    crowded_barrack_checks.cpp hunger_forecast_checks.cpp burial_checks.cpp funeral_checks.cpp sugar_checks.cpp
+    crowded_barrack_checks.cpp hunger_forecast_checks.cpp burial_checks.cpp funeral_checks.cpp sugar_checks.cpp salt_checks.cpp salt_edge_checks.cpp
     alcohol_rise_checks.cpp stream_split_checks.cpp birth_stop_checks.cpp inheritance_checks.cpp
     food_theft_checks.cpp)
 

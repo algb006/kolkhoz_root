@@ -265,6 +265,9 @@ class StepEngine final : public ISimulation {
   /// No crops, so no grass stand on any field.
   GrassStandView GrassStandOf(FieldId /*field*/) const override { return {}; }
 
+  /// No subsystems, so no salt modelled: `measured` false.
+  SaltView SaltToday() const override { return {}; }
+
   /// No subsystems, so no works and no carts: nothing to cart.
   SupplyEstimate SupplyEstimateFor(UnitId /*unit*/) const override { return {}; }
 

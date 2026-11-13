@@ -3378,12 +3378,20 @@ class LaborSystem final : public ILaborSystem {
       }
       resident.work.hours_away_today += worked;
       const float age = BiologicalAgeYears(config_, resident.birth_day, current.calendar.day);
+      // THE SALT HUNGER's «слабость» (#1630 (B)): the family's step, as the
+      // residents set it today, from step 2 takes salt_weak_factor.
+      const std::uint32_t family_row = FindRow(current.families, resident.family);
+      const float salt_factor =
+          family_row != kNoRow && current.families.rows[family_row].salt_step >= 2U
+              ? config_.efficiency.salt_weak_factor
+              : 1.0F;
       const float efficiency = ResidentEfficiency(config_,
                                                   resident,
                                                   age,
                                                   AgingFromYears(config_, current),
                                                   IsFirstCampaignYear(current),
-                                                  AlcoholSparesWork(resident.work));
+                                                  AlcoholSparesWork(resident.work)) *
+                               salt_factor;
       // THE AVRAL (unit rules §7; rush.h): the work delivers more by the
       // step, and the rest drains by twice the boost (leisure §6) — the
       // drain is taken on the work WITHOUT the boost and then raised, since

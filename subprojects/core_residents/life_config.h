@@ -42,6 +42,7 @@
 #include "funeral_rules.h"
 #include "membership.h"
 #include "night_trade.h"
+#include "salt_issue.h"
 #include "schooling.h"
 #include "sport.h"
 #include "sugar_issue.h"
@@ -318,6 +319,10 @@ struct LifeConfig {
   /// The month's sugar, its mood and the children's complaint (sugar_issue.h;
   /// #1241).
   SugarIssueConfig sugar;
+
+  /// The salt: the month's issue, the day's norm, the count and its step
+  /// (salt_issue.h; #1630 (B)). Off by default (salt_need_on).
+  SaltIssueConfig salt;
 
   /// The graves and the game's stop for one (burial.h; #1199).
   BurialConfig burial;

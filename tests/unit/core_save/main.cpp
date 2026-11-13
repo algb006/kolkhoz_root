@@ -345,6 +345,8 @@ core::WorldState MakeWorld() {
   rich.sugar_share = 0.25F;
   rich.drink_occasion_month = 97;  // save 189 (#1262)
   rich.shock_month = 96;
+  rich.salt_hunger_days = 9.5F;  // save 208 (#1630 (B))
+  rich.salt_step = 2;
   core::AppendRow(world.families, rich);
   core::FamilyRow bare;  // empty pantry: the vector must stay empty
   core::AppendRow(world.families, bare);
@@ -1696,6 +1698,13 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"audit.trial_due", U8(world.audit.trial_due)});
   chunks.push_back({"audit.books_accepted", U8(world.audit.books_accepted)});
   chunks.push_back({"audit.accepted_day", U32(world.audit.accepted_day)});
+  // The salt watch (#1630 (C), save 209).
+  chunks.push_back({"salt.half_on_edge_days", U16(world.salt.half_on_edge_days)});
+  chunks.push_back({"salt.ending_raised", U8(world.salt.ending_raised)});
+  chunks.push_back({"salt.letter_year", U16(world.salt.letter_year)});
+  chunks.push_back({"salt.loan_year", U16(world.salt.loan_year)});
+  chunks.push_back(
+      {"salt.loan_points_owed", U32(static_cast<std::uint32_t>(world.salt.loan_points_owed))});
   // The sports field's month (save 68).
   chunks.push_back({"sport_month.open_days", U8(world.sport_month.open_days)});
   chunks.push_back({"sport_month.downpour_yesterday", U8(world.sport_month.downpour_yesterday)});
@@ -2057,7 +2066,10 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // Save 207 (#1568): +13 - the store audit's two u32, a u16 and three
     // bytes after the night theft; predicted (+12, then +1 for the act's
     // byte) before the build, held.
-    {"world", 1470, 0xa43851da4197e61bULL},
+    // Save 209 (#1630 (C)): +11 - the salt watch, three u16, a byte and an
+    // i32 after the store audit; predicted 1470 -> 1481 before the build;
+    // held; the hash read off it (s1630c2).
+    {"world", 1481, 0x8ad320be3d064df3ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2141,8 +2153,10 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // without-help attention and the herd trudodni, +8 a family, two -
     // predicted 416 -> 432, held. Save 205 (#1084): the funeral's
     // satisfaction term and its last day, +8 a family, two - predicted 432 ->
-    // 448 before the build.
-    {"families", 448, 0xbbcfabcda35473a4ULL},
+    // 448 before the build. Save 208 (#1630 (B)): the days without salt and
+    // the salt step, +5 a family, two - predicted 448 -> 458 before the
+    // build, held; the hash read off it (s1630b2).
+    {"families", 458, 0x9dce69255409e9bbULL},
     // Save 84: +36 — the harvest by parts' laid share (4) and grams (8), 12
     // a row, three rows; predicted before the build and held. Then the first
     // row given non-zero values: the size held at 305, the hash moved.
@@ -2336,8 +2350,9 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // hash read off it. Save 206 (#1374): `male` leaves, a byte an order, six
     // orders - predicted 824 -> 818 before the build.
     // Save 207 (#1568): same length, new hash - the fixture's «last order
-    // kind» (kOrderKindCount - 1) is now kWriteOffShortage.
-    {"orders", 818, 0xff822200a07d5a0fULL},
+    // kind» (kOrderKindCount - 1) is now kWriteOffShortage. Save 209 (#1630
+    // (C)): the same, kTakeSaltLoan - same length, the hash read off s1630c2.
+    {"orders", 818, 0x985351fa4f1b75d2ULL},
     // Save 82: the fixture's first stand, a birch planting — 8 -> 67 (its id
     // 4, the old fields 41, species 2, hectares 4, two days 8); predicted,
     // held.
@@ -2579,7 +2594,13 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // Save 207 (#1568): +40 - 20 a book for the fixture's two: written_off
     // and stolen_before_acceptance (empty amounts, a u16 count each) and four
     // u32; predicted before the build, held.
-    {"ledger", 4022, 0x2fea3d1c4135da99ULL},
+    // Save 209 (#1630 (C)): +24 - three u32 a book (salt deaths, salt
+    // departures, salt loans), two books; predicted 4022 -> 4046 before the
+    // build, held; the hash read off it (s1630c2).
+    // Save 210 (#1644 K2'): spoiled_in_pantries, an empty amounts vector (a
+    // u16 count) a book, two books; predicted 4046 -> 4050 before the build,
+    // held; the hash read off it (s1644e).
+    {"ledger", 4050, 0xa401000c8c185311ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
@@ -3051,35 +3072,36 @@ int main() {
       "a yard granted the ration comes back granted, and one not granted, not");
   failures +=
       Expect(loaded.families.rows[0].dry_months == 4, "a yard's dry months come back (save 60)");
-  failures +=
-      Expect(loaded.families.rows[0].formed_day == 131 &&
-                 loaded.families.rows[0].earned_since_formed == 245 &&
-                 loaded.families.rows[0].advance_debt == 7'300'000 &&
-                 loaded.families.rows[0].advance_given == 11'900'000 &&
-                 loaded.families.rows[0].formed_in_barrack == 1 &&
-                 loaded.ledger.closed.advance_written_off_ended == 71'000 &&
-                 loaded.ledger.closed.advance_written_off_turns == 12'500 &&
-                 loaded.chairman.hay_cut_dry_work_days == 5 &&  // save 161
-                 loaded.chairman.hay_day_worked_month == 6 &&
-                 loaded.chairman.hay_cut_avral_days == 3 && loaded.chairman.hay_cut_crew == 16 &&
-                 loaded.chairman.hay_cut_mower_days == 24.0F &&  // save 195
-                 loaded.families.rows[0].advance_turns == 1 &&
-                 loaded.families.rows[0].sugar_dry_months == 3 &&  // save 188 (#1241)
-                 loaded.families.rows[0].sugar_share == 0.25F &&
-                 loaded.families.rows[0].drink_occasion_month == 97 &&  // save 189 (#1262)
-                 loaded.families.rows[0].shock_month == 96 &&
-                 loaded.residents.rows[0].mood_base == 57.5F &&
-                 loaded.chairman.sugar_complaint_season == 9 &&
-                 loaded.families.rows[1].advance_turns == 0 &&
-                 loaded.ledger.current.advance_written_off_ended == 0 &&
-                 loaded.families.rows[1].formed_day == core::kNotFormedInPlay &&
-                 loaded.families.rows[1].advance_debt == 0 &&
-                 loaded.ledger.closed.advance == world.ledger.closed.advance &&
-                 loaded.ledger.closed.advance_repaid == 640'000 &&
-                 loaded.ledger.current.advance.empty() && loaded.ledger.current.advance_repaid == 0,
-             "a new household's advance comes back - the day formed, the trudodni since, "
-             "the debt, the given, the barrack - and the book's advance and repaid, the "
-             "closed year's apart from the open one's (save 159, #170)");
+  failures += Expect(
+      loaded.families.rows[0].formed_day == 131 &&
+          loaded.families.rows[0].earned_since_formed == 245 &&
+          loaded.families.rows[0].advance_debt == 7'300'000 &&
+          loaded.families.rows[0].advance_given == 11'900'000 &&
+          loaded.families.rows[0].formed_in_barrack == 1 &&
+          loaded.ledger.closed.advance_written_off_ended == 71'000 &&
+          loaded.ledger.closed.advance_written_off_turns == 12'500 &&
+          loaded.chairman.hay_cut_dry_work_days == 5 &&  // save 161
+          loaded.chairman.hay_day_worked_month == 6 && loaded.chairman.hay_cut_avral_days == 3 &&
+          loaded.chairman.hay_cut_crew == 16 &&
+          loaded.chairman.hay_cut_mower_days == 24.0F &&  // save 195
+          loaded.families.rows[0].advance_turns == 1 &&
+          loaded.families.rows[0].sugar_dry_months == 3 &&  // save 188 (#1241)
+          loaded.families.rows[0].sugar_share == 0.25F &&
+          loaded.families.rows[0].drink_occasion_month == 97 &&  // save 189 (#1262)
+          loaded.families.rows[0].shock_month == 96 &&
+          loaded.families.rows[0].salt_hunger_days == 9.5F &&  // save 208 (#1630 (B))
+          loaded.families.rows[0].salt_step == 2 && loaded.residents.rows[0].mood_base == 57.5F &&
+          loaded.chairman.sugar_complaint_season == 9 &&
+          loaded.families.rows[1].advance_turns == 0 &&
+          loaded.ledger.current.advance_written_off_ended == 0 &&
+          loaded.families.rows[1].formed_day == core::kNotFormedInPlay &&
+          loaded.families.rows[1].advance_debt == 0 &&
+          loaded.ledger.closed.advance == world.ledger.closed.advance &&
+          loaded.ledger.closed.advance_repaid == 640'000 && loaded.ledger.current.advance.empty() &&
+          loaded.ledger.current.advance_repaid == 0,
+      "a new household's advance comes back - the day formed, the trudodni since, "
+      "the debt, the given, the barrack - and the book's advance and repaid, the "
+      "closed year's apart from the open one's (save 159, #170)");
   failures += Expect(loaded.wedding_waits.rows.size() == 1 &&
                          loaded.wedding_waits.rows[0].bride.value == 7 &&
                          loaded.wedding_waits.rows[0].groom.value == 9 &&

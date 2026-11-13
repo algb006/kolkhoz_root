@@ -90,6 +90,7 @@
 #include "core_common/readiness_view.h"
 #include "core_common/resident_activity.h"
 #include "core_common/road_draft.h"
+#include "core_common/salt_view.h"
 #include "core_common/stink.h"
 #include "core_common/stock_forecast.h"
 #include "core_common/supply_estimate.h"
@@ -465,6 +466,14 @@ class ISimulation {
   /// to core_production; the bare engine knows no crops and answers none.
   /// @note Called between steps on the sim thread. A pure read.
   virtual GrassStandView GrassStandOf(FieldId field) const = 0;
+
+  /// @brief The village's salt today (salt_view.h; #1630 (A)): salt and its
+  /// substitutes held, the table's days at the norm, the families on each
+  /// step of the salt hunger, and the run that is «Без соли»'s condition.
+  /// Fans out to core_production; the bare engine answers `measured` false.
+  /// STUB until #1630 (B): every implementation answers `measured` false.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual SaltView SaltToday() const = 0;
 
   /// @brief How long the carting of the materials of the works on `unit`
   /// would take, said before they are started (supply_estimate.h; routing

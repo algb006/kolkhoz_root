@@ -24,6 +24,7 @@
 #include "livestock_homes.h"
 #include "meadow_orders.h"
 #include "night_pasture.h"
+#include "salt_loan.h"
 #include "stock_ops.h"
 #include "timber_felling.h"
 #include "timber_planting.h"
@@ -598,6 +599,9 @@ void ConsumeProductionOrders(const ProductionConfig& config, WorldState& current
         break;
       case OrderKind::kTakeGoodsLoan:
         Settle(order, TakeGoodsLoan(config, current, order));
+        break;
+      case OrderKind::kTakeSaltLoan:
+        Settle(order, TakeSaltLoan(config, current, order));  // #1630 (C)
         break;
       case OrderKind::kMarkExtraction:
         Settle(order, MarkExtraction(config, current, order));

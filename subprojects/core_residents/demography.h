@@ -79,6 +79,15 @@ void RunHygiene(const LifeConfig& config, WorldState& current);
 ///        or gone: the first surviving household in row order, as before.
 void DropFamilyIfEmpty(WorldState& current, FamilyId family, FamilyId heir = FamilyId{});
 
+/// @brief The death path, shared by the age bands (RunDeaths) and the salt's
+///        step 4 (#1630 (C); salt_issue.h): the funerals, kResidentDied with
+///        `amount` = `cause`, the wake and the shock, the grave, the row's
+///        removal; YearLedger::deaths, and deaths_salt for the salt.
+void BuryTheDead(const LifeConfig& config,
+                 WorldState& current,
+                 const std::vector<ResidentId>& dead,
+                 DeathCause cause);
+
 /// @brief Removes a resident and repairs links: the spouse becomes widowed,
 /// an emptied family disappears, a post held is announced vacant.
 void RemoveResident(WorldState& current, ResidentId id);

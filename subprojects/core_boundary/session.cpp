@@ -303,6 +303,10 @@ bool ShapeIsValid(const OrderRow& order) {
       // Whether N fits under the herd's places is the consumer's verdict.
       return has_herd && order.amount >= 0 && order.amount <= kNoHerdPlan && !has_resident &&
              !has_unit && !has_field && !has_stand && !has_site;
+    case OrderKind::kTakeSaltLoan:
+      // No subject at all (#1630 (C); order_state.h): whether a loan may be
+      // taken this year is the consumer's verdict (salt_loan.h).
+      return !has_unit && !has_resident && !has_herd && !has_field && !has_stand && !has_site;
     case OrderKind::kWriteOffShortage:
       // The store in `unit`, nothing else (#1568; order_state.h). Whether it
       // has a gap to write off is the consumer's verdict (food_theft.h).
@@ -564,6 +568,8 @@ class Session final : public ISession {
   GrassStandView GrassStandOf(FieldId field) const override {
     return simulation_->GrassStandOf(field);
   }
+
+  SaltView SaltToday() const override { return simulation_->SaltToday(); }
 
   RoadPieces SelectRoadPieces(const RoadSelection& selection,
                               RoadOperation operation) const override {

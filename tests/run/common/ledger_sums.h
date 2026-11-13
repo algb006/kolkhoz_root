@@ -24,7 +24,7 @@
 
 namespace run {
 
-inline constexpr std::size_t kLedgerMembers = 163;
+inline constexpr std::size_t kLedgerMembers = 167;
 static_assert(core::AggregateArity<core::YearLedger>() == kLedgerMembers,
               "YearLedger's members changed: regenerate ledger_sums.h (core-gen-ledger-sums.py)");
 
@@ -230,6 +230,10 @@ inline std::vector<std::pair<std::string_view, double>> LedgerSums(const core::Y
   add("audits", ScalarOf(book.audits));
   add("audit_remarks", ScalarOf(book.audit_remarks));
   add("drunk_fires", ScalarOf(book.drunk_fires));
+  add("deaths_salt", ScalarOf(book.deaths_salt));               // save 209 (#1630 (C))
+  add("departures_salt", ScalarOf(book.departures_salt));       // save 209
+  add("salt_loans", ScalarOf(book.salt_loans));                 // save 209
+  add("spoiled_in_pantries", SumOf(book.spoiled_in_pantries));  // save 210 (#1644)
   return out;
 }
 

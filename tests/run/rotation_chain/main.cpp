@@ -144,6 +144,29 @@ int main() {
   if (!world) {
     return 1;
   }
+  // THE VILLAGE'S SALT (0.37.372, #1630 (C)): this run has no chairman who
+  // buys the salt lot, and from (C) a village without salt reaches step 4
+  // «край» in year 3 - its deaths and departures take the hands that sow and
+  // reap the chain. The chain is the question, not the salt: the start's
+  // church store gets ten tonnes, five years' table and more.
+  {
+    const core::ITable* const resources = world.tables->FindTable("resources");
+    const std::uint32_t salt =
+        resources != nullptr ? resources->FindRowByKey("salt") : core::kNoTableRow;
+    core::WorldState fixture = world.State();
+    for (core::UnitRow& unit : fixture.units.rows) {
+      if (salt != core::kNoTableRow && unit.level > 0) {
+        if (unit.stock.size() <= salt) {
+          unit.stock.resize(static_cast<std::size_t>(salt) + 1U, 0);
+        }
+        unit.stock[salt] += 10'000'000;  // ten tonnes, grams
+        break;
+      }
+    }
+    world->ResetWorld(fixture);
+    std::cout << "rotation_chain: FIXTURE DIFFERS FROM THE START CANON — 10 t of salt in the "
+                 "first standing unit's stock at day 0 (the run buys no salt lot)\n";
+  }
   const core::ITable* const crops = world.tables->FindTable("crops");
   const auto crop = [crops](const char* key) {
     const std::uint32_t row = crops != nullptr ? crops->FindRowByKey(key) : core::kNoTableRow;

@@ -772,6 +772,30 @@ enum class AlarmKind : std::uint8_t {
   /// key `clamp_rot` (boss's vocabulary). Collected by core_production.
   kClampRot,
 
+  /// «СОЛИ НА СТОЛЕ НА N СУТОК» (#1630 (C); health §4 «Предупреждают
+  /// заранее»; econ's salt-ending-c §3). A STATE, seasonless, while the salt
+  /// need is on and N - the salt and substitutes held (stores + yards, a
+  /// substitute's kilogram an eater-day) over the eaters' day's norm - falls
+  /// under 2 x salt_step1_days (8 days), or any family stands on a salt step.
+  /// `days_to_loss` = N + salt_step1_days: the days to the first «пресно» -
+  /// so the paint's red (alarm_red_within_days, 8) falls at N ≤ 4, as the
+  /// design's «a month»; 0 when a family is already on a step. Subject:
+  /// `resource` the salt; `amount` the salt held, grams; `amount_more` the
+  /// second line «…и на засолку не хватит» (June-November): the grams the
+  /// table's reserve holds back from the shops, 0 none. `advice` kNone (the
+  /// lot is the answer). Proposed registry key `salt_table_short`.
+  /// Collected by core_production.
+  kSaltTableShort,
+
+  /// THE ELDER'S REMINDER OF THE SALT LOAN (#1630 (C); econ's salt-ending-c
+  /// §4: «каждый месяц напоминают лампа и староста»): while the salt lamp is
+  /// red, no loan was taken this year and the points do not buy the lot.
+  /// The elder's advice (lamp 0); the «once a month» is the layer's, as for
+  /// every elder's line. Subject `resource` the salt; `amount` the loan's
+  /// price in points (its lots x 12). Proposed registry key `salt_loan_advice`. Collected by
+  /// core_production.
+  kSaltLoanAdvice,
+
   // Appended by later tasks and phases: children out of school, sewage.
   // Named so the numbering is planned, not discovered.
 

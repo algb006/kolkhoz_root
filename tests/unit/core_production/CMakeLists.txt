@@ -22,6 +22,7 @@ kolkhoz_add_unit_test(core_production
     store_keeping_checks.cpp
     hay_weathering_checks.cpp
     heap_expected_checks.cpp
+    salt_loan_checks.cpp
     clamp_rot_checks.cpp
     team_oat_plan_checks.cpp)
 

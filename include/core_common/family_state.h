@@ -357,6 +357,18 @@ struct FamilyRow {
   /// where it pays (YardsTakeHerdCare); part of trudodni_account, not beside
   /// it; burns with it at the year's turn.
   TrudodniHundredths yard_herd_trudodni = 0;
+
+  /// THE SALT HUNGER (save 208; #1630 (B); health §4 «Солевой голод», the
+  /// human's word of 1 Oct 2026): the family's days without salt - +1 a day
+  /// its eaters' norm is not met by salt or a substitute, - salt_count_recovery
+  /// a day it is, never below 0 - and the step it puts the family on (0 none,
+  /// 1 «пресно», 2 «слабость», 3 «болеют»; 4 «край» is #1630 (C)'s). The step
+  /// is the count read against the world_params thresholds, KEPT beside it so
+  /// labour (the output factor) and production (SaltToday) read the residents'
+  /// verdict instead of the thresholds a second time. Written by core_residents
+  /// (salt_issue.cpp, RunSaltDay), once a day; 0 and 0 while salt_need_on is off.
+  float salt_hunger_days = 0.0F;
+  std::uint8_t salt_step = 0;
 };
 
 /// @brief FamilyRow::formed_day of a row of the genesis: no day of the game.

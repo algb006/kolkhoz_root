@@ -109,6 +109,23 @@ Grams PicklingReserve(const ProductionConfig& config,
 /// Batches of `pickling` its inputs in the stores allow: the main input
 /// above the fresh reserve when `main_too`, and every other input (the
 /// grocery's salt) always. Never below zero.
+Grams SaltTableReserve(const ProductionConfig& config,
+                       const WorldState& world,
+                       ResourceId resource);  // «стол раньше бочки», below
+
+/// Whether a recipe takes salt among its inputs (#1644: those go first).
+bool TakesSalt(const ProductionConfig& config, const ProcessingRecipe& recipe) {
+  if (config.salt_resource.value == kInvalidDefIdValue) {
+    return false;
+  }
+  for (const ProcessingAmount& input : recipe.inputs) {
+    if (input.resource.value == config.salt_resource.value) {
+      return true;
+    }
+  }
+  return false;
+}
+
 double PicklingBatchesStocked(const ProductionConfig& config,
                               const WorldState& world,
                               const ProcessingRecipe& pickling,
@@ -120,6 +137,7 @@ double PicklingBatchesStocked(const ProductionConfig& config,
     if (line == 0) {
       available -= PicklingReserve(config, world, input.resource);
     }
+    available -= SaltTableReserve(config, world, input.resource);  // #1630 (B)
     const double by = available > 0 && input.grams > 0
                           ? static_cast<double>(available) / static_cast<double>(input.grams)
                           : 0.0;
@@ -163,21 +181,67 @@ Grams SauerkrautToBarrel(const ProductionConfig& config,
 /// added the smoked goods held to the need, as §8а then read — and they are
 /// already in barrels, so they took the free ones as well and counted twice
 /// (boss seq 13 rewrote the line).
+///
+/// UNDER THE SALTING (production units §8а «Под засолку», boss 12 November
+/// 2026, #1644): while a shop that salts into barrels stands built, the meat
+/// and fish in the kolkhoz stores ÷ the barrel's capacity join the need, all
+/// year round - without it the smokehouse stood from year 9-10, when the
+/// start barrels wore out. «Above the fresh issue»: the shops settle after
+/// the day's issue, so what lies in the stores then is already above it. The
+/// two needs are summed against one pool of free barrels (my reading: both
+/// fill the same barrels, as the smoked goods already in them do).
+double SaltingBarrelsNeeded(const ProductionConfig& config, const WorldState& world) {
+  const ProcessingCatalog& catalog = config.processing;
+  if (catalog.barrel_capacity_grams <= 0) {
+    return 0.0;
+  }
+  std::vector<std::uint32_t> mains;
+  for (const ProcessingRecipe& recipe : catalog.recipes) {
+    if (recipe.inputs.empty() || !TakesSalt(config, recipe)) {
+      continue;
+    }
+    const bool to_barrel = std::ranges::any_of(recipe.outputs, [&](const ProcessingAmount& out) {
+      return InBarrel(catalog, out.resource);
+    });
+    const bool shop_stands = std::ranges::any_of(world.units.rows, [&](const UnitRow& unit) {
+      return unit.type.value == recipe.unit_type.value && unit.level > 0;
+    });
+    const std::uint32_t main = recipe.inputs.front().resource.value;
+    if (to_barrel && shop_stands && std::ranges::find(mains, main) == mains.end()) {
+      mains.push_back(main);
+    }
+  }
+  Grams grams = 0;
+  for (const std::uint32_t main : mains) {
+    grams += TakeableGrams(world, config, DefIdFromIndex<ResourceIdTag>(main));
+  }
+  return std::ceil(static_cast<double>(grams) / static_cast<double>(catalog.barrel_capacity_grams));
+}
+
 double CooperageWant(const ProductionConfig& config,
                      const WorldState& world,
                      const ProcessingRecipe& cooperage) {
   const ProcessingCatalog& catalog = config.processing;
+  if (catalog.barrel_capacity_grams <= 0 || cooperage.outputs.empty() ||
+      catalog.barrel_grams <= 0) {
+    return 0.0;
+  }
   const ProcessingRecipe* const pickling = FindRule(catalog, ProcessingRule::kPickling);
-  if (pickling == nullptr || catalog.barrel_capacity_grams <= 0 || cooperage.outputs.empty() ||
-      catalog.barrel_grams <= 0 || pickling->inputs.empty() || pickling->outputs.empty() ||
-      !MonthInRange(static_cast<std::uint8_t>(world.calendar.date.month),
-                    catalog.cooperage_from_month,
-                    catalog.cooperage_to_month)) {
+  const bool pickling_season = pickling != nullptr && !pickling->inputs.empty() &&
+                               !pickling->outputs.empty() &&
+                               MonthInRange(static_cast<std::uint8_t>(world.calendar.date.month),
+                                            catalog.cooperage_from_month,
+                                            catalog.cooperage_to_month);
+  const double salting = SaltingBarrelsNeeded(config, world);
+  if (!pickling_season && !(salting > 0.0)) {
     return 0.0;
   }
   const double capacity = static_cast<double>(catalog.barrel_capacity_grams);
   const double needed =
-      std::ceil(static_cast<double>(SauerkrautToBarrel(config, world, *pickling)) / capacity);
+      (pickling_season
+           ? std::ceil(static_cast<double>(SauerkrautToBarrel(config, world, *pickling)) / capacity)
+           : 0.0) +
+      salting;
   const double free = std::floor(static_cast<double>(BarrelRoomFree(config, world)) / capacity);
   const double barrels_per_batch = static_cast<double>(cooperage.outputs.front().grams) /
                                    static_cast<double>(catalog.barrel_grams);
@@ -205,6 +269,23 @@ struct Limit {
   }
 };
 
+/// «СТОЛ РАНЬШЕ БОЧКИ» (#1630 (B); health §4 «Числа»): with the salt need on,
+/// the salting and the pickling take the stores' salt only above this many
+/// grams - salt_table_reserve_months of the village's table at its residents
+/// today. 0 for any other input, or with the need off.
+Grams SaltTableReserve(const ProductionConfig& config,
+                       const WorldState& world,
+                       ResourceId resource) {
+  if (!config.farming.salt_need_on || resource.value != config.salt_resource.value ||
+      resource.value == kInvalidDefIdValue) {
+    return 0;
+  }
+  const double grams = static_cast<double>(config.farming.salt_norm_g_per_eater_day) *
+                       static_cast<double>(world.residents.rows.size()) * kDaysPerMonth *
+                       static_cast<double>(config.farming.salt_table_reserve_months);
+  return static_cast<Grams>(std::llround(grams));
+}
+
 /// The inputs' bound; sets `has_work` from the main input (the first line;
 /// the cooperage's work is its want, set by the caller).
 void LimitByInputs(const ProductionConfig& config,
@@ -221,6 +302,7 @@ void LimitByInputs(const ProductionConfig& config,
     if (recipe.rule == ProcessingRule::kCooperage) {
       available -= OwedToSites(config, world, input.resource);
     }
+    available -= SaltTableReserve(config, world, input.resource);
     const double by = available > 0 && input.grams > 0
                           ? static_cast<double>(available) / static_cast<double>(input.grams)
                           : 0.0;
@@ -421,17 +503,27 @@ void SettleProcessing(const ProductionConfig& config, WorldState& current) {
     const float remaining = current.units.rows[row].production_days_remaining;
     double left = written > remaining ? static_cast<double>(written - remaining) : 0.0;
     const float wear = WearOutputFactor(config, current.units.rows[row]);
-    for (const ProcessingRecipe& recipe : catalog.recipes) {
-      if (recipe.unit_type.value != type.value || !(left > 0.0)) {
-        continue;
+    // SALT FIRST, THE REST AFTER (#1644; econ's smokehouse page (2)): a shop's
+    // day goes first to its recipes that take salt - the salting keeps more
+    // food than the smoking (0.85 / 0.80 against 0.60 / 0.45) and its barrel
+    // closes the table's salt norm - and the salt they may take is only what
+    // stands above the table's reserve (SaltTableReserve in LimitByInputs), so
+    // «salt while the salt is above the reserve, smoke otherwise» needs no
+    // second rule. Then the rest, in the catalogue's order, as before.
+    for (const bool salt_pass : {true, false}) {
+      for (const ProcessingRecipe& recipe : catalog.recipes) {
+        if (recipe.unit_type.value != type.value || !(left > 0.0) ||
+            TakesSalt(config, recipe) != salt_pass) {
+          continue;
+        }
+        const Availability can = Available(config, current, recipe);
+        const double days = std::min(left, can.batches * static_cast<double>(recipe.labor_days));
+        if (!(days > 0.0)) {
+          continue;
+        }
+        left -= days;
+        WorkBatches(config, current, recipe, days / static_cast<double>(recipe.labor_days), wear);
       }
-      const Availability can = Available(config, current, recipe);
-      const double days = std::min(left, can.batches * static_cast<double>(recipe.labor_days));
-      if (!(days > 0.0)) {
-        continue;
-      }
-      left -= days;
-      WorkBatches(config, current, recipe, days / static_cast<double>(recipe.labor_days), wear);
     }
     double demand = 0.0;
     if (UnitCanWork(current, current.units.rows[row])) {
@@ -516,21 +608,25 @@ bool ShopStands(const ProductionConfig& config,
   alarm.kind = AlarmKind::kProcessingStopped;
   alarm.unit = world.units.row_ids[row];
   bool can_work = false;
-  for (const ProcessingRecipe& recipe : config.processing.recipes) {
-    if (recipe.unit_type.value != unit.type.value) {
-      continue;
+  // In the day's own order (#1644): the salt's recipes first, then the rest.
+  for (const bool salt_pass : {true, false}) {
+    for (const ProcessingRecipe& recipe : config.processing.recipes) {
+      if (recipe.unit_type.value != unit.type.value || TakesSalt(config, recipe) != salt_pass) {
+        continue;
+      }
+      const Availability can = Available(config, world, recipe);
+      can_work = can_work || can.batches > kNoBatch;
+      if (can.missing.value == kInvalidDefIdValue) {
+        continue;
+      }
+      const bool is_output = std::ranges::any_of(
+          recipe.outputs,
+          [&can](const ProcessingAmount& out) { return out.resource.value == can.missing.value; });
+      alarm.resource = can.missing;
+      alarm.stop_reason =
+          is_output ? ProcessingStopReason::kNoRoom : ProcessingStopReason::kShortOf;
+      return true;  // one per shop: the first recipe that stands says why
     }
-    const Availability can = Available(config, world, recipe);
-    can_work = can_work || can.batches > kNoBatch;
-    if (can.missing.value == kInvalidDefIdValue) {
-      continue;
-    }
-    const bool is_output = std::ranges::any_of(recipe.outputs, [&can](const ProcessingAmount& out) {
-      return out.resource.value == can.missing.value;
-    });
-    alarm.resource = can.missing;
-    alarm.stop_reason = is_output ? ProcessingStopReason::kNoRoom : ProcessingStopReason::kShortOf;
-    return true;  // one per shop: the first recipe that stands says why
   }
   if (!can_work) {
     return false;

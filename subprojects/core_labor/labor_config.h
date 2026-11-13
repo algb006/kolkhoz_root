@@ -165,6 +165,12 @@ struct EfficiencyFactors {
 
   float alcoholism_factor_floor = 0.8F;
 
+  /// THE SALT HUNGER's «слабость» (#1630 (B); health §4, step 2: output
+  /// -5 %): the output of a resident whose family stands on salt step 2 or 3
+  /// (FamilyRow::salt_step). STUB econ; NAMED SIMPLIFICATION: the design's
+  /// -10 % on heavy summer work is not split out - every work takes -5 %.
+  float salt_weak_factor = 0.95F;
+
   /// Biological age at which the plateau ends and output starts to fall.
   /// Decision 105: the aging threshold is life expectancy minus 20, and the
   /// starting expectancy is 60 — so 40 while the expectancy formula itself

@@ -73,6 +73,7 @@
 #include "production_config.h"
 #include "production_orders.h"
 #include "rick_supply.h"
+#include "salt_loan.h"
 #include "seed_room.h"
 #include "stock_lights.h"
 #include "stock_ops.h"
@@ -256,6 +257,8 @@ class ProductionSystem final : public IProductionSystem {
     // so a felling done yesterday is not counted as a mark standing.
     if (HourFromTick(current.calendar.tick) == 0U) {
       ReleaseUnreachableMarks(config_, current);
+      // The district's salt-loan letter, at the dawn (#1630 (C); salt_loan.h).
+      RunSaltLetterDay(config_, current);
     }
     // And a planting finished this hour is planted this hour
     // (timber_planting.h).
@@ -637,6 +640,12 @@ class ProductionSystem final : public IProductionSystem {
     return GrassStandOn(config_, completed, field);
   }
 
+  /// #1630 (B)-(C): one reading of the village's salt (salt_loan.h,
+  /// SaltViewOf) for the door, the lamp and the letter.
+  SaltView SaltToday(const WorldState& completed) const override {
+    return SaltViewOf(config_, completed);
+  }
+
   Grams StandingCropGrams(const WorldState& /*world*/, const FieldRow& field) const override {
     if (field.crop.value >= config_.crops.size()) {
       return 0;
@@ -693,6 +702,7 @@ class ProductionSystem final : public IProductionSystem {
     CollectMilkDebtAlarms(config_, completed, alarms);
     CollectGoodsLoanAlarms(config_, completed, alarms);
     CollectClampRotAlarms(config_, completed, alarms);
+    CollectSaltAlarms(config_, completed, alarms);  // #1630 (C)
     CollectSowingAlarms(config_, completed, alarms);
     CollectGatherAlarms(config_, completed, alarms);
     CollectHerdAlarms(config_, completed, alarms);

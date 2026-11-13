@@ -39,6 +39,8 @@
 #ifndef CORE_COMMON_EVENT_STATE_H_
 #define CORE_COMMON_EVENT_STATE_H_
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -65,7 +67,7 @@ enum class EventKind : std::uint8_t {
 
   // -- people: the demography sub-step of the decisions slot -------------
   kResidentBorn,     ///< resident, family.
-  kResidentDied,     ///< resident, family; amount = cause code of the emitter.
+  kResidentDied,     ///< resident, family; amount = DeathCause (below).
   kResidentArrived,  ///< resident, family — a migrant who came to stay.
   kResidentLeft,     ///< resident, family — the outflow.
   kWedding,          ///< resident (the bride), family (the couple's household:
@@ -921,6 +923,34 @@ enum class EventKind : std::uint8_t {
   /// церкви / бурта: {x} т — перевезите под охрану»).
   kAuditUnguardedLeak,
 
+  /// «БЕЗ СОЛИ» - THE CONDITION OF THE FIFTH ENDING (epochs §8 «Отдельный исход
+  /// — «Без соли»»; health §4 «Солевой голод»; the human, 1 Oct 2026: «Это
+  /// пятый конец партии»; #1630): at least half the families on the salt
+  /// hunger's stage 4 eight days running, raised once - the core stops here,
+  /// as with kPlanTrialDue; the ending is host's script. kInterrupting. Seam
+  /// key `salt_ending_due`.
+  /// STUB (#1630 (S), 11 Nov 2026): no producer - the need is not in the core
+  /// (no eater eats salt, no family's count, no stages); (A) the contract, (B)
+  /// the need and stages, (C) this condition, in boss's order.
+  /// Raised by core_residents' RunSaltEdgeDay (salt_issue.cpp, #1630 (C)).
+  kSaltEndingDue,
+
+  /// A FAMILY LEFT FOR THE SALT (#1630 (C); health §4 step 4, econ's
+  /// salt-ending-c §1: after salt_edge_leave_days on step 4 «край»): `family`,
+  /// `amount` its members. Each member then raises kResidentLeft. Not
+  /// kFamilyLeftForNoHouse: the books do not mix the two. kInterrupting. Seam
+  /// key `family_left_for_salt`.
+  kFamilyLeftForSalt,
+
+  /// THE DISTRICT'S LETTER OFFERING THE SALT LOAN (#1630 (C), econ's
+  /// salt-ending-c §4): at a year's first lamp «Соли на столе на N суток»
+  /// while the points do not buy the salt lot; once a year. `amount` the
+  /// salt lots the loan would bring - a year of every eater's table (econ's
+  /// (a), econ-boss-1630-c-loan; health §4) - at 12 points a lot. kNotable.
+  /// Seam key `salt_loan_offered` (the letter «Соли у вас на два месяца.
+  /// Район может дать лот в долг»).
+  kSaltLoanOffered,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.
@@ -937,6 +967,38 @@ enum class EventKind : std::uint8_t {
   /// reason looks like tidiness and works like a hole.
   kEventKindCount,
 };
+
+/// @brief Why a resident died: kResidentDied's `amount` (#1630 (C), econ's
+///        salt-ending-c §1 - a cause of its own, so the books and the prints
+///        split the salt's deaths from the age bands'). Values are appended
+///        before kDeathCauseCount and never renumbered.
+enum class DeathCause : std::uint8_t {
+  kAge = 0,  ///< RunDeaths' age bands (the only cause until 0.37.372).
+  kSalt,     ///< The salt hunger's step 4 «край»: children and elders.
+  kDeathCauseCount,
+};
+
+/// @brief THE ENDING CONDITIONS (host's request, 12 Nov 2026; boss-host-
+///        epoch1-resume [4]): the kinds at which the core STOPS and the host's
+///        script must open an Epoch I ending - «Под суд» by the plan and by the
+///        audit, «Без соли». Machine-readable, so a consumer's guard «every
+///        condition has a handler» reads this list and not a comment's wording
+///        (host's rules missed kAuditTrialDue for a whole pin).
+///        NOT HERE because no event exists for them: «Под суд» by the herd's
+///        hunger (14 %, epochs §8: the core keeps no event; a reader counts
+///        herd_deaths_hunger), «Село кончилось» (#1569, no trigger), «Правление
+///        сгорело» (#1574, no producer). Epoch II's door is the era's own.
+inline constexpr std::array<EventKind, 3> kEndingConditionEventKinds = {
+    EventKind::kPlanTrialDue,
+    EventKind::kAuditTrialDue,
+    EventKind::kSaltEndingDue,
+};
+
+/// EVERY NEW KIND IS CLASSIFIED: appending a kind fails here until its author
+/// has asked «is it an ending's condition?», added it above if so, and raised
+/// this count - the list cannot fall behind the enum silently.
+static_assert(static_cast<std::size_t>(EventKind::kEventKindCount) == 124,
+              "a new EventKind: classify it in kEndingConditionEventKinds, then raise this count");
 
 /// @brief One thing that happened. Plain data, no text: the presentation
 /// composes the sentence from the ids and the string tables. Every id that

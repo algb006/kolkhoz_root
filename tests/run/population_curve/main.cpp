@@ -58,6 +58,7 @@
 #include "../common/passed_over_tally.h"
 #include "../common/rest_tally.h"
 #include "../common/run_harness.h"
+#include "../common/salt_tally.h"
 #include "../common/site_wait_tally.h"
 #include "../common/strada_tally.h"
 #include "../common/substitute_tally.h"
@@ -616,6 +617,14 @@ bool g_no_anticrime = false;
 /// `--no-write-off`: #1568's arm - the run chairman never writes the book's
 /// shortage off after the audit's remark (WriteOffPolicy off).
 bool g_no_write_off = false;
+/// #1630 (B)'s arm B2: the bot buys no salt (the instrument's known direction).
+bool g_no_salt_buy = false;
+/// #1630 (C)'s arm C3: the salt sees no points, only the loan buys it.
+bool g_salt_points_zero = false;
+/// #1644: the run's chairman puts up and staffs the smokehouse - the arm
+/// `--smokehouse`; the canon has it off (0.37.374 had it on; 0.37.375 took it
+/// back on K5's population red, boss seq 24).
+bool g_smokehouse = false;
 /// `--hay-hand-over=off`: #1570's counterfactual - the hay lamp's «reduce
 /// herd» left unanswered (LimitPolicy::HayHandOverOff), so a run can say
 /// whether the herds it named would have gone short.
@@ -843,6 +852,14 @@ bool Walk(std::uint64_t seed,
   if (g_herd_evening3_off) {
     builder.herd_plan.SetEveningThreeOff(true);
   }
+  if (g_no_salt_buy) {
+    builder.limit.BuySalt(false);  // #1630 (B)'s arm B2, (C)'s C2: no lot, no loan
+  }
+  builder.smokehouse.Enable(g_smokehouse);  // #1644: the arm --smokehouse; off in the canon
+  builder.smokehouse.Declare("population_curve");
+  if (g_salt_points_zero) {
+    builder.limit.SaltPointsZero(true);  // #1630 (C)'s arm C3: the loan only
+  }
   if (g_hay_hand_over_off) {
     builder.limit.HayHandOverOff(true);
   }
@@ -864,6 +881,8 @@ bool Walk(std::uint64_t seed,
   run::HerdTally herds(*world.tables);
   // Crime left unfought - the endings' triggers and drink's price (#1566).
   run::CrimeTally crime(*world.tables, seed);
+  // #1630 (B): the salt a village-year, the steps, the bot's lots.
+  run::SaltTally salt(*world.tables, seed);
   // Every cow handed y2-y3: the door, the forecast, came true (#1570, boss [32]).
   run::HandOverTally hand_overs(*world.tables);
   // #1573's book (econ's gates S1-S2, P2, the y2 meadow): feed_rung_tally.h.
@@ -1009,6 +1028,7 @@ bool Walk(std::uint64_t seed,
       herds.CountDayEnd(simulation->CompletedState());
       herds.CountNearShort(*simulation);
       crime.CountDay(simulation->CompletedState());
+      salt.CountDayEnd(*simulation, builder.limit.SaltRule());
       hand_overs.CountDay(simulation->CompletedState(),
                           builder.limit.HayHandLogs(),
                           herds.CowsHandedInYear(simulation->CompletedState().calendar.date.year));
@@ -1545,10 +1565,12 @@ bool Walk(std::uint64_t seed,
       funerals.Print(std::cout, seed);
       herds.Print(std::cout, seed);
       crime.Print(std::cout, seed);
-      district_waits.Print(std::cout);       // #1441 T0
-      dealer_p0.Print(std::cout);            // #1441 P0
-      heap_a1.Print(std::cout);              // #1606 A1
-      herds.PrintCowFlows(std::cout, seed);  // #1570
+      district_waits.Print(std::cout);            // #1441 T0
+      dealer_p0.Print(std::cout);                 // #1441 P0
+      heap_a1.Print(std::cout);                   // #1606 A1
+      salt.Print(std::cout);                      // #1630 (B)
+      builder.smokehouse.Print(std::cout, seed);  // #1644
+      herds.PrintCowFlows(std::cout, seed);       // #1570
       hand_overs.Print(std::cout, seed);
       feed_rung.Print(std::cout, seed);                                             // #1573
       builder.limit.PrintHayFeedRung(std::cout, seed, run::FeedRungTally::kYears);  // #1573
@@ -1705,6 +1727,12 @@ int main(int argc, char** argv) {
       g_hay_hand_over_off = true;
     } else if (argument == "--beach=off") {
       g_beach_off = true;
+    } else if (argument == "--no-salt-buy") {
+      g_no_salt_buy = true;
+    } else if (argument == "--salt-points-zero") {
+      g_salt_points_zero = true;
+    } else if (argument == "--smokehouse") {
+      g_smokehouse = true;
     } else if (argument == "--no-write-off") {
       g_no_write_off = true;
     } else if (argument == "--no-anticrime") {

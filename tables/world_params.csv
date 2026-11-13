@@ -384,3 +384,4 @@ food_theft_store_cap_share_month,0.02,core
 truancy_from_alcoholism,50,core
 truancy_share_at_cap,0.1,core
 write_off_reputation,-10,core
+salt_need_on,1,core

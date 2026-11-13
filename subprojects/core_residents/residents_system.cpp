@@ -53,6 +53,7 @@
 #include "hunger_forecast.h"
 #include "issue_norm.h"
 #include "life_config.h"
+#include "salt_edge.h"
 #include "specialist_arrival.h"
 #include "vitals.h"
 #include "year_metrics.h"
@@ -539,6 +540,14 @@ class ResidentsSystem final : public IResidentsSystem {
     RunDemographyDay(config_, current);
     RunSpecialistArrivals(config_, current);
     RunFamilyExchange(food_, config_.life_speedup, current);
+    // THE SALT (#1630 (B); salt_issue.h): on a month's first day the stores'
+    // salt to the yards, then every day the norm eaten and the count kept -
+    // before the vitals, so a step 3 day's health loss is the day's.
+    IssueSaltMonth(config_.salt, current);
+    RunSaltDay(config_.salt, current);
+    // Step 4 «край»: the ending's run, its deaths, the families that leave
+    // (#1630 (C); salt_edge.h).
+    RunSaltEdgeDay(config_, current);
     AccumulateVitals(config_, food_.satiety.health_loss_satiety_threshold, current);
     // The year's book, after the exchange has moved the food and before the
     // turn below can close it: the satisfaction sampled is yesterday's
@@ -560,6 +569,8 @@ class ResidentsSystem final : public IResidentsSystem {
     // THE MONTH'S SUGAR TO THE PEOPLE FIRST (#1241; sugar_issue.h): «Сперва
     // людям, потом ночь самогонщика» - what it leaves is the still's.
     IssueSugarMonth(config_.sugar, config_.life_speedup, current);
+    // The salt's step on the month's mood the sugar has just composed.
+    SaltMoodMonth(config_.salt, current);
     // The stores' month first — the dry month and the distillers' replacement
     // (night_trade.h) — then the month's drinking, over the month the labor
     // day close has just finished counting (alcoholism.h).

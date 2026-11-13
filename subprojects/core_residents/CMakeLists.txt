@@ -22,6 +22,8 @@ kolkhoz_add_module(core_residents
     membership.cpp
     alcoholism.cpp
     sport.cpp
+    salt_edge.cpp
+    salt_issue.cpp
     sugar_issue.cpp
     burial.cpp
     funeral_rules.cpp

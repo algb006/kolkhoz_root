@@ -1186,7 +1186,7 @@ bool ParseMeadowKinds(const ITable& table, FarmingConfig& farming, std::string& 
 /// AT ALL: until 2026-09-16 this module took every number off its own
 /// hand-written tables, and the two halves of billeting are what brought it
 /// here. The next world constant lands in the same place.
-constexpr std::array<std::string_view, 36> kProductionWorldParamKeys = {
+constexpr std::array<std::string_view, 40> kProductionWorldParamKeys = {
     "billet_heads_per_yard",
     "billet_yield_factor",
     "school_year_start_month",
@@ -1230,6 +1230,13 @@ constexpr std::array<std::string_view, 36> kProductionWorldParamKeys = {
     // kind's floor at and below the second.
     "herd_care_full_coverage",
     "herd_care_floor_coverage",
+    // #1630 (B): the salt need's switch and norm (residents' too, a second
+    // READER), and the table's reserve the salting may not take.
+    "salt_need_on",
+    "salt_norm_g_per_eater_day",
+    "salt_table_reserve_months",
+    // #1630 (C): step 1's count - the salt lamp's days to the first «пресно».
+    "salt_step1_days",
     // #1586 (i): the y1 milk floor from the plan and the norm yield (0: off).
     "milk_floor_norm_first_year",
     // #1586 (i-soft): the norm yield's divisor for that floor (1: the norm).
@@ -1260,6 +1267,7 @@ bool ParseProductionWorldParams(const ITable& world,
   float cold_to = static_cast<float>(farming.cold_last_month) + 1.0F;
   float hunger_episode_fed_days = static_cast<float>(farming.hunger_episode_fed_days);
   auto barrack_poultry_heads = static_cast<float>(farming.barrack_poultry_heads);
+  float salt_on = farming.salt_need_on ? 1.0F : 0.0F;
   float milk_norm_first_year = farming.milk_floor_norm_first_year ? 1.0F : 0.0F;
   float heaps_expected = farming.hay_heaps_expected_value ? 1.0F : 0.0F;
   const Range months{.low = 1.0F, .high = static_cast<float>(kMonthsPerYear)};
@@ -1392,17 +1400,30 @@ bool ParseProductionWorldParams(const ITable& world,
                  .value = &farming.herd_care_floor_coverage,
                  .range = Range{.low = 0.0F, .high = 1.0F}},
       ScalarKnob{.key = kProductionWorldParamKeys[33],
-                 .value = &milk_norm_first_year,
+                 .value = &salt_on,
                  .range = Range{.low = 0.0F, .high = 1.0F}},
       ScalarKnob{.key = kProductionWorldParamKeys[34],
+                 .value = &farming.salt_norm_g_per_eater_day,
+                 .range = Range{.low = 0.0F, .high = 1000.0F}},
+      ScalarKnob{.key = kProductionWorldParamKeys[35],
+                 .value = &farming.salt_table_reserve_months,
+                 .range = Range{.low = 0.0F, .high = 24.0F}},
+      ScalarKnob{.key = kProductionWorldParamKeys[36],
+                 .value = &farming.salt_step1_days,
+                 .range = Range{.low = 0.0F, .high = 1000.0F}},
+      ScalarKnob{.key = kProductionWorldParamKeys[37],
+                 .value = &milk_norm_first_year,
+                 .range = Range{.low = 0.0F, .high = 1.0F}},
+      ScalarKnob{.key = kProductionWorldParamKeys[38],
                  .value = &farming.milk_floor_norm_prior_divisor,
                  .range = Range{.low = 1.0F, .high = 5.0F}},
-      ScalarKnob{.key = kProductionWorldParamKeys[35],
+      ScalarKnob{.key = kProductionWorldParamKeys[39],
                  .value = &heaps_expected,
                  .range = Range{.low = 0.0F, .high = 1.0F}}};
   if (!ReadKnobs(world, "world_params", knobs, error)) {
     return false;
   }
+  farming.salt_need_on = salt_on >= 0.5F;
   farming.milk_floor_norm_first_year = milk_norm_first_year >= 0.5F;
   farming.hay_heaps_expected_value = heaps_expected >= 0.5F;
   farming.barrack_poultry_heads = static_cast<std::uint16_t>(barrack_poultry_heads);
@@ -1784,6 +1805,10 @@ bool ParseProductionConfig(const ITableSet& tables, ProductionConfig& config, st
   }
   config.manure_resource = ResourceByKey(resources, "manure");
   config.hay_resource = ResourceByKey(resources, "hay");
+  // #1630 (B): the salt and its substitutes, for the table's reserve and SaltToday.
+  config.salt_resource = ResourceByKey(resources, "salt");
+  config.salted_fish_resource = ResourceByKey(resources, "salted_fish");
+  config.salted_meat_resource = ResourceByKey(resources, "salted_meat");
   config.green_mass_resource = ResourceByKey(resources, "green_mass");
   config.straw_resource = ResourceByKey(resources, "straw");
   config.milk_resource = ResourceByKey(resources, "milk");
