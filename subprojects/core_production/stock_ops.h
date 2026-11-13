@@ -224,12 +224,42 @@ inline bool IsHomeOf(const WorldState& world,
 /// hay, straw, logs and clay from any field or pile, and a potato harvest
 /// counted granary room as its own: 143 t of potatoes and 150 t of hay lay in
 /// granaries while the table said granaries keep grain.
+/// @brief Whether a built store stands that is `resource`'s home by the table.
+inline bool HomeStoreStands(const WorldState& world,
+                            const ProductionConfig& config,
+                            ResourceId resource) {
+  return std::ranges::any_of(world.units.rows, [&config, resource](const UnitRow& unit) {
+    return unit.level > 0 && StoresGoods(unit, config) && TypeIsHomeOf(unit, config, resource);
+  });
+}
+
+/// @brief #1636: the church store takes a FEED while no built store is that
+///        feed's home and the switch is on (farming.feed_into_church_until_granary).
+inline bool ChurchTakesFeedForNow(const WorldState& world,
+                                  const UnitRow& unit,
+                                  const ProductionConfig& config,
+                                  ResourceId resource) {
+  return config.farming.feed_into_church_until_granary &&
+         config.church_store_type.value != kInvalidDefIdValue &&
+         unit.type.value == config.church_store_type.value &&
+         resource.value < config.feed_values.size() && config.feed_values[resource.value] > 0.0F &&
+         // Not the hay nor any crop's harvest (oats, beet): those have their
+         // own homes, and a harvest routed into the church would be a different
+         // rule from a lot's - only bought feed (compound feed) lands here.
+         resource.value != config.hay_resource.value &&
+         std::ranges::none_of(
+             config.crops,
+             [resource](const CropDef& crop) { return crop.resource.value == resource.value; }) &&
+         !HomeStoreStands(world, config, resource);
+}
+
 inline bool NumberedStoreTakes(const WorldState& world,
                                const UnitRow& unit,
                                const ProductionConfig& config,
                                ResourceId resource) {
   return !EmptyingShutsOut(world, unit, config, resource) &&
-         (config.resource_stores_read == 0 || TypeIsHomeOf(unit, config, resource));
+         (config.resource_stores_read == 0 || TypeIsHomeOf(unit, config, resource) ||
+          ChurchTakesFeedForNow(world, unit, config, resource));
 }
 
 /// @brief First unit able to store goods; kNoRow if none. Phase-1 routing:

@@ -857,6 +857,15 @@ struct FarmingConfig {
   /// of the heaps it counted, on the field (fedbyh/fedbyl).
   bool hay_heaps_expected_value = false;
 
+  /// #1636 (#1586's cure (iii); econ, y1-floor-keep-feed-into-church-2026-11-12
+  /// §1; world_params `feed_into_church_until_granary`): while no built store
+  /// is a feed's home (resource_stores.csv: compound feed lives in the food
+  /// yard's granary), the church store takes it - so the hay lamp's feed rung
+  /// has somewhere to land a lot in the take-over year. The church stands from
+  /// day 0 in every start, so the design's «or else the cattle yard's store»
+  /// is never reached and not read (STUB). Off: today's homes only.
+  bool feed_into_church_until_granary = false;
+
   /// THE SALT NEED as production reads it (#1630 (B); world_params
   /// `salt_need_on`, `salt_norm_g_per_eater_day` - the residents' rows, read
   /// a second time - and `salt_table_reserve_months`): «стол раньше бочки»,

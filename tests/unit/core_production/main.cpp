@@ -1444,6 +1444,48 @@ int CheckTheHayLampByTheCutsPace() {
   return failures;
 }
 
+/// #1636 (#1586's cure (iii)): while no built store is a bought feed's home,
+/// the church store takes it - with the switch on, and only bought feed: not
+/// the hay, not a crop's harvest; once the granary stands, the church refuses.
+int CheckTheChurchTakesFeedUntilTheGranary() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.hay_resource = core::ResourceId{0};
+  config.resource_stores_read = 1;
+  config.feed_values = {1.0F, 0.0F, 0.0F, 1.0F, 0.5F};
+  config.unit_types.resize(3);
+  SetStorageKg(config.unit_types[0], 50000.0F);  // the church store: keeps hay here
+  config.unit_types[0].home_of = {core::ResourceId{0}};
+  SetStorageKg(config.unit_types[1], 150000.0F);  // a granary: compound feed's home
+  config.unit_types[1].home_of = {core::ResourceId{3}};
+  SetStorageKg(config.unit_types[2], 50000.0F);  // a store of nothing feedy
+  config.church_store_type = core::UnitTypeId{0};
+  const core::ResourceId compound{3};
+  const core::ResourceId straw{4};
+  core::WorldState world = MakeHerdWorld(0.0F);
+  world.units.rows[0].type = core::UnitTypeId{0};
+  world.units.rows[0].level = 1;
+  failures += Expect(!core::SomeStoreAccepts(world, config, compound),
+                     "church feed (#1636): switch off - no store takes compound feed");
+  config.farming.feed_into_church_until_granary = true;
+  failures += Expect(core::SomeStoreAccepts(world, config, compound) &&
+                         core::NumberedStoreAccepts(world, world.units.rows[0], config, compound),
+                     "church feed (#1636): switch on, no granary - the church store takes it");
+  config.crops.resize(1);
+  config.crops[0].resource = straw;
+  failures += Expect(!core::NumberedStoreAccepts(world, world.units.rows[0], config, straw),
+                     "church feed (#1636): a crop's harvest is not taken (only bought feed)");
+  core::UnitRow granary;
+  granary.type = core::UnitTypeId{1};
+  granary.level = 1;
+  core::AppendRow(world.units, granary);
+  failures += Expect(!core::NumberedStoreAccepts(world, world.units.rows[0], config, compound) &&
+                         core::SomeStoreAccepts(world, config, compound),
+                     "church feed (#1636): the granary stands - the church refuses, the granary "
+                     "takes it");
+  return failures;
+}
+
 /// THE FIRST MOVE BY THE FEED THAT RUNS OUT (0.37.57; AlarmAdvice): the hay
 /// - the cut; a feed whose home is a numbered store (a granary) with no such
 /// store standing - «амбар под комбикорм», and nothing once its site is under
@@ -18374,6 +18416,7 @@ int main() {
   failures += CheckTheFoalingCountsFromTheStabling();
   failures += CheckTheHerdHayForecast();
   failures += CheckTheForecastAdvice();
+  failures += CheckTheChurchTakesFeedUntilTheGranary();  // #1636
   failures += CheckTheHayLampByTheCutsPace();
   failures += CheckTheHarvestFeedStillToCome();
   failures += CheckTheForecastHorseEatsItsWorkGrain();

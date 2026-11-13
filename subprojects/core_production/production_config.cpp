@@ -1186,7 +1186,7 @@ bool ParseMeadowKinds(const ITable& table, FarmingConfig& farming, std::string& 
 /// AT ALL: until 2026-09-16 this module took every number off its own
 /// hand-written tables, and the two halves of billeting are what brought it
 /// here. The next world constant lands in the same place.
-constexpr std::array<std::string_view, 40> kProductionWorldParamKeys = {
+constexpr std::array<std::string_view, 41> kProductionWorldParamKeys = {
     "billet_heads_per_yard",
     "billet_yield_factor",
     "school_year_start_month",
@@ -1242,7 +1242,9 @@ constexpr std::array<std::string_view, 40> kProductionWorldParamKeys = {
     // #1586 (i-soft): the norm yield's divisor for that floor (1: the norm).
     "milk_floor_norm_first_year_prior_divisor",
     // #1606's cure: the hay forecast's field heaps at expected value (0: off).
-    "hay_heaps_expected_value"};
+    "hay_heaps_expected_value",
+    // #1636: bought feed into the church store until its home stands (0: off).
+    "feed_into_church_until_granary"};
 
 /// THE SCHOOL YEAR IS READ HERE AS WELL AS BY THE SCHOOL, and that is a
 /// second READER, not a second home: the months live in world_params.csv and
@@ -1270,6 +1272,7 @@ bool ParseProductionWorldParams(const ITable& world,
   float salt_on = farming.salt_need_on ? 1.0F : 0.0F;
   float milk_norm_first_year = farming.milk_floor_norm_first_year ? 1.0F : 0.0F;
   float heaps_expected = farming.hay_heaps_expected_value ? 1.0F : 0.0F;
+  float feed_into_church = farming.feed_into_church_until_granary ? 1.0F : 0.0F;
   const Range months{.low = 1.0F, .high = static_cast<float>(kMonthsPerYear)};
   const std::array<ScalarKnob, kProductionWorldParamKeys.size()> knobs = {
       ScalarKnob{.key = kProductionWorldParamKeys[0],
@@ -1419,6 +1422,9 @@ bool ParseProductionWorldParams(const ITable& world,
                  .range = Range{.low = 1.0F, .high = 5.0F}},
       ScalarKnob{.key = kProductionWorldParamKeys[39],
                  .value = &heaps_expected,
+                 .range = Range{.low = 0.0F, .high = 1.0F}},
+      ScalarKnob{.key = kProductionWorldParamKeys[40],
+                 .value = &feed_into_church,
                  .range = Range{.low = 0.0F, .high = 1.0F}}};
   if (!ReadKnobs(world, "world_params", knobs, error)) {
     return false;
@@ -1426,6 +1432,7 @@ bool ParseProductionWorldParams(const ITable& world,
   farming.salt_need_on = salt_on >= 0.5F;
   farming.milk_floor_norm_first_year = milk_norm_first_year >= 0.5F;
   farming.hay_heaps_expected_value = heaps_expected >= 0.5F;
+  farming.feed_into_church_until_granary = feed_into_church >= 0.5F;
   farming.barrack_poultry_heads = static_cast<std::uint16_t>(barrack_poultry_heads);
   farming.hunger_episode_fed_days = static_cast<std::uint16_t>(hunger_episode_fed_days);
   farming.cold_first_month = static_cast<std::uint8_t>(cold_from - 1.0F);
