@@ -618,6 +618,8 @@ bool g_salt_points_zero = false;
 bool g_smokehouse = false;
 /// #307's hay arm: --hay-arm=clover (A) / mown (B) / both (A+B); off otherwise.
 run::HayArmPolicy::Mode g_hay_arm = run::HayArmPolicy::Mode::kMown;  // canon since 0.37.378
+/// #1677: house sites raised while a couple waits (--houses-first); off otherwise.
+bool g_houses_first = false;
 /// `--hay-hand-over=off`: #1570's counterfactual - the hay lamp's «reduce
 /// herd» left unanswered (LimitPolicy::HayHandOverOff), so a run can say
 /// whether the herds it named would have gone short.
@@ -845,6 +847,8 @@ bool Walk(std::uint64_t seed,
   builder.smokehouse.Declare("population_curve");
   builder.hay_arm.SetMode(g_hay_arm);  // #307
   builder.hay_arm.Declare("population_curve");
+  builder.houses_first.Enable(g_houses_first);  // #1677
+  builder.houses_first.Declare("population_curve");
   if (g_salt_points_zero) {
     builder.limit.SaltPointsZero(true);  // #1630 (C)'s arm C3: the loan only
   }
@@ -1537,10 +1541,11 @@ bool Walk(std::uint64_t seed,
       funerals.Print(std::cout, seed);
       herds.Print(std::cout, seed);
       crime.Print(std::cout, seed);
-      salt.Print(std::cout);                      // #1630 (B)
-      builder.smokehouse.Print(std::cout, seed);  // #1644
-      builder.hay_arm.Print(std::cout, seed);     // #307
-      herds.PrintCowFlows(std::cout, seed);       // #1570
+      salt.Print(std::cout);                        // #1630 (B)
+      builder.smokehouse.Print(std::cout, seed);    // #1644
+      builder.hay_arm.Print(std::cout, seed);       // #307
+      builder.houses_first.Print(std::cout, seed);  // #1677
+      herds.PrintCowFlows(std::cout, seed);         // #1570
       hand_overs.Print(std::cout, seed);
       builder.houses.PrintQueueLines(std::cout, seed);  // #1677: the queue by cause, short lines
       feed_rung.Print(std::cout, seed);                 // #1573
@@ -1709,6 +1714,8 @@ int main(int argc, char** argv) {
       g_hay_arm = run::HayArmPolicy::Mode::kMown;  // #307 arm B
     } else if (argument == "--hay-arm=both") {
       g_hay_arm = run::HayArmPolicy::Mode::kBoth;  // #307 arm A+B
+    } else if (argument == "--houses-first") {
+      g_houses_first = true;  // #1677
     } else if (argument == "--no-write-off") {
       g_no_write_off = true;
     } else if (argument == "--no-anticrime") {

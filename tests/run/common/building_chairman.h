@@ -35,6 +35,7 @@
 #include "hay_arm_policy.h"
 #include "herd_plan_policy.h"
 #include "house_policy.h"
+#include "houses_first_policy.h"
 #include "insulation_policy.h"
 #include "limit_policy.h"
 #include "milkmaid_policy.h"
@@ -93,6 +94,7 @@ class BuildingChairman {
         warm_crew(tables),
         fallow(tables),
         hay_arm(tables),
+        houses_first(tables),
         sport_talk(tables),
         distiller(tables),
         emptying(tables) {
@@ -371,6 +373,9 @@ class BuildingChairman {
     // put to hay (hay_arm_policy.h). Its tally counts every day; it orders
     // only with its arm on.
     hay_arm.RunDay(simulation);
+    // #1677: house sites raised in the queue while a couple waits (the tally
+    // counts every day; it orders only with its arm on).
+    houses_first.RunDay(simulation);
     // The season's talk to the drinker (#1238; sport_talk_policy.h).
     if (sport_talk_on) {
       sport_talk.RunDay(simulation);
@@ -554,6 +559,8 @@ class BuildingChairman {
   bool fallow_by_eaters = true;
   /// #307's hay arm (hay_arm_policy.h). Off unless asked (--hay-arm=...).
   HayArmPolicy hay_arm;
+  /// #1677's houses first (houses_first_policy.h). Off unless asked (--houses-first).
+  HousesFirstPolicy houses_first;
   SportTalkPolicy sport_talk;
   /// Whether RunDay calls `sport_talk` (#1238): on in every run; a control
   /// arm turns it off.
