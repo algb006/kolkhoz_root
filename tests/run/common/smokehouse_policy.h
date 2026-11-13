@@ -382,6 +382,36 @@ class SmokehousePolicy {
       worked_days_ += worked ? 1U : 0U;
       master_held_days_ += held ? 1U : 0U;
     }
+    // THE HOUSES' QUEUE AND THE BUILDERS (core seq 35: fewer households from
+    // y2 with the same weddings): the couples waiting for a house, and the
+    // labour-days the sites closed since the last read, on houses against every
+    // other site - read off each site's labor_days_remaining (the daily read
+    // falls at night, when nobody stands on a site, so workers are not counted).
+    wedding_wait_days_ += static_cast<std::uint32_t>(world.wedding_waits.rows.size());
+    std::map<std::uint32_t, float> remaining_now;
+    for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+      const core::UnitRow& unit = world.units.rows[row];
+      if (unit.construction.phase == core::ConstructionPhase::kNone ||
+          unit.construction.phase == core::ConstructionPhase::kMarked) {
+        continue;
+      }
+      const std::uint32_t id = world.units.row_ids[row].value;
+      remaining_now[id] = unit.construction.labor_days_remaining;
+      const auto last = site_remaining_.find(id);
+      if (last == site_remaining_.end() ||
+          !(last->second > unit.construction.labor_days_remaining)) {
+        continue;
+      }
+      const double done =
+          static_cast<double>(last->second - unit.construction.labor_days_remaining);
+      (unit.type.value == house_ ? builder_days_houses_ : builder_days_other_) += done;
+    }
+    site_remaining_ = std::move(remaining_now);
+    std::uint32_t houses = 0;
+    for (const core::UnitRow& unit : world.units.rows) {
+      houses += unit.type.value == house_ && unit.level > 0 ? 1U : 0U;
+    }
+    houses_now_ = houses;
   }
 
   /// THE SHOP'S OWN WORD WHY IT STANDS (kProcessingStopped on the smokehouse:
@@ -748,13 +778,16 @@ class SmokehousePolicy {
            << " lodged_family_days " << lodged_family_days_ << " family_days " << family_days_
            << " band0_days " << band_days_[0] << " band1_days " << band_days_[1] << " band2_days "
            << band_days_[2] << " band3_days " << band_days_[3] << " band4_days " << band_days_[4]
-           << " near_top_edge_days " << near_top_edge_days_ << " births " << book.births
-           << " births_drawn " << book.births_drawn << " births_stopped_health "
-           << book.births_stopped_health << " births_stopped_away " << book.births_stopped_away
-           << " births_stopped_satiety " << book.births_stopped_satiety << " weddings "
-           << book.weddings << " boards_into_houses_kg " << BoardsInto(book, house_) / 1000
-           << " boards_built_in_kg " << Of(book.built_in, board_) / 1000
-           << " meatfish_store_inflow_kg "
+           << " near_top_edge_days " << near_top_edge_days_ << " wedding_wait_days "
+           << wedding_wait_days_ << " builder_days_houses "
+           << static_cast<std::int64_t>(std::llround(builder_days_houses_))
+           << " builder_days_other " << static_cast<std::int64_t>(std::llround(builder_days_other_))
+           << " houses_standing " << houses_now_ << " births " << book.births << " births_drawn "
+           << book.births_drawn << " births_stopped_health " << book.births_stopped_health
+           << " births_stopped_away " << book.births_stopped_away << " births_stopped_satiety "
+           << book.births_stopped_satiety << " weddings " << book.weddings
+           << " boards_into_houses_kg " << BoardsInto(book, house_) / 1000 << " boards_built_in_kg "
+           << Of(book.built_in, board_) / 1000 << " meatfish_store_inflow_kg "
            << (Of(book.herd_produce, meat_) + Of(book.herd_produce, fish_)) / 1000
            << " meatfish_pantry_spoiled_kg "
            << (Of(book.spoiled_in_pantries, meat_) + Of(book.spoiled_in_pantries, fish_)) / 1000
@@ -791,6 +824,9 @@ class SmokehousePolicy {
     lodged_family_days_ = 0;
     band_days_ = {};
     near_top_edge_days_ = 0;
+    wedding_wait_days_ = 0;
+    builder_days_houses_ = 0.0;
+    builder_days_other_ = 0.0;
     family_days_ = 0;
     demand_days_ = 0;
     worked_days_ = 0;
@@ -882,6 +918,11 @@ class SmokehousePolicy {
   std::array<float, 4> band_bounds_{30.0F, 45.0F, 60.0F, 75.0F};
   std::array<std::uint32_t, 5> band_days_{};
   std::uint32_t near_top_edge_days_ = 0;
+  std::uint32_t wedding_wait_days_ = 0;            ///< couple-days waiting for a house
+  double builder_days_houses_ = 0.0;               ///< labour-days closed on house sites
+  double builder_days_other_ = 0.0;                ///< labour-days closed on every other site
+  std::map<std::uint32_t, float> site_remaining_;  ///< site id -> labour-days left at the last read
+  std::uint32_t houses_now_ = 0;                   ///< wooden houses standing at the read
   std::uint32_t family_days_ = 0;
 
   /// A family-day mean × 100, as an integer (the year lines carry integers).
