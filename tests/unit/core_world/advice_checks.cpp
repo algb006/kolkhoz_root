@@ -12,6 +12,7 @@
 #include <string_view>
 #include <vector>
 
+#include "../../common/fake_tables.h"
 #include "core_common/alarm_state.h"
 #include "core_common/calendar.h"
 #include "core_common/day_off.h"
@@ -49,11 +50,55 @@ struct Fixture {
   }
 };
 
-Fixture MakeFixture() {
+/// The canon's tables with ONE world_params value replaced (#1636: the granary
+/// advice is reachable only with the church store's feed switch off, so its
+/// guard runs on the canon less that one row - the row is the canon's since
+/// 0.37.378 and the advice still exists for a world without it).
+class WorldParamOverlay final : public core::ITableSet {
+ public:
+  WorldParamOverlay(std::unique_ptr<core::ITableSet> base,
+                    std::string_view key,
+                    std::string_view value)
+      : base_(std::move(base)) {
+    std::vector<std::vector<std::string>> rows;
+    if (const core::ITable* const params = base_->FindTable("world_params")) {
+      for (std::uint32_t row = 0; row < params->RowCount(); ++row) {
+        std::vector<std::string> cells;
+        for (std::uint32_t column = 0; column < params->ColumnCount(); ++column) {
+          cells.emplace_back(params->CellText(row, column));
+        }
+        if (!cells.empty() && cells[0] == key && cells.size() > 1) {
+          cells[1] = std::string(value);
+        }
+        rows.push_back(std::move(cells));
+      }
+    }
+    params_ = std::make_unique<test::FakeTable>(std::vector<std::string>{"key", "value", "owner"},
+                                                std::move(rows));
+  }
+
+  const core::ITable* FindTable(std::string_view name) const override {
+    return name == "world_params" ? params_.get() : base_->FindTable(name);
+  }
+
+  std::uint32_t TableCount() const override { return base_->TableCount(); }
+
+  std::string_view TableName(std::uint32_t index) const override { return base_->TableName(index); }
+
+ private:
+  std::unique_ptr<core::ITableSet> base_;
+  std::unique_ptr<test::FakeTable> params_;
+};
+
+Fixture MakeFixture(bool church_takes_feed = true) {
   Fixture fixture;
   fixture.tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
   if (fixture.tables == nullptr) {
     return fixture;
+  }
+  if (!church_takes_feed) {
+    fixture.tables = std::make_unique<WorldParamOverlay>(
+        std::move(fixture.tables), "feed_into_church_until_granary", "0");
   }
   core::StandardSimulationConfig config;
   config.tables = fixture.tables.get();
@@ -692,7 +737,16 @@ int CheckTheHayLamp(const Fixture& fixture) {
       }
       return order;
     };
-    const AdviceRun run = FirstNamed(*fixture.simulation,
+    // THE CHURCH TAKES BOUGHT FEED IN THE CANON SINCE 0.37.378 (#1636): with a
+    // church store standing a feed lot always has a store, so the lamp names
+    // «buy» and never «амбар под корм». The granary advice is the world's
+    // without that switch: asked of the canon less that one row.
+    const Fixture no_church_feed = MakeFixture(false);
+    if (no_church_feed.simulation == nullptr) {
+      failures += Expect(false, "«амбар под корм»: the canon less #1636's row builds");
+      return failures;
+    }
+    const AdviceRun run = FirstNamed(*no_church_feed.simulation,
                                      autumn_yard,
                                      core::AlarmKind::kHerdHayShortAhead,
                                      core::AlarmAdvice::kGranaryForFeed,
@@ -704,7 +758,7 @@ int CheckTheHayLamp(const Fixture& fixture) {
     // the granary all the same and its door answered kNoParent (found by this
     // guard, 13 Oct 2026); the alarm names the yard first.
     named_type = core::UnitTypeId{};
-    const AdviceRun bare = FirstNamed(*fixture.simulation,
+    const AdviceRun bare = FirstNamed(*no_church_feed.simulation,
                                       autumn_bare,
                                       core::AlarmKind::kHerdHayShortAhead,
                                       core::AlarmAdvice::kGranaryForFeed,

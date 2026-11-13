@@ -19,10 +19,17 @@
 # 0.062, trimmed -0.018 SE 0.011, GREEN; o0 fell under its line (10.59 against 10.70 - 0.06). The 64 doors on
 # 4dd4ee66 (l4a o0/o100, l4b o200/o300): o0 10.587 (median 10.500), o100 10.582 (10.573), o200 10.665 (10.583),
 # o300 10.911 (11.010); all 64: mean 10.687, median 10.667, sd 0.724.
-population_curve|E1 mean door, offset 0|10.59|0.06|2026-11-08|4dd4ee66|boss, the link-4-off re-take: o0's 16 doors on 4dd4ee66, mean 10.587; the margin unchanged (0.06); passes at 10.53. Replaces e81094ec's 10.70.
-population_curve|E1 mean door, offset 100|10.58|0.06|2026-11-08|4dd4ee66|boss, as offset 0: o100's 16 doors on 4dd4ee66, mean 10.582; passes at 10.52. Replaces e81094ec's 10.53.
-population_curve|E1 mean door, offset 200|-|-|2026-11-08|4dd4ee66|boss: MEASURED, NOT LINED - o200's 16 doors on 4dd4ee66, mean 10.665.
-population_curve|E1 mean door, offset 300|-|-|2026-11-08|4dd4ee66|boss: MEASURED, NOT LINED - o300's 16 doors on 4dd4ee66, mean 10.911.
+# RE-TAKEN on 0.37.378's tree a102481a, 14 Nov 2026 (boss, core-boss-batch-1113 [5] and his OK on the plan: «canon on
+# wip/378 with the row, o0/o100/o200/o300 + suite, new o0/o100 E1 lines with that tree commit»): the canon moved - the
+# derelict fields mown as they lie (#307 B, the human #1923) and bought feed into the church until a granary (#1636).
+# e378a/e378b on a102481a, 16 doors each: o0 10.591, o100 10.527, o200 10.67, o300 10.90 (two places, as printed).
+# Paired against 0.37.375's canon (e375, o0/o100, 32 villages): -0.098 SE 0.063 (-1.6 SE), trimmed -0.031 (-1.5 SE),
+# median -0.021 - GREEN by #1473; o100 carries the move (10.721 -> 10.527), o0 unchanged (10.594 -> 10.591).
+population_curve|E1 mean door, offset 0|10.59|0.06|2026-11-14|a102481a|boss, the 0.37.378 re-take (#307 B + #1636 on): o0's 16 doors on a102481a, mean 10.591; the margin unchanged (0.06); passes at 10.53. Replaces 4dd4ee66's 10.59.
+population_curve|E1 mean door, offset 100|10.53|0.06|2026-11-14|a102481a|boss, as offset 0: o100's 16 doors on a102481a, mean 10.527; passes at 10.47. Replaces 4dd4ee66's 10.58.
+population_curve|E1 mean door, offset 200|-|-|2026-11-14|a102481a|boss: MEASURED, NOT LINED - o200's 16 doors on a102481a, mean 10.67.
+population_curve|E1 mean door, offset 300|-|-|2026-11-14|a102481a|boss: MEASURED, NOT LINED - o300's 16 doors on a102481a, mean 10.90.
+# (was, 4dd4ee66, 8 Nov) o0 10.59, o100 10.58 (|0.06); o200 10.665, o300 10.911 measured.
 # (was, e81094ec) o0 10.70, o100 10.53 (|0.06); o200 10.648, o300 10.876 measured.
 # THE #1573 LINES (de806053), read by nothing since #1568:
 # RE-TAKEN on #1573's release tree, 7 Nov 2026 (boss, core-boss-1573-hay-rungs [10] and his YES before it): the step -
