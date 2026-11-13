@@ -136,7 +136,10 @@ class HeapCureA1Tally {
         double bought = 0.0;
         for (const Lot& lot : lots_) {
           if (lot.day > read.on_day && lot.day <= day) {
-            bought += lot.units * 1000.0 / read.hay_units_per_kg;
+            // Fodder units are counted off kg already (CountStep): hay kg = units ÷ hay's
+            // units a kg. 8036c7ab multiplied by 1000 here too (the first pair's reader
+            // recomputed it from the printed terms).
+            bought += lot.units / read.hay_units_per_kg;
           }
         }
         read.handed_back_kg = static_cast<float>(back);
