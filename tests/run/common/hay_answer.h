@@ -528,6 +528,18 @@ class HayAnswer {
       floor =
           line.kind.value == cow_kind_ ? std::max<std::int64_t>(floor, line.floor_heads) : floor;
     }
+    // Each kolkhoz cow herd: plan_heads/adults/young - the #1289 rung counts the young above
+    // the plan, and the order hands adults.
+    std::string herds;
+    for (const core::HerdRow& herd : world.herds.rows) {
+      if (herd.household_owned == 0 && herd.kind.value == cow_kind_) {
+        herds += (herds.empty() ? "" : ",") +
+                 (herd.plan_heads == core::kNoHerdPlan ? std::string("none")
+                                                       : std::to_string(herd.plan_heads)) +
+                 "/" + std::to_string(herd.adult_count) + "/" +
+                 std::to_string(herd.juvenile_count + herd.newborn_count);
+      }
+    }
     day_log_.push_back(
         "LADDER1697 y " + std::to_string(year) + " d " +
         std::to_string(world.calendar.day % core::kDaysPerYear) + " advice " +
@@ -540,7 +552,10 @@ class HayAnswer {
         " cows " + std::to_string(Adults(world, IsCow)) + " horses " +
         std::to_string(Adults(world, IsHorse)) + " handed_cows " + std::to_string(handed_cows) +
         " handed_horses " + std::to_string(handed_horses) + " hay_store_t " +
-        std::to_string(HayStore(world) / 1000000));
+        std::to_string(HayStore(world) / 1000000) + " short_grams_t " +
+        std::to_string(yellow.short_grams / 1000000) + " first_short " +
+        std::to_string(yellow.first_short_resource.value) + " cow_herds_plan_adults_young " +
+        (herds.empty() ? std::string("-") : herds));
   }
 
   /// The heads the advice names above the floors, into orders.
