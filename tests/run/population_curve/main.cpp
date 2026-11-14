@@ -1560,8 +1560,9 @@ bool Walk(std::uint64_t seed,
       builder.limit.PrintHayHorseTail(std::cout, seed, run::HorseTailTally::kYears);
       builder.limit.PrintHayLadderGuard(std::cout, seed);  // #1697's guard, every village
       // #1697: the ladder by day, for the seeds in KOLKHOZ_LADDER_SEEDS (comma list).
-      if (const char* const ladder_seeds = std::getenv("KOLKHOZ_LADDER_SEEDS")) {
-        const std::string list = std::string(",") + ladder_seeds + ",";
+      // Through run::EnvValue: MSVC refuses std::getenv (C4996 under /WX; host, 0.37.380).
+      if (const std::optional<std::string> ladder_seeds = run::EnvValue("KOLKHOZ_LADDER_SEEDS")) {
+        const std::string list = "," + *ladder_seeds + ",";
         if (list.find("," + std::to_string(seed) + ",") != std::string::npos) {
           builder.limit.PrintHayLadderDays(std::cout, seed);
         }
