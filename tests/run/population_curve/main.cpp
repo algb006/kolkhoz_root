@@ -1559,6 +1559,7 @@ bool Walk(std::uint64_t seed,
       salt.Print(std::cout);                        // #1630 (B)
       builder.smokehouse.Print(std::cout, seed);    // #1644
       builder.hay_arm.Print(std::cout, seed);       // #307
+      builder.fallow.PrintHolds(std::cout, seed);   // #1692's hold print
       builder.houses_first.Print(std::cout, seed);  // #1677
       herds.PrintCowFlows(std::cout, seed);         // #1570
       hand_overs.Print(std::cout, seed);

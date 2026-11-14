@@ -129,19 +129,25 @@ class FallowPolicy {
     short_turn_ = need > 0.0 && forecast < need;  // #1692 (b)
     if (!(need > 0.0) || forecast >= need || opened_blocks_ >= kBlocks) {
       std::cout << (opened_blocks_ >= kBlocks ? " - every block open\n" : " - enough\n");
+      if (opened_blocks_ < kBlocks) {
+        NoteTurn(world, year, 'E');
+      }
       return;
     }
     std::cout << " - SHORT\n";
     if (!houses_built) {
       std::cout << "fallow_policy: year " << year << " block " << opened_blocks_ + 1U
                 << " HELD: the houses are not built\n";
+      NoteTurn(world, year, 'H');
       return;
     }
     if (kPlanGuardOn && !BlockKeepsThePlan(world, NextBlockFields(world))) {
       std::cout << "fallow_policy: year " << year << " block " << opened_blocks_ + 1U
                 << " HELD by the plan guard\n";
+      NoteTurn(world, year, 'G');
       return;
     }
+    NoteTurn(world, year, 'O');
     OpenNextBlock(simulation, world);
     std::cout << "fallow_policy: year " << year << " block " << opened_blocks_
               << " opened for this spring\n";
@@ -185,6 +191,17 @@ class FallowPolicy {
                   << "'s end\n";
       }
     }
+  }
+
+  /// @brief #1692's hold print (econ, econ-boss-1692-hold-print [1]), a village: «FALLOW1692
+  ///        seed S turns y:code:m ...» - every turn with a block still to open, code E (food
+  ///        enough, no block wanted), H (short, held: the houses not built), G (short, held by
+  ///        the plan guard), O (opened); m 1 when a field of the next block lies mown as it
+  ///        lies (B's meadow) that turn. The food forecast (ForecastFoodKcal) reads arable
+  ///        fields only, so B's meadow adds nothing to it: the figure with and without it is one.
+  void PrintHolds(std::ostream& out, std::uint64_t seed) const {
+    out << "population_curve: FALLOW1692 seed " << seed << " turns"
+        << (turns_.empty() ? " -" : turns_) << '\n';
   }
 
   /// @brief The fields opened so far, for a run's own prints.
@@ -255,6 +272,8 @@ class FallowPolicy {
     // lamp-only arm (d81d66f6, measured, not kept) opened all 18 blocks by y7
     // at A's cost: April-June construction -37.5 %, three plan failures.
     const bool built = house_type_ != core::kNoTableRow && !lamp_lit && house_sites == 0;
+    last_lamp_lit_ = lamp_lit;  // #1726's print
+    last_house_sites_ = house_sites;
     ++planning_years_;
     houses_built_years_ += built ? 1U : 0U;
     std::cout << "fallow_policy: year " << year << " houses " << (built ? "BUILT" : "short")
@@ -638,6 +657,19 @@ class FallowPolicy {
     return keeps;
   }
 
+  /// #1692's hold print: one turn, with whether the next block holds a field mown as it lies.
+  void NoteTurn(const core::WorldState& world, std::uint32_t year, char code) {
+    bool mown = false;
+    for (const core::FieldId id : NextBlockFields(world)) {
+      const std::uint32_t row = core::FindRow(world.fields, id);
+      mown = mown || (row != core::kNoRow && world.fields.rows[row].mown_fallow != 0);
+    }
+    // #1726: HousesBuilt's two halves read that turn - the housing lamp (L lit / o out) and
+    // the house sites at level 0.
+    turns_ += " " + std::to_string(year) + ":" + code + ":" + (mown ? "1" : "0") + ":" +
+              (last_lamp_lit_ ? "L" : "o") + std::to_string(last_house_sites_);
+  }
+
   /// The derelict fields the next block would take: the nearest a standing
   /// grain store first, kFieldsPerBlock of them.
   std::vector<core::FieldId> NextBlockFields(const core::WorldState& world) const {
@@ -806,6 +838,9 @@ class FallowPolicy {
   core::SimDay last_turn_day_ = 0;
   bool short_turn_ = false;          ///< #1692 (b): the last turn's food forecast was short
   bool narrow_coming_block_ = true;  ///< #1692 (b), the canon's; off = the broad arm
+  std::string turns_;                ///< #1692's hold print
+  bool last_lamp_lit_ = false;       ///< #1726: HousesBuilt's halves on the last turn
+  std::uint32_t last_house_sites_ = 0;
 
   std::vector<std::pair<std::uint32_t, double>> block_potato_seed_t_;
   std::vector<std::pair<std::uint32_t, double>> block_potato_on_field_t_;
