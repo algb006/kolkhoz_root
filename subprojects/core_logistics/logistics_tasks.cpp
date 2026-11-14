@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "core_common/cart_gear.h"
+#include "core_common/flood_state.h"
 #include "core_common/herd_state.h"
 #include "core_common/labor_state.h"
 #include "core_common/logistics_rules.h"
@@ -325,7 +326,12 @@ void AgeAndRaise(const LogisticsConfig& config,
       const std::uint32_t row = FindRow(current.fields, task.field);
       if (row != kNoRow) {
         const FieldRow& field = current.fields.rows[row];
-        if (HeapSpoils(config, field)) {
+        // THE FLOOD TAKES THE WHOLE HEAP (#1375, #1200's interlock; core_common/flood_state.h):
+        // a floodplain meadow's heap whose flood is due tomorrow or sooner is urgent as a heap
+        // spoiling - the loss is total, so it is the rot's reason, not a third.
+        const SimDay flood = FloodDeadlineOfField(current, task.field);
+        const bool flood_due = flood != kNoFloodDay && flood <= today + 1U;
+        if (HeapSpoils(config, field) || flood_due) {
           level = LogisticsLevel::kUrgent;
           urgent_by = LogisticsUrgentBy::kSpoil;
           ++count.urgent_by_spoil;

@@ -331,7 +331,9 @@ static_assert(AggregateArity<ClampRotYear>() == 2,
 // Save 209 (#1630 (C)): the salt watch, the sixtieth - three u16, a byte and an
 // i32 after the store audit; the section «world» +11, predicted before the
 // build.
-static_assert(AggregateArity<WorldState>() == 60,
+// Save 211 (#1375): the spring flood, the sixty-first - a u16 and a u32 after the weather's
+// road beds; the section «world» +6, predicted before the build.
+static_assert(AggregateArity<WorldState>() == 61,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 
@@ -515,6 +517,10 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
     out.WriteU8(static_cast<std::uint8_t>(world.weather.road_beds.condition[bed]));
     out.WriteFloat(world.weather.road_beds.wet_days_left[bed]);
   }
+  // THE SPRING FLOOD (save 211, #1375; flood_state.h): its year and its water. History - a
+  // flood came because the cover cleared - so not recomputable from (seed, day).
+  out.WriteU16(world.flood.last_flood_year);
+  out.WriteU32(world.flood.water_until_day);
 
   out.WriteU8(static_cast<std::uint8_t>(world.epoch));
   out.WriteU64(world.world_seed);
@@ -817,6 +823,8 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
         "road bed"));
     world->weather.road_beds.wet_days_left[bed] = in.ReadFloat();
   }
+  world->flood.last_flood_year = in.ReadU16();  // save 211 (#1375)
+  world->flood.water_until_day = in.ReadU32();
 
   world->epoch = static_cast<Epoch>(source.ReadEnumValue(kMinEpoch, kMaxEpoch, "epoch"));
   world->world_seed = in.ReadU64();

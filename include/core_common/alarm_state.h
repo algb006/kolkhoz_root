@@ -799,7 +799,7 @@ enum class AlarmKind : std::uint8_t {
   /// «НА ПОЙМЕ СТОИТ {т} Т — ДО ПАВОДКА ~{n} СУТОК» (#1375; livestock.md, the row «Половодье
   /// забирает то, что стоит на пойме», the human's «Да» of 1 November 2026; boss,
   /// core-boss-1375-flood-contract [2] p. 3; strings `alarm.floodplain_fodder_ahead.*`). A
-  /// FORECAST, yellow (`lamp` 0): from 1 February to the year's flood day, while hay or straw
+  /// FORECAST, yellow (`lamp` 0): from 1 December to the next flood day, while hay or straw
   /// lies on floodplain ground (spring_flood.h, FloodplainFodder) - the heaps on a
   /// kFloodplainMeadow field and every stack whose cell is floodplain. A kind of its own and
   /// not a line on kHerdHayShortAhead: that lamp is dark in a village with fodder to spare,

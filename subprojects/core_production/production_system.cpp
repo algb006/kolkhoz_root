@@ -75,6 +75,7 @@
 #include "rick_supply.h"
 #include "salt_loan.h"
 #include "seed_room.h"
+#include "spring_flood.h"
 #include "stock_lights.h"
 #include "stock_ops.h"
 #include "team_oat_plan.h"
@@ -391,6 +392,9 @@ class ProductionSystem final : public IProductionSystem {
     if (current.calendar.day % kDaysPerYear == 0) {
       RunYearStart(current);
     }
+    // THE SPRING FLOOD (#1375; spring_flood.h): on its day, the hay and straw lying on
+    // floodplain ground go, into YearLedger::lost_to_flood.
+    RunSpringFlood(config_, previous, current);
     // THE LOST WINTER SLOT IS SAID THE DAY IT BECOMES FACT (boss, 12 October
     // 2026: «the moment, not the turn»): the first of November, when the
     // late sowing window has closed (field_work.cpp, TrySow). Until 0.37.231

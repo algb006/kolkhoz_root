@@ -88,6 +88,7 @@
 #include "seed_lamp_checks.h"
 #include "seed_room.h"
 #include "site_supply_checks.h"
+#include "spring_flood_checks.h"
 #include "stable_horses.h"
 #include "stock_lights.h"
 #include "stock_ops.h"
@@ -18550,6 +18551,7 @@ int main() {
   failures += CheckTheAvatarPathsOnTheLimit();
   failures += CheckAStarvedKolkhozHerdDoesNotInterruptAgain();
   failures += CheckTheHerdPlan();
+  failures += CheckTheSpringFlood();  // #1375
   failures += CheckThePerennialsCut();
   failures += CheckTheGrassStandsAge();
   failures += CheckUndoneHerdCare();

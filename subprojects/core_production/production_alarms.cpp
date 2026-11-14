@@ -30,6 +30,7 @@
 #include "herd_life.h"
 #include "herd_system.h"
 #include "seed_room.h"
+#include "spring_flood.h"
 #include "stock_ops.h"
 #include "team_oat_plan.h"
 
@@ -1322,6 +1323,8 @@ void CollectHerdAlarms(const ProductionConfig& config,
   CollectHerdForecastAlarms(config, world, alarms);
   // The cold's red and its autumn yellow (herd_cold.h; 0.37.62).
   CollectHerdColdAlarms(config, world, alarms);
+  // The flood's yellow: fodder lying on floodplain ground (spring_flood.h; #1375).
+  CollectFloodAlarms(config, world, alarms);
 }
 
 void CollectWinterCropUnsowableAlarms(const ProductionConfig& config,

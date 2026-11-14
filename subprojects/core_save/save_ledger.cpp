@@ -211,9 +211,12 @@ constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
 // vector at the tail - predicted 1440 + 46 A (the vector takes the tail's four
 // pad bytes' slot) and 167 fields before the build; on the wire one amounts
 // vector a book.
-static_assert(sizeof(YearLedger) == 1440 + (46 * kAmountsSize) + kBuiltInRowsSize,
+// Save 211 (#1375, the spring flood): lost_to_flood, a 47th amounts vector, placed beside
+// lost_to_snow in the struct and written at the tail - predicted 1440 + 47 A and 168 fields
+// before the build; on the wire one amounts vector a book.
+static_assert(sizeof(YearLedger) == 1440 + (47 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 167,
+static_assert(AggregateArity<YearLedger>() == 168,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(BuiltInRow) == 16 && AggregateArity<BuiltInRow>() == 3,
               "BuiltInRow changed — update its codec and VERSION_SAVE");
@@ -469,6 +472,7 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteU32(book.departures_salt);
   out.WriteU32(book.salt_loans);
   sink.WriteAmounts(DefKind::kResource, book.spoiled_in_pantries);  // save 210 (#1644)
+  sink.WriteAmounts(DefKind::kResource, book.lost_to_flood);        // save 211 (#1375)
 }
 
 YearLedger ReadYearLedger(LoadSource& source) {
@@ -788,6 +792,12 @@ YearLedger ReadYearLedger(LoadSource& source) {
     if (book.spoiled_in_pantries[resource] < 0 ||
         book.spoiled_in_pantries[resource] + in_clamps > of_all) {
       source.Fail("the book's pantry rot is negative or more than all the rot");
+    }
+  }
+  book.lost_to_flood = source.ReadAmounts(DefKind::kResource);  // save 211 (#1375)
+  for (const Grams grams : book.lost_to_flood) {
+    if (grams < 0) {
+      source.Fail("the book's flood loss is negative");
     }
   }
   return book;

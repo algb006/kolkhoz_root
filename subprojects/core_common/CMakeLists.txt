@@ -8,6 +8,7 @@
 
 kolkhoz_add_module(core_common
     alarm_state.cpp
+    flood_state.cpp
     body.cpp
     day_off.cpp
     district_visit_state.cpp

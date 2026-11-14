@@ -27,6 +27,7 @@ kolkhoz_add_module(core_production
     rick_supply.cpp
     goods_loan.cpp
     salt_loan.cpp
+    spring_flood.cpp
     clamp_rot_lamp.cpp
     livestock_homes.cpp
     stable_horses.cpp

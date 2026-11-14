@@ -13,6 +13,7 @@
 #include "core_common/calendar.h"
 #include "core_common/cold_housing.h"
 #include "core_common/day_window.h"
+#include "core_common/flood_state.h"
 #include "core_common/geometry.h"
 #include "core_common/haul.h"
 #include "core_common/horse_yard_road.h"
@@ -64,6 +65,8 @@ struct OpenTask {
   bool walked = false;
 };
 
+float ShelfOfHeap(const LogisticsConfig& config, const WorldState& world, ResourceId resource);
+
 /// A field heap's shelf life on its field (OpenTask::shelf_days).
 float ShelfDaysOf(const LogisticsConfig& config,
                   const WorldState& world,
@@ -76,6 +79,18 @@ float ShelfDaysOf(const LogisticsConfig& config,
     return std::numeric_limits<float>::infinity();
   }
   const ResourceId resource = world.fields.rows[row].reaped_resource;
+  // THE FLOOD IS A FLOODPLAIN HEAP'S SHELF (#1375, #1200's interlock; flood_state.h): the days
+  // to the projected flood, when sooner than its rot - winter carting takes it first.
+  const SimDay flood = FloodDeadlineOfField(world, task.field);
+  const float to_flood =
+      flood == kNoFloodDay
+          ? std::numeric_limits<float>::infinity()
+          : static_cast<float>(flood > world.calendar.day ? flood - world.calendar.day : 0U);
+  return std::min(to_flood, ShelfOfHeap(config, world, resource));
+}
+
+/// A field heap's shelf by its rot alone (ShelfDaysOf's part before the flood).
+float ShelfOfHeap(const LogisticsConfig& config, const WorldState& world, ResourceId resource) {
   // THE THIRD LEVER (#1056 C3; econ, boss-econ-c3-body-pair [21]): loose hay
   // has no shelf in resources.csv, so it read «keeps for ever» and went LAST
   // among a level's heaps, while it weathers every night it lies (#1015). Under
