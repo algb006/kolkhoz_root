@@ -1308,6 +1308,15 @@ struct Alarm {
   std::int64_t below_floor_stock = 0;
   std::int64_t below_floor_horses = 0;
 
+  /// kHerdHayShortAhead at «no purchase closes it» (#1689; econ, boss): the
+  /// heads below the floors STILL SHORT WITH THE MAXIMAL FEED PURCHASE counted
+  /// (MaximalFeedPurchase, every head above the floors gone) - the number the
+  /// lamp's line «комбикорм и солома этого не закроют» names. Not the pair
+  /// above, which counts no purchase (LeastHeadsToHandOver). 0 when the
+  /// purchase closes it or nothing is buyable that changes it.
+  /// @note Not in the save, as `lamp`.
+  std::int64_t below_floor_after_feed = 0;
+
   /// kHerdHayShortAhead with kReduceHerd named: THE HEADS ABOVE THEIR HERD'S
   /// PLAN (#1289; livestock.md «План стада»: «Совет "сдать головы" называет
   /// головы сверх N первыми»), summed over the kolkhoz herds whose chairman

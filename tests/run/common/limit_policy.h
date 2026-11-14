@@ -251,6 +251,7 @@ class LimitPolicy {
   /// @brief #1573's answer line (HayAnswer::PrintFeedRung).
   void PrintHayFeedRung(std::ostream& out, std::uint64_t seed, std::uint32_t years) const {
     hay_.PrintFeedRung(out, seed, years);
+    hay_.PrintBelowFloor(out, seed, years);  // #1689
   }
 
   /// @brief The points of every closed year, and what the policy bought.
