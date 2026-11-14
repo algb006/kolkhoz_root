@@ -244,47 +244,6 @@ HandOverAdvice LeastHeadsAboveTheFloors(const ProductionConfig& config,
                                         const WorldState& world,
                                         const std::vector<float>& held);
 
-/// The heads of a class the advice may name above the floors (#1697: one
-/// count for both rungs of «сдать головы»).
-struct ClassRoom {
-  std::int64_t horses = 0;
-  std::int64_t cows = 0;
-};
-
-ClassRoom RoomAboveTheFloors(const ProductionConfig& config, const WorldState& world) {
-  const LivestockKindId cow = MilkKind(config);
-  const HerdFloors floors = HerdFloorsOf(config, world);
-  std::int64_t horse_adults = 0;
-  std::int64_t cow_adults = 0;
-  // THE HORSES ABOVE, IN THE DOOR'S ORDER (district_limit.cpp, OrderHandStock;
-  // horse_lamp_memory.h): the young above what each herd keeps, and the
-  // adults above the ploughing's floor ONLY while the lamp «лошадей не
-  // хватает» has been dark a whole year — while it is lit an adult horse is
-  // not surplus, whatever the floor says.
-  std::int64_t young_above = 0;
-  for (const HerdRow& herd : world.herds.rows) {
-    if (herd.household_owned != 0) {
-      continue;
-    }
-    if (herd.kind.value == cow.value) {
-      cow_adults += herd.adult_count;
-    }
-    if (herd.kind.value != config.horse_kind.value) {
-      continue;
-    }
-    horse_adults += herd.adult_count;
-    const std::int64_t young = static_cast<std::int64_t>(herd.juvenile_count) + herd.newborn_count;
-    young_above += std::max<std::int64_t>(
-        0, young - HorseYoungKept(world.horse_lamp, herd.adult_count, world.calendar.day));
-  }
-  const std::int64_t adults_above =
-      HorseLampLitWithinYear(world.horse_lamp, world.calendar.day)
-          ? 0
-          : std::max<std::int64_t>(0, horse_adults - floors.horses_kept);
-  return ClassRoom{.horses = young_above + adults_above,
-                   .cows = std::max<std::int64_t>(0, cow_adults - floors.cows_kept)};
-}
-
 }  // namespace
 
 HandOverAdvice LeastHeadsToHandOver(const ProductionConfig& config,
@@ -297,71 +256,30 @@ HandOverAdvice LeastHeadsToHandOver(const ProductionConfig& config,
   const std::vector<float>& stock = held != nullptr ? *held : own;
   // THE HEADS ABOVE THE PLANS FIRST (#1289; livestock.md «План стада»:
   // «Совет "сдать головы" называет головы сверх N первыми»; econ, core-boss-
-  // 1289 [10] (3)): a herd at or under its N is not told to hand over.
-  // UNIT FOR UNIT, THE LEAST FOR THE GAP, NEVER UNDER THE FLOOR (#1697; econ,
-  // econ-boss-1697-ladder-count [1]; livestock.md «наименьшее N… при котором
-  // остальным хватает корма до первых кос»). Until then a herd's heads above
-  // N - newborns and juveniles with its adults - were ALL named, and paid in
-  // adults by the door: 2238 of 0.37.379 (cows 45, young 21, N 29) was told 21
-  // cows for a gap of two heads, and 10 more, 5, 2 the next evenings - 45 to
-  // 10 adults against a floor of 29. Now a horse herd's heads above N count as
-  // they stand (the door hands a horse herd's young first), the milk kind's
-  // its ADULTS above the adults of the herd scaled to N (the door hands
-  // adults), no kind else (the door hands none of it for this advice); no
-  // class more than stands above its floor; and of those the least that
-  // feeds the rest, by halving. All of them gone and still short: the floors'
-  // ladder on the herds as they stand, which holds the same floors.
-  const LivestockKindId milk = MilkKind(config);
-  std::int64_t over_horses = 0;
-  std::int64_t over_cows = 0;
-  for (const HerdRow& herd : world.herds.rows) {
+  // 1289 [10] (3)). Every kolkhoz herd above its N is counted down to it; if
+  // the hay then feeds them all, those heads are the whole advice - a herd at
+  // or under its N is not told to hand over. Still short, the floors' ladder
+  // runs on the herds at their plans, and its heads are added. Until then the
+  // advice never read the plan, and named heads in 63 of 63 village-years of
+  // the first #1289 pair.
+  WorldState at_plans = world;
+  HandOverAdvice above;
+  for (HerdRow& herd : at_plans.herds.rows) {
     if (herd.household_owned != 0 || herd.plan_heads == kNoHerdPlan ||
         TotalHeads(herd) <= herd.plan_heads) {
       continue;
     }
-    if (herd.kind.value == config.horse_kind.value) {
-      over_horses += TotalHeads(herd) - herd.plan_heads;
-    } else if (herd.kind.value == milk.value) {
-      HerdRow at_plan = herd;
-      ScaleHerdHeads(at_plan, herd.plan_heads);
-      over_cows += static_cast<std::int64_t>(herd.adult_count) - at_plan.adult_count;
-    }
+    const std::int64_t over = TotalHeads(herd) - herd.plan_heads;
+    (herd.kind.value == config.horse_kind.value ? above.horses : above.stock) += over;
+    ScaleHerdHeads(herd, herd.plan_heads);
   }
-  const ClassRoom room = RoomAboveTheFloors(config, world);
-  over_horses = std::min(over_horses, room.horses);
-  over_cows = std::min(over_cows, room.cows);
-  if (over_horses + over_cows == 0) {
+  if (above.horses + above.stock == 0) {
     return LeastHeadsAboveTheFloors(config, world, stock);
   }
-  const auto short_without = [&config, &world, &stock](const HeadsHandedOver& handed) {
-    return ForecastHerdFeed(
-               config, world, false, FeedHorizon::kNearestScythes, nullptr, &handed, &stock)
-        .short_ahead;
-  };
-  HeadsHandedOver handed;
-  if (!short_without(handed)) {
-    return HandOverAdvice{};
-  }
-  const auto least = [&short_without, &handed](std::int64_t HeadsHandedOver::* count,
-                                               std::int64_t upto) {
-    handed.*count = upto;
-    if (upto <= 0 || short_without(handed)) {
-      return false;
-    }
-    handed.*count = LeastNotShort(0, upto, [&](std::int64_t middle) {
-      HeadsHandedOver probe = handed;
-      probe.*count = middle;
-      return short_without(probe);
-    });
-    return true;
-  };
-  if (least(&HeadsHandedOver::horses, over_horses)) {
-    return HandOverAdvice{.horses = handed.horses};
-  }
-  if (least(&HeadsHandedOver::cows, over_cows)) {
-    return HandOverAdvice{.horses = handed.horses, .stock = handed.cows};
-  }
-  return LeastHeadsAboveTheFloors(config, world, stock);
+  HandOverAdvice rest = LeastHeadsAboveTheFloors(config, at_plans, stock);
+  rest.horses += above.horses;
+  rest.stock += above.stock;
+  return rest;
 }
 
 namespace {
@@ -393,9 +311,27 @@ HandOverAdvice LeastHeadsAboveTheFloors(const ProductionConfig& config,
     heads.adults += herd.adult_count;
     heads.juveniles += herd.juvenile_count;
   }
-  const ClassRoom room = RoomAboveTheFloors(config, world);
-  const std::int64_t horses_above = room.horses;
-  const std::int64_t cows_above = room.cows;
+  const HerdFloors floors = HerdFloorsOf(config, world);
+  // THE HORSES ABOVE, IN THE DOOR'S ORDER (district_limit.cpp, OrderHandStock;
+  // horse_lamp_memory.h): the young above what each herd keeps, and the
+  // adults above the ploughing's floor ONLY while the lamp «лошадей не
+  // хватает» has been dark a whole year — while it is lit an adult horse is
+  // not surplus, whatever the floor says.
+  std::int64_t young_above = 0;
+  for (const HerdRow& herd : world.herds.rows) {
+    if (herd.household_owned != 0 || herd.kind.value != config.horse_kind.value) {
+      continue;
+    }
+    const std::int64_t young = static_cast<std::int64_t>(herd.juvenile_count) + herd.newborn_count;
+    young_above += std::max<std::int64_t>(
+        0, young - HorseYoungKept(world.horse_lamp, herd.adult_count, world.calendar.day));
+  }
+  const std::int64_t adults_above =
+      HorseLampLitWithinYear(world.horse_lamp, world.calendar.day)
+          ? 0
+          : std::max<std::int64_t>(0, horses.adults - floors.horses_kept);
+  const std::int64_t horses_above = young_above + adults_above;
+  const std::int64_t cows_above = std::max<std::int64_t>(0, cows.adults - floors.cows_kept);
   // One class of `handed` taken from `from` (short there) up to `upto`:
   // true, and the class left at the least count that feeds the rest, when
   // `upto` does; false, and the class left at `upto`, when it does not.
