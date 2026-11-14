@@ -186,23 +186,54 @@ run_build() {
 # project promises to anybody. Artifacts land per configuration for the same
 # reason the host does — one name for two libraries is how the wrong one gets
 # linked.
+# THE PUBLISH'S LAST STEPS RETRY THEMSELVES (boss, 14 November 2026): 0.37.380's publish
+# built and published both configurations twice, and twice the ssh after the table check
+# died «Timeout, server not responding» while the host was busy cooking - the steps
+# below are reads and an atomic pointer write, so a repeat is harmless. Three tries, 20 s
+# apart, each failure printed.
+ssh_opts=(-o ConnectTimeout=20 -o ServerAliveInterval=15 -o ServerAliveCountMax=4)
+ssh_tries=3
+
+# ssh_retry COMMAND: the command on the host, its output to stdout of the LAST try only
+# through a temporary file, so a dropped try leaves no half output behind.
+ssh_retry() {
+  local try out
+  out=$(mktemp)
+  for ((try = 1; try <= ssh_tries; try++)); do
+    if ssh "${ssh_opts[@]}" "${host}" "$1" > "${out}"; then
+      cat "${out}"
+      rm -f "${out}"
+      return 0
+    fi
+    echo "ssh: попытка ${try} из ${ssh_tries} не удалась: $1" >&2
+    if [ "${try}" -lt "${ssh_tries}" ]; then
+      sleep 20
+    fi
+  done
+  rm -f "${out}"
+  return 1
+}
+
 fetch_artifacts() {
   local config="$1"
   local publish_dir="${remote_dir}/publish/${version}/${config}"
   local local_artifacts="${project_dir}/artifacts/${config}"
   mkdir -p "${local_artifacts}"
-  if ! ssh "${host}" "test -f '${publish_dir}/lib/core.lib'"; then
+  local present
+  present=$(ssh_retry "test -f '${publish_dir}/lib/core.lib' && echo yes || echo no") || return 1
+  if [ "${present}" != "yes" ]; then
     echo "core.lib не найдена — модулей пока нет, это ожидаемо"
     return 0
   fi
-  ssh "${host}" "cat '${publish_dir}/lib/core.lib'" > "${local_artifacts}/core.lib"
+  ssh_retry "cat '${publish_dir}/lib/core.lib'" > "${local_artifacts}/core.lib" || return 1
   local published
-  published=$(ssh "${host}" "cat '${publish_dir}/VERSION'" | tr -d '\r\n')
+  published=$(ssh_retry "cat '${publish_dir}/VERSION'" | tr -d '\r\n')
   # The layout report the host just produced, brought back beside the library
   # so that a mismatched pair is visible from this side too.
-  if ssh "${host}" "test -f '${publish_dir}/LAYOUT.txt'"; then
-    ssh "${host}" "cat '${publish_dir}/LAYOUT.txt'" | tr -d '\r' \
-      > "${local_artifacts}/LAYOUT.txt"
+  local layout
+  layout=$(ssh_retry "test -f '${publish_dir}/LAYOUT.txt' && echo yes || echo no") || return 1
+  if [ "${layout}" = "yes" ]; then
+    ssh_retry "cat '${publish_dir}/LAYOUT.txt'" | tr -d '\r' > "${local_artifacts}/LAYOUT.txt"
   fi
   echo "Забрана artifacts/${config}/core.lib — версия ${published}"
   echo "Опубликовано на хосте: ${publish_dir}"
@@ -281,15 +312,27 @@ if [ "${local_sums}" != "${remote_sums}" ]; then
 fi
 echo "Таблицы сверены с деревом: $(printf '%s\n' "${local_sums}" | wc -l) файлов, совпадают побайтно"
 for config in Debug Release; do
-  fetch_artifacts "${config}"
+  if ! fetch_artifacts "${config}"; then
+    echo "ОТКАЗ: ${config} не забрана с хоста — publish/current не тронут." >&2
+    exit 1
+  fi
 done
 
 # The pointer moves LAST, and only now: everything it can be asked about is
 # on disk. Written through a temporary file so that a dropped connection
 # leaves the old pointer intact rather than an empty one.
-ssh "${host}" "printf '%s\n' '${version}' > '${remote_dir}/publish/.current.tmp' \
-  && mv '${remote_dir}/publish/.current.tmp' '${remote_dir}/publish/current'"
-echo "publish/current → ${version}"
+if ! ssh_retry "printf '%s\n' '${version}' > '${remote_dir}/publish/.current.tmp' \
+  && mv '${remote_dir}/publish/.current.tmp' '${remote_dir}/publish/current'" > /dev/null; then
+  echo "ОТКАЗ: publish/current не записан за ${ssh_tries} попытки — он называет прежнюю версию." >&2
+  exit 1
+fi
+# READ BACK, not assumed: the line below is what the host now says.
+current_now=$(ssh_retry "cat '${remote_dir}/publish/current'" | tr -d '\r\n')
+echo "publish/current → ${version} (прочитан с хоста: ${current_now})"
+if [ "${current_now}" != "${version}" ]; then
+  echo "ОТКАЗ: publish/current читается как «${current_now}», а не ${version}." >&2
+  exit 1
+fi
 
 # And the weeding. Sorted by version, not by date: a republished older number
 # would otherwise outlive the newer one it cannot replace. `sort -V` gives
