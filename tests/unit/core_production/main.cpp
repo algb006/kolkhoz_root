@@ -1742,6 +1742,34 @@ int CheckTheForecastAdvice() {
                "forecast advice, the two rungs: the cow above the floor goes AND one lot "
                "is bought for the three kept - the least lots, counted with her gone");
   }
+  // #1697: THE PLAN'S RUNG COUNTS WHAT THE DOOR HANDS, THE LEAST FOR THE GAP,
+  // NEVER UNDER THE FLOOR. Four cows with six calves at the dam (they eat
+  // nothing), a plan of four heads: the herd stands six heads above N, and
+  // until #1697 all six were named and paid in cows - more than stand. Now
+  // the cows above the plan's share of adults (4 - 2) count, and of them the
+  // one the 80 kg gap asks for.
+  {
+    core::WorldState world = village(80.0F, kNoGranary, 0.0F);
+    world.herds.rows[0].newborn_count = 6;
+    world.herds.rows[0].plan_heads = 4;
+    const core::Alarm alarm = lamp(world);
+    std::cout << "  #1697 forecast advice, 4 cows + 6 calves over a plan of 4, 80 kg: to hand "
+              << alarm.hand_over_stock << ", below " << alarm.below_floor_stock << '\n';
+    failures += Expect(alarm.advice == core::AlarmAdvice::kReduceHerd &&
+                           alarm.hand_over_stock == 1 && alarm.below_floor_stock == 0,
+                       "#1697: the plan's rung names the one cow the gap asks for, not the six "
+                       "heads above N paid in cows");
+    // ITS PAIR, THE FLOOR: three cows kept by the milk floor (the two-rung
+    // world's position) - the rung names at most the one above it.
+    world.plan.highest_due = {0, 2'000'000};
+    world.ledger.closed.adult_head_days = {4 * core::kDaysPerYear};
+    world.ledger.closed.herd_produce = {0, 4'000'000};
+    const core::LivestockKindId milk = core::MilkKind(config);
+    const core::Alarm floored = lamp(world);
+    failures += Expect(milk.value == 0 && floored.hand_over_stock <= 1 &&
+                           world.herds.rows[0].adult_count - floored.hand_over_stock >= 3,
+                       "#1697: the plan's rung never names a cow under the milk floor");
+  }
   // THE PURCHASE THAT FEEDS NO HEAD MORE: the granary full of compound feed,
   // its share of the day taken already — the hole is the hay's.
   {

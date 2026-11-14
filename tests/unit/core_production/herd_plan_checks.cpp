@@ -173,17 +173,18 @@ int CheckTheHerdPlan() {
                            core::ForecastHerdHeads(held.config, held.world, held.cows, 3) < 10.5F,
                        "herd plan: the forecast's calves stop at the plan as RunBirths's do");
   }
-  // THE ADVICE READS THE PLAN (econ, core-boss-1289 [10] (3)): the heads
-  // above N are named first, and with the hay then enough (no feed roster
-  // here: nothing is short) they are the whole advice; no plan, no heads.
+  // THE ADVICE READS THE PLAN (econ, core-boss-1289 [10] (3)), AND ONLY FOR
+  // A GAP (#1697: the least heads for it, livestock.md «наименьшее N»): with
+  // nothing short (no feed roster here) a herd above its N is told nothing -
+  // until #1697 its four heads above N were named with no gap at all. The
+  // named case with a gap is core_production main.cpp's #1697 lamp check.
   {
     Farm farm = MakeFarm();
     const core::HandOverAdvice none = core::LeastHeadsToHandOver(farm.config, farm.world);
     Herd(farm, farm.cows).plan_heads = 6;
     const core::HandOverAdvice above = core::LeastHeadsToHandOver(farm.config, farm.world);
-    failures += Expect(none.stock + none.horses == 0 && above.stock == 4 && above.horses == 0,
-                       "herd plan: «сдать головы» names the heads above N first, and a herd at "
-                       "its N is not told to hand over");
+    failures += Expect(none.stock + none.horses == 0 && above.stock + above.horses == 0,
+                       "herd plan: with no gap a herd above its N is not told to hand over");
   }
   // THE WINDOW'S LINE: places and the plan's default, «сена на» known (with no
   // feed roster nothing is short, so the search ends at its top), no births

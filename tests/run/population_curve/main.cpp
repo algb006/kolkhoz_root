@@ -1564,6 +1564,7 @@ bool Walk(std::uint64_t seed,
       builder.limit.PrintHayFeedRung(std::cout, seed, run::FeedRungTally::kYears);  // #1573
       horse_tail.Print(std::cout, seed);  // #1573's horse tail
       builder.limit.PrintHayHorseTail(std::cout, seed, run::HorseTailTally::kYears);
+      builder.limit.PrintHayLadderGuard(std::cout, seed);  // #1697's guard, every village
       // #1697: the ladder by day, for the seeds in KOLKHOZ_LADDER_SEEDS (comma list).
       if (const char* const ladder_seeds = std::getenv("KOLKHOZ_LADDER_SEEDS")) {
         const std::string list = std::string(",") + ladder_seeds + ",";

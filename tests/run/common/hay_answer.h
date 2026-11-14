@@ -55,6 +55,7 @@
 #define TESTS_RUN_COMMON_HAY_ANSWER_H_
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
@@ -188,6 +189,7 @@ class HayAnswer {
       // step read as the advice's would hand over heads the last step keeps.
       if (heads_advised && !plans_being_set_ && !hand_over_off_) {
         HandOver(world, *yellow, orders);
+        GuardTheHandOver(world, *yellow, CowFloor(simulation));
       }
     }
     LogTheDay(simulation, *yellow);
@@ -296,6 +298,30 @@ class HayAnswer {
   ///        cow_floor F cows K horses R handed_cows X handed_horses Z hay_store_t T» - and
   ///        a year's eve of the first cut, «LADDERCUT1697 seed S y Y d D hay_store_t T» (the
   ///        hay in every store the day before the first non-arable field opened its cut).
+  /// @brief #1697's guard, a village, y1-y16: «HAYL1697 seed S events_first E cows_first C
+  ///        events_behind E cows_behind C below_floor_events B below_floor_heads H cap_breaches
+  ///        K below WHERE cap WHERE» - every count beside its events; a breach SHOUTS (CAP1697).
+  void PrintGuard(std::ostream& out, std::uint64_t seed) const {
+    const auto join = [](const std::vector<std::string>& notes) {
+      std::string text;
+      for (const std::string& note : notes) {
+        text += (text.empty() ? "" : ",") + note;
+      }
+      return text.empty() ? std::string("-") : text;
+    };
+    out << "population_curve: HAYL1697 seed " << seed << " events_first " << guard_.events_first
+        << " cows_first " << guard_.cows_first << " events_behind " << guard_.events_behind
+        << " cows_behind " << guard_.cows_behind << " below_floor_events "
+        << guard_.below_floor_events << " below_floor_heads " << guard_.below_floor_heads
+        << " cap_breaches " << guard_.cap_breaches << " below " << join(guard_.below_notes)
+        << " cap " << join(guard_.cap_notes) << '\n';
+    if (guard_.below_floor_events + guard_.cap_breaches > 0) {
+      out << "population_curve: CAP1697 SEED " << seed << " THE LADDER HANDED "
+          << guard_.below_floor_events << " TIMES UNDER THE MILK FLOOR AND PAST ITS SEASON CAP "
+          << guard_.cap_breaches << " TIMES\n";
+    }
+  }
+
   void PrintLadderDays(std::ostream& out, std::uint64_t seed) const {
     for (const std::string& line : day_log_) {
       out << "population_curve: " << line.substr(0, line.find(' ')) << " seed " << seed
@@ -503,6 +529,11 @@ class HayAnswer {
     const bool cutting = std::ranges::any_of(world.fields.rows, [](const core::FieldRow& field) {
       return field.kind != core::LandKind::kArable && field.phase == core::FieldPhase::kHarvest;
     });
+    if (cutting && season_year_ != year) {  // #1697's guard: a hay season runs cut to cut
+      season_year_ = year;
+      season_handed_ = 0;
+      season_cap_ = -1;
+    }
     if (cutting && cut_year_ != year && year >= kLogFirstYear && year <= kLogLastYear) {
       cut_year_ = year;
       day_log_.push_back("LADDERCUT1697 y " + std::to_string(year) + " d " +
@@ -510,6 +541,61 @@ class HayAnswer {
                          std::to_string(yesterday_hay_ / 1000000));
     }
     yesterday_hay_ = store;
+  }
+
+  /// #1697: the milk floor as the herd plan window reads it (HerdPlanLine::floor_heads, the
+  /// core's HerdFloors::cows_kept), the largest of the cow lines.
+  std::int64_t CowFloor(const core::ISimulation& simulation) const {
+    std::int64_t floor = 0;
+    for (const core::HerdPlanLine& line : simulation.HerdPlans()) {
+      floor =
+          line.kind.value == cow_kind_ ? std::max<std::int64_t>(floor, line.floor_heads) : floor;
+    }
+    return floor;
+  }
+
+  /// #1697's guard (econ, econ-boss-1697-both-rungs [1]): an evening's hand-over by its route
+  /// (heads named first / behind a feed move), whether it leaves the adult cows under the milk
+  /// floor, and the season's heads against a cap of ceil(max(1, the season's first lit
+  /// short_heads) x 1.25) - the lamp's worst-day unfed heads, a WIDER cap than econ's
+  /// deficit-over-a-head's-need (the run cannot read a head's need); a guard, not a rule.
+  void GuardTheHandOver(const core::WorldState& world,
+                        const core::Alarm& yellow,
+                        std::int64_t floor) {
+    const std::uint32_t year = YearNumber(world);
+    if (year > kGuardYears) {
+      return;
+    }
+    const bool first = yellow.advice == core::AlarmAdvice::kReduceHerd;
+    if (day_cows_ + day_horses_ > 0) {
+      (first ? guard_.events_first : guard_.events_behind) += 1;
+      (first ? guard_.cows_first : guard_.cows_behind) += day_cows_;
+    }
+    const std::int64_t adults_after = Adults(world, IsCow) - day_cows_;
+    if (day_cows_ > 0 && adults_after < floor) {
+      guard_.below_floor_events += 1;
+      guard_.below_floor_heads += std::min(day_cows_, floor - adults_after);
+      if (guard_.below_notes.size() < kGuardNotes) {
+        guard_.below_notes.push_back("y" + std::to_string(year) + "d" +
+                                     std::to_string(world.calendar.day % core::kDaysPerYear) + ":" +
+                                     std::to_string(day_cows_) + "->" +
+                                     std::to_string(adults_after) + "<" + std::to_string(floor));
+      }
+    }
+    if (season_cap_ < 0) {
+      const auto worst = static_cast<double>(std::max<std::int64_t>(1, yellow.amount));
+      season_cap_ = static_cast<std::int64_t>(std::ceil(worst * kGuardCapShare));
+    }
+    season_handed_ += day_cows_ + day_horses_;
+    if (season_handed_ > season_cap_ && season_breached_year_ != season_year_) {
+      season_breached_year_ = season_year_;
+      guard_.cap_breaches += 1;
+      if (guard_.cap_notes.size() < kGuardNotes) {
+        guard_.cap_notes.push_back("y" + std::to_string(year) + ":" +
+                                   std::to_string(season_handed_) + ">" +
+                                   std::to_string(season_cap_));
+      }
+    }
   }
 
   /// #1697: one lit day's line, after the answer's orders were staged.
@@ -621,6 +707,29 @@ class HayAnswer {
   std::int64_t day_cows_ = 0;
   std::int64_t day_horses_ = 0;
   std::vector<std::string> day_log_;
+
+  /// #1697's guard.
+  static constexpr std::uint32_t kGuardYears = 16;
+  static constexpr std::size_t kGuardNotes = 6;
+  static constexpr double kGuardCapShare = 1.25;
+
+  struct Guard {
+    std::int64_t events_first = 0;
+    std::int64_t cows_first = 0;
+    std::int64_t events_behind = 0;
+    std::int64_t cows_behind = 0;
+    std::int64_t below_floor_events = 0;
+    std::int64_t below_floor_heads = 0;
+    std::int64_t cap_breaches = 0;
+    std::vector<std::string> below_notes;
+    std::vector<std::string> cap_notes;
+  };
+
+  Guard guard_;
+  std::uint32_t season_year_ = 0;
+  std::uint32_t season_breached_year_ = 0;
+  std::int64_t season_handed_ = 0;
+  std::int64_t season_cap_ = -1;
 };
 
 }  // namespace run
