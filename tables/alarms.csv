@@ -45,3 +45,4 @@ herd_freezing,herd,37
 herd_cold_ahead,herd,38
 site_supply_waits,unit,39
 clamp_rot,resource,40
+floodplain_fodder_ahead,resource,41
