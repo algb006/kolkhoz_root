@@ -99,6 +99,19 @@ class HorseTailTally {
     }
     y.horse_short_days += horse_short ? 1U : 0U;
     y.cow_short_days += cow_short ? 1U : 0U;
+    // THE YEAR'S BOOK IS READ CLOSED, ON THE TURN (#1580): a run's day ends at hour 0 of the
+    // next day (time_system.cpp: a step sets tick = previous + 1), so on «the last day»
+    // `current` still lacked day 47's hours 1-23 and day 0's hour 0 - a whole day of every
+    // annual total (LEDGER1580: 76 members). `closed` after the rotation holds all 48 days.
+    if (world.calendar.day % core::kDaysPerYear == 0 && world.calendar.day > 0) {
+      const core::YearLedger& book = world.ledger.closed;
+      if (book.year >= 1 && book.year <= kYears) {
+        Year& ended = years_[book.year - 1U];
+        ended.hay_cut_g = hay_ < book.harvest.size() ? book.harvest[hay_] : 0;
+        ended.horse_hay_g = horse_ < book.herd_hay_eaten.size() ? book.herd_hay_eaten[horse_] : 0;
+        ended.milk_g = milk_ < book.herd_produce.size() ? book.herd_produce[milk_] : 0;
+      }
+    }
     if (world.calendar.day % core::kDaysPerYear != core::kDaysPerYear - 1U) {
       return;
     }
@@ -117,10 +130,6 @@ class HorseTailTally {
         y.cow_floor = std::max<std::int64_t>(y.cow_floor, line.floor_heads);
       }
     }
-    const core::YearLedger& book = world.ledger.current;
-    y.hay_cut_g = hay_ < book.harvest.size() ? book.harvest[hay_] : 0;
-    y.horse_hay_g = horse_ < book.herd_hay_eaten.size() ? book.herd_hay_eaten[horse_] : 0;
-    y.milk_g = milk_ < book.herd_produce.size() ? book.herd_produce[milk_] : 0;
     const core::Grams due = milk_ < world.plan.due.size() ? world.plan.due[milk_] : 0;
     const core::Grams delivered =
         milk_ < world.plan.delivered.size() ? world.plan.delivered[milk_] : 0;
@@ -128,7 +137,8 @@ class HorseTailTally {
   }
 
   void Print(std::ostream& out, std::uint64_t seed) const {
-    out << "population_curve: HORSE1573 seed " << seed;
+    // The ground of hay_cut_t, horse_hay_t and milk_t (#1580): the closed book, read on day 0.
+    out << "population_curve: HORSE1573 seed " << seed << " ledger closed_day0";
     for (std::uint32_t year = 0; year < kYears; ++year) {
       const Year& y = years_[year];
       out << " | y" << year + 1;

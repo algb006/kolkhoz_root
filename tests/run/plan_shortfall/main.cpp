@@ -718,6 +718,22 @@ int WalkOneSeed(std::uint64_t seed, const char* label, std::uint32_t trace_year)
         // delivery of the year before — "potato 41.63/41.63" on a failed year,
         // and every debt reported that morning one year out of step.
         last_day.delivered = world.plan.delivered;
+        // THE YEAR'S BOOK TOO, ON THE TURN (#1580; ground: closed, day 0, year = closed.year):
+        // a run's day ends at hour 0 of the next day, so the last day's `current` lacked a whole
+        // day of the year (LEDGER1580). The last-day snapshot keeps the stores and the plan.
+        const core::YearLedger& closed = world.ledger.closed;
+        last_day.area_sown_ha = closed.area_sown_ha;
+        last_day.area_harvested_ha = closed.area_harvested_ha;
+        last_day.area_lost_ha = closed.area_lost_ha;
+        double snow_took = 0.0;
+        for (const core::Grams grams : closed.lost_to_snow) {
+          snow_took += static_cast<double>(grams) / 1.0e6;
+        }
+        last_day.snow_took_standing_tonnes = snow_took;
+        last_day.work_days = closed.work_days_by_kind;
+        last_day.book = closed;
+        std::cout << "plan_shortfall: the year's book read closed on the turn (#1580), year "
+                  << closed.year << '\n';
         PrintShortfall(last_day, resources);
       }
       failed_before = failed_now;
