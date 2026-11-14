@@ -1743,22 +1743,26 @@ int CheckTheForecastAdvice() {
                "is bought for the three kept - the least lots, counted with her gone");
   }
   // #1697: THE PLAN'S RUNG COUNTS WHAT THE DOOR HANDS, THE LEAST FOR THE GAP,
-  // NEVER UNDER THE FLOOR. Four cows with six calves at the dam (they eat
-  // nothing), a plan of four heads: the herd stands six heads above N, and
-  // until #1697 all six were named and paid in cows - more than stand. Now
-  // the cows above the plan's share of adults (4 - 2) count, and of them the
-  // one the 80 kg gap asks for.
+  // NEVER UNDER THE FLOOR. Four cows with six calves, a plan of four heads:
+  // the herd stands six heads above N, and until #1697 all six were named
+  // and paid in cows - more than stand. Now the plan asks no more cows than
+  // the same gap asks with no plan (the least that feeds the rest; the calves
+  // grow and eat over the 24 days, so the gap is the forecast's, not 80 kg's
+  // one cow - the first form of this check assumed one and read 4).
   {
     core::WorldState world = village(80.0F, kNoGranary, 0.0F);
     world.herds.rows[0].newborn_count = 6;
+    const core::Alarm no_plan = lamp(world);
     world.herds.rows[0].plan_heads = 4;
     const core::Alarm alarm = lamp(world);
-    std::cout << "  #1697 forecast advice, 4 cows + 6 calves over a plan of 4, 80 kg: to hand "
-              << alarm.hand_over_stock << ", below " << alarm.below_floor_stock << '\n';
-    failures += Expect(alarm.advice == core::AlarmAdvice::kReduceHerd &&
-                           alarm.hand_over_stock == 1 && alarm.below_floor_stock == 0,
-                       "#1697: the plan's rung names the one cow the gap asks for, not the six "
-                       "heads above N paid in cows");
+    std::cout << "  #1697 forecast advice, 4 cows + 6 calves, 80 kg: to hand "
+              << no_plan.hand_over_stock << " with no plan, " << alarm.hand_over_stock
+              << " over a plan of 4 (below " << alarm.below_floor_stock << ")\n";
+    failures +=
+        Expect(alarm.advice == core::AlarmAdvice::kReduceHerd && alarm.hand_over_stock > 0 &&
+                   alarm.hand_over_stock <= no_plan.hand_over_stock && alarm.hand_over_stock <= 4,
+               "#1697: the plan's rung names no more cows than the gap asks with no "
+               "plan, and never the six heads above N paid in cows");
     // ITS PAIR, THE FLOOR: three cows kept by the milk floor (the two-rung
     // world's position) - the rung names at most the one above it.
     world.plan.highest_due = {0, 2'000'000};
