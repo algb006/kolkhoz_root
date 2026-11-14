@@ -548,6 +548,34 @@ FodderAdvice AdviseOnShortFodder(const ProductionConfig& config,
   // apart (Alarm::below_floor_stock, below_floor_horses).
   advice.below_floor_stock = heads.below_floor_stock;
   advice.below_floor_horses = heads.below_floor_horses;
+  // AND WITH THE MAXIMAL PURCHASE COUNTED (#1689): the least heads below the
+  // floors - cows first, then horses, as the pair above is ordered - that
+  // must go for the rest to be fed WITH every lot the points buy, found by
+  // halving (more heads gone never eat more). The pair above counts no
+  // purchase; the lamp's line «комбикорм и солома этого не закроют» names
+  // this one. Nought when nothing is buyable (the pair is then the answer).
+  if (purchase.any) {
+    const std::int64_t below = heads.below_floor_stock + heads.below_floor_horses;
+    const auto short_with = [&](std::int64_t k) {
+      const std::int64_t cows = std::min(k, heads.below_floor_stock);
+      const HeadsHandedOver more{
+          .horses = heads.horses + (k - cows), .cows = heads.stock + cows, .other = 0};
+      return ForecastHerdFeed(
+                 config, world, false, FeedHorizon::kNearestScythes, &purchase, &more, &stock)
+          .short_ahead;
+    };
+    std::int64_t low = 0;
+    std::int64_t high = below;
+    while (low < high) {
+      const std::int64_t mid = low + ((high - low) / 2);
+      if (short_with(mid)) {
+        low = mid + 1;
+      } else {
+        high = mid;
+      }
+    }
+    advice.below_floor_after_feed = low;
+  }
   // THE GRANARY, when a feed lot is refused for want of a store alone — its
   // site under way or not yet marked: the door refuses either way
   // (kNowhereToStore), and «buy» on such a day was an order refused.
@@ -614,6 +642,7 @@ void CollectHerdForecastAlarms(const ProductionConfig& config,
   alarm.hand_over_horses = advice.hand_over_horses;
   alarm.below_floor_stock = advice.below_floor_stock;
   alarm.below_floor_horses = advice.below_floor_horses;
+  alarm.below_floor_after_feed = advice.below_floor_after_feed;  // #1689
   alarm.advice_tolerated = advice.tolerated ? 1U : 0U;
   // THE HEADS ABOVE THE PLANS FIRST (#1289): named whenever the advice asks
   // for heads at all.

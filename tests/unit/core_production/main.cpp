@@ -1671,6 +1671,7 @@ int CheckTheForecastAdvice() {
     const core::Alarm broke = lamp(world);
     failures += Expect(broke.advice == core::AlarmAdvice::kNone && broke.amount == 4 &&
                            broke.hand_over_stock == 0 && broke.below_floor_stock == 1 &&
+                           broke.below_floor_after_feed == 0 &&
                            door(world) == core::OrderRefusal::kLimitShort,
                        "forecast advice: the year's points spent - no move left above the "
                        "floors, the one that must go named below the floor, and the door says "
@@ -1682,6 +1683,8 @@ int CheckTheForecastAdvice() {
   // then the lamp said «buy, AND hand a head over» — and with points for
   // three lots, «buy all three»: the year's points for feed that feeds
   // nobody to the scythes. Two heads fit the 60 kg: two below the floor.
+  std::int64_t after_feed_one_lot =
+      0;  // #1689: the one-lot case's count, read by the three-lot one
   for (const std::int32_t points : {10, 30}) {
     core::WorldState world = at_the_floor(village(60.0F, 1, 0.0F));
     world.limit.points = points;
@@ -1698,6 +1701,23 @@ int CheckTheForecastAdvice() {
                               "scythes is NOT named - no move, two below the floor"
                             : "forecast advice: nor are three lots that do not reach "
                               "them - the largest purchase is no advice either");
+    // #1689: WITH THE MAXIMAL PURCHASE COUNTED, the heads still short below
+    // the floors - never more than the pair's (more feed never feeds fewer),
+    // and the purchase of three lots never leaves more short than of one.
+    std::cout << "  forecast advice (#1689), " << points << " points: below the floor with the "
+              << "purchase " << alarm.below_floor_after_feed << " (with none "
+              << alarm.below_floor_stock + alarm.below_floor_horses << ")\n";
+    failures += Expect(
+        alarm.below_floor_after_feed >= 0 &&
+            alarm.below_floor_after_feed <= alarm.below_floor_stock + alarm.below_floor_horses,
+        "forecast advice (#1689): the heads short with the maximal purchase are "
+        "no more than with none");
+    if (points == 10) {
+      after_feed_one_lot = alarm.below_floor_after_feed;
+    } else {
+      failures += Expect(alarm.below_floor_after_feed <= after_feed_one_lot,
+                         "forecast advice (#1689): three lots leave no more heads short than one");
+    }
   }
   // THE TWO RUNGS TOGETHER: three cows kept by the milk floor (a position of
   // two cows' yields, times 1.25), one above it. 60 kg: the cow above the

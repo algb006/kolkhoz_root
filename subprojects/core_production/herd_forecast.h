@@ -446,6 +446,9 @@ struct FodderAdvice {
   std::int64_t hand_over_horses = 0;
   std::int64_t below_floor_stock = 0;
   std::int64_t below_floor_horses = 0;
+  /// #1689: the heads below the floors still short WITH the maximal purchase
+  /// (Alarm::below_floor_after_feed).
+  std::int64_t below_floor_after_feed = 0;
   /// #1573: no move named because of the heads rung's tolerance
   /// (Alarm::advice_tolerated).
   bool tolerated = false;

@@ -133,7 +133,14 @@ class HayAnswer {
                                yellow->advice_more == core::AlarmAdvice::kReduceHerd;
     if (yellow->below_floor_stock + yellow->below_floor_horses > 0) {
       ++floor_days_;
-      YearOf(world).below_floor_days += 1;
+      YearCount& year = YearOf(world);
+      year.below_floor_days += 1;
+      const std::int64_t pair = yellow->below_floor_stock + yellow->below_floor_horses;
+      year.below_floor_heads_sum += static_cast<std::uint64_t>(pair);
+      year.below_after_feed_sum += static_cast<std::uint64_t>(yellow->below_floor_after_feed);
+      year.below_floor_heads_max = std::max(year.below_floor_heads_max, pair);
+      year.below_after_feed_max =
+          std::max(year.below_after_feed_max, yellow->below_floor_after_feed);
     }
     if (yellow->advice == core::AlarmAdvice::kBuyFeed ||
         yellow->advice == core::AlarmAdvice::kGranaryForFeed) {
@@ -226,6 +233,24 @@ class HayAnswer {
   /// @brief #1573's answer line, a village: «F1573A seed S | y1 yellow Y
   ///        buy_no_heads B no_move N feed_lots L feed_points P cows_handed C
   ///        horses_handed H | y2 ...», y1-`years`.
+  /// @brief #1689: «HAY1689 seed S | y1 below_days D heads_no_buy_mean M max X
+  /// heads_after_feed_mean
+  ///        A max B | y2 ...» - the lamp's below-floor heads with no purchase and with the maximal
+  ///        purchase counted (Alarm::below_floor_after_feed), y1-`years`.
+  void PrintBelowFloor(std::ostream& out, std::uint64_t seed, std::uint32_t years) const {
+    out << "population_curve: HAY1689 seed " << seed;
+    for (std::uint32_t year = 0; year < years; ++year) {
+      const YearCount count = year < years_.size() ? years_[year] : YearCount{};
+      const double days = count.below_floor_days > 0 ? count.below_floor_days : 1.0;
+      out << " | y" << year + 1 << " below_days " << count.below_floor_days << " heads_no_buy_mean "
+          << static_cast<double>(count.below_floor_heads_sum) / days << " max "
+          << count.below_floor_heads_max << " heads_after_feed_mean "
+          << static_cast<double>(count.below_after_feed_sum) / days << " max "
+          << count.below_after_feed_max;
+    }
+    out << '\n';
+  }
+
   void PrintFeedRung(std::ostream& out, std::uint64_t seed, std::uint32_t years) const {
     out << "population_curve: F1573A seed " << seed;
     for (std::uint32_t year = 0; year < years; ++year) {
@@ -275,6 +300,12 @@ class HayAnswer {
   struct YearCount {
     std::uint32_t yellow_days = 0;
     std::uint32_t below_floor_days = 0;
+    /// #1689: on the below-floor days, the heads named below the floors with
+    /// no purchase (the pair) and with the maximal purchase, summed and at most.
+    std::uint64_t below_floor_heads_sum = 0;
+    std::uint64_t below_after_feed_sum = 0;
+    std::int64_t below_floor_heads_max = 0;
+    std::int64_t below_after_feed_max = 0;
     std::uint32_t feed_advice_days = 0;
     std::uint32_t feed_lots = 0;
     /// #1573: the points of the feed lots ordered (the door may still refuse
