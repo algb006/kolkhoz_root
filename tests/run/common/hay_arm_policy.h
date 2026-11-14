@@ -73,6 +73,10 @@ class HayArmPolicy {
     rye_ = row_of("resources", "rye");
     cow_ = row_of("livestock", "cow");
     horse_ = row_of("livestock", "horse");
+    for (const char* const grain :
+         {"rye_winter", "wheat_winter", "wheat_spring", "oat", "barley"}) {
+      grain_crops_.push_back(row_of("crops", grain));
+    }
   }
 
   void SetMode(Mode mode) { mode_ = mode; }
@@ -111,6 +115,7 @@ class HayArmPolicy {
       CloseYear(world, year - 1U);
     }
     CountLamp(simulation);
+    WatchSkipped(world, year);
     if (mode_ == Mode::kOff || year < 2 || year > kYears) {
       return;
     }
@@ -156,6 +161,7 @@ class HayArmPolicy {
     while (std::getline(lines, line)) {
       out << "population_curve: HAY307 seed " << seed << ' ' << line << '\n';
     }
+    PrintSkipped(out, seed);
   }
 
  private:
@@ -210,6 +216,7 @@ class HayArmPolicy {
       // the rye fell 21.5 -> 3.5 ha.
       if (skip_grain_block_ && std::ranges::find(avoid_, id) != avoid_.end()) {
         ++skipped_for_block_;
+        NoteSkipped(world, id);
         continue;
       }
       const std::uint32_t row = core::FindRow(world.fields, id);
@@ -218,7 +225,78 @@ class HayArmPolicy {
         return true;
       }
     }
+    // #1692's print: a day B marked nothing although a skipped field was free for it.
+    for (const core::FieldId id : avoid_) {
+      const std::uint32_t row = core::FindRow(world.fields, id);
+      if (skip_grain_block_ && std::ranges::find(candidates_, id) != candidates_.end() &&
+          std::ranges::find(mown_, id) == mown_.end() &&
+          std::ranges::find(clovered_, id) == clovered_.end() && row != core::kNoRow &&
+          NoChain(world.fields.rows[row])) {
+        ++mark_lost_to_skip_;
+        break;
+      }
+    }
     return false;
+  }
+
+  /// #1692's print: one skipped field, kept once, with the year it was first passed over.
+  struct Skipped {
+    core::FieldId field;
+    std::uint32_t year = 0;          ///< The year B first passed it over.
+    std::uint32_t grain_year = 0;    ///< The first year grain stood on it after; 0 = not seen.
+    bool free_when_skipped = false;  ///< No chain on the day (B could have taken it).
+  };
+
+  void NoteSkipped(const core::WorldState& world, core::FieldId id) const {
+    if (std::ranges::any_of(skipped_, [id](const Skipped& s) { return s.field == id; })) {
+      return;
+    }
+    const std::uint32_t row = core::FindRow(world.fields, id);
+    const core::SimDay day = world.calendar.day;
+    skipped_.push_back(
+        Skipped{.field = id,
+                .year = (day / core::kDaysPerYear) + 1U,
+                .grain_year = 0,
+                .free_when_skipped = row != core::kNoRow && NoChain(world.fields.rows[row])});
+  }
+
+  /// Daily: grain standing on a skipped field, within the year it was skipped and the next.
+  void WatchSkipped(const core::WorldState& world, std::uint32_t year) {
+    for (Skipped& skipped : skipped_) {
+      if (skipped.grain_year != 0 || year > skipped.year + 1U) {
+        continue;
+      }
+      const std::uint32_t row = core::FindRow(world.fields, skipped.field);
+      if (row != core::kNoRow &&
+          std::ranges::find(grain_crops_, world.fields.rows[row].crop.value) !=
+              grain_crops_.end()) {
+        skipped.grain_year = year;
+      }
+    }
+  }
+
+  /// HAY1692S: every skipped field (year:field:grain year or -:free/held), and the counts.
+  void PrintSkipped(std::ostream& out, std::uint64_t seed) const {
+    std::uint32_t free_sown = 0;
+    std::uint32_t free_idle = 0;
+    std::uint32_t held = 0;
+    std::ostringstream list;
+    for (const Skipped& skipped : skipped_) {
+      list << ' ' << skipped.year << ':' << skipped.field.value << ':'
+           << (skipped.grain_year != 0 ? std::to_string(skipped.grain_year) : std::string("-"))
+           << ':' << (skipped.free_when_skipped ? "free" : "held");
+      if (!skipped.free_when_skipped) {
+        ++held;
+      } else if (skipped.grain_year != 0) {
+        ++free_sown;
+      } else {
+        ++free_idle;
+      }
+    }
+    out << "population_curve: HAY1692S seed " << seed << " skipped_fields " << skipped_.size()
+        << " free_then_grain_within_2y " << free_sown << " free_never_grain_2y " << free_idle
+        << " held_by_a_chain " << held << " mark_days_lost_to_skip " << mark_lost_to_skip_
+        << " list" << (skipped_.empty() ? " -" : list.str()) << '\n';
   }
 
   /// A+B: the oldest field the arm mows that is not clover yet and still has no chain.
@@ -294,6 +372,9 @@ class HayArmPolicy {
   std::vector<core::FieldId> avoid_;  ///< #1692: the grain base's next block today
   bool skip_grain_block_ = true;      ///< #1692, the canon's rule (arm: off)
   mutable std::uint32_t skipped_for_block_ = 0;
+  mutable std::vector<Skipped> skipped_;         ///< #1692's print
+  mutable std::uint32_t mark_lost_to_skip_ = 0;  ///< #1692's print
+  std::vector<std::uint32_t> grain_crops_;
   std::uint32_t clover_ = core::kNoTableRow;
   std::uint32_t cattle_yard_ = core::kNoTableRow;
   std::uint32_t barn_ = core::kNoTableRow;
