@@ -50,6 +50,7 @@
 #include "../common/hay_day_off_policy.h"
 #include "../common/herd_tally.h"
 #include "../common/horse_tail_tally.h"
+#include "../common/ledger_turn_tally.h"
 #include "../common/passed_over_tally.h"
 #include "../common/rest_tally.h"
 #include "../common/run_harness.h"
@@ -886,6 +887,7 @@ bool Walk(std::uint64_t seed,
   run::FeedRungTally feed_rung(*world.tables);
   // #1573's horse tail y1-y30 (econ, econ-boss-1573-horse-tail [1]): horse_tail_tally.h.
   run::HorseTailTally horse_tail(*world.tables);
+  run::LedgerTurnTally ledger_turn;  // #1580
   std::array<std::uint32_t, core::kRestSourceCount> r1373_sources = {};
   std::uint32_t r1373_walk_offs = 0;
   // What the farm's sites waited on, y1-y6 (#1285 G1's probe; boss [3]).
@@ -1020,6 +1022,7 @@ bool Walk(std::uint64_t seed,
                           herds.CowsHandedInYear(simulation->CompletedState().calendar.date.year));
       feed_rung.CountDayEnd(simulation->CompletedState());
       horse_tail.CountDayEnd(*simulation);
+      ledger_turn.CountDayEnd(*simulation);  // #1580
       if (!warm_off) {
         strada.CountDayEnd(simulation->CompletedState());
       }
@@ -1556,7 +1559,8 @@ bool Walk(std::uint64_t seed,
       builder.houses.PrintQueueLines(std::cout, seed);  // #1677: the queue by cause, short lines
       feed_rung.Print(std::cout, seed);                 // #1573
       builder.limit.PrintHayFeedRung(std::cout, seed, run::FeedRungTally::kYears);  // #1573
-      horse_tail.Print(std::cout, seed);  // #1573's horse tail
+      horse_tail.Print(std::cout, seed);   // #1573's horse tail
+      ledger_turn.Print(std::cout, seed);  // #1580
       builder.limit.PrintHayHorseTail(std::cout, seed, run::HorseTailTally::kYears);
       builder.limit.PrintHayLadderGuard(std::cout, seed);  // #1697's guard, every village
       // #1697: the ladder by day, for the seeds in KOLKHOZ_LADDER_SEEDS (comma list).

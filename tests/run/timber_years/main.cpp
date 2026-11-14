@@ -393,20 +393,26 @@ int main(int argc, char** argv) {
         }
       }
       yesterday = world.stands.rows;
+      // THE YEAR'S MAN-DAYS ARE READ FROM THE CLOSED BOOK ON THE TURN (#1580; ground: closed,
+      // day 0, year = closed.year): a run's day ends at hour 0 of the next day, so on «the
+      // last day» `current` still lacked a whole day (LEDGER1580). The turn falls on this same
+      // loop year's last day.
+      if (world.calendar.day % core::kDaysPerYear == 0 && world.calendar.day > 0) {
+        const core::YearLedger& closed = world.ledger.closed;
+        if (closed.year >= 1 && closed.year <= kYears) {
+          YearTally& ended = years[closed.year - 1U];
+          const auto days_of = [&closed](core::WorkKind kind) {
+            return closed.work_days_by_kind[static_cast<std::size_t>(kind)];
+          };
+          ended.felling_man_days = days_of(core::WorkKind::kFelling);
+          ended.sawing_man_days = days_of(core::WorkKind::kUnitWork);
+          ended.building_man_days = days_of(core::WorkKind::kConstruction);
+        }
+      }
       if (world.calendar.day % core::kDaysPerYear == core::kDaysPerYear - 1) {
         const core::Grams held = LogsHeld(world, catalog.log_resource);
         tally.logs_used = held_at_year_start + tally.logs_from_groves + tally.logs_from_old - held;
         held_at_year_start = held;
-        const float felling_days =
-            world.ledger.current
-                .work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kFelling)];
-        tally.felling_man_days = felling_days;
-        tally.sawing_man_days =
-            world.ledger.current
-                .work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kUnitWork)];
-        tally.building_man_days =
-            world.ledger.current
-                .work_days_by_kind[static_cast<std::size_t>(core::WorkKind::kConstruction)];
         tally.boards_year_end_m3 =
             catalog.board_grams_per_m3 > 0
                 ? static_cast<double>(run::SawmillPolicy::Held(world, catalog.board_resource)) /
@@ -437,6 +443,8 @@ int main(int argc, char** argv) {
   std::uint32_t load_total = 0;
   double felling_total = 0.0;
   double stand_haul_total = 0.0;
+  std::cout << "timber_years: the felling, sawing and building man-days are the closed book's, "
+               "read on day 0 (#1580); logs and boards are the last day's stocks\n";
   for (std::uint32_t year = 0; year < kYears; ++year) {
     const YearTally& tally = years[year];
     const double from_groves = Logs(tally.logs_from_groves, catalog.log_grams);
