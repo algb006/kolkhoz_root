@@ -116,6 +116,7 @@ class HayArmPolicy {
     }
     CountLamp(simulation);
     WatchSkipped(world, year);
+    WatchTaken(world);
     if (mode_ == Mode::kOff || year < 2 || year > kYears) {
       return;
     }
@@ -162,6 +163,7 @@ class HayArmPolicy {
       out << "population_curve: HAY307 seed " << seed << ' ' << line << '\n';
     }
     PrintSkipped(out, seed);
+    PrintTaken(out, seed);
   }
 
  private:
@@ -275,6 +277,71 @@ class HayArmPolicy {
     }
   }
 
+  /// #1692 (e)'s print (econ, econ-boss-1692-release-on-rotation [1]): a field B marked that
+  /// a chain took - the day the chain stood on it, the day it was arable again (ploughed up),
+  /// the day a crop stood on it, and that crop. Days are 1-based ticks of the day (0 = not yet).
+  struct Taken {
+    core::FieldId field;
+    core::SimDay taken = 0;
+    core::SimDay arable = 0;
+    core::SimDay sown = 0;
+    std::uint32_t crop = core::kNoTableRow;
+    std::uint32_t slot0 = core::kNoTableRow;
+  };
+
+  void WatchTaken(const core::WorldState& world) {
+    const core::SimDay today = world.calendar.day + 1U;
+    for (const core::FieldId id : mown_) {
+      const std::uint32_t row = core::FindRow(world.fields, id);
+      if (row == core::kNoRow) {
+        continue;
+      }
+      const core::FieldRow& field = world.fields.rows[row];
+      auto found = std::ranges::find(taken_, id, &Taken::field);
+      if (found == taken_.end()) {
+        if (NoChain(field)) {
+          continue;
+        }
+        taken_.push_back(Taken{.field = id, .taken = today, .slot0 = field.rotation_year0.value});
+        found = taken_.end() - 1;
+      }
+      if (found->arable == 0 && field.kind == core::LandKind::kArable) {
+        found->arable = today;
+      }
+      if (found->arable != 0 && found->sown == 0 && field.crop.value != core::kInvalidDefIdValue) {
+        found->sown = today;
+        found->crop = field.crop.value;
+      }
+    }
+  }
+
+  static std::string DayText(core::SimDay day) {
+    if (day == 0) {
+      return "-";
+    }
+    const core::SimDay zero_based = day - 1U;
+    return "y" + std::to_string((zero_based / core::kDaysPerYear) + 1U) + "d" +
+           std::to_string(zero_based % core::kDaysPerYear);
+  }
+
+  /// HAY1692E: «seed S taken N list field:taken:arable:sown:crop:slot0 ...» (crop ids, crops.csv
+  /// rows).
+  void PrintTaken(std::ostream& out, std::uint64_t seed) const {
+    out << "population_curve: HAY1692E seed " << seed << " taken " << taken_.size() << " list";
+    if (taken_.empty()) {
+      out << " -";
+    }
+    for (const Taken& taken : taken_) {
+      out << ' ' << taken.field.value << ':' << DayText(taken.taken) << ':' << DayText(taken.arable)
+          << ':' << DayText(taken.sown) << ':'
+          << (taken.crop == core::kNoTableRow ? std::string("-") : std::to_string(taken.crop))
+          << ':'
+          << (taken.slot0 == core::kInvalidDefIdValue ? std::string("-")
+                                                      : std::to_string(taken.slot0));
+    }
+    out << '\n';
+  }
+
   /// HAY1692S: every skipped field (year:field:grain year or -:free/held), and the counts.
   void PrintSkipped(std::ostream& out, std::uint64_t seed) const {
     std::uint32_t free_sown = 0;
@@ -373,6 +440,7 @@ class HayArmPolicy {
   bool skip_grain_block_ = true;      ///< #1692, the canon's rule (arm: off)
   mutable std::uint32_t skipped_for_block_ = 0;
   mutable std::vector<Skipped> skipped_;         ///< #1692's print
+  std::vector<Taken> taken_;                     ///< #1692 (e)'s print
   mutable std::uint32_t mark_lost_to_skip_ = 0;  ///< #1692's print
   std::vector<std::uint32_t> grain_crops_;
   std::uint32_t clover_ = core::kNoTableRow;
