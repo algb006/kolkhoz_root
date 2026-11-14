@@ -248,6 +248,14 @@ bool ParseLogisticsConfig(const ITableSet& tables, LogisticsConfig& config, std:
       PrefixError("world_params", "field_heap_keeping_factor", error);
       return false;
     }
+    // #1375's arm (boss, the contract thread [6]): the flood's heap deadline (#1200's
+    // interlock) on 1 / off 0; an absent row leaves it on - the canon's.
+    float flood_deadline = config.flood_heap_deadline ? 1.0F : 0.0F;
+    if (!OptionalValue(*world, "flood_heap_deadline", Range::Unit(), flood_deadline, error)) {
+      PrefixError("world_params", "flood_heap_deadline", error);
+      return false;
+    }
+    config.flood_heap_deadline = flood_deadline >= 0.5F;
   }
   // THE HAY's NIGHTLY LOSS (#1056 C3, the third lever): production's cells
   // and ranges (production_config.cpp, hay_weathering_*). One cell, two readers.

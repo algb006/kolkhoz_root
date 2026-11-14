@@ -81,7 +81,8 @@ float ShelfDaysOf(const LogisticsConfig& config,
   const ResourceId resource = world.fields.rows[row].reaped_resource;
   // THE FLOOD IS A FLOODPLAIN HEAP'S SHELF (#1375, #1200's interlock; flood_state.h): the days
   // to the projected flood, when sooner than its rot - winter carting takes it first.
-  const SimDay flood = FloodDeadlineOfField(world, task.field);
+  const SimDay flood =
+      config.flood_heap_deadline ? FloodDeadlineOfField(world, task.field) : kNoFloodDay;
   const float to_flood =
       flood == kNoFloodDay
           ? std::numeric_limits<float>::infinity()

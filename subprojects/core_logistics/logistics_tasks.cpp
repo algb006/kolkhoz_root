@@ -329,7 +329,8 @@ void AgeAndRaise(const LogisticsConfig& config,
         // THE FLOOD TAKES THE WHOLE HEAP (#1375, #1200's interlock; core_common/flood_state.h):
         // a floodplain meadow's heap whose flood is due tomorrow or sooner is urgent as a heap
         // spoiling - the loss is total, so it is the rot's reason, not a third.
-        const SimDay flood = FloodDeadlineOfField(current, task.field);
+        const SimDay flood =
+            config.flood_heap_deadline ? FloodDeadlineOfField(current, task.field) : kNoFloodDay;
         const bool flood_due = flood != kNoFloodDay && flood <= today + 1U;
         if (HeapSpoils(config, field) || flood_due) {
           level = LogisticsLevel::kUrgent;

@@ -25,6 +25,7 @@
 #ifndef TESTS_RUN_COMMON_FLOOD_TALLY_H_
 #define TESTS_RUN_COMMON_FLOOD_TALLY_H_
 
+#include <algorithm>
 #include <cstdint>
 #include <ostream>
 #include <sstream>
@@ -55,6 +56,8 @@ class FloodTally {
       first_lit_day_ = 0;
       today_days_ = 0;
       today_before_march_ = 0;
+      heap_days_ = 0;
+      heap_days_dark_ = 0;
       season_year_ = (world.calendar.day / core::kDaysPerYear) + 2U;  // the spring it ends in
     }
     if (world.flood.last_flood_year != seen_flood_year_) {
@@ -71,6 +74,13 @@ class FloodTally {
     ++season_days_;
     std::vector<core::Alarm> alarms;
     simulation.CollectAlarms(alarms);
+    // P0a as reworded (boss, the contract thread [6]): lit on every day fodder lies on
+    // floodplain ground - the days the meadows' heaps hold some, and of them the dark ones.
+    const bool lit = std::ranges::any_of(alarms, [](const core::Alarm& alarm) {
+      return alarm.kind == core::AlarmKind::kFloodplainFodderAhead;
+    });
+    heap_days_ += heaps > 0 ? 1U : 0U;
+    heap_days_dark_ += heaps > 0 && !lit ? 1U : 0U;
     for (const core::Alarm& alarm : alarms) {
       if (alarm.kind != core::AlarmKind::kFloodplainFodderAhead) {
         continue;
@@ -119,7 +129,8 @@ class FloodTally {
     }
     const core::SimDay flood_day = world.calendar.day;
     lines_ << " | y " << season_year_ << " dec1_heaps_t " << Tonnes(dec1_heaps_) << " dec1_lamp_t "
-           << Tonnes(dec1_lamp_) << " lit_days " << lit_days_ << " season_days " << season_days_
+           << Tonnes(dec1_lamp_) << " lit_days " << lit_days_ << " heap_days " << heap_days_
+           << " heap_days_dark " << heap_days_dark_ << " season_days " << season_days_
            << " lead_days " << (first_lit_day_ == 0 ? 0U : flood_day + 1U - first_lit_day_)
            << " today_days " << today_days_ << " today_before_march " << today_before_march_
            << " eve_heaps_t " << Tonnes(yesterday_heaps_) << " lost_t " << Tonnes(lost)
@@ -142,6 +153,8 @@ class FloodTally {
   core::SimDay first_lit_day_ = 0;
   std::uint32_t today_days_ = 0;
   std::uint32_t today_before_march_ = 0;
+  std::uint32_t heap_days_ = 0;       ///< P0a: days the floodplain heaps held fodder
+  std::uint32_t heap_days_dark_ = 0;  ///< P0a: of them, the days the lamp was dark
   std::ostringstream lines_;
 };
 

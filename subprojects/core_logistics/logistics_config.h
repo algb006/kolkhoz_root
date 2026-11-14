@@ -88,6 +88,11 @@ struct LogisticsConfig {
   /// this share of a store's term (production_config.h).
   float field_heap_keeping_factor = 0.33F;
 
+  /// #1375's heap deadline (#1200's interlock; core_common/flood_state.h): a floodplain
+  /// meadow's heap takes the days to the flood as its shelf and is urgent the day before.
+  /// world_params `flood_heap_deadline` (optional, absent = on); 0 is the arm without it.
+  bool flood_heap_deadline = true;
+
   /// THE PLAN'S REACH (B3): the harness pace, real km/h (transport.csv
   /// horse_trot `speed_kmh`), and the accountant's road limit, game hours
   /// (labor.csv travel_limit_hours) — the cells labour reads, by the same
