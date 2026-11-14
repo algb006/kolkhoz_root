@@ -126,6 +126,7 @@ class FallowPolicy {
     std::cout << "fallow_policy: year " << year << " forecast "
               << std::llround(forecast / kKcalPerGcal) << " Gcal of food against a need of "
               << std::llround(need / kKcalPerGcal) << " Gcal";
+    short_turn_ = need > 0.0 && forecast < need;  // #1692 (b)
     if (!(need > 0.0) || forecast >= need || opened_blocks_ >= kBlocks) {
       std::cout << (opened_blocks_ >= kBlocks ? " - every block open\n" : " - enough\n");
       return;
@@ -191,9 +192,19 @@ class FallowPolicy {
 
   /// @brief #1692: the derelict fields the next block would open (NextBlockFields),
   ///        for the hay arm to leave alone; empty before the derelict ground is read.
+  ///        NARROW (b) (econ, econ-boss-1692-narrow-b [1]): also empty once every block is
+  ///        open (kBlocks - the broad rule held the third block's fields forever, and 179 of
+  ///        its 187 skipped fields never saw grain) and while the last turn's food forecast
+  ///        was enough (the policy opens a block only on a SHORT turn).
   [[nodiscard]] std::vector<core::FieldId> ComingBlock(const core::WorldState& world) const {
-    return derelict_read_ ? NextBlockFields(world) : std::vector<core::FieldId>{};
+    if (!derelict_read_ || (narrow_coming_block_ && (opened_blocks_ >= kBlocks || !short_turn_))) {
+      return {};
+    }
+    return NextBlockFields(world);
   }
+
+  /// @brief #1692's switch: narrow (b) on (the canon's), off = the broad rule as an arm.
+  void NarrowComingBlock(bool on) { narrow_coming_block_ = on; }
 
  private:
   static constexpr std::uint32_t kFieldsPerBlock = 3;
@@ -793,6 +804,8 @@ class FallowPolicy {
   std::uint32_t opened_blocks_ = 0;
   std::vector<std::uint32_t> opened_in_year_;
   core::SimDay last_turn_day_ = 0;
+  bool short_turn_ = false;          ///< #1692 (b): the last turn's food forecast was short
+  bool narrow_coming_block_ = true;  ///< #1692 (b), the canon's; off = the broad arm
 
   std::vector<std::pair<std::uint32_t, double>> block_potato_seed_t_;
   std::vector<std::pair<std::uint32_t, double>> block_potato_on_field_t_;
