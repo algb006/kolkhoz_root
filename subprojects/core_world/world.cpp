@@ -1343,6 +1343,9 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       //   declared ahead of its reader; the assembly reads it below since the
       //   lamp colour's delivery.)
       known.emplace_back(kAlarmRedWithinDaysKey);
+      // #1375's arm switch, read by core_logistics' config (logistics_config.cpp; optional,
+      // absent = on).
+      known.emplace_back("flood_heap_deadline");
       //   (`feed_draught_first` stood here in 0.37.301, read by nobody once its
       //   switch went; the base dropped the key in boss's export of 19 October.)
       //   (`billet_household_milk_share` stood here from 0.37.65 to 0.37.69,
