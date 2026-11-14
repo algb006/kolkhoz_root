@@ -55,6 +55,7 @@
 #define TESTS_RUN_COMMON_HAY_ANSWER_H_
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -314,7 +315,21 @@ class HayAnswer {
         << " cows_behind " << guard_.cows_behind << " below_floor_events "
         << guard_.below_floor_events << " below_floor_heads " << guard_.below_floor_heads
         << " cap_breaches " << guard_.cap_breaches << " below " << join(guard_.below_notes)
-        << " cap " << join(guard_.cap_notes) << '\n';
+        << " cap " << join(guard_.cap_notes) << " seasons_handed " << guard_.seasons_handed
+        << " seasons_at_floor " << guard_.seasons_at_floor << " seasons "
+        << join(guard_.season_notes) << '\n';
+    // The behind-feed route by year, beside the year's feed lots ordered (econ (3)).
+    std::vector<std::string> behind;
+    for (std::size_t index = 0; index < guard_.behind_cows_by_year.size(); ++index) {
+      if (guard_.behind_cows_by_year[index] > 0) {
+        const std::uint32_t lots = index < years_.size() ? years_[index].feed_lots : 0U;
+        behind.push_back("y" + std::to_string(index + 1U) + ":" +
+                         std::to_string(guard_.behind_cows_by_year[index]) + ":" +
+                         std::to_string(lots));
+      }
+    }
+    out << "population_curve: HAYL1697B seed " << seed << " behind_cows_and_feed_lots "
+        << join(behind) << '\n';
     if (guard_.below_floor_events + guard_.cap_breaches > 0) {
       out << "population_curve: CAP1697 SEED " << seed << " THE LADDER HANDED "
           << guard_.below_floor_events << " TIMES UNDER THE MILK FLOOR AND PAST ITS SEASON CAP "
@@ -530,9 +545,12 @@ class HayAnswer {
       return field.kind != core::LandKind::kArable && field.phase == core::FieldPhase::kHarvest;
     });
     if (cutting && season_year_ != year) {  // #1697's guard: a hay season runs cut to cut
+      CloseSeason(Adults(world, IsCow));
       season_year_ = year;
       season_handed_ = 0;
+      season_cows_handed_ = 0;
       season_cap_ = -1;
+      season_start_cows_ = Adults(world, IsCow);
     }
     if (cutting && cut_year_ != year && year >= kLogFirstYear && year <= kLogLastYear) {
       cut_year_ = year;
@@ -570,7 +588,12 @@ class HayAnswer {
     if (day_cows_ + day_horses_ > 0) {
       (first ? guard_.events_first : guard_.events_behind) += 1;
       (first ? guard_.cows_first : guard_.cows_behind) += day_cows_;
+      if (!first) {
+        guard_.behind_cows_by_year[year - 1U] += day_cows_;  // beside the year's feed lots
+      }
     }
+    last_floor_ = floor;
+    season_cows_handed_ += day_cows_;
     const std::int64_t adults_after = Adults(world, IsCow) - day_cows_;
     if (day_cows_ > 0 && adults_after < floor) {
       guard_.below_floor_events += 1;
@@ -591,10 +614,28 @@ class HayAnswer {
       season_breached_year_ = season_year_;
       guard_.cap_breaches += 1;
       if (guard_.cap_notes.size() < kGuardNotes) {
-        guard_.cap_notes.push_back("y" + std::to_string(year) + ":" +
-                                   std::to_string(season_handed_) + ">" +
-                                   std::to_string(season_cap_));
+        guard_.cap_notes.push_back(
+            "y" + std::to_string(year) + ":" + std::to_string(season_handed_) + ">" +
+            std::to_string(season_cap_) + "^" + std::to_string(adults_after - floor));
       }
+    }
+  }
+
+  /// #1697's season line (econ, econ-boss-1697-cap-and-blind-hunger [1] (1)): a season the
+  /// ladder handed cows in - its adult cows at the cut, the cows handed, the adults at the next
+  /// cut, the floor last read; «AT» when it ends at or under the floor.
+  void CloseSeason(std::int64_t cows_now) {
+    if (season_year_ == 0 || season_year_ > kGuardYears || season_cows_handed_ == 0) {
+      return;
+    }
+    const bool at_floor = cows_now <= last_floor_;
+    guard_.seasons_handed += 1;
+    guard_.seasons_at_floor += at_floor ? 1 : 0;
+    if (guard_.season_notes.size() < kGuardSeasonNotes) {
+      guard_.season_notes.push_back(
+          "y" + std::to_string(season_year_) + ":" + std::to_string(season_start_cows_) + "-" +
+          std::to_string(season_cows_handed_) + "->" + std::to_string(cows_now) + "/" +
+          std::to_string(last_floor_) + (at_floor ? "AT" : ""));
     }
   }
 
@@ -710,7 +751,8 @@ class HayAnswer {
 
   /// #1697's guard.
   static constexpr std::uint32_t kGuardYears = 16;
-  static constexpr std::size_t kGuardNotes = 6;
+  static constexpr std::size_t kGuardNotes = 16;  ///< a breach a season at most: 16 holds y1-y16
+  static constexpr std::size_t kGuardSeasonNotes = 16;
   static constexpr double kGuardCapShare = 1.25;
 
   struct Guard {
@@ -721,15 +763,22 @@ class HayAnswer {
     std::int64_t below_floor_events = 0;
     std::int64_t below_floor_heads = 0;
     std::int64_t cap_breaches = 0;
+    std::int64_t seasons_handed = 0;
+    std::int64_t seasons_at_floor = 0;
+    std::array<std::int64_t, kGuardYears> behind_cows_by_year{};
     std::vector<std::string> below_notes;
     std::vector<std::string> cap_notes;
+    std::vector<std::string> season_notes;
   };
 
   Guard guard_;
   std::uint32_t season_year_ = 0;
   std::uint32_t season_breached_year_ = 0;
   std::int64_t season_handed_ = 0;
+  std::int64_t season_cows_handed_ = 0;
+  std::int64_t season_start_cows_ = 0;
   std::int64_t season_cap_ = -1;
+  std::int64_t last_floor_ = 0;
 };
 
 }  // namespace run
