@@ -59,6 +59,7 @@
 #include <cstdint>
 #include <iostream>
 #include <span>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -91,6 +92,10 @@ class HayAnswer {
           home == core::kNoTableColumn ? std::string_view{} : livestock->CellText(row, home);
       kinds_.push_back(Kind{.horse = key == "horse_yard", .cow = key == "cattle_yard"});
     }
+    cow_kind_ = livestock->FindRowByKey("cow");
+    if (const core::ITable* const resources = tables.FindTable("resources")) {
+      hay_resource_ = resources->FindRowByKey("hay");
+    }
   }
 
   /// @brief One day of the chairman's attention. Call once a day, after the
@@ -105,6 +110,7 @@ class HayAnswer {
               const core::LimitCatalog* catalog = nullptr) {
     const core::WorldState& world = simulation.CompletedState();
     NoteTheDay(world);
+    NoteTheCut(world);
     const core::Alarm* yellow = nullptr;
     for (const core::Alarm& alarm : alarms) {
       if (alarm.kind == core::AlarmKind::kHerdHayShortAhead) {
@@ -184,6 +190,7 @@ class HayAnswer {
         HandOver(world, *yellow, orders);
       }
     }
+    LogTheDay(simulation, *yellow);
     if (!orders.empty()) {
       simulation.StageOrders(std::span<const core::OrderRow>(orders), {});
     }
@@ -282,6 +289,19 @@ class HayAnswer {
 
   /// @brief Holds the hand-over while the herds' plans are being set (#1289).
   void HoldHandOverForPlans(bool hold) { plans_being_set_ = hold; }
+
+  /// @brief #1697's by-day print (econ, ladder proportion [1]): every lit day of
+  ///        years kLogFirstYear..kLogLastYear - «LADDER1697 seed S y Y d D advice A more M
+  ///        short_heads N days_to_loss L hand_stock C hand_horses H below_stock B
+  ///        cow_floor F cows K horses R handed_cows X handed_horses Z hay_store_t T» - and
+  ///        a year's eve of the first cut, «LADDERCUT1697 seed S y Y d D hay_store_t T» (the
+  ///        hay in every store the day before the first non-arable field opened its cut).
+  void PrintLadderDays(std::ostream& out, std::uint64_t seed) const {
+    for (const std::string& line : day_log_) {
+      out << "population_curve: " << line.substr(0, line.find(' ')) << " seed " << seed
+          << line.substr(line.find(' ')) << '\n';
+    }
+  }
 
   /// @brief #1570's counterfactual arm (--hay-hand-over=off): the lamp's
   ///        «reduce herd» is never answered, so whether the herds it named
@@ -461,6 +481,68 @@ class HayAnswer {
     }
   }
 
+  static constexpr std::uint32_t kLogFirstYear = 7;  ///< #1697's print, 1-based
+  static constexpr std::uint32_t kLogLastYear = 10;
+
+  static std::uint32_t YearNumber(const core::WorldState& world) {
+    return (world.calendar.day / core::kDaysPerYear) + 1U;
+  }
+
+  core::Grams HayStore(const core::WorldState& world) const {
+    core::Grams hay = 0;
+    for (const core::UnitRow& unit : world.units.rows) {
+      hay += hay_resource_ < unit.stock.size() ? unit.stock[hay_resource_] : 0;
+    }
+    return hay;
+  }
+
+  /// #1697: the store the day before the year's first cut opened on non-arable land.
+  void NoteTheCut(const core::WorldState& world) {
+    const std::uint32_t year = YearNumber(world);
+    const core::Grams store = HayStore(world);
+    const bool cutting = std::ranges::any_of(world.fields.rows, [](const core::FieldRow& field) {
+      return field.kind != core::LandKind::kArable && field.phase == core::FieldPhase::kHarvest;
+    });
+    if (cutting && cut_year_ != year && year >= kLogFirstYear && year <= kLogLastYear) {
+      cut_year_ = year;
+      day_log_.push_back("LADDERCUT1697 y " + std::to_string(year) + " d " +
+                         std::to_string(world.calendar.day % core::kDaysPerYear) + " hay_store_t " +
+                         std::to_string(yesterday_hay_ / 1000000));
+    }
+    yesterday_hay_ = store;
+  }
+
+  /// #1697: one lit day's line, after the answer's orders were staged.
+  void LogTheDay(const core::ISimulation& simulation, const core::Alarm& yellow) {
+    const core::WorldState& world = simulation.CompletedState();
+    const std::uint32_t year = YearNumber(world);
+    const std::int64_t handed_cows = day_cows_;
+    const std::int64_t handed_horses = day_horses_;
+    day_cows_ = 0;
+    day_horses_ = 0;
+    if (year < kLogFirstYear || year > kLogLastYear) {
+      return;
+    }
+    std::int64_t floor = 0;
+    for (const core::HerdPlanLine& line : simulation.HerdPlans()) {
+      floor =
+          line.kind.value == cow_kind_ ? std::max<std::int64_t>(floor, line.floor_heads) : floor;
+    }
+    day_log_.push_back(
+        "LADDER1697 y " + std::to_string(year) + " d " +
+        std::to_string(world.calendar.day % core::kDaysPerYear) + " advice " +
+        std::to_string(static_cast<int>(yellow.advice)) + " more " +
+        std::to_string(static_cast<int>(yellow.advice_more)) + " short_heads " +
+        std::to_string(yellow.amount) + " days_to_loss " + std::to_string(yellow.days_to_loss) +
+        " hand_stock " + std::to_string(yellow.hand_over_stock) + " hand_horses " +
+        std::to_string(yellow.hand_over_horses) + " below_stock " +
+        std::to_string(yellow.below_floor_stock) + " cow_floor " + std::to_string(floor) +
+        " cows " + std::to_string(Adults(world, IsCow)) + " horses " +
+        std::to_string(Adults(world, IsHorse)) + " handed_cows " + std::to_string(handed_cows) +
+        " handed_horses " + std::to_string(handed_horses) + " hay_store_t " +
+        std::to_string(HayStore(world) / 1000000));
+  }
+
   /// The heads the advice names above the floors, into orders.
   void HandOver(const core::WorldState& world,
                 const core::Alarm& yellow,
@@ -477,6 +559,8 @@ class HayAnswer {
                                   .first_short = yellow.resource,
                                   .days_to_loss = yellow.days_to_loss});
     }
+    day_cows_ = cows;
+    day_horses_ = horses;
     horses_handed_ += static_cast<std::uint64_t>(horses);
     cows_handed_ += static_cast<std::uint64_t>(cows);
     year.horses_handed += static_cast<std::uint64_t>(horses);
@@ -513,6 +597,15 @@ class HayAnswer {
   std::uint64_t cows_handed_ = 0;
 
   std::vector<HandLog> hand_log_;
+
+  /// #1697's print.
+  std::uint32_t cow_kind_ = core::kNoTableRow;
+  std::uint32_t hay_resource_ = core::kNoTableRow;
+  std::uint32_t cut_year_ = 0;
+  core::Grams yesterday_hay_ = 0;
+  std::int64_t day_cows_ = 0;
+  std::int64_t day_horses_ = 0;
+  std::vector<std::string> day_log_;
 };
 
 }  // namespace run

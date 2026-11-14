@@ -1564,6 +1564,13 @@ bool Walk(std::uint64_t seed,
       builder.limit.PrintHayFeedRung(std::cout, seed, run::FeedRungTally::kYears);  // #1573
       horse_tail.Print(std::cout, seed);  // #1573's horse tail
       builder.limit.PrintHayHorseTail(std::cout, seed, run::HorseTailTally::kYears);
+      // #1697: the ladder by day, for the seeds in KOLKHOZ_LADDER_SEEDS (comma list).
+      if (const char* const ladder_seeds = std::getenv("KOLKHOZ_LADDER_SEEDS")) {
+        const std::string list = std::string(",") + ladder_seeds + ",";
+        if (list.find("," + std::to_string(seed) + ",") != std::string::npos) {
+          builder.limit.PrintHayLadderDays(std::cout, seed);
+        }
+      }
       // The warm works unfinished on a cold night, and the crew's builders
       // (warm_crew.h; boss, core-boss-1084-funeral-body [7]).
       std::cout << "population_curve: WARMLATE seed " << seed << " late_warm_works "
