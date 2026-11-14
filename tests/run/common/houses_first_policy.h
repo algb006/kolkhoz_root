@@ -55,11 +55,10 @@ class HousesFirstPolicy {
 
   /// @brief The fixture difference, BEFORE the run measures.
   void Declare(std::string_view run_name) const {
-    if (on_) {
+    if (!on_) {
       std::cout << run_name
-                << ": ARM — --houses-first (#1677): while a couple waits for a house the run's "
-                   "chairman raises every started house site in the queue (kRaiseSite), and "
-                   "lowers them when the queue is empty\n";
+                << ": ARM — --no-houses-first (#1677): the run's chairman does not raise the "
+                   "house sites while couples wait (the canon does since 0.37.379)\n";
     }
   }
 
@@ -168,7 +167,7 @@ class HousesFirstPolicy {
     lowered_ = 0;
   }
 
-  bool on_ = false;
+  bool on_ = true;  // the canon's since 0.37.379 (core-boss-1677 [8])
   std::vector<bool> is_house_;
   std::vector<std::string> type_keys_;
   std::vector<std::uint32_t> mine_;  ///< house sites this rule raised

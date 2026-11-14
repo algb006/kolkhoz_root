@@ -135,11 +135,22 @@ class SmokehousePolicy {
   /// @brief The fixture difference, BEFORE the run measures.
   void Declare(std::string_view run_name) const {
     if (!on_) {
-      return;  // the canon (off since 0.37.375)
+      std::cout << run_name
+                << ": ARM — --no-smokehouse (#1644): no smokehouse, food store or workshops for "
+                   "it (the canon puts them up since 0.37.379)\n";
+      return;
+    }
+    if (!wait_for_houses_) {
+      std::cout << run_name
+                << ": ARM — --no-smokehouse-houses-first (#1677): the smokehouse family starts "
+                   "without waiting for the houses' materials\n";
+    }
+    if (on_) {
+      return;  // the canon since 0.37.379; what it does, for the record:
     }
     {
       std::cout << run_name
-                << ": ARM — --smokehouse (#1644; the canon has it off since 0.37.375): at 1 t of "
+                << ": the canon's smokehouse (#1644, on since 0.37.379): at 1 t of "
                    "meat and fish "
                    "spoiled in a rolling "
                    "year the run's chairman marks the smokehouse on the food yard and appoints a "
@@ -787,8 +798,10 @@ class SmokehousePolicy {
   }
 
   static constexpr float kAdultYears = 16.0F;
-  bool on_ = false;               // off again in 0.37.375 (boss seq 24: K5 red on population)
-  bool wait_for_houses_ = false;  ///< #1677 shape (2)
+  // ON IN THE CANON AGAIN since 0.37.379 (boss, core-boss-1677 [8]): with the
+  // houses' materials wait under it (#1677 shape (2)) K5 held on 64 villages.
+  bool on_ = true;
+  bool wait_for_houses_ = true;  ///< #1677 shape (2), the canon's since 0.37.379
   std::vector<bool> is_house_;
   std::map<std::pair<std::uint32_t, std::uint32_t>,
            std::vector<std::pair<std::uint32_t, core::Grams>>>

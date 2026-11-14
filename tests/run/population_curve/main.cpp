@@ -612,16 +612,18 @@ bool g_no_write_off = false;
 bool g_no_salt_buy = false;
 /// #1630 (C)'s arm C3: the salt sees no points, only the loan buys it.
 bool g_salt_points_zero = false;
-/// #1644: the run's chairman puts up and staffs the smokehouse - the arm
-/// `--smokehouse`; the canon has it off (0.37.374 had it on; 0.37.375 took it
-/// back on K5's population red, boss seq 24).
-bool g_smokehouse = false;
-/// #1677 shape (2): the smokehouse family starts only when the houses' materials are covered.
-bool g_smokehouse_houses_first = false;
+/// #1644: the run's chairman puts up and staffs the smokehouse - ON in the canon
+/// since 0.37.379 with #1677's materials wait and raise under it (374 had it on
+/// bare, 375 took it back on K5's population red); `--no-smokehouse` is the arm.
+bool g_smokehouse = true;
+/// #1677 shape (2): the smokehouse family starts only when the houses' materials
+/// are covered - the canon's since 0.37.379; `--no-smokehouse-houses-first` off.
+bool g_smokehouse_houses_first = true;
 /// #307's hay arm: --hay-arm=clover (A) / mown (B) / both (A+B); off otherwise.
 run::HayArmPolicy::Mode g_hay_arm = run::HayArmPolicy::Mode::kMown;  // canon since 0.37.378
-/// #1677: house sites raised while a couple waits (--houses-first); off otherwise.
-bool g_houses_first = false;
+/// #1677: house sites raised while a couple waits - the canon's since 0.37.379;
+/// `--no-houses-first` off.
+bool g_houses_first = true;
 /// `--hay-hand-over=off`: #1570's counterfactual - the hay lamp's «reduce
 /// herd» left unanswered (LimitPolicy::HayHandOverOff), so a run can say
 /// whether the herds it named would have gone short.
@@ -1707,11 +1709,10 @@ int main(int argc, char** argv) {
       g_no_salt_buy = true;
     } else if (argument == "--salt-points-zero") {
       g_salt_points_zero = true;
-    } else if (argument == "--smokehouse") {
-      g_smokehouse = true;
-    } else if (argument == "--smokehouse-houses-first") {
-      g_smokehouse_houses_first = true;  // #1677 shape (2)
-      g_houses_first = true;             // econ's arm is shape (2) ON TOP of #1658's raise rule
+    } else if (argument == "--no-smokehouse") {
+      g_smokehouse = false;  // #1644 off (the canon has it on since 0.37.379)
+    } else if (argument == "--no-smokehouse-houses-first") {
+      g_smokehouse_houses_first = false;  // #1677 shape (2) off
     } else if (argument == "--hay-arm=off") {
       g_hay_arm = run::HayArmPolicy::Mode::kOff;  // #307: the canon without B
     } else if (argument == "--hay-arm=clover") {
@@ -1720,8 +1721,8 @@ int main(int argc, char** argv) {
       g_hay_arm = run::HayArmPolicy::Mode::kMown;  // #307 arm B
     } else if (argument == "--hay-arm=both") {
       g_hay_arm = run::HayArmPolicy::Mode::kBoth;  // #307 arm A+B
-    } else if (argument == "--houses-first") {
-      g_houses_first = true;  // #1677
+    } else if (argument == "--no-houses-first") {
+      g_houses_first = false;  // #1677's raise off
     } else if (argument == "--no-write-off") {
       g_no_write_off = true;
     } else if (argument == "--no-anticrime") {
