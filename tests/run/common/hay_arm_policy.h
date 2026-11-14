@@ -77,6 +77,13 @@ class HayArmPolicy {
 
   void SetMode(Mode mode) { mode_ = mode; }
 
+  /// @brief #1692: the fields the grain base's next block would open today
+  ///        (FallowPolicy::ComingBlock), which the arm does not take.
+  void Avoid(std::vector<core::FieldId> fields) { avoid_ = std::move(fields); }
+
+  /// @brief #1692's switch: on in the canon; --hay-arm-takes-block is the arm without it.
+  void SkipGrainBlock(bool on) { skip_grain_block_ = on; }
+
   [[nodiscard]] Mode GetMode() const { return mode_; }
 
   /// @brief The fixture difference, BEFORE the run measures.
@@ -198,6 +205,13 @@ class HayArmPolicy {
           std::ranges::find(clovered_, id) != clovered_.end()) {
         continue;
       }
+      // #1692 (econ, econ-boss-1687-rye-block [1]): the grain base's next
+      // block is not the arm's - in 2145 B took the block's three fields and
+      // the rye fell 21.5 -> 3.5 ha.
+      if (skip_grain_block_ && std::ranges::find(avoid_, id) != avoid_.end()) {
+        ++skipped_for_block_;
+        continue;
+      }
       const std::uint32_t row = core::FindRow(world.fields, id);
       if (row != core::kNoRow && NoChain(world.fields.rows[row])) {
         out = id;
@@ -268,13 +282,18 @@ class HayArmPolicy {
            << (no_horse < book.idle_person_days.size() ? book.idle_person_days[no_horse] : 0U)
            << " residents " << world.residents.rows.size() << " marked " << marked_this_year_
            << " clovered " << clovered_this_year_ << " held_mown " << mown_.size()
-           << " held_clover " << clovered_.size() << " taken_back " << TakenBack(world) << '\n';
+           << " held_clover " << clovered_.size() << " taken_back " << TakenBack(world)
+           << " skipped_for_grain_block " << skipped_for_block_ << '\n';
+    skipped_for_block_ = 0;
     lamp_days_ = 0;
     marked_this_year_ = 0;
     clovered_this_year_ = 0;
   }
 
-  Mode mode_ = Mode::kMown;  // the canon's since 0.37.378 (#1923)
+  Mode mode_ = Mode::kMown;           // the canon's since 0.37.378 (#1923)
+  std::vector<core::FieldId> avoid_;  ///< #1692: the grain base's next block today
+  bool skip_grain_block_ = true;      ///< #1692, the canon's rule (arm: off)
+  mutable std::uint32_t skipped_for_block_ = 0;
   std::uint32_t clover_ = core::kNoTableRow;
   std::uint32_t cattle_yard_ = core::kNoTableRow;
   std::uint32_t barn_ = core::kNoTableRow;

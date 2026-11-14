@@ -621,6 +621,8 @@ bool g_smokehouse = true;
 bool g_smokehouse_houses_first = true;
 /// #307's hay arm: --hay-arm=clover (A) / mown (B) / both (A+B); off otherwise.
 run::HayArmPolicy::Mode g_hay_arm = run::HayArmPolicy::Mode::kMown;  // canon since 0.37.378
+/// #1692: B leaves the grain base's next block alone (canon); --hay-arm-takes-block off.
+bool g_hay_arm_skip_block = true;
 /// #1677: house sites raised while a couple waits - the canon's since 0.37.379;
 /// `--no-houses-first` off.
 bool g_houses_first = true;
@@ -850,7 +852,8 @@ bool Walk(std::uint64_t seed,
   builder.smokehouse.Enable(g_smokehouse);  // #1644: the arm --smokehouse; off in the canon
   builder.smokehouse.WaitForHouses(g_smokehouse_houses_first);  // #1677 shape (2)
   builder.smokehouse.Declare("population_curve");
-  builder.hay_arm.SetMode(g_hay_arm);  // #307
+  builder.hay_arm.SetMode(g_hay_arm);                    // #307
+  builder.hay_arm.SkipGrainBlock(g_hay_arm_skip_block);  // #1692
   builder.hay_arm.Declare("population_curve");
   builder.houses_first.Enable(g_houses_first);  // #1677
   builder.houses_first.Declare("population_curve");
@@ -1713,6 +1716,8 @@ int main(int argc, char** argv) {
       g_smokehouse = false;  // #1644 off (the canon has it on since 0.37.379)
     } else if (argument == "--no-smokehouse-houses-first") {
       g_smokehouse_houses_first = false;  // #1677 shape (2) off
+    } else if (argument == "--hay-arm-takes-block") {
+      g_hay_arm_skip_block = false;  // #1692's arm: B may take the grain block's fields
     } else if (argument == "--hay-arm=off") {
       g_hay_arm = run::HayArmPolicy::Mode::kOff;  // #307: the canon without B
     } else if (argument == "--hay-arm=clover") {

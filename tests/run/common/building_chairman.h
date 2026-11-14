@@ -372,6 +372,9 @@ class BuildingChairman {
     // #307's hay arm: the derelict fields still free after the plan's base,
     // put to hay (hay_arm_policy.h). Its tally counts every day; it orders
     // only with its arm on.
+    // #1692: the hay arm leaves the grain base's next block alone.
+    hay_arm.Avoid(fallow_by_eaters ? fallow.ComingBlock(simulation.CompletedState())
+                                   : std::vector<core::FieldId>{});
     hay_arm.RunDay(simulation);
     // #1677: house sites raised in the queue while a couple waits (the tally
     // counts every day; it orders only with its arm on).

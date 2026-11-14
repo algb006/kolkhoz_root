@@ -189,6 +189,12 @@ class FallowPolicy {
   /// @brief The fields opened so far, for a run's own prints.
   const std::vector<core::FieldId>& OpenedFields() const { return opened_fields_; }
 
+  /// @brief #1692: the derelict fields the next block would open (NextBlockFields),
+  ///        for the hay arm to leave alone; empty before the derelict ground is read.
+  [[nodiscard]] std::vector<core::FieldId> ComingBlock(const core::WorldState& world) const {
+    return derelict_read_ ? NextBlockFields(world) : std::vector<core::FieldId>{};
+  }
+
  private:
   static constexpr std::uint32_t kFieldsPerBlock = 3;
   static constexpr std::uint32_t kBlocks = 2;
