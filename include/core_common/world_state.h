@@ -41,6 +41,7 @@
 #include "core_common/event_state.h"
 #include "core_common/extraction_state.h"
 #include "core_common/family_state.h"
+#include "core_common/flood_state.h"
 #include "core_common/funeral_state.h"
 #include "core_common/herd_state.h"
 #include "core_common/horse_lamp_memory.h"
@@ -997,6 +998,9 @@ struct WorldState {
   CalendarState calendar;
 
   WeatherState weather;
+
+  /// The spring flood's year and its water (#1375; flood_state.h). Save 211.
+  FloodState flood;
 
   Epoch epoch = Epoch::kOne;
 

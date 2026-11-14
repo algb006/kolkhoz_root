@@ -447,6 +447,12 @@ struct UnitTypeDef {
 struct FarmingConfig {
   float fertility_neutral = 50.0F;
 
+  /// THE SPRING FLOOD'S WATER (#1375; livestock.md «Половодье…»: «вода стоит до спада (STUB 8
+  /// суток)»): the days the floodplain stays under water from the flood day
+  /// (FloodState::water_until_day). world_params.csv `flood_water_days`; STUB 8 until the
+  /// design gives a number of its own.
+  std::uint16_t flood_water_days = 8;
+
   /// THE MEADOW'S FLOWERING WINDOW, 0-based months: MAY THROUGH JULY.
   ///
   /// No longer this core's ASSUMPTION. Decided by boss on 2026-09-06 and

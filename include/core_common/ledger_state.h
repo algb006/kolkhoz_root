@@ -340,6 +340,12 @@ struct YearLedger {
   /// all (econ-host-lever-pass3 seq 35): nothing vanishes without a line.
   ResourceAmounts lost_to_snow;
 
+  /// THE FODDER THE SPRING FLOOD TOOK (#1375; livestock.md «Половодье забирает то, что стоит
+  /// на пойме»): every gram of hay and straw lying on floodplain ground on the flood day - the
+  /// heaps on a kFloodplainMeadow field and the stacks on a floodplain cell - by resource,
+  /// with no share and no draw. Save 211.
+  ResourceAmounts lost_to_flood;
+
   /// WHAT THE DISTRICT SEIZED above the accumulation limit (district §9: «Не
   /// сдал и попался — изымает целиком»): a finance auditor's visit found it
   /// standing over PlanState::accumulation_limit and took it. SINCE 0.36.21

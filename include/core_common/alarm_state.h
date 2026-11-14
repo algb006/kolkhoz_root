@@ -796,6 +796,20 @@ enum class AlarmKind : std::uint8_t {
   /// core_production.
   kSaltLoanAdvice,
 
+  /// «НА ПОЙМЕ СТОИТ {т} Т — ДО ПАВОДКА ~{n} СУТОК» (#1375; livestock.md, the row «Половодье
+  /// забирает то, что стоит на пойме», the human's «Да» of 1 November 2026; boss,
+  /// core-boss-1375-flood-contract [2] p. 3; strings `alarm.floodplain_fodder_ahead.*`). A
+  /// FORECAST, yellow (`lamp` 0): from 1 February to the year's flood day, while hay or straw
+  /// lies on floodplain ground (spring_flood.h, FloodplainFodder) - the heaps on a
+  /// kFloodplainMeadow field and every stack whose cell is floodplain. A kind of its own and
+  /// not a line on kHerdHayShortAhead: that lamp is dark in a village with fodder to spare,
+  /// and the hay at risk is the same there. Subject: `resource` the hay; `amount` the GRAMS
+  /// lying on floodplain ground (hay and straw together); `days_ahead` and `days_to_loss` the
+  /// whole days to the flood by the climate's norm (ProjectedFloodDay - early, never late);
+  /// `advice` kNone (the move is the winter carting's order, which the heap deadline of
+  /// FloodDeadlineOf already puts first). Collected by core_production.
+  kFloodplainFodderAhead,
+
   // Appended by later tasks and phases: children out of school, sewage.
   // Named so the numbering is planned, not discovered.
 
