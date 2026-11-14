@@ -25,10 +25,17 @@
 # e378a/e378b on a102481a, 16 doors each: o0 10.591, o100 10.527, o200 10.67, o300 10.90 (two places, as printed).
 # Paired against 0.37.375's canon (e375, o0/o100, 32 villages): -0.098 SE 0.063 (-1.6 SE), trimmed -0.031 (-1.5 SE),
 # median -0.021 - GREEN by #1473; o100 carries the move (10.721 -> 10.527), o0 unchanged (10.594 -> 10.591).
-population_curve|E1 mean door, offset 0|10.59|0.06|2026-11-14|a102481a|boss, the 0.37.378 re-take (#307 B + #1636 on): o0's 16 doors on a102481a, mean 10.591; the margin unchanged (0.06); passes at 10.53. Replaces 4dd4ee66's 10.59.
-population_curve|E1 mean door, offset 100|10.53|0.06|2026-11-14|a102481a|boss, as offset 0: o100's 16 doors on a102481a, mean 10.527; passes at 10.47. Replaces 4dd4ee66's 10.58.
-population_curve|E1 mean door, offset 200|-|-|2026-11-14|a102481a|boss: MEASURED, NOT LINED - o200's 16 doors on a102481a, mean 10.67.
-population_curve|E1 mean door, offset 300|-|-|2026-11-14|a102481a|boss: MEASURED, NOT LINED - o300's 16 doors on a102481a, mean 10.90.
+# RE-TAKEN on 0.37.379's tree 83d4683f, 14 Nov 2026 (boss, core-boss-1677 [12]; the human #1933 «Коптильня по
+# вашей рекомендации»): the smokehouse back ON with #1677's houses' materials wait and #1658's raise. Its E1 step
+# is the HUMAN'S ACCEPTED PRICE: against 378 on 64 villages (e378a/b vs e379a/b) +0.065 y SE 0.032 (+2.04 SE),
+# trimmed +0.044 (+2.3 SE), median +0.031 - RED by #1473, ~3 game days, through «жителей ≥ 380» (+1.9 days,
+# econ [11]); residents y4/y6/y16 inside 2 SE. e379a/e379b on 83d4683f, 16 doors each: o0 10.658, o100 10.594,
+# o200 10.734, o300 10.953.
+population_curve|E1 mean door, offset 0|10.66|0.06|2026-11-14|83d4683f|boss, the 0.37.379 re-take (the smokehouse on; the human #1933 accepted its E1 lag): o0's 16 doors on 83d4683f, mean 10.658; the margin unchanged (0.06); passes at 10.60. Replaces a102481a's 10.59.
+population_curve|E1 mean door, offset 100|10.59|0.06|2026-11-14|83d4683f|boss, as offset 0: o100's 16 doors on 83d4683f, mean 10.594; passes at 10.53. Replaces a102481a's 10.53.
+population_curve|E1 mean door, offset 200|-|-|2026-11-14|83d4683f|boss: MEASURED, NOT LINED - o200's 16 doors on 83d4683f, mean 10.73.
+population_curve|E1 mean door, offset 300|-|-|2026-11-14|83d4683f|boss: MEASURED, NOT LINED - o300's 16 doors on 83d4683f, mean 10.95.
+# (was, a102481a, 14 Nov) o0 10.59, o100 10.53 (|0.06); o200 10.67, o300 10.90 measured.
 # (was, 4dd4ee66, 8 Nov) o0 10.59, o100 10.58 (|0.06); o200 10.665, o300 10.911 measured.
 # (was, e81094ec) o0 10.70, o100 10.53 (|0.06); o200 10.648, o300 10.876 measured.
 # THE #1573 LINES (de806053), read by nothing since #1568:
