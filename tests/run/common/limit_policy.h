@@ -253,6 +253,11 @@ class LimitPolicy {
     hay_.PrintLadderDays(out, seed);
   }
 
+  /// @brief #1697's guard line (HayAnswer::PrintGuard).
+  void PrintHayLadderGuard(std::ostream& out, std::uint64_t seed) const {
+    hay_.PrintGuard(out, seed);
+  }
+
   /// @brief #1573's answer line (HayAnswer::PrintFeedRung).
   void PrintHayFeedRung(std::ostream& out, std::uint64_t seed, std::uint32_t years) const {
     hay_.PrintFeedRung(out, seed, years);
