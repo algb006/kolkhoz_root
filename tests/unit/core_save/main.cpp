@@ -1548,6 +1548,9 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
     chunks.push_back(
         {"weather.road_beds.wet_days_left", F32(world.weather.road_beds.wet_days_left[bed])});
   }
+  // The spring flood (save 211, #1375).
+  chunks.push_back({"flood.last_flood_year", U16(world.flood.last_flood_year)});
+  chunks.push_back({"flood.water_until_day", U32(world.flood.water_until_day)});
 
   chunks.push_back({"epoch", Enum8(world.epoch)});
   chunks.push_back({"world_seed", U64(world.world_seed)});
@@ -2069,7 +2072,9 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // Save 209 (#1630 (C)): +11 - the salt watch, three u16, a byte and an
     // i32 after the store audit; predicted 1470 -> 1481 before the build;
     // held; the hash read off it (s1630c2).
-    {"world", 1481, 0x8ad320be3d064df3ULL},
+    // Save 211 (#1375): +6 - the spring flood, a u16 and a u32 after the weather's road beds;
+    // predicted 1481 -> 1487 (save_blocks.cpp's arity note), held; the hash read off it (u1375).
+    {"world", 1487, 0xb6f996f7d787653bULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2600,7 +2605,9 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // Save 210 (#1644 K2'): spoiled_in_pantries, an empty amounts vector (a
     // u16 count) a book, two books; predicted 4046 -> 4050 before the build,
     // held; the hash read off it (s1644e).
-    {"ledger", 4050, 0xa401000c8c185311ULL},
+    // Save 211 (#1375): lost_to_flood, an empty amounts vector (a u16 count) a book, two
+    // books; 4050 -> 4054, held; the hash read off it (u1375).
+    {"ledger", 4054, 0xa53720df72731bd9ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
