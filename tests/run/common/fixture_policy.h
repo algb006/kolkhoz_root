@@ -426,6 +426,15 @@ class FixturePolicy {
   /// the long stores.
   void SetGranaryFirstOff() { granary_first_ = false; }
 
+  /// @brief #1375's known-direction arm (econ, 1 Nov: «canon stakes its first rick on
+  ///        floodplain meadow_01 in y1 and stacks there»; --flood-rick-arm): the second rick
+  ///        is marked at the centre of the first floodplain meadow instead of the elder's
+  ///        point, so the flood has something to take.
+  void SetRickOnFloodplain() { rick_on_floodplain_ = true; }
+
+  /// @brief #1375's arm: whether the floodplain rick was ordered, and the day (for the print).
+  bool RickOnFloodplainOrdered() const { return rick_on_floodplain_ordered_; }
+
   /// @brief The orders G1 gave (its mechanism, for the run to print).
   std::uint32_t GranaryFirstOrders() const { return granary_first_orders_; }
 
@@ -811,8 +820,17 @@ class FixturePolicy {
       if (!rick_settled_) {
         rick_settled_ = true;
         const std::vector<float>& radii = definitions_.units.keep_out_radius_m;
-        const std::optional<core::Vec2> point = rick_suggested_.Take(
+        std::optional<core::Vec2> point = rick_suggested_.Take(
             world, definitions_.Plots(), rick_.value < radii.size() ? radii[rick_.value] : 0.0F);
+        if (rick_on_floodplain_) {  // #1375's arm: the first floodplain meadow's centre
+          for (const core::FieldRow& field : world.fields.rows) {
+            if (field.kind == core::LandKind::kFloodplainMeadow) {
+              point = field.center;
+              rick_on_floodplain_ordered_ = true;
+              break;
+            }
+          }
+        }
         if (point) {
           order.kind = core::OrderKind::kBuildUnit;
           order.unit_type = rick_;
@@ -1305,6 +1323,8 @@ class FixturePolicy {
 
   /// The second rick was marked, or found to have no point: not asked again.
   bool rick_settled_ = false;
+  bool rick_on_floodplain_ = false;          ///< #1375's arm
+  bool rick_on_floodplain_ordered_ = false;  ///< #1375's arm: its order was given
 
   /// The day the second rick was marked; kNoRickDay while it has not been.
   core::SimDay rick_marked_day_ = kNoRickDay;

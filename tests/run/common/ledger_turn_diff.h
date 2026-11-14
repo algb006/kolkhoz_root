@@ -3,7 +3,8 @@
 ///        the book at the close of a year's last day and the same book once closed
 ///        (day 0's hour 0 runs into it before the rotation). GENERATED from
 ///        include/core_common/ledger_state.h by ~/claudetmp/core-gen-ledger-diff.py:
-///        167 members; a member added to YearLedger and not here is not compared
+///        168 members (lost_to_flood added by hand with #1375); a member added to YearLedger
+///        and not here is not compared
 ///        - LedgerTurnDiffMembers() returns the count for a run to print beside it. The
 ///        BuiltInByType overload is written by hand (its rows have no operator==).
 /// @threading SINGLE_THREADED
@@ -23,7 +24,7 @@ namespace run {
 
 /// @brief The members LedgerTurnDiff compares (the generator's count).
 constexpr std::size_t LedgerTurnDiffMembers() {
-  return 167;
+  return 168;
 }
 
 /// One member: its name into `changed` when the two differ.
@@ -105,6 +106,7 @@ inline std::vector<std::string> LedgerTurnDiff(const core::YearLedger& before,
   NoteIfChanged(before.hauled_from_sites, after.hauled_from_sites, "hauled_from_sites", changed);
   NoteIfChanged(before.lost_no_room, after.lost_no_room, "lost_no_room", changed);
   NoteIfChanged(before.lost_to_snow, after.lost_to_snow, "lost_to_snow", changed);
+  NoteIfChanged(before.lost_to_flood, after.lost_to_flood, "lost_to_flood", changed);
   NoteIfChanged(before.seized, after.seized, "seized", changed);
   NoteIfChanged(before.reaping_today, after.reaping_today, "reaping_today", changed);
   NoteIfChanged(before.reaping_last_day, after.reaping_last_day, "reaping_last_day", changed);

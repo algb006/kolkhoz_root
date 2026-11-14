@@ -45,6 +45,7 @@
 #include "../common/env_value.h"
 #include "../common/fed_tally.h"
 #include "../common/feed_rung_tally.h"
+#include "../common/flood_tally.h"
 #include "../common/funeral_tally.h"
 #include "../common/hand_over_tally.h"
 #include "../common/hay_day_off_policy.h"
@@ -599,6 +600,8 @@ bool g_roof_exemption_old = false;
 /// `--granary-first=off`: #1285's pair base - the granary behind the long stores
 /// (FixturePolicy::SetGranaryFirstOff).
 bool g_granary_first_off = false;
+/// #1375's known-direction arm (econ): the second rick on the first floodplain meadow.
+bool g_flood_rick_arm = false;
 /// `--beach=off`: #1373's arm B - the rest set without the canon's beach
 /// (BeachPolicy::SetOff; econ, econ-boss-1373-rest-gates [1]).
 bool g_beach_off = false;
@@ -827,6 +830,11 @@ bool Walk(std::uint64_t seed,
   if (g_granary_first_off) {
     builder.fixture.SetGranaryFirstOff();
   }
+  if (g_flood_rick_arm) {
+    builder.fixture.SetRickOnFloodplain();  // #1375
+    std::cout << "population_curve: ARM - --flood-rick-arm (#1375): the second rick is marked on "
+                 "the first floodplain meadow\n";
+  }
   if (g_beach_off) {
     builder.beach.SetOff();
   }
@@ -887,6 +895,7 @@ bool Walk(std::uint64_t seed,
   run::FeedRungTally feed_rung(*world.tables);
   // #1573's horse tail y1-y30 (econ, econ-boss-1573-horse-tail [1]): horse_tail_tally.h.
   run::HorseTailTally horse_tail(*world.tables);
+  run::FloodTally flood_tally;       // #1375
   run::LedgerTurnTally ledger_turn;  // #1580
   std::array<std::uint32_t, core::kRestSourceCount> r1373_sources = {};
   std::uint32_t r1373_walk_offs = 0;
@@ -1022,6 +1031,7 @@ bool Walk(std::uint64_t seed,
                           herds.CowsHandedInYear(simulation->CompletedState().calendar.date.year));
       feed_rung.CountDayEnd(simulation->CompletedState());
       horse_tail.CountDayEnd(*simulation);
+      flood_tally.CountDayEnd(*simulation);  // #1375
       ledger_turn.CountDayEnd(*simulation);  // #1580
       if (!warm_off) {
         strada.CountDayEnd(simulation->CompletedState());
@@ -1560,6 +1570,7 @@ bool Walk(std::uint64_t seed,
       feed_rung.Print(std::cout, seed);                 // #1573
       builder.limit.PrintHayFeedRung(std::cout, seed, run::FeedRungTally::kYears);  // #1573
       horse_tail.Print(std::cout, seed);   // #1573's horse tail
+      flood_tally.Print(std::cout, seed);  // #1375
       ledger_turn.Print(std::cout, seed);  // #1580
       builder.limit.PrintHayHorseTail(std::cout, seed, run::HorseTailTally::kYears);
       builder.limit.PrintHayLadderGuard(std::cout, seed);  // #1697's guard, every village
@@ -1715,6 +1726,8 @@ int main(int argc, char** argv) {
       g_warm_hold_old = true;
     } else if (argument == "--granary-first=off") {
       g_granary_first_off = true;
+    } else if (argument == "--flood-rick-arm") {
+      g_flood_rick_arm = true;  // #1375: the second rick on the first floodplain meadow
     } else if (argument == "--hay-hand-over=off") {
       g_hay_hand_over_off = true;
     } else if (argument == "--beach=off") {
