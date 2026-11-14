@@ -248,6 +248,11 @@ class LimitPolicy {
     hay_.PrintHorseTail(out, seed, years);
   }
 
+  /// @brief #1697's by-day ladder print (HayAnswer::PrintLadderDays).
+  void PrintHayLadderDays(std::ostream& out, std::uint64_t seed) const {
+    hay_.PrintLadderDays(out, seed);
+  }
+
   /// @brief #1573's answer line (HayAnswer::PrintFeedRung).
   void PrintHayFeedRung(std::ostream& out, std::uint64_t seed, std::uint32_t years) const {
     hay_.PrintFeedRung(out, seed, years);
