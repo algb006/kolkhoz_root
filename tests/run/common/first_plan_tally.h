@@ -21,6 +21,7 @@
 #include <string>
 
 #include "core_common/calendar.h"
+#include "core_common/family_state.h"
 #include "core_common/ledger_state.h"
 #include "core_common/quantities.h"
 #include "core_common/unit_state.h"
@@ -39,19 +40,33 @@ class FirstPlanTally {
 
   /// @brief Once a day after the day's steps.
   void CountDayEnd(const core::WorldState& world) {
+    if (!started_) {  // the first evening: the start's rye in every store (and the pantries')
+      started_ = true;
+      start_held_ = HeldInStores(world);
+      start_pantries_ = HeldInPantries(world);
+    }
     if (done_ || world.calendar.day != core::kDaysPerYear) {
       return;  // year 2's first day: the closed book is year 1's
     }
     done_ = true;
     const core::YearLedger& book = world.ledger.closed;
-    core::Grams held = 0;
-    for (const core::UnitRow& unit : world.units.rows) {
-      held += rye_ < unit.stock.size() ? unit.stock[rye_] : 0;
-    }
+    // The first form's columns, then every other door the year's book has for rye (#1750's
+    // step 1 refuted econ's seed reading: sown 0.63 t; where did the rest go).
     line_ << " y " << book.year << " rye_seed_t " << Tonnes(Of(book.seed)) << " rye_eaten_t "
-          << Tonnes(Of(book.eaten)) << " rye_at_turn_t " << Tonnes(held) << " rye_due_t "
-          << Tonnes(Of(book.plan_due)) << " rye_delivered_t " << Tonnes(Of(book.plan_delivered))
-          << " failed " << (world.plan.failed_years_in_a_row > 0 ? 1 : 0);
+          << Tonnes(Of(book.eaten)) << " rye_at_turn_t " << Tonnes(HeldInStores(world))
+          << " rye_due_t " << Tonnes(Of(book.plan_due)) << " rye_delivered_t "
+          << Tonnes(Of(book.plan_delivered)) << " failed "
+          << (world.plan.failed_years_in_a_row > 0 ? 1 : 0) << " start_stores_t "
+          << Tonnes(start_held_) << " start_pantries_t " << Tonnes(start_pantries_)
+          << " pantries_at_turn_t " << Tonnes(HeldInPantries(world)) << " issued_t "
+          << Tonnes(Of(book.issued)) << " ration_t " << Tonnes(Of(book.ration)) << " advance_t "
+          << Tonnes(Of(book.advance)) << " feed_t " << Tonnes(Of(book.feed)) << " yard_feed_t "
+          << Tonnes(Of(book.yard_feed)) << " spoiled_t " << Tonnes(Of(book.spoiled)) << " stolen_t "
+          << Tonnes(Of(book.stolen)) << " bartered_t " << Tonnes(Of(book.bartered)) << " seized_t "
+          << Tonnes(Of(book.seized)) << " written_off_t " << Tonnes(Of(book.written_off))
+          << " processed_t " << Tonnes(Of(book.processed)) << " delivered_all_t "
+          << Tonnes(Of(book.delivered)) << " harvest_t " << Tonnes(Of(book.harvest))
+          << " samogon_paid_t " << Tonnes(Of(book.samogon_paid));
   }
 
   /// @brief The village's line.
@@ -61,6 +76,22 @@ class FirstPlanTally {
   }
 
  private:
+  core::Grams HeldInStores(const core::WorldState& world) const {
+    core::Grams held = 0;
+    for (const core::UnitRow& unit : world.units.rows) {
+      held += rye_ < unit.stock.size() ? unit.stock[rye_] : 0;
+    }
+    return held;
+  }
+
+  core::Grams HeldInPantries(const core::WorldState& world) const {
+    core::Grams held = 0;
+    for (const core::FamilyRow& family : world.families.rows) {
+      held += rye_ < family.pantry.size() ? family.pantry[rye_] : 0;
+    }
+    return held;
+  }
+
   core::Grams Of(const core::ResourceAmounts& amounts) const {
     return rye_ < amounts.size() ? amounts[rye_] : 0;
   }
@@ -71,6 +102,9 @@ class FirstPlanTally {
 
   std::uint32_t rye_ = core::kNoTableRow;
   bool done_ = false;
+  bool started_ = false;
+  core::Grams start_held_ = 0;
+  core::Grams start_pantries_ = 0;
   std::ostringstream line_;
 };
 
