@@ -720,8 +720,8 @@ class SmokehousePolicy {
   /// #1677 shape (2): whether the stock not bound to a site, less the unbound
   /// need of the house sites started or marked while a couple waits, covers
   /// `type`'s level-1 recipe on every line. Counts the held days.
-  /// #1761 WINDOW (c) (econ, host-econ-1745-smokehouse-window [4]-[7], signed; narrowed to
-  /// year 1 by econ-boss-1761-y1-only): in year 1 (kWindowYears) no smokehouse-family site opens if
+  /// #1761 WINDOW (c) (econ, host-econ-1745-smokehouse-window [4]-[7], signed; the stake held
+  /// too, host-econ-1761-gate [4]): in years 1-2 (kWindowYears) no smokehouse-family site opens if
   /// its build window would run into [the first meadow cut, 1 October) - the build would take the
   /// haymaking's hands. A day inside that span, or one whose window ends past the cut's first day,
   /// holds the start; from 1 October it opens. Windows: smokehouse 30 days, store 30 (NOT
@@ -915,9 +915,10 @@ class SmokehousePolicy {
   bool wait_for_houses_ = true;  ///< #1677 shape (2), the canon's since 0.37.379
   /// #1761 window (c), the canon's; SetWindow(false) is the arm without it.
   bool window_on_ = true;
-  /// Year 1 only (econ, econ-boss-1761-y1-only, signed): the y1-y2 form cost the canon's E1
-  /// +0.038 y (z +2.00, trimmed +3.23 - red by #1473; wb/wc1761).
-  static constexpr std::uint32_t kWindowYears = 1;
+  /// Years 1-2 (econ, host-econ-1761-gate [4]: «Rule: y1–y2 (the y1-only variant is dropped)»;
+  /// the stake now waits too). The start-only y1-y2 form cost the canon's E1 +0.038 y (wb/wc1761);
+  /// the y1-only form (econ-boss-1761-y1-only, 50b57730) is withdrawn with it.
+  static constexpr std::uint32_t kWindowYears = 2;
   static constexpr std::uint32_t kOctoberFirstDay = 9U * core::kDaysPerMonth;
   static constexpr std::uint32_t kSmokehouseWindowDays = 30;
   static constexpr std::uint32_t kFoodStoreWindowDays = 30;  ///< NOT measured (econ)
