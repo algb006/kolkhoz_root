@@ -45,6 +45,7 @@
 #include "core_common/world_state.h"
 #include "core_sim/step.h"
 #include "core_tables/tables.h"
+#include "env_value.h"
 
 namespace run {
 
@@ -194,8 +195,27 @@ class SmokehousePolicy {
       return;
     }
     core::OrderRow order;
-    if (!NextOrder(world, order) && !NextStoreOrder(world, order) &&
-        !(barrel_triggered_ && NextCooperOrder(world, order))) {
+    // THE WINDOW ENDS THE FAMILY'S DAY (#1761, boss's row on econ's and host's reading): a
+    // refused order takes the day's cooldown and does not fall through to the store's or the
+    // cooper's - host's door semantics, which passed the novice (6/54, starved 99) where the
+    // fall-through form left a gap of 12 heads in five villages.
+    window_refused_today_ = false;
+    const char* action = "none";
+    bool ordered = NextOrder(world, order);
+    action = ordered ? "smokehouse" : action;
+    if (!ordered && !window_refused_today_) {
+      ordered = NextStoreOrder(world, order);
+      action = ordered ? "store" : action;
+    }
+    if (!ordered && !window_refused_today_ && barrel_triggered_) {
+      ordered = NextCooperOrder(world, order);
+      action = ordered ? "cooper" : action;
+    }
+    TraceDay(world, ordered ? action : (window_refused_today_ ? "held" : "none"), order);
+    if (!ordered) {
+      if (window_refused_today_) {
+        cooldown_ = 1;
+      }
       return;
     }
     simulation.StageOrders(std::span<const core::OrderRow>(&order, 1), {});
@@ -242,6 +262,11 @@ class SmokehousePolicy {
           << (seen.started == 0 ? 0 : seen.started - 1U) << ':' << (seen.ours ? "ours" : "other");
     }
     out << (any ? "" : " -") << '\n';
+    if (TraceSeedListed(seed)) {  // #1761's cause on file: the family's day, y1-y2
+      const std::string trace = trace_.str();
+      out << "population_curve: SMOKE1761T seed " << seed << " arm " << (window_on_ ? 1 : 0)
+          << " days" << (trace.empty() ? " -" : trace) << '\n';
+    }
     if (y3_barrels_out_no_cooper_days_ > 0) {  // #1761's return condition, shouted
       out << "population_curve: SMOKE1761 SEED " << seed << " RAN OUT OF BARRELS IN Y3 FOR WANT OF "
           << "THE COOPER ON " << y3_barrels_out_no_cooper_days_ << " DAYS\n";
@@ -249,6 +274,24 @@ class SmokehousePolicy {
   }
 
  private:
+  /// KOLKHOZ_SMOKE_TRACE_SEEDS: seeds separated by commas or spaces; unset prints none.
+  static bool TraceSeedListed(std::uint64_t seed) {
+    const std::optional<std::string> list = EnvValue("KOLKHOZ_SMOKE_TRACE_SEEDS");
+    if (!list) {
+      return false;
+    }
+    std::string spaced = *list;
+    std::replace(spaced.begin(), spaced.end(), ',', ' ');
+    std::istringstream items(spaced);
+    std::uint64_t listed = 0;
+    while (items >> listed) {
+      if (listed == seed) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   static std::string Opt(const std::optional<core::SimDay>& day) {
     return day ? std::to_string(*day) : std::string("never");
   }
@@ -762,6 +805,7 @@ class SmokehousePolicy {
     }
     if (holds) {
       ++held_for_window_days_;
+      window_refused_today_ = true;  // the family's day ends (RunDay)
     }
     return holds;
   }
@@ -844,6 +888,20 @@ class SmokehousePolicy {
         seen.started = world.calendar.day + 1U;
       }
       seen.in_window = seen.in_window || (window && going);
+    }
+  }
+
+  /// #1761's per-day trace (boss: «a RunDay per-day trace on seeds 2049, 1931, 1953, 2044,
+  /// 2041, both arms, y1-y2»): the family's action of each day it reached the order step - its
+  /// kind and the order's kind - kept for y1-y2, printed for the seeds in
+  /// KOLKHOZ_SMOKE_TRACE_SEEDS (SMOKE1761T).
+  void TraceDay(const core::WorldState& world, const char* action, const core::OrderRow& order) {
+    if (world.calendar.day >= kWindowYears * core::kDaysPerYear) {
+      return;
+    }
+    trace_ << ' ' << world.calendar.day << ':' << action;
+    if (std::string_view(action) != "none" && std::string_view(action) != "held") {
+      trace_ << ':' << static_cast<int>(order.kind);
     }
   }
 
@@ -1012,6 +1070,8 @@ class SmokehousePolicy {
   std::uint32_t window_store_days_ = 0;
   std::uint32_t window_workshops_days_ = 0;
   std::map<std::uint32_t, SiteSeen> sites_seen_;  ///< by UnitId value (host's per-site line)
+  bool window_refused_today_ = false;             ///< #1761: the window held an order this day
+  std::ostringstream trace_;                      ///< #1761: y1-y2 «day:action[:order kind]»
   std::vector<bool> is_house_;
   std::map<std::pair<std::uint32_t, std::uint32_t>,
            std::vector<std::pair<std::uint32_t, core::Grams>>>
