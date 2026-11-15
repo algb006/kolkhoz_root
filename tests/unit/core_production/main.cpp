@@ -1776,6 +1776,35 @@ int CheckTheForecastAdvice() {
                            world.herds.rows[0].adult_count - floored.hand_over_stock >= 3,
                        "#1697: the plan's rung never names a cow under the milk floor");
   }
+  // #1737: THE HAY'S TERM - the larger of the plan's least and the heads the store cannot
+  // carry to the first pasture day, never below the floor; the 380 count is the switch's off.
+  {
+    core::ProductionConfig hay_off = config;
+    hay_off.farming.hand_over_by_hay = false;
+    const auto lamp_with = [](const core::ProductionConfig& with, const core::WorldState& w) {
+      std::vector<core::Alarm> alarms;
+      core::CollectHerdForecastAlarms(with, w, alarms);
+      return alarms.empty() ? core::Alarm{} : alarms[0];
+    };
+    const core::WorldState world = village(80.0F, kNoGranary, 0.0F);
+    const core::Alarm by_plan = lamp_with(hay_off, world);
+    const core::Alarm by_hay = lamp_with(config, world);
+    std::cout << "  #1737 forecast advice, 80 kg: to hand " << by_plan.hand_over_stock
+              << " by the plan alone, " << by_hay.hand_over_stock << " with the hay's term (set by "
+              << static_cast<int>(by_hay.hand_over_sized_by) << ")\n";
+    failures += Expect(by_hay.hand_over_stock >= by_plan.hand_over_stock &&
+                           by_hay.hand_over_stock <= world.herds.rows[0].adult_count &&
+                           by_plan.hand_over_sized_by == 0,
+                       "#1737: the hay's term never names fewer heads than the plan's, nor more "
+                       "than stand; with it off the plan sets them");
+    core::WorldState floored = world;
+    floored.plan.highest_due = {0, 2'000'000};
+    floored.ledger.closed.adult_head_days = {4 * core::kDaysPerYear};
+    floored.ledger.closed.herd_produce = {0, 4'000'000};
+    const core::Alarm at_floor = lamp_with(config, floored);
+    failures += Expect(floored.herds.rows[0].adult_count - at_floor.hand_over_stock >= 3,
+                       "#1737: the hay's term stops at the milk floor");
+  }
   // THE PURCHASE THAT FEEDS NO HEAD MORE: the granary full of compound feed,
   // its share of the day taken already — the hole is the hay's.
   {

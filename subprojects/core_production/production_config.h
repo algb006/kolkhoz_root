@@ -870,6 +870,12 @@ struct FarmingConfig {
   /// is never reached and not read (STUB). Off: today's homes only.
   bool feed_into_church_until_granary = false;
 
+  /// #1737 (econ-boss-1697-hay-sized-handover [1]): the hay lamp's «сдать головы» names the
+  /// larger of the plan's least and the heads the store cannot carry to the first pasture day,
+  /// never below the floors (herd_floors.cpp, HeadsTheStoreCannotCarry). world_params
+  /// `hand_over_by_hay` (optional), on by default; 0 is the arm of 0.37.380's count alone.
+  bool hand_over_by_hay = true;
+
   /// THE SECOND LEVER OF THE CATTLE YARD (livestock design §5; econ-boss-
   /// complexity-yards-groom [3]-[4]; world_params `herd_without_yard_yield_
   /// factor`, 0): from the day the player enters, a kolkhoz herd with no
