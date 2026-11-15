@@ -1809,6 +1809,25 @@ int CheckTheForecastAdvice() {
     const core::Alarm at_floor = lamp_with(hay_on, floored);
     failures += Expect(floored.herds.rows[0].adult_count - at_floor.hand_over_stock >= 3,
                        "#1737: the hay's term stops at the milk floor");
+    // THE FINDING THE LADDER CHECKS' SWITCH CARRIES (boss, #1737): with a small store against a
+    // winter to May the term names every head above the floors. Printed for the stores those
+    // checks used, term on, with no floor and with the milk floor of three: named / herd / floor.
+    for (const float kg : {0.0F, 60.0F, 72.0F, 80.0F, 88.0F}) {
+      core::WorldState small = village(kg, kNoGranary, 0.0F);
+      const core::Alarm open = lamp_with(hay_on, small);
+      small.plan.highest_due = {0, 2'000'000};
+      small.ledger.closed.adult_head_days = {4 * core::kDaysPerYear};
+      small.ledger.closed.herd_produce = {0, 4'000'000};
+      const core::Alarm kept = lamp_with(hay_on, small);
+      std::cout << "  #1737 term on, " << kg << " kg: named " << open.hand_over_stock << " of "
+                << small.herds.rows[0].adult_count << " (no floor, set by "
+                << static_cast<int>(open.hand_over_sized_by) << "); with the floor of 3: named "
+                << kept.hand_over_stock << ", set by " << static_cast<int>(kept.hand_over_sized_by)
+                << '\n';
+      failures += Expect(small.herds.rows[0].adult_count - kept.hand_over_stock >= 3,
+                         "#1737: with the term on, a small store never takes the herd under its "
+                         "milk floor");
+    }
   }
   // THE PURCHASE THAT FEEDS NO HEAD MORE: the granary full of compound feed,
   // its share of the day taken already — the hole is the hay's.
