@@ -113,6 +113,19 @@ struct HandOverAdvice {
   /// Within a class as the door takes them, adults then juveniles.
   std::int64_t below_floor_stock = 0;
   std::int64_t below_floor_horses = 0;
+
+  /// #1737 (econ-boss-1697-hay-sized-handover [1]): which term set the heads above -
+  /// HandOverSizedBy. The HAY's term is the heads the store cannot carry to the first pasture
+  /// day (HeadsTheStoreCannotCarry); the advice hands the larger of it and the plan's, never
+  /// below the floors.
+  std::uint8_t sized_by = 0;
+};
+
+/// @brief HandOverAdvice::sized_by's values (#1737; Alarm::hand_over_sized_by carries them).
+enum class HandOverSizedBy : std::uint8_t {
+  kPlan = 0,        ///< The plan's and the floors' least (#1697), or no head at all.
+  kHay = 1,         ///< The store's term was larger and set the heads.
+  kFloorBinds = 2,  ///< The store's term would cross a floor: stopped AT the floors.
 };
 
 /// @brief THE LEAST HEADS TO HAND OVER FOR THE REST TO BE FED to the lamp's

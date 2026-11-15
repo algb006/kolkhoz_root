@@ -1186,7 +1186,7 @@ bool ParseMeadowKinds(const ITable& table, FarmingConfig& farming, std::string& 
 /// AT ALL: until 2026-09-16 this module took every number off its own
 /// hand-written tables, and the two halves of billeting are what brought it
 /// here. The next world constant lands in the same place.
-constexpr std::array<std::string_view, 40> kProductionWorldParamKeys = {
+constexpr std::array<std::string_view, 41> kProductionWorldParamKeys = {
     "billet_heads_per_yard",
     "billet_yield_factor",
     "school_year_start_month",
@@ -1242,7 +1242,9 @@ constexpr std::array<std::string_view, 40> kProductionWorldParamKeys = {
     // #1375: the days the spring flood's water stands on the floodplain (STUB 8).
     "flood_water_days",
     // #1764 (A): the first plan's failure forgiven for the theft before acceptance (0 off).
-    "plan_credit_pre_act_theft"};
+    "plan_credit_pre_act_theft",
+    // #1737: the hand-over sized to the hay as well as to the plan (1 on, 0 the 380 count).
+    "hand_over_by_hay"};
 
 /// THE SCHOOL YEAR IS READ HERE AS WELL AS BY THE SCHOOL, and that is a
 /// second READER, not a second home: the months live in world_params.csv and
@@ -1271,6 +1273,7 @@ bool ParseProductionWorldParams(const ITable& world,
   float feed_into_church = farming.feed_into_church_until_granary ? 1.0F : 0.0F;
   auto flood_water_days = static_cast<float>(farming.flood_water_days);
   float credit_pre_act_theft = farming.plan_credit_pre_act_theft ? 1.0F : 0.0F;
+  float by_hay = farming.hand_over_by_hay ? 1.0F : 0.0F;
   const Range months{.low = 1.0F, .high = static_cast<float>(kMonthsPerYear)};
   const std::array<ScalarKnob, kProductionWorldParamKeys.size()> knobs = {
       ScalarKnob{.key = kProductionWorldParamKeys[0],
@@ -1420,12 +1423,16 @@ bool ParseProductionWorldParams(const ITable& world,
                  .range = Range{.low = 1.0F, .high = static_cast<float>(kDaysPerYear)}},
       ScalarKnob{.key = kProductionWorldParamKeys[39],
                  .value = &credit_pre_act_theft,
+                 .range = Range{.low = 0.0F, .high = 1.0F}},
+      ScalarKnob{.key = kProductionWorldParamKeys[40],
+                 .value = &by_hay,
                  .range = Range{.low = 0.0F, .high = 1.0F}}};
   if (!ReadKnobs(world, "world_params", knobs, error)) {
     return false;
   }
   farming.flood_water_days = static_cast<std::uint16_t>(flood_water_days);
   farming.plan_credit_pre_act_theft = credit_pre_act_theft >= 0.5F;
+  farming.hand_over_by_hay = by_hay >= 0.5F;
   farming.salt_need_on = salt_on >= 0.5F;
   farming.feed_into_church_until_granary = feed_into_church >= 0.5F;
   farming.barrack_poultry_heads = static_cast<std::uint16_t>(barrack_poultry_heads);

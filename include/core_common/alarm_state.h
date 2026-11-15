@@ -1331,6 +1331,13 @@ struct Alarm {
   /// @note Not in the save, as `lamp`.
   std::int64_t below_floor_after_feed = 0;
 
+  /// kHerdHayShortAhead (#1737; econ-boss-1697-hay-sized-handover [1]): WHICH TERM SET the
+  /// heads in hand_over_stock and hand_over_horses - 0 the plan's and the floors' least, 1 the
+  /// heads the store cannot carry to the first pasture day (larger, so it set them), 2 that
+  /// term would have crossed a floor and the heads stopped AT the floors («floor binds»).
+  /// 0 for every other kind. @note Not in the save, as `lamp`.
+  std::uint8_t hand_over_sized_by = 0;
+
   /// kHerdHayShortAhead with kReduceHerd named: THE HEADS ABOVE THEIR HERD'S
   /// PLAN (#1289; livestock.md «План стада»: «Совет "сдать головы" называет
   /// головы сверх N первыми»), summed over the kolkhoz herds whose chairman

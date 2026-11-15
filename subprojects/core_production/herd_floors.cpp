@@ -14,6 +14,7 @@
 #include "core_common/quantities.h"
 #include "herd_life.h"
 #include "herd_plan.h"
+#include "herd_system.h"
 #include "plan_alarms.h"
 
 namespace core {
@@ -285,11 +286,113 @@ ClassRoom RoomAboveTheFloors(const ProductionConfig& config, const WorldState& w
                    .cows = std::max<std::int64_t>(0, cow_adults - floors.cows_kept)};
 }
 
+/// #1737's HAY TERM (econ-boss-1697-hay-sized-handover [1]; boss-core-1697-hay-sized [1]):
+/// the heads the store cannot carry to the first pasture day - the kolkhoz herds' need of
+/// this month's ration from today to the first day of FarmingConfig::pasture_from_month, less
+/// the store (`held`, in feed units by ProductionConfig::feed_values), turned into heads of a
+/// class's adult ration, the horses above their floor first, then the cows above theirs, as
+/// the floors' ladder hands them. What a class's room does not cover stays: the floor binds.
+/// Nought inside the pasture months and with the store enough.
+struct HayTerm {
+  std::int64_t horses = 0;
+  std::int64_t cows = 0;
+  bool floor_binds = false;
+};
+
+HayTerm HeadsTheStoreCannotCarry(const ProductionConfig& config,
+                                 const WorldState& world,
+                                 const std::vector<float>& held,
+                                 const ClassRoom& room) {
+  HayTerm term;
+  const auto month = static_cast<std::uint8_t>(world.calendar.date.month);
+  const FarmingConfig& farming = config.farming;
+  if (month >= farming.pasture_from_month && month <= farming.pasture_to_month) {
+    return term;  // the grass carries them
+  }
+  const SimDay of_year = world.calendar.day % kDaysPerYear;
+  const SimDay pasture_day = static_cast<SimDay>(farming.pasture_from_month) * kDaysPerMonth;
+  const SimDay days =
+      pasture_day > of_year ? pasture_day - of_year : kDaysPerYear - of_year + pasture_day;
+  double need = 0.0;
+  for (const HerdRow& herd : world.herds.rows) {
+    if (herd.household_owned != 0 || herd.kind.value >= config.livestock.size()) {
+      continue;
+    }
+    need += static_cast<double>(
+                FeedNeedUnits(config, config.livestock[herd.kind.value], herd, month, false)) *
+            static_cast<double>(days);
+  }
+  double store = 0.0;
+  for (std::size_t resource = 0; resource < held.size() && resource < config.feed_values.size();
+       ++resource) {
+    store +=
+        static_cast<double>(held[resource]) * static_cast<double>(config.feed_values[resource]);
+  }
+  double deficit = need - store;
+  if (!(deficit > 0.0)) {
+    return term;
+  }
+  const LivestockKindId cow = MilkKind(config);
+  const auto take = [&deficit, days](const LivestockDef* kind, std::int64_t room_heads) {
+    if (kind == nullptr || room_heads <= 0 || !(kind->feed_units_per_game_day > 0.0F)) {
+      return std::int64_t{0};
+    }
+    const double per_head =
+        static_cast<double>(kind->feed_units_per_game_day) * static_cast<double>(days);
+    const auto heads = std::min<std::int64_t>(
+        room_heads, static_cast<std::int64_t>(std::ceil((deficit / per_head) - kHair)));
+    deficit -= static_cast<double>(heads) * per_head;
+    return heads;
+  };
+  const LivestockDef* const horse_kind = config.horse_kind.value < config.livestock.size()
+                                             ? &config.livestock[config.horse_kind.value]
+                                             : nullptr;
+  const LivestockDef* const cow_kind =
+      cow.value < config.livestock.size() ? &config.livestock[cow.value] : nullptr;
+  term.horses = take(horse_kind, room.horses);
+  if (deficit > 0.0) {
+    term.cows = take(cow_kind, room.cows);
+  }
+  term.floor_binds = deficit > kHair;
+  return term;
+}
+
+HandOverAdvice LeastHeadsByThePlan(const ProductionConfig& config,
+                                   const WorldState& world,
+                                   const std::vector<float>* held);
+
 }  // namespace
 
 HandOverAdvice LeastHeadsToHandOver(const ProductionConfig& config,
                                     const WorldState& world,
                                     const std::vector<float>* held) {
+  HandOverAdvice advice = LeastHeadsByThePlan(config, world, held);
+  if (!config.farming.hand_over_by_hay) {
+    return advice;
+  }
+  // THE LARGER OF THE PLAN'S AND THE HAY'S, NEVER BELOW THE FLOORS (#1737): 380 handed the
+  // plan's correct count, and the novice's short store could not carry those heads to the
+  // grass (host NPS: starved y1-y3 62 -> 86, all in y2 m4-m6).
+  const std::vector<float> own =
+      held != nullptr ? std::vector<float>{} : HerdFeedHeldKg(config, world);
+  const HayTerm hay = HeadsTheStoreCannotCarry(
+      config, world, held != nullptr ? *held : own, RoomAboveTheFloors(config, world));
+  if (hay.horses > advice.horses || hay.cows > advice.stock) {
+    advice.horses = std::max(advice.horses, hay.horses);
+    advice.stock = std::max(advice.stock, hay.cows);
+    advice.sized_by = static_cast<std::uint8_t>(HandOverSizedBy::kHay);
+  }
+  if (hay.floor_binds) {
+    advice.sized_by = static_cast<std::uint8_t>(HandOverSizedBy::kFloorBinds);
+  }
+  return advice;
+}
+
+namespace {
+
+HandOverAdvice LeastHeadsByThePlan(const ProductionConfig& config,
+                                   const WorldState& world,
+                                   const std::vector<float>* held) {
   // THE STOCK IS THE SAME FOR EVERY PROBE (herd_forecast.h, ForecastHerdFeed's
   // `held`): the heads scaled to the plans below move no store.
   const std::vector<float> own =
@@ -363,8 +466,6 @@ HandOverAdvice LeastHeadsToHandOver(const ProductionConfig& config,
   }
   return LeastHeadsAboveTheFloors(config, world, stock);
 }
-
-namespace {
 
 HandOverAdvice LeastHeadsAboveTheFloors(const ProductionConfig& config,
                                         const WorldState& world,
