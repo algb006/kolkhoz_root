@@ -1494,6 +1494,10 @@ int CheckTheChurchTakesFeedUntilTheGranary() {
 int CheckTheForecastAdvice() {
   int failures = 0;
   core::ProductionConfig config = MakeHerdConfig();
+  // THE LADDER'S RUNGS ARE CHECKED WITH THE PLAN'S COUNT ALONE (#1737): these worlds' stores
+  // are a few kilograms against a winter to May, so the hay's term would name every head and
+  // hide the rung each check reads. The hay's term has its own block below, switched on.
+  config.farming.hand_over_by_hay = false;
   config.hay_resource = core::ResourceId{0};
   config.resource_stores_read = 1;
   config.feed_values = {1.0F, 0.0F, 0.0F, 1.0F, 0.5F};
@@ -1779,8 +1783,9 @@ int CheckTheForecastAdvice() {
   // #1737: THE HAY'S TERM - the larger of the plan's least and the heads the store cannot
   // carry to the first pasture day, never below the floor; the 380 count is the switch's off.
   {
-    core::ProductionConfig hay_off = config;
-    hay_off.farming.hand_over_by_hay = false;
+    const core::ProductionConfig hay_off = config;  // the block's own config: the term off
+    core::ProductionConfig hay_on = config;
+    hay_on.farming.hand_over_by_hay = true;
     const auto lamp_with = [](const core::ProductionConfig& with, const core::WorldState& w) {
       std::vector<core::Alarm> alarms;
       core::CollectHerdForecastAlarms(with, w, alarms);
@@ -1788,7 +1793,7 @@ int CheckTheForecastAdvice() {
     };
     const core::WorldState world = village(80.0F, kNoGranary, 0.0F);
     const core::Alarm by_plan = lamp_with(hay_off, world);
-    const core::Alarm by_hay = lamp_with(config, world);
+    const core::Alarm by_hay = lamp_with(hay_on, world);
     std::cout << "  #1737 forecast advice, 80 kg: to hand " << by_plan.hand_over_stock
               << " by the plan alone, " << by_hay.hand_over_stock << " with the hay's term (set by "
               << static_cast<int>(by_hay.hand_over_sized_by) << ")\n";
@@ -1801,7 +1806,7 @@ int CheckTheForecastAdvice() {
     floored.plan.highest_due = {0, 2'000'000};
     floored.ledger.closed.adult_head_days = {4 * core::kDaysPerYear};
     floored.ledger.closed.herd_produce = {0, 4'000'000};
-    const core::Alarm at_floor = lamp_with(config, floored);
+    const core::Alarm at_floor = lamp_with(hay_on, floored);
     failures += Expect(floored.herds.rows[0].adult_count - at_floor.hand_over_stock >= 3,
                        "#1737: the hay's term stops at the milk floor");
   }
