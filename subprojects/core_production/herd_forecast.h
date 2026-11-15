@@ -449,6 +449,9 @@ struct FodderAdvice {
   /// #1689: the heads below the floors still short WITH the maximal purchase
   /// (Alarm::below_floor_after_feed).
   std::int64_t below_floor_after_feed = 0;
+
+  /// #1737: which term set the heads (HandOverAdvice::sized_by; Alarm::hand_over_sized_by).
+  std::uint8_t hand_over_sized_by = 0;
   /// #1573: no move named because of the heads rung's tolerance
   /// (Alarm::advice_tolerated).
   bool tolerated = false;

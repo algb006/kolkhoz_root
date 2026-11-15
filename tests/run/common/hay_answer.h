@@ -330,6 +330,25 @@ class HayAnswer {
     }
     out << "population_curve: HAYL1697B seed " << seed << " behind_cows_and_feed_lots "
         << join(behind) << '\n';
+    // #1737: the hand-over evenings by the term that set their heads, a month - «y:m:plan:hay:
+    // floor»; totals beside, so a silent term reads as nought, not as absent.
+    std::vector<std::string> months;
+    std::array<std::uint32_t, 3> totals{};
+    for (std::size_t slot = 0; slot < sized_by_.size() / 3U; ++slot) {
+      const std::uint32_t plan = sized_by_[slot * 3U];
+      const std::uint32_t hay = sized_by_[slot * 3U + 1U];
+      const std::uint32_t floor = sized_by_[slot * 3U + 2U];
+      totals[0] += plan;
+      totals[1] += hay;
+      totals[2] += floor;
+      if (plan + hay + floor > 0) {
+        months.push_back("y" + std::to_string(slot / 12U + 1U) + ":m" +
+                         std::to_string(slot % 12U + 1U) + ":" + std::to_string(plan) + ":" +
+                         std::to_string(hay) + ":" + std::to_string(floor));
+      }
+    }
+    out << "population_curve: HAY1737 seed " << seed << " by_plan " << totals[0] << " by_hay "
+        << totals[1] << " floor_binds " << totals[2] << " months " << join(months) << '\n';
     if (guard_.below_floor_events + guard_.cap_breaches > 0) {
       out << "population_curve: CAP1697 SEED " << seed << " THE LADDER HANDED "
           << guard_.below_floor_events << " TIMES UNDER THE MILK FLOOR AND PAST ITS SEASON CAP "
@@ -585,6 +604,11 @@ class HayAnswer {
       return;
     }
     const bool first = yellow.advice == core::AlarmAdvice::kReduceHerd;
+    // #1737: which term set the heads of this evening's hand-over, by month.
+    if (day_cows_ + day_horses_ > 0 && yellow.hand_over_sized_by < 3U) {
+      const auto month = static_cast<std::size_t>(world.calendar.date.month);
+      sized_by_[((year - 1U) * 12U + month) * 3U + yellow.hand_over_sized_by] += 1;
+    }
     if (day_cows_ + day_horses_ > 0) {
       (first ? guard_.events_first : guard_.events_behind) += 1;
       (first ? guard_.cows_first : guard_.cows_behind) += day_cows_;
@@ -779,6 +803,8 @@ class HayAnswer {
   std::int64_t season_start_cows_ = 0;
   std::int64_t season_cap_ = -1;
   std::int64_t last_floor_ = 0;
+  /// #1737: hand-over evenings by (year, month, term: plan / hay / floor binds), y1-y16.
+  std::array<std::uint32_t, static_cast<std::size_t>(kGuardYears) * 12U * 3U> sized_by_{};
 };
 
 }  // namespace run
