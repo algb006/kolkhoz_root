@@ -74,6 +74,17 @@ class SmokehousePolicy {
     workshops_ = row_of("unit_types", "workshops");
     food_store_ = row_of("unit_types", "food_store");
     ReadRecipes(tables);
+    if (const core::ITable* const farming = tables.FindTable("farming")) {  // #1761
+      const std::uint32_t row = farming->FindRowByKey("meadow_cut_month");
+      const std::uint32_t column = farming->FindColumn("value");
+      if (row != core::kNoTableRow && column != core::kNoTableColumn) {
+        if (const std::optional<float> month = farming->CellReal(row, column)) {
+          if (*month >= 1.0F && *month <= 12.0F) {
+            first_cut_day_ = (static_cast<std::uint32_t>(*month) - 1U) * core::kDaysPerMonth;
+          }
+        }
+      }
+    }
     utility_yard_ = row_of("unit_types", "utility_yard");
     craftsman_ = row_of("professions", "farm_craftsman");
     life_speedup_ = core::LifeSpeedupOr(tables, life_speedup_);
@@ -130,6 +141,9 @@ class SmokehousePolicy {
   ///        waits, covers their recipe on every line (--smokehouse-houses-first).
   void WaitForHouses(bool on) { wait_for_houses_ = on; }
 
+  /// @brief #1761 window (c): on in the canon; false is the arm of 0.37.382's rule.
+  void SetWindow(bool on) { window_on_ = on; }
+
   [[nodiscard]] bool On() const { return on_; }
 
   /// @brief The fixture difference, BEFORE the run measures.
@@ -167,6 +181,7 @@ class SmokehousePolicy {
     const core::WorldState& world = simulation.CompletedState();
     CountDay(world);
     CountStops(simulation, world);
+    CountBarrelsOutInYearThree(world);
     salt_extra_need_g_ = on_ ? SaltForTheStores(world) : 0;
     salt_extra_max_g_ = std::max(salt_extra_max_g_, salt_extra_need_g_);
     if (!on_ || !triggered_) {
@@ -204,7 +219,13 @@ class SmokehousePolicy {
         << " store_marked_day " << Opt(store_marked_day_) << " store_built_day "
         << Opt(store_built_day_) << " stores_asked " << stores_asked_ << " stores_built "
         << stores_built_ << " held_for_houses_materials_days " << held_for_houses_materials_days_
-        << " first_materials_hold_day " << Opt(first_materials_hold_day_) << '\n';
+        << " first_materials_hold_day " << Opt(first_materials_hold_day_) << " window_on "
+        << (window_on_ ? 1 : 0) << " held_for_window_checks " << held_for_window_days_
+        << " y3_barrels_out_no_cooper_days " << y3_barrels_out_no_cooper_days_ << '\n';
+    if (y3_barrels_out_no_cooper_days_ > 0) {  // #1761's return condition, shouted
+      out << "population_curve: SMOKE1761 SEED " << seed << " RAN OUT OF BARRELS IN Y3 FOR WANT OF "
+          << "THE COOPER ON " << y3_barrels_out_no_cooper_days_ << " DAYS\n";
+    }
   }
 
  private:
@@ -449,6 +470,9 @@ class SmokehousePolicy {
       if (!MaterialsHold(world, smokehouse_)) {
         return false;  // #1677 shape (2): the houses' materials first
       }
+      if (WindowHolds(world, kSmokehouseWindowDays)) {
+        return false;  // #1761 window (c): not into the haymaking
+      }
       order.kind = core::OrderKind::kStartBuild;
       order.unit = world.units.row_ids[house];
       return true;
@@ -519,6 +543,9 @@ class SmokehousePolicy {
       if (!MaterialsHold(world, food_store_)) {
         return false;  // #1677 shape (2): the houses' materials first
       }
+      if (WindowHolds(world, kFoodStoreWindowDays)) {
+        return false;  // #1761 window (c): not into the haymaking
+      }
       order.kind = core::OrderKind::kStartBuild;
       order.unit = world.units.row_ids[row];
       return true;
@@ -574,6 +601,9 @@ class SmokehousePolicy {
       }
       if (!MaterialsHold(world, workshops_)) {
         return false;  // #1677 shape (2): the houses' materials first
+      }
+      if (WindowHolds(world, kWorkshopsWindowDays)) {
+        return false;  // #1761 window (c): not into the haymaking
       }
       order.kind = core::OrderKind::kStartBuild;
       order.unit = world.units.row_ids[shop];
@@ -676,6 +706,45 @@ class SmokehousePolicy {
   /// #1677 shape (2): whether the stock not bound to a site, less the unbound
   /// need of the house sites started or marked while a couple waits, covers
   /// `type`'s level-1 recipe on every line. Counts the held days.
+  /// #1761 WINDOW (c) (econ, host-econ-1745-smokehouse-window [4]-[7], signed): in years 1-2
+  /// no smokehouse-family site opens if its build window would run into [the first meadow cut,
+  /// 1 October) - the build would take the haymaking's hands. A day inside that span, or one
+  /// whose window ends past the cut's first day, holds the start; from 1 October it opens.
+  /// Windows: smokehouse 30 days, store 30 (NOT measured), workshops 15.
+  bool WindowHolds(const core::WorldState& world, std::uint32_t window_days) {
+    if (!window_on_) {
+      return false;
+    }
+    const std::uint32_t year = (world.calendar.day / core::kDaysPerYear) + 1U;
+    if (year > kWindowYears) {
+      return false;
+    }
+    const std::uint32_t of_year = world.calendar.day % core::kDaysPerYear;
+    const bool holds = of_year < kOctoberFirstDay && of_year + window_days > first_cut_day_;
+    if (holds) {
+      ++held_for_window_days_;
+    }
+    return holds;
+  }
+
+  /// #1761's return condition (econ [5]): in year 3, the days the stores hold no barrel while
+  /// no workshops stand to make one - the village out of barrels for want of the cooper.
+  void CountBarrelsOutInYearThree(const core::WorldState& world) {
+    if (barrel_ == core::kNoTableRow ||
+        world.calendar.day / core::kDaysPerYear + 1U != kBarrelWatchYear) {
+      return;
+    }
+    core::Grams barrels = 0;
+    bool workshops = false;
+    for (const core::UnitRow& unit : world.units.rows) {
+      barrels += barrel_ < unit.stock.size() ? unit.stock[barrel_] : 0;
+      workshops = workshops || (unit.type.value == workshops_ && unit.level > 0);
+    }
+    if (barrels <= 0 && !workshops) {
+      ++y3_barrels_out_no_cooper_days_;
+    }
+  }
+
   bool MaterialsHold(const core::WorldState& world, std::uint32_t type) {
     if (!wait_for_houses_) {
       return true;
@@ -802,6 +871,19 @@ class SmokehousePolicy {
   // houses' materials wait under it (#1677 shape (2)) K5 held on 64 villages.
   bool on_ = true;
   bool wait_for_houses_ = true;  ///< #1677 shape (2), the canon's since 0.37.379
+  /// #1761 window (c), the canon's; SetWindow(false) is the arm without it.
+  bool window_on_ = true;
+  static constexpr std::uint32_t kWindowYears = 2;
+  static constexpr std::uint32_t kOctoberFirstDay = 9U * core::kDaysPerMonth;
+  static constexpr std::uint32_t kSmokehouseWindowDays = 30;
+  static constexpr std::uint32_t kFoodStoreWindowDays = 30;  ///< NOT measured (econ)
+  static constexpr std::uint32_t kWorkshopsWindowDays = 15;
+  static constexpr std::uint32_t kBarrelWatchYear = 3;
+  /// The first meadow cut's day of the year: farming.csv meadow_cut_month (human 1..12) at its
+  /// first day - day 20 on today's tables, the cut host measured (20-21 in y1).
+  std::uint32_t first_cut_day_ = 5U * core::kDaysPerMonth;
+  std::uint32_t held_for_window_days_ = 0;
+  std::uint32_t y3_barrels_out_no_cooper_days_ = 0;
   std::vector<bool> is_house_;
   std::map<std::pair<std::uint32_t, std::uint32_t>,
            std::vector<std::pair<std::uint32_t, core::Grams>>>
