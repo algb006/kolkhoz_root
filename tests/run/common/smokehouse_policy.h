@@ -182,6 +182,7 @@ class SmokehousePolicy {
     CountDay(world);
     CountStops(simulation, world);
     CountBarrelsOutInYearThree(world);
+    CountFamilySitesInWindow(world);
     salt_extra_need_g_ = on_ ? SaltForTheStores(world) : 0;
     salt_extra_max_g_ = std::max(salt_extra_max_g_, salt_extra_need_g_);
     if (!on_ || !triggered_) {
@@ -221,7 +222,9 @@ class SmokehousePolicy {
         << stores_built_ << " held_for_houses_materials_days " << held_for_houses_materials_days_
         << " first_materials_hold_day " << Opt(first_materials_hold_day_) << " window_on "
         << (window_on_ ? 1 : 0) << " held_for_window_checks " << held_for_window_days_
-        << " y3_barrels_out_no_cooper_days " << y3_barrels_out_no_cooper_days_ << '\n';
+        << " y3_barrels_out_no_cooper_days " << y3_barrels_out_no_cooper_days_
+        << " window_marked_days " << window_marked_days_ << " window_delivering_days "
+        << window_delivering_days_ << " window_building_days " << window_building_days_ << '\n';
     if (y3_barrels_out_no_cooper_days_ > 0) {  // #1761's return condition, shouted
       out << "population_curve: SMOKE1761 SEED " << seed << " RAN OUT OF BARRELS IN Y3 FOR WANT OF "
           << "THE COOPER ON " << y3_barrels_out_no_cooper_days_ << " DAYS\n";
@@ -450,6 +453,11 @@ class SmokehousePolicy {
     }
     const std::uint32_t house = FindOfType(world, smokehouse_);
     if (house == core::kNoRow) {
+      // #1761 (econ, host-econ-1761-gate [4]): the STAKE waits too - host's arm held it and
+      // passed the novice (6/54, 99); holding only the start failed it (10/54, 141).
+      if (WindowHolds(world, kSmokehouseWindowDays)) {
+        return false;
+      }
       order.kind = core::OrderKind::kBuildUnit;
       order.unit_type = core::UnitTypeId{static_cast<std::uint16_t>(smokehouse_)};
       order.position = world.units.rows[yard].position;
@@ -566,6 +574,9 @@ class SmokehousePolicy {
     if (!room_wanted_) {
       return false;
     }
+    if (WindowHolds(world, kFoodStoreWindowDays)) {
+      return false;  // #1761: the store's stake waits too; the wish stands for after
+    }
     room_wanted_ = false;
     order.kind = core::OrderKind::kBuildUnit;
     order.unit_type = core::UnitTypeId{static_cast<std::uint16_t>(food_store_)};
@@ -586,6 +597,9 @@ class SmokehousePolicy {
     }
     const std::uint32_t shop = FindOfType(world, workshops_);
     if (shop == core::kNoRow) {
+      if (WindowHolds(world, kWorkshopsWindowDays)) {
+        return false;  // #1761: the workshops' stake waits too
+      }
       order.kind = core::OrderKind::kBuildUnit;
       order.unit_type = core::UnitTypeId{static_cast<std::uint16_t>(workshops_)};
       order.position = world.units.rows[yard].position;
@@ -730,6 +744,33 @@ class SmokehousePolicy {
 
   /// #1761's return condition (econ [5]): in year 3, the days the stores hold no barrel while
   /// no workshops stand to make one - the village out of barrels for want of the cooper.
+  /// #1761's print (econ, host-econ-1761-gate [4]): inside year 1's window [first cut,
+  /// 1 Oct), the days a family site stands staked (kMarked) or taking materials (kDelivering,
+  /// with the grams still awaited), and the days one is being built.
+  void CountFamilySitesInWindow(const core::WorldState& world) {
+    const std::uint32_t of_year = world.calendar.day % core::kDaysPerYear;
+    if (world.calendar.day >= core::kDaysPerYear || of_year < first_cut_day_ ||
+        of_year >= kOctoberFirstDay) {
+      return;
+    }
+    bool marked = false;
+    bool delivering = false;
+    bool building = false;
+    for (const core::UnitRow& unit : world.units.rows) {
+      const bool family = unit.type.value == smokehouse_ || unit.type.value == food_store_ ||
+                          unit.type.value == workshops_;
+      if (!family || unit.level > 0) {
+        continue;
+      }
+      marked = marked || unit.construction.phase == core::ConstructionPhase::kMarked;
+      delivering = delivering || unit.construction.phase == core::ConstructionPhase::kDelivering;
+      building = building || unit.construction.phase == core::ConstructionPhase::kBuilding;
+    }
+    window_marked_days_ += marked ? 1U : 0U;
+    window_delivering_days_ += delivering ? 1U : 0U;
+    window_building_days_ += building ? 1U : 0U;
+  }
+
   void CountBarrelsOutInYearThree(const core::WorldState& world) {
     if (barrel_ == core::kNoTableRow ||
         world.calendar.day / core::kDaysPerYear + 1U != kBarrelWatchYear) {
@@ -887,6 +928,9 @@ class SmokehousePolicy {
   std::uint32_t first_cut_day_ = 5U * core::kDaysPerMonth;
   std::uint32_t held_for_window_days_ = 0;
   std::uint32_t y3_barrels_out_no_cooper_days_ = 0;
+  std::uint32_t window_marked_days_ = 0;      ///< #1761: y1 window days a family site is staked
+  std::uint32_t window_delivering_days_ = 0;  ///< ... taking materials
+  std::uint32_t window_building_days_ = 0;    ///< ... being built
   std::vector<bool> is_house_;
   std::map<std::pair<std::uint32_t, std::uint32_t>,
            std::vector<std::pair<std::uint32_t, core::Grams>>>
