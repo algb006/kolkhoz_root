@@ -116,6 +116,23 @@ Grams StoresDrawn(const YearLedger& book, std::uint32_t index) {
 /// evenings (econ's (e2′)): the tenth month's third, doy 39's morning.
 constexpr Grams kMonthSoFarEvenings = 3;
 
+/// #1764 (A)'s book line: one kPlanFailureForgiven per short position the theft before
+/// acceptance covered (FailedOnlyByPreActTheft held for the year).
+void SayForgivenPositions(const ProductionConfig& config, WorldState& current) {
+  for (std::uint32_t index = 0; index < current.plan.due.size(); ++index) {
+    const Grams due = current.plan.due[index];
+    const Grams delivered =
+        index < current.plan.delivered.size() ? current.plan.delivered[index] : 0;
+    if (PositionDelivered(config, due, delivered)) {
+      continue;
+    }
+    SimEvent& forgiven =
+        EmitEvent(current, EventKind::kPlanFailureForgiven, EventSeverity::kNotable);
+    forgiven.resource = DefIdFromIndex<ResourceIdTag>(index);
+    forgiven.amount = due - delivered;
+  }
+}
+
 }  // namespace
 
 Grams StoresDrawToTheTurn(const ProductionConfig& config,
@@ -365,6 +382,28 @@ bool FailedOnlyBySnow(const ProductionConfig& config, const WorldState& current)
     if (snowed <= 0 || static_cast<double>(snowed) <
                            shortfall * static_cast<double>(config.weather_year_snow_share)) {
       return false;
+    }
+  }
+  return any_failed;
+}
+
+bool FailedOnlyByPreActTheft(const ProductionConfig& config, const WorldState& current) {
+  if (!config.farming.plan_credit_pre_act_theft) {
+    return false;
+  }
+  bool any_failed = false;
+  for (std::uint32_t index = 0; index < current.plan.due.size(); ++index) {
+    const Grams due = current.plan.due[index];
+    const Grams delivered =
+        index < current.plan.delivered.size() ? current.plan.delivered[index] : 0;
+    if (PositionDelivered(config, due, delivered)) {
+      continue;
+    }
+    any_failed = true;
+    const Grams stolen = AmountOf(current.ledger.current.stolen_before_acceptance,
+                                  DefIdFromIndex<ResourceIdTag>(index));
+    if (stolen <= 0 || due - delivered > stolen) {
+      return false;  // a position the theft before acceptance does not cover: the chairman's
     }
   }
   return any_failed;
@@ -930,10 +969,17 @@ void JudgePlan(const ProductionConfig& config, WorldState& current) {
     // econ forgiving-start.md): a year failed only because the fields went
     // under the snow neither grows the series to the court nor breaks it.
     const bool weather = !met && FailedOnlyBySnow(config, current);
+    // THE THEFT BEFORE ACCEPTANCE IS NOT THE CHAIRMAN'S EITHER (#1764, econ's (A)): a year
+    // whose every short position the night theft «до приёмки» covers neither grows the series
+    // to the court nor breaks it, as the weather's; the book says so, position by position.
+    const bool forgiven = !met && !weather && FailedOnlyByPreActTheft(config, current);
+    if (forgiven) {
+      SayForgivenPositions(config, current);
+    }
     const std::uint8_t series_before = current.plan.failed_years_in_a_row;
     if (met) {
       current.plan.failed_years_in_a_row = 0U;
-    } else if (!weather) {
+    } else if (!weather && !forgiven) {
       current.plan.failed_years_in_a_row = static_cast<std::uint8_t>(series_before + 1U);
     }
     current.plan.met_years_in_a_row =

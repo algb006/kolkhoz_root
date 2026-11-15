@@ -170,6 +170,8 @@ const char* KindName(core::EventKind kind) {
       return "family_left_for_salt";
     case core::EventKind::kSaltLoanOffered:
       return "salt_loan_offered";
+    case core::EventKind::kPlanFailureForgiven:
+      return "plan_failure_forgiven";
     case core::EventKind::kElectrificationUnlocked:
       return "electrification_unlocked";
     case core::EventKind::kFireBroke:

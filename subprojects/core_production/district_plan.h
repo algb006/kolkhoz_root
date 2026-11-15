@@ -153,6 +153,15 @@ bool PositionDelivered(const ProductionConfig& config, Grams due, Grams delivere
 /// the year start, before the ledger turns (world.cpp, RotateLedger).
 bool FailedOnlyBySnow(const ProductionConfig& config, const WorldState& current);
 
+/// @brief #1764, econ's (A) (econ-boss-y1-plan-crime [2]-[4]): whether every position that
+///        was not had a shortfall no more than that food's theft «до приёмки» of the year
+///        (YearLedger::stolen_before_acceptance) - and at least one position failed. Such a
+///        year is kept out of the trial's «three in a row» like a weather year (JudgePlan);
+///        the delivery, the reputation and the points still fail. Only with
+///        FarmingConfig::plan_credit_pre_act_theft on; false otherwise.
+/// @pre As FailedOnlyBySnow: `current.ledger.current` is the closing year's book.
+bool FailedOnlyByPreActTheft(const ProductionConfig& config, const WorldState& current);
+
 /// @brief The year's overfulfilment, in TONNES OF GRAIN EQUIVALENT (district
 /// §1, «За перевыполнение»; boss seq 70, 2026-09-18): every position's
 /// delivery over its due, each tonne weighed by its food.csv kcal_per_gram

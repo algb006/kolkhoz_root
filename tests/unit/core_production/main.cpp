@@ -78,6 +78,7 @@
 #include "night_pasture.h"
 #include "perennial_cut_checks.h"
 #include "plan_alarms.h"
+#include "plan_credit_checks.h"
 #include "plan_due_checks.h"
 #include "processing_shops.h"
 #include "production_alarms.h"
@@ -18552,6 +18553,7 @@ int main() {
   failures += CheckAStarvedKolkhozHerdDoesNotInterruptAgain();
   failures += CheckTheHerdPlan();
   failures += CheckTheSpringFlood();  // #1375
+  failures += CheckThePlanCredit();   // #1764 (A)
   failures += CheckThePerennialsCut();
   failures += CheckTheGrassStandsAge();
   failures += CheckUndoneHerdCare();

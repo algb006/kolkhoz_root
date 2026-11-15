@@ -951,6 +951,17 @@ enum class EventKind : std::uint8_t {
   /// Район может дать лот в долг»).
   kSaltLoanOffered,
 
+  /// THE FIRST PLAN'S FAILURE FORGIVEN FOR THE THEFT BEFORE ACCEPTANCE (#1764, econ's (A)
+  /// signed on 7 Nov 2026, econ-boss-y1-plan-crime [2]-[4]): one per credited position, at the
+  /// year's verdict, when the position's shortfall is no more than that food's
+  /// YearLedger::stolen_before_acceptance - it does not count toward the failed years; the
+  /// delivery, the reputation and the points still fail. `resource` the position; `amount`
+  /// the shortfall's grams (the stolen grams ride in the ledger). kNotable. Seam key
+  /// `plan_failure_forgiven` (the book's «план по {продукт} сорван на {x} т — пропало до приёмки
+  /// {y} т; в счёт сорванных лет не идёт»). Raised only with world_params
+  /// `plan_credit_pre_act_theft` on.
+  kPlanFailureForgiven,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.
@@ -997,7 +1008,7 @@ inline constexpr std::array<EventKind, 3> kEndingConditionEventKinds = {
 /// EVERY NEW KIND IS CLASSIFIED: appending a kind fails here until its author
 /// has asked «is it an ending's condition?», added it above if so, and raised
 /// this count - the list cannot fall behind the enum silently.
-static_assert(static_cast<std::size_t>(EventKind::kEventKindCount) == 124,
+static_assert(static_cast<std::size_t>(EventKind::kEventKindCount) == 125,
               "a new EventKind: classify it in kEndingConditionEventKinds, then raise this count");
 
 /// @brief One thing that happened. Plain data, no text: the presentation

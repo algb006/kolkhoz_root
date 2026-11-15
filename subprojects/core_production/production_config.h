@@ -453,6 +453,12 @@ struct FarmingConfig {
   /// design gives a number of its own.
   std::uint16_t flood_water_days = 8;
 
+  /// #1764, econ's (A) (econ-boss-y1-plan-crime [2]-[4]): a position whose shortfall is no
+  /// more than that food's theft «до приёмки» of the year counts as met for the failed years'
+  /// count (district_plan.h, FailedOnlyByPreActTheft); delivery, reputation and points still
+  /// fail. world_params `plan_credit_pre_act_theft` (optional), 0 off = today.
+  bool plan_credit_pre_act_theft = false;
+
   /// THE MEADOW'S FLOWERING WINDOW, 0-based months: MAY THROUGH JULY.
   ///
   /// No longer this core's ASSUMPTION. Decided by boss on 2026-09-06 and
