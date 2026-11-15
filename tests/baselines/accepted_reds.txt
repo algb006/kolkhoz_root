@@ -31,10 +31,18 @@
 # trimmed +0.044 (+2.3 SE), median +0.031 - RED by #1473, ~3 game days, through «жителей ≥ 380» (+1.9 days,
 # econ [11]); residents y4/y6/y16 inside 2 SE. e379a/e379b on 83d4683f, 16 doors each: o0 10.658, o100 10.594,
 # o200 10.734, o300 10.953.
-population_curve|E1 mean door, offset 0|10.66|0.06|2026-11-14|83d4683f|boss, the 0.37.379 re-take (the smokehouse on; the human #1933 accepted its E1 lag): o0's 16 doors on 83d4683f, mean 10.658; the margin unchanged (0.06); passes at 10.60. Replaces a102481a's 10.59.
-population_curve|E1 mean door, offset 100|10.59|0.06|2026-11-14|83d4683f|boss, as offset 0: o100's 16 doors on 83d4683f, mean 10.594; passes at 10.53. Replaces a102481a's 10.53.
-population_curve|E1 mean door, offset 200|-|-|2026-11-14|83d4683f|boss: MEASURED, NOT LINED - o200's 16 doors on 83d4683f, mean 10.73.
-population_curve|E1 mean door, offset 300|-|-|2026-11-14|83d4683f|boss: MEASURED, NOT LINED - o300's 16 doors on 83d4683f, mean 10.95.
+# RE-TAKEN on #1375's tree (the spring flood with its heap deadline ON), 15 Nov 2026 (boss, core-boss-1375-flood-
+# contract [8]): the heap deadline reorders the carts in 56 of 64 villages (a floodplain heap lying in December
+# takes the days to the next flood as its shelf), a chaotic divergence: rye +0.9 SE (29 up / 27 down), E1 pooled
+# -0.070 y against 380's base, 2 SE 0.258 (fb1375 vs gc1375); with the deadline OFF o0 returns to 10.66 (gm1375).
+# gc1375 on 65374ed1 (the release tree's world: its later commits add a known key, the layer's flood_lost_year and
+# the VERSION), 16 doors each: o0 10.531, o100 10.522, o200 10.719, o300 10.839.
+# (was) population_curve|E1 mean door, offset 0|10.66|0.06|2026-11-14|83d4683f| - o0 on 83d4683f, mean 10.658.
+# (was) population_curve|E1 mean door, offset 100|10.59|0.06|2026-11-14|83d4683f| - o100 on 83d4683f, mean 10.594.
+population_curve|E1 mean door, offset 0|10.53|0.06|2026-11-15|65374ed1|boss, the #1375 re-take (the flood's heap deadline on; core-boss-1375-flood-contract [8]): o0's 16 doors on 65374ed1, mean 10.531; the margin unchanged (0.06); passes at 10.47. Replaces 83d4683f's 10.66.
+population_curve|E1 mean door, offset 100|10.52|0.06|2026-11-15|65374ed1|boss, as offset 0: o100's 16 doors on 65374ed1, mean 10.522; passes at 10.46. Replaces 83d4683f's 10.59.
+population_curve|E1 mean door, offset 200|-|-|2026-11-15|65374ed1|boss: MEASURED, NOT LINED - o200's 16 doors on 65374ed1, mean 10.72.
+population_curve|E1 mean door, offset 300|-|-|2026-11-15|65374ed1|boss: MEASURED, NOT LINED - o300's 16 doors on 65374ed1, mean 10.84.
 # (was, a102481a, 14 Nov) o0 10.59, o100 10.53 (|0.06); o200 10.67, o300 10.90 measured.
 # (was, 4dd4ee66, 8 Nov) o0 10.59, o100 10.58 (|0.06); o200 10.665, o300 10.911 measured.
 # (was, e81094ec) o0 10.70, o100 10.53 (|0.06); o200 10.648, o300 10.876 measured.
