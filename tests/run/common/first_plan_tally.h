@@ -21,6 +21,7 @@
 #include <string>
 
 #include "core_common/calendar.h"
+#include "core_common/event_state.h"
 #include "core_common/family_state.h"
 #include "core_common/ledger_state.h"
 #include "core_common/quantities.h"
@@ -67,6 +68,25 @@ class FirstPlanTally {
           << " processed_t " << Tonnes(Of(book.processed)) << " delivered_all_t "
           << Tonnes(Of(book.delivered)) << " harvest_t " << Tonnes(Of(book.harvest))
           << " samogon_paid_t " << Tonnes(Of(book.samogon_paid));
+    // #1764's Y4 (boss): the book line in every credited village - the turn step's
+    // kPlanFailureForgiven events beside the positions the theft before acceptance covers
+    // (short and the shortfall no more than that food's stolen_before_acceptance; every
+    // position, not the rye alone). Creditable counts whether the row is on or off; events
+    // come only with it on.
+    std::uint32_t creditable = 0;
+    for (std::size_t index = 0; index < book.plan_due.size(); ++index) {
+      const core::Grams due = book.plan_due[index];
+      const core::Grams delivered =
+          index < book.plan_delivered.size() ? book.plan_delivered[index] : 0;
+      const core::Grams stolen =
+          index < book.stolen_before_acceptance.size() ? book.stolen_before_acceptance[index] : 0;
+      creditable += due > 0 && delivered < due && stolen > 0 && due - delivered <= stolen ? 1U : 0U;
+    }
+    std::uint32_t forgiven = 0;
+    for (const core::SimEvent& event : world.step_events) {
+      forgiven += event.kind == core::EventKind::kPlanFailureForgiven ? 1U : 0U;
+    }
+    line_ << " creditable_positions " << creditable << " forgiven_events " << forgiven;
   }
 
   /// @brief The village's line.
