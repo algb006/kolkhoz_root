@@ -199,19 +199,20 @@ class SmokehousePolicy {
     // refused order takes the day's cooldown and does not fall through to the store's or the
     // cooper's - host's door semantics, which passed the novice (6/54, starved 99) where the
     // fall-through form left a gap of 12 heads in five villages.
+    // The trace names the branch that ran last (s smokehouse, f food store, c cooper) and its
+    // outcome: «staged» with the order kind, «held» by the window, or «none» (nothing to ask).
     window_refused_today_ = false;
-    const char* action = "none";
+    char branch = 's';
     bool ordered = NextOrder(world, order);
-    action = ordered ? "smokehouse" : action;
     if (!ordered && !window_refused_today_) {
+      branch = 'f';
       ordered = NextStoreOrder(world, order);
-      action = ordered ? "store" : action;
     }
     if (!ordered && !window_refused_today_ && barrel_triggered_) {
+      branch = 'c';
       ordered = NextCooperOrder(world, order);
-      action = ordered ? "cooper" : action;
     }
-    TraceDay(world, ordered ? action : (window_refused_today_ ? "held" : "none"), order);
+    TraceDay(world, branch, ordered ? "staged" : (window_refused_today_ ? "held" : "none"), order);
     if (!ordered) {
       if (window_refused_today_) {
         cooldown_ = 1;
@@ -892,15 +893,19 @@ class SmokehousePolicy {
   }
 
   /// #1761's per-day trace (boss: «a RunDay per-day trace on seeds 2049, 1931, 1953, 2044,
-  /// 2041, both arms, y1-y2»): the family's action of each day it reached the order step - its
-  /// kind and the order's kind - kept for y1-y2, printed for the seeds in
+  /// 2041, both arms, y1-y2»; econ: «which branch ran, what it staged or refused»): for each
+  /// day the family reached the order step, the last branch that ran and its outcome (staged with
+  /// the order kind, held by the window, none) - kept for y1-y2, printed for the seeds in
   /// KOLKHOZ_SMOKE_TRACE_SEEDS (SMOKE1761T).
-  void TraceDay(const core::WorldState& world, const char* action, const core::OrderRow& order) {
+  void TraceDay(const core::WorldState& world,
+                char branch,
+                std::string_view outcome,
+                const core::OrderRow& order) {
     if (world.calendar.day >= kWindowYears * core::kDaysPerYear) {
       return;
     }
-    trace_ << ' ' << world.calendar.day << ':' << action;
-    if (std::string_view(action) != "none" && std::string_view(action) != "held") {
+    trace_ << ' ' << world.calendar.day << ':' << branch << ':' << outcome;
+    if (outcome == "staged") {
       trace_ << ':' << static_cast<int>(order.kind);
     }
   }
@@ -1071,7 +1076,7 @@ class SmokehousePolicy {
   std::uint32_t window_workshops_days_ = 0;
   std::map<std::uint32_t, SiteSeen> sites_seen_;  ///< by UnitId value (host's per-site line)
   bool window_refused_today_ = false;             ///< #1761: the window held an order this day
-  std::ostringstream trace_;                      ///< #1761: y1-y2 «day:action[:order kind]»
+  std::ostringstream trace_;  ///< #1761: y1-y2 «day:branch:outcome[:order kind]»
   std::vector<bool> is_house_;
   std::map<std::pair<std::uint32_t, std::uint32_t>,
            std::vector<std::pair<std::uint32_t, core::Grams>>>
