@@ -2197,7 +2197,9 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // Save 176 (#1056 C2): +28 a field — the winter's dose (the heap's id, two
     // Grams, two floats); 419 -> 503 predicted (three fields) and held; the
     // hash read off the build with the first field's dose set off its default.
-    {"fields", 503, 0x30bff7c53005949cULL},
+    // Save 211 (#1375): flood_lost_year, a u16 at each field's tail - three fields, +6; the
+    // hash read off it (s0381).
+    {"fields", 509, 0xf511007eee061f64ULL},
     // Save 67: +27 — the store's emptying byte and the perevalka's two floats,
     // three units; predicted before the fields were added, and held.
     // Save 74: +1 a unit — the house held for a specialist; three units, +3,
@@ -2251,7 +2253,9 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // window's count and month (two u32). Read off the run against the
     // prediction «+8 a unit when empty» made for the window alone; the two
     // amounts vectors were not in it.
-    {"units", 885, 0x5a14470869629c15ULL},
+    // Save 211 (#1375): flood_lost_year, a u16 at each unit's tail - three units, +6; the hash
+    // read off it (s0381).
+    {"units", 891, 0xd1881d10f4ecd91dULL},
     // Save 71: +4 — fed_share, one herd; predicted before the field, held.
     // Save 91: +8 — the adult age band, two floats, one herd; predicted
     // 71 -> 79 with every other section unmoved before the build.
