@@ -956,9 +956,11 @@ enum class EventKind : std::uint8_t {
   /// year's verdict, when the position's shortfall is no more than that food's
   /// YearLedger::stolen_before_acceptance - it does not count toward the failed years; the
   /// delivery, the reputation and the points still fail. `resource` the position; `amount`
-  /// the shortfall's grams (the stolen grams ride in the ledger). kNotable. Seam key
-  /// `plan_failure_forgiven` (the book's «план по {продукт} сорван на {x} т — пропало до приёмки
-  /// {y} т; в счёт сорванных лет не идёт»). Raised only with world_params
+  /// the shortfall's grams. kNotable. Seam key `plan_failure_forgiven`; the book's string
+  /// ui.office.book.plan_pre_acceptance_credit takes {product} = `resource`, {short_t} =
+  /// `amount`, and {lost_t} = that resource's YearLedger::stolen_before_acceptance - raised at
+  /// the turn before the books rotate, so a reader after the step finds it in `ledger.closed`
+  /// (one amount on an event; the ledger is its home). Raised only with world_params
   /// `plan_credit_pre_act_theft` on.
   kPlanFailureForgiven,
 
