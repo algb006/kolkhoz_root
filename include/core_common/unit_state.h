@@ -638,6 +638,11 @@ struct UnitRow {
   /// ONE FENCE: what the plot holds (CemeteryCapacityGraves) and what it
   /// blocks (PlotOverlaps) both read it through PlotRadiusOf (plot.h).
   float plot_radius_m = 0.0F;
+
+  /// THE YEAR THE SPRING FLOOD TOOK THIS UNIT'S HAY AND STRAW (#1375; boss, the contract
+  /// thread [7]): the calendar year (1-based) RunSpringFlood zeroed them on a floodplain cell;
+  /// 0 never. A read door for the layer, which must not remember it itself. Save 211.
+  std::uint16_t flood_lost_year = 0;
 };
 
 /// @brief Whether `unit` is supplied from another rick NOW (#1056 C1.2): a

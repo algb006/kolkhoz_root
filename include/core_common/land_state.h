@@ -701,6 +701,12 @@ struct FieldRow {
   /// by the one reader, so a stand that somehow carries none is a young one.
   /// Meaningful only while the field's crop is a stand_ages crop.
   std::uint8_t stand_summers = 0;
+
+  /// THE YEAR THE SPRING FLOOD TOOK THIS FIELD'S HEAP (#1375; boss, the contract thread [7]:
+  /// techart's #1744 page paints the wet remains): the calendar year (1-based) RunSpringFlood
+  /// zeroed reaped_grams here; 0 never. A read door for the layer, which must not remember it
+  /// itself. Save 211.
+  std::uint16_t flood_lost_year = 0;
 };
 
 /// @brief Whether the player has given this field a rotation at all.

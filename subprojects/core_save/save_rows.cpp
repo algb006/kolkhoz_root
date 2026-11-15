@@ -257,8 +257,10 @@ static_assert(sizeof(ManureDoseSeam) == 32,
               "ManureDoseSeam changed — update the codec and VERSION_SAVE");
 static_assert(AggregateArity<ManureDoseSeam>() == 5,
               "ManureDoseSeam gained or lost a field — update the codec and VERSION_SAVE");
-static_assert(sizeof(FieldRow) == 176, "FieldRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<FieldRow>() == 48,
+// Save 211 (#1375): flood_lost_year, a u16 at the tail - the row pads to 184 (read off the
+// guard, not predicted); the fields section +2 a field.
+static_assert(sizeof(FieldRow) == 184, "FieldRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<FieldRow>() == 49,
               "FieldRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-06: the stink radius pushed the row from 48 + amounts to 56 +
 // amounts. The pause byte before it had landed in padding and moved nothing,
@@ -325,7 +327,9 @@ static_assert(AggregateArity<RickSupplySeam>() == 6,
 // held; on the wire +8 a unit when empty.
 // And book_seen, a ResourceAmounts after the window's month - predicted 176 and
 // 5 amounts, 29 fields.
-static_assert(sizeof(UnitRow) == 176 + (5 * kAmountsSize) + sizeof(std::vector<SupplyLeg>) +
+// Save 211 (#1375): flood_lost_year, a u16 at the tail - 176 -> 184 (padding; read off the
+// guard, not predicted), 30 fields; the units section +2 a unit.
+static_assert(sizeof(UnitRow) == 184 + (5 * kAmountsSize) + sizeof(std::vector<SupplyLeg>) +
                                      sizeof(std::vector<BookMonth>) +
                                      sizeof(std::optional<ConstructionState>),
               "UnitRow changed — update the codec and VERSION_SAVE");
@@ -355,7 +359,7 @@ static_assert(AggregateArity<ConstructionState>() == 22,
 // Save 181 (#1199's plot): plot_radius_m, a float after the graves - 25 fields,
 // predicted before the build: sizeof unmoved at 168 (the u16 at 160 and the
 // float at 164 share the slot), the units section +4 a unit.
-static_assert(AggregateArity<UnitRow>() == 29,
+static_assert(AggregateArity<UnitRow>() == 30,
               "UnitRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 173 (#1089): the settlement's row - predicted 28 bytes (Vec2 8, four
 // u32-sized fields 16, a byte, a byte of padding, a u16) and 7 fields, before
@@ -1298,10 +1302,11 @@ void WriteFieldRow(SaveSink& sink, const FieldRow& row) {
   // The day the preparation's own furrow ended (save 111; a byte in save
   // 110): the turn's release keeps zyab only on the autumn furrow.
   out.WriteU32(row.furrow_day);
-  out.WriteU32(row.last_cut_day);  // save 134
-  out.WriteU8(row.start_shape);    // save 145
-  out.WriteU8(row.mown_fallow);    // save 145
-  out.WriteU8(row.stand_summers);  // save 146
+  out.WriteU32(row.last_cut_day);     // save 134
+  out.WriteU8(row.start_shape);       // save 145
+  out.WriteU8(row.mown_fallow);       // save 145
+  out.WriteU8(row.stand_summers);     // save 146
+  out.WriteU16(row.flood_lost_year);  // save 211 (#1375): the flood's year, the layer's door
   // The manure already in the book (save 111): booked once a field's cycle,
   // and since save 112 already paid into the fertility.
   out.WriteU8(row.manure_booked);
@@ -1406,7 +1411,8 @@ FieldRow ReadFieldRow(LoadSource& source) {
   if (row.mown_fallow != 0 && row.kind != LandKind::kMeadow) {
     source.Fail("a field marked as mown as it lies is not a dry meadow");
   }
-  row.stand_summers = in.ReadU8();  // save 146: any count is a summer
+  row.stand_summers = in.ReadU8();     // save 146: any count is a summer
+  row.flood_lost_year = in.ReadU16();  // save 211 (#1375)
   row.manure_booked = static_cast<std::uint8_t>(
       source.ReadEnumValue(0, 1, "the field's manure booked"));  // save 111
   if (row.manure_booked != 0 && row.manure_applied == 0) {
@@ -1611,6 +1617,7 @@ void WriteUnitRow(SaveSink& sink, const UnitRow& row) {
   out.WriteU8(row.rick_supply.threshold_days);
   out.WriteU16(row.graves);           // save 180 (#1199)
   out.WriteFloat(row.plot_radius_m);  // save 181: its own plot, 0 = the type's
+  out.WriteU16(row.flood_lost_year);  // save 211 (#1375): the flood's year, the layer's door
 }
 
 UnitRow ReadUnitRow(LoadSource& source) {
@@ -1667,6 +1674,7 @@ UnitRow ReadUnitRow(LoadSource& source) {
   row.rick_supply.threshold_days = in.ReadU8();
   row.graves = in.ReadU16();           // save 180 (#1199)
   row.plot_radius_m = in.ReadFloat();  // save 181
+  row.flood_lost_year = in.ReadU16();  // save 211 (#1375)
   if (!(row.rick_supply.days_remaining >= 0.0F) || !(row.rick_supply.days_written >= 0.0F) ||
       row.rick_supply.grams < 0) {
     source.Fail("a rick's supply is negative or not a number");

@@ -135,6 +135,7 @@ void RunSpringFlood(const ProductionConfig& config,
         Floodable(config, field.reaped_resource)) {
       AddGrams(lost, field.reaped_resource, field.reaped_grams);
       field.reaped_grams = 0;
+      field.flood_lost_year = YearOf(current);  // the layer's door (#1744)
     }
   }
   const ObstacleRaster* const raster = RasterOf(config);
@@ -147,6 +148,7 @@ void RunSpringFlood(const ProductionConfig& config,
           unit.stock[resource.value] > 0) {
         AddGrams(lost, resource, unit.stock[resource.value]);
         unit.stock[resource.value] = 0;
+        unit.flood_lost_year = YearOf(current);  // the layer's door (#1744)
       }
     }
   }
