@@ -90,6 +90,19 @@ struct YesterdayDayOrders {
   bool measured = false;
 };
 
+/// @brief Why a listed field work stands TODAY (#1815; SeasonWorkLine::stopped_by): the same
+///        stops the morning's placement and the chairman's orders obey (CollectJobs,
+///        ApplyOrderedWorks), so the line and the day cannot disagree - «сегодня дождь — сев
+///        стоит».
+enum class WorkStop : std::uint8_t {
+  kNone = 0,  ///< Workable today.
+  kRain,      ///< Rain stops the sowing and the reaping (rain_stops_work.h).
+  kFrost,     ///< The autumn furrow on frozen ground (FrostStopsFieldWork).
+  kDayOff,    ///< A day off: only herd care is worked.
+
+  kWorkStopCount,  ///< Not a stop: the count (boundary_enums).
+};
+
 /// @brief One field work of this season with its deadline (ISession::SeasonWorks) - the table
 ///        «Расставить самому» joins it with the construction sites' read (OfficeWorkbook) on its
 ///        side (boss [2] point 3). Field works only: sowing, harvest, haymaking per field; herd
@@ -115,6 +128,13 @@ struct SeasonWorkLine {
   /// not kept, so a share done would have been a second computation of production's norm.
   float area_ha = 0.0F;
   float work_days_left = 0.0F;
+
+  /// What stands it TODAY (#1815): kNone when a crew sent now would work it. A stopped work is
+  /// still listed - its window runs - and a crew on it is accepted and stands the day. «Nowhere
+  /// to store the harvest» is not a stop: neither the placement nor the orders skip a reaping
+  /// for it (the grain lies at the field for the carts), so naming it here would disagree with
+  /// the day.
+  WorkStop stopped_by = WorkStop::kNone;
 };
 
 /// @brief The season's field works (ISession::SeasonWorks).

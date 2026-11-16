@@ -294,6 +294,23 @@ int CheckSeasonWorksAndGaps(core::ILaborSystem& labor) {
     }
     failures += Expect(as_ruled, "season works: the window's last day from the accountant's rule");
   }
+  // #1815: today's stop, by the placement's own predicates - none on a dry Wednesday, the rain
+  // on a wet one (the reaping stands), the day off on Sunday.
+  if (!works.lines.empty()) {
+    failures += Expect(works.lines[0].stopped_by == core::WorkStop::kNone,
+                       "season works: a dry working day stops nothing");
+  }
+  core::WorldState wet = village.world;
+  wet.weather.precipitation = core::Precipitation::kRain;
+  const core::SeasonWorks rained = labor.SeasonWorksOf(wet);
+  failures += Expect(!rained.lines.empty() && rained.lines[0].stopped_by == core::WorkStop::kRain,
+                     "season works: the rain stands the reaping, and the line says so");
+  core::WorldState sunday = village.world;
+  sunday.calendar.tick = static_cast<core::Tick>(kSunday) * core::kTicksPerDay;
+  core::RefreshCalendarCaches(sunday.calendar);
+  const core::SeasonWorks rested = labor.SeasonWorksOf(sunday);
+  failures += Expect(!rested.lines.empty() && rested.lines[0].stopped_by == core::WorkStop::kDayOff,
+                     "season works: on the day off the line names it");
   // Two hands and 800 man-days of reaping: the morning leaves a field short.
   bool named_short = false;
   for (const core::CrewGapLine& gap : village.world.crew_gaps) {

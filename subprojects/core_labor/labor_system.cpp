@@ -341,6 +341,7 @@ class LaborSystem final : public ILaborSystem {
     SeasonWorks works;
     works.measured = true;
     const SimDay today = state.calendar.day;
+    const bool day_off = IsDayOffIn(state, today);
     for (std::uint32_t row = 0; row < state.fields.rows.size(); ++row) {
       const FieldRow& field = state.fields.rows[row];
       const WorkKind kind = KindOfPhase(field.phase);
@@ -361,6 +362,14 @@ class LaborSystem final : public ILaborSystem {
       line.deadline = line.overdue ? (today > days ? today - days : 0U) : today + days;
       line.area_ha = field.area_ga;
       line.work_days_left = field.work_days_remaining;
+      // TODAY'S STOP (#1815), in CollectJobs' order and by its own predicates.
+      if (day_off) {
+        line.stopped_by = WorkStop::kDayOff;
+      } else if (RainStopsWork(state.weather.precipitation, kind)) {
+        line.stopped_by = WorkStop::kRain;
+      } else if (FrostStopsFieldWork(field, state.weather.air_temperature_celsius)) {
+        line.stopped_by = WorkStop::kFrost;
+      }
       works.lines.push_back(line);
     }
     return works;
