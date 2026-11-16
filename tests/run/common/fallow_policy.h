@@ -105,6 +105,7 @@ class FallowPolicy {
       ReadDerelict(world);
     }
     WatchTheDue(world);
+    CountSpringBuilding(world);
     const std::uint32_t day_of_year = world.calendar.day % core::kDaysPerYear;
     if (day_of_year == kFirstOfDecember) {
       CountPotatoOnTheBlocks(world);
@@ -131,22 +132,31 @@ class FallowPolicy {
       if (opened_blocks_ < kBlocks) {
         NoteTurn(world, year, 'E');
       }
+      held_for_houses_in_a_row_ = 0;  // a turn with food enough breaks the houses' row
       return;
     }
     std::cout << " - SHORT\n";
-    if (!houses_built) {
+    // THE HOUSES WAIT HAS A TWO-YEAR DEADLINE (#1726 option 2; the human 16 Nov «Ваше решение»
+    // -> econ's option, econ-boss-1737-1726-gates [1]): a block that the houses guard held two
+    // turns in a row opens on the third even while the houses are short - the houses stay
+    // first, but not forever. Turn code D. Off (--no-fallow-houses-deadline): 0.37.386's rule.
+    const bool deadline = houses_deadline_on_ && held_for_houses_in_a_row_ >= kHousesDeadlineTurns;
+    if (!houses_built && !deadline) {
       std::cout << "fallow_policy: year " << year << " block " << opened_blocks_ + 1U
                 << " HELD: the houses are not built\n";
       NoteTurn(world, year, 'H');
+      ++held_for_houses_in_a_row_;
       return;
     }
+    const bool by_deadline = !houses_built;
+    held_for_houses_in_a_row_ = 0;
     if (kPlanGuardOn && !BlockKeepsThePlan(world, NextBlockFields(world))) {
       std::cout << "fallow_policy: year " << year << " block " << opened_blocks_ + 1U
                 << " HELD by the plan guard\n";
       NoteTurn(world, year, 'G');
       return;
     }
-    NoteTurn(world, year, 'O');
+    NoteTurn(world, year, by_deadline ? 'D' : 'O');
     OpenNextBlock(simulation, world);
     std::cout << "fallow_policy: year " << year << " block " << opened_blocks_
               << " opened for this spring\n";
@@ -209,6 +219,17 @@ class FallowPolicy {
  private:
   static constexpr std::uint32_t kFieldsPerBlock = 3;
   static constexpr std::uint32_t kBlocks = 2;
+  /// #1726 option 2: the turns in a row the houses guard may hold a block before it opens.
+  static constexpr std::uint32_t kHousesDeadlineTurns = 2;
+
+ public:
+  /// @brief #1726's arm: false is 0.37.386's rule, the houses guard holding for ever.
+  void SetHousesDeadline(bool on) { houses_deadline_on_ = on; }
+
+ private:
+  bool houses_deadline_on_ = true;
+  std::uint32_t held_for_houses_in_a_row_ = 0;
+
   /// Where in chain_ (barley, rye_winter, oat) each of a block's three fields
   /// starts: barley, oat, barley - spring crops only in the opening year.
   static constexpr std::array<std::size_t, 3> kOpeningSlot = {0, 2, 0};
@@ -639,6 +660,38 @@ class FallowPolicy {
   }
 
   /// #1692's hold print: one turn, with whether the next block holds a field mown as it lies.
+  /// #1726's B1 (econ-boss-1737-1726-gates [1]): the April-June construction man-days of years
+  /// 1-6, read off the open book's work_days_by_kind as the day's rise (the book re-sets at the
+  /// turn, so a fall is a new year and is not counted).
+  void CountSpringBuilding(const core::WorldState& world) {
+    const auto kind = static_cast<std::size_t>(core::WorkKind::kConstruction);
+    const float total = world.ledger.current.work_days_by_kind[kind];
+    const std::uint32_t year = world.ledger.current.year;
+    const auto month = static_cast<std::uint8_t>(world.calendar.date.month);
+    const bool spring = month >= static_cast<std::uint8_t>(core::Month::kApril) &&
+                        month <= static_cast<std::uint8_t>(core::Month::kJune);
+    if (spring && year >= 1 && year <= spring_building_.size() && total > building_last_) {
+      spring_building_[year - 1U] += total - building_last_;
+    }
+    building_last_ = total;
+  }
+
+ public:
+  /// @brief #1726's print: «FALLOW1726 seed S spring_building_man_days y1..y6 a b c d e f
+  ///        block1_year Y» - April-June construction man-days by year, and the year the first
+  ///        block opened (0 never).
+  void PrintSpringBuilding(std::ostream& out, std::uint64_t seed) const {
+    out << "population_curve: FALLOW1726 seed " << seed << " spring_building_man_days";
+    for (const float days : spring_building_) {
+      out << ' ' << std::lround(days);
+    }
+    out << " block1_year " << (opened_in_year_.empty() ? 0U : opened_in_year_.front()) << '\n';
+  }
+
+ private:
+  std::array<float, 6> spring_building_{};
+  float building_last_ = 0.0F;
+
   void NoteTurn(const core::WorldState& world, std::uint32_t year, char code) {
     bool mown = false;
     for (const core::FieldId id : NextBlockFields(world)) {
