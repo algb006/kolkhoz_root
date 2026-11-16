@@ -132,7 +132,8 @@ std::unique_ptr<core::ILaborSystem> Labor(bool no_auto_placement = false) {
   std::filesystem::create_directories(root);
   std::ofstream(root / "crops.csv") << "key,sow_to_month,harvest_to_month,is_winter\n"
                                        "oat,5,9,0\n";
-  std::ofstream(root / "livestock.csv") << "key,care_days_per_year\nhorse,0\n";
+  // A cow kind with a care norm for the override check (~0.9 game man-days a head a day).
+  std::ofstream(root / "livestock.csv") << "key,care_days_per_year\nhorse,0\ncow,300\n";
   if (no_auto_placement) {
     std::ofstream(root / "world_params.csv") << "key,value,reader\nno_auto_placement,1,core\n";
   }
@@ -358,6 +359,35 @@ int CheckSowingDeadline(core::ILaborSystem& labor) {
   return failures;
 }
 
+/// #1811's first-build finding: a crew's picks are out of the accountant's plan, so the job he
+/// fills keeps its hand. Three people, one cow's care (one hand) and a crew of two on the far
+/// field: the rotation of day 31 puts row 1 first, the very man the crew picked. Planned with
+/// him and then taken off, the barn stood empty; planned without him, row 0 tends the cow.
+int CheckOverrideKeepsTheClerksJobs(core::ILaborSystem& labor) {
+  int failures = 0;
+  Village village(3);
+  core::UnitRow barn;
+  barn.position = core::Vec2{.x = 5.0F, .y = 0.0F};
+  core::HerdRow cow;
+  cow.kind = core::LivestockKindId{1};  // the tables' cow, care 300 a year
+  cow.unit = core::AppendRow(village.world.units, barn);
+  cow.adult_count = 1;
+  const core::HerdId herd = core::AppendRow(village.world.herds, cow);
+  const core::OrderId crew = village.Issue(village.Crew(village.far_field, 2));
+  village.RunDay(labor, kWednesday);
+  village.RunHours(labor, kWednesday + 1U, 0, 2);
+  std::uint32_t tending = 0;
+  for (const core::ResidentRow& resident : village.world.residents.rows) {
+    tending += resident.work.herd.value == herd.value ? 1U : 0U;
+  }
+  const core::CrewView names = labor.CrewNames(village.world, crew);
+  std::cout << "  override: crew names " << names.names.size() << ", on the far field "
+            << village.On(village.far_field) << ", tending the cow " << tending << '\n';
+  failures += Expect(village.On(village.far_field) == 2 && tending == 1,
+                     "override: the crew of two works, and the barn keeps the accountant's hand");
+  return failures;
+}
+
 /// #1812: without the accountant nobody is placed, and the chairman's crew still works - the
 /// pair, refused and allowed, on one village.
 int CheckNoAutoPlacement() {
@@ -451,6 +481,7 @@ int CheckDayOrders() {
   failures += CheckDayOffMovesTheDay(*labor);
   failures += CheckSeasonWorksAndGaps(*labor);
   failures += CheckSowingDeadline(*labor);
+  failures += CheckOverrideKeepsTheClerksJobs(*labor);
   failures += CheckNoAutoPlacement();
   failures += CheckOrderedHorses();
   return failures;

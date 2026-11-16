@@ -635,6 +635,32 @@ class LaborSystem final : public ILaborSystem {
     if (config_.no_auto_placement) {
       candidates.clear();
     }
+    // THE DAY ORDERS' PEOPLE ARE NOT THE ACCOUNTANT'S TODAY (#1811's first-build finding, boss
+    // 17 Nov): planned with everyone and then taken off, a crew's picks left the carts and the
+    // herds short, and the top-ups refill only a job left with nobody - host's «clerk + gap-only»
+    // run lost 213 t of 502 and failed 98 plans against 10. So a resident a day order will
+    // actually send today (asked of the apply's own skips on a scratch copy) is out of the plan.
+    // The standing order keeps the design's «plan, then take him off» (delegation §7).
+    if (!candidates.empty()) {
+      std::vector<OrderedWork> day_works;
+      for (const OrderedWork& work : ordered) {
+        if (work.order->kind != OrderKind::kAssignWork) {
+          day_works.push_back(work);
+        }
+      }
+      if (!day_works.empty()) {
+        WorldState probe = current;
+        ApplyOrderedWorks(probe,
+                          probe,
+                          day_works,
+                          IsDayOffIn(current, current.calendar.day),
+                          config_.rest_walkoff_threshold);
+        std::erase_if(candidates, [&](const AssignmentCandidate& candidate) {
+          return probe.residents.rows[candidate.resident_row].work.kind != WorkKind::kNone &&
+                 current.residents.rows[candidate.resident_row].work.kind == WorkKind::kNone;
+        });
+      }
+    }
     // THE DAY'S TRUANTS (#1568 link 1): booked on a working day as the
     // funeral's kin are, one event a day with their number.
     if (!truant.empty() && !day_off_today) {
