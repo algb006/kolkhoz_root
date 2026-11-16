@@ -641,7 +641,8 @@ class LaborSystem final : public ILaborSystem {
     // run lost 213 t of 502 and failed 98 plans against 10. So a resident a day order will
     // actually send today (asked of the apply's own skips on a scratch copy) is out of the plan.
     // The standing order keeps the design's «plan, then take him off» (delegation §7).
-    if (!candidates.empty()) {
+    constexpr bool damage_off = true;  // DAMAGE TEST ONLY: the fix switched off
+    if (!damage_off && !candidates.empty()) {
       std::vector<OrderedWork> day_works;
       for (const OrderedWork& work : ordered) {
         if (work.order->kind != OrderKind::kAssignWork) {
