@@ -401,6 +401,7 @@ HandOverAdvice LeastHeadsToHandOver(const ProductionConfig& config,
     advice.horses = std::max(advice.horses, hay.horses);
     advice.stock = std::max(advice.stock, hay.cows);
     advice.sized_by = static_cast<std::uint8_t>(HandOverSizedBy::kHay);
+    advice.hay_set_heads = true;
   }
   if (hay.floor_binds) {
     advice.sized_by = static_cast<std::uint8_t>(HandOverSizedBy::kFloorBinds);

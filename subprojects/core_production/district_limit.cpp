@@ -595,10 +595,11 @@ OrderRefusal OrderHandStock(const ProductionConfig& config,
   // them»): asked before the heads go - cows handed while the hand-over advice is sized by the
   // store's term. Read with the advice's own question (LeastHeadsToHandOver), so the cut and the
   // lamp cannot disagree on whose word the cows went on.
+  // THE HAY SET THE HEADS, NOT «THE LABEL SAYS HAY» (the release's 77 %): a hand-over the hay
+  // sized past the horses' floor is labelled kFloorBinds, and the cut skipped it.
   const bool cows_by_hay = config.farming.hand_over_by_hay &&
                            herd.kind.value == MilkKind(config).value &&
-                           LeastHeadsToHandOver(config, current, nullptr).sized_by ==
-                               static_cast<std::uint8_t>(HandOverSizedBy::kHay);
+                           LeastHeadsToHandOver(config, current, nullptr).hay_set_heads;
   const std::int64_t milking_before = cows_by_hay ? KolkhozAdultCows(config, current) : 0;
   const bool old_herd = MeanAdultAgeYears(herd) >= kind.life_game_years_min;
   // The horses' young above what the herd keeps, first (the order above).
