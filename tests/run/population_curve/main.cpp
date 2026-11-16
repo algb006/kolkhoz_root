@@ -53,6 +53,7 @@
 #include "../common/herd_tally.h"
 #include "../common/horse_tail_tally.h"
 #include "../common/ledger_turn_tally.h"
+#include "../common/milk_cut_tally.h"
 #include "../common/passed_over_tally.h"
 #include "../common/rest_tally.h"
 #include "../common/run_harness.h"
@@ -901,6 +902,7 @@ bool Walk(std::uint64_t seed,
   run::HorseTailTally horse_tail(*world.tables);
   run::FloodTally flood_tally;                    // #1375
   run::FirstPlanTally first_plan(*world.tables);  // #1750
+  run::MilkCutTally milk_cut(*world.tables);      // #1737 option 1, every run's door
   run::LedgerTurnTally ledger_turn;               // #1580
   std::array<std::uint32_t, core::kRestSourceCount> r1373_sources = {};
   std::uint32_t r1373_walk_offs = 0;
@@ -1038,6 +1040,7 @@ bool Walk(std::uint64_t seed,
       horse_tail.CountDayEnd(*simulation);
       flood_tally.CountDayEnd(*simulation);                  // #1375
       first_plan.CountDayEnd(simulation->CompletedState());  // #1750
+      milk_cut.CountDayEnd(*simulation);                     // #1737
       ledger_turn.CountDayEnd(*simulation);                  // #1580
       if (!warm_off) {
         strada.CountDayEnd(simulation->CompletedState());
@@ -1578,6 +1581,7 @@ bool Walk(std::uint64_t seed,
       horse_tail.Print(std::cout, seed);   // #1573's horse tail
       flood_tally.Print(std::cout, seed);  // #1375
       first_plan.Print(std::cout, seed);   // #1750
+      milk_cut.Print(std::cout, seed);     // #1737
       ledger_turn.Print(std::cout, seed);  // #1580
       builder.limit.PrintHayHorseTail(std::cout, seed, run::HorseTailTally::kYears);
       builder.limit.PrintHayLadderGuard(std::cout, seed);  // #1697's guard, every village
