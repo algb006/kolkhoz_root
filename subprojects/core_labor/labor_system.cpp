@@ -362,6 +362,17 @@ class LaborSystem final : public ILaborSystem {
       line.deadline = line.overdue ? (today > days ? today - days : 0U) : today + days;
       line.area_ha = field.area_ga;
       line.work_days_left = field.work_days_remaining;
+      // THE CHAIN'S LAST DATE on a plough or harrow line: the sowing's own window, by the same
+      // rule (boss 17 Nov, for game's «всё до {date}»).
+      if (kind == WorkKind::kPlowing || kind == WorkKind::kHarrowing) {
+        const Deadline sowing = FieldWindow(state.calendar, field, WorkKind::kSowing);
+        if (sowing.kind == DeadlineKind::kDays || sowing.kind == DeadlineKind::kOverdue) {
+          line.sowing_overdue = sowing.kind == DeadlineKind::kOverdue;
+          const auto sow_days = static_cast<SimDay>(sowing.days);
+          line.sowing_deadline =
+              line.sowing_overdue ? (today > sow_days ? today - sow_days : 0U) : today + sow_days;
+        }
+      }
       // TODAY'S STOP (#1815), in CollectJobs' order and by its own predicates.
       if (day_off) {
         line.stopped_by = WorkStop::kDayOff;

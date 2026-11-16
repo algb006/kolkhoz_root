@@ -135,6 +135,14 @@ struct SeasonWorkLine {
   /// for it (the grain lies at the field for the carts), so naming it here would disagree with
   /// the day.
   WorkStop stopped_by = WorkStop::kNone;
+
+  /// THE CHAIN'S LAST DATE, on a plough or harrow line (game's «пахота, затем боронование и
+  /// сев — всё до {date}»; boss 17 Nov): the field's sowing deadline by the same rule,
+  /// FieldWindow(field, kSowing). While the window is open it is `deadline` itself; once it has
+  /// closed, a ploughed annual's sowing is due by the last day it can still ripen, later than
+  /// the plough's overdue end. 0 with `sowing_overdue` false on every other line.
+  SimDay sowing_deadline = 0;
+  bool sowing_overdue = false;
 };
 
 /// @brief The season's field works (ISession::SeasonWorks).

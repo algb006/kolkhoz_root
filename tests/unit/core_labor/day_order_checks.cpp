@@ -320,6 +320,44 @@ int CheckSeasonWorksAndGaps(core::ILaborSystem& labor) {
   return failures;
 }
 
+/// The chain's last date (boss 17 Nov, for game's «пахота, затем боронование и сев — всё до»):
+/// a field in its ploughing carries its sowing's deadline - the same date while the window is
+/// open (day 10: the oat sows to May, days 16-19), and on day 30 the plough is overdue while the
+/// sowing's own rule is asked (never earlier than the plough's end).
+int CheckSowingDeadline(core::ILaborSystem& labor) {
+  int failures = 0;
+  const auto plough_line = [&](std::uint32_t day) {
+    Village village(2);
+    village.world.fields.rows[0].phase = core::FieldPhase::kPlowing;
+    village.world.fields.rows[1].phase = core::FieldPhase::kGrowing;  // off the list
+    village.RunHours(labor, day, 0, 1);
+    const core::SeasonWorks works = labor.SeasonWorksOf(village.world);
+    return works.lines.empty() ? core::SeasonWorkLine{} : works.lines[0];
+  };
+  const core::SeasonWorkLine open = plough_line(10);
+  failures += Expect(open.work == core::WorkKind::kPlowing && !open.overdue &&
+                         open.sowing_deadline == open.deadline && !open.sowing_overdue &&
+                         open.deadline == 19U,
+                     "sowing deadline: while the window is open the chain ends with the plough");
+  const core::SeasonWorkLine late = plough_line(30);
+  std::cout << "  sowing deadline, day 30: plough " << late.deadline << " overdue "
+            << (late.overdue ? 1 : 0) << ", sowing " << late.sowing_deadline << " overdue "
+            << (late.sowing_overdue ? 1 : 0) << '\n';
+  failures +=
+      Expect(late.work == core::WorkKind::kPlowing && late.overdue && late.sowing_deadline != 0U &&
+                 (!late.sowing_overdue || late.sowing_deadline >= late.deadline),
+             "sowing deadline: past the window the plough is overdue and the line still "
+             "carries the sowing's own date, never earlier than the plough's end");
+  // A reaping line carries none.
+  Village reaping(2);
+  reaping.RunHours(labor, kWednesday, 0, 1);
+  const core::SeasonWorks reaped = labor.SeasonWorksOf(reaping.world);
+  failures += Expect(!reaped.lines.empty() && reaped.lines[0].sowing_deadline == 0U &&
+                         !reaped.lines[0].sowing_overdue,
+                     "sowing deadline: a reaping line carries no sowing date");
+  return failures;
+}
+
 /// #1812: without the accountant nobody is placed, and the chairman's crew still works - the
 /// pair, refused and allowed, on one village.
 int CheckNoAutoPlacement() {
@@ -412,6 +450,7 @@ int CheckDayOrders() {
   failures += CheckNamesAndShortCrew(*labor);
   failures += CheckDayOffMovesTheDay(*labor);
   failures += CheckSeasonWorksAndGaps(*labor);
+  failures += CheckSowingDeadline(*labor);
   failures += CheckNoAutoPlacement();
   failures += CheckOrderedHorses();
   return failures;
