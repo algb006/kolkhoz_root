@@ -125,8 +125,14 @@ struct HandOverAdvice {
 enum class HandOverSizedBy : std::uint8_t {
   kPlan = 0,        ///< The plan's and the floors' least (#1697), or no head at all.
   kHay = 1,         ///< The store's term was larger and set the heads.
-  kFloorBinds = 2,  ///< The store's term would cross a floor: stopped AT the floors.
+  kFloorBinds = 2,  ///< The store's term would cross the horses' floor (since #1737 option 1
+                    ///< the cows have none against the hay): stopped AT it.
 };
+
+/// @brief The adult cows of the kolkhoz's own herds (no family's yard): the hay term's room
+///        for cows since #1737 option 1, and «milking cows at the hand-over» of the milk
+///        position's cut (OrderHandStock).
+std::int64_t KolkhozAdultCows(const ProductionConfig& config, const WorldState& world);
 
 /// @brief THE LEAST HEADS TO HAND OVER FOR THE REST TO BE FED to the lamp's
 ///        horizon (FeedHorizon::kNearestScythes), in the floors' order. Each
