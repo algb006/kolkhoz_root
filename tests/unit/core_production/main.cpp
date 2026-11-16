@@ -4784,6 +4784,59 @@ int CheckWorkStockMales() {
 ///   kept), no adult; nine asked — the same six and then three adults.
 /// - Lit with no young above what is kept: refused kRuleForbids, nothing
 ///   taken.
+/// #1737's label fix (boss: «a test that can fail is the only measure this fix gets» - no bot
+/// reaches the case): a hay hand-over the term sizes past every room is labelled kFloorBinds,
+/// and the milk position is cut all the same. The world: 4 cows, 3 pigs that eat too (their
+/// need no cow's leaving can cover), no hay, winter - the term names every cow and still binds.
+/// The pair: with the term off the same hand-over cuts nothing.
+int CheckHayCutFollowsFloorBinds() {
+  int failures = 0;
+  core::ProductionConfig config = MakeHerdConfig();
+  config.livestock[1].feed_units_per_game_day = 1.0F;  // the pigs eat what the cows eat
+  config.feed_links.push_back(core::FeedLinkDef{
+      .kind = core::LivestockKindId{1}, .resource = core::ResourceId{0}, .reserve = 0});
+  config.farming.hand_over_by_hay = true;
+  config.limit.lots.resize(1);
+  config.limit.lots[0].points = 80;
+  config.limit.lots[0].kind = core::LimitLotKind::kLivestock;
+  config.limit.lots[0].livestock = core::LivestockKindId{0};
+  config.limit.lots[0].head_count = 1;
+  core::ProductionConfig off = config;
+  off.farming.hand_over_by_hay = false;
+  const auto hand_two = [](const core::ProductionConfig& with) {
+    core::WorldState world = MakeHerdWorld(0.0F);
+    world.calendar.tick = 2 * core::kTicksPerDay;  // January: far from the pasture month
+    core::RefreshCalendarCaches(world.calendar);
+    const core::HerdId cows = AddHerd(world, 0, 4, 0, true);
+    AddHerd(world, 1, 3, 0, true);
+    world.plan.due.assign(3, 0);
+    world.plan.due[1] = 1'000'000;  // the milk position, grams
+    const core::HandOverAdvice advice = core::LeastHeadsToHandOver(with, world, nullptr);
+    core::OrderRow order;
+    order.kind = core::OrderKind::kHandStock;
+    order.herd = cows;
+    order.amount = 2;
+    const core::OrderRefusal refusal = core::OrderHandStock(with, world, order);
+    return std::tuple{advice, refusal, world.plan.due[1]};
+  };
+  const auto [advice_on, refusal_on, due_on] = hand_two(config);
+  const auto [advice_off, refusal_off, due_off] = hand_two(off);
+  std::cout << "  #1737 label fix: term on - sized_by " << static_cast<int>(advice_on.sized_by)
+            << ", hay set the heads " << (advice_on.hay_set_heads ? 1 : 0) << ", position "
+            << due_on << " g after 2 of 4 cows; term off - " << due_off << " g\n";
+  failures +=
+      Expect(advice_on.sized_by == static_cast<std::uint8_t>(core::HandOverSizedBy::kFloorBinds) &&
+                 advice_on.hay_set_heads,
+             "#1737 label fix: the world binds - labelled floor binds, the hay set them");
+  failures += Expect(refusal_on == core::OrderRefusal::kNone && due_on == 500'000,
+                     "#1737 label fix: two of four cows handed under a floor-binds label cut the "
+                     "milk position by half");
+  failures += Expect(
+      refusal_off == core::OrderRefusal::kNone && !advice_off.hay_set_heads && due_off == 1'000'000,
+      "#1737 label fix: with the term off the same hand-over cuts nothing");
+  return failures;
+}
+
 int CheckHorsesOrderAtTheDoor() {
   int failures = 0;
   core::ProductionConfig config = MakeHerdConfig();
@@ -18579,6 +18632,7 @@ int main() {
   failures += CheckTheGoatIsOfferedFirst();
   failures += CheckWorkStockMales();
   failures += CheckHorsesOrderAtTheDoor();
+  failures += CheckHayCutFollowsFloorBinds();  // #1737's label fix
   failures += CheckHandingStockBack();
   failures += CheckElectrification();
   failures += CheckTheMeadowFlowersAndTheAftermathComesBack();
