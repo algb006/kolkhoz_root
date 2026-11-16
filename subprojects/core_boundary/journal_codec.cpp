@@ -71,7 +71,7 @@ namespace {
 /// #1374 (save 206): `male` left, so the raw 0/1 bytes are `enable` and
 /// pay_in_grain - one byte fewer.
 constexpr std::size_t kOrderBytes =
-    5 + 8 + (7 * 4) + (8 * 2) + (4 * 4) + 8 + 2 + (2 + 1) + (8 * 4) + 4 + 4 + 4 + 1;
+    5 + 8 + (7 * 4) + (8 * 2) + (4 * 4) + 8 + 2 + (2 + 1) + (8 * 4) + 4 + 4 + 4 + 1 + 2;
 
 constexpr std::size_t kEntryBytes = 8 + 4 + 1 + kOrderBytes + 4;
 
@@ -112,8 +112,10 @@ static_assert(sizeof(OrderRow) == 144, "OrderRow changed — update the journal 
 /// B7's contract: the groom's task and its level, 35 fields and 144 bytes,
 /// predicted before the build. #1421: pay_in_grain, 36 fields and still 144
 /// bytes, predicted before the build. #1374: `male` leaves, 35 fields and
-/// still 144 bytes, predicted before the build.
-static_assert(AggregateArity<OrderRow>() == 35,
+/// still 144 bytes, predicted before the build. #1778: crew_size, 36 fields and
+/// still 144 bytes (the tail padding after the groom's level), predicted
+/// before the build.
+static_assert(AggregateArity<OrderRow>() == 36,
               "OrderRow gained or lost a field — recount kOrderBytes and update WriteOrder");
 
 constexpr std::uint8_t kMaxFundKind = static_cast<std::uint8_t>(FundKind::kFundKindCount) - 1;
@@ -301,6 +303,7 @@ void WriteOrder(Writer& out, const OrderRow& row) {
   out.U32(row.road_work.value);       // delivery 7e
   out.U32(row.logistics_task.value);  // B7's contract
   out.U8(static_cast<std::uint8_t>(row.logistics_level));
+  out.U16(row.crew_size);  // #1778
 }
 
 OrderRow ReadOrder(Reader& in) {
@@ -353,6 +356,7 @@ OrderRow ReadOrder(Reader& in) {
   row.logistics_task = LogisticsTaskId{in.U32()};
   row.logistics_level = static_cast<LogisticsLevel>(
       in.EnumValue(static_cast<std::uint8_t>(kLogisticsLevelCount - 1U)));
+  row.crew_size = in.U16();  // #1778
   return row;
 }
 

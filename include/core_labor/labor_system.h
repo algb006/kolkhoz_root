@@ -61,6 +61,7 @@
 
 #include "core_common/alarm_state.h"
 #include "core_common/calendar.h"
+#include "core_common/day_orders.h"
 #include "core_common/early_snow.h"
 #include "core_common/labor_state.h"
 #include "core_common/office_views.h"
@@ -145,6 +146,22 @@ class ILaborSystem {
   /// @return False as well when nobody lives anywhere. Says nothing of
   ///         whether a hand is FREE today — that is the placement's.
   virtual bool FellingCanBeManned(const WorldState& state, Vec2 place) const = 0;
+
+  /// @brief The names an accepted kAssignCrew holds for its day (day_orders.h, #1778).
+  /// @param state Any complete world - the current buffer between steps.
+  /// @return `crew` invalid when the id names no accepted kAssignCrew. STUB until #1778's
+  ///         body: every answer has `measured` false.
+  virtual CrewView CrewNames(const WorldState& state, OrderId crew) const = 0;
+
+  /// @brief The last working day's kAssignCrew and kAssignDayWork orders, in the shape the
+  ///        layer issues them again («Повторить вчерашние», day_orders.h, #1778).
+  /// @return STUB until #1778's body: `measured` false.
+  virtual YesterdayDayOrders YesterdayDayOrdersOf(const WorldState& state) const = 0;
+
+  /// @brief This season's field works with their windows and what is done of them, from the
+  ///        deadline rule's own source (day_orders.h, #1778).
+  /// @return STUB until #1778's body: `measured` false.
+  virtual SeasonWorks SeasonWorksOf(const WorldState& state) const = 0;
 };
 
 /// @brief Creates the labor subsystem.

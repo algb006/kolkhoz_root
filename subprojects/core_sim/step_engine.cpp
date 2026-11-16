@@ -268,6 +268,13 @@ class StepEngine final : public ISimulation {
   /// No subsystems, so no salt modelled: `measured` false.
   SaltView SaltToday() const override { return {}; }
 
+  /// No subsystems, so no labor: no crew, no day orders, no works (`measured` false).
+  CrewView CrewNames(OrderId /*crew*/) const override { return {}; }
+
+  YesterdayDayOrders YesterdayDayOrdersOf() const override { return {}; }
+
+  SeasonWorks SeasonWorksOf() const override { return {}; }
+
   /// No subsystems, so no works and no carts: nothing to cart.
   SupplyEstimate SupplyEstimateFor(UnitId /*unit*/) const override { return {}; }
 

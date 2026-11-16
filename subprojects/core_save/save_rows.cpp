@@ -444,7 +444,9 @@ static_assert(sizeof(OrderRow) == 144, "OrderRow changed — update the codec an
 // (the padding after it) and 36 fields before the build.
 // Save 206 (#1374): `male` leaves - predicted 144 unmoved (a byte out of the
 // padding) and 35 fields before the build; on the wire -1 an order.
-static_assert(AggregateArity<OrderRow>() == 35,
+// Save 212 (#1778): crew_size, a u16 in the tail padding after the groom's
+// level - predicted 144 unmoved and 36 fields before the build; +2 an order.
+static_assert(AggregateArity<OrderRow>() == 36,
               "OrderRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 93: travel_hours, a float at the end — 36 and ten fields, predicted
 // before the field was added.
@@ -1866,6 +1868,7 @@ void WriteOrderRow(SaveSink& sink, const OrderRow& row) {
   // The groom's tasks (routing stage B, B7's contract, save 140).
   WriteEntityId(out, row.logistics_task);
   out.WriteU8(static_cast<std::uint8_t>(row.logistics_level));
+  out.WriteU16(row.crew_size);  // save 212 (#1778)
 }
 
 OrderRow ReadOrderRow(LoadSource& source) {
@@ -1918,6 +1921,7 @@ OrderRow ReadOrderRow(LoadSource& source) {
   row.logistics_task = ReadEntityId<LogisticsTaskId>(in);  // save 140
   row.logistics_level = static_cast<LogisticsLevel>(
       source.ReadEnumValue(0, kLogisticsLevelCount - 1U, "order logistics level"));
+  row.crew_size = in.ReadU16();  // save 212 (#1778)
   return row;
 }
 

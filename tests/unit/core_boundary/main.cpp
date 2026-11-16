@@ -167,6 +167,12 @@ class ScriptedSimulation final : public core::ISimulation {
 
   core::SaltView SaltToday() const override { return {}; }
 
+  core::CrewView CrewNames(core::OrderId /*crew*/) const override { return {}; }
+
+  core::YesterdayDayOrders YesterdayDayOrdersOf() const override { return {}; }
+
+  core::SeasonWorks SeasonWorksOf() const override { return {}; }
+
   /// No works and no carts here: nothing to cart.
   core::SupplyEstimate SupplyEstimateFor(core::UnitId /*unit*/) const override { return {}; }
 

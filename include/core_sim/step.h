@@ -72,6 +72,7 @@
 #include "core_common/barter_view.h"
 #include "core_common/cargo_form.h"
 #include "core_common/chairman_transport_view.h"
+#include "core_common/day_orders.h"
 #include "core_common/deadline.h"
 #include "core_common/delivery_term.h"
 #include "core_common/elder_view.h"
@@ -467,6 +468,22 @@ class ISimulation {
   /// STUB until #1630 (B): every implementation answers `measured` false.
   /// @note Called between steps on the sim thread. A pure read.
   virtual SaltView SaltToday() const = 0;
+
+  /// @brief The names an accepted kAssignCrew holds for its day (day_orders.h, #1778).
+  /// Fans out to core_labor; the bare engine answers `measured` false.
+  /// STUB until #1778's body: every implementation answers `measured` false.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual CrewView CrewNames(OrderId crew) const = 0;
+
+  /// @brief The last working day's day orders, for «Повторить вчерашние» (day_orders.h,
+  /// #1778). STUB until #1778's body: `measured` false.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual YesterdayDayOrders YesterdayDayOrdersOf() const = 0;
+
+  /// @brief This season's field works with their deadlines (day_orders.h, #1778).
+  /// STUB until #1778's body: `measured` false.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual SeasonWorks SeasonWorksOf() const = 0;
 
   /// @brief How long the carting of the materials of the works on `unit`
   /// would take, said before they are started (supply_estimate.h; routing

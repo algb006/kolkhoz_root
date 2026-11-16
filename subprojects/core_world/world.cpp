@@ -827,6 +827,18 @@ class StandardSimulation final : public ISimulation {
 
   SaltView SaltToday() const override { return production_->SaltToday(engine_->CompletedState()); }
 
+  CrewView CrewNames(OrderId crew) const override {
+    return labor_->CrewNames(engine_->CompletedState(), crew);
+  }
+
+  YesterdayDayOrders YesterdayDayOrdersOf() const override {
+    return labor_->YesterdayDayOrdersOf(engine_->CompletedState());
+  }
+
+  SeasonWorks SeasonWorksOf() const override {
+    return labor_->SeasonWorksOf(engine_->CompletedState());
+  }
+
   bool FellingCanBeManned(Vec2 place) const override {
     return labor_->FellingCanBeManned(engine_->CompletedState(), place);
   }

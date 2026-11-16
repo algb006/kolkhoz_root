@@ -324,6 +324,15 @@ class LaborSystem final : public ILaborSystem {
     return FellingCanBeMannedToday(state, place, ReachRuleOf(), HorsesForARide(state));
   }
 
+  /// STUB (#1778's contract, 16 Nov 2026): the doors stand, no day order is consumed yet, so
+  /// every answer has `measured` false. Return when: #1778's body lands kAssignCrew and
+  /// kAssignDayWork in core_labor.
+  CrewView CrewNames(const WorldState& /*state*/, OrderId /*crew*/) const override { return {}; }
+
+  YesterdayDayOrders YesterdayDayOrdersOf(const WorldState& /*state*/) const override { return {}; }
+
+  SeasonWorks SeasonWorksOf(const WorldState& /*state*/) const override { return {}; }
+
   void CollectAlarms(const WorldState& state, std::vector<Alarm>& out) const override {
     // Once the team is in, the question is closed for the campaign: the flag
     // is the milestone, not the yard's current staffing (world_state.h).

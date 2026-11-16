@@ -95,7 +95,15 @@ bool ShapeIsValid(const OrderRow& order) {
              static_cast<std::uint32_t>(order.fund) <
                  static_cast<std::uint32_t>(FundKind::kFundKindCount) &&
              order.resource.value != kInvalidDefIdValue && order.amount > 0;
+    case OrderKind::kAssignCrew:
+    case OrderKind::kAssignDayWork:
     case OrderKind::kAssignWork:
+      // #1778's day orders take kAssignWork's targets: a day work names one resident as the
+      // standing order does, and a crew names none and carries its N instead.
+      if (order.kind == OrderKind::kAssignCrew ? (has_resident || order.crew_size == 0)
+                                               : !has_resident) {
+        return false;
+      }
       // The kind of work decides which target is required, and the list is
       // the whole of WorkKind, not the part of it that existed when this
       // check was written: the four field kinds and hauling name a FIELD
@@ -105,7 +113,7 @@ bool ShapeIsValid(const OrderRow& order) {
       // the way the design shapes it was refused at the boundary and one
       // shaped to get past the boundary named a field the seam would never
       // read. Found by the delivery cycle of task A8.
-      if (!has_resident || order.work == WorkKind::kNone) {
+      if (order.work == WorkKind::kNone) {
         return false;
       }
       if (order.work == WorkKind::kHerdCare) {
@@ -570,6 +578,14 @@ class Session final : public ISession {
   }
 
   SaltView SaltToday() const override { return simulation_->SaltToday(); }
+
+  CrewView CrewNames(OrderId crew) const override { return simulation_->CrewNames(crew); }
+
+  YesterdayDayOrders YesterdayDayOrdersOf() const override {
+    return simulation_->YesterdayDayOrdersOf();
+  }
+
+  SeasonWorks SeasonWorksOf() const override { return simulation_->SeasonWorksOf(); }
 
   RoadPieces SelectRoadPieces(const RoadSelection& selection,
                               RoadOperation operation) const override {

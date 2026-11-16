@@ -139,6 +139,7 @@
 #include "core_common/calendar.h"
 #include "core_common/cargo_form.h"
 #include "core_common/chairman_transport_view.h"
+#include "core_common/day_orders.h"
 #include "core_common/elder_view.h"
 #include "core_common/event_state.h"
 #include "core_common/geometry.h"
@@ -980,6 +981,28 @@ class ISession {
   ///        STUB until #1630 (B): `measured` false - say «not measured».
   /// @note Between steps; the answer describes State().
   virtual SaltView SaltToday() const = 0;
+
+  /// @brief The names an accepted kAssignCrew holds for its day (ISimulation::CrewNames;
+  ///        core_common/day_orders.h; #1778): the Notebook's line «пятеро на пахоту поля 3:
+  ///        <имена>» before morning. Readable from the step that accepted the order.
+  ///        STUB until #1778's body: `measured` false - say «not measured».
+  /// @param crew The id IssueOrder promised for the kAssignCrew.
+  /// @note Between steps; the answer describes State().
+  virtual CrewView CrewNames(OrderId crew) const = 0;
+
+  /// @brief The last working day's day orders (ISimulation::YesterdayDayOrdersOf; #1778): the
+  ///        layer issues them again for «Повторить вчерашние наряды» - there is no repeat
+  ///        order (society design l.170). Empty `lines` with `measured` true is «вчера нарядов
+  ///        не было». STUB until #1778's body: `measured` false.
+  /// @note Between steps; the answer describes State().
+  virtual YesterdayDayOrders YesterdayDayOrdersOf() const = 0;
+
+  /// @brief This season's field works with their windows and what is done of them
+  ///        (ISimulation::SeasonWorksOf; #1778): sowing, harvest and haymaking per field,
+  ///        deadlines from the accountant's deadline rule's own source. STUB until #1778's body:
+  ///        `measured` false.
+  /// @note Between steps; the answer describes State().
+  virtual SeasonWorks SeasonWorksOf() const = 0;
 
   /// @brief The pieces a drag along a laid road selects for `operation`,
   ///        snapped to whole pieces, each in or out and why, and the

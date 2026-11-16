@@ -1011,6 +1011,25 @@ enum class OrderKind : std::uint8_t {
   /// core_production (salt_loan.h).
   kTakeSaltLoan,
 
+  /// N PEOPLE ON A WORK FOR ONE DAY (#1778; society design §1 «Наряд игрока - число, имена
+  /// видны»; core_common/day_orders.h): `work` at `field` / `herd` / `unit`, `crew_size` N, for
+  /// the next working day. At acceptance core picks N residents by the chairman's placement level
+  /// (world_params chairman_placement_level, 0 for every avatar - STUB until core gets an avatar
+  /// read) out of the accountant's pool; ISession::CrewNames reads them before morning. Fewer
+  /// free than N: accepted, filled with what there is. The row goes kDone when its day closes.
+  /// Refusals: kNoSuchSubject (no such target), kNotEligible (crew_size 0, or a work its target
+  /// cannot take). Seam key `assign_crew`. Consumer: core_labor.
+  /// CONTRACT ONLY until #1778's body: no consumer reads it yet.
+  kAssignCrew,
+
+  /// ONE NAMED RESIDENT ON A WORK FOR ONE DAY (#1778): `resident` on `work` at `field` /
+  /// `herd` / `unit` for the next working day only - the name the player writes over a crew's
+  /// pick («Любое имя можно заменить, вписанного по имени игра не трогает»). kDone when its day
+  /// closes; kAssignWork stays the standing order. Refusals as kAssignWork's. Seam key
+  /// `assign_day_work`. Consumer: core_labor.
+  /// CONTRACT ONLY until #1778's body: no consumer reads it yet.
+  kAssignDayWork,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).
@@ -1595,6 +1614,11 @@ struct OrderRow {
   /// kSetLogisticsLevel: the level it takes as its own. kLogisticsLevelCount
   /// is refused by shape.
   LogisticsLevel logistics_level = LogisticsLevel::kOrdinary;
+
+  /// kAssignCrew: the N people the chairman wrote (#1778). A field of its own, not `amount`
+  /// borrowed (grams), for the reason `area_ha` gives. It sits in the row's tail padding, so
+  /// sizeof stays 144; the journal and save codecs carry it with #1778's body.
+  std::uint16_t crew_size = 0;
 };
 
 /// @brief The order book type used by WorldState.
