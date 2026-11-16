@@ -1807,8 +1807,10 @@ int CheckTheForecastAdvice() {
     floored.ledger.closed.adult_head_days = {4 * core::kDaysPerYear};
     floored.ledger.closed.herd_produce = {0, 4'000'000};
     const core::Alarm at_floor = lamp_with(hay_on, floored);
-    failures += Expect(floored.herds.rows[0].adult_count - at_floor.hand_over_stock >= 3,
-                       "#1737: the hay's term stops at the milk floor");
+    // OPTION 1 (the human 16 Nov «Ваше решение» -> econ's): the milk floor yields to the hay -
+    // the same store names the same cows with the floor as without it.
+    failures += Expect(at_floor.hand_over_stock == by_hay.hand_over_stock,
+                       "#1737 option 1: the milk floor does not hold the hay's term back");
     // THE FINDING THE LADDER CHECKS' SWITCH CARRIES (boss, #1737): with a small store against a
     // winter to May the term names every head above the floors. Printed for the stores those
     // checks used, term on, with no floor and with the milk floor of three: named / herd / floor.
@@ -1824,10 +1826,54 @@ int CheckTheForecastAdvice() {
                 << static_cast<int>(open.hand_over_sized_by) << "); with the floor of 3: named "
                 << kept.hand_over_stock << ", set by " << static_cast<int>(kept.hand_over_sized_by)
                 << '\n';
-      failures += Expect(small.herds.rows[0].adult_count - kept.hand_over_stock >= 3,
-                         "#1737: with the term on, a small store never takes the herd under its "
-                         "milk floor");
+      // Until option 1 this asserted the floor held; the human's word turned it the other way:
+      // the floor of three names as many as no floor does (the hay's count, set by the hay).
+      failures += Expect(kept.hand_over_stock == open.hand_over_stock,
+                         "#1737 option 1: with the term on, the milk floor names the same cows as "
+                         "no floor");
     }
+    // AND THE MILK POSITION FOLLOWS THE COWS THE HAY HANDED (option 1): handed on the hay's
+    // word, the year's position drops by position x handed / milking cows at the hand-over;
+    // with the term off, the same hand-over leaves the position as it was (the pair).
+    core::ProductionConfig sells = hay_on;
+    sells.limit.lots.resize(1);
+    sells.limit.lots[0].points = 80;
+    sells.limit.lots[0].kind = core::LimitLotKind::kLivestock;
+    sells.limit.lots[0].livestock = world.herds.rows[0].kind;
+    sells.limit.lots[0].head_count = 1;
+    core::ProductionConfig sells_off = sells;
+    sells_off.farming.hand_over_by_hay = false;
+    const auto hand_two = [&](const core::ProductionConfig& with) {
+      core::WorldState at = floored;
+      const std::size_t milk = with.milk_resource.value;
+      if (at.plan.due.size() <= milk) {
+        at.plan.due.resize(milk + 1, 0);
+      }
+      at.plan.due[milk] = 1'000'000;
+      const auto before = static_cast<std::int64_t>(at.herds.rows[0].adult_count);
+      core::OrderRow order;
+      order.kind = core::OrderKind::kHandStock;
+      order.herd = at.herds.row_ids[0];
+      order.amount = 2;
+      const bool sized_by_hay = lamp_with(with, at).hand_over_sized_by ==
+                                static_cast<std::uint8_t>(core::HandOverSizedBy::kHay);
+      const core::OrderRefusal refusal = core::OrderHandStock(with, at, order);
+      return std::tuple{refusal, sized_by_hay, before, at.plan.due[milk]};
+    };
+    const auto [refused_on, by_hay_on, cows_on, due_on] = hand_two(sells);
+    const auto [refused_off, by_hay_off, cows_off, due_off] = hand_two(sells_off);
+    std::cout << "  #1737 option 1 hand-over of 2 of " << cows_on << " cows: sized by hay "
+              << (by_hay_on ? 1 : 0) << ", position 1000000 g -> " << due_on << " g; term off -> "
+              << due_off << " g\n";
+    const core::Grams cut_expected =
+        1'000'000 - static_cast<core::Grams>(1'000'000.0 * 2.0 / static_cast<double>(cows_on));
+    failures +=
+        Expect(refused_on == core::OrderRefusal::kNone && by_hay_on && due_on == cut_expected,
+               "#1737 option 1: two cows handed on the hay's word cut the milk position "
+               "by their share of the milking cows");
+    failures += Expect(refused_off == core::OrderRefusal::kNone && !by_hay_off &&
+                           due_off == 1'000'000 && cows_off == cows_on,
+                       "#1737 option 1: with the term off the same hand-over leaves the position");
   }
   // THE PURCHASE THAT FEEDS NO HEAD MORE: the granary full of compound feed,
   // its share of the day taken already — the hole is the hay's.
