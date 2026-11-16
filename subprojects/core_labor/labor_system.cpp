@@ -603,6 +603,13 @@ class LaborSystem final : public ILaborSystem {
     std::vector<std::uint32_t> truant;
     std::vector<AssignmentCandidate> candidates =
         CollectCandidates(current, &resting, &mourning, &truant);
+    // WITHOUT THE ACCOUNTANT NOBODY IS PLACED (#1812; society design §1 «Без учётчика
+    // автоматической расстановки нет»; world_params no_auto_placement): the list is emptied, so
+    // the morning books every job with work left as short of hands and places nobody; the posts
+    // (placed above) and the chairman's orders (applied below) still send their people.
+    if (config_.no_auto_placement) {
+      candidates.clear();
+    }
     // THE DAY'S TRUANTS (#1568 link 1): booked on a working day as the
     // funeral's kin are, one event a day with their number.
     if (!truant.empty() && !day_off_today) {
@@ -872,6 +879,10 @@ class LaborSystem final : public ILaborSystem {
   }
 
   void TopUpDay(WorldState& current) const {
+    // The top-up is the accountant's too: without him it does not run (#1812).
+    if (config_.no_auto_placement) {
+      return;
+    }
     ReleaseHorselessWork(current);
     const std::vector<AssignmentJob> offered = CollectJobs(current);
     SayAStackIsUrgent(current, offered);

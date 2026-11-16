@@ -806,6 +806,13 @@ struct LaborConfig {
   /// and the Снятый председатель the first, but core does not read the avatar - STUB: 0 for
   /// all, return when core gets an avatar read. Levels above 0 pick as 0 does (day_order_book.h).
   std::uint8_t chairman_placement_level = 0;
+
+  /// #1812 (host's #1811 bot arm; society design §1 «Без учётчика автоматической расстановки
+  /// нет», accepted and until now not in the engine): world_params `no_auto_placement`,
+  /// optional, 0. At 1 the accountant's morning placement and its top-ups place nobody; the
+  /// posts and the chairman's orders (standing and day orders) still send their people. The
+  /// first build stays at 0 until #589 brings the tally clerk's post.
+  bool no_auto_placement = false;
 };
 
 /// @brief The cart's and the sledge's numbers of this config (SL; cart_gear.h).

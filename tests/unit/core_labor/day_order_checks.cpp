@@ -125,13 +125,17 @@ struct Village {
   core::FieldId far_field;
 };
 
-std::unique_ptr<core::ILaborSystem> Labor() {
+/// @param no_auto_placement Writes world_params `no_auto_placement` 1 (#1812).
+std::unique_ptr<core::ILaborSystem> Labor(bool no_auto_placement = false) {
   const std::filesystem::path root = std::filesystem::temp_directory_path() / "day_order_checks";
   std::filesystem::remove_all(root);
   std::filesystem::create_directories(root);
   std::ofstream(root / "crops.csv") << "key,sow_to_month,harvest_to_month,is_winter\n"
                                        "oat,5,9,0\n";
   std::ofstream(root / "livestock.csv") << "key,care_days_per_year\nhorse,0\n";
+  if (no_auto_placement) {
+    std::ofstream(root / "world_params.csv") << "key,value,reader\nno_auto_placement,1,core\n";
+  }
   std::string error;
   const auto tables = core::LoadTableSet(root.string(), &error);
   if (tables == nullptr) {
@@ -299,6 +303,38 @@ int CheckSeasonWorksAndGaps(core::ILaborSystem& labor) {
   return failures;
 }
 
+/// #1812: without the accountant nobody is placed, and the chairman's crew still works - the
+/// pair, refused and allowed, on one village.
+int CheckNoAutoPlacement() {
+  int failures = 0;
+  const auto labor = Labor(true);
+  if (Expect(labor != nullptr, "no auto placement: the labor system is made") != 0) {
+    return 1;
+  }
+  Village village(5);
+  const core::OrderId crew = village.Issue(village.Crew(village.far_field, 2));
+  village.RunDay(*labor, kWednesday);
+  village.RunHours(*labor, kWednesday + 1U, 0, 9);
+  failures += Expect(village.On(village.near_field) == 0,
+                     "no auto placement: the accountant puts nobody on the near field");
+  failures += Expect(village.On(village.far_field) == 2 &&
+                         village.Order(crew).status == core::OrderStatus::kAccepted,
+                     "no auto placement: the chairman's crew of two still works");
+  bool near_short = false;
+  for (const core::CrewGapLine& gap : village.world.crew_gaps) {
+    near_short = near_short || (gap.field.value == village.near_field.value && gap.placed == 0);
+  }
+  failures += Expect(near_short, "no auto placement: the near field is named short, nobody on it");
+  // The control on the same village shape: with the accountant, the near field is worked.
+  const auto with_clerk = Labor(false);
+  Village control(5);
+  control.RunHours(*with_clerk, kWednesday, 0, 9);
+  failures +=
+      Expect(control.On(control.near_field) > 0,
+             "no auto placement: the control - with the accountant the near field is worked");
+  return failures;
+}
+
 }  // namespace
 
 int CheckDayOrders() {
@@ -311,5 +347,6 @@ int CheckDayOrders() {
   failures += CheckNamesAndShortCrew(*labor);
   failures += CheckDayOffMovesTheDay(*labor);
   failures += CheckSeasonWorksAndGaps(*labor);
+  failures += CheckNoAutoPlacement();
   return failures;
 }
