@@ -2430,7 +2430,9 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // Save 212 (#1778): crew_size, a u16 an order, six orders - predicted 818
     // -> 830 before the build, held, every other section unmoved; the hash
     // read off u1778a (the last kind is now kAssignDayWork).
-    {"orders", 830, 0x15f2642b6c3f8c2cULL},
+    // Save 214 (#1818): horses, a u16 an order, six orders - predicted 830 -> 842 before the
+    // build, held, every other section unmoved; the hash read off u1818b.
+    {"orders", 842, 0x12921de5955e3d24ULL},
     // Save 82: the fixture's first stand, a birch planting — 8 -> 67 (its id
     // 4, the old fields 41, species 2, hectares 4, two days 8); predicted,
     // held.
