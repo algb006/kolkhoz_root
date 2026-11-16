@@ -352,6 +352,54 @@ int CheckNoAutoPlacement() {
   return failures;
 }
 
+/// #1818: an ordered carting crew's horses come out of the pool and ride - two carters, one
+/// horse asked, two horses in the stable, no accountant: one rides, one walks; the same crew
+/// with no horse asked: nobody rides (the pair).
+int CheckOrderedHorses() {
+  int failures = 0;
+  const auto labor = Labor(true);
+  if (Expect(labor != nullptr, "ordered horses: the labor system is made") != 0) {
+    return 1;
+  }
+  const auto riders = [&](std::uint16_t horses) {
+    Village village(4);
+    village.world.fields.rows[1].haul_days_remaining = 20.0F;  // a load lies on the far field
+    village.world.fields.rows[1].reaped_grams = 5'000'000;
+    core::UnitRow stable;
+    stable.position = core::Vec2{.x = 10.0F, .y = 0.0F};
+    core::HerdRow team;
+    team.kind = core::LivestockKindId{0};  // the horse of the tables above
+    team.unit = core::AppendRow(village.world.units, stable);
+    team.adult_count = 2;
+    core::AppendRow(village.world.herds, team);
+    core::OrderRow carters;
+    carters.kind = core::OrderKind::kAssignCrew;
+    carters.work = core::WorkKind::kHauling;
+    carters.field = village.far_field;
+    carters.crew_size = 2;
+    carters.horses = horses;
+    village.Issue(carters);
+    village.RunDay(*labor, kWednesday);
+    village.RunHours(*labor, kWednesday + 1U, 0, 1);
+    std::uint32_t riding = 0;
+    std::uint32_t carting = 0;
+    for (const core::ResidentRow& resident : village.world.residents.rows) {
+      if (resident.work.kind == core::WorkKind::kHauling) {
+        ++carting;
+        riding += resident.work.rides_horse != 0 ? 1U : 0U;
+      }
+    }
+    return std::pair{carting, riding};
+  };
+  const auto [carting_one, riding_one] = riders(1);
+  const auto [carting_none, riding_none] = riders(0);
+  failures += Expect(carting_one == 2 && riding_one == 1,
+                     "ordered horses: one horse asked for two carters - one rides, one walks");
+  failures += Expect(carting_none == 2 && riding_none == 0,
+                     "ordered horses: no horse asked and no accountant - both walk (the pair)");
+  return failures;
+}
+
 }  // namespace
 
 int CheckDayOrders() {
@@ -365,5 +413,6 @@ int CheckDayOrders() {
   failures += CheckDayOffMovesTheDay(*labor);
   failures += CheckSeasonWorksAndGaps(*labor);
   failures += CheckNoAutoPlacement();
+  failures += CheckOrderedHorses();
   return failures;
 }

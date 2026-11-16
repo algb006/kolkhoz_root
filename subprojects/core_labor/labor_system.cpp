@@ -542,6 +542,11 @@ class LaborSystem final : public ILaborSystem {
       resident.work = WorkAssignment{};
     }
     StandDownRushes(current);
+    // THE CHAIRMAN'S HORSES FIRST (#1818): the ordered ploughmen, harrowers and the carters an
+    // order gives horses take theirs out of the day's pool before the accountant plans, as the
+    // funeral's do - an ordered carter walked while the accountant's rode.
+    std::vector<OrderedWork> ordered = OrderedWorksToday(current);
+    const std::uint32_t ordered_horses = std::min(HorsesOrdered(ordered), DraughtHorses(current));
     // The reaping pace rolls over: yesterday's whole day of hand reaping on
     // the arable becomes the pace (ledger_state.h, boss seq 161 Б) — IF it
     // ended with reaping still owed. A day that finished the last field is
@@ -687,6 +692,7 @@ class LaborSystem final : public ILaborSystem {
         // The funeral's horses are off the day's plan (STUB: the whole day,
         // not the procession's hours).
         params.draught_horses -= std::min(params.draught_horses, seats.horses);
+        params.draught_horses -= std::min(params.draught_horses, ordered_horses);  // #1818
         MeasureRoads(current, jobs, candidates, params);
         const std::vector<std::uint32_t> plan = PlanDayAssignments(
             jobs, candidates, params, &rides_horse, &road_blocked, &diagnosis, &rides_cart_with);
@@ -779,14 +785,15 @@ class LaborSystem final : public ILaborSystem {
     // list was not empty, the return did not happen, and the chairman's man
     // worked every Sunday of his life. One rule must not depend on whether
     // an unrelated one had anything to say.
-    ApplyStandingWork(current,
+    // AND THE DAY ORDERS AFTER THEM (#1778): the day's word wins over the standing one for
+    // that day - one list, standing first (OrderedWorksToday), with the horses the morning
+    // took for them (#1818).
+    GiveOrderedHorses(ordered, ordered_horses);
+    ApplyOrderedWorks(current,
                       current,
+                      ordered,
                       IsDayOffIn(current, current.calendar.day),
                       config_.rest_walkoff_threshold);
-    // AND THE DAY ORDERS AFTER THEM (#1778): the day's word wins over the standing one for
-    // that day.
-    ApplyDayOrders(
-        current, IsDayOffIn(current, current.calendar.day), config_.rest_walkoff_threshold);
   }
 
   /// THE WORK THAT OPENED AFTER THE MORNING (boss seq 93/95, option а). The

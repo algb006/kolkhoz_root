@@ -4,10 +4,13 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <iterator>
+#include <utility>
 #include <vector>
 
 #include "core_common/away_in_district.h"
 #include "core_common/day_order_state.h"
+#include "core_common/labor_state.h"
 #include "core_common/order_state.h"
 #include "core_common/resident_state.h"
 #include "core_common/state_table_ops.h"
@@ -204,25 +207,75 @@ bool ReleaseFromDayOrders(WorldState& current, ResidentId resident) {
   return released;
 }
 
-void ApplyDayOrders(WorldState& current, bool day_off, float walkoff_rest) {
-  const SimDay today = current.calendar.day;
+std::vector<OrderedWork> OrderedWorksToday(const WorldState& world) {
   std::vector<OrderedWork> works;
-  for (const CrewPick& pick : current.day_orders.picks) {
-    const DayOrderDue* const due = DueOf(current.day_orders, pick.crew);
-    const OrderRow* const crew = AcceptedRow(current, pick.crew);
+  for (const OrderRow& order : world.orders.rows) {
+    if (order.kind == OrderKind::kAssignWork && order.status == OrderStatus::kAccepted) {
+      works.push_back(OrderedWork{.order = &order, .resident = order.resident});
+    }
+  }
+  const SimDay today = world.calendar.day;
+  for (const CrewPick& pick : world.day_orders.picks) {
+    const DayOrderDue* const due = DueOf(world.day_orders, pick.crew);
+    const OrderRow* const crew = AcceptedRow(world, pick.crew);
     if (due != nullptr && due->day == today && crew != nullptr) {
       works.push_back(OrderedWork{.order = crew, .resident = pick.resident});
     }
   }
-  for (const DayOrderDue& due : current.day_orders.due) {
-    const OrderRow* const row = AcceptedRow(current, due.order);
+  for (const DayOrderDue& due : world.day_orders.due) {
+    const OrderRow* const row = AcceptedRow(world, due.order);
     if (row != nullptr && row->kind == OrderKind::kAssignDayWork && due.day == today) {
       works.push_back(OrderedWork{.order = row, .resident = row->resident});
     }
   }
-  // `current` is read and written: the rows the list points into are not touched by the apply
-  // (it writes residents only).
-  ApplyOrderedWorks(current, current, works, day_off, walkoff_rest);
+  return works;
+}
+
+namespace {
+
+/// @brief Does `works[index]` ask a horse of the pool: a ploughman or harrower always, a carter
+///        while his order's horses last (counted along the list).
+std::vector<bool> HorseWanted(const std::vector<OrderedWork>& works) {
+  std::vector<bool> wanted(works.size(), false);
+  std::vector<std::pair<const OrderRow*, std::uint16_t>> given;
+  for (std::size_t index = 0; index < works.size(); ++index) {
+    const OrderRow& order = *works[index].order;
+    if (IsHorseWork(order.work)) {
+      wanted[index] = true;
+      continue;
+    }
+    if (order.work != WorkKind::kHauling || order.horses == 0) {
+      continue;
+    }
+    auto found =
+        std::ranges::find_if(given, [&](const auto& entry) { return entry.first == &order; });
+    if (found == given.end()) {
+      given.emplace_back(&order, std::uint16_t{0});
+      found = std::prev(given.end());
+    }
+    if (found->second < order.horses) {
+      ++found->second;
+      wanted[index] = true;
+    }
+  }
+  return wanted;
+}
+
+}  // namespace
+
+std::uint32_t HorsesOrdered(const std::vector<OrderedWork>& works) {
+  const std::vector<bool> wanted = HorseWanted(works);
+  return static_cast<std::uint32_t>(std::ranges::count(wanted, true));
+}
+
+void GiveOrderedHorses(std::vector<OrderedWork>& works, std::uint32_t claimed) {
+  const std::vector<bool> wanted = HorseWanted(works);
+  for (std::size_t index = 0; index < works.size() && claimed > 0; ++index) {
+    if (wanted[index]) {
+      works[index].horse = true;
+      --claimed;
+    }
+  }
 }
 
 void CloseDayOrders(WorldState& current, bool day_off) {

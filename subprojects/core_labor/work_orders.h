@@ -133,6 +133,11 @@ void ApplyStandingWork(const WorldState& world,
 struct OrderedWork {
   const OrderRow* order = nullptr;
   ResidentId resident;
+
+  /// #1818: the morning gave this carter one of the order's horses (OrderRow::horses) out of
+  /// the day's pool, taken before the accountant planned. A carter without one rides only the
+  /// horse the accountant's plan gave him, as before.
+  bool horse = false;
 };
 
 /// @brief ApplyStandingWork's body for any list of ordered works, the same skips (rest day,

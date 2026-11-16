@@ -435,8 +435,9 @@ static_assert(AggregateArity<HerdRow>() == 38,
 // the dumped layout before the build.
 // Save 140 (B7's contract): the groom's task, an entity id at 136, and its
 // level, a byte at 140 — predicted 136 -> 144 and 35 fields off the layout
-// before the build.
-static_assert(sizeof(OrderRow) == 144, "OrderRow changed — update the codec and VERSION_SAVE");
+// before the build. Save 214 (#1818): horses after crew_size - predicted 144 -> 152 (the
+// tail's padding was spent on crew_size), held.
+static_assert(sizeof(OrderRow) == 152, "OrderRow changed — update the codec and VERSION_SAVE");
 // 2026-09-16: the bought head's sex landed in the padding as well — 80 still,
 // 23 fields. Two padding fields in a row now, which is the answer to whether
 // the arity check was worth its line.
@@ -448,7 +449,9 @@ static_assert(sizeof(OrderRow) == 144, "OrderRow changed — update the codec an
 // padding) and 35 fields before the build; on the wire -1 an order.
 // Save 212 (#1778): crew_size, a u16 in the tail padding after the groom's
 // level - predicted 144 unmoved and 36 fields before the build; +2 an order.
-static_assert(AggregateArity<OrderRow>() == 36,
+// Save 214 (#1818): horses, a u16 after crew_size - 37 fields; the size read off
+// the guard (the tail had no two bytes left: predicted 144 -> 152); +2 an order.
+static_assert(AggregateArity<OrderRow>() == 37,
               "OrderRow gained or lost a field — update the codec and VERSION_SAVE");
 // Save 93: travel_hours, a float at the end — 36 and ten fields, predicted
 // before the field was added.
@@ -1873,6 +1876,7 @@ void WriteOrderRow(SaveSink& sink, const OrderRow& row) {
   WriteEntityId(out, row.logistics_task);
   out.WriteU8(static_cast<std::uint8_t>(row.logistics_level));
   out.WriteU16(row.crew_size);  // save 212 (#1778)
+  out.WriteU16(row.horses);     // save 214 (#1818)
 }
 
 OrderRow ReadOrderRow(LoadSource& source) {
@@ -1926,6 +1930,7 @@ OrderRow ReadOrderRow(LoadSource& source) {
   row.logistics_level = static_cast<LogisticsLevel>(
       source.ReadEnumValue(0, kLogisticsLevelCount - 1U, "order logistics level"));
   row.crew_size = in.ReadU16();  // save 212 (#1778)
+  row.horses = in.ReadU16();     // save 214 (#1818)
   return row;
 }
 

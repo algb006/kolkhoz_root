@@ -71,7 +71,7 @@ namespace {
 /// #1374 (save 206): `male` left, so the raw 0/1 bytes are `enable` and
 /// pay_in_grain - one byte fewer.
 constexpr std::size_t kOrderBytes =
-    5 + 8 + (7 * 4) + (8 * 2) + (4 * 4) + 8 + 2 + (2 + 1) + (8 * 4) + 4 + 4 + 4 + 1 + 2;
+    5 + 8 + (7 * 4) + (8 * 2) + (4 * 4) + 8 + 2 + (2 + 1) + (8 * 4) + 4 + 4 + 4 + 1 + 2 + 2;
 
 constexpr std::size_t kEntryBytes = 8 + 4 + 1 + kOrderBytes + 4;
 
@@ -85,7 +85,7 @@ constexpr std::size_t kHeaderBytes = 16;  // magic (8) + format (4) + count (4)
 /// makes the build fail until WriteOrder, ReadOrder and kOrderBytes have all
 /// been brought along — and VERSION_SAVE bumped by the human, since an order
 /// row is a state row.
-static_assert(sizeof(OrderRow) == 144, "OrderRow changed — update the journal codec too");
+static_assert(sizeof(OrderRow) == 152, "OrderRow changed — update the journal codec too");
 
 /// AND THE FIELD COUNT BESIDE THE SIZE, for the reason the size alone cannot
 /// give (2026-09-12). The size tripwire caught kUnsealFund — three fields
@@ -114,8 +114,9 @@ static_assert(sizeof(OrderRow) == 144, "OrderRow changed — update the journal 
 /// bytes, predicted before the build. #1374: `male` leaves, 35 fields and
 /// still 144 bytes, predicted before the build. #1778: crew_size, 36 fields and
 /// still 144 bytes (the tail padding after the groom's level), predicted
-/// before the build.
-static_assert(AggregateArity<OrderRow>() == 36,
+/// before the build. #1818: horses, a u16 after crew_size - 37 fields; the size read
+/// off the guard below.
+static_assert(AggregateArity<OrderRow>() == 37,
               "OrderRow gained or lost a field — recount kOrderBytes and update WriteOrder");
 
 constexpr std::uint8_t kMaxFundKind = static_cast<std::uint8_t>(FundKind::kFundKindCount) - 1;
@@ -304,6 +305,7 @@ void WriteOrder(Writer& out, const OrderRow& row) {
   out.U32(row.logistics_task.value);  // B7's contract
   out.U8(static_cast<std::uint8_t>(row.logistics_level));
   out.U16(row.crew_size);  // #1778
+  out.U16(row.horses);     // #1818
 }
 
 OrderRow ReadOrder(Reader& in) {
@@ -357,6 +359,7 @@ OrderRow ReadOrder(Reader& in) {
   row.logistics_level = static_cast<LogisticsLevel>(
       in.EnumValue(static_cast<std::uint8_t>(kLogisticsLevelCount - 1U)));
   row.crew_size = in.U16();  // #1778
+  row.horses = in.U16();     // #1818
   return row;
 }
 

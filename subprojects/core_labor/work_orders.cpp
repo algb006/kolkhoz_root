@@ -498,6 +498,9 @@ void ApplyOrderedWorks(const WorldState& world,
     // harrow ride by their kind (RidesOut) whatever this says.
     if (order.work != WorkKind::kHauling) {
       work.rides_horse = IsHorseWork(order.work) ? 1U : 0U;
+    } else if (ordered.horse) {
+      // #1818: one of the order's horses, out of the pool before the accountant planned.
+      work.rides_horse = 1U;
     }
     work.kind = order.work;
     // The chairman's man is working: the workbook shows no idle reason on

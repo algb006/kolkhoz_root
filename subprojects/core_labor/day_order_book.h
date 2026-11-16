@@ -18,10 +18,14 @@
 #ifndef CORE_LABOR_DAY_ORDER_BOOK_H_
 #define CORE_LABOR_DAY_ORDER_BOOK_H_
 
+#include <cstdint>
+#include <vector>
+
 #include "core_common/day_orders.h"
 #include "core_common/ids.h"
 #include "core_common/world_state.h"
 #include "labor_config.h"
+#include "work_orders.h"
 
 namespace core {
 
@@ -50,11 +54,22 @@ void ReadDayOrders(const LaborConfig& config, WorldState& current);
 /// @return Whether he was in either.
 bool ReleaseFromDayOrders(WorldState& current, ResidentId resident);
 
-/// @brief Sends today's day orders' people, after the standing orders (work_orders.h,
-///        ApplyOrderedWorks, the same skips): every pick of every crew due today, then every day
-///        work due today.
-/// @pre Called from StartDay after ApplyStandingWork.
-void ApplyDayOrders(WorldState& current, bool day_off, float walkoff_rest);
+/// @brief Every ordered work of today's morning in the order it is applied (#1818): the
+///        standing kAssignWork rows, then each crew's picks due today, then the day works due
+///        today - the list ApplyOrderedWorks takes, built once so the horses it claims and the
+///        works it sends are one list.
+/// @pre The rows pointed to live in `world.orders` until the list is applied.
+std::vector<OrderedWork> OrderedWorksToday(const WorldState& world);
+
+/// @brief The horses the list asks of the pool (#1818): one for every ordered ploughman or
+///        harrower (IsHorseWork - he rides by kind), and one for each of the first
+///        OrderRow::horses carters of a kHauling order.
+std::uint32_t HorsesOrdered(const std::vector<OrderedWork>& works);
+
+/// @brief Gives the claimed horses (#1818): in the list's order, while `claimed` lasts, each
+///        entry HorsesOrdered counted gets OrderedWork::horse. Ploughmen and harrowers ride by
+///        kind whatever this says; a carter rides only if he got one.
+void GiveOrderedHorses(std::vector<OrderedWork>& works, std::uint32_t claimed);
 
 /// @brief The day's close for the day orders: on a day off, today's due move to tomorrow; on a
 ///        working day they go kDone, their lines replace yesterday's (empty when none ran), and

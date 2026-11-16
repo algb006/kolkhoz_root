@@ -1619,6 +1619,14 @@ struct OrderRow {
   /// borrowed (grams), for the reason `area_ha` gives. It sits in the row's tail padding, so
   /// sizeof stays 144; the journal and save codecs carry it with #1778's body.
   std::uint16_t crew_size = 0;
+
+  /// kAssignWork, kAssignDayWork, kAssignCrew on kHauling: the draught horses (each with its
+  /// cart) the order takes for its carters (#1818; boss: an ordered carter walked while the
+  /// accountant's rode - «a punishment for the unforeseeable»). The morning takes them out of
+  /// the day's pool before the accountant plans, as the funeral's are, and gives them to the
+  /// order's carters, at most one a carter, as far as the pool holds. 0: the carter rides only
+  /// the horse the morning gave him, as before.
+  std::uint16_t horses = 0;
 };
 
 /// @brief The order book type used by WorldState.
