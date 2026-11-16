@@ -275,15 +275,20 @@ int CheckSeasonWorksAndGaps(core::ILaborSystem& labor) {
   failures += Expect(works.measured && works.lines.size() == 2,
                      "season works: both reaping fields are listed");
   if (!works.lines.empty()) {
-    // The oat's reaping closes with month 9 (crops.csv): day 40 of the year is past it, so the
-    // last day is 39 - nine days from Wednesday 30.
+    // The oat's reaping closes with month 9 (crops.csv, 1-based: September is month index 8,
+    // labor_config.cpp reads `harvest_to - 1`): the window ends at day (8 + 1) x 4 = 36 of the
+    // year, so the last day is 35 - five days from Wednesday 30. (The first draft of this check
+    // took the month 0-based and expected 39; the rule printed 35 and the arithmetic was mine.)
     const core::SeasonWorkLine& line = works.lines[0];
-    std::cout << "  season works line 0: work " << static_cast<int>(line.work) << " deadline "
-              << line.deadline << " overdue " << (line.overdue ? 1 : 0) << " area " << line.area_ha
-              << " days left " << line.work_days_left << '\n';
-    failures += Expect(line.work == core::WorkKind::kHarvest && !line.overdue &&
-                           line.deadline == 39U && line.area_ha == 10.0F,
-                       "season works: the window's last day from the accountant's own rule");
+    const bool as_ruled = line.work == core::WorkKind::kHarvest && !line.overdue &&
+                          line.deadline == 35U && line.area_ha == 10.0F &&
+                          line.work_days_left == 400.0F;
+    if (!as_ruled) {
+      std::cout << "  season works line 0: work " << static_cast<int>(line.work) << " deadline "
+                << line.deadline << " overdue " << (line.overdue ? 1 : 0) << " area "
+                << line.area_ha << " days left " << line.work_days_left << '\n';
+    }
+    failures += Expect(as_ruled, "season works: the window's last day from the accountant's rule");
   }
   // Two hands and 800 man-days of reaping: the morning leaves a field short.
   bool named_short = false;
