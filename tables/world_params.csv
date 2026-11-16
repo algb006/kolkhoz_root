@@ -387,3 +387,4 @@ write_off_reputation,-10,core
 salt_need_on,1,core
 feed_into_church_until_granary,1,core
 flood_water_days,8,core
+plan_credit_pre_act_theft,1,core
