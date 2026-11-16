@@ -2361,7 +2361,10 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // Save 207 (#1568): same length, new hash - the fixture's «last order
     // kind» (kOrderKindCount - 1) is now kWriteOffShortage. Save 209 (#1630
     // (C)): the same, kTakeSaltLoan - same length, the hash read off s1630c2.
-    {"orders", 818, 0x985351fa4f1b75d2ULL},
+    // Save 212 (#1778): crew_size, a u16 an order, six orders - predicted 818
+    // -> 830 before the build, held, every other section unmoved; the hash
+    // read off u1778a (the last kind is now kAssignDayWork).
+    {"orders", 830, 0x15f2642b6c3f8c2cULL},
     // Save 82: the fixture's first stand, a birch planting — 8 -> 67 (its id
     // 4, the old fields 41, species 2, hectares 4, two days 8); predicted,
     // held.
