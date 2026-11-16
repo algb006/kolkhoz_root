@@ -119,6 +119,12 @@ struct HandOverAdvice {
   /// day (HeadsTheStoreCannotCarry); the advice hands the larger of it and the plan's, never
   /// below the floors.
   std::uint8_t sized_by = 0;
+
+  /// True when the hay's term set the heads (it named more than the plan's least), whatever
+  /// `sized_by` says (#1737; boss, the release's 77 %): «floor binds» overwrites the label when
+  /// the term ran out of room, and the milk position's cut must follow every hand-over the hay
+  /// sized, the label's kFloorBinds ones included.
+  bool hay_set_heads = false;
 };
 
 /// @brief HandOverAdvice::sized_by's values (#1737; Alarm::hand_over_sized_by carries them).
