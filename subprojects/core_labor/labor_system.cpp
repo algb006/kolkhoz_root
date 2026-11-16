@@ -74,6 +74,7 @@
 #include "core_log/log.h"
 #include "core_tables/required_tables.h"
 #include "core_tables/tables.h"
+#include "day_order_book.h"
 #include "labor_config.h"
 #include "labor_day.h"
 #include "placement_rank.h"
@@ -256,6 +257,8 @@ class LaborSystem final : public ILaborSystem {
     // §11), and reading LAST in the tick is what makes that true without a
     // second flag to remember the day by.
     ReadWorkOrders(config_, current);
+    // The day orders read beside them, for the same reason (#1778; day_order_book.h).
+    ReadDayOrders(config_, current);
     // The avral and the cancelled day off, read LAST for the same reason
     // (rush.h): declared today, they act from the next hour or the next day.
     ReadRushOrders(config_, current);
@@ -324,14 +327,44 @@ class LaborSystem final : public ILaborSystem {
     return FellingCanBeMannedToday(state, place, ReachRuleOf(), HorsesForARide(state));
   }
 
-  /// STUB (#1778's contract, 16 Nov 2026): the doors stand, no day order is consumed yet, so
-  /// every answer has `measured` false. Return when: #1778's body lands kAssignCrew and
-  /// kAssignDayWork in core_labor.
-  CrewView CrewNames(const WorldState& /*state*/, OrderId /*crew*/) const override { return {}; }
+  CrewView CrewNames(const WorldState& state, OrderId crew) const override {
+    return CrewNamesOf(state, crew);
+  }
 
-  YesterdayDayOrders YesterdayDayOrdersOf(const WorldState& /*state*/) const override { return {}; }
+  YesterdayDayOrders YesterdayDayOrdersOf(const WorldState& state) const override {
+    return YesterdayDayOrdersIn(state);
+  }
 
-  SeasonWorks SeasonWorksOf(const WorldState& /*state*/) const override { return {}; }
+  /// This season's field works: the work each field's phase has open now, its window by the
+  /// accountant's own FieldWindow (the job's), and the share done of the phase (#1778).
+  SeasonWorks SeasonWorksOf(const WorldState& state) const override {
+    SeasonWorks works;
+    works.measured = true;
+    const SimDay today = state.calendar.day;
+    for (std::uint32_t row = 0; row < state.fields.rows.size(); ++row) {
+      const FieldRow& field = state.fields.rows[row];
+      const WorkKind kind = KindOfPhase(field.phase);
+      const bool field_work = kind == WorkKind::kSowing || kind == WorkKind::kHarvest ||
+                              kind == WorkKind::kPlowing || kind == WorkKind::kHarrowing;
+      if (!field_work || field.work_days_remaining <= 0.0F) {
+        continue;
+      }
+      const Deadline window = FieldWindow(state.calendar, field, kind);
+      if (window.kind != DeadlineKind::kDays && window.kind != DeadlineKind::kOverdue) {
+        continue;  // fallow or an unknown crop: no window to keep (FieldWindow)
+      }
+      SeasonWorkLine line;
+      line.field = state.fields.row_ids[row];
+      line.work = kind;
+      line.overdue = window.kind == DeadlineKind::kOverdue;
+      const auto days = static_cast<SimDay>(window.days);
+      line.deadline = line.overdue ? (today > days ? today - days : 0U) : today + days;
+      line.area_ha = field.area_ga;
+      line.work_days_left = field.work_days_remaining;
+      works.lines.push_back(line);
+    }
+    return works;
+  }
 
   void CollectAlarms(const WorldState& state, std::vector<Alarm>& out) const override {
     // Once the team is in, the question is closed for the campaign: the flag
@@ -595,6 +628,8 @@ class LaborSystem final : public ILaborSystem {
     }
     book.candidate_person_days += static_cast<std::uint32_t>(candidates.size());
     const bool rain_holds = RainHoldsFieldWork(current);
+    // This morning's short jobs replace yesterday's (#1789): none when nothing is placed below.
+    current.crew_gaps.clear();
     if (jobs.empty()) {
       const IdleReason none = BookedIdleReason(IdleReason::kNoOpenWork, day_off_today, rain_holds);
       book.idle_person_days[static_cast<std::size_t>(none)] +=
@@ -617,6 +652,14 @@ class LaborSystem final : public ILaborSystem {
             ++book.short_job_days[kind][static_cast<std::size_t>(JobShortfall::kNoHands)];
           }
         }
+        // Every job with work left is short of hands, nobody placed (#1789).
+        std::vector<std::optional<JobShortfall>> none_free(jobs.size());
+        for (std::size_t index = 0; index < jobs.size(); ++index) {
+          if (jobs[index].work_days_remaining > 0.0F) {
+            none_free[index] = JobShortfall::kNoHands;
+          }
+        }
+        RecordCrewGaps(current, jobs, {}, none_free);
         TrackUnmannedRuns(current, jobs, {}, {}, day_off_today);
       }
       if (!candidates.empty()) {
@@ -637,6 +680,7 @@ class LaborSystem final : public ILaborSystem {
             ++book.short_job_days[kind][static_cast<std::size_t>(*diagnosis.shortfall[index])];
           }
         }
+        RecordCrewGaps(current, jobs, plan, diagnosis.shortfall);
         // What the plan left for a ride (#1205 (c1)): tomorrow's felling offer
         // and the chairman's FellingCanBeManned ask it.
         current.morning_horses_left = static_cast<std::uint16_t>(
@@ -723,6 +767,10 @@ class LaborSystem final : public ILaborSystem {
                       current,
                       IsDayOffIn(current, current.calendar.day),
                       config_.rest_walkoff_threshold);
+    // AND THE DAY ORDERS AFTER THEM (#1778): the day's word wins over the standing one for
+    // that day.
+    ApplyDayOrders(
+        current, IsDayOffIn(current, current.calendar.day), config_.rest_walkoff_threshold);
   }
 
   /// THE WORK THAT OPENED AFTER THE MORNING (boss seq 93/95, option а). The
@@ -1499,6 +1547,33 @@ class LaborSystem final : public ILaborSystem {
                                  planned == IdleReason::kWorkCovered ||
                                  planned == IdleReason::kCrewCap;
     return rain_holds && no_work_for_him ? IdleReason::kRain : planned;
+  }
+
+  /// @brief THE MORNING'S SHORT JOBS (#1789; crew_gaps.h): one line for every job `shortfall`
+  ///        names, with the hands `plan` put on it (empty plan: nobody placed).
+  static void RecordCrewGaps(WorldState& current,
+                             const std::vector<AssignmentJob>& jobs,
+                             const std::vector<std::uint32_t>& plan,
+                             const std::vector<std::optional<JobShortfall>>& shortfall) {
+    current.crew_gaps.clear();
+    for (std::size_t index = 0; index < jobs.size() && index < shortfall.size(); ++index) {
+      if (!shortfall[index]) {
+        continue;
+      }
+      const AssignmentJob& job = jobs[index];
+      const auto placed = static_cast<std::size_t>(
+          std::count(plan.begin(), plan.end(), static_cast<std::uint32_t>(index)));
+      current.crew_gaps.push_back(
+          CrewGapLine{.work = job.kind,
+                      .field = job.field,
+                      .herd = job.herd,
+                      .unit = job.unit,
+                      .stand = job.stand,
+                      .extraction_site = job.extraction_site,
+                      .road_work = job.road_work,
+                      .placed = static_cast<std::uint16_t>(std::min<std::size_t>(placed, 0xFFFFU)),
+                      .shortfall = *shortfall[index]});
+    }
   }
 
   /// @brief THE JOBS' RUNS OF MORNINGS WITH NO HAND (task 427, item 2;
@@ -3862,6 +3937,8 @@ class LaborSystem final : public ILaborSystem {
     }
     PayPostsByTheDay(current, paid_posts, current.ledger.current.trudodni_accrued - accrued_before);
     const bool day_off = IsDayOffIn(current, current.calendar.day);
+    // The day orders' day ends with the day's pay (#1778; day_order_book.h).
+    CloseDayOrders(current, day_off);
     const bool holiday =
         HolidayOn(current.calendar.day, current.calendar.day_zero_weekday, current.epoch) !=
         Holiday::kNone;

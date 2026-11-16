@@ -98,16 +98,23 @@ struct SeasonWorkLine {
   FieldId field;
   WorkKind work = WorkKind::kNone;
 
-  /// The window, from the SAME source the accountant's deadline rule reads, so the table and
-  /// the morning placement cannot disagree: the first day the work may start and the last day
-  /// it counts as on time.
-  SimDay opens = 0;
+  /// The window's last day, from the SAME source the accountant's deadline rule reads (the
+  /// job's FieldWindow), so the table and the morning placement cannot disagree. The line is a
+  /// work OPEN today (its phase opened, work left): the accountant's rule has no window start -
+  /// a work opens when production opens its phase - so the body dropped the contract's `opens`
+  /// rather than fill it with a guess.
   SimDay deadline = 0;
 
-  /// The work's size and what is done of it, hectares - the lag a layer paints (#1789's
-  /// «Работа» sublayer reads the same line).
+  /// True when the window has closed (`deadline` is behind today): overdue work, the
+  /// accountant's second tier - not a deadline to compare with.
+  bool overdue = false;
+
+  /// The field's size, hectares, and the man-days of this phase still to do (FieldRow::
+  /// work_days_remaining) - the lag a layer paints beside the deadline (#1789's «Работа»
+  /// sublayer reads the same line). The contract's `done_ha` became this: the phase's total is
+  /// not kept, so a share done would have been a second computation of production's norm.
   float area_ha = 0.0F;
-  float done_ha = 0.0F;
+  float work_days_left = 0.0F;
 };
 
 /// @brief The season's field works (ISession::SeasonWorks).

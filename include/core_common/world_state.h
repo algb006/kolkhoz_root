@@ -36,6 +36,8 @@
 #include "core_common/barter_state.h"
 #include "core_common/calendar.h"
 #include "core_common/clamp_rot_state.h"
+#include "core_common/crew_gaps.h"
+#include "core_common/day_order_state.h"
 #include "core_common/district_car_state.h"
 #include "core_common/district_visit_state.h"
 #include "core_common/event_state.h"
@@ -1348,6 +1350,15 @@ struct WorldState {
   /// exists», and on 0.37.347 a felling stood offered with nobody sent on 85-95
   /// % of its noons, its hands idle «no horse». SAVED (save 199).
   std::uint16_t morning_horses_left = kMorningHorsesUnknown;
+
+  /// The chairman's day orders (#1778; day_order_state.h): their due days, a crew's picks,
+  /// yesterday's lines. Saved (save 213).
+  DayOrderBook day_orders;
+
+  /// The jobs this morning's placement left short, with the hands placed and the reason
+  /// (#1789; crew_gaps.h). Rewritten by each morning's plan; saved (save 213), so a load does
+  /// not blank the layer's badges until the next morning.
+  std::vector<CrewGapLine> crew_gaps;
 
   /// This step's outbox (project phase 2, the boundary): what happened,
   /// for the presentation. Cleared by the step engine after the copy,

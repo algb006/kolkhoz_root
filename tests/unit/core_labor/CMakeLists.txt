@@ -5,6 +5,7 @@ kolkhoz_add_unit_test(core_labor
     brigade_cart_checks.cpp
     top_up_checks.cpp
     truancy_checks.cpp
+    day_order_checks.cpp
     carter_on_foot_checks.cpp
     log_pair_checks.cpp
     carter_road_checks.cpp

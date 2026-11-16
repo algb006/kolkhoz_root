@@ -333,7 +333,12 @@ static_assert(AggregateArity<ClampRotYear>() == 2,
 // build.
 // Save 211 (#1375): the spring flood, the sixty-first - a u16 and a u32 after the weather's
 // road beds; the section «world» +6, predicted before the build.
-static_assert(AggregateArity<WorldState>() == 61,
+// Save 213 (#1778): the day orders' book, the sixty-second - three counts, a day and a flag
+// after the week's labour book; on an empty book the section «world» +17 (4+4+4+1+4),
+// predicted before the build. And (#1789, the same composition) crew_gaps, the sixty-third - a
+// count and 28 bytes a line after the book; the section «world» +4 more when empty, +21 in
+// all, predicted before the build.
+static_assert(AggregateArity<WorldState>() == 63,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 
@@ -777,6 +782,45 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
     out.WriteU32(sums->home_plot_tenths);
   }
   out.WriteU8(world.labour_week.closed_known);
+  // The day orders' book (#1778; save 213): the due (order, day), the picks (crew, resident),
+  // then yesterday's day, its flag and its lines.
+  const DayOrderBook& book = world.day_orders;
+  out.WriteU32(static_cast<std::uint32_t>(book.due.size()));
+  for (const DayOrderDue& due : book.due) {
+    out.WriteU32(due.order.value);
+    out.WriteU32(due.day);
+  }
+  out.WriteU32(static_cast<std::uint32_t>(book.picks.size()));
+  for (const CrewPick& pick : book.picks) {
+    out.WriteU32(pick.crew.value);
+    out.WriteU32(pick.resident.value);
+  }
+  out.WriteU32(book.yesterday_day);
+  out.WriteU8(book.yesterday_known ? 1U : 0U);
+  out.WriteU32(static_cast<std::uint32_t>(book.yesterday.size()));
+  for (const DayOrderLine& line : book.yesterday) {
+    out.WriteU8(static_cast<std::uint8_t>(line.form));
+    out.WriteU8(static_cast<std::uint8_t>(line.work));
+    out.WriteU32(line.field.value);
+    out.WriteU32(line.herd.value);
+    out.WriteU32(line.unit.value);
+    out.WriteU16(line.count);
+    out.WriteU32(line.resident.value);
+  }
+  // This morning's short jobs (#1789; save 213): a count, then each line's work, seven targets,
+  // the hands placed and the reason.
+  out.WriteU32(static_cast<std::uint32_t>(world.crew_gaps.size()));
+  for (const CrewGapLine& gap : world.crew_gaps) {
+    out.WriteU8(static_cast<std::uint8_t>(gap.work));
+    out.WriteU32(gap.field.value);
+    out.WriteU32(gap.herd.value);
+    out.WriteU32(gap.unit.value);
+    out.WriteU32(gap.stand.value);
+    out.WriteU32(gap.extraction_site.value);
+    out.WriteU32(gap.road_work.value);
+    out.WriteU16(gap.placed);
+    out.WriteU8(static_cast<std::uint8_t>(gap.shortfall));
+  }
 }
 
 void ReadWorldBlocks(LoadSource& source, WorldState* world) {
@@ -1151,6 +1195,87 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   }
   world->labour_week.closed_known =
       static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "the week book's closed flag"));
+  // The day orders' book (#1778; save 213): each count asked of the bytes left first.
+  DayOrderBook& book = world->day_orders;
+  constexpr std::size_t kSavedDueBytes = 8;
+  constexpr std::size_t kSavedPickBytes = 8;
+  constexpr std::size_t kSavedLineBytes = 20;
+  const std::uint32_t dues = in.ReadU32();
+  if (static_cast<std::size_t>(dues) * kSavedDueBytes > in.Remaining()) {
+    source.Fail("the day orders name more due rows than the bytes left");
+    return;
+  }
+  book.due.clear();
+  for (std::uint32_t index = 0; index < dues; ++index) {
+    DayOrderDue due;
+    due.order = OrderId{in.ReadU32()};
+    due.day = in.ReadU32();
+    book.due.push_back(due);
+  }
+  const std::uint32_t picks = in.ReadU32();
+  if (static_cast<std::size_t>(picks) * kSavedPickBytes > in.Remaining()) {
+    source.Fail("the day orders name more picks than the bytes left");
+    return;
+  }
+  book.picks.clear();
+  for (std::uint32_t index = 0; index < picks; ++index) {
+    CrewPick pick;
+    pick.crew = OrderId{in.ReadU32()};
+    pick.resident = ResidentId{in.ReadU32()};
+    book.picks.push_back(pick);
+  }
+  book.yesterday_day = in.ReadU32();
+  book.yesterday_known = source.ReadEnumValue(0, 1, "the day orders' yesterday flag") != 0;
+  const std::uint32_t lines = in.ReadU32();
+  if (static_cast<std::size_t>(lines) * kSavedLineBytes > in.Remaining()) {
+    source.Fail("the day orders name more of yesterday's lines than the bytes left");
+    return;
+  }
+  book.yesterday.clear();
+  for (std::uint32_t index = 0; index < lines && source.Valid(); ++index) {
+    DayOrderLine line;
+    line.form = static_cast<DayOrderForm>(source.ReadEnumValue(
+        0,
+        static_cast<std::uint8_t>(static_cast<std::uint8_t>(DayOrderForm::kDayOrderFormCount) - 1U),
+        "a day order's form"));
+    line.work = static_cast<WorkKind>(source.ReadEnumValue(
+        0,
+        static_cast<std::uint8_t>(static_cast<std::uint8_t>(WorkKind::kWorkKindCount) - 1U),
+        "a day order's kind of work"));
+    line.field = FieldId{in.ReadU32()};
+    line.herd = HerdId{in.ReadU32()};
+    line.unit = UnitId{in.ReadU32()};
+    line.count = in.ReadU16();
+    line.resident = ResidentId{in.ReadU32()};
+    book.yesterday.push_back(line);
+  }
+  // This morning's short jobs (#1789; save 213).
+  constexpr std::size_t kSavedGapBytes = 1 + (6 * 4) + 2 + 1;
+  const std::uint32_t gaps = in.ReadU32();
+  if (static_cast<std::size_t>(gaps) * kSavedGapBytes > in.Remaining()) {
+    source.Fail("the short jobs name more lines than the bytes left");
+    return;
+  }
+  world->crew_gaps.clear();
+  for (std::uint32_t index = 0; index < gaps && source.Valid(); ++index) {
+    CrewGapLine gap;
+    gap.work = static_cast<WorkKind>(source.ReadEnumValue(
+        0,
+        static_cast<std::uint8_t>(static_cast<std::uint8_t>(WorkKind::kWorkKindCount) - 1U),
+        "a short job's kind of work"));
+    gap.field = FieldId{in.ReadU32()};
+    gap.herd = HerdId{in.ReadU32()};
+    gap.unit = UnitId{in.ReadU32()};
+    gap.stand = TimberStandId{in.ReadU32()};
+    gap.extraction_site = ExtractionSiteId{in.ReadU32()};
+    gap.road_work = RoadWorkId{in.ReadU32()};
+    gap.placed = in.ReadU16();
+    gap.shortfall = static_cast<JobShortfall>(source.ReadEnumValue(
+        0,
+        static_cast<std::uint8_t>(static_cast<std::uint8_t>(JobShortfall::kJobShortfallCount) - 1U),
+        "a short job's reason"));
+    world->crew_gaps.push_back(gap);
+  }
 }
 
 }  // namespace core

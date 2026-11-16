@@ -2,6 +2,8 @@
 
 #include "work_orders.h"
 
+#include <vector>
+
 #include "core_common/away_in_district.h"
 #include "core_common/herd_state.h"
 #include "core_common/ids.h"
@@ -11,6 +13,7 @@
 #include "core_common/resident_state.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/work_seam.h"
+#include "day_order_book.h"
 #include "labor_day.h"
 #include "posts.h"
 
@@ -241,6 +244,13 @@ OrderRefusal LandCarriesWork(const WorldState& world, const OrderRow& order) {
 
 }  // namespace
 
+OrderRefusal CheckWorkTarget(const WorldState& world, const OrderRow& order) {
+  if (!TargetExists(world, order)) {
+    return OrderRefusal::kNoSuchSubject;
+  }
+  return LandCarriesWork(world, order);
+}
+
 std::uint32_t StandingWorkRow(const WorldState& world, ResidentId resident, std::uint32_t self) {
   for (std::uint32_t row = 0; row < world.orders.rows.size(); ++row) {
     if (row == self) {
@@ -351,6 +361,13 @@ void ReadWorkOrders(const LaborConfig& config, WorldState& current) {
       continue;
     }
     const std::uint32_t standing = StandingWorkRow(current, order.resident, row);
+    // A NAME OUT OF A DAY ORDER (#1778, «Любое имя можно заменить»): with no standing order,
+    // the release takes him out of a crew's picks or ends his day work, and is done.
+    if (standing == kNoRow && ReleaseFromDayOrders(current, order.resident)) {
+      order.status = OrderStatus::kDone;
+      order.refusal = OrderRefusal::kNone;
+      continue;
+    }
     if (standing == kNoRow) {
       order.status = OrderStatus::kRefused;
       order.refusal = OrderRefusal::kRuleForbids;  // there is nothing to release him from
@@ -374,10 +391,24 @@ void ApplyStandingWork(const WorldState& world,
                        WorldState& current,
                        bool day_off,
                        float walkoff_rest) {
+  std::vector<OrderedWork> works;
   for (const OrderRow& order : world.orders.rows) {
-    if (order.kind != OrderKind::kAssignWork || order.status != OrderStatus::kAccepted) {
-      continue;
+    if (order.kind == OrderKind::kAssignWork && order.status == OrderStatus::kAccepted) {
+      works.push_back(OrderedWork{.order = &order, .resident = order.resident});
     }
+  }
+  ApplyOrderedWorks(world, current, works, day_off, walkoff_rest);
+}
+
+void ApplyOrderedWorks(const WorldState& world,
+                       WorldState& current,
+                       std::span<const OrderedWork> works,
+                       bool day_off,
+                       float walkoff_rest) {
+  for (const OrderedWork& ordered : works) {
+    // ONE BODY FOR THE STANDING ORDER AND THE DAY ORDERS (#1778): a crew's pick carries the
+    // crew's row and its own resident, a day work its own row and resident.
+    const OrderRow& order = *ordered.order;
     // THE REST DAY STOPS THE SAME WORK IT STOPS FOR EVERYONE ELSE, and no
     // more. CollectJobs takes field work, hauling and building off the list
     // on a day off and leaves herd care on it, because animals eat on
@@ -424,7 +455,7 @@ void ApplyStandingWork(const WorldState& world,
         continue;
       }
     }
-    const std::uint32_t resident_row = FindRow(current.residents, order.resident);
+    const std::uint32_t resident_row = FindRow(current.residents, ordered.resident);
     if (resident_row == kNoRow) {
       continue;  // he died in the night; the sweep will not remove the row, but nobody works it
     }

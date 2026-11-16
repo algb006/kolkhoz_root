@@ -707,7 +707,16 @@ struct FieldRow {
   /// zeroed reaped_grams here; 0 never. A read door for the layer, which must not remember it
   /// itself. Save 211.
   std::uint16_t flood_lost_year = 0;
+
+  /// THE FERTILITY AT THE YEAR'S START (#1789; layers design §8, «Плодородие» - the trend
+  /// beside the value; boss, core-boss-1789-layers-desk [2]): `fertility` as RunYearStart found
+  /// it, so the layer reads this year's change as fertility - fertility_year_start. Below 0
+  /// before the first turn: no trend yet (kNoFertilityYearStart). Save 213.
+  Metric fertility_year_start = -1.0F;
 };
+
+/// @brief FieldRow::fertility_year_start before any year's start: no trend to read.
+inline constexpr float kNoFertilityYearStart = -1.0F;
 
 /// @brief Whether the player has given this field a rotation at all.
 ///

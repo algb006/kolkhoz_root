@@ -587,6 +587,10 @@ class Session final : public ISession {
 
   SeasonWorks SeasonWorksOf() const override { return simulation_->SeasonWorksOf(); }
 
+  std::span<const CrewGapLine> CrewGapsToday() const override {
+    return simulation_->CompletedState().crew_gaps;
+  }
+
   RoadPieces SelectRoadPieces(const RoadSelection& selection,
                               RoadOperation operation) const override {
     return simulation_->SelectRoadPieces(selection, operation);

@@ -41,6 +41,7 @@
 #include "core_common/world_state.h"
 #include "core_labor/labor_system.h"
 #include "core_tables/tables.h"
+#include "day_order_checks.h"
 #include "groom_plan_checks.h"
 #include "harvest_days_off_checks.h"
 #include "harvest_order_checks.h"
@@ -5185,7 +5186,8 @@ int main() {
   failures += CheckHarvestDaysOff();
   failures += CheckBrigadeCart();
   failures += CheckTopUpAgainstWindowlessWork();
-  failures += CheckTruancy();  // #1568 link 1
+  failures += CheckTruancy();    // #1568 link 1
+  failures += CheckDayOrders();  // #1778, #1789
   failures += CheckCarterOnFoot();
   failures += CheckLogPairs();
   failures += CheckTheSupplyFloor();

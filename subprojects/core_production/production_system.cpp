@@ -749,6 +749,11 @@ class ProductionSystem final : public IProductionSystem {
   /// January 1: the rotation plan advances one year, and fallow that stood
   /// the whole year pays out its recovery.
   void RunYearStart(WorldState& current) const {
+    // The fertility trend's base (#1789; FieldRow::fertility_year_start): the value the new
+    // year starts from, before anything of the new year moves it.
+    for (FieldRow& field : current.fields.rows) {
+      field.fertility_year_start = field.fertility;
+    }
     // The barrels' year (register 240), booked in the book that closes.
     WearBarrels(config_, current);
     DeliverPlan(config_, current);

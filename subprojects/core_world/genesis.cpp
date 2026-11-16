@@ -555,6 +555,7 @@ FieldId PlaceField(WorldState& world,
   field.center = center;
   field.area_ga = area_ga;
   field.fertility = fertility;
+  field.fertility_year_start = fertility;  // #1789: the first year's trend reads from the start
   field.rotation_year0 = year0;
   field.rotation_year1 = year1;
   field.rotation_year2 = year2;

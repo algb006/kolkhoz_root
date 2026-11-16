@@ -799,6 +799,13 @@ struct LaborConfig {
   bool truancy_on = false;
   float truancy_from_alcoholism = 50.0F;
   float truancy_share_at_cap = 0.10F;
+
+  /// #1778 (society design §1 «Наряд игрока - число, имена видны»): the placement level
+  /// 0-3 the chairman himself picks a crew order's names by; world_params
+  /// `chairman_placement_level`, optional, 0. The design gives every avatar the initial level
+  /// and the Снятый председатель the first, but core does not read the avatar - STUB: 0 for
+  /// all, return when core gets an avatar read. Levels above 0 pick as 0 does (day_order_book.h).
+  std::uint8_t chairman_placement_level = 0;
 };
 
 /// @brief The cart's and the sledge's numbers of this config (SL; cart_gear.h).

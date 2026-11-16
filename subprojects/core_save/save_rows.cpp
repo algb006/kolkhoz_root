@@ -259,8 +259,10 @@ static_assert(AggregateArity<ManureDoseSeam>() == 5,
               "ManureDoseSeam gained or lost a field — update the codec and VERSION_SAVE");
 // Save 211 (#1375): flood_lost_year, a u16 at the tail - the row pads to 184 (read off the
 // guard, not predicted); the fields section +2 a field.
+// Save 213 (#1789): fertility_year_start, a float after flood_lost_year - predicted 184 unmoved
+// (the u16's padding) and 50 fields before the build; the fields section +4 a field.
 static_assert(sizeof(FieldRow) == 184, "FieldRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<FieldRow>() == 49,
+static_assert(AggregateArity<FieldRow>() == 50,
               "FieldRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-06: the stink radius pushed the row from 48 + amounts to 56 +
 // amounts. The pause byte before it had landed in padding and moved nothing,
@@ -1304,11 +1306,12 @@ void WriteFieldRow(SaveSink& sink, const FieldRow& row) {
   // The day the preparation's own furrow ended (save 111; a byte in save
   // 110): the turn's release keeps zyab only on the autumn furrow.
   out.WriteU32(row.furrow_day);
-  out.WriteU32(row.last_cut_day);     // save 134
-  out.WriteU8(row.start_shape);       // save 145
-  out.WriteU8(row.mown_fallow);       // save 145
-  out.WriteU8(row.stand_summers);     // save 146
-  out.WriteU16(row.flood_lost_year);  // save 211 (#1375): the flood's year, the layer's door
+  out.WriteU32(row.last_cut_day);            // save 134
+  out.WriteU8(row.start_shape);              // save 145
+  out.WriteU8(row.mown_fallow);              // save 145
+  out.WriteU8(row.stand_summers);            // save 146
+  out.WriteU16(row.flood_lost_year);         // save 211 (#1375): the flood's year, the layer's door
+  out.WriteFloat(row.fertility_year_start);  // save 213 (#1789): the trend's base
   // The manure already in the book (save 111): booked once a field's cycle,
   // and since save 112 already paid into the fertility.
   out.WriteU8(row.manure_booked);
@@ -1413,8 +1416,9 @@ FieldRow ReadFieldRow(LoadSource& source) {
   if (row.mown_fallow != 0 && row.kind != LandKind::kMeadow) {
     source.Fail("a field marked as mown as it lies is not a dry meadow");
   }
-  row.stand_summers = in.ReadU8();     // save 146: any count is a summer
-  row.flood_lost_year = in.ReadU16();  // save 211 (#1375)
+  row.stand_summers = in.ReadU8();            // save 146: any count is a summer
+  row.flood_lost_year = in.ReadU16();         // save 211 (#1375)
+  row.fertility_year_start = in.ReadFloat();  // save 213 (#1789): below 0 is «no trend yet»
   row.manure_booked = static_cast<std::uint8_t>(
       source.ReadEnumValue(0, 1, "the field's manure booked"));  // save 111
   if (row.manure_booked != 0 && row.manure_applied == 0) {

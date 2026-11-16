@@ -37,12 +37,13 @@ namespace core {
 namespace {
 
 /// The world_params keys this config declares (#1442; LaborWorldParamKeys).
-constexpr std::array<std::string_view, 6> kLaborWorldParamKeys = {"strada_first_month",
+constexpr std::array<std::string_view, 7> kLaborWorldParamKeys = {"strada_first_month",
                                                                   "strada_last_month",
                                                                   "yard_herd_garden_cap",
                                                                   "crime_truancy_on",
                                                                   "truancy_from_alcoholism",
-                                                                  "truancy_share_at_cap"};
+                                                                  "truancy_share_at_cap",
+                                                                  "chairman_placement_level"};
 
 /// The most seats transport.csv may name on one cart: a bound against a
 /// slipped digit, not a design number (the design's carts seat 2 and 6).
@@ -914,6 +915,17 @@ bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string&
       return false;
     }
     config.truancy_on = truancy_on >= 0.5F;
+    // #1778: the chairman's own placement level for his crew orders (labor_config.h).
+    auto chairman_level = static_cast<float>(config.chairman_placement_level);
+    if (!OptionalValue(*world,
+                       kLaborWorldParamKeys[6],
+                       Range{.low = 0.0F, .high = 3.0F},
+                       chairman_level,
+                       error)) {
+      PrefixError("world_params", "chairman_placement_level", error);
+      return false;
+    }
+    config.chairman_placement_level = static_cast<std::uint8_t>(chairman_level);
   }
   if (const ITable* transport = tables.FindTable("transport")) {
     if (!ParseSpeeds(*transport, config, error)) {

@@ -27,6 +27,7 @@
 #define CORE_LABOR_WORK_ORDERS_H_
 
 #include <cstdint>
+#include <span>
 
 #include "core_common/order_state.h"
 #include "core_common/world_state.h"
@@ -47,6 +48,11 @@ OrderRefusal CheckAssignWork(const LaborConfig& config,
 /// kNoRow. A standing order is one at kAccepted: accepted and not yet ended.
 /// @param self An order row to ignore — the one being validated.
 std::uint32_t StandingWorkRow(const WorldState& world, ResidentId resident, std::uint32_t self);
+
+/// @brief The target half of CheckAssignWork, for an order that names no resident (a crew,
+///        #1778): kNoSuchSubject when the target is gone, kWrongLand when its land cannot carry
+///        the work, kNone otherwise.
+OrderRefusal CheckWorkTarget(const WorldState& world, const OrderRow& order);
 
 /// @brief Whether the book holds a kReleaseWork for `resident` that has not
 /// been refused — that is, whether the chairman is ending his standing
@@ -118,6 +124,25 @@ void ReadWorkOrders(const LaborConfig& config, WorldState& current);
 ///        he is back (units rules §8).
 void ApplyStandingWork(const WorldState& world,
                        WorldState& current,
+                       bool day_off,
+                       float walkoff_rest);
+
+/// @brief One ordered work to apply: the row whose work and target it takes, and the resident
+///        it sends. A standing order and a day work send their own resident; a crew order
+///        sends each resident it picked (#1778).
+struct OrderedWork {
+  const OrderRow* order = nullptr;
+  ResidentId resident;
+};
+
+/// @brief ApplyStandingWork's body for any list of ordered works, the same skips (rest day,
+///        rain, frost, winter, no work on the target, away, past the rest limit). A later
+///        entry for the same resident overrides an earlier one: the day orders are applied
+///        after the standing ones, so the day's word wins for that day.
+/// @pre `works`' rows live in `world.orders` for the call.
+void ApplyOrderedWorks(const WorldState& world,
+                       WorldState& current,
+                       std::span<const OrderedWork> works,
                        bool day_off,
                        float walkoff_rest);
 

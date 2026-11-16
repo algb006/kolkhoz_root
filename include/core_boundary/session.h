@@ -1004,6 +1004,14 @@ class ISession {
   /// @note Between steps; the answer describes State().
   virtual SeasonWorks SeasonWorksOf() const = 0;
 
+  /// @brief The jobs this morning's placement left short of hands, each with the hands placed
+  ///        and the reason it stopped filling (core_common/crew_gaps.h; #1789, layers design §7
+  ///        «Нехватка рук»): the badge over a building or a field. «Простой» is the layer's,
+  ///        from WorkbookLine::idle. Empty before the first morning and on a morning with no
+  ///        short job.
+  /// @note Between steps; a view of State() valid until the next step.
+  virtual std::span<const CrewGapLine> CrewGapsToday() const = 0;
+
   /// @brief The pieces a drag along a laid road selects for `operation`,
   ///        snapped to whole pieces, each in or out and why, and the
   ///        operation's estimate (ISimulation::SelectRoadPieces).
