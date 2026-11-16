@@ -97,6 +97,7 @@ class HayAnswer {
     cow_kind_ = livestock->FindRowByKey("cow");
     if (const core::ITable* const resources = tables.FindTable("resources")) {
       hay_resource_ = resources->FindRowByKey("hay");
+      milk_ = resources->FindRowByKey("milk");
     }
   }
 
@@ -349,6 +350,39 @@ class HayAnswer {
     }
     out << "population_curve: HAY1737 seed " << seed << " by_plan " << totals[0] << " by_hay "
         << totals[1] << " floor_binds " << totals[2] << " months " << join(months) << '\n';
+    // #1737 option 1 (econ's H6 and print): per year with anything to say - cows handed on the
+    // hay's word, of them below the milk floor, the milk position before the first cut and at
+    // the year's last day (kg), the cut, and the cows bought by lot; a buy-back within a year of
+    // a hay hand-over is shouted (the pump).
+    std::vector<std::string> years;
+    std::vector<std::string> pumps;
+    for (std::size_t index = 0; index < hay_cows_by_year_.size(); ++index) {
+      if (hay_cows_by_year_[index] + cows_bought_by_year_[index] == 0 &&
+          milk_cut_by_year_[index] == 0) {
+        continue;
+      }
+      years.push_back("y" + std::to_string(index + 1) + ":" +
+                      std::to_string(hay_cows_by_year_[index]) + ":" +
+                      std::to_string(hay_below_floor_by_year_[index]) + ":" +
+                      std::to_string(milk_before_by_year_[index] / 1000) + ":" +
+                      std::to_string(milk_after_by_year_[index] / 1000) + ":" +
+                      std::to_string(milk_cut_by_year_[index] / 1000) + ":" +
+                      std::to_string(cows_bought_by_year_[index]));
+      const bool bought_back =
+          hay_cows_by_year_[index] > 0 &&
+          (cows_bought_by_year_[index] > 0 ||
+           (index + 1 < cows_bought_by_year_.size() && cows_bought_by_year_[index + 1] > 0));
+      if (bought_back) {
+        pumps.push_back("y" + std::to_string(index + 1));
+      }
+    }
+    out << "population_curve: HAY1737M seed " << seed
+        << " years(hay_cows:below_floor:milk_before_kg:milk_after_kg:cut_kg:cows_bought) "
+        << (years.empty() ? "-" : join(years)) << '\n';
+    if (!pumps.empty()) {
+      out << "population_curve: HAY1737 SEED " << seed
+          << " BOUGHT COWS BACK WITHIN A YEAR OF A HAY HAND-OVER IN " << join(pumps) << '\n';
+    }
     if (guard_.below_floor_events + guard_.cap_breaches > 0) {
       out << "population_curve: CAP1697 SEED " << seed << " THE LADDER HANDED "
           << guard_.below_floor_events << " TIMES UNDER THE MILK FLOOR AND PAST ITS SEASON CAP "
@@ -436,6 +470,7 @@ class HayAnswer {
 
   /// The fewest adults seen, and the adults of the year's last day noted.
   void NoteTheDay(const core::WorldState& world) {
+    NoteMilkPositionAndCowsBought(world);
     const std::int64_t cows = Adults(world, IsCow);
     const std::int64_t horses = Adults(world, IsHorse);
     least_cows_ = noted_any_ ? std::min(least_cows_, cows) : cows;
@@ -444,6 +479,38 @@ class HayAnswer {
     YearCount& year = YearOf(world);
     year.adult_horses = horses;
     year.adult_cows = cows;
+  }
+
+  /// #1737 option 1's print (econ-boss-1737-1726-gates [1], H6 and «print»), read off the world
+  /// and not the core's formula: the milk position's drops between two days of one year (the
+  /// year's turn re-sets it), and the cows the district's lots brought (livestock arrivals of
+  /// the cow kind, each row counted once by its id).
+  void NoteMilkPositionAndCowsBought(const core::WorldState& world) {
+    const std::uint32_t year = YearNumber(world);
+    if (year == 0 || year > kGuardYears) {
+      return;
+    }
+    const core::Grams due = milk_ < world.plan.due.size() ? world.plan.due[milk_] : core::Grams{0};
+    const bool same_year = milk_due_year_ == year;
+    if (same_year && due < milk_due_last_) {
+      milk_cut_by_year_[year - 1U] += milk_due_last_ - due;
+      if (milk_before_by_year_[year - 1U] == 0) {
+        milk_before_by_year_[year - 1U] = milk_due_last_;
+      }
+    }
+    milk_after_by_year_[year - 1U] = due;
+    milk_due_last_ = due;
+    milk_due_year_ = year;
+    for (std::uint32_t row = 0; row < world.livestock_arrivals.rows.size(); ++row) {
+      const std::uint32_t id = world.livestock_arrivals.row_ids[row].value;
+      if (world.livestock_arrivals.rows[row].kind.value != cow_kind_ ||
+          std::find(cow_arrivals_seen_.begin(), cow_arrivals_seen_.end(), id) !=
+              cow_arrivals_seen_.end()) {
+        continue;
+      }
+      cow_arrivals_seen_.push_back(id);
+      cows_bought_by_year_[year - 1U] += world.livestock_arrivals.rows[row].head_count;
+    }
   }
 
   /// The rush on EVERY meadow in its cut with mowing left that is not rushed
@@ -619,7 +686,17 @@ class HayAnswer {
     last_floor_ = floor;
     season_cows_handed_ += day_cows_;
     const std::int64_t adults_after = Adults(world, IsCow) - day_cows_;
-    if (day_cows_ > 0 && adults_after < floor) {
+    // #1737 option 1: below the milk floor ON THE HAY'S WORD is the rule now (the human 16 Nov);
+    // it is counted apart and not shouted. Below it on any other term is still the guard's.
+    constexpr std::uint8_t kSizedByHay = 1;  // Alarm::hand_over_sized_by's «the store's term»
+    const bool by_hay = yellow.hand_over_sized_by == kSizedByHay;
+    if (day_cows_ > 0 && by_hay && year <= kGuardYears) {
+      hay_cows_by_year_[year - 1U] += day_cows_;
+      if (adults_after < floor) {
+        hay_below_floor_by_year_[year - 1U] += std::min(day_cows_, floor - adults_after);
+      }
+    }
+    if (day_cows_ > 0 && adults_after < floor && !by_hay) {
       guard_.below_floor_events += 1;
       guard_.below_floor_heads += std::min(day_cows_, floor - adults_after);
       if (guard_.below_notes.size() < kGuardNotes) {
@@ -766,6 +843,17 @@ class HayAnswer {
 
   /// #1697's print.
   std::uint32_t cow_kind_ = core::kNoTableRow;
+  /// #1737 option 1's print (NoteMilkPositionAndCowsBought, GuardTheHandOver), by year 1-16.
+  std::uint32_t milk_ = core::kNoTableRow;
+  std::uint32_t milk_due_year_ = 0;
+  core::Grams milk_due_last_ = 0;
+  std::array<core::Grams, 16> milk_cut_by_year_{};
+  std::array<core::Grams, 16> milk_before_by_year_{};
+  std::array<core::Grams, 16> milk_after_by_year_{};
+  std::array<std::int64_t, 16> hay_cows_by_year_{};
+  std::array<std::int64_t, 16> hay_below_floor_by_year_{};
+  std::array<std::int64_t, 16> cows_bought_by_year_{};
+  std::vector<std::uint32_t> cow_arrivals_seen_;
   std::uint32_t hay_resource_ = core::kNoTableRow;
   std::uint32_t cut_year_ = 0;
   core::Grams yesterday_hay_ = 0;

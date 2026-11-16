@@ -286,6 +286,21 @@ ClassRoom RoomAboveTheFloors(const ProductionConfig& config, const WorldState& w
                    .cows = std::max<std::int64_t>(0, cow_adults - floors.cows_kept)};
 }
 
+}  // namespace
+
+std::int64_t KolkhozAdultCows(const ProductionConfig& config, const WorldState& world) {
+  const LivestockKindId cow = MilkKind(config);
+  std::int64_t cows = 0;
+  for (const HerdRow& herd : world.herds.rows) {
+    if (herd.household_owned == 0 && herd.kind.value == cow.value) {
+      cows += herd.adult_count;
+    }
+  }
+  return cows;
+}
+
+namespace {
+
 /// #1737's HAY TERM (econ-boss-1697-hay-sized-handover [1]; boss-core-1697-hay-sized [1]):
 /// the heads the store cannot carry to the first pasture day - the kolkhoz herds' need of
 /// this month's ration from today to the first day of FarmingConfig::pasture_from_month, less
@@ -375,8 +390,13 @@ HandOverAdvice LeastHeadsToHandOver(const ProductionConfig& config,
   // grass (host NPS: starved y1-y3 62 -> 86, all in y2 m4-m6).
   const std::vector<float> own =
       held != nullptr ? std::vector<float>{} : HerdFeedHeldKg(config, world);
-  const HayTerm hay = HeadsTheStoreCannotCarry(
-      config, world, held != nullptr ? *held : own, RoomAboveTheFloors(config, world));
+  // THE MILK FLOOR YIELDS TO THE HAY (#1737 option 1; the human 16 Nov «Ваше решение» ->
+  // econ's option, econ-boss-1737-1726-gates [1]): the hay term may name every adult kolkhoz
+  // cow, below the milk floor; the district takes them and the year's milk position drops by
+  // their share at the hand-over (OrderHandStock). The horses keep their floor.
+  ClassRoom room = RoomAboveTheFloors(config, world);
+  room.cows = KolkhozAdultCows(config, world);
+  const HayTerm hay = HeadsTheStoreCannotCarry(config, world, held != nullptr ? *held : own, room);
   if (hay.horses > advice.horses || hay.cows > advice.stock) {
     advice.horses = std::max(advice.horses, hay.horses);
     advice.stock = std::max(advice.stock, hay.cows);
