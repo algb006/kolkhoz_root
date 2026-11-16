@@ -60,6 +60,7 @@
 #include <cstdint>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <optional>
 #include <span>
 #include <string>
@@ -322,6 +323,15 @@ class FallowPolicy {
       }
     }
     house_type_ = types->FindRowByKey("wooden_house");
+    if (const core::ITable* const goods = tables.FindTable("resources")) {  // #1726's split
+      const std::array<std::string_view, 5> crop_keys = {"rye", "oat", "barley", "potato", "wheat"};
+      for (std::size_t crop = 0; crop < crop_keys.size(); ++crop) {
+        split_crops_[crop] = goods->FindRowByKey(crop_keys[crop]);
+        if (crop != 3 && split_crops_[crop] != core::kNoTableRow) {
+          grains_.push_back(split_crops_[crop]);
+        }
+      }
+    }
     const std::array<std::string_view, 3> chain_keys = {"barley", "rye_winter", "oat"};
     for (std::size_t slot = 0; slot < chain_keys.size(); ++slot) {
       const std::uint32_t row = crops->FindRowByKey(chain_keys[slot]);
@@ -674,7 +684,95 @@ class FallowPolicy {
       spring_building_[year - 1U] += total - building_last_;
     }
     building_last_ = total;
+    CountTheSplit(world);
   }
+
+  /// #1726's split (boss, core-econ-1726-canon-pair [5]-[7]): by year 1-16, the building's man-days
+  /// on house sites and on every other site (each site's labor_days_remaining as it falls
+  /// day to day), the field man-days (the open book's plough, harrow, sow and reap kinds as
+  /// they rise), and at each turn the closed book's grain due, manure carted and harvest by
+  /// crop.
+  void CountTheSplit(const core::WorldState& world) {
+    const std::uint32_t year = world.ledger.current.year;
+    if (year < 1 || year > kSplitYears) {
+      return;
+    }
+    for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+      const core::UnitRow& unit = world.units.rows[row];
+      if (!(unit.construction.labor_days_total > 0.0F)) {
+        continue;  // no works on it
+      }
+      const std::uint32_t id = world.units.row_ids[row].value;
+      const float left = unit.construction.labor_days_remaining;
+      const auto seen = site_left_.find(id);
+      if (seen != site_left_.end() && left < seen->second) {
+        (unit.type.value == house_type_ ? house_days_ : other_days_)[year - 1U] +=
+            seen->second - left;
+      }
+      site_left_[id] = left;
+    }
+    float field = 0.0F;
+    for (const core::WorkKind kind : {core::WorkKind::kPlowing,
+                                      core::WorkKind::kHarrowing,
+                                      core::WorkKind::kSowing,
+                                      core::WorkKind::kHarvest}) {
+      field += world.ledger.current.work_days_by_kind[static_cast<std::size_t>(kind)];
+    }
+    if (field > field_last_) {
+      field_days_[year - 1U] += field - field_last_;
+    }
+    field_last_ = field;  // the book re-sets at the turn: a fall is a new year, not counted
+    const std::uint32_t closed = world.ledger.closed.year;
+    if (closed >= 1 && closed <= kSplitYears && !turn_read_[closed - 1U]) {
+      turn_read_[closed - 1U] = true;
+      const core::YearLedger& book = world.ledger.closed;
+      const auto of = [](const core::ResourceAmounts& amounts, std::uint32_t resource) {
+        return resource < amounts.size() ? amounts[resource] : core::Grams{0};
+      };
+      for (const std::uint32_t grain : grains_) {
+        grain_due_[closed - 1U] += of(book.plan_due, grain);
+      }
+      manure_[closed - 1U] = book.manure_carted;
+      for (std::size_t crop = 0; crop < split_crops_.size(); ++crop) {
+        harvest_[closed - 1U][crop] = of(book.harvest, split_crops_[crop]);
+      }
+    }
+  }
+
+ public:
+  /// @brief #1726's split print, a line a year: «FALLOW1726S seed S y Y house_md H other_md O
+  ///        field_md F grain_due_t G manure_t M harvest_t rye:oat:barley:potato:wheat».
+  void PrintSplit(std::ostream& out, std::uint64_t seed) const {
+    for (std::uint32_t index = 0; index < kSplitYears; ++index) {
+      out << "population_curve: FALLOW1726S seed " << seed << " y " << index + 1U << " house_md "
+          << std::lround(house_days_[index]) << " other_md " << std::lround(other_days_[index])
+          << " field_md " << std::lround(field_days_[index]) << " grain_due_t "
+          << grain_due_[index] / 1'000'000 << " manure_t " << manure_[index] / 1'000'000
+          << " harvest_t";
+      for (std::size_t crop = 0; crop < split_crops_.size(); ++crop) {
+        out << (crop == 0 ? " " : ":") << harvest_[index][crop] / 1'000'000;
+      }
+      out << '\n';
+    }
+  }
+
+ private:
+  static constexpr std::uint32_t kSplitYears = 16;
+  std::map<std::uint32_t, float> site_left_;
+  std::array<float, kSplitYears> house_days_{};
+  std::array<float, kSplitYears> other_days_{};
+  std::array<float, kSplitYears> field_days_{};
+  float field_last_ = 0.0F;
+  std::array<bool, kSplitYears> turn_read_{};
+  std::array<core::Grams, kSplitYears> grain_due_{};
+  std::array<core::Grams, kSplitYears> manure_{};
+  std::array<std::array<core::Grams, 5>, kSplitYears> harvest_{};
+  std::vector<std::uint32_t> grains_;  ///< rye, oat, barley, wheat rows
+  std::array<std::uint32_t, 5> split_crops_{core::kNoTableRow,
+                                            core::kNoTableRow,
+                                            core::kNoTableRow,
+                                            core::kNoTableRow,
+                                            core::kNoTableRow};  ///< rye oat barley potato wheat
 
  public:
   /// @brief #1726's print: «FALLOW1726 seed S spring_building_man_days y1..y6 a b c d e f
