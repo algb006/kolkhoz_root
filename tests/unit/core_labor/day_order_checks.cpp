@@ -278,6 +278,9 @@ int CheckSeasonWorksAndGaps(core::ILaborSystem& labor) {
     // The oat's reaping closes with month 9 (crops.csv): day 40 of the year is past it, so the
     // last day is 39 - nine days from Wednesday 30.
     const core::SeasonWorkLine& line = works.lines[0];
+    std::cout << "  season works line 0: work " << static_cast<int>(line.work) << " deadline "
+              << line.deadline << " overdue " << (line.overdue ? 1 : 0) << " area " << line.area_ha
+              << " days left " << line.work_days_left << '\n';
     failures += Expect(line.work == core::WorkKind::kHarvest && !line.overdue &&
                            line.deadline == 39U && line.area_ha == 10.0F,
                        "season works: the window's last day from the accountant's own rule");

@@ -1511,6 +1511,28 @@ core::WorldState MakeWitnessWorld() {
                                      .ordered_by_chairman_tenths = 900U,
                                      .home_plot_tenths = 210U};
   witness.labour_week.closed_known = 1;
+  // The day orders' book and the short jobs (save 213, #1778/#1789): one of each row, every
+  // field its own value.
+  witness.day_orders.due.push_back({.order = core::OrderId{41}, .day = 302U});
+  witness.day_orders.picks.push_back({.crew = core::OrderId{41}, .resident = core::ResidentId{6}});
+  witness.day_orders.yesterday_day = 301U;
+  witness.day_orders.yesterday_known = true;
+  witness.day_orders.yesterday.push_back({.form = core::DayOrderForm::kNamed,
+                                          .work = core::WorkKind::kHarvest,
+                                          .field = core::FieldId{3},
+                                          .herd = core::HerdId{},
+                                          .unit = core::UnitId{},
+                                          .count = 1,
+                                          .resident = core::ResidentId{9}});
+  witness.crew_gaps.push_back({.work = core::WorkKind::kConstruction,
+                               .field = core::FieldId{},
+                               .herd = core::HerdId{},
+                               .unit = core::UnitId{12},
+                               .stand = core::TimberStandId{},
+                               .extraction_site = core::ExtractionSiteId{},
+                               .road_work = core::RoadWorkId{},
+                               .placed = 2,
+                               .shortfall = core::JobShortfall::kCrewCap});
   return witness;
 }
 
@@ -1830,6 +1852,44 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
     chunks.push_back({"labour_week.home_plot", U32(sums->home_plot_tenths)});
   }
   chunks.push_back({"labour_week.closed_known", U8(world.labour_week.closed_known)});
+  // The day orders' book (save 213, #1778): the due, the picks, yesterday's day, flag and lines.
+  const core::DayOrderBook& book = world.day_orders;
+  chunks.push_back({"day_orders.due_count", U32(static_cast<std::uint32_t>(book.due.size()))});
+  for (const core::DayOrderDue& due : book.due) {
+    chunks.push_back({"day_orders.due.order", U32(due.order.value)});
+    chunks.push_back({"day_orders.due.day", U32(due.day)});
+  }
+  chunks.push_back({"day_orders.pick_count", U32(static_cast<std::uint32_t>(book.picks.size()))});
+  for (const core::CrewPick& pick : book.picks) {
+    chunks.push_back({"day_orders.pick.crew", U32(pick.crew.value)});
+    chunks.push_back({"day_orders.pick.resident", U32(pick.resident.value)});
+  }
+  chunks.push_back({"day_orders.yesterday_day", U32(book.yesterday_day)});
+  chunks.push_back({"day_orders.yesterday_known", U8(book.yesterday_known ? 1U : 0U)});
+  chunks.push_back(
+      {"day_orders.line_count", U32(static_cast<std::uint32_t>(book.yesterday.size()))});
+  for (const core::DayOrderLine& line : book.yesterday) {
+    chunks.push_back({"day_orders.line.form", U8(static_cast<std::uint8_t>(line.form))});
+    chunks.push_back({"day_orders.line.work", U8(static_cast<std::uint8_t>(line.work))});
+    chunks.push_back({"day_orders.line.field", U32(line.field.value)});
+    chunks.push_back({"day_orders.line.herd", U32(line.herd.value)});
+    chunks.push_back({"day_orders.line.unit", U32(line.unit.value)});
+    chunks.push_back({"day_orders.line.count", U16(line.count)});
+    chunks.push_back({"day_orders.line.resident", U32(line.resident.value)});
+  }
+  // The short jobs (save 213, #1789).
+  chunks.push_back({"crew_gaps.count", U32(static_cast<std::uint32_t>(world.crew_gaps.size()))});
+  for (const core::CrewGapLine& gap : world.crew_gaps) {
+    chunks.push_back({"crew_gaps.work", U8(static_cast<std::uint8_t>(gap.work))});
+    chunks.push_back({"crew_gaps.field", U32(gap.field.value)});
+    chunks.push_back({"crew_gaps.herd", U32(gap.herd.value)});
+    chunks.push_back({"crew_gaps.unit", U32(gap.unit.value)});
+    chunks.push_back({"crew_gaps.stand", U32(gap.stand.value)});
+    chunks.push_back({"crew_gaps.site", U32(gap.extraction_site.value)});
+    chunks.push_back({"crew_gaps.road_work", U32(gap.road_work.value)});
+    chunks.push_back({"crew_gaps.placed", U16(gap.placed)});
+    chunks.push_back({"crew_gaps.shortfall", U8(static_cast<std::uint8_t>(gap.shortfall))});
+  }
   return chunks;
 }
 
@@ -2074,7 +2134,10 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // held; the hash read off it (s1630c2).
     // Save 211 (#1375): +6 - the spring flood, a u16 and a u32 after the weather's road beds;
     // predicted 1481 -> 1487 (save_blocks.cpp's arity note), held; the hash read off it (u1375).
-    {"world", 1487, 0xb6f996f7d787653bULL},
+    // Save 213 (#1778/#1789): +21 - the day orders' empty book (three u32 counts, a u32 day,
+    // a byte) and the short jobs' empty count; predicted 1487 -> 1508 before the build, held;
+    // the hash read off u1778c.
+    {"world", 1508, 0xbf7cb5ff0d612011ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2199,7 +2262,10 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // hash read off the build with the first field's dose set off its default.
     // Save 211 (#1375): flood_lost_year, a u16 at each field's tail - three fields, +6; the
     // hash read off it (s0381).
-    {"fields", 509, 0xf511007eee061f64ULL},
+    // Save 213 (#1789): fertility_year_start, a float at each field's tail - three fields, +12
+    // (predicted +8 on an estimate of two fields, missed: the fixture has three, written above);
+    // the hash read off u1778c.
+    {"fields", 521, 0x96be292edbd46449ULL},
     // Save 67: +27 — the store's emptying byte and the perevalka's two floats,
     // three units; predicted before the fields were added, and held.
     // Save 74: +1 a unit — the house held for a specialist; three units, +3,
