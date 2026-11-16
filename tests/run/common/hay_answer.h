@@ -138,6 +138,23 @@ class HayAnswer {
     // days a village a year on the second form of 0.37.142.
     ++yellow_days_;
     YearOf(world).yellow_days += 1;
+    // #1737's door on EVERY lit evening (host, core-econ-1737-canon-pair [4]): what the hay's
+    // term named, handed or not - the rungs below read the same advice (fodder_advice.cpp), so a
+    // hand-over count alone cannot show what the term did.
+    constexpr std::uint8_t kNamedByHay = 1;  // Alarm::hand_over_sized_by's «the store's term»
+    if (yellow->hand_over_sized_by == kNamedByHay) {
+      const std::uint32_t lit_year = YearNumber(world);
+      if (lit_year >= 1 && lit_year <= kGuardYears) {
+        hay_lit_evenings_by_year_[lit_year - 1U] += 1;
+        hay_named_by_year_[lit_year - 1U] += yellow->hand_over_stock + yellow->hand_over_horses;
+        hay_feed_rung_by_year_[lit_year - 1U] +=
+            yellow->advice == core::AlarmAdvice::kBuyFeed ||
+                    yellow->advice == core::AlarmAdvice::kGranaryForFeed ||
+                    yellow->advice_more == core::AlarmAdvice::kBuyFeed
+                ? 1
+                : 0;
+      }
+    }
     const bool heads_advised = yellow->advice == core::AlarmAdvice::kReduceHerd ||
                                yellow->advice_more == core::AlarmAdvice::kReduceHerd;
     if (yellow->below_floor_stock + yellow->below_floor_horses > 0) {
@@ -357,11 +374,16 @@ class HayAnswer {
     std::vector<std::string> years;
     std::vector<std::string> pumps;
     for (std::size_t index = 0; index < hay_cows_by_year_.size(); ++index) {
-      if (hay_cows_by_year_[index] + cows_bought_by_year_[index] == 0 &&
+      if (hay_cows_by_year_[index] + cows_bought_by_year_[index] +
+                  hay_lit_evenings_by_year_[index] ==
+              0 &&
           milk_cut_by_year_[index] == 0) {
         continue;
       }
       years.push_back("y" + std::to_string(index + 1) + ":" +
+                      std::to_string(hay_lit_evenings_by_year_[index]) + ":" +
+                      std::to_string(hay_named_by_year_[index]) + ":" +
+                      std::to_string(hay_feed_rung_by_year_[index]) + ":" +
                       std::to_string(hay_cows_by_year_[index]) + ":" +
                       std::to_string(hay_below_floor_by_year_[index]) + ":" +
                       std::to_string(milk_before_by_year_[index] / 1000) + ":" +
@@ -377,7 +399,8 @@ class HayAnswer {
       }
     }
     out << "population_curve: HAY1737M seed " << seed
-        << " years(hay_cows:below_floor:milk_before_kg:milk_after_kg:cut_kg:cows_bought) "
+        << " years(hay_lit_evenings:hay_named_heads:hay_feed_rung_evenings:hay_cows_handed:"
+           "below_floor:milk_before_kg:milk_after_kg:cut_kg:cows_bought) "
         << (years.empty() ? "-" : join(years)) << '\n';
     if (!pumps.empty()) {
       out << "population_curve: HAY1737 SEED " << seed
@@ -853,6 +876,9 @@ class HayAnswer {
   std::array<std::int64_t, 16> hay_cows_by_year_{};
   std::array<std::int64_t, 16> hay_below_floor_by_year_{};
   std::array<std::int64_t, 16> cows_bought_by_year_{};
+  std::array<std::int64_t, 16> hay_lit_evenings_by_year_{};
+  std::array<std::int64_t, 16> hay_named_by_year_{};
+  std::array<std::int64_t, 16> hay_feed_rung_by_year_{};
   std::vector<std::uint32_t> cow_arrivals_seen_;
   std::uint32_t hay_resource_ = core::kNoTableRow;
   std::uint32_t cut_year_ = 0;
