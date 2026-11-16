@@ -627,6 +627,8 @@ bool g_smokehouse = true;
 bool g_smokehouse_houses_first = true;
 /// #1761: the smokehouse family not opened into the haymaking in y1-y2 (canon); the arm off.
 bool g_smokehouse_window = true;
+/// #1726 option 2: a block the houses guard held two turns in a row opens; the arm off.
+bool g_fallow_houses_deadline = true;
 /// #307's hay arm: --hay-arm=clover (A) / mown (B) / both (A+B); off otherwise.
 run::HayArmPolicy::Mode g_hay_arm = run::HayArmPolicy::Mode::kMown;  // canon since 0.37.378
 /// #1677: house sites raised while a couple waits - the canon's since 0.37.379;
@@ -863,6 +865,7 @@ bool Walk(std::uint64_t seed,
   builder.smokehouse.Enable(g_smokehouse);  // #1644: the arm --smokehouse; off in the canon
   builder.smokehouse.WaitForHouses(g_smokehouse_houses_first);  // #1677 shape (2)
   builder.smokehouse.SetWindow(g_smokehouse_window);            // #1761 window (c)
+  builder.fallow.SetHousesDeadline(g_fallow_houses_deadline);   // #1726 option 2
   builder.smokehouse.Declare("population_curve");
   builder.hay_arm.SetMode(g_hay_arm);  // #307
   builder.hay_arm.Declare("population_curve");
@@ -1568,12 +1571,13 @@ bool Walk(std::uint64_t seed,
       funerals.Print(std::cout, seed);
       herds.Print(std::cout, seed);
       crime.Print(std::cout, seed);
-      salt.Print(std::cout);                        // #1630 (B)
-      builder.smokehouse.Print(std::cout, seed);    // #1644
-      builder.hay_arm.Print(std::cout, seed);       // #307
-      builder.fallow.PrintHolds(std::cout, seed);   // #1692's hold print
-      builder.houses_first.Print(std::cout, seed);  // #1677
-      herds.PrintCowFlows(std::cout, seed);         // #1570
+      salt.Print(std::cout);                                // #1630 (B)
+      builder.smokehouse.Print(std::cout, seed);            // #1644
+      builder.hay_arm.Print(std::cout, seed);               // #307
+      builder.fallow.PrintHolds(std::cout, seed);           // #1692's hold print
+      builder.fallow.PrintSpringBuilding(std::cout, seed);  // #1726's B1 and B5
+      builder.houses_first.Print(std::cout, seed);          // #1677
+      herds.PrintCowFlows(std::cout, seed);                 // #1570
       hand_overs.Print(std::cout, seed);
       builder.houses.PrintQueueLines(std::cout, seed);  // #1677: the queue by cause, short lines
       feed_rung.Print(std::cout, seed);                 // #1573
@@ -1753,6 +1757,8 @@ int main(int argc, char** argv) {
       g_smokehouse_houses_first = false;  // #1677 shape (2) off
     } else if (argument == "--no-smokehouse-window") {
       g_smokehouse_window = false;  // #1761 window (c) off: 0.37.382's rule
+    } else if (argument == "--no-fallow-houses-deadline") {
+      g_fallow_houses_deadline = false;  // #1726 option 2 off: the houses hold for ever
     } else if (argument == "--hay-arm=off") {
       g_hay_arm = run::HayArmPolicy::Mode::kOff;  // #307: the canon without B
     } else if (argument == "--hay-arm=clover") {
