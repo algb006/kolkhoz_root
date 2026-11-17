@@ -60,6 +60,7 @@
 #include "../common/run_harness.h"
 #include "../common/salt_tally.h"
 #include "../common/site_wait_tally.h"
+#include "../common/sites_by_group_tally.h"
 #include "../common/strada_tally.h"
 #include "../common/substitute_tally.h"
 #include "../common/timber_flow_tally.h"
@@ -907,11 +908,12 @@ bool Walk(std::uint64_t seed,
   run::FeedRungTally feed_rung(*world.tables);
   // #1573's horse tail y1-y30 (econ, econ-boss-1573-horse-tail [1]): horse_tail_tally.h.
   run::HorseTailTally horse_tail(*world.tables);
-  run::FloodTally flood_tally;                    // #1375
-  run::FirstPlanTally first_plan(*world.tables);  // #1750
-  run::MilkCutTally milk_cut(*world.tables);      // #1737 option 1, every run's door
-  run::FamilyHungerTally family_hunger;           // #1726's B3
-  run::LedgerTurnTally ledger_turn;               // #1580
+  run::FloodTally flood_tally;                           // #1375
+  run::FirstPlanTally first_plan(*world.tables);         // #1750
+  run::MilkCutTally milk_cut(*world.tables);             // #1737 option 1, every run's door
+  run::FamilyHungerTally family_hunger;                  // #1726's B3
+  run::SitesByGroupTally sites_by_group(*world.tables);  // #1726 boss [22]
+  run::LedgerTurnTally ledger_turn;                      // #1580
   std::array<std::uint32_t, core::kRestSourceCount> r1373_sources = {};
   std::uint32_t r1373_walk_offs = 0;
   // What the farm's sites waited on, y1-y6 (#1285 G1's probe; boss [3]).
@@ -1046,11 +1048,12 @@ bool Walk(std::uint64_t seed,
                           herds.CowsHandedInYear(simulation->CompletedState().calendar.date.year));
       feed_rung.CountDayEnd(simulation->CompletedState());
       horse_tail.CountDayEnd(*simulation);
-      flood_tally.CountDayEnd(*simulation);                     // #1375
-      first_plan.CountDayEnd(simulation->CompletedState());     // #1750
-      milk_cut.CountDayEnd(*simulation);                        // #1737
-      family_hunger.CountDayEnd(simulation->CompletedState());  // #1726
-      ledger_turn.CountDayEnd(*simulation);                     // #1580
+      flood_tally.CountDayEnd(*simulation);                      // #1375
+      first_plan.CountDayEnd(simulation->CompletedState());      // #1750
+      milk_cut.CountDayEnd(*simulation);                         // #1737
+      family_hunger.CountDayEnd(simulation->CompletedState());   // #1726
+      sites_by_group.CountDayEnd(simulation->CompletedState());  // #1726 boss [22]
+      ledger_turn.CountDayEnd(*simulation);                      // #1580
       if (!warm_off) {
         strada.CountDayEnd(simulation->CompletedState());
       }
@@ -1592,12 +1595,13 @@ bool Walk(std::uint64_t seed,
       builder.houses.PrintQueueLines(std::cout, seed);  // #1677: the queue by cause, short lines
       feed_rung.Print(std::cout, seed);                 // #1573
       builder.limit.PrintHayFeedRung(std::cout, seed, run::FeedRungTally::kYears);  // #1573
-      horse_tail.Print(std::cout, seed);     // #1573's horse tail
-      flood_tally.Print(std::cout, seed);    // #1375
-      first_plan.Print(std::cout, seed);     // #1750
-      milk_cut.Print(std::cout, seed);       // #1737
-      family_hunger.Print(std::cout, seed);  // #1726
-      ledger_turn.Print(std::cout, seed);    // #1580
+      horse_tail.Print(std::cout, seed);      // #1573's horse tail
+      flood_tally.Print(std::cout, seed);     // #1375
+      first_plan.Print(std::cout, seed);      // #1750
+      milk_cut.Print(std::cout, seed);        // #1737
+      family_hunger.Print(std::cout, seed);   // #1726
+      sites_by_group.Print(std::cout, seed);  // #1726 boss [22]
+      ledger_turn.Print(std::cout, seed);     // #1580
       builder.limit.PrintHayHorseTail(std::cout, seed, run::HorseTailTally::kYears);
       builder.limit.PrintHayLadderGuard(std::cout, seed);  // #1697's guard, every village
       // #1697: the ladder by day, for the seeds in KOLKHOZ_LADDER_SEEDS (comma list).
