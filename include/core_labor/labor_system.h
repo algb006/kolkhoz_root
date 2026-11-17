@@ -61,6 +61,7 @@
 
 #include "core_common/alarm_state.h"
 #include "core_common/calendar.h"
+#include "core_common/day_order_preview.h"
 #include "core_common/day_orders.h"
 #include "core_common/early_snow.h"
 #include "core_common/labor_state.h"
@@ -162,6 +163,15 @@ class ILaborSystem {
   ///        deadline rule's own source (day_orders.h, #1778).
   /// @return STUB until #1778's body: `measured` false.
   virtual SeasonWorks SeasonWorksOf(const WorldState& state) const = 0;
+
+  /// @brief What a DRAFT day order (kAssignCrew or kAssignDayWork, not issued) would leave the
+  ///        accountant short of: the morning's plan on a copy of `state`, without and with the
+  ///        draft's people taken out as the morning takes them (day_order_preview.h, #1825).
+  /// @return `measured` false for a draft of another kind or with nothing to plan.
+  virtual DayOrderPreview PreviewDayOrder(const WorldState& state, const OrderRow& draft) const = 0;
+
+  /// @brief A herd's care today by the accountant's own norm (day_order_preview.h).
+  virtual HerdCareView HerdCareToday(const WorldState& state, HerdId herd) const = 0;
 };
 
 /// @brief Creates the labor subsystem.

@@ -173,6 +173,12 @@ class ScriptedSimulation final : public core::ISimulation {
 
   core::SeasonWorks SeasonWorksOf() const override { return {}; }
 
+  core::DayOrderPreview PreviewDayOrder(const core::OrderRow& /*draft*/) const override {
+    return {};
+  }
+
+  core::HerdCareView HerdCareToday(core::HerdId /*herd*/) const override { return {}; }
+
   /// No works and no carts here: nothing to cart.
   core::SupplyEstimate SupplyEstimateFor(core::UnitId /*unit*/) const override { return {}; }
 

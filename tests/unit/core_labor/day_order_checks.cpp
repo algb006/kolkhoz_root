@@ -2,6 +2,7 @@
 
 #include "day_order_checks.h"
 
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -388,6 +389,50 @@ int CheckOverrideKeepsTheClerksJobs(core::ILaborSystem& labor) {
   return failures;
 }
 
+/// #1825: the preview of a draft crew and the herd's care by the accountant's norm. Two people
+/// and one cow: a draft crew of two takes both, so the barn loses the accountant's hand - the
+/// preview names it before any order is issued. The cow's care: its seam, one hand's expected
+/// output (under one care-day) and the hands that cover it (never fewer than the seam's ceiling).
+int CheckPreviewAndHerdCare(core::ILaborSystem& labor) {
+  int failures = 0;
+  Village village(2);
+  core::UnitRow barn;
+  barn.position = core::Vec2{.x = 5.0F, .y = 0.0F};
+  core::HerdRow cow;
+  cow.kind = core::LivestockKindId{1};
+  cow.unit = core::AppendRow(village.world.units, barn);
+  cow.adult_count = 1;
+  const core::HerdId herd = core::AppendRow(village.world.herds, cow);
+  village.RunHours(labor, kWednesday, 0, 9);
+  const core::DayOrderPreview preview =
+      labor.PreviewDayOrder(village.world, village.Crew(village.far_field, 2));
+  const core::DayOrderPreview idle =
+      labor.PreviewDayOrder(village.world, village.Crew(village.far_field, 0));
+  const core::DayOrderKindPreview* care = nullptr;
+  for (const core::DayOrderKindPreview& kind : preview.kinds) {
+    care = kind.work == core::WorkKind::kHerdCare ? &kind : care;
+  }
+  std::cout << "  preview: measured " << (preview.measured ? 1 : 0) << ", taken " << preview.taken
+            << ", day " << preview.measured_on_day << ", herd care hands "
+            << (care != nullptr ? care->hands_without : 99) << " -> "
+            << (care != nullptr ? care->hands_with : 99) << '\n';
+  failures += Expect(preview.measured && preview.taken == 2 && care != nullptr &&
+                         care->hands_without == 1 && care->hands_with == 0 &&
+                         preview.measured_on_day == kWednesday,
+                     "preview: a crew of both people leaves the barn without its hand, said first");
+  failures += Expect(idle.measured && idle.taken == 0 && idle.kinds.empty(),
+                     "preview: a draft that takes nobody changes nothing (the pair)");
+  const core::HerdCareView view = labor.HerdCareToday(village.world, herd);
+  std::cout << "  herd care: seam " << view.seam << ", per hand " << view.per_hand << ", hands "
+            << view.hands << '\n';
+  failures +=
+      Expect(view.measured && view.seam > 0.0F && view.per_hand > 0.0F && view.per_hand <= 1.0F &&
+                 view.hands >= static_cast<std::uint16_t>(std::ceil(view.seam)),
+             "herd care: the accountant's norm - one hand under a care-day, the crew "
+             "never under the seam's ceiling");
+  return failures;
+}
+
 /// #1812: without the accountant nobody is placed, and the chairman's crew still works - the
 /// pair, refused and allowed, on one village.
 int CheckNoAutoPlacement() {
@@ -482,6 +527,7 @@ int CheckDayOrders() {
   failures += CheckSeasonWorksAndGaps(*labor);
   failures += CheckSowingDeadline(*labor);
   failures += CheckOverrideKeepsTheClerksJobs(*labor);
+  failures += CheckPreviewAndHerdCare(*labor);
   failures += CheckNoAutoPlacement();
   failures += CheckOrderedHorses();
   return failures;

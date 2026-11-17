@@ -587,6 +587,14 @@ class Session final : public ISession {
 
   SeasonWorks SeasonWorksOf() const override { return simulation_->SeasonWorksOf(); }
 
+  DayOrderPreview PreviewDayOrder(const OrderRow& draft) const override {
+    return simulation_->PreviewDayOrder(draft);
+  }
+
+  HerdCareView HerdCareToday(HerdId herd) const override {
+    return simulation_->HerdCareToday(herd);
+  }
+
   std::span<const CrewGapLine> CrewGapsToday() const override {
     return simulation_->CompletedState().crew_gaps;
   }

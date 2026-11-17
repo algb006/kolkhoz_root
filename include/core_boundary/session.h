@@ -139,6 +139,7 @@
 #include "core_common/calendar.h"
 #include "core_common/cargo_form.h"
 #include "core_common/chairman_transport_view.h"
+#include "core_common/day_order_preview.h"
 #include "core_common/day_orders.h"
 #include "core_common/elder_view.h"
 #include "core_common/event_state.h"
@@ -1011,6 +1012,19 @@ class ISession {
   ///        short job.
   /// @note Between steps; a view of State() valid until the next step.
   virtual std::span<const CrewGapLine> CrewGapsToday() const = 0;
+
+  /// @brief What a DRAFT day order would leave the accountant short of, by kind of work - the
+  ///        player's «у учётчика останется недобор: подводы −3» before he issues it
+  ///        (ISimulation::PreviewDayOrder; core_common/day_order_preview.h; #1825). An
+  ///        ESTIMATE from today's state: `measured_on_day` names it.
+  /// @param draft A kAssignCrew or kAssignDayWork row, not issued.
+  /// @note Between steps; the answer describes State().
+  virtual DayOrderPreview PreviewDayOrder(const OrderRow& draft) const = 0;
+
+  /// @brief A herd's care today by the accountant's own norm: the seam, one hand's expected
+  ///        output and the hands that cover it (ISimulation::HerdCareToday; #1811's probe).
+  /// @note Between steps; the answer describes State().
+  virtual HerdCareView HerdCareToday(HerdId herd) const = 0;
 
   /// @brief The pieces a drag along a laid road selects for `operation`,
   ///        snapped to whole pieces, each in or out and why, and the

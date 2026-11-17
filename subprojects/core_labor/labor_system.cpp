@@ -335,6 +335,141 @@ class LaborSystem final : public ILaborSystem {
     return YesterdayDayOrdersIn(state);
   }
 
+  /// THE MORNING ON A COPY (#1825): the residents' day cleared, the barns refilled, the yards and
+  /// the posts placed - StartDay's own steps before the accountant plans - so a read between
+  /// steps plans what the next morning would, on today's state.
+  WorldState MorningCopy(const WorldState& state) const {
+    WorldState morning = state;
+    for (ResidentRow& resident : morning.residents.rows) {
+      resident.work = WorkAssignment{};
+    }
+    RefillHerdCare(morning);
+    YardsTakeHerdCare(morning);
+    AssignPostHolders(morning);
+    return morning;
+  }
+
+  /// The accountant's plan by kind: hands placed and jobs left short.
+  static void TallyPlan(const std::vector<AssignmentJob>& jobs,
+                        const std::vector<std::uint32_t>& plan,
+                        const PlacementDiagnosis& diagnosis,
+                        std::array<std::uint16_t, kWorkKindCount>& hands,
+                        std::array<std::uint16_t, kWorkKindCount>& short_jobs) {
+    for (const std::uint32_t index : plan) {
+      if (index < jobs.size()) {
+        ++hands[static_cast<std::size_t>(jobs[index].kind)];
+      }
+    }
+    for (std::size_t index = 0; index < jobs.size() && index < diagnosis.shortfall.size();
+         ++index) {
+      if (diagnosis.shortfall[index]) {
+        ++short_jobs[static_cast<std::size_t>(jobs[index].kind)];
+      }
+    }
+  }
+
+  DayOrderPreview PreviewDayOrder(const WorldState& state, const OrderRow& draft) const override {
+    DayOrderPreview preview;
+    preview.measured_on_day = state.calendar.day;
+    if (draft.kind != OrderKind::kAssignCrew && draft.kind != OrderKind::kAssignDayWork) {
+      return preview;
+    }
+    const WorldState morning = MorningCopy(state);
+    const std::vector<AssignmentJob> jobs = CollectJobs(morning);
+    std::vector<AssignmentCandidate> candidates = CollectCandidates(morning);  // MeasureRoads
+    if (jobs.empty() || candidates.empty()) {
+      return preview;
+    }
+    AssignmentParams params = DayParams(morning);
+    MeasureRoads(morning, jobs, candidates, params);
+    // The draft's people as the morning would take them: the crew's picks in the accountant's
+    // rotation from the due day (PickCrew's order, posts and standing orders skipped), or the
+    // named resident.
+    std::vector<bool> taken(morning.residents.rows.size(), false);
+    if (draft.kind == OrderKind::kAssignDayWork) {
+      const std::uint32_t row = FindRow(morning.residents, draft.resident);
+      if (row != kNoRow) {
+        taken[row] = true;
+      }
+    } else {
+      const auto roster = static_cast<std::uint32_t>(morning.residents.rows.size());
+      const std::uint32_t start = (morning.calendar.day + 1U) % std::max(roster, 1U);
+      std::vector<bool> is_candidate(roster, false);
+      for (const AssignmentCandidate& candidate : candidates) {
+        is_candidate[candidate.resident_row] = true;
+      }
+      std::uint32_t picked = 0;
+      for (std::uint32_t step = 0; step < roster && picked < draft.crew_size; ++step) {
+        const std::uint32_t row = (start + step) % roster;
+        if (!is_candidate[row] ||
+            StandingWorkRow(morning, morning.residents.row_ids[row], kNoRow) != kNoRow) {
+          continue;
+        }
+        taken[row] = true;
+        ++picked;
+      }
+    }
+    std::vector<AssignmentCandidate> rest;
+    for (const AssignmentCandidate& candidate : candidates) {
+      if (!taken[candidate.resident_row]) {
+        rest.push_back(candidate);
+      } else {
+        ++preview.taken;
+      }
+    }
+    std::array<std::uint16_t, kWorkKindCount> hands_without{};
+    std::array<std::uint16_t, kWorkKindCount> hands_with{};
+    std::array<std::uint16_t, kWorkKindCount> short_without{};
+    std::array<std::uint16_t, kWorkKindCount> short_with{};
+    PlacementDiagnosis before;
+    TallyPlan(jobs,
+              PlanDayAssignments(jobs, candidates, params, nullptr, nullptr, &before),
+              before,
+              hands_without,
+              short_without);
+    PlacementDiagnosis after;
+    TallyPlan(jobs,
+              PlanDayAssignments(jobs, rest, params, nullptr, nullptr, &after),
+              after,
+              hands_with,
+              short_with);
+    for (std::size_t kind = 1; kind < kWorkKindCount; ++kind) {
+      if (hands_without[kind] == hands_with[kind] && short_without[kind] == short_with[kind]) {
+        continue;
+      }
+      preview.kinds.push_back(DayOrderKindPreview{.work = static_cast<WorkKind>(kind),
+                                                  .hands_without = hands_without[kind],
+                                                  .hands_with = hands_with[kind],
+                                                  .short_jobs_without = short_without[kind],
+                                                  .short_jobs_with = short_with[kind]});
+    }
+    preview.measured = true;
+    return preview;
+  }
+
+  HerdCareView HerdCareToday(const WorldState& state, HerdId herd) const override {
+    HerdCareView view;
+    view.herd = herd;
+    const WorldState morning = MorningCopy(state);
+    const std::vector<AssignmentJob> jobs = CollectJobs(morning);
+    std::vector<AssignmentCandidate> candidates = CollectCandidates(morning);  // MeasureRoads
+    for (std::uint32_t index = 0; index < jobs.size(); ++index) {
+      if (jobs[index].kind != WorkKind::kHerdCare || jobs[index].herd.value != herd.value) {
+        continue;
+      }
+      AssignmentParams params = DayParams(morning);
+      MeasureRoads(morning, jobs, candidates, params);
+      view.seam = jobs[index].work_days_remaining;
+      view.per_hand = ExpectedNormPerHand(jobs[index], index, candidates, params);
+      view.hands = view.per_hand > 0.0F
+                       ? static_cast<std::uint16_t>(std::ceil(view.seam / view.per_hand))
+                       : std::uint16_t{0};
+      view.measured = true;
+      break;
+    }
+    return view;
+  }
+
   /// This season's field works: the work each field's phase has open now, its window by the
   /// accountant's own FieldWindow (the job's), and the share done of the phase (#1778).
   SeasonWorks SeasonWorksOf(const WorldState& state) const override {

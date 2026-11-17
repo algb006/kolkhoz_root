@@ -72,6 +72,7 @@
 #include "core_common/barter_view.h"
 #include "core_common/cargo_form.h"
 #include "core_common/chairman_transport_view.h"
+#include "core_common/day_order_preview.h"
 #include "core_common/day_orders.h"
 #include "core_common/deadline.h"
 #include "core_common/delivery_term.h"
@@ -484,6 +485,15 @@ class ISimulation {
   /// STUB until #1778's body: `measured` false.
   /// @note Called between steps on the sim thread. A pure read.
   virtual SeasonWorks SeasonWorksOf() const = 0;
+
+  /// @brief A draft day order's cost to the accountant's plan (day_order_preview.h, #1825).
+  /// Fans out to core_labor; the bare engine answers `measured` false.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual DayOrderPreview PreviewDayOrder(const OrderRow& draft) const = 0;
+
+  /// @brief A herd's care today by the accountant's own norm (day_order_preview.h).
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual HerdCareView HerdCareToday(HerdId herd) const = 0;
 
   /// @brief How long the carting of the materials of the works on `unit`
   /// would take, said before they are started (supply_estimate.h; routing

@@ -275,6 +275,10 @@ class StepEngine final : public ISimulation {
 
   SeasonWorks SeasonWorksOf() const override { return {}; }
 
+  DayOrderPreview PreviewDayOrder(const OrderRow& /*draft*/) const override { return {}; }
+
+  HerdCareView HerdCareToday(HerdId /*herd*/) const override { return {}; }
+
   /// No subsystems, so no works and no carts: nothing to cart.
   SupplyEstimate SupplyEstimateFor(UnitId /*unit*/) const override { return {}; }
 

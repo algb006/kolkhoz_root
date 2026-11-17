@@ -839,6 +839,14 @@ class StandardSimulation final : public ISimulation {
     return labor_->SeasonWorksOf(engine_->CompletedState());
   }
 
+  DayOrderPreview PreviewDayOrder(const OrderRow& draft) const override {
+    return labor_->PreviewDayOrder(engine_->CompletedState(), draft);
+  }
+
+  HerdCareView HerdCareToday(HerdId herd) const override {
+    return labor_->HerdCareToday(engine_->CompletedState(), herd);
+  }
+
   bool FellingCanBeManned(Vec2 place) const override {
     return labor_->FellingCanBeManned(engine_->CompletedState(), place);
   }
