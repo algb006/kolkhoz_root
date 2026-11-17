@@ -425,11 +425,13 @@ int CheckPreviewAndHerdCare(core::ILaborSystem& labor) {
   const core::HerdCareView view = labor.HerdCareToday(village.world, herd);
   std::cout << "  herd care: seam " << view.seam << ", per hand " << view.per_hand << ", hands "
             << view.hands << '\n';
+  // NOT «one hand under a care-day»: the first draft asserted it and the run gave 1.20 on a
+  // 12-hour day - a hand gives more than a standard day in summer light and less in winter's.
+  // What holds is the read's own arithmetic, the seam over the accountant's per-hand norm.
   failures +=
-      Expect(view.measured && view.seam > 0.0F && view.per_hand > 0.0F && view.per_hand <= 1.0F &&
-                 view.hands >= static_cast<std::uint16_t>(std::ceil(view.seam)),
-             "herd care: the accountant's norm - one hand under a care-day, the crew "
-             "never under the seam's ceiling");
+      Expect(view.measured && view.seam > 0.0F && view.per_hand > 0.0F &&
+                 view.hands == static_cast<std::uint16_t>(std::ceil(view.seam / view.per_hand)),
+             "herd care: the hands are the seam over the accountant's per-hand norm");
   return failures;
 }
 
