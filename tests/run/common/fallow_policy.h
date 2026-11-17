@@ -497,6 +497,8 @@ class FallowPolicy {
   std::array<std::array<std::array<std::uint32_t, 12>, 4>, kTimberJobs> timber_gaps_{};
   std::array<std::array<std::uint32_t, 12>, kTimberJobs> timber_placed_{};
   std::array<std::uint32_t, 12> horses_left_{};
+  std::array<std::uint32_t, 12> no_horse_days_{};
+  std::array<std::uint32_t, 12> no_horse_days_with_left_{};
 
   void CountTimberGaps(const core::WorldState& world,
                        std::uint32_t year_index,
@@ -507,6 +509,25 @@ class FallowPolicy {
     }
     if (world.morning_horses_left != core::kMorningHorsesUnknown) {
       horses_left_[month] += world.morning_horses_left;
+    }
+    // THE DAY'S CO-OCCURRENCE (the first read summed months, where a day short of horses and a
+    // day with horses to spare sit side by side): the days any timber job reads kNoHorse, and of
+    // those the days the morning plan still left horses - which its own pool says cannot be.
+    bool timber_no_horse = false;
+    for (const core::CrewGapLine& gap : world.crew_gaps) {
+      const bool timber =
+          gap.work == core::WorkKind::kFelling ||
+          (gap.work == core::WorkKind::kHauling &&
+           (gap.stand.value != core::kInvalidEntityIdValue || sites.contains(gap.unit.value)));
+      timber_no_horse =
+          timber_no_horse || (timber && gap.shortfall == core::JobShortfall::kNoHorse);
+    }
+    if (timber_no_horse) {
+      ++no_horse_days_[month];
+      if (world.morning_horses_left != core::kMorningHorsesUnknown &&
+          world.morning_horses_left > 0) {
+        ++no_horse_days_with_left_[month];
+      }
     }
     for (const core::CrewGapLine& gap : world.crew_gaps) {
       TimberJob job = kTimberJobs;
@@ -554,6 +575,10 @@ class FallowPolicy {
     }
     out << " horses_left";
     months(horses_left_);
+    out << " no_horse_days";
+    months(no_horse_days_);
+    out << " no_horse_days_with_left";
+    months(no_horse_days_with_left_);
     out << '\n';
   }
 
