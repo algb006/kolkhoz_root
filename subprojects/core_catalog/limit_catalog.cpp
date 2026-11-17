@@ -86,9 +86,6 @@ static_assert(kLimitWorldParamKeys[kSeedLotKnobFirst] == "limit_seed_lot_t_min" 
                   kLimitWorldParamKeys[kSeedLotKnobFirst + 1] == "limit_seed_lot_t_max",
               "the seed lot's sizes moved out from under their index");
 
-/// Grams in a tonne: the seed lot's knobs are in tonnes, its grams in grams.
-constexpr float kGramsPerTonne = 1'000'000.0F;
-
 /// Most tonnes one seed lot may name: past it the cell is a typo.
 constexpr float kMostSeedLotTonnes = 100.0F;
 
@@ -561,8 +558,8 @@ bool ParseLimitCatalog(const ITableSet& tables, LimitCatalog& catalog, std::stri
     }
     // #1377: the seed lot's least and most, tonnes; absent keeps 0.5 and 5.
     std::array<float, 2> seed_tonnes = {
-        static_cast<float>(catalog.seed_lot_grams_min) / kGramsPerTonne,
-        static_cast<float>(catalog.seed_lot_grams_max) / kGramsPerTonne};
+        static_cast<float>(catalog.seed_lot_grams_min) / static_cast<float>(kGramsPerTonne),
+        static_cast<float>(catalog.seed_lot_grams_max) / static_cast<float>(kGramsPerTonne)};
     const std::array<ScalarKnob, 2> seed_knobs = {
         ScalarKnob{.key = kLimitWorldParamKeys[kSeedLotKnobFirst],
                    .value = &seed_tonnes[0],
@@ -577,8 +574,10 @@ bool ParseLimitCatalog(const ITableSet& tables, LimitCatalog& catalog, std::stri
       error = "world_params: limit_seed_lot_t_min is above limit_seed_lot_t_max";
       return false;
     }
-    catalog.seed_lot_grams_min = std::llround(seed_tonnes[0] * kGramsPerTonne);
-    catalog.seed_lot_grams_max = std::llround(seed_tonnes[1] * kGramsPerTonne);
+    catalog.seed_lot_grams_min =
+        std::llround(static_cast<double>(seed_tonnes[0]) * static_cast<double>(kGramsPerTonne));
+    catalog.seed_lot_grams_max =
+        std::llround(static_cast<double>(seed_tonnes[1]) * static_cast<double>(kGramsPerTonne));
   }
   // THE GRAINS A POINT IS PAID IN, in econ's order (Q5, «рожь, потом
   // ячмень»): resources.csv keys, a grain absent from the set skipped.

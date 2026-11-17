@@ -223,6 +223,16 @@ class LimitPolicy {
   /// @brief The arm B2 of #1630 (B) (--no-salt-buy): no salt lot.
   void BuySalt(bool buy) { salt_.Enable(buy); }
 
+  /// @brief econ's P0 arm of #1377 (--empty-seed): the seed lamp's resource
+  ///        is bought by the district's seed lot (ISimulation::SeedLotOfferToday)
+  ///        before the loan is asked; a refused lot leaves the loan. Off in the
+  ///        canon, whose chairman takes the loan alone.
+  void BuySeedLotFirst(bool buy) { seed_lot_first_ = buy; }
+
+  /// @brief Seed lots bought on the lamp's word (BuySeedLotFirst): a lot
+  ///        whose order was staged with the door's kNone.
+  [[nodiscard]] std::uint32_t SeedLotsBought() const { return seed_lots_; }
+
   /// @brief The arm C3 of #1630 (C) (--salt-points-zero): the salt sees no
   ///        points, so only the loan brings it.
   void SaltPointsZero(bool on) { salt_.PointsZero(on); }
@@ -388,10 +398,29 @@ class LimitPolicy {
       }
     }
     std::vector<core::OrderRow> orders;
+    // THE SEED LOT FIRST (#1377, the P0 arm): one lot a day, for the seed the
+    // door itself names; the loan is not asked for it that day.
+    core::ResourceId lot_seed;
+    if (seed_lot_first_ && !short_by_resource.empty()) {
+      const core::SeedLotView offer = simulation.SeedLotOfferToday();
+      if (offer.refusal == core::OrderRefusal::kNone &&
+          short_by_resource.contains(offer.resource.value)) {
+        core::OrderRow lot;
+        lot.kind = core::OrderKind::kOrderLimitLot;
+        lot.lot = offer.lot;
+        orders.push_back(lot);
+        lot_seed = offer.resource;
+        ++seed_lots_;
+        std::cout << "population_curve: SEEDLOT1377 day " << world.calendar.day << " resource "
+                  << offer.resource.value << " grams " << offer.grams << " points " << offer.points
+                  << '\n';
+      }
+    }
     for (const auto& [resource, grams] : short_by_resource) {
       const core::ResourceId id{static_cast<std::uint16_t>(resource)};
-      if (core::AmountOf(world.plan.goods_loan_taken, id) > 0) {
-        continue;  // one a resource a year
+      if (core::AmountOf(world.plan.goods_loan_taken, id) > 0 || id == lot_seed ||
+          (seed_lot_first_ && core::AmountOf(world.limit.seed_lot_bought, id) > 0)) {
+        continue;  // one a resource a year; a seed bought by the lot waits for its cart
       }
       core::OrderRow order;
       order.kind = core::OrderKind::kTakeGoodsLoan;
@@ -413,6 +442,8 @@ class LimitPolicy {
   std::vector<std::uint32_t> crop_seed_;
   std::vector<std::uint32_t> crop_sow_from_;
   std::uint32_t loans_ = 0;
+  bool seed_lot_first_ = false;
+  std::uint32_t seed_lots_ = 0;
 
   /// Game days a site waits in the queue before its logs and boards may be
   /// bought on the limit: a quarter of the year. The run's number, not the

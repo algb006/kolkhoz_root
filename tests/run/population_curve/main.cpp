@@ -739,6 +739,68 @@ void KeepHorsesShare(const run::Simulation& world,
             << ' ' << when << '\n';
 }
 
+/// `--empty-seed=KEY,DAYS` (#1377, econ's P0 arm): in year 2, DAYS game days
+/// before the window of KEY's spring crop opens, every gram of KEY in the
+/// units' stock and the fields' heaps is taken out; the seed lamp lights, and
+/// the limit policy buys the district's seed lot on it before the loan
+/// (run::LimitPolicy::BuySeedLotFirst). Empty key: the canon, untouched.
+std::string g_empty_seed_key;
+std::uint32_t g_empty_seed_days = 0;
+
+/// The day of the year g_empty_seed_key's spring window opens, from crops.csv
+/// (sow_from_month, human 1..12); kDaysPerYear when no spring crop sows it.
+std::uint32_t EmptySeedWindowDay(const run::Simulation& world) {
+  const core::ITable* const crops = world.tables->FindTable("crops");
+  if (crops == nullptr) {
+    return core::kDaysPerYear;
+  }
+  const std::uint32_t resource_column = crops->FindColumn("resource");
+  const std::uint32_t from_column = crops->FindColumn("sow_from_month");
+  const std::uint32_t winter_column = crops->FindColumn("is_winter");
+  for (std::uint32_t row = 0; row < crops->RowCount(); ++row) {
+    const bool winter = winter_column != core::kNoTableColumn &&
+                        crops->CellText(row, winter_column) == std::string_view("1");
+    if (winter || crops->CellText(row, resource_column) != g_empty_seed_key) {
+      continue;
+    }
+    const std::optional<float> from = crops->CellReal(row, from_column);
+    if (from && *from >= 1.0F) {
+      return (static_cast<std::uint32_t>(*from) - 1U) * core::kDaysPerMonth;
+    }
+  }
+  return core::kDaysPerYear;
+}
+
+/// Takes every gram of g_empty_seed_key out of the units' stock and the
+/// fields' heaps, and says how much.
+void EmptySeedNow(const run::Simulation& world) {
+  const core::ITable* const resources = world.tables->FindTable("resources");
+  const std::uint32_t row =
+      resources == nullptr ? core::kNoTableRow : resources->FindRowByKey(g_empty_seed_key);
+  if (row == core::kNoTableRow) {
+    std::cout << "population_curve: --empty-seed NOT APPLIED: no resource " << g_empty_seed_key
+              << '\n';
+    return;
+  }
+  core::WorldState emptied = world.State();
+  core::Grams taken = 0;
+  for (core::UnitRow& unit : emptied.units.rows) {
+    if (row < unit.stock.size()) {
+      taken += unit.stock[row];
+      unit.stock[row] = 0;
+    }
+  }
+  for (core::FieldRow& field : emptied.fields.rows) {
+    if (field.reaped_resource.value == row && field.reaped_grams > 0) {
+      taken += field.reaped_grams;
+      field.reaped_grams = 0;
+    }
+  }
+  world.simulation->ResetWorld(emptied);
+  std::cout << "population_curve: --empty-seed — " << g_empty_seed_key << ' ' << taken
+            << " g taken on day " << emptied.calendar.day << '\n';
+}
+
 /// `--seed-offset=N`: every seed of kSeeds moved by N — a SECOND sample of
 /// nine villages for a comparison, not the canonical curve (its bands are
 /// read on kSeeds; a verdict on another sample is printed, not trusted).
@@ -860,6 +922,7 @@ bool Walk(std::uint64_t seed,
   if (g_no_salt_buy) {
     builder.limit.BuySalt(false);  // #1630 (B)'s arm B2, (C)'s C2: no lot, no loan
   }
+  builder.limit.BuySeedLotFirst(!g_empty_seed_key.empty());  // #1377 P0; off in the canon
   builder.smokehouse.Enable(g_smokehouse);  // #1644: the arm --smokehouse; off in the canon
   builder.smokehouse.WaitForHouses(g_smokehouse_houses_first);  // #1677 shape (2)
   builder.smokehouse.SetWindow(g_smokehouse_window);            // #1761 window (c)
@@ -999,6 +1062,17 @@ bool Walk(std::uint64_t seed,
       KeepHorsesShare(world, 1, 4, "--horses-loss-year", "at the start of the year");
     }
     for (std::uint32_t day = 0; day < core::kDaysPerYear; ++day) {
+      // #1377 P0: the seed taken out in year 2, DAYS before its window.
+      if (!g_empty_seed_key.empty() && year == 2) {
+        const std::uint32_t window = EmptySeedWindowDay(world);
+        const std::uint32_t empty_day =
+            (window + core::kDaysPerYear - (g_empty_seed_days % core::kDaysPerYear)) %
+            core::kDaysPerYear;
+        if (window < core::kDaysPerYear &&
+            simulation->CompletedState().calendar.day % core::kDaysPerYear == empty_day) {
+          EmptySeedNow(world);
+        }
+      }
       // THE DAY IS WALKED TICK BY TICK AND NOT BY AdvanceDays, for one
       // reason: the outbox is cleared every step, so a loop that advances a
       // whole day and reads the events afterwards sees the last tick and
@@ -1785,6 +1859,15 @@ int main(int argc, char** argv) {
           std::string(argument.substr(std::string_view("--horses-loss-year=").size())).c_str(),
           nullptr,
           10));
+    } else if (argument.starts_with("--empty-seed=")) {
+      // #1377 P0: --empty-seed=KEY,DAYS
+      const std::string_view value = argument.substr(std::string_view("--empty-seed=").size());
+      const std::size_t comma = value.find(',');
+      g_empty_seed_key = std::string(value.substr(0, comma));
+      g_empty_seed_days = comma == std::string_view::npos
+                              ? 0U
+                              : static_cast<std::uint32_t>(std::strtoul(
+                                    std::string(value.substr(comma + 1)).c_str(), nullptr, 10));
     } else if (argument.starts_with("--seed-offset=")) {
       g_seed_offset = std::strtoull(
           std::string(argument.substr(std::string_view("--seed-offset=").size())).c_str(),
