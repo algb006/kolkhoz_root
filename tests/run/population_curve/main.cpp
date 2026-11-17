@@ -1589,6 +1589,7 @@ bool Walk(std::uint64_t seed,
       builder.fallow.PrintHouseCrews(std::cout, seed);      // #1726 (b)
       builder.fallow.PrintCrewTrace(std::cout, seed);       // #1726 (b)'s trace
       builder.fallow.PrintSupply(std::cout, seed);          // #1726 boss [20]
+      builder.fallow.PrintHorses(std::cout, seed);          // #1726 boss [24]
       builder.houses_first.Print(std::cout, seed);          // #1677
       herds.PrintCowFlows(std::cout, seed);                 // #1570
       hand_overs.Print(std::cout, seed);

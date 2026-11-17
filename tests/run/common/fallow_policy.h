@@ -241,6 +241,7 @@ class FallowPolicy {
   ///        and the village's sums in PrintCrewTrace.
   void TraceCrews(const core::WorldState& world) {
     const std::uint64_t seed = world.world_seed;
+    CountHorseEvents(world);  // every step: the hand-overs and the lots' arrivals
     if (core::HourFromTick(world.calendar.tick) != 2U || world.calendar.day == trace_day_) {
       return;
     }
@@ -377,6 +378,154 @@ class FallowPolicy {
   SupplyTally supply_;
   std::set<std::uint32_t> carters_yesterday_;
 
+  // -- boss [24]'s horse count (HORSE1726) ------------------------------------
+  /// What a ridden horse does at hour 2, the classes of the print.
+  enum HorseUse : std::uint8_t {
+    kUseField = 0,   ///< plough, harrow, the sowing and reaping brigades' carts
+    kUseTimber,      ///< stand carting, the district's timber lot, site supply
+    kUseHeap,        ///< carting a field's heap (the harvest home)
+    kUseHerd,        ///< a herd's leg (hay, milk, the move)
+    kUseUnit,        ///< a unit's own carting (manure, stores, production)
+    kUseRoad,        ///< road work
+    kUseExtraction,  ///< a dig's load
+    kUsePeople,      ///< a people's cart or a ride on any other work
+    kUseCount,
+  };
+
+  struct HorseTally {
+    std::array<double, 16> adults{};        ///< adult horses, hour-2 head-days
+    std::array<double, 16> foals{};         ///< juvenile + newborn, hour-2 head-days
+    std::array<std::int64_t, 16> handed{};  ///< kStockHandedOver of a horse herd, head
+    std::array<std::int64_t, 16> bought{};  ///< horse lots arrived, head
+    /// y4-y16 by month (0-based): horse-days ridden by use, and adults not ridden.
+    std::array<std::array<std::uint32_t, 12>, kUseCount> by_month{};
+    std::array<std::uint32_t, 12> idle_by_month{};
+  };
+
+  HorseTally horses_;
+  std::uint32_t horse_kind_ = core::kNoTableRow;
+  std::set<std::uint32_t> arrivals_seen_;
+
+  void CountHorseEvents(const core::WorldState& world) {
+    const std::uint32_t year = world.calendar.day / core::kDaysPerYear;
+    if (horse_kind_ == core::kNoTableRow || year >= 16) {
+      return;
+    }
+    for (const core::SimEvent& event : world.step_events) {
+      if (event.kind != core::EventKind::kStockHandedOver) {
+        continue;
+      }
+      const std::uint32_t row = core::FindRow(world.herds, event.herd);
+      if (row != core::kNoRow && world.herds.rows[row].kind.value == horse_kind_) {
+        horses_.handed[year] += event.amount;
+      }
+    }
+    for (std::uint32_t row = 0; row < world.livestock_arrivals.rows.size(); ++row) {
+      const core::LivestockArrivalRow& lot = world.livestock_arrivals.rows[row];
+      const std::uint32_t id = world.livestock_arrivals.row_ids[row].value;
+      if (lot.kind.value == horse_kind_ && !arrivals_seen_.contains(id)) {
+        arrivals_seen_.insert(id);
+        horses_.bought[year] += lot.head_count;
+      }
+    }
+  }
+
+  /// The hour-2 horse census for HORSE1726.
+  void CountHorses(const core::WorldState& world,
+                   std::uint32_t year_index,
+                   const std::set<std::uint32_t>& sites) {
+    if (horse_kind_ == core::kNoTableRow || year_index >= 16) {
+      return;
+    }
+    std::uint32_t adults = 0;
+    for (const core::HerdRow& herd : world.herds.rows) {
+      if (herd.kind.value == horse_kind_) {
+        adults += herd.adult_count;
+        horses_.foals[year_index] += herd.juvenile_count + herd.newborn_count;
+      }
+    }
+    horses_.adults[year_index] += adults;
+    const auto month = static_cast<std::uint32_t>(world.calendar.date.month);
+    std::uint32_t ridden = 0;
+    for (const core::ResidentRow& resident : world.residents.rows) {
+      const core::WorkAssignment& work = resident.work;
+      if (work.rides_horse == 0) {
+        continue;
+      }
+      ++ridden;
+      if (year_index < 3) {
+        continue;  // by month over y4-y16
+      }
+      HorseUse use = kUsePeople;
+      const bool field_kind =
+          work.kind == core::WorkKind::kPlowing || work.kind == core::WorkKind::kHarrowing ||
+          work.kind == core::WorkKind::kSowing || work.kind == core::WorkKind::kHarvest;
+      if (field_kind) {
+        use = kUseField;
+      } else if (work.kind == core::WorkKind::kHauling) {
+        if (work.stand.value != core::kInvalidEntityIdValue ||
+            work.limit_delivery.value != core::kInvalidEntityIdValue ||
+            sites.contains(work.unit.value)) {
+          use = kUseTimber;
+        } else if (work.extraction_site.value != core::kInvalidEntityIdValue) {
+          use = kUseExtraction;
+        } else if (work.field.value != core::kInvalidEntityIdValue) {
+          use = kUseHeap;
+        } else if (work.herd.value != core::kInvalidEntityIdValue) {
+          use = kUseHerd;
+        } else if (work.unit.value != core::kInvalidEntityIdValue) {
+          use = kUseUnit;
+        }
+      } else if (work.kind == core::WorkKind::kRoadWork) {
+        use = kUseRoad;
+      }
+      if (month < 12) {
+        ++horses_.by_month[use][month];
+      }
+    }
+    if (year_index >= 3 && month < 12) {
+      horses_.idle_by_month[month] += adults > ridden ? adults - ridden : 0U;
+    }
+  }
+
+ public:
+  /// @brief Boss [24]'s line: horses by year (adults and foals, mean head; handed; bought), and
+  ///        y4-y16 by month the horse-days ridden by use and the adults not ridden at hour 2.
+  void PrintHorses(std::ostream& out, std::uint64_t seed) const {
+    static constexpr std::array<std::string_view, kUseCount> kUses = {
+        "field", "timber", "heap", "herd", "unit", "road", "extraction", "people_or_other"};
+    out << "population_curve: HORSE1726 seed " << seed;
+    const auto mean = [](double sum) { return std::lround(sum / core::kDaysPerYear); };
+    out << " adults";
+    for (std::uint32_t y = 0; y < 16; ++y) {
+      out << (y == 0 ? " " : ":") << mean(horses_.adults[y]);
+    }
+    out << " foals";
+    for (std::uint32_t y = 0; y < 16; ++y) {
+      out << (y == 0 ? " " : ":") << mean(horses_.foals[y]);
+    }
+    out << " handed";
+    for (std::uint32_t y = 0; y < 16; ++y) {
+      out << (y == 0 ? " " : ":") << horses_.handed[y];
+    }
+    out << " bought";
+    for (std::uint32_t y = 0; y < 16; ++y) {
+      out << (y == 0 ? " " : ":") << horses_.bought[y];
+    }
+    for (std::size_t use = 0; use < kUseCount; ++use) {
+      out << " m_" << kUses[use];
+      for (std::uint32_t m = 0; m < 12; ++m) {
+        out << (m == 0 ? " " : ":") << horses_.by_month[use][m];
+      }
+    }
+    out << " m_idle";
+    for (std::uint32_t m = 0; m < 12; ++m) {
+      out << (m == 0 ? " " : ":") << horses_.idle_by_month[m];
+    }
+    out << '\n';
+  }
+
+ private:
   /// Hour 2's census for PrintSupply; keeps today's supply carters for tomorrow's picks.
   void CountSupply(const core::WorldState& world, std::uint32_t year_index) {
     std::set<std::uint32_t> sites;
@@ -418,6 +567,7 @@ class FallowPolicy {
       }
     }
     carters_yesterday_ = std::move(carters);
+    CountHorses(world, year_index, sites);  // boss [24]
   }
 
  public:
@@ -581,6 +731,9 @@ class FallowPolicy {
   }
 
   void ReadTables(const core::ITableSet& tables) {
+    if (const core::ITable* const kinds = tables.FindTable("livestock")) {
+      horse_kind_ = kinds->FindRowByKey("horse");  // boss [24]'s horse count
+    }
     const core::ITable* const crops = tables.FindTable("crops");
     const core::ITable* const resources = tables.FindTable("resources");
     const core::ITable* const food = tables.FindTable("food");
