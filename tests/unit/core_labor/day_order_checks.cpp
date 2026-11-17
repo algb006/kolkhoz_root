@@ -643,9 +643,15 @@ int CheckTheBrigadeCapsOrderedHands() {
   }
   const auto on_site = [&](std::uint16_t ordered) {
     Village village(8);
+    // The site is the village's only work: both fields' reaping (the fixture's 400 days, a
+    // windowed tier above any site) is taken away, or the accountant sends nobody to the site.
+    for (core::FieldRow& field : village.world.fields.rows) {
+      field.work_days_remaining = 0.0F;
+    }
     core::UnitRow site;
     site.position = core::Vec2{.x = 5.0F, .y = 0.0F};
     site.level = 0;
+    site.construction.winter_works = 1;  // whatever the fixture's season
     site.construction.phase = core::ConstructionPhase::kBuilding;
     site.construction.labor_days_remaining = 30.0F;
     site.construction.labor_days_total = 30.0F;
