@@ -82,10 +82,10 @@ bool SowingBegunOf(const ProductionConfig& config, const WorldState& world, cons
   return false;
 }
 
-/// Game days from today to the END of the latest sowing month of the crops
-/// `seed` sows — the latest the held seed is taken — counted forward over
-/// the turn, since the booking holds the NEXT sowing. 0 when no crop of it
-/// names a window.
+}  // namespace
+
+// (Out of the anonymous namespace since #1377: the seed lot's tie goes to the
+// nearest sowing by this same count. The contract is in seed_room.h.)
 std::uint32_t DaysToSowingEnd(const ProductionConfig& config,
                               const WorldState& world,
                               ResourceId seed) {
@@ -114,6 +114,8 @@ std::uint32_t DaysToSowingEnd(const ProductionConfig& config,
   }
   return latest;
 }
+
+namespace {
 
 /// Grams of `resource` lying reaped in the fields' heaps.
 Grams LyingInHeaps(const WorldState& world, ResourceId resource) {

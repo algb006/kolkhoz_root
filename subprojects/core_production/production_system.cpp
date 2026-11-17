@@ -74,6 +74,7 @@
 #include "production_orders.h"
 #include "rick_supply.h"
 #include "salt_loan.h"
+#include "seed_lot.h"
 #include "seed_room.h"
 #include "spring_flood.h"
 #include "stock_lights.h"
@@ -644,6 +645,11 @@ class ProductionSystem final : public IProductionSystem {
   /// SaltViewOf) for the door, the lamp and the letter.
   SaltView SaltToday(const WorldState& completed) const override {
     return SaltViewOf(config_, completed);
+  }
+
+  /// #1377: the lot door's own terms for the catalogue's seed lot.
+  SeedLotView SeedLotOfferToday(const WorldState& completed) const override {
+    return SeedLotOfferOf(config_, completed);
   }
 
   Grams StandingCropGrams(const WorldState& /*world*/, const FieldRow& field) const override {

@@ -1667,4 +1667,23 @@ void CollectSowingAlarms(const ProductionConfig& config,
   }
 }
 
+std::vector<Grams> SeedShortByResource(const ProductionConfig& config, const WorldState& world) {
+  // THE LAMP'S OWN SUM, by resource (SeedShortfall before its share by
+  // field): the norm of the sowings today's stores must keep, and its rot to
+  // the sowing, against the stores and the sound heaps.
+  const SeedHold hold = SeedHeldByField(config, world, world.calendar.day);
+  std::vector<Grams> short_by(hold.by_resource.size(), 0);
+  for (std::uint32_t index = 0; index < hold.by_resource.size(); ++index) {
+    const Grams bare = hold.by_resource[index];
+    if (bare <= 0) {
+      continue;
+    }
+    const ResourceId resource = DefIdFromIndex<ResourceIdTag>(index);
+    const Grams need = SeedNeedWithRot(config, world, resource, bare);
+    const Grams have = HeldEverywhere(world, resource) + SeedInSoundHeaps(config, world, resource);
+    short_by[index] = need > have ? need - have : 0;
+  }
+  return short_by;
+}
+
 }  // namespace core

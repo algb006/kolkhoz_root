@@ -20,6 +20,7 @@ kolkhoz_add_unit_test(core_production
     district_reputation_checks.cpp
     avatar_paths_checks.cpp
     seed_lamp_checks.cpp
+    seed_lot_checks.cpp
     site_supply_checks.cpp
     store_keeping_checks.cpp
     hay_weathering_checks.cpp

@@ -660,6 +660,8 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   // points at all.
   out.WriteU32(static_cast<std::uint32_t>(world.limit.points));
   out.WriteU32(static_cast<std::uint32_t>(world.limit.points_granted_total));
+  // The seed lot's year book (#1377, save 215): grams bought by resource.
+  sink.WriteAmounts(DefKind::kResource, world.limit.seed_lot_bought);
 
   // The distillers' month at the stores (crime design §7, save format 42).
   out.WriteU64(static_cast<std::uint64_t>(world.night_theft.stolen_this_month));
@@ -1024,6 +1026,7 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
 
   world->limit.points = static_cast<std::int32_t>(in.ReadU32());
   world->limit.points_granted_total = static_cast<std::int32_t>(in.ReadU32());
+  world->limit.seed_lot_bought = source.ReadAmounts(DefKind::kResource);  // save 215 (#1377)
 
   world->night_theft.stolen_this_month = static_cast<Grams>(in.ReadU64());
   world->night_theft.month_index = in.ReadU32();

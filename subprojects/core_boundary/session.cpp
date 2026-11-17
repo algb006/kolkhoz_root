@@ -579,6 +579,8 @@ class Session final : public ISession {
 
   SaltView SaltToday() const override { return simulation_->SaltToday(); }
 
+  SeedLotView SeedLotOffer() const override { return simulation_->SeedLotOfferToday(); }
+
   CrewView CrewNames(OrderId crew) const override { return simulation_->CrewNames(crew); }
 
   YesterdayDayOrders YesterdayDayOrdersOf() const override {

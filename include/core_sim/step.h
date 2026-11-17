@@ -92,6 +92,7 @@
 #include "core_common/resident_activity.h"
 #include "core_common/road_draft.h"
 #include "core_common/salt_view.h"
+#include "core_common/seed_lot_view.h"
 #include "core_common/stink.h"
 #include "core_common/stock_forecast.h"
 #include "core_common/supply_estimate.h"
@@ -469,6 +470,13 @@ class ISimulation {
   /// STUB until #1630 (B): every implementation answers `measured` false.
   /// @note Called between steps on the sim thread. A pure read.
   virtual SaltView SaltToday() const = 0;
+
+  /// @brief What the district's seed lot would deliver today and at what
+  /// price (seed_lot_view.h; #1377): the most-short seed, its grams, the
+  /// pro-rated points, the lot door's own refusal. Fans out to
+  /// core_production; the bare engine answers kNoSuchSubject.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual SeedLotView SeedLotOfferToday() const = 0;
 
   /// @brief The names an accepted kAssignCrew holds for its day (day_orders.h, #1778).
   /// Fans out to core_labor; the bare engine answers `measured` false.

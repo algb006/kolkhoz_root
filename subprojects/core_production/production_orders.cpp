@@ -608,8 +608,9 @@ void ConsumeProductionOrders(const ProductionConfig& config, WorldState& current
         break;
       case OrderKind::kOrderLimitLot:
         // A refusal for goods nowhere to store names them in the row's
-        // resource (boss seq 159); a lot order carries none otherwise.
-        Settle(order, OrderLimitLot(config, current, order, &order.resource));
+        // resource (boss seq 159); a lot order carries none otherwise. A
+        // refused seed lot names its crop and the grams its cap allows (#1377).
+        Settle(order, OrderLimitLot(config, current, order, &order.resource, &order.amount));
         break;
       case OrderKind::kRemoveField:
         Settle(order, RemoveField(current, order));

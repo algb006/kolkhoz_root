@@ -144,6 +144,15 @@ void CollectHerdAlarms(const ProductionConfig& config,
                        const WorldState& world,
                        std::vector<Alarm>& alarms);
 
+/// @brief Grams each seed resource is SHORT today, by ResourceId: the norm
+/// of the sowings today's stores must keep (SeedHeldByField) and its rot to
+/// the sowing (SeedNeedWithRot), less the stores and the sound heaps
+/// (SeedInSoundHeaps) — the kSeedShort lamp's own sum before it is shared
+/// out by field. ONE HOME for the lamp and the seed lot (#1377), so the lot
+/// cures exactly what the lamp names.
+/// @return Dense by ResourceId; 0 where nothing is short.
+std::vector<Grams> SeedShortByResource(const ProductionConfig& config, const WorldState& world);
+
 }  // namespace core
 
 #endif  // CORE_PRODUCTION_PRODUCTION_ALARMS_H_

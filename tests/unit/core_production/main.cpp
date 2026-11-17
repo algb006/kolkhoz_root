@@ -87,6 +87,7 @@
 #include "run_production_day.h"
 #include "salt_loan_checks.h"
 #include "seed_lamp_checks.h"
+#include "seed_lot_checks.h"
 #include "seed_room.h"
 #include "site_supply_checks.h"
 #include "spring_flood_checks.h"
@@ -18692,6 +18693,7 @@ int main() {
   failures += CheckTheCartingReachesTheStoreInItsHour();
   failures += CheckTheHeapLampIsRedOnlyWhenItSpoils();
   failures += CheckTheSeedLampIsNotAFalseAlarm();
+  failures += CheckTheSeedLot();  // #1377
   failures += CheckTheSupplyOfAWorksIsCarted();
   failures += CheckTheHandSupplyGoesOneResourceATrip();
   failures += CheckTheSupplyCountsItsIdleDays();

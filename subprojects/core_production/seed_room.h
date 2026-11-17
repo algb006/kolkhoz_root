@@ -66,6 +66,16 @@ Grams SeedNeedWithRot(const ProductionConfig& config,
                       ResourceId seed,
                       Grams need);
 
+/// @brief Game days from today to the END of the latest sowing month of the
+/// crops `seed` sows — the latest the held seed is taken — counted forward
+/// over the turn, since the booking holds the NEXT sowing; a sowing begun and
+/// not done when its window shut counts as this month's. The rot margin's
+/// horizon (SeedNeedWithRot) and the seed lot's «nearest sowing» (#1377).
+/// @return 0 when no crop of it names a window.
+std::uint32_t DaysToSowingEnd(const ProductionConfig& config,
+                              const WorldState& world,
+                              ResourceId seed);
+
 /// @brief The seed the stores must keep TODAY for the next sowing: FIELD BY
 /// FIELD (0.36.21), the norm of each arable field whose own next sowing
 /// (NextSowingOf, by the slot it comes from) ends before the seed's next

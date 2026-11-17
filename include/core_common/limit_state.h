@@ -50,6 +50,13 @@ struct LimitState {
   /// up regardless. A quantity that may only ACCUMULATE must not be reachable
   /// by a reversible operation, or it stops measuring what it is named for.
   std::int32_t points_granted_total = 0;
+
+  /// THE SEED LOT'S YEAR BOOK (#1377; district.md l.129, boss [2] Q4): grams
+  /// of each seed resource bought by the seed lot this year, by ResourceId.
+  /// The cap is per crop: bought + the lot ≤ the crop's seed need on the
+  /// order day. Cleared at the year's turn (TurnLimitYear); empty until the
+  /// first purchase (save 215).
+  ResourceAmounts seed_lot_bought;
 };
 
 /// @brief The era events that have already come (epochs design §14).

@@ -124,12 +124,18 @@ std::uint32_t LimitCartArriveDay(const ProductionConfig& config,
 ///        stream.
 /// @param unstorable When not null and the answer is kNowhereToStore, set to
 ///        the first of the lot's goods no store of the village takes — the
-///        refused row names WHAT (boss seq 159); left alone otherwise.
-/// @return The refusal, or kNone when bought.
+///        refused row names WHAT (boss seq 159); left alone otherwise. For a
+///        refused seed lot (#1377): the most-short seed, whatever the refusal.
+/// @param named_grams When not null and a seed lot is refused, set to the
+///        grams its terms name — the cap still allowed under kRuleForbids, 0
+///        when no seed is short (boss, core-boss-1377-seed-lot [2] Q5).
+/// @return The refusal, or kNone when bought. A seed lot is bought on its
+///        day's terms (seed_lot.h): the shortfall, its pro-rated points.
 OrderRefusal OrderLimitLot(const ProductionConfig& config,
                            WorldState& current,
                            const OrderRow& order,
-                           ResourceId* unstorable = nullptr);
+                           ResourceId* unstorable = nullptr,
+                           Grams* named_grams = nullptr);
 
 /// @brief The carts at the day's last tick: every cart whose day has come
 ///        puts what it still carries through the store door; an empty cart

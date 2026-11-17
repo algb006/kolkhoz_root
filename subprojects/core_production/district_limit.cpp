@@ -22,6 +22,7 @@
 #include "herd_system.h"
 #include "livestock_homes.h"
 #include "salt_loan.h"
+#include "seed_lot.h"
 #include "seed_room.h"
 #include "stock_ops.h"
 
@@ -239,6 +240,11 @@ OrderRefusal LotOrderable(const LimitCatalog& catalog, LimitLotId lot, Epoch epo
     return named && def.points >= 0 && def.head_count > 0 ? OrderRefusal::kNone
                                                           : OrderRefusal::kRuleForbids;
   }
+  // THE SEED LOT (#1377): a price is all it needs here; the crop, the grams
+  // and the cap are the day's (seed_lot.h, SeedLotTermsToday).
+  if (def.kind == LimitLotKind::kSeed) {
+    return def.points >= 0 ? OrderRefusal::kNone : OrderRefusal::kRuleForbids;
+  }
   // Only goods are bought here besides those (machines, people and "choice"
   // have their own windows — STUB), and only a lot with a price and at least
   // one written amount (boss, parcel 211).
@@ -299,6 +305,15 @@ OrderRefusal LimitLotRefusalToday(const ProductionConfig& config,
     return refusal;
   }
   const LimitLotDef& def = config.limit.lots[lot.value];
+  // THE SEED LOT ASKS ITS OWN TERMS (#1377), the same order inside: the crop,
+  // the cap, the store, the points.
+  if (def.kind == LimitLotKind::kSeed) {
+    const SeedLotView terms = SeedLotTermsToday(config, world, lot, points_left);
+    if (unstorable != nullptr && terms.refusal != OrderRefusal::kNone) {
+      *unstorable = terms.resource;
+    }
+    return terms.refusal;
+  }
   // THE ROOM BEFORE THE POINTS, for the reason the column checks its season
   // first: a refusal must not cost anything. «Некуда поставить — нельзя
   // заказать» (district design §1).
@@ -336,7 +351,8 @@ OrderRefusal LimitLotRefusalToday(const ProductionConfig& config,
 OrderRefusal OrderLimitLot(const ProductionConfig& config,
                            WorldState& current,
                            const OrderRow& order,
-                           ResourceId* unstorable) {
+                           ResourceId* unstorable,
+                           Grams* named_grams) {
   const OrderRefusal orderable = LotOrderable(config.limit, order.lot, current.epoch);
   if (orderable != OrderRefusal::kNone) {
     return orderable;
@@ -344,6 +360,23 @@ OrderRefusal OrderLimitLot(const ProductionConfig& config,
   const LimitLotDef& def = config.limit.lots[order.lot.value];
   if (def.kind == LimitLotKind::kService) {
     return OrderMtsColumn(config, current, order.lot, def.points);
+  }
+  // THE SEED LOT (#1377): its terms, and a refusal names the crop and the
+  // grams the cap still allows in the row (boss [2] Q5, as the goods lot names
+  // its resource).
+  if (def.kind == LimitLotKind::kSeed) {
+    const SeedLotView terms = SeedLotTermsToday(config, current, order.lot, current.limit.points);
+    if (terms.refusal != OrderRefusal::kNone) {
+      if (unstorable != nullptr) {
+        *unstorable = terms.resource;
+      }
+      if (named_grams != nullptr) {
+        *named_grams = terms.grams;
+      }
+      return terms.refusal;
+    }
+    BuySeedLot(config, current, terms, LimitCartArriveDay(config, current, order));
+    return OrderRefusal::kNone;
   }
   // THE DOOR'S QUESTION HAS ONE HOME (LimitLotRefusalToday; 0.37.122): the
   // room, the kind's house, the store and the points, in that order, asked
@@ -768,6 +801,8 @@ void TurnLimitYear(const ProductionConfig& config,
   current.limit.points += carried;  // after the grant, which sets the year's points anew
   // THE SALT LOANS' POINTS (#1630 (C); salt_loan.h): off the year just granted.
   TakeSaltLoanPointsAtTurn(current);
+  // THE SEED LOT'S YEAR BOOK (#1377): the cap is the year's.
+  current.limit.seed_lot_bought.clear();
 }
 
 void RunEraEvents(const ProductionConfig& config, WorldState& current) {

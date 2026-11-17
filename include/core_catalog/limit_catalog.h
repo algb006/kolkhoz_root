@@ -42,6 +42,13 @@ enum class LimitLotKind : std::uint8_t {
   /// column of spring and autumn (boss, parcels 235, 449; mts.md §1). Only
   /// the two column lots are bought; another service is refused.
   kService,
+
+  /// THE SEED LOT (#1377; district.md l.84 «Зерно на сев, 5 т», l.129 the
+  /// year's cap): grain of the most-short crop of the next sowing, the exact
+  /// shortfall between `seed_lot_grams_min` and `seed_lot_grams_max`, its
+  /// price pro-rated from `points` (seed_lot.h, SeedLotTermsToday). Appended,
+  /// so no kind's index moves.
+  kSeed,
 };
 
 /// @brief The farm's status tier (core loop §3), which sets the base grant.
@@ -157,6 +164,14 @@ struct LimitCatalog {
   /// The grains taken, in order (econ's Q5: rye, then barley), by their
   /// resources.csv keys; the seed rung of each is never touched.
   std::vector<ResourceId> grain_payment_order;
+
+  /// THE SEED LOT'S SIZE (#1377; boss, core-boss-1377-seed-lot [2] Q3): the
+  /// lot delivers exactly the most-short crop's shortfall, at least the
+  /// minimum and at most the maximum, grams (world_params
+  /// limit_seed_lot_t_min 0.5, limit_seed_lot_t_max 5, district.md l.84
+  /// «5 т»). Its `points` are the price of the maximum.
+  Grams seed_lot_grams_min = 500'000;
+  Grams seed_lot_grams_max = 5'000'000;
 
   // -- the district MTS's column (MTS design §1; boss, parcel 449; STUB) -----
 

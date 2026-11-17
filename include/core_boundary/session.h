@@ -983,6 +983,16 @@ class ISession {
   /// @note Between steps; the answer describes State().
   virtual SaltView SaltToday() const = 0;
 
+  /// @brief What the district's seed lot would deliver today and at what
+  ///        price (ISimulation::SeedLotOfferToday; core_common/seed_lot_view.h;
+  ///        #1377): the most-short seed of the next sowing, the grams (the
+  ///        shortfall, 0.5-5 t), the pro-rated points, and the lot door's own
+  ///        refusal — the «Семян не хватает» lamp's second line («или купить
+  ///        по лимиту: 5 т ячменя за 30 баллов»). A kOrderLimitLot of `lot`
+  ///        issued now is answered the same.
+  /// @note Between steps; the answer describes State().
+  virtual SeedLotView SeedLotOffer() const = 0;
+
   /// @brief The names an accepted kAssignCrew holds for its day (ISimulation::CrewNames;
   ///        core_common/day_orders.h; #1778): the Notebook's line «пятеро на пахоту поля 3:
   ///        <имена>» before morning. Readable from the step that accepted the order.

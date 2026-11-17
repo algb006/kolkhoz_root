@@ -167,6 +167,8 @@ class ScriptedSimulation final : public core::ISimulation {
 
   core::SaltView SaltToday() const override { return {}; }
 
+  core::SeedLotView SeedLotOfferToday() const override { return {}; }
+
   core::CrewView CrewNames(core::OrderId /*crew*/) const override { return {}; }
 
   core::YesterdayDayOrders YesterdayDayOrdersOf() const override { return {}; }
