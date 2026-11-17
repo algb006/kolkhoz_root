@@ -630,6 +630,7 @@ bool g_smokehouse_houses_first = true;
 bool g_smokehouse_window = true;
 /// #1726 option 2: a block the houses guard held two turns in a row opens; the arm off.
 bool g_fallow_houses_deadline = true;
+bool g_fallow_house_crews = true;  // #1726 (b): house crews while couples wait
 /// #307's hay arm: --hay-arm=clover (A) / mown (B) / both (A+B); off otherwise.
 run::HayArmPolicy::Mode g_hay_arm = run::HayArmPolicy::Mode::kMown;  // canon since 0.37.378
 /// #1677: house sites raised while a couple waits - the canon's since 0.37.379;
@@ -867,6 +868,7 @@ bool Walk(std::uint64_t seed,
   builder.smokehouse.WaitForHouses(g_smokehouse_houses_first);  // #1677 shape (2)
   builder.smokehouse.SetWindow(g_smokehouse_window);            // #1761 window (c)
   builder.fallow.SetHousesDeadline(g_fallow_houses_deadline);   // #1726 option 2
+  builder.fallow.SetHouseCrews(g_fallow_house_crews);           // #1726 (b)
   builder.smokehouse.Declare("population_curve");
   builder.hay_arm.SetMode(g_hay_arm);  // #307
   builder.hay_arm.Declare("population_curve");
@@ -1580,6 +1582,7 @@ bool Walk(std::uint64_t seed,
       builder.fallow.PrintHolds(std::cout, seed);           // #1692's hold print
       builder.fallow.PrintSpringBuilding(std::cout, seed);  // #1726's B1 and B5
       builder.fallow.PrintSplit(std::cout, seed);           // #1726's split, y1-y16
+      builder.fallow.PrintHouseCrews(std::cout, seed);      // #1726 (b)
       builder.houses_first.Print(std::cout, seed);          // #1677
       herds.PrintCowFlows(std::cout, seed);                 // #1570
       hand_overs.Print(std::cout, seed);
@@ -1762,6 +1765,8 @@ int main(int argc, char** argv) {
       g_smokehouse_houses_first = false;  // #1677 shape (2) off
     } else if (argument == "--no-smokehouse-window") {
       g_smokehouse_window = false;  // #1761 window (c) off: 0.37.382's rule
+    } else if (argument == "--no-fallow-house-crews") {
+      g_fallow_house_crews = false;  // #1726 (b) off: the split pair's on arm
     } else if (argument == "--no-fallow-houses-deadline") {
       g_fallow_houses_deadline = false;  // #1726 option 2 off: the houses hold for ever
     } else if (argument == "--hay-arm=off") {

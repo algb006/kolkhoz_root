@@ -107,6 +107,7 @@ class FallowPolicy {
     }
     WatchTheDue(world);
     CountSpringBuilding(world);
+    SendHouseCrews(simulation, world);
     const std::uint32_t day_of_year = world.calendar.day % core::kDaysPerYear;
     if (day_of_year == kFirstOfDecember) {
       CountPotatoOnTheBlocks(world);
@@ -158,6 +159,7 @@ class FallowPolicy {
       return;
     }
     NoteTurn(world, year, by_deadline ? 'D' : 'O');
+    deadline_opened_ = deadline_opened_ || by_deadline;
     OpenNextBlock(simulation, world);
     std::cout << "fallow_policy: year " << year << " block " << opened_blocks_
               << " opened for this spring\n";
@@ -227,9 +229,72 @@ class FallowPolicy {
   /// @brief #1726's arm: false is 0.37.386's rule, the houses guard holding for ever.
   void SetHousesDeadline(bool on) { houses_deadline_on_ = on; }
 
+  /// @brief #1726 (b)'s arm (econ, core-econ-1726-canon-pair [10]; boss [11] GO): false
+  ///        sends no house crews (--no-fallow-house-crews), the split pair's world.
+  void SetHouseCrews(bool on) { house_crews_on_ = on; }
+
+  /// @brief The year's (b) line: crews ordered and hands asked, y1-y16.
+  void PrintHouseCrews(std::ostream& out, std::uint64_t seed) const {
+    out << "population_curve: CREWS1726 seed " << seed << " deadline_opened "
+        << (deadline_opened_ ? 1 : 0) << " orders";
+    for (std::uint32_t index = 0; index < kSplitYears; ++index) {
+      out << (index == 0 ? " " : ":") << crew_orders_[index];
+    }
+    out << " hands";
+    for (std::uint32_t index = 0; index < kSplitYears; ++index) {
+      out << (index == 0 ? " " : ":") << crew_hands_[index];
+    }
+    out << '\n';
+  }
+
  private:
   bool houses_deadline_on_ = true;
   std::uint32_t held_for_houses_in_a_row_ = 0;
+
+  // #1726 (b): THE HOUSE TEAMS BEFORE THE BLOCK'S FIELDS (econ [10]: «while couples wait, the
+  // house sites keep at least the off arm's house man-days, and the block's field work takes
+  // what is left»). Once a block has opened by the deadline - with the houses short, which the
+  // off arm never does, so its world is untouched - every day a couple waits, each house site
+  // under construction gets a day order (kAssignCrew, #1778) of its whole brigade
+  // (ConstructionState::max_crew) for the next working day: the morning seats them before the
+  // accountant plans, so the fields take the hands that are left.
+  bool house_crews_on_ = true;
+  bool deadline_opened_ = false;
+  std::array<std::uint32_t, 16> crew_orders_{};
+  std::array<std::uint32_t, 16> crew_hands_{};
+
+  void SendHouseCrews(core::ISimulation& simulation, const core::WorldState& world) {
+    if (!house_crews_on_ || !deadline_opened_ || world.wedding_waits.rows.empty() ||
+        house_type_ == core::kNoTableRow) {
+      return;
+    }
+    std::vector<core::OrderRow> orders;
+    for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+      const core::UnitRow& unit = world.units.rows[row];
+      if (unit.type.value != house_type_ || unit.dead != 0 ||
+          unit.construction.phase != core::ConstructionPhase::kBuilding ||
+          unit.construction.max_crew == 0) {
+        continue;
+      }
+      core::OrderRow order;
+      order.kind = core::OrderKind::kAssignCrew;
+      order.work = core::WorkKind::kConstruction;
+      order.unit = world.units.row_ids[row];
+      order.crew_size = unit.construction.max_crew;
+      orders.push_back(order);
+    }
+    if (orders.empty()) {
+      return;
+    }
+    const std::uint32_t index = world.calendar.day / core::kDaysPerYear;
+    if (index < crew_orders_.size()) {
+      crew_orders_[index] += static_cast<std::uint32_t>(orders.size());
+      for (const core::OrderRow& order : orders) {
+        crew_hands_[index] += order.crew_size;
+      }
+    }
+    simulation.StageOrders(std::span<const core::OrderRow>(orders), {});
+  }
 
   /// Where in chain_ (barley, rye_winter, oat) each of a block's three fields
   /// starts: barley, oat, barley - spring crops only in the opening year.
