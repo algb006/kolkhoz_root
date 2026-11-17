@@ -1077,6 +1077,7 @@ class LimitPolicy {
     }
   }
 
+ public:
   /// @brief #1726 (ii)'s arm (--horse-lots): the bot buys a horse when its teams run short.
   void BuyPeakHorses(bool on) { peak_horses_on_ = on; }
 
@@ -1105,6 +1106,7 @@ class LimitPolicy {
     out << '\n';
   }
 
+ private:
   bool NextOrder(const core::WorldState& world, core::OrderRow& order) const {
     const std::uint32_t missing = MissingMaterial(world, SurplusCoversTimber(world));
     if (missing == core::kNoTableRow) {
