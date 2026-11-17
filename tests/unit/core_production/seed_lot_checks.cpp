@@ -5,8 +5,9 @@
 //   needs more than 5 t: the lot delivers 5 t for 30 points. A 10 ha field needs N < 5 t:
 //   the lot delivers N for ceil(30 x N / 5 t) points.
 // - Bought: the points fall by exactly the price, one cart carries N of barley, the year book
-//   holds N. Ordered again the same day (the cart not yet in): bought N + N > the need N, so
-//   kRuleForbids, and the row names barley and the grams the cap allows, need - bought = 0.
+//   holds N. Ordered again the same day (the cart not yet in): the cart's N is coming, nothing
+//   is short - kRuleForbids, no crop, 0 g. The cart in and the seed lost again: short by N, and
+//   bought N + N > the need N - kRuleForbids naming barley and need - bought = 0 g.
 // - 0.1 t short: the lot delivers its least, 0.5 t, for ceil(30 x 0.5 / 5) = 3 points.
 // - Twice the need in the barn: nothing short, kRuleForbids, 0 g, no crop named.
 // - 2 points left against a price of 3: kLimitShort.
@@ -173,14 +174,28 @@ int CheckTheDoor(const core::ProductionConfig& config, core::CropId crop, core::
   failures += Expect(world.limit.seed_lot_bought.size() > barley.value &&
                          world.limit.seed_lot_bought[barley.value] == need,
                      "the year book holds the grams bought");
-  // Again, the cart still on the road: the cap refuses and names what it allows.
+  // Again, the cart still on the road: its seed is coming, nothing is short (p1377 bought
+  // the same shortfall four days running before this).
   core::OrderRow again = SeedLotOrder(offer.lot);
-  const core::OrderRefusal capped =
+  const core::OrderRefusal on_road =
       core::OrderLimitLot(config, world, again, &again.resource, &again.amount);
-  failures += Expect(capped == core::OrderRefusal::kRuleForbids && again.resource == barley &&
-                         again.amount == 0 && world.limit.points == 100 - price,
-                     "ordered again before the cart: the year's cap refuses, names barley and "
-                     "0 g allowed, and costs nothing");
+  failures += Expect(on_road == core::OrderRefusal::kRuleForbids &&
+                         again.resource.value == core::kInvalidDefIdValue && again.amount == 0 &&
+                         world.limit.points == 100 - price,
+                     "ordered again before the cart: the seed on the road is not short - refused, "
+                     "no crop, 0 g, and costs nothing");
+  // The cart in and its seed gone again (eaten, rotted): short once more, and the year's cap
+  // refuses, naming barley and the 0 g it still allows.
+  world.limit_deliveries.rows.clear();
+  world.limit_deliveries.row_ids.clear();
+  core::OrderRow capped_order = SeedLotOrder(offer.lot);
+  const core::OrderRefusal capped = core::OrderLimitLot(
+      config, world, capped_order, &capped_order.resource, &capped_order.amount);
+  failures +=
+      Expect(capped == core::OrderRefusal::kRuleForbids && capped_order.resource == barley &&
+                 capped_order.amount == 0 && world.limit.points == 100 - price,
+             "the seed lost after the cart: the year's cap refuses, names barley and 0 g "
+             "allowed, and costs nothing");
   core::TurnLimitYear(config, world, false, 0.0F);
   failures += Expect(world.limit.seed_lot_bought.empty(), "the year's turn empties the book");
   return failures;

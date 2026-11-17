@@ -79,7 +79,16 @@ SeedLotView SeedLotTermsToday(const ProductionConfig& config,
   }
   // THE LAMP'S OWN SUM (production_alarms.h, SeedShortByResource), so the lot
   // cures exactly what «Семян не хватает» names.
-  const std::vector<Grams> short_by = SeedShortByResource(config, world);
+  std::vector<Grams> short_by = SeedShortByResource(config, world);
+  // LESS WHAT IS ON THE ROAD (P0 arm p1377, o0: a 16.8 t shortfall bought as
+  // three 5 t lots and 1.8 t on four days running, a 0.3 t one as 0.5 t on two
+  // days, 1531 lots in 16 villages): the district's carts not yet in the
+  // stores carry seed the lamp does not see yet.
+  for (const LimitDeliveryRow& cart : world.limit_deliveries.rows) {
+    for (std::size_t index = 0; index < cart.goods.size() && index < short_by.size(); ++index) {
+      short_by[index] = std::max<Grams>(0, short_by[index] - cart.goods[index]);
+    }
+  }
   offer.resource = MostShortSeed(config, world, short_by);
   if (offer.resource.value == kInvalidDefIdValue) {
     // No seed short: «район даёт на сев не больше 0 т».

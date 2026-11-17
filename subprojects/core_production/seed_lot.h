@@ -26,7 +26,8 @@ LimitLotId SeedLotOf(const LimitCatalog& catalog);
 /// @brief THE DOOR'S OWN QUESTION for a seed lot, asked in the door's order:
 /// the lot (LotOrderable: kGateClosed, kRuleForbids for no price), the crop
 /// (the largest shortfall of SeedShortByResource — the kSeedShort lamp's own
-/// sum; a tie to the nearest sowing by DaysToSowingEnd, then the lower id; none
+/// sum — less the seed the district's carts still carry, a lot's or a loan's;
+/// a tie to the nearest sowing by DaysToSowingEnd, then the lower id; none
 /// short: kRuleForbids, grams 0), the grams (the shortfall clamped to the
 /// catalogue's least and most), the year's cap for that crop (bought by the
 /// lot this year + the grams ≤ its seed need on the order day, the need with

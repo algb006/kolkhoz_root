@@ -411,9 +411,9 @@ class LimitPolicy {
         orders.push_back(lot);
         lot_seed = offer.resource;
         ++seed_lots_;
-        std::cout << "population_curve: SEEDLOT1377 day " << world.calendar.day << " resource "
-                  << offer.resource.value << " grams " << offer.grams << " points " << offer.points
-                  << '\n';
+        std::cout << "population_curve: SEEDLOT1377 world_seed " << world.world_seed << " day "
+                  << world.calendar.day << " resource " << offer.resource.value << " grams "
+                  << offer.grams << " points " << offer.points << '\n';
       }
     }
     for (const auto& [resource, grams] : short_by_resource) {
