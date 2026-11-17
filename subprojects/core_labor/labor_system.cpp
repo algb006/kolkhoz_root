@@ -805,6 +805,10 @@ class LaborSystem final : public ILaborSystem {
     // funeral's do - an ordered carter walked while the accountant's rode.
     std::vector<OrderedWork> ordered = OrderedWorksToday(current);
     const std::uint32_t ordered_horses = std::min(HorsesOrdered(ordered), DraughtHorses(current));
+    // THE ORDERS' HORSES ARE GIVEN BEFORE THE PROBE (#1811, boss 17 Nov): a ploughman with no
+    // horse is not placed (work_orders.cpp), so the probe that takes the orders' people out of
+    // the accountant's plan must see the same horses the orders will ride.
+    GiveOrderedHorses(ordered, ordered_horses);
     // The reaping pace rolls over: yesterday's whole day of hand reaping on
     // the arable becomes the pace (ledger_state.h, boss seq 161 Б) — IF it
     // ended with reaping still owed. A day that finished the last field is
@@ -1066,8 +1070,7 @@ class LaborSystem final : public ILaborSystem {
     // an unrelated one had anything to say.
     // AND THE DAY ORDERS AFTER THEM (#1778): the day's word wins over the standing one for
     // that day - one list, standing first (OrderedWorksToday), with the horses the morning
-    // took for them (#1818).
-    GiveOrderedHorses(ordered, ordered_horses);
+    // took for them (#1818) - given above, before the probe.
     ApplyOrderedWorks(current,
                       current,
                       ordered,

@@ -394,7 +394,10 @@ void ApplyStandingWork(const WorldState& world,
   std::vector<OrderedWork> works;
   for (const OrderRow& order : world.orders.rows) {
     if (order.kind == OrderKind::kAssignWork && order.status == OrderStatus::kAccepted) {
-      works.push_back(OrderedWork{.order = &order, .resident = order.resident});
+      // NO POOL HERE (#1811): this door asks no herd, so every plough and harrow is given its
+      // horse - the morning (StartDay) gives them from the pool by GiveOrderedHorses.
+      works.push_back(OrderedWork{
+          .order = &order, .resident = order.resident, .horse = IsHorseWork(order.work)});
     }
   }
   ApplyOrderedWorks(world, current, works, day_off, walkoff_rest);
@@ -496,6 +499,15 @@ void ApplyOrderedWorks(const WorldState& world,
     // Ordered to cart, he rides on the horse the morning gave him — a
     // ploughman's does — and walks if it gave him none. The plough and the
     // harrow ride by their kind (RidesOut) whatever this says.
+    // A PLOUGH OR A HARROW WITHOUT ITS HORSE IS NOT WORK (#1811, boss 17 Nov: host's NDO smoke
+    // read 22 horses in use against a pool of 16 - every ordered ploughman rode by his kind,
+    // given a horse or not, and with no accountant there was no top-up to release the extra):
+    // he takes the horse the morning gave him (GiveOrderedHorses, the pool's order) or he is not
+    // placed, kNoHorse, as the accountant's own plan leaves such a hand (StopsWithoutHorse).
+    if (IsHorseWork(order.work) && !ordered.horse) {
+      current.residents.rows[resident_row].idle_reason = IdleReason::kNoHorse;
+      continue;
+    }
     if (order.work != WorkKind::kHauling) {
       work.rides_horse = IsHorseWork(order.work) ? 1U : 0U;
     } else if (ordered.horse) {

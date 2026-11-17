@@ -595,6 +595,40 @@ int CheckOrderedHorses() {
                      "ordered horses: one horse asked for two carters - one rides, one walks");
   failures += Expect(carting_none == 2 && riding_none == 0,
                      "ordered horses: no horse asked and no accountant - both walk (the pair)");
+  // #1811: A PLOUGH WITHOUT ITS HORSE IS NO WORK - two ploughmen ordered, one horse in the
+  // stable, no accountant: one ploughs, the other is not placed (kNoHorse). Until then both
+  // rode by their kind: host's NDO smoke read 22 horses in use against a pool of 16.
+  {
+    Village village(4);
+    village.world.fields.rows[1].phase = core::FieldPhase::kPlowing;
+    village.world.fields.rows[1].work_days_remaining = 20.0F;
+    core::UnitRow stable;
+    stable.position = core::Vec2{.x = 10.0F, .y = 0.0F};
+    core::HerdRow team;
+    team.kind = core::LivestockKindId{0};
+    team.unit = core::AppendRow(village.world.units, stable);
+    team.adult_count = 1;
+    core::AppendRow(village.world.herds, team);
+    core::OrderRow ploughmen;
+    ploughmen.kind = core::OrderKind::kAssignCrew;
+    ploughmen.work = core::WorkKind::kPlowing;
+    ploughmen.field = village.far_field;
+    ploughmen.crew_size = 2;
+    village.Issue(ploughmen);
+    village.RunDay(*labor, kWednesday);
+    village.RunHours(*labor, kWednesday + 1U, 0, 1);
+    std::uint32_t ploughing = 0;
+    std::uint32_t no_horse = 0;
+    for (const core::ResidentRow& resident : village.world.residents.rows) {
+      ploughing += resident.work.kind == core::WorkKind::kPlowing ? 1U : 0U;
+      no_horse += resident.idle_reason == core::IdleReason::kNoHorse ? 1U : 0U;
+    }
+    std::cout << "  ordered ploughmen: ploughing " << ploughing << ", no horse " << no_horse
+              << '\n';
+    failures += Expect(ploughing == 1 && no_horse >= 1,
+                       "ordered horses: two ploughmen, one horse - one ploughs, one is not placed "
+                       "for want of a horse");
+  }
   return failures;
 }
 
