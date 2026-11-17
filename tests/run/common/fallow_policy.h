@@ -289,6 +289,7 @@ class FallowPolicy {
       std::uint32_t placed = 0;
       std::uint32_t tired = 0;
       std::uint32_t elsewhere = 0;
+      std::uint32_t held = 0;
       float walk = 0.0F;
       for (const core::ResidentId resident_id : residents) {
         const std::uint32_t r = core::FindRow(world.residents, resident_id);
@@ -304,6 +305,8 @@ class FallowPolicy {
           ++elsewhere;
         } else if (resident.rest <= kTiredRest) {
           ++tired;
+        } else if (resident.idle_reason == core::IdleReason::kIdleReasonCount) {
+          ++held;  // no reason booked: the morning's plan never had him (the order held him)
         }
       }
       const std::uint32_t n = order.crew_size;
@@ -315,7 +318,11 @@ class FallowPolicy {
                 << " T_prev " << t_prev << " unplaced_tired " << tired << " picks_elsewhere "
                 << elsewhere << " unplaced_other "
                 << (residents.size() - placed - tired - elsewhere) << " walk_h "
-                << (placed > 0 ? walk / static_cast<float>(placed) : 0.0F) << '\n';
+                << (placed > 0 ? walk / static_cast<float>(placed) : 0.0F) << " site_phase "
+                << static_cast<int>(world.units.rows[site_row].construction.phase) << " site_level "
+                << static_cast<int>(world.units.rows[site_row].level) << " site_labor "
+                << world.units.rows[site_row].construction.labor_days_remaining << " idle_village "
+                << IdleAdults(world) << " held_by_order " << held << '\n';
       trace_.orders += 1;
       trace_.n += n;
       trace_.k += placed;
@@ -325,6 +332,19 @@ class FallowPolicy {
       trace_.elsewhere += elsewhere;
     }
     hands_yesterday_ = std::move(hands);
+  }
+
+  /// Adults with no work at hour 2 who are not resting (rest above the trace's tired line): the
+  /// village's idle hands, to read the crew's unplaced picks against.
+  [[nodiscard]] static std::uint32_t IdleAdults(const core::WorldState& world) {
+    std::uint32_t idle = 0;
+    for (const core::ResidentRow& resident : world.residents.rows) {
+      idle += resident.work.kind == core::WorkKind::kNone && resident.rest > kTiredRest &&
+                      resident.idle_reason != core::IdleReason::kIdleReasonCount
+                  ? 1U
+                  : 0U;
+    }
+    return idle;
   }
 
   /// @brief The village's trace sums, and the house hands at hour 2 summed by year.
