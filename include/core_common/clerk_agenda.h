@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "core_common/calendar.h"
+#include "core_common/day_orders.h"  // WorkStop
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
 
@@ -37,6 +38,9 @@ struct ClerkAgendaLine {
   std::uint16_t hands = 0;
   /// The job's window closed (core_common/deadline.h kOverdue); false for a windowless job.
   bool overdue = false;
+  /// What stops this job TODAY, by today's real state (the day off, today's rain, the frost):
+  /// the agenda itself plans the next working day as if dry (ClerkAgendaView::planned_for_day).
+  WorkStop stopped_today = WorkStop::kNone;
 };
 
 /// @brief ISession::ClerkAgenda's answer: the accountant's whole morning on a copy of today, so
@@ -47,6 +51,11 @@ struct ClerkAgendaView {
   /// False when the morning has no jobs or no free hands.
   bool measured = false;
   SimDay measured_on_day = 0;
+  /// THE DAY PLANNED (host's NDO smoke, 17 Nov: planned on today, a rainy day listed no sowing
+  /// and a day off no field work at all, while the orders go to the next working day): the next
+  /// day after `measured_on_day` that is not a day off, planned as if dry - nobody knows its
+  /// rain - and with today's temperature for the frost.
+  SimDay planned_for_day = 0;
   /// In rank order.
   std::vector<ClerkAgendaLine> lines;
 };

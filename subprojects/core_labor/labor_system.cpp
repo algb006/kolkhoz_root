@@ -491,7 +491,21 @@ class LaborSystem final : public ILaborSystem {
   ClerkAgendaView ClerkAgendaOf(const WorldState& state) const override {
     ClerkAgendaView agenda;
     agenda.measured_on_day = state.calendar.day;
-    const WorldState morning = MorningCopy(state);
+    // THE NEXT WORKING DAY, AS IF DRY (host's NDO smoke, 17 Nov): planned on today, a day off
+    // listed no field work and a rainy day no sowing, while the bot's orders go to the next
+    // working day. Its rain is not known, so none; today's temperature stands for its frost.
+    constexpr SimDay kMostDaysAhead = 14;
+    SimDay next_day = state.calendar.day + 1U;
+    while (next_day < state.calendar.day + kMostDaysAhead && IsDayOffIn(state, next_day)) {
+      ++next_day;
+    }
+    WorldState ahead = state;
+    ahead.calendar.tick = static_cast<Tick>(next_day) * kTicksPerDay;
+    RefreshCalendarCaches(ahead.calendar);
+    ahead.weather.precipitation = Precipitation::kNone;
+    agenda.planned_for_day = next_day;
+    const bool day_off_today = IsDayOffIn(state, state.calendar.day);
+    const WorldState morning = MorningCopy(ahead);
     const std::vector<AssignmentJob> jobs = CollectJobs(morning);
     std::vector<AssignmentCandidate> candidates = CollectCandidates(morning);  // MeasureRoads
     if (jobs.empty() || candidates.empty()) {
@@ -509,6 +523,18 @@ class LaborSystem final : public ILaborSystem {
     const std::vector<std::uint32_t> order = PlanningOrder(jobs, candidates, params);
     for (std::uint32_t rank = 0; rank < order.size(); ++rank) {
       const AssignmentJob& job = jobs[order[rank]];
+      // Today's real stop, by the placement's own predicates (SeasonWorksOf's order).
+      WorkStop stopped = WorkStop::kNone;
+      const std::uint32_t field_row = FindRow(state.fields, job.field);  // kNoRow: no field
+      if (day_off_today && job.kind != WorkKind::kHerdCare) {
+        stopped = WorkStop::kDayOff;
+      } else if (RainStopsWork(state.weather.precipitation, job.kind)) {
+        stopped = WorkStop::kRain;
+      } else if (field_row != kNoRow &&
+                 FrostStopsFieldWork(state.fields.rows[field_row],
+                                     state.weather.air_temperature_celsius)) {
+        stopped = WorkStop::kFrost;
+      }
       agenda.lines.push_back(ClerkAgendaLine{.work = job.kind,
                                              .field = job.field,
                                              .herd = job.herd,
@@ -518,7 +544,8 @@ class LaborSystem final : public ILaborSystem {
                                              .rank = static_cast<std::uint16_t>(rank),
                                              .seam = job.work_days_remaining,
                                              .hands = hands[order[rank]],
-                                             .overdue = job.window.kind == DeadlineKind::kOverdue});
+                                             .overdue = job.window.kind == DeadlineKind::kOverdue,
+                                             .stopped_today = stopped});
     }
     agenda.measured = true;
     return agenda;

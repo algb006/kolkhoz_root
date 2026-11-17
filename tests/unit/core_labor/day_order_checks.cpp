@@ -495,10 +495,26 @@ int CheckPreviewAndHerdCare(core::ILaborSystem& labor) {
             << agenda.lines.size() << ", hands " << hands << ", barn hands "
             << (barn_line != nullptr ? barn_line->hands : 99) << '\n';
   failures += Expect(agenda.measured && agenda.measured_on_day == kWednesday &&
-                         agenda.lines.size() >= 2 && ranks_run && hands <= 2 &&
-                         barn_line != nullptr && barn_line->hands == 1 && barn_line->seam > 0.0F,
+                         agenda.planned_for_day == kWednesday + 1U && agenda.lines.size() >= 2 &&
+                         ranks_run && hands <= 2 && barn_line != nullptr && barn_line->hands == 1 &&
+                         barn_line->seam > 0.0F,
                      "clerk agenda: every job in rank order, the barn's one hand as the plan "
                      "puts it, two hands at most");
+  // A RAINY TODAY (host's NDO smoke): the next working day is planned as if dry, so the reaping
+  // the rain stops today is still listed - marked stopped today by the rain.
+  core::WorldState rainy = village.world;
+  rainy.weather.precipitation = core::Precipitation::kRain;
+  const core::ClerkAgendaView wet = labor.ClerkAgendaOf(rainy);
+  const core::ClerkAgendaLine* reaping = nullptr;
+  for (const core::ClerkAgendaLine& line : wet.lines) {
+    if (line.work == core::WorkKind::kHarvest && line.field.value == village.near_field.value) {
+      reaping = &line;
+    }
+  }
+  failures +=
+      Expect(wet.measured && reaping != nullptr && reaping->stopped_today == core::WorkStop::kRain,
+             "clerk agenda: a rainy today still lists tomorrow's reaping, stopped today by "
+             "the rain");
   return failures;
 }
 
