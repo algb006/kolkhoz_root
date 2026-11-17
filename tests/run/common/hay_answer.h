@@ -425,8 +425,15 @@ class HayAnswer {
   ///        would have gone short can be read. Off by default: the canon hands.
   void SetHandOverOff(bool off) { hand_over_off_ = off; }
 
+  /// @brief #1726 (ii′) (b), as the BOT's answer (econ [33]; boss [32] holds the game's ladder
+  ///        for #282): while set, the hay lamp's horse heads are not handed - adults or foals -
+  ///        and only its cows go. Set daily by the limit policy while the block is open and its
+  ///        teams fell short at the last peak.
+  void HoldHorses(bool hold) { hold_horses_ = hold; }
+
  private:
   bool hand_over_off_ = false;
+  bool hold_horses_ = false;  ///< #1726 (ii′) (b)
   bool plans_being_set_ = false;
 
   struct Kind {
@@ -816,7 +823,8 @@ class HayAnswer {
     YearCount& year = YearOf(world);
     year.horses_named +=
         static_cast<std::uint64_t>(std::max<std::int64_t>(0, yellow.hand_over_horses));
-    const std::int64_t horses = Hand(world, IsHorse, yellow.hand_over_horses, orders);
+    const std::int64_t horses =
+        hold_horses_ ? 0 : Hand(world, IsHorse, yellow.hand_over_horses, orders);  // (ii′) (b)
     const std::int64_t cows = Hand(world, IsCow, yellow.hand_over_stock, orders);
     if (cows > 0) {
       hand_log_.push_back(HandLog{.day = world.calendar.day,

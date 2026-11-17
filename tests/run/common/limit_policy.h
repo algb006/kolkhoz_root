@@ -289,20 +289,52 @@ class LimitPolicy {
       month_no_horse_ = 0;
       peak_bought_this_month_ = false;
     }
+    // (ii′)'s cap: the worst day's refused horse jobs over a trailing year, and this year's lots.
+    short_by_day_[world.calendar.day % core::kDaysPerYear] = short_today;
+    peak_short_ = *std::max_element(short_by_day_.begin(), short_by_day_.end());
+    if (world.calendar.day % core::kDaysPerYear == core::kDaysPerYear - 1U) {
+      bought_this_year_ = 0;
+    }
+    // (ii′) (b), the bot's half: no horse handed to the district while the block is open and its
+    // teams fell short in the last year.
+    hay_.HoldHorses(peak_horses_on_ && block_open_ && peak_short_ > 0);
   }
 
   /// #1726 (ii): one horse_head lot at most a month, when the month before was short.
   bool BuyPeakHorse(const core::WorldState& world, core::OrderRow& order) {
-    if (!peak_horses_on_ || peak_bought_this_month_ || horse_lot_ == core::kNoTableRow ||
-        last_month_no_horse_ < kPeakNoHorseDays ||
-        catalog_.lots[horse_lot_].points > world.limit.points) {
+    if (!peak_horses_on_ || peak_bought_this_month_ || horse_lot_ == core::kNoTableRow) {
+      return false;
+    }
+    // (ii′) (a) (econ [33], boss [32]): ONLY WHILE THE BLOCK IS OPEN, AND ONLY IN THE MONTHS
+    // BEFORE THE PEAKS - February before the spring plough, July before the reaping and the
+    // winter crop's preparation. (ii) as first built bought every short month from year 1: ~115
+    // lots a village, a pump.
+    const auto month = static_cast<std::uint32_t>(world.calendar.date.month);
+    const bool before_peak = month == static_cast<std::uint32_t>(core::Month::kFebruary) ||
+                             month == static_cast<std::uint32_t>(core::Month::kJuly);
+    if (!block_open_ || !before_peak) {
+      return false;
+    }
+    // THE CAP: this year's lots no more than the team's measured shortfall - the most horse jobs
+    // the morning plan refused on one day in the last twelve months.
+    if (bought_this_year_ >= peak_short_) {
+      return false;
+    }
+    // (c): never at the cost of a salt lot - two salt lots' points stay behind.
+    const std::int32_t salt_points =
+        salt_.Lot() < catalog_.lots.size() ? catalog_.lots[salt_.Lot()].points : 0;
+    if (catalog_.lots[horse_lot_].points + 2 * std::max(0, salt_points) > world.limit.points) {
       return false;
     }
     peak_bought_this_month_ = true;
+    ++bought_this_year_;
     order.kind = core::OrderKind::kOrderLimitLot;
     order.lot = core::LimitLotId{static_cast<std::uint16_t>(horse_lot_)};
     return true;
   }
+
+  /// @brief (ii′): whether the bot's block is open (from the fallow policy, each day).
+  void SetBlockOpen(bool open) { block_open_ = open; }
 
   /// @brief The control arm of #1240 (--no-sugar-buy): no sugar lot.
   void BuySugar(bool buy) { sugar_.Enable(buy); }
@@ -1174,6 +1206,10 @@ class LimitPolicy {
   LotBook lots_;
   bool peak_horses_on_ = false;
   bool peak_bought_this_month_ = false;
+  bool block_open_ = false;                                       ///< (ii′) (a)
+  std::array<std::uint32_t, core::kDaysPerYear> short_by_day_{};  ///< (ii′)'s cap
+  std::uint32_t peak_short_ = 0;
+  std::uint32_t bought_this_year_ = 0;
   std::uint32_t month_no_horse_ = 0;
   std::uint32_t last_month_no_horse_ = 0;
   std::uint32_t idle_seen_ = 0;

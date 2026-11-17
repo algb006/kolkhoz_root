@@ -230,6 +230,9 @@ class FallowPolicy {
   /// @brief #1726's arm: false is 0.37.386's rule, the houses guard holding for ever.
   void SetHousesDeadline(bool on) { houses_deadline_on_ = on; }
 
+  /// @brief The blocks opened so far (#1726 (ii′): the limit policy buys horses only after one).
+  [[nodiscard]] std::uint32_t BlocksOpen() const { return opened_blocks_; }
+
   /// @brief #1726 (b)'s arm (econ, core-econ-1726-canon-pair [10]; boss [11] GO): false
   ///        sends no house crews (--no-fallow-house-crews), the split pair's world.
   void SetHouseCrews(bool on) { house_crews_on_ = on; }

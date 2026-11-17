@@ -369,6 +369,7 @@ class BuildingChairman {
     if (fallow_by_eaters) {
       fallow.RunDay(simulation);
     }
+    limit.SetBlockOpen(fallow.BlocksOpen() > 0);  // #1726 (ii′) (a)
     // #307's hay arm: the derelict fields still free after the plan's base,
     // put to hay (hay_arm_policy.h). Its tally counts every day; it orders
     // only with its arm on.
