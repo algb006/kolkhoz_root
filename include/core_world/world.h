@@ -72,11 +72,15 @@ class IConstructionSystem;  // Defined in core_construction.
 ///        legitimate; passed on to the catalogue, which owns unit_types and
 ///        map and refuses their absence by name
 ///        (core_catalog/definitions.h).
+/// @param difficulty_key A key of tables/difficulty.csv (#1840): the start stock is laid at
+///        its `stock_scale`. Empty is normal. A key the table does not carry fills `error`
+///        and the world is not to be used.
 WorldState CreateStartWorld(const ITableSet& tables,
                             StubTables stubs,
                             const IConstructionSystem* capacities,
                             std::uint64_t world_seed,
-                            std::string* error);
+                            std::string* error,
+                            std::string_view difficulty_key = {});
 
 /// @brief The world_params.csv keys genesis reads (the figure of a person).
 ///
@@ -122,6 +126,13 @@ struct StandardSimulationConfig {
   /// has no default chairman, and a misspelt seam word must not be served
   /// one.
   std::string avatar_key;
+
+  /// THE DIFFICULTY NEW GAME CHOSE (#1840; difficulty design §1 «один выбор при старте
+  /// партии», 09 l.488 «a session key, not a genesis parameter», l.3904 decision 3): a `key`
+  /// of tables/difficulty.csv (easy, normal, hard). Today genesis reads one number off it, the
+  /// start stock's `stock_scale` (fodder is not scaled: its own rule). Empty - normal, as every
+  /// run and test starts. An unknown key is a REFUSAL, by name, as the avatar's is.
+  std::string difficulty_key;
 
   /// 0 = one worker per hardware core minus one; 1 = the mandatory
   /// verification mode. Results are identical for every value — that is the

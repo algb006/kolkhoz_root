@@ -789,6 +789,46 @@ int CheckStartCemetery() {
   return failures;
 }
 
+/// #1840: THE PLAYER'S LEVEL LAYS THE START STOCK - on the same seed, «easy» lays the rye at
+/// difficulty.csv's 1.5 of «normal»'s (within a gram a row for the rounding), an empty key is
+/// normal, and a key the table does not carry refuses by name.
+int CheckStartDifficulty() {
+  int failures = 0;
+  const auto shipped = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
+  if (Expect(shipped != nullptr, "start difficulty: the shipped tables load") != 0) {
+    return 1;
+  }
+  const std::uint32_t rye = shipped->FindTable("resources")->FindRowByKey("rye");
+  const auto rye_held = [rye](const core::WorldState& world) {
+    core::Grams held = 0;
+    for (const core::UnitRow& unit : world.units.rows) {
+      held += rye < unit.stock.size() ? unit.stock[rye] : 0;
+    }
+    return held;
+  };
+  std::string error;
+  const core::WorldState normal =
+      core::CreateStartWorld(*shipped, core::StubTables::kRefused, nullptr, 1929, &error, "normal");
+  const core::WorldState unnamed =
+      core::CreateStartWorld(*shipped, core::StubTables::kRefused, nullptr, 1929, nullptr);
+  const core::WorldState easy =
+      core::CreateStartWorld(*shipped, core::StubTables::kRefused, nullptr, 1929, &error, "easy");
+  std::string refused;
+  core::CreateStartWorld(
+      *shipped, core::StubTables::kRefused, nullptr, 1929, &refused, "nightmare");
+  const auto expected = static_cast<double>(rye_held(normal)) * 1.5;
+  std::cout << "  start difficulty: rye normal " << rye_held(normal) << ", easy " << rye_held(easy)
+            << '\n';
+  failures += Expect(rye_held(normal) > 0 && rye_held(unnamed) == rye_held(normal),
+                     "start difficulty: an empty key is the normal start");
+  failures += Expect(std::abs(static_cast<double>(rye_held(easy)) - expected) <=
+                         static_cast<double>(easy.units.rows.size()) + 1.0,
+                     "start difficulty: easy lays the rye at 1.5 of normal");
+  failures += Expect(error.empty() && !refused.empty(),
+                     "start difficulty: a key difficulty.csv does not carry is refused by name");
+  return failures;
+}
+
 /// count the design gives of the start network — «так на старте ДЕВЯТЬ»
 /// dead-end roads (roads design §4, the start map's wear table): a dead end
 /// is a road one of whose ends meets no other road and no border. The joins
@@ -2952,6 +2992,7 @@ int main() {
   failures += CheckBaseConventions();
   failures += CheckIceRowsAssemble();
   failures += CheckStartRoads();
+  failures += CheckStartDifficulty();  // #1840
   failures += CheckStartCemetery();
   failures += CheckEraNormList();
   failures += CheckRoadsDoor();

@@ -1430,8 +1430,13 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
   // And the start layout is refused on the same terms as a subsystem's
   // table: the parser has already logged the row and the column.
   std::string layout_error;
-  WorldState start = CreateStartWorld(
-      *config.tables, config.stub_tables, construction.get(), config.world_seed, &layout_error);
+  // #1840: the level New Game chose lays the start stock; an unknown key refuses.
+  WorldState start = CreateStartWorld(*config.tables,
+                                      config.stub_tables,
+                                      construction.get(),
+                                      config.world_seed,
+                                      &layout_error,
+                                      config.difficulty_key);
   if (!layout_error.empty()) {
     return nullptr;
   }

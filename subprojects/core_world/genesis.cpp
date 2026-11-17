@@ -1176,25 +1176,27 @@ void PlowLastAutumn(WorldState& world, const ITable* crops, float share) {
   }
 }
 
-/// THE LEVEL WHOSE START STOCK IS BUILT. STUB: the layer has no seam yet to
-/// pass the player's choice, so the core builds the normal level — the one
-/// start_stock.csv is written for and every balance run counts by.
+/// THE LEVEL A CAMPAIGN STARTS AT WHEN NONE IS NAMED: normal, the one
+/// start_stock.csv is written for and every balance run counts by. Since #1840 the
+/// layer names the player's choice (StandardSimulationConfig::difficulty_key).
 constexpr std::string_view kStartDifficultyLevel = "normal";
 
-/// @brief The start stock's multiplier for kStartDifficultyLevel
-/// (difficulty.csv `stock_scale`; difficulty design §4, boss seq 26).
+/// @brief The start stock's multiplier for `level` (difficulty.csv `stock_scale`;
+/// difficulty design §4, boss seq 26; #1840). Empty `level` is kStartDifficultyLevel.
 /// @return 1 when there is no difficulty table (a unit test's world, a tool),
 ///         and 1 with a warning when the level's row or cell is missing or
 ///         blank: the table's own rule is "fall back to normal and say so",
-///         never read a blank as a level.
-float StartStockScale(const ITable* difficulty) {
+///         never read a blank as a level. An unknown NAMED level is refused before
+///         this (CreateStartWorld).
+float StartStockScale(const ITable* difficulty, std::string_view level) {
   if (difficulty == nullptr) {
     return 1.0F;
   }
-  const std::uint32_t row = difficulty->FindRowByKey(kStartDifficultyLevel);
+  const std::string_view key = level.empty() ? kStartDifficultyLevel : level;
+  const std::uint32_t row = difficulty->FindRowByKey(key);
   const std::uint32_t column = difficulty->FindColumn("stock_scale");
   if (row == kNoTableRow || column == kNoTableColumn || difficulty->CellText(row, column).empty()) {
-    LogWarning("genesis: difficulty '" + std::string(kStartDifficultyLevel) +
+    LogWarning("genesis: difficulty '" + std::string(key) +
                "' names no stock_scale — the start stock is laid at the normal amounts");
     return 1.0F;
   }
@@ -1416,6 +1418,7 @@ bool BuildStartEconomy(WorldState& world,
                        const IConstructionSystem* capacities,
                        const StartElder& elder_band,
                        float life_speedup,
+                       std::string_view difficulty_key,
                        std::string* error) {
   const ITable* unit_types = tables.FindTable("unit_types");
   const ITable* resources = tables.FindTable("resources");
@@ -1633,7 +1636,7 @@ bool BuildStartEconomy(WorldState& world,
                     resources,
                     capacities,
                     placed,
-                    StartStockScale(tables.FindTable("difficulty")));
+                    StartStockScale(tables.FindTable("difficulty"), difficulty_key));
   }
 
   // What the households still have of their own. The village was living
@@ -1733,8 +1736,23 @@ WorldState CreateStartWorld(const ITableSet& tables,
                             StubTables stubs,
                             const IConstructionSystem* capacities,
                             std::uint64_t world_seed,
-                            std::string* error) {
+                            std::string* error,
+                            std::string_view difficulty_key) {
   WorldState world;
+  // THE PLAYER'S LEVEL, REFUSED BY NAME WHEN THE TABLE DOES NOT CARRY IT (#1840), as an unknown
+  // avatar is: a misspelt seam word must not be served the normal start in silence.
+  if (!difficulty_key.empty()) {
+    const ITable* const difficulty = tables.FindTable("difficulty");
+    if (difficulty == nullptr || difficulty->FindRowByKey(difficulty_key) == kNoTableRow) {
+      const std::string why = "genesis: difficulty '" + std::string(difficulty_key) +
+                              "' is not a key of tables/difficulty.csv";
+      LogError(why);
+      if (error != nullptr) {
+        *error = why;
+      }
+      return world;
+    }
+  }
   world.world_seed = world_seed;
   world.rng = SeedRngState(world_seed, kWorldRngStream);
   world.calendar.day_zero_weekday = CampaignDayZeroWeekday(tables);
@@ -1930,7 +1948,14 @@ WorldState CreateStartWorld(const ITableSet& tables,
       *error = night_trouble;
     }
   }
-  BuildStartEconomy(world, tables, stubs, capacities, ReadStartElder(tables), life_speedup, error);
+  BuildStartEconomy(world,
+                    tables,
+                    stubs,
+                    capacities,
+                    ReadStartElder(tables),
+                    life_speedup,
+                    difficulty_key,
+                    error);
   // THE DISTRICT ASKS IN THE VERY FIRST SPRING, and it can only do that if
   // the world starts with a year behind it. The norm is computed off the
   // arable worked LAST year (world_state.h, PlanState::worked_ha_last_year),
