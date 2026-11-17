@@ -389,3 +389,7 @@ feed_into_church_until_granary,1,core
 flood_water_days,8,core
 plan_credit_pre_act_theft,1,core
 chairman_placement_level,0,core
+no_auto_placement,0,core
+hand_over_by_hay,1,core
+limit_seed_lot_t_min,0.5,core
+limit_seed_lot_t_max,5,core
