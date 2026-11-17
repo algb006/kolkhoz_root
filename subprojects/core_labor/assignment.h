@@ -664,6 +664,13 @@ std::vector<std::uint32_t> PlanDayAssignments(
     PlacementDiagnosis* diagnosis = nullptr,
     std::vector<std::uint32_t>* rides_cart_with = nullptr);
 
+/// @brief The order PlanDayAssignments fills `jobs` in - its own OrderJobs over its own saved
+///        bands, ONE HOME for the plan and for the agenda's rank (ClerkAgendaView; #1811).
+/// @return Indices into `jobs`, first filled first.
+std::vector<std::uint32_t> PlanningOrder(const std::vector<AssignmentJob>& jobs,
+                                         const std::vector<AssignmentCandidate>& candidates,
+                                         const AssignmentParams& params);
+
 }  // namespace core
 
 #endif  // CORE_LABOR_ASSIGNMENT_H_

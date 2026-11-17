@@ -671,7 +671,7 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
     rides_cart_with->assign(candidates.size(), kNoJobAssigned);
   }
 
-  const std::vector<std::uint32_t> order = OrderJobs(jobs, SavedBands(jobs, candidates, params));
+  const std::vector<std::uint32_t> order = PlanningOrder(jobs, candidates, params);
   // Per job: the norm-days its crew is expected to deliver, for the last pass.
   std::vector<float> covered(jobs.size(), 0.0F);
 
@@ -1053,6 +1053,12 @@ std::vector<std::uint32_t> PlanDayAssignments(const std::vector<AssignmentJob>& 
     diagnosis->horses_for_rides = horses_for_rides;
   }
   return result;
+}
+
+std::vector<std::uint32_t> PlanningOrder(const std::vector<AssignmentJob>& jobs,
+                                         const std::vector<AssignmentCandidate>& candidates,
+                                         const AssignmentParams& params) {
+  return OrderJobs(jobs, SavedBands(jobs, candidates, params));
 }
 
 }  // namespace core

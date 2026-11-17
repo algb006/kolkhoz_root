@@ -178,6 +178,11 @@ class ILaborSystem {
   virtual ClerkPicks ClerkPicksFor(const WorldState& state,
                                    const OrderRow& target,
                                    std::uint16_t n) const = 0;
+
+  /// @brief The accountant's whole morning on a copy of `state`: every job he would plan, in
+  ///        his order, with its seam and the hands his plan puts on it (day_order_preview.h,
+  ///        ClerkAgendaView; #1811). A bot read.
+  virtual ClerkAgendaView ClerkAgendaOf(const WorldState& state) const = 0;
 };
 
 /// @brief Creates the labor subsystem.

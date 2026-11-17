@@ -507,6 +507,11 @@ class ISimulation {
   /// @note Called between steps on the sim thread. A pure read.
   virtual ClerkPicks ClerkPicksFor(const OrderRow& target, std::uint16_t n) const = 0;
 
+  /// @brief The accountant's whole morning, in his order, with his hands (day_order_preview.h,
+  ///        ClerkAgendaView; #1811). A bot read. The bare engine answers `measured` false.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual ClerkAgendaView ClerkAgendaToday() const = 0;
+
   /// @brief How long the carting of the materials of the works on `unit`
   /// would take, said before they are started (supply_estimate.h; routing
   /// stage V2). Fans out to core_construction (what and from where) and

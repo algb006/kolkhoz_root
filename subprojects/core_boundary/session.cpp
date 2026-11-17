@@ -601,6 +601,8 @@ class Session final : public ISession {
     return simulation_->ClerkPicksFor(target, n);
   }
 
+  ClerkAgendaView ClerkAgenda() const override { return simulation_->ClerkAgendaToday(); }
+
   std::span<const CrewGapLine> CrewGapsToday() const override {
     return simulation_->CompletedState().crew_gaps;
   }

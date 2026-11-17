@@ -1043,6 +1043,14 @@ class ISession {
   /// @note Between steps; the answer describes State().
   virtual ClerkPicks ClerkPicksFor(const OrderRow& target, std::uint16_t n) const = 0;
 
+  /// @brief The accountant's whole morning (ISimulation::ClerkAgendaToday; day_order_preview.h;
+  ///        #1811): every job he would plan tomorrow morning, in his order, with its seam, the
+  ///        hands his plan puts on it and whether its window has closed - so a bot can follow
+  ///        his list by day orders. A READ FOR THE BOTS ONLY: the player sees no hands number
+  ///        (society design).
+  /// @note Between steps; the answer describes State().
+  virtual ClerkAgendaView ClerkAgenda() const = 0;
+
   /// @brief The pieces a drag along a laid road selects for `operation`,
   ///        snapped to whole pieces, each in or out and why, and the
   ///        operation's estimate (ISimulation::SelectRoadPieces).

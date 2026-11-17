@@ -855,6 +855,10 @@ class StandardSimulation final : public ISimulation {
     return labor_->ClerkPicksFor(engine_->CompletedState(), target, n);
   }
 
+  ClerkAgendaView ClerkAgendaToday() const override {
+    return labor_->ClerkAgendaOf(engine_->CompletedState());
+  }
+
   bool FellingCanBeManned(Vec2 place) const override {
     return labor_->FellingCanBeManned(engine_->CompletedState(), place);
   }

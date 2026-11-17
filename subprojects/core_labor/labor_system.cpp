@@ -485,6 +485,45 @@ class LaborSystem final : public ILaborSystem {
     return answer;
   }
 
+  /// #1811 (boss 17 Nov): the accountant's whole morning, his own CollectJobs in his own order
+  /// (PlanningOrder) with the hands his own plan puts on each - PreviewDayOrder's path without
+  /// a draft.
+  ClerkAgendaView ClerkAgendaOf(const WorldState& state) const override {
+    ClerkAgendaView agenda;
+    agenda.measured_on_day = state.calendar.day;
+    const WorldState morning = MorningCopy(state);
+    const std::vector<AssignmentJob> jobs = CollectJobs(morning);
+    std::vector<AssignmentCandidate> candidates = CollectCandidates(morning);  // MeasureRoads
+    if (jobs.empty() || candidates.empty()) {
+      return agenda;
+    }
+    AssignmentParams params = DayParams(morning);
+    MeasureRoads(morning, jobs, candidates, params);
+    const std::vector<std::uint32_t> plan = PlanDayAssignments(jobs, candidates, params);
+    std::vector<std::uint16_t> hands(jobs.size(), 0);
+    for (const std::uint32_t index : plan) {
+      if (index < hands.size()) {
+        ++hands[index];
+      }
+    }
+    const std::vector<std::uint32_t> order = PlanningOrder(jobs, candidates, params);
+    for (std::uint32_t rank = 0; rank < order.size(); ++rank) {
+      const AssignmentJob& job = jobs[order[rank]];
+      agenda.lines.push_back(ClerkAgendaLine{.work = job.kind,
+                                             .field = job.field,
+                                             .herd = job.herd,
+                                             .unit = job.unit,
+                                             .stand = job.stand,
+                                             .extraction_site = job.extraction_site,
+                                             .rank = static_cast<std::uint16_t>(rank),
+                                             .seam = job.work_days_remaining,
+                                             .hands = hands[order[rank]],
+                                             .overdue = job.window.kind == DeadlineKind::kOverdue});
+    }
+    agenda.measured = true;
+    return agenda;
+  }
+
   HerdCareView HerdCareToday(const WorldState& state, HerdId herd) const override {
     HerdCareView view;
     view.herd = herd;

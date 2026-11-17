@@ -186,6 +186,8 @@ class ScriptedSimulation final : public core::ISimulation {
     return {};
   }
 
+  core::ClerkAgendaView ClerkAgendaToday() const override { return {}; }
+
   /// No works and no carts here: nothing to cart.
   core::SupplyEstimate SupplyEstimateFor(core::UnitId /*unit*/) const override { return {}; }
 

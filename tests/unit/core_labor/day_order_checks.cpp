@@ -477,6 +477,28 @@ int CheckPreviewAndHerdCare(core::ILaborSystem& labor) {
       Expect(view.measured && view.seam > 0.0F && view.per_hand > 0.0F &&
                  view.hands == static_cast<std::uint16_t>(std::ceil(view.seam / view.per_hand)),
              "herd care: the hands are the seam over the accountant's per-hand norm");
+  // THE CLERK'S AGENDA (#1811): every job in his order, ranks 0..n-1; the barn's line carries
+  // the one hand the preview's plan put there; the hands are the village's two at most.
+  const core::ClerkAgendaView agenda = labor.ClerkAgendaOf(village.world);
+  bool ranks_run = true;
+  std::uint32_t hands = 0;
+  const core::ClerkAgendaLine* barn_line = nullptr;
+  for (std::size_t index = 0; index < agenda.lines.size(); ++index) {
+    const core::ClerkAgendaLine& line = agenda.lines[index];
+    ranks_run = ranks_run && line.rank == index;
+    hands += line.hands;
+    if (line.work == core::WorkKind::kHerdCare && line.herd.value == herd.value) {
+      barn_line = &line;
+    }
+  }
+  std::cout << "  agenda: measured " << (agenda.measured ? 1 : 0) << ", lines "
+            << agenda.lines.size() << ", hands " << hands << ", barn hands "
+            << (barn_line != nullptr ? barn_line->hands : 99) << '\n';
+  failures += Expect(agenda.measured && agenda.measured_on_day == kWednesday &&
+                         agenda.lines.size() >= 2 && ranks_run && hands <= 2 &&
+                         barn_line != nullptr && barn_line->hands == 1 && barn_line->seam > 0.0F,
+                     "clerk agenda: every job in rank order, the barn's one hand as the plan "
+                     "puts it, two hands at most");
   return failures;
 }
 
