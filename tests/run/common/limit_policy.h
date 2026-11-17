@@ -88,6 +88,9 @@ class LimitPolicy {
     }
     if (const core::ITable* const lots = tables.FindTable("limit_catalog")) {
       horse_lot_ = lots->FindRowByKey("horse_head");
+      feed_lot_ = lots->FindRowByKey("compound_feed_lot");  // #1726's lot book
+      seed_lot_ = lots->FindRowByKey("seed_grain_lot");
+      timber_lot_ = lots->FindRowByKey("timber_lot");
     }
     ReadSowingWindows(tables);
     // The months of the mowing (farming.csv, human 1..12), for the guard of
@@ -171,6 +174,7 @@ class LimitPolicy {
     const core::WorldState& world = simulation.CompletedState();
     Book(world);
     CountWaits(world);
+    CountHorseDay(world);  // #1726
     days_logs_lay_ += OwnLogsLie(world) ? 1U : 0U;
     ++days_watched_;
     sugar_.Watch(world);
@@ -215,6 +219,89 @@ class LimitPolicy {
     simulation.StageOrders(orders, {});
     bought_ += static_cast<std::uint32_t>(orders.size());
     cooldown_ = kCooldownDays;
+    BookLots(world, orders);
+  }
+
+  /// #1726: the lots staged, by key group and year (HORSELOT1726).
+  void BookLots(const core::WorldState& world, const std::vector<core::OrderRow>& orders) {
+    const std::uint32_t year = world.calendar.day / core::kDaysPerYear;
+    if (year >= kLotYears) {
+      return;
+    }
+    for (const core::OrderRow& order : orders) {
+      if (order.kind != core::OrderKind::kOrderLimitLot) {
+        continue;
+      }
+      const std::uint32_t lot = order.lot.value;
+      if (lot == horse_lot_) {
+        ++lots_.horse[year];
+        lots_.horse_points[year] += lot < catalog_.lots.size() ? catalog_.lots[lot].points : 0;
+      } else if (lot == salt_.Lot()) {
+        ++lots_.salt[year];
+      } else if (lot == feed_lot_) {
+        ++lots_.feed[year];
+      } else if (lot == seed_lot_) {
+        ++lots_.seed[year];
+      } else if (lot == timber_lot_) {
+        ++lots_.timber[year];
+      } else {
+        ++lots_.other[year];
+      }
+    }
+  }
+
+  /// #1726: the day's end of the horse census - the no-horse job-days (crew_gaps), the lamp's
+  /// week (the ledger's idle-for-horse and candidate person-days, by their day's rise), and the
+  /// points left on the turn's eve.
+  void CountHorseDay(const core::WorldState& world) {
+    const std::uint32_t year = world.calendar.day / core::kDaysPerYear;
+    if (year >= kLotYears) {
+      return;
+    }
+    std::uint32_t short_today = 0;
+    for (const core::CrewGapLine& gap : world.crew_gaps) {
+      short_today += gap.shortfall == core::JobShortfall::kNoHorse ? 1U : 0U;
+    }
+    lots_.no_horse_days[year] += short_today;
+    month_no_horse_ += short_today;
+    const auto& book = world.ledger.current;
+    const std::uint32_t idle =
+        book.idle_person_days[static_cast<std::size_t>(core::IdleReason::kNoHorse)];
+    const std::uint32_t candidates = book.candidate_person_days;
+    // The book turns with the year: a fall is a new year's first day.
+    week_idle_ += idle >= idle_seen_ ? idle - idle_seen_ : idle;
+    week_candidates_ += candidates >= candidates_seen_ ? candidates - candidates_seen_ : candidates;
+    idle_seen_ = idle;
+    candidates_seen_ = candidates;
+    if (world.calendar.day % 7U == 6U) {
+      if (week_candidates_ > 0 &&
+          static_cast<double>(week_idle_) >= 0.05 * static_cast<double>(week_candidates_)) {
+        ++lots_.lamp_weeks[year];
+      }
+      week_idle_ = 0;
+      week_candidates_ = 0;
+    }
+    if (world.calendar.day % core::kDaysPerYear == core::kDaysPerYear - 1U) {
+      lots_.points_left[year] = world.limit.points;
+    }
+    if (world.calendar.day % core::kDaysPerMonth == core::kDaysPerMonth - 1U) {
+      last_month_no_horse_ = month_no_horse_;
+      month_no_horse_ = 0;
+      peak_bought_this_month_ = false;
+    }
+  }
+
+  /// #1726 (ii): one horse_head lot at most a month, when the month before was short.
+  bool BuyPeakHorse(const core::WorldState& world, core::OrderRow& order) {
+    if (!peak_horses_on_ || peak_bought_this_month_ || horse_lot_ == core::kNoTableRow ||
+        last_month_no_horse_ < kPeakNoHorseDays ||
+        catalog_.lots[horse_lot_].points > world.limit.points) {
+      return false;
+    }
+    peak_bought_this_month_ = true;
+    order.kind = core::OrderKind::kOrderLimitLot;
+    order.lot = core::LimitLotId{static_cast<std::uint16_t>(horse_lot_)};
+    return true;
   }
 
   /// @brief The control arm of #1240 (--no-sugar-buy): no sugar lot.
@@ -978,9 +1065,44 @@ class LimitPolicy {
         return;
       }
     }
+    // #1726 (ii) (econ [29], boss [28]): A SENSIBLE CHAIRMAN SHORT OF TEAMS BUYS A HORSE - after
+    // the salt and the sugar, before a site's material: one horse_head lot at a month's start
+    // when the month before left ≥ kPeakNoHorseDays job-days short for want of a horse.
+    if (BuyPeakHorse(world, order)) {
+      orders.push_back(order);
+      return;
+    }
     if (NextOrder(world, order)) {
       orders.push_back(order);
     }
+  }
+
+  /// @brief #1726 (ii)'s arm (--horse-lots): the bot buys a horse when its teams run short.
+  void BuyPeakHorses(bool on) { peak_horses_on_ = on; }
+
+  /// @brief #1726's HORSELOT1726 line, a village: by year, the horse lots bought by (ii) and
+  ///        their points; every lot bought by key group (salt, feed, seed, timber, other); the
+  ///        points left at the turn; the job-days short for want of a horse; and econ's lamp's
+  ///        firing - the working weeks with ≥ 5 % of the candidates' man-days idle for a horse.
+  void PrintHorseLots(std::ostream& out, std::uint64_t seed) const {
+    const auto row = [&out](const char* name, const auto& values) {
+      out << ' ' << name;
+      for (std::size_t y = 0; y < values.size(); ++y) {
+        out << (y == 0 ? " " : ":") << values[y];
+      }
+    };
+    out << "population_curve: HORSELOT1726 seed " << seed;
+    row("horse_lots", lots_.horse);
+    row("horse_points", lots_.horse_points);
+    row("salt_lots", lots_.salt);
+    row("feed_lots", lots_.feed);
+    row("seed_lots", lots_.seed);
+    row("timber_lots", lots_.timber);
+    row("other_lots", lots_.other);
+    row("points_left_at_turn", lots_.points_left);
+    row("no_horse_job_days", lots_.no_horse_days);
+    row("lamp_weeks", lots_.lamp_weeks);
+    out << '\n';
   }
 
   bool NextOrder(const core::WorldState& world, core::OrderRow& order) const {
@@ -1024,6 +1146,36 @@ class LimitPolicy {
   std::uint32_t board_ = core::kNoTableRow;
   std::uint32_t horse_kind_ = core::kNoTableRow;
   std::uint32_t horse_lot_ = core::kNoTableRow;
+  // -- #1726 (ii) and its print -------------------------------------------------------------
+  static constexpr std::size_t kLotYears = 16;
+  /// econ [29]'s N_h: job-days short of a horse in a village-month that buy a lot next month.
+  static constexpr std::uint32_t kPeakNoHorseDays = 3;
+
+  struct LotBook {
+    std::array<std::uint32_t, kLotYears> horse{};
+    std::array<std::int32_t, kLotYears> horse_points{};
+    std::array<std::uint32_t, kLotYears> salt{};
+    std::array<std::uint32_t, kLotYears> feed{};
+    std::array<std::uint32_t, kLotYears> seed{};
+    std::array<std::uint32_t, kLotYears> timber{};
+    std::array<std::uint32_t, kLotYears> other{};
+    std::array<std::int32_t, kLotYears> points_left{};
+    std::array<std::uint32_t, kLotYears> no_horse_days{};
+    std::array<std::uint32_t, kLotYears> lamp_weeks{};
+  };
+
+  LotBook lots_;
+  bool peak_horses_on_ = false;
+  bool peak_bought_this_month_ = false;
+  std::uint32_t month_no_horse_ = 0;
+  std::uint32_t last_month_no_horse_ = 0;
+  std::uint32_t idle_seen_ = 0;
+  std::uint32_t candidates_seen_ = 0;
+  std::uint32_t week_idle_ = 0;
+  std::uint32_t week_candidates_ = 0;
+  std::uint32_t feed_lot_ = core::kNoTableRow;
+  std::uint32_t seed_lot_ = core::kNoTableRow;
+  std::uint32_t timber_lot_ = core::kNoTableRow;
   bool ready_ = false;
   std::uint32_t cooldown_ = 0;
 
