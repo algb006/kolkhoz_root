@@ -168,8 +168,11 @@ static_assert(AggregateArity<PlanState>() == 21,
 // tripwires fired — the size and the arity — which is the pair working as
 // designed: the size alone would have missed a field that landed in padding,
 // and the arity alone would have missed a widened one.
-static_assert(sizeof(LimitState) == 8, "LimitState changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<LimitState>() == 2,
+// Save 215 (#1377): the seed lot's year book, a ResourceAmounts after the two
+// points counters (WriteWorldBlocks).
+static_assert(sizeof(LimitState) == 8 + kAmountsSize,
+              "LimitState changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<LimitState>() == 3,
               "LimitState gained or lost a field — update the codec and VERSION_SAVE");
 // Twenty-two on 2026-09-14: the district's specialists on the road (a row
 // table in save_rows.cpp).
