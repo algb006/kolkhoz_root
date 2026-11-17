@@ -279,6 +279,10 @@ class StepEngine final : public ISimulation {
 
   HerdCareView HerdCareToday(HerdId /*herd*/) const override { return {}; }
 
+  ClerkPicks ClerkPicksFor(const OrderRow& /*target*/, std::uint16_t /*n*/) const override {
+    return {};
+  }
+
   /// No subsystems, so no works and no carts: nothing to cart.
   SupplyEstimate SupplyEstimateFor(UnitId /*unit*/) const override { return {}; }
 

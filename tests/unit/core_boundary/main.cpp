@@ -179,6 +179,11 @@ class ScriptedSimulation final : public core::ISimulation {
 
   core::HerdCareView HerdCareToday(core::HerdId /*herd*/) const override { return {}; }
 
+  core::ClerkPicks ClerkPicksFor(const core::OrderRow& /*target*/,
+                                 std::uint16_t /*n*/) const override {
+    return {};
+  }
+
   /// No works and no carts here: nothing to cart.
   core::SupplyEstimate SupplyEstimateFor(core::UnitId /*unit*/) const override { return {}; }
 

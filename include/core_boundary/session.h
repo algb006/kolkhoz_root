@@ -1026,6 +1026,13 @@ class ISession {
   /// @note Between steps; the answer describes State().
   virtual HerdCareView HerdCareToday(HerdId herd) const = 0;
 
+  /// @brief The accountant's first `n` for the job `target` names (its work and place), by his
+  ///        own ranking this morning, each with his expected output (ISimulation::
+  ///        ClerkPicksFor; #1811's herd trace). A read for the bots: the player's own names come
+  ///        from the chairman's placement level, not from this.
+  /// @note Between steps; the answer describes State().
+  virtual ClerkPicks ClerkPicksFor(const OrderRow& target, std::uint16_t n) const = 0;
+
   /// @brief The pieces a drag along a laid road selects for `operation`,
   ///        snapped to whole pieces, each in or out and why, and the
   ///        operation's estimate (ISimulation::SelectRoadPieces).

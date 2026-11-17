@@ -847,6 +847,10 @@ class StandardSimulation final : public ISimulation {
     return labor_->HerdCareToday(engine_->CompletedState(), herd);
   }
 
+  ClerkPicks ClerkPicksFor(const OrderRow& target, std::uint16_t n) const override {
+    return labor_->ClerkPicksFor(engine_->CompletedState(), target, n);
+  }
+
   bool FellingCanBeManned(Vec2 place) const override {
     return labor_->FellingCanBeManned(engine_->CompletedState(), place);
   }

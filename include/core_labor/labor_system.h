@@ -172,6 +172,12 @@ class ILaborSystem {
 
   /// @brief A herd's care today by the accountant's own norm (day_order_preview.h).
   virtual HerdCareView HerdCareToday(const WorldState& state, HerdId herd) const = 0;
+
+  /// @brief The accountant's first `n` for the job `target` names (its work and place, as an
+  ///        order's row names them), by his own ranking this morning (day_order_preview.h).
+  virtual ClerkPicks ClerkPicksFor(const WorldState& state,
+                                   const OrderRow& target,
+                                   std::uint16_t n) const = 0;
 };
 
 /// @brief Creates the labor subsystem.

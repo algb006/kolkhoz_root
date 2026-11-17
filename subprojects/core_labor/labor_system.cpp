@@ -447,6 +447,44 @@ class LaborSystem final : public ILaborSystem {
     return preview;
   }
 
+  ClerkPicks ClerkPicksFor(const WorldState& state,
+                           const OrderRow& target,
+                           std::uint16_t n) const override {
+    ClerkPicks answer;
+    answer.measured_on_day = state.calendar.day;
+    const WorldState morning = MorningCopy(state);
+    const std::vector<AssignmentJob> jobs = CollectJobs(morning);
+    std::vector<AssignmentCandidate> candidates = CollectCandidates(morning);  // MeasureRoads
+    for (std::uint32_t index = 0; index < jobs.size(); ++index) {
+      const AssignmentJob& job = jobs[index];
+      const bool same = job.kind == target.work && job.field.value == target.field.value &&
+                        job.herd.value == target.herd.value &&
+                        job.unit.value == target.unit.value &&
+                        job.stand.value == target.stand.value &&
+                        job.extraction_site.value == target.extraction_site.value;
+      if (!same) {
+        continue;
+      }
+      AssignmentParams params = DayParams(morning);
+      MeasureRoads(morning, jobs, candidates, params);
+      const std::vector<std::uint32_t> nobody_placed(candidates.size(), kNoJobAssigned);
+      std::uint32_t road_refused = 0;
+      const std::vector<RankedPick> ranked =
+          RankCandidates(job, index, candidates, nobody_placed, params, road_refused);
+      answer.seam = job.work_days_remaining;
+      for (const RankedPick& pick : ranked) {
+        if (answer.picks.size() >= n) {
+          break;
+        }
+        answer.picks.push_back(ClerkPick{.resident = morning.residents.row_ids[pick.resident_row],
+                                         .daily_norm = pick.daily_norm});
+      }
+      answer.measured = !answer.picks.empty() || n == 0;
+      break;
+    }
+    return answer;
+  }
+
   HerdCareView HerdCareToday(const WorldState& state, HerdId herd) const override {
     HerdCareView view;
     view.herd = herd;

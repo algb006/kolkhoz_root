@@ -67,6 +67,27 @@ struct HerdCareView {
   std::uint16_t hands = 0;
 };
 
+/// @brief One resident in the accountant's ranking for a job (ClerkPick, ISession::ClerkPicksFor).
+struct ClerkPick {
+  ResidentId resident;
+  /// Norm-days he would deliver on the job today, by his walk, light and efficiency.
+  float daily_norm = 0.0F;
+};
+
+/// @brief ISession::ClerkPicksFor's answer (#1811's herd trace: the walk decides a herder's
+///        day): the residents the accountant would rank first for a job this morning, best first,
+///        as many as `n` asked, each with his expected output - a read for the bots. NOT the
+///        player's «Расставить самому» names: those come from the chairman's own placement level
+///        (society design «Наряд игрока»; boss 17 Nov).
+struct ClerkPicks {
+  /// False when the target names no job open this morning, or nobody can reach it.
+  bool measured = false;
+  SimDay measured_on_day = 0;
+  /// The job's work left this morning (its seam), game man-days.
+  float seam = 0.0F;
+  std::vector<ClerkPick> picks;
+};
+
 }  // namespace core
 
 #endif  // CORE_COMMON_DAY_ORDER_PREVIEW_H_

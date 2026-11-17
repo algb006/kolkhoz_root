@@ -595,6 +595,10 @@ class Session final : public ISession {
     return simulation_->HerdCareToday(herd);
   }
 
+  ClerkPicks ClerkPicksFor(const OrderRow& target, std::uint16_t n) const override {
+    return simulation_->ClerkPicksFor(target, n);
+  }
+
   std::span<const CrewGapLine> CrewGapsToday() const override {
     return simulation_->CompletedState().crew_gaps;
   }

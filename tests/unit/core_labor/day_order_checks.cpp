@@ -453,6 +453,20 @@ int CheckPreviewAndHerdCare(core::ILaborSystem& labor) {
                      "preview: a crew of both people leaves the barn without its hand, said first");
   failures += Expect(idle.measured && idle.taken == 0 && idle.kinds.empty(),
                      "preview: a draft that takes nobody changes nothing (the pair)");
+  // The clerk's first two for the barn, each with his expected output; a field with no open work
+  // names nothing.
+  core::OrderRow barn_work;
+  barn_work.work = core::WorkKind::kHerdCare;
+  barn_work.herd = herd;
+  const core::ClerkPicks picks = labor.ClerkPicksFor(village.world, barn_work, 2);
+  core::OrderRow nothing;
+  nothing.work = core::WorkKind::kSowing;
+  nothing.field = village.near_field;  // in its reaping: no sowing job open
+  const core::ClerkPicks none = labor.ClerkPicksFor(village.world, nothing, 2);
+  failures += Expect(picks.measured && picks.picks.size() == 2 && picks.seam > 0.0F &&
+                         picks.picks[0].daily_norm > 0.0F && !none.measured,
+                     "clerk picks: two names for the barn with their output; none for a job "
+                     "that is not open");
   const core::HerdCareView view = labor.HerdCareToday(village.world, herd);
   std::cout << "  herd care: seam " << view.seam << ", per hand " << view.per_hand << ", hands "
             << view.hands << '\n';
