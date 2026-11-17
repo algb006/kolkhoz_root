@@ -262,10 +262,18 @@ class FallowPolicy {
         house_hands_[year_index] += hands[id];
       }
     }
-    // Each day crew on a house site, by its picks.
+    // Each day crew on a house site, by its picks - ONLY TODAY'S: the book holds the picks of every
+    // crew still due, and a crew issued for a later working day, or moved on by a day off, is not
+    // on its site this morning (the first trace, t1726on, counted them all).
     std::map<std::uint32_t, std::vector<core::ResidentId>> picks;
     for (const core::CrewPick& pick : world.day_orders.picks) {
-      picks[pick.crew.value].push_back(pick.resident);
+      const bool due_today =
+          std::ranges::any_of(world.day_orders.due, [&](const core::DayOrderDue& due) {
+            return due.order.value == pick.crew.value && due.day == world.calendar.day;
+          });
+      if (due_today) {
+        picks[pick.crew.value].push_back(pick.resident);
+      }
     }
     for (const auto& [crew, residents] : picks) {
       const std::uint32_t order_row = core::FindRow(world.orders, core::OrderId{crew});
