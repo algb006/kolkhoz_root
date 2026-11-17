@@ -2268,7 +2268,9 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // Save 213 (#1789): fertility_year_start, a float at each field's tail - three fields, +12
     // (predicted +8 on an estimate of two fields, missed: the fixture has three, written above);
     // the hash read off u1778c.
-    {"fields", 521, 0x96be292edbd46449ULL},
+    // Save 216 (#1837): bare_harrowed_day, a u32 at each field's tail - three fields, predicted
+    // 521 -> 533 before the build.
+    {"fields", 533, 0x96be292edbd46449ULL},
     // Save 67: +27 — the store's emptying byte and the perevalka's two floats,
     // three units; predicted before the fields were added, and held.
     // Save 74: +1 a unit — the house held for a specialist; three units, +3,

@@ -700,6 +700,7 @@ void OpenPlowing(const ProductionConfig& config,
   const float rest_owed = field.work_days_remaining;
   field.autumn_furrowing = 0;
   field.crop = crop;
+  field.bare_harrowed_day = kNoFurrowDay;  // #1837: a new preparation, the old harrow spent
   // No furrow of THIS preparation yet (land_state.h, furrow_day): the
   // plough's end sets it, and the turn's release reads it.
   field.furrow_day = kNoFurrowDay;
@@ -1330,8 +1331,25 @@ void TrySowOnBlackFallow(const ProductionConfig& config,
   // September's last two days were at 4.4 and 2.9 °C against the rye's 8: the
   // slot was lost, and year 2 delivered 19 kg of 1116 kg of rye.
   const CropId slot = field.rotation_skips_turn != 0 ? field.rotation_year0 : field.rotation_year1;
-  if (WinterWindowOpen(config, slot, month)) {
-    OpenPlowing(config, current, field, slot, PreparationStart::kBlackFallow);
+  if (!WinterWindowOpen(config, slot, month)) {
+    return;
+  }
+  // GROUND HARROWED DAYS AGO IS NOT HARROWED AGAIN (#1837; farming design §94; boss 17 Nov):
+  // host's #1811 trace, seed 1931, y1 - a fallow ploughed and harrowed bare on day 32 was
+  // re-harrowed at the full norm on day 33 for the rye, a horse job in September when the horses
+  // are short, on the canon and NDO alike. Within fallow_fresh_harrow_days of the bare harrow's
+  // end the rye's harrow is finished as it opens, so the field goes on to its sowing by the
+  // harrow's own gates (AdvanceFinishedField: the window, the seed, the late sowing's return)
+  // or waits harrowed. Further off, the harrow opens as before.
+  const SimDay harrowed = field.bare_harrowed_day;
+  const std::uint32_t fresh_days = config.farming.fallow_fresh_harrow_days;
+  OpenPlowing(config, current, field, slot, PreparationStart::kBlackFallow);
+  const bool fresh = fresh_days > 0 && harrowed != kNoFurrowDay &&
+                     current.calendar.day >= harrowed &&
+                     current.calendar.day - harrowed <= fresh_days;
+  if (fresh && field.phase == FieldPhase::kHarrowing) {
+    field.work_days_remaining = 0.0F;
+    AdvanceFinishedField(config, current, field);
   }
 }
 
@@ -1546,6 +1564,7 @@ void FinishSowing(const ProductionConfig& config, WorldState& current, FieldRow&
     // ground with no crop until the year turns or a winter crop takes it.
     MoveFieldPhase(current, field, FieldPhase::kGrowing);
     field.work_days_remaining = 0.0F;
+    field.bare_harrowed_day = current.calendar.day;  // #1837: the winter crop's fresh ground
     return;
   }
   // SOWN AS FAR AS THE SEED GOES (farming design §7, «Сеется столько, на

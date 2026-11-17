@@ -261,8 +261,11 @@ static_assert(AggregateArity<ManureDoseSeam>() == 5,
 // guard, not predicted); the fields section +2 a field.
 // Save 213 (#1789): fertility_year_start, a float after flood_lost_year - predicted 184 unmoved
 // (the u16's padding) and 50 fields before the build; the fields section +4 a field.
-static_assert(sizeof(FieldRow) == 184, "FieldRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<FieldRow>() == 50,
+// Save 216 (#1837): bare_harrowed_day, a SimDay after fertility_year_start - predicted 184 -> 192
+// (no tail padding left for a u32, padded to eight) and 50 -> 51 fields before the build; the
+// fields section +4 a field.
+static_assert(sizeof(FieldRow) == 192, "FieldRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<FieldRow>() == 51,
               "FieldRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-06: the stink radius pushed the row from 48 + amounts to 56 +
 // amounts. The pause byte before it had landed in padding and moved nothing,
@@ -1315,6 +1318,7 @@ void WriteFieldRow(SaveSink& sink, const FieldRow& row) {
   out.WriteU8(row.stand_summers);            // save 146
   out.WriteU16(row.flood_lost_year);         // save 211 (#1375): the flood's year, the layer's door
   out.WriteFloat(row.fertility_year_start);  // save 213 (#1789): the trend's base
+  out.WriteU32(row.bare_harrowed_day);       // save 216 (#1837): the bare fallow's harrow end
   // The manure already in the book (save 111): booked once a field's cycle,
   // and since save 112 already paid into the fertility.
   out.WriteU8(row.manure_booked);
@@ -1422,6 +1426,7 @@ FieldRow ReadFieldRow(LoadSource& source) {
   row.stand_summers = in.ReadU8();            // save 146: any count is a summer
   row.flood_lost_year = in.ReadU16();         // save 211 (#1375)
   row.fertility_year_start = in.ReadFloat();  // save 213 (#1789): below 0 is «no trend yet»
+  row.bare_harrowed_day = in.ReadU32();       // save 216 (#1837)
   row.manure_booked = static_cast<std::uint8_t>(
       source.ReadEnumValue(0, 1, "the field's manure booked"));  // save 111
   if (row.manure_booked != 0 && row.manure_applied == 0) {

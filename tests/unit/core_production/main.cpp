@@ -53,6 +53,7 @@
 #include "district_trip.h"
 #include "district_visit.h"
 #include "extraction_digging.h"
+#include "fallow_harrow_checks.h"
 #include "feed_home_checks.h"
 #include "field_haul.h"
 #include "field_work.h"
@@ -18693,7 +18694,8 @@ int main() {
   failures += CheckTheCartingReachesTheStoreInItsHour();
   failures += CheckTheHeapLampIsRedOnlyWhenItSpoils();
   failures += CheckTheSeedLampIsNotAFalseAlarm();
-  failures += CheckTheSeedLot();  // #1377
+  failures += CheckTheSeedLot();                        // #1377
+  failures += CheckTheFreshFallowIsNotHarrowedTwice();  // #1837
   failures += CheckTheSupplyOfAWorksIsCarted();
   failures += CheckTheHandSupplyGoesOneResourceATrip();
   failures += CheckTheSupplyCountsItsIdleDays();

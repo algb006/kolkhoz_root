@@ -457,6 +457,7 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
   float mow_month = static_cast<float>(farming.meadow_cut_month) + 1.0F;
   float mow_month_end = static_cast<float>(farming.meadow_cut_month_end) + 1.0F;
   float fallow_month = static_cast<float>(farming.fallow_plow_month) + 1.0F;
+  auto fresh_harrow_days = static_cast<float>(farming.fallow_fresh_harrow_days);  // #1837
   // Real man-days in the file, game man-days in the config — the same
   // conversion the crop and field-phase norms get, done once at parse.
   float mow_days = farming.meadow_mow_days_per_ha * kRealDaysPerGameDay;
@@ -525,6 +526,7 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
       {"hay_handover_dose_share", &farming.hay_handover_dose_share, 0.01F, 1.0F},
       {"hay_prior_mower_share", &farming.hay_prior_mower_share, 0.0F, 1.0F},
       {"fallow_plow_month", &fallow_month, 1.0F, 12.0F},
+      {"fallow_fresh_harrow_days", &fresh_harrow_days, 0.0F, static_cast<float>(kDaysPerYear)},
       {"birth_from_month", &birth_from, 1.0F, 12.0F},
       {"birth_to_month", &birth_to, 1.0F, 12.0F},
   });
@@ -548,6 +550,7 @@ bool ParseHerdKnobs(const ITable& table, FarmingConfig& farming, std::string& er
   farming.meadow_cut_month = static_cast<std::uint8_t>(mow_month - 1.0F);
   farming.meadow_cut_month_end = static_cast<std::uint8_t>(mow_month_end - 1.0F);
   farming.fallow_plow_month = static_cast<std::uint8_t>(fallow_month - 1.0F);
+  farming.fallow_fresh_harrow_days = static_cast<std::uint32_t>(fresh_harrow_days);
   farming.meadow_mow_days_per_ha = mow_days / kRealDaysPerGameDay;
   farming.hay_new_cut_in_store_days = static_cast<std::uint32_t>(new_hay_days);
   farming.hay_avral_days_a_cut = static_cast<std::uint32_t>(avral_days);

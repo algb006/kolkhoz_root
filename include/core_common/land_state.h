@@ -713,6 +713,13 @@ struct FieldRow {
   /// it, so the layer reads this year's change as fertility - fertility_year_start. Below 0
   /// before the first turn: no trend yet (kNoFertilityYearStart). Save 213.
   Metric fertility_year_start = -1.0F;
+
+  /// THE DAY A BARE FALLOW'S HARROW ENDED (#1837; save 216; farming design §94), or
+  /// kNoFurrowDay: FinishSowing's bare-fallow branch writes it, any new preparation clears it
+  /// (OpenPlowing). The black fallow's winter crop opens its SOWING straight on ground the
+  /// fallow harrowed within farming.csv fallow_fresh_harrow_days, instead of a second harrow
+  /// (host's #1811 trace: harrowed on day 32, re-harrowed at the full norm on day 33).
+  SimDay bare_harrowed_day = kNoFurrowDay;
 };
 
 /// @brief FieldRow::fertility_year_start before any year's start: no trend to read.

@@ -542,6 +542,12 @@ struct FarmingConfig {
   /// ASSUMPTION: after the spring sowings are in.
   std::uint8_t fallow_plow_month = 4;  ///< May.
 
+  /// THE FRESH FALLOW IS NOT HARROWED TWICE (#1837; farming design §94; boss 17 Nov): a black
+  /// fallow whose own harrow ended at most this many game days ago opens its winter crop's
+  /// sowing straight, without a second harrow (farming.csv fallow_fresh_harrow_days). 0 turns
+  /// the rule off: the harrow reopens as before. STUB 4, one month (boss's number).
+  std::uint32_t fallow_fresh_harrow_days = 4;
+
   float repeat_penalty_per_year = 3.0F;
 
   /// The repeat penalty stops growing after this many years in a row (boss
