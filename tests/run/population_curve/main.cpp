@@ -1582,20 +1582,21 @@ bool Walk(std::uint64_t seed,
       funerals.Print(std::cout, seed);
       herds.Print(std::cout, seed);
       crime.Print(std::cout, seed);
-      salt.Print(std::cout);                                // #1630 (B)
-      builder.smokehouse.Print(std::cout, seed);            // #1644
-      builder.hay_arm.Print(std::cout, seed);               // #307
-      builder.fallow.PrintHolds(std::cout, seed);           // #1692's hold print
-      builder.fallow.PrintSpringBuilding(std::cout, seed);  // #1726's B1 and B5
-      builder.fallow.PrintSplit(std::cout, seed);           // #1726's split, y1-y16
-      builder.fallow.PrintHouseCrews(std::cout, seed);      // #1726 (b)
-      builder.fallow.PrintCrewTrace(std::cout, seed);       // #1726 (b)'s trace
-      builder.fallow.PrintSupply(std::cout, seed);          // #1726 boss [20]
-      builder.fallow.PrintHorses(std::cout, seed);          // #1726 boss [24]
-      builder.fallow.PrintTimberGaps(std::cout, seed);      // #1726 boss [26]
-      builder.limit.PrintHorseLots(std::cout, seed);        // #1726 (ii), econ [29], boss [30]
-      builder.houses_first.Print(std::cout, seed);          // #1677
-      herds.PrintCowFlows(std::cout, seed);                 // #1570
+      salt.Print(std::cout);                                  // #1630 (B)
+      builder.smokehouse.Print(std::cout, seed);              // #1644
+      builder.hay_arm.Print(std::cout, seed);                 // #307
+      builder.fallow.PrintHolds(std::cout, seed);             // #1692's hold print
+      builder.fallow.PrintSpringBuilding(std::cout, seed);    // #1726's B1 and B5
+      builder.fallow.PrintSplit(std::cout, seed);             // #1726's split, y1-y16
+      builder.fallow.PrintHouseCrews(std::cout, seed);        // #1726 (b)
+      builder.fallow.PrintCrewTrace(std::cout, seed);         // #1726 (b)'s trace
+      builder.fallow.PrintSupply(std::cout, seed);            // #1726 boss [20]
+      builder.fallow.PrintHorses(std::cout, seed);            // #1726 boss [24]
+      builder.fallow.PrintTimberGaps(std::cout, seed);        // #1726 boss [26]
+      builder.limit.PrintHorseLots(std::cout, seed);          // #1726 (ii), econ [29], boss [30]
+      builder.limit.PrintHayHorseHandOvers(std::cout, seed);  // #1726 econ [35]
+      builder.houses_first.Print(std::cout, seed);            // #1677
+      herds.PrintCowFlows(std::cout, seed);                   // #1570
       hand_overs.Print(std::cout, seed);
       builder.houses.PrintQueueLines(std::cout, seed);  // #1677: the queue by cause, short lines
       feed_rung.Print(std::cout, seed);                 // #1573
