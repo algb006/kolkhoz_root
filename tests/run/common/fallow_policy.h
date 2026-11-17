@@ -62,6 +62,7 @@
 #include <limits>
 #include <map>
 #include <optional>
+#include <set>
 #include <span>
 #include <string>
 #include <string_view>
@@ -297,6 +298,9 @@ class FallowPolicy {
           continue;
         }
         const core::ResidentRow& resident = world.residents.rows[r];
+        if (carters_yesterday_.contains(resident_id.value) && year_index < kSplitYears) {
+          ++supply_.picks_were_carters[year_index];  // boss [20]: a supply carter taken
+        }
         if (resident.work.kind == core::WorkKind::kConstruction &&
             resident.work.unit.value == order.unit.value) {
           ++placed;
@@ -332,8 +336,91 @@ class FallowPolicy {
       trace_.elsewhere += elsewhere;
     }
     hands_yesterday_ = std::move(hands);
+    CountSupply(world, year_index);
   }
 
+  /// @brief Boss [20]'s print, a line a village: per year, at hour 2, the site-supply carters,
+  ///        the horses in work by kind (field work, site-supply carting, other), the hands felling
+  ///        and carting from the stands, the house sites waiting for materials (kDelivering), and
+  ///        the crews' picks that had been site-supply carters the day before.
+  void PrintSupply(std::ostream& out, std::uint64_t seed) const {
+    const auto row = [&out](const char* name, const std::array<std::uint32_t, kSplitYears>& v) {
+      out << ' ' << name;
+      for (std::uint32_t index = 0; index < kSplitYears; ++index) {
+        out << (index == 0 ? " " : ":") << v[index];
+      }
+    };
+    out << "population_curve: SUPPLY1726 seed " << seed;
+    row("supply_carters", supply_.carters);
+    row("horse_field", supply_.horse_field);
+    row("horse_supply", supply_.horse_supply);
+    row("horse_other", supply_.horse_other);
+    row("felling", supply_.felling);
+    row("stand_haul", supply_.stand_haul);
+    row("house_wait_sites", supply_.wait_sites);
+    row("picks_were_carters", supply_.picks_were_carters);
+    out << '\n';
+  }
+
+ private:
+  struct SupplyTally {
+    std::array<std::uint32_t, 16> carters{};
+    std::array<std::uint32_t, 16> horse_field{};
+    std::array<std::uint32_t, 16> horse_supply{};
+    std::array<std::uint32_t, 16> horse_other{};
+    std::array<std::uint32_t, 16> felling{};
+    std::array<std::uint32_t, 16> stand_haul{};
+    std::array<std::uint32_t, 16> wait_sites{};
+    std::array<std::uint32_t, 16> picks_were_carters{};
+  };
+
+  SupplyTally supply_;
+  std::set<std::uint32_t> carters_yesterday_;
+
+  /// Hour 2's census for PrintSupply; keeps today's supply carters for tomorrow's picks.
+  void CountSupply(const core::WorldState& world, std::uint32_t year_index) {
+    std::set<std::uint32_t> sites;
+    for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+      const core::UnitRow& unit = world.units.rows[row];
+      const auto phase = unit.construction.phase;
+      if (phase == core::ConstructionPhase::kDelivering ||
+          phase == core::ConstructionPhase::kBuilding) {
+        sites.insert(world.units.row_ids[row].value);
+      }
+      if (unit.type.value == house_type_ && phase == core::ConstructionPhase::kDelivering &&
+          year_index < kSplitYears) {
+        ++supply_.wait_sites[year_index];
+      }
+    }
+    std::set<std::uint32_t> carters;
+    for (std::uint32_t row = 0; row < world.residents.rows.size(); ++row) {
+      const core::WorkAssignment& work = world.residents.rows[row].work;
+      const bool supply = work.kind == core::WorkKind::kHauling && sites.contains(work.unit.value);
+      const bool field =
+          work.kind == core::WorkKind::kPlowing || work.kind == core::WorkKind::kHarrowing ||
+          work.kind == core::WorkKind::kSowing || work.kind == core::WorkKind::kHarvest;
+      if (supply) {
+        carters.insert(world.residents.row_ids[row].value);
+      }
+      if (year_index >= kSplitYears) {
+        continue;
+      }
+      supply_.carters[year_index] += supply ? 1U : 0U;
+      supply_.felling[year_index] += work.kind == core::WorkKind::kFelling ? 1U : 0U;
+      supply_.stand_haul[year_index] +=
+          work.kind == core::WorkKind::kHauling && work.stand.value != core::kInvalidEntityIdValue
+              ? 1U
+              : 0U;
+      if (work.rides_horse != 0) {
+        ++(field    ? supply_.horse_field[year_index]
+           : supply ? supply_.horse_supply[year_index]
+                    : supply_.horse_other[year_index]);
+      }
+    }
+    carters_yesterday_ = std::move(carters);
+  }
+
+ public:
   /// Adults with no work at hour 2 who are not resting (rest above the trace's tired line): the
   /// village's idle hands, to read the crew's unplaced picks against.
   [[nodiscard]] static std::uint32_t IdleAdults(const core::WorldState& world) {
