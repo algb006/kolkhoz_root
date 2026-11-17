@@ -330,6 +330,11 @@ class LimitPolicy {
   /// @brief The hay answer's cow hand-overs (#1570's print).
   const std::vector<HayAnswer::HandLog>& HayHandLogs() const { return hay_.HandLogs(); }
 
+  /// @brief #1726: the hay answer's horse hand-overs by what sized them (HANDH1726).
+  void PrintHayHorseHandOvers(std::ostream& out, std::uint64_t seed) const {
+    hay_.PrintHorseHandOvers(out, seed);
+  }
+
   /// @brief #1573's horse tail, the lamp's half (HayAnswer::PrintHorseTail).
   void PrintHayHorseTail(std::ostream& out, std::uint64_t seed, std::uint32_t years) const {
     hay_.PrintHorseTail(out, seed, years);

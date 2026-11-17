@@ -834,8 +834,50 @@ class HayAnswer {
     (yellow.advice == core::AlarmAdvice::kReduceHerd ? year.horses_handed_first
                                                      : year.horses_handed_behind_feed) +=
         static_cast<std::uint64_t>(horses);
+    // #1726 (econ [35], boss): WHAT SIZED EACH HORSE HAND-OVER - the advice's own
+    // hand_over_sized_by (0 the plan's and the floors' least, 1 the hay to the first pasture
+    // day, 2 the floor binds) - by month, with the hay in store and the shortfall that day.
+    if (horses > 0) {
+      const std::size_t by = std::min<std::size_t>(yellow.hand_over_sized_by, 2U);
+      const auto month = static_cast<std::size_t>(world.calendar.date.month);
+      horse_hand_.by_sized[by] += static_cast<std::uint64_t>(horses);
+      if (month < 12) {
+        horse_hand_.by_month[month] += static_cast<std::uint64_t>(horses);
+      }
+      ++horse_hand_.events;
+      horse_hand_.hay_store_t += HayStore(world) / 1000000;
+      horse_hand_.short_t += yellow.short_grams / 1000000;
+    }
   }
 
+  /// #1726: the horse hand-overs' print (HANDH1726).
+  struct HorseHandBook {
+    std::array<std::uint64_t, 3> by_sized{};
+    std::array<std::uint64_t, 12> by_month{};
+    std::uint64_t events = 0;
+    std::int64_t hay_store_t = 0;
+    std::int64_t short_t = 0;
+  };
+
+  HorseHandBook horse_hand_;
+
+ public:
+  /// @brief #1726's line, a village: the horses this answer handed, by what sized them
+  ///        (plan_floor_least / hay_to_pasture / floor_binds) and by month, and on those days the
+  ///        mean hay in store and the mean shortfall the lamp named (t).
+  void PrintHorseHandOvers(std::ostream& out, std::uint64_t seed) const {
+    out << "population_curve: HANDH1726 seed " << seed << " by_sized " << horse_hand_.by_sized[0]
+        << ':' << horse_hand_.by_sized[1] << ':' << horse_hand_.by_sized[2] << " by_month";
+    for (std::size_t m = 0; m < 12; ++m) {
+      out << (m == 0 ? " " : ":") << horse_hand_.by_month[m];
+    }
+    const std::uint64_t events = horse_hand_.events > 0 ? horse_hand_.events : 1U;
+    out << " events " << horse_hand_.events << " mean_hay_store_t "
+        << horse_hand_.hay_store_t / static_cast<std::int64_t>(events) << " mean_short_t "
+        << horse_hand_.short_t / static_cast<std::int64_t>(events) << '\n';
+  }
+
+ private:
   /// By LivestockKindId.
   std::vector<Kind> kinds_;
 
