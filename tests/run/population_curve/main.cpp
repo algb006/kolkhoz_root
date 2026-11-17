@@ -432,6 +432,7 @@ void LiveOneDay(core::ISimulation& simulation,
     if (chairman != nullptr) {
       chairman->WatchStep(simulation.CompletedState());
       chairman->milkmaids.CountStep(simulation.CompletedState());  // #1417
+      chairman->fallow.TraceCrews(simulation.CompletedState());    // #1726 (b)'s trace
     }
     // The step's births by kind (#1374's pair, herd_tally.h).
     if (herds != nullptr) {
@@ -1583,6 +1584,7 @@ bool Walk(std::uint64_t seed,
       builder.fallow.PrintSpringBuilding(std::cout, seed);  // #1726's B1 and B5
       builder.fallow.PrintSplit(std::cout, seed);           // #1726's split, y1-y16
       builder.fallow.PrintHouseCrews(std::cout, seed);      // #1726 (b)
+      builder.fallow.PrintCrewTrace(std::cout, seed);       // #1726 (b)'s trace
       builder.houses_first.Print(std::cout, seed);          // #1677
       herds.PrintCowFlows(std::cout, seed);                 // #1570
       hand_overs.Print(std::cout, seed);

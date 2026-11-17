@@ -233,6 +233,103 @@ class FallowPolicy {
   ///        sends no house crews (--no-fallow-house-crews), the split pair's world.
   void SetHouseCrews(bool on) { house_crews_on_ = on; }
 
+  /// @brief #1726 (b)'s trace (boss [13], [18]): at hour 2 of each day, every house site under
+  ///        construction - its hands now (T) and at hour 2 the day before - and for each day crew
+  ///        on one, its N, the picks placed on the site (k), and each unplaced pick's rest and
+  ///        work. Called every step; acts at hour 2 only. Lines CREWTRACE1726 (one an order-day)
+  ///        and the village's sums in PrintCrewTrace.
+  void TraceCrews(const core::WorldState& world) {
+    const std::uint64_t seed = world.world_seed;
+    if (core::HourFromTick(world.calendar.tick) != 2U || world.calendar.day == trace_day_) {
+      return;
+    }
+    trace_day_ = world.calendar.day;
+    const std::uint32_t year_index = world.calendar.day / core::kDaysPerYear;
+    std::map<std::uint32_t, std::uint32_t> hands;  // site id -> hands on it now
+    for (const core::ResidentRow& resident : world.residents.rows) {
+      if (resident.work.kind == core::WorkKind::kConstruction) {
+        ++hands[resident.work.unit.value];
+      }
+    }
+    for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+      const core::UnitRow& unit = world.units.rows[row];
+      if (unit.type.value != house_type_ ||
+          unit.construction.phase != core::ConstructionPhase::kBuilding) {
+        continue;
+      }
+      const std::uint32_t id = world.units.row_ids[row].value;
+      if (year_index < house_hands_.size()) {
+        house_hands_[year_index] += hands[id];
+      }
+    }
+    // Each day crew on a house site, by its picks.
+    std::map<std::uint32_t, std::vector<core::ResidentId>> picks;
+    for (const core::CrewPick& pick : world.day_orders.picks) {
+      picks[pick.crew.value].push_back(pick.resident);
+    }
+    for (const auto& [crew, residents] : picks) {
+      const std::uint32_t order_row = core::FindRow(world.orders, core::OrderId{crew});
+      if (order_row == core::kNoRow) {
+        continue;
+      }
+      const core::OrderRow& order = world.orders.rows[order_row];
+      const std::uint32_t site_row = core::FindRow(world.units, order.unit);
+      if (order.kind != core::OrderKind::kAssignCrew || site_row == core::kNoRow ||
+          world.units.rows[site_row].type.value != house_type_) {
+        continue;
+      }
+      std::uint32_t placed = 0;
+      std::uint32_t tired = 0;
+      std::uint32_t elsewhere = 0;
+      float walk = 0.0F;
+      for (const core::ResidentId resident_id : residents) {
+        const std::uint32_t r = core::FindRow(world.residents, resident_id);
+        if (r == core::kNoRow) {
+          continue;
+        }
+        const core::ResidentRow& resident = world.residents.rows[r];
+        if (resident.work.kind == core::WorkKind::kConstruction &&
+            resident.work.unit.value == order.unit.value) {
+          ++placed;
+          walk += resident.work.travel_hours > 0.0F ? resident.work.travel_hours : 0.0F;
+        } else if (resident.work.kind != core::WorkKind::kNone) {
+          ++elsewhere;
+        } else if (resident.rest <= kTiredRest) {
+          ++tired;
+        }
+      }
+      const std::uint32_t n = order.crew_size;
+      const std::uint32_t t = hands[order.unit.value];
+      const auto prev = hands_yesterday_.find(order.unit.value);
+      const std::uint32_t t_prev = prev == hands_yesterday_.end() ? 0U : prev->second;
+      std::cout << "population_curve: CREWTRACE1726 seed " << seed << " day " << world.calendar.day
+                << " site " << order.unit.value << " N " << n << " k " << placed << " T " << t
+                << " T_prev " << t_prev << " unplaced_tired " << tired << " picks_elsewhere "
+                << elsewhere << " unplaced_other "
+                << (residents.size() - placed - tired - elsewhere) << " walk_h "
+                << (placed > 0 ? walk / static_cast<float>(placed) : 0.0F) << '\n';
+      trace_.orders += 1;
+      trace_.n += n;
+      trace_.k += placed;
+      trace_.t += t;
+      trace_.t_prev += t_prev;
+      trace_.tired += tired;
+      trace_.elsewhere += elsewhere;
+    }
+    hands_yesterday_ = std::move(hands);
+  }
+
+  /// @brief The village's trace sums, and the house hands at hour 2 summed by year.
+  void PrintCrewTrace(std::ostream& out, std::uint64_t seed) const {
+    out << "population_curve: CREWTRACE1726S seed " << seed << " orders " << trace_.orders << " N "
+        << trace_.n << " k " << trace_.k << " T " << trace_.t << " T_prev " << trace_.t_prev
+        << " tired " << trace_.tired << " elsewhere " << trace_.elsewhere << " house_hands";
+    for (std::uint32_t index = 0; index < kSplitYears; ++index) {
+      out << (index == 0 ? " " : ":") << house_hands_[index];
+    }
+    out << '\n';
+  }
+
   /// @brief The year's (b) line: crews ordered and hands asked, y1-y16.
   void PrintHouseCrews(std::ostream& out, std::uint64_t seed) const {
     out << "population_curve: CREWS1726 seed " << seed << " deadline_opened "
@@ -260,6 +357,24 @@ class FallowPolicy {
   // accountant plans, so the fields take the hands that are left.
   bool house_crews_on_ = true;
   bool deadline_opened_ = false;
+  /// The trace's «tired»: at or under this rest a pick is not sent (labor.csv
+  /// rest_walkoff_threshold reads 10 in the shipped tables; the trace's own copy).
+  static constexpr float kTiredRest = 10.0F;
+
+  struct CrewTraceSums {
+    std::uint32_t orders = 0;
+    std::uint32_t n = 0;
+    std::uint32_t k = 0;
+    std::uint32_t t = 0;
+    std::uint32_t t_prev = 0;
+    std::uint32_t tired = 0;
+    std::uint32_t elsewhere = 0;
+  };
+
+  CrewTraceSums trace_;
+  core::SimDay trace_day_ = static_cast<core::SimDay>(-1);
+  std::map<std::uint32_t, std::uint32_t> hands_yesterday_;
+  std::array<std::uint32_t, 16> house_hands_{};
   std::array<std::uint32_t, 16> crew_orders_{};
   std::array<std::uint32_t, 16> crew_hands_{};
 
