@@ -488,7 +488,75 @@ class FallowPolicy {
     }
   }
 
+  // -- boss [26]: why idle teams are not given to the timber chain (TIMBER1726) -------------
+  /// The timber chain's jobs the morning left short (WorldState::crew_gaps, the plan's own
+  /// diagnosis), y4-y16 by month: by job (felling, stand carting, house/site supply) and by the
+  /// plan's reason; their hands placed; and the horses the morning plan left over.
+  enum TimberJob : std::uint8_t { kJobFelling = 0, kJobStand, kJobSupply, kTimberJobs };
+
+  std::array<std::array<std::array<std::uint32_t, 12>, 4>, kTimberJobs> timber_gaps_{};
+  std::array<std::array<std::uint32_t, 12>, kTimberJobs> timber_placed_{};
+  std::array<std::uint32_t, 12> horses_left_{};
+
+  void CountTimberGaps(const core::WorldState& world,
+                       std::uint32_t year_index,
+                       const std::set<std::uint32_t>& sites) {
+    const auto month = static_cast<std::uint32_t>(world.calendar.date.month);
+    if (year_index < 3 || year_index >= 16 || month >= 12) {
+      return;
+    }
+    if (world.morning_horses_left != core::kMorningHorsesUnknown) {
+      horses_left_[month] += world.morning_horses_left;
+    }
+    for (const core::CrewGapLine& gap : world.crew_gaps) {
+      TimberJob job = kTimberJobs;
+      if (gap.work == core::WorkKind::kFelling) {
+        job = kJobFelling;
+      } else if (gap.work == core::WorkKind::kHauling &&
+                 gap.stand.value != core::kInvalidEntityIdValue) {
+        job = kJobStand;
+      } else if (gap.work == core::WorkKind::kHauling && sites.contains(gap.unit.value)) {
+        job = kJobSupply;
+      }
+      if (job == kTimberJobs) {
+        continue;
+      }
+      const auto reason = static_cast<std::size_t>(gap.shortfall);
+      if (reason < 4) {
+        ++timber_gaps_[job][reason][month];
+      }
+      timber_placed_[job][month] += gap.placed;
+    }
+  }
+
  public:
+  /// @brief Boss [26]'s line: per timber job and the plan's reason (no_horse, crew_cap, no_hands,
+  ///        road), y4-y16 by month, the job-days left short; the hands placed on them; the
+  ///        horses the morning left.
+  void PrintTimberGaps(std::ostream& out, std::uint64_t seed) const {
+    static constexpr std::array<std::string_view, kTimberJobs> kJobs = {
+        "felling", "stand", "supply"};
+    static constexpr std::array<std::string_view, 4> kReasons = {
+        "no_horse", "crew_cap", "no_hands", "road"};
+    const auto months = [&out](const std::array<std::uint32_t, 12>& v) {
+      for (std::uint32_t m = 0; m < 12; ++m) {
+        out << (m == 0 ? " " : ":") << v[m];
+      }
+    };
+    out << "population_curve: TIMBER1726 seed " << seed;
+    for (std::size_t job = 0; job < kTimberJobs; ++job) {
+      for (std::size_t reason = 0; reason < 4; ++reason) {
+        out << ' ' << kJobs[job] << '_' << kReasons[reason];
+        months(timber_gaps_[job][reason]);
+      }
+      out << ' ' << kJobs[job] << "_placed";
+      months(timber_placed_[job]);
+    }
+    out << " horses_left";
+    months(horses_left_);
+    out << '\n';
+  }
+
   /// @brief Boss [24]'s line: horses by year (adults and foals, mean head; handed; bought), and
   ///        y4-y16 by month the horse-days ridden by use and the adults not ridden at hour 2.
   void PrintHorses(std::ostream& out, std::uint64_t seed) const {
@@ -567,7 +635,8 @@ class FallowPolicy {
       }
     }
     carters_yesterday_ = std::move(carters);
-    CountHorses(world, year_index, sites);  // boss [24]
+    CountHorses(world, year_index, sites);      // boss [24]
+    CountTimberGaps(world, year_index, sites);  // boss [26]
   }
 
  public:
