@@ -389,6 +389,37 @@ int CheckOverrideKeepsTheClerksJobs(core::ILaborSystem& labor) {
   return failures;
 }
 
+/// #1826 (the human 17 Nov, «Ваша рекомендация»): a STANDING order's man is out of the plan too.
+/// Three people, one cow's care and a standing kAssignWork sending row 1 - the rotation's first
+/// on day 31 - to the far field: planned without him, the barn keeps a hand.
+int CheckStandingKeepsTheClerksJobs(core::ILaborSystem& labor) {
+  int failures = 0;
+  Village village(3);
+  core::UnitRow barn;
+  barn.position = core::Vec2{.x = 5.0F, .y = 0.0F};
+  core::HerdRow cow;
+  cow.kind = core::LivestockKindId{1};
+  cow.unit = core::AppendRow(village.world.units, barn);
+  cow.adult_count = 1;
+  const core::HerdId herd = core::AppendRow(village.world.herds, cow);
+  core::OrderRow standing;
+  standing.kind = core::OrderKind::kAssignWork;
+  standing.work = core::WorkKind::kHarvest;
+  standing.field = village.far_field;
+  standing.resident = village.world.residents.row_ids[1];
+  village.Issue(standing);
+  village.RunDay(labor, kWednesday);
+  village.RunHours(labor, kWednesday + 1U, 0, 2);
+  std::uint32_t tending = 0;
+  for (const core::ResidentRow& resident : village.world.residents.rows) {
+    tending += resident.work.herd.value == herd.value ? 1U : 0U;
+  }
+  failures +=
+      Expect(village.Works(village.world.residents.row_ids[1], village.far_field) && tending == 1,
+             "standing order: its man works where ordered, and the barn keeps a hand");
+  return failures;
+}
+
 /// #1825: the preview of a draft crew and the herd's care by the accountant's norm. Two people
 /// and one cow: a draft crew of two takes both, so the barn loses the accountant's hand - the
 /// preview names it before any order is issued. The cow's care: its seam, one hand's expected
@@ -530,6 +561,7 @@ int CheckDayOrders() {
   failures += CheckSowingDeadline(*labor);
   failures += CheckOverrideKeepsTheClerksJobs(*labor);
   failures += CheckPreviewAndHerdCare(*labor);
+  failures += CheckStandingKeepsTheClerksJobs(*labor);
   failures += CheckNoAutoPlacement();
   failures += CheckOrderedHorses();
   return failures;

@@ -775,19 +775,15 @@ class LaborSystem final : public ILaborSystem {
     // herds short, and the top-ups refill only a job left with nobody - host's «clerk + gap-only»
     // run lost 213 t of 502 and failed 98 plans against 10. So a resident a day order will
     // actually send today (asked of the apply's own skips on a scratch copy) is out of the plan.
-    // The standing order keeps the design's «plan, then take him off» (delegation §7).
-    if (!candidates.empty()) {
-      std::vector<OrderedWork> day_works;
-      for (const OrderedWork& work : ordered) {
-        if (work.order->kind != OrderKind::kAssignWork) {
-          day_works.push_back(work);
-        }
-      }
-      if (!day_works.empty()) {
+    // AND THE STANDING ORDER'S MAN THE SAME WAY (#1826; the human 17 Nov, #2035, «Ваша
+    // рекомендация»): «plan, then take him off» (delegation §7) is withdrawn - his job was left
+    // short like a crew pick's.
+    if (!candidates.empty() && !ordered.empty()) {
+      {
         WorldState probe = current;
         ApplyOrderedWorks(probe,
                           probe,
-                          day_works,
+                          ordered,
                           IsDayOffIn(current, current.calendar.day),
                           config_.rest_walkoff_threshold);
         std::erase_if(candidates, [&](const AssignmentCandidate& candidate) {
@@ -940,12 +936,11 @@ class LaborSystem final : public ILaborSystem {
         book.reaping_today_hands = free_hands;
       }
     }
-    // AND THE CHAIRMAN OVERRULES THE ACCOUNTANT, last and without argument
-    // (delegation design §7, management by exception). It is done after the
-    // placement rather than by excluding these men from it, and the
-    // difference is the point: the accountant plans the day as if they were
-    // his, and one man is then taken off that plan. Nothing is revoked —
-    // "one overridden placement leaves the delegation as it was".
+    // AND THE CHAIRMAN'S ORDERS SEND THEIR PEOPLE, after the placement (delegation design §7,
+    // management by exception). Their people were left out of the plan above (#1811, #1826: the
+    // human's 17 Nov «Ваша рекомендация» withdrew «the accountant plans the day as if they were
+    // his, and one man is then taken off that plan» - the jobs they left stood short), so the
+    // accountant's jobs are filled from the people he has. Nothing is revoked.
     //
     // THE REST DAY IS SAID OUT LOUD HERE, and it used to be said by
     // accident. The chairman commands the work, not the calendar: a
