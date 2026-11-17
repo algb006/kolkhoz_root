@@ -1704,6 +1704,7 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"limit.points", U32(static_cast<std::uint32_t>(world.limit.points))});
   chunks.push_back({"limit.points_granted_total",
                     U32(static_cast<std::uint32_t>(world.limit.points_granted_total))});
+  AppendAmounts(chunks, "limit.seed_lot_bought", world.limit.seed_lot_bought);  // save 215
 
   chunks.push_back({"night_theft.stolen_this_month",
                     Little(static_cast<std::uint64_t>(world.night_theft.stolen_this_month), 8)});
