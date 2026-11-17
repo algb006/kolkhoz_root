@@ -407,6 +407,11 @@ constexpr float kHotAfternoonCelsius = 25.0F;
 /// (event_journal's header says the same of itself). This IS `AdvanceDays(1)`
 /// — the order of the chairman's day after it is untouched, and the
 /// population bands are the proof.
+///
+/// #1837's per-step count (fallow_harrow_tally.h, CountStep), set by each walk for its own
+/// village: thread_local, as the walks run on their own threads (WalkPages).
+thread_local run::FallowHarrowTally* t_fallow_harrow = nullptr;
+
 void LiveOneDay(core::ISimulation& simulation,
                 const run::UpgradePolicy& upgrades,
                 Trajectory& out,
@@ -432,6 +437,9 @@ void LiveOneDay(core::ISimulation& simulation,
     if (chairman != nullptr) {
       chairman->WatchStep(simulation.CompletedState());
       chairman->milkmaids.CountStep(simulation.CompletedState());  // #1417
+    }
+    if (t_fallow_harrow != nullptr) {
+      t_fallow_harrow->CountStep(simulation.CompletedState());  // #1837
     }
     // The step's births by kind (#1374's pair, herd_tally.h).
     if (herds != nullptr) {
@@ -968,7 +976,18 @@ bool Walk(std::uint64_t seed,
   run::FirstPlanTally first_plan(*world.tables);        // #1750
   run::MilkCutTally milk_cut(*world.tables);            // #1737 option 1, every run's door
   run::FallowHarrowTally fallow_harrow(*world.tables);  // #1837
-  run::LedgerTurnTally ledger_turn;                     // #1580
+  t_fallow_harrow = &fallow_harrow;                     // its per-step count, this walk's
+
+  // Cleared when this walk's tallies go: the side arms after it call LiveOneDay too.
+  struct ClearFallowHarrow {
+    ClearFallowHarrow() = default;
+    ClearFallowHarrow(const ClearFallowHarrow&) = delete;
+    ClearFallowHarrow& operator=(const ClearFallowHarrow&) = delete;
+
+    ~ClearFallowHarrow() { t_fallow_harrow = nullptr; }
+  } const clear_fallow_harrow;
+
+  run::LedgerTurnTally ledger_turn;  // #1580
   std::array<std::uint32_t, core::kRestSourceCount> r1373_sources = {};
   std::uint32_t r1373_walk_offs = 0;
   // What the farm's sites waited on, y1-y6 (#1285 G1's probe; boss [3]).

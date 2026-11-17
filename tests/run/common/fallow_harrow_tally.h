@@ -95,8 +95,32 @@ class FallowHarrowTally {
     }
   }
 
+  /// @brief Every step: a field whose phase went to harrowing AND on to sowing in the same step
+  ///        is a harrow the fresh-fallow rule skipped (#1837) - the day-end census cannot see one
+  ///        whose bare harrow ended the same day (boss 17 Nov: 38 «no skip» villages moved).
+  void CountStep(const core::WorldState& world) {
+    std::map<std::uint32_t, std::uint8_t> seen;  // field -> bit 1 harrowing, bit 2 sowing after it
+    for (const core::SimEvent& event : world.step_events) {
+      if (event.kind != core::EventKind::kFieldPhaseChanged) {
+        continue;
+      }
+      std::uint8_t& bits = seen[event.field.value];
+      if (event.amount == static_cast<std::int64_t>(core::FieldPhase::kHarrowing)) {
+        bits |= 1U;
+      } else if (event.amount == static_cast<std::int64_t>(core::FieldPhase::kSowing) &&
+                 (bits & 1U) != 0) {
+        bits |= 2U;
+      }
+    }
+    for (const auto& [field, bits] : seen) {
+      core_harrow_opens_ += (bits & 1U) != 0 ? 1U : 0U;
+      core_skips_ += (bits & 2U) != 0 ? 1U : 0U;
+    }
+  }
+
   void Print(std::ostream& out, std::uint64_t seed) const {
-    out << "population_curve: FALLOW1837 seed " << seed << " reharrows " << reharrows_
+    out << "population_curve: FALLOW1837 seed " << seed << " core_harrow_opens "
+        << core_harrow_opens_ << " core_skips " << core_skips_ << " reharrows " << reharrows_
         << " reharrow_days " << reharrow_days_ << " skipped " << skipped_ << " gaps";
     for (std::size_t index = 0; index < gaps_.size(); ++index) {
       out << (index == 0 ? " " : ":") << gaps_[index];
@@ -121,6 +145,8 @@ class FallowHarrowTally {
   std::vector<bool> winter_;
   std::vector<std::uint32_t> sow_to_;
   std::map<std::uint32_t, Seen> seen_;
+  std::uint32_t core_harrow_opens_ = 0;  ///< harrow phases opened, any field, any cause
+  std::uint32_t core_skips_ = 0;         ///< harrow opened and sowing opened in one step
   std::uint32_t reharrows_ = 0;
   double reharrow_days_ = 0.0;
   std::uint32_t skipped_ = 0;
