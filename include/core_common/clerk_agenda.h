@@ -41,6 +41,10 @@ struct ClerkAgendaLine {
   /// What stops this job TODAY, by today's real state (the day off, today's rain, the frost):
   /// the agenda itself plans the next working day as if dry (ClerkAgendaView::planned_for_day).
   WorkStop stopped_today = WorkStop::kNone;
+  /// WHY HIS PLAN LEFT IT SHORT (host's NDO trace, 17 Nov: 16 lines, hands on 3, 25 of 49 free
+  /// left idle - and «why» was a guess): the placement's own diagnosis - kNoHorse, kCrewCap,
+  /// kNoHands, kRoad - or kJobShortfallCount when the plan filled it.
+  JobShortfall short_by = JobShortfall::kJobShortfallCount;
 };
 
 /// @brief ISession::ClerkAgenda's answer: the accountant's whole morning on a copy of today, so

@@ -513,7 +513,9 @@ class LaborSystem final : public ILaborSystem {
     }
     AssignmentParams params = DayParams(morning);
     MeasureRoads(morning, jobs, candidates, params);
-    const std::vector<std::uint32_t> plan = PlanDayAssignments(jobs, candidates, params);
+    PlacementDiagnosis diagnosis;
+    const std::vector<std::uint32_t> plan =
+        PlanDayAssignments(jobs, candidates, params, nullptr, nullptr, &diagnosis);
     std::vector<std::uint16_t> hands(jobs.size(), 0);
     for (const std::uint32_t index : plan) {
       if (index < hands.size()) {
@@ -535,17 +537,21 @@ class LaborSystem final : public ILaborSystem {
                                      state.weather.air_temperature_celsius)) {
         stopped = WorkStop::kFrost;
       }
-      agenda.lines.push_back(ClerkAgendaLine{.work = job.kind,
-                                             .field = job.field,
-                                             .herd = job.herd,
-                                             .unit = job.unit,
-                                             .stand = job.stand,
-                                             .extraction_site = job.extraction_site,
-                                             .rank = static_cast<std::uint16_t>(rank),
-                                             .seam = job.work_days_remaining,
-                                             .hands = hands[order[rank]],
-                                             .overdue = job.window.kind == DeadlineKind::kOverdue,
-                                             .stopped_today = stopped});
+      agenda.lines.push_back(ClerkAgendaLine{
+          .work = job.kind,
+          .field = job.field,
+          .herd = job.herd,
+          .unit = job.unit,
+          .stand = job.stand,
+          .extraction_site = job.extraction_site,
+          .rank = static_cast<std::uint16_t>(rank),
+          .seam = job.work_days_remaining,
+          .hands = hands[order[rank]],
+          .overdue = job.window.kind == DeadlineKind::kOverdue,
+          .stopped_today = stopped,
+          .short_by = order[rank] < diagnosis.shortfall.size() && diagnosis.shortfall[order[rank]]
+                          ? *diagnosis.shortfall[order[rank]]
+                          : JobShortfall::kJobShortfallCount});
     }
     agenda.measured = true;
     return agenda;
