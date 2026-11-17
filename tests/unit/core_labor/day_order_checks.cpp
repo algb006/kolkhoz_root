@@ -632,6 +632,54 @@ int CheckOrderedHorses() {
   return failures;
 }
 
+/// #1839: THE BRIGADE CAPS THE SITE, ORDERED HANDS INCLUDED - a three-man site, a crew of two
+/// ordered on it, the accountant on: three stand on it, not five; with no order the accountant
+/// puts his three (the pair).
+int CheckTheBrigadeCapsOrderedHands() {
+  int failures = 0;
+  const auto labor = Labor(false);
+  if (Expect(labor != nullptr, "brigade cap: the labor system is made") != 0) {
+    return 1;
+  }
+  const auto on_site = [&](std::uint16_t ordered) {
+    Village village(8);
+    core::UnitRow site;
+    site.position = core::Vec2{.x = 5.0F, .y = 0.0F};
+    site.level = 0;
+    site.construction.phase = core::ConstructionPhase::kBuilding;
+    site.construction.labor_days_remaining = 30.0F;
+    site.construction.labor_days_total = 30.0F;
+    site.construction.max_crew = 3;
+    const core::UnitId id = core::AppendRow(village.world.units, site);
+    if (ordered > 0) {
+      core::OrderRow crew;
+      crew.kind = core::OrderKind::kAssignCrew;
+      crew.work = core::WorkKind::kConstruction;
+      crew.unit = id;
+      crew.crew_size = ordered;
+      village.Issue(crew);
+    }
+    village.RunDay(*labor, kWednesday);
+    village.RunHours(*labor, kWednesday + 1U, 0, 1);
+    std::uint32_t hands = 0;
+    for (const core::ResidentRow& resident : village.world.residents.rows) {
+      hands += resident.work.kind == core::WorkKind::kConstruction &&
+                       resident.work.unit.value == id.value
+                   ? 1U
+                   : 0U;
+    }
+    return hands;
+  };
+  const std::uint32_t with_order = on_site(2);
+  const std::uint32_t without = on_site(0);
+  std::cout << "  brigade cap: ordered 2 -> " << with_order << " on the site; no order -> "
+            << without << '\n';
+  failures += Expect(with_order == 3 && without == 3,
+                     "brigade cap: a crew of two on a three-man site leaves the accountant one, "
+                     "three in all (the pair: three without the order)");
+  return failures;
+}
+
 }  // namespace
 
 int CheckDayOrders() {
@@ -650,5 +698,6 @@ int CheckDayOrders() {
   failures += CheckStandingKeepsTheClerksJobs(*labor);
   failures += CheckNoAutoPlacement();
   failures += CheckOrderedHorses();
+  failures += CheckTheBrigadeCapsOrderedHands();  // #1839
   return failures;
 }

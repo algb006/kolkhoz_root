@@ -26,6 +26,7 @@
 #include <cmath>
 #include <cstdint>
 #include <limits>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -338,6 +339,36 @@ class LaborSystem final : public ILaborSystem {
   /// THE MORNING ON A COPY (#1825): the residents' day cleared, the barns refilled, the yards and
   /// the posts placed - StartDay's own steps before the accountant plans - so a read between
   /// steps plans what the next morning would, on today's state.
+  /// THE BRIGADE CAPS THE SITE, ORDERED HANDS INCLUDED (#1839; boss 17 Nov, core's #1726 trace):
+  /// the accountant's construction job set its cap to the site's max_crew and did not count the
+  /// hands the day's orders put there, so a crew of five and the accountant's own 4.6 stood on a
+  /// five-man site (T 9.6 at hour 2), and the hour's drain - which caps nothing itself - worked it
+  /// at twice its brigade while other sites went short. Each site's job keeps what its brigade
+  /// leaves after the orders' hands on `probe` (the morning's orders applied); a site the orders
+  /// fill is given no work today (its seam zeroed in the job, not on the site).
+  static void CapSitesNetOfOrders(const WorldState& probe, std::vector<AssignmentJob>& jobs) {
+    std::map<std::uint32_t, std::uint32_t> ordered;  // site id -> hands the orders put there
+    for (const ResidentRow& resident : probe.residents.rows) {
+      if (resident.work.kind == WorkKind::kConstruction) {
+        ++ordered[resident.work.unit.value];
+      }
+    }
+    for (AssignmentJob& job : jobs) {
+      if (job.kind != WorkKind::kConstruction || job.max_crew == 0) {
+        continue;
+      }
+      const auto found = ordered.find(job.unit.value);
+      if (found == ordered.end()) {
+        continue;
+      }
+      if (found->second >= job.max_crew) {
+        job.work_days_remaining = 0.0F;  // the brigade is full: nothing for the accountant
+      } else {
+        job.max_crew = static_cast<std::uint8_t>(job.max_crew - found->second);
+      }
+    }
+  }
+
   WorldState MorningCopy(const WorldState& state) const {
     WorldState morning = state;
     for (ResidentRow& resident : morning.residents.rows) {
@@ -853,7 +884,8 @@ class LaborSystem final : public ILaborSystem {
     // bare early returns that used to stand here skipped the standing
     // orders with it. work_orders.h promises the opposite: a standing order
     // whose target has no work today leaves its man IDLE, not unassigned.
-    const std::vector<AssignmentJob> jobs = CollectJobs(current);
+    // Not const: a site's brigade cap is taken net of the orders' hands below (#1839).
+    std::vector<AssignmentJob> jobs = CollectJobs(current);
     // WHY NOT PLACED (save 102; YearLedger::idle_person_days): the morning's
     // plan only, as the road's blocked job-days. Resting adults are counted
     // by the list itself; with no job at all, everybody on the list is idle
@@ -906,6 +938,7 @@ class LaborSystem final : public ILaborSystem {
           return probe.residents.rows[candidate.resident_row].work.kind != WorkKind::kNone &&
                  current.residents.rows[candidate.resident_row].work.kind == WorkKind::kNone;
         });
+        CapSitesNetOfOrders(probe, jobs);
       }
     }
     // THE DAY'S TRUANTS (#1568 link 1): booked on a working day as the
