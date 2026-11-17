@@ -68,7 +68,7 @@ class FallowHarrowTally {
             field.phase == core::FieldPhase::kHarrowing && field.work_days_remaining > 0.0F;
         if (reharrow) {
           ++reharrows_;
-          reharrow_days_ += field.work_days_remaining;
+          reharrow_days_ += static_cast<double>(field.work_days_remaining);
         } else {
           ++skipped_;
         }
@@ -82,7 +82,8 @@ class FallowHarrowTally {
       const bool sown_now = field.phase == core::FieldPhase::kGrowing && winter_crop &&
                             field.sown_day != core::kNeverSownDay;
       if (sown_now && !seen.sown) {
-        const double ha = static_cast<double>(field.area_ga) * field.sown_share;
+        const double ha =
+            static_cast<double>(field.area_ga) * static_cast<double>(field.sown_share);
         rye_sown_ha_ += ha;
         const auto month = static_cast<std::uint32_t>(core::DateFromDay(field.sown_day).month);
         if (field.crop.value < sow_to_.size() && month <= sow_to_[field.crop.value]) {
