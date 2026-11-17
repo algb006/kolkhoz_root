@@ -516,6 +516,8 @@ class LaborSystem final : public ILaborSystem {
     PlacementDiagnosis diagnosis;
     const std::vector<std::uint32_t> plan =
         PlanDayAssignments(jobs, candidates, params, nullptr, nullptr, &diagnosis);
+    agenda.horses_pool = params.draught_horses;
+    agenda.horses_left = diagnosis.horses_for_rides;
     std::vector<std::uint16_t> hands(jobs.size(), 0);
     for (const std::uint32_t index : plan) {
       if (index < hands.size()) {

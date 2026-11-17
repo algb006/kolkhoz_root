@@ -60,6 +60,12 @@ struct ClerkAgendaView {
   /// day after `measured_on_day` that is not a day off, planned as if dry - nobody knows its
   /// rain - and with today's temperature for the frost.
   SimDay planned_for_day = 0;
+  /// THE PLAN'S HORSES (host's NDO trace, 17 Nov: 16 adult horses, 12 on the plough, and the
+  /// next horse job read kNoHorse): the pool the plan started with (AssignmentParams::
+  /// draught_horses) and what it left after the queue (PlacementDiagnosis::horses_for_rides,
+  /// before the people's carts take theirs).
+  std::uint32_t horses_pool = 0;
+  std::uint32_t horses_left = 0;
   /// In rank order.
   std::vector<ClerkAgendaLine> lines;
 };
