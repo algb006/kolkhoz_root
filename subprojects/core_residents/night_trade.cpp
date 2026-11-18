@@ -23,6 +23,7 @@
 #include "core_residents/residents_system.h"
 #include "core_tables/tables.h"
 #include "family_exchange.h"
+#include "food_theft.h"
 
 namespace core {
 namespace {
@@ -730,6 +731,14 @@ Grams CarryOff(const NightTradeConfig& config,
     current.units.rows[unit_row].stock[raw.value] -= carried;
     taken += carried;
     AddLedgerAmount(current.ledger.current.stolen, raw, carried);
+    // #1883: the distillers' take on its own line, and IN THE STORE'S BOOK as
+    // link 2's theft is (food_theft.h, BookStoreLoss) - unaccounted loss the
+    // audit reads; «до приёмки» before the act. With link 2's switch off no
+    // book is kept, as before.
+    AddLedgerAmount(current.ledger.current.stolen_distillers, raw, carried);
+    if (config.book_on) {
+      BookStoreLoss(config.book_window_months, unit_row, raw, carried, current);
+    }
     if (first_store != nullptr && first_store->value == kInvalidEntityIdValue) {
       *first_store = current.units.row_ids[unit_row];
     }

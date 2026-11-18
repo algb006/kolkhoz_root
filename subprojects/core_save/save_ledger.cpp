@@ -214,9 +214,12 @@ constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
 // Save 211 (#1375, the spring flood): lost_to_flood, a 47th amounts vector, placed beside
 // lost_to_snow in the struct and written at the tail - predicted 1440 + 47 A and 168 fields
 // before the build; on the wire one amounts vector a book.
-static_assert(sizeof(YearLedger) == 1440 + (47 * kAmountsSize) + kBuiltInRowsSize,
+// Save 217 (#1883, the distillers' take apart): stolen_distillers, a 48th amounts vector
+// after stolen_before_acceptance - predicted 1440 + 48 A and 169 fields before the build; on
+// the wire one amounts vector a book.
+static_assert(sizeof(YearLedger) == 1440 + (48 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 168,
+static_assert(AggregateArity<YearLedger>() == 169,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(BuiltInRow) == 16 && AggregateArity<BuiltInRow>() == 3,
               "BuiltInRow changed — update its codec and VERSION_SAVE");
@@ -464,6 +467,7 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   // The crime links (#1568, save 207).
   sink.WriteAmounts(DefKind::kResource, book.written_off);
   sink.WriteAmounts(DefKind::kResource, book.stolen_before_acceptance);  // #1568 (a)
+  sink.WriteAmounts(DefKind::kResource, book.stolen_distillers);         // save 217 (#1883)
   out.WriteU32(book.truant_man_days);
   out.WriteU32(book.audits);
   out.WriteU32(book.audit_remarks);
@@ -774,6 +778,7 @@ YearLedger ReadYearLedger(LoadSource& source) {
   // The crime links (#1568, save 207).
   book.written_off = source.ReadAmounts(DefKind::kResource);
   book.stolen_before_acceptance = source.ReadAmounts(DefKind::kResource);  // #1568 (a)
+  book.stolen_distillers = source.ReadAmounts(DefKind::kResource);         // save 217 (#1883)
   book.truant_man_days = in.ReadU32();
   book.audits = in.ReadU32();
   book.audit_remarks = in.ReadU32();

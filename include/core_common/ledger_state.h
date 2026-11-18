@@ -1045,6 +1045,13 @@ struct YearLedger {
   /// the former management's loss, «до приёмки», never audited.
   ResourceAmounts stolen_before_acceptance;
 
+  /// THE DISTILLERS' TAKE (#1883; crime.md «Утечка сырья в ядре Эпохи I»,
+  /// row «Книга»: «Отдельная строка «унесено» по ресурсам»), by resource: the
+  /// raw material link 1 carried off the stores. Inside `stolen`, which stays
+  /// both links' sum; `stolen` less this is link 2's. Written whatever the
+  /// switches (the night trade's own take). SAVED (save 217).
+  ResourceAmounts stolen_distillers;
+
   /// Man-days a placed drinker did not come out (link 1, truancy).
   std::uint32_t truant_man_days = 0;
 

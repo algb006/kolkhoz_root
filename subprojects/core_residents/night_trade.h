@@ -66,6 +66,12 @@ struct FoodConfig;
 /// (tables/night_fishing_spots.csv). Defaults are boss's figures of parcel
 /// 346, kept for a world with no tables; with no spots nobody nets.
 struct NightTradeConfig {
+  /// The store book (#1883): whether link 2's book is kept
+  /// (`crime_food_theft_on`) and its window's length (`audit_window_months`) -
+  /// copied from FoodTheftConfig at the assembly (life_config.cpp), so the
+  /// distillers' take is booked as link 2's theft is.
+  bool book_on = false;
+  std::uint32_t book_window_months = 24;
   std::uint32_t distillers_max = 2;        ///< `night_distillers_max`
   float fisher_age_from_years = 18.0F;     ///< `night_fisher_age_from_years`
   float fisher_age_to_years = 50.0F;       ///< `night_fisher_age_to_years`

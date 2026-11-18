@@ -3852,6 +3852,18 @@ int CheckRawMaterialLeak() {
       "recipe: the sugar carried is said once — who, how much, from which store");
   failures += Expect(complaints_said() == 0 && world.night_theft.complaint_raised == 0,
                      "leak: 40 kg in the month raises no complaint");
+  // THE DISTILLERS' LINE AND THE STORE'S BOOK (#1883): the 40 kg on their own
+  // line; with the book off (this config's default) no store book is touched.
+  failures +=
+      Expect(world.ledger.current.stolen_distillers.size() == 2 &&
+                 world.ledger.current.stolen_distillers[0] == 30 * kKilo &&
+                 world.ledger.current.stolen_distillers[1] == 10 * kKilo &&
+                 std::ranges::all_of(world.units.rows,
+                                     [](const core::UnitRow& unit) {
+                                       return unit.book_gap.empty() && unit.book_window.empty();
+                                     }) &&
+                 world.ledger.current.stolen_before_acceptance.empty(),
+             "book: the take is on stolen_distillers; with the book off nothing else");
 
   // A DRINKING WATCHMAN IS AS GOOD AS NONE, and a drinking storekeeper opens a
   // store whatever the watchman: the leak is closed only by a sober pair.

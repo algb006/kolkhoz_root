@@ -133,6 +133,34 @@ Grams RecordedFood(const FoodTheftConfig& config, const UnitRow& unit) {
 /// Takes up to `grams` of link 2's food off `unit`'s real stock, kind by kind,
 /// into its book's gap and the year's `stolen`, one kFoodStolen a kind.
 /// @return The grams taken.
+}  // namespace
+
+void BookStoreLoss(std::uint32_t window_months,
+                   std::uint32_t unit_row,
+                   ResourceId resource,
+                   Grams grams,
+                   WorldState& current) {
+  if (grams <= 0) {
+    return;
+  }
+  // BEFORE THE ACT IT IS THE FORMER MANAGEMENT'S (#1568 (a)): «до приёмки»,
+  // in its own line and never in the book.
+  if (current.audit.books_accepted == 0) {
+    AddLedgerAmount(current.ledger.current.stolen_before_acceptance, resource, grams);
+    // And by month, for the store report's «до приёмки» line (#1881).
+    RollBeforeAcceptance(current.audit, MonthTag(current.calendar.day));
+    AddAmount(current.audit.before_acceptance_this_month, resource, grams);
+    return;
+  }
+  UnitRow& unit = current.units.rows[unit_row];
+  AddAmount(unit.book_gap, resource, grams);
+  FoodTheftConfig window;
+  window.window_months = window_months;
+  AddAmount(WindowMonth(window, unit, MonthTag(current.calendar.day)).lost, resource, grams);
+}
+
+namespace {
+
 Grams TakeFood(const FoodTheftConfig& config,
                std::uint32_t unit_row,
                ResidentId thief,
@@ -152,17 +180,7 @@ Grams TakeFood(const FoodTheftConfig& config,
     }
     AddAmount(unit.stock, food, -take);
     AddLedgerAmount(current.ledger.current.stolen, food, take);
-    // BEFORE THE ACT IT IS THE FORMER MANAGEMENT'S (#1568 (a)): «до приёмки»,
-    // in its own line and never in the book.
-    if (current.audit.books_accepted == 0) {
-      AddLedgerAmount(current.ledger.current.stolen_before_acceptance, food, take);
-      // And by month, for the store report's «до приёмки» line (#1881).
-      RollBeforeAcceptance(current.audit, MonthTag(current.calendar.day));
-      AddAmount(current.audit.before_acceptance_this_month, food, take);
-    } else {
-      AddAmount(unit.book_gap, food, take);
-      AddAmount(WindowMonth(config, unit, MonthTag(current.calendar.day)).lost, food, take);
-    }
+    BookStoreLoss(config.window_months, unit_row, food, take, current);
     SimEvent& stolen = EmitEvent(current, EventKind::kFoodStolen, EventSeverity::kNotable);
     stolen.resident = thief;
     stolen.unit = current.units.row_ids[unit_row];

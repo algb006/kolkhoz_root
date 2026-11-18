@@ -128,6 +128,20 @@ void RunFoodTheft(const FoodTheftConfig& config,
 /// read, and fell out of both (17 of 448 village-years of round 2's arms).
 inline constexpr std::uint32_t kStoreAuditHour = 1;
 
+/// @brief BOOKS ONE STORE'S UNBOOKED LOSS - the one home of both links' book
+///        lines (#1883; boss-core-econ-link1-book [4]): before the act of
+///        acceptance the ledger's «до приёмки» and its monthly pair (#1881),
+///        never the store's book; after it the store's book_gap and its book
+///        window's month `lost`, which the audit reads. Link 2's TakeFood and
+///        link 1's distillers' CarryOff (night_trade.cpp) both call it, so the
+///        two links cannot book apart again. The caller books `stolen` itself.
+/// @param window_months The book window's length (`audit_window_months`).
+void BookStoreLoss(std::uint32_t window_months,
+                   std::uint32_t unit_row,
+                   ResourceId resource,
+                   Grams grams,
+                   WorldState& current);
+
 /// @brief The district's audit (2d): draws each year-half's day, and on it
 /// reads every store's book and raises its verdict. Call once a step; acts
 /// at kStoreAuditHour only, and not at all with `config.on` false.

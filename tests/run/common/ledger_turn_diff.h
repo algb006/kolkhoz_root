@@ -308,6 +308,7 @@ inline std::vector<std::string> LedgerTurnDiff(const core::YearLedger& before,
                 after.stolen_before_acceptance,
                 "stolen_before_acceptance",
                 changed);
+  NoteIfChanged(before.stolen_distillers, after.stolen_distillers, "stolen_distillers", changed);
   NoteIfChanged(before.truant_man_days, after.truant_man_days, "truant_man_days", changed);
   NoteIfChanged(before.audits, after.audits, "audits", changed);
   NoteIfChanged(before.audit_remarks, after.audit_remarks, "audit_remarks", changed);

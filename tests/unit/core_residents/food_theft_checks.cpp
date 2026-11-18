@@ -347,5 +347,36 @@ int CheckFoodTheft() {
                      "write-off: the 1 t booked as written off");
   failures +=
       Expect(audited.chairman.raikom_reputation < before, "write-off: the district is paid");
+
+  // THE ONE BOOK HOME OF BOTH LINKS (#1883; BookStoreLoss): after the act a
+  // loss goes to the store's gap and its window's month; before it, to the
+  // ledger's «до приёмки» and the monthly pair, and no store's book.
+  {
+    core::WorldState accepted = Village(45.0F, false);
+    accepted.audit.books_accepted = 1;
+    accepted.units.rows[0].book_gap.clear();
+    accepted.units.rows[0].book_window.clear();
+    core::BookStoreLoss(24, 0, kRye, 5 * core::kGramsPerKilogram, accepted);
+    const std::uint32_t month = accepted.calendar.day / core::kDaysPerMonth;
+    const core::UnitRow& store = accepted.units.rows[0];
+    failures += Expect(core::AmountOf(store.book_gap, kRye) == 5 * core::kGramsPerKilogram &&
+                           store.book_window.size() == 24 &&
+                           core::AmountOf(store.book_window[month % 24].lost, kRye) ==
+                               5 * core::kGramsPerKilogram &&
+                           accepted.ledger.current.stolen_before_acceptance.empty(),
+                       "book: after the act a loss is the store's gap and its month's `lost`");
+    core::WorldState former = Village(45.0F, false);
+    former.audit.books_accepted = 0;
+    former.units.rows[0].book_gap.clear();
+    former.units.rows[0].book_window.clear();
+    core::BookStoreLoss(24, 0, kRye, 5 * core::kGramsPerKilogram, former);
+    failures += Expect(
+        former.units.rows[0].book_gap.empty() && former.units.rows[0].book_window.empty() &&
+            core::AmountOf(former.ledger.current.stolen_before_acceptance, kRye) ==
+                5 * core::kGramsPerKilogram &&
+            core::AmountOf(former.audit.before_acceptance_this_month, kRye) ==
+                5 * core::kGramsPerKilogram,
+        "book: before the act it is «до приёмки» and its month's pair, never the store's book");
+  }
   return failures;
 }
