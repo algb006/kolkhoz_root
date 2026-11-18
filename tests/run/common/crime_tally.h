@@ -161,6 +161,22 @@ class CrimeTally {
         // guardable position) - an audit after the trial is due says none.
         shortages_ += (shortages_.empty() ? "" : ",") + std::to_string(event.amount);
         audits_ge100_ += event.amount >= 100 ? 1U : 0U;  // lever (a)'s ceiling (econ [13])
+        // W6 (econ [16]): at the first trial, how many months of the tried
+        // store's window carry a loss - one means a single bad month hanged him.
+        if (event.kind == core::EventKind::kAuditTrialDue && !trial_window_months_) {
+          const std::uint32_t row = core::FindRow(world.units, event.unit);
+          std::uint32_t months = 0;
+          if (row != core::kNoRow) {
+            for (const core::BookMonth& slot : world.units.rows[row].book_window) {
+              bool any = false;
+              for (const core::Grams grams : slot.lost) {
+                any = any || grams > 0;
+              }
+              months += any ? 1U : 0U;
+            }
+          }
+          trial_window_months_ = months;
+        }
       }
       if (event.kind == core::EventKind::kAuditUnguardedLeak) {
         ++unguarded_leaks_;  // round 2 (R2): the lever line's count a year
@@ -261,6 +277,8 @@ class CrimeTally {
         << " alcohol_gain_with_distiller "
         << (distiller_raiser_ < 0.0F ? std::string("NOT IN THE TABLES")
                                      : std::to_string(distiller_raiser_))
+        << " trial_window_loss_months "
+        << (trial_window_months_ ? std::to_string(*trial_window_months_) : std::string("none"))
         << " first_withdrawal_refused_year "
         << (first_refusal_year_ ? std::to_string(*first_refusal_year_) : std::string("none"))
         << " first_audit_trial_due_year "
@@ -476,6 +494,7 @@ class CrimeTally {
   std::uint32_t write_offs_ = 0;
   std::uint32_t withdrawals_refused_ = 0;
   std::optional<std::uint32_t> first_refusal_year_;
+  std::optional<std::uint32_t> trial_window_months_;  ///< W6: the first trial's loss months.
   core::Grams written_seen_ = 0;
   std::uint8_t remarked_seen_ = 0;
   /// Audit events by the 0-based year of their day (AUDITS_UNBOOKED's count).

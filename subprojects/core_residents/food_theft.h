@@ -82,6 +82,9 @@ struct FoodTheftConfig {
   /// `audit_write_off_once_per_window` (econ's lever (a), measured behind it;
   /// default off): a write-off withdraws the remark once per audit window.
   bool write_off_once_per_window = false;
+  /// `audit_write_off_keeps_window` (econ's (a′), measured behind it; default
+  /// off): a write-off sets the book but leaves the window's losses standing.
+  bool write_off_keeps_window = false;
   /// ROUND 2 (econ's crime-separation-2-2026-11-07.md, boss 7 Nov; crime.md
   /// §1 p. 6). Each default is round 1's rule; the tables' rows turn it on.
   /// R1: the act's campaign year, 0-based (`audit_book_opens_year`, human

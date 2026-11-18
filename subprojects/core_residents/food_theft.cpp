@@ -23,7 +23,7 @@ namespace core {
 namespace {
 
 /// The world_params keys link 2 reads, in ParseFoodTheftConfig's order.
-constexpr std::array<std::string_view, 19> kFoodTheftWorldParamKeys = {
+constexpr std::array<std::string_view, 20> kFoodTheftWorldParamKeys = {
     "crime_food_theft_on",
     "food_theft_from_alcoholism",
     "food_theft_kg_per_thief_month",
@@ -44,7 +44,10 @@ constexpr std::array<std::string_view, 19> kFoodTheftWorldParamKeys = {
     "audit_trial_after_act_months",
     // econ's lever (a) of boss-core-econ-link1-book [9] (boss [10]: measure,
     // not adopt): 1 - a write-off withdraws the remark once per audit window.
-    "audit_write_off_once_per_window"};
+    "audit_write_off_once_per_window",
+    // econ's (a′) (boss [17]: measured with (a)): 1 - a write-off leaves the
+    // window's losses for the audit.
+    "audit_write_off_keeps_window"};
 
 /// The food a thief takes for his table, in this order (crime §7: grain and
 /// potato, not only sugar).
@@ -223,6 +226,7 @@ bool ParseFoodTheftConfig(const ITableSet& tables, FoodTheftConfig& config, std:
     auto guarded_only = config.guarded_stores_only ? 1.0F : 0.0F;
     auto after_act = static_cast<float>(config.trial_after_act_months);
     auto once_per_window = config.write_off_once_per_window ? 1.0F : 0.0F;
+    auto keeps_window = config.write_off_keeps_window ? 1.0F : 0.0F;
     const Range share{.low = 0.0F, .high = 1.0F};
     const Range alcoholism{.low = 0.0F, .high = 60.0F};
     const Range reputation{.low = -100.0F, .high = 0.0F};
@@ -274,11 +278,13 @@ bool ParseFoodTheftConfig(const ITableSet& tables, FoodTheftConfig& config, std:
          .value = &after_act,
          .range = {.low = 0.0F, .high = 1200.0F}},
         {.key = kFoodTheftWorldParamKeys[18], .value = &once_per_window, .range = share},
+        {.key = kFoodTheftWorldParamKeys[19], .value = &keeps_window, .range = share},
     }};
     if (!ReadKnobs(*world, "world_params", knobs, error)) {
       return false;
     }
     config.write_off_once_per_window = once_per_window >= 0.5F;
+    config.write_off_keeps_window = keeps_window >= 0.5F;
     config.book_opens_year = static_cast<std::uint32_t>(opens_year) - 1U;
     config.guarded_stores_only = guarded_only >= 0.5F;
     config.trial_after_act_months = static_cast<std::uint32_t>(after_act);
@@ -604,8 +610,13 @@ void TakeWriteOffOrders(const FoodTheftConfig& config, WorldState& current) {
                           unit.book_gap[resource]);
         }
         unit.book_gap.clear();
-        for (BookMonth& slot : unit.book_window) {
-          slot.lost.clear();  // the window's losses cleared (#1568 (b))
+        // THE DISTRICT REMEMBERS (econ's (a′), behind its switch; boss [17]:
+        // measured): the losses stay in the window for its months, readable to
+        // the audit. Off: cleared as before (#1568 (b)).
+        if (!config.write_off_keeps_window) {
+          for (BookMonth& slot : unit.book_window) {
+            slot.lost.clear();
+          }
         }
         // ONCE PER AUDIT WINDOW, behind its switch (econ's lever (a); boss
         // [10]: measured before any word): a write-off inside the window of
