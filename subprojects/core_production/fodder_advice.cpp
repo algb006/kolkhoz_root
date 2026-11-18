@@ -124,6 +124,9 @@ FeedPurchase LeastClosingPurchase(const ProductionConfig& config,
 void NameTheFeedBought(const ProductionConfig& config,
                        const FeedPurchase& purchase,
                        FodderAdvice& advice) {
+  // THE PRICE OF THE PURCHASE NAMED (#1880): whole lots, the points the door
+  // takes for them - the line's «за {cost} б. лимита».
+  advice.advice_points = purchase.points;
   float most_units = 0.0F;
   for (std::size_t resource = 0; resource < purchase.goods_kg.size(); ++resource) {
     const float units = purchase.goods_kg[resource] * config.feed_values[resource];
@@ -635,6 +638,7 @@ void CollectHerdForecastAlarms(const ProductionConfig& config,
   alarm.advice = advice.advice;
   alarm.advice_resource = advice.advice_resource;
   alarm.advice_amount = advice.advice_amount;
+  alarm.advice_points = advice.advice == AlarmAdvice::kBuyFeed ? advice.advice_points : 0;
   alarm.advice_unit_type = advice.advice_unit_type;
   alarm.advice_more = advice.advice_more;
   alarm.amount_more = advice.amount_more;

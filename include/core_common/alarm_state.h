@@ -1192,6 +1192,14 @@ struct Alarm {
   ResourceId advice_resource;
   std::int64_t advice_amount = 0;
 
+  /// kHerdHayShortAhead with `advice` kBuyFeed (#1880; game's #1638): THE
+  /// PRICE OF THE PURCHASE NAMED, the year's limit points the lot's door takes
+  /// for it today - whole lots, as `advice_amount` names them, no pro-rating
+  /// («купить корм по лимиту: {tonnes} т за {cost} б. лимита»). 0 for every
+  /// other advice and kind.
+  /// @note Not in the save, as `lamp`.
+  std::int32_t advice_points = 0;
+
   /// kHerdHayShortAhead with `advice` kGranaryForFeed: THE UNIT TYPE TO BUILD
   /// (0.37.239; boss, 13 Oct 2026, ruling (b) on #715's guard) — the feed's
   /// store, or THE TYPE THAT STORE IS A MODULE OF while none of it stands

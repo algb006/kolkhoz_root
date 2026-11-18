@@ -1674,9 +1674,16 @@ int CheckTheForecastAdvice() {
                    rich.advice_more == core::AlarmAdvice::kNone,
                "forecast advice: points for three lots and one is enough - ONE lot is "
                "named, forty kilograms, not the hundred and twenty the points cover");
+    // THE PRICE OF WHAT IS NAMED (#1880): the one lot's 10 points, not the 30
+    // there are - the line's «за {cost} б. лимита».
+    failures += Expect(alarm.advice_points == 10 && rich.advice_points == 10,
+                       "forecast advice: the purchase's price is the named lot's 10 points, "
+                       "whatever the year's points");
     // The points spent: the lot is no move, and the heads are.
     world.limit.points = 0;
     const core::Alarm broke = lamp(world);
+    failures += Expect(broke.advice_points == 0,
+                       "forecast advice: no purchase named, no price (advice_points 0)");
     failures += Expect(broke.advice == core::AlarmAdvice::kNone && broke.amount == 4 &&
                            broke.hand_over_stock == 0 && broke.below_floor_stock == 1 &&
                            broke.below_floor_after_feed == 0 &&

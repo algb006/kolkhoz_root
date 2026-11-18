@@ -428,6 +428,9 @@ struct FodderAdvice {
   AlarmAdvice advice = AlarmAdvice::kNone;
   ResourceId advice_resource;
   std::int64_t advice_amount = 0;
+  /// With kBuyFeed: the points the door takes for the purchase named
+  /// (Alarm::advice_points; #1880).
+  std::int32_t advice_points = 0;
   /// With kGranaryForFeed: the unit type to build (Alarm::advice_unit_type).
   UnitTypeId advice_unit_type;
   AlarmAdvice advice_more = AlarmAdvice::kNone;
