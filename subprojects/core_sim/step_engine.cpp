@@ -301,6 +301,8 @@ class StepEngine final : public ISimulation {
 
   ForestFactsView ForestFactsToday() const override { return {}; }
 
+  FloodLossesView FloodLossesThisYearToday() const override { return {}; }
+
   /// No subsystems, so no works and no carts: nothing to cart.
   SupplyEstimate SupplyEstimateFor(UnitId /*unit*/) const override { return {}; }
 

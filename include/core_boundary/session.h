@@ -143,6 +143,7 @@
 #include "core_common/day_orders.h"
 #include "core_common/elder_view.h"
 #include "core_common/event_state.h"
+#include "core_common/flood_losses_view.h"
 #include "core_common/forest_facts_view.h"
 #include "core_common/geometry.h"
 #include "core_common/herd_plan_view.h"
@@ -1094,6 +1095,13 @@ class ISession {
   ///        species, area and day. No old, dead or fallen trees: the core has none (STUB).
   /// @note Between steps; the answer describes State().
   virtual ForestFactsView ForestFacts() const = 0;
+
+  /// @brief What this spring's flood took (ISimulation::FloodLossesThisYearToday;
+  ///        core_common/flood_losses_view.h; #1894, look's «flood-loss» remains): each rick,
+  ///        stack or barn whose hay and straw it zeroed and each floodplain meadow whose reaped
+  ///        heap it took this calendar year, with its place. No day: «this spring».
+  /// @note Between steps; the answer describes State().
+  virtual FloodLossesView FloodLossesThisYear() const = 0;
 
   /// @brief The pieces a drag along a laid road selects for `operation`,
   ///        snapped to whole pieces, each in or out and why, and the

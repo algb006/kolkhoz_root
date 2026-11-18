@@ -146,5 +146,10 @@ int CheckTheIceDoor() {
   std::cout << "forest facts: " << forest.stands.size() << " stands, " << stock << " m3\n";
   failures += Expect(forest.measured && !forest.stands.empty() && stock > 0.0F,
                      "forest facts: measured, the start's stands with their timber");
+  // THE FLOOD'S LOSSES (#1894): year 1 has no flood (it comes from year 2), so
+  // the start's answer is measured and empty, of year 1.
+  const core::FloodLossesView flood = simulation->FloodLossesThisYearToday();
+  failures += Expect(flood.measured && flood.year == 1 && flood.losses.empty(),
+                     "flood losses: measured, year 1, nothing lost before any flood");
   return failures;
 }
