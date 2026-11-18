@@ -133,6 +133,11 @@ struct AuditState {
   /// audited. Written by food_theft.cpp beside the ledger's line. SAVED (save
   /// 217).
   std::uint32_t before_acceptance_month = 0;
+
+  /// The absolute day a write-off last withdrew a standing remark (econ's lever
+  /// (a), behind `audit_write_off_once_per_window`); 0 = never. Written whatever
+  /// the switch. SAVED (save 218).
+  std::uint32_t remark_withdrawn_day = 0;
   ResourceAmounts before_acceptance_this_month;
   ResourceAmounts before_acceptance_last_month;
 };

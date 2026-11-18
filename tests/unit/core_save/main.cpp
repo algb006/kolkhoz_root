@@ -1730,6 +1730,7 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
       chunks, "audit.before_acceptance_this_month", world.audit.before_acceptance_this_month);
   AppendAmounts(
       chunks, "audit.before_acceptance_last_month", world.audit.before_acceptance_last_month);
+  chunks.push_back({"audit.remark_withdrawn_day", U32(world.audit.remark_withdrawn_day)});
   // The salt watch (#1630 (C), save 209).
   chunks.push_back({"salt.half_on_edge_days", U16(world.salt.half_on_edge_days)});
   chunks.push_back({"salt.ending_raised", U8(world.salt.ending_raised)});

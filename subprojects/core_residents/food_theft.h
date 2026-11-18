@@ -79,6 +79,9 @@ struct FoodTheftConfig {
   float min_receipts_t = 2.0F;            ///< `audit_min_receipts_t`
   float audit_remark_reputation = -5.0F;  ///< `audit_remark_reputation`
   float write_off_reputation = -10.0F;    ///< `write_off_reputation`
+  /// `audit_write_off_once_per_window` (econ's lever (a), measured behind it;
+  /// default off): a write-off withdraws the remark once per audit window.
+  bool write_off_once_per_window = false;
   /// ROUND 2 (econ's crime-separation-2-2026-11-07.md, boss 7 Nov; crime.md
   /// §1 p. 6). Each default is round 1's rule; the tables' rows turn it on.
   /// R1: the act's campaign year, 0-based (`audit_book_opens_year`, human
