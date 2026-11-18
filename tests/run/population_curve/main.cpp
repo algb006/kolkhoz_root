@@ -39,6 +39,7 @@
 #include "../common/accepted_reds.h"
 #include "../common/advance_write_off_tally.h"
 #include "../common/avatar_book_tally.h"
+#include "../common/ban_refusal_tally.h"
 #include "../common/births_herd_tally.h"
 #include "../common/building_chairman.h"
 #include "../common/crime_tally.h"
@@ -959,6 +960,7 @@ bool Walk(std::uint64_t seed,
   run::HerdTally herds(*world.tables);
   // Crime left unfought - the endings' triggers and drink's price (#1566).
   run::CrimeTally crime(*world.tables, seed);
+  run::BanRefusalTally bans(*world.tables);  // #1788: the bot's sites the bans refuse
   // #1630 (B): the salt a village-year, the steps, the bot's lots.
   run::SaltTally salt(*world.tables, seed);
   // Every cow handed y2-y3: the door, the forecast, came true (#1570, boss [32]).
@@ -1111,6 +1113,7 @@ bool Walk(std::uint64_t seed,
       herds.CountDayEnd(simulation->CompletedState());
       herds.CountNearShort(*simulation);
       crime.CountDay(simulation->CompletedState());
+      bans.CountDay(simulation->CompletedState());
       salt.CountDayEnd(*simulation, builder.limit.SaltRule());
       hand_overs.CountDay(simulation->CompletedState(),
                           builder.limit.HayHandLogs(),
@@ -1648,6 +1651,7 @@ bool Walk(std::uint64_t seed,
       funerals.Print(std::cout, seed);
       herds.Print(std::cout, seed);
       crime.Print(std::cout, seed);
+      bans.Print(std::cout, seed);                          // #1788
       salt.Print(std::cout);                                // #1630 (B)
       builder.smokehouse.Print(std::cout, seed);            // #1644
       builder.hay_arm.Print(std::cout, seed);               // #307
