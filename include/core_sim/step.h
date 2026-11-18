@@ -514,7 +514,7 @@ class ISimulation {
   virtual ClerkAgendaView ClerkAgendaToday() const = 0;
 
   /// @brief The ice at `point` today (ice_view.h; #1859). The bare engine answers `measured`
-  ///        false. STUB until #1859's body: every implementation answers `measured` false.
+  ///        false; the standard simulation measures it (ice_water.h, StillIceCmOn).
   /// @note Called between steps on the sim thread. A pure read.
   virtual IceView IceAtToday(Vec2 point) const = 0;
 

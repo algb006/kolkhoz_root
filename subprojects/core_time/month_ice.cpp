@@ -16,49 +16,37 @@
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 #include "core_time/month_climate.h"
+#include "ice_winter.h"
 #include "season_tables.h"
 #include "weather_of_day.h"
 
 namespace core {
 namespace {
 
-constexpr std::array<std::string_view, 2> kIceWorldParamKeys = {"ice_freeze_full_degree_days",
-                                                                "ice_thaw_full_degree_days"};
+// The month door's two fulls, then #1859's six (boss, design.db world_param
+// sort 380-385, all STUB): the live ice's growth, the currents, the inflow's
+// disc and the band.
+constexpr std::array<std::string_view, 8> kIceWorldParamKeys = {"ice_freeze_full_degree_days",
+                                                                "ice_thaw_full_degree_days",
+                                                                "ice_growth_alpha",
+                                                                "ice_current_backwater",
+                                                                "ice_current_river",
+                                                                "ice_inflow_disc_m",
+                                                                "ice_safe_cm",
+                                                                "ice_deadly_cm"};
+
+/// The ranges #1859's keys are read in: a share of the still ice, metres,
+/// centimetres; alpha in cm/√(°C·day).
+constexpr Range kIceAlpha{.low = 0.1F, .high = 10.0F};
+constexpr Range kIceShare{.low = 0.0F, .high = 1.0F};
+constexpr Range kIceDiscMetres{.low = 0.0F, .high = 500.0F};
+constexpr Range kIceCentimetres{.low = 0.0F, .high = 100.0F};
 
 /// The design base's min_ok..max_ok of both rows.
 constexpr Range kFullDegreeDays{.low = 1.0F, .high = 500.0F};
 
-/// The two sums of one winter and what they make of the ice.
-struct IceWinter {
-  float frost_degree_days = 0.0F;
-  float thaw_degree_days = 0.0F;
-
-  /// A snow cover has lain this winter: from then on a warm bare day opens
-  /// the ice (the spring), before it one melts back what has just set.
-  bool snow_has_lain = false;
-};
-
-/// One day of the rule (month_ice.h): frost below nought; above it, before
-/// the winter's first snow the young ice melts back, and after the snow has
-/// lain and gone the thaw opens it; a fresh winter the day the thaw is whole.
-///
-/// THE AUTUMN'S WARM DAY IS NOT THE SPRING (found by this door's own test,
-/// 2026-09-25): counted as thaw, the snowless warm days of November had the
-/// rivers «opened» by a seventh in January.
-void AdvanceIce(IceWinter& winter, const WeatherState& today, float thaw_full) {
-  const float mean = today.air_temperature_celsius;
-  winter.snow_has_lain = winter.snow_has_lain || today.snow_cover_days > 0;
-  if (mean < 0.0F) {
-    winter.frost_degree_days -= mean;
-  } else if (mean > 0.0F && !winter.snow_has_lain) {
-    winter.frost_degree_days = std::max(0.0F, winter.frost_degree_days - mean);
-  } else if (mean > 0.0F && today.snow_cover_days == 0 && winter.frost_degree_days > 0.0F) {
-    winter.thaw_degree_days += mean;
-  }
-  if (winter.thaw_degree_days >= thaw_full) {
-    winter = IceWinter{};
-  }
-}
+// IceWinter and AdvanceIce moved to ice_winter.h (#1859): the live ice walks
+// the same winter.
 
 float ShareOf(float sum, float full) {
   return std::min(1.0F, sum / full);
@@ -68,6 +56,59 @@ float ShareOf(float sum, float full) {
 
 std::span<const std::string_view> IceWorldParamKeys() {
   return kIceWorldParamKeys;
+}
+
+bool ReadIceRules(const ITableSet& tables, IceRules& rules, std::string& error) {
+  IceRules read = rules;
+  if (const ITable* const world = tables.FindTable("world_params")) {
+    const std::array<ScalarKnob, 7> knobs = {{
+        {.key = kIceWorldParamKeys[1],
+         .value = &read.thaw_full_degree_days,
+         .range = kFullDegreeDays},
+        {.key = kIceWorldParamKeys[2], .value = &read.growth_alpha, .range = kIceAlpha},
+        {.key = kIceWorldParamKeys[3], .value = &read.current_backwater, .range = kIceShare},
+        {.key = kIceWorldParamKeys[4], .value = &read.current_river, .range = kIceShare},
+        {.key = kIceWorldParamKeys[5], .value = &read.inflow_disc_m, .range = kIceDiscMetres},
+        {.key = kIceWorldParamKeys[6], .value = &read.safe_cm, .range = kIceCentimetres},
+        {.key = kIceWorldParamKeys[7], .value = &read.deadly_cm, .range = kIceCentimetres},
+    }};
+    if (!ReadKnobs(*world, "world_params", knobs, error)) {
+      return false;
+    }
+  }
+  if (read.deadly_cm > read.safe_cm) {
+    error = "world_params: ice_deadly_cm is above ice_safe_cm";
+    return false;
+  }
+  rules = read;
+  return true;
+}
+
+IceBand IceBandOf(float thickness_cm, const IceRules& rules) {
+  if (thickness_cm <= 0.0F) {
+    return IceBand::kNoIce;
+  }
+  if (thickness_cm < rules.deadly_cm) {
+    return IceBand::kDeadly;
+  }
+  return thickness_cm < rules.safe_cm ? IceBand::kThin : IceBand::kSafe;
+}
+
+float IceShareOf(IceWater water, const IceRules& rules) {
+  switch (water) {
+    case IceWater::kStill:
+      return 1.0F;
+    case IceWater::kBackwater:
+      return rules.current_backwater;
+    case IceWater::kInflow:
+    case IceWater::kRiver:
+      return rules.current_river;
+    case IceWater::kNone:
+    case IceWater::kRapids:
+    case IceWater::kIceWaterCount:
+      return 0.0F;
+  }
+  return 0.0F;
 }
 
 bool MonthIceOfTables(const ITableSet& tables, Month month, MonthIce& ice, std::string& error) {

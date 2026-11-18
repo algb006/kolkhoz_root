@@ -61,6 +61,10 @@ class RoadTools {
   ///        delivery's price. Null when the tables carry no map areas.
   const ObstacleRaster* Raster() const;
 
+  /// @brief The map's areas and water lines as read (map_obstacles.h): the ice
+  ///        reads its water off them (ice_water.h; #1859).
+  const MapObstacles& Obstacles() const { return obstacles_; }
+
   /// @brief Every unit of `world` as the tracer sees it: the body's circle,
   ///        or plot_core_share of the plot's. The door the preview uses, so
   ///        an instrument asking it measures the same circles.

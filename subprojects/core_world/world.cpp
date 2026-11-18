@@ -30,6 +30,7 @@
 #include "core_common/calendar.h"
 #include "core_common/chairman_away.h"
 #include "core_common/emit_event.h"
+#include "core_common/ice_water.h"
 #include "core_common/ids.h"
 #include "core_common/ledger_state.h"
 #include "core_common/order_state.h"
@@ -715,8 +716,10 @@ class StandardSimulation final : public ISimulation {
                      std::unique_ptr<ILogisticsSystem> logistics,
                      std::shared_ptr<const RoadTools> road_tools,
                      std::vector<JunctionView> junctions,
-                     std::uint16_t alarm_red_within_days)
-      : road_tools_(std::move(road_tools)),
+                     std::uint16_t alarm_red_within_days,
+                     const IceRules& ice_rules)
+      : ice_rules_(ice_rules),
+        road_tools_(std::move(road_tools)),
         junctions_(std::move(junctions)),
         alarm_red_within_days_(alarm_red_within_days),
         horse_kind_(HorseKindOf(*config.tables)),
@@ -859,8 +862,26 @@ class StandardSimulation final : public ISimulation {
     return labor_->ClerkAgendaOf(engine_->CompletedState());
   }
 
-  // STUB until #1859's body (ice_view.h): `measured` false.
-  IceView IceAtToday(Vec2 /*point*/) const override { return {}; }
+  // #1859 (ice_view.h): the water at the point off the map, the still ice of
+  // the day off the seed's own weather, the water's share of it and the band.
+  IceView IceAtToday(Vec2 point) const override {
+    const WorldState& completed = engine_->CompletedState();
+    IceView view;
+    view.measured = true;
+    view.water = IceWaterAt(road_tools_->Obstacles(), point, ice_rules_.inflow_disc_m);
+    const float share = IceShareOf(view.water, ice_rules_);
+    if (share <= 0.0F) {
+      return view;
+    }
+    const float still = time_->StillIceCmOn(completed.world_seed,
+                                            completed.calendar.day,
+                                            completed.calendar.day_zero_weekday,
+                                            completed.epoch,
+                                            ice_rules_);
+    view.thickness_cm = still * share;
+    view.band = IceBandOf(view.thickness_cm, ice_rules_);
+    return view;
+  }
 
   bool FellingCanBeManned(Vec2 place) const override {
     return labor_->FellingCanBeManned(engine_->CompletedState(), place);
@@ -1005,6 +1026,9 @@ class StandardSimulation final : public ISimulation {
  private:
   /// Declared first so the constructor's list can fill it first. Shared
   /// with construction's tracer (the factory below).
+  /// The live ice's rules (#1859; month_ice.h), read once at the assembly.
+  IceRules ice_rules_;
+
   std::shared_ptr<const RoadTools> road_tools_;
 
   /// The map's junctions with the world beyond it (0.37.27; layers §15а).
@@ -1465,6 +1489,14 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
     LogError(junctions_error);
     return nullptr;
   }
+  // The live ice's rules (#1859; month_ice.h): a key out of its range refuses
+  // the assembly, an absent one keeps the design base's default.
+  IceRules ice_rules;
+  std::string ice_error;
+  if (!ReadIceRules(*config.tables, ice_rules, ice_error)) {
+    LogError(ice_error);
+    return nullptr;
+  }
   return std::make_unique<StandardSimulation>(config,
                                               std::move(start),
                                               std::move(time),
@@ -1475,7 +1507,8 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
                                               std::move(logistics),
                                               road_tools,
                                               std::move(junctions),
-                                              alarm_red_within_days);
+                                              alarm_red_within_days,
+                                              ice_rules);
 }
 
 }  // namespace core

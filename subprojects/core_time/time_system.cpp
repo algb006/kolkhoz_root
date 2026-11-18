@@ -31,6 +31,7 @@
 #include "core_tables/tables.h"
 #include "core_time/month_climate.h"
 #include "core_time/month_ice.h"
+#include "ice_winter.h"
 #include "season_tables.h"
 #include "weather_of_day.h"
 
@@ -264,6 +265,41 @@ class TimeSystem final : public ITimeSystem {
                     SeasonOfDayOfYear(seasons_, day).temperature_amplitude_celsius;
     }
     return nights;
+  }
+
+  float StillIceCmOn(std::uint64_t world_seed,
+                     SimDay day,
+                     Weekday day_zero_weekday,
+                     Epoch epoch,
+                     const IceRules& rules) const override {
+    // FROM THE LAST MIDSUMMER: no ice lies then, and no snow, so the walk
+    // starts from a clean winter and a default yesterday (≤ 48 days).
+    constexpr auto kMidsummer = static_cast<SimDay>(kSeasonCenterDay[2]);
+    const SimDay of_year = day % kDaysPerYear;
+    const SimDay back = (of_year + kDaysPerYear - kMidsummer) % kDaysPerYear;
+    WeatherState yesterday;
+    IceWinter winter;
+    const auto walk = [&](SimDay from, SimDay to) {
+      for (SimDay walked = from; walked <= to; ++walked) {
+        WeatherState today =
+            WeatherOfLivedDay(seasons_, world_seed, walked, day_zero_weekday, epoch);
+        today.snow_cover_days = SnowCoverAfter(seasons_, yesterday, today, walked);
+        AdvanceIce(winter, today, rules.thaw_full_degree_days);
+        yesterday = today;
+      }
+    };
+    if (day >= back) {
+      walk(day - back, day);
+    } else {
+      // THE CAMPAIGN'S FIRST WINTER began before day 0, and the weather has no
+      // day before it. STUB: the first year's own autumn stands in for the
+      // autumn before the start (the same seed's, the same climate), so the
+      // lake the player finds on 1 January is frozen as it would be.
+      walk(day + kDaysPerYear - back, kDaysPerYear - 1U);
+      walk(0U, day);
+    }
+    return StillIceCm(
+        winter, rules.growth_alpha, rules.thaw_full_degree_days, rules.real_days_per_game_day);
   }
 
  private:

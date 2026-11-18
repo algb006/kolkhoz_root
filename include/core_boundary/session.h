@@ -1056,8 +1056,8 @@ class ISession {
   ///        epochs §9 «Гибель председателя»): the water there, the ice's thickness by the
   ///        winter's frost and the water's current, and its band - safe, thin or deadly for a
   ///        walking man. The accident and the autosave before the ice are the game's.
-  ///        STUB until #1859's body: `measured` false - say «not measured».
-  /// @param point Metres, the map's frame; off the map reads as dry land.
+  ///        `measured` false only from a bare engine - say «not measured», never «no ice».
+  /// @param point Metres from the map's south-west corner; off the map reads as dry land.
   /// @note Between steps; the answer describes State().
   virtual IceView IceAt(Vec2 point) const = 0;
 

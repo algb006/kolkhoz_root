@@ -42,6 +42,7 @@
 #include <string_view>
 
 #include "core_common/calendar.h"
+#include "core_common/ice_view.h"
 
 namespace core {
 
@@ -62,6 +63,42 @@ struct MonthIce {
 /// @brief The world_params.csv keys of the ice (for the assembly's
 ///        declared-readers check).
 std::span<const std::string_view> IceWorldParamKeys();
+
+/// @brief The live ice's rules (#1859; boss, design.db world_param sort 380-385,
+///        all STUB): the defaults are the design base's values, so a table set
+///        without the rows reads the same ice.
+struct IceRules {
+  /// Stefan's coefficient, cm/√(°C × REAL day) (`ice_growth_alpha`).
+  float growth_alpha = 2.0F;
+  /// Real days in one game day for the frost sum (the man-days ÷ 7 rule).
+  float real_days_per_game_day = 7.0F;
+  /// The thaw sum at which the ice is gone (`ice_thaw_full_degree_days`).
+  float thaw_full_degree_days = 40.0F;
+  /// Shares of the still water's ice (`ice_current_backwater`, `_river`).
+  float current_backwater = 0.9F;
+  float current_river = 0.6F;
+  /// The disc round a river's mouth in still water that carries the river's
+  /// share, metres (`ice_inflow_disc_m`).
+  float inflow_disc_m = 30.0F;
+  /// The band (`ice_safe_cm`, `ice_deadly_cm`): from safe it holds a walking
+  /// man, under deadly he goes through.
+  float safe_cm = 10.0F;
+  float deadly_cm = 5.0F;
+};
+
+/// @brief Reads IceRules from world_params, keeping each default its row
+///        does not carry.
+/// @return false on a key out of its range, or deadly above safe.
+bool ReadIceRules(const ITableSet& tables, IceRules& rules, std::string& error);
+
+/// @brief The band of `thickness_cm` by the rules' safe and deadly marks;
+///        kNoIce at nought.
+IceBand IceBandOf(float thickness_cm, const IceRules& rules);
+
+/// @brief The share of the still water's ice `water` carries: still 1, the
+///        backwater's and the river's (an inflow's too) from the rules, the
+///        rapids and dry land nought.
+float IceShareOf(IceWater water, const IceRules& rules);
 
 /// @brief The ice of `month`, on its third day of four (the middle), from the
 ///        weather and world tables of `tables`.

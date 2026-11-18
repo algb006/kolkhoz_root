@@ -393,3 +393,9 @@ no_auto_placement,0,core
 hand_over_by_hay,1,core
 limit_seed_lot_t_min,0.5,core
 limit_seed_lot_t_max,5,core
+ice_growth_alpha,2,core
+ice_current_backwater,0.9,core
+ice_current_river,0.6,core
+ice_inflow_disc_m,30,core
+ice_safe_cm,10,core
+ice_deadly_cm,5,core

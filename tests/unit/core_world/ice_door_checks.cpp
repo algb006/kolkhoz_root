@@ -1,0 +1,101 @@
+#include "ice_door_checks.h"
+
+#include <cstddef>
+#include <iostream>
+#include <string>
+
+#include "core_catalog/map_obstacle_tables.h"
+#include "core_common/geometry.h"
+#include "core_common/ice_view.h"
+#include "core_common/map_obstacles.h"
+#include "core_tables/tables.h"
+#include "core_world/world.h"
+
+namespace {
+
+int Expect(bool condition, const char* label) {
+  if (condition) {
+    return 0;
+  }
+  std::cout << "FAIL: ice door: " << label << '\n';
+  return 1;
+}
+
+/// The mean of an area's outline: inside a lake's or a village's round shape.
+core::Vec2 MeanOf(const core::MapAreaDef& area) {
+  core::Vec2 sum{};
+  for (const core::Vec2& point : area.outline) {
+    sum.x += point.x;
+    sum.y += point.y;
+  }
+  const auto count = static_cast<float>(area.outline.empty() ? 1U : area.outline.size());
+  return core::Vec2{.x = sum.x / count, .y = sum.y / count};
+}
+
+const core::MapAreaDef* FirstOf(const core::MapObstacles& map, core::MapAreaKind kind) {
+  for (const core::MapAreaDef& area : map.areas) {
+    if (area.kind == kind && area.outline.size() >= 3) {
+      return &area;
+    }
+  }
+  return nullptr;
+}
+
+}  // namespace
+
+int CheckTheIceDoor() {
+  int failures = 0;
+  const auto shipped = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
+  if (Expect(shipped != nullptr, "the shipped tables load") != 0) {
+    return 1;
+  }
+  core::MapObstacles map;
+  std::string error;
+  if (Expect(core::ReadMapObstacles(*shipped, map, error), "the shipped map reads") != 0) {
+    return 1;
+  }
+  core::StandardSimulationConfig config;
+  config.tables = shipped.get();
+  config.world_seed = 1929;
+  const auto simulation = core::CreateStandardSimulation(config);
+  if (Expect(simulation != nullptr, "the canon assembles with the ice rules") != 0) {
+    return 1;
+  }
+  const core::MapAreaDef* const lake = FirstOf(map, core::MapAreaKind::kLake);
+  const core::MapAreaDef* const village = FirstOf(map, core::MapAreaKind::kVillageZone);
+  const core::MapLineDef* river = nullptr;
+  for (const core::MapLineDef& line : map.lines) {
+    if (line.kind == core::MapLineKind::kRiver && line.points.size() >= 3) {
+      river = &line;
+      break;
+    }
+  }
+  failures += Expect(lake != nullptr && village != nullptr && river != nullptr,
+                     "the shipped map has a lake, a village zone and a river");
+  if (lake == nullptr || village == nullptr || river == nullptr) {
+    return failures;
+  }
+  const core::IceView on_lake = simulation->IceAtToday(MeanOf(*lake));
+  const core::IceView on_river =
+      simulation->IceAtToday(river->points[river->points.size() / 2].position);
+  const core::IceView in_village = simulation->IceAtToday(MeanOf(*village));
+  std::cout << "ice door, 1 January: lake " << on_lake.thickness_cm << " cm (water "
+            << static_cast<int>(on_lake.water) << ", band " << static_cast<int>(on_lake.band)
+            << "), river " << on_river.thickness_cm << " cm (water "
+            << static_cast<int>(on_river.water) << "), village water "
+            << static_cast<int>(in_village.water) << '\n';
+  failures += Expect(on_lake.measured && on_river.measured && in_village.measured,
+                     "every answer is measured");
+  failures +=
+      Expect(on_lake.water == core::IceWater::kStill || on_lake.water == core::IceWater::kInflow,
+             "the lake's middle is still water (or its inflow)");
+  failures +=
+      Expect(on_lake.band == core::IceBand::kSafe, "on 1 January the lake holds a walking man");
+  failures += Expect(on_river.water == core::IceWater::kRiver && on_river.thickness_cm > 0.0F &&
+                         on_river.thickness_cm < on_lake.thickness_cm,
+                     "the river's channel is frozen thinner than the lake (over current)");
+  failures += Expect(in_village.water == core::IceWater::kNone && in_village.thickness_cm == 0.0F &&
+                         in_village.band == core::IceBand::kNoIce,
+                     "the village's middle is dry land, with no ice");
+  return failures;
+}

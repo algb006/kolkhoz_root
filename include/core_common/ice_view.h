@@ -50,7 +50,8 @@ enum class IceBand : std::uint8_t {
 
 /// @brief The ice at one point, today.
 struct IceView {
-  /// False until #1859's body: say «not measured», never «no ice».
+  /// False from a bare engine (no simulation behind it): say «not measured»,
+  /// never «no ice».
   bool measured = false;
 
   /// The water at the point.

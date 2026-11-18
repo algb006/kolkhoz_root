@@ -139,6 +139,82 @@ int CheckMonthIce(const std::filesystem::path& root) {
   return failures;
 }
 
+/// THE LIVE ICE (#1859; ITimeSystem::StillIceCmOn, month_ice.h IceRules): on
+/// this test's climate no ice in July or June; it thickens from December to
+/// February; the spring thins it by mid-April; twice alpha is twice the ice;
+/// the band and the shares read the rules; deadly above safe is refused.
+int CheckLiveIce(const core::ITimeSystem& time, const std::filesystem::path& root) {
+  int failures = 0;
+  const core::IceRules rules;
+  constexpr std::uint64_t kSeed = 1931;
+  // Year 2's months, each walked from its own last midsummer.
+  const auto mid = [](int human_month) {
+    return static_cast<core::SimDay>(
+        core::kDaysPerYear + (static_cast<std::uint32_t>(human_month - 1) * core::kDaysPerMonth) +
+        2U);
+  };
+  const auto ice = [&](int human_month, const core::IceRules& with) {
+    return time.StillIceCmOn(
+        kSeed, mid(human_month), core::Weekday::kMonday, core::Epoch::kOne, with);
+  };
+  const float july = ice(7, rules);
+  const float december = ice(12, rules);
+  const float january = ice(1, rules);
+  const float february = ice(2, rules);
+  const float april = ice(4, rules);
+  const float june = ice(6, rules);
+  std::cout << "live ice, cm, mid-month: Dec " << december << ", Jan " << january << ", Feb "
+            << february << ", Apr " << april << ", Jun " << june << ", Jul " << july << '\n';
+  failures += Expect(july == 0.0F && june == 0.0F, "live ice: none in June and July");
+  failures += Expect(december > 0.0F && january > december && february >= january,
+                     "live ice: the ice thickens from December to February");
+  failures += Expect(february > rules.safe_cm,
+                     "live ice: February's still ice holds a man on a −10 winter");
+  failures += Expect(april < february, "live ice: the spring thins it by mid-April");
+  // THE FIRST WINTER began before day 0: the stand-in autumn sets the ice the
+  // player finds on the campaign's third day.
+  const float first_january =
+      time.StillIceCmOn(kSeed, 2U, core::Weekday::kMonday, core::Epoch::kOne, rules);
+  std::cout << "live ice, cm, the campaign's day 2: " << first_january << '\n';
+  failures += Expect(first_january > rules.safe_cm,
+                     "live ice: the lake is frozen on the campaign's first days (the stand-in "
+                     "autumn before day 0)");
+  core::IceRules doubled = rules;
+  doubled.growth_alpha = 2.0F * rules.growth_alpha;
+  failures += Expect(std::fabs(ice(2, doubled) - (2.0F * february)) < 0.01F * february,
+                     "live ice: twice ice_growth_alpha is twice the ice (Stefan's law)");
+  failures += Expect(core::IceBandOf(0.0F, rules) == core::IceBand::kNoIce &&
+                         core::IceBandOf(4.9F, rules) == core::IceBand::kDeadly &&
+                         core::IceBandOf(5.0F, rules) == core::IceBand::kThin &&
+                         core::IceBandOf(9.9F, rules) == core::IceBand::kThin &&
+                         core::IceBandOf(10.0F, rules) == core::IceBand::kSafe,
+                     "live ice: the band by ice_deadly_cm 5 and ice_safe_cm 10");
+  failures += Expect(core::IceShareOf(core::IceWater::kStill, rules) == 1.0F &&
+                         core::IceShareOf(core::IceWater::kBackwater, rules) == 0.9F &&
+                         core::IceShareOf(core::IceWater::kRiver, rules) == 0.6F &&
+                         core::IceShareOf(core::IceWater::kInflow, rules) == 0.6F &&
+                         core::IceShareOf(core::IceWater::kRapids, rules) == 0.0F &&
+                         core::IceShareOf(core::IceWater::kNone, rules) == 0.0F,
+                     "live ice: the water's shares - still 1, backwater 0.9, river and inflow "
+                     "0.6, rapids and land 0");
+  std::string error;
+  WriteFile(root / "world_params.csv",
+            "key,value,reader\nice_growth_alpha,3,core\nice_safe_cm,12,core\n");
+  const auto read_tables = core::LoadTableSet(root.string(), &error);
+  core::IceRules read;
+  failures +=
+      Expect(read_tables != nullptr && core::ReadIceRules(*read_tables, read, error) &&
+                 read.growth_alpha == 3.0F && read.safe_cm == 12.0F && read.deadly_cm == 5.0F,
+             "live ice: world_params' rows are read, the absent keep their defaults");
+  WriteFile(root / "world_params.csv", "key,value,reader\nice_deadly_cm,15,core\n");
+  const auto bad_tables = core::LoadTableSet(root.string(), &error);
+  core::IceRules refused;
+  failures += Expect(bad_tables != nullptr && !core::ReadIceRules(*bad_tables, refused, error),
+                     "live ice: ice_deadly_cm above ice_safe_cm is refused");
+  std::filesystem::remove(root / "world_params.csv");
+  return failures;
+}
+
 /// THE BEDS AS THE PHASE WRITES THEM (roads delivery 3): three years of one
 /// seed, day by day. Every condition the climate can make is met; the day
 /// after a warm rain with nothing over it, dirt is still wet and gravel is
@@ -540,6 +616,7 @@ int main() {
   if (time_system != nullptr) {
     failures += CheckMonthClimate(*tables, time_system->TimeAndWeatherPhase());
     failures += CheckMonthIce(root);
+    failures += CheckLiveIce(*time_system, root);
     failures += CheckRoadBedsWalk(time_system->TimeAndWeatherPhase());
     {
       // No weather table: the door says so, rather than answer the stub's.

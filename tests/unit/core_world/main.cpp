@@ -40,6 +40,7 @@
 #include "core_world/era_readiness.h"
 #include "core_world/road_tools.h"
 #include "core_world/world.h"
+#include "ice_door_checks.h"
 #include "master_eye_checks.h"
 #include "settlement_checks.h"
 #include "start_literacy.h"
@@ -3001,6 +3002,7 @@ int main() {
   failures += CheckTheLampsTurnedRed();
   failures += CheckTheElderDoor();
   failures += CheckTheChairmansTransportDoor();
+  failures += CheckTheIceDoor();
   failures += CheckTheYardsHoldings();
   failures += CheckStartLiteracyGuarantees();
   failures += CheckStartLiteracyOrder();

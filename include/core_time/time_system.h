@@ -30,6 +30,7 @@
 #include "core_common/world_state.h"
 #include "core_sim/step.h"
 #include "core_tables/stub_tables.h"
+#include "core_time/month_ice.h"
 
 namespace core {
 
@@ -136,6 +137,21 @@ class ITimeSystem {
   /// reads (core_time/month_climate.h). Read by the cold ladder's months and
   /// its autumn forecast (0.37.61).
   virtual ClimateNights ClimateNightCelsius() const = 0;
+
+  /// @brief The still water's ice on `day` of this campaign, centimetres (#1859;
+  ///        core_common/ice_view.h): the winter walked from the last midsummer
+  ///        by the seed's own lived weather and snow - the month ice door's
+  ///        rule (month_ice.h) with Stefan's thickness on its frost
+  ///        (ice_winter.h). A pure read: the weather is a function of (seed,
+  ///        day), so nothing is remembered and nothing is saved.
+  /// @param world_seed, day, day_zero_weekday, epoch As WeatherOn.
+  /// @param rules The growth, the real days of a game day and the thaw's full.
+  /// @return ≥ 0; nought from midsummer until the frost.
+  virtual float StillIceCmOn(std::uint64_t world_seed,
+                             SimDay day,
+                             Weekday day_zero_weekday,
+                             Epoch epoch,
+                             const IceRules& rules) const = 0;
 };
 
 /// @brief Creates the time subsystem.
