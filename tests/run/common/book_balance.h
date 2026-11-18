@@ -49,8 +49,8 @@ class BookBalance {
   /// tolerance.
   int CloseYear(const core::WorldState& world, const core::ITableSet& tables) {
     const core::YearLedger& book = world.ledger.closed;
-    const std::vector<double> now = Held(world);
     const core::ITable* const resources = tables.FindTable("resources");
+    const std::vector<double> now = Held(world, StrawIndexOf(resources));
     int failures = 0;
     std::uint32_t checked = 0;
     for (std::size_t r = 0; r < now.size(); ++r) {
@@ -87,8 +87,23 @@ class BookBalance {
     return index < amounts.size() ? static_cast<double>(amounts[index]) : 0.0;
   }
 
-  static std::vector<double> Held(const core::WorldState& world) {
-    std::size_t count = 0;
+  static constexpr std::size_t kNoStraw = static_cast<std::size_t>(-1);
+
+  /// The straw's row in `resources`, or kNoStraw.
+  static std::size_t StrawIndexOf(const core::ITable* resources) {
+    if (resources == nullptr) {
+      return kNoStraw;
+    }
+    for (std::uint32_t row = 0; row < resources->RowCount(); ++row) {
+      if (resources->CellText(row, 0) == "straw") {
+        return row;
+      }
+    }
+    return kNoStraw;
+  }
+
+  static std::vector<double> Held(const core::WorldState& world, std::size_t straw = kNoStraw) {
+    std::size_t count = straw != kNoStraw ? straw + 1U : 0U;
     for (const core::UnitRow& unit : world.units.rows) {
       count = unit.stock.size() > count ? unit.stock.size() : count;
     }
@@ -117,6 +132,14 @@ class BookBalance {
     for (const core::FieldRow& field : world.fields.rows) {
       if (field.reaped_grams > 0) {
         held[field.reaped_resource.value] += static_cast<double>(field.reaped_grams);
+      }
+      // THE STRAW LYING AT THE FIELD (FieldRow::straw_grams, routing stage В4): cut with the
+      // grain and waiting for its cart. Without it the census lost the straw over a year's turn
+      // - 0.37.397's thirty_years arms: straw «through a door with no line» -109.6 t in year 16
+      // and +109.6 t in year 17, -70.7 / +70.7 in years 28-29 (#1726's deadline left a late
+      // harvest's straw on the field at the turn).
+      if (field.straw_grams > 0 && straw != kNoStraw) {
+        held[straw] += static_cast<double>(field.straw_grams);
       }
     }
     for (const core::LimitDeliveryRow& cart : world.limit_deliveries.rows) {
