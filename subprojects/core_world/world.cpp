@@ -886,6 +886,31 @@ class StandardSimulation final : public ISimulation {
 
   // #1881 (store_theft.h): read off the completed world's book windows and the
   // pre-acceptance pair.
+  ForestFactsView ForestFactsToday() const override {
+    // #1788 (b): the stands as the core holds them (forest_facts_view.h).
+    const WorldState& completed = engine_->CompletedState();
+    ForestFactsView view;
+    view.measured = true;
+    view.stands.reserve(completed.stands.rows.size());
+    for (std::size_t row = 0; row < completed.stands.rows.size(); ++row) {
+      const TimberStandRow& stand = completed.stands.rows[row];
+      view.stands.push_back(ForestStandFact{.stand = completed.stands.row_ids[row],
+                                            .kind = stand.kind,
+                                            .position = stand.position,
+                                            .stock_m3 = stand.stock_m3,
+                                            .marked_m3 = stand.marked_m3,
+                                            .being_felled = stand.work_days_remaining > 0.0F,
+                                            .species = stand.species,
+                                            .planted_area_ha = stand.planted_area_ha,
+                                            .planted_day = stand.planted_day});
+    }
+    return view;
+  }
+
+  PlacementBansView PlacementBansToday(float cell_m) const override {
+    return road_tools_->BansMap(engine_->CompletedState(), cell_m);  // #1788
+  }
+
   SeedFundView SeedFundToday() const override {
     return production_->SeedFundOf(engine_->CompletedState());
   }
@@ -1316,6 +1341,12 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
                            const RoadSelection& selection,
                            RoadOperation operation) {
                 return road_tools->Select(world, selection, operation);
+              },
+          // #1788: the bans under a building, the door the ban map shares.
+          .bans =
+              [road_tools](
+                  const WorldState& world, Vec2 centre, float radius, bool forest, float edge) {
+                return road_tools->BansUnder(world, centre, radius, forest, edge);
               },
       });
   // The groom's logistics (routing stage B, B2): the tasks of carting and

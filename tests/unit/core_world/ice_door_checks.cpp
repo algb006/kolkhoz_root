@@ -5,9 +5,11 @@
 #include <string>
 
 #include "core_catalog/map_obstacle_tables.h"
+#include "core_common/forest_facts_view.h"
 #include "core_common/geometry.h"
 #include "core_common/ice_view.h"
 #include "core_common/map_obstacles.h"
+#include "core_common/placement_bans.h"
 #include "core_common/quantities.h"
 #include "core_common/seed_fund_view.h"
 #include "core_tables/tables.h"
@@ -109,5 +111,40 @@ int CheckTheIceDoor() {
   std::cout << "seed fund door, 1 January: " << held / 1000 << " kg held for the next sowings\n";
   failures += Expect(fund.measured && held > 0,
                      "seed fund: measured, and the start's next sowings hold seed");
+  // THE PLACEMENT BANS (#1788) on the same canon, at 10 m: the lake's middle is
+  // water, the village's middle is no water (a plot or a road may stand there),
+  // and the start's units carry their plots.
+  const core::PlacementBansView bans = simulation->PlacementBansToday(10.0F);
+  const auto at = [&bans](core::Vec2 point) -> std::uint8_t {
+    const auto column = static_cast<std::uint32_t>(point.x / bans.cell_m);
+    const auto row = static_cast<std::uint32_t>(point.y / bans.cell_m);
+    if (column >= bans.columns || row >= bans.columns) {
+      return 0xFF;
+    }
+    return bans.cells[(static_cast<std::size_t>(row) * bans.columns) + column];
+  };
+  std::size_t plot_cells = 0;
+  std::size_t water_cells = 0;
+  for (const std::uint8_t cell : bans.cells) {
+    plot_cells += (cell & core::kBanPlot) != 0 ? 1U : 0U;
+    water_cells += (cell & core::kBanWater) != 0 ? 1U : 0U;
+  }
+  std::cout << "placement bans, 10 m: " << bans.columns << " columns, water cells " << water_cells
+            << ", plot cells " << plot_cells << '\n';
+  failures += Expect(bans.measured && bans.columns == 1200 && bans.cells.size() == 1200U * 1200U,
+                     "bans: measured, 1 200 × 1 200 cells of 10 m on the 12 km map");
+  failures +=
+      Expect((at(MeanOf(*lake)) & core::kBanWater) != 0, "bans: the lake's middle is water");
+  failures += Expect((at(MeanOf(*village)) & core::kBanWater) == 0 && plot_cells > 0,
+                     "bans: the village's middle is no water, and the start's plots are painted");
+  // THE FOREST'S FACTS (#1788 (b)): every stand, with its timber.
+  const core::ForestFactsView forest = simulation->ForestFactsToday();
+  float stock = 0.0F;
+  for (const core::ForestStandFact& stand : forest.stands) {
+    stock += stand.stock_m3;
+  }
+  std::cout << "forest facts: " << forest.stands.size() << " stands, " << stock << " m3\n";
+  failures += Expect(forest.measured && !forest.stands.empty() && stock > 0.0F,
+                     "forest facts: measured, the start's stands with their timber");
   return failures;
 }

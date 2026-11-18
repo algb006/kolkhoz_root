@@ -194,6 +194,10 @@ class ScriptedSimulation final : public core::ISimulation {
 
   core::SeedFundView SeedFundToday() const override { return {}; }
 
+  core::PlacementBansView PlacementBansToday(float /*cell_m*/) const override { return {}; }
+
+  core::ForestFactsView ForestFactsToday() const override { return {}; }
+
   /// No works and no carts here: nothing to cart.
   core::SupplyEstimate SupplyEstimateFor(core::UnitId /*unit*/) const override { return {}; }
 

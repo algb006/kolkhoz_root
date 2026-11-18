@@ -377,10 +377,19 @@ using RoadTracer = std::function<RoadDraftResult(const WorldState&, const RoadDr
 using RoadSelector =
     std::function<RoadPieces(const WorldState&, const RoadSelection&, RoadOperation)>;
 
+/// @brief The bans under a building's contour as construction asks them
+///        (#1788; core_common/placement_bans.h through RoadTools::BansUnder -
+///        the same door the layer's ban map reads, so the two cannot disagree):
+///        (world, centre, radius, forest allowed, edge band) → PlacementBan bits.
+using PlacementBanner = std::function<std::uint8_t(const WorldState&, Vec2, float, bool, float)>;
+
 /// @brief The road tools' doors construction consumes the road orders by.
 struct RoadToolDoors {
   RoadTracer trace;     ///< kLayRoad (7c).
   RoadSelector select;  ///< kDemolishRoad (7d).
+  /// kBuildUnit's placement bans (#1788). Empty: no ban is checked - the
+  /// two-argument factory's form, this module's own tests.
+  PlacementBanner bans;
 };
 
 /// @brief As above, with the road tools' doors (delivery 7c, 7d). The

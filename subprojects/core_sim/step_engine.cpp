@@ -297,6 +297,10 @@ class StepEngine final : public ISimulation {
 
   SeedFundView SeedFundToday() const override { return {}; }
 
+  PlacementBansView PlacementBansToday(float /*cell_m*/) const override { return {}; }
+
+  ForestFactsView ForestFactsToday() const override { return {}; }
+
   /// No subsystems, so no works and no carts: nothing to cart.
   SupplyEstimate SupplyEstimateFor(UnitId /*unit*/) const override { return {}; }
 

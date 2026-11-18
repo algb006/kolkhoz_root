@@ -607,6 +607,12 @@ class Session final : public ISession {
 
   SeedFundView SeedFund() const override { return simulation_->SeedFundToday(); }
 
+  ForestFactsView ForestFacts() const override { return simulation_->ForestFactsToday(); }
+
+  PlacementBansView PlacementBans(float cell_m) const override {
+    return simulation_->PlacementBansToday(cell_m);
+  }
+
   StoreTheftView StoreTheftLastMonth() const override {
     return simulation_->StoreTheftLastMonthToday();
   }

@@ -143,6 +143,7 @@
 #include "core_common/day_orders.h"
 #include "core_common/elder_view.h"
 #include "core_common/event_state.h"
+#include "core_common/forest_facts_view.h"
 #include "core_common/geometry.h"
 #include "core_common/herd_plan_view.h"
 #include "core_common/ice_view.h"
@@ -152,6 +153,7 @@
 #include "core_common/material_shortfall.h"
 #include "core_common/office_views.h"
 #include "core_common/order_state.h"
+#include "core_common/placement_bans.h"
 #include "core_common/porter_leg.h"
 #include "core_common/quantities.h"
 #include "core_common/readiness_view.h"
@@ -1076,6 +1078,22 @@ class ISession {
   ///        window's «нужно на сев {amount}», the same rung every door that keeps seed reads.
   /// @note Between steps; the answer describes State().
   virtual SeedFundView SeedFund() const = 0;
+
+  /// @brief Where nothing may be built and why (ISimulation::PlacementBansToday;
+  ///        core_common/placement_bans.h; #1788, layers §6, rules §13): the map in cells of
+  ///        `cell_m`, one byte of PlacementBan bits a cell - water and the floodplain's contour,
+  ///        forest, reserve, a laid road, a plot, the edge band - read by the same door the
+  ///        build order refuses by. NOT in it: the slope, the stink zone, polluted ground water.
+  /// @param cell_m The cell's side, metres (10 m: 1 200 × 1 200 cells on the 12 km map).
+  /// @note Between steps; the answer describes State().
+  virtual PlacementBansView PlacementBans(float cell_m) const = 0;
+
+  /// @brief The forest's facts by stand (ISimulation::ForestFactsToday;
+  ///        core_common/forest_facts_view.h; #1788 (b), layers §9, #1789's forest plots): each
+  ///        stand's place, kind, timber, marked timber, felling under way, and a planting's
+  ///        species, area and day. No old, dead or fallen trees: the core has none (STUB).
+  /// @note Between steps; the answer describes State().
+  virtual ForestFactsView ForestFacts() const = 0;
 
   /// @brief The pieces a drag along a laid road selects for `operation`,
   ///        snapped to whole pieces, each in or out and why, and the

@@ -1,8 +1,11 @@
 #include "core_world/road_tools.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <utility>
+#include <vector>
 
 #include "core_catalog/definitions.h"
 #include "core_catalog/map_obstacle_tables.h"
@@ -62,6 +65,7 @@ std::optional<RoadTools> RoadTools::Read(const ITableSet& tables, std::string& e
   tools.plot_radius_m_ = definitions.units.plot_radius_m;
   tools.keep_out_radius_m_ = definitions.units.keep_out_radius_m;
   tools.map_side_m_ = definitions.map_side_m;
+  tools.edge_setback_m_ = definitions.edge_build_setback_m;  // #1788
   // The old orchard's own stock is a STUB: the grove's (boss [64] item 2).
   tools.timber_m3_per_ha_ = timber.grove_stock_m3_per_ha;
   for (const MapLineDef& line : tools.obstacles_.lines) {
@@ -142,6 +146,178 @@ std::vector<RoadUnitDisc> RoadTools::UnitDiscs(const WorldState& world) const {
     }
   }
   return units;
+}
+
+namespace {
+
+/// The ban bits a cell's obstacle flags carry (#1788; placement_bans.h).
+std::uint8_t BansOfFlags(std::uint8_t flags, bool forest_allowed) {
+  std::uint8_t bans = 0;
+  if ((flags & (kObstacleWater | kObstacleRiver | kObstacleFloodplain)) != 0) {
+    bans |= kBanWater;
+  }
+  if ((flags & kObstacleForest) != 0 && !forest_allowed) {
+    bans |= kBanForest;
+  }
+  // THE RESERVE'S OWN UNIT - STUB: «свой юнит — можно» (rules §13, #1886), but
+  // no reserve names its unit anywhere today, so the exception never fires and
+  // a reserve bans every building (boss files the reserve → unit mapping).
+  if ((flags & kObstacleReserve) != 0) {
+    bans |= kBanReserve;
+  }
+  return bans;
+}
+
+/// The least distance from `point` to the segment from `a` to `b`.
+float DistanceToSegment(Vec2 point, Vec2 a, Vec2 b) {
+  const float dx = b.x - a.x;
+  const float dy = b.y - a.y;
+  const float length_squared = (dx * dx) + (dy * dy);
+  float along = 0.0F;
+  if (length_squared > 0.0F) {
+    along =
+        std::clamp((((point.x - a.x) * dx) + ((point.y - a.y) * dy)) / length_squared, 0.0F, 1.0F);
+  }
+  return std::hypot(point.x - (a.x + (dx * along)), point.y - (a.y + (dy * along)));
+}
+
+/// Whether a circle of `radius_m` round `center` touches a laid road's surface
+/// (a road of kind kRoad; a path blocks nothing, rules §13).
+bool TouchesARoad(const WorldState& world, Vec2 center, float radius_m, float half_width_m) {
+  for (const RoadRow& road : world.roads.rows) {
+    if (road.kind != RoadKind::kRoad) {
+      continue;
+    }
+    for (std::size_t index = 1; index < road.axis.size(); ++index) {
+      if (DistanceToSegment(center, road.axis[index - 1].position, road.axis[index].position) <
+          radius_m + half_width_m) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/// Whether a circle lies (in part) within the edge band of a map of `side_m`.
+bool InEdgeBand(Vec2 center, float radius_m, float side_m, float setback_m) {
+  if (setback_m <= 0.0F || side_m <= 0.0F) {
+    return false;
+  }
+  return center.x - radius_m < setback_m || center.y - radius_m < setback_m ||
+         side_m - center.x - radius_m < setback_m || side_m - center.y - radius_m < setback_m;
+}
+
+}  // namespace
+
+std::uint8_t RoadTools::BansUnder(const WorldState& world,
+                                  Vec2 center,
+                                  float radius_m,
+                                  bool forest_allowed,
+                                  float edge_setback_m) const {
+  std::uint8_t bans = 0;
+  if (const ObstacleRaster* const raster = Raster(); raster != nullptr && raster->HasMap()) {
+    // THE CONTOUR'S CELLS: every raster cell centre within the circle, and
+    // the centre itself (a circle smaller than a cell).
+    const float step = raster->CellMetres();
+    bans |= BansOfFlags(raster->FlagsAt(center), forest_allowed);
+    for (float dy = -radius_m; dy <= radius_m; dy += step) {
+      for (float dx = -radius_m; dx <= radius_m; dx += step) {
+        if ((dx * dx) + (dy * dy) > radius_m * radius_m) {
+          continue;
+        }
+        bans |= BansOfFlags(raster->FlagsAt(Vec2{.x = center.x + dx, .y = center.y + dy}),
+                            forest_allowed);
+      }
+    }
+  }
+  if (TouchesARoad(world, center, radius_m, config_.road_half_width_m)) {
+    bans |= kBanRoad;
+  }
+  if (InEdgeBand(center, radius_m, map_side_m_, edge_setback_m)) {
+    bans |= kBanEdge;
+  }
+  return bans;
+}
+
+PlacementBansView RoadTools::BansMap(const WorldState& world, float cell_m) const {
+  const float edge_setback_m = edge_setback_m_;
+  PlacementBansView view;
+  if (map_side_m_ <= 0.0F || cell_m <= 0.0F) {
+    return view;
+  }
+  view.measured = true;
+  view.cell_m = cell_m;
+  view.columns = static_cast<std::uint32_t>(std::ceil(map_side_m_ / cell_m));
+  view.cells.assign(static_cast<std::size_t>(view.columns) * view.columns, 0);
+  const ObstacleRaster* const raster = Raster();
+  const std::vector<RoadUnitDisc> plots = [&] {
+    std::vector<RoadUnitDisc> discs;
+    for (const UnitRow& unit : world.units.rows) {
+      const std::size_t type = unit.type.value;
+      if (type < keep_out_radius_m_.size() && keep_out_radius_m_[type] > 0.0F) {
+        discs.push_back(
+            RoadUnitDisc{.centre = unit.position, .radius_m = keep_out_radius_m_[type]});
+      }
+    }
+    return discs;
+  }();
+  for (std::uint32_t row = 0; row < view.columns; ++row) {
+    for (std::uint32_t column = 0; column < view.columns; ++column) {
+      const Vec2 centre{.x = (static_cast<float>(column) + 0.5F) * cell_m,
+                        .y = (static_cast<float>(row) + 0.5F) * cell_m};
+      std::uint8_t bans = 0;
+      if (raster != nullptr && raster->HasMap()) {
+        bans |= BansOfFlags(raster->FlagsAt(centre), false);
+      }
+      if (InEdgeBand(centre, 0.0F, map_side_m_, edge_setback_m)) {
+        bans |= kBanEdge;
+      }
+      view.cells[(static_cast<std::size_t>(row) * view.columns) + column] = bans;
+    }
+  }
+  // THE ROADS AND THE PLOTS, painted by their own shapes over the cells they
+  // reach (cheaper than asking every cell of 12 km about every road).
+  const auto paint = [&view, cell_m](Vec2 centre, float reach, std::uint8_t bit, auto inside) {
+    const auto clamp_cell = [&view](float metres, float cell) {
+      const float index = std::floor(metres / cell);
+      return static_cast<std::uint32_t>(
+          std::clamp(index, 0.0F, static_cast<float>(view.columns - 1U)));
+    };
+    for (std::uint32_t row = clamp_cell(centre.y - reach, cell_m);
+         row <= clamp_cell(centre.y + reach, cell_m);
+         ++row) {
+      for (std::uint32_t column = clamp_cell(centre.x - reach, cell_m);
+           column <= clamp_cell(centre.x + reach, cell_m);
+           ++column) {
+        const Vec2 at{.x = (static_cast<float>(column) + 0.5F) * cell_m,
+                      .y = (static_cast<float>(row) + 0.5F) * cell_m};
+        if (inside(at)) {
+          view.cells[(static_cast<std::size_t>(row) * view.columns) + column] |= bit;
+        }
+      }
+    }
+  };
+  for (const RoadUnitDisc& plot : plots) {
+    paint(plot.centre, plot.radius_m, kBanPlot, [&plot](Vec2 at) {
+      return std::hypot(at.x - plot.centre.x, at.y - plot.centre.y) <= plot.radius_m;
+    });
+  }
+  const float half = config_.road_half_width_m;
+  for (const RoadRow& road : world.roads.rows) {
+    if (road.kind != RoadKind::kRoad) {
+      continue;
+    }
+    for (std::size_t index = 1; index < road.axis.size(); ++index) {
+      const Vec2 a = road.axis[index - 1].position;
+      const Vec2 b = road.axis[index].position;
+      const Vec2 mid{.x = (a.x + b.x) * 0.5F, .y = (a.y + b.y) * 0.5F};
+      const float reach = (std::hypot(b.x - a.x, b.y - a.y) * 0.5F) + half;
+      paint(mid, reach, kBanRoad, [a, b, half](Vec2 at) {
+        return DistanceToSegment(at, a, b) < half;
+      });
+    }
+  }
+  return view;
 }
 
 RoadToolStates RoadTools::ToolStates(const WorldState& world) const {

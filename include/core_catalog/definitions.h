@@ -140,6 +140,12 @@ struct Definitions {
   /// cannot work without a map says so itself, on top of this value.
   float map_side_m = 0.0F;
 
+  /// THE EDGE BAND, metres (#1788; rules §13 «Край карты»; map.csv
+  /// `edge_build_setback_m`, a map rule): no point of a unit's contour within
+  /// it of the map's edge. 0 - the column not exported - and the band does not
+  /// fire (STUB until the export; the ban door says so).
+  float edge_build_setback_m = 0.0F;
+
   /// @brief The plot rules as core_common wants them. A span into this
   /// object: it must outlive the call, which it does — the catalogue is
   /// built before the systems and outlives them.

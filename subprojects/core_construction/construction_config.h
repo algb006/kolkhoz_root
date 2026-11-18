@@ -424,6 +424,10 @@ struct ConstructionConfig {
   /// table set has none, and no plot is checked as a camp.
   UnitTypeId field_camp_type;
 
+  /// unit_types.csv "hunting_lodge": the one building the forest takes (rules
+  /// §13 «Лес — неприкосновенен. Исключение — охотничий домик»; #1788).
+  UnitTypeId hunting_lodge_type;
+
   /// unit_types.csv "workshops" and the avatars' rows (#635): a level-1
   /// workshops site starts its labour at × the avatar's
   /// workshops_l1_labor_factor (the worker's 0.5; avatars.md «Пути», P5).

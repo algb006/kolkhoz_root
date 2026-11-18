@@ -22,6 +22,7 @@
 #include "core_common/map_obstacles.h"
 #include "core_common/meadow_mark.h"
 #include "core_common/obstacle_raster.h"
+#include "core_common/placement_bans.h"
 #include "core_common/road_draft.h"
 #include "core_common/road_trace.h"
 
@@ -65,6 +66,23 @@ class RoadTools {
   ///        reads its water off them (ice_water.h; #1859).
   const MapObstacles& Obstacles() const { return obstacles_; }
 
+  /// @brief The bans under a building's contour (#1788; placement_bans.h): the
+  ///        circle of `radius_m` round `center` on `world` - water, forest
+  ///        (unless `forest_allowed`, the hunting lodge), reserve, a laid road's
+  ///        surface, the edge band. NOT the plots: the build order's kTooClose
+  ///        reads those itself, by the same circles. The door kBuildUnit and the
+  ///        layer's map share, so the two cannot disagree.
+  /// @param edge_setback_m The edge band (Definitions::edge_build_setback_m); 0 none.
+  std::uint8_t BansUnder(const WorldState& world,
+                         Vec2 center,
+                         float radius_m,
+                         bool forest_allowed,
+                         float edge_setback_m) const;
+
+  /// @brief The whole map's bans at `cell_m` (#1788; ISession::PlacementBans):
+  ///        each cell's centre read as BansUnder reads a point, plus the plots.
+  PlacementBansView BansMap(const WorldState& world, float cell_m) const;
+
   /// @brief Every unit of `world` as the tracer sees it: the body's circle,
   ///        or plot_core_share of the plot's. The door the preview uses, so
   ///        an instrument asking it measures the same circles.
@@ -97,6 +115,7 @@ class RoadTools {
   std::vector<float> plot_radius_m_;      ///< By UnitTypeId; 0 — no plot.
   std::vector<float> keep_out_radius_m_;  ///< The plot's, or the body's.
   float map_side_m_ = 0.0F;
+  float edge_setback_m_ = 0.0F;  ///< Definitions::edge_build_setback_m (#1788).
 
   /// world_params `road_access_m` (units rules §12): how near a road must
   /// come to a unit for the unit to be on the network.

@@ -892,6 +892,19 @@ class ConstructionSystem final : public IConstructionSystem {
     if (PlotOverlaps(current, order.position, radius, UnitId{}, parent)) {
       return OrderRefusal::kTooClose;
     }
+    // THE PLACEMENT BANS (#1788; rules §13 as boss wrote it on 18 Nov, #1886):
+    // water and the floodplain's contour, the forest (not for the hunting
+    // lodge), a reserve, a laid road's surface, the edge band - read off the
+    // same door the layer's ban map reads (RoadTools::BansUnder). Until
+    // 0.37.401 a building could be raised on the lake.
+    if (road_doors_.bans &&
+        road_doors_.bans(current,
+                         order.position,
+                         radius,
+                         order.unit_type.value == config_.hunting_lodge_type.value,
+                         config_.definitions.edge_build_setback_m) != 0) {
+      return OrderRefusal::kRuleForbids;
+    }
     // The camp's own ground rule, after the plot: a camp on another's plot is
     // too close before it is anywhere at all.
     if (order.unit_type.value == config_.field_camp_type.value) {

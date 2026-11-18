@@ -1042,6 +1042,8 @@ bool ParseConstructionConfig(const ITableSet& tables,
       DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("farm_office"));  // #1568 link 4
   // The MTS column's camp and how near the fields it stands (field_camp.h).
   config.field_camp_type = DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("field_camp"));
+  config.hunting_lodge_type =
+      DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("hunting_lodge"));  // #1788
   // The worker's workshops at half labour (#635; avatars.csv
   // workshops_l1_labor_factor): the type and the avatars' rows.
   config.workshops_type = DefIdFromRow<UnitTypeIdTag>(unit_types->FindRowByKey("workshops"));
