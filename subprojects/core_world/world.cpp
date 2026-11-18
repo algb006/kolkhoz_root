@@ -859,6 +859,9 @@ class StandardSimulation final : public ISimulation {
     return labor_->ClerkAgendaOf(engine_->CompletedState());
   }
 
+  // STUB until #1859's body (ice_view.h): `measured` false.
+  IceView IceAtToday(Vec2 /*point*/) const override { return {}; }
+
   bool FellingCanBeManned(Vec2 place) const override {
     return labor_->FellingCanBeManned(engine_->CompletedState(), place);
   }

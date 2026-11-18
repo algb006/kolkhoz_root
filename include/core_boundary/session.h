@@ -145,6 +145,7 @@
 #include "core_common/event_state.h"
 #include "core_common/geometry.h"
 #include "core_common/herd_plan_view.h"
+#include "core_common/ice_view.h"
 #include "core_common/ids.h"
 #include "core_common/issue_norm_view.h"
 #include "core_common/master_eye_view.h"
@@ -1050,6 +1051,15 @@ class ISession {
   ///        (society design).
   /// @note Between steps; the answer describes State().
   virtual ClerkAgendaView ClerkAgenda() const = 0;
+
+  /// @brief The ice at `point` today (ISimulation::IceAtToday; core_common/ice_view.h; #1859,
+  ///        epochs §9 «Гибель председателя»): the water there, the ice's thickness by the
+  ///        winter's frost and the water's current, and its band - safe, thin or deadly for a
+  ///        walking man. The accident and the autosave before the ice are the game's.
+  ///        STUB until #1859's body: `measured` false - say «not measured».
+  /// @param point Metres, the map's frame; off the map reads as dry land.
+  /// @note Between steps; the answer describes State().
+  virtual IceView IceAt(Vec2 point) const = 0;
 
   /// @brief The pieces a drag along a laid road selects for `operation`,
   ///        snapped to whole pieces, each in or out and why, and the

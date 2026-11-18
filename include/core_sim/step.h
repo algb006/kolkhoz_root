@@ -79,6 +79,7 @@
 #include "core_common/elder_view.h"
 #include "core_common/grass_stand_view.h"
 #include "core_common/herd_plan_view.h"
+#include "core_common/ice_view.h"
 #include "core_common/ids.h"
 #include "core_common/issue_norm_view.h"
 #include "core_common/labor_state.h"
@@ -511,6 +512,11 @@ class ISimulation {
   ///        ClerkAgendaView; #1811). A bot read. The bare engine answers `measured` false.
   /// @note Called between steps on the sim thread. A pure read.
   virtual ClerkAgendaView ClerkAgendaToday() const = 0;
+
+  /// @brief The ice at `point` today (ice_view.h; #1859). The bare engine answers `measured`
+  ///        false. STUB until #1859's body: every implementation answers `measured` false.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual IceView IceAtToday(Vec2 point) const = 0;
 
   /// @brief How long the carting of the materials of the works on `unit`
   /// would take, said before they are started (supply_estimate.h; routing

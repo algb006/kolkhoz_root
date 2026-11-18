@@ -291,6 +291,8 @@ class StepEngine final : public ISimulation {
 
   ClerkAgendaView ClerkAgendaToday() const override { return {}; }
 
+  IceView IceAtToday(Vec2 /*point*/) const override { return {}; }
+
   /// No subsystems, so no works and no carts: nothing to cart.
   SupplyEstimate SupplyEstimateFor(UnitId /*unit*/) const override { return {}; }
 

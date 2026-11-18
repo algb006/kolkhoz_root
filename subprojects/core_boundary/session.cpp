@@ -603,6 +603,8 @@ class Session final : public ISession {
 
   ClerkAgendaView ClerkAgenda() const override { return simulation_->ClerkAgendaToday(); }
 
+  IceView IceAt(Vec2 point) const override { return simulation_->IceAtToday(point); }
+
   std::span<const CrewGapLine> CrewGapsToday() const override {
     return simulation_->CompletedState().crew_gaps;
   }
