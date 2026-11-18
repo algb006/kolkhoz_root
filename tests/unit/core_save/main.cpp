@@ -1724,6 +1724,12 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"audit.trial_due", U8(world.audit.trial_due)});
   chunks.push_back({"audit.books_accepted", U8(world.audit.books_accepted)});
   chunks.push_back({"audit.accepted_day", U32(world.audit.accepted_day)});
+  // The former management's theft by month (#1881, save 217).
+  chunks.push_back({"audit.before_acceptance_month", U32(world.audit.before_acceptance_month)});
+  AppendAmounts(
+      chunks, "audit.before_acceptance_this_month", world.audit.before_acceptance_this_month);
+  AppendAmounts(
+      chunks, "audit.before_acceptance_last_month", world.audit.before_acceptance_last_month);
   // The salt watch (#1630 (C), save 209).
   chunks.push_back({"salt.half_on_edge_days", U16(world.salt.half_on_edge_days)});
   chunks.push_back({"salt.ending_raised", U8(world.salt.ending_raised)});
