@@ -896,8 +896,11 @@ class StandardSimulation final : public ISimulation {
     for (std::size_t row = 0; row < completed.units.rows.size(); ++row) {
       const UnitRow& unit = completed.units.rows[row];
       if (unit.flood_lost_year == view.year) {
-        view.losses.push_back(FloodLoss{
-            .place = unit.position, .unit = completed.units.row_ids[row], .unit_type = unit.type});
+        view.losses.push_back(FloodLoss{.place = unit.position,
+                                        .unit = completed.units.row_ids[row],
+                                        .unit_type = unit.type,
+                                        .field = FieldId{},
+                                        .area_ga = 0.0F});
       }
     }
     for (std::size_t row = 0; row < completed.fields.rows.size(); ++row) {
