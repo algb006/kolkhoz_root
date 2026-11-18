@@ -166,16 +166,34 @@ class CrimeTally {
         if (event.kind == core::EventKind::kAuditTrialDue && !trial_window_months_) {
           const std::uint32_t row = core::FindRow(world.units, event.unit);
           std::uint32_t months = 0;
+          std::uint32_t guarded_months = 0;  // H3: loss months at or after the fight began
+          const std::uint32_t fight_month =
+              fight_from_year_ > 0 ? (fight_from_year_ - 1U) * core::kMonthsPerYear : 0U;
           if (row != core::kNoRow) {
-            for (const core::BookMonth& slot : world.units.rows[row].book_window) {
+            const core::UnitRow& unit = world.units.rows[row];
+            const auto size = static_cast<std::uint32_t>(unit.book_window.size());
+            const std::uint32_t last =
+                unit.book_window_month > 0 ? unit.book_window_month - 1U : 0U;
+            for (std::uint32_t index = 0; index < size; ++index) {
               bool any = false;
-              for (const core::Grams grams : slot.lost) {
+              for (const core::Grams grams : unit.book_window[index].lost) {
                 any = any || grams > 0;
               }
               months += any ? 1U : 0U;
+              // The month this slot holds: the latest at or before `last` with
+              // its ring index.
+              const std::uint32_t back = ((last % size) + size - index) % size;
+              const std::uint32_t slot_month = last >= back ? last - back : 0U;
+              guarded_months += any && fight_from_year_ > 0 && slot_month >= fight_month ? 1U : 0U;
             }
           }
           trial_window_months_ = months;
+          trial_guarded_months_ = guarded_months;
+          const std::uint32_t trial_month = world.calendar.day / core::kDaysPerMonth;
+          trial_months_after_fight_ =
+              fight_from_year_ > 0
+                  ? static_cast<std::int64_t>(trial_month) - static_cast<std::int64_t>(fight_month)
+                  : 0;
         }
       }
       if (event.kind == core::EventKind::kAuditUnguardedLeak) {
@@ -279,6 +297,12 @@ class CrimeTally {
                                      : std::to_string(distiller_raiser_))
         << " trial_window_loss_months "
         << (trial_window_months_ ? std::to_string(*trial_window_months_) : std::string("none"))
+        << " trial_months_after_fight "
+        << (trial_window_months_ && fight_from_year_ > 0 ? std::to_string(trial_months_after_fight_)
+                                                         : std::string("-"))
+        << " trial_loss_months_after_fight "
+        << (trial_window_months_ && fight_from_year_ > 0 ? std::to_string(trial_guarded_months_)
+                                                         : std::string("-"))
         << " first_withdrawal_refused_year "
         << (first_refusal_year_ ? std::to_string(*first_refusal_year_) : std::string("none"))
         << " first_audit_trial_due_year "
@@ -495,6 +519,17 @@ class CrimeTally {
   std::uint32_t withdrawals_refused_ = 0;
   std::optional<std::uint32_t> first_refusal_year_;
   std::optional<std::uint32_t> trial_window_months_;  ///< W6: the first trial's loss months.
+  /// The late fighter (#1893 H1, H3): the year its fight began (0 = not that
+  /// arm), and at the first trial the months since it and the window's loss
+  /// months at or after it.
+  std::uint32_t fight_from_year_ = 0;
+  std::uint32_t trial_guarded_months_ = 0;
+  std::int64_t trial_months_after_fight_ = 0;
+
+ public:
+  void SetFightFromYear(std::uint32_t year) { fight_from_year_ = year; }
+
+ private:
   core::Grams written_seen_ = 0;
   std::uint8_t remarked_seen_ = 0;
   /// Audit events by the 0-based year of their day (AUDITS_UNBOOKED's count).

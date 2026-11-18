@@ -965,6 +965,7 @@ bool Walk(std::uint64_t seed,
   run::HerdTally herds(*world.tables);
   // Crime left unfought - the endings' triggers and drink's price (#1566).
   run::CrimeTally crime(*world.tables, seed);
+  crime.SetFightFromYear(g_anticrime_from_year);  // #1893's late fighter (H1, H3)
   // #1630 (B): the salt a village-year, the steps, the bot's lots.
   run::SaltTally salt(*world.tables, seed);
   // Every cow handed y2-y3: the door, the forecast, came true (#1570, boss [32]).
