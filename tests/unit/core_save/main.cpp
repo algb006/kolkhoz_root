@@ -2696,7 +2696,9 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // held; the hash read off it (s1644e).
     // Save 211 (#1375): lost_to_flood, an empty amounts vector (a u16 count) a book, two
     // books; 4050 -> 4054, held; the hash read off it (u1375).
-    {"ledger", 4054, 0xa53720df72731bd9ULL},
+    // Save 217 (#1883): stolen_distillers, an empty amounts vector (a u16 count) a book, two
+    // books; predicted 4054 -> 4058 before the build, held; the hash read off u1881c.
+    {"ledger", 4058, 0x76aff8fdcfce141ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
