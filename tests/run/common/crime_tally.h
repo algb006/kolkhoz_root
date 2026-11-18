@@ -129,6 +129,14 @@ class CrimeTally {
           event.kind == core::EventKind::kAuditRemark ||
           event.kind == core::EventKind::kAuditTrialDue) {
         ++audit_events_;
+        // BY THE YEAR OF THE EVENT'S OWN DAY (18 Nov 2026): the year line is
+        // read on the morning of the year's last day, so an audit drawn on
+        // that day (hour 1) went into the NEXT year's event count while the
+        // core booked it in this year's - AUDITS_UNBOOKED on 36 of 1 024
+        // village-years of #1883's careless pair, every one a last-day audit
+        // the closed book carried (seed 1932 y4: Y line audits 1, closed 2).
+        // The check now reads the closed book against these, at the turn.
+        ++audit_events_by_year_[world.calendar.day / core::kDaysPerYear];
         // The audit's shortage (the events' `amount`, per mille of the worst
         // guardable position) - an audit after the trial is due says none.
         shortages_ += (shortages_.empty() ? "" : ",") + std::to_string(event.amount);
@@ -197,7 +205,10 @@ class CrimeTally {
              << " audits " << closed.audits << " audit_remarks " << closed.audit_remarks
              << " written_off_kg " << written / 1000 << " drunk_fires " << closed.drunk_fires
              << " stolen_before_acceptance_kg " << BeforeAct(closed) / 1000
-             << " herd_deaths_hunger " << closed.herd_deaths_hunger << '\n';
+             << " herd_deaths_hunger " << closed.herd_deaths_hunger << " audit_events "
+             << audit_events_by_year_[year - 2U]
+             << (audit_events_by_year_[year - 2U] != closed.audits ? " AUDITS_UNBOOKED" : "")
+             << '\n';
     }
     if (year > kYears) {
       return;
@@ -398,8 +409,7 @@ class CrimeTally {
            << " theft_clamps_kg " << theft_by_kind_[kTheftClamp] / 1000 << " theft_guardable_kg "
            << theft_by_kind_[kTheftGuardable] / 1000 << " theft_other_kg "
            << theft_by_kind_[kTheftOther] / 1000 << " unguarded_leak_reports " << unguarded_leaks_
-           << " audit_events " << audit_events_
-           << (audit_events_ > book.audits ? " AUDITS_UNBOOKED" : "") << " shortage_permille_list "
+           << " audit_events " << audit_events_ << " shortage_permille_list "
            << (shortages_.empty() ? std::string("-") : shortages_) << '\n';
     theft_by_kind_ = {};
     link1_by_kind_ = {};
@@ -432,6 +442,8 @@ class CrimeTally {
   std::array<core::Grams, 4> theft_by_kind_ = {};
   std::uint32_t unguarded_leaks_ = 0;
   std::uint32_t audit_events_ = 0;
+  /// Audit events by the 0-based year of their day (AUDITS_UNBOOKED's count).
+  std::unordered_map<std::uint32_t, std::uint32_t> audit_events_by_year_;
   /// Each audit's shortage this year, per mille, comma-joined (boss's (2)).
   std::string shortages_;
   std::vector<std::uint8_t> guardable_;
