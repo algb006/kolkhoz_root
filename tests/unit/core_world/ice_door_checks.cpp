@@ -5,6 +5,7 @@
 #include <string>
 
 #include "core_catalog/map_obstacle_tables.h"
+#include "core_common/flood_losses_view.h"
 #include "core_common/geometry.h"
 #include "core_common/ice_view.h"
 #include "core_common/map_obstacles.h"
@@ -109,5 +110,10 @@ int CheckTheIceDoor() {
   std::cout << "seed fund door, 1 January: " << held / 1000 << " kg held for the next sowings\n";
   failures += Expect(fund.measured && held > 0,
                      "seed fund: measured, and the start's next sowings hold seed");
+  // THE FLOOD'S LOSSES (#1894): year 1 has no flood (it comes from year 2), so
+  // the start's answer is measured and empty, of year 1.
+  const core::FloodLossesView flood = simulation->FloodLossesThisYearToday();
+  failures += Expect(flood.measured && flood.year == 1 && flood.losses.empty(),
+                     "flood losses: measured, year 1, nothing lost before any flood");
   return failures;
 }

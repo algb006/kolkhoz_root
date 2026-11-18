@@ -886,6 +886,36 @@ class StandardSimulation final : public ISimulation {
 
   // #1881 (store_theft.h): read off the completed world's book windows and the
   // pre-acceptance pair.
+  FloodLossesView FloodLossesThisYearToday() const override {
+    // #1894 (flood_losses_view.h): the units and meadows this calendar year's
+    // spring flood marked (flood_lost_year, written by spring_flood.cpp).
+    const WorldState& completed = engine_->CompletedState();
+    FloodLossesView view;
+    view.measured = true;
+    view.year = static_cast<std::uint16_t>((completed.calendar.day / kDaysPerYear) + 1U);
+    for (std::size_t row = 0; row < completed.units.rows.size(); ++row) {
+      const UnitRow& unit = completed.units.rows[row];
+      if (unit.flood_lost_year == view.year) {
+        view.losses.push_back(FloodLoss{.place = unit.position,
+                                        .unit = completed.units.row_ids[row],
+                                        .unit_type = unit.type,
+                                        .field = FieldId{},
+                                        .area_ga = 0.0F});
+      }
+    }
+    for (std::size_t row = 0; row < completed.fields.rows.size(); ++row) {
+      const FieldRow& field = completed.fields.rows[row];
+      if (field.flood_lost_year == view.year) {
+        view.losses.push_back(FloodLoss{.place = field.center,
+                                        .unit = UnitId{},
+                                        .unit_type = UnitTypeId{},
+                                        .field = completed.fields.row_ids[row],
+                                        .area_ga = field.area_ga});
+      }
+    }
+    return view;
+  }
+
   SeedFundView SeedFundToday() const override {
     return production_->SeedFundOf(engine_->CompletedState());
   }

@@ -77,6 +77,7 @@
 #include "core_common/deadline.h"
 #include "core_common/delivery_term.h"
 #include "core_common/elder_view.h"
+#include "core_common/flood_losses_view.h"
 #include "core_common/grass_stand_view.h"
 #include "core_common/herd_plan_view.h"
 #include "core_common/ice_view.h"
@@ -529,6 +530,11 @@ class ISimulation {
   ///        answers `measured` false.
   /// @note Called between steps on the sim thread. A pure read.
   virtual SeedFundView SeedFundToday() const = 0;
+
+  /// @brief This calendar year's losses to the spring flood (flood_losses_view.h; #1894).
+  ///        The bare engine answers `measured` false.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual FloodLossesView FloodLossesThisYearToday() const = 0;
 
   /// @brief How long the carting of the materials of the works on `unit`
   /// would take, said before they are started (supply_estimate.h; routing
