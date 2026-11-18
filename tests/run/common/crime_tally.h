@@ -372,17 +372,17 @@ class CrimeTally {
     // #1883: the distillers' take, its own line; with it in the book the gap
     // grows by both links, without it by link 2's alone - the split reads
     // against whichever the tree keeps, and says which.
-    core::Grams distillers = 0;
+    core::Grams link1_taken = 0;
     for (const core::Grams grams : book.stolen_distillers) {
-      distillers += grams;
+      link1_taken += grams;
     }
-    const bool link1_in_book = split != gap_grown && split + distillers == gap_grown;
+    const bool link1_in_book = split != gap_grown && split + link1_taken == gap_grown;
     lines_ << " truant_man_days " << book.truant_man_days << " ledger_stolen_not_sugar_kg "
            << food_stolen / 1000 << " link2_by_night_kg " << stolen_night_g_ / 1000
            << " link2_by_collusion_kg " << stolen_collusion_g_ / 1000
            << (split == gap_grown || link1_in_book ? "" : " LINK2_SPLIT_UNREAD")
-           << " link1_distillers_kg " << distillers / 1000 << " link1_in_book "
-           << (link1_in_book ? "yes" : (distillers == 0 ? "none_taken" : "no"))
+           << " link1_distillers_kg " << link1_taken / 1000 << " link1_in_book "
+           << (link1_in_book ? "yes" : (link1_taken == 0 ? "none_taken" : "no"))
            << " link1_church_kg " << link1_by_kind_[kTheftChurch] / 1000 << " link1_clamps_kg "
            << link1_by_kind_[kTheftClamp] / 1000 << " link1_guardable_kg "
            << link1_by_kind_[kTheftGuardable] / 1000 << " link1_other_kg "
