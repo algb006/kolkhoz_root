@@ -37,6 +37,7 @@
 #include "core_common/random.h"
 #include "core_common/road_view.h"
 #include "core_common/state_table_ops.h"
+#include "core_common/store_theft.h"
 #include "core_common/world_state.h"
 #include "core_construction/construction_system.h"
 #include "core_labor/labor_system.h"
@@ -881,6 +882,12 @@ class StandardSimulation final : public ISimulation {
     view.thickness_cm = still * share;
     view.band = IceBandOf(view.thickness_cm, ice_rules_);
     return view;
+  }
+
+  // #1881 (store_theft.h): read off the completed world's book windows and the
+  // pre-acceptance pair.
+  StoreTheftView StoreTheftLastMonthToday() const override {
+    return StoreTheftOf(engine_->CompletedState());
   }
 
   bool FellingCanBeManned(Vec2 place) const override {

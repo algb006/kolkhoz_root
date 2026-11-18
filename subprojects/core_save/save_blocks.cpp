@@ -683,6 +683,10 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteU8(world.audit.trial_due);
   out.WriteU8(world.audit.books_accepted);  // #1568 (a)
   out.WriteU32(world.audit.accepted_day);   // #1568 round 2 (R3)
+  // The former management's theft by month (#1881, save 217).
+  out.WriteU32(world.audit.before_acceptance_month);
+  sink.WriteAmounts(DefKind::kResource, world.audit.before_acceptance_this_month);
+  sink.WriteAmounts(DefKind::kResource, world.audit.before_acceptance_last_month);
   // The salt watch (#1630 (C), save 209).
   out.WriteU16(world.salt.half_on_edge_days);
   out.WriteU8(world.salt.ending_raised);
@@ -1046,6 +1050,9 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->audit.books_accepted =
       static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "the books accepted"));
   world->audit.accepted_day = in.ReadU32();
+  world->audit.before_acceptance_month = in.ReadU32();  // save 217 (#1881)
+  world->audit.before_acceptance_this_month = source.ReadAmounts(DefKind::kResource);
+  world->audit.before_acceptance_last_month = source.ReadAmounts(DefKind::kResource);
   world->salt.half_on_edge_days = in.ReadU16();  // save 209 (#1630 (C))
   world->salt.ending_raised =
       static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "the salt ending raised"));

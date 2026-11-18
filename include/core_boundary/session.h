@@ -157,6 +157,7 @@
 #include "core_common/readiness_view.h"
 #include "core_common/resident_activity.h"
 #include "core_common/stink.h"
+#include "core_common/store_theft_view.h"
 #include "core_common/supply_estimate.h"
 #include "core_common/week_labour.h"
 #include "core_common/world_junction.h"
@@ -1060,6 +1061,14 @@ class ISession {
   /// @param point Metres from the map's south-west corner; off the map reads as dry land.
   /// @note Between steps; the answer describes State().
   virtual IceView IceAt(Vec2 point) const = 0;
+
+  /// @brief The store report's theft lines (ISimulation::StoreTheftLastMonthToday;
+  ///        core_common/store_theft_view.h; #1881, game's #1633): every store's
+  ///        grams gone missing in the last CLOSED month by resource, and the
+  ///        former management's thefts of that month before the act («до
+  ///        приёмки»), village-wide. Summed in the core; the layer sums no events.
+  /// @note Between steps; the answer describes State().
+  virtual StoreTheftView StoreTheftLastMonth() const = 0;
 
   /// @brief The pieces a drag along a laid road selects for `operation`,
   ///        snapped to whole pieces, each in or out and why, and the

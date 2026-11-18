@@ -20,6 +20,7 @@ kolkhoz_add_module(core_common
     road_view.cpp
     meadow_mark.cpp
     ice_water.cpp
+    store_theft.cpp
     obstacle_raster.cpp
     road_trace.cpp
     road_pieces.cpp

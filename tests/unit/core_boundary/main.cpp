@@ -190,6 +190,8 @@ class ScriptedSimulation final : public core::ISimulation {
 
   core::IceView IceAtToday(core::Vec2 /*point*/) const override { return {}; }
 
+  core::StoreTheftView StoreTheftLastMonthToday() const override { return {}; }
+
   /// No works and no carts here: nothing to cart.
   core::SupplyEstimate SupplyEstimateFor(core::UnitId /*unit*/) const override { return {}; }
 

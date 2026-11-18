@@ -156,6 +156,9 @@ Grams TakeFood(const FoodTheftConfig& config,
     // in its own line and never in the book.
     if (current.audit.books_accepted == 0) {
       AddLedgerAmount(current.ledger.current.stolen_before_acceptance, food, take);
+      // And by month, for the store report's «до приёмки» line (#1881).
+      RollBeforeAcceptance(current.audit, MonthTag(current.calendar.day));
+      AddAmount(current.audit.before_acceptance_this_month, food, take);
     } else {
       AddAmount(unit.book_gap, food, take);
       AddAmount(WindowMonth(config, unit, MonthTag(current.calendar.day)).lost, food, take);

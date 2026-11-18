@@ -96,6 +96,7 @@
 #include "core_common/seed_lot_view.h"
 #include "core_common/stink.h"
 #include "core_common/stock_forecast.h"
+#include "core_common/store_theft_view.h"
 #include "core_common/supply_estimate.h"
 #include "core_common/week_labour.h"
 #include "core_common/world_junction.h"
@@ -517,6 +518,11 @@ class ISimulation {
   ///        false; the standard simulation measures it (ice_water.h, StillIceCmOn).
   /// @note Called between steps on the sim thread. A pure read.
   virtual IceView IceAtToday(Vec2 point) const = 0;
+
+  /// @brief The last closed month's theft, store by store and before the act
+  ///        (store_theft_view.h; #1881). The bare engine answers `measured` false.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual StoreTheftView StoreTheftLastMonthToday() const = 0;
 
   /// @brief How long the carting of the materials of the works on `unit`
   /// would take, said before they are started (supply_estimate.h; routing

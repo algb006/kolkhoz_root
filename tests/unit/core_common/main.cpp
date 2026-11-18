@@ -64,6 +64,9 @@ int TestThePorter();
 /// The water at a point, as the ice reads it (ice_water_checks.cpp; #1859).
 int TestTheIceWater();
 
+/// The store report's theft lines (store_theft_checks.cpp; #1881).
+int TestTheStoreTheft();
+
 /// The drawn trip's whole-trip arithmetic (trip_terms_checks.cpp; #1056 C3).
 int TestTripTerms();
 }  // namespace core_test
@@ -3091,6 +3094,7 @@ int main() {
   failures += core_test::TestMeadowMarkContract();
   failures += core_test::TestThePorter();
   failures += core_test::TestTheIceWater();
+  failures += core_test::TestTheStoreTheft();
   failures += core_test::TestTripTerms();
   failures += TestRoadTrace();
   failures += TestRoadPieces();

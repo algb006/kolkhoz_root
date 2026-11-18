@@ -20,6 +20,7 @@
 
 #include <array>
 #include <cstdint>
+#include <utility>
 
 #include "core_common/geometry.h"
 #include "core_common/ids.h"
@@ -121,7 +122,55 @@ struct AuditState {
   /// The absolute day the act was signed (#1568 round 2, R3: the trigger
   /// waits audit_trial_after_act_months from it); 0 before the act.
   std::uint32_t accepted_day = 0;
+
+  /// THE FORMER MANAGEMENT'S THEFT BY MONTH (#1881; game's #1633, the store
+  /// report's «до приёмки» line; crime §7). YearLedger::stolen_before_acceptance
+  /// is the year's sum and has no month; the report reads the last closed
+  /// month. The pair: grams by resource stolen before the act in the month
+  /// `before_acceptance_month` - 1 names (the campaign's month: day / 4; 0 =
+  /// none booked yet), and in the month before it. NEVER IN A STORE'S
+  /// book_window: the district audit reads that, and «до приёмки» is never
+  /// audited. Written by food_theft.cpp beside the ledger's line. SAVED (save
+  /// 217).
+  std::uint32_t before_acceptance_month = 0;
+  ResourceAmounts before_acceptance_this_month;
+  ResourceAmounts before_acceptance_last_month;
 };
+
+/// @brief Brings the pre-acceptance pair up to `month` (the campaign's month,
+///        day / kDaysPerMonth): this month's grams become last month's when the
+///        month moves on by one, and both clear when it moves on by more.
+inline void RollBeforeAcceptance(AuditState& audit, std::uint32_t month) {
+  if (audit.before_acceptance_month == month + 1U) {
+    return;
+  }
+  if (audit.before_acceptance_month != 0 && audit.before_acceptance_month == month) {
+    audit.before_acceptance_last_month = std::move(audit.before_acceptance_this_month);
+  } else {
+    audit.before_acceptance_last_month.clear();
+  }
+  audit.before_acceptance_this_month.clear();
+  audit.before_acceptance_month = month + 1U;
+}
+
+/// @brief The grams stolen before the act in the month BEFORE `month`, as the
+///        pair holds them - read without moving it: empty when nothing was
+///        booked in that month.
+inline const ResourceAmounts& BeforeAcceptanceInMonthBefore(const AuditState& audit,
+                                                            std::uint32_t month) {
+  static const ResourceAmounts kNone;
+  if (month == 0 || audit.before_acceptance_month == 0) {
+    return kNone;
+  }
+  const std::uint32_t booked = audit.before_acceptance_month - 1U;  // the "this" month
+  if (booked == month - 1U) {
+    return audit.before_acceptance_this_month;
+  }
+  if (booked == month) {
+    return audit.before_acceptance_last_month;
+  }
+  return kNone;
+}
 
 }  // namespace core
 
