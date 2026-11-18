@@ -36,6 +36,7 @@ enum class IceWater : std::uint8_t {
   kInflow,     ///< Within ice_inflow_disc_m of a river's mouth in still water.
   kRiver,      ///< The river's channel: ice_current_river of it.
   kRapids,     ///< Never sets (the ice-order mask's B).
+  kIceWaterCount
 };
 
 /// @brief Whether the ice at a point holds a walking man.
@@ -44,6 +45,7 @@ enum class IceBand : std::uint8_t {
   kDeadly,     ///< Under ice_deadly_cm: he goes through.
   kThin,       ///< From ice_deadly_cm to under ice_safe_cm: it cracks and warns.
   kSafe,       ///< ice_safe_cm and above.
+  kIceBandCount
 };
 
 /// @brief The ice at one point, today.
