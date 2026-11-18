@@ -121,6 +121,26 @@ class CrimeTally {
   ///        SPLIT_UNREAD when they part (the first form read the day's last
   ///        step only and missed every theft, 232 of 232 village-years).
   void CountStep(const core::WorldState& world) {
+    // LEVER (a)'s PRINT (econ [11]): a write-off is read as the year's
+    // written_off growing in a step; it withdrew the remark when the remark
+    // that stood before the step is down after it, and was REFUSED the
+    // withdrawal when the remark still stands.
+    core::Grams written = 0;
+    for (const core::Grams grams : world.ledger.current.written_off) {
+      written += grams;
+    }
+    // The book resets at the turn, so a fall is the new year, never a take.
+    if (written > written_seen_) {
+      ++write_offs_;
+      if (remarked_seen_ != 0 && world.audit.remarked != 0) {
+        ++withdrawals_refused_;
+        if (!first_refusal_year_) {
+          first_refusal_year_ = (world.calendar.day / core::kDaysPerYear) + 1U;
+        }
+      }
+    }
+    written_seen_ = written;
+    remarked_seen_ = world.audit.remarked;
     for (const core::SimEvent& event : world.step_events) {
       // THE AUDITS BY THEIR EVENTS (7 Nov 2026): an audit gives clean, a
       // remark or the trial (none once the trial is due) - more such events
@@ -140,6 +160,7 @@ class CrimeTally {
         // The audit's shortage (the events' `amount`, per mille of the worst
         // guardable position) - an audit after the trial is due says none.
         shortages_ += (shortages_.empty() ? "" : ",") + std::to_string(event.amount);
+        audits_ge100_ += event.amount >= 100 ? 1U : 0U;  // lever (a)'s ceiling (econ [13])
       }
       if (event.kind == core::EventKind::kAuditUnguardedLeak) {
         ++unguarded_leaks_;  // round 2 (R2): the lever line's count a year
@@ -240,6 +261,8 @@ class CrimeTally {
         << " alcohol_gain_with_distiller "
         << (distiller_raiser_ < 0.0F ? std::string("NOT IN THE TABLES")
                                      : std::to_string(distiller_raiser_))
+        << " first_withdrawal_refused_year "
+        << (first_refusal_year_ ? std::to_string(*first_refusal_year_) : std::string("none"))
         << " first_audit_trial_due_year "
         << (audit_trial_year_ ? std::to_string(*audit_trial_year_) : std::string("none"))
         << " village_ended: NOT MEASURABLE (no trigger in the core, #1569)"
@@ -409,13 +432,18 @@ class CrimeTally {
            << " theft_clamps_kg " << theft_by_kind_[kTheftClamp] / 1000 << " theft_guardable_kg "
            << theft_by_kind_[kTheftGuardable] / 1000 << " theft_other_kg "
            << theft_by_kind_[kTheftOther] / 1000 << " unguarded_leak_reports " << unguarded_leaks_
-           << " audit_events " << audit_events_ << " shortage_permille_list "
+           << " audit_events " << audit_events_ << " audits_ge100 " << audits_ge100_
+           << " write_offs " << write_offs_ << " withdrawals_refused " << withdrawals_refused_
+           << " reputation " << world.chairman.raikom_reputation << " shortage_permille_list "
            << (shortages_.empty() ? std::string("-") : shortages_) << '\n';
     theft_by_kind_ = {};
     link1_by_kind_ = {};
     unguarded_leaks_ = 0;
     audit_events_ = 0;
     shortages_.clear();
+    audits_ge100_ = 0;
+    write_offs_ = 0;
+    withdrawals_refused_ = 0;
     if (world.audit.trial_due != 0 && !audit_trial_year_) {
       audit_trial_year_ = year;
     }
@@ -442,6 +470,14 @@ class CrimeTally {
   std::array<core::Grams, 4> theft_by_kind_ = {};
   std::uint32_t unguarded_leaks_ = 0;
   std::uint32_t audit_events_ = 0;
+  /// Lever (a)'s print: this year's audits at ≥ 100 ‰, write-offs and the
+  /// withdrawals the lever refused; the first refusal's year; the step before.
+  std::uint32_t audits_ge100_ = 0;
+  std::uint32_t write_offs_ = 0;
+  std::uint32_t withdrawals_refused_ = 0;
+  std::optional<std::uint32_t> first_refusal_year_;
+  core::Grams written_seen_ = 0;
+  std::uint8_t remarked_seen_ = 0;
   /// Audit events by the 0-based year of their day (AUDITS_UNBOOKED's count).
   std::unordered_map<std::uint32_t, std::uint32_t> audit_events_by_year_;
   /// Each audit's shortage this year, per mille, comma-joined (boss's (2)).
