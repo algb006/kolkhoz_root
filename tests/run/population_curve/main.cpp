@@ -612,6 +612,12 @@ bool g_beach_off = false;
 /// chairman fights no crime (the wiring in Walk says what is off). The
 /// environment form is the one host's harness and the node scripts pass.
 bool g_no_anticrime = false;
+
+/// `--anticrime-from-year=N` (#1893's harm arm, boss GO 19 Nov 2026): THE LATE
+/// FIGHTER - careless (as --no-anticrime) until the first day of year N, then
+/// the canon's levers (the distiller policy with its watchmen and takes, the
+/// talks). 0 = not this arm.
+std::uint32_t g_anticrime_from_year = 0;
 /// `--no-write-off`: #1568's arm - the run chairman never writes the book's
 /// shortage off after the audit's remark (WriteOffPolicy off).
 bool g_no_write_off = false;
@@ -915,7 +921,7 @@ bool Walk(std::uint64_t seed,
   // arm drank LESS than the canon - no sugar in the village, nothing to steal,
   // samogon 0 from y3 - since the sugar is the distillers' supply, not a
   // lever against them; the spec had misfiled it.
-  if (g_no_anticrime) {
+  if (g_no_anticrime || g_anticrime_from_year > 0) {
     builder.distiller.Enable(false);
     builder.sport_talk_on = false;
   }
@@ -1085,6 +1091,12 @@ bool Walk(std::uint64_t seed,
       // `AdvanceDays(1)` IS this loop — the order of `builder.RunDay` after
       // the day is untouched, and the bands below are the proof.
       // The upgrade policy's unexplained days before today's (E3, #776).
+      // THE LATE FIGHTER takes up the fight on the first day of its year.
+      if (g_anticrime_from_year > 0 && simulation->CompletedState().calendar.day ==
+                                           (g_anticrime_from_year - 1U) * core::kDaysPerYear) {
+        builder.distiller.Enable(true);
+        builder.sport_talk_on = true;
+      }
       const std::uint32_t unexplained_before = builder.upgrades.held().unexplained;
       LiveOneDay(*simulation,
                  builder.upgrades,
@@ -1849,6 +1861,9 @@ int main(int argc, char** argv) {
       g_houses_first = false;  // #1677's raise off
     } else if (argument == "--no-write-off") {
       g_no_write_off = true;
+    } else if (argument.starts_with("--anticrime-from-year=")) {
+      g_anticrime_from_year = static_cast<std::uint32_t>(std::stoul(
+          std::string(argument.substr(std::string_view("--anticrime-from-year=").size()))));
     } else if (argument == "--no-anticrime") {
       g_no_anticrime = true;
     } else if (argument.starts_with("--avatar=")) {
