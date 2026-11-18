@@ -5,6 +5,7 @@
 #include <string>
 
 #include "core_catalog/map_obstacle_tables.h"
+#include "core_common/flood_losses_view.h"
 #include "core_common/forest_facts_view.h"
 #include "core_common/geometry.h"
 #include "core_common/ice_view.h"
