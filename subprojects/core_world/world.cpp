@@ -904,6 +904,8 @@ class StandardSimulation final : public ISimulation {
       const FieldRow& field = completed.fields.rows[row];
       if (field.flood_lost_year == view.year) {
         view.losses.push_back(FloodLoss{.place = field.center,
+                                        .unit = UnitId{},
+                                        .unit_type = UnitTypeId{},
                                         .field = completed.fields.row_ids[row],
                                         .area_ga = field.area_ga});
       }
