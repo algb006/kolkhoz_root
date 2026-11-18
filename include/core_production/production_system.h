@@ -66,6 +66,7 @@
 #include "core_common/quantities.h"
 #include "core_common/rain_stops_work.h"
 #include "core_common/salt_view.h"
+#include "core_common/seed_fund_view.h"
 #include "core_common/seed_lot_view.h"
 #include "core_common/work_seam.h"
 #include "core_sim/step.h"
@@ -318,6 +319,10 @@ class IProductionSystem {
   ///        its grams, the pro-rated points, and the lot door's own refusal.
   /// @note A pure read on the sim thread, between steps.
   virtual SeedLotView SeedLotOfferToday(const WorldState& completed) const = 0;
+
+  /// @brief The seed fund's need on `completed` (seed_fund_view.h): the grams
+  ///        SeedHeldByField holds for the next sowings, by resource. A pure read.
+  virtual SeedFundView SeedFundOf(const WorldState& completed) const = 0;
 
   /// @brief Whether the hay IN THE STORES is below what the kolkhoz herds
   /// will eat of it in the next `days` days (0.37.131; boss, boss-all-carts-

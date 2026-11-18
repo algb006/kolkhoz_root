@@ -886,6 +886,10 @@ class StandardSimulation final : public ISimulation {
 
   // #1881 (store_theft.h): read off the completed world's book windows and the
   // pre-acceptance pair.
+  SeedFundView SeedFundToday() const override {
+    return production_->SeedFundOf(engine_->CompletedState());
+  }
+
   StoreTheftView StoreTheftLastMonthToday() const override {
     return StoreTheftOf(engine_->CompletedState());
   }

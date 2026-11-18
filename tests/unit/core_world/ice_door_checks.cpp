@@ -8,6 +8,8 @@
 #include "core_common/geometry.h"
 #include "core_common/ice_view.h"
 #include "core_common/map_obstacles.h"
+#include "core_common/quantities.h"
+#include "core_common/seed_fund_view.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
 
@@ -97,5 +99,15 @@ int CheckTheIceDoor() {
   failures += Expect(in_village.water == core::IceWater::kNone && in_village.thickness_cm == 0.0F &&
                          in_village.band == core::IceBand::kNoIce,
                      "the village's middle is dry land, with no ice");
+  // THE SEED FUND'S DOOR (#1680) on the same canon: measured, and the start's
+  // spring sowings hold seed on 1 January.
+  const core::SeedFundView fund = simulation->SeedFundToday();
+  core::Grams held = 0;
+  for (const core::Grams grams : fund.need) {
+    held += grams;
+  }
+  std::cout << "seed fund door, 1 January: " << held / 1000 << " kg held for the next sowings\n";
+  failures += Expect(fund.measured && held > 0,
+                     "seed fund: measured, and the start's next sowings hold seed");
   return failures;
 }

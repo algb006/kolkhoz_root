@@ -156,6 +156,7 @@
 #include "core_common/quantities.h"
 #include "core_common/readiness_view.h"
 #include "core_common/resident_activity.h"
+#include "core_common/seed_fund_view.h"
 #include "core_common/stink.h"
 #include "core_common/store_theft_view.h"
 #include "core_common/supply_estimate.h"
@@ -1069,6 +1070,12 @@ class ISession {
   ///        приёмки»), village-wide. Summed in the core; the layer sums no events.
   /// @note Between steps; the answer describes State().
   virtual StoreTheftView StoreTheftLastMonth() const = 0;
+
+  /// @brief The seed fund's need (ISimulation::SeedFundToday; core_common/seed_fund_view.h;
+  ///        #1680, resources §6): the grams held for the next sowings by resource - the stores
+  ///        window's «нужно на сев {amount}», the same rung every door that keeps seed reads.
+  /// @note Between steps; the answer describes State().
+  virtual SeedFundView SeedFund() const = 0;
 
   /// @brief The pieces a drag along a laid road selects for `operation`,
   ///        snapped to whole pieces, each in or out and why, and the

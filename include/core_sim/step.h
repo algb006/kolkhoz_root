@@ -93,6 +93,7 @@
 #include "core_common/resident_activity.h"
 #include "core_common/road_draft.h"
 #include "core_common/salt_view.h"
+#include "core_common/seed_fund_view.h"
 #include "core_common/seed_lot_view.h"
 #include "core_common/stink.h"
 #include "core_common/stock_forecast.h"
@@ -523,6 +524,11 @@ class ISimulation {
   ///        (store_theft_view.h; #1881). The bare engine answers `measured` false.
   /// @note Called between steps on the sim thread. A pure read.
   virtual StoreTheftView StoreTheftLastMonthToday() const = 0;
+
+  /// @brief The seed fund's need today (seed_fund_view.h; #1680). The bare engine
+  ///        answers `measured` false.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual SeedFundView SeedFundToday() const = 0;
 
   /// @brief How long the carting of the materials of the works on `unit`
   /// would take, said before they are started (supply_estimate.h; routing

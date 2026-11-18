@@ -605,6 +605,8 @@ class Session final : public ISession {
 
   IceView IceAt(Vec2 point) const override { return simulation_->IceAtToday(point); }
 
+  SeedFundView SeedFund() const override { return simulation_->SeedFundToday(); }
+
   StoreTheftView StoreTheftLastMonth() const override {
     return simulation_->StoreTheftLastMonthToday();
   }

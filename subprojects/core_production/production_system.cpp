@@ -652,6 +652,18 @@ class ProductionSystem final : public IProductionSystem {
     return SeedLotOfferOf(config_, completed);
   }
 
+  SeedFundView SeedFundOf(const WorldState& completed) const override {
+    // The seed rung's one rule (fund_ladder.h), as every door that keeps seed
+    // reads it - here for the stores window's «нужно на сев» (#1680).
+    SeedFundView view;
+    view.measured = true;
+    view.need =
+        SeedHeldByField(
+            completed, SeedNormsOf(config_), config_.feed_values.size(), completed.calendar.day)
+            .by_resource;
+    return view;
+  }
+
   Grams StandingCropGrams(const WorldState& /*world*/, const FieldRow& field) const override {
     if (field.crop.value >= config_.crops.size()) {
       return 0;
