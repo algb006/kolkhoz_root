@@ -34,6 +34,7 @@
 #include <ostream>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "core_common/calendar.h"
@@ -141,22 +142,36 @@ class CrimeTally {
         // guardable ones) - the church, the clamps, a store a watchman can be
         // posted at (its type's or its parent's night post), any other.
         const std::uint32_t row = core::FindRow(world.units, event.unit);
-        std::size_t kind = kTheftOther;
-        if (row != core::kNoRow) {
-          const core::UnitRow& unit = world.units.rows[row];
-          const std::uint32_t parent = core::FindRow(world.units, unit.parent);
-          if (unit.type.value == church_store_) {
-            kind = kTheftChurch;
-          } else if (unit.type.value == clamp_) {
-            kind = kTheftClamp;
-          } else if (Guardable(unit.type.value) ||
-                     (parent != core::kNoRow && Guardable(world.units.rows[parent].type.value))) {
-            kind = kTheftGuardable;
-          }
-        }
+        const std::size_t kind =
+            row != core::kNoRow ? KindOf(world, world.units.rows[row]) : kTheftOther;
         theft_by_kind_[kind] += event.amount;
+        if (world.audit.books_accepted != 0) {
+          link2_booked_this_step_[event.unit.value] += event.amount;
+        }
       }
     }
+    // #1883's PRINT (boss-core-econ-link1-book [4]): LINK 1 BY STORE. The
+    // distillers raise no event per store, so their after-act take is read off
+    // each store's book gap growth this step, less link 2's booked theft in it
+    // (a write-off's fall is not a take); by the same store kinds as link 2.
+    for (std::size_t row = 0; row < world.units.rows.size(); ++row) {
+      const core::UnitRow& unit = world.units.rows[row];
+      core::Grams here = 0;
+      for (const core::Grams grams : unit.book_gap) {
+        here += grams;
+      }
+      const std::uint32_t id = world.units.row_ids[row].value;
+      core::Grams& before = gap_by_unit_[id];
+      const core::Grams grown = here - before;
+      before = here;
+      const auto booked2 = link2_booked_this_step_.find(id);
+      const core::Grams link1 =
+          grown - (booked2 == link2_booked_this_step_.end() ? 0 : booked2->second);
+      if (link1 > 0) {
+        link1_by_kind_[KindOf(world, unit)] += link1;
+      }
+    }
+    link2_booked_this_step_.clear();
   }
 
   void CountDay(const core::WorldState& world) {
@@ -354,10 +369,24 @@ class CrimeTally {
     // The theft before the act of acceptance went to its own line, not the book.
     const core::Grams gap_grown = gap - last_gap_ + written + BeforeAct(book);
     last_gap_ = gap;
+    // #1883: the distillers' take, its own line; with it in the book the gap
+    // grows by both links, without it by link 2's alone - the split reads
+    // against whichever the tree keeps, and says which.
+    core::Grams distillers = 0;
+    for (const core::Grams grams : book.stolen_distillers) {
+      distillers += grams;
+    }
+    const bool link1_in_book = split != gap_grown && split + distillers == gap_grown;
     lines_ << " truant_man_days " << book.truant_man_days << " ledger_stolen_not_sugar_kg "
            << food_stolen / 1000 << " link2_by_night_kg " << stolen_night_g_ / 1000
            << " link2_by_collusion_kg " << stolen_collusion_g_ / 1000
-           << (split == gap_grown ? "" : " LINK2_SPLIT_UNREAD") << " book_gap_kg " << gap / 1000
+           << (split == gap_grown || link1_in_book ? "" : " LINK2_SPLIT_UNREAD")
+           << " link1_distillers_kg " << distillers / 1000 << " link1_in_book "
+           << (link1_in_book ? "yes" : (distillers == 0 ? "none_taken" : "no"))
+           << " link1_church_kg " << link1_by_kind_[kTheftChurch] / 1000 << " link1_clamps_kg "
+           << link1_by_kind_[kTheftClamp] / 1000 << " link1_guardable_kg "
+           << link1_by_kind_[kTheftGuardable] / 1000 << " link1_other_kg "
+           << link1_by_kind_[kTheftOther] / 1000 << " book_gap_kg " << gap / 1000
            << " gap_church_kg " << gap_church / 1000 << " gap_clamps_kg " << gap_clamp / 1000
            << " gap_other_stores_kg " << gap_other / 1000 << " real_in_gapped_stores_kg "
            << real / 1000 << " audits " << book.audits << " audit_remarks " << book.audit_remarks
@@ -373,6 +402,7 @@ class CrimeTally {
            << (audit_events_ > book.audits ? " AUDITS_UNBOOKED" : "") << " shortage_permille_list "
            << (shortages_.empty() ? std::string("-") : shortages_) << '\n';
     theft_by_kind_ = {};
+    link1_by_kind_ = {};
     unguarded_leaks_ = 0;
     audit_events_ = 0;
     shortages_.clear();
@@ -409,6 +439,29 @@ class CrimeTally {
   bool Guardable(std::uint32_t type) const {
     return type < guardable_.size() && guardable_[type] != 0;
   }
+
+  /// The store's kind for the theft print: the church's store, a clamp, a
+  /// store a watchman can be posted at (its type's or its parent's), any other.
+  std::size_t KindOf(const core::WorldState& world, const core::UnitRow& unit) const {
+    if (unit.type.value == church_store_) {
+      return kTheftChurch;
+    }
+    if (unit.type.value == clamp_) {
+      return kTheftClamp;
+    }
+    const std::uint32_t parent = core::FindRow(world.units, unit.parent);
+    if (Guardable(unit.type.value) ||
+        (parent != core::kNoRow && Guardable(world.units.rows[parent].type.value))) {
+      return kTheftGuardable;
+    }
+    return kTheftOther;
+  }
+
+  /// #1883: link 1's after-act take by store kind this year, its source the
+  /// per-store book gaps, and link 2's booked theft of the step by unit id.
+  std::array<core::Grams, 4> link1_by_kind_ = {};
+  std::unordered_map<std::uint32_t, core::Grams> gap_by_unit_;
+  std::unordered_map<std::uint32_t, core::Grams> link2_booked_this_step_;
 
   core::Grams last_gap_ = 0;
   core::Grams stolen_night_g_ = 0;

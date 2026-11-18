@@ -57,7 +57,7 @@ RngState KeeperGenerator(const WorldState& current, NightTrade trade, std::uint3
 /// read, until the base drops the row. `samogon_buy_kg_drinks` and
 /// `samogon_buy_kg_abuses` left it on 2026-10-01 (0.37.72: the samogon is
 /// paid by the litre) and stand there with it.
-constexpr std::array<std::string_view, 27> kNightTradeWorldParamKeys = {
+constexpr std::array<std::string_view, 28> kNightTradeWorldParamKeys = {
     "night_distillers_max",
     "night_fisher_age_from_years",
     "night_fisher_age_to_years",
@@ -85,6 +85,9 @@ constexpr std::array<std::string_view, 27> kNightTradeWorldParamKeys = {
     "samogon_potato_kg_per_litre",
     "samogon_price_grain_kg_per_litre",
     "samogon_stock_months_of_demand",
+    // #1883: 1 (the default) - the distillers' take enters the store's book as
+    // link 2's theft does; 0 - the arm «today», measured before it shipped.
+    "crime_distiller_book_on",
 };
 
 /// The keys retired: known and not read, until the base drops their rows.
@@ -418,6 +421,7 @@ std::span<const std::string_view> NightTradeWorldParamKeys() {
 bool ParseNightTradeConfig(const ITableSet& tables, NightTradeConfig& config, std::string& error) {
   if (const ITable* const world = tables.FindTable("world_params")) {
     auto distillers = static_cast<float>(config.distillers_max);
+    auto distiller_book = config.distiller_book ? 1.0F : 0.0F;
     auto moon = static_cast<float>(config.moon_day_in_month);
     auto out = static_cast<float>(config.hour_out);
     auto back = static_cast<float>(config.hour_back);
@@ -491,10 +495,14 @@ bool ParseNightTradeConfig(const ITableSet& tables, NightTradeConfig& config, st
         {.key = kNightTradeWorldParamKeys[26],
          .value = &config.stock_months_of_demand,
          .range = {.low = 0.0F, .high = 120.0F}},
+        {.key = kNightTradeWorldParamKeys[27],
+         .value = &distiller_book,
+         .range = {.low = 0.0F, .high = 1.0F}},
     }};
     if (!ReadKnobs(*world, "world_params", knobs, error)) {
       return false;
     }
+    config.distiller_book = distiller_book >= 0.5F;
     if (!Whole(distillers) || !Whole(moon) || !Whole(out) || !Whole(back) ||
         !Whole(config.distiller_replace_months) || !Whole(config.lights_out_hour)) {
       error = "world_params: a night trade count, day, month or hour is not a whole number";

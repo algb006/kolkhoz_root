@@ -556,7 +556,7 @@ bool ParseLifeConfig(const ITableSet& tables, LifeConfig& config, std::string& e
     return false;
   }
   // The distillers book their take as link 2's theft is (#1883).
-  config.night_trade.book_on = config.food_theft.on;
+  config.night_trade.book_on = config.food_theft.on && config.night_trade.distiller_book;
   config.night_trade.book_window_months = config.food_theft.window_months;
   if (!ParseResidentsCapacity(tables, config, error)) {
     return false;

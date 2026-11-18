@@ -72,6 +72,10 @@ struct NightTradeConfig {
   /// distillers' take is booked as link 2's theft is.
   bool book_on = false;
   std::uint32_t book_window_months = 24;
+  /// `crime_distiller_book_on` (#1883; 1 by default): 0 keeps the distillers'
+  /// take out of the store's book - the arm «today» of its measurement.
+  /// book_on is link 2's switch AND this.
+  bool distiller_book = true;
   std::uint32_t distillers_max = 2;        ///< `night_distillers_max`
   float fisher_age_from_years = 18.0F;     ///< `night_fisher_age_from_years`
   float fisher_age_to_years = 50.0F;       ///< `night_fisher_age_to_years`
