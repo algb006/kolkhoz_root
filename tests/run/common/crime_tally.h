@@ -30,6 +30,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <ostream>
 #include <sstream>
@@ -121,6 +122,16 @@ class CrimeTally {
   ///        SPLIT_UNREAD when they part (the first form read the day's last
   ///        step only and missed every theft, 232 of 232 village-years).
   void CountStep(const core::WorldState& world) {
+    // #1788's READING, BY THE EVENT (the orders are gone by the day's end, so a
+    // daily read of the table saw none): every build order refused
+    // kRuleForbids, by unit type - the bans', the map edge's, a camp's rule.
+    for (const core::SimEvent& event : world.step_events) {
+      if (event.kind == core::EventKind::kOrderRefused &&
+          event.amount == static_cast<std::int64_t>(core::OrderRefusal::kRuleForbids) &&
+          event.unit_type.value != core::kInvalidDefIdValue) {
+        ++rule_refusals_by_type_[event.unit_type.value];
+      }
+    }
     for (const core::SimEvent& event : world.step_events) {
       // THE AUDITS BY THEIR EVENTS (7 Nov 2026): an audit gives clean, a
       // remark or the trial (none once the trial is due) - more such events
@@ -240,7 +251,7 @@ class CrimeTally {
         << " alcohol_gain_with_distiller "
         << (distiller_raiser_ < 0.0F ? std::string("NOT IN THE TABLES")
                                      : std::to_string(distiller_raiser_))
-        << " first_audit_trial_due_year "
+        << " rule_refused_builds_by_type " << RuleRefusals() << " first_audit_trial_due_year "
         << (audit_trial_year_ ? std::to_string(*audit_trial_year_) : std::string("none"))
         << " village_ended: NOT MEASURABLE (no trigger in the core, #1569)"
         << " min_year_turn_residents " << min_residents_ << " first_year_below_50 "
@@ -444,6 +455,20 @@ class CrimeTally {
   std::uint32_t audit_events_ = 0;
   /// Audit events by the 0-based year of their day (AUDITS_UNBOOKED's count).
   std::unordered_map<std::uint32_t, std::uint32_t> audit_events_by_year_;
+  /// #1788: build orders refused kRuleForbids, by unit type row.
+  std::map<std::uint32_t, std::uint32_t> rule_refusals_by_type_;
+
+  std::string RuleRefusals() const {
+    if (rule_refusals_by_type_.empty()) {
+      return "none";
+    }
+    std::string text;
+    for (const auto& [type, count] : rule_refusals_by_type_) {
+      text += (text.empty() ? "" : ",") + std::to_string(type) + "x" + std::to_string(count);
+    }
+    return text;
+  }
+
   /// Each audit's shortage this year, per mille, comma-joined (boss's (2)).
   std::string shortages_;
   std::vector<std::uint8_t> guardable_;
