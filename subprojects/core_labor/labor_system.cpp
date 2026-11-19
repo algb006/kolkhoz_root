@@ -110,6 +110,29 @@ void TallyField1811(const WorldState& current,
   if (day == 0) {
     tally = Field1811Tally{};
   }
+  // FIELD1837 (TEST ONLY): every field's phase or crop change, y1 d24 to y2 d24.
+  {
+    thread_local std::vector<std::pair<std::uint8_t, std::uint16_t>> seen;
+    if (day == 0) {
+      seen.clear();
+    }
+    const std::size_t fields = current.fields.rows.size();
+    seen.resize(fields, {0xFFU, 0xFFFFU});
+    for (std::size_t row = 0; row < fields; ++row) {
+      const FieldRow& field = current.fields.rows[row];
+      const std::pair<std::uint8_t, std::uint16_t> now{static_cast<std::uint8_t>(field.phase),
+                                                       field.crop.value};
+      if (now != seen[row] && day >= 24U && day < kDaysPerYear + 24U) {
+        LogInfo("FIELD1837 day " + std::to_string(day) + " field " + std::to_string(row) + " ga " +
+                std::to_string(field.area_ga) + " phase " + std::to_string(seen[row].first) + "->" +
+                std::to_string(now.first) + " crop " + std::to_string(seen[row].second) + "->" +
+                std::to_string(now.second) + " bare_harrowed_day " +
+                std::to_string(field.bare_harrowed_day) + " work_days_remaining " +
+                std::to_string(field.work_days_remaining));
+      }
+      seen[row] = now;
+    }
+  }
   if (tally.logged) {
     return;
   }
