@@ -390,7 +390,8 @@ using RoadSelector =
 ///        (#1788; core_common/placement_bans.h through RoadTools::BansUnder -
 ///        the same door the layer's ban map reads, so the two cannot disagree):
 ///        (world, centre, radius, forest allowed, edge band) → PlacementBan bits.
-using PlacementBanner = std::function<std::uint8_t(const WorldState&, Vec2, float, bool, float)>;
+using PlacementBanner =
+    std::function<std::uint8_t(const WorldState&, Vec2, UnitTypeId, bool, float)>;
 
 /// @brief The road tools' doors construction consumes the road orders by.
 struct RoadToolDoors {

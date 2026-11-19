@@ -1529,7 +1529,7 @@ class ConstructionSystem final : public IConstructionSystem {
     }
     std::uint8_t bans = road_doors_.bans(world,
                                          place,
-                                         KeepOutRadius(type_row),
+                                         DefIdFromRow<UnitTypeIdTag>(type_row),
                                          type_row == config_.hunting_lodge_type.value,
                                          config_.definitions.edge_build_setback_m);
     if (type_row < config_.type_touches_water.size() && config_.type_touches_water[type_row] != 0) {

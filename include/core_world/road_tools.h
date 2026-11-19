@@ -72,12 +72,22 @@ class RoadTools {
   ///        surface, the edge band. NOT the plots: the build order's kTooClose
   ///        reads those itself, by the same circles. The door kBuildUnit and the
   ///        layer's map share, so the two cannot disagree.
+  ///        THE TWO CIRCLES (rules §13 «Чем проверяется», boss 19 Nov): water,
+  ///        forest, reserve and the edge on the type's whole keep-out circle (a
+  ///        yard in the lake is in the lake); the road on the BUILDING's core
+  ///        disc - the plot × plot_core_share the tracer keeps roads off
+  ///        (UnitDiscs), or the body where the type has no plot - so the build
+  ///        ban and the road tool read one disc. Paths never ban.
   /// @param edge_setback_m The edge band (Definitions::edge_build_setback_m); 0 none.
   std::uint8_t BansUnder(const WorldState& world,
                          Vec2 center,
-                         float radius_m,
+                         UnitTypeId type,
                          bool forest_allowed,
                          float edge_setback_m) const;
+
+  /// @brief The building's core disc of `type` as the tracer keeps a road off
+  ///        it: plot × plot_core_share, or the body's keep-out where no plot.
+  float CoreDiscRadius(UnitTypeId type) const;
 
   /// @brief The whole map's bans at `cell_m` (#1788; ISession::PlacementBans):
   ///        each cell's centre read as BansUnder reads a point, plus the plots.

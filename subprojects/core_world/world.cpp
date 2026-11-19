@@ -1379,8 +1379,8 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
           // #1788: the bans under a building, the door the ban map shares.
           .bans =
               [road_tools](
-                  const WorldState& world, Vec2 centre, float radius, bool forest, float edge) {
-                return road_tools->BansUnder(world, centre, radius, forest, edge);
+                  const WorldState& world, Vec2 centre, UnitTypeId type, bool forest, float edge) {
+                return road_tools->BansUnder(world, centre, type, forest, edge);
               },
       });
   // The groom's logistics (routing stage B, B2): the tasks of carting and

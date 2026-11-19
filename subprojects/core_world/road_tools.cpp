@@ -209,11 +209,22 @@ bool InEdgeBand(Vec2 center, float radius_m, float side_m, float setback_m) {
 
 }  // namespace
 
+float RoadTools::CoreDiscRadius(UnitTypeId type) const {
+  const std::size_t row = type.value;
+  if (row >= keep_out_radius_m_.size()) {
+    return 0.0F;
+  }
+  const bool has_plot = row < plot_radius_m_.size() && plot_radius_m_[row] > 0.0F;
+  return has_plot ? plot_radius_m_[row] * config_.plot_core_share : keep_out_radius_m_[row];
+}
+
 std::uint8_t RoadTools::BansUnder(const WorldState& world,
                                   Vec2 center,
-                                  float radius_m,
+                                  UnitTypeId type,
                                   bool forest_allowed,
                                   float edge_setback_m) const {
+  const float radius_m =
+      type.value < keep_out_radius_m_.size() ? keep_out_radius_m_[type.value] : 0.0F;
   std::uint8_t bans = 0;
   if (const ObstacleRaster* const raster = Raster(); raster != nullptr && raster->HasMap()) {
     // THE CONTOUR'S CELLS: every raster cell centre within the circle, and
@@ -230,7 +241,11 @@ std::uint8_t RoadTools::BansUnder(const WorldState& world,
       }
     }
   }
-  if (TouchesARoad(world, center, radius_m, config_.road_half_width_m)) {
+  // THE ROAD ON THE BUILDING'S CORE DISC (rules §13 «Чем проверяется»): until
+  // 0.37.403 the whole plot - 25 m for a house - and the laid copies of the
+  // reference streets, 25-28 m off the elder's house points, banned 20 of 59
+  // of them on seed 1929.
+  if (TouchesARoad(world, center, CoreDiscRadius(type), config_.road_half_width_m)) {
     bans |= kBanRoad;
   }
   if (InEdgeBand(center, radius_m, map_side_m_, edge_setback_m)) {
