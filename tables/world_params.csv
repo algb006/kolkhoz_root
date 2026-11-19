@@ -400,3 +400,8 @@ ice_current_river,0.6,core
 ice_inflow_disc_m,30,core
 ice_safe_cm,10,core
 ice_deadly_cm,5,core
+audit_write_off_once_per_window,1,core
+audit_write_off_keeps_window,1,core
+audit_trial_needs_running_leak,1,core
+audit_pencil_doubled,0,core
+epoch2_door_min_reputation,0,core
