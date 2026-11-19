@@ -23,7 +23,7 @@ namespace core {
 namespace {
 
 /// The world_params keys link 2 reads, in ParseFoodTheftConfig's order.
-constexpr std::array<std::string_view, 20> kFoodTheftWorldParamKeys = {
+constexpr std::array<std::string_view, 21> kFoodTheftWorldParamKeys = {
     "crime_food_theft_on",
     "food_theft_from_alcoholism",
     "food_theft_kg_per_thief_month",
@@ -47,7 +47,10 @@ constexpr std::array<std::string_view, 20> kFoodTheftWorldParamKeys = {
     "audit_write_off_once_per_window",
     // econ's (a′) (boss [17]: measured with (a)): 1 - a write-off leaves the
     // window's losses for the audit.
-    "audit_write_off_keeps_window"};
+    "audit_write_off_keeps_window",
+    // econ's (a″) (boss: measured with (a)+(a′)): 1 - the trial needs the leak
+    // running in the last 12 months.
+    "audit_trial_needs_running_leak"};
 
 /// The food a thief takes for his table, in this order (crime §7: grain and
 /// potato, not only sugar).
@@ -64,6 +67,9 @@ constexpr double kPerMille = 1000.0;
 
 /// The raikom's reputation's scale (world_state.h, ChairmanState).
 constexpr float kReputationMax = 100.0F;
+
+/// (a″): the months a running leak is read over (econ [23]: «last 12 months»).
+constexpr std::uint32_t kRunningLeakMonths = 12;
 
 /// R2: whether a night watchman can be posted at this store - its type's
 /// unit_staff row, or its parent unit's for a module (StoreLeakClosed's rule
@@ -227,6 +233,7 @@ bool ParseFoodTheftConfig(const ITableSet& tables, FoodTheftConfig& config, std:
     auto after_act = static_cast<float>(config.trial_after_act_months);
     auto once_per_window = config.write_off_once_per_window ? 1.0F : 0.0F;
     auto keeps_window = config.write_off_keeps_window ? 1.0F : 0.0F;
+    auto running_leak = config.trial_needs_running_leak ? 1.0F : 0.0F;
     const Range share{.low = 0.0F, .high = 1.0F};
     const Range alcoholism{.low = 0.0F, .high = 60.0F};
     const Range reputation{.low = -100.0F, .high = 0.0F};
@@ -279,12 +286,14 @@ bool ParseFoodTheftConfig(const ITableSet& tables, FoodTheftConfig& config, std:
          .range = {.low = 0.0F, .high = 1200.0F}},
         {.key = kFoodTheftWorldParamKeys[18], .value = &once_per_window, .range = share},
         {.key = kFoodTheftWorldParamKeys[19], .value = &keeps_window, .range = share},
+        {.key = kFoodTheftWorldParamKeys[20], .value = &running_leak, .range = share},
     }};
     if (!ReadKnobs(*world, "world_params", knobs, error)) {
       return false;
     }
     config.write_off_once_per_window = once_per_window >= 0.5F;
     config.write_off_keeps_window = keeps_window >= 0.5F;
+    config.trial_needs_running_leak = running_leak >= 0.5F;
     config.book_opens_year = static_cast<std::uint32_t>(opens_year) - 1U;
     config.guarded_stores_only = guarded_only >= 0.5F;
     config.trial_after_act_months = static_cast<std::uint32_t>(after_act);
@@ -544,7 +553,32 @@ void RunStoreAudit(const FoodTheftConfig& config, WorldState& current) {
   // levers' time; such an audit at the trial share gives the remark again.
   const bool levers_had_time =
       day >= audit.accepted_day + (config.trial_after_act_months * kDaysPerMonth);
-  if (amount >= trial_pm && audit.remarked != 0 && levers_had_time) {
+  // THE LEAK MUST BE RUNNING (econ's (a″), behind its switch; boss: measured):
+  // the tried position's losses of the last 12 months over its receipts of the
+  // same months reach the remark's share - an old leak the window still holds,
+  // stopped since, tries nobody. Off: as before.
+  bool leak_running = true;
+  if (config.trial_needs_running_leak) {
+    leak_running = false;
+    const std::uint32_t row = FindRow(current.units, worst_unit);
+    if (row != kNoRow) {
+      const UnitRow& unit = current.units.rows[row];
+      const auto size = static_cast<std::uint32_t>(unit.book_window.size());
+      Grams lost = 0;
+      Grams received = 0;
+      for (std::uint32_t back = 0; back < std::min(kRunningLeakMonths, size); ++back) {
+        if (month < back) {
+          break;
+        }
+        const BookMonth& slot = unit.book_window[(month - back) % size];
+        lost += AmountOf(slot.lost, worst_food);
+        received += AmountOf(slot.received, worst_food);
+      }
+      leak_running = received > 0 && static_cast<double>(lost) / static_cast<double>(received) >=
+                                         static_cast<double>(config.audit_remark_share);
+    }
+  }
+  if (amount >= trial_pm && audit.remarked != 0 && levers_had_time && leak_running) {
     if (audit.trial_due == 0) {
       audit.trial_due = 1;
       SimEvent& trial = EmitEvent(current, EventKind::kAuditTrialDue, EventSeverity::kInterrupting);

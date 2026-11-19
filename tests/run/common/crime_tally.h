@@ -32,6 +32,7 @@
 #include <cstdint>
 #include <optional>
 #include <ostream>
+#include <set>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -68,6 +69,9 @@ class CrimeTally {
     }
     if (const core::ITable* const resources = tables.FindTable("resources")) {
       sugar_ = resources->FindRowByKey("sugar");
+    }
+    if (const core::ITable* const professions = tables.FindTable("professions")) {
+      watchman_ = professions->FindRowByKey("watchman");  // #1893 H3's watch print
     }
     if (const core::ITable* const types = tables.FindTable("unit_types")) {
       church_store_ = types->FindRowByKey("church_store");
@@ -166,7 +170,8 @@ class CrimeTally {
         if (event.kind == core::EventKind::kAuditTrialDue && !trial_window_months_) {
           const std::uint32_t row = core::FindRow(world.units, event.unit);
           std::uint32_t months = 0;
-          std::uint32_t guarded_months = 0;  // H3: loss months at or after the fight began
+          std::uint32_t guarded_months = 0;       // H3: loss months at or after the fight began
+          std::uint32_t watched_loss_months = 0;  // H3: loss months with a watch posted
           const std::uint32_t fight_month =
               fight_from_year_ > 0 ? (fight_from_year_ - 1U) * core::kMonthsPerYear : 0U;
           if (row != core::kNoRow) {
@@ -185,10 +190,21 @@ class CrimeTally {
               const std::uint32_t back = ((last % size) + size - index) % size;
               const std::uint32_t slot_month = last >= back ? last - back : 0U;
               guarded_months += any && fight_from_year_ > 0 && slot_month >= fight_month ? 1U : 0U;
+              // H3 as written: a loss month in which a watch was POSTED at the
+              // store or its parent (the posting, not the core's sobriety test).
+              const auto watched_in = [this, slot_month](std::uint32_t id) {
+                const auto found = watched_.find(id);
+                return found != watched_.end() && found->second.contains(slot_month);
+              };
+              watched_loss_months += any && (watched_in(world.units.row_ids[row].value) ||
+                                             watched_in(unit.parent.value))
+                                         ? 1U
+                                         : 0U;
             }
           }
           trial_window_months_ = months;
           trial_guarded_months_ = guarded_months;
+          trial_watched_loss_months_ = watched_loss_months;
           const std::uint32_t trial_month = world.calendar.day / core::kDaysPerMonth;
           trial_months_after_fight_ =
               fight_from_year_ > 0
@@ -238,6 +254,21 @@ class CrimeTally {
   }
 
   void CountDay(const core::WorldState& world) {
+    // #1893 H3: THE WATCH BY STORE AND MONTH - a store is «watched» in a month
+    // when on some day of it a watchman's post stood at it or at its parent
+    // (the module rule of night_trade.cpp's StoreLeakClosed). NOT the core's
+    // own test: his sobriety and the storekeeper's are not read here, so this
+    // is the posting, which the leak needs but does not reduce to.
+    if (watchman_ != core::kNoTableRow) {
+      const std::uint32_t month = world.calendar.day / core::kDaysPerMonth;
+      for (const core::ResidentRow& person : world.residents.rows) {
+        if (person.post.profession.value != watchman_ ||
+            person.post.unit.value == core::kInvalidEntityIdValue) {
+          continue;
+        }
+        watched_[person.post.unit.value].insert(month);
+      }
+    }
     const std::uint32_t year = (world.calendar.day / core::kDaysPerYear) + 1U;
     // #1580 (c): THE BOOK'S FIELDS FROM `closed` AT THE TURN - the open book
     // on the year's last day (CRIME1566Y below) lacks day 0's hour-0 writes,
@@ -303,6 +334,8 @@ class CrimeTally {
         << " trial_loss_months_after_fight "
         << (trial_window_months_ && fight_from_year_ > 0 ? std::to_string(trial_guarded_months_)
                                                          : std::string("-"))
+        << " trial_loss_months_watched "
+        << (trial_window_months_ ? std::to_string(trial_watched_loss_months_) : std::string("-"))
         << " first_withdrawal_refused_year "
         << (first_refusal_year_ ? std::to_string(*first_refusal_year_) : std::string("none"))
         << " first_audit_trial_due_year "
@@ -524,6 +557,9 @@ class CrimeTally {
   /// months at or after it.
   std::uint32_t fight_from_year_ = 0;
   std::uint32_t trial_guarded_months_ = 0;
+  std::uint32_t trial_watched_loss_months_ = 0;
+  std::uint32_t watchman_ = core::kNoTableRow;
+  std::unordered_map<std::uint32_t, std::set<std::uint32_t>> watched_;  ///< Unit id → months.
   std::int64_t trial_months_after_fight_ = 0;
 
  public:
