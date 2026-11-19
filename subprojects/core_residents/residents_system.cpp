@@ -22,6 +22,7 @@
 
 #include "core_residents/residents_system.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <memory>
@@ -277,6 +278,32 @@ class ResidentsSystem final : public IResidentsSystem {
       } else if (satiety > clear_at) {
         family.hunger_alarm_lit = 0;
       }
+    }
+    // FOOD1910 (TEST ONLY): once a day, days 24-80 - the lit families and the five lowest
+    // family satieties against the threshold.
+    thread_local std::uint32_t logged_day = 0xFFFFFFFFU;
+    const std::uint32_t day = current.calendar.day;
+    if (day != logged_day && day >= 24U && day <= 80U) {
+      logged_day = day;
+      std::vector<std::pair<float, std::uint32_t>> lowest;
+      std::uint32_t lit = 0;
+      for (std::uint32_t row = 0; row < families; ++row) {
+        if (counted[row] == 0) {
+          continue;
+        }
+        lit += current.families.rows[row].hunger_alarm_lit != 0 ? 1U : 0U;
+        lowest.emplace_back(satiety_sum[row] / static_cast<float>(counted[row]), row);
+      }
+      std::ranges::sort(lowest);
+      std::string line = "FOOD1910 day " + std::to_string(day) + " lit " + std::to_string(lit) +
+                         " of " + std::to_string(lowest.size()) + " threshold " +
+                         std::to_string(threshold) + " lowest";
+      for (std::size_t item = 0; item < lowest.size() && item < 5; ++item) {
+        line += " f" + std::to_string(lowest[item].second) + ":" +
+                std::to_string(lowest[item].first) + "/" +
+                std::to_string(counted[lowest[item].second]);
+      }
+      LogInfo(line);
     }
   }
 
