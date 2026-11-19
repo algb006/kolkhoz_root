@@ -77,6 +77,11 @@ struct ReadinessCatalog {
   /// at it first.
   UnitTypeId office;
 
+  /// #1897 (2), MEASURED NOT ADOPTED (econ [28]): world_params
+  /// `epoch2_door_min_reputation` - the Epoch II door also needs the raikom
+  /// reputation at or above this (kReputationTooLow below it); 0 = no condition.
+  float door_min_reputation = 0.0F;
+
   /// Types that may stand on the farm's books at all — everything that is
   /// not a family's own house. Kolkhoz wear is measured over these.
   std::vector<UnitTypeId> kolkhoz_types;

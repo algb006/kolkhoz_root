@@ -89,6 +89,9 @@ struct FoodTheftConfig {
   /// off): the trial needs the tried position's last-12-month losses over its
   /// receipts at the remark's share.
   bool trial_needs_running_leak = false;
+  /// `audit_pencil_doubled` (#1897 (1), measured; default off): at a raikom
+  /// reputation of 20 or less, four audits a year instead of two.
+  bool pencil_doubled = false;
   /// ROUND 2 (econ's crime-separation-2-2026-11-07.md, boss 7 Nov; crime.md
   /// §1 p. 6). Each default is round 1's rule; the tables' rows turn it on.
   /// R1: the act's campaign year, 0-based (`audit_book_opens_year`, human

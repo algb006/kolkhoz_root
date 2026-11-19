@@ -886,6 +886,10 @@ class StandardSimulation final : public ISimulation {
 
   // #1881 (store_theft.h): read off the completed world's book windows and the
   // pre-acceptance pair.
+  bool StoreLeakClosedToday(UnitId unit) const override {
+    return residents_->StoreLeakClosedOf(engine_->CompletedState(), unit);  // #1893 H3
+  }
+
   SeedFundView SeedFundToday() const override {
     return production_->SeedFundOf(engine_->CompletedState());
   }
@@ -1397,6 +1401,8 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       //   (start conditions §9). Waits for host's measure of whether the
       //   village ploughs and sows in the days left.
       known.emplace_back("player_entry_day");
+      // #1897 (2): the Epoch II door's reputation condition (era_readiness.cpp).
+      known.emplace_back("epoch2_door_min_reputation");
       //   `player_entry_hour` (2026-10-01, boss-core-start-no-yards [11];
       //   boss's 07aa3820) — the hour of the entry morning, 8. The layer
       //   fast-forwards the core to TickOfDayHour(player_entry_day, this)

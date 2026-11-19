@@ -530,6 +530,12 @@ class ISimulation {
   /// @note Called between steps on the sim thread. A pure read.
   virtual SeedFundView SeedFundToday() const = 0;
 
+  /// @brief Whether `unit`'s leak is closed today (IResidentsSystem::StoreLeakClosedOf; #1893
+  ///        H3) - the core's own test, for an instrument that must not copy it. The bare
+  ///        engine answers false.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual bool StoreLeakClosedToday(UnitId unit) const = 0;
+
   /// @brief How long the carting of the materials of the works on `unit`
   /// would take, said before they are started (supply_estimate.h; routing
   /// stage V2). Fans out to core_construction (what and from where) and

@@ -396,6 +396,11 @@ class ResidentsSystem final : public IResidentsSystem {
   /// of children.
   /// The food positions of the roster, by the distribution's own resolver
   /// (issue_norm.h) over the same sealed funds it stays above.
+  bool StoreLeakClosedOf(const WorldState& completed, UnitId unit) const override {
+    const std::uint32_t row = FindRow(completed.units, unit);
+    return row != kNoRow && StoreLeakClosed(config_.night_trade, completed, row);
+  }
+
   std::vector<IssueNormLine> IssueNorms(const WorldState& completed) const override {
     std::vector<IssueNormLine> food_lines;
     if (food_.resources.empty()) {

@@ -23,7 +23,7 @@ namespace core {
 namespace {
 
 /// The world_params keys link 2 reads, in ParseFoodTheftConfig's order.
-constexpr std::array<std::string_view, 21> kFoodTheftWorldParamKeys = {
+constexpr std::array<std::string_view, 22> kFoodTheftWorldParamKeys = {
     "crime_food_theft_on",
     "food_theft_from_alcoholism",
     "food_theft_kg_per_thief_month",
@@ -50,7 +50,9 @@ constexpr std::array<std::string_view, 21> kFoodTheftWorldParamKeys = {
     "audit_write_off_keeps_window",
     // econ's (a″) (boss: measured with (a)+(a′)): 1 - the trial needs the leak
     // running in the last 12 months.
-    "audit_trial_needs_running_leak"};
+    "audit_trial_needs_running_leak",
+    // #1897 (1) (econ [28]: measured): 1 - four audits a year on the pencil.
+    "audit_pencil_doubled"};
 
 /// The food a thief takes for his table, in this order (crime §7: grain and
 /// potato, not only sugar).
@@ -67,6 +69,9 @@ constexpr double kPerMille = 1000.0;
 
 /// The raikom's reputation's scale (world_state.h, ChairmanState).
 constexpr float kReputationMax = 100.0F;
+
+/// #1897 (1): «на карандаше» - district.md §5's band 0-20 of the raikom reputation.
+constexpr float kPencilReputation = 20.0F;
 
 /// (a″): the months a running leak is read over (econ [23]: «last 12 months»).
 constexpr std::uint32_t kRunningLeakMonths = 12;
@@ -234,6 +239,7 @@ bool ParseFoodTheftConfig(const ITableSet& tables, FoodTheftConfig& config, std:
     auto once_per_window = config.write_off_once_per_window ? 1.0F : 0.0F;
     auto keeps_window = config.write_off_keeps_window ? 1.0F : 0.0F;
     auto running_leak = config.trial_needs_running_leak ? 1.0F : 0.0F;
+    auto pencil = config.pencil_doubled ? 1.0F : 0.0F;
     const Range share{.low = 0.0F, .high = 1.0F};
     const Range alcoholism{.low = 0.0F, .high = 60.0F};
     const Range reputation{.low = -100.0F, .high = 0.0F};
@@ -287,6 +293,7 @@ bool ParseFoodTheftConfig(const ITableSet& tables, FoodTheftConfig& config, std:
         {.key = kFoodTheftWorldParamKeys[18], .value = &once_per_window, .range = share},
         {.key = kFoodTheftWorldParamKeys[19], .value = &keeps_window, .range = share},
         {.key = kFoodTheftWorldParamKeys[20], .value = &running_leak, .range = share},
+        {.key = kFoodTheftWorldParamKeys[21], .value = &pencil, .range = share},
     }};
     if (!ReadKnobs(*world, "world_params", knobs, error)) {
       return false;
@@ -294,6 +301,7 @@ bool ParseFoodTheftConfig(const ITableSet& tables, FoodTheftConfig& config, std:
     config.write_off_once_per_window = once_per_window >= 0.5F;
     config.write_off_keeps_window = keeps_window >= 0.5F;
     config.trial_needs_running_leak = running_leak >= 0.5F;
+    config.pencil_doubled = pencil >= 0.5F;
     config.book_opens_year = static_cast<std::uint32_t>(opens_year) - 1U;
     config.guarded_stores_only = guarded_only >= 0.5F;
     config.trial_after_act_months = static_cast<std::uint32_t>(after_act);
@@ -457,9 +465,17 @@ void RunStoreAudit(const FoodTheftConfig& config, WorldState& current) {
     SimEvent& act = EmitEvent(current, EventKind::kBooksAccepted, EventSeverity::kNotable);
     act.amount = recorded;
   }
-  const std::uint32_t halves = std::min<std::uint32_t>(config.audits_per_year, 2U);
-  const std::uint32_t period = kDaysPerYear / halves;
-  const std::uint32_t half = std::min(day_of_year / period, halves - 1U);
+  std::uint32_t periods = std::min<std::uint32_t>(config.audits_per_year, 2U);
+  // ON THE PENCIL, TWICE THE AUDITS (#1897 (1), econ [28], behind its switch;
+  // measured, not adopted): at a raikom reputation of 20 or less a quarter's
+  // draw instead of a half-year's. The two date slots are reused, a quarter in
+  // each in turn (STUB: a reputation crossing 20 mid-quarter may skip or
+  // repeat one draw).
+  if (config.pencil_doubled && current.chairman.raikom_reputation <= kPencilReputation) {
+    periods = 4U;
+  }
+  const std::uint32_t period = kDaysPerYear / periods;
+  const std::uint32_t half = std::min(day_of_year / period, periods - 1U) % 2U;
   // THE HALF'S DAY, DRAWN AT ITS START: «внезапно» - a counter hash of the
   // seed and the half's first day, so no world draw moves.
   if (day_of_year % period == 0) {

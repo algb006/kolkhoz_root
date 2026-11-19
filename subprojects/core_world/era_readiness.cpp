@@ -187,6 +187,14 @@ float ReadLifeSpeedup(const ITableSet& tables) {
 
 ReadinessCatalog ReadReadinessCatalog(const ITableSet& tables, Epoch era) {
   ReadinessCatalog catalog;
+  // #1897 (2): the door's reputation condition, behind its key (0 = none).
+  if (const ITable* const world = tables.FindTable("world_params")) {
+    const std::uint32_t row = world->FindRowByKey("epoch2_door_min_reputation");
+    const std::uint32_t value = world->FindColumn("value");
+    if (row != kNoTableRow && value != kNoTableColumn) {
+      catalog.door_min_reputation = world->CellReal(row, value).value_or(0.0F);
+    }
+  }
   const ITable* types = tables.FindTable("unit_types");
   if (types == nullptr) {
     return catalog;
@@ -636,6 +644,10 @@ EraReadinessView BuildEraReadinessView(const ReadinessCatalog& catalog, const Wo
   view.population = static_cast<std::uint32_t>(world.residents.rows.size());
   view.population_required = kPopulationRequired;
   view.verdict = TransitionRefusal(state, standing, world.epoch);
+  if (view.verdict == OrderRefusal::kNone && catalog.door_min_reputation > 0.0F &&
+      world.chairman.raikom_reputation < catalog.door_min_reputation) {
+    view.verdict = OrderRefusal::kReputationTooLow;  // #1897 (2), as the order reads it
+  }
   return view;
 }
 
@@ -644,8 +656,14 @@ void ConsumeTransitionOrders(const ReadinessCatalog& catalog, WorldState& curren
     if (order.status != OrderStatus::kPending || order.kind != OrderKind::kAdvanceEra) {
       continue;
     }
-    const OrderRefusal refusal =
+    OrderRefusal refusal =
         TransitionRefusal(current.readiness, StandingBlocks(catalog, current), current.epoch);
+    // #1897 (2), behind its key: the district does not promote a chairman on
+    // its pencil.
+    if (refusal == OrderRefusal::kNone && catalog.door_min_reputation > 0.0F &&
+        current.chairman.raikom_reputation < catalog.door_min_reputation) {
+      refusal = OrderRefusal::kReputationTooLow;
+    }
     if (refusal != OrderRefusal::kNone) {
       order.status = OrderStatus::kRefused;
       order.refusal = refusal;

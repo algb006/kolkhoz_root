@@ -297,6 +297,8 @@ class StepEngine final : public ISimulation {
 
   SeedFundView SeedFundToday() const override { return {}; }
 
+  bool StoreLeakClosedToday(UnitId /*unit*/) const override { return false; }
+
   /// No subsystems, so no works and no carts: nothing to cart.
   SupplyEstimate SupplyEstimateFor(UnitId /*unit*/) const override { return {}; }
 

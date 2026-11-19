@@ -154,6 +154,12 @@ class IResidentsSystem {
   ///       hold, days to harvest), as the distribution does.
   virtual std::vector<IssueNormLine> IssueNorms(const WorldState& completed) const = 0;
 
+  /// @brief Whether `unit`'s leak is closed on `completed` (#1893 H3; night_trade.h
+  ///        StoreLeakClosed - the very test the night's theft and the distillers ask: a
+  ///        sober night watch at the store or its parent, and no drinking storekeeper).
+  /// @return false for no such unit.
+  virtual bool StoreLeakClosedOf(const WorldState& completed, UnitId unit) const = 0;
+
   /// @brief The village's daily need in kilocalories and `resource`'s free
   /// remainder, with the days to its next harvest (HarvestNeed). Empty when
   /// `resource` is no food position of the bundle.

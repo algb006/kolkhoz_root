@@ -43,6 +43,7 @@
 #include "core_common/resident_state.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
+#include "core_sim/step.h"
 #include "core_tables/tables.h"
 
 namespace run {
@@ -125,6 +126,13 @@ class CrimeTally {
   ///        SPLIT_UNREAD when they part (the first form read the day's last
   ///        step only and missed every theft, 232 of 232 village-years).
   void CountStep(const core::WorldState& world) {
+    // #1897 P4: the Epoch II door refused for the reputation, by the event.
+    for (const core::SimEvent& event : world.step_events) {
+      if (event.kind == core::EventKind::kOrderRefused &&
+          event.amount == static_cast<std::int64_t>(core::OrderRefusal::kReputationTooLow)) {
+        ++door_reputation_refusals_;
+      }
+    }
     // LEVER (a)'s PRINT (econ [11]): a write-off is read as the year's
     // written_off growing in a step; it withdrew the remark when the remark
     // that stood before the step is down after it, and was REFUSED the
@@ -190,16 +198,18 @@ class CrimeTally {
               const std::uint32_t back = ((last % size) + size - index) % size;
               const std::uint32_t slot_month = last >= back ? last - back : 0U;
               guarded_months += any && fight_from_year_ > 0 && slot_month >= fight_month ? 1U : 0U;
-              // H3 as written: a loss month in which a watch was POSTED at the
-              // store or its parent (the posting, not the core's sobriety test).
-              const auto watched_in = [this, slot_month](std::uint32_t id) {
-                const auto found = watched_.find(id);
-                return found != watched_.end() && found->second.contains(slot_month);
-              };
-              watched_loss_months += any && (watched_in(world.units.row_ids[row].value) ||
-                                             watched_in(unit.parent.value))
-                                         ? 1U
-                                         : 0U;
+              // H3 as written (econ [27]): a loss month of the last 12 in which
+              // the store's leak was CLOSED all month by the core's own test.
+              const std::uint32_t trial_month = world.calendar.day / core::kDaysPerMonth;
+              const bool in_last_12 = slot_month + 12U > trial_month;
+              const auto store = watch_.find(world.units.row_ids[row].value);
+              bool closed = false;
+              if (store != watch_.end()) {
+                const auto found = store->second.find(slot_month);
+                closed = found != store->second.end() && found->second.days > 0 &&
+                         found->second.closed_days == found->second.days;
+              }
+              watched_loss_months += any && in_last_12 && closed ? 1U : 0U;
             }
           }
           trial_window_months_ = months;
@@ -254,19 +264,22 @@ class CrimeTally {
   }
 
   void CountDay(const core::WorldState& world) {
-    // #1893 H3: THE WATCH BY STORE AND MONTH - a store is «watched» in a month
-    // when on some day of it a watchman's post stood at it or at its parent
-    // (the module rule of night_trade.cpp's StoreLeakClosed). NOT the core's
-    // own test: his sobriety and the storekeeper's are not read here, so this
-    // is the posting, which the leak needs but does not reduce to.
-    if (watchman_ != core::kNoTableRow) {
+    // #1893 H3: THE LEAK CLOSED BY STORE AND MONTH, through the core's own door
+    // (ISimulation::StoreLeakClosedToday - night_trade.cpp's StoreLeakClosed,
+    // sobriety and the storekeeper included): a month is «closed» for a store
+    // when its leak was closed on every day the tally read it. The first form
+    // read the watchman's POSTING and found every loss month «watched».
+    if (simulation_ != nullptr) {
       const std::uint32_t month = world.calendar.day / core::kDaysPerMonth;
-      for (const core::ResidentRow& person : world.residents.rows) {
-        if (person.post.profession.value != watchman_ ||
-            person.post.unit.value == core::kInvalidEntityIdValue) {
-          continue;
+      for (std::size_t row = 0; row < world.units.rows.size(); ++row) {
+        const core::UnitRow& unit = world.units.rows[row];
+        if (unit.book_window.empty()) {
+          continue;  // a store the book never wrote is no audited store
         }
-        watched_[person.post.unit.value].insert(month);
+        const core::UnitId id = world.units.row_ids[row];
+        MonthWatch& watch = watch_[id.value][month];
+        ++watch.days;
+        watch.closed_days += simulation_->StoreLeakClosedToday(id) ? 1U : 0U;
       }
     }
     const std::uint32_t year = (world.calendar.day / core::kDaysPerYear) + 1U;
@@ -326,6 +339,7 @@ class CrimeTally {
         << " alcohol_gain_with_distiller "
         << (distiller_raiser_ < 0.0F ? std::string("NOT IN THE TABLES")
                                      : std::to_string(distiller_raiser_))
+        << " door_refused_for_reputation " << door_reputation_refusals_
         << " trial_window_loss_months "
         << (trial_window_months_ ? std::to_string(*trial_window_months_) : std::string("none"))
         << " trial_months_after_fight "
@@ -334,7 +348,7 @@ class CrimeTally {
         << " trial_loss_months_after_fight "
         << (trial_window_months_ && fight_from_year_ > 0 ? std::to_string(trial_guarded_months_)
                                                          : std::string("-"))
-        << " trial_loss_months_watched "
+        << " trial_loss_months_closed_last12 "
         << (trial_window_months_ ? std::to_string(trial_watched_loss_months_) : std::string("-"))
         << " first_withdrawal_refused_year "
         << (first_refusal_year_ ? std::to_string(*first_refusal_year_) : std::string("none"))
@@ -559,7 +573,22 @@ class CrimeTally {
   std::uint32_t trial_guarded_months_ = 0;
   std::uint32_t trial_watched_loss_months_ = 0;
   std::uint32_t watchman_ = core::kNoTableRow;
-  std::unordered_map<std::uint32_t, std::set<std::uint32_t>> watched_;  ///< Unit id → months.
+
+  /// H3: by store id, by month - the days read and the days its leak was closed.
+  struct MonthWatch {
+    std::uint32_t days = 0;
+    std::uint32_t closed_days = 0;
+  };
+
+  std::unordered_map<std::uint32_t, std::unordered_map<std::uint32_t, MonthWatch>> watch_;
+  const core::ISimulation* simulation_ = nullptr;
+  std::uint32_t door_reputation_refusals_ = 0;  ///< #1897 P4
+
+ public:
+  /// @brief The simulation H3's leak door is asked of (null: not read).
+  void SetSimulation(const core::ISimulation* simulation) { simulation_ = simulation; }
+
+ private:
   std::int64_t trial_months_after_fight_ = 0;
 
  public:
