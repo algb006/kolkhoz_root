@@ -86,6 +86,68 @@
 namespace core {
 namespace {
 
+// TEST ONLY (host's alarm fixture split of 393, not for release): FIELD1811, the
+// first year's fields and horse-work hands, logged once on y2's first day.
+struct Field1811Tally {
+  std::vector<bool> had_crop;
+  std::uint64_t horse_hands = 0;
+  std::uint64_t horse_hands_with_horse = 0;
+  std::uint32_t first_ordered_day = 0;
+  std::uint64_t ordered_horse_days = 0;
+  bool logged = false;
+};
+
+Field1811Tally& Field1811() {
+  thread_local Field1811Tally tally;
+  return tally;
+}
+
+void TallyField1811(const WorldState& current,
+                    const std::vector<OrderedWork>& ordered,
+                    std::uint32_t ordered_horses) {
+  Field1811Tally& tally = Field1811();
+  const std::uint32_t day = current.calendar.day;
+  if (day == 0) {
+    tally = Field1811Tally{};
+  }
+  if (tally.logged) {
+    return;
+  }
+  if (day < kDaysPerYear) {
+    tally.had_crop.resize(current.fields.rows.size(), false);
+    for (std::size_t row = 0; row < current.fields.rows.size(); ++row) {
+      if (current.fields.rows[row].crop.value != kInvalidDefIdValue) {
+        tally.had_crop[row] = true;
+      }
+    }
+    for (const OrderedWork& work : ordered) {
+      if (work.order != nullptr && IsHorseWork(work.order->work)) {
+        ++tally.horse_hands;
+        tally.horse_hands_with_horse += work.horse ? 1U : 0U;
+      }
+    }
+    if (ordered_horses > 0) {
+      tally.ordered_horse_days += ordered_horses;
+      if (tally.first_ordered_day == 0) {
+        tally.first_ordered_day = day + 1U;
+      }
+    }
+    return;
+  }
+  float sown_ga = 0.0F;
+  for (std::size_t row = 0; row < tally.had_crop.size() && row < current.fields.rows.size();
+       ++row) {
+    sown_ga += tally.had_crop[row] ? current.fields.rows[row].area_ga : 0.0F;
+  }
+  LogInfo("FIELD1811 y1 sown_ga " + std::to_string(sown_ga) + " ordered_horse_work_hand_days " +
+          std::to_string(tally.horse_hands) + " with_horse " +
+          std::to_string(tally.horse_hands_with_horse) + " without_horse " +
+          std::to_string(tally.horse_hands - tally.horse_hands_with_horse) +
+          " horses_ordered_horse_days " + std::to_string(tally.ordered_horse_days) +
+          " first_ordered_day1 " + std::to_string(tally.first_ordered_day));
+  tally.logged = true;
+}
+
 /// @brief The window as a PAIR: open with days left, or closed with the days
 /// since (core_common/deadline.h).
 ///
@@ -1068,6 +1130,7 @@ class LaborSystem final : public ILaborSystem {
     // that day - one list, standing first (OrderedWorksToday), with the horses the morning
     // took for them (#1818).
     GiveOrderedHorses(ordered, ordered_horses);
+    TallyField1811(current, ordered, ordered_horses);  // TEST ONLY
     ApplyOrderedWorks(current,
                       current,
                       ordered,
