@@ -136,14 +136,12 @@ struct OrderedWork {
 
   /// #1818: the morning gave this carter one of the order's horses (OrderRow::horses) out of
   /// the day's pool, taken before the accountant planned. A carter without one rides only the
-  /// horse the accountant's plan gave him, as before. A PLOUGHMAN OR HARROWER without one is
-  /// not placed at all (#1811: a plough without its horse is no work; kNoHorse).
+  /// horse the accountant's plan gave him, as before.
   bool horse = false;
 };
 
 /// @brief ApplyStandingWork's body for any list of ordered works, the same skips (rest day,
-///        rain, frost, winter, no work on the target, away, past the rest limit, and a plough or
-///        harrow the morning gave no horse - #1811). A later
+///        rain, frost, winter, no work on the target, away, past the rest limit). A later
 ///        entry for the same resident overrides an earlier one: the day orders are applied
 ///        after the standing ones, so the day's word wins for that day.
 /// @pre `works`' rows live in `world.orders` for the call.
