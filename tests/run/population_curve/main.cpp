@@ -1674,6 +1674,7 @@ bool Walk(std::uint64_t seed,
       builder.fallow.PrintHolds(std::cout, seed);           // #1692's hold print
       builder.fallow.PrintSpringBuilding(std::cout, seed);  // #1726's B1 and B5
       builder.houses_first.Print(std::cout, seed);          // #1677
+      builder.house_timeline.Print(std::cout, seed);        // #1907
       herds.PrintCowFlows(std::cout, seed);                 // #1570
       hand_overs.Print(std::cout, seed);
       builder.houses.PrintQueueLines(std::cout, seed);  // #1677: the queue by cause, short lines
