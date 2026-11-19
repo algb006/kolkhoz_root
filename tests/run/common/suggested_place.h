@@ -71,6 +71,44 @@ class SuggestedPlaces {
     refused_.assign(points_.size(), 0);
     banned_.assign(points_.size(), 0);
     banned_day_.assign(points_.size(), 0);
+    banned_road_.assign(points_.size(), std::string());
+  }
+
+  /// @brief The laid road nearest `point` on `world`, in one word: id, kind
+  /// (road/path), origin (map/player), its distance and its axis's two ends
+  /// (the end at a unit names whom it was laid for).
+  static std::string NearestRoadOf(const core::WorldState& world, core::Vec2 point) {
+    double best = 1e30;
+    std::string text = "none";
+    for (std::size_t row = 0; row < world.roads.rows.size(); ++row) {
+      const core::RoadRow& road = world.roads.rows[row];
+      for (std::size_t index = 1; index < road.axis.size(); ++index) {
+        const core::Vec2 a = road.axis[index - 1].position;
+        const core::Vec2 b = road.axis[index].position;
+        const double dx = b.x - a.x;
+        const double dy = b.y - a.y;
+        const double length = (dx * dx) + (dy * dy);
+        double along =
+            length > 0.0 ? (((point.x - a.x) * dx) + ((point.y - a.y) * dy)) / length : 0.0;
+        along = along < 0.0 ? 0.0 : (along > 1.0 ? 1.0 : along);
+        const double distance =
+            std::hypot(point.x - (a.x + (dx * along)), point.y - (a.y + (dy * along)));
+        if (distance < best) {
+          best = distance;
+          const core::Vec2 first = road.axis.front().position;
+          const core::Vec2 last = road.axis.back().position;
+          text = "id" + std::to_string(world.roads.row_ids[row].value) +
+                 (road.kind == core::RoadKind::kPath ? ":path" : ":road") +
+                 (road.origin == core::RoadOrigin::kMap ? ":map" : ":player") + ":" +
+                 std::to_string(static_cast<int>(distance)) +
+                 "m:" + std::to_string(static_cast<int>(first.x)) + "," +
+                 std::to_string(static_cast<int>(first.y)) + "-" +
+                 std::to_string(static_cast<int>(last.x)) + "," +
+                 std::to_string(static_cast<int>(last.y));
+        }
+      }
+    }
+    return text;
   }
 
   /// @brief #1788: the suggested points passed over for a placement ban, with
@@ -82,7 +120,8 @@ class SuggestedPlaces {
       if (banned_[index] != 0) {
         // bits: 1 water, 2 forest, 4 reserve, 8 road, 16 plot, 32 edge (placement_bans.h)
         std::cout << " @" << points_[index].x << "," << points_[index].y << " bits "
-                  << static_cast<unsigned>(banned_[index]) << " day " << banned_day_[index];
+                  << static_cast<unsigned>(banned_[index]) << " day " << banned_day_[index]
+                  << " road " << banned_road_[index];
       }
     }
     std::cout << '\n';
@@ -115,6 +154,7 @@ class SuggestedPlaces {
           const core::ISimulation* const simulation = BuildBansSimulation();
           banned_[index] = simulation != nullptr ? simulation->BuildBansToday(type, point) : 0xFF;
           banned_day_[index] = world.calendar.day;
+          banned_road_[index] = NearestRoadOf(world, point);
           ++banned_count_;
         }
         continue;
@@ -173,6 +213,7 @@ class SuggestedPlaces {
   std::vector<std::uint8_t> banned_;  ///< #1788: 1 - passed over for a placement ban.
   std::uint32_t banned_count_ = 0;
   std::vector<std::uint32_t> banned_day_;  ///< #1788: the day each was first found banned.
+  std::vector<std::string> banned_road_;   ///< #1788: the nearest laid road then.
 };
 
 }  // namespace run
