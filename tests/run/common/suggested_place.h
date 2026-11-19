@@ -70,6 +70,7 @@ class SuggestedPlaces {
     }
     refused_.assign(points_.size(), 0);
     banned_.assign(points_.size(), 0);
+    banned_day_.assign(points_.size(), 0);
   }
 
   /// @brief #1788: the suggested points passed over for a placement ban, with
@@ -79,7 +80,9 @@ class SuggestedPlaces {
               << " on a ban: " << banned_count_ << " of " << points_.size();
     for (std::size_t index = 0; index < points_.size(); ++index) {
       if (banned_[index] != 0) {
-        std::cout << " @" << points_[index].x << "," << points_[index].y;
+        // bits: 1 water, 2 forest, 4 reserve, 8 road, 16 plot, 32 edge (placement_bans.h)
+        std::cout << " @" << points_[index].x << "," << points_[index].y << " bits "
+                  << static_cast<unsigned>(banned_[index]) << " day " << banned_day_[index];
       }
     }
     std::cout << '\n';
@@ -107,7 +110,11 @@ class SuggestedPlaces {
       // owner moves or keeps it.
       if (type.value != core::kInvalidDefIdValue && !BuildAllowed(type, point)) {
         if (banned_[index] == 0) {
-          banned_[index] = 1;
+          // The bits, and the day, the point was first found banned: a road
+          // the bot laid later bans it on that day, a map area from day 0.
+          const core::ISimulation* const simulation = BuildBansSimulation();
+          banned_[index] = simulation != nullptr ? simulation->BuildBansToday(type, point) : 0xFF;
+          banned_day_[index] = world.calendar.day;
           ++banned_count_;
         }
         continue;
@@ -165,6 +172,7 @@ class SuggestedPlaces {
   std::uint32_t refused_count_ = 0;
   std::vector<std::uint8_t> banned_;  ///< #1788: 1 - passed over for a placement ban.
   std::uint32_t banned_count_ = 0;
+  std::vector<std::uint32_t> banned_day_;  ///< #1788: the day each was first found banned.
 };
 
 }  // namespace run
