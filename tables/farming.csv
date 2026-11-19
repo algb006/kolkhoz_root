@@ -38,7 +38,7 @@ fertility_floor,20
 fallow_plow_month,5
 # #1837 (Поля §94): пар, заборонованный не дальше стольких игровых суток назад, озимь
 # сеют без второй бороны; 0 — правило выключено. STUB boss: 4, один месяц
-fallow_fresh_harrow_days,4
+fallow_fresh_harrow_days,0
 # weather stress while growing: hot dry days and rainy days add stress up
 # to the cap; the worst year still yields (farming.md section 6)
 drought_temp_c,25
