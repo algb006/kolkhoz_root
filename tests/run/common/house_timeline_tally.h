@@ -189,8 +189,8 @@ class HouseTimelineTally {
           unit.construction.phase != core::ConstructionPhase::kNone) {
         continue;
       }
-      sum_x += unit.position.x;
-      sum_y += unit.position.y;
+      sum_x += static_cast<double>(unit.position.x);
+      sum_y += static_cast<double>(unit.position.y);
       ++count;
     }
     if (count == 0) {
