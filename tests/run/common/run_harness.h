@@ -25,6 +25,7 @@
 #include <string_view>
 #include <utility>
 
+#include "build_bans.h"
 #include "core_common/calendar.h"
 #include "core_common/world_state.h"
 #include "core_tables/stub_tables.h"
@@ -128,6 +129,10 @@ inline Simulation Start(std::uint64_t seed,
   if (started.simulation == nullptr) {
     std::cout << "FAIL: the simulation did not assemble\n";
   }
+  // #1788: every run started here has its pickers ask the bans - four runs
+  // (plan_shortfall, sowing_window, store_build_time, timber_years) chose blind
+  // on 402-403, as host's plan700 did. The pointee outlives the move.
+  SetBuildBans(started.simulation.get());
   return started;
 }
 

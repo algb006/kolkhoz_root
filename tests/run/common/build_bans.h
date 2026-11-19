@@ -13,7 +13,9 @@
 #ifndef TESTS_RUN_COMMON_BUILD_BANS_H_
 #define TESTS_RUN_COMMON_BUILD_BANS_H_
 
+#include <atomic>
 #include <functional>
+#include <iostream>
 
 #include "core_common/geometry.h"
 #include "core_common/ids.h"
@@ -39,7 +41,19 @@ inline void SetBuildBans(const core::ISimulation* simulation) {
 /// @brief Whether a build of `type` at `place` meets no placement ban today.
 inline bool BuildAllowed(core::UnitTypeId type, core::Vec2 place) {
   const core::ISimulation* const simulation = BuildBansSimulation();
-  return simulation == nullptr || simulation->BuildBansToday(type, place) == 0;
+  if (simulation == nullptr) {
+    // NOT ASKED, SAID ALOUD (19 Nov 2026: host's plan700 never set it, its pickers
+    // chose blind on 402/403 and the core refused the late houses kRuleForbids -
+    // a third of the houses gone by y13 and no line said why). Once a process.
+    static std::atomic<bool> warned{false};
+    if (!warned.exchange(true)) {
+      std::cerr << "BUILD_BANS NOT ASKED: a picker ran with no run::SetBuildBans on its "
+                   "thread - sites are chosen blind and the core refuses banned ones "
+                   "(kRuleForbids); set it once a village after the simulation is built\n";
+    }
+    return true;
+  }
+  return simulation->BuildBansToday(type, place) == 0;
 }
 
 /// @brief The core's FreePlot, with the placement bans asked of each candidate.
