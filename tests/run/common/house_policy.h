@@ -220,10 +220,12 @@ class HousePolicy {
       const float radius = house_.value < radii.size() ? radii[house_.value] : 0.0F;
       // THE NEW VILLAGE'S POINTS FIRST, in the elder's order (suggested_place.h;
       // 0.37.159); every point taken — the nearest free place, said aloud.
-      const std::optional<core::Vec2> point = suggested_.Take(world, definitions_.Plots(), radius);
+      const std::optional<core::Vec2> point =
+          suggested_.Take(world, definitions_.Plots(), radius, house_);
       mark.position =
           point ? *point
-                : core::FreePlot(world.units, definitions_.Plots(), VillageCentre(world), radius);
+                : BuildablePlot(
+                      world.units, definitions_.Plots(), VillageCentre(world), radius, house_);
       orders.push_back(mark);
       ++ordered_;
       cooldown_ = by_demand ? 0U : kCooldownDays;

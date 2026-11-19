@@ -299,6 +299,8 @@ class StepEngine final : public ISimulation {
 
   PlacementBansView PlacementBansToday(float /*cell_m*/) const override { return {}; }
 
+  std::uint8_t BuildBansToday(UnitTypeId /*type*/, Vec2 /*place*/) const override { return 0; }
+
   ForestFactsView ForestFactsToday() const override { return {}; }
 
   FloodLossesView FloodLossesThisYearToday() const override { return {}; }

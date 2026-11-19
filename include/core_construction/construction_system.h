@@ -327,6 +327,15 @@ class IConstructionSystem {
   /// @note A pure read of the parsed tables. Callable at any time, from the
   ///       sim thread, including before the first step.
   virtual Grams StorageCapacityGrams(UnitTypeId type, std::uint8_t level) const = 0;
+
+  /// @brief The placement bans (core_common/placement_bans.h; #1788) a kBuildUnit of `type`
+  ///        at `place` would meet on `completed` - the very reading the order refuses by
+  ///        (kRuleForbids), the lodge's forest and a water-touching type's water excepted.
+  ///        NOT the plots (kTooClose), the edge of the map itself or the type's own rules.
+  /// @return PlacementBan bits; 0 - no ban.
+  virtual std::uint8_t BuildBansAt(const WorldState& completed,
+                                   UnitTypeId type,
+                                   Vec2 place) const = 0;
 };
 
 /// @brief Creates the construction subsystem.

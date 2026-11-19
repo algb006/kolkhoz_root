@@ -94,9 +94,12 @@ class CemeteryPolicy {
       const std::vector<float>& keep_out = definitions_.units.keep_out_radius_m;
       const float radius = cemetery_.value < keep_out.size() ? keep_out[cemetery_.value] : 0.0F;
       // ON THE ELDER'S POINT FIRST (suggested_place.h).
-      const std::optional<core::Vec2> point = suggested_.Take(world, definitions_.Plots(), radius);
+      const std::optional<core::Vec2> point =
+          suggested_.Take(world, definitions_.Plots(), radius, cemetery_);
       mark.position =
-          point ? *point : core::FreePlot(world.units, definitions_.Plots(), OldOne(world), radius);
+          point
+              ? *point
+              : BuildablePlot(world.units, definitions_.Plots(), OldOne(world), radius, cemetery_);
       orders.push_back(mark);
       ++marked_;
       if (first_mark_day_ < 0) {

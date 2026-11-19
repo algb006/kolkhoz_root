@@ -937,6 +937,10 @@ class StandardSimulation final : public ISimulation {
     return view;
   }
 
+  std::uint8_t BuildBansToday(UnitTypeId type, Vec2 place) const override {
+    return construction_->BuildBansAt(engine_->CompletedState(), type, place);  // #1788
+  }
+
   PlacementBansView PlacementBansToday(float cell_m) const override {
     return road_tools_->BansMap(engine_->CompletedState(), cell_m);  // #1788
   }

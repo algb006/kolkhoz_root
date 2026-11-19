@@ -186,6 +186,7 @@ bool ReadTypes(const ITable& unit_types, ConstructionConfig& config, std::string
   const std::uint32_t heating_col = unit_types.FindColumn("has_heating");
   const std::uint32_t never_demolished_col = unit_types.FindColumn("never_demolished");
   const std::uint32_t restorable_col = unit_types.FindColumn("restorable");
+  const std::uint32_t touches_water_col = unit_types.FindColumn("touches_water");  // #1886
 
   config.wear_column_present = has_wear_col != kNoTableColumn;
   config.types.assign(unit_types.RowCount(), BuildType{});
@@ -193,6 +194,7 @@ bool ReadTypes(const ITable& unit_types, ConstructionConfig& config, std::string
   config.type_has_heating.assign(unit_types.RowCount(), 0);
   // Absent column = every type may be taken down.
   config.type_never_demolished.assign(unit_types.RowCount(), 0);
+  config.type_touches_water.assign(unit_types.RowCount(), 0);  // #1886
   // Absent column = every dead unit may be brought back, as before the key.
   config.type_restorable.assign(unit_types.RowCount(), 1);
   for (std::uint32_t row = 0; row < unit_types.RowCount(); ++row) {
@@ -257,6 +259,19 @@ bool ReadTypes(const ITable& unit_types, ConstructionConfig& config, std::string
       return false;
     }
     config.type_never_demolished[row] = static_cast<std::uint8_t>(number);
+    // #1886 (rules §13 «Вода»): a unit that MUST touch the water by design -
+    // its contour may cross the waterline. Absent column or empty cell = 0.
+    if (!CellOrDefault(unit_types,
+                       row,
+                       touches_water_col,
+                       Range{.low = 0.0F, .high = 1.0F},
+                       0.0F,
+                       number,
+                       error)) {
+      Fail(error, "unit_types", "touches_water is not 0 or 1 in row " + std::to_string(row));
+      return false;
+    }
+    config.type_touches_water[row] = static_cast<std::uint8_t>(number);
     if (!CellOrDefault(unit_types,
                        row,
                        restorable_col,

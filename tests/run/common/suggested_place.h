@@ -32,6 +32,7 @@
 #include <string_view>
 #include <vector>
 
+#include "build_bans.h"
 #include "core_common/geometry.h"
 #include "core_common/plot.h"
 #include "core_common/world_state.h"
@@ -68,6 +69,20 @@ class SuggestedPlaces {
       }
     }
     refused_.assign(points_.size(), 0);
+    banned_.assign(points_.size(), 0);
+  }
+
+  /// @brief #1788: the suggested points passed over for a placement ban, with
+  /// their places - one line, «none» when none.
+  void BannedReport(std::string_view run_name) const {
+    std::cout << run_name << ": BANNED1788 suggested " << unit_type_
+              << " on a ban: " << banned_count_ << " of " << points_.size();
+    for (std::size_t index = 0; index < points_.size(); ++index) {
+      if (banned_[index] != 0) {
+        std::cout << " @" << points_[index].x << "," << points_[index].y;
+      }
+    }
+    std::cout << '\n';
   }
 
   /// @brief The first point whose plot of `radius` is free by the core's own
@@ -80,12 +95,23 @@ class SuggestedPlaces {
   /// that marks again the next day would ask for it for ever.
   std::optional<core::Vec2> Take(const core::WorldState& world,
                                  const core::PlotRules& rules,
-                                 float radius) {
+                                 float radius,
+                                 core::UnitTypeId type = core::UnitTypeId{}) {
     for (std::size_t index = 0; index < points_.size(); ++index) {
       if (refused_[index] != 0) {
         continue;
       }
       const core::Vec2& point = points_[index];
+      // #1788: a suggested point that sits on a placement ban is passed over,
+      // and named at the run's end (BannedReport) - the reference layout's
+      // owner moves or keeps it.
+      if (type.value != core::kInvalidDefIdValue && !BuildAllowed(type, point)) {
+        if (banned_[index] == 0) {
+          banned_[index] = 1;
+          ++banned_count_;
+        }
+        continue;
+      }
       const core::Vec2 free = core::FreePlot(world.units, rules, point, radius);
       if (std::hypot(free.x - point.x, free.y - point.y) > kSamePlaceMetres) {
         continue;
@@ -117,6 +143,9 @@ class SuggestedPlaces {
                 << (points_.empty() ? " (the table has no point for it)" : " (every point taken)");
     }
     std::cout << "\n";
+    if (banned_count_ > 0) {
+      BannedReport(run_name);  // #1788: the layout's points on a ban, named
+    }
   }
 
   std::size_t PointCount() const { return points_.size(); }
@@ -134,6 +163,8 @@ class SuggestedPlaces {
   std::uint32_t on_ = 0;
   std::uint32_t past_ = 0;
   std::uint32_t refused_count_ = 0;
+  std::vector<std::uint8_t> banned_;  ///< #1788: 1 - passed over for a placement ban.
+  std::uint32_t banned_count_ = 0;
 };
 
 }  // namespace run

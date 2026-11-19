@@ -41,6 +41,7 @@
 #include "../common/avatar_book_tally.h"
 #include "../common/ban_refusal_tally.h"
 #include "../common/births_herd_tally.h"
+#include "../common/build_bans.h"
 #include "../common/building_chairman.h"
 #include "../common/crime_tally.h"
 #include "../common/env_value.h"
@@ -871,6 +872,7 @@ bool Walk(std::uint64_t seed,
     KeepHorsesShare(world, 1, 2, "--horses-half", "on day 0");
   }
   core::ISimulation* simulation = world.simulation.get();
+  run::SetBuildBans(simulation);  // #1788: the bot's pickers ask the placement bans
   out.seed = seed;
   out.start_population =
       static_cast<std::uint32_t>(simulation->CompletedState().residents.rows.size());

@@ -538,6 +538,12 @@ class ISimulation {
   /// @note Called between steps on the sim thread. A pure read.
   virtual PlacementBansView PlacementBansToday(float cell_m) const = 0;
 
+  /// @brief The placement bans a kBuildUnit of `type` at `place` would meet today
+  ///        (IConstructionSystem::BuildBansAt; #1788) - the order's own reading, for a bot or
+  ///        a layer that wants to ask before it orders. The bare engine answers 0.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual std::uint8_t BuildBansToday(UnitTypeId type, Vec2 place) const = 0;
+
   /// @brief The forest's facts by stand (forest_facts_view.h; #1788 (b)). The bare engine
   ///        answers `measured` false.
   /// @note Called between steps on the sim thread. A pure read.

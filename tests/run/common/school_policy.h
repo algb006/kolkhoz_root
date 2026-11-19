@@ -127,11 +127,14 @@ class SchoolPolicy {
       const std::vector<float>& radii = definitions_.units.keep_out_radius_m;
       const float radius = school_.value < radii.size() ? radii[school_.value] : 0.0F;
       // ON THE ELDER'S POINT FIRST (suggested_place.h; 0.37.161).
-      const std::optional<core::Vec2> point = suggested_.Take(world, definitions_.Plots(), radius);
-      mark.position =
-          point ? *point
-                : core::FreePlot(
-                      world.units, definitions_.Plots(), HousePolicy::VillageCentre(world), radius);
+      const std::optional<core::Vec2> point =
+          suggested_.Take(world, definitions_.Plots(), radius, school_);
+      mark.position = point ? *point
+                            : BuildablePlot(world.units,
+                                            definitions_.Plots(),
+                                            HousePolicy::VillageCentre(world),
+                                            radius,
+                                            school_);
       orders.push_back(mark);
       ++marked_;
       if (first_mark_day_ < 0) {

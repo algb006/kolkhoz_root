@@ -133,11 +133,14 @@ class BarrackPolicy {
       const std::vector<float>& radii = definitions_.units.keep_out_radius_m;
       const float radius = barrack_.value < radii.size() ? radii[barrack_.value] : 0.0F;
       // ON THE ELDER'S POINT FIRST (suggested_place.h).
-      const std::optional<core::Vec2> point = suggested_.Take(world, definitions_.Plots(), radius);
-      mark.position =
-          point ? *point
-                : core::FreePlot(
-                      world.units, definitions_.Plots(), HousePolicy::VillageCentre(world), radius);
+      const std::optional<core::Vec2> point =
+          suggested_.Take(world, definitions_.Plots(), radius, barrack_);
+      mark.position = point ? *point
+                            : BuildablePlot(world.units,
+                                            definitions_.Plots(),
+                                            HousePolicy::VillageCentre(world),
+                                            radius,
+                                            barrack_);
       orders.push_back(mark);
       ++marked_;
       // An order lands at the day's close and shows the day after: two days

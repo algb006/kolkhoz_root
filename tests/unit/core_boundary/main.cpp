@@ -196,6 +196,10 @@ class ScriptedSimulation final : public core::ISimulation {
 
   core::PlacementBansView PlacementBansToday(float /*cell_m*/) const override { return {}; }
 
+  std::uint8_t BuildBansToday(core::UnitTypeId /*type*/, core::Vec2 /*place*/) const override {
+    return 0;
+  }
+
   core::ForestFactsView ForestFactsToday() const override { return {}; }
 
   core::FloodLossesView FloodLossesThisYearToday() const override { return {}; }

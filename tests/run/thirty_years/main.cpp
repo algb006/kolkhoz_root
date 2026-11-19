@@ -28,6 +28,7 @@
 #include "../common/accepted_reds.h"
 #include "../common/book_balance.h"
 #include "../common/brakes_tally.h"
+#include "../common/build_bans.h"
 #include "../common/building_chairman.h"
 #include "../common/chairman_clock.h"
 #include "../common/distiller_policy.h"
@@ -773,6 +774,7 @@ int main(int argc, char** argv) {
       hauls.CountDay(world.State());  // the day's end, before any order
       // The run's chairman, each policy on its own clock (chairman_clock.h).
       core::ISimulation& sim = *world.simulation;
+      run::SetBuildBans(&sim);  // #1788: the bot's pickers ask the placement bans
       chairman.Time("yard", [&] { yard.RunDay(sim); });
       chairman.Time("fixture", [&] { fixture.RunDay(sim); });
       chairman.Time("felling",

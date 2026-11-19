@@ -464,6 +464,11 @@ struct ConstructionConfig {
   /// column or empty cell = 0.
   std::vector<std::uint8_t> type_never_demolished;
 
+  /// unit_types.csv `touches_water` (#1886; rules §13 «Вода»: the beach and the
+  /// duck farm must touch the water): 1 - the placement's water ban does not
+  /// hold on its contour; every other ban does. Missing column or empty cell = 0.
+  std::vector<std::uint8_t> type_touches_water;
+
   /// 0/1 per unit type, dense by UnitTypeId: unit_types.csv `restorable` —
   /// A DEAD UNIT OF THIS TYPE MAY BE BROUGHT BACK (the human's word of 5
   /// October 2026, «По мельнице б»; boss's export of the same night): 0
