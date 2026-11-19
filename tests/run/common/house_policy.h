@@ -222,6 +222,14 @@ class HousePolicy {
       // 0.37.159); every point taken — the nearest free place, said aloud.
       const std::optional<core::Vec2> point =
           suggested_.Take(world, definitions_.Plots(), radius, house_);
+      {
+        // #1907: where the mark went, and the reference points still free after it.
+        QueueTally& tally = TallyOf(world);
+        ++(point ? tally.marks_on_point : tally.marks_fallback);
+        tally.points_free_after_last_mark =
+            suggested_.FreeLeft(world, definitions_.Plots(), radius, house_) - (point ? 1U : 0U);
+        tally.points_banned_so_far = suggested_.BannedCount();
+      }
       mark.position =
           point ? *point
                 : BuildablePlot(
@@ -294,7 +302,10 @@ class HousePolicy {
           << one.going_up << " short_of_recipe " << one.short_of_recipe << " farm_first "
           << one.farm_first << " older_site_waits " << one.older_site_waits << " saw_gate "
           << one.saw_gate << " started " << one.started << " cap_held " << one.cap_held
-          << " cooldown_held " << one.cooldown_held << '\n';
+          << " cooldown_held " << one.cooldown_held << " marks_on_point " << one.marks_on_point
+          << " marks_fallback " << one.marks_fallback << " points_free_after_last_mark "
+          << one.points_free_after_last_mark << " points_banned_so_far " << one.points_banned_so_far
+          << '\n';
     }
     out << "population_curve: HOUSESHORT1677 seed " << seed;
     for (const auto& [resource, days] : short_by_resource_) {
@@ -455,6 +466,11 @@ class HousePolicy {
     std::uint64_t started = 0;
     std::uint64_t cap_held = 0;
     std::uint64_t cooldown_held = 0;
+    std::uint32_t marks_on_point = 0;  ///< #1907: marks on a reference point
+    std::uint32_t marks_fallback = 0;  ///< #1907: marks on the nearest free cell
+    /// #1907: the reference points free after the year's last mark (-1: no mark).
+    std::int64_t points_free_after_last_mark = -1;
+    std::uint32_t points_banned_so_far = 0;  ///< #1907
   };
 
   QueueTally& TallyOf(const core::WorldState& world) {

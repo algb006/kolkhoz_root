@@ -197,6 +197,27 @@ class SuggestedPlaces {
 
   std::size_t PointCount() const { return points_.size(); }
 
+  /// @brief #1907: the points Take could still hand out today - not refused,
+  /// on no ban, their plot free - without counting anything.
+  std::uint32_t FreeLeft(const core::WorldState& world,
+                         const core::PlotRules& rules,
+                         float radius,
+                         core::UnitTypeId type) const {
+    std::uint32_t left = 0;
+    for (std::size_t index = 0; index < points_.size(); ++index) {
+      const core::Vec2& point = points_[index];
+      if (refused_[index] != 0 || !BuildAllowed(type, point)) {
+        continue;
+      }
+      const core::Vec2 free = core::FreePlot(world.units, rules, point, radius);
+      left += std::hypot(free.x - point.x, free.y - point.y) <= kSamePlaceMetres ? 1U : 0U;
+    }
+    return left;
+  }
+
+  /// @brief #1907: the points a ban passed over so far, by the ban's bits.
+  std::uint32_t BannedCount() const { return banned_count_; }
+
  private:
   /// FreePlot answers a free point itself; anything further is a neighbour's.
   static constexpr float kSamePlaceMetres = 1.0F;
