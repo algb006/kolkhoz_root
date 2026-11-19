@@ -339,8 +339,8 @@ class CrimeTally {
         << " alcohol_gain_with_distiller "
         << (distiller_raiser_ < 0.0F ? std::string("NOT IN THE TABLES")
                                      : std::to_string(distiller_raiser_))
-        << " door_refused_for_reputation " << door_reputation_refusals_
-        << " trial_window_loss_months "
+        << " door_refused_for_reputation " << door_reputation_refusals_ << " closed_store_months "
+        << ClosedStoreMonths() << " of " << StoreMonths() << " trial_window_loss_months "
         << (trial_window_months_ ? std::to_string(*trial_window_months_) : std::string("none"))
         << " trial_months_after_fight "
         << (trial_window_months_ && fight_from_year_ > 0 ? std::to_string(trial_months_after_fight_)
@@ -583,6 +583,27 @@ class CrimeTally {
   std::unordered_map<std::uint32_t, std::unordered_map<std::uint32_t, MonthWatch>> watch_;
   const core::ISimulation* simulation_ = nullptr;
   std::uint32_t door_reputation_refusals_ = 0;  ///< #1897 P4
+
+  /// H3's POSITIVE CONTROL: the store-months whose leak the core's own door
+  /// read closed every day, and all the store-months read - a door that never
+  /// answers «closed» would leave H3's 0 meaning nothing.
+  std::uint64_t ClosedStoreMonths() const {
+    std::uint64_t closed = 0;
+    for (const auto& [unit, months] : watch_) {
+      for (const auto& [month, watch] : months) {
+        closed += watch.days > 0 && watch.closed_days == watch.days ? 1U : 0U;
+      }
+    }
+    return closed;
+  }
+
+  std::uint64_t StoreMonths() const {
+    std::uint64_t all = 0;
+    for (const auto& [unit, months] : watch_) {
+      all += months.size();
+    }
+    return all;
+  }
 
  public:
   /// @brief The simulation H3's leak door is asked of (null: not read).
