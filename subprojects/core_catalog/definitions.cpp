@@ -189,6 +189,19 @@ bool LoadDefinitions(const ITableSet& tables,
       PrefixError("map", "side_m", error);
       return false;
     }
+    // THE EDGE BAND (#1788; rules §13 «Край карты», `edge_build_setback_m`, a
+    // map rule): no point of a unit's contour within it. Optional: absent, it
+    // reads 0 and the band does not fire - said in the ban door.
+    if (map->RowCount() > 0 && !CellOrDefault(*map,
+                                              0,
+                                              map->FindColumn("edge_build_setback_m"),
+                                              Range{.low = 0.0F, .high = kMaxMapSideM},
+                                              0.0F,
+                                              definitions.edge_build_setback_m,
+                                              error)) {
+      PrefixError("map", "edge_build_setback_m", error);
+      return false;
+    }
   }
   return true;
 }

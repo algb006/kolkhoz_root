@@ -318,19 +318,32 @@ for config in Debug Release; do
   fi
 done
 
-# The pointer moves LAST, and only now: everything it can be asked about is
-# on disk. Written through a temporary file so that a dropped connection
-# leaves the old pointer intact rather than an empty one.
-if ! ssh_retry "printf '%s\n' '${version}' > '${remote_dir}/publish/.current.tmp' \
-  && mv '${remote_dir}/publish/.current.tmp' '${remote_dir}/publish/current'" > /dev/null; then
-  echo "ОТКАЗ: publish/current не записан за ${ssh_tries} попытки — он называет прежнюю версию." >&2
-  exit 1
+# THE POINTER NEVER MOVES BACKWARDS (19 Nov 2026: republishing 0.37.396 moved
+# current to it, and the weeding below then removed 396 as the oldest - current
+# named a version that was gone until 403 was republished). An OLDER version
+# than the newest on the host is published beside it; current stays where it is.
+newest=$(ssh "${host}" "ls -1 '${remote_dir}/publish' 2>/dev/null" | tr -d '\r' \
+  | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
+target_current="${version}"
+if [ -n "${newest}" ] && [ "${newest}" != "${version}" ] \
+  && [ "$(printf '%s\n%s\n' "${newest}" "${version}" | sort -V | tail -n 1)" = "${newest}" ]; then
+  target_current=$(ssh_retry "cat '${remote_dir}/publish/current'" | tr -d '\r\n')
+  echo "publish/current НЕ сдвинут: ${version} старше ${newest}, current остаётся ${target_current}"
+else
+  # The pointer moves LAST, and only now: everything it can be asked about is
+  # on disk. Written through a temporary file so that a dropped connection
+  # leaves the old pointer intact rather than an empty one.
+  if ! ssh_retry "printf '%s\n' '${version}' > '${remote_dir}/publish/.current.tmp' \
+    && mv '${remote_dir}/publish/.current.tmp' '${remote_dir}/publish/current'" > /dev/null; then
+    echo "ОТКАЗ: publish/current не записан за ${ssh_tries} попытки — он называет прежнюю версию." >&2
+    exit 1
+  fi
 fi
 # READ BACK, not assumed: the line below is what the host now says.
 current_now=$(ssh_retry "cat '${remote_dir}/publish/current'" | tr -d '\r\n')
-echo "publish/current → ${version} (прочитан с хоста: ${current_now})"
-if [ "${current_now}" != "${version}" ]; then
-  echo "ОТКАЗ: publish/current читается как «${current_now}», а не ${version}." >&2
+echo "publish/current → ${target_current} (прочитан с хоста: ${current_now})"
+if [ "${current_now}" != "${target_current}" ]; then
+  echo "ОТКАЗ: publish/current читается как «${current_now}», а не ${target_current}." >&2
   exit 1
 fi
 
@@ -362,6 +375,12 @@ if [ -n "${old_versions}" ]; then
       echo "ОСТАВЛЕНА под пином: ${old} — держит ${holders:-неизвестно кто}"
       continue
     fi
+    # NEVER THE VERSION JUST PUBLISHED, nor the one current names (19 Nov 2026:
+    # a republished old version was weeded by its own publish).
+    if [ "${old}" = "${version}" ] || [ "${old}" = "${current_now}" ]; then
+      echo "ОСТАВЛЕНА: ${old} — её только что выложили или на неё указывает current"
+      continue
+    fi
     ssh "${host}" "rm -rf '${remote_dir}/publish/${old}'"
     echo "Убрана старая версия: ${old}"
   done
@@ -369,4 +388,4 @@ fi
 
 kept=$(ssh "${host}" "ls -1 '${remote_dir}/publish' 2>/dev/null" | tr -d '\r' \
   | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tr '\n' ' ')
-echo "На хосте: ${kept}— current ${version}"
+echo "На хосте: ${kept}— current ${current_now}"

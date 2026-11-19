@@ -29,6 +29,7 @@
 #include "core_common/ids.h"
 #include "core_common/module_rules.h"
 #include "core_common/order_state.h"
+#include "core_common/placement_bans.h"
 #include "core_common/plot.h"
 #include "core_common/rain_stops_work.h"
 #include "core_common/rung_requirement.h"
@@ -892,6 +893,14 @@ class ConstructionSystem final : public IConstructionSystem {
     if (PlotOverlaps(current, order.position, radius, UnitId{}, parent)) {
       return OrderRefusal::kTooClose;
     }
+    // THE PLACEMENT BANS (#1788; rules §13 as boss wrote it on 18 Nov, #1886):
+    // water and the floodplain's contour, the forest (not for the hunting
+    // lodge), a reserve, a laid road's surface, the edge band - read off the
+    // same door the layer's ban map reads (RoadTools::BansUnder). Until
+    // 0.37.401 a building could be raised on the lake.
+    if (BansFor(current, type_row, order.position) != 0) {
+      return OrderRefusal::kRuleForbids;
+    }
     // The camp's own ground rule, after the plot: a camp on another's plot is
     // too close before it is anywhere at all.
     if (order.unit_type.value == config_.field_camp_type.value) {
@@ -1510,6 +1519,33 @@ class ConstructionSystem final : public IConstructionSystem {
     return type_row < radii.size() ? radii[type_row] : 0.0F;
   }
 
+  /// The placement bans a building of `type_row` would meet at `place` (#1788):
+  /// the road tools' door under its keep-out circle, the forest open to the
+  /// hunting lodge, the water to a type that must touch it (#1886). The ONE
+  /// reading kBuildUnit refuses by and BuildBansAt answers.
+  std::uint8_t BansFor(const WorldState& world, std::uint32_t type_row, Vec2 place) const {
+    if (!road_doors_.bans) {
+      return 0;
+    }
+    std::uint8_t bans = road_doors_.bans(world,
+                                         place,
+                                         DefIdFromRow<UnitTypeIdTag>(type_row),
+                                         type_row == config_.hunting_lodge_type.value,
+                                         config_.definitions.edge_build_setback_m);
+    if (type_row < config_.type_touches_water.size() && config_.type_touches_water[type_row] != 0) {
+      bans = static_cast<std::uint8_t>(bans & ~kBanWater);
+    }
+    return bans;
+  }
+
+ public:
+  std::uint8_t BuildBansAt(const WorldState& completed,
+                           UnitTypeId type,
+                           Vec2 place) const override {
+    return BansFor(completed, type.value, place);
+  }
+
+ private:
   bool IsModuleType(std::uint32_t type_row) const {
     const std::vector<UnitTypeId>& parents = config_.definitions.units.parent;
     return type_row < parents.size() && parents[type_row].value != kInvalidDefIdValue;

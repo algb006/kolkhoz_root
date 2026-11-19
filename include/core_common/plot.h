@@ -32,6 +32,7 @@
 #ifndef CORE_COMMON_PLOT_H_
 #define CORE_COMMON_PLOT_H_
 
+#include <functional>
 #include <span>
 
 #include "core_common/geometry.h"
@@ -124,6 +125,16 @@ bool PlotOverlaps(const UnitTable& units,
 /// there instead — otherwise the one invariant would again have two doors,
 /// which is the defect this file was written to close.
 Vec2 FreePlot(const UnitTable& units, const PlotRules& rules, const Vec2& wanted, float radius);
+
+/// @brief As FreePlot, with one more test a place must pass (#1788): `accept`
+///        of the candidate's centre - a bot's question to the placement bans
+///        (ISimulation::BuildBansToday), which core_common cannot ask itself.
+///        An empty `accept` is the plain form.
+Vec2 FreePlot(const UnitTable& units,
+              const PlotRules& rules,
+              const Vec2& wanted,
+              float radius,
+              const std::function<bool(Vec2)>& accept);
 
 }  // namespace core
 

@@ -74,10 +74,20 @@ bool PlotOverlaps(const UnitTable& units,
 }
 
 Vec2 FreePlot(const UnitTable& units, const PlotRules& rules, const Vec2& wanted, float radius) {
+  return FreePlot(units, rules, wanted, radius, {});
+}
+
+Vec2 FreePlot(const UnitTable& units,
+              const PlotRules& rules,
+              const Vec2& wanted,
+              float radius,
+              const std::function<bool(Vec2)>& accept) {
+  const auto accepted = [&accept](Vec2 place) { return !accept || accept(place); };
   if (!(radius > 0.0F)) {
     return wanted;
   }
-  if (OnTheMap(rules, wanted, radius) && !PlotOverlaps(units, rules, wanted, radius, UnitId{})) {
+  if (OnTheMap(rules, wanted, radius) && !PlotOverlaps(units, rules, wanted, radius, UnitId{}) &&
+      accepted(wanted)) {
     return wanted;
   }
   // Two radii to a step: neighbours placed on the same lattice then just
@@ -102,7 +112,7 @@ Vec2 FreePlot(const UnitTable& units, const PlotRules& rules, const Vec2& wanted
         if (!OnTheMap(rules, candidate, radius)) {
           continue;
         }
-        if (!PlotOverlaps(units, rules, candidate, radius, UnitId{})) {
+        if (!PlotOverlaps(units, rules, candidate, radius, UnitId{}) && accepted(candidate)) {
           return candidate;
         }
         last = candidate;

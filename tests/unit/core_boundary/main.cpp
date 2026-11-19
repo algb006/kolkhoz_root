@@ -196,6 +196,16 @@ class ScriptedSimulation final : public core::ISimulation {
 
   bool StoreLeakClosedToday(core::UnitId /*unit*/) const override { return false; }
 
+  core::PlacementBansView PlacementBansToday(float /*cell_m*/) const override { return {}; }
+
+  std::uint8_t BuildBansToday(core::UnitTypeId /*type*/, core::Vec2 /*place*/) const override {
+    return 0;
+  }
+
+  core::ForestFactsView ForestFactsToday() const override { return {}; }
+
+  core::FloodLossesView FloodLossesThisYearToday() const override { return {}; }
+
   /// No works and no carts here: nothing to cart.
   core::SupplyEstimate SupplyEstimateFor(core::UnitId /*unit*/) const override { return {}; }
 

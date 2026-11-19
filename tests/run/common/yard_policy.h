@@ -257,7 +257,7 @@ class YardPolicy {
       const std::vector<float>& radii = definitions_.units.keep_out_radius_m;
       const float radius = yard_type_.value < radii.size() ? radii[yard_type_.value] : 0.0F;
       if (const std::optional<core::Vec2> point =
-              suggested_.Take(world, definitions_.Plots(), radius)) {
+              suggested_.Take(world, definitions_.Plots(), radius, yard_type_)) {
         order.position = *point;
         return true;
       }

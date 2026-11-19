@@ -279,14 +279,15 @@ class SocialObjectsPolicy {
         std::optional<core::Vec2> point;
         for (Suggested& suggested : suggested_) {
           if (suggested.type.value == next.value) {
-            point = suggested.places.Take(world, definitions_.Plots(), radius);
+            point = suggested.places.Take(world, definitions_.Plots(), radius, next);
           }
         }
-        mark.position =
-            point
-                ? *point
-                : core::FreePlot(
-                      world.units, definitions_.Plots(), HousePolicy::VillageCentre(world), radius);
+        mark.position = point ? *point
+                              : BuildablePlot(world.units,
+                                              definitions_.Plots(),
+                                              HousePolicy::VillageCentre(world),
+                                              radius,
+                                              next);
         orders.push_back(mark);
         ++marked_;
         marked_past_a_house_site_ += a_house_site_only ? 1U : 0U;

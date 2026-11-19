@@ -77,6 +77,8 @@
 #include "core_common/deadline.h"
 #include "core_common/delivery_term.h"
 #include "core_common/elder_view.h"
+#include "core_common/flood_losses_view.h"
+#include "core_common/forest_facts_view.h"
 #include "core_common/grass_stand_view.h"
 #include "core_common/herd_plan_view.h"
 #include "core_common/ice_view.h"
@@ -88,6 +90,7 @@
 #include "core_common/meadow_mark.h"
 #include "core_common/office_views.h"
 #include "core_common/order_state.h"
+#include "core_common/placement_bans.h"
 #include "core_common/porter_leg.h"
 #include "core_common/readiness_view.h"
 #include "core_common/resident_activity.h"
@@ -535,6 +538,27 @@ class ISimulation {
   ///        engine answers false.
   /// @note Called between steps on the sim thread. A pure read.
   virtual bool StoreLeakClosedToday(UnitId unit) const = 0;
+
+  /// @brief The whole map's placement bans at `cell_m` (placement_bans.h; #1788). The bare
+  ///        engine answers `measured` false.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual PlacementBansView PlacementBansToday(float cell_m) const = 0;
+
+  /// @brief The placement bans a kBuildUnit of `type` at `place` would meet today
+  ///        (IConstructionSystem::BuildBansAt; #1788) - the order's own reading, for a bot or
+  ///        a layer that wants to ask before it orders. The bare engine answers 0.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual std::uint8_t BuildBansToday(UnitTypeId type, Vec2 place) const = 0;
+
+  /// @brief The forest's facts by stand (forest_facts_view.h; #1788 (b)). The bare engine
+  ///        answers `measured` false.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual ForestFactsView ForestFactsToday() const = 0;
+
+  /// @brief This calendar year's losses to the spring flood (flood_losses_view.h; #1894).
+  ///        The bare engine answers `measured` false.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual FloodLossesView FloodLossesThisYearToday() const = 0;
 
   /// @brief How long the carting of the materials of the works on `unit`
   /// would take, said before they are started (supply_estimate.h; routing

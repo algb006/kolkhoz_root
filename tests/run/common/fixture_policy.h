@@ -1032,12 +1032,12 @@ class FixturePolicy {
       // village's middle, as every other roof.
       const std::optional<core::Vec2> point =
           type.value == food_store_.value
-              ? store_suggested_.Take(world, definitions_.Plots(), radii[type.value])
+              ? store_suggested_.Take(world, definitions_.Plots(), radii[type.value], type)
               : std::nullopt;
       order.position =
-          point
-              ? *point
-              : core::FreePlot(world.units, definitions_.Plots(), Centre(world), radii[type.value]);
+          point ? *point
+                : BuildablePlot(
+                      world.units, definitions_.Plots(), Centre(world), radii[type.value], type);
       ++ordered_;
       return true;
     }
@@ -1088,9 +1088,11 @@ class FixturePolicy {
       order.unit_type = granary_yard_;
       // ON THE ELDER'S POINT FIRST (suggested_place.h; 0.37.159).
       const std::optional<core::Vec2> point =
-          yard_suggested_.Take(world, definitions_.Plots(), radius);
+          yard_suggested_.Take(world, definitions_.Plots(), radius, granary_yard_);
       order.position =
-          point ? *point : core::FreePlot(world.units, definitions_.Plots(), Centre(world), radius);
+          point ? *point
+                : BuildablePlot(
+                      world.units, definitions_.Plots(), Centre(world), radius, granary_yard_);
       ++yards_ordered_;
       return true;
     }
@@ -1138,9 +1140,10 @@ class FixturePolicy {
     // ON THE ELDER'S POINT FIRST (suggested_place.h; 0.37.159); the second
     // clamp and on by the fields, as before.
     const std::optional<core::Vec2> point =
-        clamp_suggested_.Take(world, definitions_.Plots(), radius);
+        clamp_suggested_.Take(world, definitions_.Plots(), radius, clamp_);
     order.position =
-        point ? *point : core::FreePlot(world.units, definitions_.Plots(), near_fields, radius);
+        point ? *point
+              : BuildablePlot(world.units, definitions_.Plots(), near_fields, radius, clamp_);
     ++ordered_;
     return true;
   }

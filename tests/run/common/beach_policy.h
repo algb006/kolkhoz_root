@@ -92,7 +92,8 @@ class BeachPolicy {
       if (marked_day_ < 0 && day >= entry_day_) {
         const std::vector<float>& radii = definitions_.units.keep_out_radius_m;
         const float radius = beach_.value < radii.size() ? radii[beach_.value] : 0.0F;
-        const std::optional<core::Vec2> point = places_.Take(world, definitions_.Plots(), radius);
+        const std::optional<core::Vec2> point =
+            places_.Take(world, definitions_.Plots(), radius, beach_);
         if (point) {
           core::OrderRow mark;
           mark.kind = core::OrderKind::kBuildUnit;

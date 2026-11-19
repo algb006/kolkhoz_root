@@ -39,7 +39,9 @@
 #include "../common/accepted_reds.h"
 #include "../common/advance_write_off_tally.h"
 #include "../common/avatar_book_tally.h"
+#include "../common/ban_refusal_tally.h"
 #include "../common/births_herd_tally.h"
+#include "../common/build_bans.h"
 #include "../common/building_chairman.h"
 #include "../common/crime_tally.h"
 #include "../common/env_value.h"
@@ -876,6 +878,7 @@ bool Walk(std::uint64_t seed,
     KeepHorsesShare(world, 1, 2, "--horses-half", "on day 0");
   }
   core::ISimulation* simulation = world.simulation.get();
+  run::SetBuildBans(simulation);  // #1788: the bot's pickers ask the placement bans
   out.seed = seed;
   out.start_population =
       static_cast<std::uint32_t>(simulation->CompletedState().residents.rows.size());
@@ -967,6 +970,7 @@ bool Walk(std::uint64_t seed,
   run::CrimeTally crime(*world.tables, seed);
   crime.SetFightFromYear(g_anticrime_from_year);  // #1893's late fighter (H1, H3)
   crime.SetSimulation(simulation);                // #1893 H3: the core's leak door
+  run::BanRefusalTally bans(*world.tables);       // #1788: the bot's sites the bans refuse
   // #1630 (B): the salt a village-year, the steps, the bot's lots.
   run::SaltTally salt(*world.tables, seed);
   // Every cow handed y2-y3: the door, the forecast, came true (#1570, boss [32]).
@@ -1125,6 +1129,7 @@ bool Walk(std::uint64_t seed,
       herds.CountDayEnd(simulation->CompletedState());
       herds.CountNearShort(*simulation);
       crime.CountDay(simulation->CompletedState());
+      bans.CountDay(simulation->CompletedState());
       salt.CountDayEnd(*simulation, builder.limit.SaltRule());
       hand_overs.CountDay(simulation->CompletedState(),
                           builder.limit.HayHandLogs(),
@@ -1662,6 +1667,7 @@ bool Walk(std::uint64_t seed,
       funerals.Print(std::cout, seed);
       herds.Print(std::cout, seed);
       crime.Print(std::cout, seed);
+      bans.Print(std::cout, seed);                          // #1788
       salt.Print(std::cout);                                // #1630 (B)
       builder.smokehouse.Print(std::cout, seed);            // #1644
       builder.hay_arm.Print(std::cout, seed);               // #307

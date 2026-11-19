@@ -299,6 +299,14 @@ class StepEngine final : public ISimulation {
 
   bool StoreLeakClosedToday(UnitId /*unit*/) const override { return false; }
 
+  PlacementBansView PlacementBansToday(float /*cell_m*/) const override { return {}; }
+
+  std::uint8_t BuildBansToday(UnitTypeId /*type*/, Vec2 /*place*/) const override { return 0; }
+
+  ForestFactsView ForestFactsToday() const override { return {}; }
+
+  FloodLossesView FloodLossesThisYearToday() const override { return {}; }
+
   /// No subsystems, so no works and no carts: nothing to cart.
   SupplyEstimate SupplyEstimateFor(UnitId /*unit*/) const override { return {}; }
 

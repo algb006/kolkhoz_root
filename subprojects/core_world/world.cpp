@@ -890,6 +890,65 @@ class StandardSimulation final : public ISimulation {
     return residents_->StoreLeakClosedOf(engine_->CompletedState(), unit);  // #1893 H3
   }
 
+  FloodLossesView FloodLossesThisYearToday() const override {
+    // #1894 (flood_losses_view.h): the units and meadows this calendar year's
+    // spring flood marked (flood_lost_year, written by spring_flood.cpp).
+    const WorldState& completed = engine_->CompletedState();
+    FloodLossesView view;
+    view.measured = true;
+    view.year = static_cast<std::uint16_t>((completed.calendar.day / kDaysPerYear) + 1U);
+    for (std::size_t row = 0; row < completed.units.rows.size(); ++row) {
+      const UnitRow& unit = completed.units.rows[row];
+      if (unit.flood_lost_year == view.year) {
+        view.losses.push_back(FloodLoss{.place = unit.position,
+                                        .unit = completed.units.row_ids[row],
+                                        .unit_type = unit.type,
+                                        .field = FieldId{},
+                                        .area_ga = 0.0F});
+      }
+    }
+    for (std::size_t row = 0; row < completed.fields.rows.size(); ++row) {
+      const FieldRow& field = completed.fields.rows[row];
+      if (field.flood_lost_year == view.year) {
+        view.losses.push_back(FloodLoss{.place = field.center,
+                                        .unit = UnitId{},
+                                        .unit_type = UnitTypeId{},
+                                        .field = completed.fields.row_ids[row],
+                                        .area_ga = field.area_ga});
+      }
+    }
+    return view;
+  }
+
+  ForestFactsView ForestFactsToday() const override {
+    // #1788 (b): the stands as the core holds them (forest_facts_view.h).
+    const WorldState& completed = engine_->CompletedState();
+    ForestFactsView view;
+    view.measured = true;
+    view.stands.reserve(completed.stands.rows.size());
+    for (std::size_t row = 0; row < completed.stands.rows.size(); ++row) {
+      const TimberStandRow& stand = completed.stands.rows[row];
+      view.stands.push_back(ForestStandFact{.stand = completed.stands.row_ids[row],
+                                            .kind = stand.kind,
+                                            .position = stand.position,
+                                            .stock_m3 = stand.stock_m3,
+                                            .marked_m3 = stand.marked_m3,
+                                            .being_felled = stand.work_days_remaining > 0.0F,
+                                            .species = stand.species,
+                                            .planted_area_ha = stand.planted_area_ha,
+                                            .planted_day = stand.planted_day});
+    }
+    return view;
+  }
+
+  std::uint8_t BuildBansToday(UnitTypeId type, Vec2 place) const override {
+    return construction_->BuildBansAt(engine_->CompletedState(), type, place);  // #1788
+  }
+
+  PlacementBansView PlacementBansToday(float cell_m) const override {
+    return road_tools_->BansMap(engine_->CompletedState(), cell_m);  // #1788
+  }
+
   SeedFundView SeedFundToday() const override {
     return production_->SeedFundOf(engine_->CompletedState());
   }
@@ -1320,6 +1379,12 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
                            const RoadSelection& selection,
                            RoadOperation operation) {
                 return road_tools->Select(world, selection, operation);
+              },
+          // #1788: the bans under a building, the door the ban map shares.
+          .bans =
+              [road_tools](
+                  const WorldState& world, Vec2 centre, UnitTypeId type, bool forest, float edge) {
+                return road_tools->BansUnder(world, centre, type, forest, edge);
               },
       });
   // The groom's logistics (routing stage B, B2): the tasks of carting and

@@ -424,6 +424,10 @@ struct ConstructionConfig {
   /// table set has none, and no plot is checked as a camp.
   UnitTypeId field_camp_type;
 
+  /// unit_types.csv "hunting_lodge": the one building the forest takes (rules
+  /// §13 «Лес — неприкосновенен. Исключение — охотничий домик»; #1788).
+  UnitTypeId hunting_lodge_type;
+
   /// unit_types.csv "workshops" and the avatars' rows (#635): a level-1
   /// workshops site starts its labour at × the avatar's
   /// workshops_l1_labor_factor (the worker's 0.5; avatars.md «Пути», P5).
@@ -459,6 +463,11 @@ struct ConstructionConfig {
   /// stood in the table from 0.37.163 with no reader until 0.37.170. Missing
   /// column or empty cell = 0.
   std::vector<std::uint8_t> type_never_demolished;
+
+  /// unit_types.csv `touches_water` (#1886; rules §13 «Вода»: the beach and the
+  /// duck farm must touch the water): 1 - the placement's water ban does not
+  /// hold on its contour; every other ban does. Missing column or empty cell = 0.
+  std::vector<std::uint8_t> type_touches_water;
 
   /// 0/1 per unit type, dense by UnitTypeId: unit_types.csv `restorable` —
   /// A DEAD UNIT OF THIS TYPE MAY BE BROUGHT BACK (the human's word of 5

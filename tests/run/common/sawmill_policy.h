@@ -491,11 +491,12 @@ class SawmillPolicy {
       // AND ON THE ELDER'S POINT FIRST (suggested_place.h; 0.37.159).
       ++yard_attempts_;
       const std::optional<core::Vec2> point =
-          suggested_.Take(world, definitions_.Plots(), YardRadius());
+          suggested_.Take(world, definitions_.Plots(), YardRadius(), yard_type_);
       return Mark(
           yard_type_,
           point ? *point
-                : core::FreePlot(world.units, definitions_.Plots(), Centre(world), YardRadius()),
+                : BuildablePlot(
+                      world.units, definitions_.Plots(), Centre(world), YardRadius(), yard_type_),
           order);
     }
     if (world.units.rows[yard].level == 0) {

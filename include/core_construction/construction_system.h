@@ -327,6 +327,15 @@ class IConstructionSystem {
   /// @note A pure read of the parsed tables. Callable at any time, from the
   ///       sim thread, including before the first step.
   virtual Grams StorageCapacityGrams(UnitTypeId type, std::uint8_t level) const = 0;
+
+  /// @brief The placement bans (core_common/placement_bans.h; #1788) a kBuildUnit of `type`
+  ///        at `place` would meet on `completed` - the very reading the order refuses by
+  ///        (kRuleForbids), the lodge's forest and a water-touching type's water excepted.
+  ///        NOT the plots (kTooClose), the edge of the map itself or the type's own rules.
+  /// @return PlacementBan bits; 0 - no ban.
+  virtual std::uint8_t BuildBansAt(const WorldState& completed,
+                                   UnitTypeId type,
+                                   Vec2 place) const = 0;
 };
 
 /// @brief Creates the construction subsystem.
@@ -377,10 +386,20 @@ using RoadTracer = std::function<RoadDraftResult(const WorldState&, const RoadDr
 using RoadSelector =
     std::function<RoadPieces(const WorldState&, const RoadSelection&, RoadOperation)>;
 
+/// @brief The bans under a building's contour as construction asks them
+///        (#1788; core_common/placement_bans.h through RoadTools::BansUnder -
+///        the same door the layer's ban map reads, so the two cannot disagree):
+///        (world, centre, radius, forest allowed, edge band) → PlacementBan bits.
+using PlacementBanner =
+    std::function<std::uint8_t(const WorldState&, Vec2, UnitTypeId, bool, float)>;
+
 /// @brief The road tools' doors construction consumes the road orders by.
 struct RoadToolDoors {
   RoadTracer trace;     ///< kLayRoad (7c).
   RoadSelector select;  ///< kDemolishRoad (7d).
+  /// kBuildUnit's placement bans (#1788). Empty: no ban is checked - the
+  /// two-argument factory's form, this module's own tests.
+  PlacementBanner bans;
 };
 
 /// @brief As above, with the road tools' doors (delivery 7c, 7d). The
