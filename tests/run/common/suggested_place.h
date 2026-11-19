@@ -78,20 +78,20 @@ class SuggestedPlaces {
   /// (road/path), origin (map/player), its distance and its axis's two ends
   /// (the end at a unit names whom it was laid for).
   static std::string NearestRoadOf(const core::WorldState& world, core::Vec2 point) {
-    double best = 1e30;
+    float best = 1e30F;
     std::string text = "none";
     for (std::size_t row = 0; row < world.roads.rows.size(); ++row) {
       const core::RoadRow& road = world.roads.rows[row];
       for (std::size_t index = 1; index < road.axis.size(); ++index) {
         const core::Vec2 a = road.axis[index - 1].position;
         const core::Vec2 b = road.axis[index].position;
-        const double dx = b.x - a.x;
-        const double dy = b.y - a.y;
-        const double length = (dx * dx) + (dy * dy);
-        double along =
-            length > 0.0 ? (((point.x - a.x) * dx) + ((point.y - a.y) * dy)) / length : 0.0;
-        along = along < 0.0 ? 0.0 : (along > 1.0 ? 1.0 : along);
-        const double distance =
+        const float dx = b.x - a.x;
+        const float dy = b.y - a.y;
+        const float length = (dx * dx) + (dy * dy);
+        float along =
+            length > 0.0F ? (((point.x - a.x) * dx) + ((point.y - a.y) * dy)) / length : 0.0F;
+        along = along < 0.0F ? 0.0F : (along > 1.0F ? 1.0F : along);
+        const float distance =
             std::hypot(point.x - (a.x + (dx * along)), point.y - (a.y + (dy * along)));
         if (distance < best) {
           best = distance;
