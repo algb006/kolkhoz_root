@@ -1675,6 +1675,7 @@ bool Walk(std::uint64_t seed,
       builder.fallow.PrintSpringBuilding(std::cout, seed);  // #1726's B1 and B5
       builder.houses_first.Print(std::cout, seed);          // #1677
       builder.dry_pantry.Print(std::cout, seed);            // #1922
+      builder.clerk.Print(std::cout, seed);                 // #589
       herds.PrintCowFlows(std::cout, seed);                 // #1570
       hand_overs.Print(std::cout, seed);
       builder.houses.PrintQueueLines(std::cout, seed);  // #1677: the queue by cause, short lines

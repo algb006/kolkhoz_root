@@ -24,6 +24,7 @@
 #include "barrack_policy.h"
 #include "beach_policy.h"
 #include "cemetery_policy.h"
+#include "clerk_tally.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
 #include "distiller_policy.h"
@@ -379,6 +380,7 @@ class BuildingChairman {
     // counts every day; it orders only with its arm on).
     houses_first.RunDay(simulation);
     dry_pantry.CountDay(simulation.CompletedState());  // #1922's print
+    clerk.CountDay(simulation);                        // #589's print
     // The season's talk to the drinker (#1238; sport_talk_policy.h).
     if (sport_talk_on) {
       sport_talk.RunDay(simulation);
@@ -566,6 +568,8 @@ class BuildingChairman {
   HousesFirstPolicy houses_first;
   /// #1922's print: the families whose pantry ran dry (dry_pantry_tally.h).
   DryPantryTally dry_pantry;
+  /// #589's print: the clerk's post and his family's satiety (clerk_tally.h).
+  ClerkTally clerk;
   SportTalkPolicy sport_talk;
   /// Whether RunDay calls `sport_talk` (#1238): on in every run; a control
   /// arm turns it off.
