@@ -45,6 +45,7 @@
 #include "office_policy.h"
 #include "planting_policy.h"
 #include "repair_policy.h"
+#include "reputation_tally.h"
 #include "sawmill_policy.h"
 #include "school_policy.h"
 #include "smokehouse_policy.h"
@@ -381,6 +382,7 @@ class BuildingChairman {
     houses_first.RunDay(simulation);
     dry_pantry.CountDay(simulation.CompletedState());  // #1922's print
     clerk.CountDay(simulation);                        // #589's print
+    reputation.CountDay(simulation.CompletedState());  // #1897's REP1897
     // The season's talk to the drinker (#1238; sport_talk_policy.h).
     if (sport_talk_on) {
       sport_talk.RunDay(simulation);
@@ -570,6 +572,8 @@ class BuildingChairman {
   DryPantryTally dry_pantry;
   /// #589's print: the clerk's post and his family's satiety (clerk_tally.h).
   ClerkTally clerk;
+  /// #1897's ride-along: the rating's year by cause (reputation_tally.h).
+  ReputationTally reputation;
   SportTalkPolicy sport_talk;
   /// Whether RunDay calls `sport_talk` (#1238): on in every run; a control
   /// arm turns it off.
