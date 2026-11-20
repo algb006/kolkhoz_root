@@ -750,6 +750,16 @@ struct LaborConfig {
   /// roster has no such row, and then the alarm never fires.
   ProfessionId groom_post;
 
+  /// professions.csv "timekeeper" - the tally clerk (#589; society.md «Учётчик в Эпохе I
+  /// обязателен»): put on the post the first morning, the post filled by the chairman's
+  /// order on the 3rd morning of a vacancy, never dismissed alone in Epoch I. Invalid when
+  /// the roster has no such row, and then the post rules sleep.
+  ProfessionId timekeeper_post;
+
+  /// #589: the days a vacant clerk's post stands before the chairman's order fills it
+  /// (society.md «Учётчик умер или уехал»: his orders stand 2 days; STUB number).
+  static constexpr SimDay kClerkVacancyGraceDays = 2;
+
   // -- placement (labor.csv; society design §1) ----------------------------
   /// Accountant placement quality 0-3. Campaign default 0: the start has no
   /// accountant, the chairman places naively. Rises when the post is filled

@@ -36,6 +36,7 @@
 #include "core_common/barter_state.h"
 #include "core_common/calendar.h"
 #include "core_common/clamp_rot_state.h"
+#include "core_common/clerk_post_view.h"
 #include "core_common/crew_gaps.h"
 #include "core_common/day_order_state.h"
 #include "core_common/district_car_state.h"
@@ -1200,6 +1201,10 @@ struct WorldState {
   /// The district's store audit (#1568 link 2d); SAVED (save 207).
   /// night_trade_state.h.
   AuditState audit;
+
+  /// The tally clerk's post record (#589; clerk_post_view.h): since when, or why and since
+  /// when vacant. SAVED (save 219). The holder himself is on his ResidentRow::post.
+  ClerkRecord clerk;
 
   /// The salt watch: «Без соли»'s run and latch, the letter, the loan
   /// (#1630 (C)); SAVED (save 209). salt_state.h.

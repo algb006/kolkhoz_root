@@ -139,6 +139,7 @@
 #include "core_common/calendar.h"
 #include "core_common/cargo_form.h"
 #include "core_common/chairman_transport_view.h"
+#include "core_common/clerk_post_view.h"
 #include "core_common/day_order_preview.h"
 #include "core_common/day_orders.h"
 #include "core_common/elder_view.h"
@@ -1102,6 +1103,17 @@ class ISession {
   /// @note Between steps; the answer describes State(). A pure read; it scans the units table
   ///       ring by ring (plot.h), so a script asks it per site, not per cell.
   virtual FreePlotAnswer FreePlotFor(UnitTypeId type, Vec2 wanted) const = 0;
+
+  /// @brief The tally clerk's post (ISimulation::ClerkPostToday; clerk_post_view.h; #589,
+  ///        society.md «Учётчик в Эпохе I обязателен»): «есть ли учётчик», since when, or why
+  ///        vacant and the morning the chairman's order fills it.
+  /// @note Between steps; the answer describes State().
+  virtual ClerkPostView ClerkPost() const = 0;
+
+  /// @brief The first `count` clerk candidates, ranked as the rule appoints
+  ///        (ISimulation::ClerkCandidatesToday; #589): «Назначить учётчика»'s cards.
+  /// @note Between steps; the answer describes State().
+  virtual ClerkCandidatesView ClerkCandidates(std::uint32_t count) const = 0;
 
   /// @brief The forest's facts by stand (ISimulation::ForestFactsToday;
   ///        core_common/forest_facts_view.h; #1788 (b), layers §9, #1789's forest plots): each

@@ -1731,6 +1731,11 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   AppendAmounts(
       chunks, "audit.before_acceptance_last_month", world.audit.before_acceptance_last_month);
   chunks.push_back({"audit.remark_withdrawn_day", U32(world.audit.remark_withdrawn_day)});
+  // The tally clerk's record (#589, save 219).
+  chunks.push_back({"clerk.since_day", U32(world.clerk.since_day)});
+  chunks.push_back({"clerk.vacancy", U8(static_cast<std::uint8_t>(world.clerk.vacancy))});
+  chunks.push_back({"clerk.vacant_since_day", U32(world.clerk.vacant_since_day)});
+  chunks.push_back({"clerk.last_clerk", U32(world.clerk.last_clerk.value)});
   // The salt watch (#1630 (C), save 209).
   chunks.push_back({"salt.half_on_edge_days", U16(world.salt.half_on_edge_days)});
   chunks.push_back({"salt.ending_raised", U8(world.salt.ending_raised)});
@@ -2152,7 +2157,9 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // held; the hash read off u1881b.
     // Save 218 (lever (a), measured): +4 - remark_withdrawn_day (u32) after the pair;
     // predicted 1518 -> 1522 before the build, held; the hash read off u1883a.
-    {"world", 1522, 0x9eb228e1fe0bd119ULL},
+    // Save 219 (#589): +13 - the clerk's record (u32, byte, u32, resident id) after it;
+    // predicted 1522 -> 1535 before the build; the hash to read off the first units run.
+    {"world", 1535, 0x9eb228e1fe0bd119ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:

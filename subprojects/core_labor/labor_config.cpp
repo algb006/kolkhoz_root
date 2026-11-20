@@ -1005,6 +1005,8 @@ bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string&
   // alarm to raise either.
   if (const ITable* professions = tables.FindTable("professions")) {
     config.groom_post = DefIdFromRow<ProfessionIdTag>(professions->FindRowByKey(kGroomPostKey));
+    // #589: the tally clerk, mandatory in Epoch I (society.md).
+    config.timekeeper_post = DefIdFromRow<ProfessionIdTag>(professions->FindRowByKey("timekeeper"));
   }
   return ParseHeapShelves(tables, config, error) &&
          ParseTimberCatalog(tables, config.timber, error) &&

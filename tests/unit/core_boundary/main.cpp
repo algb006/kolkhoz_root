@@ -212,6 +212,12 @@ class ScriptedSimulation final : public core::ISimulation {
 
   core::FloodLossesView FloodLossesThisYearToday() const override { return {}; }
 
+  core::ClerkPostView ClerkPostToday() const override { return {}; }
+
+  core::ClerkCandidatesView ClerkCandidatesToday(std::uint32_t /*count*/) const override {
+    return {};
+  }
+
   /// No works and no carts here: nothing to cart.
   core::SupplyEstimate SupplyEstimateFor(core::UnitId /*unit*/) const override { return {}; }
 

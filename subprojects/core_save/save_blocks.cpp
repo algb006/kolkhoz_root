@@ -341,7 +341,10 @@ static_assert(AggregateArity<ClampRotYear>() == 2,
 // predicted before the build. And (#1789, the same composition) crew_gaps, the sixty-third - a
 // count and 28 bytes a line after the book; the section «world» +4 more when empty, +21 in
 // all, predicted before the build.
-static_assert(AggregateArity<WorldState>() == 63,
+// Save 219 (#589): the tally clerk's record, the sixty-fourth - a u32, a byte, a u32 and a
+// resident id (u32) after the audit's remark_withdrawn_day; the section «world» +13,
+// predicted 1522 -> 1535 before the build.
+static_assert(AggregateArity<WorldState>() == 64,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 
@@ -688,6 +691,11 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   sink.WriteAmounts(DefKind::kResource, world.audit.before_acceptance_this_month);
   sink.WriteAmounts(DefKind::kResource, world.audit.before_acceptance_last_month);
   out.WriteU32(world.audit.remark_withdrawn_day);  // save 218 (lever (a))
+  // The tally clerk's post record (#589, save 219).
+  out.WriteU32(world.clerk.since_day);
+  out.WriteU8(static_cast<std::uint8_t>(world.clerk.vacancy));
+  out.WriteU32(world.clerk.vacant_since_day);
+  out.WriteU32(world.clerk.last_clerk.value);
   // The salt watch (#1630 (C), save 209).
   out.WriteU16(world.salt.half_on_edge_days);
   out.WriteU8(world.salt.ending_raised);
@@ -1055,7 +1063,12 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->audit.before_acceptance_this_month = source.ReadAmounts(DefKind::kResource);
   world->audit.before_acceptance_last_month = source.ReadAmounts(DefKind::kResource);
   world->audit.remark_withdrawn_day = in.ReadU32();  // save 218 (lever (a))
-  world->salt.half_on_edge_days = in.ReadU16();      // save 209 (#1630 (C))
+  world->clerk.since_day = in.ReadU32();             // save 219 (#589)
+  world->clerk.vacancy = static_cast<ClerkVacancy>(source.ReadEnumValue(
+      0, static_cast<std::uint8_t>(ClerkVacancy::kUnitGone), "the clerk's vacancy"));
+  world->clerk.vacant_since_day = in.ReadU32();
+  world->clerk.last_clerk = ResidentId{in.ReadU32()};
+  world->salt.half_on_edge_days = in.ReadU16();  // save 209 (#1630 (C))
   world->salt.ending_raised =
       static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "the salt ending raised"));
   world->salt.letter_year = in.ReadU16();

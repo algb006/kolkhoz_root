@@ -61,6 +61,7 @@
 
 #include "core_common/alarm_state.h"
 #include "core_common/calendar.h"
+#include "core_common/clerk_post_view.h"
 #include "core_common/day_order_preview.h"
 #include "core_common/day_orders.h"
 #include "core_common/early_snow.h"
@@ -183,6 +184,14 @@ class ILaborSystem {
   ///        his order, with its seam and the hands his plan puts on it (day_order_preview.h,
   ///        ClerkAgendaView; #1811). A bot read.
   virtual ClerkAgendaView ClerkAgendaOf(const WorldState& state) const = 0;
+
+  /// @brief The tally clerk's post in `state` (clerk_post_view.h; #589). A pure read.
+  virtual ClerkPostView ClerkPostOf(const WorldState& state) const = 0;
+
+  /// @brief The first `count` clerk candidates in `state`, ranked as the rule appoints
+  ///        (clerk_post_view.h; #589). A pure read.
+  virtual ClerkCandidatesView ClerkCandidatesOf(const WorldState& state,
+                                                std::uint32_t count) const = 0;
 };
 
 /// @brief Creates the labor subsystem.

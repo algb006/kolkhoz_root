@@ -622,6 +622,12 @@ class Session final : public ISession {
     return simulation_->BuildBansToday(type, place);  // the build order's own reading
   }
 
+  ClerkPostView ClerkPost() const override { return simulation_->ClerkPostToday(); }
+
+  ClerkCandidatesView ClerkCandidates(std::uint32_t count) const override {
+    return simulation_->ClerkCandidatesToday(count);
+  }
+
   FreePlotAnswer FreePlotFor(UnitTypeId type, Vec2 wanted) const override {
     FreePlotAnswer answer;
     answer.place = wanted;

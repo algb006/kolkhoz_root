@@ -72,6 +72,7 @@
 #include "core_common/barter_view.h"
 #include "core_common/cargo_form.h"
 #include "core_common/chairman_transport_view.h"
+#include "core_common/clerk_post_view.h"
 #include "core_common/day_order_preview.h"
 #include "core_common/day_orders.h"
 #include "core_common/deadline.h"
@@ -559,6 +560,17 @@ class ISimulation {
   ///        The bare engine answers `measured` false.
   /// @note Called between steps on the sim thread. A pure read.
   virtual FloodLossesView FloodLossesThisYearToday() const = 0;
+
+  /// @brief The tally clerk's post today (clerk_post_view.h; #589): the holder, since when,
+  ///        or why vacant and the morning the chairman's order fills it. The bare engine
+  ///        answers `measured` false.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual ClerkPostView ClerkPostToday() const = 0;
+
+  /// @brief The first `count` clerk candidates as the rule ranks them (clerk_post_view.h;
+  ///        #589). The bare engine answers `measured` false.
+  /// @note Called between steps on the sim thread. A pure read.
+  virtual ClerkCandidatesView ClerkCandidatesToday(std::uint32_t count) const = 0;
 
   /// @brief How long the carting of the materials of the works on `unit`
   /// would take, said before they are started (supply_estimate.h; routing

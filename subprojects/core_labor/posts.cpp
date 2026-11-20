@@ -131,7 +131,12 @@ OrderRefusal CheckAppointment(const LaborConfig& config,
     return OrderRefusal::kNotEligible;
   }
   const ProfessionDef& post = config.professions[order.profession.value];
-  if (post.single_post != 0 && HeldAnywhere(world, order.profession, order.resident)) {
+  // THE CLERK'S POST MOVES (#589; society.md «Освободить учётчика можно только приказом, в
+  // котором сразу назначен преемник»): appointing another clerk is the release of the old one,
+  // applied at the day's close, not a second clerk refused.
+  const bool clerk_moves = order.profession.value == config.timekeeper_post.value;
+  if (post.single_post != 0 && !clerk_moves &&
+      HeldAnywhere(world, order.profession, order.resident)) {
     return OrderRefusal::kNoVacancy;  // one to a village, and it is taken
   }
   const StaffSlot* slot = FindStaffSlot(config, unit.type, unit.level, order.profession);

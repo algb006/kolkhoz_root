@@ -890,6 +890,14 @@ class StandardSimulation final : public ISimulation {
     return residents_->StoreLeakClosedOf(engine_->CompletedState(), unit);  // #1893 H3
   }
 
+  ClerkPostView ClerkPostToday() const override {
+    return labor_->ClerkPostOf(engine_->CompletedState());  // #589
+  }
+
+  ClerkCandidatesView ClerkCandidatesToday(std::uint32_t count) const override {
+    return labor_->ClerkCandidatesOf(engine_->CompletedState(), count);  // #589
+  }
+
   FloodLossesView FloodLossesThisYearToday() const override {
     // #1894 (flood_losses_view.h): the units and meadows this calendar year's
     // spring flood marked (flood_lost_year, written by spring_flood.cpp).

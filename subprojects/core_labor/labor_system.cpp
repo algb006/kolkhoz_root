@@ -184,9 +184,14 @@ class LaborSystem final : public ILaborSystem {
   explicit LaborSystem(LaborConfig config)
       : config_(std::move(config)), activity_rules_(ActivityRulesOfConfig(config_)) {}
 
-  void RunAssignmentDecisions(const WorldState& /*previous*/, WorldState& current) override {
+  void RunAssignmentDecisions(const WorldState& previous, WorldState& current) override {
     const std::uint32_t hour = HourFromTick(current.calendar.tick);
+    // THE TALLY CLERK (#589): the post's record kept every step - the step that empties it
+    // says why - and, at the morning, the first morning's appointment and the 3rd morning's
+    // order. Before StartDay, so the morning's placement plans without him.
+    KeepClerkRecord(previous, current);
     if (hour == 0) {
+      UpkeepClerkMorning(current);
       StartDay(current);
     }
     // TODAY'S DAY OFF DECLARED WORKING (B8's door; rush.cpp, CancelDayOff,
@@ -695,6 +700,237 @@ class LaborSystem final : public ILaborSystem {
   }
 
  private:
+  // -- the tally clerk (#589; society.md «Учётчик в Эпохе I обязателен») ----
+
+  /// STUB (#589): the age past which a literate adult ranks after the working-age ones. The
+  /// core has no working-age ceiling; this is life.csv's «old» line (mortality_age_old_years),
+  /// the one «old» the tables name. Biological years.
+  static constexpr float kClerkWorkingAgeCeilingYears = 60.0F;
+
+  /// The row of the resident holding the clerk's post, or kNoRow.
+  std::uint32_t ClerkRow(const WorldState& world) const {
+    if (config_.timekeeper_post.value == kInvalidDefIdValue) {
+      return kNoRow;
+    }
+    for (std::uint32_t row = 0; row < world.residents.rows.size(); ++row) {
+      if (world.residents.rows[row].post.profession.value == config_.timekeeper_post.value) {
+        return row;
+      }
+    }
+    return kNoRow;
+  }
+
+  /// The unit the post stands at: a standing unit with a timekeeper slot, the office before
+  /// the church store (the higher row of the table wins a tie - the office is the later one).
+  UnitId ClerkUnit(const WorldState& world) const {
+    UnitId found;
+    for (std::uint32_t row = 0; row < world.units.rows.size(); ++row) {
+      const UnitRow& unit = world.units.rows[row];
+      if (unit.construction.phase == ConstructionPhase::kDemolishing ||
+          FindStaffSlot(config_, unit.type, unit.level, config_.timekeeper_post) == nullptr) {
+        continue;
+      }
+      found = world.units.row_ids[row];
+    }
+    return found;
+  }
+
+  /// The candidates, ranked: no other post first, then education (highest first), then within
+  /// working age before past it, then the older, then the lower id (clerk_post_view.h).
+  std::vector<ClerkCandidate> RankClerkCandidates(const WorldState& world,
+                                                  std::uint32_t count) const {
+    std::vector<std::pair<ClerkCandidate, std::uint32_t>> ranked;
+    if (config_.timekeeper_post.value == kInvalidDefIdValue) {
+      return {};
+    }
+    for (std::uint32_t row = 0; row < world.residents.rows.size(); ++row) {
+      const ResidentRow& resident = world.residents.rows[row];
+      if (resident.post.profession.value == config_.timekeeper_post.value) {
+        continue;  // the clerk himself
+      }
+      const float age = BiologicalAgeYears(config_, resident.birth_day, world.calendar.day);
+      if (!IsEligible(config_, resident, config_.timekeeper_post, age)) {
+        continue;
+      }
+      ClerkCandidate candidate;
+      candidate.resident = world.residents.row_ids[row];
+      candidate.education_stage = resident.education_stage;
+      candidate.age_years = age;
+      candidate.holds_other_post = resident.post.profession.value != kInvalidDefIdValue;
+      ranked.emplace_back(candidate, world.residents.row_ids[row].value);
+    }
+    std::ranges::sort(ranked, [](const auto& a, const auto& b) {
+      const ClerkCandidate& x = a.first;
+      const ClerkCandidate& y = b.first;
+      if (x.holds_other_post != y.holds_other_post) {
+        return !x.holds_other_post;
+      }
+      if (x.education_stage != y.education_stage) {
+        return static_cast<std::uint8_t>(x.education_stage) >
+               static_cast<std::uint8_t>(y.education_stage);
+      }
+      const bool x_working = x.age_years <= kClerkWorkingAgeCeilingYears;
+      const bool y_working = y.age_years <= kClerkWorkingAgeCeilingYears;
+      if (x_working != y_working) {
+        return x_working;
+      }
+      if (x.age_years != y.age_years) {
+        return x.age_years > y.age_years;
+      }
+      return a.second < b.second;
+    });
+    std::vector<ClerkCandidate> out;
+    for (std::size_t index = 0; index < ranked.size() && index < count; ++index) {
+      out.push_back(ranked[index].first);
+    }
+    return out;
+  }
+
+  /// Every step: the record follows the post. A holder seen - in post (since the first step
+  /// he is seen in it). A holder gone - vacant from today, and why: his death in the last
+  /// step's events, his row standing without the post (the unit went), or else he left.
+  void KeepClerkRecord(const WorldState& previous, WorldState& current) const {
+    ClerkRecord& record = current.clerk;
+    const std::uint32_t row = ClerkRow(current);
+    if (row != kNoRow) {
+      const ResidentId holder = current.residents.row_ids[row];
+      if (record.vacancy != ClerkVacancy::kInPost || record.last_clerk.value != holder.value) {
+        record.since_day = current.calendar.day;
+      }
+      record.vacancy = ClerkVacancy::kInPost;
+      record.last_clerk = holder;
+      return;
+    }
+    if (record.vacancy != ClerkVacancy::kInPost) {
+      return;
+    }
+    record.vacant_since_day = current.calendar.day;
+    record.vacancy = ClerkVacancy::kLeft;
+    if (FindRow(current.residents, record.last_clerk) != kNoRow) {
+      record.vacancy = ClerkVacancy::kUnitGone;
+    }
+    for (const SimEvent& event : previous.step_events) {
+      if (event.kind == EventKind::kResidentDied &&
+          event.resident.value == record.last_clerk.value) {
+        record.vacancy = ClerkVacancy::kDied;
+      }
+    }
+    for (const SimEvent& event : current.step_events) {
+      if (event.kind == EventKind::kResidentDied &&
+          event.resident.value == record.last_clerk.value) {
+        record.vacancy = ClerkVacancy::kDied;
+      }
+    }
+  }
+
+  /// The morning the chairman's order fills a vacancy: the grace days after the day it fell
+  /// vacant, then the next morning.
+  static SimDay ClerkAutoAppointDay(const WorldState& world) {
+    return world.clerk.vacant_since_day + LaborConfig::kClerkVacancyGraceDays + 1U;
+  }
+
+  /// CheckDismissal, and in Epoch I the clerk is not dismissed alone (#589): kRuleForbids -
+  /// the release is the successor's kAppoint.
+  OrderRefusal CheckClerkKeptDismissal(const WorldState& world, const OrderRow& order) const {
+    const OrderRefusal refusal = CheckDismissal(world, order);
+    if (refusal != OrderRefusal::kNone || world.epoch != Epoch::kOne ||
+        config_.timekeeper_post.value == kInvalidDefIdValue) {
+      return refusal;
+    }
+    const std::uint32_t row = FindRow(world.residents, order.resident);
+    return world.residents.rows[row].post.profession.value == config_.timekeeper_post.value
+               ? OrderRefusal::kRuleForbids
+               : OrderRefusal::kNone;
+  }
+
+  /// Whether a kAppoint to the clerk's post waits in the book (pending or accepted).
+  bool ClerkAppointmentInTheBook(const WorldState& world) const {
+    for (const OrderRow& order : world.orders.rows) {
+      if (order.kind == OrderKind::kAppoint &&
+          order.profession.value == config_.timekeeper_post.value &&
+          (order.status == OrderStatus::kPending || order.status == OrderStatus::kAccepted)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// The morning. Never appointed - the first candidate is put on the post now, as genesis
+  /// would (the office-intro step confirms or changes him). Vacant past the grace - the
+  /// chairman's order appointing the first candidate goes into the book, applied at the
+  /// day's close like any (society.md «Учётчик умер или уехал»).
+  void UpkeepClerkMorning(WorldState& current) const {
+    if (config_.timekeeper_post.value == kInvalidDefIdValue ||
+        current.clerk.vacancy == ClerkVacancy::kInPost) {
+      return;
+    }
+    const UnitId unit = ClerkUnit(current);
+    if (unit.value == kInvalidEntityIdValue) {
+      return;  // no unit carries the post: nothing to appoint to
+    }
+    const std::vector<ClerkCandidate> first = RankClerkCandidates(current, 1);
+    if (first.empty()) {
+      return;
+    }
+    if (current.clerk.vacancy == ClerkVacancy::kNeverAppointed) {
+      const std::uint32_t row = FindRow(current.residents, first.front().resident);
+      ResidentRow& clerk = current.residents.rows[row];
+      clerk.post.profession = config_.timekeeper_post;
+      clerk.post.unit = unit;
+      current.clerk.vacancy = ClerkVacancy::kInPost;
+      current.clerk.since_day = current.calendar.day;
+      current.clerk.last_clerk = first.front().resident;
+      SimEvent& event = EmitEvent(current, EventKind::kAppointed, EventSeverity::kNotable);
+      event.resident = first.front().resident;
+      event.unit = unit;
+      event.amount = static_cast<std::int64_t>(config_.timekeeper_post.value);
+      return;
+    }
+    // Vacant from day D: the mornings D+1 and D+2 stand on his last placement, the order is
+    // written on the 3rd morning, D+3.
+    if (current.calendar.day < ClerkAutoAppointDay(current) || ClerkAppointmentInTheBook(current)) {
+      return;
+    }
+    OrderRow order;
+    order.kind = OrderKind::kAppoint;
+    order.resident = first.front().resident;
+    order.unit = unit;
+    order.profession = config_.timekeeper_post;
+    order.status = OrderStatus::kPending;  // read and accepted by ReadPostOrders this tick
+    AppendRow(current.orders, order);
+  }
+
+  ClerkPostView ClerkPostOf(const WorldState& state) const override {
+    ClerkPostView view;
+    if (config_.timekeeper_post.value == kInvalidDefIdValue) {
+      return view;
+    }
+    view.measured = true;
+    view.vacancy = state.clerk.vacancy;
+    view.since_day = state.clerk.since_day;
+    view.vacant_since_day = state.clerk.vacant_since_day;
+    const std::uint32_t row = ClerkRow(state);
+    if (row != kNoRow) {
+      view.clerk = state.residents.row_ids[row];
+      view.unit = state.residents.rows[row].post.unit;
+    } else {
+      view.unit = ClerkUnit(state);
+      view.auto_appoint_day = ClerkAutoAppointDay(state);
+    }
+    return view;
+  }
+
+  ClerkCandidatesView ClerkCandidatesOf(const WorldState& state,
+                                        std::uint32_t count) const override {
+    ClerkCandidatesView view;
+    if (config_.timekeeper_post.value == kInvalidDefIdValue) {
+      return view;
+    }
+    view.measured = true;
+    view.rows = RankClerkCandidates(state, count);
+    return view;
+  }
+
   // -- the order book (task A7; manual/74-posts.md §3) ---------------------
 
   /// Validates every kAppoint and kDismiss the engine appended this step.
@@ -711,7 +947,7 @@ class LaborSystem final : public ILaborSystem {
       }
       OrderRefusal refusal = order.kind == OrderKind::kAppoint
                                  ? CheckAppointment(config_, current, order)
-                                 : CheckDismissal(current, order);
+                                 : CheckClerkKeptDismissal(current, order);
       if (refusal == OrderRefusal::kNone && HasWaitingPostOrder(current, order.resident, row)) {
         refusal = OrderRefusal::kConflictsWithActive;
       }
@@ -748,7 +984,7 @@ class LaborSystem final : public ILaborSystem {
       }
       const OrderRefusal refusal = order.kind == OrderKind::kAppoint
                                        ? CheckAppointment(config_, current, order)
-                                       : CheckDismissal(current, order);
+                                       : CheckClerkKeptDismissal(current, order);
       if (refusal != OrderRefusal::kNone) {
         order.status = OrderStatus::kRefused;
         order.refusal = refusal;
@@ -761,6 +997,16 @@ class LaborSystem final : public ILaborSystem {
                                   appointing ? EventKind::kAppointed : EventKind::kDismissed,
                                   EventSeverity::kNotable);
       event.resident = order.resident;
+      if (appointing && order.profession.value == config_.timekeeper_post.value) {
+        // #589: the clerk's post moves - the old clerk is released by the same order.
+        for (std::uint32_t other = 0; other < current.residents.rows.size(); ++other) {
+          ResidentRow& old_clerk = current.residents.rows[other];
+          if (other != resident_row &&
+              old_clerk.post.profession.value == config_.timekeeper_post.value) {
+            old_clerk.post = PostAssignment{};
+          }
+        }
+      }
       if (appointing) {
         // A man who already holds a post is MOVED, not doubled: one work a
         // day means one place (time design §11).

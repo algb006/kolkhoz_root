@@ -307,6 +307,10 @@ class StepEngine final : public ISimulation {
 
   FloodLossesView FloodLossesThisYearToday() const override { return {}; }
 
+  ClerkPostView ClerkPostToday() const override { return {}; }
+
+  ClerkCandidatesView ClerkCandidatesToday(std::uint32_t /*count*/) const override { return {}; }
+
   /// No subsystems, so no works and no carts: nothing to cart.
   SupplyEstimate SupplyEstimateFor(UnitId /*unit*/) const override { return {}; }
 
