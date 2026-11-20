@@ -2142,6 +2142,119 @@ class PostWorld {
   DayWorld day_;
 };
 
+/// #589 THE TALLY CLERK (society.md «Учётчик в Эпохе I обязателен»): the first morning puts the
+/// first candidate on the post with no order - no other post, then the education, then the
+/// older; his dismissal alone is refused in Epoch I; a successor's appointment moves the post;
+/// a clerk gone leaves the post vacant with its day and reason, and the 3rd morning after puts
+/// the chairman's order for the first candidate into the book.
+int TestTheClerkPost() {
+  int failures = 0;
+  const std::filesystem::path root =
+      std::filesystem::temp_directory_path() / "unit_core_labor_clerk";
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+  std::ofstream(root / "unit_types.csv") << "key\nchurch_store\nhorse_yard\n";
+  std::ofstream(root / "professions.csv")
+      << "key,min_education,min_age,max_age,gender,single_post,era,shift,sits_post\n"
+         "timekeeper,primary,16,,any,1,,workday,1\n"
+         "groom,any,16,,any,0,,workday,0\n";
+  std::ofstream(root / "unit_staff.csv") << "unit,profession,level,slots\n"
+                                            "church_store,timekeeper,,1\n"
+                                            "horse_yard,groom,,1\n";
+  std::ofstream(root / "livestock.csv") << "key,care_days_per_real_year\nhorse,40\n";
+  std::string error;
+  const auto tables = core::LoadTableSet(root.string(), &error);
+  const auto labor =
+      tables == nullptr ? nullptr : core::CreateLaborSystem(*tables, core::StubTables::kAllowed);
+  if (Expect(labor != nullptr, "clerk: the tables build a labor system") != 0) {
+    return 1;
+  }
+  DayWorld day(4);
+  core::WorldState& world = day.world;
+  core::UnitRow church;
+  church.position = core::Vec2{.x = 30.0F, .y = 0.0F};
+  church.type = core::UnitTypeId{0};
+  church.level = 1;
+  const core::UnitId church_id = core::AppendRow(world.units, church);
+  core::UnitRow yard;
+  yard.position = core::Vec2{.x = 40.0F, .y = 0.0F};
+  yard.type = core::UnitTypeId{1};
+  yard.level = 1;
+  const core::UnitId yard_id = core::AppendRow(world.units, yard);
+  // 0: illiterate; 1: primary, ~25; 2: primary, ~50, the groom; 3: primary, ~40.
+  world.residents.rows[0].education_stage = core::EducationStage::kNone;
+  world.residents.rows[2].birth_day = -600;
+  world.residents.rows[2].post.profession = core::ProfessionId{1};
+  world.residents.rows[2].post.unit = yard_id;
+  world.residents.rows[3].birth_day = -480;
+  const core::ResidentId elder = world.residents.row_ids[3];
+  const core::ResidentId young = world.residents.row_ids[1];
+
+  const core::ClerkCandidatesView ranked = labor->ClerkCandidatesOf(world, 4);
+  failures += Expect(
+      ranked.measured && ranked.rows.size() == 3 && ranked.rows[0].resident.value == elder.value &&
+          ranked.rows[1].resident.value == young.value && ranked.rows[2].holds_other_post,
+      "clerk: the free and literate first, the older first, the groom last, the "
+      "illiterate never");
+  day.RunDay(*labor, 0);
+  core::ClerkPostView post = labor->ClerkPostOf(world);
+  failures += Expect(post.measured && post.vacancy == core::ClerkVacancy::kInPost &&
+                         post.clerk.value == elder.value && post.unit.value == church_id.value &&
+                         post.since_day == 0,
+                     "clerk: the first morning puts the first candidate on the post");
+
+  core::OrderRow dismiss;
+  dismiss.kind = core::OrderKind::kDismiss;
+  dismiss.resident = elder;
+  dismiss.status = core::OrderStatus::kPending;
+  const core::OrderId dismissal = core::AppendRow(world.orders, dismiss);
+  day.RunDay(*labor, 1);
+  const core::OrderRow& refused = world.orders.rows[core::FindRow(world.orders, dismissal)];
+  failures += Expect(refused.status == core::OrderStatus::kRefused &&
+                         refused.refusal == core::OrderRefusal::kRuleForbids,
+                     "clerk: dismissed alone in Epoch I - kRuleForbids");
+
+  core::OrderRow successor;
+  successor.kind = core::OrderKind::kAppoint;
+  successor.resident = young;
+  successor.unit = church_id;
+  successor.profession = core::ProfessionId{0};
+  successor.status = core::OrderStatus::kPending;
+  core::AppendRow(world.orders, successor);
+  day.RunDay(*labor, 2);
+  day.RunDay(*labor, 3);
+  post = labor->ClerkPostOf(world);
+  const std::uint32_t elder_row = core::FindRow(world.residents, elder);
+  failures +=
+      Expect(post.clerk.value == young.value &&
+                 world.residents.rows[elder_row].post.profession.value == core::kInvalidDefIdValue,
+             "clerk: the successor's appointment moves the post, the old clerk released");
+
+  // The clerk leaves: his row is gone on day 4.
+  core::RemoveRow(world.residents, young);
+  day.RunDay(*labor, 4);
+  post = labor->ClerkPostOf(world);
+  failures += Expect(post.vacancy == core::ClerkVacancy::kLeft && post.vacant_since_day == 4 &&
+                         post.auto_appoint_day == 7,
+                     "clerk: gone - vacant from day 4, «left», the chairman's order on day 7");
+  day.RunDay(*labor, 5);
+  day.RunDay(*labor, 6);
+  bool ordered_early = false;
+  for (const core::OrderRow& order : world.orders.rows) {
+    ordered_early = ordered_early || (order.kind == core::OrderKind::kAppoint &&
+                                      order.resident.value == elder.value &&
+                                      order.status != core::OrderStatus::kRefused);
+  }
+  failures += Expect(!ordered_early, "clerk: days 5 and 6 stand without an order");
+  day.RunDay(*labor, 7);
+  post = labor->ClerkPostOf(world);
+  failures += Expect(post.vacancy == core::ClerkVacancy::kInPost &&
+                         post.clerk.value == elder.value && post.since_day == 7,
+                     "clerk: the 3rd morning's order puts the first candidate on the post by the "
+                     "day's close");
+  return failures;
+}
+
 int TestPostTablesParse() {
   int failures = 0;
   const std::filesystem::path root = WritePostTables();
@@ -5255,6 +5368,7 @@ int main() {
   failures += TestTheRaisedSiteGoesFirstInItsTier();
   failures += TestPostTablesParse();
   failures += TestAppointmentTakesEffectAtTheDayClose();
+  failures += TestTheClerkPost();
   failures += TestPostsPaidByTheDay();
   failures += TestAppointmentRefusals();
   failures += TestLandThatCannotCarryTheWork();

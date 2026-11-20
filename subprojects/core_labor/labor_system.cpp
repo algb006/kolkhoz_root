@@ -250,6 +250,7 @@ class LaborSystem final : public ILaborSystem {
       CloseDay(current);
       ApplyPostOrders(current);
       VacatePostsWithNoUnit(current);
+      KeepClerkRecord(previous, current);  // #589: a post moved or emptied at the close
     }
     // Reading comes LAST, and that is the whole of the "first close of the
     // day AFTER it was accepted" rule (manual/74-posts.md §3): an order that

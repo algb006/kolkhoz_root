@@ -2158,8 +2158,8 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // Save 218 (lever (a), measured): +4 - remark_withdrawn_day (u32) after the pair;
     // predicted 1518 -> 1522 before the build, held; the hash read off u1883a.
     // Save 219 (#589): +13 - the clerk's record (u32, byte, u32, resident id) after it;
-    // predicted 1522 -> 1535 before the build; the hash to read off the first units run.
-    {"world", 1535, 0x9eb228e1fe0bd119ULL},
+    // predicted 1522 -> 1535 before the build, held; the hash read off u589a.
+    {"world", 1535, 0xb7f7b62455644276ULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
