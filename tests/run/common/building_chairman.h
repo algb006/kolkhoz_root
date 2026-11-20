@@ -27,6 +27,7 @@
 #include "core_tables/tables.h"
 #include "core_world/world.h"
 #include "distiller_policy.h"
+#include "dry_pantry_tally.h"
 #include "extraction_policy.h"
 #include "fallow_policy.h"
 #include "felling_policy.h"
@@ -95,6 +96,7 @@ class BuildingChairman {
         fallow(tables),
         hay_arm(tables),
         houses_first(tables),
+        dry_pantry(tables),
         sport_talk(tables),
         distiller(tables),
         emptying(tables) {
@@ -376,6 +378,7 @@ class BuildingChairman {
     // #1677: house sites raised in the queue while a couple waits (the tally
     // counts every day; it orders only with its arm on).
     houses_first.RunDay(simulation);
+    dry_pantry.CountDay(simulation.CompletedState());  // #1922's print
     // The season's talk to the drinker (#1238; sport_talk_policy.h).
     if (sport_talk_on) {
       sport_talk.RunDay(simulation);
@@ -561,6 +564,8 @@ class BuildingChairman {
   HayArmPolicy hay_arm;
   /// #1677's houses first (houses_first_policy.h). Off unless asked (--houses-first).
   HousesFirstPolicy houses_first;
+  /// #1922's print: the families whose pantry ran dry (dry_pantry_tally.h).
+  DryPantryTally dry_pantry;
   SportTalkPolicy sport_talk;
   /// Whether RunDay calls `sport_talk` (#1238): on in every run; a control
   /// arm turns it off.
