@@ -45,6 +45,10 @@ bool ParseBoundaryConfig(const ITableSet& tables,
     return false;
   }
   config.map_side_m = definitions.map_side_m;
+  // ISession::FreePlotFor's plot rules (plot.h), copied out of the catalogue
+  // the boundary does not keep.
+  config.keep_out_radius_m = definitions.units.keep_out_radius_m;
+  config.yields_place = definitions.units.yields_place;
   // The posts' shifts (post_shift.h), dense by ProfessionId. The labor
   // module reads the same column for its own question — who is on the
   // accountant's list — and a profession key is data, not a dependency.

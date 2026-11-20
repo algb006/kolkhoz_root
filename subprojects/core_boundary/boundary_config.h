@@ -26,6 +26,7 @@
 #ifndef CORE_BOUNDARY_BOUNDARY_CONFIG_H_
 #define CORE_BOUNDARY_BOUNDARY_CONFIG_H_
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -57,6 +58,11 @@ struct BoundaryConfig {
   /// when its holder counts at his unit and stands there. A post past the
   /// end — a table-less world — is a workday post.
   std::vector<PostShift> post_shift;
+
+  /// The catalogue's keep-out radius and yields-place flag by UnitTypeId (plot.h's
+  /// PlotRules), for ISession::FreePlotFor. Empty in a table-less world.
+  std::vector<float> keep_out_radius_m;
+  std::vector<std::uint8_t> yields_place;
 };
 
 /// @brief Reads the knobs out of `tables`.

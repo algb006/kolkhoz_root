@@ -9,6 +9,7 @@
 // not written.
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
@@ -198,9 +199,14 @@ class ScriptedSimulation final : public core::ISimulation {
 
   core::PlacementBansView PlacementBansToday(float /*cell_m*/) const override { return {}; }
 
-  std::uint8_t BuildBansToday(core::UnitTypeId /*type*/, core::Vec2 /*place*/) const override {
-    return 0;
+  std::uint8_t BuildBansToday(core::UnitTypeId /*type*/, core::Vec2 place) const override {
+    // ISession::FreePlotFor's check: water west of `water_west_of_x`, when set.
+    return place.x < water_west_of_x ? static_cast<std::uint8_t>(core::kBanWater)
+                                     : static_cast<std::uint8_t>(0);
   }
+
+  /// FreePlotFor's check: everything west of this x is water. Off by default.
+  float water_west_of_x = -1.0e9F;
 
   core::ForestFactsView ForestFactsToday() const override { return {}; }
 
@@ -1001,6 +1007,43 @@ int TestEventsAndFastForward(const core::ITableSet& tables) {
 // ---------------------------------------------------------------------------
 // The derived signals
 // ---------------------------------------------------------------------------
+
+/// ISession::BuildBans and FreePlotFor (host's scripts, 20 Nov 2026): the bans come through
+/// the simulation's own reading; the free plot steps off a neighbour's plot AND off a ban,
+/// with the type's own radius; a type the tables do not know is «not measured».
+int TestFreePlotFor() {
+  int failures = 0;
+  const test::FakeTable unit_types({"key", "plot_radius_m"}, {{"shed", "10"}});
+  const test::FakeTableSet tables("unit_types", unit_types);
+  core::WorldState world;
+  core::UnitRow shed;
+  shed.type = core::UnitTypeId{0};
+  shed.position = core::Vec2{.x = 100.0F, .y = 100.0F};
+  core::AppendRow(world.units, shed);
+  ScriptedSimulation* simulation = nullptr;
+  const std::unique_ptr<core::ISession> session = ScriptedSession(tables, world, &simulation);
+  if (session == nullptr) {
+    return Expect(false, "FreePlotFor: the session assembles over a unit_types table");
+  }
+  const core::UnitTypeId type{0};
+  const core::FreePlotAnswer crowded =
+      session->FreePlotFor(type, core::Vec2{.x = 100.0F, .y = 100.0F});
+  failures += Expect(crowded.measured && crowded.bans == 0, "FreePlotFor: measured, no ban");
+  failures += Expect(std::hypot(crowded.place.x - 100.0F, crowded.place.y - 100.0F) >= 20.0F,
+                     "FreePlotFor: steps off the shed's plot (two radii of 10 m)");
+  simulation->water_west_of_x = 1000.0F;
+  failures +=
+      Expect(session->BuildBans(type, core::Vec2{.x = 500.0F, .y = 0.0F}) == core::kBanWater,
+             "BuildBans: the simulation's reading, water");
+  const core::FreePlotAnswer wet = session->FreePlotFor(type, core::Vec2{.x = 990.0F, .y = 500.0F});
+  failures += Expect(wet.measured && wet.bans == 0 && wet.place.x >= 1000.0F,
+                     "FreePlotFor: steps out of the water");
+  const core::FreePlotAnswer unknown =
+      session->FreePlotFor(core::UnitTypeId{7}, core::Vec2{.x = 5.0F, .y = 5.0F});
+  failures += Expect(!unknown.measured && unknown.place.x == 5.0F,
+                     "FreePlotFor: an unknown type is not measured, the wanted point back");
+  return failures;
+}
 
 /// THE POSTS' SHIFTS (post_shift.h; the human's word of 2026-09-14, boss
 /// parcels 242 and 244): the bath keeper on the bath day, the librarian every
@@ -2302,6 +2345,7 @@ int main() {
   failures += TestTheProcessLimits(tables);
   failures += TestSignals(tables);
   failures += TestPostShifts();
+  failures += TestFreePlotFor();
   failures += TestJournalCodec();
   failures += TestWorkerIndependence(tables);
   failures += TestCrewOrderShape(tables);

@@ -30,6 +30,7 @@
 #include "core_common/calendar.h"
 #include "core_common/day_window.h"
 #include "core_common/ids.h"
+#include "core_common/plot.h"
 #include "core_common/state_table_ops.h"
 #include "core_log/log.h"
 #include "signals.h"
@@ -615,6 +616,28 @@ class Session final : public ISession {
 
   PlacementBansView PlacementBans(float cell_m) const override {
     return simulation_->PlacementBansToday(cell_m);
+  }
+
+  std::uint8_t BuildBans(UnitTypeId type, Vec2 place) const override {
+    return simulation_->BuildBansToday(type, place);  // the build order's own reading
+  }
+
+  FreePlotAnswer FreePlotFor(UnitTypeId type, Vec2 wanted) const override {
+    FreePlotAnswer answer;
+    answer.place = wanted;
+    if (type.value >= config_.keep_out_radius_m.size()) {
+      return answer;  // not measured: no such type in this table set
+    }
+    const PlotRules rules{.radius_by_type = config_.keep_out_radius_m,
+                          .map_side_m = config_.map_side_m,
+                          .yields_by_type = config_.yields_place};
+    const float radius = config_.keep_out_radius_m[type.value];
+    answer.place = FreePlot(State().units, rules, wanted, radius, [this, type](Vec2 candidate) {
+      return simulation_->BuildBansToday(type, candidate) == 0;
+    });
+    answer.bans = simulation_->BuildBansToday(type, answer.place);
+    answer.measured = true;
+    return answer;
   }
 
   StoreTheftView StoreTheftLastMonth() const override {

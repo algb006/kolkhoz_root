@@ -1089,6 +1089,20 @@ class ISession {
   /// @note Between steps; the answer describes State().
   virtual PlacementBansView PlacementBans(float cell_m) const = 0;
 
+  /// @brief The placement bans a kBuildUnit of `type` at `place` meets today
+  ///        (ISimulation::BuildBansToday; PlacementBan bits, 0 = none) - exactly what the
+  ///        build order will refuse for a ban (host's scripts, 20 Nov 2026).
+  /// @note Between steps; the answer describes State(). A pure read.
+  virtual std::uint8_t BuildBans(UnitTypeId type, Vec2 place) const = 0;
+
+  /// @brief The nearest place to `wanted` where a kBuildUnit of `type` would be refused
+  ///        neither for a ban nor for crowding: FreePlot (plot.h) with the type's own keep-out
+  ///        radius and plot rules, every candidate asked BuildBans. See FreePlotAnswer::bans for
+  ///        «none found».
+  /// @note Between steps; the answer describes State(). A pure read; it scans the units table
+  ///       ring by ring (plot.h), so a script asks it per site, not per cell.
+  virtual FreePlotAnswer FreePlotFor(UnitTypeId type, Vec2 wanted) const = 0;
+
   /// @brief The forest's facts by stand (ISimulation::ForestFactsToday;
   ///        core_common/forest_facts_view.h; #1788 (b), layers §9, #1789's forest plots): each
   ///        stand's place, kind, timber, marked timber, felling under way, and a planting's

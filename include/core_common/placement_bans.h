@@ -28,6 +28,8 @@
 #include <cstdint>
 #include <vector>
 
+#include "core_common/geometry.h"
+
 namespace core {
 
 /// @brief One ban; a cell or a contour may carry several.
@@ -51,6 +53,20 @@ struct PlacementBansView {
 
   /// One byte a cell, PlacementBan bits: the ban at the cell's CENTRE.
   std::vector<std::uint8_t> cells;
+};
+
+/// @brief ISession::FreePlotFor's answer (host's scripts, 20 Nov 2026): the nearest place a
+///        kBuildUnit of the type would not be refused for a ban or for crowding.
+struct FreePlotAnswer {
+  /// False when the session has no type of that id - then `place` is the wanted point.
+  bool measured = false;
+
+  /// The place: the wanted point itself when it passes, else the nearest that does.
+  Vec2 place;
+
+  /// The bans at `place`, BuildBans' bits. NOT ZERO means no passing place was found and
+  /// `place` is FreePlot's last resort (plot.h: it never refuses) - read it as «none».
+  std::uint8_t bans = 0;
 };
 
 }  // namespace core
