@@ -304,6 +304,26 @@ class ResidentsSystem final : public IResidentsSystem {
                 std::to_string(counted[lowest[item].second]);
       }
       LogInfo(line);
+      // FOOD1910F: families 7 and 8 (seed 5's hungry one and a neighbour) - pantry by
+      // resource id, house, tent, lodging, members.
+      for (const std::uint32_t row : {7U, 8U}) {
+        if (row >= families) {
+          continue;
+        }
+        const FamilyRow& family = current.families.rows[row];
+        std::string items;
+        for (std::size_t resource = 0; resource < family.pantry.size(); ++resource) {
+          if (family.pantry[resource] != 0) {
+            items +=
+                " r" + std::to_string(resource) + ":" + std::to_string(family.pantry[resource]);
+          }
+        }
+        LogInfo("FOOD1910F day " + std::to_string(day) + " f" + std::to_string(row) + " members " +
+                std::to_string(counted[row]) + " house " + std::to_string(family.house.value) +
+                " in_tent " + std::to_string(family.in_tent) + " lodged_in " +
+                std::to_string(family.lodged_in.value) + " pantry" +
+                (items.empty() ? std::string(" empty") : items));
+      }
     }
   }
 
