@@ -80,6 +80,12 @@ class HousePolicy {
   /// as many as are wanted (an arm; the default is kCanonSitesAtOnce).
   void SetSitesAtOnce(std::uint32_t sites) { sites_at_once_ = sites; }
 
+  /// @brief #1928's arm B (econ, house-cap-grown-village [1]): the cap grows with the village -
+  /// max(sites_at_once_, ceil(residents / `residents_per_site`)); 0 keeps the fixed cap.
+  void SetSitesPerResidents(std::uint32_t residents_per_site) {
+    residents_per_site_ = residents_per_site;
+  }
+
   /// @brief One day of the chairman's attention. Call once a day.
   /// @param farm_first No house starts today: the farm's own shortage — a
   /// store for the harvest or a roof for the herds — has a site waiting for
@@ -194,12 +200,12 @@ class HousePolicy {
     }
     const auto wanted =
         static_cast<std::uint32_t>(world.wedding_waits.rows.size()) + roofless + rotting;
-    // The houses wanted and not even marked, by why: the three-site cap, the
-    // two-day pause between marks, or nothing (marked today).
+    // The houses wanted and not even marked, by why: the sites-at-once cap (six in the canon,
+    // kCanonSitesAtOnce), the two-day pause between marks, or nothing (marked today).
     // BY DEMAND (sites_at_once_ 0) there is no cap and no pause: one house is
     // marked a day while more are wanted than stand free or are going up.
     const bool by_demand = sites_at_once_ == 0;
-    const bool capped = !by_demand && sites >= sites_at_once_;
+    const bool capped = !by_demand && sites >= SitesCap(world);
     if (by_demand) {
       cooldown_ = 0;
     }
@@ -357,16 +363,27 @@ class HousePolicy {
   }
 
  private:
+  /// The cap today: the fixed sites_at_once_, or the village-scaled one (#1928 arm B).
+  [[nodiscard]] std::uint32_t SitesCap(const core::WorldState& world) const {
+    if (residents_per_site_ == 0) {
+      return sites_at_once_;
+    }
+    const auto residents = static_cast<std::uint32_t>(world.residents.rows.size());
+    const std::uint32_t scaled = (residents + residents_per_site_ - 1U) / residents_per_site_;
+    return scaled > sites_at_once_ ? scaled : sites_at_once_;
+  }
+
   /// Sites going up at once. A chairman does not put the whole village on
-  /// house building; three sites is a brigade each, and the queue still
-  /// shortens while the fields are worked. P2 (boss, parcel 314) measures six,
-  /// and only together with the saw's board reserve.
+  /// house building: a few sites, a brigade each, and the queue still
+  /// shortens while the fields are worked. It was three until #1205 C2 raised it to six
+  /// (kCanonSitesAtOnce); P2 (boss, parcel 314) measured six only together with the saw's
+  /// board reserve.
   ///
   /// 0 — AS MANY AS ARE WANTED (the couples waiting, the families without a
   /// roof, the houses about to fall): AN ARM, NOT THE DEFAULT (0.37.98; boss,
   /// econ-boss-hay-term-2026-10-01 [15] to [26]). It was the default for one
   /// pair on 2 October 2026 and gave the village no house: from year 6 the
-  /// three sites already stood marked and short of LOGS three days in four,
+  /// three sites of that day's cap already stood marked and short of LOGS three days in four,
   /// and by demand there were up to 78 sites a village, 97-99 % of them
   /// marked and short of logs — the couples waiting at the close of years
   /// 7-10 went 45, 74, 164, 225 -> 55, 132, 154, 217. The logs are felled and
@@ -376,6 +393,7 @@ class HousePolicy {
   /// so a cap stays and the arm waits for the carting. The cap is six since
   /// #1205 C2 (kCanonSitesAtOnce).
   std::uint32_t sites_at_once_ = kCanonSitesAtOnce;
+  std::uint32_t residents_per_site_ = 0;  ///< #1928 arm B; 0 = the fixed cap
 
   static constexpr std::uint32_t kCooldownDays = 2;
 

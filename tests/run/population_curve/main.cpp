@@ -643,6 +643,9 @@ run::HayArmPolicy::Mode g_hay_arm = run::HayArmPolicy::Mode::kMown;  // canon si
 /// #1677: house sites raised while a couple waits - the canon's since 0.37.379;
 /// `--no-houses-first` off.
 bool g_houses_first = true;
+/// #1928's arms: the house sites at once (6 the canon, 0 by demand) and the village-scaled cap.
+std::uint32_t g_house_sites = run::HousePolicy::kCanonSitesAtOnce;
+std::uint32_t g_house_sites_per_residents = 0;
 /// `--hay-hand-over=off`: #1570's counterfactual - the hay lamp's «reduce
 /// herd» left unanswered (LimitPolicy::HayHandOverOff), so a run can say
 /// whether the herds it named would have gone short.
@@ -942,7 +945,18 @@ bool Walk(std::uint64_t seed,
   builder.smokehouse.Declare("population_curve");
   builder.hay_arm.SetMode(g_hay_arm);  // #307
   builder.hay_arm.Declare("population_curve");
-  builder.houses_first.Enable(g_houses_first);  // #1677
+  builder.houses_first.Enable(g_houses_first);   // #1677
+  builder.houses.SetSitesAtOnce(g_house_sites);  // #1928's arms
+  builder.houses.SetSitesPerResidents(g_house_sites_per_residents);
+  if (g_house_sites != run::HousePolicy::kCanonSitesAtOnce || g_house_sites_per_residents != 0) {
+    std::cout << "population_curve: ARM #1928 house sites at once "
+              << (g_house_sites == 0 ? std::string("by demand") : std::to_string(g_house_sites))
+              << (g_house_sites_per_residents != 0
+                      ? ", scaled max(6, ceil(residents / " +
+                            std::to_string(g_house_sites_per_residents) + "))"
+                      : std::string())
+              << '\n';
+  }
   builder.houses_first.Declare("population_curve");
   if (g_salt_points_zero) {
     builder.limit.SaltPointsZero(true);  // #1630 (C)'s arm C3: the loan only
@@ -1869,6 +1883,10 @@ int main(int argc, char** argv) {
       g_hay_arm = run::HayArmPolicy::Mode::kBoth;  // #307 arm A+B
     } else if (argument == "--no-houses-first") {
       g_houses_first = false;  // #1677's raise off
+    } else if (argument == "--house-sites=demand") {
+      g_house_sites = 0;  // #1928 arm C: no cap
+    } else if (argument == "--house-sites=scaled") {
+      g_house_sites_per_residents = 80;  // #1928 arm B: max(6, ceil(residents / 80))
     } else if (argument == "--no-write-off") {
       g_no_write_off = true;
     } else if (argument.starts_with("--anticrime-from-year=")) {
