@@ -140,7 +140,7 @@ OrderRefusal CheckAppointment(const LaborConfig& config,
     return OrderRefusal::kNoVacancy;  // one to a village, and it is taken
   }
   const StaffSlot* slot = FindStaffSlot(config, unit.type, unit.level, order.profession);
-  if (slot->slots != 0 &&
+  if (slot->slots != 0 && !clerk_moves &&
       HoldersAt(world, order.profession, order.unit, order.resident) >= slot->slots) {
     return OrderRefusal::kNoVacancy;
   }
