@@ -379,6 +379,7 @@ int main(int argc, char** argv) {
   double walked_line_hours = 0.0;
   double accounts_before_burn = 0.0;
   double accrued_before_burn = 0.0;
+  double posts_before_burn = 0.0;  // #589: the sitting posts' pay, inside the accrual
   // The end of each crop's sowing window, by CropId, straight off the table:
   // a second copy of these months in the run would be the drift this project
   // keeps finding. Zero means the crop names no window.
@@ -513,6 +514,8 @@ int main(int argc, char** argv) {
         }
         accrued_before_burn = static_cast<double>(world.ledger.current.trudodni_accrued) /
                               static_cast<double>(core::kTrudodniScale);
+        posts_before_burn = static_cast<double>(world.ledger.current.trudodni_by_post) /
+                            static_cast<double>(core::kTrudodniScale);
       }
     }
   }
@@ -743,10 +746,20 @@ int main(int argc, char** argv) {
   //
   // The ledger's own accrual counter has no rows to lose, which is exactly
   // why the reconciliation is done on it.
-  failures += ExpectBand(accrued_before_burn,
+  // THE POSTS' PAY IS NOT DELIVERED MAN-DAYS (0.37.406, #589: the tally clerk sits his post
+  // from the first morning, post_grade x the day's mean trudodni; the band read 732.08 against
+  // 702.8..731.5 with his pay inside): the ledger keeps it apart (trudodni_by_post), and the
+  // reconciliation is the accrual without it - printed beside it, not hidden.
+  std::cout << "labor_year: of the accrual, " << posts_before_burn
+            << " trudodni paid to sitting posts (the clerk); "
+            << accrued_before_burn - posts_before_burn << " for delivered work against " << total
+            << " man-days\n";
+  failures += ExpectBand(accrued_before_burn - posts_before_burn,
                          total * 0.98,
                          total * 1.02,
                          "the ledger's accrual holds the year's delivered man-days");
+  failures += run::Expect(posts_before_burn > 0.0,
+                          "and the clerk's post is paid (#589: the post stands from day 0)");
   failures += run::Expect(accounts_before_burn > total * 0.85,
                           "and the accounts hold all of it but the dissolved households' history");
   failures += run::Expect(after_burn == 0.0, "the economic year's turn burns what was not spent");

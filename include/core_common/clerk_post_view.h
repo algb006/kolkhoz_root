@@ -25,6 +25,8 @@ enum class ClerkVacancy : std::uint8_t {
   kDied,            ///< The clerk died.
   kLeft,            ///< The clerk moved out or his family left the village.
   kUnitGone,        ///< The post's unit was taken down (VacatePostsWithNoUnit).
+
+  kClerkVacancyCount,  ///< The number of values; never a vacancy (the boundary's tables).
 };
 
 /// @brief The post's record in WorldState (save 219): the facts the holder's row does not
