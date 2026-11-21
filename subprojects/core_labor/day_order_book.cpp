@@ -10,10 +10,12 @@
 
 #include "core_common/away_in_district.h"
 #include "core_common/day_order_state.h"
+#include "core_common/emit_event.h"
 #include "core_common/labor_state.h"
 #include "core_common/order_state.h"
 #include "core_common/resident_state.h"
 #include "core_common/state_table_ops.h"
+#include "posts.h"
 #include "work_orders.h"
 
 namespace core {
@@ -159,6 +161,22 @@ void ReadDayOrders(const LaborConfig& config, WorldState& current) {
     if (refusal != OrderRefusal::kNone) {
       order.status = OrderStatus::kRefused;
       order.refusal = refusal;
+      // #1949: a named order that will not run says so - a post sits above every order
+      // (society.md §1, boss's P2), any other refusal by its own reason.
+      if (order.kind == OrderKind::kAssignDayWork) {
+        const std::uint32_t man = FindRow(current.residents, order.resident);
+        const bool on_post = man != kNoRow && (current.residents.rows[man].post.profession.value !=
+                                                   kInvalidDefIdValue ||
+                                               AppointmentIsWaiting(current, order.resident));
+        SimEvent& event = EmitEvent(current, EventKind::kDayOrderNotRun, EventSeverity::kNotable);
+        event.resident = order.resident;
+        event.order = id;
+        event.field = order.field;
+        event.unit = order.unit;
+        event.herd = order.herd;
+        event.amount =
+            static_cast<std::int64_t>(on_post ? DayOrderSkip::kOnPost : DayOrderSkip::kRefused);
+      }
       continue;
     }
     if (order.kind == OrderKind::kAssignDayWork) {
@@ -209,9 +227,13 @@ bool ReleaseFromDayOrders(WorldState& current, ResidentId resident) {
 
 std::vector<OrderedWork> OrderedWorksToday(const WorldState& world) {
   std::vector<OrderedWork> works;
-  for (const OrderRow& order : world.orders.rows) {
+  for (std::uint32_t index = 0; index < world.orders.rows.size(); ++index) {
+    const OrderRow& order = world.orders.rows[index];
     if (order.kind == OrderKind::kAssignWork && order.status == OrderStatus::kAccepted) {
-      works.push_back(OrderedWork{.order = &order, .resident = order.resident});
+      works.push_back(OrderedWork{.order = &order,
+                                  .resident = order.resident,
+                                  .horse = false,
+                                  .order_id = world.orders.row_ids[index]});
     }
   }
   const SimDay today = world.calendar.day;
@@ -219,13 +241,15 @@ std::vector<OrderedWork> OrderedWorksToday(const WorldState& world) {
     const DayOrderDue* const due = DueOf(world.day_orders, pick.crew);
     const OrderRow* const crew = AcceptedRow(world, pick.crew);
     if (due != nullptr && due->day == today && crew != nullptr) {
-      works.push_back(OrderedWork{.order = crew, .resident = pick.resident});
+      works.push_back(OrderedWork{
+          .order = crew, .resident = pick.resident, .horse = false, .order_id = pick.crew});
     }
   }
   for (const DayOrderDue& due : world.day_orders.due) {
     const OrderRow* const row = AcceptedRow(world, due.order);
     if (row != nullptr && row->kind == OrderKind::kAssignDayWork && due.day == today) {
-      works.push_back(OrderedWork{.order = row, .resident = row->resident});
+      works.push_back(OrderedWork{
+          .order = row, .resident = row->resident, .horse = false, .order_id = due.order});
     }
   }
   return works;

@@ -686,6 +686,49 @@ int CheckTheBrigadeCapsOrderedHands() {
   return failures;
 }
 
+/// #1949 (society.md §1, «Nothing vanishes silently»): a named order on a field with no work
+/// today does not run - one kDayOrderNotRun (kNoWorkOnTarget) says so; a named order on a post
+/// holder is refused at its reading with kOnPost.
+int CheckNamedOrderSaysWhy(core::ILaborSystem& labor) {
+  int failures = 0;
+  Village village(3);
+  const std::uint32_t far_row = core::FindRow(village.world.fields, village.far_field);
+  village.world.fields.rows[far_row].phase = core::FieldPhase::kIdle;  // no work on it
+  village.world.fields.rows[far_row].work_days_remaining = 0.0F;
+  core::OrderRow named;
+  named.kind = core::OrderKind::kAssignDayWork;
+  named.work = core::WorkKind::kHarvest;
+  named.field = village.far_field;
+  named.resident = village.world.residents.row_ids[0];
+  const core::OrderId order = village.Issue(named);
+  village.RunHours(labor, kWednesday, core::kTicksPerDay - 1U, core::kTicksPerDay);
+  village.RunHours(labor, kWednesday + 1U, 0, 1);
+  bool said = false;
+  for (const core::SimEvent& event : village.world.step_events) {
+    said = said ||
+           (event.kind == core::EventKind::kDayOrderNotRun && event.order.value == order.value &&
+            event.amount == static_cast<std::int64_t>(core::DayOrderSkip::kNoWorkOnTarget));
+  }
+  failures += Expect(said, "#1949: a named order on a field with no work says kNoWorkOnTarget");
+
+  Village posted(3);
+  posted.world.residents.rows[0].post.profession = core::ProfessionId{0};
+  posted.world.residents.rows[0].post.unit = posted.world.units.row_ids[0];
+  named.field = posted.near_field;
+  named.resident = posted.world.residents.row_ids[0];
+  const core::OrderId refused = posted.Issue(named);
+  posted.RunHours(labor, kWednesday, core::kTicksPerDay - 1U, core::kTicksPerDay);
+  bool on_post = false;
+  for (const core::SimEvent& event : posted.world.step_events) {
+    on_post = on_post || (event.kind == core::EventKind::kDayOrderNotRun &&
+                          event.order.value == refused.value &&
+                          event.amount == static_cast<std::int64_t>(core::DayOrderSkip::kOnPost));
+  }
+  failures += Expect(posted.Order(refused).status == core::OrderStatus::kRefused && on_post,
+                     "#1949: a named order on a post holder is refused with kOnPost");
+  return failures;
+}
+
 }  // namespace
 
 int CheckDayOrders() {
@@ -705,5 +748,6 @@ int CheckDayOrders() {
   failures += CheckNoAutoPlacement();
   failures += CheckOrderedHorses();
   failures += CheckTheBrigadeCapsOrderedHands();  // #1839
+  failures += CheckNamedOrderSaysWhy(*labor);     // #1949
   return failures;
 }

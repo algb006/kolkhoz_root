@@ -139,6 +139,9 @@ struct OrderedWork {
   /// horse the accountant's plan gave him, as before. A PLOUGHMAN OR HARROWER without one is
   /// not placed at all (#1811: a plough without its horse is no work; kNoHorse).
   bool horse = false;
+
+  /// #1949: the order's own id - kDayOrderNotRun names it.
+  OrderId order_id;
 };
 
 /// @brief ApplyStandingWork's body for any list of ordered works, the same skips (rest day,

@@ -964,6 +964,14 @@ enum class EventKind : std::uint8_t {
   /// `plan_credit_pre_act_theft` on.
   kPlanFailureForgiven,
 
+  /// #1949 (society.md §1, the precedence: a post, then the chairman's day order, then his
+  /// standing order, then the clerk): a chairman's day order for a man (a named day work, or
+  /// a crew's pick) that did not run on its due day - resident, order; amount = the
+  /// DayOrderSkip value (why); field/unit/herd = the order's target when it names one. One a
+  /// man a due day, raised in the morning's apply, or when a named order is refused at its
+  /// reading because the man holds a post (kOnPost). The man's idle_reason says it beside.
+  kDayOrderNotRun,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.
@@ -991,6 +999,22 @@ enum class DeathCause : std::uint8_t {
   kDeathCauseCount,
 };
 
+/// @brief Why a chairman's day order did not run on its due day: kDayOrderNotRun's `amount`
+///        (#1949). Values are appended before kDayOrderSkipCount and never renumbered.
+enum class DayOrderSkip : std::uint8_t {
+  kOnPost = 0,      ///< The man holds a post: a post sits above every order (refused at reading).
+  kDayOff,          ///< The rest day stops the work (herd care excepted).
+  kRain,            ///< The rain stops the work.
+  kFrost,           ///< The frost stops the field work.
+  kWinter,          ///< The winter stops the site or the road work.
+  kAway,            ///< Away in the district.
+  kResting,         ///< At or under the walk-off rest.
+  kNoWorkOnTarget,  ///< The target has no work today (another phase, carted, short of stock).
+  kNoHorse,         ///< A plough or a harrow without its horse.
+  kRefused,         ///< Refused at its reading for another reason (the order's own refusal).
+  kDayOrderSkipCount,
+};
+
 /// @brief THE ENDING CONDITIONS (host's request, 12 Nov 2026; boss-host-
 ///        epoch1-resume [4]): the kinds at which the core STOPS and the host's
 ///        script must open an Epoch I ending - «Под суд» by the plan and by the
@@ -1010,7 +1034,7 @@ inline constexpr std::array<EventKind, 3> kEndingConditionEventKinds = {
 /// EVERY NEW KIND IS CLASSIFIED: appending a kind fails here until its author
 /// has asked «is it an ending's condition?», added it above if so, and raised
 /// this count - the list cannot fall behind the enum silently.
-static_assert(static_cast<std::size_t>(EventKind::kEventKindCount) == 125,
+static_assert(static_cast<std::size_t>(EventKind::kEventKindCount) == 126,
               "a new EventKind: classify it in kEndingConditionEventKinds, then raise this count");
 
 /// @brief One thing that happened. Plain data, no text: the presentation

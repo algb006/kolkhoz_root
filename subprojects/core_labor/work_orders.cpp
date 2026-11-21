@@ -5,6 +5,8 @@
 #include <vector>
 
 #include "core_common/away_in_district.h"
+#include "core_common/emit_event.h"
+#include "core_common/event_state.h"
 #include "core_common/herd_state.h"
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
@@ -392,16 +394,65 @@ void ApplyStandingWork(const WorldState& world,
                        bool day_off,
                        float walkoff_rest) {
   std::vector<OrderedWork> works;
-  for (const OrderRow& order : world.orders.rows) {
+  for (std::uint32_t index = 0; index < world.orders.rows.size(); ++index) {
+    const OrderRow& order = world.orders.rows[index];
     if (order.kind == OrderKind::kAssignWork && order.status == OrderStatus::kAccepted) {
       // NO POOL HERE (#1811): this door asks no herd, so every plough and harrow is given its
       // horse - the morning (StartDay) gives them from the pool by GiveOrderedHorses.
-      works.push_back(OrderedWork{
-          .order = &order, .resident = order.resident, .horse = IsHorseWork(order.work)});
+      works.push_back(OrderedWork{.order = &order,
+                                  .resident = order.resident,
+                                  .horse = IsHorseWork(order.work),
+                                  .order_id = world.orders.row_ids[index]});
     }
   }
   ApplyOrderedWorks(world, current, works, day_off, walkoff_rest);
 }
+
+namespace {
+
+/// #1949: an order that does not run SAYS SO (society.md §1: «Nothing vanishes silently»). A
+/// day order (named or a crew's pick) raises kDayOrderNotRun with its reason; any order whose
+/// man is left unplaced gets the reason on him, so the workbook's idle line has one.
+void SayOrderNotRun(WorldState& current,
+                    const OrderedWork& ordered,
+                    std::uint32_t resident_row,
+                    DayOrderSkip skip) {
+  const OrderRow& order = *ordered.order;
+  if (resident_row != kNoRow && current.residents.rows[resident_row].work.kind == WorkKind::kNone) {
+    IdleReason reason = IdleReason::kNoOpenWork;
+    switch (skip) {
+      case DayOrderSkip::kDayOff:
+        reason = IdleReason::kDayOff;
+        break;
+      case DayOrderSkip::kRain:
+        reason = IdleReason::kRain;
+        break;
+      case DayOrderSkip::kResting:
+        reason = IdleReason::kResting;
+        break;
+      case DayOrderSkip::kNoHorse:
+        reason = IdleReason::kNoHorse;
+        break;
+      default:
+        break;  // frost, winter, no work on the target: no open work for him today
+    }
+    if (skip != DayOrderSkip::kAway) {
+      current.residents.rows[resident_row].idle_reason = reason;
+    }
+  }
+  if (order.kind != OrderKind::kAssignDayWork && order.kind != OrderKind::kAssignCrew) {
+    return;  // a standing order stands for the next day; the day orders are the feed's
+  }
+  SimEvent& event = EmitEvent(current, EventKind::kDayOrderNotRun, EventSeverity::kNotable);
+  event.resident = ordered.resident;
+  event.order = ordered.order_id;
+  event.field = order.field;
+  event.unit = order.unit;
+  event.herd = order.herd;
+  event.amount = static_cast<std::int64_t>(skip);
+}
+
+}  // namespace
 
 void ApplyOrderedWorks(const WorldState& world,
                        WorldState& current,
@@ -412,6 +463,7 @@ void ApplyOrderedWorks(const WorldState& world,
     // ONE BODY FOR THE STANDING ORDER AND THE DAY ORDERS (#1778): a crew's pick carries the
     // crew's row and its own resident, a day work its own row and resident.
     const OrderRow& order = *ordered.order;
+    const std::uint32_t man_row = FindRow(current.residents, ordered.resident);
     // THE REST DAY STOPS THE SAME WORK IT STOPS FOR EVERYONE ELSE, and no
     // more. CollectJobs takes field work, hauling and building off the list
     // on a day off and leaves herd care on it, because animals eat on
@@ -420,6 +472,7 @@ void ApplyOrderedWorks(const WorldState& world,
     // accountant's pool every Sunday, while the groom on his post beside
     // him keeps his yard.
     if (day_off && order.work != WorkKind::kHerdCare) {
+      SayOrderNotRun(current, ordered, man_row, DayOrderSkip::kDayOff);
       continue;
     }
     // AND THE RAIN STOPS THE SAME WORK IT STOPS FOR EVERYONE ELSE, for the
@@ -428,6 +481,7 @@ void ApplyOrderedWorks(const WorldState& world,
     // where the accountant put him for the day — he planned him as his own —
     // and the order stands for tomorrow. Nothing is revoked.
     if (RainStopsWork(world.weather.precipitation, order.work)) {
+      SayOrderNotRun(current, ordered, man_row, DayOrderSkip::kRain);
       continue;
     }
     // AND THE FROST STOPS THE AUTUMN FURROW, for the same reason (static
@@ -437,6 +491,7 @@ void ApplyOrderedWorks(const WorldState& world,
       const std::uint32_t field_row = FindRow(world.fields, order.field);
       if (field_row != kNoRow && FrostStopsFieldWork(world.fields.rows[field_row],
                                                      world.weather.air_temperature_celsius)) {
+        SayOrderNotRun(current, ordered, man_row, DayOrderSkip::kFrost);
         continue;
       }
     }
@@ -448,6 +503,7 @@ void ApplyOrderedWorks(const WorldState& world,
       if (site_row != kNoRow &&
           WinterStopsSite(world.calendar.season,
                           world.units.rows[site_row].construction.winter_works)) {
+        SayOrderNotRun(current, ordered, man_row, DayOrderSkip::kWinter);
         continue;
       }
     }
@@ -455,6 +511,7 @@ void ApplyOrderedWorks(const WorldState& world,
       const std::uint32_t work_row = FindRow(world.road_works, order.road_work);
       if (work_row != kNoRow &&
           WinterStopsSite(world.calendar.season, world.road_works.rows[work_row].winter_works)) {
+        SayOrderNotRun(current, ordered, man_row, DayOrderSkip::kWinter);
         continue;
       }
     }
@@ -465,12 +522,14 @@ void ApplyOrderedWorks(const WorldState& world,
     // AWAY IN THE DISTRICT (away_in_district.h): the order stands for the
     // day he is back, and nobody is sent to work in his name meanwhile.
     if (OffWork(current.residents.rows[resident_row], current.calendar.tick)) {
+      SayOrderNotRun(current, ordered, resident_row, DayOrderSkip::kAway);
       continue;
     }
     // PAST HIS LIMIT, NOT EVEN THE CHAIRMAN SENDS HIM (units rules §8: "не
     // игрок и не учётчик"; 0.35.11, the accountant's door the same). The
     // order stands for the day he has rested.
     if (current.residents.rows[resident_row].rest <= walkoff_rest) {
+      SayOrderNotRun(current, ordered, resident_row, DayOrderSkip::kResting);
       continue;
     }
     // AND A TARGET WITH NO WORK ON IT TODAY (0.37.115; architecture §7ж³):
@@ -491,6 +550,7 @@ void ApplyOrderedWorks(const WorldState& world,
     wanted.road_work = order.work == WorkKind::kRoadWork ? order.road_work : RoadWorkId{};
     const float* const seam = WorkSeamOf(world, wanted);
     if (seam == nullptr || !(*seam > 0.0F)) {
+      SayOrderNotRun(current, ordered, resident_row, DayOrderSkip::kNoWorkOnTarget);
       continue;
     }
     WorkAssignment& work = current.residents.rows[resident_row].work;
@@ -506,6 +566,7 @@ void ApplyOrderedWorks(const WorldState& world,
     // placed, kNoHorse, as the accountant's own plan leaves such a hand (StopsWithoutHorse).
     if (IsHorseWork(order.work) && !ordered.horse) {
       current.residents.rows[resident_row].idle_reason = IdleReason::kNoHorse;
+      SayOrderNotRun(current, ordered, resident_row, DayOrderSkip::kNoHorse);
       continue;
     }
     if (order.work != WorkKind::kHauling) {
