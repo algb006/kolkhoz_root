@@ -371,6 +371,12 @@ struct WorkAssignment {
   /// heat_from_hour .. heat_to_hour) at outdoor work, never lowered that day:
   /// a crew sent home before the window pays the plain rate. For the day; save 200.
   std::uint8_t heat_paid = 0;
+
+  /// #1948 (save 222): 1 when the chairman's order placed him today (a standing order, a
+  /// day work by name or a crew's pick: ApplyOrderedWorks), 0 when the clerk's placement or
+  /// a top-up did. The week's labour book reads it: an ordered day is the chairman's (K), the
+  /// rest of a placed day the clerk's (M) while a clerk holds the post. For the day.
+  std::uint8_t placed_by_order = 0;
 };
 
 /// @brief Whether `kind` is worked outdoors, under the sun: the field works,

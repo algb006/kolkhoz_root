@@ -24,13 +24,13 @@ struct WeekLabourSums {
   /// The week's first counted day, the campaign day: its Monday, or the
   /// campaign's day 0 for a first week that began mid-week.
   SimDay first_day = 0;
-  /// Placed by the tally clerk. 0 IN EVERY WEEK WHILE THE CORE HAS NO CLERK
-  /// (boss, core-boss-647 [2], office.md «без учётчика M = 0»): the morning
-  /// automation is the chairman's own path then. STUB; returns with #589,
-  /// the clerk's post.
+  /// Placed by the tally clerk: a placed man the chairman's order did not place
+  /// (WorkAssignment::placed_by_order 0), on a day a clerk holds the post (#589, 0.37.406;
+  /// #1948, 0.37.409). A week with no clerk books 0 here (boss, core-boss-647 [2], office.md
+  /// «без учётчика M = 0»): the morning automation is the chairman's own path then.
   std::uint32_t ordered_by_clerk_tenths = 0;
-  /// Placed on the chairman's path: every work placed that day, and every
-  /// post held, while no clerk exists.
+  /// Placed on the chairman's path: every post held, every man his order placed, and - while
+  /// no clerk holds the post - every other work placed that day.
   std::uint32_t ordered_by_chairman_tenths = 0;
   /// The able-bodied (core_labor's Employable: of working age, with a home,
   /// not away in the district's hospital) on a working day with no kolkhoz
@@ -53,7 +53,7 @@ struct WeekLabourView {
   bool known = false;
   /// The closed week's Monday, the campaign day.
   SimDay week_first_day = 0;
-  float ordered_by_clerk_md = 0.0F;     ///< M: 0 while the core has no clerk (#589)
+  float ordered_by_clerk_md = 0.0F;     ///< M: the clerk's placements (0 with no clerk)
   float ordered_by_chairman_md = 0.0F;  ///< K
   float home_plot_md = 0.0F;            ///< P: «На своём хозяйстве»
 };

@@ -2181,6 +2181,8 @@ int TestTheClerkPost() {
   yard.type = core::UnitTypeId{1};
   yard.level = 1;
   const core::UnitId yard_id = core::AppendRow(world.units, yard);
+  // A field to work, so the week's book has placed hands to split (#1948).
+  day.AddField(core::FieldPhase::kSowing, 100.0F, core::Vec2{.x = 200.0F, .y = 0.0F});
   // 0: illiterate; 1: primary, ~25; 2: primary, ~50, the groom; 3: primary, ~40.
   world.residents.rows[0].education_stage = core::EducationStage::kNone;
   world.residents.rows[2].birth_day = -600;
@@ -2239,6 +2241,11 @@ int TestTheClerkPost() {
                      "clerk: gone - vacant from day 4, «left», the chairman's order on day 7");
   day.RunDay(*labor, 5);
   day.RunDay(*labor, 6);
+  // #1948: the week closed on Sunday (day 6) with a clerk in post days 0-3: the field's
+  // placed hands are his (M), not the chairman's.
+  failures += Expect(world.labour_week.closed_known != 0 &&
+                         world.labour_week.last_closed.ordered_by_clerk_tenths > 0U,
+                     "#1948: with a clerk in post the placed day books on the clerk's line (M)");
   bool ordered_early = false;
   for (const core::OrderRow& order : world.orders.rows) {
     ordered_early = ordered_early || (order.kind == core::OrderKind::kAppoint &&

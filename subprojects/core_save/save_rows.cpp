@@ -471,6 +471,8 @@ static_assert(AggregateArity<OrderRow>() == 37,
 // Save 200 (#1373, the heat price): rest_drained_today and heat_paid - a
 // float at 60 and a byte at 64, 60 -> 68 and nineteen fields, predicted
 // before the build.
+// Save 222 (#1948): placed_by_order, a byte at 65 into the padding after heat_paid - 68 still
+// and twenty fields, predicted before the build.
 static_assert(sizeof(WorkAssignment) == 68,
               "WorkAssignment changed — update the codec and VERSION_SAVE");
 // Save 88: rides_horse, a byte into the padding after `kind` — 32 still, 9
@@ -478,7 +480,7 @@ static_assert(sizeof(WorkAssignment) == 68,
 // Save 127 (0.37.140) put a second byte there, cannot_wait — thirteen
 // fields; save 128 (0.37.141) took it out unwritten — 44 still, twelve again.
 // Save 132: rides_cart_of — thirteen.
-static_assert(AggregateArity<WorkAssignment>() == 19,
+static_assert(AggregateArity<WorkAssignment>() == 20,
               "WorkAssignment gained or lost a field — update the codec and VERSION_SAVE");
 // Save 98: own_carts (a byte into the padding after the lot) and the two
 // floats of the carting seam — 8 -> 16 + A and 3 -> 6 fields, predicted before
@@ -835,6 +837,7 @@ void WriteResidentRow(SaveSink& sink, const ResidentRow& row) {
   out.WriteU8(row.work.released_home);
   out.WriteFloat(row.work.rest_drained_today);  // save 200 (#1373, the heat price)
   out.WriteU8(row.work.heat_paid);              // save 200
+  out.WriteU8(row.work.placed_by_order);        // save 222 (#1948)
   // Save 105: the morning's idle reason (the office's workbook);
   // kIdleReasonCount — none — is a legal value.
   out.WriteU8(static_cast<std::uint8_t>(row.idle_reason));
@@ -935,6 +938,8 @@ ResidentRow ReadResidentRow(LoadSource& source) {
   row.work.released_home = static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "released home"));
   row.work.rest_drained_today = in.ReadFloat();  // save 200 (#1373)
   row.work.heat_paid = static_cast<std::uint8_t>(source.ReadEnumValue(0, 2, "heat paid"));
+  row.work.placed_by_order =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "placed by order"));  // save 222
   row.idle_reason =
       static_cast<IdleReason>(source.ReadEnumValue(0, kIdleReasonNone, "idle reason"));
 

@@ -2215,7 +2215,9 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // the build, the hash read off it. Save 205 (#1084 body): the funeral's
     // mood term, two floats and a u32, +12 a resident, two - predicted 551
     // -> 575 before the build.
-    {"residents", 575, 0x67c39a2be173ce8fULL},
+    // Save 222 (#1948): placed_by_order, a byte a resident, two - predicted 575 -> 577 before
+    // the build; the hash to read off the run.
+    {"residents", 577, 0x67c39a2be173ce8fULL},
     // 2026-09-18, save 57: +2 — ration_granted, one byte per family of two.
     // Save 60: +2 — a yard's dry months, one byte per family of two.
     // Save 65: families +8 (overwork_penalty, two yards), fields +6 (the avral's

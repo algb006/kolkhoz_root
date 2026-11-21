@@ -4497,11 +4497,19 @@ class LaborSystem final : public ILaborSystem {
     // The first week's first day is the campaign's day 0, the sums' default.
     WeekLabourBook& book = current.labour_week;
     if (!IsDayOffIn(current, current.calendar.day)) {
+      // #1948: WHO PLACED HIM. A post is held by the chairman's appointment, an order's man
+      // by his order - the chairman's line (K); the rest of the placed are the clerk's (M)
+      // while a clerk holds the post, and the chairman's own path when none does (office.md,
+      // core-boss-647 [2]: «без учётчика M = 0»).
+      const bool clerk_in_post = ClerkRow(current) != kNoRow;
       for (const ResidentRow& resident : current.residents.rows) {
-        const bool on_kolkhoz_work = resident.work.kind != WorkKind::kNone ||
-                                     resident.post.profession.value != kInvalidDefIdValue;
-        if (on_kolkhoz_work) {
+        const bool on_post = resident.post.profession.value != kInvalidDefIdValue;
+        const bool on_work = resident.work.kind != WorkKind::kNone;
+        if (on_post || (on_work && resident.work.placed_by_order != 0)) {
           book.running.ordered_by_chairman_tenths += kDayTenths;
+        } else if (on_work) {
+          (clerk_in_post ? book.running.ordered_by_clerk_tenths
+                         : book.running.ordered_by_chairman_tenths) += kDayTenths;
         } else if (Employable(current, resident)) {
           book.running.home_plot_tenths += kDayTenths;
         }

@@ -576,6 +576,7 @@ void ApplyOrderedWorks(const WorldState& world,
       work.rides_horse = 1U;
     }
     work.kind = order.work;
+    work.placed_by_order = 1U;  // #1948: the week's book books him on the chairman's line
     // The chairman's man is working: the workbook shows no idle reason on
     // him, though the ledger keeps the accountant's (static review of
     // 0.37.0; «"Idle" is the accountant's plan», labor_state.h).
