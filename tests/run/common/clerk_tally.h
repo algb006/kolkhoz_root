@@ -24,7 +24,7 @@ namespace run {
 
 class ClerkTally {
  public:
-  static constexpr std::uint32_t kYears = 6;
+  static constexpr std::uint32_t kYears = 16;  // y1-y16 since #1928's rerun (was 6)
 
   /// @brief Once a day.
   void CountDay(const core::ISimulation& simulation) {

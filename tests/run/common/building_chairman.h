@@ -23,6 +23,7 @@
 
 #include "barrack_policy.h"
 #include "beach_policy.h"
+#include "cap_rerun_tally.h"
 #include "cemetery_policy.h"
 #include "clerk_tally.h"
 #include "core_tables/tables.h"
@@ -99,6 +100,7 @@ class BuildingChairman {
         hay_arm(tables),
         houses_first(tables),
         dry_pantry(tables),
+        cap_rerun(tables),
         sport_talk(tables),
         distiller(tables),
         emptying(tables) {
@@ -570,6 +572,8 @@ class BuildingChairman {
   HousesFirstPolicy houses_first;
   /// #1922's print: the families whose pantry ran dry (dry_pantry_tally.h).
   DryPantryTally dry_pantry;
+  /// #1928's rerun print (cap_rerun_tally.h), read from the walker's hour 13 and 22.
+  CapRerunTally cap_rerun;
   /// #589's print: the clerk's post and his family's satiety (clerk_tally.h).
   ClerkTally clerk;
   /// #1897's ride-along: the rating's year by cause (reputation_tally.h).

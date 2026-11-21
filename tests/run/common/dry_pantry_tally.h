@@ -35,7 +35,7 @@ namespace run {
 
 class DryPantryTally {
  public:
-  static constexpr std::uint32_t kYears = 6;
+  static constexpr std::uint32_t kYears = 16;  // y1-y16 since #1928's rerun (was 6)
 
   explicit DryPantryTally(const core::ITableSet& tables) {
     if (const core::ITable* const resources = tables.FindTable("resources")) {

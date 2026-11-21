@@ -491,6 +491,9 @@ void LiveOneDay(core::ISimulation& simulation,
     if (strada != nullptr && tick == run::BirthsHerdTally::kSampleHour) {
       strada->CountNoon(state);
     }
+    if (chairman != nullptr && tick == run::BirthsHerdTally::kSampleHour) {
+      chairman->cap_rerun.CountNoon(state);  // #1928's rerun print
+    }
     // BY THE STATE'S OWN HOUR, NOT THE LOOP'S INDEX (#1411): the step of index
     // t completes hour t + 1, so index 22 is hour 23 - the day's close, its
     // orders cleared and its rest credited. Read so until #1411, R1373 counted
@@ -510,6 +513,9 @@ void LiveOneDay(core::ISimulation& simulation,
     // The yards' plot hours after the plot of hour 22, and the old yards' hunger.
     if (strada != nullptr && hour_now == run::StradaTally::kEveningHour) {
       strada->CountEvening(state);
+    }
+    if (chairman != nullptr && hour_now == run::StradaTally::kEveningHour) {
+      chairman->cap_rerun.CountEvening(state);  // #1928's rerun print
     }
     // WHICH COWS DIE OF COLD, AND WHERE (#713's first step; boss, 1 November
     // 2026): every frost death of the step, by seed, day and pen, and whether
@@ -1691,6 +1697,7 @@ bool Walk(std::uint64_t seed,
       builder.dry_pantry.Print(std::cout, seed);            // #1922
       builder.clerk.Print(std::cout, seed);                 // #589
       builder.reputation.Print(std::cout, seed);            // #1897's REP1897
+      builder.cap_rerun.Print(std::cout, seed);             // #1928's CAP1928
       herds.PrintCowFlows(std::cout, seed);                 // #1570
       hand_overs.Print(std::cout, seed);
       builder.houses.PrintQueueLines(std::cout, seed);  // #1677: the queue by cause, short lines
