@@ -21,6 +21,7 @@
 #include <iostream>
 #include <map>
 #include <span>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -30,6 +31,7 @@
 #include "core_common/family_state.h"
 #include "core_common/order_state.h"
 #include "core_common/plot.h"
+#include "core_common/seed_fund_view.h"
 #include "core_common/unit_state.h"
 #include "core_common/wedding_state.h"
 #include "core_common/world_state.h"
@@ -57,11 +59,26 @@ class HousePolicy {
     core::LoadDefinitions(tables, core::StubTables::kAllowed, definitions_, error);
     if (const core::ITable* resources = tables.FindTable("resources")) {
       const std::uint32_t key_col = resources->FindColumn("key");
+      const std::uint32_t kcal_col = resources->FindColumn("kcal_per_gram");
       for (std::uint32_t index = 0; index < resources->RowCount(); ++index) {
-        resource_keys_.emplace_back(resources->CellText(index, key_col));
+        const std::string_view key = resources->CellText(index, key_col);
+        resource_keys_.emplace_back(key);
+        // #1928 C-fed: the plan's food crops, the five a thief takes (food_theft.cpp).
+        const bool crop =
+            key == "rye" || key == "wheat" || key == "barley" || key == "oat" || key == "potato";
+        const std::string_view kcal = kcal_col == core::kNoTableColumn
+                                          ? std::string_view{}
+                                          : resources->CellText(index, kcal_col);
+        food_kcal_.push_back(crop && !kcal.empty() ? std::stod(std::string(kcal)) : 0.0);
       }
     }
   }
+
+  /// @brief #1928 C-fed (econ econ-boss-1928-thirty-years [1], boss): by demand only while the
+  /// village feeds itself - last year's own crop of the five food crops, seed held out, per
+  /// resident at least the year's need × 1.15, AND the stores' spring trough (months 3-6) at
+  /// least one month of the village's need - else the six-site cap until both hold again.
+  void SetFed(bool on) { fed_mode_ = on; }
 
   /// @brief The question asked before every start (start_gate.h).
   void SetStartGate(StartGate gate) { start_gate_ = std::move(gate); }
@@ -102,6 +119,9 @@ class HousePolicy {
       return;
     }
     const core::WorldState& world = simulation.CompletedState();
+    if (fed_mode_) {
+      KeepFedWatch(simulation, world);
+    }
     std::vector<core::OrderRow> orders;
     std::uint32_t sites = 0;
     std::uint32_t free_houses = 0;
@@ -211,8 +231,8 @@ class HousePolicy {
     // kCanonSitesAtOnce), the two-day pause between marks, or nothing (marked today).
     // BY DEMAND (sites_at_once_ 0) there is no cap and no pause: one house is
     // marked a day while more are wanted than stand free or are going up.
-    const bool by_demand = sites_at_once_ == 0;
-    const bool capped = !by_demand && sites >= SitesCap(world);
+    const bool by_demand = fed_mode_ ? fed_ok_ : sites_at_once_ == 0;
+    const bool capped = !by_demand && sites >= (fed_mode_ ? kSixSitesAtOnce : SitesCap(world));
     if (by_demand) {
       cooldown_ = 0;
     }
@@ -401,6 +421,77 @@ class HousePolicy {
   /// #1205 C2 (kCanonSitesAtOnce).
   std::uint32_t sites_at_once_ = kCanonSitesAtOnce;
   std::uint32_t residents_per_site_ = 0;  ///< #1928 arm B; 0 = the fixed cap
+
+ public:
+  /// @brief C-fed's year lines (FED1928): the verdict at each turn and its two grounds.
+  void PrintFed(std::ostream& out, std::uint64_t seed) const {
+    std::istringstream lines(fed_lines_.str());
+    std::string line;
+    while (std::getline(lines, line)) {
+      out << "population_curve: FED1928 seed " << seed << ' ' << line << '\n';
+    }
+  }
+
+ private:
+  static constexpr double kFedAdultKgYear = 300.0;  // food.csv adult_kg_grain_eq_per_year
+  static constexpr double kFedGrainKcal = 3.3;      // food.csv grain_reference_kcal_per_gram
+  static constexpr double kFedMargin = 1.15;        // econ's (i)
+
+  [[nodiscard]] double StoreFoodKcal(const core::WorldState& world) const {
+    double kcal = 0.0;
+    for (const core::UnitRow& unit : world.units.rows) {
+      for (std::size_t r = 0; r < unit.stock.size() && r < food_kcal_.size(); ++r) {
+        kcal += static_cast<double>(unit.stock[r]) * food_kcal_[r];
+      }
+    }
+    return kcal;
+  }
+
+  /// Every day: the spring trough; at the turn, the verdict for the year to come.
+  void KeepFedWatch(const core::ISimulation& simulation, const core::WorldState& world) {
+    const core::SimDay day = world.calendar.day;
+    const std::uint32_t month = (day % core::kDaysPerYear) / core::kDaysPerMonth;
+    if (month >= 2U && month <= 5U) {
+      const double kcal = StoreFoodKcal(world);
+      trough_kcal_ = trough_kcal_ < 0.0 ? kcal : (kcal < trough_kcal_ ? kcal : trough_kcal_);
+    }
+    if (day == 0 || day % core::kDaysPerYear != 0 || day == fed_day_) {
+      return;
+    }
+    fed_day_ = day;
+    const core::YearLedger& book = world.ledger.closed;
+    const core::SeedFundView fund = simulation.SeedFundToday();
+    double own_kcal = 0.0;
+    for (std::size_t r = 0; r < book.harvest.size() && r < food_kcal_.size(); ++r) {
+      const double seed = r < fund.need.size() ? static_cast<double>(fund.need[r]) : 0.0;
+      const double net = static_cast<double>(book.harvest[r]) - seed;
+      own_kcal += net > 0.0 ? net * food_kcal_[r] : 0.0;
+    }
+    const double residents = static_cast<double>(world.residents.rows.size());
+    const double own_kg_head =
+        residents > 0.0 ? own_kcal / kFedGrainKcal / 1000.0 / residents : 0.0;
+    const double trough_kg = trough_kcal_ < 0.0 ? 0.0 : trough_kcal_ / kFedGrainKcal / 1000.0;
+    const double month_need_kg = residents * kFedAdultKgYear / 12.0;
+    const bool feeds = own_kg_head >= kFedAdultKgYear * kFedMargin;
+    const bool trough_holds = trough_kg >= month_need_kg;
+    fed_ok_ = feeds && trough_holds;
+    fed_lines_ << "year " << day / core::kDaysPerYear << " by_demand_next " << (fed_ok_ ? 1 : 0)
+               << " own_kg_per_head " << static_cast<long>(own_kg_head) << " need_x1.15 "
+               << static_cast<long>(kFedAdultKgYear * kFedMargin) << " spring_trough_kg "
+               << static_cast<long>(trough_kg) << " month_need_kg "
+               << static_cast<long>(month_need_kg) << " residents " << world.residents.rows.size()
+               << " failed "
+               << (fed_ok_ ? "-" : (!feeds && !trough_holds ? "both" : (!feeds ? "(i)" : "(ii)")))
+               << '\n';
+    trough_kcal_ = -1.0;
+  }
+
+  bool fed_mode_ = false;
+  bool fed_ok_ = true;  // the first years build by demand until a verdict says otherwise
+  core::SimDay fed_day_ = 0;
+  double trough_kcal_ = -1.0;
+  std::vector<double> food_kcal_;
+  std::ostringstream fed_lines_;
 
   static constexpr std::uint32_t kCooldownDays = 2;
 

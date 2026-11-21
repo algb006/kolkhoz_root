@@ -125,6 +125,7 @@ std::string g_avatar_key;
 bool g_saw_reserve = false;
 // The canon's: by demand since 0.37.408 (#1928; six from #1205 C2 until 407).
 std::uint32_t g_house_sites = run::HousePolicy::kCanonSitesAtOnce;
+bool g_house_fed = false;  // #1928 C-fed: by demand while the village feeds itself, else six
 
 /// `--saw-by-anyone`: arm R5 of boss's parcel 316 — adults saw by standing
 /// order up to the saw's places, and no craftsman is appointed.
@@ -505,7 +506,9 @@ int main(int argc, char** argv) {
     g_sport_talk = g_sport_talk && argument != "--no-sport-talk";
     g_catch_distiller = g_catch_distiller && argument != "--no-catch-distiller";
     g_empty_stores = g_empty_stores && argument != "--no-empty-stores";
-    if (argument.starts_with("--house-sites=")) {
+    if (argument == "--house-sites=fed") {
+      g_house_fed = true;  // #1928 C-fed (house_policy.h SetFed)
+    } else if (argument.starts_with("--house-sites=")) {
       g_house_sites = static_cast<std::uint32_t>(std::strtoul(
           std::string(argument.substr(std::string_view("--house-sites=").size())).c_str(),
           nullptr,
@@ -524,9 +527,9 @@ int main(int argc, char** argv) {
   // the simulation.
   g_canonical_run = g_seed == kSeed && g_years == kYears && !g_free_materials &&
                     g_tables_dir == "tables" && !g_saw_reserve &&
-                    g_house_sites == run::HousePolicy::kCanonSitesAtOnce && !g_saw_by_anyone &&
-                    g_fallow_by_eaters && g_sugar_buy && g_avatar_key.empty() && g_sport_talk &&
-                    g_catch_distiller && g_empty_stores;
+                    g_house_sites == run::HousePolicy::kCanonSitesAtOnce && !g_house_fed &&
+                    !g_saw_by_anyone && g_fallow_by_eaters && g_sugar_buy && g_avatar_key.empty() &&
+                    g_sport_talk && g_catch_distiller && g_empty_stores;
   run::Simulation world =
       run::Start(g_seed, 1, g_tables_dir, core::StubTables::kRefused, g_avatar_key);
   if (!world) {
@@ -715,6 +718,7 @@ int main(int argc, char** argv) {
   sawmill.KeepBoardReserve(g_saw_reserve);
   sawmill.SawByAnyone(g_saw_by_anyone);
   houses.SetSitesAtOnce(g_house_sites);
+  houses.SetFed(g_house_fed);
   run::TimberChainTally timber_chain(*world.tables);
   // What the sites stood on in the first fourteen years (boss, parcel 312).
   run::BrakesTally brakes(*world.tables);
