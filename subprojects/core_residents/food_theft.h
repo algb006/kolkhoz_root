@@ -100,6 +100,9 @@ struct FoodTheftConfig {
   /// #1943 R0 (`audit_refused_write_off_free`; default off): a write-off that withdraws no
   /// remark (its withdrawal refused under lever (a)) costs no reputation.
   bool refused_write_off_free = false;
+  /// #1943 R1″ (`audit_clean_needs_two`; default off): R1 counts only from the second clean
+  /// audit in a row (AuditState::clean_in_a_row).
+  bool clean_needs_two = false;
   /// ROUND 2 (econ's crime-separation-2-2026-11-07.md, boss 7 Nov; crime.md
   /// §1 p. 6). Each default is round 1's rule; the tables' rows turn it on.
   /// R1: the act's campaign year, 0-based (`audit_book_opens_year`, human

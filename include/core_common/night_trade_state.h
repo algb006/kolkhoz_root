@@ -138,6 +138,9 @@ struct AuditState {
   /// (a), behind `audit_write_off_once_per_window`); 0 = never. Written whatever
   /// the switch. SAVED (save 218).
   std::uint32_t remark_withdrawn_day = 0;
+  /// #1943 R1″: the clean audits in a row, the latest included; a remark or a trial-share
+  /// audit sets it to 0. Written whatever the switch (saturates at 255). SAVED (save 221).
+  std::uint8_t clean_in_a_row = 0;
   ResourceAmounts before_acceptance_this_month;
   ResourceAmounts before_acceptance_last_month;
 };

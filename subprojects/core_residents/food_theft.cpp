@@ -23,7 +23,7 @@ namespace core {
 namespace {
 
 /// The world_params keys link 2 reads, in ParseFoodTheftConfig's order.
-constexpr std::array<std::string_view, 25> kFoodTheftWorldParamKeys = {
+constexpr std::array<std::string_view, 26> kFoodTheftWorldParamKeys = {
     "crime_food_theft_on",
     "food_theft_from_alcoholism",
     "food_theft_kg_per_thief_month",
@@ -58,7 +58,9 @@ constexpr std::array<std::string_view, 25> kFoodTheftWorldParamKeys = {
     "audit_clean_reputation",
     "audit_clean_reputation_max",
     // #1943 R0: 1 - a write-off that withdraws no remark costs no reputation.
-    "audit_refused_write_off_free"};
+    "audit_refused_write_off_free",
+    // #1943 R1″ (econ-boss-1943-rep-read [1]): 1 - R1 only from the 2nd clean audit in a row.
+    "audit_clean_needs_two"};
 
 /// The food a thief takes for his table, in this order (crime §7: grain and
 /// potato, not only sugar).
@@ -247,6 +249,7 @@ bool ParseFoodTheftConfig(const ITableSet& tables, FoodTheftConfig& config, std:
     auto running_leak = config.trial_needs_running_leak ? 1.0F : 0.0F;
     auto pencil = config.pencil_doubled ? 1.0F : 0.0F;
     auto refused_free = config.refused_write_off_free ? 1.0F : 0.0F;
+    auto needs_two = config.clean_needs_two ? 1.0F : 0.0F;
     const Range share{.low = 0.0F, .high = 1.0F};
     const Range alcoholism{.low = 0.0F, .high = 60.0F};
     const Range reputation{.low = -100.0F, .high = 0.0F};
@@ -308,6 +311,7 @@ bool ParseFoodTheftConfig(const ITableSet& tables, FoodTheftConfig& config, std:
          .value = &config.clean_reputation_max,
          .range = {.low = 0.0F, .high = 100.0F}},
         {.key = kFoodTheftWorldParamKeys[24], .value = &refused_free, .range = share},
+        {.key = kFoodTheftWorldParamKeys[25], .value = &needs_two, .range = share},
     }};
     if (!ReadKnobs(*world, "world_params", knobs, error)) {
       return false;
@@ -317,6 +321,7 @@ bool ParseFoodTheftConfig(const ITableSet& tables, FoodTheftConfig& config, std:
     config.trial_needs_running_leak = running_leak >= 0.5F;
     config.pencil_doubled = pencil >= 0.5F;
     config.refused_write_off_free = refused_free >= 0.5F;
+    config.clean_needs_two = needs_two >= 0.5F;
     config.book_opens_year = static_cast<std::uint32_t>(opens_year) - 1U;
     config.guarded_stores_only = guarded_only >= 0.5F;
     config.trial_after_act_months = static_cast<std::uint32_t>(after_act);
@@ -577,7 +582,12 @@ void RunStoreAudit(const FoodTheftConfig& config, WorldState& current) {
     clean.amount = amount;
     // #1943 R1 (behind its switch): the district sees order restored - a clean audit at a
     // rating at or under the max moves it up, booked as the audit's own step.
-    if (config.clean_reputation > 0.0F &&
+    // R1″ (behind `audit_clean_needs_two`): only from the second clean audit in a row.
+    if (audit.clean_in_a_row < 255U) {
+      ++audit.clean_in_a_row;
+    }
+    const bool in_a_row = !config.clean_needs_two || audit.clean_in_a_row >= 2U;
+    if (config.clean_reputation > 0.0F && in_a_row &&
         current.chairman.raikom_reputation <= config.clean_reputation_max) {
       const float before = current.chairman.raikom_reputation;
       current.chairman.raikom_reputation =
@@ -587,6 +597,7 @@ void RunStoreAudit(const FoodTheftConfig& config, WorldState& current) {
     }
     return;
   }
+  audit.clean_in_a_row = 0;  // #1943 R1″: the run of clean audits ends here
   // THE TRIGGER ONLY AFTER A REMARK (spec §6): a first audit at the trial
   // share gives the remark - the shortage must be readable before it hangs
   // the chairman.

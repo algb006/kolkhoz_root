@@ -691,6 +691,7 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   sink.WriteAmounts(DefKind::kResource, world.audit.before_acceptance_this_month);
   sink.WriteAmounts(DefKind::kResource, world.audit.before_acceptance_last_month);
   out.WriteU32(world.audit.remark_withdrawn_day);  // save 218 (lever (a))
+  out.WriteU8(world.audit.clean_in_a_row);         // save 221 (#1943 R1″)
   // The tally clerk's post record (#589, save 219).
   out.WriteU32(world.clerk.since_day);
   out.WriteU8(static_cast<std::uint8_t>(world.clerk.vacancy));
@@ -1063,6 +1064,7 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->audit.before_acceptance_this_month = source.ReadAmounts(DefKind::kResource);
   world->audit.before_acceptance_last_month = source.ReadAmounts(DefKind::kResource);
   world->audit.remark_withdrawn_day = in.ReadU32();  // save 218 (lever (a))
+  world->audit.clean_in_a_row = in.ReadU8();         // save 221 (#1943 R1″)
   world->clerk.since_day = in.ReadU32();             // save 219 (#589)
   world->clerk.vacancy = static_cast<ClerkVacancy>(source.ReadEnumValue(
       0, static_cast<std::uint8_t>(ClerkVacancy::kUnitGone), "the clerk's vacancy"));
