@@ -46,11 +46,13 @@ class ReputationTally {
            << " plan_step " << book.reputation_plan_step << " tier_step "
            << book.reputation_tier_step << " tiers_reached " << book.reputation_tiers_reached
            << " visit_step " << book.reputation_visit_step << " clean_visits "
-           << book.reputation_clean_visits << " losses " << book.reputation_losses
+           << book.reputation_clean_visits << " audit_step " << book.reputation_audit_step
+           << " clean_audits_low " << book.reputation_clean_audits_low << " losses "
+           << book.reputation_losses
            << " (seizure+plan trade+audit remark+write-off, one bucket) unbooked "
            << (world.chairman.raikom_reputation - reputation_open_) -
                   (book.reputation_plan_step + book.reputation_tier_step +
-                   book.reputation_visit_step - book.reputation_losses)
+                   book.reputation_visit_step + book.reputation_audit_step - book.reputation_losses)
            << '\n';
     reputation_open_ = world.chairman.raikom_reputation;
   }
