@@ -101,7 +101,7 @@ class CapRerunTally {
       const double mean = satiety[row] / members[row];
       old_satiety_sum_ += mean;
       ++old_family_days_;
-      old_under_line_ += mean <= kRationLine ? 1U : 0U;
+      old_under_line_ += mean <= static_cast<double>(kRationLine) ? 1U : 0U;
     }
   }
 
