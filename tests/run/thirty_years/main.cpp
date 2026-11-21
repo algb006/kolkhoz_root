@@ -126,6 +126,7 @@ bool g_saw_reserve = false;
 // The canon's: by demand since 0.37.408 (#1928; six from #1205 C2 until 407).
 std::uint32_t g_house_sites = run::HousePolicy::kCanonSitesAtOnce;
 bool g_house_fed = false;  // #1928 C-fed: by demand while the village feeds itself, else six
+bool g_house_fed_look_ahead = false;  // #1928 C-fed′
 
 /// `--saw-by-anyone`: arm R5 of boss's parcel 316 — adults saw by standing
 /// order up to the saw's places, and no craftsman is appointed.
@@ -506,7 +507,10 @@ int main(int argc, char** argv) {
     g_sport_talk = g_sport_talk && argument != "--no-sport-talk";
     g_catch_distiller = g_catch_distiller && argument != "--no-catch-distiller";
     g_empty_stores = g_empty_stores && argument != "--no-empty-stores";
-    if (argument == "--house-sites=fed") {
+    if (argument == "--house-sites=fed2") {
+      g_house_fed = true;  // #1928 C-fed′, the look-ahead
+      g_house_fed_look_ahead = true;
+    } else if (argument == "--house-sites=fed") {
       g_house_fed = true;  // #1928 C-fed (house_policy.h SetFed)
     } else if (argument.starts_with("--house-sites=")) {
       g_house_sites = static_cast<std::uint32_t>(std::strtoul(
@@ -719,6 +723,7 @@ int main(int argc, char** argv) {
   sawmill.SawByAnyone(g_saw_by_anyone);
   houses.SetSitesAtOnce(g_house_sites);
   houses.SetFed(g_house_fed);
+  houses.SetFedLookAhead(g_house_fed_look_ahead);
   run::TimberChainTally timber_chain(*world.tables);
   // What the sites stood on in the first fourteen years (boss, parcel 312).
   run::BrakesTally brakes(*world.tables);

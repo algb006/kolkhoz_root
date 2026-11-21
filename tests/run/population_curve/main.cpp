@@ -652,7 +652,8 @@ bool g_houses_first = true;
 /// #1928's arms: the house sites at once (6 the canon, 0 by demand) and the village-scaled cap.
 std::uint32_t g_house_sites = run::HousePolicy::kCanonSitesAtOnce;
 std::uint32_t g_house_sites_per_residents = 0;
-bool g_house_fed = false;  // #1928 C-fed
+bool g_house_fed = false;             // #1928 C-fed
+bool g_house_fed_look_ahead = false;  // #1928 C-fed′
 /// `--hay-hand-over=off`: #1570's counterfactual - the hay lamp's «reduce
 /// herd» left unanswered (LimitPolicy::HayHandOverOff), so a run can say
 /// whether the herds it named would have gone short.
@@ -956,6 +957,7 @@ bool Walk(std::uint64_t seed,
   builder.houses.SetSitesAtOnce(g_house_sites);  // #1928's arms
   builder.houses.SetSitesPerResidents(g_house_sites_per_residents);
   builder.houses.SetFed(g_house_fed);
+  builder.houses.SetFedLookAhead(g_house_fed_look_ahead);
   if (g_house_fed) {
     std::cout << "population_curve: ARM #1928 C-fed - by demand while the village feeds itself "
                  "(own crop per head >= need x 1.25 and a spring trough >= one month), else six\n";
@@ -1901,6 +1903,9 @@ int main(int argc, char** argv) {
       g_houses_first = false;  // #1677's raise off
     } else if (argument == "--house-sites=demand") {
       g_house_sites = 0;  // #1928 arm C: no cap - the canon's since 0.37.408
+    } else if (argument == "--house-sites=fed2") {
+      g_house_fed = true;  // #1928 C-fed′: the look-ahead (under-16s counted twice)
+      g_house_fed_look_ahead = true;
     } else if (argument == "--house-sites=fed") {
       g_house_fed = true;  // #1928 C-fed: by demand while the village feeds itself, else six
     } else if (argument == "--house-sites=6") {

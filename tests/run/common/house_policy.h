@@ -76,9 +76,18 @@ class HousePolicy {
 
   /// @brief #1928 C-fed (econ econ-boss-1928-thirty-years [1], boss): by demand only while the
   /// village feeds itself - last year's own crop of the five food crops, seed held out, per
-  /// resident at least the year's need × kFedMargin (1.25), AND the stores' spring trough (months
-  /// 3-6) at least one month of the village's need - else the six-site cap until both hold again.
+  /// resident at least the year's need × kFedMarginPlain (1.25), AND the stores' spring trough
+  /// (months 3-6) at least one month of the village's need - else the six-site cap until both hold
+  /// again.
   void SetFed(bool on) { fed_mode_ = on; }
+
+  /// @brief #1928 C-fed′ (boss's lever change, after × 1.25 failed): the look-ahead - the own
+  /// crop per (residents + the under-16s once more, the next generation's families) at least
+  /// the need × 1.15. Turns C-fed on with it.
+  void SetFedLookAhead(bool on) {
+    fed_look_ahead_ = on;
+    fed_mode_ = fed_mode_ || on;
+  }
 
   /// @brief The question asked before every start (start_gate.h).
   void SetStartGate(StartGate gate) { start_gate_ = std::move(gate); }
@@ -437,7 +446,10 @@ class HousePolicy {
   static constexpr double kFedGrainKcal = 3.3;      // food.csv grain_reference_kcal_per_gram
   // econ's (i): 1.15 first; T30's satiety failed (−13/−14 at y26/y28 against A, seed 1929),
   // so his pre-set step × 1.25 (econ-boss-1928-thirty-years [2]).
-  static constexpr double kFedMargin = 1.25;
+  static constexpr double kFedMarginPlain = 1.25;
+  // C-fed′ goes back to 1.15 with the look-ahead denominator (boss: «the lever, no more margin»).
+  static constexpr double kFedMarginLookAhead = 1.15;
+  static constexpr double kFedLifeSpeedup = 4.0;  // life.csv life_speedup
 
   [[nodiscard]] double StoreFoodKcal(const core::WorldState& world) const {
     double kcal = 0.0;
@@ -469,17 +481,30 @@ class HousePolicy {
       const double net = static_cast<double>(book.harvest[r]) - seed;
       own_kcal += net > 0.0 ? net * food_kcal_[r] : 0.0;
     }
-    const double residents = static_cast<double>(world.residents.rows.size());
+    double residents = static_cast<double>(world.residents.rows.size());
+    if (fed_look_ahead_) {
+      // C-fed′: the under-16s (biological, life.csv life_speedup) counted twice.
+      for (const core::ResidentRow& resident : world.residents.rows) {
+        const double bio_years =
+            static_cast<double>(static_cast<std::int64_t>(day) -
+                                static_cast<std::int64_t>(resident.birth_day)) /
+            static_cast<double>(core::kDaysPerYear) * kFedLifeSpeedup;
+        residents += bio_years < 16.0 ? 1.0 : 0.0;
+      }
+    }
     const double own_kg_head =
         residents > 0.0 ? own_kcal / kFedGrainKcal / 1000.0 / residents : 0.0;
     const double trough_kg = trough_kcal_ < 0.0 ? 0.0 : trough_kcal_ / kFedGrainKcal / 1000.0;
-    const double month_need_kg = residents * kFedAdultKgYear / 12.0;
-    const bool feeds = own_kg_head >= kFedAdultKgYear * kFedMargin;
+    // (ii)'s month of need counts the living, not the look-ahead.
+    const double month_need_kg =
+        static_cast<double>(world.residents.rows.size()) * kFedAdultKgYear / 12.0;
+    const double margin = fed_look_ahead_ ? kFedMarginLookAhead : kFedMarginPlain;
+    const bool feeds = own_kg_head >= kFedAdultKgYear * margin;
     const bool trough_holds = trough_kg >= month_need_kg;
     fed_ok_ = feeds && trough_holds;
     fed_lines_ << "year " << day / core::kDaysPerYear << " by_demand_next " << (fed_ok_ ? 1 : 0)
                << " own_kg_per_head " << static_cast<long>(own_kg_head) << " need_x_margin "
-               << static_cast<long>(kFedAdultKgYear * kFedMargin) << " spring_trough_kg "
+               << static_cast<long>(kFedAdultKgYear * margin) << " spring_trough_kg "
                << static_cast<long>(trough_kg) << " month_need_kg "
                << static_cast<long>(month_need_kg) << " residents " << world.residents.rows.size()
                << " failed "
@@ -489,7 +514,8 @@ class HousePolicy {
   }
 
   bool fed_mode_ = false;
-  bool fed_ok_ = true;  // the first years build by demand until a verdict says otherwise
+  bool fed_look_ahead_ = false;  // #1928 C-fed′
+  bool fed_ok_ = true;           // the first years build by demand until a verdict says otherwise
   core::SimDay fed_day_ = 0;
   double trough_kcal_ = -1.0;
   std::vector<double> food_kcal_;

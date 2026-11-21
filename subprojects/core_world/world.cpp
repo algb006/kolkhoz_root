@@ -319,7 +319,17 @@ class EventsSlot final : public ISequentialPhase {
 
   std::span<const AvatarDef> Avatars() const { return avatars_; }
 
+  /// #1928 (1): a measuring arm's NO-OP PERTURBATION - `draws` numbers taken from the
+  /// world's generator and thrown away at the first step of day 1, so the start village is
+  /// the same and every later draw is another stream. 0 (the canon): nothing.
+  void SetRngNoiseDraws(std::uint32_t draws) { rng_noise_draws_ = draws; }
+
   void RunSequential(const WorldState& previous, WorldState& current) override {
+    if (rng_noise_draws_ > 0 && current.calendar.tick == kTicksPerDay) {
+      for (std::uint32_t draw = 0; draw < rng_noise_draws_; ++draw) {
+        (void)NextRandomBits(current.rng);
+      }
+    }
     FoldPantryFlows(previous, current);
     // THE WATCHDOG, every game hour, here and nowhere else: the one
     // single-threaded phase of the step (architecture §7ж³; core_world/
@@ -661,6 +671,7 @@ class EventsSlot final : public ISequentialPhase {
   /// slot; CreateWatchdog refuses a kind without rules, and then nothing
   /// walks — which the unit test of the assembly reddens on.
   std::unique_ptr<IWatchdog> watchdog_;
+  std::uint32_t rng_noise_draws_ = 0;  ///< #1928 (1)'s no-op perturbation; 0 = none
 
   /// @brief Closes the year's book and opens the next.
   ///
@@ -744,6 +755,15 @@ class StandardSimulation final : public ISimulation {
                      SettlementConfigOf(*config.tables),
                      MasterEyeRulesOf(*config.tables),
                      AvatarsOf(*config.tables)) {
+    // #1928 (1), the A-vs-A noise arm (boss): world_params `rng_noise_draws`, 0 = none.
+    if (const ITable* const world_params = config.tables->FindTable("world_params")) {
+      const std::uint32_t row = world_params->FindRowByKey("rng_noise_draws");
+      const std::uint32_t value = world_params->FindColumn("value");
+      if (row != kNoTableRow && value != kNoTableColumn) {
+        events_slot_.SetRngNoiseDraws(
+            static_cast<std::uint32_t>(world_params->CellReal(row, value).value_or(0.0F)));
+      }
+    }
     const StepPhaseSet phases{
         .time_and_weather = &time_->TimeAndWeatherPhase(),
         .needs = &residents_->NeedsPhase(),
@@ -1476,6 +1496,8 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       known.emplace_back("player_entry_day");
       // #1897 (2): the Epoch II door's reputation condition (era_readiness.cpp).
       known.emplace_back("epoch2_door_min_reputation");
+      // #1928 (1): the noise arm's no-op perturbation (EventsSlot::SetRngNoiseDraws).
+      known.emplace_back("rng_noise_draws");
       //   `player_entry_hour` (2026-10-01, boss-core-start-no-yards [11];
       //   boss's 07aa3820) — the hour of the entry morning, 8. The layer
       //   fast-forwards the core to TickOfDayHour(player_entry_day, this)
