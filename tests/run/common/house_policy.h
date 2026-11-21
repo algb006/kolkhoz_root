@@ -76,8 +76,8 @@ class HousePolicy {
 
   /// @brief #1928 C-fed (econ econ-boss-1928-thirty-years [1], boss): by demand only while the
   /// village feeds itself - last year's own crop of the five food crops, seed held out, per
-  /// resident at least the year's need × 1.15, AND the stores' spring trough (months 3-6) at
-  /// least one month of the village's need - else the six-site cap until both hold again.
+  /// resident at least the year's need × kFedMargin (1.25), AND the stores' spring trough (months
+  /// 3-6) at least one month of the village's need - else the six-site cap until both hold again.
   void SetFed(bool on) { fed_mode_ = on; }
 
   /// @brief The question asked before every start (start_gate.h).
@@ -435,7 +435,9 @@ class HousePolicy {
  private:
   static constexpr double kFedAdultKgYear = 300.0;  // food.csv adult_kg_grain_eq_per_year
   static constexpr double kFedGrainKcal = 3.3;      // food.csv grain_reference_kcal_per_gram
-  static constexpr double kFedMargin = 1.15;        // econ's (i)
+  // econ's (i): 1.15 first; T30's satiety failed (−13/−14 at y26/y28 against A, seed 1929),
+  // so his pre-set step × 1.25 (econ-boss-1928-thirty-years [2]).
+  static constexpr double kFedMargin = 1.25;
 
   [[nodiscard]] double StoreFoodKcal(const core::WorldState& world) const {
     double kcal = 0.0;
@@ -476,7 +478,7 @@ class HousePolicy {
     const bool trough_holds = trough_kg >= month_need_kg;
     fed_ok_ = feeds && trough_holds;
     fed_lines_ << "year " << day / core::kDaysPerYear << " by_demand_next " << (fed_ok_ ? 1 : 0)
-               << " own_kg_per_head " << static_cast<long>(own_kg_head) << " need_x1.15 "
+               << " own_kg_per_head " << static_cast<long>(own_kg_head) << " need_x_margin "
                << static_cast<long>(kFedAdultKgYear * kFedMargin) << " spring_trough_kg "
                << static_cast<long>(trough_kg) << " month_need_kg "
                << static_cast<long>(month_need_kg) << " residents " << world.residents.rows.size()

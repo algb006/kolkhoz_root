@@ -958,7 +958,7 @@ bool Walk(std::uint64_t seed,
   builder.houses.SetFed(g_house_fed);
   if (g_house_fed) {
     std::cout << "population_curve: ARM #1928 C-fed - by demand while the village feeds itself "
-                 "(own crop per head >= need x 1.15 and a spring trough >= one month), else six\n";
+                 "(own crop per head >= need x 1.25 and a spring trough >= one month), else six\n";
   }
   if (g_house_sites != run::HousePolicy::kCanonSitesAtOnce || g_house_sites_per_residents != 0) {
     std::cout << "population_curve: ARM #1928 house sites at once "
