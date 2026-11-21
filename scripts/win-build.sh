@@ -322,8 +322,12 @@ done
 # current to it, and the weeding below then removed 396 as the oldest - current
 # named a version that was gone until 403 was republished). An OLDER version
 # than the newest on the host is published beside it; current stays where it is.
-newest=$(ssh "${host}" "ls -1 '${remote_dir}/publish' 2>/dev/null" | tr -d '\r' \
-  | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
+# NEWEST COUNTS ONLY A WHOLE PUBLISH - both configurations' core.lib (22 Nov 2026: a
+# one-configuration compile check of 0.37.409 left publish/0.37.409/Debug, and 408's publish
+# then kept current on 407 as «older than 409»).
+newest=$(ssh "${host}" "cd '${remote_dir}/publish' 2>/dev/null && for d in *; do \
+  test -f \"\$d/Debug/lib/core.lib\" && test -f \"\$d/Release/lib/core.lib\" && echo \"\$d\"; \
+  done" | tr -d '\r' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
 target_current="${version}"
 if [ -n "${newest}" ] && [ "${newest}" != "${version}" ] \
   && [ "$(printf '%s\n%s\n' "${newest}" "${version}" | sort -V | tail -n 1)" = "${newest}" ]; then
