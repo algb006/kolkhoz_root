@@ -1026,6 +1026,12 @@ struct YearLedger {
 
   float reputation_own_overfulfil_t = 0.0F;
 
+  /// #1943 R1 (save 220): the rating the clean audits moved it by (behind
+  /// `audit_clean_reputation`, 0 when off), and how many clean audits found the rating at or
+  /// under the max - the book's fifth writer, booked beside the four.
+  float reputation_audit_step = 0.0F;
+  std::uint16_t reputation_clean_audits_low = 0;
+
   /// THE TEAM'S WORK-OAT REQUEST OF THE YEAR, grams of oat (save 167; #1040;
   /// econ's oat-lamp contract §1): every working day's work-ration room of
   /// the kolkhoz team (herd_system.cpp, WatchTheTeam) — fed and short in one

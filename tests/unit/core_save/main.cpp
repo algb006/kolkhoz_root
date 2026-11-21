@@ -2708,7 +2708,9 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // books; 4050 -> 4054, held; the hash read off it (u1375).
     // Save 217 (#1883): stolen_distillers, an empty amounts vector (a u16 count) a book, two
     // books; predicted 4054 -> 4058 before the build, held; the hash read off u1881c.
-    {"ledger", 4058, 0x76aff8fdcfce141ULL},
+    // Save 220 (#1943 R1): +12 - the audit's step (float) and its clean-audit count (u16) a
+    // book, two books; predicted 4058 -> 4070 before the build; the hash to read off the run.
+    {"ledger", 4070, 0x76aff8fdcfce141ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 

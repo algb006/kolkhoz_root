@@ -23,7 +23,7 @@ namespace core {
 namespace {
 
 /// The world_params keys link 2 reads, in ParseFoodTheftConfig's order.
-constexpr std::array<std::string_view, 22> kFoodTheftWorldParamKeys = {
+constexpr std::array<std::string_view, 25> kFoodTheftWorldParamKeys = {
     "crime_food_theft_on",
     "food_theft_from_alcoholism",
     "food_theft_kg_per_thief_month",
@@ -52,7 +52,13 @@ constexpr std::array<std::string_view, 22> kFoodTheftWorldParamKeys = {
     // running in the last 12 months.
     "audit_trial_needs_running_leak",
     // #1897 (1) (econ [28]: measured): 1 - four audits a year on the pencil.
-    "audit_pencil_doubled"};
+    "audit_pencil_doubled",
+    // #1943 R1 (econ's reputation-road-back §2; boss: measured, default off): a clean
+    // audit's step while the rating is at or under the max; 0 = off.
+    "audit_clean_reputation",
+    "audit_clean_reputation_max",
+    // #1943 R0: 1 - a write-off that withdraws no remark costs no reputation.
+    "audit_refused_write_off_free"};
 
 /// The food a thief takes for his table, in this order (crime §7: grain and
 /// potato, not only sugar).
@@ -240,6 +246,7 @@ bool ParseFoodTheftConfig(const ITableSet& tables, FoodTheftConfig& config, std:
     auto keeps_window = config.write_off_keeps_window ? 1.0F : 0.0F;
     auto running_leak = config.trial_needs_running_leak ? 1.0F : 0.0F;
     auto pencil = config.pencil_doubled ? 1.0F : 0.0F;
+    auto refused_free = config.refused_write_off_free ? 1.0F : 0.0F;
     const Range share{.low = 0.0F, .high = 1.0F};
     const Range alcoholism{.low = 0.0F, .high = 60.0F};
     const Range reputation{.low = -100.0F, .high = 0.0F};
@@ -294,6 +301,13 @@ bool ParseFoodTheftConfig(const ITableSet& tables, FoodTheftConfig& config, std:
         {.key = kFoodTheftWorldParamKeys[19], .value = &keeps_window, .range = share},
         {.key = kFoodTheftWorldParamKeys[20], .value = &running_leak, .range = share},
         {.key = kFoodTheftWorldParamKeys[21], .value = &pencil, .range = share},
+        {.key = kFoodTheftWorldParamKeys[22],
+         .value = &config.clean_reputation,
+         .range = {.low = 0.0F, .high = 20.0F}},
+        {.key = kFoodTheftWorldParamKeys[23],
+         .value = &config.clean_reputation_max,
+         .range = {.low = 0.0F, .high = 100.0F}},
+        {.key = kFoodTheftWorldParamKeys[24], .value = &refused_free, .range = share},
     }};
     if (!ReadKnobs(*world, "world_params", knobs, error)) {
       return false;
@@ -302,6 +316,7 @@ bool ParseFoodTheftConfig(const ITableSet& tables, FoodTheftConfig& config, std:
     config.write_off_keeps_window = keeps_window >= 0.5F;
     config.trial_needs_running_leak = running_leak >= 0.5F;
     config.pencil_doubled = pencil >= 0.5F;
+    config.refused_write_off_free = refused_free >= 0.5F;
     config.book_opens_year = static_cast<std::uint32_t>(opens_year) - 1U;
     config.guarded_stores_only = guarded_only >= 0.5F;
     config.trial_after_act_months = static_cast<std::uint32_t>(after_act);
@@ -560,6 +575,16 @@ void RunStoreAudit(const FoodTheftConfig& config, WorldState& current) {
   if (amount < remark_pm) {
     SimEvent& clean = EmitEvent(current, EventKind::kAuditClean, EventSeverity::kRoutine);
     clean.amount = amount;
+    // #1943 R1 (behind its switch): the district sees order restored - a clean audit at a
+    // rating at or under the max moves it up, booked as the audit's own step.
+    if (config.clean_reputation > 0.0F &&
+        current.chairman.raikom_reputation <= config.clean_reputation_max) {
+      const float before = current.chairman.raikom_reputation;
+      current.chairman.raikom_reputation =
+          std::clamp(before + config.clean_reputation, 0.0F, kReputationMax);
+      book.reputation_audit_step += current.chairman.raikom_reputation - before;
+      ++book.reputation_clean_audits_low;
+    }
     return;
   }
   // THE TRIGGER ONLY AFTER A REMARK (spec §6): a first audit at the trial
@@ -678,11 +703,17 @@ void TakeWriteOffOrders(const FoodTheftConfig& config, WorldState& current) {
         const bool withdrawn_lately = config.write_off_once_per_window &&
                                       current.audit.remark_withdrawn_day != 0 &&
                                       day < current.audit.remark_withdrawn_day + window_days;
+        bool withdrew = false;
         if (current.audit.remarked != 0 && !withdrawn_lately) {
           current.audit.remarked = 0;
           current.audit.remark_withdrawn_day = day == 0 ? 1U : day;
+          withdrew = true;
         }
-        MoveReputation(current, config.write_off_reputation);
+        // #1943 R0 (behind its switch): only a write-off that withdraws a remark costs the
+        // rating; one that withdraws none (refused, or no remark standing) sets the book alone.
+        if (!config.refused_write_off_free || withdrew) {
+          MoveReputation(current, config.write_off_reputation);
+        }
       }
     }
     order.status = refusal == OrderRefusal::kNone ? OrderStatus::kDone : OrderStatus::kRefused;
