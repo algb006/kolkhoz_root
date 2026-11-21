@@ -1893,9 +1893,12 @@ int main(int argc, char** argv) {
     } else if (argument == "--no-houses-first") {
       g_houses_first = false;  // #1677's raise off
     } else if (argument == "--house-sites=demand") {
-      g_house_sites = 0;  // #1928 arm C: no cap
+      g_house_sites = 0;  // #1928 arm C: no cap - the canon's since 0.37.408
+    } else if (argument == "--house-sites=6") {
+      g_house_sites = run::HousePolicy::kSixSitesAtOnce;  // the canon's cap until 0.37.407
     } else if (argument == "--house-sites=scaled") {
-      g_house_sites_per_residents = 80;  // #1928 arm B: max(6, ceil(residents / 80))
+      g_house_sites = run::HousePolicy::kSixSitesAtOnce;  // #1928 arm B: its floor is six
+      g_house_sites_per_residents = 80;                   // max(6, ceil(residents / 80))
     } else if (argument == "--no-write-off") {
       g_no_write_off = true;
     } else if (argument.starts_with("--anticrime-from-year=")) {

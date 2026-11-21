@@ -74,7 +74,14 @@ class HousePolicy {
   /// read_pb.py). This fixes the MEASURING bot, not the game: a player is never
   /// capped. The one home of the number: thirty_years' default reads it, and
   /// plan700's --house-sites only overrides it.
-  static constexpr std::uint32_t kCanonSitesAtOnce = 6;
+  /// BY DEMAND SINCE 0.37.408 (#1928, econ signed econ-boss-1928-cap-read [4]): 0. The six
+  /// held 24 498 house-days by y16 on a grown village. With no cap, y16 residents +35 a village
+  /// (z 9.1) and E1 0.09 y earlier on 64 villages; the plot hours, milk, timber in the peak
+  /// months and the old households' satiety held; the ration-line rate didn't move the median
+  /// (#1953 the tail). The arm of 2 October 2026 (by demand gave no house) was the carting's;
+  /// the logs' chain carries since. kSixSitesAtOnce keeps the old cap for an arm.
+  static constexpr std::uint32_t kCanonSitesAtOnce = 0;
+  static constexpr std::uint32_t kSixSitesAtOnce = 6;
 
   /// @brief How many house sites may stand marked or going up at once; 0 —
   /// as many as are wanted (an arm; the default is kCanonSitesAtOnce).

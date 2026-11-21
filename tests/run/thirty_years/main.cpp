@@ -123,7 +123,8 @@ std::string g_avatar_key;
 /// --free-materials they take the run out of the canonical configuration.
 /// `--house-sites=0` — as many as are wanted (HousePolicy's arm of 0.37.98).
 bool g_saw_reserve = false;
-std::uint32_t g_house_sites = run::HousePolicy::kCanonSitesAtOnce;  // #1205 C2: six
+// The canon's: by demand since 0.37.408 (#1928; six from #1205 C2 until 407).
+std::uint32_t g_house_sites = run::HousePolicy::kCanonSitesAtOnce;
 
 /// `--saw-by-anyone`: arm R5 of boss's parcel 316 — adults saw by standing
 /// order up to the saw's places, and no craftsman is appointed.
