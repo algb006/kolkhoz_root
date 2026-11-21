@@ -404,4 +404,8 @@ audit_write_off_once_per_window,1,core
 audit_write_off_keeps_window,1,core
 audit_trial_needs_running_leak,1,core
 audit_pencil_doubled,0,core
+audit_clean_reputation,3,core
 epoch2_door_min_reputation,0,core
+audit_clean_reputation_max,40,core
+audit_refused_write_off_free,1,core
+audit_clean_needs_two,0,core

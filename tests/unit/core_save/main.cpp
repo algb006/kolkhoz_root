@@ -1731,6 +1731,7 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   AppendAmounts(
       chunks, "audit.before_acceptance_last_month", world.audit.before_acceptance_last_month);
   chunks.push_back({"audit.remark_withdrawn_day", U32(world.audit.remark_withdrawn_day)});
+  chunks.push_back({"audit.clean_in_a_row", U8(world.audit.clean_in_a_row)});  // save 221
   // The tally clerk's record (#589, save 219).
   chunks.push_back({"clerk.since_day", U32(world.clerk.since_day)});
   chunks.push_back({"clerk.vacancy", U8(static_cast<std::uint8_t>(world.clerk.vacancy))});
@@ -2159,7 +2160,9 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // predicted 1518 -> 1522 before the build, held; the hash read off u1883a.
     // Save 219 (#589): +13 - the clerk's record (u32, byte, u32, resident id) after it;
     // predicted 1522 -> 1535 before the build, held; the hash read off u589a.
-    {"world", 1535, 0xb7f7b62455644276ULL},
+    // Save 221 (#1943 R1″): +1 - the audit's clean_in_a_row (u8) after remark_withdrawn_day;
+    // predicted 1535 -> 1536 before the build, held; the hash read off u1943c.
+    {"world", 1536, 0xfca28ef9ad96971eULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2708,7 +2711,10 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // books; 4050 -> 4054, held; the hash read off it (u1375).
     // Save 217 (#1883): stolen_distillers, an empty amounts vector (a u16 count) a book, two
     // books; predicted 4054 -> 4058 before the build, held; the hash read off u1881c.
-    {"ledger", 4058, 0x76aff8fdcfce141ULL},
+    // Save 220 (#1943 R1): +12 - the audit's step (float) and its clean-audit count (u16) a
+    // book, two books; predicted 4058 -> 4070 before the build, held; the hash read off
+    // u1943a.
+    {"ledger", 4070, 0xf0313cfca2af3789ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 

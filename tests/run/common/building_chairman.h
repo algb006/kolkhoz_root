@@ -101,6 +101,7 @@ class BuildingChairman {
         houses_first(tables),
         dry_pantry(tables),
         cap_rerun(tables),
+        plan_over(tables),
         sport_talk(tables),
         distiller(tables),
         emptying(tables) {
@@ -385,6 +386,7 @@ class BuildingChairman {
     dry_pantry.CountDay(simulation.CompletedState());  // #1922's print
     clerk.CountDay(simulation);                        // #589's print
     reputation.CountDay(simulation.CompletedState());  // #1897's REP1897
+    plan_over.CountDay(simulation.CompletedState());   // #1946's OVER1946
     // The season's talk to the drinker (#1238; sport_talk_policy.h).
     if (sport_talk_on) {
       sport_talk.RunDay(simulation);
@@ -578,6 +580,8 @@ class BuildingChairman {
   ClerkTally clerk;
   /// #1897's ride-along: the rating's year by cause (reputation_tally.h).
   ReputationTally reputation;
+  /// #1946's print: the plan's positions on the year's last day (reputation_tally.h).
+  PlanOverTally plan_over;
   SportTalkPolicy sport_talk;
   /// Whether RunDay calls `sport_talk` (#1238): on in every run; a control
   /// arm turns it off.

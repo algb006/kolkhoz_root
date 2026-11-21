@@ -1698,6 +1698,7 @@ bool Walk(std::uint64_t seed,
       builder.clerk.Print(std::cout, seed);                 // #589
       builder.reputation.Print(std::cout, seed);            // #1897's REP1897
       builder.cap_rerun.Print(std::cout, seed);             // #1928's CAP1928
+      builder.plan_over.Print(std::cout, seed);             // #1946's OVER1946
       herds.PrintCowFlows(std::cout, seed);                 // #1570
       hand_overs.Print(std::cout, seed);
       builder.houses.PrintQueueLines(std::cout, seed);  // #1677: the queue by cause, short lines

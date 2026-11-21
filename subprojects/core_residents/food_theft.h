@@ -92,6 +92,17 @@ struct FoodTheftConfig {
   /// `audit_pencil_doubled` (#1897 (1), measured; default off): at a raikom
   /// reputation of 20 or less, four audits a year instead of two.
   bool pencil_doubled = false;
+  /// #1943 R1 (econ's reputation-road-back §2; measured, default off): `audit_clean_reputation`,
+  /// the step a clean audit gives while the raikom reputation is at or under
+  /// `audit_clean_reputation_max` (STUB 3 and 40); 0 = off.
+  float clean_reputation = 0.0F;
+  float clean_reputation_max = 40.0F;
+  /// #1943 R0 (`audit_refused_write_off_free`; default off): a write-off that withdraws no
+  /// remark (its withdrawal refused under lever (a)) costs no reputation.
+  bool refused_write_off_free = false;
+  /// #1943 R1″ (`audit_clean_needs_two`; default off): R1 counts only from the second clean
+  /// audit in a row (AuditState::clean_in_a_row).
+  bool clean_needs_two = false;
   /// ROUND 2 (econ's crime-separation-2-2026-11-07.md, boss 7 Nov; crime.md
   /// §1 p. 6). Each default is round 1's rule; the tables' rows turn it on.
   /// R1: the act's campaign year, 0-based (`audit_book_opens_year`, human
