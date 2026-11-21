@@ -33,8 +33,10 @@
 # --both is the publishing command, and the only one. It builds both
 # configurations of one version and writes current only when BOTH are in
 # place; a single-configuration run is a compile check that publishes nothing
-# the pointer names. Half a version is therefore not something to guard
-# against — it is something nothing can point at.
+# the pointer names. Half a version is therefore something nothing can point
+# at - but it IS a folder, and since 22 Nov 2026 the pointer's newest and the
+# weeding's keep-N count only whole publishes (a half 0.37.409 held current on
+# 0.37.407 through 408's publish).
 #
 # Usage: scripts/win-build.sh [--sync-only] [--clean] [--release] [--both] [--dirty]
 # Host and directory come from WIN_HOST and WIN_DIR.
@@ -355,8 +357,24 @@ fi
 # would otherwise outlive the newer one it cannot replace. `sort -V` gives
 # semantic order, and only directories that look like versions are touched —
 # current is a file, and anything a human left there by hand is not a number.
-old_versions=$(ssh "${host}" "ls -1 '${remote_dir}/publish' 2>/dev/null" | tr -d '\r' \
-  | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | head -n -"${kept_versions}")
+# The keep-N counts WHOLE publishes (22 Nov 2026, as the pointer's newest above): a compile
+# check's half folder newer than the newest whole one is the coming version and stays; a half
+# folder older than the oldest kept whole one is litter and goes with the old.
+all_versions=$(ssh "${host}" "ls -1 '${remote_dir}/publish' 2>/dev/null" | tr -d '\r' \
+  | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V)
+kept_whole=$(ssh "${host}" "cd '${remote_dir}/publish' 2>/dev/null && for d in *; do \
+  test -f \"\$d/Debug/lib/core.lib\" && test -f \"\$d/Release/lib/core.lib\" && echo \"\$d\"; \
+  done" | tr -d '\r' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n "${kept_versions}")
+oldest_kept=$(printf '%s\n' "${kept_whole}" | head -n 1)
+old_versions=""
+if [ -n "${oldest_kept}" ]; then
+  for candidate in ${all_versions}; do
+    if [ "${candidate}" != "${oldest_kept}" ] && [ "$(printf '%s\n%s\n' "${candidate}" \
+      "${oldest_kept}" | sort -V | head -n 1)" = "${candidate}" ]; then
+      old_versions="${old_versions} ${candidate}"
+    fi
+  done
+fi
 
 # EVERY VERSION SOMEBODY IS STANDING ON, whatever its age. A pin is a claim
 # (tools/publish_pin.sh) and the weeding has to see it, because a sweep that cannot
