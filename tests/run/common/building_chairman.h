@@ -31,6 +31,7 @@
 #include "dry_pantry_tally.h"
 #include "extraction_policy.h"
 #include "fallow_policy.h"
+#include "family_cause_tally.h"
 #include "family_food_tally.h"
 #include "felling_policy.h"
 #include "field_work_tally.h"
@@ -102,6 +103,7 @@ class BuildingChairman {
         houses_first(tables),
         dry_pantry(tables),
         family_food(tables),
+        family_cause(tables),
         field_work(tables),
         plan_over(tables),
         sport_talk(tables),
@@ -387,6 +389,7 @@ class BuildingChairman {
     houses_first.RunDay(simulation);
     dry_pantry.CountDay(simulation.CompletedState());  // #1922's print
     family_food.CountDay(simulation);                  // #1953's FAM1953
+    family_cause.CountDay(simulation);                 // #1953's CAUSE1953
     clerk.CountDay(simulation);                        // #589's print
     reputation.CountDay(simulation.CompletedState());  // #1897's REP1897
     plan_over.CountDay(simulation.CompletedState());   // #1946's OVER1946
@@ -579,6 +582,8 @@ class BuildingChairman {
   DryPantryTally dry_pantry;
   /// #1953's print: on a dry family-day, what the family got and the issue's ceiling for it.
   FamilyFoodTally family_food;
+  /// #1953's cause print: the advances' effect, the repayments and the trudoden's flow.
+  FamilyCauseTally family_cause;
   /// #2264's print: M1-M4 of the field-work coordinator, y1-y3 (field_work_tally.h).
   FieldWorkTally field_work;
   /// #589's print: the clerk's post and his family's satiety (clerk_tally.h).

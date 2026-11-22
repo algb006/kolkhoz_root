@@ -1678,6 +1678,7 @@ bool Walk(std::uint64_t seed,
       builder.houses_first.Print(std::cout, seed);          // #1677
       builder.dry_pantry.Print(std::cout, seed);            // #1922
       builder.family_food.Print(std::cout, seed);           // #1953
+      builder.family_cause.Print(std::cout, seed);          // #1953's cause print
       builder.field_work.Print(std::cout, seed);            // #2264
       builder.clerk.Print(std::cout, seed);                 // #589
       builder.reputation.Print(std::cout, seed);            // #1897's REP1897
