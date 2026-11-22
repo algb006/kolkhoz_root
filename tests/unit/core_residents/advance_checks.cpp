@@ -422,10 +422,25 @@ int CheckTheDryFamiliesAdvance() {
                        "#1953 (A) off: the same family gets nothing (the canon)");
   }
   {
+    // ON THE PREDICATE, NOT THROUGH THE EXCHANGE (u1953a's red, 22 Nov 2026): the same step's
+    // distribution runs first and issues that trudoden, so the family IS paid out by the time
+    // the advance asks - the rule working, the test's premise wrong. The «paid out» clause is
+    // therefore asked of AdvanceEligibleDry directly, with the step's own order beside it.
+    const core::HouseholdCounts two_adults{.eaters = 2, .workers = 2, .need_kg_per_day = 12.5F};
+    core::FamilyRow owed;
+    owed.trudodni_account = 300;
+    owed.trudodni_redeemed = 200;
+    core::FamilyRow paid = owed;
+    paid.trudodni_redeemed = 300;
+    failures += Expect(!core::AdvanceEligibleDry(on.advance, owed, two_adults, kToday, 0) &&
+                           core::AdvanceEligibleDry(on.advance, paid, two_adults, kToday, 0),
+                       "#1953 (A): a family with a trudoden still to issue is not advanced, the "
+                       "same family paid out is");
     core::WorldState world = settled(300, 200, kToday);
     core::RunFamilyExchange(on, kSpeedup, world);
-    failures += Expect(world.families.rows[0].advance_debt == 0,
-                       "#1953 (A): a family with a trudoden still to issue is not advanced");
+    failures += Expect(world.families.rows[0].trudodni_redeemed == 300,
+                       "#1953 (A): and through the step, the distribution pays that trudoden "
+                       "before the advance asks");
   }
   {
     core::WorldState world = settled(0, 0, kToday);
