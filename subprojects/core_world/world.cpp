@@ -319,16 +319,17 @@ class EventsSlot final : public ISequentialPhase {
 
   std::span<const AvatarDef> Avatars() const { return avatars_; }
 
-  /// #1928 (1): a measuring arm's NO-OP PERTURBATION - `draws` numbers taken from the
-  /// world's generator and thrown away at the first step of day 1, so the start village is
-  /// the same and every later draw is another stream. 0 (the canon): nothing.
+  /// #1928 (1): a measuring arm's NO-OP PERTURBATION - at the first step of day 1 the
+  /// world's seed is salted by `draws`, so the start village is the same and every later
+  /// draw is another stream. 0 (the canon): nothing. THE FIRST FORM WAS DEAD (22 Nov 2026):
+  /// it threw away draws of `current.rng`, which nothing after genesis reads - every draw in
+  /// the run hashes `world_seed` with the day and the entity - and four seeds came back bit
+  /// for bit the same as A.
   void SetRngNoiseDraws(std::uint32_t draws) { rng_noise_draws_ = draws; }
 
   void RunSequential(const WorldState& previous, WorldState& current) override {
     if (rng_noise_draws_ > 0 && current.calendar.tick == kTicksPerDay) {
-      for (std::uint32_t draw = 0; draw < rng_noise_draws_; ++draw) {
-        (void)NextRandomBits(current.rng);
-      }
+      current.world_seed = internal::MixBits(current.world_seed ^ rng_noise_draws_);
     }
     FoldPantryFlows(previous, current);
     // THE WATCHDOG, every game hour, here and nowhere else: the one
