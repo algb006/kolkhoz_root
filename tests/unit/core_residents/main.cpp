@@ -4669,10 +4669,10 @@ int CheckSamogonPurchase() {
       }
       return -1.0F;
     };
-    core::AlcoholismConfig k1 = config;
-    k1.dose_k = 5.0F;  // 2 points per 0.4 l pure: a full «drinks» month is today's +2
-    core::AlcoholismConfig k2 = k1;
-    k2.dose_gain_cap = 2.0F;
+    // ONE HOME (boss, 23 Nov 2026): the gain and its cap are gain_with_distiller; dose_k is
+    // only the switch. k2 = by dose without the exposure, k3 = with it.
+    core::AlcoholismConfig k2 = config;
+    k2.dose_k = 1.0F;
     core::AlcoholismConfig k3 = k2;
     k3.dose_exposure = 1.0F;
     const auto turned = [&](const core::AlcoholismConfig& rule) {
@@ -4681,16 +4681,13 @@ int CheckSamogonPurchase() {
       return state;
     };
     const core::WorldState today = turned(config);
-    const core::WorldState dose1 = turned(k1);
     const core::WorldState dose2 = turned(k2);
     const core::WorldState dose3 = turned(k3);
     const float distiller_today = today.residents.rows[distiller_row].alcoholism;
-    failures += Expect(man_of(dose1, mid_yard) == man_of(today, mid_yard) &&
-                           man_of(dose2, mid_yard) == man_of(today, mid_yard),
-                       "dose: a man on a full litre of samogon gets today's +2 (K1, K2)");
-    failures += Expect(man_of(dose1, near_yard) == man_of(today, near_yard) + 4.0F &&
-                           man_of(dose2, near_yard) == man_of(today, near_yard),
-                       "dose: the abuser on 3 l gets +6 uncapped (K1), today's +2 capped (K2)");
+    failures += Expect(man_of(dose2, mid_yard) == man_of(today, mid_yard),
+                       "dose: a man on a full litre of samogon gets today's +2");
+    failures += Expect(man_of(dose2, near_yard) == man_of(today, near_yard),
+                       "dose: the abuser on 3 l is capped at today's +2");
     failures += Expect(dose2.residents.rows[distiller_row].alcoholism == distiller_today - 2.0F &&
                            dose3.residents.rows[distiller_row].alcoholism == distiller_today,
                        "dose: a man at the still who drank none loses today's +2 (K2), keeps it "
@@ -4708,6 +4705,17 @@ int CheckSamogonPurchase() {
                        "dose K3: samogon - a full litre, half of one or none - is today's +2");
     failures += Expect(cider > 0.24F && cider < 0.26F,
                        "dose K3: a litre of a 5 % drink gives its small dose, 0.25, not +2");
+    // ONE ROW MOVES THE RULE (host's lever tests, boss 23 Nov 2026): gain_with_distiller 0.94
+    // alone gives a samogon drinker 0.94 and caps the abuser there too - not the old k's 2.
+    core::AlcoholismConfig low = k3;
+    low.gain_with_distiller = 0.94F;
+    const float low_litre = core::DoseGain(low, kLitre, kLitre * 0.40, true, kLitre);
+    const float low_abuser = core::DoseGain(low, 3.0 * kLitre, 3.0 * kLitre * 0.40, true, kLitre);
+    const float low_cider = core::DoseGain(low, kLitre, kLitre * 0.05, true, kLitre);
+    failures += Expect(low_litre > 0.939F && low_litre < 0.941F && low_abuser > 0.939F &&
+                           low_abuser < 0.941F && low_cider > 0.117F && low_cider < 0.118F,
+                       "dose: gain_with_distiller 0.94 alone gives samogon 0.94 (abuser capped "
+                       "there), cider 0.1175 - the old k and cap would give 2");
   }
   // SHORT OF WHAT IS ASKED, THE LITRES ARE SHARED BY THE ASKING: 5 litres
   // asked, 2.5 held — everybody gets half and pays for half.

@@ -103,10 +103,10 @@ struct AlcoholismConfig {
   // -- ALCOHOLISM BY DOSE (Alex, 22 Nov 2026: «Пьянство по крепости напитков надо делать
   // сразу»; econ alcohol-dose-and-vineyard §A; boss: K1/K2/K3 as arms of one pair). All 0 =
   // today's rule, «a distiller at the yard: +gain_with_distiller», untouched. --------------
-  /// Points a month per litre of PURE alcohol drunk that month; 0 switches the dose off.
+  /// The switch: > 0 = the gain by dose, 0 = «a distiller at the yard». The gain itself and its
+  /// cap are gain_with_distiller (one home, boss 23 Nov 2026; the k and cap rows were struck).
   float dose_k = 0.0F;             ///< `alcohol_dose_k`
   float dose_floor_ml = 0.0F;      ///< `alcohol_dose_floor_ml`: d0, ml pure a month
-  float dose_gain_cap = 0.0F;      ///< `alcohol_dose_gain_cap`: points a month, 0 = none
   float samogon_strength = 0.40F;  ///< `alcohol_samogon_strength`: share of pure alcohol
   /// K3's exposure: 1 keeps «a distiller at the yard» for a man who drank less than one
   /// «drinks» month - +gain_with_distiller x (1 - his dose / that month's dose).
@@ -130,10 +130,12 @@ void SeedArrivalDrinking(const AlcoholismConfig& config,
                          std::uint32_t id,
                          ResidentRow& person);
 
-/// @brief THE DOSE RULE's month gain for one man (AlcoholismConfig::dose_*): dose_k per litre of
-///        PURE alcohol above dose_floor_ml, plus - with dose_exposure - today's
-///        gain_with_distiller times the share of a «drinks» month's VOLUME he did not drink while
-///        his yard is supplied, all capped at dose_gain_cap. Samogon alone: exactly today's +2.
+/// @brief THE DOSE RULE's month gain for one man (AlcoholismConfig::dose_*): gain_with_distiller
+///        times his PURE alcohol above dose_floor_ml over a «drinks» month's pure (its volume x
+///        samogon_strength), plus - with dose_exposure - gain_with_distiller times the share of
+///        that month's VOLUME he did not drink while his yard is supplied, all capped at
+///        gain_with_distiller. Samogon alone: exactly gain_with_distiller. 0 if the month's
+///        volume is 0.
 /// @param drunk_ml The month's drink, millilitres of whatever he drank.
 /// @param pure_ml Its pure alcohol, millilitres (each drink's ml x its strength).
 /// @param drinks_month_ml A «drinks» month's volume, millilitres (litres_month_drinks x 1000).
