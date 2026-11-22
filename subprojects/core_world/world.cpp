@@ -319,7 +319,18 @@ class EventsSlot final : public ISequentialPhase {
 
   std::span<const AvatarDef> Avatars() const { return avatars_; }
 
+  /// THE NOISE INSTRUMENT (#1928, world_params `noise_seed_salt`): at the first step of day 1
+  /// the world's seed is salted, so the start village is the same and every later draw - the
+  /// weather included - is another stream: a run's A-vs-A spread. 0 (the canon): nothing.
+  /// Not a draw thrown away from `current.rng`: nothing after genesis reads it (every draw in
+  /// the run hashes `world_seed` with the day and the entity), and that first form came back
+  /// bit for bit the canon on four seeds (22 Nov 2026).
+  void SetNoiseSeedSalt(std::uint32_t salt) { noise_seed_salt_ = salt; }
+
   void RunSequential(const WorldState& previous, WorldState& current) override {
+    if (noise_seed_salt_ > 0 && current.calendar.tick == kTicksPerDay) {
+      current.world_seed = internal::MixBits(current.world_seed ^ noise_seed_salt_);
+    }
     FoldPantryFlows(previous, current);
     // THE WATCHDOG, every game hour, here and nowhere else: the one
     // single-threaded phase of the step (architecture §7ж³; core_world/
@@ -661,6 +672,7 @@ class EventsSlot final : public ISequentialPhase {
   /// slot; CreateWatchdog refuses a kind without rules, and then nothing
   /// walks — which the unit test of the assembly reddens on.
   std::unique_ptr<IWatchdog> watchdog_;
+  std::uint32_t noise_seed_salt_ = 0;  ///< the noise instrument's salt; 0 = the canon
 
   /// @brief Closes the year's book and opens the next.
   ///
@@ -744,6 +756,15 @@ class StandardSimulation final : public ISimulation {
                      SettlementConfigOf(*config.tables),
                      MasterEyeRulesOf(*config.tables),
                      AvatarsOf(*config.tables)) {
+    // The noise instrument (#1928, boss): world_params `noise_seed_salt`, 0 = the canon.
+    if (const ITable* const world_params = config.tables->FindTable("world_params")) {
+      const std::uint32_t row = world_params->FindRowByKey("noise_seed_salt");
+      const std::uint32_t value = world_params->FindColumn("value");
+      if (row != kNoTableRow && value != kNoTableColumn) {
+        events_slot_.SetNoiseSeedSalt(
+            static_cast<std::uint32_t>(world_params->CellReal(row, value).value_or(0.0F)));
+      }
+    }
     const StepPhaseSet phases{
         .time_and_weather = &time_->TimeAndWeatherPhase(),
         .needs = &residents_->NeedsPhase(),
@@ -1476,6 +1497,8 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       known.emplace_back("player_entry_day");
       // #1897 (2): the Epoch II door's reputation condition (era_readiness.cpp).
       known.emplace_back("epoch2_door_min_reputation");
+      // #1928: the noise instrument's day-1 seed salt (EventsSlot::SetNoiseSeedSalt).
+      known.emplace_back("noise_seed_salt");
       //   `player_entry_hour` (2026-10-01, boss-core-start-no-yards [11];
       //   boss's 07aa3820) — the hour of the entry morning, 8. The layer
       //   fast-forwards the core to TickOfDayHour(player_entry_day, this)
