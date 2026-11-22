@@ -1292,6 +1292,25 @@ int TestSignals(const core::ITableSet& tables) {
                      "signals count");
   failures += Expect(!session->FieldWorkOf(core::FieldId{404}).measured,
                      "#2003: a field that does not exist is not measured");
+  // «Сводка для сохранения» (shell.md §4а): six entries in the kinds' order, the counts the
+  // state's, the mood's mean over its families, and the last entry a concern or the season.
+  const std::vector<core::SaveSummaryEntry> summary = session->SaveSummary();
+  const core::WorldState& summary_world = session->State();
+  failures += Expect(
+      summary.size() == 6 && summary[0].kind == core::SaveSummaryKind::kEraPath &&
+          summary[0].params[2] == 8 && summary[0].params[1] >= 0 && summary[0].params[1] <= 8 &&
+          summary[1].kind == core::SaveSummaryKind::kPeople &&
+          summary[1].params[0] == static_cast<std::int32_t>(summary_world.residents.rows.size()) &&
+          summary[1].params[1] == static_cast<std::int32_t>(summary_world.families.rows.size()) &&
+          summary[2].kind == core::SaveSummaryKind::kVillageMood &&
+          summary[2].params[1] == static_cast<std::int32_t>(summary_world.families.rows.size()) &&
+          summary[2].params[0] >= 0 && summary[2].params[0] <= 1000 &&
+          summary[3].kind == core::SaveSummaryKind::kFoodTerm &&
+          summary[4].kind == core::SaveSummaryKind::kFeedTerm &&
+          (summary[5].kind == core::SaveSummaryKind::kConcern ||
+           summary[5].kind == core::SaveSummaryKind::kSeasonWork),
+      "save summary: the era path of 8, people and households as the state counts them, the "
+      "mood's mean over its families, both terms, and a concern or the season's work last");
   const core::FieldWorkView sowing_work = session->FieldWorkOf(sowing_id);
   failures += Expect(sowing_work.measured && sowing_work.sowing_work_days == 10.0F &&
                          sowing_work.sowing_done_share > 0.599F &&

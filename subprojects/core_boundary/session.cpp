@@ -492,6 +492,85 @@ class Session final : public ISession {
     return DeriveFieldWork(config_, State(), field);
   }
 
+  std::vector<SaveSummaryEntry> SaveSummary() const override {
+    const WorldState& world = State();
+    std::vector<SaveSummaryEntry> entries;
+    // The era's path: the transition's eight conditions as EraReadiness counts them.
+    const EraReadinessView readiness = EraReadiness();
+    const TransitionBlocks& blocks = readiness.blocks;
+    const std::array<bool, 8> conditions = {
+        blocks.food_variety != 0,
+        blocks.social_objects != 0,
+        blocks.own_traction != 0,
+        blocks.wintering_two_years != 0,
+        blocks.units_at_level != 0,
+        blocks.office_repaired != 0,
+        readiness.population >= readiness.population_required,
+        readiness.years_required > 0 && readiness.years_both_above >= readiness.years_required};
+    std::int32_t met = 0;
+    for (const bool condition : conditions) {
+      met += condition ? 1 : 0;
+    }
+    entries.push_back({.kind = SaveSummaryKind::kEraPath,
+                       .params = {static_cast<std::int32_t>(world.epoch),
+                                  met,
+                                  static_cast<std::int32_t>(conditions.size()),
+                                  0}});
+    entries.push_back({.kind = SaveSummaryKind::kPeople,
+                       .params = {static_cast<std::int32_t>(world.residents.rows.size()),
+                                  static_cast<std::int32_t>(world.families.rows.size()),
+                                  0,
+                                  0}});
+    // The mood's mean; host reads its rung off signal_bands.csv.
+    double satisfaction = 0.0;
+    for (const FamilyRow& family : world.families.rows) {
+      satisfaction += static_cast<double>(family.satisfaction);
+    }
+    const auto families = static_cast<std::int32_t>(world.families.rows.size());
+    entries.push_back({.kind = SaveSummaryKind::kVillageMood,
+                       .params = {families > 0 ? static_cast<std::int32_t>(
+                                                     std::lround(satisfaction * 10.0 / families))
+                                               : 0,
+                                  families,
+                                  0,
+                                  0}});
+    entries.push_back(TermEntry(SaveSummaryKind::kFoodTerm, StockKind::kFood, world.calendar.day));
+    entries.push_back(TermEntry(SaveSummaryKind::kFeedTerm, StockKind::kFeed, world.calendar.day));
+    // The main concern: the first red lamp in the list's own order, else the season's work.
+    std::int32_t red = 0;
+    AlarmKind first_red = AlarmKind::kNone;
+    for (const Alarm& alarm : alarms_) {
+      if (alarm.lamp != 0) {
+        if (red == 0) {
+          first_red = alarm.kind;
+        }
+        ++red;
+      }
+    }
+    if (red > 0) {
+      entries.push_back({.kind = SaveSummaryKind::kConcern,
+                         .params = {static_cast<std::int32_t>(first_red), red, 0, 0}});
+    } else {
+      std::array<std::int32_t, static_cast<std::size_t>(FieldPhase::kFieldPhaseCount)> by_phase{};
+      for (const FieldRow& field : world.fields.rows) {
+        if (field.phase == FieldPhase::kPlowing || field.phase == FieldPhase::kHarrowing ||
+            field.phase == FieldPhase::kSowing || field.phase == FieldPhase::kHarvest) {
+          ++by_phase[static_cast<std::size_t>(field.phase)];
+        }
+      }
+      std::size_t busiest = 0;
+      for (std::size_t phase = 1; phase < by_phase.size(); ++phase) {
+        busiest = by_phase[phase] > by_phase[busiest] ? phase : busiest;
+      }
+      entries.push_back({.kind = SaveSummaryKind::kSeasonWork,
+                         .params = {by_phase[busiest] > 0 ? static_cast<std::int32_t>(busiest) : 0,
+                                    by_phase[busiest],
+                                    0,
+                                    0}});
+    }
+    return entries;
+  }
+
   bool CanBeOrdered(ResidentId resident) const override {
     return simulation_->CanBeOrdered(resident);
   }
@@ -824,6 +903,30 @@ class Session final : public ISession {
   const StagedOrders& StagedBatch() const override { return staged_; }
 
  private:
+  /// @brief SaveSummary's term entry for one stock kind, off the stock lights: the month the
+  ///        stock lasts to and the years ahead, from today plus its days. The first light of
+  ///        the kind answers (one a kind today); month -1 when it never runs out, has no data,
+  ///        or answers by coverage, not days.
+  SaveSummaryEntry TermEntry(SaveSummaryKind entry, StockKind kind, SimDay today) const {
+    SaveSummaryEntry term{.kind = entry, .params = {-1, 0, 0, 0}};
+    for (const StockForecast& light : lights_) {
+      if (light.kind != kind) {
+        continue;
+      }
+      term.params[2] = light.days_of_stock;
+      if (light.light != StockLight::kNoData && light.measure == StockMeasure::kDays &&
+          light.days_of_stock >= 0) {
+        const Date now = DateFromDay(today);
+        const Date until = DateFromDay(today + static_cast<SimDay>(light.days_of_stock));
+        term.params[0] = static_cast<std::int32_t>(until.month);
+        term.params[1] =
+            static_cast<std::int32_t>(until.year) - static_cast<std::int32_t>(now.year);
+      }
+      break;
+    }
+    return term;
+  }
+
   /// @brief Does `staged` belong to `initial` — the @pre of the second
   /// ReplaceWorld, actually tested? A batch saved beside a world has its
   /// issued rows waiting for the ids [next_id_value, next_id_value + size),

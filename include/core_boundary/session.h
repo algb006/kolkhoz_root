@@ -161,6 +161,7 @@
 #include "core_common/quantities.h"
 #include "core_common/readiness_view.h"
 #include "core_common/resident_activity.h"
+#include "core_common/save_summary_view.h"
 #include "core_common/seed_fund_view.h"
 #include "core_common/stink.h"
 #include "core_common/store_theft_view.h"
@@ -622,6 +623,13 @@ class ISession {
   /// @note Between steps; the answer describes State(). A pure read; residents.size() equals
   ///       SignalsOfField(field).residents_working.
   virtual FieldWorkView FieldWorkOf(FieldId field) const = 0;
+
+  /// @brief «Сводка для сохранения» (save_summary_view.h; shell.md §4а; host 108 §3.1а,
+  ///        SlotHeader field 11): the slot header's entries as kinds with params, in
+  ///        SaveSummaryKind order - kEraPath, kPeople, kVillageMood, kFoodTerm, kFeedTerm,
+  ///        then kConcern if a red lamp is lit, else kSeasonWork.
+  /// @note Between steps; the answer describes State(). host calls it at WriteSlot.
+  virtual std::vector<SaveSummaryEntry> SaveSummary() const = 0;
 
   /// @brief Where `resident` is, derived from State() now.
   /// @return place == kUnknown for a resident that does not exist.
