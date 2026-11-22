@@ -46,6 +46,11 @@ class ITableSet;  // Defined in core_tables.
 struct CropDef {
   ResourceId resource;  ///< What the harvest and the seed are.
 
+  /// The epoch the crop becomes available in (crops.csv `era`: empty = Epoch I, `era_N` or N;
+  /// design db crop.era_id). An entity of a later epoch is not available before it
+  /// (epochs.md): kSetRotation refuses it (production_orders.cpp, SetRotation).
+  Epoch era = Epoch::kOne;
+
   bool is_winter = false;  ///< Sown in autumn, harvested next July.
 
   bool is_perennial = false;  ///< Sown once, harvested for years.

@@ -11091,6 +11091,34 @@ int CheckTheChairmanSetsARotation() {
                        "while clover, whose hay the herds eat, is taken as before");
   }
 
+  // -- a later epoch's crop is refused before its epoch (boss, 22 Nov 2026) --
+  //
+  // The order alone cannot tell this refusal from the green-mass STUB above (both are
+  // kRuleForbids), so the era is checked where it is read - the parse - and the order pair
+  // shows the check refuses maize and lets an Epoch I crop by in the same order.
+  {
+    core::ProductionConfig config;
+    std::string parse_error;
+    const bool parsed = core::ParseProductionConfig(*tables, config, parse_error);
+    const auto maize_row = crops->FindRowByKey("maize_silage");
+    const auto rye_row = crops->FindRowByKey("rye_winter");
+    failures += Expect(parsed && maize_row < config.crops.size() && rye_row < config.crops.size() &&
+                           config.crops[maize_row].era == core::Epoch::kTwo &&
+                           config.crops[rye_row].era == core::Epoch::kOne,
+                       "crops.csv `era`: maize is Epoch II, rye Epoch I");
+    const core::CropId maize{static_cast<std::uint16_t>(maize_row)};
+    const core::CropId rye{static_cast<std::uint16_t>(rye_row)};
+    const core::WorldState refused =
+        order_rotation(core::LandKind::kArable, {rye, maize, core::CropId{}});
+    failures += Expect(refused.orders.rows[0].refusal == core::OrderRefusal::kRuleForbids &&
+                           !core::HasRotation(refused.fields.rows[0]),
+                       "maize in an Epoch I rotation refuses the whole order");
+    const core::WorldState taken =
+        order_rotation(core::LandKind::kArable, {rye, oat, core::CropId{}});
+    failures += Expect(taken.orders.rows[0].status == core::OrderStatus::kDone,
+                       "while rye and oat, Epoch I crops, are taken in the same order");
+  }
+
   // -- a field that is not there is still kNoSuchSubject --------------------
   //
   // The other half of the split: one code for both was the defect, and a
