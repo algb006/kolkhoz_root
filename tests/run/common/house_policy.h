@@ -81,6 +81,9 @@ class HousePolicy {
   /// again.
   void SetFed(bool on) { fed_mode_ = on; }
 
+  /// @brief #1928: the plain C-fed margin for an arm (--fed-margin=X); 0 keeps kFedMarginPlain.
+  void SetFedMargin(double margin) { fed_margin_override_ = margin; }
+
   /// @brief #1928 C-fed′ (boss's lever change, after × 1.25 failed): the look-ahead - the own
   /// crop per (residents + the under-16s once more, the next generation's families) at least
   /// the need × 1.15. Turns C-fed on with it.
@@ -498,7 +501,8 @@ class HousePolicy {
     // (ii)'s month of need counts the living, not the look-ahead.
     const double month_need_kg =
         static_cast<double>(world.residents.rows.size()) * kFedAdultKgYear / 12.0;
-    const double margin = fed_look_ahead_ ? kFedMarginLookAhead : kFedMarginPlain;
+    const double plain = fed_margin_override_ > 0.0 ? fed_margin_override_ : kFedMarginPlain;
+    const double margin = fed_look_ahead_ ? kFedMarginLookAhead : plain;
     const bool feeds = own_kg_head >= kFedAdultKgYear * margin;
     const bool trough_holds = trough_kg >= month_need_kg;
     fed_ok_ = feeds && trough_holds;
@@ -514,8 +518,9 @@ class HousePolicy {
   }
 
   bool fed_mode_ = false;
-  bool fed_look_ahead_ = false;  // #1928 C-fed′
-  bool fed_ok_ = true;           // the first years build by demand until a verdict says otherwise
+  bool fed_look_ahead_ = false;       // #1928 C-fed′
+  double fed_margin_override_ = 0.0;  // #1928 --fed-margin=X (0 = kFedMarginPlain)
+  bool fed_ok_ = true;  // the first years build by demand until a verdict says otherwise
   core::SimDay fed_day_ = 0;
   double trough_kcal_ = -1.0;
   std::vector<double> food_kcal_;

@@ -127,6 +127,7 @@ bool g_saw_reserve = false;
 std::uint32_t g_house_sites = run::HousePolicy::kCanonSitesAtOnce;
 bool g_house_fed = false;  // #1928 C-fed: by demand while the village feeds itself, else six
 bool g_house_fed_look_ahead = false;  // #1928 C-fed′
+double g_fed_margin = 0.0;            // #1928 --fed-margin=X; 0 keeps HousePolicy's plain margin
 
 /// `--saw-by-anyone`: arm R5 of boss's parcel 316 — adults saw by standing
 /// order up to the saw's places, and no craftsman is appointed.
@@ -507,7 +508,11 @@ int main(int argc, char** argv) {
     g_sport_talk = g_sport_talk && argument != "--no-sport-talk";
     g_catch_distiller = g_catch_distiller && argument != "--no-catch-distiller";
     g_empty_stores = g_empty_stores && argument != "--no-empty-stores";
-    if (argument == "--house-sites=fed2") {
+    if (argument.starts_with("--fed-margin=")) {
+      // #1928: the plain C-fed margin of an arm (econ seq 4: × 1.15 re-judged against the band).
+      g_fed_margin = std::strtod(
+          std::string(argument.substr(std::string_view("--fed-margin=").size())).c_str(), nullptr);
+    } else if (argument == "--house-sites=fed2") {
       g_house_fed = true;  // #1928 C-fed′, the look-ahead
       g_house_fed_look_ahead = true;
     } else if (argument == "--house-sites=fed") {
@@ -724,6 +729,7 @@ int main(int argc, char** argv) {
   houses.SetSitesAtOnce(g_house_sites);
   houses.SetFed(g_house_fed);
   houses.SetFedLookAhead(g_house_fed_look_ahead);
+  houses.SetFedMargin(g_fed_margin);
   run::TimberChainTally timber_chain(*world.tables);
   // What the sites stood on in the first fourteen years (boss, parcel 312).
   run::BrakesTally brakes(*world.tables);
