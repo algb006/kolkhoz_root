@@ -61,6 +61,7 @@ class WorldParamOverlay final : public core::ITableSet {
                     std::string_view value)
       : base_(std::move(base)) {
     std::vector<std::vector<std::string>> rows;
+    bool found = false;
     if (const core::ITable* const params = base_->FindTable("world_params")) {
       for (std::uint32_t row = 0; row < params->RowCount(); ++row) {
         std::vector<std::string> cells;
@@ -69,9 +70,15 @@ class WorldParamOverlay final : public core::ITableSet {
         }
         if (!cells.empty() && cells[0] == key && cells.size() > 1) {
           cells[1] = std::string(value);
+          found = true;
         }
         rows.push_back(std::move(cells));
       }
+    }
+    // A key the canon has no row for yet (the noise instrument before boss's db row): added,
+    // read by the core.
+    if (!found) {
+      rows.push_back({std::string(key), std::string(value), "core"});
     }
     // world_params.csv's own header (key,value,reader): the assembly checks
     // every row's reader, so a wrong third name refuses the world.
@@ -1112,6 +1119,51 @@ int CheckTheStoreLamp(const Fixture& fixture) {
   return failures;
 }
 
+/// THE NOISE INSTRUMENT (#1928, world_params `noise_seed_salt`): a salt moves the world's
+/// seed at day 1's first step and leaves the start village alone; 0 moves nothing. Its first
+/// form threw away draws nothing reads and came back bit for bit the canon - this reddens on
+/// that, and on a salt that leaks into genesis.
+int CheckTheNoiseSalt() {
+  int failures = 0;
+  constexpr std::uint32_t kOneDayAndAnHour = core::kTicksPerDay + 1;
+  auto seed_after_day_one =
+      [](std::string_view salt, std::uint64_t& genesis_seed, std::size_t& genesis_residents) {
+        std::unique_ptr<core::ITableSet> tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, nullptr);
+        if (tables == nullptr) {
+          return std::uint64_t{0};
+        }
+        if (!salt.empty()) {
+          tables = std::make_unique<WorldParamOverlay>(std::move(tables), "noise_seed_salt", salt);
+        }
+        core::StandardSimulationConfig config;
+        config.tables = tables.get();
+        config.world_seed = 1929;
+        config.worker_count = 1;
+        const auto simulation = core::CreateStandardSimulation(config);
+        if (simulation == nullptr) {
+          return std::uint64_t{0};
+        }
+        genesis_seed = simulation->CompletedState().world_seed;
+        genesis_residents = simulation->CompletedState().residents.rows.size();
+        for (std::uint32_t step = 0; step < kOneDayAndAnHour; ++step) {
+          simulation->AdvanceStep();
+        }
+        return simulation->CompletedState().world_seed;
+      };
+  std::uint64_t canon_genesis = 0;
+  std::uint64_t salted_genesis = 0;
+  std::size_t canon_residents = 0;
+  std::size_t salted_residents = 0;
+  const std::uint64_t canon = seed_after_day_one("", canon_genesis, canon_residents);
+  const std::uint64_t salted = seed_after_day_one("1", salted_genesis, salted_residents);
+  failures += Expect(canon != 0 && salted != 0, "noise: both worlds assemble and run a day");
+  failures += Expect(canon == canon_genesis, "noise: the canon (no salt) keeps its seed");
+  failures += Expect(salted_genesis == canon_genesis && salted_residents == canon_residents,
+                     "noise: a salt leaves genesis - the start village - alone");
+  failures += Expect(salted != canon, "noise: a salt moves the seed after day 1's first step");
+  return failures;
+}
+
 }  // namespace
 
 int CheckEveryAdviceIsTaken() {
@@ -1129,5 +1181,6 @@ int CheckEveryAdviceIsTaken() {
   failures += CheckTheStoreLamp(fixture);
   // LAST: it reads what every case above took.
   failures += CheckTheAdviceCensus();
+  failures += CheckTheNoiseSalt();  // #1928's noise instrument, after the census: it takes none
   return failures;
 }

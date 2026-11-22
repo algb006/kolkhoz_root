@@ -482,6 +482,7 @@ void LiveOneDay(core::ISimulation& simulation,
     // The acting chairman's trained women's year-1 days (#1417), at hour 13.
     if (chairman != nullptr && tick == run::BirthsHerdTally::kSampleHour) {
       chairman->milkmaids.CountNoon(state);
+      chairman->field_work.CountNoon(state);  // #2264's FIELD2264
     }
     // The stock's rest days (#1434), at hour 13.
     if (substitutes != nullptr && tick == run::BirthsHerdTally::kSampleHour) {
@@ -1474,6 +1475,7 @@ bool Walk(std::uint64_t seed,
     builder.milkmaids.CloseYear(state.ledger.closed, year);
     substitutes.CloseYear(state.ledger.closed, year);
     strada.CloseYear(state.ledger.closed, year);
+    builder.field_work.CloseYear(state.ledger.closed, year);  // #2264
     funerals.CloseYear(state.ledger.closed, year);
     herds.CloseYear(state.ledger.closed, year);
     herds.CountTurn(state, year);
@@ -1675,6 +1677,8 @@ bool Walk(std::uint64_t seed,
       builder.fallow.PrintSpringBuilding(std::cout, seed);  // #1726's B1 and B5
       builder.houses_first.Print(std::cout, seed);          // #1677
       builder.dry_pantry.Print(std::cout, seed);            // #1922
+      builder.family_food.Print(std::cout, seed);           // #1953
+      builder.field_work.Print(std::cout, seed);            // #2264
       builder.clerk.Print(std::cout, seed);                 // #589
       builder.reputation.Print(std::cout, seed);            // #1897's REP1897
       builder.plan_over.Print(std::cout, seed);             // #1946's OVER1946

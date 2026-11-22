@@ -31,7 +31,9 @@
 #include "dry_pantry_tally.h"
 #include "extraction_policy.h"
 #include "fallow_policy.h"
+#include "family_food_tally.h"
 #include "felling_policy.h"
+#include "field_work_tally.h"
 #include "fixture_policy.h"
 #include "funeral_policy.h"
 #include "hay_arm_policy.h"
@@ -99,6 +101,8 @@ class BuildingChairman {
         hay_arm(tables),
         houses_first(tables),
         dry_pantry(tables),
+        family_food(tables),
+        field_work(tables),
         plan_over(tables),
         sport_talk(tables),
         distiller(tables),
@@ -382,6 +386,7 @@ class BuildingChairman {
     // counts every day; it orders only with its arm on).
     houses_first.RunDay(simulation);
     dry_pantry.CountDay(simulation.CompletedState());  // #1922's print
+    family_food.CountDay(simulation);                  // #1953's FAM1953
     clerk.CountDay(simulation);                        // #589's print
     reputation.CountDay(simulation.CompletedState());  // #1897's REP1897
     plan_over.CountDay(simulation.CompletedState());   // #1946's OVER1946
@@ -572,6 +577,10 @@ class BuildingChairman {
   HousesFirstPolicy houses_first;
   /// #1922's print: the families whose pantry ran dry (dry_pantry_tally.h).
   DryPantryTally dry_pantry;
+  /// #1953's print: on a dry family-day, what the family got and the issue's ceiling for it.
+  FamilyFoodTally family_food;
+  /// #2264's print: M1-M4 of the field-work coordinator, y1-y3 (field_work_tally.h).
+  FieldWorkTally field_work;
   /// #589's print: the clerk's post and his family's satiety (clerk_tally.h).
   ClerkTally clerk;
   /// #1897's ride-along: the rating's year by cause (reputation_tally.h).
