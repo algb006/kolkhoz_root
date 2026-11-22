@@ -407,3 +407,8 @@ audit_clean_reputation_max,40,core
 audit_refused_write_off_free,1,core
 audit_clean_needs_two,0,core
 noise_seed_salt,0,core
+alcohol_dose_k,5,core
+alcohol_dose_floor_ml,0,core
+alcohol_dose_gain_cap,2,core
+alcohol_samogon_strength,0.4,core
+alcohol_dose_exposure,1,core
