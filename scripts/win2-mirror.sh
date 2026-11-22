@@ -37,7 +37,20 @@ main_host="${WIN_HOST:-win}"
 mirror_host="${WIN2_HOST:-win2}"
 remote_dir="${WIN_DIR:-/c/MyGames/Kolkhoz/core-msvc}"
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-host_tool="${KOLKHOZ_ROOT:-${project_dir}/..}/tools/host.sh"
+# THE ROOT TREE BY THE MAIN CHECKOUT, NOT BY `..` (0.37.410's publish, 22 Nov 2026): a publish
+# runs from a worktree in ~/claudetmp, whose parent holds no tools/, and the mirror then skipped
+# the outage check without a word and printed «замок занят» for a lock it never asked about. The
+# common .git dir names the main checkout (core/.git); its parent's parent is the root.
+common_git=$(git -C "${project_dir}" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
+root_guess="${project_dir}/.."
+if [ -n "${common_git}" ]; then
+  root_guess="$(dirname "$(dirname "${common_git}")")"
+fi
+host_tool="${KOLKHOZ_ROOT:-${root_guess}}/tools/host.sh"
+if [ ! -f "${host_tool}" ]; then
+  echo "ЗЕРКАЛО НЕ СДЕЛАНО: нет ${host_tool} — без него не проверить ни аварию win2, ни замок (задай KOLKHOZ_ROOT)" >&2
+  exit 1
+fi
 kept_versions=7
 
 fail() {
@@ -46,7 +59,7 @@ fail() {
 }
 
 # 1. The known outage. `outage <box> status` exits 0 while an outage stands (1: none).
-if [ -f "${host_tool}" ] && bash "${host_tool}" outage "${mirror_host}" status > /dev/null 2>&1; then
+if bash "${host_tool}" outage "${mirror_host}" status > /dev/null 2>&1; then
   echo "ЗЕРКАЛО ОТЛОЖЕНО: авария ${mirror_host} ($(bash "${host_tool}" outage "${mirror_host}" status 2>&1 | head -n 1)); повторить: make mirror VERSION=${version}"
   exit 0
 fi
@@ -120,8 +133,10 @@ fi
 
 # 7. The weeding, unless the second box's lock is held.
 lock_line=$(WIN_HOST="${mirror_host}" bash "${host_tool}" status 2>&1 | head -n 1 || true)
-if ! printf '%s' "${lock_line}" | grep -q "свободен"; then
+if printf '%s' "${lock_line}" | grep -q "занят"; then
   echo "Чистка на ${mirror_host} ПРОПУЩЕНА: замок занят («${lock_line}») — идущая там сборка может читать версию"
+elif ! printf '%s' "${lock_line}" | grep -q "свободен"; then
+  echo "Чистка на ${mirror_host} ПРОПУЩЕНА: замок НЕ ПРОЧИТАН («${lock_line}») — без ответа чистить нельзя"
 else
   kept_whole=$(whole_on "${mirror_host}" | tail -n "${kept_versions}")
   oldest_kept=$(printf '%s\n' "${kept_whole}" | head -n 1)
