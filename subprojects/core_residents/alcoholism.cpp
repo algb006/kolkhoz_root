@@ -283,22 +283,13 @@ float MonthChange(const AlcoholismConfig& config,
   const bool holds_post = person.post.profession.value != kInvalidDefIdValue;
   float change = samogon_at_yard ? config.gain_with_distiller : 0.0F;
   // BY DOSE (AlcoholismConfig::dose_k > 0): the month's pure alcohol, not the yard's distiller.
+  // Samogon is the only drink today: its millilitres at its strength.
   if (config.dose_k > 0.0F) {
-    const double pure_ml =
-        static_cast<double>(drunk_ml) * static_cast<double>(config.samogon_strength);
-    const double above = std::max(0.0, pure_ml - static_cast<double>(config.dose_floor_ml));
-    double gain = static_cast<double>(config.dose_k) * above / kMillilitresPerLitre;
-    // K3's exposure: a man in a supplied yard who drank less than a «drinks» month keeps the
-    // rest of today's gain - the yard's samogon still reaches him.
-    const double month_pure = drinks_month_ml * static_cast<double>(config.samogon_strength);
-    if (config.dose_exposure != 0.0F && samogon_at_yard && month_pure > 0.0 &&
-        pure_ml < month_pure) {
-      gain += static_cast<double>(config.gain_with_distiller) * (1.0 - pure_ml / month_pure);
-    }
-    if (config.dose_gain_cap > 0.0F) {
-      gain = std::min(gain, static_cast<double>(config.dose_gain_cap));
-    }
-    change = static_cast<float>(gain);
+    change = DoseGain(config,
+                      static_cast<double>(drunk_ml),
+                      static_cast<double>(drunk_ml) * static_cast<double>(config.samogon_strength),
+                      samogon_at_yard,
+                      drinks_month_ml);
   }
   // THE SPORTS FIELD AND SPORTINESS (sport.h; register 223; question 225):
   // −1 to a man who went to the field in a counted month, and −1 more once
@@ -342,6 +333,28 @@ float GoerLoss(const SportConfig& sport,
 }
 
 }  // namespace
+
+float DoseGain(const AlcoholismConfig& config,
+               double drunk_ml,
+               double pure_ml,
+               bool samogon_at_yard,
+               double drinks_month_ml) {
+  const double above = std::max(0.0, pure_ml - static_cast<double>(config.dose_floor_ml));
+  double gain = static_cast<double>(config.dose_k) * above / kMillilitresPerLitre;
+  // THE EXPOSURE BY VOLUME, NOT BY PURE ALCOHOL (boss, 22 Nov 2026: the rule must bite the day
+  // a weaker drink exists): a man in a supplied yard who drank fewer LITRES than a «drinks»
+  // month keeps that share of today's gain. With samogon alone the two ratios are one (its
+  // strength cancels) and the sum under the cap is today's +2 exactly; a litre of a weak drink
+  // fills the volume and leaves the gain at its small dose.
+  if (config.dose_exposure != 0.0F && samogon_at_yard && drinks_month_ml > 0.0 &&
+      drunk_ml < drinks_month_ml) {
+    gain += static_cast<double>(config.gain_with_distiller) * (1.0 - drunk_ml / drinks_month_ml);
+  }
+  if (config.dose_gain_cap > 0.0F) {
+    gain = std::min(gain, static_cast<double>(config.dose_gain_cap));
+  }
+  return static_cast<float>(gain);
+}
 
 std::span<const std::string_view> AlcoholismWorldParamKeys() {
   return kAlcoholismWorldParamKeys;

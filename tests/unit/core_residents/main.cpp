@@ -4695,6 +4695,19 @@ int CheckSamogonPurchase() {
                            dose3.residents.rows[distiller_row].alcoholism == distiller_today,
                        "dose: a man at the still who drank none loses today's +2 (K2), keeps it "
                        "with the exposure (K3)");
+    // K3 BITES ON A WEAKER DRINK (boss, 22 Nov 2026: a test that can fail): a synthetic
+    // litre at 5 % (cider) fills the month's volume, so the exposure adds nothing and the gain
+    // is its small dose; a litre of samogon is today's +2; nothing drunk keeps today's +2.
+    // An exposure counted on pure alcohol instead of volume would give the cider +2 again.
+    constexpr double kLitre = 1000.0;
+    const float samogon = core::DoseGain(k3, kLitre, kLitre * 0.40, true, kLitre);
+    const float cider = core::DoseGain(k3, kLitre, kLitre * 0.05, true, kLitre);
+    const float none = core::DoseGain(k3, 0.0, 0.0, true, kLitre);
+    const float half_samogon = core::DoseGain(k3, kLitre / 2.0, kLitre / 2.0 * 0.40, true, kLitre);
+    failures += Expect(samogon == 2.0F && none == 2.0F && half_samogon == 2.0F,
+                       "dose K3: samogon - a full litre, half of one or none - is today's +2");
+    failures += Expect(cider > 0.24F && cider < 0.26F,
+                       "dose K3: a litre of a 5 % drink gives its small dose, 0.25, not +2");
   }
   // SHORT OF WHAT IS ASKED, THE LITRES ARE SHARED BY THE ASKING: 5 litres
   // asked, 2.5 held — everybody gets half and pays for half.

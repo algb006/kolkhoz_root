@@ -130,6 +130,19 @@ void SeedArrivalDrinking(const AlcoholismConfig& config,
                          std::uint32_t id,
                          ResidentRow& person);
 
+/// @brief THE DOSE RULE's month gain for one man (AlcoholismConfig::dose_*): dose_k per litre of
+///        PURE alcohol above dose_floor_ml, plus - with dose_exposure - today's
+///        gain_with_distiller times the share of a «drinks» month's VOLUME he did not drink while
+///        his yard is supplied, all capped at dose_gain_cap. Samogon alone: exactly today's +2.
+/// @param drunk_ml The month's drink, millilitres of whatever he drank.
+/// @param pure_ml Its pure alcohol, millilitres (each drink's ml x its strength).
+/// @param drinks_month_ml A «drinks» month's volume, millilitres (litres_month_drinks x 1000).
+float DoseGain(const AlcoholismConfig& config,
+               double drunk_ml,
+               double pure_ml,
+               bool samogon_at_yard,
+               double drinks_month_ml);
+
 /// @brief The world_params.csv keys this file reads.
 std::span<const std::string_view> AlcoholismWorldParamKeys();
 
