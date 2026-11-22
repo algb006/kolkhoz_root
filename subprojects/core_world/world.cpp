@@ -1499,6 +1499,8 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
       known.emplace_back("epoch2_door_min_reputation");
       // #1928: the noise instrument's day-1 seed salt (EventsSlot::SetNoiseSeedSalt).
       known.emplace_back("noise_seed_salt");
+      // #1953 (A): the advance's widened «Кому» (food_config.cpp, AdvanceRules::dry_families).
+      known.emplace_back("advance_dry_families");
       //   `player_entry_hour` (2026-10-01, boss-core-start-no-yards [11];
       //   boss's 07aa3820) — the hour of the entry morning, 8. The layer
       //   fast-forwards the core to TickOfDayHour(player_entry_day, this)

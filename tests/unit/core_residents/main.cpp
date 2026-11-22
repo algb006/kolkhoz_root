@@ -5256,6 +5256,7 @@ int main() {
   failures += CheckTheDrinkingRaisers();
   failures += CheckNoWeddingIntoABarrackAndTheCrowdedBarrack();
   failures += CheckTheNewHouseholdsAdvance();
+  failures += CheckTheDryFamiliesAdvance();  // #1953 (A)
   failures += CheckVitals();
   failures += CheckSettleHouse();
   failures += CheckWeddingQueueOrder();

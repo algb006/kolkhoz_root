@@ -518,6 +518,15 @@ FoodConfig ParseFoodConfig(const ITableSet& tables, std::string* error) {
       return FoodConfig{};
     }
   }
+  // #1953 (A)'s switch (world_params `advance_dry_families`, 0 = off; AdvanceRules).
+  if (const ITable* const params = tables.FindTable("world_params")) {
+    const std::uint32_t row = params->FindRowByKey("advance_dry_families");
+    const std::uint32_t value = params->FindColumn("value");
+    if (row != kNoTableRow && value != kNoTableColumn) {
+      config.advance.dry_families =
+          params->CellReal(row, value).value_or(0.0F) != 0.0F ? std::uint8_t{1} : std::uint8_t{0};
+    }
+  }
   if (const ITable* crops = tables.FindTable("crops")) {
     if (!ParseSeedNorms(*crops, resources, config, message)) {
       if (error != nullptr) {

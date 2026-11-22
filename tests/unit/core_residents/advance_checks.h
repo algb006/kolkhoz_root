@@ -12,4 +12,8 @@
 /// @return The number of failed assertions; each prints a FAIL line.
 int CheckTheNewHouseholdsAdvance();
 
+/// @brief #1953 (A): the advance's widened «Кому» - a settled family, paid out and dry, with
+///        the grace window, and the canon (off) beside it.
+int CheckTheDryFamiliesAdvance();
+
 #endif  // TESTS_UNIT_CORE_RESIDENTS_ADVANCE_CHECKS_H_

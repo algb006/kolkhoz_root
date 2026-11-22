@@ -233,6 +233,16 @@ struct AdvanceRules {
   /// A debt still open at this many of the household's year-end share-outs
   /// is written off (FamilyRow::advance_turns). 0 - never.
   std::uint32_t write_off_turns = 2;
+
+  /// #1953 (A), econ's advance-for-dry-families (2026-11-22): «Кому» widened to a settled
+  /// family with a worker whose pantry holds under one day of its need and whose unissued
+  /// trudodni are 0 - the same loan, ceiling, free stock and write-offs. world_params
+  /// `advance_dry_families`, 0 = off (the canon until the pair signs).
+  std::uint8_t dry_families = 0;
+
+  /// The grace window of (A)'s worker test (econ): the first days of an economic year, when a
+  /// settled family has earned nothing yet this year, count as «has a worker who earns».
+  std::uint32_t dry_grace_days = 8;
 };
 
 /// @brief Household-plot time and the garden (household design §1). The

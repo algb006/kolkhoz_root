@@ -387,3 +387,57 @@ int CheckTheNewHouseholdsAdvance() {
   }
   return failures;
 }
+
+int CheckTheDryFamiliesAdvance() {
+  int failures = 0;
+  constexpr float kSpeedup = 4.0F;
+  // A GENESIS family (never MarkFormedInPlay), in a house, paid out: 2 trudodni earned this
+  // year and both covered, an empty pantry, day 12 - past the 8-day grace.
+  const auto settled =
+      [](core::TrudodniHundredths account, core::TrudodniHundredths redeemed, std::uint32_t day) {
+        core::WorldState world = BarrackWorld(1000.0F);
+        world.calendar.tick = static_cast<core::Tick>(day) * core::kTicksPerDay;
+        core::RefreshCalendarCaches(world.calendar);
+        core::FamilyRow& yard = world.families.rows[0];
+        yard = core::FamilyRow{};
+        yard.trudodni_account = account;
+        yard.trudodni_redeemed = redeemed;
+        return world;
+      };
+  core::FoodConfig on = GrainConfig();
+  on.advance.dry_families = 1;
+  const core::FoodConfig off = GrainConfig();
+  {
+    core::WorldState world = settled(200, 200, kToday);
+    core::RunFamilyExchange(on, kSpeedup, world);
+    failures += Expect(Pantry(world) > 0 && world.families.rows[0].advance_debt > 0 &&
+                           world.families.rows[0].advance_turns == 0,
+                       "#1953 (A): a settled family, paid out and dry, is advanced - and the "
+                       "loan's year count starts at it");
+  }
+  {
+    core::WorldState world = settled(200, 200, kToday);
+    core::RunFamilyExchange(off, kSpeedup, world);
+    failures += Expect(Pantry(world) == 0 && world.families.rows[0].advance_debt == 0,
+                       "#1953 (A) off: the same family gets nothing (the canon)");
+  }
+  {
+    core::WorldState world = settled(300, 200, kToday);
+    core::RunFamilyExchange(on, kSpeedup, world);
+    failures += Expect(world.families.rows[0].advance_debt == 0,
+                       "#1953 (A): a family with a trudoden still to issue is not advanced");
+  }
+  {
+    core::WorldState world = settled(0, 0, kToday);
+    core::RunFamilyExchange(on, kSpeedup, world);
+    failures += Expect(world.families.rows[0].advance_debt == 0,
+                       "#1953 (A): nothing earned this year, past the grace window - no advance");
+  }
+  {
+    core::WorldState world = settled(0, 0, 3);
+    core::RunFamilyExchange(on, kSpeedup, world);
+    failures += Expect(world.families.rows[0].advance_debt > 0,
+                       "#1953 (A): nothing earned yet, inside the year's first 8 days - advanced");
+  }
+  return failures;
+}

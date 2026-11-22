@@ -59,6 +59,36 @@ bool AdvanceEligible(const AdvanceRules& rules,
   return family.formed_in_barrack == 0 || family.in_barrack != 0;
 }
 
+bool AdvanceEligibleDry(const AdvanceRules& rules,
+                        const FamilyRow& family,
+                        const HouseholdCounts& counts,
+                        SimDay day,
+                        Grams pantry_grain_eq) {
+  // A family standing since genesis (formed_day kNotFormedInPlay) IS asked: the dry families
+  // FAM1953 found are mostly those, settled and earning too little for their eaters.
+  if (rules.dry_families == 0 || rules.ceiling_days == 0 || counts.workers == 0) {
+    return false;
+  }
+  // Under one day of the family's need at home.
+  const auto one_day =
+      static_cast<Grams>(counts.need_kg_per_day * static_cast<float>(kGramsPerKilogram));
+  if (pantry_grain_eq >= one_day) {
+    return false;
+  }
+  // Paid out: no earned trudoden left for the distribution to cover.
+  if (family.trudodni_account - family.trudodni_redeemed > 0) {
+    return false;
+  }
+  // A worker who earns: a trudoden this economic year, or the year's first days (econ's grace).
+  const bool earned_this_year = family.trudodni_account >= kTrudodniScale;
+  const bool in_grace = day % kDaysPerYear < rules.dry_grace_days;
+  if (!earned_this_year && !in_grace) {
+    return false;
+  }
+  // The barrack family's other end, as AdvanceEligible's.
+  return family.formed_in_barrack == 0 || family.in_barrack != 0;
+}
+
 float GrainEquivalentPerGram(const FoodConfig& config, std::uint32_t index) {
   const float reference = config.consumption.grain_reference_kcal_per_gram;
   if (index >= config.resources.size() || !(reference > 0.0F)) {

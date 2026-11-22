@@ -45,6 +45,8 @@ class FamilyFoodTally {
  public:
   static constexpr std::uint32_t kFirstYear = 9;
   static constexpr std::uint32_t kLastYear = 16;
+  /// (A)'s grace window, AdvanceRules::dry_grace_days (food_config.h) - the same 8 days.
+  static constexpr std::uint32_t kGraceDays = 8;
 
   explicit FamilyFoodTally(const core::ITableSet& tables) {
     if (const core::ITable* const resources = tables.FindTable("resources")) {
@@ -70,6 +72,10 @@ class FamilyFoodTally {
           grain_kcal_ = std::stod(std::string(text));
         } else if (key == "ration_satiety_threshold") {
           threshold_ = std::stod(std::string(text));
+        } else if (key == "adult_from_bio_years") {
+          adult_from_ = std::stod(std::string(text));
+        } else if (key == "elderly_from_bio_years") {
+          elderly_from_ = std::stod(std::string(text));
         }
       }
     }
@@ -109,11 +115,19 @@ class FamilyFoodTally {
       const double bio_years = static_cast<double>(static_cast<std::int64_t>(day) -
                                                    static_cast<std::int64_t>(resident.birth_day)) /
                                static_cast<double>(core::kDaysPerYear) * life_speedup_;
-      able[row] += bio_years >= 16.0 ? 1U : 0U;
+      // THE ADVANCE'S WORKER (household_advance.cpp CountHousehold): from the adult norm's age
+      // to the elderly one, food.csv. The first print counted >= 16 with no upper bound and
+      // read 0 «no able member» everywhere - it measured nothing (econ, 22 Nov 2026).
+      able[row] += bio_years >= adult_from_ && bio_years < elderly_from_ ? 1U : 0U;
     }
+    double village_need = 0.0;  // the village's need of one day, kcal (V1's two weeks)
     const bool in_window = year >= kFirstYear && year <= kLastYear;
     const double need_a_member =
         adult_kg_a_year_ * 1000.0 / static_cast<double>(core::kDaysPerYear) * grain_kcal_;
+    for (std::size_t row = 0; row < families; ++row) {
+      village_need += need_a_member * members[row];
+    }
+    const bool in_grace = day % core::kDaysPerYear < kGraceDays;
     bool village_read = false;
     for (std::size_t row = 0; row < families; ++row) {
       const core::FamilyRow& family = world.families.rows[row];
@@ -135,7 +149,25 @@ class FamilyFoodTally {
       }
       const double need = need_a_member * members[row];
       ++year_.dry_family_days;
-      year_.at_line += satiety[row] / members[row] <= threshold_ ? 1U : 0U;
+      const bool at_line = satiety[row] / members[row] <= threshold_;
+      year_.at_line += at_line ? 1U : 0U;
+      // (B): the at-line days by kind of family, by (A)'s own worker test (econ's grace).
+      const bool earns = family.trudodni_account >= core::kTrudodniScale || in_grace;
+      if (at_line) {
+        if (able[row] == 0) {
+          ++year_.at_line_no_worker;
+        } else if (earns) {
+          ++year_.at_line_worker;
+        } else {
+          ++year_.at_line_worker_not_earning;
+        }
+        // V1's ground: on a day the stores hold at least two weeks of the village's need.
+        year_.at_line_store_2w += village_.store_kcal >= 14.0 * village_need ? 1U : 0U;
+      }
+      // The grace window's leak, printed: an advance given in it to a family with no
+      // trudoden this year.
+      year_.advanced_in_grace +=
+          advanced && in_grace && family.trudodni_account < core::kTrudodniScale ? 1U : 0U;
       year_.issued += issued ? 1U : 0U;
       year_.advanced += advanced ? 1U : 0U;
       year_.grew_other += grew && !issued && !advanced ? 1U : 0U;
@@ -179,6 +211,11 @@ class FamilyFoodTally {
     std::uint32_t ration_open = 0;
     std::uint32_t no_able = 0;
     std::uint32_t zero_unissued = 0;
+    std::uint32_t at_line_worker = 0;
+    std::uint32_t at_line_worker_not_earning = 0;
+    std::uint32_t at_line_no_worker = 0;
+    std::uint32_t at_line_store_2w = 0;
+    std::uint32_t advanced_in_grace = 0;
     std::vector<double> unissued_a_member;
     std::vector<double> own_share;
     std::vector<double> earned_days;
@@ -241,7 +278,13 @@ class FamilyFoodTally {
              << " | village on those days: store_food_t p10 " << At(year_.store_t, 0.1) << " p50 "
              << At(year_.store_t, 0.5) << " free_over_funds_t(upper bound) p10 "
              << At(year_.free_t, 0.1) << " p50 " << At(year_.free_t, 0.5)
-             << " | the issue is not hauled (TakeFromUnits)";
+             << " | the issue is not hauled (TakeFromUnits)"
+             << " | at_line_by_family(worker=age_" << adult_from_ << "_to_" << elderly_from_
+             << ", earns=trudoden_this_year_or_first_" << kGraceDays << "_days): worker "
+             << year_.at_line_worker << " worker_not_earning " << year_.at_line_worker_not_earning
+             << " no_worker " << year_.at_line_no_worker
+             << " | at_line_on_days_store_holds_2_weeks_of_need " << year_.at_line_store_2w
+             << " | advanced_in_grace_with_no_trudoden_this_year " << year_.advanced_in_grace;
     }
     lines_ << '\n';
     year_ = Year{};
@@ -252,6 +295,8 @@ class FamilyFoodTally {
   double grain_kcal_ = 3.3;
   double threshold_ = 40.0;
   double life_speedup_ = 4.0;
+  double adult_from_ = 16.0;    // food.csv adult_from_bio_years
+  double elderly_from_ = 60.0;  // food.csv elderly_from_bio_years
   std::map<std::uint32_t, Before> before_;
   Year year_;
   Village village_;

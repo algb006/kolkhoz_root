@@ -79,6 +79,17 @@ bool AdvanceEligible(const AdvanceRules& rules,
                      const HouseholdCounts& counts,
                      SimDay day);
 
+/// @brief #1953 (A): the advance's widened «Кому» (econ, 2026-11-22) - any family, settled
+///        at genesis or formed in play, with a worker (counts.workers), under one day of its
+///        need at home (`pantry_grain_eq`, grams of grain equivalent), its trudodni paid out
+///        (account - redeemed <= 0), and earning: a trudoden this economic year, or the
+///        year's first `dry_grace_days`. False while AdvanceRules::dry_families is 0.
+bool AdvanceEligibleDry(const AdvanceRules& rules,
+                        const FamilyRow& family,
+                        const HouseholdCounts& counts,
+                        SimDay day,
+                        Grams pantry_grain_eq);
+
 /// @brief Grams of GRAIN EQUIVALENT one gram of roster position `index` is
 ///        (kcal per gram over the reference grain's); 0 for what is no food.
 float GrainEquivalentPerGram(const FoodConfig& config, std::uint32_t index);

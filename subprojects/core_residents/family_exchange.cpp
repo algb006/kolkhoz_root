@@ -636,12 +636,17 @@ void RunHouseholdAdvance(const FoodConfig& config,
   // IN ID ORDER (#1347): the free remainder shrinks household by household.
   for (const std::uint32_t row : RowsById(current.families)) {
     FamilyRow& family = current.families.rows[row];
-    if (family.formed_day == kNotFormedInPlay) {
+    // The newcomer's advance asks only families formed in play; #1953 (A)'s widened «Кому»
+    // asks every family, the genesis ones too (AdvanceEligibleDry), and only while it is on.
+    if (family.formed_day == kNotFormedInPlay && config.advance.dry_families == 0) {
       continue;
     }
     const HouseholdCounts counts =
         CountHousehold(config, life_speedup, current, current.families.row_ids[row], day);
-    if (!AdvanceEligible(config.advance, family, counts, day)) {
+    const bool newcomer = AdvanceEligible(config.advance, family, counts, day);
+    if (!newcomer &&
+        !AdvanceEligibleDry(
+            config.advance, family, counts, day, PantryGrainEquivalent(config, family.pantry))) {
       continue;
     }
     const Grams top_up = AdvanceTopUp(
@@ -681,6 +686,12 @@ void RunHouseholdAdvance(const FoodConfig& config,
       AddLedgerAmount(current.ledger.current.advance, resource, given);
       given_eq += static_cast<Grams>(static_cast<double>(given) *
                                      static_cast<double>(GrainEquivalentPerGram(config, index)));
+    }
+    // A DRY ADVANCE OPENS A NEW LOAN'S YEAR COUNT (#1953 (A)): its write-off at the
+    // `write_off_turns`-th year-end counts from this loan, not from the family's forming - a
+    // genesis family's count would otherwise be years old the day it was first advanced.
+    if (!newcomer && family.advance_debt == 0 && given_eq > 0) {
+      family.advance_turns = 0;
     }
     family.advance_debt += given_eq;
     family.advance_given += given_eq;
@@ -851,7 +862,8 @@ std::vector<Grams> SealedFunds(const FoodConfig& config, const WorldState& world
 void WriteOffOldAdvances(const AdvanceRules& rules, WorldState& current) {
   for (std::uint32_t row = 0; row < current.families.rows.size(); ++row) {
     FamilyRow& family = current.families.rows[row];
-    if (family.formed_day == kNotFormedInPlay) {
+    // A genesis family is counted only while #1953 (A) can lend to it.
+    if (family.formed_day == kNotFormedInPlay && rules.dry_families == 0) {
       continue;
     }
     if (family.advance_turns < 255U) {
