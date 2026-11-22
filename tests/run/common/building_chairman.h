@@ -33,6 +33,7 @@
 #include "fallow_policy.h"
 #include "family_food_tally.h"
 #include "felling_policy.h"
+#include "field_work_tally.h"
 #include "fixture_policy.h"
 #include "funeral_policy.h"
 #include "hay_arm_policy.h"
@@ -101,6 +102,7 @@ class BuildingChairman {
         houses_first(tables),
         dry_pantry(tables),
         family_food(tables),
+        field_work(tables),
         plan_over(tables),
         sport_talk(tables),
         distiller(tables),
@@ -577,6 +579,8 @@ class BuildingChairman {
   DryPantryTally dry_pantry;
   /// #1953's print: on a dry family-day, what the family got and the issue's ceiling for it.
   FamilyFoodTally family_food;
+  /// #2264's print: M1-M4 of the field-work coordinator, y1-y3 (field_work_tally.h).
+  FieldWorkTally field_work;
   /// #589's print: the clerk's post and his family's satiety (clerk_tally.h).
   ClerkTally clerk;
   /// #1897's ride-along: the rating's year by cause (reputation_tally.h).
