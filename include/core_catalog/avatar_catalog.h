@@ -126,6 +126,11 @@ struct AvatarDef {
   /// The same visit received plainly (the chairman's choice, or a free stock that cannot pay):
   /// this change of reputation, ≤ 0 (−2). Read only with district_table_days > 0.
   float district_plain_reputation = 0.0F;
+
+  /// The plain reception's penalty applies only while the free stock covers at least this
+  /// many days of the village's need (econ, boss 23 Nov 2026, avatars.md §7а: «скромно, когда
+  /// закрома пусты, — не обида»); below it a plain reception costs nothing. 0: no condition.
+  float district_plain_min_free_days = 0.0F;
 };
 
 /// @brief Reads tables/avatars.csv into `avatars`, row order = AvatarId.

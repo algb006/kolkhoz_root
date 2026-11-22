@@ -10978,6 +10978,16 @@ int CheckTheDistrictTable() {
   failures += Expect(short_of.units.rows[0].stock[0] == 100 * kKilo &&
                          short_of.chairman.raikom_reputation == 48.0F,
                      "district table: a free stock under a day's need cannot pay - plainly, −2");
+  // THE PENALTY ONLY WITH FULL BARNS (econ, boss 23 Nov 2026): with a 14-day condition, a
+  // plain reception at 0.5 days of free stock costs nothing; at 20 days the −2 stands.
+  config.avatars[1].district_plain_min_free_days = 14.0F;
+  const core::WorldState low = visit(1, 1);  // 5 kg free = 0.5 days of need, received plainly
+  free_grams = 200 * kKilo;                  // 20 days of need
+  const core::WorldState full = visit(1, 1);
+  failures +=
+      Expect(low.chairman.raikom_reputation == 50.0F && full.chairman.raikom_reputation == 48.0F,
+             "district table: plain costs nothing under 14 days of free stock, −2 above");
+  config.avatars[1].district_plain_min_free_days = 0.0F;
   free_grams = 50 * kKilo;
   const core::WorldState other = visit(0, 0);
   failures += Expect(other.units.rows[0].stock[0] == 100 * kKilo &&

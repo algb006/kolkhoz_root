@@ -652,6 +652,8 @@ bool g_hay_hand_over_off = false;
 /// arms, econ-boss-1427-avatar-gates [1]); empty, the canon: no avatar. An
 /// avatar's paths move the village, so its run is an arm, not the canon.
 std::string g_avatar_key;
+/// `--district-table=plain`: the «Стол для района» policy receives plainly at every visit.
+bool g_district_table_plain = false;
 
 /// `--walkers=N`: at most N villages walk at once (7 Nov 2026: the job's
 /// booked threads). Until then every seed walked at once, whatever was booked.
@@ -892,6 +894,7 @@ bool Walk(std::uint64_t seed,
   // a village leaving in its first winters — 36 at year 7, nobody at 14.
   run::BuildingChairman builder(*world.tables);
   builder.district_table.SetAvatar(*world.tables, g_avatar_key);  // «Стол для района»
+  builder.district_table.SetAlwaysPlain(g_district_table_plain);
   if (g_no_planting) {
     builder.planting.Disable();
   }
@@ -1885,6 +1888,8 @@ int main(int argc, char** argv) {
           std::string(argument.substr(std::string_view("--anticrime-from-year=").size()))));
     } else if (argument == "--no-anticrime") {
       g_no_anticrime = true;
+    } else if (argument == "--district-table=plain") {
+      g_district_table_plain = true;  // the plain penalty's one measurement (boss, 23 Nov)
     } else if (argument.starts_with("--avatar=")) {
       g_avatar_key = std::string(argument.substr(std::string_view("--avatar=").size()));
     } else if (argument == "--roof-exemption=old") {

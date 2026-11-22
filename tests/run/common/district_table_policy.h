@@ -58,7 +58,9 @@ class DistrictTablePolicy {
     }
     const core::WorldState& world = simulation.CompletedState();
     days_today_ = free.days;  // the free stock TABLE1953 bins the next visits by
-    const std::uint8_t want_declined = free.days < kPlainBelowDays ? 1 : 0;
+    // The penalty's one measurement (boss, 23 Nov 2026): an arm that receives plainly at every
+    // visit, whatever the barns hold.
+    const std::uint8_t want_declined = always_plain_ || free.days < kPlainBelowDays ? 1 : 0;
     if (want_declined == world.chairman.district_table_declined) {
       return;
     }
@@ -101,6 +103,9 @@ class DistrictTablePolicy {
     }
   }
 
+  /// @brief The penalty arm (population_curve --district-table=plain): plain at every visit.
+  void SetAlwaysPlain(bool on) { always_plain_ = on; }
+
  private:
   struct Visits {
     std::array<std::uint32_t, 3> table{};
@@ -108,6 +113,7 @@ class DistrictTablePolicy {
   };
 
   bool enabled_ = false;
+  bool always_plain_ = false;
   float days_today_ = 0.0F;
   std::map<std::uint32_t, Visits> by_year_;
 };

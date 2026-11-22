@@ -206,8 +206,10 @@ void ReceiveDistrictVisitTable(const ProductionConfig& config, WorldState& curre
   }
   YearLedger& book = current.ledger.current;
   Grams taken_eq = 0;
+  // Read once, before the choice: the table takes off it, and the plain reception's penalty
+  // asks it (district_plain_min_free_days).
+  const FreeStockView free = config.free_stock ? config.free_stock(current) : FreeStockView{};
   if (current.chairman.district_table_declined == 0 && config.free_stock) {
-    const FreeStockView free = config.free_stock(current);
     const double cost =
         static_cast<double>(avatar.district_table_days) * static_cast<double>(free.day_need_grams);
     if (free.measured && cost > 0.0 && static_cast<double>(free.free_grain_eq_grams) >= cost) {
@@ -240,7 +242,13 @@ void ReceiveDistrictVisitTable(const ProductionConfig& config, WorldState& curre
   } else {
     ++book.district_plain_visits;
   }
-  StepReputationForDistrictTable(config, current, with_table, avatar.district_plain_reputation);
+  // THE PLAIN RECEPTION IS NO OFFENCE WHEN THE BARNS ARE LOW (econ, boss 23 Nov 2026): its
+  // penalty only while the free stock covers district_plain_min_free_days; an unmeasured free
+  // stock counts as low, so it costs nothing either.
+  const bool penalised = avatar.district_plain_min_free_days <= 0.0F ||
+                         (free.measured && free.days >= avatar.district_plain_min_free_days);
+  StepReputationForDistrictTable(
+      config, current, with_table, penalised ? avatar.district_plain_reputation : 0.0F);
   SimEvent& event = EmitEvent(current, EventKind::kDistrictTable, EventSeverity::kNotable);
   event.amount = taken_eq;
 }

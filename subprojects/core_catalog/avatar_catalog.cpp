@@ -229,6 +229,12 @@ bool ReadAvatars(const ITableSet& tables, std::vector<AvatarDef>& avatars, std::
                     "district_plain_reputation",
                     Range{.low = -100.0F, .high = 0.0F},
                     avatar.district_plain_reputation,
+                    error) ||
+        !ReadFactor(*table,
+                    row,
+                    "district_plain_min_free_days",
+                    Range{.low = 0.0F, .high = 365.0F},
+                    avatar.district_plain_min_free_days,
                     error)) {
       return false;
     }
