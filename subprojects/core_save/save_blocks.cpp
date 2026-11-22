@@ -701,6 +701,8 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteU8(static_cast<std::uint8_t>(world.clerk.vacancy));
   out.WriteU32(world.clerk.vacant_since_day);
   out.WriteU32(world.clerk.last_clerk.value);
+  out.WriteU8(static_cast<std::uint8_t>(world.clerk.filled_by));  // save 226
+  out.WriteU8(world.clerk.written_order_pending);
   // The salt watch (#1630 (C), save 209).
   out.WriteU16(world.salt.half_on_edge_days);
   out.WriteU8(world.salt.ending_raised);
@@ -1076,6 +1078,12 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
       0, static_cast<std::uint8_t>(ClerkVacancy::kUnitGone), "the clerk's vacancy"));
   world->clerk.vacant_since_day = in.ReadU32();
   world->clerk.last_clerk = ResidentId{in.ReadU32()};
+  world->clerk.filled_by = static_cast<ClerkFilledBy>(source.ReadEnumValue(
+      0,
+      static_cast<std::uint8_t>(static_cast<std::uint8_t>(ClerkFilledBy::kClerkFilledByCount) - 1U),
+      "clerk filled by"));  // save 226
+  world->clerk.written_order_pending =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "clerk written order pending"));
   world->salt.half_on_edge_days = in.ReadU16();  // save 209 (#1630 (C))
   world->salt.ending_raised =
       static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "the salt ending raised"));

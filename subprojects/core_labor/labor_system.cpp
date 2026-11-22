@@ -796,6 +796,11 @@ class LaborSystem final : public ILaborSystem {
       const ResidentId holder = current.residents.row_ids[row];
       if (record.vacancy != ClerkVacancy::kInPost || record.last_clerk.value != holder.value) {
         record.since_day = current.calendar.day;
+        // A new holder not put in by the first morning (which writes kInPost itself): by the
+        // order the core wrote for the chairman, or by his own.
+        record.filled_by = record.written_order_pending != 0 ? ClerkFilledBy::kOrderWrittenForHim
+                                                             : ClerkFilledBy::kChairmanOrder;
+        record.written_order_pending = 0;
       }
       record.vacancy = ClerkVacancy::kInPost;
       record.last_clerk = holder;
@@ -880,6 +885,7 @@ class LaborSystem final : public ILaborSystem {
       current.clerk.vacancy = ClerkVacancy::kInPost;
       current.clerk.since_day = current.calendar.day;
       current.clerk.last_clerk = first.front().resident;
+      current.clerk.filled_by = ClerkFilledBy::kAutomatic;
       SimEvent& event = EmitEvent(current, EventKind::kAppointed, EventSeverity::kNotable);
       event.resident = first.front().resident;
       event.unit = unit;
@@ -898,6 +904,7 @@ class LaborSystem final : public ILaborSystem {
     order.profession = config_.timekeeper_post;
     order.status = OrderStatus::kPending;  // read and accepted by ReadPostOrders this tick
     AppendRow(current.orders, order);
+    current.clerk.written_order_pending = 1;  // its holder reads kOrderWrittenForHim
   }
 
   ClerkPostView ClerkPostOf(const WorldState& state) const override {
@@ -908,6 +915,7 @@ class LaborSystem final : public ILaborSystem {
     view.measured = true;
     view.vacancy = state.clerk.vacancy;
     view.since_day = state.clerk.since_day;
+    view.filled_by = state.clerk.filled_by;
     view.vacant_since_day = state.clerk.vacant_since_day;
     const std::uint32_t row = ClerkRow(state);
     if (row != kNoRow) {

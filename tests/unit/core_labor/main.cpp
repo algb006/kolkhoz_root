@@ -2127,8 +2127,9 @@ int TestTheClerkPost() {
   core::ClerkPostView post = labor->ClerkPostOf(world);
   failures += Expect(post.measured && post.vacancy == core::ClerkVacancy::kInPost &&
                          post.clerk.value == elder.value && post.unit.value == church_id.value &&
-                         post.since_day == 0,
-                     "clerk: the first morning puts the first candidate on the post");
+                         post.since_day == 0 && post.filled_by == core::ClerkFilledBy::kAutomatic,
+                     "clerk: the first morning puts the first candidate on the post (the core's "
+                     "own, not an order)");
 
   core::OrderRow dismiss;
   dismiss.kind = core::OrderKind::kDismiss;
@@ -2180,10 +2181,11 @@ int TestTheClerkPost() {
   failures += Expect(!ordered_early, "clerk: days 5 and 6 stand without an order");
   day.RunDay(*labor, 7);
   post = labor->ClerkPostOf(world);
-  failures += Expect(post.vacancy == core::ClerkVacancy::kInPost &&
-                         post.clerk.value == elder.value && post.since_day == 7,
-                     "clerk: the 3rd morning's order puts the first candidate on the post by the "
-                     "day's close");
+  failures +=
+      Expect(post.vacancy == core::ClerkVacancy::kInPost && post.clerk.value == elder.value &&
+                 post.since_day == 7 && post.filled_by == core::ClerkFilledBy::kOrderWrittenForHim,
+             "clerk: the 3rd morning's order puts the first candidate on the post by the "
+             "day's close, and the post says the order was written for the chairman");
   return failures;
 }
 

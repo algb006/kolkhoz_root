@@ -18,6 +18,14 @@
 
 namespace core {
 
+/// @brief Who put the clerk in the post (save 226). Stored: append only.
+enum class ClerkFilledBy : std::uint8_t {
+  kAutomatic = 0,       ///< The first morning's appointment, the core's own (UpkeepClerkMorning)
+  kChairmanOrder,       ///< The chairman's own kAppoint
+  kOrderWrittenForHim,  ///< The 3rd morning's kAppoint the core wrote for him on a vacancy
+  kClerkFilledByCount,  ///< NOT A VALUE: the count, for codecs and mirrors
+};
+
 /// @brief Why the post stands empty, or that it does not.
 enum class ClerkVacancy : std::uint8_t {
   kInPost = 0,      ///< A clerk holds the post.
@@ -38,6 +46,13 @@ struct ClerkRecord {
   /// The holder last seen in post - so a vacancy can tell «died» from «left» when his row
   /// is already gone.
   ResidentId last_clerk;
+  /// WHO PUT THE HOLDER IN THE POST (save 226; game's office point 2 «учётчик назначен»: the
+  /// done kAppoint is removed in its step, so the fact has to live here). Written the step he
+  /// is first seen in post; kept while he holds it.
+  ClerkFilledBy filled_by = ClerkFilledBy::kAutomatic;
+  /// 1 between the 3rd morning's order written for the chairman and the step its holder is
+  /// seen in post, so that holder reads kOrderWrittenForHim, not the chairman's own order.
+  std::uint8_t written_order_pending = 0;
 };
 
 /// @brief The post today.
@@ -53,6 +68,10 @@ struct ClerkPostView {
 
   /// The day the holder took the post.
   SimDay since_day = 0;
+
+  /// Who put him there (ClerkRecord::filled_by): the office's «назначен председателем, день
+  /// since_day» is kChairmanOrder. Meaningful only while in post.
+  ClerkFilledBy filled_by = ClerkFilledBy::kAutomatic;
 
   ClerkVacancy vacancy = ClerkVacancy::kNeverAppointed;
 

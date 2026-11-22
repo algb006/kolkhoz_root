@@ -1739,6 +1739,9 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"clerk.vacancy", U8(static_cast<std::uint8_t>(world.clerk.vacancy))});
   chunks.push_back({"clerk.vacant_since_day", U32(world.clerk.vacant_since_day)});
   chunks.push_back({"clerk.last_clerk", U32(world.clerk.last_clerk.value)});
+  chunks.push_back(
+      {"clerk.filled_by", U8(static_cast<std::uint8_t>(world.clerk.filled_by))});  // save 226
+  chunks.push_back({"clerk.written_order_pending", U8(world.clerk.written_order_pending)});
   // The salt watch (#1630 (C), save 209).
   chunks.push_back({"salt.half_on_edge_days", U16(world.salt.half_on_edge_days)});
   chunks.push_back({"salt.ending_raised", U8(world.salt.ending_raised)});
@@ -2166,7 +2169,9 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // predicted 1535 -> 1536 before the build, held; the hash read off u1943c.
     // Save 225 («Стол для района»): the chairman's district_table_declined, +1 - predicted
     // 1536 -> 1537 before the build, held; the hash read off utbl.
-    {"world", 1537, 0x2dd7abe2b2c5e89eULL},
+    // Save 226: the clerk's filled_by and written_order_pending, two bytes - predicted
+    // 1537 -> 1539 before the build; the hash to read off the units.
+    {"world", 1539, 0x2dd7abe2b2c5e89eULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
