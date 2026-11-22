@@ -63,6 +63,10 @@ struct BoundaryConfig {
   /// PlotRules), for ISession::FreePlotFor. Empty in a table-less world.
   std::vector<float> keep_out_radius_m;
   std::vector<std::uint8_t> yields_place;
+
+  /// crops.csv `sowing_norm_kg_per_ha` by CropId, for FieldWorkView's seed-on-field STUB
+  /// (#2003). Empty in a table-less world; a crop past its end needs no seed.
+  std::vector<float> sowing_norm_kg_per_ha;
 };
 
 /// @brief Reads the knobs out of `tables`.

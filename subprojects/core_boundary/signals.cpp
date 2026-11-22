@@ -196,6 +196,47 @@ FieldSignals DeriveFieldSignals(const WorldState& world, FieldId field) {
   return signals;
 }
 
+FieldWorkView DeriveFieldWork(const BoundaryConfig& config,
+                              const WorldState& world,
+                              FieldId field) {
+  FieldWorkView view;
+  const std::uint32_t row = FindRow(world.fields, field);
+  if (row == kNoRow) {
+    return view;
+  }
+  const FieldRow& land = world.fields.rows[row];
+  view.measured = true;
+  view.field = field;
+  view.phase = land.phase;
+  view.crop = land.crop;
+  view.harvest_laid_share = land.harvest_laid_share;
+  view.harvest_work_days = land.harvest_work_days;
+  view.harvest_laid_grams = land.harvest_laid_grams;
+  view.heap_grams = land.reaped_grams;
+  view.heap_resource = land.reaped_resource;
+  if (land.phase == FieldPhase::kSowing && land.sowing_work_days > 0.0F) {
+    view.sowing_work_days = land.sowing_work_days;
+    const float left = std::clamp(land.work_days_remaining, 0.0F, land.sowing_work_days);
+    view.sowing_done_share = 1.0F - (left / land.sowing_work_days);
+    // STUB (field_work_view.h): no seed stock on the field in the core; the estimate of what
+    // the sowers have put in. Returns to a stock with a seed haul.
+    const float norm = land.crop.value < config.sowing_norm_kg_per_ha.size()
+                           ? config.sowing_norm_kg_per_ha[land.crop.value]
+                           : 0.0F;
+    view.seed_on_field_grams = static_cast<Grams>(std::llround(
+        static_cast<double>(land.area_ga) * static_cast<double>(norm) *
+        static_cast<double>(view.sowing_done_share) * static_cast<double>(kGramsPerKilogram)));
+  }
+  // The same hands DeriveFieldSignals counts: one predicate, so the two doors cannot disagree.
+  for (std::size_t index = 0; index < world.residents.rows.size(); ++index) {
+    const WorkAssignment& work = world.residents.rows[index].work;
+    if (IsFieldWork(work.kind) && work.field.value == field.value) {
+      view.residents.push_back(world.residents.row_ids[index]);
+    }
+  }
+  return view;
+}
+
 ResidentWhereabouts DeriveWhereabouts(const BoundaryConfig& config,
                                       const WorldState& world,
                                       ResidentId resident) {

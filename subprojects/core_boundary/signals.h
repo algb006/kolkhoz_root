@@ -44,6 +44,11 @@ UnitSignals DeriveUnitSignals(const BoundaryConfig& config, const WorldState& wo
 /// @brief The living signals of one field, derived from `world` now.
 FieldSignals DeriveFieldSignals(const WorldState& world, FieldId field);
 
+/// @brief ISession::FieldWorkOf's view of `field` (field_work_view.h; #2003): copied off the
+///        field's row, its hands found by the same predicate DeriveFieldSignals counts with, the
+///        seed on the field a STUB (area x the crop's norm x the sowing's done share).
+FieldWorkView DeriveFieldWork(const BoundaryConfig& config, const WorldState& world, FieldId field);
+
 /// @brief Where a resident is, derived from `world` now.
 /// @note STUB while the labor model records no departure and arrival: at home
 /// outside the solar window, at his assignment's place inside it, never on
