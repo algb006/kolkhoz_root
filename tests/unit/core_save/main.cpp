@@ -1580,6 +1580,8 @@ std::vector<Chunk> ExpectedWorldBlock(const core::WorldState& world) {
   chunks.push_back({"rng.stream", U64(world.rng.stream)});
 
   chunks.push_back({"chairman.raikom_reputation", F32(world.chairman.raikom_reputation)});
+  chunks.push_back(
+      {"chairman.district_table_declined", U8(world.chairman.district_table_declined)});  // 225
   chunks.push_back({"chairman.authority", F32(world.chairman.authority)});
   chunks.push_back({"chairman.shadow_reputation", F32(world.chairman.shadow_reputation)});
   chunks.push_back({"chairman.horses_stabled", U8(world.chairman.horses_stabled)});
@@ -2163,8 +2165,8 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // Save 221 (#1943 R1″): +1 - the audit's clean_in_a_row (u8) after remark_withdrawn_day;
     // predicted 1535 -> 1536 before the build, held; the hash read off u1943c.
     // Save 225 («Стол для района»): the chairman's district_table_declined, +1 - predicted
-    // 1536 -> 1537 before the build; the hash to read off the units.
-    {"world", 1537, 0xfca28ef9ad96971eULL},
+    // 1536 -> 1537 before the build, held; the hash read off utbl.
+    {"world", 1537, 0x2dd7abe2b2c5e89eULL},
     // 2026-09-17, save 51: +8 bytes — four for each of the two residents, the
     // personal cleanliness that the filth disease is read off (health design
     // §3). Both ResidentRow tripwires fired on it, the size and the arity:
@@ -2467,7 +2469,9 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // read off u1778a (the last kind is now kAssignDayWork).
     // Save 214 (#1818): horses, a u16 an order, six orders - predicted 830 -> 842 before the
     // build, held, every other section unmoved; the hash read off u1818b.
-    {"orders", 842, 0x12921de5955e3d24ULL},
+    // Save 225: same length, new hash - the fixture's «last order kind» is now
+    // kSetDistrictTable; the hash read off utbl.
+    {"orders", 842, 0x218da82a9f7514ebULL},
     // Save 82: the fixture's first stand, a birch planting — 8 -> 67 (its id
     // 4, the old fields 41, species 2, hectares 4, two days 8); predicted,
     // held.
@@ -2725,8 +2729,8 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // Save 224: herd_care_by_yards and yard_herd_share_today struck (#1442), -8 a book, two
     // books - predicted 4070 -> 4054 before the build, held; the hash read off ufarm.
     // Save 225: the table's grams (i64) and plain visits (u16), +10 a book, two books -
-    // predicted 4054 -> 4074 before the build; the hash to read off the units.
-    {"ledger", 4074, 0xf2f348222d777e89ULL},
+    // predicted 4054 -> 4074 before the build, held; the hash read off utbl.
+    {"ledger", 4074, 0x5bda623361213a01ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 
