@@ -10,9 +10,15 @@
 #ifndef TESTS_RUN_COMMON_DISTRICT_TABLE_POLICY_H_
 #define TESTS_RUN_COMMON_DISTRICT_TABLE_POLICY_H_
 
+#include <array>
+#include <cstdint>
+#include <map>
+#include <ostream>
 #include <span>
 #include <string_view>
 
+#include "core_common/calendar.h"
+#include "core_common/district_visit_state.h"
 #include "core_common/free_stock_view.h"
 #include "core_common/order_state.h"
 #include "core_common/world_state.h"
@@ -42,7 +48,7 @@ class DistrictTablePolicy {
     }
   }
 
-  void RunDay(core::ISimulation& simulation) const {
+  void RunDay(core::ISimulation& simulation) {
     if (!enabled_) {
       return;
     }
@@ -52,6 +58,17 @@ class DistrictTablePolicy {
     }
     const core::WorldState& world = simulation.CompletedState();
     const std::uint8_t want_declined = free.days < kPlainBelowDays ? 1 : 0;
+    // TABLE1953's row (econ's gate): a visit arriving today is received by the choice standing
+    // now, against today's free stock in days.
+    for (const core::DistrictVisitRow& visit : world.district_visits.rows) {
+      if (visit.arrive_day == world.calendar.day) {
+        const std::uint32_t year = (world.calendar.day / core::kDaysPerYear) + 1U;
+        Visits& row = by_year_[year];
+        const bool plain = world.chairman.district_table_declined != 0;
+        const std::size_t bin = free.days < 14.0F ? 0 : (free.days < 28.0F ? 1 : 2);
+        ++(plain ? row.plain : row.table)[bin];
+      }
+    }
     if (want_declined == world.chairman.district_table_declined) {
       return;
     }
@@ -61,8 +78,28 @@ class DistrictTablePolicy {
     simulation.StageOrders(std::span<const core::OrderRow>(&order, 1), {});
   }
 
+  /// @brief TABLE1953: by year, the visits received with a table and plainly, by the free
+  ///        stock's days at arrival (< 14, 14-28, >= 28). Nothing when the path is off.
+  void Print(std::ostream& out, std::uint64_t seed) const {
+    if (!enabled_) {
+      return;
+    }
+    for (const auto& [year, row] : by_year_) {
+      out << "population_curve: TABLE1953 seed " << seed << " year " << year
+          << " ground=choice_standing_at_arrival_vs_free_stock_days(lt14,14to28,ge28) table "
+          << row.table[0] << ' ' << row.table[1] << ' ' << row.table[2] << " plain " << row.plain[0]
+          << ' ' << row.plain[1] << ' ' << row.plain[2] << '\n';
+    }
+  }
+
  private:
+  struct Visits {
+    std::array<std::uint32_t, 3> table{};
+    std::array<std::uint32_t, 3> plain{};
+  };
+
   bool enabled_ = false;
+  std::map<std::uint32_t, Visits> by_year_;
 };
 
 }  // namespace run

@@ -43,6 +43,7 @@
 #include "houses_first_policy.h"
 #include "insulation_policy.h"
 #include "limit_policy.h"
+#include "low_earners_tally.h"
 #include "milkmaid_policy.h"
 #include "night_pasture_policy.h"
 #include "office_policy.h"
@@ -103,6 +104,7 @@ class BuildingChairman {
         houses_first(tables),
         dry_pantry(tables),
         family_food(tables),
+        low_earners(tables),
         field_work(tables),
         plan_over(tables),
         sport_talk(tables),
@@ -386,12 +388,13 @@ class BuildingChairman {
     // #1677: house sites raised in the queue while a couple waits (the tally
     // counts every day; it orders only with its arm on).
     houses_first.RunDay(simulation);
-    dry_pantry.CountDay(simulation.CompletedState());  // #1922's print
-    district_table.RunDay(simulation);                 // «Стол для района» (its avatar only)
-    family_food.CountDay(simulation);                  // #1953's FAM1953
-    clerk.CountDay(simulation);                        // #589's print
-    reputation.CountDay(simulation.CompletedState());  // #1897's REP1897
-    plan_over.CountDay(simulation.CompletedState());   // #1946's OVER1946
+    dry_pantry.CountDay(simulation.CompletedState());   // #1922's print
+    district_table.RunDay(simulation);                  // «Стол для района» (its avatar only)
+    family_food.CountDay(simulation);                   // #1953's FAM1953
+    low_earners.CountDay(simulation.CompletedState());  // #1953's LOW1953
+    clerk.CountDay(simulation);                         // #589's print
+    reputation.CountDay(simulation.CompletedState());   // #1897's REP1897
+    plan_over.CountDay(simulation.CompletedState());    // #1946's OVER1946
     // The season's talk to the drinker (#1238; sport_talk_policy.h).
     if (sport_talk_on) {
       sport_talk.RunDay(simulation);
@@ -583,6 +586,8 @@ class BuildingChairman {
   FamilyFoodTally family_food;
   /// «Стол для района»: plain under two weeks of free stock, a table otherwise (its avatar only).
   DistrictTablePolicy district_table;
+  /// #1953's low-earners print: why the at-line families' workers are not placed.
+  LowEarnersTally low_earners;
   /// #2264's print: M1-M4 of the field-work coordinator, y1-y3 (field_work_tally.h).
   FieldWorkTally field_work;
   /// #589's print: the clerk's post and his family's satiety (clerk_tally.h).
