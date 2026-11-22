@@ -351,6 +351,10 @@ std::uint32_t SupplyMonthTag(SimDay day) {
 }
 
 double SamogonAskedMl(const NightTradeConfig& config, float alcoholism) {
+  // STUB (alcoholism by dose, econ §A.3; boss 22 Nov 2026): «the drinker takes his litres of any
+  // legal drink, the abuser only strong» cannot fire while samogon is the only drink - every
+  // band asks samogon. RETURNS with a second drink in the tables (its strength a row, and a
+  // demand split here by band).
   // The design's bands read 21–40 and 41–60, so an edge belongs to the lower one.
   constexpr float kBandWidth = 20.0F;
   constexpr double kMillilitres = 1000.0;

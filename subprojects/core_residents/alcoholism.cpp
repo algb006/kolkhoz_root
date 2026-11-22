@@ -20,7 +20,7 @@ namespace core {
 namespace {
 
 /// The world_params.csv keys, in the order of the knob list in the parse.
-constexpr std::array<std::string_view, 30> kAlcoholismWorldParamKeys = {
+constexpr std::array<std::string_view, 35> kAlcoholismWorldParamKeys = {
     "alcohol_adult_from_years",
     "alcohol_gain_with_distiller",
     "alcohol_gain_winter_idle",
@@ -52,7 +52,13 @@ constexpr std::array<std::string_view, 30> kAlcoholismWorldParamKeys = {
     "alcohol_start_idle_min",
     "alcohol_start_idle_max",
     "alcohol_start_idle_age",
-    "alcohol_start_sick_health"};
+    "alcohol_start_sick_health",
+    // Alcoholism by dose (AlcoholismConfig; all 0 = today's rule).
+    "alcohol_dose_k",
+    "alcohol_dose_floor_ml",
+    "alcohol_dose_gain_cap",
+    "alcohol_samogon_strength",
+    "alcohol_dose_exposure"};
 
 /// Past this the inheritance factor is a typo: more than the father's own
 /// excess, ten times over.
@@ -271,9 +277,29 @@ float MonthChange(const AlcoholismConfig& config,
                   bool sober_yard,
                   bool winter,
                   float field_loss,
-                  float sportiness_loss) {
+                  float sportiness_loss,
+                  std::uint32_t drunk_ml,
+                  double drinks_month_ml) {
   const bool holds_post = person.post.profession.value != kInvalidDefIdValue;
   float change = samogon_at_yard ? config.gain_with_distiller : 0.0F;
+  // BY DOSE (AlcoholismConfig::dose_k > 0): the month's pure alcohol, not the yard's distiller.
+  if (config.dose_k > 0.0F) {
+    const double pure_ml =
+        static_cast<double>(drunk_ml) * static_cast<double>(config.samogon_strength);
+    const double above = std::max(0.0, pure_ml - static_cast<double>(config.dose_floor_ml));
+    double gain = static_cast<double>(config.dose_k) * above / kMillilitresPerLitre;
+    // K3's exposure: a man in a supplied yard who drank less than a «drinks» month keeps the
+    // rest of today's gain - the yard's samogon still reaches him.
+    const double month_pure = drinks_month_ml * static_cast<double>(config.samogon_strength);
+    if (config.dose_exposure != 0.0F && samogon_at_yard && month_pure > 0.0 &&
+        pure_ml < month_pure) {
+      gain += static_cast<double>(config.gain_with_distiller) * (1.0 - pure_ml / month_pure);
+    }
+    if (config.dose_gain_cap > 0.0F) {
+      gain = std::min(gain, static_cast<double>(config.dose_gain_cap));
+    }
+    change = static_cast<float>(gain);
+  }
   // THE SPORTS FIELD AND SPORTINESS (sport.h; register 223; question 225):
   // −1 to a man who went to the field in a counted month, and −1 more once
   // his sportiness has reached `sober_from` — «спорт стал его».
@@ -378,6 +404,17 @@ bool ParseAlcoholismConfig(const ITableSet& tables, AlcoholismConfig& config, st
        .value = &config.start.idle_age,
        .range = {.low = 0.0F, .high = kOldestYears}},
       {.key = kAlcoholismWorldParamKeys[29], .value = &config.start.sick_health, .range = points},
+      {.key = kAlcoholismWorldParamKeys[30], .value = &config.dose_k, .range = points},
+      {.key = kAlcoholismWorldParamKeys[31],
+       .value = &config.dose_floor_ml,
+       .range = {.low = 0.0F, .high = 100000.0F}},
+      {.key = kAlcoholismWorldParamKeys[32], .value = &config.dose_gain_cap, .range = points},
+      {.key = kAlcoholismWorldParamKeys[33],
+       .value = &config.samogon_strength,
+       .range = {.low = 0.0F, .high = 1.0F}},
+      {.key = kAlcoholismWorldParamKeys[34],
+       .value = &config.dose_exposure,
+       .range = {.low = 0.0F, .high = 1.0F}},
   }};
   if (!ReadKnobs(*world, "world_params", knobs, error)) {
     return false;
@@ -476,14 +513,17 @@ void TurnAlcoholismMonth(const AlcoholismConfig& config,
       if (got_ml > 0 && before > config.samogon_mood_above && before <= config.samogon_mood_to) {
         person.mood = std::min(person.mood + config.samogon_mood, kMetricMax);
       }
-      const float change = MonthChange(config,
-                                       current,
-                                       person,
-                                       distiller != kNoRow,
-                                       sober_yard,
-                                       winter && !hut_reached,
-                                       field_loss,
-                                       sportiness_loss);
+      const float change =
+          MonthChange(config,
+                      current,
+                      person,
+                      distiller != kNoRow,
+                      sober_yard,
+                      winter && !hut_reached,
+                      field_loss,
+                      sportiness_loss,
+                      got_ml,
+                      static_cast<double>(night.litres_month_drinks) * kMillilitresPerLitre);
       // ON TOP OF THE MONTH'S RULES (#1262): no distiller, no theft needed.
       const float raised = strada_rise + (family != kNoRow ? family_rise[family] : 0.0F);
       person.alcoholism = std::clamp(before + change + raised, kMetricMin, config.epoch1_cap);

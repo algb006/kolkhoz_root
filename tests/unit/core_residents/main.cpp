@@ -4657,6 +4657,45 @@ int CheckSamogonPurchase() {
   world.calendar.tick = static_cast<core::Tick>(kJanuaryFirst) * core::kTicksPerDay;
   core::RefreshCalendarCaches(world.calendar);
 
+  // ALCOHOLISM BY DOSE (boss's K1/K2/K3, 22 Nov 2026), against today's +2 in the same world:
+  // December closed (winter, nobody worked: +1 idle each). The mid yard's man drinks 1 l, the
+  // near yard's abuser 3 l, the distiller (alcoholism 0) asks none but stands at the still.
+  {
+    const auto man_of = [](const core::WorldState& state, core::FamilyId family) {
+      for (const core::ResidentRow& person : state.residents.rows) {
+        if (person.family.value == family.value) {
+          return person.alcoholism;
+        }
+      }
+      return -1.0F;
+    };
+    core::AlcoholismConfig k1 = config;
+    k1.dose_k = 5.0F;  // 2 points per 0.4 l pure: a full «drinks» month is today's +2
+    core::AlcoholismConfig k2 = k1;
+    k2.dose_gain_cap = 2.0F;
+    core::AlcoholismConfig k3 = k2;
+    k3.dose_exposure = 1.0F;
+    const auto turned = [&](const core::AlcoholismConfig& rule) {
+      core::WorldState state = world;
+      core::TurnAlcoholismMonth(rule, night, sport, kSpeedup, state);
+      return state;
+    };
+    const core::WorldState today = turned(config);
+    const core::WorldState dose1 = turned(k1);
+    const core::WorldState dose2 = turned(k2);
+    const core::WorldState dose3 = turned(k3);
+    const float distiller_today = today.residents.rows[distiller_row].alcoholism;
+    failures += Expect(man_of(dose1, mid_yard) == man_of(today, mid_yard) &&
+                           man_of(dose2, mid_yard) == man_of(today, mid_yard),
+                       "dose: a man on a full litre of samogon gets today's +2 (K1, K2)");
+    failures += Expect(man_of(dose1, near_yard) == man_of(today, near_yard) + 4.0F &&
+                           man_of(dose2, near_yard) == man_of(today, near_yard),
+                       "dose: the abuser on 3 l gets +6 uncapped (K1), today's +2 capped (K2)");
+    failures += Expect(dose2.residents.rows[distiller_row].alcoholism == distiller_today - 2.0F &&
+                           dose3.residents.rows[distiller_row].alcoholism == distiller_today,
+                       "dose: a man at the still who drank none loses today's +2 (K2), keeps it "
+                       "with the exposure (K3)");
+  }
   // SHORT OF WHAT IS ASKED, THE LITRES ARE SHARED BY THE ASKING: 5 litres
   // asked, 2.5 held — everybody gets half and pays for half.
   {

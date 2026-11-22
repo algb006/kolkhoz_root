@@ -99,6 +99,18 @@ struct AlcoholismConfig {
   /// The bands an ARRIVAL's past is drawn in (#1262; boss 26 October 2026,
   /// crime §6 «Приезжие приходят со своим прошлым», STUB): the founders'.
   StartDrinking start;
+
+  // -- ALCOHOLISM BY DOSE (Alex, 22 Nov 2026: «Пьянство по крепости напитков надо делать
+  // сразу»; econ alcohol-dose-and-vineyard §A; boss: K1/K2/K3 as arms of one pair). All 0 =
+  // today's rule, «a distiller at the yard: +gain_with_distiller», untouched. --------------
+  /// Points a month per litre of PURE alcohol drunk that month; 0 switches the dose off.
+  float dose_k = 0.0F;             ///< `alcohol_dose_k`
+  float dose_floor_ml = 0.0F;      ///< `alcohol_dose_floor_ml`: d0, ml pure a month
+  float dose_gain_cap = 0.0F;      ///< `alcohol_dose_gain_cap`: points a month, 0 = none
+  float samogon_strength = 0.40F;  ///< `alcohol_samogon_strength`: share of pure alcohol
+  /// K3's exposure: 1 keeps «a distiller at the yard» for a man who drank less than one
+  /// «drinks» month - +gain_with_distiller x (1 - his dose / that month's dose).
+  float dose_exposure = 0.0F;  ///< `alcohol_dose_exposure`, 0 or 1
 };
 
 /// @brief An arrival's drinking past (#1262; crime §6 «Приезжие приходят со
