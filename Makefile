@@ -5,7 +5,7 @@
 
 .DEFAULT_GOAL := help
 .PHONY: help configure build release rebuild asan clean distclean test unit test-some \
-        check-tests check-msvc format format-check tidy docs sync win win-release publish win-clean \
+        check-tests check-msvc format format-check tidy docs sync win win-release publish mirror win-clean \
         win-setup hooks deps info version bump-patch bump-minor
 
 # --- Settings ---------------------------------------------------------------
@@ -213,8 +213,17 @@ win-release:
 
 # THE publishing command, and the only one. Both configurations of one
 # version, then publish/current — never half. manual/setup/60-windows-host.md.
+# It ENDS WITH THE MIRROR TO win2 (#1987): the same version folder, sha256 per file, both
+# boxes' lists printed. A failed mirror makes the target red; the main host's publish stands.
 publish:
 	@$(WIN_ENV) ./scripts/win-build.sh --both
+	@$(WIN_ENV) bash ./scripts/win2-mirror.sh "$$(tr -d '\r\n' < VERSION)"
+
+# The mirror alone, for a version already published on the main host (#1987): after a win2
+# outage, or for a past version. `make mirror VERSION=0.37.409`.
+mirror:
+	@test -n "$(VERSION)" || { echo 'make mirror VERSION=x.y.z'; exit 2; }
+	@$(WIN_ENV) bash ./scripts/win2-mirror.sh "$(VERSION)"
 
 win-clean:
 	@$(WIN_ENV) ./scripts/win-build.sh --clean
