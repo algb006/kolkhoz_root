@@ -77,6 +77,20 @@ class FieldWorkTally {
     }
     Year& book = years_[year - 1];
     const core::SimDay day = world.calendar.day;
+    // THE HEAPS' STOCK AT NOON, by resource: the first noon of the year is its opening stock,
+    // the last noon its closing one (the balance below; a noon-to-noon fall missed what was
+    // laid and carted between two noons and printed a negative rot on the first run).
+    std::map<std::uint32_t, double> heaps_now;
+    for (const core::FieldRow& field : world.fields.rows) {
+      if (field.reaped_grams > 0) {
+        heaps_now[field.reaped_resource.value] += static_cast<double>(field.reaped_grams);
+      }
+    }
+    if (!book.opened) {
+      book.opened = true;
+      book.heap_start_grams = heaps_now;
+    }
+    book.heap_end_grams = heaps_now;
     for (std::size_t row = 0; row < world.fields.rows.size(); ++row) {
       const core::FieldRow& field = world.fields.rows[row];
       const std::uint32_t id = world.fields.row_ids[row].value;
@@ -86,12 +100,6 @@ class FieldWorkTally {
             static_cast<double>(field.area_ga) * static_cast<double>(field.sown_share);
       }
       FieldMemory& memory = fields_[id];
-      const std::uint32_t heap_resource =
-          field.reaped_grams > 0 ? field.reaped_resource.value : memory.heap_resource;
-      if (field.reaped_grams < memory.heap_grams && heap_resource != kNone) {
-        book.heap_out_grams[heap_resource] +=
-            static_cast<double>(memory.heap_grams - field.reaped_grams);
-      }
       if (memory.phase == core::FieldPhase::kHarvest && field.phase != core::FieldPhase::kHarvest &&
           field.reaped_grams > 0) {
         memory.harvest_closed_day = day;
@@ -124,10 +132,15 @@ class FieldWorkTally {
         continue;
       }
       const core::FieldRow& field = world.fields.rows[field_row];
+      // No crop on the field (a meadow's cut, a fallow's plough): booked to its land kind, so a
+      // meadow's hay hands do not read as an unknown crop.
+      const std::uint32_t crop_or_land = CropResource(field.crop) != kNone
+                                             ? CropResource(field.crop)
+                                             : kNoCropBase + static_cast<std::uint32_t>(field.kind);
       const std::uint32_t resource =
           work.kind == core::WorkKind::kHauling
-              ? (field.reaped_grams > 0 ? field.reaped_resource.value : kNone)
-              : CropResource(field.crop);
+              ? (field.reaped_grams > 0 ? field.reaped_resource.value : kNoHeap)
+              : crop_or_land;
       Cell& cell = book.work[{resource, kind}];
       cell.worker_days += 1.0;
       cell.horse_days += work.rides_horse != 0 ? 1.0 : 0.0;
@@ -150,7 +163,20 @@ class FieldWorkTally {
     const auto read = [](const core::ResourceAmounts& amounts, std::uint32_t resource) {
       return resource < amounts.size() ? static_cast<double>(amounts[resource]) : 0.0;
     };
-    for (const auto& [resource, out] : tally.heap_out_grams) {
+    // Every resource the fields laid this year, or that lay in a heap at either end of it.
+    std::set<std::uint32_t> resources;
+    for (std::uint32_t resource = 0; resource < book.harvest.size(); ++resource) {
+      if (book.harvest[resource] > 0) {
+        resources.insert(resource);
+      }
+    }
+    for (const auto& [resource, grams] : tally.heap_start_grams) {
+      resources.insert(resource);
+    }
+    for (const auto& [resource, grams] : tally.heap_end_grams) {
+      resources.insert(resource);
+    }
+    for (const std::uint32_t resource : resources) {
       tally.hauled_grams[resource] = read(book.hauled_to_stores, resource);
       tally.snow_grams[resource] = read(book.lost_to_snow, resource);
       tally.harvest_grams[resource] = read(book.harvest, resource);
@@ -175,19 +201,27 @@ class FieldWorkTally {
         out << ' ' << Name(key.first) << ':' << KindName(key.second) << ' ' << cell.worker_days
             << '/' << cell.horse_days;
       }
-      out << '\n' << head << " M3 ground=heap_out_by_noon_falls; rot=out-hauled-snow (a remainder)";
+      out << '\n'
+          << head
+          << " M3 ground=book_harvest_hauled_to_stores_lost_to_snow_and_heaps_at_first_last_noon;"
+             " rot=harvest-hauled-snow-(heap_end-heap_start), a REMAINDER: any other door off a "
+             "heap lands in it, and hauled_to_stores also counts what was not a field's";
       if (!book.closed) {
         out << " NOT MEASURED: the year's book did not close";
       }
-      for (const auto& [resource, grams] : book.heap_out_grams) {
-        const double hauled =
-            book.hauled_grams.contains(resource) ? book.hauled_grams.at(resource) : 0.0;
-        const double snow = book.snow_grams.contains(resource) ? book.snow_grams.at(resource) : 0.0;
-        const double harvest =
-            book.harvest_grams.contains(resource) ? book.harvest_grams.at(resource) : 0.0;
-        out << " | " << Name(resource) << " harvest_kg " << harvest / 1000.0 << " heap_out_kg "
-            << grams / 1000.0 << " hauled_kg " << hauled / 1000.0 << " snow_kg " << snow / 1000.0
-            << " rot_kg " << (grams - hauled - snow) / 1000.0;
+      const auto at = [](const std::map<std::uint32_t, double>& values, std::uint32_t key) {
+        const auto found = values.find(key);
+        return found == values.end() ? 0.0 : found->second;
+      };
+      for (const auto& [resource, harvest] : book.harvest_grams) {
+        const double hauled = at(book.hauled_grams, resource);
+        const double snow = at(book.snow_grams, resource);
+        const double start = at(book.heap_start_grams, resource);
+        const double end = at(book.heap_end_grams, resource);
+        out << " | " << Name(resource) << " harvest_kg " << harvest / 1000.0 << " hauled_kg "
+            << hauled / 1000.0 << " snow_kg " << snow / 1000.0 << " heap_start_kg "
+            << start / 1000.0 << " heap_end_kg " << end / 1000.0 << " rot_kg "
+            << (harvest - hauled - snow - (end - start)) / 1000.0;
         const auto gaps = book.haul_gap_days.find(resource);
         if (gaps != book.haul_gap_days.end() && !gaps->second.empty()) {
           std::uint32_t sum = 0;
@@ -216,6 +250,8 @@ class FieldWorkTally {
 
  private:
   static constexpr std::uint32_t kNone = 0xFFFFFFFFU;
+  static constexpr std::uint32_t kNoHeap = 0xFFFFFFFEU;      // a haul off an empty heap
+  static constexpr std::uint32_t kNoCropBase = 0xFFFFFF00U;  // + LandKind: a field with no crop
 
   struct Cell {
     double worker_days = 0.0;
@@ -226,7 +262,9 @@ class FieldWorkTally {
     std::set<std::uint32_t> seen_growing;
     std::map<std::uint32_t, double> hectares;
     std::map<std::pair<std::uint32_t, std::uint32_t>, Cell> work;
-    std::map<std::uint32_t, double> heap_out_grams;
+    bool opened = false;
+    std::map<std::uint32_t, double> heap_start_grams;
+    std::map<std::uint32_t, double> heap_end_grams;
     std::map<std::uint32_t, double> hauled_grams;
     std::map<std::uint32_t, double> snow_grams;
     std::map<std::uint32_t, double> harvest_grams;
@@ -249,6 +287,21 @@ class FieldWorkTally {
   }
 
   [[nodiscard]] std::string Name(std::uint32_t resource) const {
+    if (resource == kNoHeap) {
+      return "no_heap";
+    }
+    if (resource >= kNoCropBase && resource < kNoHeap) {
+      switch (static_cast<core::LandKind>(resource - kNoCropBase)) {
+        case core::LandKind::kArable:
+          return "no_crop_arable";
+        case core::LandKind::kMeadow:
+          return "no_crop_meadow";
+        case core::LandKind::kFloodplainMeadow:
+          return "no_crop_floodplain_meadow";
+        default:
+          return "no_crop_other_land";
+      }
+    }
     return resource < resource_names_.size() ? resource_names_[resource] : "unknown";
   }
 
