@@ -144,6 +144,7 @@
 #include "core_common/day_orders.h"
 #include "core_common/elder_view.h"
 #include "core_common/event_state.h"
+#include "core_common/field_work_view.h"
 #include "core_common/flood_losses_view.h"
 #include "core_common/forest_facts_view.h"
 #include "core_common/geometry.h"
@@ -612,6 +613,15 @@ class ISession {
   /// @return A default FieldSignals (invalid id) for a field that does not
   ///         exist.
   virtual FieldSignals SignalsOfField(FieldId field) const = 0;
+
+  /// @brief The field-work coordinator's read of `field` (field_work_view.h; #2003,
+  ///        field-work.md): the phase, its progress share against a total FROZEN when the phase
+  ///        opened, the reaping's laid grams and the heap, the seed on the field (a declared
+  ///        STUB), and which residents work it this step.
+  /// @return `measured` false for a field that does not exist.
+  /// @note Between steps; the answer describes State(). A pure read; residents.size() equals
+  ///       SignalsOfField(field).residents_working.
+  virtual FieldWorkView FieldWorkOf(FieldId field) const = 0;
 
   /// @brief Where `resident` is, derived from State() now.
   /// @return place == kUnknown for a resident that does not exist.

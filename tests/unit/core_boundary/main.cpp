@@ -1162,6 +1162,14 @@ int TestSignals(const core::ITableSet& tables) {
   core::FieldRow field;
   field.center = core::Vec2{.x = -50.0F, .y = 900.0F};
   const core::FieldId field_id = core::AppendRow(world.fields, field);
+  // #2003: a field mid-sowing - 10 man-days frozen at the open, 4 left: 60 % done.
+  core::FieldRow sowing;
+  sowing.center = core::Vec2{.x = -80.0F, .y = 900.0F};
+  sowing.phase = core::FieldPhase::kSowing;
+  sowing.area_ga = 5.0F;
+  sowing.sowing_work_days = 10.0F;
+  sowing.work_days_remaining = 4.0F;
+  const core::FieldId sowing_id = core::AppendRow(world.fields, sowing);
 
   // Three of the household: a ploughman on the field, a milkmaid at the barn
   // and a baby born four days ago. Biology runs four times the calendar, so
@@ -1272,6 +1280,25 @@ int TestSignals(const core::ITableSet& tables) {
              "one man is on the field");
   failures += Expect(session->SignalsOfField(core::FieldId{404}).field.value == 0,
                      "a field that does not exist gives a default");
+  // #2003: the coordinator's read names WHICH residents, bound to the count above by one
+  // predicate - a second count that drifted from the first would place a brigade of the wrong
+  // size.
+  const core::FieldWorkView field_work = session->FieldWorkOf(field_id);
+  failures += Expect(field_work.measured && field_work.field.value == field_id.value &&
+                         field_work.residents.size() == field_signals.residents_working &&
+                         field_work.residents.size() == 1 &&
+                         field_work.residents[0].value == ploughman_id.value,
+                     "#2003: the field's work names its one man, the ploughman, as many as the "
+                     "signals count");
+  failures += Expect(!session->FieldWorkOf(core::FieldId{404}).measured,
+                     "#2003: a field that does not exist is not measured");
+  const core::FieldWorkView sowing_work = session->FieldWorkOf(sowing_id);
+  failures += Expect(sowing_work.measured && sowing_work.sowing_work_days == 10.0F &&
+                         sowing_work.sowing_done_share > 0.599F &&
+                         sowing_work.sowing_done_share < 0.601F && sowing_work.residents.empty(),
+                     "#2003: the sowing's share is read against its FROZEN total - 6 of 10 done");
+  failures += Expect(field_work.sowing_work_days == 0.0F && field_work.sowing_done_share == 0.0F,
+                     "#2003: a field outside a sowing has no sowing total and no share");
 
   const core::ResidentWhereabouts on_field = session->WhereaboutsOf(ploughman_id);
   failures +=

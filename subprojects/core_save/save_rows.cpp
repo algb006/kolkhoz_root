@@ -264,8 +264,11 @@ static_assert(AggregateArity<ManureDoseSeam>() == 5,
 // Save 216 (#1837): bare_harrowed_day, a SimDay after fertility_year_start - predicted 184 -> 192
 // (no tail padding left for a u32, padded to eight) and 50 -> 51 fields before the build; the
 // fields section +4 a field.
-static_assert(sizeof(FieldRow) == 192, "FieldRow changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<FieldRow>() == 51,
+// Save 223 (#2003): sowing_work_days, a float after harvest_work_days - read off a probe before
+// the codec, 192 -> 200 (at 104, before the i64) and 51 -> 52 fields; the fields section +4 a
+// field.
+static_assert(sizeof(FieldRow) == 200, "FieldRow changed — update the codec and VERSION_SAVE");
+static_assert(AggregateArity<FieldRow>() == 52,
               "FieldRow gained or lost a field — update the codec and VERSION_SAVE");
 // 2026-09-06: the stink radius pushed the row from 48 + amounts to 56 +
 // amounts. The pause byte before it had landed in padding and moved nothing,
@@ -1283,6 +1286,7 @@ void WriteFieldRow(SaveSink& sink, const FieldRow& row) {
   // is cut against it, and a world loaded mid-reaping would otherwise cut it
   // against today's carry.
   out.WriteFloat(row.harvest_work_days);
+  out.WriteFloat(row.sowing_work_days);  // save 223 (#2003)
   out.WriteI64(row.harvest_laid_grams);
   // The day this meadow was last mown (2026-09-06). History the simulation
   // cannot rederive: from today alone there is no telling a meadow standing
@@ -1405,6 +1409,11 @@ FieldRow ReadFieldRow(LoadSource& source) {
   // lay nothing, or everything at once.
   if (!(row.harvest_work_days >= 0.0F) || !std::isfinite(row.harvest_work_days)) {
     source.Fail("a field's reaping work is negative or not a number");
+  }
+  row.sowing_work_days = in.ReadFloat();  // save 223 (#2003)
+  // The view's divisor of the sowing's done share, as the reaping's above.
+  if (!(row.sowing_work_days >= 0.0F) || !std::isfinite(row.sowing_work_days)) {
+    source.Fail("a field's sowing work is negative or not a number");
   }
   row.harvest_laid_grams = in.ReadI64();
   row.last_mown_day = in.ReadU32();

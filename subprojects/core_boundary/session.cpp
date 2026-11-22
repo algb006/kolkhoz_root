@@ -488,6 +488,10 @@ class Session final : public ISession {
     return DeriveFieldSignals(State(), field);
   }
 
+  FieldWorkView FieldWorkOf(FieldId field) const override {
+    return DeriveFieldWork(config_, State(), field);
+  }
+
   bool CanBeOrdered(ResidentId resident) const override {
     return simulation_->CanBeOrdered(resident);
   }

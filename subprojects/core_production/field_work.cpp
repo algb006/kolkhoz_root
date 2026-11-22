@@ -842,6 +842,8 @@ void OpenPhase(const ProductionConfig& config,
   field.work_days_remaining = PhaseWorkDays(config, current, field, phase);
   // The reaping's whole work, frozen (land_state.h, harvest_work_days).
   field.harvest_work_days = phase == FieldPhase::kHarvest ? field.work_days_remaining : 0.0F;
+  // The sowing's, frozen for the view only (#2003; land_state.h, sowing_work_days).
+  field.sowing_work_days = phase == FieldPhase::kSowing ? field.work_days_remaining : 0.0F;
 }
 
 float PhaseTotalDays(const ProductionConfig& config,
@@ -1545,6 +1547,7 @@ void FinishSowing(const ProductionConfig& config, WorldState& current, FieldRow&
   // The preparation is over, sown or standing bare: its furrow mark means
   // nothing past the harrow (land_state.h, furrow_day).
   field.furrow_day = kNoFurrowDay;
+  field.sowing_work_days = 0.0F;  // #2003: nought outside a sowing (land_state.h)
   // THE BLACK FALLOW RESTS THE DAY ITS WINTER CROP IS SOWN (farming design,
   // «Чёрный пар, простоявший лето, восстанавливается в день сева озимой по
   // нему»; 0.37.12): the rye goes in before the turn and grows through it, so

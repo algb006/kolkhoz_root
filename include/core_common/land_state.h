@@ -485,6 +485,13 @@ struct FieldRow {
   /// review of 0.36.20). Nought outside a reaping.
   float harvest_work_days = 0.0F;
 
+  /// THE SOWING'S WHOLE WORK, frozen when it opened (#2003, save 223; OpenPhase): the
+  /// field-work coordinator places the sowers from the share done against it, and a total
+  /// that moved mid-phase would make them jump - the reaping's reason above. Read by the view
+  /// only (ISession::FieldWorkOf); the sowing's own work still prices itself as before
+  /// (PhaseTotalDays). Nought outside a sowing.
+  float sowing_work_days = 0.0F;
+
   Grams harvest_laid_grams = 0;
 
   /// THE AVRAL ON THIS FIELD'S WORK (kDeclareRush; unit rules §7; save 65):

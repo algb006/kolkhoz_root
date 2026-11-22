@@ -49,6 +49,14 @@ bool ParseBoundaryConfig(const ITableSet& tables,
   // the boundary does not keep.
   config.keep_out_radius_m = definitions.units.keep_out_radius_m;
   config.yields_place = definitions.units.yields_place;
+  // FieldWorkView's seed STUB (#2003): the crop's sowing norm, dense by CropId (the row).
+  if (const ITable* const crops = tables.FindTable("crops")) {
+    const std::uint32_t norm_column = crops->FindColumn("sowing_norm_kg_per_ha");
+    config.sowing_norm_kg_per_ha.assign(crops->RowCount(), 0.0F);
+    for (std::uint32_t row = 0; row < crops->RowCount() && norm_column != kNoTableColumn; ++row) {
+      config.sowing_norm_kg_per_ha[row] = crops->CellReal(row, norm_column).value_or(0.0F);
+    }
+  }
   // The posts' shifts (post_shift.h), dense by ProfessionId. The labor
   // module reads the same column for its own question — who is on the
   // accountant's list — and a profession key is data, not a dependency.
