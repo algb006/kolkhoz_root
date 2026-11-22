@@ -31,6 +31,7 @@
 #include "core_catalog/timber_catalog.h"
 #include "core_common/calendar.h"
 #include "core_common/cart_gear.h"
+#include "core_common/free_stock_view.h"
 #include "core_common/haul.h"
 #include "core_common/ids.h"
 #include "core_common/meadow_mark.h"
@@ -1630,6 +1631,12 @@ struct ProductionConfig {
   /// fixtures): then nothing of the map refuses, every mark is a dry meadow
   /// and every field is asked as its circle.
   std::function<MeadowMarkGround(bool with_raster)> meadow_ground;
+
+  /// THE ISSUE'S FREE STOCK OVER THE FUNDS («Стол для района»; IResidentsSystem::FreeStockOf,
+  /// its one home), handed in by the assembly (core_world) as meadow_ground is. EMPTY in a
+  /// system assembled without residents (unit fixtures, host's probes): then the free stock is
+  /// not measured and every district visit is received plainly.
+  std::function<FreeStockView(const WorldState&)> free_stock;
 
   /// Production units §8а: the shops' recipes, the barrels and the room a
   /// resource takes in a store (2026-09-19).

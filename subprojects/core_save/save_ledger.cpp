@@ -224,9 +224,11 @@ constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
 // Save 224: herd_care_by_yards and yard_herd_share_today struck with the yards' strada help
 // (#1442) - read off a probe before the codec, 1448 -> 1440 and 171 -> 169 fields; on the
 // wire -8 a book.
-static_assert(sizeof(YearLedger) == 1440 + (48 * kAmountsSize) + kBuiltInRowsSize,
+// Save 225 («Стол для района»): district_table_grams (i64) and district_plain_visits (u16) -
+// read off a probe before the build, 1440 -> 1456 and 169 -> 171 fields; on the wire +10 a book.
+static_assert(sizeof(YearLedger) == 1456 + (48 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 169,
+static_assert(AggregateArity<YearLedger>() == 171,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(BuiltInRow) == 16 && AggregateArity<BuiltInRow>() == 3,
               "BuiltInRow changed — update its codec and VERSION_SAVE");
@@ -470,6 +472,8 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteFloat(book.reputation_own_overfulfil_t);
   out.WriteFloat(book.reputation_audit_step);      // save 220 (#1943 R1)
   out.WriteU16(book.reputation_clean_audits_low);  // save 220
+  out.WriteI64(book.district_table_grams);         // save 225 («Стол для района»)
+  out.WriteU16(book.district_plain_visits);
   // The team's work-oat request of the year (save 167; #1040).
   out.WriteI64(book.team_work_oat_requested);
   // The crime links (#1568, save 207).
@@ -765,6 +769,8 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.reputation_own_overfulfil_t = in.ReadFloat();
   book.reputation_audit_step = in.ReadFloat();      // save 220 (#1943 R1)
   book.reputation_clean_audits_low = in.ReadU16();  // save 220
+  book.district_table_grams = in.ReadI64();         // save 225
+  book.district_plain_visits = in.ReadU16();
   for (const float value : {book.reputation_plan_step,
                             book.reputation_audit_step,
                             book.reputation_tier_step,

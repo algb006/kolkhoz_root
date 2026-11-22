@@ -21,6 +21,22 @@ float StepReputation(WorldState& current, float step) {
 
 }  // namespace
 
+void StepReputationForDistrictTable(const ProductionConfig& config,
+                                    WorldState& current,
+                                    bool with_table,
+                                    float plain_step) {
+  YearLedger& book = current.ledger.current;
+  if (with_table) {
+    // Received with a table: the visit counts as CLEAN, +district_visit_clean_reputation,
+    // whether or not a recovery was owed (econ's re-cut, avatars.md §7а).
+    if (config.district_visit_clean_reputation > 0.0F) {
+      book.reputation_visit_step += StepReputation(current, config.district_visit_clean_reputation);
+    }
+    return;
+  }
+  book.reputation_visit_step += StepReputation(current, plain_step);
+}
+
 float OwnOverfulfilGrainTonnes(const ProductionConfig& config, const WorldState& current) {
   if (!(config.limit.overfulfil_grain_kcal_per_gram > 0.0F)) {
     return 0.0F;

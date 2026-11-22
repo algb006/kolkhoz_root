@@ -28,6 +28,7 @@
 #include "core_tables/tables.h"
 #include "core_world/world.h"
 #include "distiller_policy.h"
+#include "district_table_policy.h"
 #include "dry_pantry_tally.h"
 #include "extraction_policy.h"
 #include "fallow_policy.h"
@@ -386,6 +387,7 @@ class BuildingChairman {
     // counts every day; it orders only with its arm on).
     houses_first.RunDay(simulation);
     dry_pantry.CountDay(simulation.CompletedState());  // #1922's print
+    district_table.RunDay(simulation);                 // «Стол для района» (its avatar only)
     family_food.CountDay(simulation);                  // #1953's FAM1953
     clerk.CountDay(simulation);                        // #589's print
     reputation.CountDay(simulation.CompletedState());  // #1897's REP1897
@@ -579,6 +581,8 @@ class BuildingChairman {
   DryPantryTally dry_pantry;
   /// #1953's print: on a dry family-day, what the family got and the issue's ceiling for it.
   FamilyFoodTally family_food;
+  /// «Стол для района»: plain under two weeks of free stock, a table otherwise (its avatar only).
+  DistrictTablePolicy district_table;
   /// #2264's print: M1-M4 of the field-work coordinator, y1-y3 (field_work_tally.h).
   FieldWorkTally field_work;
   /// #589's print: the clerk's post and his family's satiety (clerk_tally.h).

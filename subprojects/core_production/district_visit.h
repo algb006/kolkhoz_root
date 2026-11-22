@@ -74,6 +74,13 @@ Grams SeizeAboveLimit(const ProductionConfig& config, WorldState& current);
 ///        chairman «на ковёр».
 void ArriveDistrictVisits(const ProductionConfig& config, WorldState& current);
 
+/// @brief «Стол для района» for one arrived visit (avatars.md §7а): with a table - the avatar's
+///        district_table_days of the village's need in grain equivalent off the free stock
+///        (ProductionConfig::free_stock, position by position within each one's free grams),
+///        the visit clean - or plainly at district_plain_reputation. Nothing for an avatar
+///        without the path. Called by ArriveDistrictVisits after each visit's outcome.
+void ReceiveDistrictVisitTable(const ProductionConfig& config, WorldState& current);
+
 }  // namespace core
 
 #endif  // CORE_PRODUCTION_DISTRICT_VISIT_H_

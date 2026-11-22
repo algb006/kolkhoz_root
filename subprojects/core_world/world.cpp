@@ -1006,6 +1006,10 @@ class StandardSimulation final : public ISimulation {
     return residents_->IssueNorms(engine_->CompletedState());
   }
 
+  FreeStockView FreeStockToday() const override {
+    return residents_->FreeStockOf(engine_->CompletedState());
+  }
+
   std::optional<HarvestNeed> NeedUntilHarvest(ResourceId resource) const override {
     return residents_->NeedUntilHarvest(engine_->CompletedState(), resource);
   }
@@ -1309,13 +1313,20 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
     return nullptr;
   }
   const auto road_tools = std::make_shared<const RoadTools>(std::move(*read_tools));
+  // «Стол для района»'s free stock is residents' (FreeStockOf), and residents are built after
+  // production: a cell the lambda reads, filled once residents exist (below). Empty until
+  // then, and nothing asks before the first step.
+  auto residents_cell = std::make_shared<const IResidentsSystem*>(nullptr);
   auto production = CreateProductionSystem(
       *config.tables,
       config.stub_tables,
       season_last_day,
       rain_days,
       snow_lain,
-      [road_tools](bool with_raster) { return road_tools->MeadowGround(with_raster); });
+      [road_tools](bool with_raster) { return road_tools->MeadowGround(with_raster); },
+      [residents_cell](const WorldState& world) {
+        return *residents_cell != nullptr ? (*residents_cell)->FreeStockOf(world) : FreeStockView{};
+      });
   // THE GRAMS OF A STANDING CROP ARE PRODUCTION'S to count, and labor's last
   // days before the snow order the reaping by them (boss seq 95): labor is
   // handed the one estimate, not a copy of its formula. The world owns both
@@ -1423,6 +1434,7 @@ std::unique_ptr<ISimulation> CreateStandardSimulation(const StandardSimulationCo
     // A factory refused its configuration (it already logged why).
     return nullptr;
   }
+  *residents_cell = residents.get();  // production's free-stock door («Стол для района»)
   // THE TABLE'S DECLARED READERS ARE JUDGED HERE, and here only, because
   // this is the one place that knows every module. The check used to live
   // inside core_time, which reads world_params.csv for the leaf fall — and

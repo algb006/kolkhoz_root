@@ -10924,6 +10924,68 @@ int CheckUnworkedGroundDoesNotRecover() {
 /// acting chairman's herd produce is full at 76 % care while the village has at most 40
 /// households; another chairman's is not; and at 41 households the acting one falls back to
 /// the common 90 %.
+/// «СТОЛ ДЛЯ РАЙОНА» (avatars.md §7а; boss and econ, 22 Nov 2026): the hospitable southerner
+/// receives a visit with a table - one day of the village's need (10 kg grain-eq here) off the
+/// FREE stock, the visit clean (+1) - or plainly at −2 by his choice or when the free stock
+/// cannot pay; another chairman's visit is untouched.
+int CheckTheDistrictTable() {
+  int failures = 0;
+  core::ProductionConfig config;
+  config.district_visit_clean_reputation = 1.0F;
+  core::AvatarDef plain_one;
+  plain_one.key = "neutral";
+  core::AvatarDef host;
+  host.key = "ex_chairman";
+  host.district_table_days = 1.0F;
+  host.district_plain_reputation = -2.0F;
+  config.avatars = {plain_one, host};
+  constexpr core::Grams kKilo = core::kGramsPerKilogram;
+  core::Grams free_grams = 50 * kKilo;
+  config.free_stock = [&free_grams](const core::WorldState&) {
+    core::FreeStockView view;
+    view.measured = true;
+    view.day_need_grams = 10 * kKilo;
+    view.free_grain_eq_grams = free_grams;
+    view.days = static_cast<float>(free_grams) / static_cast<float>(view.day_need_grams);
+    view.positions = {core::FreeStockPosition{
+        .resource = core::ResourceId{0}, .free_grams = free_grams, .grain_eq_per_gram = 1.0F}};
+    return view;
+  };
+  const auto visit = [&config](std::uint16_t avatar, std::uint8_t declined) {
+    core::WorldState world;
+    world.chairman.avatar = core::AvatarId{avatar};
+    world.chairman.raikom_reputation = 50.0F;
+    world.chairman.district_table_declined = declined;
+    core::UnitRow store;
+    store.level = 1;
+    store.stock = {100 * kKilo};
+    core::AppendRow(world.units, store);
+    core::ReceiveDistrictVisitTable(config, world);
+    return world;
+  };
+  const core::WorldState table = visit(1, 0);
+  failures += Expect(table.units.rows[0].stock[0] == 90 * kKilo &&
+                         table.ledger.current.district_table_grams == 10 * kKilo &&
+                         table.chairman.raikom_reputation == 51.0F,
+                     "district table: a day's need (10 kg) off the free stock, the visit clean +1");
+  const core::WorldState plain = visit(1, 1);
+  failures += Expect(plain.units.rows[0].stock[0] == 100 * kKilo &&
+                         plain.ledger.current.district_plain_visits == 1 &&
+                         plain.chairman.raikom_reputation == 48.0F,
+                     "district table: received plainly by choice - no grain, −2");
+  free_grams = 5 * kKilo;  // under a day's need
+  const core::WorldState short_of = visit(1, 0);
+  failures += Expect(short_of.units.rows[0].stock[0] == 100 * kKilo &&
+                         short_of.chairman.raikom_reputation == 48.0F,
+                     "district table: a free stock under a day's need cannot pay - plainly, −2");
+  free_grams = 50 * kKilo;
+  const core::WorldState other = visit(0, 0);
+  failures += Expect(other.units.rows[0].stock[0] == 100 * kKilo &&
+                         other.chairman.raikom_reputation == 50.0F && other.step_events.empty(),
+                     "district table: another chairman's visit is untouched");
+  return failures;
+}
+
 int CheckTheFarmHoldsOnHer() {
   int failures = 0;
   core::ProductionConfig config;
@@ -18760,6 +18822,7 @@ int main() {
   failures += CheckUnworkedGroundDoesNotRecover();
   failures += CheckTheChairmanSetsARotation();
   failures += CheckTheFarmHoldsOnHer();         // #1484, «Ферма держится на ней»
+  failures += CheckTheDistrictTable();          // «Стол для района»
   failures += CheckTheDealersGrainBuysTools();  // the dealer's grain: tools only
   failures += CheckLostWinterCropLiesFallow();
   failures += CheckNoWinterSowingAfterWindow();

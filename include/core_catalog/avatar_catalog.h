@@ -116,6 +116,16 @@ struct AvatarDef {
   /// The village's households up to which the threshold above holds (acting: 40); past it the
   /// common threshold. 0: no limit.
   std::uint32_t herd_full_care_max_households = 0;
+
+  /// «СТОЛ ДЛЯ РАЙОНА» (avatars.md §7а, the hospitable southerner; boss, 22 Nov 2026): a
+  /// district visit received with a table costs this many days of the village's need in grain
+  /// equivalent off the FREE stock and counts as clean (+district_visit_clean_reputation);
+  /// 0 = no such path (every other avatar). STUB number (1).
+  float district_table_days = 0.0F;
+
+  /// The same visit received plainly (the chairman's choice, or a free stock that cannot pay):
+  /// this change of reputation, ≤ 0 (−2). Read only with district_table_days > 0.
+  float district_plain_reputation = 0.0F;
 };
 
 /// @brief Reads tables/avatars.csv into `avatars`, row order = AvatarId.

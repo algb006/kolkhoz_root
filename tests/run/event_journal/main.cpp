@@ -174,6 +174,8 @@ const char* KindName(core::EventKind kind) {
       return "plan_failure_forgiven";
     case core::EventKind::kDayOrderNotRun:
       return "day_order_not_run";
+    case core::EventKind::kDistrictTable:
+      return "district_table";
     case core::EventKind::kElectrificationUnlocked:
       return "electrification_unlocked";
     case core::EventKind::kFireBroke:

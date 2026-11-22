@@ -60,6 +60,14 @@ void StepReputationBeyondPlan(const ProductionConfig& config, WorldState& curren
 ///        econ's estimate, the #1043 pair thread [7]).
 void StepReputationForCleanVisit(const ProductionConfig& config, WorldState& current);
 
+/// @brief «Стол для района» (avatars.md §7а): a visit received with a table steps the rating
+///        by district_visit_clean_reputation, one received plainly by `plain_step` (≤ 0), both
+///        booked on reputation_visit_step.
+void StepReputationForDistrictTable(const ProductionConfig& config,
+                                    WorldState& current,
+                                    bool with_table,
+                                    float plain_step);
+
 /// @brief A failed plan year or a found discrepancy: the next clean visit
 ///        owes its recovery step.
 void OweReputationRecovery(WorldState& current);

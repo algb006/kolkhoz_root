@@ -98,7 +98,10 @@ static_assert(sizeof(ChairmanState) == 136, "ChairmanState changed — update th
 // in the codec.
 // Save 188 (#1241): sugar_complaint_season, a u32 at 124 - predicted 128
 // unmoved (the tail's padding) and 41 fields; four bytes in the codec.
-static_assert(AggregateArity<ChairmanState>() == 43,
+// Save 225 («Стол для района»): district_table_declined, a byte after raikom_reputation - 136
+// unmoved (the float's padding, a probe read before the build) and 44 fields; one byte in the
+// codec.
+static_assert(AggregateArity<ChairmanState>() == 44,
               "ChairmanState gained or lost a field — update the codec and VERSION_SAVE");
 // PLANSTATE HAD NO TRIPWIRE AT ALL until 2026-09-12, and it was the only
 // serialized block without one: six blocks go into the save, five were
@@ -540,6 +543,7 @@ void WriteWorldBlocks(SaveSink& sink, const WorldState& world) {
   out.WriteU64(world.rng.stream);
 
   out.WriteFloat(world.chairman.raikom_reputation);
+  out.WriteU8(world.chairman.district_table_declined);  // save 225 («Стол для района»)
   out.WriteFloat(world.chairman.authority);
   out.WriteFloat(world.chairman.shadow_reputation);
   out.WriteU8(world.chairman.horses_stabled);
@@ -896,6 +900,8 @@ void ReadWorldBlocks(LoadSource& source, WorldState* world) {
   world->rng.stream = in.ReadU64();
 
   world->chairman.raikom_reputation = in.ReadFloat();
+  world->chairman.district_table_declined =
+      static_cast<std::uint8_t>(source.ReadEnumValue(0, 1, "district table declined"));  // 225
   world->chairman.authority = in.ReadFloat();
   world->chairman.shadow_reputation = in.ReadFloat();
   world->chairman.horses_stabled = in.ReadU8();

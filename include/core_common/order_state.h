@@ -1030,6 +1030,13 @@ enum class OrderKind : std::uint8_t {
   /// CONTRACT ONLY until #1778's body: no consumer reads it yet.
   kAssignDayWork,
 
+  /// «СТОЛ ДЛЯ РАЙОНА» (avatars.md §7а, the hospitable southerner; boss, 22 Nov 2026): the
+  /// chairman's standing choice how to receive the district's visits - `enable` 1 with a table
+  /// (the default), 0 plainly. Writes ChairmanState::district_table_declined. Refusals:
+  /// kRuleForbids for an avatar with no such path (AvatarDef::district_table_days 0). Seam
+  /// key `set_district_table`. Consumer: core_production.
+  kSetDistrictTable,
+
   // Reserved, appended by their tasks and named here so the numbering is
   // planned rather than discovered: nomenclature (unit rules §6), transport
   // as part of orders (root decision 155, task A4), delegation (Epoch II).

@@ -147,6 +147,7 @@
 #include "core_common/field_work_view.h"
 #include "core_common/flood_losses_view.h"
 #include "core_common/forest_facts_view.h"
+#include "core_common/free_stock_view.h"
 #include "core_common/geometry.h"
 #include "core_common/herd_plan_view.h"
 #include "core_common/ice_view.h"
@@ -630,6 +631,12 @@ class ISession {
   ///        then kConcern if a red lamp is lit, else kSeasonWork.
   /// @note Between steps; the answer describes State(). host calls it at WriteSlot.
   virtual std::vector<SaveSummaryEntry> SaveSummary() const = 0;
+
+  /// @brief The village's free food over its funds, in days of its need (free_stock_view.h):
+  ///        the one number the bots' «Стол для района» rule compares against two weeks.
+  /// @return `measured` false with no food roster or nobody to feed.
+  /// @note Between steps; the answer describes State(). A pure read off IssueNorms.
+  virtual FreeStockView FreeStock() const = 0;
 
   /// @brief Where `resident` is, derived from State() now.
   /// @return place == kUnknown for a resident that does not exist.

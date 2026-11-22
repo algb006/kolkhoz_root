@@ -407,6 +407,18 @@ OrderRefusal SetRotation(const ProductionConfig& config,
 ///         herd; kNoRoomForStock for an N above the herd's places
 ///         (HerdPlaces) - «отказ один: N больше мест». N under the floors is
 ///         accepted (the window says it).
+/// «Стол для района»: the chairman's standing choice (OrderKind::kSetDistrictTable). Refused
+/// for an avatar with no table path; `enable` 1 receives with a table, 0 plainly.
+OrderRefusal SetDistrictTable(const ProductionConfig& config,
+                              WorldState& current,
+                              const OrderRow& order) {
+  if (!(AvatarOf(config.avatars, current.chairman.avatar).district_table_days > 0.0F)) {
+    return OrderRefusal::kRuleForbids;
+  }
+  current.chairman.district_table_declined = order.enable != 0 ? std::uint8_t{0} : std::uint8_t{1};
+  return OrderRefusal::kNone;
+}
+
 OrderRefusal SetHerdPlan(const ProductionConfig& config,
                          WorldState& current,
                          const OrderRow& order) {
@@ -629,6 +641,9 @@ void ConsumeProductionOrders(const ProductionConfig& config, WorldState& current
         break;
       case OrderKind::kHandStock:
         Settle(order, OrderHandStock(config, current, order));
+        break;
+      case OrderKind::kSetDistrictTable:
+        Settle(order, SetDistrictTable(config, current, order));
         break;
       case OrderKind::kSetHerdPlan:
         Settle(order, SetHerdPlan(config, current, order));

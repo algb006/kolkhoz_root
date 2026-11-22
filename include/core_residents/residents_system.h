@@ -35,6 +35,7 @@
 #include <vector>
 
 #include "core_common/barter_view.h"
+#include "core_common/free_stock_view.h"
 #include "core_common/issue_norm_view.h"
 #include "core_sim/step.h"
 #include "core_tables/stub_tables.h"
@@ -153,6 +154,14 @@ class IResidentsSystem {
   ///       production callbacks bound at creation (fodder fund, next year's
   ///       hold, days to harvest), as the distribution does.
   virtual std::vector<IssueNormLine> IssueNorms(const WorldState& completed) const = 0;
+
+  /// @brief The free food over the funds in days of the village's need (free_stock_view.h;
+  ///        «Стол для района», boss 22 Nov 2026): IssueNorms' free_grams in grain equivalent
+  ///        over the members' day need (food.csv adult_kg_grain_eq_per_year ÷ the year's days,
+  ///        children as adults). The one home of the number the session's FreeStock and the
+  ///        table's cost read.
+  /// @note Between steps or inside a step on the completed state. A pure read.
+  virtual FreeStockView FreeStockOf(const WorldState& completed) const = 0;
 
   /// @brief Whether `unit`'s leak is closed on `completed` (#1893 H3; night_trade.h
   ///        StoreLeakClosed - the very test the night's theft and the distillers ask: a

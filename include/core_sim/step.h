@@ -80,6 +80,7 @@
 #include "core_common/elder_view.h"
 #include "core_common/flood_losses_view.h"
 #include "core_common/forest_facts_view.h"
+#include "core_common/free_stock_view.h"
 #include "core_common/grass_stand_view.h"
 #include "core_common/herd_plan_view.h"
 #include "core_common/ice_view.h"
@@ -328,6 +329,11 @@ class ISimulation {
   /// runs, so the answer is the norm, not a second estimate of it.
   /// @note NOT PURE, for ActivityOf's reason. The default answers none.
   virtual std::vector<IssueNormLine> IssueNorms() const { return {}; }
+
+  /// @brief The free food over the funds in days of the village's need, off CompletedState()
+  ///        (free_stock_view.h; IResidentsSystem::FreeStockOf, its one home).
+  /// @note NOT PURE, for ActivityOf's reason. The default answers `measured` false.
+  virtual FreeStockView FreeStockToday() const { return {}; }
 
   /// @brief The village's need until `resource`'s next harvest against its
   /// free remainder (issue_norm_view.h, HarvestNeed). Empty when the

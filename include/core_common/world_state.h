@@ -428,6 +428,11 @@ struct ChairmanState {
   /// metric (metrics design, §3).
   Metric raikom_reputation = 50.0f;
 
+  /// «Стол для района» (OrderKind::kSetDistrictTable; save 225): 1 when the chairman
+  /// receives the district's visits plainly, 0 - the default - with a table. Read only for an
+  /// avatar with the path (AvatarDef::district_table_days > 0).
+  std::uint8_t district_table_declined = 0;
+
   /// Authority with the villagers, 0..100. Aggregate; decides re-election in
   /// Epoch III (metrics design, §6).
   Metric authority = 50.0f;

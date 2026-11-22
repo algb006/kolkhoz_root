@@ -159,6 +159,11 @@ bool ShapeIsValid(const OrderRow& order) {
       // and the boundary refuses at the door what the consumer would have to
       // ignore later.
       return !has_resident && !has_unit && !has_field && !has_herd && !has_stand && !has_site;
+    case OrderKind::kSetDistrictTable:
+      // «Стол для района»: the chairman's standing choice names nothing but its `enable`, 0 or
+      // 1. Whether his avatar has the path is the consumer's verdict.
+      return !has_resident && !has_unit && !has_field && !has_herd && !has_stand && !has_site &&
+             order.enable <= 1;
     case OrderKind::kAppoint:
       // A post is a profession AT a unit: all three named, or the order says
       // nothing (manual/74-posts.md §3). Whether the unit carries that post
@@ -608,6 +613,8 @@ class Session final : public ISession {
   LimitBook OfficeLimit() const override { return simulation_->OfficeLimit(); }
 
   std::vector<IssueNormLine> IssueNorms() const override { return simulation_->IssueNorms(); }
+
+  FreeStockView FreeStock() const override { return simulation_->FreeStockToday(); }
 
   std::optional<HarvestNeed> NeedUntilHarvest(ResourceId resource) const override {
     return simulation_->NeedUntilHarvest(resource);

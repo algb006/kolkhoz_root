@@ -416,6 +416,34 @@ class ResidentsSystem final : public IResidentsSystem {
     return food_lines;
   }
 
+  FreeStockView FreeStockOf(const WorldState& completed) const override {
+    FreeStockView view;
+    const float reference = food_.consumption.grain_reference_kcal_per_gram;
+    if (food_.resources.empty() || !(reference > 0.0F) || completed.residents.rows.empty()) {
+      return view;  // not measured: no roster, or nobody to feed
+    }
+    double free_eq = 0.0;
+    for (const IssueNormLine& line : IssueNorms(completed)) {
+      const std::size_t index = line.resource.value;
+      if (index < food_.resources.size()) {
+        const float per_gram = food_.resources[index].kcal_per_gram / reference;
+        free_eq += static_cast<double>(line.free_grams) * static_cast<double>(per_gram);
+        view.positions.push_back(FreeStockPosition{.resource = line.resource,
+                                                   .free_grams = line.free_grams,
+                                                   .grain_eq_per_gram = per_gram});
+      }
+    }
+    const double day_need = static_cast<double>(food_.consumption.adult_kg_grain_eq_per_year) *
+                            static_cast<double>(kGramsPerKilogram) /
+                            static_cast<double>(kDaysPerYear) *
+                            static_cast<double>(completed.residents.rows.size());
+    view.measured = day_need > 0.0;
+    view.free_grain_eq_grams = static_cast<Grams>(free_eq);
+    view.day_need_grams = static_cast<Grams>(day_need);
+    view.days = view.measured ? static_cast<float>(free_eq / day_need) : 0.0F;
+    return view;
+  }
+
   /// The settlement's need as the meal counts it (family_meal.h), in the
   /// grain equivalent's kilocalories; the position's remainder over the same
   /// funds the distribution stays above.

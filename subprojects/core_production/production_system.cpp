@@ -1077,7 +1077,8 @@ std::unique_ptr<IProductionSystem> CreateProductionSystem(
     std::uint32_t growing_season_last_day,
     const RainDayShares& rain_day_shares,
     const SnowLainShares& snow_lain_shares,
-    std::function<MeadowMarkGround(bool)> meadow_ground) {
+    std::function<MeadowMarkGround(bool)> meadow_ground,
+    std::function<FreeStockView(const WorldState&)> free_stock) {
   // THE DEFAULTS ARE LEGITIMATE AND THEIR SILENCE WAS NOT
   // (core_tables/stub_tables.h). A caller that has not said it wants
   // this module's documented defaults is refused by name, so that a
@@ -1141,6 +1142,7 @@ std::unique_ptr<IProductionSystem> CreateProductionSystem(
   config.early_snow_last_day =
       EarlySnowLastDay(snow_lain_shares, config.farming.early_snow_share, growing_season_last_day);
   config.meadow_ground = std::move(meadow_ground);
+  config.free_stock = std::move(free_stock);
   return std::make_unique<ProductionSystem>(config);
 }
 

@@ -972,12 +972,20 @@ enum class EventKind : std::uint8_t {
   /// reading because the man holds a post (kOnPost). The man's idle_reason says it beside.
   kDayOrderNotRun,
 
+  /// «СТОЛ ДЛЯ РАЙОНА» (avatars.md §7а; the hospitable southerner): a district visit received
+  /// by an avatar with the table path. amount = the grain equivalent the table took off the
+  /// free stock, grams; 0 = received plainly (the chairman's choice, or a free stock that could
+  /// not pay). kNotable. Seam key `district_table`.
+  kDistrictTable,
+
   // Reserved for project phase 3 and appended by it: fire, epoch change,
   // the decision card (an inspector's arrival came as kDistrictVisit on
   // 2026-09-15). Named so the numbering is planned, not discovered.
 
   /// NOT A KIND, and never a value anybody stores or sends: the count, so a
   /// CONSUMER can static_assert the length of its own mirror.
+  ///
+  /// (Appended above this note, as every kind is.)
   ///
   /// That is the whole reason, and it is why this one was missing. The
   /// counts were first asked of the SERIALIZABLE enums — the ones whose
@@ -1034,7 +1042,8 @@ inline constexpr std::array<EventKind, 3> kEndingConditionEventKinds = {
 /// EVERY NEW KIND IS CLASSIFIED: appending a kind fails here until its author
 /// has asked «is it an ending's condition?», added it above if so, and raised
 /// this count - the list cannot fall behind the enum silently.
-static_assert(static_cast<std::size_t>(EventKind::kEventKindCount) == 126,
+// kDistrictTable (127): not an ending's condition.
+static_assert(static_cast<std::size_t>(EventKind::kEventKindCount) == 127,
               "a new EventKind: classify it in kEndingConditionEventKinds, then raise this count");
 
 /// @brief One thing that happened. Plain data, no text: the presentation

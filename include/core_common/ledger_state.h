@@ -1022,6 +1022,13 @@ struct YearLedger {
   float reputation_audit_step = 0.0F;
   std::uint16_t reputation_clean_audits_low = 0;
 
+  /// «СТОЛ ДЛЯ РАЙОНА» (save 225): the grain equivalent the district's visits were received
+  /// with this year, grams, off the free stock - the book's line the design asks for.
+  Grams district_table_grams = 0;
+  /// And the visits received plainly by an avatar with the table path (the choice, or a free
+  /// stock that could not pay).
+  std::uint16_t district_plain_visits = 0;
+
   /// THE TEAM'S WORK-OAT REQUEST OF THE YEAR, grams of oat (save 167; #1040;
   /// econ's oat-lamp contract §1): every working day's work-ration room of
   /// the kolkhoz team (herd_system.cpp, WatchTheTeam) — fed and short in one

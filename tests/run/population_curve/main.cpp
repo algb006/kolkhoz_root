@@ -891,6 +891,7 @@ bool Walk(std::uint64_t seed,
   // parcel 257), and a curve measured without anybody building is a curve of
   // a village leaving in its first winters — 36 at year 7, nobody at 14.
   run::BuildingChairman builder(*world.tables);
+  builder.district_table.SetAvatar(*world.tables, g_avatar_key);  // «Стол для района»
   if (g_no_planting) {
     builder.planting.Disable();
   }

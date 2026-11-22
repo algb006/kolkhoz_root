@@ -59,6 +59,7 @@
 
 #include "core_common/calendar.h"
 #include "core_common/early_snow.h"
+#include "core_common/free_stock_view.h"
 #include "core_common/grass_stand_view.h"
 #include "core_common/herd_plan_view.h"
 #include "core_common/meadow_mark.h"
@@ -503,7 +504,8 @@ std::unique_ptr<IProductionSystem> CreateProductionSystem(
     std::uint32_t growing_season_last_day = kDaysPerYear - 1U,
     const RainDayShares& rain_day_shares = RainDayShares{},
     const SnowLainShares& snow_lain_shares = SnowLainShares{},
-    std::function<MeadowMarkGround(bool with_raster)> meadow_ground = {});
+    std::function<MeadowMarkGround(bool with_raster)> meadow_ground = {},
+    std::function<FreeStockView(const WorldState&)> free_stock = {});
 
 /// @brief The world_params.csv keys this module reads, for the assembly's
 /// declared-readers check (core_world/world.cpp).

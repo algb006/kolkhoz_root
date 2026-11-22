@@ -193,6 +193,58 @@ Grams SeizeAboveLimit(const ProductionConfig& config, WorldState& current) {
   return seized;
 }
 
+/// «СТОЛ ДЛЯ РАЙОНА» (avatars.md §7а, the hospitable southerner; boss and econ, 22 Nov 2026):
+/// an arrived visit of an avatar with the path is received with a table - district_table_days
+/// of the village's need in grain equivalent off the FREE stock, position by position within
+/// each one's free grams (never a fund's), and the visit counts as clean - or plainly, at
+/// district_plain_reputation: by the chairman's standing choice, or when the free stock is not
+/// measured or cannot pay. The book's line and the event say which.
+void ReceiveDistrictVisitTable(const ProductionConfig& config, WorldState& current) {
+  const AvatarDef& avatar = AvatarOf(config.avatars, current.chairman.avatar);
+  if (!(avatar.district_table_days > 0.0F)) {
+    return;  // no such path for this chairman
+  }
+  YearLedger& book = current.ledger.current;
+  Grams taken_eq = 0;
+  if (current.chairman.district_table_declined == 0 && config.free_stock) {
+    const FreeStockView free = config.free_stock(current);
+    const double cost =
+        static_cast<double>(avatar.district_table_days) * static_cast<double>(free.day_need_grams);
+    if (free.measured && cost > 0.0 && static_cast<double>(free.free_grain_eq_grams) >= cost) {
+      const double share = cost / static_cast<double>(free.free_grain_eq_grams);
+      for (const FreeStockPosition& position : free.positions) {
+        if (!(position.grain_eq_per_gram > 0.0F) || position.free_grams <= 0) {
+          continue;
+        }
+        Grams want = static_cast<Grams>(static_cast<double>(position.free_grams) * share);
+        for (const std::uint32_t row : RowsById(current.units)) {
+          UnitRow& unit = current.units.rows[row];
+          if (want <= 0 || unit.stock.size() <= position.resource.value) {
+            continue;
+          }
+          const Grams take = std::min(want, UnreservedOf(unit, position.resource));
+          if (take <= 0) {
+            continue;
+          }
+          unit.stock[position.resource.value] -= take;
+          want -= take;
+          taken_eq += static_cast<Grams>(static_cast<double>(take) *
+                                         static_cast<double>(position.grain_eq_per_gram));
+        }
+      }
+    }
+  }
+  const bool with_table = taken_eq > 0;
+  if (with_table) {
+    book.district_table_grams += taken_eq;
+  } else {
+    ++book.district_plain_visits;
+  }
+  StepReputationForDistrictTable(config, current, with_table, avatar.district_plain_reputation);
+  SimEvent& event = EmitEvent(current, EventKind::kDistrictTable, EventSeverity::kNotable);
+  event.amount = taken_eq;
+}
+
 void ArriveDistrictVisits(const ProductionConfig& config, WorldState& current) {
   // A VISIT WAITS FOR THE CHAIRMAN (boss seq 206, 6): on a day he is in the
   // district the scene needs him and moves to tomorrow (district_trip.h).
@@ -245,6 +297,7 @@ void ArriveDistrictVisits(const ProductionConfig& config, WorldState& current) {
     if (outcome.found == DistrictVisitFinding::kNone) {
       StepReputationForCleanVisit(config, current);
     }
+    ReceiveDistrictVisitTable(config, current);  // «Стол для района», for an avatar with it
     const bool extraordinary = visit.kind == DistrictVisitKind::kExtraordinary;
     SimEvent& event =
         EmitEvent(current,

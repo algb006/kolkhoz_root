@@ -217,6 +217,21 @@ bool ReadAvatars(const ITableSet& tables, std::vector<AvatarDef>& avatars, std::
       return false;
     }
     avatar.herd_full_care_max_households = static_cast<std::uint32_t>(max_households);
+    // «Стол для района»: days of need a received visit costs, and the plain visit's reputation.
+    if (!ReadFactor(*table,
+                    row,
+                    "district_table_days",
+                    Range{.low = 0.0F, .high = 30.0F},
+                    avatar.district_table_days,
+                    error) ||
+        !ReadFactor(*table,
+                    row,
+                    "district_plain_reputation",
+                    Range{.low = -100.0F, .high = 0.0F},
+                    avatar.district_plain_reputation,
+                    error)) {
+      return false;
+    }
     if (closed != 0.0F && closed != 1.0F) {
       error = "avatars row " + std::to_string(row) + " plan_trade_closed: 0 or 1";
       return false;
