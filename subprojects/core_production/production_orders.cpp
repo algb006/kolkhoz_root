@@ -329,6 +329,12 @@ OrderRefusal SetRotation(const ProductionConfig& config,
     if (slot.value >= config.crops.size()) {
       return OrderRefusal::kNoSuchCrop;
     }
+    // A LATER EPOCH'S CROP IS NOT AVAILABLE BEFORE IT (epochs.md; boss, 22 Nov 2026; crops.csv
+    // `era`): refused on the design's ground, ahead of the green-mass STUB below, so the
+    // reason survives that STUB's removal. The window greys it with the reason (game's).
+    if (EpochIndex(config.crops[slot.value].era) > EpochIndex(current.epoch)) {
+      return OrderRefusal::kRuleForbids;
+    }
     // A CROP WHOSE HARVEST NOBODY TAKES IS NOT SOWN (0.37.147; boss,
     // host-boss-pin-0-37-133-2026-10-02 [55]). Maize for silage reaps green
     // mass; the start's 150 t of silage were eaten by day 41 of year 1 in

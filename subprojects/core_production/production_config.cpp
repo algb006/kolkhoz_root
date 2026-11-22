@@ -152,6 +152,25 @@ bool ParseCrops(const ITable& table,
       error = "crops: " + error;
       return false;
     }
+    // THE CROP'S EPOCH (crops.csv `era`, boss's export of 22 Nov 2026 from crop.era_id): empty
+    // is Epoch I; `era_N` (the db's key) or a bare N (unit_types' form) names a later one. Any
+    // other text refuses the table - a typo would otherwise open a later crop in Epoch I.
+    if (const std::uint32_t era_col = table.FindColumn("era"); era_col != kNoTableColumn) {
+      std::string_view era_text = table.CellText(row, era_col);
+      if (era_text.starts_with("era_")) {
+        era_text.remove_prefix(std::string_view("era_").size());
+      }
+      if (era_text == "2") {
+        crop.era = Epoch::kTwo;
+      } else if (era_text == "3") {
+        crop.era = Epoch::kThree;
+      } else if (!era_text.empty() && era_text != "1") {
+        error = "crops: " + std::string(table.CellText(row, 0)) + ": era '" +
+                std::string(table.CellText(row, era_col)) +
+                "' is none of empty, era_1..era_3, 1..3";
+        return false;
+      }
+    }
     crop.is_winter = values[0] != 0.0F;
     crop.is_perennial = values[1] != 0.0F;
     // Table months are human 1..12; the core's Month enum is 0-based.
