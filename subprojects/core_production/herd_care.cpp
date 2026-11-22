@@ -11,7 +11,18 @@
 namespace core {
 
 float CareFactor(const FarmingConfig& farming, float floor, float coverage) {
-  const float full = farming.herd_care_full_coverage;
+  return CareFactorAt(farming, floor, coverage, farming.herd_care_full_coverage);
+}
+
+float FullCareCoverage(const ProductionConfig& config, const WorldState& world) {
+  const AvatarDef& avatar = AvatarOf(config.avatars, world.chairman.avatar);
+  const bool within = avatar.herd_full_care_max_households == 0 ||
+                      world.families.rows.size() <= avatar.herd_full_care_max_households;
+  return avatar.herd_full_care_threshold > 0.0F && within ? avatar.herd_full_care_threshold
+                                                          : config.farming.herd_care_full_coverage;
+}
+
+float CareFactorAt(const FarmingConfig& farming, float floor, float coverage, float full) {
   const float low = farming.herd_care_floor_coverage;
   if (coverage >= full || !(floor < 1.0F)) {
     return 1.0F;

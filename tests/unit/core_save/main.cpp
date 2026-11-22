@@ -2251,7 +2251,9 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // 448 before the build. Save 208 (#1630 (B)): the days without salt and
     // the salt step, +5 a family, two - predicted 448 -> 458 before the
     // build, held; the hash read off it (s1630b2).
-    {"families", 458, 0x9dce69255409e9bbULL},
+    // Save 224: yard_herd_trudodni and plot_ratio_without_sum struck (#1442), -8 a family, two
+    // - predicted 458 -> 442 before the build; the hash to read off the units.
+    {"families", 442, 0x9dce69255409e9bbULL},
     // Save 84: +36 — the harvest by parts' laid share (4) and grams (8), 12
     // a row, three rows; predicted before the build and held. Then the first
     // row given non-zero values: the size held at 305, the hash moved.
@@ -2718,7 +2720,9 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // Save 220 (#1943 R1): +12 - the audit's step (float) and its clean-audit count (u16) a
     // book, two books; predicted 4058 -> 4070 before the build, held; the hash read off
     // u1943a.
-    {"ledger", 4070, 0xf0313cfca2af3789ULL},
+    // Save 224: herd_care_by_yards and yard_herd_share_today struck (#1442), -8 a book, two
+    // books - predicted 4070 -> 4054 before the build; the hash to read off the units.
+    {"ledger", 4054, 0xf0313cfca2af3789ULL},
     {"staged", 8, 0xa8c7f832281a39c5ULL},
 }};
 

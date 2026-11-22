@@ -37,10 +37,7 @@ namespace core {
 namespace {
 
 /// The world_params keys this config declares (#1442; LaborWorldParamKeys).
-constexpr std::array<std::string_view, 8> kLaborWorldParamKeys = {"strada_first_month",
-                                                                  "strada_last_month",
-                                                                  "yard_herd_garden_cap",
-                                                                  "crime_truancy_on",
+constexpr std::array<std::string_view, 5> kLaborWorldParamKeys = {"crime_truancy_on",
                                                                   "truancy_from_alcoholism",
                                                                   "truancy_share_at_cap",
                                                                   "chairman_placement_level",
@@ -878,37 +875,20 @@ bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string&
       PrefixError("world_params", "teacher_pupils_per_teacher", error);
       return false;
     }
-    // The strada's months (#1442), 1-based in the table, 0-based here.
-    auto first = static_cast<float>(config.strada_first_month) + 1.0F;
-    auto last = static_cast<float>(config.strada_last_month) + 1.0F;
-    if (!OptionalValue(
-            *world, kLaborWorldParamKeys[0], Range{.low = 1.0F, .high = 12.0F}, first, error) ||
-        !OptionalValue(
-            *world, kLaborWorldParamKeys[1], Range{.low = 1.0F, .high = 12.0F}, last, error)) {
-      PrefixError("world_params", "strada_first_month / strada_last_month", error);
-      return false;
-    }
-    config.strada_first_month = static_cast<std::uint8_t>(first - 1.0F);
-    config.strada_last_month = static_cast<std::uint8_t>(last - 1.0F);
-    if (!OptionalValue(*world,
-                       kLaborWorldParamKeys[2],
-                       Range{.low = 0.0F, .high = 1.0F},
-                       config.yard_herd_garden_cap,
-                       error)) {
-      PrefixError("world_params", "yard_herd_garden_cap", error);
-      return false;
-    }
+    // THE STRADA'S MONTHS AND THE GARDEN'S CAP ARE GONE with the yards' strada help (#1442,
+    // struck 22 Nov 2026; the design removed it on 4 Nov, #1438): their only reader was
+    // YardsTakeHerdCare, and boss dropped the three world_params rows in the same move.
     // #1568 link 1, truancy (labor_config.h).
     auto truancy_on = config.truancy_on ? 1.0F : 0.0F;
     if (!OptionalValue(
-            *world, kLaborWorldParamKeys[3], Range{.low = 0.0F, .high = 1.0F}, truancy_on, error) ||
+            *world, kLaborWorldParamKeys[0], Range{.low = 0.0F, .high = 1.0F}, truancy_on, error) ||
         !OptionalValue(*world,
-                       kLaborWorldParamKeys[4],
+                       kLaborWorldParamKeys[1],
                        Range{.low = 0.0F, .high = 60.0F},
                        config.truancy_from_alcoholism,
                        error) ||
         !OptionalValue(*world,
-                       kLaborWorldParamKeys[5],
+                       kLaborWorldParamKeys[2],
                        Range{.low = 0.0F, .high = 1.0F},
                        config.truancy_share_at_cap,
                        error)) {
@@ -919,7 +899,7 @@ bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string&
     // #1778: the chairman's own placement level for his crew orders (labor_config.h).
     auto chairman_level = static_cast<float>(config.chairman_placement_level);
     if (!OptionalValue(*world,
-                       kLaborWorldParamKeys[6],
+                       kLaborWorldParamKeys[3],
                        Range{.low = 0.0F, .high = 3.0F},
                        chairman_level,
                        error)) {
@@ -930,7 +910,7 @@ bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string&
     // #1812: the accountant's placement switched off (labor_config.h).
     auto no_auto = config.no_auto_placement ? 1.0F : 0.0F;
     if (!OptionalValue(
-            *world, kLaborWorldParamKeys[7], Range{.low = 0.0F, .high = 1.0F}, no_auto, error)) {
+            *world, kLaborWorldParamKeys[4], Range{.low = 0.0F, .high = 1.0F}, no_auto, error)) {
       PrefixError("world_params", "no_auto_placement", error);
       return false;
     }

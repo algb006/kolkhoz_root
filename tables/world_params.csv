@@ -354,9 +354,6 @@ sugar_mood_with_child,4,core
 sugar_mood_without,-2,core
 sugar_mood_without_child,-4,core
 limit_grain_points_per_tonne,6,core
-strada_first_month,6,core
-strada_last_month,8,core
-yard_herd_garden_cap,0.25,core
 audit_book_opens_month,10,core
 audit_book_opens_year,2,core
 audit_guarded_stores_only,1,core

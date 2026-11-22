@@ -32,6 +32,17 @@ struct ProductionConfig;
 /// @param coverage HerdRow::care_coverage, 0..1.
 float CareFactor(const FarmingConfig& farming, float floor, float coverage);
 
+/// @brief The care curve with its full line at `full` instead of the common one: the line
+///        FullCareCoverage gives a kolkhoz herd's PRODUCE (the milk).
+float CareFactorAt(const FarmingConfig& farming, float floor, float coverage, float full);
+
+/// @brief «ФЕРМА ДЕРЖИТСЯ НА НЕЙ» (avatars.md, the acting chairman; #1484): the care coverage
+///        at which a kolkhoz herd's produce is full today - the chairman's avatar's
+///        herd_full_care_threshold while the village has at most its
+///        herd_full_care_max_households households (0 = no limit), else the common
+///        farming herd_care_full_coverage. An avatar with threshold 0 always gets the common one.
+float FullCareCoverage(const ProductionConfig& config, const WorldState& world);
+
 /// @brief The settlement's draught under undone care, one number as the
 ///        ration's and the cold's are: the kolkhoz horses' care factor on the
 ///        kind's draught floor, weighted by heads. 1 with no kolkhoz horse.

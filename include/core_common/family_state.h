@@ -343,21 +343,6 @@ struct FamilyRow {
   std::uint32_t drink_occasion_month = 0;
   std::uint32_t shock_month = 0;
 
-  /// THE GARDEN'S PRICE OF THE YARDS' STRADA HELP (#1442's window, boss,
-  /// core-boss-yards-strada [20]-[22]; save 203): the season's daily
-  /// attention as if the yard had given the herds no hours - min(1, gross /
-  /// full_yield_hours) - beside plot_ratio_sum, which pays the harvest. The
-  /// yard window's «огород: −N %» is N = 1 − plot_ratio_sum /
-  /// plot_ratio_without_sum. Written by the plot at hour 22, reset with the
-  /// season at the harvest.
-  float plot_ratio_without_sum = 0.0F;
-
-  /// The trudodni this yard earned for the kolkhoz herds' care this economic
-  /// year (#1442, econ's condition 1: the split MEASURED). Written by labour
-  /// where it pays (YardsTakeHerdCare); part of trudodni_account, not beside
-  /// it; burns with it at the year's turn.
-  TrudodniHundredths yard_herd_trudodni = 0;
-
   /// THE SALT HUNGER (save 208; #1630 (B); health §4 «Солевой голод», the
   /// human's word of 1 Oct 2026): the family's days without salt - +1 a day
   /// its eaters' norm is not met by salt or a substitute, - salt_count_recovery

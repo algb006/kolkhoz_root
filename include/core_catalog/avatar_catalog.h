@@ -105,13 +105,17 @@ struct AvatarDef {
   /// seed step).
   bool lot_pays_grain = false;
 
-  /// THE YARDS' STRADA HELP (#1442; avatars.md «Временная»: «в страду до трети
-  /// ухода за стадом берут дворы — за трудодни»; boss, core-boss-yards-strada
-  /// [2], [3]): the share of each kolkhoz herd's daily care the yards take in
-  /// the strada's months (the acting chairman: 0.333), out of their plot
-  /// hours and paid in trudodni at the herd care's rate. A ceiling: the
-  /// yards' free hours cap it. labor_system.cpp, YardsTakeHerdCare.
-  float strada_yard_herd_care_share = 0.0F;
+  /// «ФЕРМА ДЕРЖИТСЯ НА НЕЙ» (avatars.md, the acting chairman; #1484; boss, 22 Nov 2026):
+  /// the care coverage at which a kolkhoz herd's produce is full, for this avatar - 0.75 for
+  /// the acting chairman - instead of the common farming herd_care_full_coverage. 0: the
+  /// common threshold. It REPLACED the yards' strada help (#1442, struck 22 Nov 2026: the
+  /// design removed it on 4 Nov, #1438, −5.39 % food), whose column the export kept
+  /// re-sending. herd_care.cpp, FullCareCoverage.
+  float herd_full_care_threshold = 0.0F;
+
+  /// The village's households up to which the threshold above holds (acting: 40); past it the
+  /// common threshold. 0: no limit.
+  std::uint32_t herd_full_care_max_households = 0;
 };
 
 /// @brief Reads tables/avatars.csv into `avatars`, row order = AvatarId.

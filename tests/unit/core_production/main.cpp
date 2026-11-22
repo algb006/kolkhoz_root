@@ -62,6 +62,7 @@
 #include "harvest_advice_checks.h"
 #include "hay_weathering_checks.h"
 #include "heap_lamp_checks.h"
+#include "herd_care.h"
 #include "herd_care_checks.h"
 #include "herd_cold.h"
 #include "herd_death_checks.h"
@@ -10919,6 +10920,64 @@ int CheckUnworkedGroundDoesNotRecover() {
 /// hectares lay unworked through every thirty-year run this project has
 /// measured — work is opened off the rotation, and nothing could give a
 /// field one.
+/// «ФЕРМА ДЕРЖИТСЯ НА НЕЙ» (avatars.md, the acting chairman; #1484; boss, 22 Nov 2026): the
+/// acting chairman's herd produce is full at 76 % care while the village has at most 40
+/// households; another chairman's is not; and at 41 households the acting one falls back to
+/// the common 90 %.
+int CheckTheFarmHoldsOnHer() {
+  int failures = 0;
+  core::ProductionConfig config;
+  config.farming.herd_care_full_coverage = 0.9F;
+  config.farming.herd_care_floor_coverage = 0.5F;
+  core::AvatarDef neutral;
+  neutral.key = "neutral";
+  core::AvatarDef acting;
+  acting.key = "acting";
+  acting.herd_full_care_threshold = 0.75F;
+  acting.herd_full_care_max_households = 40;
+  config.avatars = {neutral, acting};
+  const auto village = [&config](std::uint16_t avatar, std::size_t households) {
+    core::WorldState world;
+    world.chairman.avatar = core::AvatarId{avatar};
+    world.families.rows.resize(households);
+    world.families.row_ids.resize(households);
+    return core::CareFactorAt(config.farming, 0.6F, 0.76F, core::FullCareCoverage(config, world));
+  };
+  failures += Expect(village(1, 40) == 1.0F,
+                     "farm holds on her: the acting chairman's produce is full at 76 % care, 40 "
+                     "households");
+  failures += Expect(village(0, 40) < 1.0F,
+                     "farm holds on her: another chairman's at 76 % is not full (the common 90 %)");
+  failures += Expect(village(1, 41) < 1.0F,
+                     "farm holds on her: at 41 households the acting chairman falls back to 90 %");
+  return failures;
+}
+
+/// THE DEALER'S GRAIN BUYS TOOLS, NOT STEEL (boss, 22 Nov 2026; avatars.md «Пути первой
+/// сборки», #1441's T0): limit_catalog.csv's grain_payable is the rule's one home - the door
+/// pays in grain only for a lot carrying it (district_limit.cpp, OrderLimitLot).
+int CheckTheDealersGrainBuysTools() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  core::ProductionConfig config;
+  std::string parse_error;
+  if (Expect(tables != nullptr && core::ParseProductionConfig(*tables, config, parse_error),
+             "dealer's grain: the shipped tables parse") != 0) {
+    return 1;
+  }
+  const core::ITable* const catalog = tables->FindTable("limit_catalog");
+  const std::uint32_t steel =
+      catalog == nullptr ? core::kNoTableRow : catalog->FindRowByKey("steel_lot");
+  const std::uint32_t tools =
+      catalog == nullptr ? core::kNoTableRow : catalog->FindRowByKey("tool_lot");
+  failures +=
+      Expect(steel < config.limit.lots.size() && tools < config.limit.lots.size() &&
+                 !config.limit.lots[steel].grain_payable && config.limit.lots[tools].grain_payable,
+             "dealer's grain: steel is not payable in grain, tools are");
+  return failures;
+}
+
 int CheckTheChairmanSetsARotation() {
   int failures = 0;
   std::string error;
@@ -18700,6 +18759,8 @@ int main() {
   failures += CheckThePlanIsJudgedAtTheYearsTurn();
   failures += CheckUnworkedGroundDoesNotRecover();
   failures += CheckTheChairmanSetsARotation();
+  failures += CheckTheFarmHoldsOnHer();         // #1484, «Ферма держится на ней»
+  failures += CheckTheDealersGrainBuysTools();  // the dealer's grain: tools only
   failures += CheckLostWinterCropLiesFallow();
   failures += CheckNoWinterSowingAfterWindow();
   failures += CheckTheBlackFallowsFurrowIsTheRyes();

@@ -250,9 +250,6 @@ inline std::vector<std::string> LedgerTurnDiff(const core::YearLedger& before,
                 after.herd_rest_days_self_worked,
                 "herd_rest_days_self_worked",
                 changed);
-  NoteIfChanged(before.herd_care_by_yards, after.herd_care_by_yards, "herd_care_by_yards", changed);
-  NoteIfChanged(
-      before.yard_herd_share_today, after.yard_herd_share_today, "yard_herd_share_today", changed);
   NoteIfChanged(before.satisfaction_sum, after.satisfaction_sum, "satisfaction_sum", changed);
   NoteIfChanged(
       before.satisfaction_samples, after.satisfaction_samples, "satisfaction_samples", changed);

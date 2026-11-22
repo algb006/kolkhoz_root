@@ -198,15 +198,25 @@ bool ReadAvatars(const ITableSet& tables, std::vector<AvatarDef>& avatars, std::
                     Range{.low = 0.1F, .high = 10.0F},
                     avatar.tool_life_factor,
                     error) ||
-        // The yards' strada help (#1442): a share of the care, 0..1.
+        // «Ферма держится на ней» (#1484): the full-care threshold, 0 = the common one.
         !ReadFactor(*table,
                     row,
-                    "strada_yard_herd_care_share",
+                    "herd_full_care_threshold",
                     Range{.low = 0.0F, .high = 1.0F},
-                    avatar.strada_yard_herd_care_share,
+                    avatar.herd_full_care_threshold,
                     error)) {
       return false;
     }
+    float max_households = 0.0F;
+    if (!ReadFactor(*table,
+                    row,
+                    "herd_full_care_max_households",
+                    Range{.low = 0.0F, .high = 100000.0F},
+                    max_households,
+                    error)) {
+      return false;
+    }
+    avatar.herd_full_care_max_households = static_cast<std::uint32_t>(max_households);
     if (closed != 0.0F && closed != 1.0F) {
       error = "avatars row " + std::to_string(row) + " plan_trade_closed: 0 or 1";
       return false;

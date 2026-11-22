@@ -15,7 +15,7 @@ roofing_lot,25,1,goods,0
 consumer_goods_lot,,1,goods,0
 kerosene_lot,10,1,goods,0
 hops_lot,25,2,goods,0
-steel_lot,15,1,goods,1
+steel_lot,15,1,goods,0
 spare_part_lot,35,1,goods,0
 industrial_equipment_lot,120,2,goods,0
 bottled_gas_lot,35,3,goods,0

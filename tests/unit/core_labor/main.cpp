@@ -1426,81 +1426,6 @@ int TestRestDaySubstitute() {
   return failures;
 }
 
-/// THE YARDS' STRADA HELP (#1442; avatars.md «Временная»: «в страду до трети
-/// ухода за стадом берут дворы — за трудодни»): one yard, three adults, a
-/// small herd (one calf: 120 real days a year / 336 = 0.357 man-days a day),
-/// the morning's hour; a second yard with one adult beside it.
-/// - July, the acting chairman (share 0.333): the yards take 0.119 man-days
-///   (1.19 h at 10 a man-day). With 20 and 10 plot hours, each gives the same
-///   share of its own garden, 1.19 / 30 = 0.040 (spread (b), boss,
-///   core-boss-yards-strada [9]), and is paid by its hours: 0.08 and 0.04
-///   trudodni.
-/// - February, or the neutral chairman in July: nothing.
-/// - The yards had 0.6 free hours yesterday: the take is capped at a third of
-///   each garden (yard_herd_garden_cap, boss [15] (i)), 0.2 h = 0.02 man-days.
-int TestYardsStradaHelp() {
-  int failures = 0;
-  const test::FakeTable livestock({"key", "care_days_per_real_year"}, {{"calf", "120"}});
-  const test::FakeTable avatars({"key", "start_reputation", "strada_yard_herd_care_share"},
-                                {{"neutral", "50", ""}, {"acting", "45", "0.333"}});
-  const test::FakeTableSet tables({{"livestock", &livestock}, {"avatars", &avatars}});
-  const auto labor = core::CreateLaborSystem(tables, core::StubTables::kAllowed);
-  if (labor == nullptr) {
-    return Expect(false, "yards' strada help: the factory yields a system");
-  }
-  constexpr std::uint32_t kJulyDay = 24;  // month 7 of year 1: 4 days a month
-  constexpr std::uint32_t kFebruaryDay = 4;
-  const auto morning = [&labor](std::uint16_t avatar, std::uint32_t game_day, float yard_hours) {
-    DayWorld day(3);
-    day.world.chairman.avatar = core::AvatarId{avatar};
-    day.world.families.rows[0].household_hours = yard_hours;
-    core::UnitRow house;
-    core::FamilyRow second;
-    second.house = core::AppendRow(day.world.units, house);
-    second.household_hours = yard_hours / 2.0F;
-    core::ResidentRow neighbour = day.world.residents.rows[0];
-    neighbour.family = core::AppendRow(day.world.families, second);
-    core::AppendRow(day.world.residents, neighbour);
-    const core::HerdId herd = day.AddUnitHerd(1, 100.0F);
-    day.world.herds.rows[core::FindRow(day.world.herds, herd)].kind = core::LivestockKindId{0};
-    day.world.calendar.tick = static_cast<core::Tick>(game_day) * core::kTicksPerDay;
-    core::RefreshCalendarCaches(day.world.calendar);
-    const core::WorldState previous = day.world;
-    labor->RunAssignmentDecisions(previous, day.world);
-    return day.world;
-  };
-  const core::WorldState july = morning(1, kJulyDay, 20.0F);
-  const core::YearLedger& book = july.ledger.current;
-  std::cout << "yards' strada help: July acting took " << book.herd_care_by_yards
-            << " man-days, a share " << book.yard_herd_share_today << " of each garden, accounts "
-            << july.families.rows[0].trudodni_account << " / "
-            << july.families.rows[1].trudodni_account << " hundredths\n";
-  failures += Expect(std::abs(book.herd_care_by_yards - 0.1189F) < 0.001F &&
-                         std::abs(book.yard_herd_share_today - 0.03964F) < 0.0005F,
-                     "yards' strada help: in July the yards take a third of the herd's care, "
-                     "the same share of every garden");
-  failures += Expect(
-      july.families.rows[0].trudodni_account == 8 && july.families.rows[1].trudodni_account == 4,
-      "yards' strada help: and each yard is paid by the hours it gave, at the herd "
-      "care's rate");
-  failures += Expect(july.families.rows[0].yard_herd_trudodni == 8 &&
-                         july.families.rows[1].yard_herd_trudodni == 4,
-                     "yards' strada help: the yard's herd trudodni keep what the account got "
-                     "for the herds (save 203)");
-  const core::WorldState february = morning(1, kFebruaryDay, 20.0F);
-  const core::WorldState neutral = morning(0, kJulyDay, 20.0F);
-  failures += Expect(february.ledger.current.herd_care_by_yards == 0.0F &&
-                         neutral.ledger.current.herd_care_by_yards == 0.0F &&
-                         neutral.families.rows[0].trudodni_account == 0,
-                     "yards' strada help: none outside the strada, none for another chairman");
-  const core::WorldState tight = morning(1, kJulyDay, 0.4F);  // 0.4 + 0.2 h
-  failures +=
-      Expect(std::abs(tight.ledger.current.herd_care_by_yards - 0.02F) < 0.001F &&
-                 std::abs(tight.ledger.current.yard_herd_share_today - 1.0F / 3.0F) < 0.001F,
-             "yards' strada help: no yard gives more than a third of its own garden");
-  return failures;
-}
-
 /// THE MONTH'S CARE COVERAGE (#1443): a calf with nobody to care for it - no
 /// resident at all - goes 1 -> 0.75 -> 0.5625 over two days (a 4-day mean);
 /// a herd whose day was all done stays at 1.
@@ -5347,7 +5272,6 @@ int main() {
   failures += TestLeisureDayOff();
   failures += TestLeisureByReach();
   failures += TestRestDaySubstitute();
-  failures += TestYardsStradaHelp();
   failures += TestCareCoverage();
   failures += TestASpentManIsNotSent();
   failures += TestBarnRunsOnTheDayOff();

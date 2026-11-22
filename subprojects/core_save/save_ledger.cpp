@@ -221,9 +221,12 @@ constexpr std::size_t kBuiltInRowsSize = sizeof(BuiltInByType);
 // after reputation_own_overfulfil_t - predicted 1440 -> 1448 (the float takes the i64's
 // padding or not, the u16 rounds to 8 either way) and 171 fields before the build; on the
 // wire +6 a book.
-static_assert(sizeof(YearLedger) == 1448 + (48 * kAmountsSize) + kBuiltInRowsSize,
+// Save 224: herd_care_by_yards and yard_herd_share_today struck with the yards' strada help
+// (#1442) - read off a probe before the codec, 1448 -> 1440 and 171 -> 169 fields; on the
+// wire -8 a book.
+static_assert(sizeof(YearLedger) == 1440 + (48 * kAmountsSize) + kBuiltInRowsSize,
               "YearLedger changed — update the codec and VERSION_SAVE");
-static_assert(AggregateArity<YearLedger>() == 171,
+static_assert(AggregateArity<YearLedger>() == 169,
               "YearLedger gained or lost a field — update the codec and VERSION_SAVE");
 static_assert(sizeof(BuiltInRow) == 16 && AggregateArity<BuiltInRow>() == 3,
               "BuiltInRow changed — update its codec and VERSION_SAVE");
@@ -429,8 +432,7 @@ void WriteYearLedger(SaveSink& sink, const YearLedger& book) {
   out.WriteI64(book.limit_grain_paid);
   out.WriteU32(book.herd_rest_days_substituted);  // save 201 (#1434)
   out.WriteU32(book.herd_rest_days_self_worked);
-  out.WriteFloat(book.herd_care_by_yards);  // save 202 (#1442)
-  out.WriteFloat(book.yard_herd_share_today);
+  // save 224: the yards' strada help's two floats gone with the path (#1442 struck).
   out.WriteFloat(book.satisfaction_sum);
   out.WriteU32(book.satisfaction_samples);
   out.WriteFloat(book.able_bodied_days);
@@ -722,8 +724,6 @@ YearLedger ReadYearLedger(LoadSource& source) {
   book.limit_grain_paid = in.ReadI64();
   book.herd_rest_days_substituted = in.ReadU32();  // save 201 (#1434)
   book.herd_rest_days_self_worked = in.ReadU32();
-  book.herd_care_by_yards = in.ReadFloat();  // save 202 (#1442)
-  book.yard_herd_share_today = in.ReadFloat();
   book.satisfaction_sum = in.ReadFloat();
   book.satisfaction_samples = in.ReadU32();
   book.able_bodied_days = in.ReadFloat();

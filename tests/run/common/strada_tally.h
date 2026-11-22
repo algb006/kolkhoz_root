@@ -146,9 +146,10 @@ class StradaTally {
       satiety_sum[family] += resident.satiety;
     }
     const bool strada = InStrada(world);
-    // The day's share of every yard's gross plot hours (core's spread (b)):
-    // gross read back from the net as labour reads it (kGrossShareCap 0.95).
-    const float share = world.ledger.current.yard_herd_share_today;
+    // THE YARDS' STRADA HELP IS STRUCK (#1442, 22 Nov 2026; the design removed it on 4 Nov,
+    // #1438): no share, no yards' care, no herd trudodni - the yards' columns of G1442 print
+    // nought from 0.37.412 on, and the line's format stays for its readers.
+    const float share = 0.0F;
     const float held = share < 0.95F ? share : 0.95F;
     const auto month = static_cast<std::uint32_t>(world.calendar.date.month);  // 0-based
     // K3's winter after each strada: Oct-Dec of y1-y3 and Jan-Apr of y2-y4.
@@ -157,7 +158,7 @@ class StradaTally {
     // man-days off the book's running sum, spread by today's gross hours as
     // labour spreads them by yesterday's - an ESTIMATE, the core keeps no
     // per-family figure. A book that turned since yesterday starts from nought.
-    const double by_yards = static_cast<double>(world.ledger.current.herd_care_by_yards);
+    const double by_yards = 0.0;  // struck with the path (above)
     const double day_md = by_yards >= prev_by_yards_ ? by_yards - prev_by_yards_ : by_yards;
     prev_by_yards_ = by_yards;
     if (yard_td_.size() < world.families.rows.size()) {
@@ -250,8 +251,8 @@ class StradaTally {
         last_td_m_.resize(world.families.rows.size(), 0.0F);
       }
       last_with_m_[row] = family.plot_ratio_sum;
-      last_without_m_[row] = family.plot_ratio_without_sum;
-      last_td_m_[row] = static_cast<float>(family.yard_herd_trudodni) / 100.0F;
+      last_without_m_[row] = family.plot_ratio_sum;  // no help: the same season (struck)
+      last_td_m_[row] = 0.0F;
     }
   }
 
@@ -318,7 +319,6 @@ class StradaTally {
     if (year < 1 || year > kYears) {
       return;
     }
-    by_yards_md_ += static_cast<double>(closed.herd_care_by_yards);
     if (milk_ < closed.herd_produce.size()) {
       milk_kg_ += static_cast<double>(closed.herd_produce[milk_]) / 1000.0;
     }

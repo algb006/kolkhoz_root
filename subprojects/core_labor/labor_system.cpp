@@ -381,7 +381,6 @@ class LaborSystem final : public ILaborSystem {
       resident.work = WorkAssignment{};
     }
     RefillHerdCare(morning);
-    YardsTakeHerdCare(morning);
     AssignPostHolders(morning);
     return morning;
   }
@@ -1122,7 +1121,6 @@ class LaborSystem final : public ILaborSystem {
     book.reaping_today_hours = 0.0F;
     book.reaping_today_hands = 0.0F;
     RefillHerdCare(current);
-    YardsTakeHerdCare(current);
     AssignPostHolders(current);
     // UB-001 fix: the accountant's placement is a BLOCK, not the body of the
     // function, because the chairman's orders below it must run on days the
@@ -2013,100 +2011,6 @@ class LaborSystem final : public ILaborSystem {
       herd.care_days_remaining = config_.care_days_per_year[herd.kind.value] *
                                  static_cast<float>(herd.adult_count) /
                                  static_cast<float>(kDaysPerYear);
-    }
-  }
-
-  /// THE YARDS' STRADA HELP (#1442; avatars.md «Временная»: «в страду до трети
-  /// ухода за стадом берут дворы — за трудодни»; boss, core-boss-yards-strada
-  /// [2], [3]): in the strada's months the yards take the avatar's share of
-  /// each kolkhoz herd's care, the morning after RefillHerdCare, so the posts
-  /// and the list see only the rest. «До трети» is a ceiling on both sides:
-  /// the yards give at most yard_herd_garden_cap (⅓) of their gross plot
-  /// hours, the rest stays a kolkhoz job. EVERY YARD
-  /// GIVES THE SAME SHARE OF ITS OWN GARDEN (boss, core-boss-yards-strada [9],
-  /// (b): spread by plot hours, not by adults - by adults a yard whose
-  /// adults all work for the kolkhoz gave its whole garden, 100 % in the first
-  /// pair): the day's share goes into the ledger (yard_herd_share_today), and
-  /// the private plot takes that share of its gross hours off at hour 22. The
-  /// care is DONE and paid: the man-days are booked as trudodni at the herd
-  /// care's rate on each yard's account in proportion to the hours it gave
-  /// (econ-boss-1438-yards-paid [1]; no new rate, the year's pot is divided
-  /// by more trudodni).
-  void YardsTakeHerdCare(WorldState& current) const {
-    YearLedger& book = current.ledger.current;
-    // THE YARDS' GROSS HOURS: yesterday's net plot hours (FamilyRow::
-    // household_hours, written at hour 22) over what yesterday's share left
-    // them. Read net, a day that took a share would leave the next a smaller
-    // base and the help would shrink day by day; at a share near the whole
-    // garden the division is held at kGrossShareCap (STUB) so a garden given
-    // whole still reads some base the next morning.
-    constexpr float kGrossShareCap = 0.95F;
-    const float yesterday_share =
-        book.yard_herd_share_today < kGrossShareCap ? book.yard_herd_share_today : kGrossShareCap;
-    book.yard_herd_share_today = 0.0F;
-    const AvatarDef& avatar = AvatarOf(config_.avatars, current.chairman.avatar);
-    const auto month = static_cast<std::uint8_t>(current.calendar.date.month);
-    if (!(avatar.strada_yard_herd_care_share > 0.0F) || config_.standard_day_hours <= 0.0F ||
-        !MonthInRange(month, config_.strada_first_month, config_.strada_last_month)) {
-      return;
-    }
-    float need_days = 0.0F;
-    for (const HerdRow& herd : current.herds.rows) {
-      need_days += herd.care_days_remaining;
-    }
-    // Each yard with a house (a barrack has no garden): its gross plot hours.
-    std::vector<float> gross_by_family(current.families.rows.size(), 0.0F);
-    float gross_hours = 0.0F;
-    for (std::uint32_t family = 0; family < current.families.rows.size(); ++family) {
-      const FamilyRow& row = current.families.rows[family];
-      if (row.house.value == kInvalidEntityIdValue || row.in_barrack != 0 ||
-          !(row.household_hours > 0.0F)) {
-        continue;
-      }
-      gross_by_family[family] = row.household_hours / (1.0F - yesterday_share);
-      gross_hours += gross_by_family[family];
-    }
-    if (!(need_days > 0.0F) || !(gross_hours > 0.0F)) {
-      return;
-    }
-    const float wanted_hours =
-        avatar.strada_yard_herd_care_share * need_days * config_.standard_day_hours;
-    // NO YARD GIVES MORE THAN yard_herd_garden_cap OF ITS GARDEN (boss,
-    // core-boss-yards-strada [15], (i)): with one share for every yard the
-    // cap on a yard is the cap on the share; the rest stays kolkhoz care.
-    const float garden_hours = config_.yard_herd_garden_cap * gross_hours;
-    const float taken_hours = wanted_hours < garden_hours ? wanted_hours : garden_hours;
-    if (!(taken_hours > 0.0F)) {
-      return;
-    }
-    const float taken_days = taken_hours / config_.standard_day_hours;
-    const float keep = 1.0F - taken_days / need_days;
-    for (HerdRow& herd : current.herds.rows) {
-      herd.care_days_remaining *= keep;
-    }
-    book.herd_care_by_yards += taken_days;
-    book.yard_herd_share_today = taken_hours / gross_hours;
-    // PAID, by the hours each yard gave, at the herd care's own rate.
-    const auto care_index = static_cast<std::uint32_t>(WorkKind::kHerdCare);
-    if (care_index >= config_.rates.size()) {
-      return;
-    }
-    for (std::uint32_t family = 0; family < current.families.rows.size(); ++family) {
-      if (!(gross_by_family[family] > 0.0F)) {
-        continue;
-      }
-      const float trudodni = config_.rates[care_index].trudodni_rate * taken_days *
-                             (gross_by_family[family] / gross_hours);
-      const auto hundredths =
-          static_cast<TrudodniHundredths>(std::lround(trudodni * kTrudodniScale));
-      FamilyRow& row = current.families.rows[family];
-      row.trudodni_account += hundredths;
-      row.yard_herd_trudodni += hundredths;  // the window's and econ's measure
-      if (row.formed_day != kNotFormedInPlay) {
-        row.earned_since_formed += hundredths;
-      }
-      book.trudodni_accrued += hundredths;
-      book.trudodni_by_day[current.calendar.day % kDaysPerYear] += hundredths;
     }
   }
 
@@ -4672,8 +4576,7 @@ class LaborSystem final : public ILaborSystem {
   /// THE MONTH'S CARE COVERAGE (#1443; econ, herd-care-undone-2026-11-02, the
   /// human's «Делать» #1623): today's care done over today's need, folded
   /// into HerdRow::care_coverage as a 4-day (one month) exponential mean. The
-  /// need is the kind's norm RefillHerdCare filled this morning; what the
-  /// yards took in the strada (YardsTakeHerdCare) is care done. A herd with
+  /// need is the kind's norm RefillHerdCare filled this morning. A herd with
   /// no care to do today keeps its coverage.
   void CloseHerdCare(WorldState& current) const {
     constexpr float kMonthWeight = 1.0F / static_cast<float>(kDaysPerMonth);

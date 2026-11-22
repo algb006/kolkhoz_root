@@ -927,7 +927,7 @@ void WatchTheTeam(const ProductionConfig& config,
 /// design's: a hungry herd gives less at once, a billeted head gives less
 /// because part of what it makes settles in the yard it stands in, and a
 /// freezing head gives less (the cold ladder).
-float YieldFactor(const ProductionConfig& config, const HerdRow& herd) {
+float YieldFactor(const ProductionConfig& config, const HerdRow& herd, float full_care) {
   // THE SHARE OF THE RATION, floored at the hungry factor (boss seq 171 А):
   // a herd fed a third gives a third, never less than a starving one. Until
   // 2026-09-19 any short day gave the hungry factor whole, so bought feed
@@ -945,9 +945,12 @@ float YieldFactor(const ProductionConfig& config, const HerdRow& herd) {
   if (herd.kind.value < config.livestock.size()) {
     factor *= ColdProduceFactor(config.livestock[herd.kind.value], herd);
     // AND THE FOURTH, UNDONE CARE (#1443; «недоенная корова сбавляет
-    // молоко»): the month's care coverage on the kind's produce floor.
-    factor *= CareFactor(
-        config.farming, config.livestock[herd.kind.value].care_produce_floor, herd.care_coverage);
+    // молоко»): the month's care coverage on the kind's produce floor, full at the line
+    // FullCareCoverage gives (the acting chairman's 0.75 while the village is small, #1484).
+    factor *= CareFactorAt(config.farming,
+                           config.livestock[herd.kind.value].care_produce_floor,
+                           herd.care_coverage,
+                           full_care);
   }
   return factor;
 }
@@ -967,7 +970,7 @@ void RunProduce(const ProductionConfig& config,
                 const HerdRow& herd,
                 const HerdPlace& place,
                 WorldState& world) {
-  const float factor = YieldFactor(config, herd);
+  const float factor = YieldFactor(config, herd, FullCareCoverage(config, world));
   const auto adults = static_cast<float>(herd.adult_count);
   const auto year = static_cast<float>(kDaysPerYear);
   // Milk counts females only; eggs, wool and manure count every adult.
@@ -2240,11 +2243,13 @@ ResourceAmounts FodderClaim(const ProductionConfig& config, const WorldState& cu
 
 Grams KolkhozMilkDayGrams(const ProductionConfig& config, const WorldState& current) {
   Grams total = 0;
+  const float full_care = FullCareCoverage(config, current);
   for (const HerdRow& herd : current.herds.rows) {
     if (herd.household_owned != 0 || herd.kind.value >= config.livestock.size()) {
       continue;
     }
-    total += HerdMilkDayGrams(config.livestock[herd.kind.value], herd, YieldFactor(config, herd));
+    total += HerdMilkDayGrams(
+        config.livestock[herd.kind.value], herd, YieldFactor(config, herd, full_care));
   }
   return total;
 }

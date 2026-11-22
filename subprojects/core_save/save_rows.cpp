@@ -155,7 +155,7 @@ static_assert(AggregateArity<ResidentRow>() == 60,
 // Save 208 (#1630 (B)): salt_hunger_days (float) and salt_step (u8) at the
 // tail - predicted 200 -> 208 + amounts and 48 fields before the build; on
 // the wire +5 a family.
-static_assert(sizeof(FamilyRow) == 208 + kAmountsSize,
+static_assert(sizeof(FamilyRow) == 200 + kAmountsSize,
               "FamilyRow changed — update the codec and VERSION_SAVE");
 // 2026-09-18, save 57: ration_granted, the yard's ration decision — 19 fields;
 // the size is read off the build below, not guessed.
@@ -165,7 +165,10 @@ static_assert(sizeof(FamilyRow) == 208 + kAmountsSize,
 // Save 75: in_barrack and hunger_alarm_lit — 27 fields. Save 113:
 // satisfaction_year — 28. Save 124: season_category_kcal and
 // season_need_kcal — 30.
-static_assert(AggregateArity<FamilyRow>() == 48,
+// Save 224: yard_herd_trudodni and plot_ratio_without_sum struck with the yards' strada help
+// (#1442) - 48 -> 46 fields, 208 -> 200 + amounts read off a probe before the build; the wire
+// -8 a family.
+static_assert(AggregateArity<FamilyRow>() == 46,
               "FamilyRow gained or lost a field — update the codec and VERSION_SAVE");
 // FieldRow took LandKind into a padding byte it already had, so sizeof did
 // NOT move — the one case the tripwire of manual/67-save-format.md §7 cannot
@@ -1119,8 +1122,8 @@ void WriteFamilyRow(SaveSink& sink, const FamilyRow& row) {
   out.WriteFloat(row.sugar_share);
   out.WriteU32(row.drink_occasion_month);  // save 189 (#1262)
   out.WriteU32(row.shock_month);
-  out.WriteFloat(row.plot_ratio_without_sum);  // save 203 (#1442's window)
-  out.WriteI32(row.yard_herd_trudodni);
+  // save 224: plot_ratio_without_sum and yard_herd_trudodni gone with the yards' strada help
+  // (#1442 struck; the window's price read 0 with no share to price).
   out.WriteFloat(row.salt_hunger_days);  // save 208 (#1630 (B))
   out.WriteU8(row.salt_step);
 }
@@ -1200,15 +1203,10 @@ FamilyRow ReadFamilyRow(LoadSource& source) {
   row.sugar_share = in.ReadFloat();
   row.drink_occasion_month = in.ReadU32();  // save 189 (#1262)
   row.shock_month = in.ReadU32();
-  row.plot_ratio_without_sum = in.ReadFloat();  // save 203 (#1442's window)
-  row.yard_herd_trudodni = in.ReadI32();
   row.salt_hunger_days = in.ReadFloat();  // save 208 (#1630 (B))
   row.salt_step = static_cast<std::uint8_t>(source.ReadEnumValue(0, 4, "family salt step"));
   if (!(row.salt_hunger_days >= 0.0F)) {
     source.Fail("a family's days without salt are negative or unreadable");
-  }
-  if (!(row.plot_ratio_without_sum >= 0.0F) || row.yard_herd_trudodni < 0) {
-    source.Fail("a family's garden price or herd trudodni are negative or unreadable");
   }
   if (row.earned_since_formed < 0 || row.advance_debt < 0 || row.advance_given < row.advance_debt) {
     source.Fail("a family's advance is negative or owes more than it was given");

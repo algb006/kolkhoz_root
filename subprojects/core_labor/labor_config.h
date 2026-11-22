@@ -785,21 +785,6 @@ struct LaborConfig {
   /// and the free cancelled days, read live by the chairman's avatar.
   std::vector<AvatarDef> avatars;
 
-  /// THE STRADA'S MONTHS, 0-based, inclusive (world_params.csv
-  /// strada_first_month / strada_last_month, 1-based there; #1442: farming.md's
-  /// calendar - hay in June, winter crops in July, spring crops in August;
-  /// boss, core-boss-yards-strada [2]). STUB 6..8. The window in which the
-  /// yards take a share of the kolkhoz herds' care (AvatarDef::
-  /// strada_yard_herd_care_share).
-  std::uint8_t strada_first_month = 5;
-  std::uint8_t strada_last_month = 7;
-
-  /// world_params.csv `yard_herd_garden_cap` (#1442; boss, core-boss-yards-
-  /// strada [15], (i)): the most of its own garden a yard gives the herds in
-  /// a day, 0..1. STUB ⅓: «до трети» on the garden's side as on the herd's;
-  /// what the yards cannot give stays kolkhoz care.
-  float yard_herd_garden_cap = 1.0F / 3.0F;
-
   /// #1568 LINK 1, TRUANCY (crime §6 «Прогулы — своя дверь… тоже начинается
   /// с 50»; econ's spec of 5 Nov 2026, STUBs): world_params
   /// `crime_truancy_on` (0 = off, the canon), `truancy_from_alcoholism` and
