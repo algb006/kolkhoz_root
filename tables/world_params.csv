@@ -409,3 +409,4 @@ epoch2_door_min_reputation,0,core
 audit_clean_reputation_max,40,core
 audit_refused_write_off_free,1,core
 audit_clean_needs_two,0,core
+noise_seed_salt,0,core
