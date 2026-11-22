@@ -327,9 +327,12 @@ done
 # NEWEST COUNTS ONLY A WHOLE PUBLISH - both configurations' core.lib (22 Nov 2026: a
 # one-configuration compile check of 0.37.409 left publish/0.37.409/Debug, and 408's publish
 # then kept current on 407 as «older than 409»).
+# The loop ENDS IN `true`: its last `test` fails on whatever is not a whole publish (the
+# `current` file), and under `set -euo pipefail` that status killed 409's first publish
+# silently, after both configurations were on the host and before the pointer moved.
 newest=$(ssh "${host}" "cd '${remote_dir}/publish' 2>/dev/null && for d in *; do \
   test -f \"\$d/Debug/lib/core.lib\" && test -f \"\$d/Release/lib/core.lib\" && echo \"\$d\"; \
-  done" | tr -d '\r' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
+  done; true" | tr -d '\r' | { grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true; } | sort -V | tail -n 1)
 target_current="${version}"
 if [ -n "${newest}" ] && [ "${newest}" != "${version}" ] \
   && [ "$(printf '%s\n%s\n' "${newest}" "${version}" | sort -V | tail -n 1)" = "${newest}" ]; then
@@ -364,7 +367,8 @@ all_versions=$(ssh "${host}" "ls -1 '${remote_dir}/publish' 2>/dev/null" | tr -d
   | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V)
 kept_whole=$(ssh "${host}" "cd '${remote_dir}/publish' 2>/dev/null && for d in *; do \
   test -f \"\$d/Debug/lib/core.lib\" && test -f \"\$d/Release/lib/core.lib\" && echo \"\$d\"; \
-  done" | tr -d '\r' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n "${kept_versions}")
+  done; true" | tr -d '\r' | { grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true; } | sort -V \
+  | tail -n "${kept_versions}")
 oldest_kept=$(printf '%s\n' "${kept_whole}" | head -n 1)
 old_versions=""
 if [ -n "${oldest_kept}" ]; then
