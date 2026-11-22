@@ -57,18 +57,8 @@ class DistrictTablePolicy {
       return;
     }
     const core::WorldState& world = simulation.CompletedState();
+    days_today_ = free.days;  // the free stock TABLE1953 bins the next visits by
     const std::uint8_t want_declined = free.days < kPlainBelowDays ? 1 : 0;
-    // TABLE1953's row (econ's gate): a visit arriving today is received by the choice standing
-    // now, against today's free stock in days.
-    for (const core::DistrictVisitRow& visit : world.district_visits.rows) {
-      if (visit.arrive_day == world.calendar.day) {
-        const std::uint32_t year = (world.calendar.day / core::kDaysPerYear) + 1U;
-        Visits& row = by_year_[year];
-        const bool plain = world.chairman.district_table_declined != 0;
-        const std::size_t bin = free.days < 14.0F ? 0 : (free.days < 28.0F ? 1 : 2);
-        ++(plain ? row.plain : row.table)[bin];
-      }
-    }
     if (want_declined == world.chairman.district_table_declined) {
       return;
     }
@@ -76,6 +66,25 @@ class DistrictTablePolicy {
     order.kind = core::OrderKind::kSetDistrictTable;
     order.enable = want_declined != 0 ? 0 : 1;
     simulation.StageOrders(std::span<const core::OrderRow>(&order, 1), {});
+  }
+
+  /// @brief Every step: each kDistrictTable the core raised (amount > 0 a table, 0 plain), binned
+  ///        by the last day's free stock. A visit arrives at its day's first tick and leaves the
+  ///        book at once, so a daily look at district_visits never saw one (the first pair's
+  ///        empty TABLE1953, 22 Nov 2026) - the event is the visit's one trace.
+  void WatchStep(const core::WorldState& world) {
+    if (!enabled_) {
+      return;
+    }
+    for (const core::SimEvent& event : world.step_events) {
+      if (event.kind != core::EventKind::kDistrictTable) {
+        continue;
+      }
+      const std::uint32_t year = (world.calendar.day / core::kDaysPerYear) + 1U;
+      Visits& row = by_year_[year];
+      const std::size_t bin = days_today_ < 14.0F ? 0 : (days_today_ < 28.0F ? 1 : 2);
+      ++(event.amount > 0 ? row.table : row.plain)[bin];
+    }
   }
 
   /// @brief TABLE1953: by year, the visits received with a table and plainly, by the free
@@ -99,6 +108,7 @@ class DistrictTablePolicy {
   };
 
   bool enabled_ = false;
+  float days_today_ = 0.0F;
   std::map<std::uint32_t, Visits> by_year_;
 };
 

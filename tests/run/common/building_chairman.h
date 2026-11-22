@@ -328,7 +328,10 @@ class BuildingChairman {
   /// @brief What the chairman hears in one step: the night's theft reports
   /// (#1250). Call after EVERY step - a run that calls RunDay alone never
   /// hears them, and its distiller rule takes nobody (its DT line says so).
-  void WatchStep(const core::WorldState& world) { distiller.WatchStep(world); }
+  void WatchStep(const core::WorldState& world) {
+    distiller.WatchStep(world);
+    district_table.WatchStep(world);  // TABLE1953: each kDistrictTable as the step raises it
+  }
 
   /// @brief #713'S MUST-NOT ARM (econ, boss-econ-713-1302-reads [3]): the
   /// chairman's warm moves switched off together - the houses' straw coat
