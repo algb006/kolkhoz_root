@@ -581,6 +581,13 @@ class Session final : public ISession {
                                     0,
                                     0}});
     }
+    // The calendar, always (#2089).
+    const Date& date = world.calendar.date;
+    entries.push_back({.kind = SaveSummaryKind::kCalendar,
+                       .params = {kFirstCalendarYear + static_cast<std::int32_t>(date.year) - 1,
+                                  static_cast<std::int32_t>(date.month),
+                                  static_cast<std::int32_t>(world.calendar.season),
+                                  static_cast<std::int32_t>(date.day_in_month)}});
     return entries;
   }
 

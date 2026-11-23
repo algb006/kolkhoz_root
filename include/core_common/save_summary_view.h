@@ -43,6 +43,10 @@ enum class SaveSummaryKind : std::uint8_t {
   /// When no red lamp is lit: params {FieldPhase most fields stand in among ploughing,
   /// harrowing, sowing and reaping, fields in it}; FieldPhase kIdle with 0 when none works.
   kSeasonWork,
+  /// ALWAYS present (#2089, game's load list's season icon; host 108 §3.1a puts the calendar's
+  /// conversion in the core): params {calendar year (1931...), month 0-11, core::Season (0
+  /// winter ... 3 autumn), day in the month (0-based)} of the saved day.
+  kCalendar,
 
   /// NOT A KIND: the count, for a consumer's mirror.
   kSaveSummaryKindCount,
