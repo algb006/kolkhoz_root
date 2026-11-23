@@ -42,27 +42,49 @@ class DecompTally {
         world.weather.road_beds.condition[static_cast<std::size_t>(core::RoadBed::kDirt)] ==
         core::RoadCondition::kMud;
     row.mud_days += mud ? 1U : 0U;
+    row.resident_days += world.residents.rows.size();
     for (const core::ResidentRow& person : world.residents.rows) {
-      const core::WorkAssignment& work = person.work;
-      if (work.kind == core::WorkKind::kNone) {
-        continue;
-      }
-      ++row.worker_days;
-      row.norm_days += static_cast<double>(work.worked_norm_days_today);
-      row.hours_away += static_cast<double>(work.hours_away_today);
-      const bool field = work.kind == core::WorkKind::kPlowing ||
-                         work.kind == core::WorkKind::kHarrowing ||
-                         work.kind == core::WorkKind::kSowing;
-      if (field) {
-        (mud ? row.field_norm_mud : row.field_norm_dry) +=
-            static_cast<double>(work.worked_norm_days_today);
-        (mud ? row.field_days_mud : row.field_days_dry) += 1U;
-      }
-      if (work.kind == core::WorkKind::kFelling && winter) {
-        row.winter_felling_norm += static_cast<double>(work.worked_norm_days_today);
-        ++row.winter_felling_days;
-      }
+      row.worker_days += person.work.kind == core::WorkKind::kNone ? 0U : 1U;
     }
+    // econ's H-L: day-off leisure booked today, by the day's ground (dry / wet / mud / snow /
+    // frozen: the dirt bed's condition), the rise of the current book since yesterday's look.
+    {
+      const auto leisure_at = static_cast<std::size_t>(core::RestSource::kDayOffLeisure);
+      const std::uint32_t now = world.ledger.current.rest_by_source[leisure_at];
+      const std::uint32_t before = day % core::kDaysPerYear == 0 ? 0U : last_leisure_;
+      const auto condition = static_cast<std::size_t>(
+          world.weather.road_beds.condition[static_cast<std::size_t>(core::RoadBed::kDirt)]);
+      if (condition < row.leisure_by_ground.size()) {
+        row.leisure_by_ground[condition] += now > before ? now - before : 0U;
+        row.days_by_ground[condition] += 1U;
+      }
+      last_leisure_ = now;
+    }
+    // THE DAY'S MAN-DAYS AS THE HOURS BOOKED THEM (YearLedger::work_days_by_kind, current
+    // book): today's is the rise since yesterday's look. The first version read each
+    // resident's worked_norm_days_today, which the daily look sees already reset - all zeros.
+    const auto& booked = world.ledger.current.work_days_by_kind;
+    const bool new_year = day % core::kDaysPerYear == 0;
+    const auto today = [&](core::WorkKind kind) {
+      const auto at = static_cast<std::size_t>(kind);
+      const float now = booked[at];
+      const float before = new_year ? 0.0F : last_booked_[at];
+      return static_cast<double>(now > before ? now - before : 0.0F);
+    };
+    double all = 0.0;
+    for (std::size_t kind = 0; kind < booked.size(); ++kind) {
+      all += today(static_cast<core::WorkKind>(kind));
+    }
+    row.norm_days += all;
+    const double field = today(core::WorkKind::kPlowing) + today(core::WorkKind::kHarrowing) +
+                         today(core::WorkKind::kSowing);
+    (mud ? row.field_norm_mud : row.field_norm_dry) += field;
+    (mud ? row.field_days_mud : row.field_days_dry) += 1U;
+    if (winter) {
+      row.winter_felling_norm += today(core::WorkKind::kFelling);
+      ++row.winter_felling_days;
+    }
+    last_booked_ = booked;
   }
 
   void Print(std::ostream& out, std::uint64_t seed) const {
@@ -85,13 +107,25 @@ class DecompTally {
       for (const std::uint32_t days : book.rest_by_source) {
         out << ' ' << days;
       }
-      out << " worker_days " << row.worker_days << " norm_per_worker_day "
-          << per(row.norm_days, row.worker_days) << " hours_away_per_worker_day "
-          << per(row.hours_away, row.worker_days) << " mud_days " << row.mud_days
-          << " field_norm_per_day_mud " << per(row.field_norm_mud, row.field_days_mud) << " dry "
-          << per(row.field_norm_dry, row.field_days_dry) << " field_days_mud " << row.field_days_mud
-          << " dry " << row.field_days_dry << " winter_felling_norm " << row.winter_felling_norm
-          << " winter_felling_days " << row.winter_felling_days << '\n';
+      // The births' denominator and stops (boss: «attempted vs stopped»).
+      out << " births_drawn " << book.births_drawn << " stopped_health "
+          << book.births_stopped_health << " stopped_away " << book.births_stopped_away
+          << " stopped_satiety " << book.births_stopped_satiety;
+      // Rest per resident-day (econ: a smaller village books fewer person-days by itself).
+      out << " resident_days " << row.resident_days << " rest_per_resident_day";
+      for (const std::uint32_t days : book.rest_by_source) {
+        out << ' ' << per(static_cast<double>(days), row.resident_days);
+      }
+      out << " leisure_by_ground(dry/wet/mud/frozen/snow) days/booked";
+      for (std::size_t ground = 0; ground < row.leisure_by_ground.size(); ++ground) {
+        out << ' ' << row.days_by_ground[ground] << '/' << row.leisure_by_ground[ground];
+      }
+      out << " worker_days " << row.worker_days << " man_days_per_worker_day "
+          << per(row.norm_days, row.worker_days) << " mud_days " << row.mud_days
+          << " field_man_days_per_day_mud " << per(row.field_norm_mud, row.field_days_mud)
+          << " dry " << per(row.field_norm_dry, row.field_days_dry) << " field_days_mud "
+          << row.field_days_mud << " dry " << row.field_days_dry << " winter_felling_norm "
+          << row.winter_felling_norm << " winter_felling_days " << row.winter_felling_days << '\n';
     }
   }
 
@@ -100,8 +134,12 @@ class DecompTally {
     core::YearLedger book;
     bool has_book = false;
     std::uint64_t worker_days = 0;
+    std::uint64_t resident_days = 0;
     double norm_days = 0.0;
-    double hours_away = 0.0;
+    std::array<std::uint32_t, static_cast<std::size_t>(core::RoadCondition::kRoadConditionCount)>
+        leisure_by_ground{};
+    std::array<std::uint32_t, static_cast<std::size_t>(core::RoadCondition::kRoadConditionCount)>
+        days_by_ground{};
     std::uint32_t mud_days = 0;
     double field_norm_mud = 0.0;
     double field_norm_dry = 0.0;
@@ -112,6 +150,8 @@ class DecompTally {
   };
 
   std::map<std::uint32_t, Year> by_year_;
+  std::array<float, core::kWorkKindCount> last_booked_{};
+  std::uint32_t last_leisure_ = 0;
 };
 
 }  // namespace run
