@@ -25,6 +25,7 @@
 #include "core_common/calendar.h"
 #include "core_common/ids.h"
 #include "core_common/labor_state.h"
+#include "core_common/quantities.h"
 
 namespace core {
 
@@ -143,6 +144,12 @@ struct SeasonWorkLine {
   /// the plough's overdue end. 0 with `sowing_overdue` false on every other line.
   SimDay sowing_deadline = 0;
   bool sowing_overdue = false;
+
+  /// «УРОЖАЙ ЛЕЖИТ В ПОЛЕ — НЕКУДА УБРАТЬ» (#1847; society.md §1, boss 23 Nov 2026), on a
+  /// harvest line: the grams reaped on this field that no store will take today (its heap's
+  /// own door, HeapDoorRoom, is 0), so no cart is sent for them. NOT a stop - the reaping goes
+  /// on and lays more. 0 on every other line, and while the heap has a door.
+  Grams uncarted_no_room_grams = 0;
 };
 
 /// @brief The season's field works (ISession::SeasonWorks).

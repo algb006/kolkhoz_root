@@ -1010,6 +1010,10 @@ class StandardSimulation final : public ISimulation {
     return residents_->FreeStockOf(engine_->CompletedState());
   }
 
+  Grams UncartedNoRoomToday(FieldId field) const override {
+    return production_->UncartedNoRoomGrams(engine_->CompletedState(), field);
+  }
+
   HerdCareLossView HerdCareLossToday(UnitId unit) const override {
     return production_->HerdCareLossOf(engine_->CompletedState(), unit);
   }

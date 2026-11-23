@@ -686,7 +686,17 @@ class Session final : public ISession {
     return simulation_->YesterdayDayOrdersOf();
   }
 
-  SeasonWorks SeasonWorksOf() const override { return simulation_->SeasonWorksOf(); }
+  SeasonWorks SeasonWorksOf() const override {
+    SeasonWorks works = simulation_->SeasonWorksOf();
+    // #1847: a harvest line names its reaped heap with no store door - production's fact,
+    // joined here where both systems are seen. Not a stop: the reaping goes on.
+    for (SeasonWorkLine& line : works.lines) {
+      if (line.work == WorkKind::kHarvest) {
+        line.uncarted_no_room_grams = simulation_->UncartedNoRoomToday(line.field);
+      }
+    }
+    return works;
+  }
 
   DayOrderPreview PreviewDayOrder(const OrderRow& draft) const override {
     return simulation_->PreviewDayOrder(draft);

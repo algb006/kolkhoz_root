@@ -336,6 +336,14 @@ class ISimulation {
   /// @note NOT PURE, for ActivityOf's reason. The default answers `measured` false.
   virtual FreeStockView FreeStockToday() const { return {}; }
 
+  /// @brief The reaped grams on `field` no store takes today, off CompletedState()
+  ///        (IProductionSystem::UncartedNoRoomGrams, its one home; #1847).
+  /// @note NOT PURE, for ActivityOf's reason. The default answers 0.
+  virtual Grams UncartedNoRoomToday(FieldId field) const {
+    (void)field;
+    return 0;
+  }
+
   /// @brief Undone care's price at `unit`, off CompletedState() (herd_care_loss_view.h;
   ///        IProductionSystem::HerdCareLossOf, its one home; #1848).
   /// @note NOT PURE, for ActivityOf's reason. The default answers `measured` false.

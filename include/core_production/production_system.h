@@ -316,6 +316,16 @@ class IProductionSystem {
   /// @note A pure read on the sim thread, between steps.
   virtual SaltView SaltToday(const WorldState& completed) const = 0;
 
+  /// @brief #1847: the grams reaped on `field` that no store takes today - its heap's own door
+  ///        (HeapDoorRoom) is 0, so no cart goes for them. 0 while the heap has a door, for a
+  ///        field with no heap, or an unknown field.
+  /// @note A pure read on the sim thread, between steps. The default answers 0.
+  virtual Grams UncartedNoRoomGrams(const WorldState& completed, FieldId field) const {
+    (void)completed;
+    (void)field;
+    return 0;
+  }
+
   /// @brief Undone care's price at `unit` (core_common/herd_care_loss_view.h; #1848): the
   ///        lowest coverage of its kolkhoz herds, the produce loss by the herd day's own curve,
   ///        the settlement's draught where kolkhoz horses stand.

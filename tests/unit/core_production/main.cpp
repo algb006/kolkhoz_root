@@ -11070,6 +11070,53 @@ int CheckTheCarePrice() {
   return failures;
 }
 
+/// «УРОЖАЙ ЛЕЖИТ В ПОЛЕ — НЕКУДА УБРАТЬ» (#1847): the production read names a reaped heap
+/// whose store door is shut, and nothing once a store that takes its crop stands - the
+/// carting's own door (HeapDoorRoom), not the reaping, which goes on either way.
+int CheckTheHeapWithNowhereToGo() {
+  int failures = 0;
+  std::string error;
+  const auto tables = core::LoadTableSet(KOLKHOZ_TABLES_DIR, &error);
+  core::ProductionConfig config;
+  std::string parse_error;
+  if (Expect(tables != nullptr && core::ParseProductionConfig(*tables, config, parse_error),
+             "nowhere to go: the shipped tables parse") != 0) {
+    return 1;
+  }
+  const auto system = core::CreateProductionSystem(*tables, core::StubTables::kAllowed);
+  const core::ResourceId rye = config.crops.at(0).resource;
+  std::uint32_t store_type = static_cast<std::uint32_t>(config.unit_types.size());
+  for (std::uint32_t type = 0; type < config.unit_types.size(); ++type) {
+    for (const core::ResourceId held : config.unit_types[type].home_of) {
+      store_type =
+          held.value == rye.value && store_type == config.unit_types.size() ? type : store_type;
+    }
+  }
+  if (Expect(system != nullptr && store_type < config.unit_types.size(),
+             "nowhere to go: a system and a store that takes the first crop") != 0) {
+    return 1;
+  }
+  core::WorldState world;
+  core::FieldRow heap;
+  heap.reaped_grams = 500 * core::kGramsPerKilogram;
+  heap.reaped_resource = rye;
+  const core::FieldId heaped = core::AppendRow(world.fields, heap);
+  const core::FieldId bare = core::AppendRow(world.fields, core::FieldRow{});
+  const core::Grams shut = system->UncartedNoRoomGrams(world, heaped);
+  core::UnitRow store;
+  store.type = core::UnitTypeId{static_cast<std::uint16_t>(store_type)};
+  store.level = 1;
+  core::AppendRow(world.units, store);
+  const core::Grams open = system->UncartedNoRoomGrams(world, heaped);
+  failures += Expect(shut == 500 * core::kGramsPerKilogram && open == 0,
+                     "nowhere to go: 500 kg reaped with no store read 500 kg, and 0 once a store "
+                     "that takes it stands");
+  failures += Expect(system->UncartedNoRoomGrams(world, bare) == 0 &&
+                         system->UncartedNoRoomGrams(world, core::FieldId{999}) == 0,
+                     "nowhere to go: a field with no heap, or no such field, reads 0");
+  return failures;
+}
+
 /// THE DEALER'S GRAIN BUYS TOOLS, NOT STEEL (boss, 22 Nov 2026; avatars.md «Пути первой
 /// сборки», #1441's T0): limit_catalog.csv's grain_payable is the rule's one home - the door
 /// pays in grain only for a lot carrying it (district_limit.cpp, OrderLimitLot).
@@ -18878,6 +18925,7 @@ int main() {
   failures += CheckTheChairmanSetsARotation();
   failures += CheckTheFarmHoldsOnHer();         // #1484, «Ферма держится на ней»
   failures += CheckTheCarePrice();              // #1848, «уход: N % — молоко −M %»
+  failures += CheckTheHeapWithNowhereToGo();    // #1847, «некуда убрать»
   failures += CheckTheDistrictTable();          // «Стол для района»
   failures += CheckTheDealersGrainBuysTools();  // the dealer's grain: tools only
   failures += CheckLostWinterCropLiesFallow();

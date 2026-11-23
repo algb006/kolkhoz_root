@@ -648,6 +648,17 @@ class ProductionSystem final : public IProductionSystem {
     return SaltViewOf(config_, completed);
   }
 
+  /// #1847: the reaped heap with no store door, by the carting's own door (field_haul.h).
+  Grams UncartedNoRoomGrams(const WorldState& completed, FieldId field) const override {
+    const std::uint32_t row = FindRow(completed.fields, field);
+    if (row == kNoRow) {
+      return 0;
+    }
+    const FieldRow& heap = completed.fields.rows[row];
+    return heap.reaped_grams > 0 && HeapDoorRoom(config_, completed, heap) <= 0 ? heap.reaped_grams
+                                                                                : 0;
+  }
+
   /// #1848: undone care's price at a unit, by the herd day's own curves (herd_care.h).
   HerdCareLossView HerdCareLossOf(const WorldState& completed, UnitId unit) const override {
     return HerdCareLossAt(config_, completed, unit);
