@@ -928,7 +928,13 @@ class DayRoadIndex final : public RoadIndex {
                const DayWeights* previous)
       : base_(std::move(base)), trails_(std::move(trails)), beds_(beds) {
     day_ = base_->MakeDay(&trails_, beds_, previous);  // after trails_ is in place
+    // THE DISTANCE, NOT THE TIME (boss 23 Nov; leisure.md §4: reach is metres of the way):
+    // the same trails on dry ground - the ground's factors slow a walk, they do not move a
+    // place farther. Neutral, so it computes no node table.
+    distance_day_ = base_->MakeDay(&trails_, RoadBeds{}, nullptr);
   }
+
+  const DayWeights* DistanceDay() const { return distance_day_.get(); }
 
   float EffectiveKm(TravelMode mode, Vec2 from, Vec2 to) const override {
     return base_->EffectiveKmWith(mode, from, to, day_.get());
@@ -963,6 +969,7 @@ class DayRoadIndex final : public RoadIndex {
   TrailTable trails_;
   RoadBeds beds_;
   std::shared_ptr<const DayWeights> day_;
+  std::shared_ptr<const DayWeights> distance_day_;
 };
 
 /// The bare network under any index of ours, and the day it carried (or nullptr).
@@ -1029,6 +1036,18 @@ GroundState GroundStateAt(const WorldState& world, Vec2 point) {
     return GroundState::kDry;
   }
   return base->GroundAt(point, world.weather.road_beds);
+}
+
+RouteMeasure ReachMeasure(const WorldState& world, TravelMode mode, Vec2 from, Vec2 to) {
+  const std::shared_ptr<const RoadIndex> index = RoadIndexOf(world);
+  if (const auto dated = std::dynamic_pointer_cast<const DayRoadIndex>(index)) {
+    return dated->Base()->MeasureWith(mode, from, to, dated->DistanceDay());
+  }
+  return index->Measure(mode, from, to);
+}
+
+float ReachKm(const WorldState& world, TravelMode mode, Vec2 from, Vec2 to) {
+  return ReachMeasure(world, mode, from, to).effective_km;
 }
 
 std::uint64_t DayTableBuilds() {

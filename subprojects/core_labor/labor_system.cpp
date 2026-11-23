@@ -3813,7 +3813,8 @@ class LaborSystem final : public ILaborSystem {
         const bool club = config_.club_type.value != kInvalidDefIdValue &&
                           unit.type.value == config_.club_type.value;
         if ((beach && !reach.beach) || (club && !reach.club)) {
-          const RouteMeasure way = RoadMeasure(current, TravelMode::kWalk, home, unit.position);
+          // Reach is a DISTANCE (leisure.md §4): the trails count, the ground's factors do not.
+          const RouteMeasure way = ReachMeasure(current, TravelMode::kWalk, home, unit.position);
           if (way.effective_km <= reach_km) {
             reach.beach =
                 reach.beach || (beach && way.off_road_end_m <= config_.beach_path_access_m);
@@ -3825,7 +3826,7 @@ class LaborSystem final : public ILaborSystem {
         if (reach.wild) {
           break;
         }
-        reach.wild = RoadKm(current, TravelMode::kWalk, home, place) <= reach_km;
+        reach.wild = ReachKm(current, TravelMode::kWalk, home, place) <= reach_km;
       }
     }
     cache.emplace(family.value, reach);

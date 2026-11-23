@@ -178,6 +178,19 @@ int TestTrails() {
   wet_world.roads = far_road;
   wet_world.weather.road_beds = mud;
   wet_world.road_index = core::BuildRoadIndex(wet_world.roads, wet_world.trails, mud);
+  // REACH IS A DISTANCE (boss 23 Nov; leisure.md §4): in the mud the walk is 1.6 km, the reach
+  // still 1.2; and a trail still shortens the reach (1.10), as the walk's door does.
+  core::WorldState trodden_wet = wet_world;
+  trodden_wet.trails = full;
+  trodden_wet.road_index = core::BuildRoadIndex(trodden_wet.roads, trodden_wet.trails, mud);
+  failures += Expect(
+      Near(core::RoadKm(wet_world, core::TravelMode::kWalk, west, east), 1.6F) &&
+          Near(core::ReachKm(wet_world, core::TravelMode::kWalk, west, east), 1.2F) &&
+          Near(core::ReachKm(trodden_wet, core::TravelMode::kWalk, west, east), 1.10F) &&
+          Near(core::ReachMeasure(trodden_wet, core::TravelMode::kWalk, west, east).effective_km,
+               1.10F),
+      "reach: the walk in mud is slowed (1.6) but the reach is not (1.2), and a trail still "
+      "shortens the reach (1.10) - the rain does not move the beach farther");
   failures += Expect(
       core::GroundStateAt(wet_world, {.x = 500.0F, .y = 1.0F}) == core::GroundState::kMud &&
           core::GroundStateAt(wet_world, {.x = 500.0F, .y = 300.0F}) == core::GroundState::kMud &&

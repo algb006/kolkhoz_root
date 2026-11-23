@@ -230,6 +230,15 @@ std::shared_ptr<const RoadIndex> BuildRoadIndex(const RoadTable& roads,
 ///        ground the dirt bed's. Never GroundState::kIce (STUB, гололёд).
 GroundState GroundStateAt(const WorldState& world, Vec2 point);
 
+/// @brief THE DISTANCE OF A WAY, NOT ITS TIME (boss 23 Nov 2026; leisure.md §4: reach rules
+///        are metres of the way): RoadMeasure on the trailed network WITHOUT the ground's
+///        factors - a trail still shortens the way, the rain does not move a place farther.
+///        The one door for every «within N m by the network» rule (bathing, leisure).
+RouteMeasure ReachMeasure(const WorldState& world, TravelMode mode, Vec2 from, Vec2 to);
+
+/// @brief ReachMeasure's effective km.
+float ReachKm(const WorldState& world, TravelMode mode, Vec2 from, Vec2 to);
+
 /// @brief How many day node tables this process has computed (the run's recompute cost).
 std::uint64_t DayTableBuilds();
 
