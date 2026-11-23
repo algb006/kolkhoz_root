@@ -62,9 +62,25 @@ int main() {
   // THE FIRST DAY WITH ALL THREE TO LOSE, within a year (the first run saved a July day: its
   // field crews ride the brigade cart, so nobody the accountant placed trod anything).
   std::uint32_t save_day = kDaysBefore;
+  const auto working = [](const core::WorldState& world) {
+    std::size_t count = 0;
+    for (const core::ResidentRow& person : world.residents.rows) {
+      count += person.work.kind != core::WorkKind::kNone ? 1U : 0U;
+    }
+    return count;
+  };
   for (std::uint32_t search = 0; search < core::kDaysPerYear; ++search) {
     for (std::uint32_t tick = 0; tick < kSaveHour; ++tick) {
       continued->AdvanceStep();
+      // THE SEARCH'S OWN PRINT (the guard found nothing on two runs): what each early hour
+      // holds, the first five days.
+      if (search < 5) {
+        const core::WorldState& hour = continued.State();
+        std::cout << "save_continue: day " << save_day << " after tick " << tick << " working "
+                  << working(hour) << " today " << hour.walks.today.size() << " yesterday "
+                  << hour.walks.yesterday.size() << " pending " << hour.walks.pending.size()
+                  << " trails " << hour.trails.rows.size() << '\n';
+      }
     }
     const core::WorldState& now = continued.State();
     if (!now.trails.rows.empty() && !now.walks.pending.empty() && !now.walks.yesterday.empty()) {

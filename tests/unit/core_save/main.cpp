@@ -2590,8 +2590,9 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     // and rows (4 + 2 x 20), one way's count and row (4 + 16): predicted 65 before the build,
     // held; the hash read off s229x. Then +20: today's ways ahead of yesterday's (a count and
     // one row of 16; save_continue found yesterday's always empty - the day's close clears
-    // the work it was read from): predicted 65 -> 85 before the build; hash 0 until read.
-    {"walks", 85, 0x0ULL},
+    // the work it was read from): predicted 65 -> 85 before the build, held; the hash read
+    // off s229z.
+    {"walks", 85, 0x54a7e9b46797ed38ULL},
     // 2026-09-17, save 52: +56 bytes over the two books — the nine yearly
     // inputs the readiness index asks of a year and the year did not keep
     // (ledger_state.h): satisfaction's sum and count, able-bodied
