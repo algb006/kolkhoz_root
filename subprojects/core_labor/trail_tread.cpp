@@ -3,10 +3,12 @@
 
 #include "trail_tread.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <memory>
 #include <numbers>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -45,7 +47,19 @@ bool CrossesAStandingCrop(const WorldState& world, Vec2 from, Vec2 to) {
 
 }  // namespace
 
-void DecayTrailsThisMorning(const TrailRules& rules, WorldState& current) {
+void DecayTrailsThisMorning(const TrailRules& rules,
+                            WorldState& current,
+                            std::vector<WalkPair> yesterday) {
+  // YESTERDAY'S TREAD LANDS NOW (save 229): trodden as it was, then decayed as the morning
+  // always decayed it - the same trails as treading it yesterday would have left.
+  for (const TrailPass& pass : current.walks.pending) {
+    for (std::uint32_t at = 0; at < pass.passes; ++at) {
+      TreadTrailEdge(
+          current.trails, pass.a, pass.b, current.walks.pending_over_snow, rules.gain_per_pass);
+    }
+  }
+  current.walks.pending.clear();
+  current.walks.pending_over_snow = false;
   current.trails.weight_full = rules.weight_full;
   current.trails.visible_strength = rules.visible_strength;
   current.trails.ground = rules.ground;
@@ -53,9 +67,36 @@ void DecayTrailsThisMorning(const TrailRules& rules, WorldState& current) {
               rules,
               current.weather.snow_cover_days > 0,
               current.weather.precipitation == Precipitation::kSnow);
-  // EVERY MORNING, trails or none: today's ground re-dates the index (roads.md §3); the node
+  current.walks.yesterday = std::move(yesterday);
+  // EVERY MORNING, trails or none: today's ground re-dates the index (roads.md §3), and
+  // yesterday's walks are priced on it by the walker's route (option 1, 24 Nov); the node
   // tables are reused while the beds are unchanged.
-  current.road_index = WithTrails(RoadIndexOf(current), current.trails, current.weather.road_beds);
+  current.road_index = WithTrails(
+      RoadIndexOf(current), current.trails, current.weather.road_beds, current.walks.yesterday);
+}
+
+std::vector<WalkPair> PlacedWalksOf(const WorldState& current, LivestockKindId horse_kind) {
+  std::vector<WalkPair> walks;
+  for (const ResidentRow& person : current.residents.rows) {
+    const WorkAssignment& work = person.work;
+    Vec2 home{};
+    if (work.kind == WorkKind::kNone || !HomePositionOf(current, person.family, home)) {
+      continue;
+    }
+    // WHO WALKS, BY THE WORLD'S OWN PREDICATES - the timing door's and the tread's.
+    if (!WorkRidesOut(current, work)) {
+      Vec2 place{};
+      if (WorkPlaceOf(current, work, place)) {
+        walks.push_back(WalkPair{.from = home, .to = place});
+      }
+      continue;
+    }
+    Vec2 yard{};
+    if (DayStartsAtHorseYard(current, work) && HorseYardPositionOf(current, horse_kind, yard)) {
+      walks.push_back(WalkPair{.from = home, .to = yard});
+    }
+  }
+  return walks;
 }
 
 void TreadPlacedWalkers(const TrailRules& rules,
@@ -93,13 +134,33 @@ void TreadPlacedWalkers(const TrailRules& rules,
       WalkRouteKm(current, home, yard, &steps);
     }
   }
-  for (const auto& [a, b] : steps) {
+  // PENDING TILL TOMORROW'S MORNING (save 229): the trails stay the morning's all day, so an
+  // index rebuilt mid-day - the loader's, a laid road's - is the morning's.
+  std::vector<TrailPass>& pending = current.walks.pending;
+  current.walks.pending_over_snow = over_snow;
+  const auto key = [](const TrailPass& pass) {
+    return std::tie(pass.a.x, pass.a.y, pass.b.x, pass.b.y);
+  };
+  for (auto [a, b] : steps) {
     const Vec2 from = TrailEndPosition(a);
     const Vec2 to = TrailEndPosition(b);
     if (CrossesAStandingCrop(current, from, to)) {
       continue;  // rule 9
     }
-    TreadTrailEdge(current.trails, a, b, over_snow, rules.gain_per_pass);
+    if (std::tie(b.x, b.y) < std::tie(a.x, a.y)) {
+      std::swap(a, b);
+    }
+    const TrailPass probe{.a = a, .b = b, .passes = 0};
+    const auto at = std::lower_bound(
+        pending.begin(),
+        pending.end(),
+        probe,
+        [&key](const TrailPass& left, const TrailPass& right) { return key(left) < key(right); });
+    if (at != pending.end() && key(*at) == key(probe)) {
+      ++at->passes;
+    } else {
+      pending.insert(at, TrailPass{.a = a, .b = b, .passes = 1});
+    }
   }
 }
 

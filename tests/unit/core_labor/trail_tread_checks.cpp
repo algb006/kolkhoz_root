@@ -62,18 +62,58 @@ int CheckTheTread() {
   core::WorldState sowing = FieldDay(core::WorkKind::kSowing);
   const std::shared_ptr<const core::RoadIndex> before = sowing.road_index;
   core::TreadPlacedWalkers(rules, sowing, candidates, plan, core::LivestockKindId{});
-  failures += Expect(!sowing.trails.rows.empty() && sowing.road_index == before,
-                     "tread: a sower on foot treads his way, and the day's index stays the "
-                     "morning's (re-dated only by the next morning)");
-  core::DecayTrailsThisMorning(rules, sowing);
-  failures += Expect(sowing.road_index != before,
-                     "tread: the next morning's re-dating puts yesterday's tread into effect");
+  // PENDING, NOT LAID (save 229): the trails stay the morning's all day, so a mid-day index
+  // (the loader's, a laid road's) equals the morning's.
+  failures += Expect(
+      !sowing.walks.pending.empty() && sowing.trails.rows.empty() && sowing.road_index == before,
+      "tread: a sower on foot treads his way into the pending passes, the trails "
+      "and the day's index stay the morning's (laid only by the next morning)");
+  // The same passes laid at once: what the next morning must leave before its decay.
+  core::TrailTable laid_now;
+  for (const core::TrailPass& pass : sowing.walks.pending) {
+    for (std::uint32_t at = 0; at < pass.passes; ++at) {
+      core::TreadTrailEdge(
+          laid_now, pass.a, pass.b, sowing.walks.pending_over_snow, rules.gain_per_pass);
+    }
+  }
+  core::DecayTrails(laid_now, rules, false, false);
+  const std::size_t passes = sowing.walks.pending.size();
+  core::DecayTrailsThisMorning(rules, sowing, {});
+  bool same = sowing.trails.rows.size() == laid_now.rows.size() && passes > 0;
+  for (std::size_t at = 0; same && at < laid_now.rows.size(); ++at) {
+    same = sowing.trails.rows[at].earth == laid_now.rows[at].earth &&
+           sowing.trails.rows[at].a.x == laid_now.rows[at].a.x &&
+           sowing.trails.rows[at].b.y == laid_now.rows[at].b.y;
+  }
+  failures += Expect(same && sowing.walks.pending.empty() && sowing.road_index != before,
+                     "tread: the next morning lays yesterday's passes, then decays - row for row "
+                     "the trails treading them at once would leave - and re-dates the index");
 
   // A PLOUGHMAN RIDES (RidesOut): he treads nothing - rule 8 by the world's own predicate.
   core::WorldState ploughing = FieldDay(core::WorkKind::kPlowing);
   core::TreadPlacedWalkers(rules, ploughing, candidates, plan, core::LivestockKindId{});
-  failures += Expect(ploughing.trails.rows.empty(),
+  failures += Expect(ploughing.walks.pending.empty() && ploughing.trails.rows.empty(),
                      "tread: a ploughman rides to his field (WorkRidesOut) and treads nothing - "
                      "the filter that read only rides_horse let the brigade cart's riders tread");
+
+  // OPTION 1 (boss 24 Nov): yesterday's walk is priced by the walker's route on the new
+  // morning's index, and the planner's door answers it; a pair nobody walked is not there.
+  {
+    core::WorldState trodden = FieldDay(core::WorkKind::kSowing);
+    const core::Vec2 home = candidates[0].home;
+    const core::Vec2 field = trodden.fields.rows[0].center;
+    for (int day = 0; day < 30; ++day) {
+      core::TreadPlacedWalkers(rules, trodden, candidates, plan, core::LivestockKindId{});
+      core::DecayTrailsThisMorning(rules, trodden, {});
+    }
+    core::DecayTrailsThisMorning(rules, trodden, {core::WalkPair{.from = home, .to = field}});
+    const float* const km = core::PlacedWalkKm(*trodden.road_index, home, field);
+    const float route = core::WalkRouteKm(trodden, home, field, nullptr);
+    const float* const none =
+        core::PlacedWalkKm(*trodden.road_index, home, core::Vec2{.x = 0.0F, .y = 0.0F});
+    failures += Expect(km != nullptr && *km == route && none == nullptr,
+                       "option 1: yesterday's walk answers the planner its route's km exactly, "
+                       "a pair nobody walked answers nothing");
+  }
   return failures;
 }

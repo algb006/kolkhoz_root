@@ -13,7 +13,8 @@ kolkhoz_add_module(core_save
     save_dictionary.cpp
     save_ledger.cpp
     save_rows.cpp
-    save_stream.cpp)
+    save_stream.cpp
+    save_walks.cpp)
 
 target_link_libraries(core_save
     PUBLIC core_common

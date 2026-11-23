@@ -59,7 +59,10 @@ float MeanCrossedCost(const TrailLookup& trails,
   const auto pieces =
       static_cast<std::uint32_t>(std::ceil(length / (kTrailSnapMetres / kSamplesPerCell)));
   float sum = 0.0F;
-  std::uint32_t crossed = 0;
+  // EACH EDGE BY ITS LENGTH (boss 24 Nov, LEGS2072's cases: counting every transition once
+  // left the straight door cheaper than the route in 2.8 % of pairs; the route pays a diagonal
+  // edge √2 of a straight one): a straight edge weighs 1, a diagonal √2.
+  float crossed = 0.0F;
   TrailEnd here = SnapTrailEnd(from);
   for (std::uint32_t piece = 1; piece <= pieces; ++piece) {
     const float share = static_cast<float>(piece) / static_cast<float>(pieces);
@@ -71,12 +74,13 @@ float MeanCrossedCost(const TrailLookup& trails,
       // same trail pays up to that excess for its staircase.
       const float open = open_weight * open_cost;
       const float step = StepCost(trails, here, next, open_weight, open_cost, snow_trail_cost);
-      sum += open - ((open - step) * kStraightDiscountShare);
-      ++crossed;
+      const float edge = next.x != here.x && next.y != here.y ? kSqrtTwo : 1.0F;
+      sum += edge * (open - ((open - step) * kStraightDiscountShare));
+      crossed += edge;
       here = next;
     }
   }
-  return crossed > 0 ? sum / static_cast<float>(crossed) : open_weight * open_cost;
+  return crossed > 0.0F ? sum / crossed : open_weight * open_cost;
 }
 
 }  // namespace

@@ -5,8 +5,13 @@
 
 #include "road_day.h"
 
+#include <array>
+#include <bit>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <span>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -69,12 +74,54 @@ class DayRoadIndex final : public RoadIndex {
 
   const DayWeights* DistanceDay() const { return distance_day_.get(); }
 
+  /// Yesterday's walks priced on this day by the walker's route (option 1, 24 Nov). Called
+  /// once, by WithTrails, before the index is shared.
+  void PriceWalks(std::span<const WalkPair> walked) {
+    for (const WalkPair& pair : walked) {
+      const PairKey key = KeyOf(pair.from, pair.to);
+      if (!placed_.contains(key)) {
+        placed_.emplace(key,
+                        road_day::WalkRouteKm(*base_, pair.from, pair.to, day_.get(), nullptr));
+      }
+    }
+  }
+
+  const float* PlacedKm(Vec2 from, Vec2 to) const {
+    const auto found = placed_.find(KeyOf(from, to));
+    return found != placed_.end() ? &found->second : nullptr;
+  }
+
  private:
+  /// A walk by its two positions' exact bits: the planner asks with the very floats the
+  /// morning priced (homes and work places are fixed positions).
+  using PairKey = std::array<std::uint32_t, 4>;
+
+  struct PairHash {
+    std::size_t operator()(const PairKey& key) const {
+      std::uint64_t hash = 1469598103934665603ULL;
+      for (const std::uint32_t word : key) {
+        hash = (hash ^ word) * 1099511628211ULL;
+      }
+      return static_cast<std::size_t>(hash);
+    }
+  };
+
+  static PairKey KeyOf(Vec2 from, Vec2 to) {
+    return {std::bit_cast<std::uint32_t>(from.x),
+            std::bit_cast<std::uint32_t>(from.y),
+            std::bit_cast<std::uint32_t>(to.x),
+            std::bit_cast<std::uint32_t>(to.y)};
+  }
+
   std::shared_ptr<const RoadIndex> base_;
   TrailTable trails_;
   std::shared_ptr<const DayWeights> day_;
   std::shared_ptr<const DayWeights> distance_day_;
+  std::unordered_map<PairKey, float, PairHash> placed_;
 };
+
+/// This thread's asks of PlacedWalkKm (the run's print; per thread, so no shared counter).
+thread_local PlacedWalkCount g_placed_walk_count;
 
 /// The bare network under any index of ours, and the day it carried (or nullptr).
 std::shared_ptr<const RoadIndex> BareOf(const std::shared_ptr<const RoadIndex>& index,
@@ -111,22 +158,54 @@ bool GroundIsNeutral(const GroundFactors& factors, const RoadBeds& beds) {
 
 std::shared_ptr<const RoadIndex> WithTrails(const std::shared_ptr<const RoadIndex>& index,
                                             const TrailTable& trails,
-                                            const RoadBeds& beds) {
+                                            const RoadBeds& beds,
+                                            std::span<const WalkPair> walked) {
   const DayWeights* previous = nullptr;
   std::shared_ptr<const RoadIndex> base = BareOf(index, &previous);
   if (base == nullptr) {
     return index;  // a foreign index (a test's): nothing to wrap
   }
   if (trails.rows.empty() && GroundIsNeutral(trails.ground, beds)) {
-    return base;  // no trail, no ground to slow anyone: the bare network
+    // No trail, no ground to slow anyone: the bare network - and no walk to price, its
+    // route IS the straight door's answer (the normalisation).
+    return base;
   }
-  return std::make_shared<DayRoadIndex>(std::move(base), trails, beds, previous);
+  auto dated = std::make_shared<DayRoadIndex>(std::move(base), trails, beds, previous);
+  dated->PriceWalks(walked);
+  return dated;
+}
+
+std::shared_ptr<const RoadIndex> WithTrails(const std::shared_ptr<const RoadIndex>& index,
+                                            const TrailTable& trails,
+                                            const RoadBeds& beds) {
+  return WithTrails(index, trails, beds, {});
+}
+
+std::shared_ptr<const RoadIndex> BuildRoadIndex(const RoadTable& roads,
+                                                const TrailTable& trails,
+                                                const RoadBeds& beds,
+                                                std::span<const WalkPair> walked) {
+  return WithTrails(BuildRoadIndex(roads), trails, beds, walked);
 }
 
 std::shared_ptr<const RoadIndex> BuildRoadIndex(const RoadTable& roads,
                                                 const TrailTable& trails,
                                                 const RoadBeds& beds) {
-  return WithTrails(BuildRoadIndex(roads), trails, beds);
+  return WithTrails(BuildRoadIndex(roads), trails, beds, {});
+}
+
+const float* PlacedWalkKm(const RoadIndex& index, Vec2 from, Vec2 to) {
+  ++g_placed_walk_count.asked;
+  const auto* const dated = dynamic_cast<const DayRoadIndex*>(&index);
+  const float* const km = dated != nullptr ? dated->PlacedKm(from, to) : nullptr;
+  g_placed_walk_count.found += km != nullptr ? 1U : 0U;
+  return km;
+}
+
+PlacedWalkCount TakePlacedWalkCount() {
+  const PlacedWalkCount taken = g_placed_walk_count;
+  g_placed_walk_count = PlacedWalkCount{};
+  return taken;
 }
 
 GroundState GroundStateAt(const WorldState& world, Vec2 point) {

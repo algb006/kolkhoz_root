@@ -351,7 +351,9 @@ static_assert(AggregateArity<ClampRotYear>() == 2,
 // section of their own, «trails», after the groom's plan (save.cpp; 12 + 24 a row). The
 // guard fired on the first build, as it should; the member is written, read and VERSION_SAVE
 // raised in the same commit.
-static_assert(AggregateArity<WorldState>() == 65,
+// Save 229 (#2072, boss 24 Nov): the day's walks, the sixty-sixth - a section of their own,
+// «walks», after «trails» (save.cpp): today's pending tread and yesterday's walkers' ways.
+static_assert(AggregateArity<WorldState>() == 66,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 

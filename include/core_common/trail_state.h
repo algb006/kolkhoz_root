@@ -156,6 +156,37 @@ struct TrailTable {
   std::vector<TrailRow> rows;
 };
 
+/// @brief One edge trodden today and not yet laid on the trails: the passes over it.
+struct TrailPass {
+  TrailEnd a;
+  TrailEnd b;
+  std::uint32_t passes = 0;
+};
+
+/// @brief One placed walker's way of a day, home to his work (or to the horse yard): the
+///        positions the timing door walks him between.
+struct WalkPair {
+  Vec2 from;
+  Vec2 to;
+};
+
+/// @brief THE DAY'S WALKS, SAVED (save 229; boss 24 Nov, roads.md's lattice paragraph): what
+///        keeps a loaded game the continued one.
+///        - `pending`: today's tread, laid on WorldState::trails only NEXT MORNING before the
+///          decay (the same steps, rule 9 and snow flag as when trodden). So the trails stay
+///          the morning's all day, and an index rebuilt mid-day (the loader, a laid road)
+///          equals the one the morning built. Sorted by edge, lesser end first.
+///        - `yesterday`: yesterday's placed walkers' ways. The morning prices them on the day's
+///          index by the walker's route, and the planner reads that price before the straight
+///          door's (option 1 of 24 Nov). StartDay writes it from yesterday's work before
+///          clearing it.
+struct TrailWalks {
+  std::vector<TrailPass> pending;
+  /// The snow flag the pending passes were trodden under (TreadTrailEdge's `over_snow`).
+  bool pending_over_snow = false;
+  std::vector<WalkPair> yesterday;
+};
+
 /// @brief The rule's numbers (world_params, all `trail_*`; STUBs, econ's review 23 Nov).
 struct TrailRules {
   float gain_per_pass = 0.02F;        ///< `trail_gain_per_pass`: 50 passes make a full trail

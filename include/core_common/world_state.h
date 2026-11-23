@@ -1192,6 +1192,11 @@ struct WorldState {
   /// builder of the index builds it from `roads` AND these.
   TrailTable trails;
 
+  /// THE DAY'S WALKS (save 229; trail_state.h, TrailWalks): today's tread pending till the
+  /// next morning, and yesterday's placed walkers' ways the planner prices by the route. Empty
+  /// at genesis. Saved, so a game loaded at any hour continues as the unsaved one does.
+  TrailWalks walks;
+
   /// A FIELD HEAP WAS BORN since the groom's last scan for heaps with no task
   /// (#1056 C4; core_logistics logistics_tasks.h, AppendNewHeapTasks): set
   /// where a heap is laid from nothing (production, PutOnHeap and the

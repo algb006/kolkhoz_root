@@ -38,6 +38,7 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <vector>
 
 #include "core_common/geometry.h"
@@ -223,13 +224,42 @@ std::shared_ptr<const RoadIndex> BuildRoadIndex(const RoadTable& roads,
 ///        index back. THE ONE DOOR: every builder of WorldState::road_index goes through it.
 std::shared_ptr<const RoadIndex> WithTrails(const std::shared_ptr<const RoadIndex>& index,
                                             const TrailTable& trails,
+                                            const RoadBeds& beds,
+                                            std::span<const WalkPair> walked);
+
+/// @brief WithTrails with no walks priced: a hand-built world's (the units'). EVERY CORE
+///        BUILDER passes WorldState::walks.yesterday (save 229: else a loaded or re-laid
+///        index plans unlike the morning's).
+std::shared_ptr<const RoadIndex> WithTrails(const std::shared_ptr<const RoadIndex>& index,
+                                            const TrailTable& trails,
                                             const RoadBeds& beds);
 
 /// @brief BuildRoadIndex(roads) on this day (WithTrails): what genesis, the loader and a laid
-///        road build.
+///        road build, with yesterday's walks priced (`walked`).
+std::shared_ptr<const RoadIndex> BuildRoadIndex(const RoadTable& roads,
+                                                const TrailTable& trails,
+                                                const RoadBeds& beds,
+                                                std::span<const WalkPair> walked);
+
+/// @brief BuildRoadIndex with no walks priced: a hand-built world's (the units').
 std::shared_ptr<const RoadIndex> BuildRoadIndex(const RoadTable& roads,
                                                 const TrailTable& trails,
                                                 const RoadBeds& beds);
+
+/// @brief OPTION 1 OF 24 NOV (roads.md's lattice paragraph): the walker's route km of one of
+///        yesterday's placed walks (`from`, `to` exactly as the morning priced them, on this
+///        index's day), or nullptr - the planner reads it before the straight door. Counted
+///        in this thread's PlacedWalkCount.
+const float* PlacedWalkKm(const RoadIndex& index, Vec2 from, Vec2 to);
+
+/// @brief This thread's asks of PlacedWalkKm and its answers since the last take.
+struct PlacedWalkCount {
+  std::uint64_t asked = 0;
+  std::uint64_t found = 0;
+};
+
+/// @brief Returns this thread's PlacedWalkCount and zeroes it (the run's print).
+PlacedWalkCount TakePlacedWalkCount();
 
 /// @brief The ground's state at `point` (ISession::GroundStateAt; roads.md §3): a road or path
 ///        within 4 m takes its bed's condition (gravel in mud and snow on a road as wet), open

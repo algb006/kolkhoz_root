@@ -81,6 +81,7 @@ constexpr const char* kSectionSettlements = "settlements";
 constexpr const char* kSectionFunerals = "funerals";  // save 205 (#1084)
 constexpr const char* kSectionGroomPlan = "groom_plan";
 constexpr const char* kSectionTrails = "trails";  // save 227 (#2072)
+constexpr const char* kSectionWalks = "walks";    // save 229 (#2072)
 
 /// Puts every map road's axis back from tables/roads.csv after the section
 /// is read (a map road's axis is never saved; road_state.h), by the road's
@@ -477,6 +478,11 @@ std::vector<std::byte> EncodeWorld(const WorldState& world,
   WriteTrails(sink, world.trails);
   CloseSection(out, length_offset);
 
+  // The day's walks (save format 229; #2072, trail_state.h TrailWalks).
+  length_offset = OpenSection(out);
+  WriteWalks(sink, world.walks);
+  CloseSection(out, length_offset);
+
   length_offset = OpenSection(out);
   WriteLedger(sink, world.ledger);
   CloseSection(out, length_offset);
@@ -655,7 +661,21 @@ bool DecodeWorld(std::span<const std::byte> bytes,
   if (!CloseSection(in, kSectionTrails, section_end, error)) {
     return false;
   }
-  loaded.road_index = WithTrails(loaded.road_index, loaded.trails, loaded.weather.road_beds);
+  // The day's walks (save 229): the index re-built with yesterday's ways priced, as the
+  // morning built it - a loaded game plans as the continued one.
+  if (!OpenSection(in, kSectionWalks, &section_end, error)) {
+    return false;
+  }
+  loaded.walks = ReadWalks(source);
+  if (!source.Valid()) {
+    Refuse(error, std::string("section '") + kSectionWalks + "': " + source.Error());
+    return false;
+  }
+  if (!CloseSection(in, kSectionWalks, section_end, error)) {
+    return false;
+  }
+  loaded.road_index = WithTrails(
+      loaded.road_index, loaded.trails, loaded.weather.road_beds, loaded.walks.yesterday);
 
   if (!OpenSection(in, kSectionLedger, &section_end, error)) {
     return false;

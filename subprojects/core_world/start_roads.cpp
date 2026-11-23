@@ -149,7 +149,8 @@ bool PlaceMapRoads(const ITableSet& tables,
     return false;
   }
   // #2072: no trail at genesis; the first morning's ground re-dates it.
-  world.road_index = BuildRoadIndex(world.roads, world.trails, world.weather.road_beds);
+  world.road_index =
+      BuildRoadIndex(world.roads, world.trails, world.weather.road_beds, world.walks.yesterday);
   return true;
 }
 

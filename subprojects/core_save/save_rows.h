@@ -132,6 +132,13 @@ void WriteTrails(SaveSink& sink, const TrailTable& trails);
 /// @brief Refuses rows out of key order or out of 0..1: the table's sort is its key.
 TrailTable ReadTrails(LoadSource& source);
 
+/// @brief The day's walks (save 229, #2072; trail_state.h TrailWalks; save_walks.cpp): the
+///        pending tread's snow flag (u8), the passes in key order (20 bytes each), then
+///        yesterday's ways (16 bytes each).
+void WriteWalks(SaveSink& sink, const TrailWalks& walks);
+/// @brief Refuses passes out of key order or with no pass, and non-finite positions.
+TrailWalks ReadWalks(LoadSource& source);
+
 }  // namespace core
 
 #endif  // CORE_SAVE_SAVE_ROWS_H_

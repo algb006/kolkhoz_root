@@ -124,6 +124,12 @@ class TrailTally {
     at.visible_m_sum += visible_m;
     at.strongest = strongest > at.strongest ? strongest : at.strongest;
     ++at.days;
+    // boss 24 Nov: the snow by month - «no kSnow leak» as a check, not a reading.
+    at.snow_days +=
+        world.weather.road_beds.condition[static_cast<std::size_t>(core::RoadBed::kDirt)] ==
+                core::RoadCondition::kSnow
+            ? 1U
+            : 0U;
   }
 
   void Print(std::ostream& out, std::uint64_t seed) const {
@@ -135,12 +141,14 @@ class TrailTally {
           << " seasons(spr/sum/aut/win) " << PerDay(row.season[0]) << ' ' << PerDay(row.season[1])
           << ' ' << PerDay(row.season[2]) << ' ' << PerDay(row.season[3]) << " mud_days "
           << PerDay(row.mud) << " mud_walker_days " << row.mud.walker_days << " longest_visible_m "
-          << row.longest_visible_m << " | by_month rows/visible/visible_km/strongest";
+          << row.longest_visible_m
+          << " | by_month rows/visible/visible_km/strongest/snow_days_of_days";
       for (const Month& month : row.months) {
         const double days = month.days > 0 ? static_cast<double>(month.days) : 1.0;
         out << ' ' << static_cast<double>(month.rows_sum) / days << '/'
             << static_cast<double>(month.visible_sum) / days << '/'
-            << month.visible_m_sum / days / 1000.0 << '/' << month.strongest;
+            << month.visible_m_sum / days / 1000.0 << '/' << month.strongest << '/'
+            << month.snow_days << ':' << month.days;
       }
       out << '\n';
     }
@@ -158,6 +166,7 @@ class TrailTally {
     double visible_m_sum = 0.0;
     float strongest = 0.0F;
     std::uint32_t days = 0;
+    std::uint32_t snow_days = 0;  ///< the dirt bed in kSnow
   };
 
   struct Year {

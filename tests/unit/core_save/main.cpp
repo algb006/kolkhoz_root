@@ -935,6 +935,14 @@ core::WorldState MakeWorld() {
       core::TrailRow{.a = {.x = -3, .y = 7}, .b = {.x = 12, .y = 40}, .earth = 0.5F, .snow = 0.0F});
   world.trails.rows.push_back(core::TrailRow{
       .a = {.x = 2, .y = 1}, .b = {.x = 2, .y = 9}, .earth = 0.0625F, .snow = 0.75F});
+  // The day's walks (save 229): two pending passes in key order, over snow, and one way.
+  world.walks.pending_over_snow = true;
+  world.walks.pending.push_back(
+      core::TrailPass{.a = {.x = -1, .y = 4}, .b = {.x = 0, .y = 4}, .passes = 3});
+  world.walks.pending.push_back(
+      core::TrailPass{.a = {.x = 5, .y = -2}, .b = {.x = 6, .y = -1}, .passes = 1});
+  world.walks.yesterday.push_back(
+      core::WalkPair{.from = {.x = 101.5F, .y = -7.25F}, .to = {.x = 330.0F, .y = 48.125F}});
 
   // A couple waiting for a free house (save format 35).
   core::WeddingWaitRow couple;
@@ -2575,6 +2583,10 @@ constexpr std::array<RecordedSection, 28> kRecordedPayload = {{
     // Save 228 (roads.md §3): +48 - the ground factors, twelve floats after the two; predicted
     // 60 -> 108 before the build, held; the hash read off ugrd.
     {"trails", 108, 0x7d7ac8a5574b101eULL},
+    // Save 229 (#2072, boss 24 Nov): the day's walks - the snow byte (1), two passes' count
+    // and rows (4 + 2 x 20), one way's count and row (4 + 16): predicted 65 before the build;
+    // the hash 0 until read off the first units (the practice).
+    {"walks", 65, 0x0ULL},
     // 2026-09-17, save 52: +56 bytes over the two books — the nine yearly
     // inputs the readiness index asks of a year and the year did not keep
     // (ledger_state.h): satisfaction's sum and count, able-bodied
@@ -3748,6 +3760,19 @@ int main() {
                    back.ground.ride[1] == 0.9375F && back.ground.ride[2] == 0.6875F,
                "the trails came back with their weight, visible strength, the ground factors, "
                "ends and both strengths (save 227, 228)");
+  }
+  // Save 229 (#2072): the day's walks come back pass for pass and way for way.
+  {
+    const core::TrailWalks& back = loaded.walks;
+    failures +=
+        Expect(back.pending_over_snow && back.pending.size() == 2 && back.pending[0].a.x == -1 &&
+                   back.pending[0].b.x == 0 && back.pending[0].passes == 3 &&
+                   back.pending[1].a.y == -2 && back.pending[1].b.y == -1 &&
+                   back.pending[1].passes == 1 && back.yesterday.size() == 1 &&
+                   back.yesterday[0].from.x == 101.5F && back.yesterday[0].from.y == -7.25F &&
+                   back.yesterday[0].to.x == 330.0F && back.yesterday[0].to.y == 48.125F,
+               "the day's walks came back with the snow flag, the passes' ends and counts, and the "
+               "way's two positions (save 229)");
   }
   // Save 136. The two legs' ticks and places are apart, the rider on the
   // first only: a codec that swapped or dropped one is red here.

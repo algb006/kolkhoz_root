@@ -1082,6 +1082,8 @@ class LaborSystem final : public ILaborSystem {
   }
 
   void StartDay(WorldState& current) const {
+    // YESTERDAY'S WALKS before the clear (save 229): the morning prices them by the route.
+    std::vector<WalkPair> yesterday = PlacedWalksOf(current, config_.horse_kind);
     for (ResidentRow& resident : current.residents.rows) {
       resident.work = WorkAssignment{};
     }
@@ -1132,7 +1134,7 @@ class LaborSystem final : public ILaborSystem {
     RefillHerdCare(current);
     AssignPostHolders(current);
     // TRODDEN PATHS (#2072): the day's decay before anyone walks; the tread follows the plan.
-    DecayTrailsThisMorning(config_.trails, current);
+    DecayTrailsThisMorning(config_.trails, current, std::move(yesterday));
     // UB-001 fix: the accountant's placement is a BLOCK, not the body of the
     // function, because the chairman's orders below it must run on days the
     // accountant has nothing to do. A day off, or a winter day with every
@@ -1618,8 +1620,11 @@ class LaborSystem final : public ILaborSystem {
       const float walk_hours_per_km = HoursPerKm(config_, WorkKind::kHarvest);
       params.yard_walk_hours.resize(homes.size());
       for (std::size_t slot = 0; slot < homes.size(); ++slot) {
+        const float* const routed = PlacedWalkKm(*index, homes[slot], yard);  // option 1
         params.yard_walk_hours[slot] =
-            index->EffectiveKm(found_homes[slot][0], found_yard[0]) * walk_hours_per_km;
+            (routed != nullptr ? *routed
+                               : index->EffectiveKm(found_homes[slot][0], found_yard[0])) *
+            walk_hours_per_km;
       }
       params.yard_ride_km.resize(jobs.size());
     }
@@ -1649,7 +1654,12 @@ class LaborSystem final : public ILaborSystem {
       const NetworkPlace ride_place = index->Locate(kModes[ride_mode], job.position);
       for (std::size_t slot = 0; slot < homes.size(); ++slot) {
         const std::size_t at = ((job_index * homes.size()) + slot) * 2U;
-        params.road_km[at] = index->EffectiveKm(found_homes[slot][0], walk_place);
+        // A WALK PLACED YESTERDAY IS PRICED BY ITS ROUTE (option 1, boss 24 Nov; roads.md's
+        // lattice paragraph): the planner sees what the walker pays; other pairs the straight
+        // door.
+        const float* const routed = PlacedWalkKm(*index, homes[slot], job.position);
+        params.road_km[at] =
+            routed != nullptr ? *routed : index->EffectiveKm(found_homes[slot][0], walk_place);
         params.road_km[at + 1] = index->EffectiveKm(found_homes[slot][ride_mode], ride_place);
       }
       if (stabled) {

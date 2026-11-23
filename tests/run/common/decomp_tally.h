@@ -20,6 +20,7 @@
 #include "core_common/calendar.h"
 #include "core_common/labor_state.h"
 #include "core_common/ledger_state.h"
+#include "core_common/road_route.h"
 #include "core_common/road_rules.h"
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
@@ -87,6 +88,14 @@ class DecompTally {
     if (winter) {
       row.winter_felling_norm += today(core::WorkKind::kFelling);
       ++row.winter_felling_days;
+    }
+    // OPTION 1's table answered (save 229): the planner's asks of yesterday's priced walks
+    // and the answers, this village's thread since yesterday's look - a table that never
+    // answers is a stub.
+    {
+      const core::PlacedWalkCount count = core::TakePlacedWalkCount();
+      row.placed_asked += count.asked;
+      row.placed_found += count.found;
     }
     // boss 24 Nov, B3's boards: the board chain's work by the day's ground (the dirt bed's
     // condition) - building, hauling, felling booked man-days, and the sawyers at the saw
@@ -172,6 +181,8 @@ class DecompTally {
             << "(days/build/haul/fell/sawyer_heads) " << row.days_by_ground[ground] << '/'
             << chain.build << '/' << chain.haul << '/' << chain.fell << '/' << chain.sawyers;
       }
+      out << " placed_walks(asked/found) " << row.placed_asked << '/' << row.placed_found
+          << (row.placed_asked > 0 && row.placed_found == 0 ? " PLACED_WALKS_NEVER_FOUND" : "");
       out << '\n';
     }
   }
@@ -203,6 +214,8 @@ class DecompTally {
     std::uint64_t winter_felling_days = 0;
     std::array<Chain, static_cast<std::size_t>(core::RoadCondition::kRoadConditionCount)>
         chain_by_ground{};
+    std::uint64_t placed_asked = 0;
+    std::uint64_t placed_found = 0;
   };
 
   std::map<std::uint32_t, Year> by_year_;
