@@ -14,6 +14,7 @@
 #include "core_common/horse_yard_road.h"
 #include "core_common/land_state.h"
 #include "core_common/road_route.h"
+#include "core_common/time_probe.h"
 #include "core_common/work_seam.h"
 
 namespace core {
@@ -46,6 +47,7 @@ bool CrossesAStandingCrop(const WorldState& world, Vec2 from, Vec2 to) {
 }  // namespace
 
 void DecayTrailsThisMorning(const TrailRules& rules, WorldState& current) {
+  const probe::Timer timer(probe::Slot::kDecay);
   current.trails.weight_full = rules.weight_full;
   current.trails.visible_strength = rules.visible_strength;
   current.trails.ground = rules.ground;
@@ -63,6 +65,7 @@ void TreadPlacedWalkers(const TrailRules& rules,
                         std::span<const AssignmentCandidate> candidates,
                         std::span<const std::uint32_t> plan,
                         LivestockKindId horse_kind) {
+  const probe::Timer timer(probe::Slot::kTread);
   if (!(rules.gain_per_pass > 0.0F)) {
     return;
   }

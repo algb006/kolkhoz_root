@@ -14,6 +14,8 @@
 #include <utility>
 #include <vector>
 
+#include "core_common/time_probe.h"
+
 namespace core::lattice {
 
 namespace {
@@ -137,6 +139,7 @@ float StraightKm(const TrailTable& trails,
                  float open_weight,
                  float open_cost,
                  float snow_trail_cost) {
+  const probe::Timer timer(probe::Slot::kStraight);
   const float length = Distance(from, to);
   if (!(length > 0.0F) || trails.rows.empty()) {
     return length / kMetresPerKm * open_weight * open_cost;
@@ -152,6 +155,7 @@ float RouteKm(const TrailTable& trails,
               float open_cost,
               float snow_trail_cost,
               std::vector<std::pair<TrailEnd, TrailEnd>>* edges) {
+  const probe::Timer timer(probe::Slot::kRoute);
   const TrailEnd start = SnapTrailEnd(from);
   const TrailEnd goal = SnapTrailEnd(to);
   const float straight = Distance(from, to) / kMetresPerKm * open_weight * open_cost;

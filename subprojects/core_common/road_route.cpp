@@ -13,6 +13,7 @@
 #include <utility>
 
 #include "core_common/state_table_ops.h"
+#include "core_common/time_probe.h"
 #include "core_common/world_state.h"
 #include "road_day.h"
 #include "trail_lattice.h"
@@ -316,6 +317,7 @@ class RoadIndexImpl final : public RoadIndex {
                 std::span<const Access> starts,
                 std::span<const Access> ends,
                 const DayWeights* day) const {
+    const probe::Timer timer(probe::Slot::kChoose);
     const float weight = rules_.off_road_weight[static_cast<std::size_t>(mode)];
     const auto mode_index = static_cast<std::size_t>(mode);
     Choice best;
@@ -493,6 +495,7 @@ class RoadIndexImpl final : public RoadIndex {
   std::shared_ptr<const DayWeights> MakeDay(const TrailTable* trails,
                                             const RoadBeds& beds,
                                             const DayWeights* previous) const {
+    const probe::Timer timer(probe::Slot::kMakeDay);
     auto day = std::make_shared<DayWeights>();
     day->trails = trails;
     const GroundFactors& factors = trails != nullptr ? trails->ground : GroundFactors{};
