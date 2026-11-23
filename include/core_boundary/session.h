@@ -167,6 +167,7 @@
 #include "core_common/stink.h"
 #include "core_common/store_theft_view.h"
 #include "core_common/supply_estimate.h"
+#include "core_common/trail_state.h"
 #include "core_common/week_labour.h"
 #include "core_common/world_junction.h"
 #include "core_common/world_state.h"
@@ -637,6 +638,13 @@ class ISession {
   /// @note Between steps; the answer describes State(). A pure read; residents.size() equals
   ///       SignalsOfField(field).residents_working.
   virtual FieldWorkView FieldWorkOf(FieldId field) const = 0;
+
+  /// @brief The village's trodden paths (core_common/trail_state.h; #2072): every trail with
+  ///        its ends, strength, ground and the core's own «visible». The layer draws from it
+  ///        and keeps no trail memory of its own (roads design: «Слой получает её как view»).
+  /// @note Between steps; a pure read of State(). CONTRACT: the default answers none until
+  ///       the body.
+  virtual std::vector<TrailView> Trails() const { return {}; }
 
   /// @brief «Сводка для сохранения» (save_summary_view.h; shell.md §4а; host 108 §3.1а,
   ///        SlotHeader field 11): the slot header's entries as kinds with params, in
