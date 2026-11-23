@@ -138,12 +138,26 @@ fi
 # itself arrives, so the repeat passes (check_manual_paths.py at 0.32.3,
 # check_plan_positions.py at 0.32.6). The cause, the host directory's NTFS
 # rights, is not repaired here; the reader is only spared the search.
+#
+# ONE REPEAT ON 23, AUTOMATIC (second host win2, 23 Nov 2026): a box's FIRST sync makes every
+# file new, so every directory hit the same refusal and the build stopped before compiling
+# (0.37.415's MSVC on win2, all of manual/balance/sim/). The files arrive on the first pass and
+# the second finds them in place, as the two 2026-09-18 repeats did by hand. A second 23 is a
+# real refusal and stops as before.
+sync_sources() {
+  rsync -rlz --checksum --delete --omit-dir-times \
+        --exclude 'build/' --exclude 'build-*/' --exclude '.git/' \
+        --exclude 'claude/' --exclude 'artifacts/' --exclude 'publish/' \
+        --exclude '.cache/' \
+        "${project_dir}/" "${host}:${remote_dir}/"
+}
 rsync_status=0
-rsync -rlz --checksum --delete --omit-dir-times \
-      --exclude 'build/' --exclude 'build-*/' --exclude '.git/' \
-      --exclude 'claude/' --exclude 'artifacts/' --exclude 'publish/' \
-      --exclude '.cache/' \
-      "${project_dir}/" "${host}:${remote_dir}/" || rsync_status=$?
+sync_sources || rsync_status=$?
+if [ "${rsync_status}" -eq 23 ]; then
+  echo "rsync 23 на первом проходе (новые файлы на ${host}): повторяю один раз" >&2
+  rsync_status=0
+  sync_sources || rsync_status=$?
+fi
 if [ "${rsync_status}" -eq 23 ]; then
   echo "ОТКАЗ rsync 23 (часть атрибутов не передана). Если строкой выше «failed to set permissions»" >&2
   echo "       на файле в scripts/ — это первая выкладка нового файла: сам файл доехал," >&2
