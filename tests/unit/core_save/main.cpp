@@ -929,6 +929,8 @@ core::WorldState MakeWorld() {
   // the second carrying snow.
   world.trails.weight_full = 1.125F;
   world.trails.visible_strength = 0.25F;
+  world.trails.ground.walk = {1.0F, 0.875F, 0.75F, 0.625F, 1.0F, 0.8125F};  // save 228
+  world.trails.ground.ride = {1.0F, 0.9375F, 0.6875F, 0.6875F, 1.0F, 1.0F};
   world.trails.rows.push_back(
       core::TrailRow{.a = {.x = -3, .y = 7}, .b = {.x = 12, .y = 40}, .earth = 0.5F, .snow = 0.0F});
   world.trails.rows.push_back(core::TrailRow{
@@ -2570,7 +2572,9 @@ constexpr std::array<RecordedSection, 28> kRecordedPayload = {{
     {"groom_plan", 228, 0x644f5687c4977757ULL},  // save 155: 2 partners, 3 legs' loads
     // Save 227 (#2072): the trails - two floats and a count (12), two rows of 24; predicted
     // 60 before the build, held; the hash read off utrlb.
-    {"trails", 60, 0x4dfc962f3184cd7eULL},
+    // Save 228 (roads.md §3): +48 - the ground factors, twelve floats after the two; predicted
+    // 60 -> 108 before the build. The hash is read off the first units (0 until then: red).
+    {"trails", 108, 0x0ULL},
     // 2026-09-17, save 52: +56 bytes over the two books — the nine yearly
     // inputs the readiness index asks of a year and the year did not keep
     // (ledger_state.h): satisfaction's sum and count, able-bodied
@@ -3739,9 +3743,11 @@ int main() {
                    back.rows.size() == 2 && back.rows[0].a.x == -3 && back.rows[0].a.y == 7 &&
                    back.rows[0].b.x == 12 && back.rows[0].b.y == 40 && back.rows[0].earth == 0.5F &&
                    back.rows[0].snow == 0.0F && back.rows[1].a.x == 2 && back.rows[1].b.y == 9 &&
-                   back.rows[1].earth == 0.0625F && back.rows[1].snow == 0.75F,
-               "the trails came back with their weight, visible strength, ends and both strengths "
-               "(save 227)");
+                   back.rows[1].earth == 0.0625F && back.rows[1].snow == 0.75F &&
+                   back.ground.walk[1] == 0.875F && back.ground.walk[5] == 0.8125F &&
+                   back.ground.ride[1] == 0.9375F && back.ground.ride[2] == 0.6875F,
+               "the trails came back with their weight, visible strength, the ground factors, "
+               "ends and both strengths (save 227, 228)");
   }
   // Save 136. The two legs' ticks and places are apart, the rider on the
   // first only: a codec that swapped or dropped one is red here.

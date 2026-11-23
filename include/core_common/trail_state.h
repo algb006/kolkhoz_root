@@ -70,6 +70,8 @@
 #ifndef CORE_COMMON_TRAIL_STATE_H_
 #define CORE_COMMON_TRAIL_STATE_H_
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
@@ -99,9 +101,37 @@ struct TrailRow {
   float snow = 0.0F;
 };
 
+/// @brief The ground's state under a walker or a horse (roads design §3 «Пешком и верхом», boss
+///        23 Nov 2026; ISession::GroundStateAt). kIce is a word the core NEVER produces: its
+///        weather makes no ice on land (STUB, гололёд, until a «thaw then frost» rule exists).
+enum class GroundState : std::uint8_t {
+  kDry = 0,
+  kWet,
+  kMud,
+  kSnow,
+  kFrozen,
+  kIce,
+  kGroundStateCount,
+};
+
+inline constexpr std::size_t kGroundStateCountValue =
+    static_cast<std::size_t>(GroundState::kGroundStateCount);
+
+/// @brief The speed factors by ground state (world_params `walk_*` / `ride_*`, STUBs, roads.md
+///        §3): a leg's cost is its weight ÷ the factor, in the same road index the trails
+///        use (econ's «one composition»). `walk` is TravelMode::kWalk; `ride` is kTeam, the
+///        horse to its field work. Index by GroundState.
+struct GroundFactors {
+  std::array<float, kGroundStateCountValue> walk{1.0F, 0.9F, 0.75F, 0.6F, 1.0F, 0.8F};
+  std::array<float, kGroundStateCountValue> ride{1.0F, 0.9F, 0.7F, 0.7F, 1.0F, 1.0F};
+};
+
 /// @brief Every trail of the village, sorted by (a, b): the order is the key's, so the save
 ///        and the index read one deterministic sequence. Empty at genesis.
 struct TrailTable {
+  /// The ground factors, kept here and saved for the reason weight_full is: every builder of
+  /// the index weighs alike, the loader included (save 228). The morning writes them.
+  GroundFactors ground;
   /// A km of full trail (rule 6), kept here and saved so that every builder of the road
   /// index - the loader and the road laying included, which read no world_params - weighs
   /// trails alike. The morning writes it from TrailRules::weight_full.
@@ -124,6 +154,9 @@ struct TrailRules {
   /// 23 Nov): a laid path on a busy trail still saves ~9 %, so laying stays a decision.
   float weight_full = 1.10F;
   float visible_strength = 0.3F;  ///< `trail_visible_strength`: the layer draws it above
+  /// roads.md §3: `walk_wet`, `walk_mud`, `walk_snow`, `walk_frozen`, `walk_ice` and the same
+  /// `ride_*` (the horse team) - STUBs; ice can never fire (no ice on land).
+  GroundFactors ground;
 };
 
 /// @brief The trails' count (ISession::CountTrails).

@@ -655,7 +655,7 @@ bool DecodeWorld(std::span<const std::byte> bytes,
   if (!CloseSection(in, kSectionTrails, section_end, error)) {
     return false;
   }
-  loaded.road_index = WithTrails(loaded.road_index, loaded.trails);
+  loaded.road_index = WithTrails(loaded.road_index, loaded.trails, loaded.weather.road_beds);
 
   if (!OpenSection(in, kSectionLedger, &section_end, error)) {
     return false;

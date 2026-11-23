@@ -24,6 +24,7 @@
 
 #include "core_common/calendar.h"
 #include "core_common/labor_state.h"
+#include "core_common/road_rules.h"
 #include "core_common/trail_state.h"
 #include "core_common/world_state.h"
 
@@ -39,14 +40,28 @@ class TrailTally {
     const bool winter = month == 11U || month <= 1U;
     Year& row = by_year_[year];
     Half& half = winter ? row.winter : row.rest;
+    // econ's S1: by season (spring Mar-May, summer Jun-Aug, autumn Sep-Nov, winter), and the
+    // MUD days apart (the dirt bed muddy: roads.md §3's distraint on the sowing window).
+    const std::size_t season = winter ? 3U : (month <= 4U ? 0U : (month <= 7U ? 1U : 2U));
+    const bool mud =
+        world.weather.road_beds.condition[static_cast<std::size_t>(core::RoadBed::kDirt)] ==
+        core::RoadCondition::kMud;
+    Half& by_season = row.season[season];
     for (const core::ResidentRow& person : world.residents.rows) {
       const core::WorkAssignment& work = person.work;
       if (work.kind == core::WorkKind::kNone || work.travel_hours < 0.0F || work.rides_horse != 0 ||
           work.rides_cart_of.value != core::kInvalidEntityIdValue) {
         continue;
       }
-      half.walk_hours += static_cast<double>(work.travel_hours);
+      const auto hours = static_cast<double>(work.travel_hours);
+      half.walk_hours += hours;
       ++half.walker_days;
+      by_season.walk_hours += hours;
+      ++by_season.walker_days;
+      if (mud) {
+        row.mud.walk_hours += hours;
+        ++row.mud.walker_days;
+      }
     }
     std::uint32_t visible = 0;
     double visible_m = 0.0;
@@ -75,6 +90,9 @@ class TrailTally {
           << " ground=walker_day:travel_hours>=0,no_horse,no_cart;winter=Dec-Feb"
           << " walk_h_per_walker_day " << PerDay(row.rest) << " winter " << PerDay(row.winter)
           << " walker_days " << row.rest.walker_days << " winter " << row.winter.walker_days
+          << " seasons(spr/sum/aut/win) " << PerDay(row.season[0]) << ' ' << PerDay(row.season[1])
+          << ' ' << PerDay(row.season[2]) << ' ' << PerDay(row.season[3]) << " mud_days "
+          << PerDay(row.mud) << " mud_walker_days " << row.mud.walker_days
           << " | by_month rows/visible/visible_km/strongest";
       for (const Month& month : row.months) {
         const double days = month.days > 0 ? static_cast<double>(month.days) : 1.0;
@@ -103,6 +121,8 @@ class TrailTally {
   struct Year {
     Half rest;
     Half winter;
+    std::array<Half, 4> season{};
+    Half mud;
     std::array<Month, core::kMonthsPerYear> months{};
   };
 

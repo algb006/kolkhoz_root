@@ -651,6 +651,13 @@ class ISession {
   ///        rows.
   virtual TrailCount CountTrails() const = 0;
 
+  /// @brief The ground's state at a point (roads.md §3 «Пешком и верхом»; GroundState): the
+  ///        avatar in the game walks and rides by it as the residents do. A road or path within
+  ///        4 m reads its bed (gravel in mud and a road in snow as wet), open ground the dirt
+  ///        bed's. Never kIce (STUB, гололёд: the weather makes no ice on land).
+  /// @note Between steps; a pure read of State().
+  virtual GroundState GroundStateAt(Vec2 point) const = 0;
+
   /// @brief «Сводка для сохранения» (save_summary_view.h; shell.md §4а; host 108 §3.1а,
   ///        SlotHeader field 11): the slot header's entries as kinds with params, in
   ///        SaveSummaryKind order - kEraPath, kPeople, kVillageMood, kFoodTerm, kFeedTerm,

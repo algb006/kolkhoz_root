@@ -1,10 +1,13 @@
 #include "core_common/road_route.h"
 
 #include <algorithm>
+#include <atomic>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <limits>
 #include <map>
+#include <memory>
 #include <queue>
 #include <span>
 #include <utility>
@@ -76,11 +79,92 @@ struct NearCell {
   std::uint8_t count = 0;
 };
 
+/// THE DAY'S WALKING WORLD (#2072's trails and roads.md §3's ground factors, econ's «one
+/// composition»): a leg's cost is its weight ÷ the ground's factor, read by every query of the
+/// index - so walking time and every reach rule see one world.
+struct DayWeights {
+  const TrailTable* trails = nullptr;
+  /// Per mode, per edge: the cost multiplier (1 ÷ the factor of the edge's ground). Empty for
+  /// a mode the ground does not touch (every factor 1).
+  std::array<std::vector<float>, kTravelModeCountValue> edge_cost;
+  /// Per mode: the open ground's cost multiplier, and on a leg whose trail carries snow (a
+  /// snow trail walks as wet ground, roads.md §3).
+  std::array<float, kTravelModeCountValue> open_cost{1.0F, 1.0F, 1.0F, 1.0F};
+  std::array<float, kTravelModeCountValue> snow_trail_cost{1.0F, 1.0F, 1.0F, 1.0F};
+  /// Per mode with edge costs: its own node-to-node tables (Dijkstra under the costs).
+  std::array<std::shared_ptr<const std::vector<float>>, kTravelModeCountValue> distance;
+  std::array<std::shared_ptr<const std::vector<RoadEdgeIndex>>, kTravelModeCountValue> arrival;
+  /// The beds' states and factors the tables were built for: a day with the same key reuses
+  /// them (the recompute only on a day the beds change).
+  std::uint64_t key = 0;
+};
+
+/// A road or path piece's ground by its bed's condition (roads.md §3): gravel in the mud
+/// walks as wet; snow on a road or a laid path walks as wet - its sleigh track and its feet
+/// keep it trodden (core's reading, 23 Nov 2026; «до расчистки» names open ground).
+GroundState GroundOnRoad(RoadCondition condition, RoadBed bed) {
+  switch (condition) {
+    case RoadCondition::kWet:
+      return GroundState::kWet;
+    case RoadCondition::kMud:
+      return bed == RoadBed::kDirt ? GroundState::kMud : GroundState::kWet;
+    case RoadCondition::kFrozen:
+      return GroundState::kFrozen;
+    case RoadCondition::kSnow:
+      return GroundState::kWet;
+    default:
+      return GroundState::kDry;
+  }
+}
+
+/// Open ground's state: the dirt bed's condition, snow off a trail as snow.
+GroundState GroundOffRoad(RoadCondition dirt) {
+  switch (dirt) {
+    case RoadCondition::kWet:
+      return GroundState::kWet;
+    case RoadCondition::kMud:
+      return GroundState::kMud;
+    case RoadCondition::kFrozen:
+      return GroundState::kFrozen;
+    case RoadCondition::kSnow:
+      return GroundState::kSnow;
+    default:
+      return GroundState::kDry;
+  }
+}
+
+/// A mode's factor in a state: walkers' and the horse team's; every other mode 1.
+float GroundFactorOf(const GroundFactors& factors, TravelMode mode, GroundState state) {
+  const auto index = static_cast<std::size_t>(state);
+  if (index >= kGroundStateCountValue) {
+    return 1.0F;
+  }
+  if (mode == TravelMode::kWalk) {
+    return factors.walk[index];
+  }
+  if (mode == TravelMode::kTeam) {
+    return factors.ride[index];
+  }
+  return 1.0F;
+}
+
+/// A factor as a cost multiplier (a factor <= 0 is read as 1: no division by nought).
+float CostOf(float factor) {
+  return factor > 0.0F ? 1.0F / factor : 1.0F;
+}
+
 class RoadIndexImpl final : public RoadIndex {
  public:
   RoadIndexImpl(const RoadTable& roads, const RoadTravelRules& rules)
       : rules_(rules), graph_(BuildRoadGraph(roads)) {
     BuildSegments(roads);
+    edge_bed_.assign(graph_.edges.size(), RoadBed::kDirt);
+    for (std::size_t edge = 0; edge < graph_.edges.size(); ++edge) {
+      const std::uint32_t row = FindRow(roads, graph_.edges[edge].road);
+      if (row != kNoRow && roads.rows[row].kind == RoadKind::kRoad) {
+        edge_bed_[edge] = BedOf(roads.rows[row].surface);
+      }
+    }
     // A WORLD WITH NO NETWORK AT ALL has no road for open ground to be slower
     // than: it measures the straight line at the traveller's own pace, as
     // every trip was measured before 0.36.2. Only a hand-built world is so —
@@ -97,25 +181,24 @@ class RoadIndexImpl final : public RoadIndex {
     return EffectiveKmWith(mode, from, to, nullptr);
   }
 
-  // THE TRAILED QUERIES (#2072, trail_state.h): the same queries with a walker's open-ground
-  // legs weighed by `trails` (TrailLegWeight); nullptr is the bare network. TrailedRoadIndex
-  // below answers through these, so the network's node-to-node distances are shared, never
-  // rebuilt for a day's trails.
-  float EffectiveKmWith(TravelMode mode, Vec2 from, Vec2 to, const TrailTable* trails) const {
+  // THE DAY'S QUERIES (#2072's trails, roads.md §3's ground; DayWeights): the same queries
+  // with the day's costs; nullptr is the bare network. DayRoadIndex below answers through
+  // these, so the network is shared and only a mode the ground touches gets its own tables.
+  float EffectiveKmWith(TravelMode mode, Vec2 from, Vec2 to, const DayWeights* day) const {
     const std::vector<Access> starts = Accesses(mode, from);
     const std::vector<Access> ends = Accesses(mode, to);
-    return Choose(mode, from, to, starts, ends, trails).km;
+    return Choose(mode, from, to, starts, ends, day).km;
   }
 
   float EffectiveKmWith(const NetworkPlace& from,
                         const NetworkPlace& to,
-                        const TrailTable* trails) const {
+                        const DayWeights* day) const {
     return Choose(from.mode,
                   from.position,
                   to.position,
                   std::span<const Access>(from.accesses.data(), from.access_count),
                   std::span<const Access>(to.accesses.data(), to.access_count),
-                  trails)
+                  day)
         .km;
   }
 
@@ -139,10 +222,10 @@ class RoadIndexImpl final : public RoadIndex {
     return MeasureWith(mode, from, to, nullptr);
   }
 
-  RouteMeasure MeasureWith(TravelMode mode, Vec2 from, Vec2 to, const TrailTable* trails) const {
+  RouteMeasure MeasureWith(TravelMode mode, Vec2 from, Vec2 to, const DayWeights* day) const {
     const std::vector<Access> starts = Accesses(mode, from);
     const std::vector<Access> ends = Accesses(mode, to);
-    const Choice choice = Choose(mode, from, to, starts, ends, trails);
+    const Choice choice = Choose(mode, from, to, starts, ends, day);
     RouteMeasure measure;
     measure.effective_km = choice.km;
     // THE SAME CHOICE Way unfolds: across open ground the whole line is off
@@ -158,13 +241,13 @@ class RoadIndexImpl final : public RoadIndex {
     return WayWith(mode, from, to, nullptr);
   }
 
-  Route WayWith(TravelMode mode, Vec2 from, Vec2 to, const TrailTable* trails) const {
+  Route WayWith(TravelMode mode, Vec2 from, Vec2 to, const DayWeights* day) const {
     const auto index = static_cast<std::size_t>(mode);
     const std::vector<Access> starts = Accesses(mode, from);
     const std::vector<Access> ends = Accesses(mode, to);
-    const Choice choice = Choose(mode, from, to, starts, ends, trails);
+    const Choice choice = Choose(mode, from, to, starts, ends, day);
     if (choice.kind == Choice::kStraight || choice.kind == Choice::kNoRoad) {
-      Route route = Straight(from, to, LegWeight(mode, from, to, trails));
+      Route route = Straight(from, to, LegCost(mode, from, to, day));
       route.cart_without_road = choice.kind == Choice::kNoRoad;
       return route;
     }
@@ -173,13 +256,12 @@ class RoadIndexImpl final : public RoadIndex {
     // the legs of every candidate cost 290 us a query in the debug build).
     Route route;
     const RouteLeg in =
-        OpenLeg(from, choice.start.point, LegWeight(mode, from, choice.start.point, trails));
-    const RouteLeg out =
-        OpenLeg(choice.end.point, to, LegWeight(mode, choice.end.point, to, trails));
+        OpenLeg(from, choice.start.point, LegCost(mode, from, choice.start.point, day));
+    const RouteLeg out = OpenLeg(choice.end.point, to, LegCost(mode, choice.end.point, to, day));
     route.legs.push_back(in);
     if (choice.kind == Choice::kSameEdge) {
       route.legs.push_back(
-          RoadLeg(choice.start.edge, choice.start.chainage_m, choice.end.chainage_m));
+          RoadLeg(choice.start.edge, choice.start.chainage_m, choice.end.chainage_m, mode, day));
     } else {
       const RoadEdge& first = graph_.edges[choice.start.edge];
       const RoadEdge& last = graph_.edges[choice.end.edge];
@@ -188,9 +270,11 @@ class RoadIndexImpl final : public RoadIndex {
           choice.start_forward ? first.to_chainage_m : first.from_chainage_m;
       const RoadNodeIndex entry_node = choice.end_forward ? last.from : last.to;
       const float entry_chainage = choice.end_forward ? last.from_chainage_m : last.to_chainage_m;
-      route.legs.push_back(RoadLeg(choice.start.edge, choice.start.chainage_m, exit_chainage));
-      AppendNodeWay(index, exit_node, entry_node, route.legs);
-      route.legs.push_back(RoadLeg(choice.end.edge, entry_chainage, choice.end.chainage_m));
+      route.legs.push_back(
+          RoadLeg(choice.start.edge, choice.start.chainage_m, exit_chainage, mode, day));
+      AppendNodeWay(index, exit_node, entry_node, route.legs, day);
+      route.legs.push_back(
+          RoadLeg(choice.end.edge, entry_chainage, choice.end.chainage_m, mode, day));
     }
     route.legs.push_back(out);
     route.effective_km = choice.km;
@@ -217,12 +301,38 @@ class RoadIndexImpl final : public RoadIndex {
     bool end_forward = true;
   };
 
-  /// An open-ground leg's weight a km: the mode's, lowered by a trail for a walker (#2072).
-  float LegWeight(TravelMode mode, Vec2 from, Vec2 to, const TrailTable* trails) const {
-    const float weight = rules_.off_road_weight[static_cast<std::size_t>(mode)];
-    return trails != nullptr && mode == TravelMode::kWalk
-               ? TrailLegWeight(*trails, from, to, weight)
-               : weight;
+  /// An open-ground leg's cost a km: the mode's weight, lowered by a trail for a walker
+  /// (#2072), divided by the open ground's factor - a snow trail's as wet ground (roads.md §3).
+  float LegCost(TravelMode mode, Vec2 from, Vec2 to, const DayWeights* day) const {
+    const auto mode_index = static_cast<std::size_t>(mode);
+    const float weight = rules_.off_road_weight[mode_index];
+    if (day == nullptr) {
+      return weight;
+    }
+    const TrailRow* const trail = day->trails != nullptr && mode == TravelMode::kWalk
+                                      ? FindTrail(*day->trails, from, to)
+                                      : nullptr;
+    const float trailed =
+        trail != nullptr ? TrailLegWeight(*day->trails, from, to, weight) : weight;
+    const bool snow_trail = trail != nullptr && trail->snow > 0.0F;
+    return trailed * (snow_trail ? day->snow_trail_cost[mode_index] : day->open_cost[mode_index]);
+  }
+
+  /// A road piece's cost multiplier: its ground's (DayWeights::edge_cost), 1 bare.
+  static float EdgeCost(TravelMode mode, RoadEdgeIndex edge, const DayWeights* day) {
+    if (day == nullptr) {
+      return 1.0F;
+    }
+    const std::vector<float>& costs = day->edge_cost[static_cast<std::size_t>(mode)];
+    return edge < costs.size() ? costs[edge] : 1.0F;
+  }
+
+  /// Node-to-node km for a mode: the day's own table when the ground touches it.
+  float Between(std::size_t mode_index, std::size_t offset, const DayWeights* day) const {
+    if (day != nullptr && day->distance[mode_index] != nullptr) {
+      return (*day->distance[mode_index])[offset];
+    }
+    return distance_[mode_index][offset];
   }
 
   Choice Choose(TravelMode mode,
@@ -230,22 +340,25 @@ class RoadIndexImpl final : public RoadIndex {
                 Vec2 to,
                 std::span<const Access> starts,
                 std::span<const Access> ends,
-                const TrailTable* trails) const {
+                const DayWeights* day) const {
     const float weight = rules_.off_road_weight[static_cast<std::size_t>(mode)];
     const auto mode_index = static_cast<std::size_t>(mode);
     Choice best;
     if (MayGoAcross(mode)) {
       best.kind = Choice::kStraight;
-      best.km = Distance(from, to) / 1000.0F * LegWeight(mode, from, to, trails);
+      best.km = Distance(from, to) / 1000.0F * LegCost(mode, from, to, day);
     }
     const std::size_t nodes = graph_.nodes.size();
     for (const Access& start : starts) {
-      const float in_km = start.distance_m / 1000.0F * LegWeight(mode, from, start.point, trails);
+      const float in_km = start.distance_m / 1000.0F * LegCost(mode, from, start.point, day);
       const RoadEdge& first = graph_.edges[start.edge];
+      const float first_cost = EdgeCost(mode, start.edge, day);
       for (const Access& end : ends) {
-        const float out_km = end.distance_m / 1000.0F * LegWeight(mode, end.point, to, trails);
+        const float out_km = end.distance_m / 1000.0F * LegCost(mode, end.point, to, day);
+        const float last_cost = EdgeCost(mode, end.edge, day);
         if (start.edge == end.edge) {
-          const float km = in_km + (std::abs(end.chainage_m - start.chainage_m) / 1000.0F) + out_km;
+          const float km =
+              in_km + (std::abs(end.chainage_m - start.chainage_m) / 1000.0F * first_cost) + out_km;
           if (km < best.km) {
             best = Choice{.kind = Choice::kSameEdge, .km = km, .start = start, .end = end};
           }
@@ -254,13 +367,14 @@ class RoadIndexImpl final : public RoadIndex {
         for (const bool start_forward : {true, false}) {
           const RoadNodeIndex exit_node = start_forward ? first.to : first.from;
           const float exit_chainage = start_forward ? first.to_chainage_m : first.from_chainage_m;
-          const float to_exit = std::abs(exit_chainage - start.chainage_m) / 1000.0F;
+          const float to_exit = std::abs(exit_chainage - start.chainage_m) / 1000.0F * first_cost;
           for (const bool end_forward : {true, false}) {
             const RoadNodeIndex entry_node = end_forward ? last.from : last.to;
             const float entry_chainage = end_forward ? last.from_chainage_m : last.to_chainage_m;
-            const float between = distance_[mode_index][(exit_node * nodes) + entry_node];
+            const float between = Between(mode_index, (exit_node * nodes) + entry_node, day);
             const float km = in_km + to_exit + between +
-                             (std::abs(end.chainage_m - entry_chainage) / 1000.0F) + out_km;
+                             (std::abs(end.chainage_m - entry_chainage) / 1000.0F * last_cost) +
+                             out_km;
             if (km < best.km) {
               best = Choice{.kind = Choice::kByNodes,
                             .km = km,
@@ -345,44 +459,126 @@ class RoadIndexImpl final : public RoadIndex {
   /// Dijkstra from every node, by mode: the node-to-node effective km and,
   /// for the legs, the edge each shortest way arrives by.
   void BuildDistances() {
-    const std::size_t nodes = graph_.nodes.size();
     for (std::size_t mode = 0; mode < kTravelModeCountValue; ++mode) {
-      distance_[mode].assign(nodes * nodes, kNoWay);
-      arrival_[mode].assign(nodes * nodes, kNoEdge);
-      for (std::size_t source = 0; source < nodes; ++source) {
-        float* distance = &distance_[mode][source * nodes];
-        RoadEdgeIndex* arrival = &arrival_[mode][source * nodes];
-        using Item = std::pair<float, RoadNodeIndex>;
-        std::priority_queue<Item, std::vector<Item>, std::greater<>> open;
-        distance[source] = 0.0F;
-        open.emplace(0.0F, static_cast<RoadNodeIndex>(source));
-        while (!open.empty()) {
-          const auto [here_km, node] = open.top();
-          open.pop();
-          if (here_km > distance[node]) {
+      ModeDistances(mode, {}, distance_[mode], arrival_[mode]);
+    }
+  }
+
+  /// One mode's node-to-node tables under per-edge cost multipliers (empty: 1 everywhere).
+  void ModeDistances(std::size_t mode,
+                     std::span<const float> edge_cost,
+                     std::vector<float>& distance_out,
+                     std::vector<RoadEdgeIndex>& arrival_out) const {
+    const std::size_t nodes = graph_.nodes.size();
+    distance_out.assign(nodes * nodes, kNoWay);
+    arrival_out.assign(nodes * nodes, kNoEdge);
+    for (std::size_t source = 0; source < nodes; ++source) {
+      float* distance = &distance_out[source * nodes];
+      RoadEdgeIndex* arrival = &arrival_out[source * nodes];
+      using Item = std::pair<float, RoadNodeIndex>;
+      std::priority_queue<Item, std::vector<Item>, std::greater<>> open;
+      distance[source] = 0.0F;
+      open.emplace(0.0F, static_cast<RoadNodeIndex>(source));
+      while (!open.empty()) {
+        const auto [here_km, node] = open.top();
+        open.pop();
+        if (here_km > distance[node]) {
+          continue;
+        }
+        for (const RoadEdgeIndex edge_index : graph_.node_edges[node]) {
+          const RoadEdge& edge = graph_.edges[edge_index];
+          if (!UsableBy(static_cast<TravelMode>(mode), edge.kind)) {
             continue;
           }
-          for (const RoadEdgeIndex edge_index : graph_.node_edges[node]) {
-            const RoadEdge& edge = graph_.edges[edge_index];
-            if (!UsableBy(static_cast<TravelMode>(mode), edge.kind)) {
-              continue;
-            }
-            const RoadNodeIndex other = edge.from == node ? edge.to : edge.from;
-            const float next = here_km + (edge.length_m / 1000.0F);
-            // Ties broken by the edge index, so the way is the same on every
-            // compiler.
-            if (next < distance[other] ||
-                (next == distance[other] && edge_index < arrival[other])) {
-              distance[other] = next;
-              arrival[other] = edge_index;
-              open.emplace(next, other);
-            }
+          const RoadNodeIndex other = edge.from == node ? edge.to : edge.from;
+          const float cost = edge_index < edge_cost.size() ? edge_cost[edge_index] : 1.0F;
+          const float next = here_km + (edge.length_m / 1000.0F * cost);
+          // Ties broken by the edge index, so the way is the same on every
+          // compiler.
+          if (next < distance[other] || (next == distance[other] && edge_index < arrival[other])) {
+            distance[other] = next;
+            arrival[other] = edge_index;
+            open.emplace(next, other);
           }
         }
       }
     }
   }
 
+ public:
+  /// THE DAY (#2072 + roads.md §3): the trails and today's ground on this network. A mode the
+  /// ground touches (any edge cost not 1) gets its own node tables - taken from `previous` when
+  /// its key matches (the beds unchanged since), recomputed otherwise.
+  std::shared_ptr<const DayWeights> MakeDay(const TrailTable* trails,
+                                            const RoadBeds& beds,
+                                            const DayWeights* previous) const {
+    auto day = std::make_shared<DayWeights>();
+    day->trails = trails;
+    const GroundFactors& factors = trails != nullptr ? trails->ground : GroundFactors{};
+    // The key: the three beds' conditions and both modes' factors.
+    std::uint64_t key = 1469598103934665603ULL;
+    const auto mix = [&key](std::uint32_t value) { key = (key ^ value) * 1099511628211ULL; };
+    for (const RoadCondition condition : beds.condition) {
+      mix(static_cast<std::uint32_t>(condition));
+    }
+    for (std::size_t index = 0; index < kGroundStateCountValue; ++index) {
+      mix(std::bit_cast<std::uint32_t>(factors.walk[index]));
+      mix(std::bit_cast<std::uint32_t>(factors.ride[index]));
+    }
+    day->key = key;
+    const RoadCondition dirt = beds.condition[static_cast<std::size_t>(RoadBed::kDirt)];
+    for (const TravelMode mode : {TravelMode::kWalk, TravelMode::kTeam}) {
+      const auto mode_index = static_cast<std::size_t>(mode);
+      day->open_cost[mode_index] = CostOf(GroundFactorOf(factors, mode, GroundOffRoad(dirt)));
+      // A snow trail walks as wet ground; off snow it is the open ground's own.
+      day->snow_trail_cost[mode_index] =
+          GroundOffRoad(dirt) == GroundState::kSnow
+              ? CostOf(GroundFactorOf(factors, mode, GroundState::kWet))
+              : day->open_cost[mode_index];
+      std::vector<float> costs(graph_.edges.size(), 1.0F);
+      bool touched = false;
+      for (std::size_t edge = 0; edge < graph_.edges.size(); ++edge) {
+        const RoadBed bed = edge_bed_[edge];
+        const GroundState state = GroundOnRoad(beds.condition[static_cast<std::size_t>(bed)], bed);
+        costs[edge] = CostOf(GroundFactorOf(factors, mode, state));
+        touched = touched || costs[edge] != 1.0F;
+      }
+      if (!touched) {
+        continue;
+      }
+      if (previous != nullptr && previous->key == key && previous->distance[mode_index]) {
+        day->distance[mode_index] = previous->distance[mode_index];
+        day->arrival[mode_index] = previous->arrival[mode_index];
+      } else {
+        auto distance = std::make_shared<std::vector<float>>();
+        auto arrival = std::make_shared<std::vector<RoadEdgeIndex>>();
+        ModeDistances(mode_index, costs, *distance, *arrival);
+        day->distance[mode_index] = std::move(distance);
+        day->arrival[mode_index] = std::move(arrival);
+        g_day_table_builds.fetch_add(1, std::memory_order_relaxed);
+      }
+      day->edge_cost[mode_index] = std::move(costs);
+    }
+    return day;
+  }
+
+  /// The ground's state at a point: a road or path piece within kOnRoadMetres takes its bed's
+  /// state, open ground the dirt bed's (ISession::GroundStateAt). Never kIce (STUB).
+  GroundState GroundAt(Vec2 point, const RoadBeds& beds) const {
+    constexpr float kOnRoadMetres = 4.0F;
+    const std::vector<Access> near = Accesses(TravelMode::kWalk, point);
+    if (!near.empty() && near.front().distance_m <= kOnRoadMetres) {
+      const RoadBed bed = edge_bed_[near.front().edge];
+      return GroundOnRoad(beds.condition[static_cast<std::size_t>(bed)], bed);
+    }
+    return GroundOffRoad(beds.condition[static_cast<std::size_t>(RoadBed::kDirt)]);
+  }
+
+  /// How many day tables were computed in this process (the run prints the recompute cost);
+  /// atomic because a run's villages walk on several threads, and it is counted rarely.
+  static inline std::atomic<std::uint64_t> g_day_table_builds{0};
+
+ private:
   /// THE NEAR TABLE (0.36.2): every cell of a dense grid over the network,
   /// out to kNearReach beyond it, holds the kNearEdges edges nearest its
   /// centre and, for each, the segment nearest it — per usability class
@@ -652,7 +848,11 @@ class RoadIndexImpl final : public RoadIndex {
     return found;
   }
 
-  RouteLeg RoadLeg(RoadEdgeIndex edge_index, float from_chainage, float to_chainage) const {
+  RouteLeg RoadLeg(RoadEdgeIndex edge_index,
+                   float from_chainage,
+                   float to_chainage,
+                   TravelMode mode,
+                   const DayWeights* day) const {
     const RoadEdge& edge = graph_.edges[edge_index];
     RouteLeg leg;
     leg.on_road = true;
@@ -660,7 +860,7 @@ class RoadIndexImpl final : public RoadIndex {
     leg.from_chainage_m = from_chainage;
     leg.to_chainage_m = to_chainage;
     leg.length_m = std::abs(to_chainage - from_chainage);
-    leg.effective_km = leg.length_m / 1000.0F;
+    leg.effective_km = leg.length_m / 1000.0F * EdgeCost(mode, edge_index, day);
     return leg;
   }
 
@@ -677,19 +877,24 @@ class RoadIndexImpl final : public RoadIndex {
   void AppendNodeWay(std::size_t mode,
                      RoadNodeIndex source,
                      RoadNodeIndex target,
-                     std::vector<RouteLeg>& legs) const {
+                     std::vector<RouteLeg>& legs,
+                     const DayWeights* day) const {
     const std::size_t nodes = graph_.nodes.size();
+    const auto travel = static_cast<TravelMode>(mode);
+    const std::vector<RoadEdgeIndex>& arrival =
+        day != nullptr && day->arrival[mode] != nullptr ? *day->arrival[mode] : arrival_[mode];
     std::vector<RouteLeg> backwards;
     RoadNodeIndex node = target;
     while (node != source) {
-      const RoadEdgeIndex edge_index = arrival_[mode][(source * nodes) + node];
+      const RoadEdgeIndex edge_index = arrival[(source * nodes) + node];
       if (edge_index == kNoEdge) {
         return;  // unreachable; the caller has already refused the way
       }
       const RoadEdge& edge = graph_.edges[edge_index];
       const bool forward = edge.to == node;
-      backwards.push_back(forward ? RoadLeg(edge_index, edge.from_chainage_m, edge.to_chainage_m)
-                                  : RoadLeg(edge_index, edge.to_chainage_m, edge.from_chainage_m));
+      backwards.push_back(
+          forward ? RoadLeg(edge_index, edge.from_chainage_m, edge.to_chainage_m, travel, day)
+                  : RoadLeg(edge_index, edge.to_chainage_m, edge.from_chainage_m, travel, day));
       node = forward ? edge.from : edge.to;
     }
     legs.insert(legs.end(), backwards.rbegin(), backwards.rend());
@@ -708,18 +913,25 @@ class RoadIndexImpl final : public RoadIndex {
   std::vector<NearCell> near_table_;
   std::array<std::vector<float>, kTravelModeCountValue> distance_;
   std::array<std::vector<RoadEdgeIndex>, kTravelModeCountValue> arrival_;
+  /// Each edge's bed (its road's surface; a path and dirt are earth): the ground's state.
+  std::vector<RoadBed> edge_bed_;
 };
 
-/// THE NETWORK WITH THE DAY'S TRAILS (#2072, trail_state.h): the bare index shared, a copy of
-/// the trails held - immutable like the index, so the double buffer still copies a pointer.
-/// Every query is the bare index's own, with the walker's open-ground legs weighed by them.
-class TrailedRoadIndex final : public RoadIndex {
+/// THE NETWORK ON THIS DAY (#2072's trails, roads.md §3's ground): the bare index shared, a
+/// copy of the trails and the day's weights held - immutable like the index, so the double
+/// buffer still copies a pointer. Every query is the bare index's own under the day's costs.
+class DayRoadIndex final : public RoadIndex {
  public:
-  TrailedRoadIndex(std::shared_ptr<const RoadIndexImpl> base, TrailTable trails)
-      : base_(std::move(base)), trails_(std::move(trails)) {}
+  DayRoadIndex(std::shared_ptr<const RoadIndexImpl> base,
+               TrailTable trails,
+               const RoadBeds& beds,
+               const DayWeights* previous)
+      : base_(std::move(base)), trails_(std::move(trails)), beds_(beds) {
+    day_ = base_->MakeDay(&trails_, beds_, previous);  // after trails_ is in place
+  }
 
   float EffectiveKm(TravelMode mode, Vec2 from, Vec2 to) const override {
-    return base_->EffectiveKmWith(mode, from, to, &trails_);
+    return base_->EffectiveKmWith(mode, from, to, day_.get());
   }
 
   NetworkPlace Locate(TravelMode mode, Vec2 position) const override {
@@ -727,15 +939,15 @@ class TrailedRoadIndex final : public RoadIndex {
   }
 
   float EffectiveKm(const NetworkPlace& from, const NetworkPlace& to) const override {
-    return base_->EffectiveKmWith(from, to, &trails_);
+    return base_->EffectiveKmWith(from, to, day_.get());
   }
 
   RouteMeasure Measure(TravelMode mode, Vec2 from, Vec2 to) const override {
-    return base_->MeasureWith(mode, from, to, &trails_);
+    return base_->MeasureWith(mode, from, to, day_.get());
   }
 
   Route Way(TravelMode mode, Vec2 from, Vec2 to) const override {
-    return base_->WayWith(mode, from, to, &trails_);
+    return base_->WayWith(mode, from, to, day_.get());
   }
 
   const RoadGraph& Graph() const override { return base_->Graph(); }
@@ -744,10 +956,44 @@ class TrailedRoadIndex final : public RoadIndex {
 
   const std::shared_ptr<const RoadIndexImpl>& Base() const { return base_; }
 
+  const DayWeights* Day() const { return day_.get(); }
+
  private:
   std::shared_ptr<const RoadIndexImpl> base_;
   TrailTable trails_;
+  RoadBeds beds_;
+  std::shared_ptr<const DayWeights> day_;
 };
+
+/// The bare network under any index of ours, and the day it carried (or nullptr).
+std::shared_ptr<const RoadIndexImpl> BareOf(const std::shared_ptr<const RoadIndex>& index,
+                                            const DayWeights** day) {
+  *day = nullptr;
+  if (auto bare = std::dynamic_pointer_cast<const RoadIndexImpl>(index)) {
+    return bare;
+  }
+  if (const auto dated = std::dynamic_pointer_cast<const DayRoadIndex>(index)) {
+    *day = dated->Day();
+    return dated->Base();
+  }
+  return nullptr;
+}
+
+/// True when the ground touches nobody today: every bed and open ground at factor 1.
+bool GroundIsNeutral(const GroundFactors& factors, const RoadBeds& beds) {
+  for (std::size_t bed = 0; bed < kRoadBedCountValue; ++bed) {
+    const auto kind = static_cast<RoadBed>(bed);
+    const GroundState on_road = GroundOnRoad(beds.condition[bed], kind);
+    for (const TravelMode mode : {TravelMode::kWalk, TravelMode::kTeam}) {
+      if (GroundFactorOf(factors, mode, on_road) != 1.0F) {
+        return false;
+      }
+    }
+  }
+  const GroundState open = GroundOffRoad(beds.condition[static_cast<std::size_t>(RoadBed::kDirt)]);
+  return GroundFactorOf(factors, TravelMode::kWalk, open) == 1.0F &&
+         GroundFactorOf(factors, TravelMode::kTeam, open) == 1.0F;
+}
 
 }  // namespace
 
@@ -757,23 +1003,36 @@ std::shared_ptr<const RoadIndex> BuildRoadIndex(const RoadTable& roads,
 }
 
 std::shared_ptr<const RoadIndex> WithTrails(const std::shared_ptr<const RoadIndex>& index,
-                                            const TrailTable& trails) {
-  std::shared_ptr<const RoadIndexImpl> base = std::dynamic_pointer_cast<const RoadIndexImpl>(index);
-  if (base == nullptr) {
-    const auto trailed = std::dynamic_pointer_cast<const TrailedRoadIndex>(index);
-    base = trailed == nullptr ? nullptr : trailed->Base();
-  }
+                                            const TrailTable& trails,
+                                            const RoadBeds& beds) {
+  const DayWeights* previous = nullptr;
+  std::shared_ptr<const RoadIndexImpl> base = BareOf(index, &previous);
   if (base == nullptr) {
     return index;  // a foreign index (a test's): nothing to wrap
   }
-  if (trails.rows.empty()) {
-    return base;  // no trail: the bare network, as before #2072
+  if (trails.rows.empty() && GroundIsNeutral(trails.ground, beds)) {
+    return base;  // no trail, no ground to slow anyone: the bare network
   }
-  return std::make_shared<TrailedRoadIndex>(std::move(base), trails);
+  return std::make_shared<DayRoadIndex>(std::move(base), trails, beds, previous);
 }
 
-std::shared_ptr<const RoadIndex> BuildRoadIndex(const RoadTable& roads, const TrailTable& trails) {
-  return WithTrails(BuildRoadIndex(roads), trails);
+std::shared_ptr<const RoadIndex> BuildRoadIndex(const RoadTable& roads,
+                                                const TrailTable& trails,
+                                                const RoadBeds& beds) {
+  return WithTrails(BuildRoadIndex(roads), trails, beds);
+}
+
+GroundState GroundStateAt(const WorldState& world, Vec2 point) {
+  const DayWeights* day = nullptr;
+  const std::shared_ptr<const RoadIndexImpl> base = BareOf(RoadIndexOf(world), &day);
+  if (base == nullptr) {
+    return GroundState::kDry;
+  }
+  return base->GroundAt(point, world.weather.road_beds);
+}
+
+std::uint64_t DayTableBuilds() {
+  return RoadIndexImpl::g_day_table_builds.load(std::memory_order_relaxed);
 }
 
 std::shared_ptr<const RoadIndex> RoadIndexOf(const WorldState& world) {

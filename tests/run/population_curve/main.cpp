@@ -2311,6 +2311,10 @@ int main(int argc, char** argv) {
               << two_places(door_mean) << " - measured, no line, no gate (" << accepted->date
               << ", tree " << accepted->tree << ")\n";
   }
+  // roads.md §3's recompute cost (econ's S1 note): how many day node tables the run computed,
+  // all villages together - a table only on a day the beds changed.
+  std::cout << "population_curve: GROUND2072 day_table_builds " << core::DayTableBuilds()
+            << " (all villages; one a mode a bed change)\n";
   const bool inside_band =
       !doors.empty() && door_mean >= kEraMeanFloor && door_mean <= kEraMeanCeiling;
   const bool within_accepted = !doors.empty() && accepted.has_value() && !not_lined &&

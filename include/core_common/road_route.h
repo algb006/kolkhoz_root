@@ -42,6 +42,7 @@
 
 #include "core_common/geometry.h"
 #include "core_common/road_graph.h"
+#include "core_common/road_rules.h"
 #include "core_common/road_state.h"
 #include "core_common/trail_state.h"
 
@@ -208,16 +209,29 @@ class RoadIndex {
 std::shared_ptr<const RoadIndex> BuildRoadIndex(const RoadTable& roads,
                                                 const RoadTravelRules& rules = {});
 
-/// @brief `index` with the day's trodden paths (#2072, trail_state.h): the same network, its
-///        node-to-node distances shared, and a walker's open-ground legs weighed by `trails`.
-///        An index already trailed is re-trailed from its bare network; no trail gives the bare
+/// @brief `index` on this day (#2072, trail_state.h; roads.md §3): the same network with a
+///        walker's open-ground legs weighed by `trails`, and every leg's cost divided by its
+///        ground's factor (trails.ground; the beds' conditions `beds`, open ground the dirt
+///        bed's). A mode the ground touches gets its own node tables, reused from the index
+///        it re-dates while the beds are unchanged. No trail and a neutral ground give the bare
 ///        index back. THE ONE DOOR: every builder of WorldState::road_index goes through it.
 std::shared_ptr<const RoadIndex> WithTrails(const std::shared_ptr<const RoadIndex>& index,
-                                            const TrailTable& trails);
+                                            const TrailTable& trails,
+                                            const RoadBeds& beds);
 
-/// @brief BuildRoadIndex(roads) with `trails` (WithTrails): what genesis, the loader and a
-///        laid road build.
-std::shared_ptr<const RoadIndex> BuildRoadIndex(const RoadTable& roads, const TrailTable& trails);
+/// @brief BuildRoadIndex(roads) on this day (WithTrails): what genesis, the loader and a laid
+///        road build.
+std::shared_ptr<const RoadIndex> BuildRoadIndex(const RoadTable& roads,
+                                                const TrailTable& trails,
+                                                const RoadBeds& beds);
+
+/// @brief The ground's state at `point` (ISession::GroundStateAt; roads.md §3): a road or path
+///        within 4 m takes its bed's condition (gravel in mud and snow on a road as wet), open
+///        ground the dirt bed's. Never GroundState::kIce (STUB, гололёд).
+GroundState GroundStateAt(const WorldState& world, Vec2 point);
+
+/// @brief How many day node tables this process has computed (the run's recompute cost).
+std::uint64_t DayTableBuilds();
 
 /// @brief `world.road_index`, or — for a world nobody indexed (a hand-built
 ///        test world) — an index built on the spot from `world.roads` and

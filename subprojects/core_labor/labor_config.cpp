@@ -37,7 +37,7 @@ namespace core {
 namespace {
 
 /// The world_params keys this config declares (#1442; LaborWorldParamKeys).
-constexpr std::array<std::string_view, 11> kLaborWorldParamKeys = {
+constexpr std::array<std::string_view, 21> kLaborWorldParamKeys = {
     "crime_truancy_on",
     "truancy_from_alcoholism",
     "truancy_share_at_cap",
@@ -49,7 +49,18 @@ constexpr std::array<std::string_view, 11> kLaborWorldParamKeys = {
     "trail_snow_decay_per_day",
     "trail_forest_decay_factor",
     "trail_weight_full",
-    "trail_visible_strength"};
+    "trail_visible_strength",
+    // roads.md §3: the ground factors (GroundFactors), by GroundState from wet on.
+    "walk_wet",
+    "walk_mud",
+    "walk_snow",
+    "walk_frozen",
+    "walk_ice",
+    "ride_wet",
+    "ride_mud",
+    "ride_snow",
+    "ride_frozen",
+    "ride_ice"};
 
 /// The most seats transport.csv may name on one cart: a bound against a
 /// slipped digit, not a design number (the design's carts seat 2 and 6).
@@ -943,6 +954,20 @@ bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string&
         !OptionalValue(*world, kLaborWorldParamKeys[10], share, trails.visible_strength, error)) {
       PrefixError("world_params", "trail_*", error);
       return false;
+    }
+    // roads.md §3: the ground factors, wet .. ice for the walker then the horse team; a factor
+    // in (0, 2] - above 1 is faster than dry ground (none is today), 0 would stop the way.
+    const Range factor{.low = 0.05F, .high = 2.0F};
+    for (std::size_t state = 1; state < kGroundStateCountValue; ++state) {
+      const std::size_t walk_key = 11 + (state - 1);
+      const std::size_t ride_key = 16 + (state - 1);
+      if (!OptionalValue(
+              *world, kLaborWorldParamKeys[walk_key], factor, trails.ground.walk[state], error) ||
+          !OptionalValue(
+              *world, kLaborWorldParamKeys[ride_key], factor, trails.ground.ride[state], error)) {
+        PrefixError("world_params", "walk_* / ride_*", error);
+        return false;
+      }
     }
   }
   if (const ITable* transport = tables.FindTable("transport")) {

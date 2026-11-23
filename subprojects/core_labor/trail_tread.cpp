@@ -44,14 +44,14 @@ bool CrossesAStandingCrop(const WorldState& world, Vec2 from, Vec2 to) {
 void DecayTrailsThisMorning(const TrailRules& rules, WorldState& current) {
   current.trails.weight_full = rules.weight_full;
   current.trails.visible_strength = rules.visible_strength;
-  if (current.trails.rows.empty()) {
-    return;
-  }
+  current.trails.ground = rules.ground;
   DecayTrails(current.trails,
               rules,
               current.weather.snow_cover_days > 0,
               current.weather.precipitation == Precipitation::kSnow);
-  current.road_index = WithTrails(RoadIndexOf(current), current.trails);
+  // EVERY MORNING, trails or none: today's ground re-dates the index (roads.md §3); the node
+  // tables are reused while the beds are unchanged.
+  current.road_index = WithTrails(RoadIndexOf(current), current.trails, current.weather.road_beds);
 }
 
 void TreadPlacedWalkers(const TrailRules& rules,
@@ -89,7 +89,7 @@ void TreadPlacedWalkers(const TrailRules& rules,
     }
   }
   if (trodden) {
-    current.road_index = WithTrails(index, current.trails);
+    current.road_index = WithTrails(index, current.trails, current.weather.road_beds);
   }
 }
 

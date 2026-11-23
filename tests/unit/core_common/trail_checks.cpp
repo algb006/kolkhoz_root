@@ -98,11 +98,12 @@ int TestTrails() {
   }
   core::TrailTable half;
   core::TreadTrail(half, west, east, false, 0.5F);
-  const auto trailed = core::WithTrails(bare, full);
+  const core::RoadBeds dry{};  // every bed dry: the ground neutral
+  const auto trailed = core::WithTrails(bare, full, dry);
   const float open = bare->EffectiveKm(core::TravelMode::kWalk, west, east);
   const float on_full = trailed->EffectiveKm(core::TravelMode::kWalk, west, east);
   const float on_half =
-      core::WithTrails(bare, half)->EffectiveKm(core::TravelMode::kWalk, west, east);
+      core::WithTrails(bare, half, dry)->EffectiveKm(core::TravelMode::kWalk, west, east);
   failures += Expect(Near(open, 1.2F) && Near(on_full, 1.10F) && Near(on_half, 1.15F),
                      "trails: a walker's open-ground km weighs 1.2 bare, 1.10 on a full trail, "
                      "1.15 on a half one");
@@ -119,7 +120,7 @@ int TestTrails() {
   path.axis.push_back(core::RoadPoint{.position = east});
   core::AppendRow(with_path, path);
   const float laid =
-      core::BuildRoadIndex(with_path, full)->EffectiveKm(core::TravelMode::kWalk, west, east);
+      core::BuildRoadIndex(with_path, full, dry)->EffectiveKm(core::TravelMode::kWalk, west, east);
   failures += Expect(laid < on_full - 0.05F,
                      "trails: a laid path on the same line beats a full trail (1.0 against "
                      "1.10) - the laying decision is not given away");
@@ -129,7 +130,7 @@ int TestTrails() {
   core::WorldState world;
   world.roads = far_road;
   world.trails = full;
-  world.road_index = core::BuildRoadIndex(world.roads, world.trails);
+  world.road_index = core::BuildRoadIndex(world.roads, world.trails, dry);
   const auto index = core::RoadIndexOf(world);
   const core::NetworkPlace from = index->Locate(core::TravelMode::kWalk, west);
   const core::NetworkPlace to = index->Locate(core::TravelMode::kWalk, east);
@@ -140,10 +141,49 @@ int TestTrails() {
           Near(index->Way(core::TravelMode::kWalk, west, east).effective_km, 1.10F),
       "trails: RoadKm, the found-place query, Measure and Way all read the trails - one door "
       "(a reader of the bare index would answer 1.2)");
-  const auto emptied = core::WithTrails(world.road_index, core::TrailTable{});
+  const auto emptied = core::WithTrails(world.road_index, core::TrailTable{}, dry);
   failures += Expect(Near(emptied->EffectiveKm(core::TravelMode::kWalk, west, east), 1.2F),
                      "trails: re-trailing a trailed index with no trail gives the bare network "
                      "back, not the old trails twice");
+
+  // THE GROUND (roads.md §3), in the same index: a leg's cost is its weight ÷ the factor.
+  core::RoadBeds mud{};
+  mud.condition[static_cast<std::size_t>(core::RoadBed::kDirt)] = core::RoadCondition::kMud;
+  core::RoadBeds snow{};
+  snow.condition.fill(core::RoadCondition::kSnow);
+  const core::Vec2 on_road_a{.x = 100.0F, .y = 0.0F};
+  const core::Vec2 on_road_b{.x = 900.0F, .y = 0.0F};
+  const auto in_mud = core::WithTrails(bare, core::TrailTable{}, mud);
+  const auto in_snow_bare = core::WithTrails(bare, core::TrailTable{}, snow);
+  const auto in_snow_trail = core::WithTrails(bare, full, snow);  // the trail is earth...
+  core::TrailTable snow_full;
+  for (int pass = 0; pass < 50; ++pass) {
+    core::TreadTrail(snow_full, west, east, true, rules.gain_per_pass);
+  }
+  const auto on_snow_trail = core::WithTrails(bare, snow_full, snow);
+  failures += Expect(
+      Near(in_mud->EffectiveKm(core::TravelMode::kWalk, west, east), 1.6F) &&
+          Near(in_mud->EffectiveKm(core::TravelMode::kWalk, on_road_a, on_road_b), 0.8F / 0.75F) &&
+          Near(in_snow_bare->EffectiveKm(core::TravelMode::kWalk, west, east), 2.0F) &&
+          Near(in_snow_bare->EffectiveKm(core::TravelMode::kWalk, on_road_a, on_road_b),
+               0.8F / 0.9F) &&
+          Near(on_snow_trail->EffectiveKm(core::TravelMode::kWalk, west, east), 1.10F / 0.9F) &&
+          Near(in_snow_trail->EffectiveKm(core::TravelMode::kWalk, west, east), 1.10F / 0.6F),
+      "ground: open ground in mud 1.2 ÷ 0.75, a dirt road in mud 0.8 ÷ 0.75; open snow 1.2 ÷ 0.6, "
+      "a road in snow as wet; a snow trail as wet ground, an earth trail under snow as snow");
+  failures += Expect(Near(in_mud->EffectiveKm(core::TravelMode::kCart, on_road_a, on_road_b),
+                          bare->EffectiveKm(core::TravelMode::kCart, on_road_a, on_road_b)),
+                     "ground: a cart is not slowed here - the carts' own road rules stand");
+  core::WorldState wet_world;
+  wet_world.roads = far_road;
+  wet_world.weather.road_beds = mud;
+  wet_world.road_index = core::BuildRoadIndex(wet_world.roads, wet_world.trails, mud);
+  failures += Expect(
+      core::GroundStateAt(wet_world, {.x = 500.0F, .y = 1.0F}) == core::GroundState::kMud &&
+          core::GroundStateAt(wet_world, {.x = 500.0F, .y = 300.0F}) == core::GroundState::kMud &&
+          core::GroundStateAt(core::WorldState{}, {}) != core::GroundState::kIce,
+      "ground: the state at a point on a dirt road and off it reads the dirt bed; "
+      "never ice");
 
   // The view: ends in metres, the visible threshold the table carries.
   const std::vector<core::TrailView> all = core::TrailViews(half, false);

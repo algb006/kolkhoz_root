@@ -31,6 +31,7 @@
 #include "core_common/day_window.h"
 #include "core_common/ids.h"
 #include "core_common/plot.h"
+#include "core_common/road_route.h"
 #include "core_common/state_table_ops.h"
 #include "core_log/log.h"
 #include "signals.h"
@@ -510,6 +511,10 @@ class Session final : public ISession {
   }
 
   TrailCount CountTrails() const override { return CountTrailRows(State().trails); }
+
+  GroundState GroundStateAt(Vec2 point) const override {
+    return core::GroundStateAt(State(), point);  // roads.md §3
+  }
 
   std::vector<SaveSummaryEntry> SaveSummary() const override {
     const WorldState& world = State();

@@ -2652,6 +2652,13 @@ void WriteTrails(SaveSink& sink, const TrailTable& trails) {
   ByteWriter& out = sink.Out();
   out.WriteFloat(trails.weight_full);
   out.WriteFloat(trails.visible_strength);
+  // Save 228 (roads.md §3): the ground factors, walk then ride, by GroundState (12 floats).
+  for (const float factor : trails.ground.walk) {
+    out.WriteFloat(factor);
+  }
+  for (const float factor : trails.ground.ride) {
+    out.WriteFloat(factor);
+  }
   out.WriteU32(static_cast<std::uint32_t>(trails.rows.size()));
   for (const TrailRow& row : trails.rows) {
     out.WriteI32(row.a.x);
@@ -2668,6 +2675,12 @@ TrailTable ReadTrails(LoadSource& source) {
   TrailTable trails;
   trails.weight_full = in.ReadFloat();
   trails.visible_strength = in.ReadFloat();
+  for (float& factor : trails.ground.walk) {
+    factor = in.ReadFloat();
+  }
+  for (float& factor : trails.ground.ride) {
+    factor = in.ReadFloat();
+  }
   const std::uint32_t count = in.ReadU32();
   if (static_cast<std::size_t>(count) * kSavedTrailBytes > in.Remaining()) {
     source.Fail("the trails name more rows than the bytes left");
