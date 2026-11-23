@@ -31,8 +31,13 @@ namespace {
 /// (RoadIndex::EffectiveKm of two places found for one mode), held to it by
 /// a unit test. One a thread, so no reader waits on another.
 struct HomesOnTheNetwork {
-  std::shared_ptr<const RoadIndex> index;  ///< Kept alive: its address is the key.
-  std::uint64_t houses = 0;                ///< The lived-in houses' content, hashed.
+  std::shared_ptr<const RoadIndex> index;  ///< Today's index: the ways are asked of it.
+  /// The bare network the found places belong to - the key (RoadIndex::Network) - and the
+  /// index that brought it, held so the keyed network cannot be freed and a new one reborn at
+  /// its address (a raw key's ABA).
+  const RoadIndex* network = nullptr;
+  std::shared_ptr<const RoadIndex> network_owner;
+  std::uint64_t houses = 0;  ///< The lived-in houses' content, hashed.
   std::size_t count = 0;
   std::array<std::vector<NetworkPlace>, kTravelModeCountValue> found;
   std::array<bool, kTravelModeCountValue> filled{};
@@ -83,12 +88,17 @@ float NearestHomeTravelHours(const WorldState& world,
   std::shared_ptr<const RoadIndex> index = RoadIndexOf(world);
   std::size_t count = 0;
   const std::uint64_t houses = HousesKey(world, count);
-  if (kept.index != index || kept.houses != houses || kept.count != count) {
-    kept.index = std::move(index);
+  // THE FOUND HOUSES ARE THE NETWORK'S (#2072): kept while the bare network and the houses are
+  // the same; the day's index (trails, ground) is swapped in for the ways themselves.
+  const RoadIndex* const network = index->Network();
+  if (kept.network != network || kept.houses != houses || kept.count != count) {
+    kept.network = network;
+    kept.network_owner = index;
     kept.houses = houses;
     kept.count = count;
     kept.filled.fill(false);
   }
+  kept.index = std::move(index);
   std::vector<NetworkPlace>& homes = kept.found[way];
   if (!kept.filled[way]) {
     homes.clear();

@@ -198,6 +198,12 @@ class RoadIndex {
   ///        field, where no road runs).
   virtual float OffRoadWeight(TravelMode mode) const = 0;
 
+  /// @brief The bare network under this index: itself, or the one a day index (trails, ground;
+  ///        road_day.cpp) wraps. A found place (Locate) is the NETWORK's, so a cache of found
+  ///        places keys on this, not on the day index that is re-dated every morning (#2072:
+  ///        keyed on the day index, home_reach re-found every house daily - B2 ran ~2.8×).
+  virtual const RoadIndex* Network() const { return this; }
+
   virtual ~RoadIndex() = default;
 };
 

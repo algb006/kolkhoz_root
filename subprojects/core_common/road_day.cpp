@@ -61,6 +61,8 @@ class DayRoadIndex final : public RoadIndex {
 
   float OffRoadWeight(TravelMode mode) const override { return base_->OffRoadWeight(mode); }
 
+  const RoadIndex* Network() const override { return base_.get(); }
+
   const std::shared_ptr<const RoadIndex>& Base() const { return base_; }
 
   const DayWeights* Day() const { return day_.get(); }
