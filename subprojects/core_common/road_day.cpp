@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "core_common/road_rules.h"
+#include "core_common/time_probe.h"
 #include "core_common/world_state.h"
 #include "trail_lattice.h"
 
@@ -112,6 +113,7 @@ bool GroundIsNeutral(const GroundFactors& factors, const RoadBeds& beds) {
 std::shared_ptr<const RoadIndex> WithTrails(const std::shared_ptr<const RoadIndex>& index,
                                             const TrailTable& trails,
                                             const RoadBeds& beds) {
+  const probe::Timer timer(probe::Slot::kWithTrails);
   const DayWeights* previous = nullptr;
   std::shared_ptr<const RoadIndex> base = BareOf(index, &previous);
   if (base == nullptr) {
@@ -142,6 +144,7 @@ float WalkRouteKm(const WorldState& world,
                   Vec2 from,
                   Vec2 to,
                   std::vector<std::pair<TrailEnd, TrailEnd>>* edges) {
+  const probe::Timer timer(probe::Slot::kWalkRoute);
   const DayWeights* day = nullptr;
   const std::shared_ptr<const RoadIndex> base = BareOf(RoadIndexOf(world), &day);
   if (base == nullptr) {
