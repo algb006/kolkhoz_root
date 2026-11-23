@@ -343,6 +343,11 @@ class RoadIndexImpl final : public RoadIndex {
                 const DayWeights* day) const {
     const float weight = rules_.off_road_weight[static_cast<std::size_t>(mode)];
     const auto mode_index = static_cast<std::size_t>(mode);
+    // The lattice probe (#2072, boss's lattice): every walking query a lattice router would
+    // answer, counted (the run prints it with the days it covered).
+    if (mode == TravelMode::kWalk) {
+      g_walk_queries.fetch_add(1, std::memory_order_relaxed);
+    }
     Choice best;
     if (MayGoAcross(mode)) {
       best.kind = Choice::kStraight;
@@ -577,6 +582,8 @@ class RoadIndexImpl final : public RoadIndex {
   /// How many day tables were computed in this process (the run prints the recompute cost);
   /// atomic because a run's villages walk on several threads, and it is counted rarely.
   static inline std::atomic<std::uint64_t> g_day_table_builds{0};
+  /// Walking queries answered (Choose with TravelMode::kWalk), this process.
+  static inline std::atomic<std::uint64_t> g_walk_queries{0};
 
  private:
   /// THE NEAR TABLE (0.36.2): every cell of a dense grid over the network,
@@ -1048,6 +1055,10 @@ RouteMeasure ReachMeasure(const WorldState& world, TravelMode mode, Vec2 from, V
 
 float ReachKm(const WorldState& world, TravelMode mode, Vec2 from, Vec2 to) {
   return ReachMeasure(world, mode, from, to).effective_km;
+}
+
+std::uint64_t WalkQueries() {
+  return RoadIndexImpl::g_walk_queries.load(std::memory_order_relaxed);
 }
 
 std::uint64_t DayTableBuilds() {

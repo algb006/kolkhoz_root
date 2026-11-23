@@ -2316,6 +2316,9 @@ int main(int argc, char** argv) {
   // all villages together - a table only on a day the beds changed.
   std::cout << "population_curve: GROUND2072 day_table_builds " << core::DayTableBuilds()
             << " (all villages; one a mode a bed change)\n";
+  // #2072's lattice probe: the walking queries a lattice router would answer, all villages.
+  std::cout << "population_curve: LATTICE2072 walk_queries " << core::WalkQueries()
+            << " (all villages of this process, the whole run)\n";
   const bool inside_band =
       !doors.empty() && door_mean >= kEraMeanFloor && door_mean <= kEraMeanCeiling;
   const bool within_accepted = !doors.empty() && accepted.has_value() && !not_lined &&

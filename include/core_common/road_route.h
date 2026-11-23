@@ -239,6 +239,9 @@ RouteMeasure ReachMeasure(const WorldState& world, TravelMode mode, Vec2 from, V
 /// @brief ReachMeasure's effective km.
 float ReachKm(const WorldState& world, TravelMode mode, Vec2 from, Vec2 to);
 
+/// @brief How many walking queries this process's indexes answered (#2072's lattice probe).
+std::uint64_t WalkQueries();
+
 /// @brief How many day node tables this process has computed (the run's recompute cost).
 std::uint64_t DayTableBuilds();
 
