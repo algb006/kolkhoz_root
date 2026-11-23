@@ -2569,8 +2569,8 @@ constexpr std::array<RecordedSection, 28> kRecordedPayload = {{
     // held; the hash read off it.
     {"groom_plan", 228, 0x644f5687c4977757ULL},  // save 155: 2 partners, 3 legs' loads
     // Save 227 (#2072): the trails - two floats and a count (12), two rows of 24; predicted
-    // 60 before the build. The hash is read off the first units (0 until then: red by design).
-    {"trails", 60, 0x0ULL},
+    // 60 before the build, held; the hash read off utrlb.
+    {"trails", 60, 0x4dfc962f3184cd7eULL},
     // 2026-09-17, save 52: +56 bytes over the two books — the nine yearly
     // inputs the readiness index asks of a year and the year did not keep
     // (ledger_state.h): satisfaction's sum and count, able-bodied
