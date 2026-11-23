@@ -1296,8 +1296,18 @@ int TestSignals(const core::ITableSet& tables) {
   // state's, the mood's mean over its families, and the last entry a concern or the season.
   const std::vector<core::SaveSummaryEntry> summary = session->SaveSummary();
   const core::WorldState& summary_world = session->State();
+  // #2089: the calendar, always the seventh - the campaign's year 1 is 1931.
+  const core::Date& summary_date = summary_world.calendar.date;
   failures += Expect(
-      summary.size() == 6 && summary[0].kind == core::SaveSummaryKind::kEraPath &&
+      summary.size() == 7 && summary[6].kind == core::SaveSummaryKind::kCalendar &&
+          summary[6].params[0] == 1930 + static_cast<std::int32_t>(summary_date.year) &&
+          summary[6].params[1] == static_cast<std::int32_t>(summary_date.month) &&
+          summary[6].params[2] == static_cast<std::int32_t>(summary_world.calendar.season) &&
+          summary[6].params[3] == static_cast<std::int32_t>(summary_date.day_in_month),
+      "save summary: the calendar comes last, always - the calendar year (1931 for year 1), the "
+      "month, the season and the day in the month of the saved day");
+  failures += Expect(
+      summary.size() == 7 && summary[0].kind == core::SaveSummaryKind::kEraPath &&
           summary[0].params[2] == 8 && summary[0].params[1] >= 0 && summary[0].params[1] <= 8 &&
           summary[1].kind == core::SaveSummaryKind::kPeople &&
           summary[1].params[0] == static_cast<std::int32_t>(summary_world.residents.rows.size()) &&

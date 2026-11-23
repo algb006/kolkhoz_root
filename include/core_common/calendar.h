@@ -192,6 +192,10 @@ enum class Season : std::uint8_t {
   kAutumn,
 };
 
+/// @brief The calendar year of the campaign's first year (game-setting.md «Возвращается
+///        календарный год»: «старт — 1931»; Epochs §1). The one home of the conversion.
+inline constexpr std::int32_t kFirstCalendarYear = 1931;
+
 /// @brief Broken-down calendar date. A pure function of SimDay.
 struct Date {
   /// Campaign year, counted from 1.

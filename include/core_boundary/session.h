@@ -661,7 +661,8 @@ class ISession {
   /// @brief «Сводка для сохранения» (save_summary_view.h; shell.md §4а; host 108 §3.1а,
   ///        SlotHeader field 11): the slot header's entries as kinds with params, in
   ///        SaveSummaryKind order - kEraPath, kPeople, kVillageMood, kFoodTerm, kFeedTerm,
-  ///        then kConcern if a red lamp is lit, else kSeasonWork.
+  ///        then kConcern if a red lamp is lit, else kSeasonWork, and kCalendar always last
+  ///        (#2089).
   /// @note Between steps; the answer describes State(). host calls it at WriteSlot.
   virtual std::vector<SaveSummaryEntry> SaveSummary() const = 0;
 
