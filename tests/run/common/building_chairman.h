@@ -113,6 +113,9 @@ class BuildingChairman {
         sport_talk(tables),
         distiller(tables),
         emptying(tables) {
+    if (const core::ITable* const types = tables.FindTable("unit_types")) {
+      decomp.SetSawmill(types->FindRowByKey("sawmill"));  // DECOMP2072's sawyer-days
+    }
     if (const core::ITable* const professions = tables.FindTable("professions")) {
       const std::uint32_t row = professions->FindRowByKey("watchman");
       if (row != core::kNoTableRow) {

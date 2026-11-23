@@ -21,12 +21,16 @@
 #include "core_common/labor_state.h"
 #include "core_common/ledger_state.h"
 #include "core_common/road_rules.h"
+#include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
 
 namespace run {
 
 class DecompTally {
  public:
+  /// @brief The sawmill's unit-type row (unit_types), for the sawyer-days by ground.
+  void SetSawmill(std::uint32_t type_row) { sawmill_ = type_row; }
+
   void CountDay(const core::WorldState& world) {
     const std::uint32_t day = world.calendar.day;
     const std::uint32_t year = (day / core::kDaysPerYear) + 1U;
@@ -84,6 +88,27 @@ class DecompTally {
       row.winter_felling_norm += today(core::WorkKind::kFelling);
       ++row.winter_felling_days;
     }
+    // boss 24 Nov, B3's boards: the board chain's work by the day's ground (the dirt bed's
+    // condition) - building, hauling, felling booked man-days, and the sawyers at the saw
+    // (heads at the look: unit work's book does not split by unit).
+    {
+      const auto ground = static_cast<std::size_t>(
+          world.weather.road_beds.condition[static_cast<std::size_t>(core::RoadBed::kDirt)]);
+      if (ground < row.chain_by_ground.size()) {
+        Chain& chain = row.chain_by_ground[ground];
+        chain.build += today(core::WorkKind::kConstruction);
+        chain.haul += today(core::WorkKind::kHauling);
+        chain.fell += today(core::WorkKind::kFelling);
+        for (const core::ResidentRow& person : world.residents.rows) {
+          if (person.work.kind != core::WorkKind::kUnitWork) {
+            continue;
+          }
+          const std::uint32_t at = core::FindRow(world.units, person.work.unit);
+          chain.sawyers +=
+              at != core::kNoRow && world.units.rows[at].type.value == sawmill_ ? 1U : 0U;
+        }
+      }
+    }
     last_booked_ = booked;
   }
 
@@ -138,11 +163,27 @@ class DecompTally {
           << " field_man_days_per_day_mud " << per(row.field_norm_mud, row.field_days_mud)
           << " dry " << per(row.field_norm_dry, row.field_days_dry) << " field_days_mud "
           << row.field_days_mud << " dry " << row.field_days_dry << " winter_felling_norm "
-          << row.winter_felling_norm << " winter_felling_days " << row.winter_felling_days << '\n';
+          << row.winter_felling_norm << " winter_felling_days " << row.winter_felling_days;
+      static constexpr std::array<const char*, 5> kGrounds = {
+          "dry", "wet", "mud", "frozen", "snow"};
+      for (std::size_t ground = 0; ground < row.chain_by_ground.size(); ++ground) {
+        const Chain& chain = row.chain_by_ground[ground];
+        out << " chain_" << (ground < kGrounds.size() ? kGrounds[ground] : "other")
+            << "(days/build/haul/fell/sawyer_heads) " << row.days_by_ground[ground] << '/'
+            << chain.build << '/' << chain.haul << '/' << chain.fell << '/' << chain.sawyers;
+      }
+      out << '\n';
     }
   }
 
  private:
+  struct Chain {
+    double build = 0.0;
+    double haul = 0.0;
+    double fell = 0.0;
+    std::uint64_t sawyers = 0;
+  };
+
   struct Year {
     core::YearLedger book;
     bool has_book = false;
@@ -160,11 +201,14 @@ class DecompTally {
     std::uint64_t field_days_dry = 0;
     double winter_felling_norm = 0.0;
     std::uint64_t winter_felling_days = 0;
+    std::array<Chain, static_cast<std::size_t>(core::RoadCondition::kRoadConditionCount)>
+        chain_by_ground{};
   };
 
   std::map<std::uint32_t, Year> by_year_;
   std::array<float, core::kWorkKindCount> last_booked_{};
   std::uint32_t last_leisure_ = 0;
+  std::uint32_t sawmill_ = 0xFFFFFFFFU;  ///< no sawmill known: no sawyer counted
 };
 
 }  // namespace run
