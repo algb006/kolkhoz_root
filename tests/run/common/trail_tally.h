@@ -73,7 +73,11 @@ class TrailTally {
         ++visible;
         const core::Vec2 a = core::TrailEndPosition(trail.a);
         const core::Vec2 b = core::TrailEndPosition(trail.b);
-        visible_m += std::hypot(static_cast<double>(b.x - a.x), static_cast<double>(b.y - a.y));
+        const double length =
+            std::hypot(static_cast<double>(b.x - a.x), static_cast<double>(b.y - a.y));
+        visible_m += length;
+        // econ's rule (b): one visible leg >= 300 m per village.
+        row.longest_visible_m = length > row.longest_visible_m ? length : row.longest_visible_m;
       }
     }
     Month& at = row.months[month];
@@ -92,8 +96,8 @@ class TrailTally {
           << " walker_days " << row.rest.walker_days << " winter " << row.winter.walker_days
           << " seasons(spr/sum/aut/win) " << PerDay(row.season[0]) << ' ' << PerDay(row.season[1])
           << ' ' << PerDay(row.season[2]) << ' ' << PerDay(row.season[3]) << " mud_days "
-          << PerDay(row.mud) << " mud_walker_days " << row.mud.walker_days
-          << " | by_month rows/visible/visible_km/strongest";
+          << PerDay(row.mud) << " mud_walker_days " << row.mud.walker_days << " longest_visible_m "
+          << row.longest_visible_m << " | by_month rows/visible/visible_km/strongest";
       for (const Month& month : row.months) {
         const double days = month.days > 0 ? static_cast<double>(month.days) : 1.0;
         out << ' ' << static_cast<double>(month.rows_sum) / days << '/'
@@ -123,6 +127,7 @@ class TrailTally {
     Half winter;
     std::array<Half, 4> season{};
     Half mud;
+    double longest_visible_m = 0.0;
     std::array<Month, core::kMonthsPerYear> months{};
   };
 
