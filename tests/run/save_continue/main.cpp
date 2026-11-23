@@ -70,6 +70,15 @@ int main() {
   failures += Expect(trails > 0 && pending > 0 && walks > 0,
                      "the save carries trails, a pending tread and yesterday's walks - a save "
                      "with none of them would pass for the wrong reason");
+  std::cout << "save_continue: at the save - trails " << trails << ", pending passes " << pending
+            << ", yesterday's walks " << walks << ", residents at work " <<
+      [&at_save] {
+        std::size_t working = 0;
+        for (const core::ResidentRow& person : at_save.residents.rows) {
+          working += person.work.kind != core::WorkKind::kNone ? 1U : 0U;
+        }
+        return working;
+      }() << '\n';
 
   const std::vector<std::byte> bytes = core::EncodeWorld(at_save, *continued.tables);
   core::WorldState decoded;
