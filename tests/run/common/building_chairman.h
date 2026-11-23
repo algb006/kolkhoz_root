@@ -399,11 +399,13 @@ class BuildingChairman {
     family_food.CountDay(simulation);                   // #1953's FAM1953
     low_earners.CountDay(simulation.CompletedState());  // #1953's LOW1953
     trails.CountDay(simulation.CompletedState());       // #2072's TRAIL2072
-    trail_legs.CountDay(simulation.CompletedState());   // #2072's LEGS2072
-    decomp.CountDay(simulation.CompletedState());       // #2072's DECOMP2072
-    clerk.CountDay(simulation);                         // #589's print
-    reputation.CountDay(simulation.CompletedState());   // #1897's REP1897
-    plan_over.CountDay(simulation.CompletedState());    // #1946's OVER1946
+    if (count_trail_legs) {
+      trail_legs.CountDay(simulation.CompletedState());  // #2072's LEGS2072 (--trail-legs)
+    }
+    decomp.CountDay(simulation.CompletedState());      // #2072's DECOMP2072
+    clerk.CountDay(simulation);                        // #589's print
+    reputation.CountDay(simulation.CompletedState());  // #1897's REP1897
+    plan_over.CountDay(simulation.CompletedState());   // #1946's OVER1946
     // The season's talk to the drinker (#1238; sport_talk_policy.h).
     if (sport_talk_on) {
       sport_talk.RunDay(simulation);
@@ -601,6 +603,9 @@ class BuildingChairman {
   TrailTally trails;
   /// #2072's LEGS2072: every walking worker's open-ground legs, by group (trail_leg_tally.h).
   TrailLegTally trail_legs;
+  /// LEGS2072 routes every worker over the lattice each day - the RUN's cost, not the core's
+  /// (#2072's CPU gate measures the core): on only with population_curve --trail-legs.
+  bool count_trail_legs = false;
   /// #2072's DECOMP2072: what the walking time could move, by village-year (decomp_tally.h).
   DecompTally decomp;
   /// #2264's print: M1-M4 of the field-work coordinator, y1-y3 (field_work_tally.h).

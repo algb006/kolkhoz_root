@@ -14,6 +14,7 @@
 #ifndef TESTS_RUN_COMMON_TRAIL_LEG_TALLY_H_
 #define TESTS_RUN_COMMON_TRAIL_LEG_TALLY_H_
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstdint>
@@ -75,6 +76,10 @@ class TrailLegTally {
         row.ratio_lo = ratio < row.ratio_lo ? ratio : row.ratio_lo;
         row.ratio_hi = ratio > row.ratio_hi ? ratio : row.ratio_hi;
         row.straight_cheaper += straight < routed - 1e-4F ? 1U : 0U;
+        // econ: the over-estimate straight ÷ route, its p50 and p90.
+        if (routed > 0.0F) {
+          row.over.push_back(static_cast<double>(straight) / static_cast<double>(routed));
+        }
       }
       for (const auto& [a, b] : steps) {
         row.edge_houses[EdgeKey(a, b)].insert(person.family.value);
@@ -137,6 +142,17 @@ class TrailLegTally {
           << (row.days > 0 ? row.route_seconds / static_cast<double>(row.days) : 0.0)
           << " worst_day " << row.worst_day_seconds << " trunks_ge3_houses " << row.trunks
           << " trunk_share " << row.trunk_share << " rows_year_end " << row.rows_at_year_end;
+      {
+        std::vector<double> over = row.over;
+        std::sort(over.begin(), over.end());
+        const auto at = [&over](double share) {
+          return over.empty()
+                     ? 0.0
+                     : over[static_cast<std::size_t>(share * static_cast<double>(over.size() - 1))];
+        };
+        out << " over_straight_per_route p50 " << at(0.5) << " p90 " << at(0.9)
+            << (at(0.9) > 1.10 ? " P90_OVER_1_10" : "");
+      }
       for (std::size_t group = 0; group < kGroups; ++group) {
         const Group& at = row.groups[group];
         out << " | " << kNames[group] << " walker_days " << at.walker_days << " riders "
@@ -171,6 +187,7 @@ class TrailLegTally {
   struct Year {
     std::array<Group, kGroups> groups{};
     double ratio_sum = 0.0;
+    std::vector<double> over;  ///< straight ÷ route, every placed walker-day
     double ratio_lo = 1e9;
     double ratio_hi = 0.0;
     std::uint64_t pairs = 0;

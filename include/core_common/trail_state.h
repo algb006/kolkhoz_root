@@ -20,10 +20,13 @@
 /// over the lattice (A*, a trodden edge cheaper; WalkRouteKm) - his world time is that route
 /// and he treads its edges. THE QUERY'S: every other walking query (the accountant's measures,
 /// reach) is the straight line weighted by the edges it crosses (RoadKm). Untrodden, the two
-/// agree exactly (the walker's km is normalised to the straight line); trodden, the route can
-/// only be cheaper than the straight door's answer or equal. THE LATTICE'S WEAK CASE: an
-/// 8-neighbour path runs up to 8.2 % over the line it follows (the octile bound) - about a full
-/// trail's whole discount (1.2 -> 1.10), so a trail at a slant of ~22° barely beats the line.
+/// agree exactly (the walker's km is normalised to the straight line). STRAIGHT IS NEVER THE
+/// CHEAPER (boss 23 Nov, roads.md): the straight door keeps 1 / 1.0824 of a trail's discount (the
+/// octile bound below), so a route along the same trail, paying its staircase, is not dearer
+/// than the straight answer. Measured before that cut (23 Nov, B2): the straight door cheaper
+/// than the route in 2-3 % of pairs, by up to 4.2 % (14 % on B3's mud days). THE LATTICE'S WEAK
+/// CASE: an 8-neighbour path runs up to 8.2 % over the line it follows (the octile bound) - about a
+/// full trail's whole discount (1.2 -> 1.10), so a trail at a slant of ~22° barely beats the line.
 ///
 /// WHO TREADS. The accountant's placed people of the morning, by the world's own predicates
 /// (WorkRidesOut): who walks to his work treads his route home -> work; who rides from the horse

@@ -654,6 +654,8 @@ bool g_hay_hand_over_off = false;
 std::string g_avatar_key;
 /// `--district-table=plain`: the «Стол для района» policy receives plainly at every visit.
 bool g_district_table_plain = false;
+/// `--trail-legs`: print LEGS2072 (each day routes every worker over the lattice).
+bool g_trail_legs = false;
 
 /// `--walkers=N`: at most N villages walk at once (7 Nov 2026: the job's
 /// booked threads). Until then every seed walked at once, whatever was booked.
@@ -895,6 +897,7 @@ bool Walk(std::uint64_t seed,
   run::BuildingChairman builder(*world.tables);
   builder.district_table.SetAvatar(*world.tables, g_avatar_key);  // «Стол для района»
   builder.district_table.SetAlwaysPlain(g_district_table_plain);
+  builder.count_trail_legs = g_trail_legs;
   if (g_no_planting) {
     builder.planting.Disable();
   }
@@ -1893,6 +1896,8 @@ int main(int argc, char** argv) {
       g_no_anticrime = true;
     } else if (argument == "--district-table=plain") {
       g_district_table_plain = true;  // the plain penalty's one measurement (boss, 23 Nov)
+    } else if (argument == "--trail-legs") {
+      g_trail_legs = true;  // #2072's LEGS2072: a run-side cost, off by default
     } else if (argument.starts_with("--avatar=")) {
       g_avatar_key = std::string(argument.substr(std::string_view("--avatar=").size()));
     } else if (argument == "--roof-exemption=old") {

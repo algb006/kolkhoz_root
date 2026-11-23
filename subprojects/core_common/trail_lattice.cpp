@@ -26,6 +26,11 @@ constexpr float kMetresPerKm = 1000.0F;
 constexpr float kSqrtTwo = 1.41421356F;
 /// The octile distance's diagonal surcharge (√2 − 1).
 constexpr float kOctileDiagonal = kSqrtTwo - 1.0F;
+/// The octile bound: an 8-neighbour path's most excess over the line it follows (at 22.5°,
+/// (1 + (√2 − 1) tan 22.5°) / sec 22.5° = 1.0824), and the share of the route's discount the
+/// straight door keeps so it is never the cheaper one.
+constexpr float kOctileBound = 1.0824F;
+constexpr float kStraightDiscountShare = 1.0F / kOctileBound;
 /// Cells around the from-to box the walker's search may use (200 m at 25 m).
 constexpr std::int32_t kSearchMarginCells = 8;
 /// The query door samples the line every half cell.
@@ -61,7 +66,12 @@ float MeanCrossedCost(const TrailLookup& trails,
     const TrailEnd next = SnapTrailEnd(
         {.x = from.x + ((to.x - from.x) * share), .y = from.y + ((to.y - from.y) * share)});
     if (next.x != here.x || next.y != here.y) {
-      sum += StepCost(trails, here, next, open_weight, open_cost, snow_trail_cost);
+      // STRAIGHT NEVER CHEAPER THAN THE ROUTE (boss 23 Nov, roads.md): the trodden discount the
+      // straight door gives is the route's cut by the lattice's octile bound - a route along the
+      // same trail pays up to that excess for its staircase.
+      const float open = open_weight * open_cost;
+      const float step = StepCost(trails, here, next, open_weight, open_cost, snow_trail_cost);
+      sum += open - ((open - step) * kStraightDiscountShare);
       ++crossed;
       here = next;
     }

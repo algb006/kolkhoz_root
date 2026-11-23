@@ -24,6 +24,11 @@ int Expect(bool condition, std::string_view what) {
   return 0;
 }
 
+/// The lattice's octile bound (trail_lattice.cpp): the query door keeps 1 / it of a trail's
+/// discount, so a full trail answers 1.2 - 0.1 / 1.0824 to the straight door.
+constexpr float kOctileBound = 1.0824F;
+constexpr float kFullStraight = 1.2F - (0.1F / kOctileBound);
+
 bool Near(float value, float expected) {
   return std::abs(value - expected) < 0.002F;
 }
@@ -121,7 +126,10 @@ int TestTrails() {
   const float on_full = trailed->EffectiveKm(core::TravelMode::kWalk, west, east);
   const float on_half =
       core::WithTrails(bare, half, dry)->EffectiveKm(core::TravelMode::kWalk, west, east);
-  failures += Expect(Near(open, 1.2F) && Near(on_full, 1.10F) && Near(on_half, 1.15F),
+  // THE QUERY DOOR KEEPS 1 / 1.0824 OF THE ROUTE'S DISCOUNT (straight never cheaper than the
+  // route): a full trail 1.2 - 0.1 / 1.0824, a half one 1.2 - 0.05 / 1.0824.
+  failures += Expect(Near(open, 1.2F) && Near(on_full, kFullStraight) &&
+                         Near(on_half, 1.2F - (0.05F / kOctileBound)),
                      "trails: a walker's open-ground km weighs 1.2 bare, 1.10 on a full trail, "
                      "1.15 on a half one");
   // Rule 8: a log cart over the same ground is not helped.
@@ -152,12 +160,20 @@ int TestTrails() {
   const core::NetworkPlace from = index->Locate(core::TravelMode::kWalk, west);
   const core::NetworkPlace to = index->Locate(core::TravelMode::kWalk, east);
   failures += Expect(
-      Near(core::RoadKm(world, core::TravelMode::kWalk, west, east), 1.10F) &&
-          Near(index->EffectiveKm(from, to), 1.10F) &&
-          Near(core::RoadMeasure(world, core::TravelMode::kWalk, west, east).effective_km, 1.10F) &&
-          Near(index->Way(core::TravelMode::kWalk, west, east).effective_km, 1.10F),
+      Near(core::RoadKm(world, core::TravelMode::kWalk, west, east), kFullStraight) &&
+          Near(index->EffectiveKm(from, to), kFullStraight) &&
+          Near(core::RoadMeasure(world, core::TravelMode::kWalk, west, east).effective_km,
+               kFullStraight) &&
+          Near(index->Way(core::TravelMode::kWalk, west, east).effective_km, kFullStraight),
       "trails: RoadKm, the found-place query, Measure and Way all read the trails - one door "
       "(a reader of the bare index would answer 1.2)");
+  // STRAIGHT NEVER CHEAPER THAN THE ROUTE (boss 23 Nov): on a full trail along the line the
+  // walker's route is 1.10, the straight door 1.2 - 0.1 / 1.0824 - not below it.
+  const float along_route = core::WalkRouteKm(world, west, east, nullptr);
+  failures += Expect(Near(along_route, 1.10F) &&
+                         core::RoadKm(world, core::TravelMode::kWalk, west, east) >= along_route,
+                     "doors: on a full trail along his line the walker's route is 1.10 and the "
+                     "straight door answers no less");
   const auto emptied = core::WithTrails(world.road_index, core::TrailTable{}, dry);
   failures += Expect(Near(emptied->EffectiveKm(core::TravelMode::kWalk, west, east), 1.2F),
                      "trails: re-trailing a trailed index with no trail gives the bare network "
@@ -184,8 +200,10 @@ int TestTrails() {
           Near(in_snow_bare->EffectiveKm(core::TravelMode::kWalk, west, east), 2.0F) &&
           Near(in_snow_bare->EffectiveKm(core::TravelMode::kWalk, on_road_a, on_road_b),
                0.8F / 0.9F) &&
-          Near(on_snow_trail->EffectiveKm(core::TravelMode::kWalk, west, east), 1.10F / 0.9F) &&
-          Near(in_snow_trail->EffectiveKm(core::TravelMode::kWalk, west, east), 1.10F / 0.6F),
+          Near(on_snow_trail->EffectiveKm(core::TravelMode::kWalk, west, east),
+               2.0F - ((2.0F - (1.10F / 0.9F)) / kOctileBound)) &&
+          Near(in_snow_trail->EffectiveKm(core::TravelMode::kWalk, west, east),
+               2.0F - ((2.0F - (1.10F / 0.6F)) / kOctileBound)),
       "ground: open ground in mud 1.2 ÷ 0.75, a dirt road in mud 0.8 ÷ 0.75; open snow 1.2 ÷ 0.6, "
       "a road in snow as wet; a snow trail as wet ground, an earth trail under snow as snow");
   failures += Expect(Near(in_mud->EffectiveKm(core::TravelMode::kCart, on_road_a, on_road_b),
@@ -203,9 +221,9 @@ int TestTrails() {
   failures += Expect(
       Near(core::RoadKm(wet_world, core::TravelMode::kWalk, west, east), 1.6F) &&
           Near(core::ReachKm(wet_world, core::TravelMode::kWalk, west, east), 1.2F) &&
-          Near(core::ReachKm(trodden_wet, core::TravelMode::kWalk, west, east), 1.10F) &&
+          Near(core::ReachKm(trodden_wet, core::TravelMode::kWalk, west, east), kFullStraight) &&
           Near(core::ReachMeasure(trodden_wet, core::TravelMode::kWalk, west, east).effective_km,
-               1.10F),
+               kFullStraight),
       "reach: the walk in mud is slowed (1.6) but the reach is not (1.2), and a trail still "
       "shortens the reach (1.10) - the rain does not move the beach farther");
   failures += Expect(

@@ -21,6 +21,8 @@
 #include <cstdint>
 #include <map>
 #include <ostream>
+#include <unordered_map>
+#include <vector>
 
 #include "core_common/calendar.h"
 #include "core_common/labor_state.h"
@@ -68,6 +70,30 @@ class TrailTally {
     std::uint32_t visible = 0;
     double visible_m = 0.0;
     float strongest = 0.0F;
+    // THE LONGEST TRAIL IS A CHAIN (boss: a lattice edge is 25-35 m): the visible edges joined
+    // through their cells, the largest connected set's metres.
+    std::unordered_map<std::uint64_t, std::uint32_t> cell_index;
+    std::vector<std::uint32_t> parent;
+    std::vector<double> metres;
+    const auto cell_of = [&](core::TrailEnd end) {
+      const std::uint64_t key =
+          (static_cast<std::uint64_t>(static_cast<std::uint32_t>(end.x)) << 32U) |
+          static_cast<std::uint32_t>(end.y);
+      const auto [found, added] =
+          cell_index.emplace(key, static_cast<std::uint32_t>(parent.size()));
+      if (added) {
+        parent.push_back(found->second);
+        metres.push_back(0.0);
+      }
+      return found->second;
+    };
+    const auto root = [&parent](std::uint32_t at) {
+      while (parent[at] != at) {
+        parent[at] = parent[parent[at]];
+        at = parent[at];
+      }
+      return at;
+    };
     for (const core::TrailRow& trail : world.trails.rows) {
       const float strength = core::TrailStrength(trail);
       strongest = strength > strongest ? strength : strongest;
@@ -78,8 +104,18 @@ class TrailTally {
         const double length =
             std::hypot(static_cast<double>(b.x - a.x), static_cast<double>(b.y - a.y));
         visible_m += length;
-        // econ's rule (b): one visible leg >= 300 m per village.
-        row.longest_visible_m = length > row.longest_visible_m ? length : row.longest_visible_m;
+        const std::uint32_t one = root(cell_of(trail.a));
+        const std::uint32_t two = root(cell_of(trail.b));
+        if (one != two) {
+          parent[two] = one;
+          metres[one] += metres[two];
+        }
+        metres[one] += length;
+      }
+    }
+    for (std::uint32_t at = 0; at < parent.size(); ++at) {
+      if (parent[at] == at && metres[at] > row.longest_visible_m) {
+        row.longest_visible_m = metres[at];
       }
     }
     Month& at = row.months[month];

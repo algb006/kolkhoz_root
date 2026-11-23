@@ -107,6 +107,19 @@ class DecompTally {
       for (const std::uint32_t days : book.rest_by_source) {
         out << ' ' << days;
       }
+      // econ's felling refusals (B3's −73 %): the felling's job-days short by reason, and its
+      // job-days the road stopped (the travel limit's «no working day left»).
+      {
+        const auto felling = static_cast<std::size_t>(core::WorkKind::kFelling);
+        const auto& short_by = book.short_job_days[felling];
+        out << " felling_short(no_horse/crew_cap/no_hands/road) "
+            << short_by[static_cast<std::size_t>(core::JobShortfall::kNoHorse)] << '/'
+            << short_by[static_cast<std::size_t>(core::JobShortfall::kCrewCap)] << '/'
+            << short_by[static_cast<std::size_t>(core::JobShortfall::kNoHands)] << '/'
+            << short_by[static_cast<std::size_t>(core::JobShortfall::kRoad)]
+            << " felling_road_blocked " << book.road_blocked_job_days[felling]
+            << " felling_man_days " << book.work_days_by_kind[felling];
+      }
       // The births' denominator and stops (boss: «attempted vs stopped»).
       out << " births_drawn " << book.births_drawn << " stopped_health "
           << book.births_stopped_health << " stopped_away " << book.births_stopped_away
