@@ -68,6 +68,7 @@
 #include "../common/transition_tally.h"
 #include "core_common/calendar.h"
 #include "core_common/state_table_ops.h"
+#include "core_common/time_probe.h"
 #include "core_common/world_state.h"
 #include "core_tables/tables.h"
 #include "core_world/era_readiness.h"
@@ -2320,6 +2321,17 @@ int main(int argc, char** argv) {
   }
   // roads.md §3's recompute cost (econ's S1 note): how many day node tables the run computed,
   // all villages together - a table only on a day the beds changed.
+  {
+    static constexpr std::array<const char*, core::probe::kSlots> kSlotNames = {
+        "straight", "route", "make_day", "with_trails", "tread", "decay", "walk_route", "choose"};
+    std::cout << "population_curve: TIME2072 (all villages, summed over threads) s/calls";
+    for (std::size_t slot = 0; slot < core::probe::kSlots; ++slot) {
+      std::cout << ' ' << kSlotNames[slot] << ' '
+                << static_cast<double>(core::probe::g_ns[slot].load()) / 1e9 << '/'
+                << core::probe::g_calls[slot].load();
+    }
+    std::cout << '\n';
+  }
   std::cout << "population_curve: GROUND2072 day_table_builds " << core::DayTableBuilds()
             << " (all villages; one a mode a bed change)\n";
   const bool inside_band =
