@@ -42,10 +42,11 @@ float StepCost(const TrailTable& trails,
                float open_cost,
                float snow_trail_cost);
 
-/// @brief THE QUERY DOOR: the straight line's km, sampled every half cell, each piece at the
-///        cost of the lattice edge it lies on (within one cell, the edge last crossed). Taken
-///        both ways and averaged, so a pair answers the same in either direction (static review
-///        of 23 Nov 2026: one direction priced its first cell at open ground, the other its last).
+/// @brief THE QUERY DOOR: the straight line's length times the MEAN cost of the lattice edges
+///        it crosses (sampled every half cell from its lesser end, one canonical direction), so
+///        a pair answers the same in either direction (static review of 23 Nov 2026: pricing each
+///        piece by the edge last crossed gave the two directions different first and last cells).
+///        Open ground where the line crosses no edge.
 float StraightKm(const TrailTable& trails,
                  Vec2 from,
                  Vec2 to,

@@ -10,6 +10,7 @@
 #include <functional>
 #include <limits>
 #include <queue>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -34,31 +35,35 @@ float Distance(Vec2 a, Vec2 b) {
   return std::hypot(a.x - b.x, a.y - b.y);
 }
 
-/// One direction of the query door.
-float StraightOneWayKm(const TrailTable& trails,
-                       Vec2 from,
-                       Vec2 to,
-                       float length,
-                       float open_weight,
-                       float open_cost,
-                       float snow_trail_cost) {
+/// The mean cost a km of the lattice edges the line crosses, sampled every half cell from the
+/// lesser end (x, then y) - one canonical direction, so a pair answers the same either way
+/// (static review of 23 Nov 2026). A line inside one cell crosses no edge: open ground.
+float MeanCrossedCost(const TrailTable& trails,
+                      Vec2 from,
+                      Vec2 to,
+                      float length,
+                      float open_weight,
+                      float open_cost,
+                      float snow_trail_cost) {
+  if (std::tie(to.x, to.y) < std::tie(from.x, from.y)) {
+    std::swap(from, to);
+  }
   const auto pieces =
       static_cast<std::uint32_t>(std::ceil(length / (kTrailSnapMetres / kSamplesPerCell)));
-  const float piece_km = length / static_cast<float>(pieces) / kMetresPerKm;
-  float km = 0.0F;
-  float last = open_weight * open_cost;
+  float sum = 0.0F;
+  std::uint32_t crossed = 0;
   TrailEnd here = SnapTrailEnd(from);
   for (std::uint32_t piece = 1; piece <= pieces; ++piece) {
     const float share = static_cast<float>(piece) / static_cast<float>(pieces);
     const TrailEnd next = SnapTrailEnd(
         {.x = from.x + ((to.x - from.x) * share), .y = from.y + ((to.y - from.y) * share)});
     if (next.x != here.x || next.y != here.y) {
-      last = StepCost(trails, here, next, open_weight, open_cost, snow_trail_cost);
+      sum += StepCost(trails, here, next, open_weight, open_cost, snow_trail_cost);
+      ++crossed;
       here = next;
     }
-    km += piece_km * last;
   }
-  return km;
+  return crossed > 0 ? sum / static_cast<float>(crossed) : open_weight * open_cost;
 }
 
 }  // namespace
@@ -136,11 +141,8 @@ float StraightKm(const TrailTable& trails,
   if (!(length > 0.0F) || trails.rows.empty()) {
     return length / kMetresPerKm * open_weight * open_cost;
   }
-  const float there =
-      StraightOneWayKm(trails, from, to, length, open_weight, open_cost, snow_trail_cost);
-  const float back =
-      StraightOneWayKm(trails, to, from, length, open_weight, open_cost, snow_trail_cost);
-  return (there + back) / 2.0F;
+  return length / kMetresPerKm *
+         MeanCrossedCost(trails, from, to, length, open_weight, open_cost, snow_trail_cost);
 }
 
 float RouteKm(const TrailTable& trails,

@@ -256,6 +256,19 @@ int TestTrails() {
                      "lattice: the walker steps onto a trail a cell off his line (1.13 km, most "
                      "steps on trail edges) where the query's straight door still answers 1.2 - "
                      "the two doors, named");
+  // THE QUERY DOOR IS SYMMETRIC (static review of 23 Nov 2026): a line trodden on its eastern
+  // half answers the same km either way.
+  core::WorldState half_line;
+  half_line.roads = far_road;
+  for (int pass = 0; pass < 50; ++pass) {
+    TreadLine(half_line.trails, {.x = 500.0F, .y = 500.0F}, east, false, rules.gain_per_pass);
+  }
+  half_line.road_index = core::BuildRoadIndex(half_line.roads, half_line.trails, dry);
+  const float there = core::RoadKm(half_line, core::TravelMode::kWalk, west, east);
+  const float back = core::RoadKm(half_line, core::TravelMode::kWalk, east, west);
+  failures += Expect(there == back && there < 1.2F && there > 1.10F,
+                     "query door: a half-trodden line answers the same km both ways (between the "
+                     "open 1.2 and the full trail's 1.10)");
   // Untrodden ground: the walker's route costs EXACTLY the straight line (the octile excess
   // normalised out), so the lattice moves nobody's time before a trail exists.
   core::WorldState bare_world;
