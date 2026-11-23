@@ -1010,6 +1010,10 @@ class StandardSimulation final : public ISimulation {
     return residents_->FreeStockOf(engine_->CompletedState());
   }
 
+  HerdCareLossView HerdCareLossToday(UnitId unit) const override {
+    return production_->HerdCareLossOf(engine_->CompletedState(), unit);
+  }
+
   std::optional<HarvestNeed> NeedUntilHarvest(ResourceId resource) const override {
     return residents_->NeedUntilHarvest(engine_->CompletedState(), resource);
   }

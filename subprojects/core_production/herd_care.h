@@ -19,6 +19,7 @@
 #ifndef CORE_PRODUCTION_HERD_CARE_H_
 #define CORE_PRODUCTION_HERD_CARE_H_
 
+#include "core_common/herd_care_loss_view.h"
 #include "core_common/world_state.h"
 
 namespace core {
@@ -47,6 +48,14 @@ float FullCareCoverage(const ProductionConfig& config, const WorldState& world);
 ///        ration's and the cold's are: the kolkhoz horses' care factor on the
 ///        kind's draught floor, weighted by heads. 1 with no kolkhoz horse.
 float CareDraughtFactor(const ProductionConfig& config, const WorldState& world);
+
+/// @brief #1848: undone care's price at `unit` (core_common/herd_care_loss_view.h) - the
+///        lowest coverage of its kolkhoz herds, the highest produce loss by the herd day's own
+///        curve (CareFactorAt at FullCareCoverage), and the settlement's draught where a
+///        kolkhoz horse herd stands. `measured` false with no kolkhoz herd at the unit.
+HerdCareLossView HerdCareLossAt(const ProductionConfig& config,
+                                const WorldState& world,
+                                UnitId unit);
 
 }  // namespace core
 

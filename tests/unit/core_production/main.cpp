@@ -11025,6 +11025,51 @@ int CheckTheFarmHoldsOnHer() {
   return failures;
 }
 
+/// UNDONE CARE'S PRICE AT A UNIT (#1848): the herd window's «уход: N % — молоко −M %» and the
+/// horse card's draught, by the herd day's own curves - the lowest coverage and the highest
+/// loss of the unit's KOLKHOZ herds; a private herd standing there is not the farm's care.
+int CheckTheCarePrice() {
+  int failures = 0;
+  core::ProductionConfig config;
+  config.farming.herd_care_full_coverage = 0.9F;
+  config.farming.herd_care_floor_coverage = 0.5F;
+  config.avatars = {core::AvatarDef{}};
+  config.livestock.resize(2);
+  config.livestock[0].care_produce_floor = 0.6F;  // the cow
+  config.livestock[1].care_produce_floor = 1.0F;  // the horse gives no produce
+  config.livestock[1].care_draught_floor = 0.5F;
+  config.horse_kind = core::LivestockKindId{1};
+  core::WorldState world;
+  const auto herd = [&world](std::uint16_t kind, std::uint32_t unit, float care, bool own) {
+    core::HerdRow row;
+    row.kind = core::LivestockKindId{kind};
+    row.unit = core::UnitId{unit};
+    row.household_owned = own ? 1 : 0;
+    row.adult_count = 4;
+    row.care_coverage = care;
+    world.herds.rows.push_back(row);
+    world.herds.row_ids.push_back(
+        core::HerdId{static_cast<std::uint32_t>(world.herds.rows.size())});
+  };
+  herd(0, 1, 0.7F, false);  // factor 0.8
+  herd(0, 1, 0.6F, false);  // factor 0.7: the worst
+  herd(0, 1, 0.1F, true);   // a private cow at the same yard: not counted
+  herd(1, 2, 0.5F, false);  // the horses at the floor line: draught 0.5
+  const core::HerdCareLossView farm = core::HerdCareLossAt(config, world, core::UnitId{1});
+  const core::HerdCareLossView stable = core::HerdCareLossAt(config, world, core::UnitId{2});
+  const core::HerdCareLossView empty = core::HerdCareLossAt(config, world, core::UnitId{3});
+  failures += Expect(farm.measured && farm.coverage_pct == 60 && farm.produce_loss_pct == 30 &&
+                         !farm.horses_here && farm.draught_pct == 100,
+                     "care price: the farm reads its lowest kolkhoz care 60 % and its worst milk "
+                     "loss 30 %, the private cow at 10 % aside");
+  failures += Expect(stable.measured && stable.coverage_pct == 50 && stable.produce_loss_pct == 0 &&
+                         stable.horses_here && stable.draught_pct == 50,
+                     "care price: the stable's horses at the floor line pull at 50 %, no produce");
+  failures += Expect(!empty.measured && empty.coverage_pct == 100 && empty.produce_loss_pct == 0,
+                     "care price: a unit with no kolkhoz herd answers not measured, neutral");
+  return failures;
+}
+
 /// THE DEALER'S GRAIN BUYS TOOLS, NOT STEEL (boss, 22 Nov 2026; avatars.md «Пути первой
 /// сборки», #1441's T0): limit_catalog.csv's grain_payable is the rule's one home - the door
 /// pays in grain only for a lot carrying it (district_limit.cpp, OrderLimitLot).
@@ -18832,6 +18877,7 @@ int main() {
   failures += CheckUnworkedGroundDoesNotRecover();
   failures += CheckTheChairmanSetsARotation();
   failures += CheckTheFarmHoldsOnHer();         // #1484, «Ферма держится на ней»
+  failures += CheckTheCarePrice();              // #1848, «уход: N % — молоко −M %»
   failures += CheckTheDistrictTable();          // «Стол для района»
   failures += CheckTheDealersGrainBuysTools();  // the dealer's grain: tools only
   failures += CheckLostWinterCropLiesFallow();

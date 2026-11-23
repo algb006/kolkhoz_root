@@ -4,6 +4,10 @@
 
 #include "herd_care.h"
 
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+
 #include "core_common/herd_state.h"
 #include "herd_life.h"
 #include "production_config.h"
@@ -48,6 +52,49 @@ float CareDraughtFactor(const ProductionConfig& config, const WorldState& world)
                                  herd.care_coverage);
   }
   return heads > 0.0F ? pulled / heads : 1.0F;
+}
+
+namespace {
+
+/// A share 0..1 as a rounded percent 0..100.
+std::uint8_t PercentOf(float share) {
+  const float clamped = std::clamp(share, 0.0F, 1.0F);
+  return static_cast<std::uint8_t>(std::lround(clamped * 100.0F));
+}
+
+}  // namespace
+
+HerdCareLossView HerdCareLossAt(const ProductionConfig& config,
+                                const WorldState& world,
+                                UnitId unit) {
+  HerdCareLossView view;
+  const float full = FullCareCoverage(config, world);
+  float lowest = 1.0F;
+  float worst_loss = 0.0F;
+  for (const HerdRow& herd : world.herds.rows) {
+    if (herd.household_owned != 0 || herd.unit.value != unit.value ||
+        herd.kind.value >= config.livestock.size()) {
+      continue;
+    }
+    view.measured = true;
+    lowest = std::min(lowest, herd.care_coverage);
+    // The herd day's own fourth factor (HerdProduceFactor): the same floor, the same line.
+    const float factor = CareFactorAt(config.farming,
+                                      config.livestock[herd.kind.value].care_produce_floor,
+                                      herd.care_coverage,
+                                      full);
+    worst_loss = std::max(worst_loss, 1.0F - factor);
+    view.horses_here = view.horses_here || herd.kind.value == config.horse_kind.value;
+  }
+  if (!view.measured) {
+    return view;
+  }
+  view.coverage_pct = PercentOf(lowest);
+  view.produce_loss_pct = PercentOf(worst_loss);
+  if (view.horses_here) {
+    view.draught_pct = PercentOf(CareDraughtFactor(config, world));
+  }
+  return view;
 }
 
 }  // namespace core

@@ -265,6 +265,19 @@ struct UnitSignals {
   /// Fresh marks of children's pranks — the broken panes that do not move
   /// the wear scale (crime design §3). STUB: 0 until project phase 3.
   std::uint8_t prank_marks = 0;
+
+  /// UNDONE CARE'S PRICE (#1848; herd_care_loss_view.h), the herd window's «уход: N % —
+  /// молоко −M %» and the horse card's «тянет хуже: недоуход». All neutral (100 / 0 / 100)
+  /// for a unit with no kolkhoz herd.
+  /// The lowest care coverage of the unit's kolkhoz herds, percent 0..100.
+  std::uint8_t care_coverage_pct = 100;
+  /// The highest produce loss of those herds at that care, percent 0..100 (0 where the kind's
+  /// care_produce_floor is empty: no price).
+  std::uint8_t care_produce_loss_pct = 0;
+  /// The settlement's horse draught under undone care, percent 0..100 (100 = full) - ONE number
+  /// for every kolkhoz horse, given only at a unit where a kolkhoz horse herd stands; 100
+  /// elsewhere.
+  std::uint8_t horse_draught_care_pct = 100;
 };
 
 /// @brief The living signals of one field — "people on the field or none"

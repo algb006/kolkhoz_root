@@ -59,6 +59,7 @@
 #include "field_removal.h"
 #include "field_work.h"
 #include "goods_loan.h"
+#include "herd_care.h"
 #include "herd_cold.h"
 #include "herd_forecast.h"
 #include "herd_plan.h"
@@ -645,6 +646,11 @@ class ProductionSystem final : public IProductionSystem {
   /// SaltViewOf) for the door, the lamp and the letter.
   SaltView SaltToday(const WorldState& completed) const override {
     return SaltViewOf(config_, completed);
+  }
+
+  /// #1848: undone care's price at a unit, by the herd day's own curves (herd_care.h).
+  HerdCareLossView HerdCareLossOf(const WorldState& completed, UnitId unit) const override {
+    return HerdCareLossAt(config_, completed, unit);
   }
 
   /// #1377: the lot door's own terms for the catalogue's seed lot.

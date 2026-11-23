@@ -486,7 +486,15 @@ class Session final : public ISession {
   float MapSideMeters() const override { return config_.map_side_m; }
 
   UnitSignals SignalsOfUnit(UnitId unit) const override {
-    return DeriveUnitSignals(config_, State(), unit);
+    UnitSignals signals = DeriveUnitSignals(config_, State(), unit);
+    // Undone care's price: production's own curves, read through the simulation (#1848).
+    const HerdCareLossView care = simulation_->HerdCareLossToday(unit);
+    if (care.measured && signals.unit.value == unit.value) {
+      signals.care_coverage_pct = care.coverage_pct;
+      signals.care_produce_loss_pct = care.produce_loss_pct;
+      signals.horse_draught_care_pct = care.horses_here ? care.draught_pct : 100;
+    }
+    return signals;
   }
 
   FieldSignals SignalsOfField(FieldId field) const override {

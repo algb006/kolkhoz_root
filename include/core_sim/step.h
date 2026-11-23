@@ -82,6 +82,7 @@
 #include "core_common/forest_facts_view.h"
 #include "core_common/free_stock_view.h"
 #include "core_common/grass_stand_view.h"
+#include "core_common/herd_care_loss_view.h"
 #include "core_common/herd_plan_view.h"
 #include "core_common/ice_view.h"
 #include "core_common/ids.h"
@@ -334,6 +335,14 @@ class ISimulation {
   ///        (free_stock_view.h; IResidentsSystem::FreeStockOf, its one home).
   /// @note NOT PURE, for ActivityOf's reason. The default answers `measured` false.
   virtual FreeStockView FreeStockToday() const { return {}; }
+
+  /// @brief Undone care's price at `unit`, off CompletedState() (herd_care_loss_view.h;
+  ///        IProductionSystem::HerdCareLossOf, its one home; #1848).
+  /// @note NOT PURE, for ActivityOf's reason. The default answers `measured` false.
+  virtual HerdCareLossView HerdCareLossToday(UnitId unit) const {
+    (void)unit;
+    return {};
+  }
 
   /// @brief The village's need until `resource`'s next harvest against its
   /// free remainder (issue_norm_view.h, HarvestNeed). Empty when the

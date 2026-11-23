@@ -61,6 +61,7 @@
 #include "core_common/early_snow.h"
 #include "core_common/free_stock_view.h"
 #include "core_common/grass_stand_view.h"
+#include "core_common/herd_care_loss_view.h"
 #include "core_common/herd_plan_view.h"
 #include "core_common/meadow_mark.h"
 #include "core_common/office_views.h"
@@ -314,6 +315,16 @@ class IProductionSystem {
   ///        (B): answers `measured` false.
   /// @note A pure read on the sim thread, between steps.
   virtual SaltView SaltToday(const WorldState& completed) const = 0;
+
+  /// @brief Undone care's price at `unit` (core_common/herd_care_loss_view.h; #1848): the
+  ///        lowest coverage of its kolkhoz herds, the produce loss by the herd day's own curve,
+  ///        the settlement's draught where kolkhoz horses stand.
+  /// @note A pure read on the sim thread, between steps. The default answers `measured` false.
+  virtual HerdCareLossView HerdCareLossOf(const WorldState& completed, UnitId unit) const {
+    (void)completed;
+    (void)unit;
+    return {};
+  }
 
   /// @brief What the district's seed lot would deliver today and at what
   ///        price (core_common/seed_lot_view.h; #1377): the most-short seed,
