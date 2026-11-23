@@ -347,7 +347,11 @@ static_assert(AggregateArity<ClampRotYear>() == 2,
 // Save 219 (#589): the tally clerk's record, the sixty-fourth - a u32, a byte, a u32 and a
 // resident id (u32) after the audit's remark_withdrawn_day; the section «world» +13,
 // predicted 1522 -> 1535 before the build.
-static_assert(AggregateArity<WorldState>() == 64,
+// Save 227 (#2072): the trodden paths, the sixty-fifth - NOT in the section «world»: a
+// section of their own, «trails», after the groom's plan (save.cpp; 12 + 24 a row). The
+// guard fired on the first build, as it should; the member is written, read and VERSION_SAVE
+// raised in the same commit.
+static_assert(AggregateArity<WorldState>() == 65,
               "WorldState gained or lost a member — write it, read it, and have VERSION_SAVE "
               "raised");
 
