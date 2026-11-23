@@ -59,6 +59,7 @@
 #include "store_emptying_policy.h"
 #include "suggested_roads_policy.h"
 #include "supply_policy.h"
+#include "trail_tally.h"
 #include "transition_policy.h"
 #include "upgrade_policy.h"
 #include "warm_crew.h"
@@ -395,6 +396,7 @@ class BuildingChairman {
     district_table.RunDay(simulation);                  // «Стол для района» (its avatar only)
     family_food.CountDay(simulation);                   // #1953's FAM1953
     low_earners.CountDay(simulation.CompletedState());  // #1953's LOW1953
+    trails.CountDay(simulation.CompletedState());       // #2072's TRAIL2072
     clerk.CountDay(simulation);                         // #589's print
     reputation.CountDay(simulation.CompletedState());   // #1897's REP1897
     plan_over.CountDay(simulation.CompletedState());    // #1946's OVER1946
@@ -591,6 +593,8 @@ class BuildingChairman {
   DistrictTablePolicy district_table;
   /// #1953's low-earners print: why the at-line families' workers are not placed.
   LowEarnersTally low_earners;
+  /// #2072's TRAIL2072: the trails by month and the walkers' road by season (trail_tally.h).
+  TrailTally trails;
   /// #2264's print: M1-M4 of the field-work coordinator, y1-y3 (field_work_tally.h).
   FieldWorkTally field_work;
   /// #589's print: the clerk's post and his family's satiety (clerk_tally.h).

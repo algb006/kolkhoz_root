@@ -1683,6 +1683,7 @@ bool Walk(std::uint64_t seed,
       builder.dry_pantry.Print(std::cout, seed);            // #1922
       builder.family_food.Print(std::cout, seed);           // #1953
       builder.low_earners.Print(std::cout, seed);           // #1953's LOW1953
+      builder.trails.Print(std::cout, seed);                // #2072's TRAIL2072
       builder.district_table.Print(std::cout, seed);        // «Стол для района», TABLE1953
       builder.field_work.Print(std::cout, seed);            // #2264
       builder.clerk.Print(std::cout, seed);                 // #589
