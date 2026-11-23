@@ -145,7 +145,37 @@ std::uint64_t EdgeKey(TrailEnd a, TrailEnd b) {
 
 }  // namespace
 
+namespace {
+
+/// The grid's direction of a lesser-first neighbour step, or -1 for any other pair.
+int GridDirection(TrailEnd lesser, TrailEnd greater) {
+  const std::int32_t step_x = greater.x - lesser.x;
+  const std::int32_t step_y = greater.y - lesser.y;
+  if (step_x == 0 && step_y == 1) {
+    return 0;
+  }
+  if (step_x == 1 && step_y >= -1 && step_y <= 1) {
+    return 2 + step_y;  // (+1,-1) 1, (+1,0) 2, (+1,+1) 3
+  }
+  return -1;
+}
+
+}  // namespace
+
 const TrailRow* TrailLookup::Find(TrailEnd a, TrailEnd b) const {
+  if (std::tie(b.x, b.y) < std::tie(a.x, a.y)) {
+    std::swap(a, b);
+  }
+  const int direction = GridDirection(a, b);
+  if (direction >= 0 && !grid.empty()) {
+    const std::int32_t column = a.x - origin.x;
+    const std::int32_t row = a.y - origin.y;
+    if (column < 0 || row < 0 || column >= columns || row >= rows_of_cells) {
+      return nullptr;  // outside every trail's box: no trail
+    }
+    return grid[(static_cast<std::size_t>((row * columns) + column) * 4U) +
+                static_cast<std::size_t>(direction)];
+  }
   if (rows.empty()) {
     return table != nullptr ? FindTrailEdge(*table, a, b) : nullptr;
   }
@@ -157,8 +187,38 @@ TrailLookup MakeLookup(const TrailTable& table) {
   TrailLookup lookup;
   lookup.table = &table;
   lookup.rows.reserve(table.rows.size());
+  std::int32_t left = 0;
+  std::int32_t bottom = 0;
+  std::int32_t right = -1;
+  std::int32_t top = -1;
   for (const TrailRow& row : table.rows) {
     lookup.rows.emplace(EdgeKey(row.a, row.b), &row);
+    for (const TrailEnd end : {row.a, row.b}) {
+      const bool first = right < left;
+      left = first ? end.x : std::min(left, end.x);
+      bottom = first ? end.y : std::min(bottom, end.y);
+      right = first ? end.x : std::max(right, end.x);
+      top = first ? end.y : std::max(top, end.y);
+    }
+  }
+  if (right < left) {
+    return lookup;
+  }
+  lookup.origin = {.x = left, .y = bottom};
+  lookup.columns = right - left + 1;
+  lookup.rows_of_cells = top - bottom + 1;
+  lookup.grid.assign(static_cast<std::size_t>(lookup.columns) *
+                         static_cast<std::size_t>(lookup.rows_of_cells) * 4U,
+                     nullptr);
+  for (const TrailRow& row : table.rows) {
+    const int direction = GridDirection(row.a, row.b);  // rows are lesser-first
+    if (direction < 0) {
+      continue;  // a non-neighbour edge: the hash answers it
+    }
+    const std::int32_t column = row.a.x - left;
+    const std::int32_t cell_row = row.a.y - bottom;
+    lookup.grid[(static_cast<std::size_t>((cell_row * lookup.columns) + column) * 4U) +
+                static_cast<std::size_t>(direction)] = &row;
   }
   return lookup;
 }

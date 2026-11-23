@@ -41,7 +41,15 @@ float CostOf(float factor);
 ///        day index's own copy of the table, which outlives it. An answer is the table's own.
 struct TrailLookup {
   const TrailTable* table = nullptr;
+  /// Every row by its edge's key (an edge between non-neighbouring cells lives only here).
   std::unordered_map<std::uint64_t, const TrailRow*> rows;
+  /// THE DENSE GRID (#2072 CPU: a hash lookup per sampled cell was still ~24 us a leg): over
+  /// the trails' box, for each cell its four edges to lesser-first neighbours ((0,+1), (+1,-1),
+  /// (+1,0), (+1,+1)), the row or nullptr - an array index instead of a hash.
+  TrailEnd origin;
+  std::int32_t columns = 0;
+  std::int32_t rows_of_cells = 0;
+  std::vector<const TrailRow*> grid;
 
   /// @brief The row of the edge between two cells (either way), or nullptr.
   const TrailRow* Find(TrailEnd a, TrailEnd b) const;
