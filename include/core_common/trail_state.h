@@ -31,7 +31,7 @@
 ///      trail starves (rules 2-3). Nothing is torn down.
 ///   7. A trodden path never becomes a laid one: no rule writes a RoadTable row.
 ///   8. People only: carts, teams and log carts tread nothing (boss 23 Nov).
-///   9. PROPOSED, NOT DECIDED (econ's question «a path through a field?»): a leg whose midpoint
+///   9. ACCEPTED by econ's review (23 Nov; «a path through a field?»): a leg whose midpoint
 ///      lies on an arable field with a standing crop (FieldPhase growing or harvest) treads
 ///      nothing, and costs the crop nothing - no loss is modelled. The walker still crosses at
 ///      open ground's weight. Returns as a crop loss only on boss's word that it yields a
@@ -98,8 +98,10 @@ struct TrailRules {
   float earth_decay_per_day = 0.01F;  ///< `trail_earth_decay_per_day`: ~25 game days to vanish
   float snow_decay_per_day = 0.02F;   ///< `trail_snow_decay_per_day`
   float snowfall_cm = 3.0F;           ///< `trail_snowfall_cm`: a day's fresh snow that erases
-  float weight_full = 1.05F;          ///< `trail_weight_full`: a km of full trail, > 1.0 (rule 6)
-  float visible_strength = 0.3F;      ///< `trail_visible_strength`: the layer draws it above
+  /// `trail_weight_full`: a km of full trail, > 1.0 (rule 6). 1.10, not 1.05 (econ's review,
+  /// 23 Nov): a laid path on a busy trail still saves ~9 %, so laying stays a decision.
+  float weight_full = 1.10F;
+  float visible_strength = 0.3F;  ///< `trail_visible_strength`: the layer draws it above
 };
 
 /// @brief One trail as the layer and the game read it (ISession::Trails): the two ends in
