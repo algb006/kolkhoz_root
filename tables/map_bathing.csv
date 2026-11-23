@@ -6,6 +6,7 @@
 # к реке»): its beach is the player's unit.
 place,x_m,y_m
 access_beach_count_pond,9472.0,9909.0
+access_beach_river_bridge,7828.7,10077.7
 access_ford_2550_n,2539.7,7213.6
 access_ford_2550_s,2560.3,7186.4
 access_ford_5150_n,5137.1,9261.0
