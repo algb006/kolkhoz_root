@@ -38,6 +38,23 @@ core::RoadTable OneRoad(core::RoadKind kind, core::Vec2 from, core::Vec2 to) {
   return roads;
 }
 
+/// Treads every lattice edge the straight line from `from` to `to` crosses, sampled as the
+/// query door samples it (every half cell) - a trail laid along the line.
+void TreadLine(core::TrailTable& trails, core::Vec2 from, core::Vec2 to, bool snow, float gain) {
+  const float length = std::hypot(to.x - from.x, to.y - from.y);
+  const auto pieces = static_cast<int>(std::ceil(length / (core::kTrailSnapMetres / 2.0F)));
+  core::TrailEnd here = core::SnapTrailEnd(from);
+  for (int piece = 1; piece <= pieces; ++piece) {
+    const float share = static_cast<float>(piece) / static_cast<float>(pieces);
+    const core::TrailEnd next = core::SnapTrailEnd(
+        {.x = from.x + ((to.x - from.x) * share), .y = from.y + ((to.y - from.y) * share)});
+    if (next.x != here.x || next.y != here.y) {
+      core::TreadTrailEdge(trails, here, next, snow, gain);
+      here = next;
+    }
+  }
+}
+
 }  // namespace
 
 namespace core_test {
@@ -94,10 +111,10 @@ int TestTrails() {
   const auto bare = core::BuildRoadIndex(far_road);
   core::TrailTable full;
   for (int pass = 0; pass < 50; ++pass) {
-    core::TreadTrail(full, west, east, false, rules.gain_per_pass);
+    TreadLine(full, west, east, false, rules.gain_per_pass);
   }
   core::TrailTable half;
-  core::TreadTrail(half, west, east, false, 0.5F);
+  TreadLine(half, west, east, false, 0.5F);
   const core::RoadBeds dry{};  // every bed dry: the ground neutral
   const auto trailed = core::WithTrails(bare, full, dry);
   const float open = bare->EffectiveKm(core::TravelMode::kWalk, west, east);
@@ -158,7 +175,7 @@ int TestTrails() {
   const auto in_snow_trail = core::WithTrails(bare, full, snow);  // the trail is earth...
   core::TrailTable snow_full;
   for (int pass = 0; pass < 50; ++pass) {
-    core::TreadTrail(snow_full, west, east, true, rules.gain_per_pass);
+    TreadLine(snow_full, west, east, true, rules.gain_per_pass);
   }
   const auto on_snow_trail = core::WithTrails(bare, snow_full, snow);
   failures += Expect(
@@ -198,16 +215,61 @@ int TestTrails() {
       "ground: the state at a point on a dirt road and off it reads the dirt bed; "
       "never ice");
 
-  // The view: ends in metres, the visible threshold the table carries.
-  const std::vector<core::TrailView> all = core::TrailViews(half, false);
-  half.visible_strength = 0.6F;
-  const std::vector<core::TrailView> shown = core::TrailViews(half, true);
+  // The view: one lattice edge, its ends in metres; the visible threshold the table carries.
+  core::TrailTable edge;
+  core::TreadTrailEdge(edge, {.x = 4, .y = 20}, {.x = 5, .y = 20}, false, 0.5F);
+  const std::vector<core::TrailView> all = core::TrailViews(edge, false);
+  edge.visible_strength = 0.6F;
+  const std::vector<core::TrailView> shown = core::TrailViews(edge, true);
   failures +=
-      Expect(all.size() == 1 && all[0].visible && Near(all[0].from.x, 0.0F) &&
-                 Near(all[0].to.x, 1000.0F) && shown.empty() &&
-                 core::CountTrailRows(half).all == 1 && core::CountTrailRows(half).visible == 0,
-             "trails: the view gives the ends in metres and the table's own visible "
-             "threshold decides visible");
+      Expect(all.size() == 1 && all[0].visible && Near(all[0].from.x, 100.0F) &&
+                 Near(all[0].to.x, 125.0F) && Near(all[0].from.y, 500.0F) && shown.empty() &&
+                 core::CountTrailRows(edge).all == 1 && core::CountTrailRows(edge).visible == 0,
+             "trails: the view gives an edge's ends in metres (25 m cells) and the table's own "
+             "visible threshold decides visible");
+
+  // THE LATTICE (#2072 (A)): the walker ROUTES. A full trail one cell north of his line
+  // (y = 525, x 25..975) carries him: a diagonal step onto it, 950 m at 1.10, a step off -
+  // about 1.13 km against the straight 1.2. He takes the trail, and treads its edges.
+  // (A SLANTED trail is the lattice's weak case: an 8-neighbour path runs up to 8.2 % over
+  // the line it follows, about the full trail's whole discount, 1.2 -> 1.10 - named in the
+  // delivery, not hidden in this test.)
+  core::WorldState lattice_world;  // the far road only: open ground weighs 1.2
+  lattice_world.roads = far_road;
+  for (int pass = 0; pass < 50; ++pass) {
+    TreadLine(lattice_world.trails,
+              {.x = 25.0F, .y = 525.0F},
+              {.x = 975.0F, .y = 525.0F},
+              false,
+              rules.gain_per_pass);
+  }
+  lattice_world.road_index = core::BuildRoadIndex(lattice_world.roads, lattice_world.trails, dry);
+  std::vector<std::pair<core::TrailEnd, core::TrailEnd>> steps;
+  const float routed = core::WalkRouteKm(lattice_world, west, east, &steps);
+  std::size_t on_trail = 0;
+  for (const auto& [a, b] : steps) {
+    on_trail += core::FindTrailEdge(lattice_world.trails, a, b) != nullptr ? 1U : 0U;
+  }
+  const float straight = core::RoadKm(lattice_world, core::TravelMode::kWalk, west, east);
+  failures += Expect(routed < 1.14F && routed > 1.12F && !steps.empty() &&
+                         on_trail * 10 >= steps.size() * 8 && Near(straight, 1.2F),
+                     "lattice: the walker steps onto a trail a cell off his line (1.13 km, most "
+                     "steps on trail edges) where the query's straight door still answers 1.2 - "
+                     "the two doors, named");
+  // Untrodden ground: the walker's route costs EXACTLY the straight line (the octile excess
+  // normalised out), so the lattice moves nobody's time before a trail exists.
+  core::WorldState bare_world;
+  bare_world.roads = far_road;
+  bare_world.road_index = core::BuildRoadIndex(bare_world.roads, bare_world.trails, dry);
+  std::vector<std::pair<core::TrailEnd, core::TrailEnd>> first_steps;
+  const float untrodden =
+      core::WalkRouteKm(bare_world, west, {.x = 700.0F, .y = 900.0F}, &first_steps);
+  failures += Expect(
+      Near(untrodden,
+           core::RoadKm(bare_world, core::TravelMode::kWalk, west, {.x = 700.0F, .y = 900.0F})) &&
+          !first_steps.empty(),
+      "lattice: with no trail the walker's route is the straight line's km exactly, and he "
+      "still gets lattice steps to tread (the first trail can begin)");
   return failures;
 }
 

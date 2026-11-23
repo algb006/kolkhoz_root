@@ -15,10 +15,15 @@
 #define TESTS_RUN_COMMON_TRAIL_LEG_TALLY_H_
 
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <map>
 #include <memory>
 #include <ostream>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "core_common/calendar.h"
 #include "core_common/labor_state.h"
@@ -54,6 +59,25 @@ class TrailLegTally {
         continue;
       }
       ++at.walker_days;
+      // THE TWO DOORS (#2072 (A), boss 23 Nov): his lattice route beside the straight door's
+      // answer for the same pair; and the route's CPU, the tread's own work by proxy.
+      steps.clear();
+      const auto started = std::chrono::steady_clock::now();
+      const float routed = core::WalkRouteKm(world, home, place, &steps);
+      const auto spent = std::chrono::steady_clock::now() - started;
+      row.route_seconds += std::chrono::duration<double>(spent).count();
+      const float straight = core::RoadKm(world, core::TravelMode::kWalk, home, place);
+      if (straight > 0.0F) {
+        const double ratio = static_cast<double>(routed) / static_cast<double>(straight);
+        row.ratio_sum += ratio;
+        ++row.pairs;
+        row.ratio_lo = ratio < row.ratio_lo ? ratio : row.ratio_lo;
+        row.ratio_hi = ratio > row.ratio_hi ? ratio : row.ratio_hi;
+        row.straight_cheaper += straight < routed - 1e-4F ? 1U : 0U;
+      }
+      for (const auto& [a, b] : steps) {
+        row.edge_houses[EdgeKey(a, b)].insert(person.family.value);
+      }
       const core::Route way = index->Way(core::TravelMode::kWalk, home, place);
       const std::size_t legs = way.legs.size();
       for (std::size_t leg_index = 0; leg_index < legs; ++leg_index) {
@@ -72,6 +96,30 @@ class TrailLegTally {
         }
       }
     }
+    ++row.days;
+    row.worst_day_seconds = row.route_seconds - row.seconds_before_today > row.worst_day_seconds
+                                ? row.route_seconds - row.seconds_before_today
+                                : row.worst_day_seconds;
+    row.seconds_before_today = row.route_seconds;
+    // THE TRUNKS at the year's last day (econ: edges walked by >= 3 houses, and their share of
+    // the trodden strength).
+    if (world.calendar.day % core::kDaysPerYear == core::kDaysPerYear - 1U) {
+      double all = 0.0;
+      double trunk = 0.0;
+      std::uint32_t trunks = 0;
+      for (const core::TrailRow& trail : world.trails.rows) {
+        const auto strength = static_cast<double>(core::TrailStrength(trail));
+        all += strength;
+        const auto found = row.edge_houses.find(EdgeKey(trail.a, trail.b));
+        if (found != row.edge_houses.end() && found->second.size() >= 3) {
+          trunk += strength;
+          ++trunks;
+        }
+      }
+      row.trunks = trunks;
+      row.trunk_share = all > 0.0 ? trunk / all : 0.0;
+      row.rows_at_year_end = world.trails.rows.size();
+    }
   }
 
   void Print(std::ostream& out, std::uint64_t seed) const {
@@ -80,7 +128,14 @@ class TrailLegTally {
     for (const auto& [year, row] : by_year_) {
       out << "population_curve: LEGS2072 seed " << seed << " year " << year
           << " ground=every_worker_walking;legs=start(home-net)/end(net-work)/straight;"
-             "one_cell=snaps_to_one_cell(treads_nothing)";
+             "one_cell=snaps_to_one_cell(treads_nothing)"
+          << " doors routed/straight mean "
+          << (row.pairs > 0 ? row.ratio_sum / static_cast<double>(row.pairs) : 0.0) << " lo "
+          << row.ratio_lo << " hi " << row.ratio_hi << " straight_cheaper " << row.straight_cheaper
+          << " of " << row.pairs << " route_cpu_s_per_day "
+          << (row.days > 0 ? row.route_seconds / static_cast<double>(row.days) : 0.0)
+          << " worst_day " << row.worst_day_seconds << " trunks_ge3_houses " << row.trunks
+          << " trunk_share " << row.trunk_share << " rows_year_end " << row.rows_at_year_end;
       for (std::size_t group = 0; group < kGroups; ++group) {
         const Group& at = row.groups[group];
         out << " | " << kNames[group] << " walker_days " << at.walker_days << " riders "
@@ -114,7 +169,32 @@ class TrailLegTally {
 
   struct Year {
     std::array<Group, kGroups> groups{};
+    double ratio_sum = 0.0;
+    double ratio_lo = 1e9;
+    double ratio_hi = 0.0;
+    std::uint64_t pairs = 0;
+    std::uint64_t straight_cheaper = 0;
+    double route_seconds = 0.0;
+    double seconds_before_today = 0.0;
+    double worst_day_seconds = 0.0;
+    std::uint32_t days = 0;
+    std::uint32_t trunks = 0;
+    double trunk_share = 0.0;
+    std::size_t rows_at_year_end = 0;
+    std::unordered_map<std::uint64_t, std::unordered_set<std::uint32_t>> edge_houses;
   };
+
+  static std::uint64_t EdgeKey(core::TrailEnd a, core::TrailEnd b) {
+    const auto cell = [](core::TrailEnd end) {
+      return (static_cast<std::uint64_t>(static_cast<std::uint16_t>(end.x)) << 16U) |
+             static_cast<std::uint16_t>(end.y);
+    };
+    const std::uint64_t one = cell(a);
+    const std::uint64_t two = cell(b);
+    return one < two ? (one << 32U) | two : (two << 32U) | one;
+  }
+
+  std::vector<std::pair<core::TrailEnd, core::TrailEnd>> steps;
 
   static std::size_t GroupOf(core::WorkKind kind) {
     switch (kind) {

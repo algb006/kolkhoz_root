@@ -236,6 +236,18 @@ GroundState GroundStateAt(const WorldState& world, Vec2 point);
 ///        The one door for every «within N m by the network» rule (bathing, leisure).
 RouteMeasure ReachMeasure(const WorldState& world, TravelMode mode, Vec2 from, Vec2 to);
 
+/// @brief THE WALKER'S DOOR (#2072 (A), boss 23 Nov 2026): a placed walker's way from `from`
+///        to `to` - the network legs as RoadKm's, every open-ground leg ROUTED over the trails'
+///        lattice (A*, a trodden edge cheaper, so the next walker bends onto the first one's
+///        trail); its lattice steps into `edges` (nullable) for the tread. An untrodden leg costs
+///        exactly the straight line (normalised; the octile excess, up to 8.2 %, is taken out).
+///        Every OTHER walking query is the straight line weighted by the edges it crosses
+///        (RoadKm): two answers for one walk, and the run prints both side by side.
+float WalkRouteKm(const WorldState& world,
+                  Vec2 from,
+                  Vec2 to,
+                  std::vector<std::pair<TrailEnd, TrailEnd>>* edges);
+
 /// @brief ReachMeasure's effective km.
 float ReachKm(const WorldState& world, TravelMode mode, Vec2 from, Vec2 to);
 

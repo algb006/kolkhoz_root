@@ -22,10 +22,8 @@ bool EndEqual(TrailEnd a, TrailEnd b) {
   return a.x == b.x && a.y == b.y;
 }
 
-/// A leg's key: the lesser end first, so a leg walked either way is one row.
-std::pair<TrailEnd, TrailEnd> KeyOf(Vec2 from, Vec2 to) {
-  const TrailEnd one = SnapTrailEnd(from);
-  const TrailEnd two = SnapTrailEnd(to);
+/// An edge's key: the lesser end first, so an edge walked either way is one row.
+std::pair<TrailEnd, TrailEnd> KeyOfCells(TrailEnd one, TrailEnd two) {
   return EndLess(two, one) ? std::pair{two, one} : std::pair{one, two};
 }
 
@@ -58,7 +56,11 @@ float TrailStrength(const TrailRow& row) {
 }
 
 const TrailRow* FindTrail(const TrailTable& trails, Vec2 from, Vec2 to) {
-  const auto key = KeyOf(from, to);
+  return FindTrailEdge(trails, SnapTrailEnd(from), SnapTrailEnd(to));
+}
+
+const TrailRow* FindTrailEdge(const TrailTable& trails, TrailEnd a, TrailEnd b) {
+  const auto key = KeyOfCells(a, b);
   const auto found = Lower(trails.rows, key);
   if (found == trails.rows.end() || !EndEqual(found->a, key.first) ||
       !EndEqual(found->b, key.second)) {
@@ -68,7 +70,11 @@ const TrailRow* FindTrail(const TrailTable& trails, Vec2 from, Vec2 to) {
 }
 
 void TreadTrail(TrailTable& trails, Vec2 from, Vec2 to, bool over_snow, float gain) {
-  const auto key = KeyOf(from, to);
+  TreadTrailEdge(trails, SnapTrailEnd(from), SnapTrailEnd(to), over_snow, gain);
+}
+
+void TreadTrailEdge(TrailTable& trails, TrailEnd a, TrailEnd b, bool over_snow, float gain) {
+  const auto key = KeyOfCells(a, b);
   if (EndEqual(key.first, key.second) || !(gain > 0.0F)) {
     return;
   }
@@ -94,17 +100,6 @@ void DecayTrails(TrailTable& trails, const TrailRules& rules, bool snow_lies, bo
   // Rule 3: gone completely - no row is kept for a former trail.
   std::erase_if(trails.rows,
                 [](const TrailRow& row) { return !(row.earth > 0.0F) && !(row.snow > 0.0F); });
-}
-
-float TrailLegWeight(const TrailTable& trails, Vec2 from, Vec2 to, float open_weight) {
-  const TrailRow* const row = FindTrail(trails, from, to);
-  if (row == nullptr) {
-    return open_weight;
-  }
-  // Never below the full trail's weight, whatever the open ground's (rule 6 holds by
-  // weight_full > 1.0, the laid path's).
-  const float full = std::min(open_weight, trails.weight_full);
-  return open_weight - (TrailStrength(*row) * (open_weight - full));
 }
 
 std::vector<TrailView> TrailViews(const TrailTable& trails, bool visible_only) {

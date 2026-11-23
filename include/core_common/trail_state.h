@@ -82,7 +82,7 @@ namespace core {
 /// @brief The grid a trail's ends are snapped to, metres. STUB (boss 23 Nov: 10 m): fine
 ///        enough that two houses ten metres apart tread two trails, coarse enough that a
 ///        walker's start inside one yard is one end.
-inline constexpr float kTrailSnapMetres = 10.0F;
+inline constexpr float kTrailSnapMetres = 25.0F;
 
 /// @brief A trail's end on the snap grid: cells of kTrailSnapMetres from the map's origin.
 struct TrailEnd {
@@ -188,6 +188,13 @@ float TrailStrength(const TrailRow& row);
 /// @brief The row of the leg from `from` to `to` (either way), or nullptr; ends snapped.
 const TrailRow* FindTrail(const TrailTable& trails, Vec2 from, Vec2 to);
 
+/// @brief The row of the lattice edge between cells `a` and `b` (either way), or nullptr.
+const TrailRow* FindTrailEdge(const TrailTable& trails, TrailEnd a, TrailEnd b);
+
+/// @brief Rule 1 on one lattice edge: `gain` to its earth (or snow), capped at 1; the row is
+///        inserted in key order if new. An edge of one cell treads nothing.
+void TreadTrailEdge(TrailTable& trails, TrailEnd a, TrailEnd b, bool over_snow, float gain);
+
 /// @brief Rule 1: one pass over the leg adds `gain` to its earth (or snow, `over_snow`),
 ///        capped at 1; the row is inserted in key order if new. A leg whose snapped ends are
 ///        one cell treads nothing (no length on the grid).
@@ -198,10 +205,6 @@ void TreadTrail(TrailTable& trails, Vec2 from, Vec2 to, bool over_snow, float ga
 /// @param snow_lies WeatherState::snow_cover_days > 0.
 /// @param snow_falls Today's precipitation is snow.
 void DecayTrails(TrailTable& trails, const TrailRules& rules, bool snow_lies, bool snow_falls);
-
-/// @brief The walker's weight of an open-ground leg, a km (THE WEIGHT above): `open_weight`
-///        lowered by the leg's trail toward trails.weight_full; `open_weight` with no trail.
-float TrailLegWeight(const TrailTable& trails, Vec2 from, Vec2 to, float open_weight);
 
 /// @brief The views of the trails (ISession::Trails), in the table's order; visible by
 ///        trails.visible_strength.

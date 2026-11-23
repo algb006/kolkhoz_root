@@ -61,11 +61,17 @@ float WorkRoadHours(const WorldState& world,
     // 2 October 2026: «Возчик должен идти на конный двор»), and rides from
     // there. Until 0.37.158 the way was measured from his house, on the
     // horse the whole way, and the yard's place cost nobody an hour.
-    const float walk = RoadKm(world, TravelMode::kWalk, home, yard) * walk_hours_per_km;
+    // On foot to the yard: the walker's door, his lattice route (#2072 (A)).
+    const float walk = WalkRouteKm(world, home, yard, nullptr) * walk_hours_per_km;
     if (work.kind == WorkKind::kHauling) {
       return walk;  // the ride to the load is the first trip's empty half
     }
     return walk + (RoadKm(world, mode, yard, target) * ride_rate);
+  }
+  // A WALKER'S WORLD TIME IS HIS LATTICE ROUTE (#2072 (A), boss 23 Nov): the same way the
+  // morning's tread walks; a rider keeps the network's.
+  if (!rides && mode == TravelMode::kWalk) {
+    return WalkRouteKm(world, home, target, nullptr) * walk_hours_per_km;
   }
   return RoadKm(world, mode, home, target) * (rides ? ride_rate : walk_hours_per_km);
 }

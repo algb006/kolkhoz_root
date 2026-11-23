@@ -7,6 +7,8 @@
 #include <cstdint>
 #include <memory>
 #include <numbers>
+#include <utility>
+#include <vector>
 
 #include "assignment.h"
 #include "core_common/land_state.h"
@@ -69,6 +71,7 @@ void TreadPlacedWalkers(const TrailRules& rules,
   const std::shared_ptr<const RoadIndex> index = RoadIndexOf(current);
   const bool over_snow = current.weather.snow_cover_days > 0;
   bool trodden = false;
+  std::vector<std::pair<TrailEnd, TrailEnd>> steps;
   for (std::size_t slot = 0; slot < candidates.size() && slot < plan.size(); ++slot) {
     const std::uint32_t job = plan[slot];
     if (job == kNoJobAssigned || job >= jobs.size()) {
@@ -79,14 +82,19 @@ void TreadPlacedWalkers(const TrailRules& rules,
     if (on_horse || in_cart) {
       continue;  // rule 8: people on foot only
     }
-    const Route way = index->Way(TravelMode::kWalk, candidates[slot].home, jobs[job].position);
-    for (const RouteLeg& leg : way.legs) {
-      if (leg.on_road || CrossesAStandingCrop(current, leg.from, leg.to)) {
-        continue;
-      }
-      TreadTrail(current.trails, leg.from, leg.to, over_snow, rules.gain_per_pass);
-      trodden = true;
+    // THE LATTICE ROUTE (#2072 (A)): his open-ground legs routed over the trails' lattice; the
+    // steps he walked are trodden below, after every walker's route is taken - the day's costs
+    // are FROZEN (boss 23 Nov), so the tenth walker bends onto yesterday's trail, not today's.
+    WalkRouteKm(current, candidates[slot].home, jobs[job].position, &steps);
+  }
+  for (const auto& [a, b] : steps) {
+    const Vec2 from = TrailEndPosition(a);
+    const Vec2 to = TrailEndPosition(b);
+    if (CrossesAStandingCrop(current, from, to)) {
+      continue;  // rule 9
     }
+    TreadTrailEdge(current.trails, a, b, over_snow, rules.gain_per_pass);
+    trodden = true;
   }
   if (trodden) {
     current.road_index = WithTrails(index, current.trails, current.weather.road_beds);
