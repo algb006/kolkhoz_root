@@ -23,17 +23,15 @@ struct AssignmentCandidate;
 /// @brief Rules 2-4 once a morning: lays yesterday's pending tread (WorldState::walks, save
 ///        229) on the trails, writes the rules' weight, visible strength and ground into the
 ///        table (the loader and the session read them there), decays every trail by today's
-///        snow, keeps `yesterday` as WorldState::walks.yesterday, and RE-DATES the index with
-///        those walks priced by the route - the only place the day's trails take effect, so
-///        yesterday's tread counts from this morning and today's from tomorrow's.
-/// @param yesterday PlacedWalksOf the world before StartDay cleared yesterday's work.
-void DecayTrailsThisMorning(const TrailRules& rules,
-                            WorldState& current,
-                            std::vector<WalkPair> yesterday);
+///        snow, moves walks.today to walks.yesterday, and RE-DATES the index with those walks
+///        priced by the route - the only place the day's trails take effect, so yesterday's
+///        tread counts from this morning and today's from tomorrow's.
+void DecayTrailsThisMorning(const TrailRules& rules, WorldState& current);
 
-/// @brief The placed walkers' ways in `current` as its work stands (call BEFORE the morning
-///        clears it): who walks (WorkRidesOut false) home → work, who rides from the horse
-///        yard home → yard, every other rider none - the tread's own predicates.
+/// @brief The placed walkers' ways in `current` as its work stands (written into
+///        walks.today right after the morning's placement; the day's close clears the work):
+///        who walks (WorkRidesOut false) home → work, who rides from the horse yard
+///        home → yard, every other rider none - the tread's own predicates.
 std::vector<WalkPair> PlacedWalksOf(const WorldState& current, LivestockKindId horse_kind);
 
 /// @brief Rule 1 for the morning's placed people, after their work is written: who walks

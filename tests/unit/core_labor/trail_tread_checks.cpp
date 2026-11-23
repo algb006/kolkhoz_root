@@ -78,7 +78,7 @@ int CheckTheTread() {
   }
   core::DecayTrails(laid_now, rules, false, false);
   const std::size_t passes = sowing.walks.pending.size();
-  core::DecayTrailsThisMorning(rules, sowing, {});
+  core::DecayTrailsThisMorning(rules, sowing);
   bool same = sowing.trails.rows.size() == laid_now.rows.size() && passes > 0;
   for (std::size_t at = 0; same && at < laid_now.rows.size(); ++at) {
     same = sowing.trails.rows[at].earth == laid_now.rows[at].earth &&
@@ -104,9 +104,14 @@ int CheckTheTread() {
     const core::Vec2 field = trodden.fields.rows[0].center;
     for (int day = 0; day < 30; ++day) {
       core::TreadPlacedWalkers(rules, trodden, candidates, plan, core::LivestockKindId{});
-      core::DecayTrailsThisMorning(rules, trodden, {});
+      core::DecayTrailsThisMorning(rules, trodden);
     }
-    core::DecayTrailsThisMorning(rules, trodden, {core::WalkPair{.from = home, .to = field}});
+    // Today's walk recorded (as the morning's placement writes it); the next morning moves it
+    // to yesterday's and prices it.
+    trodden.walks.today = {core::WalkPair{.from = home, .to = field}};
+    core::DecayTrailsThisMorning(rules, trodden);
+    failures += Expect(trodden.walks.today.empty() && trodden.walks.yesterday.size() == 1,
+                       "option 1: the morning moves today's walks to yesterday's");
     const float* const km = core::PlacedWalkKm(*trodden.road_index, home, field);
     const float route = core::WalkRouteKm(trodden, home, field, nullptr);
     const float* const none =

@@ -194,6 +194,9 @@ class LaborSystem final : public ILaborSystem {
     if (hour == 0) {
       UpkeepClerkMorning(current);
       StartDay(current);
+      // TODAY'S WALKS, as the morning placed them (save 229): tomorrow's morning prices them
+      // for the planner; the day's close clears the work they are read from.
+      current.walks.today = PlacedWalksOf(current, config_.horse_kind);
     }
     // TODAY'S DAY OFF DECLARED WORKING (B8's door; rush.cpp, CancelDayOff,
     // `enable` 1): the order was read at the end of the last hour, the hour-0
@@ -1082,8 +1085,6 @@ class LaborSystem final : public ILaborSystem {
   }
 
   void StartDay(WorldState& current) const {
-    // YESTERDAY'S WALKS before the clear (save 229): the morning prices them by the route.
-    std::vector<WalkPair> yesterday = PlacedWalksOf(current, config_.horse_kind);
     for (ResidentRow& resident : current.residents.rows) {
       resident.work = WorkAssignment{};
     }
@@ -1134,7 +1135,7 @@ class LaborSystem final : public ILaborSystem {
     RefillHerdCare(current);
     AssignPostHolders(current);
     // TRODDEN PATHS (#2072): the day's decay before anyone walks; the tread follows the plan.
-    DecayTrailsThisMorning(config_.trails, current, std::move(yesterday));
+    DecayTrailsThisMorning(config_.trails, current);
     // UB-001 fix: the accountant's placement is a BLOCK, not the body of the
     // function, because the chairman's orders below it must run on days the
     // accountant has nothing to do. A day off, or a winter day with every

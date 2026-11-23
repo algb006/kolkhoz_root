@@ -59,8 +59,21 @@ int main() {
     return 1;
   }
   run::AdvanceDays(*continued, kDaysBefore);
-  for (std::uint32_t tick = 0; tick < kSaveHour; ++tick) {
-    continued->AdvanceStep();
+  // THE FIRST DAY WITH ALL THREE TO LOSE, within a year (the first run saved a July day: its
+  // field crews ride the brigade cart, so nobody the accountant placed trod anything).
+  std::uint32_t save_day = kDaysBefore;
+  for (std::uint32_t search = 0; search < core::kDaysPerYear; ++search) {
+    for (std::uint32_t tick = 0; tick < kSaveHour; ++tick) {
+      continued->AdvanceStep();
+    }
+    const core::WorldState& now = continued.State();
+    if (!now.trails.rows.empty() && !now.walks.pending.empty() && !now.walks.yesterday.empty()) {
+      break;
+    }
+    for (std::uint32_t tick = kSaveHour; tick < core::kTicksPerDay; ++tick) {
+      continued->AdvanceStep();
+    }
+    ++save_day;
   }
   const core::WorldState& at_save = continued.State();
   // NOT A VACUOUS SAVE: the day has trails, a pending tread and priced walks to lose.
@@ -104,9 +117,9 @@ int main() {
               << FirstDifference(left, right) << '\n';
   }
   if (failures == 0) {
-    std::cout << "save_continue: saved day " << kDaysBefore << " hour " << kSaveHour << " ("
-              << trails << " trails, " << pending << " pending passes, " << walks << " walks), "
-              << kDaysAfter << " days on: " << left.size() << " bytes identical\n";
+    std::cout << "save_continue: saved day " << save_day << " hour " << kSaveHour << " (" << trails
+              << " trails, " << pending << " pending passes, " << walks << " walks), " << kDaysAfter
+              << " days on: " << left.size() << " bytes identical\n";
   }
   return failures;
 }

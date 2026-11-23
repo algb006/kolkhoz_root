@@ -176,14 +176,17 @@ struct WalkPair {
 ///          decay (the same steps, rule 9 and snow flag as when trodden). So the trails stay
 ///          the morning's all day, and an index rebuilt mid-day (the loader, a laid road)
 ///          equals the one the morning built. Sorted by edge, lesser end first.
-///        - `yesterday`: yesterday's placed walkers' ways. The morning prices them on the day's
-///          index by the walker's route, and the planner reads that price before the straight
-///          door's (option 1 of 24 Nov). StartDay writes it from yesterday's work before
-///          clearing it.
+///        - `today`: today's placed walkers' ways, written right after the morning's
+///          placement (the day's close clears the work itself, so the next morning could not
+///          read it: save_continue's first run found `yesterday` always empty).
+///        - `yesterday`: the last day's `today`. The morning prices them on the day's index
+///          by the walker's route, and the planner reads that price before the straight
+///          door's (option 1 of 24 Nov).
 struct TrailWalks {
   std::vector<TrailPass> pending;
   /// The snow flag the pending passes were trodden under (TreadTrailEdge's `over_snow`).
   bool pending_over_snow = false;
+  std::vector<WalkPair> today;
   std::vector<WalkPair> yesterday;
 };
 

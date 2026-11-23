@@ -943,6 +943,8 @@ core::WorldState MakeWorld() {
       core::TrailPass{.a = {.x = 5, .y = -2}, .b = {.x = 6, .y = -1}, .passes = 1});
   world.walks.yesterday.push_back(
       core::WalkPair{.from = {.x = 101.5F, .y = -7.25F}, .to = {.x = 330.0F, .y = 48.125F}});
+  world.walks.today.push_back(
+      core::WalkPair{.from = {.x = -12.0F, .y = 9.5F}, .to = {.x = 64.25F, .y = 700.0F}});
 
   // A couple waiting for a free house (save format 35).
   core::WeddingWaitRow couple;
@@ -2586,8 +2588,10 @@ constexpr std::array<RecordedSection, 29> kRecordedPayload = {{
     {"trails", 108, 0x7d7ac8a5574b101eULL},
     // Save 229 (#2072, boss 24 Nov): the day's walks - the snow byte (1), two passes' count
     // and rows (4 + 2 x 20), one way's count and row (4 + 16): predicted 65 before the build,
-    // held; the hash read off s229x.
-    {"walks", 65, 0xe7c88ade1ba956c8ULL},
+    // held; the hash read off s229x. Then +20: today's ways ahead of yesterday's (a count and
+    // one row of 16; save_continue found yesterday's always empty - the day's close clears
+    // the work it was read from): predicted 65 -> 85 before the build; hash 0 until read.
+    {"walks", 85, 0x0ULL},
     // 2026-09-17, save 52: +56 bytes over the two books — the nine yearly
     // inputs the readiness index asks of a year and the year did not keep
     // (ledger_state.h): satisfaction's sum and count, able-bodied
@@ -3765,15 +3769,16 @@ int main() {
   // Save 229 (#2072): the day's walks come back pass for pass and way for way.
   {
     const core::TrailWalks& back = loaded.walks;
-    failures +=
-        Expect(back.pending_over_snow && back.pending.size() == 2 && back.pending[0].a.x == -1 &&
-                   back.pending[0].b.x == 0 && back.pending[0].passes == 3 &&
-                   back.pending[1].a.y == -2 && back.pending[1].b.y == -1 &&
-                   back.pending[1].passes == 1 && back.yesterday.size() == 1 &&
-                   back.yesterday[0].from.x == 101.5F && back.yesterday[0].from.y == -7.25F &&
-                   back.yesterday[0].to.x == 330.0F && back.yesterday[0].to.y == 48.125F,
-               "the day's walks came back with the snow flag, the passes' ends and counts, and the "
-               "way's two positions (save 229)");
+    failures += Expect(
+        back.pending_over_snow && back.pending.size() == 2 && back.pending[0].a.x == -1 &&
+            back.pending[0].b.x == 0 && back.pending[0].passes == 3 && back.pending[1].a.y == -2 &&
+            back.pending[1].b.y == -1 && back.pending[1].passes == 1 &&
+            back.yesterday.size() == 1 && back.yesterday[0].from.x == 101.5F &&
+            back.yesterday[0].from.y == -7.25F && back.yesterday[0].to.x == 330.0F &&
+            back.yesterday[0].to.y == 48.125F && back.today.size() == 1 &&
+            back.today[0].from.x == -12.0F && back.today[0].to.y == 700.0F,
+        "the day's walks came back with the snow flag, the passes' ends and counts, and the "
+        "way's two positions (save 229)");
   }
   // Save 136. The two legs' ticks and places are apart, the rider on the
   // first only: a codec that swapped or dropped one is red here.

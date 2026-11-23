@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <tuple>
+#include <vector>
 
 #include "core_common/trail_state.h"
 #include "save_rows.h"
@@ -33,12 +34,14 @@ void WriteWalks(SaveSink& sink, const TrailWalks& walks) {
     out.WriteI32(pass.b.y);
     out.WriteU32(pass.passes);
   }
-  out.WriteU32(static_cast<std::uint32_t>(walks.yesterday.size()));
-  for (const WalkPair& pair : walks.yesterday) {
-    out.WriteFloat(pair.from.x);
-    out.WriteFloat(pair.from.y);
-    out.WriteFloat(pair.to.x);
-    out.WriteFloat(pair.to.y);
+  for (const std::vector<WalkPair>* list : {&walks.today, &walks.yesterday}) {
+    out.WriteU32(static_cast<std::uint32_t>(list->size()));
+    for (const WalkPair& pair : *list) {
+      out.WriteFloat(pair.from.x);
+      out.WriteFloat(pair.from.y);
+      out.WriteFloat(pair.to.x);
+      out.WriteFloat(pair.to.y);
+    }
   }
 }
 
@@ -75,24 +78,26 @@ TrailWalks ReadWalks(LoadSource& source) {
     }
     walks.pending.push_back(pass);
   }
-  const std::uint32_t pairs = in.ReadU32();
-  if (static_cast<std::size_t>(pairs) * kSavedPairBytes > in.Remaining()) {
-    source.Fail("the walks name more ways than the bytes left");
-    return walks;
-  }
-  walks.yesterday.reserve(pairs);
-  for (std::uint32_t index = 0; index < pairs; ++index) {
-    WalkPair pair;
-    pair.from.x = in.ReadFloat();
-    pair.from.y = in.ReadFloat();
-    pair.to.x = in.ReadFloat();
-    pair.to.y = in.ReadFloat();
-    if (!std::isfinite(pair.from.x) || !std::isfinite(pair.from.y) || !std::isfinite(pair.to.x) ||
-        !std::isfinite(pair.to.y)) {
-      source.Fail("a walk's position is not a number");
+  for (std::vector<WalkPair>* list : {&walks.today, &walks.yesterday}) {
+    const std::uint32_t pairs = in.ReadU32();
+    if (static_cast<std::size_t>(pairs) * kSavedPairBytes > in.Remaining()) {
+      source.Fail("the walks name more ways than the bytes left");
       return walks;
     }
-    walks.yesterday.push_back(pair);
+    list->reserve(pairs);
+    for (std::uint32_t index = 0; index < pairs; ++index) {
+      WalkPair pair;
+      pair.from.x = in.ReadFloat();
+      pair.from.y = in.ReadFloat();
+      pair.to.x = in.ReadFloat();
+      pair.to.y = in.ReadFloat();
+      if (!std::isfinite(pair.from.x) || !std::isfinite(pair.from.y) || !std::isfinite(pair.to.x) ||
+          !std::isfinite(pair.to.y)) {
+        source.Fail("a walk's position is not a number");
+        return walks;
+      }
+      list->push_back(pair);
+    }
   }
   return walks;
 }

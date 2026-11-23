@@ -47,9 +47,7 @@ bool CrossesAStandingCrop(const WorldState& world, Vec2 from, Vec2 to) {
 
 }  // namespace
 
-void DecayTrailsThisMorning(const TrailRules& rules,
-                            WorldState& current,
-                            std::vector<WalkPair> yesterday) {
+void DecayTrailsThisMorning(const TrailRules& rules, WorldState& current) {
   // YESTERDAY'S TREAD LANDS NOW (save 229): trodden as it was, then decayed as the morning
   // always decayed it - the same trails as treading it yesterday would have left.
   for (const TrailPass& pass : current.walks.pending) {
@@ -67,7 +65,8 @@ void DecayTrailsThisMorning(const TrailRules& rules,
               rules,
               current.weather.snow_cover_days > 0,
               current.weather.precipitation == Precipitation::kSnow);
-  current.walks.yesterday = std::move(yesterday);
+  current.walks.yesterday = std::move(current.walks.today);
+  current.walks.today.clear();
   // EVERY MORNING, trails or none: today's ground re-dates the index (roads.md §3), and
   // yesterday's walks are priced on it by the walker's route (option 1, 24 Nov); the node
   // tables are reused while the beds are unchanged.
