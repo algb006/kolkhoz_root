@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -76,6 +77,25 @@ class TrailLegTally {
         row.ratio_lo = ratio < row.ratio_lo ? ratio : row.ratio_lo;
         row.ratio_hi = ratio > row.ratio_hi ? ratio : row.ratio_hi;
         row.straight_cheaper += straight < routed - 1e-4F ? 1U : 0U;
+        // boss 24 Nov: WHERE the doors part - by the open ground's state today, the pair's
+        // line length and whether the way is one open leg (across) or rides the network.
+        {
+          const core::RoadCondition dirt =
+              world.weather.road_beds.condition[static_cast<std::size_t>(core::RoadBed::kDirt)];
+          const std::size_t weather = dirt == core::RoadCondition::kMud      ? 1U
+                                      : dirt == core::RoadCondition::kSnow   ? 2U
+                                      : dirt == core::RoadCondition::kFrozen ? 3U
+                                                                             : 0U;
+          const float metres = std::hypot(place.x - home.x, place.y - home.y);
+          const std::size_t band =
+              metres < 50.0F ? 0U : (metres < 200.0F ? 1U : (metres < 500.0F ? 2U : 3U));
+          const std::size_t across =
+              index->Way(core::TravelMode::kWalk, home, place).legs.size() == 1U ? 1U : 0U;
+          Case& at_case = row.cases[(((weather * 4U) + band) * 2U) + across];
+          ++at_case.pairs;
+          at_case.cheaper += straight < routed - 1e-4F ? 1U : 0U;
+          at_case.over_110 += routed > 0.0F && straight > routed * 1.10F ? 1U : 0U;
+        }
         // econ: the over-estimate straight ÷ route, its p50 and p90.
         if (routed > 0.0F) {
           row.over.push_back(static_cast<double>(straight) / static_cast<double>(routed));
@@ -152,6 +172,12 @@ class TrailLegTally {
         };
         out << " over_straight_per_route p50 " << at(0.5) << " p90 " << at(0.9)
             << (at(0.9) > 1.10 ? " P90_OVER_1_10" : "");
+        out << " cases(weather.band.across=pairs/cheaper/over110)";
+        for (std::size_t at_case = 0; at_case < row.cases.size(); ++at_case) {
+          const Case& one = row.cases[at_case];
+          out << ' ' << (at_case / 8U) << '.' << ((at_case / 2U) % 4U) << '.' << (at_case % 2U)
+              << '=' << one.pairs << '/' << one.cheaper << '/' << one.over_110;
+        }
       }
       for (std::size_t group = 0; group < kGroups; ++group) {
         const Group& at = row.groups[group];
@@ -184,10 +210,18 @@ class TrailLegTally {
     std::array<Leg, 3> legs{};
   };
 
+  struct Case {
+    std::uint64_t pairs = 0;
+    std::uint64_t cheaper = 0;
+    std::uint64_t over_110 = 0;
+  };
+
   struct Year {
     std::array<Group, kGroups> groups{};
     double ratio_sum = 0.0;
     std::vector<double> over;  ///< straight ÷ route, every placed walker-day
+    /// weather (dry-wet/mud/snow/frozen) x line band (<50/<200/<500/>=500 m) x across.
+    std::array<Case, 32> cases{};
     double ratio_lo = 1e9;
     double ratio_hi = 0.0;
     std::uint64_t pairs = 0;
