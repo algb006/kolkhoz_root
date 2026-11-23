@@ -876,9 +876,6 @@ bool ParseLaborConfig(const ITableSet& tables, LaborConfig& config, std::string&
       PrefixError("world_params", "teacher_pupils_per_teacher", error);
       return false;
     }
-    // THE STRADA'S MONTHS AND THE GARDEN'S CAP ARE GONE with the yards' strada help (#1442,
-    // struck 22 Nov 2026; the design removed it on 4 Nov, #1438): their only reader was
-    // YardsTakeHerdCare, and boss dropped the three world_params rows in the same move.
     // #1568 link 1, truancy (labor_config.h).
     auto truancy_on = config.truancy_on ? 1.0F : 0.0F;
     if (!OptionalValue(
