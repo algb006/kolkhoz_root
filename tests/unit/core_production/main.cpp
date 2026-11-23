@@ -11086,10 +11086,15 @@ int CheckTheHeapWithNowhereToGo() {
   const auto system = core::CreateProductionSystem(*tables, core::StubTables::kAllowed);
   const core::ResourceId rye = config.crops.at(0).resource;
   std::uint32_t store_type = static_cast<std::uint32_t>(config.unit_types.size());
+  // A numbered home of rye with room at level 1 (the first units picked the first home in the
+  // table, which may have an empty level-1 ladder - a store taking nothing).
   for (std::uint32_t type = 0; type < config.unit_types.size(); ++type) {
-    for (const core::ResourceId held : config.unit_types[type].home_of) {
-      store_type =
-          held.value == rye.value && store_type == config.unit_types.size() ? type : store_type;
+    const core::UnitTypeDef& def = config.unit_types[type];
+    const bool has_room = def.capacity_by_plot == 0 && def.StorageCapacityKgAt(1) > 0.0F;
+    for (const core::ResourceId held : def.home_of) {
+      store_type = held.value == rye.value && has_room && store_type == config.unit_types.size()
+                       ? type
+                       : store_type;
     }
   }
   if (Expect(system != nullptr && store_type < config.unit_types.size(),
@@ -11108,6 +11113,8 @@ int CheckTheHeapWithNowhereToGo() {
   store.level = 1;
   core::AppendRow(world.units, store);
   const core::Grams open = system->UncartedNoRoomGrams(world, heaped);
+  std::cout << "nowhere to go: store type " << store_type << ", shut " << shut << " g, open "
+            << open << " g\n";
   failures += Expect(shut == 500 * core::kGramsPerKilogram && open == 0,
                      "nowhere to go: 500 kg reaped with no store read 500 kg, and 0 once a store "
                      "that takes it stands");
