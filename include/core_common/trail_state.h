@@ -1,29 +1,40 @@
 /// @file
 /// @brief TRODDEN PATHS (#2072; roads design «Как именно протаптывается тропа — механика, 16
 ///        сентября 2026», Alex 23 Nov 2026: «Надо добавлять механику троп сейчас, от этого
-///        зависит геймплей»): the strength of the ground people walk, on the open-ground legs
-///        of the core's own walking routes - the state, its rules and the pure functions that
-///        keep them (trails.cpp).
+///        зависит геймплей»): the strength of the ground people walk, on the EDGES OF A LATTICE
+///        over open ground (boss 23 Nov, «(A)»; roads.md) - the state, its rules and the pure
+///        functions that keep them (trails.cpp; the lattice's routing: trail_lattice.cpp).
 /// @threading SINGLE_THREADED
 /// Written once a day by the morning placement (phase 3, decisions and assignment: the day's
-/// decay, then the placed walkers' tread); read by every route query through the road index
-/// (road_route.h, WithTrails), which is immutable and shared.
+/// decay before it, the placed people's tread after their work is written); takes effect only
+/// at the NEXT morning's re-dating of the road index (road_route.h, WithTrails), so the day's
+/// costs are frozen - today's tread changes tomorrow's ways.
 ///
-/// WHAT A TRAIL IS. The core routes a walker (TravelMode::kWalk) over roads and paths plus
-/// OPEN-GROUND LEGS: from his start straight to where he joins the network, from where he
-/// leaves it straight to his end, or the whole straight line when that is shorter
-/// (road_route.h, RouteLeg::on_road false). Those legs are the routing graph's edges the design
-/// means: a trail is ONE such leg, addressed by its two ends snapped to a kTrailSnapMetres
-/// grid, so every walker who takes «the same» leg treads the same row. Two legs that cross are
-/// two trails; nothing merges them.
+/// WHAT A TRAIL IS. Open ground is a lattice of kTrailSnapMetres cells; a trail is ONE edge
+/// between two neighbouring cells (8 neighbours), so walkers from different houses converge on
+/// the same edges where their ways meet (the first, one-leg-a-trail build drew a fan of
+/// straight per-house lines that never merged: LEGS2072 and the limit arm, 23 Nov 2026). Only
+/// trodden edges are rows; untrodden ground has no row.
 ///
-/// WHO TREADS. The placed walkers of the morning: each resident the placement gave a job
-/// with a place, walking (not on a horse, not in a cart), treads the open-ground legs of his
-/// way from home to it - once a day, for the round trip. STUB of the rest: the bathers' and
-/// the day-off walkers' ways tread nothing yet (their reach reads the trails all the same).
+/// TWO DOORS, NAMED (boss 23 Nov). THE WALKER'S: a placed walker's open-ground legs are ROUTED
+/// over the lattice (A*, a trodden edge cheaper; WalkRouteKm) - his world time is that route
+/// and he treads its edges. THE QUERY'S: every other walking query (the accountant's measures,
+/// reach) is the straight line weighted by the edges it crosses (RoadKm). Untrodden, the two
+/// agree exactly (the walker's km is normalised to the straight line); trodden, the route can
+/// only be cheaper than the straight door's answer or equal. THE LATTICE'S WEAK CASE: an
+/// 8-neighbour path runs up to 8.2 % over the line it follows (the octile bound) - about a full
+/// trail's whole discount (1.2 -> 1.10), so a trail at a slant of ~22° barely beats the line.
+///
+/// WHO TREADS. The accountant's placed people of the morning, by the world's own predicates
+/// (WorkRidesOut): who walks to his work treads his route home -> work; who rides from the horse
+/// yard treads his walk home -> yard; the brigade cart's, the people's cart's riders and the
+/// horsemen tread nothing (rule 8) - once a day, for the round trip. STUB of the rest: the
+/// chairman's ordered crews and the day's top-up tread nothing yet; the bathers and the day-off
+/// walkers have no walked way in the core at all (their reach is a check, not a trip), so they
+/// tread nothing (their reach reads the trails all the same).
 ///
 /// THE RULES (design table, each a test of the body):
-///   1. Grows with walking: each walker-pass over a leg adds trail_gain_per_pass.
+///   1. Grows with walking: each walker-pass over an edge adds trail_gain_per_pass.
 ///   2. Decays with disuse: every morning each row loses its decay, earth and snow each at
 ///      its own rate.
 ///   3. Vanishes COMPLETELY at 0: the row is deleted - no memory of a former trail.
@@ -43,29 +54,30 @@
 ///      old trail starves (rules 2-3). Nothing is torn down.
 ///   7. A trodden path never becomes a laid one: no rule writes a RoadTable row.
 ///   8. People only: carts, teams and log carts tread nothing (boss 23 Nov).
-///   9. ACCEPTED by econ's review (23 Nov; «a path through a field?»): a leg whose midpoint
+///   9. ACCEPTED by econ's review (23 Nov; «a path through a field?»): an edge whose midpoint
 ///      lies on an arable field with a standing crop (FieldPhase growing or harvest) treads
 ///      nothing, and costs the crop nothing - no loss is modelled. The field is its disc
 ///      (centre, area): the core keeps no field outline (STUB of the shape). Returns as a crop
 ///      loss only on boss's word that it yields a decision (design limits §1).
 ///
-/// THE WEIGHT. A walker's open-ground leg weighs off_road_weight[kWalk] (1.2) a km, lowered
-/// linearly by its trail's strength s (0..1, earth and snow summed, capped at 1) toward
-/// weight_full: w = 1.2 − s × (1.2 − weight_full).
+/// THE WEIGHT. A lattice edge weighs off_road_weight[kWalk] (1.2) a km, lowered linearly by its
+/// trail's strength s (0..1, earth and snow summed, capped at 1) toward weight_full:
+/// w = 1.2 − s × (1.2 − weight_full); then divided by the ground's factor (roads.md §3).
 ///
-/// ONE DOOR FOR EVERY WALKING RULE (econ's review question, 23 Nov). The weight enters INSIDE
+/// ONE INDEX FOR EVERY WALKING RULE (econ's review question, 23 Nov). The weights enter INSIDE
 /// the road index, not at a caller: WithTrails wraps the network's index (its node-to-node
-/// distances shared, trails do not touch them) with the trails' weights, and every builder of
-/// WorldState::road_index - genesis, load, a laid road, the morning's tread - goes through it.
-/// RoadKm, RoadMeasure, the accountant's found-place queries and home_reach's cache (keyed on
-/// the index's address) all read it, so walking time, bathing reach (#1421) and leisure reach
-/// (1 000 m) see the same trails or none.
+/// distances shared) with a copy of the trails and the day's ground, and every builder of
+/// WorldState::road_index - genesis, load, a laid road, the morning's re-dating - goes through
+/// it. RoadKm, RoadMeasure, the accountant's found-place queries and home_reach's cache (keyed
+/// on the index's address) all read it; reach reads its distance, without the ground's factors
+/// (ReachMeasure: «a beach does not move farther in the rain», boss 23 Nov).
 ///
 /// THE START. No trail exists at genesis (boss 23 Nov; Alex kept the four start paths, which
 /// are LAID map paths in roads.csv).
 ///
-/// SAVED: save 226 → 227, one section (weight_full, visible_strength and the rows). The index is
-/// derived and rebuilt on load from roads + trails.
+/// SAVED: save 226 → 228, one section «trails»: weight_full, visible_strength, the twelve ground
+/// factors (60 bytes), then the rows, 24 bytes each. The index is derived and rebuilt on load
+/// from roads + trails + the weather's beds.
 
 #ifndef CORE_COMMON_TRAIL_STATE_H_
 #define CORE_COMMON_TRAIL_STATE_H_
@@ -79,19 +91,18 @@
 
 namespace core {
 
-/// @brief The grid a trail's ends are snapped to, metres. STUB (boss 23 Nov: 10 m): fine
-///        enough that two houses ten metres apart tread two trails, coarse enough that a
-///        walker's start inside one yard is one end.
+/// @brief The lattice's cell, metres (boss 23 Nov: «~25 m LATTICE»; STUB, 50 m is the named
+///        cheaper lever if the walker's routing costs too much).
 inline constexpr float kTrailSnapMetres = 25.0F;
 
-/// @brief A trail's end on the snap grid: cells of kTrailSnapMetres from the map's origin.
+/// @brief A lattice cell: cells of kTrailSnapMetres from the map's origin (rounded).
 struct TrailEnd {
   std::int32_t x = 0;
   std::int32_t y = 0;
 };
 
-/// @brief One trodden leg. `a` is the lesser end (x, then y), so a leg walked either way is
-///        one row.
+/// @brief One trodden lattice edge between neighbouring cells. `a` is the lesser end (x, then
+///        y), so an edge walked either way is one row.
 struct TrailRow {
   TrailEnd a;
   TrailEnd b;

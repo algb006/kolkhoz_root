@@ -26,6 +26,7 @@
 #include "core_common/labor_state.h"
 #include "core_common/road_rules.h"
 #include "core_common/trail_state.h"
+#include "core_common/work_seam.h"
 #include "core_common/world_state.h"
 
 namespace run {
@@ -49,8 +50,9 @@ class TrailTally {
     Half& by_season = row.season[season];
     for (const core::ResidentRow& person : world.residents.rows) {
       const core::WorkAssignment& work = person.work;
-      if (work.kind == core::WorkKind::kNone || work.travel_hours < 0.0F || work.rides_horse != 0 ||
-          work.rides_cart_of.value != core::kInvalidEntityIdValue) {
+      // A walker by the world's own predicate (static review: the brigade cart's riders rode).
+      if (work.kind == core::WorkKind::kNone || work.travel_hours < 0.0F ||
+          core::WorkRidesOut(world, work)) {
         continue;
       }
       const auto hours = static_cast<double>(work.travel_hours);

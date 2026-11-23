@@ -11,8 +11,10 @@
 #include <vector>
 
 #include "assignment.h"
+#include "core_common/horse_yard_road.h"
 #include "core_common/land_state.h"
 #include "core_common/road_route.h"
+#include "core_common/work_seam.h"
 
 namespace core {
 
@@ -58,34 +60,38 @@ void DecayTrailsThisMorning(const TrailRules& rules, WorldState& current) {
 
 void TreadPlacedWalkers(const TrailRules& rules,
                         WorldState& current,
-                        std::span<const AssignmentJob> jobs,
                         std::span<const AssignmentCandidate> candidates,
                         std::span<const std::uint32_t> plan,
-                        std::span<const std::uint8_t> rides_horse,
-                        std::span<const std::uint32_t> rides_cart_with) {
+                        LivestockKindId horse_kind) {
   if (!(rules.gain_per_pass > 0.0F)) {
     return;
   }
-  // The way each walks is measured on the index as it stood this morning (yesterday's trails):
-  // today's tread changes tomorrow's ways, not today's.
-  const std::shared_ptr<const RoadIndex> index = RoadIndexOf(current);
   const bool over_snow = current.weather.snow_cover_days > 0;
-  bool trodden = false;
   std::vector<std::pair<TrailEnd, TrailEnd>> steps;
   for (std::size_t slot = 0; slot < candidates.size() && slot < plan.size(); ++slot) {
-    const std::uint32_t job = plan[slot];
-    if (job == kNoJobAssigned || job >= jobs.size()) {
+    if (plan[slot] == kNoJobAssigned) {
       continue;
     }
-    const bool on_horse = slot < rides_horse.size() && rides_horse[slot] != 0;
-    const bool in_cart = slot < rides_cart_with.size() && rides_cart_with[slot] != kNoJobAssigned;
-    if (on_horse || in_cart) {
-      continue;  // rule 8: people on foot only
+    const ResidentRow& person = current.residents.rows[candidates[slot].resident_row];
+    const WorkAssignment& work = person.work;
+    const Vec2 home = candidates[slot].home;
+    // WHO WALKS, BY THE WORLD'S OWN PREDICATES (static review of 23 Nov 2026): the timing door
+    // (WorkRoadHours) walks him when WorkRidesOut is false, and walks him to the horse yard
+    // when his day starts there - so he treads exactly those walks (rule 8 for the rest: the
+    // brigade cart's riders, the people's cart, the horsemen ride).
+    if (!WorkRidesOut(current, work)) {
+      Vec2 place{};
+      if (WorkPlaceOf(current, work, place)) {
+        // His lattice route, on the index as it stood this morning; trodden only after every
+        // route is taken, and the index is not re-dated today (the day's costs are frozen).
+        WalkRouteKm(current, home, place, &steps);
+      }
+      continue;
     }
-    // THE LATTICE ROUTE (#2072 (A)): his open-ground legs routed over the trails' lattice; the
-    // steps he walked are trodden below, after every walker's route is taken - the day's costs
-    // are FROZEN (boss 23 Nov), so the tenth walker bends onto yesterday's trail, not today's.
-    WalkRouteKm(current, candidates[slot].home, jobs[job].position, &steps);
+    Vec2 yard{};
+    if (DayStartsAtHorseYard(current, work) && HorseYardPositionOf(current, horse_kind, yard)) {
+      WalkRouteKm(current, home, yard, &steps);
+    }
   }
   for (const auto& [a, b] : steps) {
     const Vec2 from = TrailEndPosition(a);
@@ -94,10 +100,6 @@ void TreadPlacedWalkers(const TrailRules& rules,
       continue;  // rule 9
     }
     TreadTrailEdge(current.trails, a, b, over_snow, rules.gain_per_pass);
-    trodden = true;
-  }
-  if (trodden) {
-    current.road_index = WithTrails(index, current.trails, current.weather.road_beds);
   }
 }
 

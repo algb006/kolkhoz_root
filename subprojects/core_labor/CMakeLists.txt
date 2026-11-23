@@ -15,6 +15,7 @@ kolkhoz_add_module(core_labor
     placement_diagnosis.cpp
     posts.cpp
     rush.cpp
+    trail_config.cpp
     trail_tread.cpp
     truancy.cpp
     work_orders.cpp)

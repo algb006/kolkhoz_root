@@ -56,6 +56,7 @@
 #include "stuck_state_checks.h"
 #include "supply_floor_checks.h"
 #include "top_up_checks.h"
+#include "trail_tread_checks.h"
 #include "truancy_checks.h"
 #include "work_orders.h"
 
@@ -5226,6 +5227,7 @@ int TestNightShiftStarts() {
 
 int main() {
   int failures = 0;
+  failures += CheckTheTread();  // #2072: who treads, and the day's index frozen
   failures += TestNightShiftStarts();
   failures += CheckStubTablesMustBeDeclared();
   failures += TestSurplusIdles();

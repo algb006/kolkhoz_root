@@ -14,6 +14,7 @@
 
 #include "core_common/state_table_ops.h"
 #include "core_common/world_state.h"
+#include "trail_lattice.h"
 
 namespace core {
 namespace {
@@ -31,6 +32,10 @@ constexpr float kAccessSlack = 150.0F;
 /// At most this many road pieces are tried at each end of a way: nine
 /// pairings, four ways round each. Eight cost the debug build 290 us a query.
 constexpr std::size_t kAccessCandidates = 3;
+
+/// FNV-1a, 64 bits: the day's ground key (DayWeights::key) hashed from the beds and factors.
+constexpr std::uint64_t kFnvOffsetBasis = 14695981039346656037ULL;
+constexpr std::uint64_t kFnvPrime = 1099511628211ULL;
 
 float Distance(Vec2 a, Vec2 b) {
   const float dx = a.x - b.x;
@@ -99,209 +104,11 @@ struct DayWeights {
   std::uint64_t key = 0;
 };
 
-/// A road or path piece's ground by its bed's condition (roads.md §3): gravel in the mud
-/// walks as wet; snow on a road or a laid path walks as wet - its sleigh track and its feet
-/// keep it trodden (core's reading, 23 Nov 2026; «до расчистки» names open ground).
-GroundState GroundOnRoad(RoadCondition condition, RoadBed bed) {
-  switch (condition) {
-    case RoadCondition::kWet:
-      return GroundState::kWet;
-    case RoadCondition::kMud:
-      return bed == RoadBed::kDirt ? GroundState::kMud : GroundState::kWet;
-    case RoadCondition::kFrozen:
-      return GroundState::kFrozen;
-    case RoadCondition::kSnow:
-      return GroundState::kWet;
-    default:
-      return GroundState::kDry;
-  }
-}
-
-/// Open ground's state: the dirt bed's condition, snow off a trail as snow.
-GroundState GroundOffRoad(RoadCondition dirt) {
-  switch (dirt) {
-    case RoadCondition::kWet:
-      return GroundState::kWet;
-    case RoadCondition::kMud:
-      return GroundState::kMud;
-    case RoadCondition::kFrozen:
-      return GroundState::kFrozen;
-    case RoadCondition::kSnow:
-      return GroundState::kSnow;
-    default:
-      return GroundState::kDry;
-  }
-}
-
-/// A mode's factor in a state: walkers' and the horse team's; every other mode 1.
-float GroundFactorOf(const GroundFactors& factors, TravelMode mode, GroundState state) {
-  const auto index = static_cast<std::size_t>(state);
-  if (index >= kGroundStateCountValue) {
-    return 1.0F;
-  }
-  if (mode == TravelMode::kWalk) {
-    return factors.walk[index];
-  }
-  if (mode == TravelMode::kTeam) {
-    return factors.ride[index];
-  }
-  return 1.0F;
-}
-
-/// A factor as a cost multiplier (a factor <= 0 is read as 1: no division by nought).
-float CostOf(float factor) {
-  return factor > 0.0F ? 1.0F / factor : 1.0F;
-}
-
-// -- THE LATTICE (#2072, boss 23 Nov: «(A)» - trails are edges of a kTrailSnapMetres lattice
-// over open ground; the placed walker ROUTES over it, every other query reads the straight
-// line weighted by the lattice edges it crosses) ------------------------------------------
-
-/// A lattice edge's cost a km for a walker: open ground's weight lowered by the edge's trail
-/// toward weight_full, times the ground's cost (a snow-bearing edge as wet ground).
-float LatticeStepCost(const TrailTable& trails,
-                      TrailEnd a,
-                      TrailEnd b,
-                      float open_weight,
-                      float open_cost,
-                      float snow_trail_cost) {
-  const TrailRow* const row = FindTrailEdge(trails, a, b);
-  if (row == nullptr) {
-    return open_weight * open_cost;
-  }
-  const float full = std::min(open_weight, trails.weight_full);
-  const float weight = open_weight - (TrailStrength(*row) * (open_weight - full));
-  return weight * (row->snow > 0.0F ? snow_trail_cost : open_cost);
-}
-
-/// THE QUERY DOOR: the straight line from `from` to `to`, sampled every half cell, each piece
-/// at the cost of the lattice edge it crosses (the step between the two cells its ends lie
-/// in; within one cell, the last edge crossed, or open ground before any). Returns the km.
-float StraightLatticeKm(const TrailTable& trails,
-                        Vec2 from,
-                        Vec2 to,
-                        float open_weight,
-                        float open_cost,
-                        float snow_trail_cost) {
-  const float length = Distance(from, to);
-  const float open = open_weight * open_cost;
-  if (!(length > 0.0F) || trails.rows.empty()) {
-    return length / 1000.0F * open;
-  }
-  const auto pieces = static_cast<std::uint32_t>(std::ceil(length / (kTrailSnapMetres / 2.0F)));
-  const float piece_km = length / static_cast<float>(pieces) / 1000.0F;
-  float km = 0.0F;
-  float last = open;
-  TrailEnd here = SnapTrailEnd(from);
-  for (std::uint32_t piece = 1; piece <= pieces; ++piece) {
-    const float share = static_cast<float>(piece) / static_cast<float>(pieces);
-    const TrailEnd next = SnapTrailEnd(
-        {.x = from.x + ((to.x - from.x) * share), .y = from.y + ((to.y - from.y) * share)});
-    if (next.x != here.x || next.y != here.y) {
-      last = LatticeStepCost(trails, here, next, open_weight, open_cost, snow_trail_cost);
-      here = next;
-    }
-    km += piece_km * last;
-  }
-  return km;
-}
-
-/// THE WALKER'S DOOR: A* over the lattice inside the box of `from`-`to` plus kLatticeMargin
-/// cells, 8 neighbours, each step at LatticeStepCost; ties by the queue's order of (cost,
-/// cell index), so every compiler walks the same way. The km is NORMALISED so an untrodden
-/// route costs exactly the straight line (a lattice path is up to 8.2 % longer than the line:
-/// the octile bound) and a trodden one that times its ratio to the untrodden. `edges` gets
-/// the steps.
-float LatticeRouteKm(const TrailTable& trails,
-                     Vec2 from,
-                     Vec2 to,
-                     float open_weight,
-                     float open_cost,
-                     float snow_trail_cost,
-                     std::vector<std::pair<TrailEnd, TrailEnd>>* edges) {
-  constexpr std::int32_t kLatticeMargin = 8;
-  const TrailEnd start = SnapTrailEnd(from);
-  const TrailEnd goal = SnapTrailEnd(to);
-  const float straight = Distance(from, to) / 1000.0F * open_weight * open_cost;
-  if (start.x == goal.x && start.y == goal.y) {
-    return straight;
-  }
-  const std::int32_t x0 = std::min(start.x, goal.x) - kLatticeMargin;
-  const std::int32_t y0 = std::min(start.y, goal.y) - kLatticeMargin;
-  const std::int32_t w = std::max(start.x, goal.x) + kLatticeMargin - x0 + 1;
-  const std::int32_t h = std::max(start.y, goal.y) + kLatticeMargin - y0 + 1;
-  const auto index = [&](std::int32_t x, std::int32_t y) {
-    return static_cast<std::uint32_t>(((y - y0) * w) + (x - x0));
-  };
-  const auto cell_of = [&](std::uint32_t at) {
-    const auto width = static_cast<std::uint32_t>(w);
-    return TrailEnd{.x = x0 + static_cast<std::int32_t>(at % width),
-                    .y = y0 + static_cast<std::int32_t>(at / width)};
-  };
-  const float cell_km = kTrailSnapMetres / 1000.0F;
-  const float cheapest =
-      std::min(open_weight, trails.weight_full) * std::min(open_cost, snow_trail_cost);
-  const auto octile = [&](std::int32_t x, std::int32_t y) {
-    const auto dx = static_cast<float>(std::abs(x - goal.x));
-    const auto dy = static_cast<float>(std::abs(y - goal.y));
-    return cell_km * (std::max(dx, dy) + (0.41421356F * std::min(dx, dy)));
-  };
-  std::vector<float> cost(static_cast<std::size_t>(w) * static_cast<std::size_t>(h),
-                          std::numeric_limits<float>::infinity());
-  std::vector<std::uint32_t> came(cost.size(), 0xFFFFFFFFU);
-  using Item = std::pair<float, std::uint32_t>;
-  std::priority_queue<Item, std::vector<Item>, std::greater<>> open;
-  const std::uint32_t start_index = index(start.x, start.y);
-  const std::uint32_t goal_index = index(goal.x, goal.y);
-  cost[start_index] = 0.0F;
-  open.emplace(octile(start.x, start.y) * cheapest, start_index);
-  while (!open.empty()) {
-    const auto [f, node] = open.top();
-    open.pop();
-    if (node == goal_index) {
-      break;
-    }
-    const TrailEnd here_cell = cell_of(node);
-    const float here = cost[node];
-    if (f > here + (octile(here_cell.x, here_cell.y) * cheapest) + 1e-6F) {
-      continue;  // a stale entry
-    }
-    for (std::int32_t dy = -1; dy <= 1; ++dy) {
-      for (std::int32_t dx = -1; dx <= 1; ++dx) {
-        const std::int32_t nx = here_cell.x + dx;
-        const std::int32_t ny = here_cell.y + dy;
-        if ((dx == 0 && dy == 0) || nx < x0 || ny < y0 || nx >= x0 + w || ny >= y0 + h) {
-          continue;
-        }
-        const float step = (dx != 0 && dy != 0) ? cell_km * 1.41421356F : cell_km;
-        const float next =
-            here +
-            (step *
-             LatticeStepCost(trails, here_cell, {nx, ny}, open_weight, open_cost, snow_trail_cost));
-        const std::uint32_t n = index(nx, ny);
-        if (next < cost[n]) {
-          cost[n] = next;
-          came[n] = node;
-          open.emplace(next + (octile(nx, ny) * cheapest), n);
-        }
-      }
-    }
-  }
-  const float routed = cost[goal_index];
-  if (!(routed < std::numeric_limits<float>::infinity())) {
-    return straight;
-  }
-  if (edges != nullptr) {
-    std::vector<std::pair<TrailEnd, TrailEnd>> back;
-    for (std::uint32_t node = goal_index; came[node] != 0xFFFFFFFFU; node = came[node]) {
-      back.emplace_back(cell_of(came[node]), cell_of(node));
-    }
-    edges->insert(edges->end(), back.rbegin(), back.rend());
-  }
-  // The normalisation: the untrodden lattice route between the same cells is octile x open.
-  const float untrodden = octile(start.x, start.y) * open_weight * open_cost;
-  return untrodden > 0.0F ? straight * (routed / untrodden) : straight;
-}
+// The ground's states, the factors and the lattice live in trail_lattice.cpp (lattice::).
+using lattice::CostOf;
+using lattice::GroundFactorOf;
+using lattice::GroundOffRoad;
+using lattice::GroundOnRoad;
 
 class RoadIndexImpl final : public RoadIndex {
  public:
@@ -467,18 +274,18 @@ class RoadIndexImpl final : public RoadIndex {
     if (!(length > 0.0F)) {
       return weight * day->open_cost[mode_index];
     }
-    return StraightLatticeKm(*day->trails,
-                             from,
-                             to,
-                             weight,
-                             day->open_cost[mode_index],
-                             day->snow_trail_cost[mode_index]) /
+    return lattice::StraightKm(*day->trails,
+                               from,
+                               to,
+                               weight,
+                               day->open_cost[mode_index],
+                               day->snow_trail_cost[mode_index]) /
            (length / 1000.0F);
   }
 
  public:
   /// THE WALKER'S DOOR (#2072 (A)): the walking way's km with every open-ground leg routed
-  /// over the lattice (LatticeRouteKm), its steps into `edges`; the network legs as Way's.
+  /// over the lattice (lattice::RouteKm), its steps into `edges`; the network legs as Way's.
   float WalkRouteKmWith(Vec2 from,
                         Vec2 to,
                         const DayWeights* day,
@@ -494,13 +301,13 @@ class RoadIndexImpl final : public RoadIndex {
         km += leg.effective_km;
         continue;
       }
-      km += LatticeRouteKm(*day->trails,
-                           leg.from,
-                           leg.to,
-                           rules_.off_road_weight[walk],
-                           day->open_cost[walk],
-                           day->snow_trail_cost[walk],
-                           edges);
+      km += lattice::RouteKm(*day->trails,
+                             leg.from,
+                             leg.to,
+                             rules_.off_road_weight[walk],
+                             day->open_cost[walk],
+                             day->snow_trail_cost[walk],
+                             edges);
     }
     return km;
   }
@@ -537,12 +344,19 @@ class RoadIndexImpl final : public RoadIndex {
       best.km = Distance(from, to) / 1000.0F * LegCost(mode, from, to, day);
     }
     const std::size_t nodes = graph_.nodes.size();
+    // Each end's open-ground leg priced ONCE (static review of 23 Nov 2026: inside the pairs'
+    // loop the exit leg's lattice walk was repeated for every start).
+    std::array<float, kAccessCandidates> out_kms{};
+    for (std::size_t at = 0; at < ends.size() && at < out_kms.size(); ++at) {
+      out_kms[at] = ends[at].distance_m / 1000.0F * LegCost(mode, ends[at].point, to, day);
+    }
     for (const Access& start : starts) {
       const float in_km = start.distance_m / 1000.0F * LegCost(mode, from, start.point, day);
       const RoadEdge& first = graph_.edges[start.edge];
       const float first_cost = EdgeCost(mode, start.edge, day);
-      for (const Access& end : ends) {
-        const float out_km = end.distance_m / 1000.0F * LegCost(mode, end.point, to, day);
+      for (std::size_t at = 0; at < ends.size() && at < out_kms.size(); ++at) {
+        const Access& end = ends[at];
+        const float out_km = out_kms[at];
         const float last_cost = EdgeCost(mode, end.edge, day);
         if (start.edge == end.edge) {
           const float km =
@@ -704,8 +518,8 @@ class RoadIndexImpl final : public RoadIndex {
     day->trails = trails;
     const GroundFactors& factors = trails != nullptr ? trails->ground : GroundFactors{};
     // The key: the three beds' conditions and both modes' factors.
-    std::uint64_t key = 1469598103934665603ULL;
-    const auto mix = [&key](std::uint32_t value) { key = (key ^ value) * 1099511628211ULL; };
+    std::uint64_t key = kFnvOffsetBasis;
+    const auto mix = [&key](std::uint32_t value) { key = (key ^ value) * kFnvPrime; };
     for (const RoadCondition condition : beds.condition) {
       mix(static_cast<std::uint32_t>(condition));
     }
@@ -1238,10 +1052,13 @@ float WalkRouteKm(const WorldState& world,
   if (day != nullptr) {
     return base->WalkRouteKmWith(from, to, day, edges);
   }
-  // A bare index (no trail yet, a neutral ground): the lattice still gives the walker his
-  // steps, so the first trail can begin; its km is the straight line's by the normalisation.
+  // A bare index (no trail in effect this morning, a neutral ground): the lattice still gives
+  // the walker his steps, so the first trail can begin; its km is the straight line's by the
+  // normalisation. NOT world.trails: today's tread lands there during the day, and the day's
+  // costs are frozen at the morning's index (static review of 23 Nov 2026).
+  static const TrailTable kNoTrails;
   DayWeights neutral;
-  neutral.trails = &world.trails;
+  neutral.trails = &kNoTrails;
   return base->WalkRouteKmWith(from, to, &neutral, edges);
 }
 

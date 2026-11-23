@@ -16,6 +16,7 @@ kolkhoz_add_module(core_common
     herd_age_band.cpp
     road_graph.cpp
     road_route.cpp
+    trail_lattice.cpp
     trails.cpp
     road_rules.cpp
     road_view.cpp

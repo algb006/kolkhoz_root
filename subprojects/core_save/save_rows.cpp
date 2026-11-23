@@ -24,6 +24,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <tuple>
 #include <vector>
 
 #include "core_common/aggregate_arity.h"
@@ -2681,6 +2682,21 @@ TrailTable ReadTrails(LoadSource& source) {
   for (float& factor : trails.ground.ride) {
     factor = in.ReadFloat();
   }
+  // THE CONFIG'S OWN RANGES (static review of 23 Nov 2026; trail_config.cpp): a full trail
+  // dearer than a laid path (rule 6), a visible strength in 0..1, every ground factor in
+  // [0.05, 2] - a save is not a way around them.
+  bool factors_ok = true;
+  for (const float factor : trails.ground.walk) {
+    factors_ok = factors_ok && factor >= 0.05F && factor <= 2.0F;
+  }
+  for (const float factor : trails.ground.ride) {
+    factors_ok = factors_ok && factor >= 0.05F && factor <= 2.0F;
+  }
+  if (!(trails.weight_full > 1.0F && trails.weight_full <= 10.0F) ||
+      !(trails.visible_strength >= 0.0F && trails.visible_strength <= 1.0F) || !factors_ok) {
+    source.Fail("the trails' weight, visible strength or ground factors are out of range");
+    return trails;
+  }
   const std::uint32_t count = in.ReadU32();
   if (static_cast<std::size_t>(count) * kSavedTrailBytes > in.Remaining()) {
     source.Fail("the trails name more rows than the bytes left");
@@ -2697,7 +2713,9 @@ TrailTable ReadTrails(LoadSource& source) {
     row.snow = in.ReadFloat();
     const bool in_range =
         row.earth >= 0.0F && row.earth <= 1.0F && row.snow >= 0.0F && row.snow <= 1.0F;
-    const auto key = [](const TrailRow& r) { return std::tie(r.a.x, r.a.y, r.b.x, r.b.y); };
+    const auto key = [](const TrailRow& trail) {
+      return std::tie(trail.a.x, trail.a.y, trail.b.x, trail.b.y);
+    };
     const bool ordered = trails.rows.empty() || key(trails.rows.back()) < key(row);
     const bool lesser_first = std::tie(row.a.x, row.a.y) < std::tie(row.b.x, row.b.y);
     if (!in_range || !ordered || !lesser_first) {

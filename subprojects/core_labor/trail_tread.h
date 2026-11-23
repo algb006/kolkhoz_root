@@ -1,7 +1,7 @@
 /// @file
 /// @brief The morning's trodden paths (#2072; core_common/trail_state.h): the day's decay
-///        before the placement, the placed walkers' tread after it, and the road index
-///        re-trailed - the labour's two steps of the trail rules.
+///        before the placement and the placed people's tread after it - the labour's two steps
+///        of the trail rules.
 /// @threading SINGLE_THREADED
 /// Phase 3 (decisions and assignment), inside the morning placement.
 
@@ -11,33 +11,34 @@
 #include <cstdint>
 #include <span>
 
+#include "core_common/ids.h"
 #include "core_common/trail_state.h"
 #include "core_common/world_state.h"
 
 namespace core {
 
 struct AssignmentCandidate;
-struct AssignmentJob;
 
-/// @brief Rules 2-4 once a morning: writes the rules' weight and visible strength into the
-///        table (the loader and the session read them there), decays every trail by today's
-///        snow (snow_cover_days, today's precipitation), and re-trails the index.
+/// @brief Rules 2-4 once a morning: writes the rules' weight, visible strength and ground
+///        into the table (the loader and the session read them there), decays every trail by
+///        today's snow, and RE-DATES the index - the only place the day's trails take effect,
+///        so yesterday's tread counts from this morning and today's from tomorrow's.
 void DecayTrailsThisMorning(const TrailRules& rules, WorldState& current);
 
-/// @brief Rule 1 for the morning's placed walkers: each candidate the plan gave a job,
-///        walking (rides_horse 0 and in no cart), treads the open-ground legs of his way from
-///        home to the job - one pass a day. Rule 9: a leg whose midpoint lies on a field with
-///        a standing crop treads nothing. Re-trails the index after.
+/// @brief Rule 1 for the morning's placed people, after their work is written: who walks
+///        (WorkRidesOut false) treads his lattice route home → work; who rides from the horse
+///        yard treads his walk home → yard; every other rider treads nothing (rule 8). Rule 9:
+///        an edge whose midpoint lies on a field with a standing crop treads nothing. Every
+///        route is taken on the index as it stood this morning, before any edge is trodden, and
+///        the index is NOT re-dated here: today's tread changes tomorrow's ways (static review
+///        of 23 Nov 2026: it changed today's travel times).
 /// @param plan Per candidate: the job index, or kNoJobAssigned (PlanDayAssignments).
-/// @param rides_horse Per candidate, 1 on a horse; may be shorter (then nobody rides).
-/// @param rides_cart_with Per candidate, a driver's candidate index or kNoJobAssigned.
+/// @param horse_kind The horses' kind: where the yard's horses stand (HorseYardPositionOf).
 void TreadPlacedWalkers(const TrailRules& rules,
                         WorldState& current,
-                        std::span<const AssignmentJob> jobs,
                         std::span<const AssignmentCandidate> candidates,
                         std::span<const std::uint32_t> plan,
-                        std::span<const std::uint8_t> rides_horse,
-                        std::span<const std::uint32_t> rides_cart_with);
+                        LivestockKindId horse_kind);
 
 }  // namespace core
 

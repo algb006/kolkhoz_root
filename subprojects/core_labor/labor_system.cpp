@@ -1276,10 +1276,6 @@ class LaborSystem final : public ILaborSystem {
           }
         }
         RecordCrewGaps(current, jobs, plan, diagnosis.shortfall);
-        // TRODDEN PATHS (#2072): the placed walkers tread their open-ground legs. STUB: the
-        // chairman's ordered crews and the day's top-up tread nothing yet.
-        TreadPlacedWalkers(
-            config_.trails, current, jobs, candidates, plan, rides_horse, rides_cart_with);
         // What the plan left for a ride (#1205 (c1)): tomorrow's felling offer
         // and the chairman's FellingCanBeManned ask it.
         current.morning_horses_left = static_cast<std::uint16_t>(
@@ -1343,6 +1339,11 @@ class LaborSystem final : public ILaborSystem {
           work.travel_hours = -1.0F;  // a new target: its road is measured anew
         }
         book.reaping_today_hands = free_hands;
+        // TRODDEN PATHS (#2072): the placed people tread what they WALK, read off the work just
+        // written by the same predicates the world times it by (WorkRidesOut, the horse yard;
+        // static review of 23 Nov: the brigade cart's riders trod as walkers). STUB: the
+        // chairman's ordered crews and the day's top-up tread nothing yet.
+        TreadPlacedWalkers(config_.trails, current, candidates, plan, config_.horse_kind);
       }
     }
     // AND THE CHAIRMAN'S ORDERS SEND THEIR PEOPLE, after the placement (delegation design §7,

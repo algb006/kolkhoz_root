@@ -47,7 +47,8 @@ class TrailLegTally {
       }
       const std::size_t group = GroupOf(work.kind);
       Group& at = row.groups[group];
-      if (work.rides_horse != 0 || work.rides_cart_of.value != core::kInvalidEntityIdValue) {
+      // Who rides, by the world's own predicate (the brigade cart's riders included).
+      if (core::WorkRidesOut(world, work)) {
         ++at.riders;
         continue;
       }
