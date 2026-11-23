@@ -27,6 +27,7 @@
 #include "clerk_tally.h"
 #include "core_tables/tables.h"
 #include "core_world/world.h"
+#include "decomp_tally.h"
 #include "distiller_policy.h"
 #include "district_table_policy.h"
 #include "dry_pantry_tally.h"
@@ -399,6 +400,7 @@ class BuildingChairman {
     low_earners.CountDay(simulation.CompletedState());  // #1953's LOW1953
     trails.CountDay(simulation.CompletedState());       // #2072's TRAIL2072
     trail_legs.CountDay(simulation.CompletedState());   // #2072's LEGS2072
+    decomp.CountDay(simulation.CompletedState());       // #2072's DECOMP2072
     clerk.CountDay(simulation);                         // #589's print
     reputation.CountDay(simulation.CompletedState());   // #1897's REP1897
     plan_over.CountDay(simulation.CompletedState());    // #1946's OVER1946
@@ -599,6 +601,8 @@ class BuildingChairman {
   TrailTally trails;
   /// #2072's LEGS2072: every walking worker's open-ground legs, by group (trail_leg_tally.h).
   TrailLegTally trail_legs;
+  /// #2072's DECOMP2072: what the walking time could move, by village-year (decomp_tally.h).
+  DecompTally decomp;
   /// #2264's print: M1-M4 of the field-work coordinator, y1-y3 (field_work_tally.h).
   FieldWorkTally field_work;
   /// #589's print: the clerk's post and his family's satiety (clerk_tally.h).
