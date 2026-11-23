@@ -5,7 +5,7 @@
 # targets. The lake has none by design (terrain «Песок у подхода
 # к реке»): its beach is the player's unit.
 place,x_m,y_m
-access_beach_count_pond,9472.0,9909.0
+access_beach_count_pond,9477.4,9906.4
 access_beach_east_pond,10526.1,2020.2
 access_beach_river_bridge,7828.7,10077.7
 access_beach_village_pond,5196.8,4128.3
