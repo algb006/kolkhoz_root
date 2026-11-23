@@ -242,6 +242,18 @@ float ReachKm(const WorldState& world, TravelMode mode, Vec2 from, Vec2 to);
 /// @brief How many walking queries this process's indexes answered (#2072's lattice probe).
 std::uint64_t WalkQueries();
 
+/// @brief PROBE (#2072 lattice): this thread's walking queries since the last take - all and
+///        those whose window meets the trails' box, each with its distinct 25 m cell pairs.
+struct LatticeProbeDay {
+  std::uint64_t queries = 0;
+  std::uint64_t distinct_pairs = 0;
+  std::uint64_t boxed_queries = 0;
+  std::uint64_t boxed_pairs = 0;
+};
+
+/// @brief Takes and clears this thread's probe day (the run calls it once a village-day).
+LatticeProbeDay LatticeProbeTake();
+
 /// @brief How many day node tables this process has computed (the run's recompute cost).
 std::uint64_t DayTableBuilds();
 

@@ -24,6 +24,7 @@
 
 #include "core_common/calendar.h"
 #include "core_common/labor_state.h"
+#include "core_common/road_route.h"
 #include "core_common/road_rules.h"
 #include "core_common/trail_state.h"
 #include "core_common/world_state.h"
@@ -80,6 +81,18 @@ class TrailTally {
         row.longest_visible_m = length > row.longest_visible_m ? length : row.longest_visible_m;
       }
     }
+    // PROBE (#2072 lattice): this village-day's walking queries on this thread (queries asked
+    // on a parallel phase's worker threads are not counted - an UNDER-count).
+    const core::LatticeProbeDay probe = core::LatticeProbeTake();
+    row.probe_days += 1;
+    row.queries += probe.queries;
+    row.pairs += probe.distinct_pairs;
+    row.boxed += probe.boxed_queries;
+    row.boxed_pairs += probe.boxed_pairs;
+    row.worst_pairs =
+        probe.distinct_pairs > row.worst_pairs ? probe.distinct_pairs : row.worst_pairs;
+    row.worst_boxed_pairs =
+        probe.boxed_pairs > row.worst_boxed_pairs ? probe.boxed_pairs : row.worst_boxed_pairs;
     Month& at = row.months[month];
     at.rows_sum += world.trails.rows.size();
     at.visible_sum += visible;
@@ -97,7 +110,12 @@ class TrailTally {
           << " seasons(spr/sum/aut/win) " << PerDay(row.season[0]) << ' ' << PerDay(row.season[1])
           << ' ' << PerDay(row.season[2]) << ' ' << PerDay(row.season[3]) << " mud_days "
           << PerDay(row.mud) << " mud_walker_days " << row.mud.walker_days << " longest_visible_m "
-          << row.longest_visible_m << " | by_month rows/visible/visible_km/strongest";
+          << row.longest_visible_m << " lattice_per_day queries "
+          << Per(row.queries, row.probe_days) << " pairs " << Per(row.pairs, row.probe_days)
+          << " boxed " << Per(row.boxed, row.probe_days) << " boxed_pairs "
+          << Per(row.boxed_pairs, row.probe_days) << " worst_pairs " << row.worst_pairs
+          << " worst_boxed_pairs " << row.worst_boxed_pairs
+          << " | by_month rows/visible/visible_km/strongest";
       for (const Month& month : row.months) {
         const double days = month.days > 0 ? static_cast<double>(month.days) : 1.0;
         out << ' ' << static_cast<double>(month.rows_sum) / days << '/'
@@ -128,8 +146,14 @@ class TrailTally {
     std::array<Half, 4> season{};
     Half mud;
     double longest_visible_m = 0.0;
+    std::uint64_t probe_days = 0, queries = 0, pairs = 0, boxed = 0, boxed_pairs = 0;
+    std::uint64_t worst_pairs = 0, worst_boxed_pairs = 0;
     std::array<Month, core::kMonthsPerYear> months{};
   };
+
+  static double Per(std::uint64_t value, std::uint64_t days) {
+    return days > 0 ? static_cast<double>(value) / static_cast<double>(days) : 0.0;
+  }
 
   static double PerDay(const Half& half) {
     return half.walker_days > 0 ? half.walk_hours / static_cast<double>(half.walker_days) : 0.0;

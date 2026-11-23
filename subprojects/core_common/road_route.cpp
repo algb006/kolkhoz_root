@@ -10,6 +10,7 @@
 #include <memory>
 #include <queue>
 #include <span>
+#include <unordered_set>
 #include <utility>
 
 #include "core_common/state_table_ops.h"
@@ -84,6 +85,8 @@ struct NearCell {
 /// index - so walking time and every reach rule see one world.
 struct DayWeights {
   const TrailTable* trails = nullptr;
+  /// PROBE (#2072 lattice): the box of every trail cell, metres; empty (lo > hi) with none.
+  float box_lo_x = 1e30F, box_lo_y = 1e30F, box_hi_x = -1e30F, box_hi_y = -1e30F;
   /// Per mode, per edge: the cost multiplier (1 ÷ the factor of the edge's ground). Empty for
   /// a mode the ground does not touch (every factor 1).
   std::array<std::vector<float>, kTravelModeCountValue> edge_cost;
@@ -146,6 +149,40 @@ float GroundFactorOf(const GroundFactors& factors, TravelMode mode, GroundState 
     return factors.ride[index];
   }
   return 1.0F;
+}
+
+/// PROBE (#2072 lattice): this thread's day of walking queries - all, and those whose window
+/// (the from-to box + 200 m) meets the trails' box; each with its distinct 25 m cell pairs.
+struct LatticeDay {
+  std::uint64_t queries = 0;
+  std::uint64_t boxed = 0;
+  std::unordered_set<std::uint64_t> pairs;
+  std::unordered_set<std::uint64_t> boxed_pairs;
+};
+
+thread_local LatticeDay g_lattice_day;
+
+void LatticeProbeCount(Vec2 from, Vec2 to, const DayWeights* day) {
+  constexpr float kCell = 25.0F;
+  constexpr float kMargin = 200.0F;
+  const auto cell = [](float v) {
+    return static_cast<std::uint64_t>(std::lround(v / kCell)) & 0xFFFFU;
+  };
+  const std::uint64_t key =
+      (cell(from.x) << 48U) | (cell(from.y) << 32U) | (cell(to.x) << 16U) | cell(to.y);
+  ++g_lattice_day.queries;
+  g_lattice_day.pairs.insert(key);
+  if (day == nullptr || day->box_lo_x > day->box_hi_x) {
+    return;
+  }
+  const float lo_x = std::min(from.x, to.x) - kMargin, hi_x = std::max(from.x, to.x) + kMargin;
+  const float lo_y = std::min(from.y, to.y) - kMargin, hi_y = std::max(from.y, to.y) + kMargin;
+  if (hi_x < day->box_lo_x || lo_x > day->box_hi_x || hi_y < day->box_lo_y ||
+      lo_y > day->box_hi_y) {
+    return;
+  }
+  ++g_lattice_day.boxed;
+  g_lattice_day.boxed_pairs.insert(key);
 }
 
 /// A factor as a cost multiplier (a factor <= 0 is read as 1: no division by nought).
@@ -347,6 +384,7 @@ class RoadIndexImpl final : public RoadIndex {
     // answer, counted (the run prints it with the days it covered).
     if (mode == TravelMode::kWalk) {
       g_walk_queries.fetch_add(1, std::memory_order_relaxed);
+      LatticeProbeCount(from, to, day);
     }
     Choice best;
     if (MayGoAcross(mode)) {
@@ -531,6 +569,17 @@ class RoadIndexImpl final : public RoadIndex {
       mix(std::bit_cast<std::uint32_t>(factors.ride[index]));
     }
     day->key = key;
+    if (trails != nullptr) {
+      for (const TrailRow& row : trails->rows) {
+        for (const TrailEnd end : {row.a, row.b}) {
+          const Vec2 at = TrailEndPosition(end);
+          day->box_lo_x = std::min(day->box_lo_x, at.x);
+          day->box_lo_y = std::min(day->box_lo_y, at.y);
+          day->box_hi_x = std::max(day->box_hi_x, at.x);
+          day->box_hi_y = std::max(day->box_hi_y, at.y);
+        }
+      }
+    }
     const RoadCondition dirt = beds.condition[static_cast<std::size_t>(RoadBed::kDirt)];
     for (const TravelMode mode : {TravelMode::kWalk, TravelMode::kTeam}) {
       const auto mode_index = static_cast<std::size_t>(mode);
@@ -1055,6 +1104,15 @@ RouteMeasure ReachMeasure(const WorldState& world, TravelMode mode, Vec2 from, V
 
 float ReachKm(const WorldState& world, TravelMode mode, Vec2 from, Vec2 to) {
   return ReachMeasure(world, mode, from, to).effective_km;
+}
+
+LatticeProbeDay LatticeProbeTake() {
+  LatticeProbeDay out{.queries = g_lattice_day.queries,
+                      .distinct_pairs = g_lattice_day.pairs.size(),
+                      .boxed_queries = g_lattice_day.boxed,
+                      .boxed_pairs = g_lattice_day.boxed_pairs.size()};
+  g_lattice_day = LatticeDay{};
+  return out;
 }
 
 std::uint64_t WalkQueries() {
