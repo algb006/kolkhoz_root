@@ -411,3 +411,9 @@ alcohol_dose_k,1,core
 alcohol_dose_floor_ml,0,core
 alcohol_samogon_strength,0.4,core
 alcohol_dose_exposure,1,core
+trail_gain_per_pass,0.02,core
+trail_earth_decay_per_day,0.01,core
+trail_snow_decay_per_day,0.02,core
+trail_forest_decay_factor,1.5,core
+trail_weight_full,1.1,core
+trail_visible_strength,0.3,core
