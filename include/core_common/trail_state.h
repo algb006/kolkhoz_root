@@ -24,8 +24,12 @@
 ///   4. Snow and earth differ: a pass while snow lies writes `snow`, else `earth`. A snowfall
 ///      (fresh snow over the day's threshold) zeroes `snow`; the thaw (snow cover gone) zeroes
 ///      it too. Earth decays in weeks; snow lives from one snowfall to the next.
-///   5. Never in the forest: a leg either of whose ends, or whose midpoint, lies inside a
-///      timber stand's outline treads nothing.
+///   5. IN THE FOREST TOO (Alex 23 Nov 2026: «Давай отменим запрет на тропы в лесной зоне …
+///      Лес будет менее диким и будут сигналы где ходят люди»; the design's «В лес не
+///      заходит» is struck, roads.md §12): a leg inside a timber stand's outline treads like any
+///      other - pickers, hunters, firewood gatherers. Its earth decays faster under the trees,
+///      trail_forest_decay_factor (STUB 1.5, the undergrowth closing it), not a ban. Still no
+///      new ROAD is laid in the forest.
 ///   6. A laid path beats a trodden one: a full-strength trail weighs trail_weight_full a km,
 ///      always above a laid path's 1.0, so a laid path as short or shorter wins and the old
 ///      trail starves (rules 2-3). Nothing is torn down.
@@ -97,7 +101,10 @@ struct TrailRules {
   float gain_per_pass = 0.02F;        ///< `trail_gain_per_pass`: 50 passes make a full trail
   float earth_decay_per_day = 0.01F;  ///< `trail_earth_decay_per_day`: ~25 game days to vanish
   float snow_decay_per_day = 0.02F;   ///< `trail_snow_decay_per_day`
-  float snowfall_cm = 3.0F;           ///< `trail_snowfall_cm`: a day's fresh snow that erases
+  /// `trail_forest_decay_factor`: earth decay inside a timber stand's outline, times the
+  /// open ground's (STUB 1.5: the undergrowth closes a trail faster; 1 = the same).
+  float forest_decay_factor = 1.5F;
+  float snowfall_cm = 3.0F;  ///< `trail_snowfall_cm`: a day's fresh snow that erases
   /// `trail_weight_full`: a km of full trail, > 1.0 (rule 6). 1.10, not 1.05 (econ's review,
   /// 23 Nov): a laid path on a busy trail still saves ~9 %, so laying stays a decision.
   float weight_full = 1.10F;
