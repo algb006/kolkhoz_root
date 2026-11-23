@@ -4,6 +4,9 @@
 #include "trail_lattice.h"
 
 #include <algorithm>
+#include <array>
+#include <atomic>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -38,7 +41,7 @@ float Distance(Vec2 a, Vec2 b) {
 /// The mean cost a km of the lattice edges the line crosses, sampled every half cell from the
 /// lesser end (x, then y) - one canonical direction, so a pair answers the same either way
 /// (static review of 23 Nov 2026). A line inside one cell crosses no edge: open ground.
-float MeanCrossedCost(const TrailTable& trails,
+float MeanCrossedCost(const TrailLookup& trails,
                       Vec2 from,
                       Vec2 to,
                       float length,
@@ -116,36 +119,82 @@ float CostOf(float factor) {
   return factor > 0.0F ? 1.0F / factor : 1.0F;
 }
 
-float StepCost(const TrailTable& trails,
+namespace {
+
+/// An edge's key, its lesser end first (the table's own order: x, then y).
+std::uint64_t EdgeKey(TrailEnd a, TrailEnd b) {
+  if (std::tie(b.x, b.y) < std::tie(a.x, a.y)) {
+    std::swap(a, b);
+  }
+  const auto cell = [](TrailEnd end) {
+    return (static_cast<std::uint64_t>(static_cast<std::uint32_t>(end.x) & 0xFFFFU) << 16U) |
+           (static_cast<std::uint32_t>(end.y) & 0xFFFFU);
+  };
+  return (cell(a) << 32U) | cell(b);
+}
+
+}  // namespace
+
+const TrailRow* TrailLookup::Find(TrailEnd a, TrailEnd b) const {
+  if (rows.empty()) {
+    return table != nullptr ? FindTrailEdge(*table, a, b) : nullptr;
+  }
+  const auto found = rows.find(EdgeKey(a, b));
+  return found != rows.end() ? found->second : nullptr;
+}
+
+TrailLookup MakeLookup(const TrailTable& table) {
+  TrailLookup lookup;
+  lookup.table = &table;
+  lookup.rows.reserve(table.rows.size());
+  for (const TrailRow& row : table.rows) {
+    lookup.rows.emplace(EdgeKey(row.a, row.b), &row);
+  }
+  return lookup;
+}
+
+std::shared_ptr<const TrailLookup> LookupOf(const TrailTable* table) {
+  if (table == nullptr || table->rows.empty()) {
+    return nullptr;
+  }
+  return std::make_shared<const TrailLookup>(MakeLookup(*table));
+}
+
+const TrailLookup& NoLookup() {
+  static const TrailLookup kNone;
+  return kNone;
+}
+
+float StepCost(const TrailLookup& trails,
                TrailEnd from_cell,
                TrailEnd to_cell,
                float open_weight,
                float open_cost,
                float snow_trail_cost) {
-  const TrailRow* const row = FindTrailEdge(trails, from_cell, to_cell);
+  const TrailRow* const row = trails.Find(from_cell, to_cell);
   if (row == nullptr) {
     return open_weight * open_cost;
   }
-  const float full = std::min(open_weight, trails.weight_full);
+  const float full = std::min(open_weight, trails.WeightFull());
   const float weight = open_weight - (TrailStrength(*row) * (open_weight - full));
   return weight * (row->snow > 0.0F ? snow_trail_cost : open_cost);
 }
 
-float StraightKm(const TrailTable& trails,
+float StraightKm(const TrailLookup& trails,
                  Vec2 from,
                  Vec2 to,
                  float open_weight,
                  float open_cost,
                  float snow_trail_cost) {
   const float length = Distance(from, to);
-  if (!(length > 0.0F) || trails.rows.empty()) {
+  if (!(length > 0.0F) || trails.Empty()) {
     return length / kMetresPerKm * open_weight * open_cost;
   }
   return length / kMetresPerKm *
          MeanCrossedCost(trails, from, to, length, open_weight, open_cost, snow_trail_cost);
 }
 
-float RouteKm(const TrailTable& trails,
+float RouteKm(const TrailLookup& trails,
               Vec2 from,
               Vec2 to,
               float open_weight,
@@ -173,7 +222,7 @@ float RouteKm(const TrailTable& trails,
   const float cell_km = kTrailSnapMetres / kMetresPerKm;
   // The heuristic's cheapest km: a full trail on the cheaper ground - never over the truth.
   const float cheapest =
-      std::min(open_weight, trails.weight_full) * std::min(open_cost, snow_trail_cost);
+      std::min(open_weight, trails.WeightFull()) * std::min(open_cost, snow_trail_cost);
   const auto octile_km = [&](std::int32_t x, std::int32_t y) {
     const auto across = static_cast<float>(std::abs(x - goal.x));
     const auto up = static_cast<float>(std::abs(y - goal.y));
@@ -235,6 +284,108 @@ float RouteKm(const TrailTable& trails,
   // The normalisation: the untrodden lattice route between the same cells is octile x open.
   const float untrodden = octile_km(start.x, start.y) * open_weight * open_cost;
   return untrodden > 0.0F ? straight * (routed / untrodden) : straight;
+}
+
+namespace {
+
+/// A memo's key: the day and every input's bits - a hit is the same question, exactly.
+using MemoKey = std::array<std::uint32_t, 9>;
+
+struct MemoKeyHash {
+  std::size_t operator()(const MemoKey& key) const {
+    std::uint64_t hash = 14695981039346656037ULL;  // FNV-1a
+    for (const std::uint32_t word : key) {
+      hash = (hash ^ word) * 1099511628211ULL;
+    }
+    return static_cast<std::size_t>(hash);
+  }
+};
+
+MemoKey KeyOf(std::uint64_t serial,
+              Vec2 from,
+              Vec2 to,
+              float open_weight,
+              float open_cost,
+              float snow_trail_cost) {
+  return {static_cast<std::uint32_t>(serial),
+          static_cast<std::uint32_t>(serial >> 32U),
+          std::bit_cast<std::uint32_t>(from.x),
+          std::bit_cast<std::uint32_t>(from.y),
+          std::bit_cast<std::uint32_t>(to.x),
+          std::bit_cast<std::uint32_t>(to.y),
+          std::bit_cast<std::uint32_t>(open_weight),
+          std::bit_cast<std::uint32_t>(open_cost),
+          std::bit_cast<std::uint32_t>(snow_trail_cost)};
+}
+
+/// A memo bounded in size: cleared when the day changes or it grows past kMemoCap.
+template <typename Value>
+struct DayMemo {
+  static constexpr std::size_t kMemoCap = 1U << 18U;
+  std::uint64_t serial = 0;
+  std::unordered_map<MemoKey, Value, MemoKeyHash> answers;
+
+  void Enter(std::uint64_t day) {
+    if (day != serial || answers.size() > kMemoCap) {
+      answers.clear();
+      serial = day;
+    }
+  }
+};
+
+struct RouteAnswer {
+  float km = 0.0F;
+  std::vector<std::pair<TrailEnd, TrailEnd>> edges;
+};
+
+std::atomic<std::uint64_t> g_day_serial{0};
+
+}  // namespace
+
+std::uint64_t NextDaySerial() {
+  return g_day_serial.fetch_add(1, std::memory_order_relaxed) + 1U;
+}
+
+float StraightKmMemo(std::uint64_t serial,
+                     const TrailLookup& trails,
+                     Vec2 from,
+                     Vec2 to,
+                     float open_weight,
+                     float open_cost,
+                     float snow_trail_cost) {
+  thread_local DayMemo<float> memo;
+  memo.Enter(serial);
+  const MemoKey key = KeyOf(serial, from, to, open_weight, open_cost, snow_trail_cost);
+  const auto found = memo.answers.find(key);
+  if (found != memo.answers.end()) {
+    return found->second;
+  }
+  const float km = StraightKm(trails, from, to, open_weight, open_cost, snow_trail_cost);
+  memo.answers.emplace(key, km);
+  return km;
+}
+
+float RouteKmMemo(std::uint64_t serial,
+                  const TrailLookup& trails,
+                  Vec2 from,
+                  Vec2 to,
+                  float open_weight,
+                  float open_cost,
+                  float snow_trail_cost,
+                  std::vector<std::pair<TrailEnd, TrailEnd>>* edges) {
+  thread_local DayMemo<RouteAnswer> memo;
+  memo.Enter(serial);
+  const MemoKey key = KeyOf(serial, from, to, open_weight, open_cost, snow_trail_cost);
+  auto found = memo.answers.find(key);
+  if (found == memo.answers.end()) {
+    RouteAnswer answer;
+    answer.km = RouteKm(trails, from, to, open_weight, open_cost, snow_trail_cost, &answer.edges);
+    found = memo.answers.emplace(key, std::move(answer)).first;
+  }
+  if (edges != nullptr) {
+    edges->insert(edges->end(), found->second.edges.begin(), found->second.edges.end());
+  }
+  return found->second.km;
 }
 
 }  // namespace core::lattice

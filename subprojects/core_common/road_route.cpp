@@ -120,7 +120,6 @@ class RoadIndexImpl final : public RoadIndex {
     return EffectiveKmWith(mode, from, to, nullptr);
   }
 
-  // THE DAY'S QUERIES (road_day.h): the same queries with the day's costs; nullptr is bare.
   float EffectiveKmWith(TravelMode mode, Vec2 from, Vec2 to, const DayWeights* day) const {
     const std::vector<Access> starts = Accesses(mode, from);
     const std::vector<Access> ends = Accesses(mode, to);
@@ -238,34 +237,32 @@ class RoadIndexImpl final : public RoadIndex {
     bool end_forward = true;
   };
 
-  /// An open-ground leg's cost a km: the mode's weight, lowered by a trail for a walker
-  /// (#2072), divided by the open ground's factor - a snow trail's as wet ground (roads.md §3).
+  /// An open-ground leg's cost a km: the QUERY door (trail_lattice.h, StraightKm).
   float LegCost(TravelMode mode, Vec2 from, Vec2 to, const DayWeights* day) const {
     const auto mode_index = static_cast<std::size_t>(mode);
     const float weight = rules_.off_road_weight[mode_index];
     if (day == nullptr) {
       return weight;
     }
-    if (day->trails == nullptr || mode != TravelMode::kWalk || day->trails->rows.empty()) {
+    if (day->lookup == nullptr || mode != TravelMode::kWalk || day->lookup->Empty()) {
       return weight * day->open_cost[mode_index];
     }
-    // THE QUERY DOOR (#2072 (A)): the straight line weighted by the lattice edges it crosses.
     const float length = Distance(from, to);
     if (!(length > 0.0F)) {
       return weight * day->open_cost[mode_index];
     }
-    return lattice::StraightKm(*day->trails,
-                               from,
-                               to,
-                               weight,
-                               day->open_cost[mode_index],
-                               day->snow_trail_cost[mode_index]) /
+    return lattice::StraightKmMemo(day->serial,
+                                   *day->lookup,
+                                   from,
+                                   to,
+                                   weight,
+                                   day->open_cost[mode_index],
+                                   day->snow_trail_cost[mode_index]) /
            (length / 1000.0F);
   }
 
  public:
-  /// THE WALKER'S DOOR (#2072 (A)): the walking way's km with every open-ground leg routed
-  /// over the lattice (lattice::RouteKm), its steps into `edges`; the network legs as Way's.
+  /// THE WALKER'S DOOR: Way's legs, every open one routed (trail_lattice.h, RouteKm).
   float WalkRouteKmWith(Vec2 from,
                         Vec2 to,
                         const DayWeights* day,
@@ -275,19 +272,22 @@ class RoadIndexImpl final : public RoadIndex {
       return way.effective_km;
     }
     const auto walk = static_cast<std::size_t>(TravelMode::kWalk);
+    const lattice::TrailLookup& lookup =
+        day->lookup != nullptr ? *day->lookup : lattice::NoLookup();
     float km = 0.0F;
     for (const RouteLeg& leg : way.legs) {
       if (leg.on_road) {
         km += leg.effective_km;
         continue;
       }
-      km += lattice::RouteKm(*day->trails,
-                             leg.from,
-                             leg.to,
-                             rules_.off_road_weight[walk],
-                             day->open_cost[walk],
-                             day->snow_trail_cost[walk],
-                             edges);
+      km += lattice::RouteKmMemo(day->serial,
+                                 lookup,
+                                 leg.from,
+                                 leg.to,
+                                 rules_.off_road_weight[walk],
+                                 day->open_cost[walk],
+                                 day->snow_trail_cost[walk],
+                                 edges);
     }
     return km;
   }
@@ -495,6 +495,8 @@ class RoadIndexImpl final : public RoadIndex {
                                             const DayWeights* previous) const {
     auto day = std::make_shared<DayWeights>();
     day->trails = trails;
+    day->serial = lattice::NextDaySerial();
+    day->lookup = lattice::LookupOf(trails);
     const GroundFactors& factors = trails != nullptr ? trails->ground : GroundFactors{};
     // The key: the three beds' conditions and both modes' factors.
     std::uint64_t key = kFnvOffsetBasis;
@@ -555,8 +557,7 @@ class RoadIndexImpl final : public RoadIndex {
     return GroundOffRoad(beds.condition[static_cast<std::size_t>(RoadBed::kDirt)]);
   }
 
-  /// How many day tables were computed in this process (the run prints the recompute cost);
-  /// atomic because a run's villages walk on several threads, and it is counted rarely.
+  /// Day tables computed in this process (atomic: villages walk on several threads).
   static inline std::atomic<std::uint64_t> g_day_table_builds{0};
 
  private:

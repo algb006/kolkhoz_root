@@ -17,6 +17,7 @@
 
 #include "core_common/road_route.h"
 #include "core_common/trail_state.h"
+#include "trail_lattice.h"
 
 namespace core::road_day {
 
@@ -25,6 +26,11 @@ namespace core::road_day {
 ///        rule see one world.
 struct DayWeights {
   const TrailTable* trails = nullptr;
+  /// The trails made O(1) to look up, over `trails` (null with no trail: open ground).
+  std::shared_ptr<const lattice::TrailLookup> lookup;
+  /// This day's process-unique number, never reused (a memo keys on it, not on the address,
+  /// which a freed day could hand to a new one); 0 for a call's neutral day.
+  std::uint64_t serial = 0;
   /// Per mode, per edge: the cost multiplier (1 ÷ the factor of the edge's ground). Empty for
   /// a mode the ground does not touch (every factor 1).
   std::array<std::vector<float>, kTravelModeCountValue> edge_cost;

@@ -9,6 +9,9 @@
 #ifndef CORE_COMMON_TRAIL_LATTICE_H_
 #define CORE_COMMON_TRAIL_LATTICE_H_
 
+#include <cstdint>
+#include <memory>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -33,9 +36,33 @@ float GroundFactorOf(const GroundFactors& factors, TravelMode mode, GroundState 
 /// @brief A factor as a cost multiplier (a factor <= 0 is read as 1: no division by nought).
 float CostOf(float factor);
 
+/// @brief The day's trails made O(1) to look up (#2072 CPU: a binary search per crossed edge
+///        was 72 % of a trodden run's extra time). Built once with the day's weights over the
+///        day index's own copy of the table, which outlives it. An answer is the table's own.
+struct TrailLookup {
+  const TrailTable* table = nullptr;
+  std::unordered_map<std::uint64_t, const TrailRow*> rows;
+
+  /// @brief The row of the edge between two cells (either way), or nullptr.
+  const TrailRow* Find(TrailEnd a, TrailEnd b) const;
+
+  bool Empty() const { return table == nullptr || table->rows.empty(); }
+
+  float WeightFull() const { return table != nullptr ? table->weight_full : 1.10F; }
+};
+
+/// @brief The lookup over `table` (which must outlive it).
+TrailLookup MakeLookup(const TrailTable& table);
+
+/// @brief A shared lookup over `table`, or null with no table or no row.
+std::shared_ptr<const TrailLookup> LookupOf(const TrailTable* table);
+
+/// @brief The empty lookup: open ground everywhere.
+const TrailLookup& NoLookup();
+
 /// @brief A lattice edge's cost a km for a walker: open ground's weight lowered by the edge's
 ///        trail toward weight_full, times the ground's cost (a snow-bearing edge as wet).
-float StepCost(const TrailTable& trails,
+float StepCost(const TrailLookup& trails,
                TrailEnd from_cell,
                TrailEnd to_cell,
                float open_weight,
@@ -47,7 +74,7 @@ float StepCost(const TrailTable& trails,
 ///        a pair answers the same in either direction (static review of 23 Nov 2026: pricing each
 ///        piece by the edge last crossed gave the two directions different first and last cells).
 ///        Open ground where the line crosses no edge.
-float StraightKm(const TrailTable& trails,
+float StraightKm(const TrailLookup& trails,
                  Vec2 from,
                  Vec2 to,
                  float open_weight,
@@ -60,13 +87,39 @@ float StraightKm(const TrailTable& trails,
 ///        exactly the straight line (a lattice path runs up to 8.2 % over the line it follows:
 ///        the octile bound, about a full trail's whole discount) and a trodden one that times
 ///        its ratio to the untrodden. `edges` (nullable) gets the steps, in order.
-float RouteKm(const TrailTable& trails,
+float RouteKm(const TrailLookup& trails,
               Vec2 from,
               Vec2 to,
               float open_weight,
               float open_cost,
               float snow_trail_cost,
               std::vector<std::pair<TrailEnd, TrailEnd>>* edges);
+
+/// @brief A new day's process-unique serial (never 0, never reused): what the memos key on.
+std::uint64_t NextDaySerial();
+
+/// @brief StraightKm through this thread's memo of the day `serial` (#2072 CPU: the same legs
+///        are priced again and again all day). Exact: a hit returns the very value StraightKm
+///        gave for the same day, ends and costs. Cleared when the day changes.
+float StraightKmMemo(std::uint64_t serial,
+                     const TrailLookup& trails,
+                     Vec2 from,
+                     Vec2 to,
+                     float open_weight,
+                     float open_cost,
+                     float snow_trail_cost);
+
+/// @brief RouteKm through this thread's memo of the day `serial` - the km and the steps; the
+///        timing door and the tread ask the same home -> work pair. Exact, as StraightKmMemo.
+///        Serial 0 (a neutral day: no trail) is keyed too: its route is pure geometry.
+float RouteKmMemo(std::uint64_t serial,
+                  const TrailLookup& trails,
+                  Vec2 from,
+                  Vec2 to,
+                  float open_weight,
+                  float open_cost,
+                  float snow_trail_cost,
+                  std::vector<std::pair<TrailEnd, TrailEnd>>* edges);
 
 }  // namespace core::lattice
 
