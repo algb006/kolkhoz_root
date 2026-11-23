@@ -17,6 +17,7 @@
 #include "core_common/horse_yard_road.h"
 #include "core_common/land_state.h"
 #include "core_common/road_route.h"
+#include "core_common/time_probe.h"
 #include "core_common/work_seam.h"
 
 namespace core {
@@ -68,6 +69,7 @@ bool CrossesAStandingCrop(std::span<const StandingCrop> crops, Vec2 from, Vec2 t
 }  // namespace
 
 void DecayTrailsThisMorning(const TrailRules& rules, WorldState& current) {
+  const probe::Timer timer(probe::Slot::kDecay);
   // YESTERDAY'S TREAD LANDS NOW (save 229): trodden as it was, then decayed as the morning
   // always decayed it - the same trails as treading it yesterday would have left.
   for (const TrailPass& pass : current.walks.pending) {
@@ -123,6 +125,7 @@ void TreadPlacedWalkers(const TrailRules& rules,
                         std::span<const AssignmentCandidate> candidates,
                         std::span<const std::uint32_t> plan,
                         LivestockKindId horse_kind) {
+  const probe::Timer timer(probe::Slot::kTread);
   if (!(rules.gain_per_pass > 0.0F)) {
     return;
   }
