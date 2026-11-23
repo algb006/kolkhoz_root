@@ -642,9 +642,18 @@ class ISession {
   /// @brief The village's trodden paths (core_common/trail_state.h; #2072): every trail with
   ///        its ends, strength, ground and the core's own «visible». The layer draws from it
   ///        and keeps no trail memory of its own (roads design: «Слой получает её как view»).
+  /// @param visible_only True: only the trails at or above the visible strength (host's size
+  ///        note: the faint ones are most rows and nobody draws them).
   /// @note Between steps; a pure read of State(). CONTRACT: the default answers none until
   ///       the body.
-  virtual std::vector<TrailView> Trails() const { return {}; }
+  virtual std::vector<TrailView> Trails(bool visible_only) const {
+    (void)visible_only;
+    return {};
+  }
+
+  /// @brief How many trails the village has, and how many are visible: the count without the
+  ///        rows. CONTRACT: {0, 0} until the body.
+  virtual TrailCount CountTrails() const { return {}; }
 
   /// @brief «Сводка для сохранения» (save_summary_view.h; shell.md §4а; host 108 §3.1а,
   ///        SlotHeader field 11): the slot header's entries as kinds with params, in

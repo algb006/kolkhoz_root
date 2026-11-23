@@ -104,6 +104,12 @@ struct TrailRules {
   float visible_strength = 0.3F;  ///< `trail_visible_strength`: the layer draws it above
 };
 
+/// @brief The trails' count (ISession::CountTrails).
+struct TrailCount {
+  std::uint32_t all = 0;
+  std::uint32_t visible = 0;
+};
+
 /// @brief One trail as the layer and the game read it (ISession::Trails): the two ends in
 ///        metres, its strength, which ground, and whether it is visible - the core's one
 ///        threshold, so the layer keeps no number of its own.
