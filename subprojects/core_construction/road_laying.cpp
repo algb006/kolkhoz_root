@@ -192,7 +192,7 @@ std::optional<RoadOperation> UpgradeOf(RoadSurface target) {
 /// system.cpp, Replan; one an hour) draws them over the new one. Until C4 a
 /// road finished at noon was driven only from the next morning's plan.
 void RebuildRoadIndex(WorldState& current) {
-  current.road_index = BuildRoadIndex(current.roads);
+  current.road_index = BuildRoadIndex(current.roads, current.trails);  // #2072: the one door
   current.groom_plan.stale = true;
 }
 

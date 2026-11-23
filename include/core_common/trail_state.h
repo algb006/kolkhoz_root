@@ -2,11 +2,12 @@
 /// @brief TRODDEN PATHS (#2072; roads design «Как именно протаптывается тропа — механика, 16
 ///        сентября 2026», Alex 23 Nov 2026: «Надо добавлять механику троп сейчас, от этого
 ///        зависит геймплей»): the strength of the ground people walk, on the open-ground legs
-///        of the core's own walking routes. CONTRACT - the state, its rules and its doors; the
-///        body is the next task (core CLAUDE.md §12а).
+///        of the core's own walking routes - the state, its rules and the pure functions that
+///        keep them (trails.cpp).
 /// @threading SINGLE_THREADED
-/// Written once a day in the events phase (6); read by every route query through the road
-/// index (road_route.h), which is immutable and shared.
+/// Written once a day by the morning placement (phase 3, decisions and assignment: the day's
+/// decay, then the placed walkers' tread); read by every route query through the road index
+/// (road_route.h, WithTrails), which is immutable and shared.
 ///
 /// WHAT A TRAIL IS. The core routes a walker (TravelMode::kWalk) over roads and paths plus
 /// OPEN-GROUND LEGS: from his start straight to where he joins the network, from where he
@@ -16,47 +17,55 @@
 /// grid, so every walker who takes «the same» leg treads the same row. Two legs that cross are
 /// two trails; nothing merges them.
 ///
+/// WHO TREADS. The placed walkers of the morning: each resident the placement gave a job
+/// with a place, walking (not on a horse, not in a cart), treads the open-ground legs of his
+/// way from home to it - once a day, for the round trip. STUB of the rest: the bathers' and
+/// the day-off walkers' ways tread nothing yet (their reach reads the trails all the same).
+///
 /// THE RULES (design table, each a test of the body):
 ///   1. Grows with walking: each walker-pass over a leg adds trail_gain_per_pass.
-///   2. Decays with disuse: every day each row loses trail_decay_per_day, earth and snow alike
-///      at their own rates.
+///   2. Decays with disuse: every morning each row loses its decay, earth and snow each at
+///      its own rate.
 ///   3. Vanishes COMPLETELY at 0: the row is deleted - no memory of a former trail.
-///   4. Snow and earth differ: a pass while snow lies writes `snow`, else `earth`. A snowfall
-///      (fresh snow over the day's threshold) zeroes `snow`; the thaw (snow cover gone) zeroes
-///      it too. Earth decays in weeks; snow lives from one snowfall to the next.
+///   4. Snow and earth differ: a pass while snow lies (WeatherState::snow_cover_days > 0)
+///      writes `snow`, else `earth`. A day of falling snow (Precipitation::kSnow) zeroes
+///      `snow` before the day's tread; so does a bare day (the thaw: no cover). Earth decays
+///      in weeks; snow lives from one snowfall to the next.
 ///   5. IN THE FOREST TOO (Alex 23 Nov 2026: «Давай отменим запрет на тропы в лесной зоне …
 ///      Лес будет менее диким и будут сигналы где ходят люди»; the design's «В лес не
-///      заходит» is struck, roads.md §12): a leg inside a timber stand's outline treads like any
-///      other - pickers, hunters, firewood gatherers. Its earth decays faster under the trees,
-///      trail_forest_decay_factor (STUB 1.5, the undergrowth closing it), not a ban. Still no
-///      new ROAD is laid in the forest.
-///   6. A laid path beats a trodden one: a full-strength trail weighs trail_weight_full a km,
-///      always above a laid path's 1.0, so a laid path as short or shorter wins and the old
-///      trail starves (rules 2-3). Nothing is torn down.
+///      заходит» is struck, roads.md §12): a leg in the forest treads like any other.
+///      trail_forest_decay_factor (1.5, the undergrowth) is READ AND NOT APPLIED: the core
+///      holds no stand outline (TimberStandRow keeps a loading point, not a shape), so «inside
+///      the forest» has no answer here. STUB until the map's forest outlines enter the core.
+///      Still no new ROAD is laid in the forest.
+///   6. A laid path beats a trodden one: a full-strength trail weighs TrailTable::weight_full
+///      a km, always above a laid path's 1.0, so a laid path as short or shorter wins and the
+///      old trail starves (rules 2-3). Nothing is torn down.
 ///   7. A trodden path never becomes a laid one: no rule writes a RoadTable row.
 ///   8. People only: carts, teams and log carts tread nothing (boss 23 Nov).
 ///   9. ACCEPTED by econ's review (23 Nov; «a path through a field?»): a leg whose midpoint
 ///      lies on an arable field with a standing crop (FieldPhase growing or harvest) treads
-///      nothing, and costs the crop nothing - no loss is modelled. The walker still crosses at
-///      open ground's weight. Returns as a crop loss only on boss's word that it yields a
-///      decision (design limits §1).
+///      nothing, and costs the crop nothing - no loss is modelled. The field is its disc
+///      (centre, area): the core keeps no field outline (STUB of the shape). Returns as a crop
+///      loss only on boss's word that it yields a decision (design limits §1).
 ///
 /// THE WEIGHT. A walker's open-ground leg weighs off_road_weight[kWalk] (1.2) a km, lowered
 /// linearly by its trail's strength s (0..1, earth and snow summed, capped at 1) toward
-/// trail_weight_full: w = 1.2 − s × (1.2 − trail_weight_full).
+/// weight_full: w = 1.2 − s × (1.2 − weight_full).
 ///
 /// ONE DOOR FOR EVERY WALKING RULE (econ's review question, 23 Nov). The weight enters INSIDE
-/// the road index, not at a caller: the day's close builds a new index sharing the network's
-/// node-to-node distances, which trails do not touch, and carrying the trail weights, and
-/// puts it into WorldState::road_index. RoadKm, RoadMeasure, the accountant's found-place
-/// queries and home_reach's cache (keyed on the index's address) all read it, so walking time,
-/// bathing reach (#1421) and leisure reach (1 000 m) see the same trails or none.
+/// the road index, not at a caller: WithTrails wraps the network's index (its node-to-node
+/// distances shared, trails do not touch them) with the trails' weights, and every builder of
+/// WorldState::road_index - genesis, load, a laid road, the morning's tread - goes through it.
+/// RoadKm, RoadMeasure, the accountant's found-place queries and home_reach's cache (keyed on
+/// the index's address) all read it, so walking time, bathing reach (#1421) and leisure reach
+/// (1 000 m) see the same trails or none.
 ///
-/// THE START. No trail exists at genesis (boss 23 Nov; Alex: «На старте тропы оставить только
-/// у старой деревни» - those are LAID map paths, kept in roads.csv).
+/// THE START. No trail exists at genesis (boss 23 Nov; Alex kept the four start paths, which
+/// are LAID map paths in roads.csv).
 ///
-/// SAVED: save 226 → 227, one section (the rows below). The index is derived and rebuilt on
-/// load from roads + trails.
+/// SAVED: save 226 → 227, one section (weight_full, visible_strength and the rows). The index is
+/// derived and rebuilt on load from roads + trails.
 
 #ifndef CORE_COMMON_TRAIL_STATE_H_
 #define CORE_COMMON_TRAIL_STATE_H_
@@ -93,18 +102,24 @@ struct TrailRow {
 /// @brief Every trail of the village, sorted by (a, b): the order is the key's, so the save
 ///        and the index read one deterministic sequence. Empty at genesis.
 struct TrailTable {
+  /// A km of full trail (rule 6), kept here and saved so that every builder of the road
+  /// index - the loader and the road laying included, which read no world_params - weighs
+  /// trails alike. The morning writes it from TrailRules::weight_full.
+  float weight_full = 1.10F;
+  /// The strength the layer draws a trail at (TrailView::visible), kept here for the same
+  /// reason: the session reads no world_params. The morning writes it.
+  float visible_strength = 0.3F;
   std::vector<TrailRow> rows;
 };
 
-/// @brief The rule's numbers (world_params, all `trail_*`; STUBs until econ's review).
+/// @brief The rule's numbers (world_params, all `trail_*`; STUBs, econ's review 23 Nov).
 struct TrailRules {
   float gain_per_pass = 0.02F;        ///< `trail_gain_per_pass`: 50 passes make a full trail
   float earth_decay_per_day = 0.01F;  ///< `trail_earth_decay_per_day`: ~25 game days to vanish
   float snow_decay_per_day = 0.02F;   ///< `trail_snow_decay_per_day`
-  /// `trail_forest_decay_factor`: earth decay inside a timber stand's outline, times the
-  /// open ground's (STUB 1.5: the undergrowth closes a trail faster; 1 = the same).
+  /// `trail_forest_decay_factor`: earth decay in the forest, times the open ground's (1.5:
+  /// the undergrowth). READ, NOT APPLIED - rule 5's STUB.
   float forest_decay_factor = 1.5F;
-  float snowfall_cm = 3.0F;  ///< `trail_snowfall_cm`: a day's fresh snow that erases
   /// `trail_weight_full`: a km of full trail, > 1.0 (rule 6). 1.10, not 1.05 (econ's review,
   /// 23 Nov): a laid path on a busy trail still saves ~9 %, so laying stays a decision.
   float weight_full = 1.10F;
@@ -127,6 +142,40 @@ struct TrailView {
   bool over_snow = false;  ///< the snow part is the larger
   bool visible = false;    ///< strength >= TrailRules::visible_strength
 };
+
+/// @brief A point on the snap grid (rounded to the nearest cell).
+TrailEnd SnapTrailEnd(Vec2 point);
+
+/// @brief A grid end back in metres.
+Vec2 TrailEndPosition(TrailEnd end);
+
+/// @brief earth + snow, capped at 1.
+float TrailStrength(const TrailRow& row);
+
+/// @brief The row of the leg from `from` to `to` (either way), or nullptr; ends snapped.
+const TrailRow* FindTrail(const TrailTable& trails, Vec2 from, Vec2 to);
+
+/// @brief Rule 1: one pass over the leg adds `gain` to its earth (or snow, `over_snow`),
+///        capped at 1; the row is inserted in key order if new. A leg whose snapped ends are
+///        one cell treads nothing (no length on the grid).
+void TreadTrail(TrailTable& trails, Vec2 from, Vec2 to, bool over_snow, float gain);
+
+/// @brief Rules 2-4: the morning's decay - snow zeroed on a snowfall or a bare day, every row
+///        loses its decay, and a row at 0 on both grounds is deleted (rule 3).
+/// @param snow_lies WeatherState::snow_cover_days > 0.
+/// @param snow_falls Today's precipitation is snow.
+void DecayTrails(TrailTable& trails, const TrailRules& rules, bool snow_lies, bool snow_falls);
+
+/// @brief The walker's weight of an open-ground leg, a km (THE WEIGHT above): `open_weight`
+///        lowered by the leg's trail toward trails.weight_full; `open_weight` with no trail.
+float TrailLegWeight(const TrailTable& trails, Vec2 from, Vec2 to, float open_weight);
+
+/// @brief The views of the trails (ISession::Trails), in the table's order; visible by
+///        trails.visible_strength.
+std::vector<TrailView> TrailViews(const TrailTable& trails, bool visible_only);
+
+/// @brief How many trails, and how many visible (ISession::CountTrails).
+TrailCount CountTrailRows(const TrailTable& trails);
 
 }  // namespace core
 

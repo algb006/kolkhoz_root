@@ -80,6 +80,7 @@ constexpr const char* kSectionLogisticsTasks = "logistics_tasks";
 constexpr const char* kSectionSettlements = "settlements";
 constexpr const char* kSectionFunerals = "funerals";  // save 205 (#1084)
 constexpr const char* kSectionGroomPlan = "groom_plan";
+constexpr const char* kSectionTrails = "trails";  // save 227 (#2072)
 
 /// Puts every map road's axis back from tables/roads.csv after the section
 /// is read (a map road's axis is never saved; road_state.h), by the road's
@@ -471,6 +472,11 @@ std::vector<std::byte> EncodeWorld(const WorldState& world,
   WriteGroomPlan(sink, world.groom_plan);
   CloseSection(out, length_offset);
 
+  // The trodden paths (save format 227; #2072, trail_state.h).
+  length_offset = OpenSection(out);
+  WriteTrails(sink, world.trails);
+  CloseSection(out, length_offset);
+
   length_offset = OpenSection(out);
   WriteLedger(sink, world.ledger);
   CloseSection(out, length_offset);
@@ -635,6 +641,21 @@ bool DecodeWorld(std::span<const std::byte> bytes,
   if (!CloseSection(in, kSectionGroomPlan, section_end, error)) {
     return false;
   }
+
+  // The trodden paths (save 227; #2072), and the index re-built with them - the one door, so
+  // a loaded world walks as the saved one did.
+  if (!OpenSection(in, kSectionTrails, &section_end, error)) {
+    return false;
+  }
+  loaded.trails = ReadTrails(source);
+  if (!source.Valid()) {
+    Refuse(error, std::string("section '") + kSectionTrails + "': " + source.Error());
+    return false;
+  }
+  if (!CloseSection(in, kSectionTrails, section_end, error)) {
+    return false;
+  }
+  loaded.road_index = WithTrails(loaded.road_index, loaded.trails);
 
   if (!OpenSection(in, kSectionLedger, &section_end, error)) {
     return false;

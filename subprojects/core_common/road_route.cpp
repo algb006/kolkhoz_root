@@ -94,9 +94,29 @@ class RoadIndexImpl final : public RoadIndex {
   }
 
   float EffectiveKm(TravelMode mode, Vec2 from, Vec2 to) const override {
+    return EffectiveKmWith(mode, from, to, nullptr);
+  }
+
+  // THE TRAILED QUERIES (#2072, trail_state.h): the same queries with a walker's open-ground
+  // legs weighed by `trails` (TrailLegWeight); nullptr is the bare network. TrailedRoadIndex
+  // below answers through these, so the network's node-to-node distances are shared, never
+  // rebuilt for a day's trails.
+  float EffectiveKmWith(TravelMode mode, Vec2 from, Vec2 to, const TrailTable* trails) const {
     const std::vector<Access> starts = Accesses(mode, from);
     const std::vector<Access> ends = Accesses(mode, to);
-    return Choose(mode, from, to, starts, ends).km;
+    return Choose(mode, from, to, starts, ends, trails).km;
+  }
+
+  float EffectiveKmWith(const NetworkPlace& from,
+                        const NetworkPlace& to,
+                        const TrailTable* trails) const {
+    return Choose(from.mode,
+                  from.position,
+                  to.position,
+                  std::span<const Access>(from.accesses.data(), from.access_count),
+                  std::span<const Access>(to.accesses.data(), to.access_count),
+                  trails)
+        .km;
   }
 
   NetworkPlace Locate(TravelMode mode, Vec2 position) const override {
@@ -112,18 +132,17 @@ class RoadIndexImpl final : public RoadIndex {
   }
 
   float EffectiveKm(const NetworkPlace& from, const NetworkPlace& to) const override {
-    return Choose(from.mode,
-                  from.position,
-                  to.position,
-                  std::span<const Access>(from.accesses.data(), from.access_count),
-                  std::span<const Access>(to.accesses.data(), to.access_count))
-        .km;
+    return EffectiveKmWith(from, to, nullptr);
   }
 
   RouteMeasure Measure(TravelMode mode, Vec2 from, Vec2 to) const override {
+    return MeasureWith(mode, from, to, nullptr);
+  }
+
+  RouteMeasure MeasureWith(TravelMode mode, Vec2 from, Vec2 to, const TrailTable* trails) const {
     const std::vector<Access> starts = Accesses(mode, from);
     const std::vector<Access> ends = Accesses(mode, to);
-    const Choice choice = Choose(mode, from, to, starts, ends);
+    const Choice choice = Choose(mode, from, to, starts, ends, trails);
     RouteMeasure measure;
     measure.effective_km = choice.km;
     // THE SAME CHOICE Way unfolds: across open ground the whole line is off
@@ -136,13 +155,16 @@ class RoadIndexImpl final : public RoadIndex {
   }
 
   Route Way(TravelMode mode, Vec2 from, Vec2 to) const override {
+    return WayWith(mode, from, to, nullptr);
+  }
+
+  Route WayWith(TravelMode mode, Vec2 from, Vec2 to, const TrailTable* trails) const {
     const auto index = static_cast<std::size_t>(mode);
-    const float weight = rules_.off_road_weight[index];
     const std::vector<Access> starts = Accesses(mode, from);
     const std::vector<Access> ends = Accesses(mode, to);
-    const Choice choice = Choose(mode, from, to, starts, ends);
+    const Choice choice = Choose(mode, from, to, starts, ends, trails);
     if (choice.kind == Choice::kStraight || choice.kind == Choice::kNoRoad) {
-      Route route = Straight(from, to, weight);
+      Route route = Straight(from, to, LegWeight(mode, from, to, trails));
       route.cart_without_road = choice.kind == Choice::kNoRoad;
       return route;
     }
@@ -150,8 +172,10 @@ class RoadIndexImpl final : public RoadIndex {
     // the places that only need a number never build a leg (0.36.1: building
     // the legs of every candidate cost 290 us a query in the debug build).
     Route route;
-    const RouteLeg in = OpenLeg(from, choice.start.point, weight);
-    const RouteLeg out = OpenLeg(choice.end.point, to, weight);
+    const RouteLeg in =
+        OpenLeg(from, choice.start.point, LegWeight(mode, from, choice.start.point, trails));
+    const RouteLeg out =
+        OpenLeg(choice.end.point, to, LegWeight(mode, choice.end.point, to, trails));
     route.legs.push_back(in);
     if (choice.kind == Choice::kSameEdge) {
       route.legs.push_back(
@@ -193,24 +217,33 @@ class RoadIndexImpl final : public RoadIndex {
     bool end_forward = true;
   };
 
+  /// An open-ground leg's weight a km: the mode's, lowered by a trail for a walker (#2072).
+  float LegWeight(TravelMode mode, Vec2 from, Vec2 to, const TrailTable* trails) const {
+    const float weight = rules_.off_road_weight[static_cast<std::size_t>(mode)];
+    return trails != nullptr && mode == TravelMode::kWalk
+               ? TrailLegWeight(*trails, from, to, weight)
+               : weight;
+  }
+
   Choice Choose(TravelMode mode,
                 Vec2 from,
                 Vec2 to,
                 std::span<const Access> starts,
-                std::span<const Access> ends) const {
+                std::span<const Access> ends,
+                const TrailTable* trails) const {
+    const float weight = rules_.off_road_weight[static_cast<std::size_t>(mode)];
     const auto mode_index = static_cast<std::size_t>(mode);
-    const float weight = rules_.off_road_weight[mode_index];
     Choice best;
     if (MayGoAcross(mode)) {
       best.kind = Choice::kStraight;
-      best.km = Distance(from, to) / 1000.0F * weight;
+      best.km = Distance(from, to) / 1000.0F * LegWeight(mode, from, to, trails);
     }
     const std::size_t nodes = graph_.nodes.size();
     for (const Access& start : starts) {
-      const float in_km = start.distance_m / 1000.0F * weight;
+      const float in_km = start.distance_m / 1000.0F * LegWeight(mode, from, start.point, trails);
       const RoadEdge& first = graph_.edges[start.edge];
       for (const Access& end : ends) {
-        const float out_km = end.distance_m / 1000.0F * weight;
+        const float out_km = end.distance_m / 1000.0F * LegWeight(mode, end.point, to, trails);
         if (start.edge == end.edge) {
           const float km = in_km + (std::abs(end.chainage_m - start.chainage_m) / 1000.0F) + out_km;
           if (km < best.km) {
@@ -677,11 +710,70 @@ class RoadIndexImpl final : public RoadIndex {
   std::array<std::vector<RoadEdgeIndex>, kTravelModeCountValue> arrival_;
 };
 
+/// THE NETWORK WITH THE DAY'S TRAILS (#2072, trail_state.h): the bare index shared, a copy of
+/// the trails held - immutable like the index, so the double buffer still copies a pointer.
+/// Every query is the bare index's own, with the walker's open-ground legs weighed by them.
+class TrailedRoadIndex final : public RoadIndex {
+ public:
+  TrailedRoadIndex(std::shared_ptr<const RoadIndexImpl> base, TrailTable trails)
+      : base_(std::move(base)), trails_(std::move(trails)) {}
+
+  float EffectiveKm(TravelMode mode, Vec2 from, Vec2 to) const override {
+    return base_->EffectiveKmWith(mode, from, to, &trails_);
+  }
+
+  NetworkPlace Locate(TravelMode mode, Vec2 position) const override {
+    return base_->Locate(mode, position);
+  }
+
+  float EffectiveKm(const NetworkPlace& from, const NetworkPlace& to) const override {
+    return base_->EffectiveKmWith(from, to, &trails_);
+  }
+
+  RouteMeasure Measure(TravelMode mode, Vec2 from, Vec2 to) const override {
+    return base_->MeasureWith(mode, from, to, &trails_);
+  }
+
+  Route Way(TravelMode mode, Vec2 from, Vec2 to) const override {
+    return base_->WayWith(mode, from, to, &trails_);
+  }
+
+  const RoadGraph& Graph() const override { return base_->Graph(); }
+
+  float OffRoadWeight(TravelMode mode) const override { return base_->OffRoadWeight(mode); }
+
+  const std::shared_ptr<const RoadIndexImpl>& Base() const { return base_; }
+
+ private:
+  std::shared_ptr<const RoadIndexImpl> base_;
+  TrailTable trails_;
+};
+
 }  // namespace
 
 std::shared_ptr<const RoadIndex> BuildRoadIndex(const RoadTable& roads,
                                                 const RoadTravelRules& rules) {
   return std::make_shared<RoadIndexImpl>(roads, rules);
+}
+
+std::shared_ptr<const RoadIndex> WithTrails(const std::shared_ptr<const RoadIndex>& index,
+                                            const TrailTable& trails) {
+  std::shared_ptr<const RoadIndexImpl> base = std::dynamic_pointer_cast<const RoadIndexImpl>(index);
+  if (base == nullptr) {
+    const auto trailed = std::dynamic_pointer_cast<const TrailedRoadIndex>(index);
+    base = trailed == nullptr ? nullptr : trailed->Base();
+  }
+  if (base == nullptr) {
+    return index;  // a foreign index (a test's): nothing to wrap
+  }
+  if (trails.rows.empty()) {
+    return base;  // no trail: the bare network, as before #2072
+  }
+  return std::make_shared<TrailedRoadIndex>(std::move(base), trails);
+}
+
+std::shared_ptr<const RoadIndex> BuildRoadIndex(const RoadTable& roads, const TrailTable& trails) {
+  return WithTrails(BuildRoadIndex(roads), trails);
 }
 
 std::shared_ptr<const RoadIndex> RoadIndexOf(const WorldState& world) {

@@ -66,6 +66,7 @@
 #include "core_common/settlement_state.h"
 #include "core_common/specialist_state.h"
 #include "core_common/timber_state.h"
+#include "core_common/trail_state.h"
 #include "core_common/turned_away_state.h"
 #include "core_common/unit_state.h"
 #include "core_common/unmanned_run_state.h"
@@ -1185,6 +1186,11 @@ struct WorldState {
   /// buffer copies a pointer. Null in a world nobody indexed (RoadIndexOf
   /// then builds one on the spot).
   std::shared_ptr<const RoadIndex> road_index;
+
+  /// TRODDEN PATHS (#2072; trail_state.h): the walkers' open-ground legs and their strength;
+  /// SAVED (save 227). Empty at genesis. road_index carries them (WithTrails), so every
+  /// builder of the index builds it from `roads` AND these.
+  TrailTable trails;
 
   /// A FIELD HEAP WAS BORN since the groom's last scan for heaps with no task
   /// (#1056 C4; core_logistics logistics_tasks.h, AppendNewHeapTasks): set

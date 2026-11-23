@@ -69,6 +69,9 @@ int TestTheStoreTheft();
 
 /// The drawn trip's whole-trip arithmetic (trip_terms_checks.cpp; #1056 C3).
 int TestTripTerms();
+
+/// Trodden paths' rules and the one door (trail_checks.cpp; #2072).
+int TestTrails();
 }  // namespace core_test
 
 namespace {
@@ -3096,6 +3099,7 @@ int main() {
   failures += core_test::TestTheIceWater();
   failures += core_test::TestTheStoreTheft();
   failures += core_test::TestTripTerms();
+  failures += core_test::TestTrails();  // #2072
   failures += TestRoadTrace();
   failures += TestRoadPieces();
   failures += TestRoadCut();

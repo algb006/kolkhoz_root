@@ -35,6 +35,7 @@
 #include "core_common/settlement_state.h"
 #include "core_common/specialist_state.h"
 #include "core_common/timber_state.h"
+#include "core_common/trail_state.h"
 #include "core_common/unit_state.h"
 #include "core_common/wedding_state.h"
 #include "save_dictionary.h"
@@ -123,6 +124,12 @@ FuneralRow ReadFuneralRow(LoadSource& source);
 /// two flags, the carts with their legs and riders.
 void WriteGroomPlan(SaveSink& sink, const GroomPlan& plan);
 GroomPlan ReadGroomPlan(LoadSource& source);
+
+/// @brief The trodden paths (save 227, #2072; trail_state.h): weight_full, visible_strength,
+///        then the rows in their key order - 24 bytes a row, 12 for the header.
+void WriteTrails(SaveSink& sink, const TrailTable& trails);
+/// @brief Refuses rows out of key order or out of 0..1: the table's sort is its key.
+TrailTable ReadTrails(LoadSource& source);
 
 }  // namespace core
 

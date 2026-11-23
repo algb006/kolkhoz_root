@@ -148,7 +148,7 @@ bool PlaceMapRoads(const ITableSet& tables,
   if (!ApplyLocalWear(tables, map_roads, world, error)) {
     return false;
   }
-  world.road_index = BuildRoadIndex(world.roads);
+  world.road_index = BuildRoadIndex(world.roads, world.trails);  // #2072: none at genesis
   return true;
 }
 

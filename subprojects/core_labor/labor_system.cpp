@@ -81,6 +81,7 @@
 #include "placement_rank.h"
 #include "posts.h"
 #include "rush.h"
+#include "trail_tread.h"
 #include "truancy.h"
 #include "work_orders.h"
 
@@ -1130,6 +1131,8 @@ class LaborSystem final : public ILaborSystem {
     book.reaping_today_hands = 0.0F;
     RefillHerdCare(current);
     AssignPostHolders(current);
+    // TRODDEN PATHS (#2072): the day's decay before anyone walks; the tread follows the plan.
+    DecayTrailsThisMorning(config_.trails, current);
     // UB-001 fix: the accountant's placement is a BLOCK, not the body of the
     // function, because the chairman's orders below it must run on days the
     // accountant has nothing to do. A day off, or a winter day with every
@@ -1273,6 +1276,10 @@ class LaborSystem final : public ILaborSystem {
           }
         }
         RecordCrewGaps(current, jobs, plan, diagnosis.shortfall);
+        // TRODDEN PATHS (#2072): the placed walkers tread their open-ground legs. STUB: the
+        // chairman's ordered crews and the day's top-up tread nothing yet.
+        TreadPlacedWalkers(
+            config_.trails, current, jobs, candidates, plan, rides_horse, rides_cart_with);
         // What the plan left for a ride (#1205 (c1)): tomorrow's felling offer
         // and the chairman's FellingCanBeManned ask it.
         current.morning_horses_left = static_cast<std::uint16_t>(

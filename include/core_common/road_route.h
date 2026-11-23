@@ -43,6 +43,7 @@
 #include "core_common/geometry.h"
 #include "core_common/road_graph.h"
 #include "core_common/road_state.h"
+#include "core_common/trail_state.h"
 
 namespace core {
 
@@ -206,6 +207,17 @@ class RoadIndex {
 ///        Only a hand-built world has no network; the game's has the map's.
 std::shared_ptr<const RoadIndex> BuildRoadIndex(const RoadTable& roads,
                                                 const RoadTravelRules& rules = {});
+
+/// @brief `index` with the day's trodden paths (#2072, trail_state.h): the same network, its
+///        node-to-node distances shared, and a walker's open-ground legs weighed by `trails`.
+///        An index already trailed is re-trailed from its bare network; no trail gives the bare
+///        index back. THE ONE DOOR: every builder of WorldState::road_index goes through it.
+std::shared_ptr<const RoadIndex> WithTrails(const std::shared_ptr<const RoadIndex>& index,
+                                            const TrailTable& trails);
+
+/// @brief BuildRoadIndex(roads) with `trails` (WithTrails): what genesis, the loader and a
+///        laid road build.
+std::shared_ptr<const RoadIndex> BuildRoadIndex(const RoadTable& roads, const TrailTable& trails);
 
 /// @brief `world.road_index`, or — for a world nobody indexed (a hand-built
 ///        test world) — an index built on the spot from `world.roads` and

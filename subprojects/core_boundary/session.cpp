@@ -505,6 +505,12 @@ class Session final : public ISession {
     return DeriveFieldWork(config_, State(), field);
   }
 
+  std::vector<TrailView> Trails(bool visible_only) const override {
+    return TrailViews(State().trails, visible_only);  // #2072
+  }
+
+  TrailCount CountTrails() const override { return CountTrailRows(State().trails); }
+
   std::vector<SaveSummaryEntry> SaveSummary() const override {
     const WorldState& world = State();
     std::vector<SaveSummaryEntry> entries;

@@ -925,6 +925,15 @@ core::WorldState MakeWorld() {
                                            .pooled_task = core::LogisticsTaskId{6}});  // save 177
   world.groom_plan.carts.push_back(plan_walker);
 
+  // The trodden paths (save 227, #2072): two rows in key order, every field off its default,
+  // the second carrying snow.
+  world.trails.weight_full = 1.125F;
+  world.trails.visible_strength = 0.25F;
+  world.trails.rows.push_back(
+      core::TrailRow{.a = {.x = -3, .y = 7}, .b = {.x = 12, .y = 40}, .earth = 0.5F, .snow = 0.0F});
+  world.trails.rows.push_back(core::TrailRow{
+      .a = {.x = 2, .y = 1}, .b = {.x = 2, .y = 9}, .earth = 0.0625F, .snow = 0.75F});
+
   // A couple waiting for a free house (save format 35).
   core::WeddingWaitRow couple;
   couple.bride = core::ResidentId{7};
@@ -2013,7 +2022,7 @@ struct RecordedSection {
 /// beside it (manual/setup/57-versioning.md). No deliberate change: the codec
 /// has begun writing something else, which is the whole reason these numbers
 /// are here. Either way the number moves WITH ITS REASON, in the same commit.
-constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
+constexpr std::array<RecordedSection, 28> kRecordedPayload = {{
     // Save 82: +15 — the seventh dictionary, tree_species (count 2, «pine»
     // 6, «birch» 7); predicted before the build, held.
     // Save 92: +2 — the map roads' dictionary, empty in this fixture's
@@ -2559,6 +2568,9 @@ constexpr std::array<RecordedSection, 27> kRecordedPayload = {{
     // leg now loaded) - three legs, 225 -> 228, predicted before the build and
     // held; the hash read off it.
     {"groom_plan", 228, 0x644f5687c4977757ULL},  // save 155: 2 partners, 3 legs' loads
+    // Save 227 (#2072): the trails - two floats and a count (12), two rows of 24; predicted
+    // 60 before the build. The hash is read off the first units (0 until then: red by design).
+    {"trails", 60, 0x0ULL},
     // 2026-09-17, save 52: +56 bytes over the two books — the nine yearly
     // inputs the readiness index asks of a year and the year did not keep
     // (ledger_state.h): satisfaction's sum and count, able-bodied
@@ -3718,6 +3730,18 @@ int main() {
         "a task of the groom's logistics came back with its load, its two levels, its origin, "
         "its pause, its two times, the lamp's clock, who drained it, the rick's threshold, "
         "and the trip's facts with the carried pair (save 135, 142, 155, 171, 177)");
+  }
+  // Save 227 (#2072): the trails come back row for row, ends and strengths apart.
+  {
+    const core::TrailTable& back = loaded.trails;
+    failures +=
+        Expect(back.weight_full == 1.125F && back.visible_strength == 0.25F &&
+                   back.rows.size() == 2 && back.rows[0].a.x == -3 && back.rows[0].a.y == 7 &&
+                   back.rows[0].b.x == 12 && back.rows[0].b.y == 40 && back.rows[0].earth == 0.5F &&
+                   back.rows[0].snow == 0.0F && back.rows[1].a.x == 2 && back.rows[1].b.y == 9 &&
+                   back.rows[1].earth == 0.0625F && back.rows[1].snow == 0.75F,
+               "the trails came back with their weight, visible strength, ends and both strengths "
+               "(save 227)");
   }
   // Save 136. The two legs' ticks and places are apart, the rider on the
   // first only: a codec that swapped or dropped one is red here.

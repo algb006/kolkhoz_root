@@ -48,6 +48,7 @@
 #include "core_common/rain_stops_work.h"
 #include "core_common/resident_state.h"
 #include "core_common/site_supply_floor.h"
+#include "core_common/trail_state.h"
 #include "core_common/work_seam.h"
 
 namespace core {
@@ -808,6 +809,10 @@ struct LaborConfig {
   /// posts and the chairman's orders (standing and day orders) still send their people. The
   /// first build stays at 0 until #589 brings the tally clerk's post.
   bool no_auto_placement = false;
+
+  /// #2072: the trodden paths' numbers (world_params `trail_*`; trail_state.h). The morning
+  /// placement decays the trails, treads the placed walkers' legs and re-trails the index.
+  TrailRules trails;
 };
 
 /// @brief The cart's and the sledge's numbers of this config (SL; cart_gear.h).

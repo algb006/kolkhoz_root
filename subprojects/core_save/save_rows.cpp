@@ -2641,6 +2641,61 @@ GroomPlan ReadGroomPlan(LoadSource& source) {
   return plan;
 }
 
+namespace {
+
+/// A trail row's bytes on disk: four ends' cells and two strengths.
+constexpr std::size_t kSavedTrailBytes = 24;
+
+}  // namespace
+
+void WriteTrails(SaveSink& sink, const TrailTable& trails) {
+  ByteWriter& out = sink.Out();
+  out.WriteFloat(trails.weight_full);
+  out.WriteFloat(trails.visible_strength);
+  out.WriteU32(static_cast<std::uint32_t>(trails.rows.size()));
+  for (const TrailRow& row : trails.rows) {
+    out.WriteI32(row.a.x);
+    out.WriteI32(row.a.y);
+    out.WriteI32(row.b.x);
+    out.WriteI32(row.b.y);
+    out.WriteFloat(row.earth);
+    out.WriteFloat(row.snow);
+  }
+}
+
+TrailTable ReadTrails(LoadSource& source) {
+  ByteReader& in = source.In();
+  TrailTable trails;
+  trails.weight_full = in.ReadFloat();
+  trails.visible_strength = in.ReadFloat();
+  const std::uint32_t count = in.ReadU32();
+  if (static_cast<std::size_t>(count) * kSavedTrailBytes > in.Remaining()) {
+    source.Fail("the trails name more rows than the bytes left");
+    return trails;
+  }
+  trails.rows.reserve(count);
+  for (std::uint32_t index = 0; index < count; ++index) {
+    TrailRow row;
+    row.a.x = in.ReadI32();
+    row.a.y = in.ReadI32();
+    row.b.x = in.ReadI32();
+    row.b.y = in.ReadI32();
+    row.earth = in.ReadFloat();
+    row.snow = in.ReadFloat();
+    const bool in_range =
+        row.earth >= 0.0F && row.earth <= 1.0F && row.snow >= 0.0F && row.snow <= 1.0F;
+    const auto key = [](const TrailRow& r) { return std::tie(r.a.x, r.a.y, r.b.x, r.b.y); };
+    const bool ordered = trails.rows.empty() || key(trails.rows.back()) < key(row);
+    const bool lesser_first = std::tie(row.a.x, row.a.y) < std::tie(row.b.x, row.b.y);
+    if (!in_range || !ordered || !lesser_first) {
+      source.Fail("a trail row is out of 0..1, out of key order, or has its ends reversed");
+      return trails;
+    }
+    trails.rows.push_back(row);
+  }
+  return trails;
+}
+
 LandStripRow ReadLandStripRow(LoadSource& source) {
   ByteReader& in = source.In();
   LandStripRow row;
