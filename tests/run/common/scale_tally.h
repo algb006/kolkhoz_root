@@ -20,17 +20,20 @@
 #ifndef TESTS_RUN_COMMON_SCALE_TALLY_H_
 #define TESTS_RUN_COMMON_SCALE_TALLY_H_
 
+#ifndef _MSC_VER
 #include <time.h>
+#endif
 
 #include <cmath>
 #include <cstdint>
-#include <cstdlib>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <vector>
 
 #include "core_common/calendar.h"
 #include "core_common/world_state.h"
+#include "env_value.h"
 
 namespace run {
 
@@ -41,11 +44,17 @@ class ScaleTally {
   /// The first years left out of the fit (genesis and the first buildings).
   static constexpr std::uint32_t kSkipYears = 2;
 
-  /// @brief This thread's CPU seconds now (CLOCK_THREAD_CPUTIME_ID).
+  /// @brief This thread's CPU seconds now (CLOCK_THREAD_CPUTIME_ID). Under MSVC there is no
+  ///        POSIX thread clock (the host's save-230 build, C3861): 0, so every year's seconds
+  ///        are 0 and the fit prints NOT MEASURED - SCALE2118 is measured on the Linux nodes.
   static double ThreadSeconds() {
+#ifdef _MSC_VER
+    return 0.0;
+#else
     timespec now{};
     clock_gettime(CLOCK_THREAD_CPUTIME_ID, &now);
     return static_cast<double>(now.tv_sec) + (static_cast<double>(now.tv_nsec) * 1e-9);
+#endif
   }
 
   void AddSimulation(double seconds) { year_.simulation += seconds; }
@@ -84,11 +93,12 @@ class ScaleTally {
     std::size_t fields = 0;
   };
 
+  // Through run::EnvValue: MSVC refuses std::getenv (C4996 under /WX; the save-230 build).
   static std::string Ground() {
-    const char* const tree = std::getenv("KOLKHOZ_TREE");
-    const char* const arm = std::getenv("WP_ROWS");
-    return std::string("ground=tree:") + (tree != nullptr && *tree != '\0' ? tree : "unnamed") +
-           ";arm:" + (arm != nullptr && *arm != '\0' ? arm : "canon");
+    const std::optional<std::string> tree = run::EnvValue("KOLKHOZ_TREE");
+    const std::optional<std::string> arm = run::EnvValue("WP_ROWS");
+    return std::string("ground=tree:") + (tree && !tree->empty() ? *tree : "unnamed") +
+           ";arm:" + (arm && !arm->empty() ? *arm : "canon");
   }
 
   template <class Seconds>
