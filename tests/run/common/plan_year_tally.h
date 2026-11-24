@@ -7,8 +7,11 @@
 ///        A short position's CAUSE, the first that holds:
 ///          hauling  - its heaps still lying on the fields cover the shortfall;
 ///          lost     - the field's losses (no room, snow, flood) cover it;
-///          harvest  - what was reaped (a herd's produce for milk) is below the due;
-///          drawn    - it was reaped and carted, and the year's draws took it (issued, ration,
+///          harvest  - something was reaped (a herd's produce for milk) and it is below the due;
+///                     NOTHING reaped (year 1's rye, owed from the start's stores: «winter rye
+///                     cannot stand in the first spring») is not a harvest miss - it is drawn;
+///          drawn    - it was reaped and carted, or owed from the stores carried in, and the
+///                     year's draws took it (issued, ration,
 ///                     advance, eaten from the stores, stolen, spoiled, samogon, seed, feed,
 ///                     bartered, seized, processed - each printed).
 /// @threading SINGLE_THREADED
@@ -76,10 +79,10 @@ class PlanYearTally {
       const core::Grams lost =
           Of(book.lost_no_room, at) + Of(book.lost_to_snow, at) + Of(book.lost_to_flood, at);
       const core::Grams reaped = Of(book.harvest, at) + Of(book.herd_produce, at);
-      const char* cause = lying >= shortfall  ? "hauling"
-                          : lost >= shortfall ? "lost"
-                          : reaped < due      ? "harvest"
-                                              : "drawn";
+      const char* cause = lying >= shortfall           ? "hauling"
+                          : lost >= shortfall          ? "lost"
+                          : reaped > 0 && reaped < due ? "harvest"
+                                                       : "drawn";
       line << " short " << NameOf(at) << "(due/delivered/short_t " << Tonnes(due) << '/'
            << Tonnes(delivered) << '/' << Tonnes(shortfall) << " cause " << cause << " reaped "
            << Tonnes(reaped) << " hauled " << Tonnes(Of(book.hauled_to_stores, at)) << " lying "
