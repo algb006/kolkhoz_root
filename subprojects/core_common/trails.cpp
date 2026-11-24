@@ -41,9 +41,27 @@ std::vector<TrailRow>::const_iterator Lower(const std::vector<TrailRow>& rows,
 
 }  // namespace
 
+namespace {
+
+/// std::lround's answer (a half away from zero) without the library call (#2072 CPU: the
+/// query door snaps twice a half cell). Exact for |value| < 2^24: the truncation is exact,
+/// and value - truncation is too (the two lie within one of each other).
+std::int32_t RoundHalfAway(float value) {
+  auto whole = static_cast<std::int32_t>(value);  // toward zero
+  const float rest = value - static_cast<float>(whole);
+  if (rest >= 0.5F) {
+    ++whole;
+  } else if (rest <= -0.5F) {
+    --whole;
+  }
+  return whole;
+}
+
+}  // namespace
+
 TrailEnd SnapTrailEnd(Vec2 point) {
-  return TrailEnd{.x = static_cast<std::int32_t>(std::lround(point.x / kTrailSnapMetres)),
-                  .y = static_cast<std::int32_t>(std::lround(point.y / kTrailSnapMetres))};
+  return TrailEnd{.x = RoundHalfAway(point.x / kTrailSnapMetres),
+                  .y = RoundHalfAway(point.y / kTrailSnapMetres)};
 }
 
 Vec2 TrailEndPosition(TrailEnd end) {

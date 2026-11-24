@@ -66,6 +66,22 @@ namespace core_test {
 
 int TestTrails() {
   int failures = 0;
+  // THE SNAP IS std::lround's (#2072 CPU: the library call replaced): a sweep over ±30 km at
+  // 3.7 mm and every exact half cell either side of nought.
+  {
+    bool same = true;
+    for (int step = -8'000'000; step <= 8'000'000 && same; ++step) {
+      const float x = static_cast<float>(step) * 0.00375F;
+      same = core::SnapTrailEnd({.x = x, .y = 0.0F}).x ==
+             static_cast<std::int32_t>(std::lround(x / core::kTrailSnapMetres));
+    }
+    for (int half = -2001; half <= 2001 && same; half += 2) {
+      const float x = static_cast<float>(half) * (core::kTrailSnapMetres / 2.0F);
+      same = core::SnapTrailEnd({.x = 0.0F, .y = x}).y ==
+             static_cast<std::int32_t>(std::lround(x / core::kTrailSnapMetres));
+    }
+    failures += Expect(same, "snap: a cell by std::lround's rounding, halves away from nought");
+  }
   const core::TrailRules rules;
   const core::Vec2 west{.x = 0.0F, .y = 500.0F};
   const core::Vec2 east{.x = 1000.0F, .y = 500.0F};
