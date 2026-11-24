@@ -237,6 +237,23 @@ class RoadIndexImpl final : public RoadIndex {
     bool end_forward = true;
   };
 
+  /// LegCost's floor today (#2072 CPU): a full trail on the cheaper ground, a hair under.
+  float LegCostFloor(TravelMode mode, const DayWeights* day) const {
+    constexpr float kUnder = 0.9999F;
+    const auto mode_index = static_cast<std::size_t>(mode);
+    const float weight = rules_.off_road_weight[mode_index];
+    if (day == nullptr) {
+      return weight * kUnder;
+    }
+    const float open = weight * day->open_cost[mode_index];
+    if (day->lookup == nullptr || mode != TravelMode::kWalk || day->lookup->Empty()) {
+      return open * kUnder;
+    }
+    const float cheapest = std::min(weight, day->lookup->WeightFull()) *
+                           std::min(day->open_cost[mode_index], day->snow_trail_cost[mode_index]);
+    return std::min(open, cheapest) * kUnder;
+  }
+
   /// An open-ground leg's cost a km: the QUERY door (trail_lattice.h, StraightKm).
   float LegCost(TravelMode mode, Vec2 from, Vec2 to, const DayWeights* day) const {
     const auto mode_index = static_cast<std::size_t>(mode);
@@ -324,25 +341,40 @@ class RoadIndexImpl final : public RoadIndex {
       best.km = Distance(from, to) / 1000.0F * LegCost(mode, from, to, day);
     }
     const std::size_t nodes = graph_.nodes.size();
-    // Each end's open-ground leg priced ONCE (static review of 23 Nov 2026: inside the pairs'
-    // loop the exit leg's lattice walk was repeated for every start).
+    // PRICED ONCE, AND ONLY WHEN THEY COULD WIN (#2072 CPU, exact): floors no less than the
+    // best cannot replace it (strict comparisons), so their legs go unpriced.
+    const float floor = LegCostFloor(mode, day);
     std::array<float, kAccessCandidates> out_kms{};
-    for (std::size_t at = 0; at < ends.size() && at < out_kms.size(); ++at) {
-      out_kms[at] = ends[at].distance_m / 1000.0F * LegCost(mode, ends[at].point, to, day);
-    }
+    std::array<bool, kAccessCandidates> out_known{};
+    const auto out_km_at = [&](std::size_t at) {
+      if (!out_known[at]) {
+        out_kms[at] = ends[at].distance_m / 1000.0F * LegCost(mode, ends[at].point, to, day);
+        out_known[at] = true;
+      }
+      return out_kms[at];
+    };
     for (const Access& start : starts) {
-      const float in_km = start.distance_m / 1000.0F * LegCost(mode, from, start.point, day);
+      float in_km = -1.0F;
+      const float in_floor = start.distance_m / 1000.0F * floor;
+      const auto in_km_now = [&] {
+        if (in_km < 0.0F) {
+          in_km = start.distance_m / 1000.0F * LegCost(mode, from, start.point, day);
+        }
+        return in_km;
+      };
       const RoadEdge& first = graph_.edges[start.edge];
       const float first_cost = EdgeCost(mode, start.edge, day);
       for (std::size_t at = 0; at < ends.size() && at < out_kms.size(); ++at) {
         const Access& end = ends[at];
-        const float out_km = out_kms[at];
+        const float out_floor = end.distance_m / 1000.0F * floor;
         const float last_cost = EdgeCost(mode, end.edge, day);
         if (start.edge == end.edge) {
-          const float km =
-              in_km + (std::abs(end.chainage_m - start.chainage_m) / 1000.0F * first_cost) + out_km;
-          if (km < best.km) {
-            best = Choice{.kind = Choice::kSameEdge, .km = km, .start = start, .end = end};
+          const float along = std::abs(end.chainage_m - start.chainage_m) / 1000.0F * first_cost;
+          if (in_floor + along + out_floor < best.km) {
+            const float km = in_km_now() + along + out_km_at(at);
+            if (km < best.km) {
+              best = Choice{.kind = Choice::kSameEdge, .km = km, .start = start, .end = end};
+            }
           }
         }
         const RoadEdge& last = graph_.edges[end.edge];
@@ -354,9 +386,12 @@ class RoadIndexImpl final : public RoadIndex {
             const RoadNodeIndex entry_node = end_forward ? last.from : last.to;
             const float entry_chainage = end_forward ? last.from_chainage_m : last.to_chainage_m;
             const float between = Between(mode_index, (exit_node * nodes) + entry_node, day);
-            const float km = in_km + to_exit + between +
-                             (std::abs(end.chainage_m - entry_chainage) / 1000.0F * last_cost) +
-                             out_km;
+            const float from_entry =
+                std::abs(end.chainage_m - entry_chainage) / 1000.0F * last_cost;
+            if (!(in_floor + to_exit + between + from_entry + out_floor < best.km)) {
+              continue;  // its floors already lose: its legs are not priced
+            }
+            const float km = in_km_now() + to_exit + between + from_entry + out_km_at(at);
             if (km < best.km) {
               best = Choice{.kind = Choice::kByNodes,
                             .km = km,
@@ -961,40 +996,5 @@ std::uint64_t TableBuilds() {
 }
 
 }  // namespace road_day
-
-std::shared_ptr<const RoadIndex> RoadIndexOf(const WorldState& world) {
-  if (world.road_index != nullptr) {
-    return world.road_index;
-  }
-  return BuildRoadIndex(world.roads);
-}
-
-float RoadKm(const WorldState& world, TravelMode mode, Vec2 from, Vec2 to) {
-  return RoadIndexOf(world)->EffectiveKm(mode, from, to);
-}
-
-RouteMeasure RoadMeasure(const WorldState& world, TravelMode mode, Vec2 from, Vec2 to) {
-  return RoadIndexOf(world)->Measure(mode, from, to);
-}
-
-float OffRoadWeightOf(const WorldState& world, TravelMode mode) {
-  return RoadIndexOf(world)->OffRoadWeight(mode);
-}
-
-Vec2 DistrictExitPoint(const WorldState& world) {
-  const std::shared_ptr<const RoadIndex> index = RoadIndexOf(world);
-  bool found = false;
-  Vec2 exit{};
-  for (const RoadNode& node : index->Graph().nodes) {
-    if (node.border && (!found || node.position.y > exit.y)) {
-      exit = node.position;
-      found = true;
-    }
-  }
-  if (found) {
-    return exit;
-  }
-  return world.units.rows.empty() ? Vec2{} : world.units.rows.front().position;
-}
 
 }  // namespace core

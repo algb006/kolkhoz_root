@@ -255,4 +255,40 @@ std::uint64_t DayTableBuilds() {
   return road_day::TableBuilds();
 }
 
+// THE WORLD-LEVEL DOORS (moved from road_route.cpp, at its line limit).
+std::shared_ptr<const RoadIndex> RoadIndexOf(const WorldState& world) {
+  if (world.road_index != nullptr) {
+    return world.road_index;
+  }
+  return BuildRoadIndex(world.roads);
+}
+
+float RoadKm(const WorldState& world, TravelMode mode, Vec2 from, Vec2 to) {
+  return RoadIndexOf(world)->EffectiveKm(mode, from, to);
+}
+
+RouteMeasure RoadMeasure(const WorldState& world, TravelMode mode, Vec2 from, Vec2 to) {
+  return RoadIndexOf(world)->Measure(mode, from, to);
+}
+
+float OffRoadWeightOf(const WorldState& world, TravelMode mode) {
+  return RoadIndexOf(world)->OffRoadWeight(mode);
+}
+
+Vec2 DistrictExitPoint(const WorldState& world) {
+  const std::shared_ptr<const RoadIndex> index = RoadIndexOf(world);
+  bool found = false;
+  Vec2 exit{};
+  for (const RoadNode& node : index->Graph().nodes) {
+    if (node.border && (!found || node.position.y > exit.y)) {
+      exit = node.position;
+      found = true;
+    }
+  }
+  if (found) {
+    return exit;
+  }
+  return world.units.rows.empty() ? Vec2{} : world.units.rows.front().position;
+}
+
 }  // namespace core

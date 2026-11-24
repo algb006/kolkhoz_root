@@ -140,6 +140,9 @@ void TreadPlacedWalkers(const TrailRules& rules,
   const auto key = [](const TrailPass& pass) {
     return std::tie(pass.a.x, pass.a.y, pass.b.x, pass.b.y);
   };
+  // The passes gathered, then sorted and counted at once (#2072 CPU: one sorted insert a step
+  // was the tread's cost) - the same rows and counts in the same key order.
+  std::vector<TrailPass> passes = std::move(pending);
   for (auto [a, b] : steps) {
     const Vec2 from = TrailEndPosition(a);
     const Vec2 to = TrailEndPosition(b);
@@ -149,16 +152,17 @@ void TreadPlacedWalkers(const TrailRules& rules,
     if (std::tie(b.x, b.y) < std::tie(a.x, a.y)) {
       std::swap(a, b);
     }
-    const TrailPass probe{.a = a, .b = b, .passes = 0};
-    const auto at = std::lower_bound(
-        pending.begin(),
-        pending.end(),
-        probe,
-        [&key](const TrailPass& left, const TrailPass& right) { return key(left) < key(right); });
-    if (at != pending.end() && key(*at) == key(probe)) {
-      ++at->passes;
+    passes.push_back(TrailPass{.a = a, .b = b, .passes = 1});
+  }
+  std::sort(passes.begin(), passes.end(), [&key](const TrailPass& left, const TrailPass& right) {
+    return key(left) < key(right);
+  });
+  pending.clear();
+  for (const TrailPass& pass : passes) {
+    if (!pending.empty() && key(pending.back()) == key(pass)) {
+      pending.back().passes += pass.passes;
     } else {
-      pending.insert(at, TrailPass{.a = a, .b = b, .passes = 1});
+      pending.push_back(pass);
     }
   }
 }
