@@ -48,6 +48,7 @@
 #include "milkmaid_policy.h"
 #include "night_pasture_policy.h"
 #include "office_policy.h"
+#include "plan_year_tally.h"
 #include "planting_policy.h"
 #include "repair_policy.h"
 #include "reputation_tally.h"
@@ -113,6 +114,7 @@ class BuildingChairman {
         low_earners(tables),
         winter_felling(tables),
         winter_horses(tables),
+        plan_years(tables),
         field_work(tables),
         plan_over(tables),
         sport_talk(tables),
@@ -413,6 +415,7 @@ class BuildingChairman {
     decomp.CountDay(simulation.CompletedState());      // #2072's DECOMP2072
     winter_felling.CountDay(simulation);               // WFELL2072
     winter_horses.CountDay(simulation);                // WHORSE2072
+    plan_years.CountDay(simulation.CompletedState());  // PLANY2072
     clerk.CountDay(simulation);                        // #589's print
     reputation.CountDay(simulation.CompletedState());  // #1897's REP1897
     plan_over.CountDay(simulation.CompletedState());   // #1946's OVER1946
@@ -626,6 +629,9 @@ class BuildingChairman {
   /// WHORSE2072 (econ's winter-horses page, boss 25 Nov): H, the mark slot and the logs built
   /// in by type (winter_horse_tally.h).
   WinterHorseTally winter_horses;
+  /// PLANY2072 (econ's #2072 gate, boss 25 Nov): each year's verdict and every short position's
+  /// book and named cause (plan_year_tally.h).
+  PlanYearTally plan_years;
   /// #2264's print: M1-M4 of the field-work coordinator, y1-y3 (field_work_tally.h).
   FieldWorkTally field_work;
   /// #589's print: the clerk's post and his family's satiety (clerk_tally.h).
